@@ -555,7 +555,14 @@ def get_vg_size(vgUuid, raise_exception=True):
     cmd(is_exception=raise_exception)
     if cmd.return_code != 0:
         return None, None
-    return cmd.stdout.strip().split(':')[0].strip("B"), cmd.stdout.strip().split(':')[1].strip("B")
+    vg_size, vg_free = cmd.stdout.strip().split(':')[0].strip("B"), cmd.stdout.strip().split(':')[1].strip("B")
+    pools = get_thin_pools_from_vg(vgUuid)
+    if len(pools) == 0:
+        return vg_size, vg_free
+    vg_free = float(vg_free)
+    for pool in pools:
+        vg_free += pool.free
+    return vg_size, str(int(vg_free))
 
 
 def add_vg_tag(vgUuid, tag):
@@ -643,10 +650,11 @@ def create_lv_from_cmd(path, size, cmd, tag="zs::sharedblock::volume"):
     # TODO(weiw): fix it
     if "ministorage" in tag and cmd.provisioning == VolumeProvisioningStrategy.ThinProvisioning:
         create_thin_lv_from_absolute_path(path, size, tag)
-    if cmd.provisioning == VolumeProvisioningStrategy.ThinProvisioning and size > cmd.addons[thinProvisioningInitializeSize]:
+    elif cmd.provisioning == VolumeProvisioningStrategy.ThinProvisioning and size > cmd.addons[thinProvisioningInitializeSize]:
         create_lv_from_absolute_path(path, cmd.addons[thinProvisioningInitializeSize], tag)
     else:
         create_lv_from_absolute_path(path, size, tag)
+
 
 @bash.in_bash
 @linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
@@ -657,26 +665,42 @@ def create_thin_lv_from_absolute_path(path, size, tag):
     thin_pool = get_thin_pool_from_vg(vgName)
     assert thin_pool != ""
 
-    bash.bash_roe("lvcreate --addtag %s -n %s -V %sb --thinpool %s %s" %
-                  (tag, lv_rename, calcLvReservedSize(size), thin_pool, vgName))
+    r, o, e = bash.bash_roe("lvcreate --addtag %s -n %s -V %sb --thinpool %s %s" %
+                  (tag, lvName, calcLvReservedSize(size), thin_pool, vgName))
     if not lv_exists(path):
-        raise Exception("can not find lv %s after create", path)
+        raise Exception("can not find lv %s after create, lvcreate return : %s, %s, %s" %
+                        (path, r, o, e))
 
     with OperateLv(path, shared=False):
         dd_zero(path)
 
 
 def get_thin_pool_from_vg(vgName):
-    thin_pools = bash.bash_o("lvs -Slayout=pool -oname,data_percent,lv_size --noheading --unit B").splitlines()
+    thin_pools = get_thin_pools_from_vg(vgName)
     most_free = [""]
     for pool in thin_pools:
-        free_percent = 1 - int(pool.strip().split(" ")[1])
-        total = pool.strip().split(" ")[2]
-        free = total * free_percent
-        if len(most_free) < 2 or most_free[1] < free:
-            most_free = [pool.strip().split(" ")[0], free]
+        if len(most_free) < 2 or most_free[1] < pool.free:
+            most_free = [pool.name, pool.free]
 
     return most_free[0]
+
+
+class ThinPool(object):
+    @bash.in_bash
+    def __init__(self, path):
+        o = bash.bash_o("lvs %s --separator ' ' -oname,data_percent,lv_size --noheading --unit B" % path).strip()
+        self.total = float(o.split(" ")[2].strip("B"))
+        self.free = self.total * (100 - float(o.split(" ")[1].strip("B")))/100
+        self.name = o.split(" ")[0]
+
+
+@bash.in_bash
+def get_thin_pools_from_vg(vgName):
+    names = bash.bash_o("lvs %s -Slayout=pool -oname --noheading" % vgName).strip().splitlines()
+    if len(names) == 0:
+        return []
+    return [ThinPool("/dev/%s/%s" % (vgName, n)) for n in names]
+
 
 def dd_zero(path):
     cmd = shell.ShellCmd("dd if=/dev/zero of=%s bs=65536 count=1 conv=sync,notrunc" % path)
@@ -684,9 +708,22 @@ def dd_zero(path):
 
 
 def get_lv_size(path):
+    if is_thin_lv(path):
+        return get_thin_lv_size(path)
     cmd = shell.ShellCmd("lvs --nolocking --noheading -osize --units b %s" % path)
     cmd(is_exception=True)
     return cmd.stdout.strip().strip("B")
+
+
+@bash.in_bash
+def get_thin_lv_size(path):
+    l = ThinPool(path)
+    return str(int(l.total - l.free))
+
+
+@bash.in_bash
+def is_thin_lv(path):
+    return bash.bash_r("lvs --nolocking --noheadings  -olayout %s | grep thin" % path) == 0
 
 
 @bash.in_bash

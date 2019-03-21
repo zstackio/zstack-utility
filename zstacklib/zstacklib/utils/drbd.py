@@ -51,12 +51,15 @@ class DrbdResource(object):
         try:
             self._init_from_name()
         except Exception:
+            logger.debug("can not find config of resource %s" % self.name)
             return
 
         if up and not self.minor_allocated():
             self.up()
 
     def _init_from_name(self):
+        if self.name is None:
+            return
         self._init_from_config_path(self.get_config_path_from_name(self.name))
 
     def _init_from_config_path(self, config_path):
@@ -133,6 +136,24 @@ class DrbdResource(object):
             else:
                 linux.qcow2_create_with_cmd(self.get_dev_path(), cmd.size, cmd)
             self.demote()
+
+    @bash.in_bash
+    def is_defined(self):
+        assert self.name is not None
+        assert self.name.strip() != ""
+        r, o, e = bash.bash_roe("drbdadm role %s" % self.name)
+        if r != 0 and "not defined in your config" in o+e:
+            return False
+
+        return True
+
+    @bash.in_bash
+    def destroy(self):
+        if not self.is_defined():
+            return
+        self.down()
+        bash.bash_r("echo yes | drbdadm wipe-md %s" % self.name)
+        bash.bash_r("rm /etc/drbd.d/%s.res" % self.name)
 
 
 class DrbdStruct(object):
@@ -238,6 +259,7 @@ resource {{ name }} {
   }
 }
             """)
+        logger.debug("write drbd config: \n%s" % config.render(self.make_ctx()).strip())
         dirname = os.path.dirname(self.path)
         if not os.path.exists(dirname):
             os.makedirs(dirname)

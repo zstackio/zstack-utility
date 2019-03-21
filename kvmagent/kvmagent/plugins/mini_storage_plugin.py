@@ -439,11 +439,16 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
 
         drbdResource.config.write_config()
         virtual_size = linux.qcow2_virtualsize(template_abs_path_cache)
-        if not lvm.lv_exists(install_abs_path):
-            lvm.create_lv_from_cmd(install_abs_path, virtual_size, cmd,
-                                             "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
-        lvm.active_lv(install_abs_path)
-        drbdResource.initialize(cmd.init, cmd, template_abs_path_cache)
+
+        try:
+            if not lvm.lv_exists(install_abs_path):
+                lvm.create_lv_from_cmd(install_abs_path, virtual_size, cmd,
+                                                 "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
+            lvm.active_lv(install_abs_path)
+            drbdResource.initialize(cmd.init, cmd, template_abs_path_cache)
+        except Exception:
+            drbdResource.destroy()
+            lvm.delete_lv(install_abs_path)
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
@@ -467,6 +472,8 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
             lvm.delete_image(install_abs_path, IMAGE_TAG)
         else:
             logger.info('deleting lv volume: ' + install_abs_path)
+            r = drbd.DrbdResource(self.get_name_from_installPath(path))
+            r.destroy()
             lvm.delete_lv(install_abs_path)
 
     @kvmagent.replyerror
@@ -500,28 +507,6 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
                     logger.debug("confirmed qcow2 %s and %s are identical" % (volume_abs_path, install_abs_path))
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
-        return jsonobject.dumps(rsp)
-
-    @staticmethod
-    @bash.in_bash
-    def compare(src, dst):
-        return bash.bash_r("cmp %s %s" % (src, dst)) == 0
-
-    @kvmagent.replyerror
-    def upload_to_sftp(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AgentRsp()
-        install_abs_path = get_absolute_path_from_install_path(cmd.primaryStorageInstallPath)
-
-        def upload():
-            if not os.path.exists(cmd.primaryStorageInstallPath):
-                raise kvmagent.KvmError('cannot find %s' % cmd.primaryStorageInstallPath)
-
-            linux.scp_upload(cmd.hostname, cmd.sshKey, cmd.primaryStorageInstallPath, cmd.backupStorageInstallPath, cmd.username, cmd.sshPort)
-
-        with lvm.OperateLv(install_abs_path, shared=True):
-            upload()
-
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -561,19 +546,23 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
 
         drbdResource.config.write_config()
 
-        if cmd.backingFile:
-            backing_abs_path = get_absolute_path_from_install_path(cmd.backingFile)
-            virtual_size = linux.qcow2_virtualsize(backing_abs_path)
+        try:
+            if cmd.backingFile:
+                backing_abs_path = get_absolute_path_from_install_path(cmd.backingFile)
+                virtual_size = linux.qcow2_virtualsize(backing_abs_path)
 
-            lvm.create_lv_from_cmd(install_abs_path, virtual_size, cmd,
-                                                 "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
-            lvm.active_lv(install_abs_path)
-            drbdResource.initialize(cmd.init, cmd, backing_abs_path)
-        elif not lvm.lv_exists(install_abs_path):
-            lvm.create_lv_from_cmd(install_abs_path, cmd.size, cmd,
-                                                 "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
-            lvm.active_lv(install_abs_path)
-            drbdResource.initialize(cmd.init, cmd)
+                lvm.create_lv_from_cmd(install_abs_path, virtual_size, cmd,
+                                                     "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
+                lvm.active_lv(install_abs_path)
+                drbdResource.initialize(cmd.init, cmd, backing_abs_path)
+            elif not lvm.lv_exists(install_abs_path):
+                lvm.create_lv_from_cmd(install_abs_path, cmd.size, cmd,
+                                                     "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
+                lvm.active_lv(install_abs_path)
+                drbdResource.initialize(cmd.init, cmd)
+        except Exception:
+            drbdResource.destroy()
+            lvm.delete_lv(install_abs_path)
 
         logger.debug('successfully create empty volume[uuid:%s, size:%s] at %s' % (cmd.volumeUuid, cmd.size, cmd.installPath))
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
