@@ -127,8 +127,9 @@ if IS_AARCH64:
     qemu_img_pkg = "%s/qemu-img-aarch64" % file_root
     qemu_img_local_pkg = "%s/qemu-img-aarch64" % kvm_root
     dnsmasq_img_local_pkg = "%s/dnsmasq-aarch64" % file_root
-    zwatch_vm_agent_local_pkg = "%s/zwatch-vm-agent.bin" % file_root
+    zwatch_vm_agent_local_pkg = "%s/zwatch-vm-agent.linux-amd64.bin" % file_root
     zwatch_vm_agent_install_sh_local = "%s/zstack-tools.sh" % file_root
+    zwatch_vm_agent_version_local = "%s/agent_version" % file_root
     pushgateway_local_pkg = "%s/pushgateway" % file_root
 else:
     dnsmasq_pkg = "%s/dnsmasq-2.76-2.el7_4.2.x86_64.rpm" % file_root
@@ -138,14 +139,16 @@ else:
     qemu_img_pkg = "%s/qemu-img-kvm" % file_root
     qemu_img_local_pkg = "%s/qemu-img-kvm" % kvm_root
     dnsmasq_img_local_pkg = "%s/dnsmasq" % file_root
-    zwatch_vm_agent_local_pkg = "%s/zwatch-vm-agent.bin" % file_root
+    zwatch_vm_agent_local_pkg = "%s/zwatch-vm-agent.linux-amd64.bin" % file_root
     zwatch_vm_agent_install_sh_local = "%s/zstack-tools.sh" % file_root
+    zwatch_vm_agent_version_local = "%s/agent_version" % file_root
     pushgateway_local_pkg = "%s/pushgateway" % file_root
 collectd_local_pkg = "%s/collectd_exporter" % workplace
 node_collectd_local_pkg = "%s/node_exporter" % workplace
 dnsmasq_img_dst_pkg = "/usr/local/zstack/dnsmasq"
-zwatch_vm_agent_dst_pkg = "%s/zwatch-vm-agent.bin" % workplace
+zwatch_vm_agent_dst_pkg = "%s/zwatch-vm-agent.linux-amd64.bin" % workplace
 zwatch_vm_agent_install_sh_dst = "%s/zstack-tools.sh" % workplace
+zwatch_vm_agent_version_dst = "%s/agent_version" % workplace
 pushgateway_dst_pkg = "%s/pushgateway" % workplace
 
 # include zstacklib.py
@@ -250,7 +253,7 @@ if distro in RPM_BASED_OS:
     copy_arg.dest = pushgateway_dst_pkg
     copy(copy_arg, host_post_info)
 
-    # copy zwatch-vm-agent.bin
+    # copy zwatch-vm-agent.linux-amd64.bin
     copy_arg = CopyArg()
     copy_arg.src = zwatch_vm_agent_local_pkg
     copy_arg.dest = zwatch_vm_agent_dst_pkg
@@ -260,6 +263,11 @@ if distro in RPM_BASED_OS:
     copy_arg = CopyArg()
     copy_arg.src = zwatch_vm_agent_install_sh_local
     copy_arg.dest = zwatch_vm_agent_install_sh_dst
+    copy(copy_arg, host_post_info)
+
+    copy_arg = CopyArg()
+    copy_arg.src = zwatch_vm_agent_version_local
+    copy_arg.dest = zwatch_vm_agent_version_dst
     copy(copy_arg, host_post_info)
 
     # handle distro version specific task

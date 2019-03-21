@@ -357,7 +357,7 @@ class Mevoco(kvmagent.KvmAgent):
 
     USERDATA_ROOT = "/var/lib/zstack/userdata/"
 
-    CONNECT_ALL_NETNS_BR_NAME = "br_connect_all_netns"
+    CONNECT_ALL_NETNS_BR_NAME = "br_conn_all_ns"
     CONNECT_ALL_NETNS_BR_OUTER_IP = "169.254.64.1"
     CONNECT_ALL_NETNS_BR_INNER_IP = "169.254.64.2"
     IP_MASK_BIT = 18
@@ -915,12 +915,12 @@ mimetype.assign = (
         self.apply_zwatch_vm_agent(http_root)
 
     def apply_zwatch_vm_agent(self, http_root):
-        agent_file_source_path = "/var/lib/zstack/kvm/zwatch-vm-agent.bin"
+        agent_file_source_path = "/var/lib/zstack/kvm/zwatch-vm-agent.linux-amd64.bin"
         if not os.path.exists(agent_file_source_path):
             logger.error("Can't find file %s" % agent_file_source_path)
             return
 
-        agent_file_target_path = os.path.join(http_root, "zwatch-vm-agent.bin")
+        agent_file_target_path = os.path.join(http_root, "zwatch-vm-agent.linux-amd64.bin")
         if not os.path.exists(agent_file_target_path):
             shutil.copyfile(agent_file_source_path, agent_file_target_path)
         else:
@@ -934,6 +934,12 @@ mimetype.assign = (
             logger.error("Can't find file %s" % tool_sh_file_path)
             return
         shutil.copyfile(tool_sh_file_path, os.path.join(http_root, "zstack-tools.sh"))
+
+        version_file_path = "/var/lib/zstack/kvm/agent_version"
+        if not os.path.exists(version_file_path):
+            logger.error("Can't find file %s" % version_file_path)
+            return
+        shutil.copyfile(version_file_path, os.path.join(http_root, "agent_version"))
 
     @in_bash
     @lock.file_lock('/run/xtables.lock')
