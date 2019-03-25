@@ -88,13 +88,13 @@ class DrbdResource(object):
     @linux.retry(times=6, sleep_time=2)
     def promote(self, force=False):
         f = " --force" if force else ""
-        bash.bash_r("drbdadm primary %s %s" % (self.name, f))
+        r, o, e = bash.bash_roe("drbdadm primary %s %s" % (self.name, f))
         if self.getRole() != DrbdRole.Primary:
-            raise RetryException("resource %s still not in role %s" % (self.name, DrbdRole.Primary))
+            raise RetryException("promote failed, return: %s, %s, %s. resource %s still not in role %s" % (r, o, e, self.name, DrbdRole.Primary))
 
     @bash.in_bash
     def demote(self):
-        bash.bash_errorout("drbdadm secondary %s" % self.name)
+        r, o, e = bash.bash_roe("drbdadm secondary %s" % self.name)
 
     def getCstate(self):
         return bash.bash_o("drbdadm cstate %s" % self.name).strip()
@@ -313,7 +313,7 @@ def list_local_up_drbd(vgUuid):
 def install_drbd():
     mod_installed = bash.bash_r("lsmod | grep drbd") == 0
     mod_exists = bash.bash_r("modinfo drbd") == 0
-    utils_installed = bash.bash_r("rpm -ql drbd-utils") == 0
+    utils_installed = bash.bash_r("rpm -ql drbd-utils || rpm -ql drbd84-utils") == 0
     utils_exists, o = bash.bash_ro("ls /opt/zstack-dvd/Packages/drbd-utils*")
 
     if mod_installed and utils_exists:
