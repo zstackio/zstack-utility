@@ -43,7 +43,7 @@ fi
 
 echo "install ${BIN_NAME}"
 chmod +x ${BIN_NAME}
-./${BIN_NAME} -id i
+./${BIN_NAME} -i
 if [ $? != 0 ]; then
      echo "install ${BIN_NAME} fail"
      exit 1
@@ -57,4 +57,4 @@ if [ $? != 0 ]; then
      exit 1
 fi
 
-echo zwatch-vm-agent installed and runing
+echo zwatch-vm-agent installed and running
