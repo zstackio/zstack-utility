@@ -23,6 +23,9 @@ import tempfile
 import cStringIO as c
 from email.mime.multipart import MIMEMultipart
 from jinja2 import Template
+import shutil
+import struct
+import socket
 
 logger = log.get_logger(__name__)
 EBTABLES_CMD = ebtables.get_ebtables_cmd()
@@ -354,6 +357,13 @@ class Mevoco(kvmagent.KvmAgent):
 
     USERDATA_ROOT = "/var/lib/zstack/userdata/"
 
+    CONNECT_ALL_NETNS_BR_NAME = "br_conn_all_ns"
+    CONNECT_ALL_NETNS_BR_OUTER_IP = "169.254.64.1"
+    CONNECT_ALL_NETNS_BR_INNER_IP = "169.254.64.2"
+    IP_MASK_BIT = 18
+
+    KVM_HOST_PUSHGATEWAY_PORT = "9092"
+
     def __init__(self):
         self.signal_count = 0
 
@@ -614,7 +624,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
                 #logger.debug("ebtables chain-name:%s %s\n" %(l, chain[l]) )
 
         shell.call(EBTABLES_CMD + ' -t nat -F')
-       
+
         for l in chain_names:
             cmds = chain[l]
             if cmds:
@@ -705,6 +715,53 @@ tag:{{TAG}},option:dns-server,{{DNS}}
     @in_bash
     @lock.file_lock('/run/xtables.lock')
     def _apply_userdata_xtables(self, to):
+        def prepare_br_connect_ns(ns, ns_inner_dev, ns_outer_dev):
+            bridge_name = self.CONNECT_ALL_NETNS_BR_NAME
+            bridge_ip = "%s/%s" % (self.CONNECT_ALL_NETNS_BR_OUTER_IP, self.IP_MASK_BIT)
+
+            if not linux.is_network_device_existing(bridge_name):
+                shell.call("brctl addbr %s" % bridge_name)
+                shell.call("brctl setfd %s 0" % bridge_name)
+                shell.call("brctl stp %s off" % bridge_name)
+                shell.call('ip addr add %s dev %s' % (bridge_ip, bridge_name))
+                shell.call("ip link set %s up" % bridge_name)
+
+            ret = bash_r('ip addr show %s | grep -w %s > /dev/null' %
+                         (bridge_name, bridge_ip))
+            if ret != 0:
+                bash_errorout('ip addr add %s dev %s' % (bridge_ip, bridge_name))
+
+            userdata_br_outer_dev = "userdata_" + ns_outer_dev
+            userdata_br_inner_dev = "userdata_" + ns_inner_dev
+
+            ret = bash_r('ip link | grep -w %s > /dev/null' % userdata_br_outer_dev)
+            if ret != 0:
+                bash_errorout('ip link add %s type veth peer name %s' % (userdata_br_outer_dev, userdata_br_inner_dev))
+
+            bash_errorout('ip link set %s up' % userdata_br_outer_dev)
+
+            ret = bash_r('brctl show %s | grep -w %s > /dev/null' % (bridge_name, userdata_br_outer_dev))
+            if ret != 0:
+                bash_errorout('brctl addif %s %s' % (bridge_name, userdata_br_outer_dev))
+
+            ret = bash_r('ip netns exec %s ip link | grep -w %s > /dev/null' % (ns, userdata_br_inner_dev))
+            if ret != 0:
+                bash_errorout('ip link set %s netns %s' % (userdata_br_inner_dev, ns))
+
+            ns_id = ns_inner_dev[5:]
+            if int(ns_id) > 16381:
+                # 169.254.64.1/18 The maximum available ip is only 16381 (exclude 169.254.64.1)
+                # It is impossible to configure tens of thousands of networks on host
+                raise Exception('add ip addr fail, namespace id exceeds limit')
+            ip2int = struct.unpack('!L', socket.inet_aton(self.CONNECT_ALL_NETNS_BR_INNER_IP))[0]
+            userdata_br_inner_dev_ip = socket.inet_ntoa(struct.pack('!L', ip2int + int(ns_id)))
+            ret = bash_r('ip netns exec %s ip addr show %s | grep -w %s > /dev/null' %
+                         (ns, userdata_br_inner_dev, userdata_br_inner_dev_ip))
+            if ret != 0:
+                bash_errorout('ip netns exec %s ip addr add %s/%s dev %s' % (
+                    ns, userdata_br_inner_dev_ip, self.IP_MASK_BIT, userdata_br_inner_dev))
+            bash_errorout('ip netns exec %s ip link set %s up' % (ns, userdata_br_inner_dev))
+
         p = UserDataEnv(to.bridgeName, to.namespaceName)
         INNER_DEV = None
         DHCP_IP = None
@@ -722,6 +779,9 @@ tag:{{TAG}},option:dns-server,{{DNS}}
             INNER_DEV = p.inner_dev
         if not INNER_DEV:
             raise Exception('cannot find device for the DHCP IP[%s]' % DHCP_IP)
+
+        outer_dev = p.outer_dev if(p.outer_dev != None) else ("outer" + INNER_DEV[5:])
+        prepare_br_connect_ns(NS_NAME, INNER_DEV, outer_dev)
 
         ret = bash_r('ip netns exec {{NS_NAME}} ip addr | grep 169.254.169.254 > /dev/null')
         if (ret != 0 and INNER_DEV != None):
@@ -756,6 +816,10 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         ret = bash_r(EBTABLES_CMD + ' -t nat -L {{EBCHAIN_NAME}} | grep -- "{{RULE}}" > /dev/null')
         if ret != 0:
             bash_errorout(EBTABLES_CMD + ' -t nat -I {{EBCHAIN_NAME}} {{RULE}}')
+
+        ret = bash_r(EBTABLES_CMD + ' -t nat -L {{EBCHAIN_NAME}} | grep -- "--arp-ip-dst %s" > /dev/null' % self.CONNECT_ALL_NETNS_BR_OUTER_IP)
+        if ret != 0:
+            bash_errorout(EBTABLES_CMD + ' -t nat -I {{EBCHAIN_NAME}}  -p arp  --arp-ip-dst %s -j DROP' % self.CONNECT_ALL_NETNS_BR_OUTER_IP)
 
         ret = bash_r(EBTABLES_CMD + ' -t nat -L {{EBCHAIN_NAME}} | grep -- "-j RETURN" > /dev/null')
         if ret != 0:
@@ -798,20 +862,26 @@ server.bind = "169.254.169.254"
 dir-listing.activate = "enable"
 index-file.names = ( "index.html" )
 
-server.modules += ( "mod_rewrite" )
+server.modules += ("mod_proxy", "mod_rewrite")
 
 $HTTP["remoteip"] =~ "^(.*)$" {
-    url.rewrite-once = (
-        "^/.*/meta-data/(.+)$" => "../%1/meta-data/$1",
-        "^/.*/meta-data$" => "../%1/meta-data",
-        "^/.*/meta-data/$" => "../%1/meta-data/",
-        "^/.*/user-data$" => "../%1/user-data",
-        "^/.*/user_data$" => "../%1/user_data",
-        "^/.*/meta_data.json$" => "../%1/meta_data.json",
-        "^/.*/password$" => "../%1/password",
-        "^/.*/$" => "../%1/$1"
-    )
-    dir-listing.activate = "enable"
+    $HTTP["url"] =~ "^/metrics/job" {
+        proxy.server = ( "" =>
+           ( ( "host" => "{{pushgateway_ip}}", "port" => {{pushgateway_port}} ) )
+        )
+    } else $HTTP["remoteip"] =~ "^(.*)$" {
+        url.rewrite-once = (
+            "^/.*/meta-data/(.+)$" => "../%1/meta-data/$1",
+            "^/.*/meta-data$" => "../%1/meta-data",
+            "^/.*/meta-data/$" => "../%1/meta-data/",
+            "^/.*/user-data$" => "../%1/user-data",
+            "^/.*/user_data$" => "../%1/user_data",
+            "^/.*/meta_data.json$" => "../%1/meta_data.json",
+            "^/.*/password$" => "../%1/password",
+            "^/.*/$" => "../%1/$1"
+        )
+        dir-listing.activate = "enable"
+    }
 }
 
 mimetype.assign = (
@@ -824,8 +894,12 @@ mimetype.assign = (
         tmpt = Template(conf)
         conf = tmpt.render({
             'http_root': http_root,
-            'port': to.port
+            'port': to.port,
+            'pushgateway_ip' : self.CONNECT_ALL_NETNS_BR_OUTER_IP,
+            'pushgateway_port' : self.KVM_HOST_PUSHGATEWAY_PORT
         })
+
+        linux.mkdir(http_root, 0777)
 
         if not os.path.exists(conf_path):
             with open(conf_path, 'w') as fd:
@@ -837,6 +911,35 @@ mimetype.assign = (
             if current_conf != conf:
                 with open(conf_path, 'w') as fd:
                     fd.write(conf)
+
+        self.apply_zwatch_vm_agent(http_root)
+
+    def apply_zwatch_vm_agent(self, http_root):
+        agent_file_source_path = "/var/lib/zstack/kvm/zwatch-vm-agent.linux-amd64.bin"
+        if not os.path.exists(agent_file_source_path):
+            logger.error("Can't find file %s" % agent_file_source_path)
+            return
+
+        agent_file_target_path = os.path.join(http_root, "zwatch-vm-agent.linux-amd64.bin")
+        if not os.path.exists(agent_file_target_path):
+            shutil.copyfile(agent_file_source_path, agent_file_target_path)
+        else:
+            source_md5 = shell.call("md5sum %s | cut -d ' ' -f 1" % agent_file_source_path)
+            target_md5 = shell.call("md5sum %s | cut -d ' ' -f 1" % agent_file_target_path)
+            if source_md5 != target_md5:
+                shutil.copyfile(agent_file_source_path, agent_file_target_path)
+
+        tool_sh_file_path = "/var/lib/zstack/kvm/zstack-tools.sh"
+        if not os.path.exists(tool_sh_file_path):
+            logger.error("Can't find file %s" % tool_sh_file_path)
+            return
+        shutil.copyfile(tool_sh_file_path, os.path.join(http_root, "zstack-tools.sh"))
+
+        version_file_path = "/var/lib/zstack/kvm/agent_version"
+        if not os.path.exists(version_file_path):
+            logger.error("Can't find file %s" % version_file_path)
+            return
+        shutil.copyfile(version_file_path, os.path.join(http_root, "agent_version"))
 
     @in_bash
     @lock.file_lock('/run/xtables.lock')
