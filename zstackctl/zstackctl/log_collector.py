@@ -729,8 +729,6 @@ class CollectFromYml(object):
             error_verbose("at least 2 threads")
         if args.timeout and not str(args.timeout).isdigit():
             error_verbose("timeout must be a positive integer")
-        if int(args.timeout) < 300:
-            error_verbose("timeout must greater than 300")
 
     def run(self, collect_dir, detail_version, time_stamp, args):
 
@@ -763,7 +761,8 @@ class CollectFromYml(object):
         else:
             if len(threading.enumerate()) > 1:
                 info_verbose("It seems that some collect log thread timeout, "
-                             "if compress failed, please use \'tar zcvf\' manually")
+                             "if compress failed, please use \'tar zcvf collect-log-%s-%s.tar.gz collect-log-%s-%s\' manually"
+                             , detail_version, time_stamp, detail_version, time_stamp)
             self.generate_tar_ball(run_command_dir, detail_version, time_stamp)
             if self.failed_flag is True:
                 info_verbose("The collect log generate at: %s.tar.gz,success %s,fail %s" % (
