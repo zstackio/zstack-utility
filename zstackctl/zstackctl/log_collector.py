@@ -18,6 +18,7 @@ def info_verbose(*msg):
     now = datetime.now()
     out = "%s " % str(now) + out
     sys.stdout.write(out)
+    logger.info(out)
 
 
 def collect_fail_verbose(*msg):
@@ -373,16 +374,18 @@ class CollectFromYml(object):
         thread.daemon = True
         self.threads.append(thread)
 
-    def thread_run(self):
+    def thread_run(self, timeout):
         for t in self.threads:
             t.start()
             while True:
                 if len(threading.enumerate()) <= int(self.max_thread_num):
                     break
         for t in self.threads:
-            t.join()
-        for param in self.vrouter_task_list:
-            self.get_host_log(param[0], param[1], param[2], param[3])
+            t.join(timeout)
+        if len(self.vrouter_task_list) > 0:
+            info_verbose("Start collecting vrouter log...")
+            for param in self.vrouter_task_list:
+                self.get_host_log(param[0], param[1], param[2], param[3])
 
     def collect_configure_log(self, host_list, log_list, collect_dir, type):
         if isinstance(host_list, str):
@@ -662,7 +665,6 @@ class CollectFromYml(object):
             for item in self.fail_list:
                 f.write(item)
 
-
     def format_date(self, str_date):
         try:
             d_arr = str_date.split('_')
@@ -725,6 +727,8 @@ class CollectFromYml(object):
             error_verbose("thread number must be a positive integer")
         if args.thread and int(args.thread) < 2:
             error_verbose("at least 2 threads")
+        if args.timeout and not str(args.timeout).isdigit():
+            error_verbose("timeout must be a positive integer")
 
     def run(self, collect_dir, detail_version, time_stamp, args):
 
@@ -751,10 +755,14 @@ class CollectFromYml(object):
                 continue
             else:
                 self.collect_configure_log(value['list'], value['logs'], collect_dir, key)
-        self.thread_run()
+        self.thread_run(int(args.timeout))
         if self.check:
             self.get_total_size()
         else:
+            if len(threading.enumerate()) > 1:
+                info_verbose("It seems that some collect log thread timeout, "
+                             "if compress failed, please use \'tar zcvf collect-log-%s-%s.tar.gz collect-log-%s-%s\' manually"
+                             , detail_version, time_stamp, detail_version, time_stamp)
             self.generate_tar_ball(run_command_dir, detail_version, time_stamp)
             if self.failed_flag is True:
                 info_verbose("The collect log generate at: %s.tar.gz,success %s,fail %s" % (
