@@ -102,7 +102,7 @@ class ImageStoreClient(object):
         fpath = cmd.primaryStorageInstallPath
 
         # Synchronize cached writes for 'fpath'
-        shell.call('/bin/sync ' + fpath)
+        linux.sync()
 
         # Add the image to registry
         cmdstr = '%s -json  -callbackurl %s -taskid %s -imageUuid %s add -desc \'%s\' -file %s' % (self.ZSTORE_CLI_PATH, req[http.REQUEST_HEADER].get(http.CALLBACK_URI),

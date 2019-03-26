@@ -166,7 +166,7 @@ class Dnsmasq(virtualrouter.VRAgent):
                               self.HOST_OPTION_FILE, \
                               e.ip, self.HOST_DNS_FILE, \
                               self.HOST_DNS_FILE))
-            shell.call("sync")
+            linux.sync()
         except virtualrouter.VirtualRouterError as e:
             logger.warn(linux.get_exception_stacktrace())
 
@@ -316,7 +316,7 @@ class Dnsmasq(virtualrouter.VRAgent):
                         self.HOST_DNS_FILE, \
                         net_dev, e.ip, e.mac))
             #logger.debug("remove dhcp entries:%s" % (len(cmd.dhcpEntries)))
-            shell.call("sync")
+            linux.sync()
         except virtualrouter.VirtualRouterError as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
