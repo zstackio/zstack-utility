@@ -62,6 +62,13 @@ host_post_info.remote_port = remote_port
 if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
 
+IS_AARCH64 = get_remote_host_arch(host_post_info) == 'aarch64'
+if IS_AARCH64:
+    src_pkg_zsblk = "zsblk-agent.aarch64.bin"
+else:
+    src_pkg_zsblk = "zsblk-agent.bin"
+pkg_zsblk = "zsblk-agent.bin"
+
 # include zstacklib.py
 (distro, distro_version, distro_release, _) = get_remote_host_info(host_post_info)
 zstacklib_args = ZstackLibArgs()
@@ -85,7 +92,7 @@ run_remote_command(add_true_in_command(command), host_post_info)
 # name: copy zsblk binary
 copy_arg = CopyArg()
 dest_pkg = "%s/%s" % (zsblk_root, pkg_zsblk)
-copy_arg.src = "%s/%s" % (file_root, pkg_zsblk)
+copy_arg.src = "%s/%s" % (file_root, src_pkg_zsblk)
 copy_arg.dest = dest_pkg
 copy(copy_arg, host_post_info)
 
