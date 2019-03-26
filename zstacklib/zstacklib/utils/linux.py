@@ -1698,3 +1698,10 @@ def get_agent_pid_by_name(name):
     output = output.strip(" \t\r")
     return output
 
+if hasattr(os, 'sync'):
+    sync = os.sync
+else:
+    import ctypes
+    libc = ctypes.CDLL("libc.so.6")
+    def sync():
+        libc.sync()

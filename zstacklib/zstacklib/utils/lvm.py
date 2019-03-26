@@ -311,8 +311,7 @@ def config_lvm_by_sed(keyword, entry, files):
         cmd = shell.ShellCmd("sed -i 's/.*\\b%s.*/%s/g' %s/%s" %
                              (keyword, entry, LVM_CONFIG_PATH, file))
         cmd(is_exception=False)
-    cmd = shell.ShellCmd("sync")
-    cmd(is_exception=False)
+    linux.sync()
 
 
 @bash.in_bash
@@ -337,8 +336,7 @@ def config_sanlock_by_sed(keyword, entry):
     cmd = shell.ShellCmd("sed -i 's/.*%s.*/%s/g' %s" %
                          (keyword, entry, SANLOCK_CONFIG_FILE_PATH))
     cmd(is_exception=False)
-    cmd = shell.ShellCmd("sync")
-    cmd(is_exception=False)
+    linux.sync()
 
 
 def config_lvmlockd_by_sed():
@@ -355,7 +353,8 @@ def config_lvmlockd_by_sed():
         cmd = shell.ShellCmd(
             "sed -i '/ExecStart/a StandardError=%s' /usr/lib/systemd/system/lvm2-lvmlockd.service" % LVMLOCKD_LOG_FILE_PATH)
         cmd(is_exception=False)
-    cmd = shell.ShellCmd("sync;systemctl daemon-reload")
+    linux.sync()
+    cmd = shell.ShellCmd("systemctl daemon-reload")
     cmd(is_exception=False)
 
 
@@ -392,8 +391,7 @@ def start_lvmlockd():
 }"""
         with open(LVMLOCKD_LOG_LOGROTATE_PATH, 'w') as f:
             f.write(content)
-        cmd = shell.ShellCmd("sync")
-        cmd(is_exception=False)
+        linux.sync()
 
 
 @bash.in_bash
