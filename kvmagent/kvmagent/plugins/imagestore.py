@@ -69,8 +69,9 @@ class ImageStoreClient(object):
             return synced
 
         with linux.ShowLibvirtErrorOnException(vm):
-            cmdstr = '%s -progress backup -bitmap %s -dest %s -domain %s -drive %s -mode %s -speed %s' % (self.ZSTORE_CLI_PATH, bitmap, dest, vm, node, mode, speed)
-            _, mode, err = bash_progress_1('%s 2> {{PFILE}}' % cmdstr, _get_progress)
+            cmdstr = '%s -progress %s backup -bitmap %s -dest %s -domain %s -drive %s -mode %s -speed %s' % \
+                     (self.ZSTORE_CLI_PATH, PFILE, bitmap, dest, vm, node, mode, speed)
+            _, mode, err = bash_progress_1(cmdstr, _get_progress)
             linux.rm_file_force(PFILE)
             if err:
                 raise Exception('fail to backup vm %s, because %s' % (vm, str(err)))
@@ -91,8 +92,9 @@ class ImageStoreClient(object):
             return synced
 
         with linux.ShowLibvirtErrorOnException(vm):
-            cmdstr = '%s -progress batbak -domain %s -destdir %s -args %s' % (self.ZSTORE_CLI_PATH, vm, dstdir, ':'.join([ "%s,%s,%s,%s" % x for x in args ]))
-            _, mode, err = bash_progress_1('%s 2> {{PFILE}}' % cmdstr, _get_progress)
+            cmdstr = '%s -progress %s batbak -domain %s -destdir %s -args %s' % \
+                     (self.ZSTORE_CLI_PATH, PFILE, vm, dstdir, ':'.join(["%s,%s,%s,%s" % x for x in args]))
+            _, mode, err = bash_progress_1(cmdstr, _get_progress)
             linux.rm_file_force(PFILE)
             if err:
                 raise Exception('fail to backup vm %s, because %s' % (vm, str(err)))
