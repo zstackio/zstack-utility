@@ -2165,6 +2165,16 @@ class InstallDbCmd(Command):
       shell: yum clean metadata; yum --nogpgcheck install -y  mariadb mariadb-server iptables-services
       register: install_result
 
+    - name: install MySQL for AliOS 7 from local
+      when: ansible_os_family == 'Alibaba' and ansible_distribution_version >= '7' and yum_repo != 'false'
+      shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y  mariadb mariadb-server iptables-services
+      register: install_result
+
+    - name: install MySQL for AliOS 7 from local
+      when: ansible_os_family == 'Alibaba' and ansible_distribution_version >= '7' and yum_repo == 'false'
+      shell: yum clean metadata; yum --nogpgcheck install -y  mariadb mariadb-server iptables-services
+      register: install_result
+
     - name: install MySQL for Ubuntu
       when: ansible_os_family == 'Debian'
       apt: pkg={{item}} update_cache=yes
@@ -2175,11 +2185,11 @@ class InstallDbCmd(Command):
       register: install_result
 
     - name: open 3306 port
-      when: ansible_os_family == 'RedHat'
+      when: ansible_os_family == 'RedHat' or ansible_os_family == 'Alibaba'
       shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 3306 -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 3306 -j ACCEPT && service iptables save)
 
     - name: open 3306 port
-      when: ansible_os_family != 'RedHat'
+      when: ansible_os_family != 'RedHat' and ansible_os_family != 'Alibaba'
       shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 3306 -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 3306 -j ACCEPT && /etc/init.d/iptables-persistent save)
 
     - name: run post-install script
@@ -2191,6 +2201,10 @@ class InstallDbCmd(Command):
 
     - name: enable MySQL daemon on RedHat 7
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
+      service: name=mariadb state=restarted enabled=yes
+
+    - name: enable MySQL daemon on AliOS 7
+      when: ansible_os_family == 'Alibaba' and ansible_distribution_version >= '7'
       service: name=mariadb state=restarted enabled=yes
 
     - name: enable MySQL on Ubuntu
@@ -2212,6 +2226,10 @@ class InstallDbCmd(Command):
 
     - name: rollback MySQL installation on RedHat 7
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and change_root_result.rc != 0 and install_result.changed == True
+      shell: rpm -ev mariadb mariadb-server
+
+    - name: rollback MySQL installation on AliOS 7
+      when: ansible_os_family == 'Alibaba' and ansible_distribution_version >= '7' and change_root_result.rc != 0 and install_result.changed == True
       shell: rpm -ev mariadb mariadb-server
 
     - name: rollback MySql installation on Ubuntu
