@@ -929,11 +929,11 @@ mimetype.assign = (
             if source_md5 != target_md5:
                 shutil.copyfile(agent_file_source_path, agent_file_target_path)
 
-        tool_sh_file_path = "/var/lib/zstack/kvm/zstack-tools.sh"
+        tool_sh_file_path = "/var/lib/zstack/kvm/vm-tools.sh"
         if not os.path.exists(tool_sh_file_path):
             logger.error("Can't find file %s" % tool_sh_file_path)
             return
-        shutil.copyfile(tool_sh_file_path, os.path.join(http_root, "zstack-tools.sh"))
+        shutil.copyfile(tool_sh_file_path, os.path.join(http_root, "vm-tools.sh"))
 
         version_file_path = "/var/lib/zstack/kvm/agent_version"
         if not os.path.exists(version_file_path):
