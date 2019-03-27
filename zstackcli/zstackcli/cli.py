@@ -348,6 +348,8 @@ Parse command parameters error:
                     all_params[params[0]] = eval_string(params[0], params[1])
                 elif apiname == 'APICreateSchedulerJobMsg' and params[0] == 'parameters':
                     all_params[params[0]] = eval_string(params[0], params[1])
+                elif apiname == 'APICreateSchedulerJobGroupMsg' and params[0] == 'parameters':
+                    all_params[params[0]] = eval_string(params[0], params[1])
                 elif apiname == 'APICreateIAM2TickFlowCollectionMsg' and params[0] == 'flows':
                     all_params[params[0]] = eval_string(params[0], params[1])
                 elif apiname == 'APIUpdateRoleMsg' and params[0] == 'statements':
