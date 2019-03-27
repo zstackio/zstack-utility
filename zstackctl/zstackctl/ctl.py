@@ -1906,7 +1906,7 @@ class StartCmd(Command):
                 '-XX:-OmitStackTraceInFastThrow',
                 '-XX:MaxMetaspaceSize=512m',
                 '-XX:+HeapDumpOnOutOfMemoryError',
-                '-XX:+HeapDumpPath=%s' % self.HEAP_DUMP_DIR
+                '-XX:HeapDumpPath=%s' % self.HEAP_DUMP_DIR
             ]
 
             if ctl.extra_arguments:
