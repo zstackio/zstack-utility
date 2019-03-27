@@ -18,10 +18,11 @@ UBUNTU1604='UBUNTU16.04'
 UBUNTU='UBUNTU'
 RHEL7='RHEL7'
 ISOFT4='ISOFT4'
+ALIOS7='AliOS7'
 UPGRADE='n'
 FORCE='n'
 MANAGEMENT_INTERFACE=`ip route | grep default | head -n 1 | cut -d ' ' -f 5`
-SUPPORTED_OS="$CENTOS7, $UBUNTU1604, $UBUNTU1404, $ISOFT4, $RHEL7"
+SUPPORTED_OS="$CENTOS7, $UBUNTU1604, $UBUNTU1404, $ISOFT4, $RHEL7, $ALIOS7"
 ZSTACK_INSTALL_LOG='/tmp/zstack_installation.log'
 ZSTACKCTL_INSTALL_LOG='/tmp/zstack_ctl_installation.log'
 [ -f $ZSTACK_INSTALL_LOG ] && /bin/rm -f $ZSTACK_INSTALL_LOG
@@ -593,33 +594,27 @@ cs_check_zstack_data_exist(){
 check_system(){
     echo_title "Check System"
     echo ""
-    cat /etc/*-release |egrep -i -h "centos |Red Hat Enterprise" >>$ZSTACK_INSTALL_LOG 2>&1
+    cat /etc/*-release |egrep -i -h "centos |Red Hat Enterprise|Alibaba" >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -eq 0 ]; then
-        grep 'CentOS release 6' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1
-        if [ $? -eq 0 ]; then
+        grep 'CentOS release 6' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1; IS_CENTOS_6=$?
+        grep 'CentOS Linux release 7' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1; IS_CENTOS_7=$?
+        grep 'Red Hat Enterprise Linux Server release 7' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1; IS_RHEL_7=$?
+        grep 'Alibaba Group Enterprise Linux' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1; IS_ALIOS_7=$?
+        grep 'iSoft Linux release 4' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1; IS_ISOFT_4=$?
+        if [ $IS_CENTOS_6 -eq 0 ]; then
             OS=$CENTOS6
-            fail2 "Host OS checking failure: your system is: `cat /etc/redhat-release`, $PRODUCT_NAME management node only supports $SUPPORTED_OS currently"
+        elif [ $IS_CENTOS_7 -eq 0 ]; then
+            OS=$CENTOS7
+            rpm -q libvirt | grep 1.1.1-29 >/dev/null 2>&1 && fail2 "Your OS is old CentOS7, as its libvirt is `rpm -q libvirt`. \
+              You need to use \`yum upgrade\` to upgrade your system to latest CentOS7."
+        elif [ $IS_RHEL_7 -eq 0 ]; then
+            OS=$RHEL7
+        elif [ $IS_ALIOS_7 -eq 0 ]; then
+            OS=$ALIOS7
+        elif [ $IS_ISOFT_4 -eq 0 ]; then
+            OS=$ISOFT4
         else
-            grep 'CentOS Linux release 7' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1
-            if [ $? -eq 0 ]; then
-                OS=$CENTOS7
-                rpm -q libvirt |grep 1.1.1-29 >/dev/null 2>&1
-                if [ $? -eq 0 ]; then
-                    fail2 "Your OS is old CentOS7, as its libvirt is `rpm -q libvirt`. You need to use \`yum upgrade\` to upgrade your system to latest CentOS7."
-                fi
-            else
-                grep 'iSoft Linux release 4' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1
-                if [ $? -eq 0 ]; then
-                    OS=$ISOFT4
-                else
-                    grep 'Red Hat Enterprise Linux Server release 7' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1
-                    if [ $? -eq 0 ]; then
-                        OS=$RHEL7
-                    else
-                        fail2 "Host OS checking failure: your system is: `cat /etc/redhat-release`, $PRODUCT_NAME management node only supports $SUPPORTED_OS currently"
-                    fi
-                fi
-            fi
+            fail2 "Host OS checking failure: your system is: `cat /etc/redhat-release`, $PRODUCT_NAME management node only supports $SUPPORTED_OS currently"
         fi
     else
         grep 'Ubuntu' /etc/issue >>$ZSTACK_INSTALL_LOG 2>&1
@@ -641,7 +636,7 @@ check_system(){
         fi
     fi
 
-    if [ $OS != $CENTOS7 -a $OS != $UBUNTU1404 -a $OS != $UBUNTU1604 ]; then
+    if [ $OS != $CENTOS7 -a $OS != $UBUNTU1404 -a $OS != $UBUNTU1604 -a $OS != $ALIOS7 ]; then
         #only support offline installation for CentoS7.x
         if [ -z "$YUM_ONLINE_REPO" ]; then
             fail2 "Your system is $OS . ${PRODUCT_NAME} installer can not use '-o' or '-R' option on your system. Please remove '-o' or '-R' option and try again."
@@ -896,7 +891,7 @@ ia_install_pip(){
 
 ia_install_ansible(){
     echo_subtitle "Install Ansible"
-    if [ $OS = $CENTOS7 -o $OS = $CENTOS6 -o $OS = $RHEL7 -o $OS = $ISOFT4 ]; then
+    if [ $OS = $CENTOS7 -o $OS = $CENTOS6 -o $OS = $RHEL7 -o $OS = $ISOFT4 -o $OS = $ALIOS7 ]; then
         yum remove -y ansible >>$ZSTACK_INSTALL_LOG 2>&1
     else
         apt-get --assume-yes remove ansible >>$ZSTACK_INSTALL_LOG 2>&1
@@ -1177,7 +1172,7 @@ sharedblock_check_qcow2_volume(){
 install_ansible(){
     echo_title "Install Ansible"
     echo ""
-    if [ $OS = $CENTOS7 -o $OS = $CENTOS6 -o $OS = $RHEL7 -o $OS = $ISOFT4 ]; then
+    if [ $OS = $CENTOS7 -o $OS = $CENTOS6 -o $OS = $RHEL7 -o $OS = $ISOFT4 -o $OS = $ALIOS7 ]; then
         show_spinner ia_disable_selinux
         show_spinner ia_install_python_gcc_rh
     elif [ $OS = $UBUNTU1404 -o $OS = $UBUNTU1604 ]; then
@@ -1376,7 +1371,7 @@ is_install_general_libs_deb(){
 }
 
 is_install_system_libs(){
-    if [ $OS = $CENTOS7 -o $OS = $CENTOS6 -o $OS = $RHEL7 -o $OS = $ISOFT4 ]; then
+    if [ $OS = $CENTOS7 -o $OS = $CENTOS6 -o $OS = $RHEL7 -o $OS = $ISOFT4 -o $OS = $ALIOS7 ]; then
         show_spinner is_install_general_libs_rh
     else
         show_spinner is_install_general_libs_deb
@@ -1396,7 +1391,7 @@ install_system_libs(){
 
 is_enable_chronyd(){
     echo_subtitle "Enable chronyd"
-    if [ $OS = $CENTOS7 -o $OS = $CENTOS6 -o $OS = $RHEL7 -o $OS = $ISOFT4 ];then
+    if [ $OS = $CENTOS7 -o $OS = $CENTOS6 -o $OS = $RHEL7 -o $OS = $ISOFT4 -o $OS = $ALIOS7 ];then
         if [ x"$ZSTACK_OFFLINE_INSTALL" = x'n' ];then
             grep '^server 0.centos.pool.ntp.org' /etc/chrony.conf >/dev/null 2>&1
             if [ $? -ne 0 ]; then
@@ -2142,7 +2137,7 @@ cs_setup_nfs(){
         chkconfig rpcbind on >>$ZSTACK_INSTALL_LOG 2>&1
         service rpcbind restart >>$ZSTACK_INSTALL_LOG 2>&1
         service nfs restart >>$ZSTACK_INSTALL_LOG 2>&1
-    elif [ $OS = $CENTOS7 -o $OS = $RHEL7 -o $OS = $ISOFT4 ]; then
+    elif [ $OS = $CENTOS7 -o $OS = $RHEL7 -o $OS = $ISOFT4 -o $OS = $ALIOS7 ]; then
         systemctl enable rpcbind >>$ZSTACK_INSTALL_LOG 2>&1
         systemctl enable nfs-server >>$ZSTACK_INSTALL_LOG 2>&1
         systemctl enable nfs-lock >>$ZSTACK_INSTALL_LOG 2>&1
@@ -2227,7 +2222,7 @@ cs_setup_http(){
     mkdir $HTTP_FOLDER
     chmod 777 $HTTP_FOLDER
     chmod o+x $ZSTACK_INSTALL_ROOT
-    if [ $OS = $CENTOS7 -o $OS = $RHEL7 -o $OS = $ISOFT4 ]; then
+    if [ $OS = $CENTOS7 -o $OS = $RHEL7 -o $OS = $ISOFT4 -o $OS = $ALIOS7 ]; then
         chkconfig httpd on >>$ZSTACK_INSTALL_LOG 2>&1
         cat > /etc/httpd/conf.d/zstack-http.conf <<EOF
 Alias /image "$HTTP_FOLDER/"
