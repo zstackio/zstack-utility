@@ -39,6 +39,7 @@ class RawUri(object):
 
 class AsyncUri(SyncUri):
     def __init__(self):
+        super(AsyncUri, self).__init__()
         self.callback_uri = None
 
 class Request(object):

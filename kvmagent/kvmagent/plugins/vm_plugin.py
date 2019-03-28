@@ -1626,7 +1626,7 @@ class Vm(object):
                 virsh_key = "%s_bytes_sec" % mode
                 e(iotune, virsh_key, str(qos.totalBandwidth))
             if qos.totalIops:
-                virsh_key = "%_iops_sec" % mode
+                virsh_key = "%s_iops_sec" % mode
                 e(iotune, virsh_key, str(qos.totalIops))
 
     def _attach_data_volume(self, volume, addons):

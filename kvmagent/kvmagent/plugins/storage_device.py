@@ -70,6 +70,7 @@ class IscsiLoginRsp(AgentRsp):
     iscsiTargetStructList = None  # type: List[IscsiTargetStruct]
 
     def __init__(self):
+        super(IscsiLoginRsp, self).__init__()
         self.iscsiTargetStructList = []
 
 
