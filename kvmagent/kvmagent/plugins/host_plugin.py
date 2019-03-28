@@ -253,6 +253,8 @@ class HostPlugin(kvmagent.KvmAgent):
             rsp.hostCpuModelName = "aarch64"
 
             cpuMHz = shell.call("lscpu | awk '/max MHz/{ print $NF }'")
+            # in case lscpu doesn't show cpu max mhz
+            cpuMHz = "2500.0000" if cpuMHz.strip() == '' else cpuMHz
             rsp.cpuGHz = '%.2f' % (float(cpuMHz) / 1000)
         else:
             if shell.run('grep vmx /proc/cpuinfo') == 0:
