@@ -846,9 +846,9 @@ iu_deploy_zstack_repo() {
     echo_subtitle "Deploy yum repo for ${PRODUCT_NAME}"
 
     BASEARCH=`uname -m`
-    DISTRO=$(sed -n 's/^distroverpkg=//p' /etc/yum.conf)
-    RELEASEVER=$(rpm -q --qf "%{version}" -f /etc/$DISTRO)
     [ x"$BASEARCH" = x'aarch64' ] && ALTARCH='x86_64' || ALTARCH='aarch64'
+    RELEASEVER=$(rpm -q --provides $(rpm -q --whatprovides "system-release(releasever)") | grep "system-release(releasever)" | cut -d ' ' -f 3)
+    [ -z "$RELEASEVER" ] && fail "failed to get system releasever, check distroverpkg in /etc/yum.conf please"
     mkdir -p ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/{x86_64,aarch64}
     ln -s /opt/zstack-dvd/ ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/${BASEARCH}/os >/dev/null 2>&1
     ln -s /opt/zstack-dvd/Extra/qemu-kvm-ev ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/${BASEARCH}/qemu-kvm-ev >/dev/null 2>&1
