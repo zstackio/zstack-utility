@@ -291,7 +291,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             logger.debug("getProgress in get_md5")
             if not os.path.exists(PFILE):
                 return synced
-            last = shell.call('tail -1 %s' % PFILE).strip()
+            last = linux.tail_1(PFILE).strip()
             if not last or not last.isdigit():
                 return synced
             percent = int(round((float(written) * 100 + os.path.getsize(to.path) * float(last)) / total * (end - start) / 100) + start)
@@ -343,7 +343,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             logger.debug("getProgress in check_md5")
             if not os.path.exists(PFILE):
                 return synced
-            last = shell.call('tail -1 %s' % PFILE).strip()
+            last = linux.tail_1(PFILE).strip()
             if not last or not last.isdigit():
                 return synced
             percent = int(round((float(written) * 100 + os.path.getsize(to.path) * float(last)) / total * (end - start) / 100) + start)

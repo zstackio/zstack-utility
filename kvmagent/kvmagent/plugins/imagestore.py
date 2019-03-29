@@ -1,11 +1,12 @@
-import traceback
+import re
+import tempfile
+import os
 
 from kvmagent import kvmagent
 from zstacklib.utils import jsonobject
-from zstacklib.utils import linux
-from zstacklib.utils import log
 from zstacklib.utils import shell
-from zstacklib.utils import http
+from zstacklib.utils.bash import bash_progress_1
+from zstacklib.utils.report import *
 
 logger = log.get_logger(__name__)
 
@@ -56,18 +57,48 @@ class ImageStoreClient(object):
             cmdstr = '%s stopbak -domain %s' % (self.ZSTORE_CLI_PATH, vm)
             return shell.call(cmdstr).strip()
 
-    def backup_volume(self, vm, node, bitmap, mode, dest, speed):
+    def backup_volume(self, vm, node, bitmap, mode, dest, speed, reporter, stage):
+        _, PFILE = tempfile.mkstemp()
+
+        def _get_progress(synced):
+            last = linux.tail_1(PFILE).strip()
+            if not last or not last.isdigit():
+                return synced
+
+            reporter.progress_report(get_exact_percent(last, stage), "report")
+            return synced
+
         with linux.ShowLibvirtErrorOnException(vm):
-            cmdstr = '%s backup -bitmap %s -dest %s -domain %s -drive %s -mode %s -speed %s' % (self.ZSTORE_CLI_PATH, bitmap, dest, vm, node, mode, speed)
-            return shell.call(cmdstr).strip()
+            cmdstr = '%s -progress %s backup -bitmap %s -dest %s -domain %s -drive %s -mode %s -speed %s' % \
+                     (self.ZSTORE_CLI_PATH, PFILE, bitmap, dest, vm, node, mode, speed)
+            _, mode, err = bash_progress_1(cmdstr, _get_progress)
+            linux.rm_file_force(PFILE)
+            if err:
+                raise Exception('fail to backup vm %s, because %s' % (vm, str(err)))
+            return mode.strip()
 
     # args -> (bitmap, mode, drive)
     # {'drive-virtio-disk0': { "backupFile": "foo", "mode":"full" },
     #  'drive-virtio-disk1': { "backupFile": "bar", "mode":"top" }}
-    def backup_volumes(self, vm, args, dstdir):
+    def backup_volumes(self, vm, args, dstdir, reporter, stage):
+        _, PFILE = tempfile.mkstemp()
+
+        def _get_progress(synced):
+            last = linux.tail_1(PFILE).strip()
+            if not last or not last.isdigit():
+                return synced
+
+            reporter.progress_report(get_exact_percent(last, stage), "report")
+            return synced
+
         with linux.ShowLibvirtErrorOnException(vm):
-            cmdstr = '%s batbak -domain %s -destdir %s -args %s' % (self.ZSTORE_CLI_PATH, vm, dstdir, ':'.join([ "%s,%s,%s,%s" % x for x in args ]))
-            return shell.call(cmdstr).strip()
+            cmdstr = '%s -progress %s batbak -domain %s -destdir %s -args %s' % \
+                     (self.ZSTORE_CLI_PATH, PFILE, vm, dstdir, ':'.join(["%s,%s,%s,%s" % x for x in args]))
+            _, mode, err = bash_progress_1(cmdstr, _get_progress)
+            linux.rm_file_force(PFILE)
+            if err:
+                raise Exception('fail to backup vm %s, because %s' % (vm, str(err)))
+            return mode.strip()
 
     def image_already_pushed(self, hostname, imf):
         cmdstr = '%s -url %s:%s info %s' % (self.ZSTORE_CLI_PATH, hostname, self.ZSTORE_DEF_PORT, self._build_install_path(imf.name, imf.id))
