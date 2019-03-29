@@ -731,8 +731,9 @@ tag:{{TAG}},option:dns-server,{{DNS}}
             if ret != 0:
                 bash_errorout('ip addr add %s dev %s' % (bridge_ip, bridge_name))
 
-            userdata_br_outer_dev = "userdata_" + ns_outer_dev
-            userdata_br_inner_dev = "userdata_" + ns_inner_dev
+            #"ip link add %s type veth peer name %s", max length of second parameter is 15 characters
+            userdata_br_outer_dev = "ud_" + ns_outer_dev
+            userdata_br_inner_dev = "ud_" + ns_inner_dev
 
             ret = bash_r('ip link | grep -w %s > /dev/null' % userdata_br_outer_dev)
             if ret != 0:
