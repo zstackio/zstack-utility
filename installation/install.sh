@@ -1003,6 +1003,7 @@ upgrade_zstack(){
     show_spinner uz_upgrade_zstack
     show_spinner upgrade_tomcat_security
     show_spinner iu_deploy_zstack_repo
+    show_spinner cp_third_party_tools
 
     cd /
     show_spinner cs_add_cronjob
@@ -1813,12 +1814,22 @@ iz_install_zstackctl(){
     pass
 }
 
+cp_third_party_tools(){
+    echo_subtitle "Copy third-party tools to ZStack install path"
+    if [ -d "/opt/zstack-dvd/tools" ]; then
+        /bin/cp -n /opt/zstack-dvd/tools/* $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS >/dev/null 2>&1
+        chown zstack.zstack $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS/*
+    fi
+    pass
+}
+
 install_zstack(){
     echo_title "Install ${PRODUCT_NAME} Tools"
     echo ""
     show_spinner iz_chown_install_root
     show_spinner iz_install_zstackcli
     show_spinner iz_install_zstackctl
+    show_spinner cp_third_party_tools
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
       show_spinner sd_install_zstack_ui
       zstack-ctl config_ui --restore
