@@ -80,6 +80,20 @@ class RemoveForwardDnsRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(RemoveForwardDnsRsp, self).__init__()
 
+def get_phy_dev_from_bridge_name(bridge_name):
+    # for vlan, BR_NAME is "br_eth0_100", vlan sub interface: eth0.100,
+    # for vxlan, BR_NAME is "br_vx_7863", vxlan sub interface vxlan7863"
+    phy_dev = bridge_name.replace('br_', '', 1)
+    if phy_dev[:2] == "vx":
+        phy_dev = phy_dev.replace("vx", "vxlan").replace("_", "")
+    else:
+        phy_dev = phy_dev.replace("_", ".")
+
+    return phy_dev
+
+def get_l3_uuid(namespace):
+    items = namespace.split('_')
+    return items[-1]
 
 class UserDataEnv(object):
     def __init__(self, bridge_name, namespace_name):
@@ -108,9 +122,7 @@ class UserDataEnv(object):
         logger.debug('use id[%s] for the namespace[%s]' % (NAMESPACE_ID, NAMESPACE_NAME))
 
         BR_NAME = self.bridge_name
-        BR_PHY_DEV = self.bridge_name.replace('br_', '', 1).replace('_', '.', 1)
-        self.outer_dev = OUTER_DEV = "outer%s" % NAMESPACE_ID
-        self.inner_dev = INNER_DEV = "inner%s" % NAMESPACE_ID
+        BR_PHY_DEV = get_phy_dev_from_bridge_name(self.bridge_name)
 
         ret = bash_r('ip netns exec {{NAMESPACE_NAME}} ip link show')
         if ret != 0:
@@ -207,12 +219,8 @@ class DhcpEnv(object):
                 bash_errorout(
                     EBTABLES_CMD + ' -I {{DHCP6_CHAIN_NAME}} {{rule}}')
 
-        def _get_l3_uuid():
-            items = NAMESPACE_NAME.split('_')
-            return items[-1]
-
         def _prepare_dhcp6_iptables():
-            l3Uuid = _get_l3_uuid()
+            l3Uuid = get_l3_uuid(NAMESPACE_NAME)
             DHCP6_CHAIN_NAME = "ZSTACK-DHCP6-%s" % l3Uuid[0:9]
             serverip = ip.Ipv6Address(DHCP_IP)
             ns_multicast_address = serverip.get_solicited_node_multicast_address() + "/ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"
@@ -285,7 +293,7 @@ class DhcpEnv(object):
             PREFIX_LEN = linux.netmask_to_cidr(DHCP_NETMASK)
 
         ADDRESS_MODE = self.addressMode
-        BR_PHY_DEV = self.bridge_name.replace('br_', '', 1).replace('_', '.', 1)
+        BR_PHY_DEV = get_phy_dev_from_bridge_name(self.bridge_name)
         OUTER_DEV = "outer%s" % NAMESPACE_ID
         INNER_DEV = "inner%s" % NAMESPACE_ID
         CHAIN_NAME = "ZSTACK-%s" % DHCP_IP
@@ -366,6 +374,7 @@ class Mevoco(kvmagent.KvmAgent):
 
     def __init__(self):
         self.signal_count = 0
+        self.userData_vms = {}
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -668,6 +677,11 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
         bash_errorout("ps aux | grep lighttpd | grep {{BR_NAME}} | grep -w userdata | awk '{print $2}' | xargs -r kill -9")
 
+        html_folder = os.path.join(self.USERDATA_ROOT, cmd.namespaceName)
+        linux.rm_dir_force(html_folder)
+
+        del self.userData_vms[cmd.l3NetworkUuid][:]
+
         return jsonobject.dumps(kvmagent.AgentResponse())
 
     @kvmagent.replyerror
@@ -680,6 +694,13 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
         namespaces = {}
         for u in cmd.userdata:
+            if u.userdataList or u.metadata.vmHostname:
+                if u.l3NetworkUuid in self.userData_vms:
+                    if u.vmIp not in self.userData_vms[u.l3NetworkUuid]:
+                        self.userData_vms[u.l3NetworkUuid].append(u.vmIp)
+                else:
+                    self.userData_vms[u.l3NetworkUuid] = [u.vmIp]
+
             if u.namespaceName not in namespaces:
                 namespaces[u.namespaceName] = u
             else:
@@ -715,6 +736,16 @@ tag:{{TAG}},option:dns-server,{{DNS}}
     @in_bash
     @lock.file_lock('/run/xtables.lock')
     def _apply_userdata_xtables(self, to):
+        def create_default_userdata(http_root):
+            root = os.path.join(http_root, "zstack-default")
+            meta_root = os.path.join(root, 'meta-data')
+            if not os.path.exists(meta_root):
+                shell.call('mkdir -p %s' % meta_root)
+
+            index_file_path = os.path.join(meta_root, 'index.html')
+            with open(index_file_path, 'w') as fd:
+                fd.write('')
+
         def prepare_br_connect_ns(ns, ns_inner_dev, ns_outer_dev):
             bridge_name = self.CONNECT_ALL_NETNS_BR_NAME
             bridge_ip = "%s/%s" % (self.CONNECT_ALL_NETNS_BR_OUTER_IP, self.IP_MASK_BIT)
@@ -794,8 +825,8 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
         # set ebtables
         BR_NAME = to.bridgeName
-        # BR_NAME is "br_%s_%s"
-        ETH_NAME = BR_NAME.replace('br_', '', 1).replace('_', '.', 1)
+        ETH_NAME = get_phy_dev_from_bridge_name(BR_NAME)
+
         MAC = bash_errorout("ip netns exec {{NS_NAME}} ip link show {{INNER_DEV}} | grep -w ether | awk '{print $2}'").strip(' \t\r\n')
         CHAIN_NAME="USERDATA-%s" % BR_NAME
         # max length of ebtables chain name is 31
@@ -855,6 +886,20 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         conf_path = os.path.join(conf_folder, 'lighttpd.conf')
         http_root = os.path.join(conf_folder, 'html')
 
+        if to.userdataList or to.metadata.vmHostname:
+            if to.l3NetworkUuid in self.userData_vms:
+                if to.vmIp not in self.userData_vms[to.l3NetworkUuid]:
+                    self.userData_vms[to.l3NetworkUuid].append(to.vmIp)
+            else:
+                self.userData_vms[to.l3NetworkUuid] = [to.vmIp]
+
+        if to.l3NetworkUuid in self.userData_vms:
+            userdata_vm_ips = self.userData_vms[to.l3NetworkUuid]
+            userdata_ips = "|".join(userdata_vm_ips)
+        else:
+            userdata_vm_ips = []
+            userdata_ips = ""
+
         conf = '''\
 server.document-root = "{{http_root}}"
 
@@ -870,7 +915,8 @@ $HTTP["remoteip"] =~ "^(.*)$" {
         proxy.server = ( "" =>
            ( ( "host" => "{{pushgateway_ip}}", "port" => {{pushgateway_port}} ) )
         )
-    } else $HTTP["remoteip"] =~ "^(.*)$" {
+{% if userdata_vm_ips -%}
+    } else $HTTP["remoteip"] =~ "^({{userdata_ips}})$" {
         url.rewrite-once = (
             "^/.*/meta-data/(.+)$" => "../%1/meta-data/$1",
             "^/.*/meta-data$" => "../%1/meta-data",
@@ -880,6 +926,19 @@ $HTTP["remoteip"] =~ "^(.*)$" {
             "^/.*/meta_data.json$" => "../%1/meta_data.json",
             "^/.*/password$" => "../%1/password",
             "^/.*/$" => "../%1/$1"
+        )
+        dir-listing.activate = "enable"
+{% endif -%}
+    } else $HTTP["remoteip"] =~ "^(.*)$" {
+        url.rewrite-once = (
+            "^/.*/meta-data/(.+)$" => "../zstack-default/meta-data/$1",
+            "^/.*/meta-data$" => "../zstack-default/meta-data",
+            "^/.*/meta-data/$" => "../zstack-default/meta-data/",
+            "^/.*/user-data$" => "../zstack-default/user-data",
+            "^/.*/user_data$" => "../zstack-default/user_data",
+            "^/.*/meta_data.json$" => "../zstack-default/meta_data.json",
+            "^/.*/password$" => "../zstack-default/password",
+            "^/.*/$" => "../zstack-default/$1"
         )
         dir-listing.activate = "enable"
     }
@@ -897,7 +956,9 @@ mimetype.assign = (
             'http_root': http_root,
             'port': to.port,
             'pushgateway_ip' : self.CONNECT_ALL_NETNS_BR_OUTER_IP,
-            'pushgateway_port' : self.KVM_HOST_PUSHGATEWAY_PORT
+            'pushgateway_port' : self.KVM_HOST_PUSHGATEWAY_PORT,
+            'userdata_vm_ips': userdata_vm_ips,
+            'userdata_ips': userdata_ips
         })
 
         linux.mkdir(http_root, 0777)
@@ -913,6 +974,7 @@ mimetype.assign = (
                 with open(conf_path, 'w') as fd:
                     fd.write(conf)
 
+        create_default_userdata(http_root)
         self.apply_zwatch_vm_agent(http_root)
 
     def apply_zwatch_vm_agent(self, http_root):
@@ -959,6 +1021,9 @@ mimetype.assign = (
                     combined_message.attach(part)
 
             return combined_message.__str__()
+
+        if not to.userdataList and not to.metadata.vmHostname:
+            return
 
         conf_folder = os.path.join(self.USERDATA_ROOT, to.namespaceName)
         http_root = os.path.join(conf_folder, 'html')
@@ -1066,6 +1131,9 @@ mimetype.assign = (
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         html_folder = os.path.join(self.USERDATA_ROOT, cmd.namespaceName, 'html', cmd.vmIp)
         linux.rm_dir_force(html_folder)
+        l3Uuid = get_l3_uuid(cmd.namespaceName)
+        if cmd.vmIp in self.userData_vms[l3Uuid]:
+            self.userData_vms[l3Uuid].remove(cmd.vmIp)
         return jsonobject.dumps(ReleaseUserdataRsp())
 
     def _make_conf_path(self, namespace_name):
