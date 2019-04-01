@@ -55,6 +55,15 @@ class VolumeRsp(AgentRsp):
         self.remoteDiskStatus = None
         self.remoteNetworkStatus = None
 
+    def _init_from_drbd(self, r):
+        """
+
+        :type r: drbd.DrbdResource
+        """
+        self.actualSize = lvm.get_lv_size(r.config.local_host.disk)
+        self.resourceUuid = r.name
+        # self.
+
 
 class CheckBitsRsp(AgentRsp):
     def __init__(self):
@@ -72,12 +81,6 @@ class GetVolumeSizeRsp(AgentRsp):
 class ResizeVolumeRsp(AgentRsp):
     def __init__(self):
         super(ResizeVolumeRsp, self).__init__()
-        self.size = None
-
-
-class GetVolumeSizeRsp(AgentRsp):
-    def __init__(self):
-        super(GetVolumeSizeRsp, self).__init__()
         self.size = None
 
 
@@ -99,6 +102,13 @@ class ConvertVolumeProvisioningRsp(AgentRsp):
     def __init__(self):
         super(ConvertVolumeProvisioningRsp, self).__init__()
         self.actualSize = 0
+
+
+class RevertVolumeFromSnapshotRsp(AgentRsp):
+    def __init__(self):
+        super(RevertVolumeFromSnapshotRsp, self).__init__()
+        self.newVolumeInstallPath = None
+        self.size = None
 
 
 def get_absolute_path_from_install_path(path):
@@ -198,6 +208,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
     GET_VOLUME_SIZE_PATH = "/ministorage/volume/getsize"
     CHECK_DISKS_PATH = "/ministorage/disks/check"
     MIGRATE_DATA_PATH = "/ministorage/volume/migrate"
+    REVERT_VOLUME_FROM_SNAPSHOT_PATH = "/ministorage/volume/revertfromsnapshot";
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -216,6 +227,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CHANGE_VOLUME_ACTIVE_PATH, self.active_lv)
         http_server.register_async_uri(self.GET_VOLUME_SIZE_PATH, self.get_volume_size)
         http_server.register_async_uri(self.CHECK_DISKS_PATH, self.check_disks)
+        http_server.register_async_uri(self.REVERT_VOLUME_FROM_SNAPSHOT_PATH, self.revert_volume_from_snapshot)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -405,16 +417,23 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
     def resize_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         install_abs_path = get_absolute_path_from_install_path(cmd.installPath)
-
-        lvm.resize_lv_from_cmd(install_abs_path, cmd.size, cmd)
-
-        # find drbd volume, resize, do some things if remote connect via storage but not resize
-
-        if not cmd.live:
-            shell.call("qemu-img resize %s %s" % (install_abs_path, cmd.size))
-        ret = linux.qcow2_virtualsize(install_abs_path)
-
         rsp = ResizeVolumeRsp()
+        r = drbd.DrbdResource(cmd.resourceUuid)
+        r._init_from_disk(install_abs_path)
+
+        if not cmd.drbd:
+            lvm.resize_lv_from_cmd(install_abs_path, cmd.size, cmd)
+            return jsonobject.dumps(rsp)
+
+        if cmd.drbd:
+            with drbd.OperateDrbd(r):
+                r.resize()
+
+
+        with drbd.OperateDrbd(r):
+            if not cmd.live:
+                shell.call("qemu-img resize %s %s" % (r.get_dev_path(), cmd.size))
+            ret = linux.qcow2_virtualsize(r.get_dev_path())
         rsp.size = ret
         return jsonobject.dumps(rsp)
 
@@ -628,3 +647,15 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         if has_backing_file or provisioning == lvm.VolumeProvisioningStrategy.ThinProvisioning:
             return re.sub("-o preallocation=\w* ", " ", options)
         return options
+
+    @kvmagent.replyerror
+    def revert_volume_from_snapshot(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = RevertVolumeFromSnapshotRsp()
+        snapshot_abs_path = get_absolute_path_from_install_path(cmd.snapshotInstallPath)
+        install_abs_path = get_absolute_path_from_install_path(cmd.installPath)
+        rsp.size = False
+        rsp.error = "not supported yet!"
+
+        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+        return rsp

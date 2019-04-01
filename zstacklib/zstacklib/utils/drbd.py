@@ -48,6 +48,9 @@ class DrbdResource(object):
         self.local_disk_state = None
         self.remote_disk_state = None
 
+        if self.name is None:
+            return
+
         try:
             self._init_from_name()
         except Exception:
@@ -56,6 +59,14 @@ class DrbdResource(object):
 
         if up and not self.minor_allocated():
             self.up()
+
+    def _init_from_disk(self, disk_path):
+        """
+
+        :type disk_path: str
+        """
+        config_path = self.get_config_path_from_disk(disk_path)
+        self._init_from_config_path(config_path)
 
     def _init_from_name(self):
         if self.name is None:
@@ -68,12 +79,29 @@ class DrbdResource(object):
 
     @staticmethod
     @bash.in_bash
+    def get_config_path_from_disk(disk_path, raise_exception=True):
+        return bash.bash_o("grep -E 'disk.*%s' /etc/drbd.d/ -r | head -n1 | awk '{print $1}' | cut -d ':' -f1" % disk_path, raise_exception).strip()
+
+    @staticmethod
+    @bash.in_bash
     def get_config_path_from_name(name):
         if bash.bash_r("drbdadm dump %s" % name) == 0:
             return bash.bash_o("drbdadm dump %s | grep 'defined at' | awk '{print $4}'" % name).split(":")[0]
         if bash.bash_r("ls /etc/drbd.d/%s.res" % name) == 0:
             return "/etc/drbd.d/%s.res" % name
         raise Exception("can not find drbd resource %s" % name)
+
+    @staticmethod
+    @bash.in_bash
+    def get_name_from_config_path(config_path):
+        """
+
+        :type config_path: str
+        """
+        if bash.bash_r("head -n 1 %s" % config_path) == 0:
+            return bash.bash_o("head -n 1 %s | awk '{print $2}'" % config_path).strip()
+        else:
+            return config_path.split("/")[-1].split(".")[0]
 
     @bash.in_bash
     def up(self):
@@ -155,6 +183,10 @@ class DrbdResource(object):
         bash.bash_r("echo yes | drbdadm wipe-md %s" % self.name)
         bash.bash_r("rm /etc/drbd.d/%s.res" % self.name)
 
+    @bash.in_bash
+    def resize(self):
+        bash.bash_errorout("drbdadm -- --assume-clean resize %s" % self.name)
+
 
 class DrbdStruct(object):
     pass
@@ -186,7 +218,7 @@ class DrbdConfigStruct(DrbdStruct):
         for line in content:
             line = line.strip()
             if line.startswith("resource ") and line.endswith(" {"):
-                assert self.name == line.split(" ")[1]
+                assert self.name == line.split(" ")[1], "self.name: %s, line: %s" % (self.name, line)
             elif line.strip().endswith(";"):
                 line = line.strip(";")
                 key = line.split(" ", 1)[0].replace("-", "_")

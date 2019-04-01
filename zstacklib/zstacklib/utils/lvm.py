@@ -741,8 +741,11 @@ def resize_lv(path, size, force=False):
 
 @bash.in_bash
 def resize_lv_from_cmd(path, size, cmd):
-    if cmd.provisioning != VolumeProvisioningStrategy.ThinProvisioning:
+    if cmd.provisioning is None or \
+            cmd.addons is None or \
+            cmd.provisioning != VolumeProvisioningStrategy.ThinProvisioning:
         resize_lv(path, size)
+        return
 
     current_size = int(get_lv_size(path))
     if int(size) - current_size > cmd.addons[thinProvisioningInitializeSize]:
