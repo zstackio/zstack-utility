@@ -241,13 +241,15 @@ def mount(url, path, options=None, fstype=None):
 
     cmdstr = "mount"
 
-    if fstype:
+    if fstype and options is None:
         cmdstr += " -t %s" % fstype
 
     if options:
         cmdstr += " -o %s" % options
 
     cmdstr = "%s %s %s" % (cmdstr, url, path)
+    if "$" in cmdstr or ";" in cmdstr or "(" in cmdstr or "`" in cmdstr:
+        raise MountError(url, 'unexpected options: %s' % cmdstr)
 
     o = shell.ShellCmd("timeout 180 " + cmdstr)
     o(False)
