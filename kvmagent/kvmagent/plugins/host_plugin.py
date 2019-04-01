@@ -295,6 +295,8 @@ class HostPlugin(kvmagent.KvmAgent):
 
         sockets = bash_o('grep "physical id" /proc/cpuinfo | sort -u | wc -l').strip('\n')
         rsp.cpuSockets = int(sockets)
+        if rsp.cpuSockets == 0:
+            rsp.cpuSockets = 1
 
         ret = jsonobject.dumps(rsp)
         logger.debug('get host capacity: %s' % ret)
