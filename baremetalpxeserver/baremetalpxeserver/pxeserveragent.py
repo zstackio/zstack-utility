@@ -737,7 +737,7 @@ echo 'gateway {{ cfg.gateway }}' >> /etc/network/interfaces
 {% if cfg.bondName %}
 echo 'bond-mode {{ cfg.bondMode }}' >> /etc/network/interfaces
 {% if cfg.bondOpts %}echo '{{ cfg.bondOpts }}' >> /etc/network/interfaces{% endif %}
-echo 'bond-slaves '{%- for slave in cfg.bondSlaves -%}`ip -o link show | grep {{ slave }} | awk -F ': ' '{ printf $2 }'` {{ PH }}{%- endfor -%}
+echo 'bond-slaves '{%- for slave in cfg.bondSlaves -%}`ip -o link show | grep {{ slave }} | awk -F ': ' '{ printf $2 }'` {{ PH }}{%- endfor -%} >> /etc/network/interfaces
 {% endif %}
 
 {% if cfg.vlanid %}
