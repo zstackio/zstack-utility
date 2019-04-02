@@ -283,14 +283,14 @@ def sshfs_mount(username, hostname, port, password, url, mountpoint, writebandwi
     if not writebandwidth:
         os.write(fd,
                  "#!/bin/bash\n/usr/bin/sshpass -p %s ssh "
-                 "-o StrictHostKeyChecking=no "
+                 "-o StrictHostKeyChecking=no -o Compression=no -o direct_io "
                  "-o UserKnownHostsFile=/dev/null -p %d $*\n" % (
                  shellquote(password), port))
     else:
         os.write(fd,
                  "#!/bin/bash\n/usr/bin/sshpass -p %s ssh "
                  "-o 'ProxyCommand pv -q -L %sk | nc %s %s' "
-                 "-o StrictHostKeyChecking=no "
+                 "-o StrictHostKeyChecking=no -o Compression=no -o direct_io "
                  "-o UserKnownHostsFile=/dev/null -p %d $*\n" % (
                      shellquote(password), writebandwidth / 1024 / 8, hostname, port, port))
 
