@@ -128,6 +128,7 @@ sed -i 's/IPTABLES_MODULES=""/IPTABLES_MODULES="nf_conntrack_ftp"/g' /etc/syscon
 /sbin/iptables-save | grep -q "dport 7772" || iptables -I INPUT -p tcp -m tcp --dport 7772 -j ACCEPT;
 /sbin/service iptables save;
 /sbin/service iptables restart
+systemctl enable iptables.service
 """
 run_remote_command(command, host_post_info)
 
