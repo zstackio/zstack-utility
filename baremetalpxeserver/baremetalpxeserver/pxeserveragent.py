@@ -514,17 +514,23 @@ poweroff
 
     def _create_post_scripts(self, cmd, pxeserver_dhcp_nic_ip, more_script = ""):
         post_script = more_script
-        post_script += """# notify deploy complete
+        post_script += """
+bm_log='/tmp/zstack_bm.log'
+curr_time=`date +"%Y-%m-%d %H:%M:%S"`
+echo -e "Current time: \t$curr_time" >> $bm_log
+
+# notify deploy complete
+echo "\nnotify zstack that bm instance deploy completed:" >> $bm_log
 curl -X POST -H "Content-Type:application/json" \
 -H "commandpath:/baremetal/instance/deploycomplete" \
 -d {{"baremetalInstanceUuid":"{BMUUID}"}} \
 --retry 5 \
-http://{PXESERVER_DHCP_NIC_IP}:7771/zstack/asyncrest/sendcommand || \
+http://{PXESERVER_DHCP_NIC_IP}:7771/zstack/asyncrest/sendcommand >>$bm_log 2>&1 || \
 wget -O- --header="Content-Type:application/json" \
 --header="commandpath:/baremetal/instance/deploycomplete" \
 --post-data={{"baremetalInstanceUuid":"{BMUUID}"}} \
 --tries=5 \
-http://{PXESERVER_DHCP_NIC_IP}:7771/zstack/asyncrest/sendcommand
+http://{PXESERVER_DHCP_NIC_IP}:7771/zstack/asyncrest/sendcommand >>$bm_log 2>&1
 
 # baby agent
 wget -P /usr/bin ftp://{PXESERVER_DHCP_NIC_IP}/shellinaboxd || curl -o /usr/bin/shellinaboxd ftp://{PXESERVER_DHCP_NIC_IP}/shellinaboxd
@@ -540,16 +546,17 @@ iptables-save | grep -- "-I INPUT -p tcp -m tcp --dport 4200 -j ACCEPT" > /dev/n
 firewall-cmd --query-port=4200/tcp || (firewall-cmd --zone=public --add-port=4200/tcp --permanent && service firewalld restart)
 shellinaboxd -b -t -s /:SSH:127.0.0.1
 
+echo "\nnotify zstack that bm instance is running:" >> $bm_log
 curl -X POST -H "Content-Type:application/json" \
 -H "commandpath:/baremetal/instance/osrunning" \
 -d {{"baremetalInstanceUuid":"{BMUUID}"}} \
 --retry 5 \
-http://{PXESERVER_DHCP_NIC_IP}:7771/zstack/asyncrest/sendcommand || \
+http://{PXESERVER_DHCP_NIC_IP}:7771/zstack/asyncrest/sendcommand >>$bm_log 2>&1 || \
 wget -O- --header="Content-Type:application/json" \
 --header="commandpath:/baremetal/instance/osrunning" \
 --post-data={{"baremetalInstanceUuid":"{BMUUID}"}} \
 --tries=5 \
-http://{PXESERVER_DHCP_NIC_IP}:7771/zstack/asyncrest/sendcommand
+http://{PXESERVER_DHCP_NIC_IP}:7771/zstack/asyncrest/sendcommand >>$bm_log 2>&1
 
 exit 0
 EOF
