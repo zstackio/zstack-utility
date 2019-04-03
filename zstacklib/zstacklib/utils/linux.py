@@ -283,20 +283,20 @@ def sshfs_mount(username, hostname, port, password, url, mountpoint, writebandwi
     if not writebandwidth:
         os.write(fd,
                  "#!/bin/bash\n/usr/bin/sshpass -p %s ssh "
-                 "-o StrictHostKeyChecking=no -o Compression=no -o direct_io "
+                 "-o StrictHostKeyChecking=no "
                  "-o UserKnownHostsFile=/dev/null -p %d $*\n" % (
                  shellquote(password), port))
     else:
         os.write(fd,
                  "#!/bin/bash\n/usr/bin/sshpass -p %s ssh "
                  "-o 'ProxyCommand pv -q -L %sk | nc %s %s' "
-                 "-o StrictHostKeyChecking=no -o Compression=no -o direct_io "
+                 "-o StrictHostKeyChecking=no "
                  "-o UserKnownHostsFile=/dev/null -p %d $*\n" % (
                      shellquote(password), writebandwidth / 1024 / 8, hostname, port, port))
 
     os.close(fd)
 
-    ret = shell.check_run("/usr/bin/sshfs %s@%s:%s %s -o reconnect,allow_root,ssh_command='%s'" % (username, hostname, url, mountpoint, fname))
+    ret = shell.check_run("/usr/bin/sshfs %s@%s:%s %s -o reconnect,allow_root,direct_io,compression=no,ssh_command='%s'" % (username, hostname, url, mountpoint, fname))
     os.remove(fname)
     return ret
 
