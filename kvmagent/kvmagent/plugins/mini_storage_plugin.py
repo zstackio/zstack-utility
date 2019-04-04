@@ -41,6 +41,7 @@ class ConnectRsp(AgentRsp):
     def __init__(self):
         super(ConnectRsp, self).__init__()
         self.hostUuid = None
+        self.storageNetworkAddress = None
 
 
 class VolumeRsp(AgentRsp):
@@ -307,7 +308,6 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     @lock.file_lock(LOCK_FILE)
-    # TODO(weiw): config the global config
     def connect(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = ConnectRsp()
@@ -343,6 +343,10 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         lvm.clean_vg_exists_host_tags(cmd.vgUuid, cmd.hostUuid, HEARTBEAT_TAG)
         lvm.add_vg_tag(cmd.vgUuid, "%s::%s::%s::%s" % (HEARTBEAT_TAG, cmd.hostUuid, time.time(), bash.bash_o('hostname').strip()))
 
+        if cmd.storageNetworkCidr is not None:
+            nics = linux.get_nics_by_cidr(cmd.storageNetworkCidr)
+            if len(nics) != 0:
+                rsp.storageNetworkAddress = nics[0].values()[0]
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         rsp.vgLvmUuid = lvm.get_vg_lvm_uuid(cmd.vgUuid)
         rsp.hostUuid = cmd.hostUuid
