@@ -807,6 +807,7 @@ def get_qcow2_base_image_recusively(vol_install_dir, image_cache_dir):
 def qcow2_fill(seek, length, path, raise_excpetion=False):
     cmd = shell.ShellCmd("qemu-io -c 'write %s %s' %s" % (seek, length, path))
     cmd(raise_excpetion)
+    logger.debug("qcow2_fill return code: %s, stdout: %s, stderr: %s" % (cmd.return_code, cmd.stdout, cmd.stderr))
 
 def rmdir_if_empty(dirpath):
     try:
