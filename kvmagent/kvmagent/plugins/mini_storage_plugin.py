@@ -61,9 +61,16 @@ class VolumeRsp(AgentRsp):
 
         :type r: drbd.DrbdResource
         """
+        if not r.minor_allocated:
+            self.localNetworkStatus = drbd.DrbdNetState.Unconfigured
+            return
         self.actualSize = lvm.get_lv_size(r.config.local_host.disk)
         self.resourceUuid = r.name
-        # self.
+        self.localRole = r.get_role()
+        self.localDiskStatus = r.get_dstate()
+        self.remoteRole = r.get_remote_role()
+        self.remoteDiskStatus = r.get_remote_dstate()
+        self.localNetworkStatus = r.get_cstate()
 
 
 class CheckBitsRsp(AgentRsp):
@@ -72,14 +79,14 @@ class CheckBitsRsp(AgentRsp):
         self.existing = False
 
 
-class GetVolumeSizeRsp(AgentRsp):
+class GetVolumeSizeRsp(VolumeRsp):
     def __init__(self):
         super(GetVolumeSizeRsp, self).__init__()
         self.size = None
         self.actualSize = None
 
 
-class ResizeVolumeRsp(AgentRsp):
+class ResizeVolumeRsp(VolumeRsp):
     def __init__(self):
         super(ResizeVolumeRsp, self).__init__()
         self.size = None
@@ -105,7 +112,7 @@ class ConvertVolumeProvisioningRsp(AgentRsp):
         self.actualSize = 0
 
 
-class RevertVolumeFromSnapshotRsp(AgentRsp):
+class RevertVolumeFromSnapshotRsp(VolumeRsp):
     def __init__(self):
         super(RevertVolumeFromSnapshotRsp, self).__init__()
         self.newVolumeInstallPath = None
@@ -433,12 +440,12 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
             with drbd.OperateDrbd(r):
                 r.resize()
 
-
         with drbd.OperateDrbd(r):
             if not cmd.live:
                 shell.call("qemu-img resize %s %s" % (r.get_dev_path(), cmd.size))
             ret = linux.qcow2_virtualsize(r.get_dev_path())
         rsp.size = ret
+        rsp._init_from_drbd(r)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -502,7 +509,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def create_template_from_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AgentRsp()
+        rsp = VolumeRsp()
         volume_abs_path = get_absolute_path_from_install_path(cmd.volumePath)
         install_abs_path = get_absolute_path_from_install_path(cmd.installPath)
 
@@ -553,7 +560,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
     @lock.file_lock(LOCK_FILE)
     def create_empty_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AgentRsp()
+        rsp = VolumeRsp()
 
         install_abs_path = get_absolute_path_from_install_path(cmd.installPath)
         drbdResource = drbd.DrbdResource(self.get_name_from_installPath(cmd.installPath), False)
@@ -589,6 +596,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
 
         logger.debug('successfully create empty volume[uuid:%s, size:%s] at %s' % (cmd.volumeUuid, cmd.size, cmd.installPath))
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+        rsp._init_from_drbd(drbdResource)
         return jsonobject.dumps(rsp)
 
     @staticmethod
@@ -598,13 +606,15 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def convert_image_to_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AgentRsp()
+        rsp = VolumeRsp()
 
         install_abs_path = get_absolute_path_from_install_path(cmd.primaryStorageInstallPath)
         with lvm.OperateLv(install_abs_path, shared=False):
             lvm.clean_lv_tag(install_abs_path, IMAGE_TAG)
             lvm.add_lv_tag(install_abs_path, "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
 
+        r = drbd.DrbdResource(self.get_name_from_installPath(cmd.primaryStorageInstallPath))
+        rsp._init_from_drbd(r)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -620,7 +630,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def active_lv(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AgentRsp()
+        rsp = VolumeRsp()
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid, raise_exception=False)
 
         drbdResource = drbd.DrbdResource(self.get_name_from_installPath(cmd.installPath))
@@ -629,6 +639,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         else:
             drbdResource.demote()
 
+        rsp._init_from_drbd(drbdResource)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -642,6 +653,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
             rsp.size = linux.qcow2_virtualsize(r.get_dev_path())
         rsp.actualSize = lvm.get_lv_size(install_abs_path)
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+        rsp._init_from_drbd(r)
         return jsonobject.dumps(rsp)
 
     @staticmethod

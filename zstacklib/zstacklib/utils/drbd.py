@@ -33,6 +33,7 @@ class DrbdNetState(object):
     TearDown = "TearDown"
     Connected = "Connected"
     Unknown = "Unknown"
+    Unconfigured = "Unconfigured"
 
 
 class DrbdResource(object):
@@ -105,7 +106,7 @@ class DrbdResource(object):
 
     @bash.in_bash
     def up(self):
-        if not self.minor_allocated() or self.getCstate() == DrbdNetState.Unconfigured:
+        if not self.minor_allocated() or self.get_cstate() == DrbdNetState.Unconfigured:
             bash.bash_errorout("drbdadm up %s" % self.name)
 
     @bash.in_bash
@@ -117,22 +118,35 @@ class DrbdResource(object):
     def promote(self, force=False):
         f = " --force" if force else ""
         r, o, e = bash.bash_roe("drbdadm primary %s %s" % (self.name, f))
-        if self.getRole() != DrbdRole.Primary:
+        if self.get_role() != DrbdRole.Primary:
             raise RetryException("promote failed, return: %s, %s, %s. resource %s still not in role %s" % (r, o, e, self.name, DrbdRole.Primary))
 
     @bash.in_bash
     def demote(self):
         r, o, e = bash.bash_roe("drbdadm secondary %s" % self.name)
 
-    def getCstate(self):
+    @bash.in_bash
+    def get_cstate(self):
         return bash.bash_o("drbdadm cstate %s" % self.name).strip()
 
-    def isConnected(self):
-        return self.getCstate() == DrbdNetState.Connected
+    @bash.in_bash
+    def get_dstate(self):
+        return bash.bash_o("drbdadm dstate %s | cut -d '/' -f1" % self.name).strip()
 
     @bash.in_bash
-    def getRole(self):
+    def get_remote_dstate(self):
+        return bash.bash_o("drbdadm dstate %s | cut -d '/' -f2" % self.name).strip()
+
+    def is_connected(self):
+        return self.get_cstate() == DrbdNetState.Connected
+
+    @bash.in_bash
+    def get_role(self):
         return bash.bash_o("drbdadm role %s | awk -F '/' '{print $1}'" % self.name).strip()
+
+    @bash.in_bash
+    def get_remote_role(self):
+        return bash.bash_o("drbdadm role %s | awk -F '/' '{print $2}'" % self.name).strip()
 
     def get_dev_path(self):
         assert self.config.local_host.minor is not None
@@ -334,6 +348,7 @@ class DrbdNetStruct(DrbdStruct):
 
 
 @bash.in_bash
+# TODO(weiw): drbd-overview maybe not exists
 def list_local_up_drbd(vgUuid):
     if bash.bash_r("drbd-overview | grep -v %s" % DrbdNetState.Unconfigured) == 1:
         return []
@@ -369,7 +384,7 @@ class OperateDrbd(object):
     def __init__(self, resource, shared=False, delete_when_exception=False):
         self.resource = resource
         self.shared = shared
-        self.current_role = self.resource.getRole()
+        self.current_role = self.resource.get_role()
         self.delete_when_exception = delete_when_exception
 
     @bash.in_bash
