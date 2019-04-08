@@ -51,6 +51,7 @@ class HostFactResponse(kvmagent.AgentResponse):
         self.libvirtVersion = None
         self.hvmCpuFlag = None
         self.cpuModelName = None
+        self.systemSerialNumber = None
 
 class SetupMountablePrimaryStorageHeartbeatCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -229,11 +230,13 @@ class HostPlugin(kvmagent.KvmAgent):
         qemu_img_version = qemu_img_version.strip('\t\r\n ,')
         ipV4Addrs = shell.call("ip addr | grep -w inet | grep -v 127.0.0.1 | awk '!/zs$/{print $2}' | cut -d/ -f1")
         system_product_name = shell.call('dmidecode -s system-product-name').strip()
+        system_serial_number = shell.call('dmidecode -s system-serial-number').strip()
         baseboard_product_name = shell.call('dmidecode -s baseboard-product-name').strip()
 
         rsp.qemuImgVersion = qemu_img_version
         rsp.libvirtVersion = self.libvirt_version
         rsp.ipAddresses = ipV4Addrs.splitlines()
+        rsp.systemSerialNumber = system_serial_number if system_serial_number else 'unknown'
         rsp.systemProductName = system_product_name if system_product_name else baseboard_product_name
         if not rsp.systemProductName:
             rsp.systemProductName = 'unknown'
