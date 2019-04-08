@@ -11,6 +11,7 @@ from zstacklib.utils import shell
 from zstacklib.utils import lvm
 from zstacklib.utils import bash
 from zstacklib.utils import linux
+from zstacklib import *
 
 logger = log.get_logger(__name__)
 
@@ -167,6 +168,8 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 raise RetryException("iscsiadm says there are [%s] disks[%s] but only found [%s] disks on /dev/disk[%s], so not all disks loged in, "
                                      "it may recover after a while so check and login again" %(len(disks_by_iscsi), disks_by_iscsi, len(disks_by_dev), disks_by_dev))
 
+        path = "/var/lib/iscsi/nodes"
+        self.clean_iscsi_cache_configuration(path, cmd.iscsiServerIp, cmd.iscsiServerPort)
         iqns = cmd.iscsiTargets
         if iqns is None or len(iqns) == 0:
             try:
@@ -178,7 +181,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                             (cmd.iscsiServerIp, cmd.iscsiServerPort, current_hostname, e.message)
                 rsp.success = False
                 return jsonobject.dumps(rsp)
-
+    
         if iqns is None or len(iqns) == 0:
             rsp.iscsiTargetStructList = []
             return jsonobject.dumps(rsp)
@@ -196,7 +199,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                             iqn, cmd.iscsiServerIp, cmd.iscsiServerPort, cmd.iscsiChapUserName))
                     bash.bash_o(
                         'iscsiadm --mode node --targetname "%s" -p %s:%s --op=update --name node.session.auth.password --value=%s' % (
-                            iqn, cmd.iscsiServerIp, cmd.iscsiServerPort, cmd.iscsiChapUserPassword))
+                            iqn, cmd.iscsiServerIp, cmd.iscsiServerPort, cmd.iscsiChapUserPassword))                
                 r, o, e = bash.bash_roe('iscsiadm --mode node --targetname "%s" -p %s:%s --login' %
                             (iqn, cmd.iscsiServerIp, cmd.iscsiServerPort))
                 wait_iscsi_mknode(cmd.iscsiServerIp, cmd.iscsiServerPort, iqn, e)
@@ -210,6 +213,19 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                     rsp.iscsiTargetStructList.append(t)
 
         return jsonobject.dumps(rsp)
+
+    @staticmethod
+    def clean_iscsi_cache_configuration(path,iscsiServerIp,iscsiServerPort):
+        #clean cache configuration file:/var/lib/iscsi/nodes/iqnxxx/ip,port
+        results =  bash.bash_o(("ls %s/*/ | grep %s | grep %s" % (path, iscsiServerIp, iscsiServerPort))).strip().splitlines()
+        if results is None or len(results) == 0:
+            return
+        for result in results:
+            dpaths = bash.bash_o("dirname %s/*/%s" % (path, result)).strip().splitlines()
+            if dpaths is None or len(dpaths) == 0:
+                continue
+            for dpath in dpaths:
+                linux.rm_dir_force("%s/%s" % (dpath, result))
 
     @staticmethod
     def get_disk_info_by_path(path):
@@ -249,6 +265,8 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
         for iqn in iqns:
             shell.call('timeout 10 iscsiadm --mode node --targetname "%s" -p %s:%s --logout' % (
+                iqn, cmd.iscsiServerIp, cmd.iscsiServerPort))
+            shell.call('timeout 10 iscsiadm -m node -o delete -T "%s" -p %s:%s' % (
                 iqn, cmd.iscsiServerIp, cmd.iscsiServerPort))
 
         return jsonobject.dumps(rsp)
