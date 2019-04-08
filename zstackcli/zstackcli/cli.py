@@ -282,9 +282,12 @@ example: %sLogInByAccount accountName=admin password=your_super_secure_admin_pas
                 return True
 
         def build_params():
-            def eval_string(key, value_string):
+            def eval_string(key, value_string, to_str_list=False):
                 try:
-                    return eval(value_string)
+                    if to_str_list:
+                        return map(lambda x: str(x), eval(value_string))
+                    else:
+                        return eval(value_string)
                 except Exception as e:
                     err_msg = """
 Parse command parameters error:
@@ -370,6 +373,8 @@ Parse command parameters error:
                     all_params[params[0]] = eval_string(params[0], params[1])
                 elif apiname == 'APICreateTicketMsg' and params[0] == 'requests':
                     all_params[params[0]] = eval_string(params[0], params[1])
+                elif apiname == 'APIGetIAM2VirtualIDAPIPermissionMsg' and params[0] == 'apisToCheck':
+                    all_params[params[0]] = eval_string(params[0], params[1], True)
                 elif is_api_param_a_list(apiname, params[0]):
                     all_params[params[0]] = escape_split(params[1])
                 else:
