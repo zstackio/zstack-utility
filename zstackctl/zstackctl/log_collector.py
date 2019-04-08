@@ -44,108 +44,11 @@ def warn(msg):
     logger.warn(msg)
     sys.stdout.write(colored('WARNING: %s\n' % msg, 'yellow'))
 
+
 def get_default_ip():
     cmd = shell.ShellCmd("""dev=`ip route|grep default|head -n 1|awk -F "dev" '{print $2}' | awk -F " " '{print $1}'`; ip addr show $dev |grep "inet "|awk '{print $2}'|head -n 1 |awk -F '/' '{print $1}'""")
     cmd(False)
     return cmd.stdout.strip()
-
-
-def decode_conf_yml(args, zstack_home_path):
-    base_conf_path = '/var/lib/zstack/virtualenv/zstackctl/lib/python2.7/site-packages/zstackctl/conf/'
-    default_yml_mn_only = 'collect_log_mn_only.yaml'
-    default_yml_mn_db = 'collect_log_mn_db.yaml'
-    default_yml_full = 'collect_log_full.yaml'
-    default_yml_full_db = 'collect_log_full_db.yaml'
-    default_yml_mn_host = "collect_log_mn_host.yaml"
-    yml_conf_dir = None
-    name_array = []
-
-    if args.mn_only:
-        yml_conf_dir = base_conf_path + default_yml_mn_only
-    elif args.mn_db:
-        yml_conf_dir = base_conf_path + default_yml_mn_db
-    elif args.full:
-        yml_conf_dir = base_conf_path + default_yml_full
-    elif args.full_db:
-        yml_conf_dir = base_conf_path + default_yml_full_db
-    elif args.mn_host:
-        yml_conf_dir = base_conf_path + default_yml_mn_host
-    else:
-        if args.p is None:
-            yml_conf_dir = base_conf_path + default_yml_full
-        else:
-            yml_conf_dir = args.p
-
-    decode_result = {}
-    decode_error = None
-    if not os.path.exists(yml_conf_dir):
-        decode_error = 'do not find conf path %s' % yml_conf_dir
-        decode_result['decode_error'] = decode_error
-        return decode_result
-    f = open(yml_conf_dir)
-    try:
-        conf_dict = yaml.load(f)
-    except:
-        decode_error = 'decode yml error,please check the yml'
-        decode_result['decode_error'] = decode_error
-        return decode_result
-
-    for conf_key, conf_value in conf_dict.items():
-        collect_type = conf_key
-        list_value = conf_value.get('list')
-        logs = conf_value.get('logs')
-        if list_value is None or logs is None:
-            decode_error = 'host or log can not be empty in %s' % log
-            break
-        else:
-            if 'exec' not in list_value:
-                if '\n' in list_value:
-                    temp_array = list_value.split('\n')
-                    conf_value['list'] = temp_array
-                elif ',' in list_value:
-                    temp_array = list_value.split(',')
-                    conf_value['list'] = temp_array
-                else:
-                    if ' ' in list_value:
-                        temp_array = list_value.split()
-                        conf_value['list'] = temp_array
-            if collect_type == 'host' or collect_type == 'sharedblock':
-                if args.host is not None:
-                    conf_value['list'] = args.host
-        for log in logs:
-            name_value = log.get('name')
-            dir_value = log.get('dir')
-            file_value = log.get('file')
-            exec_value = log.get('exec')
-            if name_value is None:
-                decode_error = 'log name can not be None in %s' % log
-                break
-            else:
-                if name_value in name_array:
-                    decode_error = 'duplicate name key :%s' % name_value
-                    break
-                else:
-                    name_array.append(name_value)
-            if dir_value is None:
-                if exec_value is None:
-                    decode_error = 'dir, exec cannot be empty at the same time in  %s' % log
-                    break
-            else:
-                if str(dir_value).startswith('$ZSTACK_HOME'):
-                    dir_value = str(dir_value).replace('$ZSTACK_HOME', zstack_home_path)
-                    log['dir'] = dir_value
-                if str(dir_value).startswith('/') is not True:
-                    decode_error = 'dir must be an absolute path in %s' % log
-                    break
-                if file_value is not None and file_value.startswith('/'):
-                    decode_error = 'file value can not be an absolute path in %s' % log
-                    break
-        decode_result[collect_type] = dict(
-            (key, value) for key, value in conf_value.items() if key == 'list' or key == 'logs')
-        name_array = []
-
-    decode_result['decode_error'] = decode_error
-    return decode_result
 
 
 class CollectFromYml(object):
@@ -178,18 +81,114 @@ class CollectFromYml(object):
         self.ctl = ctl
         self.run(collect_dir, detail_version, time_stamp, args)
 
-
-    def get_host_list(self, query_sql):
-        query = MySqlCommandLineQuery()
+    def get_host_sql(self, suffix_sql):
         db_hostname, db_port, db_user, db_password = self.ctl.get_live_mysql_portal()
-        query = MySqlCommandLineQuery()
-        query.host = db_hostname
-        query.port = db_port
-        query.user = db_user
-        query.password = db_password
-        query.table = 'zstack'
-        query.sql = query_sql
-        return query.query()
+        cmd = "mysql -u%s -p%s zstack -e \'%s\'" % (db_user, db_password, suffix_sql)
+        return cmd
+
+    def get_dump_sql(self):
+        db_hostname, db_port, db_user, db_password = self.ctl.get_live_mysql_portal()
+        cmd = "mysqldump --database -u%s -p%s -P 3306 --single-transaction --quick zstack zstack_rest" % (db_user, db_password)
+        return cmd
+
+    def decode_conf_yml(self, args):
+        base_conf_path = '/var/lib/zstack/virtualenv/zstackctl/lib/python2.7/site-packages/zstackctl/conf/'
+        default_yml_mn_only = 'collect_log_mn_only.yaml'
+        default_yml_mn_db = 'collect_log_mn_db.yaml'
+        default_yml_full = 'collect_log_full.yaml'
+        default_yml_full_db = 'collect_log_full_db.yaml'
+        default_yml_mn_host = "collect_log_mn_host.yaml"
+        yml_conf_dir = None
+        name_array = []
+
+        if args.mn_only:
+            yml_conf_dir = base_conf_path + default_yml_mn_only
+        elif args.mn_db:
+            yml_conf_dir = base_conf_path + default_yml_mn_db
+        elif args.full:
+            yml_conf_dir = base_conf_path + default_yml_full
+        elif args.full_db:
+            yml_conf_dir = base_conf_path + default_yml_full_db
+        elif args.mn_host:
+            yml_conf_dir = base_conf_path + default_yml_mn_host
+        else:
+            if args.p is None:
+                yml_conf_dir = base_conf_path + default_yml_full
+            else:
+                yml_conf_dir = args.p
+
+        decode_result = {}
+        decode_error = None
+        if not os.path.exists(yml_conf_dir):
+            decode_error = 'do not find conf path %s' % yml_conf_dir
+            decode_result['decode_error'] = decode_error
+            return decode_result
+        f = open(yml_conf_dir)
+        try:
+            conf_dict = yaml.load(f)
+        except:
+            decode_error = 'decode yml error,please check the yml'
+            decode_result['decode_error'] = decode_error
+            return decode_result
+
+        for conf_key, conf_value in conf_dict.items():
+            collect_type = conf_key
+            list_value = conf_value.get('list')
+            logs = conf_value.get('logs')
+            if list_value is None or logs is None:
+                decode_error = 'host or log can not be empty in %s' % log
+                break
+            else:
+                if 'exec' not in list_value:
+                    if '\n' in list_value:
+                        temp_array = list_value.split('\n')
+                        conf_value['list'] = temp_array
+                    elif ',' in list_value:
+                        temp_array = list_value.split(',')
+                        conf_value['list'] = temp_array
+                    else:
+                        if ' ' in list_value:
+                            temp_array = list_value.split()
+                            conf_value['list'] = temp_array
+                if collect_type == 'host' or collect_type == 'sharedblock':
+                    if args.host is not None:
+                        conf_value['list'] = args.host
+            for log in logs:
+                name_value = log.get('name')
+                dir_value = log.get('dir')
+                file_value = log.get('file')
+                exec_value = log.get('exec')
+                if name_value is None:
+                    decode_error = 'log name can not be None in %s' % log
+                    break
+                else:
+                    if name_value in name_array:
+                        decode_error = 'duplicate name key :%s' % name_value
+                        break
+                    else:
+                        name_array.append(name_value)
+                if dir_value is None:
+                    if exec_value is None:
+                        decode_error = 'dir, exec cannot be empty at the same time in  %s' % log
+                        break
+                    if name_value == 'mysql-database' and exec_value == 'AutoCollect':
+                        log['exec'] = self.get_dump_sql()
+                else:
+                    if str(dir_value).startswith('$ZSTACK_HOME'):
+                        dir_value = str(dir_value).replace('$ZSTACK_HOME', self.DEFAULT_ZSTACK_HOME)
+                        log['dir'] = dir_value
+                    if str(dir_value).startswith('/') is not True:
+                        decode_error = 'dir must be an absolute path in %s' % log
+                        break
+                    if file_value is not None and file_value.startswith('/'):
+                        decode_error = 'file value can not be an absolute path in %s' % log
+                        break
+            decode_result[collect_type] = dict(
+                (key, value) for key, value in conf_value.items() if key == 'list' or key == 'logs')
+            name_array = []
+
+        decode_result['decode_error'] = decode_error
+        return decode_result
 
     def build_collect_cmd(self, dir_value, file_value, collect_dir):
         cmd = 'find %s -type f' % dir_value
@@ -228,17 +227,6 @@ class CollectFromYml(object):
         else:
             cmd = cmd + ' -exec /bin/cp -rf {} %s/ \;' % collect_dir
         return cmd
-
-    def get_host_list(self, query_sql):
-        db_hostname, db_port, db_user, db_password = self.ctl.get_live_mysql_portal()
-        query = MySqlCommandLineQuery()
-        query.host = db_hostname
-        query.port = db_port
-        query.user = db_user
-        query.password = db_password
-        query.table = 'zstack'
-        query.sql = query_sql
-        return query.query()
 
     def generate_host_post_info(self, host_ip, type):
         host_post_info = HostPostInfo()
@@ -400,7 +388,7 @@ class CollectFromYml(object):
                 return
         if isinstance(host_list, dict):
             if host_list['exec'] is not None:
-                exec_cmd = host_list['exec'] + ' | awk \'NR>1\''
+                exec_cmd = self.get_host_sql(host_list['exec']) + ' | awk \'NR>1\''
                 try:
                     (status, output) = commands.getstatusoutput(exec_cmd)
                     if status == 0 and output.startswith('ERROR') is not True:
@@ -745,7 +733,7 @@ class CollectFromYml(object):
         if args.thread is not None:
             self.max_thread_num = args.thread
 
-        decode_result = decode_conf_yml(args, self.DEFAULT_ZSTACK_HOME)
+        decode_result = self.decode_conf_yml(args)
 
         if decode_result['decode_error'] is not None:
             error_verbose(decode_result['decode_error'])
