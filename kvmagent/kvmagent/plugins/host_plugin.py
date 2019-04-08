@@ -129,6 +129,7 @@ class HostPlugin(kvmagent.KvmAgent):
     SETUP_MOUNTABLE_PRIMARY_STORAGE_HEARTBEAT = "/host/mountableprimarystorageheartbeat"
     UPDATE_OS_PATH = "/host/updateos"
     UPDATE_DEPENDENCY = "/host/updatedependency"
+    IDENTIFY_HOST = "/host/identify"
 
     def _get_libvirt_version(self):
         ret = shell.call('libvirtd --version')
@@ -510,6 +511,15 @@ if __name__ == "__main__":
             logger.debug("successfully run: %s" % yum_cmd)
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    @in_bash
+    def identify_host(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+        sc = shell.ShellCmd("ipmitool chassis identify %s" % cmd.interval)
+        sc(True)
+        return rsp
+
     def start(self):
         self.host_uuid = None
 
@@ -523,6 +533,7 @@ if __name__ == "__main__":
         http_server.register_async_uri(self.GET_USB_DEVICES_PATH, self.get_usb_devices)
         http_server.register_async_uri(self.UPDATE_OS_PATH, self.update_os)
         http_server.register_async_uri(self.UPDATE_DEPENDENCY, self.update_dependency)
+        http_server.register_async_uri(self.IDENTIFY_HOST, self.identify_host)
 
         self.heartbeat_timer = {}
         self.libvirt_version = self._get_libvirt_version()
