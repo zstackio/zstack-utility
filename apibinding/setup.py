@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 import sys, os
 
-version = '3.4.0'
+version = '3.5.0'
 
 setup(name='apibinding',
       version=version,
