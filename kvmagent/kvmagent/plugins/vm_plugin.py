@@ -5315,6 +5315,26 @@ class VmPlugin(kvmagent.KvmAgent):
             content = traceback.format_exc()
             logger.warn(content)
 
+    def _delete_gatepushway_metric(self, conn, dom, event, detail, opaque):
+        try:
+            event = LibvirtEventManager.event_to_string(event)
+            if event != LibvirtEventManager.EVENT_STOPPED:
+                return
+            output = shell.call('ps aux | grep [p]ushgateway')
+            if '/var/lib/zstack/kvm/pushgateway' not in output:
+                return
+            port = None
+            lines = output.splitlines()
+            for line in lines:
+                if '/var/lib/zstack/kvm/pushgateway' in line:
+                    port = line[line.rindex('web.listen-address :') + 20:]
+                    break;
+            vm_uuid = dom.name()
+            url = "http://localhost:%s/metrics/job/zwatch_vm_agent/vmUuid/%s" % (port, vm_uuid)
+            shell.run('curl -X DELETE ' + url)
+        except Exception as e:
+            logger.warn("delete pushgateway metric when vm stoped failed: %s" % e.message)
+
     def register_libvirt_event(self):
         #LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._vm_lifecycle_event)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE,
@@ -5322,6 +5342,7 @@ class VmPlugin(kvmagent.KvmAgent):
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_REBOOT, self._vm_reboot_event)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._release_sharedblocks)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._extend_sharedblock)
+        LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._delete_pushgateway_metric)
         LibvirtAutoReconnect.register_libvirt_callbacks()
 
     def stop(self):
