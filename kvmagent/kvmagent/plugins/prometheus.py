@@ -6,6 +6,7 @@ from zstacklib.utils import log
 from zstacklib.utils.bash import *
 from zstacklib.utils import linux
 from zstacklib.utils import thread
+from zstacklib.utils import lvm
 from jinja2 import Template
 import os.path
 import re
@@ -132,8 +133,134 @@ def collect_host_capacity_statistics():
     return metrics.values()
 
 
+def collect_lvm_capacity_statistics():
+    metrics = {
+        'vg_size': GaugeMetricFamily('vg_size',
+                                     'volume group size', None, ['vg_name']),
+        'vg_avail': GaugeMetricFamily('vg_avail',
+                                      'volume group and thin pool free size', None, ['vg_name']),
+    }
+
+    r, o, e = bash_roe("vgs --nolocking --noheading -oname")
+    if r != 0 or len(o.splitlines()) == 0:
+        metrics.values()
+
+    vg_names = bash_o('vgs --nolocking --noheading -oname').splitlines()
+    for name in vg_names:
+        name = name.strip()
+        size, avail = lvm.get_vg_size(name, False)
+        metrics['vg_size'].add_metric([name], float(size))
+        metrics['vg_avail'].add_metric([name], float(avail))
+
+    return metrics.values()
+
+
+def convert_raid_state_to_int(state):
+    """
+
+    :type state: str
+    """
+    state = state.lower()
+    if state == "optimal":
+        return 0
+    elif state == "degraded":
+        return 5
+    else:
+        return 100
+
+
+def convert_disk_state_to_int(state):
+    """
+
+    :type state: str
+    """
+    state = state.lower()
+    if "online" in state:
+        return 0
+    elif "rebuild" in state:
+        return 5
+    elif "failed" in state:
+        return 10
+    elif "unconfigured" in state:
+        return 15
+    else:
+        return 100
+
+
+def collect_raid_state():
+    metrics = {
+        'raid_state': GaugeMetricFamily('raid_state',
+                                        'raid state', None, ['target_id']),
+        'physical_disk_state': GaugeMetricFamily('physical_disk_state',
+                                                 'physical disk state', None,
+                                                 ['slot_number', 'disk_group']),
+    }
+    if bash_r("/opt/MegaRAID/MegaCli/MegaCli64 -LDInfo -LALL -aAll") != 0:
+        return metrics.values()
+
+    raid_info = bash_o("/opt/MegaRAID/MegaCli/MegaCli64 -LDInfo -LALL -aAll | grep -E 'Target Id|State'").splitlines()
+    for info in raid_info:
+        target_id = state = None
+        if "Target Id" in info:
+            target_id = info.strip().strip(")").split(" ")[-1]
+        else:
+            state = info.strip().split(" ")[-1]
+            metrics['raid_state'].add_metric([target_id], convert_raid_state_to_int(state))
+
+    disk_info = bash_o(
+        "/opt/MegaRAID/MegaCli/MegaCli64 -PDList -aAll | grep -E 'Slot Number|DiskGroup|Firmware state'").splitlines()
+    for info in disk_info:
+        slot_number = state = disk_group = None
+        if "Slot Number" in info:
+            slot_number = info.strip().split(" ")[-1]
+        if "DiskGroup" in info:
+            kvs = info.replace("Drive's position: ", "").split(",")
+            disk_group = filter(lambda x: "DiskGroup" in x, kvs)[0]
+            disk_group = disk_group.split(" ")[-1]
+        else:
+            state = info.strip().split(":")[-1]
+            metrics['physical_disk_state'].add_metric([slot_number, disk_group], convert_disk_state_to_int(state))
+
+    return metrics.values()
+
+
+def collect_equipment_state():
+    metrics = {
+        'power_supply': GaugeMetricFamily('power_supply',
+                                          'power supply', None, ['ps_id']),
+        'ipmi_status': GaugeMetricFamily('ipmi_status', 'ipmi status', None, []),
+        'physical_network_interface': GaugeMetricFamily('physical_network_interface',
+                                                        'physical network interface', None,
+                                                        ['interface_name', 'speed']),
+    }
+
+    r, ps_info = bash_ro("ipmitool sdr type 'power supply'")  # type: (int, str)
+    if r == 0:
+        for info in ps_info:
+            info = info.strip()
+            ps_id = info.split("|")[0].strip().split(" ")[0]
+            health = "fail" in info.lower()
+            metrics['power_supply'].add_metric([ps_id], health)
+
+    metrics['ipmi_status'].add_metric([], bash_r("ipmitool mc info"))
+
+    nics = bash_o("find /sys/class/net -type l -not -lname '*virtual*' -printf '%f\n'").splitlines()
+    if len(nics) != 0:
+        for nic in nics:
+            nic = nic.strip()
+            status = bash_r("grep 1 /sys/class/net/%s/carrier" % nic)
+            speed = bash_o("cat /sys/class/net/%s/speed" % nic)
+            metrics['physical_network_interface'].add_metric([nic, speed], status)
+
+    return metrics.values()
+
+
 kvmagent.register_prometheus_collector(collect_host_network_statistics)
 kvmagent.register_prometheus_collector(collect_host_capacity_statistics)
+kvmagent.register_prometheus_collector(collect_lvm_capacity_statistics)
+kvmagent.register_prometheus_collector(collect_raid_state)
+kvmagent.register_prometheus_collector(collect_equipment_state)
+
 
 class PrometheusPlugin(kvmagent.KvmAgent):
 
