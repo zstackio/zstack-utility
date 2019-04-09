@@ -83,12 +83,18 @@ class CollectFromYml(object):
 
     def get_host_sql(self, suffix_sql):
         db_hostname, db_port, db_user, db_password = self.ctl.get_live_mysql_portal()
-        cmd = "mysql -u%s -p%s zstack -e \'%s\'" % (db_user, db_password, suffix_sql)
+        if db_password:
+            cmd = "mysql -u%s -p%s zstack -e \'%s\'" % (db_user, db_password, suffix_sql)
+        else:
+            cmd = "mysql -u%s zstack -e \'%s\'" % (db_user, suffix_sql)
         return cmd
 
     def get_dump_sql(self):
         db_hostname, db_port, db_user, db_password = self.ctl.get_live_mysql_portal()
-        cmd = "mysqldump --database -u%s -p%s -P 3306 --single-transaction --quick zstack zstack_rest" % (db_user, db_password)
+        if db_password:
+            cmd = "mysqldump --database -u%s -p%s -P 3306 --single-transaction --quick zstack zstack_rest" % (db_user, db_password)
+        else:
+            cmd = "mysqldump --database -u%s -P 3306 --single-transaction --quick zstack zstack_rest" % db_user
         return cmd
 
     def decode_conf_yml(self, args):
