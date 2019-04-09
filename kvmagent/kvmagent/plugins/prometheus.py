@@ -198,9 +198,9 @@ def collect_raid_state():
     if bash_r("/opt/MegaRAID/MegaCli/MegaCli64 -LDInfo -LALL -aAll") != 0:
         return metrics.values()
 
-    raid_info = bash_o("/opt/MegaRAID/MegaCli/MegaCli64 -LDInfo -LALL -aAll | grep -E 'Target Id|State'").splitlines()
+    raid_info = bash_o("/opt/MegaRAID/MegaCli/MegaCli64 -LDInfo -LALL -aAll | grep -E 'Target Id|State'").strip().splitlines()
+    target_id = state = None
     for info in raid_info:
-        target_id = state = None
         if "Target Id" in info:
             target_id = info.strip().strip(")").split(" ")[-1]
         else:
@@ -208,12 +208,12 @@ def collect_raid_state():
             metrics['raid_state'].add_metric([target_id], convert_raid_state_to_int(state))
 
     disk_info = bash_o(
-        "/opt/MegaRAID/MegaCli/MegaCli64 -PDList -aAll | grep -E 'Slot Number|DiskGroup|Firmware state'").splitlines()
+        "/opt/MegaRAID/MegaCli/MegaCli64 -PDList -aAll | grep -E 'Slot Number|DiskGroup|Firmware state'").strip().splitlines()
+    slot_number = state = disk_group = None
     for info in disk_info:
-        slot_number = state = disk_group = None
         if "Slot Number" in info:
             slot_number = info.strip().split(" ")[-1]
-        if "DiskGroup" in info:
+        elif "DiskGroup" in info:
             kvs = info.replace("Drive's position: ", "").split(",")
             disk_group = filter(lambda x: "DiskGroup" in x, kvs)[0]
             disk_group = disk_group.split(" ")[-1]
@@ -236,10 +236,10 @@ def collect_equipment_state():
 
     r, ps_info = bash_ro("ipmitool sdr type 'power supply'")  # type: (int, str)
     if r == 0:
-        for info in ps_info:
+        for info in ps_info.splitlines():
             info = info.strip()
             ps_id = info.split("|")[0].strip().split(" ")[0]
-            health = "fail" in info.lower()
+            health = 10 if "fail" in info.lower() else 0
             metrics['power_supply'].add_metric([ps_id], health)
 
     metrics['ipmi_status'].add_metric([], bash_r("ipmitool mc info"))
@@ -249,7 +249,7 @@ def collect_equipment_state():
         for nic in nics:
             nic = nic.strip()
             status = bash_r("grep 1 /sys/class/net/%s/carrier" % nic)
-            speed = bash_o("cat /sys/class/net/%s/speed" % nic)
+            speed = bash_o("cat /sys/class/net/%s/speed" % nic).strip()
             metrics['physical_network_interface'].add_metric([nic, speed], status)
 
     return metrics.values()
