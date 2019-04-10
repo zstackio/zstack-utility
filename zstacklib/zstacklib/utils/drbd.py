@@ -114,7 +114,7 @@ class DrbdResource(object):
         bash.bash_errorout("drbdadm down %s" % self.name)
 
     @bash.in_bash
-    @linux.retry(times=6, sleep_time=2)
+    @linux.retry(times=15, sleep_time=2)
     def promote(self, force=False):
         f = " --force" if force else ""
         r, o, e = bash.bash_roe("drbdadm primary %s %s" % (self.name, f))
@@ -153,7 +153,7 @@ class DrbdResource(object):
         return "/dev/drbd%s" % self.config.local_host.minor
 
     @bash.in_bash
-    @linux.retry(times=6, sleep_time=2)
+    @linux.retry(times=15, sleep_time=2)
     def clear_bits(self):
         bash.bash_errorout("drbdadm new-current-uuid --clear-bitmap %s" % self.name)
 
