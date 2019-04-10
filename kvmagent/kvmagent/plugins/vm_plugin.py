@@ -5315,7 +5315,7 @@ class VmPlugin(kvmagent.KvmAgent):
             content = traceback.format_exc()
             logger.warn(content)
 
-    def _delete_gatepushway_metric(self, conn, dom, event, detail, opaque):
+    def _delete_pushgateway_metric(self, conn, dom, event, detail, opaque):
         try:
             event = LibvirtEventManager.event_to_string(event)
             if event != LibvirtEventManager.EVENT_STOPPED:
