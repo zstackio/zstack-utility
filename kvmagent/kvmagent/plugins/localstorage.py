@@ -604,6 +604,10 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
 
         if not os.path.exists(cmd.path):
             os.makedirs(cmd.path, 0755)
+        if cmd.initFilePath:
+            if not os.path.exists(cmd.initFilePath):
+                f = open(cmd.initFilePath, 'w')
+                f.close()
 
         rsp = AgentResponse()
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.path)
