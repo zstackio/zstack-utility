@@ -689,9 +689,13 @@ class ThinPool(object):
     @bash.in_bash
     def __init__(self, path):
         o = bash.bash_o("lvs %s --separator ' ' -oname,data_percent,lv_size --noheading --unit B" % path).strip()
-        self.total = float(o.split(" ")[2].strip("B"))
-        self.free = self.total * (100 - float(o.split(" ")[1].strip("B")))/100
         self.name = o.split(" ")[0]
+        self.total = float(o.split(" ")[2].strip("B"))
+        self.thin_lvs = [l.strip() for l in bash.bash_o("lvs -Spool_lv=%s --noheadings --nolocking -oname" % self.name).strip().splitlines()]
+        if len(self.thin_lvs) == 0:
+            self.free = self.total
+        else:
+            self.total * (100 - float(o.split(" ")[1].strip("B")))/100
 
 
 @bash.in_bash

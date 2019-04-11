@@ -476,9 +476,10 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
             lvm.active_lv(install_abs_path)
             drbdResource.initialize(cmd.init, cmd, template_abs_path_cache)
-        except Exception:
+        except Exception as e:
             drbdResource.destroy()
             lvm.delete_lv(install_abs_path)
+            raise e
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
@@ -590,9 +591,14 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
                                                      "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
                 lvm.active_lv(install_abs_path)
                 drbdResource.initialize(cmd.init, cmd)
-        except Exception:
+        except Exception as e:
             drbdResource.destroy()
             lvm.delete_lv(install_abs_path)
+            logger.debug('failed to create empty volume[uuid:%s, size:%s] at %s' % (cmd.volumeUuid, cmd.size, cmd.installPath))
+            rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+            rsp.success = False
+            rsp.error = e.message
+            return rsp
 
         logger.debug('successfully create empty volume[uuid:%s, size:%s] at %s' % (cmd.volumeUuid, cmd.size, cmd.installPath))
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
