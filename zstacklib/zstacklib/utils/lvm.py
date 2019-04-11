@@ -623,15 +623,15 @@ def clean_vg_exists_host_tags(vgUuid, hostUuid, tag):
 
 
 @bash.in_bash
-@linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
+@linux.retry(times=15, sleep_time=random.uniform(0.1, 2))
 def create_lv_from_absolute_path(path, size, tag="zs::sharedblock::volume"):
     vgName = path.split("/")[2]
     lvName = path.split("/")[3]
 
-    bash.bash_roe("lvcreate -an --addtag %s --size %sb --name %s %s" %
+    r, o, e = bash.bash_roe("lvcreate -an --addtag %s --size %sb --name %s %s" %
                          (tag, calcLvReservedSize(size), lvName, vgName))
     if not lv_exists(path):
-        raise Exception("can not find lv %s after create", path)
+        raise Exception("can not find lv %s after create, lvcreate return: %s, %s, %s" % (path, r, o, e))
 
     with OperateLv(path, shared=False):
         dd_zero(path)
@@ -645,7 +645,8 @@ def create_lv_from_cmd(path, size, cmd, tag="zs::sharedblock::volume"):
 
 
 def dd_zero(path):
-    cmd = shell.ShellCmd("dd if=/dev/zero of=%s bs=65536 count=1 conv=sync,notrunc" % path)
+    # we add at least additional 4M space for every lv, so it is safe to write 4M
+    cmd = shell.ShellCmd("dd if=/dev/zero of=%s bs=1M count=4 oflag=direct" % path)
     cmd(is_exception=False)
 
 
