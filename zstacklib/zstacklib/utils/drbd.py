@@ -171,7 +171,7 @@ class DrbdResource(object):
         self.up()
         if not primary:
             self.clear_bits()
-        if primary:
+        else:
             self.promote(False)
             if backing:
                 linux.qcow2_create_with_backing_file_and_cmd(backing, self.get_dev_path(), cmd)

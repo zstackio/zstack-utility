@@ -473,7 +473,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         try:
             if not lvm.lv_exists(install_abs_path):
                 lvm.create_lv_from_cmd(install_abs_path, virtual_size, cmd,
-                                                 "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
+                                                 "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()), False)
             lvm.active_lv(install_abs_path)
             drbdResource.initialize(cmd.init, cmd, template_abs_path_cache)
         except Exception as e:
@@ -583,22 +583,19 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
                 virtual_size = linux.qcow2_virtualsize(backing_abs_path)
 
                 lvm.create_lv_from_cmd(install_abs_path, virtual_size, cmd,
-                                                     "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
+                                                     "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()), False)
                 lvm.active_lv(install_abs_path)
                 drbdResource.initialize(cmd.init, cmd, backing_abs_path)
             elif not lvm.lv_exists(install_abs_path):
                 lvm.create_lv_from_cmd(install_abs_path, cmd.size, cmd,
-                                                     "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
+                                                     "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()), False)
                 lvm.active_lv(install_abs_path)
                 drbdResource.initialize(cmd.init, cmd)
         except Exception as e:
             drbdResource.destroy()
             lvm.delete_lv(install_abs_path)
             logger.debug('failed to create empty volume[uuid:%s, size:%s] at %s' % (cmd.volumeUuid, cmd.size, cmd.installPath))
-            rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
-            rsp.success = False
-            rsp.error = e.message
-            return rsp
+            raise e
 
         logger.debug('successfully create empty volume[uuid:%s, size:%s] at %s' % (cmd.volumeUuid, cmd.size, cmd.installPath))
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)

@@ -551,11 +551,10 @@ def add_pv(vg_uuid, disk_path, metadata_size):
 
 
 def get_vg_size(vgUuid, raise_exception=True):
-    cmd = shell.ShellCmd("vgs --nolocking %s --noheadings --separator : --units b -o vg_size,vg_free" % vgUuid)
-    cmd(is_exception=raise_exception)
-    if cmd.return_code != 0:
+    r, o, _ = bash.bash_roe("vgs --nolocking %s --noheadings --separator : --units b -o vg_size,vg_free" % vgUuid, errorout=raise_exception)
+    if r != 0:
         return None, None
-    vg_size, vg_free = cmd.stdout.strip().split(':')[0].strip("B"), cmd.stdout.strip().split(':')[1].strip("B")
+    vg_size, vg_free = o.strip().split(':')[0].strip("B"), o.strip().split(':')[1].strip("B")
     pools = get_thin_pools_from_vg(vgUuid)
     if len(pools) == 0:
         return vg_size, vg_free
@@ -633,7 +632,7 @@ def clean_vg_exists_host_tags(vgUuid, hostUuid, tag):
 
 @bash.in_bash
 @linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
-def create_lv_from_absolute_path(path, size, tag="zs::sharedblock::volume"):
+def create_lv_from_absolute_path(path, size, tag="zs::sharedblock::volume", lock=True):
     vgName = path.split("/")[2]
     lvName = path.split("/")[3]
 
@@ -642,23 +641,27 @@ def create_lv_from_absolute_path(path, size, tag="zs::sharedblock::volume"):
     if not lv_exists(path):
         raise Exception("can not find lv %s after create", path)
 
-    with OperateLv(path, shared=False):
+    if lock:
+        with OperateLv(path, shared=False):
+            dd_zero(path)
+    else:
+        active_lv(path)
         dd_zero(path)
 
 
-def create_lv_from_cmd(path, size, cmd, tag="zs::sharedblock::volume"):
+def create_lv_from_cmd(path, size, cmd, tag="zs::sharedblock::volume", lock=True):
     # TODO(weiw): fix it
     if "ministorage" in tag and cmd.provisioning == VolumeProvisioningStrategy.ThinProvisioning:
-        create_thin_lv_from_absolute_path(path, size, tag)
+        create_thin_lv_from_absolute_path(path, size, tag, lock)
     elif cmd.provisioning == VolumeProvisioningStrategy.ThinProvisioning and size > cmd.addons[thinProvisioningInitializeSize]:
         create_lv_from_absolute_path(path, cmd.addons[thinProvisioningInitializeSize], tag)
     else:
-        create_lv_from_absolute_path(path, size, tag)
+        create_lv_from_absolute_path(path, size, tag, lock)
 
 
 @bash.in_bash
 @linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
-def create_thin_lv_from_absolute_path(path, size, tag):
+def create_thin_lv_from_absolute_path(path, size, tag, lock=False):
     vgName = path.split("/")[2]
     lvName = path.split("/")[3]
 
@@ -671,7 +674,11 @@ def create_thin_lv_from_absolute_path(path, size, tag):
         raise Exception("can not find lv %s after create, lvcreate return : %s, %s, %s" %
                         (path, r, o, e))
 
-    with OperateLv(path, shared=False):
+    if lock:
+        with OperateLv(path, shared=False):
+            dd_zero(path)
+    else:
+        active_lv(path)
         dd_zero(path)
 
 
@@ -686,7 +693,6 @@ def get_thin_pool_from_vg(vgName):
 
 
 class ThinPool(object):
-    @bash.in_bash
     def __init__(self, path):
         o = bash.bash_o("lvs %s --separator ' ' -oname,data_percent,lv_size --noheading --unit B" % path).strip()
         self.name = o.split(" ")[0]
@@ -695,10 +701,9 @@ class ThinPool(object):
         if len(self.thin_lvs) == 0:
             self.free = self.total
         else:
-            self.total * (100 - float(o.split(" ")[1].strip("B")))/100
+            self.free = self.total * (100 - float(o.split(" ")[1].strip("B")))/100
 
 
-@bash.in_bash
 def get_thin_pools_from_vg(vgName):
     names = bash.bash_o("lvs %s -Slayout=pool -oname --noheading" % vgName).strip().splitlines()
     if len(names) == 0:
