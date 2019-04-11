@@ -726,7 +726,15 @@ echo "ONBOOT=yes" >> $IFCFGFILE
 
         niccfgs = json_object.loads(cmd.nicCfgs) if cmd.nicCfgs is not None else []
         # post script snippet for network configuration
-        niccfg_post_script = """echo 'loop lp rtc bonding 8021q' >> /etc/modules
+        niccfg_post_script = """echo -e 'loop\nlp\nrtc\nbonding\n8021q' >> /etc/modules
+{% set count = 0 %}
+{% for cfg in niccfgs %}
+  {% if cfg.bondName %}
+    {% set count = count + 1 %}
+    echo "options bonding max_bonds={{ count }}" > /etc/modprobe.d/bonding.conf
+  {% endif %}
+{% endfor %}
+
 {% for cfg in niccfgs %}
 
 {% if cfg.bondName %}
@@ -744,7 +752,20 @@ echo 'gateway {{ cfg.gateway }}' >> /etc/network/interfaces
 {% if cfg.bondName %}
 echo 'bond-mode {{ cfg.bondMode }}' >> /etc/network/interfaces
 {% if cfg.bondOpts %}echo '{{ cfg.bondOpts }}' >> /etc/network/interfaces{% endif %}
-echo 'bond-slaves '{%- for slave in cfg.bondSlaves -%}`ip -o link show | grep {{ slave }} | awk -F ': ' '{ printf $2 }'` {{ PH }}{%- endfor -%} >> /etc/network/interfaces
+
+echo 'pre-up ifconfig {{ cfg.bondName }} up' >> /etc/network/interfaces
+{% for slave in cfg.bondSlaves %}
+slave_nic=`ip -o link show | grep {{ slave }} | awk -F ': ' '{ print $2 }'`
+echo "pre-up ip link set $slave_nic master {{ cfg.bondName  }}" >> /etc/network/interfaces
+{% endfor %}
+echo 'up /bin/true' >> /etc/network/interfaces
+echo 'down /bin/true' >> /etc/network/interfaces
+{% for slave in cfg.bondSlaves %}
+slave_nic=`ip -o link show | grep {{ slave }} | awk -F ': ' '{ print $2 }'`
+echo "post-down ip link set $slave_nic nomaster" >> /etc/network/interfaces
+{% endfor %}
+echo 'post-down ifconfig {{ cfg.bondName }} down' >> /etc/network/interfaces
+
 {% endif %}
 
 {% if cfg.vlanid %}
@@ -756,6 +777,7 @@ RAWDEVNAME=`ip -o link show | grep {{ cfg.mac }} | awk -F ': ' '{ printf $2 }'`
 echo "vlan-raw-device ${RAWDEVNAME}" >> /etc/network/interfaces
 {% endif %}
 
+echo "" >> /etc/network/interfaces
 {% endfor %}
 """
         niccfg_post_tmpl = Template(niccfg_post_script)
