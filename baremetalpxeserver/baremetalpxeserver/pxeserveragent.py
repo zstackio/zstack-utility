@@ -605,7 +605,7 @@ echo "BONDING_MASTER=yes" >> $IFCFGFILE
 echo "BONDING_OPTS='mode={{ cfg.bondMode }} {{ cfg.bondOpts }}'" >> $IFCFGFILE
 
 {% for slave in cfg.bondSlaves %}
-SLAVENAME=`ip -o link show | grep {{ slave }} | awk -F ': ' '{ printf "%s", $2 }'`
+SLAVENAME=`ip -o link show | grep {{ slave }} | awk -F ': ' '{ print $2 }'`
 SLAVECFG=/etc/sysconfig/network-scripts/ifcfg-${SLAVENAME}
 echo "BOOTPROTO=none" > $SLAVECFG
 echo "DEVICE=${SLAVENAME}" >> $SLAVECFG
@@ -619,7 +619,7 @@ echo "ONBOOT=yes" >> $SLAVECFG
 
 {% else %}
 
-DEVNAME=`ip -o link show | grep {{ cfg.mac }} | awk -F ': ' '{ printf "%s", $2 }'`
+DEVNAME=`ip -o link show | grep {{ cfg.mac }} | awk -F ': ' '{ print $2 }'`
 IFCFGFILE=/etc/sysconfig/network-scripts/ifcfg-${DEVNAME}
 VLANCFGNAME=${DEVNAME}.{{ cfg.vlanid }}
 VLANCFGFILE=/etc/sysconfig/network-scripts/ifcfg-${DEVNAME}.{{ cfg.vlanid }}
@@ -659,7 +659,7 @@ echo "BONDING_MASTER=yes" >> $IFCFGFILE
 echo "BONDING_OPTS='mode={{ cfg.bondMode }} {{ cfg.bondOpts }}'" >> $IFCFGFILE
 
 {% for slave in cfg.bondSlaves %}
-SLAVENAME=`ip -o link show | grep {{ slave }} | awk -F ': ' '{ printf "%s", $2 }'`
+SLAVENAME=`ip -o link show | grep {{ slave }} | awk -F ': ' '{ print $2 }'`
 SLAVECFG=/etc/sysconfig/network-scripts/ifcfg-${SLAVENAME}
 echo "BOOTPROTO=none" > $SLAVECFG
 echo "DEVICE=${SLAVENAME}" >> $SLAVECFG
@@ -673,7 +673,7 @@ echo "ONBOOT=yes" >> $SLAVECFG
 
 {% else %}
 
-DEVNAME=`ip -o link show | grep {{ cfg.mac }} | awk -F ': ' '{ printf "%s", $2 }'`
+DEVNAME=`ip -o link show | grep {{ cfg.mac }} | awk -F ': ' '{ print $2 }'`
 IFCFGFILE=/etc/sysconfig/network-scripts/ifcfg-${DEVNAME}
 echo "BOOTPROTO=static" > $IFCFGFILE
 echo "DEVICE=${DEVNAME}" >> $IFCFGFILE
@@ -740,7 +740,7 @@ echo "ONBOOT=yes" >> $IFCFGFILE
 {% if cfg.bondName %}
 DEVNAME={{ cfg.bondName }}{%- if cfg.vlanid -%}.{{ cfg.vlanid }}{%- endif -%}
 {% else %}
-DEVNAME=`ip -o link show | grep {{ cfg.mac }} | awk -F ': ' '{ printf $2 }'`{%- if cfg.vlanid -%}.{{ cfg.vlanid }}{%- endif -%}
+DEVNAME=`ip -o link show | grep {{ cfg.mac }} | awk -F ': ' '{ print $2 }'`{%- if cfg.vlanid -%}.{{ cfg.vlanid }}{%- endif -%}
 {% endif %}
 
 echo "auto ${DEVNAME}" >> /etc/network/interfaces
@@ -772,7 +772,7 @@ echo 'post-down ifconfig {{ cfg.bondName }} down' >> /etc/network/interfaces
 {% if cfg.bondName %}
 RAWDEVNAME={{ cfg.bondName }}
 {% else %}
-RAWDEVNAME=`ip -o link show | grep {{ cfg.mac }} | awk -F ': ' '{ printf $2 }'`
+RAWDEVNAME=`ip -o link show | grep {{ cfg.mac }} | awk -F ': ' '{ print $2 }'`
 {% endif %}
 echo "vlan-raw-device ${RAWDEVNAME}" >> /etc/network/interfaces
 {% endif %}
@@ -803,7 +803,15 @@ echo "" >> /etc/network/interfaces
 
         niccfgs = json_object.loads(cmd.nicCfgs) if cmd.nicCfgs is not None else []
         # post script snippet for network configuration
-        niccfg_post_script = """
+        niccfg_post_script = """echo -e 'loop\nlp\nrtc\nbonding\n8021q' >> /etc/modules-load.d/ifcfg.conf
+{% set count = 0 %}
+{% for cfg in niccfgs %}
+  {% if cfg.bondName %}
+    {% set count = count + 1 %}
+    echo "options bonding max_bonds={{ count }}" > /etc/modprobe.d/bonding.conf
+  {% endif %}
+{% endfor %}
+
 {% for cfg in niccfgs %}
 
 {% if cfg.vlanid %}
@@ -814,58 +822,31 @@ IFCFGFILE=/etc/sysconfig/network/ifcfg-${DEVNAME}
 VLANCFGNAME=${DEVNAME}.{{ cfg.vlanid }}
 VLANCFGFILE=/etc/sysconfig/network/ifcfg-${DEVNAME}.{{ cfg.vlanid }}
 echo "BOOTPROTO='none'" > $IFCFGFILE
-echo "IPADDR=''" >> $IFCFGFILE
-echo "NETMASK=''" >> $IFCFGFILE
-echo "MTU=''" >> $IFCFGFILE
-echo "NAME=''" >> $IFCFGFILE
-echo "NETWORK=''" >> $IFCFGFILE
-echo "BROADCAST=''" >> $IFCFGFILE
 echo "STARTMODE='auto'" >> $IFCFGFILE
-echo "ETHTOOL_OPTIONS=''" >> $IFCFGFILE
 echo "BONDING_MASTER='yes'" >> $IFCFGFILE
-echo "BONDING_MODULE_OPTS='mode={{ cfg.bondMode }} {% if cfg.bondOpts %}{{ cfg.bondOpts }}{% endif %}'" >> $IFCFGFILE
+echo "BONDING_MODULE_OPTS='mode={{ cfg.bondMode }} miimon=100 {% if cfg.bondOpts %}{{ cfg.bondOpts }}{% endif %}'" >> $IFCFGFILE
 
 {% for slave in cfg.bondSlaves %}
-SLAVENAME=`ip -o link show | grep {{ slave }} | awk -F ': ' '{ printf "%s", $2 }'`
+SLAVENAME=`ip -o link show | grep {{ slave }} | awk -F ': ' '{ print $2 }'`
 SLAVECFG=/etc/sysconfig/network/ifcfg-${SLAVENAME}
-echo "BONDING_SLAVE{{ loop.index0 }}='${ SLAVENAME }'" >> $IFCFGFILE
+echo "BONDING_SLAVE{{ loop.index0 }}='${SLAVENAME}'" >> $IFCFGFILE
 echo "BOOTPROTO='none'" > $SLAVECFG
-echo "MTU=''" >> $SLAVECFG
-echo "NAME=''" >> $SLAVECFG
-echo "IPADDR=''" >> $SLAVECFG
-echo "NETMASK=''" >> $SLAVECFG
-echo "NETWORK=''" >> $SLAVECFG
-echo "BROADCAST=''" >> $SLAVECFG
-echo "STARTMODE='auto'" >> $SLAVECFG
-echo "ETHTOOL_OPTIONS=''" >> $SLAVECFG
-echo "STARTMODE=hotplug" >> $SLAVECFG
+echo "STARTMODE='hotplug'" >> $SLAVECFG
 {% endfor %}
 
 {% else %}
-DEVNAME=`ip -o link show | grep {{ cfg.mac }} | awk -F ': ' '{ printf "%s", $2 }'`
+DEVNAME=`ip -o link show | grep {{ cfg.mac }} | awk -F ': ' '{ print $2 }'`
 IFCFGFILE=/etc/sysconfig/network/ifcfg-${DEVNAME}
 VLANCFGNAME=${DEVNAME}.{{ cfg.vlanid }}
 VLANCFGFILE=/etc/sysconfig/network/ifcfg-${DEVNAME}.{{ cfg.vlanid }}
 echo "BOOTPROTO='none'" > $IFCFGFILE
-echo "IPADDR=''" >> $IFCFGFILE
-echo "NETMASK=''" >> $IFCFGFILE
-echo "MTU=''" >> $IFCFGFILE
-echo "NAME=''" >> $IFCFGFILE
-echo "NETWORK=''" >> $IFCFGFILE
-echo "BROADCAST=''" >> $IFCFGFILE
 echo "STARTMODE='auto'" >> $IFCFGFILE
-echo "ETHTOOL_OPTIONS=''" >> $IFCFGFILE
 {% endif %}
 
 echo "BOOTPROTO='static'" > $VLANCFGFILE
 echo "IPADDR={{ cfg.ip }}" >> $VLANCFGFILE
 echo "NETMASK={{ cfg.netmask }}" >> $VLANCFGFILE
-echo "MTU=''" >> $VLANCFGFILE
-echo "NAME=''" >> $VLANCFGFILE
-echo "NETWORK=''" >> $VLANCFGFILE
-echo "BROADCAST=''" >> $VLANCFGFILE
 echo "STARTMODE='auto'" >> $VLANCFGFILE
-echo "ETHTOOL_OPTIONS=''" >> $VLANCFGFILE
 echo "ETHERDEVICE=${DEVNAME}" >> $VLANCFGFILE
 echo "VLAN_ID={{ cfg.vlanid }}" >> $VLANCFGFILE
 
@@ -877,43 +858,25 @@ IFCFGFILE=/etc/sysconfig/network/ifcfg-${DEVNAME}
 echo "BOOTPROTO='static'" > $IFCFGFILE
 echo "IPADDR='{{ cfg.ip }}'" >> $IFCFGFILE
 echo "NETMASK='{{ cfg.netmask }}'" >> $IFCFGFILE
-echo "MTU=''" >> $IFCFGFILE
-echo "NAME=''" >> $IFCFGFILE
-echo "NETWORK=''" >> $IFCFGFILE
-echo "BROADCAST=''" >> $IFCFGFILE
 echo "STARTMODE='auto'" >> $IFCFGFILE
-echo "ETHTOOL_OPTIONS=''" >> $IFCFGFILE
 echo "BONDING_MASTER='yes'" >> $IFCFGFILE
-echo "BONDING_MODULE_OPTS='mode={{ cfg.bondMode }} {% if cfg.bondOpts %}{{ cfg.bondOpts }}{% endif %}'" >> $IFCFGFILE
+echo "BONDING_MODULE_OPTS='mode={{ cfg.bondMode }} miimon=100 {% if cfg.bondOpts %}{{ cfg.bondOpts }}{% endif %}'" >> $IFCFGFILE
 
 {% for slave in cfg.bondSlaves %}
-SLAVENAME=`ip -o link show | grep {{ slave }} | awk -F ': ' '{ printf "%s", $2 }'`
+SLAVENAME=`ip -o link show | grep {{ slave }} | awk -F ': ' '{ print $2 }'`
 SLAVECFG=/etc/sysconfig/network/ifcfg-${SLAVENAME}
-echo "BONDING_SLAVE{{ loop.index0 }}='${ SLAVENAME }'" >> $IFCFGFILE
+echo "BONDING_SLAVE{{ loop.index0 }}='${SLAVENAME}'" >> $IFCFGFILE
 echo "BOOTPROTO='none'" > $SLAVECFG
-echo "MTU=''" >> $SLAVECFG
-echo "NAME=''" >> $SLAVECFG
-echo "IPADDR=''" >> $SLAVECFG
-echo "NETMASK=''" >> $SLAVECFG
-echo "NETWORK=''" >> $SLAVECFG
-echo "BROADCAST=''" >> $SLAVECFG
-echo "STARTMODE='auto'" >> $SLAVECFG
-echo "ETHTOOL_OPTIONS=''" >> $SLAVECFG
-echo "STARTMODE=hotplug" >> $SLAVECFG
+echo "STARTMODE='hotplug'" >> $SLAVECFG
 {% endfor %}
 
 {% else %}
-DEVNAME=`ip -o link show | grep {{ cfg.mac }} | awk -F ': ' '{ printf "%s", $2 }'`
+DEVNAME=`ip -o link show | grep {{ cfg.mac }} | awk -F ': ' '{ print $2 }'`
 IFCFGFILE=/etc/sysconfig/network/ifcfg-${DEVNAME}
 echo "BOOTPROTO='static'" > $IFCFGFILE
 echo "IPADDR='{{ cfg.ip }}'" >> $IFCFGFILE
 echo "NETMASK='{{ cfg.netmask }}'" >> $IFCFGFILE
-echo "MTU=''" >> $IFCFGFILE
-echo "NAME=''" >> $IFCFGFILE
-echo "NETWORK=''" >> $IFCFGFILE
-echo "BROADCAST=''" >> $IFCFGFILE
 echo "STARTMODE='auto'" >> $IFCFGFILE
-echo "ETHTOOL_OPTIONS=''" >> $IFCFGFILE
 {% endif %}
 
 {% endif %}
