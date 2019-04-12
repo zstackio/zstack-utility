@@ -111,7 +111,14 @@ class DrbdResource(object):
 
     @bash.in_bash
     def down(self):
-        bash.bash_errorout("drbdadm down %s" % self.name)
+        r, o, e = bash.bash_roe("drbdadm down %s" % self.name)
+        if r == 0:
+            return
+        if "conflicting use of device-minor" in o+e:
+            return
+        if 0 == bash.bash_r("cat /proc/drbd | grep '^%s: cs:Unconfigured'" % self.config.local_host.minor):
+            return
+        raise Exception("demote resource %s failed: %s, %s, %s" % (self.name, r, o, e))
 
     @bash.in_bash
     @linux.retry(times=15, sleep_time=2)
@@ -191,8 +198,6 @@ class DrbdResource(object):
 
     @bash.in_bash
     def destroy(self):
-        if not self.is_defined():
-            return
         self.down()
         bash.bash_r("echo yes | drbdadm wipe-md %s" % self.name)
         bash.bash_r("rm /etc/drbd.d/%s.res" % self.name)
@@ -309,6 +314,10 @@ resource {{ name }} {
         dirname = os.path.dirname(self.path)
         if not os.path.exists(dirname):
             os.makedirs(dirname)
+        #TODO(weiw): this assumes minor will always be same on local and remote
+        r, o = bash.bash_ro("grep ' minor %s;' /etc/drbd.d/*" % self.local_host.minor)
+        if r == 0:
+            raise Exception("minor %s has already been defined %s" % (self.local_host.minor, o))
         with open(self.path, "w") as f:
             f.write(config.render(self.make_ctx()).strip())
 
@@ -380,6 +389,8 @@ def install_drbd():
 
 
 class OperateDrbd(object):
+    resource = None  # type: DrbdResource
+
     @bash.in_bash
     def __init__(self, resource, shared=False, delete_when_exception=False):
         self.resource = resource
@@ -394,6 +405,7 @@ class OperateDrbd(object):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if exc_val is not None and self.delete_when_exception is True:
+            self.resource.destroy()
             lvm.delete_lv(self.resource.config.local_host.disk, False)
             return
 
