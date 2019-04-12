@@ -115,6 +115,7 @@ class DrbdResource(object):
         if r == 0:
             return
         if "conflicting use of device-minor" in o+e:
+            logger.debug("detect conflicting use of device-minor! %s" % e)
             return
         if 0 == bash.bash_r("cat /proc/drbd | grep '^%s: cs:Unconfigured'" % self.config.local_host.minor):
             return

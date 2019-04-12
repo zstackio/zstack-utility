@@ -454,7 +454,6 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
-    @lock.file_lock(LOCK_FILE)
     def create_root_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
@@ -563,7 +562,6 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
-    @lock.file_lock(LOCK_FILE)
     def create_empty_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = VolumeRsp()
