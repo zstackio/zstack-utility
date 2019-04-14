@@ -110,6 +110,7 @@ class DrbdResource(object):
             bash.bash_errorout("drbdadm up %s" % self.name)
 
     @bash.in_bash
+    @linux.retry(5, 2)
     def down(self):
         r, o, e = bash.bash_roe("drbdadm down %s" % self.name)
         if r == 0:

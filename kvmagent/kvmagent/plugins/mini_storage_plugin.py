@@ -456,7 +456,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def create_root_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AgentRsp()
+        rsp = VolumeRsp()
         template_abs_path_cache = get_absolute_path_from_install_path(cmd.templatePathInCache)
         install_abs_path = get_absolute_path_from_install_path(cmd.installPath)
 
@@ -486,6 +486,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
             raise e
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+        rsp._init_from_drbd(drbdResource)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
