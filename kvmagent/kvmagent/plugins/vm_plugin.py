@@ -11,6 +11,8 @@ import xml.etree.ElementTree as etree
 import re
 import platform
 import netaddr
+import base64
+import hashlib
 
 import libvirt
 #from typing import List, Any, Union
@@ -46,6 +48,7 @@ ZS_XML_NAMESPACE = 'http://zstack.org'
 etree.register_namespace('zs', ZS_XML_NAMESPACE)
 
 QMP_SOCKET_PATH = "/var/lib/libvirt/qemu/zstack"
+PCI_ROM_PATH = "/var/lib/zstack/pcirom"
 
 class RetryException(Exception):
     pass
@@ -294,6 +297,9 @@ class ReportVmStateCmd(object):
         self.vmUuid = None
         self.vmState = None
 
+class ReportVmShutdownEventCmd(object):
+    def __init__(self):
+        self.vmUuid = None
 
 class CheckVmStateRsp(kvmagent.AgentResponse):
     def __init__(self):
@@ -350,6 +356,17 @@ class HotUnplugPciDeviceCommand(kvmagent.AgentCommand):
 class HotUnplugPciDeviceRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(HotUnplugPciDeviceRsp, self).__init__()
+
+class CreatePciDeviceRomFileCommand(kvmagent.AgentCommand):
+    def __init__(self):
+        super(CreatePciDeviceRomFileCommand, self).__init__()
+        self.specUuid = None
+        self.romContent = None
+        self.romMd5sum = None
+
+class CreatePciDeviceRomFileRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(CreatePciDeviceRomFileRsp, self).__init__()
 
 class KvmAttachUsbDeviceRsp(kvmagent.AgentResponse):
     def __init__(self):
@@ -3288,8 +3305,9 @@ class Vm(object):
                 VmPlugin._create_ceph_secret_key(cephSecretKey, cephSecretUuid)
 
             pciDevices = cmd.addons['pciDevice']
+            pciSpecUuid = cmd.addons['pciSpecUuid']
             if pciDevices:
-                make_pci_device(pciDevices)
+                make_pci_device(pciDevices, pciSpecUuid)
 
             storageDevices = cmd.addons['storageDevice']
             if storageDevices:
@@ -3309,7 +3327,7 @@ class Vm(object):
                     e(disk, 'source', None, {'dev': volume.installPath})
                     e(disk, 'target', None, {'dev': 'sd%s' % Vm.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
 
-        def make_pci_device(addresses):
+        def make_pci_device(addresses, spec_uuid):
             devices = elements['devices']
             for addr in addresses:
                 if match_pci_device(addr):
@@ -3325,6 +3343,11 @@ class Vm(object):
                 else:
                     raise kvmagent.KvmError(
                        'can not find pci device for address %s' % addr)
+                if spec_uuid:
+                    rom_file = os.path.join(PCI_ROM_PATH, spec_uuid)
+                    # only turn bar on when rom file exists
+                    if os.path.exists(rom_file):
+                        e(hostdev, "rom", None, {'bar': 'on', 'file': rom_file})
 
         def make_usb_device(usbDevices):
             next_uhci_port = 2
@@ -3545,6 +3568,7 @@ class VmPlugin(kvmagent.KvmAgent):
     GET_PCI_DEVICES = "/pcidevice/get"
     HOT_PLUG_PCI_DEVICE = "/pcidevice/hotplug"
     HOT_UNPLUG_PCI_DEVICE = "/pcidevice/hotunplug"
+    CREATE_PCI_DEVICE_ROM_FILE = "/pcidevice/createrom"
     KVM_ATTACH_USB_DEVICE_PATH = "/vm/usbdevice/attach"
     KVM_DETACH_USB_DEVICE_PATH = "/vm/usbdevice/detach"
     CHECK_MOUNT_DOMAIN_PATH = "/check/mount/domain"
@@ -4880,6 +4904,28 @@ class VmPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    def create_pci_device_rom_file(self, req):
+        if not os.path.exists(PCI_ROM_PATH):
+            os.mkdir(PCI_ROM_PATH)
+
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CreatePciDeviceRomFileRsp()
+        rom_file = os.path.join(PCI_ROM_PATH, cmd.specUuid)
+        if not cmd.romContent and os.path.exists(rom_file):
+            logger.debug("delete rom file %s because no content in db anymore" % rom_file)
+            os.remove(rom_file)
+        elif cmd.romMd5sum != hashlib.md5(cmd.romContent).hexdigest():
+            rsp.success = False
+            rsp.error = "md5sum of pci rom file[uuid:%s] does not match" % cmd.specUuid
+            return jsonobject.dumps(rsp)
+        else:
+            content = base64.b64decode(cmd.romContent)
+            with open(rom_file, 'wb') as f:
+                f.write(content)
+            logger.debug("successfully write rom content into %s" % rom_file)
+        return jsonobject.dumps(rsp)
+
     def _get_next_usb_port(self, vmUuid, bus):
         conn = libvirt.open('qemu:///system')
         if not conn:
@@ -5004,6 +5050,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.GET_PCI_DEVICES, self.get_pci_info)
         http_server.register_async_uri(self.HOT_PLUG_PCI_DEVICE, self.hot_plug_pci_device)
         http_server.register_async_uri(self.HOT_UNPLUG_PCI_DEVICE, self.hot_unplug_pci_device)
+        http_server.register_async_uri(self.CREATE_PCI_DEVICE_ROM_FILE, self.create_pci_device_rom_file)
         http_server.register_async_uri(self.KVM_ATTACH_USB_DEVICE_PATH, self.kvm_attach_usb_device)
         http_server.register_async_uri(self.KVM_DETACH_USB_DEVICE_PATH, self.kvm_detach_usb_device)
         http_server.register_async_uri(self.CHECK_MOUNT_DOMAIN_PATH, self.check_mount_domain)
@@ -5276,6 +5323,32 @@ class VmPlugin(kvmagent.KvmAgent):
             content = traceback.format_exc()
             logger.warn("traceback: %s" % content)
 
+    def _vm_shutdown_event(self, conn, dom, event, detail, opaque):
+        try:
+            event = LibvirtEventManager.event_to_string(event)
+            if event not in (LibvirtEventManager.EVENT_SHUTDOWN,):
+                return
+
+            vm_uuid = dom.name()
+
+            # this is an operation outside zstack, report it
+            url = self.config.get(kvmagent.SEND_COMMAND_URL)
+            if not url:
+                logger.warn('cannot find SEND_COMMAND_URL, unable to report shutdown event of vm[uuid:%s]' % vm_uuid)
+                return
+
+            @thread.AsyncThread
+            def report_to_management_node():
+                cmd = ReportVmShutdownEventCmd()
+                cmd.vmUuid = vm_uuid
+                logger.debug('report shutdown event of vm ' + vm_uuid)
+                http.json_dump_post(url, cmd, {'commandpath': '/kvm/reportvmshutdown'})
+
+            report_to_management_node()
+        except:
+            content = traceback.format_exc()
+            logger.warn("traceback: %s" % content)
+
     def _set_vnc_port_iptable_rule(self, conn, dom, event, detail, opaque):
         try:
             event = LibvirtEventManager.event_to_string(event)
@@ -5361,6 +5434,7 @@ class VmPlugin(kvmagent.KvmAgent):
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE,
                                                   self._set_vnc_port_iptable_rule)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_REBOOT, self._vm_reboot_event)
+        LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._vm_shutdown_event)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._release_sharedblocks)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._extend_sharedblock)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._delete_pushgateway_metric)
