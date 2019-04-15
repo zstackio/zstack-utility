@@ -640,6 +640,11 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         rsp = VolumeRsp()
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid, raise_exception=False)
 
+        install_abs_path = get_absolute_path_from_install_path(cmd.installPath)
+        if lvm.has_lv_tag(install_abs_path, IMAGE_TAG):
+            lvm.active_lv(install_abs_path)
+            return jsonobject.dumps(rsp)
+
         drbdResource = drbd.DrbdResource(self.get_name_from_installPath(cmd.installPath))
         if cmd.role == drbd.DrbdRole.Primary:
             drbdResource.promote()
