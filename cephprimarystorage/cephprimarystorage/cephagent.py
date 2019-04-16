@@ -83,6 +83,13 @@ class CreateSnapshotRsp(AgentResponse):
         self.size = None
         self.actualSize = None
 
+class CheckSnapshotRsp(AgentResponse):
+    def __init__(self):
+        super(CheckSnapshotRsp, self).__init__()
+        self.size = None
+        self.completed = False
+        self.snapshotUuid = None
+
 class RollbackSnapshotRsp(AgentResponse):
     def __init__(self):
         super(RollbackSnapshotRsp, self).__init__()
@@ -174,6 +181,7 @@ class CephAgent(plugin.TaskManager):
     DOWNLOAD_IMAGESTORE_PATH = "/ceph/primarystorage/imagestore/backupstorage/download"
     DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/ceph/primarystorage/kvmhost/download"
     CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/ceph/primarystorage/kvmhost/download/cancel"
+    CHECK_SNAPSHOT_PATH = "/ceph/primarystorage/check/snapshot"
 
     http_server = http.HttpServer(port=7762)
     http_server.logfile_path = log.get_logfile_path()
@@ -211,6 +219,7 @@ class CephAgent(plugin.TaskManager):
         self.http_server.register_async_uri(self.GET_VOLUME_SNAPINFOS_PATH, self.get_volume_snapinfos)
         self.http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.download_from_kvmhost)
         self.http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
+        self.http_server.register_async_uri(self.CHECK_SNAPSHOT_PATH, self.check_snapshot)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -958,6 +967,30 @@ class CephAgent(plugin.TaskManager):
     @in_bash
     def cancel_download_from_kvmhost(self, req):
         return self.cancel_sftp_download(req)
+
+    @replyerror
+    def check_snapshot(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        vpath = self._normalize_install_path(cmd.volumePath)
+
+        snapshot = None
+        o = shell.call('rbd --format json snap ls %s' % vpath)
+        o = jsonobject.loads(o)
+        for s in o:
+            if s.name_ in cmd.snapshots:
+                snapshot = s.name_
+                break
+
+        rsp = CheckSnapshotRsp()
+        if snapshot is not None:
+            rsp.size = self._get_file_size(vpath + '@' + snapshot)
+            rsp.snapshotUuid = snapshot
+            rsp.completed = True
+        else:
+            rsp.completed = False
+
+        self._set_capacity_to_response(rsp)
+        return jsonobject.dumps(rsp)
 
 
 class CephDaemon(daemon.Daemon):
