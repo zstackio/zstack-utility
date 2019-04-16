@@ -7,8 +7,6 @@ from zstacklib.utils import log
 
 logcmd = True
 
-logger = log.get_logger(__name__)
-
 class ShellError(Exception):
     '''shell error'''
     
@@ -43,7 +41,7 @@ class ShellCmd(object):
         
     def __call__(self, is_exception=True):
         if logcmd:
-            logger.debug(self.cmd)
+            log.get_logger(__name__).debug(self.cmd)
             
         (self.stdout, self.stderr) = self.process.communicate()
         if is_exception and self.process.returncode != 0:
