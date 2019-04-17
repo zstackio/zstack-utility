@@ -379,6 +379,12 @@ elif distro in DEB_BASED_OS:
 else:
     error("unsupported OS!")
 
+#copy scripts
+#copy zs-xxx from mn_node to host_node
+copy_arg = CopyArg()
+copy_arg.src = '/opt/zstack-dvd/scripts/'
+copy_arg.dest = '/usr/local/bin/'
+copy(copy_arg, host_post_info)
 
 #set max performance 
 # AliOS 7u2 does not support tuned-adm
