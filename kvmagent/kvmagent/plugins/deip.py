@@ -216,6 +216,15 @@ class DEip(kvmagent.KvmAgent):
                 bash_errorout(EBTABLES_CMD + ' -t nat -F {{CHAIN_NAME}}')
                 bash_errorout(EBTABLES_CMD + ' -t nat -X {{CHAIN_NAME}}')
 
+            PRI_ODEV_CHAIN = "{{PRI_ODEV}}-gw"
+            if bash_r(EBTABLES_CMD + ' -t nat -L {{PRI_ODEV_CHAIN}} >/dev/null 2>&1') == 0:
+                RULE = "-i {{PRI_ODEV}} -j {{PRI_ODEV_CHAIN}}"
+                if bash_r(EBTABLES_CMD + ' -t nat -L PREROUTING | grep -- "{{RULE}}" > /dev/null') == 0:
+                    bash_errorout(EBTABLES_CMD + ' -t nat -D PREROUTING {{RULE}}')
+
+                bash_errorout(EBTABLES_CMD + ' -t nat -F {{PRI_ODEV_CHAIN}}')
+                bash_errorout(EBTABLES_CMD + ' -t nat -X {{PRI_ODEV_CHAIN}}')
+
             for BLOCK_DEV in [PRI_ODEV, PUB_ODEV, NIC_NAME]:
                 BLOCK_CHAIN_NAME = '{{BLOCK_DEV}}-arp'
 
@@ -502,6 +511,20 @@ class DEip(kvmagent.KvmAgent):
             create_iptable_rule_if_needed("ip6tables", "-t filter", "{{CHAIN_NAME}} -s {{NIC_IP}}/128 -j RETURN")
             create_iptable_rule_if_needed("ip6tables", "-t filter", "{{CHAIN_NAME}} -d {{NIC_IP}}/128 -j RETURN")
 
+        @bash.in_bash
+        def add_filter_to_prevent_namespace_arp_request():
+            #add arp neighbor for private ip
+            bash_r('ip netns exec {{NS_NAME}} ip neighbor add {{NIC_IP}} lladdr {{NIC_MAC}} dev {{PRI_IDEV}}')
+
+            #add ebtales to prevent eip namaespace send arp request
+            PRI_ODEV_CHAIN = "{{PRI_ODEV}}-gw"
+
+            if bash_r(EBTABLES_CMD + ' -t nat -L {{PRI_ODEV_CHAIN}} > /dev/null 2>&1') != 0:
+                bash_errorout(EBTABLES_CMD + ' -t nat -N {{PRI_ODEV_CHAIN}}')
+
+            create_ebtable_rule_if_needed('nat', 'PREROUTING', '-i {{PRI_ODEV}} -j {{PRI_ODEV_CHAIN}}')
+            create_ebtable_rule_if_needed('nat', PRI_ODEV_CHAIN, "-p ARP --arp-op Request -j DROP")
+
         if bash_r('eval {{NS}} ip link show > /dev/null') != 0:
             bash_errorout('ip netns add {{NS_NAME}}')
 
@@ -527,6 +550,7 @@ class DEip(kvmagent.KvmAgent):
             set_ip_to_idev_if_needed(PUB_IDEV, "ip", VIP, vipPrefixLen)
             nicPrefixLen = linux.netmask_to_cidr(NIC_NETMASK)
             set_ip_to_idev_if_needed(PRI_IDEV, "ip", NIC_GATEWAY, nicPrefixLen)
+            add_filter_to_prevent_namespace_arp_request()
             # ping VIP gateway
             bash_r('eval {{NS}} arping -q -A -w 2.5 -c 3 -I {{PUB_IDEV}} {{VIP}} > /dev/null')
             set_gateway_arp_if_needed()
