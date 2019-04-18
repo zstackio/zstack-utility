@@ -484,7 +484,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
     @in_bash
     def _delete_dhcp4(self, namspace):
-        dhcp_ip = bash_o("ip netns exec %s ip route | awk '{print $9}'" % namspace)
+        dhcp_ip = bash_o("ip netns exec {{namspace}} ip add | grep inet | awk '{print $2}' | awk -F '/' '{print $1}' | head -1")
         dhcp_ip = dhcp_ip.strip(" \t\n\r")
 
         if dhcp_ip:
