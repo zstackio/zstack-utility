@@ -925,6 +925,42 @@ def do_active_lv(absolutePath, lockType, recursive):
             handle_lv(LvmlockdLockType.SHARE, absolutePath)
 
 
+def create_lvm_snapshot(absolutePath, remove_oldest=True, snapName=None, size_percent=0.1):
+    # type: (str, str, float) -> str
+    if snapName is None:
+        snapName = get_new_snapshot_name(absolutePath, remove_oldest)
+    if is_thin_lv(absolutePath):
+        size_command = ""
+    else:
+        virtual_size = linux.qcow2_virtualsize(absolutePath)
+        if virtual_size <= 2147483648:  # 2GB
+            snap_size = calcLvReservedSize(virtual_size)
+        elif int((virtual_size / 512) * size_percent * 512) <= 2147483648:
+            snap_size = 2147483648
+        else:
+            snap_size = int((virtual_size / 512) * size_percent * 512)
+        size_command = " -L %sB " % snap_size
+    bash.bash_errorout("lvcreate --snapshot -n %s %s %s" % (snapName, absolutePath, size_command))
+    return "/".join(absolutePath.split("/")[:-1]) + "/" + snapName
+
+
+def get_new_snapshot_name(absolutePath, remove_oldest=True):
+    @bash.in_bash
+    @lock.file_lock(absolutePath)
+    def do_get_new_snapshot_name(name):
+        all_snaps = bash.bash_o("lvs -oname -Sorigin=%s --nolocking --noheadings | grep _snap_" % name).strip().splitlines()
+        if len(all_snaps) == 0:
+            return name + "_snap_1"
+        numbers = map(lambda x: int(x.strip().split("_")[-1]), all_snaps)
+        if len(all_snaps) >= 3 and remove_oldest:
+            oldest = name + "_snap_" + str(min(numbers))
+            delete_lv("/".join(absolutePath.split("/")[:-1]) + "/" + oldest)
+        elif len(all_snaps) >= 3:
+            raise Exception("there are %s snapshots for lv %s exits" % (len(all_snaps), absolutePath))
+        return name + "_snap_" + str(max(numbers) + 1)
+    return do_get_new_snapshot_name(absolutePath.split("/")[-1])
+
+
 @bash.in_bash
 def get_lv_locking_type(path):
     @linux.retry(times=5, sleep_time=random.uniform(0.1, 3))

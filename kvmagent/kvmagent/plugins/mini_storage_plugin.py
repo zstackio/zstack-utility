@@ -73,6 +73,11 @@ class VolumeRsp(AgentRsp):
         self.localNetworkStatus = r.get_cstate()
 
 
+class ActiveRsp(VolumeRsp):
+    def __init__(self):
+        super(ActiveRsp, self).__init__()
+        self.snapPath = ""
+
 class CheckBitsRsp(AgentRsp):
     def __init__(self):
         super(CheckBitsRsp, self).__init__()
@@ -331,6 +336,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
             lvm.config_lvm_by_sed("reserved_stack", "reserved_stack=256", ["lvm.conf", "lvmlocal.conf"])
             lvm.config_lvm_by_sed("reserved_memory", "reserved_memory=131072", ["lvm.conf", "lvmlocal.conf"])
             lvm.config_lvm_by_sed("thin_pool_autoextend_threshold", "thin_pool_autoextend_threshold=80", ["lvm.conf", "lvmlocal.conf"])
+            lvm.config_lvm_by_sed("snapshot_autoextend_threshold", "snapshot_autoextend_threshold=80", ["lvm.conf", "lvmlocal.conf"])
 
             lvm.config_lvm_filter(["lvm.conf", "lvmlocal.conf"])
 
@@ -637,7 +643,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def active_lv(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = VolumeRsp()
+        rsp = ActiveRsp()
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid, raise_exception=False)
 
         install_abs_path = get_absolute_path_from_install_path(cmd.installPath)
@@ -646,10 +652,25 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
             return jsonobject.dumps(rsp)
 
         drbdResource = drbd.DrbdResource(self.get_name_from_installPath(cmd.installPath))
-        if cmd.role == drbd.DrbdRole.Primary:
-            drbdResource.promote()
-        else:
+        if cmd.role == drbd.DrbdRole.Secondary:
             drbdResource.demote()
+            rsp._init_from_drbd(drbdResource)
+            return jsonobject.dumps(rsp)
+
+        try:
+            drbdResource.promote()
+        except Exception as e:
+            if not cmd.force:
+                raise e
+            snap_path = None
+            try:
+                snap_path = lvm.create_lvm_snapshot(install_abs_path)
+                drbdResource.promote(True, 2, 2)
+                rsp.snapPath = snap_path
+            except Exception as ee:
+                if snap_path is not None:
+                    lvm.delete_lv(snap_path)
+                raise ee
 
         rsp._init_from_drbd(drbdResource)
         return jsonobject.dumps(rsp)

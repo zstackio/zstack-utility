@@ -123,12 +123,20 @@ class DrbdResource(object):
         raise Exception("demote resource %s failed: %s, %s, %s" % (self.name, r, o, e))
 
     @bash.in_bash
-    @linux.retry(times=15, sleep_time=2)
-    def promote(self, force=False):
-        f = " --force" if force else ""
-        r, o, e = bash.bash_roe("drbdadm primary %s %s" % (self.name, f))
-        if self.get_role() != DrbdRole.Primary:
-            raise RetryException("promote failed, return: %s, %s, %s. resource %s still not in role %s" % (r, o, e, self.name, DrbdRole.Primary))
+    def promote(self, force=False, retry=15, sleep=2):
+        @bash.in_bash
+        @linux.retry(times=retry, sleep_time=sleep)
+        def do_promote():
+            f = " --force" if force else ""
+            r, o, e = bash.bash_roe("drbdadm primary %s %s" % (self.name, f))
+            if self.get_role() != DrbdRole.Primary:
+                raise RetryException("promote failed, return: %s, %s, %s. resource %s still not in role %s" % (
+                    r, o, e, self.name, DrbdRole.Primary))
+
+        if not force:
+            self.do_promote()
+        else:
+            bash.bash_errorout("drbdadm primary %s --force" % self.name)
 
     @bash.in_bash
     def demote(self):
@@ -181,7 +189,7 @@ class DrbdResource(object):
         if not primary:
             self.clear_bits()
         else:
-            self.promote(False)
+            self.promote()
             if backing:
                 linux.qcow2_create_with_backing_file_and_cmd(backing, self.get_dev_path(), cmd)
             else:
