@@ -5231,9 +5231,10 @@ class VmPlugin(kvmagent.KvmAgent):
             match = re.search(r"""<boot\s+dev='""", domain_xml)
             lindex = 0 if match is None else match.end()
             rindex = domain_xml[lindex:].index("'")
-            if lindex == 0 or domain_xml[lindex:lindex+rindex] != 'cdrom':
+            boot_dev = "not cdrom" if lindex == 0 else domain_xml[lindex:lindex+rindex]
+            if lindex == 0 or boot_dev != 'cdrom':
                 logger.debug("the vm[uuid:%s]'s boot device is %s, nothing to do, skip this reboot event" % (
-                    vm_uuid, domain_xml[lindex:lindex+rindex]))
+                    vm_uuid, boot_dev))
                 return
 
             logger.debug(
