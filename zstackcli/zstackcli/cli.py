@@ -972,7 +972,7 @@ Parse command parameters error:
 
                 >>> save 1
                 save history command 1 result to ./COMMAND-NAME-1.json
-
+    
                 >>> save 1,2,3,4
                 save command history 1,2,3,4 to ./COMMAND-1.json, ./COMMAND-2.json,
                 ./COMMAND-3.json, and ./COMMAND-4.json

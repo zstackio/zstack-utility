@@ -6085,8 +6085,44 @@ class ShowConfiguration(Command):
         self.description = "a shortcut that prints contents of zstack.properties to screen"
         ctl.register_command(self)
 
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--pretty', '-p', help='Make configuration prettier', action='store_true', default=False)
+
     def run(self, args):
-        shell_no_pipe('cat %s' % ctl.properties_file_path)
+        properties = ctl.read_all_properties()
+        if args.pretty:
+            maxlength = max([len(key[0]) for key in properties])
+            ret = [' = '.join([key[0].ljust(maxlength), key[1]]) for key in properties]
+        else :
+            ret = [' = '.join(key) for key in properties]
+
+        info('\n'.join(ret))
+
+class GetConfiguration(Command):
+    def __init__(self):
+        super(GetConfiguration, self).__init__()
+        self.name = "get_configuration"
+        self.description = "get one configuration by name"
+        ctl.register_command(self)
+
+    def run(self, args):
+        if not os.path.exists(ctl.properties_file_path):
+            raise CtlError('cannot find properties file(%s)' % ctl.properties_file_path)
+
+        if not ctl.extra_arguments:
+            raise CtlError('please input variable name that you want')
+
+        if len(ctl.extra_arguments) > 1:
+            raise CtlError('do not enter multiple variables')
+        
+        properties = PropertyFile(ctl.properties_file_path)
+        value = properties.read_property(ctl.extra_arguments[0])
+        if value:
+            info(value)
+        else :
+            raise CtlError('not configured')
+             
+
 
 class SetEnvironmentVariableCmd(Command):
     PATH = os.path.join(ctl.USER_ZSTACK_HOME_DIR, "zstack-ctl/ctl-env")
@@ -8544,6 +8580,7 @@ def main():
     InstallLicenseCmd()
     ClearLicenseCmd()
     ShowConfiguration()
+    GetConfiguration()
     SetEnvironmentVariableCmd()
     PullDatabaseBackupCmd()
     RollbackManagementNodeCmd()
