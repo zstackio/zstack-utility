@@ -120,6 +120,8 @@ class DrbdResource(object):
             return
         if 0 == bash.bash_r("cat /proc/drbd | grep '^%s: cs:Unconfigured'" % self.config.local_host.minor):
             return
+        if 1 == bash.bash_r("cat /proc/drbd | grep '^%s: '" % self.config.local_host.minor):
+            return
         raise Exception("demote resource %s failed: %s, %s, %s" % (self.name, r, o, e))
 
     @bash.in_bash
@@ -179,6 +181,8 @@ class DrbdResource(object):
         r, o, e = bash.bash_roe("drbdadm role %s" % self.name)
         if e is not None and "Device minor not allocated" in e:
             logger.debug("Device %s minor not allocated!" % self.name)
+            return False
+        if e is not None and "not defined in your config" in e:
             return False
         return True
 
