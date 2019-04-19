@@ -397,7 +397,9 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
             active_lvs = lvm.list_local_active_lvs(vgUuid)
             if len(active_lvs) == 0:
                 return
-            # drbd_resouces = blahblah
+            drbd_resources = [drbd.DrbdResource(lv) for lv in active_lvs]
+            for r in drbd_resources:
+                r.destroy()
             logger.warn("active lvs %s will be deactivate" % active_lvs)
             lvm.deactive_lv(vgUuid)
             active_lvs = lvm.list_local_active_lvs(vgUuid)

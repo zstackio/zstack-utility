@@ -868,8 +868,8 @@ def list_local_active_lvs(vgUuid):
     cmd(is_exception=False)
     result = []
     for i in cmd.stdout.strip().split("\n"):
-        if i != "":
-            result.append(i)
+        if i.strip() != "":
+            result.append(i.strip())
     return result
 
 
