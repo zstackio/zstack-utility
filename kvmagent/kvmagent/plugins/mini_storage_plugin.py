@@ -61,7 +61,7 @@ class VolumeRsp(AgentRsp):
 
         :type r: drbd.DrbdResource
         """
-        if not r.minor_allocated:
+        if not r.minor_allocated():
             self.localNetworkStatus = drbd.DrbdNetState.Unconfigured
             return
         self.actualSize = lvm.get_lv_size(r.config.local_host.disk)
