@@ -134,7 +134,7 @@ class DrbdResource(object):
                     r, o, e, self.name, DrbdRole.Primary))
 
         if not force:
-            self.do_promote()
+            do_promote()
         else:
             bash.bash_errorout("drbdadm primary %s --force" % self.name)
 
