@@ -1003,6 +1003,15 @@ def qcow2_lv_recursive_operate(abs_path, shared=False):
     return wrap
 
 
+def qcow2_lv_recursive_active(abs_path, lock_type):
+    # type: (str, int) -> object
+    backing = linux.qcow2_get_backing_file(abs_path)
+    active_lv(abs_path, lock_type == LvmlockdLockType.SHARE)
+
+    if backing != "":
+        qcow2_lv_recursive_active(backing, LvmlockdLockType.SHARE)
+
+
 class OperateLv(object):
     def __init__(self, abs_path, shared=False, delete_when_exception=False):
         self.abs_path = abs_path

@@ -650,9 +650,10 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
 
         install_abs_path = get_absolute_path_from_install_path(cmd.installPath)
         if lvm.has_lv_tag(install_abs_path, IMAGE_TAG):
-            lvm.active_lv(install_abs_path)
+            lvm.qcow2_lv_recursive_active(install_abs_path, lvm.LvmlockdLockType.SHARE)
             return jsonobject.dumps(rsp)
 
+        lvm.qcow2_lv_recursive_active(install_abs_path, lvm.LvmlockdLockType.EXCLUSIVE)
         drbdResource = drbd.DrbdResource(self.get_name_from_installPath(cmd.installPath))
         if cmd.role == drbd.DrbdRole.Secondary:
             drbdResource.demote()

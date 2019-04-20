@@ -179,10 +179,10 @@ class DrbdResource(object):
     @bash.in_bash
     def minor_allocated(self):
         r, o, e = bash.bash_roe("drbdadm role %s" % self.name)
-        if e is not None and "Device minor not allocated" in e:
+        if e is not None and "Device minor not allocated" in o+e:
             logger.debug("Device %s minor not allocated!" % self.name)
             return False
-        if e is not None and "not defined in your config" in e:
+        if e is not None and "not defined in your config" in o+e:
             return False
         return True
 
