@@ -653,13 +653,13 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
             lvm.qcow2_lv_recursive_active(install_abs_path, lvm.LvmlockdLockType.SHARE)
             return jsonobject.dumps(rsp)
 
-        lvm.qcow2_lv_recursive_active(install_abs_path, lvm.LvmlockdLockType.EXCLUSIVE)
         drbdResource = drbd.DrbdResource(self.get_name_from_installPath(cmd.installPath))
         if cmd.role == drbd.DrbdRole.Secondary:
             drbdResource.demote()
             rsp._init_from_drbd(drbdResource)
             return jsonobject.dumps(rsp)
 
+        lvm.qcow2_lv_recursive_active(install_abs_path, lvm.LvmlockdLockType.EXCLUSIVE)
         try:
             drbdResource.promote()
         except Exception as e:

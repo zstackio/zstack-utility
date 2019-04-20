@@ -1003,6 +1003,7 @@ def qcow2_lv_recursive_operate(abs_path, shared=False):
     return wrap
 
 
+#TODO(weiw): This is typically mini usage
 def qcow2_lv_recursive_active(abs_path, lock_type):
     # type: (str, int) -> object
     backing = linux.qcow2_get_backing_file(abs_path)
