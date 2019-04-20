@@ -944,6 +944,14 @@ def create_lvm_snapshot(absolutePath, remove_oldest=True, snapName=None, size_pe
     return "/".join(absolutePath.split("/")[:-1]) + "/" + snapName
 
 
+def delete_snapshots(lv_path):
+    all_snaps = bash.bash_o("lvs -oname -Sorigin=%s --nolocking --noheadings | grep _snap_" % lv_path.split("/")[-1]).strip().splitlines()
+    if len(all_snaps) == 0:
+        return
+    for snap in all_snaps:
+        delete_lv(snap)
+
+
 def get_new_snapshot_name(absolutePath, remove_oldest=True):
     @bash.in_bash
     @lock.file_lock(absolutePath)

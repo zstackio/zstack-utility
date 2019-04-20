@@ -519,6 +519,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
             r = drbd.DrbdResource(self.get_name_from_installPath(path))
             r.destroy()
             lvm.delete_lv(install_abs_path)
+        lvm.delete_snapshots(install_abs_path)
 
     @kvmagent.replyerror
     def create_template_from_volume(self, req):
@@ -665,6 +666,9 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         except Exception as e:
             if not cmd.force:
                 raise e
+            if self.test_network_ok_to_peer(drbdResource.config.remote_host.address.split(":")[0]):
+                raise Exception("storage network address %s still connected, wont force promote" %
+                                drbdResource.config.remote_host.address.split(":")[0])
             snap_path = None
             try:
                 snap_path = lvm.create_lvm_snapshot(install_abs_path)
@@ -677,6 +681,16 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
 
         rsp._init_from_drbd(drbdResource)
         return jsonobject.dumps(rsp)
+
+    @staticmethod
+    @bash.in_bash
+    def test_network_ok_to_peer(peer_address):
+        via_dev = bash.bash_o("ip -o r get %s | awk '{print $3}'" % peer_address)
+        recv = bash.bash_o("arping -b %s -I %s -c 5 | grep Received | awk '{print $2}'" % (peer_address, via_dev))
+        if int(recv) == 0:
+            return False
+        else:
+            return True
 
     @kvmagent.replyerror
     def get_volume_size(self, req):
