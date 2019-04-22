@@ -514,7 +514,7 @@ class DEip(kvmagent.KvmAgent):
         @bash.in_bash
         def add_filter_to_prevent_namespace_arp_request():
             #add arp neighbor for private ip
-            bash_r('ip netns exec {{NS_NAME}} ip neighbor add {{NIC_IP}} lladdr {{NIC_MAC}} dev {{PRI_IDEV}}')
+            bash_errorout('ip netns exec {{NS_NAME}} ip neighbor del {{NIC_IP}} dev {{PRI_IDEV}} || ip netns exec {{NS_NAME}} ip neighbor add {{NIC_IP}} lladdr {{NIC_MAC}} dev {{PRI_IDEV}}')
 
             #add ebtales to prevent eip namaespace send arp request
             PRI_ODEV_CHAIN = "{{PRI_ODEV}}-gw"
