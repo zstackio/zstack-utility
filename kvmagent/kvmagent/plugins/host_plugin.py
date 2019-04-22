@@ -4,6 +4,8 @@
 '''
 
 import platform
+from multiprocessing import Process
+
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
 from kvmagent.plugins.imagestore import ImageStoreClient
@@ -18,6 +20,9 @@ from zstacklib.utils import thread
 from zstacklib.utils import xmlobject
 from zstacklib.utils.bash import *
 from zstacklib.utils.report import Report
+from zstacklib.utils import iptables
+from zstacklib.utils import daemon
+from zstacklib.utils import thread
 import os
 import os.path
 import re
@@ -73,6 +78,20 @@ class GetUsbDevicesRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(GetUsbDevicesRsp, self).__init__()
         self.usbDevicesInfo = None
+
+class StartUsbRedirectServerRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(StartUsbRedirectServerRsp, self).__init__()
+        self.port = None
+
+class StopUsbRedirectServerRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(StopUsbRedirectServerRsp, self).__init__()
+
+class CheckUsbServerPortRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(CheckUsbServerPortRsp, self).__init__()
+        self.uuids = []
 
 class ReportDeviceEventCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -141,6 +160,9 @@ class HostPlugin(kvmagent.KvmAgent):
     ENABLE_HUGEPAGE = "/host/enable/hugepage"
     DISABLE_HUGEPAGE = "/host/disable/hugepage"
     CLEAN_LOCAL_CACHE = "/host/imagestore/cleancache"
+    HOST_START_USB_REDIRECT_PATH = "/host/usbredirect/start"
+    HOST_STOP_USB_REDIRECT_PATH = "/host/usbredirect/stop"
+    CHECK_USB_REDIRECT_PORT = "/host/usbredirect/check"
 
     def _get_libvirt_version(self):
         ret = shell.call('libvirtd --version')
@@ -375,6 +397,75 @@ class HostPlugin(kvmagent.KvmAgent):
             self.heartbeat_timer[hb] = t
             logger.debug('create heartbeat file at[%s]' % hb)
 
+        return jsonobject.dumps(rsp)
+
+    def _get_next_available_port(self):
+        for port in range(4100, 4200):
+            if bash_r("netstat -nap | grep :%s[[:space:]] | grep LISTEN" % port) != 0:
+                return port
+        raise kvmagent.KvmError('no more available port for start usbredirect server')
+
+    @kvmagent.replyerror
+    @in_bash
+    def start_usb_redirect_server(self, req):
+        def _start_usb_server(port, busNum, devNum):
+            iptc = iptables.from_iptables_save()
+            iptc.add_rule('-A INPUT -p tcp -m tcp --dport %s -j ACCEPT' % port)
+            iptc.iptable_restore()
+            systemd_service_name = "usbredir-%s-%s-%s" % (port, busNum, devNum)
+            if bash_r("systemctl list-units |grep %s" % systemd_service_name) == 0:
+                bash_r("systemctl start %s" % systemd_service_name)
+            else:
+                ret, output = bash_ro("systemd-run --unit %s usbredirserver -p %s %s-%s" % (systemd_service_name, port, busNum, devNum))
+                if ret != 0:
+                    logger.info("usb %s-%s start failed on port %s" % (busNum, devNum, port))
+                    return False, output
+            logger.info("usb %s-%s start successed on port %s" % (busNum, devNum, port))
+            return True, None
+
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = StartUsbRedirectServerRsp()
+        port = cmd.port if cmd.port is not None else self._get_next_available_port()
+        ret, output = _start_usb_server(int(port), cmd.busNum, cmd.devNum)
+        if ret:
+            rsp.port = int(port)
+            return jsonobject.dumps(rsp)
+        else:
+            rsp.success = False
+            rsp.error = output
+            return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
+    def stop_usb_redirect_server(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = StopUsbRedirectServerRsp()
+        if bash_r("netstat -nap | grep :%s[[:space:]] | grep LISTEN | grep usbredir" % cmd.port) != 0:
+            logger.info("port %s is not occupied by usbredir" % cmd.port)
+        bash_r("systemctl stop usbredir-%s-%s-%s" % (cmd.port, cmd.busNum, cmd.devNum))
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
+    def check_usb_server_port(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CheckUsbServerPortRsp()
+        r, o, e = bash_roe("netstat -nap | grep LISTEN | grep usbredir  | awk '{print $4}' | awk -F ':' '{ print $4 }'")
+        if r != 0:
+            rsp.success = False
+            rsp.error = "unable to get started usb server port"
+            return jsonobject.dumps(rsp)
+        existPort = o.split("\n")
+        for value in cmd.portList:
+            uuid = str(value).split(":")[0]
+            port = str(value).split(":")[1]
+            if port not in existPort:
+                rsp.uuids.append(uuid)
+                continue
+            existPort.remove(port)
+        # kill stale usb server
+        for port in existPort:
+            bash_r("systemctl stop usbredir-%s" % port)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -624,6 +715,9 @@ grub2-mkconfig -o /boot/grub2/grub.cfg
         http_server.register_async_uri(self.ENABLE_HUGEPAGE, self.enable_hugepage)
         http_server.register_async_uri(self.DISABLE_HUGEPAGE, self.disable_hugepage)
         http_server.register_async_uri(self.CLEAN_LOCAL_CACHE, self.clean_local_cache)
+        http_server.register_async_uri(self.HOST_START_USB_REDIRECT_PATH, self.start_usb_redirect_server)
+        http_server.register_async_uri(self.HOST_STOP_USB_REDIRECT_PATH, self.stop_usb_redirect_server)
+        http_server.register_async_uri(self.CHECK_USB_REDIRECT_PORT, self.check_usb_server_port)
 
         self.heartbeat_timer = {}
         self.libvirt_version = self._get_libvirt_version()
