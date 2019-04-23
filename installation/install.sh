@@ -1672,6 +1672,9 @@ uz_upgrade_zstack(){
         fail "failed to upgrade local management node"
     fi
 
+    # substitute zsblk-agent.bin with zsblk-agent.aarch64.bin
+    [ `uname -m` == "aarch64" ] && mv -f ${ZSTACK_INSTALL_ROOT}/${CATALINA_ZSTACK_CLASSES}/ansible/zsblkagentansible/{zsblk-agent.aarch64.bin,zsblk-agent.bin}
+
     #Do not upgrade db, when using -i
     if [ -z $ONLY_INSTALL_ZSTACK ] ; then
         cd /; rm -rf $upgrade_folder
@@ -2931,9 +2934,6 @@ unzip_el6_rpm="${ZSTACK_INSTALL_ROOT}/libs/unzip*el6*.rpm"
 if [ `uname -m` == "aarch64" ]; then
     zstore_bin="${ZSTACK_INSTALL_ROOT}/${CATALINA_ZSTACK_CLASSES}/ansible/imagestorebackupstorage/zstack-store.aarch64.bin"
     unzip_el7_rpm="${ZSTACK_INSTALL_ROOT}/libs/unzip*el7*aarch64*.rpm"
-
-    # THIS IS A HACK!
-    mv -f ${ZSTACK_INSTALL_ROOT}/${CATALINA_ZSTACK_CLASSES}/ansible/zsblkagentansible/{zsblk-agent.aarch64.bin,zsblk-agent.bin}
 else
     zstore_bin="${ZSTACK_INSTALL_ROOT}/${CATALINA_ZSTACK_CLASSES}/ansible/imagestorebackupstorage/zstack-store.bin"
     unzip_el7_rpm="${ZSTACK_INSTALL_ROOT}/libs/unzip*el7*x86_64*.rpm"
@@ -3230,6 +3230,9 @@ install_system_libs
 
 #Install Ansible
 install_ansible
+
+# substitute zsblk-agent.bin with zsblk-agent.aarch64.bin
+[ `uname -m` == "aarch64" ] && mv -f ${ZSTACK_INSTALL_ROOT}/${CATALINA_ZSTACK_CLASSES}/ansible/zsblkagentansible/{zsblk-agent.aarch64.bin,zsblk-agent.bin}
 
 if [ ! -z $ONLY_INSTALL_LIBS ];then
     echo ""
