@@ -514,7 +514,8 @@ class DEip(kvmagent.KvmAgent):
         @bash.in_bash
         def add_filter_to_prevent_namespace_arp_request():
             #add arp neighbor for private ip
-            bash_errorout('ip netns exec {{NS_NAME}} ip neighbor del {{NIC_IP}} dev {{PRI_IDEV}} || ip netns exec {{NS_NAME}} ip neighbor add {{NIC_IP}} lladdr {{NIC_MAC}} dev {{PRI_IDEV}}')
+            bash_r('ip netns exec {{NS_NAME}} ip neighbor del {{NIC_IP}} dev {{PRI_IDEV}}')
+            bash_r('ip netns exec {{NS_NAME}} ip neighbor add {{NIC_IP}} lladdr {{NIC_MAC}} dev {{PRI_IDEV}}')
 
             #add ebtales to prevent eip namaespace send arp request
             PRI_ODEV_CHAIN = "{{PRI_ODEV}}-gw"
@@ -523,6 +524,8 @@ class DEip(kvmagent.KvmAgent):
                 bash_errorout(EBTABLES_CMD + ' -t nat -N {{PRI_ODEV_CHAIN}}')
 
             create_ebtable_rule_if_needed('nat', 'PREROUTING', '-i {{PRI_ODEV}} -j {{PRI_ODEV_CHAIN}}')
+            create_ebtable_rule_if_needed('nat', PRI_ODEV_CHAIN,
+                                          "-p ARP --arp-op Request --arp-ip-dst {{NIC_IP}} -j arpreply --arpreply-mac {{NIC_MAC}}", True)
             create_ebtable_rule_if_needed('nat', PRI_ODEV_CHAIN, "-p ARP --arp-op Request -j DROP")
 
         if bash_r('eval {{NS}} ip link show > /dev/null') != 0:
