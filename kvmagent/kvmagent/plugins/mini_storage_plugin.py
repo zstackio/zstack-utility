@@ -686,7 +686,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
     @staticmethod
     @bash.in_bash
     def test_network_ok_to_peer(peer_address):
-        via_dev = bash.bash_o("ip -o r get %s | awk '{print $3}'" % peer_address)
+        via_dev = bash.bash_o("ip -o r get %s | awk '{print $3}'" % peer_address).strip()
         recv = bash.bash_o("arping -w 1 -b %s -I %s -c 5 | grep Received | awk '{print $2}'" % (peer_address, via_dev))
         if int(recv) == 0:
             return False
