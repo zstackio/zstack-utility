@@ -397,7 +397,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
             active_lvs = lvm.list_local_active_lvs(vgUuid)
             if len(active_lvs) == 0:
                 return
-            drbd_resources = [drbd.DrbdResource(lv) for lv in active_lvs]
+            drbd_resources = [drbd.DrbdResource(lv.split("/")[-1]) for lv in active_lvs]
             for r in drbd_resources:
                 r.destroy()
             logger.warn("active lvs %s will be deactivate" % active_lvs)
@@ -483,6 +483,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         virtual_size = linux.qcow2_virtualsize(template_abs_path_cache)
 
         try:
+            lvm.qcow2_lv_recursive_active(template_abs_path_cache, lvm.LvmlockdLockType.SHARE)
             if not lvm.lv_exists(install_abs_path):
                 lvm.create_lv_from_cmd(install_abs_path, virtual_size, cmd,
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()), False)
@@ -686,7 +687,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
     @bash.in_bash
     def test_network_ok_to_peer(peer_address):
         via_dev = bash.bash_o("ip -o r get %s | awk '{print $3}'" % peer_address)
-        recv = bash.bash_o("arping -b %s -I %s -c 5 | grep Received | awk '{print $2}'" % (peer_address, via_dev))
+        recv = bash.bash_o("arping -w 1 -b %s -I %s -c 5 | grep Received | awk '{print $2}'" % (peer_address, via_dev))
         if int(recv) == 0:
             return False
         else:
