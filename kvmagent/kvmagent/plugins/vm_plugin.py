@@ -5100,6 +5100,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CHECK_MOUNT_DOMAIN_PATH, self.check_mount_domain)
         http_server.register_async_uri(self.KVM_RESIZE_VOLUME_PATH, self.kvm_resize_volume)
 
+        self.clean_old_sshfs_mount_points()
         self.register_libvirt_event()
 
         self.enable_auto_extend = True
@@ -5484,6 +5485,12 @@ class VmPlugin(kvmagent.KvmAgent):
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._extend_sharedblock)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._delete_pushgateway_metric)
         LibvirtAutoReconnect.register_libvirt_callbacks()
+
+    def clean_old_sshfs_mount_points(self):
+        mpts = shell.call("mount -t fuse.sshfs | awk '{print $3}'").splitlines()
+        for mpt in mpts:
+            if mpt.startswith(tempfile.gettempdir()):
+                linux.fumount(mpt, 2)
 
     def stop(self):
         pass
