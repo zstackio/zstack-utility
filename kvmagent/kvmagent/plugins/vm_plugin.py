@@ -384,6 +384,10 @@ class KvmDetachUsbDeviceRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(KvmDetachUsbDeviceRsp, self).__init__()
 
+class ReloadRedirectUsbRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(ReloadRedirectUsbRsp, self).__init__()
+
 class CheckMountDomainRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(CheckMountDomainRsp, self).__init__()
@@ -3364,35 +3368,59 @@ class Vm(object):
             devices = elements['devices']
             for usb in usbDevices:
                 if match_usb_device(usb):
-                    hostdev = e(devices, "hostdev", None, {'mode': 'subsystem', 'type': 'usb', 'managed': 'yes'})
-                    source = e(hostdev, "source")
-                    e(source, "address", None, {
-                        "bus": str(int(usb.split(":")[0])),
-                        "device": str(int(usb.split(":")[1]))
-                    })
-                    e(source, "vendor", None, {
-                        "id": hex(int(usb.split(":")[2], 16))
-                    })
-                    e(source, "product", None, {
-                        "id": hex(int(usb.split(":")[3], 16))
-                    })
+                    if usb.split(":")[5] == "PassThrough":
+                        hostdev = e(devices, "hostdev", None, {'mode': 'subsystem', 'type': 'usb', 'managed': 'yes'})
+                        source = e(hostdev, "source")
+                        e(source, "address", None, {
+                            "bus": str(int(usb.split(":")[0])),
+                            "device": str(int(usb.split(":")[1]))
+                        })
+                        e(source, "vendor", None, {
+                            "id": hex(int(usb.split(":")[2], 16))
+                        })
+                        e(source, "product", None, {
+                            "id": hex(int(usb.split(":")[3], 16))
+                        })
 
-                    # get controller index from usbVersion
-                    # eg. 1.1 -> 0
-                    # eg. 2.0.0 -> 1
-                    # eg. 3 -> 2
-                    bus = int(usb.split(":")[4][0]) - 1
-                    if bus == 0:
-                        address = e(hostdev, "address", None, {'type': 'usb', 'bus': str(bus), 'port': str(next_uhci_port)})
-                        next_uhci_port += 1
-                    elif bus == 1:
-                        address = e(hostdev, "address", None, {'type': 'usb', 'bus': str(bus), 'port': str(next_ehci_port)})
-                        next_ehci_port += 1
-                    elif bus == 2:
-                        address = e(hostdev, "address", None, {'type': 'usb', 'bus': str(bus), 'port': str(next_xhci_port)})
-                        next_xhci_port += 1
-                    else:
-                        raise kvmagent.KvmError('unknown usb controller %s', bus)
+                        # get controller index from usbVersion
+                        # eg. 1.1 -> 0
+                        # eg. 2.0.0 -> 1
+                        # eg. 3 -> 2
+                        bus = int(usb.split(":")[4][0]) - 1
+                        if bus == 0:
+                            address = e(hostdev, "address", None, {'type': 'usb', 'bus': str(bus), 'port': str(next_uhci_port)})
+                            next_uhci_port += 1
+                        elif bus == 1:
+                            address = e(hostdev, "address", None, {'type': 'usb', 'bus': str(bus), 'port': str(next_ehci_port)})
+                            next_ehci_port += 1
+                        elif bus == 2:
+                            address = e(hostdev, "address", None, {'type': 'usb', 'bus': str(bus), 'port': str(next_xhci_port)})
+                            next_xhci_port += 1
+                        else:
+                            raise kvmagent.KvmError('unknown usb controller %s', bus)
+                    if usb.split(":")[5] == "Redirect":
+                        redirdev = e(devices, "redirdev", None, {'bus': 'usb', 'type': 'tcp'})
+                        source = e(redirdev, "source", None, {'mode': 'connect', 'host': usb.split(":")[7], 'service': usb.split(":")[6]})
+
+                        # get controller index from usbVersion
+                        # eg. 1.1 -> 0
+                        # eg. 2.0.0 -> 1
+                        # eg. 3 -> 2
+                        bus = int(usb.split(":")[4][0]) - 1
+                        if bus == 0:
+                            address = e(redirdev, "address", None,
+                                        {'type': 'usb', 'bus': str(bus), 'port': str(next_uhci_port)})
+                            next_uhci_port += 1
+                        elif bus == 1:
+                            address = e(redirdev, "address", None,
+                                        {'type': 'usb', 'bus': str(bus), 'port': str(next_ehci_port)})
+                            next_ehci_port += 1
+                        elif bus == 2:
+                            address = e(redirdev, "address", None,
+                                        {'type': 'usb', 'bus': str(bus), 'port': str(next_xhci_port)})
+                            next_xhci_port += 1
+                        else:
+                            raise kvmagent.KvmError('unknown usb controller %s', bus)
                 else:
                     raise kvmagent.KvmError('cannot find usb device %s', usb)
 
@@ -3405,7 +3433,7 @@ class Vm(object):
             return True
 
         def match_usb_device(addr):
-            if len(addr.split(':')) == 5:
+            if len(addr.split(':')) == 8:
                 return True
             else:
                 return False
@@ -3580,6 +3608,7 @@ class VmPlugin(kvmagent.KvmAgent):
     CREATE_PCI_DEVICE_ROM_FILE = "/pcidevice/createrom"
     KVM_ATTACH_USB_DEVICE_PATH = "/vm/usbdevice/attach"
     KVM_DETACH_USB_DEVICE_PATH = "/vm/usbdevice/detach"
+    RELOAD_USB_REDIRECT_PATH = "/vm/usbdevice/reload"
     CHECK_MOUNT_DOMAIN_PATH = "/check/mount/domain"
     KVM_RESIZE_VOLUME_PATH = "/volume/resize"
 
@@ -4987,6 +5016,11 @@ class VmPlugin(kvmagent.KvmAgent):
                 for address in hostdev.get_child_node_as_list('address'):
                     if address.type_ == 'usb' and address.bus_ == str(bus):
                         usb_ports.append(int(address.port_))
+        for redirdev in domain_xmlobject.devices.get_child_node_as_list('redirdev'):
+            if redirdev.type_ == 'tcp':
+                for address in redirdev.get_child_node_as_list('address'):
+                    if address.type_ == 'usb' and address.bus_ == str(bus):
+                        usb_ports.append(int(address.port_))
         conn.close()
 
         # get the first unused port number
@@ -4999,44 +5033,84 @@ class VmPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = KvmAttachUsbDeviceRsp()
         bus = int(cmd.usbVersion[0]) - 1
-        content = '''
-<hostdev mode='subsystem' type='usb' managed='yes'>
-  <source>
-    <vendor id='0x%s'/>
-    <product id='0x%s'/>
-    <address bus='%s' device='%s'/>
-  </source>
-  <address type='usb' bus='%s' port='%s' />
-</hostdev>''' % (cmd.idVendor, cmd.idProduct, int(cmd.busNum), int(cmd.devNum), bus, self._get_next_usb_port(cmd.vmUuid, bus))
+        r, o, e = self._attach_usb(cmd, bus)
+        if r != 0:
+            rsp.success = False
+            rsp.error = "%s %s" % (e, o)
+        return jsonobject.dumps(rsp)
+
+    def _attach_usb(self, cmd, bus):
+        content = ''
+        if cmd.attachType == "PassThrough":
+            content = '''
+    <hostdev mode='subsystem' type='usb' managed='yes'>
+      <source>
+        <vendor id='0x%s'/>
+        <product id='0x%s'/>
+        <address bus='%s' device='%s'/>
+      </source>
+      <address type='usb' bus='%s' port='%s' />
+    </hostdev>''' % (cmd.idVendor, cmd.idProduct, int(cmd.busNum), int(cmd.devNum), bus, self._get_next_usb_port(cmd.vmUuid, bus))
+        if cmd.attachType == "Redirect":
+            content = '''
+    <redirdev bus='usb' type='tcp'>
+      <source mode='connect' host='%s' service='%s'/>
+      <address type='usb' bus='%s' device='%s'/>
+    </redirdev>''' % (cmd.ip, int(cmd.port), bus, self._get_next_usb_port(cmd.vmUuid, bus))
         spath = linux.write_to_temp_file(content)
         r, o, e = bash.bash_roe("virsh attach-device %s %s" % (cmd.vmUuid, spath))
         logger.debug("attached %s to %s, %s, %s" % (
             spath, cmd.vmUuid, o, e))
-        if r!= 0:
-            rsp.success = False
-            rsp.error = "%s %s" % (e, o)
-        return jsonobject.dumps(rsp)
+        return r, o, e
 
     @kvmagent.replyerror
     def kvm_detach_usb_device(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = KvmDetachUsbDeviceRsp()
-        content = '''
-<hostdev mode='subsystem' type='usb' managed='yes'>
-  <source>
-    <vendor id='0x%s'/>
-    <product id='0x%s'/>
-    <address bus='%s' device='%s'/>
-  </source>
-</hostdev>''' % (cmd.idVendor, cmd.idProduct, int(cmd.busNum), int(cmd.devNum))
+        r, o, e = self._detach_usb(cmd)
+        if r != 0:
+            rsp.success = False
+            rsp.error = "%s %s" % (e, o)
+        return jsonobject.dumps(rsp)
+
+    def _detach_usb(self, cmd):
+        content = ''
+        if cmd.attachType == "PassThrough":
+            content = '''
+    <hostdev mode='subsystem' type='usb' managed='yes'>
+      <source>
+        <vendor id='0x%s'/>
+        <product id='0x%s'/>
+        <address bus='%s' device='%s'/>
+      </source>
+    </hostdev>''' % (cmd.idVendor, cmd.idProduct, int(cmd.busNum), int(cmd.devNum))
+        if cmd.attachType == "Redirect":
+            content = '''
+    <redirdev bus='usb' type='tcp'>
+      <source mode='connect' host='%s' service='%s'/>
+    </redirdev>''' % (cmd.ip, int(cmd.port))
         spath = linux.write_to_temp_file(content)
         r, o, e = bash.bash_roe("virsh detach-device %s %s" % (cmd.vmUuid, spath))
         logger.debug("detached %s from %s, %s, %s" % (
             spath, cmd.vmUuid, o, e))
-        if r!= 0:
+        return r, o, e
+
+    @kvmagent.replyerror
+    def reload_redirect_usb(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = ReloadRedirectUsbRsp()
+
+        r, o, e = self._detach_usb(cmd)
+        if r != 0:
+            rsp.success = False
+            rsp.error = "%s %s" % (e, o)
+        bus = int(cmd.usbVersion[0]) - 1
+        r, o, e = self._attach_usb(cmd, bus)
+        if r != 0:
             rsp.success = False
             rsp.error = "%s %s" % (e, o)
         return jsonobject.dumps(rsp)
+
 
     @kvmagent.replyerror
     def kvm_resize_volume(self, req):
@@ -5097,6 +5171,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CREATE_PCI_DEVICE_ROM_FILE, self.create_pci_device_rom_file)
         http_server.register_async_uri(self.KVM_ATTACH_USB_DEVICE_PATH, self.kvm_attach_usb_device)
         http_server.register_async_uri(self.KVM_DETACH_USB_DEVICE_PATH, self.kvm_detach_usb_device)
+        http_server.register_async_uri(self.RELOAD_USB_REDIRECT_PATH, self.reload_redirect_usb)
         http_server.register_async_uri(self.CHECK_MOUNT_DOMAIN_PATH, self.check_mount_domain)
         http_server.register_async_uri(self.KVM_RESIZE_VOLUME_PATH, self.kvm_resize_volume)
 

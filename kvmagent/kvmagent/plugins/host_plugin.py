@@ -4,6 +4,8 @@
 '''
 
 import platform
+from multiprocessing import Process
+
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
 from zstacklib.utils import jsonobject
@@ -17,6 +19,9 @@ from zstacklib.utils import thread
 from zstacklib.utils import xmlobject
 from zstacklib.utils.bash import *
 from zstacklib.utils.report import Report
+from zstacklib.utils import iptables
+from zstacklib.utils import daemon
+from zstacklib.utils import thread
 import os
 import os.path
 import re
@@ -71,6 +76,20 @@ class GetUsbDevicesRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(GetUsbDevicesRsp, self).__init__()
         self.usbDevicesInfo = None
+
+class StartUsbRedirectServerRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(StartUsbRedirectServerRsp, self).__init__()
+        self.port = None
+
+class StopUsbRedirectServerRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(StopUsbRedirectServerRsp, self).__init__()
+
+class CheckUsbServerPortRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(CheckUsbServerPortRsp, self).__init__()
+        self.uuids = []
 
 class ReportDeviceEventCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -128,6 +147,9 @@ class HostPlugin(kvmagent.KvmAgent):
     SETUP_MOUNTABLE_PRIMARY_STORAGE_HEARTBEAT = "/host/mountableprimarystorageheartbeat"
     UPDATE_OS_PATH = "/host/updateos"
     UPDATE_DEPENDENCY = "/host/updatedependency"
+    HOST_START_USB_REDIRECT_PATH = "/host/usbredirect/start"
+    HOST_STOP_USB_REDIRECT_PATH = "/host/usbredirect/stop"
+    CHECK_USB_REDIRECT_PORT = "/host/usbredirect/check"
 
     def _get_libvirt_version(self):
         ret = shell.call('libvirtd --version')
@@ -364,6 +386,70 @@ class HostPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
+    def _get_next_available_port(self):
+        for port in range(4100, 4200):
+            if bash_r("netstat -nap | grep :%s[[:space:]] | grep LISTEN" % port) != 0:
+                return port
+        raise kvmagent.KvmError('no more available port for start usbredirect server')
+
+    @kvmagent.replyerror
+    @in_bash
+    def start_usb_redirect_server(self, req):
+        def start_server(port, idProduct, idVendor):
+            if os.system("/usr/sbin/usbredirserver -p %s %s:%s &" % (port, idVendor, idProduct)) == 0:
+                iptc = iptables.from_iptables_save()
+                iptc.add_rule('-A INPUT -p tcp -m tcp --dport %s -j ACCEPT' % port)
+                iptc.iptable_restore()
+                return True
+            return False
+
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = StartUsbRedirectServerRsp()
+        port = cmd.port if cmd.port is not None else self._get_next_available_port()
+        if start_server(int(port), cmd.idProduct, cmd.idVendor):
+            rsp.port = int(port)
+            return jsonobject.dumps(rsp)
+        else:
+            rsp.success = False
+            rsp.error = "unable to started usb server"
+            return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
+    def stop_usb_redirect_server(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = StopUsbRedirectServerRsp()
+        if bash_r("netstat -nap | grep :%s[[:space:]] | grep LISTEN | grep usbredir" % cmd.port) != 0:
+            logger.info("port %s is not occupied by usbredir" % cmd.port)
+        else:
+            bash_r("kill -9 $(netstat -nap | grep :%s[[:space:]] | grep LISTEN | "
+                   "grep usbredir | awk '{print $7}' | awk -F '/' '{ print $1 }')" % cmd.port)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
+    def check_usb_server_port(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CheckUsbServerPortRsp()
+        r, o, e = bash_roe("netstat -nap | grep LISTEN | grep usbredir  | awk '{print $4}' | awk -F ':' '{ print $4 }'")
+        if r != 0:
+            rsp.success = False
+            rsp.error = "unable to get started usb server port"
+            return jsonobject.dumps(rsp)
+        existPort = o.split("\n")
+        for value in cmd.portList:
+            uuid = str(value).split(":")[0]
+            port = str(value).split(":")[1]
+            if port not in existPort:
+                rsp.uuids.append(uuid)
+                continue
+            existPort.remove(port)
+        # kill stale usb server
+        for port in existPort:
+            bash_r("kill -9 $(netstat -nap | grep :%s[[:space:]] | grep LISTEN | "
+                   "grep usbredir | awk '{print $7}' | awk -F '/' '{ print $1 }')" % port)
+        return jsonobject.dumps(rsp)
+
     @kvmagent.replyerror
     @in_bash
     def get_usb_devices(self, req):
@@ -524,6 +610,9 @@ if __name__ == "__main__":
         http_server.register_async_uri(self.GET_USB_DEVICES_PATH, self.get_usb_devices)
         http_server.register_async_uri(self.UPDATE_OS_PATH, self.update_os)
         http_server.register_async_uri(self.UPDATE_DEPENDENCY, self.update_dependency)
+        http_server.register_async_uri(self.HOST_START_USB_REDIRECT_PATH, self.start_usb_redirect_server)
+        http_server.register_async_uri(self.HOST_STOP_USB_REDIRECT_PATH, self.stop_usb_redirect_server)
+        http_server.register_async_uri(self.CHECK_USB_REDIRECT_PORT, self.check_usb_server_port)
 
         self.heartbeat_timer = {}
         self.libvirt_version = self._get_libvirt_version()
