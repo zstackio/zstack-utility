@@ -2,8 +2,9 @@
 
 @author: frank
 '''
-
+import copy
 import platform
+
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
 from zstacklib.utils import jsonobject
@@ -17,6 +18,7 @@ from zstacklib.utils import thread
 from zstacklib.utils import xmlobject
 from zstacklib.utils.bash import *
 from zstacklib.utils.report import Report
+from zstacklib.utils.ip import get_nic_supported_max_speed
 import os
 import os.path
 import re
@@ -97,6 +99,78 @@ class UpdateDependencyRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(UpdateDependencyRsp, self).__init__()
 
+class GetHostNetworkBongdingResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(GetHostNetworkBongdingResponse, self).__init__()
+        self.bondings = None
+
+class HostNetworkBondingInventory(object):
+    slaves = None  # type: list(HostNetworkInterfaceInventory)
+
+    def __init__(self, bondingName=None):
+        super(HostNetworkBondingInventory, self).__init__()
+        self.bondingName = bondingName
+        self.mode = None
+        self.xmitHashPolicy = None
+        self.miiStatus = None
+        self.mac = None
+        self.ipAddress = None
+        self.miimon = None
+        self.all_slaves_active = None
+        self.slaves = None
+        self._init_from_name()
+
+    def _init_from_name(self):
+        if self.bondingName is None:
+            return
+        self.mode = bash_o("cat /sys/class/net/%s/bonding/mode" % self.bondingName).strip()
+        self.xmitHashPolicy = bash_o("cat /sys/class/net/%s/bonding/xmit_hash_policy" % self.bondingName).strip()
+        self.miiStatus = bash_o("cat /sys/class/net/%s/bonding/mii_status" % self.bondingName).strip()
+        self.mac = bash_o("cat /sys/class/net/%s/address" % self.bondingName).strip()
+        self.ipAddress = bash_o("ip -o a show %s | grep 'inet ' | awk '{print $4}'" % self.bondingName).strip()
+        if len(self.ipAddress) == 0:
+            r, master = bash_ro("cat /sys/class/net/%s/master/ifindex" % self.bondingName)
+            if r == 0:
+                self.ipAddress = bash_o("ip -o a list | grep '^%s: ' | grep 'inet ' | awk '{print $4}'" % master.strip()).strip()
+        self.miimon = bash_o("cat /sys/class/net/%s/bonding/miimon" % self.bondingName).strip()
+        self.all_slaves_active = bash_o("cat /sys/class/net/%s/bonding/all_slaves_active" % self.bondingName).strip() == "0"
+        self.slaves = []
+        slave_names = bash_o("cat /sys/class/net/%s/bonding/slaves" % self.bondingName).strip().split(" ")
+        if len(slave_names) == 0:
+            return
+
+        for name in slave_names:
+            self.slaves.append(HostNetworkInterfaceInventory(name, self.bondingName))
+
+    def _to_dict(self):
+        to_dict = self.__dict__
+        for k in to_dict.keys():
+            if k == "slaves":
+                v = copy.deepcopy(to_dict[k])
+                to_dict[k] = [i.__dict__ for i in v]
+        return to_dict
+
+
+class HostNetworkInterfaceInventory(object):
+    def __init__(self, name=None, bondingName=None):
+        super(HostNetworkInterfaceInventory, self).__init__()
+        self.interfaceName = name
+        self.bondingname = bondingName
+        self.speed = None
+        self.slaveActive = None
+        self.carrierActive = None
+        self._init_from_name()
+
+    def _init_from_name(self):
+        if self.interfaceName is None:
+            return
+        self.speed = get_nic_supported_max_speed(self.interfaceName)
+        self.carrierActive = bash_o("cat /sys/class/net/%s/carrier" % self.interfaceName).strip() == "1"
+        if self.bondingname is None:
+            return
+        self.slaveActive = self.interfaceName in bash_o("cat /sys/class/net/%s/bonding/active_slave" % self.bondingname)
+
+
 logger = log.get_logger(__name__)
 
 def _get_memory(word):
@@ -130,6 +204,7 @@ class HostPlugin(kvmagent.KvmAgent):
     UPDATE_OS_PATH = "/host/updateos"
     UPDATE_DEPENDENCY = "/host/updatedependency"
     IDENTIFY_HOST = "/host/identify"
+    GET_HOST_BONDINGS = "/host/bonding"
 
     def _get_libvirt_version(self):
         ret = shell.call('libvirtd --version')
@@ -518,7 +593,25 @@ if __name__ == "__main__":
         rsp = kvmagent.AgentResponse()
         sc = shell.ShellCmd("ipmitool chassis identify %s" % cmd.interval)
         sc(True)
-        return rsp
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def get_host_bondings(self, req):
+        rsp = GetHostNetworkBongdingResponse()
+        rsp.bondings = self.get_host_networking_bonds()
+        logger.debug([b._to_dict() for b in rsp.bondings])
+        return jsonobject.dumps(rsp)
+
+    @staticmethod
+    def get_host_networking_bonds():
+        bonds = []
+        bond_names = bash_o("cat /sys/class/net/bonding_masters").strip().split(" ")
+        if len(bond_names) == 0:
+            return bonds
+        for bond in bond_names:
+            bonds.append(HostNetworkBondingInventory(bond))
+        return bonds
+
 
     def start(self):
         self.host_uuid = None
@@ -534,6 +627,7 @@ if __name__ == "__main__":
         http_server.register_async_uri(self.UPDATE_OS_PATH, self.update_os)
         http_server.register_async_uri(self.UPDATE_DEPENDENCY, self.update_dependency)
         http_server.register_async_uri(self.IDENTIFY_HOST, self.identify_host)
+        http_server.register_async_uri(self.GET_HOST_BONDINGS, self.get_host_bondings)
 
         self.heartbeat_timer = {}
         self.libvirt_version = self._get_libvirt_version()
