@@ -694,12 +694,11 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
         namespaces = {}
         for u in cmd.userdata:
-            if u.userdataList or u.metadata.vmHostname:
-                if u.l3NetworkUuid in self.userData_vms:
-                    if u.vmIp not in self.userData_vms[u.l3NetworkUuid]:
-                        self.userData_vms[u.l3NetworkUuid].append(u.vmIp)
-                else:
-                    self.userData_vms[u.l3NetworkUuid] = [u.vmIp]
+            if u.l3NetworkUuid in self.userData_vms:
+                if u.vmIp not in self.userData_vms[u.l3NetworkUuid]:
+                    self.userData_vms[u.l3NetworkUuid].append(u.vmIp)
+            else:
+                self.userData_vms[u.l3NetworkUuid] = [u.vmIp]
 
             if u.namespaceName not in namespaces:
                 namespaces[u.namespaceName] = u
@@ -886,19 +885,16 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         conf_path = os.path.join(conf_folder, 'lighttpd.conf')
         http_root = os.path.join(conf_folder, 'html')
 
-        if to.userdataList or to.metadata.vmHostname:
-            if to.l3NetworkUuid in self.userData_vms:
-                if to.vmIp not in self.userData_vms[to.l3NetworkUuid]:
-                    self.userData_vms[to.l3NetworkUuid].append(to.vmIp)
-            else:
-                self.userData_vms[to.l3NetworkUuid] = [to.vmIp]
+        if to.l3NetworkUuid in self.userData_vms:
+            if to.vmIp not in self.userData_vms[to.l3NetworkUuid]:
+                self.userData_vms[to.l3NetworkUuid].append(to.vmIp)
+        else:
+            self.userData_vms[to.l3NetworkUuid] = [to.vmIp]
 
         if to.l3NetworkUuid in self.userData_vms:
             userdata_vm_ips = self.userData_vms[to.l3NetworkUuid]
-            userdata_ips = "|".join(userdata_vm_ips)
         else:
             userdata_vm_ips = []
-            userdata_ips = ""
 
         conf = '''\
 server.document-root = "{{http_root}}"
@@ -915,20 +911,20 @@ $HTTP["remoteip"] =~ "^(.*)$" {
         proxy.server = ( "" =>
            ( ( "host" => "{{pushgateway_ip}}", "port" => {{pushgateway_port}} ) )
         )
-{% if userdata_vm_ips -%}
-    } else $HTTP["remoteip"] =~ "^({{userdata_ips}})$" {
+{% for ip in userdata_vm_ips -%}
+    } else $HTTP["remoteip"] == "{{ip}}" {
         url.rewrite-once = (
-            "^/.*/meta-data/(.+)$" => "../%1/meta-data/$1",
-            "^/.*/meta-data$" => "../%1/meta-data",
-            "^/.*/meta-data/$" => "../%1/meta-data/",
-            "^/.*/user-data$" => "../%1/user-data",
-            "^/.*/user_data$" => "../%1/user_data",
-            "^/.*/meta_data.json$" => "../%1/meta_data.json",
-            "^/.*/password$" => "../%1/password",
-            "^/.*/$" => "../%1/$1"
+            "^/.*/meta-data/(.+)$" => "../{{ip}}/meta-data/$1",
+            "^/.*/meta-data$" => "../{{ip}}/meta-data",
+            "^/.*/meta-data/$" => "../{{ip}}/meta-data/",
+            "^/.*/user-data$" => "../{{ip}}/user-data",
+            "^/.*/user_data$" => "../{{ip}}/user_data",
+            "^/.*/meta_data.json$" => "../{{ip}}/meta_data.json",
+            "^/.*/password$" => "../{{ip}}/password",
+            "^/.*/$" => "../{{ip}}/$1"
         )
         dir-listing.activate = "enable"
-{% endif -%}
+{% endfor -%}
     } else $HTTP["remoteip"] =~ "^(.*)$" {
         url.rewrite-once = (
             "^/.*/meta-data/(.+)$" => "../zstack-default/meta-data/$1",
@@ -957,8 +953,7 @@ mimetype.assign = (
             'port': to.port,
             'pushgateway_ip' : self.CONNECT_ALL_NETNS_BR_OUTER_IP,
             'pushgateway_port' : self.KVM_HOST_PUSHGATEWAY_PORT,
-            'userdata_vm_ips': userdata_vm_ips,
-            'userdata_ips': userdata_ips
+            'userdata_vm_ips': userdata_vm_ips
         })
 
         linux.mkdir(http_root, 0777)
@@ -1021,9 +1016,6 @@ mimetype.assign = (
                     combined_message.attach(part)
 
             return combined_message.__str__()
-
-        if not to.userdataList and not to.metadata.vmHostname:
-            return
 
         conf_folder = os.path.join(self.USERDATA_ROOT, to.namespaceName)
         http_root = os.path.join(conf_folder, 'html')
