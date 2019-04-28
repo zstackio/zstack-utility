@@ -1116,7 +1116,14 @@ class UpdateConfigration(object):
         r_on, o_on, e_on = self.executeCmdOnFile("grep -E 'intel_iommu(\ )*=(\ )*on'")
         r_off, o_off, e_off = self.executeCmdOnFile("grep -E 'intel_iommu(\ )*=(\ )*off'")
         r_modprobe_blacklist, o_modprobe_blacklist, e_modprobe_blacklist = self.executeCmdOnFile("grep -E 'modprobe.blacklist(\ )*='")
-     
+        #When iommu has not changed,  No need to update /etc/default/grub
+        if self.enableIommu is False:
+            if r_on != 0 and r_off != 0 and r_modprobe_blacklist != 0:
+                return True, None
+        elif self.enableIommu is True:
+            if r_on ==0 and r_off != 0 and r_modprobe_blacklist == 0:
+                return True,None
+
         if r_on == 0: 
             r, o, e = self.executeCmdOnFile( "sed -i '/GRUB_CMDLINE_LINUX/s/[[:blank:]]*intel_iommu[[:blank:]]*=[[:blank:]]*on//g'")
             if r != 0:
@@ -1140,12 +1147,16 @@ class UpdateConfigration(object):
             r, o, e = self.executeCmdOnFile("sed -i '/GRUB_CMDLINE_LINUX/s/\"$/ intel_iommu=on modprobe.blacklist=snd_hda_intel,amd76x_edac,vga16fb,nouveau,rivafb,nvidiafb,rivatv,amdgpu,radeon\"/g'")
             if r != 0:
                 return False, "%s %s" % (e, o)
+
+        self.updatePcideviceConfigration()
         return True, None
 
     def updatePcideviceConfigration(self):
-        bash.bash_errorout("grub2-mkconfig -o /boot/grub2/grub.cfg")
-        bash.bash_errorout("grub2-mkconfig -o /etc/grub2-efi.cfg")
-        bash.bash_errorout("modprobe vfio && modprobe vfio-pci")
+        bash.bash_r("grub2-mkconfig -o /boot/grub2/grub.cfg")
+        bash.bash_o("grub2-mkconfig -o /boot/grub/grub.cfg")
+        bash.bash_r("grub2-mkconfig -o /etc/grub2-efi.cfg")
+        bash.bash_o("grub2-mkconfig -o /etc/grub-efi.cfg")
+        bash.bash_o("modprobe vfio && modprobe vfio-pci")
 
 def get_vm_by_uuid(uuid, exception_if_not_existing=True, conn=None):
     try:
@@ -4813,8 +4824,6 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.success = False
             rsp.error = error
             return jsonobject.dumps(rsp)
-
-        updateConfigration.updatePcideviceConfigration()
         
         r_bios, o_bios, e_bios = bash.bash_roe("find /sys -iname dmar*")
         r_kernel, o_kernel, e_kernel = bash.bash_roe("grep 'intel_iommu=on' /proc/cmdline")
