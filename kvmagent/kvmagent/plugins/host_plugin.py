@@ -116,7 +116,7 @@ class HostNetworkBondingInventory(object):
         self.mac = None
         self.ipAddress = None
         self.miimon = None
-        self.all_slaves_active = None
+        self.allSlavesActive = None
         self.slaves = None
         self._init_from_name()
 
@@ -133,7 +133,7 @@ class HostNetworkBondingInventory(object):
             if r == 0:
                 self.ipAddress = bash_o("ip -o a list | grep '^%s: ' | grep 'inet ' | awk '{print $4}'" % master.strip()).strip()
         self.miimon = bash_o("cat /sys/class/net/%s/bonding/miimon" % self.bondingName).strip()
-        self.all_slaves_active = bash_o("cat /sys/class/net/%s/bonding/all_slaves_active" % self.bondingName).strip() == "0"
+        self.allSlavesActive = bash_o("cat /sys/class/net/%s/bonding/all_slaves_active" % self.bondingName).strip() == "0"
         self.slaves = []
         slave_names = bash_o("cat /sys/class/net/%s/bonding/slaves" % self.bondingName).strip().split(" ")
         if len(slave_names) == 0:
