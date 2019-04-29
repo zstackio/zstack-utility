@@ -241,17 +241,17 @@ class NetworkPlugin(kvmagent.KvmAgent):
             bash_r("iptables -w -I INPUT -p udp --dport %s -j ACCEPT" % port)
 
         def filter_vxlan_nics(nics, interf, requireIp):
-            valid_nics = copy.copy(nics)
+            valid_nics = []
 
             if interf:
-                for nic in valid_nics:
-                    if interf not in nic.keys():
-                        valid_nics.remove(nic)
+                for nic in nics:
+                    if interf in nic.keys():
+                        valid_nics.append(nic)
 
             if requireIp:
-                for nic in valid_nics:
-                    if requireIp not in nic.values():
-                        valid_nics.remove(nic)
+                for nic in nics:
+                    if requireIp in nic.values():
+                        valid_nics.append(nic)
 
             return valid_nics
 
