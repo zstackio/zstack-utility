@@ -997,6 +997,7 @@ upgrade_zstack(){
         return
     fi
     #rerun install system libs, upgrade might need new libs
+    show_spinner is_enable_chronyd
     is_install_system_libs
     show_spinner uz_stop_zstack
     show_spinner uz_stop_zstack_ui
@@ -1009,7 +1010,6 @@ upgrade_zstack(){
     show_spinner cs_add_cronjob
     show_spinner cs_install_zstack_service
     show_spinner cs_enable_zstack_service
-    show_spinner is_enable_chronyd
     show_spinner cs_config_zstack_properties
     show_spinner cs_append_iptables
     show_spinner cs_setup_nginx

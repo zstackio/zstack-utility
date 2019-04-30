@@ -17,6 +17,7 @@ import time
 import functools
 import jinja2
 import commands
+import re
 
 # set global default value
 start_time = datetime.now()
@@ -1227,6 +1228,16 @@ def authorized_key(user, key_path, host_post_info):
             handle_ansible_info(details, host_post_info, "INFO")
             return True
 
+def check_pswd_rules(pswd):
+    if not len(pswd) >= 8:
+        return False
+    if not re.search(r"[0-9]+", pswd):
+        return False
+    if not re.search(r"[a-zA-Z]+", pswd):
+        return False
+    if not re.search(r"[^a-z0-9A-Z]+", pswd):
+        return False
+    return True
 
 def unarchive(unarchive_arg, host_post_info):
     start_time = datetime.now()
