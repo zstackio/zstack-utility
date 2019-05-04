@@ -13,6 +13,7 @@ import platform
 import netaddr
 import base64
 import hashlib
+import uuid
 
 import libvirt
 #from typing import List, Any, Union
@@ -49,8 +50,6 @@ etree.register_namespace('zs', ZS_XML_NAMESPACE)
 
 QMP_SOCKET_PATH = "/var/lib/libvirt/qemu/zstack"
 PCI_ROM_PATH = "/var/lib/zstack/pcirom"
-
-GRUB_FILES = ["/boot/grub2/grub.cfg", "/boot/grub/grub.cfg", "/etc/grub2-efi.cfg", "/etc/grub-efi.cfg"]
 
 class RetryException(Exception):
     pass
@@ -327,18 +326,6 @@ class ReconnectMeCmd(object):
         self.hostUuid = None
         self.reason = None
 
-class GetPciDevicesCmd(kvmagent.AgentCommand):
-    def __init__(self):
-        super(GetPciDevicesCmd, self).__init__()
-        self.filterString = None
-        self.enableIommu = True
-
-class GetPciDevicesResponse(kvmagent.AgentResponse):
-    def __init__(self):
-        super(GetPciDevicesResponse, self).__init__()
-        self.pciDevicesInfo = None
-        self.hostIommuStatus = False
-
 class HotPlugPciDeviceCommand(kvmagent.AgentCommand):
     def __init__(self):
         super(HotPlugPciDeviceCommand, self).__init__()
@@ -358,17 +345,6 @@ class HotUnplugPciDeviceCommand(kvmagent.AgentCommand):
 class HotUnplugPciDeviceRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(HotUnplugPciDeviceRsp, self).__init__()
-
-class CreatePciDeviceRomFileCommand(kvmagent.AgentCommand):
-    def __init__(self):
-        super(CreatePciDeviceRomFileCommand, self).__init__()
-        self.specUuid = None
-        self.romContent = None
-        self.romMd5sum = None
-
-class CreatePciDeviceRomFileRsp(kvmagent.AgentResponse):
-    def __init__(self):
-        super(CreatePciDeviceRomFileRsp, self).__init__()
 
 class KvmAttachUsbDeviceRsp(kvmagent.AgentResponse):
     def __init__(self):
@@ -1115,61 +1091,6 @@ class VirtioIscsi(object):
         secret = call_libvirt()
         secret.setValue(self.chap_password)
         return secret.UUIDString()
-
-class UpdateConfigration(object):
-    def __init__(self):
-        self.path = None
-        self.enableIommu = None
-    
-    def executeCmdOnFile(self, shellCmd):
-        return bash.bash_roe("%s %s" % (shellCmd, self.path))
-
-    def updateHostIommu(self):
-        r_on, o_on, e_on = self.executeCmdOnFile("grep -E 'intel_iommu(\ )*=(\ )*on'")
-        r_off, o_off, e_off = self.executeCmdOnFile("grep -E 'intel_iommu(\ )*=(\ )*off'")
-        r_modprobe_blacklist, o_modprobe_blacklist, e_modprobe_blacklist = self.executeCmdOnFile("grep -E 'modprobe.blacklist(\ )*='")
-        #When iommu has not changed,  No need to update /etc/default/grub
-        if self.enableIommu is False:
-            if r_on != 0 and r_off != 0 and r_modprobe_blacklist != 0:
-                return True, None
-        elif self.enableIommu is True:
-            if r_on ==0 and r_off != 0 and r_modprobe_blacklist == 0:
-                return True,None
-
-        if r_on == 0: 
-            r, o, e = self.executeCmdOnFile( "sed -i '/GRUB_CMDLINE_LINUX/s/[[:blank:]]*intel_iommu[[:blank:]]*=[[:blank:]]*on//g'")
-            if r != 0:
-                return False, "%s %s" % (e, o)
-        if r_off == 0:
-            r, o, e = self.executeCmdOnFile("sed -i '/GRUB_CMDLINE_LINUX/s/[[:blank:]]*intel_iommu[[:blank:]]*=[[:blank:]]*off//g'")
-            if r != 0:
-                return False, "%s %s" % (e, o)
-        if r_modprobe_blacklist == 0:
-            r, o, e = self.executeCmdOnFile("grep -E '[[:blank:]]*modprobe.blacklist[[:blank:]]*=[[:blank:]]*[[:graph:]]*\"$'")
-            if r == 0:
-                r, o, e = self.executeCmdOnFile("sed -i '/GRUB_CMDLINE_LINUX/s/[[:blank:]]*modprobe.blacklist[[:blank:]]*=[[:blank:]]*[[:graph:]]*\"$/\"/g'")
-                if r != 0:
-                    return False, "%s %s" % (e, o)
-            else:
-                r, o, e = self.executeCmdOnFile("sed -i '/GRUB_CMDLINE_LINUX/s/[[:blank:]]*modprobe.blacklist[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g'")
-                if r != 0:
-                    return False, "%s %s" % (e, o)
-        
-        if self.enableIommu is True:        
-            r, o, e = self.executeCmdOnFile("sed -i '/GRUB_CMDLINE_LINUX/s/\"$/ intel_iommu=on modprobe.blacklist=snd_hda_intel,amd76x_edac,vga16fb,nouveau,rivafb,nvidiafb,rivatv,amdgpu,radeon\"/g'")
-            if r != 0:
-                return False, "%s %s" % (e, o)
-
-        self.updatePcideviceConfigration()
-        return True, None
-
-    def updateGrubConfig(self):
-        linux.updateGrubFile("grep -E 'intel_iommu(\ )*=(\ )*on'", "sed -i '/^[[:space:]]*linux/s/[[:blank:]]*intel_iommu[[:blank:]]*=[[:blank:]]*on//g'", GRUB_FILES)
-        linux.updateGrubFile("grep -E 'intel_iommu(\ )*=(\ )*off'", "sed -i '/^[[:space:]]*linux/s/[[:blank:]]*intel_iommu[[:blank:]]*=[[:blank:]]*off//g'", GRUB_FILES)
-        linux.updateGrubFile("grep -E 'modprobe.blacklist(\ )*='", "sed -i '/^[[:space:]]*linux/s/[[:blank:]]*modprobe.blacklist[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g'", GRUB_FILES)    
-        if self.enableIommu is True:        
-            linux.updateGrubFile(None, "sed -i '/^[[:space:]]*linux/s/$/ intel_iommu=on modprobe.blacklist=snd_hda_intel,amd76x_edac,vga16fb,nouveau,rivafb,nvidiafb,rivatv,amdgpu,radeon/g'", GRUB_FILES)       
-        bash.bash_o("modprobe vfio && modprobe vfio-pci")
 
 def get_vm_by_uuid(uuid, exception_if_not_existing=True, conn=None):
     try:
@@ -3347,9 +3268,12 @@ class Vm(object):
                 VmPlugin._create_ceph_secret_key(cephSecretKey, cephSecretUuid)
 
             pciDevices = cmd.addons['pciDevice']
-            pciSpecUuid = cmd.addons['pciSpecUuid']
             if pciDevices:
-                make_pci_device(pciDevices, pciSpecUuid)
+                make_pci_device(pciDevices)
+
+            mdevDevices = cmd.addons['mdevDevice']
+            if mdevDevices:
+                make_mdev_device(mdevDevices)
 
             storageDevices = cmd.addons['storageDevice']
             if storageDevices:
@@ -3369,9 +3293,10 @@ class Vm(object):
                     e(disk, 'source', None, {'dev': volume.installPath})
                     e(disk, 'target', None, {'dev': 'sd%s' % Vm.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
 
-        def make_pci_device(addresses, spec_uuid):
+        def make_pci_device(pciDevices):
             devices = elements['devices']
-            for addr in addresses:
+            for pci in pciDevices:
+                addr, spec_uuid = pci.split(',')
                 if match_pci_device(addr):
                     hostdev = e(devices, "hostdev", None, {'mode': 'subsystem', 'type': 'pci', 'managed': 'yes'})
                     e(hostdev, "driver", None, {'name': 'vfio'})
@@ -3390,6 +3315,14 @@ class Vm(object):
                     # only turn bar on when rom file exists
                     if os.path.exists(rom_file):
                         e(hostdev, "rom", None, {'bar': 'on', 'file': rom_file})
+
+        def make_mdev_device(mdevUuids):
+            devices = elements['devices']
+            for mdevUuid in mdevUuids:
+                hostdev = e(devices, "hostdev", None, {'mode': 'subsystem', 'type': 'mdev', 'model': 'vfio-pci', 'managed': 'yes'})
+                source = e(hostdev, "source")
+                # convert mdevUuid to 8-4-4-4-12 format
+                e(source, "address", None, { "uuid": str(uuid.UUID('{%s}' % mdevUuid))})
 
         def make_usb_device(usbDevices):
             next_uhci_port = 2
@@ -3634,10 +3567,8 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_GET_NIC_QOS = "/get/nic/qos"
     KVM_HARDEN_CONSOLE_PATH = "/vm/console/harden"
     KVM_DELETE_CONSOLE_FIREWALL_PATH = "/vm/console/deletefirewall"
-    GET_PCI_DEVICES = "/pcidevice/get"
     HOT_PLUG_PCI_DEVICE = "/pcidevice/hotplug"
     HOT_UNPLUG_PCI_DEVICE = "/pcidevice/hotunplug"
-    CREATE_PCI_DEVICE_ROM_FILE = "/pcidevice/createrom"
     KVM_ATTACH_USB_DEVICE_PATH = "/vm/usbdevice/attach"
     KVM_DETACH_USB_DEVICE_PATH = "/vm/usbdevice/detach"
     RELOAD_USB_REDIRECT_PATH = "/vm/usbdevice/reload"
@@ -4828,37 +4759,6 @@ class VmPlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     @in_bash
-    def get_pci_info(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = GetPciDevicesResponse()
-
-        updateConfigration = UpdateConfigration()
-        updateConfigration.path = "/etc/default/grub"
-        updateConfigration.enableIommu = cmd.enableIommu
-        success, error = updateConfigration.updateHostIommu()
-        if success is False:
-            rsp.success = False
-            rsp.error = error
-            return jsonobject.dumps(rsp)
-        
-        updateConfigration.updateGrubConfig()
-    
-        r_bios, o_bios, e_bios = bash.bash_roe("find /sys -iname dmar*")
-        r_kernel, o_kernel, e_kernel = bash.bash_roe("grep 'intel_iommu=on' /proc/cmdline")
-        if o_bios != '' and r_kernel == 0:
-            rsp.hostIommuStatus = True
-        else:
-            rsp.hostIommuStatus = False
-        r, o, e = bash.bash_roe("lspci -mmnnv")
-        if r!= 0:
-            rsp.success = False
-            rsp.error = "%s %s" % (e, o)
-        else:
-            rsp.pciDevicesInfo = o
-        return jsonobject.dumps(rsp)
-
-    @kvmagent.replyerror
-    @in_bash
     def hot_plug_pci_device(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = HotPlugPciDeviceRsp()
@@ -4972,28 +4872,6 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.success = False
             rsp.error = "pci device %s still exists on vm %s after 20s" % (addr, cmd.vmUuid)
 
-        return jsonobject.dumps(rsp)
-
-    @kvmagent.replyerror
-    def create_pci_device_rom_file(self, req):
-        if not os.path.exists(PCI_ROM_PATH):
-            os.mkdir(PCI_ROM_PATH)
-
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = CreatePciDeviceRomFileRsp()
-        rom_file = os.path.join(PCI_ROM_PATH, cmd.specUuid)
-        if not cmd.romContent and os.path.exists(rom_file):
-            logger.debug("delete rom file %s because no content in db anymore" % rom_file)
-            os.remove(rom_file)
-        elif cmd.romMd5sum != hashlib.md5(cmd.romContent).hexdigest():
-            rsp.success = False
-            rsp.error = "md5sum of pci rom file[uuid:%s] does not match" % cmd.specUuid
-            return jsonobject.dumps(rsp)
-        else:
-            content = base64.b64decode(cmd.romContent)
-            with open(rom_file, 'wb') as f:
-                f.write(content)
-            logger.debug("successfully write rom content into %s" % rom_file)
         return jsonobject.dumps(rsp)
 
     def _get_next_usb_port(self, vmUuid, bus):
@@ -5162,10 +5040,8 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_GET_NIC_QOS, self.get_nic_qos)
         http_server.register_async_uri(self.KVM_HARDEN_CONSOLE_PATH, self.harden_console)
         http_server.register_async_uri(self.KVM_DELETE_CONSOLE_FIREWALL_PATH, self.delete_console_firewall_rule)
-        http_server.register_async_uri(self.GET_PCI_DEVICES, self.get_pci_info)
         http_server.register_async_uri(self.HOT_PLUG_PCI_DEVICE, self.hot_plug_pci_device)
         http_server.register_async_uri(self.HOT_UNPLUG_PCI_DEVICE, self.hot_unplug_pci_device)
-        http_server.register_async_uri(self.CREATE_PCI_DEVICE_ROM_FILE, self.create_pci_device_rom_file)
         http_server.register_async_uri(self.KVM_ATTACH_USB_DEVICE_PATH, self.kvm_attach_usb_device)
         http_server.register_async_uri(self.KVM_DETACH_USB_DEVICE_PATH, self.kvm_detach_usb_device)
         http_server.register_async_uri(self.RELOAD_USB_REDIRECT_PATH, self.reload_redirect_usb)
