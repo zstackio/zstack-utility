@@ -4299,7 +4299,7 @@ class ChangeMysqlPasswordCmd(Command):
                             help="The user you want to change password",
                             required=True)
         parser.add_argument('--new-password','-new',
-                            help="New mysql password of root or normal user",
+                            help="New mysql password of root or normal user,A strong password must contain at least 8 characters in length, and include a combination of letters, numbers and special characters.",
                             required=True)
         parser.add_argument('--remote-ip','-ip',
                             help="Mysql ip address if didn't install on localhost",
@@ -4316,6 +4316,8 @@ class ChangeMysqlPasswordCmd(Command):
 
     def run(self, args):
         self.check_username_password(args)
+        if check_pswd_rules(args.new_password) == False:
+            error("Failed! The new password you entered doesn't meet the password policy requirements.\nA strong password must contain at least 8 characters in length, and include a combination of letters, numbers and special characters.")
         if args.user_name in self.normal_users:
             if args.remote_ip is not None:
                 sql = "mysql -u root -p'%s' -h '%s' -e \"UPDATE mysql.user SET Password=PASSWORD(\'%s\') , Host = \'%s\' WHERE USER=\'%s\';FLUSH PRIVILEGES;\"" % (args.root_password, args.remote_ip, args.new_password,args.remote_ip, args.user_name)
