@@ -2747,6 +2747,13 @@ class Vm(object):
             root.set('xmlns:qemu', 'http://libvirt.org/schemas/domain/qemu/1.0')
             elements['root'] = root
 
+        def make_memory_backing():
+            root = elements['root']
+            backing = e(root, 'memoryBacking')
+            e(backing, "hugepages")
+            e(backing, "nosharepages")
+            e(backing, "allocation", attrib={'mode': 'immediate'})
+
         def make_cpu():
             if use_numa and not IS_AARCH64:
                 root = elements['root']
@@ -3460,6 +3467,9 @@ class Vm(object):
 
         if cmd.additionalQmp:
             make_qemu_commandline()
+
+        if cmd.useHugePage:
+            make_memory_backing()
 
         root = elements['root']
         xml = etree.tostring(root)
