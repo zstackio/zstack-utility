@@ -23,6 +23,7 @@ import re
 import time
 import libvirt
 import traceback
+import tempfile
 
 IS_AARCH64 = platform.machine() == 'aarch64'
 
@@ -96,6 +97,14 @@ class UpdateDependencyRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(UpdateDependencyRsp, self).__init__()
 
+class EnableHugePageRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(EnableHugePageRsp, self).__init__()
+
+class DisableHugePageRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(DisableHugePageRsp, self).__init__()
+
 logger = log.get_logger(__name__)
 
 def _get_memory(word):
@@ -128,6 +137,8 @@ class HostPlugin(kvmagent.KvmAgent):
     SETUP_MOUNTABLE_PRIMARY_STORAGE_HEARTBEAT = "/host/mountableprimarystorageheartbeat"
     UPDATE_OS_PATH = "/host/updateos"
     UPDATE_DEPENDENCY = "/host/updatedependency"
+    ENABLE_HUGEPAGE = "/host/enable/hugepage"
+    DISABLE_HUGEPAGE = "/host/disable/hugepage"
 
     def _get_libvirt_version(self):
         ret = shell.call('libvirtd --version')
@@ -511,6 +522,83 @@ if __name__ == "__main__":
             logger.debug("successfully run: %s" % yum_cmd)
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    @in_bash
+    def disable_hugepage(self, req):
+        rsp = DisableHugePageRsp()
+        disable_hugepage_script = '''#!/bin/sh
+# config nr_hugepages
+sysctl -w vm.nr_hugepages=0
+
+# enable nr_hugepages
+sysctl vm.nr_hugepages=0
+
+# config grub
+sed -i '/GRUB_CMDLINE_LINUX/s/[[:blank:]]*hugepagesz[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g' /etc/default/grub
+sed -i '/GRUB_CMDLINE_LINUX/s/[[:blank:]]*hugepages[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g' /etc/default/grub
+sed -i '/GRUB_CMDLINE_LINUX/s/[[:blank:]]*transparent_hugepage[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g' /etc/default/grub
+line=`cat /etc/default/grub | grep GRUB_CMDLINE_LINUX`
+result=$(echo $line | grep '\"$') 
+if [ -n "$result" ]; then 
+    grub2-mkconfig -o /boot/grub2/grub.cfg
+else 
+    sed -i '/GRUB_CMDLINE_LINUX/s/$/\"/g' /etc/default/grub
+    grub2-mkconfig -o /boot/grub2/grub.cfg
+fi
+'''
+        fd, disable_hugepage_script_path = tempfile.mkstemp()
+        with open(disable_hugepage_script_path, 'w') as f:
+            f.write(disable_hugepage_script)
+        logger.info('close_hugepage_script_path is: %s' % disable_hugepage_script_path)
+        cmd = shell.ShellCmd('bash %s' % disable_hugepage_script_path)
+        cmd(False)
+        if cmd.return_code != 0 or "Error" in cmd.stdout:
+            rsp.success = False
+            rsp.error = cmd.stdout
+        os.remove(disable_hugepage_script_path)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
+    def enable_hugepage(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = EnableHugePageRsp()
+        pageSize = cmd.pageSize
+        reserveSize = cmd.reserveSize
+        enable_hugepage_script = '''#!/bin/sh
+# byte to mib
+let "reserveSize=%s/1024/1024"
+pageSize=%s
+memSize=`free -m | awk '/:/ {print $2;exit}'`
+let "pageNum=(memSize-reserveSize)/pageSize"
+if [ $memSize -lt $reserveSize ]                                                                                                                                                                                   
+then
+    echo "Error:reserve size is bigger than system memory size"
+    exit 1
+fi
+#drop cache 
+echo 3 > /proc/sys/vm/drop_caches
+
+# enable Transparent HugePages
+echo always > /sys/kernel/mm/transparent_hugepage/enabled
+
+# config grub
+sed -i '/GRUB_CMDLINE_LINUX/s/\"$/ transparent_hugepage=always hugepagesz=%sM hugepages=\'\"$pageNum\"\'\"/g' /etc/default/grub
+grub2-mkconfig -o /boot/grub2/grub.cfg
+''' % (reserveSize, pageSize, pageSize)
+
+        fd, enable_hugepage_script_path = tempfile.mkstemp()
+        with open(enable_hugepage_script_path, 'w') as f:
+            f.write(enable_hugepage_script)
+        logger.info('enable_hugepage_script_path is: %s' % enable_hugepage_script_path)
+        cmd = shell.ShellCmd('bash %s' % enable_hugepage_script_path)
+        cmd(False)
+        if cmd.return_code != 0 or "Error" in cmd.stdout:
+            rsp.success = False
+            rsp.error = cmd.stdout
+        os.remove(enable_hugepage_script_path)
+        return jsonobject.dumps(rsp)
+
     def start(self):
         self.host_uuid = None
 
@@ -524,6 +612,8 @@ if __name__ == "__main__":
         http_server.register_async_uri(self.GET_USB_DEVICES_PATH, self.get_usb_devices)
         http_server.register_async_uri(self.UPDATE_OS_PATH, self.update_os)
         http_server.register_async_uri(self.UPDATE_DEPENDENCY, self.update_dependency)
+        http_server.register_async_uri(self.ENABLE_HUGEPAGE, self.enable_hugepage)
+        http_server.register_async_uri(self.DISABLE_HUGEPAGE, self.disable_hugepage)
 
         self.heartbeat_timer = {}
         self.libvirt_version = self._get_libvirt_version()
