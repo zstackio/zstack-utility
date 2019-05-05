@@ -528,7 +528,8 @@ Parse command parameters error:
         set_session_to_api(msg)
         try:
             if apiname in [self.LOGIN_MESSAGE_NAME, self.LOGIN_BY_USER_NAME, self.CREATE_ACCOUNT_NAME,
-                           self.CREATE_USER_NAME, self.LOGIN_BY_USER_IAM2, self.CREATE_USER_IAM2]:
+                           self.CREATE_USER_NAME, self.LOGIN_BY_USER_IAM2, self.CREATE_USER_IAM2,
+                           self.GET_TWO_FACTOR_AUTHENTICATION_SECRET]:
                 if not msg.password:
                     raise CliError('"password" must be specified')
                 msg.password = hashlib.sha512(msg.password).hexdigest()
