@@ -366,11 +366,19 @@ Parse command parameters error:
                     all_params[params[0]] = eval_string(params[0], params[1])
                 elif apiname == 'APIAddPolicyStatementsToRoleMsg' and params[0] == 'statements':
                     all_params[params[0]] = eval_string(params[0], params[1])
+                elif apiname in ['APILogInByAccountMsg',
+                                 'APILogInByUserMsg',
+                                 'APILogInByLdapMsg',
+                                 'APILoginIAM2VirtualIDMsg',
+                                 'APILoginIAM2ProjectMsg',
+                                 'APILogOutMsg'] and params[0] == 'clientInfo':
+                    all_params[params[0]] = eval_string(params[0], params[1])
                 elif apiname in ['APIAddAttributesToIAM2VirtualIDMsg',
                                  'APIAddAttributesToIAM2ProjectMsg',
                                  'APIAddAttributesToIAM2VirtualIDGroupMsg',
                                  'APICreateIAM2VirtualIDMsg'] and params[0] == 'attributes':
                     all_params[params[0]] = eval_string(params[0], params[1])
+
                 elif apiname == 'APICreateTicketMsg' and params[0] == 'requests':
                     all_params[params[0]] = eval_string(params[0], params[1])
                 elif apiname == 'APIGetIAM2VirtualIDAPIPermissionMsg' and params[0] == 'apisToCheck':
