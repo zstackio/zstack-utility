@@ -610,7 +610,7 @@ def delete_image(path, tag):
         active_lv(f, shared=False)
         backing = linux.qcow2_get_backing_file(f)
         shell.check_run("lvremove -y -Stags={%s} %s" % (tag, f))
-        return f
+        return backing
 
     fpath = path
     while fpath:

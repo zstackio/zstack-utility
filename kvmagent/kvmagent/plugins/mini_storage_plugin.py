@@ -124,6 +124,12 @@ class RevertVolumeFromSnapshotRsp(VolumeRsp):
         self.size = None
 
 
+class GetQCOW2ReferenceRsp(AgentRsp):
+    def __init__(self):
+        super(GetQCOW2ReferenceRsp, self).__init__()
+        self.referencePaths = None
+
+
 def get_absolute_path_from_install_path(path):
     if path is None:
         raise Exception("install path can not be null")
@@ -221,7 +227,9 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
     GET_VOLUME_SIZE_PATH = "/ministorage/volume/getsize"
     CHECK_DISKS_PATH = "/ministorage/disks/check"
     MIGRATE_DATA_PATH = "/ministorage/volume/migrate"
-    REVERT_VOLUME_FROM_SNAPSHOT_PATH = "/ministorage/volume/revertfromsnapshot";
+    REVERT_VOLUME_FROM_SNAPSHOT_PATH = "/ministorage/volume/revertfromsnapshot"
+    GET_QCOW2_REFERENCE = "/ministorage/getqcow2reference"
+
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -241,6 +249,8 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.GET_VOLUME_SIZE_PATH, self.get_volume_size)
         http_server.register_async_uri(self.CHECK_DISKS_PATH, self.check_disks)
         http_server.register_async_uri(self.REVERT_VOLUME_FROM_SNAPSHOT_PATH, self.revert_volume_from_snapshot)
+        http_server.register_async_uri(self.GET_QCOW2_REFERENCE, self.get_qcow2_reference)
+
 
         self.imagestore_client = ImageStoreClient()
 
@@ -514,13 +524,37 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         install_abs_path = get_absolute_path_from_install_path(path)
         if lvm.has_lv_tag(install_abs_path, IMAGE_TAG):
             logger.info('deleting lv image: ' + install_abs_path)
-            lvm.delete_image(install_abs_path, IMAGE_TAG)
+            if lvm.lv_exists(install_abs_path):
+                lvm.delete_image(install_abs_path, IMAGE_TAG)
         else:
             logger.info('deleting lv volume: ' + install_abs_path)
             r = drbd.DrbdResource(self.get_name_from_installPath(path))
             r.destroy()
             lvm.delete_lv(install_abs_path)
         lvm.delete_snapshots(install_abs_path)
+
+    @kvmagent.replyerror
+    def get_qcow2_reference(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        rsp = GetQCOW2ReferenceRsp()
+        rsp.referencePaths = []
+        real_path = get_absolute_path_from_install_path(cmd.path)
+        for f in lvm.list_local_active_lvs(cmd.vgUuid):
+            backing_file = linux.qcow2_direct_get_backing_file(f)
+            if backing_file == real_path:
+                rsp.referencePaths.append(f)
+        for f in bash.bash_o("ls -l /dev/drbd* | grep -E '^b' | awk '{print $NF}'").splitlines():
+            f = f.strip()
+            if f == "":
+                continue
+            try:
+                if linux.qcow2_get_backing_file(f) == real_path:
+                    rsp.referencePaths.append(f)
+            except IOError:
+                    continue
+        logger.debug("find qcow2 %s referencess: %s" % (real_path, rsp.referencePaths))
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def create_template_from_volume(self, req):

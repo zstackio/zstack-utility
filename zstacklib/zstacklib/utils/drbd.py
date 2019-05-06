@@ -361,13 +361,13 @@ class DrbdHostStruct(DrbdStruct):
 class DrbdNetStruct(DrbdStruct):
     def __init__(self):
         super(DrbdNetStruct, self).__init__()
-        self.csums_alg = 'sha1'
+        self.csums_alg = 'crc32'
         self.after_sb_0pri = 'discard-zero-changes'
         self.after_sb_1pri = 'call-pri-lost-after-sb'
         self.after_sb_2pri = 'call-pri-lost-after-sb'
         self.sndbuf_size = 0
         self.allow_two_primaries = 'yes'
-        self.verify_alg = 'md5'
+        self.verify_alg = 'crc32'
 
 
 @bash.in_bash
