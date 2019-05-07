@@ -561,31 +561,9 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = VolumeRsp()
         volume_abs_path = get_absolute_path_from_install_path(cmd.volumePath)
-        install_abs_path = get_absolute_path_from_install_path(cmd.installPath)
+        snap_name = cmd.installPath.split("/")[-1]
 
-        if cmd.sharedVolume:
-            lvm.do_active_lv(volume_abs_path, lvm.LvmlockdLockType.SHARE, True)
-
-        with lvm.RecursiveOperateLv(volume_abs_path, shared=cmd.sharedVolume, skip_deactivate_tags=[IMAGE_TAG]):
-            virtual_size = linux.qcow2_virtualsize(volume_abs_path)
-            total_size = 0
-            for qcow2 in linux.qcow2_get_file_chain(volume_abs_path):
-                total_size += int(lvm.get_lv_size(qcow2))
-
-            if total_size > virtual_size:
-                total_size = virtual_size
-
-            if not lvm.lv_exists(install_abs_path):
-                lvm.create_lv_from_absolute_path(install_abs_path, total_size,
-                                                 "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
-            with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
-                linux.create_template(volume_abs_path, install_abs_path)
-                logger.debug('successfully created template[%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
-                if cmd.compareQcow2 is True:
-                    logger.debug("comparing qcow2 between %s and %s")
-                    bash.bash_errorout("time qemu-img compare %s %s" % (volume_abs_path, install_abs_path))
-                    logger.debug("confirmed qcow2 %s and %s are identical" % (volume_abs_path, install_abs_path))
-
+        lvm.create_lvm_snapshot(volume_abs_path, snapName=snap_name)
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
 

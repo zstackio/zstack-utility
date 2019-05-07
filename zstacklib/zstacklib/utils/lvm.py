@@ -694,11 +694,11 @@ def get_thin_pool_from_vg(vgName):
 
 class ThinPool(object):
     def __init__(self, path):
-        o = bash.bash_o("lvs %s --separator ' ' -oname,data_percent,lv_size --noheading --unit B" % path).strip()
-        self.name = o.split(" ")[0]
+        o = bash.bash_o("lvs %s --separator ' ' -oname,data_percent,lv_size,pool_lv --noheading --unit B" % path).strip()
+        self.name = o.split(" ")[0].strip()
         self.total = float(o.split(" ")[2].strip("B"))
         self.thin_lvs = [l.strip() for l in bash.bash_o("lvs -Spool_lv=%s --noheadings --nolocking -oname" % self.name).strip().splitlines()]
-        if len(self.thin_lvs) == 0:
+        if len(self.thin_lvs) == 0 and not is_thin_lv(path):
             self.free = self.total
         else:
             self.free = self.total * (100 - float(o.split(" ")[1].strip("B")))/100
@@ -730,9 +730,8 @@ def get_thin_lv_size(path):
     return str(int(l.total - l.free))
 
 
-@bash.in_bash
 def is_thin_lv(path):
-    return bash.bash_r("lvs --nolocking --noheadings  -olayout %s | grep thin" % path) == 0
+    return bash.bash_r("lvs --nolocking --noheadings  -olayout %s | grep 'thin,sparse'" % path) == 0
 
 
 @bash.in_bash
@@ -941,7 +940,10 @@ def create_lvm_snapshot(absolutePath, remove_oldest=True, snapName=None, size_pe
             snap_size = int((virtual_size / 512) * size_percent * 512)
         size_command = " -L %sB " % snap_size
     bash.bash_errorout("lvcreate --snapshot -n %s %s %s" % (snapName, absolutePath, size_command))
-    return "/".join(absolutePath.split("/")[:-1]) + "/" + snapName
+    path = "/".join(absolutePath.split("/")[:-1]) + "/" + snapName
+    if size_command == "":
+        bash.bash_r("lvchange -ay -K %s" % path)
+    return path
 
 
 def delete_snapshots(lv_path):
