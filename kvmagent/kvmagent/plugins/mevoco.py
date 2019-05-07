@@ -914,14 +914,14 @@ $HTTP["remoteip"] =~ "^(.*)$" {
 {% for ip in userdata_vm_ips -%}
     } else $HTTP["remoteip"] == "{{ip}}" {
         url.rewrite-once = (
-            "^/.*/meta-data/(.+)$" => "../{{ip}}/meta-data/$1",
-            "^/.*/meta-data$" => "../{{ip}}/meta-data",
-            "^/.*/meta-data/$" => "../{{ip}}/meta-data/",
-            "^/.*/user-data$" => "../{{ip}}/user-data",
-            "^/.*/user_data$" => "../{{ip}}/user_data",
-            "^/.*/meta_data.json$" => "../{{ip}}/meta_data.json",
-            "^/.*/password$" => "../{{ip}}/password",
-            "^/.*/$" => "../{{ip}}/$1"
+            "^/.*/meta-data/(.+)$" => "./{{ip}}/meta-data/$1",
+            "^/.*/meta-data$" => "./{{ip}}/meta-data",
+            "^/.*/meta-data/$" => "./{{ip}}/meta-data/",
+            "^/.*/user-data$" => "./{{ip}}/user-data",
+            "^/.*/user_data$" => "./{{ip}}/user_data",
+            "^/.*/meta_data.json$" => "./{{ip}}/meta_data.json",
+            "^/.*/password$" => "./{{ip}}/password",
+            "^/.*/$" => "./{{ip}}/$1"
         )
         dir-listing.activate = "enable"
 {% endfor -%}
@@ -1069,18 +1069,21 @@ mimetype.assign = (
     @in_bash
     @lock.file_lock('/run/xtables.lock')
     def _apply_userdata_restart_httpd(self, to):
+        def check(_):
+            pid = linux.find_process_by_cmdline([conf_path])
+            return pid is not None
+
         conf_folder = os.path.join(self.USERDATA_ROOT, to.namespaceName)
         conf_path = os.path.join(conf_folder, 'lighttpd.conf')
         pid = linux.find_process_by_cmdline([conf_path])
-        if not pid:
-            shell.call('ip netns exec %s lighttpd -f %s' % (to.namespaceName, conf_path))
+        if pid:
+            linux.kill_process(pid)
 
-            def check(_):
-                pid = linux.find_process_by_cmdline([conf_path])
-                return pid is not None
+        #restart lighttpd to load new configration
+        shell.call('ip netns exec %s lighttpd -f %s' % (to.namespaceName, conf_path))
+        if not linux.wait_callback_success(check, None, 5):
+            raise Exception('lighttpd[conf-file:%s] is not running after being started %s seconds' % (conf_path, 5))
 
-            if not linux.wait_callback_success(check, None, 5):
-                raise Exception('lighttpd[conf-file:%s] is not running after being started %s seconds' % (conf_path, 5))
 
     @lock.file_lock('/run/xtables.lock')
     def work_userdata_iptables(self, CHAIN_NAME, to):
