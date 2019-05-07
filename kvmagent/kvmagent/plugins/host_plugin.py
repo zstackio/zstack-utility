@@ -406,8 +406,13 @@ class HostPlugin(kvmagent.KvmAgent):
                 iptc = iptables.from_iptables_save()
                 iptc.add_rule('-A INPUT -p tcp -m tcp --dport %s -j ACCEPT' % self.port)
                 iptc.iptable_restore()
-                if os.system("nohup usbredirserver -p %s %s-%s &" % (self.port, self.busNum, self.devNum)) == 0:
-                    logger.info("usb %s-%s start success on port %s" % (self.busNum, self.devNum, port))
+                if bash_r("systemctl list-units |grep usbredir-%s" % self.port) == 0:
+                    # stop stale usb server
+                    bash_r("systemctl stop usbredir-%s" % self.port)
+                if bash_r("systemd-run --unit usbredir-%s usbredirserver -p %s %s-%s" % (self.port, self.port, self.busNum, self.devNum)) == 0:
+                    logger.info("usb %s-%s start successed on port %s" % (self.busNum, self.devNum, self.port))
+                else:
+                    logger.info("usb %s-%s start failed on port %s" % (self.busNum, self.devNum, self.port))
 
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = StartUsbRedirectServerRsp()
@@ -424,9 +429,7 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp = StopUsbRedirectServerRsp()
         if bash_r("netstat -nap | grep :%s[[:space:]] | grep LISTEN | grep usbredir" % cmd.port) != 0:
             logger.info("port %s is not occupied by usbredir" % cmd.port)
-        else:
-            bash_r("kill -9 $(netstat -nap | grep :%s[[:space:]] | grep LISTEN | "
-                   "grep usbredir | awk '{print $7}' | awk -F '/' '{ print $1 }')" % cmd.port)
+        bash_r("systemctl stop usbredir-%s" % cmd.port)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -449,8 +452,7 @@ class HostPlugin(kvmagent.KvmAgent):
             existPort.remove(port)
         # kill stale usb server
         for port in existPort:
-            bash_r("kill -9 $(netstat -nap | grep :%s[[:space:]] | grep LISTEN | "
-                   "grep usbredir | awk '{print $7}' | awk -F '/' '{ print $1 }')" % port)
+            bash_r("systemctl stop usbredir-%s" % port)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
