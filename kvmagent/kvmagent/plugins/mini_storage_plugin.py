@@ -452,16 +452,15 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         install_abs_path = get_absolute_path_from_install_path(cmd.installPath)
         rsp = ResizeVolumeRsp()
-        r = drbd.DrbdResource(cmd.resourceUuid)
-        r._init_from_disk(install_abs_path)
 
         if not cmd.drbd:
             lvm.resize_lv_from_cmd(install_abs_path, cmd.size, cmd)
             return jsonobject.dumps(rsp)
 
-        if cmd.drbd:
-            with drbd.OperateDrbd(r):
-                r.resize()
+        r = drbd.DrbdResource(cmd.resourceUuid)
+        r._init_from_disk(install_abs_path)
+        with drbd.OperateDrbd(r):
+            r.resize()
 
         with drbd.OperateDrbd(r):
             if not cmd.live:
@@ -638,12 +637,25 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         rsp = VolumeRsp()
 
         install_abs_path = get_absolute_path_from_install_path(cmd.primaryStorageInstallPath)
-        with lvm.OperateLv(install_abs_path, shared=False):
-            lvm.clean_lv_tag(install_abs_path, IMAGE_TAG)
-            lvm.add_lv_tag(install_abs_path, "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
+        lvm.active_lv(install_abs_path)
+        lvm.clean_lv_tag(install_abs_path, IMAGE_TAG)
+        lvm.add_lv_tag(install_abs_path, "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
 
-        r = drbd.DrbdResource(self.get_name_from_installPath(cmd.primaryStorageInstallPath))
-        rsp._init_from_drbd(r)
+        drbdResource = drbd.DrbdResource(install_abs_path.split("/")[-1], False)
+        drbdResource.config.local_host.hostname = cmd.local_host_name
+        drbdResource.config.local_host.disk = install_abs_path
+        drbdResource.config.local_host.minor = cmd.local_host_port - DRBD_START_PORT
+        drbdResource.config.local_host.address = "%s:%s" % (cmd.local_address, cmd.local_host_port)
+
+        drbdResource.config.remote_host.hostname = cmd.remote_host_name
+        drbdResource.config.remote_host.disk = install_abs_path
+        drbdResource.config.remote_host.minor = cmd.remote_host_port - DRBD_START_PORT
+        drbdResource.config.remote_host.address = "%s:%s" % (cmd.remote_address, cmd.remote_host_port)
+
+        drbdResource.config.write_config()
+        drbdResource.initialize(False, None, skip_clear_bits=cmd.init)
+
+        rsp._init_from_drbd(drbdResource)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror

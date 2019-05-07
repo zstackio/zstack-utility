@@ -924,6 +924,7 @@ def do_active_lv(absolutePath, lockType, recursive):
             handle_lv(LvmlockdLockType.SHARE, absolutePath)
 
 
+@bash.in_bash
 def create_lvm_snapshot(absolutePath, remove_oldest=True, snapName=None, size_percent=0.1):
     # type: (str, str, float) -> str
     if snapName is None:

@@ -187,9 +187,11 @@ class DrbdResource(object):
         return True
 
     @bash.in_bash
-    def initialize(self, primary, cmd, backing=None):
+    def initialize(self, primary, cmd, backing=None, skip_clear_bits=False):
         bash.bash_errorout("echo yes | drbdadm create-md %s" % self.name)
         self.up()
+        if skip_clear_bits:
+            return
         if not primary:
             self.clear_bits()
         else:
