@@ -100,9 +100,14 @@ class UpdateDependencyRsp(kvmagent.AgentResponse):
         super(UpdateDependencyRsp, self).__init__()
 
 class GetHostNetworkBongdingResponse(kvmagent.AgentResponse):
+    bondings = None  # type: list[HostNetworkBondingInventory]
+    nics = None  # type: list[HostNetworkInterfaceInventory]
+
     def __init__(self):
         super(GetHostNetworkBongdingResponse, self).__init__()
         self.bondings = None
+        self.nics = None
+
 
 class HostNetworkBondingInventory(object):
     slaves = None  # type: list(HostNetworkInterfaceInventory)
@@ -114,7 +119,7 @@ class HostNetworkBondingInventory(object):
         self.xmitHashPolicy = None
         self.miiStatus = None
         self.mac = None
-        self.ipAddress = None
+        self.ipAddresses = None
         self.miimon = None
         self.allSlavesActive = None
         self.slaves = None
@@ -127,20 +132,23 @@ class HostNetworkBondingInventory(object):
         self.xmitHashPolicy = bash_o("cat /sys/class/net/%s/bonding/xmit_hash_policy" % self.bondingName).strip()
         self.miiStatus = bash_o("cat /sys/class/net/%s/bonding/mii_status" % self.bondingName).strip()
         self.mac = bash_o("cat /sys/class/net/%s/address" % self.bondingName).strip()
-        self.ipAddress = bash_o("ip -o a show %s | grep 'inet ' | awk '{print $4}'" % self.bondingName).strip()
-        if len(self.ipAddress) == 0:
+        self.ipAddresses = [x.strip() for x in
+                          bash_o("ip -o a show %s | grep 'inet ' | awk '{print $4}'" % self.bondingName).splitlines()]
+        if len(self.ipAddresses) == 0:
             r, master = bash_ro("cat /sys/class/net/%s/master/ifindex" % self.bondingName)
             if r == 0:
-                self.ipAddress = bash_o("ip -o a list | grep '^%s: ' | grep 'inet ' | awk '{print $4}'" % master.strip()).strip()
+                self.ipAddresses = [x.strip() for x in bash_o(
+                    "ip -o a list | grep '^%s: ' | grep 'inet ' | awk '{print $4}'" % master.strip()).splitlines()]
         self.miimon = bash_o("cat /sys/class/net/%s/bonding/miimon" % self.bondingName).strip()
-        self.allSlavesActive = bash_o("cat /sys/class/net/%s/bonding/all_slaves_active" % self.bondingName).strip() == "0"
+        self.allSlavesActive = bash_o(
+            "cat /sys/class/net/%s/bonding/all_slaves_active" % self.bondingName).strip() == "0"
         self.slaves = []
         slave_names = bash_o("cat /sys/class/net/%s/bonding/slaves" % self.bondingName).strip().split(" ")
         if len(slave_names) == 0:
             return
 
         for name in slave_names:
-            self.slaves.append(HostNetworkInterfaceInventory(name, self.bondingName))
+            self.slaves.append(HostNetworkInterfaceInventory(name))
 
     def _to_dict(self):
         to_dict = self.__dict__
@@ -152,13 +160,16 @@ class HostNetworkBondingInventory(object):
 
 
 class HostNetworkInterfaceInventory(object):
-    def __init__(self, name=None, bondingName=None):
+    def __init__(self, name=None):
         super(HostNetworkInterfaceInventory, self).__init__()
         self.interfaceName = name
-        self.bondingname = bondingName
         self.speed = None
         self.slaveActive = None
         self.carrierActive = None
+        self.mac = None
+        self.ipAddresses = None
+        self.interfaceType = None
+        self.master = None
         self._init_from_name()
 
     def _init_from_name(self):
@@ -166,9 +177,28 @@ class HostNetworkInterfaceInventory(object):
             return
         self.speed = get_nic_supported_max_speed(self.interfaceName)
         self.carrierActive = bash_o("cat /sys/class/net/%s/carrier" % self.interfaceName).strip() == "1"
-        if self.bondingname is None:
-            return
-        self.slaveActive = self.interfaceName in bash_o("cat /sys/class/net/%s/bonding/active_slave" % self.bondingname)
+        self.mac = bash_o("cat /sys/class/net/%s/address" % self.interfaceName).strip()
+        self.ipAddresses = [x.strip() for x in
+                          bash_o("ip -o a show %s | grep 'inet ' | awk '{print $4}'" % self.interfaceName).splitlines()]
+
+        r, master = bash_ro("cat /sys/class/net/%s/master/ifindex" % self.interfaceName)
+        if r == 0 and master.strip() != "":
+            self.master = bash_o("ip link | grep -E '^%s: ' | awk '{print $2}'" % master.strip()).strip().strip(":")
+        if len(self.ipAddresses) == 0:
+            if r == 0:
+                self.ipAddresses = [x.strip() for x in bash_o(
+                    "ip -o a list | grep '^%s: ' | grep 'inet ' | awk '{print $4}'" % master.strip()).splitlines()]
+        if self.master is None:
+            self.interfaceType = "noMaster"
+        elif len(bash_o("ip link show type bond_slave %s" % self.interfaceName).strip()) > 0:
+            self.interfaceType = "bondingSlave"
+            self.slaveActive = self.interfaceName in bash_o("cat /sys/class/net/%s/bonding/active_slave" % self.master)
+        else:
+            self.interfaceType = "bridgeSlave"
+
+    def _to_dict(self):
+        to_dict = self.__dict__
+        return to_dict
 
 
 logger = log.get_logger(__name__)
@@ -204,7 +234,7 @@ class HostPlugin(kvmagent.KvmAgent):
     UPDATE_OS_PATH = "/host/updateos"
     UPDATE_DEPENDENCY = "/host/updatedependency"
     IDENTIFY_HOST = "/host/identify"
-    GET_HOST_BONDINGS = "/host/bonding"
+    GET_HOST_NETWORK_FACTS = "/host/networkfacts"
 
     def _get_libvirt_version(self):
         ret = shell.call('libvirtd --version')
@@ -596,16 +626,29 @@ if __name__ == "__main__":
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
-    def get_host_bondings(self, req):
+    def get_host_network_facts(self, req):
         rsp = GetHostNetworkBongdingResponse()
         rsp.bondings = self.get_host_networking_bonds()
-        logger.debug([b._to_dict() for b in rsp.bondings])
+        rsp.nics = self.get_host_networking_interfaces()
         return jsonobject.dumps(rsp)
+
+    @staticmethod
+    def get_host_networking_interfaces():
+        nics = []
+        nic_names = bash_o("find /sys/class/net -type l -not -lname '*virtual*' -printf '%f\n'").splitlines()
+        if len(nic_names) == 0:
+            return nics
+        for nic in nic_names:
+            nics.append(HostNetworkInterfaceInventory(nic.strip()))
+        return nics
 
     @staticmethod
     def get_host_networking_bonds():
         bonds = []
-        bond_names = bash_o("cat /sys/class/net/bonding_masters").strip().split(" ")
+        r, bond_names = bash_ro("cat /sys/class/net/bonding_masters")
+        if r != 0:
+            return bonds
+        bond_names = bond_names.strip().split(" ")
         if len(bond_names) == 0:
             return bonds
         for bond in bond_names:
@@ -627,7 +670,7 @@ if __name__ == "__main__":
         http_server.register_async_uri(self.UPDATE_OS_PATH, self.update_os)
         http_server.register_async_uri(self.UPDATE_DEPENDENCY, self.update_dependency)
         http_server.register_async_uri(self.IDENTIFY_HOST, self.identify_host)
-        http_server.register_async_uri(self.GET_HOST_BONDINGS, self.get_host_bondings)
+        http_server.register_async_uri(self.GET_HOST_NETWORK_FACTS, self.get_host_network_facts)
 
         self.heartbeat_timer = {}
         self.libvirt_version = self._get_libvirt_version()
