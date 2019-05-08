@@ -565,8 +565,8 @@ fi
         pageSize = cmd.pageSize
         reserveSize = cmd.reserveSize
         enable_hugepage_script = '''#!/bin/sh
-# all expr in M
-let "reserveSize=%s*1024"
+# byte to mib
+let "reserveSize=%s/1024/1024"
 pageSize=%s
 memSize=`free -m | awk '/:/ {print $2;exit}'`
 let "pageNum=(memSize-reserveSize)/pageSize"
