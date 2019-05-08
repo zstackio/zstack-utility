@@ -1,7 +1,7 @@
 host:
     description: host server
     type: target
-    list: {exec: "select h.managementIp from HostVO h where h.status = \"Connected\" and h.hypervisorType = \"KVM\""}
+    list: {exec: "select h.managementIp from HostVO h where h.hypervisorType = \"KVM\""}
     logs:
       - {name: kvmagent-logs, dir: /var/log/zstack/, file: zstack-kvmagent.log*}
       - {name: zstack-logs, dir: /var/log/zstack/, file: zstack.log*}
@@ -116,7 +116,7 @@ ceph-ps:
 sharedblock:
     description: sharedblock log
     type: target
-    list: {exec: "select h.managementIp from HostVO h where h.status =  \"Connected\" and h.hypervisorType = \"KVM\""}
+    list: {exec: "select h.managementIp from HostVO h where h.hypervisorType = \"KVM\""}
     logs:
       - {name: lsblk-info, exec: 'lsblk -p -o NAME,TYPE,FSTYPE,LABEL,UUID,VENDOR,MODEL,MODE,WWN,SIZE'}
       - {name: ls_dev_disk_by-id_info, exec: 'ls -l /dev/disk/by-id'}
