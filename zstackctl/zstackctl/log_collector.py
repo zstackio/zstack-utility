@@ -580,7 +580,6 @@ class CollectFromYml(object):
                                 run_remote_command(command, host_post_info)
                                 dest_log_dir = tmp_log_dir + '%s/' % log['name']
                             if 'exec' in log:
-                                timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
                                 command = log['exec']
                                 file_path = dest_log_dir + '%s' % (log['name'])
                                 (status, output) = run_remote_command('(%s) > %s' % (command, file_path),
@@ -753,6 +752,7 @@ class CollectFromYml(object):
         if self.check:
             self.get_total_size()
         else:
+            self.generate_summary(collect_dir)
             if len(threading.enumerate()) > 1:
                 info_verbose("It seems that some collect log thread timeout, "
                              "if compress failed, please use \'cd %s && tar zcf collect-log-%s-%s.tar.gz collect-log-%s-%s\' manually"
@@ -766,4 +766,3 @@ class CollectFromYml(object):
             else:
                 info_verbose("The collect log generate at: %s/collect-log-%s-%s.tar.gz,success %s,fail %s" % (
                     run_command_dir, detail_version, time_stamp, self.success_count, self.fail_count))
-            self.generate_summary(collect_dir)
