@@ -4307,9 +4307,9 @@ class ChangeMysqlPasswordCmd(Command):
 
     def check_username_password(self,args):
         if args.remote_ip is not None:
-            status, output = commands.getstatusoutput("mysql -u root -p%s -h '%s' -e 'show databases;'" % (args.root_password,  args.remote_ip))
+            status, output = commands.getstatusoutput("mysql -u root -p'%s' -h '%s' -e 'show databases;'" % (args.root_password,  args.remote_ip))
         else:
-            status, output = commands.getstatusoutput("mysql -u root -p%s -e 'show databases;'" % args.root_password)
+            status, output = commands.getstatusoutput("mysql -u root -p'%s' -e 'show databases;'" % args.root_password)
         if status != 0:
             error(output)
 
