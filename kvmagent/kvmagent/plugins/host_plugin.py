@@ -395,32 +395,32 @@ class HostPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     @in_bash
     def start_usb_redirect_server(self, req):
-        class UsbServerProcess(Process):
-            def __init__(self, port, busNum, devNum):
-                super(UsbServerProcess, self).__init__()
-                self.port = port
-                self.busNum = busNum
-                self.devNum = devNum
-
-            def run(self):
-                iptc = iptables.from_iptables_save()
-                iptc.add_rule('-A INPUT -p tcp -m tcp --dport %s -j ACCEPT' % self.port)
-                iptc.iptable_restore()
-                if bash_r("systemctl list-units |grep usbredir-%s" % self.port) == 0:
-                    # stop stale usb server
-                    bash_r("systemctl stop usbredir-%s" % self.port)
-                if bash_r("systemd-run --unit usbredir-%s usbredirserver -p %s %s-%s" % (self.port, self.port, self.busNum, self.devNum)) == 0:
-                    logger.info("usb %s-%s start successed on port %s" % (self.busNum, self.devNum, self.port))
-                else:
-                    logger.info("usb %s-%s start failed on port %s" % (self.busNum, self.devNum, self.port))
+        def _start_usb_server(port, busNum, devNum):
+            iptc = iptables.from_iptables_save()
+            iptc.add_rule('-A INPUT -p tcp -m tcp --dport %s -j ACCEPT' % port)
+            iptc.iptable_restore()
+            systemd_service_name = "usbredir-%s-%s-%s" % (port, busNum, devNum)
+            if bash_r("systemctl list-units |grep %s" % systemd_service_name) == 0:
+                bash_r("systemctl start %s" % systemd_service_name)
+            else:
+                ret, output = bash_ro("systemd-run --unit %s usbredirserver -p %s %s-%s" % (systemd_service_name, port, busNum, devNum))
+                if ret != 0:
+                    logger.info("usb %s-%s start failed on port %s" % (busNum, devNum, port))
+                    return False, output
+            logger.info("usb %s-%s start successed on port %s" % (busNum, devNum, port))
+            return True, None
 
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = StartUsbRedirectServerRsp()
         port = cmd.port if cmd.port is not None else self._get_next_available_port()
-        UsbServerProcess(int(port), cmd.busNum, cmd.devNum).start()
-
-        rsp.port = int(port)
-        return jsonobject.dumps(rsp)
+        ret, output = _start_usb_server(int(port), cmd.busNum, cmd.devNum)
+        if ret:
+            rsp.port = int(port)
+            return jsonobject.dumps(rsp)
+        else:
+            rsp.success = False
+            rsp.error = output
+            return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     @in_bash
@@ -429,7 +429,7 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp = StopUsbRedirectServerRsp()
         if bash_r("netstat -nap | grep :%s[[:space:]] | grep LISTEN | grep usbredir" % cmd.port) != 0:
             logger.info("port %s is not occupied by usbredir" % cmd.port)
-        bash_r("systemctl stop usbredir-%s" % cmd.port)
+        bash_r("systemctl stop usbredir-%s-%s-%s" % (cmd.port, cmd.busNum, cmd.devNum))
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
