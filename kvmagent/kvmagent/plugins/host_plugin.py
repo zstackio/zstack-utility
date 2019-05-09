@@ -534,6 +534,7 @@ sysctl -w vm.nr_hugepages=0
 sysctl vm.nr_hugepages=0
 
 # config grub
+sed -i '/GRUB_CMDLINE_LINUX/s/[[:blank:]]*hugepagesz[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g' /etc/default/grub
 sed -i '/GRUB_CMDLINE_LINUX/s/[[:blank:]]*hugepages[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g' /etc/default/grub
 sed -i '/GRUB_CMDLINE_LINUX/s/[[:blank:]]*transparent_hugepage[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g' /etc/default/grub
 line=`cat /etc/default/grub | grep GRUB_CMDLINE_LINUX`
@@ -581,16 +582,10 @@ echo 3 > /proc/sys/vm/drop_caches
 # enable Transparent HugePages
 echo always > /sys/kernel/mm/transparent_hugepage/enabled
 
-# config nr_hugepages
-sysctl -w vm.nr_hugepages=$pageNum
-
-# enable nr_hugepages
-sysctl vm.nr_hugepages=$pageNum
-
 # config grub
-sed -i '/GRUB_CMDLINE_LINUX/s/\"$/ transparent_hugepage=always hugepages=\'\"$pageNum\"\'\"/g' /etc/default/grub
+sed -i '/GRUB_CMDLINE_LINUX/s/\"$/ transparent_hugepage=always hugepagesz=%sM hugepages=\'\"$pageNum\"\'\"/g' /etc/default/grub
 grub2-mkconfig -o /boot/grub2/grub.cfg
-''' % (reserveSize, pageSize)
+''' % (reserveSize, pageSize, pageSize)
 
         fd, enable_hugepage_script_path = tempfile.mkstemp()
         with open(enable_hugepage_script_path, 'w') as f:
