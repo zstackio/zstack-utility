@@ -5293,7 +5293,15 @@ class VmPlugin(kvmagent.KvmAgent):
                 lvm.resize_lv(path, extend_size)
             except Exception as e:
                 logger.warn("extend lv[%s] to size[%s] failed" % (path, extend_size))
-            logger.debug("lv %s extend to %s success" % (path, extend_size))
+                if "incompatible mode" not in e.message.lower():
+                    return
+                try:
+                    with lvm.OperateLv(path, shared=False, delete_when_exception=False):
+                        lvm.resize_lv(path, extend_size)
+                except Exception as e:
+                    logger.warn("extend lv[%s] to size[%s] with operate failed" % (path, extend_size))
+            else:
+                logger.debug("lv %s extend to %s sucess" % (path, extend_size))
 
         def get_path_by_device(device_name, vm):
             for dev in vm.domain_xmlobject.devices.disk:
