@@ -4,8 +4,6 @@
 '''
 import copy
 import platform
-from multiprocessing import Process
-
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
 from kvmagent.plugins.imagestore import ImageStoreClient
@@ -16,12 +14,10 @@ from zstacklib.utils import log
 from zstacklib.utils import shell
 from zstacklib.utils import sizeunit
 from zstacklib.utils import linux
-from zstacklib.utils import thread
 from zstacklib.utils import xmlobject
 from zstacklib.utils.bash import *
 from zstacklib.utils.report import Report
 from zstacklib.utils import iptables
-from zstacklib.utils import daemon
 from zstacklib.utils import thread
 from zstacklib.utils.ip import get_nic_supported_max_speed
 import os
@@ -118,6 +114,13 @@ class UpdateDependencyCmd(kvmagent.AgentCommand):
 class UpdateDependencyRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(UpdateDependencyRsp, self).__init__()
+
+class GetXfsFragDataRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(GetXfsFragDataRsp, self).__init__()
+        self.fsType = None
+        self.hostFrag = None
+        self.volumeFragMap = {}
 
 class EnableHugePageRsp(kvmagent.AgentResponse):
     def __init__(self):
@@ -268,6 +271,7 @@ class HostPlugin(kvmagent.KvmAgent):
     CHECK_USB_REDIRECT_PORT = "/host/usbredirect/check"
     IDENTIFY_HOST = "/host/identify"
     GET_HOST_NETWORK_FACTS = "/host/networkfacts"
+    HOST_XFS_SCRAPE_PATH = "/host/xfs/scrape"
 
     def _get_libvirt_version(self):
         ret = shell.call('libvirtd --version')
@@ -724,6 +728,37 @@ if __name__ == "__main__":
 
     @kvmagent.replyerror
     @in_bash
+    def get_xfs_frag_data(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetXfsFragDataRsp()
+        o = bash_o("df -hlT | awk 'NR==2 {print $1,$2}'")
+        o = str(o).strip()
+        root_path = o.split(" ")[0]
+        fs_type = o.split(" ")[1]
+        rsp.fsType = fs_type
+        if fs_type != "xfs":
+            return jsonobject.dumps(rsp)
+        if root_path is None:
+            logger.warn("failed to find root device")
+        else:
+            frag_percent = bash_o("xfs_db -c frag -r /dev/mapper/zstack-root | awk '/fragmentation factor/{print $7}'", True)
+
+        if not str(frag_percent).strip().endswith("%"):
+            logger.info("error format %s" % frag_percent)
+        else:
+            rsp.hostFrag = frag_percent.strip()[:-1]
+        volume_path_dict = cmd.volumePathMap.__dict__
+        if volume_path_dict is not None:
+            for key, value in volume_path_dict.items():
+                r, o = bash_ro("xfs_bmap %s | wc -l" % value, True)
+                if r == 0:
+                    o = o.strip()
+                    rsp.volumeFragMap[key] = int(o) - 1
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
     def disable_hugepage(self, req):
         rsp = DisableHugePageRsp()
         disable_hugepage_script = '''#!/bin/sh
@@ -864,6 +899,7 @@ grub2-mkconfig -o /boot/grub2/grub.cfg
         http_server.register_async_uri(self.CHECK_USB_REDIRECT_PORT, self.check_usb_server_port)
         http_server.register_async_uri(self.IDENTIFY_HOST, self.identify_host)
         http_server.register_async_uri(self.GET_HOST_NETWORK_FACTS, self.get_host_network_facts)
+        http_server.register_async_uri(self.HOST_XFS_SCRAPE_PATH, self.get_xfs_frag_data)
 
         self.heartbeat_timer = {}
         self.libvirt_version = self._get_libvirt_version()
