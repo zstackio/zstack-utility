@@ -123,6 +123,8 @@ class UserDataEnv(object):
 
         BR_NAME = self.bridge_name
         BR_PHY_DEV = get_phy_dev_from_bridge_name(self.bridge_name)
+        OUTER_DEV = "outer%s" % NAMESPACE_ID
+        INNER_DEV = "inner%s" % NAMESPACE_ID
 
         ret = bash_r('ip netns exec {{NAMESPACE_NAME}} ip link show')
         if ret != 0:
