@@ -25,12 +25,13 @@ UBUNTU='UBUNTU'
 RHEL7='RHEL7'
 ISOFT4='ISOFT4'
 ALIOS7='AliOS7'
+KYLIN402='KYLIN4.0.2'
 UPGRADE='n'
 FORCE='n'
 MINI_INSTALL='n'
 SANYUAN_INSTALL='n'
 MANAGEMENT_INTERFACE=`ip route | grep default | head -n 1 | cut -d ' ' -f 5`
-SUPPORTED_OS="$CENTOS7, $UBUNTU1604, $UBUNTU1404, $ISOFT4, $RHEL7, $ALIOS7"
+SUPPORTED_OS="$CENTOS7, $UBUNTU1604, $UBUNTU1404, $ISOFT4, $RHEL7, $ALIOS7, $KYLIN402"
 ZSTACK_INSTALL_LOG='/tmp/zstack_installation.log'
 ZSTACKCTL_INSTALL_LOG='/tmp/zstack_ctl_installation.log'
 [ -f $ZSTACK_INSTALL_LOG ] && /bin/rm -f $ZSTACK_INSTALL_LOG
@@ -82,6 +83,7 @@ MYSQL_USER_PASSWORD='zstack.password'
 MYSQL_UI_USER_PASSWORD='zstack.ui.password'
 
 YUM_ONLINE_REPO='y'
+APT_SOURCE_LIST='y'
 INSTALL_MONITOR=''
 UPGRADE_MONITOR=''
 ONLY_UPGRADE_CTL=''
@@ -91,6 +93,7 @@ PKG_MIRROR_163='163'
 PKG_MIRROR_ALIYUN='aliyun'
 #used for all in one installer and upgrader. 
 ZSTACK_YUM_REPOS=''
+ZSTACK_APT_SOURCES=''
 ZSTACK_LOCAL_YUM_REPOS='zstack-local'
 ZSTACK_MN_REPOS='zstack-mn,qemu-kvm-ev-mn'
 ZSTACK_MN_UPGRADE_REPOS='zstack-mn'
@@ -98,6 +101,8 @@ MIRROR_163_YUM_REPOS='163base,163updates,163extras,ustcepel,163-qemu-ev'
 MIRROR_163_YUM_WEBSITE='mirrors.163.com'
 MIRROR_ALI_YUM_REPOS='alibase,aliupdates,aliextras,aliepel,ali-qemu-ev'
 MIRROR_ALI_YUM_WEBSITE='mirrors.aliyun.com'
+
+MIRROR_SOHU_APT_SOURCE='mirrors.sohu.com'
 #used for zstack.properties Ansible.var.zstack_repo
 ZSTACK_PROPERTIES_REPO=''
 ZSTACK_OFFLINE_INSTALL='n'
@@ -695,8 +700,9 @@ check_system(){
             fail2 "Host OS checking failure: your system is: `cat /etc/redhat-release`, $PRODUCT_NAME management node only supports $SUPPORTED_OS currently"
         fi
     else
-        grep 'Ubuntu' /etc/issue >>$ZSTACK_INSTALL_LOG 2>&1
-        if [ $? -eq 0 ]; then
+        grep 'Ubuntu' /etc/issue >>$ZSTACK_INSTALL_LOG 2>&1; IS_UBUNTU=$?
+        grep 'Kylin' /etc/issue >>$ZSTACK_INSTALL_LOG 2>&1; IS_KYLINOS=$?
+        if [ $IS_UBUNTU -eq 0 ]; then
             grep '16.04' /etc/issue >>$ZSTACK_INSTALL_LOG 2>&1
             if [ $? -eq 0 ]; then
                 OS=$UBUNTU1604
@@ -709,14 +715,23 @@ check_system(){
                 fi
             fi
             . /etc/lsb-release
+        elif [ $IS_KYLINOS -eq 0 ]; then
+            grep '4.0.2' /etc/issue >>$ZSTACK_INSTALL_LOG 2>&1
+            if [ $? -eq 0 ]; then
+                OS=$KYLIN402
+            else
+                fail2 "Host OS checking failure: your system is: `cat /etc/issue`, $PRODUCT_NAME management node only support $SUPPORTED_OS currently"
+            fi
+            echo " " >/dev/null 2>&1
         else
             fail2 "Host OS checking failure: your system is: `cat /etc/issue`, $PRODUCT_NAME management node only support $SUPPORTED_OS currently"
         fi
     fi
-
-    if [ $OS != $CENTOS7 -a $OS != $UBUNTU1404 -a $OS != $UBUNTU1604 -a $OS != $ALIOS7 ]; then
-        #only support offline installation for CentoS7.x
+    if [ $OS != $CENTOS7 -a $OS != $UBUNTU1404 -a $OS != $UBUNTU1604 -a $OS != $ALIOS7 -a $OS != $KYLIN402 ]; then
+        #only support offline installation for CentoS7.x,Kylin4.0.2
         if [ -z "$YUM_ONLINE_REPO" ]; then
+            fail2 "Your system is $OS . ${PRODUCT_NAME} installer can not use '-o' or '-R' option on your system. Please remove '-o' or '-R' option and try again."
+        elif [ -z "$APT_SOURCE_LIST" ]; then
             fail2 "Your system is $OS . ${PRODUCT_NAME} installer can not use '-o' or '-R' option on your system. Please remove '-o' or '-R' option and try again."
         fi
     fi
@@ -969,7 +984,7 @@ ia_install_python_gcc_rh(){
 
 ia_install_pip(){
     echo_subtitle "Install PIP"
-    rpm -q python2-pip >/dev/null 2>&1 && return
+    which pip >/dev/null 2>&1 && which pip2 >/dev/null
 
     if [ ! -z $DEBUG ]; then
         easy_install -i $pypi_source_easy_install --upgrade pip
@@ -1048,6 +1063,13 @@ iu_deploy_zstack_repo() {
     chown -R zstack:zstack ${ZSTACK_HOME}/static/zstack-repo
 }
 
+iu_deploy_zstack_apt_source() {
+    echo_subtitle "Deploy apt source for ${PRODUCT_NAME}"
+
+    BASEARCH=`uname -m`
+    [ x"$BASEARCH" = x'aarch64' ] && ALTARCH='x86_64' || ALTARCH='aarch64'
+}
+
 unpack_zstack_into_tomcat(){
     echo_title "Install ${PRODUCT_NAME} Package"
     echo ""
@@ -1057,7 +1079,7 @@ unpack_zstack_into_tomcat(){
     fi
     show_spinner iz_unzip_tomcat
     show_spinner iz_install_zstack
-    show_spinner iu_deploy_zstack_repo
+    #show_spinner iu_deploy_zstack_repo
 }
 
 upgrade_zstack(){
@@ -1068,8 +1090,8 @@ upgrade_zstack(){
         fail2 "You are upgrading ${PRODUCT_NAME} under HA environment.\nPlease run: 'zsha2 upgrade-mn zstack-installer.bin' instead.\n"
     fi
 
-    show_spinner uz_upgrade_tomcat
-    show_spinner uz_upgrade_zstack_ctl
+    # show_spinner uz_upgrade_tomcat
+    # show_spinner uz_upgrade_zstack_ctl
 
     # configure management.server.ip if not exists
     zstack-ctl show_configuration | grep '^[[:space:]]*management.server.ip' >/dev/null 2>&1
@@ -1285,10 +1307,12 @@ sharedblock_check_qcow2_volume(){
 install_ansible(){
     echo_title "Install Ansible"
     echo ""
+    echo_title "os=$OS"
+
     if [ $OS = $CENTOS7 -o $OS = $CENTOS6 -o $OS = $RHEL7 -o $OS = $ISOFT4 -o $OS = $ALIOS7 ]; then
         show_spinner ia_disable_selinux
         show_spinner ia_install_python_gcc_rh
-    elif [ $OS = $UBUNTU1404 -o $OS = $UBUNTU1604 ]; then
+    elif [ $OS = $UBUNTU1404 -o $OS = $UBUNTU1604 -o $OS = $KYLIN402 ]; then
         export DEBIAN_FRONTEND=noninteractive
         #if [ -z $ZSTACK_PKG_MIRROR ]; then
         #    show_spinner ia_update_apt
@@ -1300,7 +1324,7 @@ install_ansible(){
 
 iz_install_unzip(){
     echo_subtitle "Install unzip"
-    if [ $OS = $UBUNTU1404 -o $OS = $UBUNTU1604 ]; then
+    if [ $OS = $UBUNTU1404 -o $OS = $UBUNTU1604 -o $OS = $KYLIN402 ]; then
         apt-get -y install unzip >>$ZSTACK_INSTALL_LOG 2>&1
         [ $? -ne 0 ] && fail "Install unzip fail."
         pass
@@ -1308,7 +1332,7 @@ iz_install_unzip(){
     fi
     if [ $OS = $CENTOS6 ]; then
         rpm -ivh $unzip_el6_rpm >>$ZSTACK_INSTALL_LOG 2>&1
-    else
+    elif [ $OS = $CENTOS6 ];then
         rpm -ivh $unzip_el7_rpm >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     [ $? -ne 0 ] && fail "Install unzip fail."
@@ -1417,31 +1441,33 @@ is_install_general_libs_deb(){
     fi
     openjdk=openjdk-8-jdk
 
-    if [ $OS == $UBUNTU1404 ]; then
+    if [ $OS == $UBUNTU1404 -o $OS == $KYLIN402]; then
         #install openjdk ppa for openjdk-8
+
         add-apt-repository ppa:openjdk-r/ppa -y >>$ZSTACK_INSTALL_LOG 2>&1
-        apt-get update  >>$ZSTACK_INSTALL_LOG 2>&1
+        apt-key update >>$ZSTACK_INSTALL_LOG 2>&1
+        apt-get update >>$ZSTACK_INSTALL_LOG 2>&1
     fi
 
-    apt-get -y install \
+    apt-get -y install --allow-unauthenticated \
         $openjdk \
         bridge-utils \
         wget \
         python-libvirt \
-        libvirt-bin \
         vlan \
         python-dev \
         gcc \
+        chrony \
         python-setuptools \
         >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -ne 0 ] && fail "install system lib 1 failed"
 
-    apt-get -y install --no-upgrade \
+    apt-get -y install --no-upgrade --allow-unauthenticated \
         sudo \
         >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -ne 0 ] && fail "install system lib 2 failed"
 
-    apt-get -y install \
+    apt-get -y install --allow-unauthenticated \
         nfs-common \
         nfs-kernel-server \
         autoconf \
@@ -1482,6 +1508,7 @@ is_install_system_libs(){
     if [ $OS = $CENTOS7 -o $OS = $CENTOS6 -o $OS = $RHEL7 -o $OS = $ISOFT4 -o $OS = $ALIOS7 ]; then
         show_spinner is_install_general_libs_rh
     else
+        echo ""
         show_spinner is_install_general_libs_deb
     fi
 }
@@ -2001,7 +2028,7 @@ setup_install_param(){
 install_license(){
     echo_title "Install License"
     echo ""
-    show_spinner il_install_license
+    show_spinner il_install_licensFe
 }
 
 il_install_license(){
@@ -3497,7 +3524,11 @@ if [ ! -z $ONLY_INSTALL_ZSTACK ]; then
     start_zstack_tui
     exit 0
 fi
-
+cp /root/ctl.py /var/lib/zstack/virtualenv/zstackctl/lib/python2.7/site-packages/zstackctl/ctl.py
+cp /root/V3.3.1.1__schema.sql /usr/local/zstack/apache-tomcat-8.5.35/webapps/zstack/WEB-INF/classes/db/upgrade/V3.3.1.1__schema.sql
+cp /root/V3.4.0.1__schema.sql /usr/local/zstack/apache-tomcat-8.5.35/webapps/zstack/WEB-INF/classes/db/upgrade/V3.4.0.1__schema.sql
+# cp /root/deploydb.sh /usr/local/zstack/apache-tomcat/webapps/zstack/WEB-INF/classes/deploydb.sh
+# cp /root/deployuidb.sh /usr/local/zstack/apache-tomcat/webapps/zstack/WEB-INF/classes/deployuidb.sh
 #Install Mysql
 install_db
 
