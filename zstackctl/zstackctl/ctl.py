@@ -1677,6 +1677,20 @@ def get_management_node_pid():
 
     return None
 
+def clear_leftover_mn_heartbeat():
+    pid = get_management_node_pid()
+    if pid:
+        info("management node (pid=%s) is still running, skip cleaning heartbeat" % pid)
+        return
+
+    mn_ip = ctl.read_property('management.server.ip')
+    if not mn_ip:
+        warn("management.server.ip not configured")
+        return
+
+    mysql("DELETE FROM ManagementNodeVO WHERE hostName = '%s'" % mn_ip)
+    info("cleared management node heartbeat")
+
 class StopAllCmd(Command):
     def __init__(self):
         super(StopAllCmd, self).__init__()
@@ -2083,6 +2097,7 @@ class StopCmd(Command):
             with on_error('unable to kill -9 %s' % pid):
                 logger.info('graceful shutdown failed, try to kill management node process:%s' % pid)
                 os.kill(int(pid), signal.SIGKILL)
+                clear_leftover_mn_heartbeat()
 
 class RestartNodeCmd(Command):
 
