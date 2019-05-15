@@ -1,11 +1,12 @@
 import re
 import tempfile
 import os
+import os.path
 
 from kvmagent import kvmagent
 from zstacklib.utils import jsonobject
 from zstacklib.utils import shell
-from zstacklib.utils.bash import bash_progress_1
+from zstacklib.utils.bash import bash_progress_1, in_bash, bash_r
 from zstacklib.utils.report import *
 
 logger = log.get_logger(__name__)
@@ -163,6 +164,15 @@ class ImageStoreClient(object):
         logger.debug('%s:%s pulled to local cache' % (name, imageid))
 
         return
+
+    @in_bash
+    def clean_imagestore_cache(self, cachedir):
+        if not cachedir or not os.path.exists(cachedir):
+            return
+
+        cdir = os.path.join(os.path.realpath(cachedir), "zstore-cache")
+        cmdstr = "find %s -type f -name image -links 1 -exec unlink {} \;" % cdir
+        bash_r(cmdstr)
 
     def convert_image_raw(self, cmd):
         destPath = cmd.srcPath.replace('.qcow2', '.raw')

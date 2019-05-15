@@ -6,6 +6,7 @@
 import platform
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
+from kvmagent.plugins.imagestore import ImageStoreClient
 from zstacklib.utils import jsonobject
 from zstacklib.utils import http
 from zstacklib.utils import lock
@@ -139,6 +140,7 @@ class HostPlugin(kvmagent.KvmAgent):
     UPDATE_DEPENDENCY = "/host/updatedependency"
     ENABLE_HUGEPAGE = "/host/enable/hugepage"
     DISABLE_HUGEPAGE = "/host/disable/hugepage"
+    CLEAN_LOCAL_CACHE = "/host/imagestore/cleancache"
 
     def _get_libvirt_version(self):
         ret = shell.call('libvirtd --version')
@@ -599,6 +601,13 @@ grub2-mkconfig -o /boot/grub2/grub.cfg
         os.remove(enable_hugepage_script_path)
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    def clean_local_cache(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        isc = ImageStoreClient()
+        isc.clean_imagestore_cache(cmd.mountPath)
+        return jsonobject.dumps(kvmagent.AgentResponse())
+
     def start(self):
         self.host_uuid = None
 
@@ -614,6 +623,7 @@ grub2-mkconfig -o /boot/grub2/grub.cfg
         http_server.register_async_uri(self.UPDATE_DEPENDENCY, self.update_dependency)
         http_server.register_async_uri(self.ENABLE_HUGEPAGE, self.enable_hugepage)
         http_server.register_async_uri(self.DISABLE_HUGEPAGE, self.disable_hugepage)
+        http_server.register_async_uri(self.CLEAN_LOCAL_CACHE, self.clean_local_cache)
 
         self.heartbeat_timer = {}
         self.libvirt_version = self._get_libvirt_version()
