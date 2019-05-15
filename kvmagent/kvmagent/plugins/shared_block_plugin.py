@@ -811,12 +811,23 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid, False)
         return jsonobject.dumps(rsp)
 
-    def do_active_lv(self, installPath, lockType, recursive):
+    def do_active_lv(self, installPath, lockType, recursive, killProcess):
         def handle_lv(lockType, fpath):
             if lockType > lvm.LvmlockdLockType.NULL:
                 lvm.active_lv(fpath, lockType == lvm.LvmlockdLockType.SHARE)
             else:
-                lvm.deactive_lv(fpath)
+                try:
+                    lvm.deactive_lv(fpath)
+                except Exception as e:
+                    if not killProcess:
+                        return
+                    qemus = lvm.find_qemu_for_lv_in_use(fpath)
+                    if len(qemus) == 0:
+                        return
+                    for qemu in qemus:
+                        if qemu.state != "running":
+                            linux.kill_process(qemu.pid)
+                    lvm.deactive_lv(fpath)
 
         install_abs_path = translate_absolute_path_from_install_path(installPath)
         handle_lv(lockType, install_abs_path)
@@ -838,7 +849,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp = AgentRsp()
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid, raise_exception=False)
 
-        self.do_active_lv(cmd.installPath, cmd.lockType, cmd.recursive)
+        self.do_active_lv(cmd.installPath, cmd.lockType, cmd.recursive, cmd.killProcess)
 
         return jsonobject.dumps(rsp)
 
