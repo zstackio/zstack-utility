@@ -1354,3 +1354,19 @@ def enable_multipath():
     bash.bash_roe("systemctl enable multipathd")
     if not is_multipath_running():
         raise RetryException("multipath still not running")
+
+
+class QemuStruct(object):
+    def __init__(self, pid):
+        self.pid = pid
+        args = bash.bash_o("ps -o args --width 99999 --pid %s" % pid)
+        self.name = args.split(' -uuid ')[-1].split(' ')[0].replace("-", "")
+        self.state = bash.bash_o("virsh domstate %s" % self.name).strip()
+
+
+@bash.in_bash
+def find_qemu_for_lv_in_use(lv_path):
+    # type: (str) -> list[QemuStruct]
+    dm_path = bash.bash_o("readlink -e %s" % lv_path)
+    pids = [x.strip() for x in bash.bash_o("lsof -c qemu-kvm | grep -w %s | awk '{print $2}'" % dm_path).splitlines()]
+    return [QemuStruct(pid) for pid in pids]
