@@ -4627,7 +4627,7 @@ class VmPlugin(kvmagent.KvmAgent):
         try:
             vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
             if not vm:
-                raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % vm.uuid)
+                raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % cmd.vmUuid)
 
             self.do_cancel_backup_jobs(cmd)
         except kvmagent.KvmError as e:
@@ -4646,7 +4646,7 @@ class VmPlugin(kvmagent.KvmAgent):
         try:
             vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
             if not vm:
-                raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % vm.uuid)
+                raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % cmd.vmUuid)
 
             if not cmd.networkWriteBandwidth:
                 if 0 != linux.sshfs_mount(cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d):
@@ -4697,7 +4697,7 @@ class VmPlugin(kvmagent.KvmAgent):
         try:
             vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
             if not vm:
-                raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % vm.uuid)
+                raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % cmd.vmUuid)
 
             if not cmd.networkWriteBandwidth:
                 if 0 != linux.sshfs_mount(cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d):
