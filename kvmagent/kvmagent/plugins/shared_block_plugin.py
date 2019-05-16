@@ -815,7 +815,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid, False)
         return jsonobject.dumps(rsp)
 
-    def do_active_lv(self, installPath, lockType, recursive, killProcess):
+    def do_active_lv(self, installPath, lockType, recursive, killProcess=False):
         def handle_lv(lockType, fpath):
             if lockType > lvm.LvmlockdLockType.NULL:
                 lvm.active_lv(fpath, lockType == lvm.LvmlockdLockType.SHARE)
