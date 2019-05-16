@@ -121,7 +121,7 @@ class LogConfig(object):
             return logger
 
         logger.setLevel(logging.DEBUG)
-        max_rotate_handler = ZstackRotatingFileHandler(self.log_path, maxBytes=10*1024*1024, backupCount=30)
+        max_rotate_handler = ZstackRotatingFileHandler(self.log_path, maxBytes=30*1024*1024, backupCount=30)
         formatter = logging.Formatter(self.LOG_FORMAT)
         max_rotate_handler.setFormatter(formatter)
         max_rotate_handler.setLevel(logging.DEBUG)
