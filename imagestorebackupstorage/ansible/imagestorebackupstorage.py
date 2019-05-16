@@ -73,12 +73,17 @@ zstacklib_args.distro = distro
 zstacklib_args.distro_release = distro_release
 zstacklib_args.distro_version = distro_version
 zstacklib_args.zstack_repo = zstack_repo
-zstacklib_args.yum_server = yum_server
 zstacklib_args.zstack_root = zstack_root
 zstacklib_args.host_post_info = host_post_info
 zstacklib_args.pip_url = pip_url
 zstacklib_args.trusted_host = trusted_host
 zstacklib_args.require_python_env = require_python_env
+if distro in DEB_BASED_OS:
+    zstacklib_args.apt_server = yum_server
+    zstacklib_args.zstack_apt_source = zstack_repo
+    zstacklib_args.zstack_releasever = get_mn_apt_release()
+else :
+    zstacklib_args.yum_server = yum_server
 zstacklib = ZstackLib(zstacklib_args)
 
 if distro in RPM_BASED_OS:
@@ -111,7 +116,10 @@ if distro in RPM_BASED_OS:
 elif distro in DEB_BASED_OS:
     if client == "true" and distro_version < 16:
         Warning("Client only support distribution version newer than 16.04")
-    apt_install_packages(["qemu-kvm", "sshfs"], host_post_info)
+    if distro == "Kylin":
+        apt_install_packages(["sshfs"], host_post_info)
+    else:
+        apt_install_packages(["qemu-kvm", "sshfs"], host_post_info)
 
 else:
     error("ERROR: Unsupported distribution")

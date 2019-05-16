@@ -2436,13 +2436,14 @@ class InstallDbCmd(Command):
       shell: yum clean metadata; yum --nogpgcheck install -y  mariadb mariadb-server iptables-services
       register: install_result
 
-    - name: install MySQL for Ubuntu
+    - name: install MySQL for Ubuntu/Debain
       when: ansible_os_family == 'Debian'
-      apt: pkg={{item}} update_cache=yes
-      with_items:
-        - mariadb-client
-        - mariadb-server
-        - iptables-persistent
+      shell: apt-get -y install --allow-unauthenticated mariadb-server mariadb-client netfilter-persistent
+      register: install_result
+
+    - name: install MySQL for Kylin
+      when: ansible_os_family == 'Kylin'
+      shell: apt-get -y install --allow-unauthenticated mariadb-server mariadb-client netfilter-persistent
       register: install_result
 
     - name: open 3306 port
@@ -2451,7 +2452,7 @@ class InstallDbCmd(Command):
 
     - name: open 3306 port
       when: ansible_os_family != 'RedHat' and ansible_os_family != 'Alibaba'
-      shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 3306 -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 3306 -j ACCEPT && /etc/init.d/iptables-persistent save)
+      shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 3306 -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 3306 -j ACCEPT && /etc/init.d/netfilter-persistent save)
 
     - name: run post-install script
       script: $post_install_script
@@ -2470,7 +2471,11 @@ class InstallDbCmd(Command):
 
     - name: enable MySQL on Ubuntu
       when: ansible_os_family == 'Debian'
-      service: name=mysql state=restarted enabled=yes
+      service: name=mariadb state=restarted enabled=yes
+
+    - name: enable MySQL on Kylin
+      when: ansible_os_family == 'Kylin'
+      service: name=mariadb state=restarted enabled=yes
 
     - name: change root password
       shell: $change_password_cmd
@@ -2497,8 +2502,15 @@ class InstallDbCmd(Command):
       when: ansible_os_family == 'Debian' and change_root_result.rc != 0 and install_result.changed == True
       apt: pkg={{item}} state=absent update_cache=yes
       with_items:
-        - mysql-client
-        - mysql-server
+        - mariadb-client
+        - mariadb-server
+
+    - name: rollback MySql installation on Kylin
+      when: ansible_os_family == 'Kylin' and change_root_result.rc != 0 and install_result.changed == True
+      apt: pkg={{item}} state=absent update_cache=yes
+      with_items:
+        - mariadb-client
+        - mariadb-server
 
     - name: failure
       fail: >
@@ -6039,7 +6051,7 @@ class InstallManagementNodeCmd(Command):
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repo == 'false' and (mysql_path.stat.exists == False)
       shell: yum --nogpgcheck install -y mariadb
 
-    - name: install MySQL client for Ubuntu
+    - name: install MySQL client for Ubuntu/Debian
       when: ansible_os_family == 'Debian' and (mysql_path.stat.exists == False)
       apt: pkg={{item}}
       with_items:

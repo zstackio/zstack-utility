@@ -14,12 +14,14 @@ banner("Starting to deploy kvm agent")
 start_time = datetime.now()
 # set default value
 file_root = "files/kvm"
+package_root = "/opt/zstack-dvd/Packages"
 pip_url = "https=//pypi.python.org/simple/"
 proxy = ""
 sproxy = ""
 chroot_env = 'false'
 init = 'false'
 zstack_repo = 'false'
+zstack_apt_source = 'false'
 chrony_servers = None
 post_url = ""
 pkg_kvmagent = ""
@@ -126,52 +128,77 @@ host_post_info.remote_port = remote_port
 if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
 
+(distro, major_version, distro_release, distro_version) = get_remote_host_info(host_post_info)
+
 # get remote host arch
 host_arch = get_remote_host_arch(host_post_info)
 IS_AARCH64 = host_arch == 'aarch64'
 
-# get remote releasever
-get_releasever_script = '''
-cat << 'EOF' > /opt/get_releasever
-rpm -q zstack-release > /dev/null 2>&1
-[ $? -eq 0 ] && echo `rpm -q zstack-release |awk -F"-" '{print $3}'` && exit 0
-rpm -q centos-release > /dev/null 2>&1
-[ $? -eq 0 ] && echo `rpm -q centos-release|awk -F"." '{print $1}'|awk -F"-" '{print "c"$3$4}'` && exit 0
-rpm -q alios-release-server > /dev/null 2>&1
-[ $? -eq 0 ] && echo `rpm -q alios-release-server |awk -F"-" '{print "c"$4}'|tr -d '.'` && exit 0
-rpm -q redhat-release-server > /dev/null 2>&1
-[ $? -eq 0 ] && echo `rpm -q redhat-release-server |awk -F"-" '{print "c"$4}'|tr -d '.'` && exit 0
-exit 1'''
-run_remote_command(get_releasever_script, host_post_info)
-(status, output) = run_remote_command("bash /opt/get_releasever", host_post_info, True, True)
-if status:
-    # c72 is no longer supported, force set c74
-    releasever = 'c74' if output.strip() == 'c72' else output.strip()
-else:
-    releasever = sorted(os.listdir("/opt/zstack-dvd/{}".format(host_arch)))[-1]
-
-# copy and install zstack-release
 repo_dir = "/opt/zstack-dvd/{}".format(host_arch)
 if not os.path.isdir(repo_dir):
     error("Missing directory '{}', please try 'zstack-upgrade -a {}_iso'".format(repo_dir, host_arch))
-copy_arg = CopyArg()
-copy_arg.src = '/opt/zstack-dvd/{0}/{1}/Packages/zstack-release-{1}-1.el7.zstack.noarch.rpm'.format(host_arch, releasever)
-copy_arg.dest = '/opt/'
-copy(copy_arg, host_post_info)
-run_remote_command("rpm -q zstack-release;[[ $? -eq 0 ]] || yum install -y /opt/zstack-release-{}-1.el7.zstack.noarch.rpm".format(releasever), host_post_info)
+
+if distro.lower() == "centos":
+    # get remote releasever
+    get_releasever_script = '''
+    cat << 'EOF' > /opt/get_releasever
+    rpm -q zstack-release > /dev/null 2>&1
+    [ $? -eq 0 ] && echo `rpm -q zstack-release |awk -F"-" '{print $3}'` && exit 0
+    rpm -q centos-release > /dev/null 2>&1
+    [ $? -eq 0 ] && echo `rpm -q centos-release|awk -F"." '{print $1}'|awk -F"-" '{print "c"$3$4}'` && exit 0
+    rpm -q alios-release-server > /dev/null 2>&1
+    [ $? -eq 0 ] && echo `rpm -q alios-release-server |awk -F"-" '{print "c"$4}'|tr -d '.'` && exit 0
+    rpm -q redhat-release-server > /dev/null 2>&1
+    [ $? -eq 0 ] && echo `rpm -q redhat-release-server |awk -F"-" '{print "c"$4}'|tr -d '.'` && exit 0
+    exit 1'''
+    run_remote_command(get_releasever_script, host_post_info)
+    (status, output) = run_remote_command("bash /opt/get_releasever", host_post_info, True, True)
+    if status:
+        # c72 is no longer supported, force set c74
+        releasever = 'c74' if output.strip() == 'c72' else output.strip()
+    else:
+        releasever = sorted(os.listdir("/opt/zstack-dvd/{}".format(host_arch)))[-1]
+
+    # copy and install zstack-release
+    copy_arg = CopyArg()
+    copy_arg.src = '/opt/zstack-dvd/{0}/{1}/Packages/zstack-release-{1}-1.el7.zstack.noarch.rpm'.format(host_arch, releasever)
+    copy_arg.dest = '/opt/'
+    copy(copy_arg, host_post_info)
+    run_remote_command("rpm -q zstack-release || yum install -y /opt/zstack-release-{}-1.el7.zstack.noarch.rpm".format(releasever), host_post_info)
+elif IS_AARCH64 and 'kylin' in distro.lower():
+    releasever = get_mn_apt_release()
+    # copy and install zstack-release
+    copy_arg = CopyArg()
+    copy_arg.src = '/opt/zstack-dvd/{0}/{1}/Packages/zstack-release_{1}_arm64.deb'.format(host_arch, releasever)
+    copy_arg.dest = '/opt/'
+    copy(copy_arg, host_post_info)
+    run_remote_command("dpkg -l zstack-release || dpkg -i /opt/zstack-release_{}_arm64.deb".format(releasever), host_post_info)
 
 if IS_AARCH64:
-    dnsmasq_pkg = "%s/dnsmasq-2.76-2.el7.aarch64.rpm" % file_root
-    dnsmasq_local_pkg = "%s/dnsmasq-2.76-2.el7.aarch64.rpm" % kvm_root
-    collectd_pkg = "%s/collectd_exporter_aarch64" % file_root
-    node_collectd_pkg = "%s/node_exporter_aarch64" % file_root
-    qemu_img_pkg = "%s/qemu-img-aarch64" % file_root
-    qemu_img_local_pkg = "%s/qemu-img-aarch64" % kvm_root
-    dnsmasq_img_local_pkg = "%s/dnsmasq-aarch64" % file_root
-    zwatch_vm_agent_local_pkg = "%s/zwatch-vm-agent.linux-amd64.bin" % file_root
-    zwatch_vm_agent_install_sh_local = "%s/vm-tools.sh" % file_root
-    zwatch_vm_agent_version_local = "%s/agent_version" % file_root
-    pushgateway_local_pkg = "%s/pushgateway" % file_root
+    if distro.lower() == "centos":
+        dnsmasq_pkg = "%s/dnsmasq-2.76-2.el7.aarch64.rpm" % file_root
+        dnsmasq_local_pkg = "%s/dnsmasq-2.76-2.el7.aarch64.rpm" % kvm_root
+        collectd_pkg = "%s/collectd_exporter_aarch64" % file_root
+        node_collectd_pkg = "%s/node_exporter_aarch64" % file_root
+        qemu_img_pkg = "%s/qemu-img-aarch64" % file_root
+        qemu_img_local_pkg = "%s/qemu-img-aarch64" % kvm_root
+        dnsmasq_img_local_pkg = "%s/dnsmasq-aarch64" % file_root
+        zwatch_vm_agent_local_pkg = "%s/zwatch-vm-agent.linux-amd64.bin" % file_root
+        zwatch_vm_agent_dst_pkg = "%s/zwatch-vm-agent.linux-amd64.bin" % workplace
+        zwatch_vm_agent_install_sh_local = "%s/vm-tools.sh" % file_root
+        zwatch_vm_agent_version_local = "%s/agent_version" % file_root
+        pushgateway_local_pkg = "%s/pushgateway" % file_root
+    elif distro in ["Kylin", "Debian"]:
+        collectd_pkg = "%s/collectd_exporter_aarch64" % file_root
+        node_collectd_pkg = "%s/node_exporter_aarch64" % file_root
+        qemu_img_pkg = "%s/qemu-img-aarch64" % file_root
+        qemu_img_local_pkg = "%s/qemu-img-aarch64" % kvm_root
+        dnsmasq_img_local_pkg = "%s/dnsmasq-aarch64" % file_root
+        zwatch_vm_agent_local_pkg = "%s/zwatch-vm-agent.linux-amd64.bin" % file_root
+        zwatch_vm_agent_dst_pkg = "%s/zwatch-vm-agent.linux-amd64.bin" % workplace
+        zwatch_vm_agent_install_sh_local = "%s/vm-tools.sh" % file_root
+        zwatch_vm_agent_version_local = "%s/agent_version" % file_root
+        pushgateway_local_pkg = "%s/pushgateway" % file_root
 else:
     dnsmasq_pkg = "%s/dnsmasq-2.76-2.el7_4.2.x86_64.rpm" % file_root
     dnsmasq_local_pkg = "%s/dnsmasq-2.76-2.el7_4.2.x86_64.rpm" % kvm_root
@@ -181,13 +208,13 @@ else:
     qemu_img_local_pkg = "%s/qemu-img-kvm" % kvm_root
     dnsmasq_img_local_pkg = "%s/dnsmasq" % file_root
     zwatch_vm_agent_local_pkg = "%s/zwatch-vm-agent.linux-amd64.bin" % file_root
+    zwatch_vm_agent_dst_pkg = "%s/zwatch-vm-agent.linux-amd64.bin" % workplace
     zwatch_vm_agent_install_sh_local = "%s/vm-tools.sh" % file_root
     zwatch_vm_agent_version_local = "%s/agent_version" % file_root
     pushgateway_local_pkg = "%s/pushgateway" % file_root
 collectd_local_pkg = "%s/collectd_exporter" % workplace
 node_collectd_local_pkg = "%s/node_exporter" % workplace
 dnsmasq_img_dst_pkg = "/usr/local/zstack/dnsmasq"
-zwatch_vm_agent_dst_pkg = "%s/zwatch-vm-agent.linux-amd64.bin" % workplace
 zwatch_vm_agent_install_sh_dst = "%s/vm-tools.sh" % workplace
 zwatch_vm_agent_version_dst = "%s/agent_version" % workplace
 pushgateway_dst_pkg = "%s/pushgateway" % workplace
@@ -195,18 +222,21 @@ mxgpu_driver_local_tar = "%s/mxgpu_driver.tar.gz" % file_root
 mxgpu_driver_dst_tar = "/var/lib/zstack/mxgpu_driver.tar.gz"
 
 # include zstacklib.py
-(distro, major_version, distro_release, distro_version) = get_remote_host_info(host_post_info)
 zstacklib_args = ZstackLibArgs()
 zstacklib_args.distro = distro
 zstacklib_args.distro_release = distro_release
 zstacklib_args.distro_version = major_version
-zstacklib_args.zstack_repo = zstack_repo
-zstacklib_args.yum_server = yum_server
 zstacklib_args.zstack_root = zstack_root
+zstacklib_args.zstack_repo = zstack_repo
 zstacklib_args.host_post_info = host_post_info
 zstacklib_args.pip_url = pip_url
-zstacklib_args.trusted_host = trusted_host
 zstacklib_args.zstack_releasever = releasever
+zstacklib_args.trusted_host = trusted_host
+if distro in DEB_BASED_OS:
+    zstacklib_args.apt_server = yum_server
+    zstacklib_args.zstack_apt_source = zstack_repo
+else :
+    zstacklib_args.yum_server = yum_server
 zstacklib = ZstackLib(zstacklib_args)
 
 # name: judge this process is init install or upgrade
@@ -221,7 +251,6 @@ else:
     run_remote_command(command, host_post_info)
 
 run_remote_command("rm -rf %s/*" % kvm_root, host_post_info)
-
 # aarch64 does not need to modprobe kvm
 if not IS_AARCH64:
     check_nested_kvm(host_post_info)
@@ -235,7 +264,7 @@ if distro in RPM_BASED_OS:
         # common kvmagent deps of x86 and arm that need to update
         common_update_list = "sanlock sysfsutils hwdata sg3_utils lvm2 lvm2-libs lvm2-lockd systemd openssh"
         # common kvmagent deps of x86 and arm that no need to update
-        common_dep_list = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof mcelog MegaCli net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils python-pyudev pv rsync sed smartmontools sshpass usbutils vconfig wget %s %s %s" % (qemu_pkg, extra_pkg, common_update_list)
+        common_dep_list = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof mcelog MegaCli net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils python-pyudev pv rsync sed smartmontools sshpass usbutils vconfig wget auditd %s %s %s" % (qemu_pkg, extra_pkg, common_update_list)
 
         # zstack mini needs higher version kernel etc.
         C76_KERNEL_OR_HIGHER = '3.10.0-957' in get_remote_host_kernel_version(host_post_info)
@@ -290,41 +319,6 @@ if distro in RPM_BASED_OS:
             for pkg in ['qemu-kvm', 'qemu-img']:
                 yum_install_package(pkg, host_post_info)
 
-    # copy prometheus collectd_exporter
-    copy_arg = CopyArg()
-    copy_arg.src = collectd_pkg
-    copy_arg.dest = collectd_local_pkg
-    copy(copy_arg, host_post_info)
-
-    # copy prometheus node_exporter
-    copy_arg = CopyArg()
-    copy_arg.src = node_collectd_pkg
-    copy_arg.dest = node_collectd_local_pkg
-    copy(copy_arg, host_post_info)
-
-    # copy pushgateway
-    copy_arg = CopyArg()
-    copy_arg.src = pushgateway_local_pkg
-    copy_arg.dest = pushgateway_dst_pkg
-    copy(copy_arg, host_post_info)
-
-    # copy zwatch-vm-agent.linux-amd64.bin
-    copy_arg = CopyArg()
-    copy_arg.src = zwatch_vm_agent_local_pkg
-    copy_arg.dest = zwatch_vm_agent_dst_pkg
-    copy(copy_arg, host_post_info)
-
-    # copy zwatch-vm-agent install sh
-    copy_arg = CopyArg()
-    copy_arg.src = zwatch_vm_agent_install_sh_local
-    copy_arg.dest = zwatch_vm_agent_install_sh_dst
-    copy(copy_arg, host_post_info)
-
-    copy_arg = CopyArg()
-    copy_arg.src = zwatch_vm_agent_version_local
-    copy_arg.dest = zwatch_vm_agent_version_dst
-    copy(copy_arg, host_post_info)
-
     # handle distro version specific task
     if major_version < 7:
         # name: copy name space supported iproute for RHEL6
@@ -374,17 +368,7 @@ if distro in RPM_BASED_OS:
             service_status("virtlockd", "state=stopped enabled=no", host_post_info)
             service_status("virtlogd", "state=started enabled=yes", host_post_info, True)
 
-    # name: copy updated dnsmasq for RHEL6 and RHEL7
-    copy_arg = CopyArg()
-    copy_arg.src = "%s" % dnsmasq_pkg
-    copy_arg.dest = "%s" % dnsmasq_local_pkg
-    copy(copy_arg, host_post_info)
-    run_remote_command("mkdir -p /usr/local/zstack/ || true", host_post_info)
-    copy_arg = CopyArg()
-    copy_arg.src = dnsmasq_img_local_pkg
-    copy_arg.dest = dnsmasq_img_dst_pkg
-    copy(copy_arg, host_post_info)
-    run_remote_command("chmod +x %s || true" % dnsmasq_img_dst_pkg, host_post_info)
+
     # name: Update dnsmasq for RHEL6 and RHEL7
     command = "rpm -q dnsmasq-2.76 || yum install --nogpgcheck -y %s" % dnsmasq_local_pkg
     host_post_info.post_label = "ansible.shell.install.pkg"
@@ -415,10 +399,15 @@ if distro in RPM_BASED_OS:
 
 elif distro in DEB_BASED_OS:
     # name: install kvm related packages on Debian based OS
-    install_pkg_list = ['qemu-kvm', 'bridge-utils', 'wget', 'qemu-utils', 'python-libvirt', 'libvirt-bin', 'chrony'
-                        'vlan', 'libguestfs-tools', 'sed', 'nfs-common', 'open-iscsi','pv', 'usbutils', 'pciutils', 'expect',
-                        'lighttpd', 'sshpass', 'rsync', 'iputils-arping', 'nmap', 'collectd']
+    install_pkg_list = ['curl', 'qemu', 'qemu-system', 'bridge-utils', 'wget', 'qemu-utils', 'python-libvirt', 
+                        'libvirt-daemon-system', 'libfdt-dev', 'libvirt-dev', 'libvirt-clients', 'chrony','vlan', 
+                        'libguestfs-tools', 'sed', 'nfs-common', 'open-iscsi','ebtables', 'pv', 'usbutils', 
+                        'pciutils', 'expect', 'lighttpd', 'sshpass', 'rsync', 'iputils-arping', 'nmap', 'collectd', 
+                        'iptables', 'python-pip', 'dmidecode', 'ovmf', 'dnsmasq', 'auditd']
     apt_install_packages(install_pkg_list, host_post_info)
+    if zstack_repo == 'false':
+        command_deb_list = "echo %s >/var/lib/zstack/dependencies".format(' '.join(install_pkg_list))
+        run_remote_command(command_deb_list, host_post_info)
     # name: copy default libvirtd conf in Debian
     copy_arg = CopyArg()
     copy_arg.src = "%s/libvirt-bin" % file_root
@@ -437,8 +426,74 @@ elif distro in DEB_BASED_OS:
         host_post_info.post_label = "ansible.shell.enable.module"
         host_post_info.post_label_param = "br_netfilter"
         run_remote_command(command, host_post_info)
+    update_pkg_list = ['ebtables', 'python-libvirt', 'qemu-system-arm']
+    apt_update_packages(update_pkg_list, host_post_info)
+    libvirtd_conf_status = update_libvritd_config(host_post_info)
+    if chroot_env == 'false':
+        # name: enable libvirt daemon on RedHat based OS
+        service_status("libvirtd", "state=started enabled=yes", host_post_info)
+    # name: copy default libvirtd conf in Debian
+    copy_arg = CopyArg()
+    copy_arg.src = "%s/libvirtd_debian" % file_root
+    copy_arg.dest = "/etc/default/libvirtd"
+    libvirtd_status = copy(copy_arg, host_post_info)
 else:
     error("unsupported OS!")
+
+# copy prometheus collectd_exporter
+copy_arg = CopyArg()
+copy_arg.src = collectd_pkg
+copy_arg.dest = collectd_local_pkg
+copy(copy_arg, host_post_info)
+
+# copy prometheus node_exporter
+copy_arg = CopyArg()
+copy_arg.src = node_collectd_pkg
+copy_arg.dest = node_collectd_local_pkg
+copy(copy_arg, host_post_info)
+
+# copy pushgateway
+copy_arg = CopyArg()
+copy_arg.src = pushgateway_local_pkg
+copy_arg.dest = pushgateway_dst_pkg
+copy(copy_arg, host_post_info)
+
+# copy zwatch-vm-agent.linux-amd64.bin
+copy_arg = CopyArg()
+copy_arg.src = zwatch_vm_agent_local_pkg
+copy_arg.dest = zwatch_vm_agent_dst_pkg
+copy(copy_arg, host_post_info)
+
+# copy zwatch-vm-agent install sh
+copy_arg = CopyArg()
+copy_arg.src = zwatch_vm_agent_install_sh_local
+copy_arg.dest = zwatch_vm_agent_install_sh_dst
+copy(copy_arg, host_post_info)
+
+copy_arg = CopyArg()
+copy_arg.src = zwatch_vm_agent_version_local
+copy_arg.dest = zwatch_vm_agent_version_dst
+copy(copy_arg, host_post_info)
+
+# copy uefi_raw
+if distro in DEB_BASED_OS:
+    copy_arg = CopyArg()
+    copy_arg.src = "/opt/zstack-dvd/{}/{}/ovmf_tools/".format(host_arch, releasever)
+    copy_arg.dest = "/usr/share/OVMF/"
+    copy(copy_arg, host_post_info)
+    
+# name: copy updated dnsmasq
+if distro in RPM_BASED_OS:
+    copy_arg = CopyArg()
+    copy_arg.src = "%s" % dnsmasq_pkg
+    copy_arg.dest = "%s" % dnsmasq_local_pkg
+    copy(copy_arg, host_post_info)
+run_remote_command("mkdir -p /usr/local/zstack/ || true", host_post_info)
+copy_arg = CopyArg()
+copy_arg.src = dnsmasq_img_local_pkg
+copy_arg.dest = dnsmasq_img_dst_pkg
+copy(copy_arg, host_post_info)
+run_remote_command("chmod +x %s || true" % dnsmasq_img_dst_pkg, host_post_info)
 
 #copy scripts
 #copy zs-xxx from mn_node to host_node
@@ -488,16 +543,23 @@ else:
     run_remote_command(command, host_post_info)
 
 if skipIpv6 != 'true':
-    # name: copy ip6tables initial rules in RedHat
-    IP6TABLE_SERVICE_FILE = '/usr/lib/systemd/system/ip6tables.service'
-    copy_arg = CopyArg()
-    copy_arg.src = "%s/ip6tables" % file_root
-    copy_arg.dest = "/etc/sysconfig/ip6tables"
-    copy(copy_arg, host_post_info)
-    replace_content(IP6TABLE_SERVICE_FILE,
-                    "regexp='syslog.target,iptables.service' replace='syslog.target iptables.service'", host_post_info)
-    run_remote_command(command, host_post_info)
-    service_status("ip6tables", "state=restarted enabled=yes", host_post_info)
+    if distro in RPM_BASED_OS:
+        # name: copy ip6tables initial rules in RedHat
+        IP6TABLE_SERVICE_FILE = '/usr/lib/systemd/system/ip6tables.service'
+        copy_arg = CopyArg()
+        copy_arg.src = "%s/ip6tables" % file_root
+        copy_arg.dest = "/etc/sysconfig/ip6tables"
+        copy(copy_arg, host_post_info)
+        command = "sed -i 's/syslog.target,iptables.service/syslog.target iptables.service/' %s || true;" % IP6TABLE_SERVICE_FILE
+        run_remote_command(command, host_post_info)
+        service_status("ip6tables", "state=restarted enabled=yes", host_post_info)
+    elif distro in DEB_BASED_OS:
+        copy_arg = CopyArg()
+        copy_arg.src = "%s/ip6tables" % file_root
+        copy_arg.dest = "/sbin/ip6tables"
+        copy(copy_arg, host_post_info)
+        command = "ip6tables-save"
+        run_remote_command(command, host_post_info)
 
     # name: copy libvirt nw-filter
     copy_arg = CopyArg()
@@ -623,6 +685,14 @@ if copy_kvmagent != "changed:False":
     agent_install_arg.virtualenv_site_packages = "yes"
     agent_install(agent_install_arg, host_post_info)
 
+# set legacy mode if needed
+# if distro in DEB_BASED_OS:
+#     command = "update-alternatives --set iptables /usr/sbin/iptables-legacy;" \
+#               "update-alternatives --set ebtables /usr/sbin/ebtables-legacy"
+#     host_post_info.post_label = "ansible.shell.switch.legacy-version"
+#     host_post_info.post_label_param = None
+#     run_remote_command(command, host_post_info)
+
 # name: add audit rules for signals
 AUDIT_CONF_FILE = '/etc/audit/auditd.conf'
 AUDIT_NUM_LOG = 50
@@ -634,7 +704,6 @@ command = "systemctl enable auditd; systemctl restart auditd || true; " \
 host_post_info.post_label = "ansible.shell.audit.signal"
 host_post_info.post_label_param = None
 run_remote_command(command, host_post_info)
-
 # handlers
 if chroot_env == 'false':
     if distro in RPM_BASED_OS:
@@ -642,10 +711,10 @@ if chroot_env == 'false':
                 or qemu_conf_status != "changed:False":
             # name: restart redhat libvirtd
             service_status("libvirtd", "state=restarted enabled=yes", host_post_info)
-    elif distro in DEB_BASED_OS:
-        if libvirt_bin_status != "changed:False" or libvirtd_conf_status != "changed:False" or qemu_conf_status != "changed:False":
-            # name: restart debian libvirtd
-            service_status("libvirt-bin", "state=restarted enabled=yes", host_post_info)
+    # elif distro in DEB_BASED_OS:
+    #     if libvirt_bin_status != "changed:False" or libvirtd_conf_status != "changed:False" or qemu_conf_status != "changed:False":
+    #         # name: restart debian libvirtd
+    #         service_status("libvirt-bin", "state=restarted enabled=yes", host_post_info)
     # name: restart kvmagent, do not use ansible systemctl due to kvmagent can start by itself, so systemctl will not know
     # the kvm agent status when we want to restart it to use the latest kvm agent code
     if distro in RPM_BASED_OS and major_version >= 7:

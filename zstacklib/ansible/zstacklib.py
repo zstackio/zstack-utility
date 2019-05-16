@@ -24,11 +24,12 @@ zstack_root = ""
 host = ""
 pkg_zstacklib = ""
 yum_server = ""
+apt_server = ""
 trusted_host = ""
 ansible.constants.HOST_KEY_CHECKING = False
 
 RPM_BASED_OS = "CentOS", "RedHat", "Alibaba"
-DEB_BASED_OS = "Ubuntu", "Debian"
+DEB_BASED_OS = "Ubuntu", "Debian", "Kylin"
 
 class AgentInstallArg(object):
     def __init__(self, trusted_host, pip_url, virtenv_path, init_install):
@@ -46,7 +47,9 @@ class ZstackLibArgs(object):
     def __init__(self):
         self.zstack_repo = None
         self.zstack_releasever = None
+        self.zstack_apt_source = None
         self.yum_server = None
+        self.apt_server = None
         self.distro = None
         self.distro_version = None
         self.distro_release = None
@@ -225,6 +228,9 @@ def create_log(logger_dir):
 
 def get_mn_yum_release():
     return commands.getoutput("rpm -q zstack-release |awk -F'-' '{print $3}'").strip()
+
+def get_mn_apt_release():
+    return commands.getoutput("awk '{print $3}' /etc/zstack-release").strip()
 
 def post_msg(msg, post_url):
     '''post message to zstack, label for support i18n'''
@@ -614,7 +620,7 @@ def apt_install_packages(name_list, host_post_info):
         runner_args = ZstackRunnerArg()
         runner_args.host_post_info = host_post_info
         runner_args.module_name = 'apt'
-        runner_args.module_args = 'name=' + name + ' state=present'
+        runner_args.module_args = 'name={} state=present '.format(name)
         zstack_runner = ZstackRunner(runner_args)
         result = zstack_runner.run()
         logger.debug(result)
@@ -641,7 +647,7 @@ def apt_install_packages(name_list, host_post_info):
                 handle_ansible_failed(description, result, host_post_info)
     all_pkg_exist = check_pkg_status(name_list, host_post_info)
     if all_pkg_exist is False:
-        command = "apt-get clean && apt-get update -o Acquire::http::No-Cache=True --fix-missing"
+        command = "apt-get clean && apt-get update --allow-insecure-repositories -o Acquire::http::No-Cache=True --fix-missing"
         apt_update_status = run_remote_command(command, host_post_info, return_status=True)
         if apt_update_status is False:
             error("apt-get update on host %s failed, please update the repo on the host manually and try again."
@@ -649,6 +655,12 @@ def apt_install_packages(name_list, host_post_info):
         for pkg in name_list:
             _apt_install_package(pkg, host_post_info)
 
+def apt_update_packages(name_list, host_post_info):
+    pkg_list = ' '.join(name_list)
+    command = "apt-get clean && apt-get install -y --allow-unauthenticated --only-upgrade {}".format(pkg_list)
+    apt_update_status = run_remote_command(command, host_post_info, return_status=True)
+    if apt_update_status is False:
+        error("apt-get update packages on host {} failed, please update the repo on the host manually and try again.".format(host_post_info.host))
 
 
 
@@ -682,6 +694,7 @@ def pip_install_package(pip_install_arg, host_post_info):
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'pip'
     runner_args.module_args = option
+
     zstack_runner = ZstackRunner(runner_args)
     result = zstack_runner.run()
     logger.debug(result)
@@ -1705,6 +1718,7 @@ class ZstackLib(object):
         distro_release = args.distro_release
         distro_version = args.distro_version
         zstack_repo = args.zstack_repo
+        zstack_apt_source = args.zstack_apt_source
         zstack_root = args.zstack_root
         host_post_info = args.host_post_info
         trusted_host = args.trusted_host
@@ -1712,6 +1726,7 @@ class ZstackLib(object):
         pip_version = "7.0.3"
         yum_server = args.yum_server
         zstack_releasever = args.zstack_releasever
+        apt_server = args.apt_server
         current_dir =  os.path.dirname(os.path.realpath(__file__))
         #require_python_env for deploy host which may not need python environment, default is true
         if args.require_python_env is not None:
@@ -1927,48 +1942,69 @@ enabled=0" >  /etc/yum.repos.d/zstack-experimental-mn.repo
                     enable_chrony(trusted_host, host_post_info, distro)
 
         elif distro in DEB_BASED_OS:
-            command = '/bin/cp -f /etc/apt/sources.list /etc/apt/sources.list.zstack.%s' \
-                      % datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            #copy apt-conf
+            copy_arg = CopyArg()
+            copy_arg.src = "files/kvm/apt.conf"
+            copy_arg.dest = "/etc/apt/apt.conf"
+            copy(copy_arg, host_post_info)
+
+            command = '/bin/cp -f /etc/apt/sources.list /etc/apt/sources.list.zstack.%s' % datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             host_post_info.post_label = "ansible.shell.backup.file"
             host_post_info.post_label_param = "/etc/apt/srouces.list"
             run_remote_command(command, host_post_info)
-            update_repo_raw_command = """
+            update_aptsource_command_base = """
 cat > /etc/apt/sources.list << EOF
-deb http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }} main restricted universe multiverse
-deb http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-security main restricted universe multiverse
-deb http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-updates main restricted universe multiverse
-deb http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-proposed main restricted universe multiverse
-deb http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-backports main restricted universe multiverse
-deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }} main restricted universe multiverse
-deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-security main restricted universe multiverse
-deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-updates main restricted universe multiverse
-deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-proposed main restricted universe multiverse
-deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-backports main restricted universe multiverse
+deb http://mirrors.{{ zstack_apt_source }}.com/ubuntu/ {{ DISTRIB_CODENAME }} main restricted universe multiverse
+deb http://mirrors.{{ zstack_apt_source }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-security main restricted universe multiverse
+deb http://mirrors.{{ zstack_apt_source }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-updates main restricted universe multiverse
+deb http://mirrors.{{ zstack_apt_source }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-proposed main restricted universe multiverse
+deb http://mirrors.{{ zstack_apt_source }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-backports main restricted universe multiverse
+deb-src http://mirrors.{{ zstack_apt_source }}.com/ubuntu/ {{ DISTRIB_CODENAME }} main restricted universe multiverse
+deb-src http://mirrors.{{ zstack_apt_source }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-security main restricted universe multiverse
+deb-src http://mirrors.{{ zstack_apt_source }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-updates main restricted universe multiverse
+deb-src http://mirrors.{{ zstack_apt_source }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-proposed main restricted universe multiverse
+deb-src http://mirrors.{{ zstack_apt_source }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-backports main restricted universe multiverse
                 """
-            if 'ali' in zstack_repo:
-                update_repo_command_template = jinja2.Template(update_repo_raw_command)
+
+            if 'ali' in str(zstack_apt_source):
+                update_repo_command_template = jinja2.Template(update_aptsource_command_base)
                 update_repo_command = update_repo_command_template.render({
-                    'zstack_repo' : 'aliyun',
+                    'zstack_apt_source' : 'aliyun',
                     'DISTRIB_CODENAME' : distro_release
                 })
                 host_post_info.post_label = "ansible.shell.deploy.repo"
                 host_post_info.post_label_param = "aliyun"
                 run_remote_command(update_repo_command, host_post_info)
-            if '163' in zstack_repo:
-                update_repo_command_template = jinja2.Template(update_repo_raw_command)
+            elif '163' in str(zstack_apt_source):
+                update_repo_command_template = jinja2.Template(update_aptsource_command_base)
                 update_repo_command = update_repo_command_template.render({
-                    'zstack_repo' : '163',
+                    'zstack_apt_source' : '163',
                     'DISTRIB_CODENAME' : distro_release
                 })
                 host_post_info.post_label = "ansible.shell.deploy.repo"
                 host_post_info.post_label_param = "163"
+                run_remote_command(update_repo_command, host_post_info)
+            else :
+                update_aptsource_command = """
+basearch=`uname -m`;
+cat > /etc/apt/sources.list.d/zstack-mn.list << EOF
+deb http://{{ apt_server }}/zstack/static/zstack-repo/$basearch/{{ zstack_releasever }}/ Packages/
+deb http://{{ apt_server }}/zstack/static/zstack-repo/$basearch/{{ zstack_releasever }}/ qemu_libvirt/
+                """
+                update_repo_command_template = jinja2.Template(update_aptsource_command)
+                update_repo_command = update_repo_command_template.render({
+                    'apt_server':apt_server,
+                    'zstack_releasever':zstack_releasever
+                    })
+                host_post_info.post_label = "ansible.shell.deploy.repo"
+                host_post_info.post_label_param = "zstack"
                 run_remote_command(update_repo_command, host_post_info)
 
             # install dependency packages for Debian based OS
             service_status('unattended-upgrades', 'state=stopped enabled=no', host_post_info, ignore_error=True)
             #apt_update_cache(86400, host_post_info)
             if require_python_env == "true":
-                install_pkg_list =["python-dev", "python-setuptools", "python-pip", "gcc", "autoconf", "chrony", "iptables-persistent"]
+                install_pkg_list =["python-dev", "python-setuptools", "python-pip", "gcc", "g++", "autoconf", "chrony", "iptables-persistent"]
                 apt_install_packages(install_pkg_list, host_post_info)
                 enable_chrony(trusted_host, host_post_info, distro)
         else:

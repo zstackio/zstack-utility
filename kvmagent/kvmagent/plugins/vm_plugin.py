@@ -45,6 +45,7 @@ from zstacklib.utils.vm_plugin_queue_singleton import VmPluginQueueSingleton
 logger = log.get_logger(__name__)
 
 IS_AARCH64 = platform.machine() == 'aarch64'
+OS_VERSION = platform.version()
 
 ZS_XML_NAMESPACE = 'http://zstack.org'
 
@@ -704,6 +705,7 @@ def find_domain_cdrom_address(domain_xml, target_dev):
         return d.get_child_node('address')
     return None
 
+
 def find_domain_first_boot_device(domain_xml):
     domain_xmlobject = xmlobject.loads(domain_xml)
     disks = domain_xmlobject.devices.get_child_node_as_list('disk')
@@ -743,6 +745,10 @@ def is_namespace_used():
 
 def is_ioapic_supported():
     return compare_version(LIBVIRT_VERSION, '3.4.0') >= 0 and not IS_AARCH64
+
+def is_spiceport_driver_supported():
+    # qemu-system-aarch64 not supported char driver: spiceport
+    return True if shell.run("which qemu-system-aarch64") == 1 else shell.run("qemu-system-aarch64 -h | grep 'chardev spiceport'") == 0
 
 # Occasionally, libvirt might fail to list VM ...
 def get_console_without_libvirt(vmUuid):
@@ -3164,9 +3170,6 @@ class Vm(object):
                 elif cmd.nestedVirtualization == 'custom':
                     cpu = e(root, 'cpu', attrib={'mode': 'custom', 'match': 'minimum'})
                     e(cpu, 'model', cmd.vmCpuModel, attrib={'fallback': 'allow'})
-                elif IS_AARCH64:
-                    cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
-                    e(cpu, 'model', attrib={'fallback': 'allow'})
                 else:
                     cpu = e(root, 'cpu')
                     # e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
@@ -3215,8 +3218,13 @@ class Vm(object):
             root = elements['root']
             os = e(root, 'os')
             if IS_AARCH64:
-                e(os, 'type', 'hvm', attrib={'arch': 'aarch64'})
-                e(os, 'loader', '/usr/share/edk2.git/aarch64/QEMU_EFI-pflash.raw', attrib={'readonly': 'yes', 'type': 'pflash'})
+                if kvmagent.get_host_os_type() == 'centos':
+                    e(os, 'type', 'hvm', attrib={'arch': 'aarch64'})
+                    e(os, 'loader', '/usr/share/edk2.git/aarch64/QEMU_EFI-pflash.raw', attrib={'readonly': 'yes', 'type': 'pflash'})
+                else :
+                    e(os, 'type', 'hvm', attrib={'arch': 'aarch64', 'machine': 'virt'})
+                    e(os, 'loader', '/usr/share/OVMF/QEMU_EFI-pflash.raw', attrib={'readonly': 'yes', 'type': 'rom'})
+                    e(os, 'nvram', '/var/lib/libvirt/qemu/nvram/%s.fd' % cmd.vmInstanceUuid, attrib={'template': '/usr/share/OVMF/vars-template-pflash.raw'})
             else:
                 e(os, 'type', 'hvm', attrib={'machine': machine_type})
                 # if boot mode is UEFI
@@ -3248,8 +3256,10 @@ class Vm(object):
         def make_features():
             root = elements['root']
             features = e(root, 'features')
-            for f in ['acpi', 'apic', 'pae']:
+            for f in ['apic', 'pae']:
                 e(features, f)
+            if 'kylin' not in OS_VERSION.lower():
+                e(features, 'acpi')
             if cmd.kvmHiddenState is True:
                 kvm = e(features, "kvm")
                 e(kvm, 'hidden', None, {'state': 'on'})
@@ -3262,7 +3272,7 @@ class Vm(object):
                 e(hyperv, 'spinlocks', attrib={'state': 'on', 'retries': '4096'})
                 e(hyperv, 'vendor_id', attrib={'state': 'on', 'value': 'ZStack_Org'})
             # always set ioapic driver to kvm after libvirt 3.4.0
-            if is_ioapic_supported():
+            if is_ioapic_supported and not IS_AARCH64:
                 e(features, "ioapic", attrib={'driver': 'kvm'})
 
         def make_qemu_commandline():
@@ -3691,6 +3701,11 @@ class Vm(object):
             e(devices, 'controller', None, {'type': 'usb', 'index': '0'})
 
             # make sure there are three usb controllers, each for USB 1.1/2.0/3.0
+            if IS_AARCH64 and kvmagent.get_host_os_type() == "centos":
+                # for aarch64 centos, only support default controller(qemu-xhci 3.0) on current qemu version(2.12_0-18)
+                e(devices, 'controller', None, {'type': 'usb', 'index': '1'})
+                e(devices, 'controller', None, {'type': 'usb', 'index': '2'})
+                return
             e(devices, 'controller', None, {'type': 'usb', 'index': '1', 'model': 'ehci'})
             e(devices, 'controller', None, {'type': 'usb', 'index': '2', 'model': 'nec-xhci'})
 
@@ -3914,6 +3929,8 @@ class Vm(object):
             devices = elements['devices']
             b = e(devices, 'memballoon', None, {'model': 'virtio'})
             e(b, 'stats', None, {'period': '10'})
+            if kvmagent.get_host_os_type() == "debian":
+                e(b, 'address', None, {'type': 'pci', 'controller': '0', 'bus': '0x00', 'slot': '0x04', 'function':'0x0'})
 
         def make_console():
             devices = elements['devices']
@@ -3975,7 +3992,8 @@ class Vm(object):
         make_console()
         make_sec_label()
         make_controllers()
-        make_folder_sharing()
+        if is_spiceport_driver_supported():
+            make_folder_sharing()
         # appliance vm doesn't need any cdrom or usb controller
         if not cmd.isApplianceVm:
             make_cdrom()
