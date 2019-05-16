@@ -101,6 +101,11 @@ class GetVolumeSizeRsp(AgentResponse):
         self.size = None
         self.actualSize = None
 
+class GetVolumeSnapshotSizeRsp(AgentResponse):
+    def __init__(self):
+        super(GetVolumeSnapshotSizeRsp, self).__init__()
+        self.size = None
+        self.actualSize = None
 
 class PingRsp(AgentResponse):
     def __init__(self):
@@ -169,6 +174,7 @@ class CephAgent(plugin.TaskManager):
     CP_PATH = "/ceph/primarystorage/volume/cp"
     DELETE_POOL_PATH = "/ceph/primarystorage/deletepool"
     GET_VOLUME_SIZE_PATH = "/ceph/primarystorage/getvolumesize"
+    GET_VOLUME_SNAPSHOT_SIZE_PATH = "/ceph/primarystorage/getvolumesnapshotsize"
     PING_PATH = "/ceph/primarystorage/ping"
     GET_FACTS = "/ceph/primarystorage/facts"
     DELETE_IMAGE_CACHE = "/ceph/primarystorage/deleteimagecache"
@@ -209,6 +215,7 @@ class CephAgent(plugin.TaskManager):
         self.http_server.register_async_uri(self.DOWNLOAD_IMAGESTORE_PATH, self.download_imagestore)
         self.http_server.register_async_uri(self.DELETE_POOL_PATH, self.delete_pool)
         self.http_server.register_async_uri(self.GET_VOLUME_SIZE_PATH, self.get_volume_size)
+        self.http_server.register_async_uri(self.GET_VOLUME_SNAPSHOT_SIZE_PATH, self.get_volume_snapshot_size)
         self.http_server.register_async_uri(self.PING_PATH, self.ping)
         self.http_server.register_async_uri(self.GET_FACTS, self.get_facts)
         self.http_server.register_async_uri(self.DELETE_IMAGE_CACHE, self.delete_image_cache)
@@ -409,6 +416,15 @@ class CephAgent(plugin.TaskManager):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         path = self._normalize_install_path(cmd.installPath)
         rsp = GetVolumeSizeRsp()
+        rsp.size = self._get_file_size(path)
+        rsp.actualSize = self._get_file_actual_size(path)
+        return jsonobject.dumps(rsp)
+
+    @replyerror
+    def get_volume_snapshot_size(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        path = self._normalize_install_path(cmd.installPath)
+        rsp = GetVolumeSnapshotSizeRsp()
         rsp.size = self._get_file_size(path)
         rsp.actualSize = self._get_file_actual_size(path)
         return jsonobject.dumps(rsp)
