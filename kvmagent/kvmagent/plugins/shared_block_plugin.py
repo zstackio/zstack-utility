@@ -569,13 +569,15 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         with lvm.RecursiveOperateLv(volume_abs_path, shared=cmd.sharedVolume, skip_deactivate_tags=[IMAGE_TAG]):
             virtual_size = linux.qcow2_virtualsize(volume_abs_path)
             total_size = 0
+            compress = False
             for qcow2 in linux.qcow2_get_file_chain(volume_abs_path):
+                if bash.bash_r("qemu-img check %s | grep compressed" % volume_abs_path) == 0:
+                    compress = True
                 total_size += int(lvm.get_lv_size(qcow2))
 
             if total_size > virtual_size:
                 total_size = virtual_size
 
-            compress = False
             if bash.bash_r("qemu-img info --backing-chain %s | grep compress" % volume_abs_path) == 0:
                 compress = True
 
