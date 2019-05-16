@@ -45,7 +45,7 @@
   shell: "yum --enablerepo=alibase clean metadata && yum --nogpgcheck install -y libselinux-python python-devel python-setuptools python-pip gcc autoconf"
 
 - name: install dependency packages for Debian based OS
-  when: ansible_os_family == 'Debian'
+  when: ansible_os_family == 'Debian' or ansible_os_family == 'Kylin'
   apt: pkg="{{item}}" update_cache=yes
   with_items:
     - python-dev

@@ -26,12 +26,13 @@ RHEL7='RHEL7'
 ISOFT4='ISOFT4'
 ALIOS7='AliOS7'
 KYLIN402='KYLIN4.0.2'
+DEBIAN9='DEBIAN9'
 UPGRADE='n'
 FORCE='n'
 MINI_INSTALL='n'
 SANYUAN_INSTALL='n'
 MANAGEMENT_INTERFACE=`ip route | grep default | head -n 1 | cut -d ' ' -f 5`
-SUPPORTED_OS="$CENTOS7, $UBUNTU1604, $UBUNTU1404, $ISOFT4, $RHEL7, $ALIOS7, $KYLIN402"
+SUPPORTED_OS="$CENTOS7, $UBUNTU1604, $UBUNTU1404, $ISOFT4, $RHEL7, $ALIOS7, $KYLIN402, $DEBIAN9"
 ZSTACK_INSTALL_LOG='/tmp/zstack_installation.log'
 ZSTACKCTL_INSTALL_LOG='/tmp/zstack_ctl_installation.log'
 [ -f $ZSTACK_INSTALL_LOG ] && /bin/rm -f $ZSTACK_INSTALL_LOG
@@ -196,14 +197,23 @@ vercomp () {
     done
     return 0
 }
-check_zstack_release(){
 
-    rpm -q zstack-release >/dev/null 2>&1
-    if [ $? -eq 0 ];then
-        ZSTACK_RELEASE=`rpm -qi zstack-release |awk -F ':' '/Version/{print $2}' |sed 's/ //g'`
-        source /etc/profile >/dev/null 2>&1
+check_zstack_release(){
+    if [ $IS_YUM -eq 0 ];then
+        rpm -q zstack-release >/dev/null 2>&1
+        if [ $? -eq 0 ];then
+            ZSTACK_RELEASE=`rpm -qi zstack-release |awk -F ':' '/Version/{print $2}' |sed 's/ //g'`
+            source /etc/profile >/dev/null 2>&1
+        else
+            fail2 "rpm package zstack-release is not installed, use zstack-upgrade -r/-a zstack-xxx.iso(>=3.7.0) to upgrade zstack-dvd and install zstack-release."
+        fi
     else
-        fail2 "zstack-release is not installed, use zstack-upgrade -r/-a zstack-xxx.iso(>=3.7.0) to upgrade zstack-dvd and install zstack-release."
+        dpkg -l zstack-release > /dev/null 2>&1
+        if [ $? -eq 0 ];then
+            ZSTACK_RELEASE=`awk '{print $3}' /etc/zstack-release`
+        else
+            fail2 "deb package zstack-release is not installed, use zstack_install_kylin.sh -r xxx.iso to install zstack-dvd."
+        fi
     fi
 }
 
@@ -233,6 +243,11 @@ post_scripts_to_restore_iptables_rules() {
   iptables -D INPUT `iptables -L INPUT --line-numbers | grep 'zstack allow login mysql from 127.0.0.1' | awk '{ print $1 }'`
   service iptables save
 } >>$ZSTACK_INSTALL_LOG 2>&1
+
+post_restore_source_on_debian() {
+    mv /etc/apt/sources.list.d/tmp_bak/*.list /etc/apt/sources.list.d/ 2>/dev/null
+    rm -rf /etc/apt/sources.list.d/tmp_bak/ 2>/dev/null
+}
 
 cleanup_function(){
     /bin/rm -f $UPGRADE_LOCK
@@ -608,7 +623,7 @@ cs_check_mysql_password () {
     #If user didn't assign mysql root password, then check original zstack mysql password status
     if [ 'y' != $UPGRADE ]; then
         if [ -z $ONLY_INSTALL_ZSTACK ];then
-            rpm -qa | grep mysql-community >>$ZSTACK_INSTALL_LOG 2>&1
+            dpkg -l | grep mysql-community >>$ZSTACK_INSTALL_LOG 2>&1
             if [ $? -eq 0 ];then
                 fail2 "Detect mysql-community installed, please uninstall it due to ZStack will use mariadb."
             fi
@@ -700,6 +715,7 @@ check_system(){
             fail2 "Host OS checking failure: your system is: `cat /etc/redhat-release`, $PRODUCT_NAME management node only supports $SUPPORTED_OS currently"
         fi
     else
+        grep 'Debian GNU/Linux' /etc/issue >>$ZSTACK_INSTALL_LOG 2>&1; IS_DEBIAN=$?
         grep 'Ubuntu' /etc/issue >>$ZSTACK_INSTALL_LOG 2>&1; IS_UBUNTU=$?
         grep 'Kylin' /etc/issue >>$ZSTACK_INSTALL_LOG 2>&1; IS_KYLINOS=$?
         if [ $IS_UBUNTU -eq 0 ]; then
@@ -723,11 +739,20 @@ check_system(){
                 fail2 "Host OS checking failure: your system is: `cat /etc/issue`, $PRODUCT_NAME management node only support $SUPPORTED_OS currently"
             fi
             echo " " >/dev/null 2>&1
+        elif [ $IS_DEBIAN -eq 0 ]; then
+            grep 'Linux 9' /etc/issue >>$ZSTACK_INSTALL_LOG 2>&1
+            if [ $? -eq 0 ]; then
+                OS=$DEBIAN9
+            else
+                fail2 "Host OS checking failure: your system is: `cat /etc/issue`, $PRODUCT_NAME management node only support $SUPPORTED_OS currently"
+            fi
+            echo " " >/dev/null 2>&1
         else
             fail2 "Host OS checking failure: your system is: `cat /etc/issue`, $PRODUCT_NAME management node only support $SUPPORTED_OS currently"
         fi
+        export DEBIAN_FRONTEND=noninteractive
     fi
-    if [ $OS != $CENTOS7 -a $OS != $UBUNTU1404 -a $OS != $UBUNTU1604 -a $OS != $ALIOS7 -a $OS != $KYLIN402 ]; then
+    if [ $OS != $CENTOS7 -a $OS != $UBUNTU1404 -a $OS != $UBUNTU1604 -a $OS != $ALIOS7 -a $OS != $KYLIN402 -a $OS != $DEBIAN9 ]; then
         #only support offline installation for CentoS7.x,Kylin4.0.2
         if [ -z "$YUM_ONLINE_REPO" ]; then
             fail2 "Your system is $OS . ${PRODUCT_NAME} installer can not use '-o' or '-R' option on your system. Please remove '-o' or '-R' option and try again."
@@ -768,13 +793,14 @@ cs_create_repo(){
     echo_subtitle "Update Package Repository"
     if [ $OS = $CENTOS7 -o $OS = $CENTOS6 ]; then
         create_yum_repo
+    elif [ $OS = $KYLIN402 -o $OS = $DEBIAN9 ];then
+        create_apt_source
     fi
-
-    if [ $OS = $UBUNTU1404 -o $OS = $UBUNTU1604 ]; then
-        if [ ! -z $ZSTACK_PKG_MIRROR ]; then
-            create_apt_source_list
-        fi
-    fi
+    # if [ $OS = $UBUNTU1404 -o $OS = $UBUNTU1604 ]; then
+    #     if [ ! -z $ZSTACK_PKG_MIRROR ]; then
+    #         create_apt_source_list
+    #     fi
+    # fi
     pass
 }
 
@@ -984,7 +1010,7 @@ ia_install_python_gcc_rh(){
 
 ia_install_pip(){
     echo_subtitle "Install PIP"
-    which pip >/dev/null 2>&1 && which pip2 >/dev/null
+    which pip >/dev/null 2>&1 && which pip2 >/dev/null && return
 
     if [ ! -z $DEBUG ]; then
         easy_install -i $pypi_source_easy_install --upgrade pip
@@ -1066,8 +1092,10 @@ iu_deploy_zstack_repo() {
 iu_deploy_zstack_apt_source() {
     echo_subtitle "Deploy apt source for ${PRODUCT_NAME}"
 
-    BASEARCH=`uname -m`
-    [ x"$BASEARCH" = x'aarch64' ] && ALTARCH='x86_64' || ALTARCH='aarch64'
+    mkdir -p ${ZSTACK_HOME}/static/zstack-repo
+    ln -s /opt/zstack-dvd/x86_64 ${ZSTACK_HOME}/static/zstack-repo/x86_64 >/dev/null 2>&1
+    ln -s /opt/zstack-dvd/aarch64 ${ZSTACK_HOME}/static/zstack-repo/aarch64 >/dev/null 2>&1
+    chown -R zstack:zstack ${ZSTACK_HOME}/static/zstack-repo
 }
 
 unpack_zstack_into_tomcat(){
@@ -1079,7 +1107,11 @@ unpack_zstack_into_tomcat(){
     fi
     show_spinner iz_unzip_tomcat
     show_spinner iz_install_zstack
-    #show_spinner iu_deploy_zstack_repo
+    if [ $OS = $CENTOS7 -o $OS = $CENTOS6 -o $OS = $RHEL7 -o $OS = $ISOFT4 -o $OS = $ALIOS7 ]; then
+        show_spinner iu_deploy_zstack_repo
+    elif [ $OS = $UBUNTU1404 -o $OS = $UBUNTU1604 -o $OS = $KYLIN402 -o $OS = $DEBIAN9 ]; then
+        show_spinner iu_deploy_zstack_apt_source
+    fi
 }
 
 upgrade_zstack(){
@@ -1090,8 +1122,8 @@ upgrade_zstack(){
         fail2 "You are upgrading ${PRODUCT_NAME} under HA environment.\nPlease run: 'zsha2 upgrade-mn zstack-installer.bin' instead.\n"
     fi
 
-    # show_spinner uz_upgrade_tomcat
-    # show_spinner uz_upgrade_zstack_ctl
+    show_spinner uz_upgrade_tomcat
+    show_spinner uz_upgrade_zstack_ctl
 
     # configure management.server.ip if not exists
     zstack-ctl show_configuration | grep '^[[:space:]]*management.server.ip' >/dev/null 2>&1
@@ -1111,7 +1143,11 @@ upgrade_zstack(){
     show_spinner uz_stop_zstack_ui
     show_spinner uz_upgrade_zstack
     show_spinner upgrade_tomcat_security
-    show_spinner iu_deploy_zstack_repo
+    if [ $OS = $CENTOS7 -o $OS = $CENTOS6 -o $OS = $RHEL7 -o $OS = $ISOFT4 -o $OS = $ALIOS7 ]; then
+        show_spinner iu_deploy_zstack_repo
+    elif [ $OS = $UBUNTU1404 -o $OS = $UBUNTU1604 -o $OS = $KYLIN402 -o $OS = $DEBIAN9 ]; then
+        show_spinner iu_deploy_zstack_apt_source
+    fi
     show_spinner cp_third_party_tools
 
     cd /
@@ -1307,13 +1343,10 @@ sharedblock_check_qcow2_volume(){
 install_ansible(){
     echo_title "Install Ansible"
     echo ""
-    echo_title "os=$OS"
-
     if [ $OS = $CENTOS7 -o $OS = $CENTOS6 -o $OS = $RHEL7 -o $OS = $ISOFT4 -o $OS = $ALIOS7 ]; then
         show_spinner ia_disable_selinux
         show_spinner ia_install_python_gcc_rh
-    elif [ $OS = $UBUNTU1404 -o $OS = $UBUNTU1604 -o $OS = $KYLIN402 ]; then
-        export DEBIAN_FRONTEND=noninteractive
+    elif [ $OS = $UBUNTU1404 -o $OS = $UBUNTU1604 -o $OS = $KYLIN402 -o $OS = $DEBIAN9 ]; then
         #if [ -z $ZSTACK_PKG_MIRROR ]; then
         #    show_spinner ia_update_apt
         #fi
@@ -1324,7 +1357,7 @@ install_ansible(){
 
 iz_install_unzip(){
     echo_subtitle "Install unzip"
-    if [ $OS = $UBUNTU1404 -o $OS = $UBUNTU1604 -o $OS = $KYLIN402 ]; then
+    if [ $OS = $UBUNTU1404 -o $OS = $UBUNTU1604 -o $OS = $KYLIN402 -o $OS = $DEBIAN9 ]; then
         apt-get -y install unzip >>$ZSTACK_INSTALL_LOG 2>&1
         [ $? -ne 0 ] && fail "Install unzip fail."
         pass
@@ -1441,19 +1474,18 @@ is_install_general_libs_deb(){
     fi
     openjdk=openjdk-8-jdk
 
-    if [ $OS == $UBUNTU1404 -o $OS == $KYLIN402]; then
+    if [ $OS == $UBUNTU1404 -o $OS == $KYLIN402 -o $OS = $DEBIAN9 ]; then
         #install openjdk ppa for openjdk-8
 
-        add-apt-repository ppa:openjdk-r/ppa -y >>$ZSTACK_INSTALL_LOG 2>&1
+        # add-apt-repository ppa:openjdk-r/ppa -y >>$ZSTACK_INSTALL_LOG 2>&1
         apt-key update >>$ZSTACK_INSTALL_LOG 2>&1
         apt-get update >>$ZSTACK_INSTALL_LOG 2>&1
     fi
-
-    apt-get -y install --allow-unauthenticated \
+    apt-get -y -q install --allow-unauthenticated \
         $openjdk \
         bridge-utils \
         wget \
-        python-libvirt \
+        curl \
         vlan \
         python-dev \
         gcc \
@@ -1462,18 +1494,21 @@ is_install_general_libs_deb(){
         >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -ne 0 ] && fail "install system lib 1 failed"
 
-    apt-get -y install --no-upgrade --allow-unauthenticated \
+    apt-get -y -q install --no-upgrade --allow-unauthenticated \
         sudo \
         >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -ne 0 ] && fail "install system lib 2 failed"
 
-    apt-get -y install --allow-unauthenticated \
+    apt-get -y -q install --allow-unauthenticated \
+        dmidecode \
         nfs-common \
         nfs-kernel-server \
         autoconf \
-        iptables-persistent \
+        netfilter-persistent \
         tar \
         gzip \
+        grafana \
+        sqlite3 \
         unzip \
         apache2 \
         sshpass \
@@ -1500,6 +1535,9 @@ is_install_general_libs_deb(){
             && ln -s /etc/init.d/netfilter-persistent /etc/init.d/iptables-persistent
         [ ! -f /etc/init.d/iptables ] && [ -f /etc/init.d/netfilter-persistent ] \
             && ln -s /etc/init.d/netfilter-persistent /etc/init.d/iptables
+        sudo /bin/systemctl daemon-reload >>$ZSTACK_INSTALL_LOG 2>&1
+        sudo /bin/systemctl enable grafana-server >>$ZSTACK_INSTALL_LOG 2>&1
+        sudo /bin/systemctl start grafana-server >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     pass
 }
@@ -1901,7 +1939,6 @@ iz_unzip_tomcat(){
     if [ $? -ne 0 ];then
        fail "failed to unzip Tomcat package: $ZSTACK_INSTALL_ROOT/apache-tomcat*.zip."
     fi
-    unzip -o -d apache-tomcat/webapps/ libs/tomcat_root_app.zip >>$ZSTACK_INSTALL_LOG 2>&1
     apache_temp=`mktemp`
     apache_zip=`ls apache-tomcat*.zip`
     mv $apache_zip $apache_temp
@@ -1911,6 +1948,7 @@ iz_unzip_tomcat(){
     #delete unused web app folders, 'ROOT' should be left
     find $ZSTACK_INSTALL_ROOT/apache-tomcat/webapps -mindepth 1 -not -name 'ROOT' -delete
 
+    unzip -o -d apache-tomcat/webapps/ libs/tomcat_root_app.zip >>$ZSTACK_INSTALL_LOG 2>&1
     chmod a+x apache-tomcat/bin/*
     if [ $? -ne 0 ];then
        fail "chmod failed in: $ZSTACK_INSTALL_ROOT/apache-tomcat/bin/*."
@@ -2023,12 +2061,17 @@ setup_install_param(){
         zstack-ctl configure identity.init.type="PRIVILEGE_ADMIN"
         zstack-ctl configure sanyuan.installed=true
     fi
+
+    # Port 9090 is already used by system service on KylinOS(ft2000)
+    if [ $OS == $KYLIN402 ];then
+        zstack-ctl configure Prometheus.port=9080
+    fi
 }
 
 install_license(){
     echo_title "Install License"
     echo ""
-    show_spinner il_install_licensFe
+    show_spinner il_install_license
 }
 
 il_install_license(){
@@ -2351,7 +2394,7 @@ cs_setup_nfs(){
 cs_setup_nginx(){
     echo_subtitle "Configure Nginx Server"
 mkdir -p /etc/nginx/conf.d/mn_pxe/ && chmod -R 0777 /etc/nginx/conf.d/mn_pxe/
-cp -f /etc/nginx/nginx.conf /etc/nginx/nginx.conf.bck
+[ -f /etc/nginx/nginx.conf ] && cp -f /etc/nginx/nginx.conf /etc/nginx/nginx.conf.bck
 cat > /etc/nginx/nginx.conf << EOF
 user nginx;
 worker_processes auto;
@@ -2647,6 +2690,33 @@ EOF
     fi
 }
 
+create_apt_source(){
+    /bin/cp -f /etc/apt/sources.list /etc/apt/sources.list.zstack.`date +%Y-%m-%d_%H-%M-%S` >>$ZSTACK_INSTALL_LOG 2>&1
+    cat > /etc/apt/sources.list << EOF
+deb file:///opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/ Packages/
+EOF
+    if [ x"$UPGRADE" = x"y" ];then
+        mkdir /etc/apt/sources.list.d/tmp_bak
+        mv /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/tmp_bak 2>/dev/null
+    fi
+    #Fix Ubuntu conflicted dpkg lock issue. 
+    if [ -f /etc/init.d/unattended-upgrades ]; then
+        /etc/init.d/unattended-upgrades stop  >>$ZSTACK_INSTALL_LOG 2>&1
+        update-rc.d -f unattended-upgrades remove >>$ZSTACK_INSTALL_LOG 2>&1
+        pid=`lsof /var/lib/dpkg/lock|grep lock|awk '{print $2}'`
+        [ ! -z $pid ] && kill -9 $pid >>$ZSTACK_INSTALL_LOG 2>&1
+        which systemctl >/dev/null 2>&1
+        [ $? -eq 0 ] && systemctl stop apt-daily >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+    dpkg --configure --force-confold -a >>$ZSTACK_INSTALL_LOG 2>&1
+    [ $? -ne 0 ] && fail "execute \`dpkg --configure --force-confold -a\` failed."
+    apt-get clean >>$ZSTACK_INSTALL_LOG 2>&1
+    apt-get update -o Acquire::http::No-Cache=True --fix-missing>>$ZSTACK_INSTALL_LOG 2>&1
+    if [ $? -ne 0 ]; then
+        fail "apt-get update package failed."
+    fi
+}
+
 
 #create zstack local yum repo
 create_yum_repo(){
@@ -2849,6 +2919,15 @@ check_hybrid_arch(){
     return 1
 }
 
+create_local_source_list_files() {
+    echo "create $list_file" >> $ZSTACK_INSTALL_LOG
+    
+list_file=/etc/apt/sources.list.d/zstack-local.list
+cat > $list_file << EOF
+deb file:///opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/ Packages/
+EOF
+}
+
 check_sync_local_repos() {
   echo_subtitle "Check local repo version"
   [ -f ".repo_version" ] || fail2 "Cannot found current repo_version file, please make sure you have correct zstack-installer package."
@@ -2859,7 +2938,7 @@ check_sync_local_repos() {
   fi
   if [ $? -eq 0 ]; then
       return 0
-  elif [ x"$SKIP_SYNC" = x'y' ]; then
+  elif [ x"$SKIP_SYNC" = x'y' -o $OS == $KYLIN402 -o $OS = $DEBIAN9 ]; then
       echo " ... $(tput setaf 1)NOT MATCH$(tput sgr0)" | tee -a $ZSTAC_INSTALL_LOG
       echo_hints_to_upgrade_iso
   else
@@ -3136,6 +3215,10 @@ get_mn_port
 # Fix ZSTAC-22364
 pre_scripts_to_adjust_iptables_rules
 
+
+which yum >>$ZSTACK_INSTALL_LOG 2>&1;IS_YUM=$?
+which apt >>$ZSTACK_INSTALL_LOG 2>&1;IS_APT=$?
+
 if [ x"$ZSTACK_OFFLINE_INSTALL" = x'y' ]; then
     if [ ! -d /opt/zstack-dvd/$BASEARCH/ ]; then
         cd /opt/zstack-dvd/Packages/
@@ -3310,9 +3393,17 @@ export HISTTIMEFORMAT HISTSIZE HISTFILESIZE PROMPT_COMMAND
 EOF
 }
 
-# make sure local repo exist and dependences installed
-install_sync_repo_dependences
-create_local_repo_files
+# make sure local repo files exist
+if [ $IS_YUM -eq 0 ];then
+    # make sure local repo exist and dependences installed
+    install_sync_repo_dependences
+    create_local_repo_files
+elif [ $IS_APT -eq 0 ];then
+    create_local_source_list_files
+else 
+    fail2 "Command yum or apt not found, cannot create local repo."
+fi
+
 
 # CHECK_REPO_VERSION
 if [ x"${CHECK_REPO_VERSION}" == x"True" ]; then
@@ -3473,6 +3564,9 @@ if [ x"$UPGRADE" = x'y' ]; then
     echo_star_line
     start_zstack_tui
     post_scripts_to_restore_iptables_rules
+    if [ $OS == $KYLIN402 -o $OS = $DEBIAN9 ];then
+        post_restore_source_on_debian
+    fi
     exit 0
 fi
 
@@ -3524,11 +3618,7 @@ if [ ! -z $ONLY_INSTALL_ZSTACK ]; then
     start_zstack_tui
     exit 0
 fi
-cp /root/ctl.py /var/lib/zstack/virtualenv/zstackctl/lib/python2.7/site-packages/zstackctl/ctl.py
-cp /root/V3.3.1.1__schema.sql /usr/local/zstack/apache-tomcat-8.5.35/webapps/zstack/WEB-INF/classes/db/upgrade/V3.3.1.1__schema.sql
-cp /root/V3.4.0.1__schema.sql /usr/local/zstack/apache-tomcat-8.5.35/webapps/zstack/WEB-INF/classes/db/upgrade/V3.4.0.1__schema.sql
-# cp /root/deploydb.sh /usr/local/zstack/apache-tomcat/webapps/zstack/WEB-INF/classes/deploydb.sh
-# cp /root/deployuidb.sh /usr/local/zstack/apache-tomcat/webapps/zstack/WEB-INF/classes/deployuidb.sh
+
 #Install Mysql
 install_db
 
