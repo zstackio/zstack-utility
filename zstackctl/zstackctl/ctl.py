@@ -563,6 +563,21 @@ def check_zstack_user():
     except KeyError:
         raise CtlError('cannot find user account "zstack", your installation seems incomplete')
 
+def check_special_root(s):
+    if re.match(r"[^a-z0-9A-Z\\]", s):
+        s = "\\" + s
+    elif re.match(r"[\\]", s):
+        s = r"\\"
+    return s
+
+def check_special_new(s):
+    if re.match(r"[^a-z0-9A-Z\\\%]", s):
+        s = "\\" + s
+    elif re.match(r"[\\]", s):
+        s = r"\\\\"
+    return s
+
+
 class UseUserZstack(object):
     def __init__(self):
         self.root_uid = None
@@ -4320,24 +4335,26 @@ class ChangeMysqlPasswordCmd(Command):
                             help="Mysql ip address if didn't install on localhost",
                             )
 
-    def check_username_password(self,args):
-        if args.remote_ip is not None:
-            status, output = commands.getstatusoutput("mysql -u root -p%s -h '%s' -e 'show databases;'" % (args.root_password,  args.remote_ip))
+    def check_username_password(self, root_password, remote_ip):
+        if remote_ip is not None:
+            status, output = commands.getstatusoutput("mysql -u root -p%s -h '%s' -e 'show databases;'" % (root_password, remote_ip))
         else:
-            status, output = commands.getstatusoutput("mysql -u root -p%s -e 'show databases;'" % args.root_password)
+            status, output = commands.getstatusoutput("mysql -u root -p%s -e 'show databases;'" % root_password)
         if status != 0:
             error(output)
 
 
     def run(self, args):
-        self.check_username_password(args)
+        root_password_ = ''.join(map(check_special_root, args.root_password))
+        new_password_ = ''.join(map(check_special_new, args.new_password))
+        self.check_username_password(root_password_, args.remote_ip)
         if check_pswd_rules(args.new_password) == False:
-            error("Failed! The new password you entered doesn't meet the password policy requirements.\nA strong password must contain at least 8 characters in length, and include a combination of letters, numbers and special characters.")
-        if args.user_name in self.normal_users:
+            error("Failed! The password you entered doesn't meet the password policy requirements.\nA strong password must contain at least 8 characters in length, and include a combination of letters, numbers and special characters.")
+        if (args.user_name in self.normal_users) or (args.user_name == 'root'):
             if args.remote_ip is not None:
-                sql = "mysql -u root -p'%s' -h '%s' -e \"UPDATE mysql.user SET Password=PASSWORD(\'%s\') , Host = \'%s\' WHERE USER=\'%s\';FLUSH PRIVILEGES;\"" % (args.root_password, args.remote_ip, args.new_password,args.remote_ip, args.user_name)
+                sql = '''mysql -u root -p%s -h '%s' -e "UPDATE mysql.user SET Password=PASSWORD('%s') , Host = '%s' WHERE USER='%s';FLUSH PRIVILEGES;" ''' % (root_password_, args.remote_ip, new_password_, args.remote_ip, args.user_name)
             else:
-                sql = "mysql -u root -p'%s' -e \"UPDATE mysql.user SET Password=PASSWORD(\'%s\') WHERE USER=\'%s\';FLUSH PRIVILEGES;\"" % (args.root_password, args.new_password, args.user_name)
+                sql = '''mysql -u root -p%s -e "UPDATE mysql.user SET Password=PASSWORD('%s') WHERE USER='%s';FLUSH PRIVILEGES;" ''' % (root_password_, new_password_, args.user_name)
             status, output = commands.getstatusoutput(sql)
             if status != 0:
                 error(output)
@@ -4346,14 +4363,6 @@ class ChangeMysqlPasswordCmd(Command):
                 info(colored("Please change 'DB.password' in 'zstack.properties' then restart zstack to make the changes effective" , 'yellow'))
             elif args.user_name == 'zstack_ui':
                 info(colored("Please change 'db_password' in 'zstack.ui.properties' then restart zstack ui to make the changes effective" , 'yellow'))
-        elif args.user_name == 'root':
-           if args.remote_ip is not None:
-               status, output = commands.getstatusoutput("mysqladmin -u %s -p'%s' password %s -h %s" % (args.user_name, args.root_password, args.new_password, args.remote_ip))
-           else:
-               status, output = commands.getstatusoutput("mysqladmin -u %s -p'%s' password  %s" % (args.user_name, args.root_password, args.new_password))
-           if status != 0:
-               error(output)
-           info("Change mysql password for user '%s' successfully!" % args.user_name)
         else:
            error("Only support changing %s and root password" % ', '.join(self.normal_users))
 
