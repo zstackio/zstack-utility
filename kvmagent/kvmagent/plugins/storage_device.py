@@ -265,8 +265,10 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             return jsonobject.dumps(rsp)
 
         for iqn in iqns:
-            shell.call('timeout 10 iscsiadm --mode node --targetname "%s" -p %s:%s --logout' % (
-                iqn, cmd.iscsiServerIp, cmd.iscsiServerPort))
+            r = bash.bash_r("iscsiadm -m session | grep %s:%s | grep %s" % (cmd.iscsiServerIp, cmd.iscsiServerPort, iqn))
+            if r == 0:
+                shell.call('timeout 10 iscsiadm --mode node --targetname "%s" -p %s:%s --logout' % (iqn, cmd.iscsiServerIp, cmd.iscsiServerPort))
+            
             shell.call('timeout 10 iscsiadm -m node -o delete -T "%s" -p %s:%s' % (
                 iqn, cmd.iscsiServerIp, cmd.iscsiServerPort))
 
