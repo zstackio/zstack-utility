@@ -5379,6 +5379,7 @@ class VmPlugin(kvmagent.KvmAgent):
         @thread.AsyncThread
         def deactivate_volume(event, file, vm_uuid):
             volume = file.strip().split("'")[1]
+            logger.debug("deactivating volume %s for vm %s" % (file, vm_uuid))
             try:
                 wait_volume_unused(volume)
             finally:
@@ -5406,6 +5407,8 @@ class VmPlugin(kvmagent.KvmAgent):
             if len(out) != 0:
                 for file in out:
                     deactivate_volume(event, file, vm_uuid)
+            else:
+                logger.debug("can not find sharedblock related volume for vm %s, skip to release" % vm_uuid)
         except:
             content = traceback.format_exc()
             logger.warn("traceback: %s" % content)
