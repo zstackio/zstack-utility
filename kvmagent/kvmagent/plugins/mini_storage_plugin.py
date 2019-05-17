@@ -458,7 +458,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
             lvm.resize_lv_from_cmd(install_abs_path, cmd.size, cmd)
             return jsonobject.dumps(rsp)
 
-        r = drbd.DrbdResource(cmd.resourceUuid)
+        r = drbd.DrbdResource(cmd.installPath.split("/")[-1])
         r._init_from_disk(install_abs_path)
         with drbd.OperateDrbd(r):
             r.resize()
@@ -724,7 +724,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         rsp = GetVolumeSizeRsp()
 
         install_abs_path = get_absolute_path_from_install_path(cmd.installPath)
-        r = drbd.DrbdResource(cmd.volumeUuid)
+        r = drbd.DrbdResource(cmd.installPath.split("/")[-1])
         with drbd.OperateDrbd(r):
             rsp.size = linux.qcow2_virtualsize(r.get_dev_path())
         rsp.actualSize = lvm.get_lv_size(install_abs_path)
