@@ -305,6 +305,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
             find_vg(vgUuid)
         except RetryException as e:
             if forceWipe is True:
+                bash.bash_r("drbdadm down all")
                 lvm.wipe_fs(diskPaths, vgUuid)
 
             cmd = shell.ShellCmd("vgcreate -qq --addtag '%s::%s::%s::%s' --metadatasize %s %s %s" %

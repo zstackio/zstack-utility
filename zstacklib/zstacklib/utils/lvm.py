@@ -532,6 +532,7 @@ def wipe_fs(disks, expected_vg=None, with_lock=True):
             bash.bash_roe("multipath -f %s && systemctl restart multipathd.service && sleep 1" % disk)
 
         if exists_vg is not None:
+            bash.bash_r("grep %s /etc/drbd.d/* | awk '{print $1}' | sort | uniq | tr -d ':' | xargs rm" % exists_vg)
             logger.debug("found vg %s exists on this pv %s, start wipe" %
                          (exists_vg, disk))
             try:
