@@ -2431,14 +2431,14 @@ class Vm(object):
 
             if "QEMU command 'change': error connecting: Operation not supported" in err:
                 raise Exception('cannot hotplug ISO to the VM[uuid:%s]. It is a libvirt bug: %s.'
-                        ' you can power-off the vm and attach again.' %
-                        (self.uuid, 'https://bugzilla.redhat.com/show_bug.cgi?id=1541702'))
-
-            if 'timed out waiting for disk tray status update' in err:
+                                ' you can power-off the vm and attach again.' %
+                                (self.uuid, 'https://bugzilla.redhat.com/show_bug.cgi?id=1541702'))
+            elif 'timed out waiting for disk tray status update' in err:
                 raise Exception(
                     'unable to attach the iso to the VM[uuid:%s]. It seems met some internal error,'
                     ' you can reboot the vm and try again' % self.uuid)
-
+            else:
+                raise Exception('unable to attach the iso to the VM[uuid:%s].' % self.uuid)
 
         def check(_):
             me = get_vm_by_uuid(self.uuid)
@@ -2489,6 +2489,9 @@ class Vm(object):
                 raise Exception(
                     'unable to detach the iso from the VM[uuid:%s]. It seems the ISO is still mounted in the operating system'
                     ', please umount it first' % self.uuid)
+            else:
+                raise Exception(
+                    'unable to detach the iso from the VM[uuid:%s]' % self.uuid)
 
         def check(_):
             me = get_vm_by_uuid(self.uuid)
