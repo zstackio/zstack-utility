@@ -531,6 +531,11 @@ def wipe_fs(disks, expected_vg=None, with_lock=True):
         if need_flush_mpath:
             bash.bash_roe("multipath -f %s && systemctl restart multipathd.service && sleep 1" % disk)
 
+        for holder in get_disk_holders([disk.split("/")[-1]]):
+            if not holder.startswith("dm-"):
+                continue
+            bash.bash_roe("dmsetup remove /dev/%s" % holder)
+
         if exists_vg is not None:
             bash.bash_r("grep %s /etc/drbd.d/* | awk '{print $1}' | sort | uniq | tr -d ':' | xargs rm" % exists_vg)
             logger.debug("found vg %s exists on this pv %s, start wipe" %
@@ -541,6 +546,18 @@ def wipe_fs(disks, expected_vg=None, with_lock=True):
                 remove_device_map_for_vg(exists_vg)
             finally:
                 pass
+
+
+def get_disk_holders(disk_names):
+    holders = []
+    for disk_name in disk_names:
+        h = bash.bash_o("ls /sys/class/block/%s/holders/" % disk_name).strip().splitlines()
+        if len(h) == 0:
+            continue
+        holders.extend(h)
+        holders.extend(get_disk_holders(h))
+    holders.reverse()
+    return holders
 
 
 @bash.in_bash

@@ -581,6 +581,8 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
     def download_from_imagestore(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         self.imagestore_client.download_from_imagestore(cmd.mountPoint, cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
+        install_abs_path = get_absolute_path_from_install_path(cmd.primaryStorageInstallPath)
+        lvm.active_lv(install_abs_path, False)
         rsp = AgentRsp()
         return jsonobject.dumps(rsp)
 
