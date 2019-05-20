@@ -5225,7 +5225,7 @@ class VmPlugin(kvmagent.KvmAgent):
             volume = file.strip().split("'")[1]
             lock_type = bash.bash_o("lvs --nolocking %s -ovg_lock_type" % file).strip()
             if "sanlock" not in lock_type:
-                logger.debug("%v not sanlock, skip to deactive" % file)
+                logger.debug("%s not sanlock, skip to deactive" % file)
                 return
             try:
                 wait_volume_unused(volume)

@@ -349,7 +349,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
             lvm.config_lvm_by_sed("thin_pool_autoextend_threshold", "thin_pool_autoextend_threshold=80", ["lvm.conf", "lvmlocal.conf"])
             lvm.config_lvm_by_sed("snapshot_autoextend_threshold", "snapshot_autoextend_threshold=80", ["lvm.conf", "lvmlocal.conf"])
 
-            lvm.config_lvm_filter(["lvm.conf", "lvmlocal.conf"])
+            lvm.config_lvm_filter(["lvm.conf", "lvmlocal.conf"], True)
 
         def config_drbd():
             bash.bash_r("sed -i 's/usage-count yes/usage-count no/g' /etc/drbd.d/global_common.conf")

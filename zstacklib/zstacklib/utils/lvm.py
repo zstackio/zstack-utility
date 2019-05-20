@@ -316,7 +316,7 @@ def config_lvm_by_sed(keyword, entry, files):
 
 
 @bash.in_bash
-def config_lvm_filter(files):
+def config_lvm_filter(files, no_drbd=False):
     if not os.path.exists(LVM_CONFIG_PATH):
         raise Exception("can not find lvm config path: %s, config lvm failed" % LVM_CONFIG_PATH)
 
@@ -324,6 +324,9 @@ def config_lvm_filter(files):
     filter_str = 'filter=["r|\\/dev\\/cdrom|"'
     for vg in vgs:
         filter_str += ', "r\\/dev\\/mapper\\/%s.*\\/"' % vg.strip()
+    if no_drbd:
+        filter_str += ', "r\\/dev\\/drbd.*\\/"'
+
     filter_str += ']'
 
     for file in files:
