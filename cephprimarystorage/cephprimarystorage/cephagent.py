@@ -276,6 +276,9 @@ class CephAgent(plugin.TaskManager):
 
         if r != 0:
             return None
+        
+        if not size:
+            return None
 
         size = size.strip('\t\n ')
         return sizeunit.get_size(size)
