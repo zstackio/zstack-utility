@@ -173,6 +173,8 @@ class ImageStoreClient(object):
         cdir = os.path.join(os.path.realpath(cachedir), "zstore-cache")
         cmdstr = "find %s -type f -name image -links 1 -exec unlink {} \;" % cdir
         bash_r(cmdstr)
+        cmdstr = "find %s -depth -mindepth 1 -type d -empty -exec rmdir {} \;" % cdir
+        bash_r(cmdstr)
 
     def convert_image_raw(self, cmd):
         destPath = cmd.srcPath.replace('.qcow2', '.raw')
