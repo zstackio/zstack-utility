@@ -21,6 +21,7 @@ import os
 import os.path
 import re
 import time
+import uuid
 import libvirt
 import traceback
 
@@ -142,18 +143,19 @@ class GenerateVfioMdevDevicesCommand(kvmagent.AgentCommand):
     def __init__(self):
         super(GenerateVfioMdevDevicesCommand, self).__init__()
         self.pciDeviceAddress = None
-        self.mdevSpecName = None
+        self.mdevSpecTypeId = None
+        self.maxInstances = None
 
 class GenerateVfioMdevDevicesRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(GenerateVfioMdevDevicesRsp, self).__init__()
-        self.mdevUuids = None
+        self.mdevUuids = []
 
 class UngenerateVfioMdevDevicesCommand(kvmagent.AgentCommand):
     def __init__(self):
         super(UngenerateVfioMdevDevicesCommand, self).__init__()
         self.pciDeviceAddress = None
-        self.mdevSpecName = None
+        self.mdevSpecTypeId = None
 
 class UngenerateVfioMdevDevicesRsp(kvmagent.AgentResponse):
     def __init__(self):
@@ -673,8 +675,33 @@ if __name__ == "__main__":
         return True
 
     def _get_vfio_mdev_info(self, to):
-        # TODO
-        return False
+        addr = to.pciDeviceAddress
+        if not addr.startswith("0000:"):
+            addr = "0000:" + addr
+
+        r, o, e = bash_roe("nvidia-smi vgpu -i %s -v -s | grep -v %s" % (addr, addr))
+        if r != 0:
+            return False  # only support nvidia-smi now
+
+        for line in o.split('\n'):
+            parts = line.split(':')
+            if len(parts) < 2: continue
+            title = parts[0].strip()
+            content = ' '.join(parts[1:]).strip()
+            if title == "vGPU Type ID":
+                spec = {'TypeId': content}
+                to.mdevSpecifications.append(spec)
+            else:
+                to.mdevSpecifications[-1][title] = content
+
+        # if supported specs != creatable specs, means it's aleady virtualized
+        _, support, _ = bash_roe("nvidia-smi vgpu -i %s -s | grep -v %s" % (addr, addr))
+        _, creatable, _ = bash_roe("nvidia-smi vgpu -i %s -c | grep -v %s" % (addr, addr))
+        if support != creatable:
+            to.virtStatus = "VFIO_MDEV_VIRTUALIZED"
+        else:
+            to.virtStatus = "VFIO_MDEV_VIRTUALIZABLE"
+        return True
 
     @in_bash
     def _collect_format_pci_device_info(self, rsp):
@@ -845,6 +872,25 @@ if __name__ == "__main__":
     def generate_vfio_mdev_devices(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GenerateVfioMdevDevicesRsp()
+
+        # support nvidia gpu only
+        addr = cmd.pciDeviceAddress
+        type = int(cmd.mdevSpecTypeId, 0)
+        if not addr.startswith('0000:'):
+            addr = "0000:" + addr
+        spec_path = os.path.join("/sys/bus/pci/devices/", addr, "mdev_supported_types", "nvidia-%d" % type)
+        if not os.path.exists(spec_path):
+            rsp.success = False
+            rsp.error = "cannot generate vfio mdev devices from pci device[addr:%s]" % addr
+            return jsonobject.dumps(rsp)
+
+        with open(os.path.join(spec_path, "available_instances"), 'r') as f:
+            max_instances = f.read().strip()
+        for i in range(int(max_instances)):
+            _uuid = str(uuid.uuid1())
+            rsp.mdevUuids.append(_uuid)
+            with open(os.path.join(spec_path, "create"), 'w') as f:
+                f.write(_uuid)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -852,6 +898,29 @@ if __name__ == "__main__":
     def ungenerate_vfio_mdev_devices(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = UngenerateVfioMdevDevicesRsp()
+
+        # support nvidia gpu only
+        addr = cmd.pciDeviceAddress
+        type = int(cmd.mdevSpecTypeId, 0)
+        if not addr.startswith('0000:'):
+            addr = "0000:" + addr
+        device_path = os.path.join("/sys/bus/pci/devices/", addr, "mdev_supported_types", "nvidia-%d" % type, "devices")
+        if not os.path.exists(device_path):
+            rsp.success = False
+            rsp.error = "no vfio mdev devices to ungenerate from pci device[addr:%s]" % addr
+            return jsonobject.dumps(rsp)
+
+        # remove
+        for _uuid in os.listdir(device_path):
+            with open(os.path.join(device_path, _uuid, "remove"), 'w') as f:
+                f.write("1")
+
+        # check
+        _, support, _ = bash_roe("nvidia-smi vgpu -i %s -s | grep -v %s" % (addr, addr))
+        _, creatable, _ = bash_roe("nvidia-smi vgpu -i %s -c | grep -v %s" % (addr, addr))
+        if support != creatable:
+            rsp.success = False
+            rsp.error = "failed to ungenerate vfio mdev devices from pci device[addr:%s]" % addr
         return jsonobject.dumps(rsp)
 
     def start(self):
