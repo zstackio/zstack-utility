@@ -541,11 +541,11 @@ class HaPlugin(kvmagent.KvmAgent):
             if shell.run("nmap --host-timeout 30s -sP -PI %s | grep 'Host is up'" % cmd.ip) == 0:
                 success += 1
 
-            time.sleep(cmd.interval)
+            if success == cmd.successTimes:
+                rsp.result = self.RET_SUCCESS
+                return jsonobject.dumps(rsp)
 
-        if success == cmd.successTimes:
-            rsp.result = self.RET_SUCCESS
-            return jsonobject.dumps(rsp)
+            time.sleep(cmd.interval)
 
         if success == 0:
             rsp.result = self.RET_FAILURE
