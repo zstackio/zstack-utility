@@ -635,7 +635,7 @@ if __name__ == "__main__":
     @staticmethod
     def get_host_networking_interfaces():
         nics = []
-        nic_names = bash_o("find /sys/class/net -type l -not -lname '*virtual*' -printf '%f\n'").splitlines()
+        nic_names = bash_o("find /sys/class/net -type l -not -lname '*virtual*' -printf '%f\\n'").splitlines()
         if len(nic_names) == 0:
             return nics
         for nic in nic_names:

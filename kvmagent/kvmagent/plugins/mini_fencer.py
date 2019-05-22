@@ -51,7 +51,7 @@ def run(c):
 
 def test_fencer(vg_name):
     # type: (str) -> bool
-    r, fencer_ip = getstatusoutput("vgs %s -otags --nolocking --noheading | tr ',' '\n' | grep %s" % (vg_name, FENCER_TAG))
+    r, fencer_ip = getstatusoutput("vgs %s -otags --nolocking --noheading | tr ',' '\\n' | grep %s" % (vg_name, FENCER_TAG))
     if r == 0 and fencer_ip and fencer_ip != "" and is_ip_address(fencer_ip):
         fencer_ip = fencer_ip.strip().split("::")[-1]
         return test_ip_address(fencer_ip)
@@ -66,7 +66,7 @@ def test_fencer(vg_name):
     if r == 0 and default_gateway and default_gateway != "" and is_ip_address(default_gateway):
         return test_ip_address(default_gateway)
 
-    mgmt_ip = getoutput("vgs %s -otags --nolocking --noheading | tr ',' '\n' | grep %s" % (vg_name, MANAGEMENT_TAG))
+    mgmt_ip = getoutput("vgs %s -otags --nolocking --noheading | tr ',' '\\n' | grep %s" % (vg_name, MANAGEMENT_TAG))
     mgmt_ip = mgmt_ip.strip().split("::")[-1]
     mgmt_device = getoutput("ip a | grep %s | awk '{print $NF}'" % mgmt_ip)
     return test_device(mgmt_device, 12) is not False
@@ -76,11 +76,12 @@ def test_device(device, ttl=12):
     # type: (str) -> bool or None
     if ttl == 1:
         return None
+    device = device.strip()
     is_bridge, o = getstatusoutput("brctl show %s" % device)
-    if is_bridge:
+    if is_bridge == 0 and "can't get info" not in o.lower():
         _, o = getstatusoutput("brctl show %s | awk '{print $NF}' | grep -vw interfaces" % device)
         for i in o.splitlines():
-            r = test_device(i, ttl-1)
+            r = test_device(i.strip(), ttl-1)
             if r:
                 return r
 
@@ -88,10 +89,10 @@ def test_device(device, ttl=12):
         return test_device(device.split(".", ttl-1)[0])
 
     is_bonding, o = getstatusoutput("cat /sys/class/net/%s/bonding/mii_status" % device)
-    if is_bonding:
+    if is_bonding == 0:
         return "up" in o
 
-    physical_nics = getoutput("find /sys/class/net -type l -not -lname '*virtual*' -printf '%f\n'").splitlines()
+    physical_nics = getoutput("find /sys/class/net -type l -not -lname '*virtual*' -printf '%f\\n'").splitlines()
     if True in [p.strip() == device for p in physical_nics]:
         return getoutput("/sys/class/net/%s/carrier" % device) == 1
 
@@ -124,16 +125,20 @@ def fence_self(resource_name, drbd_path):
 
 def main():
     resource_name = sys.argv[1]
+    logger.debug("fencer fired by resource %s" % resource_name)
     resource_path = getoutput(
         "grep -E 'disk.*/dev/' /etc/drbd.d/%s.res -m1 | awk '{print $2}' | tr -d ';'" % resource_name)
     vg_name = resource_path.split("/")[2]
     drbd_path = "/dev/drbd%s" % getoutput("cat /etc/drbd.d/%s.res | grep minor -m1 | awk '{print $NF}'" % resource_name).strip(";\n")
     try:
         if test_fencer(vg_name) is False:
+            logger.info("resouce %s fence result: fence self" % resource_name)
             fence_self(resource_name, drbd_path)
         else:
+            logger.info("resouce %s fence result: not fence" % resource_name)
             exit(4)
     except Exception as e:
+        logger.info("resouce %s fence error, not proceeding" % resource_name)
         logger.error(e)
         exit(4)
 

@@ -245,7 +245,7 @@ def collect_equipment_state():
 
     metrics['ipmi_status'].add_metric([], bash_r("ipmitool mc info"))
 
-    nics = bash_o("find /sys/class/net -type l -not -lname '*virtual*' -printf '%f\n'").splitlines()
+    nics = bash_o("find /sys/class/net -type l -not -lname '*virtual*' -printf '%f\\n'").splitlines()
     if len(nics) != 0:
         for nic in nics:
             nic = nic.strip()
