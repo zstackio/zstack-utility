@@ -13,6 +13,7 @@ import platform
 import netaddr
 import base64
 import hashlib
+import uuid
 
 import libvirt
 #from typing import List, Any, Union
@@ -3247,9 +3248,12 @@ class Vm(object):
                 VmPlugin._create_ceph_secret_key(cephSecretKey, cephSecretUuid)
 
             pciDevices = cmd.addons['pciDevice']
-            pciSpecUuid = cmd.addons['pciSpecUuid']
             if pciDevices:
-                make_pci_device(pciDevices, pciSpecUuid)
+                make_pci_device(pciDevices)
+
+            mdevDevices = cmd.addons['mdevDevice']
+            if mdevDevices:
+                make_mdev_device(mdevDevices)
 
             storageDevices = cmd.addons['storageDevice']
             if storageDevices:
@@ -3269,9 +3273,9 @@ class Vm(object):
                     e(disk, 'source', None, {'dev': volume.installPath})
                     e(disk, 'target', None, {'dev': 'sd%s' % Vm.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
 
-        def make_pci_device(addresses, spec_uuid):
+        def make_pci_device(pciDevices):
             devices = elements['devices']
-            for addr in addresses:
+            for addr, spec_uuid in pciDevices:
                 if match_pci_device(addr):
                     hostdev = e(devices, "hostdev", None, {'mode': 'subsystem', 'type': 'pci', 'managed': 'yes'})
                     e(hostdev, "driver", None, {'name': 'vfio'})
@@ -3290,6 +3294,14 @@ class Vm(object):
                     # only turn bar on when rom file exists
                     if os.path.exists(rom_file):
                         e(hostdev, "rom", None, {'bar': 'on', 'file': rom_file})
+
+        def make_mdev_device(mdevUuids):
+            devices = elements['devices']
+            for mdevUuid in mdevUuids:
+                hostdev = e(devices, "hostdev", None, {'mode': 'subsystem', 'type': 'mdev', 'model': 'vfio-pci', 'managed': 'yes'})
+                source = e(hostdev, "source")
+                # convert mdevUuid to 8-4-4-4-12 format
+                e(source, "address", None, { "uuid": str(uuid.UUID('{%s}' % mdevUuid))})
 
         def make_usb_device(usbDevices):
             next_uhci_port = 2
