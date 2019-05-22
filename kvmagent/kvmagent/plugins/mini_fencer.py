@@ -4,6 +4,7 @@ import sys
 import commands
 import logging
 import time
+import re
 
 logging.basicConfig(filename='/var/log/zstack/mini-fencer.log', level=logging.DEBUG, format='%(asctime)s %(levelname)s %(funcName)s %(message)s')
 logger = logging.getLogger(__name__)
@@ -52,38 +53,40 @@ def run(c):
 def test_fencer(vg_name):
     # type: (str) -> bool
     r, fencer_ip = getstatusoutput("vgs %s -otags --nolocking --noheading | tr ',' '\n' | grep %s" % (vg_name, FENCER_TAG))
-    if r == 0 and fencer_ip and fencer_ip != "":
+    if r == 0 and fencer_ip and fencer_ip != "" and is_ip_address(fencer_ip):
         fencer_ip = fencer_ip.strip().split("::")[-1]
         return test_ip_address(fencer_ip)
 
     has_zsha2, o = getstatusoutput("zsha2 show-config")
     if has_zsha2 == 0:
         r, fencer_ip = getstatusoutput("zsha2 show-config | grep -w 'gw' | awk '{print $NF}'").strip().strip("\",")
-        if r == 0:
+        if r == 0 and is_ip_address(fencer_ip):
             return test_ip_address(fencer_ip)
 
     r, default_gateway = getstatusoutput("ip r get 8.8.8.8 | head -n1 | grep -o 'via.*dev' | awk '{print $2}'")
-    if r == 0 and default_gateway and default_gateway != "":
+    if r == 0 and default_gateway and default_gateway != "" and is_ip_address(default_gateway):
         return test_ip_address(default_gateway)
 
     mgmt_ip = getoutput("vgs %s -otags --nolocking --noheading | tr ',' '\n' | grep %s" % (vg_name, MANAGEMENT_TAG))
     mgmt_ip = mgmt_ip.strip().split("::")[-1]
     mgmt_device = getoutput("ip a | grep %s | awk '{print $NF}'" % mgmt_ip)
-    return test_device(mgmt_device) is not False
+    return test_device(mgmt_device, 12) is not False
 
 
-def test_device(device):
+def test_device(device, ttl=12):
     # type: (str) -> bool or None
-    is_bridge, o = getstatusoutput("bridge show %s" % device)
+    if ttl == 1:
+        return None
+    is_bridge, o = getstatusoutput("brctl show %s" % device)
     if is_bridge:
-        _, o = getstatusoutput("bridge show %s | awk '{print $NF}' | grep -vw interfaces" % device)
+        _, o = getstatusoutput("brctl show %s | awk '{print $NF}' | grep -vw interfaces" % device)
         for i in o.splitlines():
-            r = test_device(i)
+            r = test_device(i, ttl-1)
             if r:
                 return r
 
     if "." in device:
-        return test_device(device.split(".")[0])
+        return test_device(device.split(".", ttl-1)[0])
 
     is_bonding, o = getstatusoutput("cat /sys/class/net/%s/bonding/mii_status" % device)
     if is_bonding:
@@ -96,11 +99,20 @@ def test_device(device):
     return None
 
 
+def is_ip_address(ip):
+    if re.match(r"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$", ip):
+        return True
+    return False
+
+
 def test_ip_address(ip):
     # type: (str) -> bool
     device = getoutput("ip r get %s | grep -Eo 'dev.*src' | awk '{print $2}'" % ip)
-    r, o = getstatusoutput("timeout 5 arping -b -c 4 -w 1 -I %s %s" % (device, ip))
-    return r == 0
+    for i in range(5):
+        r, o = getstatusoutput("timeout 2 arping -b -c 1 -w 1 -I %s %s" % (device, ip))
+        if r == 0:
+            return True
+    return False
 
 
 def fence_self(resource_name, drbd_path):
@@ -117,9 +129,13 @@ def main():
         "grep -E 'disk.*/dev/' /etc/drbd.d/%s.res -m1 | awk '{print $2}' | tr -d ';'" % resource_name)
     vg_name = resource_path.split("/")[2]
     drbd_path = "/dev/drbd%s" % getoutput("cat /etc/drbd.d/%s.res | grep minor -m1 | awk '{print $NF}'" % resource_name).strip(";\n")
-    if test_fencer(vg_name) is False:
-        fence_self(resource_name, drbd_path)
-    else:
+    try:
+        if test_fencer(vg_name) is False:
+            fence_self(resource_name, drbd_path)
+        else:
+            exit(4)
+    except Exception as e:
+        logger.error(e)
         exit(4)
 
 

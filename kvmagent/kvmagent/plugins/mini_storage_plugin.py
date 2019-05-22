@@ -737,11 +737,11 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
     def test_network_ok_to_peer(peer_address, via_dev=None):
         if not via_dev:
             via_dev = bash.bash_o("ip -o r get %s | awk '{print $3}'" % peer_address).strip()
-        recv = bash.bash_r("timeout 6 arping -w 1 -b %s -I %s -c 5" % (peer_address, via_dev))
-        if recv == 0:
-            return True
-        else:
-            return False
+        for i in range(5):
+            recv = bash.bash_r("timeout 2 arping -w 1 -b %s -I %s -c 1" % (peer_address, via_dev))
+            if recv == 0:
+                return True
+        return False
 
     @kvmagent.replyerror
     def get_volume_size(self, req):
