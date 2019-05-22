@@ -25,8 +25,7 @@ def retry(times=3, sleep_time=1):
                     last_err = e
                     logger.error(e)
                     time.sleep(sleep_time)
-                logger.error("The task failed, please make sure the host can be connected and no error happened, then try again. "
-                             "Below is detail:\n %s" % last_err)
+            logger.error("The task failed,  detail:\n%s" % last_err)
         return inner
     return wrap
 
