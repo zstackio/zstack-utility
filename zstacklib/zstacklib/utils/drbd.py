@@ -238,11 +238,10 @@ class DrbdConfigStruct(DrbdStruct):
 
         # handlers
         self.split_brain = '"/usr/lib/drbd/notify-split-brain.sh root"'
-        # TODO(weiw): fix it
-        self.fence_peer = '"echo `date +%s.%N` >> /tmp/hehe.txt"'
+        self.fence_peer = 'python /usr/lib/drbd/zstack-fencer.py $DRBD_RESOURCE'
 
         # disk
-        self.fencing = 'resource-only'
+        self.fencing = 'resource-and-stonith'
 
     def read_config(self):
         assert self.path
@@ -304,12 +303,19 @@ resource {{ name }} {
     protocol C;
 
     sndbuf-size {{ net_sndbuf_size }};
+    rcvbuf-size {{ net_sndbuf_size }};
     allow-two-primaries yes;
     verify-alg {{ net_verify_alg }};
+    max-buffers 16000;
+    max-epoch-size 20000;
+    max-buffers 51200;
   }
 
   disk {
     fencing {{ fencing }};
+    resync-rate 100M;
+    c-min-rate 102400;
+    c-max-rate 204800;
   }
 
   on {{ local_host_hostname }} {  # local
@@ -367,7 +373,7 @@ class DrbdNetStruct(DrbdStruct):
         self.after_sb_0pri = 'discard-zero-changes'
         self.after_sb_1pri = 'call-pri-lost-after-sb'
         self.after_sb_2pri = 'call-pri-lost-after-sb'
-        self.sndbuf_size = 0
+        self.sndbuf_size = '2m'
         self.allow_two_primaries = 'yes'
         self.verify_alg = 'crc32'
 

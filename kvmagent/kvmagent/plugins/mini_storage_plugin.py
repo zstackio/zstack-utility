@@ -19,6 +19,8 @@ from zstacklib.utils.plugin import completetask
 logger = log.get_logger(__name__)
 LOCK_FILE = "/var/run/zstack/ministorage.lock"
 INIT_TAG = "zs::ministorage::init"
+FENCER_TAG = "zs::ministorage::fencer"
+MANAGEMENT_TAG = "zs::ministorage::management"
 HEARTBEAT_TAG = "zs::ministorage::heartbeat"
 VOLUME_TAG = "zs::ministorage::volume"
 IMAGE_TAG = "zs::ministorage::image"
@@ -372,6 +374,13 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         lvm.clean_vg_exists_host_tags(cmd.vgUuid, cmd.hostUuid, HEARTBEAT_TAG)
         lvm.add_vg_tag(cmd.vgUuid, "%s::%s::%s::%s" % (HEARTBEAT_TAG, cmd.hostUuid, time.time(), bash.bash_o('hostname').strip()))
 
+        if cmd.fencerAddress:
+            lvm.clean_vg_exists_host_tags(cmd.vgUuid, '\'\'', FENCER_TAG)
+            lvm.add_vg_tag(cmd.vgUuid, "%s::%s" % (FENCER_TAG, cmd.fencerAddress))
+        lvm.clean_vg_exists_host_tags(cmd.vgUuid, '\'\'', MANAGEMENT_TAG)
+        lvm.add_vg_tag(cmd.vgUuid, "%s::%s" % (MANAGEMENT_TAG, cmd.magementAddress))
+        self.generate_fencer()
+
         if cmd.storageNetworkCidr is not None:
             nics = linux.get_nics_by_cidr(cmd.storageNetworkCidr)
             if len(nics) != 0:
@@ -380,6 +389,14 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         rsp.vgLvmUuid = lvm.get_vg_lvm_uuid(cmd.vgUuid)
         rsp.hostUuid = cmd.hostUuid
         return jsonobject.dumps(rsp)
+
+    @staticmethod
+    @bash.in_bash
+    def generate_fencer():
+        current_dir = os.path.split(os.path.realpath(__file__))[0]
+        fencer_path = "%s/mini_fencer.py" % current_dir
+        bash.bash_roe("cp %s /usr/lib/drbd/mini_fencer.py" % fencer_path)
+        bash.bash_roe("sudo chmod 777 /usr/lib/drbd/mini_fencer.py")
 
     @kvmagent.replyerror
     @lock.file_lock(LOCK_FILE)

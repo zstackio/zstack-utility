@@ -144,7 +144,7 @@ def collect_lvm_capacity_statistics():
 
     r, o, e = bash_roe("vgs --nolocking --noheading -oname")
     if r != 0 or len(o.splitlines()) == 0:
-        metrics.values()
+        return metrics.values()
 
     vg_names = bash_o('vgs --nolocking --noheading -oname').splitlines()
     for name in vg_names:
