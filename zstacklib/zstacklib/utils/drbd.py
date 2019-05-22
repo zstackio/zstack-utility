@@ -238,7 +238,7 @@ class DrbdConfigStruct(DrbdStruct):
 
         # handlers
         self.split_brain = '"/usr/lib/drbd/notify-split-brain.sh root"'
-        self.fence_peer = 'python /usr/lib/drbd/zstack-fencer.py $DRBD_RESOURCE'
+        self.fence_peer = '"python /usr/lib/drbd/zstack-fencer.py $DRBD_RESOURCE"'
 
         # disk
         self.fencing = 'resource-and-stonith'
