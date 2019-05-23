@@ -1302,7 +1302,8 @@ class ShowStatusCmd(Command):
 
             def dump_mn():
                 if pid:
-                    os.kill(int(pid), 3)
+                    os.kill(int(pid), os.SIGQUIT)
+                    os.kill(int(pid), os.SIGUSR2)
 
                 shell_return("echo 'management node became Unknown on %s, you can check status in catalina.out' >> %s"
                              % (datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), log_path))
@@ -5306,7 +5307,8 @@ class CollectLogCmd(Command):
         # dump mn status
         mn_pid = get_management_node_pid()
         if mn_pid:
-            os.kill(int(mn_pid), 3)
+            os.kill(int(mn_pid), signal.SIGQUIT)
+            os.kill(int(mn_pid), signal.SIGUSR2)
 
         run_command_dir = os.getcwd()
         time_stamp =  datetime.now().strftime("%Y-%m-%d_%H-%M")
@@ -5444,7 +5446,8 @@ class ConfiguredCollectLogCmd(Command):
         # dump mn status
         mn_pid = get_management_node_pid()
         if mn_pid:
-            os.kill(int(mn_pid), 3)
+            os.kill(int(mn_pid), signal.SIGQUIT)
+            os.kill(int(mn_pid), signal.SIGUSR2)
         run_command_dir = os.getcwd()
         time_stamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
         # create log
