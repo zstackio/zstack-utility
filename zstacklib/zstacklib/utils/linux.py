@@ -17,6 +17,7 @@ import functools
 import threading
 import re
 import platform
+import mmap
 
 from zstacklib.utils import shell
 from zstacklib.utils import log
@@ -768,6 +769,21 @@ def qcow2_get_backing_file(path):
         backing_file_size = struct.unpack('>L', backing_file_info[8:])[0]
         resp.seek(backing_file_offset)
         return resp.read(backing_file_size)
+
+def qcow2_direct_get_backing_file(path):
+    o = shell.call('dd if=%s bs=4k count=1 iflag=direct' % path)
+    magic = o[:4]
+    if magic != 'QFI\xfb':
+        return ""
+
+    # read backing file info from header
+    backing_file_info = o[8:20]
+    backing_file_offset = struct.unpack('>Q', backing_file_info[:8])[0]
+    if backing_file_offset == 0:
+        return ""
+
+    backing_file_size = struct.unpack('>L', backing_file_info[8:])[0]
+    return o[backing_file_offset:backing_file_offset+backing_file_size]
 
 # Get derived file and all its backing files
 def qcow2_get_file_chain(path):

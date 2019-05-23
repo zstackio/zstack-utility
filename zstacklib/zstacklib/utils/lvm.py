@@ -308,14 +308,15 @@ def config_lvm_by_sed(keyword, entry, files):
         raise Exception("can not find lvm config path: %s, config lvm failed" % LVM_CONFIG_PATH)
 
     for file in files:
-        cmd = shell.ShellCmd("sed -i 's/.*\\b%s.*/%s/g' %s/%s" %
+        cmd = shell.ShellCmd("sed -i 's/.*\\b%s\\b.*/%s/g' %s/%s" %
                              (keyword, entry, LVM_CONFIG_PATH, file))
         cmd(is_exception=False)
     linux.sync()
+    logger.debug(bash.bash_o("lvmconfig --type diff"))
 
 
 @bash.in_bash
-def config_lvm_filter(files):
+def config_lvm_filter(files, no_drbd=False):
     if not os.path.exists(LVM_CONFIG_PATH):
         raise Exception("can not find lvm config path: %s, config lvm failed" % LVM_CONFIG_PATH)
 
@@ -323,6 +324,9 @@ def config_lvm_filter(files):
     filter_str = 'filter=["r|\\/dev\\/cdrom|"'
     for vg in vgs:
         filter_str += ', "r\\/dev\\/mapper\\/%s.*\\/"' % vg.strip()
+    if no_drbd:
+        filter_str += ', "r\\/dev\\/drbd.*\\/"'
+
     filter_str += ']'
 
     for file in files:
@@ -503,7 +507,7 @@ def backup_super_block(disk_path):
 
 
 @bash.in_bash
-def wipe_fs(disks, expected_vg=None):
+def wipe_fs(disks, expected_vg=None, with_lock=True):
     for disk in disks:
         exists_vg = None
         r = bash.bash_r("pvdisplay %s | grep %s" % (disk, expected_vg))
@@ -530,14 +534,33 @@ def wipe_fs(disks, expected_vg=None):
         if need_flush_mpath:
             bash.bash_roe("multipath -f %s && systemctl restart multipathd.service && sleep 1" % disk)
 
+        for holder in get_disk_holders([disk.split("/")[-1]]):
+            if not holder.startswith("dm-"):
+                continue
+            bash.bash_roe("dmsetup remove /dev/%s" % holder)
+
         if exists_vg is not None:
+            bash.bash_r("grep %s /etc/drbd.d/* | awk '{print $1}' | sort | uniq | tr -d ':' | xargs rm" % exists_vg)
             logger.debug("found vg %s exists on this pv %s, start wipe" %
                          (exists_vg, disk))
             try:
-                drop_vg_lock(exists_vg)
+                if with_lock:
+                    drop_vg_lock(exists_vg)
                 remove_device_map_for_vg(exists_vg)
             finally:
                 pass
+
+
+def get_disk_holders(disk_names):
+    holders = []
+    for disk_name in disk_names:
+        h = bash.bash_o("ls /sys/class/block/%s/holders/" % disk_name).strip().splitlines()
+        if len(h) == 0:
+            continue
+        holders.extend(h)
+        holders.extend(get_disk_holders(h))
+    holders.reverse()
+    return holders
 
 
 @bash.in_bash
@@ -549,11 +572,17 @@ def add_pv(vg_uuid, disk_path, metadata_size):
 
 
 def get_vg_size(vgUuid, raise_exception=True):
-    cmd = shell.ShellCmd("vgs --nolocking %s --noheadings --separator : --units b -o vg_size,vg_free" % vgUuid)
-    cmd(is_exception=raise_exception)
-    if cmd.return_code != 0:
+    r, o, _ = bash.bash_roe("vgs --nolocking %s --noheadings --separator : --units b -o vg_size,vg_free" % vgUuid, errorout=raise_exception)
+    if r != 0:
         return None, None
-    return cmd.stdout.strip().split(':')[0].strip("B"), cmd.stdout.strip().split(':')[1].strip("B")
+    vg_size, vg_free = o.strip().split(':')[0].strip("B"), o.strip().split(':')[1].strip("B")
+    pools = get_thin_pools_from_vg(vgUuid)
+    if len(pools) == 0:
+        return vg_size, vg_free
+    vg_free = float(vg_free)
+    for pool in pools:
+        vg_free += pool.free
+    return vg_size, str(int(vg_free))
 
 
 def add_vg_tag(vgUuid, tag):
@@ -602,7 +631,7 @@ def delete_image(path, tag):
         active_lv(f, shared=False)
         backing = linux.qcow2_get_backing_file(f)
         shell.check_run("lvremove -y -Stags={%s} %s" % (tag, f))
-        return f
+        return backing
 
     fpath = path
     while fpath:
@@ -614,7 +643,7 @@ def delete_image(path, tag):
 def clean_vg_exists_host_tags(vgUuid, hostUuid, tag):
     cmd = shell.ShellCmd("vgs %s -otags --nolocking --noheading | tr ',' '\n' | grep %s | grep %s" % (vgUuid, tag, hostUuid))
     cmd(is_exception=False)
-    exists_tags = cmd.stdout.strip().split("\n")
+    exists_tags = [x.strip() for x in cmd.stdout.splitlines()]
     if len(exists_tags) == 0:
         return
     t = " --deltag " + " --deltag ".join(exists_tags)
@@ -623,8 +652,8 @@ def clean_vg_exists_host_tags(vgUuid, hostUuid, tag):
 
 
 @bash.in_bash
-@linux.retry(times=15, sleep_time=random.uniform(0.1, 2))
-def create_lv_from_absolute_path(path, size, tag="zs::sharedblock::volume"):
+@linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
+def create_lv_from_absolute_path(path, size, tag="zs::sharedblock::volume", lock=True):
     vgName = path.split("/")[2]
     lvName = path.split("/")[3]
 
@@ -633,15 +662,74 @@ def create_lv_from_absolute_path(path, size, tag="zs::sharedblock::volume"):
     if not lv_exists(path):
         raise Exception("can not find lv %s after create, lvcreate return: %s, %s, %s" % (path, r, o, e))
 
-    with OperateLv(path, shared=False):
+    if lock:
+        with OperateLv(path, shared=False):
+            dd_zero(path)
+    else:
+        active_lv(path)
         dd_zero(path)
 
 
-def create_lv_from_cmd(path, size, cmd, tag="zs::sharedblock::volume"):
-    if cmd.provisioning == VolumeProvisioningStrategy.ThinProvisioning and size > cmd.addons[thinProvisioningInitializeSize]:
-        create_lv_from_absolute_path(path, cmd.addons[thinProvisioningInitializeSize], tag)
+def create_lv_from_cmd(path, size, cmd, tag="zs::sharedblock::volume", lock=True):
+    # TODO(weiw): fix it
+    if "ministorage" in tag and cmd.provisioning == VolumeProvisioningStrategy.ThinProvisioning:
+        create_thin_lv_from_absolute_path(path, size, tag, lock)
+    elif cmd.provisioning == VolumeProvisioningStrategy.ThinProvisioning and size > cmd.addons[thinProvisioningInitializeSize]:
+        create_lv_from_absolute_path(path, cmd.addons[thinProvisioningInitializeSize], tag, lock)
     else:
-        create_lv_from_absolute_path(path, size, tag)
+        create_lv_from_absolute_path(path, size, tag, lock)
+
+
+@bash.in_bash
+@linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
+def create_thin_lv_from_absolute_path(path, size, tag, lock=False):
+    vgName = path.split("/")[2]
+    lvName = path.split("/")[3]
+
+    thin_pool = get_thin_pool_from_vg(vgName)
+    assert thin_pool != ""
+
+    r, o, e = bash.bash_roe("lvcreate --addtag %s -n %s -V %sb --thinpool %s %s" %
+                  (tag, lvName, calcLvReservedSize(size), thin_pool, vgName))
+    if not lv_exists(path):
+        raise Exception("can not find lv %s after create, lvcreate return : %s, %s, %s" %
+                        (path, r, o, e))
+
+    if lock:
+        with OperateLv(path, shared=False):
+            dd_zero(path)
+    else:
+        active_lv(path)
+        dd_zero(path)
+
+
+def get_thin_pool_from_vg(vgName):
+    thin_pools = get_thin_pools_from_vg(vgName)
+    most_free = [""]
+    for pool in thin_pools:
+        if len(most_free) < 2 or most_free[1] < pool.free:
+            most_free = [pool.name, pool.free]
+
+    return most_free[0]
+
+
+class ThinPool(object):
+    def __init__(self, path):
+        o = bash.bash_o("lvs %s --separator ' ' -oname,data_percent,lv_size,pool_lv --noheading --unit B" % path).strip()
+        self.name = o.split(" ")[0].strip()
+        self.total = float(o.split(" ")[2].strip("B"))
+        self.thin_lvs = [l.strip() for l in bash.bash_o("lvs -Spool_lv=%s --noheadings --nolocking -oname" % self.name).strip().splitlines()]
+        if len(self.thin_lvs) == 0 and not is_thin_lv(path):
+            self.free = self.total
+        else:
+            self.free = self.total * (100 - float(o.split(" ")[1].strip("B")))/100
+
+
+def get_thin_pools_from_vg(vgName):
+    names = bash.bash_o("lvs %s -Slayout=pool -oname --noheading" % vgName).strip().splitlines()
+    if len(names) == 0:
+        return []
+    return [ThinPool("/dev/%s/%s" % (vgName, n)) for n in names]
 
 
 def dd_zero(path):
@@ -651,9 +739,21 @@ def dd_zero(path):
 
 
 def get_lv_size(path):
+    if is_thin_lv(path):
+        return get_thin_lv_size(path)
     cmd = shell.ShellCmd("lvs --nolocking --noheading -osize --units b %s" % path)
     cmd(is_exception=True)
     return cmd.stdout.strip().strip("B")
+
+
+@bash.in_bash
+def get_thin_lv_size(path):
+    l = ThinPool(path)
+    return str(int(l.total - l.free))
+
+
+def is_thin_lv(path):
+    return bash.bash_r("lvs --nolocking --noheadings  -olayout %s | grep 'thin,sparse'" % path) == 0
 
 
 @bash.in_bash
@@ -671,8 +771,11 @@ def resize_lv(path, size, force=False):
 
 @bash.in_bash
 def resize_lv_from_cmd(path, size, cmd):
-    if cmd.provisioning != VolumeProvisioningStrategy.ThinProvisioning:
+    if cmd.provisioning is None or \
+            cmd.addons is None or \
+            cmd.provisioning != VolumeProvisioningStrategy.ThinProvisioning:
         resize_lv(path, size)
+        return
 
     current_size = int(get_lv_size(path))
     if int(size) - current_size > cmd.addons[thinProvisioningInitializeSize]:
@@ -786,8 +889,8 @@ def list_local_active_lvs(vgUuid):
     cmd(is_exception=False)
     result = []
     for i in cmd.stdout.strip().split("\n"):
-        if i != "":
-            result.append(i)
+        if i.strip() != "":
+            result.append(i.strip())
     return result
 
 
@@ -844,6 +947,54 @@ def do_active_lv(absolutePath, lockType, recursive):
 
 
 @bash.in_bash
+def create_lvm_snapshot(absolutePath, remove_oldest=True, snapName=None, size_percent=0.1):
+    # type: (str, str, float) -> str
+    if snapName is None:
+        snapName = get_new_snapshot_name(absolutePath, remove_oldest)
+    if is_thin_lv(absolutePath):
+        size_command = ""
+    else:
+        virtual_size = linux.qcow2_virtualsize(absolutePath)
+        if virtual_size <= 2147483648:  # 2GB
+            snap_size = calcLvReservedSize(virtual_size)
+        elif int((virtual_size / 512) * size_percent * 512) <= 2147483648:
+            snap_size = 2147483648
+        else:
+            snap_size = int((virtual_size / 512) * size_percent * 512)
+        size_command = " -L %sB " % snap_size
+    bash.bash_errorout("lvcreate --snapshot -n %s %s %s" % (snapName, absolutePath, size_command))
+    path = "/".join(absolutePath.split("/")[:-1]) + "/" + snapName
+    if size_command == "":
+        bash.bash_r("lvchange -ay -K %s" % path)
+    return path
+
+
+def delete_snapshots(lv_path):
+    all_snaps = bash.bash_o("lvs -oname -Sorigin=%s --nolocking --noheadings | grep _snap_" % lv_path.split("/")[-1]).strip().splitlines()
+    if len(all_snaps) == 0:
+        return
+    for snap in all_snaps:
+        delete_lv(snap)
+
+
+def get_new_snapshot_name(absolutePath, remove_oldest=True):
+    @bash.in_bash
+    @lock.file_lock(absolutePath)
+    def do_get_new_snapshot_name(name):
+        all_snaps = bash.bash_o("lvs -oname -Sorigin=%s --nolocking --noheadings | grep _snap_" % name).strip().splitlines()
+        if len(all_snaps) == 0:
+            return name + "_snap_1"
+        numbers = map(lambda x: int(x.strip().split("_")[-1]), all_snaps)
+        if len(all_snaps) >= 3 and remove_oldest:
+            oldest = name + "_snap_" + str(min(numbers))
+            delete_lv("/".join(absolutePath.split("/")[:-1]) + "/" + oldest)
+        elif len(all_snaps) >= 3:
+            raise Exception("there are %s snapshots for lv %s exits" % (len(all_snaps), absolutePath))
+        return name + "_snap_" + str(max(numbers) + 1)
+    return do_get_new_snapshot_name(absolutePath.split("/")[-1])
+
+
+@bash.in_bash
 def get_lv_locking_type(path):
     @linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
     def _get_lv_locking_type(path):
@@ -883,6 +1034,16 @@ def qcow2_lv_recursive_operate(abs_path, shared=False):
             return retval
         return inner
     return wrap
+
+
+#TODO(weiw): This is typically mini usage
+def qcow2_lv_recursive_active(abs_path, lock_type):
+    # type: (str, int) -> object
+    backing = linux.qcow2_get_backing_file(abs_path)
+    active_lv(abs_path, lock_type == LvmlockdLockType.SHARE)
+
+    if backing != "":
+        qcow2_lv_recursive_active(backing, LvmlockdLockType.SHARE)
 
 
 class OperateLv(object):

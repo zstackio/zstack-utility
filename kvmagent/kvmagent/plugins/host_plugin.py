@@ -2,7 +2,7 @@
 
 @author: frank
 '''
-
+import copy
 import platform
 from multiprocessing import Process
 
@@ -23,6 +23,7 @@ from zstacklib.utils.report import Report
 from zstacklib.utils import iptables
 from zstacklib.utils import daemon
 from zstacklib.utils import thread
+from zstacklib.utils.ip import get_nic_supported_max_speed
 import os
 import os.path
 import re
@@ -58,6 +59,7 @@ class HostFactResponse(kvmagent.AgentResponse):
         self.libvirtVersion = None
         self.hvmCpuFlag = None
         self.cpuModelName = None
+        self.systemSerialNumber = None
 
 class SetupMountablePrimaryStorageHeartbeatCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -125,6 +127,107 @@ class DisableHugePageRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(DisableHugePageRsp, self).__init__()
 
+class GetHostNetworkBongdingResponse(kvmagent.AgentResponse):
+    bondings = None  # type: list[HostNetworkBondingInventory]
+    nics = None  # type: list[HostNetworkInterfaceInventory]
+
+    def __init__(self):
+        super(GetHostNetworkBongdingResponse, self).__init__()
+        self.bondings = None
+        self.nics = None
+
+
+class HostNetworkBondingInventory(object):
+    slaves = None  # type: list(HostNetworkInterfaceInventory)
+
+    def __init__(self, bondingName=None):
+        super(HostNetworkBondingInventory, self).__init__()
+        self.bondingName = bondingName
+        self.mode = None
+        self.xmitHashPolicy = None
+        self.miiStatus = None
+        self.mac = None
+        self.ipAddresses = None
+        self.miimon = None
+        self.allSlavesActive = None
+        self.slaves = None
+        self._init_from_name()
+
+    def _init_from_name(self):
+        if self.bondingName is None:
+            return
+        self.mode = bash_o("cat /sys/class/net/%s/bonding/mode" % self.bondingName).strip()
+        self.xmitHashPolicy = bash_o("cat /sys/class/net/%s/bonding/xmit_hash_policy" % self.bondingName).strip()
+        self.miiStatus = bash_o("cat /sys/class/net/%s/bonding/mii_status" % self.bondingName).strip()
+        self.mac = bash_o("cat /sys/class/net/%s/address" % self.bondingName).strip()
+        self.ipAddresses = [x.strip() for x in
+                          bash_o("ip -o a show %s | grep 'inet ' | awk '{print $4}'" % self.bondingName).splitlines()]
+        if len(self.ipAddresses) == 0:
+            r, master = bash_ro("cat /sys/class/net/%s/master/ifindex" % self.bondingName)
+            if r == 0:
+                self.ipAddresses = [x.strip() for x in bash_o(
+                    "ip -o a list | grep '^%s: ' | grep 'inet ' | awk '{print $4}'" % master.strip()).splitlines()]
+        self.miimon = bash_o("cat /sys/class/net/%s/bonding/miimon" % self.bondingName).strip()
+        self.allSlavesActive = bash_o(
+            "cat /sys/class/net/%s/bonding/all_slaves_active" % self.bondingName).strip() == "0"
+        self.slaves = []
+        slave_names = bash_o("cat /sys/class/net/%s/bonding/slaves" % self.bondingName).strip().split(" ")
+        if len(slave_names) == 0:
+            return
+
+        for name in slave_names:
+            self.slaves.append(HostNetworkInterfaceInventory(name))
+
+    def _to_dict(self):
+        to_dict = self.__dict__
+        for k in to_dict.keys():
+            if k == "slaves":
+                v = copy.deepcopy(to_dict[k])
+                to_dict[k] = [i.__dict__ for i in v]
+        return to_dict
+
+
+class HostNetworkInterfaceInventory(object):
+    def __init__(self, name=None):
+        super(HostNetworkInterfaceInventory, self).__init__()
+        self.interfaceName = name
+        self.speed = None
+        self.slaveActive = None
+        self.carrierActive = None
+        self.mac = None
+        self.ipAddresses = None
+        self.interfaceType = None
+        self.master = None
+        self._init_from_name()
+
+    def _init_from_name(self):
+        if self.interfaceName is None:
+            return
+        self.speed = get_nic_supported_max_speed(self.interfaceName)
+        self.carrierActive = bash_o("cat /sys/class/net/%s/carrier" % self.interfaceName).strip() == "1"
+        self.mac = bash_o("cat /sys/class/net/%s/address" % self.interfaceName).strip()
+        self.ipAddresses = [x.strip() for x in
+                          bash_o("ip -o a show %s | grep 'inet ' | awk '{print $4}'" % self.interfaceName).splitlines()]
+
+        r, master = bash_ro("cat /sys/class/net/%s/master/ifindex" % self.interfaceName)
+        if r == 0 and master.strip() != "":
+            self.master = bash_o("ip link | grep -E '^%s: ' | awk '{print $2}'" % master.strip()).strip().strip(":")
+        if len(self.ipAddresses) == 0:
+            if r == 0:
+                self.ipAddresses = [x.strip() for x in bash_o(
+                    "ip -o a list | grep '^%s: ' | grep 'inet ' | awk '{print $4}'" % master.strip()).splitlines()]
+        if self.master is None:
+            self.interfaceType = "noMaster"
+        elif len(bash_o("ip link show type bond_slave %s" % self.interfaceName).strip()) > 0:
+            self.interfaceType = "bondingSlave"
+            self.slaveActive = self.interfaceName in bash_o("cat /sys/class/net/%s/bonding/active_slave" % self.master)
+        else:
+            self.interfaceType = "bridgeSlave"
+
+    def _to_dict(self):
+        to_dict = self.__dict__
+        return to_dict
+
 logger = log.get_logger(__name__)
 
 def _get_memory(word):
@@ -163,6 +266,8 @@ class HostPlugin(kvmagent.KvmAgent):
     HOST_START_USB_REDIRECT_PATH = "/host/usbredirect/start"
     HOST_STOP_USB_REDIRECT_PATH = "/host/usbredirect/stop"
     CHECK_USB_REDIRECT_PORT = "/host/usbredirect/check"
+    IDENTIFY_HOST = "/host/identify"
+    GET_HOST_NETWORK_FACTS = "/host/networkfacts"
 
     def _get_libvirt_version(self):
         ret = shell.call('libvirtd --version')
@@ -264,11 +369,13 @@ class HostPlugin(kvmagent.KvmAgent):
         qemu_img_version = qemu_img_version.strip('\t\r\n ,')
         ipV4Addrs = shell.call("ip addr | grep -w inet | grep -v 127.0.0.1 | awk '!/zs$/{print $2}' | cut -d/ -f1")
         system_product_name = shell.call('dmidecode -s system-product-name').strip()
+        system_serial_number = shell.call('dmidecode -s system-serial-number').strip()
         baseboard_product_name = shell.call('dmidecode -s baseboard-product-name').strip()
 
         rsp.qemuImgVersion = qemu_img_version
         rsp.libvirtVersion = self.libvirt_version
         rsp.ipAddresses = ipV4Addrs.splitlines()
+        rsp.systemSerialNumber = system_serial_number if system_serial_number else 'unknown'
         rsp.systemProductName = system_product_name if system_product_name else baseboard_product_name
         if not rsp.systemProductName:
             rsp.systemProductName = 'unknown'
@@ -699,6 +806,43 @@ grub2-mkconfig -o /boot/grub2/grub.cfg
         isc.clean_imagestore_cache(cmd.mountPath)
         return jsonobject.dumps(kvmagent.AgentResponse())
 
+    def identify_host(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+        sc = shell.ShellCmd("ipmitool chassis identify %s" % cmd.interval)
+        sc(True)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def get_host_network_facts(self, req):
+        rsp = GetHostNetworkBongdingResponse()
+        rsp.bondings = self.get_host_networking_bonds()
+        rsp.nics = self.get_host_networking_interfaces()
+        return jsonobject.dumps(rsp)
+
+    @staticmethod
+    def get_host_networking_interfaces():
+        nics = []
+        nic_names = bash_o("find /sys/class/net -type l -not -lname '*virtual*' -printf '%f\\n'").splitlines()
+        if len(nic_names) == 0:
+            return nics
+        for nic in nic_names:
+            nics.append(HostNetworkInterfaceInventory(nic.strip()))
+        return nics
+
+    @staticmethod
+    def get_host_networking_bonds():
+        bonds = []
+        r, bond_names = bash_ro("cat /sys/class/net/bonding_masters")
+        if r != 0:
+            return bonds
+        bond_names = bond_names.strip().split(" ")
+        if len(bond_names) == 0:
+            return bonds
+        for bond in bond_names:
+            bonds.append(HostNetworkBondingInventory(bond))
+        return bonds
+
     def start(self):
         self.host_uuid = None
 
@@ -718,6 +862,8 @@ grub2-mkconfig -o /boot/grub2/grub.cfg
         http_server.register_async_uri(self.HOST_START_USB_REDIRECT_PATH, self.start_usb_redirect_server)
         http_server.register_async_uri(self.HOST_STOP_USB_REDIRECT_PATH, self.stop_usb_redirect_server)
         http_server.register_async_uri(self.CHECK_USB_REDIRECT_PORT, self.check_usb_server_port)
+        http_server.register_async_uri(self.IDENTIFY_HOST, self.identify_host)
+        http_server.register_async_uri(self.GET_HOST_NETWORK_FACTS, self.get_host_network_facts)
 
         self.heartbeat_timer = {}
         self.libvirt_version = self._get_libvirt_version()
