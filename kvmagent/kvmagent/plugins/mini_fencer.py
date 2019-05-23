@@ -58,8 +58,11 @@ def test_fencer(vg_name):
 
     has_zsha2, o = getstatusoutput("zsha2 show-config")
     if has_zsha2 == 0:
-        r, fencer_ip = getstatusoutput("zsha2 show-config | grep -w 'gw' | awk '{print $NF}'").strip().strip("\",")
+        r, fencer_ip = getstatusoutput("zsha2 show-config | grep -w 'gw' | awk '{print $NF}'")
+        fencer_ip = fencer_ip.strip().strip("\",") if fencer_ip is not None else fencer_ip
         if r == 0 and is_ip_address(fencer_ip):
+            fencer_ip = fencer_ip.strip().strip("\",")
+
             return test_ip_address(fencer_ip)
 
     r, default_gateway = getstatusoutput("ip r get 8.8.8.8 | head -n1 | grep -o 'via.*dev' | awk '{print $2}'")
