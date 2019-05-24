@@ -228,14 +228,6 @@ class TakeSnapshotResponse(kvmagent.AgentResponse):
         self.snapshotInstallPath = None
         self.size = None
 
-class CheckSnapshotResponse(kvmagent.AgentResponse):
-    def __init__(self):
-        super(CheckSnapshotResponse, self).__init__()
-        self.volumePath = None
-        self.snapshotPath = None
-        self.size = None
-        self.completed = False
-
 class TakeVolumeBackupResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(TakeVolumeBackupResponse, self).__init__()
@@ -3616,7 +3608,6 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_DETACH_VOLUME = "/vm/detachdatavolume"
     KVM_MIGRATE_VM_PATH = "/vm/migrate"
     KVM_TAKE_VOLUME_SNAPSHOT_PATH = "/vm/volume/takesnapshot"
-    KVM_CHECK_VOLUME_SNAPSHOT_PATH = "/vm/volume/checksnapshot"
     KVM_TAKE_VOLUME_BACKUP_PATH = "/vm/volume/takebackup"
     KVM_BLOCK_STREAM_VOLUME_PATH = "/vm/volume/blockstream"
     KVM_TAKE_VOLUMES_SNAPSHOT_PATH = "/vm/volumes/takesnapshot"
@@ -4468,40 +4459,6 @@ class VmPlugin(kvmagent.KvmAgent):
         touchQmpSocketWhenExists(cmd.vmUuid)
         return jsonobject.dumps(rsp)
 
-    @kvmagent.replyerror
-    def check_volume_snapshot(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = CheckSnapshotResponse()
-
-        back_file = linux.qcow2_get_backing_file(cmd.volumePath)
-        if back_file is not None:
-            rsp.completed = False
-            rsp.volumePath = cmd.volumePath
-        else:
-            volumepath = self._find_front_file(cmd.volumePath)
-            if volumepath is None:
-                rsp.completed = False
-                rsp.volumePath = cmd.volumePath
-            else:
-                rsp.completed = True
-                rsp.snapshotPath = cmd.volumePath
-                rsp.volumePath = volumepath
-                if rsp.snapshotPath.startswith("/dev/"):
-                    rsp.size = int(lvm.get_lv_size(rsp.snapshotPath))
-                else:
-                    rsp.size = linux.qcow2_virtualsize(rsp.snapshotPath)
-        return jsonobject.dumps(rsp)
-
-    def _find_front_file(self, installPath):
-        dirname = os.path.dirname(installPath)
-        for root, dirs, files in os.walk(dirname):
-            for f in files:
-                if f.endswith('.qcow2') and linux.qcow2_get_backing_file(os.path.abspath(f)) == installPath:
-                    return os.path.abspath(f)
-        return None
-
-
-
     def push_backing_files(self, isc, hostname, drivertype, source):
         if drivertype != 'qcow2':
             return None
@@ -5179,7 +5136,6 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_DETACH_ISO_PATH, self.detach_iso)
         http_server.register_async_uri(self.KVM_MIGRATE_VM_PATH, self.migrate_vm)
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_SNAPSHOT_PATH, self.take_volume_snapshot)
-        http_server.register_async_uri(self.KVM_CHECK_VOLUME_SNAPSHOT_PATH, self.check_volume_snapshot)
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_BACKUP_PATH, self.take_volume_backup)
         http_server.register_async_uri(self.KVM_TAKE_VOLUMES_SNAPSHOT_PATH, self.take_volumes_snapshots)
         http_server.register_async_uri(self.KVM_TAKE_VOLUMES_BACKUP_PATH, self.take_volumes_backups)
