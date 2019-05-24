@@ -21,6 +21,7 @@ ISOFT4='ISOFT4'
 ALIOS7='AliOS7'
 UPGRADE='n'
 FORCE='n'
+MINI_INSTALL='n'
 MANAGEMENT_INTERFACE=`ip route | grep default | head -n 1 | cut -d ' ' -f 5`
 SUPPORTED_OS="$CENTOS7, $UBUNTU1604, $UBUNTU1404, $ISOFT4, $RHEL7, $ALIOS7"
 ZSTACK_INSTALL_LOG='/tmp/zstack_installation.log'
@@ -1255,7 +1256,18 @@ is_install_general_libs_rh(){
             nginx \
             psmisc \
             python-backports-ssl_match_hostname \
-            python-setuptools"
+            python-setuptools \
+            lsof \
+            ipmitool \
+            OpenIPMI-modalias \
+            MegaCli"
+
+    deps_mini="kmod-drbd84 \
+            drbd84-utils"
+            
+    if [ x"$MINI_INSTALL" = x'y' ];then
+        deps_list="$deps_list $deps_mini"
+    fi
 
     missing_list=`LANG=en_US.UTF-8 && rpm -q $deps_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
 
@@ -2416,7 +2428,9 @@ sd_start_zstack_ui(){
     chmod a+x /etc/init.d/zstack-ui
     cd /
     zstack-ctl stop_ui >>$ZSTACK_INSTALL_LOG 2>&1
-    zstack-ctl start_ui >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ x"$MINI_INSTALL" = x'n' ];then
+        zstack-ctl start_ui >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
     [ $? -ne 0 ] && fail "failed to start zstack web ui"
     pass
 }
@@ -2848,10 +2862,11 @@ Following command installs ${PRODUCT_NAME} management node and monitor. It will 
 }
 
 OPTIND=1
-while getopts "f:H:I:n:p:P:r:R:t:y:acC:L:T:dDEFhiklmMNoOqsuz" Option
+while getopts "f:H:I:n:p:P:r:R:t:y:acC:L:T:BdDEFhiklmMNoOqsuz" Option
 do
     case $Option in
         a ) NEED_NFS='y' && NEED_HTTP='y' && YUM_ONLINE_REPO='y';;
+        B ) MINI_INSTALL='y';;
         c ) ONLY_UPGRADE_CTL='y' && UPGRADE='y';;
         C ) CONSOLE_PROXY_ADDRESS=$OPTARG;;
         d ) DEBUG='y';;
@@ -3345,11 +3360,17 @@ fi
 echo ""
 echo_star_line
 touch $README
+if [ x"$MINI_INSTALL" = x'n' ];then
+    ui_msg="UI is running, visit $(tput setaf 4)http://$MANAGEMENT_IP:5000$(tput sgr0) in Chrome
+      Use $(tput setaf 3)zstack-ctl [stop_ui|start_ui]$(tput sgr0) to stop/start the UI service"
+else 
+    ui_msg="UI is not installed, because your zstack type is MINI"
+fi
+
 echo -e "${PRODUCT_NAME} All In One ${VERSION} Installation Completed:
  - Installation path: $ZSTACK_INSTALL_ROOT
 
- - UI is running, visit $(tput setaf 4)http://$MANAGEMENT_IP:5000$(tput sgr0) in Chrome
-      Use $(tput setaf 3)zstack-ctl [stop_ui|start_ui]$(tput sgr0) to stop/start the UI service
+ - $ui_msg
 
  - Management node is running
       Use $(tput setaf 3)zstack-ctl [stop|start]$(tput sgr0) to stop/start it
