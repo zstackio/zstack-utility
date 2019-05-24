@@ -2,8 +2,10 @@
 
 @author: yyk
 '''
+import re
 
 import linux
+import bash
 
 class IpAddress(object):
     '''
@@ -141,3 +143,26 @@ def get_link_local_address(mac):
 
     #step 3
     return "fe80::" + part1.lstrip("0") + part2.lstrip("0") + part3.lstrip("0") + part4.lstrip("0")
+
+
+def get_nic_supported_max_speed(nic):
+    r, o = bash.bash_ro("ethtool %s" % nic)  # type: (int, str)
+    if r != 0:
+        return -1
+
+    in_speed = False
+    speed = 0
+    for line in o.strip().splitlines():
+        if "supported link modes" in line.lower():
+            in_speed = True
+        if in_speed is True and ":" in line and "supported link modes" not in line.lower():
+            break
+        if in_speed:
+            nums = re.findall(r"\d+\.?\d*", line)
+            if len(nums) == 0:
+                continue
+            max_num = max([int(n) for n in nums])
+            if max_num > speed:
+                speed = max_num
+
+    return speed

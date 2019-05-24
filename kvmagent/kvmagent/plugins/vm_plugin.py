@@ -5436,6 +5436,7 @@ class VmPlugin(kvmagent.KvmAgent):
                 logger.warn("got excetion: %s" % e)
 
             if fixed is True:
+                logger.debug("resume vm %s" % dom.name)
                 vm.resume()
                 touchQmpSocketWhenExists(vm_uuid)
 
@@ -5458,6 +5459,10 @@ class VmPlugin(kvmagent.KvmAgent):
         def deactivate_volume(event, file, vm_uuid):
             volume = file.strip().split("'")[1]
             logger.debug("deactivating volume %s for vm %s" % (file, vm_uuid))
+            lock_type = bash.bash_o("lvs --nolocking %s -ovg_lock_type" % file).strip()
+            if "sanlock" not in lock_type:
+                logger.debug("%s not sanlock, skip to deactive" % file)
+                return
             try:
                 wait_volume_unused(volume)
             finally:
