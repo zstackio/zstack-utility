@@ -378,7 +378,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
             lvm.add_vg_tag(cmd.vgUuid, "%s::%s" % (FENCER_TAG, cmd.fencerAddress))
         lvm.clean_vg_exists_host_tags(cmd.vgUuid, '\'\'', MANAGEMENT_TAG)
         lvm.add_vg_tag(cmd.vgUuid, "%s::%s" % (MANAGEMENT_TAG, cmd.magementAddress))
-        self.generate_fencer()
+        self.generate_fencer(cmd.peerManagementAddress, cmd.peerSshUsername, cmd.peerSshPassword)
 
         if cmd.storageNetworkCidr is not None:
             nics = linux.get_nics_by_cidr(cmd.storageNetworkCidr)
@@ -391,9 +391,19 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
 
     @staticmethod
     @bash.in_bash
-    def generate_fencer():
+    def generate_fencer(peer_addr, peer_username, peer_password):
+        def configure_ssh_key():
+            bash.bash_roe("/bin/rm %s*" % mini_fencer.MINI_FENCER_KEY)
+            bash.bash_roe("ssh-keygen -P \"\" -f %s" % mini_fencer.MINI_FENCER_KEY)
+            r, o, e = bash.bash_roe("sshpass -p '%s' ssh-copy-id -i %s %s@%s" % (peer_password, mini_fencer.MINI_FENCER_KEY, peer_username, peer_addr))
+            if r == 0:
+                return
+
+        configure_ssh_key()
         current_dir = os.path.split(os.path.realpath(__file__))[0]
         fencer_path = "%s/mini_fencer.py" % current_dir
+        bash.bash_roe("sed -i 's/^PEER_USERNAME = .*$/PEER_USERNAME = \"%s\"/g' %s" % (peer_username, fencer_path))
+        bash.bash_roe("sed -i 's/^PEER_MGMT_ADDR = .*$/PEER_MGMT_ADDR = \"%s\"/g' %s" % (peer_addr, fencer_path))
         bash.bash_roe("cp %s /usr/lib/drbd/mini_fencer.py" % fencer_path)
         bash.bash_roe("sudo chmod 777 /usr/lib/drbd/mini_fencer.py")
 
@@ -704,6 +714,9 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
 
         if self.test_network_ok_to_peer(drbdResource.config.remote_host.address.split(":")[0]) is False and mini_fencer.test_fencer(cmd.vgUuid) is False:
             raise Exception("can not connect storage network or fencer")
+
+        if cmd.checkPeer and drbdResource.get_remote_role() == drbd.DrbdRole.Primary:
+            raise Exception("remote is also in primary role, can not promote!")
 
         lvm.qcow2_lv_recursive_active(install_abs_path, lvm.LvmlockdLockType.EXCLUSIVE)
         try:

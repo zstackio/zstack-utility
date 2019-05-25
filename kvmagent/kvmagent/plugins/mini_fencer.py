@@ -5,12 +5,40 @@ import commands
 import logging
 import time
 import re
-
-logging.basicConfig(filename='/var/log/zstack/mini-fencer.log', level=logging.DEBUG, format='%(asctime)s %(levelname)s %(funcName)s %(message)s')
-logger = logging.getLogger(__name__)
+import signal
+import threading
 
 FENCER_TAG = "zs::ministorage::fencer"
 MANAGEMENT_TAG = "zs::ministorage::management"
+
+MINI_FENCER_KEY = "/usr/local/zstack/mini_fencer.key"
+PEER_USERNAME = ""
+PEER_MGMT_ADDR = ""
+
+FENCE_GW_RESULT = None
+OUTDATE_PEER_RESULT = None
+
+
+def set_timeout(num, callback):
+    def wrap(func):
+        def handle(signum, frame):
+            raise RuntimeError
+
+        def to_do(*args, **kwargs):
+            try:
+                signal.signal(signal.SIGALRM, handle)
+                signal.alarm(num)
+                print 'start alarm signal.'
+                r = func(*args, **kwargs)
+                print 'close alarm signal.'
+                signal.alarm(0)
+                return r
+            except RuntimeError as e:
+                callback()
+
+        return to_do
+
+    return wrap
 
 
 def retry(times=3, sleep_time=1):
@@ -49,16 +77,22 @@ def run(c):
         raise Exception("run command[%s] failed[return code: %s, output: %s]" % (c, r, o))
 
 
-def test_fencer(vg_name):
+def test_fencer(vg_name, resource_name):
+    logger.debug("run test_fencer %s" % resource_name)
+    global FENCE_GW_RESULT
+    FENCE_GW_RESULT = do_test_fencer(vg_name)
+
+
+def do_test_fencer(vg_name):
     # type: (str) -> bool
-    r, fencer_ip = getstatusoutput("vgs %s -otags --nolocking --noheading | tr ',' '\\n' | grep %s" % (vg_name, FENCER_TAG))
+    r, fencer_ip = getstatusoutput("timeout 3 vgs %s -otags --nolocking --noheading | tr ',' '\\n' | grep %s" % (vg_name, FENCER_TAG))
     if r == 0 and fencer_ip and fencer_ip != "" and is_ip_address(fencer_ip):
         fencer_ip = fencer_ip.strip().split("::")[-1]
         return test_ip_address(fencer_ip)
 
-    has_zsha2, o = getstatusoutput("zsha2 show-config")
+    has_zsha2, o = getstatusoutput("/usr/local/bin/zsha2 show-config")
     if has_zsha2 == 0:
-        r, fencer_ip = getstatusoutput("zsha2 show-config | grep -w 'gw' | awk '{print $NF}'")
+        r, fencer_ip = getstatusoutput("/usr/local/bin/zsha2 show-config | grep -w 'gw' | awk '{print $NF}'")
         fencer_ip = fencer_ip.strip().strip("\",") if fencer_ip is not None else fencer_ip
         if r == 0 and is_ip_address(fencer_ip):
             return test_ip_address(fencer_ip)
@@ -67,10 +101,13 @@ def test_fencer(vg_name):
     if r == 0 and default_gateway and default_gateway != "" and is_ip_address(default_gateway):
         return test_ip_address(default_gateway)
 
-    mgmt_ip = getoutput("vgs %s -otags --nolocking --noheading | tr ',' '\\n' | grep %s" % (vg_name, MANAGEMENT_TAG))
+    mgmt_ip = getoutput("timeout 3 vgs %s -otags --nolocking --noheading | tr ',' '\\n' | grep %s" % (vg_name, MANAGEMENT_TAG))
     mgmt_ip = mgmt_ip.strip().split("::")[-1]
+    if not is_ip_address(mgmt_ip):
+        logger.error("can not get mgmt nic")
+        return False
     mgmt_device = getoutput("ip a | grep %s | awk '{print $NF}'" % mgmt_ip)
-    return test_device(mgmt_device, 12) is not False
+    return test_device(mgmt_device, 12) is None
 
 
 def test_device(device, ttl=12):
@@ -116,14 +153,27 @@ def test_ip_address(ip):
     return False
 
 
+def outdate_peer(resource_name):
+    logger.debug("run outdate_peer %s" % resource_name)
+    r, o = getstatusoutput("timeout 5 ssh -i %s %s@%s 'drbdadm outdate %s'" % (MINI_FENCER_KEY, PEER_USERNAME, PEER_MGMT_ADDR, resource_name))
+    global OUTDATE_PEER_RESULT
+    OUTDATE_PEER_RESULT = r == 0
+
+
 def fence_self(resource_name, drbd_path):
     qemu_pid = getoutput("lsof -c qemu-kvm | grep -w %s | awk '{print $2}'" % drbd_path)
     run("kill -9 %s" % qemu_pid)
     run("drbdadm resume-io %s" % resource_name)
     run("drbdadm secondary %s" % resource_name)
-    # run("drbdadm outdate %s" % resource_name)
+    run("drbdadm outdate %s" % resource_name)
 
 
+def timeout_callback():
+    logger.error("timeout for 15 seconds! resume resource %s IO" % sys.argv[1])
+    exit(4)
+
+
+@set_timeout(15, timeout_callback)
 def main():
     resource_name = sys.argv[1]
     logger.debug("fencer fired by resource %s" % resource_name)
@@ -132,17 +182,33 @@ def main():
     vg_name = resource_path.split("/")[2]
     drbd_path = "/dev/drbd%s" % getoutput("cat /etc/drbd.d/%s.res | grep minor -m1 | awk '{print $NF}'" % resource_name).strip(";\n")
     try:
-        if test_fencer(vg_name) is False:
-            logger.info("resouce %s fence result: fence self" % resource_name)
-            fence_self(resource_name, drbd_path)
-        else:
-            logger.info("resouce %s fence result: not fence" % resource_name)
-            exit(4)
+        t1 = threading.Thread(target=test_fencer, args=(vg_name,resource_name))
+        t2 = threading.Thread(target=outdate_peer, args=(resource_name,))
+        t1.start()
+        t2.start()
+
+        for i in range(20):
+            if FENCE_GW_RESULT is None or OUTDATE_PEER_RESULT is None:
+                time.sleep(0.5)
+                continue
+            elif FENCE_GW_RESULT is False and OUTDATE_PEER_RESULT is False:
+                logger.info("resouce %s fence result: fence self" % resource_name)
+                fence_self(resource_name, drbd_path)
+                exit(0)
+            else:
+                logger.info("resouce %s fence result: not fence" % resource_name)
+                exit(4)
     except Exception as e:
         logger.info("resouce %s fence error, not proceeding" % resource_name)
         logger.error(e)
-        exit(4)
+        if FENCE_GW_RESULT is False and OUTDATE_PEER_RESULT is False:
+            exit(0)
+        else:
+            exit(4)
 
 
 if __name__ == '__main__':
+    logging.basicConfig(filename='/var/log/zstack/mini-fencer.log', level=logging.DEBUG,
+                        format='%(asctime)s %(levelname)s %(funcName)s %(message)s')
+    logger = logging.getLogger(__name__)
     main()
