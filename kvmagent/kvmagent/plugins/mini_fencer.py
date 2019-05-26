@@ -18,6 +18,8 @@ PEER_MGMT_ADDR = ""
 FENCE_GW_RESULT = None
 OUTDATE_PEER_RESULT = None
 
+logger = logging.getLogger(__name__)
+
 
 def set_timeout(num, callback):
     def wrap(func):
@@ -28,9 +30,7 @@ def set_timeout(num, callback):
             try:
                 signal.signal(signal.SIGALRM, handle)
                 signal.alarm(num)
-                print 'start alarm signal.'
                 r = func(*args, **kwargs)
-                print 'close alarm signal.'
                 signal.alarm(0)
                 return r
             except RuntimeError as e:
@@ -210,5 +210,4 @@ def main():
 if __name__ == '__main__':
     logging.basicConfig(filename='/var/log/zstack/mini-fencer.log', level=logging.DEBUG,
                         format='%(asctime)s %(levelname)s %(funcName)s %(message)s')
-    logger = logging.getLogger(__name__)
     main()
