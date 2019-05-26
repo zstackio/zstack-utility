@@ -125,7 +125,7 @@ class DrbdResource(object):
         raise Exception("demote resource %s failed: %s, %s, %s" % (self.name, r, o, e))
 
     @bash.in_bash
-    def promote(self, force=False, retry=15, sleep=2):
+    def promote(self, force=False, retry=60, sleep=2):
         @bash.in_bash
         @linux.retry(times=retry, sleep_time=sleep)
         def do_promote():
@@ -172,7 +172,7 @@ class DrbdResource(object):
         return "/dev/drbd%s" % self.config.local_host.minor
 
     @bash.in_bash
-    @linux.retry(times=15, sleep_time=2)
+    @linux.retry(times=60, sleep_time=2)
     def clear_bits(self):
         bash.bash_errorout("drbdadm new-current-uuid --clear-bitmap %s" % self.name)
 
