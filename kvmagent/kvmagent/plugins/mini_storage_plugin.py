@@ -712,11 +712,15 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
             rsp._init_from_drbd(drbdResource)
             return jsonobject.dumps(rsp)
 
-        if self.test_network_ok_to_peer(drbdResource.config.remote_host.address.split(":")[0]) is False and mini_fencer.test_fencer(cmd.vgUuid) is False:
+        if self.test_network_ok_to_peer(drbdResource.config.remote_host.address.split(":")[0]) is False \
+                and mini_fencer.test_fencer(cmd.vgUuid, drbdResource.name) is False:
             raise Exception("can not connect storage network or fencer")
 
         if cmd.checkPeer and drbdResource.get_remote_role() == drbd.DrbdRole.Primary:
-            raise Exception("remote is also in primary role, can not promote!")
+            raise Exception("remote is also in primary role, can not promote")
+
+        if drbdResource.get_dstate() != "UpToDate":
+            raise Exception("local data is not uptodate, can not promote")
 
         lvm.qcow2_lv_recursive_active(install_abs_path, lvm.LvmlockdLockType.EXCLUSIVE)
         try:
