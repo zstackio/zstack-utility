@@ -187,7 +187,7 @@ def main():
         t1.start()
         t2.start()
 
-        for i in range(30):
+        for i in range(32):
             if FENCE_GW_RESULT is None or OUTDATE_PEER_RESULT is None:
                 time.sleep(0.5)
                 continue
@@ -211,5 +211,5 @@ def main():
 
 if __name__ == '__main__':
     logging.basicConfig(filename='/var/log/zstack/mini-fencer.log', level=logging.DEBUG,
-                        format='%(asctime)s %(levelname)s %(funcName)s %(message)s')
+                        format='%(asctime)s %(process)d %(levelname)s %(funcName)s %(message)s')
     main()
