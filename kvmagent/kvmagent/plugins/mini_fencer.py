@@ -111,7 +111,7 @@ def do_test_fencer(vg_name):
 
 
 def test_device(device, ttl=12):
-    # type: (str) -> bool or None
+    # type: (str, int) -> bool or None
     if ttl == 1:
         return None
     device = device.strip()
@@ -182,7 +182,7 @@ def main():
     vg_name = resource_path.split("/")[2]
     drbd_path = "/dev/drbd%s" % getoutput("cat /etc/drbd.d/%s.res | grep minor -m1 | awk '{print $NF}'" % resource_name).strip(";\n")
     try:
-        t1 = threading.Thread(target=test_fencer, args=(vg_name,resource_name))
+        t1 = threading.Thread(target=test_fencer, args=(vg_name, resource_name))
         t2 = threading.Thread(target=outdate_peer, args=(resource_name,))
         t1.start()
         t2.start()

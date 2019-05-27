@@ -88,7 +88,7 @@ class LogConfig(object):
     instance = None
 
     LOG_FOLER = '/var/log/zstack'
-    LOG_FORMAT = '%(asctime)s %(levelname)s [%(name)s] %(message)s'
+    LOG_FORMAT = '%(asctime)s %(thread)d %(levelname)s [%(name)s] %(message)s'
 
     def __init__(self):
         if not os.path.exists(self.LOG_FOLER):
