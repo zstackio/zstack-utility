@@ -142,7 +142,12 @@ class DrbdResource(object):
 
     @bash.in_bash
     def demote(self):
-        r, o, e = bash.bash_roe("drbdadm secondary %s" % self.name)
+        @bash.in_bash
+        @linux.retry(times=30, sleep_time=2)
+        def do_demote():
+            bash.bash_errorout("drbdadm secondary %s" % self.name)
+
+        do_demote()
 
     @bash.in_bash
     def get_cstate(self):
