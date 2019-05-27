@@ -7398,6 +7398,8 @@ class DashboardStatusCmd(Command):
 
 # For UI 2.0
 class UiStatusCmd(Command):
+    MINI_DIR = '/usr/local/zstack-mini'
+
     def __init__(self):
         super(UiStatusCmd, self).__init__()
         self.name = "ui_status"
@@ -7417,16 +7419,22 @@ class UiStatusCmd(Command):
             self._remote_status(args.host)
             return
 
+        is_mini = os.path.exists(self.MINI_DIR)
         # no need to consider ha because it's not supported any more
         #ha_info_file = '/var/lib/zstack/ha/ha.yaml'
         pidfile = '/var/run/zstack/zstack-ui.pid'
         portfile = '/var/run/zstack/zstack-ui.port'
+        ui_port = 5000
+        if is_mini:
+            pidfile = '/var/run/zstack/zstack-mini-ui.pid'
+            portfile = '/var/run/zstack/zstack-mini-ui.port'
+            ui_port = 8200
         if os.path.exists(portfile):
             with open(portfile, 'r') as fd2:
                 port = fd2.readline()
                 port = port.strip(' \t\n\r')
         else:
-            port = 5000
+            port = ui_port
 
         def write_status(status):
             info('UI status: %s' % status)
@@ -7784,6 +7792,7 @@ class StartDashboardCmd(Command):
 class StartUiCmd(Command):
     PID_FILE = '/var/run/zstack/zstack-ui.pid'
     PORT_FILE = '/var/run/zstack/zstack-ui.port'
+    MINI_DIR = '/usr/local/zstack-mini'
 
     def __init__(self):
         super(StartUiCmd, self).__init__()
@@ -7817,6 +7826,9 @@ class StartUiCmd(Command):
         parser.add_argument('--db-url', help="zstack_ui database jdbc url")
         parser.add_argument('--db-username', help="zstack_ui database username")
         parser.add_argument('--db-password', help="zstack_ui database password")
+        
+        # arguments for mini judgment
+        parser.add_argument('--force', help="Force start_ui on mini", action='store_true', default=False)
 
     def _remote_start(self, host, mn_host, mn_port, webhook_host, webhook_port, server_port, log, enable_ssl, ssl_keyalias, ssl_keystore, ssl_keystore_type, ssl_keystore_password, db_url, db_username, db_password):
         if enable_ssl:
@@ -7891,6 +7903,9 @@ class StartUiCmd(Command):
         _, _, self.db_username, self.db_password = ctl.get_live_mysql_portal(True)
 
     def run(self, args):
+        is_mini = os.path.exists(self.MINI_DIR)
+        if is_mini and not args.force:
+            raise CtlError("Not supported! Your system is zstack-mini, use '/root/bin/zstack-mini.sh start/stop' to start or stop mini-ui.")
         ui_logging_path = os.path.normpath(os.path.join(ctl.zstack_home, "../../logs/"))
 
         if args.mn_host and not validate_ip(args.mn_host):
