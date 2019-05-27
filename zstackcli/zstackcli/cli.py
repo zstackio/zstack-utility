@@ -27,6 +27,7 @@ import cStringIO as c
 import csv
 
 import zstacklib.utils.log as log
+import zstacklib.utils.linux as linux
 
 # comment out next line to print detail zstack cli http command to screen.
 log.configure_log('/var/log/zstack/zstack-cli', log_to_console=False)
@@ -1091,13 +1092,14 @@ Parse command parameters error:
         readline.set_history_length(CLI_MAX_CMD_HISTORY)
 
         if not os.path.isdir(CLI_RESULT_HISTORY_FOLDER):
-            os.system('rm -rf %s' % os.path.dirname(CLI_RESULT_HISTORY_FOLDER))
+
+            linux.rm_dir_force(os.path.dirname(CLI_RESULT_HISTORY_FOLDER))
             os.system('mkdir -p %s' % os.path.dirname(CLI_RESULT_HISTORY_FOLDER))
 
         try:
             self.hd = filedb.FileDB(CLI_RESULT_HISTORY_KEY, is_abs_path=True)
         except:
-            os.system('rm -rf %s' % CLI_RESULT_HISTORY_KEY)
+            linux.rm_dir_force(CLI_RESULT_HISTORY_KEY)
             self.hd = filedb.FileDB(CLI_RESULT_HISTORY_KEY, is_abs_path=True)
             print "\nRead history file: %s error. Has recreate it.\n" % CLI_RESULT_HISTORY_KEY
 
