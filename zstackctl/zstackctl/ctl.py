@@ -1801,16 +1801,8 @@ class StartCmd(Command):
         else:
             warn("Can't get system memory size from /proc/meminfo")
 
-    def check_hostname(self):
-        hn = shell('hostname').strip()
-        if '.' in hn:
-            error("The hostname cannot contain '.', current hostname is '%s'.\n"
-                  "Please use the following commands to modify hostname:\n"
-                  " # hostnamectl set-hostname $NEW_HOSTNAME")
-
     def run(self, args):
         self.check_cpu_mem()
-        self.check_hostname()
         if args.host:
             self._start_remote(args)
             return
