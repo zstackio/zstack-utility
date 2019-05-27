@@ -146,7 +146,7 @@ def is_ip_address(ip):
 def test_ip_address(ip):
     # type: (str) -> bool
     device = getoutput("ip r get %s | grep -Eo 'dev.*src' | awk '{print $2}'" % ip)
-    for i in range(5):
+    for i in range(3):
         r, o = getstatusoutput("timeout 2 arping -b -c 1 -w 1 -I %s %s" % (device, ip))
         if r == 0:
             return True
@@ -173,7 +173,7 @@ def timeout_callback():
     exit(4)
 
 
-@set_timeout(15, timeout_callback)
+@set_timeout(20, timeout_callback)
 def main():
     resource_name = sys.argv[1]
     logger.debug("fencer fired by resource %s" % resource_name)
@@ -187,7 +187,7 @@ def main():
         t1.start()
         t2.start()
 
-        for i in range(20):
+        for i in range(30):
             if FENCE_GW_RESULT is None or OUTDATE_PEER_RESULT is None:
                 time.sleep(0.5)
                 continue
@@ -198,6 +198,8 @@ def main():
             else:
                 logger.info("resouce %s fence result: not fence" % resource_name)
                 exit(4)
+        logger.error("timeout for 15 seconds! resume resource %s IO" % sys.argv[1])
+        exit(4)
     except Exception as e:
         logger.info("resouce %s fence error, not proceeding" % resource_name)
         logger.error(e)
