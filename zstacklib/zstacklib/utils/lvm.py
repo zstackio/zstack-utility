@@ -652,8 +652,11 @@ def clean_vg_exists_host_tags(vgUuid, hostUuid, tag):
 
 
 @bash.in_bash
-@linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
+@linux.retry(times=15, sleep_time=random.uniform(0.1, 3))
 def create_lv_from_absolute_path(path, size, tag="zs::sharedblock::volume", lock=True):
+    if lv_exists(path):
+        return
+
     vgName = path.split("/")[2]
     lvName = path.split("/")[3]
 
@@ -681,8 +684,11 @@ def create_lv_from_cmd(path, size, cmd, tag="zs::sharedblock::volume", lock=True
 
 
 @bash.in_bash
-@linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
+@linux.retry(times=15, sleep_time=random.uniform(0.1, 3))
 def create_thin_lv_from_absolute_path(path, size, tag, lock=False):
+    if lv_exists(path):
+        return
+
     vgName = path.split("/")[2]
     lvName = path.split("/")[3]
 
