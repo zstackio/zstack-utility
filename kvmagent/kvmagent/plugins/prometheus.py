@@ -123,7 +123,7 @@ def collect_lvm_capacity_statistics():
     if r != 0 or len(o.splitlines()) == 0:
         return metrics.values()
 
-    vg_names = bash_o('vgs --nolocking --noheading -oname').splitlines()
+    vg_names = o.splitlines()
     for name in vg_names:
         name = name.strip()
         size, avail = lvm.get_vg_size(name, False)
