@@ -50,6 +50,8 @@ etree.register_namespace('zs', ZS_XML_NAMESPACE)
 QMP_SOCKET_PATH = "/var/lib/libvirt/qemu/zstack"
 PCI_ROM_PATH = "/var/lib/zstack/pcirom"
 
+GRUB_FILES = ["/boot/grub2/grub.cfg", "/boot/grub/grub.cfg", "/etc/grub2-efi.cfg", "/etc/grub-efi.cfg"]
+
 class RetryException(Exception):
     pass
 
@@ -1169,11 +1171,12 @@ class UpdateConfigration(object):
         self.updatePcideviceConfigration()
         return True, None
 
-    def updatePcideviceConfigration(self):
-        bash.bash_r("grub2-mkconfig -o /boot/grub2/grub.cfg")
-        bash.bash_o("grub2-mkconfig -o /boot/grub/grub.cfg")
-        bash.bash_r("grub2-mkconfig -o /etc/grub2-efi.cfg")
-        bash.bash_o("grub2-mkconfig -o /etc/grub-efi.cfg")
+    def updateGrubConfig(self):
+        linux.updateGrubFile("grep -E 'intel_iommu(\ )*=(\ )*on'", "sed -i '/^[[:space:]]*linux/s/[[:blank:]]*intel_iommu[[:blank:]]*=[[:blank:]]*on//g'", GRUB_FILES)
+        linux.updateGrubFile("grep -E 'intel_iommu(\ )*=(\ )*off'", "sed -i '/^[[:space:]]*linux/s/[[:blank:]]*intel_iommu[[:blank:]]*=[[:blank:]]*off//g'", GRUB_FILES)
+        linux.updateGrubFile("grep -E 'modprobe.blacklist(\ )*='", "sed -i '/^[[:space:]]*linux/s/[[:blank:]]*modprobe.blacklist[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g'", GRUB_FILES)    
+        if self.enableIommu is True:        
+            linux.updateGrubFile(None, "sed -i '/^[[:space:]]*linux/s/$/ intel_iommu=on modprobe.blacklist=snd_hda_intel,amd76x_edac,vga16fb,nouveau,rivafb,nvidiafb,rivatv,amdgpu,radeon/g'", GRUB_FILES)       
         bash.bash_o("modprobe vfio && modprobe vfio-pci")
 
 def get_vm_by_uuid(uuid, exception_if_not_existing=True, conn=None):
@@ -4881,6 +4884,8 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.error = error
             return jsonobject.dumps(rsp)
         
+        updateConfigration.updateGrubConfig()
+    
         r_bios, o_bios, e_bios = bash.bash_roe("find /sys -iname dmar*")
         r_kernel, o_kernel, e_kernel = bash.bash_roe("grep 'intel_iommu=on' /proc/cmdline")
         if o_bios != '' and r_kernel == 0:
