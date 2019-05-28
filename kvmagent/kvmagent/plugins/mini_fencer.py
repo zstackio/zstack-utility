@@ -18,6 +18,8 @@ PEER_MGMT_ADDR = ""
 FENCE_GW_RESULT = None
 OUTDATE_PEER_RESULT = None
 
+OVERALL_TIMEOUT = 50
+
 logger = logging.getLogger(__name__)
 
 
@@ -41,7 +43,7 @@ def set_timeout(num, callback):
     return wrap
 
 
-def retry(times=3, sleep_time=1):
+def retry(times=5, sleep_time=1):
     def wrap(f):
         @functools.wraps(f)
         def inner(*args, **kwargs):
@@ -59,6 +61,7 @@ def retry(times=3, sleep_time=1):
 
 
 def getstatusoutput(c):
+    # type: (str) -> (int, str)
     start_time = time.time()
     r, o = commands.getstatusoutput(c)
     end_time = time.time()
@@ -161,19 +164,26 @@ def outdate_peer(resource_name):
 
 
 def fence_self(resource_name, drbd_path):
-    qemu_pid = getoutput("lsof -c qemu-kvm | grep -w %s | awk '{print $2}'" % drbd_path)
-    run("kill -9 %s" % qemu_pid)
-    run("drbdadm resume-io %s" % resource_name)
-    run("drbdadm secondary %s" % resource_name)
-    run("drbdadm outdate %s" % resource_name)
+    r, qemu_pid = getstatusoutput("timeout 3 lsof -c qemu-kvm | grep -w %s" % drbd_path)
+    if r == 0:
+        qemu_pid = qemu_pid.split()[1]
+        run("timeout 3 kill -9 %s" % qemu_pid)
+    run("timeout 3 drbdadm resume-io %s" % resource_name)
+    run("timeout 3 drbdadm secondary %s" % resource_name)
+    run("timeout 3 drbdadm outdate %s" % resource_name)
 
 
 def timeout_callback():
-    logger.error("timeout for 15 seconds! resume resource %s IO" % sys.argv[1])
-    exit(4)
+    logger.error("overall timeout for %s seconds!" % OVERALL_TIMEOUT)
+    if FENCE_GW_RESULT is False and OUTDATE_PEER_RESULT is False:
+        logger.error("keep resource %s io suspend" % sys.argv[1])
+        exit(0)
+    else:
+        logger.error("leave resource %s io resume" % sys.argv[1])
+        exit(4)
 
 
-@set_timeout(20, timeout_callback)
+# @set_timeout(OVERALL_TIMEOUT, timeout_callback)
 def main():
     resource_name = sys.argv[1]
     logger.debug("fencer fired by resource %s" % resource_name)
@@ -192,20 +202,22 @@ def main():
                 time.sleep(0.5)
                 continue
             elif FENCE_GW_RESULT is False and OUTDATE_PEER_RESULT is False:
-                logger.info("resouce %s fence result: fence self" % resource_name)
+                logger.info("resource %s fence result: fence self" % resource_name)
                 fence_self(resource_name, drbd_path)
                 exit(0)
             else:
-                logger.info("resouce %s fence result: not fence" % resource_name)
+                logger.info("resource %s fence result: not fence" % resource_name)
                 exit(4)
         logger.error("timeout for 15 seconds! resume resource %s IO" % sys.argv[1])
         exit(4)
     except Exception as e:
-        logger.info("resouce %s fence error, not proceeding" % resource_name)
-        logger.error(e)
+        logger.error("resouce %s fence get error" % resource_name)
+        logger.error(e.message)
         if FENCE_GW_RESULT is False and OUTDATE_PEER_RESULT is False:
+            logger.error("keep resource %s io suspend" % resource_name)
             exit(0)
         else:
+            logger.error("leave resource %s io resume" % resource_name)
             exit(4)
 
 
