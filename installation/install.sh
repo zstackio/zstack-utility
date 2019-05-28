@@ -3256,7 +3256,7 @@ if [ ! -z $ONLY_INSTALL_ZSTACK ]; then
     start_zstack_tui
     exit 0
 fi
-
+exit 1
 #Install Mysql
 install_db
 
@@ -3281,6 +3281,10 @@ zstack-ctl show_configuration | grep '^[[:space:]]*chrony.serverIp.' >/dev/null 
 
 #Install license
 install_license
+
+if [ `uname -m` == "aarch64" ]; then
+    copy prometheus2_arch64
+fi
 
 #Start ${PRODUCT_NAME} 
 if [ -z $NOT_START_ZSTACK ]; then
