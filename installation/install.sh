@@ -2862,57 +2862,70 @@ Following command installs ${PRODUCT_NAME} management node and monitor. It will 
     exit 1
 }
 
+check_myarg() {
+    myarg=$2
+    initial=${myarg:0:1}
+    if [ x"$initial" = x"-" ];then
+        echo "Unexpected parameter for $1"
+        exit 1
+    fi
+}
+
 OPTIND=1
-while getopts "f:H:I:n:p:P:r:R:t:y:acC:L:T:BdDEFhiklmMNoOqsuz" Option
+TEMP=`getopt -o f:H:I:n:p:P:r:R:t:y:acC:L:T:dDEFhiklmMNoOqsuz --long mini -- "$@" 2>/dev/null`
+eval set -- "$TEMP"
+while :
 do
-    case $Option in
-        a ) NEED_NFS='y' && NEED_HTTP='y' && YUM_ONLINE_REPO='y';;
-        B ) MINI_INSTALL='y';;
-        c ) ONLY_UPGRADE_CTL='y' && UPGRADE='y';;
-        C ) CONSOLE_PROXY_ADDRESS=$OPTARG;;
-        d ) DEBUG='y';;
-        D ) NEED_DROP_DB='y';;
-        E ) INSTALL_ENTERPRISE='y';;
-        H ) NEED_HTTP='y' && HTTP_FOLDER=$OPTARG;;
-        f ) ZSTACK_ALL_IN_ONE=$OPTARG;;
-        F ) FORCE='y';;
-        i ) ONLY_INSTALL_ZSTACK='y' && NEED_NFS='' && NEED_HTTP='' ;;
-        I ) MANAGEMENT_INTERFACE=$OPTARG && NEED_SET_MN_IP='y';;
-        k ) NEED_KEEP_DB='y';;
-        l ) ONLY_INSTALL_LIBS='y';;
-        L ) LICENSE_PATH=$OPTARG;;
-        m ) INSTALL_MONITOR='y';;
-        M ) UPGRADE_MONITOR='y';;
-        n ) NEED_NFS='y' && NFS_FOLDER=$OPTARG;;
+    [ -z "$1" ] && break;
+    case "$1" in
+        -a ) NEED_NFS='y' && NEED_HTTP='y' && YUM_ONLINE_REPO='y';shift;;
+        -c ) ONLY_UPGRADE_CTL='y' && UPGRADE='y';shift;;
+        -C ) check_myarg $1 $2;CONSOLE_PROXY_ADDRESS=$2;shift 2;;
+        -d ) DEBUG='y';shift;;
+        -D ) NEED_DROP_DB='y';shift;;
+        -E ) INSTALL_ENTERPRISE='y';shift;;
+        -H ) check_myarg $1 $2;NEED_HTTP='y' && HTTP_FOLDER=$2;shift 2;;
+        -f ) check_myarg $1 $2;ZSTACK_ALL_IN_ONE=$2;shift 2;;
+        -F ) FORCE='y';shift;;
+        -i ) ONLY_INSTALL_ZSTACK='y' && NEED_NFS='' && NEED_HTTP='' ;shift;;
+        -I ) check_myarg $1 $2;MANAGEMENT_INTERFACE=$2 && NEED_SET_MN_IP='y';shift 2;;
+        -k ) NEED_KEEP_DB='y';shift;;
+        -l ) ONLY_INSTALL_LIBS='y';shift;;
+        -L ) check_myarg $1 $2;LICENSE_PATH=$2;shift 2;;
+        -m ) INSTALL_MONITOR='y';shift;;
+        -M ) UPGRADE_MONITOR='y';shift;;
+        -n ) check_myarg $1 $2;NEED_NFS='y' && NFS_FOLDER=$2;shift 2;;
         # -o: do not use yum online repo
-        o ) YUM_ONLINE_REPO='' && ZSTACK_OFFLINE_INSTALL='y' && 
-        [ "zstack.org" = "$WEBSITE" ] && WEBSITE='localhost';;
+        -o ) YUM_ONLINE_REPO='' && ZSTACK_OFFLINE_INSTALL='y' && 
+        [ "zstack.org" = "$WEBSITE" ] && WEBSITE='localhost';shift;;
         # -O: use yum online repo
-        O ) if [ x"${CHECK_REPO_VERSION}" != x"True" ]; then
+        -O ) if [ x"${CHECK_REPO_VERSION}" != x"True" ]; then
         YUM_ONLINE_REPO='y'
         ZSTACK_OFFLINE_INSTALL=''
         else
         fail2 "$PRODUCT_NAME don't support '-O' option! Please remove '-O' and try again."
-        fi;;
-        P ) MYSQL_ROOT_PASSWORD=$OPTARG && MYSQL_NEW_ROOT_PASSWORD=$OPTARG;;
-        p ) MYSQL_USER_PASSWORD=$OPTARG;;
-        q ) QUIET_INSTALLATION='y';;
-        r ) ZSTACK_INSTALL_ROOT=$OPTARG;;
+        fi;shift;;
+        -P ) check_myarg $1 $2;MYSQL_ROOT_PASSWORD=$2 && MYSQL_NEW_ROOT_PASSWORD=$2;shift 2;;
+        -p ) check_myarg $1 $2;MYSQL_USER_PASSWORD=$2;shift 2;;
+        -q ) QUIET_INSTALLATION='y';shift;;
+        -r ) check_myarg $1 $2;ZSTACK_INSTALL_ROOT=$2;shift 2;;
         # -R: use yum third party repo
-        R ) if [ x"${CHECK_REPO_VERSION}" != x"True" ]; then
-        ZSTACK_PKG_MIRROR=$OPTARG
+        -R ) check_myarg $1 $2;if [ x"${CHECK_REPO_VERSION}" != x"True" ]; then
+        ZSTACK_PKG_MIRROR=$2
         YUM_ONLINE_REPO='y'
         ZSTACK_OFFLINE_INSTALL=''
         else
         fail2 "$PRODUCT_NAME don't support '-R' option! Please remove '-R' and try again."
-        fi;;
+        fi;shift 2;;
         # -s: skip syncing from repo.zstack.io
-        s ) SKIP_SYNC='y';;
-        t ) ZSTACK_START_TIMEOUT=$OPTARG;;
-        T ) MYSQL_PORT=$OPTARG;;
-        u ) UPGRADE='y';;
-        y ) HTTP_PROXY=$OPTARG;;
-        z ) NOT_START_ZSTACK='y';;
+        -s ) SKIP_SYNC='y';shift;;
+        -t ) check_myarg $1 $2;ZSTACK_START_TIMEOUT=$2;shift 2;;
+        -T ) check_myarg $1 $2;MYSQL_PORT=$2;shift 2;;
+        -u ) UPGRADE='y';shift;;
+        -y ) check_myarg $1 $2;HTTP_PROXY=$2;shift 2;;
+        -z ) NOT_START_ZSTACK='y';shift;;
+        --mini) MINI_INSTALL='y';shift;;
+        --) shift;;
         * ) usage;;
     esac
 done
