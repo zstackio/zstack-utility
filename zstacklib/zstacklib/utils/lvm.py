@@ -968,7 +968,7 @@ def create_lvm_snapshot(absolutePath, remove_oldest=True, snapName=None, size_pe
         else:
             snap_size = int((virtual_size / 512) * size_percent * 512)
         size_command = " -L %sB " % snap_size
-    bash.bash_errorout("lvcreate --snapshot -n %s %s %s" % (snapName, absolutePath, size_command))
+    bash.bash_errorout("sync; lvcreate --snapshot -n %s %s %s" % (snapName, absolutePath, size_command))
     path = "/".join(absolutePath.split("/")[:-1]) + "/" + snapName
     if size_command == "":
         bash.bash_r("lvchange -ay -K %s" % path)
