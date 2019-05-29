@@ -1257,18 +1257,7 @@ is_install_general_libs_rh(){
             nginx \
             psmisc \
             python-backports-ssl_match_hostname \
-            python-setuptools \
-            lsof \
-            ipmitool \
-            OpenIPMI-modalias \
-            MegaCli"
-
-    deps_mini="kmod-drbd84 \
-            drbd84-utils"
-            
-    if [ x"$MINI_INSTALL" = x'y' ];then
-        deps_list="$deps_list $deps_mini"
-    fi
+            python-setuptools"
 
     missing_list=`LANG=en_US.UTF-8 && rpm -q $deps_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
 
