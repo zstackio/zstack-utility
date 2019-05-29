@@ -1160,7 +1160,6 @@ class UpdateConfigration(object):
             if r != 0:
                 return False, "%s %s" % (e, o)
 
-        self.updatePcideviceConfigration()
         return True, None
 
     def updateGrubConfig(self):
