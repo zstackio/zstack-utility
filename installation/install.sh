@@ -3256,7 +3256,7 @@ if [ ! -z $ONLY_INSTALL_ZSTACK ]; then
     start_zstack_tui
     exit 0
 fi
-exit 1
+
 #Install Mysql
 install_db
 
@@ -3283,7 +3283,18 @@ zstack-ctl show_configuration | grep '^[[:space:]]*chrony.serverIp.' >/dev/null 
 install_license
 
 if [ `uname -m` == "aarch64" ]; then
-    copy prometheus2_arch64
+cp /opt/zstack-dvd/tools/* /usr/local/zstack/apache-tomcat-8.5.35/webapps/zstack/WEB-INF/classes/tools/
+mv /usr/sbin/dmidecode /usr/sbin/dmidecode_bak
+cat > /usr/sbin/dmidecode << EOF
+#!/bin/bash
+if [ x"$1" = x"-s" ]; then
+    echo '68d96940-bfde-1000-03ca-2211ddccbbca'
+else
+    echo 'UUID: 68d96940-bfde-1000-03ca-2211ddccbbca'
+    echo 'Max Speed: 1500 MHz'
+fi
+EOF
+chmod a+x /usr/sbin/dmidecode
 fi
 
 #Start ${PRODUCT_NAME} 
