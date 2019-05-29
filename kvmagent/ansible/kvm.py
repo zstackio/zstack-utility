@@ -191,7 +191,7 @@ if distro in RPM_BASED_OS:
         # common kvmagent deps of x86 and arm that need to update
         common_update_list = "sanlock sysfsutils hwdata sg3_utils lvm2 lvm2-libs lvm2-lockd systemd"
         # common kvmagent deps of x86 and arm that no need to update
-        common_dep_list = "bridge-utils chrony conntrack-tools device-mapper-multipath expect iproute ipset usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd net-tools nfs-utils nmap openssh-clients pciutils python-pyudev pv rsync sed smartmontools sshpass usbutils vconfig wget %s %s %s" % (qemu_pkg, extra_pkg, common_update_list)
+        common_dep_list = "bridge-utils chrony conntrack-tools device-mapper-multipath drbd84-utils expect ipmitool iproute ipset usbredir-server iputils iscsi-initiator-utils kmod-drbd84 libvirt libvirt-client libvirt-python lighttpd lsof MegaCli net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils python-pyudev pv rsync sed smartmontools sshpass usbutils vconfig wget %s %s %s" % (qemu_pkg, extra_pkg, common_update_list)
 
         # arch specific deps
         if IS_AARCH64:
