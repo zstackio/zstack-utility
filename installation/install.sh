@@ -3283,18 +3283,7 @@ zstack-ctl show_configuration | grep '^[[:space:]]*chrony.serverIp.' >/dev/null 
 install_license
 
 if [ `uname -m` == "aarch64" ]; then
-cp /opt/zstack-dvd/tools/* /usr/local/zstack/apache-tomcat-8.5.35/webapps/zstack/WEB-INF/classes/tools/
-mv /usr/sbin/dmidecode /usr/sbin/dmidecode_bak
-cat > /usr/sbin/dmidecode << EOF
-#!/bin/bash
-if [ x"$1" = x"-s" ]; then
-    echo '68d96940-bfde-1000-03ca-2211ddccbbca'
-else
-    echo 'UUID: 68d96940-bfde-1000-03ca-2211ddccbbca'
-    echo 'Max Speed: 1500 MHz'
-fi
-EOF
-chmod a+x /usr/sbin/dmidecode
+    install -o zstack -g zstack /opt/zstack-dvd/tools/* $CATALINA_ZSTACK_TOOLS/tools/
 fi
 
 #Start ${PRODUCT_NAME} 
