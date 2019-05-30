@@ -1152,6 +1152,37 @@ def get_remote_host_arch(host_post_info):
         else:
             host_post_info.post_label = "ansible.get.host.arch.false"
 
+@retry(times=3, sleep_time=3)
+def get_remote_host_kernel_version(host_post_info):
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
+    host = host_post_info.host
+    post_url = host_post_info.post_url
+    host_post_info.post_label = "ansible.get.host.kernel.version"
+    host_post_info.post_label_param = host
+    handle_ansible_info("INFO: starting get remote host %s kernel version ... " % host, host_post_info, "INFO")
+    runner_args = ZstackRunnerArg()
+    runner_args.host_post_info = host_post_info
+    runner_args.module_name = 'setup'
+    runner_args.module_args = 'filter=ansible_kernel'
+    zstack_runner = ZstackRunner(runner_args)
+    result = zstack_runner.run()
+    logger.debug(result)
+    if result['contacted'] == {}:
+        ansible_start = AnsibleStartResult()
+        ansible_start.host = host
+        ansible_start.post_url = post_url
+        ansible_start.result = result
+        handle_ansible_start(ansible_start)
+    else:
+        if 'ansible_facts' in result['contacted'][host]:
+            host_kernel_version = result['contacted'][host]['ansible_facts']['ansible_kernel']
+            host_post_info.post_label = "ansible.get.host.kernel.version.succ"
+            handle_ansible_info("SUCC: Get remote host %s kernel version successfully" % host, host_post_info, "INFO")
+            return host_kernel_version
+        else:
+            host_post_info.post_label = "ansible.get.host.kernel.version.false"
+
 def set_ini_file(file, section, option, value, host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
