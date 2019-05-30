@@ -127,8 +127,6 @@ class CreateEmptyVolumeRsp(AgentResponse):
         super(CreateEmptyVolumeRsp, self).__init__()
         self.size = 0
 
-def isXsky():
-    return os.path.exists("/usr/bin/xms-cli")
 
 def replyerror(func):
     @functools.wraps(func)
@@ -241,7 +239,7 @@ class CephAgent(plugin.TaskManager):
 
         rsp.totalCapacity = total
         rsp.availableCapacity = avail
-        rsp.xsky = isXsky()
+        rsp.xsky = ceph.is_xsky()
 
         if not df.pools:
             return
@@ -260,7 +258,7 @@ class CephAgent(plugin.TaskManager):
         ret = bash.bash_r("rbd info %s | grep -q fast-diff" % path)
 
         # if no fast-diff supported and not xsky ceph skip actual size check
-        if ret != 0 and not isXsky():
+        if ret != 0 and not ceph.is_xsky():
             return None
 
         r, size = bash.bash_ro("rbd du %s | tail -1 | awk '{ print $3 }'" % path)
@@ -659,7 +657,9 @@ class CephAgent(plugin.TaskManager):
         for pool in cmd.pools:
             if pool.predefined and pool.name not in existing_pools:
                 raise Exception('cannot find pool[%s] in the ceph cluster, you must create it manually' % pool.name)
-            elif pool.name not in existing_pools:
+            if pool.name not in existing_pools and (ceph.is_xsky() or ceph.is_sandstone()):
+                raise Exception('cannot auto initialize ceph pool [%s] on xsky or sandstone, please create it manually' % pool.name)
+            else:
                 shell.call('ceph osd pool create %s 128' % pool.name)
 
         rsp = InitRsp()
@@ -689,7 +689,7 @@ class CephAgent(plugin.TaskManager):
         rsp = CreateEmptyVolumeRsp()
 
         call_string = None
-        if isXsky():
+        if ceph.is_xsky():
             # do NOT round to MB
             call_string = 'rbd create --size %dB --image-format 2 %s' % (cmd.size, path)
             rsp.size = cmd.size
@@ -919,7 +919,7 @@ class CephAgent(plugin.TaskManager):
                 rsp.success = False
                 rsp.error = "Failed to migrate volume segment because dst size: %s > src size: %s" % (dst_size, src_size)
                 return jsonobject.dumps(rsp)
-            elif isXsky() == False:
+            elif ceph.is_xsky() == False:
                 # ceph -> ceph, don't check size
                 rsp.success = True
             else:

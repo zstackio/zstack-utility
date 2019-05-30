@@ -2,11 +2,21 @@
 
 @author: lining
 '''
+import os
 import zstacklib.utils.jsonobject as jsonobject
 from zstacklib.utils import shell
 from zstacklib.utils import log
 
 logger = log.get_logger(__name__)
+
+
+def is_xsky():
+    return os.path.exists("/usr/bin/xms-cli")
+
+
+def is_sandstone():
+    return os.path.exists("/opt/sandstone/bin/sds")
+
 
 def getCephPoolsCapacity():
     result = []
