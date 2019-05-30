@@ -479,6 +479,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         lvm.stop_vg_lock(cmd.vgUuid)
         if cmd.stopServices:
             lvm.quitLockServices()
+        lvm.clean_lvm_archive_files(cmd.vgUuid)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
