@@ -16,11 +16,6 @@
         <checkFile file="${zstackui.source}" />
         <checkFile file="${zstackui.source}/setup.py" />
 
-        <exec executable="git" dir="${zstackui.source}" failonerror="true">
-            <arg value="checkout" />
-            <arg value="${zstackdashboard.build_version}" />
-        </exec>
-
         <delete dir="${zstackui.source}/dist" />
 
         <exec executable="python" dir="${zstackui.source}" failonerror="true">

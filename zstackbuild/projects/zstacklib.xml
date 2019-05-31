@@ -6,11 +6,6 @@
     <property name="zstacklib.ansible.dir" location="${ansible.dir}/zstacklib/" />
 
     <target name="build-zstacklib" >
-        <exec executable="git" dir="${zstackutility.source}" failonerror="true">
-            <arg value="checkout" />
-            <arg value="${zstackutility.build_version}" />
-        </exec>
-
         <makeDir dir="${zstacklib.bdir}" />
 
         <checkProperty property="zstacklib.source" />
