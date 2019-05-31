@@ -4,6 +4,7 @@
 import yaml
 from zstacklib import *
 import threading
+from utils import linux
 from utils import shell
 from utils.sql_query import MySqlCommandLineQuery
 from termcolor import colored
@@ -469,9 +470,8 @@ class CollectFromYml(object):
             except SystemExit:
                 warn("collect log on localhost failed")
                 logger.warn("collect log on localhost failed")
-                command = 'rm -rf %s' % local_collect_dir
+                linux.rm_dir_force(local_collect_dir)
                 self.failed_flag = True
-                commands.getstatusoutput(command)
                 return 1
             end = datetime.now()
             total_collect_time = str(round((end-start).total_seconds(), 1)) + 's'
@@ -481,8 +481,7 @@ class CollectFromYml(object):
             (status, output) = commands.getstatusoutput(command)
             if "The directory is empty" in output:
                 warn("Didn't find log on localhost")
-                command = 'rm -rf %s' % local_collect_dir
-                commands.getstatusoutput(command)
+                linux.rm_dir_force(local_collect_dir)
                 return 0
             info_verbose("Successfully collect log from %s localhost !" % type)
 
@@ -609,7 +608,7 @@ class CollectFromYml(object):
                     except SystemExit:
                         warn("collect log on host %s failed" % host_post_info.host)
                         logger.warn("collect log on host %s failed" % host_post_info.host)
-                        command = 'rm -rf %s' % tmp_log_dir
+                        command = linux.rm_dir_force(tmp_log_dir, True)
                         self.failed_flag = True
                         run_remote_command(command, host_post_info)
                         return 1
@@ -622,7 +621,7 @@ class CollectFromYml(object):
                     (status, output) = run_remote_command(command, host_post_info, return_status=True, return_output=True)
                     if "The directory is empty" in output:
                         warn("Didn't find log on host: %s " % (host_post_info.host))
-                        command = 'rm -rf %s' % tmp_log_dir
+                        command = linux.rm_dir_force(tmp_log_dir, True)
                         run_remote_command(command, host_post_info)
                         return 0
                     self.compress_and_fetch_log(local_collect_dir, tmp_log_dir, host_post_info, type)
