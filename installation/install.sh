@@ -1544,6 +1544,13 @@ uz_stop_zstack_ui(){
     if [ $? -eq 0 ]; then
         fail "Failed to stop ${PRODUCT_NAME} UI!"
     fi
+    if [ -f /usr/local/zstack-mini ]; then
+        systemctl stop zstack-mini
+        ps -ef | grep -w mini-server | grep -w java | grep -v grep >>$ZSTACK_INSTALL_LOG 2>&1
+        if [ $? -eq 0 ]; then
+            fail "Failed to stop ${PRODUCT_NAME} MINI UI!"
+        fi
+    fi
     pass
 }
 
@@ -2433,7 +2440,12 @@ sd_start_zstack_ui(){
     cd /
     zstack-ctl stop_ui >>$ZSTACK_INSTALL_LOG 2>&1
     if [ x"$MINI_INSTALL" = x'n' ];then
-        zstack-ctl start_ui >>$ZSTACK_INSTALL_LOG 2>&1
+        if [ -f /usr/local/zstack-mini ]; then
+            systemctl stop zstack-mini
+            systemctl start zstack-mini
+        else 
+            zstack-ctl start_ui >>$ZSTACK_INSTALL_LOG 2>&1
+        fi
     fi
     [ $? -ne 0 ] && fail "failed to start zstack web ui"
     pass
