@@ -18,6 +18,8 @@ from zstacklib.utils import drbd
 
 logger = log.get_logger(__name__)
 LOCK_FILE = "/var/run/zstack/ministorage.lock"
+BACKUP_DIR = "/var/lib/zstack/ministorage/backup"
+
 INIT_TAG = "zs::ministorage::init"
 FENCER_TAG = "zs::ministorage::fencer"
 MANAGEMENT_TAG = "zs::ministorage::management"
@@ -307,6 +309,8 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         except RetryException as e:
             if forceWipe is True:
                 bash.bash_r("drbdadm down all")
+                bash.bash_r("mkdir -p %s" % BACKUP_DIR)
+                bash.bash_r("mv /etc/drbd.d/*.res %s" % BACKUP_DIR)
                 lvm.wipe_fs(diskPaths, vgUuid)
 
             cmd = shell.ShellCmd("vgcreate -qq --addtag '%s::%s::%s::%s' --metadatasize %s %s %s" %
