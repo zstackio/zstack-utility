@@ -101,6 +101,7 @@ CHANGE_HOSTS=''
 DELETE_PY_CRYPTO=''
 SETUP_EPEL=''
 CONSOLE_PROXY_ADDRESS=''
+CURRENT_VERSION=''
 
 LICENSE_PATH=''
 LICENSE_FILE='zstack-license'
@@ -1092,7 +1093,7 @@ upgrade_zstack(){
         param=`echo $item | cut -d ',' -f 2`
 
         # pre < version && version <= post
-        vercomp ${pre_upgrade_version} ${version}; cmp1=$?
+        vercomp ${CURRENT_VERSION} ${version}; cmp1=$?
         vercomp ${version} ${post_upgrade_version}; cmp2=$?
         if [ ${cmp1} -eq 2 -a ${cmp2} -ne 1 ]; then
             upgrade_params="${upgrade_params} ${param}"
@@ -2451,6 +2452,24 @@ sd_start_zstack_ui(){
     pass
 }
 
+#Ensure that the current version is lower than the upgrade version
+check_version(){
+    #no get_version before zstack 2.4.0
+    zstack-ctl get_version >/dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        CURRENT_VERSION=`zstack-ctl get_version`
+    else
+        CURRENT_VERSION=`zstack-ctl status | grep version | awk '{ print $2 }'`
+    fi
+    UPGRADE_VERSION=$VERSION
+    if [ -z "$CURRENT_VERSION" -o -z "$UPGRADE_VERSION" ];then
+        fail "Version verification failed! Cannot get your current version or upgrade version, please check zstack status and use the correct iso/bin to upgrade."
+    fi
+    if [ `expr $UPGRADE_VERSION \>= $CURRENT_VERSION` -eq 0  ];then
+        fail "Failed! Upgrade version is lower than the current version, please download and use the higher one."
+    fi
+}
+
 #create zstack local apt source list
 create_apt_source_list(){
     /bin/cp -f /etc/apt/sources.list /etc/apt/sources.list.zstack.`date +%Y-%m-%d_%H-%M-%S` >>$ZSTACK_INSTALL_LOG 2>&1
@@ -3148,6 +3167,9 @@ if [ x"$UPGRADE" = x'y' ]; then
         echo -e "$(tput setaf 1)  Reason: $UPGRADE_LOCK exist. If no other upgrading operation, please manually remove $UPGRADE_LOCK.\n$(tput sgr0)"
         exit 1
     fi
+
+    check_version
+
     ZSTACK_INSTALL_ROOT=`eval echo "~zstack"`
     touch $UPGRADE_LOCK
     upgrade_folder=`mktemp`
@@ -3212,13 +3234,6 @@ check_system
 download_zstack
 
 if [ x"$UPGRADE" = x'y' ]; then
-    # no get_version before zstack 2.4.0
-    zstack-ctl get_version >/dev/null 2>&1
-    if [ $? -eq 0 ]; then
-        pre_upgrade_version=`zstack-ctl get_version`
-    else
-        pre_upgrade_version=`zstack-ctl status | grep version | awk '{ print $2 }'`
-    fi
 
     #only upgrade zstack
     upgrade_zstack
