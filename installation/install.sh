@@ -2466,7 +2466,7 @@ check_version(){
         fail "Version verification failed! Cannot get your current version or upgrade version, please check zstack status and use the correct iso/bin to upgrade."
     fi
     if [ `expr $UPGRADE_VERSION \>= $CURRENT_VERSION` -eq 0  ];then
-        fail "Failed! Upgrade version is lower than the current version, please download and use the higher one."
+        fail "Upgrade version is lower than the current version, please download and use the higher one."
     fi
 }
 
@@ -3168,7 +3168,7 @@ if [ x"$UPGRADE" = x'y' ]; then
         exit 1
     fi
 
-    check_version
+    show_spinner check_version
 
     ZSTACK_INSTALL_ROOT=`eval echo "~zstack"`
     touch $UPGRADE_LOCK
@@ -3352,7 +3352,8 @@ install_db
 if [ -n "$NEED_DROP_DB" ]; then
   kill -9 `ps aux | grep "/var/lib/zstack/prometheus/data" | grep -v 'grep' | awk -F ' ' '{ print $2 }'` 2>/dev/null
   pkill -9 influxd 2>/dev/null
-  rm -rf /var/lib/zstack/prometheus/data
+  rm -rf /var/lib/zstack/prometheus/data/*
+  rm -rf /var/lib/zstack/prometheus/data2/*
   rm -rf /var/lib/zstack/influxdb/
 fi
 
