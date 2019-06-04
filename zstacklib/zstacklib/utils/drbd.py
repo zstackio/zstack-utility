@@ -125,7 +125,7 @@ class DrbdResource(object):
         raise Exception("demote resource %s failed: %s, %s, %s" % (self.name, r, o, e))
 
     @bash.in_bash
-    def promote(self, force=False, retry=90, sleep=2):
+    def promote(self, force=False, retry=60, sleep=2):
         @bash.in_bash
         @linux.retry(times=retry, sleep_time=sleep)
         def do_promote():
