@@ -966,14 +966,14 @@ def create_bridge(bridge_name, interface, move_route=True):
     if br_name and br_name != bridge_name:
         raise Exception('failed to create bridge[{0}], physical interface[{1}] has been occupied by bridge[{2}]'.format(bridge_name, interface, br_name))
 
-    if br_name == bridge_name:
-        return
-
     if not is_network_device_existing(bridge_name):
         shell.call("brctl addbr %s" % bridge_name)
-        shell.call("brctl setfd %s 0" % bridge_name)
-        shell.call("brctl stp %s off" % bridge_name)
-        shell.call("ip link set %s up" % bridge_name)
+    shell.call("brctl setfd %s 0" % bridge_name)
+    shell.call("brctl stp %s off" % bridge_name)
+    shell.call("ip link set %s up" % bridge_name)
+
+    if br_name == bridge_name:
+        return
 
     if not is_network_device_existing(interface):
         raise LinuxError("network device[%s] is not existing" % interface)
