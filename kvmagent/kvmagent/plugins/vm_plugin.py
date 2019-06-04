@@ -4572,10 +4572,10 @@ class VmPlugin(kvmagent.KvmAgent):
                 raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % cmd.vmUuid)
 
             if not cmd.networkWriteBandwidth:
-                if 0 != linux.sshfs_mount(cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d):
+                if 0 != linux.sshfs_mount_with_vm_uuid(cmd.vmUuid, cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d):
                     raise kvmagent.KvmError("failed to prepare backup space for [vm:%s]" % cmd.vmUuid)
             else:
-                if 0 != linux.sshfs_mount(cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d, cmd.networkWriteBandwidth):
+                if 0 != linux.sshfs_mount_with_vm_uuid(cmd.vmUuid, cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d, cmd.networkWriteBandwidth):
                     raise kvmagent.KvmError("failed to prepare backup space for [vm:%s]" % cmd.vmUuid)
 
             target_disks = {}
@@ -4623,11 +4623,11 @@ class VmPlugin(kvmagent.KvmAgent):
                 raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % cmd.vmUuid)
 
             if not cmd.networkWriteBandwidth:
-                if 0 != linux.sshfs_mount(cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d):
+                if 0 != linux.sshfs_mount_with_vm_uuid(cmd.vmUuid, cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d):
                     raise kvmagent.KvmError(
                         "failed to prepare backup space for [vm:%s,deviceId:%d]" % (cmd.vmUuid, cmd.volume.deviceId))
             else:
-                if 0 != linux.sshfs_mount(cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d, cmd.networkWriteBandwidth):
+                if 0 != linux.sshfs_mount_with_vm_uuid(cmd.vmUuid, cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d, cmd.networkWriteBandwidth):
                     raise kvmagent.KvmError(
                         "failed to prepare backup space for [vm:%s,deviceId:%d]" % (cmd.vmUuid, cmd.volume.deviceId))
 
