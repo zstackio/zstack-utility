@@ -217,6 +217,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                         t.iscsiLunStructList.append(self.get_disk_info_by_path(d.strip()))
                     rsp.iscsiTargetStructList.append(t)
 
+        linux.set_fail_if_no_path()
         return jsonobject.dumps(rsp)
 
     @staticmethod
@@ -284,8 +285,9 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         #1. find fc devices
         #2. distinct by device wwid and storage wwn
         rsp = FcSanScanRsp()
-        bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh")
+        bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -r")
         rsp.fiberChannelLunStructs = self.get_fc_luns()
+        linux.set_fail_if_no_path()
         return jsonobject.dumps(rsp)
 
     @bash.in_bash
@@ -324,6 +326,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     def enable_multipath(self, req):
         rsp = AgentRsp()
         lvm.enable_multipath()
+        linux.set_fail_if_no_path()
         return jsonobject.dumps(rsp)
 
     def get_device_info(self, dev_name):

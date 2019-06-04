@@ -216,13 +216,6 @@ class CheckDisk(object):
             if cmd.return_code == 0:
                 return cmd.stdout.strip()
 
-    @staticmethod
-    def set_fail_if_no_path():
-        if not lvm.is_multipath_running():
-            return
-        cmd = shell.ShellCmd('ms=`multipath -l -v1`; for m in $ms; do dmsetup message $m 0 "fail_if_no_path"; done')
-        cmd(is_exception=False)
-
 
 class SharedBlockPlugin(kvmagent.KvmAgent):
 
@@ -294,7 +287,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
         if cmd.failIfNoPath:
-            CheckDisk.set_fail_if_no_path()
+            linux.set_fail_if_no_path()
         for diskUuid in cmd.sharedBlockUuids:
             disk = CheckDisk(diskUuid)
             path = disk.get_path()
