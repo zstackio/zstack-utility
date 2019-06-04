@@ -1691,10 +1691,41 @@ def get_unmanaged_vms(include_not_zstack_but_in_virsh = False):
             unmanaged_vms.append(vm)
     return unmanaged_vms
 
-def linux_lsof(file):
-    cmd = shell.ShellCmd("lsof %s | grep -v '^COMMAND'" % file)
+def linux_lsof(file, process="qemu-kvm", find_rpath=True):
+    """
+
+    :param file: target file to run lsof
+    :param process: process name to find, it can't find correctly in CentOS 7.4, so give process name is necessary
+    :param find_rpath: use realpath to find deeper, it should be true in most cases
+    :return: stdout of lsof
+    """
+    cmd = shell.ShellCmd("lsof -b %s | grep -v '^COMMAND'" % file)
     cmd(is_exception=False)
-    return cmd.stdout
+    r = cmd.stdout.strip()
+
+    if not process:
+        return r
+
+    o = shell.call("lsof -b -c %s | grep %s" % (process, file), False).strip().splitlines()
+    if len(o) != 0:
+        for line in o:
+            if line not in r:
+                r = r.strip() + "\n" + line
+
+    if not find_rpath:
+        return r
+
+    r_path = shell.call("realpath %s" % file).strip()
+    if r_path == file:
+        return r.strip()
+
+    o = shell.call("lsof -b -c %s | grep %s" % (process, r_path), False).strip().splitlines()
+    if len(o) != 0:
+        for line in o:
+            if line not in r:
+                r = r.strip() + "\n" + line
+
+    return r.strip()
 
 def touch_file(fpath):
     with open(fpath, 'a'):

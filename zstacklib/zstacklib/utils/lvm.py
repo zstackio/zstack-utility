@@ -1544,5 +1544,5 @@ class QemuStruct(object):
 def find_qemu_for_lv_in_use(lv_path):
     # type: (str) -> list[QemuStruct]
     dm_path = bash.bash_o("readlink -e %s" % lv_path)
-    pids = [x.strip() for x in bash.bash_o("lsof -c qemu-kvm | grep -w %s | awk '{print $2}'" % dm_path).splitlines()]
+    pids = [x.strip() for x in bash.bash_o("lsof -b -c qemu-kvm | grep -w %s | awk '{print $2}'" % dm_path).splitlines()]
     return [QemuStruct(pid) for pid in pids]
