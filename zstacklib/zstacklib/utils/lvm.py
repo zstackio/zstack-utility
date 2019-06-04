@@ -17,6 +17,7 @@ SANLOCK_IO_TIMEOUT = 40
 LVMLOCKD_LOG_FILE_PATH = "/var/log/lvmlockd/lvmlockd.log"
 LVMLOCKD_LOG_LOGROTATE_PATH = "/etc/logrotate.d/lvmlockd"
 LVM_CONFIG_BACKUP_PATH = "/etc/lvm/zstack-backup"
+LVM_CONFIG_ARCHIVE_PATH = "/etc/lvm/archive"
 SUPER_BLOCK_BACKUP = "superblock.bak"
 COMMON_TAG = "zs::sharedblock"
 VOLUME_TAG = COMMON_TAG + "::volume"
@@ -463,6 +464,14 @@ def stop_vg_lock(vgUuid):
     except Exception as e:
         raise e
 
+@bash.in_bash
+def clean_lvm_archive_files(vgUuid):
+    if not os.path.exists(LVM_CONFIG_ARCHIVE_PATH):
+        logger.warn("can not find lvm archive path %s" % LVM_CONFIG_ARCHIVE_PATH)
+        return
+    archive_files = bash.bash_o("ls -rt %s | grep %s | wc -l" % (LVM_CONFIG_ARCHIVE_PATH, vgUuid))
+    if int(archive_files) > 10:
+        bash.bash_r("ls -rt %s | grep %s | head -n %s | xargs -i rm -rf %s/{}" % (LVM_CONFIG_ARCHIVE_PATH, vgUuid, (int(archive_files)-10), LVM_CONFIG_ARCHIVE_PATH))
 
 @bash.in_bash
 def quitLockServices():
