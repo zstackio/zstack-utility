@@ -800,7 +800,7 @@ def resize_lv_from_cmd(path, size, cmd):
 
 
 @bash.in_bash
-@linux.retry(times=10, sleep_time=random.uniform(0.1, 3))
+@linux.retry(times=15, sleep_time=random.uniform(0.1, 3))
 def active_lv(path, shared=False):
     flag = "-ay"
     if shared:
