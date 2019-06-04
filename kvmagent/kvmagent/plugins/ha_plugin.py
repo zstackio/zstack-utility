@@ -258,6 +258,7 @@ class HaPlugin(kvmagent.KvmAgent):
             while self.run_fencer(cmd.vgUuid, created_time):
                 try:
                     time.sleep(cmd.interval)
+                    linux.set_fail_if_no_path()
 
                     health = lvm.check_vg_status(cmd.vgUuid, cmd.storageCheckerTimeout, check_pv=False)
                     logger.debug("sharedblock group primary storage %s fencer run result: %s" % (cmd.vgUuid, health))

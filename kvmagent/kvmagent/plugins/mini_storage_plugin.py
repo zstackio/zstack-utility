@@ -207,12 +207,6 @@ class CheckDisk(object):
         logger.debug("resized pv %s (wwid: %s), return code: %s, stdout %s, stderr: %s" %
                      (disk_name, self.identifier, r, o, e))
 
-    def set_fail_if_no_path(self):
-        if not lvm.is_multipath_running():
-            return
-        cmd = shell.ShellCmd('ms=`multipath -l -v1`; for m in $ms; do dmsetup message $m 0 "fail_if_no_path"; done')
-        cmd(is_exception=False)
-
 
 class MiniStoragePlugin(kvmagent.KvmAgent):
 
@@ -270,7 +264,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
             if cmd.rescan:
                 disk.rescan(path.split("/")[-1])
             if cmd.failIfNoPath:
-                disk.set_fail_if_no_path()
+                linux.set_fail_if_no_path()
 
         if cmd.vgUuid is not None and lvm.vg_exists(cmd.vgUuid):
             rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid, False)
