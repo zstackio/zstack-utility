@@ -6152,7 +6152,7 @@ class SetEnvironmentVariableCmd(Command):
     def __init__(self):
         super(SetEnvironmentVariableCmd, self).__init__()
         self.name = "setenv"
-        self.description = "set variables to zstack-ctl variable file at %s" % self.PATH
+        self.description = "set variables to zstack-ctl variable file at %s\nExample:\n\tzstack-ctl setenv CATALINA_OPTS='-Xmx8192M'" % self.PATH
         ctl.register_command(self)
 
     def need_zstack_home(self):
@@ -6175,8 +6175,7 @@ class SetEnvironmentVariableCmd(Command):
                 pass
 
         env = PropertyFile(self.PATH)
-        arg_str = ' '.join(ctl.extra_arguments)
-        env.write_properties([arg_str.split('=', 1)])
+        env.write_properties([arg.split('=', 1) for arg in ctl.extra_arguments])
 
 class UnsetEnvironmentVariableCmd(Command):
     NAME = 'unsetenv'
