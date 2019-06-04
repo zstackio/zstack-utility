@@ -328,6 +328,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         rsp = AgentRsp()
         lvm.enable_multipath()
 
+        bash.bash_roe("sed -i 's/^[[:space:]]*alias/#alias/g' /etc/multipath.conf")
         current_t = time.time()
         bash.bash_roe("mv /etc/multipath/bindings /etc/multipath/bindings.%s " % current_t +
                       "&& md5sum /etc/multipath/bindings.*  | awk 'p[$1]++ { printf \"rm %s\\n\",$2;}' | bash")
