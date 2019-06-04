@@ -207,12 +207,6 @@ class CheckDisk(object):
         logger.debug("resized pv %s (wwid: %s), return code: %s, stdout %s, stderr: %s" %
                      (disk_name, self.identifier, r, o, e))
 
-    def set_fail_if_no_path(self):
-        if not lvm.is_multipath_running():
-            return
-        cmd = shell.ShellCmd('ms=`multipath -l -v1`; for m in $ms; do dmsetup message $m 0 "fail_if_no_path"; done')
-        cmd(is_exception=False)
-
 
 class MiniStoragePlugin(kvmagent.KvmAgent):
 
@@ -270,7 +264,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
             if cmd.rescan:
                 disk.rescan(path.split("/")[-1])
             if cmd.failIfNoPath:
-                disk.set_fail_if_no_path()
+                linux.set_fail_if_no_path()
 
         if cmd.vgUuid is not None and lvm.vg_exists(cmd.vgUuid):
             rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid, False)
@@ -308,9 +302,14 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
             find_vg(vgUuid)
         except RetryException as e:
             if forceWipe is True:
-                bash.bash_r("drbdadm down all")
-                bash.bash_r("mkdir -p %s" % BACKUP_DIR)
-                bash.bash_r("mv /etc/drbd.d/*.res %s" % BACKUP_DIR)
+                running_vm = bash.bash_o("virsh list | grep running | awk '{print $2}'").strip().split()
+                if running_vm != [] and running_vm[0] != "":
+                    for vm in running_vm:
+                        bash.bash_r("virsh destroy %s" % vm)
+                r = bash.bash_r("drbdadm down all")
+                if r == 0:
+                    bash.bash_r("mkdir -p %s" % BACKUP_DIR)
+                    bash.bash_r("mv /etc/drbd.d/*.res %s" % BACKUP_DIR)
                 lvm.wipe_fs(diskPaths, vgUuid)
 
             cmd = shell.ShellCmd("vgcreate -qq --addtag '%s::%s::%s::%s' --metadatasize %s %s %s" %

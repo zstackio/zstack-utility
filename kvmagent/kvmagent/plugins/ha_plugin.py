@@ -41,6 +41,9 @@ class ReportSelfFencerCmd(object):
         self.reason = None
 
 
+last_multipath_run = time.time()
+
+
 def kill_vm(maxAttempts, mountPaths=None, isFileSystem=None):
     zstack_uuid_pattern = "'[0-9a-f]{8}[0-9a-f]{4}[1-5][0-9a-f]{3}[89ab][0-9a-f]{3}[0-9a-f]{12}'"
 
@@ -258,6 +261,10 @@ class HaPlugin(kvmagent.KvmAgent):
             while self.run_fencer(cmd.vgUuid, created_time):
                 try:
                     time.sleep(cmd.interval)
+                    global last_multipath_run
+                    if cmd.fail_if_no_path and time.time() - last_multipath_run > 4:
+                        last_multipath_run = time.time()
+                        linux.set_fail_if_no_path()
 
                     health = lvm.check_vg_status(cmd.vgUuid, cmd.storageCheckerTimeout, check_pv=False)
                     logger.debug("sharedblock group primary storage %s fencer run result: %s" % (cmd.vgUuid, health))

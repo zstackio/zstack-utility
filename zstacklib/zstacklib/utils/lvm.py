@@ -152,7 +152,6 @@ def get_block_devices():
     return block_devices
 
 
-@bash.in_bash
 def is_multipath_running():
     r = bash.bash_r("multipath -t")
     if r != 0:
@@ -1528,6 +1527,7 @@ def enable_multipath():
     bash.bash_roe("modprobe dm-round-robin")
     bash.bash_roe("mpathconf --enable --with_multipathd y")
     bash.bash_roe("systemctl enable multipathd")
+
     if not is_multipath_running():
         raise RetryException("multipath still not running")
 
