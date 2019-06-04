@@ -152,7 +152,6 @@ def get_block_devices():
     return block_devices
 
 
-@bash.in_bash
 def is_multipath_running():
     r = bash.bash_r("multipath -t")
     if r != 0:
@@ -1528,6 +1527,13 @@ def enable_multipath():
     bash.bash_roe("modprobe dm-round-robin")
     bash.bash_roe("mpathconf --enable --with_multipathd y")
     bash.bash_roe("systemctl enable multipathd")
+
+    current_t = time.time()
+    bash.bash_roe("mv /etc/multipath/bindings /etc/multipath/bindings.%s " % current_t +
+                  "&& md5sum /etc/multipath/bindings.*  | awk 'p[$1]++ { printf \"rm %s\\n\",$2;}' | bash")
+    bash.bash_roe("mv /etc/multipath/wwids /etc/multipath/wwids.%s " % current_t +
+                  "&& md5sum /etc/multipath/wwids.*  | awk 'p[$1]++ { printf \"rm %s\\n\",$2;}' | bash")
+    bash.bash_roe("multipath -F; systemctl restart multipathd.service")
     if not is_multipath_running():
         raise RetryException("multipath still not running")
 

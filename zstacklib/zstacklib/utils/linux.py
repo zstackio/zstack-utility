@@ -1770,3 +1770,7 @@ def updateGrubFile(grepCmd, sedCmd, files):
                 cmd = shell.ShellCmd("%s %s" % (sedCmd, file))
                 cmd(is_exception=True)
     return True, None
+
+def set_fail_if_no_path():
+    cmd = shell.ShellCmd('ms=`multipath -l -v1`; for m in $ms; do dmsetup message $m 0 "fail_if_no_path"; done')
+    cmd(is_exception=False)
