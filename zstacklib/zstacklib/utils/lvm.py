@@ -799,7 +799,7 @@ def resize_lv_from_cmd(path, size, cmd):
 
 
 @bash.in_bash
-@linux.retry(times=15, sleep_time=random.uniform(0.1, 3))
+@linux.retry(times=10, sleep_time=random.uniform(0.1, 3))
 def active_lv(path, shared=False):
     flag = "-ay"
     if shared:
@@ -1528,12 +1528,6 @@ def enable_multipath():
     bash.bash_roe("mpathconf --enable --with_multipathd y")
     bash.bash_roe("systemctl enable multipathd")
 
-    current_t = time.time()
-    bash.bash_roe("mv /etc/multipath/bindings /etc/multipath/bindings.%s " % current_t +
-                  "&& md5sum /etc/multipath/bindings.*  | awk 'p[$1]++ { printf \"rm %s\\n\",$2;}' | bash")
-    bash.bash_roe("mv /etc/multipath/wwids /etc/multipath/wwids.%s " % current_t +
-                  "&& md5sum /etc/multipath/wwids.*  | awk 'p[$1]++ { printf \"rm %s\\n\",$2;}' | bash")
-    bash.bash_roe("multipath -F; systemctl restart multipathd.service")
     if not is_multipath_running():
         raise RetryException("multipath still not running")
 

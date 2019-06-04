@@ -302,9 +302,14 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
             find_vg(vgUuid)
         except RetryException as e:
             if forceWipe is True:
-                bash.bash_r("drbdadm down all")
-                bash.bash_r("mkdir -p %s" % BACKUP_DIR)
-                bash.bash_r("mv /etc/drbd.d/*.res %s" % BACKUP_DIR)
+                running_vm = bash.bash_o("virsh list | grep running | awk '{print $2}'").strip().split()
+                if running_vm != [] and running_vm[0] != "":
+                    for vm in running_vm:
+                        bash.bash_r("virsh destroy %s" % vm)
+                r = bash.bash_r("drbdadm down all")
+                if r == 0:
+                    bash.bash_r("mkdir -p %s" % BACKUP_DIR)
+                    bash.bash_r("mv /etc/drbd.d/*.res %s" % BACKUP_DIR)
                 lvm.wipe_fs(diskPaths, vgUuid)
 
             cmd = shell.ShellCmd("vgcreate -qq --addtag '%s::%s::%s::%s' --metadatasize %s %s %s" %
