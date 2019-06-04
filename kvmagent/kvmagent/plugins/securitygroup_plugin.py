@@ -231,7 +231,7 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
             if empty_out_chain[0]:
                 if sto.egressDefaultPolicy == self.DEFAULT_POLICY_ACCEPT:
                     tails_rules.append('-A %s -j RETURN' % out_chain_name)
-                elif sto.ingressDefaultPolicy == self.DEFAULT_POLICY_DENY:
+                elif sto.egressDefaultPolicy == self.DEFAULT_POLICY_DENY:
                     tails_rules.append('-A %s -j DROP' % out_chain_name)
                 else:
                     raise Exception('unknown default egress policy: %s' % sto.egressDefaultPolicy)
