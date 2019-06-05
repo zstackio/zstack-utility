@@ -671,6 +671,7 @@ class Ctl(object):
     ZSTACK_UI_KEYSTORE_PEM = ZSTACK_UI_HOME + 'ui.keystore.pem'
     # to set CATALINA_OPTS of zstack-ui.war
     ZSTACK_UI_CATALINA_OPTS = '-Xmx4096m'
+    MINI_DIR = '/usr/local/zstack-mini'
 
     def __init__(self):
         self.commands = {}
@@ -1585,14 +1586,23 @@ class TailLogCmd(Command):
         if not os.path.isfile(log_path):
             raise CtlError('cannot find %s' % log_path)
 
-        if args.listen_port:
-            cmd = '''(echo -e 'HTTP/1.1 200 OK\\nAccess-Control-Allow-Origin: *\\nContent-type: text/event-stream\\n' \
-&& tail -f %s | sed -u -e 's/^/data: /;s/$/\\n/') | nc -lp %s''' % (log_path, args.listen_port)
-            shell(cmd)
+        if not args.listen_port:
+            script = ShellCmd('tail -f %s' % log_path, pipe=False)
+            script()
             return
 
-        script = ShellCmd('tail -f %s' % log_path, pipe=False)
-        script()
+        def get_running_ui_ssl_args():
+            pid = get_ui_pid()
+            if pid:
+                with open('/proc/%s/cmdline' % pid, 'r') as fd:
+                    cmdline = fd.read()
+                    if 'ssl.enabled' in cmdline:
+                        return "--ssl-key " + ctl.ZSTACK_UI_KEYSTORE_PEM + " --ssl-cert " + ctl.ZSTACK_UI_KEYSTORE_PEM
+            return ""
+
+        cmd = '''(echo -e 'HTTP/1.1 200 OK\\nAccess-Control-Allow-Origin: *\\nContent-type: text/event-stream\\n' \
+        && tail -f %s | sed -u -e 's/^/data: /;s/$/\\n/') | nc -lp %s %s''' % (log_path, args.listen_port, get_running_ui_ssl_args())
+        shell(cmd)
 
 class ConfigureCmd(Command):
     def __init__(self):
@@ -7389,10 +7399,21 @@ class DashboardStatusCmd(Command):
         else:
             info('UI status: %s [PID: %s]' % (colored('Stopped', 'red'), pid))
 
+def get_ui_pid():
+    is_mini = os.path.exists(ctl.MINI_DIR)
+    # no need to consider ha because it's not supported any more
+    # ha_info_file = '/var/lib/zstack/ha/ha.yaml'
+    pidfile = '/var/run/zstack/zstack-ui.pid'
+    if is_mini:
+        pidfile = '/var/run/zstack/zstack-mini-ui.pid'
+    if os.path.exists(pidfile):
+        with open(pidfile, 'r') as fd:
+            pid = fd.readline().strip()
+            if os.path.exists('/proc/%s' % pid):
+                return pid
+
 # For UI 2.0
 class UiStatusCmd(Command):
-    MINI_DIR = '/usr/local/zstack-mini'
-
     def __init__(self):
         super(UiStatusCmd, self).__init__()
         self.name = "ui_status"
@@ -7412,14 +7433,12 @@ class UiStatusCmd(Command):
             self._remote_status(args.host)
             return
 
-        is_mini = os.path.exists(self.MINI_DIR)
+        is_mini = os.path.exists(ctl.MINI_DIR)
         # no need to consider ha because it's not supported any more
         #ha_info_file = '/var/lib/zstack/ha/ha.yaml'
-        pidfile = '/var/run/zstack/zstack-ui.pid'
         portfile = '/var/run/zstack/zstack-ui.port'
         ui_port = 5000
         if is_mini:
-            pidfile = '/var/run/zstack/zstack-mini-ui.pid'
             portfile = '/var/run/zstack/zstack-mini-ui.port'
             ui_port = 8200
         if os.path.exists(portfile):
@@ -7432,15 +7451,9 @@ class UiStatusCmd(Command):
         def write_status(status):
             info('UI status: %s' % status)
 
-        pid = ''
-        output = ''
-        if os.path.exists(pidfile):
-            with open(pidfile, 'r') as fd:
-                pid = fd.readline()
-                pid = pid.strip(' \t\n\r')
-                check_pid_cmd = ShellCmd('ps %s' % pid)
-                output = check_pid_cmd(is_exception=False)
-
+        pid = get_ui_pid()
+        check_pid_cmd = ShellCmd('ps %s' % pid)
+        output = check_pid_cmd(is_exception=False)
         cmd = create_check_ui_status_command(ui_port=port, if_https='--ssl.enabled=true' in output)
 
         if not cmd:
