@@ -152,7 +152,8 @@ class UserDataEnv(object):
             bash_errorout('ip link set {{INNER_DEV}} netns {{NAMESPACE_NAME}}')
 
         bash_errorout('ip netns exec {{NAMESPACE_NAME}} ip link set {{INNER_DEV}} up')
-
+        self.inner_dev = INNER_DEV
+        self.outer_dev = OUTER_DEV
 
 class DhcpEnv(object):
     DHCP6_STATEFUL = "Stateful-DHCP"

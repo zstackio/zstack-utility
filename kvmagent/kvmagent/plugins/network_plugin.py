@@ -131,6 +131,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
     def _configure_bridge(self):
         shell.call('modprobe br_netfilter || true')
         shell.call('echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables')
+        shell.call('echo 1 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged')
         shell.call('echo 1 > /proc/sys/net/ipv4/conf/default/forwarding')
 
     @kvmagent.replyerror

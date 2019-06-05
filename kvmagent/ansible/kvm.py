@@ -389,7 +389,7 @@ elif distro in DEB_BASED_OS:
     libvirt_bin_status = copy(copy_arg, host_post_info)
     # name: enable bridge forward on UBUNTU
     command = "modprobe br_netfilter; echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables ; " \
-              "echo 1 > /proc/sys/net/ipv4/conf/default/forwarding"
+              "echo 1 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged ; echo 1 > /proc/sys/net/ipv4/conf/default/forwarding"
     host_post_info.post_label = "ansible.shell.enable.module"
     host_post_info.post_label_param = "br_netfilter"
     run_remote_command(command, host_post_info)
@@ -433,7 +433,7 @@ host_post_info.post_label_param = "/etc/libvirt/hooks/qemu"
 run_remote_command(command, host_post_info)
 
 # name: enable bridge forward
-command = "echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables ; echo 1 > /proc/sys/net/ipv4/conf/default/forwarding"
+command = "echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables ; echo 1 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged ; echo 1 > /proc/sys/net/ipv4/conf/default/forwarding"
 host_post_info.post_label = "ansible.shell.enable.service"
 host_post_info.post_label_param = "bridge forward"
 run_remote_command(command, host_post_info)
