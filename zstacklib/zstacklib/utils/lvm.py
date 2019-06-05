@@ -17,6 +17,7 @@ SANLOCK_IO_TIMEOUT = 40
 LVMLOCKD_LOG_FILE_PATH = "/var/log/lvmlockd/lvmlockd.log"
 LVMLOCKD_LOG_LOGROTATE_PATH = "/etc/logrotate.d/lvmlockd"
 LVM_CONFIG_BACKUP_PATH = "/etc/lvm/zstack-backup"
+LVM_CONFIG_ARCHIVE_PATH = "/etc/lvm/archive"
 SUPER_BLOCK_BACKUP = "superblock.bak"
 COMMON_TAG = "zs::sharedblock"
 VOLUME_TAG = COMMON_TAG + "::volume"
@@ -151,7 +152,6 @@ def get_block_devices():
     return block_devices
 
 
-@bash.in_bash
 def is_multipath_running():
     r = bash.bash_r("multipath -t")
     if r != 0:
@@ -463,6 +463,14 @@ def stop_vg_lock(vgUuid):
     except Exception as e:
         raise e
 
+@bash.in_bash
+def clean_lvm_archive_files(vgUuid):
+    if not os.path.exists(LVM_CONFIG_ARCHIVE_PATH):
+        logger.warn("can not find lvm archive path %s" % LVM_CONFIG_ARCHIVE_PATH)
+        return
+    archive_files = bash.bash_o("ls -rt %s | grep %s | wc -l" % (LVM_CONFIG_ARCHIVE_PATH, vgUuid))
+    if int(archive_files) > 10:
+        bash.bash_r("ls -rt %s | grep %s | head -n %s | xargs -i rm -rf %s/{}" % (LVM_CONFIG_ARCHIVE_PATH, vgUuid, (int(archive_files)-10), LVM_CONFIG_ARCHIVE_PATH))
 
 @bash.in_bash
 def quitLockServices():
@@ -1519,6 +1527,7 @@ def enable_multipath():
     bash.bash_roe("modprobe dm-round-robin")
     bash.bash_roe("mpathconf --enable --with_multipathd y")
     bash.bash_roe("systemctl enable multipathd")
+
     if not is_multipath_running():
         raise RetryException("multipath still not running")
 
@@ -1535,5 +1544,5 @@ class QemuStruct(object):
 def find_qemu_for_lv_in_use(lv_path):
     # type: (str) -> list[QemuStruct]
     dm_path = bash.bash_o("readlink -e %s" % lv_path)
-    pids = [x.strip() for x in bash.bash_o("lsof -c qemu-kvm | grep -w %s | awk '{print $2}'" % dm_path).splitlines()]
+    pids = [x.strip() for x in bash.bash_o("lsof -b -c qemu-kvm | grep -w %s | awk '{print $2}'" % dm_path).splitlines()]
     return [QemuStruct(pid) for pid in pids]

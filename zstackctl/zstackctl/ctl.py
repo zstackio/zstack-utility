@@ -28,6 +28,7 @@ import OpenSSL
 import glob
 from shutil import copyfile
 
+from utils import linux
 from zstacklib import *
 import log_collector
 import jinja2
@@ -2468,7 +2469,7 @@ class UpgradeHACmd(Command):
         run_remote_command(command, host_post_info)
         command = "umount %s" % tmp_iso
         run_remote_command(command, host_post_info)
-        command = "rm -rf %s" % tmp_iso
+        command = linux.rm_dir_force(tmp_iso, True)
         run_remote_command(command, host_post_info)
 
     def check_file_exist(self, file, host_post_info_list):
@@ -4833,7 +4834,7 @@ def runImageStoreCliCmd(raw_bs_url, registry_port, command, is_exception=True):
 
     cmd = "%s -json -rootca %s -url %s:%s %s" % (ZSTORE_CLI_PATH, ca_path, hostname, registry_port, command)
     code, o, e = shell_return_stdout_stderr(cmd)
-    shell("rm -rf %s" % os.path.dirname(ca_path), is_exception=False)
+    linux.rm_dir_force(os.path.dirname(ca_path))
     if code != 0 and is_exception:
         error("fail to run image store cli[%s]: %s" % (command, e))
 
@@ -5006,7 +5007,7 @@ class CollectLogCmd(Command):
             except SystemExit:
                 warn("collect log on host %s failed" % host_post_info.host)
                 logger.warn("collect log on host %s failed" % host_post_info.host)
-                command = 'rm -rf %s' % tmp_log_dir
+                command = linux.rm_dir_force(tmp_log_dir, True)
                 CollectLogCmd.failed_flag = True
                 run_remote_command(command, host_post_info)
                 return 1
@@ -5015,7 +5016,7 @@ class CollectLogCmd(Command):
             (status, output) = run_remote_command(command, host_post_info, return_status=True, return_output=True)
             if "The directory is empty" in output:
                 warn("Didn't find log on host: %s " % (host_post_info.host))
-                command = 'rm -rf %s' % tmp_log_dir
+                command = linux.rm_dir_force(tmp_log_dir, True)
                 run_remote_command(command, host_post_info)
                 return 0
             self.get_system_log(host_post_info, tmp_log_dir)
@@ -5064,14 +5065,14 @@ class CollectLogCmd(Command):
                             run_remote_command(command, host_post_info)
             except SystemExit:
                 logger.warn("collect log on storage: %s failed" % host_post_info.host)
-                command = 'rm -rf %s' % tmp_log_dir
+                command = linux.rm_dir_force(tmp_log_dir, True)
                 CollectLogCmd.failed_flag = True
                 run_remote_command(command, host_post_info)
             command = 'test "$(ls -A "%s" 2>/dev/null)" || echo The directory is empty' % tmp_log_dir
             (status, output) = run_remote_command(command, host_post_info, return_status=True, return_output=True)
             if "The directory is empty" in output:
                 warn("Didn't find log on storage host: %s " % host_post_info.host)
-                command = 'rm -rf %s' % tmp_log_dir
+                command = linux.rm_dir_force(tmp_log_dir, True)
                 run_remote_command(command, host_post_info)
                 return 0
             self.get_system_log(host_post_info, tmp_log_dir)
@@ -6512,7 +6513,7 @@ class UpgradeManagementNodeCmd(Command):
 
             def upgrade():
                 info('start to upgrade the management node ...')
-                shell('rm -rf %s' % ctl.zstack_home)
+                linux.rm_dir_force(ctl.zstack_home)
                 if ctl.zstack_home.endswith('/'):
                     webapp_dir = os.path.dirname(os.path.dirname(ctl.zstack_home))
                 else:
@@ -6735,10 +6736,11 @@ class UpgradeMultiManagementNodeCmd(Command):
                 SpinnerInfo.spinner_status = reset_dict_value(SpinnerInfo.spinner_status,False)
                 SpinnerInfo.spinner_status['upgrade_local'] = True
                 ZstackSpinner(spinner_info)
+                linux.rm_dir_force("/tmp/zstack_upgrade.lock")
                 if args.force is True:
-                    shell("rm -rf /tmp/zstack_upgrade.lock && bash %s -u -F" % args.installer_bin)
+                    shell("bash %s -u -F" % args.installer_bin)
                 else:
-                    shell("rm -rf /tmp/zstack_upgrade.lock && bash %s -u" % args.installer_bin)
+                    shell("bash %s -u" % args.installer_bin)
 
                 spinner_info = SpinnerInfo()
                 spinner_info.output = "Start management node on localhost(%s)" % local_mn_ip
@@ -7065,7 +7067,7 @@ class RollbackManagementNodeCmd(Command):
 
             def rollback():
                 info('start to rollback the management node ...')
-                shell('rm -rf %s' % ctl.zstack_home)
+                linux.rm_dir_force(ctl.zstack_home)
                 shell('unzip %s -d %s' % (rollbackinfo.war_path, ctl.zstack_home))
 
             def restore_config():
@@ -8062,8 +8064,8 @@ class StartUiCmd(Command):
         if not check_ui_status():
             info('fail to start UI server on the localhost. Use zstack-ctl start_ui to restart it. zstack UI log could be found in %s/zstack-ui.log' % args.log)
             shell('zstack-ctl stop_ui')
-            shell('rm -rf /var/run/zstack/zstack-ui.port')
-            shell('rm -rf /var/run/zstack/zstack-ui.pid')
+            linux.rm_dir_force("/var/run/zstack/zstack-ui.port")
+            linux.rm_dir_force("/var/run/zstack/zstack-ui.pid")
             return False
 
         pid = find_process_by_cmdline('zstack-ui')

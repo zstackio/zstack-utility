@@ -554,6 +554,10 @@ class DEip(kvmagent.KvmAgent):
             nicPrefixLen = linux.netmask_to_cidr(NIC_NETMASK)
             set_ip_to_idev_if_needed(PRI_IDEV, "ip", NIC_GATEWAY, nicPrefixLen)
             add_filter_to_prevent_namespace_arp_request()
+
+            if bash_r('eval {{NS}} arping -q -D -w 1 -c 3 -I {{PUB_IDEV}} {{VIP}} > /dev/null') != 0:
+                raise Exception('there are dupicated public [ip:%s] on public network' % (VIP))
+
             # ping VIP gateway
             bash_r('eval {{NS}} arping -q -A -w 2.5 -c 3 -I {{PUB_IDEV}} {{VIP}} > /dev/null')
             set_gateway_arp_if_needed()

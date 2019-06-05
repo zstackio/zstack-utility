@@ -88,9 +88,15 @@ def rm_file_force(fpath):
     except:
         pass
 
-def rm_dir_force(dpath):
-    if os.path.exists(dpath):
+black_dpath_list = ["", "/", "*", "/root", "/var", "/bin", "/lib", "/sys"]
+
+def rm_dir_force(dpath, only_check=False):
+    if dpath.strip() in black_dpath_list:
+        raise Exception("how dare you delete directory %s" % dpath)
+    if os.path.exists(dpath) and not only_check:
         shutil.rmtree(dpath)
+    else:
+        return dpath
 
 def rm_file_checked(fpath):
     if not os.path.exists(fpath):
@@ -277,7 +283,11 @@ def remount(url, path, options=None):
     elif o.return_code != 0:
         o.raise_error()
 
-def sshfs_mount(username, hostname, port, password, url, mountpoint, writebandwidth=None):
+def sshfs_mount_with_vm_uuid(vmuuid, username, hostname, port, password, url, mountpoint, writebandwidth=None):
+    is_aio = shell.run("pgrep -a qemu-kvm | grep %s | grep aio=native" % vmuuid) == 0
+    return sshfs_mount(username, hostname, port, password, url, mountpoint, writebandwidth, not is_aio)
+
+def sshfs_mount(username, hostname, port, password, url, mountpoint, writebandwidth=None, direct_io=True):
     fd, fname = tempfile.mkstemp()
     os.chmod(fname, 0500)
 
@@ -297,7 +307,10 @@ def sshfs_mount(username, hostname, port, password, url, mountpoint, writebandwi
 
     os.close(fd)
 
-    ret = shell.check_run("/usr/bin/sshfs %s@%s:%s %s -o allow_root,direct_io,compression=no,ssh_command='%s'" % (username, hostname, url, mountpoint, fname))
+    if direct_io:
+        ret = shell.check_run("/usr/bin/sshfs %s@%s:%s %s -o allow_root,direct_io,compression=no,ssh_command='%s'" % (username, hostname, url, mountpoint, fname))
+    else:
+        ret = shell.check_run("/usr/bin/sshfs %s@%s:%s %s -o allow_root,compression=no,ssh_command='%s'" % (username, hostname, url, mountpoint, fname))
     os.remove(fname)
     return ret
 
@@ -960,14 +973,14 @@ def create_bridge(bridge_name, interface, move_route=True):
     if br_name and br_name != bridge_name:
         raise Exception('failed to create bridge[{0}], physical interface[{1}] has been occupied by bridge[{2}]'.format(bridge_name, interface, br_name))
 
-    if br_name == bridge_name:
-        return
-
     if not is_network_device_existing(bridge_name):
         shell.call("brctl addbr %s" % bridge_name)
-        shell.call("brctl setfd %s 0" % bridge_name)
-        shell.call("brctl stp %s off" % bridge_name)
-        shell.call("ip link set %s up" % bridge_name)
+    shell.call("brctl setfd %s 0" % bridge_name)
+    shell.call("brctl stp %s off" % bridge_name)
+    shell.call("ip link set %s up" % bridge_name)
+
+    if br_name == bridge_name:
+        return
 
     if not is_network_device_existing(interface):
         raise LinuxError("network device[%s] is not existing" % interface)
@@ -1678,10 +1691,41 @@ def get_unmanaged_vms(include_not_zstack_but_in_virsh = False):
             unmanaged_vms.append(vm)
     return unmanaged_vms
 
-def linux_lsof(file):
-    cmd = shell.ShellCmd("lsof %s | grep -v '^COMMAND'" % file)
+def linux_lsof(file, process="qemu-kvm", find_rpath=True):
+    """
+
+    :param file: target file to run lsof
+    :param process: process name to find, it can't find correctly in CentOS 7.4, so give process name is necessary
+    :param find_rpath: use realpath to find deeper, it should be true in most cases
+    :return: stdout of lsof
+    """
+    cmd = shell.ShellCmd("lsof -b %s | grep -v '^COMMAND'" % file)
     cmd(is_exception=False)
-    return cmd.stdout
+    r = cmd.stdout.strip()
+
+    if not process:
+        return r
+
+    o = shell.call("lsof -b -c %s | grep %s" % (process, file), False).strip().splitlines()
+    if len(o) != 0:
+        for line in o:
+            if line not in r:
+                r = r.strip() + "\n" + line
+
+    if not find_rpath:
+        return r
+
+    r_path = shell.call("realpath %s" % file).strip()
+    if r_path == file:
+        return r.strip()
+
+    o = shell.call("lsof -b -c %s | grep %s" % (process, r_path), False).strip().splitlines()
+    if len(o) != 0:
+        for line in o:
+            if line not in r:
+                r = r.strip() + "\n" + line
+
+    return r.strip()
 
 def touch_file(fpath):
     with open(fpath, 'a'):
@@ -1757,3 +1801,7 @@ def updateGrubFile(grepCmd, sedCmd, files):
                 cmd = shell.ShellCmd("%s %s" % (sedCmd, file))
                 cmd(is_exception=True)
     return True, None
+
+def set_fail_if_no_path():
+    cmd = shell.ShellCmd('ms=`multipath -l -v1`; for m in $ms; do dmsetup message $m 0 "fail_if_no_path"; done')
+    cmd(is_exception=False)

@@ -258,6 +258,7 @@ def get_image_format_from_buf(qhdr):
         return 'iso'
     return "raw"
 
+
 def stream_body(task, fpath, entity, boundary):
     def _progress_consumer(total):
         task.downloadedSize = total
@@ -597,8 +598,11 @@ class CephAgent(object):
         for pool in cmd.pools:
             if pool.predefined and pool.name not in existing_pools:
                 raise Exception('cannot find pool[%s] in the ceph cluster, you must create it manually' % pool.name)
-            elif pool.name not in existing_pools:
-                shell.check_run('ceph osd pool create %s 128' % pool.name)
+            if pool.name not in existing_pools and (ceph.is_xsky() or ceph.is_sandstone()):
+                raise Exception(
+                    'cannot auto initialize ceph pool [%s] on xsky or sandstone, please create it manually' % pool.name)
+            else:
+                shell.call('ceph osd pool create %s 128' % pool.name)
 
         rsp = InitRsp()
         rsp.fsid = fsid

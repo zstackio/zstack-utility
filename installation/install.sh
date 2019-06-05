@@ -140,7 +140,7 @@ upgrade_params_array[4]='3.2.0,-DupgradeVolumeQos=true'
 upgrade_params_array[5]='3.3.0,-DaddCdRomToHistoricalVm=true'
 upgrade_params_array[6]='3.4.0,-DupgradeTwoFactorAuthenticationSecret=true'
 upgrade_params_array[7]='3.4.1,-DgenerateBillsImmediately=true'
-upgrade_params_array[7]='3.5.0,-DupgradeVolumeBackupHistory=true'
+upgrade_params_array[8]='3.5.0,-DupgradeVolumeBackupHistory=true'
 
 # version compare
 # eg. 1 = 1.0
