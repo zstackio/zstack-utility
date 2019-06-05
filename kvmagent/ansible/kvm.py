@@ -67,13 +67,14 @@ def check_nested_kvm(host_post_info):
     modprobe(modprobe_arg, host_post_info)
 
     modprobe_arg = ModProbeArg()
-    if 'intel' in get_remote_host_cpu(host_post_info).lower():
+    cpu_info = get_remote_host_cpu(host_post_info).lower()
+    if 'intel' in cpu_info or 'zhaoxin' in cpu_info:
         # reload kvm_intel for enable nested kvm
         if enabled_nested_flag is False:
             command = "modprobe -r kvm_intel"
             run_remote_command(command, host_post_info, return_status=True)
         modprobe_arg.name = 'kvm_intel'
-    elif 'amd' in get_remote_host_cpu(host_post_info).lower():
+    elif 'amd' in cpu_info:
         if enabled_nested_flag is False:
             command = "modprobe -r kvm_amd"
             run_remote_command(command, host_post_info, return_status=True)
@@ -195,7 +196,7 @@ if distro in RPM_BASED_OS:
 
         # zstack mini needs higher version kernel etc.
         C76_KERNEL_OR_HIGHER = get_remote_host_kernel_version(host_post_info) >= '3.10.0-957'
-        mini_dep_list = " drbd84-utils kmod-drbd84" if C76_KERNEL_OR_HIGHER else ""
+        mini_dep_list = " drbd84-utils kmod-drbd84" if C76_KERNEL_OR_HIGHER and not IS_AARCH64 else ""
         common_dep_list += mini_dep_list
 
         # arch specific deps
