@@ -374,8 +374,9 @@ if distro in RPM_BASED_OS:
         run_remote_command(command, host_post_info)
 
     # install gim.ko to /lib/modules
-    command = "ls /tmp/mxgpu_driver.tar.gz && (cd /tmp; tar xvf /tmp/mxgpu_driver.tar.gz; cd mxgpu_driver; make install)"
-    run_remote_command(command, host_post_info)
+    if not IS_AARCH64:
+        command = "ls /tmp/mxgpu_driver.tar.gz && (cd /tmp; tar xvf /tmp/mxgpu_driver.tar.gz; cd mxgpu_driver; make install)"
+        run_remote_command(command, host_post_info)
 
 elif distro in DEB_BASED_OS:
     # name: install kvm related packages on Debian based OS
