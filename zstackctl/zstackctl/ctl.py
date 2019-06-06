@@ -6175,7 +6175,8 @@ class SetEnvironmentVariableCmd(Command):
                 pass
 
         env = PropertyFile(self.PATH)
-        env.write_properties([arg.split('=', 1) for arg in ctl.extra_arguments])
+        arg_str = ' '.join(ctl.extra_arguments)
+        env.write_properties([arg_str.split('=', 1)])
 
 class UnsetEnvironmentVariableCmd(Command):
     NAME = 'unsetenv'
