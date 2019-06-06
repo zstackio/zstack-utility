@@ -963,10 +963,11 @@ def create_lvm_snapshot(absolutePath, remove_oldest=True, snapName=None, size_pe
         virtual_size = linux.qcow2_virtualsize(absolutePath)
         if virtual_size <= 2147483648:  # 2GB
             snap_size = calcLvReservedSize(virtual_size)
+            snap_size = int(snap_size / 512 + 1) * 512
         elif int((virtual_size / 512) * size_percent * 512) <= 2147483648:
             snap_size = 2147483648
         else:
-            snap_size = int((virtual_size / 512) * size_percent * 512)
+            snap_size = int((virtual_size / 512) * size_percent + 1) * 512
         size_command = " -L %sB " % snap_size
     bash.bash_errorout("sync; lvcreate --snapshot -n %s %s %s" % (snapName, absolutePath, size_command))
     path = "/".join(absolutePath.split("/")[:-1]) + "/" + snapName
