@@ -55,6 +55,8 @@ def getCephPoolsCapacity():
 
     # fill crushItemOsds
     o = shell.call('ceph osd tree -f json')
+    # In the open source Ceph 10 version, the value returned by executing 'ceph osd tree -f json' might have '-nan', causing json parsing to fail.
+    o = o.replace(":-nan", ":null")
     tree = jsonobject.loads(o)
     if not tree.nodes:
         return result
