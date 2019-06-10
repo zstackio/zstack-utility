@@ -127,7 +127,7 @@ if IS_AARCH64:
     qemu_img_pkg = "%s/qemu-img-aarch64" % file_root
     qemu_img_local_pkg = "%s/qemu-img-aarch64" % kvm_root
     dnsmasq_img_local_pkg = "%s/dnsmasq-aarch64" % file_root
-    zwatch_vm_agent_local_pkg = "%s/zwatch-vm-agent.linux-amd64.bin" % file_root
+    # zwatch_vm_agent_local_pkg = "%s/zwatch-vm-agent.linux-aarch64.bin" % file_root
     zwatch_vm_agent_install_sh_local = "%s/vm-tools.sh" % file_root
     zwatch_vm_agent_version_local = "%s/agent_version" % file_root
     pushgateway_local_pkg = "%s/pushgateway" % file_root
@@ -254,10 +254,11 @@ if distro in RPM_BASED_OS:
     copy(copy_arg, host_post_info)
 
     # copy zwatch-vm-agent.linux-amd64.bin
-    copy_arg = CopyArg()
-    copy_arg.src = zwatch_vm_agent_local_pkg
-    copy_arg.dest = zwatch_vm_agent_dst_pkg
-    copy(copy_arg, host_post_info)
+    if not IS_AARCH64:
+        copy_arg = CopyArg()
+        copy_arg.src = zwatch_vm_agent_local_pkg
+        copy_arg.dest = zwatch_vm_agent_dst_pkg
+        copy(copy_arg, host_post_info)
 
     # copy zwatch-vm-agent install sh
     copy_arg = CopyArg()
