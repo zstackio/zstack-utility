@@ -658,7 +658,8 @@ class CephAgent(plugin.TaskManager):
             if pool.predefined and pool.name not in existing_pools:
                 raise Exception('cannot find pool[%s] in the ceph cluster, you must create it manually' % pool.name)
             if pool.name not in existing_pools and (ceph.is_xsky() or ceph.is_sandstone()):
-                raise Exception('cannot auto initialize ceph pool [%s] on xsky or sandstone, please create it manually' % pool.name)
+                raise Exception(
+                    'The ceph storage type to be added does not support auto initialize pool, please create it manually')
             else:
                 shell.call('ceph osd pool create %s 128' % pool.name)
 
