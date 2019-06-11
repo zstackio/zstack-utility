@@ -26,6 +26,7 @@ remote_pass = None
 remote_port = None
 libvirtd_conf_file = "/etc/libvirt/libvirtd.conf"
 update_packages = 'false'
+skip_install_virt_pkgs = 'false'
 zstack_lib_dir = "/var/lib/zstack"
 zstack_libvirt_nwfilter_dir = "%s/nwfilter" % zstack_lib_dir
 skipIpv6 = 'false'
@@ -215,8 +216,12 @@ if distro in RPM_BASED_OS:
         (status, output) = run_remote_command(command, host_post_info, True, True)
 
         versions = distro_version.split('.')
-        if output and len(versions) > 2 and versions[0] == '7' and versions[1] == '2':
+        if output and len(versions) > 2 and versions[0] == '7' and versions[1] == '2' or skip_install_virt_pkgs == 'true':
             dep_list = dep_list.replace('libvirt libvirt-client libvirt-python ', '')
+        if skip_install_virt_pkgs == 'true':
+            dep_list = dep_list.replace('collectd-virt', '')
+            dep_list = dep_list.replace('qemu-kvm-ev', '')
+            dep_list = dep_list.replace('qemu-kvm', '')
 
         # name: install/update kvm related packages on RedHat based OS from user defined repo
         # if zstack-manager is not installed, then install/upgrade zstack-host and ignore failures
