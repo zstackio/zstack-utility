@@ -286,9 +286,9 @@ class ConsoleProxyAgent(object):
 
         ## kill garbage websockify process: same proxyip:proxyport, different cert file
         if not cmd.sslCertFile:
-            command = "ps aux | grep '[z]stack.*websockify' | grep %s:%d | grep 'cert=' | awk '{ print $2 }'" % (cmd.proxyHostname, cmd.proxyPort)
+            command = "ps aux | grep '[z]stack.*websockify_init' | grep '%s:%d' | grep 'cert=' | awk '{ print $2 }'" % (cmd.proxyHostname, cmd.proxyPort)
         else:
-            command = "ps aux | grep '[z]stack.*websockify' | grep %s:%d | grep -v '%s' | awk '{ print $2 }'" % (cmd.proxyHostname, cmd.proxyPort, cmd.sslCertFile)
+            command = "ps aux | grep '[z]stack.*websockify_init' | grep '%s:%d' | grep -v '%s' | awk '{ print $2 }'" % (cmd.proxyHostname, cmd.proxyPort, cmd.sslCertFile)
         ret,out,err = bash_roe(command)
         for pid in out.splitlines():
             try:
@@ -297,8 +297,8 @@ class ConsoleProxyAgent(object):
                 continue
 
         ## if websockify process exists, then return
-        out = shell.call("ps aux | grep '[z]stack.*websockify'")
         alive = False
+        ret,out,err = bash_roe("ps aux | grep '[z]stack.*websockify_init'")
         for o in out.splitlines():
             if o.find("%s:%d" % (cmd.proxyHostname, cmd.proxyPort)) != -1:
                 alive = True
