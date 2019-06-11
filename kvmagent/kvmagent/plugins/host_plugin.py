@@ -2,7 +2,9 @@
 
 @author: frank
 '''
+import base64
 import copy
+import hashlib
 import platform
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
@@ -25,8 +27,6 @@ import os.path
 import re
 import time
 import uuid
-import libvirt
-import traceback
 import tempfile
 
 IS_AARCH64 = platform.machine() == 'aarch64'

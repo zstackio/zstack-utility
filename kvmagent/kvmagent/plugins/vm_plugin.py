@@ -11,8 +11,6 @@ import xml.etree.ElementTree as etree
 import re
 import platform
 import netaddr
-import base64
-import hashlib
 import uuid
 
 import libvirt
