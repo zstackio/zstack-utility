@@ -291,10 +291,17 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             fmt = shell.call("qemu-img info %s | grep '^file format' | awk -F ': ' '{ print $2 }'" % qcow2)
             if fmt.strip() != "qcow2":
                 continue
+
             backing_file = linux.qcow2_get_backing_file(qcow2)
             if backing_file == "":
                 continue
+
+            # actions like `create snapshot -> recover snapshot -> delete snapshot` may produce garbage qcow2, whose backing file doesn't exist
             new_backing_file = backing_file.replace(cmd.srcPsMountPath, cmd.dstPsMountPath)
+            if not os.path.exists(new_backing_file):
+                logger.debug("the backing file[%s] of volume[%s] doesn't exist, skip rebasing" % (new_backing_file, qcow2))
+                continue
+
             linux.qcow2_rebase_no_check(new_backing_file, qcow2)
         return jsonobject.dumps(rsp)
 
