@@ -657,8 +657,10 @@ class CtlParser(argparse.ArgumentParser):
         sys.exit(1)
 
 class Ctl(object):
+    IS_AARCH64 = platform.machine() == 'aarch64'
     DEFAULT_ZSTACK_HOME = '/usr/local/zstack/apache-tomcat/webapps/zstack/'
     USER_ZSTACK_HOME_DIR = os.path.expanduser('~zstack')
+    ZSTACK_TOOLS_DIR = os.path.join(USER_ZSTACK_HOME_DIR, 'apache-tomcat/webapps/zstack/WEB-INF/classes/tools/')
     LAST_ALIVE_MYSQL_IP = "MYSQL_LATEST_IP"
     LAST_ALIVE_MYSQL_PORT = "MYSQL_LATEST_PORT"
     LOGGER_DIR = "/var/log/zstack/"
@@ -1571,6 +1573,9 @@ class DeployUIDBCmd(Command):
         info('Successfully deployed zstack_ui database')
 
 class TailLogCmd(Command):
+    WS_NAME = 'websocketd_aarch64' if Ctl.IS_AARCH64 else 'websocketd'
+    WS_PATH = os.path.join(Ctl.ZSTACK_TOOLS_DIR, WS_NAME)
+
     def __init__(self):
         super(TailLogCmd, self).__init__()
         self.name = 'taillog'
@@ -1578,7 +1583,10 @@ class TailLogCmd(Command):
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--listen-port', help='if set, web browser can get log via EventSource.', default=None)
+        parser.add_argument('--listen-port', help='if set, web browser can get log via designated protocol.', default=None)
+        parser.add_argument('--protocol', help='the protocol web tail log use.', default='http', choices=['http', 'websocket'])
+        parser.add_argument('--timeout', help='when tail log via websocket, survival time of server in seconds.'
+                                              ' keep alive if not set.', default=None, type=int)
 
     def run(self, args):
         log_path = os.path.join(ctl.zstack_home, "../../logs/management-server.log")
@@ -1591,21 +1599,32 @@ class TailLogCmd(Command):
             script()
             return
 
+        if args.protocol == 'http':
+            cmd = '''(echo -e 'HTTP/1.1 200 OK\\nAccess-Control-Allow-Origin: *\\nContent-type: text/event-stream\\n' \
+                   && tail -f %s | sed -u -e 's/^/data: /;s/$/\\n/') | nc -lp %s''' % (
+            log_path, args.listen_port)
+            shell(cmd)
+            return
+
+
         def get_running_ui_ssl_args():
             pid = get_ui_pid()
-            if not pid:
-                return ""
+            if pid:
+                with open('/proc/%s/cmdline' % pid, 'r') as fd:
+                    cmdline = fd.read()
+                    if 'ssl.enabled' in cmdline:
+                        return "--ssl --sslkey " + ctl.ZSTACK_UI_KEYSTORE_PEM + " --sslcert " + ctl.ZSTACK_UI_KEYSTORE_PEM
+            return ""
 
-            with open('/proc/%s/cmdline' % pid, 'r') as fd:
-                cmdline = fd.read()
-                if 'ssl.enabled' in cmdline:
-                    return "--ssl-key " + ctl.ZSTACK_UI_KEYSTORE_PEM + " --ssl-cert " + ctl.ZSTACK_UI_KEYSTORE_PEM
-                else:
-                    return ""
+        timeoutcmd = "" if not args.timeout else "timeout " + str(args.timeout)
+        cmd = '''%s %s --maxforks 1 %s --port %s tail -f %s''' % (timeoutcmd, self.WS_PATH, get_running_ui_ssl_args(), args.listen_port, log_path)
 
-        cmd = '''(echo -e 'HTTP/1.1 200 OK\\nAccess-Control-Allow-Origin: *\\nContent-type: text/event-stream\\n' \
-        && tail -f %s | sed -u -e 's/^/data: /;s/$/\\n/') | nc -lp %s %s''' % (log_path, args.listen_port, get_running_ui_ssl_args())
-        shell(cmd)
+        ret = ShellCmd(cmd)
+        ret(False)
+        if ret.return_code == 124:
+            info("websocketd exit.")
+        elif ret.return_code != 0:
+            ret.raise_error()
 
 class ConfigureCmd(Command):
     def __init__(self):
