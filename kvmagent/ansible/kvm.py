@@ -152,7 +152,7 @@ zwatch_vm_agent_install_sh_dst = "%s/vm-tools.sh" % workplace
 zwatch_vm_agent_version_dst = "%s/agent_version" % workplace
 pushgateway_dst_pkg = "%s/pushgateway" % workplace
 mxgpu_driver_local_tar = "%s/mxgpu_driver.tar.gz" % file_root
-mxgpu_driver_dst_tar = "/tmp/mxgpu_driver.tar.gz"
+mxgpu_driver_dst_tar = "/var/lib/zstack/mxgpu_driver.tar.gz"
 
 # include zstacklib.py
 (distro, major_version, distro_release, distro_version) = get_remote_host_info(host_post_info)
@@ -279,12 +279,6 @@ if distro in RPM_BASED_OS:
     copy_arg.dest = zwatch_vm_agent_version_dst
     copy(copy_arg, host_post_info)
 
-    # copy mxgpu driver
-    copy_arg = CopyArg()
-    copy_arg.src = mxgpu_driver_local_tar
-    copy_arg.dest = mxgpu_driver_dst_tar
-    copy(copy_arg, host_post_info)
-
     # handle distro version specific task
     if major_version < 7:
         # name: copy name space supported iproute for RHEL6
@@ -371,11 +365,6 @@ if distro in RPM_BASED_OS:
         command = "for i in {1..5}; do /bin/cp %s `which qemu-img` && break || sleep 2; done; sync" % qemu_img_local_pkg
         host_post_info.post_label = "ansible.shell.install.pkg"
         host_post_info.post_label_param = "qemu-img"
-        run_remote_command(command, host_post_info)
-
-    # install gim.ko to /lib/modules
-    if not IS_AARCH64:
-        command = "ls /tmp/mxgpu_driver.tar.gz && (cd /tmp; tar xvf /tmp/mxgpu_driver.tar.gz; cd mxgpu_driver; make install)"
         run_remote_command(command, host_post_info)
 
 elif distro in DEB_BASED_OS:
@@ -498,6 +487,12 @@ copy_arg = CopyArg()
 copy_arg.src = "files/kvm/zstack-kvmagent"
 copy_arg.dest = "/etc/init.d/"
 copy_arg.args = "mode=755"
+copy(copy_arg, host_post_info)
+
+# name: copy mxgpu driver
+copy_arg = CopyArg()
+copy_arg.src = mxgpu_driver_local_tar
+copy_arg.dest = mxgpu_driver_dst_tar
 copy(copy_arg, host_post_info)
 
 # name: install virtualenv

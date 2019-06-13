@@ -1242,6 +1242,17 @@ grub2-mkconfig -o /boot/grub2/grub.cfg
                 logger.debug("no need to re-splite pci device[addr:%s] into sriov pci devices" % addr)
                 return jsonobject.dumps(rsp)
 
+            # make install mxgpu driver if need to
+            mxgpu_driver_tar = "/var/lib/zstack/mxgpu_driver.tar.gz"
+            if os.path.exists(mxgpu_driver_tar):
+                r, o, e = bash_roe("tar xvf %s -C /tmp; cd /tmp/mxgpu_driver; make install" % mxgpu_driver_tar)
+                if r != 0:
+                    rsp.success = False
+                    rsp.error = "failed to install mxgpu driver, %s, %s" % (o, e)
+                    return jsonobject.dumps(rsp)
+                # rm mxgpu driver tar
+                os.remove(mxgpu_driver_tar)
+
             # check installed ko
             r, _, _ = bash_roe("lsmod | grep gim")
             if r == 0:
