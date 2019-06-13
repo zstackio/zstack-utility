@@ -905,25 +905,41 @@ if __name__ == "__main__":
     @in_bash
     def disable_hugepage(self, req):
         rsp = DisableHugePageRsp()
+        return_code, stdout = self._close_hugepage()
+        if return_code != 0 or "Error" in stdout:
+            rsp.success = False
+            rsp.error = stdout
+        return jsonobject.dumps(rsp)
+
+    def _close_hugepage(self):
         disable_hugepage_script = '''#!/bin/sh
+grubs=("/boot/grub2/grub.cfg" "/boot/grub/grub.cfg" "/etc/grub2-efi.cfg" "/etc/grub-efi.cfg")        
+
 # config nr_hugepages
 sysctl -w vm.nr_hugepages=0
 
 # enable nr_hugepages
 sysctl vm.nr_hugepages=0
 
-# config grub
-sed -i '/GRUB_CMDLINE_LINUX/s/[[:blank:]]*hugepagesz[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g' /etc/default/grub
-sed -i '/GRUB_CMDLINE_LINUX/s/[[:blank:]]*hugepages[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g' /etc/default/grub
-sed -i '/GRUB_CMDLINE_LINUX/s/[[:blank:]]*transparent_hugepage[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g' /etc/default/grub
+# config default grub
+sed -i '/GRUB_CMDLINE_LINUX=/s/[[:blank:]]*hugepagesz[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g' /etc/default/grub
+sed -i '/GRUB_CMDLINE_LINUX=/s/[[:blank:]]*hugepages[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g' /etc/default/grub
+sed -i '/GRUB_CMDLINE_LINUX=/s/[[:blank:]]*transparent_hugepage[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g' /etc/default/grub
 line=`cat /etc/default/grub | grep GRUB_CMDLINE_LINUX`
 result=$(echo $line | grep '\"$') 
-if [ -n "$result" ]; then 
-    grub2-mkconfig -o /boot/grub2/grub.cfg
-else 
+if [ ! -n "$result" ]; then 
     sed -i '/GRUB_CMDLINE_LINUX/s/$/\"/g' /etc/default/grub
-    grub2-mkconfig -o /boot/grub2/grub.cfg
 fi
+
+#clean boot grub config
+for var in ${grubs[@]} 
+do 
+   if [ -f $var ]; then
+       sed -i '/^[[:space:]]*linux/s/[[:blank:]]*hugepagesz[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g' $var
+       sed -i '/^[[:space:]]*linux/s/[[:blank:]]*hugepages[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g' $var
+       sed -i '/^[[:space:]]*linux/s/[[:blank:]]*transparent_hugepage[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g' $var
+   fi    
+done
 '''
         fd, disable_hugepage_script_path = tempfile.mkstemp()
         with open(disable_hugepage_script_path, 'w') as f:
@@ -931,20 +947,28 @@ fi
         logger.info('close_hugepage_script_path is: %s' % disable_hugepage_script_path)
         cmd = shell.ShellCmd('bash %s' % disable_hugepage_script_path)
         cmd(False)
-        if cmd.return_code != 0 or "Error" in cmd.stdout:
-            rsp.success = False
-            rsp.error = cmd.stdout
+
         os.remove(disable_hugepage_script_path)
-        return jsonobject.dumps(rsp)
+        return cmd.return_code, cmd.stdout
 
     @kvmagent.replyerror
     @in_bash
     def enable_hugepage(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = EnableHugePageRsp()
+
+        # clean old hugepage config
+        return_code, stdout = self._close_hugepage()
+        if return_code != 0 or "Error" in stdout:
+            rsp.success = False
+            rsp.error = stdout
+            return jsonobject.dumps(rsp)
+
         pageSize = cmd.pageSize
         reserveSize = cmd.reserveSize
         enable_hugepage_script = '''#!/bin/sh
+grubs=("/boot/grub2/grub.cfg" "/boot/grub/grub.cfg" "/etc/grub2-efi.cfg" "/etc/grub-efi.cfg")          
+
 # byte to mib
 let "reserveSize=%s/1024/1024"
 pageSize=%s
@@ -962,9 +986,16 @@ echo 3 > /proc/sys/vm/drop_caches
 echo always > /sys/kernel/mm/transparent_hugepage/enabled
 
 # config grub
-sed -i '/GRUB_CMDLINE_LINUX/s/\"$/ transparent_hugepage=always hugepagesz=%sM hugepages=\'\"$pageNum\"\'\"/g' /etc/default/grub
-grub2-mkconfig -o /boot/grub2/grub.cfg
-''' % (reserveSize, pageSize, pageSize)
+sed -i '/GRUB_CMDLINE_LINUX=/s/\"$/ transparent_hugepage=always hugepagesz=\'\"$pageSize\"\'M hugepages=\'\"$pageNum\"\'\"/g' /etc/default/grub
+
+#config boot grub
+for var in ${grubs[@]} 
+do 
+   if [ -f $var ]; then
+       sed -i '/^[[:space:]]*linux/s/$/ transparent_hugepage=always hugepagesz=\'\"$pageSize\"\'M hugepages=\'\"$pageNum\"\'/g' $var
+   fi    
+done
+''' % (reserveSize, pageSize)
 
         fd, enable_hugepage_script_path = tempfile.mkstemp()
         with open(enable_hugepage_script_path, 'w') as f:
