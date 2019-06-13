@@ -1599,21 +1599,32 @@ class TailLogCmd(Command):
             script()
             return
 
+        if args.protocol == 'http':
+            cmd = '''(echo -e 'HTTP/1.1 200 OK\\nAccess-Control-Allow-Origin: *\\nContent-type: text/event-stream\\n' \
+                   && tail -f %s | sed -u -e 's/^/data: /;s/$/\\n/') | nc -lp %s''' % (
+            log_path, args.listen_port)
+            shell(cmd)
+            return
+
+
         def get_running_ui_ssl_args():
             pid = get_ui_pid()
-            if not pid:
-                return ""
+            if pid:
+                with open('/proc/%s/cmdline' % pid, 'r') as fd:
+                    cmdline = fd.read()
+                    if 'ssl.enabled' in cmdline:
+                        return "--ssl --sslkey " + ctl.ZSTACK_UI_KEYSTORE_PEM + " --sslcert " + ctl.ZSTACK_UI_KEYSTORE_PEM
+            return ""
 
-            with open('/proc/%s/cmdline' % pid, 'r') as fd:
-                cmdline = fd.read()
-                if 'ssl.enabled' in cmdline:
-                    return "--ssl-key " + ctl.ZSTACK_UI_KEYSTORE_PEM + " --ssl-cert " + ctl.ZSTACK_UI_KEYSTORE_PEM
-                else:
-                    return ""
+        timeoutcmd = "" if not args.timeout else "timeout " + str(args.timeout)
+        cmd = '''%s %s --maxforks 1 %s --port %s tail -f %s''' % (timeoutcmd, self.WS_PATH, get_running_ui_ssl_args(), args.listen_port, log_path)
 
-        cmd = '''(echo -e 'HTTP/1.1 200 OK\\nAccess-Control-Allow-Origin: *\\nContent-type: text/event-stream\\n' \
-        && tail -f %s | sed -u -e 's/^/data: /;s/$/\\n/') | nc -lp %s %s''' % (log_path, args.listen_port, get_running_ui_ssl_args())
-        shell(cmd)
+        ret = ShellCmd(cmd)
+        ret(False)
+        if ret.return_code == 124:
+            info("websocketd exit.")
+        elif ret.return_code != 0:
+            ret.raise_error()
 
 class ConfigureCmd(Command):
     def __init__(self):
