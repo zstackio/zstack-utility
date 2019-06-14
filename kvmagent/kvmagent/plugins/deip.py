@@ -528,7 +528,9 @@ class DEip(kvmagent.KvmAgent):
                                           "-p ARP --arp-op Request --arp-ip-dst {{NIC_IP}} -j arpreply --arpreply-mac {{NIC_MAC}}", True)
             create_ebtable_rule_if_needed('nat', PRI_ODEV_CHAIN, "-p ARP --arp-op Request -j DROP")
 
+        newCreated = False
         if bash_r('eval {{NS}} ip link show > /dev/null') != 0:
+            newCreated = True
             bash_errorout('ip netns add {{NS_NAME}}')
 
         # To be compatibled with old version
@@ -549,14 +551,17 @@ class DEip(kvmagent.KvmAgent):
         add_dev_namespace_if_needed(PRI_IDEV, NS_NAME)
 
         if int(eip.ipVersion) == 4:
+            bash_r('eval {{NS}} ip link set {{PUB_IDEV}} up')
+            if newCreated :
+                r, o = bash.bash_ro('eval {{NS}} arping -D -w 1 -c 3 -I {{PUB_IDEV}} {{VIP}}')
+                if r != 0 and "Unicast reply from" in o:
+                    raise Exception('there are dupicated public [ip:%s] on public network, output: %s' % (VIP, o))
+
             vipPrefixLen = linux.netmask_to_cidr(VIP_NETMASK)
             set_ip_to_idev_if_needed(PUB_IDEV, "ip", VIP, vipPrefixLen)
             nicPrefixLen = linux.netmask_to_cidr(NIC_NETMASK)
             set_ip_to_idev_if_needed(PRI_IDEV, "ip", NIC_GATEWAY, nicPrefixLen)
             add_filter_to_prevent_namespace_arp_request()
-
-            if bash_r('eval {{NS}} arping -q -D -w 1 -c 3 -I {{PUB_IDEV}} {{VIP}} > /dev/null') != 0:
-                raise Exception('there are dupicated public [ip:%s] on public network' % (VIP))
 
             # ping VIP gateway
             bash_r('eval {{NS}} arping -q -A -w 2.5 -c 3 -I {{PUB_IDEV}} {{VIP}} > /dev/null')
