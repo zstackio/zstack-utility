@@ -7262,6 +7262,7 @@ class StopDashboardCmd(Command):
 
 # For UI 2.0
 class StopUiCmd(Command):
+    MINI_DIR = '/usr/local/zstack-mini'
     def __init__(self):
         super(StopUiCmd, self).__init__()
         self.name = 'stop_ui'
@@ -7279,7 +7280,8 @@ class StopUiCmd(Command):
         if args.host != 'localhost':
             self._remote_stop(args.host)
             return
-
+        is_mini = os.path.exists(self.MINI_DIR)
+        
         pidfile = '/var/run/zstack/zstack-ui.pid'
         portfile = '/var/run/zstack/zstack-ui.port'
         if os.path.exists(pidfile):
