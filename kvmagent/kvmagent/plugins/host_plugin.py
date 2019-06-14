@@ -818,7 +818,10 @@ if __name__ == "__main__":
         os.chmod(bash_file, 0o755)
 
         rule_str = 'ACTION=="add|remove", SUBSYSTEM=="usb", RUN="%s"' % bash_file
-        rule_file = '/etc/udev/rules.d/usb.rules'
+        rule_path = '/etc/udev/rules.d/'
+        rule_file = os.path.join(rule_path, 'usb.rules')
+        if not os.path.exists(rule_path):
+            os.makedirs(rule_path)
         with open(rule_file, 'w') as f:
             f.write(rule_str)
 
