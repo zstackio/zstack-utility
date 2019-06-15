@@ -1002,8 +1002,8 @@ upgrade_zstack(){
         return
     fi
     #rerun install system libs, upgrade might need new libs
-    show_spinner is_enable_chronyd
     is_install_system_libs
+    show_spinner is_enable_chronyd
     show_spinner uz_stop_zstack
     show_spinner uz_stop_zstack_ui
     show_spinner uz_upgrade_zstack
