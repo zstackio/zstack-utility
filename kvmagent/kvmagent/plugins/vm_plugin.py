@@ -59,6 +59,68 @@ class NicTO(object):
         self.bridgeName = None
         self.deviceId = None
 
+class RemoteStorageFactory(object):
+    @staticmethod
+    def get_remote_storage(cmd):
+        if cmd.storageInfo and cmd.storageInfo.type == 'nfs':
+            return NfsRemoteStorage(cmd)
+        else:
+            return SshfsRemoteStorage(cmd)
+
+
+class RemoteStorage(object):
+    def __init__(self, cmd):
+        self.mount_point = tempfile.mkdtemp()
+
+    def mount(self):
+        raise Exception('function mount not be implemented')
+
+    def umount(self):
+        raise Exception('function umount not be implemented')
+
+    def clean(self):
+        linux.rmdir_if_empty(self.mount_point)
+
+
+class NfsRemoteStorage(RemoteStorage):
+    def __init__(self, cmd):
+        super(NfsRemoteStorage, self).__init__(cmd)
+        self.options = cmd.storageInfo.options
+        self.url = cmd.storageInfo.url
+        relative_work_dir = cmd.uploadDir.replace(os.path.normpath(cmd.bsPath), '').lstrip(os.path.sep)
+        self.local_work_dir = os.path.join(self.mount_point, relative_work_dir)
+        self.remote_work_dir = os.path.join(self.url, relative_work_dir)
+
+    def mount(self):
+        linux.mount(self.url, self.mount_point, self.options)
+
+    def umount(self):
+        if linux.is_mounted(path=self.mount_point):
+            linux.umount(self.mount_point)
+
+
+class SshfsRemoteStorage(RemoteStorage):
+    def __init__(self, cmd):
+        super(SshfsRemoteStorage, self).__init__(cmd)
+        self.bandwidth = cmd.networkWriteBandwidth
+        self.username = cmd.username
+        self.hostname = cmd.hostname
+        self.port = cmd.sshPort
+        self.password = cmd.password
+        self.dst_dir = cmd.uploadDir
+        self.vm_uuid = cmd.vmUuid
+        self.remote_work_dir = cmd.uploadDir
+        self.local_work_dir = self.mount_point
+
+    def mount(self):
+        if 0 != linux.sshfs_mount_with_vm_uuid(self.vm_uuid, self.username, self.hostname, self.port,
+                                               self.password, self.dst_dir, self.mount_point, self.bandwidth):
+            raise kvmagent.KvmError("failed to prepare backup space for [vm:%s]" % self.vm_uuid)
+
+    def umount(self):
+        for i in xrange(6):
+            linux.fumount(self.mount_point, 5)
+
 
 class StartVmCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -4562,20 +4624,14 @@ class VmPlugin(kvmagent.KvmAgent):
     def take_volumes_backups(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = TakeVolumesBackupsResponse()
-        d = tempfile.mkdtemp() # temporary mount point
 
+        vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
+        if not vm:
+            raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % cmd.vmUuid)
+
+        storage = RemoteStorageFactory.get_remote_storage(cmd)
         try:
-            vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
-            if not vm:
-                raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % cmd.vmUuid)
-
-            if not cmd.networkWriteBandwidth:
-                if 0 != linux.sshfs_mount_with_vm_uuid(cmd.vmUuid, cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d):
-                    raise kvmagent.KvmError("failed to prepare backup space for [vm:%s]" % cmd.vmUuid)
-            else:
-                if 0 != linux.sshfs_mount_with_vm_uuid(cmd.vmUuid, cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d, cmd.networkWriteBandwidth):
-                    raise kvmagent.KvmError("failed to prepare backup space for [vm:%s]" % cmd.vmUuid)
-
+            storage.mount()
             target_disks = {}
             for volume in cmd.volumes:
                 target_disk, _ = vm._get_target_disk(volume)
@@ -4588,9 +4644,9 @@ class VmPlugin(kvmagent.KvmAgent):
                 bitmaps[deviceId] = bitmap
 
             res = self.do_take_volumes_backup(cmd,
-                    target_disks,
-                    bitmaps,
-                    d)
+                                              target_disks,
+                                              bitmaps,
+                                              storage.local_work_dir)
 
             for r in res:
                 r.backupFile = os.path.join(cmd.uploadDir, r.backupFile)
@@ -4602,9 +4658,8 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.error = str(e)
             rsp.success = False
         finally:
-            for i in xrange(6):
-                linux.fumount(d, 5)
-            linux.rmdir_if_empty(d)
+            storage.umount()
+            storage.clean()
 
         return jsonobject.dumps(rsp)
 
@@ -4612,29 +4667,22 @@ class VmPlugin(kvmagent.KvmAgent):
     def take_volume_backup(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = TakeVolumeBackupResponse()
-        d = tempfile.mkdtemp()
+
+        vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
+        if not vm:
+            raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % cmd.vmUuid)
+
+        storage = RemoteStorageFactory.get_remote_storage(cmd)
         fname = uuidhelper.uuid()+".qcow2"
-
         try:
-            vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
-            if not vm:
-                raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % cmd.vmUuid)
-
-            if not cmd.networkWriteBandwidth:
-                if 0 != linux.sshfs_mount_with_vm_uuid(cmd.vmUuid, cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d):
-                    raise kvmagent.KvmError(
-                        "failed to prepare backup space for [vm:%s,deviceId:%d]" % (cmd.vmUuid, cmd.volume.deviceId))
-            else:
-                if 0 != linux.sshfs_mount_with_vm_uuid(cmd.vmUuid, cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d, cmd.networkWriteBandwidth):
-                    raise kvmagent.KvmError(
-                        "failed to prepare backup space for [vm:%s,deviceId:%d]" % (cmd.vmUuid, cmd.volume.deviceId))
-
+            storage.mount()
             target_disk, _ = vm._get_target_disk(cmd.volume)
             bitmap, parent = self.do_take_volume_backup(cmd,
                     target_disk.driver.type_, # 'qcow2' etc.
                     'drive-' + target_disk.alias.name_,  # 'virtio-disk0' etc.
                     target_disk.source,
-                    os.path.join(d, fname))
+                    os.path.join(storage.local_work_dir, fname))
+
             logger.info('finished backup volume with parent: %s' % parent)
             rsp.bitmap = bitmap
             rsp.parentInstallPath = parent
@@ -4647,9 +4695,8 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.success = False
 
         finally:
-            for i in xrange(6):
-                linux.fumount(d, 5)
-            linux.rmdir_if_empty(d)
+            storage.umount()
+            storage.clean()
 
         return jsonobject.dumps(rsp)
 
