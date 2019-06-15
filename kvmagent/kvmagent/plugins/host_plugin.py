@@ -516,18 +516,19 @@ class HostPlugin(kvmagent.KvmAgent):
         qemu_img_version = shell.call("qemu-img --version | grep 'qemu-img version' | cut -d ' ' -f 3 | cut -d '(' -f 1")
         qemu_img_version = qemu_img_version.strip('\t\r\n ,')
         ipV4Addrs = shell.call("ip addr | grep -w inet | grep -v 127.0.0.1 | awk '!/zs$/{print $2}' | cut -d/ -f1")
-        system_product_name = shell.call('dmidecode -s system-product-name').strip()
-        system_serial_number = shell.call('dmidecode -s system-serial-number').strip()
-        baseboard_product_name = shell.call('dmidecode -s baseboard-product-name').strip()
+        rsp.systemProductName = 'unknown'
+        rsp.systemSerialNumber = 'unknown'
+        is_dmidecode = shell.run("dmidecode")
+        if str(is_dmidecode) == '0':
+            system_product_name = shell.call('dmidecode -s system-product-name').strip()
+            baseboard_product_name = shell.call('dmidecode -s baseboard-product-name').strip()
+            system_serial_number = shell.call('dmidecode -s system-serial-number').strip()
+            rsp.systemSerialNumber = system_serial_number if system_serial_number else 'unknown'
+            rsp.systemProductName = system_product_name if system_product_name else baseboard_product_name
 
         rsp.qemuImgVersion = qemu_img_version
         rsp.libvirtVersion = self.libvirt_version
         rsp.ipAddresses = ipV4Addrs.splitlines()
-        rsp.systemSerialNumber = system_serial_number if system_serial_number else 'unknown'
-        rsp.systemProductName = system_product_name if system_product_name else baseboard_product_name
-        if not rsp.systemProductName:
-            rsp.systemProductName = 'unknown'
-
         if IS_AARCH64:
             # FIXME how to check vt of aarch64?
             rsp.hvmCpuFlag = 'vt'
