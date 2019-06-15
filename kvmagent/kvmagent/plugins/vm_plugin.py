@@ -1135,9 +1135,11 @@ class UpdateConfigration(object):
         return True, None
 
     def updatePcideviceConfigration(self):
-        bash.bash_errorout("grub2-mkconfig -o /boot/grub2/grub.cfg")
-        bash.bash_errorout("grub2-mkconfig -o /etc/grub2-efi.cfg")
-        bash.bash_errorout("modprobe vfio && modprobe vfio-pci")
+        bash.bash_r("grub2-mkconfig -o /boot/grub2/grub.cfg")
+        bash.bash_o("grub2-mkconfig -o /boot/grub/grub.cfg")
+        bash.bash_r("grub2-mkconfig -o /etc/grub2-efi.cfg")
+        bash.bash_o("grub2-mkconfig -o /etc/grub-efi.cfg")
+        bash.bash_o("modprobe vfio && modprobe vfio-pci")
 
 def get_vm_by_uuid(uuid, exception_if_not_existing=True, conn=None):
     try:
