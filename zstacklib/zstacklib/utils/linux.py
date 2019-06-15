@@ -1096,13 +1096,13 @@ def get_cpu_speed():
     else:
         cmd = shell.ShellCmd("grep 'cpu MHz' /proc/cpuinfo | tail -n 1")
     out = cmd(False)
-    if cmd.return_code == -11:
+    try:
+        (name, speed) = out.split(':')
+        speed = speed.strip()
+    except ValueError:
+        speed = "0"
+    else :
         raise
-    elif cmd.return_code != 0:
-        cmd.raise_error()
-
-    (name, speed) = out.split(':')
-    speed = speed.strip()
     #logger.warn('%s is not existing, getting cpu speed from "cpu MHZ" of /proc/cpuinfo which may not be accurate' % max_freq)
     return int(float(speed))
 
