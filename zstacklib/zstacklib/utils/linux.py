@@ -1099,10 +1099,8 @@ def get_cpu_speed():
     try:
         (name, speed) = out.split(':')
         speed = speed.strip()
-    except ValueError:
+    except Exception:
         speed = "0"
-    else :
-        raise
     #logger.warn('%s is not existing, getting cpu speed from "cpu MHZ" of /proc/cpuinfo which may not be accurate' % max_freq)
     return int(float(speed))
 
