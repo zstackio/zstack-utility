@@ -9,6 +9,7 @@ SS100_STORAGE='SS100-Storage'
 VERSION=${PRODUCT_VERSION:-""}
 VERSION_RELEASE_NR=`echo $PRODUCT_VERSION | awk -F '.' '{print $1"."$2"."$3}'`
 ZSTACK_INSTALL_ROOT=${ZSTACK_INSTALL_ROOT:-"/usr/local/zstack"}
+ZSTACK_MINI_INSTALL_ROOT=${ZSTACK_MINI_INSTALL_ROOT:-"/usr/local/zstack-mini"}
 
 OS=''
 CENTOS6='CENTOS6'
@@ -1864,8 +1865,14 @@ install_zstack(){
     show_spinner iz_install_zstackctl
     show_spinner cp_third_party_tools
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
-      show_spinner sd_install_zstack_ui
-      zstack-ctl config_ui --restore
+        show_spinner sd_install_zstack_ui
+        zstack-ctl config_ui --restore
+        if [ x"MINI_INSTALL" = x"y" ];then
+            show_spinner sd_install_zstack_mini_ui
+            zstack-ctl configure ui_mode=zstack
+        else 
+            zstack-ctl configure ui_mode=mini
+        fi
     fi
 }
 
@@ -2421,6 +2428,18 @@ sd_install_zstack_ui(){
     pass
 }
 
+# For MINI UI Server
+sd_install_zstack_mini_ui(){
+    echo_subtitle "Install ${PRODUCT_NAME} ZStack MINI-UI (takes a couple of minutes)"
+    cd /opt/zstack-dvd/
+    bash zstack_mini_server.bin >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ $? -eq 0 ];then
+        fail "failed to install ${PRODUCT_NAME} MINI-UI in $ZSTACK_MINI_INSTALL_ROOT"
+    fi
+    cd -
+    pass
+}
+
 # For UI 1.x
 sd_start_dashboard(){
     echo_subtitle "Start ${PRODUCT_NAME} Dashboard"
@@ -2439,13 +2458,13 @@ sd_start_zstack_ui(){
     chmod a+x /etc/init.d/zstack-ui
     cd /
     zstack-ctl stop_ui >>$ZSTACK_INSTALL_LOG 2>&1
-    if [ x"$MINI_INSTALL" = x'n' ];then
-        if [ -d /usr/local/zstack-mini ]; then
-            systemctl stop zstack-mini
-            systemctl start zstack-mini
-        else 
-            zstack-ctl start_ui >>$ZSTACK_INSTALL_LOG 2>&1
-        fi
+    ui_mode=`zstack-ctl get_configuration ui_mode`
+    if [ x"$ui_mode" = x"zstack" ];then
+        zstack-ctl start_ui >>$ZSTACK_INSTALL_LOG 2>&1
+    elif [ x"$ui_mode" = x"mini" ];then
+        systemctl start zstack-mini >>$ZSTACK_INSTALL_LOG 2>&1
+    else
+        fail "Unknown ui_mode, please make sure your configuration is correct."
     fi
     [ $? -ne 0 ] && fail "failed to start zstack web ui"
     pass

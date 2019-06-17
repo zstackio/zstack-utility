@@ -1787,7 +1787,7 @@ class StartAllCmd(Command):
 
         def start_ui():
             virtualenv = '/var/lib/zstack/virtualenv/zstack-dashboard'
-            if not os.path.exists(virtualenv) and not os.path.exists(ctl.ZSTACK_UI_HOME):
+            if not os.path.exists(virtualenv) and not os.path.exists(ctl.ZSTACK_UI_HOME) and not os.path.exists(ctl.MINI_DIR):
                 info('skip starting web UI, it is not installed')
                 return
 
@@ -7933,10 +7933,7 @@ class StartUiCmd(Command):
             self.db_url = '%s/zstack_ui' % self.db_url.rstrip('/')
         _, _, self.db_username, self.db_password = ctl.get_live_mysql_portal(True)
 
-    def run(self, args):
-        is_mini = os.path.exists(self.MINI_DIR)
-        if is_mini and not args.force:
-            raise CtlError("Not supported! Your system is zstack-mini, use '/root/bin/zstack-mini.sh start/stop' to start or stop mini-ui.")
+    def run_zstack_ui(self, args):
         ui_logging_path = os.path.normpath(os.path.join(ctl.zstack_home, "../../logs/"))
 
         if args.mn_host and not validate_ip(args.mn_host):
@@ -8112,6 +8109,27 @@ class StartUiCmd(Command):
             info('successfully started UI server on the local host, PID[%s]' % pid)
         else:
             info('successfully started UI server on the local host, PID[%s], %s://%s:%s' % (pid, 'https' if args.enable_ssl else 'http', default_ip, args.server_port))
+
+    def run_mini_ui(self):
+        start_code = shell_return("systemctl start zstack-mini")
+        check_status = "zstack-ctl ui_status"
+        (status_code, status_output) = commands.getstatusoutput(check_status)
+
+        if start_code == 0 and "Running" in status_output:
+            info('successfully started MINI UI server on the local host, PID[%s]' % pid)
+            
+
+
+    def run(self, args):
+        ui_mode = ctl.read_property('ui_mode')
+        if ui_mode == "zstack":
+            self.run_zstack_ui(args)
+        elif ui_mode == "mini" and not args.force:
+            self.run_mini_ui()
+        elif ui_mode == "mini" and args.force:
+            self.run_zstack_ui(args)
+        else :
+            raise CtlError("Unknown ui_mode %s, please make sure your configuration is correct." % ui_mode)
 
 # For UI 2.0
 class ConfigUiCmd(Command):
