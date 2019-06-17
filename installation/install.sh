@@ -1002,8 +1002,8 @@ upgrade_zstack(){
         return
     fi
     #rerun install system libs, upgrade might need new libs
-    show_spinner is_enable_chronyd
     is_install_system_libs
+    show_spinner is_enable_chronyd
     show_spinner uz_stop_zstack
     show_spinner uz_stop_zstack_ui
     show_spinner uz_upgrade_zstack
@@ -1704,9 +1704,6 @@ uz_upgrade_zstack(){
         cd /; rm -rf $upgrade_folder
         fail "failed to upgrade local management node"
     fi
-
-    # substitute zsblk-agent.bin with zsblk-agent.aarch64.bin
-    [ `uname -m` == "aarch64" ] && mv -f ${ZSTACK_INSTALL_ROOT}/${CATALINA_ZSTACK_CLASSES}/ansible/zsblkagentansible/{zsblk-agent.aarch64.bin,zsblk-agent.bin}
 
     #Do not upgrade db, when using -i
     if [ -z $ONLY_INSTALL_ZSTACK ] ; then
@@ -3306,9 +3303,6 @@ install_system_libs
 
 #Install Ansible
 install_ansible
-
-# substitute zsblk-agent.bin with zsblk-agent.aarch64.bin
-[ `uname -m` == "aarch64" ] && mv -f ${ZSTACK_INSTALL_ROOT}/${CATALINA_ZSTACK_CLASSES}/ansible/zsblkagentansible/{zsblk-agent.aarch64.bin,zsblk-agent.bin}
 
 if [ ! -z $ONLY_INSTALL_LIBS ];then
     echo ""
