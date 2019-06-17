@@ -67,13 +67,14 @@ def check_nested_kvm(host_post_info):
     modprobe(modprobe_arg, host_post_info)
 
     modprobe_arg = ModProbeArg()
-    if 'intel' in get_remote_host_cpu(host_post_info).lower():
+    cpu_info = get_remote_host_cpu(host_post_info).lower()
+    if 'intel' in cpu_info or 'zhaoxin' in cpu_info:
         # reload kvm_intel for enable nested kvm
         if enabled_nested_flag is False:
             command = "modprobe -r kvm_intel"
             run_remote_command(command, host_post_info, return_status=True)
         modprobe_arg.name = 'kvm_intel'
-    elif 'amd' in get_remote_host_cpu(host_post_info).lower():
+    elif 'amd' in cpu_info:
         if enabled_nested_flag is False:
             command = "modprobe -r kvm_amd"
             run_remote_command(command, host_post_info, return_status=True)
@@ -151,7 +152,7 @@ zwatch_vm_agent_install_sh_dst = "%s/vm-tools.sh" % workplace
 zwatch_vm_agent_version_dst = "%s/agent_version" % workplace
 pushgateway_dst_pkg = "%s/pushgateway" % workplace
 mxgpu_driver_local_tar = "%s/mxgpu_driver.tar.gz" % file_root
-mxgpu_driver_dst_tar = "/tmp/mxgpu_driver.tar.gz"
+mxgpu_driver_dst_tar = "/var/lib/zstack/mxgpu_driver.tar.gz"
 
 # include zstacklib.py
 (distro, major_version, distro_release, distro_version) = get_remote_host_info(host_post_info)
@@ -196,8 +197,8 @@ if distro in RPM_BASED_OS:
         common_dep_list = "bridge-utils chrony conntrack-tools device-mapper-multipath expect ipmitool iproute ipset usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof MegaCli net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils python-pyudev pv rsync sed smartmontools sshpass usbutils vconfig wget %s %s %s" % (qemu_pkg, extra_pkg, common_update_list)
 
         # zstack mini needs higher version kernel etc.
-        C76_KERNEL_OR_HIGHER = get_remote_host_kernel_version(host_post_info) >= '3.10.0-957'
-        mini_dep_list = " drbd84-utils kmod-drbd84" if C76_KERNEL_OR_HIGHER else ""
+        C76_KERNEL_OR_HIGHER = get_remote_host_kernel_version(host_post_info) == '3.10.0-957'
+        mini_dep_list = " drbd84-utils kmod-drbd84" if C76_KERNEL_OR_HIGHER and not IS_AARCH64 else ""
         common_dep_list += mini_dep_list
 
         # arch specific deps
@@ -276,12 +277,6 @@ if distro in RPM_BASED_OS:
     copy_arg = CopyArg()
     copy_arg.src = zwatch_vm_agent_version_local
     copy_arg.dest = zwatch_vm_agent_version_dst
-    copy(copy_arg, host_post_info)
-
-    # copy mxgpu driver
-    copy_arg = CopyArg()
-    copy_arg.src = mxgpu_driver_local_tar
-    copy_arg.dest = mxgpu_driver_dst_tar
     copy(copy_arg, host_post_info)
 
     # handle distro version specific task
@@ -371,10 +366,6 @@ if distro in RPM_BASED_OS:
         host_post_info.post_label = "ansible.shell.install.pkg"
         host_post_info.post_label_param = "qemu-img"
         run_remote_command(command, host_post_info)
-
-    # install gim.ko to /lib/modules
-    command = "ls /tmp/mxgpu_driver.tar.gz && (cd /tmp; tar xvf /tmp/mxgpu_driver.tar.gz; cd mxgpu_driver; make install)"
-    run_remote_command(command, host_post_info)
 
 elif distro in DEB_BASED_OS:
     # name: install kvm related packages on Debian based OS
@@ -496,6 +487,12 @@ copy_arg = CopyArg()
 copy_arg.src = "files/kvm/zstack-kvmagent"
 copy_arg.dest = "/etc/init.d/"
 copy_arg.args = "mode=755"
+copy(copy_arg, host_post_info)
+
+# name: copy mxgpu driver
+copy_arg = CopyArg()
+copy_arg.src = mxgpu_driver_local_tar
+copy_arg.dest = mxgpu_driver_dst_tar
 copy(copy_arg, host_post_info)
 
 # name: install virtualenv

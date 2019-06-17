@@ -2,7 +2,9 @@
 
 @author: frank
 '''
+import base64
 import copy
+import hashlib
 import platform
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
@@ -25,8 +27,6 @@ import os.path
 import re
 import time
 import uuid
-import libvirt
-import traceback
 import tempfile
 
 IS_AARCH64 = platform.machine() == 'aarch64'
@@ -819,7 +819,10 @@ if __name__ == "__main__":
         os.chmod(bash_file, 0o755)
 
         rule_str = 'ACTION=="add|remove", SUBSYSTEM=="usb", RUN="%s"' % bash_file
-        rule_file = '/etc/udev/rules.d/usb.rules'
+        rule_path = '/etc/udev/rules.d/'
+        rule_file = os.path.join(rule_path, 'usb.rules')
+        if not os.path.exists(rule_path):
+            os.makedirs(rule_path)
         with open(rule_file, 'w') as f:
             f.write(rule_str)
 
@@ -906,25 +909,41 @@ if __name__ == "__main__":
     @in_bash
     def disable_hugepage(self, req):
         rsp = DisableHugePageRsp()
+        return_code, stdout = self._close_hugepage()
+        if return_code != 0 or "Error" in stdout:
+            rsp.success = False
+            rsp.error = stdout
+        return jsonobject.dumps(rsp)
+
+    def _close_hugepage(self):
         disable_hugepage_script = '''#!/bin/sh
+grubs=("/boot/grub2/grub.cfg" "/boot/grub/grub.cfg" "/etc/grub2-efi.cfg" "/etc/grub-efi.cfg")        
+
 # config nr_hugepages
 sysctl -w vm.nr_hugepages=0
 
 # enable nr_hugepages
 sysctl vm.nr_hugepages=0
 
-# config grub
-sed -i '/GRUB_CMDLINE_LINUX/s/[[:blank:]]*hugepagesz[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g' /etc/default/grub
-sed -i '/GRUB_CMDLINE_LINUX/s/[[:blank:]]*hugepages[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g' /etc/default/grub
-sed -i '/GRUB_CMDLINE_LINUX/s/[[:blank:]]*transparent_hugepage[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g' /etc/default/grub
+# config default grub
+sed -i '/GRUB_CMDLINE_LINUX=/s/[[:blank:]]*hugepagesz[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g' /etc/default/grub
+sed -i '/GRUB_CMDLINE_LINUX=/s/[[:blank:]]*hugepages[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g' /etc/default/grub
+sed -i '/GRUB_CMDLINE_LINUX=/s/[[:blank:]]*transparent_hugepage[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g' /etc/default/grub
 line=`cat /etc/default/grub | grep GRUB_CMDLINE_LINUX`
 result=$(echo $line | grep '\"$') 
-if [ -n "$result" ]; then 
-    grub2-mkconfig -o /boot/grub2/grub.cfg
-else 
+if [ ! -n "$result" ]; then 
     sed -i '/GRUB_CMDLINE_LINUX/s/$/\"/g' /etc/default/grub
-    grub2-mkconfig -o /boot/grub2/grub.cfg
 fi
+
+#clean boot grub config
+for var in ${grubs[@]} 
+do 
+   if [ -f $var ]; then
+       sed -i '/^[[:space:]]*linux/s/[[:blank:]]*hugepagesz[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g' $var
+       sed -i '/^[[:space:]]*linux/s/[[:blank:]]*hugepages[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g' $var
+       sed -i '/^[[:space:]]*linux/s/[[:blank:]]*transparent_hugepage[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g' $var
+   fi    
+done
 '''
         fd, disable_hugepage_script_path = tempfile.mkstemp()
         with open(disable_hugepage_script_path, 'w') as f:
@@ -932,20 +951,28 @@ fi
         logger.info('close_hugepage_script_path is: %s' % disable_hugepage_script_path)
         cmd = shell.ShellCmd('bash %s' % disable_hugepage_script_path)
         cmd(False)
-        if cmd.return_code != 0 or "Error" in cmd.stdout:
-            rsp.success = False
-            rsp.error = cmd.stdout
+
         os.remove(disable_hugepage_script_path)
-        return jsonobject.dumps(rsp)
+        return cmd.return_code, cmd.stdout
 
     @kvmagent.replyerror
     @in_bash
     def enable_hugepage(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = EnableHugePageRsp()
+
+        # clean old hugepage config
+        return_code, stdout = self._close_hugepage()
+        if return_code != 0 or "Error" in stdout:
+            rsp.success = False
+            rsp.error = stdout
+            return jsonobject.dumps(rsp)
+
         pageSize = cmd.pageSize
         reserveSize = cmd.reserveSize
         enable_hugepage_script = '''#!/bin/sh
+grubs=("/boot/grub2/grub.cfg" "/boot/grub/grub.cfg" "/etc/grub2-efi.cfg" "/etc/grub-efi.cfg")          
+
 # byte to mib
 let "reserveSize=%s/1024/1024"
 pageSize=%s
@@ -963,9 +990,16 @@ echo 3 > /proc/sys/vm/drop_caches
 echo always > /sys/kernel/mm/transparent_hugepage/enabled
 
 # config grub
-sed -i '/GRUB_CMDLINE_LINUX/s/\"$/ transparent_hugepage=always hugepagesz=%sM hugepages=\'\"$pageNum\"\'\"/g' /etc/default/grub
-grub2-mkconfig -o /boot/grub2/grub.cfg
-''' % (reserveSize, pageSize, pageSize)
+sed -i '/GRUB_CMDLINE_LINUX=/s/\"$/ transparent_hugepage=always hugepagesz=\'\"$pageSize\"\'M hugepages=\'\"$pageNum\"\'\"/g' /etc/default/grub
+
+#config boot grub
+for var in ${grubs[@]} 
+do 
+   if [ -f $var ]; then
+       sed -i '/^[[:space:]]*linux/s/$/ transparent_hugepage=always hugepagesz=\'\"$pageSize\"\'M hugepages=\'\"$pageNum\"\'/g' $var
+   fi    
+done
+''' % (reserveSize, pageSize)
 
         fd, enable_hugepage_script_path = tempfile.mkstemp()
         with open(enable_hugepage_script_path, 'w') as f:
@@ -1242,6 +1276,17 @@ grub2-mkconfig -o /boot/grub2/grub.cfg
             if cmd.reSplite and os.path.exists(ramdisk):
                 logger.debug("no need to re-splite pci device[addr:%s] into sriov pci devices" % addr)
                 return jsonobject.dumps(rsp)
+
+            # make install mxgpu driver if need to
+            mxgpu_driver_tar = "/var/lib/zstack/mxgpu_driver.tar.gz"
+            if os.path.exists(mxgpu_driver_tar):
+                r, o, e = bash_roe("tar xvf %s -C /tmp; cd /tmp/mxgpu_driver; make install" % mxgpu_driver_tar)
+                if r != 0:
+                    rsp.success = False
+                    rsp.error = "failed to install mxgpu driver, %s, %s" % (o, e)
+                    return jsonobject.dumps(rsp)
+                # rm mxgpu driver tar
+                os.remove(mxgpu_driver_tar)
 
             # check installed ko
             r, _, _ = bash_roe("lsmod | grep gim")

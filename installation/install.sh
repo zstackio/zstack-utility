@@ -317,7 +317,7 @@ fail2(){
     sync
     cleanup_function
     tput cub 6
-    echo -e "$(tput setaf 1) FAIL\n$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
+    echo -e "$(tput setaf 1) \nFAIL\n$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
     echo -e "$(tput setaf 1) Reason: $*\n$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
     echo "-------------"
     echo "$*  \n\nThe detailed installation log could be found in $ZSTACK_INSTALL_LOG " > $INSTALLATION_FAILURE
@@ -1002,8 +1002,8 @@ upgrade_zstack(){
         return
     fi
     #rerun install system libs, upgrade might need new libs
-    show_spinner is_enable_chronyd
     is_install_system_libs
+    show_spinner is_enable_chronyd
     show_spinner uz_stop_zstack
     show_spinner uz_stop_zstack_ui
     show_spinner uz_upgrade_zstack
@@ -1087,7 +1087,8 @@ upgrade_zstack(){
     #set zstack upgrade params 
     upgrade_params=''
     post_upgrade_version=`zstack-ctl get_version`
-
+    echo "CURRENT_VERSION: $CURRENT_VERSION" >>$ZSTACK_INSTALL_LOG
+    echo "post_upgrade_version: $post_upgrade_version" >>$ZSTACK_INSTALL_LOG
     for item in ${upgrade_params_array[*]}; do
         version=`echo $item | cut -d ',' -f 1`
         param=`echo $item | cut -d ',' -f 2`
@@ -1099,6 +1100,7 @@ upgrade_zstack(){
             upgrade_params="${upgrade_params} ${param}"
         fi
     done
+    echo "upgrade_params: $upgrade_params" >>$ZSTACK_INSTALL_LOG
     [ ! -z "$upgrade_params" ] && zstack-ctl setenv ZSTACK_UPGRADE_PARAMS=$upgrade_params
 
     # set ticket.sns.topic.http.url if not exists
@@ -1702,9 +1704,6 @@ uz_upgrade_zstack(){
         cd /; rm -rf $upgrade_folder
         fail "failed to upgrade local management node"
     fi
-
-    # substitute zsblk-agent.bin with zsblk-agent.aarch64.bin
-    [ `uname -m` == "aarch64" ] && mv -f ${ZSTACK_INSTALL_ROOT}/${CATALINA_ZSTACK_CLASSES}/ansible/zsblkagentansible/{zsblk-agent.aarch64.bin,zsblk-agent.bin}
 
     #Do not upgrade db, when using -i
     if [ -z $ONLY_INSTALL_ZSTACK ] ; then
@@ -2463,10 +2462,10 @@ check_version(){
     fi
     UPGRADE_VERSION=$VERSION
     if [ -z "$CURRENT_VERSION" -o -z "$UPGRADE_VERSION" ];then
-        fail "Version verification failed! Cannot get your current version or upgrade version, please check zstack status and use the correct iso/bin to upgrade."
+        fail2 "Version verification failed! Cannot get your current version or upgrade version, please check zstack status and use the correct iso/bin to upgrade."
     fi
     if [ `expr $UPGRADE_VERSION \>= $CURRENT_VERSION` -eq 0  ];then
-        fail "Upgrade version is lower than the current version, please download and use the higher one."
+        fail2 "Upgrade version is lower than the current version, please download and use the higher one."
     fi
 }
 
@@ -3168,7 +3167,7 @@ if [ x"$UPGRADE" = x'y' ]; then
         exit 1
     fi
 
-    show_spinner check_version
+    check_version
 
     ZSTACK_INSTALL_ROOT=`eval echo "~zstack"`
     touch $UPGRADE_LOCK
@@ -3304,9 +3303,6 @@ install_system_libs
 
 #Install Ansible
 install_ansible
-
-# substitute zsblk-agent.bin with zsblk-agent.aarch64.bin
-[ `uname -m` == "aarch64" ] && mv -f ${ZSTACK_INSTALL_ROOT}/${CATALINA_ZSTACK_CLASSES}/ansible/zsblkagentansible/{zsblk-agent.aarch64.bin,zsblk-agent.bin}
 
 if [ ! -z $ONLY_INSTALL_LIBS ];then
     echo ""
