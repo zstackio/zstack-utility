@@ -7293,9 +7293,7 @@ class StopDashboardCmd(Command):
         info('successfully stopped the UI server')
 
 # For UI 2.0
-class StopUiCmd(Command):
-    MINI_DIR = '/usr/local/zstack-mini'
-    def __init__(self):
+class StopUiCmd(Command):def __init__(self):
         super(StopUiCmd, self).__init__()
         self.name = 'stop_ui'
         self.description = "stop UI server on the local or remote host"
@@ -7347,7 +7345,7 @@ class StopUiCmd(Command):
             return False
 
         if "Stopped" in status_output:
-            mini_pid = get_ui_pid()
+            mini_pid = get_ui_pid('mini')
             if mini_pid:
                 shell('kill -9 %s >/dev/null 2>&1'.format(pid))
             linux.rm_dir_force("/var/run/zstack/zstack-mini-ui.port")
@@ -7449,12 +7447,11 @@ class DashboardStatusCmd(Command):
         else:
             info('UI status: %s [PID: %s]' % (colored('Stopped', 'red'), pid))
 
-def get_ui_pid():
-    is_mini = os.path.exists(ctl.MINI_DIR)
+def get_ui_pid(ui_mode='zstack'):
     # no need to consider ha because it's not supported any more
     # ha_info_file = '/var/lib/zstack/ha/ha.yaml'
     pidfile = '/var/run/zstack/zstack-ui.pid'
-    if is_mini:
+    if ui_mode == 'mini':
         pidfile = '/var/run/zstack/zstack-mini-ui.pid'
     if os.path.exists(pidfile):
         with open(pidfile, 'r') as fd:
@@ -7483,12 +7480,12 @@ class UiStatusCmd(Command):
             self._remote_status(args.host)
             return
 
-        is_mini = os.path.exists(ctl.MINI_DIR)
+        ui_mode = ctl.read_property('ui_mode')
         # no need to consider ha because it's not supported any more
         #ha_info_file = '/var/lib/zstack/ha/ha.yaml'
         portfile = '/var/run/zstack/zstack-ui.port'
         ui_port = 5000
-        if is_mini:
+        if ui_mode == "mini":
             portfile = '/var/run/zstack/zstack-mini-ui.port'
             ui_port = 8200
         if os.path.exists(portfile):
@@ -7501,7 +7498,7 @@ class UiStatusCmd(Command):
         def write_status(status):
             info('UI status: %s' % status)
 
-        pid = get_ui_pid()
+        pid = get_ui_pid(ui_mode)
         check_pid_cmd = ShellCmd('ps %s' % pid)
         output = check_pid_cmd(is_exception=False)
         cmd = create_check_ui_status_command(ui_port=port, if_https='--ssl.enabled=true' in output)
@@ -8148,7 +8145,7 @@ class StartUiCmd(Command):
 
         if "Running" in status_output:
             default_ip = get_default_ip()
-            mini_pid = get_ui_pid()
+            mini_pid = get_ui_pid('mini')
             mini_port = 8200
             ui_addr = ", http://{}:{}".format(default_ip, mini_port) if default_ip else ""
             info('successfully started MINI UI server on the local host, PID[{}]{}'.format(mini_pid, ui_addr))
