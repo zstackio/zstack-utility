@@ -7293,7 +7293,8 @@ class StopDashboardCmd(Command):
         info('successfully stopped the UI server')
 
 # For UI 2.0
-class StopUiCmd(Command):def __init__(self):
+class StopUiCmd(Command):
+    def __init__(self):
         super(StopUiCmd, self).__init__()
         self.name = 'stop_ui'
         self.description = "stop UI server on the local or remote host"
@@ -7306,7 +7307,7 @@ class StopUiCmd(Command):def __init__(self):
         cmd = '/etc/init.d/zstack-ui stop'
         ssh_run_no_pipe(host, cmd)
 
-    def stop_zstack_ui(self, args, info=True):
+    def stop_zstack_ui(self, args, show_info=True):
         if args.host != 'localhost':
             self._remote_stop(args.host)
             return
@@ -7333,7 +7334,7 @@ class StopUiCmd(Command):def __init__(self):
 
         stop_all()
         clean_pid_port()
-        if info:
+        if show_info:
             info('successfully stopped the UI server')
 
     def stop_mini_ui(self):
@@ -7356,7 +7357,7 @@ class StopUiCmd(Command):def __init__(self):
     def run(self, args):
         ui_mode = ctl.read_property('ui_mode')
         if ui_mode == "mini":
-            self.stop_zstack_ui(args, info=False)
+            self.stop_zstack_ui(args, show_info=False)
             self.stop_mini_ui()
         else :
             self.stop_zstack_ui(args)
@@ -7521,7 +7522,7 @@ class UiStatusCmd(Command):
                 write_status(colored('Stopped', 'red'))
             return False
         elif 'UP' in cmd.stdout:
-            default_ip = get_ui_addr = "http://{}"()
+            default_ip = get_ui_address()
             if not default_ip:
                 info('UI status: %s [PID:%s]' % (colored('Running', 'green'), pid))
             else:
@@ -7904,7 +7905,7 @@ class StartUiCmd(Command):
                 check_pid_cmd = ShellCmd('ps -p %s > /dev/null' % pid)
                 check_pid_cmd(is_exception=False)
                 if check_pid_cmd.return_code == 0:
-                    default_ip = get_ui_addr = "http://{}"()
+                    default_ip = get_ui_address()
                     if not default_ip:
                         info('UI server is still running[PID:%s]' % pid)
                     else:
@@ -8134,22 +8135,27 @@ class StartUiCmd(Command):
 
     def run_mini_ui(self):
         shell_return("systemctl start zstack-mini")
-        check_status = "zstack-ctl ui_status"
-        (status_code, status_output) = commands.getstatusoutput(check_status)
-        if status_code != 0 or "Stopped" in status_output:
+        @loop_until_timeout(60)
+        def check_ui_status():
+            command = 'zstack-ctl ui_status'
+            (status, output) = commands.getstatusoutput(command)
+            if status != 0:
+                return False
+            return "Running" in output
+
+        if not check_ui_status():
             info('failed to start MINI UI server on the localhost. Use zstack-ctl start_ui to restart it.')
             shell('systemctl stop zstack-mini')
             linux.rm_dir_force("/var/run/zstack/zstack-mini-ui.port")
             linux.rm_dir_force("/var/run/zstack/zstack-mini-ui.pid")
             return False
 
-        if "Running" in status_output:
-            default_ip = get_default_ip()
-            mini_pid = get_ui_pid('mini')
-            mini_port = 8200
-            ui_addr = ", http://{}:{}".format(default_ip, mini_port) if default_ip else ""
-            info('successfully started MINI UI server on the local host, PID[{}]{}'.format(mini_pid, ui_addr))
-            return True
+        default_ip = get_default_ip()
+        mini_pid = get_ui_pid('mini')
+        mini_port = 8200
+        ui_addr = ", http://{}:{}".format(default_ip, mini_port) if default_ip else ""
+        info('successfully started MINI UI server on the local host, PID[{}]{}'.format(mini_pid, ui_addr))
+        
             
     def run(self, args):
         ui_mode = ctl.read_property('ui_mode')
