@@ -1356,6 +1356,24 @@ class VmOperationJudger(object):
             raise Exception('unknown vm operation[%s]' % self.op)
 
 
+def make_spool_conf(imgfmt, dev_letter, volume):
+    d = tempfile.gettempdir()
+    fname = "{0}_{1}".format(os.path.basename(volume.installPath), dev_letter)
+    fpath = os.path.join(d, fname) + ".conf"
+    with open(fpath, "w") as fd:
+       fd.write("device_type  0\n")
+       fd.write("local_storage_type 0\n")
+       fd.write("device_format {0}\n".format(imgfmt))
+       fd.write("cluster_id 1000\n")
+       fd.write("device_id {0}\n".format(ord(dev_letter)))
+       fd.write("device_uuid {0}\n".format(fname))
+       fd.write("mount_point {0}\n".format(volume.installPath))
+       fd.write("device_size {0}\n".format(shell.call(
+           "blockdev --getsize64 {0}".format(volume.installPath))))
+
+    os.chmod(fpath, 0o600)
+    return fpath
+
 class Vm(object):
     VIR_DOMAIN_NOSTATE = 0
     VIR_DOMAIN_RUNNING = 1
@@ -1475,11 +1493,14 @@ class Vm(object):
         except:
             return False
 
-    def _wait_for_vm_running(self, timeout=60):
+    def _wait_for_vm_running(self, timeout=60, wait_console=True):
         if not linux.wait_callback_success(self.wait_for_state_change, self.VM_STATE_RUNNING, interval=0.5,
                                            timeout=timeout):
             raise kvmagent.KvmError('unable to start vm[uuid:%s, name:%s], vm state is not changing to '
                                     'running after %s seconds' % (self.uuid, self.get_name(), timeout))
+
+        if not wait_console:
+            return
 
         vnc_port = self.get_console_port()
 
@@ -1513,7 +1534,7 @@ class Vm(object):
 
         self.start(cmd.timeout)
 
-    def start(self, timeout=60, create_paused=False):
+    def start(self, timeout=60, create_paused=False, wait_console=True):
         # TODO: 1. enable hair_pin mode
         logger.debug('creating vm:\n%s' % self.domain_xml)
 
@@ -1528,7 +1549,7 @@ class Vm(object):
         if create_paused:
             self._wait_for_vm_paused(timeout)
         else:
-            self._wait_for_vm_running(timeout)
+            self._wait_for_vm_running(timeout, wait_console)
 
     def stop(self, graceful=True, timeout=5, undefine=True):
         def cleanup_addons():
@@ -1904,6 +1925,19 @@ class Vm(object):
                 return etree.tostring(disk)
             return blk()
 
+        def spool_volume():
+            def blk():
+                imgfmt = linux.get_img_fmt(volume.installPath)
+                disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
+                e(disk, 'driver', None,
+                  {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'io': 'native'})
+                e(disk, 'source', None,
+                  {'protocol': 'spool', 'name': make_spool_conf(imgfmt, dev_letter, volume)})
+                e(disk, 'target', None, {'dev': 'vd%s' % dev_letter, 'bus': 'virtio'})
+                return etree.tostring(disk)
+
+            return blk()
+
         dev_letter = self._get_device_letter(volume, addons)
         if volume.deviceType == 'iscsi':
             xml = iscsibased_volume()
@@ -1917,6 +1951,8 @@ class Vm(object):
             xml = scsilun_volume()
         elif volume.deviceType == 'block':
             xml = block_volume()
+        elif volume.deviceType == 'spool':
+            xml = spool_volume()
         else:
             raise Exception('unsupported volume deviceType[%s]' % volume.deviceType)
 
@@ -2391,7 +2427,8 @@ class Vm(object):
         logger.debug('successfully migrated vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
 
     def _interface_cmd_to_xml(self, cmd):
-        interface = Vm._build_interface_xml(cmd.nic)
+        vhostSrcPath = cmd.addons['vhostSrcPath'] if cmd.addons else None
+        interface = Vm._build_interface_xml(cmd.nic, None, vhostSrcPath)
 
         def addon():
             if cmd.addons and cmd.addons['NicQos']:
@@ -2904,6 +2941,9 @@ class Vm(object):
                 if cmd.bootMode == "UEFI":
                     e(os, 'loader', '/usr/share/edk2.git/ovmf-x64/OVMF_CODE-pure-efi.fd', attrib={'readonly': 'yes', 'type': 'pflash'})
                     e(os, 'nvram', '/var/lib/libvirt/qemu/nvram/%s.fd' % cmd.vmInstanceUuid, attrib={'template': '/usr/share/edk2.git/ovmf-x64/OVMF_VARS-pure-efi.fd'})
+                elif cmd.addons['loaderRom'] is not None:
+                    e(os, 'loader', cmd.addons['loaderRom'], {'type': 'rom'})
+
             # if not booting from cdrom, don't add any boot element in os section
             if cmd.bootDev[0] == "cdrom":
                 for boot_dev in cmd.bootDev:
@@ -2950,6 +2990,10 @@ class Vm(object):
             e(qcmd, "qemu:arg", attrib={"value": "-qmp"})
             e(qcmd, "qemu:arg", attrib={"value": "unix:%s/%s.sock,server,nowait" %
                                         (QMP_SOCKET_PATH, cmd.vmInstanceUuid)})
+            args = cmd.addons['qemuCommandLine']
+            if args is not None:
+                for arg in args:
+                    e(qcmd, "qemu:arg", attrib={"value": arg.strip('"')})
 
         def make_devices():
             root = elements['root']
@@ -3168,6 +3212,16 @@ class Vm(object):
                 else:
                     return fusionstor_blk()
 
+            def spool_volume(_dev_letter, _v):
+                imgfmt = linux.get_img_fmt(_v.installPath)
+                disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
+                e(disk, 'driver', None,
+                  {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'io': 'native'})
+                e(disk, 'source', None,
+                  {'protocol': 'spool', 'name': make_spool_conf(imgfmt, _dev_letter, _v)})
+                e(disk, 'target', None, {'dev': 'vd%s' % _dev_letter, 'bus': 'virtio'})
+                return disk
+
             def block_volume(_dev_letter, _v):
                 disk = etree.Element('disk', {'type': 'block', 'device': 'disk', 'snapshot': 'external'})
                 e(disk, 'driver', None,
@@ -3244,6 +3298,8 @@ class Vm(object):
                     vol = fusionstor_volume(dev_letter, v)
                 elif v.deviceType == 'block':
                     vol = block_volume(dev_letter, v)
+                elif v.deviceType == 'spool':
+                    vol = spool_volume(dev_letter, v)
                 else:
                     raise Exception('unknown volume deviceType: %s' % v.deviceType)
 
@@ -3265,8 +3321,9 @@ class Vm(object):
                     Vm._add_qos_to_interface(nic_xml_object, qos)
 
             devices = elements['devices']
+            vhostSrcPath = cmd.addons['vhostSrcPath'] if cmd.addons else None
             for nic in cmd.nics:
-                interface = Vm._build_interface_xml(nic, devices)
+                interface = Vm._build_interface_xml(nic, devices, vhostSrcPath)
                 addon(interface)
 
         def make_meta():
@@ -3276,8 +3333,11 @@ class Vm(object):
             e(root, 'uuid', uuidhelper.to_full_uuid(cmd.vmInstanceUuid))
             e(root, 'description', cmd.vmName)
             e(root, 'on_poweroff', 'destroy')
-            e(root, 'on_crash', 'restart')
             e(root, 'on_reboot', 'restart')
+            on_crash = cmd.addons['onCrash']
+            if on_crash is None:
+                on_crash = 'restart'
+            e(root, 'on_crash', on_crash)
             meta = e(root, 'metadata')
             zs = e(meta, 'zstack', usenamesapce=True)
             e(zs, 'internalId', str(cmd.vmInternalId))
@@ -3524,6 +3584,8 @@ class Vm(object):
                 return False
 
         def make_balloon_memory():
+            if cmd.addons['useMemBalloon'] is False:
+                return
             devices = elements['devices']
             b = e(devices, 'memballoon', None, {'model': 'virtio'})
             e(b, 'stats', None, {'period': '10'})
@@ -3570,7 +3632,9 @@ class Vm(object):
         make_audio_microphone()
         make_nics()
         make_volumes()
-        make_graphic_console()
+
+        if not cmd.addons or cmd.addons['noConsole'] is not True:
+            make_graphic_console()
         make_addons()
         make_balloon_memory()
         make_console()
@@ -3597,17 +3661,25 @@ class Vm(object):
         return vm
 
     @staticmethod
-    def _build_interface_xml(nic, devices=None):
+    def _build_interface_xml(nic, devices=None, vhostSrcPath=None):
+        iftype = 'bridge' if vhostSrcPath is None else 'vhostuser'
+
         if devices:
-            interface = e(devices, 'interface', None, {'type': 'bridge'})
+            interface = e(devices, 'interface', None, {'type': iftype})
         else:
-            interface = etree.Element('interface', attrib={'type': 'bridge'})
+            interface = etree.Element('interface', attrib={'type': iftype})
 
         e(interface, 'mac', None, attrib={'address': nic.mac})
-        e(interface, 'source', None, attrib={'bridge': nic.bridgeName})
-        e(interface, 'target', None, attrib={'dev': nic.nicInternalName})
         e(interface, 'alias', None, {'name': 'net%s' % nic.nicInternalName.split('.')[1]})
-        if nic.ips:
+
+        if iftype == 'bridge':
+            e(interface, 'source', None, attrib={'bridge': nic.bridgeName})
+            e(interface, 'target', None, attrib={'dev': nic.nicInternalName})
+        elif iftype == 'vhostuser':
+            e(interface, 'source', None, attrib={'type': 'unix', 'path': vhostSrcPath, 'mode':'client'})
+            e(interface, 'driver', None, attrib={'queues': '1'})
+
+        if nic.ips and iftype == 'bridge':
             ip4Addr = None
             ip6Addrs = []
             for addr in nic.ips:
@@ -3740,7 +3812,8 @@ class VmPlugin(kvmagent.KvmAgent):
                     vm.destroy()
 
             vm = Vm.from_StartVmCmd(cmd)
-            vm.start(cmd.timeout, cmd.createPaused)
+            wait_console = True if not cmd.addons or cmd.addons['noConsole'] is not True else False
+            vm.start(cmd.timeout, cmd.createPaused, wait_console)
         except libvirt.libvirtError as e:
             logger.warn(linux.get_exception_stacktrace())
             if "Device or resource busy" in str(e.message):
