@@ -110,6 +110,8 @@ LICENSE_FOLDER='/var/lib/zstack/license/'
 ZSTACK_TRIAL_LICENSE='./zstack_trial_license'
 ZSTACK_OLD_LICENSE_FOLDER=$ZSTACK_INSTALL_ROOT/license
 
+DEFAULT_UI_PORT='5000'
+
 # start/stop zstack_tui
 ZSTACK_TUI_SERVICE='/usr/lib/systemd/system/getty@tty1.service'
 start_zstack_tui() {
@@ -1867,11 +1869,12 @@ install_zstack(){
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
         show_spinner sd_install_zstack_ui
         zstack-ctl config_ui --restore
-        if [ x"MINI_INSTALL" = x"y" ];then
+        if [ x"$MINI_INSTALL" = x"y" ];then
             show_spinner sd_install_zstack_mini_ui
-            zstack-ctl configure ui_mode=zstack
-        else 
+            DEFAULT_UI_PORT=8200
             zstack-ctl configure ui_mode=mini
+        else 
+            zstack-ctl configure ui_mode=zstack
         fi
     fi
 }
@@ -2431,12 +2434,10 @@ sd_install_zstack_ui(){
 # For MINI UI Server
 sd_install_zstack_mini_ui(){
     echo_subtitle "Install ${PRODUCT_NAME} ZStack MINI-UI (takes a couple of minutes)"
-    cd /opt/zstack-dvd/
-    bash zstack_mini_server.bin >>$ZSTACK_INSTALL_LOG 2>&1
-    if [ $? -eq 0 ];then
+    bash /opt/zstack-dvd/zstack_mini_server.bin >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ $? -ne 0 ];then
         fail "failed to install ${PRODUCT_NAME} MINI-UI in $ZSTACK_MINI_INSTALL_ROOT"
     fi
-    cd -
     pass
 }
 
@@ -3420,17 +3421,12 @@ fi
 echo ""
 echo_star_line
 touch $README
-if [ x"$MINI_INSTALL" = x'n' ];then
-    ui_msg="UI is running, visit $(tput setaf 4)http://$MANAGEMENT_IP:5000$(tput sgr0) in Chrome
-      Use $(tput setaf 3)zstack-ctl [stop_ui|start_ui]$(tput sgr0) to stop/start the UI service"
-else 
-    ui_msg="UI is not installed, because your zstack type is MINI"
-fi
 
 echo -e "${PRODUCT_NAME} All In One ${VERSION} Installation Completed:
  - Installation path: $ZSTACK_INSTALL_ROOT
 
- - $ui_msg
+ - UI is running, visit $(tput setaf 4)http://$MANAGEMENT_IP:$DEFAULT_UI_PORT$(tput sgr0) in Chrome
+      Use $(tput setaf 3)zstack-ctl [stop_ui|start_ui]$(tput sgr0) to stop/start the UI service
 
  - Management node is running
       Use $(tput setaf 3)zstack-ctl [stop|start]$(tput sgr0) to stop/start it
