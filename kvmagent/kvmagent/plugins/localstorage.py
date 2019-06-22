@@ -620,6 +620,9 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             if not os.path.exists(dirname):
                 os.makedirs(dirname)
 
+            if cmd.preallocation is not None:
+                cmd.kvmHostAddons.qcow2Options += cmd.preallocation
+
             if cmd.backingFile:
                 linux.qcow2_create_with_backing_file_and_cmd(cmd.backingFile, cmd.installUrl, cmd)
             else:
