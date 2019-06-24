@@ -1720,3 +1720,19 @@ else:
     libc = ctypes.CDLL("libc.so.6")
     def sync():
         libc.sync()
+
+def updateGrubFile(grepCmd, sedCmd, files):
+    if not grepCmd is None:
+        for file in files:            
+            if os.path.exists(file):
+                cmd = shell.ShellCmd("%s %s" % (grepCmd, file))
+                cmd(is_exception = False)
+                if cmd.return_code == 0:
+                    cmd = shell.ShellCmd("%s %s" % (sedCmd, file))
+                    cmd(is_exception=True)
+    else:
+        for file in files:
+            if os.path.exists(file):
+                cmd = shell.ShellCmd("%s %s" % (sedCmd, file))
+                cmd(is_exception=True)
+    return True, None
