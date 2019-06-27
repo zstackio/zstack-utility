@@ -680,6 +680,11 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
         namespaces = {}
         for u in cmd.userdata:
+            if u.l3NetworkUuid in self.userData_vms:
+                if u.vmIp not in self.userData_vms[u.l3NetworkUuid]:
+                    self.userData_vms[u.l3NetworkUuid].append(u.vmIp)
+            else:
+                self.userData_vms[u.l3NetworkUuid] = [u.vmIp]
             if u.namespaceName not in namespaces:
                 namespaces[u.namespaceName] = u
             else:
@@ -855,6 +860,17 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         conf_path = os.path.join(conf_folder, 'lighttpd.conf')
         http_root = os.path.join(conf_folder, 'html')
 
+        if to.l3NetworkUuid in self.userData_vms:
+            if to.vmIp not in self.userData_vms[to.l3NetworkUuid]:
+                self.userData_vms[to.l3NetworkUuid].append(to.vmIp)
+        else:
+            self.userData_vms[to.l3NetworkUuid] = [to.vmIp]
+
+        if to.l3NetworkUuid in self.userData_vms:
+            userdata_vm_ips = self.userData_vms[to.l3NetworkUuid]
+        else:
+            userdata_vm_ips = []
+
         conf = '''\
 server.document-root = "{{http_root}}"
 
@@ -870,16 +886,30 @@ $HTTP["remoteip"] =~ "^(.*)$" {
         proxy.server = ( "" =>
            ( ( "host" => "{{pushgateway_ip}}", "port" => {{pushgateway_port}} ) )
         )
+{% for ip in userdata_vm_ips -%}
+    } else $HTTP["remoteip"] == "{{ip}}" {
+        url.rewrite-once = (
+            "^/.*/meta-data/(.+)$" => "./{{ip}}/meta-data/$1",
+            "^/.*/meta-data$" => "./{{ip}}/meta-data",
+            "^/.*/meta-data/$" => "./{{ip}}/meta-data/",
+            "^/.*/user-data$" => "./{{ip}}/user-data",
+            "^/.*/user_data$" => "./{{ip}}/user_data",
+            "^/.*/meta_data.json$" => "./{{ip}}/meta_data.json",
+            "^/.*/password$" => "./{{ip}}/password",
+            "^/.*/$" => "./{{ip}}/$1"
+        )
+        dir-listing.activate = "enable"
+{% endfor -%}
     } else $HTTP["remoteip"] =~ "^(.*)$" {
         url.rewrite-once = (
-            "^/.*/meta-data/(.+)$" => "../%1/meta-data/$1",
-            "^/.*/meta-data$" => "../%1/meta-data",
-            "^/.*/meta-data/$" => "../%1/meta-data/",
-            "^/.*/user-data$" => "../%1/user-data",
-            "^/.*/user_data$" => "../%1/user_data",
-            "^/.*/meta_data.json$" => "../%1/meta_data.json",
-            "^/.*/password$" => "../%1/password",
-            "^/.*/$" => "../%1/$1"
+            "^/.*/meta-data/(.+)$" => "../zstack-default/meta-data/$1",
+            "^/.*/meta-data$" => "../zstack-default/meta-data",
+            "^/.*/meta-data/$" => "../zstack-default/meta-data/",
+            "^/.*/user-data$" => "../zstack-default/user-data",
+            "^/.*/user_data$" => "../zstack-default/user_data",
+            "^/.*/meta_data.json$" => "../zstack-default/meta_data.json",
+            "^/.*/password$" => "../zstack-default/password",
+            "^/.*/$" => "../zstack-default/$1"
         )
         dir-listing.activate = "enable"
     }
@@ -897,7 +927,8 @@ mimetype.assign = (
             'http_root': http_root,
             'port': to.port,
             'pushgateway_ip' : self.CONNECT_ALL_NETNS_BR_OUTER_IP,
-            'pushgateway_port' : self.KVM_HOST_PUSHGATEWAY_PORT
+            'pushgateway_port' : self.KVM_HOST_PUSHGATEWAY_PORT,
+            'userdata_vm_ips': userdata_vm_ips
         })
 
         linux.mkdir(http_root, 0777)
@@ -1012,18 +1043,21 @@ mimetype.assign = (
     @in_bash
     @lock.file_lock('/run/xtables.lock')
     def _apply_userdata_restart_httpd(self, to):
+        def check(_):
+            pid = linux.find_process_by_cmdline([conf_path])
+            return pid is not None
+
         conf_folder = os.path.join(self.USERDATA_ROOT, to.namespaceName)
         conf_path = os.path.join(conf_folder, 'lighttpd.conf')
         pid = linux.find_process_by_cmdline([conf_path])
-        if not pid:
-            shell.call('ip netns exec %s lighttpd -f %s' % (to.namespaceName, conf_path))
+        if pid:
+            linux.kill_process(pid)
 
-            def check(_):
-                pid = linux.find_process_by_cmdline([conf_path])
-                return pid is not None
+        #restart lighttpd to load new configration
+        shell.call('ip netns exec %s lighttpd -f %s' % (to.namespaceName, conf_path))
+        if not linux.wait_callback_success(check, None, 5):
+            raise Exception('lighttpd[conf-file:%s] is not running after being started %s seconds' % (conf_path, 5))
 
-            if not linux.wait_callback_success(check, None, 5):
-                raise Exception('lighttpd[conf-file:%s] is not running after being started %s seconds' % (conf_path, 5))
 
     @lock.file_lock('/run/xtables.lock')
     def work_userdata_iptables(self, CHAIN_NAME, to):
