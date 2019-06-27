@@ -532,19 +532,16 @@ wget -O- --header="Content-Type:application/json" \
 --tries=5 \
 http://{PXESERVER_DHCP_NIC_IP}:7771/zstack/asyncrest/sendcommand >>$bm_log 2>&1
 
-# baby agent
+# install shellinaboxd
 wget -P /usr/bin ftp://{PXESERVER_DHCP_NIC_IP}/shellinaboxd || curl -o /usr/bin/shellinaboxd ftp://{PXESERVER_DHCP_NIC_IP}/shellinaboxd
 chmod a+x /usr/bin/shellinaboxd
 
-[ -f /etc/rc.local ] && cp /etc/rc.local /etc/rc.local.bck
-[ -f /etc/init.d/after.local ] && cp /etc/init.d/after.local /etc/init.d/after.local.bck
-for init_file in /etc/rc.local /etc/init.d/after.local
-do
-cat > $init_file << EOF
+# baby agent
+cat > /usr/local/bin/zstack_bm_agent.sh << EOF
 #!/bin/bash
 iptables-save | grep -- "-I INPUT -p tcp -m tcp --dport 4200 -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 4200 -j ACCEPT && service iptables save)
 firewall-cmd --query-port=4200/tcp || (firewall-cmd --zone=public --add-port=4200/tcp --permanent && service firewalld restart)
-shellinaboxd -b -t -s /:SSH:127.0.0.1
+pe -ef | grep [s]hellinahoxd || shellinaboxd -b -t -s /:SSH:127.0.0.1
 
 echo "\nnotify zstack that bm instance is running:" >> $bm_log
 curl -X POST -H "Content-Type:application/json" \
@@ -557,11 +554,25 @@ wget -O- --header="Content-Type:application/json" \
 --post-data={{"baremetalInstanceUuid":"{BMUUID}"}} \
 --tries=5 \
 http://{PXESERVER_DHCP_NIC_IP}:7771/zstack/asyncrest/sendcommand >>$bm_log 2>&1
-
-exit 0
 EOF
-chmod a+x $init_file
-done
+
+cat > /etc/systemd/system/zstack-bm-agent.service << EOF
+[Unit]
+Description=ZStack Baremetal Instance Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/bash /usr/local/bin/zstack_bm_agent.sh
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable zstack-bm-agent.service
 """.format(BMUUID=cmd.bmUuid, PXESERVER_DHCP_NIC_IP=pxeserver_dhcp_nic_ip)
         with open(os.path.join(self.ZSTACK_SCRIPTS_PATH, "post_%s.sh" % cmd.pxeNicMac), 'w') as f:
             f.write(post_script)
