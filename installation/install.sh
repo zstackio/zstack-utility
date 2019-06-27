@@ -68,6 +68,7 @@ NEED_SET_MN_IP=''
 INSTALL_ENTERPRISE='n'
 
 MYSQL_ROOT_PASSWORD=''
+MYSQL_PORT='3306'
 MYSQL_NEW_ROOT_PASSWORD='zstack.mysql.password'
 MYSQL_USER_PASSWORD='zstack.password'
 MYSQL_UI_USER_PASSWORD='zstack.ui.password'
@@ -1019,7 +1020,29 @@ upgrade_zstack(){
             echo "upgrade zstack web ui" >>$ZSTACK_INSTALL_LOG
             rm -f /etc/init.d/zstack-dashboard
             rm -f /etc/init.d/zstack-ui
+
             show_spinner sd_install_zstack_ui
+
+            zstack-ctl config_ui --init
+
+            # try to deploy zstack_ui database, if already exists then do upgrade
+            UI_DATABASE_EXISTS='y'
+            mysql -uroot -p"$MYSQL_NEW_ROOT_PASSWORD" -h"$MANAGEMENT_IP" -e "use zstack_ui" >/dev/null 2>&1
+            if [ $? -ne 0 ]; then
+                UI_DATABASE_EXISTS='n'
+            fi
+
+            if [ -z $MYSQL_ROOT_PASSWORD ]; then
+                if [ x"$UI_DATABASE_EXISTS" = x'n' ]; then
+                    zstack-ctl deploy_ui_db --root-password="${MYSQL_NEW_ROOT_PASSWORD}" --zstack-ui-password="$MYSQL_UI_USER_PASSWORD" --host="$MANAGEMENT_IP" --port=${MYSQL_PORT} >>$ZSTACKCTL_INSTALL_LOG 2>&1
+                fi
+            else
+                if [ x"$UI_DATABASE_EXISTS" = x'n' ]; then
+                    zstack-ctl deploy_ui_db --root-password="${MYSQL_ROOT_PASSWORD}" --zstack-ui-password="$MYSQL_UI_USER_PASSWORD" --host="$MANAGEMENT_IP" --port=${MYSQL_PORT} >>$ZSTACKCTL_INSTALL_LOG 2>&1
+                fi
+            fi
+
+            show_spinner uz_upgrade_zstack_ui_db
         fi
 
         # Who is the new UI? zstack-dashboard(1.x) or zstack-ui(2.0)
@@ -1029,9 +1052,6 @@ upgrade_zstack(){
         elif [ -f /etc/init.d/zstack-ui ]; then
           UI_INSTALLATION_STATUS='y'
           DASHBOARD_INSTALLATION_STATUS='n'
-          # try to deploy zstack_ui database, if already exists then do upgrade
-          mysql -uroot -p"$MYSQL_NEW_ROOT_PASSWORD" -h"$MANAGEMENT_IP" -e "use zstack_ui" >/dev/null 2>&1
-          [ $? -ne 0 ] && zstack-ctl deploy_ui_db --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-ui-password="$MYSQL_UI_USER_PASSWORD" --host="$MANAGEMENT_IP" >>$ZSTACKCTL_INSTALL_LOG 2>&1 || show_spinner uz_upgrade_zstack_ui_db
         else
           fail "failed to upgrade zstack web ui"
         fi
@@ -2305,14 +2325,19 @@ cs_deploy_db(){
 
 cs_deploy_ui_db(){
     echo_subtitle "Initialize ZStack UI Database"
+    echo "--------test start--------\n" >> $ZSTACKCTL_INSTALL_LOG
+    echo "Initialize ZStack UI Database\n" >> $ZSTACKCTL_INSTALL_LOG
+    echo $MYSQL_PORT"\n" >> $ZSTACKCTL_INSTALL_LOG
+    echo ${MYSQL_PORT}"\n" >> $ZSTACKCTL_INSTALL_LOG
+    echo "--------test end--------\n" >> $ZSTACKCTL_INSTALL_LOG
     if [ -z $NEED_DROP_DB ]; then
         if [ -z $NEED_KEEP_DB ]; then
-            zstack-ctl deploy_ui_db --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-ui-password="$MYSQL_UI_USER_PASSWORD" --host=$MANAGEMENT_IP >>$ZSTACKCTL_INSTALL_LOG 2>&1
+            zstack-ctl deploy_ui_db --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-ui-password="$MYSQL_UI_USER_PASSWORD" --host=${MANAGEMENT_IP} --port=${MYSQL_PORT} >>$ZSTACKCTL_INSTALL_LOG 2>&1
         else
-            zstack-ctl deploy_ui_db --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-ui-password="$MYSQL_UI_USER_PASSWORD" --host=$MANAGEMENT_IP --keep-db >>$ZSTACKCTL_INSTALL_LOG 2>&1
+            zstack-ctl deploy_ui_db --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-ui-password="$MYSQL_UI_USER_PASSWORD" --host=${MANAGEMENT_IP} --port=${MYSQL_PORT} --keep-db >>$ZSTACKCTL_INSTALL_LOG 2>&1
         fi
     else
-        zstack-ctl deploy_ui_db --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-ui-password="$MYSQL_UI_USER_PASSWORD" --host=$MANAGEMENT_IP --drop >>$ZSTACKCTL_INSTALL_LOG 2>&1
+        zstack-ctl deploy_ui_db --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-ui-password="$MYSQL_UI_USER_PASSWORD" --host=${MANAGEMENT_IP} --port=${MYSQL_PORT} --drop >>$ZSTACKCTL_INSTALL_LOG 2>&1
     fi
     if [ $? -ne 0 ];then
         grep 'detected existing zstack_ui database' $ZSTACKCTL_INSTALL_LOG >& /dev/null
@@ -2763,6 +2788,8 @@ Options:
   -t ZSTACK_START_TIMEOUT
         The timeout for waiting ZStack start. The default value is $ZSTACK_START_TIMEOUT
 
+  -T MYSQL_PORT   port for MySQL. 3306 is set by default
+
   -u    Upgrade zstack management node and database. Make sure to backup your database, before executing upgrade command: mysqldump -u root -proot_password --host mysql_ip --port mysql_port zstack > path_to_db_dump.sql
 
   -z    Only install ZStack, without start ZStack management node.
@@ -2820,7 +2847,7 @@ Following command installs ${PRODUCT_NAME} management node and monitor. It will 
 }
 
 OPTIND=1
-while getopts "f:H:I:n:p:P:r:R:t:y:acC:L:dDEFhiklmMNoOqsuz" Option
+while getopts "f:H:I:n:p:P:r:R:t:y:acC:L:T:dDEFhiklmMNoOqsuz" Option
 do
     case $Option in
         a ) NEED_NFS='y' && NEED_HTTP='y' && YUM_ONLINE_REPO='y';;
@@ -2865,6 +2892,7 @@ do
         # -s: skip syncing from repo.zstack.io
         s ) SKIP_SYNC='y';;
         t ) ZSTACK_START_TIMEOUT=$OPTARG;;
+        T ) MYSQL_PORT=$OPTARG;;
         u ) UPGRADE='y';;
         y ) HTTP_PROXY=$OPTARG;;
         z ) NOT_START_ZSTACK='y';;
