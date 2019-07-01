@@ -6436,7 +6436,15 @@ class InstallZstackUiCmd(Command):
         info('found installation script at %s, start installing ZStack web UI' % install_script)
         shell('bash %s zstack-ui' % install_script)
 
+    def install_mini_ui(self):
+        shell('bash ')
+
     def run(self, args):
+        ui_mode = ctl.read_property('ui_mode')
+        if ui_mode == 'mini':
+            self.install_mini_ui()
+            return
+
         if not args.host:
             self._install_to_local(args)
             return
