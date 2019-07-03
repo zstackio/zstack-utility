@@ -344,6 +344,24 @@ class HotUnplugPciDeviceRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(HotUnplugPciDeviceRsp, self).__init__()
 
+class AttachPciDeviceToHostCommand(kvmagent.AgentCommand):
+    def __init__(self):
+        super(AttachPciDeviceToHostCommand, self).__init__()
+        self.pciDeviceAddress = None
+
+class AttachPciDeviceToHostRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(AttachPciDeviceToHostRsp, self).__init__()
+
+class DetachPciDeviceFromHostCommand(kvmagent.AgentCommand):
+    def __init__(self):
+        super(DetachPciDeviceFromHostCommand, self).__init__()
+        self.pciDeviceAddress = None
+
+class DetachPciDeviceFromHostRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(DetachPciDeviceFromHostRsp, self).__init__()
+
 class KvmAttachUsbDeviceRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(KvmAttachUsbDeviceRsp, self).__init__()
@@ -3583,6 +3601,8 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_DELETE_CONSOLE_FIREWALL_PATH = "/vm/console/deletefirewall"
     HOT_PLUG_PCI_DEVICE = "/pcidevice/hotplug"
     HOT_UNPLUG_PCI_DEVICE = "/pcidevice/hotunplug"
+    ATTACH_PCI_DEVICE_TO_HOST = "/pcidevice/attachtohost"
+    DETACH_PCI_DEVICE_FROM_HOST = "/pcidevice/detachfromhost"
     KVM_ATTACH_USB_DEVICE_PATH = "/vm/usbdevice/attach"
     KVM_DETACH_USB_DEVICE_PATH = "/vm/usbdevice/detach"
     RELOAD_USB_REDIRECT_PATH = "/vm/usbdevice/reload"
@@ -4788,15 +4808,12 @@ class VmPlugin(kvmagent.KvmAgent):
 </hostdev>''' % (domain, bus, slot, function)
         spath = linux.write_to_temp_file(content)
 
-        r, o, e = bash.bash_roe("virsh nodedev-detach pci_%s" % addr.replace(':', '_').replace('.', '_'))
-        logger.debug("nodedev-detach %s: %s, %s" % (addr, o, e))
-        if r != 0:
-            rsp.success = False
-            rsp.error = "failed to nodedev-detach %s: %s, %s" % (addr, o, e)
-            return jsonobject.dumps(rsp)
-
+        # do not attach pci device immediately after detach pci device from same vm
+        vm = get_vm_by_uuid(cmd.vmUuid)
+        vm._wait_vm_run_until_seconds(60)
+        self.timeout_object.wait_until_object_timeout('hot-unplug-pci-device-from-vm-%s' % cmd.vmUuid)
         r, o, e = bash.bash_roe("virsh attach-device %s %s" % (cmd.vmUuid, spath))
-        logger.debug("attach-device %s to %s: %s, %s" % (spath, cmd.vmUuid, o, e))
+        self.timeout_object.put('hot-plug-pci-device-to-vm-%s' % cmd.vmUuid, timeout=30)
         if r != 0:
             rsp.success = False
             err = self.handle_vfio_irq_conflict_with_addr(cmd.vmUuid, addr)
@@ -4804,6 +4821,8 @@ class VmPlugin(kvmagent.KvmAgent):
                 rsp.error = "failed to attach-device %s to %s: %s, %s" % (addr, cmd.vmUuid, o, e)
             else:
                 rsp.error = "failed to handle_vfio_irq_conflict_with_addr: %s, details: %s %s" % (err, o, e)
+
+        logger.debug("attach-device %s to %s: %s, %s" % (spath, cmd.vmUuid, o, e))
         return jsonobject.dumps(rsp)
 
     @in_bash
@@ -4875,6 +4894,12 @@ class VmPlugin(kvmagent.KvmAgent):
 </hostdev>''' % (domain, bus, slot, function)
         spath = linux.write_to_temp_file(content)
 
+        # do not detach pci device immediately after attach pci device to same vm
+        vm = get_vm_by_uuid(cmd.vmUuid)
+        vm._wait_vm_run_until_seconds(60)
+        self.timeout_object.wait_until_object_timeout('hot-plug-pci-device-to-vm-%s' % cmd.vmUuid)
+        self.timeout_object.put('hot-unplug-pci-device-from-vm-%s' % cmd.vmUuid, timeout=10)
+
         retry_num = 4
         retry_interval = 5
         logger.debug("try to virsh detach xml for %d times: %s" % (retry_num, content))
@@ -4882,7 +4907,7 @@ class VmPlugin(kvmagent.KvmAgent):
             r, o, e = bash.bash_roe("virsh detach-device %s %s" % (cmd.vmUuid, spath))
             succ = linux.wait_callback_success(lambda args: not find_pci_device(args[0], args[1]), [cmd.vmUuid, addr], timeout=retry_interval)
             if succ:
-                break;
+                break
 
             if i < retry_num:
                 continue
@@ -4896,12 +4921,34 @@ class VmPlugin(kvmagent.KvmAgent):
                 rsp.success = False
                 rsp.error = "pci device %s still exists on vm %s after %ds" % (addr, cmd.vmUuid, retry_num * retry_interval)
                 return jsonobject.dumps(rsp)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
+    def attach_pci_device_to_host(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AttachPciDeviceToHostRsp()
+        addr = cmd.pciDeviceAddress
 
         r, o, e = bash.bash_roe("virsh nodedev-reattach pci_%s" % addr.replace(':', '_').replace('.', '_'))
         logger.debug("nodedev-reattach %s: %s, %s" % (addr, o, e))
         if r != 0:
             rsp.success = False
-            rsp.error = "failed to nodedev-reattach %s: %s, %s" % (addr, cmd.vmUuid, o, e)
+            rsp.error = "failed to nodedev-reattach %s: %s, %s" % (addr, o, e)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
+    def detach_pci_device_from_host(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = DetachPciDeviceFromHostRsp()
+        addr = cmd.pciDeviceAddress
+
+        r, o, e = bash.bash_roe("virsh nodedev-detach pci_%s" % addr.replace(':', '_').replace('.', '_'))
+        logger.debug("nodedev-detach %s: %s, %s" % (addr, o, e))
+        if r != 0:
+            rsp.success = False
+            rsp.error = "failed to nodedev-detach %s: %s, %s" % (addr, o, e)
         return jsonobject.dumps(rsp)
 
     def _get_next_usb_port(self, vmUuid, bus):
@@ -5072,6 +5119,8 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_DELETE_CONSOLE_FIREWALL_PATH, self.delete_console_firewall_rule)
         http_server.register_async_uri(self.HOT_PLUG_PCI_DEVICE, self.hot_plug_pci_device)
         http_server.register_async_uri(self.HOT_UNPLUG_PCI_DEVICE, self.hot_unplug_pci_device)
+        http_server.register_async_uri(self.ATTACH_PCI_DEVICE_TO_HOST, self.attach_pci_device_to_host)
+        http_server.register_async_uri(self.DETACH_PCI_DEVICE_FROM_HOST, self.detach_pci_device_from_host)
         http_server.register_async_uri(self.KVM_ATTACH_USB_DEVICE_PATH, self.kvm_attach_usb_device)
         http_server.register_async_uri(self.KVM_DETACH_USB_DEVICE_PATH, self.kvm_detach_usb_device)
         http_server.register_async_uri(self.RELOAD_USB_REDIRECT_PATH, self.reload_redirect_usb)
