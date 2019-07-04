@@ -3413,6 +3413,14 @@ if [ -f /bin/systemctl ]; then
     systemctl start zstack.service >/dev/null 2>&1
 fi
 
+#Start bootstrap service for mini
+if [ x"$MINI_INSTALL" = x"y" ];then
+    bash $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_CLASSES/ansible/zsnagentansible/zsn-agent.bin
+    cp -f $ZSTACK_INSTALL_ROOT/zsn-agent/bin/zstack-network-agent /etc/init.d/
+    systemctl enable zstack-network-agent
+    chkconfig zstack-network-agent on
+fi
+
 #Print all installation message
 if [ -z $NOT_START_ZSTACK ]; then
     [ -z $VERSION ] && VERSION=`zstack-ctl status 2>/dev/null|grep version|awk '{print $2}'`
