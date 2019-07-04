@@ -411,12 +411,14 @@ class HostPlugin(kvmagent.KvmAgent):
     IDENTIFY_HOST = "/host/identify"
     GET_HOST_NETWORK_FACTS = "/host/networkfacts"
     HOST_XFS_SCRAPE_PATH = "/host/xfs/scrape"
+    HOST_SHUTDOWN = "/host/shutdown"
     GET_PCI_DEVICES = "/pcidevice/get"
     CREATE_PCI_DEVICE_ROM_FILE = "/pcidevice/createrom"
     GENERATE_SRIOV_PCI_DEVICES = "/pcidevice/generate"
     UNGENERATE_SRIOV_PCI_DEVICES = "/pcidevice/ungenerate"
     GENERATE_VFIO_MDEV_DEVICES = "/mdevdevice/generate"
     UNGENERATE_VFIO_MDEV_DEVICES = "/mdevdevice/ungenerate"
+
 
     def _get_libvirt_version(self):
         ret = shell.call('libvirtd --version')
@@ -908,6 +910,16 @@ if __name__ == "__main__":
                     rsp.volumeFragMap[key] = int(o) - 1
 
         return jsonobject.dumps(rsp)
+
+    def shutdown_host(self, req):
+        self.do_shutdown_host()
+        return jsonobject.dumps(kvmagent.AgentResponse())
+
+    @thread.AsyncThread
+    def do_shutdown_host(self):
+        logger.debug("It is going to shutdown host after 1 sec")
+        time.sleep(1)
+        shell.call("sudo init 0")
 
     @kvmagent.replyerror
     @in_bash
@@ -1449,6 +1461,7 @@ done
         http_server.register_async_uri(self.IDENTIFY_HOST, self.identify_host)
         http_server.register_async_uri(self.GET_HOST_NETWORK_FACTS, self.get_host_network_facts)
         http_server.register_async_uri(self.HOST_XFS_SCRAPE_PATH, self.get_xfs_frag_data)
+        http_server.register_async_uri(self.HOST_SHUTDOWN, self.shutdown_host)
         http_server.register_async_uri(self.GET_PCI_DEVICES, self.get_pci_info)
         http_server.register_async_uri(self.CREATE_PCI_DEVICE_ROM_FILE, self.create_pci_device_rom_file)
         http_server.register_async_uri(self.GENERATE_SRIOV_PCI_DEVICES, self.generate_sriov_pci_devices)
