@@ -112,6 +112,7 @@ class Cli(object):
     IAM2_USER_RESET_PASSWORD_NAME = 'APIUpdateIAM2VirtualIDMsg'
     QUERY_ACCOUNT_NAME = 'APIQueryAccountMsg'
     GET_LICENSE_INFO = 'APIGetLicenseInfoMsg'
+    POWER_OFF_HOST = 'APIPowerOffHostMsg'
     GET_TWO_FACTOR_AUTHENTICATION_SECRET = 'APIGetTwoFactorAuthenticationSecretMsg'
     GET_TWO_FACTOR_AUTHENTICATION_STATE = 'APIGetTwoFactorAuthenticationStateMsg'
     no_session_message = [LOGIN_MESSAGE_NAME, LOGIN_BY_USER_NAME, LOGIN_BY_LDAP_MESSAGE_NAME,
@@ -545,6 +546,9 @@ Parse command parameters error:
                 if not msg.password:
                     raise CliError('"password" must be specified')
                 msg.password = hashlib.sha512(msg.password).hexdigest()
+
+            if apiname == self.POWER_OFF_HOST:
+                msg.adminPassword = hashlib.sha512(msg.adminPassword).hexdigest()
 
             if apiname in [self.USER_RESET_PASSWORD_NAME, self.ACCOUNT_RESET_PASSWORD_NAME,
                            self.IAM2_USER_RESET_PASSWORD_NAME]:
