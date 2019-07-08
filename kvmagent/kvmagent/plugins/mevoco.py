@@ -904,7 +904,9 @@ server.bind = "169.254.169.254"
 dir-listing.activate = "enable"
 index-file.names = ( "index.html" )
 
-server.modules += ("mod_proxy", "mod_rewrite")
+server.modules += ("mod_proxy", "mod_rewrite", "mod_access", "mod_accesslog",)
+accesslog.filename = "/var/log/lighttpd/lighttpd_access.log"
+server.errorlog = "/var/log/lighttpd/lighttpd_error.log"
 
 $HTTP["remoteip"] =~ "^(.*)$" {
     $HTTP["url"] =~ "^/metrics/job" {
@@ -914,14 +916,14 @@ $HTTP["remoteip"] =~ "^(.*)$" {
 {% for ip in userdata_vm_ips -%}
     } else $HTTP["remoteip"] == "{{ip}}" {
         url.rewrite-once = (
-            "^/.*/meta-data/(.+)$" => "./{{ip}}/meta-data/$1",
-            "^/.*/meta-data$" => "./{{ip}}/meta-data",
-            "^/.*/meta-data/$" => "./{{ip}}/meta-data/",
-            "^/.*/user-data$" => "./{{ip}}/user-data",
-            "^/.*/user_data$" => "./{{ip}}/user_data",
-            "^/.*/meta_data.json$" => "./{{ip}}/meta_data.json",
-            "^/.*/password$" => "./{{ip}}/password",
-            "^/.*/$" => "./{{ip}}/$1"
+            "^/.*/meta-data/(.+)$" => "/{{ip}}/meta-data/$1",
+            "^/.*/meta-data$" => "/{{ip}}/meta-data",
+            "^/.*/meta-data/$" => "/{{ip}}/meta-data/",
+            "^/.*/user-data$" => "/{{ip}}/user-data",
+            "^/.*/user_data$" => "/{{ip}}/user_data",
+            "^/.*/meta_data.json$" => "/{{ip}}/meta_data.json",
+            "^/.*/password$" => "/{{ip}}/password",
+            "^/.*/$" => "/{{ip}}/$1"
         )
         dir-listing.activate = "enable"
 {% endfor -%}
