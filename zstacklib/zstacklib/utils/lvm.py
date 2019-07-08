@@ -962,15 +962,16 @@ def do_active_lv(absolutePath, lockType, recursive):
             handle_lv(LvmlockdLockType.SHARE, absolutePath)
 
 
+# FIXME(weiw): drbd_path is a hack
 @bash.in_bash
-def create_lvm_snapshot(absolutePath, remove_oldest=True, snapName=None, size_percent=0.1):
-    # type: (str, str, float) -> str
+def create_lvm_snapshot(absolutePath, remove_oldest=True, snapName=None, size_percent=0.1, drbd_path=None):
+    # type: (str, bool, str, float) -> str
     if snapName is None:
         snapName = get_new_snapshot_name(absolutePath, remove_oldest)
     if is_thin_lv(absolutePath):
         size_command = ""
     else:
-        virtual_size = linux.qcow2_virtualsize(absolutePath)
+        virtual_size = linux.qcow2_virtualsize(absolutePath) if drbd_path is None else linux.qcow2_virtualsize(drbd_path)
         if virtual_size <= 2147483648:  # 2GB
             snap_size = calcLvReservedSize(virtual_size)
             snap_size = int(snap_size / 512 + 1) * 512
