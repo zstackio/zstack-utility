@@ -330,6 +330,8 @@ Parse command parameters error:
 
                 if apiname == 'APIAddSecurityGroupRuleMsg' and params[0] == 'rules':
                     all_params[params[0]] = eval(params[1])
+                elif apiname == 'APIBootstrapMiniHost' and params[0] in ['local', 'peer']:
+                    all_params[params[0]] = eval_string(params[0], params[1])
                 elif apiname in ['APIGetHostMonitoringDataMsg', 'APIGetVmMonitoringDataMsg',
                                  'APIMonitoringPassThroughMsg'] and params[0] == 'query':
                     all_params[params[0]] = eval(params[1])
