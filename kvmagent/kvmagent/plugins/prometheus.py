@@ -172,6 +172,9 @@ def collect_raid_state():
         'physical_disk_state': GaugeMetricFamily('physical_disk_state',
                                                  'physical disk state', None,
                                                  ['slot_number', 'disk_group']),
+        'physical_disk_temperature': GaugeMetricFamily('physical_disk_temperature',
+                                                 'physical disk temperature', None,
+                                                 ['slot_number', 'disk_group']),
     }
     if bash_r("/opt/MegaRAID/MegaCli/MegaCli64 -LDInfo -LALL -aAll") != 0:
         return metrics.values()
@@ -186,7 +189,7 @@ def collect_raid_state():
             metrics['raid_state'].add_metric([target_id], convert_raid_state_to_int(state))
 
     disk_info = bash_o(
-        "/opt/MegaRAID/MegaCli/MegaCli64 -PDList -aAll | grep -E 'Slot Number|DiskGroup|Firmware state'").strip().splitlines()
+        "/opt/MegaRAID/MegaCli/MegaCli64 -PDList -aAll | grep -E 'Slot Number|DiskGroup|Firmware state|Drive Temperature'").strip().splitlines()
     slot_number = state = disk_group = None
     for info in disk_info:
         if "Slot Number" in info:
@@ -195,6 +198,9 @@ def collect_raid_state():
             kvs = info.replace("Drive's position: ", "").split(",")
             disk_group = filter(lambda x: "DiskGroup" in x, kvs)[0]
             disk_group = disk_group.split(" ")[-1]
+        elif "Drive Temperature" in info:
+            temp = info.split(":")[1].split("C")[0]
+            metrics['physical_disk_temperature'].add_metric([slot_number, disk_group], int(temp))
         else:
             state = info.strip().split(":")[-1]
             metrics['physical_disk_state'].add_metric([slot_number, disk_group], convert_disk_state_to_int(state))
