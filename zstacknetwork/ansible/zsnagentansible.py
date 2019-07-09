@@ -103,22 +103,22 @@ copy(copy_arg, host_post_info)
 command = "bash %s %s " % (dest_pkg, fs_rootpath)
 run_remote_command(add_true_in_command(command), host_post_info)
 
+# integrate zstack-network with systemd
+run_remote_command(add_true_in_command("/bin/cp -f /usr/local/zstack/zsn-agent/bin/zstack-network-agent.service /usr/lib/systemd/system/"), host_post_info)
+run_remote_command(add_true_in_command("pkill zsn-agent; rm /etc/init.d/zstack-network-agent"), host_post_info)
 
-# integrate zstack-store with init.d
-run_remote_command(add_true_in_command("/bin/cp -f /usr/local/zstack/zsn-agent/bin/zstack-network-agent /etc/init.d/"), host_post_info)
-if tmout != None:
-    if distro in RPM_BASED_OS:
-        command = "uname -p | grep 'x86_64' && /usr/local/zstack/zsn-agent/bin/zstack-network-agent stop && export ZSNP_TMOUT=%d && /usr/local/zstack/zsn-agent/bin/zstack-network-agent start && chkconfig zstack-network-agent on" % (tmout)
-    elif distro in DEB_BASED_OS:
-        command = "uname -p | grep 'x86_64' && update-rc.d zstack-network-agent start 97 3 4 5 . stop 3 0 1 2 6 . && /usr/local/zstack/zsn-agent/bin/zstack-network-agent stop && export ZSNP_TMOUT=%d && /usr/local/zstack/zsn-agent/bin/zstack-network-agent start" % (tmout)
-else:
-    if distro in RPM_BASED_OS:
-        command = "uname -p | grep 'x86_64' && /usr/local/zstack/zsn-agent/bin/zstack-network-agent stop && /usr/local/zstack/zsn-agent/bin/zstack-network-agent start && chkconfig zstack-network-agent on"
-    elif distro in DEB_BASED_OS:
-        command = "uname -p | grep 'x86_64' && update-rc.d zstack-network-agent start 97 3 4 5 . stop 3 0 1 2 6 . && /usr/local/zstack/zsn-agent/bin/zstack-network-agent stop && /usr/local/zstack/zsn-agent/bin/zstack-network-agent start"
+if tmout is None:
+    tmout = 960
+service_env = "'ZSNARGS=-log-file /var/log/zstack/zsn-agent/zsn-agent.log -tmout %s'" % int(tmout)
+service_env = service_env.replace("/", "\/")
+command = "sed -i \"s/.*Environment=.*/Environment=%s/g\" /usr/lib/systemd/system/zstack-network-agent.service" % service_env
+run_remote_command(add_true_in_command(command), host_post_info)
+
+command = "systemctl daemon-reload && systemctl enable zstack-network-agent.service && systemctl restart zstack-network-agent.service"
 run_remote_command(add_true_in_command(command), host_post_info)
 
 host_post_info.start_time = start_time
-handle_ansible_info("SUCC: Deploy zstack network successful", host_post_info, "INFO")
+handle_ansible_info("SUCC: Deploy zstack network agent successful", host_post_info, "INFO")
+
 sys.exit(0)
 
