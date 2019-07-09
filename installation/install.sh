@@ -533,7 +533,10 @@ cs_check_hostname_mini () {
     which hostname &>/dev/null
     [ $? -ne 0 ] && return
 
+    CURRENT_HOSTNAME=`hostname`
     CHANGE_HOSTNAME="zstack-mini-`dmidecode -s system-serial-number | tr -d '-' | awk '{print substr($0, length($0)-6)}' | tr 'A-Z' 'a-z'`"
+    [ x"$CURRENT_HOSTNAME" = x"$CHANGE_HOSTNAME" ] && return
+    
     which hostnamectl >>/dev/null 2>&1
     if [ $? -ne 0 ]; then
         hostname $CHANGE_HOSTNAME >>$ZSTACK_INSTALL_LOG 2>&1
