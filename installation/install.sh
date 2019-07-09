@@ -3435,7 +3435,10 @@ fi
 if [ x"$MINI_INSTALL" = x"y" ];then
     bash $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_CLASSES/ansible/zsnagentansible/zsn-agent.bin
     cp -f $ZSTACK_INSTALL_ROOT/zsn-agent/bin/zstack-network-agent /etc/init.d/
+    cp -f /opt/zstack-dvd/mini_auto_check /etc/init.d/
     chkconfig zstack-network-agent on
+    chkconfig mini_auto_check on
+    echo "echo > /etc/motd && rm -rf /etc/init.d/mini_auto_check" >> /etc/profile
 fi
 
 #Print all installation message
