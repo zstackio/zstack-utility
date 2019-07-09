@@ -1869,13 +1869,6 @@ install_zstack(){
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
         show_spinner sd_install_zstack_ui
         zstack-ctl config_ui --restore
-        if [ x"$MINI_INSTALL" = x"y" ];then
-            show_spinner sd_install_zstack_mini_ui
-            DEFAULT_UI_PORT=8200
-            zstack-ctl configure ui_mode=mini
-        else 
-            zstack-ctl configure ui_mode=zstack
-        fi
     fi
 }
 
@@ -1894,6 +1887,13 @@ install_db(){
     #deploy initial database of zstack_ui
     show_spinner cs_deploy_ui_db
     #check hostname and ip again
+    if [ x"$MINI_INSTALL" = x"y" ];then
+        show_spinner sd_install_zstack_mini_ui
+        DEFAULT_UI_PORT=8200
+        zstack-ctl configure ui_mode=mini
+    else 
+        zstack-ctl configure ui_mode=zstack
+    fi
     ia_check_ip_hijack
     cs_clean_ssh_tmp_key $ssh_tmp_dir
 }
@@ -2433,7 +2433,7 @@ sd_install_zstack_ui(){
 
 # For MINI UI Server
 sd_install_zstack_mini_ui(){
-    echo_subtitle "Install ${PRODUCT_NAME} ZStack MINI-UI (takes a couple of minutes)"
+    echo_subtitle "Install ${PRODUCT_NAME} MINI-UI (takes a couple of minutes)"
     bash /opt/zstack-dvd/zstack_mini_server.bin >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
         fail "failed to install ${PRODUCT_NAME} MINI-UI in $ZSTACK_MINI_INSTALL_ROOT"
