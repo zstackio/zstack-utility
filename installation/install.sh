@@ -3438,7 +3438,7 @@ if [ x"$MINI_INSTALL" = x"y" ];then
     cp -f /opt/zstack-dvd/mini_auto_check /etc/init.d/
     chkconfig zstack-network-agent on
     chkconfig mini_auto_check on
-    echo "echo > /etc/motd && rm -rf /etc/init.d/mini_auto_check" >> /etc/profile
+    echo "echo > /etc/motd" >> /etc/profile
 fi
 
 #Print all installation message
