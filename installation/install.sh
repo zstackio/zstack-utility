@@ -450,7 +450,7 @@ set_tomcat_config() {
     enable_tomcat_linking
 }
 
-cs_check_hostname(){
+cs_check_hostname_zstack(){
     which hostname &>/dev/null
     [ $? -ne 0 ] && return 
 
@@ -527,6 +527,20 @@ You can also add '-q' to installer, then Installer will help you to set one.
     fi
     # insert into /etc/hosts if $HOSTS_ITEM not exists
     grep -q "$HOSTS_ITEM" /etc/hosts || echo "$HOSTS_ITEM" >> /etc/hosts
+}
+
+cs_check_hostname_mini () {
+    which hostname &>/dev/null
+    [ $? -ne 0 ] && return
+
+    CHANGE_HOSTNAME="zstack-mini-`dmidecode -s system-serial-number | tr -d '-' | awk '{print substr($0, length($0)-6)}' | tr 'A-Z' 'a-z'`"
+    which hostnamectl >>/dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        hostname $CHANGE_HOSTNAME >>$ZSTACK_INSTALL_LOG 2>&1
+    else
+        hostnamectl set-hostname $CHANGE_HOSTNAME >>$ZSTACK_INSTALL_LOG 2>&1
+        hostname $CHANGE_HOSTNAME >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
 }
 
 cs_check_mysql_password () {
@@ -660,7 +674,13 @@ check_system(){
     fi
     show_spinner cs_pre_check
     cs_check_epel
-    cs_check_hostname
+    if [ x"$MINI_INSTALL" = x"y" ];then
+        cs_check_hostname_mini
+    elif [ x"$UPGRADE" = x'y' -a `zstack-ctl get_configuration ui_mode` == "mini" ];then
+        cs_check_hostname_mini
+    else
+        cs_check_hostname_zstack
+    fi
     show_spinner do_check_system
     cs_check_zstack_data_exist
     show_spinner cs_create_repo
@@ -3410,7 +3430,6 @@ fi
 
 #Start bootstrap service for mini
 if [ x"$MINI_INSTALL" = x"y" ];then
-    hostnamectl set-hostname zstack-mini-`dmidecode -s system-serial-number | tr -d '-' | awk '{print substr($0, length($0)-6)}' | tr 'A-Z' 'a-z'`
     bash $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_CLASSES/ansible/zsnagentansible/zsn-agent.bin
     cp -f $ZSTACK_INSTALL_ROOT/zsn-agent/bin/zstack-network-agent /etc/init.d/
     chkconfig zstack-network-agent on
