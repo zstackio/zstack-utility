@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 # encoding: utf-8
 import argparse
+import commands
 import os.path
 from zstacklib import *
 from datetime import datetime
-
 
 def add_true_in_command(cmd):
     return "%s || true" % cmd
@@ -105,10 +105,30 @@ run_remote_command(add_true_in_command(command), host_post_info)
 
 # integrate zstack-network with systemd
 run_remote_command(add_true_in_command("/bin/cp -f /usr/local/zstack/zsn-agent/bin/zstack-network-agent.service /usr/lib/systemd/system/"), host_post_info)
-run_remote_command(add_true_in_command("pkill zsn-agent; rm /etc/init.d/zstack-network-agent"), host_post_info)
 
 if tmout is None:
     tmout = 960
+
+successTmout, stdoutTmout = run_remote_command(add_true_in_command("grep -- '-tmout %s' /usr/lib/systemd/system/zstack-network-agent.service" % int(tmout)), host_post_info, True, True)
+successMd5, stdoutMd5 = run_remote_command(add_true_in_command("md5sum /var/lib/zstack/zsn-agent/package/zsn-agent.bin"), host_post_info, True, True)
+successLocalMd5, localMd5 = commands.getstatusoutput("md5sum /usr/local/zstack/ansible/files/zsnagentansible/zsn-agent.bin")
+
+msg = Msg()
+post_url = host_post_info.post_url
+msg.details = "zsn agent deploying %s, %s, %s, %s, %s, %s" % (successTmout, stdoutTmout, successMd5, stdoutMd5, successLocalMd5, localMd5)
+msg.label = "ansible.weiw"
+msg.parameters = host_post_info.post_label_param
+msg.level = "WARNING"
+post_msg(msg, post_url)
+
+if successTmout is True and successMd5 is True and successLocalMd5 == 0 and \
+    len(stdoutTmout.strip()) != 0 and stdoutMd5.split(" ")[0] == localMd5.split(" ")[0]:
+    host_post_info.start_time = start_time
+    handle_ansible_info("SUCC: Deploy zstack network agent successful", host_post_info, "INFO")
+    sys.exit(0)
+
+run_remote_command(add_true_in_command("pkill zsn-agent; rm /etc/init.d/zstack-network-agent"), host_post_info)
+
 service_env = "'ZSNARGS=-log-file /var/log/zstack/zsn-agent/zsn-agent.log -tmout %s'" % int(tmout)
 service_env = service_env.replace("/", "\/")
 command = "sed -i \"s/.*Environment=.*/Environment=%s/g\" /usr/lib/systemd/system/zstack-network-agent.service" % service_env
