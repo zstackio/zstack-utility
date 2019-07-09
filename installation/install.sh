@@ -3410,6 +3410,7 @@ fi
 
 #Start bootstrap service for mini
 if [ x"$MINI_INSTALL" = x"y" ];then
+    hostnamectl set-hostname zstack-mini-`dmidecode -s system-serial-number | tr -d '-' | awk '{print substr($0, length($0)-6)}' | tr 'A-Z' 'a-z'`
     bash $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_CLASSES/ansible/zsnagentansible/zsn-agent.bin
     cp -f $ZSTACK_INSTALL_ROOT/zsn-agent/bin/zstack-network-agent /etc/init.d/
     chkconfig zstack-network-agent on
