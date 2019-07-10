@@ -127,7 +127,7 @@ if successTmout is True and successMd5 is True and successLocalMd5 == 0 and \
     handle_ansible_info("SUCC: Deploy zstack network agent successful", host_post_info, "INFO")
     sys.exit(0)
 
-run_remote_command(add_true_in_command("pkill zsn-agent; rm /etc/init.d/zstack-network-agent"), host_post_info)
+run_remote_command(add_true_in_command("pkill zsn-agent; /bin/rm /etc/init.d/zstack-network-agent"), host_post_info)
 
 service_env = "'ZSNARGS=-log-file /var/log/zstack/zsn-agent/zsn-agent.log -tmout %s'" % int(tmout)
 service_env = service_env.replace("/", "\/")
