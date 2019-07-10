@@ -1932,19 +1932,23 @@ class StartCmd(Command):
             info("chronyd restarted")
 
         def prepare_qemu_kvm_repo():
-            OLD_QEMU_KVM_VERSION = 'qemu-kvm-ev-2.6.0'
-            NEW_QEMU_KVM_VERSION = 'qemu-kvm-ev-2.9.0'
+            QEMU_KVM_VERSION_2_6_0 = 'qemu-kvm-ev-2.6.0'
+            QEMU_KVM_VERSION_2_9_0 = 'qemu-kvm-ev-2.9.0'
+            QEMU_KVM_VERSION_4_0_0 = 'qemu-kvm-ev-4.0.0'
             DEFAULT_QEMU_KVM_PATH = '/opt/zstack-dvd/Extra/qemu-kvm-ev'
 
             if len(glob.glob("/opt/zstack-dvd/Packages/centos-release-7-2.*.rpm")) > 0:
                 local_repo_version = 'c72'
-                EXPERIMENTAL_QEMU_KVM_PATH = '/opt/zstack-dvd/Extra/' + NEW_QEMU_KVM_VERSION
-            else:
+                EXPERIMENTAL_QEMU_KVM_PATH = '/opt/zstack-dvd/Extra/' + QEMU_KVM_VERSION_2_9_0
+            elif len(glob.glob("/opt/zstack-dvd/Packages/centos-release-7-4.*.rpm")) > 0:
                 local_repo_version = 'c74'
-                EXPERIMENTAL_QEMU_KVM_PATH = '/opt/zstack-dvd/Extra/' + OLD_QEMU_KVM_VERSION
+                EXPERIMENTAL_QEMU_KVM_PATH = '/opt/zstack-dvd/Extra/' + QEMU_KVM_VERSION_2_6_0
+            else:
+                local_repo_version = 'c76'
+                EXPERIMENTAL_QEMU_KVM_PATH = '/opt/zstack-dvd/Extra/' + QEMU_KVM_VERSION_4_0_0
 
             # version combinations that need to mount qemu-kvm-ev
-            version_matrix = {'c72': NEW_QEMU_KVM_VERSION, 'c74': OLD_QEMU_KVM_VERSION}
+            version_matrix = {'c72': QEMU_KVM_VERSION_2_9_0, 'c74': QEMU_KVM_VERSION_2_6_0, 'c76': QEMU_KVM_VERSION_4_0_0}
             qemu_version = ctl.read_property('KvmHost.qemu_kvm.version')
             if version_matrix[local_repo_version] == qemu_version:
                 cmd = ShellCmd("umount %s; mount --bind %s %s" % (DEFAULT_QEMU_KVM_PATH, EXPERIMENTAL_QEMU_KVM_PATH, DEFAULT_QEMU_KVM_PATH))
