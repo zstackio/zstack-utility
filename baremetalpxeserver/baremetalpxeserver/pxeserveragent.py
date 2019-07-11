@@ -541,7 +541,7 @@ cat > /usr/local/bin/zstack_bm_agent.sh << EOF
 #!/bin/bash
 iptables-save | grep -- "-I INPUT -p tcp -m tcp --dport 4200 -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 4200 -j ACCEPT && service iptables save)
 firewall-cmd --query-port=4200/tcp || (firewall-cmd --zone=public --add-port=4200/tcp --permanent && service firewalld restart)
-pe -ef | grep [s]hellinahoxd || shellinaboxd -b -t -s /:SSH:127.0.0.1
+ps -ef | grep [s]hellinahoxd || shellinaboxd -b -t -s /:SSH:127.0.0.1
 
 echo "\nnotify zstack that bm instance is running:" >> $bm_log
 curl -X POST -H "Content-Type:application/json" \
