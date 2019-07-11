@@ -104,7 +104,7 @@ run_remote_command(add_true_in_command(command), host_post_info)
 run_remote_command(add_true_in_command("/bin/cp -f /usr/local/zstack/zsblk-agent/bin/zstack-sharedblock-agent.service /usr/lib/systemd/system/"), host_post_info)
 
 service_env = "'ZSBLKARGS=-free-space %s -increment %s -log-file %s -qmp-socket-dir %s -utilization-percent %s'" \
-              % (free_spcae, increment, log_file, qmp_socket_dir, utilization_percent)
+              % (int(free_spcae), int(increment), log_file, qmp_socket_dir, utilization_percent)
 service_env = service_env.replace("/", "\/")
 command = "sed -i \"s/.*Environment=.*/Environment=%s/g\" /usr/lib/systemd/system/zstack-sharedblock-agent.service" % service_env
 run_remote_command(add_true_in_command(command), host_post_info)

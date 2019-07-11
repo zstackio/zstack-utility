@@ -679,8 +679,13 @@ check_system(){
     cs_check_epel
     if [ x"$MINI_INSTALL" = x"y" ];then
         cs_check_hostname_mini
-    elif [ x"$UPGRADE" = x'y' -a `zstack-ctl get_configuration ui_mode` == "mini" ];then
-        cs_check_hostname_mini
+    elif [ x"$UPGRADE" = x"y" ];then
+        ui_mode=`zstack-ctl get_configuration ui_mode`
+        if [ $? -ne 0 ];then
+            [ -d $ZSTACK_MINI_INSTALL_ROOT ] && zstack-ctl configure ui_mode=mini || zstack-ctl configure ui_mode=zstack
+            ui_mode=`zstack-ctl get_configuration ui_mode`
+        fi
+        [ x"$ui_mode" = x"mini" ] && cs_check_hostname_mini || cs_check_hostname_zstack
     else
         cs_check_hostname_zstack
     fi
@@ -1940,7 +1945,7 @@ il_install_license(){
       # if -E is set
       zstack-ctl install_license --license $ZSTACK_TRIAL_LICENSE >>$ZSTACK_INSTALL_LOG 2>&1
     fi
-
+    chown -R zstack:zstack /var/lib/zstack/license >>$ZSTACK_INSTALL_LOG 2>&1
     #cd $ZSTACK_INSTALL_ROOT
     #if [ -f $LICENSE_FILE ]; then
     #    zstack-ctl install_license --license $LICENSE_FILE >>$ZSTACK_INSTALL_LOG 2>&1
@@ -3434,9 +3439,9 @@ fi
 #Start bootstrap service for mini
 if [ x"$MINI_INSTALL" = x"y" ];then
     bash $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_CLASSES/ansible/zsnagentansible/zsn-agent.bin
-    cp -f $ZSTACK_INSTALL_ROOT/zsn-agent/bin/zstack-network-agent /etc/init.d/
+    /bin/cp -f /usr/local/zstack/zsn-agent/bin/zstack-network-agent.service /usr/lib/systemd/system/
     cp /opt/zstack-dvd/mini_auto_check /etc/init.d/
-    chkconfig zstack-network-agent on
+    systemctl enable zstack-network-agent
     chmod +x /etc/init.d/mini_auto_check
     echo "[ -f /etc/init.d/mini_auto_check ] && bash /etc/init.d/mini_auto_check" >> /etc/rc.local
     echo "[ -f /etc/issue.bak ] && mv /etc/issue.bak /etc/issue" >> /etc/profile

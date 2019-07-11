@@ -6437,7 +6437,7 @@ class InstallZstackUiCmd(Command):
         shell('bash %s zstack-ui' % install_script)
 
     def install_mini_ui(self):
-        mini_bin = "bash /opt/zstack-dvd/zstack_mini_server.bin"
+        mini_bin = "/opt/zstack-dvd/zstack_mini_server.bin"
         if not os.path.exists(mini_bin):
             raise CtlError('cannot find %s, please make sure you have the mini installation package.' % mini_bin)
         shell('bash /opt/zstack-dvd/zstack_mini_server.bin')
@@ -6446,7 +6446,6 @@ class InstallZstackUiCmd(Command):
         ui_mode = ctl.read_property('ui_mode')
         if ui_mode == 'mini':
             self.install_mini_ui()
-            return
 
         if not args.host:
             self._install_to_local(args)
