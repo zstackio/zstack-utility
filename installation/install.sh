@@ -9,6 +9,7 @@ SS100_STORAGE='SS100-Storage'
 VERSION=${PRODUCT_VERSION:-""}
 VERSION_RELEASE_NR=`echo $PRODUCT_VERSION | awk -F '.' '{print $1"."$2"."$3}'`
 ZSTACK_INSTALL_ROOT=${ZSTACK_INSTALL_ROOT:-"/usr/local/zstack"}
+ZSTACK_MINI_INSTALL_ROOT=${ZSTACK_MINI_INSTALL_ROOT:-"/usr/local/zstack-mini"}
 
 OS=''
 CENTOS6='CENTOS6'
@@ -108,6 +109,8 @@ LICENSE_FILE='zstack-license'
 LICENSE_FOLDER='/var/lib/zstack/license/'
 ZSTACK_TRIAL_LICENSE='./zstack_trial_license'
 ZSTACK_OLD_LICENSE_FOLDER=$ZSTACK_INSTALL_ROOT/license
+
+DEFAULT_UI_PORT='5000'
 
 # start/stop zstack_tui
 ZSTACK_TUI_SERVICE='/usr/lib/systemd/system/getty@tty1.service'
@@ -447,7 +450,7 @@ set_tomcat_config() {
     enable_tomcat_linking
 }
 
-cs_check_hostname(){
+cs_check_hostname_zstack(){
     which hostname &>/dev/null
     [ $? -ne 0 ] && return 
 
@@ -524,6 +527,23 @@ You can also add '-q' to installer, then Installer will help you to set one.
     fi
     # insert into /etc/hosts if $HOSTS_ITEM not exists
     grep -q "$HOSTS_ITEM" /etc/hosts || echo "$HOSTS_ITEM" >> /etc/hosts
+}
+
+cs_check_hostname_mini () {
+    which hostname &>/dev/null
+    [ $? -ne 0 ] && return
+
+    CURRENT_HOSTNAME=`hostname`
+    CHANGE_HOSTNAME="zstack-mini-`dmidecode -s system-serial-number | tr -d '-' | awk '{print substr($0, length($0)-6)}' | tr 'A-Z' 'a-z'`"
+    [ x"$CURRENT_HOSTNAME" = x"$CHANGE_HOSTNAME" ] && return
+    
+    which hostnamectl >>/dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        hostname $CHANGE_HOSTNAME >>$ZSTACK_INSTALL_LOG 2>&1
+    else
+        hostnamectl set-hostname $CHANGE_HOSTNAME >>$ZSTACK_INSTALL_LOG 2>&1
+        hostname $CHANGE_HOSTNAME >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
 }
 
 cs_check_mysql_password () {
@@ -657,7 +677,18 @@ check_system(){
     fi
     show_spinner cs_pre_check
     cs_check_epel
-    cs_check_hostname
+    if [ x"$MINI_INSTALL" = x"y" ];then
+        cs_check_hostname_mini
+    elif [ x"$UPGRADE" = x"y" ];then
+        ui_mode=`zstack-ctl get_configuration ui_mode`
+        if [ $? -ne 0 ];then
+            [ -d $ZSTACK_MINI_INSTALL_ROOT ] && zstack-ctl configure ui_mode=mini || zstack-ctl configure ui_mode=zstack
+            ui_mode=`zstack-ctl get_configuration ui_mode`
+        fi
+        [ x"$ui_mode" = x"mini" ] && cs_check_hostname_mini || cs_check_hostname_zstack
+    else
+        cs_check_hostname_zstack
+    fi
     show_spinner do_check_system
     cs_check_zstack_data_exist
     show_spinner cs_create_repo
@@ -1864,8 +1895,8 @@ install_zstack(){
     show_spinner iz_install_zstackctl
     show_spinner cp_third_party_tools
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
-      show_spinner sd_install_zstack_ui
-      zstack-ctl config_ui --restore
+        show_spinner sd_install_zstack_ui
+        zstack-ctl config_ui --restore
     fi
 }
 
@@ -1884,6 +1915,13 @@ install_db(){
     #deploy initial database of zstack_ui
     show_spinner cs_deploy_ui_db
     #check hostname and ip again
+    if [ x"$MINI_INSTALL" = x"y" ];then
+        show_spinner sd_install_zstack_mini_ui
+        DEFAULT_UI_PORT=8200
+        zstack-ctl configure ui_mode=mini
+    else 
+        zstack-ctl configure ui_mode=zstack
+    fi
     ia_check_ip_hijack
     cs_clean_ssh_tmp_key $ssh_tmp_dir
 }
@@ -1907,7 +1945,7 @@ il_install_license(){
       # if -E is set
       zstack-ctl install_license --license $ZSTACK_TRIAL_LICENSE >>$ZSTACK_INSTALL_LOG 2>&1
     fi
-
+    chown -R zstack:zstack /var/lib/zstack/license >>$ZSTACK_INSTALL_LOG 2>&1
     #cd $ZSTACK_INSTALL_ROOT
     #if [ -f $LICENSE_FILE ]; then
     #    zstack-ctl install_license --license $LICENSE_FILE >>$ZSTACK_INSTALL_LOG 2>&1
@@ -2421,6 +2459,16 @@ sd_install_zstack_ui(){
     pass
 }
 
+# For MINI UI Server
+sd_install_zstack_mini_ui(){
+    echo_subtitle "Install ${PRODUCT_NAME} MINI-UI (takes a couple of minutes)"
+    bash /opt/zstack-dvd/zstack_mini_server.bin >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ $? -ne 0 ];then
+        fail "failed to install ${PRODUCT_NAME} MINI-UI in $ZSTACK_MINI_INSTALL_ROOT"
+    fi
+    pass
+}
+
 # For UI 1.x
 sd_start_dashboard(){
     echo_subtitle "Start ${PRODUCT_NAME} Dashboard"
@@ -2439,13 +2487,13 @@ sd_start_zstack_ui(){
     chmod a+x /etc/init.d/zstack-ui
     cd /
     zstack-ctl stop_ui >>$ZSTACK_INSTALL_LOG 2>&1
-    if [ x"$MINI_INSTALL" = x'n' ];then
-        if [ -d /usr/local/zstack-mini ]; then
-            systemctl stop zstack-mini
-            systemctl start zstack-mini
-        else 
-            zstack-ctl start_ui >>$ZSTACK_INSTALL_LOG 2>&1
-        fi
+    ui_mode=`zstack-ctl get_configuration ui_mode`
+    if [ x"$ui_mode" = x"zstack" ];then
+        zstack-ctl start_ui >>$ZSTACK_INSTALL_LOG 2>&1
+    elif [ x"$ui_mode" = x"mini" ];then
+        systemctl start zstack-mini >>$ZSTACK_INSTALL_LOG 2>&1
+    else
+        fail "Unknown ui_mode, please make sure your configuration is correct."
     fi
     [ $? -ne 0 ] && fail "failed to start zstack web ui"
     pass
@@ -3388,6 +3436,18 @@ if [ -f /bin/systemctl ]; then
     systemctl start zstack.service >/dev/null 2>&1
 fi
 
+#Start bootstrap service for mini
+if [ x"$MINI_INSTALL" = x"y" ];then
+    bash $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_CLASSES/ansible/zsnagentansible/zsn-agent.bin
+    /bin/cp -f /usr/local/zstack/zsn-agent/bin/zstack-network-agent.service /usr/lib/systemd/system/
+    cp /opt/zstack-dvd/mini_auto_check /etc/init.d/
+    systemctl enable zstack-network-agent
+    chmod +x /etc/init.d/mini_auto_check
+    echo "[ -f /etc/init.d/mini_auto_check ] && bash /etc/init.d/mini_auto_check" >> /etc/rc.local
+    echo "[ -f /etc/issue.bak ] && mv /etc/issue.bak /etc/issue" >> /etc/profile
+    cp /etc/issue /etc/issue.bak
+fi
+
 #Print all installation message
 if [ -z $NOT_START_ZSTACK ]; then
     [ -z $VERSION ] && VERSION=`zstack-ctl status 2>/dev/null|grep version|awk '{print $2}'`
@@ -3396,17 +3456,12 @@ fi
 echo ""
 echo_star_line
 touch $README
-if [ x"$MINI_INSTALL" = x'n' ];then
-    ui_msg="UI is running, visit $(tput setaf 4)http://$MANAGEMENT_IP:5000$(tput sgr0) in Chrome
-      Use $(tput setaf 3)zstack-ctl [stop_ui|start_ui]$(tput sgr0) to stop/start the UI service"
-else 
-    ui_msg="UI is not installed, because your zstack type is MINI"
-fi
 
 echo -e "${PRODUCT_NAME} All In One ${VERSION} Installation Completed:
  - Installation path: $ZSTACK_INSTALL_ROOT
 
- - $ui_msg
+ - UI is running, visit $(tput setaf 4)http://$MANAGEMENT_IP:$DEFAULT_UI_PORT$(tput sgr0) in Chrome
+      Use $(tput setaf 3)zstack-ctl [stop_ui|start_ui]$(tput sgr0) to stop/start the UI service
 
  - Management node is running
       Use $(tput setaf 3)zstack-ctl [stop|start]$(tput sgr0) to stop/start it

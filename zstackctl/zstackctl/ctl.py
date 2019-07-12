@@ -1755,7 +1755,7 @@ class StopAllCmd(Command):
 
         def stop_ui():
             virtualenv = '/var/lib/zstack/virtualenv/zstack-dashboard'
-            if not os.path.exists(virtualenv) and not os.path.exists(ctl.ZSTACK_UI_HOME):
+            if not os.path.exists(virtualenv) and not os.path.exists(ctl.ZSTACK_UI_HOME) and not os.path.exists(ctl.MINI_DIR):
                 info('skip stopping web UI, it is not installed')
                 return
 
@@ -1787,7 +1787,7 @@ class StartAllCmd(Command):
 
         def start_ui():
             virtualenv = '/var/lib/zstack/virtualenv/zstack-dashboard'
-            if not os.path.exists(virtualenv) and not os.path.exists(ctl.ZSTACK_UI_HOME):
+            if not os.path.exists(virtualenv) and not os.path.exists(ctl.ZSTACK_UI_HOME) and not os.path.exists(ctl.MINI_DIR):
                 info('skip starting web UI, it is not installed')
                 return
 
@@ -6436,7 +6436,17 @@ class InstallZstackUiCmd(Command):
         info('found installation script at %s, start installing ZStack web UI' % install_script)
         shell('bash %s zstack-ui' % install_script)
 
+    def install_mini_ui(self):
+        mini_bin = "/opt/zstack-dvd/zstack_mini_server.bin"
+        if not os.path.exists(mini_bin):
+            raise CtlError('cannot find %s, please make sure you have the mini installation package.' % mini_bin)
+        shell('bash /opt/zstack-dvd/zstack_mini_server.bin')
+
     def run(self, args):
+        ui_mode = ctl.read_property('ui_mode')
+        if ui_mode == 'mini':
+            self.install_mini_ui()
+
         if not args.host:
             self._install_to_local(args)
             return
@@ -7307,7 +7317,7 @@ class StopUiCmd(Command):
         cmd = '/etc/init.d/zstack-ui stop'
         ssh_run_no_pipe(host, cmd)
 
-    def run(self, args):
+    def stop_zstack_ui(self, args, show_info=True):
         if args.host != 'localhost':
             self._remote_stop(args.host)
             return
@@ -7334,7 +7344,33 @@ class StopUiCmd(Command):
 
         stop_all()
         clean_pid_port()
-        info('successfully stopped the UI server')
+        if show_info:
+            info('successfully stopped the UI server')
+
+    def stop_mini_ui(self):
+        shell_return("systemctl stop zstack-mini")
+        check_status = "zstack-ctl ui_status"
+        (status_code, status_output) = commands.getstatusoutput(check_status)
+        if status_code != 0 or "Running" in status_output:
+            info('failed to stop MINI UI server on the localhost. Use zstack-ctl stop_ui to restart it.')
+            return False
+
+        if "Stopped" in status_output:
+            mini_pid = get_ui_pid('mini')
+            if mini_pid:
+                shell('kill -9 %s >/dev/null 2>&1'.format(pid))
+            linux.rm_dir_force("/var/run/zstack/zstack-mini-ui.port")
+            linux.rm_dir_force("/var/run/zstack/zstack-mini-ui.pid")
+            info('successfully stopped the MINI UI server')
+            return True
+
+    def run(self, args):
+        ui_mode = ctl.read_property('ui_mode')
+        if ui_mode == "mini":
+            self.stop_zstack_ui(args, show_info=False)
+            self.stop_mini_ui()
+        else :
+            self.stop_zstack_ui(args)
 
 # For VDI UI 2.1
 class StopVDIUiCmd(Command):
@@ -7422,12 +7458,11 @@ class DashboardStatusCmd(Command):
         else:
             info('UI status: %s [PID: %s]' % (colored('Stopped', 'red'), pid))
 
-def get_ui_pid():
-    is_mini = os.path.exists(ctl.MINI_DIR)
+def get_ui_pid(ui_mode='zstack'):
     # no need to consider ha because it's not supported any more
     # ha_info_file = '/var/lib/zstack/ha/ha.yaml'
     pidfile = '/var/run/zstack/zstack-ui.pid'
-    if is_mini:
+    if ui_mode == 'mini':
         pidfile = '/var/run/zstack/zstack-mini-ui.pid'
     if os.path.exists(pidfile):
         with open(pidfile, 'r') as fd:
@@ -7456,12 +7491,12 @@ class UiStatusCmd(Command):
             self._remote_status(args.host)
             return
 
-        is_mini = os.path.exists(ctl.MINI_DIR)
+        ui_mode = ctl.read_property('ui_mode')
         # no need to consider ha because it's not supported any more
         #ha_info_file = '/var/lib/zstack/ha/ha.yaml'
         portfile = '/var/run/zstack/zstack-ui.port'
         ui_port = 5000
-        if is_mini:
+        if ui_mode == "mini":
             portfile = '/var/run/zstack/zstack-mini-ui.port'
             ui_port = 8200
         if os.path.exists(portfile):
@@ -7474,7 +7509,7 @@ class UiStatusCmd(Command):
         def write_status(status):
             info('UI status: %s' % status)
 
-        pid = get_ui_pid()
+        pid = get_ui_pid(ui_mode)
         check_pid_cmd = ShellCmd('ps %s' % pid)
         output = check_pid_cmd(is_exception=False)
         cmd = create_check_ui_status_command(ui_port=port, if_https='--ssl.enabled=true' in output)
@@ -7931,10 +7966,7 @@ class StartUiCmd(Command):
             self.db_url = '%s/zstack_ui' % self.db_url.rstrip('/')
         _, _, self.db_username, self.db_password = ctl.get_live_mysql_portal(True)
 
-    def run(self, args):
-        is_mini = os.path.exists(self.MINI_DIR)
-        if is_mini and not args.force:
-            raise CtlError("Not supported! Your system is zstack-mini, use '/root/bin/zstack-mini.sh start/stop' to start or stop mini-ui.")
+    def run_zstack_ui(self, args):
         ui_logging_path = os.path.normpath(os.path.join(ctl.zstack_home, "../../logs/"))
 
         if args.mn_host and not validate_ip(args.mn_host):
@@ -8110,6 +8142,41 @@ class StartUiCmd(Command):
             info('successfully started UI server on the local host, PID[%s]' % pid)
         else:
             info('successfully started UI server on the local host, PID[%s], %s://%s:%s' % (pid, 'https' if args.enable_ssl else 'http', default_ip, args.server_port))
+
+    def run_mini_ui(self):
+        shell_return("systemctl start zstack-mini")
+        @loop_until_timeout(60)
+        def check_ui_status():
+            command = 'zstack-ctl ui_status'
+            (status, output) = commands.getstatusoutput(command)
+            if status != 0:
+                return False
+            return "Running" in output
+
+        if not check_ui_status():
+            info('failed to start MINI UI server on the localhost. Use zstack-ctl start_ui to restart it.')
+            shell('systemctl stop zstack-mini')
+            linux.rm_dir_force("/var/run/zstack/zstack-mini-ui.port")
+            linux.rm_dir_force("/var/run/zstack/zstack-mini-ui.pid")
+            return False
+
+        default_ip = get_default_ip()
+        mini_pid = get_ui_pid('mini')
+        mini_port = 8200
+        ui_addr = ", http://{}:{}".format(default_ip, mini_port) if default_ip else ""
+        info('successfully started MINI UI server on the local host, PID[{}]{}'.format(mini_pid, ui_addr))
+        
+            
+    def run(self, args):
+        ui_mode = ctl.read_property('ui_mode')
+        if ui_mode == "zstack":
+            self.run_zstack_ui(args)
+        elif ui_mode == "mini" and not args.force:
+            self.run_mini_ui()
+        elif ui_mode == "mini" and args.force:
+            self.run_zstack_ui(args)
+        else :
+            raise CtlError("Unknown ui_mode {}, please make sure your configuration is correct.".format(ui_mode))
 
 # For UI 2.0
 class ConfigUiCmd(Command):
