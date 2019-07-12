@@ -4,6 +4,10 @@ import argparse
 import commands
 import os.path
 from zstacklib import *
+try:
+    from zstacklib.ansible.zstacklib import *
+except Exception as e:
+    print e.message
 from datetime import datetime
 
 def add_true_in_command(cmd):
