@@ -3443,6 +3443,7 @@ if [ x"$MINI_INSTALL" = x"y" ];then
     cp /opt/zstack-dvd/mini_auto_check /etc/init.d/
     systemctl enable zstack-network-agent
     chmod +x /etc/init.d/mini_auto_check
+    echo "systemctl start zstack-network-agent" >> /etc/rc.local
     echo "[ -f /etc/init.d/mini_auto_check ] && bash /etc/init.d/mini_auto_check" >> /etc/rc.local
     echo "[ -f /etc/issue.bak ] && mv /etc/issue.bak /etc/issue" >> /etc/profile
     cp /etc/issue /etc/issue.bak
