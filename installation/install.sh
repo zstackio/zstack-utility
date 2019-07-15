@@ -680,8 +680,9 @@ check_system(){
     if [ x"$MINI_INSTALL" = x"y" ];then
         cs_check_hostname_mini
     elif [ x"$UPGRADE" = x"y" ];then
-        ui_mode=`zstack-ctl get_configuration ui_mode`
+        ui_mode=`zstack-ctl get_configuration ui_mode` >/dev/null 2>&1
         if [ $? -ne 0 ];then
+            echo 'ui_mode is not configured, it will be set based on your environment.' >>$ZSTACK_INSTALL_LOG 2>&1
             [ -d $ZSTACK_MINI_INSTALL_ROOT ] && zstack-ctl configure ui_mode=mini || zstack-ctl configure ui_mode=zstack
             ui_mode=`zstack-ctl get_configuration ui_mode`
         fi
