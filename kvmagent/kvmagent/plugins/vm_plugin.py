@@ -2243,7 +2243,34 @@ class Vm(object):
         if cmd.useNuma:
             flag |= libvirt.VIR_MIGRATE_PERSIST_DEST
 
+        report = Report.from_cmd(cmd, 'MigrateVm')
+        stage = get_task_stage(cmd)
+
         timeout = 1800 if cmd.timeout is None else cmd.timeout
+
+        @thread.AsyncThread
+        def report_progress():
+            def _get_progress_until_migrated(_):
+                try:
+                    stats = self.domain.jobStats()
+                    if libvirt.VIR_DOMAIN_JOB_DATA_REMAINING in stats and libvirt.VIR_DOMAIN_JOB_DATA_TOTAL in stats:
+                        remain = stats[libvirt.VIR_DOMAIN_JOB_DATA_REMAINING]
+                        total = stats[libvirt.VIR_DOMAIN_JOB_DATA_TOTAL]
+                        if total == 0:
+                            return
+
+                        percent = min(99, 100.0 - remain * 100.0 / total)
+                        report.progress_report(get_exact_percent(percent, stage), 'report')
+                except libvirt.libvirtError:
+                    # vm migrated, check twice.
+                    logger.debug("vm migrated[uuid:%s], will stop to report progress" % self.uuid)
+                    return self.wait_for_state_change(None)
+                except:
+                    logger.debug(linux.get_exception_stacktrace())
+
+            linux.wait_callback_success(_get_progress_until_migrated, callback_data=None, timeout=timeout)
+
+
         def cancel_migration():
             logger.debug('timeout after %d seconds, cancelling migration' % timeout)
             try: self.domain.abortJob()
@@ -2252,6 +2279,7 @@ class Vm(object):
         t = threading.Timer(timeout, cancel_migration)
         t.start()
 
+        report_progress()
         try:
             logger.debug('migrating vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
             self.domain.migrateToURI2(destUrl, tcpUri, None, flag, None, 0)
@@ -2261,11 +2289,10 @@ class Vm(object):
 
         try:
             logger.debug('migrating vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
-            timeo = 1800 if cmd.timeout is None else cmd.timeout
-            if not linux.wait_callback_success(self.wait_for_state_change, callback_data=None, timeout=timeo):
+            if not linux.wait_callback_success(self.wait_for_state_change, callback_data=None, timeout=timeout):
                 try: self.domain.abortJob()
                 except: pass
-                raise kvmagent.KvmError('timeout after %d seconds' % timeo)
+                raise kvmagent.KvmError('timeout after %d seconds' % timeout)
         except kvmagent.KvmError:
             raise
         except:
