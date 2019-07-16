@@ -1156,6 +1156,13 @@ def get_pids_by_process_name(name):
         return None
     return output.split('\n')
 
+def get_pids_by_process_fullname(name):
+    cmd = shell.ShellCmd("pkill -0 -e -f '%s'| awk -F 'pid |)' '{print $2}'" % name)
+    output = cmd(False)
+    if cmd.return_code != 0:
+        return None
+    return output.splitlines()
+
 def get_nic_name_by_mac(mac):
     names = get_nic_names_by_mac(mac)
     if len(names) > 1:
