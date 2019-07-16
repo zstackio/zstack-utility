@@ -10,17 +10,23 @@ import os.path
 import imp
 import inspect
 import threading
+import traceback
 
 import log
 import ConfigParser
 
 import time
-from zstacklib.utils import jsonobject, http
+
+from zstacklib.utils import jsonobject, http, traceable_shell
 
 PLUGIN_CONFIG_SECTION_NAME = 'plugins'
 
 logger = log.get_logger(__name__)
 
+class CancelJobResponse(object):
+    def __init__(self):
+        self.success = True
+        self.error = None
 
 class TaskProgressInfo(object):
     def __init__(self, key, req, rsp):
@@ -50,14 +56,19 @@ def completetask(func):
             task_manager.complete_task(req=req, err=err)
     return wrap
 
+
 class TaskManager(object):
+    CANCEL_LONG_JOB = "/longjob/cancel"
+    http_server = None
+
     def __init__(self):
         '''
         Constructor
         '''
+        if self.http_server:
+            self.http_server.register_sync_uri(self.CANCEL_LONG_JOB, self.cancel)
         self.mapper_lock = threading.RLock()
         self.longjob_progress_mapper = {}
-        pass
 
     def load_task(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -117,6 +128,22 @@ class TaskManager(object):
             rsp.success = False
             rsp.error = "timeout to wait other task"
             return rsp
+
+    def cancel(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CancelJobResponse()
+        try:
+            if not traceable_shell.cancel_job(cmd):
+                rsp.success = False
+                rsp.error = "no matched job to cancel"
+        except Exception as e:
+            content = traceback.format_exc()
+            rsp.success = False
+            rsp.error = str(e)
+            logger.warn(content)
+
+        return jsonobject.dumps(rsp)
+
 
 class Plugin(TaskManager):
     __metaclass__  = abc.ABCMeta

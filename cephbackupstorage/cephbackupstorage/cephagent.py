@@ -19,6 +19,7 @@ from zstacklib.utils.report import Report
 from zstacklib.utils import shell
 from zstacklib.utils import ceph
 from zstacklib.utils import qemu_img
+from zstacklib.utils import traceable_shell
 from zstacklib.utils.rollback import rollback, rollbackable
 
 logger = log.get_logger(__name__)
@@ -332,6 +333,7 @@ def stream_body(task, fpath, entity, boundary):
 class CephAgent(object):
     INIT_PATH = "/ceph/backupstorage/init"
     DOWNLOAD_IMAGE_PATH = "/ceph/backupstorage/image/download"
+    JOB_CANCEL = "/job/cancel"
     UPLOAD_IMAGE_PATH = "/ceph/backupstorage/image/upload"
     UPLOAD_PROGRESS_PATH = "/ceph/backupstorage/image/progress"
     DELETE_IMAGE_PATH = "/ceph/backupstorage/image/delete"
@@ -361,6 +363,7 @@ class CephAgent(object):
         self.http_server.register_raw_uri(self.UPLOAD_IMAGE_PATH, self.upload)
         self.http_server.register_async_uri(self.UPLOAD_PROGRESS_PATH, self.get_upload_progress)
         self.http_server.register_async_uri(self.DELETE_IMAGE_PATH, self.delete)
+        self.http_server.register_async_uri(self.JOB_CANCEL, self.cancel)
         self.http_server.register_async_uri(self.PING_PATH, self.ping)
         self.http_server.register_async_uri(self.GET_IMAGE_SIZE_PATH, self.get_image_size)
         self.http_server.register_async_uri(self.GET_FACTS, self.get_facts)
@@ -731,6 +734,7 @@ class CephAgent(object):
             return image_format
 
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        shell = traceable_shell.get_shell(cmd)
         pool, image_name = self._parse_install_path(cmd.installPath)
         tmp_image_name = 'tmp-%s' % image_name
 
@@ -799,7 +803,7 @@ class CephAgent(object):
 
             logger.debug("content-length is: %s" % total)
 
-            _, _, err = bash_progress_1('set -o pipefail;wget --no-check-certificate -O - %s 2>%s| rbd import --image-format 2 - %s/%s'
+            _, _, err = shell.bash_progress_1('set -o pipefail;wget --no-check-certificate -O - %s 2>%s| rbd import --image-format 2 - %s/%s'
                        % (cmd.url, PFILE, pool, tmp_image_name), _getProgress)
             if err:
                 raise err
@@ -837,7 +841,7 @@ class CephAgent(object):
 
             get_content_from_pipe_cmd = "pv -s %s -n %s 2>%s" % (actual_size, pipe_path, PFILE)
             import_from_pipe_cmd = "rbd import --image-format 2 - %s/%s" % (pool, tmp_image_name)
-            _, _, err = bash_progress_1('set -o pipefail; %s & %s | %s' %
+            _, _, err = shell.bash_progress_1('set -o pipefail; %s & %s | %s' %
                                         (scp_to_pipe_cmd, get_content_from_pipe_cmd, import_from_pipe_cmd), _get_progress)
 
             if os.path.exists(PFILE):
@@ -1005,6 +1009,15 @@ class CephAgent(object):
             rsp.success = False
             rsp.error = "Failed to migrate image from one ceph backup storage to another."
         self._set_capacity_to_response(rsp)
+        return jsonobject.dumps(rsp)
+
+    @replyerror
+    def cancel(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentResponse()
+        if not traceable_shell.cancel_job(cmd):
+            rsp.success = False
+            rsp.error = "no matched job to cancel"
         return jsonobject.dumps(rsp)
 
 class CephDaemon(daemon.Daemon):
