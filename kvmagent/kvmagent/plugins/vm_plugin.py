@@ -5247,6 +5247,7 @@ class VmPlugin(kvmagent.KvmAgent):
 
         @bash.in_bash
         def extend_lv(event_str, path, vm, device):
+            # type: (str, str, Vm, object) -> object
             r, image_offest, lv_size, virtual_size = check_lv(path, vm, device)
             logger.debug("lv %s image offest: %s, lv size: %s, virtual size: %s" %
                          (path, image_offest, lv_size, virtual_size))
@@ -5307,10 +5308,10 @@ class VmPlugin(kvmagent.KvmAgent):
                 vm.resume()
                 touchQmpSocketWhenExists(vm_uuid)
 
-        event = LibvirtEventManager.event_to_string(event)
-        if event not in (LibvirtEventManager.EVENT_SUSPENDED,):
+        event_str = LibvirtEventManager.event_to_string(event)
+        if event_str not in (LibvirtEventManager.EVENT_SUSPENDED,):
             return
-        handle_event(dom, event)
+        handle_event(dom, event_str)
 
     @bash.in_bash
     def _release_sharedblocks(self, conn, dom, event, detail, opaque):
@@ -5324,7 +5325,7 @@ class VmPlugin(kvmagent.KvmAgent):
 
         @thread.AsyncThread
         @bash.in_bash
-        def deactivate_volume(event, file, vm_uuid):
+        def deactivate_volume(event_str, file, vm_uuid):
             # type: (str, str, str) -> object
             volume = file.strip().split("'")[1]
             logger.debug("deactivating volume %s for vm %s" % (file, vm_uuid))
@@ -5340,30 +5341,30 @@ class VmPlugin(kvmagent.KvmAgent):
                 try:
                     lvm.deactive_lv(volume, False)
                     logger.debug(
-                        "deactivated volume %s for event %s happend on vm %s success" % (volume, event, vm_uuid))
+                        "deactivated volume %s for event %s happend on vm %s success" % (volume, event_str, vm_uuid))
                 except Exception as e:
                     logger.debug("deactivate volume %s for event %s happend on vm %s failed, %s" % (
-                        volume, event, vm_uuid, e.message))
+                        volume, event_str, vm_uuid, e.message))
                     content = traceback.format_exc()
                     logger.warn("traceback: %s" % content)
             else:
                 logger.debug("volume %s still used: %s, skip to deactivate" % (volume, used_process))
 
         try:
-            event = LibvirtEventManager.event_to_string(event)
-            if event not in (LibvirtEventManager.EVENT_SHUTDOWN, LibvirtEventManager.EVENT_STOPPED):
+            event_str = LibvirtEventManager.event_to_string(event)
+            if event_str not in (LibvirtEventManager.EVENT_SHUTDOWN, LibvirtEventManager.EVENT_STOPPED):
                 return
 
             vm_uuid = dom.name()
             vm_op_judger = self._get_operation(vm_uuid)
-            if vm_op_judger and event in vm_op_judger.ignore_libvirt_events():
-                logger.info("expected event for zstack op %s, ignore event %s on vm %s" % (vm_op_judger.op, event, vm_uuid))
+            if vm_op_judger and event_str in vm_op_judger.ignore_libvirt_events():
+                logger.info("expected event for zstack op %s, ignore event %s on vm %s" % (vm_op_judger.op, event_str, vm_uuid))
                 return
 
             out = bash.bash_o("virsh dumpxml %s | grep \"source file='/dev/\"" % vm_uuid).strip().splitlines()
             if len(out) != 0:
                 for file in out:
-                    deactivate_volume(event, file, vm_uuid)
+                    deactivate_volume(event_str, file, vm_uuid)
             else:
                 logger.debug("can not find sharedblock related volume for vm %s, skip to release" % vm_uuid)
         except:
