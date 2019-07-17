@@ -685,6 +685,7 @@ check_system(){
         if [ x"$ui_mode" = x"" ];then
             echo 'ui_mode is not configured, it will be set based on your environment.' >>$ZSTACK_INSTALL_LOG 2>&1
             [ -d $ZSTACK_MINI_INSTALL_ROOT ] && zstack-ctl configure ui_mode=mini || zstack-ctl configure ui_mode=zstack
+            [ -d $ZSTACK_MINI_INSTALL_ROOT ] && zstack-ctl configure log.management.server.retentionSizeGB=200
             ui_mode=`zstack-ctl show_configuration |awk '/ui_mode/{print $3}'`
         fi
         [ x"$ui_mode" = x"mini" ] && cs_check_hostname_mini || cs_check_hostname_zstack
@@ -1931,6 +1932,7 @@ install_db(){
         show_spinner sd_install_zstack_mini_ui
         DEFAULT_UI_PORT=8200
         zstack-ctl configure ui_mode=mini
+        zstack-ctl configure log.management.server.retentionSizeGB=200
     else 
         zstack-ctl configure ui_mode=zstack
     fi
