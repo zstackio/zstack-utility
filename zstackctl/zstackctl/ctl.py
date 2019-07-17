@@ -6174,7 +6174,7 @@ class GetConfiguration(Command):
         if value:
             info(value)
         else :
-            raise CtlError('not configured')
+            raise CtlError('{} is not configured.'.format(ctl.extra_arguments[0]))
              
 
 
