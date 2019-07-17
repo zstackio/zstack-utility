@@ -103,6 +103,7 @@ class Cli(object):
     LOGIN_BY_USER_NAME = 'APILogInByUserMsg'
     LOGIN_BY_USER_IAM2 = 'APILoginIAM2VirtualIDMsg'
     CREATE_USER_IAM2 = 'APICreateIAM2VirtualIDMsg'
+    LOGIN_BY_LDAP_IAM2_NAME = 'APILoginIAM2VirtualIDWithLdapMsg'
     LOGIN_BY_IAM2_PROJECT_NAME = 'APILoginIAM2ProjectMsg'
     CREATE_ACCOUNT_NAME = 'APICreateAccountMsg'
     CREATE_USER_NAME = 'APICreateUserMsg'
@@ -115,7 +116,7 @@ class Cli(object):
     GET_TWO_FACTOR_AUTHENTICATION_STATE = 'APIGetTwoFactorAuthenticationStateMsg'
     no_session_message = [LOGIN_MESSAGE_NAME, LOGIN_BY_USER_NAME, LOGIN_BY_LDAP_MESSAGE_NAME,
                           GET_TWO_FACTOR_AUTHENTICATION_SECRET, GET_TWO_FACTOR_AUTHENTICATION_STATE, LOGIN_BY_USER_IAM2,
-                          GET_LICENSE_INFO]
+                          GET_LICENSE_INFO, LOGIN_BY_LDAP_IAM2_NAME]
 
     @staticmethod
     def register_message_creator(apiname, func):
@@ -559,7 +560,7 @@ Parse command parameters error:
             end_time = time.time()
 
             if apiname in [self.LOGIN_MESSAGE_NAME, self.LOGIN_BY_USER_NAME, self.LOGIN_BY_LDAP_MESSAGE_NAME,
-                           self.LOGIN_BY_IAM2_PROJECT_NAME, self.LOGIN_BY_USER_IAM2]:
+                           self.LOGIN_BY_LDAP_IAM2_NAME, self.LOGIN_BY_IAM2_PROJECT_NAME, self.LOGIN_BY_USER_IAM2]:
                 self.session_uuid = event.inventory.uuid
                 self.account_name = None
                 self.user_name = None
@@ -580,6 +581,12 @@ Parse command parameters error:
                         self.user_name = all_params[user_name_field]
                         session_file_writer.write("\n" + self.account_name)
                         session_file_writer.write("\n" + self.user_name)
+                    elif apiname == self.LOGIN_BY_LDAP_IAM2_NAME:
+                        if event.inventory.accountUuid == '2dce5dc485554d21a3796500c1db007a':
+                            self.account_name = 'no project selected'
+                        else:
+                            self.account_name = 'admin'
+                        session_file_writer.write("\n" + self.account_name)
                     elif apiname == self.LOGIN_BY_IAM2_PROJECT_NAME:
                         self.account_name = 'project[%s]' % all_params['projectName']
                         session_file_writer.write("\n" + self.account_name)
