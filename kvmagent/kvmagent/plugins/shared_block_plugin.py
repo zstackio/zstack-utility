@@ -329,8 +329,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 if find_vg(vgUuid) is True:
                     return True
             except RetryException as ee:
-                raise Exception("can not find vg %s with disks: %s and create vg return: %s %s %s " %
-                                (vgUuid, diskPaths, cmd.return_code, cmd.stdout, cmd.stderr))
+                raise Exception("can not find vg %s with disks: %s and create vg with forceWipw=%s return: %s %s %s " %
+                                (vgUuid, diskPaths, forceWipe, cmd.return_code, cmd.stdout, cmd.stderr))
             except Exception as ee:
                 raise ee
         except Exception as e:
