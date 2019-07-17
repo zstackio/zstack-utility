@@ -48,6 +48,7 @@ def bash_eval(raw_str, ctx=None):
 
 # @return: return code, stdout, stderr
 def bash_roe(cmd, errorout=False, ret_code = 0, pipe_fail=False):
+    # type: (str, bool, int, bool) -> (int, str, str)
     ctx = __collect_locals_on_stack()
 
     cmd = bash_eval(cmd, ctx)
@@ -75,6 +76,7 @@ def bash_roe(cmd, errorout=False, ret_code = 0, pipe_fail=False):
 
 # @return: return code, stdout
 def bash_ro(cmd, pipe_fail=False):
+    # type: (str, bool) -> (int, str)
     ret, o, _ = bash_roe(cmd, pipe_fail=pipe_fail)
     return ret, o
 

@@ -27,6 +27,39 @@ class AgentRsp(object):
         self.error = None
 
 
+class RaidPhysicalDriveStruct(object):
+    rotationRate = None  # type: int
+    size = None  # type: long
+    diskGroup = None  # type: int
+    deviceId = None  # type: int
+    slotNumber = None  # type: int
+    enclosureDeviceID = None  # type: int
+
+    def __init__(self):
+        self.raidLevel = None
+        self.enclosureDeviceID = None
+        self.slotNumber = None
+        self.deviceId = None
+        self.diskGroup = None
+        self.wwn = None
+        self.serialNumber = None
+        self.deviceModel = None
+        self.size = None
+        self.driveState = None
+        self.locateStatus = None
+        self.driveType = None
+        self.mediaType = None
+        self.rotationRate = None
+        self.radiControllerSasAddreess = None
+        self.radiControllerProductName = None
+
+
+class RaidScanRsp(object):
+    raidPhysicalDriveStructs = None  # type: list[RaidPhysicalDriveStruct]
+
+    def __init__(self):
+        self.raidPhysicalDriveStructs = []
+
 class ScsiLunStruct(object):
     def __init__(self):
         self.wwids = []
@@ -48,7 +81,7 @@ class FiberChannelLunStruct(ScsiLunStruct):
 
 
 class IscsiTargetStruct(object):
-    iscsiLunStructList = None  # type: List[IscsiLunStruct]
+    iscsiLunStructList = None  # type: list[IscsiLunStruct]
 
     def __init__(self):
         self.iqn = ""
@@ -69,7 +102,7 @@ class FcSanScanRsp(AgentRsp):
 
 
 class IscsiLoginRsp(AgentRsp):
-    iscsiTargetStructList = None  # type: List[IscsiTargetStruct]
+    iscsiTargetStructList = None  # type: list[IscsiTargetStruct]
 
     def __init__(self):
         super(IscsiLoginRsp, self).__init__()
@@ -80,10 +113,11 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
     ISCSI_LOGIN_PATH = "/storagedevice/iscsi/login"
     ISCSI_LOGOUT_PATH = "/storagedevice/iscsi/logout"
-    FC_SCAN_PATH = "/storage/fc/scan"
-    MULTIPATH_ENABLE_PATH = "/storage/multipath/enable"
-    ATTACH_SCSI_LUN_PATH = "/storage/scsilun/attach"
-    DETACH_SCSI_LUN_PATH = "/storage/scsilun/detach"
+    FC_SCAN_PATH = "/storagedevice/fc/scan"
+    MULTIPATH_ENABLE_PATH = "/storagedevice/multipath/enable"
+    ATTACH_SCSI_LUN_PATH = "/storagedevice/scsilun/attach"
+    DETACH_SCSI_LUN_PATH = "/storagedevice/scsilun/detach"
+    RAID_SCAN_PATH = "/storagedevice/raid/scan"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -93,6 +127,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.MULTIPATH_ENABLE_PATH, self.enable_multipath)
         http_server.register_async_uri(self.ATTACH_SCSI_LUN_PATH, self.attach_scsi_lun)
         http_server.register_async_uri(self.DETACH_SCSI_LUN_PATH, self.detach_scsi_lun)
+        http_server.register_async_uri(self.RAID_SCAN_PATH, self.raid_scan)
 
     def stop(self):
         pass
@@ -290,6 +325,139 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         rsp.fiberChannelLunStructs = self.get_fc_luns()
         linux.set_fail_if_no_path()
         return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @bash.in_bash
+    def raid_scan(self, req):
+        # 1. find raid device
+        # 2. get each device info
+        rsp = RaidScanRsp()
+        r, o, e = bash.bash_roe("smartctl --scan | grep megaraid")
+        if r != 0 or o.strip() == "":
+            return rsp
+        rsp.raidPhysicalDriveStructs = self.get_megaraid_devices(o)
+        return jsonobject.dumps(rsp)
+
+    @bash.in_bash
+    def get_megaraid_devices(self, smart_scan_result):
+        # type: (str) -> list[RaidPhysicalDriveStruct]
+        result = []
+        r, raid_info = bash.bash_ro("/opt/MegaRAID/MegaCli/MegaCli64 -LdPdInfo -aALL")
+        if r != 0:
+            return result
+        for line in smart_scan_result.splitlines():
+            if line.strip() == "":
+                continue
+            d = self.get_raid_device_info(line, raid_info)
+            if d.wwn is not None and d.radiControllerSasAddreess is not None:
+                result.append(d)
+        return result
+
+    @bash.in_bash
+    def get_raid_device_info(self, line, raid_info):
+        # type: (str, str) -> RaidPhysicalDriveStruct
+        line = line.split(" #")[0]
+        d = RaidPhysicalDriveStruct()
+        r, o = bash.bash_ro("smartctl -i %s " % line)
+        if r != 0:
+            logger.warn("can not get device %s info" % line)
+            return d
+        d.deviceId = int(line.split("megaraid,")[-1].strip())
+
+        for l in o.splitlines():  # type: str
+            k = l.split(":")[0].lower()
+            v = ":".join(l.split(":")[1:]).strip()
+            if "device model" in k:
+                d.deviceModel = v
+            elif "serial number" in k:
+                d.serialNumber = v
+            elif "lu wwn device id" in k:
+                d.wwn = v.replace(" ", "")
+            elif "user capacity" in k:
+                d.size = int(v.split(" bytes")[0].strip().replace(",", ""))
+            elif "rotation rate" in k:
+                d.rotationRate = int(v.split(" rpm")[0].strip())
+
+        in_correct_pd = False
+        adapter = raid_level = enclosure_device_id = slot_number = disk_group = None
+        for l in raid_info.splitlines():
+            k = l.split(":")[0].lower()
+            v = ":".join(l.split(":")[1:]).strip()
+            if "adapter #" in l.lower():
+                adapter = l.lower().split("adapter #")[1].strip()
+                continue
+            elif "raid level" in k:
+                raid_level = self.convert_raid_level(v)
+                continue
+            elif "enclosure device id" in k:
+                enclosure_device_id = int(v)
+                continue
+            elif "slot number" in k:
+                slot_number = int(v)
+                continue
+            elif "drive's position" in k:
+                disk_group = int(v.lower().split("diskgroup: ")[1].split(",")[0])
+                continue
+            elif "wwn" in k and v.lower() == d.wwn.lower():
+                in_correct_pd = True
+                continue
+
+            if in_correct_pd is True and "drive has flagged" in k:
+                d.raidLevel = raid_level
+                d.enclosureDeviceID = enclosure_device_id
+                d.slotNumber = slot_number
+                d.diskGroup = disk_group
+
+                d.radiControllerProductName, d.radiControllerSasAddreess = self.get_raid_controller_info(adapter)
+                return d
+            if in_correct_pd is False:
+                continue
+
+            if "pd type" in k:
+                d.driveType = v
+            elif "firmware state" in k:
+                d.driveState = v
+            elif "media type" in k:
+                d.mediaType = self.convert_media_type(v)
+
+        return d
+
+    @staticmethod
+    @bash.in_bash
+    def get_raid_controller_info(adapter_number):
+        # type: (str) -> (str, str)
+        r, o = bash.bash_ro("/opt/MegaRAID/MegaCli/MegaCli64 -AdpAllInfo -a%s | grep -E 'Product Name|SAS Address'" % adapter_number)
+        if r != 0:
+            return None, None
+        return o.splitlines()[0].split(":")[1].strip(), o.splitlines()[1].split(":")[1].strip()
+
+    @staticmethod
+    def convert_media_type(origin):
+        # type: (str) -> str
+        origin = origin.lower()
+        if "Solid State Device".lower() in origin:
+            return "SSD"
+        elif "Hard Disk Device".lower() in origin:
+            return "HDD"
+        else:
+            return origin
+
+    @staticmethod
+    def convert_raid_level(origin):
+        # type: (str) -> str
+        origin = origin.lower()
+        if "Primary-1, Secondary-0, RAID Level Qualifier-0".lower() in origin:
+            return "raid1"
+        elif "Primary-5, Secondary-0, RAID Level Qualifier-3".lower() in origin:
+            return "raid5"
+        elif "Primary-0, Secondary-0, RAID Level Qualifier-0".lower() in origin:
+            return "raid0"
+        elif "Primary-1, Secondary-3, RAID Level Qualifier-0".lower() in origin:
+            return "raid10"
+        elif "Primary-6, Secondary-0, RAID Level Qualifier-3".lower() in origin:
+            return "raid6"
+        else:
+            return origin.strip()
 
     @bash.in_bash
     def get_fc_luns(self):
