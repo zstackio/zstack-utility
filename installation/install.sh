@@ -1919,6 +1919,7 @@ install_db(){
         show_spinner sd_install_zstack_mini_ui
         DEFAULT_UI_PORT=8200
         zstack-ctl configure ui_mode=mini
+        zstack-ctl configure log.management.server.retentionSizeGB=200
     else 
         zstack-ctl configure ui_mode=zstack
     fi
