@@ -317,6 +317,9 @@ def sshfs_mount(username, hostname, port, password, url, mountpoint, writebandwi
 def fumount(mountpoint, timeout = 10):
     return shell.run("timeout %s fusermount -u %s" % (timeout, mountpoint))
 
+def get_host_by_name(host):
+    return socket.gethostbyname(host)
+
 def is_valid_nfs_url(url):
     ts = url.split(':')
     if len(ts) != 2: raise InvalidNfsUrlError(url, 'url should have one and only one ":"')
@@ -443,13 +446,13 @@ def md5sum(file_path):
     #sum5 = output.split(' ')[0]
     #return sum5.strip()
 
-def mkdir(path, mode):
+def mkdir(path, mode=0755):
     if os.path.isdir(path):
-        return
+        return True
 
     if os.path.isfile(path):
         try:
-           os.system("mv -f %s %s-bak" % (path, path))
+           os.rename(path, path+"-bak")
         except OSError as e:
            logger.warn('mv -f %s %s-bak failed: %s' % (path, path, e))
 
@@ -458,6 +461,8 @@ def mkdir(path, mode):
         os.makedirs(path, mode)
     except OSError as e:
         logger.warn("mkdir for path %s failed: %s " % (path, e))
+
+    return False
 
 
 def write_to_temp_file(content):

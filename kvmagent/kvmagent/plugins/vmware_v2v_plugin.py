@@ -197,7 +197,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
 
         src_vm_uri = cmd.srcVmUri
         vmware_host_ip = src_vm_uri.split('/')[-1]
-        interface = self._get_network_interface_to_ip_address(vmware_host_ip)
+        interface = linux.find_route_interface_by_destination_ip(vmware_host_ip)
 
         if interface:
             cmdstr = "tc filter replace dev %s protocol ip parent 1: prio 1 u32 match ip src %s/32 flowid 1:1" \
@@ -349,27 +349,6 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
         rsp.existing = os.path.exists(cmd.path)
         return jsonobject.dumps(rsp)
 
-    @staticmethod
-    def _get_network_interface_to_ip_address(ip_address):
-        s = shell.ShellCmd("ip r get %s | sed 's/^.*dev \([^ ]*\).*$/\\1/;q'" % ip_address)
-        s(False)
-
-        if s.return_code == 0:
-            return s.stdout.replace('\n', '')
-        else:
-            return None
-
-    @staticmethod
-    def _get_ip_address_to_domain(domain):
-        s = shell.ShellCmd("ping -c 1 %s | head -2 | tail -1 | awk '{ print $5 }' |"
-                           " sed 's/(//g' | sed 's/)://g'" % domain)
-        s(False)
-
-        if s.return_code == 0:
-            return s.stdout
-        else:
-            return None
-
     @in_bash
     @kvmagent.replyerror
     def config_qos(self, req):
@@ -393,10 +372,10 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
                 return shell.run(config_qos_cmd)
 
             for vcenter_ip in cmd.vCenterIps:
-                interface = self._get_network_interface_to_ip_address(vcenter_ip)
+                interface = linux.find_route_interface_by_destination_ip(vcenter_ip)
 
                 if interface is None:
-                    interface = self._get_network_interface_to_ip_address(self._get_ip_address_to_domain(vcenter_ip))
+                    interface = linux.find_route_interface_by_destination_ip(linux.get_host_by_name(vcenter_ip))
 
                 if interface and interface not in interface_setup_rule:
                     if set_up_qos_rules(interface) == 0:
@@ -414,7 +393,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
                 # vpx://administrator%40vsphere.local@xx.xx.xx.xx/Datacenter-xxx/Cluster-xxx/127.0.0.1?no_verify=1
                 for url in list_url_cmd.stdout.split('\n'):
                     vmware_host_ip = url.split('/')[-1].split('?')[0]
-                    interface = self._get_network_interface_to_ip_address(vmware_host_ip)
+                    interface = linux.find_route_interface_by_destination_ip(vmware_host_ip)
 
                     if interface:
                         cmdstr = "tc filter replace dev %s protocol ip parent 1: prio 1 u32 match ip src %s/32 flowid 1:1" \
@@ -444,10 +423,10 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
                     shell.run(cmdstr)
 
             for vcenter_ip in cmd.vCenterIps:
-                interface = self._get_network_interface_to_ip_address(vcenter_ip)
+                interface = linux.find_route_interface_by_destination_ip(vcenter_ip)
 
                 if interface is None:
-                    interface = self._get_network_interface_to_ip_address(self._get_ip_address_to_domain(vcenter_ip))
+                    interface = linux.find_route_interface_by_destination_ip(linux.get_host_by_name(vcenter_ip))
 
                 if interface:
                     delete_qos_rules(interface)
