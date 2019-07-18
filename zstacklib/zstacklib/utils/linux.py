@@ -443,13 +443,13 @@ def md5sum(file_path):
     #sum5 = output.split(' ')[0]
     #return sum5.strip()
 
-def mkdir(path, mode):
+def mkdir(path, mode=0755):
     if os.path.isdir(path):
-        return
+        return True
 
     if os.path.isfile(path):
         try:
-           os.system("mv -f %s %s-bak" % (path, path))
+           os.rename(path, path+"-bak")
         except OSError as e:
            logger.warn('mv -f %s %s-bak failed: %s' % (path, path, e))
 
@@ -458,6 +458,8 @@ def mkdir(path, mode):
         os.makedirs(path, mode)
     except OSError as e:
         logger.warn("mkdir for path %s failed: %s " % (path, e))
+
+    return False
 
 
 def write_to_temp_file(content):
