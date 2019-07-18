@@ -93,6 +93,7 @@ def bash_r(cmd, pipe_fail=False):
 
 # @return: stdout
 def bash_errorout(cmd, code=0, pipe_fail=False):
+    # type: (str, int, bool) -> str
     _, o, _ = bash_roe(cmd, errorout=True, ret_code=code, pipe_fail=pipe_fail)
     return o
 
