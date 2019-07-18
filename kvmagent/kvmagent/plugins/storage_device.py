@@ -33,11 +33,11 @@ class RaidPhysicalDriveStruct(object):
     diskGroup = None  # type: int
     deviceId = None  # type: int
     slotNumber = None  # type: int
-    enclosureDeviceID = None  # type: int
+    enclosureDeviceId = None  # type: int
 
     def __init__(self):
         self.raidLevel = None
-        self.enclosureDeviceID = None
+        self.enclosureDeviceId = None
         self.slotNumber = None
         self.deviceId = None
         self.diskGroup = None
@@ -50,8 +50,37 @@ class RaidPhysicalDriveStruct(object):
         self.driveType = None
         self.mediaType = None
         self.rotationRate = None
-        self.radiControllerSasAddreess = None
-        self.radiControllerProductName = None
+        self.raidControllerSasAddreess = None
+        self.raidControllerProductName = None
+        self.raidControllerNumber = None
+
+
+class SmartDataStruct(object):
+    rawValue = None  # type: long
+    thresh = None  # type: int
+    worst = None  # type: int
+    value = None  # type: int
+    id = None  # type: int
+
+    def __init__(self):
+        self.id = None
+        self.attributeName = None
+        self.flag = None
+        self.value = None
+        self.worst = None
+        self.thresh = None
+        self.type = None
+        self.updated = None
+        self.whenFailed = None
+        self.rawValue = None
+        self.state = None
+
+
+class RaidPhysicalDriveSmartRsp(object):
+    smartDataStructs = None  # type: list[SmartDataStruct]
+
+    def __init__(self):
+        self.smartDataStructs = None
 
 
 class RaidScanRsp(object):
@@ -118,6 +147,8 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     ATTACH_SCSI_LUN_PATH = "/storagedevice/scsilun/attach"
     DETACH_SCSI_LUN_PATH = "/storagedevice/scsilun/detach"
     RAID_SCAN_PATH = "/storagedevice/raid/scan"
+    RAID_SMART_PATH = "/storagedevice/raid/smart"
+    RAID_LOCATE_PATH = "/storagedevice/raid/locate"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -128,6 +159,8 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.ATTACH_SCSI_LUN_PATH, self.attach_scsi_lun)
         http_server.register_async_uri(self.DETACH_SCSI_LUN_PATH, self.detach_scsi_lun)
         http_server.register_async_uri(self.RAID_SCAN_PATH, self.raid_scan)
+        http_server.register_async_uri(self.RAID_SMART_PATH, self.raid_smart)
+        http_server.register_async_uri(self.RAID_LOCATE_PATH, self.raid_locate)
 
     def stop(self):
         pass
@@ -328,6 +361,87 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     @bash.in_bash
+    def raid_smart(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = RaidPhysicalDriveSmartRsp()
+
+        r, raid_info, e = bash.bash_roe("/opt/MegaRAID/MegaCli/MegaCli64 -LdPdInfo -aALL")
+        if r != 0:
+            raise Exception("can not execute MegaCli: returnCode: %s, stdout: %s, stderr: %s" % (r, raid_info, e))
+        drive = self.get_raid_device_info("/dev/bus/%d -d megaraid,%d" % (cmd.busNumber, cmd.deviceNumber), raid_info)
+        if drive.wwn != cmd.wwn:
+            raise Exception("expect drive[busNumber %s, deviceId %s, slotNumber %s] wwn is %s, but is %s actually" %
+                            (cmd.busNumber, cmd.deviceNumber, cmd.slotNumber, cmd.wwn, drive.wwn))
+
+        rsp.smartDataStructs = self.get_smart_data(cmd.busNumber, cmd.deviceNumber)
+        return jsonobject.dumps(rsp)
+
+    @staticmethod
+    def get_smart_data(busNumber, deviceNumber):
+        # type: (int, int) -> list[SmartDataStruct]
+        r, text, e = bash.bash_roe("smartctl --all /dev/bus/%s -d megaraid,%s" % (busNumber, deviceNumber))
+        if r != 0 and "vendor specific smart attributes with thresholds" not in text.lower():
+            raise Exception("read smart info failed, return: %s, stdout: %s, stderr: %s" % (r, text, e))
+        data = []
+        in_data = None
+        for l in text.splitlines():
+            if "vendor specific smart attributes with thresholds" in l.lower():
+                in_data = True
+                continue
+            if "smart error log version" in l.lower():
+                break
+            if in_data is None:
+                continue
+            if "id" in l.lower() and "attribute_name" in l.lower():
+                continue
+            if l.strip() == "":
+                continue
+            data.append(l)
+
+        if len(data) == 0:
+            logger.warn("can not find smart data!")
+            return []
+
+        result = []
+        attrs = ["id", "attributeName", "flag", "value", "worst", "thresh", "type", "updated", "whenFailed", "rawValue"]
+        for d in data:
+            logger.debug("processing smart data %s" % d)
+            r = SmartDataStruct()
+            for column_number in range(len(attrs)):
+                if d.split()[column_number].isdigit():
+                    exec("r.%s = int(\"%s\")" % (attrs[column_number], d.split()[column_number]))
+                else:
+                    exec("r.%s = \"%s\"" % (attrs[column_number], d.split()[column_number]))
+            if r.value < r.thresh:
+                r.state = "error"
+            elif r.value - r.thresh < int(r.thresh * 0.2):
+                r.state = "warning"
+            else:
+                r.state = "health"
+            result.append(r)
+
+        return result
+
+    @kvmagent.replyerror
+    @bash.in_bash
+    def raid_locate(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentRsp()
+
+        r, raid_info, e = bash.bash_roe("/opt/MegaRAID/MegaCli/MegaCli64 -LdPdInfo -aALL")
+        if r != 0:
+            raise Exception("can not execute MegaCli: returnCode: %s, stdout: %s, stderr: %s" % (r, raid_info, e))
+        drive = self.get_raid_device_info("/dev/bus/%d -d megaraid,%d" % (cmd.busNumber, cmd.deviceNumber), raid_info)
+        if drive.wwn != cmd.wwn:
+            raise Exception("expect drive[busNumber %s, deviceId %s, slotNumber %s] wwn is %s, but is %s actually" %
+                            (cmd.busNumber, cmd.deviceNumber, cmd.slotNumber, cmd.wwn, drive.wwn))
+
+        command = "start" if cmd.locate is True else "stop"
+        bash.bash_errorout("/opt/MegaRAID/MegaCli/MegaCli64 -PdLocate -%s -physdrv[%d:%d] -a%d" % (command, cmd.enclosureDeviceID, cmd.slotNumber, cmd.busNumber))
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @bash.in_bash
     def raid_scan(self, req):
         # 1. find raid device
         # 2. get each device info
@@ -349,7 +463,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             if line.strip() == "":
                 continue
             d = self.get_raid_device_info(line, raid_info)
-            if d.wwn is not None and d.radiControllerSasAddreess is not None:
+            if d.wwn is not None and d.raidControllerSasAddreess is not None:
                 result.append(d)
         return result
 
@@ -404,11 +518,12 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
             if in_correct_pd is True and "drive has flagged" in k:
                 d.raidLevel = raid_level
-                d.enclosureDeviceID = enclosure_device_id
+                d.enclosureDeviceId = enclosure_device_id
                 d.slotNumber = slot_number
                 d.diskGroup = disk_group
+                d.raidControllerNumber = adapter
 
-                d.radiControllerProductName, d.radiControllerSasAddreess = self.get_raid_controller_info(adapter)
+                d.raidControllerProductName, d.raidControllerSasAddreess = self.get_raid_controller_info(adapter)
                 return d
             if in_correct_pd is False:
                 continue
