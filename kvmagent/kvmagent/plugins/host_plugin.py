@@ -308,6 +308,7 @@ class PciDeviceTO(object):
         self.subdeviceId = ""
         self.pciDeviceAddress = ""
         self.parentAddress = ""
+        self.iommuGroup = ""
         self.type = ""
         self.virtStatus = ""
         self.maxPartNum = "0"
@@ -1058,8 +1059,6 @@ done
 
     def _get_sriov_info(self, to):
         addr = to.pciDeviceAddress
-        if not addr.startswith('0000:'):
-            addr = "0000:" + addr
         dev = os.path.join("/sys/bus/pci/devices/", addr)
         totalvfs = os.path.join(dev, "sriov_totalvfs")
         physfn = os.path.join(dev, "physfn")
@@ -1096,9 +1095,6 @@ done
 
     def _get_vfio_mdev_info(self, to):
         addr = to.pciDeviceAddress
-        if not addr.startswith("0000:"):
-            addr = "0000:" + addr
-
         r, o, e = bash_roe("nvidia-smi vgpu -i %s -v -s" % addr)
         if r != 0:
             return False  # only support nvidia-smi now
@@ -1132,11 +1128,11 @@ done
         elif 'NVIDIA Corporation' in name:
             return 'NVIDIA'
         else:
-            return name
+            return name.replace('Co., Ltd ', '')
 
     @in_bash
     def _collect_format_pci_device_info(self, rsp):
-        r, o, e = bash_roe("lspci -mmnnv")
+        r, o, e = bash_roe("lspci -Dmmnnv")
         if r != 0:
             rsp.success = False
             rsp.error = "%s, %s" % (e, o)
@@ -1155,6 +1151,8 @@ done
                 if title == 'Slot':
                     content = line[5:].strip()
                     to.pciDeviceAddress = content
+                    group_path = os.path.join('/sys/bus/pci/devices/', to.pciDeviceAddress, 'iommu_group')
+                    to.iommuGroup = os.path.realpath(group_path)
                     r, o, e = bash_roe("lspci -s %s" % content)
                     if r == 0:
                         descs = ' '.join(o.split(' ')[1:]).strip().split(':')
@@ -1169,12 +1167,28 @@ done
                             and 'Audio device' in _class:
                         to.type = "GPU_Audio_Controller"
                     elif any(vendor in to.description for vendor in gpu_vendors) \
+                            and 'USB controller' in _class:
+                        to.type = "GPU_USB_Controller"
+                    elif any(vendor in to.description for vendor in gpu_vendors) \
+                            and 'Serial bus controller' in _class:
+                        to.type = "GPU_Serial_Controller"
+                    elif any(vendor in to.description for vendor in gpu_vendors) \
                             and '3D controller' in _class:
                         to.type = "GPU_3D_Controller"
                     elif 'Ethernet controller' in _class:
                         to.type = "Ethernet_Controller"
+                    elif 'Audio device' in _class:
+                        to.type = "Audio_Controller"
+                    elif 'USB controller' in _class:
+                        to.type = "USB_Controller"
+                    elif 'Serial controller' in _class:
+                        to.type = "Serial_Controller"
                     elif 'Moxa Technologies' in _class:
                         to.type = "Moxa_Device"
+                    elif 'Host bridge' in _class:
+                        to.type = "Host_Bridge"
+                    elif 'PCI bridge' in _class:
+                        to.type = "PCI_Bridge"
                     else:
                         to.type = "Generic"
                 elif title == 'Vendor':
@@ -1233,9 +1247,10 @@ done
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CreatePciDeviceRomFileRsp()
         rom_file = os.path.join(PCI_ROM_PATH, cmd.specUuid)
-        if not cmd.romContent and os.path.exists(rom_file):
-            logger.debug("delete rom file %s because no content in db anymore" % rom_file)
-            os.remove(rom_file)
+        if not cmd.romContent:
+            if os.path.exists(rom_file):
+                logger.debug("delete rom file %s because no content in db anymore" % rom_file)
+                os.remove(rom_file)
         elif cmd.romMd5sum != hashlib.md5(cmd.romContent).hexdigest():
             rsp.success = False
             rsp.error = "md5sum of pci rom file[uuid:%s] does not match" % cmd.specUuid
@@ -1258,8 +1273,6 @@ done
 
         # get device type using device address, get device driver using device type
         addr = cmd.pciDeviceAddress
-        if not addr.startswith('0000:'):
-            addr = "0000:" + addr
         dev = os.path.join("/sys/bus/pci/devices/", addr)
         totalvfs = os.path.join(dev, "sriov_totalvfs")
         if os.path.exists(totalvfs):
@@ -1320,8 +1333,6 @@ done
 
         # get device type using device address, get device driver using device type
         addr = cmd.pciDeviceAddress
-        if not addr.startswith('0000:'):
-            addr = "0000:" + addr
         dev = os.path.join("/sys/bus/pci/devices/", addr)
         totalvfs = os.path.join(dev, "sriov_totalvfs")
         if os.path.exists(totalvfs):
@@ -1349,15 +1360,16 @@ done
 
         # ramdisk file in /dev/shm to mark host rebooting
         addr = cmd.pciDeviceAddress
-        ramdisk = os.path.join('/dev/shm', 'pci-' + addr)
+
+        # before 3.5.1, pciDeviceAddress is composed by only bus:slot.func
+        no_domain_addr = addr if len(addr.split(':')) != 3 else ':'.join(addr.split(':')[1:])
+        ramdisk = os.path.join('/dev/shm', 'pci-' + no_domain_addr)
         if cmd.mdevUuids and len(cmd.mdevUuids) != 0 and os.path.exists(ramdisk):
             logger.debug("no need to re-splite pci device[addr:%s] into mdev devices" % addr)
             return jsonobject.dumps(rsp)
 
         # support nvidia gpu only
         type = int(cmd.mdevSpecTypeId, 0)
-        if not addr.startswith('0000:'):
-            addr = "0000:" + addr
         spec_path = os.path.join("/sys/bus/pci/devices/", addr, "mdev_supported_types", "nvidia-%d" % type)
         if not os.path.exists(spec_path):
             rsp.success = False
@@ -1392,8 +1404,6 @@ done
         # support nvidia gpu only
         addr = cmd.pciDeviceAddress
         type = int(cmd.mdevSpecTypeId, 0)
-        if not addr.startswith('0000:'):
-            addr = "0000:" + addr
         device_path = os.path.join("/sys/bus/pci/devices/", addr, "mdev_supported_types", "nvidia-%d" % type, "devices")
         if not os.path.exists(device_path):
             rsp.success = False
