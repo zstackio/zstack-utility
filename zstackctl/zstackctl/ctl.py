@@ -1306,8 +1306,8 @@ class ShowStatusCmd(Command):
 
             def dump_mn():
                 if pid:
-                    os.kill(int(pid), os.SIGQUIT)
-                    os.kill(int(pid), os.SIGUSR2)
+                    os.kill(int(pid), signal.SIGQUIT)
+                    os.kill(int(pid), signal.SIGUSR2)
 
                 shell_return("echo 'management node became Unknown on %s, you can check status in catalina.out' >> %s"
                              % (datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), log_path))
