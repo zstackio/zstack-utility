@@ -26,7 +26,7 @@ class TraceableShell(object):
 
     def bash_progress_1(self, cmd, func, errorout=True):
         cmd = self.wrap_cmd(cmd)
-        bash.bash_progress_1(cmd, func, errorout)
+        return bash.bash_progress_1(cmd, func, errorout)
 
     def wrap_cmd(self, cmd):
         return _build_id_cmd(self.id) + "; " + cmd
