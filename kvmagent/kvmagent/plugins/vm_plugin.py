@@ -3483,14 +3483,16 @@ class Vm(object):
             e(devices, 'controller', None, {'type': 'scsi', 'model': 'virtio-scsi'})
 
             if machine_type == "q35":
-                controller = e(devices, 'controller', None, {'type': 'sata', 'index': '0'})
-                e(controller, 'alias', None, {'name': 'sata'})
-                e(controller, 'address', None, {'type': 'pci', 'domain': '0', 'bus': '0', 'slot': '0x1f', 'function': '2'})
+                if not IS_AARCH64:
+                    controller = e(devices, 'controller', None, {'type': 'sata', 'index': '0'})
+                    e(controller, 'alias', None, {'name': 'sata'})
+                    e(controller, 'address', None, {'type': 'pci', 'domain': '0', 'bus': '0', 'slot': '0x1f', 'function': '2'})
 
                 pci_idx_generator = range(cmd.pciePortNums + 3).__iter__()
                 e(devices, 'controller', None, {'type': 'pci', 'model': 'pcie-root', 'index': str(pci_idx_generator.next())})
-                e(devices, 'controller', None, {'type': 'pci', 'model': 'dmi-to-pci-bridge', 'index': str(pci_idx_generator.next())})
-                e(devices, 'controller', None, {'type': 'pci', 'model': 'pci-bridge', 'index': str(pci_idx_generator.next())})
+                if not IS_AARCH64:
+                    e(devices, 'controller', None, {'type': 'pci', 'model': 'dmi-to-pci-bridge', 'index': str(pci_idx_generator.next())})
+                    e(devices, 'controller', None, {'type': 'pci', 'model': 'pci-bridge', 'index': str(pci_idx_generator.next())})
                 for i in pci_idx_generator:
                     e(devices, 'controller', None, {'type': 'pci', 'model': 'pcie-root-port', 'index': str(i)})
 
