@@ -16,6 +16,7 @@ from zstacklib.utils import http
 from zstacklib.utils import lock
 from zstacklib.utils import log
 from zstacklib.utils import shell
+from zstacklib.utils import traceable_shell
 from zstacklib.utils import sizeunit
 from zstacklib.utils import linux
 from zstacklib.utils import xmlobject
@@ -1497,6 +1498,16 @@ done
             rsp.error = "failed to ungenerate vfio mdev devices from pci device[addr:%s]" % addr
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    def cancel(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+        if not traceable_shell.cancel_job(cmd):
+            rsp.success = False
+            rsp.error = "no matched job to cancel"
+
+        return jsonobject.dumps(rsp)
+
     def start(self):
         self.host_uuid = None
 
@@ -1526,6 +1537,7 @@ done
         http_server.register_async_uri(self.UNGENERATE_SRIOV_PCI_DEVICES, self.ungenerate_sriov_pci_devices)
         http_server.register_async_uri(self.GENERATE_VFIO_MDEV_DEVICES, self.generate_vfio_mdev_devices)
         http_server.register_async_uri(self.UNGENERATE_VFIO_MDEV_DEVICES, self.ungenerate_vfio_mdev_devices)
+        http_server.register_async_uri(self.CANCEL_JOB, self.cancel)
 
         self.heartbeat_timer = {}
         self.libvirt_version = self._get_libvirt_version()

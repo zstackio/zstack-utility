@@ -2,6 +2,7 @@ import os
 from zstacklib.utils import jsonobject
 from zstacklib.utils import log
 from zstacklib.utils import shell
+from zstacklib.utils import traceable_shell
 from zstacklib.utils import http
 
 logger = log.get_logger(__name__)
@@ -81,6 +82,7 @@ class ImageStoreClient(object):
             self.ZSTORE_CLI_PATH, cmd.hostname, self.ZSTORE_DEF_PORT, req[http.REQUEST_HEADER].get(http.CALLBACK_URI),
             taskid, cmd.imageUuid, extpara, cmd.srcPath)
         logger.debug('pushing %s to image store' % cmd.srcPath)
+        shell = traceable_shell.get_shell(cmd)
         shell.call(cmdstr.encode(encoding="utf-8"))
         logger.debug('%s pushed to image store' % cmd.srcPath)
 

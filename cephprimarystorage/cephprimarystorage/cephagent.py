@@ -20,6 +20,7 @@ from zstacklib.utils import linux
 from zstacklib.utils import ceph
 from zstacklib.utils import bash
 from zstacklib.utils import qemu_img
+from zstacklib.utils import traceable_shell
 from imagestore import ImageStoreClient
 from zstacklib.utils.linux import remote_shell_quote
 
@@ -464,12 +465,14 @@ class CephAgent(plugin.TaskManager):
                 report.progress_report(get_exact_percent(percent, stage), "report")
             return synced
 
-        _, _, err = bash_progress_1('rbd cp %s %s 2> %s' % (src_path, dst_path, PFILE), _get_progress)
+        t_shell = traceable_shell.get_shell(cmd)
+        _, _, err = t_shell.bash_progress_1('rbd cp %s %s 2> %s' % (src_path, dst_path, PFILE), _get_progress)
 
         if os.path.exists(PFILE):
             os.remove(PFILE)
 
         if err:
+            shell.run('rbd rm %s' % dst_path)
             raise err
 
         rsp = CpRsp()

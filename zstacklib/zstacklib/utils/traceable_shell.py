@@ -1,7 +1,9 @@
 import bash
 import shell
 from zstacklib.utils import linux
+from zstacklib.utils import log
 
+logger = log.get_logger(__name__)
 
 class TraceableShell(object):
     def __init__(self, id):
@@ -35,6 +37,7 @@ class TraceableShell(object):
 def _build_id_cmd(id):
     return "echo %s > /dev/null" % id
 
+
 def get_shell(cmd):
     if cmd.threadContext and cmd.threadContext.api:
         return TraceableShell(cmd.threadContext.api)
@@ -48,6 +51,7 @@ def cancel_job(cmd):
     if not pids:
         return False
 
+    logger.debug("it is going to kill process %s to cancel job[api:%s].", pids, cmd.cancellationApiId)
     for pid in pids:
         linux.kill_process(pid)
     return True
