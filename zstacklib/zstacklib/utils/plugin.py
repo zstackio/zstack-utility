@@ -58,15 +58,13 @@ def completetask(func):
 
 
 class TaskManager(object):
-    CANCEL_LONG_JOB = "/longjob/cancel"
+    CANCEL_JOB = "/job/cancel"
     http_server = None
 
     def __init__(self):
         '''
         Constructor
         '''
-        if self.http_server:
-            self.http_server.register_sync_uri(self.CANCEL_LONG_JOB, self.cancel)
         self.mapper_lock = threading.RLock()
         self.longjob_progress_mapper = {}
 
@@ -128,21 +126,6 @@ class TaskManager(object):
             rsp.success = False
             rsp.error = "timeout to wait other task"
             return rsp
-
-    def cancel(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = CancelJobResponse()
-        try:
-            if not traceable_shell.cancel_job(cmd):
-                rsp.success = False
-                rsp.error = "no matched job to cancel"
-        except Exception as e:
-            content = traceback.format_exc()
-            rsp.success = False
-            rsp.error = str(e)
-            logger.warn(content)
-
-        return jsonobject.dumps(rsp)
 
 
 class Plugin(TaskManager):
