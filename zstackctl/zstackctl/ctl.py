@@ -1599,32 +1599,21 @@ class TailLogCmd(Command):
             script()
             return
 
-        if args.protocol == 'http':
-            cmd = '''(echo -e 'HTTP/1.1 200 OK\\nAccess-Control-Allow-Origin: *\\nContent-type: text/event-stream\\n' \
-                   && tail -f %s | sed -u -e 's/^/data: /;s/$/\\n/') | nc -lp %s''' % (
-            log_path, args.listen_port)
-            shell(cmd)
-            return
-
-
         def get_running_ui_ssl_args():
             pid = get_ui_pid()
-            if pid:
-                with open('/proc/%s/cmdline' % pid, 'r') as fd:
-                    cmdline = fd.read()
-                    if 'ssl.enabled' in cmdline:
-                        return "--ssl --sslkey " + ctl.ZSTACK_UI_KEYSTORE_PEM + " --sslcert " + ctl.ZSTACK_UI_KEYSTORE_PEM
-            return ""
+            if not pid:
+                return ""
 
-        timeoutcmd = "" if not args.timeout else "timeout " + str(args.timeout)
-        cmd = '''%s %s --maxforks 1 %s --port %s tail -f %s''' % (timeoutcmd, self.WS_PATH, get_running_ui_ssl_args(), args.listen_port, log_path)
+            with open('/proc/%s/cmdline' % pid, 'r') as fd:
+                cmdline = fd.read()
+                if 'ssl.enabled' in cmdline:
+                    return "--ssl-key " + ctl.ZSTACK_UI_KEYSTORE_PEM + " --ssl-cert " + ctl.ZSTACK_UI_KEYSTORE_PEM
+                else:
+                    return ""
 
-        ret = ShellCmd(cmd)
-        ret(False)
-        if ret.return_code == 124:
-            info("websocketd exit.")
-        elif ret.return_code != 0:
-            ret.raise_error()
+        cmd = '''(echo -e 'HTTP/1.1 200 OK\\nAccess-Control-Allow-Origin: *\\nContent-type: text/event-stream\\n' \
+        && tail -f %s | sed -u -e 's/^/data: /;s/$/\\n/') | nc -lp %s %s''' % (log_path, args.listen_port, get_running_ui_ssl_args())
+        shell(cmd)
 
 class ConfigureCmd(Command):
     def __init__(self):
@@ -7458,11 +7447,12 @@ class DashboardStatusCmd(Command):
         else:
             info('UI status: %s [PID: %s]' % (colored('Stopped', 'red'), pid))
 
-def get_ui_pid(ui_mode='zstack'):
+def get_ui_pid():
+    is_mini = os.path.exists(ctl.MINI_DIR)
     # no need to consider ha because it's not supported any more
     # ha_info_file = '/var/lib/zstack/ha/ha.yaml'
     pidfile = '/var/run/zstack/zstack-ui.pid'
-    if ui_mode == 'mini':
+    if is_mini:
         pidfile = '/var/run/zstack/zstack-mini-ui.pid'
     if os.path.exists(pidfile):
         with open(pidfile, 'r') as fd:
@@ -7491,12 +7481,12 @@ class UiStatusCmd(Command):
             self._remote_status(args.host)
             return
 
-        ui_mode = ctl.read_property('ui_mode')
+        is_mini = os.path.exists(ctl.MINI_DIR)
         # no need to consider ha because it's not supported any more
         #ha_info_file = '/var/lib/zstack/ha/ha.yaml'
         portfile = '/var/run/zstack/zstack-ui.port'
         ui_port = 5000
-        if ui_mode == "mini":
+        if is_mini:
             portfile = '/var/run/zstack/zstack-mini-ui.port'
             ui_port = 8200
         if os.path.exists(portfile):
@@ -7509,7 +7499,7 @@ class UiStatusCmd(Command):
         def write_status(status):
             info('UI status: %s' % status)
 
-        pid = get_ui_pid(ui_mode)
+        pid = get_ui_pid()
         check_pid_cmd = ShellCmd('ps %s' % pid)
         output = check_pid_cmd(is_exception=False)
         cmd = create_check_ui_status_command(ui_port=port, if_https='--ssl.enabled=true' in output)
