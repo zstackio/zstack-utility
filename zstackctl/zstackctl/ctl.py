@@ -7458,11 +7458,12 @@ class DashboardStatusCmd(Command):
         else:
             info('UI status: %s [PID: %s]' % (colored('Stopped', 'red'), pid))
 
-def get_ui_pid(ui_mode='zstack'):
+def get_ui_pid():
+    is_mini = os.path.exists(ctl.MINI_DIR)
     # no need to consider ha because it's not supported any more
     # ha_info_file = '/var/lib/zstack/ha/ha.yaml'
     pidfile = '/var/run/zstack/zstack-ui.pid'
-    if ui_mode == 'mini':
+    if is_mini:
         pidfile = '/var/run/zstack/zstack-mini-ui.pid'
     if os.path.exists(pidfile):
         with open(pidfile, 'r') as fd:
@@ -7491,12 +7492,12 @@ class UiStatusCmd(Command):
             self._remote_status(args.host)
             return
 
-        ui_mode = ctl.read_property('ui_mode')
+        is_mini = os.path.exists(ctl.MINI_DIR)
         # no need to consider ha because it's not supported any more
         #ha_info_file = '/var/lib/zstack/ha/ha.yaml'
         portfile = '/var/run/zstack/zstack-ui.port'
         ui_port = 5000
-        if ui_mode == "mini":
+        if is_mini:
             portfile = '/var/run/zstack/zstack-mini-ui.port'
             ui_port = 8200
         if os.path.exists(portfile):
@@ -7509,7 +7510,7 @@ class UiStatusCmd(Command):
         def write_status(status):
             info('UI status: %s' % status)
 
-        pid = get_ui_pid(ui_mode)
+        pid = get_ui_pid()
         check_pid_cmd = ShellCmd('ps %s' % pid)
         output = check_pid_cmd(is_exception=False)
         cmd = create_check_ui_status_command(ui_port=port, if_https='--ssl.enabled=true' in output)
