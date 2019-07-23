@@ -26,6 +26,7 @@ remote_pass = None
 remote_port = None
 libvirtd_conf_file = "/etc/libvirt/libvirtd.conf"
 update_packages = 'false'
+enable_zstack_experimental_repo = 'false'
 zstack_lib_dir = "/var/lib/zstack"
 zstack_libvirt_nwfilter_dir = "%s/nwfilter/" % zstack_lib_dir
 skipIpv6 = 'false'
@@ -218,6 +219,10 @@ if distro in RPM_BASED_OS:
         if output and len(versions) > 2 and versions[0] == '7' and versions[1] == '2':
             dep_list = dep_list.replace('libvirt libvirt-client libvirt-python ', '')
 
+        # enable zstack experimental repo if need to
+        if enable_zstack_experimental_repo == 'true':
+            zstack_repo += ',zstack-experimental-mn'
+
         # name: install/update kvm related packages on RedHat based OS from user defined repo
         # if zstack-manager is not installed, then install/upgrade zstack-host and ignore failures
         command = ("[[ -f /usr/bin/zstack-ctl ]] && zstack-ctl status | grep 'MN status' | grep 'Running' >/dev/null 2>&1; \
@@ -353,10 +358,11 @@ if distro in RPM_BASED_OS:
     copy_arg.dest = "/etc/sysconfig/libvirtd"
     libvirtd_status = copy(copy_arg, host_post_info)
 
-    # replace qemu-img binary
+    # always replace qemu-img binary with rdb enabled if aarch64, to fix zstack-13594
+    # replace qemu-img binary if qemu-img-ev-2.9.0-x86_64 is installed, to fix zstack-11004
     command = "qemu-img --version | grep 'qemu-img version' | cut -d ' ' -f 3 | cut -d '(' -f 1"
     (status, qemu_img_version) = run_remote_command(command, host_post_info, False, True)
-    if '2.6.0' not in qemu_img_version:
+    if IS_AARCH64 or '2.9.0' in qemu_img_version:
         copy_arg = CopyArg()
         copy_arg.src = "%s" % qemu_img_pkg
         copy_arg.dest = "%s" % qemu_img_local_pkg

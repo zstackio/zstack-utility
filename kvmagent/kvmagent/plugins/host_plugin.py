@@ -834,7 +834,8 @@ if __name__ == "__main__":
             exclude = ""
         else:
             exclude = "--exclude=" + cmd.excludePackages
-        yum_cmd = "yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn %s update -y" % exclude
+        yum_cmd = "yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn%s %s update -y" % \
+                (',zstack-experimental-mn' if cmd.enableExpRepo else '', exclude)
 
         rsp = UpdateHostOSRsp()
         if shell.run("which yum") != 0:
