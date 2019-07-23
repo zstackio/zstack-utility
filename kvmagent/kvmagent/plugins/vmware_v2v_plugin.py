@@ -225,6 +225,11 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             if process_still_running:
                 linux.wait_callback_success(os.path.exists, v2v_cmd_ret_path, timeout=259200, interval=60)
 
+            # delete password file
+            passwd_file = os.path.join(storage_dir, "passwd")
+            if os.path.exists(passwd_file):
+                os.remove(passwd_file)
+
             ret = linux.read_file(v2v_cmd_ret_path)
             return int(ret.strip() if ret else 126)
 
@@ -238,7 +243,6 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             tail_cmd = 'mkdir -p /tmp/v2v_log; tail -c 1M %s/virt_v2v_log > %s' % (storage_dir, v2v_log_file)
             shell.run(tail_cmd)
             with open(v2v_log_file, 'a') as fd:
-                fd.write('\n>>> VCenter Password: %s\n' % cmd.vCenterPassword)
                 fd.write('\n>>> virt_v2v command: %s\n' % virt_v2v_cmd)
             return jsonobject.dumps(rsp)
 
