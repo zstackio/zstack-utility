@@ -83,6 +83,13 @@ class RaidPhysicalDriveSmartRsp(object):
         self.smartDataStructs = None
 
 
+class RaidPhysicalDriveSmartTestRsp(object):
+    result = None  # type: str
+
+    def __init__(self):
+        self.result = None
+
+
 class RaidScanRsp(object):
     raidPhysicalDriveStructs = None  # type: list[RaidPhysicalDriveStruct]
 
@@ -149,6 +156,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     RAID_SCAN_PATH = "/storagedevice/raid/scan"
     RAID_SMART_PATH = "/storagedevice/raid/smart"
     RAID_LOCATE_PATH = "/storagedevice/raid/locate"
+    RAID_SELF_TEST_PATH = "/storagedevice/raid/selftest"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -161,6 +169,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.RAID_SCAN_PATH, self.raid_scan)
         http_server.register_async_uri(self.RAID_SMART_PATH, self.raid_smart)
         http_server.register_async_uri(self.RAID_LOCATE_PATH, self.raid_locate)
+        http_server.register_async_uri(self.RAID_SELF_TEST_PATH, self.drive_self_test)
 
     def stop(self):
         pass
@@ -439,6 +448,51 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         command = "start" if cmd.locate is True else "stop"
         bash.bash_errorout("/opt/MegaRAID/MegaCli/MegaCli64 -PdLocate -%s -physdrv[%d:%d] -a%d" % (command, cmd.enclosureDeviceID, cmd.slotNumber, cmd.busNumber))
         return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @bash.in_bash
+    def drive_self_test(self, req):
+
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = RaidPhysicalDriveSmartTestRsp()
+
+        r, raid_info, e = bash.bash_roe("/opt/MegaRAID/MegaCli/MegaCli64 -LdPdInfo -aALL")
+        if r != 0:
+            raise Exception("can not execute MegaCli: returnCode: %s, stdout: %s, stderr: %s" % (r, raid_info, e))
+        drive = self.get_raid_device_info("/dev/bus/%d -d megaraid,%d" % (cmd.busNumber, cmd.deviceNumber), raid_info)
+        if drive.wwn != cmd.wwn:
+            raise Exception("expect drive[busNumber %s, deviceId %s, slotNumber %s] wwn is %s, but is %s actually" %
+                            (cmd.busNumber, cmd.deviceNumber, cmd.slotNumber, cmd.wwn, drive.wwn))
+
+        rsp.result = self.run_self_test(cmd.busNumber, cmd.deviceNumber)
+        return jsonobject.dumps(rsp)
+
+    @staticmethod
+    @bash.in_bash
+    def run_self_test(busNumber, deviceNumber):
+        @linux.retry(10, 1)
+        @bash.in_bash
+        def self_test_is_running(bus, device):
+            r = bash.bash_r("smartctl -l selftest -d megaraid,%s /dev/bus/%s | grep 'Self-test routine in progress'" % (device, bus))
+            if r == 0:
+                return
+            r, o, e = bash.bash_roe("smartctl --test=short /dev/bus/%s -d megaraid,%s" % (busNumber, deviceNumber))
+            if r != 0 and "Can't start self-test without aborting current test" in o+e:
+                return
+            raise RetryException("can not find self test in progress")
+
+        @linux.retry(7, 30)
+        @bash.in_bash
+        def get_self_test_result(bus, device):
+            r, o = bash.bash_ro(
+                "smartctl -l selftest -d megaraid,%s /dev/bus/%s | grep -E '^# 1'" % (device, bus))
+            if r != 0 or "00%" not in o:
+                raise RetryException("latest self test not finished")
+            return o.split("Short offline")[1].split("00%")[0].strip()
+
+        bash.bash_errorout("smartctl --test=short /dev/bus/%s -d megaraid,%s; sleep 1" % (busNumber, deviceNumber))
+        self_test_is_running(busNumber, deviceNumber)
+        return get_self_test_result(busNumber, deviceNumber)
 
     @kvmagent.replyerror
     @bash.in_bash
