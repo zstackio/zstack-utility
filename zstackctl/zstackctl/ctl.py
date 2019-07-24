@@ -1530,8 +1530,10 @@ class DeployUIDBCmd(Command):
 
         if args.root_password:
             check_existing_db = 'mysql --user=root --password=%s --host=%s --port=%s -e "use zstack_ui"' % (args.root_password, args.host, args.port)
+            drop_mini_db = 'mysql --user=root --password=%s --host=%s --port=%s -e "DROP DATABASE IF EXISTS zstack_mini;"' % (args.root_password, args.host, args.port)
         else:
             check_existing_db = 'mysql --user=root --host=%s --port=%s -e "use zstack_ui"' % (args.host, args.port)
+            drop_mini_db = 'mysql --user=root --host=%s --port=%s -e "DROP DATABASE IF EXISTS zstack_mini;"' % (args.host, args.port)
 
         self.update_db_config()
         cmd = ShellCmd(check_existing_db)
@@ -1569,7 +1571,9 @@ class DeployUIDBCmd(Command):
                     ("db_password", args.zstack_ui_password),
             ]
             ctl.write_ui_properties(properties)
-
+        if args.drop:
+            drop_mini_db_cmd = ShellCmd(drop_mini_db)
+            drop_mini_db_cmd(True)
         info('Successfully deployed zstack_ui database')
 
 class TailLogCmd(Command):
