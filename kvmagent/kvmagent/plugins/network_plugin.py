@@ -25,6 +25,7 @@ KVM_REALIZE_L2VXLAN_NETWORK_PATH = "/network/l2vxlan/createbridge"
 KVM_REALIZE_L2VXLAN_NETWORKS_PATH = "/network/l2vxlan/createbridges"
 KVM_POPULATE_FDB_L2VXLAN_NETWORK_PATH = "/network/l2vxlan/populatefdb"
 KVM_POPULATE_FDB_L2VXLAN_NETWORKS_PATH = "/network/l2vxlan/populatefdbs"
+KVM_SET_BRIDGE_ROUTER_PORT_PATH = "/host/bridge/routerport"
 
 logger = log.get_logger(__name__)
 
@@ -108,6 +109,10 @@ class CreateVxlanBridgesResponse(kvmagent.AgentResponse):
 class PopulateVxlanFdbResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(PopulateVxlanFdbResponse, self).__init__()
+
+class SetBridgeRouterPortResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(SetBridgeRouterPortResponse, self).__init__()
 
 class NetworkPlugin(kvmagent.KvmAgent):
     '''
@@ -390,6 +395,22 @@ class NetworkPlugin(kvmagent.KvmAgent):
         rsp.success = True
         return jsonobject.dumps(rsp)
 
+    def set_bridge_router_port(self, req):
+        # set bridge router port:
+        # echo "2" > /sys/devices/virtual/net/vnic2.1/brport/multicast_router
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = SetBridgeRouterPortResponse
+
+        value = '2'
+        if cmd.enable == False:
+            value = '1'
+
+        for nic in cmd.nicNames:
+            shell.call('echo %s > /sys/devices/virtual/net/%s/brport/multicast_router' % (value, nic))
+
+        rsp.success = True
+        return jsonobject.dumps(rsp)
+
     def start(self):
         http_server = kvmagent.get_http_server()
         http_server.register_sync_uri(CHECK_PHYSICAL_NETWORK_INTERFACE_PATH, self.check_physical_network_interface)
@@ -402,6 +423,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(KVM_REALIZE_L2VXLAN_NETWORKS_PATH, self.create_vxlan_bridges)
         http_server.register_async_uri(KVM_POPULATE_FDB_L2VXLAN_NETWORK_PATH, self.populate_vxlan_fdb)
         http_server.register_async_uri(KVM_POPULATE_FDB_L2VXLAN_NETWORKS_PATH, self.populate_vxlan_fdbs)
+        http_server.register_async_uri(KVM_SET_BRIDGE_ROUTER_PORT_PATH, self.set_bridge_router_port)
 
     def stop(self):
         pass
