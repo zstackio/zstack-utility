@@ -150,24 +150,24 @@ class PxeServerAgent(object):
         return total, total - used
 
     def _start_pxe_server(self):
-        ret = bash_r("ps -ef | grep -v 'grep' | grep 'dnsmasq -C {0}' || dnsmasq -C {0} -u root".format(self.DNSMASQ_CONF_PATH))
+        ret, _, err = bash_roe("ps -ef | grep -v 'grep' | grep 'dnsmasq -C {0}' || dnsmasq -C {0} -u root".format(self.DNSMASQ_CONF_PATH))
         if ret != 0:
-            raise PxeServerError("failed to start dnsmasq on baremetal pxeserver[uuid:%s]" % self.uuid)
+            raise PxeServerError("failed to start dnsmasq on baremetal pxeserver[uuid:%s]: %s" % (self.uuid, err))
 
-        ret = bash_r("ps -ef | grep -v 'grep' | grep 'vsftpd {0}' || vsftpd {0}".format(self.VSFTPD_CONF_PATH))
+        ret, _, err = bash_roe("ps -ef | grep -v 'grep' | grep 'vsftpd {0}' || vsftpd {0}".format(self.VSFTPD_CONF_PATH))
         if ret != 0:
-            raise PxeServerError("failed to start vsftpd on baremetal pxeserver[uuid:%s]" % self.uuid)
+            raise PxeServerError("failed to start vsftpd on baremetal pxeserver[uuid:%s]: %s" % (self.uuid, err))
 
-        ret = bash_r("ps -ef | grep -v 'grep' | grep 'websockify' | grep 'baremetal' || "
+        ret, _, err = bash_roe("ps -ef | grep -v 'grep' | grep 'websockify' | grep 'baremetal' || "
                      "python %s/utils/websockify/run --web %s --token-plugin TokenFile --token-source=%s -D 6080"
                      % (self.NOVNC_INSTALL_PATH, self.NOVNC_INSTALL_PATH, self.NOVNC_TOKEN_PATH))
         if ret != 0:
-            raise PxeServerError("failed to start noVNC on baremetal pxeserver[uuid:%s]" % self.uuid)
+            raise PxeServerError("failed to start noVNC on baremetal pxeserver[uuid:%s]: %s" % (self.uuid, err))
 
         # in case nginx config is updated during nginx running
-        ret = bash_r("systemctl start nginx && systemctl reload nginx")
+        ret, _, err = bash_roe("systemctl start nginx && systemctl reload nginx")
         if ret != 0:
-            raise PxeServerError("failed to start nginx on baremetal pxeserver[uuid:%s]" % self.uuid)
+            raise PxeServerError("failed to start nginx on baremetal pxeserver[uuid:%s]: %s" % (self.uuid, err))
 
     # we do not stop nginx on pxeserver because it may be needed by bm with terminal proxy
     # stop pxeserver means stop dnsmasq actually
@@ -511,6 +511,7 @@ poweroff
         pre_script += more_script
         with open(os.path.join(self.ZSTACK_SCRIPTS_PATH, "pre_%s.sh" % cmd.pxeNicMac), 'w') as f:
             f.write(pre_script)
+        logger.debug("create pre_%s.sh with content: %s" % (cmd.pxeNicMac, pre_script))
 
     def _create_post_scripts(self, cmd, pxeserver_dhcp_nic_ip, more_script = ""):
         post_script = more_script
@@ -576,6 +577,7 @@ systemctl enable zstack-bm-agent.service
 """.format(BMUUID=cmd.bmUuid, PXESERVER_DHCP_NIC_IP=pxeserver_dhcp_nic_ip)
         with open(os.path.join(self.ZSTACK_SCRIPTS_PATH, "post_%s.sh" % cmd.pxeNicMac), 'w') as f:
             f.write(post_script)
+        logger.debug("create post_%s.sh with content: %s" % (cmd.pxeNicMac, post_script))
 
     def _render_kickstart_template(self, cmd, pxeserver_dhcp_nic_ip):
         context = dict()
@@ -952,7 +954,9 @@ echo "STARTMODE='auto'" >> $IFCFGFILE
         nginx_proxy_file = os.path.join(self.NGINX_TERMINAL_PROXY_CONF_PATH, cmd.bmUuid)
         with open(nginx_proxy_file, 'w') as f:
             f.write(cmd.upstream)
-        bash_r("systemctl reload nginx")
+        ret, _, err = bash_roe("systemctl reload nginx || systemctl reload nginx")
+        if ret != 0:
+            logger.debug("failed to reload nginx.service: " + err)
 
         logger.info("successfully create terminal nginx proxy for baremetal instance[uuid:%s] on pxeserver[uuid:%s]" % (cmd.bmUuid, self.uuid))
         return json_object.dumps(rsp)
@@ -965,7 +969,9 @@ echo "STARTMODE='auto'" >> $IFCFGFILE
         nginx_proxy_file = os.path.join(self.NGINX_TERMINAL_PROXY_CONF_PATH, cmd.bmUuid)
         if os.path.exists(nginx_proxy_file):
             os.remove(nginx_proxy_file)
-        bash_r("systemctl reload nginx")
+        ret, _, err = bash_roe("systemctl reload nginx || systemctl reload nginx")
+        if ret != 0:
+            logger.debug("failed to reload nginx.service: " + err)
 
         logger.info("successfully deleted terminal nginx proxy for baremetal instance[uuid:%s] on pxeserver[uuid:%s]" % (cmd.bmUuid, self.uuid))
         return json_object.dumps(rsp)
