@@ -329,6 +329,13 @@ class CollectFromYml(object):
             username = "vyos"
             ssh_port = 22
             return (username, password, ssh_port)
+        elif type == "pxeserver":
+            query.sql = "select * from BaremetalPxeServerVO where hostname='%s'" % host_ip
+            ssh_info = query.query()[0]
+            username = ssh_info['sshUsername']
+            password = ssh_info['sshPassword']
+            ssh_port = ssh_info['sshPort']
+            return (username, password, ssh_port)
         else:
             warn("unknown target type: %s" % type)
 
