@@ -44,6 +44,7 @@ mn:
      - {name: pkg-list, exec: 'rpm -qa | sort'}
      - {name: git-commit, dir: $ZSTACK_HOME/../../webapps/zstack/, file: '*git-commit'}
      - {name: zstack-logs, dir: /var/log/zstack/, file: zstack.log*}
+     - {name: zstack-installation-logs, dir: /tmp/, file: zstack_installation.log*}
 vrouter:
     description: vrouter
     type: target
@@ -132,3 +133,16 @@ sharedblock:
       - {name: lvm-etc, dir: /etc/lvm/, file: }
       - {name: sanlock-etc, dir: /etc/sanlock/, file: }
       - {name: zsblk-agent, dir: /var/log/zstack/zsblk-agent/, file: }
+pxeserver:
+    description: baremetal pxeserver log
+    type: target
+    list: {exec: "select hostname from BaremetalPxeServerVO"}
+    logs:
+      - {name: dnsmasq-logs, dir: /var/log/zstack/baremetal/, file: }
+      - {name: vsftpd-cfgs, dir: /var/lib/zstack/baremetal/vsftpd/, file: }
+      - {name: dnsmasq-confs, dir: /var/lib/zstack/baremetal/dnsmasq/, file: }
+      - {name: kickstart-confs, dir: /var/lib/zstack/baremetal/ftp/ks/, file: }
+      - {name: novnc-tokens, dir: /var/lib/zstack/baremetal/noVNC/tokens/, file: }
+      - {name: kickstart-scripts, dir: /var/lib/zstack/baremetal/ftp/scripts/, file: }
+      - {name: pxelinux-cfgs, dir: /var/lib/zstack/baremetal/tftpboot/pxelinux.cfg/, file: }
+      - {name: pxeserver-agent-logs, dir: /var/log/zstack/, file: zstack-baremetalpxeserver.log*}
