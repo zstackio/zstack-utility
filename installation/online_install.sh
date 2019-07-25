@@ -1263,7 +1263,7 @@ echo "NFS Folder: $NFS_FOLDER" >> $ZSTACK_INSTALL_LOG
 echo "HTTP Folder: $HTTP_FOLDER" >> $ZSTACK_INSTALL_LOG
 
 if [ -z $MANAGEMENT_INTERFACE ]; then
-    echo "Cannot not identify default network interface. Please set management
+    echo "Cannot identify default network interface. Please set management
    node IP address by '-I MANAGEMENT_NODE_IP_ADDRESS'."
     exit 1
 fi

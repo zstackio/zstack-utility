@@ -567,7 +567,7 @@ cs_check_mysql_password () {
                         mysql -u root --password=$MYSQL_NEW_ROOT_PASSWORD -e 'exit' >/dev/null 2>&1
                         if [ $? -ne 0 ]; then
                             if [ -z $QUIET_INSTALLATION ]; then
-                                fail2 "\nCannot not login mysql!
+                                fail2 "\nCannot login mysql!
      If you have mysql root password, please add option '-P MYSQL_ROOT_PASSWORD'.
      If you do not set mysql root password or mysql server is not started up, please add option '-q' and try again.\n"
                             fi
@@ -3061,7 +3061,7 @@ else
 fi
 
 if [ -z $MANAGEMENT_INTERFACE ]; then
-    fail2 "Cannot not identify default network interface. Please set management
+    fail2 "Cannot identify default network interface. Please set management
    node IP address by '-I MANAGEMENT_NODE_IP_ADDRESS'."
 fi
 
