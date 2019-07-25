@@ -23,3 +23,4 @@ mn:
       - {name: pkg-list, exec: 'rpm -qa | sort'}
       - {name: git-commit, dir: $ZSTACK_HOME/../../webapps/zstack/, file: '*git-commit'}
       - {name: zstack-logs, dir: /var/log/zstack/, file: zstack.log*}
+      - {name: zstack-installation-logs, dir: /tmp/, file: zstack_installation.log*}
