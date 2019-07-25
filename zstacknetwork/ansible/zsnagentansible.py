@@ -102,6 +102,8 @@ copy_arg.src = "%s/%s" % (file_root, pkg_zsn)
 copy_arg.dest = dest_pkg
 copy(copy_arg, host_post_info)
 
+command = "/bin/cp /usr/local/zstack/zsn-agent/bin/zsn-agent /usr/local/zstack/zsn-agent/bin/zsn-agent.bak || touch /usr/local/zstack/zsn-agent/bin/zsn-agent.bak"
+run_remote_command(add_true_in_command(command), host_post_info)
 
 # name: install zstack-network
 command = "bash %s %s " % (dest_pkg, fs_rootpath)
@@ -113,20 +115,20 @@ run_remote_command(add_true_in_command("/bin/cp -f /usr/local/zstack/zsn-agent/b
 if tmout is None:
     tmout = 960
 
-successTmout, stdoutTmout = run_remote_command(add_true_in_command("grep -- '-tmout %s' /usr/lib/systemd/system/zstack-network-agent.service" % int(tmout)), host_post_info, True, True)
-successMd5, stdoutMd5 = run_remote_command(add_true_in_command("md5sum /var/lib/zstack/zsn-agent/package/zsn-agent.bin"), host_post_info, True, True)
-successLocalMd5, localMd5 = commands.getstatusoutput("md5sum /usr/local/zstack/ansible/files/zsnagentansible/zsn-agent.bin")
+successTmout, stdoutTmout = run_remote_command("grep -- '-tmout %s' /usr/lib/systemd/system/zstack-network-agent.service" % int(tmout), host_post_info, True, True)
+successMd5, stdoutMd5 = run_remote_command(add_true_in_command("md5sum /usr/local/zstack/zsn-agent/bin/zsn-agent"), host_post_info, True, True)
+successOldMd5, oldMd5 = run_remote_command(add_true_in_command("md5sum /usr/local/zstack/zsn-agent/bin/zsn-agent.bak"), host_post_info, True, True)
 
 msg = Msg()
 post_url = host_post_info.post_url
-msg.details = "zsn agent deploying %s, %s, %s, %s, %s, %s" % (successTmout, stdoutTmout, successMd5, stdoutMd5, successLocalMd5, localMd5)
-msg.label = "ansible.weiw"
+msg.details = "zsn agent deploying %s, %s, %s, %s, %s, %s" % (successTmout, stdoutTmout, successMd5, stdoutMd5, successOldMd5, oldMd5)
+msg.label = "ansible.zsn"
 msg.parameters = host_post_info.post_label_param
 msg.level = "WARNING"
 post_msg(msg, post_url)
 
-if successTmout is True and successMd5 is True and successLocalMd5 == 0 and \
-    len(stdoutTmout.strip()) != 0 and stdoutMd5.split(" ")[0] == localMd5.split(" ")[0]:
+if successTmout is True and successMd5 is True and successOldMd5 == 0 and \
+    len(stdoutTmout.strip()) != 0 and stdoutMd5.split(" ")[0] == oldMd5.split(" ")[0]:
     host_post_info.start_time = start_time
     handle_ansible_info("SUCC: Deploy zstack network agent successful", host_post_info, "INFO")
     sys.exit(0)
