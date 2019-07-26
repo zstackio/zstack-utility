@@ -283,11 +283,15 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
         storage_dir = os.path.join(real_storage_path, cmd.srcVmUuid)
         linux.mkdir(storage_dir)
 
-        runSshCmd(cmd.libvirtURI, cmd.sshPrivKey,
-                "mkdir -p /tmp/zs-v2v && ls /tmp/zs-v2v/{} || mount {}:/{} /tmp/zs-v2v".format(
-                    cmd.srcVmUuid,
-                    cmd.managementIp,
-                    real_storage_path))
+        try:
+            runSshCmd(cmd.libvirtURI, cmd.sshPrivKey,
+                    "mkdir -p /tmp/zs-v2v && ls /tmp/zs-v2v/{} 2>/dev/null || timeout 10 mount {}:/{} /tmp/zs-v2v".format(
+                        cmd.srcVmUuid,
+                        cmd.managementIp,
+                        real_storage_path))
+        except shell.ShellError as ex:
+            logger.info(str(ex))
+            raise Exception('target host cannot access NFS on {}'.format(cmd.managementIp))
 
         volumes = None
         with LibvirtConn(cmd.libvirtURI, cmd.saslUser, cmd.saslPass, cmd.sshPrivKey) as c:
