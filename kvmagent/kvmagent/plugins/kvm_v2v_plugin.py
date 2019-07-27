@@ -144,7 +144,7 @@ def runSshCmd(libvirtURI, keystr, cmdstr):
 def getVolumes(dom, dxml=None):
     def getVolume(dom, diskxml):
         v = VolumeInfo()
-        if diskxml.device_ == 'cdrom':
+        if diskxml.device_ in [ 'cdrom', 'floppy' ]:
             return None
 
         if diskxml.hasattr('boot') and diskxml.boot and diskxml.boot.hasattr('order_') and diskxml.boot.order_ == '1':
@@ -196,7 +196,11 @@ def listVirtualMachines(url, sasluser, saslpass, keystr):
                 info.description = dom.metadata(libvirt.VIR_DOMAIN_METADATA_DESCRIPTION, None)
             except libvirt.libvirtError as ex:
                 pass
-            dxml = xmlobject.loads(dom.XMLDesc(0))
+
+            xmldesc = dom.XMLDesc(0)
+            logger.info("domain xml for vm: {}\n{}".format(info.name, xmldesc))
+
+            dxml = xmlobject.loads(xmldesc)
             info.macAddresses = getMacs(dxml.devices.interface)
             info.volumes = getVolumes(dom, dxml)
 
