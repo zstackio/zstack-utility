@@ -189,9 +189,12 @@ def listVirtualMachines(url, sasluser, saslpass, keystr):
             info = VmInfo()
 
             info.name = dom.name()
-            info.memorySize = dom.maxMemory() * 1024
-            info.cpuNum = dom.maxVcpus()
             info.uuid = dom.UUIDString()
+
+            dinfo = dom.info()
+            info.memorySize = dinfo[1] * 1024
+            info.cpuNum = dinfo[3]
+
             try:
                 info.description = dom.metadata(libvirt.VIR_DOMAIN_METADATA_DESCRIPTION, None)
             except libvirt.libvirtError as ex:
