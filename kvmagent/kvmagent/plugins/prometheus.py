@@ -252,10 +252,9 @@ class PrometheusPlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     @in_bash
-    def start_collectd_exporter(self, req):
-
+    def start_prometheus_exporter(self, req):
         @in_bash
-        def start_exporter(cmd):
+        def start_collectd(cmd):
             conf_path = os.path.join(os.path.dirname(cmd.binaryPath), 'collectd.conf')
 
             conf = '''Interval {{INTERVAL}}
@@ -350,18 +349,26 @@ LoadPlugin virt
                     fd.write(conf)
                 need_restart_collectd = True
 
-            cpid = linux.find_process_by_cmdline(['collectd', conf_path])
-            mpid = linux.find_process_by_cmdline(['collectdmon', conf_path])
+            cpid = linux.find_process_by_command('collectd', [conf_path])
+            mpid = linux.find_process_by_command('collectdmon', [conf_path])
 
             if not cpid:
                 bash_errorout('collectdmon -- -C %s' % conf_path)
             else:
+                bash_errorout('kill -TERM %s' % cpid)
                 if need_restart_collectd:
                     if not mpid:
-                        bash_errorout('kill -TERM %s' % cpid)
                         bash_errorout('collectdmon -- -C %s' % conf_path)
                     else:
                         bash_errorout('kill -HUP %s' % mpid)
+                else:
+                    if not mpid:
+                        bash_errorout('collectdmon -- -C %s' % conf_path)
+
+        @in_bash
+        def start_exporter(cmd):
+            if "collectd_exporter" in cmd.binaryPath:
+                start_collectd(cmd)
 
             pid = linux.find_process_by_cmdline([cmd.binaryPath])
             if not pid:
@@ -431,7 +438,7 @@ LoadPlugin virt
 
     def start(self):
         http_server = kvmagent.get_http_server()
-        http_server.register_async_uri(self.COLLECTD_PATH, self.start_collectd_exporter)
+        http_server.register_async_uri(self.COLLECTD_PATH, self.start_prometheus_exporter)
 
         self.install_colletor()
         start_http_server(7069)
