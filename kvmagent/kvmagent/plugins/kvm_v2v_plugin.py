@@ -274,12 +274,13 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
             privkey = os.path.join(os.path.expanduser("~"), ".ssh", "id_rsa")
             if not os.path.exists(privkey):
                 shell.check_run("ssh-keygen -t rsa -N '' -f {}".format(privkey))
-            cmdstr = "HOME={4} timeout 10 sshpass -p {0} ssh-copy-id -p {1} {2} {3}".format(
+            cmdstr = "HOME={4} timeout 10 sshpass -p {0} ssh-copy-id -i {5} -p {1} {2} {3}".format(
                     linux.shellquote(cmd.sshPassword),
                     port,
                     "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null",
                     target,
-                    os.path.expanduser("~"))
+                    os.path.expanduser("~"),
+                    privkey+".pub")
             shell.check_run(cmdstr)
 
         rsp.qemuVersion, rsp.libvirtVersion, rsp.vms = listVirtualMachines(cmd.libvirtURI,
