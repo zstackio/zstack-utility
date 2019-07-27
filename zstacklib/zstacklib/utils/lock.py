@@ -72,6 +72,7 @@ class Lockf(Locker):
         fcntl.lockf(lock_file, fcntl.LOCK_UN)
 
 
+# NOTE(weiw): caller should manually clean up lock file if not need anymore
 def file_lock(name, locker=Lockf()):
     def wrap(f):
         @functools.wraps(f)
