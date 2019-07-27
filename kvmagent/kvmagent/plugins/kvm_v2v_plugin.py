@@ -165,8 +165,15 @@ def getVolumes(dom, dxml=None):
 
     if dxml is None:
         dxml = xmlobject.loads(dom.XMLDesc(0))
-    return filter(lambda x:x, listVolumes(dom, dxml.devices.disk))
 
+    volumes = filter(lambda v:v, listVolumes(dom, dxml.devices.disk))
+    if len(volumes) == 0:
+        raise Exception("no disks found for VM: "+dom.name())
+
+    if len(filter(lambda v: v.type == 'ROOT', volumes)) == 0:
+        volumes[0].type = 'ROOT'
+
+    return volumes
 
 def listVirtualMachines(url, sasluser, saslpass, keystr):
     def getMac(ifxml):
