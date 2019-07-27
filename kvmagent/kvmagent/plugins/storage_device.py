@@ -464,33 +464,50 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             raise Exception("expect drive[busNumber %s, deviceId %s, slotNumber %s] wwn is %s, but is %s actually" %
                             (cmd.busNumber, cmd.deviceNumber, cmd.slotNumber, cmd.wwn, drive.wwn))
 
-        rsp.result = self.run_self_test(cmd.busNumber, cmd.deviceNumber)
+        rsp.result = self.run_self_test(cmd.busNumber, cmd.deviceNumber, cmd.wwn)
         return jsonobject.dumps(rsp)
 
     @staticmethod
     @bash.in_bash
-    def run_self_test(busNumber, deviceNumber):
+    @lock.file_lock("/var/run/zstack/local_raid_self_test.lock")
+    def run_self_test(busNumber, deviceNumber, wwn):
         @linux.retry(10, 1)
         @bash.in_bash
         def self_test_is_running(bus, device):
             r = bash.bash_r("smartctl -l selftest -d megaraid,%s /dev/bus/%s | grep 'Self-test routine in progress'" % (device, bus))
             if r == 0:
                 return
-            r, o, e = bash.bash_roe("smartctl --test=short /dev/bus/%s -d megaraid,%s" % (busNumber, deviceNumber))
-            if r != 0 and "Can't start self-test without aborting current test" in o+e:
+            r, o, e = bash.bash_roe("smartctl -a /dev/bus/%s -d megaraid,%s" % (bus, device))
+            if "Self-test routine in progress" in o+e:
                 return
-            raise RetryException("can not find self test in progress")
+            raise RetryException("can not find self test in progress on drive %s" % wwn)
 
-        @linux.retry(7, 30)
+        @linux.retry(10, 30)
         @bash.in_bash
         def get_self_test_result(bus, device):
             r, o = bash.bash_ro(
                 "smartctl -l selftest -d megaraid,%s /dev/bus/%s | grep -E '^# 1'" % (device, bus))
             if r != 0 or "00%" not in o:
-                raise RetryException("latest self test not finished")
+                raise RetryException("latest self test not finished on drive %s" % wwn)
             return o.split("Short offline")[1].split("00%")[0].strip()
 
-        bash.bash_errorout("smartctl --test=short /dev/bus/%s -d megaraid,%s; sleep 1" % (busNumber, deviceNumber))
+        @bash.in_bash
+        def check_no_running_test(bus, device):
+            r, o = bash.bash_ro(
+                "smartctl -a /dev/bus/%s -d megaraid,%s | grep 'Self-test routine in progress' -C 5" % (bus, device))
+            if r == 0:
+                return False
+            return True
+
+        for i in range(5):
+            if check_no_running_test() is True:
+                break
+            if i == 4:
+                # bash.bash_r("smartctl -X /dev/bus/%s -d megaraid,%s")
+                raise Exception("there is running test on drive wwn %s" % wwn)
+            time.sleep(30)
+
+        bash.bash_errorout("smartctl --test=short /dev/bus/%s -d megaraid,%s" % (busNumber, deviceNumber))
         self_test_is_running(busNumber, deviceNumber)
         return get_self_test_result(busNumber, deviceNumber)
 

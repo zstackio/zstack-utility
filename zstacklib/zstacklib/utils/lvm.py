@@ -1029,6 +1029,7 @@ def get_lv_locking_type(path):
             output = bash.bash_o("lvmlockctl -i | grep %s | head -n1 | awk '{print $3}'" % lv_uuid(path))
             locking_type = LvmlockdLockType.from_abbr(output.strip(), raise_exception=False)
 
+    bash.bash_r("rm /var/lib/zstack/lock/%s.lock" % path.split("/")[-1])
     return locking_type
 
 
