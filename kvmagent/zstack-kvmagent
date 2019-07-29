@@ -44,6 +44,8 @@ apply_resource_settings() {
 	sysctl -w vm.dirty_ratio=10
 	sysctl -w vm.dirty_background_ratio=5
 
+	echo 0 > /sys/kernel/mm/ksm/merge_across_nodes || true
+
 	# try to avoid kmem alloc failure
 	totalMemGiB=`free -g | awk '/^Mem/{print $2}'`
 	if test $totalMemGiB -gt 255; then
