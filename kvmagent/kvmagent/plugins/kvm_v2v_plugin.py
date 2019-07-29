@@ -307,12 +307,17 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
         storage_dir = os.path.join(real_storage_path, cmd.srcVmUuid)
         linux.mkdir(storage_dir)
 
+        local_mount_point = os.path.join("/tmp/zs-v2v/", cmd.managementIp)
+        vm_v2v_dir = os.path.join(local_mount_point, cmd.srcVmUuid)
+
         try:
             runSshCmd(cmd.libvirtURI, cmd.sshPrivKey,
-                    "mkdir -p /tmp/zs-v2v && ls /tmp/zs-v2v/{} 2>/dev/null || timeout 10 mount {}:/{} /tmp/zs-v2v".format(
-                        cmd.srcVmUuid,
+                    "mkdir -p {0} && ls {1} 2>/dev/null || timeout 10 mount {2}:/{3} {4}".format(
+                        local_mount_point,
+                        vm_v2v_dir,
                         cmd.managementIp,
-                        real_storage_path))
+                        real_storage_path,
+                        local_mount_point))
         except shell.ShellError as ex:
             logger.info(str(ex))
             raise Exception('target host cannot access NFS on {}'.format(cmd.managementIp))
@@ -340,7 +345,7 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                     continue
 
                 dom.blockCopy(v.name,
-                    "<disk type='file'><source file='/tmp/zs-v2v/{}/{}'/><driver type='qcow2'/></disk>".format(cmd.srcVmUuid, v.name),
+                    "<disk type='file'><source file='{}'/><driver type='qcow2'/></disk>".format(os.path.join(vm_v2v_dir, v.name)),
                     None,
                     libvirt.VIR_DOMAIN_BLOCK_COPY_TRANSIENT_JOB)
 
