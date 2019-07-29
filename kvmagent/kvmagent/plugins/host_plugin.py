@@ -573,6 +573,9 @@ class HostPlugin(kvmagent.KvmAgent):
         xml_object = xmlobject.loads(conn.getCapabilities())
         return str(xml_object.host.cpu.model.text_)
 
+    @vm_plugin.LibvirtAutoReconnect
+    def _get_node_info(conn):
+        return conn.getInfo()
 
     @kvmagent.replyerror
     @in_bash
@@ -585,8 +588,8 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.totalMemory = _get_total_memory()
         rsp.usedMemory = used_memory
 
-        sockets = bash_o('grep "physical id" /proc/cpuinfo | sort -u | wc -l').strip('\n')
-        rsp.cpuSockets = int(sockets)
+        ninfo = self._get_node_info()
+        rsp.cpuSockets = ninfo[4] * ninfo[5]
         if rsp.cpuSockets == 0:
             rsp.cpuSockets = 1
 
