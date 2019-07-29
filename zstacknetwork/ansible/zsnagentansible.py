@@ -127,8 +127,7 @@ msg.parameters = host_post_info.post_label_param
 msg.level = "WARNING"
 post_msg(msg, post_url)
 
-if successTmout is True and successMd5 is True and successOldMd5 == 0 and \
-    len(stdoutTmout.strip()) != 0 and stdoutMd5.split(" ")[0] == oldMd5.split(" ")[0]:
+if successTmout is True and len(stdoutMd5.strip()) != 0 and stdoutMd5.split(" ")[0] == oldMd5.split(" ")[0]:
     host_post_info.start_time = start_time
     handle_ansible_info("SUCC: Deploy zstack network agent successful", host_post_info, "INFO")
     sys.exit(0)
