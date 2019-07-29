@@ -99,19 +99,21 @@ class LibvirtConn(object):
         self.conn = None
 
     def __enter__(self):
-        keyfile = None
+        tmpkeyfile = None
         if self.keystr:
             with tempfile.NamedTemporaryFile(delete=False) as f:
-                keyfile.write(keystr)
-                keyfile = f.name
-            self.uri = uriAddQuery(self.uri, 'keyfile', keyfile)
+                tmpkeyfile.write(keystr)
+                tmpkeyfile = f.name
+            self.uri = uriAddQuery(self.uri, 'keyfile', tmpkeyfile)
+        elif os.path.exists(V2V_PRIV_KEY):
+            self.uri = uriAddQuery(self.uri, 'keyfile', V2V_PRIV_KEY)
 
         try:
             self.conn = self.get_connection(self.uri, self.sasluser, self.saslpass)
             return self.conn
         finally:
-            if keyfile:
-                os.remove(keyfile)
+            if tmpkeyfile:
+                os.remove(tmpkeyfile)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.conn:
@@ -121,25 +123,30 @@ class LibvirtConn(object):
 @in_bash
 def runSshCmd(libvirtURI, keystr, cmdstr):
     targegt, port = getSshTargetAndPort(libvirtURI)
+    ssh_opts = DEF_SSH_OPTS
+    ssh_cmd = "ssh" if not os.path.exists(V2V_PRIV_KEY) else "ssh -i {}".format(V2V_PRIV_KEY)
+
     if keystr is None:
-        return shell.check_run( "ssh {} -p {} {} {}".format(
+        return shell.check_run( "{} {} -p {} {} {}".format(
+            ssh_cmd,
             targegt,
             port,
-            "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null",
+            DEF_SSH_OPTS,
             linux.shellquote(cmdstr)))
-    keyfile = None
+
+    tmpkeyfile = None
     with tempfile.NamedTemporaryFile(delete=False) as f:
-        keyfile.write(keystr)
-        keyfile = f.name
+        tmpkeyfile.write(keystr)
+        tmpkeyfile = f.name
     try:
         return shell.check_run("ssh {} -p {} {} -i {} {}".format(
             target,
             port,
-            "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null",
-            keyfile,
+            DEF_SSH_OPTS,
+            tmpkeyfile,
             linux.shellquote(cmdstr)))
     finally:
-        os.remove(keyfile)
+        os.remove(tmpkeyfile)
 
 def getVolumes(dom, dxml=None):
     def getVolume(dom, diskxml):
@@ -224,6 +231,9 @@ QOS_IFB = "ifb0"
 def getRealStoragePath(storagePath):
     return os.path.abspath(os.path.join(storagePath, "v2v-cache"))
 
+V2V_PRIV_KEY = os.path.join(os.path.expanduser("~"), ".ssh", "id_rsa_v2v")
+DEF_SSH_OPTS = "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+
 class KVMV2VPlugin(kvmagent.KvmAgent):
     INIT_PATH = "/kvmv2v/conversionhost/init"
     LIST_VM_PATH = "/kvmv2v/conversionhost/listvm"
@@ -271,16 +281,15 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
 
         if cmd.sshPassword and not cmd.sshPrivKey:
             target, port = getSshTargetAndPort(cmd.libvirtURI)
-            privkey = os.path.join(os.path.expanduser("~"), ".ssh", "id_rsa")
-            if not os.path.exists(privkey):
-                shell.check_run("ssh-keygen -t rsa -N '' -f {}".format(privkey))
+            if not os.path.exists(V2V_PRIV_KEY):
+                shell.check_run("ssh-keygen -t rsa -N '' -f {}".format(V2V_PRIV_KEY))
             cmdstr = "HOME={4} timeout 10 sshpass -p {0} ssh-copy-id -i {5} -p {1} {2} {3}".format(
                     linux.shellquote(cmd.sshPassword),
                     port,
-                    "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null",
+                    DEF_SSH_OPTS,
                     target,
                     os.path.expanduser("~"),
-                    privkey+".pub")
+                    V2V_PRIV_KEY+".pub")
             shell.check_run(cmdstr)
 
         rsp.qemuVersion, rsp.libvirtVersion, rsp.vms = listVirtualMachines(cmd.libvirtURI,
