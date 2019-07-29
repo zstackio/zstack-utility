@@ -1145,6 +1145,12 @@ def create_check_ui_status_command(timeout=10, ui_ip='127.0.0.1', ui_port='5000'
     else:
         return None
 
+def get_mn_port():
+    mn_port = ctl.read_property('RESTFacade.port')
+    if not mn_port:
+        return 8080
+    return mn_port
+
 def create_check_mgmt_node_command(timeout=10, mn_node='127.0.0.1'):
     USE_CURL = 0
     USE_WGET = 1
@@ -1172,10 +1178,11 @@ def create_check_mgmt_node_command(timeout=10, mn_node='127.0.0.1'):
 
     check_hosts()
     what_tool = use_tool()
+    mn_port = get_mn_port()
     if what_tool == USE_CURL:
-        return ShellCmd('''curl --noproxy --connect-timeout=1 --retry %s --retry-delay 0 --retry-max-time %s --max-time %s -H "Content-Type: application/json" -d '{"org.zstack.header.apimediator.APIIsReadyToGoMsg": {}}' http://%s:8080/zstack/api''' % (timeout, timeout, timeout, mn_node))
+        return ShellCmd('''curl --noproxy --connect-timeout=1 --retry %s --retry-delay 0 --retry-max-time %s --max-time %s -H "Content-Type: application/json" -d '{"org.zstack.header.apimediator.APIIsReadyToGoMsg": {}}' http://%s:%s/zstack/api''' % (timeout, timeout, timeout, mn_node, mn_port))
     elif what_tool == USE_WGET:
-        return ShellCmd('''wget --no-proxy -O- --tries=%s --timeout=1  --header=Content-Type:application/json --post-data='{"org.zstack.header.apimediator.APIIsReadyToGoMsg": {}}' http://%s:8080/zstack/api''' % (timeout, mn_node))
+        return ShellCmd('''wget --no-proxy -O- --tries=%s --timeout=1  --header=Content-Type:application/json --post-data='{"org.zstack.header.apimediator.APIIsReadyToGoMsg": {}}' http://%s:%s/zstack/api''' % (timeout, mn_node, mn_port))
     else:
         return None
 
@@ -1859,9 +1866,10 @@ class StartCmd(Command):
                 raise CtlError('ZStack requires Java8, your current version is %s\n'
                                'please run "update-alternatives --config java" to set Java to Java8')
 
-        def check_8080():
-            if shell_return('netstat -nap | grep :8080[[:space:]] | grep LISTEN > /dev/null') == 0:
-                raise CtlError('8080 is occupied by some process. Please use netstat to find out and stop it')
+        def check_mn_port():
+            mn_port = get_mn_port()
+            if shell_return('netstat -nap | grep :%s[[:space:]] | grep LISTEN > /dev/null' % mn_port) == 0:
+                raise CtlError('%s is occupied by some process. Please use netstat to find out and stop it' % mn_port)
 
         def check_prometheus_port():
             port = ctl.read_property('Prometheus.port')
@@ -2057,7 +2065,7 @@ class StartCmd(Command):
 
         prepare_env()
         check_java_version()
-        check_8080()
+        check_mn_port()
         check_prometheus_port()
         check_msyql()
         check_mn_ip()
@@ -6095,7 +6103,7 @@ yum clean all >/dev/null 2>&1
         command = "yum --disablerepo=* --enablerepo=zstack-mn repoinfo | grep Repo-baseurl | awk -F ' : ' '{ print $NF }'"
         (status, baseurl, stderr) = shell_return_stdout_stderr(command)
         if status != 0:
-            baseurl = 'http://localhost:8080/zstack/static/zstack-dvd/'
+            baseurl = 'http://localhost:%s/zstack/static/zstack-dvd/' % ctl.get_mn_port()
 
         with open('/opt/zstack-dvd/.repo_version') as f:
             repoversion = f.readline().strip()
