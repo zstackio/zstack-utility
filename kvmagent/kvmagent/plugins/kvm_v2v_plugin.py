@@ -11,6 +11,7 @@ import urlparse
 from kvmagent import kvmagent
 from zstacklib.utils import jsonobject
 from zstacklib.utils import linux
+from zstacklib.utils import lock
 from zstacklib.utils import log
 from zstacklib.utils import shell
 from zstacklib.utils import http
@@ -311,13 +312,14 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
         vm_v2v_dir = os.path.join(local_mount_point, cmd.srcVmUuid)
 
         try:
-            runSshCmd(cmd.libvirtURI, cmd.sshPrivKey,
-                    "mkdir -p {0} && ls {1} 2>/dev/null || timeout 10 mount {2}:/{3} {4}".format(
-                        local_mount_point,
-                        vm_v2v_dir,
-                        cmd.managementIp,
-                        real_storage_path,
-                        local_mount_point))
+            with lock.NamedLock(local_mount_point):
+                runSshCmd(cmd.libvirtURI, cmd.sshPrivKey,
+                        "mkdir -p {0} && ls {1} 2>/dev/null || timeout 30 mount {2}:/{3} {4}".format(
+                            local_mount_point,
+                            vm_v2v_dir,
+                            cmd.managementIp,
+                            real_storage_path,
+                            local_mount_point))
         except shell.ShellError as ex:
             logger.info(str(ex))
             raise Exception('target host cannot access NFS on {}'.format(cmd.managementIp))
