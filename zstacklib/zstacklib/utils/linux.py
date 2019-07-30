@@ -1270,6 +1270,29 @@ def find_process_by_cmdline(cmdlines):
 
     return None
 
+def find_process_by_command(comm, cmdlines):
+    pids_str = shell.call("pidof %s" % comm, exception=False)
+    if not pids_str:
+        return None
+
+    pids = pids_str.split()
+
+    for pid in pids:
+        cmdline = shell.call("ps -p %s -o cmd | tail -n 1" % pid)
+
+        found = True
+        for c in cmdlines:
+            if c not in cmdline:
+                found = False
+                break
+
+        if not found:
+            continue
+
+        return pid
+
+    return None
+
 def error_if_path_missing(path):
     if not os.path.exists(path):
         raise LinuxError('cannot find file or dir at path[%s]' % path)
