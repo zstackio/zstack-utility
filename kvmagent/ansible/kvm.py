@@ -26,7 +26,6 @@ remote_pass = None
 remote_port = None
 libvirtd_conf_file = "/etc/libvirt/libvirtd.conf"
 update_packages = 'false'
-enable_zstack_experimental_repo = 'false'
 zstack_lib_dir = "/var/lib/zstack"
 zstack_libvirt_nwfilter_dir = "%s/nwfilter/" % zstack_lib_dir
 skipIpv6 = 'false'
@@ -218,10 +217,6 @@ if distro in RPM_BASED_OS:
         versions = distro_version.split('.')
         if output and len(versions) > 2 and versions[0] == '7' and versions[1] == '2':
             dep_list = dep_list.replace('libvirt libvirt-client libvirt-python ', '')
-
-        # enable zstack experimental repo if need to
-        if enable_zstack_experimental_repo == 'true':
-            zstack_repo += ',zstack-experimental-mn'
 
         # name: install/update kvm related packages on RedHat based OS from user defined repo
         # if zstack-manager is not installed, then install/upgrade zstack-host and ignore failures
