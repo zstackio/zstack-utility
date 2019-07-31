@@ -400,10 +400,11 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
     def clean(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
+        real_storage_path = getRealStoragePath(cmd.storagePath)
         if not cmd.srcVmUuid:
-            cleanUpPath = cmd.storagePath
+            cleanUpPath = real_storage_path
         else:
-            cleanUpPath = os.path.join(cmd.storagePath, cmd.srcVmUuid)
+            cleanUpPath = os.path.join(real_storage_path, cmd.srcVmUuid)
 
         linux.rm_dir_force(cleanUpPath)
         return jsonobject.dumps(rsp)
@@ -414,7 +415,8 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
 
-        clean_up_path = os.path.join(cmd.storagePath, cmd.srcVmUuid)
+        real_storage_path = getRealStoragePath(cmd.storagePath)
+        clean_up_path = os.path.join(real_storage_path, cmd.srcVmUuid)
         linux.rm_dir_force(clean_up_path)
         return jsonobject.dumps(rsp)
 
