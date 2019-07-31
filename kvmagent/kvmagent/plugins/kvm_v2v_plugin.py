@@ -284,7 +284,7 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
         if cmd.sshPassword and not cmd.sshPrivKey:
             target, port = getSshTargetAndPort(cmd.libvirtURI)
             if not os.path.exists(V2V_PRIV_KEY) or not os.path.exists(V2V_PUB_KEY):
-                shell.check_run("ssh-keygen -t rsa -N '' -f {}".format(V2V_PRIV_KEY))
+                shell.check_run("yes | ssh-keygen -t rsa -N '' -f {}".format(V2V_PRIV_KEY))
             cmdstr = "HOME={4} timeout 30 sshpass -p {0} ssh-copy-id -i {5} -p {1} {2} {3}".format(
                     linux.shellquote(cmd.sshPassword),
                     port,
