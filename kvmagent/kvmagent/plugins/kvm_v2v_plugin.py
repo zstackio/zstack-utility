@@ -123,14 +123,14 @@ class LibvirtConn(object):
 
 @in_bash
 def runSshCmd(libvirtURI, keystr, cmdstr):
-    targegt, port = getSshTargetAndPort(libvirtURI)
+    target, port = getSshTargetAndPort(libvirtURI)
     ssh_opts = DEF_SSH_OPTS
     ssh_cmd = "ssh" if not os.path.exists(V2V_PRIV_KEY) else "ssh -i {}".format(V2V_PRIV_KEY)
 
     if keystr is None:
         return shell.check_run( "{} {} -p {} {} {}".format(
             ssh_cmd,
-            targegt,
+            target,
             port,
             DEF_SSH_OPTS,
             linux.shellquote(cmdstr)))
