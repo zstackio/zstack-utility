@@ -301,6 +301,18 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     def convert(self, req):
+        def buildFilterDict(filterList):
+            fdict = {}
+            if not filterList:
+                return fdict
+            for f in filterList:
+                fdict[f.identifier] = f
+            return fdict
+
+        def skipVolume(fdict, name):
+            f = fdict.get(name)
+            return f and f.skip
+
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = ConvertRsp()
 
@@ -325,6 +337,7 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
             raise Exception('target host cannot access NFS on {}'.format(cmd.managementIp))
 
         volumes = None
+        filters = buildFilterDict(cmd.volumeFilters)
         with LibvirtConn(cmd.libvirtURI, cmd.saslUser, cmd.saslPass, cmd.sshPrivKey) as c:
             dom = c.lookupByUUIDString(cmd.srcVmUuid)
             if not dom:
@@ -337,6 +350,9 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
             volumes = getVolumes(dom, dxml)
 
             for v in volumes:
+                if skipVolume(filters, v.name):
+                    continue
+
                 localpath = os.path.join(storage_dir, v.name)
                 info = dom.blockJobInfo(v.name, 0)
                 if os.path.exists(localpath) and not info:
