@@ -500,7 +500,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             return True
 
         for i in range(5):
-            if check_no_running_test() is True:
+            if check_no_running_test(busNumber, deviceNumber) is True:
                 break
             if i == 4:
                 # bash.bash_r("smartctl -X /dev/bus/%s -d megaraid,%s")
