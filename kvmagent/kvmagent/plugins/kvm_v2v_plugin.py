@@ -103,7 +103,7 @@ class LibvirtConn(object):
         tmpkeyfile = None
         if self.keystr:
             with tempfile.NamedTemporaryFile(delete=False) as f:
-                tmpkeyfile.write(keystr)
+                f.write(keystr)
                 tmpkeyfile = f.name
             self.uri = uriAddQuery(self.uri, 'keyfile', tmpkeyfile)
         elif os.path.exists(V2V_PRIV_KEY):
@@ -137,7 +137,7 @@ def runSshCmd(libvirtURI, keystr, cmdstr):
 
     tmpkeyfile = None
     with tempfile.NamedTemporaryFile(delete=False) as f:
-        tmpkeyfile.write(keystr)
+        f.write(keystr)
         tmpkeyfile = f.name
     try:
         return shell.check_run("ssh {} -p {} {} -i {} {}".format(
