@@ -63,6 +63,9 @@ class ConvertRsp(AgentRsp):
         self.bootMode = None
 
 
+def getHostname(uri):
+    return urlparse.urlparse(uri).hostname
+
 def getSshTargetAndPort(uri):
     u = urlparse.urlparse(uri)
     target = u.username+'@'+u.hostname if u.username else u.hostname
@@ -337,6 +340,12 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
             logger.info(str(ex))
             raise Exception('target host cannot access NFS on {}'.format(cmd.managementIp))
 
+        libvirtHost = getHostname(cmd.libvirtURI)
+        if linux.find_route_interface_by_destination_ip(libvirtHost):
+            cmdstr = "tc filter replace dev %s protocol ip parent 1: prio 1 u32 match ip src %s/32 flowid 1:1" \
+                     % (QOS_IFB, libvirtHost)
+            shell.run(cmdstr)
+
         volumes = None
         filters = buildFilterDict(cmd.volumeFilters)
         with LibvirtConn(cmd.libvirtURI, cmd.saslUser, cmd.saslPass, cmd.sshPrivKey) as c:
@@ -457,6 +466,41 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
 
+        shell.run("modprobe ifb; ip link set %s up" % QOS_IFB)
+
+        if not cmd.sourceHosts:
+            return jsonobject.dumps(rsp)
+
+        interfaces_to_setup_rule = {}
+
+        def set_up_qos_rules(target_interface):
+            # a bare number in tc class use bytes as unit
+            config_qos_cmd = "tc qdisc add dev {0} ingress;" \
+                             "tc filter add dev {0} parent ffff: protocol ip u32 match " \
+                             "u32 0 0 flowid 1:1 action mirred egress redirect dev {1};" \
+                             "tc qdisc del dev {1} root >/dev/null 2>&1;" \
+                             "tc qdisc add dev {1} root handle 1: htb;" \
+                             "tc class add dev {1} parent 1: classid 1:1 htb rate {2} burst 100m" \
+                             .format(target_interface, QOS_IFB, cmd.inboundBandwidth)
+            return shell.run(config_qos_cmd)
+
+        for host in cmd.sourceHosts:
+            host_ip = linux.get_host_by_name(host)
+            interface = linux.find_route_interface_by_destination_ip(host_ip)
+            if interface:
+                interfaces_to_setup_rule[host_ip] = interface
+
+        for interface in set(interfaces_to_setup_rule.values()):
+            if set_up_qos_rules(interface) != 0:
+                logger.debug("Failed to set up qos rules on interface %s" % interface)
+
+        for host_ip, interface in interfaces_to_setup_rule.items():
+            cmdstr = "tc filter replace dev %s protocol ip parent 1: prio 1 u32 match ip src %s/32 flowid 1:1" \
+                     % (QOS_IFB, host_ip)
+            if shell.run(cmdstr) != 0:
+                logger.debug("Failed to set up tc filter on interface %s for ip %s"
+                             % (interface, host_ip))
+
         return jsonobject.dumps(rsp)
 
 
@@ -464,5 +508,24 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
     def delete_qos(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
+
+        if not cmd.sourceHosts:
+            return jsonobject.dumps(rsp)
+
+        def delete_qos_rules(target_interface):
+            if target_interface:
+                # delete ifb interface tc rules
+                cmdstr = "tc qdisc del dev %s root >/dev/null 2>&1" % QOS_IFB
+                shell.run(cmdstr)
+                # delete target interface tc rules
+                cmdstr = "tc qdisc del dev %s ingress >/dev/null 2>&1" % target_interface
+                shell.run(cmdstr)
+
+        for host in cmd.sourceHosts:
+            host_ip = linux.get_host_by_name(host)
+            interface = linux.find_route_interface_by_destination_ip(host_ip)
+
+            if interface:
+                delete_qos_rules(interface)
 
         return jsonobject.dumps(rsp)

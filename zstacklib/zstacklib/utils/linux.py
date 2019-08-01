@@ -317,6 +317,9 @@ def sshfs_mount(username, hostname, port, password, url, mountpoint, writebandwi
 def fumount(mountpoint, timeout = 10):
     return shell.run("timeout %s fusermount -u %s" % (timeout, mountpoint))
 
+def get_host_by_name(host):
+    return socket.gethostbyname(host)
+
 def is_valid_nfs_url(url):
     ts = url.split(':')
     if len(ts) != 2: raise InvalidNfsUrlError(url, 'url should have one and only one ":"')
