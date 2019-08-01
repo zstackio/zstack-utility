@@ -2782,9 +2782,10 @@ class Vm(object):
             if not linux.wait_callback_success(wait_job, timeout=21600):
                 raise kvmagent.KvmError('live merging snapshot chain failed, timeout after 6 hours')
 
+            linux.sync()
             # Double check (c.f. issue #757)
             if self._get_back_file(top) != base:
-                raise kvmagent.KvmError('[bug] live merge snapshot failed')
+                raise kvmagent.KvmError('[libvirt bug] live merge snapshot failed')
 
             logger.debug('end block rebase [active: %s, new backing: %s]' % (top, base))
 
