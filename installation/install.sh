@@ -2506,7 +2506,8 @@ sd_start_zstack_ui(){
 
 #Ensure that the current version is lower than the upgrade version
 check_version(){
-    CURRENT_VERSION=`zstack-ctl status | awk '/version/{gsub(")",""); print $4 }'`
+    # CURRENT_VERSION=`zstack-ctl status | awk '/version/{gsub(")",""); print $4 }'`
+    CURRENT_VERSION=`awk '{print $2}' $ZSTACK_VERSION`
     UPGRADE_VERSION=${VERSION}
     if [ -z "$CURRENT_VERSION" -o -z "$UPGRADE_VERSION" ];then
         fail2 "Version verification failed! Cannot get your current version or upgrade version, please check zstack status and use the correct iso/bin to upgrade."
