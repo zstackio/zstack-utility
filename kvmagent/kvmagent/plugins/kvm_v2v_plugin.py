@@ -66,7 +66,7 @@ class ConvertRsp(AgentRsp):
 def getSshTargetAndPort(uri):
     u = urlparse.urlparse(uri)
     target = u.username+'@'+u.hostname if u.username else u.hostname
-    port = 22 if u.port is None else u.port
+    port = 22 if not u.port else u.port
     return target, port
 
 def uriAddQuery(uri, key, val):
@@ -127,7 +127,7 @@ def runSshCmd(libvirtURI, keystr, cmdstr):
     ssh_opts = DEF_SSH_OPTS
     ssh_cmd = "ssh" if not os.path.exists(V2V_PRIV_KEY) else "ssh -i {}".format(V2V_PRIV_KEY)
 
-    if keystr is None:
+    if not keystr:
         return shell.check_run( "{} {} -p {} {} {}".format(
             ssh_cmd,
             target,
@@ -171,7 +171,7 @@ def getVolumes(dom, dxml=None):
             return [ getVolume(dom, d) for d in disk ]
         return [ getVolume(dom, disk) ]
 
-    if dxml is None:
+    if not dxml:
         dxml = xmlobject.loads(dom.XMLDesc(0))
 
     volumes = filter(lambda v:v, listVolumes(dom, dxml.devices.disk))
@@ -327,7 +327,7 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
         try:
             with lock.NamedLock(local_mount_point):
                 runSshCmd(cmd.libvirtURI, cmd.sshPrivKey,
-                        "mkdir -p {0} && ls {1} 2>/dev/null || timeout 30 mount {2}:/{3} {4}".format(
+                        "mkdir -p {0} && ls {1} 2>/dev/null || timeout 30 mount {2}:{3} {4}".format(
                             local_mount_point,
                             vm_v2v_dir,
                             cmd.managementIp,
