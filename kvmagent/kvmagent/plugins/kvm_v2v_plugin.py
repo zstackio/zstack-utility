@@ -349,6 +349,12 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                 rsp.bootMode = 'UEFI'
 
             volumes = getVolumes(dom, dxml)
+            oldstat, _ = dom.state()
+            needResume = True
+
+            if cmd.pauseVm and oldstat != libvirt.VIR_DOMAIN_PAUSED:
+                dom.suspend()
+                needResume = False
 
             for v in volumes:
                 if skipVolume(filters, v.name):
@@ -377,15 +383,15 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                         break
                     time.sleep(5)
 
-            curstat, _ = dom.state()
-            if curstat != libvirt.VIR_DOMAIN_PAUSED:
+            if not cmd.pauseVm and oldstat != libvirt.VIR_DOMAIN_PAUSED:
                 dom.suspend()
+                needResume = True
 
             try:
                 for v in volumes:
                     dom.blockJobAbort(v.name)
             finally:
-                if curstat != libvirt.VIR_DOMAIN_PAUSED:
+                if needResume:
                     dom.resume()
 
         # TODO
