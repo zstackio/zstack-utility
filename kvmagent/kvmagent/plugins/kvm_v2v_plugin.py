@@ -354,7 +354,7 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                 raise Exception('VM not found: {}'.format(cmd.srcVmUuid))
 
             dxml = xmlobject.loads(dom.XMLDesc(0))
-            if dxml.os.hasattr('firmware_') and dxml.os.firmware_ == 'efi':
+            if dxml.os.hasattr('firmware_') and dxml.os.firmware_ == 'efi' or dxml.os.hasattr('loader'):
                 rsp.bootMode = 'UEFI'
 
             volumes = getVolumes(dom, dxml)
