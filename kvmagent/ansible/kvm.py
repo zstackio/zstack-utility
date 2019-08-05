@@ -27,7 +27,7 @@ remote_port = None
 libvirtd_conf_file = "/etc/libvirt/libvirtd.conf"
 update_packages = 'false'
 zstack_lib_dir = "/var/lib/zstack"
-zstack_libvirt_nwfilter_dir = "%s/nwfilter/" % zstack_lib_dir
+zstack_libvirt_nwfilter_dir = "%s/nwfilter" % zstack_lib_dir
 skipIpv6 = 'false'
 
 def update_libvritd_config(host_post_info):
