@@ -103,7 +103,7 @@ class LibvirtConn(object):
         tmpkeyfile = None
         if self.keystr:
             with tempfile.NamedTemporaryFile(delete=False) as f:
-                f.write(keystr)
+                f.write(self.keystr)
                 tmpkeyfile = f.name
             self.uri = uriAddQuery(self.uri, 'keyfile', tmpkeyfile)
         elif os.path.exists(V2V_PRIV_KEY):
