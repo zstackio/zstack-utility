@@ -1307,7 +1307,9 @@ is_install_general_libs_rh(){
             nginx \
             psmisc \
             python-backports-ssl_match_hostname \
-            python-setuptools"
+            python-setuptools \
+            avahi \
+            avahi-tools"
 
     missing_list=`LANG=en_US.UTF-8 && rpm -q $deps_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
 
@@ -1886,6 +1888,7 @@ cp_third_party_tools(){
         /bin/cp -n /opt/zstack-dvd/tools/* $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS >/dev/null 2>&1
         chown zstack.zstack $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS/*
     fi
+    install_zstack_network
     pass
 }
 
@@ -3438,12 +3441,17 @@ if [ -f /bin/systemctl ]; then
     systemctl start zstack.service >/dev/null 2>&1
 fi
 
-#Start bootstrap service for mini
-if [ x"$MINI_INSTALL" = x"y" ];then
+install_zstack_network()
+{
     bash $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_CLASSES/ansible/zsnagentansible/zsn-agent.bin
     /bin/cp -f /usr/local/zstack/zsn-agent/bin/zstack-network-agent.service /usr/lib/systemd/system/
-    cp /opt/zstack-dvd/mini_auto_check /etc/init.d/
     systemctl enable zstack-network-agent
+}
+
+#Start bootstrap service for mini
+if [ x"$MINI_INSTALL" = x"y" ];then
+    install_zstack_network
+    cp /opt/zstack-dvd/mini_auto_check /etc/init.d/
     chmod +x /etc/init.d/mini_auto_check
     echo "systemctl start zstack-network-agent" >> /etc/rc.local
     echo "[ -f /etc/init.d/mini_auto_check ] && bash /etc/init.d/mini_auto_check" >> /etc/rc.local
