@@ -354,10 +354,10 @@ if distro in RPM_BASED_OS:
     libvirtd_status = copy(copy_arg, host_post_info)
 
     # always replace qemu-img binary with rdb enabled if aarch64, to fix zstack-13594
-    # replace qemu-img binary if qemu-img-ev-2.9.0-x86_64 is installed, to fix zstack-11004
+    # replace qemu-img binary if qemu-img-ev-x86_64 before 2.12.0 is installed, to fix zstack-11004 and zstack-20983
     command = "qemu-img --version | grep 'qemu-img version' | cut -d ' ' -f 3 | cut -d '(' -f 1"
     (status, qemu_img_version) = run_remote_command(command, host_post_info, False, True)
-    if IS_AARCH64 or '2.9.0' in qemu_img_version:
+    if IS_AARCH64 or '2.6.0' in qemu_img_version or '2.9.0' in qemu_img_version:
         copy_arg = CopyArg()
         copy_arg.src = "%s" % qemu_img_pkg
         copy_arg.dest = "%s" % qemu_img_local_pkg
