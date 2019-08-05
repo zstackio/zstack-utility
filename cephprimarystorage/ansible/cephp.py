@@ -49,6 +49,11 @@ host_post_info.remote_port = remote_port
 if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
 
+IS_AARCH64 = get_remote_host_arch(host_post_info) == 'aarch64'
+if IS_AARCH64:
+    qemu_img_pkg = "files/kvm/qemu-img-aarch64"
+    qemu_img_local_pkg = "%s/qemu-img-aarch64" % cephp_root
+
 # include zstacklib.py
 (distro, distro_version, distro_release, _) = get_remote_host_info(host_post_info)
 zstacklib_args = ZstackLibArgs()
@@ -91,6 +96,20 @@ if distro in RPM_BASED_OS:
             command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
             run_remote_command(command, host_post_info)
     set_selinux("state=disabled", host_post_info)
+
+    # replace qemu-img binary if qemu-img-ev before 2.12.0 is installed, to fix zstack-11004 / zstack-13594 / zstack-20983
+    command = "qemu-img --version | grep 'qemu-img version' | cut -d ' ' -f 3 | cut -d '(' -f 1"
+    (status, qemu_img_version) = run_remote_command(command, host_post_info, False, True)
+    if qemu_img_version < '2.12.0':
+        copy_arg = CopyArg()
+        copy_arg.src = "%s" % qemu_img_pkg
+        copy_arg.dest = "%s" % qemu_img_local_pkg
+        copy(copy_arg, host_post_info)
+
+        command = "for i in {1..5}; do /bin/cp %s `which qemu-img` && break || sleep 2; done; sync" % qemu_img_local_pkg
+        host_post_info.post_label = "ansible.shell.install.pkg"
+        host_post_info.post_label_param = "qemu-img"
+        run_remote_command(command, host_post_info)
 
 elif distro in DEB_BASED_OS:
     install_pkg_list = ["wget", "qemu-utils","libvirt-bin", "libguestfs-tools"]
