@@ -353,10 +353,10 @@ if distro in RPM_BASED_OS:
     copy_arg.dest = "/etc/sysconfig/libvirtd"
     libvirtd_status = copy(copy_arg, host_post_info)
 
-    # replace qemu-img binary
+    # replace qemu-img binary if qemu-img-ev before 2.12.0 is installed, to fix zstack-11004 / zstack-13594 / zstack-20983
     command = "qemu-img --version | grep 'qemu-img version' | cut -d ' ' -f 3 | cut -d '(' -f 1"
     (status, qemu_img_version) = run_remote_command(command, host_post_info, False, True)
-    if '2.6.0' not in qemu_img_version:
+    if qemu_img_version < '2.12.0':
         copy_arg = CopyArg()
         copy_arg.src = "%s" % qemu_img_pkg
         copy_arg.dest = "%s" % qemu_img_local_pkg
