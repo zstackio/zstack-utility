@@ -1166,7 +1166,7 @@ mimetype.assign = (
     def _get_dhcp_server_ip_from_namespace(self, namespace_name):
         '''
         :param namespace_name:
-        :return: dhcp server ip address in namespace
+        :return: dhcp server ip address in namespace, or empty string when failed
         # ip netns exec br_eth0_100_a9c8b01132444866a61d4c2ae03230ba ip add
         1: lo: <LOOPBACK> mtu 65536 qdisc noop state DOWN qlen 1
         link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
@@ -1179,7 +1179,9 @@ mimetype.assign = (
         inet6 fe80::fc34:72ff:fe29:3564/64 scope link
         valid_lft forever preferred_lft forever
         '''
-        dhcp_ip = bash_o("ip netns exec {{namespace_name}} ip add | grep inet | awk '{print $2}' | awk -F '/' '{print $1}' | head -1")
+        r, dhcp_ip = bash_ro("ip netns exec {{namespace_name}} ip add | grep inet | grep -v 169.254 | awk '{print $2}' | awk -F '/' '{print $1}' | head -1")
+        if r != 0:
+            return ""
         return dhcp_ip.strip(" \t\r\n")
 
     @lock.lock('prepare_dhcp')
@@ -1196,7 +1198,7 @@ mimetype.assign = (
         p.addressMode = cmd.addressMode
 
         old_dhcp_ip = self._get_dhcp_server_ip_from_namespace(cmd.namespaceName)
-        if old_dhcp_ip != cmd.dhcpServerIp:
+        if old_dhcp_ip != "" and old_dhcp_ip != cmd.dhcpServerIp:
             if cmd.ipVersion == 4:
                 self._delete_dhcp4(cmd.namespaceName)
             else:
