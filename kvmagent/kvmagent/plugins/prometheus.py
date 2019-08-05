@@ -119,6 +119,14 @@ def collect_lvm_capacity_statistics():
                                       'volume group and thin pool free size', None, ['vg_name']),
     }
 
+    r = bash_r("grep '^[[:space:]]*use_lvmlockd=1' /etc/lvm/lvm.conf")
+    if r == 0:
+        return metrics.values()
+
+    r = bash_r("grep -Ev '^[[:space:]]*#|^[[:space:]]*$' /etc/multipath/wwids")
+    if r == 0:
+        linux.set_fail_if_no_path()
+
     r, o, e = bash_roe("vgs --nolocking --noheading -oname")
     if r != 0 or len(o.splitlines()) == 0:
         return metrics.values()
@@ -173,8 +181,8 @@ def collect_raid_state():
                                                  'physical disk state', None,
                                                  ['slot_number', 'disk_group']),
         'physical_disk_temperature': GaugeMetricFamily('physical_disk_temperature',
-                                                 'physical disk temperature', None,
-                                                 ['slot_number', 'disk_group']),
+                                                       'physical disk temperature', None,
+                                                       ['slot_number', 'disk_group']),
     }
     if bash_r("/opt/MegaRAID/MegaCli/MegaCli64 -LDInfo -LALL -aAll") != 0:
         return metrics.values()
