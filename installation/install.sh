@@ -1882,6 +1882,13 @@ iz_install_zstackctl(){
     pass
 }
 
+install_zstack_network()
+{
+    bash $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_CLASSES/ansible/zsnagentansible/zsn-agent.bin
+    /bin/cp -f /usr/local/zstack/zsn-agent/bin/zstack-network-agent.service /usr/lib/systemd/system/
+    systemctl enable zstack-network-agent
+}
+
 cp_third_party_tools(){
     echo_subtitle "Copy third-party tools to ZStack install path"
     if [ -d "/opt/zstack-dvd/tools" ]; then
@@ -2506,7 +2513,8 @@ sd_start_zstack_ui(){
 
 #Ensure that the current version is lower than the upgrade version
 check_version(){
-    CURRENT_VERSION=`zstack-ctl status | awk '/version/{gsub(")",""); print $4 }'`
+    # CURRENT_VERSION=`zstack-ctl status | awk '/version/{gsub(")",""); print $4 }'`
+    CURRENT_VERSION=`awk '{print $2}' $ZSTACK_VERSION`
     UPGRADE_VERSION=${VERSION}
     if [ -z "$CURRENT_VERSION" -o -z "$UPGRADE_VERSION" ];then
         fail2 "Version verification failed! Cannot get your current version or upgrade version, please check zstack status and use the correct iso/bin to upgrade."
@@ -3440,13 +3448,6 @@ fi
 if [ -f /bin/systemctl ]; then
     systemctl start zstack.service >/dev/null 2>&1
 fi
-
-install_zstack_network()
-{
-    bash $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_CLASSES/ansible/zsnagentansible/zsn-agent.bin
-    /bin/cp -f /usr/local/zstack/zsn-agent/bin/zstack-network-agent.service /usr/lib/systemd/system/
-    systemctl enable zstack-network-agent
-}
 
 #Start bootstrap service for mini
 if [ x"$MINI_INSTALL" = x"y" ];then
