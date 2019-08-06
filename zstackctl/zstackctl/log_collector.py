@@ -160,6 +160,9 @@ class CollectFromYml(object):
                 if collect_type == 'host' or collect_type == 'sharedblock':
                     if args.host is not None:
                         conf_value['list'] = args.host
+
+            history_configured = False
+
             for log in logs:
                 name_value = log.get('name')
                 dir_value = log.get('dir')
@@ -174,6 +177,9 @@ class CollectFromYml(object):
                         break
                     else:
                         name_array.append(name_value)
+
+                    if name_value == 'history':
+                        history_configured = True
                 if dir_value is None:
                     if exec_value is None:
                         decode_error = 'dir, exec cannot be empty at the same time in  %s' % log
@@ -190,6 +196,11 @@ class CollectFromYml(object):
                     if file_value is not None and file_value.startswith('/'):
                         decode_error = 'file value can not be an absolute path in %s' % log
                         break
+
+            # collect `history` by default
+            if not history_configured:
+                logs.append({'name':'history', 'dir':'/var/log/history.d/', 'file':'history'})
+
             decode_result[collect_type] = dict(
                 (key, value) for key, value in conf_value.items() if key == 'list' or key == 'logs')
             name_array = []
