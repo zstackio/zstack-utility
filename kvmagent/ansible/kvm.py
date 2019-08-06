@@ -2,6 +2,7 @@
 # encoding=utf-8
 import argparse
 from zstacklib import *
+from distutils.version import LooseVersion
 
 # create log
 logger_dir = "/var/log/zstack/"
@@ -356,7 +357,7 @@ if distro in RPM_BASED_OS:
     # replace qemu-img binary if qemu-img-ev before 2.12.0 is installed, to fix zstack-11004 / zstack-13594 / zstack-20983
     command = "qemu-img --version | grep 'qemu-img version' | cut -d ' ' -f 3 | cut -d '(' -f 1"
     (status, qemu_img_version) = run_remote_command(command, host_post_info, False, True)
-    if qemu_img_version < '2.12.0':
+    if LooseVersion(qemu_img_version) < LooseVersion('2.12.0'):
         copy_arg = CopyArg()
         copy_arg.src = "%s" % qemu_img_pkg
         copy_arg.dest = "%s" % qemu_img_local_pkg
