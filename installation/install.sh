@@ -1882,6 +1882,13 @@ iz_install_zstackctl(){
     pass
 }
 
+install_zstack_network()
+{
+    bash $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_CLASSES/ansible/zsnagentansible/zsn-agent.bin
+    /bin/cp -f /usr/local/zstack/zsn-agent/bin/zstack-network-agent.service /usr/lib/systemd/system/
+    systemctl enable zstack-network-agent
+}
+
 cp_third_party_tools(){
     echo_subtitle "Copy third-party tools to ZStack install path"
     if [ -d "/opt/zstack-dvd/tools" ]; then
@@ -3441,13 +3448,6 @@ fi
 if [ -f /bin/systemctl ]; then
     systemctl start zstack.service >/dev/null 2>&1
 fi
-
-install_zstack_network()
-{
-    bash $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_CLASSES/ansible/zsnagentansible/zsn-agent.bin
-    /bin/cp -f /usr/local/zstack/zsn-agent/bin/zstack-network-agent.service /usr/lib/systemd/system/
-    systemctl enable zstack-network-agent
-}
 
 #Start bootstrap service for mini
 if [ x"$MINI_INSTALL" = x"y" ];then

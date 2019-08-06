@@ -232,7 +232,7 @@ def get_detail_version():
     detailed_version_file = os.path.join(ctl.zstack_home, "VERSION")
     if os.path.exists(detailed_version_file):
         with open(detailed_version_file, 'r') as fd:
-            detailed_version = fd.read()
+            detailed_version = fd.read().strip()
             return detailed_version
     else:
         return None
