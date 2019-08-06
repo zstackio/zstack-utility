@@ -1398,6 +1398,7 @@ enabled=0" >  /etc/yum.repos.d/zstack-mn.repo
                        'yum_server' : yum_server
                     })
                     run_remote_command(generate_mn_repo_command, host_post_info)
+                    run_remote_command("sync", host_post_info)
                 if 'qemu-kvm-ev-mn' in zstack_repo:
                     generate_kvm_repo_raw_command = """
 echo -e "[qemu-kvm-ev-mn]
@@ -1411,6 +1412,7 @@ enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
                         'yum_server':yum_server
                     })
                     run_remote_command(generate_kvm_repo_command, host_post_info)
+                    run_remote_command("sync", host_post_info)
                 # install libselinux-python and other command system libs from user defined repos
                 command = (
                           "yum clean --enablerepo=%s metadata &&  pkg_list=`rpm -q libselinux-python python-devel "
