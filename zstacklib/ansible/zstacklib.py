@@ -1800,6 +1800,7 @@ enabled=0" >  /etc/yum.repos.d/zstack-mn.repo
                        'yum_server' : yum_server
                     })
                     run_remote_command(generate_mn_repo_command, host_post_info)
+                    run_remote_command("sync", host_post_info)
                 if 'qemu-kvm-ev-mn' in zstack_repo and distro_version >= 7:
                     generate_kvm_repo_raw_command = """
 echo -e "[qemu-kvm-ev-mn]
@@ -1815,6 +1816,7 @@ enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
                     host_post_info.post_label = "ansible.shell.deploy.repo"
                     host_post_info.post_label_param = "qemu-kvm-ev-mn"
                     run_remote_command(generate_kvm_repo_command, host_post_info)
+                    run_remote_command("sync", host_post_info)
                 # install libselinux-python and other command system libs from user defined repos
                 host_post_info.post_label = "ansible.shell.install.pkg"
                 host_post_info.post_label_param = "libselinux-python,python-devel,python-setuptools,python-pip,gcc," \
