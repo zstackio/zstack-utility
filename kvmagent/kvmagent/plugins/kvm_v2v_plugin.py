@@ -31,6 +31,7 @@ class VolumeInfo(object):
         self.size = -1         # type: long
         self.physicalSize = -1 # type: long
         self.type = None       # type: str
+        self.bus = None        # type: str
 
 class VmInfo(object):
     def __init__(self):
@@ -164,6 +165,7 @@ def getVolumes(dom, dxml=None):
             v.type = 'DATA'
 
         v.name = diskxml.target.dev_
+        v.bus = diskxml.target.bus_
         v.size, _, v.physicalSize = dom.blockInfo(v.name)
         return v
 
@@ -410,6 +412,7 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
             return { "installPath": os.path.join(storage_dir, v.name),
                      "actualSize":  v.physicalSize,
                      "virtualSize": v.size,
+                     "virtioScsi":  v.bus == 'scsi',
                      "deviceId":    devId }
 
         idx = 1
