@@ -3908,6 +3908,8 @@ class VmPlugin(kvmagent.KvmAgent):
         cmd_base = "virsh blkdeviotune %s %s" % (cmd.vmUuid, device_id)
         if (cmd.mode == "total") or (cmd.mode is None):  # to set total(read/write reset)
             shell.call('%s --total_bytes_sec %s' % (cmd_base, cmd.totalBandwidth))
+        elif cmd.mode == "all":
+            shell.call('%s --read_bytes_sec %s --write_bytes_sec %s' % (cmd_base, cmd.readBandwidth, cmd.writeBandwidth))
         elif cmd.mode == "read":  # to set read(write reserved, total reset)
             write_bytes_sec = self._get_volume_bandwidth_value(cmd.vmUuid, device_id, "write")
             shell.call('%s --read_bytes_sec %s --write_bytes_sec %s' % (cmd_base, cmd.readBandwidth, write_bytes_sec))
