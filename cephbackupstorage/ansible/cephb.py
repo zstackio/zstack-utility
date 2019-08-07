@@ -151,8 +151,15 @@ if distro in RPM_BASED_OS:
 elif distro in DEB_BASED_OS:
     command = "update-rc.d zstack-ceph-backupstorage start 97 3 4 5 . stop 3 0 1 2 6 . && service zstack-ceph-backupstorage stop && service zstack-ceph-backupstorage start"
 run_remote_command(command, host_post_info)
+
 # change ceph config
-set_ini_file("/etc/ceph/ceph.conf", 'global', "rbd_default_format", "2", host_post_info)
+# xsky does not need this configuration
+#    xsky v3.1.x rbd_default_format = 2 (by default)
+#    xsky v3.2.x rbd_default_format = 128 (by default)
+command = "test -f /usr/bin/xms-cli"
+status = run_remote_command(command, host_post_info, True, False)
+if status is False:
+    set_ini_file("/etc/ceph/ceph.conf", 'global', "rbd_default_format", "2", host_post_info)
 
 host_post_info.start_time = start_time
 handle_ansible_info("SUCC: Deploy cephbackup agent successful", host_post_info, "INFO")
