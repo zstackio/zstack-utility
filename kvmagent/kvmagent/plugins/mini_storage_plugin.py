@@ -228,6 +228,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
     MIGRATE_DATA_PATH = "/ministorage/volume/migrate"
     REVERT_VOLUME_FROM_SNAPSHOT_PATH = "/ministorage/volume/revertfromsnapshot"
     GET_QCOW2_REFERENCE = "/ministorage/getqcow2reference"
+    FLUSH_CACHE = "/ministorage/cache/flush"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -248,6 +249,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CHECK_DISKS_PATH, self.check_disks)
         http_server.register_async_uri(self.REVERT_VOLUME_FROM_SNAPSHOT_PATH, self.revert_volume_from_snapshot)
         http_server.register_async_uri(self.GET_QCOW2_REFERENCE, self.get_qcow2_reference)
+        http_server.register_async_uri(self.FLUSH_CACHE, self.flush_cache)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -584,6 +586,11 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
                     continue
         logger.debug("find qcow2 %s referencess: %s" % (real_path, rsp.referencePaths))
         return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def flush_cache(self, req):
+        shell.call("/opt/MegaRAID/MegaCli/MegaCli64 -AdpCacheFlush -aAll")
+        return jsonobject.dumps(AgentRsp())
 
     @kvmagent.replyerror
     def create_template_from_volume(self, req):
