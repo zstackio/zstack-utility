@@ -7,16 +7,19 @@ from zstacklib.utils.bash import *
 from zstacklib.utils import linux
 from zstacklib.utils import thread
 from zstacklib.utils import lvm
+from zstacklib.utils import misc
 from zstacklib.utils.ip import get_nic_supported_max_speed
 from jinja2 import Template
 import os.path
 import re
 import time
 import traceback
+import threading
 from prometheus_client.core import GaugeMetricFamily,REGISTRY
 from prometheus_client import start_http_server
 
 logger = log.get_logger(__name__)
+collector_dict = {}  # type: Dict[str, threading.Thread]
 
 def collect_host_network_statistics():
 
@@ -249,9 +252,11 @@ def collect_equipment_state():
 
 kvmagent.register_prometheus_collector(collect_host_network_statistics)
 kvmagent.register_prometheus_collector(collect_host_capacity_statistics)
-kvmagent.register_prometheus_collector(collect_lvm_capacity_statistics)
-kvmagent.register_prometheus_collector(collect_raid_state)
-kvmagent.register_prometheus_collector(collect_equipment_state)
+
+if misc.isMiniHost():
+    kvmagent.register_prometheus_collector(collect_lvm_capacity_statistics)
+    kvmagent.register_prometheus_collector(collect_raid_state)
+    kvmagent.register_prometheus_collector(collect_equipment_state)
 
 
 class PrometheusPlugin(kvmagent.KvmAgent):
@@ -429,18 +434,32 @@ LoadPlugin virt
 
     def install_colletor(self):
         class Collector(object):
-            def collect(self):
-                try:
-                    ret = []
-                    for c in kvmagent.metric_collectors:
-                        ret.extend(c())
 
-                    return ret
-                except Exception as e:
-                    content = traceback.format_exc()
-                    err = '%s\n%s\n' % (str(e), content)
-                    logger.warn(err)
-                    return []
+            def collect(self):
+                lock = threading.RLock()
+                ret = []
+
+                def get_result_run(f):
+                    # type: (function) -> None
+                    r = f()
+                    with lock:
+                        ret.extend(r)
+                for c in kvmagent.metric_collectors:
+                    name = "%s.%s" % (c.__module__, c.__name__)
+                    if collector_dict.get(name) is not None and collector_dict.get(name).is_alive():
+                        continue
+                    collector_dict[name] = thread.ThreadFacade.run_in_thread(get_result_run, (c,))
+
+                for i in range(9):
+                    for t in collector_dict.values():
+                        if t.is_alive():
+                            time.sleep(0.5)
+                            continue
+
+                for k in collector_dict.iterkeys():
+                    if collector_dict[k].is_alive():
+                        logger.warn("collector %s timeout!" % k)
+                return ret
 
         REGISTRY.register(Collector())
 
