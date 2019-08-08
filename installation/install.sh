@@ -180,6 +180,19 @@ vercomp () {
     return 0
 }
 
+# adjust iptables rules before zstack installation/upgrade
+pre_scripts_to_adjust_iptables_rules() {
+  # allow remote mysql connection from 127.0.0.1
+  iptables -L INPUT | grep 'zstack allow login mysql from 127.0.0.1' || \
+  iptables -I INPUT -p tcp --dport mysql -s 127.0.0.1 -j ACCEPT -m comment --comment 'zstack allow login mysql from 127.0.0.1'
+}
+
+# restore iptables rules after zstack installation/upgrade
+post_scripts_to_restore_iptables_rules() {
+  iptables -D INPUT `iptables -L INPUT --line-numbers | grep 'zstack allow login mysql from 127.0.0.1' | awk '{ print $1 }'`
+  service iptables save
+}
+
 cleanup_function(){
     /bin/rm -f $UPGRADE_LOCK
     /bin/rm -f $INSTALLATION_FAILURE
@@ -255,6 +268,9 @@ show_spinner()
     done
 
     if [ -f $INSTALLATION_FAILURE ]; then
+        # clean up iptables rules added by zstack installation script if failed
+        post_scripts_to_restore_iptables_rules
+
         failure_reason=`cat $INSTALLATION_FAILURE`
         #tput cub 6
         if [ -z $DEBUG ]; then
@@ -3023,6 +3039,9 @@ done
 [ $# -eq $((OPTIND-1)) ] || usage
 OPTIND=1
 
+# Fix ZSTAC-22364
+pre_scripts_to_adjust_iptables_rules
+
 if [ x"$ZSTACK_OFFLINE_INSTALL" = x'y' ]; then
     if [ ! -d /opt/zstack-dvd/ ]; then
         fail2 "Did not find the /opt/zstack-dvd folder, offline installation cannot proceed!"
@@ -3345,6 +3364,7 @@ if [ x"$UPGRADE" = x'y' ]; then
     echo " Your old zstack was saved in $zstack_home/upgrade/`ls $zstack_home/upgrade/ -rt|tail -1`"
     echo_star_line
     start_zstack_tui
+    post_scripts_to_restore_iptables_rules
     exit 0
 fi
 
@@ -3509,3 +3529,4 @@ fi
 echo_chrony_server_warning_if_need
 echo_star_line
 start_zstack_tui
+post_scripts_to_restore_iptables_rules
