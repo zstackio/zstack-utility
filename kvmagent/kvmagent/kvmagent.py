@@ -40,9 +40,10 @@ class KvmAgent(plugin.Plugin):
         super(KvmAgent, self).__init__()
 
 
-metric_collectors = []
+metric_collectors = []  # type: list[function]
 
 def register_prometheus_collector(collector):
+    # type: (function) -> None
     logger.debug('start registered %s' % collector)
     global metric_collectors
     metric_collectors.append(collector)

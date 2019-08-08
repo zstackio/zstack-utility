@@ -6,7 +6,9 @@ import ConfigParser
 import functools
 import pprint
 import traceback
+import hashlib
 
+from zstacklib.utils import bash
 from zstacklib.utils import log
 
 logger = log.get_logger(__name__)
@@ -30,3 +32,11 @@ def ignoreerror(func):
             err = '%s\n%s\nargs:%s' % (str(e), content, pprint.pformat([args, kwargs]))
             logger.warn(err)
     return wrap
+
+
+def isMiniHost():
+    r, o = bash.bash_ro("dmidecode -s system-product-name")
+    if r != 0:
+        return False
+    return hashlib.md5(o.strip().encode()).hexdigest() in [
+        "bbfdc76901310d93f2ee140d6f17091f", "5fc8d2a363cdadac26f779074aab1a17", "39e7b016e11cc67bbdf885c4a1293546"]
