@@ -5652,11 +5652,6 @@ class ChangeIpCmd(Command):
         info("update iptables rules successfully")
         info("Change ip successfully")
 
-        ctl.write_ui_properties([
-            ('mn_host', args.ip),
-        ])
-        info("Change ui mn_host ip successfully")
-
 
 class InstallManagementNodeCmd(Command):
     def __init__(self):
