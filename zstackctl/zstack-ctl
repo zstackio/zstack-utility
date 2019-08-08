@@ -31,4 +31,4 @@ if [ $all_full = true ]; then
 fi
 
 . $VIRTUAL_ENV/bin/activate
-python -u -c "from zstackctl import ctl; ctl.main()" $@
+python -u -c "from zstackctl import ctl; ctl.main()" "$@"

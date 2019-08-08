@@ -7631,14 +7631,15 @@ class ShowSessionCmd(Command):
             count = 0
             for o in output[1:]:
                 session = o.split()
+                size = len(session)
                 if args.account is None:
                     info(o)
                 else:
-                    if args.account == session[0]:
+                    if args.account.replace(" ", "") == "".join(session[:size - 1]):
                         info(o)
                     else:
                         continue
-                count = int(session[1]) + count
+                count = int(session[size-1]) + count
             info("---------------")
             info("total   %d" % count)
 
@@ -7652,8 +7653,6 @@ class DropSessionCmd(Command):
         parser.add_argument('--all', '-a', help='Drop all sessions except which belong to admin account', action='store_true', default=False)
         parser.add_argument('--account', '-c', help='Drop the designated account sessions')
     def run(self, args):
-        count = 0
-        command = ""
         if not args.all:
             if args.account is None:
                 return
