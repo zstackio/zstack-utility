@@ -252,9 +252,24 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             # To get more accurate progress, we need to report from here someday
 
             # begin migration, then check md5 sums
-            shell.call("mkdir -p %s; cp -r %s/* %s; sync" % (dst_folder_path, cmd.srcFolderPath, dst_folder_path))
-            src_md5 = shell.call(
-                "find %s -type f -exec md5sum {} \; | awk '{ print $1 }' | sort | md5sum" % cmd.srcFolderPath)
+
+            if cmd.filtPaths:
+                rsync_excludes = ""
+                md5_excludes = ""
+                for filtPath in cmd.filtPaths:
+                    # filtPath cannot start with '/', because it must be a relative path
+                    if filtPath.startswith('/'):
+                        filtPath = filtPath[1:]
+                    if filtPath != '':
+                        rsync_excludes = rsync_excludes + " --exclude=%s" % filtPath
+                        md5_excludes = md5_excludes + " ! -path ./%s" % filtPath
+                shell.call("mkdir -p %s; rsync -az %s/ %s %s; sync" % (dst_folder_path, cmd.srcFolderPath, dst_folder_path, rsync_excludes))
+                src_md5 = shell.call(
+                    "find %s -type f %s -exec md5sum {} \; | awk '{ print $1 }' | sort | md5sum" % (cmd.srcFolderPath, md5_excludes))
+            else:
+                shell.call("mkdir -p %s; cp -r %s/* %s; sync" % (dst_folder_path, cmd.srcFolderPath, dst_folder_path))
+                src_md5 = shell.call(
+                    "find %s -type f -exec md5sum {} \; | awk '{ print $1 }' | sort | md5sum" % cmd.srcFolderPath)
             dst_md5 = shell.call("find %s -type f -exec md5sum {} \; | awk '{ print $1 }' | sort | md5sum" % dst_folder_path)
             if src_md5 != dst_md5:
                 rsp.error = "failed to copy files from %s to %s, md5sum not match" % (cmd.srcFolderPath, dst_folder_path)
@@ -366,7 +381,8 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     @in_bash
     def ping(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        mount_path = self.mount_path[cmd.uuid]
+        mount_path = self.mount_path.get(cmd.uuid)
+
         # if nfs service stop, os.path.isdir will hung
         if not linux.timeout_isdir(mount_path) or not linux.is_mounted(path=mount_path):
             raise Exception('the mount path[%s] of the nfs primary storage[uuid:%s] is not existing' % (mount_path, cmd.uuid))
