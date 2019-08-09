@@ -183,15 +183,20 @@ vercomp () {
 # adjust iptables rules before zstack installation/upgrade
 pre_scripts_to_adjust_iptables_rules() {
   # allow remote mysql connection from 127.0.0.1
+  if [ x"$UPGRADE" = x'n' ]; then
+    db_port=$MYSQL_PORT
+  else
+    db_port=`zstack-ctl show_configuration | awk -F ':' '/DB.url/{ print $NF }'`
+  fi
   iptables -L INPUT | grep 'zstack allow login mysql from 127.0.0.1' || \
-  iptables -I INPUT -p tcp --dport mysql -s 127.0.0.1 -j ACCEPT -m comment --comment 'zstack allow login mysql from 127.0.0.1'
-}
+  iptables -I INPUT -p tcp --dport ${db_port} -s 127.0.0.1 -j ACCEPT -m comment --comment 'zstack allow login mysql from 127.0.0.1'
+} >>$ZSTACK_INSTALL_LOG 2>&1
 
 # restore iptables rules after zstack installation/upgrade
 post_scripts_to_restore_iptables_rules() {
   iptables -D INPUT `iptables -L INPUT --line-numbers | grep 'zstack allow login mysql from 127.0.0.1' | awk '{ print $1 }'`
   service iptables save
-}
+} >>$ZSTACK_INSTALL_LOG 2>&1
 
 cleanup_function(){
     /bin/rm -f $UPGRADE_LOCK
