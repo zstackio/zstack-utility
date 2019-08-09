@@ -1,5 +1,6 @@
 import random
 import time
+import string
 
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
@@ -44,7 +45,7 @@ class RaidPhysicalDriveStruct(object):
         self.wwn = None
         self.serialNumber = None
         self.deviceModel = None
-        self.size = None
+        self.size = 0
         self.driveState = None
         self.locateStatus = None
         self.driveType = None
@@ -536,7 +537,63 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             d = self.get_raid_device_info(line, raid_info)
             if d.wwn is not None and d.raidControllerSasAddreess is not None:
                 result.append(d)
+        result.extend(self.get_missing(result))
         return result
+
+    @bash.in_bash
+    def get_missing(self, normal_devices):
+        # type: (list[RaidPhysicalDriveStruct]) -> list[RaidPhysicalDriveStruct]
+        result = []
+        r, o = bash.bash_ro("/opt/MegaRAID/MegaCli/MegaCli64 -PdGetMissing -aALL")
+        if r != 0:
+            return result
+        in_entry = False
+        allocated_slots = map(lambda x: x.slotNumber, normal_devices)
+        for line in o.splitlines():
+            if in_entry is True and "mb" not in line.lower():
+                in_entry = False
+                continue
+            if "size expected" in line.lower() and "no" in line.lower() and "array" in line.lower() and "row" in line.lower():
+                in_entry = True
+                continue
+            if in_entry is True:
+                d = RaidPhysicalDriveStruct()
+                array = line.split()[1]
+                row = line.split()[2]
+                size = line.split()[3]
+                unit = line.split()[4]
+                d = self.get_info_from_size(size, unit, d, allocated_slots)
+                if d.slotNumber is None:
+                    continue
+                allocated_slots.append(d.slotNumber)
+                d.driveState = "Slot Missing"
+                d.enclosureDeviceId = normal_devices[0].enclosureDeviceId
+                d.raidControllerNumber = normal_devices[0].raidControllerNumber
+                d.raidControllerProductName = normal_devices[0].raidControllerProductName
+                d.raidControllerSasAddreess = normal_devices[0].raidControllerSasAddreess
+                d.wwn = "5FFFFFF%s" % "".join(random.sample(string.ascii_letters + string.digits, 8))
+                d.wwn = d.wwn.upper()
+                result.append(d)
+        return result
+
+    @staticmethod
+    def get_info_from_size(size, unit, d, allocated_slots):
+        # type: (str, str, RaidPhysicalDriveStruct) -> RaidPhysicalDriveStruct
+        #TODO(weiw): warning: very hard code
+        if "mb" not in unit.lower():
+            logger.warn("unexpected unit on missing drive 'Size Expected': %s" % unit)
+            return d
+        # d.size = int(size) * 1024 * 1024
+        if int(size) <= 1048576: #It should be 952720MB or 3814697MB
+            d.diskGroup = 0
+            d.raidLevel = "raid1"
+            d.slotNumber = 0 if 0 not in allocated_slots else 1
+        else:
+            d.diskGroup = 1
+            d.raidLevel = "raid5"
+            unallocated = set(filter(lambda x: x > 1, allocated_slots)).symmetric_difference({2, 3, 4, 5})
+            d.slotNumber = unallocated.pop() if len(unallocated) > 0 else None
+        return d
 
     @bash.in_bash
     def get_raid_device_info(self, line, raid_info):
