@@ -93,9 +93,9 @@ class CollectFromYml(object):
     def get_dump_sql(self):
         db_hostname, db_port, db_user, db_password = self.ctl.get_live_mysql_portal()
         if db_password:
-            cmd = "mysqldump --database -u%s -p%s -P 3306 --single-transaction --quick zstack zstack_rest" % (db_user, db_password)
+            cmd = "mysqldump --database -u%s -p%s -P 3306 --single-transaction --quick zstack zstack_rest information_schema performance_schema" % (db_user, db_password)
         else:
-            cmd = "mysqldump --database -u%s -P 3306 --single-transaction --quick zstack zstack_rest" % db_user
+            cmd = "mysqldump --database -u%s -P 3306 --single-transaction --quick zstack zstack_rest information_schema performance_schema" % db_user
         return cmd
 
     def decode_conf_yml(self, args):
