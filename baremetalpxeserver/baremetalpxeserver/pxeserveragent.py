@@ -338,8 +338,8 @@ http {
         with open("/etc/nginx/nginx.conf", 'w') as fw:
             fw.write(nginx_conf)
 
-        # create nginx proxy for http://MN_IP:8080/zstack/asyncrest/sendcommand
-        content = "location / { proxy_pass http://%s:8080/; }" % cmd.managementIp
+        # create nginx proxy for http://MN_IP:MN_PORT/zstack/asyncrest/sendcommand
+        content = "location / { proxy_pass http://%s:%s/; }" % (cmd.managementIp, cmd.managementPort)
         with open("/etc/nginx/conf.d/pxe_mn/zstack_mn.conf", 'w') as fw:
             fw.write(content)
 

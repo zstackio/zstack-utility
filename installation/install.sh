@@ -110,6 +110,9 @@ LICENSE_FOLDER='/var/lib/zstack/license/'
 ZSTACK_TRIAL_LICENSE='./zstack_trial_license'
 ZSTACK_OLD_LICENSE_FOLDER=$ZSTACK_INSTALL_ROOT/license
 
+DEFAULT_MN_PORT='8080'
+MN_PORT="$DEFAULT_MN_PORT"
+
 DEFAULT_UI_PORT='5000'
 
 # start/stop zstack_tui
@@ -179,6 +182,15 @@ vercomp () {
     done
     return 0
 }
+
+# get mn port from zstack properties
+get_mn_port() {
+    local zstack_properties=$ZSTACK_INSTALL_ROOT/$ZSTACK_PROPERTIES
+    [ ! -f "$zstack_properties" ] && return
+
+    local mn_port=`awk -F '=' '/RESTFacade.port/{ print $NF }' ${zstack_properties} | xargs`
+    [ ! -z "$mn_port" ] && MN_PORT="$mn_port"
+} >>$ZSTACK_INSTALL_LOG 2>&1
 
 # adjust iptables rules before zstack installation/upgrade
 pre_scripts_to_adjust_iptables_rules() {
@@ -2376,14 +2388,14 @@ EOF
         /etc/init.d/apache2 restart >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     [ $? -ne 0 ] && fail "failed to setup HTTP Server"
-    iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 80 -j ACCEPT" > /dev/null 2>&1 || iptables -I INPUT -p tcp -m tcp --dport 80 -j ACCEPT >>$ZSTACK_INSTALL_LOG 2>&1
-    iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 8080 -j ACCEPT" > /dev/null 2>&1 || iptables -I INPUT -p tcp -m tcp --dport 8080 -j ACCEPT >>$ZSTACK_INSTALL_LOG 2>&1
-    service iptables save >> $ZSTACK_INSTALL_LOG 2>&1
+    iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 80 -j ACCEPT" > /dev/null 2>&1 || iptables -I INPUT -p tcp -m tcp --dport 80 -j ACCEPT
+    iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport $MN_PORT -j ACCEPT" > /dev/null 2>&1 || iptables -I INPUT -p tcp -m tcp --dport "$MN_PORT" -j ACCEPT
+    service iptables save
     pass
-}
+} >> $ZSTACK_INSTALL_LOG 2>&1
 
 check_zstack_server(){
-    curl --noproxy -H "Content-Type: application/json" -d '{"org.zstack.header.apimediator.APIIsReadyToGoMsg": {}}' http://localhost:8080/zstack/api >>$ZSTACK_INSTALL_LOG 2>&1
+    curl --noproxy -H "Content-Type: application/json" -d '{"org.zstack.header.apimediator.APIIsReadyToGoMsg": {}}' http://localhost:"$MN_PORT"/zstack/api >>$ZSTACK_INSTALL_LOG 2>&1
     return $?
 }
 
@@ -3044,6 +3056,9 @@ done
 # Fix bug ZSTAC-14090
 [ $# -eq $((OPTIND-1)) ] || usage
 OPTIND=1
+
+# Fix ZSTAC-21974
+get_mn_port
 
 # Fix ZSTAC-22364
 pre_scripts_to_adjust_iptables_rules
