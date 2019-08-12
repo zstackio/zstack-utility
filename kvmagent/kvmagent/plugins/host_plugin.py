@@ -885,21 +885,30 @@ if __name__ == "__main__":
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetXfsFragDataRsp()
         o = bash_o("df -hlT | awk 'NR==2 {print $1,$2}'")
-        o = str(o).strip()
-        root_path = o.split(" ")[0]
-        fs_type = o.split(" ")[1]
+        o = str(o).strip().split(" ")
+        if len(o) != 2:
+            rsp.success = False
+            rsp.error = "failed to get root path and file system type"
+            return jsonobject.dumps(rsp)
+
+        root_path = o[0]
+        fs_type = o[1]
         rsp.fsType = fs_type
         if fs_type != "xfs":
             return jsonobject.dumps(rsp)
         if root_path is None:
-            logger.warn("failed to find root device")
-        else:
-            frag_percent = bash_o("xfs_db -c frag -r /dev/mapper/zstack-root | awk '/fragmentation factor/{print $7}'", True)
+            rsp.error = "failed to find root device"
+            rsp.success = False
+            return jsonobject.dumps(rsp)
 
+        frag_percent = bash_o("xfs_db -c frag -r %s | awk '/fragmentation factor/{print $7}'" % root_path, True)
         if not str(frag_percent).strip().endswith("%"):
-            logger.info("error format %s" % frag_percent)
+            rsp.error = "error format %s" % frag_percent
+            rsp.success = False
+            return jsonobject.dumps(rsp)
         else:
             rsp.hostFrag = frag_percent.strip()[:-1]
+
         volume_path_dict = cmd.volumePathMap.__dict__
         if volume_path_dict is not None:
             for key, value in volume_path_dict.items():
