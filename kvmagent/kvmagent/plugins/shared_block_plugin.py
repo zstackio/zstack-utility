@@ -562,24 +562,16 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         with lvm.RecursiveOperateLv(volume_abs_path, shared=cmd.sharedVolume, skip_deactivate_tags=[IMAGE_TAG]):
             virtual_size = linux.qcow2_virtualsize(volume_abs_path)
-            total_size = 0
-            compress = False
-            for qcow2 in linux.qcow2_get_file_chain(volume_abs_path):
-                if bash.bash_r("qemu-img check %s | grep compressed" % volume_abs_path) == 0:
-                    compress = True
-                total_size += int(lvm.get_lv_size(qcow2))
+            total_size = linux.qcow2_measure_required_size(volume_abs_path)
 
             if total_size > virtual_size:
                 total_size = virtual_size
-
-            if bash.bash_r("qemu-img info --backing-chain %s | grep compress" % volume_abs_path) == 0:
-                compress = True
 
             if not lvm.lv_exists(install_abs_path):
                 lvm.create_lv_from_absolute_path(install_abs_path, total_size,
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
             with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
-                linux.create_template(volume_abs_path, install_abs_path, compress)
+                linux.create_template(volume_abs_path, install_abs_path)
                 logger.debug('successfully created template[%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
                 if cmd.compareQcow2 is True:
                     logger.debug("comparing qcow2 between %s and %s")
