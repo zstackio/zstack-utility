@@ -814,7 +814,7 @@ class LibvirtAutoReconnect(object):
             return self.func(LibvirtAutoReconnect.conn)
         except libvirt.libvirtError as ex:
             err = str(ex)
-            if 'client socket is closed' in err or 'Broken pipe' in err:
+            if 'client socket is closed' in err or 'Broken pipe' in err or 'invalid connection' in err:
                 logger.debug('socket to the libvirt is broken[%s], try reconnecting' % err)
                 self._reconnect()
                 return self.func(LibvirtAutoReconnect.conn)
