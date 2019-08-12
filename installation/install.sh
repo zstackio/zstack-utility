@@ -3223,9 +3223,9 @@ if [ x"$UPGRADE" = x'y' ]; then
         exit 1
     fi
 
-    check_version
-
     ZSTACK_INSTALL_ROOT=`eval echo "~zstack"`
+    ZSTACK_VERSION=$ZSTACK_INSTALL_ROOT/VERSION
+    check_version
     touch $UPGRADE_LOCK
     upgrade_folder=`mktemp`
     rm -f $upgrade_folder
