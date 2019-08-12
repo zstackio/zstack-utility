@@ -751,6 +751,7 @@ class LibvirtAutoReconnect(object):
         def test_connection():
             try:
                 LibvirtAutoReconnect.conn.getLibVersion()
+                VmPlugin._reload_ceph_secret_keys()
                 return None
             except libvirt.libvirtError as ex:
                 return ex
@@ -3711,6 +3712,7 @@ class VmPlugin(kvmagent.KvmAgent):
 
     timeout_object = linux.TimeoutObject()
     queue = Queue.Queue()
+    secret_keys = {}
 
     if not os.path.exists(QMP_SOCKET_PATH):
         os.mkdir(QMP_SOCKET_PATH)
@@ -4825,7 +4827,14 @@ class VmPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(kvmagent.AgentResponse())
 
     @staticmethod
+    def _reload_ceph_secret_keys():
+        for u, k in VmPlugin.secret_keys.items():
+            VmPlugin._create_ceph_secret_key(k, u)
+
+    @staticmethod
     def _create_ceph_secret_key(userKey, uuid):
+        VmPlugin.secret_keys[uuid] = userKey
+
         sh_cmd = shell.ShellCmd('virsh secret-get-value %s' % uuid)
         sh_cmd(False)
         if sh_cmd.stdout.strip() == userKey:
