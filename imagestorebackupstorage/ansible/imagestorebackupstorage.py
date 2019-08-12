@@ -78,7 +78,7 @@ zstacklib = ZstackLib(zstacklib_args)
 
 if distro in RPM_BASED_OS:
     qemu_pkg = 'qemu-kvm-ev' if distro_version >= 7 else 'qemu-kvm'
-    qemu_pkg += ' fuse-sshfs'
+    qemu_pkg += ' fuse-sshfs nmap'
 
     if client == "true" :
         if distro_version < 7:
