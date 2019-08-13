@@ -103,10 +103,12 @@ class GetBlockDevicesRsp(AgentRsp):
 
 class GetBackingChainRsp(AgentRsp):
     backingChain = None  # type: list[str]
+    totalSize = 0L
 
     def __init__(self):
         super(GetBackingChainRsp, self).__init__()
         self.backingChain = None
+        self.totalSize = 0L
 
 
 class SharedBlockMigrateVolumeStruct:
@@ -870,6 +872,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 lv_size = lvm.get_lv_size(current_abs_path)
 
                 if lvm.lv_exists(target_abs_path):
+                    if struct.skipIfExisting:
+                        continue
                     target_ps_uuid = get_primary_storage_uuid_from_install_path(struct.targetInstallPath)
                     raise Exception("found %s already exists on ps %s" %
                                     (target_abs_path, target_ps_uuid))
@@ -944,6 +948,12 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         with lvm.RecursiveOperateLv(abs_path, shared=True, skip_deactivate_tags=[IMAGE_TAG], delete_when_exception=False):
             rsp.backingChain = linux.qcow2_get_file_chain(abs_path)
+            if not cmd.containSelf:
+                rsp.backingChain.pop(0)
+
+            rsp.totalSize = 0L
+            for path in rsp.backingChain:
+                rsp.totalSize += long(lvm.get_lv_size(path))
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
