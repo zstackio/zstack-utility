@@ -58,6 +58,7 @@ class HostFactResponse(kvmagent.AgentResponse):
         self.hvmCpuFlag = None
         self.cpuModelName = None
         self.systemSerialNumber = None
+        self.eptFlag = None
 
 class SetupMountablePrimaryStorageHeartbeatCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -555,6 +556,9 @@ class HostPlugin(kvmagent.KvmAgent):
             if not rsp.hvmCpuFlag:
                 if shell.run('grep svm /proc/cpuinfo') == 0:
                     rsp.hvmCpuFlag = 'svm'
+
+            if shell.run('grep -w ept /proc/cpuinfo') == 0:
+                rsp.eptFlag = 'ept'
 
             rsp.cpuModelName = self._get_host_cpu_model()
 
