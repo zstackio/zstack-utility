@@ -558,7 +558,8 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         else:
             logger.info('deleting lv volume: ' + install_abs_path)
             r = drbd.DrbdResource(self.get_name_from_installPath(path))
-            r.destroy()
+            if r.exists is True:
+                r.destroy()
             lvm.delete_lv(install_abs_path)
         lvm.delete_snapshots(install_abs_path)
 
