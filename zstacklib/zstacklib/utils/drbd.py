@@ -445,6 +445,8 @@ def up_all_resouces():
     all_names = bash.bash_o("ls /etc/drbd.d/ | grep -v global_common.conf").strip().splitlines()
     for name in all_names:
         try:
-            DrbdResource(name.split(".")[0])
+            r = DrbdResource(name.split(".")[0])
+            if r.config.local_host.disk is not None and linux.linux_lsof(r.config.local_host.disk).strip() == "":
+                r.demote()
         except Exception as e:
             logger.warn("up resource %s failed: %s" % (name, e.message))

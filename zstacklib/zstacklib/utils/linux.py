@@ -1732,13 +1732,7 @@ def linux_lsof(file, process="qemu-kvm", find_rpath=True):
     :param find_rpath: use realpath to find deeper, it should be true in most cases
     :return: stdout of lsof
     """
-    cmd = shell.ShellCmd("lsof -b %s | grep -v '^COMMAND'" % file)
-    cmd(is_exception=False)
-    r = cmd.stdout.strip()
-
-    if not process:
-        return r
-
+    r = ""
     o = shell.call("lsof -b -c %s | grep %s" % (process, file), False).strip().splitlines()
     if len(o) != 0:
         for line in o:
@@ -1746,7 +1740,7 @@ def linux_lsof(file, process="qemu-kvm", find_rpath=True):
                 r = r.strip() + "\n" + line
 
     if not find_rpath:
-        return r
+        return r.strip()
 
     r_path = shell.call("realpath %s" % file).strip()
     if r_path == file:
