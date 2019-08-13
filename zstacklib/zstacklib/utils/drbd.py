@@ -48,12 +48,14 @@ class DrbdResource(object):
         self.remote_role = None
         self.local_disk_state = None
         self.remote_disk_state = None
+        self.exists = False
 
         if self.name is None:
             return
 
         try:
             self._init_from_name()
+            self.exists = True
         except Exception:
             logger.debug("can not find config of resource %s" % self.name)
             return
