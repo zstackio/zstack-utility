@@ -1,3 +1,4 @@
+import os
 from zstacklib.utils import jsonobject
 from zstacklib.utils import log
 from zstacklib.utils import shell
