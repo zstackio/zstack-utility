@@ -2,6 +2,7 @@
 
 @author: frank
 '''
+import os
 import os.path
 import traceback
 import tempfile
@@ -16,6 +17,7 @@ from zstacklib.utils import log
 from zstacklib.utils import shell
 from zstacklib.utils import lock
 from zstacklib.utils.bash import *
+from zstacklib.utils.plugin import completetask
 
 logger = log.get_logger(__name__)
 
@@ -187,6 +189,8 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     RESIZE_VOLUME_PATH = "/nfsprimarystorage/volume/resize"
     NFS_TO_NFS_MIGRATE_BITS_PATH = "/nfsprimarystorage/migratebits"
     NFS_REBASE_VOLUME_BACKING_FILE_PATH = "/nfsprimarystorage/rebasevolumebackingfile"
+    DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/nfsprimarystorage/kvmhost/download"
+    CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/nfsprimarystorage/kvmhost/download/cancel"
 
     ERR_UNABLE_TO_FIND_IMAGE_IN_CACHE = "unable to find image in cache"
     
@@ -219,6 +223,8 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
         http_server.register_async_uri(self.NFS_TO_NFS_MIGRATE_BITS_PATH, self.migrate_bits)
         http_server.register_async_uri(self.NFS_REBASE_VOLUME_BACKING_FILE_PATH, self.rebase_volume_backing_file)
+        http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.download_from_kvmhost)
+        http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
         self.mount_path = {}
         self.image_cache = None
         self.imagestore_client = ImageStoreClient()
@@ -673,9 +679,9 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             err = "unable to download %s/%s, because %s" % (cmd.hostname, cmd.backupStorageInstallPath, str(e))
             rsp.error = err
             rsp.success = False
-            
+
         return jsonobject.dumps(rsp)
-        
+
     @kvmagent.replyerror
     def create_root_volume_from_template(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -684,12 +690,12 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             rsp.error = self.ERR_UNABLE_TO_FIND_IMAGE_IN_CACHE
             rsp.success = False
             return jsonobject.dumps(rsp)
-            
+
         try:
             dirname = os.path.dirname(cmd.installUrl)
             if not os.path.exists(dirname):
                 os.makedirs(dirname, 0775)
-                
+
             linux.qcow2_clone_with_cmd(cmd.templatePathInCache, cmd.installUrl, cmd)
             logger.debug('successfully create root volume[%s] from template in cache[%s]' % (cmd.installUrl, cmd.templatePathInCache))
             meta = VolumeMeta()
@@ -709,6 +715,33 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             err = 'unable to clone qcow2 template[%s] to %s' % (cmd.templatePathInCache, cmd.installUrl)
             rsp.error = err
             rsp.success = False
-            
 
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @completetask
+    def download_from_kvmhost(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentRsp()
+
+        install_abs_path = cmd.primaryStorageInstallPath
+
+        last_task = self.load_and_save_task(req, rsp, os.path.exists, install_abs_path)
+        if last_task and last_task.agent_pid == os.getpid():
+            rsp = self.wait_task_complete(last_task)
+            return jsonobject.dumps(rsp)
+
+        linux.scp_download(cmd.hostname, cmd.sshKey, cmd.backupStorageInstallPath, install_abs_path, cmd.username, cmd.sshPort, cmd.bandWidth)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def cancel_download_from_kvmhost(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentRsp()
+
+        install_abs_path = cmd.primaryStorageInstallPath
+        shell.run("pkill -9 -f '%s'" % install_abs_path)
+
+        linux.rm_file_force(cmd.primaryStorageInstallPath)
         return jsonobject.dumps(rsp)
