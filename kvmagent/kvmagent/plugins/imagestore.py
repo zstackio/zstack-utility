@@ -14,13 +14,19 @@ logger = log.get_logger(__name__)
 class ImageStoreClient(object):
 
     ZSTORE_PROTOSTR = "zstore://"
-    ZSTORE_CLI_PATH = "/usr/local/zstack/imagestore/bin/zstcli -rootca /var/lib/zstack/imagestorebackupstorage/package/certs/ca.pem"
+    ZSTORE_CLI_BIN = "/usr/local/zstack/imagestore/bin/zstcli"
+    ZSTORE_CLI_PATH = ZSTORE_CLI_BIN + " -rootca /var/lib/zstack/imagestorebackupstorage/package/certs/ca.pem"
     ZSTORE_DEF_PORT = 8000
 
     UPLOAD_BIT_PATH = "/imagestore/upload"
     DOWNLOAD_BIT_PATH = "/imagestore/download"
     COMMIT_BIT_PATH = "/imagestore/commit"
     CONVERT_TO_RAW = "/imagestore/convert/raw"
+
+    def _check_zstore_cli(self):
+        if not os.path.exists(self.ZSTORE_CLI_BIN):
+            errmsg = '%s not found. Please reconnect all hosts, and try again.' % self.ZSTORE_CLI_BIN
+            raise kvmagent.KvmError(errmsg)
 
     def _parse_image_reference(self, backupStorageInstallPath):
         if not backupStorageInstallPath.startswith(self.ZSTORE_PROTOSTR):
@@ -108,6 +114,8 @@ class ImageStoreClient(object):
         return True
 
     def upload_to_imagestore(self, cmd, req):
+        self._check_zstore_cli()
+
         crsp = self.commit_to_imagestore(cmd, req)
 
         extpara = ""
@@ -131,6 +139,8 @@ class ImageStoreClient(object):
 
 
     def commit_to_imagestore(self, cmd, req):
+        self._check_zstore_cli()
+
         fpath = cmd.primaryStorageInstallPath
 
         # Synchronize cached writes for 'fpath'
@@ -153,6 +163,8 @@ class ImageStoreClient(object):
         return jsonobject.dumps(rsp)
 
     def download_from_imagestore(self, cachedir, host, backupStorageInstallPath, primaryStorageInstallPath):
+        self._check_zstore_cli()
+
         name, imageid = self._parse_image_reference(backupStorageInstallPath)
         if cachedir:
             cmdstr = '%s -url %s:%s -cachedir %s pull -installpath %s %s:%s' % (self.ZSTORE_CLI_PATH, host, self.ZSTORE_DEF_PORT, cachedir, primaryStorageInstallPath, name, imageid)
