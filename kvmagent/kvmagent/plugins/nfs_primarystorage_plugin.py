@@ -2,6 +2,7 @@
 
 @author: frank
 '''
+import os
 import os.path
 import traceback
 import tempfile
@@ -16,6 +17,7 @@ from zstacklib.utils import log
 from zstacklib.utils import shell
 from zstacklib.utils import lock
 from zstacklib.utils.bash import *
+from zstacklib.utils.plugin import completetask
 
 logger = log.get_logger(__name__)
 
@@ -737,7 +739,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     @completetask
     def download_from_kvmhost(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AgentRsp()
+        rsp = kvmagent.AgentRsp()
 
         install_abs_path = cmd.primaryStorageInstallPath
 
@@ -752,7 +754,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def cancel_download_from_kvmhost(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AgentRsp()
+        rsp = kvmagent.AgentRsp()
 
         install_abs_path = cmd.primaryStorageInstallPath
         shell.run("pkill -9 -f '%s'" % install_abs_path)
