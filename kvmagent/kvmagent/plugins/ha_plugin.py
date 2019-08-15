@@ -449,7 +449,7 @@ class HaPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
         @thread.AsyncThread
-        def heartbeat_file_fencer(mount_path, ps_uuid, mounted_by_zstack):
+        def heartbeat_file_fencer(mount_path, ps_uuid, mounted_by_zstack, url, options):
             def try_remount_fs():
                 if mount_path_is_nfs(mount_path):
                     shell.run("systemctl start nfs-client.target")
@@ -488,8 +488,6 @@ class HaPlugin(kvmagent.KvmAgent):
                                      ' please retry "umount -f %s"' % (killed_vm_pids, mount_path, mount_path))
                         return
 
-                try_remount_fs()
-
             def touch_heartbeat_file():
                 touch = shell.ShellCmd('timeout %s touch %s' % (cmd.storageCheckerTimeout, heartbeat_file_path))
                 touch(False)
@@ -497,14 +495,22 @@ class HaPlugin(kvmagent.KvmAgent):
                     logger.warn('unable to touch %s, %s %s' % (heartbeat_file_path, touch.stderr, touch.stdout))
                 return touch.return_code == 0
 
-            heartbeat_file_path = os.path.join(mount_path, 'heartbeat-file-kvm-host-%s.hb' % cmd.hostUuid)
+            def prepare_heartbeat_dir():
+                heartbeat_dir = os.path.join(mount_path, "zs-heartbeat")
+                if linux.is_mounted(mount_path):
+                    if not os.path.exists(heartbeat_dir):
+                        os.makedirs(heartbeat_dir, 0755)
+                else:
+                    if os.path.exists(heartbeat_dir):
+                        linux.rm_dir_force(heartbeat_dir)
+                return heartbeat_dir
+
+            heartbeat_file_dir = prepare_heartbeat_dir()
+            heartbeat_file_path = os.path.join(heartbeat_file_dir, 'heartbeat-file-kvm-host-%s.hb' % cmd.hostUuid)
             created_time = time.time()
             self.setup_fencer(ps_uuid, created_time)
             try:
                 failure = 0
-                url = shell.call("mount | grep -e '%s' | awk '{print $1}'" % mount_path).strip()
-                options = shell.call("mount | grep -e '%s' | awk -F '[()]' '{print $2}'" % mount_path).strip()
-
                 while self.run_fencer(ps_uuid, created_time):
                     time.sleep(cmd.interval)
                     if touch_heartbeat_file():
@@ -523,17 +529,21 @@ class HaPlugin(kvmagent.KvmAgent):
                         killed_vm_pids = killed_vms.values()
                         after_kill_vm()
 
+                        if mounted_by_zstack and not linux.is_mounted(mount_path):
+                            try_remount_fs()
+                            prepare_heartbeat_dir()
+
                 logger.debug('stop heartbeat[%s] for filesystem self-fencer' % heartbeat_file_path)
 
             except:
                 content = traceback.format_exc()
                 logger.warn(content)
 
-        for mount_path, uuid, mounted_by_zstack in zip(cmd.mountPaths, cmd.uuids, cmd.mountedByZStack):
+        for mount_path, uuid, mounted_by_zstack, url, options in zip(cmd.mountPaths, cmd.uuids, cmd.mountedByZStack, cmd.urls, cmd.mountOptions):
             if not linux.timeout_isdir(mount_path):
                 raise Exception('the mount path[%s] is not a directory' % mount_path)
 
-            heartbeat_file_fencer(mount_path, uuid, mounted_by_zstack)
+            heartbeat_file_fencer(mount_path, uuid, mounted_by_zstack, url, options)
 
         return jsonobject.dumps(AgentRsp())
 

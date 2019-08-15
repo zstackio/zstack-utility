@@ -251,7 +251,7 @@ def mount(url, path, options=None, fstype=None):
 
     cmdstr = "mount"
 
-    if fstype and options is None:
+    if fstype and not options:
         cmdstr += " -t %s" % fstype
 
     if options:

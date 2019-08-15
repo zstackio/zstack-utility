@@ -387,8 +387,10 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     @in_bash
     def ping(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        mount_path = self.mount_path.get(cmd.uuid)
+        if cmd.uuid not in self.mount_path.keys():
+            self.mount_path[cmd.uuid] = cmd.mountPath
 
+        mount_path = self.mount_path[cmd.uuid]
         # if nfs service stop, os.path.isdir will hung
         if not linux.timeout_isdir(mount_path) or not linux.is_mounted(path=mount_path):
             raise Exception('the mount path[%s] of the nfs primary storage[uuid:%s] is not existing' % (mount_path, cmd.uuid))
