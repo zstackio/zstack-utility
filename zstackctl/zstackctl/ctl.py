@@ -673,7 +673,8 @@ class Ctl(object):
     ZSTACK_UI_KEYSTORE_PEM = ZSTACK_UI_HOME + 'ui.keystore.pem'
     # to set CATALINA_OPTS of zstack-ui.war
     ZSTACK_UI_CATALINA_OPTS = '-Xmx4096m'
-    MINI_DIR = '/usr/local/zstack-mini'
+    # always install zstack-mini-server inside zstack_install_root
+    MINI_DIR = os.path.join(USER_ZSTACK_HOME_DIR, 'zstack-mini')
 
     def __init__(self):
         self.commands = {}
@@ -7867,7 +7868,6 @@ class StartDashboardCmd(Command):
 class StartUiCmd(Command):
     PID_FILE = '/var/run/zstack/zstack-ui.pid'
     PORT_FILE = '/var/run/zstack/zstack-ui.port'
-    MINI_DIR = '/usr/local/zstack-mini'
 
     def __init__(self):
         super(StartUiCmd, self).__init__()
