@@ -9,7 +9,10 @@ SS100_STORAGE='SS100-Storage'
 VERSION=${PRODUCT_VERSION:-""}
 VERSION_RELEASE_NR=`echo $PRODUCT_VERSION | awk -F '.' '{print $1"."$2"."$3}'`
 ZSTACK_INSTALL_ROOT=${ZSTACK_INSTALL_ROOT:-"/usr/local/zstack"}
-ZSTACK_MINI_INSTALL_ROOT=${ZSTACK_MINI_INSTALL_ROOT:-"/usr/local/zstack-mini"}
+MINI_INSTALL_ROOT=${ZSTACK_INSTALL_ROOT}/zstack-mini/
+
+# zstack mini server before 1.1.0 is installed in /usr/local/zstack-mini
+LEGACY_MINI_INSTALL_ROOT="/usr/local/zstack-mini/"
 
 OS=''
 CENTOS6='CENTOS6'
@@ -717,8 +720,8 @@ check_system(){
         ui_mode=`zstack-ctl show_configuration |awk '/ui_mode/{print $3}'` >/dev/null 2>&1
         if [ x"$ui_mode" = x"" ];then
             echo 'ui_mode is not configured, it will be set based on your environment.' >>$ZSTACK_INSTALL_LOG 2>&1
-            [ -d $ZSTACK_MINI_INSTALL_ROOT ] && zstack-ctl configure ui_mode=mini || zstack-ctl configure ui_mode=zstack
-            [ -d $ZSTACK_MINI_INSTALL_ROOT ] && zstack-ctl configure log.management.server.retentionSizeGB=200
+            [ -d ${LEGACY_MINI_INSTALL_ROOT} -o -d $MINI_INSTALL_ROOT ] && zstack-ctl configure ui_mode=mini || zstack-ctl configure ui_mode=zstack
+            [ -d ${LEGACY_MINI_INSTALL_ROOT} -o -d $MINI_INSTALL_ROOT ] && zstack-ctl configure log.management.server.retentionSizeGB=200
             ui_mode=`zstack-ctl show_configuration |awk '/ui_mode/{print $3}'`
         fi
         [ x"$ui_mode" = x"mini" ] && cs_check_hostname_mini || cs_check_hostname_zstack
@@ -1617,7 +1620,7 @@ uz_stop_zstack_ui(){
     if [ $? -eq 0 ]; then
         fail "Failed to stop ${PRODUCT_NAME} UI!"
     fi
-    if [ -d /usr/local/zstack-mini ]; then
+    if [ -d ${LEGACY_MINI_INSTALL_ROOT} -o -d ${MINI_INSTALL_ROOT} ]; then
         systemctl stop zstack-mini
         ps -ef | grep -w mini-server | grep -w java | grep -v 'grep' >>$ZSTACK_INSTALL_LOG 2>&1
         if [ $? -eq 0 ]; then
@@ -2512,7 +2515,7 @@ sd_install_zstack_mini_ui(){
     echo_subtitle "Install ${PRODUCT_NAME} MINI-UI (takes a couple of minutes)"
     bash /opt/zstack-dvd/zstack_mini_server.bin >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
-        fail "failed to install ${PRODUCT_NAME} MINI-UI in $ZSTACK_MINI_INSTALL_ROOT"
+        fail "failed to install ${PRODUCT_NAME} MINI-UI in $MINI_INSTALL_ROOT"
     fi
     pass
 }
@@ -3267,6 +3270,10 @@ if [ x"$UPGRADE" = x'y' ]; then
 
     ZSTACK_INSTALL_ROOT=`eval echo "~zstack"`
     ZSTACK_VERSION=$ZSTACK_INSTALL_ROOT/VERSION
+
+    MINI_INSTALL_ROOT=${ZSTACK_INSTALL_ROOT}/zstack-mini/
+    MINI_VERSION=${MINI_INSTALL_ROOT}/VERSION
+
     check_version
     touch $UPGRADE_LOCK
     upgrade_folder=`mktemp`
