@@ -413,6 +413,7 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                      "actualSize":  v.physicalSize,
                      "virtualSize": v.size,
                      "virtioScsi":  v.bus == 'scsi',
+                     "deviceName":  v.name,
                      "deviceId":    devId }
 
         idx = 1
