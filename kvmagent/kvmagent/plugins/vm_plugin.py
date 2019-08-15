@@ -4301,9 +4301,9 @@ class VmPlugin(kvmagent.KvmAgent):
         try:
             volume = cmd.volume
             vm = get_vm_by_uuid(cmd.vmInstanceUuid)
-            if vm.state != Vm.VM_STATE_RUNNING:
+            if vm.state != Vm.VM_STATE_RUNNING and vm.state != Vm.VM_STATE_PAUSED:
                 raise kvmagent.KvmError(
-                    'unable to detach volume[%s] to vm[uuid:%s], vm must be running' % (volume.installPath, vm.uuid))
+                    'unable to detach volume[%s] to vm[uuid:%s], vm must be running or paused' % (volume.installPath, vm.uuid))
             vm.detach_data_volume(volume)
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
