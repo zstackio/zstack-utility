@@ -32,6 +32,7 @@ class VolumeInfo(object):
         self.physicalSize = -1 # type: long
         self.type = None       # type: str
         self.bus = None        # type: str
+        self.endTime = None    # type: float
 
 class VmInfo(object):
     def __init__(self):
@@ -350,6 +351,7 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
 
         volumes = None
         filters = buildFilterDict(cmd.volumeFilters)
+        startTime = time.time()
         with LibvirtConn(cmd.libvirtURI, cmd.saslUser, cmd.saslPass, cmd.sshPrivKey) as c:
             dom = c.lookupByUUIDString(cmd.srcVmUuid)
             if not dom:
@@ -385,14 +387,16 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                     None,
                     libvirt.VIR_DOMAIN_BLOCK_COPY_TRANSIENT_JOB)
 
-            for v in volumes:
-                while True:
+            while True:
+                for v in volumes:
                     info = dom.blockJobInfo(v.name, 0)
                     if not info:
                         raise Exception('blockjob not found on disk: '+v.name)
                     if info['cur'] == info['end']:
-                        break
-                    time.sleep(5)
+                        v.endTime = time.time()
+                if all(map(lambda v: v.endTime)):
+                    break
+                time.sleep(5)
 
             if not cmd.pauseVm and oldstat != libvirt.VIR_DOMAIN_PAUSED:
                 dom.suspend()
@@ -408,21 +412,22 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
         # TODO
         #  - monitor progress
 
-        def makeVolumeInfo(v, devId):
+        def makeVolumeInfo(v, startTime, devId):
             return { "installPath": os.path.join(storage_dir, v.name),
                      "actualSize":  v.physicalSize,
                      "virtualSize": v.size,
                      "virtioScsi":  v.bus == 'scsi',
                      "deviceName":  v.name,
+                     "downloadTime": int(v.endTime - startTime),
                      "deviceId":    devId }
 
         idx = 1
         rv, dvs = None, []
         for v in volumes:
             if v.type == 'ROOT':
-                rv = makeVolumeInfo(v, 0)
+                rv = makeVolumeInfo(v, startTime, 0)
             else:
-                dvs.append(makeVolumeInfo(v, idx))
+                dvs.append(makeVolumeInfo(v, startTime, idx))
                 idx += 1
 
         rsp.rootVolumeInfo = rv
