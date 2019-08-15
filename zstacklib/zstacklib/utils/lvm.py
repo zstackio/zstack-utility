@@ -642,10 +642,8 @@ def delete_image(path, tag):
         return backing
 
     fpath = path
-    while fpath:
-        backing = activate_and_remove(fpath)
-        activate_and_remove(get_meta_lv_path(fpath))
-        fpath = backing
+    backing = activate_and_remove(fpath)
+    activate_and_remove(get_meta_lv_path(fpath))
 
 
 def clean_vg_exists_host_tags(vgUuid, hostUuid, tag):
