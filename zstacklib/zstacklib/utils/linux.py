@@ -1096,6 +1096,11 @@ def get_cpu_num():
     out = shell.call("grep -c processor /proc/cpuinfo")
     return int(out)
 
+def get_cpu_model():
+    vendor_id = shell.call("lscpu |awk -F':' '{IGNORECASE=1}/Vendor ID/{print $2}'").strip()
+    model_name = shell.call("lscpu |awk -F':' '{IGNORECASE=1}/Model name/{print $2}'").strip()
+    return vendor_id, model_name
+
 @retry(times=3, sleep_time=3)
 def get_cpu_speed():
     max_freq = '/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq'
