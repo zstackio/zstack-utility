@@ -129,7 +129,9 @@ post_msg(msg, post_url)
 
 if successTmout is True and len(stdoutMd5.strip()) != 0 and stdoutMd5.split(" ")[0] == oldMd5.split(" ")[0]:
     host_post_info.start_time = start_time
-    handle_ansible_info("SUCC: Deploy zstack network agent successful", host_post_info, "INFO")
+    command = "systemctl daemon-reload && systemctl enable zstack-network-agent.service && systemctl start zstack-network-agent.service"
+    run_remote_command(add_true_in_command(command), host_post_info)
+    handle_ansible_info("SUCC: Deploy zstack network agent successful(only enable and start)", host_post_info, "INFO")
     sys.exit(0)
 
 run_remote_command(add_true_in_command("pkill zsn-agent; /bin/rm /etc/init.d/zstack-network-agent"), host_post_info)
@@ -143,7 +145,7 @@ command = "systemctl daemon-reload && systemctl enable zstack-network-agent.serv
 run_remote_command(add_true_in_command(command), host_post_info)
 
 host_post_info.start_time = start_time
-handle_ansible_info("SUCC: Deploy zstack network agent successful", host_post_info, "INFO")
+handle_ansible_info("SUCC: Deploy zstack network agent successful(killed old one and restart)", host_post_info, "INFO")
 
 sys.exit(0)
 
