@@ -394,7 +394,7 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                         raise Exception('blockjob not found on disk: '+v.name)
                     if info['cur'] == info['end']:
                         v.endTime = time.time()
-                if all(map(lambda v: v.endTime)):
+                if all(map(lambda v: v.endTime, volumes)):
                     break
                 time.sleep(5)
 
