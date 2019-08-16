@@ -389,6 +389,8 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
 
             while True:
                 for v in volumes:
+                    if v.endTime:
+                        continue
                     info = dom.blockJobInfo(v.name, 0)
                     if not info:
                         raise Exception('blockjob not found on disk: '+v.name)
