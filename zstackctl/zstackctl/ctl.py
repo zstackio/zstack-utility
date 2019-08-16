@@ -4893,7 +4893,7 @@ class CollectLogCmd(Command):
     zstack_log_dir = "/var/log/zstack/"
     vrouter_log_dir_list = ["/home/vyos/zvr", "/var/log/zstack"]
     host_log_list = ['zstack.log','zstack-kvmagent.log','zstack-iscsi-filesystem-agent.log',
-                     'zstack-agent/collectd.log','zstack-agent/server.log']
+                     'zstack-agent/collectd.log','zstack-agent/server.log', 'mini-fencer.log']
     bs_log_list = ['zstack-sftpbackupstorage.log','ceph-backupstorage.log','zstack-store/zstore.log',
                    'fusionstor-backupstorage.log']
     ps_log_list = ['ceph-primarystorage.log','fusionstor-primarystorage.log']
