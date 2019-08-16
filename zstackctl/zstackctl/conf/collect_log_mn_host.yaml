@@ -4,6 +4,7 @@ host:
     list: {exec: "select h.managementIp from HostVO h where h.hypervisorType = \"KVM\""}
     logs:
       - {name: kvmagent-logs, dir: /var/log/zstack/, file: zstack-kvmagent.log*}
+      - {name: mini-fencer-logs, dir: /var/log/zstack/, file: mini-fencer.log*}
       - {name: zstack-logs, dir: /var/log/zstack/, file: zstack.log*}
       - {name: iscsi-logs, dir: /var/log/zstack/, file: zstack-iscsi-filesystem-agent*}
       - {name: agentcollectd-logs, dir: /var/log/zstack/zstack-agent/, file: collectd.log*}
