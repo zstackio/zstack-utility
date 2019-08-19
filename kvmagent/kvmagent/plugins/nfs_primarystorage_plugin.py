@@ -723,7 +723,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     @completetask
     def download_from_kvmhost(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = kvmagent.AgentRsp()
+        rsp = kvmagent.AgentResponse()
 
         install_abs_path = cmd.primaryStorageInstallPath
 
@@ -738,7 +738,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def cancel_download_from_kvmhost(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = kvmagent.AgentRsp()
+        rsp = kvmagent.AgentResponse()
 
         install_abs_path = cmd.primaryStorageInstallPath
         shell.run("pkill -9 -f '%s'" % install_abs_path)
