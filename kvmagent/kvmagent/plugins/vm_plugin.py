@@ -3287,7 +3287,12 @@ class Vm(object):
 
                 dev_letter = Vm.DEVICE_LETTERS[v.deviceId]
                 if v.useVirtioSCSI:
-                    dev_letter = Vm.DEVICE_LETTERS[scsi_device_ids.pop()]
+                    scsi_device_id = scsi_device_ids.pop()
+                    if scsi_device_id >= len(Vm.DEVICE_LETTERS):
+                        err = "exceeds max disk limit, device id[%s], but only 0 ~ %d are allowed" % (scsi_device_id, len(Vm.DEVICE_LETTERS) - 1)
+                        logger.warn(err)
+                        raise kvmagent.KvmError(err)
+                    dev_letter = Vm.DEVICE_LETTERS[scsi_device_id]
 
                 if v.deviceType == 'file':
                     vol = filebased_volume(dev_letter, v)
