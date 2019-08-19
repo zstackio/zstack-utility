@@ -520,7 +520,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         rsp = RaidScanRsp()
         r, o, e = bash.bash_roe("smartctl --scan | grep megaraid")
         if r != 0 or o.strip() == "":
-            return rsp
+            return jsonobject.dumps(rsp)
         rsp.raidPhysicalDriveStructs = self.get_megaraid_devices(o)
         return jsonobject.dumps(rsp)
 
