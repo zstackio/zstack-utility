@@ -2981,6 +2981,8 @@ class Vm(object):
                 e(hyperv, 'vapic', attrib={'state': 'on'})
                 e(hyperv, 'spinlocks', attrib={'state': 'on', 'retries': '4096'})
                 e(hyperv, 'vendor_id', attrib={'state': 'on', 'value': 'ZStack_Org'})
+            # always set ioapic driver to kvm
+            e(features, "ioapic", attrib={'driver': 'kvm'})
 
         def make_qemu_commandline():
             if not os.path.exists(QMP_SOCKET_PATH):
