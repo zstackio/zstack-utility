@@ -846,7 +846,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
         # ebtables has a bug that will eliminate 0 in MAC, for example, aa:bb:0c will become aa:bb:c
         cidr = ip.IpAddress(to.vmIp).toCidr(to.netmask)
-        RULE = "-p IPv4 --ip-dst 169.254.169.254 --ip-source %s -j dnat --to-dst %s --dnat-target ACCEPT" % (cidr, MAC.replace(":0", ":"))
+        RULE = "-p IPv4 --ip-src %s --ip-dst 169.254.169.254 -j dnat --to-dst %s --dnat-target ACCEPT" % (cidr, MAC.replace(":0", ":"))
         ret = bash_r(EBTABLES_CMD + ' -t nat -L {{EBCHAIN_NAME}} | grep -- "{{RULE}}" > /dev/null')
         if ret != 0:
             bash_errorout(EBTABLES_CMD + ' -t nat -I {{EBCHAIN_NAME}} {{RULE}}')
@@ -1072,7 +1072,7 @@ mimetype.assign = (
                 fd.write('')
 
     @in_bash
-    @lock.file_lock('/run/xtables.lock')
+    @lock.lock('lighttpd')
     def _apply_userdata_restart_httpd(self, to):
         def check(_):
             pid = linux.find_process_by_cmdline([conf_path])
@@ -1089,7 +1089,7 @@ mimetype.assign = (
         if not linux.wait_callback_success(check, None, 5):
             raise Exception('lighttpd[conf-file:%s] is not running after being started %s seconds' % (conf_path, 5))
 
-
+    @in_bash
     @lock.file_lock('/run/xtables.lock')
     def work_userdata_iptables(self, CHAIN_NAME, to):
         # DNAT port 80
