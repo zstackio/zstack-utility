@@ -443,7 +443,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 return True
 
             logger.debug("can not find vg %s with tag %s" % (vgUuid, INIT_TAG))
-            cmd = shell.ShellCmd("vgs %s" % vgUuid)
+            cmd = shell.ShellCmd("vgs --nolocking %s" % vgUuid)
             cmd(is_exception=False)
             if cmd.return_code == 0:
                 logger.warn("found vg %s without tag %s" % (vgUuid, INIT_TAG))
