@@ -729,7 +729,7 @@ def get_thin_pool_from_vg(vgName):
 
 class ThinPool(object):
     def __init__(self, path):
-        o = bash.bash_o("lvs %s --separator ' ' -oname,data_percent,lv_size,pool_lv --noheading --unit B" % path).strip()
+        o = bash.bash_o("lvs --nolocking %s --separator ' ' -oname,data_percent,lv_size,pool_lv --noheading --unit B" % path).strip()
         self.name = o.split(" ")[0].strip()
         self.total = float(o.split(" ")[2].strip("B"))
         self.thin_lvs = [l.strip() for l in bash.bash_o("lvs -Spool_lv=%s --noheadings --nolocking -oname" % self.name).strip().splitlines()]
@@ -740,7 +740,7 @@ class ThinPool(object):
 
 
 def get_thin_pools_from_vg(vgName):
-    names = bash.bash_o("lvs %s -Slayout=pool -oname --noheading" % vgName).strip().splitlines()
+    names = bash.bash_o("lvs --nolocking %s -Slayout=pool -oname --noheading" % vgName).strip().splitlines()
     if len(names) == 0:
         return []
     return [ThinPool("/dev/%s/%s" % (vgName, n)) for n in names]
@@ -1250,7 +1250,7 @@ def check_pv_status(vgUuid, timeout):
 
 
 def lvm_vgck(vgUuid, timeout):
-    health, o, e = bash.bash_roe('timeout -s SIGKILL %s vgck %s 2>&1' % (60 if timeout < 60 else timeout, vgUuid))
+    health, o, e = bash.bash_roe('timeout -s SIGKILL %s vgck %s 2>&1' % (360 if timeout < 360 else timeout, vgUuid))
     check_stuck_vglk()
 
     if health != 0:
