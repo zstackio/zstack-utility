@@ -570,18 +570,23 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         rsp.referencePaths = []
         real_path = get_absolute_path_from_install_path(cmd.path)
         for f in lvm.list_local_active_lvs(cmd.vgUuid):
-            backing_file = linux.qcow2_direct_get_backing_file(f)
-            if backing_file == real_path:
-                rsp.referencePaths.append(f)
+            try:
+                backing_file = linux.qcow2_direct_get_backing_file(f)
+                if backing_file in [real_path ,cmd.path]:
+                    rsp.referencePaths.append(f)
+            except Exception as e:
+                logger.warn(e)
+                continue
         for f in bash.bash_o("ls -l /dev/drbd* | grep -E '^b' | awk '{print $NF}'").splitlines():
             f = f.strip()
             if f == "":
                 continue
             try:
-                if linux.qcow2_get_backing_file(f) == real_path:
+                if linux.qcow2_get_backing_file(f) in [real_path, cmd.path]:
                     rsp.referencePaths.append(f)
-            except IOError:
-                    continue
+            except Exception as e:
+                logger.warn(e)
+                continue
         logger.debug("find qcow2 %s referencess: %s" % (real_path, rsp.referencePaths))
         return jsonobject.dumps(rsp)
 
