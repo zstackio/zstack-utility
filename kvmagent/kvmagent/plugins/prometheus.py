@@ -234,7 +234,7 @@ def collect_equipment_state():
         for info in ps_info.splitlines():
             info = info.strip()
             ps_id = info.split("|")[0].strip().split(" ")[0]
-            health = 10 if "fail" in info.lower() else 0
+            health = 10 if "fail" in info.lower() or "lost" in info.lower() else 0
             metrics['power_supply'].add_metric([ps_id], health)
 
     metrics['ipmi_status'].add_metric([], bash_r("ipmitool mc info"))
