@@ -7596,7 +7596,8 @@ class VDIUiStatusCmd(Command):
             info('VDI UI status: %s [PID: %s]' % (colored('Stopped', 'red'), pid))
 
 def mysql(cmd):
-    (db_hostname, db_port, db_user, db_password) = ctl.get_live_mysql_portal()
+    (db_hostname_origin, db_port, db_user, db_password) = ctl.get_live_mysql_portal()
+    db_hostname = db_hostname_origin
     if db_password is None or db_password == "":
         db_connect_password = ""
     else:
@@ -7606,7 +7607,22 @@ def mysql(cmd):
     else:
         db_hostname = "--host %s" % db_hostname
     command = "mysql -uzstack %s -P %s %s zstack -e \"%s\"" % (db_connect_password, db_port, db_hostname, cmd)
-    return shell(command).strip()
+    r, o, e = shell_return_stdout_stderr(command)
+    if r == 0:
+        return o.strip()
+    elif db_hostname != "":
+        err = list()
+        err.append('failed to execute shell command: %s' % command)
+        err.append('return code: %s' % r)
+        err.append('stdout: %s' % o)
+        err.append('stderr: %s' % e)
+        raise CtlError('\n'.join(err))
+    else:
+        db_hostname = "--host %s" % db_hostname_origin
+        command = "mysql -uzstack %s -P %s %s zstack -e \"%s\"" % (db_connect_password, db_port, db_hostname, cmd)
+        return shell(command).strip()
+
+
 
 class ShowSessionCmd(Command):
     def __init__(self):
