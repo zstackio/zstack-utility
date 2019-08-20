@@ -2515,7 +2515,7 @@ sd_install_zstack_ui(){
 # For MINI UI Server
 sd_install_zstack_mini_ui(){
     echo_subtitle "Install ${PRODUCT_NAME} MINI-UI (takes a couple of minutes)"
-    bash /opt/zstack-dvd/zstack_mini_server.bin >>$ZSTACK_INSTALL_LOG 2>&1
+    bash /opt/zstack-dvd/zstack_mini_server.bin -a >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
         fail "failed to install ${PRODUCT_NAME} MINI-UI in $MINI_INSTALL_ROOT"
     fi
@@ -3300,6 +3300,8 @@ if [ x"$UPGRADE" = x'y' ]; then
 
     UI_CURRENT_STATUS='n'
     UI_INSTALLATION_STATUS='n'
+    # for zstack-mini-1.0.0, 'zstack-ctl stop' cannot stop mini-server
+    [ -d /usr/local/zstack-mini ] && systemctl stop zstack-mini
     if [ -f /etc/init.d/zstack-ui ]; then
         UI_INSTALLATION_STATUS='y'
         zstack-ctl status 2>/dev/null|grep -q 'UI status' >/dev/null 2>&1
