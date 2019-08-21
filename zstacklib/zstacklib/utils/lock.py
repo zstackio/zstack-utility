@@ -9,6 +9,7 @@ import functools
 import log
 import os
 import fcntl
+import typing
 
 _internal_lock = threading.RLock()
 _locks = weakref.WeakValueDictionary()
@@ -73,13 +74,15 @@ class Lockf(Locker):
 
 
 # NOTE(weiw): caller should manually clean up lock file if not need anymore
-def file_lock(name, locker=Lockf()):
+def file_lock(name, locker=Lockf(), debug=False):
     def wrap(f):
         @functools.wraps(f)
         def inner(*args, **kwargs):
             with NamedLock(name):
+                logger.debug("entering named lock %s with function %s.%s" % (name, f.__module__, f.__name__))
                 with FileLock(name, locker):
                     retval = f(*args, **kwargs)
+                logger.debug("exit named lock %s with function %s.%s" % (name, f.__module__, f.__name__))
             return retval
         return inner
     return wrap
