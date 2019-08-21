@@ -1,22 +1,22 @@
+import os.path
+import threading
+import time
+import typing
+
+from jinja2 import Template
+from prometheus_client import start_http_server
+from prometheus_client.core import GaugeMetricFamily, REGISTRY
+
 from kvmagent import kvmagent
-from zstacklib.utils import jsonobject
 from zstacklib.utils import http
-from zstacklib.utils import lock
-from zstacklib.utils import log
-from zstacklib.utils.bash import *
+from zstacklib.utils import jsonobject
 from zstacklib.utils import linux
-from zstacklib.utils import thread
+from zstacklib.utils import lock
 from zstacklib.utils import lvm
 from zstacklib.utils import misc
+from zstacklib.utils import thread
+from zstacklib.utils.bash import *
 from zstacklib.utils.ip import get_nic_supported_max_speed
-from jinja2 import Template
-import os.path
-import re
-import time
-import traceback
-import threading
-from prometheus_client.core import GaugeMetricFamily,REGISTRY
-from prometheus_client import start_http_server
 
 logger = log.get_logger(__name__)
 collector_dict = {}  # type: Dict[str, threading.Thread]
@@ -440,10 +440,11 @@ LoadPlugin virt
                 ret = []
 
                 def get_result_run(f):
-                    # type: (function) -> None
+                    # type: (typing.Callable) -> None
                     r = f()
                     with lock:
                         ret.extend(r)
+
                 for c in kvmagent.metric_collectors:
                     name = "%s.%s" % (c.__module__, c.__name__)
                     if collector_dict.get(name) is not None and collector_dict.get(name).is_alive():
