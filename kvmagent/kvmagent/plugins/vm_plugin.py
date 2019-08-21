@@ -2965,6 +2965,10 @@ class Vm(object):
             system = e(sysinfo, 'system')
             e(system, 'entry', cmd.systemSerialNumber, attrib={'name': 'serial'})
 
+            if cmd.chassisAssetTag is not None:
+                chassis = e(sysinfo, 'chassis')
+                e(chassis, 'entry', cmd.chassisAssetTag, attrib={'name': 'asset'})
+
         def make_features():
             root = elements['root']
             features = e(root, 'features')
