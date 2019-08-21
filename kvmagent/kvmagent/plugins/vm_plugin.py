@@ -591,6 +591,9 @@ LIBVIRT_MAJOR_VERSION = LIBVIRT_VERSION.split('.')[0]
 def is_namespace_used():
     return compare_version(LIBVIRT_VERSION, '1.3.3') >= 0
 
+def is_ioapic_supported():
+    return compare_version(LIBVIRT_VERSION, '3.4.0') >= 0
+
 # Occasionally, libvirt might fail to list VM ...
 def get_console_without_libvirt(vmUuid):
     output = bash.bash_o("""ps x | awk '/qemu[-]kvm.*%s/{print $1, index($0, " -vnc ")}'""" % vmUuid).splitlines()
@@ -2981,8 +2984,9 @@ class Vm(object):
                 e(hyperv, 'vapic', attrib={'state': 'on'})
                 e(hyperv, 'spinlocks', attrib={'state': 'on', 'retries': '4096'})
                 e(hyperv, 'vendor_id', attrib={'state': 'on', 'value': 'ZStack_Org'})
-            # always set ioapic driver to kvm
-            e(features, "ioapic", attrib={'driver': 'kvm'})
+            # always set ioapic driver to kvm after libvirt 3.4.0
+            if is_ioapic_supported():
+                e(features, "ioapic", attrib={'driver': 'kvm'})
 
         def make_qemu_commandline():
             if not os.path.exists(QMP_SOCKET_PATH):
