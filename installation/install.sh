@@ -1926,7 +1926,8 @@ install_zstack_network()
     /bin/cp -f /usr/local/zstack/zsn-agent/bin/zstack-network-agent.service /usr/lib/systemd/system/
     systemctl enable zstack-network-agent
     pkill zsn-agent
-    systemctl start zstack-network-agent
+    systemctl daemon-reload
+    systemctl restart zstack-network-agent.service
 }
 
 cp_third_party_tools(){
