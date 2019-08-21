@@ -204,7 +204,7 @@ def main():
             elif FENCE_GW_RESULT is False and OUTDATE_PEER_RESULT is False:
                 logger.info("resource %s fence result: fence self" % resource_name)
                 fence_self(resource_name, drbd_path)
-                exit(0)
+                exit(5)
             else:
                 logger.info("resource %s fence result: not fence" % resource_name)
                 exit(4)
@@ -215,7 +215,7 @@ def main():
         logger.error(e.message)
         if FENCE_GW_RESULT is False and OUTDATE_PEER_RESULT is False:
             logger.error("keep resource %s io suspend" % resource_name)
-            exit(0)
+            exit(5)
         else:
             logger.error("leave resource %s io resume" % resource_name)
             exit(4)
