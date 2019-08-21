@@ -20,6 +20,8 @@ from prometheus_client import start_http_server
 
 logger = log.get_logger(__name__)
 collector_dict = {}  # type: Dict[str, threading.Thread]
+latest_collect_result = {}
+collectResultLock = threading.RLock()
 
 def collect_host_network_statistics():
 
@@ -436,21 +438,20 @@ LoadPlugin virt
         class Collector(object):
 
             def collect(self):
-                lock = threading.RLock()
                 ret = []
 
-                def get_result_run(f):
+                def get_result_run(f, fname):
                     # type: (function) -> None
                     r = f()
-                    with lock:
-                        ret.extend(r)
+                    with collectResultLock:
+                        latest_collect_result[fname] = r
                 for c in kvmagent.metric_collectors:
                     name = "%s.%s" % (c.__module__, c.__name__)
                     if collector_dict.get(name) is not None and collector_dict.get(name).is_alive():
                         continue
-                    collector_dict[name] = thread.ThreadFacade.run_in_thread(get_result_run, (c,))
+                    collector_dict[name] = thread.ThreadFacade.run_in_thread(get_result_run, (c, name,))
 
-                for i in range(9):
+                for i in range(7):
                     for t in collector_dict.values():
                         if t.is_alive():
                             time.sleep(0.5)
@@ -458,7 +459,11 @@ LoadPlugin virt
 
                 for k in collector_dict.iterkeys():
                     if collector_dict[k].is_alive():
-                        logger.warn("collector %s timeout!" % k)
+                        logger.warn("It seems that the collector [%s] has not been completed yet,"
+                                    " temporarily use the last calculation result." % k)
+
+                for v in latest_collect_result.itervalues():
+                    ret.extend(v)
                 return ret
 
         REGISTRY.register(Collector())
