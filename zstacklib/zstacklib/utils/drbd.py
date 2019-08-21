@@ -372,6 +372,9 @@ class DrbdHostStruct(DrbdStruct):
         self.minor = None
         self.meta_disk = "internal"
 
+    def get_drbd_device(self):
+        return "/dev/drbd%s" % self.minor
+
 
 class DrbdNetStruct(DrbdStruct):
     def __init__(self):
@@ -448,7 +451,7 @@ def up_all_resouces():
     for name in all_names:
         try:
             r = DrbdResource(name.split(".")[0])
-            if r.config.local_host.disk is not None and linux.linux_lsof(r.config.local_host.disk).strip() == "":
+            if r.config.local_host.minor is not None and linux.linux_lsof(r.config.local_host.get_drbd_device()).strip() == "":
                 r.demote()
         except Exception as e:
             logger.warn("up resource %s failed: %s" % (name, e.message))

@@ -336,7 +336,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         return False
 
     @kvmagent.replyerror
-    @lock.file_lock(LOCK_FILE)
+    @lock.file_lock(LOCK_FILE, debug=True)
     def connect(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = ConnectRsp()
@@ -392,6 +392,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         rsp.vgLvmUuid = lvm.get_vg_lvm_uuid(cmd.vgUuid)
         rsp.hostUuid = cmd.hostUuid
+        logger.debug("mini primary storage[uuid: %s] on host[uuid: %s] connected" % (cmd.vguuid, cmd.hostUuid))
         return jsonobject.dumps(rsp)
 
     @staticmethod
