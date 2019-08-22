@@ -497,7 +497,7 @@ class HaPlugin(kvmagent.KvmAgent):
 
             def prepare_heartbeat_dir():
                 heartbeat_dir = os.path.join(mount_path, "zs-heartbeat")
-                if linux.is_mounted(mount_path):
+                if not mounted_by_zstack or linux.is_mounted(mount_path):
                     if not os.path.exists(heartbeat_dir):
                         os.makedirs(heartbeat_dir, 0755)
                 else:
