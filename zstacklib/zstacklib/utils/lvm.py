@@ -704,7 +704,7 @@ def create_thin_lv_from_absolute_path(path, size, tag, lock=False):
     assert thin_pool != ""
 
     r, o, e = bash.bash_roe("lvcreate --addtag %s -n %s -V %sb --thinpool %s %s" %
-                  (tag, lvName, calcLvReservedSize(size), thin_pool, vgName))
+                  (tag, lvName, round_to(calcLvReservedSize(size), 512), thin_pool, vgName))
     if not lv_exists(path):
         raise Exception("can not find lv %s after create, lvcreate return : %s, %s, %s" %
                         (path, r, o, e))
