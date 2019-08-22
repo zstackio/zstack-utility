@@ -78,10 +78,12 @@ def file_lock(name, locker=Lockf(), debug=False):
         @functools.wraps(f)
         def inner(*args, **kwargs):
             with NamedLock(name):
-                logger.debug("entering named lock %s with function %s.%s" % (name, f.__module__, f.__name__))
+                if debug:
+                    logger.debug("entering named lock %s with function %s.%s" % (name, f.__module__, f.__name__))
                 with FileLock(name, locker):
                     retval = f(*args, **kwargs)
-                logger.debug("exit named lock %s with function %s.%s" % (name, f.__module__, f.__name__))
+                if debug:
+                    logger.debug("exit named lock %s with function %s.%s" % (name, f.__module__, f.__name__))
             return retval
         return inner
     return wrap
