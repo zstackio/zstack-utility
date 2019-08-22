@@ -179,7 +179,7 @@ class DrbdResource(object):
         return "/dev/drbd%s" % self.config.local_host.minor
 
     @bash.in_bash
-    @linux.retry(times=60, sleep_time=2)
+    @linux.retry(times=90, sleep_time=3)
     def clear_bits(self):
         bash.bash_errorout("drbdadm new-current-uuid --clear-bitmap %s" % self.name)
 
