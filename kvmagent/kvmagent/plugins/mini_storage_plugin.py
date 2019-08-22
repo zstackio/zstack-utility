@@ -392,7 +392,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         rsp.vgLvmUuid = lvm.get_vg_lvm_uuid(cmd.vgUuid)
         rsp.hostUuid = cmd.hostUuid
-        logger.debug("mini primary storage[uuid: %s] on host[uuid: %s] connected" % (cmd.vguuid, cmd.hostUuid))
+        logger.debug("mini primary storage[uuid: %s] on host[uuid: %s] connected" % (cmd.vgUuid, cmd.hostUuid))
         return jsonobject.dumps(rsp)
 
     @staticmethod
