@@ -1924,9 +1924,9 @@ install_zstack_network()
 {
     bash $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_CLASSES/ansible/zsnagentansible/zsn-agent.bin
     /bin/cp -f /usr/local/zstack/zsn-agent/bin/zstack-network-agent.service /usr/lib/systemd/system/
-    systemctl enable zstack-network-agent
     pkill zsn-agent
     systemctl daemon-reload
+    systemctl enable zstack-network-agent.service
     systemctl restart zstack-network-agent.service
 }
 
