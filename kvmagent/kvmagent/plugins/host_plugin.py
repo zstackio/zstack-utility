@@ -594,8 +594,8 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.totalMemory = _get_total_memory()
         rsp.usedMemory = used_memory
 
-        ninfo = self._get_node_info()
-        rsp.cpuSockets = ninfo[4] * ninfo[5]
+        sockets = bash_o('grep "physical id" /proc/cpuinfo | sort -u | wc -l').strip()
+        rsp.cpuSockets = int(sockets)
         if rsp.cpuSockets == 0:
             rsp.cpuSockets = 1
 
