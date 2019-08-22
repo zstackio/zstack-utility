@@ -626,9 +626,18 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def download_from_imagestore(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        if cmd.size is not None and cmd.provisioning is not None:
+            lvm.create_lv_from_cmd(self.convertInstallPathToAbsolute(cmd.primaryStorageInstallPath), cmd.size, cmd,
+                                   "%s::%s::%s" % (IMAGE_TAG, cmd.hostUuid, time.time()), False)
+            lvm.active_lv(self.convertInstallPathToAbsolute(cmd.primaryStorageInstallPath))
         self.imagestore_client.download_from_imagestore(cmd.mountPoint, cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
         rsp = AgentRsp()
         return jsonobject.dumps(rsp)
+
+    @staticmethod
+    def convertInstallPathToAbsolute(path):
+        # type: (string) -> string
+        return path.replace("mini:/", "/dev")
 
     @kvmagent.replyerror
     def create_empty_volume(self, req):
