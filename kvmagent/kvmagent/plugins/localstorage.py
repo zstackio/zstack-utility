@@ -1,5 +1,6 @@
 __author__ = 'frank'
 
+import os
 import os.path
 import traceback
 
@@ -11,6 +12,7 @@ from zstacklib.utils import linux
 from zstacklib.utils import shell
 from zstacklib.utils.bash import *
 from zstacklib.utils.report import *
+from zstacklib.utils.plugin import completetask
 
 logger = log.get_logger(__name__)
 
@@ -126,6 +128,8 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     REINIT_IMAGE_PATH = "/localstorage/reinit/image"
     CHECK_INITIALIZED_FILE = "/localstorage/check/initializedfile"
     CREATE_INITIALIZED_FILE = "/localstorage/create/initializedfile"
+    DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/localstorage/kvmhost/download"
+    CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/localstorage/kvmhost/download/cancel";
 
     LOCAL_NOT_ROOT_USER_MIGRATE_TMP_PATH = "primary_storage_tmp_dir"
 
@@ -163,11 +167,44 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
         http_server.register_async_uri(self.CHECK_INITIALIZED_FILE, self.check_initialized_file)
         http_server.register_async_uri(self.CREATE_INITIALIZED_FILE, self.create_initialized_file)
+        http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.download_from_kvmhost)
+        http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
 
         self.imagestore_client = ImageStoreClient()
 
     def stop(self):
         pass
+
+    @kvmagent.replyerror
+    def cancel_download_from_kvmhost(self, req):
+        return self.cancel_download_from_sftp(req)
+
+    def cancel_download_from_sftp(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentResponse()
+
+        shell.run("pkill -9 -f '%s'" % cmd.primaryStorageInstallPath)
+
+        self.do_delete_bits(cmd.primaryStorageInstallPath)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @completetask
+    def download_from_kvmhost(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentResponse()
+
+        install_path = cmd.primaryStorageInstallPath
+
+        # todo: assume agent will not restart, maybe need clean
+        last_task = self.load_and_save_task(req, rsp, os.path.exists, install_path)
+        if last_task and last_task.agent_pid == os.getpid():
+            rsp = self.wait_task_complete(last_task)
+            return jsonobject.dumps(rsp)
+
+        self.do_download_from_sftp(cmd)
+        return jsonobject.dumps(rsp)
+
 
     @kvmagent.replyerror
     def check_initialized_file(self, req):
@@ -714,8 +751,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentResponse()
         try:
-            linux.scp_download(cmd.hostname, cmd.sshKey, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath, cmd.username, cmd.sshPort)
-            logger.debug('successfully download %s/%s to %s' % (cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath))
+            self.do_download_from_sftp(cmd)
         except Exception as e:
             content = traceback.format_exc()
             logger.warn(content)
@@ -725,6 +761,10 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
 
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
         return jsonobject.dumps(rsp)
+
+    def do_download_from_sftp(self, cmd):
+        linux.scp_download(cmd.hostname, cmd.sshKey, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath, cmd.username, cmd.sshPort, cmd.bandWidth)
+        logger.debug('successfully download %s/%s to %s' % (cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath))
 
     @kvmagent.replyerror
     def download_from_imagestore(self, req):
