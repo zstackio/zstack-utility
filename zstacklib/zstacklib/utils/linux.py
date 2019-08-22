@@ -851,7 +851,7 @@ def qcow2_fill(seek, length, path, raise_excpetion=False):
 
 def qcow2_measure_required_size(path):
     out = shell.call("/usr/bin/qemu-img measure -f qcow2 -O qcow2 %s | grep 'required size' | cut -d ':' -f 2" % path)
-    return out.strip(' \t\r\n')
+    return long(out.strip(' \t\r\n'))
 
 def rmdir_if_empty(dirpath):
     try:
