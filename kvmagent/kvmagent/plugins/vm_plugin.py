@@ -2993,7 +2993,7 @@ class Vm(object):
             vendor_id, model_name = linux.get_cpu_model()
             if "hygon" in model_name.lower():
                 e(qcmd, "qemu:arg", attrib={"value": "-cpu"})
-                e(qcmd, "qemu:arg", attrib={"value": "EPYC,vendor={},model_id={} {}-core Processor".format(vendor_id, " ".join(model_name.split(" ")[0:3]), cmd.cpuNum)})
+                e(qcmd, "qemu:arg", attrib={"value": "EPYC,vendor=AuthenticAMD,model_id={} Processor".format(" ".join(model_name.split(" ")[0:3]))})
             else:
                 e(qcmd, "qemu:arg", attrib={"value": "-qmp"})
                 e(qcmd, "qemu:arg", attrib={"value": "unix:{}/{}.sock,server,nowait".format(QMP_SOCKET_PATH, cmd.vmInstanceUuid)})
