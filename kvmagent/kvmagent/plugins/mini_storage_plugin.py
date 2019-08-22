@@ -59,6 +59,7 @@ class VolumeRsp(AgentRsp):
         self.remoteRole = None
         self.remoteDiskStatus = None
         self.remoteNetworkStatus = None
+        self.minor = None
 
     def _init_from_drbd(self, r):
         """
@@ -68,13 +69,15 @@ class VolumeRsp(AgentRsp):
         if not r.minor_allocated():
             self.localNetworkStatus = drbd.DrbdNetState.Unconfigured
             return
-        self.actualSize = lvm.get_lv_size(r.config.local_host.disk)
+        self.actualSize = int(lvm.get_lv_size(r.config.local_host.disk))
         self.resourceUuid = r.name
         self.localRole = r.get_role()
         self.localDiskStatus = r.get_dstate()
         self.remoteRole = r.get_remote_role()
         self.remoteDiskStatus = r.get_remote_dstate()
         self.localNetworkStatus = r.get_cstate()
+        self.minor = int(r.config.local_host.minor)
+
 
 
 class ActiveRsp(VolumeRsp):
@@ -731,6 +734,9 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
             drbdResource.demote()
             rsp._init_from_drbd(drbdResource)
             return jsonobject.dumps(rsp)
+
+        if drbdResource.exists is False:
+            raise Exception("can not find volume %s" % cmd.installPath)
 
         if self.test_network_ok_to_peer(drbdResource.config.remote_host.address.split(":")[0]) is False \
                 and mini_fencer.test_fencer(cmd.vgUuid, drbdResource.name) is False:
