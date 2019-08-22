@@ -2994,9 +2994,14 @@ class Vm(object):
 
             root = elements['root']
             qcmd = e(root, 'qemu:commandline')
-            e(qcmd, "qemu:arg", attrib={"value": "-qmp"})
-            e(qcmd, "qemu:arg", attrib={"value": "unix:%s/%s.sock,server,nowait" %
-                                        (QMP_SOCKET_PATH, cmd.vmInstanceUuid)})
+            vendor_id, model_name = linux.get_cpu_model()
+            if "hygon" in model_name.lower():
+                e(qcmd, "qemu:arg", attrib={"value": "-cpu"})
+                e(qcmd, "qemu:arg", attrib={"value": "EPYC,vendor=AuthenticAMD,model_id={} Processor".format(" ".join(model_name.split(" ")[0:3]))})
+            else:
+                e(qcmd, "qemu:arg", attrib={"value": "-qmp"})
+                e(qcmd, "qemu:arg", attrib={"value": "unix:{}/{}.sock,server,nowait".format(QMP_SOCKET_PATH, cmd.vmInstanceUuid)})
+
             args = cmd.addons['qemuCommandLine']
             if args is not None:
                 for arg in args:
