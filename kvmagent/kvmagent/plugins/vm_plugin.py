@@ -1420,6 +1420,8 @@ class Vm(object):
         DEVICE_LETTERS = 'abdefghijklmnopqrstuvwxyz'
     ISO_DEVICE_LETTERS = 'cde'
 
+    timeout_detached_vol = set()
+
     @staticmethod
     def get_device_unit(device_id):
         if device_id >= len(Vm.DEVICE_LETTERS):
@@ -2036,8 +2038,12 @@ class Vm(object):
     def _detach_data_volume(self, volume):
         assert volume.deviceId != 0, 'how can root volume gets detached???'
 
-        target_disk, disk_name = self._get_target_disk(volume)
+        target_disk, disk_name = self._get_target_disk(volume, is_exception=False)
         if not target_disk:
+            if self._volume_detach_timed_out(volume):
+                logger.debug('volume [installPath: %s] has been detached before' % volume.installPath)
+                self._clean_timeout_record(volume)
+                return
             raise kvmagent.KvmError('unable to find data volume[%s] on vm[uuid:%s]' % (disk_name, self.uuid))
 
         xmlstr = target_disk.dump()
@@ -2065,9 +2071,15 @@ class Vm(object):
                 except:
                     # check one more time
                     if not wait_for_detach(None):
+                        self._record_volume_detach_timeout(volume)
+                        logger.debug("detach timeout, record volume install path: %s" % volume.installPath)
                         raise
 
             detach()
+
+            if self._volume_detach_timed_out(volume):
+                self._clean_timeout_record(volume)
+                logger.debug("detach success finally, remove record of volume install path: %s" % volume.installPath)
 
             def logout_iscsi():
                 BlkIscsi.logout_portal(target_disk.source.dev_)
@@ -2083,6 +2095,15 @@ class Vm(object):
             logger.warn(linux.get_exception_stacktrace())
             raise kvmagent.KvmError(
                 'unable to detach volume[%s] from vm[uuid:%s], %s' % (volume.installPath, self.uuid, str(ex)))
+
+    def _record_volume_detach_timeout(self, volume):
+        Vm.timeout_detached_vol.add(volume.installPath + "-" + self.uuid)
+
+    def _volume_detach_timed_out(self, volume):
+        return volume.installPath + "-" + self.uuid in Vm.timeout_detached_vol
+
+    def _clean_timeout_record(self, volume):
+        Vm.timeout_detached_vol.remove(volume.installPath + "-" + self.uuid)
 
     def _get_back_file(self, volume):
         ret = shell.call('qemu-img info %s' % volume)
