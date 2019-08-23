@@ -14,6 +14,8 @@ MINI_INSTALL_ROOT=${ZSTACK_INSTALL_ROOT}/zstack-mini/
 # zstack mini server before 1.1.0 is installed in /usr/local/zstack-mini
 LEGACY_MINI_INSTALL_ROOT="/usr/local/zstack-mini/"
 
+export TERM=xterm
+
 OS=''
 CENTOS6='CENTOS6'
 CENTOS7='CENTOS7'
