@@ -739,7 +739,13 @@ echo "ONBOOT=yes" >> $IFCFGFILE
 
         niccfgs = json_object.loads(cmd.nicCfgs) if cmd.nicCfgs is not None else []
         # post script snippet for network configuration
-        niccfg_post_script = """echo -e 'loop\nlp\nrtc\nbonding\n8021q' >> /etc/modules
+        niccfg_post_script = """
+echo 'loop' >> /etc/modules
+echo 'lp' >> /etc/modules
+echo 'rtc' >> /etc/modules
+echo 'bonding' >> /etc/modules
+echo '8021q' >> /etc/modules
+
 {% set count = 0 %}
 {% for cfg in niccfgs %}
   {% if cfg.bondName %}
@@ -748,49 +754,63 @@ echo "ONBOOT=yes" >> $IFCFGFILE
   {% endif %}
 {% endfor %}
 
+INTERFACES_FILE=/etc/network/interfaces
+
 {% for cfg in niccfgs %}
+  {% if cfg.bondName %}
+    RAWDEVNAME={{ cfg.bondName }}
+  {% else %}
+    RAWDEVNAME=`ip -o link show | grep {{ cfg.mac }} | awk -F ': ' '{ print $2 }'`
+  {% endif %}
+  DEVNAME=${RAWDEVNAME}{%- if cfg.vlanid -%}.{{ cfg.vlanid }}{%- endif -%}
 
-{% if cfg.bondName %}
-DEVNAME={{ cfg.bondName }}{%- if cfg.vlanid -%}.{{ cfg.vlanid }}{%- endif -%}
-{% else %}
-DEVNAME=`ip -o link show | grep {{ cfg.mac }} | awk -F ': ' '{ print $2 }'`{%- if cfg.vlanid -%}.{{ cfg.vlanid }}{%- endif -%}
-{% endif %}
+  {% if cfg.vlanid %}
+    echo "auto ${DEVNAME}" >> ${INTERFACES_FILE}
+    echo "iface ${DEVNAME} inet static" >> ${INTERFACES_FILE}
+    echo "address {{ cfg.ip }}" >> ${INTERFACES_FILE}
+    echo "netmask {{ cfg.netmask }}" >> ${INTERFACES_FILE}
+    echo "gateway {{ cfg.gateway }}" >> ${INTERFACES_FILE}
+    echo "vlan-raw-device ${RAWDEVNAME}" >> ${INTERFACES_FILE}
+    echo '' >> ${INTERFACES_FILE}
+  {% endif %}
 
-echo "auto ${DEVNAME}" >> /etc/network/interfaces
-echo "iface ${DEVNAME} inet static" >> /etc/network/interfaces
-echo 'address {{ cfg.ip }}' >> /etc/network/interfaces
-echo 'netmask {{ cfg.netmask }}' >> /etc/network/interfaces
-echo 'gateway {{ cfg.gateway }}' >> /etc/network/interfaces
+  {% if cfg.bondName %}
+    echo "auto ${RAWDEVNAME}" >> ${INTERFACES_FILE}
+    {% if cfg.vlanid %}
+      echo "iface ${RAWDEVNAME} inet manual" >> ${INTERFACES_FILE}
+    {% else %}
+      echo "iface ${RAWDEVNAME} inet static" >> ${INTERFACES_FILE}
+      echo "address {{ cfg.ip }}" >> ${INTERFACES_FILE}
+      echo "netmask {{ cfg.netmask }}" >> ${INTERFACES_FILE}
+      echo "gateway {{ cfg.gateway }}" >> ${INTERFACES_FILE}
+    {% endif %}
+    echo "bond-mode {{ cfg.bondMode }}" >> ${INTERFACES_FILE}
+    {% if cfg.bondOpts %}
+      echo "{{ cfg.bondOpts }}" >> ${INTERFACES_FILE}
+    {% else %}
+      echo "bond-miimon 100" >> ${INTERFACES_FILE}
+    {% endif %}
+    echo "bond-slaves none" >> ${INTERFACES_FILE}
+    echo '' >> ${INTERFACES_FILE}
 
-{% if cfg.bondName %}
-echo 'bond-mode {{ cfg.bondMode }}' >> /etc/network/interfaces
-{% if cfg.bondOpts %}echo '{{ cfg.bondOpts }}' >> /etc/network/interfaces{% endif %}
+    {% for slave in cfg.bondSlaves %}
+      slave_nic=`ip -o link show | grep {{ slave }} | awk -F ': ' '{ print $2 }'`
+      echo "auto ${slave_nic}" >> ${INTERFACES_FILE}
+      echo "iface ${slave_nic} inet manual" >> ${INTERFACES_FILE}
+      echo "bond-master {{ cfg.bondName }}" >> ${INTERFACES_FILE}
+      echo '' >> ${INTERFACES_FILE}
+    {% endfor %}
+  {% endif %}
 
-echo 'pre-up ifconfig {{ cfg.bondName }} up' >> /etc/network/interfaces
-{% for slave in cfg.bondSlaves %}
-slave_nic=`ip -o link show | grep {{ slave }} | awk -F ': ' '{ print $2 }'`
-echo "pre-up ip link set $slave_nic master {{ cfg.bondName  }}" >> /etc/network/interfaces
-{% endfor %}
-echo 'up /bin/true' >> /etc/network/interfaces
-echo 'down /bin/true' >> /etc/network/interfaces
-{% for slave in cfg.bondSlaves %}
-slave_nic=`ip -o link show | grep {{ slave }} | awk -F ': ' '{ print $2 }'`
-echo "post-down ip link set $slave_nic nomaster" >> /etc/network/interfaces
-{% endfor %}
-echo 'post-down ifconfig {{ cfg.bondName }} down' >> /etc/network/interfaces
+  {% if not cfg.bondName and not cfg.vlanid %}
+    echo "auto ${DEVNAME}" >> ${INTERFACES_FILE}
+    echo "iface ${DEVNAME} inet static" >> ${INTERFACES_FILE}
+    echo "address {{ cfg.ip }}" >> ${INTERFACES_FILE}
+    echo "netmask {{ cfg.netmask }}" >> ${INTERFACES_FILE}
+    echo "gateway {{ cfg.gateway }}" >> ${INTERFACES_FILE}
+    echo '' >> ${INTERFACES_FILE}
+  {% endif %}
 
-{% endif %}
-
-{% if cfg.vlanid %}
-{% if cfg.bondName %}
-RAWDEVNAME={{ cfg.bondName }}
-{% else %}
-RAWDEVNAME=`ip -o link show | grep {{ cfg.mac }} | awk -F ': ' '{ print $2 }'`
-{% endif %}
-echo "vlan-raw-device ${RAWDEVNAME}" >> /etc/network/interfaces
-{% endif %}
-
-echo "" >> /etc/network/interfaces
 {% endfor %}
 """
         niccfg_post_tmpl = Template(niccfg_post_script)
