@@ -1928,7 +1928,7 @@ install_zstack_network()
     systemctl daemon-reload
     systemctl enable zstack-network-agent.service
     systemctl restart zstack-network-agent.service
-}
+} >>$ZSTACK_INSTALL_LOG 2>&1
 
 cp_third_party_tools(){
     echo_subtitle "Copy third-party tools to ZStack install path"
