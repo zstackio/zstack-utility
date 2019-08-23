@@ -2332,6 +2332,7 @@ class Vm(object):
 
     def block_stream_disk(self, volume):
         target_disk, disk_name = self._get_target_disk(volume)
+        install_path = target_disk.source.file_
         logger.debug('start block stream for disk %s' % disk_name)
         self.domain.blockRebase(disk_name, None, 0, 0)
 
@@ -2343,6 +2344,12 @@ class Vm(object):
 
         if not linux.wait_callback_success(wait_job, timeout=21600, ignore_exception_in_callback=True):
             raise kvmagent.KvmError('block stream failed')
+
+        def wait_backing_file_cleared(_):
+            return not linux.qcow2_get_backing_file(install_path)
+
+        if not linux.wait_callback_success(wait_backing_file_cleared, timeout=60, ignore_exception_in_callback=True):
+            raise kvmagent.KvmError('block stream succeeded, but backing file is not cleared')
 
     def list_blk_sources(self):
         """list domain blocks (aka. domblklist) -- but with sources only"""
