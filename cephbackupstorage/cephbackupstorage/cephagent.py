@@ -18,6 +18,7 @@ from zstacklib.utils.bash import *
 from zstacklib.utils.report import Report
 from zstacklib.utils import shell
 from zstacklib.utils import ceph
+from zstacklib.utils import qemu_img
 from zstacklib.utils.rollback import rollback, rollbackable
 
 logger = log.get_logger(__name__)
@@ -861,8 +862,8 @@ class CephAgent(object):
         else:
             raise Exception('unknown url[%s]' % cmd.url)
 
-        file_format = shell.call(
-            "set -o pipefail; qemu-img info rbd:%s/%s | grep 'file format' | cut -d ':' -f 2" % (pool, tmp_image_name))
+        file_format = shell.call("set -o pipefail; %s rbd:%s/%s | grep 'file format' | cut -d ':' -f 2" %
+                (qemu_img.subcmd('info'), pool, tmp_image_name))
         file_format = file_format.strip()
         if file_format not in ['qcow2', 'raw']:
             raise Exception('unknown image format: %s' % file_format)

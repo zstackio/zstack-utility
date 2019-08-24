@@ -14,6 +14,7 @@ from zstacklib.utils import linux
 from zstacklib.utils import lock
 from zstacklib.utils import lvm
 from zstacklib.utils import bash
+from zstacklib.utils import qemu_img
 from zstacklib.utils.plugin import completetask
 import zstacklib.utils.uuidhelper as uuidhelper
 
@@ -971,7 +972,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         abs_path = translate_absolute_path_from_install_path(cmd.installPath)
         with lvm.RecursiveOperateLv(abs_path, shared=False):
             image_offest = long(
-                bash.bash_o("qemu-img check %s | grep 'Image end offset' | awk -F ': ' '{print $2}'" % abs_path).strip())
+                bash.bash_o("%s %s | grep 'Image end offset' | awk -F ': ' '{print $2}'" %
+                        (qemu_img.subcmd('check'), abs_path)).strip())
             current_size = long(lvm.get_lv_size(abs_path))
             virtual_size = linux.qcow2_virtualsize(abs_path)
             size = image_offest + cmd.addons[lvm.thinProvisioningInitializeSize]
