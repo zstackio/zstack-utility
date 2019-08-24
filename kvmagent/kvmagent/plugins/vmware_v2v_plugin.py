@@ -13,6 +13,7 @@ from zstacklib.utils import log
 from zstacklib.utils import shell
 from zstacklib.utils import http
 from zstacklib.utils import thread
+from zstacklib.utils import qemu_img
 from zstacklib.utils.bash import in_bash
 from zstacklib.utils.linux import shellquote
 from zstacklib.utils.plugin import completetask
@@ -312,7 +313,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
 
     @in_bash
     def _get_qcow2_sizes(self, path):
-        cmd = "qemu-img info --output=json '%s'" % path
+        cmd = "%s --output=json '%s'" % (qemu_img.subcmd('info'), path)
         _, output = commands.getstatusoutput(cmd)
         return long(json.loads(output)['actual-size']), long(json.loads(output)['virtual-size'])
 

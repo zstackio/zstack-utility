@@ -36,6 +36,7 @@ from zstacklib.utils import thread
 from zstacklib.utils import uuidhelper
 from zstacklib.utils import xmlobject
 from zstacklib.utils import misc
+from zstacklib.utils import qemu_img
 from zstacklib.utils.report import *
 
 logger = log.get_logger(__name__)
@@ -2106,7 +2107,7 @@ class Vm(object):
         Vm.timeout_detached_vol.remove(volume.installPath + "-" + self.uuid)
 
     def _get_back_file(self, volume):
-        ret = shell.call('qemu-img info %s' % volume)
+        ret = shell.call('%s %s' % (qemu_img.subcmd('info'), volume))
         for l in ret.split('\n'):
             l = l.strip(' \n\t\r')
             if l == '':
@@ -3998,9 +3999,10 @@ class VmPlugin(kvmagent.KvmAgent):
         return int(units[unit](int(num)))
 
     def _get_image_mb_size(self, image):
-        backing = shell.call(
-            'qemu-img info %s|grep "backing file:"|awk -F \'backing file:\' \'{print $2}\' ' % image).strip()
-        size = shell.call('qemu-img info %s|grep "disk size:"|awk -F \'disk size:\' \'{print $2}\' ' % image).strip()
+        backing = shell.call('%s %s | grep "backing file:" | awk -F \'backing file:\' \'{print $2}\' ' %
+                (qemu_img.subcmd('info'), image)).strip()
+        size    = shell.call('%s %s | grep "disk size:" | awk -F \'disk size:\' \'{print $2}\' ' %
+                (qemu_img.subcmd('info'), image)).strip()
         if not backing:
             return self._escape(size)
         else:
