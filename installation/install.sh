@@ -726,7 +726,7 @@ check_system(){
             [ -d ${LEGACY_MINI_INSTALL_ROOT} -o -d $MINI_INSTALL_ROOT ] && zstack-ctl configure log.management.server.retentionSizeGB=200
             ui_mode=`zstack-ctl show_configuration |awk '/ui_mode/{print $3}'`
         fi
-        [ x"$ui_mode" = x"mini" ] && cs_check_hostname_mini || cs_check_hostname_zstack
+        cs_check_hostname_zstack
     else
         cs_check_hostname_zstack
     fi
