@@ -6,6 +6,7 @@ from zstacklib.utils import shell
 from zstacklib.utils import linux
 from zstacklib.utils import lvm
 from zstacklib.utils import thread
+from zstacklib.utils import qemu_img
 import os.path
 import time
 import traceback
@@ -380,8 +381,8 @@ class HaPlugin(kvmagent.KvmAgent):
             return not (health_status.startswith('HEALTH_OK') or health_status.startswith('HEALTH_WARN'))
 
         def heartbeat_file_exists():
-            touch = shell.ShellCmd('timeout %s qemu-img info %s' %
-                                   (cmd.storageCheckerTimeout, get_ceph_rbd_args()))
+            touch = shell.ShellCmd('timeout %s %s %s' %
+                    (cmd.storageCheckerTimeout, qemu_img.subcmd('info'), get_ceph_rbd_args()))
             touch(False)
 
             if touch.return_code == 0:

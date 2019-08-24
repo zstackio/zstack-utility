@@ -13,6 +13,7 @@ from zstacklib.utils import lichbd
 from zstacklib.utils import sizeunit
 from zstacklib.utils import linux
 from zstacklib.utils import thread
+from zstacklib.utils import qemu_img
 import zstacklib.utils.lichbd_factory as lichbdfactory
 import os.path
 import re
@@ -90,8 +91,8 @@ class FusionstorPlugin(kvmagent.KvmAgent):
                         logger.warn('cannot create heartbeat image; %s' % create.stderr)
 
                     if read_heart_beat_file:
-                        touch = shell.ShellCmd('timeout %s qemu-img info nbd:unix:/tmp/nbd-socket:exportname=%s' %
-                                               (cmd.storageCheckerTimeout, cmd.heartbeatImagePath))
+                        touch = shell.ShellCmd('timeout %s %s nbd:unix:/tmp/nbd-socket:exportname=%s' %
+                                (cmd.storageCheckerTimeout, qemu_img.subcmd('info'), cmd.heartbeatImagePath))
                         touch(False)
 
                         if touch.return_code == 0:

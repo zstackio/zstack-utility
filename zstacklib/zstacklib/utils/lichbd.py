@@ -11,6 +11,7 @@ import subprocess
 import zstacklib.utils.shell as shell
 import zstacklib.utils.lichbd_factory as lichbdfactory
 from zstacklib.utils import log
+from zstacklib.utils import qemu_img
 
 logcmd = True
 
@@ -434,9 +435,9 @@ def lichbd_get_format(path):
         qemu_img = lichbd_get_qemu_img_path()
         cmd = "set -o pipefail;%s info rbd:%s 2>/dev/null | grep 'file format' | cut -d ':' -f 2" % (qemu_img, path)
     elif protocol == 'sheepdog':
-        cmd = "set -o pipefail;qemu-img info sheepdog+unix:///%s?socket=/tmp/sheepdog.socket 2>/dev/null | grep 'file format' | cut -d ':' -f 2" % path
+        cmd = "set -o pipefail; %s sheepdog+unix:///%s?socket=/tmp/sheepdog.socket 2>/dev/null | grep 'file format' | cut -d ':' -f 2" % (qemu_img.subcmd('info'), path)
     elif protocol == 'nbd':
-        cmd = "set -o pipefail;qemu-img info nbd:unix:/tmp/nbd-socket:exportname=%s 2>/dev/null | grep 'file format' | cut -d ':' -f 2" % path
+        cmd = "set -o pipefail; %s nbd:unix:/tmp/nbd-socket:exportname=%s 2>/dev/null | grep 'file format' | cut -d ':' -f 2" % (qemu_img.subcmd('info'), path)
     else:
         raise shell.ShellError('Do not supprot protocols, only supprot lichbd and sheepdog')
 
