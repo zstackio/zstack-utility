@@ -19,6 +19,7 @@ import re
 import platform
 import mmap
 
+from zstacklib.utils import qemu_img
 from zstacklib.utils import shell
 from zstacklib.utils import log
 
@@ -614,7 +615,8 @@ def sftp_get(hostname, sshkey, filename, download_to, timeout=0, interval=1, cal
             os.remove(batch_file_path)
 
 def qcow2_size_and_actual_size(file_path):
-    cmd = shell.ShellCmd('''set -o pipefail; qemu-img info %s |  awk '{if (/^virtual size:/) {vs=substr($4,2)}; if (/^disk size:/) {ds=$3} } END{print vs?vs:"null", ds?ds:"null"}' ''' % file_path)
+    cmd = shell.ShellCmd('''set -o pipefail; %s %s | awk '{if (/^virtual size:/) {vs=substr($4,2)}; if (/^disk size:/) {ds=$3} } END{print vs?vs:"null", ds?ds:"null"}' ''' %
+            (qemu_img.subcmd('info'), file_path))
     cmd(False)
     if cmd.return_code != 0:
         raise Exception('cannot get the virtual/actual size of the file[%s], %s %s' % (shellquote(file_path), cmd.stdout, cmd.stderr))
@@ -654,7 +656,8 @@ def get_img_file_fmt(src):
     return fmt
 
 def get_img_fmt(src):
-    fmt = shell.call("set -o pipefail; /usr/bin/qemu-img info %s | grep -w '^file format' | awk '{print $3}'" % src)
+    fmt = shell.call("set -o pipefail; %s %s | grep -w '^file format' | awk '{print $3}'" %
+            (qemu_img.subcmd('info'), src))
     fmt = fmt.strip(' \t\r\n')
     if fmt != 'raw' and fmt != 'qcow2':
         logger.debug("/usr/bin/qemu-img info %s" % src)
@@ -734,27 +737,28 @@ def create_template(src, dst, compress=False):
 
 def qcow2_create_template(src, dst, compress):
     if compress:
-        shell.call('/usr/bin/qemu-img convert -c -f qcow2 -O qcow2 %s %s' % (src, dst))
+        shell.call('%s -c -f qcow2 -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
     else:
-        shell.call('/usr/bin/qemu-img convert -f qcow2 -O qcow2 %s %s' % (src, dst))
+        shell.call('%s -f qcow2 -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
 
 def raw_create_template(src, dst):
-    shell.call('/usr/bin/qemu-img convert -f raw -O qcow2 %s %s' % (src, dst))
+    shell.call('%s -f raw -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
 
 def qcow2_convert_to_raw(src, dst):
-    shell.call('/usr/bin/qemu-img convert -f qcow2 -O raw %s %s' % (src, dst))
+    shell.call('%s -f qcow2 -O raw %s %s' % (qemu_img.subcmd('convert'), src, dst))
 
 def qcow2_rebase(backing_file, target):
     fmt = get_img_fmt(backing_file)
-    shell.call('/usr/bin/qemu-img rebase -F %s -f qcow2 -b %s %s' % (fmt, backing_file, target))
+    shell.call('%s -F %s -f qcow2 -b %s %s' % (qemu_img.subcmd('rebase'), fmt, backing_file, target))
 
 def qcow2_rebase_no_check(backing_file, target):
     fmt = get_img_fmt(backing_file)
-    shell.call('/usr/bin/qemu-img rebase -F %s -u -f qcow2 -b %s %s' % (fmt, backing_file, target))
+    shell.call('%s -F %s -u -f qcow2 -b %s %s' % (qemu_img.subcmd('rebase'), fmt, backing_file, target))
 
 def qcow2_virtualsize(file_path):
     file_path = shellquote(file_path)
-    cmd = shell.ShellCmd("set -o pipefail; qemu-img info %s | grep -w 'virtual size' | awk -F '(' '{print $2}' | awk '{print $1}'" % file_path)
+    cmd = shell.ShellCmd("set -o pipefail; %s %s | grep -w 'virtual size' | awk -F '(' '{print $2}' | awk '{print $1}'" %
+            (qemu_img.subcmd('info'), file_path))
     cmd(False)
     if cmd.return_code != 0:
         raise Exception('cannot get the virtual size of the file[%s], %s %s' % (file_path, cmd.stdout, cmd.stderr))
@@ -764,7 +768,8 @@ def qcow2_virtualsize(file_path):
 def qcow2_get_backing_file(path):
     if not os.path.exists(path):
         # for rbd image
-        out = shell.call("qemu-img info %s | grep 'backing file:' | cut -d ':' -f 2" % path)
+        out = shell.call("%s %s | grep 'backing file:' | cut -d ':' -f 2" %
+                (qemu_img.subcmd('info'), path))
         return out.strip(' \t\r\n')
 
     with open(path, 'r') as resp:
@@ -800,7 +805,8 @@ def qcow2_direct_get_backing_file(path):
 
 # Get derived file and all its backing files
 def qcow2_get_file_chain(path):
-    out = shell.call("qemu-img info --backing-chain %s | grep 'image:' | awk '{print $2}'" % path)
+    out = shell.call("%s --backing-chain %s | grep 'image:' | awk '{print $2}'" %
+            (qemu_img.subcmd('info'), path))
     return out.splitlines()
 
 def get_qcow2_file_chain_size(path):
@@ -818,8 +824,8 @@ def get_qcow2_base_image_recusively(vol_install_dir, image_cache_dir):
     real_vol_dir = os.path.realpath(vol_install_dir)
     real_cache_dir = os.path.realpath(image_cache_dir)
     backing_files = shell.call(
-        "set -o pipefail; find %s -type f -name '*.qcow2' -exec qemu-img info {} \;| grep 'backing file:' | awk '{print $3}'"
-        % real_vol_dir).splitlines()
+        "set -o pipefail; find %s -type f -name '*.qcow2' -exec %s {} \;| grep 'backing file:' | awk '{print $3}'"
+        % (real_vol_dir, qemu_img.subcmd('info'))).splitlines()
 
     base_image = set()
     for backing_file in backing_files:
