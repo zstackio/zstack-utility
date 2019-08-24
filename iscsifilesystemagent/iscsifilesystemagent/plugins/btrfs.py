@@ -7,6 +7,7 @@ from zstacklib.utils import http
 from zstacklib.utils import shell
 from zstacklib.utils import linux
 from zstacklib.utils import lock
+from zstacklib.utils import qemu_img
 import cherrypy
 from iscsifilesystemagent import  iscsiagent
 import time
@@ -135,7 +136,7 @@ class BtrfsPlugin(plugin.Plugin):
         linux.scp_download(cmd.hostname, cmd.sshKey, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
 
         def get_image_format():
-            out = shell.call('qemu-img info %s' % cmd.primaryStorageInstallPath)
+            out = shell.call('%s %s' % (qemu_img.subcmd('info'), cmd.primaryStorageInstallPath))
             for l in out.split('\n'):
                 if 'file format' in l:
                     _, f = l.split(':')

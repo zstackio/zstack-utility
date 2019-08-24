@@ -19,6 +19,7 @@ from zstacklib.utils import plugin
 from zstacklib.utils import linux
 from zstacklib.utils import ceph
 from zstacklib.utils import bash
+from zstacklib.utils import qemu_img
 from imagestore import ImageStoreClient
 from zstacklib.utils.linux import remote_shell_quote
 
@@ -775,7 +776,8 @@ class CephAgent(plugin.TaskManager):
         _1()
 
         file_format = shell.call(
-            "set -o pipefail; qemu-img info rbd:%s/%s | grep 'file format' | cut -d ':' -f 2" % (pool, tmp_image_name))
+            "set -o pipefail; %s rbd:%s/%s | grep 'file format' | cut -d ':' -f 2" %
+                    (qemu_img.subcmd('info'), pool, tmp_image_name))
         file_format = file_format.strip()
         if file_format not in ['qcow2', 'raw']:
             raise Exception('unknown image format: %s' % file_format)
