@@ -321,17 +321,24 @@ def config_lvm_filter(files, no_drbd=False):
     if not os.path.exists(LVM_CONFIG_PATH):
         raise Exception("can not find lvm config path: %s, config lvm failed" % LVM_CONFIG_PATH)
 
-    vgs = bash.bash_o("vgs --nolocking -oname --noheading").splitlines()
     filter_str = 'filter=["r|\\/dev\\/cdrom|"'
-    for vg in vgs:
-        filter_str += ', "r\\/dev\\/mapper\\/%s.*\\/"' % vg.strip()
     if no_drbd:
         filter_str += ', "r\\/dev\\/drbd.*\\/"'
 
     filter_str += ']'
 
-    for file in files:
-        bash.bash_r("sed -i 's/.*\\b%s.*/%s/g' %s/%s" % ("filter", filter_str, LVM_CONFIG_PATH, file))
+    for f in files:
+        bash.bash_r("sed -i 's/.*\\b%s.*/%s/g' %s/%s" % ("filter", filter_str, LVM_CONFIG_PATH, f))
+
+    filter_str = 'filter=["r|\\/dev\\/cdrom|"'
+    vgs = bash.bash_o("vgs --nolocking -oname --noheading").splitlines()
+    for vg in vgs:
+        filter_str += ', "r\\/dev\\/mapper\\/%s.*\\/"' % vg.strip()
+    if no_drbd:
+        filter_str += ', "r\\/dev\\/drbd.*\\/"'
+
+    for f in files:
+        bash.bash_r("sed -i 's/.*\\b%s.*/%s/g' %s/%s" % ("filter", filter_str, LVM_CONFIG_PATH, f))
 
 
 def config_sanlock_by_sed(keyword, entry):
