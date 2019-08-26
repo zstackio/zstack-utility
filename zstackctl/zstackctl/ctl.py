@@ -5601,6 +5601,9 @@ class ChangeIpCmd(Command):
             # update zstack db url
             db_url = ctl.read_property('DB.url')
             db_old_ip = re.findall(r'[0-9]+(?:\.[0-9]{1,3}){3}|localhost', db_url)
+            if self.isVirtualIp(db_old_ip[0]) or db_old_ip[0] == ctl.read_property('management.server.vip'):
+                warn("you are changing mysql ip from virtual ip, it may causes unexpected consequences!")
+
             db_new_url = db_url.split(db_old_ip[0])[0] + mysql_ip + db_url.split(db_old_ip[0])[1]
             ctl.write_properties([
               ('DB.url', db_new_url),
