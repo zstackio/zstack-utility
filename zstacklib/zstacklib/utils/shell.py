@@ -5,8 +5,6 @@
 import subprocess
 from zstacklib.utils import log
 
-logcmd = True
-
 class ShellError(Exception):
     '''shell error'''
     
@@ -39,7 +37,7 @@ class ShellCmd(object):
         err.append('stderr: %s' % self.stderr)
         raise ShellError('\n'.join(err))
         
-    def __call__(self, is_exception=True):
+    def __call__(self, is_exception=True, logcmd=True):
         if logcmd:
             log.get_logger(__name__).debug(self.cmd)
             
