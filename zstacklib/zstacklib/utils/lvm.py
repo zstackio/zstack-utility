@@ -337,6 +337,8 @@ def config_lvm_filter(files, no_drbd=False):
     if no_drbd:
         filter_str += ', "r\\/dev\\/drbd.*\\/"'
 
+    filter_str += ']'
+
     for f in files:
         bash.bash_r("sed -i 's/.*\\b%s.*/%s/g' %s/%s" % ("filter", filter_str, LVM_CONFIG_PATH, f))
 
