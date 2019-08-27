@@ -8078,7 +8078,10 @@ class StartUiCmd(Command):
             args.server_port = '5443'
 
         # set http to https is enable ssl set
-        system_webhook_url = 'localhost:%s/zwatch/webhook' % args.webhook_port
+        webhook_ip = ctl.read_property('management.server.vip')
+        if not webhook_ip:
+            webhook_ip = 'localhost'
+        system_webhook_url = '%s:%s/zwatch/webhook' % (webhook_ip, args.webhook_port)
         if args.enable_ssl:
             system_webhook_url = 'https://' + system_webhook_url
         else:
