@@ -7993,6 +7993,18 @@ class StartUiCmd(Command):
             self.db_url = '%s/zstack_ui' % self.db_url.rstrip('/')
         _, _, self.db_username, self.db_password = ctl.get_live_mysql_portal(True)
 
+    def _update_system_alarm_endpoint(self, system_webhook_url):
+        mn_ip = ctl.read_property('management.server.ip')
+        if not mn_ip:
+            mn_ip = "127.0.0.1"
+        mn_port = ctl.read_property('RESTFacade.port')
+        if not mn_port:
+            mn_port = 8080
+        content_json = '{"systemTopicHttpEndpointURL":"%s"}' %  system_webhook_url
+        http_cmd = 'curl -X POST -H "Content-Type:application/json" -H "commandpath:/sns/systemtopichttpendpointurl/report" -d \'%s\' --retry 5 http://%s:%s/zstack/asyncrest/sendcommand' % (content_json, mn_ip, mn_port)
+        logger.debug('report system topic http endpoint url:%s' % system_webhook_url)
+        ShellCmd(http_cmd)
+
     def run_zstack_ui(self, args):
         ui_logging_path = os.path.normpath(os.path.join(ctl.zstack_home, "../../logs/"))
 
@@ -8073,6 +8085,8 @@ class StartUiCmd(Command):
 
         ctl.write_property('ticket.sns.topic.http.url', system_webhook_url)
         ctl.write_property('sns.systemTopic.endpoints.http.url', system_webhook_url)
+
+        self._update_system_alarm_endpoint(system_webhook_url)
 
         if not os.path.exists(args.ssl_keystore):
             raise CtlError('%s not found.' % args.ssl_keystore)
