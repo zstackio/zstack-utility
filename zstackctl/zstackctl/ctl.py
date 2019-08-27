@@ -1968,6 +1968,7 @@ class StartCmd(Command):
         def prepare_setenv():
             setenv_path = os.path.join(ctl.zstack_home, self.SET_ENV_SCRIPT)
             catalina_opts = [
+                '-Djdk.tls.trustNameService=true',
                 '-Djava.net.preferIPv4Stack=true',
                 '-Dcom.sun.management.jmxremote=true',
                 '-Djava.security.egd=file:/dev/./urandom',
