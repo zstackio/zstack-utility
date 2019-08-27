@@ -166,7 +166,7 @@ def convert_disk_state_to_int(state):
     :type state: str
     """
     state = state.lower()
-    if "online" in state:
+    if "online" in state or "jobd" in state:
         return 0
     elif "rebuild" in state:
         return 5
@@ -215,8 +215,12 @@ def collect_raid_state():
             temp = info.split(":")[1].split("C")[0]
             metrics['physical_disk_temperature'].add_metric([slot_number, disk_group], int(temp))
         else:
+            disk_group = "JBOD" if disk_group is None and info.count("JBOD") > 0 else disk_group
+            disk_group = "unknown" if disk_group is None else disk_group
+
             state = info.strip().split(":")[-1]
             metrics['physical_disk_state'].add_metric([slot_number, disk_group], convert_disk_state_to_int(state))
+            disk_group = None
 
     return metrics.values()
 
