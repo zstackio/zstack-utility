@@ -225,7 +225,11 @@ def listVirtualMachines(url, sasluser, saslpass, keystr):
             logger.info("domain xml for vm: {}\n{}".format(info.name, xmldesc))
 
             dxml = xmlobject.loads(xmldesc)
-            info.macAddresses = getMacs(dxml.devices.interface)
+            if dxml.devices.hasattr('interface'):
+                info.macAddresses = getMacs(dxml.devices.interface)
+            else:
+                info.macAddresses = []
+
             info.volumes = getVolumes(dom, dxml)
 
             vms.append(info)
