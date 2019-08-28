@@ -579,7 +579,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 logger.debug('successfully created template[%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
                 if cmd.compareQcow2 is True:
                     logger.debug("comparing qcow2 between %s and %s")
-                    bash.bash_errorout("time qemu-img compare %s %s" % (volume_abs_path, install_abs_path))
+                    bash.bash_errorout("time %s %s %s" % (qemu_img.subcmd('compare'), volume_abs_path, install_abs_path))
                     logger.debug("confirmed qcow2 %s and %s are identical" % (volume_abs_path, install_abs_path))
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)

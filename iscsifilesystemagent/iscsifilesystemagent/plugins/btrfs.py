@@ -145,7 +145,7 @@ class BtrfsPlugin(plugin.Plugin):
 
         f = get_image_format()
         if 'qcow2' in f:
-            shell.call('/usr/bin/qemu-img convert -f qcow2 -O raw %s %s.img' % (cmd.primaryStorageInstallPath, cmd.primaryStorageInstallPath))
+            shell.call('%s -f qcow2 -O raw %s %s.img' % (qemu_img.subcmd('convert'), cmd.primaryStorageInstallPath, cmd.primaryStorageInstallPath))
             shell.call('mv %s.img %s' % (cmd.primaryStorageInstallPath, cmd.primaryStorageInstallPath))
         elif 'raw' in f:
             pass
