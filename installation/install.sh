@@ -1322,6 +1322,7 @@ is_install_general_libs_rh(){
             vconfig \
             python-devel \
             gcc \
+            grafana \
             autoconf \
             chrony \
             iptables \
