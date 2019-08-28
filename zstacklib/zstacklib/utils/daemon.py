@@ -81,7 +81,14 @@ class Daemon(object):
         # write pidfile
         Daemon.register_atexit_hook(self.delpid)
         atexit.register(Daemon._atexit)
-        file(self.pidfile,'w').write("%d\n" % os.getpid())
+
+        # systemd needs this for non-native service
+        pid = os.getpid()
+        logger.info("writing pidfile (pid=%d)" % pid)
+        try:
+            file(self.pidfile,'w').write("%d\n" % pid)
+        except IOError as e:
+            logger.error(str(e))
     
     def delpid(self):
         os.remove(self.pidfile)
