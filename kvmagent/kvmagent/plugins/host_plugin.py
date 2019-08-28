@@ -6,6 +6,8 @@ import base64
 import copy
 import hashlib
 import platform
+import threading
+
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
 from kvmagent.plugins.imagestore import ImageStoreClient
@@ -160,6 +162,13 @@ class HostNetworkBondingInventory(object):
         self._init_from_name()
 
     def _init_from_name(self):
+        rlock = threading.RLock()
+
+        def get_nic(n):
+            o = HostNetworkInterfaceInventory(n)
+            with rlock:
+                self.slaves.append(o)
+
         if self.bondingName is None:
             return
         self.mode = bash_o("cat /sys/class/net/%s/bonding/mode" % self.bondingName).strip()
@@ -181,8 +190,11 @@ class HostNetworkBondingInventory(object):
         if len(slave_names) == 0:
             return
 
+        threads = []
         for name in slave_names:
-            self.slaves.append(HostNetworkInterfaceInventory(name))
+            threads.append(thread.ThreadFacade.run_in_thread(get_nic, [name.strip()]))
+        for t in threads:
+            t.join()
 
     def _to_dict(self):
         to_dict = self.__dict__
@@ -194,7 +206,9 @@ class HostNetworkBondingInventory(object):
 
 
 class HostNetworkInterfaceInventory(object):
-    def __init__(self, name=None):
+    __cache__ = dict()  # type: Dict[str, List[int, HostNetworkInterfaceInventory]]
+
+    def init(self, name):
         super(HostNetworkInterfaceInventory, self).__init__()
         self.interfaceName = name
         self.speed = None
@@ -206,6 +220,26 @@ class HostNetworkInterfaceInventory(object):
         self.master = None
         self._init_from_name()
 
+    @classmethod
+    def __get_cache__(cls, name):
+        # type: (str) -> HostNetworkInterfaceInventory
+        c = cls.__cache__.get(name)
+        if c is None:
+            return None
+        if (time.time() - c[0]) < 60:
+            return c[1]
+        return None
+
+    def __new__(cls, name, *args, **kwargs):
+        o = cls.__get_cache__(name)
+        if o:
+            return o
+        o = super(HostNetworkInterfaceInventory, cls).__new__(cls)
+        o.init(name)
+        cls.__cache__[name] = [int(time.time()), o]
+        return o
+
+    @in_bash
     def _init_from_name(self):
         if self.interfaceName is None:
             return
@@ -1066,12 +1100,22 @@ done
 
     @staticmethod
     def get_host_networking_interfaces():
+        rlock = threading.RLock()
+
+        def get_nic(n):
+            o = HostNetworkInterfaceInventory(n)
+            with rlock:
+                nics.append(o)
+
         nics = []
+        threads = []
         nic_names = bash_o("find /sys/class/net -type l -not -lname '*virtual*' -printf '%f\\n'").splitlines()
         if len(nic_names) == 0:
             return nics
         for nic in nic_names:
-            nics.append(HostNetworkInterfaceInventory(nic.strip()))
+            threads.append(thread.ThreadFacade.run_in_thread(get_nic, [nic.strip()]))
+        for t in threads:
+            t.join()
         return nics
 
     @staticmethod
