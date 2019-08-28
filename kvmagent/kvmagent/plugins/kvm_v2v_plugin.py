@@ -317,7 +317,7 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
             if not filterList:
                 return fdict
             for f in filterList:
-                fdict[f.identifier] = f
+                fdict[f.deviceId] = f
             return fdict
 
         def skipVolume(fdict, name):
