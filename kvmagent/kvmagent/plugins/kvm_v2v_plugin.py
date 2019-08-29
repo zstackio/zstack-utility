@@ -365,7 +365,7 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
             if dxml.os.hasattr('firmware_') and dxml.os.firmware_ == 'efi' or dxml.os.hasattr('loader'):
                 rsp.bootMode = 'UEFI'
 
-            volumes = getVolumes(dom, dxml)
+            volumes = filter(lambda v: not skipVolume(filters, v.name), getVolumes(dom, dxml))
             oldstat, _ = dom.state()
             needResume = True
 
@@ -374,9 +374,6 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                 needResume = False
 
             for v in volumes:
-                if skipVolume(filters, v.name):
-                    continue
-
                 localpath = os.path.join(storage_dir, v.name)
                 info = dom.blockJobInfo(v.name, 0)
                 if os.path.exists(localpath) and not info:
