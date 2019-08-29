@@ -16,6 +16,7 @@ LVM_CONFIG_PATH = "/etc/lvm"
 SANLOCK_CONFIG_FILE_PATH = "/etc/sanlock/sanlock.conf"
 SANLOCK_IO_TIMEOUT = 40
 LVMLOCKD_LOG_FILE_PATH = "/var/log/lvmlockd/lvmlockd.log"
+LVMLOCKD_LOG_RSYSLOG_PATH = "/etc/rsyslog.d/lvmlockd.conf"
 LVMLOCKD_LOG_LOGROTATE_PATH = "/etc/logrotate.d/lvmlockd"
 LVM_CONFIG_BACKUP_PATH = "/etc/lvm/zstack-backup"
 LVM_CONFIG_ARCHIVE_PATH = "/etc/lvm/archive"
@@ -353,20 +354,39 @@ def config_sanlock_by_sed(keyword, entry):
     linux.sync()
 
 
-def config_lvmlockd_by_sed():
-    cmd = shell.ShellCmd(
-        "sed -i 's/.*ExecStart=.*/ExecStart=\\/usr\\/sbin\\/lvmlockd --daemon-debug --sanlock-timeout %s/g' /usr/lib/systemd/system/lvm2-lvmlockd.service" % SANLOCK_IO_TIMEOUT)
-    cmd(is_exception=False)
+def config_lvmlockd():
+    content = """[Unit]
+Description=LVM2 lock daemon
+Documentation=man:lvmlockd(8)
+After=lvm2-lvmetad.service
 
-    if bash.bash_r("grep StandardOutput /usr/lib/systemd/system/lvm2-lvmlockd.service") != 0:
-        cmd = shell.ShellCmd(
-            "sed -i '/ExecStart/a StandardOutput=%s' /usr/lib/systemd/system/lvm2-lvmlockd.service" % LVMLOCKD_LOG_FILE_PATH)
-        cmd(is_exception=False)
+[Service]
+Type=simple
+NonBlocking=true
+ExecStart=/usr/sbin/lvmlockd --daemon-debug --sanlock-timeout %s
+StandardError=syslog
+StandardOutput=syslog
+SyslogIdentifier=lvmlockd
+Environment=SD_ACTIVATION=1
+PIDFile=/run/lvmlockd.pid
+SendSIGKILL=no
 
-    if bash.bash_r("grep StandardError /usr/lib/systemd/system/lvm2-lvmlockd.service") != 0:
-        cmd = shell.ShellCmd(
-            "sed -i '/ExecStart/a StandardError=%s' /usr/lib/systemd/system/lvm2-lvmlockd.service" % LVMLOCKD_LOG_FILE_PATH)
-        cmd(is_exception=False)
+[Install]
+WantedBy=multi-user.target
+""" % SANLOCK_IO_TIMEOUT
+    with open("/usr/lib/systemd/system/lvm2-lvmlockd.service", 'w') as f:
+        f.write(content)
+    os.chmod("/usr/lib/systemd/system/lvm2-lvmlockd.service", 0644)
+
+    if not os.path.exists(LVMLOCKD_LOG_RSYSLOG_PATH):
+        content = """if $programname == 'lvmlockd' then %s 
+& stop
+""" % LVMLOCKD_LOG_FILE_PATH
+        with open(LVMLOCKD_LOG_RSYSLOG_PATH, 'w') as f:
+            f.write(content)
+        os.chmod(LVMLOCKD_LOG_RSYSLOG_PATH, 0644)
+        shell.call("systemctl restart rsyslog", exception=False)
+
     linux.sync()
     cmd = shell.ShellCmd("systemctl daemon-reload")
     cmd(is_exception=False)
@@ -387,25 +407,26 @@ def start_lvmlockd():
     if not os.path.exists(os.path.dirname(LVMLOCKD_LOG_FILE_PATH)):
         os.mkdir(os.path.dirname(LVMLOCKD_LOG_FILE_PATH))
 
-    config_lvmlockd_by_sed()
+    config_lvmlockd()
     for service in ["wdmd", "sanlock", "lvm2-lvmlockd"]:
         cmd = shell.ShellCmd("timeout 30 systemctl start %s" % service)
         cmd(is_exception=True)
 
-    if not os.path.exists(LVMLOCKD_LOG_LOGROTATE_PATH):
-        content = """/var/log/lvmlockd/lvmlockd.log {
-    rotate 5
+    content = """/var/log/lvmlockd/lvmlockd.log {
+    rotate 15
     missingok
     copytruncate
     size 30M
+    su root root
     compress
     compresscmd /usr/bin/xz
     uncompresscmd /usr/bin/unxz
     compressext .xz
 }"""
-        with open(LVMLOCKD_LOG_LOGROTATE_PATH, 'w') as f:
-            f.write(content)
-        linux.sync()
+    with open(LVMLOCKD_LOG_LOGROTATE_PATH, 'w') as f:
+        f.write(content)
+    os.chmod(LVMLOCKD_LOG_LOGROTATE_PATH, 0644)
+    linux.sync()
 
 
 @bash.in_bash
