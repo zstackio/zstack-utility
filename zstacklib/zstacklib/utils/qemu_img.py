@@ -11,6 +11,6 @@ def subcmd(subcmd):
 
     options = ''
     if LooseVersion(__QEMU_IMG_VERSION) >= LooseVersion('2.10.0'):
-        if subcmd in ['info', 'check', 'measure']:
+        if subcmd in ['info', 'check', 'compare', 'convert', 'rebase']:
             options += ' --force-share '
     return 'qemu-img %s %s ' % (subcmd, options)
