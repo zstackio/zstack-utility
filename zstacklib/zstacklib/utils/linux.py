@@ -745,23 +745,23 @@ def create_template(src, dst, compress=False):
 
 def qcow2_create_template(src, dst, compress):
     if compress:
-        shell.call('/usr/bin/qemu-img convert -c -f qcow2 -O qcow2 %s %s' % (src, dst))
+        shell.call('%s -c -f qcow2 -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
     else:
-        shell.call('/usr/bin/qemu-img convert -f qcow2 -O qcow2 %s %s' % (src, dst))
+        shell.call('%s -f qcow2 -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
 
 def raw_create_template(src, dst):
-    shell.call('/usr/bin/qemu-img convert -f raw -O qcow2 %s %s' % (src, dst))
+    shell.call('%s -f raw -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
 
 def qcow2_convert_to_raw(src, dst):
-    shell.call('/usr/bin/qemu-img convert -f qcow2 -O raw %s %s' % (src, dst))
+    shell.call('%s -f qcow2 -O raw %s %s' % (qemu_img.subcmd('convert'), src, dst))
 
 def qcow2_rebase(backing_file, target):
     fmt = get_img_fmt(backing_file)
-    shell.call('/usr/bin/qemu-img rebase -F %s -f qcow2 -b %s %s' % (fmt, backing_file, target))
+    shell.call('%s -F %s -f qcow2 -b %s %s' % (qemu_img.subcmd('rebase'), fmt, backing_file, target))
 
 def qcow2_rebase_no_check(backing_file, target):
     fmt = get_img_fmt(backing_file)
-    shell.call('/usr/bin/qemu-img rebase -F %s -u -f qcow2 -b %s %s' % (fmt, backing_file, target))
+    shell.call('%s -F %s -u -f qcow2 -b %s %s' % (qemu_img.subcmd('rebase'), fmt, backing_file, target))
 
 def qcow2_virtualsize(file_path):
     file_path = shellquote(file_path)
@@ -856,8 +856,7 @@ def qcow2_fill(seek, length, path, raise_excpetion=False):
     logger.debug("qcow2_fill return code: %s, stdout: %s, stderr: %s" % (cmd.return_code, cmd.stdout, cmd.stderr))
 
 def qcow2_measure_required_size(path):
-    out = shell.call("%s -f qcow2 -O qcow2 %s | grep 'required size' | cut -d ':' -f 2" %
-            (qemu_img.subcmd('measure'), path))
+    out = shell.call("/usr/bin/qemu-img measure -f qcow2 -O qcow2 %s | grep 'required size' | cut -d ':' -f 2" % path)
     return long(out.strip(' \t\r\n'))
 
 def rmdir_if_empty(dirpath):

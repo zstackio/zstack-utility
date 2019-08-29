@@ -37,7 +37,7 @@ def check(volume_abs_path, raw_volume_abs_path):
 
 @bash.in_bash
 def qcow2_convert_to_raw(src, dst):
-    return bash.bash_roe('/usr/bin/qemu-img convert -f qcow2 -O raw %s %s' % (src, dst))
+    return bash.bash_roe('%s -f qcow2 -O raw %s %s' % (qemu_img.subcmd('convert'), src, dst))
 
 
 def do_convert(args):

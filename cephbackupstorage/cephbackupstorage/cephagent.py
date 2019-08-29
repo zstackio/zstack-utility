@@ -312,7 +312,8 @@ def stream_body(task, fpath, entity, boundary):
                 conf = '%s\n%s\n' % (conf, 'rbd default format = 2')
                 conf_path = linux.write_to_temp_file(conf)
 
-            shell.check_run('qemu-img convert -f qcow2 -O rbd rbd:%s rbd:%s:conf=%s' % (task.tmpPath, task.dstPath, conf_path))
+            shell.check_run('%s -f qcow2 -O rbd rbd:%s rbd:%s:conf=%s' % 
+                    (qemu_img.subcmd('convert'), task.tmpPath, task.dstPath, conf_path))
         except Exception as e:
             task.fail('cannot convert Qcow2 image %s to rbd' % task.imageUuid)
             logger.warn('convert image %s failed: %s', (task.imageUuid, str(e)))
@@ -876,7 +877,8 @@ class CephAgent(object):
                     conf = '%s\n%s\n' % (conf, 'rbd default format = 2')
                     conf_path = linux.write_to_temp_file(conf)
 
-                shell.check_run('qemu-img convert -f qcow2 -O rbd rbd:%s/%s rbd:%s/%s:conf=%s' % (pool, tmp_image_name, pool, image_name, conf_path))
+                shell.check_run('%s -f qcow2 -O rbd rbd:%s/%s rbd:%s/%s:conf=%s' % 
+                        (qemu_img.subcmd('convert'), pool, tmp_image_name, pool, image_name, conf_path))
                 shell.check_run('rbd rm %s/%s' % (pool, tmp_image_name))
             finally:
                 if conf_path:
