@@ -68,6 +68,10 @@ class ConvertRsp(AgentRsp):
 def getHostname(uri):
     return urlparse.urlparse(uri).hostname
 
+def getUsername(uri):
+    u = urlparse.urlparse(uri)
+    return u.username if u.username else 'root'
+
 def getSshTargetAndPort(uri):
     u = urlparse.urlparse(uri)
     target = u.username+'@'+u.hostname if u.username else u.hostname
@@ -324,6 +328,15 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
             f = fdict.get(name)
             return f and f.skip
 
+        def get_mount_command(cmd):
+            timeout_str = "timeout 30"
+            username = getUsername(cmd.libvirtURI)
+            if username == 'root':
+                return "{0} mount".format(timeout_str)
+            if cmd.sshPassword:
+                return "echo {0} | {1} sudo -S mount".format(cmd.sshPassword, timeout_str)
+            return "{0} sudo mount".format(timeout_str)
+
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = ConvertRsp()
 
@@ -333,16 +346,18 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
 
         local_mount_point = os.path.join("/tmp/zs-v2v/", cmd.managementIp)
         vm_v2v_dir = os.path.join(local_mount_point, cmd.srcVmUuid)
+        mount_cmd = get_mount_command(cmd)
 
         try:
             with lock.NamedLock(local_mount_point):
                 runSshCmd(cmd.libvirtURI, cmd.sshPrivKey,
-                        "mkdir -p {0} && ls {1} 2>/dev/null || timeout 30 mount {2}:{3} {4}".format(
+                        "mkdir -p {0} && ls {1} 2>/dev/null || {5} {2}:{3} {4}".format(
                             local_mount_point,
                             vm_v2v_dir,
                             cmd.managementIp,
                             real_storage_path,
-                            local_mount_point))
+                            local_mount_point,
+                            mount_cmd))
         except shell.ShellError as ex:
             logger.info(str(ex))
             raise Exception('target host cannot access NFS on {}'.format(cmd.managementIp))
