@@ -15,6 +15,7 @@ from zstacklib.utils import lock
 from zstacklib.utils import lvm
 from zstacklib.utils import bash
 from zstacklib.utils import drbd
+from zstacklib.utils import qemu_img
 
 logger = log.get_logger(__name__)
 LOCK_FILE = "/var/run/zstack/ministorage.lock"
@@ -499,8 +500,9 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
             r.resize()
 
         with drbd.OperateDrbd(r):
-            if not cmd.live:
-                shell.call("qemu-img resize %s %s" % (r.get_dev_path(), cmd.size))
+            fmt = linux.get_img_fmt(r.get_dev_path())
+            if not cmd.live and fmt == 'qcow2':
+                shell.call("%s -f qcow2 %s %s" % (qemu_img.subcmd('resize'), r.get_dev_path(), cmd.size))
             ret = linux.qcow2_virtualsize(r.get_dev_path())
         rsp.size = ret
         rsp._init_from_drbd(r)
