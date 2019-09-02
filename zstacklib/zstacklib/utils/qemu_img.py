@@ -10,7 +10,13 @@ def subcmd(subcmd):
         __QEMU_IMG_VERSION = shell.call(command).strip('\t\r\n ,')
 
     options = ''
+
     if LooseVersion(__QEMU_IMG_VERSION) >= LooseVersion('2.10.0'):
         if subcmd in ['info', 'check', 'compare', 'convert', 'rebase']:
             options += ' --force-share '
+
+    if LooseVersion(__QEMU_IMG_VERSION) >= LooseVersion('2.11.0'):
+        if subcmd in ['resize']:
+            options += ' --shrink '
+
     return 'qemu-img %s %s ' % (subcmd, options)
