@@ -20,6 +20,7 @@ import platform
 import mmap
 
 from zstacklib.utils import qemu_img
+from zstacklib.utils import lock
 from zstacklib.utils import shell
 from zstacklib.utils import log
 
@@ -1534,6 +1535,7 @@ class TimeoutObject(object):
             raise Exception('after %s seconds, the object[%s] is still there, not timeout' % (timeout, name))
 
     def _start(self):
+        @lock.lock("timeout-object")
         def clean_timeout_object():
             current_time = time.time()
             for name, obj in self.objects.items():
