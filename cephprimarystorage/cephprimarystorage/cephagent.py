@@ -291,7 +291,7 @@ class CephAgent(plugin.TaskManager):
         pool, image_name = self._parse_install_path(cmd.installPath)
         path = self._normalize_install_path(cmd.installPath)
 
-        shell.call("%s -f raw rbd:%s/%s %s" % (qemu_img.subcmd('resize'), pool, image_name, cmd.size))
+        shell.call("qemu-img resize -f raw rbd:%s/%s %s" % (pool, image_name, cmd.size))
         rsp.size = self._get_file_size(path)
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)

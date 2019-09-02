@@ -13,7 +13,6 @@ from zstacklib.utils import shell
 import zstacklib.utils.uuidhelper as uuidhelper
 from kvmagent.plugins.imagestore import ImageStoreClient
 from zstacklib.utils import naslinux
-from zstacklib.utils import qemu_img
 
 logger = log.get_logger(__name__)
 
@@ -424,9 +423,8 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
         install_path = cmd.installPath
-        fmt = linux.get_img_fmt(install_path)
         rsp = ResizeVolumeRsp()
-        shell.call("%s -f %s %s %s" % (qemu_img.subcmd('resize'), fmt, install_path, cmd.size))
+        shell.call("qemu-img resize %s %s" % (install_path, cmd.size))
         ret = linux.qcow2_virtualsize(install_path)
         rsp.size = ret
         return jsonobject.dumps(rsp)
