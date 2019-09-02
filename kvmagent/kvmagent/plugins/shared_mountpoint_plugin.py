@@ -10,7 +10,6 @@ from zstacklib.utils import http
 from zstacklib.utils import log
 from zstacklib.utils import shell
 from zstacklib.utils import linux
-from zstacklib.utils import qemu_img
 import zstacklib.utils.uuidhelper as uuidhelper
 
 logger = log.get_logger(__name__)
@@ -116,9 +115,8 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
         install_path = cmd.installPath
-        fmt = linux.get_img_fmt(install_path)
         rsp = ResizeVolumeRsp()
-        shell.call("%s -f %s %s %s" % (qemu_img.subcmd('resize'), fmt, install_path, cmd.size))
+        shell.call("qemu-img resize %s %s" % (install_path, cmd.size))
         ret = linux.qcow2_virtualsize(install_path)
         rsp.size = ret
         return jsonobject.dumps(rsp)
