@@ -499,7 +499,8 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
             r.resize()
 
         with drbd.OperateDrbd(r):
-            if not cmd.live:
+            fmt = linux.get_img_fmt(r.get_dev_path())
+            if not cmd.live and fmt == 'qcow2':
                 shell.call("qemu-img resize %s %s" % (r.get_dev_path(), cmd.size))
             ret = linux.qcow2_virtualsize(r.get_dev_path())
         rsp.size = ret
