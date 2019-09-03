@@ -36,7 +36,7 @@ def dump_debug_info(signum, fram, *argv):
         thread.ThreadFacade.run_in_thread(dump_threads)
         thread.ThreadFacade.run_in_thread(dump_objects)
     except Exception as e:
-        logger.warn(e)
+        logger.warn("get error when dump debug info %s" % e.message)
 
 def dump_threads():
     logger.debug('dumping threads')
@@ -52,7 +52,7 @@ def dump_threads():
             output = "%s\n%s\n\n" % (output, beeprint.pp(thread_locals, output=False))
 
         except Exception as e:
-            logger.warn(e)
+            logger.warn("get error when dump thread %s: %s" % (th, e.message))
     output = "there are %s threads: \n%s" % (threads, output)
     logger.debug(output)
     return
