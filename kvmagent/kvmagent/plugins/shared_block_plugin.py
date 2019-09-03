@@ -568,7 +568,10 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         with lvm.RecursiveOperateLv(volume_abs_path, shared=cmd.sharedVolume, skip_deactivate_tags=[IMAGE_TAG]):
             virtual_size = linux.qcow2_virtualsize(volume_abs_path)
-            total_size = linux.qcow2_measure_required_size(volume_abs_path)
+            if linux.get_img_fmt(volume_abs_path) == "qcow2":
+                total_size = linux.qcow2_measure_required_size(volume_abs_path)
+            else:
+                total_size = virtual_size
 
             if total_size > virtual_size:
                 total_size = virtual_size
