@@ -25,7 +25,7 @@ KVM_REALIZE_L2VXLAN_NETWORK_PATH = "/network/l2vxlan/createbridge"
 KVM_REALIZE_L2VXLAN_NETWORKS_PATH = "/network/l2vxlan/createbridges"
 KVM_POPULATE_FDB_L2VXLAN_NETWORK_PATH = "/network/l2vxlan/populatefdb"
 KVM_POPULATE_FDB_L2VXLAN_NETWORKS_PATH = "/network/l2vxlan/populatefdbs"
-KVM_SET_BRIDGE_ROUTER_PORT_PATH = "/set/bridge/routerport"
+KVM_SET_BRIDGE_ROUTER_PORT_PATH = "/host/bridge/routerport"
 
 logger = log.get_logger(__name__)
 
