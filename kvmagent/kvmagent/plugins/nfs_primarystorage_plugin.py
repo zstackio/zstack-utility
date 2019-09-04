@@ -17,6 +17,7 @@ from zstacklib.utils import log
 from zstacklib.utils import shell
 from zstacklib.utils import lock
 from zstacklib.utils import qemu_img
+from zstacklib.utils import traceable_shell
 from zstacklib.utils.bash import *
 from zstacklib.utils.plugin import completetask
 
@@ -668,8 +669,11 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             dirname = os.path.dirname(cmd.installPath)
             if not os.path.exists(dirname):
                 os.makedirs(dirname, 0755)
-            linux.create_template(cmd.rootVolumePath, cmd.installPath)
+
+            t_shell = traceable_shell.get_shell(cmd)
+            linux.create_template(cmd.rootVolumePath, cmd.installPath, shell=t_shell)
         except linux.LinuxError as e:
+            linux.rm_file_force(cmd.installPath)
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = 'unable to create image to root@%s:%s from root volume[%s], %s' % (cmd.sftpBackupStorageHostName,
                                                                                            cmd.installPath, cmd.rootVolumePath, str(e))

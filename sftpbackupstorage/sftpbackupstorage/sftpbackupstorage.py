@@ -2,6 +2,7 @@
 
 @author: frank
 '''
+from zstacklib.utils import plugin, traceable_shell
 from zstacklib.utils import http
 from zstacklib.utils import jsonobject
 from zstacklib.utils import shell
@@ -197,6 +198,7 @@ class SftpBackupStorageAgent(object):
     GET_IMAGES_METADATA = "/sftpbackupstorage/getimagesmetadata"
     GET_IMAGE_SIZE = "/sftpbackupstorage/getimagesize"
     GET_LOCAL_FILE_SIZE = "/sftpbackupstorage/getlocalfilesize"
+    JOB_CANCEL = "/job/cancel"
 
     IMAGE_TEMPLATE = 'template'
     IMAGE_ISO = 'iso'
@@ -404,7 +406,7 @@ class SftpBackupStorageAgent(object):
             return linux.wget(url, workdir=workdir, rename=name, timeout=timeout, interval=2, callback=percentage_callback, callback_data=url)
 
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-
+        shell = traceable_shell.get_shell(cmd)
         rsp = DownloadResponse()
         # for download failure
         (total, avail) = self.get_capacity()
@@ -431,10 +433,12 @@ class SftpBackupStorageAgent(object):
                 cmd.url = linux.shellquote(cmd.url)
                 ret = use_wget(cmd.url, image_name, path, timeout)
                 if ret != 0:
+                    linux.rm_file_force(install_path)
                     rsp.success = False
                     rsp.error = 'http/https/ftp download failed, [wget -O %s %s] returns value %s' % (image_name, cmd.url, ret)
                     return jsonobject.dumps(rsp)
             except linux.LinuxError as e:
+                linux.rm_file_force(install_path)
                 traceback.format_exc()
                 rsp.success = False
                 rsp.error = str(e)
@@ -448,6 +452,7 @@ class SftpBackupStorageAgent(object):
 
                 shell.call(commond)
             except linux.LinuxError as e:
+                linux.rm_file_force(install_path)
                 traceback.format_exc()
                 rsp.success = False
                 rsp.error = str(e)
@@ -480,7 +485,6 @@ class SftpBackupStorageAgent(object):
         rsp.format = image_format
         return jsonobject.dumps(rsp)
 
-
     @replyerror
     def delete_image(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -511,10 +515,20 @@ class SftpBackupStorageAgent(object):
             logger.debug("Get sshkey as %s" % sshkey)
             return jsonobject.dumps(rsp)
 
+    @replyerror
+    def cancel(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentResponse()
+        if not traceable_shell.cancel_job(cmd):
+            rsp.success = False
+            rsp.error = "no matched job to cancel"
+        return jsonobject.dumps(rsp)
+
     def __init__(self):
         '''
         Constructor
         '''
+        super(SftpBackupStorageAgent, self).__init__()
         self.http_server.register_sync_uri(self.CONNECT_PATH, self.connect)
         self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
         self.http_server.register_async_uri(self.DOWNLOAD_IMAGE_PATH, self.download_image)
@@ -529,6 +543,7 @@ class SftpBackupStorageAgent(object):
         self.http_server.register_async_uri(self.PING_PATH, self.ping)
         self.http_server.register_async_uri(self.GET_IMAGE_SIZE, self.get_image_size)
         self.http_server.register_async_uri(self.GET_LOCAL_FILE_SIZE, self.get_local_file_size)
+        self.http_server.register_async_uri(self.JOB_CANCEL, self.cancel)
         self.storage_path = None
         self.uuid = None
 
