@@ -3362,6 +3362,10 @@ zstack-ctl show_configuration | grep '^[[:space:]]*chrony.serverIp.' >/dev/null 
 #Install license
 install_license
 
+if [ `uname -m` == "aarch64" ]; then
+    install -o zstack -g zstack /opt/zstack-dvd/tools/* $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS/
+fi
+
 #Start ${PRODUCT_NAME} 
 if [ -z $NOT_START_ZSTACK ]; then
     start_zstack
