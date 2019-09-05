@@ -120,6 +120,8 @@ MN_PORT="$DEFAULT_MN_PORT"
 
 DEFAULT_UI_PORT='5000'
 
+BASEARCH=`uname -m`
+ZSTACK_RELEASE=''
 # start/stop zstack_tui
 ZSTACK_TUI_SERVICE='/usr/lib/systemd/system/getty@tty1.service'
 start_zstack_tui() {
@@ -187,6 +189,16 @@ vercomp () {
         fi
     done
     return 0
+}
+check_zstack_release(){
+
+    rpm -q zstack-release >/dev/null 2>&1
+    if [ $? -eq 0 ];then
+        ZSTACK_RELEASE=`rpm -qi zstack-release |awk -F ':' '/Version/{print $2}' |sed 's/ //g'`
+        source /etc/profile
+    else
+        fail2 "zstack-release is not installed, use zstack-upgrade -r/-a zstack-xxx.iso(>=3.7.0) to upgrade zstack-dvd and install zstack-release."
+    fi
 }
 
 # get mn port from zstack properties
@@ -1028,16 +1040,11 @@ download_zstack(){
 iu_deploy_zstack_repo() {
     echo_subtitle "Deploy yum repo for ${PRODUCT_NAME}"
 
-    BASEARCH=`uname -m`
     [ x"$BASEARCH" = x'aarch64' ] && ALTARCH='x86_64' || ALTARCH='aarch64'
-    RELEASEVER=$(rpm -q --provides $(rpm -q --whatprovides "system-release(releasever)") | grep "system-release(releasever)" | cut -d ' ' -f 3)
-    [ -z "$RELEASEVER" ] && fail "failed to get system releasever, check distroverpkg in /etc/yum.conf please"
-    mkdir -p ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/{x86_64,aarch64}
-    ln -s /opt/zstack-dvd/ ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/${BASEARCH}/os >/dev/null 2>&1
-    ln -s /opt/zstack-dvd/Extra/qemu-kvm-ev ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/${BASEARCH}/qemu-kvm-ev >/dev/null 2>&1
-    ln -s /opt/zstack-dvd/Extra/zstack-experimental ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/${BASEARCH}/zstack-experimental >/dev/null 2>&1
-    ln -s /opt/zstack-dvd-altarch/ ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/${ALTARCH}/os >/dev/null 2>&1
-    ln -s /opt/zstack-dvd-altarch/Extra/qemu-kvm-ev ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/${ALTARCH}/qemu-kvm-ev >/dev/null 2>&1
+    [ -z "$ZSTACK_RELEASE" ] && fail "failed to get zstack releasever, please make sure zstack-release is installed."
+    mkdir -p ${ZSTACK_HOME}/static/zstack-repo/{x86_64,aarch64}
+    ln -s /opt/zstack-dvd/${BASEARCH}/${ZSTACK_RELEASE} ${ZSTACK_HOME}/static/zstack-repo/${BASEARCH}/${ZSTACK_RELEASE} >/dev/null 2>&1
+    ln -s /opt/zstack-dvd/${ALTARCH}/${ZSTACK_RELEASE} ${ZSTACK_HOME}/static/zstack-repo/${ALTARCH}/${ZSTACK_RELEASE} >/dev/null 2>&1
     chown -R zstack:zstack ${ZSTACK_HOME}/static/zstack-repo
 }
 
@@ -1941,8 +1948,8 @@ install_zstack_network()
 
 cp_third_party_tools(){
     echo_subtitle "Copy third-party tools to ZStack install path"
-    if [ -d "/opt/zstack-dvd/tools" ]; then
-        /bin/cp -n /opt/zstack-dvd/tools/* $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS >/dev/null 2>&1
+    if [ -d "/opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/tools" ]; then
+        /bin/cp -n /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/tools/* $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS >/dev/null 2>&1
         chown zstack.zstack $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS/*
     fi
     install_zstack_network
@@ -2525,7 +2532,7 @@ sd_install_zstack_ui(){
 # For MINI UI Server
 sd_install_zstack_mini_ui(){
     echo_subtitle "Install ${PRODUCT_NAME} MINI-UI (takes a couple of minutes)"
-    bash /opt/zstack-dvd/zstack_mini_server.bin -a >>$ZSTACK_INSTALL_LOG 2>&1
+    bash /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/zstack_mini_server.bin -a >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
         fail "failed to install ${PRODUCT_NAME} MINI-UI in $MINI_INSTALL_ROOT"
     fi
@@ -2741,7 +2748,7 @@ get_zstack_repo(){
 }
 
 create_local_repo_files() {
-mkdir -p /opt/zstack-dvd/Extra/{qemu-kvm-ev,ceph,galera,virtio-win}
+mkdir -p /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/{qemu-kvm-ev,ceph,galera,virtio-win}
 
 repo_file=/etc/yum.repos.d/zstack-local.repo
 if [ ! -f $repo_file ]; then
@@ -2749,7 +2756,7 @@ echo "create $repo_file" >> $ZSTACK_INSTALL_LOG
 cat > $repo_file << EOF
 [zstack-local]
 name=zstack-local
-baseurl=file:///opt/zstack-dvd/
+baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0
 gpgcheck=0
 enabled=1
 EOF
@@ -2761,7 +2768,7 @@ echo "create $repo_file" >> $ZSTACK_INSTALL_LOG
 cat > $repo_file << EOF
 [qemu-kvm-ev]
 name=Qemu KVM EV
-baseurl=file:///opt/zstack-dvd/Extra/qemu-kvm-ev
+baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0/Extra/qemu-kvm-ev
 gpgcheck=0
 enabled=0
 EOF
@@ -2773,7 +2780,7 @@ echo "create $repo_file" >> $ZSTACK_INSTALL_LOG
 cat > $repo_file << EOF
 [ceph]
 name=Ceph
-baseurl=file:///opt/zstack-dvd/Extra/ceph
+baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0/Extra/ceph
 gpgcheck=0
 enabled=0
 EOF
@@ -2785,7 +2792,7 @@ echo "create $repo_file" >> $ZSTACK_INSTALL_LOG
 cat > $repo_file << EOF
 [mariadb]
 name = MariaDB
-baseurl=file:///opt/zstack-dvd/Extra/galera
+baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0/Extra/galera
 gpgcheck=0
 enabled=0
 EOF
@@ -2797,7 +2804,7 @@ echo "create $repo_file" >> $ZSTACK_INSTALL_LOG
 cat > $repo_file << EOF
 [virtio-win]
 name=virtio-win
-baseurl=file:///opt/zstack-dvd/Extra/virtio-win
+baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0/Extra/virtio-win
 gpgcheck=0
 enabled=0
 EOF
@@ -2808,10 +2815,24 @@ invalid_virt_win_repo=/etc/yum.repos.d/virt-win.repo
 [ -f $invalid_virt_win_repo ] && rm -f $invalid_virt_win_repo
 }
 
+check_hybrid_arch(){
+    if [ -d /opt/zstack-dvd/x86_64 -a -d /opt/zstack-dvd/aarch64 ];then
+        fail2 "Hybrid arch exists but repo not matched all, please contact and get correct iso to upgrade local repo first."
+    fi
+}
+
 check_sync_local_repos() {
   echo_subtitle "Check local repo version"
-  [ -f ".repo_version" -a -f "/opt/zstack-dvd/.repo_version" ] || echo_hints_to_upgrade_iso
-  cmp -s .repo_version /opt/zstack-dvd/.repo_version
+  [ -f ".repo_version" -a -f "/opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/.repo_version" ] || echo_hints_to_upgrade_iso
+  arch_list="x86_64 aarch64"
+  for arch in $arch_list;do
+    if [ -d /opt/zstack-dvd/$arch ];then
+      for release in `ls /opt/zstack-dvd/$arch`;do
+        cmp -s .repo_version /opt/zstack-dvd/$arch/$release/.repo_version
+        [ $? -ne 0 ] && check_hybrid_arch
+      done
+    fi
+  done
   if [ $? -eq 0 ]; then
       return 0
   elif [ x"$SKIP_SYNC" = x'y' ]; then
@@ -2824,12 +2845,14 @@ check_sync_local_repos() {
 echo_subtitle "Sync from repo.zstack.io (takes a couple of minutes)"
 # if current local repo is based on centos7.2, then sync with eg. 2.3.1_c72
 # if current local repo is based on centos7.4, then sync with eg. 2.3.1_c74
-C72_CENTOS_RELEASE='/opt/zstack-dvd/Packages/centos-release-7-2.*.rpm'
-C74_CENTOS_RELEASE='/opt/zstack-dvd/Packages/centos-release-7-4.*.rpm'
-if ls ${C72_CENTOS_RELEASE} >/dev/null 2>&1; then
-    BASEURL=rsync://rsync.repo.zstack.io/${VERSION_RELEASE_NR}_c72
-elif ls ${C74_CENTOS_RELEASE} >/dev/null 2>&1; then
-    BASEURL=rsync://rsync.repo.zstack.io/${VERSION_RELEASE_NR}_c74
+if [ x"$UPGRADE" = x'y' ]; then
+    cluster_os_version=`mysql -uzstack -p"$MYSQL_USER_PASSWORD" zstack -e "select distinct tag from SystemTagVO where (resourceType='HostVO' and tag like '%os::version%');"`
+    cluster_type_num=`echo -e "$cluster_os_version"|grep version|wc -l`
+    cluster_type=`echo -e "$cluster_os_version"|awk -F"::" '/version/{print $3}'|awk -F "." '{print "c"$1$2}'`
+    [ $cluster_type_num -gt 1 ] && fail2 "Hybrid cluster exists, sync online-repo will take a long time, please download $cluster_type iso manually to upgrade your repo."
+fi
+if [ x"$ZSTACK_RELEASE" = x"c72" -o x"$ZSTACK_RELEASE" = x"c74" ];then
+    BASEURL=rsync://rsync.repo.zstack.io/${VERSION_RELEASE_NR}_$ZSTACK_RELEASE
 else
     BASEURL=rsync://rsync.repo.zstack.io/${VERSION_RELEASE_NR}
 fi
@@ -2838,15 +2861,15 @@ pkg_list="createrepo curl yum-utils rsync"
 missing_list=`LANG=en_US.UTF-8 && rpm -q $pkg_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
 [ -z "$missing_list" ] || yum -y --disablerepo=* --enablerepo=zstack-local install ${missing_list} >>$ZSTACK_INSTALL_LOG 2>&1 || echo_hints_to_upgrade_iso
 # it takes about 2 min to compare md5sum of 1800+ files in iso
-umount /opt/zstack-dvd/Extra/qemu-kvm-ev >/dev/null 2>&1
-rsync -aP --delete --exclude zstack-installer.bin --exclude .repo_version ${BASEURL} /opt/zstack-dvd >> $ZSTACK_INSTALL_LOG 2>&1 || echo_hints_to_upgrade_iso
+umount /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/Extra/qemu-kvm-ev >/dev/null 2>&1
+rsync -aP --delete --exclude zstack-installer.bin --exclude .repo_version ${BASEURL} /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/ >> $ZSTACK_INSTALL_LOG 2>&1 || echo_hints_to_upgrade_iso
 
 [ -f /etc/yum.repos.d/epel.repo ] && sed -i 's/enabled=1/enabled=0/g' /etc/yum.repos.d/epel.repo
 yum --enablerepo=* clean all >/dev/null 2>&1
 rpm -qa | grep zstack-manager >/dev/null 2>&1 && yum --disablerepo=* --enablerepo=zstack-local -y install zstack-manager >/dev/null 2>&1 || true
 
 # update .repo_version after syncing
-cat .repo_version > /opt/zstack-dvd/.repo_version
+cat .repo_version > /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/.repo_version
 
 pass
 }
@@ -3084,7 +3107,7 @@ get_mn_port
 pre_scripts_to_adjust_iptables_rules
 
 if [ x"$ZSTACK_OFFLINE_INSTALL" = x'y' ]; then
-    if [ ! -d /opt/zstack-dvd/ ]; then
+    if [ ! -d /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/ ]; then
         fail2 "Did not find the /opt/zstack-dvd folder, offline installation cannot proceed!"
     fi
 fi
@@ -3252,6 +3275,7 @@ EOF
 }
 
 # make sure local repo files exist
+check_zstack_release
 create_local_repo_files
 
 # CHECK_REPO_VERSION
@@ -3519,7 +3543,7 @@ fi
 #Start bootstrap service for mini
 if [ x"$MINI_INSTALL" = x"y" ];then
     install_zstack_network
-    cp /opt/zstack-dvd/mini_auto_check /etc/init.d/
+    cp /opt/zstack-dvd/${BASEARCH}/${ZSTACK_RELEASE}/mini_auto_check /etc/init.d/
     chmod +x /etc/init.d/mini_auto_check
     echo "systemctl start zstack-network-agent" >> /etc/rc.local
     echo "[ -f /etc/init.d/mini_auto_check ] && bash /etc/init.d/mini_auto_check" >> /etc/rc.local

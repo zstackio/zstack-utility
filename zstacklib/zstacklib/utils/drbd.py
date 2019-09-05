@@ -1,4 +1,5 @@
 import os
+import platform
 
 from zstacklib.utils import linux
 from zstacklib.utils import bash
@@ -402,7 +403,9 @@ def install_drbd():
     mod_installed = bash.bash_r("lsmod | grep drbd") == 0
     mod_exists = bash.bash_r("modinfo drbd") == 0
     utils_installed = bash.bash_r("rpm -ql drbd-utils || rpm -ql drbd84-utils") == 0
-    utils_exists, o = bash.bash_ro("ls /opt/zstack-dvd/Packages/drbd-utils*")
+    basearch = platform.machine()
+    releasever = bash.bash_o("cat /etc/zstack-release |awk '{print $3}'")
+    utils_exists, o = bash.bash_ro("ls /opt/zstack-dvd/{}/{}/Packages/drbd-utils*".format(basearch, releasever))
 
     if mod_installed and utils_exists:
         return
