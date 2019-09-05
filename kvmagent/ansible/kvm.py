@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # encoding=utf-8
 import argparse
+import os
 from zstacklib import *
 from distutils.version import LooseVersion
 
@@ -123,7 +124,36 @@ if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
 
 # get remote host arch
-IS_AARCH64 = get_remote_host_arch(host_post_info) == 'aarch64'
+host_arch = get_remote_host_arch(host_post_info)
+IS_AARCH64 = host_arch == 'aarch64'
+
+# get remote releasever
+get_releasever_script = '''
+cat << 'EOF' > /opt/get_releasever
+rpm -q zstack-release > /dev/null 2>&1
+[ $? -eq 0 ] && echo `rpm -q zstack-release |awk -F"-" '{print $3}'` && exit 0
+rpm -q centos-release > /dev/null 2>&1
+[ $? -eq 0 ] && echo `rpm -q centos-release|awk -F"." '{print $1}'|awk -F"-" '{print "c"$3$4}'` && exit 0
+rpm -q alios-release-server > /dev/null 2>&1
+[ $? -eq 0 ] && echo `rpm -q alios-release-server |awk -F"-" '{print "c"$4}'|tr -d '.'` && exit 0
+rpm -q redhat-release-server > /dev/null 2>&1
+[ $? -eq 0 ] && echo `rpm -q redhat-release-server |awk -F"-" '{print "c"$4}'|tr -d '.'` && exit 0
+exit 1'''
+run_remote_command(get_releasever_script, host_post_info)
+(status, output) = run_remote_command("bash /opt/get_releasever", host_post_info, True, True)
+if int(status) == 0:
+    # c72 is no longer supported, force set c74
+    releasever = 'c74' if output.strip() == 'c72' else output.strip()
+else:
+    releasever = sorted(os.listdir("/opt/zstack-dvd/{}".format(host_arch)))[-1]
+
+# copy and install zstack-release
+copy_arg = CopyArg()
+copy_arg.src = '/opt/zstack-dvd/{0}/{1}/Packages/zstack-release-{1}-1.el7.zstack.noarch.rpm'.format(host_arch, releasever)
+copy_arg.dest = '/opt/'
+copy(copy_arg, host_post_info)
+run_remote_command("rpm -q zstack-release;[[ $? -eq 0 ]] || yum install -y /opt/zstack-release-{}-1.el7.zstack.noarch.rpm".format(releasever), host_post_info)
+
 if IS_AARCH64:
     dnsmasq_pkg = "%s/dnsmasq-2.76-2.el7.aarch64.rpm" % file_root
     dnsmasq_local_pkg = "%s/dnsmasq-2.76-2.el7.aarch64.rpm" % kvm_root
@@ -170,6 +200,7 @@ zstacklib_args.zstack_root = zstack_root
 zstacklib_args.host_post_info = host_post_info
 zstacklib_args.pip_url = pip_url
 zstacklib_args.trusted_host = trusted_host
+zstacklib_args.zstack_releasever = releasever
 zstacklib = ZstackLib(zstacklib_args)
 
 # name: judge this process is init install or upgrade
@@ -239,7 +270,7 @@ if distro in RPM_BASED_OS:
         run_remote_command(command, host_post_info)
     else:
         # name: install kvm related packages on RedHat based OS from online
-        for pkg in ['openssh-clients', 'bridge-utils', 'wget', 'chrony', 'sed', 'libvirt-python', 'libvirt', 'nfs-utils', 'vconfig',
+        for pkg in ['zstack-release', 'openssh-clients', 'bridge-utils', 'wget', 'chrony', 'sed', 'libvirt-python', 'libvirt', 'nfs-utils', 'vconfig',
                     'libvirt-client', 'net-tools', 'iscsi-initiator-utils', 'lighttpd', 'iproute', 'sshpass',
                     'libguestfs-winsupport', 'libguestfs-tools', 'pv', 'rsync', 'nmap', 'ipset', 'usbutils', 'pciutils', 'expect',
                     'lvm2', 'lvm2-lockd', 'sanlock', 'sysfsutils', 'smartmontools', 'device-mapper-multipath', 'hwdata', 'sg3_utils']:
@@ -399,7 +430,7 @@ else:
 #copy scripts
 #copy zs-xxx from mn_node to host_node
 copy_arg = CopyArg()
-copy_arg.src = '/opt/zstack-dvd/scripts/'
+copy_arg.src = '/opt/zstack-dvd/{}/{}/scripts/'.format(host_arch, releasever)
 copy_arg.dest = '/usr/local/bin/'
 copy(copy_arg, host_post_info)
 

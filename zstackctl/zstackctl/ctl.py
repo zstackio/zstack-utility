@@ -683,6 +683,9 @@ class Ctl(object):
     # always install zstack-mini-server inside zstack_install_root
     MINI_DIR = os.path.join(USER_ZSTACK_HOME_DIR, 'zstack-mini')
     NEED_ENCRYPT_PROPERTIES = ['DB.password']
+    # get basharch and zstack-release
+    BASEARCH = platform.machine()
+    ZS_RELEASE = os.popen("cat /etc/zstack-release |awk '{print $3}'").read().strip()
 
     def __init__(self):
         self.commands = {}
@@ -2004,21 +2007,10 @@ class StartCmd(Command):
             info("chronyd restarted")
 
         def prepare_qemu_kvm_repo():
-            OLD_QEMU_KVM_VERSION = 'qemu-kvm-ev-2.6.0'
-            NEW_QEMU_KVM_VERSION = 'qemu-kvm-ev-2.9.0'
-            DEFAULT_QEMU_KVM_PATH = '/opt/zstack-dvd/Extra/qemu-kvm-ev'
-
-            if len(glob.glob("/opt/zstack-dvd/Packages/centos-release-7-2.*.rpm")) > 0:
-                local_repo_version = 'c72'
-                EXPERIMENTAL_QEMU_KVM_PATH = '/opt/zstack-dvd/Extra/' + NEW_QEMU_KVM_VERSION
-            else:
-                local_repo_version = 'c74'
-                EXPERIMENTAL_QEMU_KVM_PATH = '/opt/zstack-dvd/Extra/' + OLD_QEMU_KVM_VERSION
-
-            # version combinations that need to mount qemu-kvm-ev
-            version_matrix = {'c72': NEW_QEMU_KVM_VERSION, 'c74': OLD_QEMU_KVM_VERSION}
+            DEFAULT_QEMU_KVM_PATH = '/opt/zstack-dvd/{}/{}/qemu-kvm-ev'.format(ctl.BASEARCH, ctl.ZS_RELEASE)
+            EXPERIMENTAL_QEMU_KVM_PATH = '/opt/zstack-dvd/{}/{}/zstack-experimental'.format(ctl.BASEARCH, ctl.ZS_RELEASE)
             qemu_version = ctl.read_property('KvmHost.qemu_kvm.version')
-            if version_matrix[local_repo_version] == qemu_version:
+            if qemu_version == 'zstack-experimental':
                 cmd = ShellCmd("umount %s; mount --bind %s %s" % (DEFAULT_QEMU_KVM_PATH, EXPERIMENTAL_QEMU_KVM_PATH, DEFAULT_QEMU_KVM_PATH))
             else:
                 cmd = ShellCmd("umount %s" % DEFAULT_QEMU_KVM_PATH)
@@ -2192,7 +2184,7 @@ class StopCmd(Command):
             return
 
         # for zstack-local repo upgrade
-        DEFAULT_QEMU_KVM_PATH = '/opt/zstack-dvd/Extra/qemu-kvm-ev'
+        DEFAULT_QEMU_KVM_PATH = '/opt/zstack-dvd/{}/{}/qemu-kvm-ev'.format(ctl.BASEARCH, ctl.ZS_RELEASE)
         cmd = ShellCmd("umount %s" % DEFAULT_QEMU_KVM_PATH)
         cmd(False)
 
@@ -2326,7 +2318,6 @@ class InstallDbCmd(Command):
         script = ShellCmd("ip addr | grep 'inet ' | awk '{print $2}' | awk -F '/' '{print $1}'")
         script(True)
         current_host_ips = script.stdout.split('\n')
-
         yaml = '''---
 - hosts: $host
   remote_user: root
@@ -2579,7 +2570,7 @@ class UpgradeHACmd(Command):
         run_remote_command(command, host_post_info)
         command = "mount -o loop %s %s" % (iso, tmp_iso)
         run_remote_command(command, host_post_info)
-        command = "rsync -au --delete %s /opt/zstack-dvd/" %  tmp_iso
+        command = "rsync -au --delete %s /opt/zstack-dvd/%s/%s/"  % (tmp_iso, ctl.BASEARCH, ctl.ZS_RELEASE)
         run_remote_command(command, host_post_info)
         command = "umount %s" % tmp_iso
         run_remote_command(command, host_post_info)
@@ -6091,7 +6082,7 @@ EOF
 cat > /etc/yum.repos.d/zstack-online-ceph.repo << EOF
 [zstack-online-ceph]
 name=zstack-online-ceph
-baseurl=${BASEURL}/Extra/ceph
+baseurl=${BASEURL}/ceph
 gpgcheck=0
 enabled=0
 EOF
@@ -6099,7 +6090,7 @@ EOF
 cat > /etc/yum.repos.d/zstack-online-uek4.repo << EOF
 [zstack-online-uek4]
 name=zstack-online-uek4
-baseurl=${BASEURL}/Extra/uek4
+baseurl=${BASEURL}/uek4
 gpgcheck=0
 enabled=0
 EOF
@@ -6107,7 +6098,7 @@ EOF
 cat > /etc/yum.repos.d/zstack-online-galera.repo << EOF
 [zstack-online-galera]
 name=zstack-online-galera
-baseurl=${BASEURL}/Extra/galera
+baseurl=${BASEURL}/galera
 gpgcheck=0
 enabled=0
 EOF
@@ -6115,7 +6106,7 @@ EOF
 cat > /etc/yum.repos.d/zstack-online-qemu-kvm-ev.repo << EOF
 [zstack-online-qemu-kvm-ev]
 name=zstack-online-qemu-kvm-ev
-baseurl=${BASEURL}/Extra/qemu-kvm-ev
+baseurl=${BASEURL}/qemu-kvm-ev
 gpgcheck=0
 enabled=0
 EOF
@@ -6123,7 +6114,7 @@ EOF
 cat > /etc/yum.repos.d/zstack-online-virtio-win.repo << EOF
 [zstack-online-virtio-win]
 name=zstack-online-virtio-win
-baseurl=${BASEURL}/Extra/virtio-win
+baseurl=${BASEURL}/virtio-win
 gpgcheck=0
 enabled=0
 EOF
@@ -6139,33 +6130,33 @@ pkg_list="createrepo curl yum-utils"
 yum -y --disablerepo=* --enablerepo=zstack-online-base install $${pkg_list} >/dev/null 2>&1 || exit 1
 
 # reposync
-mkdir -p /opt/zstack-dvd/Base/ >/dev/null 2>&1
-umount /opt/zstack-dvd/Extra/qemu-kvm-ev >/dev/null 2>&1
-mv /opt/zstack-dvd/Packages /opt/zstack-dvd/Base/ >/dev/null 2>&1
-reposync -r zstack-online-base -p /opt/zstack-dvd/Base/ --norepopath -m -d
-reposync -r zstack-online-ceph -p /opt/zstack-dvd/Extra/ceph --norepopath -d
-reposync -r zstack-online-uek4 -p /opt/zstack-dvd/Extra/uek4 --norepopath -d
-reposync -r zstack-online-galera -p /opt/zstack-dvd/Extra/galera --norepopath -d
-reposync -r zstack-online-qemu-kvm-ev -p /opt/zstack-dvd/Extra/qemu-kvm-ev --norepopath -d
-reposync -r zstack-online-virtio-win -p /opt/zstack-dvd/Extra/virtio-win --norepopath -d
+mkdir -p /opt/zstack-dvd/${BASEARCH}/${ZS_RELEASE}/Base/ >/dev/null 2>&1
+umount /opt/zstack-dvd/${BASEARCH}/${ZS_RELEASE}/qemu-kvm-ev >/dev/null 2>&1
+mv /opt/zstack-dvd/${BASEARCH}/${ZS_RELEASE}/Packages /opt/zstack-dvd/${BASEARCH}/${ZS_RELEASE}/Base/ >/dev/null 2>&1
+reposync -r zstack-online-base -p /opt/zstack-dvd/${BASEARCH}/${ZS_RELEASE}/Base/ --norepopath -m -d
+reposync -r zstack-online-ceph -p /opt/zstack-dvd/${BASEARCH}/${ZS_RELEASE}/ceph --norepopath -d
+reposync -r zstack-online-uek4 -p /opt/zstack-dvd/${BASEARCH}/${ZS_RELEASE}/uek4 --norepopath -d
+reposync -r zstack-online-galera -p /opt/zstack-dvd/${BASEARCH}/${ZS_RELEASE}/galera --norepopath -d
+reposync -r zstack-online-qemu-kvm-ev -p /opt/zstack-dvd/${BASEARCH}/${ZS_RELEASE}/qemu-kvm-ev --norepopath -d
+reposync -r zstack-online-virtio-win -p /opt/zstack-dvd/${BASEARCH}/${ZS_RELEASE}/virtio-win --norepopath -d
 rm -f /etc/yum.repos.d/zstack-online-*.repo
 
 # createrepo
-createrepo -g /opt/zstack-dvd/Base/comps.xml /opt/zstack-dvd/Base/ >/dev/null 2>&1 || exit 1
-rm -rf /opt/zstack-dvd/repodata >/dev/null 2>&1
-mv /opt/zstack-dvd/Base/* /opt/zstack-dvd/ >/dev/null 2>&1
-rm -rf /opt/zstack-dvd/Base/ >/dev/null 2>&1
-createrepo /opt/zstack-dvd/Extra/ceph/ >/dev/null 2>&1 || exit 1
-createrepo /opt/zstack-dvd/Extra/uek4/ >/dev/null 2>&1 || exit 1
-createrepo /opt/zstack-dvd/Extra/galera >/dev/null 2>&1 || exit 1
-createrepo /opt/zstack-dvd/Extra/qemu-kvm-ev >/dev/null 2>&1 || exit 1
-createrepo /opt/zstack-dvd/Extra/virtio-win >/dev/null 2>&1 || exit 1
+createrepo -g /opt/zstack-dvd/${BASEARCH}/${ZS_RELEASE}/Base/comps.xml /opt/zstack-dvd/${BASEARCH}/${ZS_RELEASE}/Base/ >/dev/null 2>&1 || exit 1
+rm -rf /opt/zstack-dvd/${BASEARCH}/${ZS_RELEASE}/repodata >/dev/null 2>&1
+mv /opt/zstack-dvd/${BASEARCH}/${ZS_RELEASE}/Base/* /opt/zstack-dvd/${BASEARCH}/${ZS_RELEASE}/ >/dev/null 2>&1
+rm -rf /opt/zstack-dvd/${BASEARCH}/${ZS_RELEASE}/Base/ >/dev/null 2>&1
+createrepo /opt/zstack-dvd/${BASEARCH}/${ZS_RELEASE}/ceph/ >/dev/null 2>&1 || exit 1
+createrepo /opt/zstack-dvd/${BASEARCH}/${ZS_RELEASE}/uek4/ >/dev/null 2>&1 || exit 1
+createrepo /opt/zstack-dvd/${BASEARCH}/${ZS_RELEASE}/galera >/dev/null 2>&1 || exit 1
+createrepo /opt/zstack-dvd/${BASEARCH}/${ZS_RELEASE}/qemu-kvm-ev >/dev/null 2>&1 || exit 1
+createrepo /opt/zstack-dvd/${BASEARCH}/${ZS_RELEASE}/virtio-win >/dev/null 2>&1 || exit 1
 
 # sync .repo_version
-echo ${repo_version} > /opt/zstack-dvd/.repo_version
+echo ${repo_version} > /opt/zstack-dvd/${BASEARCH}/${ZS_RELEASE}/.repo_version
 
 # clean up
-rm -f /opt/zstack-dvd/comps.xml
+rm -f /opt/zstack-dvd/${BASEARCH}/${ZS_RELEASE}/comps.xml
 yum clean all >/dev/null 2>&1
 '''
         command = "yum --disablerepo=* --enablerepo=zstack-mn repoinfo | grep Repo-baseurl | awk -F ' : ' '{ print $NF }'"
@@ -6173,12 +6164,14 @@ yum clean all >/dev/null 2>&1
         if status != 0:
             baseurl = 'http://localhost:%s/zstack/static/zstack-dvd/' % ctl.get_mn_port()
 
-        with open('/opt/zstack-dvd/.repo_version') as f:
+        with open('/opt/zstack-dvd/{}/{}/.repo_version'.format(ctl.BASEARCH, ctl.ZS_RELEASE)) as f:
             repoversion = f.readline().strip()
 
         t = string.Template(sync_repo)
         sync_repo = t.substitute({
             'BASEURL': baseurl.strip(),
+            'BASEARCH': ctl.BASEARCH,
+            'ZS_RELEASE': ctl.ZS_RELEASE,
             'repo_version': repoversion
         })
 
@@ -6522,10 +6515,10 @@ class InstallZstackUiCmd(Command):
         shell('bash %s zstack-ui' % install_script)
 
     def install_mini_ui(self):
-        mini_bin = "/opt/zstack-dvd/zstack_mini_server.bin"
+        mini_bin = "/opt/zstack-dvd/{}/{}/zstack_mini_server.bin".format(ctl.BASEARCH, ctl.ZS_RELEASE)
         if not os.path.exists(mini_bin):
             raise CtlError('cannot find %s, please make sure you have the mini installation package.' % mini_bin)
-        shell('bash /opt/zstack-dvd/zstack_mini_server.bin')
+        shell('bash {}'.format(mini_bin))
 
     def run(self, args):
         ui_mode = ctl.read_property('ui_mode')
@@ -8507,10 +8500,11 @@ class StartVDIUICmd(Command):
 
     def install_argparse_arguments(self, parser):
         ui_logging_path = os.path.normpath(os.path.join(ctl.zstack_home, "../../logs/"))
+        vdi_war = "/opt/zstack-dvd/{}/{}/zstack-vdi.war".format(ctl.BASEARCH, ctl.ZS_RELEASE)
         parser.add_argument('--mn-port', help="ZStack Management Host port. [DEFAULT] 8080", default='8080')
         parser.add_argument('--webhook-port', help="Webhook Host port. [DEFAULT] 9000", default='9000')
         parser.add_argument('--server-port', help="UI server port. [DEFAULT] 9000", default='9000')
-        parser.add_argument('--vdi-path', help="VDI path. [DEFAULT] /opt/zstack-dvd/zstack-vdi.war", default='/opt/zstack-dvd/zstack-vdi.war')
+        parser.add_argument('--vdi-path', help="VDI path. [DEFAULT] {}".format(vdi_war), default=vdi_war)
         parser.add_argument('--log', help="UI log folder. [DEFAULT] %s" % ui_logging_path, default=ui_logging_path)
 
     def _check_status(self):
