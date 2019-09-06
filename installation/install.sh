@@ -1352,6 +1352,7 @@ is_install_general_libs_rh(){
             avahi \
             avahi-tools"
 
+    always_update_list=$mysql_pkg
     missing_list=`LANG=en_US.UTF-8 && rpm -q $deps_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
 
     [ x"$ZSTACK_OFFLINE_INSTALL" = x'y' ] && missing_list=$deps_list
@@ -1359,7 +1360,7 @@ is_install_general_libs_rh(){
         if [ ! -z $ZSTACK_YUM_REPOS ]; then
             yum --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS clean metadata >/dev/null 2>&1
             echo yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y general libs... >>$ZSTACK_INSTALL_LOG
-            yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y $missing_list >>$ZSTACK_INSTALL_LOG 2>&1
+            yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y $always_update_list $missing_list >>$ZSTACK_INSTALL_LOG 2>&1
         else
             yum clean metadata >/dev/null 2>&1
             echo "yum install -y libselinux-python java ..." >>$ZSTACK_INSTALL_LOG
