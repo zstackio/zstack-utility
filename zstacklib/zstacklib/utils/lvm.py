@@ -8,6 +8,7 @@ from zstacklib.utils import bash
 from zstacklib.utils import lock
 from zstacklib.utils import log
 from zstacklib.utils import linux
+from zstacklib.utils import qemu_img
 
 logger = log.get_logger(__name__)
 LV_RESERVED_SIZE = 1024*1024*4
@@ -1414,7 +1415,7 @@ def check_lv_on_pv_valid(vgUuid, pvUuid, lv_path=None):
         "-Sactive=active %s | grep %s | grep %s | awk '{print $1}' | head -n1" % (vgUuid, pv_name, VOLUME_TAG)).strip()
     if one_active_lv == "":
         return True
-    r = bash.bash_r("qemu-img info %s" % one_active_lv)
+    r = bash.bash_r("%s %s" % (qemu_img.subcmd('info'), one_active_lv))
     if r != 0:
         return False
     return True
@@ -1492,7 +1493,7 @@ def get_running_vm_root_volume_on_pv(vgUuid, pvUuids, checkIo=True):
             logger.warn("found strange vm[pid: %s, cmdline: %s], can not find boot volume" % (vm.pid, vm.cmdline))
             continue
 
-        r = bash.bash_r("qemu-img info --backing-chain %s" % vm.root_volume)
+        r = bash.bash_r("%s --backing-chain %s" % (qemu_img.subcmd('info'), vm.root_volume))
         if checkIo is True and r == 0:
             logger.debug("volume %s for vm %s io success, skiped" % (vm.root_volume, vm.uuid))
             continue

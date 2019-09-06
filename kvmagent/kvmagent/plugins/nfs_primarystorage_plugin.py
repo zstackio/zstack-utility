@@ -15,6 +15,7 @@ from zstacklib.utils import linux
 from zstacklib.utils import log
 from zstacklib.utils import shell
 from zstacklib.utils import lock
+from zstacklib.utils import qemu_img
 from zstacklib.utils.bash import *
 
 logger = log.get_logger(__name__)
@@ -288,7 +289,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             qcow2s = shell.call("find %s %s -type f -regex '.*\.qcow2$'" % (cmd.dstVolumeFolderPath, cmd.dstImageCacheTemplateFolderPath))
 
         for qcow2 in qcow2s.split():
-            fmt = shell.call("qemu-img info %s | grep '^file format' | awk -F ': ' '{ print $2 }'" % qcow2)
+            fmt = shell.call("%s %s | grep '^file format' | awk -F ': ' '{ print $2 }'" % (qemu_img.subcmd('info'), qcow2))
             if fmt.strip() != "qcow2":
                 continue
 
