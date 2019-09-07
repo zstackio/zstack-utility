@@ -9,7 +9,7 @@ import functools
 import log
 import os
 import fcntl
-import typing
+#import typing
 
 _internal_lock = threading.RLock()
 _locks = weakref.WeakValueDictionary()
