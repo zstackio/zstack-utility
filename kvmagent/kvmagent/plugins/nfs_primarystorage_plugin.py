@@ -261,6 +261,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
 
             # begin migration, then check md5 sums
 
+            t_shell = traceable_shell.get_shell(cmd)
             if cmd.filtPaths:
                 rsync_excludes = ""
                 md5_excludes = ""
@@ -271,14 +272,15 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
                     if filtPath != '':
                         rsync_excludes = rsync_excludes + " --exclude=%s" % filtPath
                         md5_excludes = md5_excludes + " ! -path ./%s" % filtPath
-                shell.call("mkdir -p %s; rsync -az %s/ %s %s; sync" % (dst_folder_path, cmd.srcFolderPath, dst_folder_path, rsync_excludes))
-                src_md5 = shell.call(
+
+                t_shell.call("mkdir -p %s; rsync -az %s/ %s %s; sync" % (dst_folder_path, cmd.srcFolderPath, dst_folder_path, rsync_excludes))
+                src_md5 = t_shell.call(
                     "find %s -type f %s -exec md5sum {} \; | awk '{ print $1 }' | sort | md5sum" % (cmd.srcFolderPath, md5_excludes))
             else:
-                shell.call("mkdir -p %s; cp -r %s/* %s; sync" % (dst_folder_path, cmd.srcFolderPath, dst_folder_path))
-                src_md5 = shell.call(
+                t_shell.call("mkdir -p %s; cp -r %s/* %s; sync" % (dst_folder_path, cmd.srcFolderPath, dst_folder_path))
+                src_md5 = t_shell.call(
                     "find %s -type f -exec md5sum {} \; | awk '{ print $1 }' | sort | md5sum" % cmd.srcFolderPath)
-            dst_md5 = shell.call("find %s -type f -exec md5sum {} \; | awk '{ print $1 }' | sort | md5sum" % dst_folder_path)
+            dst_md5 = t_shell.call("find %s -type f -exec md5sum {} \; | awk '{ print $1 }' | sort | md5sum" % dst_folder_path)
             if src_md5 != dst_md5:
                 rsp.error = "failed to copy files from %s to %s, md5sum not match" % (cmd.srcFolderPath, dst_folder_path)
                 rsp.success = False
