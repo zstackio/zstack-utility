@@ -2131,6 +2131,7 @@ class StopCmd(Command):
         pid = get_management_node_pid()
         if not pid:
             info('the management node has been stopped')
+            clear_leftover_mn_heartbeat()
             return
 
         timeout = 30
