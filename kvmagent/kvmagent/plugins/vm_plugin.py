@@ -162,6 +162,9 @@ class GetVncPortResponse(kvmagent.AgentResponse):
         super(GetVncPortResponse, self).__init__()
         self.port = None
         self.protocol = None
+        self.vncPort = None
+        self.spicePort = None
+        self.spiceTlsPort = None
 
 
 class ChangeCpuMemResponse(kvmagent.AgentResponse):
@@ -595,17 +598,37 @@ def is_namespace_used():
 def get_console_without_libvirt(vmUuid):
     output = bash.bash_o("""ps x | awk '/qemu[-]kvm.*%s/{print $1, index($0, " -vnc ")}'""" % vmUuid).splitlines()
     if len(output) != 1:
-        return None, None
+        return None, None, None
 
     pid, idx = output[0].split()
-    proto = 'vnc' if int(idx) != 0 else 'spice'
-
-    output = bash.bash_o("""lsof -p %s -aPi4 | awk '$8 == "TCP" { n=split($9,a,":"); print a[n] }'""" % pid).splitlines()
+    output = bash.bash_o(
+        """lsof -p %s -aPi4 | awk '$8 == "TCP" { n=split($9,a,":"); print a[n] }'""" % pid).splitlines()
     if len(output) < 1:
         logger.warn("get_port_without_libvirt: no port found")
-        return None, None
-    return proto, min([int(port) for port in output])
+        return None, None, None
 
+    output = output.sort()
+    if len(output) == 1:
+        protocol = "vnc"
+        return protocol, int(output[0]), None, None
+    elif len(output) == 2:
+        protocol = "spice"
+        return protocol, None, int(output[0]), int(output[1])
+    else:
+        protocol = "vncAndSpice"
+        return protocol, int(output[0]), int(output[1]), int(output[2])
+
+
+def check_vdi_port(vncPort, spicePort, spiceTlsPort):
+    if vncPort is None and spicePort is None and spiceTlsPort is None:
+        return False
+    if vncPort is not None and vncPort <= 0:
+        return False
+    if spicePort is not None and spicePort <= 0:
+        return False
+    if spiceTlsPort is not None and spiceTlsPort <= 0:
+        return False
+    return True
 
 # get domain/bus/slot/function from pci device address
 def parse_pci_device_address(addr):
@@ -1703,6 +1726,21 @@ class Vm(object):
         vir.host_ip = mgmt_ip
         vir.port = self.get_console_port()
         vir.apply()
+
+    def get_vdi_connect_port(self):
+        rsp = GetVncPortResponse()
+        for g in self.domain_xmlobject.devices.get_child_node_as_list('graphics'):
+            if g.type_ == 'vnc':
+                rsp.vncPort = g.port_
+                rsp.protocol = "vnc"
+            elif g.type_ == 'spice':
+                rsp.spicePort = g.port_
+                rsp.spiceTlsPort = g.tlsPort_
+                rsp.protocol = "spice"
+
+        if rsp.vncPort is not None and rsp.spicePort is not None and rsp.spiceTlsPort is not None:
+            rsp.protocol = "vncAndSpice"
+        return rsp.protocol, rsp.vncPort, rsp.spicePort, rsp.spiceTlsPort
 
     def get_console_port(self):
         for g in self.domain_xmlobject.devices.get_child_node_as_list('graphics'):
@@ -3361,16 +3399,29 @@ class Vm(object):
 
         def make_spice():
             devices = elements['devices']
-            spice = e(devices, 'graphics', None, {'type': 'spice', 'port': '5900', 'autoport': 'yes'})
+            if cmd.consolePassword == None:
+                spice = e(devices, 'graphics', None, {'type': 'spice', 'port': '5900', 'autoport': 'yes'})
+            else:
+                spice = e(devices, 'graphics', None,
+                          {'type': 'spice', 'port': '5900', 'autoport': 'yes', 'passwd': str(cmd.consolePassword)})
             e(spice, "listen", None, {'type': 'address', 'address': '0.0.0.0'})
+            if cmd.spiceChannels != None:
+                for channel in cmd.spiceChannels:
+                    e(spice, "channel", None, {'name': channel, 'mode': "secure"})
             e(spice, "image", None, {'compression': 'auto_glz'})
             e(spice, "jpeg", None, {'compression': 'always'})
             e(spice, "zlib", None, {'compression': 'never'})
             e(spice, "playback", None, {'compression': 'off'})
             e(spice, "streaming", None, {'mode': cmd.spiceStreamingMode})
             e(spice, "mouse", None, {'mode': 'client'})
-            e(spice, "filetransfer", None, {'enable': 'no'})
-            e(spice, "clipboard", None, {'copypaste': 'no'})
+            e(spice, "filetransfer", None, {'enable': 'yes'})
+            e(spice, "clipboard", None, {'copypaste': 'yes'})
+
+        def make_folder_sharing():
+            devices = elements['devices']
+            chan = e(devices, 'channel', None, {'type': 'spiceport'})
+            e(chan, 'source', None, {'channel': 'org.spice-space.webdav.0'})
+            e(chan, 'target', None, {'type': 'virtio', 'name': 'org.spice-space.webdav.0'})
 
         def make_usb_redirect():
             devices = elements['devices']
@@ -3411,21 +3462,30 @@ class Vm(object):
             else:
                 for monitor in range(cmd.VDIMonitorNumber):
                     video = e(devices, 'video')
-                    e(video, 'model', None, {'type': str(cmd.videoType)})
+                    if cmd.qxlMemory is not None:
+                        e(video, 'model', None, {'type': str(cmd.videoType), 'ram': str(cmd.qxlMemory.ram), 'vram': str(cmd.qxlMemory.vram),
+                                                 'vagmem': str(cmd.qxlMemory.vgamem)})
+                    else:
+                        e(video, 'model', None, {'type': str(cmd.videoType)})
 
 
-        def make_audio_microphone():
-            if cmd.consoleMode == 'spice':
-                devices = elements['devices']
-                e(devices, 'sound',None,{'model':'ich6'})
+        def make_sound():
+            devices = elements['devices']
+            if cmd.soundType is not None:
+                e(devices, 'sound', None, {'model': str(cmd.soundType)})
             else:
-                return
+                e(devices, 'sound', None, {'model': 'ich6'})
 
         def make_graphic_console():
             if cmd.consoleMode == 'spice':
                 make_spice()
-            else:
+            elif cmd.consoleMode == "vnc":
                 make_vnc()
+            elif cmd.consoleMode == "vncAndSpice":
+                make_vnc()
+                make_spice()
+            else:
+                return
 
         def make_addons():
             if not cmd.addons:
@@ -3630,7 +3690,7 @@ class Vm(object):
         make_features()
         make_devices()
         make_video()
-        make_audio_microphone()
+        make_sound()
         make_nics()
         make_volumes()
 
@@ -3641,6 +3701,7 @@ class Vm(object):
         make_console()
         make_sec_label()
         make_controllers()
+        make_folder_sharing()
         # appliance vm doesn't need any cdrom or usb controller
         if not cmd.isApplianceVm:
             make_cdrom()
@@ -4212,19 +4273,20 @@ class VmPlugin(kvmagent.KvmAgent):
     def get_vm_console_info(self, vmUuid):
         try:
             vm = get_vm_by_uuid(vmUuid)
-            proto, port = vm.get_console_protocol(), vm.get_console_port()
-            if port > 0:
-                return proto, port
-
+            protocol, vncPort, spicePort, spiceTlsPort = vm.get_vdi_connect_port()
+            ret = check_vdi_port(vncPort, spicePort, spiceTlsPort)
+            if ret is True:
+                return protocol, vncPort, spicePort, spiceTlsPort
             # Occasionally, 'virsh list' would list nothing but conn.lookupByName()
             # can find the VM and dom.XMLDesc(0) will return VNC port '-1'.
             err = 'libvirt failed to get console port for VM %s' % vmUuid
             logger.warn(err)
             raise kvmagent.KvmError(err)
         except kvmagent.KvmError as e:
-            proto, port = get_console_without_libvirt(vmUuid)
-            if port:
-                return proto, port
+            protocol, vncPort, spicePort, spiceTlsPort = get_console_without_libvirt(vmUuid)
+            ret = check_vdi_port(vncPort, spicePort, spiceTlsPort)
+            if ret is True:
+                return protocol, vncPort, spicePort, spiceTlsPort
             raise e
 
     @kvmagent.replyerror
@@ -4232,10 +4294,19 @@ class VmPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetVncPortResponse()
         try:
-            proto, port = self.get_vm_console_info(cmd.vmUuid)
-            rsp.port = port
-            rsp.protocol = proto
-            logger.debug('successfully get vnc port[%s] of vm[uuid:%s]' % (port, cmd.vmUuid))
+            protocol, vncPort, spicePort, spiceTlsPort = self.get_vm_console_info(cmd.vmUuid)
+            rsp.protocol = protocol
+            rsp.vncPort = vncPort
+            rsp.spicePort = spicePort
+            rsp.spiceTlsPort = spiceTlsPort
+
+            if vncPort is not None:
+                rsp.port = vncPort
+            else:
+                rsp.port = spicePort
+
+            logger.debug('successfully get vncPort[%s], spicePort[%s], spiceTlsPort[%s] of vm[uuid:%s]' % (
+                vncPort, spicePort, spiceTlsPort, cmd.vmUuid))
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
