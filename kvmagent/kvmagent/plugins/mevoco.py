@@ -1314,6 +1314,7 @@ dhcp-range={{g}},static
                 for route in d.hostRoutes:
                     routes.append(','.join([route.prefix, route.nexthop]))
                 dhcp_info['routes'] = ','.join(routes)
+                dhcp_info['vmMultiGateway'] = d.vmMultiGateway
                 info.append(dhcp_info)
 
                 if not cmd.rebuild:
@@ -1356,6 +1357,11 @@ tag:{{o.tag}},option:classless-static-route,{{o.routes}}
 {% else -%}
 tag:{{o.tag}},3
 tag:{{o.tag}},6
+{% if o.vmMultiGateway -%}
+{% if o.gateway -%}
+tag:{{o.tag}},option:router,{{o.gateway}}
+{% endif -%}
+{% endif -%}
 {% endif -%}
 tag:{{o.tag}},option:netmask,{{o.netmask}}
 {% if o.mtu -%}
