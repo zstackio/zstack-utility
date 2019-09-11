@@ -376,7 +376,8 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
             if not dom:
                 raise Exception('VM not found: {}'.format(cmd.srcVmUuid))
 
-            dxml = xmlobject.loads(dom.XMLDesc(0))
+            xmlDesc = dom.XMLDesc(0)
+            dxml = xmlobject.loads(xmlDesc)
             if dxml.os.hasattr('firmware_') and dxml.os.firmware_ == 'efi' or dxml.os.hasattr('loader'):
                 rsp.bootMode = 'UEFI'
 
@@ -387,6 +388,13 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
             if cmd.pauseVm and oldstat != libvirt.VIR_DOMAIN_PAUSED:
                 dom.suspend()
                 needResume = False
+
+            # libvirt >= 3.7.0 ?
+            flags = 0 if c.getLibVersion() < 3 * 1000000 + 7 * 1000 else libvirt.VIR_DOMAIN_BLOCK_COPY_TRANSIENT_JOB
+            needDefine = False
+            if flags == 0 and dom.isPersistent():
+                dom.undefine()
+                needDefine = True
 
             for v in volumes:
                 localpath = os.path.join(storage_dir, v.name)
@@ -401,7 +409,7 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                 dom.blockCopy(v.name,
                     "<disk type='file'><source file='{}'/><driver type='qcow2'/></disk>".format(os.path.join(vm_v2v_dir, v.name)),
                     None,
-                    libvirt.VIR_DOMAIN_BLOCK_COPY_TRANSIENT_JOB)
+                    flags)
 
             while True:
                 for v in volumes:
@@ -426,6 +434,8 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
             finally:
                 if needResume:
                     dom.resume()
+                if needDefine:
+                    c.defineXML(xmlDesc)
 
         # TODO
         #  - monitor progress
