@@ -843,7 +843,7 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.usbDevicesInfo = usbDevicesInfo
         return jsonobject.dumps(rsp)
 
-    @lock.file_lock('/usr/bin/_report_device_event.sh')
+    @lock.file_lock('/run/usb_rules.lock')
     def handle_usb_device_events(self):
         bash_str = """#!/usr/bin/env python
 import urllib2
@@ -857,12 +857,12 @@ if __name__ == "__main__":
     post_msg("{'hostUuid':'%s'}", '%s')
 """ % (self.config.get(kvmagent.HOST_UUID), self.config.get(kvmagent.SEND_COMMAND_URL))
 
-        bash_file = '/usr/bin/_report_device_event.py'
-        with open(bash_file, 'w') as f:
+        event_report_script = '/usr/bin/_report_device_event.py'
+        with open(event_report_script, 'w') as f:
             f.write(bash_str)
-        os.chmod(bash_file, 0o755)
+        os.chmod(event_report_script, 0o755)
 
-        rule_str = 'ACTION=="add|remove", SUBSYSTEM=="usb", RUN="%s"' % bash_file
+        rule_str = 'ACTION=="add|remove", SUBSYSTEM=="usb", RUN="%s"' % event_report_script
         rule_path = '/etc/udev/rules.d/'
         rule_file = os.path.join(rule_path, 'usb.rules')
         if not os.path.exists(rule_path):
