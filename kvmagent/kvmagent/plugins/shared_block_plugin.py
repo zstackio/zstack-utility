@@ -896,7 +896,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 current_abs_path = translate_absolute_path_from_install_path(struct.currentInstallPath)
 
                 with lvm.OperateLv(current_abs_path, shared=True):
-                    bash.bash_errorout("cp %s %s" % (current_abs_path, target_abs_path))
+                    t_bash = traceable_shell.get_shell(cmd)
+                    t_bash.bash_errorout("cp %s %s" % (current_abs_path, target_abs_path))
 
             for struct in cmd.migrateVolumeStructs:
                 target_abs_path = translate_absolute_path_from_install_path(struct.targetInstallPath)

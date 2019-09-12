@@ -27,11 +27,22 @@ class TraceableShell(object):
         return s.return_code
 
     def bash_progress_1(self, cmd, func, errorout=True):
-        cmd = self.wrap_cmd(cmd)
-        return bash.bash_progress_1(cmd, func, errorout)
+        cmd = self.wrap_bash_cmd(cmd)
+        return bash.bash_progress_1(cmd, func=func, errorout=errorout)
+
+    def bash_roe(self, cmd, errorout=False, ret_code=0, pipe_fail=False):
+        cmd = self.wrap_bash_cmd(cmd)
+        return bash.bash_roe(cmd, errorout=errorout, ret_code=ret_code, pipe_fail=pipe_fail)
+
+    def bash_errorout(self, cmd, code=0, pipe_fail=False):
+        _, o, _ = self.bash_roe(cmd, errorout=True, ret_code=code, pipe_fail=pipe_fail)
+        return o
 
     def wrap_cmd(self, cmd):
-        return _build_id_cmd(self.id) + "; " + cmd
+        return _build_id_cmd(self.id) + "; " + cmd if self.id else cmd
+
+    def wrap_bash_cmd(self, cmd):
+        return "bash -c '%s'" % self.wrap_cmd(cmd) if self.id else cmd
 
 
 def _build_id_cmd(id):
@@ -42,8 +53,7 @@ def get_shell(cmd):
     if cmd.threadContext and cmd.threadContext.api:
         return TraceableShell(cmd.threadContext.api)
     else:
-        return shell
-
+        return TraceableShell(None)
 
 def cancel_job(cmd):
     keywords = _build_id_cmd(cmd.cancellationApiId)
@@ -53,7 +63,7 @@ def cancel_job(cmd):
 
     logger.debug("it is going to kill process %s to cancel job[api:%s].", pids, cmd.cancellationApiId)
     for pid in pids:
-        linux.kill_process(pid)
+        linux.kill_all_child_process(pid)
     return True
 
 

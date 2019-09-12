@@ -1574,6 +1574,21 @@ def kill_process(pid, timeout=5):
     if not wait_callback_success(check, None, timeout):
         raise Exception('cannot kill -9 process[pid:%s];the process still exists after %s seconds' % (pid, timeout))
 
+def kill_all_child_process(ppid, timeout=5):
+    def check(_):
+        return not os.path.exists('/proc/%s' % ppid)
+
+    if check(None):
+        return
+
+    shell.run("pkill -15 -P %s" % ppid)
+    if wait_callback_success(check, None, timeout):
+        return
+
+    shell.run("pkill -9 -P %s" % ppid)
+    if not wait_callback_success(check, None, timeout):
+        raise Exception('cannot kill -9 child process[ppid:%s];the process still exists after %s seconds' % (ppid, timeout))
+
 def get_gateway_by_default_route():
     cmd = shell.ShellCmd("ip route | grep default | head -n 1 | cut -d ' ' -f 3")
     cmd(False)
