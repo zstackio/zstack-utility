@@ -1247,6 +1247,11 @@ cs_pre_check(){
 }
 
 sharedblock_check_qcow2_volume(){
+    vercomp '3.7.0' ${CURRENT_VERSION}; cmp=$?
+    if [ ${cmp} -ne 1 ]; then
+        return
+    fi
+
     db_ip=`zstack-ctl getenv MYSQL_LATEST_IP | awk -F '=' '{print $2}'`
     db_port=`zstack-ctl getenv MYSQL_LATEST_PORT | awk -F '=' '{print $2}'`
     db_username=`zstack-ctl show_configuration | grep DB.user | awk -F '=' '{print $2}' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'`
