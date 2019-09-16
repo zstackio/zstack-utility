@@ -162,37 +162,33 @@ class HostNetworkBondingInventory(object):
         self._init_from_name()
 
     def _init_from_name(self):
-        rlock = threading.RLock()
-
-        def get_nic(n):
+        def get_nic(n, i):
             o = HostNetworkInterfaceInventory(n)
-            with rlock:
-                self.slaves.append(o)
+            self.slaves[i] = o
 
         if self.bondingName is None:
             return
-        self.mode = bash_o("cat /sys/class/net/%s/bonding/mode" % self.bondingName).strip()
-        self.xmitHashPolicy = bash_o("cat /sys/class/net/%s/bonding/xmit_hash_policy" % self.bondingName).strip()
-        self.miiStatus = bash_o("cat /sys/class/net/%s/bonding/mii_status" % self.bondingName).strip()
-        self.mac = bash_o("cat /sys/class/net/%s/address" % self.bondingName).strip()
+        self.mode = linux.read_file("/sys/class/net/%s/bonding/mode" % self.bondingName).strip()
+        self.xmitHashPolicy = linux.read_file("/sys/class/net/%s/bonding/xmit_hash_policy" % self.bondingName).strip()
+        self.miiStatus = linux.read_file("/sys/class/net/%s/bonding/mii_status" % self.bondingName).strip()
+        self.mac = linux.read_file("/sys/class/net/%s/address" % self.bondingName).strip()
         self.ipAddresses = [x.strip() for x in
-                          bash_o("ip -o a show %s | grep 'inet ' | awk '{print $4}'" % self.bondingName).splitlines()]
+                          bash_o("ip -o a show %s | awk '/inet /{print $4}'" % self.bondingName).splitlines()]
         if len(self.ipAddresses) == 0:
-            r, master = bash_ro("cat /sys/class/net/%s/master/ifindex" % self.bondingName)
-            if r == 0:
+            master = linux.read_file("/sys/class/net/%s/master/ifindex" % self.bondingName)
+            if master:
                 self.ipAddresses = [x.strip() for x in bash_o(
-                    "ip -o a list | grep '^%s: ' | grep 'inet ' | awk '{print $4}'" % master.strip()).splitlines()]
-        self.miimon = bash_o("cat /sys/class/net/%s/bonding/miimon" % self.bondingName).strip()
-        self.allSlavesActive = bash_o(
-            "cat /sys/class/net/%s/bonding/all_slaves_active" % self.bondingName).strip() == "0"
-        self.slaves = []
-        slave_names = bash_o("cat /sys/class/net/%s/bonding/slaves" % self.bondingName).strip().split(" ")
+                    "ip -o a list | grep '^%s: ' | awk '/inet /{print $4}'" % master.strip()).splitlines()]
+        self.miimon = linux.read_file("/sys/class/net/%s/bonding/miimon" % self.bondingName).strip()
+        self.allSlavesActive = linux.read_file("/sys/class/net/%s/bonding/all_slaves_active" % self.bondingName).strip() == "0"
+        slave_names = linux.read_file("/sys/class/net/%s/bonding/slaves" % self.bondingName).strip().split(" ")
         if len(slave_names) == 0:
             return
 
+        self.slaves = [None] * len(slave_names)
         threads = []
-        for name in slave_names:
-            threads.append(thread.ThreadFacade.run_in_thread(get_nic, [name.strip()]))
+        for idx, name in enumerate(slave_names, start=0):
+            threads.append(thread.ThreadFacade.run_in_thread(get_nic, [name.strip(), idx]))
         for t in threads:
             t.join()
 
@@ -244,23 +240,23 @@ class HostNetworkInterfaceInventory(object):
         if self.interfaceName is None:
             return
         self.speed = get_nic_supported_max_speed(self.interfaceName)
-        self.carrierActive = bash_o("cat /sys/class/net/%s/carrier" % self.interfaceName).strip() == "1"
-        self.mac = bash_o("cat /sys/class/net/%s/address" % self.interfaceName).strip()
+        self.carrierActive = linux.read_file("/sys/class/net/%s/carrier" % self.interfaceName).strip() == "1"
+        self.mac = linux.read_file("/sys/class/net/%s/address" % self.interfaceName).strip()
         self.ipAddresses = [x.strip() for x in
-                          bash_o("ip -o a show %s | grep 'inet ' | awk '{print $4}'" % self.interfaceName).splitlines()]
+                          bash_o("ip -o a show %s | awk '/inet /{print $4}'" % self.interfaceName).splitlines()]
 
-        r, master = bash_ro("cat /sys/class/net/%s/master/ifindex" % self.interfaceName)
-        if r == 0 and master.strip() != "":
+        master = linux.read_file("/sys/class/net/%s/master/ifindex" % self.interfaceName)
+        if master and master.strip() != "":
             self.master = bash_o("ip link | grep -E '^%s: ' | awk '{print $2}'" % master.strip()).strip().strip(":")
         if len(self.ipAddresses) == 0:
-            if r == 0:
+            if master is not None:
                 self.ipAddresses = [x.strip() for x in bash_o(
-                    "ip -o a list | grep '^%s: ' | grep 'inet ' | awk '{print $4}'" % master.strip()).splitlines()]
+                    "ip -o a list | grep '^%s: ' | awk '/inet /{print $4}'" % master.strip()).splitlines()]
         if self.master is None:
             self.interfaceType = "noMaster"
         elif len(bash_o("ip link show type bond_slave %s" % self.interfaceName).strip()) > 0:
             self.interfaceType = "bondingSlave"
-            self.slaveActive = self.interfaceName in bash_o("cat /sys/class/net/%s/bonding/active_slave" % self.master)
+            self.slaveActive = self.interfaceName in linux.read_file("/sys/class/net/%s/bonding/active_slave" % self.master)
         else:
             self.interfaceType = "bridgeSlave"
 
@@ -1100,20 +1096,20 @@ done
 
     @staticmethod
     def get_host_networking_interfaces():
-        rlock = threading.RLock()
-
-        def get_nic(n):
-            o = HostNetworkInterfaceInventory(n)
-            with rlock:
-                nics.append(o)
-
         nics = []
+
+        def get_nic(n, i):
+            o = HostNetworkInterfaceInventory(n)
+            nics[i] = o
+
         threads = []
         nic_names = bash_o("find /sys/class/net -type l -not -lname '*virtual*' -printf '%f\\n'").splitlines()
         if len(nic_names) == 0:
             return nics
-        for nic in nic_names:
-            threads.append(thread.ThreadFacade.run_in_thread(get_nic, [nic.strip()]))
+
+        nics = [None] * len(nic_names)
+        for idx, nic in enumerate(nic_names, start=0):
+            threads.append(thread.ThreadFacade.run_in_thread(get_nic, [nic.strip(), idx]))
         for t in threads:
             t.join()
         return nics
@@ -1121,8 +1117,8 @@ done
     @staticmethod
     def get_host_networking_bonds():
         bonds = []
-        r, bond_names = bash_ro("cat /sys/class/net/bonding_masters")
-        if r != 0:
+        bond_names = linux.read_file("/sys/class/net/bonding_masters")
+        if not bond_names:
             return bonds
         bond_names = bond_names.strip().split(" ")
         if len(bond_names) == 0:
