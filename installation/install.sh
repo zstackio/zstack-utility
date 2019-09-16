@@ -28,6 +28,7 @@ ALIOS7='AliOS7'
 UPGRADE='n'
 FORCE='n'
 MINI_INSTALL='n'
+SANYUAN_INSTALL='n'
 MANAGEMENT_INTERFACE=`ip route | grep default | head -n 1 | cut -d ' ' -f 5`
 SUPPORTED_OS="$CENTOS7, $UBUNTU1604, $UBUNTU1404, $ISOFT4, $RHEL7, $ALIOS7"
 ZSTACK_INSTALL_LOG='/tmp/zstack_installation.log'
@@ -1971,16 +1972,26 @@ install_db(){
     #deploy initial database of zstack_ui
     show_spinner cs_deploy_ui_db
     #check hostname and ip again
+    ia_check_ip_hijack
+    cs_clean_ssh_tmp_key $ssh_tmp_dir
+}
+
+setup_install_param(){
+    echo_title "Setup Install Parameters"
+    echo ""
     if [ x"$MINI_INSTALL" = x"y" ];then
         show_spinner sd_install_zstack_mini_ui
         DEFAULT_UI_PORT=8200
         zstack-ctl configure ui_mode=mini
         zstack-ctl configure log.management.server.retentionSizeGB=200
-    else 
+    else
         zstack-ctl configure ui_mode=zstack
     fi
-    ia_check_ip_hijack
-    cs_clean_ssh_tmp_key $ssh_tmp_dir
+
+    if [ x"$SANYUAN_INSTALL" = x"y" ];then
+        zstack-ctl configure identity.init.type="PRIVILEGE_ADMIN"
+        zstack-ctl configure iam2.virtualID.need.change.password=true
+    fi
 }
 
 install_license(){
@@ -3006,7 +3017,7 @@ check_myarg() {
 }
 
 OPTIND=1
-TEMP=`getopt -o f:H:I:n:p:P:r:R:t:y:acC:L:T:dDEFhiklmMNoOqsuz --long mini -- "$@" 2>/dev/null`
+TEMP=`getopt -o f:H:I:n:p:P:r:R:t:y:acC:L:T:dDEFhiklmMNoOqsuz --long mini,SY -- "$@" 2>/dev/null`
 eval set -- "$TEMP"
 while :
 do
@@ -3059,6 +3070,7 @@ do
         -y ) check_myarg $1 $2;HTTP_PROXY=$2;shift 2;;
         -z ) NOT_START_ZSTACK='y';shift;;
         --mini) MINI_INSTALL='y';shift;;
+        --SY) SANYUAN_INSTALL='y';shift;;
         --) shift;;
         * ) usage;;
     esac
@@ -3457,6 +3469,9 @@ fi
 
 #Install Mysql
 install_db
+
+#Setup install parameters
+setup_install_param
 
 #Delete old monitoring data if NEED_DROP_DB
 if [ -n "$NEED_DROP_DB" ]; then
