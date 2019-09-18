@@ -38,6 +38,7 @@ virtenv_path = "%s/virtualenv/consoleproxy/" % zstack_root
 consoleproxy_root = "%s/console/package" % zstack_root
 host_post_info = HostPostInfo()
 host_post_info.host = host
+host_post_info.host_uuid = host_uuid
 host_post_info.host_inventory = args.i
 
 host_post_info.post_url = post_url
