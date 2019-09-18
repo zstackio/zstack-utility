@@ -1269,6 +1269,16 @@ def enable_process_coredump(pid):
     memsize = 4 * 1024 * 1024
     shell.run('prlimit --core=%d --pid %s' % (memsize, pid))
 
+def set_vm_priority(pid, priorityConfig):
+    cmd = shell.ShellCmd("virsh schedinfo %s --set cpu_shares=%s --live" % (priorityConfig.vmUuid, priorityConfig.cpuShares))
+    cmd(is_exception=False)
+    if cmd.return_code != 0:
+        logger.warn("set vm %s cpu_shares failed" % priorityConfig.vmUuid)
+
+    oom_score_adj_path = "/proc/%s/oom_score_adj" % pid
+    if write_file(oom_score_adj_path, priorityConfig.oomScoreAdj) is None:
+        logger.warn("set vm %s oomScoreAdj failed" % priorityConfig.vmUuid)
+
 def find_vm_pid_by_uuid(uuid):
     return shell.call("ps aux | grep qemu[-]kvm | awk '/%s/{print $2}'" % uuid).strip()
 
@@ -1776,6 +1786,15 @@ def read_file(path):
         return None
     with open(path, 'r') as fd:
         return fd.read()
+
+def write_file(path, content, create_if_not_exist = False):
+    if not os.path.exists(path) and not create_if_not_exist:
+        logger.warn("write file failed because the path %s was not found", path)
+        return None
+
+    with open(path, "w") as f:
+        f.write(str(content))
+    return path
 
 
 def tail_1(path):
