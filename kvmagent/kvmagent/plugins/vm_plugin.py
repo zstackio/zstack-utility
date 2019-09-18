@@ -598,26 +598,38 @@ def is_namespace_used():
 def get_console_without_libvirt(vmUuid):
     output = bash.bash_o("""ps x | awk '/qemu[-]kvm.*%s/{print $1, index($0, " -vnc ")}'""" % vmUuid).splitlines()
     if len(output) != 1:
-        return None, None, None
+        return None, None, None, None
 
     pid, idx = output[0].split()
     output = bash.bash_o(
         """lsof -p %s -aPi4 | awk '$8 == "TCP" { n=split($9,a,":"); print a[n] }'""" % pid).splitlines()
     if len(output) < 1:
         logger.warn("get_port_without_libvirt: no port found")
-        return None, None, None
-
+        return None, None, None, None
+    # There is a port in vnc, there may be one or two porters in the spice, and two or three ports may exist in vncAndSpice.
     output = output.sort()
-    if len(output) == 1:
+    if len(output) == 1 and int(idx) == 0:
+        protocol = "spice"
+        return protocol, None, int(output[0]), None
+
+    if len(output) == 1 and int(idx) != 0:
         protocol = "vnc"
         return protocol, int(output[0]), None, None
-    elif len(output) == 2:
+
+    if len(output) == 2 and int(idx) == 0:
         protocol = "spice"
         return protocol, None, int(output[0]), int(output[1])
-    else:
+
+    if len(output) == 2 and int(idx) != 0:
+        protocol = "vncAndSpice"
+        return protocol, int(output[0]), int(output[1]), None
+
+    if len(output) == 3:
         protocol = "vncAndSpice"
         return protocol, int(output[0]), int(output[1]), int(output[2])
 
+    logger.warn("get_port_without_libvirt: more than 3 ports")
+    return None, None, None, None
 
 def check_vdi_port(vncPort, spicePort, spiceTlsPort):
     if vncPort is None and spicePort is None and spiceTlsPort is None:
@@ -1398,6 +1410,9 @@ def make_spool_conf(imgfmt, dev_letter, volume):
     os.chmod(fpath, 0o600)
     return fpath
 
+def is_spice_tls():
+    return bash.bash_r("grep '^[[:space:]]*spice_tls[[:space:]]*=[[:space:]]*1' /etc/libvirt/qemu.conf")
+
 class Vm(object):
     VIR_DOMAIN_NOSTATE = 0
     VIR_DOMAIN_RUNNING = 1
@@ -1735,10 +1750,11 @@ class Vm(object):
                 rsp.protocol = "vnc"
             elif g.type_ == 'spice':
                 rsp.spicePort = g.port_
-                rsp.spiceTlsPort = g.tlsPort_
+                if g.hasattr('tlsPort_'):
+                    rsp.spiceTlsPort = g.tlsPort_
                 rsp.protocol = "spice"
 
-        if rsp.vncPort is not None and rsp.spicePort is not None and rsp.spiceTlsPort is not None:
+        if rsp.vncPort is not None and rsp.spicePort is not None:
             rsp.protocol = "vncAndSpice"
         return rsp.protocol, rsp.vncPort, rsp.spicePort, rsp.spiceTlsPort
 
@@ -3405,7 +3421,8 @@ class Vm(object):
                 spice = e(devices, 'graphics', None,
                           {'type': 'spice', 'port': '5900', 'autoport': 'yes', 'passwd': str(cmd.consolePassword)})
             e(spice, "listen", None, {'type': 'address', 'address': '0.0.0.0'})
-            if cmd.spiceChannels != None:
+
+            if is_spice_tls() == 0 and cmd.spiceChannels != None:
                 for channel in cmd.spiceChannels:
                     e(spice, "channel", None, {'name': channel, 'mode': "secure"})
             e(spice, "image", None, {'compression': 'auto_glz'})
