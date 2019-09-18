@@ -941,7 +941,10 @@ class Ctl(object):
         if db_password is None:
             raise CtlError("cannot find DB password in %s. please set DB.password" % self.properties_file_path)
 
-        db_password = AESCipher().decrypt(db_password)
+        cipher = AESCipher()
+        if cipher.is_encrypted(db_password):
+            db_password = cipher.decrypt(db_password)
+
         db_url = self.get_db_url()
         host_name_ports = []
 
