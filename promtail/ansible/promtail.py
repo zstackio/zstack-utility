@@ -40,6 +40,8 @@ host_post_info.remote_user = remote_user
 host_post_info.remote_pass = remote_pass
 host_post_info.remote_port = remote_port
 host_post_info.post_url = post_url
+if remote_pass is not None and remote_user != 'root':
+    host_post_info.become = True
 
 command = 'mkdir -p %s ' % os.path.dirname(dst_promtail_bin)
 run_remote_command(command, host_post_info)
