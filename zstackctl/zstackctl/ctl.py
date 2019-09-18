@@ -41,6 +41,10 @@ import itertools
 import platform
 from  datetime import datetime, timedelta
 import multiprocessing
+import base64
+from Crypto.Cipher import AES
+from Crypto.Util.py3compat import *
+from hashlib import md5
 
 mysql_db_config_script='''
 echo "modify my.cnf"
@@ -675,6 +679,7 @@ class Ctl(object):
     ZSTACK_UI_CATALINA_OPTS = '-Xmx4096m'
     # always install zstack-mini-server inside zstack_install_root
     MINI_DIR = os.path.join(USER_ZSTACK_HOME_DIR, 'zstack-mini')
+    NEED_ENCRYPT_PROPERTIES = ['DB.password']
 
     def __init__(self):
         self.commands = {}
@@ -936,6 +941,7 @@ class Ctl(object):
         if db_password is None:
             raise CtlError("cannot find DB password in %s. please set DB.password" % self.properties_file_path)
 
+        db_password = AESCipher().decrypt(db_password)
         db_url = self.get_db_url()
         host_name_ports = []
 
@@ -1809,6 +1815,53 @@ class StartAllCmd(Command):
         start_mgmt_node()
         start_ui()
 
+class AESCipher:
+    """
+    Usage:
+        c = AESCipher('password').encrypt('message')
+        m = AESCipher('password').decrypt(c)
+    """
+
+    def __init__(self, key='ZStack open source'):
+        self.key = md5(key).hexdigest()
+        self.cipher = AES.new(self.key, AES.MODE_ECB)
+        self.prefix = "crypt_key_for_v1::"
+        self.BLOCK_SIZE = 16
+
+    # PKCS#7
+    def _pad(self, data_to_pad, block_size):
+        padding_len = block_size - len(data_to_pad) % block_size
+        padding = bchr(padding_len) * padding_len
+        return data_to_pad + padding
+
+    # PKCS#7
+    def _unpad(self, padded_data, block_size):
+        pdata_len = len(padded_data)
+        if pdata_len % block_size:
+            raise ValueError("Input data is not padded")
+        padding_len = bord(padded_data[-1])
+        if padding_len < 1 or padding_len > min(block_size, pdata_len):
+            raise ValueError("Padding is incorrect.")
+        if padded_data[-padding_len:] != bchr(padding_len) * padding_len:
+            raise ValueError("PKCS#7 padding is incorrect.")
+        return padded_data[:-padding_len]
+
+    def encrypt(self, raw):
+        raw = self._pad(self.prefix + raw, self.BLOCK_SIZE)
+        return base64.b64encode(self.cipher.encrypt(raw))
+
+    def decrypt(self, enc):
+        denc = base64.b64decode(enc)
+        ret = self._unpad(self.cipher.decrypt(denc), self.BLOCK_SIZE).decode('utf8')
+        return ret.lstrip(self.prefix) if ret.startswith(self.prefix) else enc
+
+    def is_encrypted(self, enc):
+        try:
+            raw = self.decrypt(enc)
+            return raw != enc
+        except:
+            return False
+
 class StartCmd(Command):
     START_SCRIPT = '../../bin/startup.sh'
     SET_ENV_SCRIPT = '../../bin/setenv.sh'
@@ -2047,6 +2100,13 @@ class StartCmd(Command):
         def is_simulator_on():
             return ctl.get_env(self.SIMULATOR) == 'True'
 
+        def encrypt_properties_if_need():
+            cipher = AESCipher()
+            for key in Ctl.NEED_ENCRYPT_PROPERTIES:
+                value = ctl.read_property(key)
+                if value and not cipher.is_encrypted(value):
+                    ctl.write_properties([(key, cipher.encrypt(value))])
+
         def prepareBeanRefContextXml():
             if is_simulator_on():
                 beanXml = "simulator/zstack-simulator2.xml"
@@ -2076,6 +2136,7 @@ class StartCmd(Command):
         prepare_qemu_kvm_repo()
         prepare_setenv()
         open_iptables_port('udp',['123'])
+        encrypt_properties_if_need()
         checkSimulator()
         prepareBeanRefContextXml()
         start_mgmt_node()
