@@ -452,6 +452,10 @@ class KvmResizeVolumeRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(KvmResizeVolumeRsp, self).__init__()
 
+class UpdateVmPriorityRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(UpdateVmPriorityRsp, self).__init__()
+
 class BlockStreamResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(BlockStreamResponse, self).__init__()
@@ -2903,7 +2907,6 @@ class Vm(object):
                 e(root, 'vcpu', '128', {'placement': 'static', 'current': str(cmd.cpuNum)})
                 # e(root,'vcpu',str(cmd.cpuNum),{'placement':'static'})
                 tune = e(root, 'cputune')
-                e(tune, 'shares', str(cmd.cpuSpeed * cmd.cpuNum))
                 # enable nested virtualization
                 if cmd.nestedVirtualization == 'host-model':
                     cpu = e(root, 'cpu', attrib={'mode': 'host-model'})
@@ -2929,7 +2932,6 @@ class Vm(object):
                 # e(root, 'vcpu', '128', {'placement': 'static', 'current': str(cmd.cpuNum)})
                 e(root, 'vcpu', str(cmd.cpuNum), {'placement': 'static'})
                 tune = e(root, 'cputune')
-                e(tune, 'shares', str(cmd.cpuSpeed * cmd.cpuNum))
                 # enable nested virtualization
                 if cmd.nestedVirtualization == 'host-model':
                     cpu = e(root, 'cpu', attrib={'mode': 'host-model'})
@@ -3818,6 +3820,7 @@ class VmPlugin(kvmagent.KvmAgent):
     RELOAD_USB_REDIRECT_PATH = "/vm/usbdevice/reload"
     CHECK_MOUNT_DOMAIN_PATH = "/check/mount/domain"
     KVM_RESIZE_VOLUME_PATH = "/volume/resize"
+    VM_PRIORITY_PATH = "/vm/priority"
 
     VM_OP_START = "start"
     VM_OP_STOP = "stop"
@@ -3951,6 +3954,7 @@ class VmPlugin(kvmagent.KvmAgent):
             try:
                 vm_pid = linux.find_vm_pid_by_uuid(cmd.vmInstanceUuid)
                 linux.enable_process_coredump(vm_pid)
+                linux.set_vm_priority(vm_pid, cmd.vmInstanceUuid, cmd.priorityConfig)
             except Exception as e:
                 logger.warn("enable coredump for VM: %s: %s" % (cmd.vmInstanceUuid, str(e)))
         except kvmagent.KvmError as e:
@@ -5271,6 +5275,14 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.error = "%s %s" % (e, o)
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    def vm_priority(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = UpdateVmPriorityRsp()
+
+        pid = linux.find_vm_pid_by_uuid(cmd.vmUuid)
+        linux.set_vm_priority(pid, cmd.vmUuid, cmd.priorityConfig)
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def kvm_resize_volume(self, req):
@@ -5333,6 +5345,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.RELOAD_USB_REDIRECT_PATH, self.reload_redirect_usb)
         http_server.register_async_uri(self.CHECK_MOUNT_DOMAIN_PATH, self.check_mount_domain)
         http_server.register_async_uri(self.KVM_RESIZE_VOLUME_PATH, self.kvm_resize_volume)
+        http_server.register_async_uri(self.VM_PRIORITY_PATH, self.vm_priority)
 
         self.clean_old_sshfs_mount_points()
         self.register_libvirt_event()
