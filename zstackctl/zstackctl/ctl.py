@@ -27,6 +27,7 @@ import re
 import OpenSSL
 import glob
 from shutil import copyfile
+from shutil import rmtree
 
 from utils import linux
 from zstacklib import *
@@ -7692,6 +7693,17 @@ def mysql(cmd):
         return shell(command).strip()
 
 
+class CleanAnsibleCacheCmd(Command):
+    def __init__(self):
+        super(CleanAnsibleCacheCmd, self).__init__()
+        self.name = "clean_ansible_cache"
+        self.description = "clean ansible cache(.ansible.cache/) for system info"
+        ctl.register_command(self)
+    def run(self, args):
+        cache_dir = os.path.join("/var/lib/zstack", ".ansible.cache")
+        rmtree(cache_dir)
+
+
 
 class ShowSessionCmd(Command):
     def __init__(self):
@@ -8864,6 +8876,7 @@ def main():
     VDIUiStatusCmd()
     ShowSessionCmd()
     DropSessionCmd()
+    CleanAnsibleCacheCmd()
     GetZStackVersion()
     SharedBlockQcow2SharedVolumeFixCmd()
 
