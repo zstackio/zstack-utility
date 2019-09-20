@@ -30,6 +30,7 @@ import re
 import time
 import uuid
 import tempfile
+import libvirt
 
 IS_AARCH64 = platform.machine() == 'aarch64'
 GRUB_FILES = ["/boot/grub2/grub.cfg", "/boot/grub/grub.cfg", "/etc/grub2-efi.cfg", "/etc/grub-efi.cfg", "/boot/efi/EFI/centos/grub.cfg"]
@@ -333,6 +334,10 @@ class UngenerateVfioMdevDevicesRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(UngenerateVfioMdevDevicesRsp, self).__init__()
 
+class UpdateSpiceChannelConfigResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(UpdateSpiceChannelConfigResponse, self).__init__()
+
 class PciDeviceTO(object):
     def __init__(self):
         self.name = ""
@@ -453,6 +458,7 @@ class HostPlugin(kvmagent.KvmAgent):
     UNGENERATE_SRIOV_PCI_DEVICES = "/pcidevice/ungenerate"
     GENERATE_VFIO_MDEV_DEVICES = "/mdevdevice/generate"
     UNGENERATE_VFIO_MDEV_DEVICES = "/mdevdevice/ungenerate"
+    HOST_UPDATE_SPICE_CHANNEL_CONFIG_PATH = "/host/updateSpiceChannelConfig";
 
 
     def _get_libvirt_version(self):
@@ -1497,6 +1503,53 @@ done
             rsp.error = "failed to ungenerate vfio mdev devices from pci device[addr:%s]" % addr
         return jsonobject.dumps(rsp)
 
+    @lock.lock('libvirt-reconnect')
+    def restart_libvirt(self):
+        conn = libvirt.open('qemu:///system')
+        logger.debug('start reconnect libvirt')
+        try:
+            conn.close()
+        except:
+            pass
+
+        shell.call('systemctl restart libvirtd')
+        conn = libvirt.open('qemu:///system')
+        try:
+            conn.getLibVersion()
+        except libvirt.libvirtError as ex:
+            logger.warn('failed reconnect libvirt, cause: ' + ex)
+            raise ex
+
+        logger.debug('successfully reconnect libvirt')
+
+    @kvmagent.replyerror
+    @in_bash
+    def update_spice_channel_config(self, req):
+        # Note: /etc/libvirt/qemu.conf is overwritten when connect host
+        rsp = UpdateSpiceChannelConfigResponse()
+        r1 = bash_r("grep '^[[:space:]]*spice_tls[[:space:]]*=[[:space:]]*1' /etc/libvirt/qemu.conf")
+        r2 = bash_r("grep '^[[:space:]]*spice_tls_x509_cert_dir[[:space:]]*=[[:space:]]*' /etc/libvirt/qemu.conf")
+
+        if r1 == 0 and r2 == 0:
+            return jsonobject.dumps(rsp)
+
+        if r1 != 0:
+            r = bash_r("sed -i '$a spice_tls = 1' /etc/libvirt/qemu.conf")
+            if r != 0:
+                rsp.success = False
+                rsp.error = "update /etc/libvirt/qemu.conf failed, please check qemu.conf"
+                return jsonobject.dumps(rsp)
+
+        if r2 != 0:
+            r = bash_r("sed -i '$a spice_tls_x509_cert_dir = \"/var/lib/zstack/kvm/package/spice-certs/\"' /etc/libvirt/qemu.conf")
+            if r != 0:
+                rsp.success = False
+                rsp.error = "update /etc/libvirt/qemu.conf failed, please check qemu.conf"
+                return jsonobject.dumps(rsp)
+
+        self.restart_libvirt()
+        return jsonobject.dumps(rsp)
+
     def start(self):
         self.host_uuid = None
 
@@ -1526,6 +1579,7 @@ done
         http_server.register_async_uri(self.UNGENERATE_SRIOV_PCI_DEVICES, self.ungenerate_sriov_pci_devices)
         http_server.register_async_uri(self.GENERATE_VFIO_MDEV_DEVICES, self.generate_vfio_mdev_devices)
         http_server.register_async_uri(self.UNGENERATE_VFIO_MDEV_DEVICES, self.ungenerate_vfio_mdev_devices)
+        http_server.register_async_uri(self.HOST_UPDATE_SPICE_CHANNEL_CONFIG_PATH, self.update_spice_channel_config)
 
         self.heartbeat_timer = {}
         self.libvirt_version = self._get_libvirt_version()
