@@ -593,7 +593,7 @@ def is_namespace_used():
     return compare_version(LIBVIRT_VERSION, '1.3.3') >= 0
 
 def is_ioapic_supported():
-    return compare_version(LIBVIRT_VERSION, '3.4.0') >= 0
+    return compare_version(LIBVIRT_VERSION, '3.4.0') >= 0 and not IS_AARCH64
 
 # Occasionally, libvirt might fail to list VM ...
 def get_console_without_libvirt(vmUuid):
