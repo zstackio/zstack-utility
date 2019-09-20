@@ -45,6 +45,7 @@ class AgentInstallArg(object):
 class ZstackLibArgs(object):
     def __init__(self):
         self.zstack_repo = None
+        self.zstack_releasever = None
         self.yum_server = None
         self.distro = None
         self.distro_version = None
@@ -1650,6 +1651,7 @@ class ZstackLib(object):
         pip_url = args.pip_url
         pip_version = "7.0.3"
         yum_server = args.yum_server
+        zstack_releasever = args.zstack_releasever
         current_dir =  os.path.dirname(os.path.realpath(__file__))
         #require_python_env for deploy host which may not need python environment, default is true
         if args.require_python_env is not None:
@@ -1791,7 +1793,7 @@ gpgcheck=0
                     generate_mn_repo_raw_command = """
 echo -e "[zstack-mn]
 name=zstack-mn
-baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$releasever/\$basearch/os/
+baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$basearch/\$YUM0/
 gpgcheck=0
 enabled=0" >  /etc/yum.repos.d/zstack-mn.repo
                """
@@ -1805,7 +1807,7 @@ enabled=0" >  /etc/yum.repos.d/zstack-mn.repo
                     generate_kvm_repo_raw_command = """
 echo -e "[qemu-kvm-ev-mn]
 name=qemu-kvm-ev-mn
-baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$releasever/\$basearch/qemu-kvm-ev/
+baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$basearch/\$YUM0/Extra/qemu-kvm-ev/
 gpgcheck=0
 enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
 """
@@ -1822,7 +1824,7 @@ enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
                 generate_exp_repo_raw_command = """
 echo -e "[zstack-experimental-mn]
 name=zstack-experimental-mn
-baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$releasever/\$basearch/zstack-experimental/
+baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$basearch/\$YUM0/Extra/zstack-experimental/
 gpgcheck=0
 enabled=0" >  /etc/yum.repos.d/zstack-experimental-mn.repo
 """

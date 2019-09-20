@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # encoding: utf-8
 import argparse
+import platform
 from zstacklib import *
 import os
 
@@ -107,7 +108,8 @@ else:
 
 # name: check and mount /opt/zstack-dvd
 command = """
-[ -f /opt/zstack-dvd/GPL ] || exit 1;
+basearch=`uname -m`;releasever=cat /etc/zstack-release |awk '{print $3}';
+[ -f /opt/zstack-dvd/$basearch/$releasever/GPL ] || exit 1;
 mkdir -p /var/lib/zstack/baremetal/{dnsmasq,ftp/{ks,zstack-dvd,scripts},tftpboot/{zstack,pxelinux.cfg},vsftpd} /var/log/zstack/baremetal/;
 cp -f /usr/share/syslinux/pxelinux.0 /var/lib/zstack/baremetal/tftpboot/;
 cp -f /opt/zstack-dvd/images/pxeboot/{vmlinuz,initrd.img} /var/lib/zstack/baremetal/tftpboot/zstack/;
