@@ -158,8 +158,8 @@ class CollectFromYml(object):
                             temp_array = list_value.split()
                             conf_value['list'] = temp_array
                 if collect_type == 'host' or collect_type == 'sharedblock':
-                    if args.host is not None:
-                        conf_value['list'] = args.host
+                    if args.hosts is not None:
+                        conf_value['list'] = args.hosts.split(',')
 
             history_configured = False
 

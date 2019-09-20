@@ -5544,7 +5544,7 @@ class ConfiguredCollectLogCmd(Command):
         parser.add_argument('--mn-db', help='collect managementnode log and db', action="store_true", default=False)
         parser.add_argument('--mn-host', help='collect managementnode and host log', action="store_true", default=False)
         parser.add_argument('--thread', help='max collect log thread number', default=None)
-        parser.add_argument('--host', help='only collect specific host log')
+        parser.add_argument('--hosts', help='only collect specific hosts log, separate host ips with commas')
         parser.add_argument('--timeout', help='wait for log thread collect timeout, default is 300 seconds', default=300)
 
     def run(self, args):
