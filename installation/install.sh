@@ -1304,12 +1304,6 @@ iz_install_unzip(){
 
 is_install_general_libs_rh(){
     echo_subtitle "Install General Libraries (takes a couple of minutes)"
-    which mysql >/dev/null 2>&1
-    if [ $? -eq 0 ];then
-        mysql_pkg=''
-    else
-        mysql_pkg='mysql'
-    fi
 
     # Just install what is not installed
     deps_list="libselinux-python \
@@ -1342,7 +1336,7 @@ is_install_general_libs_rh(){
             net-tools \
             bash-completion \
             dmidecode \
-            $mysql_pkg \
+            mysql \
             MySQL-python \
             ipmitool \
             nginx \
@@ -1352,27 +1346,23 @@ is_install_general_libs_rh(){
             avahi \
             avahi-tools"
 
-    always_update_list=$mysql_pkg
+    always_update_list="mysql"
     missing_list=`LANG=en_US.UTF-8 && rpm -q $deps_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
 
     [ x"$ZSTACK_OFFLINE_INSTALL" = x'y' ] && missing_list=$deps_list
-    if [ ! -z "$missing_list" ]; then
-        if [ ! -z $ZSTACK_YUM_REPOS ]; then
-            yum --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS clean metadata >/dev/null 2>&1
-            echo yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y general libs... >>$ZSTACK_INSTALL_LOG
-            yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y $always_update_list $missing_list >>$ZSTACK_INSTALL_LOG 2>&1
-        else
-            yum clean metadata >/dev/null 2>&1
-            echo "yum install -y libselinux-python java ..." >>$ZSTACK_INSTALL_LOG
-            yum install -y $missing_list >>$ZSTACK_INSTALL_LOG 2>&1
-        fi
-
-        if [ $? -ne 0 ];then
-            #yum clean metadata >/dev/null 2>&1
-            fail "install system libraries failed."
-        fi
+    if [ ! -z $ZSTACK_YUM_REPOS ]; then
+        yum --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS clean metadata >/dev/null 2>&1
+        echo yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y general libs... >>$ZSTACK_INSTALL_LOG
+        yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y $always_update_list $missing_list >>$ZSTACK_INSTALL_LOG 2>&1
     else
-        echo general libs are already installed... >>$ZSTACK_INSTALL_LOG
+        yum clean metadata >/dev/null 2>&1
+        echo "yum install -y libselinux-python java ..." >>$ZSTACK_INSTALL_LOG
+        yum install -y $always_update_list $missing_list >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+
+    if [ $? -ne 0 ];then
+        #yum clean metadata >/dev/null 2>&1
+        fail "install system libraries failed."
     fi
 
     rpm -q java-1.8.0-openjdk >>$ZSTACK_INSTALL_LOG 2>&1 || java -version 2>&1 |grep 1.8 >/dev/null
