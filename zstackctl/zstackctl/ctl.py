@@ -130,6 +130,8 @@ fi
 sync
 '''
 
+mysqldump_skip_tables = "--ignore-table=zstack.VmUsageHistoryVO --ignore-table=zstack.RootVolumeUsageHistoryVO --ignore-table=zstack.NotificationVO --ignore-table=zstack.PubIpVmNicBandwidthUsageHistoryVO --ignore-table=zstack.DataVolumeUsageHistoryVO --ignore-table=zstack.RestAPIVO --ignore-table=zstack.ResourceUsageVO --ignore-table=zstack.AsyncRestVO"
+
 def signal_handler(signal, frame):
     sys.exit(0)
 
@@ -4497,13 +4499,13 @@ class DumpMysqlCmd(Command):
                 db_connect_password = ""
             else:
                 db_connect_password = "-p" + db_password
-            command_1 = "mysqldump --databases -u %s %s -P %s %s zstack zstack_rest" % (db_user, db_connect_password, db_port, mysqldump_options)
+            command_1 = "mysqldump --databases -u %s %s -P %s %s zstack zstack_rest %s" % (db_user, db_connect_password, db_port, mysqldump_options, mysqldump_skip_tables)
         else:
             if db_password is None or db_password == "":
                 db_connect_password = ""
             else:
                 db_connect_password = "-p" + db_password
-            command_1 = "mysqldump --databases -u %s %s --host %s -P %s %s zstack zstack_rest" % (db_user, db_connect_password, db_hostname, db_port, mysqldump_options)
+            command_1 = "mysqldump --databases -u %s %s --host %s -P %s %s zstack zstack_rest %s" % (db_user, db_connect_password, db_hostname, db_port, mysqldump_options, mysqldump_skip_tables)
 
         if ui_db_hostname == "localhost" or ui_db_hostname == "127.0.0.1":
             if ui_db_password is None or ui_db_password == "":
@@ -6891,9 +6893,9 @@ class UpgradeDbCmd(Command):
             db_backup_path = os.path.join(ctl.USER_ZSTACK_HOME_DIR, 'db_backup', time.strftime('%Y-%m-%d-%H-%M-%S', time.localtime()), 'backup.sql')
             shell('mkdir -p %s' % os.path.dirname(db_backup_path))
             if db_password:
-                shell('mysqldump -u %s -p%s --host %s --port %s zstack > %s' % (db_user, db_password, db_hostname, db_port, db_backup_path))
+                shell('mysqldump -u %s -p%s --host %s --port %s zstack %s > %s' % (db_user, db_password, db_hostname, db_port, mysqldump_skip_tables, db_backup_path))
             else:
-                shell('mysqldump -u %s --host %s --port %s zstack > %s' % (db_user, db_hostname, db_port, db_backup_path))
+                shell('mysqldump -u %s --host %s --port %s zstack %s > %s' % (db_user, db_hostname, db_port, mysqldump_skip_tables, db_backup_path))
 
             info('successfully backup the database to %s' % db_backup_path)
 
