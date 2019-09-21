@@ -347,17 +347,18 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
         local_mount_point = os.path.join("/tmp/zs-v2v/", cmd.managementIp)
         vm_v2v_dir = os.path.join(local_mount_point, cmd.srcVmUuid)
         mount_cmd = get_mount_command(cmd)
+        mount_paths = "{}:{} {}".format(cmd.managementIp, real_storage_path, local_mount_point)
+        alternative_mount = mount_cmd + " -o vers=3"
 
         try:
             with lock.NamedLock(local_mount_point):
                 runSshCmd(cmd.libvirtURI, cmd.sshPrivKey,
-                        "mkdir -p {0} && ls {1} 2>/dev/null || {5} {2}:{3} {4}".format(
+                        "mkdir -p {0} && ls {1} 2>/dev/null || {2} {3} || {4} {3}".format(
                             local_mount_point,
                             vm_v2v_dir,
-                            cmd.managementIp,
-                            real_storage_path,
-                            local_mount_point,
-                            mount_cmd))
+                            mount_cmd,
+                            mount_paths,
+                            alternative_mount))
         except shell.ShellError as ex:
             logger.info(str(ex))
             raise Exception('target host cannot access NFS on {}'.format(cmd.managementIp))
@@ -406,6 +407,7 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                 if info:
                     continue
 
+                logger.info("start copying {}/{} ...".format(cmd.srcVmUuid, v.name))
                 dom.blockCopy(v.name,
                     "<disk type='file'><source file='{}'/><driver type='qcow2'/></disk>".format(os.path.join(vm_v2v_dir, v.name)),
                     None,
@@ -420,6 +422,7 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                         raise Exception('blockjob not found on disk: '+v.name)
                     if info['cur'] == info['end']:
                         v.endTime = time.time()
+                        logger.info("completed copying {}/{} ...".format(cmd.srcVmUuid, v.name))
                 if all(map(lambda v: v.endTime, volumes)):
                     break
                 time.sleep(5)
