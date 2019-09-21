@@ -109,6 +109,7 @@ class Daemon(object):
         Daemon._log_and_dump_message("Start Daemon...")
 
         locale.setlocale(locale.LC_ALL, 'C')
+        os.environ["LC_ALL"]="C"
 
         # Get the pid from the pidfile
         try:
