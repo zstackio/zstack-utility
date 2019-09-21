@@ -333,6 +333,23 @@ class UpdateSpiceChannelConfigResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(UpdateSpiceChannelConfigResponse, self).__init__()
 
+# using kvmagent to transmit vm operations to management node
+# like start/stop/reboot a specific vm instance
+class VmOperation(object):
+    def __init__(self):
+        self.uuid = None
+        self.operation = None
+
+class TransmitVmOperationToMnCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(TransmitVmOperationToMnCmd, self).__init__()
+        self.uuid = None
+        self.operation = None
+
+class TransmitVmOperationToMnRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(TransmitVmOperationToMnRsp, self).__init__()
+
 class PciDeviceTO(object):
     def __init__(self):
         self.name = ""
@@ -454,6 +471,7 @@ class HostPlugin(kvmagent.KvmAgent):
     GENERATE_VFIO_MDEV_DEVICES = "/mdevdevice/generate"
     UNGENERATE_VFIO_MDEV_DEVICES = "/mdevdevice/ungenerate"
     HOST_UPDATE_SPICE_CHANNEL_CONFIG_PATH = "/host/updateSpiceChannelConfig";
+    TRANSMIT_VM_OPERATION_TO_MN_PATH = "/host/transmitvmoperation"
 
     host_network_facts_cache = {}  # type: Dict[float, list[list, list]]
 
@@ -569,6 +587,8 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.qemuImgVersion = qemu_img_version
         rsp.libvirtVersion = self.libvirt_version
         rsp.ipAddresses = ipV4Addrs.splitlines()
+        rsp.cpuArchitecture = platform.machine()
+
         if IS_AARCH64:
             # FIXME how to check vt of aarch64?
             rsp.hvmCpuFlag = 'vt'
@@ -1579,6 +1599,22 @@ done
 
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    def transmit_vm_operation_to_vm(self, req):
+        rsp = TransmitVmOperationToMnRsp()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        vm_operation = VmOperation()
+        vm_operation.uuid = cmd.uuid
+        vm_operation.operation = cmd.operation
+        url = self.config.get(kvmagent.SEND_COMMAND_URL)
+        if not url:
+            raise kvmagent.KvmError("cannot find SEND_COMMAND_URL, unable to transmit vm operation to management node")
+
+        logger.debug('transmitting vm operation [uuid:%s, operation:%s] to management node'% (cmd.uuid, cmd.operation))
+        http.json_dump_post(url, vm_operation, {'commandpath': '/host/transmitvmoperation'})
+        return jsonobject.dumps(rsp)
+
     def start(self):
         self.host_uuid = None
 
@@ -1610,6 +1646,7 @@ done
         http_server.register_async_uri(self.UNGENERATE_VFIO_MDEV_DEVICES, self.ungenerate_vfio_mdev_devices)
         http_server.register_async_uri(self.HOST_UPDATE_SPICE_CHANNEL_CONFIG_PATH, self.update_spice_channel_config)
         http_server.register_async_uri(self.CANCEL_JOB, self.cancel)
+        http_server.register_sync_uri(self.TRANSMIT_VM_OPERATION_TO_MN_PATH, self.transmit_vm_operation_to_vm)
 
         self.heartbeat_timer = {}
         self.libvirt_version = self._get_libvirt_version()

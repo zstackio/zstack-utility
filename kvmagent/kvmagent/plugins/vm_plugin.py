@@ -12,6 +12,7 @@ import re
 import platform
 import netaddr
 import uuid
+import json
 
 import libvirt
 #from typing import List, Any, Union
@@ -47,6 +48,7 @@ ZS_XML_NAMESPACE = 'http://zstack.org'
 
 etree.register_namespace('zs', ZS_XML_NAMESPACE)
 
+GUEST_TOOLS_ISO_PATH = "/var/lib/zstack/guesttools/GuestTools.iso"
 QMP_SOCKET_PATH = "/var/lib/libvirt/qemu/zstack"
 PCI_ROM_PATH = "/var/lib/zstack/pcirom"
 
@@ -463,6 +465,54 @@ class BlockStreamResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(BlockStreamResponse, self).__init__()
 
+class AttachGuestToolsIsoToVmCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(AttachGuestToolsIsoToVmCmd, self).__init__()
+        self.vmInstanceUuid = None
+        self.needTempDisk = None
+
+class AttachGuestToolsIsoToVmRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(AttachGuestToolsIsoToVmRsp, self).__init__()
+
+class IsoTo(object):
+    def __init__(self):
+        super(IsoTo, self).__init__()
+        self.path = None
+        self.imageUuid = None
+        self.deviceId = None
+
+class AttachIsoCmd(object):
+    def __init__(self):
+        super(AttachIsoCmd, self).__init__()
+        self.iso = None
+        self.vmUuid = None
+
+class DetachIsoCmd(object):
+    def __init__(self):
+        super(DetachIsoCmd, self).__init__()
+        self.vmUuid = None
+        self.deviceId = None
+
+class GetVmGuestToolsInfoCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(GetVmGuestToolsInfoCmd, self).__init__()
+        self.vmInstanceUuid = None
+
+class GetVmGuestToolsInfoRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(GetVmGuestToolsInfoRsp, self).__init__()
+
+class GetVmFirstBootDeviceCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(GetVmFirstBootDeviceCmd, self).__init__()
+        self.uuid = None
+
+class GetVmFirstBootDeviceRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(GetVmFirstBootDeviceRsp, self).__init__()
+        self.firstBootDevice = None
+
 class VncPortIptableRule(object):
     def __init__(self):
         self.host_ip = None
@@ -583,6 +633,14 @@ def find_domain_cdrom_address(domain_xml, target_dev):
             continue
         return d.get_child_node('address')
     return None
+
+def find_domain_first_boot_device(domain_xml):
+    domain_xmlobject = xmlobject.loads(domain_xml)
+    devs = domain_xmlobject.os.get_child_node_as_list('boot')
+    if devs and devs[0].dev_ == 'cdrom':
+        return "CdRom"
+    else:
+        return "HardDisk"
 
 def compare_version(version1, version2):
     def normalize(v):
@@ -3905,6 +3963,9 @@ class VmPlugin(kvmagent.KvmAgent):
     CHECK_MOUNT_DOMAIN_PATH = "/check/mount/domain"
     KVM_RESIZE_VOLUME_PATH = "/volume/resize"
     VM_PRIORITY_PATH = "/vm/priority"
+    ATTACH_GUEST_TOOLS_ISO_TO_VM_PATH = "/vm/guesttools/attachiso"
+    GET_VM_GUEST_TOOLS_INFO_PATH = "/vm/guesttools/getinfo"
+    KVM_GET_VM_FIRST_BOOT_DEVICE_PATH = "/vm/getfirstbootdevice"
 
     VM_OP_START = "start"
     VM_OP_STOP = "stop"
@@ -5389,6 +5450,88 @@ class VmPlugin(kvmagent.KvmAgent):
         touchQmpSocketWhenExists(cmd.vmUuid)
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    @in_bash
+    def attach_guest_tools_iso_to_vm(self, req):
+        rsp = AttachGuestToolsIsoToVmRsp()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        vm_uuid = cmd.vmInstanceUuid
+
+        if not os.path.exists(GUEST_TOOLS_ISO_PATH):
+            rsp.success = False
+            rsp.error = "%s not exists" % GUEST_TOOLS_ISO_PATH
+            return jsonobject.dumps(rsp)
+
+        r, _, _ = bash.bash_roe("virsh dumpxml %s | grep \"dev='vdz' bus='virtio'\"" % vm_uuid)
+        if cmd.needTempDisk and r != 0:
+            temp_disk = "/var/lib/zstack/guesttools/temp_disk.qcow2"
+            if not os.path.exists(temp_disk):
+                linux.qcow2_create(temp_disk, 1)
+
+            content = """
+<disk type='file' device='disk'>
+<driver type='qcow2' cache='writeback'/>
+  <source file='/var/lib/zstack/guesttools/temp_disk.qcow2'/>
+  <target dev='vdz' bus='virtio'/>
+</disk>
+"""
+            spath = linux.write_to_temp_file(content)
+            r, o, e = bash.bash_roe("virsh attach-device %s %s" % (vm_uuid, spath))
+            if r != 0:
+                rsp.success = False
+                rsp.error = "%s, %s" % (o, e)
+                return jsonobject.dumps(rsp)
+            else:
+                logger.debug("attached temp disk %s to %s, %s, %s" % (spath, vm_uuid, o, e))
+
+        # attach guest tools iso to [hs]dc, whose device id is 0
+        vm = get_vm_by_uuid(vm_uuid, exception_if_not_existing=False)
+        iso = IsoTo()
+        iso.deviceId = 0
+        iso.path = GUEST_TOOLS_ISO_PATH
+
+        # in case same iso already attached
+        detach_cmd = DetachIsoCmd()
+        detach_cmd.vmUuid = vm_uuid
+        detach_cmd.deviceId = iso.deviceId
+        vm.detach_iso(detach_cmd)
+
+        attach_cmd = AttachIsoCmd()
+        attach_cmd.iso = iso
+        attach_cmd.vmUuid = vm_uuid
+        vm.attach_iso(attach_cmd)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
+    def get_vm_guest_tools_info(self, req):
+        rsp = GetVmGuestToolsInfoRsp()
+
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        vm_uuid = cmd.vmInstanceUuid
+        r, o, e = bash.bash_roe("virsh qemu-agent-command %s --cmd '{\"execute\":\"guest-tools-info\"}'" % vm_uuid)
+        logger.debug("get guest tools info from vm[uuid:%s]: %s, %s" % (vm_uuid, o, e))
+        if r != 0:
+            rsp.success = False
+            rsp.error = "%s, %s" % (o, e)
+        else:
+            info = json.loads(o)['return']
+            for k in info.keys():
+                setattr(rsp, k, info[k])
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
+    def get_vm_first_boot_device(self, req):
+        rsp = GetVmFirstBootDeviceRsp()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        vm_uuid = cmd.uuid
+        vm = get_vm_by_uuid_no_retry(vm_uuid, False)
+        boot_dev = find_domain_first_boot_device(vm.domain.XMLDesc(0))
+        rsp.firstBootDevice = boot_dev
+        return jsonobject.dumps(rsp)
+
     def start(self):
         http_server = kvmagent.get_http_server()
 
@@ -5440,6 +5583,9 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CHECK_MOUNT_DOMAIN_PATH, self.check_mount_domain)
         http_server.register_async_uri(self.KVM_RESIZE_VOLUME_PATH, self.kvm_resize_volume)
         http_server.register_async_uri(self.VM_PRIORITY_PATH, self.vm_priority)
+        http_server.register_async_uri(self.ATTACH_GUEST_TOOLS_ISO_TO_VM_PATH, self.attach_guest_tools_iso_to_vm)
+        http_server.register_async_uri(self.GET_VM_GUEST_TOOLS_INFO_PATH, self.get_vm_guest_tools_info)
+        http_server.register_async_uri(self.KVM_GET_VM_FIRST_BOOT_DEVICE_PATH, self.get_vm_first_boot_device)
 
         self.clean_old_sshfs_mount_points()
         self.register_libvirt_event()
