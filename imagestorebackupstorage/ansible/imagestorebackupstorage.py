@@ -25,6 +25,7 @@ client = "false"
 remote_user = "root"
 remote_pass = None
 remote_port = None
+host_uuid = None
 require_python_env = "false"
 
 # get parameter from shell

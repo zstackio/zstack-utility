@@ -22,6 +22,7 @@ virtualenv_version = "12.1.1"
 remote_user = "root"
 remote_pass = None
 remote_port = None
+host_uuid = None
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy baremetal pxeserver agent to host')
