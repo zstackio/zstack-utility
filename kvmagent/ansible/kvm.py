@@ -25,6 +25,7 @@ virtualenv_version = "12.1.1"
 remote_user = "root"
 remote_pass = None
 remote_port = None
+host_uuid = None
 libvirtd_conf_file = "/etc/libvirt/libvirtd.conf"
 update_packages = 'false'
 skip_install_virt_pkgs = 'false'
