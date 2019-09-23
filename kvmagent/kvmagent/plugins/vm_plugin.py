@@ -3487,11 +3487,12 @@ class Vm(object):
 
 
         def make_sound():
-            devices = elements['devices']
-            if cmd.soundType is not None:
-                e(devices, 'sound', None, {'model': str(cmd.soundType)})
-            else:
-                e(devices, 'sound', None, {'model': 'ich6'})
+            if cmd.consoleMode == 'spice' or cmd.consoleMode == 'vncAndSpice':
+                devices = elements['devices']
+                if cmd.soundType is not None:
+                    e(devices, 'sound', None, {'model': str(cmd.soundType)})
+                else:
+                    e(devices, 'sound', None, {'model': 'ich6'})
 
         def make_graphic_console():
             if cmd.consoleMode == 'spice':
