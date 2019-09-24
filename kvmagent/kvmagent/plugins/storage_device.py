@@ -1,6 +1,7 @@
 import random
 import time
 import string
+import os.path
 
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
@@ -300,9 +301,9 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @staticmethod
-    def clean_iscsi_cache_configuration(path,iscsiServerIp,iscsiServerPort):
-        #clean cache configuration file:/var/lib/iscsi/nodes/iqnxxx/ip,port
-        results =  bash.bash_o(("ls %s/*/ | grep %s | grep %s" % (path, iscsiServerIp, iscsiServerPort))).strip().splitlines()
+    def clean_iscsi_cache_configuration(path, iscsiServerIp, iscsiServerPort):
+        # clean cache configuration file:/var/lib/iscsi/nodes/iqnxxx/ip,port
+        results = bash.bash_o(("ls %s/*/ | grep %s | grep %s" % (path, iscsiServerIp, iscsiServerPort))).strip().splitlines()
         if results is None or len(results) == 0:
             return
         for result in results:
@@ -310,7 +311,11 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             if dpaths is None or len(dpaths) == 0:
                 continue
             for dpath in dpaths:
-                linux.rm_dir_force("%s/%s" % (dpath, result))
+                ipath = "%s/%s" % (dpath, result)
+                if os.path.isdir(ipath):
+                    linux.rm_dir_force(ipath)
+                else:
+                    linux.rm_file_force(ipath)
 
     @staticmethod
     def get_disk_info_by_path(path):
