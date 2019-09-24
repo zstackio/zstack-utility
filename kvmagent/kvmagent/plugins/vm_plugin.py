@@ -3954,7 +3954,7 @@ class VmPlugin(kvmagent.KvmAgent):
             try:
                 vm_pid = linux.find_vm_pid_by_uuid(cmd.vmInstanceUuid)
                 linux.enable_process_coredump(vm_pid)
-                linux.set_vm_priority(vm_pid, cmd.vmInstanceUuid, cmd.priorityConfig)
+                linux.set_vm_priority(vm_pid, cmd.priorityConfigStruct)
             except Exception as e:
                 logger.warn("enable coredump for VM: %s: %s" % (cmd.vmInstanceUuid, str(e)))
         except kvmagent.KvmError as e:
@@ -5279,9 +5279,9 @@ class VmPlugin(kvmagent.KvmAgent):
     def vm_priority(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = UpdateVmPriorityRsp()
-
-        pid = linux.find_vm_pid_by_uuid(cmd.vmUuid)
-        linux.set_vm_priority(pid, cmd.vmUuid, cmd.priorityConfig)
+        for pcs in cmd.priorityConfigStructs:
+            pid = linux.find_vm_pid_by_uuid(pcs.vmUuid)
+            linux.set_vm_priority(pid, pcs)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
