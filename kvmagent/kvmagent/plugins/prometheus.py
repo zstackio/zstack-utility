@@ -1,16 +1,13 @@
 import os.path
 import threading
-import time
-import typing
 
-from jinja2 import Template
+import typing
 from prometheus_client import start_http_server
 from prometheus_client.core import GaugeMetricFamily, REGISTRY
 
 from kvmagent import kvmagent
 from zstacklib.utils import http
 from zstacklib.utils import jsonobject
-from zstacklib.utils import linux
 from zstacklib.utils import lock
 from zstacklib.utils import lvm
 from zstacklib.utils import misc
@@ -25,8 +22,8 @@ collectResultLock = threading.RLock()
 
 def collect_host_network_statistics():
 
-    all_eths = bash_o("ls /sys/class/net/").split()
-    virtual_eths = bash_o("ls /sys/devices/virtual/net/").split()
+    all_eths = os.listdir("/sys/class/net/")
+    virtual_eths = os.listdir("/sys/devices/virtual/net/")
 
     interfaces = []
     for eth in all_eths:
@@ -46,22 +43,22 @@ def collect_host_network_statistics():
     all_out_packets = 0
     all_out_errors = 0
     for intf in interfaces:
-        res = bash_o("cat /sys/class/net/{}/statistics/rx_bytes".format(intf))
+        res = linux.read_file("/sys/class/net/{}/statistics/rx_bytes".format(intf))
         all_in_bytes += int(res)
 
-        res = bash_o("cat /sys/class/net/{}/statistics/rx_packets".format(intf))
+        res = linux.read_file("/sys/class/net/{}/statistics/rx_packets".format(intf))
         all_in_packets += int(res)
 
-        res = bash_o("cat /sys/class/net/{}/statistics/rx_errors".format(intf))
+        res = linux.read_file("/sys/class/net/{}/statistics/rx_errors".format(intf))
         all_in_errors += int(res)
 
-        res = bash_o("cat /sys/class/net/{}/statistics/tx_bytes".format(intf))
+        res = linux.read_file("/sys/class/net/{}/statistics/tx_bytes".format(intf))
         all_out_bytes += int(res)
 
-        res = bash_o("cat /sys/class/net/{}/statistics/tx_packets".format(intf))
+        res = linux.read_file("/sys/class/net/{}/statistics/tx_packets".format(intf))
         all_out_packets += int(res)
 
-        res = bash_o("cat /sys/class/net/{}/statistics/tx_errors".format(intf))
+        res = linux.read_file("/sys/class/net/{}/statistics/tx_errors".format(intf))
         all_out_errors += int(res)
 
     metrics = {
@@ -193,7 +190,7 @@ def collect_raid_state():
         return metrics.values()
 
     raid_info = bash_o("/opt/MegaRAID/MegaCli/MegaCli64 -LDInfo -LALL -aAll | grep -E 'Target Id|State'").strip().splitlines()
-    target_id = state = None
+    target_id = state = "unknown"
     for info in raid_info:
         if "Target Id" in info:
             target_id = info.strip().strip(")").split(" ")[-1]
@@ -203,7 +200,7 @@ def collect_raid_state():
 
     disk_info = bash_o(
         "/opt/MegaRAID/MegaCli/MegaCli64 -PDList -aAll | grep -E 'Slot Number|DiskGroup|Firmware state|Drive Temperature'").strip().splitlines()
-    slot_number = state = disk_group = None
+    slot_number = state = disk_group = "unknown"
     for info in disk_info:
         if "Slot Number" in info:
             slot_number = info.strip().split(" ")[-1]
@@ -215,12 +212,11 @@ def collect_raid_state():
             temp = info.split(":")[1].split("C")[0]
             metrics['physical_disk_temperature'].add_metric([slot_number, disk_group], int(temp))
         else:
-            disk_group = "JBOD" if disk_group is None and info.count("JBOD") > 0 else disk_group
+            disk_group = "JBOD" if disk_group == "unknown" and info.count("JBOD") > 0 else disk_group
             disk_group = "unknown" if disk_group is None else disk_group
 
             state = info.strip().split(":")[-1]
             metrics['physical_disk_state'].add_metric([slot_number, disk_group], convert_disk_state_to_int(state))
-            disk_group = None
 
     return metrics.values()
 
@@ -249,7 +245,11 @@ def collect_equipment_state():
     if len(nics) != 0:
         for nic in nics:
             nic = nic.strip()
-            status = bash_r("grep 1 /sys/class/net/%s/carrier" % nic)
+            try:
+                # NOTE(weiw): sriov nic contains carrier file but can not read
+                status = linux.read_file("/sys/class/net/%s/carrier" % nic) == 1
+            except Exception as e:
+                status = True
             speed = str(get_nic_supported_max_speed(nic))
             metrics['physical_network_interface'].add_metric([nic, speed], status)
 
@@ -441,12 +441,39 @@ LoadPlugin virt
     def install_colletor(self):
         class Collector(object):
 
+            @classmethod
+            def check(cls, v):
+                try:
+                    if v is None:
+                        return False
+                    if isinstance(v, GaugeMetricFamily):
+                        return Collector.check(v.samples)
+                    if isinstance(v, list) or isinstance(v, tuple):
+                        for vl in v:
+                            if Collector.check(vl) is False:
+                                return False
+                    if isinstance(v, dict):
+                        for vv in v.itervalues():
+                            if Collector.check(vv) is False:
+                                return False
+                except Exception as e:
+                    logger.warn("got exception in check value %s: %s" % (v, e))
+                    return True
+                return True
+
             def collect(self):
+                global latest_collect_result
                 ret = []
 
                 def get_result_run(f, fname):
-                    # type: (typing.Callable) -> None
+                    # type: (typing.Callable, str) -> None
+                    global collectResultLock
+                    global latest_collect_result
+
                     r = f()
+                    if not Collector.check(r):
+                        logger.warn("result from collector %s contains illegal character None" % fname)
+                        return
                     with collectResultLock:
                         latest_collect_result[fname] = r
 
