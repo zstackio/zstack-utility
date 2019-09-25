@@ -1884,7 +1884,7 @@ enabled=0" >  /etc/yum.repos.d/zstack-experimental-mn.repo
                                                   "autoconf,chrony,python-backports-ssl_match_hostname,iptables-services"
                 if require_python_env == "true":
                     command = (
-                              "yum clean --enablerepo=%s metadata &&  pkg_list=`rpm -q libselinux-python python-devel "
+                              "export YUM0=`awk '{print $3}' /etc/zstack-release`; yum clean --enablerepo=%s metadata &&  pkg_list=`rpm -q libselinux-python python-devel "
                               "python-setuptools python-pip gcc autoconf | grep \"not installed\" | awk"
                               " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
                               "-y $pkg; done;") % (zstack_repo, zstack_repo)
@@ -1892,7 +1892,7 @@ enabled=0" >  /etc/yum.repos.d/zstack-experimental-mn.repo
                     if distro_version >= 7:
                         # to avoid install some pkgs on virtual router which release is Centos 6.x
                         command = (
-                                  "yum clean --enablerepo=%s metadata &&  pkg_list=`rpm -q python-backports-ssl_match_hostname chrony iptables-services| "
+                                  "export YUM0=`awk '{print $3}' /etc/zstack-release`; yum clean --enablerepo=%s metadata &&  pkg_list=`rpm -q python-backports-ssl_match_hostname chrony iptables-services| "
                                   "grep \"not installed\" | awk"
                                   " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
                                   "-y $pkg; done;") % (zstack_repo, zstack_repo)
@@ -1902,7 +1902,7 @@ enabled=0" >  /etc/yum.repos.d/zstack-experimental-mn.repo
                 else:
                     # imagestore do not need python environment and only on centos 7
                     command = (
-                                  "yum clean --enablerepo=%s metadata &&  pkg_list=`rpm -q libselinux-python "
+                                  "export YUM0=`awk '{print $3}' /etc/zstack-release`; yum clean --enablerepo=%s metadata &&  pkg_list=`rpm -q libselinux-python "
                                   "chrony iptables-services | grep \"not installed\" | awk '{ print $2 }'` "
                                   "&& for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (zstack_repo, zstack_repo)
                     run_remote_command(command, host_post_info)
