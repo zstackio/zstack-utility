@@ -1269,15 +1269,15 @@ def enable_process_coredump(pid):
     memsize = 4 * 1024 * 1024
     shell.run('prlimit --core=%d --pid %s' % (memsize, pid))
 
-def set_vm_priority(pid, vmUuid, priorityConfig):
-    cmd = shell.ShellCmd("virsh schedinfo %s --set cpu_shares=%s --live" % (vmUuid, priorityConfig.cpuShares))
+def set_vm_priority(pid, priorityConfig):
+    cmd = shell.ShellCmd("virsh schedinfo %s --set cpu_shares=%s --live" % (priorityConfig.vmUuid, priorityConfig.cpuShares))
     cmd(is_exception=False)
     if cmd.return_code != 0:
-        logger.warn("set vm %s cpu_shares failed" % vmUuid)
+        logger.warn("set vm %s cpu_shares failed" % priorityConfig.vmUuid)
 
     oom_score_adj_path = "/proc/%s/oom_score_adj" % pid
     if write_file(oom_score_adj_path, priorityConfig.oomScoreAdj) is None:
-        logger.warn("set vm %s oomScoreAdj failed" % vmUuid)
+        logger.warn("set vm %s oomScoreAdj failed" % priorityConfig.vmUuid)
 
 def find_vm_pid_by_uuid(uuid):
     return shell.call("ps aux | grep qemu[-]kvm | awk '/%s/{print $2}'" % uuid).strip()
