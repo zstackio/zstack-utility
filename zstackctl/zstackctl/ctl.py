@@ -8615,9 +8615,11 @@ class ResetAdminPasswordCmd(Command):
     def run(self, args):
         info("start reset password")
 
-        new_password = ['password', args.password][args.password is not None]
-        sha512_pwd = hashlib.sha512(new_password).hexdigest()
+        def get_sha512_pwd(password):
+            new_password = [password, args.password][args.password is not None]
+            return hashlib.sha512(new_password).hexdigest()
 
+        sha512_pwd = get_sha512_pwd('password')
         db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
         query = MySqlCommandLineQuery()
         query.host = db_hostname
@@ -8627,6 +8629,23 @@ class ResetAdminPasswordCmd(Command):
         query.table = 'zstack'
         query.sql = "update AccountVO set password='%s' where type='%s'" % (sha512_pwd, self.SYSTEM_ADMIN_TYPE)
         query.query()
+
+        def reset_privilege_admin(origin_password, initial_uuid):
+            sha512_pwd = get_sha512_pwd(origin_password)
+            query = MySqlCommandLineQuery()
+            query.host = db_hostname
+            query.port = db_port
+            query.user = db_user
+            query.password = db_password
+            query.table = 'zstack'
+            query.sql = "update IAM2VirtualIDVO set password='%s' where uuid='%s'" % (sha512_pwd, initial_uuid)
+            query.query()
+
+        identy_types = ctl.read_property('IDENTITY_INIT_TYPE')
+        if identy_types and 'PRIVILEGE_ADMIN' in identy_types:
+            reset_privilege_admin('Sysadmin#', '274fdae86f4d4dda8d50c02ca7521fac')
+            reset_privilege_admin('Secadmin#', '9b44d7b3ce36418685b53c236b901160')
+            reset_privilege_admin('Secauditor#', 'e2e2cf3ae26c44379ab0bb4c7bc1e77e')
 
         info("reset password succeed")
 
