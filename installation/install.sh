@@ -3022,7 +3022,10 @@ check_myarg() {
 }
 
 OPTIND=1
-TEMP=`getopt -o f:H:I:n:p:P:r:R:t:y:acC:L:T:dDEFhiklmMNoOqsuz --long mini,SY -- "$@" 2>/dev/null`
+TEMP=`getopt -o f:H:I:n:p:P:r:R:t:y:acC:L:T:dDEFhiklmMNoOqsuz --long mini,SY -- "$@"`
+if [ $? != 0 ]; then
+    usage
+fi
 eval set -- "$TEMP"
 while :
 do
