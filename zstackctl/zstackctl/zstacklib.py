@@ -1431,7 +1431,7 @@ enabled=0" >  /etc/yum.repos.d/zstack-experimental-mn.repo
 
                 # install libselinux-python and other command system libs from user defined repos
                 command = (
-                          "yum clean --enablerepo=%s metadata &&  pkg_list=`rpm -q libselinux-python python-devel "
+                          "export YUM0=`awk '{print $3}' /etc/zstack-release`; yum clean --enablerepo=%s metadata &&  pkg_list=`rpm -q libselinux-python python-devel "
                           "python-setuptools python-pip gcc autoconf | grep \"not installed\" | awk"
                           " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
                           "-y $pkg; done;") % (zstack_repo, zstack_repo)
@@ -1439,7 +1439,7 @@ enabled=0" >  /etc/yum.repos.d/zstack-experimental-mn.repo
                 if distro_version >= 7:
                     # to avoid install some pkgs on virtual router which release is Centos 6.x
                     command = (
-                                  "yum clean --enablerepo=%s metadata &&  pkg_list=`rpm -q python-backports-ssl_match_hostname chrony | "
+                                  "export YUM0=`awk '{print $3}' /etc/zstack-release`; yum clean --enablerepo=%s metadata &&  pkg_list=`rpm -q python-backports-ssl_match_hostname chrony | "
                                   "grep \"not installed\" | awk"
                                   " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
                                   "-y $pkg; done;") % (zstack_repo, zstack_repo)
