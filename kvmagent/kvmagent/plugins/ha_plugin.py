@@ -263,9 +263,9 @@ class HaPlugin(kvmagent.KvmAgent):
                 try:
                     time.sleep(cmd.interval)
                     global last_multipath_run
-                    if cmd.fail_if_no_path and time.time() - last_multipath_run > 4:
+                    if cmd.fail_if_no_path and time.time() - last_multipath_run > 3600:
                         last_multipath_run = time.time()
-                        linux.set_fail_if_no_path()
+                        thread.ThreadFacade.run_in_thread(linux.set_fail_if_no_path)
 
                     health = lvm.check_vg_status(cmd.vgUuid, cmd.storageCheckerTimeout, check_pv=False)
                     logger.debug("sharedblock group primary storage %s fencer run result: %s" % (cmd.vgUuid, health))
