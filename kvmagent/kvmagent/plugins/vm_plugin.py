@@ -5325,7 +5325,7 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.error = "%s, %s" % (o, e)
             return jsonobject.dumps(rsp)
 
-        r, _, _ = bash.bash_roe("virsh dumpxml %s | grep 'dev=\'vdz\' bus=\'virtio\''" % vm_uuid)
+        r, _, _ = bash.bash_roe("virsh dumpxml %s | grep \"dev='vdz' bus='virtio'\"" % vm_uuid)
         if cmd.needTempDisk and r != 0:
             temp_disk = "/var/lib/zstack/guesttools/temp_disk.qcow2"
             if not os.path.exists(temp_disk):
