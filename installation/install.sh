@@ -2343,8 +2343,10 @@ http {
 EOF
 iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 8090 -j ACCEPT" > /dev/null 2>&1 || iptables -I INPUT -p tcp -m tcp --dport 8090 -j ACCEPT >/dev/null 2>&1
 service iptables save >/dev/null 2>&1
-systemctl enable nginx > /dev/null 2>&1
-systemctl start nginx > /dev/null 2>&1
+
+# start nginx when it's necessary
+systemctl stop nginx > /dev/null 2>&1
+systemctl disable nginx > /dev/null 2>&1
 }
 
 cs_setup_http(){
