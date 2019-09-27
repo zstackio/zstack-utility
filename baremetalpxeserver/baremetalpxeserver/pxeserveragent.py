@@ -175,6 +175,7 @@ class PxeServerAgent(object):
         bash_r("kill -9 `ps -ef | grep -v grep | grep 'vsftpd %s' | awk '{ print $2 }'`" % self.VSFTPD_CONF_PATH)
         bash_r("kill -9 `ps -ef | grep -v grep | grep websockify | grep baremetal | awk '{ print $2 }'`")
         bash_r("kill -9 `ps -ef | grep -v grep | grep 'dnsmasq -C %s' | awk '{ print $2 }'`" % self.DNSMASQ_CONF_PATH)
+        bash_r("systemctl stop nginx")
 
     @staticmethod
     def _get_mac_address(ifname):
