@@ -23,6 +23,11 @@ class RetryException(Exception):
     pass
 
 
+class AgentCmd(object):
+    def __init__(self):
+        pass
+
+
 class AgentRsp(object):
     def __init__(self):
         self.success = True
@@ -139,12 +144,34 @@ class FcSanScanRsp(AgentRsp):
         self.hbaWwnns = []
 
 
+class IscsiLoginCmd(AgentCmd):
+    @log.sensitive_fields("iscsiChapUserPassword")
+    def __init__(self):
+        super(IscsiLoginCmd, self).__init__()
+        self.iscsiServerIp = None
+        self.iscsiServerPort = None
+        self.iscsiChapUserName = None
+        self.iscsiChapUserPassword = None
+        self.iscsiTargets = []
+
+
 class IscsiLoginRsp(AgentRsp):
     iscsiTargetStructList = None  # type: list[IscsiTargetStruct]
 
     def __init__(self):
         super(IscsiLoginRsp, self).__init__()
         self.iscsiTargetStructList = []
+
+
+class IscsiLogoutCmd(AgentCmd):
+    @log.sensitive_fields("iscsiChapUserPassword")
+    def __init__(self):
+        super(IscsiLogoutCmd, self).__init__()
+        self.iscsiServerIp = None
+        self.iscsiServerPort = None
+        self.iscsiChapUserName = None
+        self.iscsiChapUserPassword = None
+        self.iscsiTargets = []
 
 
 class StorageDevicePlugin(kvmagent.KvmAgent):
@@ -162,8 +189,8 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
     def start(self):
         http_server = kvmagent.get_http_server()
-        http_server.register_async_uri(self.ISCSI_LOGIN_PATH, self.iscsi_login)
-        http_server.register_async_uri(self.ISCSI_LOGOUT_PATH, self.iscsi_logout)
+        http_server.register_async_uri(self.ISCSI_LOGIN_PATH, self.iscsi_login, cmd=IscsiLoginCmd())
+        http_server.register_async_uri(self.ISCSI_LOGOUT_PATH, self.iscsi_logout, cmd=IscsiLogoutCmd())
         http_server.register_async_uri(self.FC_SCAN_PATH, self.scan_sg_devices)
         http_server.register_async_uri(self.MULTIPATH_ENABLE_PATH, self.enable_multipath)
         http_server.register_async_uri(self.ATTACH_SCSI_LUN_PATH, self.attach_scsi_lun)

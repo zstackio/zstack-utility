@@ -33,12 +33,31 @@ DEFAULT_CHUNK_SIZE = "4194304"
 DRBD_START_PORT = 20000
 
 
+class AgentCmd(object):
+    def __init__(self):
+        pass
+
+
 class AgentRsp(object):
     def __init__(self):
         self.success = True
         self.error = None
         self.totalCapacity = None
         self.availableCapacity = None
+
+
+class ConnectCmd(AgentCmd):
+    @log.sensitive_fields("peerSshPassword", "peerSshUsername")
+    def __init__(self):
+        super(ConnectCmd, self).__init__()
+        self.diskIdentifiers = []
+        self.forceWipe = False
+        self.storageNetworkCidr = None
+        self.fencerAddress = None
+        self.magementAddress = None
+        self.peerManagementAddress = None
+        self.peerSshPassword = None
+        self.peerSshUsername = None
 
 
 class ConnectRsp(AgentRsp):
@@ -235,7 +254,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
 
     def start(self):
         http_server = kvmagent.get_http_server()
-        http_server.register_async_uri(self.CONNECT_PATH, self.connect)
+        http_server.register_async_uri(self.CONNECT_PATH, self.connect, cmd=ConnectCmd())
         http_server.register_async_uri(self.DISCONNECT_PATH, self.disconnect)
         http_server.register_async_uri(self.CREATE_VOLUME_FROM_CACHE_PATH, self.create_root_volume)
         http_server.register_async_uri(self.DELETE_BITS_PATH, self.delete_bits)

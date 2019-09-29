@@ -124,6 +124,7 @@ class SshfsRemoteStorage(RemoteStorage):
 
 
 class StartVmCmd(kvmagent.AgentCommand):
+    @log.sensitive_fields("consolePassword")
     def __init__(self):
         super(StartVmCmd, self).__init__()
         self.vmInstanceUuid = None
@@ -146,6 +147,7 @@ class StartVmCmd(kvmagent.AgentCommand):
         self.isApplianceVm = False
         self.systemSerialNumber = None
         self.bootMode = None
+        self.consolePassword = None
 
 class StartVmResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -290,6 +292,28 @@ class TakeSnapshotResponse(kvmagent.AgentResponse):
         self.snapshotInstallPath = None
         self.size = None
 
+
+class TakeVolumeBackupCommand(kvmagent.AgentCommand):
+    @log.sensitive_fields("password")
+    def __init__(self):
+        super(TakeVolumeBackupCommand, self).__init__()
+        self.hostname = None
+        self.username = None
+        self.password = None
+        self.sshPort = 22
+        self.bsPath = None
+        self.uploadDir = None
+        self.vmUuid = None
+        self.volume = None
+        self.bitmap = None
+        self.lastBackup = None
+        self.networkWriteBandwidth = 0L
+        self.volumeWriteBandwidth = 0L
+        self.maxIncremental = 0
+        self.mode = None
+        self.storageInfo = None
+
+
 class TakeVolumeBackupResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(TakeVolumeBackupResponse, self).__init__()
@@ -303,6 +327,27 @@ class VolumeBackupInfo(object):
         self.bitmap = bitmap
         self.backupFile = backupFile
         self.parentInstallPath = parentInstallPath
+
+
+class TakeVolumesBackupsCommand(kvmagent.AgentCommand):
+    @log.sensitive_fields("password")
+    def __init__(self):
+        super(TakeVolumesBackupsCommand, self).__init__()
+        self.hostname = None
+        self.username = None
+        self.password = None
+        self.sshPort = 22
+        self.bsPath = None
+        self.uploadDir = None
+        self.vmUuid = None
+        self.backupInfos = []
+        self.deviceIds = []  # type:list[int]
+        self.networkWriteBandwidth = 0L
+        self.volumeWriteBandwidth = 0L
+        self.maxIncremental = 0
+        self.mode = None
+        self.volumes = []
+        self.storageInfo = None
 
 
 class TakeVolumesBackupsResponse(kvmagent.AgentResponse):
@@ -348,6 +393,17 @@ class LogoutIscsiTargetRsp(kvmagent.AgentResponse):
         super(LogoutIscsiTargetRsp, self).__init__()
 
 
+class LoginIscsiTargetCmd(kvmagent.AgentCommand):
+    @log.sensitive_fields("chapPassword")
+    def __init__(self):
+        super(LoginIscsiTargetCmd, self).__init__()
+        self.hostname = None
+        self.port = None  # type:int
+        self.target = None
+        self.chapUsername = None
+        self.chapPassword = None
+
+
 class LoginIscsiTargetRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(LoginIscsiTargetRsp, self).__init__()
@@ -367,6 +423,14 @@ class CheckVmStateRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(CheckVmStateRsp, self).__init__()
         self.states = {}
+
+
+class ChangeVmPasswordCmd(kvmagent.AgentCommand):
+    @log.sensitive_fields("accountPerference.accountPassword")
+    def __init__(self):
+        super(ChangeVmPasswordCmd, self).__init__()
+        self.accountPerference = AccountPerference()  # type:AccountPerference
+        self.timeout = 0L
 
 
 class ChangeVmPasswordRsp(kvmagent.AgentResponse):
@@ -5287,7 +5351,7 @@ class VmPlugin(kvmagent.KvmAgent):
     def start(self):
         http_server = kvmagent.get_http_server()
 
-        http_server.register_async_uri(self.KVM_START_VM_PATH, self.start_vm)
+        http_server.register_async_uri(self.KVM_START_VM_PATH, self.start_vm, cmd=StartVmCmd())
         http_server.register_async_uri(self.KVM_STOP_VM_PATH, self.stop_vm)
         http_server.register_async_uri(self.KVM_PAUSE_VM_PATH, self.pause_vm)
         http_server.register_async_uri(self.KVM_RESUME_VM_PATH, self.resume_vm)
@@ -5304,20 +5368,20 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_DETACH_ISO_PATH, self.detach_iso)
         http_server.register_async_uri(self.KVM_MIGRATE_VM_PATH, self.migrate_vm)
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_SNAPSHOT_PATH, self.take_volume_snapshot)
-        http_server.register_async_uri(self.KVM_TAKE_VOLUME_BACKUP_PATH, self.take_volume_backup)
+        http_server.register_async_uri(self.KVM_TAKE_VOLUME_BACKUP_PATH, self.take_volume_backup, cmd=TakeVolumeBackupCommand())
         http_server.register_async_uri(self.KVM_TAKE_VOLUMES_SNAPSHOT_PATH, self.take_volumes_snapshots)
-        http_server.register_async_uri(self.KVM_TAKE_VOLUMES_BACKUP_PATH, self.take_volumes_backups)
+        http_server.register_async_uri(self.KVM_TAKE_VOLUMES_BACKUP_PATH, self.take_volumes_backups, cmd=TakeVolumesBackupsCommand())
         http_server.register_async_uri(self.KVM_CANCEL_VOLUME_BACKUP_JOBS_PATH, self.cancel_backup_jobs)
         http_server.register_async_uri(self.KVM_BLOCK_STREAM_VOLUME_PATH, self.block_stream)
         http_server.register_async_uri(self.KVM_MERGE_SNAPSHOT_PATH, self.merge_snapshot_to_volume)
-        http_server.register_async_uri(self.KVM_LOGOUT_ISCSI_TARGET_PATH, self.logout_iscsi_target)
+        http_server.register_async_uri(self.KVM_LOGOUT_ISCSI_TARGET_PATH, self.logout_iscsi_target, cmd=LoginIscsiTargetCmd)
         http_server.register_async_uri(self.KVM_LOGIN_ISCSI_TARGET_PATH, self.login_iscsi_target)
         http_server.register_async_uri(self.KVM_ATTACH_NIC_PATH, self.attach_nic)
         http_server.register_async_uri(self.KVM_DETACH_NIC_PATH, self.detach_nic)
         http_server.register_async_uri(self.KVM_UPDATE_NIC_PATH, self.update_nic)
         http_server.register_async_uri(self.KVM_CREATE_SECRET, self.create_ceph_secret_key)
         http_server.register_async_uri(self.KVM_VM_CHECK_STATE, self.check_vm_state)
-        http_server.register_async_uri(self.KVM_VM_CHANGE_PASSWORD_PATH, self.change_vm_password)
+        http_server.register_async_uri(self.KVM_VM_CHANGE_PASSWORD_PATH, self.change_vm_password, cmd=ChangeVmPasswordCmd())
         http_server.register_async_uri(self.KVM_SET_VOLUME_BANDWIDTH, self.set_volume_bandwidth)
         http_server.register_async_uri(self.KVM_DELETE_VOLUME_BANDWIDTH, self.delete_volume_bandwidth)
         http_server.register_async_uri(self.KVM_GET_VOLUME_BANDWIDTH, self.get_volume_bandwidth)
