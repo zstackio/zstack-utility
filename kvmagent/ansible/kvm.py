@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # encoding=utf-8
 import argparse
+import os.path
 from zstacklib import *
 from distutils.version import LooseVersion
 
@@ -502,6 +503,43 @@ copy_arg = CopyArg()
 copy_arg.src = mxgpu_driver_local_tar
 copy_arg.dest = mxgpu_driver_dst_tar
 copy(copy_arg, host_post_info)
+
+
+def copy_spice_certificates_to_host():
+    # name: copy spice certificates
+    if kvm_root is not None:
+        run_remote_command("rm -rf %s/%s && mkdir -p %s/%s " % (kvm_root, "spice-certs", kvm_root, "spice-certs"),
+                           host_post_info)
+
+    local_cert_dir = os.path.join(file_root, "spice-certs")
+    copy_arg = CopyArg()
+    copy_arg.src = "%s/%s" % (local_cert_dir, "ca-cert.pem")
+    copy_arg.dest = "%s/%s/%s" % (kvm_root, "spice-certs", "ca-cert.pem")
+    copy_arg.args = "mode=644"
+    copy(copy_arg, host_post_info)
+
+    copy_arg = CopyArg()
+    copy_arg.src = "%s/%s" % (local_cert_dir, "ca-key.pem")
+    copy_arg.dest = "%s/%s/%s" % (kvm_root, "spice-certs", "ca-key.pem")
+    copy_arg.args = "mode=400"
+    copy(copy_arg, host_post_info)
+
+    copy_arg = CopyArg()
+    copy_arg.src = "%s/%s" % (local_cert_dir, "server-cert.pem")
+    copy_arg.dest = "%s/%s/%s" % (kvm_root, "spice-certs", "server-cert.pem")
+    copy_arg.args = "mode=644"
+    copy(copy_arg, host_post_info)
+
+    copy_arg = CopyArg()
+    copy_arg.src = "%s/%s" % (local_cert_dir, "server-key.pem")
+    copy_arg.dest = "%s/%s/%s" % (kvm_root, "spice-certs", "server-key.pem")
+    copy_arg.args = "mode=400"
+    copy(copy_arg, host_post_info)
+
+
+spice_certificates_path = os.path.join(file_root, "spice-certs")
+if os.path.isdir(spice_certificates_path):
+    copy_spice_certificates_to_host()
 
 # name: install virtualenv
 virtual_env_status = check_and_install_virtual_env(virtualenv_version, trusted_host, pip_url, host_post_info)
