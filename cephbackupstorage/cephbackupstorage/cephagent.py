@@ -815,12 +815,14 @@ class CephAgent(object):
         elif url.scheme == 'sftp':
             port = (url.port, 22)[url.port is None]
             _, PFILE = tempfile.mkstemp()
+            ssh_pswd_file = None
             pipe_path = PFILE + "fifo"
             scp_to_pipe_cmd = "scp -P %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s:%s %s" % (port, url.username, url.hostname, url.path, pipe_path)
             sftp_command = "sftp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=no -P %s -b /dev/stdin %s@%s" % (port, url.username, url.hostname) + " <<EOF\n%s\nEOF\n"
             if url.password is not None:
-                scp_to_pipe_cmd = 'sshpass -p %s %s' % (linux.shellquote(url.password), scp_to_pipe_cmd)
-                sftp_command = 'sshpass -p %s %s' % (linux.shellquote(url.password), sftp_command)
+                ssh_pswd_file = linux.write_to_temp_file(url.password)
+                scp_to_pipe_cmd = 'sshpass -f %s %s' % (ssh_pswd_file, scp_to_pipe_cmd)
+                sftp_command = 'sshpass -f %s %s' % (ssh_pswd_file, sftp_command)
 
             actual_size = shell.call(sftp_command % ("ls -l " + url.path)).splitlines()[1].strip().split()[4]
             os.mkfifo(pipe_path)
@@ -844,11 +846,11 @@ class CephAgent(object):
             _, _, err = shell.bash_progress_1('set -o pipefail; %s & %s | %s' %
                                         (scp_to_pipe_cmd, get_content_from_pipe_cmd, import_from_pipe_cmd), _get_progress)
 
-            if os.path.exists(PFILE):
-                os.remove(PFILE)
+            if ssh_pswd_file:
+                linux.rm_file_force(ssh_pswd_file)
 
-            if os.path.exists(pipe_path):
-                os.remove(pipe_path)
+            linux.rm_file_force(PFILE)
+            linux.rm_file_force(pipe_path)
 
             if err:
                 raise err
@@ -988,12 +990,14 @@ class CephAgent(object):
         src_install_path = self._normalize_install_path(src_install_path)
         dst_install_path = self._normalize_install_path(dst_install_path)
 
-        rst = shell.run("rbd export %s - | tee >(md5sum >/tmp/%s_src_md5) | sshpass -p %s ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s -p %s 'tee >(md5sum >/tmp/%s_dst_md5) | rbd import - %s'" % (src_install_path, image_uuid, linux.shellquote(dst_mon_passwd), dst_mon_user, dst_mon_addr, dst_mon_port, image_uuid, dst_install_path))
+        ssh_cmd, tmp_file = linux.build_sshpass_cmd(dst_mon_addr, dst_mon_passwd, 'tee >(md5sum >/tmp/%s_dst_md5) | rbd import - %s' % (image_uuid, dst_install_path), dst_mon_user, dst_mon_port)
+        rst = shell.run("rbd export %s - | tee >(md5sum >/tmp/%s_src_md5) | %s" % (src_install_path, image_uuid, ssh_cmd))
+        linux.rm_file_force(tmp_file)
         if rst != 0:
             return rst
 
         src_md5 = self._read_file_content('/tmp/%s_src_md5' % image_uuid)
-        dst_md5 = shell.call("sshpass -p %s ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s -p %s 'cat /tmp/%s_dst_md5'" % (linux.shellquote(dst_mon_passwd), dst_mon_user, dst_mon_addr, dst_mon_port, image_uuid))
+        dst_md5 = linux.sshpass_call(dst_mon_addr, dst_mon_passwd, 'cat /tmp/%s_dst_md5' % image_uuid, dst_mon_user, dst_mon_port)
         if src_md5 != dst_md5:
             return -1
         else:
