@@ -297,16 +297,18 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
 
         if cmd.sshPassword and not cmd.sshPrivKey:
             target, port = getSshTargetAndPort(cmd.libvirtURI)
+            ssh_pswd_file = linux.write_to_temp_file(cmd.sshPassword)
             if not os.path.exists(V2V_PRIV_KEY) or not os.path.exists(V2V_PUB_KEY):
                 shell.check_run("yes | ssh-keygen -t rsa -N '' -f {}".format(V2V_PRIV_KEY))
-            cmdstr = "HOME={4} timeout 30 sshpass -p {0} ssh-copy-id -i {5} -p {1} {2} {3}".format(
-                    linux.shellquote(cmd.sshPassword),
+            cmdstr = "HOME={4} timeout 30 sshpass -f {0} ssh-copy-id -i {5} -p {1} {2} {3}".format(
+                    ssh_pswd_file,
                     port,
                     DEF_SSH_OPTS,
                     target,
                     os.path.expanduser("~"),
                     V2V_PUB_KEY)
             shell.check_run(cmdstr)
+            linux.rm_file_force(ssh_pswd_file)
 
         rsp.qemuVersion, rsp.libvirtVersion, rsp.vms = listVirtualMachines(cmd.libvirtURI,
                 cmd.saslUser,

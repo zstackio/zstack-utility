@@ -404,7 +404,9 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         def configure_ssh_key():
             bash.bash_roe("/bin/rm %s*" % mini_fencer.MINI_FENCER_KEY)
             bash.bash_roe("ssh-keygen -P \"\" -f %s" % mini_fencer.MINI_FENCER_KEY)
-            r, o, e = bash.bash_roe("sshpass -p '%s' ssh-copy-id -i %s %s@%s" % (peer_password, mini_fencer.MINI_FENCER_KEY, peer_username, peer_addr))
+            ssh_pswd_file = linux.write_to_temp_file(peer_password)
+            r, o, e = bash.bash_roe("sshpass -f %s ssh-copy-id -i %s %s@%s" % (ssh_pswd_file, mini_fencer.MINI_FENCER_KEY, peer_username, peer_addr))
+            linux.write_to_temp_file(ssh_pswd_file)
             if r == 0:
                 return
 
