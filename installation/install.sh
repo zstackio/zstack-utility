@@ -2003,7 +2003,7 @@ setup_install_param(){
 
     if [ x"$SANYUAN_INSTALL" = x"y" ];then
         zstack-ctl configure identity.init.type="PRIVILEGE_ADMIN"
-        zstack-ctl configure iam2.virtualID.need.change.password=true
+        zstack-ctl configure sanyuan.installed=true
     fi
 }
 
