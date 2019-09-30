@@ -404,7 +404,7 @@ def install_drbd():
     mod_exists = bash.bash_r("modinfo drbd") == 0
     utils_installed = bash.bash_r("rpm -ql drbd-utils || rpm -ql drbd84-utils") == 0
     basearch = platform.machine()
-    releasever = bash.bash_o("cat /etc/zstack-release |awk '{print $3}'")
+    releasever = bash.bash_o("awk '{print $3}' /etc/zstack-release")
     utils_exists, o = bash.bash_ro("ls /opt/zstack-dvd/{}/{}/Packages/drbd-utils*".format(basearch, releasever))
 
     if mod_installed and utils_exists:

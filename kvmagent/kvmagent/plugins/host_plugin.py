@@ -878,7 +878,7 @@ if __name__ == "__main__":
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         exclude = "--exclude=" + cmd.excludePackages if cmd.excludePackages else ""
         updates = cmd.updatePackages if cmd.updatePackages else ""
-        yum0 = cmd.releaseVersion if cmd.releaseVersion else shell.call("cat /etc/zstack-release |awk '{print $3}'").strip()
+        yum0 = cmd.releaseVersion if cmd.releaseVersion else shell.call("awk '{print $3}' /etc/zstack-release").strip()
         yum_cmd = "export YUM0={};yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{} {} update {} -y"
         yum_cmd = yum_cmd.format(yum0, ',zstack-experimental-mn' if cmd.enableExpRepo else '', exclude, updates)
         rsp = UpdateHostOSRsp()
@@ -902,7 +902,7 @@ if __name__ == "__main__":
     @in_bash
     def update_dependency(self, req):
         rsp = UpdateDependencyRsp()
-        yum0 = shell.call("cat /etc/zstack-release |awk '{print $3}'").strip()
+        yum0 = shell.call("awk '{print $3}' /etc/zstack-release").strip()
         yum_cmd = "export YUM0={};yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install `cat /var/lib/zstack/dependencies` -y".format(yum0)
         if shell.run("which yum") != 0:
             rsp.success = False

@@ -2824,15 +2824,12 @@ check_hybrid_arch(){
 check_sync_local_repos() {
   echo_subtitle "Check local repo version"
   [ -f ".repo_version" -a -f "/opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/.repo_version" ] || echo_hints_to_upgrade_iso
-  arch_list="x86_64 aarch64"
-  for arch in $arch_list;do
-    if [ -d /opt/zstack-dvd/$arch ];then
-      for release in `ls /opt/zstack-dvd/$arch`;do
-        cmp -s .repo_version /opt/zstack-dvd/$arch/$release/.repo_version
-        [ $? -ne 0 ] && check_hybrid_arch
-      done
-    fi
-  done
+  if [ -d /opt/zstack-dvd/$BASEARCH ];then
+    for release in `ls /opt/zstack-dvd/$BASEARCH`;do
+      cmp -s .repo_version /opt/zstack-dvd/$BASEARCH/$release/.repo_version
+      [ $? -ne 0 ] && check_hybrid_arch
+    done
+  fi
   if [ $? -eq 0 ]; then
       return 0
   elif [ x"$SKIP_SYNC" = x'y' ]; then

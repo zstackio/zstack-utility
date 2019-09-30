@@ -685,7 +685,7 @@ class Ctl(object):
     NEED_ENCRYPT_PROPERTIES = ['DB.password']
     # get basharch and zstack-release
     BASEARCH = platform.machine()
-    ZS_RELEASE = os.popen("cat /etc/zstack-release |awk '{print $3}'").read().strip()
+    ZS_RELEASE = os.popen("awk '{print $3}' /etc/zstack-release").read().strip()
 
     def __init__(self):
         self.commands = {}
