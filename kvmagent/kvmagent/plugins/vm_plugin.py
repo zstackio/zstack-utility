@@ -477,6 +477,16 @@ class GetVmGuestToolsInfoRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(GetVmGuestToolsInfoRsp, self).__init__()
 
+class GetVmFirstBootDeviceCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(GetVmFirstBootDeviceCmd, self).__init__()
+        self.uuid = None
+
+class GetVmFirstBootDeviceRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(GetVmFirstBootDeviceRsp, self).__init__()
+        self.firstBootDevice = None
+
 class VncPortIptableRule(object):
     def __init__(self):
         self.host_ip = None
@@ -597,6 +607,14 @@ def find_domain_cdrom_address(domain_xml, target_dev):
             continue
         return d.get_child_node('address')
     return None
+
+def find_domain_first_boot_device(domain_xml):
+    domain_xmlobject = xmlobject.loads(domain_xml)
+    nodes = domain_xmlobject.os.get_children_nodes()
+    if 'boot' in nodes and nodes['boot'][0].dev_ == 'cdrom':
+        return "CdRom"
+    else:
+        return "HardDisk"
 
 def compare_version(version1, version2):
     def normalize(v):
@@ -3841,6 +3859,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_RESIZE_VOLUME_PATH = "/volume/resize"
     ATTACH_GUEST_TOOLS_ISO_TO_VM_PATH = "/vm/guesttools/attachiso"
     GET_VM_GUEST_TOOLS_INFO_PATH = "/vm/guesttools/getinfo"
+    KVM_GET_VM_FIRST_BOOT_DEVICE_PATH = "/vm/getfirstbootdevice"
 
     VM_OP_START = "start"
     VM_OP_STOP = "stop"
@@ -5367,6 +5386,18 @@ class VmPlugin(kvmagent.KvmAgent):
                 setattr(rsp, k, info[k])
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    @in_bash
+    def get_vm_first_boot_device(self, req):
+        rsp = GetVmFirstBootDeviceRsp()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        vm_uuid = cmd.uuid
+        vm = get_vm_by_uuid_no_retry(vm_uuid, False)
+        boot_dev = find_domain_first_boot_device(vm.domain.XMLDesc(0))
+        rsp.firstBootDevice = boot_dev
+        return jsonobject.dumps(rsp)
+
     def start(self):
         http_server = kvmagent.get_http_server()
 
@@ -5419,6 +5450,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_RESIZE_VOLUME_PATH, self.kvm_resize_volume)
         http_server.register_async_uri(self.ATTACH_GUEST_TOOLS_ISO_TO_VM_PATH, self.attach_guest_tools_iso_to_vm)
         http_server.register_async_uri(self.GET_VM_GUEST_TOOLS_INFO_PATH, self.get_vm_guest_tools_info)
+        http_server.register_async_uri(self.KVM_GET_VM_FIRST_BOOT_DEVICE_PATH, self.get_vm_first_boot_device)
 
         self.clean_old_sshfs_mount_points()
         self.register_libvirt_event()
