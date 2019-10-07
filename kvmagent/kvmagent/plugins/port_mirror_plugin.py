@@ -25,13 +25,12 @@ logger = log.get_logger(__name__)
 class Tunnel:
     def __init__(self):
         self.dev = None
-        self.vnic = None
+        self.uuid = None
         self.localIp = None
         self.remoteIp = None
         self.prefix = None
         self.gw = None
-        self.id = None
-
+        self.key = None
 
 class Mirror:
     def __init__(self):
@@ -39,6 +38,7 @@ class Mirror:
         self.snic = None
         self.dnic = None
         self.bridge = None
+        self.mName = None
 
 class ApplyMirrorSessionOnKVMCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -66,9 +66,6 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
     '''
     classdocs
     '''
-
-    def _get_rec_device_name(self, nic_name):
-        return "rec_%s" % (nic_name)
 
     def _create_gre_device(self, device_name, rec_device_name, local_ip, prefix, remote_ip, key):
         shell_cmd = shell.ShellCmd("ip add | grep '%s'" % local_ip)
@@ -108,14 +105,14 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
             shell.call("tc qdisc del dev %s ingress" % device_name)
 
     def _set_mirror_src_config(self, device_name, mirror_device_name, direction):
-        if (direction == "Ingress" or direction == "Bidirection"):
+        if (direction == "Egress" or direction == "Bidirection"):
             shell_cmd = shell.ShellCmd("tc qdisc show dev %s |grep 'qdisc ingress'" % device_name)
             shell_cmd(False)
             if shell_cmd.return_code != 0:
                 shell.call("tc qdisc add dev %s ingress" % device_name)
                 shell.call('tc filter add dev %s parent ffff: protocol all u32 match u8 0 0 action mirred egress mirror dev %s' % (device_name, mirror_device_name))
 
-        if (direction == "Egress" or direction == "Bidirection"):
+        if (direction == "Ingress" or direction == "Bidirection"):
             shell_cmd = shell.ShellCmd("tc qdisc show dev %s |grep 'qdisc prio 1:'" % device_name)
             shell_cmd(False)
             if shell_cmd.return_code != 0:
@@ -189,8 +186,8 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
         if cmd.isLocal:
             self._apply_mirror_session_local(cmd.mirror.snic, cmd.mirror.dnic, cmd.mirror.type)
         else:
-            rec_name = self._get_rec_device_name(cmd.mirror.snic)
-            self._create_gre_device(cmd.tunnel.dev, rec_name, cmd.tunnel.localIp, cmd.tunnel.prefix, cmd.tunnel.remoteIp, cmd.tunnel.id)
+            rec_name = cmd.mirror.mName
+            self._create_gre_device(cmd.tunnel.dev, rec_name, cmd.tunnel.localIp, cmd.tunnel.prefix, cmd.tunnel.remoteIp, cmd.tunnel.key)
             self._set_mirror_src_config(cmd.mirror.snic, rec_name, cmd.mirror.type)
         logger.debug('successfully apply mirror device [%s] to device[%s]' % (cmd.mirror.snic, cmd.mirror.dnic))
         return jsonobject.dumps(rsp)
@@ -204,7 +201,7 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
         if cmd.isLocal:
             self._release_mirror_session_local(cmd.mirror.snic, cmd.mirror.dnic, cmd.mirror.type, cmd.mirror.bridge)
         else:
-            rec_name = self._get_rec_device_name(cmd.mirror.snic)
+            rec_name = cmd.mirror.mName
             self._clear_mirror_src_config(cmd.mirror.snic, cmd.mirror.type)
             self._delete_gre_device(cmd.tunnel.dev, rec_name, cmd.tunnel.localIp, cmd.tunnel.prefix, cmd.tunnel.remoteIp, cmd.tunnel.id)
             logger.debug('successfully release mirror device [%s] to device[%s]' % (cmd.mirror.snic, cmd.mirror.dnic))
@@ -225,8 +222,8 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
             rsp.error = 'unable to apply mirror device [%s] to device[%s] in same hypervisor' % (cmd.mirror.snic, cmd.mirror.dnic)
             rsp.success = False
         else:
-            rec_name = self._get_rec_device_name(cmd.mirror.dnic)
-            self._create_gre_device(cmd.tunnel.dev, rec_name, cmd.tunnel.localIp, cmd.tunnel.prefix, cmd.tunnel.remoteIp, cmd.tunnel.id)
+            rec_name = cmd.mirror.mName
+            self._create_gre_device(cmd.tunnel.dev, rec_name, cmd.tunnel.localIp, cmd.tunnel.prefix, cmd.tunnel.remoteIp, cmd.tunnel.key)
             self._set_mirror_dst_config(cmd.mirror.dnic, rec_name)
             self._set_redirect_config(rec_name, cmd.mirror.dnic)
             logger.debug('successfully apply mirror device [%s] to device[%s]' % (cmd.mirror.snic, cmd.mirror.dnic))
@@ -243,7 +240,7 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
             rsp.error = 'unable to release mirror device [%s] to device[%s] in same hypervisor' % (cmd.mirror.snic, cmd.mirror.dnic)
             rsp.success = False
         else:
-            rec_name = self._get_rec_device_name(cmd.mirror.dnic)
+            rec_name = cmd.mirror.mName
             self._clear_redirect_config(rec_name, cmd.mirror.dnic)
             self._clear_mirror_dst_config(cmd.mirror.bridge, cmd.mirror.dnic, rec_name)
             self._delete_gre_device(cmd.tunnel.dev, rec_name, cmd.tunnel.localIp, cmd.tunnel.prefix, cmd.tunnel.remoteIp, cmd.tunnel.id)
