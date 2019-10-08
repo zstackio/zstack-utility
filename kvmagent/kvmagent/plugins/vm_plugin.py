@@ -468,6 +468,19 @@ class AttachGuestToolsIsoToVmRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(AttachGuestToolsIsoToVmRsp, self).__init__()
 
+class IsoTo(object):
+    def __init__(self):
+        super(IsoTo, self).__init__()
+        self.path = None
+        self.imageUuid = None
+        self.deviceId = None
+
+class AttachIsoCmd(object):
+    def __init__(self):
+        super(AttachIsoCmd, self).__init__()
+        self.iso = None
+        self.vmUuid = None
+
 class GetVmGuestToolsInfoCmd(kvmagent.AgentCommand):
     def __init__(self):
         super(GetVmGuestToolsInfoCmd, self).__init__()
@@ -5337,13 +5350,6 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.error = "%s not exists" % GUEST_TOOLS_ISO_PATH
             return jsonobject.dumps(rsp)
 
-        r, o, e = bash.bash_roe("virsh attach-disk %s %s hdc --type cdrom --mode readonly"
-                                % (vm_uuid, GUEST_TOOLS_ISO_PATH))
-        if r != 0:
-            rsp.success = False
-            rsp.error = "%s, %s" % (o, e)
-            return jsonobject.dumps(rsp)
-
         r, _, _ = bash.bash_roe("virsh dumpxml %s | grep \"dev='vdz' bus='virtio'\"" % vm_uuid)
         if cmd.needTempDisk and r != 0:
             temp_disk = "/var/lib/zstack/guesttools/temp_disk.qcow2"
@@ -5366,6 +5372,15 @@ class VmPlugin(kvmagent.KvmAgent):
             else:
                 logger.debug("attached temp disk %s to %s, %s, %s" % (spath, vm_uuid, o, e))
 
+        # attach guest tools iso to [hs]dc, whose device id is 0
+        vm = get_vm_by_uuid(vm_uuid, exception_if_not_existing=False)
+        iso = IsoTo()
+        iso.deviceId = 0
+        iso.path = GUEST_TOOLS_ISO_PATH
+        attach_cmd = AttachIsoCmd()
+        attach_cmd.iso = iso
+        attach_cmd.vmUuid = vm_uuid
+        vm.attach_iso(attach_cmd)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
