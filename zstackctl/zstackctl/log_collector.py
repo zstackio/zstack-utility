@@ -91,7 +91,7 @@ class CollectFromYml(object):
         return cmd
 
     def get_dump_sql(self):
-        mysqldump_skip_tables = "--ignore-table=zstack.VmUsageHistoryVO --ignore-table=zstack.RootVolumeUsageHistoryVO --ignore-table=zstack.NotificationVO --ignore-table=zstack.PubIpVmNicBandwidthUsageHistoryVO --ignore-table=zstack.DataVolumeUsageHistoryVO --ignore-table=zstack.RestAPIVO --ignore-table=zstack.ResourceUsageVO --ignore-table=zstack.AsyncRestVO"
+        mysqldump_skip_tables = "--ignore-table=zstack.VmUsageHistoryVO --ignore-table=zstack.RootVolumeUsageHistoryVO --ignore-table=zstack.NotificationVO --ignore-table=zstack.PubIpVmNicBandwidthUsageHistoryVO --ignore-table=zstack.DataVolumeUsageHistoryVO --ignore-table=zstack.RestAPIVO --ignore-table=zstack.ResourceUsageVO"
         db_hostname, db_port, db_user, db_password = self.ctl.get_live_mysql_portal()
         if db_password:
             cmd = "mysqldump --database -u%s -p%s -P %s --single-transaction --quick zstack zstack_rest information_schema performance_schema %s" % (db_user, db_password, db_port, mysqldump_skip_tables)
