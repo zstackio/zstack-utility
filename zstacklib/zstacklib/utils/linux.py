@@ -19,7 +19,6 @@ import re
 import platform
 import mmap
 
-from zstacklib.utils import bash
 from zstacklib.utils import qemu_img
 from zstacklib.utils import lock
 from zstacklib.utils import shell
@@ -491,17 +490,19 @@ def ssh(hostname, sshkey, cmd, user='root', sshPort=22):
         if sshkey_file:
             os.remove(sshkey_file)
 
-def sshpass_roe(hostname, password, cmd, user='root', port=22):
+def sshpass_run(hostname, password, cmd, user='root', port=22):
     sshpass_file = write_to_temp_file(password)
     os.chmod(sshpass_file, 0600)
 
     try:
-        return bash.bash_roe('sshpass -f %s ssh -p %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s "%s"' % (
+        s = shell.ShellCmd('sshpass -f %s ssh -p %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s "%s"' % (
             sshpass_file, port, user, hostname, cmd))
+        s(False)
+        return s.return_code, s.stdout, s.stderr
     finally:
         rm_file_force(sshpass_file)
 
-def sshpass(hostname, password, cmd, user='root', port=22):
+def sshpass_call(hostname, password, cmd, user='root', port=22):
     sshpass_file = write_to_temp_file(password)
     os.chmod(sshpass_file, 0600)
 

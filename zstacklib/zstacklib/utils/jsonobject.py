@@ -105,7 +105,7 @@ def _parse_dict(d):
             raise NoneSupportedTypeError("Cannot parse object: %s, type: %s, dict dump: %s" % (val, type(val), d))
         
     return dobj
-            
+
 def loads(jstr):
     try:
         root = simplejson.loads(jstr)
@@ -165,7 +165,7 @@ def _dump(obj):
     #items = inspect.getmembers(obj)
     for key, val in items:
         if key.startswith('_'): continue
-        
+
         if _is_unsupported_type(obj):
             raise NoneSupportedTypeError('cannot dump %s, type:%s, object dict: %s' % (val, type(val), obj.__dict__))
         

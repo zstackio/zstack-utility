@@ -31,6 +31,12 @@ class CephPoolCapacity(object):
         self.usedCapacity = used
         self.totalCapacity = totalCapacity
 
+
+class AgentCommand(object):
+    def __init__(self):
+        pass
+
+
 class AgentResponse(object):
     def __init__(self, success=True, error=None):
         self.success = success
@@ -50,6 +56,21 @@ class DownloadRsp(AgentResponse):
         super(DownloadRsp, self).__init__()
         self.size = None
         self.actualSize = None
+
+
+class CephToCephMigrateImageCmd(AgentCommand):
+    @log.sensitive_fields("dstMonSshPassword")
+    def __init__(self):
+        super(CephToCephMigrateImageCmd, self).__init__()
+        self.imageUuid = None
+        self.imageSize = None  # type:long
+        self.srcInstallPath = None
+        self.dstInstallPath = None
+        self.dstMonHostname = None
+        self.dstMonSshUsername = None
+        self.dstMonSshPassword = None
+        self.dstMonSshPort = None  # type:int
+
 
 class UploadProgressRsp(AgentResponse):
     def __init__(self):
@@ -371,7 +392,7 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.DELETE_IMAGES_METADATA, self.delete_image_metadata_from_file)
         self.http_server.register_async_uri(self.CHECK_POOL_PATH, self.check_pool)
         self.http_server.register_async_uri(self.GET_LOCAL_FILE_SIZE, self.get_local_file_size)
-        self.http_server.register_async_uri(self.MIGRATE_IMAGE_PATH, self.migrate_image)
+        self.http_server.register_async_uri(self.MIGRATE_IMAGE_PATH, self.migrate_image, cmd=CephToCephMigrateImageCmd())
 
     def _get_capacity(self):
         o = shell.call('ceph df -f json')
@@ -993,7 +1014,7 @@ class CephAgent(object):
             return rst
 
         src_md5 = self._read_file_content('/tmp/%s_src_md5' % image_uuid)
-        dst_md5 = linux.sshpass(dst_mon_addr, dst_mon_passwd, 'cat /tmp/%s_dst_md5' % image_uuid, dst_mon_user, dst_mon_port)
+        dst_md5 = linux.sshpass_call(dst_mon_addr, dst_mon_passwd, 'cat /tmp/%s_dst_md5' % image_uuid, dst_mon_user, dst_mon_port)
         if src_md5 != dst_md5:
             return -1
         else:

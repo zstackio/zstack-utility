@@ -16,12 +16,33 @@ from zstacklib.utils.plugin import completetask
 
 logger = log.get_logger(__name__)
 
+
+class AgentCommand(object):
+    def __init__(self):
+        pass
+
+
 class AgentResponse(object):
     def __init__(self):
         self.totalCapacity = None
         self.availableCapacity = None
         self.success = None
         self.error = None
+
+
+class CopyBitsFromRemoteCmd(AgentCommand):
+    @log.sensitive_fields("dstPassword")
+    def __init__(self):
+        super(CopyBitsFromRemoteCmd, self).__init__()
+        self.sendCommandUrl = None
+        self.paths = []
+        self.dstIp = None
+        self.dstPassword = None
+        self.dstUsername = None
+        self.dstPort = 22
+        self.stage = None
+        self.volumeUuid = None
+
 
 class RevertVolumeFromSnapshotRsp(AgentResponse):
     def __init__(self):
@@ -156,7 +177,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.REBASE_ROOT_VOLUME_TO_BACKING_FILE_PATH, self.rebase_root_volume_to_backing_file)
         http_server.register_async_uri(self.VERIFY_SNAPSHOT_CHAIN_PATH, self.verify_backing_file_chain)
         http_server.register_async_uri(self.REBASE_SNAPSHOT_BACKING_FILES_PATH, self.rebase_backing_files)
-        http_server.register_async_uri(self.COPY_TO_REMOTE_BITS_PATH, self.copy_bits_to_remote)
+        http_server.register_async_uri(self.COPY_TO_REMOTE_BITS_PATH, self.copy_bits_to_remote, cmd=CopyBitsFromRemoteCmd())
         http_server.register_async_uri(self.GET_MD5_PATH, self.get_md5)
         http_server.register_async_uri(self.CHECK_MD5_PATH, self.check_md5)
         http_server.register_async_uri(self.GET_BACKING_FILE_PATH, self.get_backing_file_path)

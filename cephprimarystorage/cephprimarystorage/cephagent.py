@@ -34,6 +34,12 @@ class CephPoolCapacity(object):
         self.usedCapacity = used
         self.totalCapacity = totalCapacity
 
+
+class AgentCommand(object):
+    def __init__(self):
+        pass
+
+
 class AgentResponse(object):
     def __init__(self, success=True, error=None):
         self.success = success
@@ -46,6 +52,21 @@ class AgentResponse(object):
     def set_err(self, err):
         self.success = False
         self.error = err
+
+
+class CephToCephMigrateVolumeSegmentCmd(AgentCommand):
+    @log.sensitive_fields("dstMonSshPassword")
+    def __init__(self):
+        super(CephToCephMigrateVolumeSegmentCmd, self).__init__()
+        self.parentUuid = None
+        self.resourceUuid = None
+        self.srcInstallPath = None
+        self.dstInstallPath = None
+        self.dstMonHostname = None
+        self.dstMonSshUsername = None
+        self.dstMonSshPassword = None
+        self.dstMonSshPort = None  # type:int
+
 
 class CheckIsBitsExistingRsp(AgentResponse):
     def __init__(self):
@@ -213,7 +234,7 @@ class CephAgent(plugin.TaskManager):
         self.http_server.register_async_uri(self.CHECK_BITS_PATH, self.check_bits)
         self.http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
         self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
-        self.http_server.register_async_uri(self.MIGRATE_VOLUME_SEGMENT_PATH, self.migrate_volume_segment)
+        self.http_server.register_async_uri(self.MIGRATE_VOLUME_SEGMENT_PATH, self.migrate_volume_segment, cmd=CephToCephMigrateVolumeSegmentCmd())
         self.http_server.register_async_uri(self.GET_VOLUME_SNAPINFOS_PATH, self.get_volume_snapinfos)
         self.http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.download_from_kvmhost)
         self.http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
@@ -852,12 +873,12 @@ class CephAgent(plugin.TaskManager):
         return jsonobject.dumps(rsp)
 
     def _get_dst_volume_size(self, dst_install_path, dst_mon_addr, dst_mon_user, dst_mon_passwd, dst_mon_port):
-        o = linux.sshpass(dst_mon_addr, dst_mon_passwd, "rbd --format json info %s" % dst_install_path, dst_mon_user, dst_mon_port)
+        o = linux.sshpass_call(dst_mon_addr, dst_mon_passwd, "rbd --format json info %s" % dst_install_path, dst_mon_user, dst_mon_port)
         o = jsonobject.loads(o)
         return long(o.size_)
 
     def _resize_dst_volume(self, dst_install_path, size, dst_mon_addr, dst_mon_user, dst_mon_passwd, dst_mon_port):
-        r, _, e = linux.sshpass_roe(dst_mon_addr, dst_mon_passwd, "qemu-img resize -f raw rbd:%s %s" % (dst_install_path, size), dst_mon_user, dst_mon_port)
+        r, _, e = linux.sshpass_run(dst_mon_addr, dst_mon_passwd, "qemu-img resize -f raw rbd:%s %s" % (dst_install_path, size), dst_mon_user, dst_mon_port)
         if r != 0:
             logger.error('failed to resize volume %s before migrate, cause: %s' % (dst_install_path, e))
             return r
@@ -881,7 +902,7 @@ class CephAgent(plugin.TaskManager):
 
         # compare md5sum of src/dst segments
         src_segment_md5 = self._read_file_content('/tmp/%s_src_md5' % resource_uuid)
-        dst_segment_md5 = linux.sshpass(dst_mon_addr, dst_mon_passwd, 'cat /tmp/%s_dst_md5' % resource_uuid, dst_mon_user, dst_mon_port)
+        dst_segment_md5 = linux.sshpass_call(dst_mon_addr, dst_mon_passwd, 'cat /tmp/%s_dst_md5' % resource_uuid, dst_mon_user, dst_mon_port)
         if src_segment_md5 != dst_segment_md5:
             logger.error('check sum mismatch after migration: %s' % src_install_path)
             return -1
