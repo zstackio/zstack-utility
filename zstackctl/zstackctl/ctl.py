@@ -6918,6 +6918,7 @@ class UpgradeDbCmd(Command):
                             '\nNOTE: only use it when you know exactly what it does', action='store_true', default=False)
         parser.add_argument('--no-backup', help='do NOT backup the database. If the database is very large and you have manually backup it, using this option will fast the upgrade process. [DEFAULT] false', default=False)
         parser.add_argument('--dry-run', help='Check if db could be upgraded. [DEFAULT] not set', action='store_true', default=False)
+        parser.add_argument('--update-schema-version', help='update the schema_version checksum in the environment. [DEFAULT] not set', action='store_true', default=False)
 
     def run(self, args):
         error_if_tool_is_missing('mysqldump')
@@ -6988,19 +6989,40 @@ class UpgradeDbCmd(Command):
                 shell_no_pipe('bash %s baseline -baselineVersion=0.6 -baselineDescription="0.6 version" -user=%s -url=%s' %
                       (flyway_path, db_user, db_url))
 
-        def migrate():
-            schema_path = 'filesystem:%s' % upgrading_schema_dir
-
+        def execute_sql(sql):
             if db_password:
-                shell_no_pipe('bash %s migrate -outOfOrder=true -user=%s -password=%s -url=%s -locations=%s' % (flyway_path, db_user, db_password, db_url, schema_path))
+                shell('''mysql -u %s -p%s --host %s --port %s -t zstack -e "%s"''' %
+                            (db_user, db_password, db_hostname, db_port, sql))
             else:
-                shell_no_pipe('bash %s migrate -outOfOrder=true -user=%s -url=%s -locations=%s' % (flyway_path, db_user, db_url, schema_path))
+                shell('''mysql -u %s --host %s --port %s -t zstack -e "%s"''' %
+                            (db_user, db_hostname, db_port, sql))
+
+        def migrate():
+            try:
+                schema_path = 'filesystem:%s' % upgrading_schema_dir
+
+                if db_password:
+                    shell_no_pipe('bash %s migrate -outOfOrder=true -user=%s -password=%s -url=%s -locations=%s' % (
+                    flyway_path, db_user, db_password, db_url, schema_path))
+                else:
+                    shell_no_pipe('bash %s migrate -outOfOrder=true -user=%s -url=%s -locations=%s' % (
+                    flyway_path, db_user, db_url, schema_path))
+            except Exception as e:
+                sql = "update schema_version set checksum = 249136114 where script = 'V3.5.0.1__schema.sql' and checksum = -1670610242"
+                execute_sql(sql)
+                raise e
 
             info('Successfully upgraded the database to the latest version.\n')
 
         update_db_config()
         backup_current_database()
         create_schema_version_table_if_needed()
+
+        # fix ZSTAC-23352
+        if args.update_schema_version:
+            update_sql = "update schema_version set checksum = -1670610242 where script = 'V3.5.0.1__schema.sql' and checksum = 249136114"
+            execute_sql(update_sql)
+
         migrate()
 
 class UpgradeUIDbCmd(Command):

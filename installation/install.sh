@@ -1794,15 +1794,15 @@ uz_upgrade_zstack(){
         if [ -z $NEED_KEEP_DB ];then
             if [ ! -z $DEBUG ]; then
                 if [ x"$FORCE" = x'n' ];then
-                    zstack-ctl upgrade_db
+                    zstack-ctl upgrade_db --update-schema-version
                 else
-                    zstack-ctl upgrade_db --force
+                    zstack-ctl upgrade_db --force --update-schema-version
                 fi
             else
                 if [ x"$FORCE" = x'n' ];then
-                    zstack-ctl upgrade_db >>$ZSTACK_INSTALL_LOG 2>&1
+                    zstack-ctl upgrade_db --update-schema-version >>$ZSTACK_INSTALL_LOG 2>&1
                 else
-                    zstack-ctl upgrade_db --force >>$ZSTACK_INSTALL_LOG 2>&1
+                    zstack-ctl upgrade_db --force --update-schema-version >>$ZSTACK_INSTALL_LOG 2>&1
                 fi
             fi
         fi 
