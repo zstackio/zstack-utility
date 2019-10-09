@@ -1351,6 +1351,7 @@ is_install_general_libs_rh(){
             bash-completion \
             dmidecode \
             mysql \
+            mcelog \
             MySQL-python \
             ipmitool \
             nginx \
