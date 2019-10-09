@@ -3105,7 +3105,7 @@ pre_scripts_to_adjust_iptables_rules
 
 if [ x"$ZSTACK_OFFLINE_INSTALL" = x'y' ]; then
     if [ ! -d /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/ ]; then
-        fail2 "Did not find the /opt/zstack-dvd folder, offline installation cannot proceed!"
+        fail2 "Cannot proceed offline installation: /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/ folder not found.\n\tUse 'zstack-upgrade -r zstack-xxx.iso' (xxx>=3.7.0) and try again!"
     fi
 fi
 
