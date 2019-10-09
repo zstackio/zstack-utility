@@ -1124,6 +1124,7 @@ class Command(object):
         self.hide = False
         self.cleanup_routines = []
         self.quiet = False
+        self.sensitive_args = []
 
     def install_argparse_arguments(self, parser):
         pass
@@ -1137,11 +1138,31 @@ class Command(object):
     def need_zstack_user(self):
         return True
 
+    def mask_sensitive_args(self, args):
+        arguments = [args[0]]
+        next_mask = False
+        for arg in args[1:]:
+            if next_mask:
+                arg = "*****"
+                next_mask = False
+            elif arg in self.sensitive_args:
+                next_mask = True
+            elif '=' in arg:
+                key = arg.split('=', 1)[0]
+                if key in self.sensitive_args:
+                    arg = key + '=*****'
+
+            arguments.append(arg)
+        return arguments
+
     def __call__(self, *args, **kwargs):
         try:
             self.run(*args)
             if not self.quiet:
-                logger.info('Start running command [ zstack-ctl %s ]' % ' '.join(sys.argv[1:]))
+                if not self.sensitive_args:
+                    logger.info('Start running command [ zstack-ctl %s ]' % ' '.join(sys.argv[1:]))
+                else:
+                    logger.info('Start running command [ zstack-ctl %s ]' % ' '.join(self.mask_sensitive_args(sys.argv[1:])))
         finally:
             for c in self.cleanup_routines:
                 c()
@@ -1433,6 +1454,7 @@ class DeployDBCmd(Command):
             "\n\tGRANT ALL PRIVILEGES ON *.* TO 'root'@'%%' IDENTIFIED BY 'your_root_password' WITH GRANT OPTION;\n"
             "\tFLUSH PRIVILEGES;\n"
         )
+        self.sensitive_args = ['--root-password', '--zstack-password']
         ctl.register_command(self)
 
     def update_db_config(self):
@@ -1523,6 +1545,7 @@ class DeployUIDBCmd(Command):
             "\n\tGRANT ALL PRIVILEGES ON *.* TO 'root'@'%%' IDENTIFIED BY 'your_root_password' WITH GRANT OPTION;\n"
             "\tFLUSH PRIVILEGES;\n"
         )
+        self.sensitive_args = ['--root-password', '--zstack-ui-password']
         ctl.register_command(self)
 
     def update_db_config(self):
@@ -2298,6 +2321,7 @@ class InstallDbCmd(Command):
             "\nNOTE: you may need to set --login-password to password of previous MySQL root user, if the machine used to have MySQL installed and removed."
             "\nNOTE: if you hasn't setup public key for ROOT user on the remote machine, this command will prompt you for password of SSH ROOT user for the remote machine."
         )
+        self.sensitive_args = ['--root-password', '--login-password']
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
@@ -3070,6 +3094,7 @@ class InstallHACmd(Command):
         super(InstallHACmd, self).__init__()
         self.name = "install_ha"
         self.description =  "install high availability environment for Mevoco."
+        self.sensitive_args = ['--mysql-root-password', '--root-pass', '--mysql-user-password', '--user-pass']
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
@@ -4417,7 +4442,7 @@ class ChangeMysqlPasswordCmd(Command):
 
         # non-root users whose password can be changed by this command
         self.normal_users = ['zstack', 'zstack_ui']
-
+        self.sensitive_args = ['--root-password', '-root', '--new-password', '-new']
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
@@ -4606,6 +4631,7 @@ class RestoreMysqlCmd(Command):
             "Restore mysql data from backup file"
         )
         self.hide = True
+        self.sensitive_args = ['--mysql-root-password', '--ui-mysql-root-password']
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
@@ -4806,6 +4832,7 @@ class PullDatabaseBackupCmd(Command):
         self.description = (
             "pull database backup from backup storage"
         )
+        self.sensitive_args = ['--backup-storage-url']
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
@@ -4873,6 +4900,7 @@ class ScanDatabaseBackupCmd(Command):
         self.description = (
             "scan database backups from backup storage"
         )
+        self.sensitive_args = ['']
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
@@ -7327,6 +7355,7 @@ class RollbackDatabaseCmd(Command):
         super(RollbackDatabaseCmd, self).__init__()
         self.name = 'rollback_db'
         self.description = "rollback the database to the previous version if the upgrade fails"
+        self.sensitive_args = ['--root-password']
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
@@ -7987,6 +8016,7 @@ class StartUiCmd(Command):
         super(StartUiCmd, self).__init__()
         self.name = "start_ui"
         self.description = "start UI server on the local or remote host"
+        self.sensitive_args = ['--ssl-keystore-password', '--db-password']
         ctl.register_command(self)
         if not os.path.exists(os.path.dirname(self.PID_FILE)):
             shell("mkdir -p %s" % os.path.dirname(self.PID_FILE))
@@ -8326,6 +8356,7 @@ class ConfigUiCmd(Command):
         super(ConfigUiCmd, self).__init__()
         self.name = "config_ui"
         self.description = "configure zstack.ui.properties"
+        self.sensitive_args = ['--ssl-keystore-password', '--db-password']
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
@@ -8625,6 +8656,7 @@ class ResetAdminPasswordCmd(Command):
         super(ResetAdminPasswordCmd, self).__init__()
         self.name = "reset_password"
         self.description = "reset ZStack admin account password, if not set, default is 'password'"
+        self.sensitive_args = ['--password']
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
@@ -8673,7 +8705,9 @@ class SharedBlockQcow2SharedVolumeFixCmd(Command):
         super(SharedBlockQcow2SharedVolumeFixCmd, self).__init__()
         self.name = "fix_sharedvolume"
         self.description = "fix qcow2 format shared volume on shared block primary storage"
+        self.sensitive_args = ['--admin-password']
         ctl.register_command(self)
+
         self.support_operations = ["convert_volume", "delete_qcow2_volume", "commit_snapshot_to_image", "delete_shared_volume_snapshots"]
         self.key = "/usr/local/zstack/apache-tomcat/webapps/zstack/WEB-INF/classes/ansible/rsaKeys/id_rsa"
         self.script_path = "/tmp/zstack-convert-volume.py"
