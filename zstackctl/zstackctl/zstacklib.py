@@ -1389,7 +1389,7 @@ enabled=0" > /etc/yum.repos.d/zstack-163-yum.repo
                     generate_mn_repo_raw_command = """
 echo -e "[zstack-mn]
 name=zstack-mn
-baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$releasever/\$basearch/os/
+baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$releasever/\$basearch/
 gpgcheck=0
 enabled=0" >  /etc/yum.repos.d/zstack-mn.repo
                """
@@ -1403,7 +1403,7 @@ enabled=0" >  /etc/yum.repos.d/zstack-mn.repo
                     generate_kvm_repo_raw_command = """
 echo -e "[qemu-kvm-ev-mn]
 name=qemu-kvm-ev-mn
-baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$releasever/\$basearch/qemu-kvm-ev/
+baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$releasever/\$basearch/Extra/qemu-kvm-ev/
 gpgcheck=0
 enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
                """
@@ -1418,7 +1418,7 @@ enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
                 generate_exp_repo_raw_command = """
 echo -e "[zstack-experimental-mn]
 name=zstack-experimental-mn
-baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$releasever/\$basearch/zstack-experimental/
+baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$releasever/\$basearch/Extra/zstack-experimental/
 gpgcheck=0
 enabled=0" >  /etc/yum.repos.d/zstack-experimental-mn.repo
                """
@@ -1431,7 +1431,7 @@ enabled=0" >  /etc/yum.repos.d/zstack-experimental-mn.repo
 
                 # install libselinux-python and other command system libs from user defined repos
                 command = (
-                          "yum clean --enablerepo=%s metadata &&  pkg_list=`rpm -q libselinux-python python-devel "
+                          "export YUM0=`awk '{print $3}' /etc/zstack-release`; yum clean --enablerepo=%s metadata &&  pkg_list=`rpm -q libselinux-python python-devel "
                           "python-setuptools python-pip gcc autoconf | grep \"not installed\" | awk"
                           " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
                           "-y $pkg; done;") % (zstack_repo, zstack_repo)
@@ -1439,7 +1439,7 @@ enabled=0" >  /etc/yum.repos.d/zstack-experimental-mn.repo
                 if distro_version >= 7:
                     # to avoid install some pkgs on virtual router which release is Centos 6.x
                     command = (
-                                  "yum clean --enablerepo=%s metadata &&  pkg_list=`rpm -q python-backports-ssl_match_hostname chrony | "
+                                  "export YUM0=`awk '{print $3}' /etc/zstack-release`; yum clean --enablerepo=%s metadata &&  pkg_list=`rpm -q python-backports-ssl_match_hostname chrony | "
                                   "grep \"not installed\" | awk"
                                   " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
                                   "-y $pkg; done;") % (zstack_repo, zstack_repo)
