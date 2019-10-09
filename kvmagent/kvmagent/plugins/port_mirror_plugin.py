@@ -154,7 +154,7 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
 
     def _release_mirror_session_local(self, src_device_name, dst_device_name, direction, bridge_name):
         self._clear_mirror_src_config(src_device_name, direction)
-        self._clear_mirror_dst_config(bridge_name, dst_device_name)
+        self._clear_mirror_dst_config(bridge_name, dst_device_name, dst_device_name)
 
     def _ifup_device_if_down(self, device_name):
         state_path = '/sys/class/net/%s/operstate' % device_name
