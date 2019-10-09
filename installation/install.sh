@@ -1346,7 +1346,7 @@ is_install_general_libs_rh(){
             avahi \
             avahi-tools"
 
-    always_update_list="mysql"
+    always_update_list="mysql openssh"
     missing_list=`LANG=en_US.UTF-8 && rpm -q $deps_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
 
     [ x"$ZSTACK_OFFLINE_INSTALL" = x'y' ] && missing_list=$deps_list
