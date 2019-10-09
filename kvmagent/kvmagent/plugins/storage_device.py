@@ -364,7 +364,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         #1. find fc devices
         #2. distinct by device wwid and storage wwn
         rsp = FcSanScanRsp()
-        bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -r")
+        bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh")
         rsp.fiberChannelLunStructs = self.get_fc_luns()
         linux.set_fail_if_no_path()
         return jsonobject.dumps(rsp)
