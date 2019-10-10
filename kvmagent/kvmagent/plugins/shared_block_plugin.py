@@ -15,6 +15,7 @@ from zstacklib.utils import lock
 from zstacklib.utils import lvm
 from zstacklib.utils import bash
 from zstacklib.utils import qemu_img
+from zstacklib.utils import traceable_shell
 from zstacklib.utils.plugin import completetask
 import zstacklib.utils.uuidhelper as uuidhelper
 
@@ -580,7 +581,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 lvm.create_lv_from_absolute_path(install_abs_path, total_size,
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
             with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
-                linux.create_template(volume_abs_path, install_abs_path)
+                t_shell = traceable_shell.get_shell(cmd)
+                linux.create_template(volume_abs_path, install_abs_path, shell=t_shell)
                 logger.debug('successfully created template[%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
                 if cmd.compareQcow2 is True:
                     logger.debug("comparing qcow2 between %s and %s")
@@ -894,7 +896,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 current_abs_path = translate_absolute_path_from_install_path(struct.currentInstallPath)
 
                 with lvm.OperateLv(current_abs_path, shared=True):
-                    bash.bash_errorout("cp %s %s" % (current_abs_path, target_abs_path))
+                    t_bash = traceable_shell.get_shell(cmd)
+                    t_bash.bash_errorout("cp %s %s" % (current_abs_path, target_abs_path))
 
             for struct in cmd.migrateVolumeStructs:
                 target_abs_path = translate_absolute_path_from_install_path(struct.targetInstallPath)
