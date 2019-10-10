@@ -481,6 +481,12 @@ class AttachIsoCmd(object):
         self.iso = None
         self.vmUuid = None
 
+class DetachIsoCmd(object):
+    def __init__(self):
+        super(DetachIsoCmd, self).__init__()
+        self.vmUuid = None
+        self.deviceId = None
+
 class GetVmGuestToolsInfoCmd(kvmagent.AgentCommand):
     def __init__(self):
         super(GetVmGuestToolsInfoCmd, self).__init__()
@@ -5377,6 +5383,13 @@ class VmPlugin(kvmagent.KvmAgent):
         iso = IsoTo()
         iso.deviceId = 0
         iso.path = GUEST_TOOLS_ISO_PATH
+
+        # in case same iso already attached
+        detach_cmd = DetachIsoCmd()
+        detach_cmd.vmUuid = vm_uuid
+        detach_cmd.deviceId = iso.deviceId
+        vm.detach_iso(detach_cmd)
+
         attach_cmd = AttachIsoCmd()
         attach_cmd.iso = iso
         attach_cmd.vmUuid = vm_uuid

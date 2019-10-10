@@ -373,6 +373,7 @@ class Mevoco(kvmagent.KvmAgent):
     CONNECT_ALL_NETNS_BR_INNER_IP = "169.254.64.2"
     IP_MASK_BIT = 18
 
+    KVM_HOST_AGENT_PORT = "7070"
     KVM_HOST_PUSHGATEWAY_PORT = "9092"
 
     def __init__(self):
@@ -916,6 +917,10 @@ $HTTP["remoteip"] =~ "^(.*)$" {
         proxy.server = ( "" =>
            ( ( "host" => "{{pushgateway_ip}}", "port" => {{pushgateway_port}} ) )
         )
+    } else $HTTP["url"] =~ "^/host" {
+        proxy.server = ( "" =>
+           ( ( "host" => "{{kvmagent_ip}}", "port" => {{kvmagent_port}} ) )
+        )
 {% for ip in userdata_vm_ips -%}
     } else $HTTP["remoteip"] == "{{ip}}" {
         url.rewrite-once = (
@@ -958,6 +963,8 @@ mimetype.assign = (
             'port': to.port,
             'pushgateway_ip' : self.CONNECT_ALL_NETNS_BR_OUTER_IP,
             'pushgateway_port' : self.KVM_HOST_PUSHGATEWAY_PORT,
+            'kvmagent_ip' : self.CONNECT_ALL_NETNS_BR_OUTER_IP,
+            'kvmagent_port' : self.KVM_HOST_AGENT_PORT,
             'userdata_vm_ips': userdata_vm_ips
         })
 
