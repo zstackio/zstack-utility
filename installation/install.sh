@@ -2826,8 +2826,7 @@ check_sync_local_repos() {
   [ -f ".repo_version" -a -f "/opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/.repo_version" ] || echo_hints_to_upgrade_iso
   if [ -d /opt/zstack-dvd/$BASEARCH ];then
     for release in `ls /opt/zstack-dvd/$BASEARCH`;do
-      cmp -s .repo_version /opt/zstack-dvd/$BASEARCH/$release/.repo_version
-      [ $? -ne 0 ] && check_hybrid_arch
+      cmp -s .repo_version /opt/zstack-dvd/$BASEARCH/$release/.repo_version || check_hybrid_arch
     done
   fi
   if [ $? -eq 0 ]; then
