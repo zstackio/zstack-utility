@@ -623,8 +623,8 @@ def find_domain_cdrom_address(domain_xml, target_dev):
 
 def find_domain_first_boot_device(domain_xml):
     domain_xmlobject = xmlobject.loads(domain_xml)
-    nodes = domain_xmlobject.os.get_children_nodes()
-    if 'boot' in nodes and nodes['boot'][0].dev_ == 'cdrom':
+    devs = domain_xmlobject.os.get_child_node_as_list('boot')
+    if devs and devs[0].dev_ == 'cdrom':
         return "CdRom"
     else:
         return "HardDisk"
