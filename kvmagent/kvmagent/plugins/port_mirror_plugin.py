@@ -130,15 +130,15 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
         if shell_cmd.return_code == 0:
             shell.call("tc qdisc del dev %s root" % device_name)
 
-    def _set_mirror_dst_config(self, device_name, mirror_device_name):
+    def _set_mirror_dst_config(self, bridge_name, device_name, mirror_device_name=None):
         shell_cmd = shell.ShellCmd("ip link show dev br_monitor")
         shell_cmd(False)
         if shell_cmd.return_code != 0:
             add_cmd = shell.ShellCmd("ip link add br_monitor type bridge && ip link set dev br_monitor up")
             add_cmd()
-
-        shell.call("ip link set dev %s master br_monitor" % mirror_device_name)
-        shell.call("ip link set dev %s master br_monitor" % device_name)
+        if mirror_device_name:
+            shell.call("ip link set dev %s master br_monitor" % mirror_device_name)
+        shell.call("brctl delif %s %s" % (bridge_name, device_name))
 
     def _clear_mirror_dst_config(self, bridge_name, device_name,mirror_device_name):
         shell.call("ip link set dev %s master %s" % (device_name, bridge_name))
@@ -148,9 +148,9 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
         ip link set dev vnic25.0 master br_monitor
         ip link set dev rec_vnic25.0 master br_monitor
         '''
-    def _apply_mirror_session_local(self, src_device_name, dst_device_name, direction):
+    def _apply_mirror_session_local(self, src_device_name, dst_device_name, direction, bridge_name):
         self._set_mirror_src_config(src_device_name, dst_device_name, direction)
-        self._set_mirror_dst_config(dst_device_name, dst_device_name)
+        self._set_mirror_dst_config(bridge_name, dst_device_name)
 
     def _release_mirror_session_local(self, src_device_name, dst_device_name, direction, bridge_name):
         self._clear_mirror_src_config(src_device_name, direction)
@@ -184,7 +184,7 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
         "mirror":{"type":"Ingress","snic":"vnic47.0","dnic":"vnic47.1"},
         '''
         if cmd.isLocal:
-            self._apply_mirror_session_local(cmd.mirror.snic, cmd.mirror.dnic, cmd.mirror.type)
+            self._apply_mirror_session_local(cmd.mirror.snic, cmd.mirror.dnic, cmd.mirror.type, cmd.mirror.bridge)
         else:
             rec_name = cmd.mirror.mName
             self._create_gre_device(cmd.tunnel.dev, rec_name, cmd.tunnel.localIp, cmd.tunnel.prefix, cmd.tunnel.remoteIp, cmd.tunnel.key)
@@ -224,7 +224,7 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
         else:
             rec_name = cmd.mirror.mName
             self._create_gre_device(cmd.tunnel.dev, rec_name, cmd.tunnel.localIp, cmd.tunnel.prefix, cmd.tunnel.remoteIp, cmd.tunnel.key)
-            self._set_mirror_dst_config(cmd.mirror.dnic, rec_name)
+            self._set_mirror_dst_config(cmd.mirror.bridge, cmd.mirror.dnic, rec_name)
             self._set_redirect_config(rec_name, cmd.mirror.dnic)
             logger.debug('successfully apply mirror device [%s] to device[%s]' % (cmd.mirror.snic, cmd.mirror.dnic))
 
