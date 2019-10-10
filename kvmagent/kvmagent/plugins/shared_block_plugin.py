@@ -15,6 +15,7 @@ from zstacklib.utils import lock
 from zstacklib.utils import lvm
 from zstacklib.utils import bash
 from zstacklib.utils import qemu_img
+from zstacklib.utils import traceable_shell
 from zstacklib.utils.plugin import completetask
 import zstacklib.utils.uuidhelper as uuidhelper
 
@@ -522,7 +523,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp = AgentRsp()
         template_abs_path_cache = translate_absolute_path_from_install_path(cmd.templatePathInCache)
         install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
-        qcow2_options = self.calc_qcow2_option(self, cmd.qcow2Options, True, cmd.provisioning)
+        qcow2_options = self.calc_qcow2_option(self, cmd.kvmHostAddons, True, cmd.provisioning)
 
         with lvm.RecursiveOperateLv(template_abs_path_cache, shared=True, skip_deactivate_tags=[IMAGE_TAG]):
             virtual_size = linux.qcow2_virtualsize(template_abs_path_cache)
@@ -580,7 +581,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 lvm.create_lv_from_absolute_path(install_abs_path, total_size,
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
             with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
-                linux.create_template(volume_abs_path, install_abs_path)
+                t_shell = traceable_shell.get_shell(cmd)
+                linux.create_template(volume_abs_path, install_abs_path, shell=t_shell)
                 logger.debug('successfully created template[%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
                 if cmd.compareQcow2 is True:
                     logger.debug("comparing qcow2 between %s and %s")
@@ -689,7 +691,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = RevertVolumeFromSnapshotRsp()
         snapshot_abs_path = translate_absolute_path_from_install_path(cmd.snapshotInstallPath)
-        qcow2_options = self.calc_qcow2_option(self, cmd.qcow2Options, True, cmd.provisioning)
+        qcow2_options = self.calc_qcow2_option(self, cmd.kvmHostAddons, True, cmd.provisioning)
         new_volume_path = cmd.installPath
         if new_volume_path is None or new_volume_path == "":
             new_volume_path = "/dev/%s/%s" % (cmd.vgUuid, uuidhelper.uuid())
@@ -767,7 +769,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
 
         if cmd.backingFile:
-            qcow2_options = self.calc_qcow2_option(self, cmd.qcow2Options, True, cmd.provisioning)
+            qcow2_options = self.calc_qcow2_option(self, cmd.kvmHostAddons, True, cmd.provisioning)
             backing_abs_path = translate_absolute_path_from_install_path(cmd.backingFile)
             with lvm.RecursiveOperateLv(backing_abs_path, shared=True):
                 virtual_size = linux.qcow2_virtualsize(backing_abs_path)
@@ -781,7 +783,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             lvm.create_lv_from_cmd(install_abs_path, cmd.size, cmd,
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
             if cmd.volumeFormat != 'raw':
-                qcow2_options = self.calc_qcow2_option(self, cmd.qcow2Options, False, cmd.provisioning)
+                qcow2_options = self.calc_qcow2_option(self, cmd.kvmHostAddons, False, cmd.provisioning)
                 with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
                     linux.qcow2_create_with_option(install_abs_path, cmd.size, qcow2_options)
                     linux.qcow2_fill(0, 1048576, install_abs_path)
@@ -894,7 +896,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 current_abs_path = translate_absolute_path_from_install_path(struct.currentInstallPath)
 
                 with lvm.OperateLv(current_abs_path, shared=True):
-                    bash.bash_errorout("cp %s %s" % (current_abs_path, target_abs_path))
+                    t_bash = traceable_shell.get_shell(cmd)
+                    t_bash.bash_errorout("cp %s %s" % (current_abs_path, target_abs_path))
 
             for struct in cmd.migrateVolumeStructs:
                 target_abs_path = translate_absolute_path_from_install_path(struct.targetInstallPath)
@@ -935,11 +938,11 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
     @staticmethod
     def calc_qcow2_option(self, options, has_backing_file, provisioning=None):
-        if options is None or options == "":
+        if options is None or options == "" or options.qcow2Options is None or options.qcow2Options == "":
             return " "
         if has_backing_file or provisioning == lvm.VolumeProvisioningStrategy.ThinProvisioning:
-            return re.sub("-o preallocation=\w* ", " ", options)
-        return options
+            return re.sub("-o preallocation=\w* ", " ", options.qcow2Options)
+        return options.qcow2Options
 
     @kvmagent.replyerror
     def get_block_devices(self, req):

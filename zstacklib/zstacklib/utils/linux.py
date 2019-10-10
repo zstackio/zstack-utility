@@ -736,21 +736,21 @@ def raw_create(dst, size):
     shell.check_run('/usr/bin/qemu-img create -f raw %s %s' % (dst, size))
     os.chmod(dst, 0666)
 
-def create_template(src, dst, compress=False):
+def create_template(src, dst, compress=False, shell=shell):
     fmt = get_img_fmt(src)
     if fmt == 'raw':
-        return raw_create_template(src, dst)
+        return raw_create_template(src, dst, shell=shell)
     if fmt == 'qcow2':
-        return qcow2_create_template(src, dst, compress)
+        return qcow2_create_template(src, dst, compress, shell=shell)
     raise Exception('unknown format[%s] of the image file[%s]' % (fmt, src))
 
-def qcow2_create_template(src, dst, compress):
+def qcow2_create_template(src, dst, compress, shell=shell):
     if compress:
         shell.call('%s -c -f qcow2 -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
     else:
         shell.call('%s -f qcow2 -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
 
-def raw_create_template(src, dst):
+def raw_create_template(src, dst, shell=shell):
     shell.call('%s -f raw -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
 
 def qcow2_convert_to_raw(src, dst):
@@ -1155,6 +1155,15 @@ def get_pids_by_process_name(name):
     if cmd.return_code != 0:
         return None
     return output.split('\n')
+
+def get_pids_by_process_fullname(name):
+    cmd = shell.ShellCmd("pkill -0 -e -f '%s'" % name)
+    output = cmd(False)
+    if cmd.return_code != 0:
+        return None
+
+    # format from 'bash killed (pid 32162)'
+    return [line[17:-1] for line in output.splitlines()]
 
 def get_nic_name_by_mac(mac):
     names = get_nic_names_by_mac(mac)
@@ -1574,6 +1583,21 @@ def kill_process(pid, timeout=5):
     os.kill(int(pid), 9)
     if not wait_callback_success(check, None, timeout):
         raise Exception('cannot kill -9 process[pid:%s];the process still exists after %s seconds' % (pid, timeout))
+
+def kill_all_child_process(ppid, timeout=5):
+    def check(_):
+        return not os.path.exists('/proc/%s' % ppid)
+
+    if check(None):
+        return
+
+    shell.run("pkill -15 -P %s" % ppid)
+    if wait_callback_success(check, None, timeout):
+        return
+
+    shell.run("pkill -9 -P %s" % ppid)
+    if not wait_callback_success(check, None, timeout):
+        raise Exception('cannot kill -9 child process[ppid:%s];the process still exists after %s seconds' % (ppid, timeout))
 
 def get_gateway_by_default_route():
     cmd = shell.ShellCmd("ip route | grep default | head -n 1 | cut -d ' ' -f 3")

@@ -20,6 +20,7 @@ from zstacklib.utils import linux
 from zstacklib.utils import ceph
 from zstacklib.utils import bash
 from zstacklib.utils import qemu_img
+from zstacklib.utils import traceable_shell
 from imagestore import ImageStoreClient
 from zstacklib.utils.linux import remote_shell_quote
 
@@ -464,12 +465,14 @@ class CephAgent(plugin.TaskManager):
                 report.progress_report(get_exact_percent(percent, stage), "report")
             return synced
 
-        _, _, err = bash_progress_1('rbd cp %s %s 2> %s' % (src_path, dst_path, PFILE), _get_progress)
+        t_shell = traceable_shell.get_shell(cmd)
+        _, _, err = t_shell.bash_progress_1('rbd cp %s %s 2> %s' % (src_path, dst_path, PFILE), _get_progress)
 
         if os.path.exists(PFILE):
             os.remove(PFILE)
 
         if err:
+            shell.run('rbd rm %s' % dst_path)
             raise err
 
         rsp = CpRsp()
@@ -876,11 +879,17 @@ class CephAgent(plugin.TaskManager):
             return r
         return 0
 
-    def _migrate_volume_segment(self, parent_uuid, resource_uuid, src_install_path, dst_install_path, dst_mon_addr, dst_mon_user, dst_mon_passwd, dst_mon_port):
+    def _migrate_volume_segment(self, parent_uuid, resource_uuid, src_install_path,
+                                dst_install_path, dst_mon_addr, dst_mon_user, dst_mon_passwd, dst_mon_port, cmd):
         src_install_path = self._normalize_install_path(src_install_path)
         dst_install_path = self._normalize_install_path(dst_install_path)
 
-        r, _, e = bash_roe('set -o pipefail; rbd export-diff {FROM_SNAP} {SRC_INSTALL_PATH} - | tee >(md5sum >/tmp/{RESOURCE_UUID}_src_md5) | sshpass -p {DST_MON_PASSWD} ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null {DST_MON_USER}@{DST_MON_ADDR} -p {DST_MON_PORT} \'tee >(md5sum >/tmp/{RESOURCE_UUID}_dst_md5) | rbd import-diff - {DST_INSTALL_PATH}\''.format(
+        traceable_bash = traceable_shell.get_shell(cmd)
+        r, _, e = traceable_bash.bash_roe('set -o pipefail; rbd export-diff {FROM_SNAP} {SRC_INSTALL_PATH} -'
+                           ' | tee >(md5sum >/tmp/{RESOURCE_UUID}_src_md5)'
+                           ' | sshpass -p {DST_MON_PASSWD}'
+                           ' ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null {DST_MON_USER}@{DST_MON_ADDR} -p {DST_MON_PORT}'
+                           ' \'tee >(md5sum >/tmp/{RESOURCE_UUID}_dst_md5) | rbd import-diff - {DST_INSTALL_PATH}\''.format(
             PARENT_UUID = parent_uuid,
             DST_MON_ADDR = dst_mon_addr,
             DST_MON_PORT = dst_mon_port,
@@ -896,7 +905,8 @@ class CephAgent(plugin.TaskManager):
 
         # compare md5sum of src/dst segments
         src_segment_md5 = self._read_file_content('/tmp/%s_src_md5' % resource_uuid)
-        dst_segment_md5 = shell.call('sshpass -p {DST_MON_PASSWD} ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null {DST_MON_USER}@{DST_MON_ADDR} -p {DST_MON_PORT} \'cat /tmp/{RESOURCE_UUID}_dst_md5\''.format(
+        t_shell = traceable_shell.get_shell(cmd)
+        dst_segment_md5 = t_shell.call('sshpass -p {DST_MON_PASSWD} ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null {DST_MON_USER}@{DST_MON_ADDR} -p {DST_MON_PORT} \'cat /tmp/{RESOURCE_UUID}_dst_md5\''.format(
             DST_MON_ADDR = dst_mon_addr,
             DST_MON_PORT = dst_mon_port,
             DST_MON_USER = dst_mon_user,
@@ -937,8 +947,9 @@ class CephAgent(plugin.TaskManager):
                 rsp.error = "Failed to resize volume before migrate."
                 return jsonobject.dumps(rsp)
 
-
-        ret = self._migrate_volume_segment(cmd.parentUuid, cmd.resourceUuid, cmd.srcInstallPath, cmd.dstInstallPath, cmd.dstMonHostname, cmd.dstMonSshUsername, cmd.dstMonSshPassword, cmd.dstMonSshPort)
+        ret = self._migrate_volume_segment(cmd.parentUuid, cmd.resourceUuid, cmd.srcInstallPath,
+                                           cmd.dstInstallPath, cmd.dstMonHostname, cmd.dstMonSshUsername,
+                                           cmd.dstMonSshPassword, cmd.dstMonSshPort, cmd)
         if ret != 0:
             rsp.success = False
             rsp.error = "Failed to migrate volume segment from one ceph primary storage to another."

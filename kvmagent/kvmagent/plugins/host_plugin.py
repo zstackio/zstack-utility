@@ -16,6 +16,7 @@ from zstacklib.utils import http
 from zstacklib.utils import lock
 from zstacklib.utils import log
 from zstacklib.utils import shell
+from zstacklib.utils import traceable_shell
 from zstacklib.utils import sizeunit
 from zstacklib.utils import linux
 from zstacklib.utils import xmlobject
@@ -876,21 +877,19 @@ if __name__ == "__main__":
     @in_bash
     def update_os(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        if not cmd.excludePackages:
-            exclude = ""
-        else:
-            exclude = "--exclude=" + cmd.excludePackages
-        yum_cmd = "yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn%s %s update -y" % \
-                (',zstack-experimental-mn' if cmd.enableExpRepo else '', exclude)
-
+        exclude = "--exclude=" + cmd.excludePackages if cmd.excludePackages else ""
+        updates = cmd.updatePackages if cmd.updatePackages else ""
+        yum0 = cmd.releaseVersion if cmd.releaseVersion else shell.call("awk '{print $3}' /etc/zstack-release").strip()
+        yum_cmd = "export YUM0={};yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{} {} update {} -y"
+        yum_cmd = yum_cmd.format(yum0, ',zstack-experimental-mn' if cmd.enableExpRepo else '', exclude, updates)
         rsp = UpdateHostOSRsp()
         if shell.run("which yum") != 0:
             rsp.success = False
             rsp.error = "no yum command found, cannot update host os"
-        elif shell.run("yum --disablerepo=* --enablerepo=zstack-mn repoinfo") != 0:
+        elif shell.run("export YUM0={};yum --disablerepo=* --enablerepo=zstack-mn repoinfo".format(yum0)) != 0:
             rsp.success = False
             rsp.error = "no zstack-mn repo found, cannot update host os"
-        elif shell.run("yum --disablerepo=* --enablerepo=qemu-kvm-ev-mn repoinfo") != 0:
+        elif shell.run("export YUM0={};yum --disablerepo=* --enablerepo=qemu-kvm-ev-mn repoinfo".format(yum0)) != 0:
             rsp.success = False
             rsp.error = "no qemu-kvm-ev-mn repo found, cannot update host os"
         elif shell.run(yum_cmd) != 0:
@@ -904,7 +903,8 @@ if __name__ == "__main__":
     @in_bash
     def update_dependency(self, req):
         rsp = UpdateDependencyRsp()
-        yum_cmd = "yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install `cat /var/lib/zstack/dependencies` -y"
+        yum0 = shell.call("awk '{print $3}' /etc/zstack-release").strip()
+        yum_cmd = "export YUM0={};yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install `cat /var/lib/zstack/dependencies` -y".format(yum0)
         if shell.run("which yum") != 0:
             rsp.success = False
             rsp.error = "no yum command found, cannot update kvmagent dependencies"
@@ -1546,6 +1546,16 @@ done
         self.restart_libvirt()
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    def cancel(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+        if not traceable_shell.cancel_job(cmd):
+            rsp.success = False
+            rsp.error = "no matched job to cancel"
+
+        return jsonobject.dumps(rsp)
+
     def start(self):
         self.host_uuid = None
 
@@ -1576,6 +1586,7 @@ done
         http_server.register_async_uri(self.GENERATE_VFIO_MDEV_DEVICES, self.generate_vfio_mdev_devices)
         http_server.register_async_uri(self.UNGENERATE_VFIO_MDEV_DEVICES, self.ungenerate_vfio_mdev_devices)
         http_server.register_async_uri(self.HOST_UPDATE_SPICE_CHANNEL_CONFIG_PATH, self.update_spice_channel_config)
+        http_server.register_async_uri(self.CANCEL_JOB, self.cancel)
 
         self.heartbeat_timer = {}
         self.libvirt_version = self._get_libvirt_version()

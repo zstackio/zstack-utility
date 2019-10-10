@@ -10,6 +10,8 @@ from kvmagent.plugins.imagestore import ImageStoreClient
 from zstacklib.utils import jsonobject
 from zstacklib.utils import linux
 from zstacklib.utils import shell
+from zstacklib.utils import traceable_shell
+from zstacklib.utils import rollback
 from zstacklib.utils.bash import *
 from zstacklib.utils.report import *
 from zstacklib.utils.plugin import completetask
@@ -527,6 +529,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    @rollback.rollback
     def create_template_from_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentResponse()
@@ -534,7 +537,13 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         if not os.path.exists(dirname):
             os.makedirs(dirname, 0755)
 
-        linux.create_template(cmd.volumePath, cmd.installPath)
+        @rollback.rollbackable
+        def _0():
+            linux.rm_file_force(cmd.insallPath)
+        _0()
+
+        t_shell = traceable_shell.get_shell(cmd)
+        linux.create_template(cmd.volumePath, cmd.installPath, shell=t_shell)
 
         logger.debug('successfully created template[%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
@@ -656,12 +665,6 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             dirname = os.path.dirname(cmd.installUrl)
             if not os.path.exists(dirname):
                 os.makedirs(dirname)
-
-            if cmd.preallocation is not None:
-                if cmd.kvmHostAddons.qcow2Options is None:
-                    cmd.kvmHostAddons.qcow2Options = cmd.preallocation
-                else:
-                    cmd.kvmHostAddons.qcow2Options += cmd.preallocation
 
             if cmd.backingFile:
                 linux.qcow2_create_with_backing_file_and_cmd(cmd.backingFile, cmd.installUrl, cmd)

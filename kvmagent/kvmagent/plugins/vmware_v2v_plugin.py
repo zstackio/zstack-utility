@@ -5,6 +5,7 @@ import os
 import json
 import commands
 import platform
+import string
 
 from kvmagent import kvmagent
 from zstacklib.utils import jsonobject
@@ -83,8 +84,9 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             rsp.error = "v2v feature is not supported on centos 7.2"
             return jsonobject.dumps(rsp)
 
-        yum_cmd = "yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn " \
-                  "install libguestfs-tools libguestfs-winsupport virt-v2v -y"
+        releasever = shell.call("awk '{print $3}' /etc/zstack-release").strip()
+        yum_cmd = "export YUM0={}; yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn " \
+                  "install libguestfs-tools libguestfs-winsupport virt-v2v -y".format(releasever)
         if shell.run(yum_cmd) != 0:
             rsp.success = False
             rsp.error = "failed to update install conversion host dependencies from zstack-mn,qemu-kvm-ev-mn repo"
@@ -100,7 +102,12 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             else:
                 with open(version_file, 'r') as vfd:
                     return vfd.readline()
-
+        tmpl = {'releasever': releasever}
+        virtioDriverUrl = string.Template(cmd.virtioDriverUrl)
+        vddkLibUrl = string.Template(cmd.vddkLibUrl)
+        
+        cmd.virtioDriverUrl = virtioDriverUrl.substitute(tmpl)
+        cmd.vddkLibUrl = vddkLibUrl.substitute(tmpl)
         if not os.path.exists(WINDOWS_VIRTIO_DRIVE_ISO_VERSION) \
                 and os.path.exists(V2V_LIB_PATH + 'zstack-windows-virtio-driver.iso'):
             last_modified = shell.call("curl -I %s | grep 'Last-Modified'" % cmd.virtioDriverUrl)
