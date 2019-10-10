@@ -220,6 +220,8 @@ def create_log(logger_dir):
     handler.setFormatter(fmt)
     logger.addHandler(handler)
 
+def get_mn_release():
+    return commands.getoutput("rpm -q zstack-release |awk -F'-' '{print $3}'")
 
 def post_msg(msg, post_url):
     '''post message to zstack, label for support i18n'''
