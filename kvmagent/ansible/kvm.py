@@ -260,7 +260,7 @@ if distro in RPM_BASED_OS:
 
         # name: install/update kvm related packages on RedHat based OS from user defined repo
         # if zstack-manager is not installed, then install/upgrade zstack-host and ignore failures
-        command = ("[[ -f /usr/bin/zstack-ctl ]] && zstack-ctl status | grep 'MN status' | grep 'Running' >/dev/null 2>&1; \
+        command = ("export YUM0=`awk '{print $3}' /etc/zstack-release`; [[ -f /usr/bin/zstack-ctl ]] && zstack-ctl status | grep 'MN status' | grep 'Running' >/dev/null 2>&1; \
             [[ $? -eq 0 ]] || yum --disablerepo=* --enablerepo=%s install -y zstack-host >/dev/null; \
                 echo %s >/var/lib/zstack/dependencies && yum --enablerepo=%s clean metadata >/dev/null && \
                 pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'`' %s' && \

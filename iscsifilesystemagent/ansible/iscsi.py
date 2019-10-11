@@ -77,9 +77,10 @@ run_remote_command("rm -rf %s/*" % iscsi_root, host_post_info)
 
 if distro in RPM_BASED_OS:
     if zstack_repo != 'false':
+        mn_release = get_mn_release()
         # name: install iscsi related packages on RedHat based OS from user defined repo
-        command = "yum --disablerepo=* --enablerepo=%s --nogpgcheck install -y wget " \
-                  "qemu-img-ev scsi-target-utils"  % zstack_repo
+        command = "export YUM0=%s; yum --disablerepo=* --enablerepo=%s --nogpgcheck install -y wget " \
+                  "qemu-img-ev scsi-target-utils"  % (mn_release, zstack_repo)
         run_remote_command(command, host_post_info)
 
     else:
