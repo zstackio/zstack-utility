@@ -2222,6 +2222,32 @@ class Vm(object):
 
         return not job_ended
 
+    def _get_target_disk_by_path(self, installPath, is_exception=True):
+        if installPath.startswith('sharedblock'):
+            installPath = shared_block_to_file(installPath)
+
+        for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
+            if not xmlobject.has_element(disk, 'source'):
+                continue
+
+            # file
+            if disk.source.file__ and disk.source.file_ == installPath:
+                return disk, disk.target.dev_
+
+            # ceph
+            if disk.source.name__ and disk.source.name_ in installPath:
+                return disk, disk.target.dev_
+
+            # 'block':
+            if disk.source.dev__ and disk.source.dev_ in installPath:
+                return disk, disk.target.dev_
+
+        if not is_exception:
+            return None, None
+
+        logger.debug('%s is not found on the vm[uuid:%s]' % (installPath, self.uuid))
+        raise kvmagent.KvmError('unable to find volume[installPath:%s] on vm[uuid:%s]' % (installPath, self.uuid))
+
     def _get_target_disk(self, volume, is_exception=True):
         if volume.installPath.startswith('sharedblock'):
             volume.installPath = shared_block_to_file(volume.installPath)
@@ -3871,6 +3897,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_ATTACH_VOLUME = "/vm/attachdatavolume"
     KVM_DETACH_VOLUME = "/vm/detachdatavolume"
     KVM_MIGRATE_VM_PATH = "/vm/migrate"
+    KVM_BLOCK_LIVE_MIGRATION_PATH = "/vm/blklivemigration"
     KVM_TAKE_VOLUME_SNAPSHOT_PATH = "/vm/volume/takesnapshot"
     KVM_TAKE_VOLUME_BACKUP_PATH = "/vm/volume/takebackup"
     KVM_BLOCK_STREAM_VOLUME_PATH = "/vm/volume/blockstream"
@@ -4562,6 +4589,112 @@ class VmPlugin(kvmagent.KvmAgent):
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
             rsp.success = False
+
+        return jsonobject.dumps(rsp)
+
+    def _get_new_disk(self, oldDisk, volume):
+        def filebased_volume(_v):
+            disk = etree.Element('disk', {'type': 'file', 'device': 'disk', 'snapshot': 'external'})
+            e(disk, 'driver', None, {'name': 'qemu', 'type': 'qcow2', 'cache': _v.cacheMode})
+            e(disk, 'source', None, {'file': _v.installPath})
+            return disk
+
+        def ceph_volume(_v):
+            def ceph_virtio():
+                vc = VirtioCeph()
+                vc.volume = _v
+                return vc.to_xmlobject()
+
+            def ceph_blk():
+                ic = BlkCeph()
+                ic.volume = _v
+                return ic.to_xmlobject()
+
+            def ceph_virtio_scsi():
+                vsc = VirtioSCSICeph()
+                vsc.volume = _v
+                return vsc.to_xmlobject()
+
+            if _v.useVirtioSCSI:
+                disk = ceph_virtio_scsi()
+                if _v.shareable:
+                    e(disk, 'shareable')
+                return disk
+
+            if _v.useVirtio:
+                return ceph_virtio()
+            else:
+                return ceph_blk()
+
+        def block_volume(_v):
+            disk = etree.Element('disk', {'type': 'block', 'device': 'disk', 'snapshot': 'external'})
+            e(disk, 'driver', None,
+              {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'io': 'native'})
+            e(disk, 'source', None, {'dev': _v.installPath})
+            return disk
+
+        if volume.deviceType == 'file':
+            ele = filebased_volume(volume)
+        elif volume.deviceType == 'ceph':
+            ele = ceph_volume(volume)
+        elif volume.deviceType == 'block':
+            ele = block_volume(volume)
+        else:
+            raise Exception('unsupported volume deviceType[%s]' % volume.deviceType)
+
+        tags_to_keep = [ 'target', 'boot', 'alias', 'address', 'wwn' ]
+        for c in oldDisk.getchildren():
+            if c.tag in tags_to_keep:
+                child = ele.find(c.tag)
+                if child is not None: ele.remove(child)
+                ele.append(c)
+
+        logger.info("updated disk XML: " + etree.tostring(ele))
+        return ele
+
+    def _build_domain_new_xml(self, vmUuid, volumeDicts):
+        vm = get_vm_by_uuid(vmUuid)
+        migrate_disks = {}
+
+        for oldpath, volume in volumeDicts.items():
+            _, disk_name = vm._get_target_disk_by_path(oldpath)
+            migrate_disks[disk_name] = volume
+
+        fd, fpath = tempfile.mkstemp()
+        with os.fdopen(fd, 'w') as tmpf:
+            tmpf.write(vm.domain_xml)
+
+        tree = etree.parse(fpath)
+        devices = tree.getroot().find('devices')
+        for disk in tree.iterfind('devices/disk'):
+            dev = disk.find('target').attrib['dev']
+            if dev in migrate_disks:
+                new_disk = self._get_new_disk(disk, migrate_disks[dev])
+                parent_index = list(devices).index(disk)
+                devices.remove(disk)
+                devices.insert(parent_index, new_disk)
+
+        tree.write(fpath)
+        return migrate_disks.keys(), fpath
+
+    def _do_block_migration(self, vmUuid, dstHostIp, volumeDicts):
+        disks, fpath = self._build_domain_new_xml(vmUuid, volumeDicts)
+
+        dst = 'qemu+tcp://{0}/system'.format(dstHostIp)
+        cmd = "virsh migrate --live --persistent --copy-storage-all --migrate-disks {} --xml {} {} {}".format(','.join(disks), fpath, vmUuid, dst)
+
+        try:
+            shell.check_run(cmd)
+        finally:
+            os.remove(fpath)
+
+    @kvmagent.replyerror
+    def block_migrate_vm(self, req):
+        rsp = kvmagent.AgentResponse()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        self._record_operation(cmd.vmUuid, self.VM_OP_MIGRATE)
+        self._do_block_migration(cmd.vmUuid, cmd.destHostIp, cmd.disks.__dict__)
 
         return jsonobject.dumps(rsp)
 
@@ -5408,6 +5541,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_ATTACH_ISO_PATH, self.attach_iso)
         http_server.register_async_uri(self.KVM_DETACH_ISO_PATH, self.detach_iso)
         http_server.register_async_uri(self.KVM_MIGRATE_VM_PATH, self.migrate_vm)
+        http_server.register_async_uri(self.KVM_BLOCK_LIVE_MIGRATION_PATH, self.block_migrate_vm)
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_SNAPSHOT_PATH, self.take_volume_snapshot)
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_BACKUP_PATH, self.take_volume_backup)
         http_server.register_async_uri(self.KVM_TAKE_VOLUMES_SNAPSHOT_PATH, self.take_volumes_snapshots)
