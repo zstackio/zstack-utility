@@ -81,9 +81,10 @@ run_remote_command("rm -rf %s/*" % sftp_root, host_post_info)
 
 if distro in RPM_BASED_OS:
     if zstack_repo != 'false':
+        mn_release = get_mn_release()
         # name: install sftp backup storage related packages on RedHat based OS from local
-        command = ("pkg_list=`rpm -q openssh-clients qemu-img | grep \"not installed\" | awk '{ print $2 }'` && for pkg"
-                   " in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % zstack_repo
+        command = ("export YUM0=%s; pkg_list=`rpm -q openssh-clients qemu-img | grep \"not installed\" | awk '{ print $2 }'` && for pkg"
+                   " in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (mn_release, zstack_repo)
         run_remote_command(command, host_post_info)
     else:
         # name: install sftp backup storage related packages on RedHat based OS from online
