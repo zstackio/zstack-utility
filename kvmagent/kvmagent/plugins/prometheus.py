@@ -440,6 +440,23 @@ LoadPlugin virt
 
     def install_colletor(self):
         class Collector(object):
+            __collector_cache = {}
+
+            @classmethod
+            def __get_cache__(cls):
+                # type: () -> list
+                keys = cls.__collector_cache.keys()
+                if keys is None or len(keys) == 0:
+                    return None
+                if (time.time() - keys[0]) < 9:
+                    return cls.__collector_cache.get(keys[0])
+                return None
+
+            @classmethod
+            def __store_cache__(cls, ret):
+                # type: (list) -> None
+                cls.__collector_cache.clear()
+                cls.__collector_cache.update({time.time(): ret})
 
             @classmethod
             def check(cls, v):
@@ -477,6 +494,10 @@ LoadPlugin virt
                     with collectResultLock:
                         latest_collect_result[fname] = r
 
+                cache = Collector.__get_cache__()
+                if cache is not None:
+                    return cache
+
                 for c in kvmagent.metric_collectors:
                     name = "%s.%s" % (c.__module__, c.__name__)
                     if collector_dict.get(name) is not None and collector_dict.get(name).is_alive():
@@ -496,6 +517,7 @@ LoadPlugin virt
 
                 for v in latest_collect_result.itervalues():
                     ret.extend(v)
+                Collector.__store_cache__(ret)
                 return ret
 
         REGISTRY.register(Collector())
