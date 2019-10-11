@@ -76,7 +76,8 @@ run_remote_command("rm -rf %s/*" % fusionstorp_root, host_post_info)
 
 if distro in RPM_BASED_OS:
     if zstack_repo != 'false':
-        command = "yum --disablerepo=* --enablerepo=%s --nogpgcheck install -y wget qemu-img-ev" % zstack_repo
+        mn_release = get_mn_release()
+        command = "export YUM0=%s; yum --disablerepo=* --enablerepo=%s --nogpgcheck install -y wget qemu-img-ev" % (mn_release, zstack_repo)
         run_remote_command(command, host_post_info)
         if distro_version >= 7:
             command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"

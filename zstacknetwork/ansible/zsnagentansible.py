@@ -80,11 +80,12 @@ zstacklib_args.require_python_env = require_python_env
 zstacklib = ZstackLib(zstacklib_args)
 
 if distro in RPM_BASED_OS:
+    mn_release = get_mn_release()
     if zstack_repo == 'false':
         yum_install_package("libpcap", host_post_info)
     else:
-        command = ("pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
-                   "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % ("libpcap", zstack_repo)
+        command = ("export YUM0=%s; pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
+                   "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % (mn_release, "libpcap", zstack_repo)
         run_remote_command(command, host_post_info)
 
 elif distro in DEB_BASED_OS:
