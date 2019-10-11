@@ -5,33 +5,31 @@
 import base64
 import copy
 import hashlib
+import os
+import os.path
 import platform
-import threading
+import re
+import tempfile
+import time
+import uuid
+
+import libvirt
+from typing import Dict
 
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
 from kvmagent.plugins.imagestore import ImageStoreClient
-from zstacklib.utils import jsonobject
 from zstacklib.utils import http
+from zstacklib.utils import iptables
+from zstacklib.utils import jsonobject
 from zstacklib.utils import lock
-from zstacklib.utils import log
-from zstacklib.utils import shell
-from zstacklib.utils import traceable_shell
 from zstacklib.utils import sizeunit
-from zstacklib.utils import linux
+from zstacklib.utils import thread
+from zstacklib.utils import traceable_shell
 from zstacklib.utils import xmlobject
 from zstacklib.utils.bash import *
-from zstacklib.utils.report import Report
-from zstacklib.utils import iptables
-from zstacklib.utils import thread
 from zstacklib.utils.ip import get_nic_supported_max_speed
-import os
-import os.path
-import re
-import time
-import uuid
-import tempfile
-import libvirt
+from zstacklib.utils.report import Report
 
 IS_AARCH64 = platform.machine() == 'aarch64'
 GRUB_FILES = ["/boot/grub2/grub.cfg", "/boot/grub/grub.cfg", "/etc/grub2-efi.cfg", "/etc/grub-efi.cfg", "/boot/efi/EFI/centos/grub.cfg"]
@@ -457,6 +455,7 @@ class HostPlugin(kvmagent.KvmAgent):
     UNGENERATE_VFIO_MDEV_DEVICES = "/mdevdevice/ungenerate"
     HOST_UPDATE_SPICE_CHANNEL_CONFIG_PATH = "/host/updateSpiceChannelConfig";
 
+    host_network_facts_cache = {}  # type: Dict[float, list[list, list]]
 
     def _get_libvirt_version(self):
         ret = shell.call('libvirtd --version')
@@ -1096,9 +1095,33 @@ done
     @kvmagent.replyerror
     def get_host_network_facts(self, req):
         rsp = GetHostNetworkBongdingResponse()
+        cache = HostPlugin.__get_cache__()
+        if cache is not None:
+            rsp.bondings = cache[0]
+            rsp.nics = cache[1]
+            return jsonobject.dumps(rsp)
+
         rsp.bondings = self.get_host_networking_bonds()
         rsp.nics = self.get_host_networking_interfaces()
+
+        HostPlugin.__store_cache__(rsp.bondings, rsp.nics)
         return jsonobject.dumps(rsp)
+
+    @classmethod
+    def __get_cache__(cls):
+        # type: () -> (list, list)
+        keys = cls.host_network_facts_cache.keys()
+        if keys is None or len(keys) == 0:
+            return None
+        if (time.time() - keys[0]) < 10:
+            return cls.host_network_facts_cache.get(keys[0])
+        return None
+
+    @classmethod
+    def __store_cache__(cls, bonds, nics):
+        # type: (list, list) -> None
+        cls.host_network_facts_cache.clear()
+        cls.host_network_facts_cache.update({time.time(): [bonds, nics]})
 
     @staticmethod
     def get_host_networking_interfaces():

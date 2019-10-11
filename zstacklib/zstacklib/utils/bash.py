@@ -1,13 +1,16 @@
-import subprocess
 import functools
-import json
-from jinja2 import Template
-from zstacklib.utils import log
 import inspect
-import time
+import json
 import re
+import subprocess
+import time
+
+from jinja2 import Template
+
 from progress_report import WatchThread_1
 from zstacklib.utils import linux
+from zstacklib.utils import log
+from zstacklib.utils import shell
 
 logger = log.get_logger(__name__)
 
@@ -52,7 +55,7 @@ def bash_roe(cmd, errorout=False, ret_code = 0, pipe_fail=False):
     ctx = __collect_locals_on_stack()
 
     cmd = bash_eval(cmd, ctx)
-    p = subprocess.Popen('/bin/bash', stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True)
+    p = shell.get_process("/bin/bash", pipe=True)
     if pipe_fail:
         cmd = 'set -o pipefail; %s' % cmd
     o, e = p.communicate(cmd)
