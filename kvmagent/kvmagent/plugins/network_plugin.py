@@ -348,16 +348,16 @@ class NetworkPlugin(kvmagent.KvmAgent):
         # Create VXLAN interface using vtep ip then create bridge
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CreateVxlanBridgesResponse()
-        if not (cmd.vnis and cmd.vtepIp):
+        if not (cmd.l2Networks and cmd.vtepIp):
             rsp.error = "vni or vtepip is none"
             rsp.success = False
             return jsonobject.dumps(rsp)
 
-        for vni in cmd.vnis:
+        for l2NetworkUuid, vni in cmd.l2Networks.__dict__.items():
             linux.create_vxlan_interface(vni, cmd.vtepIp)
             interf = "vxlan" + str(vni)
             linux.create_vxlan_bridge(interf, "br_vx_%s" % vni, cmd.peers)
-            linux.set_device_uuid_alias(interf, cmd.l2NetworkUuid)
+            linux.set_device_uuid_alias(interf, l2NetworkUuid)
 
         return jsonobject.dumps(rsp)
 
