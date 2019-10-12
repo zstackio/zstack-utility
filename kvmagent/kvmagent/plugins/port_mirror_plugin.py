@@ -85,7 +85,7 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
         '''
     def _delete_gre_device(self, device_name, rec_device_name, local_ip, prefix, remote_ip, key):
         shell.ShellCmd("ip link del '%s'" % rec_device_name)
-        shell_cmd = shell.ShellCmd("ip link show|grep 'rec_vnic'")
+        shell_cmd = shell.ShellCmd("ip link show|egrep '\<r'")
         shell_cmd(False)
         if shell_cmd.return_code != 0:
             ip_cmd = shell.ShellCmd("ip add del %s/%d dev %s" % (local_ip, prefix, device_name))
@@ -138,7 +138,7 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
             add_cmd()
         if mirror_device_name:
             shell.call("ip link set dev %s master br_monitor" % mirror_device_name)
-        shell.call("brctl delif %s %s" % (bridge_name, device_name))
+        shell.call("brctl delif %s %s" % (bridge_name, device_name), False)
 
     def _clear_mirror_dst_config(self, bridge_name, device_name,mirror_device_name):
         shell.call("ip link set dev %s master %s" % (device_name, bridge_name))
