@@ -271,7 +271,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
                         filtPath = filtPath[1:]
                     if filtPath != '':
                         rsync_excludes = rsync_excludes + " --exclude=%s" % filtPath
-                        md5_excludes = md5_excludes + " ! -path ./%s" % filtPath
+                        md5_excludes = md5_excludes + " ! -path %s/%s" % (cmd.srcFolderPath, filtPath)
 
                 t_shell.call("mkdir -p %s; rsync -az %s/ %s %s; sync" % (dst_folder_path, cmd.srcFolderPath, dst_folder_path, rsync_excludes))
                 src_md5 = t_shell.call(
