@@ -1690,23 +1690,20 @@ def create_vxlan_bridge(interf, bridgeName, ips):
     populate_vxlan_fdb(interf, ips)
 
 def populate_vxlan_fdb(interf, ips):
-    success = True
+    cmds = []
     for ip in ips:
-        cmd = shell.ShellCmd("bridge fdb append to 00:00:00:00:00:00 dev %s dst %s" % (
-            interf, ip))
-        cmd(is_exception=False)
-        success = success and (cmd.return_code == 0)
+        cmd = "bridge fdb append to 00:00:00:00:00:00 dev %s dst %s" % (interf, ip)
+        cmds.append(cmd)
 
-    return success
+    cmd = shell.ShellCmd(";".join(cmds))
+    cmd(is_exception=False)
+
+    return cmd.return_code == 0
 
 def get_interfs_from_uuids(uuids):
-    strUuids = ""
-    for uuid in uuids:
-        strUuids += "%s|" % uuid
+    strUuids = "\|".join(uuids)
 
-    strUuids.rstrip("|")
-
-    cmd = shell.ShellCmd("ip link | grep -E '%s' -B2 | grep vxlan | awk '{ print $2}' | tr ':' ' '" % strUuids)
+    cmd = shell.ShellCmd("ip link | grep '%s' -B2 | grep vxlan | awk '{ print $2}' | tr ':' ' '" % strUuids)
     o = cmd(is_exception=False)
 
     if o == "":
