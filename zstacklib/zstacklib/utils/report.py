@@ -23,11 +23,15 @@ def get_scale(stage=None):
 
 def get_exact_percent(percent, stage):
     start, end = get_scale(stage)
+    return get_exact_percent_from_scale(percent, start, end)
+
+
+def get_exact_percent_from_scale(percent, start, end):
     return int(float(percent)/100 * (end - start) + start)
 
 
-def get_task_stage(cmd):
-    stage = None
+def get_task_stage(cmd, default=None):
+    stage = default
     if cmd.threadContext:
         if cmd.threadContext['task-stage']:
             stage = cmd.threadContext['task-stage']
@@ -55,7 +59,7 @@ class Report(object):
         report.processType = progress_type
         return report
 
-    def progress_report(self, percent, flag):
+    def progress_report(self, percent, flag="report"):
         try:
             self.progress = percent
             header = {
