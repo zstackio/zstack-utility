@@ -635,7 +635,7 @@ if chroot_env == 'false':
         host_post_info.post_label = "ansible.shell.dump.service"
         host_post_info.post_label_param = "zstack-kvmagent"
         run_remote_command(command, host_post_info)
-        command = "systemctl stop zstack-kvmagent && systemctl start zstack-kvmagent && systemctl enable zstack-kvmagent"
+        command = "service zstack-kvmagent stop && service zstack-kvmagent start && chkconfig zstack-kvmagent on"
     elif distro in RPM_BASED_OS:
         command = "service zstack-kvmagent stop && service zstack-kvmagent start && chkconfig zstack-kvmagent on"
     elif distro in DEB_BASED_OS:
