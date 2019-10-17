@@ -108,7 +108,7 @@ DELETE_PY_CRYPTO=''
 SETUP_EPEL=''
 CONSOLE_PROXY_ADDRESS=''
 CURRENT_VERSION=''
-
+RELEASEVER=''
 LICENSE_PATH=''
 LICENSE_FILE='zstack-license'
 LICENSE_FOLDER='/var/lib/zstack/license/'
@@ -384,6 +384,17 @@ echo_title(){
 echo_subtitle(){
     echo "\n----------------" >> $ZSTACK_INSTALL_LOG
     echo -n "    $*:"|tee -a $ZSTACK_INSTALL_LOG
+}
+
+
+set_os_releasever() {
+    rpm -q neokylin-release-server >/dev/null 2>&1
+    if [ $? -eq 0 ];then
+        RELEASEVER=$(rpm -q --provides $(rpm -q --whatprovides "system-release(releasever)") | grep "neokylin-release-server(x86-64)"|cut -d ' ' -f 3)  
+    else
+        RELEASEVER=$(rpm -q --provides $(rpm -q --whatprovides "system-release(releasever)") | grep "system-release(releasever)" | cut -d ' ' -f 3)
+    fi
+    [ -z "$RELEASEVER" ] && fail "failed to get system releasever, check distroverpkg in /etc/yum.conf please"
 }
 
 enable_tomcat_linking() {
@@ -731,6 +742,7 @@ check_system(){
     else
         cs_check_hostname_zstack
     fi
+    set_os_releasever
     show_spinner do_check_system
     cs_check_zstack_data_exist
     show_spinner cs_create_repo
@@ -1030,13 +1042,6 @@ iu_deploy_zstack_repo() {
 
     BASEARCH=`uname -m`
     [ x"$BASEARCH" = x'aarch64' ] && ALTARCH='x86_64' || ALTARCH='aarch64'
-    rpm -q neokylin-release-server >/dev/null 2>&1
-    if [ $? -eq 0 ];then
-        RELEASEVER=$(rpm -q --provides $(rpm -q --whatprovides "system-release(releasever)") | grep "neokylin-release-server(x86-64)"|cut -d ' ' -f 3)  
-    else
-        RELEASEVER=$(rpm -q --provides $(rpm -q --whatprovides "system-release(releasever)") | grep "system-release(releasever)" | cut -d ' ' -f 3)
-    fi
-    [ -z "$RELEASEVER" ] && fail "failed to get system releasever, check distroverpkg in /etc/yum.conf please"
     mkdir -p ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/{x86_64,aarch64}
     ln -s /opt/zstack-dvd/ ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/${BASEARCH}/os >/dev/null 2>&1
     ln -s /opt/zstack-dvd/Extra/qemu-kvm-ev ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/${BASEARCH}/qemu-kvm-ev >/dev/null 2>&1
