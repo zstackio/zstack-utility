@@ -927,10 +927,10 @@ if __name__ == "__main__":
         if shell.run("which yum") != 0:
             rsp.success = False
             rsp.error = "no yum command found, cannot update kvmagent dependencies"
-        elif shell.run("yum --disablerepo=* --enablerepo=zstack-mn repoinfo") != 0:
+        elif shell.run("export YUM0={};yum --disablerepo=* --enablerepo=zstack-mn repoinfo".format(yum0)) != 0:
             rsp.success = False
             rsp.error = "no zstack-mn repo found, cannot update kvmagent dependencies"
-        elif shell.run("yum --disablerepo=* --enablerepo=qemu-kvm-ev-mn repoinfo") != 0:
+        elif shell.run("export YUM0={};yum --disablerepo=* --enablerepo=qemu-kvm-ev-mn repoinfo".format(yum0)) != 0:
             rsp.success = False
             rsp.error = "no qemu-kvm-ev-mn repo found, cannot update kvmagent dependencies"
         elif shell.run(yum_cmd) != 0:
