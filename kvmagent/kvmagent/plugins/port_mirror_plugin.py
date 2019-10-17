@@ -68,12 +68,12 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
     '''
 
     def _create_gre_device(self, tunnel, rec_device_name):
-        shell_cmd = shell.ShellCmd("ip add | grep '%s'" % tunnel.localIp)
+        shell_cmd = shell.ShellCmd("ip add | grep %s" % tunnel.localIp)
         shell_cmd(False)
         if shell_cmd.return_code != 0:
             add_cmd = shell.ShellCmd("ip add add %s/%d dev %s" % (tunnel.localIp, tunnel.prefix, tunnel.dev))
             add_cmd()
-        shell_cmd = shell.ShellCmd("ip link show '%s'" % rec_device_name)
+        shell_cmd = shell.ShellCmd("ip link show %s" % rec_device_name)
         shell_cmd(False)
         logger.debug("return_code:%d" % shell_cmd.return_code)
         if shell_cmd.return_code != 0:
@@ -81,10 +81,10 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
             shell.call('ip link set %s up; ip link set %s alias %s' % (rec_device_name, rec_device_name, tunnel.uuid))
 
     def _delete_gre_device(self, tunnel, rec_device_name):
-        shell_cmd = shell.ShellCmd("ip link show '%s'" % rec_device_name)
+        shell_cmd = shell.ShellCmd("ip link show %s" % rec_device_name)
         shell_cmd(False)
         if shell_cmd.return_code == 0:
-            shell.ShellCmd("ip link del '%s'" % rec_device_name)
+            shell.ShellCmd("ip link del %s" % rec_device_name)
 
         shell_cmd = shell.ShellCmd("ip link show|egrep -i 'send|recv'")
         shell_cmd(False)
@@ -122,33 +122,12 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
         shell_cmd = shell.ShellCmd("tc qdisc show dev %s |grep 'qdisc ingress'" % device_name)
         shell_cmd(False)
         if shell_cmd.return_code == 0:
-            result = shell.call(" tc filter list dev %s parent ffff:" % device_name)
-            if result.count('index') < 2: # multi filter case -mirror devices, just only delete one filter
-                shell.call("tc qdisc del dev %s ingress" % device_name)
-                return
-            filter_list = result.split('pipe')
-            for str in filter_list:
-                if str.find(mirror_device_name) != -1:
-                    pref = str[str.find("pref"): str.find("u32")]
-                    pref = pref.replace("pref"," ").strip()
-                    logger.debug("pref:%s" % pref)
-                    shell.call("tc filter del dev %s parent ffff: protocol all pref %s" % (device_name, pref))
+            shell.call("tc qdisc del dev %s ingress" % device_name)
 
         shell_cmd = shell.ShellCmd("tc qdisc show dev %s |grep 'qdisc prio 1:'" % device_name)
         shell_cmd(False)
         if shell_cmd.return_code == 0:
-            result = shell.call(" tc filter list dev %s parent 1:" % device_name)
-            if result.count('index') < 2: # multi filter case -mirror devices, just only delete one filter
-                shell.call("tc qdisc del dev %s root" % device_name)
-                return
-            filter_list = result.split('pipe')
-            for str in filter_list:
-                if str.find(mirror_device_name) != -1:
-                    pref = str[str.find("pref"): str.find("u32")]
-                    pref = pref.replace("pref"," ").strip()
-                    logger.debug("pref:%s" % pref)
-                    shell.call("tc filter del dev %s parent 1: protocol all pref %s" % (device_name, pref))
-
+            shell.call("tc qdisc del dev %s root" % device_name)
 
     def _set_mirror_dst_config(self, bridge_name, device_name, mirror_device_name=None):
         shell_cmd = shell.ShellCmd("ip link show dev br_monitor")
@@ -157,7 +136,10 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
             add_cmd = shell.ShellCmd("ip link add br_monitor type bridge && ip link set dev br_monitor up")
             add_cmd()
         if mirror_device_name:
-            shell.call("ip link set dev %s master br_monitor" % mirror_device_name)
+            shell_cmd = shell.ShellCmd("ip link show dev br_monitor")
+            shell_cmd(False)
+            if shell_cmd.return_code == 0:
+                shell.call("ip link set dev %s master br_monitor" % mirror_device_name)
         shell.call("brctl delif %s %s" % (bridge_name, device_name), False)
 
     def _clear_mirror_dst_config(self, bridge_name, device_name,mirror_device_name):
@@ -178,18 +160,17 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
 
     def _get_mirror_device_name(self, tunnel, mirror, is_source = True):
         mirror_name = "send" + mirror.mName if is_source else "recv" + mirror.mName
-        alias_path = '/sys/class/net/%s/ifalias' % mirror_name
-        if os.path.exists(alias_path):
-            with open(alias_path, 'r') as fd:
-                alias_str = fd.read()
-            return mirror_name if tunnel.uuid in alias_str else mirror_name.capitalize()
-
-        alias_path = '/sys/class/net/%s/ifalias' % mirror_name.capitalize()
-        if os.path.exists(alias_path):
-            with open(alias_path, 'r') as fd:
-                alias_str = fd.read()
-            return mirror_name.capitalize() if tunnel.uuid in alias_str else mirror_name
         return mirror_name
+
+    def _del_if(self, tunnel, mirror_name):
+        alias_path = '/sys/class/net/%s/ifalias' % mirror_name
+        if not os.path.exists(alias_path):
+            return
+        with open(alias_path, 'r') as fd:
+            alias_str = fd.read()
+        if tunnel.uuid not in alias_str:
+            shell.ShellCmd("ip link del '%s'" % mirror_name)
+
 
     def _ifup_device_if_down(self, device_name):
         state_path = '/sys/class/net/%s/operstate' % device_name
@@ -222,7 +203,7 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
             self._apply_mirror_session_local(cmd.mirror.snic, cmd.mirror.dnic, cmd.mirror.type, cmd.mirror.bridge)
         else:
             rec_name = self._get_mirror_device_name(cmd.tunnel, cmd.mirror)
-
+            self._del_if(cmd.tunnel.uuid, rec_name)
             self._create_gre_device(cmd.tunnel, rec_name)
             self._set_mirror_src_config(cmd.mirror.snic, rec_name, cmd.mirror.type)
         logger.debug('successfully apply mirror device [%s] to device[%s]' % (cmd.mirror.snic, cmd.mirror.dnic))
@@ -259,6 +240,7 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
             rsp.success = False
         else:
             rec_name = self._get_mirror_device_name(cmd.tunnel, cmd.mirror, False)
+            self._del_if(cmd.tunnel.uuid, rec_name)
             self._create_gre_device(cmd.tunnel, rec_name)
             self._set_mirror_dst_config(cmd.mirror.bridge, cmd.mirror.dnic, rec_name)
             self._set_redirect_config(rec_name, cmd.mirror.dnic)
