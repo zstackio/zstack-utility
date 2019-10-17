@@ -2854,9 +2854,9 @@ if [ x"$UPGRADE" = x'y' ]; then
     [ $cluster_type_num -gt 1 ] && fail2 "Hybrid cluster exists, sync online-repo will take a long time, please download $cluster_type iso manually to upgrade your repo."
 fi
 if [ x"$ZSTACK_RELEASE" = x"c72" -o x"$ZSTACK_RELEASE" = x"c74" -o x"$ZSTACK_RELEASE" = x"c76" ];then
-    BASEURL=rsync://rsync.repo.zstack.io/${VERSION_RELEASE_NR}/$BASEARCH/$ZSTACK_RELEASE
+    BASEURL=rsync://rsync.repo.zstack.io/${VERSION_RELEASE_NR}/$BASEARCH/$ZSTACK_RELEASE/
 else
-    BASEURL=rsync://rsync.repo.zstack.io/${VERSION_RELEASE_NR}
+    BASEURL=rsync://rsync.repo.zstack.io/${VERSION_RELEASE_NR}/
 fi
 
 pkg_list="createrepo curl yum-utils rsync"
