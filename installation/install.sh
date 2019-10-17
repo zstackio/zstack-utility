@@ -2824,6 +2824,7 @@ check_hybrid_arch(){
     if [ -d /opt/zstack-dvd/x86_64 -a -d /opt/zstack-dvd/aarch64 ];then
         fail2 "Hybrid arch exists but repo not matched all, please contact and get correct iso to upgrade local repo first."
     fi
+    return 1
 }
 
 check_sync_local_repos() {
