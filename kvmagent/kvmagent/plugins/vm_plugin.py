@@ -5324,9 +5324,20 @@ class VmPlugin(kvmagent.KvmAgent):
 </hostdev>''' % (domain, bus, slot, function)
         spath = linux.write_to_temp_file(content)
 
+        # no need to detach pci device if vm is shutdown
+        vm = get_vm_by_uuid_no_retry(cmd.vmUuid, exception_if_not_existing=False)
+        if not vm or vm.state == Vm.VM_STATE_SHUTDOWN:
+            logger.debug("vm[uuid:%s] is shutdown, no need to detach pci device" % cmd.vmUuid)
+            return jsonobject.dumps(rsp)
+
+        # do not detach pci device immediately after starting vm instance
+        try:
+            vm._wait_vm_run_until_seconds(60)
+        except Exception:
+            logger.debug("cannot find pid of vm[uuid:%s, state:%s], no need to detach pci device" % (cmd.vmUuid, vm.state))
+            return jsonobject.dumps(rsp)
+
         # do not detach pci device immediately after attach pci device to same vm
-        vm = get_vm_by_uuid(cmd.vmUuid)
-        vm._wait_vm_run_until_seconds(60)
         self.timeout_object.wait_until_object_timeout('hot-plug-pci-device-to-vm-%s' % cmd.vmUuid)
         self.timeout_object.put('hot-unplug-pci-device-from-vm-%s' % cmd.vmUuid, timeout=10)
 
