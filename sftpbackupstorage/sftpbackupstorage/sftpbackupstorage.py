@@ -444,11 +444,13 @@ class SftpBackupStorageAgent(object):
                 rsp.error = str(e)
                 return jsonobject.dumps(rsp)
         elif cmd.urlScheme == self.URL_SFTP:
+            ssh_pass_file = None
             try:
                 port = (url.port, 22)[url.port is None]
                 commond = "sftp -P %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s:%s %s" % (port, url.username, url.hostname, url.path, cmd.installPath)
                 if url.password is not None:
-                    commond = 'sshpass -p %s %s' % (linux.shellquote(url.password), commond)
+                    ssh_pass_file = linux.write_to_temp_file(url.password)
+                    commond = 'sshpass -f %s %s' % (ssh_pass_file, commond)
 
                 shell.call(commond)
             except linux.LinuxError as e:
@@ -457,6 +459,9 @@ class SftpBackupStorageAgent(object):
                 rsp.success = False
                 rsp.error = str(e)
                 return jsonobject.dumps(rsp)
+            finally:
+                if ssh_pass_file:
+                    linux.rm_file_force(ssh_pass_file)
         elif cmd.urlScheme == self.URL_FILE:
             src_path = cmd.url.lstrip('file:')
             src_path = os.path.normpath(src_path)

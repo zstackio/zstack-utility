@@ -35,6 +35,12 @@ class CephPoolCapacity(object):
         self.usedCapacity = used
         self.totalCapacity = totalCapacity
 
+
+class AgentCommand(object):
+    def __init__(self):
+        pass
+
+
 class AgentResponse(object):
     def __init__(self, success=True, error=None):
         self.success = success
@@ -47,6 +53,21 @@ class AgentResponse(object):
     def set_err(self, err):
         self.success = False
         self.error = err
+
+
+class CephToCephMigrateVolumeSegmentCmd(AgentCommand):
+    @log.sensitive_fields("dstMonSshPassword")
+    def __init__(self):
+        super(CephToCephMigrateVolumeSegmentCmd, self).__init__()
+        self.parentUuid = None
+        self.resourceUuid = None
+        self.srcInstallPath = None
+        self.dstInstallPath = None
+        self.dstMonHostname = None
+        self.dstMonSshUsername = None
+        self.dstMonSshPassword = None
+        self.dstMonSshPort = None  # type:int
+
 
 class CheckIsBitsExistingRsp(AgentResponse):
     def __init__(self):
@@ -214,7 +235,7 @@ class CephAgent(plugin.TaskManager):
         self.http_server.register_async_uri(self.CHECK_BITS_PATH, self.check_bits)
         self.http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
         self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
-        self.http_server.register_async_uri(self.MIGRATE_VOLUME_SEGMENT_PATH, self.migrate_volume_segment)
+        self.http_server.register_async_uri(self.MIGRATE_VOLUME_SEGMENT_PATH, self.migrate_volume_segment, cmd=CephToCephMigrateVolumeSegmentCmd())
         self.http_server.register_async_uri(self.GET_VOLUME_SNAPINFOS_PATH, self.get_volume_snapinfos)
         self.http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.download_from_kvmhost)
         self.http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
@@ -855,25 +876,12 @@ class CephAgent(plugin.TaskManager):
         return jsonobject.dumps(rsp)
 
     def _get_dst_volume_size(self, dst_install_path, dst_mon_addr, dst_mon_user, dst_mon_passwd, dst_mon_port):
-        o = shell.call('sshpass -p "{DST_MON_PASSWD}" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null {DST_MON_USER}@{DST_MON_ADDR} -p {DST_MON_PORT} \'rbd --format json info {DST_INSTALL_PATH}\''.format(
-            DST_MON_ADDR=dst_mon_addr,
-            DST_MON_PORT=dst_mon_port,
-            DST_MON_USER=dst_mon_user,
-            DST_MON_PASSWD=dst_mon_passwd,
-            DST_INSTALL_PATH = dst_install_path
-        ))
+        o = linux.sshpass_call(dst_mon_addr, dst_mon_passwd, "rbd --format json info %s" % dst_install_path, dst_mon_user, dst_mon_port)
         o = jsonobject.loads(o)
         return long(o.size_)
 
     def _resize_dst_volume(self, dst_install_path, size, dst_mon_addr, dst_mon_user, dst_mon_passwd, dst_mon_port):
-        r, _, e = bash_roe('sshpass -p "{DST_MON_PASSWD}" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null {DST_MON_USER}@{DST_MON_ADDR} -p {DST_MON_PORT} \'qemu-img resize -f raw rbd:{DST_INSTALL_PATH} {SIZE}\''.format(
-                DST_MON_ADDR=dst_mon_addr,
-                DST_MON_PORT=dst_mon_port,
-                DST_MON_USER=dst_mon_user,
-                DST_MON_PASSWD=dst_mon_passwd,
-                DST_INSTALL_PATH=dst_install_path,
-                SIZE = size
-        ))
+        r, _, e = linux.sshpass_run(dst_mon_addr, dst_mon_passwd, "qemu-img resize -f raw rbd:%s %s" % (dst_install_path, size), dst_mon_user, dst_mon_port)
         if r != 0:
             logger.error('failed to resize volume %s before migrate, cause: %s' % (dst_install_path, e))
             return r
@@ -885,33 +893,21 @@ class CephAgent(plugin.TaskManager):
         dst_install_path = self._normalize_install_path(dst_install_path)
 
         traceable_bash = traceable_shell.get_shell(cmd)
-        r, _, e = traceable_bash.bash_roe('set -o pipefail; rbd export-diff {FROM_SNAP} {SRC_INSTALL_PATH} -'
-                           ' | tee >(md5sum >/tmp/{RESOURCE_UUID}_src_md5)'
-                           ' | sshpass -p {DST_MON_PASSWD}'
-                           ' ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null {DST_MON_USER}@{DST_MON_ADDR} -p {DST_MON_PORT}'
-                           ' \'tee >(md5sum >/tmp/{RESOURCE_UUID}_dst_md5) | rbd import-diff - {DST_INSTALL_PATH}\''.format(
-            PARENT_UUID = parent_uuid,
-            DST_MON_ADDR = dst_mon_addr,
-            DST_MON_PORT = dst_mon_port,
-            DST_MON_USER = dst_mon_user,
-            DST_MON_PASSWD = linux.shellquote(dst_mon_passwd),
-            RESOURCE_UUID = resource_uuid,
-            SRC_INSTALL_PATH = src_install_path,
-            DST_INSTALL_PATH = dst_install_path,
-            FROM_SNAP = '--from-snap ' + parent_uuid if parent_uuid != '' else ''))
+        ssh_cmd, tmp_file = linux.build_sshpass_cmd(dst_mon_addr, dst_mon_passwd, "tee >(md5sum >/tmp/%s_dst_md5) | rbd import-diff - %s"
+                                                    % (resource_uuid, dst_install_path), dst_mon_user, dst_mon_port)
+        r, _, e = traceable_bash.bash_roe('set -o pipefail; rbd export-diff {FROM_SNAP} {SRC_INSTALL_PATH} - | tee >(md5sum >/tmp/{RESOURCE_UUID}_src_md5) | {SSH_CMD}'.format(
+            RESOURCE_UUID=resource_uuid,
+            SSH_CMD=ssh_cmd,
+            SRC_INSTALL_PATH=src_install_path,
+            FROM_SNAP='--from-snap ' + parent_uuid if parent_uuid != '' else ''))
+        linux.rm_file_force(tmp_file)
         if r != 0:
             logger.error('failed to migrate volume %s: %s' % (src_install_path, e))
             return r
 
         # compare md5sum of src/dst segments
         src_segment_md5 = self._read_file_content('/tmp/%s_src_md5' % resource_uuid)
-        t_shell = traceable_shell.get_shell(cmd)
-        dst_segment_md5 = t_shell.call('sshpass -p {DST_MON_PASSWD} ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null {DST_MON_USER}@{DST_MON_ADDR} -p {DST_MON_PORT} \'cat /tmp/{RESOURCE_UUID}_dst_md5\''.format(
-            DST_MON_ADDR = dst_mon_addr,
-            DST_MON_PORT = dst_mon_port,
-            DST_MON_USER = dst_mon_user,
-            DST_MON_PASSWD = linux.shellquote(dst_mon_passwd),
-            RESOURCE_UUID = resource_uuid))
+        dst_segment_md5 = linux.sshpass_call(dst_mon_addr, dst_mon_passwd, 'cat /tmp/%s_dst_md5' % resource_uuid, dst_mon_user, dst_mon_port)
         if src_segment_md5 != dst_segment_md5:
             logger.error('check sum mismatch after migration: %s' % src_install_path)
             return -1
