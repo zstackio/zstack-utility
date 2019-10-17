@@ -38,11 +38,14 @@ if [ $# -eq 0 ]; then
 fi
 
 apply_resource_settings() {
-	ulimit -Hn 32768 && ulimit -Sn 32768 || true
+	n=$(ulimit -n)
+	if [ "$n" -lt 32768 ]; then
+		ulimit -Hn 32768 && ulimit -Sn 32768 || true
+	fi
 
 	# try to avoid 'hung_task_timeout_secs' issue
-	sysctl -w vm.dirty_ratio=10
-	sysctl -w vm.dirty_background_ratio=5
+	sysctl -w vm.dirty_ratio=10 > /dev/null
+	sysctl -w vm.dirty_background_ratio=5 > /dev/null
 
 	echo 0 > /sys/kernel/mm/ksm/merge_across_nodes || true
 
@@ -76,12 +79,14 @@ rm_ebtables_dangling_lock() {
 if [ "$@" = "status" ]; then
 	check_status
 else
-	apply_resource_settings
-	enable_qemukvm_coredump
-	rm_ebtables_dangling_lock '/var/lib/ebtables/lock' #C72
-	rm_ebtables_dangling_lock '/run/ebtables.lock'   #C74
+	if [ "$@" = "start" ]; then
+		apply_resource_settings
+		enable_qemukvm_coredump
+		rm_ebtables_dangling_lock '/var/lib/ebtables/lock' #C72
+		rm_ebtables_dangling_lock '/run/ebtables.lock'   #C74
+	fi
 
-	. /var/lib/zstack/virtualenv/kvm/bin/activate && python -c "from kvmagent import kdaemon; kdaemon.main()" $@
+	. /var/lib/zstack/virtualenv/kvm/bin/activate && python -c "from kvmagent import kdaemon; kdaemon.main()" "$@"
 fi
 
 if [ $? -eq 0 ]; then
