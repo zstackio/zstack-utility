@@ -6,6 +6,7 @@ import os
 import os.path
 import traceback
 import tempfile
+import fcntl
 
 import zstacklib.utils.uuidhelper as uuidhelper
 from kvmagent import kvmagent
@@ -610,7 +611,14 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         
         if not linux.is_mounted(cmd.mountPath, cmd.url):
             linux.mount(cmd.url, cmd.mountPath, cmd.options, "nfs4")
-        
+
+            with tempfile.TemporaryFile(dir=cmd.mountPath) as f:
+                try:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_EX|fcntl.LOCK_NB)
+                except IOError:
+                    linux.umount(cmd.mountPath)
+                    raise Exception('File lock unavailable on NFS: {}, mount options: {}'.format(cmd.url, cmd.options))
+
         self.mount_path[cmd.uuid] = cmd.mountPath
         logger.debug(http.path_msg(self.MOUNT_PATH, 'mounted %s on %s' % (cmd.url, cmd.mountPath)))
         self._set_capacity_to_response(cmd.uuid, rsp)
