@@ -162,13 +162,13 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
         mirror_name = "send" + mirror.mName if is_source else "recv" + mirror.mName
         return mirror_name
 
-    def _del_if(self, tunnel, mirror_name):
+    def _del_if(self, alias, mirror_name):
         alias_path = '/sys/class/net/%s/ifalias' % mirror_name
         if not os.path.exists(alias_path):
             return
         with open(alias_path, 'r') as fd:
             alias_str = fd.read()
-        if tunnel.uuid not in alias_str:
+        if alias not in alias_str:
             shell.ShellCmd("ip link del '%s'" % mirror_name)
 
 
