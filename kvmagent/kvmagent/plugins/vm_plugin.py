@@ -2574,8 +2574,7 @@ class Vm(object):
         return res
 
     def migrate(self, cmd):
-        current_hostname = shell.call('hostname')
-        current_hostname = current_hostname.strip(' \t\n\r')
+        current_hostname = linux.get_host_name()
         if cmd.migrateFromDestination:
             hostname = cmd.destHostIp.replace('.', '-')
         else:
@@ -4806,7 +4805,9 @@ class VmPlugin(kvmagent.KvmAgent):
         disks, fpath = self._build_domain_new_xml(vmUuid, volumeDicts)
 
         dst = 'qemu+tcp://{0}/system'.format(dstHostIp)
-        cmd = "virsh migrate --live --persistent --copy-storage-all --migrate-disks {} --xml {} {} {}".format(','.join(disks), fpath, vmUuid, dst)
+        migurl = 'tcp://{0}'.format(dstHostIp)
+        diskstr = ','.join(disks)
+        cmd = "virsh migrate --live --persistent --copy-storage-all --migrate-disks {} --xml {} {} {} {}".format(diskstr, fpath, vmUuid, dst, migurl)
 
         try:
             shell.check_run(cmd)
