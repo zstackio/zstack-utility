@@ -288,6 +288,9 @@ def remount(url, path, options=None):
     elif o.return_code != 0:
         o.raise_error()
 
+def get_host_name():
+    return os.uname()[1]
+
 def sshfs_mount_with_vm_uuid(vmuuid, username, hostname, port, password, url, mountpoint, writebandwidth=None):
     is_aio = shell.run("pgrep -a qemu-kvm | grep %s | grep aio=native" % vmuuid) == 0
     return sshfs_mount(username, hostname, port, password, url, mountpoint, writebandwidth, not is_aio)
