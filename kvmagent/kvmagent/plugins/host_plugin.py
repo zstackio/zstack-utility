@@ -898,17 +898,17 @@ if __name__ == "__main__":
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         exclude = "--exclude=" + cmd.excludePackages if cmd.excludePackages else ""
         updates = cmd.updatePackages if cmd.updatePackages else ""
-        yum0 = cmd.releaseVersion if cmd.releaseVersion else shell.call("awk '{print $3}' /etc/zstack-release").strip()
+        releasever = cmd.releaseVersion if cmd.releaseVersion else kvmagent.get_host_yum_release()
         yum_cmd = "export YUM0={};yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{} {} update {} -y"
-        yum_cmd = yum_cmd.format(yum0, ',zstack-experimental-mn' if cmd.enableExpRepo else '', exclude, updates)
+        yum_cmd = yum_cmd.format(releasever, ',zstack-experimental-mn' if cmd.enableExpRepo else '', exclude, updates)
         rsp = UpdateHostOSRsp()
         if shell.run("which yum") != 0:
             rsp.success = False
             rsp.error = "no yum command found, cannot update host os"
-        elif shell.run("export YUM0={};yum --disablerepo=* --enablerepo=zstack-mn repoinfo".format(yum0)) != 0:
+        elif shell.run("export YUM0={};yum --disablerepo=* --enablerepo=zstack-mn repoinfo".format(releasever)) != 0:
             rsp.success = False
             rsp.error = "no zstack-mn repo found, cannot update host os"
-        elif shell.run("export YUM0={};yum --disablerepo=* --enablerepo=qemu-kvm-ev-mn repoinfo".format(yum0)) != 0:
+        elif shell.run("export YUM0={};yum --disablerepo=* --enablerepo=qemu-kvm-ev-mn repoinfo".format(releasever)) != 0:
             rsp.success = False
             rsp.error = "no qemu-kvm-ev-mn repo found, cannot update host os"
         elif shell.run(yum_cmd) != 0:
@@ -922,15 +922,15 @@ if __name__ == "__main__":
     @in_bash
     def update_dependency(self, req):
         rsp = UpdateDependencyRsp()
-        yum0 = shell.call("awk '{print $3}' /etc/zstack-release").strip()
-        yum_cmd = "export YUM0={};yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install `cat /var/lib/zstack/dependencies` -y".format(yum0)
+        releasever = kvmagent.get_host_yum_release()
+        yum_cmd = "export YUM0={};yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install `cat /var/lib/zstack/dependencies` -y".format(releasever)
         if shell.run("which yum") != 0:
             rsp.success = False
             rsp.error = "no yum command found, cannot update kvmagent dependencies"
-        elif shell.run("export YUM0={};yum --disablerepo=* --enablerepo=zstack-mn repoinfo".format(yum0)) != 0:
+        elif shell.run("export YUM0={};yum --disablerepo=* --enablerepo=zstack-mn repoinfo".format(releasever)) != 0:
             rsp.success = False
             rsp.error = "no zstack-mn repo found, cannot update kvmagent dependencies"
-        elif shell.run("export YUM0={};yum --disablerepo=* --enablerepo=qemu-kvm-ev-mn repoinfo".format(yum0)) != 0:
+        elif shell.run("export YUM0={};yum --disablerepo=* --enablerepo=qemu-kvm-ev-mn repoinfo".format(releasever)) != 0:
             rsp.success = False
             rsp.error = "no qemu-kvm-ev-mn repo found, cannot update kvmagent dependencies"
         elif shell.run(yum_cmd) != 0:

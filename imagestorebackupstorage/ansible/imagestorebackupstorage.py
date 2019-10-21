@@ -81,7 +81,6 @@ zstacklib = ZstackLib(zstacklib_args)
 if distro in RPM_BASED_OS:
     qemu_pkg = 'qemu-kvm-ev' if distro_version >= 7 else 'qemu-kvm'
     qemu_pkg += ' fuse-sshfs nmap'
-    mn_release = get_mn_release()
     if client == "true" :
         if distro_version < 7:
             # change error to warning due to imagestore client will install after add kvm host
@@ -89,15 +88,15 @@ if distro in RPM_BASED_OS:
         if zstack_repo == 'false':
             yum_install_package(qemu_pkg, host_post_info)
         else:
-            command = ("export YUM0=%s; pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
-                       "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % (mn_release, qemu_pkg, zstack_repo)
+            command = ("pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
+                       "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % (qemu_pkg, zstack_repo)
             run_remote_command(command, host_post_info)
     else:
         if zstack_repo == 'false':
             yum_install_package(qemu_pkg, host_post_info)
         else:
-            command = ("export YUM0=%s; pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
-                       "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % (mn_release, qemu_pkg, zstack_repo)
+            command = ("pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
+                       "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % (qemu_pkg, zstack_repo)
             run_remote_command(command, host_post_info)
 
 elif distro in DEB_BASED_OS:

@@ -227,6 +227,8 @@ def create_log(logger_dir, logger_file):
     handler.setFormatter(fmt)
     logger.addHandler(handler)
 
+def get_mn_yum_release():
+    return commands.getoutput("rpm -q zstack-release |awk -F'-' '{print $3}'").strip()
 
 def post_msg(msg, post_url):
     logger.info(msg.data.details)
@@ -831,6 +833,9 @@ def check_host_reachable(host_post_info, warning=False):
 @retry(times=3, sleep_time=3)
 def run_remote_command(command, host_post_info, return_status=False, return_output=False):
     '''return status all the time except return_status is False, return output is set to True'''
+    if 'yum' in command:
+        set_yum0 = "rpm -q zstack-release && releasever=`awk '{print $3}' /etc/zstack-release` || releasever=%s;export YUM0=$releasever;" % (get_mn_yum_release())
+        command = set_yum0 + command
     start_time = datetime.now()
     host_post_info.start_time = start_time
     host = host_post_info.host
@@ -1431,7 +1436,7 @@ enabled=0" >  /etc/yum.repos.d/zstack-experimental-mn.repo
 
                 # install libselinux-python and other command system libs from user defined repos
                 command = (
-                          "export YUM0=`awk '{print $3}' /etc/zstack-release`; yum clean --enablerepo=%s metadata &&  pkg_list=`rpm -q libselinux-python python-devel "
+                          "yum clean --enablerepo=%s metadata &&  pkg_list=`rpm -q libselinux-python python-devel "
                           "python-setuptools python-pip gcc autoconf | grep \"not installed\" | awk"
                           " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
                           "-y $pkg; done;") % (zstack_repo, zstack_repo)
@@ -1439,7 +1444,7 @@ enabled=0" >  /etc/yum.repos.d/zstack-experimental-mn.repo
                 if distro_version >= 7:
                     # to avoid install some pkgs on virtual router which release is Centos 6.x
                     command = (
-                                  "export YUM0=`awk '{print $3}' /etc/zstack-release`; yum clean --enablerepo=%s metadata &&  pkg_list=`rpm -q python-backports-ssl_match_hostname chrony | "
+                                  "yum clean --enablerepo=%s metadata &&  pkg_list=`rpm -q python-backports-ssl_match_hostname chrony | "
                                   "grep \"not installed\" | awk"
                                   " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
                                   "-y $pkg; done;") % (zstack_repo, zstack_repo)
