@@ -121,9 +121,9 @@ class DrbdResource(object):
         if "conflicting use of device-minor" in o+e:
             logger.debug("detect conflicting use of device-minor! %s" % e)
             return
-        if 0 == bash.bash_r("cat /proc/drbd | grep '^( )*%s: cs:Unconfigured'" % self.config.local_host.minor):
+        if 0 == bash.bash_r("cat /proc/drbd | grep '^[[:space:]]*%s: cs:Unconfigured'" % self.config.local_host.minor):
             return
-        if 1 == bash.bash_r("cat /proc/drbd | grep '^( )*%s: '" % self.config.local_host.minor):
+        if 1 == bash.bash_r("cat /proc/drbd | grep '^[[:space:]]*%s: '" % self.config.local_host.minor):
             return
         raise Exception("demote resource %s failed: %s, %s, %s" % (self.name, r, o, e))
 
