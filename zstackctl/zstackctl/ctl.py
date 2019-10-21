@@ -4621,6 +4621,71 @@ class DumpMysqlCmd(Command):
                 info("Sync ZStack backup to remote host %s:%s and delete expired files on remote successfully! " % (remote_host_ip, self.remote_backup_dir))
 
 
+class RestoreMysqlPreCheckCmd(Command):
+    def __init__(self):
+        super(RestoreMysqlPreCheckCmd, self).__init__()
+        self.name = "check_restore_mysql"
+        self.description = (
+            "check before restore mysql data from backup file"
+        )
+        self.hide = True
+        self.sensitive_args = ['--mysql-root-password']
+        self.hostname = None
+        self.port = None
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--from-file', '-f',
+                            help="The backup filename under /var/lib/zstack/mysql-backup/ ",
+                            required=True)
+        parser.add_argument('--mysql-root-password',
+                            help="mysql root password of zstack database",
+                            default="")
+
+    def execute_sql(self, password, sql):
+        return shell_return_stdout_stderr("mysql -uroot --password='%s' -P %s --host=%s -e \"%s\""
+                                          % (password, self.port, self.hostname, sql))
+
+    def run(self, args):
+        (self.hostname, self.port, _, _) = ctl.get_live_mysql_portal()
+        r, o, e = self.execute_sql(args.mysql_root_password, "show databases like 'zstack'")
+        if r != 0:
+            error("Failed to connect to jdbc:mysql://%s:%s with root password '%s'" % (
+                self.hostname, self.port, args.mysql_root_password))
+        elif not o.strip():
+            info("check pass")
+            return
+
+        if os.path.exists(args.from_file) is False:
+            error("file not exists: %s" % args.from_file)
+        error_if_tool_is_missing('gunzip')
+
+        create_tmp_table = "drop table if exists `TempVolumeEO`; " \
+                           "create table `TempVolumeEO` like .`VolumeEO`;"
+
+        check_sql = "select tv.uuid,`name`,installPath from `TempVolumeEO` tv where tv.uuid in " \
+        "(select uuid from `VolumeEO`)" \
+        " and tv.installPath != (select installPath from `VolumeEO` where uuid = tv.uuid);"
+        drop_table = "drop table if exists `TempVolumeEO`;"
+
+        fd, fname = tempfile.mkstemp()
+        os.write(fd, create_tmp_table + "\n")
+        shell("gunzip < %s | sed -ne 's/INSERT INTO `VolumeEO`/INSERT INTO `TempVolumeEO`/p' >> %s" % (args.from_file, fname))
+        os.lseek(fd, 0, os.SEEK_END)
+        os.write(fd, check_sql + "\n" + drop_table)
+        os.close(fd)
+
+        r, o, e = self.execute_sql(args.mysql_root_password, "use zstack; source %s" % fname)
+        os.remove(fname)
+
+        if r != 0:
+            error("failed to check, because: %s" % e)
+        elif o:
+            error("install path of some volumes has been changed, restore mysql has risk:\n%s" % o)
+        else:
+            info("check pass")
+
+
 class RestoreMysqlCmd(Command):
     status, all_local_ip = commands.getstatusoutput("ip a")
 
@@ -4652,6 +4717,10 @@ class RestoreMysqlCmd(Command):
                             help="This config is for multi node restore mysql, do not set it manually.",
                             action="store_true",
                             default=False)
+        parser.add_argument('--skip-check',
+                            help="Skip security checks. NOT recommended",
+                            action="store_true",
+                            default=False)
 
     def test_mysql_connection(self, db_connect_password, db_port, db_hostname):
         command = "mysql -uroot %s -P %s  %s -e 'show databases'  >> /dev/null 2>&1" \
@@ -4676,6 +4745,9 @@ class RestoreMysqlCmd(Command):
         if os.path.exists(db_backup_name) is False:
             error("Didn't find file: %s ! Stop recover database! " % db_backup_name)
         error_if_tool_is_missing('gunzip')
+
+        if not args.skip_check:
+            ctl.internal_run('check_restore_mysql', "-f %s --mysql-root-password '%s'" % (db_backup_name, db_password))
 
         # get deploy type
         restorer = RestorerFactory.get_restorer(db_hostname_origin_cp, db_password, db_port)
@@ -4797,7 +4869,7 @@ class MultiMysqlRestorer(MysqlRestorer):
             slave_file_path = "/var/lib/zstack/tmp-db-backup.gz"
             self.utils.scp_to_peer(args.from_file, slave_file_path)
             self.utils.excute_on_peer(
-                "zstack-ctl restore_mysql --mysql-root-password '%s' --skip-ui -f %s --only-restore-self && rm -f %s"
+                "zstack-ctl restore_mysql --mysql-root-password '%s' --skip-ui --skip-check -f %s --only-restore-self && rm -f %s"
                 % (args.mysql_root_password, slave_file_path, slave_file_path))
             info("Succeed to restore zstack peer node data")
 
@@ -8925,6 +8997,7 @@ def main():
     ResetRabbitCmd()
     RestoreConfigCmd()
     RestartNodeCmd()
+    RestoreMysqlPreCheckCmd()
     RestoreMysqlCmd()
     RecoverHACmd()
     ScanDatabaseBackupCmd()
