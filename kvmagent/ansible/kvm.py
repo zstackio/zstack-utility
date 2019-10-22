@@ -142,7 +142,7 @@ rpm -q redhat-release-server > /dev/null 2>&1
 exit 1'''
 run_remote_command(get_releasever_script, host_post_info)
 (status, output) = run_remote_command("bash /opt/get_releasever", host_post_info, True, True)
-if int(status) == 0:
+if status:
     # c72 is no longer supported, force set c74
     releasever = 'c74' if output.strip() == 'c72' else output.strip()
 else:
@@ -260,7 +260,7 @@ if distro in RPM_BASED_OS:
 
         # name: install/update kvm related packages on RedHat based OS from user defined repo
         # if zstack-manager is not installed, then install/upgrade zstack-host and ignore failures
-        command = ("export YUM0=`awk '{print $3}' /etc/zstack-release`; [[ -f /usr/bin/zstack-ctl ]] && zstack-ctl status | grep 'MN status' | grep 'Running' >/dev/null 2>&1; \
+        command = ("[[ -f /usr/bin/zstack-ctl ]] && zstack-ctl status | grep 'MN status' | grep 'Running' >/dev/null 2>&1; \
             [[ $? -eq 0 ]] || yum --disablerepo=* --enablerepo=%s install -y zstack-host >/dev/null; \
                 echo %s >/var/lib/zstack/dependencies && yum --enablerepo=%s clean metadata >/dev/null && \
                 pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'`' %s' && \

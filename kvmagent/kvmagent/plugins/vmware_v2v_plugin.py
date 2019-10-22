@@ -84,7 +84,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             rsp.error = "v2v feature is not supported on centos 7.2"
             return jsonobject.dumps(rsp)
 
-        releasever = shell.call("awk '{print $3}' /etc/zstack-release").strip()
+        releasever = kvmagent.get_host_yum_release()
         yum_cmd = "export YUM0={}; yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn " \
                   "install libguestfs-tools libguestfs-winsupport virt-v2v -y".format(releasever)
         if shell.run(yum_cmd) != 0:

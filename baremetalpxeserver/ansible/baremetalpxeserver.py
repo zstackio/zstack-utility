@@ -91,8 +91,7 @@ run_remote_command(command, host_post_info)
 # name: install dependencies
 if distro in RPM_BASED_OS:
     if zstack_repo != 'false':
-        mn_release = get_mn_release()
-        command = ("export YUM0=%s; pkg_list=`rpm -q dnsmasq nginx syslinux vsftpd nmap | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (mn_release, zstack_repo)
+        command = ("pkg_list=`rpm -q dnsmasq nginx syslinux vsftpd nmap | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (zstack_repo)
         run_remote_command(command, host_post_info)
     else:
         for pkg in ["dnsmasq", "nginx", "vsftpd", "syslinux", "nmap"]:

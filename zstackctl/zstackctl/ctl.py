@@ -2586,7 +2586,7 @@ class UpgradeHACmd(Command):
 
     def upgrade_repo(self, iso, tmp_iso, host_post_info):
         command = (
-                  "export YUM0=`awk '{print $3}' /etc/zstack-release`; yum clean --enablerepo=zstack-local metadata &&  pkg_list=`rsync | grep \"not installed\" | awk"
+                  "yum clean --enablerepo=zstack-local metadata &&  pkg_list=`rsync | grep \"not installed\" | awk"
                   " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=zstack-local install "
                   "-y $pkg; done;")
         run_remote_command(command, host_post_info)

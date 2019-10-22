@@ -1041,11 +1041,10 @@ download_zstack(){
 iu_deploy_zstack_repo() {
     echo_subtitle "Deploy yum repo for ${PRODUCT_NAME}"
 
-    [ x"$BASEARCH" = x'aarch64' ] && ALTARCH='x86_64' || ALTARCH='aarch64'
     [ -z "$ZSTACK_RELEASE" ] && fail "failed to get zstack releasever, please make sure zstack-release is installed."
-    mkdir -p ${ZSTACK_HOME}/static/zstack-repo/{x86_64,aarch64}
-    ln -s /opt/zstack-dvd/${BASEARCH}/${ZSTACK_RELEASE} ${ZSTACK_HOME}/static/zstack-repo/${BASEARCH}/${ZSTACK_RELEASE} >/dev/null 2>&1
-    ln -s /opt/zstack-dvd/${ALTARCH}/${ZSTACK_RELEASE} ${ZSTACK_HOME}/static/zstack-repo/${ALTARCH}/${ZSTACK_RELEASE} >/dev/null 2>&1
+    mkdir -p ${ZSTACK_HOME}/static/zstack-repo/
+    ln -s /opt/zstack-dvd/x86_64 ${ZSTACK_HOME}/static/zstack-repo/x86_64 >/dev/null 2>&1
+    ln -s /opt/zstack-dvd/aarch64 ${ZSTACK_HOME}/static/zstack-repo/aarch64 >/dev/null 2>&1
     chown -R zstack:zstack ${ZSTACK_HOME}/static/zstack-repo
 }
 
