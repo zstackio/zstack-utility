@@ -2,8 +2,8 @@
 # encoding: utf-8
 
 import yaml
-from zstacklib import *
 import threading
+from zstacklib import *
 from utils import linux
 from utils import shell
 from utils.sql_query import MySqlCommandLineQuery
@@ -47,7 +47,8 @@ def warn(msg):
 
 
 def get_default_ip():
-    cmd = shell.ShellCmd("""dev=`ip route|grep default|head -n 1|awk -F "dev" '{print $2}' | awk -F " " '{print $1}'`; ip addr show $dev |grep "inet "|awk '{print $2}'|head -n 1 |awk -F '/' '{print $1}'""")
+    cmd = shell.ShellCmd(
+        """dev=`ip route|grep default|head -n 1|awk -F "dev" '{print $2}' | awk -F " " '{print $1}'`; ip addr show $dev |grep "inet "|awk '{print $2}'|head -n 1 |awk -F '/' '{print $1}'""")
     cmd(False)
     return cmd.stdout.strip()
 
@@ -77,6 +78,7 @@ class CollectFromYml(object):
     vrouter_task_list = []
     max_thread_num = 20
     DEFAULT_ZSTACK_HOME = '/usr/local/zstack/apache-tomcat/webapps/zstack/'
+    HA_KEEPALIVED_CONF = "/etc/keepalived/keepalived.conf"
 
     def __init__(self, ctl, collect_dir, detail_version, time_stamp, args):
         self.ctl = ctl
@@ -85,7 +87,8 @@ class CollectFromYml(object):
     def get_host_sql(self, suffix_sql):
         db_hostname, db_port, db_user, db_password = self.ctl.get_live_mysql_portal()
         if db_password:
-            cmd = "mysql --host %s --port %s -u%s -p%s zstack -e \'%s\'" % (db_hostname, db_port, db_user, db_password, suffix_sql)
+            cmd = "mysql --host %s --port %s -u%s -p%s zstack -e \'%s\'" % (
+                db_hostname, db_port, db_user, db_password, suffix_sql)
         else:
             cmd = "mysql --host %s --port %s -u%s zstack -e \'%s\'" % (db_hostname, db_port, db_user, suffix_sql)
         return cmd
@@ -94,9 +97,11 @@ class CollectFromYml(object):
         mysqldump_skip_tables = "--ignore-table=zstack.VmUsageHistoryVO --ignore-table=zstack.RootVolumeUsageHistoryVO --ignore-table=zstack.NotificationVO --ignore-table=zstack.PubIpVmNicBandwidthUsageHistoryVO --ignore-table=zstack.DataVolumeUsageHistoryVO --ignore-table=zstack.RestAPIVO --ignore-table=zstack.ResourceUsageVO"
         db_hostname, db_port, db_user, db_password = self.ctl.get_live_mysql_portal()
         if db_password:
-            cmd = "mysqldump --database -u%s -p%s -P %s --single-transaction --quick zstack zstack_rest information_schema performance_schema %s" % (db_user, db_password, db_port, mysqldump_skip_tables)
+            cmd = "mysqldump --database -u%s -p%s -P %s --single-transaction --quick zstack zstack_rest information_schema performance_schema %s" % (
+                db_user, db_password, db_port, mysqldump_skip_tables)
         else:
-            cmd = "mysqldump --database -u%s -P %s --single-transaction --quick zstack zstack_rest information_schema performance_schema %s" % (db_user, db_port, mysqldump_skip_tables)
+            cmd = "mysqldump --database -u%s -P %s --single-transaction --quick zstack zstack_rest information_schema performance_schema %s" % (
+                db_user, db_port, mysqldump_skip_tables)
         return cmd
 
     def decode_conf_yml(self, args):
@@ -146,21 +151,22 @@ class CollectFromYml(object):
             if list_value is None or logs is None:
                 decode_error = 'host or log can not be empty in %s' % log
                 break
-            else:
-                if 'exec' not in list_value:
-                    if '\n' in list_value:
-                        temp_array = list_value.split('\n')
+
+            if 'exec' not in list_value:
+                if '\n' in list_value:
+                    temp_array = list_value.split('\n')
+                    conf_value['list'] = temp_array
+                elif ',' in list_value:
+                    temp_array = list_value.split(',')
+                    conf_value['list'] = temp_array
+                else:
+                    if ' ' in list_value:
+                        temp_array = list_value.split()
                         conf_value['list'] = temp_array
-                    elif ',' in list_value:
-                        temp_array = list_value.split(',')
-                        conf_value['list'] = temp_array
-                    else:
-                        if ' ' in list_value:
-                            temp_array = list_value.split()
-                            conf_value['list'] = temp_array
-                if collect_type == 'host' or collect_type == 'sharedblock':
-                    if args.hosts is not None:
-                        conf_value['list'] = args.hosts.split(',')
+
+            if collect_type == 'host' or collect_type == 'sharedblock':
+                if args.hosts is not None:
+                    conf_value['list'] = args.hosts.split(',')
 
             history_configured = False
 
@@ -200,7 +206,7 @@ class CollectFromYml(object):
 
             # collect `history` by default
             if not history_configured:
-                logs.append({'name':'history', 'dir':'/var/log/history.d/', 'file':'history'})
+                logs.append({'name': 'history', 'dir': '/var/log/history.d/', 'file': 'history'})
 
             decode_result[collect_type] = dict(
                 (key, value) for key, value in conf_value.items() if key == 'list' or key == 'logs')
@@ -218,7 +224,7 @@ class CollectFromYml(object):
                 cmd = cmd + ' -name \'%s\'' % file_value
         cmd = cmd + ' -exec ls --full-time {} \; | sort -k6 | awk \'{print $6\":\"$7\"|\"$9\"|\"$5}\''
         cmd = cmd + ' | awk -F \'|\' \'BEGIN{preview=0;} {if(NR==1 && ( $1 > \"%s\" || (\"%s\" < $1 && $1  <= \"%s\"))) print $2\"|\"$3; \
-                               else if ((\"%s\" < $1 && $1 <= \"%s\") || ( $1> \"%s\" && preview < \"%s\")) print $2\"|\"$3; preview = $1}\''\
+                               else if ((\"%s\" < $1 && $1 <= \"%s\") || ( $1> \"%s\" && preview < \"%s\")) print $2\"|\"$3; preview = $1}\'' \
               % (self.t_date, self.f_date, self.t_date, self.f_date, self.t_date, self.t_date, self.t_date)
         if self.check:
             cmd = cmd + '| awk -F \'|\' \'BEGIN{size=0;} \
@@ -355,12 +361,14 @@ class CollectFromYml(object):
     def generate_tar_ball(self, run_command_dir, detail_version, time_stamp):
         info_verbose("Compressing log files ...")
         (status, output) = commands.getstatusoutput("cd %s && tar zcf collect-log-%s-%s.tar.gz collect-log-%s-%s"
-                                                    % (run_command_dir, detail_version, time_stamp, detail_version, time_stamp))
+                                                    % (run_command_dir, detail_version, time_stamp, detail_version,
+                                                       time_stamp))
         if status != 0:
             error("Generate tarball failed: %s " % output)
 
     def compress_and_fetch_log(self, local_collect_dir, tmp_log_dir, host_post_info, type):
-        command = "cd %s && tar zcf ../%s-collect-log.tar.gz . --ignore-failed-read --warning=no-file-changed || true" % (tmp_log_dir, type)
+        command = "cd %s && tar zcf ../%s-collect-log.tar.gz . --ignore-failed-read --warning=no-file-changed || true" % (
+            tmp_log_dir, type)
         run_remote_command(command, host_post_info)
         fetch_arg = FetchArg()
         fetch_arg.src = "%s../%s-collect-log.tar.gz " % (tmp_log_dir, type)
@@ -369,7 +377,8 @@ class CollectFromYml(object):
         fetch(fetch_arg, host_post_info)
         command = "rm -rf %s/../%s-collect-log.tar.gz %s" % (tmp_log_dir, type, tmp_log_dir)
         run_remote_command(command, host_post_info)
-        (status, output) = commands.getstatusoutput("cd %s && tar zxf %s-collect-log.tar.gz" % (local_collect_dir, type))
+        (status, output) = commands.getstatusoutput(
+            "cd %s && tar zxf %s-collect-log.tar.gz" % (local_collect_dir, type))
         if status != 0:
             warn("Uncompress %s/%s-collect-log.tar.gz meet problem: %s" % (local_collect_dir, type, output))
 
@@ -401,6 +410,33 @@ class CollectFromYml(object):
             for param in self.vrouter_task_list:
                 self.get_host_log(param[0], param[1], param[2], param[3])
 
+    def get_mn_list(self):
+        def find_value_from_conf(content, key, begin, end):
+            try:
+                idx1 = str(content).index(key)
+                sub1 = content[idx1 + len(key):]
+
+                idx2 = sub1.index(begin)
+                sub2 = sub1[idx2 + len(begin):]
+
+                idx3 = sub2.index(end)
+                return sub2[:idx3].strip('\t\r\n ')
+            except Exception as e:
+                error_verbose("get ha mn ip failed, please check keepalived conf, %s" % e)
+
+        def decode_kp_conf():
+            content = linux.read_file(self.HA_KEEPALIVED_CONF)
+            ha_mn_list.append(find_value_from_conf(content, "unicast_src_ip", " ", "\n"))
+            ha_mn_list.append(find_value_from_conf(content, "unicast_peer", "{", "}"))
+
+        ha_mn_list = []
+        if not os.path.exists(self.HA_KEEPALIVED_CONF):
+            ha_mn_list.append("localhost")
+        else:
+            decode_kp_conf()
+
+        return ha_mn_list
+
     def collect_configure_log(self, host_list, log_list, collect_dir, type):
         if isinstance(host_list, str):
             if host_list is None:
@@ -414,15 +450,19 @@ class CollectFromYml(object):
                 return
         if isinstance(host_list, dict):
             if host_list['exec'] is not None:
-                exec_cmd = self.get_host_sql(host_list['exec']) + ' | awk \'NR>1\''
-                try:
-                    (status, output) = commands.getstatusoutput(exec_cmd)
-                    if status == 0 and output.startswith('ERROR') is not True:
-                        host_list = output.split('\n')
-                    else:
+                if type == 'mn' and host_list['exec'] == 'AutoCollect':
+                    host_list = self.get_mn_list()
+                else:
+                    exec_cmd = self.get_host_sql(host_list['exec']) + ' | awk \'NR>1\''
+                    try:
+                        (status, output) = commands.getstatusoutput(exec_cmd)
+                        if status == 0 and output.startswith('ERROR') is not True:
+                            host_list = output.split('\n')
+                        else:
+                            error_verbose('fail to exec %s' % host_list['exec'])
+                    except Exception:
                         error_verbose('fail to exec %s' % host_list['exec'])
-                except Exception:
-                    error_verbose('fail to exec %s' % host_list['exec'])
+
         host_list = list(set(host_list))
         for host_ip in host_list:
             if host_ip is None or host_ip == '':
@@ -430,7 +470,8 @@ class CollectFromYml(object):
             if host_ip == 'localhost' or host_ip == get_default_ip():
                 self.add_collect_thread(self.local_type, [log_list, collect_dir, type])
             else:
-                self.add_collect_thread(self.host_type, [self.generate_host_post_info(host_ip, type), log_list, collect_dir, type])
+                self.add_collect_thread(self.host_type,
+                                        [self.generate_host_post_info(host_ip, type), log_list, collect_dir, type])
 
     @ignoreerror
     def get_local_log(self, log_list, collect_dir, type):
@@ -466,7 +507,8 @@ class CollectFromYml(object):
                         (status, output) = commands.getstatusoutput('(%s) > %s' % (command, file_path))
                         if status == 0:
                             self.add_success_count()
-                            logger.info("exec shell %s successfully!You can check the file at %s" % (command, file_path))
+                            logger.info(
+                                "exec shell %s successfully!You can check the file at %s" % (command, file_path))
                         elif type != 'sharedblock':
                             self.add_fail_count(1, error_log_name, output)
                     else:
@@ -483,7 +525,8 @@ class CollectFromYml(object):
                             else:
                                 self.add_fail_count(1, error_log_name, output)
                         else:
-                            self.add_fail_count(1, error_log_name, "the dir path %s did't find on %s localhost" % (log['dir'], type))
+                            self.add_fail_count(1, error_log_name,
+                                                "the dir path %s did't find on %s localhost" % (log['dir'], type))
                             logger.warn("the dir path %s did't find on %s localhost" % (log['dir'], type))
                             warn("the dir path %s did't find on %s localhost" % (log['dir'], type))
             except SystemExit:
@@ -493,7 +536,7 @@ class CollectFromYml(object):
                 self.failed_flag = True
                 return 1
             end = datetime.now()
-            total_collect_time = str(round((end-start).total_seconds(), 1)) + 's'
+            total_collect_time = str(round((end - start).total_seconds(), 1)) + 's'
             self.collect_time_list.append(
                 '%s\t%s\t%s\t%s\t%s\n' % (type, get_default_ip(), start, end, total_collect_time))
             command = 'test "$(ls -A "%s" 2>/dev/null)" || echo The directory is empty' % local_collect_dir
@@ -566,89 +609,96 @@ class CollectFromYml(object):
 
     @ignoreerror
     def get_host_log(self, host_post_info, log_list, collect_dir, type):
-            if self.check_host_reachable_in_queen(host_post_info) is True:
-                if self.check:
+        if self.check_host_reachable_in_queen(host_post_info) is True:
+            if self.check:
+                for log in log_list:
+                    if 'exec' in log:
+                        continue
+                    else:
+                        if file_dir_exist("path=%s" % log['dir'], host_post_info):
+                            command = self.build_collect_cmd(log['dir'], log['file'], None)
+                            (status, output) = run_remote_command(command, host_post_info, return_status=True,
+                                                                  return_output=True)
+                            if status is True:
+                                key = "%s:%s:%s" % (type, host_post_info.host, log['name'])
+                                self.check_result[key] = output
+            else:
+                info_verbose("Collecting log from %s %s ..." % (type, host_post_info.host))
+                start = datetime.now()
+                local_collect_dir = collect_dir + '%s-%s/' % (type, host_post_info.host)
+                tmp_log_dir = "/tmp/%s-tmp-log/" % type
+                try:
+                    # file system broken shouldn't block collect log process
+                    if not os.path.exists(local_collect_dir):
+                        os.makedirs(local_collect_dir)
+                    command = "mkdir -p %s " % tmp_log_dir
+                    run_remote_command(command, host_post_info)
                     for log in log_list:
+                        error_log_name = "%s\t%s\t%s" % (type, host_post_info.host, log['name'])
+                        dest_log_dir = tmp_log_dir
+                        if 'name' in log:
+                            command = "mkdir -p %s" % tmp_log_dir + '%s/' % log['name']
+                            run_remote_command(command, host_post_info)
+                            dest_log_dir = tmp_log_dir + '%s/' % log['name']
                         if 'exec' in log:
-                            continue
+                            command = log['exec']
+                            file_path = dest_log_dir + '%s' % (log['name'])
+                            (status, output) = run_remote_command('(%s) > %s' % (command, file_path),
+                                                                  host_post_info, return_status=True,
+                                                                  return_output=True)
+                            if status is True:
+                                self.add_success_count()
+                                logger.info(
+                                    "exec shell %s successfully!You can check the file at %s" % (command, file_path))
+                            elif type != 'sharedblock':
+                                self.add_fail_count(1, error_log_name, output)
                         else:
                             if file_dir_exist("path=%s" % log['dir'], host_post_info):
-                                command = self.build_collect_cmd(log['dir'], log['file'], None)
+                                command = self.build_collect_cmd(log['dir'], log['file'], dest_log_dir)
                                 (status, output) = run_remote_command(command, host_post_info, return_status=True,
                                                                       return_output=True)
                                 if status is True:
-                                    key = "%s:%s:%s" % (type, host_post_info.host, log['name'])
-                                    self.check_result[key] = output
-                else:
-                    info_verbose("Collecting log from %s %s ..." % (type, host_post_info.host))
-                    start = datetime.now()
-                    local_collect_dir = collect_dir + '%s-%s/' % (type, host_post_info.host)
-                    tmp_log_dir = "/tmp/%s-tmp-log/" % type
-                    try:
-                        # file system broken shouldn't block collect log process
-                        if not os.path.exists(local_collect_dir):
-                            os.makedirs(local_collect_dir)
-                        command = "mkdir -p %s " % tmp_log_dir
-                        run_remote_command(command, host_post_info)
-                        for log in log_list:
-                            error_log_name = "%s\t%s\t%s" % (type, host_post_info.host, log['name'])
-                            dest_log_dir = tmp_log_dir
-                            if 'name' in log:
-                                command = "mkdir -p %s" % tmp_log_dir + '%s/' % log['name']
-                                run_remote_command(command, host_post_info)
-                                dest_log_dir = tmp_log_dir + '%s/' % log['name']
-                            if 'exec' in log:
-                                command = log['exec']
-                                file_path = dest_log_dir + '%s' % (log['name'])
-                                (status, output) = run_remote_command('(%s) > %s' % (command, file_path),
-                                                                      host_post_info, return_status=True, return_output=True)
-                                if status is True:
                                     self.add_success_count()
-                                    logger.info("exec shell %s successfully!You can check the file at %s" % (command, file_path))
-                                elif type != 'sharedblock':
+                                    command = 'test "$(ls -A "%s" 2>/dev/null)" || echo The directory is empty' % dest_log_dir
+                                    (status, output) = run_remote_command(command, host_post_info, return_status=True,
+                                                                          return_output=True)
+                                    if "The directory is empty" in output:
+                                        warn("Didn't find log [%s] on %s %s" % (log['name'], type, host_post_info.host))
+                                        logger.warn(
+                                            "Didn't find log [%s] on %s %s" % (log['name'], type, host_post_info.host))
+                                else:
                                     self.add_fail_count(1, error_log_name, output)
                             else:
-                                if file_dir_exist("path=%s" % log['dir'], host_post_info):
-                                    command = self.build_collect_cmd(log['dir'], log['file'], dest_log_dir)
-                                    (status, output) = run_remote_command(command, host_post_info, return_status=True, return_output=True)
-                                    if status is True:
-                                        self.add_success_count()
-                                        command = 'test "$(ls -A "%s" 2>/dev/null)" || echo The directory is empty' % dest_log_dir
-                                        (status, output) = run_remote_command(command, host_post_info, return_status=True, return_output=True)
-                                        if "The directory is empty" in output:
-                                            warn("Didn't find log [%s] on %s %s" % (log['name'], type, host_post_info.host))
-                                            logger.warn("Didn't find log [%s] on %s %s" % (log['name'], type, host_post_info.host))
-                                    else:
-                                        self.add_fail_count(1, error_log_name, output)
-                                else:
-                                    self.add_fail_count(1, error_log_name, "the dir path %s did't find on %s %s" % (log['dir'], type, host_post_info.host))
-                                    logger.warn("the dir path %s did't find on %s %s" % (log['dir'], type, host_post_info.host))
-                                    warn("the dir path %s did't find on %s %s" % (log['dir'], type, host_post_info.host))
-                    except SystemExit:
-                        warn("collect log on host %s failed" % host_post_info.host)
-                        logger.warn("collect log on host %s failed" % host_post_info.host)
-                        command = linux.rm_dir_force(tmp_log_dir, True)
-                        self.failed_flag = True
-                        run_remote_command(command, host_post_info)
-                        return 1
+                                self.add_fail_count(1, error_log_name, "the dir path %s did't find on %s %s" % (
+                                    log['dir'], type, host_post_info.host))
+                                logger.warn(
+                                    "the dir path %s did't find on %s %s" % (log['dir'], type, host_post_info.host))
+                                warn("the dir path %s did't find on %s %s" % (log['dir'], type, host_post_info.host))
+                except SystemExit:
+                    warn("collect log on host %s failed" % host_post_info.host)
+                    logger.warn("collect log on host %s failed" % host_post_info.host)
+                    command = linux.rm_dir_force(tmp_log_dir, True)
+                    self.failed_flag = True
+                    run_remote_command(command, host_post_info)
+                    return 1
 
-                    end = datetime.now()
-                    total_collect_time = str(round((end - start).total_seconds(), 1)) + 's'
-                    self.collect_time_list.append(
-                        '%s\t%s\t%s\t%s\t%s\n' % (type, host_post_info.host, start, end, total_collect_time))
-                    command = 'test "$(ls -A "%s" 2>/dev/null)" || echo The directory is empty' % tmp_log_dir
-                    (status, output) = run_remote_command(command, host_post_info, return_status=True, return_output=True)
-                    if "The directory is empty" in output:
-                        warn("Didn't find log on host: %s " % (host_post_info.host))
-                        command = linux.rm_dir_force(tmp_log_dir, True)
-                        run_remote_command(command, host_post_info)
-                        return 0
-                    self.compress_and_fetch_log(local_collect_dir, tmp_log_dir, host_post_info, type)
-                    info_verbose("Successfully collect log from %s %s!" % (type, host_post_info.host))
-            else:
-                warn("%s %s is unreachable!" % (type, host_post_info.host))
-                self.add_fail_count(len(log_list), "%s\t%s\t%s" % (type, host_post_info.host, 'unreachable'),
-                                    ("%s %s is unreachable!" % (type, host_post_info.host)))
+                end = datetime.now()
+                total_collect_time = str(round((end - start).total_seconds(), 1)) + 's'
+                self.collect_time_list.append(
+                    '%s\t%s\t%s\t%s\t%s\n' % (type, host_post_info.host, start, end, total_collect_time))
+                command = 'test "$(ls -A "%s" 2>/dev/null)" || echo The directory is empty' % tmp_log_dir
+                (status, output) = run_remote_command(command, host_post_info, return_status=True, return_output=True)
+                if "The directory is empty" in output:
+                    warn("Didn't find log on host: %s " % (host_post_info.host))
+                    command = linux.rm_dir_force(tmp_log_dir, True)
+                    run_remote_command(command, host_post_info)
+                    return 0
+                self.compress_and_fetch_log(local_collect_dir, tmp_log_dir, host_post_info, type)
+                info_verbose("Successfully collect log from %s %s!" % (type, host_post_info.host))
+        else:
+            warn("%s %s is unreachable!" % (type, host_post_info.host))
+            self.add_fail_count(len(log_list), "%s\t%s\t%s" % (type, host_post_info.host, 'unreachable'),
+                                ("%s %s is unreachable!" % (type, host_post_info.host)))
 
     def get_total_size(self):
         values = self.check_result.values()
@@ -692,14 +742,17 @@ class CollectFromYml(object):
                         hour = hms_array[0] if len(hms_array) > 0 is not None else '00'
                         minute = hms_array[1] if len(hms_array) > 1 is not None else '00'
                         sec = hms_array[2] if len(hms_array) > 2 is not None else '00'
-                        return datetime(int(year), int(month), int(day), int(hour), int(minute), int(sec))\
+                        return datetime(int(year), int(month), int(day), int(hour), int(minute), int(sec)) \
                             .strftime('%Y-%m-%d:%H:%M:%S')
                 else:
-                    error_verbose("make sure the date [%s] is correct and in \'yyyy-MM-dd\' or \'yyyy-MM-dd_hh:mm:ss\' format" % str_date)
+                    error_verbose(
+                        "make sure the date [%s] is correct and in \'yyyy-MM-dd\' or \'yyyy-MM-dd_hh:mm:ss\' format" % str_date)
             else:
-                error_verbose("make sure the date [%s] is correct and in \'yyyy-MM-dd\' or \'yyyy-MM-dd_hh:mm:ss\' format" % str_date)
+                error_verbose(
+                    "make sure the date [%s] is correct and in \'yyyy-MM-dd\' or \'yyyy-MM-dd_hh:mm:ss\' format" % str_date)
         except ValueError:
-            error_verbose("make sure the date [%s] is correct and in \'yyyy-MM-dd\' or \'yyyy-MM-dd_hh:mm:ss\' format" % str_date)
+            error_verbose(
+                "make sure the date [%s] is correct and in \'yyyy-MM-dd\' or \'yyyy-MM-dd_hh:mm:ss\' format" % str_date)
 
     def param_validate(self, args):
         if args.since is None:
@@ -716,9 +769,11 @@ class CollectFromYml(object):
         else:
             try:
                 if args.since.endswith('d') or args.since.endswith('D'):
-                    self.f_date = (datetime.now() + timedelta(days=float('-%s' % (args.since[:-1])))).strftime('%Y-%m-%d:%H:%M:%S')
+                    self.f_date = (datetime.now() + timedelta(days=float('-%s' % (args.since[:-1])))).strftime(
+                        '%Y-%m-%d:%H:%M:%S')
                 elif args.since.endswith('h') or args.since.endswith('H'):
-                    self.f_date = (datetime.now() + timedelta(days=float('-%s' % round(float(args.since[:-1]) / 24, 2)))).strftime('%Y-%m-%d:%H:%M:%S')
+                    self.f_date = (datetime.now() + timedelta(
+                        days=float('-%s' % round(float(args.since[:-1]) / 24, 2)))).strftime('%Y-%m-%d:%H:%M:%S')
                 else:
                     error_verbose("error since format:[%s], correct format example '--since 2d'" % args.since)
                 self.t_date = datetime.now().strftime('%Y-%m-%d:%H:%M:%S')

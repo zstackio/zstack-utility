@@ -21,3 +21,9 @@ def rm_file_force(fpath):
         os.remove(fpath)
     except:
         pass
+
+def read_file(path):
+    if not os.path.exists(path):
+        return None
+    with open(path, 'r') as fd:
+        return fd.read()
