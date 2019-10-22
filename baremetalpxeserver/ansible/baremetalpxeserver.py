@@ -113,8 +113,8 @@ basearch=`uname -m`;releasever=`awk '{print $3}' /etc/zstack-release`;
 [ -f /opt/zstack-dvd/$basearch/$releasever/GPL ] || exit 1;
 mkdir -p /var/lib/zstack/baremetal/{dnsmasq,ftp/{ks,zstack-dvd,scripts},tftpboot/{zstack,pxelinux.cfg},vsftpd} /var/log/zstack/baremetal/;
 cp -f /usr/share/syslinux/pxelinux.0 /var/lib/zstack/baremetal/tftpboot/;
-cp -f /opt/zstack-dvd/images/pxeboot/{vmlinuz,initrd.img} /var/lib/zstack/baremetal/tftpboot/zstack/;
-grep 'zstack-dvd' /etc/fstab || echo '/opt/zstack-dvd /var/lib/zstack/baremetal/ftp/zstack-dvd none defaults,bind 0 0' >> /etc/fstab;
+cp -f /opt/zstack-dvd/$basearch/$releasever/images/pxeboot/{vmlinuz,initrd.img} /var/lib/zstack/baremetal/tftpboot/zstack/;
+grep 'zstack-dvd' /etc/fstab || echo "/opt/zstack-dvd/$basearch/$releasever /var/lib/zstack/baremetal/ftp/zstack-dvd none defaults,bind 0 0" >> /etc/fstab;
 mount -a;
 """
 run_remote_command(command, host_post_info)
