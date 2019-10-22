@@ -765,23 +765,10 @@ class LibvirtAutoReconnect(object):
             # the connection is ok
             return
         # 2nd version: 2015
-        # logger.warn("the libvirt connection is broken, there is no safeway to auto-reconnect without fd leak, we"
-        #             " will ask the mgmt server to reconnect us after self quit")
-        # _stop_world()
+        logger.warn("the libvirt connection is broken, there is no safeway to auto-reconnect without fd leak, we"
+                    " will ask the mgmt server to reconnect us after self quit")
+        _stop_world()
 
-        # 3rd version: 2019
-        logger.debug('start auto-reconnect libvirt')
-        try:
-            LibvirtAutoReconnect.conn.close()
-        except:
-            pass
-        shell.call('systemctl restart libvirtd')
-        LibvirtAutoReconnect.conn = libvirt.open('qemu:///system')
-        ex = test_connection()
-        if ex:
-            logger.warn('failed reconnected to the libvirt, cause: ' + ex)
-            raise ex
-        logger.debug('successfully reconnected to the libvirt')
 
         # old_conn = LibvirtAutoReconnect.conn
         # LibvirtAutoReconnect.conn = libvirt.open('qemu:///system')
