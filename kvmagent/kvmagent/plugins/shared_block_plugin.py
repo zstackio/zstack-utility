@@ -2,7 +2,9 @@ import os
 import os.path
 import re
 import random
+import tempfile
 import time
+
 
 from kvmagent import kvmagent
 from kvmagent.plugins.imagestore import ImageStoreClient
@@ -16,6 +18,7 @@ from zstacklib.utils import lvm
 from zstacklib.utils import bash
 from zstacklib.utils import qemu_img
 from zstacklib.utils import traceable_shell
+from zstacklib.utils.report import *
 from zstacklib.utils.plugin import completetask
 import zstacklib.utils.uuidhelper as uuidhelper
 
@@ -874,14 +877,18 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
 
+        total_size = 0
+        migrated_size = 0
+
         for struct in cmd.migrateVolumeStructs:
             target_abs_path = translate_absolute_path_from_install_path(struct.targetInstallPath)
             current_abs_path = translate_absolute_path_from_install_path(struct.currentInstallPath)
             with lvm.OperateLv(current_abs_path, shared=True):
-                lv_size = lvm.get_lv_size(current_abs_path)
+                lv_size = int(lvm.get_lv_size(current_abs_path))
 
                 if lvm.lv_exists(target_abs_path):
                     if struct.skipIfExisting:
+                        struct.put('skip_copy', True)
                         continue
                     target_ps_uuid = get_primary_storage_uuid_from_install_path(struct.targetInstallPath)
                     raise Exception("found %s already exists on ps %s" %
@@ -889,15 +896,38 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 lvm.create_lv_from_absolute_path(target_abs_path, lvm.getOriginalSize(lv_size),
                                                      "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
                 lvm.active_lv(target_abs_path, lvm.LvmlockdLockType.SHARE)
+                total_size += lv_size
+                struct.put('lv_size', lv_size)
 
+        fd, PFILE = tempfile.mkstemp()
         try:
+            report = Report.from_cmd(cmd, 'MigrateVolumes')
+            parent_stage = get_task_stage(cmd, "10-90")
+
+            def _get_progress(synced):
+                last = linux.tail_1(PFILE).strip()
+                if not last or not last.isdigit():
+                    return synced
+
+                report.progress_report(get_exact_percent_from_scale(last, start, end), "report")
+                return synced
+
             for struct in cmd.migrateVolumeStructs:
                 target_abs_path = translate_absolute_path_from_install_path(struct.targetInstallPath)
                 current_abs_path = translate_absolute_path_from_install_path(struct.currentInstallPath)
 
+                if struct.skip_copy:
+                    migrated_size += struct.lv_size
+                    continue
+
+                start = get_exact_percent(float(migrated_size) / total_size * 100, parent_stage)
+                end = get_exact_percent(float(struct.lv_size + migrated_size) / total_size * 100, parent_stage)
+
                 with lvm.OperateLv(current_abs_path, shared=True):
                     t_bash = traceable_shell.get_shell(cmd)
-                    t_bash.bash_errorout("cp %s %s" % (current_abs_path, target_abs_path))
+                    t_bash.bash_progress_1("pv -n %s > %s 2>%s" % (current_abs_path, target_abs_path, PFILE), _get_progress)
+
+                migrated_size += struct.lv_size
 
             for struct in cmd.migrateVolumeStructs:
                 target_abs_path = translate_absolute_path_from_install_path(struct.targetInstallPath)
@@ -932,6 +962,9 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             for struct in cmd.migrateVolumeStructs:
                 target_abs_path = translate_absolute_path_from_install_path(struct.targetInstallPath)
                 lvm.deactive_lv(target_abs_path)
+
+            os.close(fd)
+            linux.rm_file_force(PFILE)
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
