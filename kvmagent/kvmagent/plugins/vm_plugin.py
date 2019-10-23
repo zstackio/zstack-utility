@@ -259,6 +259,7 @@ class VmSyncResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(VmSyncResponse, self).__init__()
         self.states = None
+        self.vmInShutdowns = None
 
 
 class AttachDataVolumeCmd(kvmagent.AgentCommand):
@@ -1388,6 +1389,7 @@ def get_active_vm_uuids_states():
 
     ids = call_libvirt()
     uuids_states = {}
+    uuids_vmInShutdown = []
 
     @LibvirtAutoReconnect
     def get_domain(conn):
@@ -1413,15 +1415,20 @@ def get_active_vm_uuids_states():
             logger.debug("ignore the vm used for MN HA.")
             continue
         (state, _, _, _, _) = domain.info()
+        if state == Vm.VIR_DOMAIN_SHUTDOWN:
+            uuids_vmInShutdown.append(uuid)
+
         state = Vm.power_state[state]
         # or use
         uuids_states[uuid] = state
-    return uuids_states
+    return uuids_states, uuids_vmInShutdown
 
 
 def get_all_vm_states():
-    return get_active_vm_uuids_states()
+    return get_active_vm_uuids_states()[0]
 
+def get_all_vm_sync_states():
+    return get_active_vm_uuids_states()
 
 def get_running_vms():
     @LibvirtAutoReconnect
@@ -4394,7 +4401,7 @@ class VmPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def vm_sync(self, req):
         rsp = VmSyncResponse()
-        rsp.states = get_all_vm_states()
+        rsp.states, rsp.vmInShutdowns = get_all_vm_sync_states()
 
         # In case of an reboot inside the VM.  Note that ZS will only define transient VM's.
         for uuid in rsp.states:
