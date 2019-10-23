@@ -4825,6 +4825,16 @@ class VmPlugin(kvmagent.KvmAgent):
         vm.merge_snapshot(cmd)
         return jsonobject.dumps(rsp)
 
+    @staticmethod
+    def _get_snapshot_size(install_path):
+        size = linux.get_local_file_disk_usage(install_path)
+        if size is None or size == 0:
+            if install_path.startswith("/dev/"):
+                size = int(lvm.get_lv_size(install_path))
+            else:
+                size = linux.qcow2_virtualsize(install_path)
+        return size
+
     @kvmagent.replyerror
     def take_volumes_snapshots(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])  # type: TakeSnapshotsCmd
@@ -4846,10 +4856,7 @@ class VmPlugin(kvmagent.KvmAgent):
             """
             :rtype: long
             """
-            size = linux.get_local_file_disk_usage(install_path)
-            if size is None or size == 0:
-                size = linux.qcow2_virtualsize(install_path)
-            return size
+            return VmPlugin._get_snapshot_size(install_path)
 
         def take_full_snapshot_by_qemu_img_convert(previous_install_path, install_path, new_volume_install_path):
             """
@@ -4972,12 +4979,7 @@ class VmPlugin(kvmagent.KvmAgent):
                             cmd.vmUuid, cmd.volume.deviceId, rsp.snapshotInstallPath, rsp.newVolumeInstallPath))
 
             linux.sync()
-            rsp.size = linux.get_local_file_disk_usage(rsp.snapshotInstallPath)
-            if rsp.size is None or rsp.size == 0:
-                if rsp.snapshotInstallPath.startswith("/dev/"):
-                    rsp.size = int(lvm.get_lv_size(rsp.snapshotInstallPath))
-                else:
-                    rsp.size = linux.qcow2_virtualsize(rsp.snapshotInstallPath)
+            rsp.size = VmPlugin._get_snapshot_size(rsp.snapshotInstallPath)
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
