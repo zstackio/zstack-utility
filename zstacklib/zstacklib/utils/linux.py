@@ -1918,3 +1918,21 @@ def updateGrubFile(grepCmd, sedCmd, files):
 def set_fail_if_no_path():
     cmd = shell.ShellCmd('ms=`multipath -l -v1`; for m in $ms; do dmsetup message $m 0 "fail_if_no_path"; done')
     cmd(is_exception=False, logcmd=False)
+
+def get_root_physical_disk():
+    # type: () -> list[str]
+    def remove_digits(str_list):
+        pattern = '[0-9]'
+        str_list = [re.sub(pattern, '', i) for i in str_list]
+        return str_list
+
+    root_disk = shell.call("mount | grep 'on / ' | grep -o '/dev/.* on' | cut -d ' ' -f1", False).strip()
+    cmd = shell.ShellCmd("dmsetup table %s" % root_disk)
+    cmd(is_exception=False)
+    if cmd.return_code != 0:
+        return remove_digits([root_disk])
+    dm_name = shell.call("readlink -e %s | awk -F '/' '{print $NF}'" % root_disk).strip()
+    slaves = shell.call("ls /sys/block/%s/slaves/" % dm_name).splitlines()
+
+    return remove_digits(["/dev/%s" % slave for slave in slaves])
+
