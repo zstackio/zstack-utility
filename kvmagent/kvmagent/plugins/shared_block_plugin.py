@@ -155,7 +155,7 @@ class CheckDisk(object):
     def __init__(self, identifier):
         self.identifier = identifier
 
-    def get_path(self):
+    def get_path(self, raise_exception=True):
         o = self.check_disk_by_wwid()
         if o is not None:
             return o
@@ -163,6 +163,9 @@ class CheckDisk(object):
         o = self.check_disk_by_uuid()
         if o is not None:
             return o
+
+        if raise_exception is False:
+            return None
 
         raise Exception("can not find disk with %s as wwid, uuid or wwn, "
                         "or multiple disks qualify but no mpath device found" % self.identifier)
@@ -352,6 +355,19 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = ConnectRsp()
         diskPaths = set()
+        allDiskPaths = set()
+        for diskUuid in cmd.allSharedBlockUuids:
+            disk = CheckDisk(diskUuid)
+            p = disk.get_path()
+            if p is not None:
+                allDiskPaths.add(p)
+        try:
+            root_disks = ["%s[0-9]*" % d for d in linux.get_root_physical_disk()]
+            allDiskPaths = allDiskPaths.union(root_disks)
+        except Exception as e:
+            logger.warn("get exception: %s" % e.message)
+            allDiskPaths.add("/dev/sd*")
+            allDiskPaths.add("/dev/vd*")
 
         def config_lvm(host_id, enableLvmetad=False):
             lvm.backup_lvm_config()
@@ -368,7 +384,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             lvm.config_lvm_by_sed("reserved_stack", "reserved_stack=256", ["lvm.conf", "lvmlocal.conf"])
             lvm.config_lvm_by_sed("reserved_memory", "reserved_memory=131072", ["lvm.conf", "lvmlocal.conf"])
 
-            lvm.config_lvm_filter(["lvm.conf", "lvmlocal.conf"])
+            lvm.config_lvm_filter(["lvm.conf", "lvmlocal.conf"], preserve_disks=allDiskPaths)
 
             lvm.config_sanlock_by_sed("sh_retries", "sh_retries=20")
             lvm.config_sanlock_by_sed("logfile_priority", "logfile_priority=7")
