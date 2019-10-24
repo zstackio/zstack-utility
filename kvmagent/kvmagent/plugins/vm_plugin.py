@@ -2426,10 +2426,7 @@ class Vm(object):
             """
             :rtype: long
             """
-            size = linux.get_local_file_disk_usage(install_path)
-            if size is None or size == 0:
-                size = linux.qcow2_virtualsize(install_path)
-            return size
+            return VmPlugin._get_snapshot_size(install_path)
 
         logger.debug(vs_structs)
         for vs_struct in vs_structs:
