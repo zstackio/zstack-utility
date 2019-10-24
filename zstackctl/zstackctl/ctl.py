@@ -4675,7 +4675,7 @@ class RestoreMysqlPreCheckCmd(Command):
         os.write(fd, check_sql + "\n" + drop_table)
         os.close(fd)
 
-        r, o, e = self.execute_sql(args.mysql_root_password, "use zstack; source %s" % fname)
+        r, o, e = self.execute_sql(args.mysql_root_password, "use zstack; source %s;" % fname)
         os.remove(fname)
 
         if r != 0:
