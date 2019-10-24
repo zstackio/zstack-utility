@@ -318,18 +318,21 @@ def config_lvm_by_sed(keyword, entry, files):
 
 
 @bash.in_bash
-def config_lvm_filter(files, no_drbd=False):
+def config_lvm_filter(files, no_drbd=False, preserve_disks=None):
+    # type: (list[str], bool, list[str]) -> object
     if not os.path.exists(LVM_CONFIG_PATH):
         raise Exception("can not find lvm config path: %s, config lvm failed" % LVM_CONFIG_PATH)
 
-    filter_str = 'filter=["r|\\/dev\\/cdrom|"'
-    if no_drbd:
-        filter_str += ', "r\\/dev\\/drbd.*\\/"'
+    if preserve_disks is not None and len(preserve_disks) != 0:
+        filter_str = 'filter=['
+        for disk in preserve_disks:
+            filter_str += '"a|^%s$|", ' % disk.replace("/", "\\/")
+        filter_str += '"r\/.*\/"]'
 
-    filter_str += ']'
-
-    for f in files:
-        bash.bash_r("sed -i 's/.*\\b%s.*/%s/g' %s/%s" % ("filter", filter_str, LVM_CONFIG_PATH, f))
+        for f in files:
+            bash.bash_r("sed -i 's/.*\\b%s.*/%s/g' %s/%s" % ("filter", filter_str, LVM_CONFIG_PATH, f))
+            linux.sync()
+        return
 
     filter_str = 'filter=["r|\\/dev\\/cdrom|"'
     vgs = bash.bash_o("vgs --nolocking -oname --noheading").splitlines()
@@ -342,6 +345,7 @@ def config_lvm_filter(files, no_drbd=False):
 
     for f in files:
         bash.bash_r("sed -i 's/.*\\b%s.*/%s/g' %s/%s" % ("filter", filter_str, LVM_CONFIG_PATH, f))
+    linux.sync()
 
 
 def config_sanlock_by_sed(keyword, entry):
@@ -1203,7 +1207,7 @@ def examine_lockspace(lockspace):
 
 
 def check_stuck_vglk():
-    @linux.retry(3, 0.1)
+    @linux.retry(3, 1)
     def is_stuck_vglk():
         r, o, e = bash.bash_roe("sanlock client status | grep ':VGLK:'")
         if r != 0:
@@ -1299,9 +1303,13 @@ def lvm_vgck(vgUuid, timeout):
                 fix_global_lock()
                 continue
             if "have changed sizes" in es:
+                logger.debug("found pv of vg %s size may changed, details: %s" % (vgUuid, es))
+                continue
+            if "held by other host" in es:
+                continue
+            if "without a lock" in es:
                 continue
             if es.strip() == "":
-                logger.debug("found pv of vg %s size may changed, details: %s" % (vgUuid, es))
                 continue
             s = "vgck %s failed, details: [return_code: %s, stdout: %s, stderr: %s]" % (vgUuid, health, o, e)
             logger.warn(s)
