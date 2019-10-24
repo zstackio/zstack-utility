@@ -162,9 +162,8 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
         self._clear_mirror_src_config(src_device_name, dst_device_name, direction)
         self._clear_mirror_dst_config(bridge_name, dst_device_name, dst_device_name)
 
-    def _get_mirror_device_name(self, tunnel, mirror, is_source = True):
-        mirror_name = "send" + mirror.mName if is_source else "recv" + mirror.mName
-        return mirror_name
+    def _get_mirror_device_name(self, tunnel, mirror):
+        return "send" + mirror.mName, "recv" + mirror.mName
 
     def _del_if(self, alias, mirror_name):
         alias_path = '/sys/class/net/%s/ifalias' % mirror_name
@@ -174,21 +173,6 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
             alias_str = fd.read()
         if alias not in alias_str:
             shell.ShellCmd("ip link del '%s'" % mirror_name)
-
-
-    def _ifup_device_if_down(self, device_name):
-        state_path = '/sys/class/net/%s/operstate' % device_name
-
-        if not os.path.exists(state_path):
-            raise Exception('cannot find %s' % state_path)
-
-        with open(state_path, 'r') as fd:
-            state = fd.read()
-
-        if 'up' in state:
-            return
-
-        shell.call('ip link set %s up' % device_name)
 
     @kvmagent.replyerror
     def apply_mirror_session(self, req):
@@ -206,10 +190,11 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
         if cmd.isLocal:
             self._apply_mirror_session_local(cmd.mirror.snic, cmd.mirror.dnic, cmd.mirror.type, cmd.mirror.bridge)
         else:
-            rec_name = self._get_mirror_device_name(cmd.tunnel, cmd.mirror)
-            self._del_if(cmd.tunnel.uuid, rec_name)
-            self._create_gre_device(cmd.tunnel, rec_name)
-            self._set_mirror_src_config(cmd.mirror.snic, rec_name, cmd.mirror.type)
+            src_name, dst_name = self._get_mirror_device_name(cmd.tunnel, cmd.mirror)
+            self._del_if(cmd.tunnel.uuid, src_name)
+            self._del_if(cmd.tunnel.uuid, dst_name)
+            self._create_gre_device(cmd.tunnel, src_name)
+            self._set_mirror_src_config(cmd.mirror.snic, src_name, cmd.mirror.type)
         logger.debug('successfully apply mirror device [%s] to device[%s]' % (cmd.mirror.snic, cmd.mirror.dnic))
         return jsonobject.dumps(rsp)
 
@@ -222,7 +207,7 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
         if cmd.isLocal:
             self._release_mirror_session_local(cmd.mirror.snic, cmd.mirror.dnic, cmd.mirror.type, cmd.mirror.bridge)
         else:
-            rec_name = self._get_mirror_device_name(cmd.tunnel, cmd.mirror)
+            rec_name,_ = self._get_mirror_device_name(cmd.tunnel, cmd.mirror)
             self._clear_mirror_src_config(cmd.mirror.snic, rec_name, cmd.mirror.type)
             self._delete_gre_device(cmd.tunnel, rec_name)
             logger.debug('successfully release mirror device [%s] to device[%s]' % (cmd.mirror.snic, cmd.mirror.dnic))
@@ -243,12 +228,14 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
             rsp.error = 'unable to apply mirror device [%s] to device[%s] in same hypervisor' % (cmd.mirror.snic, cmd.mirror.dnic)
             rsp.success = False
         else:
-            rec_name = self._get_mirror_device_name(cmd.tunnel, cmd.mirror, False)
-            self._del_if(cmd.tunnel.uuid, rec_name)
-            self._create_gre_device(cmd.tunnel, rec_name)
-            self._set_mirror_dst_config(cmd.mirror.bridge, cmd.mirror.dnic, rec_name)
-            self._set_redirect_config(rec_name, cmd.mirror.dnic)
-            logger.debug('successfully apply mirror device [%s] to device[%s]' % (cmd.mirror.snic, cmd.mirror.dnic))
+            src_name, dst_name = self._get_mirror_device_name(cmd.tunnel, cmd.mirror)
+            self._del_if(cmd.tunnel.uuid, src_name)
+            self._del_if(cmd.tunnel.uuid, dst_name)
+            self._create_gre_device(cmd.tunnel, dst_name)
+            self._set_mirror_dst_config(cmd.mirror.bridge, cmd.mirror.dnic, dst_name)
+            self._set_redirect_config(dst_name, cmd.mirror.dnic)
+
+        logger.debug('successfully apply mirror device [%s] to device[%s]' % (cmd.mirror.snic, cmd.mirror.dnic))
 
         return jsonobject.dumps(rsp)
 
@@ -262,7 +249,7 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
             rsp.error = 'unable to release mirror device [%s] to device[%s] in same hypervisor' % (cmd.mirror.snic, cmd.mirror.dnic)
             rsp.success = False
         else:
-            rec_name = self._get_mirror_device_name(cmd.tunnel, cmd.mirror, False)
+            _,rec_name = self._get_mirror_device_name(cmd.tunnel, cmd.mirror)
             self._clear_redirect_config(rec_name, cmd.mirror.dnic)
             self._clear_mirror_dst_config(cmd.mirror.bridge, cmd.mirror.dnic, rec_name)
             self._delete_gre_device(cmd.tunnel, rec_name)
