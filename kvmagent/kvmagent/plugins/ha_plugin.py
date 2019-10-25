@@ -222,6 +222,10 @@ class HaPlugin(kvmagent.KvmAgent):
 
                     try:
                         logger.warn("aliyun nas storage %s fencer fired!" % cmd.uuid)
+
+                        if cmd.strategy == 'Permissive':
+                            continue
+
                         vm_uuids = kill_vm(cmd.maxAttempts).keys()
 
                         if vm_uuids:
@@ -289,6 +293,9 @@ class HaPlugin(kvmagent.KvmAgent):
                     try:
                         logger.warn("shared block storage %s fencer fired!" % cmd.vgUuid)
                         self.report_storage_status([cmd.vgUuid], 'Disconnected', health[1])
+
+                        if cmd.strategy == 'Permissive':
+                            continue
 
                         # we will check one qcow2 per pv to determine volumes on pv should be kill
                         invalid_pv_uuids = lvm.get_invalid_pv_uuids(cmd.vgUuid, cmd.checkIo)
@@ -532,6 +539,10 @@ class HaPlugin(kvmagent.KvmAgent):
                         logger.warn('failed to touch the heartbeat file[%s] %s times, we lost the connection to the storage,'
                                     'shutdown ourselves' % (heartbeat_file_path, cmd.maxAttempts))
                         self.report_storage_status([ps_uuid], 'Disconnected')
+
+                        if cmd.strategy == 'Permissive':
+                            continue
+
                         killed_vms = kill_vm(cmd.maxAttempts, [mount_path], True)
 
                         if len(killed_vms) != 0:
