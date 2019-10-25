@@ -319,7 +319,7 @@ def config_lvm_by_sed(keyword, entry, files):
 
 @bash.in_bash
 def config_lvm_filter(files, no_drbd=False, preserve_disks=None):
-    # type: (list[str], bool, list[str]) -> object
+    # type: (list[str], bool, set[str]) -> object
     if not os.path.exists(LVM_CONFIG_PATH):
         raise Exception("can not find lvm config path: %s, config lvm failed" % LVM_CONFIG_PATH)
 

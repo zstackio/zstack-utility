@@ -356,11 +356,18 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp = ConnectRsp()
         diskPaths = set()
         allDiskPaths = set()
+
+        for diskUuid in cmd.sharedBlockUuids:
+            disk = CheckDisk(diskUuid)
+            diskPaths.add(disk.get_path())
+
         for diskUuid in cmd.allSharedBlockUuids:
             disk = CheckDisk(diskUuid)
             p = disk.get_path()
             if p is not None:
                 allDiskPaths.add(p)
+        allDiskPaths = allDiskPaths.union(diskPaths)
+
         try:
             root_disks = ["%s[0-9]*" % d for d in linux.get_root_physical_disk()]
             allDiskPaths = allDiskPaths.union(root_disks)
@@ -397,9 +404,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             shell.call("sed -i 's/rotate 3/rotate 8/g' /etc/logrotate.d/sanlock", exception=False)
 
         config_lvm(cmd.hostId, cmd.enableLvmetad)
-        for diskUuid in cmd.sharedBlockUuids:
-            disk = CheckDisk(diskUuid)
-            diskPaths.add(disk.get_path())
+
         lvm.start_lvmlockd()
         lvm.check_gl_lock()
         logger.debug("find/create vg %s lock..." % cmd.vgUuid)
@@ -505,6 +510,16 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     def add_disk(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         disk = CheckDisk(cmd.diskUuid)
+
+        allDiskPaths = []
+
+        for diskUuid in cmd.allSharedBlockUuids:
+            disk = CheckDisk(diskUuid)
+            p = disk.get_path()
+            if p is not None:
+                allDiskPaths.append(p)
+        allDiskPaths.append(disk.get_path())
+
         command = shell.ShellCmd("vgs --nolocking %s -otags | grep %s" % (cmd.vgUuid, INIT_TAG))
         command(is_exception=False)
         if command.return_code != 0:
