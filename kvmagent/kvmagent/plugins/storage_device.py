@@ -271,6 +271,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 if e != None and e != "":
                     err += " ,error: %s" % e
                 raise RetryException(e)
+            bash.bash_o("iscsiadm -m session -r %s --rescan" % sid)
             #Get the host_Number of iqn, Will match the HTCL attribute of iscsi according to Host_number
             host_Number = bash.bash_o("iscsiadm -m session -P 3 --sid=%s | grep 'Host Number:' | awk '{print $3}'" % sid).strip()
             #Use HCTL, IQN, "-" to match the number of unmounted Luns according to lsscsi --transport
