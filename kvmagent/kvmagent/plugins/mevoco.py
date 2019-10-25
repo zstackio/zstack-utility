@@ -1360,6 +1360,7 @@ tag:{{o.tag}},option:domain-name,{{o.dnsDomain}}
 {% endif -%}
 {% if o.routes -%}
 tag:{{o.tag}},option:classless-static-route,{{o.routes}}
+tag:{{o.tag}},option:microsoft-249,{{o.routes}}
 {% endif -%}
 {% else -%}
 tag:{{o.tag}},3
