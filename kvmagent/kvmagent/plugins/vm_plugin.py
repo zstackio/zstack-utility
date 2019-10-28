@@ -4767,8 +4767,7 @@ class VmPlugin(kvmagent.KvmAgent):
         logger.info("updated disk XML: " + etree.tostring(ele))
         return ele
 
-    def _build_domain_new_xml(self, vmUuid, volumeDicts):
-        vm = get_vm_by_uuid(vmUuid)
+    def _build_domain_new_xml(self, vm, volumeDicts):
         migrate_disks = {}
 
         for oldpath, volume in volumeDicts.items():
@@ -4793,12 +4792,19 @@ class VmPlugin(kvmagent.KvmAgent):
         return migrate_disks.keys(), fpath
 
     def _do_block_migration(self, vmUuid, dstHostIp, volumeDicts):
-        disks, fpath = self._build_domain_new_xml(vmUuid, volumeDicts)
+        vm = get_vm_by_uuid(vmUuid)
+        disks, fpath = self._build_domain_new_xml(vm, volumeDicts)
 
         dst = 'qemu+tcp://{0}/system'.format(dstHostIp)
         migurl = 'tcp://{0}'.format(dstHostIp)
         diskstr = ','.join(disks)
-        cmd = "virsh migrate --live --persistent --copy-storage-all --migrate-disks {} --xml {} {} {} {}".format(diskstr, fpath, vmUuid, dst, migurl)
+
+        flags = "--live --p2p --persistent --copy-storage-all"
+        if LIBVIRT_MAJOR_VERSION >= 4:
+            if any(s.startswith('/dev/') for s in vm.list_blk_sources()):
+                flags += " --unsafe"
+
+        cmd = "virsh migrate {} --migrate-disks {} --xml {} {} {} {}".format(flags, diskstr, fpath, vmUuid, dst, migurl)
 
         try:
             shell.check_run(cmd)
