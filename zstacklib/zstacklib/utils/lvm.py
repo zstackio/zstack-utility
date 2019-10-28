@@ -909,7 +909,12 @@ def lv_uuid(path):
 def lv_is_active(path):
     # NOTE(weiw): use readonly to get active may return 'unknown'
     r = bash.bash_r("lvs --nolocking --noheadings %s -oactive | grep -w active" % path)
-    return r == 0
+    if r == 0:
+        return True
+    r, o = bash.bash_ro("lvmlockctl -i | grep %s" % lv_uuid(path))
+    if r != 0 or "LK LV un " in o:
+        return False
+    return True
 
 
 @bash.in_bash
