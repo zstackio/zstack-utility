@@ -906,15 +906,12 @@ def lv_uuid(path):
     return cmd.stdout.strip()
 
 
-def lv_is_active(path):
+def lv_is_active(lv_path):
     # NOTE(weiw): use readonly to get active may return 'unknown'
-    r = bash.bash_r("lvs --nolocking --noheadings %s -oactive | grep -w active" % path)
+    r = bash.bash_r("lvs --nolocking --noheadings %s -oactive | grep -w active" % lv_path)
     if r == 0:
         return True
-    r, o = bash.bash_ro("lvmlockctl -i | grep %s" % lv_uuid(path))
-    if r != 0 or "LK LV un " in o:
-        return False
-    return True
+    return os.path.exists(lv_path)
 
 
 @bash.in_bash
@@ -1061,16 +1058,20 @@ def get_lv_locking_type(path):
         return LvmlockdLockType.from_abbr(output.strip(), raise_exception=True)
 
     locking_type = LvmlockdLockType.NULL
-    with lock.FileLock(path.split("/")[-1]):
+    active = None
+    with lock.NamedLock(path.split("/")[-1]):
         try:
-            if not lv_is_active(path):
+            active = lv_is_active(path)
+            if not active:
                 return locking_type
             locking_type = _get_lv_locking_type(path)
         except Exception as e:
             output = bash.bash_o("lvmlockctl -i | grep %s | head -n1 | awk '{print $3}'" % lv_uuid(path))
             locking_type = LvmlockdLockType.from_abbr(output.strip(), raise_exception=False)
+            if active is True and locking_type == LvmlockdLockType.NULL:
+                # NOTE(weiw): this usually because of manipulation of locking by hand
+                locking_type = LvmlockdLockType.SHARE
 
-    bash.bash_r("rm /var/lib/zstack/lock/%s.lock" % path.split("/")[-1])
     return locking_type
 
 
