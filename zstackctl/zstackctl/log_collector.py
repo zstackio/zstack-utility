@@ -581,13 +581,13 @@ class CollectFromYml(object):
         run_remote_command(command, host_post_info)
         command = "cp -r /var/log/zstack/zsblk-agent/ %s || true" % target_dir
         run_remote_command(command, host_post_info)
-        command = "cp /var/log/lvmlock/lvmlockd.log %s || true" % target_dir
+        command = "cp /var/log/lvmlock/lvmlockd.log* %s || true" % target_dir
         run_remote_command(command, host_post_info)
         command = "lvmlockctl -i > %s/lvmlockctl_info || true" % target_dir
         run_remote_command(command, host_post_info)
-        command = "sanlock client status > %s/sanlock_client_info || true" % target_dir
+        command = "sanlock client status -D > %s/sanlock_client_info || true" % target_dir
         run_remote_command(command, host_post_info)
-        command = "sanlock client host_status> %s/sanlock_host_info || true" % target_dir
+        command = "sanlock client host_status -D > %s/sanlock_host_info || true" % target_dir
         run_remote_command(command, host_post_info)
 
         command = "lvs --nolocking -oall > %s/lvm_lvs_info || true" % target_dir
