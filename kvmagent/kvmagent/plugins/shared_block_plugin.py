@@ -401,7 +401,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
             sanlock_hostname = "%s-%s-%s" % (cmd.vgUuid[:8], cmd.hostUuid[:8], bash.bash_o("hostname").strip()[:20])
             lvm.config_sanlock_by_sed("our_host_name", "our_host_name=%s" % sanlock_hostname)
-            shell.call("sed -i 's/rotate 3/rotate 8/g' /etc/logrotate.d/sanlock", exception=False)
+            shell.call("sed -i 's/.*rotate .*/rotate 10/g' /etc/logrotate.d/sanlock", exception=False)
+            shell.call("sed -i 's/.*size .*/size 20M/g' /etc/logrotate.d/sanlock", exception=False)
 
         config_lvm(cmd.hostId, cmd.enableLvmetad)
 
