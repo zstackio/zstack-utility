@@ -282,6 +282,11 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         if cmd.storagePath:
             spath = getRealStoragePath(cmd.storagePath)
+            linux.mkdir(spath)
+            fstype = shell.call("""stat -f -c '%T' {}""".format(spath)).strip()
+            if fstype not in [ "xfs", "ext2", "ext3", "ext4", "jfs", "btrfs" ]:
+                raise Exception("unexpected fstype '{}' on '{}'".format(fstype, cmd.storagePath))
+
             with open('/etc/exports.d/zs-v2v.exports', 'w') as f:
                 f.write("{} *(rw,sync,no_root_squash)\n".format(spath))
 
