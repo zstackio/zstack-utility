@@ -332,6 +332,7 @@ class UngenerateVfioMdevDevicesRsp(kvmagent.AgentResponse):
 class UpdateSpiceChannelConfigResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(UpdateSpiceChannelConfigResponse, self).__init__()
+        self.restartLibvirt = False
 
 # using kvmagent to transmit vm operations to management node
 # like start/stop/reboot a specific vm instance
@@ -1542,25 +1543,6 @@ done
             rsp.error = "failed to ungenerate vfio mdev devices from pci device[addr:%s]" % addr
         return jsonobject.dumps(rsp)
 
-    @lock.lock('libvirt-reconnect')
-    def restart_libvirt(self):
-        conn = libvirt.open('qemu:///system')
-        logger.debug('start reconnect libvirt')
-        try:
-            conn.close()
-        except:
-            pass
-
-        shell.call('systemctl restart libvirtd')
-        conn = libvirt.open('qemu:///system')
-        try:
-            conn.getLibVersion()
-        except libvirt.libvirtError as ex:
-            logger.warn('failed reconnect libvirt, cause: ' + ex)
-            raise ex
-
-        logger.debug('successfully reconnect libvirt')
-
     @kvmagent.replyerror
     @in_bash
     def update_spice_channel_config(self, req):
@@ -1586,7 +1568,8 @@ done
                 rsp.error = "update /etc/libvirt/qemu.conf failed, please check qemu.conf"
                 return jsonobject.dumps(rsp)
 
-        self.restart_libvirt()
+        shell.call('systemctl restart libvirtd')
+        rsp.restartLibvirt = True
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
