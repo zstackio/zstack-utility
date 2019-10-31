@@ -495,7 +495,6 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         if command.return_code != 0:
             self.create_vg_if_not_found(cmd.vgUuid, [disk.get_path()], cmd.hostUuid, cmd.forceWipe)
         else:
-            lvm.check_gl_lock()
             if cmd.forceWipe is True:
                 lvm.wipe_fs([disk.get_path()], cmd.vgUuid)
             lvm.add_pv(cmd.vgUuid, disk.get_path(), DEFAULT_VG_METADATA_SIZE)
