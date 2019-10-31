@@ -280,8 +280,9 @@ class HaPlugin(kvmagent.KvmAgent):
 
                     if self.fencer_fire_timestamp.get(cmd.vgUuid) is not None and \
                             time.time() > self.fencer_fire_timestamp.get(cmd.vgUuid) and \
-                            time.time() - self.fencer_fire_timestamp.get(cmd.vgUuid) < 1800:
-                        logger.warn("last fencer fire is %s, and now %s, within 1800s, skip fire", self.fencer_fire_timestamp[cmd.vgUuid], time.time())
+                            time.time() - self.fencer_fire_timestamp.get(cmd.vgUuid) < 450:
+                        logger.warn("last fencer fire: %s, now: %s, passed: %s seconds, within 450 seconds, skip fire",
+                                    self.fencer_fire_timestamp[cmd.vgUuid], time.time(), time.time() - self.fencer_fire_timestamp.get(cmd.vgUuid))
                         failure = 0
                         continue
 
