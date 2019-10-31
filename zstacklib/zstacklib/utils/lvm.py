@@ -331,6 +331,7 @@ def config_lvm_filter(files, no_drbd=False, preserve_disks=None):
 
         for f in files:
             bash.bash_r("sed -i 's/.*\\b%s.*/%s/g' %s/%s" % ("filter", filter_str, LVM_CONFIG_PATH, f))
+            bash.bash_r("sed -i 's/.*\\b%s.*/global_%s/g' %s/%s" % ("global_filter", filter_str, LVM_CONFIG_PATH, f))
             linux.sync()
         return
 
@@ -515,6 +516,7 @@ def quitLockServices():
 
 @bash.in_bash
 def drop_vg_lock(vgUuid):
+    bash.bash_roe("lvmlockctl --gl-disable %s" % vgUuid)
     bash.bash_roe("lvmlockctl --drop %s" % vgUuid)
 
 
@@ -852,12 +854,15 @@ def deactive_lv(path, raise_exception=True):
         return
     if not lv_is_active(path):
         return
+    r = 0
+    e = None
     if raise_exception:
-        bash.bash_errorout("lvchange -an %s" % path)
+        o = bash.bash_errorout("lvchange -an %s" % path)
     else:
-        bash.bash_r("lvchange -an %s" % path)
+        r, o, e = bash.bash_roe("lvchange -an %s" % path)
     if lv_is_active(path):
-        raise RetryException("lv %s is still active after lvchange -an" % path)
+        raise RetryException("lv %s is still active after lvchange -an, returns code: %s, stdout: %s, stderr: %s"
+                             % (path, r, o, e))
 
 
 @bash.in_bash
@@ -946,34 +951,22 @@ def list_local_active_lvs(vgUuid):
 
 
 @bash.in_bash
-def check_gl_lock(raise_exception=False):
-    r = bash.bash_r("lvmlockctl -i | grep 'LK GL'")
+def check_gl_lock():
+    r, o = bash.bash_ro("lvmlockctl -i | grep 'LK GL' -B 5")
     if r == 0:
         return
-    logger.debug("can not find any gl lock")
 
+    # NOTE(weiw): if lockspace exists, choose one as gl lock
     r, o = bash.bash_ro("lvmlockctl -i | grep 'lock_type=sanlock' | awk '{print $2}'")
-    if len(o.strip().splitlines()) != 0:
-        for i in o.strip().splitlines():
-            if i == "":
-                continue
-            r, o, e = bash.bash_roe("lvmlockctl --gl-enable %s" % i)
-            if r != 0:
-                raise Exception("failed to enable gl lock on vg: %s, %s, %s" % (i, o, e))
-
-    r, o = bash.bash_ro("vgs --nolocking --noheadings -Svg_lock_type=sanlock -oname")
-    result = []
-    for i in o.strip().split("\n"):
-        if i != "":
-            result.append(i)
-    if len(result) == 0:
-        if raise_exception is True:
-            raise Exception("can not find any sanlock shared vg")
-        else:
-            return
-    r, o, e = bash.bash_roe("lvmlockctl --gl-enable %s" % result[0])
-    if r != 0:
-        raise Exception("failed to enable gl lock on vg: %s" % result[0])
+    if r == 0:
+        o = o.strip()
+        if len(o.splitlines()) != 0:
+            for i in o.splitlines():
+                i = i.strip()
+                if i == "":
+                    continue
+                bash.bash_roe("lvmlockctl --gl-enable %s" % i)
+                return
 
 
 def do_active_lv(absolutePath, lockType, recursive):
