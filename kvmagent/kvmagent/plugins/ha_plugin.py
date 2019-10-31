@@ -431,6 +431,9 @@ class HaPlugin(kvmagent.KvmAgent):
                         #  1. Create heart-beat file, failed with 'File exists'
                         #  2. Query the hb file in step 1, and failed again with 'No such file or directory'
                         if ceph_in_error_stat():
+                            if cmd.strategy == 'Permissive':
+                                continue
+
                             path = (os.path.split(cmd.heartbeatImagePath))[0]
                             vm_uuids = kill_vm(cmd.maxAttempts, [path], False).keys()
 
