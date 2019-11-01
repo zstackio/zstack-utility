@@ -444,7 +444,7 @@ def start_vg_lock(vgUuid):
         else:
             return True
 
-    @linux.retry(times=15, sleep_time=random.uniform(0.1, 30))
+    @linux.retry(times=5, sleep_time=random.uniform(0.1, 10))
     def start_lock(vgUuid):
         r, o, e = bash.bash_roe("vgchange --lock-start %s" % vgUuid)
         if r != 0:

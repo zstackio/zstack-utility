@@ -258,6 +258,7 @@ class HaPlugin(kvmagent.KvmAgent):
 
         @thread.AsyncThread
         def heartbeat_on_sharedblock():
+            fire = 0
             failure = 0
 
             while self.run_fencer(cmd.vgUuid, created_time):
@@ -271,6 +272,7 @@ class HaPlugin(kvmagent.KvmAgent):
                     health = lvm.check_vg_status(cmd.vgUuid, cmd.storageCheckerTimeout, check_pv=False)
                     logger.debug("sharedblock group primary storage %s fencer run result: %s" % (cmd.vgUuid, health))
                     if health[0] is True:
+                        fire = 0
                         failure = 0
                         continue
 
@@ -280,9 +282,11 @@ class HaPlugin(kvmagent.KvmAgent):
 
                     if self.fencer_fire_timestamp.get(cmd.vgUuid) is not None and \
                             time.time() > self.fencer_fire_timestamp.get(cmd.vgUuid) and \
-                            time.time() - self.fencer_fire_timestamp.get(cmd.vgUuid) < 450:
-                        logger.warn("last fencer fire: %s, now: %s, passed: %s seconds, within 450 seconds, skip fire",
-                                    self.fencer_fire_timestamp[cmd.vgUuid], time.time(), time.time() - self.fencer_fire_timestamp.get(cmd.vgUuid))
+                            time.time() - self.fencer_fire_timestamp.get(cmd.vgUuid) < (300 * (fire + 1 if fire < 10 else 10)):
+                        logger.warn("last fencer fire: %s, now: %s, passed: %s seconds, within %s seconds, skip fire",
+                                    self.fencer_fire_timestamp[cmd.vgUuid], time.time(),
+                                    time.time() - self.fencer_fire_timestamp.get(cmd.vgUuid),
+                                    300 * (fire + 1 if fire < 10 else 10))
                         failure = 0
                         continue
 
@@ -290,6 +294,7 @@ class HaPlugin(kvmagent.KvmAgent):
                     try:
                         logger.warn("shared block storage %s fencer fired!" % cmd.vgUuid)
                         self.report_storage_status([cmd.vgUuid], 'Disconnected', health[1])
+                        fire += 1
 
                         # we will check one qcow2 per pv to determine volumes on pv should be kill
                         invalid_pv_uuids = lvm.get_invalid_pv_uuids(cmd.vgUuid, cmd.checkIo)
