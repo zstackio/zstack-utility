@@ -167,6 +167,7 @@ class HaPlugin(kvmagent.KvmAgent):
     def __init__(self):
         # {ps_uuid: created_time} e.g. {'07ee15b2f68648abb489f43182bd59d7': 1544513500.163033}
         self.run_fencer_timestamp = {}  # type: dict[str, float]
+        self.fencer_fire_timestamp = {}  # type: dict[str, float]
         self.fencer_lock = threading.RLock()
 
     @kvmagent.replyerror
@@ -277,6 +278,15 @@ class HaPlugin(kvmagent.KvmAgent):
                     if failure < cmd.maxAttempts:
                         continue
 
+                    if self.fencer_fire_timestamp.get(cmd.vgUuid) is not None and \
+                            time.time() > self.fencer_fire_timestamp.get(cmd.vgUuid) and \
+                            time.time() - self.fencer_fire_timestamp.get(cmd.vgUuid) < 450:
+                        logger.warn("last fencer fire: %s, now: %s, passed: %s seconds, within 450 seconds, skip fire",
+                                    self.fencer_fire_timestamp[cmd.vgUuid], time.time(), time.time() - self.fencer_fire_timestamp.get(cmd.vgUuid))
+                        failure = 0
+                        continue
+
+                    self.fencer_fire_timestamp[cmd.vgUuid] = time.time()
                     try:
                         logger.warn("shared block storage %s fencer fired!" % cmd.vgUuid)
                         self.report_storage_status([cmd.vgUuid], 'Disconnected', health[1])
@@ -317,12 +327,12 @@ class HaPlugin(kvmagent.KvmAgent):
                             lvm.drop_vg_lock(cmd.vgUuid)
                             lvm.remove_device_map_for_vg(cmd.vgUuid)
 
-                        # reset the failure count
-                        failure = 0
                     except Exception as e:
                         logger.warn("kill vm failed, %s" % e.message)
                         content = traceback.format_exc()
                         logger.warn("traceback: %s" % content)
+                    finally:
+                        failure = 0
 
                 except Exception as e:
                     logger.debug('self-fencer on sharedblock primary storage %s stopped abnormally, try again soon...' % cmd.vgUuid)

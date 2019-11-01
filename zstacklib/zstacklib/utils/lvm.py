@@ -839,12 +839,15 @@ def deactive_lv(path, raise_exception=True):
         return
     if not lv_is_active(path):
         return
+    r = 0
+    e = None
     if raise_exception:
-        bash.bash_errorout("lvchange -an %s" % path)
+        o = bash.bash_errorout("lvchange -an %s" % path)
     else:
-        bash.bash_r("lvchange -an %s" % path)
+        r, o, e = bash.bash_roe("lvchange -an %s" % path)
     if lv_is_active(path):
-        raise RetryException("lv %s is still active after lvchange -an" % path)
+        raise RetryException("lv %s is still active after lvchange -an, returns code: %s, stdout: %s, stderr: %s"
+                             % (path, r, o, e))
 
 
 @bash.in_bash
