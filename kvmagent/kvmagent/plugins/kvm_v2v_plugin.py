@@ -415,6 +415,10 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                     continue
 
                 logger.info("start copying {}/{} ...".format(cmd.srcVmUuid, v.name))
+
+                # c.f. https://github.com/OpenNebula/one/issues/2646
+                linux.touch_file(localpath)
+
                 dom.blockCopy(v.name,
                     "<disk type='file'><source file='{}'/><driver type='qcow2'/></disk>".format(os.path.join(vm_v2v_dir, v.name)),
                     None,
