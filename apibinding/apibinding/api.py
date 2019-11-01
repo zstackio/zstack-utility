@@ -102,7 +102,8 @@ class Api(object):
         if not timeout:
             timeout = 1800000
         cmd = {apicmd.FULL_NAME: apicmd}
-        logger.debug("async call[url: %s, request: %s]" % (self.api_url, jsonobject.dumps(cmd)))
+        log_cmd = '{"%s": "%s"}' % (apicmd.FULL_NAME, log.mask_sensitive_field(apicmd, jsonobject.dumps(apicmd)))
+        logger.debug("async call[url: %s, request: %s]" % (self.api_url, log_cmd))
         jstr = http.json_dump_post(self.api_url, cmd, fail_soon=fail_soon)
         rsp = jsonobject.loads(jstr)
         if rsp.state == 'Done':
