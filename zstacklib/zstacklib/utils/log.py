@@ -173,7 +173,7 @@ def cleanup_local_log():
 
 SENSITIVE_FIELD_NAME = 'SENSITIVE_FIELDS'
 
-def sensitive_fields(*paths):
+def sensitive_fields(*paths, **typed_paths):
     """
         paths must be a path like "password" or "vmInfo.password"
     """
@@ -200,5 +200,7 @@ def mask_sensitive_field(cmd, cmd_str):
                 exec ("if {0}: {0}='*****'".format(path)) in {'obj': obj}
             except:
                 pass
+
+        del obj[SENSITIVE_FIELD_NAME]
 
     return simplejson.dumps(obj)
