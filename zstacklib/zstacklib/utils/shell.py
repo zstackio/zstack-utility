@@ -4,10 +4,22 @@
 '''
 import subprocess
 from zstacklib.utils import log
+from zstacklib.utils import lock
+
+
+@lock.lock("subprocess.popen")
+def get_process(cmd, shell=None, workdir=None, pipe=None, executable=None):
+    if pipe:
+        return subprocess.Popen(cmd, shell=shell, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                close_fds=True, executable=executable, cwd=workdir)
+    else:
+        return subprocess.Popen(cmd, shell=shell, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                close_fds=True, executable=executable, cwd=workdir)
+
 
 class ShellError(Exception):
     '''shell error'''
-    
+
 class ShellCmd(object):
     '''
     classdocs
@@ -18,12 +30,7 @@ class ShellCmd(object):
         Constructor
         '''
         self.cmd = cmd
-        if pipe:
-            self.process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stdin=subprocess.PIPE,
-                                            stderr=subprocess.PIPE, close_fds=True, executable='/bin/bash', cwd=workdir)
-        else:
-            self.process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                            close_fds=True, executable='/bin/bash', cwd=workdir)
+        self.process = get_process(cmd, True, workdir, pipe, "/bin/bash")
             
         self.stdout = None
         self.stderr = None
