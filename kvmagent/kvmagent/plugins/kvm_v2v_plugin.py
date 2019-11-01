@@ -17,6 +17,7 @@ from zstacklib.utils import shell
 from zstacklib.utils import http
 from zstacklib.utils import xmlobject
 from zstacklib.utils.bash import in_bash
+from zstacklib.utils.plugin import completetask
 
 logger = log.get_logger(__name__)
 
@@ -322,6 +323,7 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    @completetask
     def convert(self, req):
         def buildFilterDict(filterList):
             fdict = {}
@@ -344,12 +346,21 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                 return "echo {0} | {1} sudo -S mount".format(cmd.sshPassword, timeout_str)
             return "{0} sudo mount".format(timeout_str)
 
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = ConvertRsp()
+        def validate_and_make_dir(_dir):
+            exists = os.path.exists(_dir)
+            if not exists:
+                linux.mkdir(_dir)
+            return exists
 
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
         real_storage_path = getRealStoragePath(cmd.storagePath)
         storage_dir = os.path.join(real_storage_path, cmd.srcVmUuid)
-        linux.mkdir(storage_dir)
+
+        rsp = ConvertRsp()
+        last_task = self.load_and_save_task(req, rsp, validate_and_make_dir, storage_dir)
+        if last_task and last_task.agent_pid == os.getpid():
+            rsp = self.wait_task_complete(last_task)
+            return jsonobject.dumps(rsp)
 
         local_mount_point = os.path.join("/tmp/zs-v2v/", cmd.managementIp)
         vm_v2v_dir = os.path.join(local_mount_point, cmd.srcVmUuid)
