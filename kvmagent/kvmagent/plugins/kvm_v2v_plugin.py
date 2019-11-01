@@ -281,17 +281,21 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
     def init(self, req):
         rsp = AgentRsp()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        spath = None
         if cmd.storagePath:
             spath = getRealStoragePath(cmd.storagePath)
             linux.mkdir(spath)
-            fstype = shell.call("""stat -f -c '%T' {}""".format(spath)).strip()
-            if fstype not in [ "xfs", "ext2", "ext3", "ext4", "jfs", "btrfs" ]:
-                raise Exception("unexpected fstype '{}' on '{}'".format(fstype, cmd.storagePath))
 
             with open('/etc/exports.d/zs-v2v.exports', 'w') as f:
                 f.write("{} *(rw,sync,no_root_squash)\n".format(spath))
 
         shell.check_run('systemctl restart nfs-server')
+
+        if spath is not None:
+            fstype = shell.call("""stat -f -c '%T' {}""".format(spath)).strip()
+            if fstype not in [ "xfs", "ext2", "ext3", "ext4", "jfs", "btrfs" ]:
+                raise Exception("unexpected fstype '{}' on '{}'".format(fstype, cmd.storagePath))
+
         shell.check_run('iptables-save | grep -w 2049 || iptables -I INPUT -p tcp --dport 2049 -j ACCEPT')
         return jsonobject.dumps(rsp)
 
