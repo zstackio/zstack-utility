@@ -17,6 +17,7 @@ from zstacklib.utils import shell
 from zstacklib.utils import http
 from zstacklib.utils import xmlobject
 from zstacklib.utils.bash import in_bash
+from zstacklib.utils.plugin import completetask
 
 logger = log.get_logger(__name__)
 
@@ -280,17 +281,21 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
     def init(self, req):
         rsp = AgentRsp()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        spath = None
         if cmd.storagePath:
             spath = getRealStoragePath(cmd.storagePath)
             linux.mkdir(spath)
-            fstype = shell.call("""stat -f -c '%T' {}""".format(spath)).strip()
-            if fstype not in [ "xfs", "ext2", "ext3", "ext4", "jfs", "btrfs" ]:
-                raise Exception("unexpected fstype '{}' on '{}'".format(fstype, cmd.storagePath))
 
             with open('/etc/exports.d/zs-v2v.exports', 'w') as f:
                 f.write("{} *(rw,sync,no_root_squash)\n".format(spath))
 
         shell.check_run('systemctl restart nfs-server')
+
+        if spath is not None:
+            fstype = shell.call("""stat -f -c '%T' {}""".format(spath)).strip()
+            if fstype not in [ "xfs", "ext2", "ext3", "ext4", "jfs", "btrfs" ]:
+                raise Exception("unexpected fstype '{}' on '{}'".format(fstype, cmd.storagePath))
+
         shell.check_run('iptables-save | grep -w 2049 || iptables -I INPUT -p tcp --dport 2049 -j ACCEPT')
         return jsonobject.dumps(rsp)
 
@@ -322,6 +327,7 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    @completetask
     def convert(self, req):
         def buildFilterDict(filterList):
             fdict = {}
@@ -344,12 +350,21 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                 return "echo {0} | {1} sudo -S mount".format(cmd.sshPassword, timeout_str)
             return "{0} sudo mount".format(timeout_str)
 
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = ConvertRsp()
+        def validate_and_make_dir(_dir):
+            exists = os.path.exists(_dir)
+            if not exists:
+                linux.mkdir(_dir)
+            return exists
 
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
         real_storage_path = getRealStoragePath(cmd.storagePath)
         storage_dir = os.path.join(real_storage_path, cmd.srcVmUuid)
-        linux.mkdir(storage_dir)
+
+        rsp = ConvertRsp()
+        last_task = self.load_and_save_task(req, rsp, validate_and_make_dir, storage_dir)
+        if last_task and last_task.agent_pid == os.getpid():
+            rsp = self.wait_task_complete(last_task)
+            return jsonobject.dumps(rsp)
 
         local_mount_point = os.path.join("/tmp/zs-v2v/", cmd.managementIp)
         vm_v2v_dir = os.path.join(local_mount_point, cmd.srcVmUuid)
@@ -415,6 +430,10 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                     continue
 
                 logger.info("start copying {}/{} ...".format(cmd.srcVmUuid, v.name))
+
+                # c.f. https://github.com/OpenNebula/one/issues/2646
+                linux.touch_file(localpath)
+
                 dom.blockCopy(v.name,
                     "<disk type='file'><source file='{}'/><driver type='qcow2'/></disk>".format(os.path.join(vm_v2v_dir, v.name)),
                     None,
