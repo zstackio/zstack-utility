@@ -560,9 +560,7 @@ if chroot_env == 'false':
             service_status("libvirt-bin", "state=restarted enabled=yes", host_post_info)
     # name: restart kvmagent, do not use ansible systemctl due to kvmagent can start by itself, so systemctl will not know
     # the kvm agent status when we want to restart it to use the latest kvm agent code
-    if distro in RPM_BASED_OS and major_version >= 7:
-        command = "systemctl stop zstack-kvmagent && systemctl start zstack-kvmagent && systemctl enable zstack-kvmagent"
-    elif distro in RPM_BASED_OS:
+    if distro in RPM_BASED_OS:
         command = "service zstack-kvmagent stop && service zstack-kvmagent start && chkconfig zstack-kvmagent on"
     elif distro in DEB_BASED_OS:
         command = "update-rc.d zstack-kvmagent start 97 3 4 5 . stop 3 0 1 2 6 . && service zstack-kvmagent stop && service zstack-kvmagent start"
