@@ -200,7 +200,7 @@ def mask_sensitive_field(cmd, cmd_str):
                 exec ("if {0}: {0}='*****'".format(path)) in {'obj': obj}
             except:
                 pass
-
-        del obj[SENSITIVE_FIELD_NAME]
+        if SENSITIVE_FIELD_NAME in obj:
+            del obj[SENSITIVE_FIELD_NAME]
 
     return simplejson.dumps(obj)
