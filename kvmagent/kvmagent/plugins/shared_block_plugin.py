@@ -384,7 +384,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         except Exception as e:
             if rsp is None:
                 r = AgentRsp()
-                r.success.success = False
+                r.success = False
                 content = traceback.format_exc()
                 r.error = "%s\n%s" % (str(e), content)
                 rsp = jsonobject.dumps(r)
