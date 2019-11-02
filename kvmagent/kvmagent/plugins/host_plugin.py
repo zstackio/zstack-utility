@@ -374,7 +374,7 @@ class UpdateConfigration(object):
     def __init__(self):
         self.path = None
         self.enableIommu = None
-        self.iommu_type = 'amd_iommu' if 'hygon' or 'amd' in linux.get_cpu_model()[1].lower() else 'intel_iommu'
+        self.iommu_type = 'amd_iommu' if 'hygon' in linux.get_cpu_model()[1].lower() or 'amd' in linux.get_cpu_model()[1].lower() else 'intel_iommu'
 
     def executeCmdOnFile(self, shellCmd):
         return bash_roe("%s %s" % (shellCmd, self.path))
