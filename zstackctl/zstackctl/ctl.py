@@ -8227,7 +8227,7 @@ class StartUiCmd(Command):
         cfg_webhook_port = ctl.read_ui_property("webhook_port")
         cfg_server_port = ctl.read_ui_property("server_port")
         cfg_log = ctl.read_ui_property("log")
-        cfg_enable_ssl = ctl.read_ui_property("enable_ssl")
+        cfg_enable_ssl = ctl.read_ui_property("enable_ssl").lower()
         cfg_ssl_keyalias = ctl.read_ui_property("ssl_keyalias")
         cfg_ssl_keystore = ctl.read_ui_property("ssl_keystore")
         cfg_ssl_keystore_type = ctl.read_ui_property("ssl_keystore_type")
