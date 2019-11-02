@@ -393,6 +393,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             return rsp
 
     @kvmagent.replyerror
+    @lock.file_lock(LOCK_FILE)
     def do_connect(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = ConnectRsp()
