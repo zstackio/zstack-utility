@@ -20,6 +20,7 @@ from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
 from kvmagent.plugins.imagestore import ImageStoreClient
 from zstacklib.utils import http
+from zstacklib.utils import linux
 from zstacklib.utils import iptables
 from zstacklib.utils import jsonobject
 from zstacklib.utils import lock
@@ -373,13 +374,14 @@ class UpdateConfigration(object):
     def __init__(self):
         self.path = None
         self.enableIommu = None
+        self.iommu_type = 'amd_iommu' if 'hygon' or 'amd' in linux.get_cpu_model()[1].lower() else 'intel_iommu'
 
     def executeCmdOnFile(self, shellCmd):
         return bash_roe("%s %s" % (shellCmd, self.path))
 
     def updateHostIommu(self):
-        r_on, o_on, e_on = self.executeCmdOnFile("grep -E 'intel_iommu(\ )*=(\ )*on'")
-        r_off, o_off, e_off = self.executeCmdOnFile("grep -E 'intel_iommu(\ )*=(\ )*off'")
+        r_on, o_on, e_on = self.executeCmdOnFile("grep -E '{}(\ )*=(\ )*on'".format(self.iommu_type))
+        r_off, o_off, e_off = self.executeCmdOnFile("grep -E '{}(\ )*=(\ )*off'".format(self.iommu_type))
         r_modprobe_blacklist, o_modprobe_blacklist, e_modprobe_blacklist = self.executeCmdOnFile("grep -E 'modprobe.blacklist(\ )*='")
         #When iommu has not changed,  No need to update /etc/default/grub
         if self.enableIommu is False:
@@ -390,11 +392,11 @@ class UpdateConfigration(object):
                 return True,None
 
         if r_on == 0:
-            r, o, e = self.executeCmdOnFile( "sed -i '/GRUB_CMDLINE_LINUX/s/[[:blank:]]*intel_iommu[[:blank:]]*=[[:blank:]]*on//g'")
+            r, o, e = self.executeCmdOnFile( "sed -i '/GRUB_CMDLINE_LINUX/s/[[:blank:]]*{}[[:blank:]]*=[[:blank:]]*on//g'".format(self.iommu_type))
             if r != 0:
                 return False, "%s %s" % (e, o)
         if r_off == 0:
-            r, o, e = self.executeCmdOnFile("sed -i '/GRUB_CMDLINE_LINUX/s/[[:blank:]]*intel_iommu[[:blank:]]*=[[:blank:]]*off//g'")
+            r, o, e = self.executeCmdOnFile("sed -i '/GRUB_CMDLINE_LINUX/s/[[:blank:]]*{}[[:blank:]]*=[[:blank:]]*off//g'".format(self.iommu_type))
             if r != 0:
                 return False, "%s %s" % (e, o)
         if r_modprobe_blacklist == 0:
@@ -409,18 +411,18 @@ class UpdateConfigration(object):
                     return False, "%s %s" % (e, o)
 
         if self.enableIommu is True:
-            r, o, e = self.executeCmdOnFile("sed -i '/GRUB_CMDLINE_LINUX/s/\"$/ intel_iommu=on modprobe.blacklist=snd_hda_intel,amd76x_edac,vga16fb,nouveau,rivafb,nvidiafb,rivatv,amdgpu,radeon\"/g'")
+            r, o, e = self.executeCmdOnFile("sed -i '/GRUB_CMDLINE_LINUX/s/\"$/ {}=on modprobe.blacklist=snd_hda_intel,amd76x_edac,vga16fb,nouveau,rivafb,nvidiafb,rivatv,amdgpu,radeon\"/g'".format(self.iommu_type))
             if r != 0:
                 return False, "%s %s" % (e, o)
 
         return True, None
 
     def updateGrubConfig(self):
-        linux.updateGrubFile("grep -E 'intel_iommu(\ )*=(\ )*on'", "sed -i '/^[[:space:]]*linux/s/[[:blank:]]*intel_iommu[[:blank:]]*=[[:blank:]]*on//g'", GRUB_FILES)
-        linux.updateGrubFile("grep -E 'intel_iommu(\ )*=(\ )*off'", "sed -i '/^[[:space:]]*linux/s/[[:blank:]]*intel_iommu[[:blank:]]*=[[:blank:]]*off//g'", GRUB_FILES)
+        linux.updateGrubFile("grep -E '{0}(\ )*=(\ )*on'", "sed -i '/^[[:space:]]*linux/s/[[:blank:]]*{0}[[:blank:]]*=[[:blank:]]*on//g'".format(self.iommu_type), GRUB_FILES)
+        linux.updateGrubFile("grep -E '{0}(\ )*=(\ )*off'", "sed -i '/^[[:space:]]*linux/s/[[:blank:]]*{0}[[:blank:]]*=[[:blank:]]*off//g'".format(self.iommu_type), GRUB_FILES)
         linux.updateGrubFile("grep -E 'modprobe.blacklist(\ )*='", "sed -i '/^[[:space:]]*linux/s/[[:blank:]]*modprobe.blacklist[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g'", GRUB_FILES)
         if self.enableIommu is True:
-            linux.updateGrubFile(None, "sed -i '/^[[:space:]]*linux/s/$/ intel_iommu=on modprobe.blacklist=snd_hda_intel,amd76x_edac,vga16fb,nouveau,rivafb,nvidiafb,rivatv,amdgpu,radeon/g'", GRUB_FILES)
+            linux.updateGrubFile(None, "sed -i '/^[[:space:]]*linux/s/$/ {}=on modprobe.blacklist=snd_hda_intel,amd76x_edac,vga16fb,nouveau,rivafb,nvidiafb,rivatv,amdgpu,radeon/g'".format(self.iommu_type), GRUB_FILES)
         bash_o("modprobe vfio && modprobe vfio-pci")
 
 logger = log.get_logger(__name__)
@@ -1346,9 +1348,12 @@ done
             return jsonobject.dumps(rsp)
 
         updateConfigration.updateGrubConfig()
-
-        r_bios, o_bios, e_bios = bash_roe("find /sys -iname dmar*")
-        r_kernel, o_kernel, e_kernel = bash_roe("grep 'intel_iommu=on' /proc/cmdline")
+        iommu_type = updateConfigration.iommu_type
+        if iommu_type == "amd_iommu":
+            r_bios, o_bios, e_bios = bash_roe("dmesg | grep -e DMAR -e IOMMU")
+        else:
+            r_bios, o_bios, e_bios = bash_roe("find /sys -iname dmar*")
+        r_kernel, o_kernel, e_kernel = bash_roe("grep '{}=on' /proc/cmdline".format(iommu_type))
         if o_bios != '' and r_kernel == 0:
             rsp.hostIommuStatus = True
         else:
