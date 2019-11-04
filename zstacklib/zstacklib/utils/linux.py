@@ -990,31 +990,12 @@ def find_route_interface_by_destination_ip(ip_addr):
     '''
         find the interface for route, when connect to the destination ip.
     '''
-    route = find_route_destination_ip(ip_addr)
+    route = shell.call("ip r get {}".format(ip_addr))
     if route:
         return route.split('dev')[1].strip().split()[0]
 
-def find_route_destination_ip(ip_addr):
-    def check_ip_mask():
-        ip_obj = netaddr.IPNetwork('%s/%s' % (ip_addr, mask))
-        if str(ip_obj.network) == ip:
-            return True
-
-    routes = []
-    out = shell.call('ip route')
-    for line in out.split('\n'):
-        line.strip()
-        if line:
-            if "/" in line.split()[0]:
-                routes.append(line)
-
-    for route in routes:
-        ip, mask = route.split()[0].split('/')
-        if check_ip_mask():
-            return route
-
 def find_route_interface_ip_by_destination_ip(ip_addr):
-    route = find_route_destination_ip(ip_addr)
+    route = shell.call("ip r get {}".format(ip_addr))
     if route:
         return route.split('src')[1].strip().split()[0]
 
