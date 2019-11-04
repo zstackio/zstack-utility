@@ -5838,6 +5838,9 @@ class VmPlugin(kvmagent.KvmAgent):
                 except:
                     content = traceback.format_exc()
                     logger.warn(content)
+                finally:
+                    os._exit(1)
+
 
         wait_end_signal()
 
