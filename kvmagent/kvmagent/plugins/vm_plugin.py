@@ -38,6 +38,7 @@ from zstacklib.utils import uuidhelper
 from zstacklib.utils import xmlobject
 from zstacklib.utils import misc
 from zstacklib.utils import qemu_img
+from zstacklib.utils import secret
 from zstacklib.utils.report import *
 from zstacklib.utils.vm_plugin_queue_singleton import VmPluginQueueSingleton
 
@@ -1958,7 +1959,9 @@ class Vm(object):
         def filebased_volume():
             disk = etree.Element('disk', attrib={'type': 'file', 'device': 'disk'})
             e(disk, 'driver', None, {'name': 'qemu', 'type': linux.get_img_fmt(volume.installPath), 'cache': volume.cacheMode})
-            e(disk, 'source', None, {'file': volume.installPath})
+            source = e(disk, 'source', None, {'file': volume.installPath})
+            encryption = e(source, 'encryption', None, {'format': 'luks'})
+            e(encryption, 'secret', None, {'type':'passphrase', 'uuid': secret.ZSTACK_ENCRYPT_KEY_UUID})
 
             if volume.shareable:
                 e(disk, 'shareable')
@@ -3226,6 +3229,8 @@ class Vm(object):
             else:
                 e(qcmd, "qemu:arg", attrib={"value": "-qmp"})
                 e(qcmd, "qemu:arg", attrib={"value": "unix:{}/{}.sock,server,nowait".format(QMP_SOCKET_PATH, cmd.vmInstanceUuid)})
+                e(qcmd, "qemu:arg", attrib={"value": "-object"})
+                e(qcmd, "qemu:arg", attrib={"value": "secret,id={},file={},format=base64".format(secret.ZSTACK_SECRET_OBJECT_ID, secret.ZSTACK_ENCRYPT_B64_PATH)})
 
             args = cmd.addons['qemuCommandLine']
             if args is not None:
@@ -3344,7 +3349,11 @@ class Vm(object):
                     e(disk, 'driver', None, {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': _v.cacheMode, 'dataplane': 'on'})
                 else:
                     e(disk, 'driver', None, {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': _v.cacheMode})
-                e(disk, 'source', None, {'file': _v.installPath})
+
+                # SM ONLY
+                source = e(disk, 'source', None, {'file': _v.installPath})
+                encryption = e(source, 'encryption', None, {'format': 'luks'})
+                e(encryption, 'secret', None, {'type':'passphrase', 'uuid': secret.ZSTACK_ENCRYPT_KEY_UUID})
 
                 if _v.shareable:
                     e(disk, 'shareable')
@@ -4711,7 +4720,9 @@ class VmPlugin(kvmagent.KvmAgent):
         def filebased_volume(_v):
             disk = etree.Element('disk', {'type': 'file', 'device': 'disk', 'snapshot': 'external'})
             e(disk, 'driver', None, {'name': 'qemu', 'type': 'qcow2', 'cache': _v.cacheMode})
-            e(disk, 'source', None, {'file': _v.installPath})
+            source = e(disk, 'source', None, {'file': _v.installPath})
+            encryption = e(source, 'encryption', None, {'format': 'luks'})
+            e(encryption, 'secret', None, {'type':'passphrase', 'uuid': secret.ZSTACK_ENCRYPT_KEY_UUID})
             return disk
 
         def ceph_volume(_v):
