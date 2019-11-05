@@ -1409,8 +1409,15 @@ def check_sanlock_renewal_failure(lockspace):
 
 
 def check_sanlock_status(lockspace):
-    r, o, e = bash.bash_roe("sanlock client status -D | grep %s -A 18" % lockspace)
-    if r != 0:
+    @linux.retry(4, 0.5)
+    def _check_sanlock_status(lockspace):
+        r, o, e = bash.bash_roe("sanlock client status -D | grep %s -A 18" % lockspace)
+        if r != 0:
+             raise RetryException("sanlock can not get lockspace %s status" % lockspace)
+        return r, o, e
+    try:
+        r, o, e = _check_sanlock_status(lockspace)
+    except Exception:
         return False, "sanlock can not get lockspace %s status" % lockspace
 
     renewal_last_result = 0
