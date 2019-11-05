@@ -38,6 +38,7 @@ from zstacklib.utils import xmlobject
 from zstacklib.utils import misc
 from zstacklib.utils import qemu_img
 from zstacklib.utils.report import *
+from zstacklib.utils.vm_plugin_queue_singleton import VmPluginQueueSingleton
 
 logger = log.get_logger(__name__)
 
@@ -3762,7 +3763,7 @@ class Vm(object):
 
 def _stop_world():
     http.AsyncUirHandler.STOP_WORLD = True
-    VmPlugin.queue.put("exit")
+    VmPlugin.queue_singleton.queue.put("exit")
 
 class VmPlugin(kvmagent.KvmAgent):
     KVM_START_VM_PATH = "/vm/start"
@@ -3822,7 +3823,7 @@ class VmPlugin(kvmagent.KvmAgent):
     VM_OP_RESUME = "resume"
 
     timeout_object = linux.TimeoutObject()
-    queue = Queue.Queue()
+    queue_singleton = VmPluginQueueSingleton()
     secret_keys = {}
 
     if not os.path.exists(QMP_SOCKET_PATH):
@@ -5343,7 +5344,7 @@ class VmPlugin(kvmagent.KvmAgent):
         def wait_end_signal():
             while True:
                 try:
-                    self.queue.get(True)
+                    self.queue_singleton.queue.get(True)
 
                     while http.AsyncUirHandler.HANDLER_COUNTER.get() != 0:
                         time.sleep(0.1)
