@@ -12,6 +12,7 @@ from zstacklib.utils import linux
 from zstacklib.utils import shell
 from zstacklib.utils import traceable_shell
 from zstacklib.utils import rollback
+from zstacklib.utils import secret
 from zstacklib.utils.bash import *
 from zstacklib.utils.report import *
 from zstacklib.utils.plugin import completetask
@@ -133,6 +134,23 @@ class DownloadBitsFromKvmHostRsp(AgentResponse):
         super(DownloadBitsFromKvmHostRsp, self).__init__()
         self.format = None
 
+class CreateTemplateFromVolumeRsp(AgentResponse):
+    def __init__(self):
+        super(CreateTemplateFromVolumeRsp, self).__init__()
+        self.encryptUuid = None
+        self.hashValue = None
+
+class DownloadFromImageStoreRsp(AgentResponse):
+    def __init__(self):
+        super(DownloadFromImageStoreRsp, self).__init__()
+        self.encryptUuid = None
+        self.hashValue = None
+
+class GetImageHashValueRsp(AgentResponse):
+    def __init__(self):
+        super(GetImageHashValueRsp, self).__init__()
+        self.encryptUuid = None
+        self.hashValue = None
 
 class LocalStoragePlugin(kvmagent.KvmAgent):
     INIT_PATH = "/localstorage/init"
@@ -171,6 +189,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/localstorage/kvmhost/download"
     CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/localstorage/kvmhost/download/cancel"
     GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH = "/localstorage/kvmhost/download/progress"
+    GET_QCOW2_HASH_VALUE_PATH = "/localstorage/getqcow2hash";
 
     LOCAL_NOT_ROOT_USER_MIGRATE_TMP_PATH = "primary_storage_tmp_dir"
 
@@ -212,11 +231,21 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.download_from_kvmhost)
         http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
         http_server.register_async_uri(self.GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH, self.get_download_bits_from_kvmhost_progress)
+        http_server.register_async_uri(self.GET_QCOW2_HASH_VALUE_PATH, self.get_qcow2_hash_value)
 
         self.imagestore_client = ImageStoreClient()
 
     def stop(self):
         pass
+
+    @kvmagent.replyerror
+    def get_qcow2_hash_value(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetImageHashValueRsp()
+        enc_uuid, enc_hash = secret.get_image_encrypt_uuid_and_hash(cmd.installPath)
+        rsp.encryptUuid = enc_uuid
+        rsp.hashValue = enc_hash
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def cancel_download_from_kvmhost(self, req):
@@ -581,7 +610,6 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     @rollback.rollback
     def create_template_from_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AgentResponse()
         dirname = os.path.dirname(cmd.installPath)
         if not os.path.exists(dirname):
             os.makedirs(dirname, 0755)
@@ -595,7 +623,16 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         linux.create_template(cmd.volumePath, cmd.installPath, shell=t_shell)
 
         logger.debug('successfully created template[%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
+        rsp = CreateTemplateFromVolumeRsp()
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
+
+        # make sure the template is encrypted
+        # report and save the hash value of encrypted image
+        secret.encrypt_img(cmd.installPath)
+        enc_uuid, enc_hash = secret.get_image_encrypt_uuid_and_hash(cmd.installPath)
+        rsp.encryptUuid = enc_uuid
+        rsp.hashValue = enc_hash
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -848,6 +885,17 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         self.imagestore_client.download_from_imagestore(cachedir, cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
         if cmd.isData:
             self.imagestore_client.clean_meta(cmd.primaryStorageInstallPath)
+
         rsp = AgentResponse()
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
+
+        # make sure the QCOW2 image downloaded from imagestore to image cache is encrypted; report and check it's hash value
+        img_path = cmd.primaryStorageInstallPath
+        fmt = linux.get_img_fmt(img_path)
+        if fmt == 'qcow2':
+            secret.encrypt_img(img_path)
+            enc_uuid, enc_hash = secret.get_image_encrypt_uuid_and_hash(img_path)
+            rsp.encryptUuid = enc_uuid
+            rsp.hashValue = enc_hash
+
         return jsonobject.dumps(rsp)
