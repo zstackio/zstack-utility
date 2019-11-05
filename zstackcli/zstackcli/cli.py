@@ -514,6 +514,13 @@ Parse command parameters error:
                 setattr(msg, key, value)
             return msg
 
+        def create_event(apiname):
+            event_name = apiname[0:-3] + "Event"
+            try:
+                return eval('inventory.%s()' % event_name)
+            except:
+                return None
+
         def set_session_to_api(msg):
             session = inventory.Session()
             session.uuid = self.session_uuid
@@ -538,6 +545,7 @@ Parse command parameters error:
             raise CliError("No session uuid defined")
 
         msg = create_msg(apiname, all_params)
+        event = create_event(apiname)
         set_session_to_api(msg)
         try:
             if apiname in [self.LOGIN_MESSAGE_NAME, self.LOGIN_BY_USER_NAME, self.CREATE_ACCOUNT_NAME,
@@ -560,7 +568,7 @@ Parse command parameters error:
                     setattr(msg, 'sessionUuid', self.session_uuid)
 
             start_time = time.time()
-            (name, event) = self.api.async_call_wait_for_complete(msg, fail_soon=True)
+            (name, event) = self.api.async_call_wait_for_complete(msg, apievent=event, fail_soon=True)
             end_time = time.time()
 
             if apiname in [self.LOGIN_MESSAGE_NAME, self.LOGIN_BY_USER_NAME, self.LOGIN_BY_LDAP_MESSAGE_NAME,

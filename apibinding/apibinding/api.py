@@ -96,7 +96,12 @@ class Api(object):
             logger.warn(
                 'Logout session[uuid:%s] failed because %s' % (session_uuid, self._error_code_to_string(reply.error)))
 
-    def async_call_wait_for_complete(self, apicmd, exception_on_error=True, interval=500, fail_soon=False):
+    def async_call_wait_for_complete(self, apicmd, apievent=None, exception_on_error=True, interval=500, fail_soon=False):
+        def mask_result(result):
+            event_name, event_str = result[1:-1].split(':', 1)
+            log_event = log.mask_sensitive_field(apievent, event_str)
+            return '{%s: %s}' % (event_name, log_event)
+
         self._check_not_none_field(apicmd)
         timeout = apicmd.timeout
         if not timeout:
@@ -107,7 +112,7 @@ class Api(object):
         jstr = http.json_dump_post(self.api_url, cmd, fail_soon=fail_soon)
         rsp = jsonobject.loads(jstr)
         if rsp.state == 'Done':
-            logger.debug("async call[url: %s, response: %s]" % (self.api_url, rsp.result))
+            logger.debug("async call[url: %s, response: %s]" % (self.api_url, mask_result(rsp.result)))
             reply = jsonobject.loads(rsp.result)
             (name, event) = (reply.__dict__.items()[0])
             if exception_on_error and not event.success:
@@ -125,7 +130,7 @@ class Api(object):
         if curr >= timeout:
             raise ApiError('API call[%s] timeout after %dms' % (apicmd.FULL_NAME, curr))
 
-        logger.debug("async call[url: %s, response: %s] after %dms" % (self.api_url, rsp.result, curr))
+        logger.debug("async call[url: %s, response: %s] after %dms" % (self.api_url, mask_result(rsp.result), curr))
         reply = jsonobject.loads(rsp.result)
         (name, event) = (reply.__dict__.items()[0])
         if exception_on_error and not event.success:
