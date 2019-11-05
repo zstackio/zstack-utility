@@ -1846,6 +1846,9 @@ def tail_1(path):
 
 
 def get_libvirtd_pid():
+    if not os.path.exists('/var/run/libvirtd.pid'):
+        return None
+
     with open('/var/run/libvirtd.pid') as f:
         return int(f.read())
 

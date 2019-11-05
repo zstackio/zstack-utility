@@ -5848,7 +5848,7 @@ class VmPlugin(kvmagent.KvmAgent):
         def monitor_libvirt():
             while True:
                 pid = linux.get_libvirtd_pid()
-                if not linux.process_exists(pid):
+                if not pid or not linux.process_exists(pid):
                     logger.warn(
                         "cannot find the libvirt process, assume it's dead, ask the mgmt server to reconnect us")
                     _stop_world()
