@@ -1100,3 +1100,28 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp.actualSize = size
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def config_filter(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentRsp()
+
+        allDiskPaths = set()
+
+        for diskUuid in cmd.allSharedBlockUuids:
+            disk = CheckDisk(diskUuid)
+            p = disk.get_path()
+            if p is not None:
+                allDiskPaths.add(p)
+
+        try:
+            root_disks = ["%s[0-9]*" % d for d in linux.get_root_physical_disk()]
+            allDiskPaths = allDiskPaths.union(root_disks)
+        except Exception as e:
+            logger.warn("get exception: %s" % e.message)
+            allDiskPaths.add("/dev/sd*")
+            allDiskPaths.add("/dev/vd*")
+
+        lvm.config_lvm_filter(["lvm.conf", "lvmlocal.conf"], preserve_disks=allDiskPaths)
+
+        return jsonobject.dumps(rsp)
