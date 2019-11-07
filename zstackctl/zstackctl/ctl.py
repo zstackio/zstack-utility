@@ -1188,6 +1188,20 @@ def get_mn_port():
         return 8080
     return mn_port
 
+def get_mgmt_node_state_from_result(cmd):
+    if cmd.return_code != 0:
+        return None
+
+    try:
+        result = str(json.loads(cmd.stdout)["result"])
+        if string.find(result, "success\":true") != -1:
+            return True
+        if string.find(result, "success\":false") != -1:
+            return False
+        return None
+    except:
+        return None
+
 def create_check_mgmt_node_command(timeout=10, mn_node='127.0.0.1'):
     USE_CURL = 0
     USE_WGET = 1
@@ -1374,13 +1388,16 @@ class ShowStatusCmd(Command):
                     write_status(colored('Stopped', 'red'))
                 return False
 
-            if 'false' in cmd.stdout:
-                write_status('Starting, should be ready in a few seconds')
-            elif 'true' in cmd.stdout:
-                write_status(colored('Running', 'green') + ' [PID:%s]' % pid)
-            else:
+            state = get_mgmt_node_state_from_result(cmd)
+            if state is None:
                 write_status('Unknown')
                 dump_mn()
+                return False
+
+            if state:
+                write_status(colored('Running', 'green') + ' [PID:%s]' % pid)
+            else:
+                write_status('Starting, should be ready in a few seconds')
 
         def show_version():
             try:
@@ -2625,12 +2642,14 @@ class UpgradeHACmd(Command):
         if cmd.return_code != 0:
             error("Check management node %s status failed, make sure the status is running before upgrade" % host_post_info.host)
         else:
-            if 'false' in cmd.stdout:
-                error('The management node %s is starting, please wait a few seconds to upgrade' % host_post_info.host)
-            elif  'true' in cmd.stdout:
+            state = get_mgmt_node_state_from_result(cmd)
+            if state is None:
+                error(
+                    'The management node %s status is: Unknown, please start the management node before upgrade' % host_post_info.host)
+            if state:
                 return 0
             else:
-                error('The management node %s status is: Unknown, please start the management node before upgrade' % host_post_info.host)
+                error('The management node %s is starting, please wait a few seconds to upgrade' % host_post_info.host)
 
     def upgrade_mevoco(self, mevoco_installer, host_post_info):
         mevoco_dir = os.path.dirname(mevoco_installer)
@@ -4773,7 +4792,9 @@ class RestoreMysqlCmd(Command):
             ui_db_hostname = "--host %s" % ui_db_hostname
         self.test_mysql_connection(ui_db_connect_password, ui_db_port, ui_db_hostname)
 
-        running = 'true' in create_check_mgmt_node_command()(False)
+        cmd = create_check_mgmt_node_command()
+        cmd(False)
+        running = get_mgmt_node_state_from_result(cmd) is True
 
         info("Backup mysql before restore data ...")
         ctl.internal_run('dump_mysql')
@@ -4858,7 +4879,9 @@ class MultiMysqlRestorer(MysqlRestorer):
             info("stopping peer node...")
             self.utils.excute_on_peer("/usr/local/bin/zsha2 stop-node -keepui")
         else:
-            self_running = 'true' in create_check_mgmt_node_command()(False)
+            cmd = create_check_mgmt_node_command()
+            cmd(False)
+            self_running = get_mgmt_node_state_from_result(cmd) is True
             if self_running:
                 warn("how can I still running? stop it")
                 shell("/usr/local/bin/zsha2 stop-node -keepui")
@@ -6903,7 +6926,7 @@ class UpgradeMultiManagementNodeCmd(Command):
         mn_ip_list = []
         cmd = create_check_mgmt_node_command()
         cmd(False)
-        if 'true' not in cmd.stdout:
+        if not get_mgmt_node_state_from_result(cmd):
             error("Local management node status is not Running, can't make sure ZStack status is healthy")
         for mn in mn_vo:
             mn_ip_list.append(mn['hostName'])
