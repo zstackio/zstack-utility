@@ -2282,24 +2282,14 @@ class Vm(object):
         Vm.timeout_detached_vol.remove(volume.installPath + "-" + self.uuid)
 
     def _get_back_file(self, volume):
-        ret = shell.call('%s %s' % (qemu_img.subcmd('info'), volume))
-        for l in ret.split('\n'):
-            l = l.strip(' \n\t\r')
-            if l == '':
-                continue
-
-            k, v = l.split(':')
-            if k == 'backing file':
-                return v.strip()
-
-        return None
+        return linux.qcow2_get_backing_file(volume)
 
     def _get_backfile_chain(self, current):
         back_files = []
 
         def get_back_files(volume):
             back_file = self._get_back_file(volume)
-            if back_file is None:
+            if not back_file:
                 return
 
             back_files.append(back_file)
@@ -2307,6 +2297,12 @@ class Vm(object):
 
         get_back_files(current)
         return back_files
+
+    @staticmethod
+    def ensure_no_internal_snapshot(volume):
+        if os.path.exists(volume) and shell.run("%s --backing-chain %s | grep 'Snapshot list:'"
+                                                        % (qemu_img.subcmd('info'), volume)) == 0:
+            raise kvmagent.KvmError('found internal snapshot in the backing chain of volume[path:%s].' % volume)
 
     # NOTE: code from Openstack nova
     def _wait_for_block_job(self, disk_path, abort_on_error=False,
@@ -4858,6 +4854,8 @@ class VmPlugin(kvmagent.KvmAgent):
             if snapshot_job.live != cmd.snapshotJobs[0].live:
                 raise kvmagent.KvmError("can not take snapshot on different live status")
 
+            Vm.ensure_no_internal_snapshot(snapshot_job.volume.installPath)
+
         def makedir_if_need(new_path):
             dirname = os.path.dirname(new_path)
             if not os.path.exists(dirname):
@@ -4952,6 +4950,7 @@ class VmPlugin(kvmagent.KvmAgent):
 
         try:
             linux.sync()
+            Vm.ensure_no_internal_snapshot(cmd.volume.installPath)
             if not cmd.vmUuid:
                 if cmd.fullSnapshot:
                     rsp.snapshotInstallPath, rsp.newVolumeInstallPath = take_full_snapshot_by_qemu_img_convert(
