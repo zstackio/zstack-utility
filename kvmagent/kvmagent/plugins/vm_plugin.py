@@ -3144,7 +3144,7 @@ class Vm(object):
 
             def filebased_volume(_dev_letter, _v):
                 disk = etree.Element('disk', {'type': 'file', 'device': 'disk', 'snapshot': 'external'})
-                if cmd.addons and cmd.addons.get('useDataPlane') is True:
+                if cmd.addons and cmd.addons['useDataPlane'] is True:
                     e(disk, 'driver', None, {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': _v.cacheMode, 'dataplane': 'on'})
                 else:
                     e(disk, 'driver', None, {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': _v.cacheMode})
