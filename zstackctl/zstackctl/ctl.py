@@ -130,8 +130,6 @@ if [ $? -ne 0 ]; then
     echo "tmpdir=$mysql_tmp_path"
     sed -i "/\[mysqld\]/a tmpdir=$mysql_tmp_path" $mysql_conf
 fi
-
-sync
 '''
 
 mysqldump_skip_tables = "--ignore-table=zstack.VmUsageHistoryVO --ignore-table=zstack.RootVolumeUsageHistoryVO --ignore-table=zstack.NotificationVO --ignore-table=zstack.PubIpVmNicBandwidthUsageHistoryVO --ignore-table=zstack.DataVolumeUsageHistoryVO --ignore-table=zstack.RestAPIVO --ignore-table=zstack.ResourceUsageVO"
@@ -1225,7 +1223,7 @@ def create_check_mgmt_node_command(timeout=10, mn_node='127.0.0.1'):
         cmd = ShellCmd("grep '^\s*127.0.0.1\s' /etc/hosts | grep -q '\slocalhost\s'")
         cmd(False)
         if cmd.return_code != 0:
-            ShellCmd("sed -i '1i127.0.0.1   localhost ' /etc/hosts; sync")
+            ShellCmd("sed -i '1i127.0.0.1   localhost ' /etc/hosts")
 
     check_hosts()
     what_tool = use_tool()
@@ -2152,7 +2150,7 @@ class StartCmd(Command):
             else:
                 beanXml = "zstack.xml"
 
-            shell('sudo -u zstack sed -i "s#<value>.*</value>#<value>%s</value>#" %s; sync' % (beanXml, os.path.join(ctl.zstack_home, self.BEAN_CONTEXT_REF_XML)))
+            shell('sudo -u zstack sed -i "s#<value>.*</value>#<value>%s</value>#" %s' % (beanXml, os.path.join(ctl.zstack_home, self.BEAN_CONTEXT_REF_XML)))
 
         def checkSimulator():
             if is_simulator_on():
@@ -2177,6 +2175,8 @@ class StartCmd(Command):
         encrypt_properties_if_need()
         checkSimulator()
         prepareBeanRefContextXml()
+
+        linux.sync_file(ctl.properties_file_path)
         start_mgmt_node()
         #sleep a while, since zstack won't start up so quickly
         time.sleep(5)
@@ -2197,7 +2197,6 @@ class StartCmd(Command):
         info('successfully started management node')
 
         ctl.delete_env('ZSTACK_UPGRADE_PARAMS')
-        shell('sync')
 
 class StopCmd(Command):
     STOP_SCRIPT = "../../bin/shutdown.sh"
@@ -6140,8 +6139,6 @@ which ansible-playbook &> /dev/null
 if [ $$? -ne 0 ]; then
     pip install -i file://$pypi_path/simple --trusted-host localhost ansible
 fi
-
-sync
 '''
         t = string.Template(post_script)
         post_script = t.substitute({
@@ -6330,7 +6327,6 @@ yum clean all >/dev/null 2>&1
         })
 
         ansible(yaml, host_info.host, args.debug, private_key)
-        shell('sync')
         info('successfully installed new management node on machine(%s)' % host_info.host)
 
 class ShowConfiguration(Command):
