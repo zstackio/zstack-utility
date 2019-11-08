@@ -3049,7 +3049,6 @@ class Vm(object):
             if not linux.wait_callback_success(wait_job, timeout=21600):
                 raise kvmagent.KvmError('live merging snapshot chain failed, timeout after 6 hours')
 
-            linux.sync()
             # Double check (c.f. issue #757)
             if self._get_back_file(top) != base:
                 raise kvmagent.KvmError('[libvirt bug] live merge snapshot failed')
@@ -4956,7 +4955,6 @@ class VmPlugin(kvmagent.KvmAgent):
             return previous_install_path, new_volume_path
 
         try:
-            linux.sync()
             Vm.ensure_no_internal_snapshot(cmd.volumeInstallPath)
             if not cmd.vmUuid:
                 if cmd.fullSnapshot:
@@ -4995,7 +4993,7 @@ class VmPlugin(kvmagent.KvmAgent):
                         'took delta snapshot on vm[uuid:{0}] volume[id:{1}], snapshot path:{2}, new volulme path:{3}'.format(
                             cmd.vmUuid, cmd.volume.deviceId, rsp.snapshotInstallPath, rsp.newVolumeInstallPath))
 
-            linux.sync()
+            linux.sync_file(rsp.snapshotInstallPath)
             rsp.size = VmPlugin._get_snapshot_size(rsp.snapshotInstallPath)
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
