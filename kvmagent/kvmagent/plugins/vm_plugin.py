@@ -2282,7 +2282,8 @@ class Vm(object):
         Vm.timeout_detached_vol.remove(volume.installPath + "-" + self.uuid)
 
     def _get_back_file(self, volume):
-        return linux.qcow2_get_backing_file(volume)
+        back = linux.qcow2_get_backing_file(volume)
+        return None if not back else back
 
     def _get_backfile_chain(self, current):
         back_files = []
