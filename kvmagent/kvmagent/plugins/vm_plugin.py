@@ -4939,7 +4939,7 @@ class VmPlugin(kvmagent.KvmAgent):
 
         try:
             linux.sync()
-            Vm.ensure_no_internal_snapshot(cmd.volume.installPath)
+            Vm.ensure_no_internal_snapshot(cmd.volumeInstallPath)
             if not cmd.vmUuid:
                 if cmd.fullSnapshot:
                     rsp.snapshotInstallPath, rsp.newVolumeInstallPath = take_full_snapshot_by_qemu_img_convert(
