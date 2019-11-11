@@ -3224,7 +3224,7 @@ class Vm(object):
             qcmd = e(root, 'qemu:commandline')
             vendor_id, model_name = linux.get_cpu_model()
             if "hygon" in model_name.lower():
-                if isinstance(cmd.imagePlatform, str) and cmd.imagePlatform.lower() != "other":
+                if isinstance(cmd.imagePlatform, str) and cmd.imagePlatform.lower() not in ["other", "paravirtualization"]:
                     e(qcmd, "qemu:arg", attrib={"value": "-cpu"})
                     e(qcmd, "qemu:arg", attrib={"value": "EPYC,vendor=AuthenticAMD,model_id={} Processor".format(" ".join(model_name.split(" ")[0:3]))})
             else:
