@@ -390,6 +390,7 @@ WantedBy=multi-user.target
 """ % LVMLOCKD_LOG_FILE_PATH
         with open(LVMLOCKD_LOG_RSYSLOG_PATH, 'w') as f:
             f.write(content)
+            f.flush()
             os.fsync(f.fileno())
         os.chmod(LVMLOCKD_LOG_RSYSLOG_PATH, 0644)
         shell.call("systemctl restart rsyslog", exception=False)
@@ -431,6 +432,7 @@ def start_lvmlockd():
 }"""
     with open(LVMLOCKD_LOG_LOGROTATE_PATH, 'w') as f:
         f.write(content)
+        f.flush()
         os.fsync(f.fileno())
     os.chmod(LVMLOCKD_LOG_LOGROTATE_PATH, 0644)
 
