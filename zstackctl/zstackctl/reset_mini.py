@@ -37,9 +37,26 @@ def stop_vms():
 
 @bash.in_bash
 def cleanup_storage():
+    def get_live_drbd_minor():
+        return bash.bash_o("cat /proc/drbd | grep -E '^[[:space:]]*[0-9]+\: ' | awk '{print $1}' | cut -d ':' -f1").strip().splitlines()
+    def kill_drbd_holder(minor):
+        if minor == "" or minor is None:
+            return
+        lines = bash.bash_o("lsof /dev/drbd%s | grep -v '^COMMAND'" % minor).splitlines()
+        if len(lines) == 0:
+            return
+        for line in lines:
+            bash.bash_r("kill -9 %s" % line.split()[1])
+    def get_mini_pv():
+        vg_name = bash.bash_o("vgs --nolocking -oname,tags | grep zs::ministorage | awk '{print $1}'").strip()
+        pv_names = bash.bash_o("pvs --nolocking -oname -Svg_name=%s | grep -v PV" % vg_name).strip().splitlines()
+        return [p.strip() for p in pv_names]
     bash.bash_roe("drbdadm down all")
+    if len(get_live_drbd_minor()) != 0:
+        for m in get_live_drbd_minor():
+            kill_drbd_holder(m)
     bash.bash_r("/bin/rm /etc/drbd.d/*.res")
-    lvm.wipe_fs(["/dev/sdb"])
+    lvm.wipe_fs(get_mini_pv())
 
 
 @bash.in_bash
