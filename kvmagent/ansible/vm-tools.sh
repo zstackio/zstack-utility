@@ -15,7 +15,7 @@ case `uname -s` in
     ;;
 esac
 
-if [[ `uname -m` = "x86_64" ]]; then
+if [ `uname -m` = "x86_64" ]; then
     ARCH="amd64"
 else
     ARCH="386"
