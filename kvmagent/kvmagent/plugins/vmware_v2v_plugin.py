@@ -205,7 +205,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
 
         src_vm_uri = cmd.srcVmUri
         vmware_host_ip = src_vm_uri.split('/')[-1]
-        interface = linux.find_route_interface_by_destination_ip(vmware_host_ip)
+        interface = linux.find_route_interface_by_destination_ip(linux.get_host_by_name(vmware_host_ip))
 
         if interface:
             cmdstr = "tc filter replace dev %s protocol ip parent 1: prio 1 u32 match ip src %s/32 flowid 1:1" \
