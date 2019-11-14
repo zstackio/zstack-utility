@@ -22,6 +22,7 @@ current_dir = os.path.dirname(os.path.realpath(__file__))
 post_url = ""
 chrony_servers = None
 fs_rootpath = ""
+max_capacity = 0
 client = "false"
 remote_user = "root"
 remote_pass = None
@@ -144,7 +145,7 @@ copy_arg.args = "mode=400"
 copy(copy_arg, host_post_info)
 
 # name: install zstack-store
-command = "bash %s %s " % (dest_pkg, fs_rootpath)
+command = "bash %s %s %s" % (dest_pkg, fs_rootpath, max_capacity)
 run_remote_command(command, host_post_info)
 
 
