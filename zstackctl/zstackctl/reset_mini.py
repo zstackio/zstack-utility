@@ -80,20 +80,19 @@ def clear_network():
 @bash.in_bash
 def reset_network():
     bash.bash_r("ip link set dev eno1 nomaster; ip link set dev eno2 nomaster; ip link set dev ens2f0 nomaster; ip link set dev ens2f1 nomaster")
+    bash.bash_r("ip -4 a flush eno1; ip -4 a flush eno2; ip -4 a flush ens2f0; ip -4 a flush ens2f1")
+    bash.bash_r("ip r del default")
     bash.bash_r("ls /etc/sysconfig/network-scripts/ifcfg-* | grep -v ifcfg-lo | xargs /bin/rm")
     bash.bash_r("systemctl restart network")
     clear_network()
-    bash.bash_r("ip r del default")
     sn = bash.bash_o("dmidecode -s system-serial-number").strip()
     if sn[-1] == "B":
         bash.bash_r(
-            "export PATH=$PATH:/usr/local/bin/; /usr/local/bin/zs-network-setting -b eno1 100.66.66.67 255.255.255.0")
-        bash.bash_r("ip link set dev eno1 master br_eno1")
+            "export PATH=$PATH:/usr/local/bin/; /usr/local/bin/zs-network-setting -i eno1 100.66.66.67 255.255.255.0")
         bash.bash_r("ip link set dev eno1 up")
     elif sn[-1] == "A":
         bash.bash_r(
-            "export PATH=$PATH:/usr/local/bin/; /usr/local/bin/zs-network-setting -b eno1 100.66.66.66 255.255.255.0")
-        bash.bash_r("ip link set dev eno1 master br_eno1")
+            "export PATH=$PATH:/usr/local/bin/; /usr/local/bin/zs-network-setting -i eno1 100.66.66.66 255.255.255.0")
         bash.bash_r("ip link set dev eno1 up")
     else:
         raise Exception("serial number not last with A or B!")
