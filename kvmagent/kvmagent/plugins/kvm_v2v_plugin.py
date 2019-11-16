@@ -386,7 +386,7 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
             raise Exception('target host cannot access NFS on {}'.format(cmd.managementIp))
 
         libvirtHost = getHostname(cmd.libvirtURI)
-        if linux.find_route_interface_by_destination_ip(libvirtHost):
+        if linux.find_route_interface_by_destination_ip(linux.get_host_by_name(libvirtHost)):
             cmdstr = "tc filter replace dev %s protocol ip parent 1: prio 1 u32 match ip src %s/32 flowid 1:1" \
                      % (QOS_IFB, libvirtHost)
             shell.run(cmdstr)

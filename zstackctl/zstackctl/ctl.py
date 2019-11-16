@@ -130,8 +130,6 @@ if [ $? -ne 0 ]; then
     echo "tmpdir=$mysql_tmp_path"
     sed -i "/\[mysqld\]/a tmpdir=$mysql_tmp_path" $mysql_conf
 fi
-
-sync
 '''
 
 mysqldump_skip_tables = "--ignore-table=zstack.VmUsageHistoryVO --ignore-table=zstack.RootVolumeUsageHistoryVO --ignore-table=zstack.NotificationVO --ignore-table=zstack.PubIpVmNicBandwidthUsageHistoryVO --ignore-table=zstack.DataVolumeUsageHistoryVO --ignore-table=zstack.RestAPIVO --ignore-table=zstack.ResourceUsageVO"
@@ -1188,6 +1186,20 @@ def get_mn_port():
         return 8080
     return mn_port
 
+def get_mgmt_node_state_from_result(cmd):
+    if cmd.return_code != 0:
+        return None
+
+    try:
+        result = str(json.loads(cmd.stdout)["result"])
+        if string.find(result, "success\":true") != -1:
+            return True
+        if string.find(result, "success\":false") != -1:
+            return False
+        return None
+    except:
+        return None
+
 def create_check_mgmt_node_command(timeout=10, mn_node='127.0.0.1'):
     USE_CURL = 0
     USE_WGET = 1
@@ -1211,7 +1223,7 @@ def create_check_mgmt_node_command(timeout=10, mn_node='127.0.0.1'):
         cmd = ShellCmd("grep '^\s*127.0.0.1\s' /etc/hosts | grep -q '\slocalhost\s'")
         cmd(False)
         if cmd.return_code != 0:
-            ShellCmd("sed -i '1i127.0.0.1   localhost ' /etc/hosts; sync")
+            ShellCmd("sed -i '1i127.0.0.1   localhost ' /etc/hosts")
 
     check_hosts()
     what_tool = use_tool()
@@ -1374,13 +1386,16 @@ class ShowStatusCmd(Command):
                     write_status(colored('Stopped', 'red'))
                 return False
 
-            if 'false' in cmd.stdout:
-                write_status('Starting, should be ready in a few seconds')
-            elif 'true' in cmd.stdout:
-                write_status(colored('Running', 'green') + ' [PID:%s]' % pid)
-            else:
+            state = get_mgmt_node_state_from_result(cmd)
+            if state is None:
                 write_status('Unknown')
                 dump_mn()
+                return False
+
+            if state:
+                write_status(colored('Running', 'green') + ' [PID:%s]' % pid)
+            else:
+                write_status('Starting, should be ready in a few seconds')
 
         def show_version():
             try:
@@ -2135,7 +2150,7 @@ class StartCmd(Command):
             else:
                 beanXml = "zstack.xml"
 
-            shell('sudo -u zstack sed -i "s#<value>.*</value>#<value>%s</value>#" %s; sync' % (beanXml, os.path.join(ctl.zstack_home, self.BEAN_CONTEXT_REF_XML)))
+            shell('sudo -u zstack sed -i "s#<value>.*</value>#<value>%s</value>#" %s' % (beanXml, os.path.join(ctl.zstack_home, self.BEAN_CONTEXT_REF_XML)))
 
         def checkSimulator():
             if is_simulator_on():
@@ -2160,6 +2175,8 @@ class StartCmd(Command):
         encrypt_properties_if_need()
         checkSimulator()
         prepareBeanRefContextXml()
+
+        linux.sync_file(ctl.properties_file_path)
         start_mgmt_node()
         #sleep a while, since zstack won't start up so quickly
         time.sleep(5)
@@ -2180,7 +2197,6 @@ class StartCmd(Command):
         info('successfully started management node')
 
         ctl.delete_env('ZSTACK_UPGRADE_PARAMS')
-        shell('sync')
 
 class StopCmd(Command):
     STOP_SCRIPT = "../../bin/shutdown.sh"
@@ -2625,12 +2641,14 @@ class UpgradeHACmd(Command):
         if cmd.return_code != 0:
             error("Check management node %s status failed, make sure the status is running before upgrade" % host_post_info.host)
         else:
-            if 'false' in cmd.stdout:
-                error('The management node %s is starting, please wait a few seconds to upgrade' % host_post_info.host)
-            elif  'true' in cmd.stdout:
+            state = get_mgmt_node_state_from_result(cmd)
+            if state is None:
+                error(
+                    'The management node %s status is: Unknown, please start the management node before upgrade' % host_post_info.host)
+            if state:
                 return 0
             else:
-                error('The management node %s status is: Unknown, please start the management node before upgrade' % host_post_info.host)
+                error('The management node %s is starting, please wait a few seconds to upgrade' % host_post_info.host)
 
     def upgrade_mevoco(self, mevoco_installer, host_post_info):
         mevoco_dir = os.path.dirname(mevoco_installer)
@@ -4773,7 +4791,9 @@ class RestoreMysqlCmd(Command):
             ui_db_hostname = "--host %s" % ui_db_hostname
         self.test_mysql_connection(ui_db_connect_password, ui_db_port, ui_db_hostname)
 
-        running = 'true' in create_check_mgmt_node_command()(False)
+        cmd = create_check_mgmt_node_command()
+        cmd(False)
+        running = get_mgmt_node_state_from_result(cmd) is True
 
         info("Backup mysql before restore data ...")
         ctl.internal_run('dump_mysql')
@@ -4858,7 +4878,9 @@ class MultiMysqlRestorer(MysqlRestorer):
             info("stopping peer node...")
             self.utils.excute_on_peer("/usr/local/bin/zsha2 stop-node -keepui")
         else:
-            self_running = 'true' in create_check_mgmt_node_command()(False)
+            cmd = create_check_mgmt_node_command()
+            cmd(False)
+            self_running = get_mgmt_node_state_from_result(cmd) is True
             if self_running:
                 warn("how can I still running? stop it")
                 shell("/usr/local/bin/zsha2 stop-node -keepui")
@@ -6117,8 +6139,6 @@ which ansible-playbook &> /dev/null
 if [ $$? -ne 0 ]; then
     pip install -i file://$pypi_path/simple --trusted-host localhost ansible
 fi
-
-sync
 '''
         t = string.Template(post_script)
         post_script = t.substitute({
@@ -6307,7 +6327,6 @@ yum clean all >/dev/null 2>&1
         })
 
         ansible(yaml, host_info.host, args.debug, private_key)
-        shell('sync')
         info('successfully installed new management node on machine(%s)' % host_info.host)
 
 class ShowConfiguration(Command):
@@ -6903,7 +6922,7 @@ class UpgradeMultiManagementNodeCmd(Command):
         mn_ip_list = []
         cmd = create_check_mgmt_node_command()
         cmd(False)
-        if 'true' not in cmd.stdout:
+        if not get_mgmt_node_state_from_result(cmd):
             error("Local management node status is not Running, can't make sure ZStack status is healthy")
         for mn in mn_vo:
             mn_ip_list.append(mn['hostName'])
@@ -8772,6 +8791,94 @@ class ResetAdminPasswordCmd(Command):
         info("reset password succeed")
 
 
+class MiniResetHostCmd(Command):
+    def __init__(self):
+        super(MiniResetHostCmd, self).__init__()
+        self.name = "reset_mini_host"
+        self.description = "reset mini host"
+        ctl.register_command(self)
+
+        self.target = {"local", "peer", "both"}
+        self.script_path = "/tmp/reset_mini.py"
+        self.local_script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reset_mini.py")
+        self.key = "/usr/local/zstack/mini_fencer.key"
+        _, self.sn, _ = shell_return_stdout_stderr("dmidecode -s system-serial-number")
+        self.sn = self.sn.strip()
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--target', help='reset target, can be %s' % self.target, required=True)
+
+    def run(self, args):
+        if args.target in ["peer", "both"]:
+            peer_ip = self._get_peer_address()
+            info("reseting host %s ..." % peer_ip)
+            self._copy_script(peer_ip)
+            self._run_script(peer_ip)
+            self._wait_node_has_ip("peer")
+        if args.target in ["local", "both"]:
+            info("reseting local host ...")
+            self._run_script()
+            self._wait_node_has_ip("local")
+        info("mini host reset complete!")
+
+    def _wait_node_has_ip(self, node):
+        info("script copy complete\nwaiting node %s reset complete ..." % node)
+        for i in range(72):
+            if self._node_has_special_ip(node):
+                return
+            time.sleep(5)
+        raise Exception("%s reset not success after 360 secondes" % node)
+
+    @staticmethod
+    def _node_has_special_ip(node):
+        _, o, _ = shell_return_stdout_stderr("curl 127.0.0.1:7274/bootstrap/hosts/local")
+        try:
+            j = simplejson.loads(o)
+        except Exception:
+            return False
+        if j.get(node) is None:
+            return False
+        return "100.66.66" in j.get(node).get("ipv4Address")
+
+    def _validate_args(self, args):
+        if args.target not in self.target:
+            raise Exception("target must be local, peer or both")
+
+    @staticmethod
+    def _get_peer_address():
+        _, o, _ = shell_return_stdout_stderr("curl 127.0.0.1:7274/bootstrap/hosts/local")
+        j = simplejson.loads(o)
+        return j.get("peer").get("ipv4Address")
+
+    def _ssh_no_auth(self, peer_ip):
+        r = shell_return("timeout 5 ssh root@%s date" % peer_ip)
+        if r == 0:
+            return True
+        r = shell_return("timeout 5 ssh -i %s root@%s date" % (self.key, peer_ip))
+        if r == 0:
+            return False
+        raise Exception("can not connect %s via ssh" % peer_ip)
+
+    def _run_script(self, peer_ip=None):
+        if not peer_ip:
+            shell_return("/bin/cp %s %s" % (self.local_script_path, self.script_path))
+            shell_return("python %s > /tmp/reset_mini.log 2>1" % self.script_path)
+        elif self._ssh_no_auth(peer_ip):
+            cmd = ShellCmd("ssh root@%s 'nohup python %s > /tmp/reset_mini.log 2>1 &'" % (peer_ip, self.script_path))
+            cmd(True)
+        else:
+            cmd = ShellCmd("ssh -i %s root@%s 'nohup python %s > /tmp/reset_mini.log 2>1 &'" % (self.key, peer_ip, self.script_path))
+            cmd(True)
+
+    def _copy_script(self, peer_ip):
+        if self._ssh_no_auth(peer_ip):
+            cmd = ShellCmd("scp %s root@%s:%s" % (self.local_script_path, peer_ip, self.script_path))
+            cmd(True)
+        else:
+            cmd = ShellCmd("scp -i %s %s root@%s:%s" % (self.key, self.local_script_path, peer_ip, self.script_path))
+            cmd(True)
+
+
 class SharedBlockQcow2SharedVolumeFixCmd(Command):
     def __init__(self):
         super(SharedBlockQcow2SharedVolumeFixCmd, self).__init__()
@@ -9023,6 +9130,7 @@ def main():
     CleanAnsibleCacheCmd()
     GetZStackVersion()
     SharedBlockQcow2SharedVolumeFixCmd()
+    MiniResetHostCmd()
 
     # If tools/zstack-ui.war exists, then install zstack-ui
     # else, install zstack-dashboard

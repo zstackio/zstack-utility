@@ -17,7 +17,6 @@ import functools
 import threading
 import re
 import platform
-import mmap
 
 from zstacklib.utils import qemu_img
 from zstacklib.utils import lock
@@ -1846,6 +1845,9 @@ def tail_1(path):
 
 
 def get_libvirtd_pid():
+    if not os.path.exists('/var/run/libvirtd.pid'):
+        return None
+
     with open('/var/run/libvirtd.pid') as f:
         return int(f.read())
 
@@ -1872,13 +1874,20 @@ def get_agent_pid_by_name(name):
     output = output.strip(" \t\r")
     return output
 
-if hasattr(os, 'sync'):
-    sync = os.sync
-else:
-    import ctypes
-    libc = ctypes.CDLL("libc.so.6")
-    def sync():
-        libc.sync()
+import ctypes
+libc = ctypes.CDLL("libc.so.6")
+
+def sync_file(fpath):
+    if not os.path.isfile(fpath):
+        return
+
+    fd = os.open(fpath, os.O_RDONLY|os.O_NONBLOCK)
+    try:
+        libc.syncfs(fd)
+    except:
+        pass
+    finally:
+        os.close(fd)
 
 def updateGrubFile(grepCmd, sedCmd, files):
     if not grepCmd is None:

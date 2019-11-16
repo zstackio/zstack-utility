@@ -39,6 +39,7 @@ from zstacklib.utils import xmlobject
 from zstacklib.utils import misc
 from zstacklib.utils import qemu_img
 from zstacklib.utils.report import *
+from zstacklib.utils.vm_plugin_queue_singleton import VmPluginQueueSingleton
 
 logger = log.get_logger(__name__)
 
@@ -1520,16 +1521,17 @@ def make_spool_conf(imgfmt, dev_letter, volume):
     d = tempfile.gettempdir()
     fname = "{0}_{1}".format(os.path.basename(volume.installPath), dev_letter)
     fpath = os.path.join(d, fname) + ".conf"
+    vsize, _ = linux.qcow2_size_and_actual_size(volume.installPath)
     with open(fpath, "w") as fd:
        fd.write("device_type  0\n")
        fd.write("local_storage_type 0\n")
+       fd.write("device_owner blockpmd\n")
        fd.write("device_format {0}\n".format(imgfmt))
        fd.write("cluster_id 1000\n")
        fd.write("device_id {0}\n".format(ord(dev_letter)))
        fd.write("device_uuid {0}\n".format(fname))
        fd.write("mount_point {0}\n".format(volume.installPath))
-       fd.write("device_size {0}\n".format(shell.call(
-           "blockdev --getsize64 {0}".format(volume.installPath))))
+       fd.write("device_size {0}\n".format(vsize))
 
     os.chmod(fpath, 0o600)
     return fpath
@@ -1764,8 +1766,11 @@ class Vm(object):
                         shell.call('kill -9 %s' % pid)
 
             try:
-                self.domain.undefineFlags(
-                    libvirt.VIR_DOMAIN_UNDEFINE_MANAGED_SAVE | libvirt.VIR_DOMAIN_UNDEFINE_SNAPSHOTS_METADATA | libvirt.VIR_DOMAIN_UNDEFINE_NVRAM)
+                flags = 0
+                for attr in [ "VIR_DOMAIN_UNDEFINE_MANAGED_SAVE", "VIR_DOMAIN_UNDEFINE_SNAPSHOTS_METADATA", "VIR_DOMAIN_UNDEFINE_NVRAM" ]:
+                    if hasattr(libvirt, attr):
+                        flags |= getattr(libvirt, attr)
+                self.domain.undefineFlags(flags)
             except libvirt.libvirtError as ex:
                 logger.warn('undefine domain[%s] failed: %s' % (self.uuid, str(ex)))
                 force_undefine()
@@ -2281,24 +2286,15 @@ class Vm(object):
         Vm.timeout_detached_vol.remove(volume.installPath + "-" + self.uuid)
 
     def _get_back_file(self, volume):
-        ret = shell.call('%s %s' % (qemu_img.subcmd('info'), volume))
-        for l in ret.split('\n'):
-            l = l.strip(' \n\t\r')
-            if l == '':
-                continue
-
-            k, v = l.split(':')
-            if k == 'backing file':
-                return v.strip()
-
-        return None
+        back = linux.qcow2_get_backing_file(volume)
+        return None if not back else back
 
     def _get_backfile_chain(self, current):
         back_files = []
 
         def get_back_files(volume):
             back_file = self._get_back_file(volume)
-            if back_file is None:
+            if not back_file:
                 return
 
             back_files.append(back_file)
@@ -2306,6 +2302,12 @@ class Vm(object):
 
         get_back_files(current)
         return back_files
+
+    @staticmethod
+    def ensure_no_internal_snapshot(volume):
+        if os.path.exists(volume) and shell.run("%s --backing-chain %s | grep 'Snapshot list:'"
+                                                        % (qemu_img.subcmd('info'), volume)) == 0:
+            raise kvmagent.KvmError('found internal snapshot in the backing chain of volume[path:%s].' % volume)
 
     # NOTE: code from Openstack nova
     def _wait_for_block_job(self, disk_path, abort_on_error=False,
@@ -3018,7 +3020,7 @@ class Vm(object):
                 logger.warn(e.message)
                 if e.message.find("child process has failed to set user password") > 0:
                     logger.warn('user [%s] not exist!' % cmd.accountPerference.userAccount)
-                    raise kvmagent.KvmError('user [%s] not exist!' % cmd.accountPerference.userAccount)
+                    raise kvmagent.KvmError('user [%s] not exist on vm[uuid: %s]!' % (cmd.accountPerference.userAccount, uuid))
                 else:
                     raise e
         else:
@@ -3048,7 +3050,6 @@ class Vm(object):
             if not linux.wait_callback_success(wait_job, timeout=21600):
                 raise kvmagent.KvmError('live merging snapshot chain failed, timeout after 6 hours')
 
-            linux.sync()
             # Double check (c.f. issue #757)
             if self._get_back_file(top) != base:
                 raise kvmagent.KvmError('[libvirt bug] live merge snapshot failed')
@@ -3166,8 +3167,8 @@ class Vm(object):
                 e(os, 'type', 'hvm', attrib={'machine': machine_type})
                 # if boot mode is UEFI
                 if cmd.bootMode == "UEFI":
-                    e(os, 'loader', '/usr/share/edk2.git/ovmf-x64/OVMF_CODE-pure-efi.fd', attrib={'readonly': 'yes', 'type': 'pflash'})
-                    e(os, 'nvram', '/var/lib/libvirt/qemu/nvram/%s.fd' % cmd.vmInstanceUuid, attrib={'template': '/usr/share/edk2.git/ovmf-x64/OVMF_VARS-pure-efi.fd'})
+                    e(os, 'loader', '/usr/share/edk2.git/ovmf-x64/OVMF_CODE-with-csm.fd', attrib={'readonly': 'yes', 'type': 'pflash'})
+                    e(os, 'nvram', '/var/lib/libvirt/qemu/nvram/%s.fd' % cmd.vmInstanceUuid, attrib={'template': '/usr/share/edk2.git/ovmf-x64/OVMF_VARS-with-csm.fd'})
                 elif cmd.addons['loaderRom'] is not None:
                     e(os, 'loader', cmd.addons['loaderRom'], {'type': 'rom'})
 
@@ -3223,7 +3224,7 @@ class Vm(object):
             qcmd = e(root, 'qemu:commandline')
             vendor_id, model_name = linux.get_cpu_model()
             if "hygon" in model_name.lower():
-                if isinstance(cmd.imagePlatform, str) and cmd.imagePlatform.lower() != "other":
+                if isinstance(cmd.imagePlatform, str) and cmd.imagePlatform.lower() not in ["other", "paravirtualization"]:
                     e(qcmd, "qemu:arg", attrib={"value": "-cpu"})
                     e(qcmd, "qemu:arg", attrib={"value": "EPYC,vendor=AuthenticAMD,model_id={} Processor".format(" ".join(model_name.split(" ")[0:3]))})
             else:
@@ -3343,7 +3344,10 @@ class Vm(object):
 
             def filebased_volume(_dev_letter, _v):
                 disk = etree.Element('disk', {'type': 'file', 'device': 'disk', 'snapshot': 'external'})
-                e(disk, 'driver', None, {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': _v.cacheMode})
+                if cmd.addons and cmd.addons['useDataPlane'] is True:
+                    e(disk, 'driver', None, {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': _v.cacheMode, 'queues':'1', 'dataplane': 'on'})
+                else:
+                    e(disk, 'driver', None, {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': _v.cacheMode})
                 e(disk, 'source', None, {'file': _v.installPath})
 
                 if _v.shareable:
@@ -3992,7 +3996,7 @@ class Vm(object):
 
 def _stop_world():
     http.AsyncUirHandler.STOP_WORLD = True
-    VmPlugin.queue.put("exit")
+    VmPlugin.queue_singleton.queue.put("exit")
 
 class VmPlugin(kvmagent.KvmAgent):
     KVM_START_VM_PATH = "/vm/start"
@@ -4057,7 +4061,7 @@ class VmPlugin(kvmagent.KvmAgent):
     VM_OP_RESUME = "resume"
 
     timeout_object = linux.TimeoutObject()
-    queue = Queue.Queue()
+    queue_singleton = VmPluginQueueSingleton()
     secret_keys = {}
 
     if not os.path.exists(QMP_SOCKET_PATH):
@@ -4857,6 +4861,8 @@ class VmPlugin(kvmagent.KvmAgent):
             if snapshot_job.live != cmd.snapshotJobs[0].live:
                 raise kvmagent.KvmError("can not take snapshot on different live status")
 
+            Vm.ensure_no_internal_snapshot(snapshot_job.volume.installPath)
+
         def makedir_if_need(new_path):
             dirname = os.path.dirname(new_path)
             if not os.path.exists(dirname):
@@ -4950,7 +4956,7 @@ class VmPlugin(kvmagent.KvmAgent):
             return previous_install_path, new_volume_path
 
         try:
-            linux.sync()
+            Vm.ensure_no_internal_snapshot(cmd.volumeInstallPath)
             if not cmd.vmUuid:
                 if cmd.fullSnapshot:
                     rsp.snapshotInstallPath, rsp.newVolumeInstallPath = take_full_snapshot_by_qemu_img_convert(
@@ -4988,7 +4994,7 @@ class VmPlugin(kvmagent.KvmAgent):
                         'took delta snapshot on vm[uuid:{0}] volume[id:{1}], snapshot path:{2}, new volulme path:{3}'.format(
                             cmd.vmUuid, cmd.volume.deviceId, rsp.snapshotInstallPath, rsp.newVolumeInstallPath))
 
-            linux.sync()
+            linux.sync_file(rsp.snapshotInstallPath)
             rsp.size = VmPlugin._get_snapshot_size(rsp.snapshotInstallPath)
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
@@ -5811,7 +5817,7 @@ class VmPlugin(kvmagent.KvmAgent):
         def wait_end_signal():
             while True:
                 try:
-                    self.queue.get(True)
+                    self.queue_singleton.queue.get(True)
 
                     while http.AsyncUirHandler.HANDLER_COUNTER.get() != 0:
                         time.sleep(0.1)
@@ -5848,7 +5854,7 @@ class VmPlugin(kvmagent.KvmAgent):
         def monitor_libvirt():
             while True:
                 pid = linux.get_libvirtd_pid()
-                if not linux.process_exists(pid):
+                if not pid or not linux.process_exists(pid):
                     logger.warn(
                         "cannot find the libvirt process, assume it's dead, ask the mgmt server to reconnect us")
                     _stop_world()

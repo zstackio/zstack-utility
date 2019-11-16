@@ -262,6 +262,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/sharedblock/kvmhost/download/cancel"
     GET_BACKING_CHAIN_PATH = "/sharedblock/volume/backingchain"
     CONVERT_VOLUME_PROVISIONING_PATH = "/sharedblock/volume/convertprovisioning"
+    CONFIG_FILTER_PATH = "/sharedblock/disks/filter"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -292,6 +293,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
         http_server.register_async_uri(self.GET_BACKING_CHAIN_PATH, self.get_backing_chain)
         http_server.register_async_uri(self.CONVERT_VOLUME_PROVISIONING_PATH, self.convert_volume_provisioning)
+        http_server.register_async_uri(self.CONFIG_FILTER_PATH, self.config_filter)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -1099,4 +1101,30 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         rsp.actualSize = size
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @lock.file_lock(LOCK_FILE)
+    def config_filter(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentRsp()
+
+        allDiskPaths = set()
+
+        for diskUuid in cmd.allSharedBlockUuids:
+            disk = CheckDisk(diskUuid)
+            p = disk.get_path()
+            if p is not None:
+                allDiskPaths.add(p)
+
+        try:
+            root_disks = ["%s[0-9]*" % d for d in linux.get_root_physical_disk()]
+            allDiskPaths = allDiskPaths.union(root_disks)
+        except Exception as e:
+            logger.warn("get exception: %s" % e.message)
+            allDiskPaths.add("/dev/sd*")
+            allDiskPaths.add("/dev/vd*")
+
+        lvm.config_lvm_filter(["lvm.conf", "lvmlocal.conf"], preserve_disks=allDiskPaths)
+
         return jsonobject.dumps(rsp)

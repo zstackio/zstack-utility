@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # encoding: utf-8
+import re
 import argparse
 import os.path
 from zstacklib import *
@@ -27,6 +28,7 @@ remote_pass = None
 remote_port = None
 host_uuid = None
 require_python_env = "false"
+skip_packages = ""
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy image backupstorage to host')
@@ -81,6 +83,12 @@ zstacklib = ZstackLib(zstacklib_args)
 if distro in RPM_BASED_OS:
     qemu_pkg = 'qemu-kvm-ev' if distro_version >= 7 else 'qemu-kvm'
     qemu_pkg += ' fuse-sshfs nmap'
+
+    # skip these packages
+    _skip_list = re.split(r'[|;,\s]\s*', skip_packages)
+    _qemu_pkg = [ pkg for pkg in qemu_pkg.split() if pkg not in _skip_list ]
+    qemu_pkg = ' '.join(_qemu_pkg)
+
     if client == "true" :
         if distro_version < 7:
             # change error to warning due to imagestore client will install after add kvm host
