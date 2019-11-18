@@ -331,6 +331,23 @@ def sshfs_mount(username, hostname, port, password, url, mountpoint, writebandwi
 def fumount(mountpoint, timeout = 10):
     return shell.run("timeout %s fusermount -u %s" % (timeout, mountpoint))
 
+def is_valid_address(address):
+    try:
+        socket.inet_aton(address)
+        return True
+    except socket.error:
+        return False
+
+def is_valid_hostname(hostname):
+    if is_valid_address(hostname):
+        return True
+
+    try:
+        socket.gethostbyname(hostname)
+        return True
+    except socket.error:
+        return False
+
 def get_host_by_name(host):
     return socket.gethostbyname(host)
 

@@ -7,6 +7,7 @@ import commands
 import platform
 import string
 import re
+import tempfile
 
 from kvmagent import kvmagent
 from zstacklib.utils import jsonobject
@@ -53,6 +54,10 @@ class GetConvertProgressRsp(AgentRsp):
 QOS_IFB = "ifb0"
 
 VDDK_VERSION = '/var/lib/zstack/v2v/vddk_version'
+NBDKIT_BUILD_LOG_PATH = '/var/lib/zstack/v2v/nbdkit_build_lib/log'
+NBDKIT_BUILD_LIB_PATH = '/var/lib/zstack/v2v/nbdkit_build_lib/'
+NBDKIT_VERSION_PATH = '/var/lib/zstack/v2v/nbdkit_build_lib/nbdkit_version'
+ADAPTED_VDDK_VERSION_PATH = '/var/lib/zstack/v2v/nbdkit_build_lib/vddk_version'
 WINDOWS_VIRTIO_DRIVE_ISO_VERSION = '/var/lib/zstack/v2v/windows_virtio_version'
 V2V_LIB_PATH = '/var/lib/zstack/v2v/'
 
@@ -115,9 +120,74 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
         tmpl = {'releasever': releasever}
         virtioDriverUrl = string.Template(cmd.virtioDriverUrl)
         vddkLibUrl = string.Template(cmd.vddkLibUrl)
-        
+        adaptedVddkLibUrl = string.Template(cmd.adaptedVddkLibUrl)
+        nbdkitUrl = string.Template(cmd.nbdkitUrl)
+
         cmd.virtioDriverUrl = virtioDriverUrl.substitute(tmpl)
         cmd.vddkLibUrl = vddkLibUrl.substitute(tmpl)
+        cmd.adaptedVddkLibUrl = adaptedVddkLibUrl.substitute(tmpl)
+        cmd.nbdkitUrl = nbdkitUrl.substitute(tmpl)
+
+        def check_nbdkit_version(cmd, rsp):
+            if os.path.exists(NBDKIT_VERSION_PATH) and os.path.exists(ADAPTED_VDDK_VERSION_PATH):
+                current_nbdkit_version = linux.read_file(NBDKIT_VERSION_PATH).strip()
+                current_vddk_version = linux.read_file(ADAPTED_VDDK_VERSION_PATH).strip()
+
+                remote_nbdkit_version = cmd.nbdkitUrl.split("/")[-1]
+                remote_vddk_version = cmd.adaptedVddkLibUrl.split("/")[-1]
+
+                if current_nbdkit_version == remote_nbdkit_version \
+                        and current_vddk_version == remote_vddk_version \
+                        and self._ndbkit_is_work():
+                    logger.info("local nbdkit[%s] and vddk[%s] version is as same as remote version" % (current_nbdkit_version, current_vddk_version))
+                    return
+                else:
+                    build_nbdkit_with_adapted_vddk(cmd, rsp)
+            else:
+                build_nbdkit_with_adapted_vddk(cmd, rsp)
+
+        def get_dir_path_from_url(url):
+            return "%s%s" % (NBDKIT_BUILD_LIB_PATH, url.split("/")[-1].strip('.tar.gz'))
+
+        def build_nbdkit_with_adapted_vddk(cmd, rsp):
+            logger.info("start build nbdkit with adapted vddk......")
+            if os.path.exists(NBDKIT_BUILD_LIB_PATH):
+                linux.rm_dir_force(NBDKIT_BUILD_LIB_PATH)
+
+            f, wget_path_file = tempfile.mkstemp()
+            with open(wget_path_file, 'w') as wpd:
+                wpd.write("%s\n%s" % (cmd.adaptedVddkLibUrl, cmd.nbdkitUrl))
+
+            # wget ndbkit and old vddk
+            linux.mkdir(NBDKIT_BUILD_LIB_PATH)
+            wget_cmd = 'cd {} && wget -c -i {} && tar zxf {} && tar zxf {};'.format(
+                NBDKIT_BUILD_LIB_PATH, wget_path_file,
+                cmd.nbdkitUrl.split("/")[-1], cmd.adaptedVddkLibUrl.split("/")[-1])
+
+            if shell.run(wget_cmd) != 0:
+                rsp.success = False
+                rsp.error = "failed to download nbdkit and vddklib " \
+                            "from management node to v2v conversion host"
+                os.remove(wget_path_file)
+                return jsonobject.dumps(rsp)
+
+            logger.info("wget nbdkit and vddk lib from mn success")
+            os.remove(wget_path_file)
+
+            build_cmd = "cd {} && ./configure --with-vddk={} > {} 2>&1; " \
+                        "make install >> {} 2>&1".format(get_dir_path_from_url(cmd.nbdkitUrl), get_dir_path_from_url(cmd.adaptedVddkLibUrl),
+                                                         NBDKIT_BUILD_LOG_PATH, NBDKIT_BUILD_LOG_PATH)
+
+            # persist nbdkit and vddk version
+            linux.write_file(NBDKIT_VERSION_PATH, cmd.nbdkitUrl.split("/")[-1], True)
+            linux.write_file(ADAPTED_VDDK_VERSION_PATH, cmd.adaptedVddkLibUrl.split("/")[-1], True)
+
+            # build nbdkit
+            if shell.run(build_cmd) != 0 or not self._ndbkit_is_work():
+                rsp.success = False
+                rsp.error = "failed to build nbdkit with vddk, log in conversion host: %s" % NBDKIT_BUILD_LOG_PATH
+                return jsonobject.dumps(rsp)
+
         if not os.path.exists(WINDOWS_VIRTIO_DRIVE_ISO_VERSION) \
                 and os.path.exists(V2V_LIB_PATH + 'zstack-windows-virtio-driver.iso'):
             last_modified = shell.call("curl -I %s | grep 'Last-Modified'" % cmd.virtioDriverUrl)
@@ -161,6 +231,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
                 with open(VDDK_VERSION, 'w') as fd:
                     fd.write(current_version)
 
+        check_nbdkit_version(cmd, rsp)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -204,6 +275,23 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
+    @staticmethod
+    def _ndbkit_is_work():
+        if not os.path.exists(NBDKIT_VERSION_PATH):
+            return False
+
+        nbd_version = linux.read_file(NBDKIT_VERSION_PATH)
+        check_cmd = shell.ShellCmd(".%s%s/nbdkit --version" % (NBDKIT_BUILD_LIB_PATH, nbd_version.strip('.tar.gz')))
+        check_cmd(False)
+
+        if check_cmd.return_code != 0:
+            return False
+        return True
+
+    @staticmethod
+    def _get_nbdkit_dir_path():
+        version = linux.read_file(NBDKIT_VERSION_PATH)
+        return "%s%s/" % (NBDKIT_BUILD_LIB_PATH, version.strip('tar.gz'))
 
     @in_bash
     @kvmagent.replyerror
@@ -243,21 +331,48 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             logger.debug("longjob[uuid:%s] saved process[pid:%s, name:%s]" %
                          (cmd.longJobUuid, new_task.current_pid, new_task.current_process_name))
 
-        virt_v2v_cmd = 'VIRTIO_WIN=/var/lib/zstack/v2v/zstack-windows-virtio-driver.iso \
+        def get_v2v_cmd(cmd, rsp):
+            extra_params = ""
+            if cmd.extraParams:
+                for k, v in cmd.extraParams.__dict__.items():
+                    extra_params = ' '.join((extra_params, ("--%s" % k), v))
+
+            if cmd.vddkVersion == '6.5':
+                return 'VIRTIO_WIN=/var/lib/zstack/v2v/zstack-windows-virtio-driver.iso \
                         virt-v2v -ic vpx://{0}?no_verify=1 {1} -it vddk \
                         --vddk-libdir=/var/lib/zstack/v2v/vmware-vix-disklib-distrib \
-                        --vddk-thumbprint={3} -o local -os {2} --password-file {2}/passwd \
+                        --vddk-thumbprint={3} -o local -os {2} --password-file {2}/passwd {5} \
                         -of {4} > {2}/virt_v2v_log 2>&1'.format(cmd.srcVmUri, shellquote(cmd.srcVmName), storage_dir,
-                                                                cmd.thumbprint, cmd.format)
+                                                                cmd.thumbprint, cmd.format, extra_params)
+            if cmd.vddkVersion == '5.5':
+                if not self._ndbkit_is_work():
+                    rsp.success = False
+                    rsp.error = "nbdkit with vddk 5.5 is not work, try to reconnect conversion host"
+                    return jsonobject.dumps(rsp)
+
+                return 'export PATH={5}:$PATH; \
+                        VIRTIO_WIN=/var/lib/zstack/v2v/zstack-windows-virtio-driver.iso \
+                        virt-v2v -ic vpx://{0}?no_verify=1 {1} -it vddk \
+                        --vddk-libdir=/var/lib/zstack/v2v/nbdkit_build_lib/vmware-vix-disklib-distrib \
+                        --vddk-thumbprint={3} -o local -os {2} --password-file {2}/passwd {6} \
+                        -of {4} > {2}/virt_v2v_log 2>&1'.format(cmd.srcVmUri, shellquote(cmd.srcVmName),
+                                                                storage_dir,
+                                                                cmd.thumbprint, cmd.format, self._get_nbdkit_dir_path(), extra_params)
+
+        virt_v2v_cmd = get_v2v_cmd(cmd, rsp)
+        src_vm_uri = cmd.srcVmUri
+        host_name = src_vm_uri.split('/')[-1]
+        if not linux.is_valid_hostname(host_name):
+            rsp.success = False
+            rsp.error = "cannot resolve hostname %s, check the hostname configured on the DNS server" % host_name
+            return jsonobject.dumps(rsp)
 
         v2v_pid_path = os.path.join(storage_dir, "convert.pid")
         v2v_cmd_ret_path = os.path.join(storage_dir, "convert.ret")
         echo_pid_cmd = "echo $$ > %s; %s; ret=$?; echo $ret > %s; exit $ret" % (
         v2v_pid_path, virt_v2v_cmd, v2v_cmd_ret_path)
 
-        src_vm_uri = cmd.srcVmUri
-        vmware_host_ip = linux.get_host_by_name(src_vm_uri.split('/')[-1])
-
+        vmware_host_ip = linux.get_host_by_name(host_name)
         interface = linux.find_route_interface_by_destination_ip(vmware_host_ip)
 
         if interface:
