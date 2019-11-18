@@ -204,7 +204,8 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
         v2v_pid_path, virt_v2v_cmd, v2v_cmd_ret_path)
 
         src_vm_uri = cmd.srcVmUri
-        vmware_host_ip = src_vm_uri.split('/')[-1]
+        vmware_host_ip = linux.get_host_by_name(src_vm_uri.split('/')[-1])
+
         interface = linux.find_route_interface_by_destination_ip(vmware_host_ip)
 
         if interface:
@@ -380,10 +381,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
                 return shell.run(config_qos_cmd)
 
             for vcenter_ip in cmd.vCenterIps:
-                interface = linux.find_route_interface_by_destination_ip(vcenter_ip)
-
-                if interface is None:
-                    interface = linux.find_route_interface_by_destination_ip(linux.get_host_by_name(vcenter_ip))
+                interface = linux.find_route_interface_by_destination_ip(linux.get_host_by_name(vcenter_ip))
 
                 if interface and interface not in interface_setup_rule:
                     if set_up_qos_rules(interface) == 0:
@@ -400,7 +398,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
                 # will get a url format like
                 # vpx://administrator%40vsphere.local@xx.xx.xx.xx/Datacenter-xxx/Cluster-xxx/127.0.0.1?no_verify=1
                 for url in list_url_cmd.stdout.split('\n'):
-                    vmware_host_ip = url.split('/')[-1].split('?')[0]
+                    vmware_host_ip = linux.get_host_by_name(url.split('/')[-1].split('?')[0])
                     interface = linux.find_route_interface_by_destination_ip(vmware_host_ip)
 
                     if interface:
@@ -431,10 +429,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
                     shell.run(cmdstr)
 
             for vcenter_ip in cmd.vCenterIps:
-                interface = linux.find_route_interface_by_destination_ip(vcenter_ip)
-
-                if interface is None:
-                    interface = linux.find_route_interface_by_destination_ip(linux.get_host_by_name(vcenter_ip))
+                interface = linux.find_route_interface_by_destination_ip(linux.get_host_by_name(vcenter_ip))
 
                 if interface:
                     delete_qos_rules(interface)

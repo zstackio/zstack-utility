@@ -1521,16 +1521,17 @@ def make_spool_conf(imgfmt, dev_letter, volume):
     d = tempfile.gettempdir()
     fname = "{0}_{1}".format(os.path.basename(volume.installPath), dev_letter)
     fpath = os.path.join(d, fname) + ".conf"
+    vsize, _ = linux.qcow2_size_and_actual_size(volume.installPath)
     with open(fpath, "w") as fd:
        fd.write("device_type  0\n")
        fd.write("local_storage_type 0\n")
+       fd.write("device_owner blockpmd\n")
        fd.write("device_format {0}\n".format(imgfmt))
        fd.write("cluster_id 1000\n")
        fd.write("device_id {0}\n".format(ord(dev_letter)))
        fd.write("device_uuid {0}\n".format(fname))
        fd.write("mount_point {0}\n".format(volume.installPath))
-       fd.write("device_size {0}\n".format(shell.call(
-           "blockdev --getsize64 {0}".format(volume.installPath))))
+       fd.write("device_size {0}\n".format(vsize))
 
     os.chmod(fpath, 0o600)
     return fpath
@@ -3166,8 +3167,8 @@ class Vm(object):
                 e(os, 'type', 'hvm', attrib={'machine': machine_type})
                 # if boot mode is UEFI
                 if cmd.bootMode == "UEFI":
-                    e(os, 'loader', '/usr/share/edk2.git/ovmf-x64/OVMF_CODE-pure-efi.fd', attrib={'readonly': 'yes', 'type': 'pflash'})
-                    e(os, 'nvram', '/var/lib/libvirt/qemu/nvram/%s.fd' % cmd.vmInstanceUuid, attrib={'template': '/usr/share/edk2.git/ovmf-x64/OVMF_VARS-pure-efi.fd'})
+                    e(os, 'loader', '/usr/share/edk2.git/ovmf-x64/OVMF_CODE-with-csm.fd', attrib={'readonly': 'yes', 'type': 'pflash'})
+                    e(os, 'nvram', '/var/lib/libvirt/qemu/nvram/%s.fd' % cmd.vmInstanceUuid, attrib={'template': '/usr/share/edk2.git/ovmf-x64/OVMF_VARS-with-csm.fd'})
                 elif cmd.addons['loaderRom'] is not None:
                     e(os, 'loader', cmd.addons['loaderRom'], {'type': 'rom'})
 

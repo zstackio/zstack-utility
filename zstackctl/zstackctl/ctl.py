@@ -8791,6 +8791,94 @@ class ResetAdminPasswordCmd(Command):
         info("reset password succeed")
 
 
+class MiniResetHostCmd(Command):
+    def __init__(self):
+        super(MiniResetHostCmd, self).__init__()
+        self.name = "reset_mini_host"
+        self.description = "reset mini host"
+        ctl.register_command(self)
+
+        self.target = {"local", "peer", "both"}
+        self.script_path = "/tmp/reset_mini.py"
+        self.local_script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reset_mini.py")
+        self.key = "/usr/local/zstack/mini_fencer.key"
+        _, self.sn, _ = shell_return_stdout_stderr("dmidecode -s system-serial-number")
+        self.sn = self.sn.strip()
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--target', help='reset target, can be %s' % self.target, required=True)
+
+    def run(self, args):
+        if args.target in ["peer", "both"]:
+            peer_ip = self._get_peer_address()
+            info("reseting host %s ..." % peer_ip)
+            self._copy_script(peer_ip)
+            self._run_script(peer_ip)
+            self._wait_node_has_ip("peer")
+        if args.target in ["local", "both"]:
+            info("reseting local host ...")
+            self._run_script()
+            self._wait_node_has_ip("local")
+        info("mini host reset complete!")
+
+    def _wait_node_has_ip(self, node):
+        info("script copy complete\nwaiting node %s reset complete ..." % node)
+        for i in range(72):
+            if self._node_has_special_ip(node):
+                return
+            time.sleep(5)
+        raise Exception("%s reset not success after 360 secondes" % node)
+
+    @staticmethod
+    def _node_has_special_ip(node):
+        _, o, _ = shell_return_stdout_stderr("curl 127.0.0.1:7274/bootstrap/hosts/local")
+        try:
+            j = simplejson.loads(o)
+        except Exception:
+            return False
+        if j.get(node) is None:
+            return False
+        return "100.66.66" in j.get(node).get("ipv4Address")
+
+    def _validate_args(self, args):
+        if args.target not in self.target:
+            raise Exception("target must be local, peer or both")
+
+    @staticmethod
+    def _get_peer_address():
+        _, o, _ = shell_return_stdout_stderr("curl 127.0.0.1:7274/bootstrap/hosts/local")
+        j = simplejson.loads(o)
+        return j.get("peer").get("ipv4Address")
+
+    def _ssh_no_auth(self, peer_ip):
+        r = shell_return("timeout 5 ssh root@%s date" % peer_ip)
+        if r == 0:
+            return True
+        r = shell_return("timeout 5 ssh -i %s root@%s date" % (self.key, peer_ip))
+        if r == 0:
+            return False
+        raise Exception("can not connect %s via ssh" % peer_ip)
+
+    def _run_script(self, peer_ip=None):
+        if not peer_ip:
+            shell_return("/bin/cp %s %s" % (self.local_script_path, self.script_path))
+            shell_return("python %s > /tmp/reset_mini.log 2>1" % self.script_path)
+        elif self._ssh_no_auth(peer_ip):
+            cmd = ShellCmd("ssh root@%s 'nohup python %s > /tmp/reset_mini.log 2>1 &'" % (peer_ip, self.script_path))
+            cmd(True)
+        else:
+            cmd = ShellCmd("ssh -i %s root@%s 'nohup python %s > /tmp/reset_mini.log 2>1 &'" % (self.key, peer_ip, self.script_path))
+            cmd(True)
+
+    def _copy_script(self, peer_ip):
+        if self._ssh_no_auth(peer_ip):
+            cmd = ShellCmd("scp %s root@%s:%s" % (self.local_script_path, peer_ip, self.script_path))
+            cmd(True)
+        else:
+            cmd = ShellCmd("scp -i %s %s root@%s:%s" % (self.key, self.local_script_path, peer_ip, self.script_path))
+            cmd(True)
+
+
 class SharedBlockQcow2SharedVolumeFixCmd(Command):
     def __init__(self):
         super(SharedBlockQcow2SharedVolumeFixCmd, self).__init__()
@@ -9042,6 +9130,7 @@ def main():
     CleanAnsibleCacheCmd()
     GetZStackVersion()
     SharedBlockQcow2SharedVolumeFixCmd()
+    MiniResetHostCmd()
 
     # If tools/zstack-ui.war exists, then install zstack-ui
     # else, install zstack-dashboard
