@@ -352,6 +352,12 @@ class TransmitVmOperationToMnRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(TransmitVmOperationToMnRsp, self).__init__()
 
+class ChangeHostPasswordCmd(kvmagent.AgentCommand):
+    @log.sensitive_fields("password")
+    def __init__(self):
+        super(ChangeHostPasswordCmd, self).__init__()
+        self.password = None  # type:str
+
 class PciDeviceTO(object):
     def __init__(self):
         self.name = ""
@@ -464,6 +470,7 @@ class HostPlugin(kvmagent.KvmAgent):
     HOST_STOP_USB_REDIRECT_PATH = "/host/usbredirect/stop"
     CHECK_USB_REDIRECT_PORT = "/host/usbredirect/check"
     IDENTIFY_HOST = "/host/identify"
+    CHANGE_PASSWORD = "/host/changepassword"
     GET_HOST_NETWORK_FACTS = "/host/networkfacts"
     HOST_XFS_SCRAPE_PATH = "/host/xfs/scrape"
     HOST_SHUTDOWN = "/host/shutdown"
@@ -1108,6 +1115,16 @@ done
         isc.clean_imagestore_cache(cmd.mountPath)
         return jsonobject.dumps(kvmagent.AgentResponse())
 
+    @kvmagent.replyerror
+    def change_password(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+        tmpfile = linux.write_to_temp_file("root:" + str(cmd.password))
+        shell.call("/usr/sbin/chpasswd < %s" % tmpfile)
+        os.remove(tmpfile)
+        return jsonobject.dumps(rsp)
+
+
     def identify_host(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
@@ -1623,6 +1640,7 @@ done
         http_server.register_async_uri(self.HOST_STOP_USB_REDIRECT_PATH, self.stop_usb_redirect_server)
         http_server.register_async_uri(self.CHECK_USB_REDIRECT_PORT, self.check_usb_server_port)
         http_server.register_async_uri(self.IDENTIFY_HOST, self.identify_host)
+        http_server.register_async_uri(self.CHANGE_PASSWORD, self.change_password, cmd=ChangeHostPasswordCmd())
         http_server.register_async_uri(self.GET_HOST_NETWORK_FACTS, self.get_host_network_facts)
         http_server.register_async_uri(self.HOST_XFS_SCRAPE_PATH, self.get_xfs_frag_data)
         http_server.register_async_uri(self.HOST_SHUTDOWN, self.shutdown_host)
