@@ -196,7 +196,7 @@ check_zstack_release(){
     rpm -q zstack-release >/dev/null 2>&1
     if [ $? -eq 0 ];then
         ZSTACK_RELEASE=`rpm -qi zstack-release |awk -F ':' '/Version/{print $2}' |sed 's/ //g'`
-        source /etc/profile
+        source /etc/profile >/dev/null 2>&1
     else
         fail2 "zstack-release is not installed, use zstack-upgrade -r/-a zstack-xxx.iso(>=3.7.0) to upgrade zstack-dvd and install zstack-release."
     fi
@@ -3113,6 +3113,8 @@ if [ x"$ZSTACK_OFFLINE_INSTALL" = x'y' ]; then
         [ x"$ZSTACK_RELEASE" = x"c72" ] && ZSTACK_RELEASE="c74"
         mkdir -p /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE
         cd -
+    else
+        check_zstack_release
     fi
 fi
 
