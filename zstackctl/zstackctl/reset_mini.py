@@ -1,6 +1,7 @@
 import base64
-import sys
 import logging
+import sys
+import time
 
 sys.path.append("/var/lib/zstack/virtualenv/kvm/lib/python2.7/site-packages/")
 
@@ -33,6 +34,7 @@ def stop_kvmagent():
 @bash.in_bash
 def stop_vms():
     bash.bash_roe("pkill -f -9 '/usr/libexec/qemu-kvm -name guest'")
+    time.sleep(1)
 
 
 @bash.in_bash
@@ -55,6 +57,7 @@ def cleanup_storage():
     if len(get_live_drbd_minor()) != 0:
         for m in get_live_drbd_minor():
             kill_drbd_holder(m)
+        bash.bash_roe("drbdadm down all")
     bash.bash_r("/bin/rm /etc/drbd.d/*.res")
     lvm.wipe_fs(get_mini_pv())
 
