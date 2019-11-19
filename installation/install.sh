@@ -2751,6 +2751,12 @@ get_zstack_repo(){
     fi
 }
 
+install_sync_repo_dependences() {
+    pkg_list="createrepo curl yum-utils rsync"
+    missing_list=`LANG=en_US.UTF-8 && rpm -q $pkg_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
+    [ -z "$missing_list" ] || yum -y --disablerepo=* --enablerepo=zstack-local install ${missing_list} >>$ZSTACK_INSTALL_LOG 2>&1 || echo_hints_to_upgrade_iso
+}
+
 create_local_repo_files() {
 mkdir -p /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/Extra/{qemu-kvm-ev,ceph,galera,virtio-win}
 
@@ -2848,9 +2854,6 @@ else
     BASEURL=rsync://rsync.repo.zstack.io/${VERSION_RELEASE_NR}/
 fi
 
-pkg_list="createrepo curl yum-utils rsync"
-missing_list=`LANG=en_US.UTF-8 && rpm -q $pkg_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
-[ -z "$missing_list" ] || yum -y --disablerepo=* --enablerepo=zstack-local install ${missing_list} >>$ZSTACK_INSTALL_LOG 2>&1 || echo_hints_to_upgrade_iso
 # it takes about 2 min to compare md5sum of 1800+ files in iso
 umount /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/Extra/qemu-kvm-ev >/dev/null 2>&1
 rsync -aP --delete --exclude zstack-installer.bin --exclude .repo_version ${BASEURL} /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/ >> $ZSTACK_INSTALL_LOG 2>&1 || echo_hints_to_upgrade_iso
@@ -3280,7 +3283,8 @@ export HISTTIMEFORMAT HISTSIZE HISTFILESIZE PROMPT_COMMAND
 EOF
 }
 
-# make sure local repo files exist
+# make sure local repo exist and dependences installed
+install_sync_repo_dependences
 create_local_repo_files
 
 # CHECK_REPO_VERSION
