@@ -85,10 +85,10 @@ def exception_on_opened_dir(d):
     if s:
         raise Exception('dir %s is still opened: %s' % (d, ' '.join(s.splitlines())))
 
-def get_file_hash(file, hash_type):
-    if hash_type.lower() in dir(hashlib):
-        with open(file,'rb') as f:
-            hashobj = hashlib.new(hash_type, f.read())
+def get_file_hash(f_path, hex_type):
+    if hex_type.lower() in dir(hashlib):
+        with open(f_path,'rb') as f:
+            hashobj = hashlib.new(hex_type, f.read())
             return hashobj.hexdigest()
 
 def copy_file(src_file, dst_file):

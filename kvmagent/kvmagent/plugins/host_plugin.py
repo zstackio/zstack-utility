@@ -1606,23 +1606,23 @@ done
     def add_verification_file(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AddVerificationFileRsp()
-        rsp.digest = linux.get_file_hash(cmd.path, cmd.type)
-        rsp.backup = linux.copy_file(cmd.path, BACKUPFILE_DIR + cmd.uuid)
+        rsp.digest = linux.get_file_hash(cmd.path, cmd.hexType)
+        rsp.backup = linux.copy_file(cmd.path, os.path.join(BACKUPFILE_DIR, cmd.uuid))
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def check_and_restore_file(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = FileVerificationRsp()
-        for file in cmd.files:
-            digest = linux.get_file_hash(file.path, file.type)
-            if digest == file.digest:
+        for fv in cmd.files:
+            digest = linux.get_file_hash(fv.path, fv.hexType)
+            if digest == fv.digest:
                 continue
-            backup = BACKUPFILE_DIR + file.uuid
-            res = linux.copy_file(backup, file.path)
+            backup = os.path.join(BACKUPFILE_DIR, fv.uuid)
+            res = linux.copy_file(backup, fv.path)
             if not res:
-                rsp.restoreFailedList.append(file.uuid)
-            rsp.changeList.append(file.uuid)
+                rsp.restoreFailedList.append(fv.uuid)
+            rsp.changeList.append(fv.uuid)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
