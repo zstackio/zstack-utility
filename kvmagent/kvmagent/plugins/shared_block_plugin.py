@@ -960,6 +960,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             current_abs_path = translate_absolute_path_from_install_path(struct.currentInstallPath)
             with lvm.OperateLv(current_abs_path, shared=True):
                 lv_size = int(lvm.get_lv_size(current_abs_path))
+                struct.put('lv_size', lv_size)
 
                 if lvm.lv_exists(target_abs_path):
                     if struct.skipIfExisting:
@@ -972,7 +973,6 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                                                      "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
                 lvm.active_lv(target_abs_path, lvm.LvmlockdLockType.SHARE)
                 total_size += lv_size
-                struct.put('lv_size', lv_size)
 
         fd, PFILE = tempfile.mkstemp()
         try:
@@ -1025,6 +1025,9 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                         linux.qcow2_rebase_no_check(target_backing_file, target_abs_path)
         except Exception as e:
             for struct in cmd.migrateVolumeStructs:
+                if struct.skip_copy:
+                    continue
+
                 target_abs_path = translate_absolute_path_from_install_path(struct.targetInstallPath)
                 if struct.currentInstallPath == struct.targetInstallPath:
                     logger.debug("current install path %s equals target %s, skip to delete" %
@@ -1035,6 +1038,9 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             raise e
         finally:
             for struct in cmd.migrateVolumeStructs:
+                if struct.skip_copy:
+                    continue
+
                 target_abs_path = translate_absolute_path_from_install_path(struct.targetInstallPath)
                 lvm.deactive_lv(target_abs_path)
 
