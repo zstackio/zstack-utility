@@ -34,6 +34,7 @@ from zstacklib.utils.report import Report
 
 IS_AARCH64 = platform.machine() == 'aarch64'
 GRUB_FILES = ["/boot/grub2/grub.cfg", "/boot/grub/grub.cfg", "/etc/grub2-efi.cfg", "/etc/grub-efi.cfg", "/boot/efi/EFI/centos/grub.cfg"]
+BACKUPFILE_DIR = "/var/lib/zstack/backupfiles/"
 
 class ConnectResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -135,6 +136,18 @@ class EnableHugePageRsp(kvmagent.AgentResponse):
 class DisableHugePageRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(DisableHugePageRsp, self).__init__()
+
+class FileVerificationRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(FileVerificationRsp, self).__init__()
+        self.changeList = []
+        self.restoreFailedList = []
+
+class AddVerificationFileRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(AddVerificationFileRsp, self).__init__()
+        self.digest = ''
+        self.backup = True
 
 class GetHostNetworkBongdingResponse(kvmagent.AgentResponse):
     bondings = None  # type: list[HostNetworkBondingInventory]
@@ -473,7 +486,9 @@ class HostPlugin(kvmagent.KvmAgent):
     UNGENERATE_SRIOV_PCI_DEVICES = "/pcidevice/ungenerate"
     GENERATE_VFIO_MDEV_DEVICES = "/mdevdevice/generate"
     UNGENERATE_VFIO_MDEV_DEVICES = "/mdevdevice/ungenerate"
-    HOST_UPDATE_SPICE_CHANNEL_CONFIG_PATH = "/host/updateSpiceChannelConfig";
+    HOST_UPDATE_SPICE_CHANNEL_CONFIG_PATH = "/host/updateSpiceChannelConfig"
+    HOST_FILEVERIFICATION = "/host/file/check"
+    HOST_ADD_VERIFICATION_FILE = "/host/file/add"
     TRANSMIT_VM_OPERATION_TO_MN_PATH = "/host/transmitvmoperation"
 
     host_network_facts_cache = {}  # type: Dict[float, list[list, list]]
@@ -1588,6 +1603,29 @@ done
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def add_verification_file(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AddVerificationFileRsp()
+        rsp.digest = linux.get_file_hash(cmd.path, cmd.hexType)
+        rsp.backup = linux.copy_file(cmd.path, os.path.join(BACKUPFILE_DIR, cmd.uuid))
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def check_and_restore_file(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = FileVerificationRsp()
+        for fv in cmd.files:
+            digest = linux.get_file_hash(fv.path, fv.hexType)
+            if digest == fv.digest:
+                continue
+            backup = os.path.join(BACKUPFILE_DIR, fv.uuid)
+            res = linux.copy_file(backup, fv.path)
+            if not res:
+                rsp.restoreFailedList.append(fv.uuid)
+            rsp.changeList.append(fv.uuid)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     def transmit_vm_operation_to_vm(self, req):
         rsp = TransmitVmOperationToMnRsp()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -1634,6 +1672,8 @@ done
         http_server.register_async_uri(self.UNGENERATE_VFIO_MDEV_DEVICES, self.ungenerate_vfio_mdev_devices)
         http_server.register_async_uri(self.HOST_UPDATE_SPICE_CHANNEL_CONFIG_PATH, self.update_spice_channel_config)
         http_server.register_async_uri(self.CANCEL_JOB, self.cancel)
+        http_server.register_async_uri(self.HOST_FILEVERIFICATION, self.check_and_restore_file)
+        http_server.register_async_uri(self.HOST_ADD_VERIFICATION_FILE, self.add_verification_file)
         http_server.register_sync_uri(self.TRANSMIT_VM_OPERATION_TO_MN_PATH, self.transmit_vm_operation_to_vm)
 
         self.heartbeat_timer = {}
