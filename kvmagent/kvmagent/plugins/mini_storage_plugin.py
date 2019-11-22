@@ -435,6 +435,8 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         bash.bash_roe("sed -i 's/^PEER_USERNAME = .*$/PEER_USERNAME = \"%s\"/g' %s" % (peer_username, fencer_path))
         bash.bash_roe("sed -i 's/^PEER_MGMT_ADDR = .*$/PEER_MGMT_ADDR = \"%s\"/g' %s" % (peer_addr, fencer_path))
         bash.bash_roe("cp %s /usr/lib/drbd/mini_fencer.py" % fencer_path)
+        linux.sync_file(fencer_path)
+        linux.sync_file("/usr/lib/drbd/mini_fencer.py")
         bash.bash_roe("sudo chmod 777 /usr/lib/drbd/mini_fencer.py")
 
     @kvmagent.replyerror
