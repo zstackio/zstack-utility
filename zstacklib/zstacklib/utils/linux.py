@@ -2,6 +2,7 @@
 
 @author: frank
 '''
+import abc
 import os
 import os.path
 import socket
@@ -260,6 +261,14 @@ def get_folder_size(path = "."):
         for f in filenames:
             fp = os.path.join(dirpath, f)
             total_size += (get_local_file_disk_usage(fp) if os.path.isfile(fp) else 0)
+    return total_size
+
+def get_filesystem_folder_size(path = "."):
+    total_size = 0
+    for dirpath, dirnames, filenames in os.walk(path):
+        for f in filenames:
+            fp = os.path.join(dirpath, f)
+            total_size += (os.path.getsize(fp) if os.path.isfile(fp) else 0)
     return total_size
 
 def is_mounted(path=None, url=None):
@@ -853,7 +862,7 @@ def qcow2_rebase(backing_file, target):
 
 def qcow2_rebase_no_check(backing_file, target):
     fmt = get_img_fmt(backing_file)
-    shell.call('%s -F %s -u -f qcow2 -b %s %s' % (qemu_img.subcmd('rebase'), fmt, backing_file, target))
+    shell.call('%s -F %s -u -f qcow2 -b "%s" %s' % (qemu_img.subcmd('rebase'), fmt, backing_file, target))
 
 def qcow2_virtualsize(file_path):
     file_path = shellquote(file_path)
@@ -950,6 +959,71 @@ def qcow2_fill(seek, length, path, raise_excpetion=False):
 def qcow2_measure_required_size(path):
     out = shell.call("/usr/bin/qemu-img measure -f qcow2 -O qcow2 %s | grep 'required size' | cut -d ':' -f 2" % path)
     return long(out.strip(' \t\r\n'))
+
+
+class AbstractFileConverter(object):
+    __metaclass__ = abc.ABCMeta
+
+    def __init__(self):
+        pass
+
+    @abc.abstractmethod
+    def convert_to_file(self, src, dst):
+        pass
+
+    @abc.abstractmethod
+    def convert_from_file(self, src, dst):
+        pass
+
+    @abc.abstractmethod
+    def get_backing_file(self, path):
+        pass
+
+    @abc.abstractmethod
+    def rebase_no_check(self, backing_file, target):
+        pass
+
+def upload_chain_to_filesystem(converter, first_node_path, dst_vol_dir, overwrite=False):
+    # type: (AbstractFileConverter, str, str, bool) -> None
+
+    def upload(src_path):
+        dst_path = os.path.join(dst_vol_dir, os.path.basename(src_path))
+        if os.path.exists(dst_path):
+            if overwrite:
+                rm_file_force(dst_path)
+            else:
+                return dst_path
+
+        converter.convert_to_file(src_path, dst_path)
+        return dst_path
+
+    dst_current_node_path = upload(first_node_path)
+    parent_path = converter.get_backing_file(first_node_path)
+    while parent_path:
+        dst_parent_path = upload(parent_path)
+        qcow2_rebase_no_check(dst_parent_path, dst_current_node_path)
+
+        dst_current_node_path = dst_parent_path
+        parent_path = converter.get_backing_file(parent_path)
+
+
+def download_chain_from_filesystem(converter, first_node_path, dst_vol_dir):
+    # type: (AbstractFileConverter, str, str) -> None
+
+    def download(src_path):
+        dst_path = os.path.join(dst_vol_dir, os.path.basename(src_path))
+        converter.convert_from_file(src_path, dst_path)
+        return dst_path
+
+    dst_current_node_path = download(first_node_path)
+    parent_path = qcow2_get_backing_file(first_node_path)
+    while parent_path:
+        dst_parent_path = download(parent_path)
+        converter.rebase_no_check(dst_parent_path, dst_current_node_path)
+
+        dst_current_node_path = dst_parent_path
+        parent_path = qcow2_get_backing_file(parent_path)
+
 
 def rmdir_if_empty(dirpath):
     try:
