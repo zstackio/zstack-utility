@@ -183,6 +183,18 @@ class GetQCOW2ReferenceRsp(AgentRsp):
         self.referencePaths = None
 
 
+class UploadBitsToFileSystemRsp(AgentRsp):
+    def __init__(self):
+        super(UploadBitsToFileSystemRsp, self).__init__()
+        self.totalSize = 0
+
+
+class DownloadBitsFromFileSystemRsp(AgentRsp):
+    def __init__(self):
+        super(DownloadBitsFromFileSystemRsp, self).__init__()
+        self.totalSize = 0
+
+
 def get_absolute_path_from_install_path(path):
     if path is None:
         raise Exception("install path can not be null")
@@ -256,6 +268,27 @@ class CheckDisk(object):
                      (disk_name, self.identifier, r, o, e))
 
 
+class MiniFileConverter(linux.AbstractFileConverter):
+    def __init__(self, provisioning=None):
+        super(MiniFileConverter, self).__init__()
+        self.provisioning = provisioning
+
+    def get_backing_file(self, path):
+        return linux.qcow2_direct_get_backing_file(path)
+
+    def rebase_no_check(self, backing_file, target):
+        r = drbd.DrbdResource(os.path.basename(target))
+        r._init_from_disk(target)
+        with drbd.OperateDrbd(r):
+            linux.qcow2_rebase_no_check(backing_file, target)
+
+    def convert_from_file(self, src, dst):
+        pass
+
+    def convert_to_file(self, src, dst):
+        shell.call('dd if=%s of=%s iflag=direct' % (src, dst))
+
+
 class MiniStoragePlugin(kvmagent.KvmAgent):
 
     CONNECT_PATH = "/ministorage/connect"
@@ -277,6 +310,8 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
     REVERT_VOLUME_FROM_SNAPSHOT_PATH = "/ministorage/volume/revertfromsnapshot"
     GET_QCOW2_REFERENCE = "/ministorage/getqcow2reference"
     FLUSH_CACHE = "/ministorage/cache/flush"
+    UPLOAD_BITS_TO_FILESYSTEM_PATH = "/ministorage/filesystem/upload"
+    DOWNLOAD_BITS_FROM_FILESYSTEM_PATH = "/ministorage/filesystem/download"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -298,6 +333,8 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.REVERT_VOLUME_FROM_SNAPSHOT_PATH, self.revert_volume_from_snapshot)
         http_server.register_async_uri(self.GET_QCOW2_REFERENCE, self.get_qcow2_reference)
         http_server.register_async_uri(self.FLUSH_CACHE, self.flush_cache)
+        http_server.register_async_uri(self.UPLOAD_BITS_TO_FILESYSTEM_PATH, self.upload_to_filesystem)
+        http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_FILESYSTEM_PATH, self.download_from_filesystem)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -687,8 +724,31 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
 
     @staticmethod
     def convertInstallPathToAbsolute(path):
-        # type: (string) -> string
+        # type: (str) -> str
         return path.replace("mini:/", "/dev")
+
+    @kvmagent.replyerror
+    def upload_to_filesystem(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = UploadBitsToFileSystemRsp()
+        vol_path = self.convertInstallPathToAbsolute(cmd.srcInstallPath)
+        dst_dir = os.path.dirname(cmd.dstInstallPath)
+
+        if not cmd.skipIfExisting:
+            linux.rm_dir_force(dst_dir)
+
+        if not os.path.exists(dst_dir):
+            os.makedirs(dst_dir, 0755)
+        linux.upload_chain_to_filesystem(MiniFileConverter(), vol_path, dst_dir, overwrite=not cmd.skipIfExisting)
+        rsp.totalSize = linux.get_filesystem_folder_size(dst_dir)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def download_from_filesystem(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = DownloadBitsFromFileSystemRsp()
+        linux.download_chain_from_filesystem(MiniFileConverter(), cmd.srcInstallPath, cmd.dstFolderPath)
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def create_empty_volume(self, req):
