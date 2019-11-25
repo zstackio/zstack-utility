@@ -171,6 +171,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     UNMOUNT_PATH = '/nfsprimarystorage/unmount'
     CREATE_VOLUME_FROM_TEMPLATE_PATH = "/nfsprimarystorage/sftp/createvolumefromtemplate"
     CREATE_EMPTY_VOLUME_PATH = "/nfsprimarystorage/createemptyvolume"
+    CREATE_FOLDER_PATH = "/nfsprimarystorage/createfolder"
     GET_CAPACITY_PATH = "/nfsprimarystorage/getcapacity"
     CREATE_TEMPLATE_FROM_VOLUME_PATH = "/nfsprimarystorage/sftp/createtemplatefromvolume"
     REVERT_VOLUME_FROM_SNAPSHOT_PATH = "/nfsprimarystorage/revertvolumefromsnapshot"
@@ -205,6 +206,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_sync_uri(self.UNMOUNT_PATH, self.umount)
         http_server.register_async_uri(self.CREATE_VOLUME_FROM_TEMPLATE_PATH, self.create_root_volume_from_template)
         http_server.register_async_uri(self.CREATE_EMPTY_VOLUME_PATH, self.create_empty_volume)
+        http_server.register_async_uri(self.CREATE_FOLDER_PATH, self.create_folder)
         http_server.register_async_uri(self.DOWNLOAD_FROM_SFTP_PATH, self.download_from_sftp)
         http_server.register_async_uri(self.GET_CAPACITY_PATH, self.get_capacity)
         http_server.register_async_uri(self.DELETE_PATH, self.delete)
@@ -662,6 +664,24 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetCapacityResponse()
         self._set_capacity_to_response(cmd.uuid, rsp)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def create_folder(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CreateEmptyVolumeResponse()
+        try:
+            dirname = os.path.dirname(cmd.installUrl)
+            if not os.path.exists(dirname):
+                os.makedirs(dirname)
+        except Exception as e:
+            logger.warn(linux.get_exception_stacktrace())
+            rsp.error = 'unable to create folder[installUrl: %s], %s' % (cmd.installUrl, str(e))
+            rsp.success = False
+            return jsonobject.dumps(rsp)
+
+        self._set_capacity_to_response(cmd.uuid, rsp)
+        logger.debug('successfully create folder at %s' % cmd.installUrl)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror

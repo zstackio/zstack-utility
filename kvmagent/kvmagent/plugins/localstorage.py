@@ -122,6 +122,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     INIT_PATH = "/localstorage/init"
     GET_PHYSICAL_CAPACITY_PATH = "/localstorage/getphysicalcapacity"
     CREATE_EMPTY_VOLUME_PATH = "/localstorage/volume/createempty"
+    CREATE_FOLDER_PATH = "/localstorage/volume/createfolder"
     CREATE_VOLUME_FROM_CACHE_PATH = "/localstorage/volume/createvolumefromcache"
     DELETE_BITS_PATH = "/localstorage/delete"
     DELETE_DIR_PATH = "/localstorage/deletedir"
@@ -161,6 +162,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.INIT_PATH, self.init)
         http_server.register_async_uri(self.GET_PHYSICAL_CAPACITY_PATH, self.get_physical_capacity)
         http_server.register_async_uri(self.CREATE_EMPTY_VOLUME_PATH, self.create_empty_volume)
+        http_server.register_async_uri(self.CREATE_FOLDER_PATH, self.create_folder)
         http_server.register_async_uri(self.CREATE_VOLUME_FROM_CACHE_PATH, self.create_root_volume_from_template)
         http_server.register_async_uri(self.DELETE_BITS_PATH, self.delete)
         http_server.register_async_uri(self.DELETE_DIR_PATH, self.deletedir)
@@ -679,18 +681,29 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
-    def create_empty_volume(self, req):
+    def create_folder(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentResponse()
         try:
             dirname = os.path.dirname(cmd.installUrl)
             if not os.path.exists(dirname):
                 os.makedirs(dirname)
+        except Exception as e:
+            logger.warn(linux.get_exception_stacktrace())
+            rsp.error = 'unable to create folder at %s, because %s' % (cmd.installUrl, str(e))
+            rsp.success = False
+            return jsonobject.dumps(rsp)
 
-            if cmd.backingFile:
-                linux.qcow2_create_with_backing_file_and_cmd(cmd.backingFile, cmd.installUrl, cmd)
-            else:
-                linux.qcow2_create_with_cmd(cmd.installUrl, cmd.size, cmd)
+        logger.debug('successfully create folder at %s' % cmd.installUrl)
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def create_empty_volume(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentResponse()
+        try:
+            self.do_create_empty_volume(cmd)
         except Exception as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = 'unable to create empty volume[uuid:%s, name:%s], %s' % (cmd.volumeUuid, cmd.name, str(e))
@@ -700,6 +713,16 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         logger.debug('successfully create empty volume[uuid:%s, size:%s] at %s' % (cmd.volumeUuid, cmd.size, cmd.installUrl))
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
         return jsonobject.dumps(rsp)
+
+    def do_create_empty_volume(self, cmd):
+        dirname = os.path.dirname(cmd.installUrl)
+        if not os.path.exists(dirname):
+            os.makedirs(dirname)
+
+        if cmd.backingFile:
+            linux.qcow2_create_with_backing_file_and_cmd(cmd.backingFile, cmd.installUrl, cmd)
+        else:
+            linux.qcow2_create_with_cmd(cmd.installUrl, cmd.size, cmd)
 
     @kvmagent.replyerror
     def create_root_volume_from_template(self, req):
