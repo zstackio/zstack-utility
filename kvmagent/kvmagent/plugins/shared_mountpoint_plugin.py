@@ -81,6 +81,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
     MERGE_SNAPSHOT_PATH = "/sharedmountpointprimarystorage/snapshot/merge"
     OFFLINE_MERGE_SNAPSHOT_PATH = "/sharedmountpointprimarystorage/snapshot/offlinemerge"
     CREATE_EMPTY_VOLUME_PATH = "/sharedmountpointprimarystorage/volume/createempty"
+    CREATE_FOLDER_PATH = "/sharedmountpointprimarystorage/volume/createfolder"
     CHECK_BITS_PATH = "/sharedmountpointprimarystorage/bits/check"
     GET_VOLUME_SIZE_PATH = "/sharedmountpointprimarystorage/volume/getsize"
     RESIZE_VOLUME_PATH = "/sharedmountpointprimarystorage/volume/resize"
@@ -101,6 +102,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.MERGE_SNAPSHOT_PATH, self.merge_snapshot)
         http_server.register_async_uri(self.OFFLINE_MERGE_SNAPSHOT_PATH, self.offline_merge_snapshots)
         http_server.register_async_uri(self.CREATE_EMPTY_VOLUME_PATH, self.create_empty_volume)
+        http_server.register_async_uri(self.CREATE_FOLDER_PATH, self.create_folder)
         http_server.register_async_uri(self.CHECK_BITS_PATH, self.check_bits)
         http_server.register_async_uri(self.GET_VOLUME_SIZE_PATH, self.get_volume_size)
         http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
@@ -335,6 +337,19 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
             linux.create_template(cmd.destPath, tmp)
             shell.call("mv %s %s" % (tmp, cmd.destPath))
 
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def create_folder(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentRsp()
+
+        dirname = os.path.dirname(cmd.installPath)
+        if not os.path.exists(dirname):
+            os.makedirs(dirname)
+
+        logger.debug('successfully create empty volume[uuid:%s, size:%s] at %s' % (cmd.volumeUuid, cmd.size, cmd.installPath))
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
         return jsonobject.dumps(rsp)
 
