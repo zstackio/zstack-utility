@@ -48,7 +48,7 @@ class AgentResponse(object):
         self.totalCapacity = None
         self.availableCapacity = None
         self.poolCapacities = None
-        self.xsky = False
+        self.type = None
 
     def set_err(self, err):
         self.success = False
@@ -262,7 +262,8 @@ class CephAgent(plugin.TaskManager):
 
         rsp.totalCapacity = total
         rsp.availableCapacity = avail
-        rsp.xsky = ceph.is_xsky()
+        if ceph.is_xsky():
+            rsp.type = "xsky"
 
         if not df.pools:
             return
