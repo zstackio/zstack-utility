@@ -160,6 +160,7 @@ upgrade_params_array[10]='3.7.0,-DinitRunningVmPriority=true'
 upgrade_params_array[11]='3.7.2,-DgeneratePriceEndDate=true'
 upgrade_params_array[12]='3.8.0,-DinitRunningApplianceVmPriority=true'
 upgrade_params_array[13]='3.8.0,-DInfluxdb.upgrade.audit=true'
+upgrade_params_array[14]='3.8.0,-Dzwatch.migrateFromEventData=true'
 
 # version compare
 # eg. 1 = 1.0
