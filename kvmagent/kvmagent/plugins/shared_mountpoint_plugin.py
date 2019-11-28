@@ -178,7 +178,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
                 for file_uuid in file_uuids:
                     linux.rm_file_force(os.path.join(id_dir, file_uuid))
                 linux.touch_file(self.id_files[uuid])
-                linux.sync()
+                linux.sync_file(self.id_files[uuid])
 
         rsp = ConnectRsp()
         check_other_smp_and_set_id_file(cmd.uuid, cmd.existUuids)
