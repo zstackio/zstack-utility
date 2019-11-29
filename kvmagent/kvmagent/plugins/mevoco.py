@@ -528,79 +528,118 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
     @kvmagent.replyerror
     @in_bash
-    def restore_ebtables_nat_chain_except_libvirt(self):
+    def restore_ebtables_nat_chain_except_kvmagent(self):
         class EbtablesRules(object):
+            default_tables = ["nat", "filter", "broute"]
+            default_rules = {"nat": "*nat\n:PREROUTING ACCEPT\n:OUTPUT ACCEPT\n:POSTROUTING ACCEPT\n",
+                             "filter": "*filter\n:INPUT ACCEPT\n:FORWARD ACCEPT\n:OUTPUT ACCEPT\n",
+                             "broute": "*broute\n:BROUTING ACCEPT"}
+
             @in_bash
             def __init__(self):
                 self.raw_text = bash_o("ebtables-save").strip(" \t\r\n").splitlines()
-                self.nat_table = self._get_nat_table()
-                self.nat_chain_names = self._get_nat_chain_names()
+                self.tables = {}
+                self.chain_names = {}
+                for table in EbtablesRules.default_tables:
+                    self.tables[table] = self._get_table(table)  # type: dict[str, list]
+                    self.chain_names[table] = self._get_chain_names(table)  # type: dict[str, list]
 
-            def _get_nat_table(self):
+            def _get_table(self, table):
                 result = []
-                is_nat_table = False
+                is_table = False
+
+                if table not in EbtablesRules.default_tables:
+                    raise Exception('invalid ebtables table %s' % table)
 
                 for line in self.raw_text:
                     if len(line) < 1:
                         continue
-                    if "*nat" in line:
-                        is_nat_table = True
+                    if "*"+table in line:
+                        is_table = True
                     elif line[0] == "*":
-                        is_nat_table = False
+                        is_table = False
 
-                    if is_nat_table:
+                    if is_table:
                         result.append(line)
 
                 return result
 
-            def _get_nat_chain_names(self):
+            def _get_chain_names(self, table):
                 result = []
-                for line in self.nat_table:
+                for line in self.tables[table]:
                     if line[0] == ':':
                         result.append(line.split(" ")[0].strip(":"))
 
                 return result
 
-            def _get_related_nat_chain_names(self, keyword):
-                # type: (str) -> list[str]
+            def _get_related_chain_names(self, table, keyword):
+                # type: (str, str) -> list[str]
                 result = []
-                for name in self.nat_chain_names:
+                for name in self.chain_names[table]:
                     if keyword in name:
                         result.append(name)
 
-                for line in self.nat_table:
+                for line in self.tables[table]:
                     if line[0] == ':':
                         continue
                     if len(list(filter(lambda x: '-A %s ' % x in line, result))) < 1:
                         continue
-                    jump_chain = self._get_jump_nat_chain_name_from_cmd(line)
+                    jump_chain = self._get_jump_chain_name_from_cmd(table, line)
                     if jump_chain:
-                        result.extend(self._get_related_nat_chain_names(jump_chain))
+                        result.extend(self._get_related_chain_names(table, jump_chain))
 
                 return list(set(result))
 
-            def _get_jump_nat_chain_name_from_cmd(self, cmd):
+            def _get_jump_chain_name_from_cmd(self, table, cmd):
                 jump = cmd.split(" -j ")[1]
-                if jump in self.nat_chain_names:
+                if jump in self.chain_names[table]:
                     return jump
                 return None
 
-            def get_related_nat_rules(self, keyword):
+            def _get_related_top_chain_names(self, table, pattern):
+                # type: (str, str) -> list[str]
                 result = []
-                related_chains = self._get_related_nat_chain_names(keyword)
-                for line in self.nat_table:
+                for name in self.chain_names[table]:
+                    if re.search(pattern, name):
+                        result.append(name)
+                return list(set(result))
+
+            def _get_related_table_rules(self, table, keywords):
+                # type: (str, list) -> list[str]
+                result = []
+                related_chains = []
+                for keyword in list(set(keywords)):
+                    related_chains.extend(self._get_related_chain_names(table, keyword))
+                for line in self.tables[table]:
                     if len(list(filter(lambda x: x in line, related_chains))) > 0:
                         result.append(line)
 
-                default_rules = "*nat\n:PREROUTING ACCEPT\n:OUTPUT ACCEPT\n:POSTROUTING ACCEPT\n"
+                default_rules = EbtablesRules.default_rules[table]
                 r = default_rules.splitlines()
                 r.extend(result)
                 return r
 
+            def get_related_rules_re(self, patterns):
+                # type: (dict[str, list]) -> list[str]
+                result = []
+                if patterns.keys() not in EbtablesRules.default_tables:
+                    raise Exception('invalid parameter table %s' % patterns.keys())
+
+                for key, value in patterns.items():
+                    keywords = []
+                    for pattern in value:
+                        keywords.extend(self._get_related_top_chain_names(key, pattern))
+                    if len(keywords) > 0:
+                        result.extend(self._get_related_table_rules(key, keywords))
+
+                return result
+
         logger.debug("start clean ebtables...")
         ebtables_obj = EbtablesRules()
         fd, path = tempfile.mkstemp(".ebtables.dump")
-        restore_data = "\n".join(ebtables_obj.get_related_nat_rules("libvirt")) + "\n"
+        #ZSTAC-24684 restory the rule created by libvirt & zsn
+        patterns={"nat":["libvirt","(^z|^s)[0-9]*_"], "filter":["(^z|^s)[0-9]*_"]}
+        restore_data = "\n".join(ebtables_obj.get_related_rules_re(patterns)) + "\n"
         logger.debug("restore ebtables: %s" % restore_data)
         with os.fdopen(fd, 'w') as fs:
             fs.write(restore_data)
@@ -608,50 +647,13 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         os.remove(path)
         logger.debug("clean ebtables successfully")
 
-
-    @kvmagent.replyerror
-    @in_bash
-    def delete_ebtables_nat_chain_except_libvirt(self):
-        def makecmd(cmd):
-            return EBTABLES_CMD + " -t nat " + cmd
-        logger.debug("start clean ebtables...\n")
-        chain = {}
-        chain_names = []
-        chain_name = "libvirt-"
-        o = bash_o("ebtables-save | grep {{chain_name}} |grep -- -A|grep -v ACCEPT|grep -v DROP|grep -v RETURN")
-        o = o.strip(" \t\r\n")
-        if o:
-            #logger.debug("chain_name:%s\n" % o)
-            chain_names.append(chain_name)
-            for l in o.split("\n"):
-                chain_names.append(l.split(" ")[-1])
-            #logger.debug("ebtables chain-name:%s" % chain_names)
-
-            for l in chain_names:
-                if cmp(l, chain_name) == 0:
-                    o = bash_o("ebtables-save | grep {{l}} |grep -- -A")
-                    chain[l] = list( map(makecmd, o.strip(" \t\r\n").split("\n")) )
-                else:
-                    o = bash_o("ebtables-save | grep {{l}} |grep -- -A| grep -v {{chain_name}}")
-                    chain[l] = list( map(makecmd, o.strip(" \t\r\n").split("\n")) )
-                #logger.debug("ebtables chain-name:%s %s\n" %(l, chain[l]) )
-
-        shell.call(EBTABLES_CMD + ' -t nat -F')
-
-        for l in chain_names:
-            cmds = chain[l]
-            if cmds:
-                logger.debug("ebtables chain-name:%s  cmds:%s\n" % (l, cmds))
-                bash_r("\n".join(cmds))
-        logger.debug("clean ebtables successful\n")
-
     @kvmagent.replyerror
     def connect(self, req):
         shell.call(EBTABLES_CMD + ' -F')
-        #shell.call(EBTABLES_CMD + ' -t nat -F')
+        # shell.call(EBTABLES_CMD + ' -t nat -F')
         # this is workaround, for anti-spoofing feature, there is no googd way to proccess this reconnect-host case,
         # it's just keep the ebtables rules from libvirt and remove others when reconnect hosts
-        self.restore_ebtables_nat_chain_except_libvirt()
+        self.restore_ebtables_nat_chain_except_kvmagent()
         return jsonobject.dumps(ConnectRsp())
 
     @kvmagent.replyerror
