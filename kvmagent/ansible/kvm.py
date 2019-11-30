@@ -478,7 +478,8 @@ if skipIpv6 != 'true':
     copy_arg.src = "%s/ip6tables" % file_root
     copy_arg.dest = "/etc/sysconfig/ip6tables"
     copy(copy_arg, host_post_info)
-    command = "sed -i 's/syslog.target,iptables.service/syslog.target iptables.service/' %s || true;" % IP6TABLE_SERVICE_FILE
+    replace_content(IP6TABLE_SERVICE_FILE,
+                    "regexp='syslog.target,iptables.service' replace='syslog.target iptables.service'", host_post_info)
     run_remote_command(command, host_post_info)
     service_status("ip6tables", "state=restarted enabled=yes", host_post_info)
 
@@ -609,11 +610,11 @@ if copy_kvmagent != "changed:False":
 # name: add audit rules for signals
 AUDIT_CONF_FILE = '/etc/audit/auditd.conf'
 AUDIT_NUM_LOG = 50
-command = "sed -i 's/num_logs = .*/num_logs = %d/' %s || true;" \
-          "systemctl enable auditd; systemctl restart auditd || true; " \
+replace_content(AUDIT_CONF_FILE, "regexp='num_logs = .*' replace='num_logs = %d'" % AUDIT_NUM_LOG, host_post_info)
+command = "systemctl enable auditd; systemctl restart auditd || true; " \
           "auditctl -D -k zstack_log_kill || true; " \
           "auditctl -a always,exit -F arch=b64 -F a1=9 -S kill -k zstack_log_kill || true; " \
-          "auditctl -a always,exit -F arch=b64 -F a1=15 -S kill -k zstack_log_kill || true" % (AUDIT_NUM_LOG, AUDIT_CONF_FILE)
+          "auditctl -a always,exit -F arch=b64 -F a1=15 -S kill -k zstack_log_kill || true"
 host_post_info.post_label = "ansible.shell.audit.signal"
 host_post_info.post_label_param = None
 run_remote_command(command, host_post_info)
