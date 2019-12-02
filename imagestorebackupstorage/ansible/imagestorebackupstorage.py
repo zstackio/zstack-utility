@@ -26,6 +26,7 @@ client = "false"
 remote_user = "root"
 remote_pass = None
 remote_port = None
+host_uuid = None
 require_python_env = "false"
 skip_packages = ""
 
@@ -46,6 +47,7 @@ imagestore_root = "%s/imagestorebackupstorage/package" % zstack_root
 host_post_info = HostPostInfo()
 host_post_info.host_inventory = args.i
 host_post_info.host = host
+host_post_info.host_uuid = host_uuid
 host_post_info.post_url = post_url
 host_post_info.chrony_servers = chrony_servers
 host_post_info.private_key = args.private_key

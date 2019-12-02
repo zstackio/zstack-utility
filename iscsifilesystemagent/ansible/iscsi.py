@@ -22,6 +22,7 @@ virtualenv_version = "12.1.1"
 remote_user = "root"
 remote_pass = None
 remote_port = None
+host_uuid = None
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy iscsi to host')
@@ -40,6 +41,7 @@ iscsi_root = "%s/iscsi/package" % zstack_root
 host_post_info = HostPostInfo()
 host_post_info.host_inventory = args.i
 host_post_info.host = host
+host_post_info.host_uuid = host_uuid
 host_post_info.post_url = post_url
 host_post_info.private_key = args.private_key
 host_post_info.remote_user = remote_user
