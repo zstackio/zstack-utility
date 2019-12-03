@@ -371,6 +371,8 @@ Parse command parameters error:
                     all_params[params[0]] = eval_string(params[0], params[1])
                 elif apiname == 'APIAddPolicyStatementsToRoleMsg' and params[0] == 'statements':
                     all_params[params[0]] = eval_string(params[0], params[1])
+                elif apiname == 'APICreateIAM2ProjectMsg' and params[0] == 'quota':
+                    all_params[params[0]] = eval_string(params[0], params[1])
                 elif apiname in ['APILogInByAccountMsg',
                                  'APILogInByUserMsg',
                                  'APILogInByLdapMsg',
