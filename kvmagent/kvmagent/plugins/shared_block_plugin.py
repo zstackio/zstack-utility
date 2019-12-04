@@ -90,9 +90,9 @@ class OfflineMergeSnapshotRsp(AgentRsp):
         self.deleted = False
 
 
-class GetVolumeSizeRsp(AgentRsp):
+class ConvertVolumeFormatRsp(AgentRsp):
     def __init__(self):
-        super(GetVolumeSizeRsp, self).__init__()
+        super(ConvertVolumeFormatRsp, self).__init__()
         self.size = None
 
 
@@ -263,6 +263,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     GET_BACKING_CHAIN_PATH = "/sharedblock/volume/backingchain"
     CONVERT_VOLUME_PROVISIONING_PATH = "/sharedblock/volume/convertprovisioning"
     CONFIG_FILTER_PATH = "/sharedblock/disks/filter"
+    CONVERT_VOLUME_FORMAT_PATH = "/sharedblock/volume/convertformat"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -294,6 +295,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.GET_BACKING_CHAIN_PATH, self.get_backing_chain)
         http_server.register_async_uri(self.CONVERT_VOLUME_PROVISIONING_PATH, self.convert_volume_provisioning)
         http_server.register_async_uri(self.CONFIG_FILTER_PATH, self.config_filter)
+        http_server.register_async_uri(self.CONVERT_VOLUME_FORMAT_PATH, self.convert_volume_format)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -890,6 +892,18 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp.existing = lvm.lv_exists(install_abs_path)
         if cmd.vgUuid is not None and lvm.vg_exists(cmd.vgUuid):
             rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid, False)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def convert_volume_format(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = ConvertVolumeFormatRsp()
+
+        install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
+        with lvm.OperateLv(install_abs_path, shared=True):
+            shell.call('%s -f %s -O %s %s %s' % (qemu_img.subcmd('convert'),
+                                                 cmd.srcFormat, cmd.dstFormat,
+                                                 install_abs_path, install_abs_path))
         return jsonobject.dumps(rsp)
 
     def do_active_lv(self, installPath, lockType, recursive, killProcess=False):

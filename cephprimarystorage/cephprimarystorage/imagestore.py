@@ -103,11 +103,15 @@ class ImageStoreClient(object):
 
     def download_imagestore(self, cmd):
         self._check_zstore_cli()
-
         rsp = AgentResponse()
         name, imageid = self._parse_image_reference(cmd.bsInstallPath)
-        cmdstr = '%s -url %s:%s pull -installpath %s %s:%s' % (
-        self.ZSTORE_CLI_PATH, cmd.hostname, self.ZSTORE_DEF_PORT, cmd.psInstallPath, name, imageid)
+
+        args = "-installpath %s" % cmd.psInstallPath
+        if cmd.shareable:
+            args += " -shared"
+
+        cmdstr = '%s -url %s:%s pull %s %s:%s' % (
+        self.ZSTORE_CLI_PATH, cmd.hostname, self.ZSTORE_DEF_PORT, args, name, imageid)
         logger.debug('pulling %s:%s from image store' % (name, imageid))
         shell.call(cmdstr)
         logger.debug('%s:%s pulled to ceph storage' % (name, imageid))
