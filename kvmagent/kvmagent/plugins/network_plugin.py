@@ -134,9 +134,12 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
         shell.call('ip link set %s up' % device_name)
 
-    def _configure_bridge(self):
+    def _configure_bridge(self, disableIptables):
         shell.call('modprobe br_netfilter || true')
-        shell.call('echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables')
+        if disableIptables:
+            shell.call('echo 0 > /proc/sys/net/bridge/bridge-nf-call-iptables')
+        else:
+            shell.call('echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables')
         shell.call('echo 1 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged')
         shell.call('echo 1 > /proc/sys/net/ipv4/conf/default/forwarding')
 
@@ -175,7 +178,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
         if linux.is_vif_on_bridge(cmd.bridgeName, cmd.physicalInterfaceName):
             logger.debug('%s is a bridge device. Interface %s is attached to bridge. No need to create bridge or attach device interface' % (cmd.bridgeName, cmd.physicalInterfaceName))
-            self._configure_bridge()
+            self._configure_bridge(cmd.disableIptables)
             linux.set_device_uuid_alias(cmd.physicalInterfaceName, cmd.l2NetworkUuid)
             return jsonobject.dumps(rsp)
         
@@ -183,7 +186,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
             linux.create_bridge(cmd.bridgeName, cmd.physicalInterfaceName)
             linux.set_device_uuid_alias(cmd.physicalInterfaceName, cmd.l2NetworkUuid)
 
-            self._configure_bridge()
+            self._configure_bridge(cmd.disableIptables)
             logger.debug('successfully realize bridge[%s] from device[%s]' % (cmd.bridgeName, cmd.physicalInterfaceName))
         except Exception as e:
             logger.warning(traceback.format_exc())
@@ -201,13 +204,13 @@ class NetworkPlugin(kvmagent.KvmAgent):
         if linux.is_bridge(cmd.bridgeName):
             logger.debug('%s is a bridge device, no need to create bridge' % cmd.bridgeName)
             self._ifup_device_if_down('%s.%s' % (cmd.physicalInterfaceName, cmd.vlan))
-            self._configure_bridge()
+            self._configure_bridge(cmd.disableIptables)
             linux.set_device_uuid_alias('%s.%s' % (cmd.physicalInterfaceName, cmd.vlan), cmd.l2NetworkUuid)
             return jsonobject.dumps(rsp)
         
         try:
             linux.create_vlan_bridge(cmd.bridgeName, cmd.physicalInterfaceName, cmd.vlan)
-            self._configure_bridge()
+            self._configure_bridge(cmd.disableIptables)
             linux.set_device_uuid_alias('%s.%s' % (cmd.physicalInterfaceName, cmd.vlan), cmd.l2NetworkUuid)
             logger.debug('successfully realize vlan bridge[name:%s, vlan:%s] from device[%s]' % (cmd.bridgeName, cmd.vlan, cmd.physicalInterfaceName))
         except Exception as e:
