@@ -35,6 +35,7 @@ update_packages = 'false'
 zstack_lib_dir = "/var/lib/zstack"
 zstack_libvirt_nwfilter_dir = "%s/nwfilter" % zstack_lib_dir
 skipIpv6 = 'false'
+bridgeDisableIptables = 'false'
 
 def update_libvritd_config(host_post_info):
     command = "grep -i ^host_uuid %s" % libvirtd_conf_file
@@ -421,12 +422,18 @@ elif distro in DEB_BASED_OS:
     copy_arg.dest = '/etc/default/libvirt-bin'
     libvirt_bin_status = copy(copy_arg, host_post_info)
     # name: enable bridge forward on UBUNTU
-    command = "modprobe br_netfilter; echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables ; " \
+    if bridgeDisableIptables == "true":
+        command = "modprobe br_netfilter; echo 0 > /proc/sys/net/bridge/bridge-nf-call-iptables ; " \
               "echo 1 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged ; echo 1 > /proc/sys/net/ipv4/conf/default/forwarding"
-    host_post_info.post_label = "ansible.shell.enable.module"
-    host_post_info.post_label_param = "br_netfilter"
-    run_remote_command(command, host_post_info)
-
+        host_post_info.post_label = "ansible.shell.enable.module"
+        host_post_info.post_label_param = "br_netfilter"
+        run_remote_command(command, host_post_info)
+    else:
+        command = "modprobe br_netfilter; echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables ; " \
+                  "echo 1 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged ; echo 1 > /proc/sys/net/ipv4/conf/default/forwarding"
+        host_post_info.post_label = "ansible.shell.enable.module"
+        host_post_info.post_label_param = "br_netfilter"
+        run_remote_command(command, host_post_info)
 else:
     error("unsupported OS!")
 
@@ -466,10 +473,16 @@ host_post_info.post_label_param = "/etc/libvirt/hooks/qemu"
 run_remote_command(command, host_post_info)
 
 # name: enable bridge forward
-command = "echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables ; echo 1 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged ; echo 1 > /proc/sys/net/ipv4/conf/default/forwarding"
-host_post_info.post_label = "ansible.shell.enable.service"
-host_post_info.post_label_param = "bridge forward"
-run_remote_command(command, host_post_info)
+if bridgeDisableIptables == "true":
+    command = "echo 0 > /proc/sys/net/bridge/bridge-nf-call-iptables ; echo 1 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged ; echo 1 > /proc/sys/net/ipv4/conf/default/forwarding"
+    host_post_info.post_label = "ansible.shell.enable.service"
+    host_post_info.post_label_param = "bridge forward"
+    run_remote_command(command, host_post_info)
+else:
+    command = "echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables ; echo 1 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged ; echo 1 > /proc/sys/net/ipv4/conf/default/forwarding"
+    host_post_info.post_label = "ansible.shell.enable.service"
+    host_post_info.post_label_param = "bridge forward"
+    run_remote_command(command, host_post_info)
 
 if skipIpv6 != 'true':
     # name: copy ip6tables initial rules in RedHat
