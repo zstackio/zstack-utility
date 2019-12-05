@@ -23,6 +23,9 @@ remote_user = "root"
 remote_pass = None
 remote_port = None
 host_uuid = None
+baremetalpxeserver_pushgateway_root="/var/lib/zstack/baremetal/"
+baremetalpxeserver_pushgateway_persistence="/var/lib/zstack/baremetal/persistence.data"
+baremetalpxeserver_pushgateway_port=9093
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy baremetal pxeserver agent to host')
@@ -181,6 +184,31 @@ copy_arg = CopyArg()
 copy_arg.src = "%s/noVNC.tar.gz" % file_root
 copy_arg.dest = "/var/lib/zstack/baremetal/"
 copy(copy_arg, host_post_info)
+
+# name: copy zwatch-vm-agent.linux-amd64.bin
+copy_arg = CopyArg()
+copy_arg.src = "%s/zwatch-vm-agent.linux-amd64.bin" % file_root
+copy_arg.dest = VSFTPD_ROOT_PATH
+copy(copy_arg, host_post_info)
+
+copy_arg = CopyArg()
+copy_arg.src = "%s/agent_version" % file_root
+copy_arg.dest = VSFTPD_ROOT_PATH
+copy(copy_arg, host_post_info)
+
+copy_arg = CopyArg()
+copy_arg.src = "%s/pxeServerPushGateway.service" % file_root
+copy_arg.dest = "/etc/systemd/system/"
+copy(copy_arg, host_post_info)
+
+# name: copy pushgateway
+copy_arg = CopyArg()
+copy_arg.src = "%s/pushgateway" % file_root
+copy_arg.dest = baremetalpxeserver_pushgateway_root
+copy(copy_arg, host_post_info)
+run_remote_command(("/sbin/iptables-save | grep -q 'dport 9093' || iptables -I INPUT -p tcp -m tcp --dport 9093 -j ACCEPT; chmod a+x %s/pushgateway;" %
+                    (baremetalpxeserver_pushgateway_root)), host_post_info)
+run_remote_command(("systemctl restart pxeServerPushGateway"), host_post_info)
 
 # name: restart baremetalpxeserveragent
 if distro in RPM_BASED_OS:
