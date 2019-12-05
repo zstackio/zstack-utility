@@ -157,7 +157,13 @@ class NetworkPlugin(kvmagent.KvmAgent):
     def add_interface_to_bridge(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
-        shell.call("brctl addif %s %s" % (cmd.bridgeName, cmd.physicalInterfaceName))
+        oldbr = shell.call("""brctl show | awk '$4 == "%s" {print $1}'""" % cmd.physicalInterfaceName).strip()
+        if oldbr == cmd.bridgeName:
+            return jsonobject.dumps(rsp)
+
+        if oldbr:
+            shell.run("brctl delif %s %s" % (oldbr, cmd.physicalInterfaceName))
+        shell.check_run("brctl addif %s %s" % (cmd.bridgeName, cmd.physicalInterfaceName))
         return jsonobject.dumps(rsp)
 
     @lock.lock('create_bridge')
