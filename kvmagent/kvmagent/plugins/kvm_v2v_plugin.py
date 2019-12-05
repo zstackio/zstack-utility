@@ -435,7 +435,7 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                 linux.touch_file(localpath)
 
                 dom.blockCopy(v.name,
-                    "<disk type='file'><source file='{}'/><driver type='qcow2'/></disk>".format(os.path.join(vm_v2v_dir, v.name)),
+                    "<disk type='file'><source file='{}'/><driver type='{}'/></disk>".format(os.path.join(vm_v2v_dir, v.name), cmd.format),
                     None,
                     flags)
 
