@@ -145,22 +145,22 @@ stop_zstack_tui
 
 #define extra upgrade params
 #USE THIS PATTERN: upgrade_params_array[INDEX]='VERSION,PARAM'
-declare -A upgrade_params_array
-upgrade_params_array[0]='1.3,-DsyncImageActualSize=true'
-upgrade_params_array[1]='1.4,-DtapResourcesForBilling=true'
-upgrade_params_array[2]='2.2.2,-DupdateLdapUidToLdapDn=true'
-upgrade_params_array[3]='2.3.1,-Dzwatch.migrateFromOldMonitorImplementation=true'
-upgrade_params_array[4]='3.2.0,-DupgradeVolumeQos=true'
-upgrade_params_array[5]='3.3.0,-DaddCdRomToHistoricalVm=true'
-upgrade_params_array[6]='3.4.0,-DupgradeTwoFactorAuthenticationSecret=true'
-upgrade_params_array[7]='3.4.1,-DgenerateBillsImmediately=true'
-upgrade_params_array[8]='3.5.0,-DupgradeVolumeBackupHistory=true'
-upgrade_params_array[9]='3.6.0,-Diam2.upgradeIAM2Attribute=true'
-upgrade_params_array[10]='3.7.0,-DinitRunningVmPriority=true'
-upgrade_params_array[11]='3.7.2,-DgeneratePriceEndDate=true'
-upgrade_params_array[12]='3.8.0,-DinitRunningApplianceVmPriority=true'
-upgrade_params_array[13]='3.8.0,-DInfluxdb.upgrade.audit=true'
-upgrade_params_array[14]='3.8.0,-Dzwatch.migrateFromEventData=true'
+declare -a upgrade_params_array=(
+    '1.3,-DsyncImageActualSize=true'
+    '1.4,-DtapResourcesForBilling=true'
+    '2.2.2,-DupdateLdapUidToLdapDn=true'
+    '2.3.1,-Dzwatch.migrateFromOldMonitorImplementation=true'
+    '3.2.0,-DupgradeVolumeQos=true'
+    '3.3.0,-DaddCdRomToHistoricalVm=true'
+    '3.4.0,-DupgradeTwoFactorAuthenticationSecret=true'
+    '3.4.1,-DgenerateBillsImmediately=true'
+    '3.5.0,-DupgradeVolumeBackupHistory=true'
+    '3.6.0,-Diam2.upgradeIAM2Attribute=true'
+    '3.7.0,-DinitRunningVmPriority=true'
+    '3.7.2,-DgeneratePriceEndDate=true'
+    '3.8.0,-DinitRunningApplianceVmPriority=true'
+    '3.8.0,-DInfluxdb.upgrade.audit=true'
+)
 
 # version compare
 # eg. 1 = 1.0
