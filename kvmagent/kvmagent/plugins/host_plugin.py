@@ -32,6 +32,8 @@ from zstacklib.utils.bash import *
 from zstacklib.utils.ip import get_nic_supported_max_speed
 from zstacklib.utils.report import Report
 
+import zstacklib.utils.secret as _secret
+
 IS_AARCH64 = platform.machine() == 'aarch64'
 GRUB_FILES = ["/boot/grub2/grub.cfg", "/boot/grub/grub.cfg", "/etc/grub2-efi.cfg", "/etc/grub-efi.cfg", "/boot/efi/EFI/centos/grub.cfg"]
 BACKUPFILE_DIR = "/var/lib/zstack/backupfiles/"
@@ -490,6 +492,7 @@ class HostPlugin(kvmagent.KvmAgent):
     HOST_FILEVERIFICATION = "/host/file/check"
     HOST_ADD_VERIFICATION_FILE = "/host/file/add"
     TRANSMIT_VM_OPERATION_TO_MN_PATH = "/host/transmitvmoperation"
+    CREATE_QCOW2_SECRET_PATH = "/host/createqcow2secret"
 
     host_network_facts_cache = {}  # type: Dict[float, list[list, list]]
 
@@ -1641,6 +1644,30 @@ done
         http.json_dump_post(url, vm_operation, {'commandpath': '/host/transmitvmoperation'})
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    def create_qcow2_secret(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        b64_secret = base64.b64encode(cmd.secret)
+        HostPlugin._create_qcow2_secret_key(b64_secret)
+        return jsonobject.dumps(kvmagent.AgentResponse())
+
+    @staticmethod
+    def _create_qcow2_secret_key(secret):
+        uuid = _secret.ZSTACK_ENCRYPT_KEY_UUID
+
+        sh_cmd = shell.ShellCmd('virsh secret-dumpxml %s' % uuid)
+        sh_cmd(False)
+        if sh_cmd.return_code == 0:
+            return
+
+        xml_cont = "<secret ephemeral='no' private='yes'><uuid>%s</uuid></secret>" % uuid
+        spath = linux.write_to_temp_file(xml_cont)
+        try:
+            shell.call("virsh secret-define %s" % spath)
+            shell.call('virsh secret-set-value %s %s' % (uuid, secret))
+        finally:
+            os.remove(spath)
+
     def start(self):
         self.host_uuid = None
 
@@ -1674,6 +1701,7 @@ done
         http_server.register_async_uri(self.CANCEL_JOB, self.cancel)
         http_server.register_async_uri(self.HOST_FILEVERIFICATION, self.check_and_restore_file)
         http_server.register_async_uri(self.HOST_ADD_VERIFICATION_FILE, self.add_verification_file)
+        http_server.register_async_uri(self.CREATE_QCOW2_SECRET_PATH, self.create_qcow2_secret)
         http_server.register_sync_uri(self.TRANSMIT_VM_OPERATION_TO_MN_PATH, self.transmit_vm_operation_to_vm)
 
         self.heartbeat_timer = {}
