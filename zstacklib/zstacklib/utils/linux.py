@@ -17,7 +17,6 @@ import functools
 import threading
 import re
 import platform
-import mmap
 
 from zstacklib.utils import qemu_img
 from zstacklib.utils import lock
@@ -1875,13 +1874,20 @@ def get_agent_pid_by_name(name):
     output = output.strip(" \t\r")
     return output
 
-if hasattr(os, 'sync'):
-    sync = os.sync
-else:
-    import ctypes
-    libc = ctypes.CDLL("libc.so.6")
-    def sync():
-        libc.sync()
+import ctypes
+libc = ctypes.CDLL("libc.so.6")
+
+def sync_file(fpath):
+    if not os.path.isfile(fpath):
+        return
+
+    fd = os.open(fpath, os.O_RDONLY|os.O_NONBLOCK)
+    try:
+        libc.syncfs(fd)
+    except:
+        pass
+    finally:
+        os.close(fd)
 
 def updateGrubFile(grepCmd, sedCmd, files):
     if not grepCmd is None:
@@ -1920,3 +1926,48 @@ def get_root_physical_disk():
 
     return remove_digits(["/dev/%s" % slave for slave in slaves])
 
+def check_nmap_result(result):
+    # Nmap scan report for localhost (127.0.0.1)
+    # Host is up (0.000082s latency).
+    # Other addresses for localhost (not scanned): 127.0.0.1
+    # PORT     STATE  SERVICE
+    # 22/tcp   open   ssh
+    # 9999/tcp closed unknown
+    #
+    # Nmap done: 1 IP address (1 host up) scanned in 0.08 seconds
+    port_state = {}
+    port_line = []
+    start = False
+    r = result.strip('\t\n\r')
+    for line in r:
+        if str(line).strip('\t\n\r') == "PORT     STATE  SERVICE":
+            start = True
+        if str(line).strip('\t\n\r') == "":
+            break
+        if start:
+            port_line.append(str(line).strip('\t\n\r'))
+    for line in port_line:
+        state = line.split()
+        if len(state) != 3:
+            continue
+        if state[0].find("/") == -1:
+            continue
+        port = state[0][:state[0].index("/")]
+        port_state[port] = state[1]
+    return port_state
+
+def check_nping_result(port, result):
+    # Starting Nping 0.6.40 ( http://nmap.org/nping ) at 2019-11-28 11:14 CST
+    # SENT (0.0180s) TCP x.x.x.x:33243 > x.x.x.x:22 S ttl=64 id=3565 iplen=40  seq=1425405791 win=1480
+    # RCVD (0.0189s) TCP x.x.x.x:22 > x.x.x.x:33243 SA ttl=64 id=0 iplen=44  seq=4279460929 win=29200 <mss 1460>
+    #
+    # Max rtt: 0.614ms | Min rtt: 0.614ms | Avg rtt: 0.614ms
+    # Raw packets sent: 1 (40B) | Rcvd: 1 (44B) | Lost: 0 (0.00%)
+    # Nping done: 1 IP address pinged in 1.04 seconds
+    port_state = {}
+    r = result.strip('\t\n\r')
+    if "Lost: 0 (0.00%)" in r:
+        port_state[port] = "open"
+    else:
+        port_state[port] = "closed"
+    return port_state
