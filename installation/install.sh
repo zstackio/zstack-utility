@@ -157,7 +157,8 @@ upgrade_params_array[7]='3.4.1,-DgenerateBillsImmediately=true'
 upgrade_params_array[8]='3.5.0,-DupgradeVolumeBackupHistory=true'
 upgrade_params_array[9]='3.6.0,-Diam2.upgradeIAM2Attribute=true'
 upgrade_params_array[10]='3.7.0,-DinitRunningVmPriority=true'
-upgrade_params_array[11]='3.8.0,-DinitRunningApplianceVmPriority=true'
+upgrade_params_array[11]='3.7.2,-DgeneratePriceEndDate=true'
+upgrade_params_array[12]='3.8.0,-DinitRunningApplianceVmPriority=true'
 
 # version compare
 # eg. 1 = 1.0
@@ -197,7 +198,7 @@ check_zstack_release(){
     rpm -q zstack-release >/dev/null 2>&1
     if [ $? -eq 0 ];then
         ZSTACK_RELEASE=`rpm -qi zstack-release |awk -F ':' '/Version/{print $2}' |sed 's/ //g'`
-        source /etc/profile
+        source /etc/profile >/dev/null 2>&1
     else
         fail2 "zstack-release is not installed, use zstack-upgrade -r/-a zstack-xxx.iso(>=3.7.0) to upgrade zstack-dvd and install zstack-release."
     fi
@@ -457,19 +458,19 @@ udpate_tomcat_info() {
     if [ $? -eq 0 ]; then
         local properties_file=org/apache/catalina/util/ServerInfo.properties
         if grep -q "server.info=Apache Tomcat" $properties_file; then
-	        sed -i "/^server.info=/c\server.info=X\r" $properties_file
-	        sed -i "/^server.number=/c\server.number=5.5\r" $properties_file
-	        sed -i "/^server.built=/c\server.built=Dec 1 2015 22:30:46 UTC\r" $properties_file
-	        sync
+            sed -i "/^server.info=/c\server.info=X\r" $properties_file
+            sed -i "/^server.number=/c\server.number=5.5\r" $properties_file
+            sed -i "/^server.built=/c\server.built=Dec 1 2015 22:30:46 UTC\r" $properties_file
+            sync
 
-	        jar cvf catalina.jar org META-INF > /dev/nul
-	        if [ $? -eq 0 ]; then
-	            rm -f $jar_file
-	            mv catalina.jar $jar_file
-	            echo "Tomcat server info updated." >>$ZSTACK_INSTALL_LOG
-	        else
-	            echo "Zip $jar_file error." >>$ZSTACK_INSTALL_LOG
-	        fi
+            jar cvf catalina.jar org META-INF > /dev/nul
+            if [ $? -eq 0 ]; then
+                rm -f $jar_file
+                mv catalina.jar $jar_file
+                echo "Tomcat server info updated." >>$ZSTACK_INSTALL_LOG
+            else
+                echo "Zip $jar_file error." >>$ZSTACK_INSTALL_LOG
+            fi
         fi
     else
         echo "Unzip $jar_file error." >>$ZSTACK_INSTALL_LOG
@@ -2752,11 +2753,16 @@ get_zstack_repo(){
     fi
 }
 
+install_sync_repo_dependences() {
+    pkg_list="createrepo curl yum-utils rsync"
+    missing_list=`LANG=en_US.UTF-8 && rpm -q $pkg_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
+    [ -z "$missing_list" ] || yum -y --disablerepo=* --enablerepo=zstack-local install ${missing_list} >>$ZSTACK_INSTALL_LOG 2>&1 || echo_hints_to_upgrade_iso
+}
+
 create_local_repo_files() {
-mkdir -p /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/{qemu-kvm-ev,ceph,galera,virtio-win}
+mkdir -p /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/Extra/{qemu-kvm-ev,ceph,galera,virtio-win}
 
 repo_file=/etc/yum.repos.d/zstack-local.repo
-if [ ! -f $repo_file ]; then
 echo "create $repo_file" >> $ZSTACK_INSTALL_LOG
 cat > $repo_file << EOF
 [zstack-local]
@@ -2765,10 +2771,8 @@ baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0
 gpgcheck=0
 enabled=1
 EOF
-fi
 
 repo_file=/etc/yum.repos.d/qemu-kvm-ev.repo
-if [ ! -f $repo_file ]; then
 echo "create $repo_file" >> $ZSTACK_INSTALL_LOG
 cat > $repo_file << EOF
 [qemu-kvm-ev]
@@ -2777,10 +2781,8 @@ baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0/Extra/qemu-kvm-ev
 gpgcheck=0
 enabled=0
 EOF
-fi
 
 repo_file=/etc/yum.repos.d/ceph.repo
-if [ ! -f $repo_file ]; then
 echo "create $repo_file" >> $ZSTACK_INSTALL_LOG
 cat > $repo_file << EOF
 [ceph]
@@ -2789,10 +2791,8 @@ baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0/Extra/ceph
 gpgcheck=0
 enabled=0
 EOF
-fi
 
 repo_file=/etc/yum.repos.d/galera.repo
-if [ ! -f $repo_file ]; then
 echo "create $repo_file" >> $ZSTACK_INSTALL_LOG
 cat > $repo_file << EOF
 [mariadb]
@@ -2801,10 +2801,8 @@ baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0/Extra/galera
 gpgcheck=0
 enabled=0
 EOF
-fi
 
 repo_file=/etc/yum.repos.d/virtio-win.repo
-if [ ! -f $repo_file ]; then
 echo "create $repo_file" >> $ZSTACK_INSTALL_LOG
 cat > $repo_file << EOF
 [virtio-win]
@@ -2813,7 +2811,6 @@ baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0/Extra/virtio-win
 gpgcheck=0
 enabled=0
 EOF
-fi
 
 # Fixes ZSTAC-18536: delete invalid repo file virt-win.repo
 invalid_virt_win_repo=/etc/yum.repos.d/virt-win.repo
@@ -2829,7 +2826,7 @@ check_hybrid_arch(){
 
 check_sync_local_repos() {
   echo_subtitle "Check local repo version"
-  [ -f ".repo_version" -a -f "/opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/.repo_version" ] || echo_hints_to_upgrade_iso
+  [ -f ".repo_version" ] || fail2 "Cannot found current repo_version file, please make sure you have correct zstack-installer package."
   if [ -d /opt/zstack-dvd/$BASEARCH ];then
     for release in `ls /opt/zstack-dvd/$BASEARCH`;do
       cmp -s .repo_version /opt/zstack-dvd/$BASEARCH/$release/.repo_version || check_hybrid_arch
@@ -2859,20 +2856,25 @@ else
     BASEURL=rsync://rsync.repo.zstack.io/${VERSION_RELEASE_NR}/
 fi
 
-pkg_list="createrepo curl yum-utils rsync"
-missing_list=`LANG=en_US.UTF-8 && rpm -q $pkg_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
-[ -z "$missing_list" ] || yum -y --disablerepo=* --enablerepo=zstack-local install ${missing_list} >>$ZSTACK_INSTALL_LOG 2>&1 || echo_hints_to_upgrade_iso
 # it takes about 2 min to compare md5sum of 1800+ files in iso
 umount /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/Extra/qemu-kvm-ev >/dev/null 2>&1
 rsync -aP --delete --exclude zstack-installer.bin --exclude .repo_version ${BASEURL} /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/ >> $ZSTACK_INSTALL_LOG 2>&1 || echo_hints_to_upgrade_iso
 
 [ -f /etc/yum.repos.d/epel.repo ] && sed -i 's/enabled=1/enabled=0/g' /etc/yum.repos.d/epel.repo
+export YUM0="$ZSTACK_RELEASE"
 yum --enablerepo=* clean all >/dev/null 2>&1
 rpm -qa | grep zstack-manager >/dev/null 2>&1 && yum --disablerepo=* --enablerepo=zstack-local -y install zstack-manager >/dev/null 2>&1 || true
+rpm -qa | grep zstack-release >/dev/null 2>&1 || yum --disablerepo=* --enablerepo=zstack-local -y install zstack-release >/dev/null 2>&1 && true
 
 # update .repo_version after syncing
 cat .repo_version > /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/.repo_version
-
+cd /opt/zstack-dvd
+rm -rf `ls |egrep -v "(x86_64|aarch64)"`
+cd -
+if [ ! -f /opt/zstack-dvd/zstack-image-1.4.qcow2 ];then
+    cp -rf /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/zstack-image-1.4.qcow2 /opt/zstack-dvd/
+    cp -rf /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/GPL /opt/zstack-dvd/
+fi
 pass
 }
 
@@ -3110,8 +3112,14 @@ get_mn_port
 pre_scripts_to_adjust_iptables_rules
 
 if [ x"$ZSTACK_OFFLINE_INSTALL" = x'y' ]; then
-    if [ ! -d /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/ ]; then
-        fail2 "Cannot proceed offline installation: /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/ folder not found.\n\tUse 'zstack-upgrade -r zstack-xxx.iso' (xxx>=3.7.0) and try again!"
+    if [ ! -d /opt/zstack-dvd/$BASEARCH/ ]; then
+        cd /opt/zstack-dvd/Packages/
+        ZSTACK_RELEASE=`ls |grep centos-release|awk -F"." '{print $1}'|awk -F"-" '{print "c"$3$4}'| head -1`
+        [ x"$ZSTACK_RELEASE" = x"c72" ] && ZSTACK_RELEASE="c74"
+        mkdir -p /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE
+        cd -
+    else
+        check_zstack_release
     fi
 fi
 
@@ -3277,8 +3285,8 @@ export HISTTIMEFORMAT HISTSIZE HISTFILESIZE PROMPT_COMMAND
 EOF
 }
 
-# make sure local repo files exist
-check_zstack_release
+# make sure local repo exist and dependences installed
+install_sync_repo_dependences
 create_local_repo_files
 
 # CHECK_REPO_VERSION
@@ -3287,6 +3295,7 @@ if [ x"${CHECK_REPO_VERSION}" == x"True" ]; then
     echo
     show_spinner check_sync_local_repos
 fi
+check_zstack_release
 
 # whether mevoco-1\.*.jar exists
 MEVOCO_1_EXISTS='n'

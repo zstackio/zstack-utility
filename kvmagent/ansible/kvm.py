@@ -35,6 +35,7 @@ update_packages = 'false'
 zstack_lib_dir = "/var/lib/zstack"
 zstack_libvirt_nwfilter_dir = "%s/nwfilter" % zstack_lib_dir
 skipIpv6 = 'false'
+bridgeDisableIptables = 'false'
 
 def update_libvritd_config(host_post_info):
     command = "grep -i ^host_uuid %s" % libvirtd_conf_file
@@ -421,12 +422,18 @@ elif distro in DEB_BASED_OS:
     copy_arg.dest = '/etc/default/libvirt-bin'
     libvirt_bin_status = copy(copy_arg, host_post_info)
     # name: enable bridge forward on UBUNTU
-    command = "modprobe br_netfilter; echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables ; " \
+    if bridgeDisableIptables == "true":
+        command = "modprobe br_netfilter; echo 0 > /proc/sys/net/bridge/bridge-nf-call-iptables ; " \
               "echo 1 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged ; echo 1 > /proc/sys/net/ipv4/conf/default/forwarding"
-    host_post_info.post_label = "ansible.shell.enable.module"
-    host_post_info.post_label_param = "br_netfilter"
-    run_remote_command(command, host_post_info)
-
+        host_post_info.post_label = "ansible.shell.enable.module"
+        host_post_info.post_label_param = "br_netfilter"
+        run_remote_command(command, host_post_info)
+    else:
+        command = "modprobe br_netfilter; echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables ; " \
+                  "echo 1 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged ; echo 1 > /proc/sys/net/ipv4/conf/default/forwarding"
+        host_post_info.post_label = "ansible.shell.enable.module"
+        host_post_info.post_label_param = "br_netfilter"
+        run_remote_command(command, host_post_info)
 else:
     error("unsupported OS!")
 
@@ -466,10 +473,16 @@ host_post_info.post_label_param = "/etc/libvirt/hooks/qemu"
 run_remote_command(command, host_post_info)
 
 # name: enable bridge forward
-command = "echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables ; echo 1 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged ; echo 1 > /proc/sys/net/ipv4/conf/default/forwarding"
-host_post_info.post_label = "ansible.shell.enable.service"
-host_post_info.post_label_param = "bridge forward"
-run_remote_command(command, host_post_info)
+if bridgeDisableIptables == "true":
+    command = "echo 0 > /proc/sys/net/bridge/bridge-nf-call-iptables ; echo 1 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged ; echo 1 > /proc/sys/net/ipv4/conf/default/forwarding"
+    host_post_info.post_label = "ansible.shell.enable.service"
+    host_post_info.post_label_param = "bridge forward"
+    run_remote_command(command, host_post_info)
+else:
+    command = "echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables ; echo 1 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged ; echo 1 > /proc/sys/net/ipv4/conf/default/forwarding"
+    host_post_info.post_label = "ansible.shell.enable.service"
+    host_post_info.post_label_param = "bridge forward"
+    run_remote_command(command, host_post_info)
 
 if skipIpv6 != 'true':
     # name: copy ip6tables initial rules in RedHat
@@ -478,7 +491,8 @@ if skipIpv6 != 'true':
     copy_arg.src = "%s/ip6tables" % file_root
     copy_arg.dest = "/etc/sysconfig/ip6tables"
     copy(copy_arg, host_post_info)
-    command = "sed -i 's/syslog.target,iptables.service/syslog.target iptables.service/' %s || true;" % IP6TABLE_SERVICE_FILE
+    replace_content(IP6TABLE_SERVICE_FILE,
+                    "regexp='syslog.target,iptables.service' replace='syslog.target iptables.service'", host_post_info)
     run_remote_command(command, host_post_info)
     service_status("ip6tables", "state=restarted enabled=yes", host_post_info)
 
@@ -609,11 +623,11 @@ if copy_kvmagent != "changed:False":
 # name: add audit rules for signals
 AUDIT_CONF_FILE = '/etc/audit/auditd.conf'
 AUDIT_NUM_LOG = 50
-command = "sed -i 's/num_logs = .*/num_logs = %d/' %s || true;" \
-          "systemctl enable auditd; systemctl restart auditd || true; " \
+replace_content(AUDIT_CONF_FILE, "regexp='num_logs = .*' replace='num_logs = %d'" % AUDIT_NUM_LOG, host_post_info)
+command = "systemctl enable auditd; systemctl restart auditd || true; " \
           "auditctl -D -k zstack_log_kill || true; " \
           "auditctl -a always,exit -F arch=b64 -F a1=9 -S kill -k zstack_log_kill || true; " \
-          "auditctl -a always,exit -F arch=b64 -F a1=15 -S kill -k zstack_log_kill || true" % (AUDIT_NUM_LOG, AUDIT_CONF_FILE)
+          "auditctl -a always,exit -F arch=b64 -F a1=15 -S kill -k zstack_log_kill || true"
 host_post_info.post_label = "ansible.shell.audit.signal"
 host_post_info.post_label_param = None
 run_remote_command(command, host_post_info)
