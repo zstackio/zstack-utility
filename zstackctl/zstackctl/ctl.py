@@ -7134,6 +7134,10 @@ class UpgradeDbCmd(Command):
             update_sql = "update schema_version set checksum = -1670610242 where script = 'V3.5.0.1__schema.sql' and checksum = 249136114"
             execute_sql(update_sql)
 
+        # fix MINI-1498
+        update_sql = "update schema_version set checksum = '-1450264399' where script = 'V3.6.0__schema.sql' and checksum = '-111240960'"
+        execute_sql(update_sql)
+
         migrate()
 
 class UpgradeUIDbCmd(Command):
