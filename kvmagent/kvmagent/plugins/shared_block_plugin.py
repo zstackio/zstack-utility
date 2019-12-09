@@ -555,14 +555,15 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         disk = CheckDisk(cmd.diskUuid)
 
-        allDiskPaths = []
+        allDiskPaths = set()
 
         for diskUuid in cmd.allSharedBlockUuids:
             disk = CheckDisk(diskUuid)
             p = disk.get_path()
             if p is not None:
-                allDiskPaths.append(p)
-        allDiskPaths.append(disk.get_path())
+                allDiskPaths.add(p)
+        allDiskPaths.add(disk.get_path())
+        lvm.config_lvm_filter(["lvm.conf", "lvmlocal.conf"], preserve_disks=allDiskPaths)
 
         command = shell.ShellCmd("vgs --nolocking %s -otags | grep %s" % (cmd.vgUuid, INIT_TAG))
         command(is_exception=False)
