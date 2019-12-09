@@ -29,6 +29,8 @@ import socket
 
 logger = log.get_logger(__name__)
 EBTABLES_CMD = ebtables.get_ebtables_cmd()
+IPTABLES_CMD = iptables.get_iptables_cmd()
+IP6TABLES_CMD = iptables.get_ip6tables_cmd()
 
 class ApplyDhcpRsp(kvmagent.AgentResponse):
     pass
@@ -213,7 +215,7 @@ class DhcpEnv(object):
             ret = bash_r("iptables-save | grep -- '-p udp -m udp --dport 68 -j CHECKSUM --checksum-fill'")
             if ret != 0:
                 bash_errorout(
-                    'iptables -w -t mangle -A POSTROUTING -p udp -m udp --dport 68 -j CHECKSUM --checksum-fill')
+                    '%s -t mangle -A POSTROUTING -p udp -m udp --dport 68 -j CHECKSUM --checksum-fill' % IPTABLES_CMD)
 
         def _add_ebtables_rule6(rule):
             ret = bash_r(
@@ -271,7 +273,7 @@ class DhcpEnv(object):
             ret = bash_r("ip6tables-save | grep -- '-p udp -m udp --dport 546 -j CHECKSUM --checksum-fill'")
             if ret != 0:
                 bash_errorout(
-                    'ip6tables -w -t mangle -A POSTROUTING -p udp -m udp --dport 546 -j CHECKSUM --checksum-fill')
+                    '%s -t mangle -A POSTROUTING -p udp -m udp --dport 546 -j CHECKSUM --checksum-fill' % IP6TABLES_CMD)
 
         NAMESPACE_ID = None
 
@@ -1109,21 +1111,21 @@ mimetype.assign = (
         if OLD_CHAIN and OLD_CHAIN != CHAIN_NAME:
             ret = bash_r('iptables-save -t nat | grep -- "-j {{OLD_CHAIN}}"')
             if ret == 0:
-                bash_r('iptables -w -t nat -D PREROUTING -j {{OLD_CHAIN}}')
+                bash_r('%s -t nat -D PREROUTING -j {{OLD_CHAIN}}' % IPTABLES_CMD)
 
-            bash_errorout('iptables -w -t nat -F {{OLD_CHAIN}}')
-            bash_errorout('iptables -w -t nat -X {{OLD_CHAIN}}')
+            bash_errorout('%s -t nat -F {{OLD_CHAIN}}' % IPTABLES_CMD)
+            bash_errorout('%s -t nat -X {{OLD_CHAIN}}' % IPTABLES_CMD)
         ret = bash_r('iptables-save | grep -w ":{{PORT_CHAIN_NAME}}" > /dev/null')
         if ret != 0:
-            self.bash_ignore_exist_for_ipt('iptables -w -t nat -N {{PORT_CHAIN_NAME}}')
-        ret = bash_r('iptables -w -t nat -L PREROUTING | grep -- "-j {{PORT_CHAIN_NAME}}"')
+            self.bash_ignore_exist_for_ipt('%s -t nat -N {{PORT_CHAIN_NAME}}' % IPTABLES_CMD)
+        ret = bash_r('%s -t nat -L PREROUTING | grep -- "-j {{PORT_CHAIN_NAME}}"' % IPTABLES_CMD)
         if ret != 0:
-            self.bash_ignore_exist_for_ipt('iptables -w -t nat -I PREROUTING -j {{PORT_CHAIN_NAME}}')
+            self.bash_ignore_exist_for_ipt('%s -t nat -I PREROUTING -j {{PORT_CHAIN_NAME}}' % IPTABLES_CMD)
         ret = bash_r(
             'iptables-save -t nat | grep -- "{{PORT_CHAIN_NAME}} -d 169.254.169.254/32 -p tcp -j DNAT --to-destination :{{PORT}}"')
         if ret != 0:
             self.bash_ignore_exist_for_ipt(
-                'iptables -w -t nat -A {{PORT_CHAIN_NAME}} -d 169.254.169.254/32 -p tcp -j DNAT --to-destination :{{PORT}}')
+                '%s -t nat -A {{PORT_CHAIN_NAME}} -d 169.254.169.254/32 -p tcp -j DNAT --to-destination :{{PORT}}' % IPTABLES_CMD)
 
     @staticmethod
     def bash_ignore_exist_for_ipt(cmd):

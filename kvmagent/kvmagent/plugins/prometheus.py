@@ -7,6 +7,7 @@ from prometheus_client.core import GaugeMetricFamily, REGISTRY
 
 from kvmagent import kvmagent
 from zstacklib.utils import http
+from zstacklib.utils import iptables
 from zstacklib.utils import jsonobject
 from zstacklib.utils import lock
 from zstacklib.utils import lvm
@@ -19,6 +20,7 @@ logger = log.get_logger(__name__)
 collector_dict = {}  # type: Dict[str, threading.Thread]
 latest_collect_result = {}
 collectResultLock = threading.RLock()
+IPTABLES_CMD = iptables.get_iptables_cmd()
 
 def collect_host_network_statistics():
 
@@ -429,11 +431,11 @@ LoadPlugin virt
             needle = '-A INPUT -p tcp -m tcp --dport %d' % port
             drules = [ r.replace("-A ", "-D ") for r in rules if needle in r ]
             for rule in drules:
-                bash_r("iptables -w %s" % rule)
+                bash_r("%s %s" % (IPTABLES_CMD, rule))
 
-            bash_r("iptables -w -I INPUT -p tcp --dport %s -j ACCEPT" % port)
+            bash_r("%s -I INPUT -p tcp --dport %s -j ACCEPT" % (IPTABLES_CMD, port))
 
-        rules = bash_o("iptables -w -S INPUT").splitlines()
+        rules = bash_o("%s -S INPUT" % IPTABLES_CMD).splitlines()
         install_iptables_port(rules, 7069)
         install_iptables_port(rules, 9100)
         install_iptables_port(rules, 9103)
