@@ -51,7 +51,7 @@
 
     - name: install kvm related packages on Debian based OS
       when: ansible_os_family == 'Debian'
-      apt: pkg="{{item}}"
+      apt: name=python-dev update_cache=yes --allow-unauthenticated
       with_items:
         - qemu-kvm
         - bridge-utils

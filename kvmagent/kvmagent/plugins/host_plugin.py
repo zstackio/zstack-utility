@@ -477,6 +477,16 @@ class HostPlugin(kvmagent.KvmAgent):
     TRANSMIT_VM_OPERATION_TO_MN_PATH = "/host/transmitvmoperation"
 
     host_network_facts_cache = {}  # type: Dict[float, list[list, list]]
+    IS_YUM = False
+    IS_APT = False
+    
+    def __init__(self):
+        if shell.run("which yum") == 0:
+            self.IS_YUM = True
+            self.IS_APT = False
+        elif shell.run("which apt") == 0:
+            self.IS_APT = True
+            self.IS_YUM = False
 
     def _get_libvirt_version(self):
         ret = shell.call('libvirtd --version')
@@ -488,8 +498,7 @@ class HostPlugin(kvmagent.KvmAgent):
         words = ret.split()
         for w in words:
             if w == 'version':
-                return words[words.index(w)+1].strip().split('(')[0]
-
+                return words[words.index(w)+1].strip().split('(')[0].replace(',' ,'')
         raise kvmagent.KvmError('cannot get qemu version[%s]' % ret)
 
     def _prepare_firewall_for_migration(self):
@@ -573,6 +582,7 @@ class HostPlugin(kvmagent.KvmAgent):
     def fact(self, req):
         rsp = HostFactResponse()
         rsp.osDistribution, rsp.osVersion, rsp.osRelease = platform.dist()
+        rsp.osRelease = rsp.osRelease if rsp.osRelease else "Core"
         # to be compatible with both `2.6.0` and `2.9.0(qemu-kvm-ev-2.9.0-16.el7_4.8.1)`
         qemu_img_version = shell.call("qemu-img --version | grep 'qemu-img version' | cut -d ' ' -f 3 | cut -d '(' -f 1")
         qemu_img_version = qemu_img_version.strip('\t\r\n ,')
@@ -580,7 +590,7 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.systemProductName = 'unknown'
         rsp.systemSerialNumber = 'unknown'
         is_dmidecode = shell.run("dmidecode")
-        if str(is_dmidecode) == '0':
+        if str(is_dmidecode) == '0' and rsp.osDistribution != 'Kylin':
             system_product_name = shell.call('dmidecode -s system-product-name').strip()
             baseboard_product_name = shell.call('dmidecode -s baseboard-product-name').strip()
             system_serial_number = shell.call('dmidecode -s system-serial-number').strip()
@@ -925,22 +935,30 @@ if __name__ == "__main__":
     @in_bash
     def update_dependency(self, req):
         rsp = UpdateDependencyRsp()
-        releasever = kvmagent.get_host_yum_release()
-        yum_cmd = "export YUM0={};yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install `cat /var/lib/zstack/dependencies` -y".format(releasever)
-        if shell.run("which yum") != 0:
+        if self.IS_YUM:
+            releasever = kvmagent.get_host_yum_release()
+            yum_cmd = "export YUM0={};yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install `cat /var/lib/zstack/dependencies` -y".format(releasever)
+            if shell.run("export YUM0={};yum --disablerepo=* --enablerepo=zstack-mn repoinfo".format(releasever)) != 0:
+                rsp.success = False
+                rsp.error = "no zstack-mn repo found, cannot update kvmagent dependencies"
+            elif shell.run("export YUM0={};yum --disablerepo=* --enablerepo=qemu-kvm-ev-mn repoinfo".format(releasever)) != 0:
+                rsp.success = False
+                rsp.error = "no qemu-kvm-ev-mn repo found, cannot update kvmagent dependencies"
+            elif shell.run(yum_cmd) != 0:
+                rsp.success = False
+                rsp.error = "failed to update kvmagent dependencies using zstack-mn,qemu-kvm-ev-mn repo"
+            else :
+                logger.debug("successfully run: {}".format(yum_cmd))
+        elif self.IS_APT:
+            apt_cmd = "apt-get clean && apt-get -y --allow-unauthenticated install `cat /var/lib/zstack/dependencies`"
+            if shell.run(apt_cmd) != 0:
+                rsp.success = False
+                rsp.error = "failed to update kvmagent dependencies by {}.".format(apt_cmd)
+            else :
+                logger.debug("successfully run: {}".format(apt_cmd))
+        else :
             rsp.success = False
-            rsp.error = "no yum command found, cannot update kvmagent dependencies"
-        elif shell.run("export YUM0={};yum --disablerepo=* --enablerepo=zstack-mn repoinfo".format(releasever)) != 0:
-            rsp.success = False
-            rsp.error = "no zstack-mn repo found, cannot update kvmagent dependencies"
-        elif shell.run("export YUM0={};yum --disablerepo=* --enablerepo=qemu-kvm-ev-mn repoinfo".format(releasever)) != 0:
-            rsp.success = False
-            rsp.error = "no qemu-kvm-ev-mn repo found, cannot update kvmagent dependencies"
-        elif shell.run(yum_cmd) != 0:
-            rsp.success = False
-            rsp.error = "failed to update kvmagent dependencies using zstack-mn,qemu-kvm-ev-mn repo"
-        else:
-            logger.debug("successfully run: %s" % yum_cmd)
+            rsp.error = "no yum or apt found, cannot update kvmagent dependencies"
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
