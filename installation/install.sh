@@ -740,6 +740,7 @@ check_system(){
             echo 'ui_mode is not configured, it will be set based on your environment.' >>$ZSTACK_INSTALL_LOG 2>&1
             [ -d ${LEGACY_MINI_INSTALL_ROOT} -o -d $MINI_INSTALL_ROOT ] && zstack-ctl configure ui_mode=mini || zstack-ctl configure ui_mode=zstack
             [ -d ${LEGACY_MINI_INSTALL_ROOT} -o -d $MINI_INSTALL_ROOT ] && zstack-ctl configure log.management.server.retentionSizeGB=200
+            [ -d ${LEGACY_MINI_INSTALL_ROOT} -o -d $MINI_INSTALL_ROOT ] && zstack-ctl configure AppCenter.server.mode=on
             ui_mode=`zstack-ctl show_configuration |awk '/ui_mode/{print $3}'`
         fi
         cs_check_hostname_zstack
@@ -1989,6 +1990,7 @@ setup_install_param(){
         show_spinner sd_install_zstack_mini_ui
         DEFAULT_UI_PORT=8200
         zstack-ctl configure ui_mode=mini
+        zstack-ctl configure AppCenter.server.mode=on
         zstack-ctl configure log.management.server.retentionSizeGB=200
     else
         zstack-ctl configure ui_mode=zstack
