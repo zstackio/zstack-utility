@@ -148,9 +148,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CheckPhysicalNetworkInterfaceResponse()
         for i in cmd.interfaceNames:
-            shell_cmd = shell.ShellCmd("ip link | grep '%s'" % i)
-            shell_cmd(False)
-            if shell_cmd.return_code != 0:
+            if shell.run("ip link | grep -q -w '%s'" % i) != 0:
                 rsp.failedInterfaceNames = [i]
                 rsp.success = False
                 return jsonobject.dumps(rsp)
