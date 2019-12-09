@@ -105,6 +105,18 @@ else
     sed -i 's/max_connections.*/max_connections=400/g' $mysql_conf
 fi
 
+grep 'interactive_timeout' $mysql_conf >/dev/null 2>&1
+if [ $? -ne 0 ]; then
+    echo "interactive_timeout=100"
+    sed -i '/\[mysqld\]/a interactive_timeout=100\' $mysql_conf
+fi
+
+grep 'wait_timeout' $mysql_conf >/dev/null 2>&1
+if [ $? -ne 0 ]; then
+    echo "wait_timeout=100"
+    sed -i '/\[mysqld\]/a wait_timeout=100\' $mysql_conf
+fi
+
 mkdir -p /etc/systemd/system/mariadb.service.d/
 echo -e "[Service]\nLimitNOFILE=2048" > /etc/systemd/system/mariadb.service.d/limits.conf
 systemctl daemon-reload || true
