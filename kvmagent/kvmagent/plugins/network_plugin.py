@@ -4,6 +4,7 @@
 '''
 import copy
 from kvmagent import kvmagent
+from zstacklib.utils import iptables
 from zstacklib.utils import jsonobject
 from zstacklib.utils import http
 from zstacklib.utils import log
@@ -29,6 +30,7 @@ KVM_POPULATE_FDB_L2VXLAN_NETWORKS_PATH = "/network/l2vxlan/populatefdbs"
 KVM_SET_BRIDGE_ROUTER_PORT_PATH = "/host/bridge/routerport"
 
 logger = log.get_logger(__name__)
+IPTABLES_CMD = iptables.get_iptables_cmd()
 
 class CheckPhysicalNetworkInterfaceCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -257,9 +259,9 @@ class NetworkPlugin(kvmagent.KvmAgent):
             needle = '-A INPUT -p udp -m udp --dport %d' % port
             drules = [r.replace("-A ", "-D ") for r in rules if needle in r]
             for rule in drules:
-                bash_r("iptables -w %s" % rule)
+                bash_r("%s %s" % (IPTABLES_CMD, rule))
 
-            bash_r("iptables -w -I INPUT -p udp --dport %s -j ACCEPT" % port)
+            bash_r("%s -I INPUT -p udp --dport %s -j ACCEPT" % (IPTABLES_CMD, port))
 
         def filter_vxlan_nics(nics, interf, requireIp):
             valid_nics = []
@@ -332,7 +334,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         else:
             rsp.error = "multiple interface qualify with cidr [%s] and no interface name provided" % cmd.cidr
 
-        rules = bash_o("iptables -w -S INPUT").splitlines()
+        rules = bash_o("%s -S INPUT" % IPTABLES_CMD).splitlines()
         install_iptables(rules, 8472)
         install_iptables(rules, 4789)
 

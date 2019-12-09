@@ -525,6 +525,7 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
     @lock.file_lock('/run/xtables.lock')
     @kvmagent.replyerror
     def cleanup_unused_rules_on_host(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CleanupUnusedRulesOnHostResponse()
 
         ipt = iptables.from_iptables_save()
@@ -533,12 +534,13 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
         ipt.iptable_restore()
         used_ipset = ipt.list_used_ipset_name()
 
-        ip6t = iptables.from_ip6tables_save()
-        self._cleanup_stale_chains(ip6t)
-        ip6t.iptable_restore()
-        used_ipset6 = ip6t.list_used_ipset_name()
-        for uset in used_ipset6:
-            used_ipset.appaned(uset)
+        if not cmd.skipIpv6:
+            ip6t = iptables.from_ip6tables_save()
+            self._cleanup_stale_chains(ip6t)
+            ip6t.iptable_restore()
+            used_ipset6 = ip6t.list_used_ipset_name()
+            for uset in used_ipset6:
+                used_ipset.appaned(uset)
 
         def match_set_name(name):
             return name.startswith(self.ZSTACK_IPSET_NAME_FORMAT)
@@ -607,6 +609,7 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
     @lock.file_lock('/run/xtables.lock')
     @kvmagent.replyerror
     def check_default_sg_rules(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CheckDefaultSecurityGroupResponse()
 
         ipt = iptables.from_iptables_save()
@@ -615,11 +618,12 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
             self._create_default_rules(ipt)
             ipt.iptable_restore()
 
-        ip6t = iptables.from_ip6tables_save()
-        default_chain6 = ip6t.get_chain(self.ZSTACK_DEFAULT_CHAIN)
-        if not default_chain6:
-            self._create_default_rules_ip6(ip6t)
-            ip6t.iptable_restore()
+        if not cmd.skipIpv6:
+            ip6t = iptables.from_ip6tables_save()
+            default_chain6 = ip6t.get_chain(self.ZSTACK_DEFAULT_CHAIN)
+            if not default_chain6:
+                self._create_default_rules_ip6(ip6t)
+                ip6t.iptable_restore()
 
         if not default_chain or not default_chain6:
             self._cleanup_conntrack()

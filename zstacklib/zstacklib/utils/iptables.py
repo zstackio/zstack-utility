@@ -7,9 +7,55 @@ from zstacklib.utils import shell
 from zstacklib.utils import linux
 from zstacklib.utils import log
 from zstacklib.utils import ordered_set
+from zstacklib.utils.bash import *
 from pyparsing import *
 
 logger = log.get_logger(__name__)
+
+_iptablesUseLock = None
+_ip6tablesUseLock = None
+
+def get_iptables_cmd(command = None):
+
+    def checkIptablesLock():
+        global _iptablesUseLock
+        if shell.run("iptables -w -L > /dev/null") == 0:
+            _iptablesUseLock = True
+        else:
+            _iptablesUseLock = False
+
+    if _iptablesUseLock is None:
+        checkIptablesLock()
+
+    if command is None:
+        if _iptablesUseLock:
+            return "iptables -w"
+        return "iptables"
+    elif command == "restore":
+        if _iptablesUseLock:
+            return "iptables-restore -w"
+        return "iptables-restore"
+
+def get_ip6tables_cmd(command = None):
+
+    def checkIp6tablesLock():
+        global _ip6tablesUseLock
+        if shell.run("ip6tables -w -L > /dev/null") == 0:
+            _ip6tablesUseLock = True
+        else:
+            _ip6tablesUseLock = False
+
+    if _ip6tablesUseLock is None:
+        checkIp6tablesLock()
+
+    if command is None:
+        if _ip6tablesUseLock:
+            return "ip6tables -w"
+        return "ip6tables"
+    elif command == "restore":
+        if _ip6tablesUseLock:
+            return "ip6tables-restore -w"
+        return "ip6tables-restore"
 
 class IPTablesError(Exception):
     '''iptables error'''
@@ -538,7 +584,7 @@ class IPTables(Node):
         content = self._to_iptables_string(marshall_func, sort_nat_func, sort_filter_func, sort_mangle_func)
         f = linux.write_to_temp_file(content)
         try:
-            shell.call('/sbin/iptables-restore -w < %s' % f)
+            shell.call("%s < %s" % (get_iptables_cmd("restore"), f))
         except Exception as e:
             res = shell.call('lsof /run/xtables.lock')
             err ='''Failed to apply iptables rules:
@@ -938,7 +984,7 @@ class IP6Tables(Node):
         content = self._to_iptables_string(marshall_func, sort_nat_func, sort_filter_func, sort_mangle_func)
         f = linux.write_to_temp_file(content)
         try:
-            shell.call('/sbin/ip6tables-restore -w < %s' % f)
+            shell.call('%s < %s' % (get_ip6tables_cmd("restore"), f))
         except Exception as e:
             res = shell.call('lsof /run/xtables.lock')
             err = '''Failed to apply ip6tables rules:

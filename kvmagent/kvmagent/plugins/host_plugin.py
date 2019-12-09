@@ -34,6 +34,7 @@ from zstacklib.utils.report import Report
 
 IS_AARCH64 = platform.machine() == 'aarch64'
 GRUB_FILES = ["/boot/grub2/grub.cfg", "/boot/grub/grub.cfg", "/etc/grub2-efi.cfg", "/etc/grub-efi.cfg", "/boot/efi/EFI/centos/grub.cfg"]
+IPTABLES_CMD = iptables.get_iptables_cmd()
 
 class ConnectResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -503,9 +504,9 @@ class HostPlugin(kvmagent.KvmAgent):
         """Prepare firewall rules for libvirt live migration."""
 
         mrule = "-A INPUT -p tcp -m tcp --dport 49152:49261 -j ACCEPT"
-        rules = bash_o("iptables -w -S INPUT").splitlines()
+        rules = bash_o("%s -S INPUT" % IPTABLES_CMD).splitlines()
         if not mrule in rules:
-            bash_r("iptables -w %s" % mrule.replace("-A ", "-I "))
+            bash_r("%s %s" % (IPTABLES_CMD, mrule.replace("-A ", "-I ")))
 
     @lock.file_lock('/run/xtables.lock')
     @in_bash
