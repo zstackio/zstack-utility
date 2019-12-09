@@ -694,11 +694,11 @@ check_system(){
     echo ""
     cat /etc/*-release |egrep -i -h "centos |Red Hat Enterprise|Alibaba" >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -eq 0 ]; then
-        grep 'CentOS release 6' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1; IS_CENTOS_6=$?
-        grep 'CentOS Linux release 7' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1; IS_CENTOS_7=$?
-        grep 'Red Hat Enterprise Linux Server release 7' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1; IS_RHEL_7=$?
-        grep 'Alibaba Group Enterprise Linux' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1; IS_ALIOS_7=$?
-        grep 'iSoft Linux release 4' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1; IS_ISOFT_4=$?
+        grep -q 'CentOS release 6' /etc/system-release && IS_CENTOS_6=0 || IS_CENTOS_6=1
+        grep -q 'CentOS Linux release 7' /etc/system-release && IS_CENTOS_7=0 || IS_CENTOS_7=1
+        grep -q 'Red Hat Enterprise Linux Server release 7' /etc/system-release && IS_RHEL_7=0 || IS_RHEL_7=1
+        grep -q 'Alibaba Group Enterprise Linux' /etc/system-release && IS_ALIOS_7=0 || IS_ALIOS_7=1
+        grep -q 'iSoft Linux release 4' /etc/system-release && IS_ISOFT_4=0 || IS_ISOFT_4=1
         if [ $IS_CENTOS_6 -eq 0 ]; then
             OS=$CENTOS6
         elif [ $IS_CENTOS_7 -eq 0 ]; then
@@ -715,9 +715,9 @@ check_system(){
             fail2 "Host OS checking failure: your system is: `cat /etc/redhat-release`, $PRODUCT_NAME management node only supports $SUPPORTED_OS currently"
         fi
     else
-        grep 'Debian GNU/Linux' /etc/issue >>$ZSTACK_INSTALL_LOG 2>&1; IS_DEBIAN=$?
-        grep 'Ubuntu' /etc/issue >>$ZSTACK_INSTALL_LOG 2>&1; IS_UBUNTU=$?
-        grep 'Kylin' /etc/issue >>$ZSTACK_INSTALL_LOG 2>&1; IS_KYLINOS=$?
+        grep -q 'Debian GNU/Linux' /etc/issue && IS_DEBIAN=0 || IS_DEBIAN=1
+        grep -q 'Ubuntu' /etc/issue && IS_UBUNTU=0 || IS_UBUNTU=1
+        grep -q 'Kylin' /etc/issue && IS_KYLINOS=0 || IS_KYLINOS=1
         if [ $IS_UBUNTU -eq 0 ]; then
             grep '16.04' /etc/issue >>$ZSTACK_INSTALL_LOG 2>&1
             if [ $? -eq 0 ]; then
@@ -738,7 +738,6 @@ check_system(){
             else
                 fail2 "Host OS checking failure: your system is: `cat /etc/issue`, $PRODUCT_NAME management node only support $SUPPORTED_OS currently"
             fi
-            echo " " >/dev/null 2>&1
         elif [ $IS_DEBIAN -eq 0 ]; then
             grep 'Linux 9' /etc/issue >>$ZSTACK_INSTALL_LOG 2>&1
             if [ $? -eq 0 ]; then
@@ -746,7 +745,6 @@ check_system(){
             else
                 fail2 "Host OS checking failure: your system is: `cat /etc/issue`, $PRODUCT_NAME management node only support $SUPPORTED_OS currently"
             fi
-            echo " " >/dev/null 2>&1
         else
             fail2 "Host OS checking failure: your system is: `cat /etc/issue`, $PRODUCT_NAME management node only support $SUPPORTED_OS currently"
         fi
@@ -1481,7 +1479,7 @@ is_install_general_libs_deb(){
         apt-key update >>$ZSTACK_INSTALL_LOG 2>&1
         apt-get update >>$ZSTACK_INSTALL_LOG 2>&1
     fi
-    apt-get -y -q install --allow-unauthenticated \
+    apt-get -y install --allow-unauthenticated \
         $openjdk \
         bridge-utils \
         wget \
@@ -1499,7 +1497,7 @@ is_install_general_libs_deb(){
         >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -ne 0 ] && fail "install system lib 2 failed"
 
-    apt-get -y -q install --allow-unauthenticated \
+    apt-get -y install --allow-unauthenticated \
         dmidecode \
         nfs-common \
         nfs-kernel-server \
