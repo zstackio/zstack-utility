@@ -3527,8 +3527,8 @@ class Vm(object):
                 if not IS_AARCH64:
                     e(devices, 'controller', None, {'type': 'pci', 'model': 'dmi-to-pci-bridge', 'index': str(pci_idx_generator.next())})
                     e(devices, 'controller', None, {'type': 'pci', 'model': 'pci-bridge', 'index': str(pci_idx_generator.next())})
-                for i in pci_idx_generator:
-                    e(devices, 'controller', None, {'type': 'pci', 'model': 'pcie-root-port', 'index': str(i)})
+                    for i in pci_idx_generator:
+                        e(devices, 'controller', None, {'type': 'pci', 'model': 'pcie-root-port', 'index': str(i)})
 
 
         make_root()
