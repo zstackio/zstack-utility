@@ -304,15 +304,19 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
                                                                 cmd.thumbprint, cmd.format, self._get_nbdkit_dir_path())
 
         virt_v2v_cmd = get_v2v_cmd(cmd, rsp)
+        src_vm_uri = cmd.srcVmUri
+        host_name = src_vm_uri.split('/')[-1]
+        if not linux.is_valid_hostname(host_name):
+            rsp.success = False
+            rsp.error = "cannot resolve hostname %s, check the hostname configured on the DNS server" % host_name
+            return jsonobject.dumps(rsp)
 
         v2v_pid_path = os.path.join(storage_dir, "convert.pid")
         v2v_cmd_ret_path = os.path.join(storage_dir, "convert.ret")
         echo_pid_cmd = "echo $$ > %s; %s; ret=$?; echo $ret > %s; exit $ret" % (
         v2v_pid_path, virt_v2v_cmd, v2v_cmd_ret_path)
 
-        src_vm_uri = cmd.srcVmUri
-        vmware_host_ip = linux.get_host_by_name(src_vm_uri.split('/')[-1])
-
+        vmware_host_ip = linux.get_host_by_name(host_name)
         interface = linux.find_route_interface_by_destination_ip(vmware_host_ip)
 
         if interface:
