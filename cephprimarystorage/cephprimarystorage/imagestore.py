@@ -1,6 +1,8 @@
+import os
 from zstacklib.utils import jsonobject
 from zstacklib.utils import log
 from zstacklib.utils import shell
+from zstacklib.utils import traceable_shell
 from zstacklib.utils import http
 
 logger = log.get_logger(__name__)
@@ -18,9 +20,15 @@ class CpRsp(AgentResponse):
         self.installPath = None
 
 class ImageStoreClient(object):
-    ZSTORE_CLI_PATH = "/usr/local/zstack/imagestore/bin/zstcli -rootca /var/lib/zstack/imagestorebackupstorage/package/certs/ca.pem"
+    ZSTORE_CLI_BIN = "/usr/local/zstack/imagestore/bin/zstcli"
+    ZSTORE_CLI_PATH = ZSTORE_CLI_BIN + " -rootca /var/lib/zstack/imagestorebackupstorage/package/certs/ca.pem"
     ZSTORE_PROTOSTR = "zstore://"
     ZSTORE_DEF_PORT = 8000
+
+    def _check_zstore_cli(self):
+        if not os.path.exists(self.ZSTORE_CLI_BIN):
+            errmsg = '%s not found. Please reconnect all ceph primary storage, and try again.' % self.ZSTORE_CLI_BIN
+            raise Exception(errmsg)
 
     def _get_image_json_file(self, path):
         idx = path.rfind('.')
@@ -56,6 +64,8 @@ class ImageStoreClient(object):
         return "{0}{1}/{2}".format(self.ZSTORE_PROTOSTR, name, imgid)
 
     def upload_imagestore(self, cmd, req):
+        self._check_zstore_cli()
+
         imf = self._get_image_json_file(cmd.srcPath)
         if not self._ceph_file_existed(imf):
             self.commit_to_imagestore(cmd, req)
@@ -72,6 +82,7 @@ class ImageStoreClient(object):
             self.ZSTORE_CLI_PATH, cmd.hostname, self.ZSTORE_DEF_PORT, req[http.REQUEST_HEADER].get(http.CALLBACK_URI),
             taskid, cmd.imageUuid, extpara, cmd.srcPath)
         logger.debug('pushing %s to image store' % cmd.srcPath)
+        shell = traceable_shell.get_shell(cmd)
         shell.call(cmdstr.encode(encoding="utf-8"))
         logger.debug('%s pushed to image store' % cmd.srcPath)
 
@@ -91,6 +102,8 @@ class ImageStoreClient(object):
         return xs[0], xs[1]
 
     def download_imagestore(self, cmd):
+        self._check_zstore_cli()
+
         rsp = AgentResponse()
         name, imageid = self._parse_image_reference(cmd.bsInstallPath)
         cmdstr = '%s -url %s:%s pull -installpath %s %s:%s' % (
@@ -101,6 +114,8 @@ class ImageStoreClient(object):
         return jsonobject.dumps(rsp)
 
     def commit_to_imagestore(self, cmd, req):
+        self._check_zstore_cli()
+
         fpath = cmd.srcPath
 
         # Add the image to registry

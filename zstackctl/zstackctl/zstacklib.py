@@ -17,6 +17,7 @@ import time
 import functools
 import jinja2
 import commands
+import re
 
 # set global default value
 start_time = datetime.now()
@@ -226,6 +227,8 @@ def create_log(logger_dir, logger_file):
     handler.setFormatter(fmt)
     logger.addHandler(handler)
 
+def get_mn_yum_release():
+    return commands.getoutput("rpm -q zstack-release |awk -F'-' '{print $3}'").strip()
 
 def post_msg(msg, post_url):
     logger.info(msg.data.details)
@@ -830,6 +833,9 @@ def check_host_reachable(host_post_info, warning=False):
 @retry(times=3, sleep_time=3)
 def run_remote_command(command, host_post_info, return_status=False, return_output=False):
     '''return status all the time except return_status is False, return output is set to True'''
+    if 'yum' in command:
+        set_yum0 = "rpm -q zstack-release && releasever=`awk '{print $3}' /etc/zstack-release` || releasever=%s;export YUM0=$releasever;" % (get_mn_yum_release())
+        command = set_yum0 + command
     start_time = datetime.now()
     host_post_info.start_time = start_time
     host = host_post_info.host
@@ -1227,6 +1233,16 @@ def authorized_key(user, key_path, host_post_info):
             handle_ansible_info(details, host_post_info, "INFO")
             return True
 
+def check_pswd_rules(pswd):
+    if not len(pswd) >= 8:
+        return False
+    if not re.search(r"[0-9]+", pswd):
+        return False
+    if not re.search(r"[a-zA-Z]+", pswd):
+        return False
+    if not re.search(r"[^a-z0-9A-Z]+", pswd):
+        return False
+    return True
 
 def unarchive(unarchive_arg, host_post_info):
     start_time = datetime.now()
@@ -1378,7 +1394,7 @@ enabled=0" > /etc/yum.repos.d/zstack-163-yum.repo
                     generate_mn_repo_raw_command = """
 echo -e "[zstack-mn]
 name=zstack-mn
-baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$releasever/\$basearch/os/
+baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$releasever/\$basearch/
 gpgcheck=0
 enabled=0" >  /etc/yum.repos.d/zstack-mn.repo
                """
@@ -1387,11 +1403,12 @@ enabled=0" >  /etc/yum.repos.d/zstack-mn.repo
                        'yum_server' : yum_server
                     })
                     run_remote_command(generate_mn_repo_command, host_post_info)
+                    run_remote_command("sync", host_post_info)
                 if 'qemu-kvm-ev-mn' in zstack_repo:
                     generate_kvm_repo_raw_command = """
 echo -e "[qemu-kvm-ev-mn]
 name=qemu-kvm-ev-mn
-baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$releasever/\$basearch/qemu-kvm-ev/
+baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$releasever/\$basearch/Extra/qemu-kvm-ev/
 gpgcheck=0
 enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
                """
@@ -1400,6 +1417,23 @@ enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
                         'yum_server':yum_server
                     })
                     run_remote_command(generate_kvm_repo_command, host_post_info)
+                    run_remote_command("sync", host_post_info)
+
+                # generate zstack experimental repo anyway
+                generate_exp_repo_raw_command = """
+echo -e "[zstack-experimental-mn]
+name=zstack-experimental-mn
+baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$releasever/\$basearch/Extra/zstack-experimental/
+gpgcheck=0
+enabled=0" >  /etc/yum.repos.d/zstack-experimental-mn.repo
+               """
+                generate_exp_repo_template = jinja2.Template(generate_exp_repo_raw_command)
+                generate_exp_repo_command = generate_exp_repo_template.render({
+                        'yum_server':yum_server
+                })
+                run_remote_command(generate_exp_repo_command, host_post_info)
+                run_remote_command("sync", host_post_info)
+
                 # install libselinux-python and other command system libs from user defined repos
                 command = (
                           "yum clean --enablerepo=%s metadata &&  pkg_list=`rpm -q libselinux-python python-devel "

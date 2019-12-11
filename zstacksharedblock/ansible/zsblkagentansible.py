@@ -29,6 +29,7 @@ fs_rootpath = ""
 remote_user = "root"
 remote_pass = None
 remote_port = None
+host_uuid = None
 require_python_env = "false"
 
 free_spcae = 1073741824
@@ -53,6 +54,7 @@ zsblk_root = "%s/zsblk-agent/package" % zstack_root
 host_post_info = HostPostInfo()
 host_post_info.host_inventory = args.i
 host_post_info.host = host
+host_post_info.host_uuid = host_uuid
 host_post_info.post_url = post_url
 host_post_info.chrony_servers = chrony_servers
 host_post_info.private_key = args.private_key
@@ -104,10 +106,10 @@ run_remote_command(add_true_in_command(command), host_post_info)
 run_remote_command(add_true_in_command("/bin/cp -f /usr/local/zstack/zsblk-agent/bin/zstack-sharedblock-agent.service /usr/lib/systemd/system/"), host_post_info)
 
 service_env = "'ZSBLKARGS=-free-space %s -increment %s -log-file %s -qmp-socket-dir %s -utilization-percent %s'" \
-              % (free_spcae, increment, log_file, qmp_socket_dir, utilization_percent)
+              % (int(free_spcae), int(increment), log_file, qmp_socket_dir, utilization_percent)
 service_env = service_env.replace("/", "\/")
-command = "sed -i \"s/.*Environment=.*/Environment=%s/g\" /usr/lib/systemd/system/zstack-sharedblock-agent.service" % service_env
-run_remote_command(add_true_in_command(command), host_post_info)
+
+replace_content("/usr/lib/systemd/system/zstack-sharedblock-agent.service", "regexp='.*Environment=.*' replace='Environment=\'%s\''" % service_env, host_post_info)
 
 command = "systemctl daemon-reload && systemctl enable zstack-sharedblock-agent.service && systemctl restart zstack-sharedblock-agent.service"
 run_remote_command(add_true_in_command(command), host_post_info)

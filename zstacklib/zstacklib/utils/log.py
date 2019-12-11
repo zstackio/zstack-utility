@@ -3,11 +3,12 @@
 @author: frank
 '''
 import logging
-import logging.handlers
 import sys
 import os.path
 import gzip
 import shutil
+
+import simplejson
 from concurrentlog_handler import ConcurrentRotatingFileHandler
 from random import randint
 
@@ -89,6 +90,7 @@ class LogConfig(object):
     instance = None
 
     LOG_FOLER = '/var/log/zstack'
+    LOG_FORMAT = '%(asctime)s %(thread)d %(levelname)s [%(name)s] %(message)s'
 
     def __init__(self):
         if not os.path.exists(self.LOG_FOLER):
@@ -96,6 +98,7 @@ class LogConfig(object):
         self.log_path = os.path.join(self.LOG_FOLER, 'zstack.log')
         self.log_level = logging.DEBUG
         self.log_to_console = True
+        self.log_format = self.LOG_FORMAT
 
     def set_log_to_console(self, to_console):
         self.log_to_console = to_console
@@ -113,18 +116,19 @@ class LogConfig(object):
         dirname = os.path.dirname(self.log_path)
         if not os.path.exists(dirname):
             os.makedirs(dirname, 0755)
-        logging.basicConfig(filename=self.log_path, level=self.log_level)
 
     def get_logger(self, name, logfd=None):
         logger = logging.getLogger(name)
+        if len(logger.handlers) > 0:
+            return logger
+
         logger.setLevel(logging.DEBUG)
-        max_rotate_handler = ZstackRotatingFileHandler(self.log_path, maxBytes=10*1024*1024, backupCount=30)
-        formatter = logging.Formatter('%(asctime)s %(levelname)s [%(name)s] %(message)s')
+        max_rotate_handler = ZstackRotatingFileHandler(self.log_path, maxBytes=30*1024*1024, backupCount=30)
+        formatter = logging.Formatter(self.LOG_FORMAT)
         max_rotate_handler.setFormatter(formatter)
         max_rotate_handler.setLevel(logging.DEBUG)
         logger.addHandler(max_rotate_handler)
         if self.log_to_console:
-            formatter = logging.Formatter('%(asctime)s %(levelname)s [%(name)s] %(message)s')
             if not logfd:
                 logfd = sys.stdout
             ch = logging.StreamHandler(logfd)
@@ -165,3 +169,38 @@ def cleanup_log(hostname, username, password, port = 22):
 def cleanup_local_log():
     import shell
     shell.call('''cd /var/log/zstack; tar --ignore-failed-read -zcf zstack-logs-`date +%y%m%d-%H%M%S`.tgz *.log.* *.log; find . -name "*.log"|while read file; do echo "" > $file; done''')
+
+
+SENSITIVE_FIELD_NAME = 'SENSITIVE_FIELDS'
+
+def sensitive_fields(*paths, **typed_paths):
+    """
+        paths must be a path like "password" or "vmInfo.password"
+    """
+    def ret(old_init):
+        def __init__(self, *args, **kwargs):
+            if paths:
+                ps = ["obj['" + p.replace(".", "']['") + "']" for p in paths]
+                setattr(self, SENSITIVE_FIELD_NAME, ps)
+            old_init(self)
+        return __init__
+    return ret
+
+
+def mask_sensitive_field(cmd, cmd_str):
+    # type:(object, str) -> str
+    if not cmd or not hasattr(cmd, SENSITIVE_FIELD_NAME):
+        return cmd_str
+
+    field_paths = getattr(cmd, SENSITIVE_FIELD_NAME)
+    obj = simplejson.loads(cmd_str)
+    if isinstance(obj, dict):
+        for path in field_paths:
+            try:
+                exec ("if {0}: {0}='*****'".format(path)) in {'obj': obj}
+            except:
+                pass
+        if SENSITIVE_FIELD_NAME in obj:
+            del obj[SENSITIVE_FIELD_NAME]
+
+    return simplejson.dumps(obj)

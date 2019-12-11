@@ -5,6 +5,7 @@ import time
 
 from kvmagent import kvmagent
 from kvmagent.plugins.imagestore import ImageStoreClient
+from kvmagent.plugins import mini_fencer
 from zstacklib.utils import jsonobject
 from zstacklib.utils import http
 from zstacklib.utils import log
@@ -14,11 +15,14 @@ from zstacklib.utils import lock
 from zstacklib.utils import lvm
 from zstacklib.utils import bash
 from zstacklib.utils import drbd
-from zstacklib.utils.plugin import completetask
 
 logger = log.get_logger(__name__)
 LOCK_FILE = "/var/run/zstack/ministorage.lock"
+BACKUP_DIR = "/var/lib/zstack/ministorage/backup"
+
 INIT_TAG = "zs::ministorage::init"
+FENCER_TAG = "zs::ministorage::fencer"
+MANAGEMENT_TAG = "zs::ministorage::management"
 HEARTBEAT_TAG = "zs::ministorage::heartbeat"
 VOLUME_TAG = "zs::ministorage::volume"
 IMAGE_TAG = "zs::ministorage::image"
@@ -29,12 +33,31 @@ DEFAULT_CHUNK_SIZE = "4194304"
 DRBD_START_PORT = 20000
 
 
+class AgentCmd(object):
+    def __init__(self):
+        pass
+
+
 class AgentRsp(object):
     def __init__(self):
         self.success = True
         self.error = None
         self.totalCapacity = None
         self.availableCapacity = None
+
+
+class ConnectCmd(AgentCmd):
+    @log.sensitive_fields("peerSshPassword", "peerSshUsername")
+    def __init__(self):
+        super(ConnectCmd, self).__init__()
+        self.diskIdentifiers = []
+        self.forceWipe = False
+        self.storageNetworkCidr = None
+        self.fencerAddress = None
+        self.magementAddress = None
+        self.peerManagementAddress = None
+        self.peerSshPassword = None
+        self.peerSshUsername = None
 
 
 class ConnectRsp(AgentRsp):
@@ -55,22 +78,31 @@ class VolumeRsp(AgentRsp):
         self.remoteRole = None
         self.remoteDiskStatus = None
         self.remoteNetworkStatus = None
+        self.minor = None
 
     def _init_from_drbd(self, r):
         """
 
         :type r: drbd.DrbdResource
         """
-        if not r.minor_allocated:
+        if not r.minor_allocated():
             self.localNetworkStatus = drbd.DrbdNetState.Unconfigured
             return
-        self.actualSize = lvm.get_lv_size(r.config.local_host.disk)
+        self.actualSize = int(lvm.get_lv_size(r.config.local_host.disk))
         self.resourceUuid = r.name
         self.localRole = r.get_role()
         self.localDiskStatus = r.get_dstate()
         self.remoteRole = r.get_remote_role()
         self.remoteDiskStatus = r.get_remote_dstate()
         self.localNetworkStatus = r.get_cstate()
+        self.minor = int(r.config.local_host.minor)
+
+
+
+class ActiveRsp(VolumeRsp):
+    def __init__(self):
+        super(ActiveRsp, self).__init__()
+        self.snapPath = ""
 
 
 class CheckBitsRsp(AgentRsp):
@@ -117,6 +149,12 @@ class RevertVolumeFromSnapshotRsp(VolumeRsp):
         super(RevertVolumeFromSnapshotRsp, self).__init__()
         self.newVolumeInstallPath = None
         self.size = None
+
+
+class GetQCOW2ReferenceRsp(AgentRsp):
+    def __init__(self):
+        super(GetQCOW2ReferenceRsp, self).__init__()
+        self.referencePaths = None
 
 
 def get_absolute_path_from_install_path(path):
@@ -191,12 +229,6 @@ class CheckDisk(object):
         logger.debug("resized pv %s (wwid: %s), return code: %s, stdout %s, stderr: %s" %
                      (disk_name, self.identifier, r, o, e))
 
-    def set_fail_if_no_path(self):
-        if not lvm.is_multipath_running():
-            return
-        cmd = shell.ShellCmd('ms=`multipath -l -v1`; for m in $ms; do dmsetup message $m 0 "fail_if_no_path"; done')
-        cmd(is_exception=False)
-
 
 class MiniStoragePlugin(kvmagent.KvmAgent):
 
@@ -216,11 +248,13 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
     GET_VOLUME_SIZE_PATH = "/ministorage/volume/getsize"
     CHECK_DISKS_PATH = "/ministorage/disks/check"
     MIGRATE_DATA_PATH = "/ministorage/volume/migrate"
-    REVERT_VOLUME_FROM_SNAPSHOT_PATH = "/ministorage/volume/revertfromsnapshot";
+    REVERT_VOLUME_FROM_SNAPSHOT_PATH = "/ministorage/volume/revertfromsnapshot"
+    GET_QCOW2_REFERENCE = "/ministorage/getqcow2reference"
+    FLUSH_CACHE = "/ministorage/cache/flush"
 
     def start(self):
         http_server = kvmagent.get_http_server()
-        http_server.register_async_uri(self.CONNECT_PATH, self.connect)
+        http_server.register_async_uri(self.CONNECT_PATH, self.connect, cmd=ConnectCmd())
         http_server.register_async_uri(self.DISCONNECT_PATH, self.disconnect)
         http_server.register_async_uri(self.CREATE_VOLUME_FROM_CACHE_PATH, self.create_root_volume)
         http_server.register_async_uri(self.DELETE_BITS_PATH, self.delete_bits)
@@ -236,6 +270,8 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.GET_VOLUME_SIZE_PATH, self.get_volume_size)
         http_server.register_async_uri(self.CHECK_DISKS_PATH, self.check_disks)
         http_server.register_async_uri(self.REVERT_VOLUME_FROM_SNAPSHOT_PATH, self.revert_volume_from_snapshot)
+        http_server.register_async_uri(self.GET_QCOW2_REFERENCE, self.get_qcow2_reference)
+        http_server.register_async_uri(self.FLUSH_CACHE, self.flush_cache)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -252,7 +288,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
             if cmd.rescan:
                 disk.rescan(path.split("/")[-1])
             if cmd.failIfNoPath:
-                disk.set_fail_if_no_path()
+                linux.set_fail_if_no_path()
 
         if cmd.vgUuid is not None and lvm.vg_exists(cmd.vgUuid):
             rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid, False)
@@ -277,7 +313,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
     @staticmethod
     def create_vg_if_not_found(vgUuid, diskPaths, hostUuid, forceWipe=False):
         @linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
-        def find_vg(vgUuid, raise_exception = True):
+        def find_vg(vgUuid, raise_exception=True):
             cmd = shell.ShellCmd("timeout 5 vgscan --ignorelockingfailure; vgs --nolocking %s -otags | grep %s" % (vgUuid, INIT_TAG))
             cmd(is_exception=False)
             if cmd.return_code != 0 and raise_exception:
@@ -290,6 +326,14 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
             find_vg(vgUuid)
         except RetryException as e:
             if forceWipe is True:
+                running_vm = bash.bash_o("virsh list | grep running | awk '{print $2}'").strip().split()
+                if running_vm != [] and running_vm[0] != "":
+                    for vm in running_vm:
+                        bash.bash_r("virsh destroy %s" % vm)
+                r = bash.bash_r("drbdadm down all")
+                if r == 0:
+                    bash.bash_r("mkdir -p %s" % BACKUP_DIR)
+                    bash.bash_r("mv /etc/drbd.d/*.res %s" % BACKUP_DIR)
                 lvm.wipe_fs(diskPaths, vgUuid)
 
             cmd = shell.ShellCmd("vgcreate -qq --addtag '%s::%s::%s::%s' --metadatasize %s %s %s" %
@@ -314,7 +358,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         return False
 
     @kvmagent.replyerror
-    @lock.file_lock(LOCK_FILE)
+    @lock.file_lock(LOCK_FILE, debug=True)
     def connect(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = ConnectRsp()
@@ -331,8 +375,9 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
             lvm.config_lvm_by_sed("reserved_stack", "reserved_stack=256", ["lvm.conf", "lvmlocal.conf"])
             lvm.config_lvm_by_sed("reserved_memory", "reserved_memory=131072", ["lvm.conf", "lvmlocal.conf"])
             lvm.config_lvm_by_sed("thin_pool_autoextend_threshold", "thin_pool_autoextend_threshold=80", ["lvm.conf", "lvmlocal.conf"])
+            lvm.config_lvm_by_sed("snapshot_autoextend_threshold", "snapshot_autoextend_threshold=80", ["lvm.conf", "lvmlocal.conf"])
 
-            lvm.config_lvm_filter(["lvm.conf", "lvmlocal.conf"])
+            lvm.config_lvm_filter(["lvm.conf", "lvmlocal.conf"], True)
 
         def config_drbd():
             bash.bash_r("sed -i 's/usage-count yes/usage-count no/g' /etc/drbd.d/global_common.conf")
@@ -355,6 +400,13 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         lvm.clean_vg_exists_host_tags(cmd.vgUuid, cmd.hostUuid, HEARTBEAT_TAG)
         lvm.add_vg_tag(cmd.vgUuid, "%s::%s::%s::%s" % (HEARTBEAT_TAG, cmd.hostUuid, time.time(), bash.bash_o('hostname').strip()))
 
+        if cmd.fencerAddress:
+            lvm.clean_vg_exists_host_tags(cmd.vgUuid, '\'\'', FENCER_TAG)
+            lvm.add_vg_tag(cmd.vgUuid, "%s::%s" % (FENCER_TAG, cmd.fencerAddress))
+        lvm.clean_vg_exists_host_tags(cmd.vgUuid, '\'\'', MANAGEMENT_TAG)
+        lvm.add_vg_tag(cmd.vgUuid, "%s::%s" % (MANAGEMENT_TAG, cmd.magementAddress))
+        self.generate_fencer(cmd.peerManagementAddress, cmd.peerSshUsername, cmd.peerSshPassword)
+
         if cmd.storageNetworkCidr is not None:
             nics = linux.get_nics_by_cidr(cmd.storageNetworkCidr)
             if len(nics) != 0:
@@ -362,7 +414,30 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         rsp.vgLvmUuid = lvm.get_vg_lvm_uuid(cmd.vgUuid)
         rsp.hostUuid = cmd.hostUuid
+        logger.debug("mini primary storage[uuid: %s] on host[uuid: %s] connected" % (cmd.vgUuid, cmd.hostUuid))
         return jsonobject.dumps(rsp)
+
+    @staticmethod
+    @bash.in_bash
+    def generate_fencer(peer_addr, peer_username, peer_password):
+        def configure_ssh_key():
+            bash.bash_roe("/bin/rm %s*" % mini_fencer.MINI_FENCER_KEY)
+            bash.bash_roe("ssh-keygen -P \"\" -f %s" % mini_fencer.MINI_FENCER_KEY)
+            ssh_pswd_file = linux.write_to_temp_file(peer_password)
+            r, o, e = bash.bash_roe("sshpass -f %s ssh-copy-id -i %s %s@%s" % (ssh_pswd_file, mini_fencer.MINI_FENCER_KEY, peer_username, peer_addr))
+            linux.write_to_temp_file(ssh_pswd_file)
+            if r == 0:
+                return
+
+        configure_ssh_key()
+        current_dir = os.path.split(os.path.realpath(__file__))[0]
+        fencer_path = "%s/mini_fencer.py" % current_dir
+        bash.bash_roe("sed -i 's/^PEER_USERNAME = .*$/PEER_USERNAME = \"%s\"/g' %s" % (peer_username, fencer_path))
+        bash.bash_roe("sed -i 's/^PEER_MGMT_ADDR = .*$/PEER_MGMT_ADDR = \"%s\"/g' %s" % (peer_addr, fencer_path))
+        bash.bash_roe("cp %s /usr/lib/drbd/mini_fencer.py" % fencer_path)
+        linux.sync_file(fencer_path)
+        linux.sync_file("/usr/lib/drbd/mini_fencer.py")
+        bash.bash_roe("sudo chmod 777 /usr/lib/drbd/mini_fencer.py")
 
     @kvmagent.replyerror
     @lock.file_lock(LOCK_FILE)
@@ -391,7 +466,9 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
             active_lvs = lvm.list_local_active_lvs(vgUuid)
             if len(active_lvs) == 0:
                 return
-            # drbd_resouces = blahblah
+            drbd_resources = [drbd.DrbdResource(lv.split("/")[-1]) for lv in active_lvs]
+            for r in drbd_resources:
+                r.destroy()
             logger.warn("active lvs %s will be deactivate" % active_lvs)
             lvm.deactive_lv(vgUuid)
             active_lvs = lvm.list_local_active_lvs(vgUuid)
@@ -420,7 +497,6 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         if command.return_code != 0:
             self.create_vg_if_not_found(cmd.vgUuid, [disk.get_path()], cmd.hostUuid, cmd.forceWipe)
         else:
-            lvm.check_gl_lock()
             if cmd.forceWipe is True:
                 lvm.wipe_fs([disk.get_path()], cmd.vgUuid)
             lvm.add_pv(cmd.vgUuid, disk.get_path(), DEFAULT_VG_METADATA_SIZE)
@@ -434,19 +510,19 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         install_abs_path = get_absolute_path_from_install_path(cmd.installPath)
         rsp = ResizeVolumeRsp()
-        r = drbd.DrbdResource(cmd.resourceUuid)
-        r._init_from_disk(install_abs_path)
 
         if not cmd.drbd:
             lvm.resize_lv_from_cmd(install_abs_path, cmd.size, cmd)
             return jsonobject.dumps(rsp)
 
-        if cmd.drbd:
-            with drbd.OperateDrbd(r):
-                r.resize()
+        r = drbd.DrbdResource(cmd.installPath.split("/")[-1])
+        r._init_from_disk(install_abs_path)
+        with drbd.OperateDrbd(r):
+            r.resize()
 
         with drbd.OperateDrbd(r):
-            if not cmd.live:
+            fmt = linux.get_img_fmt(r.get_dev_path())
+            if not cmd.live and fmt == 'qcow2':
                 shell.call("qemu-img resize %s %s" % (r.get_dev_path(), cmd.size))
             ret = linux.qcow2_virtualsize(r.get_dev_path())
         rsp.size = ret
@@ -454,10 +530,9 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
-    @lock.file_lock(LOCK_FILE)
     def create_root_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AgentRsp()
+        rsp = VolumeRsp()
         template_abs_path_cache = get_absolute_path_from_install_path(cmd.templatePathInCache)
         install_abs_path = get_absolute_path_from_install_path(cmd.installPath)
 
@@ -476,9 +551,10 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         virtual_size = linux.qcow2_virtualsize(template_abs_path_cache)
 
         try:
+            lvm.qcow2_lv_recursive_active(template_abs_path_cache, lvm.LvmlockdLockType.SHARE)
             if not lvm.lv_exists(install_abs_path):
                 lvm.create_lv_from_cmd(install_abs_path, virtual_size, cmd,
-                                                 "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()), False)
+                                       "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()), False)
             lvm.active_lv(install_abs_path)
             drbdResource.initialize(cmd.init, cmd, template_abs_path_cache)
         except Exception as e:
@@ -487,6 +563,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
             raise e
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+        rsp._init_from_drbd(drbdResource)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -505,42 +582,59 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         install_abs_path = get_absolute_path_from_install_path(path)
         if lvm.has_lv_tag(install_abs_path, IMAGE_TAG):
             logger.info('deleting lv image: ' + install_abs_path)
-            lvm.delete_image(install_abs_path, IMAGE_TAG)
+            if lvm.lv_exists(install_abs_path):
+                lvm.delete_image(install_abs_path, IMAGE_TAG)
         else:
             logger.info('deleting lv volume: ' + install_abs_path)
             r = drbd.DrbdResource(self.get_name_from_installPath(path))
-            r.destroy()
+            if r.exists is True:
+                r.destroy()
             lvm.delete_lv(install_abs_path)
+        lvm.delete_snapshots(install_abs_path)
+
+    @kvmagent.replyerror
+    def get_qcow2_reference(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        rsp = GetQCOW2ReferenceRsp()
+        rsp.referencePaths = []
+        real_path = get_absolute_path_from_install_path(cmd.path)
+        for f in lvm.list_local_active_lvs(cmd.vgUuid):
+            try:
+                backing_file = linux.qcow2_direct_get_backing_file(f)
+                if backing_file in [real_path ,cmd.path]:
+                    rsp.referencePaths.append(f)
+            except Exception as e:
+                logger.warn(e)
+                continue
+        for f in bash.bash_o("ls -l /dev/drbd* | grep -E '^b' | awk '{print $NF}'").splitlines():
+            f = f.strip()
+            if f == "":
+                continue
+            try:
+                if linux.qcow2_get_backing_file(f) in [real_path, cmd.path]:
+                    rsp.referencePaths.append(f)
+            except Exception as e:
+                logger.warn(e)
+                continue
+        logger.debug("find qcow2 %s referencess: %s" % (real_path, rsp.referencePaths))
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def flush_cache(self, req):
+        shell.call("/opt/MegaRAID/MegaCli/MegaCli64 -AdpCacheFlush -aAll")
+        return jsonobject.dumps(AgentRsp())
 
     @kvmagent.replyerror
     def create_template_from_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = VolumeRsp()
         volume_abs_path = get_absolute_path_from_install_path(cmd.volumePath)
-        install_abs_path = get_absolute_path_from_install_path(cmd.installPath)
+        snap_name = cmd.installPath.split("/")[-1]
 
-        if cmd.sharedVolume:
-            lvm.do_active_lv(volume_abs_path, lvm.LvmlockdLockType.SHARE, True)
-
-        with lvm.RecursiveOperateLv(volume_abs_path, shared=cmd.sharedVolume, skip_deactivate_tags=[IMAGE_TAG]):
-            virtual_size = linux.qcow2_virtualsize(volume_abs_path)
-            total_size = 0
-            for qcow2 in linux.qcow2_get_file_chain(volume_abs_path):
-                total_size += int(lvm.get_lv_size(qcow2))
-
-            if total_size > virtual_size:
-                total_size = virtual_size
-
-            if not lvm.lv_exists(install_abs_path):
-                lvm.create_lv_from_absolute_path(install_abs_path, total_size,
-                                                 "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
-            with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
-                linux.create_template(volume_abs_path, install_abs_path)
-                logger.debug('successfully created template[%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
-                if cmd.compareQcow2 is True:
-                    logger.debug("comparing qcow2 between %s and %s")
-                    bash.bash_errorout("time qemu-img compare %s %s" % (volume_abs_path, install_abs_path))
-                    logger.debug("confirmed qcow2 %s and %s are identical" % (volume_abs_path, install_abs_path))
+        r = drbd.DrbdResource(volume_abs_path.split("/")[-1])
+        with drbd.OperateDrbd(r):
+            lvm.create_lvm_snapshot(volume_abs_path, snapName=snap_name, drbd_path=r.get_dev_path())
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
@@ -558,12 +652,20 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def download_from_imagestore(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        if cmd.size is not None and cmd.provisioning is not None:
+            lvm.create_lv_from_cmd(self.convertInstallPathToAbsolute(cmd.primaryStorageInstallPath), cmd.size, cmd,
+                                   "%s::%s::%s" % (IMAGE_TAG, cmd.hostUuid, time.time()), False)
+            lvm.active_lv(self.convertInstallPathToAbsolute(cmd.primaryStorageInstallPath))
         self.imagestore_client.download_from_imagestore(cmd.mountPoint, cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
         rsp = AgentRsp()
         return jsonobject.dumps(rsp)
 
+    @staticmethod
+    def convertInstallPathToAbsolute(path):
+        # type: (string) -> string
+        return path.replace("mini:/", "/dev")
+
     @kvmagent.replyerror
-    @lock.file_lock(LOCK_FILE)
     def create_empty_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = VolumeRsp()
@@ -588,12 +690,12 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
                 virtual_size = linux.qcow2_virtualsize(backing_abs_path)
 
                 lvm.create_lv_from_cmd(install_abs_path, virtual_size, cmd,
-                                                     "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()), False)
+                                       "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()), False)
                 lvm.active_lv(install_abs_path)
                 drbdResource.initialize(cmd.init, cmd, backing_abs_path)
             elif not lvm.lv_exists(install_abs_path):
                 lvm.create_lv_from_cmd(install_abs_path, cmd.size, cmd,
-                                                     "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()), False)
+                                       "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()), False)
                 lvm.active_lv(install_abs_path)
                 drbdResource.initialize(cmd.init, cmd)
         except Exception as e:
@@ -617,12 +719,25 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         rsp = VolumeRsp()
 
         install_abs_path = get_absolute_path_from_install_path(cmd.primaryStorageInstallPath)
-        with lvm.OperateLv(install_abs_path, shared=False):
-            lvm.clean_lv_tag(install_abs_path, IMAGE_TAG)
-            lvm.add_lv_tag(install_abs_path, "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
+        lvm.active_lv(install_abs_path)
+        lvm.clean_lv_tag(install_abs_path, IMAGE_TAG)
+        lvm.add_lv_tag(install_abs_path, "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
 
-        r = drbd.DrbdResource(self.get_name_from_installPath(cmd.primaryStorageInstallPath))
-        rsp._init_from_drbd(r)
+        drbdResource = drbd.DrbdResource(install_abs_path.split("/")[-1], False)
+        drbdResource.config.local_host.hostname = cmd.local_host_name
+        drbdResource.config.local_host.disk = install_abs_path
+        drbdResource.config.local_host.minor = cmd.local_host_port - DRBD_START_PORT
+        drbdResource.config.local_host.address = "%s:%s" % (cmd.local_address, cmd.local_host_port)
+
+        drbdResource.config.remote_host.hostname = cmd.remote_host_name
+        drbdResource.config.remote_host.disk = install_abs_path
+        drbdResource.config.remote_host.minor = cmd.remote_host_port - DRBD_START_PORT
+        drbdResource.config.remote_host.address = "%s:%s" % (cmd.remote_address, cmd.remote_host_port)
+
+        drbdResource.config.write_config()
+        drbdResource.initialize(False, None, skip_clear_bits=cmd.init)
+
+        rsp._init_from_drbd(drbdResource)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -638,17 +753,70 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def active_lv(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = VolumeRsp()
+        rsp = ActiveRsp()
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid, raise_exception=False)
 
+        install_abs_path = get_absolute_path_from_install_path(cmd.installPath)
+        if lvm.has_lv_tag(install_abs_path, IMAGE_TAG):
+            lvm.qcow2_lv_recursive_active(install_abs_path, lvm.LvmlockdLockType.SHARE)
+            return jsonobject.dumps(rsp)
+
         drbdResource = drbd.DrbdResource(self.get_name_from_installPath(cmd.installPath))
-        if cmd.role == drbd.DrbdRole.Primary:
-            drbdResource.promote()
-        else:
+        if cmd.role == drbd.DrbdRole.Secondary:
             drbdResource.demote()
+            rsp._init_from_drbd(drbdResource)
+            return jsonobject.dumps(rsp)
+
+        if drbdResource.exists is False:
+            raise Exception("can not find volume %s" % cmd.installPath)
+
+        if self.test_network_ok_to_peer(drbdResource.config.remote_host.address.split(":")[0]) is False \
+                and mini_fencer.test_fencer(cmd.vgUuid, drbdResource.name) is False:
+            raise Exception("can not connect storage network or fencer")
+
+        if cmd.checkPeer and drbdResource.get_remote_role() == drbd.DrbdRole.Primary:
+            raise Exception("remote is also in primary role, can not promote")
+
+        if drbdResource.get_dstate() != "UpToDate":
+            raise Exception("local data is not uptodate, can not promote")
+
+        lvm.qcow2_lv_recursive_active(install_abs_path, lvm.LvmlockdLockType.EXCLUSIVE)
+        try:
+            drbdResource.promote()
+        except Exception as e:
+            if not cmd.force:
+                raise e
+            if self.test_network_ok_to_peer(drbdResource.config.remote_host.address.split(":")[0]):
+                raise Exception("storage network address %s still connected, wont force promote" %
+                                drbdResource.config.remote_host.address.split(":")[0])
+            if cmd.vmNics:
+                for vmNic in cmd.vmNics:
+                    if self.test_network_ok_to_peer(vmNic.ipAddress, vmNic.bridgeName):
+                        raise Exception("could arping %s via %s, it may split brain, wont proceed force promote"
+                                        % (vmNic.ipAddress, vmNic.bridgeName))
+            snap_path = None
+            try:
+                snap_path = lvm.create_lvm_snapshot(install_abs_path)
+                drbdResource.promote(True, 2, 2)
+                rsp.snapPath = snap_path
+            except Exception as ee:
+                if snap_path is not None:
+                    lvm.delete_lv(snap_path)
+                raise ee
 
         rsp._init_from_drbd(drbdResource)
         return jsonobject.dumps(rsp)
+
+    @staticmethod
+    @bash.in_bash
+    def test_network_ok_to_peer(peer_address, via_dev=None):
+        if not via_dev:
+            via_dev = bash.bash_o("ip -o r get %s | awk '{print $3}'" % peer_address).strip()
+        for i in range(5):
+            recv = bash.bash_r("timeout 2 arping -w 1 -b %s -I %s -c 1" % (peer_address, via_dev))
+            if recv == 0:
+                return True
+        return False
 
     @kvmagent.replyerror
     def get_volume_size(self, req):
@@ -656,21 +824,13 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         rsp = GetVolumeSizeRsp()
 
         install_abs_path = get_absolute_path_from_install_path(cmd.installPath)
-        r = drbd.DrbdResource(cmd.volumeUuid)
+        r = drbd.DrbdResource(cmd.installPath.split("/")[-1])
         with drbd.OperateDrbd(r):
             rsp.size = linux.qcow2_virtualsize(r.get_dev_path())
         rsp.actualSize = lvm.get_lv_size(install_abs_path)
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         rsp._init_from_drbd(r)
         return jsonobject.dumps(rsp)
-
-    @staticmethod
-    def calc_qcow2_option(self, options, has_backing_file, provisioning=None):
-        if options is None or options == "":
-            return " "
-        if has_backing_file or provisioning == lvm.VolumeProvisioningStrategy.ThinProvisioning:
-            return re.sub("-o preallocation=\w* ", " ", options)
-        return options
 
     @kvmagent.replyerror
     def revert_volume_from_snapshot(self, req):

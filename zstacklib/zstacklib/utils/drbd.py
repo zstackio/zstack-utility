@@ -1,4 +1,5 @@
 import os
+import platform
 
 from zstacklib.utils import linux
 from zstacklib.utils import bash
@@ -48,12 +49,14 @@ class DrbdResource(object):
         self.remote_role = None
         self.local_disk_state = None
         self.remote_disk_state = None
+        self.exists = False
 
         if self.name is None:
             return
 
         try:
             self._init_from_name()
+            self.exists = True
         except Exception:
             logger.debug("can not find config of resource %s" % self.name)
             return
@@ -110,27 +113,44 @@ class DrbdResource(object):
             bash.bash_errorout("drbdadm up %s" % self.name)
 
     @bash.in_bash
+    @linux.retry(5, 2)
     def down(self):
         r, o, e = bash.bash_roe("drbdadm down %s" % self.name)
         if r == 0:
             return
         if "conflicting use of device-minor" in o+e:
+            logger.debug("detect conflicting use of device-minor! %s" % e)
             return
-        if 0 == bash.bash_r("cat /proc/drbd | grep '^%s: cs:Unconfigured'" % self.config.local_host.minor):
+        if 0 == bash.bash_r("cat /proc/drbd | grep '^[[:space:]]*%s: cs:Unconfigured'" % self.config.local_host.minor):
+            return
+        if 1 == bash.bash_r("cat /proc/drbd | grep '^[[:space:]]*%s: '" % self.config.local_host.minor):
             return
         raise Exception("demote resource %s failed: %s, %s, %s" % (self.name, r, o, e))
 
     @bash.in_bash
-    @linux.retry(times=15, sleep_time=2)
-    def promote(self, force=False):
-        f = " --force" if force else ""
-        r, o, e = bash.bash_roe("drbdadm primary %s %s" % (self.name, f))
-        if self.get_role() != DrbdRole.Primary:
-            raise RetryException("promote failed, return: %s, %s, %s. resource %s still not in role %s" % (r, o, e, self.name, DrbdRole.Primary))
+    def promote(self, force=False, retry=90, sleep=3):
+        @bash.in_bash
+        @linux.retry(times=retry, sleep_time=sleep)
+        def do_promote():
+            f = " --force" if force else ""
+            r, o, e = bash.bash_roe("drbdadm primary %s %s" % (self.name, f))
+            if self.get_role() != DrbdRole.Primary:
+                raise RetryException("promote failed, return: %s, %s, %s. resource %s still not in role %s" % (
+                    r, o, e, self.name, DrbdRole.Primary))
+
+        if not force:
+            do_promote()
+        else:
+            bash.bash_errorout("drbdadm primary %s --force" % self.name)
 
     @bash.in_bash
     def demote(self):
-        r, o, e = bash.bash_roe("drbdadm secondary %s" % self.name)
+        @bash.in_bash
+        @linux.retry(times=30, sleep_time=2)
+        def do_demote():
+            bash.bash_errorout("drbdadm secondary %s" % self.name)
+
+        do_demote()
 
     @bash.in_bash
     def get_cstate(self):
@@ -160,26 +180,30 @@ class DrbdResource(object):
         return "/dev/drbd%s" % self.config.local_host.minor
 
     @bash.in_bash
-    @linux.retry(times=15, sleep_time=2)
+    @linux.retry(times=90, sleep_time=3)
     def clear_bits(self):
         bash.bash_errorout("drbdadm new-current-uuid --clear-bitmap %s" % self.name)
 
     @bash.in_bash
     def minor_allocated(self):
         r, o, e = bash.bash_roe("drbdadm role %s" % self.name)
-        if e is not None and "Device minor not allocated" in e:
+        if e is not None and "Device minor not allocated" in o+e:
             logger.debug("Device %s minor not allocated!" % self.name)
+            return False
+        if e is not None and "not defined in your config" in o+e:
             return False
         return True
 
     @bash.in_bash
-    def initialize(self, primary, cmd, backing=None):
-        bash.bash_errorout("echo yes | drbdadm create-md %s" % self.name)
+    def initialize(self, primary, cmd, backing=None, skip_clear_bits=False):
+        bash.bash_errorout("echo yes | drbdadm create-md %s --force" % self.name)
         self.up()
+        if skip_clear_bits:
+            return
         if not primary:
             self.clear_bits()
         else:
-            self.promote(False)
+            self.promote()
             if backing:
                 linux.qcow2_create_with_backing_file_and_cmd(backing, self.get_dev_path(), cmd)
             else:
@@ -222,11 +246,10 @@ class DrbdConfigStruct(DrbdStruct):
 
         # handlers
         self.split_brain = '"/usr/lib/drbd/notify-split-brain.sh root"'
-        # TODO(weiw): fix it
-        self.fence_peer = '"echo `date +%s.%N` >> /tmp/hehe.txt"'
+        self.fence_peer = '"python /usr/lib/drbd/mini_fencer.py $DRBD_RESOURCE"'
 
         # disk
-        self.fencing = 'resource-only'
+        self.fencing = 'resource-and-stonith'
 
     def read_config(self):
         assert self.path
@@ -288,12 +311,19 @@ resource {{ name }} {
     protocol C;
 
     sndbuf-size {{ net_sndbuf_size }};
+    rcvbuf-size {{ net_sndbuf_size }};
     allow-two-primaries yes;
     verify-alg {{ net_verify_alg }};
+    max-buffers 16000;
+    max-epoch-size 20000;
+    max-buffers 51200;
   }
 
   disk {
     fencing {{ fencing }};
+    resync-rate 100M;
+    c-min-rate 102400;
+    c-max-rate 204800;
   }
 
   on {{ local_host_hostname }} {  # local
@@ -343,17 +373,20 @@ class DrbdHostStruct(DrbdStruct):
         self.minor = None
         self.meta_disk = "internal"
 
+    def get_drbd_device(self):
+        return "/dev/drbd%s" % self.minor
+
 
 class DrbdNetStruct(DrbdStruct):
     def __init__(self):
         super(DrbdNetStruct, self).__init__()
-        self.csums_alg = 'sha1'
+        self.csums_alg = 'crc32'
         self.after_sb_0pri = 'discard-zero-changes'
         self.after_sb_1pri = 'call-pri-lost-after-sb'
         self.after_sb_2pri = 'call-pri-lost-after-sb'
-        self.sndbuf_size = 0
+        self.sndbuf_size = '2m'
         self.allow_two_primaries = 'yes'
-        self.verify_alg = 'md5'
+        self.verify_alg = 'crc32'
 
 
 @bash.in_bash
@@ -370,7 +403,9 @@ def install_drbd():
     mod_installed = bash.bash_r("lsmod | grep drbd") == 0
     mod_exists = bash.bash_r("modinfo drbd") == 0
     utils_installed = bash.bash_r("rpm -ql drbd-utils || rpm -ql drbd84-utils") == 0
-    utils_exists, o = bash.bash_ro("ls /opt/zstack-dvd/Packages/drbd-utils*")
+    basearch = platform.machine()
+    releasever = bash.bash_o("awk '{print $3}' /etc/zstack-release")
+    utils_exists, o = bash.bash_ro("ls /opt/zstack-dvd/{}/{}/Packages/drbd-utils*".format(basearch, releasever))
 
     if mod_installed and utils_exists:
         return
@@ -418,6 +453,8 @@ def up_all_resouces():
     all_names = bash.bash_o("ls /etc/drbd.d/ | grep -v global_common.conf").strip().splitlines()
     for name in all_names:
         try:
-            DrbdResource(name.split(".")[0])
+            r = DrbdResource(name.split(".")[0])
+            if r.config.local_host.minor is not None and linux.linux_lsof(r.config.local_host.get_drbd_device()).strip() == "":
+                r.demote()
         except Exception as e:
             logger.warn("up resource %s failed: %s" % (name, e.message))

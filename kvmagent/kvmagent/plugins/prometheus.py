@@ -1,26 +1,31 @@
-from kvmagent import kvmagent
-from zstacklib.utils import jsonobject
-from zstacklib.utils import http
-from zstacklib.utils import lock
-from zstacklib.utils import log
-from zstacklib.utils.bash import *
-from zstacklib.utils import linux
-from zstacklib.utils import thread
-from zstacklib.utils import lvm
-from jinja2 import Template
 import os.path
-import re
-import time
-import traceback
-from prometheus_client.core import GaugeMetricFamily,REGISTRY
+import threading
+
+import typing
 from prometheus_client import start_http_server
+from prometheus_client.core import GaugeMetricFamily, REGISTRY
+
+from kvmagent import kvmagent
+from zstacklib.utils import http
+from zstacklib.utils import iptables
+from zstacklib.utils import jsonobject
+from zstacklib.utils import lock
+from zstacklib.utils import lvm
+from zstacklib.utils import misc
+from zstacklib.utils import thread
+from zstacklib.utils.bash import *
+from zstacklib.utils.ip import get_nic_supported_max_speed
 
 logger = log.get_logger(__name__)
+collector_dict = {}  # type: Dict[str, threading.Thread]
+latest_collect_result = {}
+collectResultLock = threading.RLock()
+IPTABLES_CMD = iptables.get_iptables_cmd()
 
 def collect_host_network_statistics():
 
-    all_eths = bash_o("ls /sys/class/net/").split()
-    virtual_eths = bash_o("ls /sys/devices/virtual/net/").split()
+    all_eths = os.listdir("/sys/class/net/")
+    virtual_eths = os.listdir("/sys/devices/virtual/net/")
 
     interfaces = []
     for eth in all_eths:
@@ -40,22 +45,22 @@ def collect_host_network_statistics():
     all_out_packets = 0
     all_out_errors = 0
     for intf in interfaces:
-        res = bash_o("cat /sys/class/net/{}/statistics/rx_bytes".format(intf))
+        res = linux.read_file("/sys/class/net/{}/statistics/rx_bytes".format(intf))
         all_in_bytes += int(res)
 
-        res = bash_o("cat /sys/class/net/{}/statistics/rx_packets".format(intf))
+        res = linux.read_file("/sys/class/net/{}/statistics/rx_packets".format(intf))
         all_in_packets += int(res)
 
-        res = bash_o("cat /sys/class/net/{}/statistics/rx_errors".format(intf))
+        res = linux.read_file("/sys/class/net/{}/statistics/rx_errors".format(intf))
         all_in_errors += int(res)
 
-        res = bash_o("cat /sys/class/net/{}/statistics/tx_bytes".format(intf))
+        res = linux.read_file("/sys/class/net/{}/statistics/tx_bytes".format(intf))
         all_out_bytes += int(res)
 
-        res = bash_o("cat /sys/class/net/{}/statistics/tx_packets".format(intf))
+        res = linux.read_file("/sys/class/net/{}/statistics/tx_packets".format(intf))
         all_out_packets += int(res)
 
-        res = bash_o("cat /sys/class/net/{}/statistics/tx_errors".format(intf))
+        res = linux.read_file("/sys/class/net/{}/statistics/tx_errors".format(intf))
         all_out_errors += int(res)
 
     metrics = {
@@ -95,31 +100,8 @@ def collect_host_capacity_statistics():
 
     metrics = {
         'zstack_used_capacity_in_bytes': GaugeMetricFamily('zstack_used_capacity_in_bytes',
-                                                           'ZStack used capacity in bytes'),
-        'host_fs_size': GaugeMetricFamily('host_fs_size',
-                                          'Host filesystem total capacity in bytes', None, ['device', 'mountpoint']),
-        'host_fs_avail': GaugeMetricFamily('host_fs_avail',
-                                           'Host filesystem available capacity in bytes', None, ['device', 'mountpoint']),
-        'host_root_fs_size': GaugeMetricFamily('host_root_fs_size',
-                                               'Host root filesystem available capacity in bytes', None,
-                                               ['device', 'mountpoint']),
-        'host_root_fs_avail': GaugeMetricFamily('host_root_fs_avail',
-                                                'Host root filesystem available capacity in bytes', None,
-                                                ['device', 'mountpoint']),
-        'host_root_fs_used': GaugeMetricFamily('host_root_fs_used',
-                                               'Host root filesystem used capacity in bytes', None,
-                                               ['device', 'mountpoint'])
+                                                           'ZStack used capacity in bytes')
     }
-
-    file_sizes = bash_o('df -k').splitlines()
-    for i in range(1, len(file_sizes)):
-        info = file_sizes[i].split()
-        metrics['host_fs_size'].add_metric([info[0], info[5]], float(info[1])*1024)
-        metrics['host_fs_avail'].add_metric([info[0], info[5]], float(info[3])*1024)
-        if info[5] == '/':
-            metrics['host_root_fs_size'].add_metric([info[0], info[5]], float(info[1])*1024)
-            metrics['host_root_fs_avail'].add_metric([info[0], info[5]], float(info[3])*1024)
-            metrics['host_root_fs_used'].add_metric([info[0], info[5]], float(info[2])*1024)
 
     zstack_used_capacity = 0
     for dir in zstack_dir:
@@ -141,11 +123,19 @@ def collect_lvm_capacity_statistics():
                                       'volume group and thin pool free size', None, ['vg_name']),
     }
 
+    r = bash_r("grep '^[[:space:]]*use_lvmlockd=1' /etc/lvm/lvm.conf")
+    if r == 0:
+        return metrics.values()
+
+    r = bash_r("grep -Ev '^[[:space:]]*#|^[[:space:]]*$' /etc/multipath/wwids")
+    if r == 0:
+        linux.set_fail_if_no_path()
+
     r, o, e = bash_roe("vgs --nolocking --noheading -oname")
     if r != 0 or len(o.splitlines()) == 0:
-        metrics.values()
+        return metrics.values()
 
-    vg_names = bash_o('vgs --nolocking --noheading -oname').splitlines()
+    vg_names = o.splitlines()
     for name in vg_names:
         name = name.strip()
         size, avail = lvm.get_vg_size(name, False)
@@ -175,7 +165,7 @@ def convert_disk_state_to_int(state):
     :type state: str
     """
     state = state.lower()
-    if "online" in state:
+    if "online" in state or "jobd" in state:
         return 0
     elif "rebuild" in state:
         return 5
@@ -194,12 +184,15 @@ def collect_raid_state():
         'physical_disk_state': GaugeMetricFamily('physical_disk_state',
                                                  'physical disk state', None,
                                                  ['slot_number', 'disk_group']),
+        'physical_disk_temperature': GaugeMetricFamily('physical_disk_temperature',
+                                                       'physical disk temperature', None,
+                                                       ['slot_number', 'disk_group']),
     }
     if bash_r("/opt/MegaRAID/MegaCli/MegaCli64 -LDInfo -LALL -aAll") != 0:
         return metrics.values()
 
     raid_info = bash_o("/opt/MegaRAID/MegaCli/MegaCli64 -LDInfo -LALL -aAll | grep -E 'Target Id|State'").strip().splitlines()
-    target_id = state = None
+    target_id = state = "unknown"
     for info in raid_info:
         if "Target Id" in info:
             target_id = info.strip().strip(")").split(" ")[-1]
@@ -208,8 +201,8 @@ def collect_raid_state():
             metrics['raid_state'].add_metric([target_id], convert_raid_state_to_int(state))
 
     disk_info = bash_o(
-        "/opt/MegaRAID/MegaCli/MegaCli64 -PDList -aAll | grep -E 'Slot Number|DiskGroup|Firmware state'").strip().splitlines()
-    slot_number = state = disk_group = None
+        "/opt/MegaRAID/MegaCli/MegaCli64 -PDList -aAll | grep -E 'Slot Number|DiskGroup|Firmware state|Drive Temperature'").strip().splitlines()
+    slot_number = state = disk_group = "unknown"
     for info in disk_info:
         if "Slot Number" in info:
             slot_number = info.strip().split(" ")[-1]
@@ -217,7 +210,13 @@ def collect_raid_state():
             kvs = info.replace("Drive's position: ", "").split(",")
             disk_group = filter(lambda x: "DiskGroup" in x, kvs)[0]
             disk_group = disk_group.split(" ")[-1]
+        elif "Drive Temperature" in info:
+            temp = info.split(":")[1].split("C")[0]
+            metrics['physical_disk_temperature'].add_metric([slot_number, disk_group], int(temp))
         else:
+            disk_group = "JBOD" if disk_group == "unknown" and info.count("JBOD") > 0 else disk_group
+            disk_group = "unknown" if disk_group is None else disk_group
+
             state = info.strip().split(":")[-1]
             metrics['physical_disk_state'].add_metric([slot_number, disk_group], convert_disk_state_to_int(state))
 
@@ -239,17 +238,21 @@ def collect_equipment_state():
         for info in ps_info.splitlines():
             info = info.strip()
             ps_id = info.split("|")[0].strip().split(" ")[0]
-            health = 10 if "fail" in info.lower() else 0
+            health = 10 if "fail" in info.lower() or "lost" in info.lower() else 0
             metrics['power_supply'].add_metric([ps_id], health)
 
     metrics['ipmi_status'].add_metric([], bash_r("ipmitool mc info"))
 
-    nics = bash_o("find /sys/class/net -type l -not -lname '*virtual*' -printf '%f\n'").splitlines()
+    nics = bash_o("find /sys/class/net -type l -not -lname '*virtual*' -printf '%f\\n'").splitlines()
     if len(nics) != 0:
         for nic in nics:
             nic = nic.strip()
-            status = bash_r("grep 1 /sys/class/net/%s/carrier" % nic)
-            speed = bash_o("cat /sys/class/net/%s/speed" % nic).strip()
+            try:
+                # NOTE(weiw): sriov nic contains carrier file but can not read
+                status = linux.read_file("/sys/class/net/%s/carrier" % nic) == 1
+            except Exception as e:
+                status = True
+            speed = str(get_nic_supported_max_speed(nic))
             metrics['physical_network_interface'].add_metric([nic, speed], status)
 
     return metrics.values()
@@ -257,9 +260,11 @@ def collect_equipment_state():
 
 kvmagent.register_prometheus_collector(collect_host_network_statistics)
 kvmagent.register_prometheus_collector(collect_host_capacity_statistics)
-kvmagent.register_prometheus_collector(collect_lvm_capacity_statistics)
-kvmagent.register_prometheus_collector(collect_raid_state)
-kvmagent.register_prometheus_collector(collect_equipment_state)
+
+if misc.isMiniHost():
+    kvmagent.register_prometheus_collector(collect_lvm_capacity_statistics)
+    kvmagent.register_prometheus_collector(collect_raid_state)
+    kvmagent.register_prometheus_collector(collect_equipment_state)
 
 
 class PrometheusPlugin(kvmagent.KvmAgent):
@@ -268,10 +273,9 @@ class PrometheusPlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     @in_bash
-    def start_collectd_exporter(self, req):
-
+    def start_prometheus_exporter(self, req):
         @in_bash
-        def start_exporter(cmd):
+        def start_collectd(cmd):
             conf_path = os.path.join(os.path.dirname(cmd.binaryPath), 'collectd.conf')
 
             conf = '''Interval {{INTERVAL}}
@@ -366,18 +370,26 @@ LoadPlugin virt
                     fd.write(conf)
                 need_restart_collectd = True
 
-            cpid = linux.find_process_by_cmdline(['collectd', conf_path])
-            mpid = linux.find_process_by_cmdline(['collectdmon', conf_path])
+            cpid = linux.find_process_by_command('collectd', [conf_path])
+            mpid = linux.find_process_by_command('collectdmon', [conf_path])
 
             if not cpid:
                 bash_errorout('collectdmon -- -C %s' % conf_path)
             else:
+                bash_errorout('kill -TERM %s' % cpid)
                 if need_restart_collectd:
                     if not mpid:
-                        bash_errorout('kill -TERM %s' % cpid)
                         bash_errorout('collectdmon -- -C %s' % conf_path)
                     else:
                         bash_errorout('kill -HUP %s' % mpid)
+                else:
+                    if not mpid:
+                        bash_errorout('collectdmon -- -C %s' % conf_path)
+
+        @in_bash
+        def start_exporter(cmd):
+            if "collectd_exporter" in cmd.binaryPath:
+                start_collectd(cmd)
 
             pid = linux.find_process_by_cmdline([cmd.binaryPath])
             if not pid:
@@ -419,35 +431,102 @@ LoadPlugin virt
             needle = '-A INPUT -p tcp -m tcp --dport %d' % port
             drules = [ r.replace("-A ", "-D ") for r in rules if needle in r ]
             for rule in drules:
-                bash_r("iptables -w %s" % rule)
+                bash_r("%s %s" % (IPTABLES_CMD, rule))
 
-            bash_r("iptables -w -I INPUT -p tcp --dport %s -j ACCEPT" % port)
+            bash_r("%s -I INPUT -p tcp --dport %s -j ACCEPT" % (IPTABLES_CMD, port))
 
-        rules = bash_o("iptables -w -S INPUT").splitlines()
+        rules = bash_o("%s -S INPUT" % IPTABLES_CMD).splitlines()
         install_iptables_port(rules, 7069)
         install_iptables_port(rules, 9100)
         install_iptables_port(rules, 9103)
 
     def install_colletor(self):
         class Collector(object):
-            def collect(self):
-                try:
-                    ret = []
-                    for c in kvmagent.metric_collectors:
-                        ret.extend(c())
+            __collector_cache = {}
 
-                    return ret
+            @classmethod
+            def __get_cache__(cls):
+                # type: () -> list
+                keys = cls.__collector_cache.keys()
+                if keys is None or len(keys) == 0:
+                    return None
+                if (time.time() - keys[0]) < 9:
+                    return cls.__collector_cache.get(keys[0])
+                return None
+
+            @classmethod
+            def __store_cache__(cls, ret):
+                # type: (list) -> None
+                cls.__collector_cache.clear()
+                cls.__collector_cache.update({time.time(): ret})
+
+            @classmethod
+            def check(cls, v):
+                try:
+                    if v is None:
+                        return False
+                    if isinstance(v, GaugeMetricFamily):
+                        return Collector.check(v.samples)
+                    if isinstance(v, list) or isinstance(v, tuple):
+                        for vl in v:
+                            if Collector.check(vl) is False:
+                                return False
+                    if isinstance(v, dict):
+                        for vv in v.itervalues():
+                            if Collector.check(vv) is False:
+                                return False
                 except Exception as e:
-                    content = traceback.format_exc()
-                    err = '%s\n%s\n' % (str(e), content)
-                    logger.warn(err)
-                    return []
+                    logger.warn("got exception in check value %s: %s" % (v, e))
+                    return True
+                return True
+
+            def collect(self):
+                global latest_collect_result
+                ret = []
+
+                def get_result_run(f, fname):
+                    # type: (typing.Callable, str) -> None
+                    global collectResultLock
+                    global latest_collect_result
+
+                    r = f()
+                    if not Collector.check(r):
+                        logger.warn("result from collector %s contains illegal character None" % fname)
+                        return
+                    with collectResultLock:
+                        latest_collect_result[fname] = r
+
+                cache = Collector.__get_cache__()
+                if cache is not None:
+                    return cache
+
+                for c in kvmagent.metric_collectors:
+                    name = "%s.%s" % (c.__module__, c.__name__)
+                    if collector_dict.get(name) is not None and collector_dict.get(name).is_alive():
+                        continue
+                    collector_dict[name] = thread.ThreadFacade.run_in_thread(get_result_run, (c, name,))
+
+                for i in range(7):
+                    for t in collector_dict.values():
+                        if t.is_alive():
+                            time.sleep(0.5)
+                            continue
+
+                for k in collector_dict.iterkeys():
+                    if collector_dict[k].is_alive():
+                        logger.warn("It seems that the collector [%s] has not been completed yet,"
+                                    " temporarily use the last calculation result." % k)
+
+                for v in latest_collect_result.itervalues():
+                    ret.extend(v)
+                Collector.__store_cache__(ret)
+                return ret
 
         REGISTRY.register(Collector())
 
     def start(self):
         http_server = kvmagent.get_http_server()
-        http_server.register_async_uri(self.COLLECTD_PATH, self.start_collectd_exporter)
+        http_server.register_async_uri(self.COLLECTD_PATH, self.start_prometheus_exporter)
 
         self.install_colletor()
         start_http_server(7069)

@@ -10,6 +10,14 @@
         <checkProperty property="zstacknetwork.source" />
         <checkFile file="${zstacknetwork.source}" />
 
+        <exec executable="make" dir="${zstacknetwork.source}" failonerror="true">
+            <arg value="clean" />
+        </exec>
+
+        <exec executable="make" dir="${zstacknetwork.source}" failonerror="true">
+            <arg value="package" />
+        </exec>
+
         <copy todir="${zsn.bdir}/">
             <fileset dir="${zstacknetwork.source}/target/package/zsn-agent">
                 <include name="vyos" />

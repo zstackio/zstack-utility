@@ -1,5 +1,6 @@
 import functools
 import random
+import os
 import os.path
 import time
 
@@ -8,15 +9,19 @@ from zstacklib.utils import bash
 from zstacklib.utils import lock
 from zstacklib.utils import log
 from zstacklib.utils import linux
+from zstacklib.utils import qemu_img
 
 logger = log.get_logger(__name__)
 LV_RESERVED_SIZE = 1024*1024*4
 LVM_CONFIG_PATH = "/etc/lvm"
+LVM_CONFIG_FILE = '/etc/lvm/lvm.conf'
 SANLOCK_CONFIG_FILE_PATH = "/etc/sanlock/sanlock.conf"
 SANLOCK_IO_TIMEOUT = 40
 LVMLOCKD_LOG_FILE_PATH = "/var/log/lvmlockd/lvmlockd.log"
+LVMLOCKD_LOG_RSYSLOG_PATH = "/etc/rsyslog.d/lvmlockd.conf"
 LVMLOCKD_LOG_LOGROTATE_PATH = "/etc/logrotate.d/lvmlockd"
 LVM_CONFIG_BACKUP_PATH = "/etc/lvm/zstack-backup"
+LVM_CONFIG_ARCHIVE_PATH = "/etc/lvm/archive"
 SUPER_BLOCK_BACKUP = "superblock.bak"
 COMMON_TAG = "zs::sharedblock"
 VOLUME_TAG = COMMON_TAG + "::volume"
@@ -151,7 +156,6 @@ def get_block_devices():
     return block_devices
 
 
-@bash.in_bash
 def is_multipath_running():
     r = bash.bash_r("multipath -t")
     if r != 0:
@@ -307,27 +311,43 @@ def config_lvm_by_sed(keyword, entry, files):
     if not os.path.exists(LVM_CONFIG_PATH):
         raise Exception("can not find lvm config path: %s, config lvm failed" % LVM_CONFIG_PATH)
 
-    for file in files:
+    for f in files:
         cmd = shell.ShellCmd("sed -i 's/.*\\b%s\\b.*/%s/g' %s/%s" %
-                             (keyword, entry, LVM_CONFIG_PATH, file))
+                             (keyword, entry, LVM_CONFIG_PATH, f))
         cmd(is_exception=False)
-    linux.sync()
     logger.debug(bash.bash_o("lvmconfig --type diff"))
 
 
 @bash.in_bash
-def config_lvm_filter(files):
+def config_lvm_filter(files, no_drbd=False, preserve_disks=None):
+    # type: (list[str], bool, set[str]) -> object
     if not os.path.exists(LVM_CONFIG_PATH):
         raise Exception("can not find lvm config path: %s, config lvm failed" % LVM_CONFIG_PATH)
 
-    vgs = bash.bash_o("vgs --nolocking -oname --noheading").splitlines()
+    if preserve_disks is not None and len(preserve_disks) != 0:
+        filter_str = 'filter=['
+        for disk in preserve_disks:
+            filter_str += '"a|^%s$|", ' % disk.replace("/", "\\/")
+        filter_str += '"r\/.*\/"]'
+
+        for f in files:
+            bash.bash_r("sed -i 's/.*\\b%s.*/%s/g' %s/%s" % ("filter", filter_str, LVM_CONFIG_PATH, f))
+            bash.bash_r("sed -i 's/.*\\b%s.*/global_%s/g' %s/%s" % ("global_filter", filter_str, LVM_CONFIG_PATH, f))
+        linux.sync_file(LVM_CONFIG_FILE)
+        return
+
     filter_str = 'filter=["r|\\/dev\\/cdrom|"'
+    vgs = bash.bash_o("vgs --nolocking -oname --noheading").splitlines()
     for vg in vgs:
         filter_str += ', "r\\/dev\\/mapper\\/%s.*\\/"' % vg.strip()
+    if no_drbd:
+        filter_str += ', "r\\/dev\\/drbd.*\\/"'
+
     filter_str += ']'
 
-    for file in files:
-        bash.bash_r("sed -i 's/.*\\b%s.*/%s/g' %s/%s" % ("filter", filter_str, LVM_CONFIG_PATH, file))
+    for f in files:
+        bash.bash_r("sed -i 's/.*\\b%s.*/%s/g' %s/%s" % ("filter", filter_str, LVM_CONFIG_PATH, f))
+    linux.sync_file(LVM_CONFIG_FILE)
 
 
 def config_sanlock_by_sed(keyword, entry):
@@ -337,24 +357,44 @@ def config_sanlock_by_sed(keyword, entry):
     cmd = shell.ShellCmd("sed -i 's/.*%s.*/%s/g' %s" %
                          (keyword, entry, SANLOCK_CONFIG_FILE_PATH))
     cmd(is_exception=False)
-    linux.sync()
+    linux.sync_file(SANLOCK_CONFIG_FILE_PATH)
 
 
-def config_lvmlockd_by_sed():
-    cmd = shell.ShellCmd(
-        "sed -i 's/.*ExecStart=.*/ExecStart=\\/usr\\/sbin\\/lvmlockd --daemon-debug --sanlock-timeout %s/g' /usr/lib/systemd/system/lvm2-lvmlockd.service" % SANLOCK_IO_TIMEOUT)
-    cmd(is_exception=False)
+def config_lvmlockd():
+    content = """[Unit]
+Description=LVM2 lock daemon
+Documentation=man:lvmlockd(8)
+After=lvm2-lvmetad.service
 
-    if bash.bash_r("grep StandardOutput /usr/lib/systemd/system/lvm2-lvmlockd.service") != 0:
-        cmd = shell.ShellCmd(
-            "sed -i '/ExecStart/a StandardOutput=%s' /usr/lib/systemd/system/lvm2-lvmlockd.service" % LVMLOCKD_LOG_FILE_PATH)
-        cmd(is_exception=False)
+[Service]
+Type=simple
+NonBlocking=true
+ExecStart=/usr/sbin/lvmlockd --daemon-debug --sanlock-timeout %s
+StandardError=syslog
+StandardOutput=syslog
+SyslogIdentifier=lvmlockd
+Environment=SD_ACTIVATION=1
+PIDFile=/run/lvmlockd.pid
+SendSIGKILL=no
 
-    if bash.bash_r("grep StandardError /usr/lib/systemd/system/lvm2-lvmlockd.service") != 0:
-        cmd = shell.ShellCmd(
-            "sed -i '/ExecStart/a StandardError=%s' /usr/lib/systemd/system/lvm2-lvmlockd.service" % LVMLOCKD_LOG_FILE_PATH)
-        cmd(is_exception=False)
-    linux.sync()
+[Install]
+WantedBy=multi-user.target
+""" % SANLOCK_IO_TIMEOUT
+    with open("/usr/lib/systemd/system/lvm2-lvmlockd.service", 'w') as f:
+        f.write(content)
+    os.chmod("/usr/lib/systemd/system/lvm2-lvmlockd.service", 0644)
+
+    if not os.path.exists(LVMLOCKD_LOG_RSYSLOG_PATH):
+        content = """if $programname == 'lvmlockd' then %s 
+& stop
+""" % LVMLOCKD_LOG_FILE_PATH
+        with open(LVMLOCKD_LOG_RSYSLOG_PATH, 'w') as f:
+            f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
+        os.chmod(LVMLOCKD_LOG_RSYSLOG_PATH, 0644)
+        shell.call("systemctl restart rsyslog", exception=False)
+
     cmd = shell.ShellCmd("systemctl daemon-reload")
     cmd(is_exception=False)
 
@@ -374,25 +414,27 @@ def start_lvmlockd():
     if not os.path.exists(os.path.dirname(LVMLOCKD_LOG_FILE_PATH)):
         os.mkdir(os.path.dirname(LVMLOCKD_LOG_FILE_PATH))
 
-    config_lvmlockd_by_sed()
+    config_lvmlockd()
     for service in ["wdmd", "sanlock", "lvm2-lvmlockd"]:
         cmd = shell.ShellCmd("timeout 30 systemctl start %s" % service)
         cmd(is_exception=True)
 
-    if not os.path.exists(LVMLOCKD_LOG_LOGROTATE_PATH):
-        content = """/var/log/lvmlockd/lvmlockd.log {
-    rotate 5
+    content = """/var/log/lvmlockd/lvmlockd.log {
+    rotate 15
     missingok
     copytruncate
     size 30M
+    su root root
     compress
     compresscmd /usr/bin/xz
     uncompresscmd /usr/bin/unxz
     compressext .xz
 }"""
-        with open(LVMLOCKD_LOG_LOGROTATE_PATH, 'w') as f:
-            f.write(content)
-        linux.sync()
+    with open(LVMLOCKD_LOG_LOGROTATE_PATH, 'w') as f:
+        f.write(content)
+        f.flush()
+        os.fsync(f.fileno())
+    os.chmod(LVMLOCKD_LOG_LOGROTATE_PATH, 0644)
 
 
 @bash.in_bash
@@ -415,7 +457,7 @@ def start_vg_lock(vgUuid):
         else:
             return True
 
-    @linux.retry(times=15, sleep_time=random.uniform(0.1, 30))
+    @linux.retry(times=5, sleep_time=random.uniform(0.1, 10))
     def start_lock(vgUuid):
         r, o, e = bash.bash_roe("vgchange --lock-start %s" % vgUuid)
         if r != 0:
@@ -460,6 +502,14 @@ def stop_vg_lock(vgUuid):
     except Exception as e:
         raise e
 
+@bash.in_bash
+def clean_lvm_archive_files(vgUuid):
+    if not os.path.exists(LVM_CONFIG_ARCHIVE_PATH):
+        logger.warn("can not find lvm archive path %s" % LVM_CONFIG_ARCHIVE_PATH)
+        return
+    archive_files = bash.bash_o("ls -rt %s | grep %s | wc -l" % (LVM_CONFIG_ARCHIVE_PATH, vgUuid))
+    if int(archive_files) > 10:
+        bash.bash_r("ls -rt %s | grep %s | head -n %s | xargs -i rm -rf %s/{}" % (LVM_CONFIG_ARCHIVE_PATH, vgUuid, (int(archive_files)-10), LVM_CONFIG_ARCHIVE_PATH))
 
 @bash.in_bash
 def quitLockServices():
@@ -469,6 +519,7 @@ def quitLockServices():
 
 @bash.in_bash
 def drop_vg_lock(vgUuid):
+    bash.bash_roe("lvmlockctl --gl-disable %s" % vgUuid)
     bash.bash_roe("lvmlockctl --drop %s" % vgUuid)
 
 
@@ -531,7 +582,13 @@ def wipe_fs(disks, expected_vg=None, with_lock=True):
         if need_flush_mpath:
             bash.bash_roe("multipath -f %s && systemctl restart multipathd.service && sleep 1" % disk)
 
+        for holder in get_disk_holders([disk.split("/")[-1]]):
+            if not holder.startswith("dm-"):
+                continue
+            bash.bash_roe("dmsetup remove /dev/%s" % holder)
+
         if exists_vg is not None:
+            bash.bash_r("grep %s /etc/drbd.d/* | awk '{print $1}' | sort | uniq | tr -d ':' | xargs rm" % exists_vg)
             logger.debug("found vg %s exists on this pv %s, start wipe" %
                          (exists_vg, disk))
             try:
@@ -540,6 +597,18 @@ def wipe_fs(disks, expected_vg=None, with_lock=True):
                 remove_device_map_for_vg(exists_vg)
             finally:
                 pass
+
+
+def get_disk_holders(disk_names):
+    holders = []
+    for disk_name in disk_names:
+        h = bash.bash_o("ls /sys/class/block/%s/holders/" % disk_name).strip().splitlines()
+        if len(h) == 0:
+            continue
+        holders.extend(h)
+        holders.extend(get_disk_holders(h))
+    holders.reverse()
+    return holders
 
 
 @bash.in_bash
@@ -610,36 +679,39 @@ def delete_image(path, tag):
         active_lv(f, shared=False)
         backing = linux.qcow2_get_backing_file(f)
         shell.check_run("lvremove -y -Stags={%s} %s" % (tag, f))
-        return f
+        return backing
 
     fpath = path
-    while fpath:
-        backing = activate_and_remove(fpath)
-        activate_and_remove(get_meta_lv_path(fpath))
-        fpath = backing
+    backing = activate_and_remove(fpath)
+    activate_and_remove(get_meta_lv_path(fpath))
 
 
 def clean_vg_exists_host_tags(vgUuid, hostUuid, tag):
     cmd = shell.ShellCmd("vgs %s -otags --nolocking --noheading | tr ',' '\n' | grep %s | grep %s" % (vgUuid, tag, hostUuid))
     cmd(is_exception=False)
-    exists_tags = cmd.stdout.strip().split("\n")
+    exists_tags = [x.strip() for x in cmd.stdout.splitlines()]
     if len(exists_tags) == 0:
         return
     t = " --deltag " + " --deltag ".join(exists_tags)
     cmd = shell.ShellCmd("vgchange %s %s" % (t, vgUuid))
     cmd(is_exception=False)
 
+def round_to(n, r):
+    return (n + r - 1) / r * r
 
 @bash.in_bash
-@linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
+@linux.retry(times=15, sleep_time=random.uniform(0.1, 3))
 def create_lv_from_absolute_path(path, size, tag="zs::sharedblock::volume", lock=True):
+    if lv_exists(path):
+        return
+
     vgName = path.split("/")[2]
     lvName = path.split("/")[3]
 
-    bash.bash_roe("lvcreate -an --addtag %s --size %sb --name %s %s" %
-                         (tag, calcLvReservedSize(size), lvName, vgName))
+    r, o, e = bash.bash_roe("lvcreate -an --addtag %s --size %sb --name %s %s" %
+                         (tag, round_to(calcLvReservedSize(size), 512), lvName, vgName))
     if not lv_exists(path):
-        raise Exception("can not find lv %s after create", path)
+        raise Exception("can not find lv %s after create, lvcreate return: %s, %s, %s" % (path, r, o, e))
 
     if lock:
         with OperateLv(path, shared=False):
@@ -654,14 +726,17 @@ def create_lv_from_cmd(path, size, cmd, tag="zs::sharedblock::volume", lock=True
     if "ministorage" in tag and cmd.provisioning == VolumeProvisioningStrategy.ThinProvisioning:
         create_thin_lv_from_absolute_path(path, size, tag, lock)
     elif cmd.provisioning == VolumeProvisioningStrategy.ThinProvisioning and size > cmd.addons[thinProvisioningInitializeSize]:
-        create_lv_from_absolute_path(path, cmd.addons[thinProvisioningInitializeSize], tag)
+        create_lv_from_absolute_path(path, cmd.addons[thinProvisioningInitializeSize], tag, lock)
     else:
         create_lv_from_absolute_path(path, size, tag, lock)
 
 
 @bash.in_bash
-@linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
+@linux.retry(times=15, sleep_time=random.uniform(0.1, 3))
 def create_thin_lv_from_absolute_path(path, size, tag, lock=False):
+    if lv_exists(path):
+        return
+
     vgName = path.split("/")[2]
     lvName = path.split("/")[3]
 
@@ -669,7 +744,7 @@ def create_thin_lv_from_absolute_path(path, size, tag, lock=False):
     assert thin_pool != ""
 
     r, o, e = bash.bash_roe("lvcreate --addtag %s -n %s -V %sb --thinpool %s %s" %
-                  (tag, lvName, calcLvReservedSize(size), thin_pool, vgName))
+                  (tag, lvName, round_to(calcLvReservedSize(size), 512), thin_pool, vgName))
     if not lv_exists(path):
         raise Exception("can not find lv %s after create, lvcreate return : %s, %s, %s" %
                         (path, r, o, e))
@@ -694,25 +769,26 @@ def get_thin_pool_from_vg(vgName):
 
 class ThinPool(object):
     def __init__(self, path):
-        o = bash.bash_o("lvs %s --separator ' ' -oname,data_percent,lv_size --noheading --unit B" % path).strip()
-        self.name = o.split(" ")[0]
+        o = bash.bash_o("lvs --nolocking %s --separator ' ' -oname,data_percent,lv_size,pool_lv --noheading --unit B" % path).strip()
+        self.name = o.split(" ")[0].strip()
         self.total = float(o.split(" ")[2].strip("B"))
         self.thin_lvs = [l.strip() for l in bash.bash_o("lvs -Spool_lv=%s --noheadings --nolocking -oname" % self.name).strip().splitlines()]
-        if len(self.thin_lvs) == 0:
+        if len(self.thin_lvs) == 0 and not is_thin_lv(path):
             self.free = self.total
         else:
             self.free = self.total * (100 - float(o.split(" ")[1].strip("B")))/100
 
 
 def get_thin_pools_from_vg(vgName):
-    names = bash.bash_o("lvs %s -Slayout=pool -oname --noheading" % vgName).strip().splitlines()
+    names = bash.bash_o("lvs --nolocking %s -Slayout=pool -oname --noheading" % vgName).strip().splitlines()
     if len(names) == 0:
         return []
     return [ThinPool("/dev/%s/%s" % (vgName, n)) for n in names]
 
 
 def dd_zero(path):
-    cmd = shell.ShellCmd("dd if=/dev/zero of=%s bs=65536 count=1 conv=sync,notrunc" % path)
+    # we add at least additional 4M space for every lv, so it is safe to write 4M
+    cmd = shell.ShellCmd("dd if=/dev/zero of=%s bs=1M count=4 oflag=direct" % path)
     cmd(is_exception=False)
 
 
@@ -730,9 +806,8 @@ def get_thin_lv_size(path):
     return str(int(l.total - l.free))
 
 
-@bash.in_bash
 def is_thin_lv(path):
-    return bash.bash_r("lvs --nolocking --noheadings  -olayout %s | grep thin" % path) == 0
+    return bash.bash_r("lvs --nolocking --noheadings  -olayout %s | grep 'thin,sparse'" % path) == 0
 
 
 @bash.in_bash
@@ -782,12 +857,15 @@ def deactive_lv(path, raise_exception=True):
         return
     if not lv_is_active(path):
         return
+    r = 0
+    e = None
     if raise_exception:
-        bash.bash_errorout("lvchange -an %s" % path)
+        o = bash.bash_errorout("lvchange -an %s" % path)
     else:
-        bash.bash_r("lvchange -an %s" % path)
+        r, o, e = bash.bash_roe("lvchange -an %s" % path)
     if lv_is_active(path):
-        raise RetryException("lv %s is still active after lvchange -an" % path)
+        raise RetryException("lv %s is still active after lvchange -an, returns code: %s, stdout: %s, stderr: %s"
+                             % (path, r, o, e))
 
 
 @bash.in_bash
@@ -833,10 +911,12 @@ def lv_uuid(path):
     return cmd.stdout.strip()
 
 
-def lv_is_active(path):
+def lv_is_active(lv_path):
     # NOTE(weiw): use readonly to get active may return 'unknown'
-    r = bash.bash_r("lvs --nolocking --noheadings %s -oactive | grep -w active" % path)
-    return r == 0
+    r = bash.bash_r("lvs --nolocking --noheadings %s -oactive | grep -w active" % lv_path)
+    if r == 0:
+        return True
+    return os.path.exists(lv_path)
 
 
 @bash.in_bash
@@ -868,40 +948,28 @@ def list_local_active_lvs(vgUuid):
     cmd(is_exception=False)
     result = []
     for i in cmd.stdout.strip().split("\n"):
-        if i != "":
-            result.append(i)
+        if i.strip() != "":
+            result.append(i.strip())
     return result
 
 
 @bash.in_bash
-def check_gl_lock(raise_exception=False):
-    r = bash.bash_r("lvmlockctl -i | grep 'LK GL'")
+def check_gl_lock():
+    r, o = bash.bash_ro("lvmlockctl -i | grep 'LK GL' -B 5")
     if r == 0:
         return
-    logger.debug("can not find any gl lock")
 
+    # NOTE(weiw): if lockspace exists, choose one as gl lock
     r, o = bash.bash_ro("lvmlockctl -i | grep 'lock_type=sanlock' | awk '{print $2}'")
-    if len(o.strip().splitlines()) != 0:
-        for i in o.strip().splitlines():
-            if i == "":
-                continue
-            r, o, e = bash.bash_roe("lvmlockctl --gl-enable %s" % i)
-            if r != 0:
-                raise Exception("failed to enable gl lock on vg: %s, %s, %s" % (i, o, e))
-
-    r, o = bash.bash_ro("vgs --nolocking --noheadings -Svg_lock_type=sanlock -oname")
-    result = []
-    for i in o.strip().split("\n"):
-        if i != "":
-            result.append(i)
-    if len(result) == 0:
-        if raise_exception is True:
-            raise Exception("can not find any sanlock shared vg")
-        else:
-            return
-    r, o, e = bash.bash_roe("lvmlockctl --gl-enable %s" % result[0])
-    if r != 0:
-        raise Exception("failed to enable gl lock on vg: %s" % result[0])
+    if r == 0:
+        o = o.strip()
+        if len(o.splitlines()) != 0:
+            for i in o.splitlines():
+                i = i.strip()
+                if i == "":
+                    continue
+                bash.bash_roe("lvmlockctl --gl-enable %s" % i)
+                return
 
 
 def do_active_lv(absolutePath, lockType, recursive):
@@ -925,6 +993,56 @@ def do_active_lv(absolutePath, lockType, recursive):
             handle_lv(LvmlockdLockType.SHARE, absolutePath)
 
 
+# FIXME(weiw): drbd_path is a hack
+@bash.in_bash
+def create_lvm_snapshot(absolutePath, remove_oldest=True, snapName=None, size_percent=0.1, drbd_path=None):
+    # type: (str, bool, str, float) -> str
+    if snapName is None:
+        snapName = get_new_snapshot_name(absolutePath, remove_oldest)
+    if is_thin_lv(absolutePath):
+        size_command = ""
+    else:
+        virtual_size = linux.qcow2_virtualsize(absolutePath) if drbd_path is None else linux.qcow2_virtualsize(drbd_path)
+        if virtual_size <= 2147483648:  # 2GB
+            snap_size = calcLvReservedSize(virtual_size)
+            snap_size = int(snap_size / 512 + 1) * 512
+        elif int((virtual_size / 512) * size_percent * 512) <= 2147483648:
+            snap_size = 2147483648
+        else:
+            snap_size = int((virtual_size / 512) * size_percent + 1) * 512
+        size_command = " -L %sB " % snap_size
+    bash.bash_errorout("sync; lvcreate --snapshot -n %s %s %s" % (snapName, absolutePath, size_command))
+    path = "/".join(absolutePath.split("/")[:-1]) + "/" + snapName
+    if size_command == "":
+        bash.bash_r("lvchange -ay -K %s" % path)
+    return path
+
+
+def delete_snapshots(lv_path):
+    all_snaps = bash.bash_o("lvs -oname -Sorigin=%s --nolocking --noheadings | grep _snap_" % lv_path.split("/")[-1]).strip().splitlines()
+    if len(all_snaps) == 0:
+        return
+    for snap in all_snaps:
+        delete_lv(snap)
+
+
+def get_new_snapshot_name(absolutePath, remove_oldest=True):
+    @bash.in_bash
+    @lock.file_lock(absolutePath)
+    def do_get_new_snapshot_name(name):
+        all_snaps = bash.bash_o("lvs -oname -Sorigin=%s --nolocking --noheadings | grep _snap_" % name).strip().splitlines()
+        if len(all_snaps) == 0:
+            return name + "_snap_1"
+        numbers = map(lambda x: int(x.strip().split("_")[-1]), all_snaps)
+        if len(all_snaps) >= 3 and remove_oldest:
+            oldest = name + "_snap_" + str(min(numbers))
+            delete_lv("/".join(absolutePath.split("/")[:-1]) + "/" + oldest)
+        elif len(all_snaps) >= 3:
+            raise Exception("there are %s snapshots for lv %s exits" % (len(all_snaps), absolutePath))
+        return name + "_snap_" + str(max(numbers) + 1)
+    return do_get_new_snapshot_name(absolutePath.split("/")[-1])
+
+
 @bash.in_bash
 def get_lv_locking_type(path):
     @linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
@@ -933,14 +1051,19 @@ def get_lv_locking_type(path):
         return LvmlockdLockType.from_abbr(output.strip(), raise_exception=True)
 
     locking_type = LvmlockdLockType.NULL
-    with lock.FileLock(path.split("/")[-1]):
+    active = None
+    with lock.NamedLock(path.split("/")[-1]):
         try:
-            if not lv_is_active(path):
+            active = lv_is_active(path)
+            if not active:
                 return locking_type
             locking_type = _get_lv_locking_type(path)
         except Exception as e:
             output = bash.bash_o("lvmlockctl -i | grep %s | head -n1 | awk '{print $3}'" % lv_uuid(path))
             locking_type = LvmlockdLockType.from_abbr(output.strip(), raise_exception=False)
+            if active is True and locking_type == LvmlockdLockType.NULL:
+                # NOTE(weiw): this usually because of manipulation of locking by hand
+                locking_type = LvmlockdLockType.SHARE
 
     return locking_type
 
@@ -965,6 +1088,16 @@ def qcow2_lv_recursive_operate(abs_path, shared=False):
             return retval
         return inner
     return wrap
+
+
+#TODO(weiw): This is typically mini usage
+def qcow2_lv_recursive_active(abs_path, lock_type):
+    # type: (str, int) -> object
+    backing = linux.qcow2_get_backing_file(abs_path)
+    active_lv(abs_path, lock_type == LvmlockdLockType.SHARE)
+
+    if backing != "":
+        qcow2_lv_recursive_active(backing, LvmlockdLockType.SHARE)
 
 
 class OperateLv(object):
@@ -1076,7 +1209,7 @@ def examine_lockspace(lockspace):
 
 
 def check_stuck_vglk():
-    @linux.retry(3, 0.1)
+    @linux.retry(3, 1)
     def is_stuck_vglk():
         r, o, e = bash.bash_roe("sanlock client status | grep ':VGLK:'")
         if r != 0:
@@ -1154,7 +1287,7 @@ def check_pv_status(vgUuid, timeout):
 
 
 def lvm_vgck(vgUuid, timeout):
-    health, o, e = bash.bash_roe('timeout -s SIGKILL %s vgck %s 2>&1' % (60 if timeout < 60 else timeout, vgUuid))
+    health, o, e = bash.bash_roe('timeout -s SIGKILL %s vgck %s 2>&1' % (360 if timeout < 360 else timeout, vgUuid))
     check_stuck_vglk()
 
     if health != 0:
@@ -1172,9 +1305,13 @@ def lvm_vgck(vgUuid, timeout):
                 fix_global_lock()
                 continue
             if "have changed sizes" in es:
+                logger.debug("found pv of vg %s size may changed, details: %s" % (vgUuid, es))
+                continue
+            if "held by other host" in es:
+                continue
+            if "without a lock" in es:
                 continue
             if es.strip() == "":
-                logger.debug("found pv of vg %s size may changed, details: %s" % (vgUuid, es))
                 continue
             s = "vgck %s failed, details: [return_code: %s, stdout: %s, stderr: %s]" % (vgUuid, health, o, e)
             logger.warn(s)
@@ -1275,8 +1412,15 @@ def check_sanlock_renewal_failure(lockspace):
 
 
 def check_sanlock_status(lockspace):
-    r, o, e = bash.bash_roe("sanlock client status -D | grep %s -A 18" % lockspace)
-    if r != 0:
+    @linux.retry(4, 0.5)
+    def _check_sanlock_status(lockspace):
+        r, o, e = bash.bash_roe("sanlock client status -D | grep %s -A 18" % lockspace)
+        if r != 0:
+             raise RetryException("sanlock can not get lockspace %s status" % lockspace)
+        return r, o, e
+    try:
+        r, o, e = _check_sanlock_status(lockspace)
+    except Exception:
         return False, "sanlock can not get lockspace %s status" % lockspace
 
     renewal_last_result = 0
@@ -1318,7 +1462,7 @@ def check_lv_on_pv_valid(vgUuid, pvUuid, lv_path=None):
         "-Sactive=active %s | grep %s | grep %s | awk '{print $1}' | head -n1" % (vgUuid, pv_name, VOLUME_TAG)).strip()
     if one_active_lv == "":
         return True
-    r = bash.bash_r("qemu-img info %s" % one_active_lv)
+    r = bash.bash_r("%s %s" % (qemu_img.subcmd('info'), one_active_lv))
     if r != 0:
         return False
     return True
@@ -1396,7 +1540,7 @@ def get_running_vm_root_volume_on_pv(vgUuid, pvUuids, checkIo=True):
             logger.warn("found strange vm[pid: %s, cmdline: %s], can not find boot volume" % (vm.pid, vm.cmdline))
             continue
 
-        r = bash.bash_r("qemu-img info --backing-chain %s" % vm.root_volume)
+        r = bash.bash_r("%s --backing-chain %s" % (qemu_img.subcmd('info'), vm.root_volume))
         if checkIo is True and r == 0:
             logger.debug("volume %s for vm %s io success, skiped" % (vm.root_volume, vm.uuid))
             continue
@@ -1434,5 +1578,22 @@ def enable_multipath():
     bash.bash_roe("modprobe dm-round-robin")
     bash.bash_roe("mpathconf --enable --with_multipathd y")
     bash.bash_roe("systemctl enable multipathd")
+
     if not is_multipath_running():
         raise RetryException("multipath still not running")
+
+
+class QemuStruct(object):
+    def __init__(self, pid):
+        self.pid = pid
+        args = bash.bash_o("ps -o args --width 99999 --pid %s" % pid)
+        self.name = args.split(' -uuid ')[-1].split(' ')[0].replace("-", "")
+        self.state = bash.bash_o("virsh domstate %s" % self.name).strip()
+
+
+@bash.in_bash
+def find_qemu_for_lv_in_use(lv_path):
+    # type: (str) -> list[QemuStruct]
+    dm_path = bash.bash_o("readlink -e %s" % lv_path)
+    pids = [x.strip() for x in bash.bash_o("lsof -b -c qemu-kvm | grep -w %s | awk '{print $2}'" % dm_path).splitlines()]
+    return [QemuStruct(pid) for pid in pids]

@@ -4,10 +4,18 @@
 '''
 import subprocess
 from zstacklib.utils import log
+from zstacklib.utils import lock
 
-logcmd = True
 
-logger = log.get_logger(__name__)
+@lock.lock("subprocess.popen")
+def get_process(cmd, shell=None, workdir=None, pipe=None, executable=None):
+    if pipe:
+        return subprocess.Popen(cmd, shell=shell, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                close_fds=True, executable=executable, cwd=workdir)
+    else:
+        return subprocess.Popen(cmd, shell=shell, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                close_fds=True, executable=executable, cwd=workdir)
+
 
 class ShellError(Exception):
     '''shell error'''
@@ -22,13 +30,8 @@ class ShellCmd(object):
         Constructor
         '''
         self.cmd = cmd
-        if pipe:
-            self.process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stdin=subprocess.PIPE,
-                                            stderr=subprocess.PIPE, close_fds=True, executable='/bin/bash', cwd=workdir)
-        else:
-            self.process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                            close_fds=True, executable='/bin/bash', cwd=workdir)
-            
+        self.process = get_process(cmd, True, workdir, pipe, "/bin/bash")
+
         self.stdout = None
         self.stderr = None
         self.return_code = None
@@ -41,9 +44,9 @@ class ShellCmd(object):
         err.append('stderr: %s' % self.stderr)
         raise ShellError('\n'.join(err))
         
-    def __call__(self, is_exception=True):
+    def __call__(self, is_exception=True, logcmd=True):
         if logcmd:
-            logger.debug(self.cmd)
+            log.get_logger(__name__).debug(self.cmd)
             
         (self.stdout, self.stderr) = self.process.communicate()
         if is_exception and self.process.returncode != 0:

@@ -4,6 +4,7 @@
 '''
 import copy
 from kvmagent import kvmagent
+from zstacklib.utils import iptables
 from zstacklib.utils import jsonobject
 from zstacklib.utils import http
 from zstacklib.utils import log
@@ -16,6 +17,7 @@ import traceback
 import netaddr
 
 CHECK_PHYSICAL_NETWORK_INTERFACE_PATH = '/network/checkphysicalnetworkinterface'
+ADD_INTERFACE_TO_BRIDGE_PATH = '/network/bridge/addif'
 KVM_REALIZE_L2NOVLAN_NETWORK_PATH = "/network/l2novlan/createbridge"
 KVM_REALIZE_L2VLAN_NETWORK_PATH = "/network/l2vlan/createbridge"
 KVM_CHECK_L2NOVLAN_NETWORK_PATH = "/network/l2novlan/checkbridge"
@@ -25,8 +27,10 @@ KVM_REALIZE_L2VXLAN_NETWORK_PATH = "/network/l2vxlan/createbridge"
 KVM_REALIZE_L2VXLAN_NETWORKS_PATH = "/network/l2vxlan/createbridges"
 KVM_POPULATE_FDB_L2VXLAN_NETWORK_PATH = "/network/l2vxlan/populatefdb"
 KVM_POPULATE_FDB_L2VXLAN_NETWORKS_PATH = "/network/l2vxlan/populatefdbs"
+KVM_SET_BRIDGE_ROUTER_PORT_PATH = "/host/bridge/routerport"
 
 logger = log.get_logger(__name__)
+IPTABLES_CMD = iptables.get_iptables_cmd()
 
 class CheckPhysicalNetworkInterfaceCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -109,6 +113,10 @@ class PopulateVxlanFdbResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(PopulateVxlanFdbResponse, self).__init__()
 
+class SetBridgeRouterPortResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(SetBridgeRouterPortResponse, self).__init__()
+
 class NetworkPlugin(kvmagent.KvmAgent):
     '''
     classdocs
@@ -128,9 +136,13 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
         shell.call('ip link set %s up' % device_name)
 
-    def _configure_bridge(self):
+    def _configure_bridge(self, disableIptables):
         shell.call('modprobe br_netfilter || true')
-        shell.call('echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables')
+        if disableIptables:
+            shell.call('echo 0 > /proc/sys/net/bridge/bridge-nf-call-iptables')
+        else:
+            shell.call('echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables')
+        shell.call('echo 1 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged')
         shell.call('echo 1 > /proc/sys/net/ipv4/conf/default/forwarding')
 
     @kvmagent.replyerror
@@ -138,9 +150,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CheckPhysicalNetworkInterfaceResponse()
         for i in cmd.interfaceNames:
-            shell_cmd = shell.ShellCmd("ip link | grep '%s'" % i)
-            shell_cmd(False)
-            if shell_cmd.return_code != 0:
+            if shell.run("ip link | grep -q -w '%s'" % i) != 0:
                 rsp.failedInterfaceNames = [i]
                 rsp.success = False
                 return jsonobject.dumps(rsp)
@@ -149,6 +159,19 @@ class NetworkPlugin(kvmagent.KvmAgent):
             self._ifup_device_if_down(i)
 
         logger.debug(http.path_msg(CHECK_PHYSICAL_NETWORK_INTERFACE_PATH, 'checked physical interfaces: %s' % cmd.interfaceNames))
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def add_interface_to_bridge(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+        oldbr = shell.call("""brctl show | awk '$4 == "%s" {print $1}'""" % cmd.physicalInterfaceName).strip()
+        if oldbr == cmd.bridgeName:
+            return jsonobject.dumps(rsp)
+
+        if oldbr:
+            shell.run("brctl delif %s %s" % (oldbr, cmd.physicalInterfaceName))
+        shell.check_run("brctl addif %s %s" % (cmd.bridgeName, cmd.physicalInterfaceName))
         return jsonobject.dumps(rsp)
 
     @lock.lock('create_bridge')
@@ -161,7 +184,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
         if linux.is_vif_on_bridge(cmd.bridgeName, cmd.physicalInterfaceName):
             logger.debug('%s is a bridge device. Interface %s is attached to bridge. No need to create bridge or attach device interface' % (cmd.bridgeName, cmd.physicalInterfaceName))
-            self._configure_bridge()
+            self._configure_bridge(cmd.disableIptables)
             linux.set_device_uuid_alias(cmd.physicalInterfaceName, cmd.l2NetworkUuid)
             return jsonobject.dumps(rsp)
         
@@ -169,7 +192,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
             linux.create_bridge(cmd.bridgeName, cmd.physicalInterfaceName)
             linux.set_device_uuid_alias(cmd.physicalInterfaceName, cmd.l2NetworkUuid)
 
-            self._configure_bridge()
+            self._configure_bridge(cmd.disableIptables)
             logger.debug('successfully realize bridge[%s] from device[%s]' % (cmd.bridgeName, cmd.physicalInterfaceName))
         except Exception as e:
             logger.warning(traceback.format_exc())
@@ -187,13 +210,13 @@ class NetworkPlugin(kvmagent.KvmAgent):
         if linux.is_bridge(cmd.bridgeName):
             logger.debug('%s is a bridge device, no need to create bridge' % cmd.bridgeName)
             self._ifup_device_if_down('%s.%s' % (cmd.physicalInterfaceName, cmd.vlan))
-            self._configure_bridge()
+            self._configure_bridge(cmd.disableIptables)
             linux.set_device_uuid_alias('%s.%s' % (cmd.physicalInterfaceName, cmd.vlan), cmd.l2NetworkUuid)
             return jsonobject.dumps(rsp)
         
         try:
             linux.create_vlan_bridge(cmd.bridgeName, cmd.physicalInterfaceName, cmd.vlan)
-            self._configure_bridge()
+            self._configure_bridge(cmd.disableIptables)
             linux.set_device_uuid_alias('%s.%s' % (cmd.physicalInterfaceName, cmd.vlan), cmd.l2NetworkUuid)
             logger.debug('successfully realize vlan bridge[name:%s, vlan:%s] from device[%s]' % (cmd.bridgeName, cmd.vlan, cmd.physicalInterfaceName))
         except Exception as e:
@@ -236,22 +259,22 @@ class NetworkPlugin(kvmagent.KvmAgent):
             needle = '-A INPUT -p udp -m udp --dport %d' % port
             drules = [r.replace("-A ", "-D ") for r in rules if needle in r]
             for rule in drules:
-                bash_r("iptables -w %s" % rule)
+                bash_r("%s %s" % (IPTABLES_CMD, rule))
 
-            bash_r("iptables -w -I INPUT -p udp --dport %s -j ACCEPT" % port)
+            bash_r("%s -I INPUT -p udp --dport %s -j ACCEPT" % (IPTABLES_CMD, port))
 
         def filter_vxlan_nics(nics, interf, requireIp):
-            valid_nics = copy.copy(nics)
+            valid_nics = []
 
             if interf:
-                for nic in valid_nics:
-                    if interf not in nic.keys():
-                        valid_nics.remove(nic)
+                for nic in nics:
+                    if interf in nic.keys():
+                        valid_nics.append(nic)
 
             if requireIp:
-                for nic in valid_nics:
-                    if requireIp not in nic.values():
-                        valid_nics.remove(nic)
+                for nic in nics:
+                    if requireIp in nic.values():
+                        valid_nics.append(nic)
 
             return valid_nics
 
@@ -311,7 +334,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         else:
             rsp.error = "multiple interface qualify with cidr [%s] and no interface name provided" % cmd.cidr
 
-        rules = bash_o("iptables -w -S INPUT").splitlines()
+        rules = bash_o("%s -S INPUT" % IPTABLES_CMD).splitlines()
         install_iptables(rules, 8472)
         install_iptables(rules, 4789)
 
@@ -342,16 +365,16 @@ class NetworkPlugin(kvmagent.KvmAgent):
         # Create VXLAN interface using vtep ip then create bridge
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CreateVxlanBridgesResponse()
-        if not (cmd.vnis and cmd.vtepIp):
+        if not (cmd.l2Networks and cmd.vtepIp):
             rsp.error = "vni or vtepip is none"
             rsp.success = False
             return jsonobject.dumps(rsp)
 
-        for vni in cmd.vnis:
+        for l2NetworkUuid, vni in cmd.l2Networks.__dict__.items():
             linux.create_vxlan_interface(vni, cmd.vtepIp)
             interf = "vxlan" + str(vni)
             linux.create_vxlan_bridge(interf, "br_vx_%s" % vni, cmd.peers)
-            linux.set_device_uuid_alias(interf, cmd.l2NetworkUuid)
+            linux.set_device_uuid_alias(interf, l2NetworkUuid)
 
         return jsonobject.dumps(rsp)
 
@@ -389,9 +412,26 @@ class NetworkPlugin(kvmagent.KvmAgent):
         rsp.success = True
         return jsonobject.dumps(rsp)
 
+    def set_bridge_router_port(self, req):
+        # set bridge router port:
+        # echo "2" > /sys/devices/virtual/net/vnic2.1/brport/multicast_router
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = SetBridgeRouterPortResponse
+
+        value = '2'
+        if cmd.enable == False:
+            value = '1'
+
+        for nic in cmd.nicNames:
+            shell.call('echo %s > /sys/devices/virtual/net/%s/brport/multicast_router' % (value, nic))
+
+        rsp.success = True
+        return jsonobject.dumps(rsp)
+
     def start(self):
         http_server = kvmagent.get_http_server()
         http_server.register_sync_uri(CHECK_PHYSICAL_NETWORK_INTERFACE_PATH, self.check_physical_network_interface)
+        http_server.register_async_uri(ADD_INTERFACE_TO_BRIDGE_PATH, self.add_interface_to_bridge)
         http_server.register_async_uri(KVM_REALIZE_L2NOVLAN_NETWORK_PATH, self.create_bridge)
         http_server.register_async_uri(KVM_REALIZE_L2VLAN_NETWORK_PATH, self.create_vlan_bridge)
         http_server.register_async_uri(KVM_CHECK_L2NOVLAN_NETWORK_PATH, self.check_bridge)
@@ -401,6 +441,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(KVM_REALIZE_L2VXLAN_NETWORKS_PATH, self.create_vxlan_bridges)
         http_server.register_async_uri(KVM_POPULATE_FDB_L2VXLAN_NETWORK_PATH, self.populate_vxlan_fdb)
         http_server.register_async_uri(KVM_POPULATE_FDB_L2VXLAN_NETWORKS_PATH, self.populate_vxlan_fdbs)
+        http_server.register_async_uri(KVM_SET_BRIDGE_ROUTER_PORT_PATH, self.set_bridge_router_port)
 
     def stop(self):
         pass

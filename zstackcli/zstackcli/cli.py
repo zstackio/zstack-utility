@@ -27,6 +27,7 @@ import cStringIO as c
 import csv
 
 import zstacklib.utils.log as log
+import zstacklib.utils.linux as linux
 
 # comment out next line to print detail zstack cli http command to screen.
 log.configure_log('/var/log/zstack/zstack-cli', log_to_console=False)
@@ -101,17 +102,22 @@ class Cli(object):
     LOGOUT_MESSAGE_NAME = 'APILogOutMsg'
     LOGIN_BY_USER_NAME = 'APILogInByUserMsg'
     LOGIN_BY_USER_IAM2 = 'APILoginIAM2VirtualIDMsg'
+    CREATE_USER_IAM2 = 'APICreateIAM2VirtualIDMsg'
+    LOGIN_BY_LDAP_IAM2_NAME = 'APILoginIAM2VirtualIDWithLdapMsg'
+    LOGIN_BY_IAM2_PROJECT_NAME = 'APILoginIAM2ProjectMsg'
     CREATE_ACCOUNT_NAME = 'APICreateAccountMsg'
     CREATE_USER_NAME = 'APICreateUserMsg'
     ACCOUNT_RESET_PASSWORD_NAME = 'APIUpdateAccountMsg'
     USER_RESET_PASSWORD_NAME = 'APIUpdateUserMsg'
+    IAM2_USER_RESET_PASSWORD_NAME = 'APIUpdateIAM2VirtualIDMsg'
     QUERY_ACCOUNT_NAME = 'APIQueryAccountMsg'
     GET_LICENSE_INFO = 'APIGetLicenseInfoMsg'
+    POWER_OFF_HOST = 'APIPowerOffHostMsg'
     GET_TWO_FACTOR_AUTHENTICATION_SECRET = 'APIGetTwoFactorAuthenticationSecretMsg'
     GET_TWO_FACTOR_AUTHENTICATION_STATE = 'APIGetTwoFactorAuthenticationStateMsg'
     no_session_message = [LOGIN_MESSAGE_NAME, LOGIN_BY_USER_NAME, LOGIN_BY_LDAP_MESSAGE_NAME,
                           GET_TWO_FACTOR_AUTHENTICATION_SECRET, GET_TWO_FACTOR_AUTHENTICATION_STATE, LOGIN_BY_USER_IAM2,
-                          GET_LICENSE_INFO]
+                          GET_LICENSE_INFO, LOGIN_BY_LDAP_IAM2_NAME]
 
     @staticmethod
     def register_message_creator(apiname, func):
@@ -279,9 +285,12 @@ example: %sLogInByAccount accountName=admin password=your_super_secure_admin_pas
                 return True
 
         def build_params():
-            def eval_string(key, value_string):
+            def eval_string(key, value_string, to_str_list=False):
                 try:
-                    return eval(value_string)
+                    if to_str_list:
+                        return map(lambda x: str(x), eval(value_string))
+                    else:
+                        return eval(value_string)
                 except Exception as e:
                     err_msg = """
 Parse command parameters error:
@@ -321,12 +330,10 @@ Parse command parameters error:
                 if len(params) != 2:
                     raise CliError('Invalid parameter[%s], the parameter must be split by "="' % param_str)
 
-                iam2_attribute_related_api_names = ['APIAddAttributesToIAM2VirtualIDMsg',
-                                                    'APIAddAttributesToIAM2ProjectMsg',
-                                                    'APIAddAttributesToIAM2VirtualIDGroupMsg']
-
                 if apiname == 'APIAddSecurityGroupRuleMsg' and params[0] == 'rules':
                     all_params[params[0]] = eval(params[1])
+                elif apiname == 'APIBootstrapMiniHostMsg' and params[0] in ['local', 'peer']:
+                    all_params[params[0]] = eval_string(params[0], params[1])
                 elif apiname in ['APIGetHostMonitoringDataMsg', 'APIGetVmMonitoringDataMsg',
                                  'APIMonitoringPassThroughMsg'] and params[0] == 'query':
                     all_params[params[0]] = eval(params[1])
@@ -348,6 +355,12 @@ Parse command parameters error:
                     all_params[params[0]] = eval_string(params[0], params[1])
                 elif apiname == 'APICreateSchedulerJobMsg' and params[0] == 'parameters':
                     all_params[params[0]] = eval_string(params[0], params[1])
+                elif apiname == 'APICreateSchedulerJobGroupMsg' and params[0] == 'parameters':
+                    all_params[params[0]] = eval_string(params[0], params[1])
+                elif apiname == 'APIUpdateSchedulerJobGroupMsg' and params[0] == 'parameters':
+                    all_params[params[0]] = eval_string(params[0], params[1])
+                elif apiname == 'APIUpdateSchedulerJobMsg' and params[0] == 'parameters':
+                    all_params[params[0]] = eval_string(params[0], params[1])
                 elif apiname == 'APICreateIAM2TickFlowCollectionMsg' and params[0] == 'flows':
                     all_params[params[0]] = eval_string(params[0], params[1])
                 elif apiname == 'APIUpdateRoleMsg' and params[0] == 'statements':
@@ -356,9 +369,26 @@ Parse command parameters error:
                     all_params[params[0]] = eval_string(params[0], params[1])
                 elif apiname == 'APICreatePolicyMsg' and params[0] == 'statements':
                     all_params[params[0]] = eval_string(params[0], params[1])
-                elif apiname in iam2_attribute_related_api_names and params[0] == 'attributes':
+                elif apiname == 'APIAddPolicyStatementsToRoleMsg' and params[0] == 'statements':
                     all_params[params[0]] = eval_string(params[0], params[1])
+                elif apiname in ['APILogInByAccountMsg',
+                                 'APILogInByUserMsg',
+                                 'APILogInByLdapMsg',
+                                 'APILoginIAM2VirtualIDMsg',
+                                 'APILoginIAM2ProjectMsg',
+                                 'APILogOutMsg'] and params[0] == 'clientInfo':
+                    all_params[params[0]] = eval_string(params[0], params[1])
+                elif apiname in ['APIAddAttributesToIAM2VirtualIDMsg',
+                                 'APIAddAttributesToIAM2ProjectMsg',
+                                 'APIAddAttributesToIAM2VirtualIDGroupMsg',
+                                 'APICreateIAM2VirtualIDMsg'] and params[0] == 'attributes':
+                    all_params[params[0]] = eval_string(params[0], params[1])
+
                 elif apiname == 'APICreateTicketMsg' and params[0] == 'requests':
+                    all_params[params[0]] = eval_string(params[0], params[1])
+                elif apiname == 'APIGetIAM2VirtualIDAPIPermissionMsg' and params[0] == 'apisToCheck':
+                    all_params[params[0]] = eval_string(params[0], params[1], True)
+                elif apiname == 'APICreatePriceTableMsg' and params[0] == 'prices':
                     all_params[params[0]] = eval_string(params[0], params[1])
                 elif is_api_param_a_list(apiname, params[0]):
                     all_params[params[0]] = escape_split(params[1])
@@ -486,6 +516,13 @@ Parse command parameters error:
                 setattr(msg, key, value)
             return msg
 
+        def create_event(apiname):
+            event_name = apiname[0:-3] + "Event"
+            try:
+                return eval('inventory.%s()' % event_name)
+            except:
+                return None
+
         def set_session_to_api(msg):
             session = inventory.Session()
             session.uuid = self.session_uuid
@@ -510,15 +547,21 @@ Parse command parameters error:
             raise CliError("No session uuid defined")
 
         msg = create_msg(apiname, all_params)
+        event = create_event(apiname)
         set_session_to_api(msg)
         try:
             if apiname in [self.LOGIN_MESSAGE_NAME, self.LOGIN_BY_USER_NAME, self.CREATE_ACCOUNT_NAME,
-                           self.CREATE_USER_NAME]:
+                           self.CREATE_USER_NAME, self.LOGIN_BY_USER_IAM2, self.CREATE_USER_IAM2,
+                           self.GET_TWO_FACTOR_AUTHENTICATION_SECRET]:
                 if not msg.password:
                     raise CliError('"password" must be specified')
                 msg.password = hashlib.sha512(msg.password).hexdigest()
 
-            if apiname in [self.USER_RESET_PASSWORD_NAME, self.ACCOUNT_RESET_PASSWORD_NAME]:
+            if apiname == self.POWER_OFF_HOST:
+                msg.adminPassword = hashlib.sha512(msg.adminPassword).hexdigest()
+
+            if apiname in [self.USER_RESET_PASSWORD_NAME, self.ACCOUNT_RESET_PASSWORD_NAME,
+                           self.IAM2_USER_RESET_PASSWORD_NAME]:
                 if msg.password:
                     msg.password = hashlib.sha512(msg.password).hexdigest()
 
@@ -527,10 +570,11 @@ Parse command parameters error:
                     setattr(msg, 'sessionUuid', self.session_uuid)
 
             start_time = time.time()
-            (name, event) = self.api.async_call_wait_for_complete(msg, fail_soon=True)
+            (name, event) = self.api.async_call_wait_for_complete(msg, apievent=event, fail_soon=True)
             end_time = time.time()
 
-            if apiname in [self.LOGIN_MESSAGE_NAME, self.LOGIN_BY_USER_NAME, self.LOGIN_BY_LDAP_MESSAGE_NAME]:
+            if apiname in [self.LOGIN_MESSAGE_NAME, self.LOGIN_BY_USER_NAME, self.LOGIN_BY_LDAP_MESSAGE_NAME,
+                           self.LOGIN_BY_LDAP_IAM2_NAME, self.LOGIN_BY_IAM2_PROJECT_NAME, self.LOGIN_BY_USER_IAM2]:
                 self.session_uuid = event.inventory.uuid
                 self.account_name = None
                 self.user_name = None
@@ -551,6 +595,21 @@ Parse command parameters error:
                         self.user_name = all_params[user_name_field]
                         session_file_writer.write("\n" + self.account_name)
                         session_file_writer.write("\n" + self.user_name)
+                    elif apiname == self.LOGIN_BY_LDAP_IAM2_NAME:
+                        if event.inventory.accountUuid == '2dce5dc485554d21a3796500c1db007a':
+                            self.account_name = 'no project selected'
+                        else:
+                            self.account_name = 'admin'
+                        session_file_writer.write("\n" + self.account_name)
+                    elif apiname == self.LOGIN_BY_IAM2_PROJECT_NAME:
+                        self.account_name = 'project[%s]' % all_params['projectName']
+                        session_file_writer.write("\n" + self.account_name)
+                    elif apiname == self.LOGIN_BY_USER_IAM2:
+                        if event.inventory.accountUuid == '2dce5dc485554d21a3796500c1db007a':
+                            self.account_name = 'no project selected'
+                        else:
+                            self.account_name = 'admin'
+                        session_file_writer.write("\n" + self.account_name)
 
             if apiname == self.LOGOUT_MESSAGE_NAME:
                 clear_session()
@@ -927,7 +986,7 @@ Parse command parameters error:
 
         self.read_more(num)
 
-    def show_help(self, all_params):
+    def show_help(self):
         help_string = text_doc.bold('Usage:')
         help_string += '''
 -------------------------------------------------------------------------------
@@ -946,7 +1005,7 @@ Parse command parameters error:
 
                 >>> save 1
                 save history command 1 result to ./COMMAND-NAME-1.json
-
+    
                 >>> save 1,2,3,4
                 save command history 1,2,3,4 to ./COMMAND-1.json, ./COMMAND-2.json,
                 ./COMMAND-3.json, and ./COMMAND-4.json
@@ -1056,13 +1115,14 @@ Parse command parameters error:
         readline.set_history_length(CLI_MAX_CMD_HISTORY)
 
         if not os.path.isdir(CLI_RESULT_HISTORY_FOLDER):
-            os.system('rm -rf %s' % os.path.dirname(CLI_RESULT_HISTORY_FOLDER))
+
+            linux.rm_dir_force(os.path.dirname(CLI_RESULT_HISTORY_FOLDER))
             os.system('mkdir -p %s' % os.path.dirname(CLI_RESULT_HISTORY_FOLDER))
 
         try:
             self.hd = filedb.FileDB(CLI_RESULT_HISTORY_KEY, is_abs_path=True)
         except:
-            os.system('rm -rf %s' % CLI_RESULT_HISTORY_KEY)
+            linux.rm_dir_force(CLI_RESULT_HISTORY_KEY)
             self.hd = filedb.FileDB(CLI_RESULT_HISTORY_KEY, is_abs_path=True)
             print "\nRead history file: %s error. Has recreate it.\n" % CLI_RESULT_HISTORY_KEY
 

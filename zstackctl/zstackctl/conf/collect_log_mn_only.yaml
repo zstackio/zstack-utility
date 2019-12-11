@@ -1,7 +1,7 @@
 mn:
     description: management node
     type: target
-    list: {exec: "mysql -uzstack -pzstack.password zstack -e 'select h.hostName from ManagementNodeVO h'"}
+    list: {exec: "AutoCollect"}
     logs:
       - {name: mn-logs, dir: $ZSTACK_HOME/../../logs/, file: 'management-server*'}
       - {name: ui-logs, dir: $ZSTACK_HOME/../../logs/, file: 'zstack-ui*'}
@@ -22,4 +22,5 @@ mn:
       - {name: host-info, exec: 'uptime && last reboot && free -h && cat /proc/cpuinfo && ip add && df -h'}
       - {name: pkg-list, exec: 'rpm -qa | sort'}
       - {name: git-commit, dir: $ZSTACK_HOME/../../webapps/zstack/, file: '*git-commit'}
-
+      - {name: zstack-logs, dir: /var/log/zstack/, file: zstack.log*}
+      - {name: zstack-installation-logs, dir: /tmp/, file: zstack_installation.log*}

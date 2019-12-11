@@ -6,6 +6,7 @@ from zstacklib.utils import shell
 from zstacklib.utils import linux
 from zstacklib.utils import lvm
 from zstacklib.utils import thread
+from zstacklib.utils import qemu_img
 import os.path
 import time
 import traceback
@@ -39,6 +40,9 @@ class ReportSelfFencerCmd(object):
         self.hostUuid = None
         self.psUuids = None
         self.reason = None
+
+
+last_multipath_run = time.time()
 
 
 def kill_vm(maxAttempts, mountPaths=None, isFileSystem=None):
@@ -163,6 +167,7 @@ class HaPlugin(kvmagent.KvmAgent):
     def __init__(self):
         # {ps_uuid: created_time} e.g. {'07ee15b2f68648abb489f43182bd59d7': 1544513500.163033}
         self.run_fencer_timestamp = {}  # type: dict[str, float]
+        self.fencer_fire_timestamp = {}  # type: dict[str, float]
         self.fencer_lock = threading.RLock()
 
     @kvmagent.replyerror
@@ -217,6 +222,10 @@ class HaPlugin(kvmagent.KvmAgent):
 
                     try:
                         logger.warn("aliyun nas storage %s fencer fired!" % cmd.uuid)
+
+                        if cmd.strategy == 'Permissive':
+                            continue
+
                         vm_uuids = kill_vm(cmd.maxAttempts).keys()
 
                         if vm_uuids:
@@ -253,15 +262,21 @@ class HaPlugin(kvmagent.KvmAgent):
 
         @thread.AsyncThread
         def heartbeat_on_sharedblock():
+            fire = 0
             failure = 0
 
             while self.run_fencer(cmd.vgUuid, created_time):
                 try:
                     time.sleep(cmd.interval)
+                    global last_multipath_run
+                    if cmd.fail_if_no_path and time.time() - last_multipath_run > 3600:
+                        last_multipath_run = time.time()
+                        thread.ThreadFacade.run_in_thread(linux.set_fail_if_no_path)
 
                     health = lvm.check_vg_status(cmd.vgUuid, cmd.storageCheckerTimeout, check_pv=False)
                     logger.debug("sharedblock group primary storage %s fencer run result: %s" % (cmd.vgUuid, health))
                     if health[0] is True:
+                        fire = 0
                         failure = 0
                         continue
 
@@ -269,9 +284,24 @@ class HaPlugin(kvmagent.KvmAgent):
                     if failure < cmd.maxAttempts:
                         continue
 
+                    if self.fencer_fire_timestamp.get(cmd.vgUuid) is not None and \
+                            time.time() > self.fencer_fire_timestamp.get(cmd.vgUuid) and \
+                            time.time() - self.fencer_fire_timestamp.get(cmd.vgUuid) < (300 * (fire + 1 if fire < 10 else 10)):
+                        logger.warn("last fencer fire: %s, now: %s, passed: %s seconds, within %s seconds, skip fire",
+                                    self.fencer_fire_timestamp[cmd.vgUuid], time.time(),
+                                    time.time() - self.fencer_fire_timestamp.get(cmd.vgUuid),
+                                    300 * (fire + 1 if fire < 10 else 10))
+                        failure = 0
+                        continue
+
+                    self.fencer_fire_timestamp[cmd.vgUuid] = time.time()
                     try:
                         logger.warn("shared block storage %s fencer fired!" % cmd.vgUuid)
                         self.report_storage_status([cmd.vgUuid], 'Disconnected', health[1])
+                        fire += 1
+
+                        if cmd.strategy == 'Permissive':
+                            continue
 
                         # we will check one qcow2 per pv to determine volumes on pv should be kill
                         invalid_pv_uuids = lvm.get_invalid_pv_uuids(cmd.vgUuid, cmd.checkIo)
@@ -309,12 +339,12 @@ class HaPlugin(kvmagent.KvmAgent):
                             lvm.drop_vg_lock(cmd.vgUuid)
                             lvm.remove_device_map_for_vg(cmd.vgUuid)
 
-                        # reset the failure count
-                        failure = 0
                     except Exception as e:
                         logger.warn("kill vm failed, %s" % e.message)
                         content = traceback.format_exc()
                         logger.warn("traceback: %s" % content)
+                    finally:
+                        failure = 0
 
                 except Exception as e:
                     logger.debug('self-fencer on sharedblock primary storage %s stopped abnormally, try again soon...' % cmd.vgUuid)
@@ -334,22 +364,6 @@ class HaPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def setup_ceph_self_fencer(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-
-        def check_tools():
-            ceph = shell.run('which ceph')
-            rbd = shell.run('which rbd')
-
-            if ceph == 0 and rbd == 0:
-                return True
-
-            return False
-
-        if not check_tools():
-            rsp = AgentRsp()
-            rsp.error = "no ceph or rbd on current host, please install the tools first"
-            rsp.success = False
-            return jsonobject.dumps(rsp)
-
         mon_url = '\;'.join(cmd.monUrls)
         mon_url = mon_url.replace(':', '\\\:')
 
@@ -373,8 +387,8 @@ class HaPlugin(kvmagent.KvmAgent):
             return not (health_status.startswith('HEALTH_OK') or health_status.startswith('HEALTH_WARN'))
 
         def heartbeat_file_exists():
-            touch = shell.ShellCmd('timeout %s qemu-img info %s' %
-                                   (cmd.storageCheckerTimeout, get_ceph_rbd_args()))
+            touch = shell.ShellCmd('timeout %s %s %s' %
+                    (cmd.storageCheckerTimeout, qemu_img.subcmd('info'), get_ceph_rbd_args()))
             touch(False)
 
             if touch.return_code == 0:
@@ -416,6 +430,9 @@ class HaPlugin(kvmagent.KvmAgent):
                         #  1. Create heart-beat file, failed with 'File exists'
                         #  2. Query the hb file in step 1, and failed again with 'No such file or directory'
                         if ceph_in_error_stat():
+                            if cmd.strategy == 'Permissive':
+                                continue
+
                             path = (os.path.split(cmd.heartbeatImagePath))[0]
                             vm_uuids = kill_vm(cmd.maxAttempts, [path], False).keys()
 
@@ -442,7 +459,7 @@ class HaPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
         @thread.AsyncThread
-        def heartbeat_file_fencer(mount_path, ps_uuid, mounted_by_zstack):
+        def heartbeat_file_fencer(mount_path, ps_uuid, mounted_by_zstack, url, options):
             def try_remount_fs():
                 if mount_path_is_nfs(mount_path):
                     shell.run("systemctl start nfs-client.target")
@@ -481,8 +498,6 @@ class HaPlugin(kvmagent.KvmAgent):
                                      ' please retry "umount -f %s"' % (killed_vm_pids, mount_path, mount_path))
                         return
 
-                try_remount_fs()
-
             def touch_heartbeat_file():
                 touch = shell.ShellCmd('timeout %s touch %s' % (cmd.storageCheckerTimeout, heartbeat_file_path))
                 touch(False)
@@ -490,14 +505,22 @@ class HaPlugin(kvmagent.KvmAgent):
                     logger.warn('unable to touch %s, %s %s' % (heartbeat_file_path, touch.stderr, touch.stdout))
                 return touch.return_code == 0
 
-            heartbeat_file_path = os.path.join(mount_path, 'heartbeat-file-kvm-host-%s.hb' % cmd.hostUuid)
+            def prepare_heartbeat_dir():
+                heartbeat_dir = os.path.join(mount_path, "zs-heartbeat")
+                if not mounted_by_zstack or linux.is_mounted(mount_path):
+                    if not os.path.exists(heartbeat_dir):
+                        os.makedirs(heartbeat_dir, 0755)
+                else:
+                    if os.path.exists(heartbeat_dir):
+                        linux.rm_dir_force(heartbeat_dir)
+                return heartbeat_dir
+
+            heartbeat_file_dir = prepare_heartbeat_dir()
+            heartbeat_file_path = os.path.join(heartbeat_file_dir, 'heartbeat-file-kvm-host-%s.hb' % cmd.hostUuid)
             created_time = time.time()
             self.setup_fencer(ps_uuid, created_time)
             try:
                 failure = 0
-                url = shell.call("mount | grep -e '%s' | awk '{print $1}'" % mount_path).strip()
-                options = shell.call("mount | grep -e '%s' | awk -F '[()]' '{print $2}'" % mount_path).strip()
-
                 while self.run_fencer(ps_uuid, created_time):
                     time.sleep(cmd.interval)
                     if touch_heartbeat_file():
@@ -509,6 +532,10 @@ class HaPlugin(kvmagent.KvmAgent):
                         logger.warn('failed to touch the heartbeat file[%s] %s times, we lost the connection to the storage,'
                                     'shutdown ourselves' % (heartbeat_file_path, cmd.maxAttempts))
                         self.report_storage_status([ps_uuid], 'Disconnected')
+
+                        if cmd.strategy == 'Permissive':
+                            continue
+
                         killed_vms = kill_vm(cmd.maxAttempts, [mount_path], True)
 
                         if len(killed_vms) != 0:
@@ -516,17 +543,21 @@ class HaPlugin(kvmagent.KvmAgent):
                         killed_vm_pids = killed_vms.values()
                         after_kill_vm()
 
+                        if mounted_by_zstack and not linux.is_mounted(mount_path):
+                            try_remount_fs()
+                            prepare_heartbeat_dir()
+
                 logger.debug('stop heartbeat[%s] for filesystem self-fencer' % heartbeat_file_path)
 
             except:
                 content = traceback.format_exc()
                 logger.warn(content)
 
-        for mount_path, uuid, mounted_by_zstack in zip(cmd.mountPaths, cmd.uuids, cmd.mountedByZStack):
+        for mount_path, uuid, mounted_by_zstack, url, options in zip(cmd.mountPaths, cmd.uuids, cmd.mountedByZStack, cmd.urls, cmd.mountOptions):
             if not linux.timeout_isdir(mount_path):
                 raise Exception('the mount path[%s] is not a directory' % mount_path)
 
-            heartbeat_file_fencer(mount_path, uuid, mounted_by_zstack)
+            heartbeat_file_fencer(mount_path, uuid, mounted_by_zstack, url, options)
 
         return jsonobject.dumps(AgentRsp())
 
@@ -538,14 +569,14 @@ class HaPlugin(kvmagent.KvmAgent):
         success = 0
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         for i in range(0, cmd.times):
-            if shell.run("nmap --host-timeout 30s -sP -PI %s | grep 'Host is up'" % cmd.ip) == 0:
+            if shell.run("nmap --host-timeout 10s -sP -PI %s | grep -q 'Host is up'" % cmd.ip) == 0:
                 success += 1
 
-            time.sleep(cmd.interval)
+            if success == cmd.successTimes:
+                rsp.result = self.RET_SUCCESS
+                return jsonobject.dumps(rsp)
 
-        if success == cmd.successTimes:
-            rsp.result = self.RET_SUCCESS
-            return jsonobject.dumps(rsp)
+            time.sleep(cmd.interval)
 
         if success == 0:
             rsp.result = self.RET_FAILURE
@@ -554,7 +585,7 @@ class HaPlugin(kvmagent.KvmAgent):
         # WE SUCCEED A FEW TIMES, IT SEEMS THE CONNECTION NOT STABLE
         success = 0
         for i in range(0, cmd.successTimes):
-            if shell.run("nmap --host-timeout 30s -sP -PI %s | grep 'Host is up'" % cmd.ip) == 0:
+            if shell.run("nmap --host-timeout 10s -sP -PI %s | grep -q 'Host is up'" % cmd.ip) == 0:
                 success += 1
 
             time.sleep(cmd.successInterval)

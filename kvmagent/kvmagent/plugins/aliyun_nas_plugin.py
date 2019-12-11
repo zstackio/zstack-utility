@@ -97,7 +97,6 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
     INIT_PATH = "/aliyun/nas/primarystorage/init"
     PING_PATH = "/aliyun/nas/primarystorage/ping"
     GET_CAPACITY_PATH = "/aliyun/nas/primarystorage/getcapacity"
-    LIST_PATH = "/aliyun/nas/primarystorage/list"
     UPDATE_MOUNT_POINT_PATH = "/aliyun/nas/primarystorage/updatemountpoint"
     REMOUNT_PATH = "/aliyun/nas/primarystorage/remount"
     UNMOUNT_PATH = "/aliyun/nas/primarystorage/unmount"
@@ -125,7 +124,6 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.MOUNT_DATA_PATH, self.mountdata)
         http_server.register_async_uri(self.INIT_PATH, self.init)
         http_server.register_async_uri(self.PING_PATH, self.ping)
-        http_server.register_async_uri(self.LIST_PATH, self.list)
         http_server.register_async_uri(self.UPDATE_MOUNT_POINT_PATH, self.updateMount)
         http_server.register_async_uri(self.REMOUNT_PATH, self.remount)
         http_server.register_async_uri(self.UNMOUNT_PATH, self.umount)
@@ -276,14 +274,6 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
         rsp = GetVolumeSizeRsp()
         self._set_capacity_to_response(cmd.uuid, rsp)
         rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installPath)
-        return jsonobject.dumps(rsp)
-
-    @kvmagent.replyerror
-    def list(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = ListResponse()
-
-        rsp.paths = kvmagent.listPath(cmd.path)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror

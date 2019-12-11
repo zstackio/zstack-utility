@@ -30,6 +30,7 @@ class SyncUri(object):
         self.uri = None
         self.func = None
         self.controller = None
+        self.cmd = None
 
 class RawUri(object):
     def __init__(self):
@@ -39,6 +40,7 @@ class RawUri(object):
 
 class AsyncUri(SyncUri):
     def __init__(self):
+        super(AsyncUri, self).__init__()
         self.callback_uri = None
 
 class Request(object):
@@ -63,6 +65,7 @@ class SyncUriHandler(object):
             raise Exception('Response body must be string')
         
     def __init__(self, uri_obj):
+        # type:(SyncUri) -> None
         self.uri_obj = uri_obj
     
     def _do_index(self, req):
@@ -82,6 +85,7 @@ class SyncUriHandler(object):
         logger.debug('sync http call: %s' % req.body)
         rsp = self._do_index(req)
         self._check_response(rsp)
+        logger.debug("sync http reply to %s: \"%s\"" % (cherrypy.url(), rsp))
         return rsp
 
 class RawUriHandler(object):
@@ -105,6 +109,7 @@ class AsyncUirHandler(SyncUriHandler):
     STOP_WORLD = False
 
     def __init__(self, uri_obj):
+        # type:(AsyncUri) -> None
         super(AsyncUirHandler, self).__init__(uri_obj)
     
     @thread.AsyncThread
@@ -121,6 +126,7 @@ class AsyncUirHandler(SyncUriHandler):
 
         try:
             json_post(callback_uri, content, headers)
+            logger.debug("async http reply[task uuid: %s] to %s: %s" % (task_uuid, callback_uri, content))
         finally:
             self.HANDLER_COUNTER.dec()
         
@@ -151,7 +157,9 @@ class AsyncUirHandler(SyncUriHandler):
         self.HANDLER_COUNTER.inc()
         task_uuid = cherrypy.request.headers[TASK_UUID]
         req = Request.from_cherrypy_request(cherrypy.request)
-        logger.debug('async http call[task uuid: %s], body: %s' % (task_uuid, req.body))
+
+        filter_body = log.mask_sensitive_field(self.uri_obj.cmd, req.body)
+        logger.debug('async http call[task uuid: %s], body: %s' % (task_uuid, filter_body))
         self._run_index(task_uuid, req)
 
 def tool_disable_multipart_preprocessing():
@@ -178,21 +186,25 @@ class HttpServer(object):
         self.port = port
         self.mapper = None
     
-    def register_async_uri(self, uri, func, callback_uri=None):
+    def register_async_uri(self, uri, func, callback_uri=None, cmd=None):
+        # type:(str, function, str, object) -> None
         async_uri_obj = AsyncUri()
         async_uri_obj.callback_uri = callback_uri
         if async_uri_obj.callback_uri is None:
             async_uri_obj.callback_uri = self.async_callback_uri
         async_uri_obj.uri = uri
         async_uri_obj.func = func
+        async_uri_obj.cmd = cmd
         async_uri_obj.controller = AsyncUirHandler(async_uri_obj)
         
         self.async_uri_handlers[uri] = async_uri_obj
     
-    def register_sync_uri(self, uri, func):
+    def register_sync_uri(self, uri, func, cmd=None):
+        # type:(str, function, object) -> None
         sync_uri = SyncUri()
         sync_uri.func = func
-        sync_uri.uri = uri 
+        sync_uri.uri = uri
+        sync_uri.cmd = cmd
         sync_uri.controller = SyncUriHandler(sync_uri)
         self.sync_uri_handlers[uri] = sync_uri
         

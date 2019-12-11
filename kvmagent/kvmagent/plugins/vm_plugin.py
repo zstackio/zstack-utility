@@ -11,6 +11,8 @@ import xml.etree.ElementTree as etree
 import re
 import platform
 import netaddr
+import uuid
+import json
 
 import libvirt
 #from typing import List, Any, Union
@@ -18,6 +20,7 @@ import libvirt
 import zstacklib.utils.ip as ip
 import zstacklib.utils.iptables as iptables
 import zstacklib.utils.lock as lock
+
 from kvmagent import kvmagent
 from kvmagent.plugins.imagestore import ImageStoreClient
 from zstacklib.utils import bash
@@ -34,6 +37,9 @@ from zstacklib.utils import thread
 from zstacklib.utils import uuidhelper
 from zstacklib.utils import xmlobject
 from zstacklib.utils import misc
+from zstacklib.utils import qemu_img
+from zstacklib.utils.report import *
+from zstacklib.utils.vm_plugin_queue_singleton import VmPluginQueueSingleton
 
 logger = log.get_logger(__name__)
 
@@ -43,7 +49,9 @@ ZS_XML_NAMESPACE = 'http://zstack.org'
 
 etree.register_namespace('zs', ZS_XML_NAMESPACE)
 
+GUEST_TOOLS_ISO_PATH = "/var/lib/zstack/guesttools/GuestTools.iso"
 QMP_SOCKET_PATH = "/var/lib/libvirt/qemu/zstack"
+PCI_ROM_PATH = "/var/lib/zstack/pcirom"
 
 class RetryException(Exception):
     pass
@@ -55,8 +63,71 @@ class NicTO(object):
         self.bridgeName = None
         self.deviceId = None
 
+class RemoteStorageFactory(object):
+    @staticmethod
+    def get_remote_storage(cmd):
+        if cmd.storageInfo and cmd.storageInfo.type == 'nfs':
+            return NfsRemoteStorage(cmd)
+        else:
+            return SshfsRemoteStorage(cmd)
+
+
+class RemoteStorage(object):
+    def __init__(self, cmd):
+        self.mount_point = tempfile.mkdtemp()
+
+    def mount(self):
+        raise Exception('function mount not be implemented')
+
+    def umount(self):
+        raise Exception('function umount not be implemented')
+
+    def clean(self):
+        linux.rmdir_if_empty(self.mount_point)
+
+
+class NfsRemoteStorage(RemoteStorage):
+    def __init__(self, cmd):
+        super(NfsRemoteStorage, self).__init__(cmd)
+        self.options = cmd.storageInfo.options
+        self.url = cmd.storageInfo.url
+        relative_work_dir = cmd.uploadDir.replace(os.path.normpath(cmd.bsPath), '').lstrip(os.path.sep)
+        self.local_work_dir = os.path.join(self.mount_point, relative_work_dir)
+        self.remote_work_dir = os.path.join(self.url, relative_work_dir)
+
+    def mount(self):
+        linux.mount(self.url, self.mount_point, self.options)
+
+    def umount(self):
+        if linux.is_mounted(path=self.mount_point):
+            linux.umount(self.mount_point)
+
+
+class SshfsRemoteStorage(RemoteStorage):
+    def __init__(self, cmd):
+        super(SshfsRemoteStorage, self).__init__(cmd)
+        self.bandwidth = cmd.networkWriteBandwidth
+        self.username = cmd.username
+        self.hostname = cmd.hostname
+        self.port = cmd.sshPort
+        self.password = cmd.password
+        self.dst_dir = cmd.uploadDir
+        self.vm_uuid = cmd.vmUuid
+        self.remote_work_dir = cmd.uploadDir
+        self.local_work_dir = self.mount_point
+
+    def mount(self):
+        if 0 != linux.sshfs_mount_with_vm_uuid(self.vm_uuid, self.username, self.hostname, self.port,
+                                               self.password, self.dst_dir, self.mount_point, self.bandwidth):
+            raise kvmagent.KvmError("failed to prepare backup space for [vm:%s]" % self.vm_uuid)
+
+    def umount(self):
+        for i in xrange(6):
+            linux.fumount(self.mount_point, 5)
+
 
 class StartVmCmd(kvmagent.AgentCommand):
+    @log.sensitive_fields("consolePassword")
     def __init__(self):
         super(StartVmCmd, self).__init__()
         self.vmInstanceUuid = None
@@ -79,6 +150,7 @@ class StartVmCmd(kvmagent.AgentCommand):
         self.isApplianceVm = False
         self.systemSerialNumber = None
         self.bootMode = None
+        self.consolePassword = None
 
 class StartVmResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -96,6 +168,9 @@ class GetVncPortResponse(kvmagent.AgentResponse):
         super(GetVncPortResponse, self).__init__()
         self.port = None
         self.protocol = None
+        self.vncPort = None
+        self.spicePort = None
+        self.spiceTlsPort = None
 
 
 class ChangeCpuMemResponse(kvmagent.AgentResponse):
@@ -185,6 +260,7 @@ class VmSyncResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(VmSyncResponse, self).__init__()
         self.states = None
+        self.vmInShutdowns = None
 
 
 class AttachDataVolumeCmd(kvmagent.AgentCommand):
@@ -223,6 +299,28 @@ class TakeSnapshotResponse(kvmagent.AgentResponse):
         self.snapshotInstallPath = None
         self.size = None
 
+
+class TakeVolumeBackupCommand(kvmagent.AgentCommand):
+    @log.sensitive_fields("password")
+    def __init__(self):
+        super(TakeVolumeBackupCommand, self).__init__()
+        self.hostname = None
+        self.username = None
+        self.password = None
+        self.sshPort = 22
+        self.bsPath = None
+        self.uploadDir = None
+        self.vmUuid = None
+        self.volume = None
+        self.bitmap = None
+        self.lastBackup = None
+        self.networkWriteBandwidth = 0L
+        self.volumeWriteBandwidth = 0L
+        self.maxIncremental = 0
+        self.mode = None
+        self.storageInfo = None
+
+
 class TakeVolumeBackupResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(TakeVolumeBackupResponse, self).__init__()
@@ -236,6 +334,27 @@ class VolumeBackupInfo(object):
         self.bitmap = bitmap
         self.backupFile = backupFile
         self.parentInstallPath = parentInstallPath
+
+
+class TakeVolumesBackupsCommand(kvmagent.AgentCommand):
+    @log.sensitive_fields("password")
+    def __init__(self):
+        super(TakeVolumesBackupsCommand, self).__init__()
+        self.hostname = None
+        self.username = None
+        self.password = None
+        self.sshPort = 22
+        self.bsPath = None
+        self.uploadDir = None
+        self.vmUuid = None
+        self.backupInfos = []
+        self.deviceIds = []  # type:list[int]
+        self.networkWriteBandwidth = 0L
+        self.volumeWriteBandwidth = 0L
+        self.maxIncremental = 0
+        self.mode = None
+        self.volumes = []
+        self.storageInfo = None
 
 
 class TakeVolumesBackupsResponse(kvmagent.AgentResponse):
@@ -281,6 +400,17 @@ class LogoutIscsiTargetRsp(kvmagent.AgentResponse):
         super(LogoutIscsiTargetRsp, self).__init__()
 
 
+class LoginIscsiTargetCmd(kvmagent.AgentCommand):
+    @log.sensitive_fields("chapPassword")
+    def __init__(self):
+        super(LoginIscsiTargetCmd, self).__init__()
+        self.hostname = None
+        self.port = None  # type:int
+        self.target = None
+        self.chapUsername = None
+        self.chapPassword = None
+
+
 class LoginIscsiTargetRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(LoginIscsiTargetRsp, self).__init__()
@@ -292,11 +422,22 @@ class ReportVmStateCmd(object):
         self.vmUuid = None
         self.vmState = None
 
+class ReportVmShutdownEventCmd(object):
+    def __init__(self):
+        self.vmUuid = None
 
 class CheckVmStateRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(CheckVmStateRsp, self).__init__()
         self.states = {}
+
+
+class ChangeVmPasswordCmd(kvmagent.AgentCommand):
+    @log.sensitive_fields("accountPerference.accountPassword")
+    def __init__(self):
+        super(ChangeVmPasswordCmd, self).__init__()
+        self.accountPerference = AccountPerference()  # type:AccountPerference
+        self.timeout = 0L
 
 
 class ChangeVmPasswordRsp(kvmagent.AgentResponse):
@@ -316,18 +457,6 @@ class ReconnectMeCmd(object):
     def __init__(self):
         self.hostUuid = None
         self.reason = None
-
-class GetPciDevicesCmd(kvmagent.AgentCommand):
-    def __init__(self):
-        super(GetPciDevicesCmd, self).__init__()
-        self.filterString = None
-        self.enableIommu = True
-
-class GetPciDevicesResponse(kvmagent.AgentResponse):
-    def __init__(self):
-        super(GetPciDevicesResponse, self).__init__()
-        self.pciDevicesInfo = None
-        self.hostIommuStatus = False
 
 class HotPlugPciDeviceCommand(kvmagent.AgentCommand):
     def __init__(self):
@@ -349,6 +478,24 @@ class HotUnplugPciDeviceRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(HotUnplugPciDeviceRsp, self).__init__()
 
+class AttachPciDeviceToHostCommand(kvmagent.AgentCommand):
+    def __init__(self):
+        super(AttachPciDeviceToHostCommand, self).__init__()
+        self.pciDeviceAddress = None
+
+class AttachPciDeviceToHostRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(AttachPciDeviceToHostRsp, self).__init__()
+
+class DetachPciDeviceFromHostCommand(kvmagent.AgentCommand):
+    def __init__(self):
+        super(DetachPciDeviceFromHostCommand, self).__init__()
+        self.pciDeviceAddress = None
+
+class DetachPciDeviceFromHostRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(DetachPciDeviceFromHostRsp, self).__init__()
+
 class KvmAttachUsbDeviceRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(KvmAttachUsbDeviceRsp, self).__init__()
@@ -356,6 +503,10 @@ class KvmAttachUsbDeviceRsp(kvmagent.AgentResponse):
 class KvmDetachUsbDeviceRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(KvmDetachUsbDeviceRsp, self).__init__()
+
+class ReloadRedirectUsbRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(ReloadRedirectUsbRsp, self).__init__()
 
 class CheckMountDomainRsp(kvmagent.AgentResponse):
     def __init__(self):
@@ -372,9 +523,61 @@ class KvmResizeVolumeRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(KvmResizeVolumeRsp, self).__init__()
 
+class UpdateVmPriorityRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(UpdateVmPriorityRsp, self).__init__()
+
 class BlockStreamResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(BlockStreamResponse, self).__init__()
+
+class AttachGuestToolsIsoToVmCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(AttachGuestToolsIsoToVmCmd, self).__init__()
+        self.vmInstanceUuid = None
+        self.needTempDisk = None
+
+class AttachGuestToolsIsoToVmRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(AttachGuestToolsIsoToVmRsp, self).__init__()
+
+class IsoTo(object):
+    def __init__(self):
+        super(IsoTo, self).__init__()
+        self.path = None
+        self.imageUuid = None
+        self.deviceId = None
+
+class AttachIsoCmd(object):
+    def __init__(self):
+        super(AttachIsoCmd, self).__init__()
+        self.iso = None
+        self.vmUuid = None
+
+class DetachIsoCmd(object):
+    def __init__(self):
+        super(DetachIsoCmd, self).__init__()
+        self.vmUuid = None
+        self.deviceId = None
+
+class GetVmGuestToolsInfoCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(GetVmGuestToolsInfoCmd, self).__init__()
+        self.vmInstanceUuid = None
+
+class GetVmGuestToolsInfoRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(GetVmGuestToolsInfoRsp, self).__init__()
+
+class GetVmFirstBootDeviceCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(GetVmFirstBootDeviceCmd, self).__init__()
+        self.uuid = None
+
+class GetVmFirstBootDeviceRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(GetVmFirstBootDeviceRsp, self).__init__()
+        self.firstBootDevice = None
 
 class VncPortIptableRule(object):
     def __init__(self):
@@ -530,20 +733,65 @@ LIBVIRT_MAJOR_VERSION = LIBVIRT_VERSION.split('.')[0]
 def is_namespace_used():
     return compare_version(LIBVIRT_VERSION, '1.3.3') >= 0
 
+def is_ioapic_supported():
+    return compare_version(LIBVIRT_VERSION, '3.4.0') >= 0 and not IS_AARCH64
+
 # Occasionally, libvirt might fail to list VM ...
 def get_console_without_libvirt(vmUuid):
     output = bash.bash_o("""ps x | awk '/qemu[-]kvm.*%s/{print $1, index($0, " -vnc ")}'""" % vmUuid).splitlines()
     if len(output) != 1:
-        return None, None
+        return None, None, None, None
 
     pid, idx = output[0].split()
-    proto = 'vnc' if int(idx) != 0 else 'spice'
-
-    output = bash.bash_o("""lsof -p %s -aPi4 | awk '$8 == "TCP" { n=split($9,a,":"); print a[n] }'""" % pid).splitlines()
+    output = bash.bash_o(
+        """lsof -p %s -aPi4 | awk '$8 == "TCP" { n=split($9,a,":"); print a[n] }'""" % pid).splitlines()
     if len(output) < 1:
         logger.warn("get_port_without_libvirt: no port found")
-        return None, None
-    return proto, min([int(port) for port in output])
+        return None, None, None, None
+    # There is a port in vnc, there may be one or two porters in the spice, and two or three ports may exist in vncAndSpice.
+    output = output.sort()
+    if len(output) == 1 and int(idx) == 0:
+        protocol = "spice"
+        return protocol, None, int(output[0]), None
+
+    if len(output) == 1 and int(idx) != 0:
+        protocol = "vnc"
+        return protocol, int(output[0]), None, None
+
+    if len(output) == 2 and int(idx) == 0:
+        protocol = "spice"
+        return protocol, None, int(output[0]), int(output[1])
+
+    if len(output) == 2 and int(idx) != 0:
+        protocol = "vncAndSpice"
+        return protocol, int(output[0]), int(output[1]), None
+
+    if len(output) == 3:
+        protocol = "vncAndSpice"
+        return protocol, int(output[0]), int(output[1]), int(output[2])
+
+    logger.warn("get_port_without_libvirt: more than 3 ports")
+    return None, None, None, None
+
+def check_vdi_port(vncPort, spicePort, spiceTlsPort):
+    if vncPort is None and spicePort is None and spiceTlsPort is None:
+        return False
+    if vncPort is not None and vncPort <= 0:
+        return False
+    if spicePort is not None and spicePort <= 0:
+        return False
+    if spiceTlsPort is not None and spiceTlsPort <= 0:
+        return False
+    return True
+
+# get domain/bus/slot/function from pci device address
+def parse_pci_device_address(addr):
+    domain = '0000' if len(addr.split(":")) == 2 else addr.split(":")[0]
+    bus  = addr.split(":")[-2]
+    slot = addr.split(":")[-1].split(".")[0]
+    function = addr.split(".")[-1]
+    return domain, bus, slot, function
+
 
 class LibvirtEventManager(object):
     EVENT_DEFINED = "Defined"
@@ -599,6 +847,7 @@ class LibvirtEventManager(object):
 
     @staticmethod
     def event_to_string(index):
+        # type: (int) -> str
         return LibvirtEventManager.event_strings[index]
 
     @staticmethod
@@ -679,6 +928,7 @@ class LibvirtAutoReconnect(object):
         def test_connection():
             try:
                 LibvirtAutoReconnect.conn.getLibVersion()
+                VmPlugin._reload_ceph_secret_keys()
                 return None
             except libvirt.libvirtError as ex:
                 return ex
@@ -687,10 +937,11 @@ class LibvirtAutoReconnect(object):
         if not ex:
             # the connection is ok
             return
-
+        # 2nd version: 2015
         logger.warn("the libvirt connection is broken, there is no safeway to auto-reconnect without fd leak, we"
                     " will ask the mgmt server to reconnect us after self quit")
         _stop_world()
+
 
         # old_conn = LibvirtAutoReconnect.conn
         # LibvirtAutoReconnect.conn = libvirt.open('qemu:///system')
@@ -727,7 +978,7 @@ class LibvirtAutoReconnect(object):
             return self.func(LibvirtAutoReconnect.conn)
         except libvirt.libvirtError as ex:
             err = str(ex)
-            if 'client socket is closed' in err or 'Broken pipe' in err:
+            if 'client socket is closed' in err or 'Broken pipe' in err or 'invalid connection' in err:
                 logger.debug('socket to the libvirt is broken[%s], try reconnecting' % err)
                 self._reconnect()
                 return self.func(LibvirtAutoReconnect.conn)
@@ -1099,7 +1350,6 @@ class VirtioIscsi(object):
         secret.setValue(self.chap_password)
         return secret.UUIDString()
 
-
 def get_vm_by_uuid(uuid, exception_if_not_existing=True, conn=None):
     try:
         # libvirt may not be able to find a VM when under a heavy workload, we re-try here
@@ -1154,6 +1404,7 @@ def get_active_vm_uuids_states():
 
     ids = call_libvirt()
     uuids_states = {}
+    uuids_vmInShutdown = []
 
     @LibvirtAutoReconnect
     def get_domain(conn):
@@ -1179,15 +1430,20 @@ def get_active_vm_uuids_states():
             logger.debug("ignore the vm used for MN HA.")
             continue
         (state, _, _, _, _) = domain.info()
+        if state == Vm.VIR_DOMAIN_SHUTDOWN:
+            uuids_vmInShutdown.append(uuid)
+
         state = Vm.power_state[state]
         # or use
         uuids_states[uuid] = state
-    return uuids_states
+    return uuids_states, uuids_vmInShutdown
 
 
 def get_all_vm_states():
-    return get_active_vm_uuids_states()
+    return get_active_vm_uuids_states()[0]
 
+def get_all_vm_sync_states():
+    return get_active_vm_uuids_states()
 
 def get_running_vms():
     @LibvirtAutoReconnect
@@ -1275,6 +1531,28 @@ class VmOperationJudger(object):
             raise Exception('unknown vm operation[%s]' % self.op)
 
 
+def make_spool_conf(imgfmt, dev_letter, volume):
+    d = tempfile.gettempdir()
+    fname = "{0}_{1}".format(os.path.basename(volume.installPath), dev_letter)
+    fpath = os.path.join(d, fname) + ".conf"
+    vsize, _ = linux.qcow2_size_and_actual_size(volume.installPath)
+    with open(fpath, "w") as fd:
+       fd.write("device_type  0\n")
+       fd.write("local_storage_type 0\n")
+       fd.write("device_owner blockpmd\n")
+       fd.write("device_format {0}\n".format(imgfmt))
+       fd.write("cluster_id 1000\n")
+       fd.write("device_id {0}\n".format(ord(dev_letter)))
+       fd.write("device_uuid {0}\n".format(fname))
+       fd.write("mount_point {0}\n".format(volume.installPath))
+       fd.write("device_size {0}\n".format(vsize))
+
+    os.chmod(fpath, 0o600)
+    return fpath
+
+def is_spice_tls():
+    return bash.bash_r("grep '^[[:space:]]*spice_tls[[:space:]]*=[[:space:]]*1' /etc/libvirt/qemu.conf")
+
 class Vm(object):
     VIR_DOMAIN_NOSTATE = 0
     VIR_DOMAIN_RUNNING = 1
@@ -1316,6 +1594,8 @@ class Vm(object):
     else:
         DEVICE_LETTERS = 'abdefghijklmnopqrstuvwxyz'
     ISO_DEVICE_LETTERS = 'cde'
+
+    timeout_detached_vol = set()
 
     @staticmethod
     def get_device_unit(device_id):
@@ -1394,11 +1674,14 @@ class Vm(object):
         except:
             return False
 
-    def _wait_for_vm_running(self, timeout=60):
+    def _wait_for_vm_running(self, timeout=60, wait_console=True):
         if not linux.wait_callback_success(self.wait_for_state_change, self.VM_STATE_RUNNING, interval=0.5,
                                            timeout=timeout):
             raise kvmagent.KvmError('unable to start vm[uuid:%s, name:%s], vm state is not changing to '
                                     'running after %s seconds' % (self.uuid, self.get_name(), timeout))
+
+        if not wait_console:
+            return
 
         vnc_port = self.get_console_port()
 
@@ -1432,7 +1715,7 @@ class Vm(object):
 
         self.start(cmd.timeout)
 
-    def start(self, timeout=60, create_paused=False):
+    def start(self, timeout=60, create_paused=False, wait_console=True):
         # TODO: 1. enable hair_pin mode
         logger.debug('creating vm:\n%s' % self.domain_xml)
 
@@ -1447,7 +1730,7 @@ class Vm(object):
         if create_paused:
             self._wait_for_vm_paused(timeout)
         else:
-            self._wait_for_vm_running(timeout)
+            self._wait_for_vm_running(timeout, wait_console)
 
     def stop(self, graceful=True, timeout=5, undefine=True):
         def cleanup_addons():
@@ -1497,8 +1780,11 @@ class Vm(object):
                         shell.call('kill -9 %s' % pid)
 
             try:
-                self.domain.undefineFlags(
-                    libvirt.VIR_DOMAIN_UNDEFINE_MANAGED_SAVE | libvirt.VIR_DOMAIN_UNDEFINE_SNAPSHOTS_METADATA | libvirt.VIR_DOMAIN_UNDEFINE_NVRAM)
+                flags = 0
+                for attr in [ "VIR_DOMAIN_UNDEFINE_MANAGED_SAVE", "VIR_DOMAIN_UNDEFINE_SNAPSHOTS_METADATA", "VIR_DOMAIN_UNDEFINE_NVRAM" ]:
+                    if hasattr(libvirt, attr):
+                        flags |= getattr(libvirt, attr)
+                self.domain.undefineFlags(flags)
             except libvirt.libvirtError as ex:
                 logger.warn('undefine domain[%s] failed: %s' % (self.uuid, str(ex)))
                 force_undefine()
@@ -1601,6 +1887,22 @@ class Vm(object):
         vir.port = self.get_console_port()
         vir.apply()
 
+    def get_vdi_connect_port(self):
+        rsp = GetVncPortResponse()
+        for g in self.domain_xmlobject.devices.get_child_node_as_list('graphics'):
+            if g.type_ == 'vnc':
+                rsp.vncPort = g.port_
+                rsp.protocol = "vnc"
+            elif g.type_ == 'spice':
+                rsp.spicePort = g.port_
+                if g.hasattr('tlsPort_'):
+                    rsp.spiceTlsPort = g.tlsPort_
+                rsp.protocol = "spice"
+
+        if rsp.vncPort is not None and rsp.spicePort is not None:
+            rsp.protocol = "vncAndSpice"
+        return rsp.protocol, rsp.vncPort, rsp.spicePort, rsp.spiceTlsPort
+
     def get_console_port(self):
         for g in self.domain_xmlobject.devices.get_child_node_as_list('graphics'):
             if g.type_ == 'vnc' or g.type_ == 'spice':
@@ -1648,7 +1950,7 @@ class Vm(object):
                 virsh_key = "%s_bytes_sec" % mode
                 e(iotune, virsh_key, str(qos.totalBandwidth))
             if qos.totalIops:
-                virsh_key = "%_iops_sec" % mode
+                virsh_key = "%s_iops_sec" % mode
                 e(iotune, virsh_key, str(qos.totalIops))
 
     def _attach_data_volume(self, volume, addons):
@@ -1823,6 +2125,19 @@ class Vm(object):
                 return etree.tostring(disk)
             return blk()
 
+        def spool_volume():
+            def blk():
+                imgfmt = linux.get_img_fmt(volume.installPath)
+                disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
+                e(disk, 'driver', None,
+                  {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'io': 'native'})
+                e(disk, 'source', None,
+                  {'protocol': 'spool', 'name': make_spool_conf(imgfmt, dev_letter, volume)})
+                e(disk, 'target', None, {'dev': 'vd%s' % dev_letter, 'bus': 'virtio'})
+                return etree.tostring(disk)
+
+            return blk()
+
         dev_letter = self._get_device_letter(volume, addons)
         if volume.deviceType == 'iscsi':
             xml = iscsibased_volume()
@@ -1836,6 +2151,8 @@ class Vm(object):
             xml = scsilun_volume()
         elif volume.deviceType == 'block':
             xml = block_volume()
+        elif volume.deviceType == 'spool':
+            xml = spool_volume()
         else:
             raise Exception('unsupported volume deviceType[%s]' % volume.deviceType)
 
@@ -1915,8 +2232,12 @@ class Vm(object):
     def _detach_data_volume(self, volume):
         assert volume.deviceId != 0, 'how can root volume gets detached???'
 
-        target_disk, disk_name = self._get_target_disk(volume)
+        target_disk, disk_name = self._get_target_disk(volume, is_exception=False)
         if not target_disk:
+            if self._volume_detach_timed_out(volume):
+                logger.debug('volume [installPath: %s] has been detached before' % volume.installPath)
+                self._clean_timeout_record(volume)
+                return
             raise kvmagent.KvmError('unable to find data volume[%s] on vm[uuid:%s]' % (disk_name, self.uuid))
 
         xmlstr = target_disk.dump()
@@ -1944,9 +2265,15 @@ class Vm(object):
                 except:
                     # check one more time
                     if not wait_for_detach(None):
+                        self._record_volume_detach_timeout(volume)
+                        logger.debug("detach timeout, record volume install path: %s" % volume.installPath)
                         raise
 
             detach()
+
+            if self._volume_detach_timed_out(volume):
+                self._clean_timeout_record(volume)
+                logger.debug("detach success finally, remove record of volume install path: %s" % volume.installPath)
 
             def logout_iscsi():
                 BlkIscsi.logout_portal(target_disk.source.dev_)
@@ -1963,25 +2290,25 @@ class Vm(object):
             raise kvmagent.KvmError(
                 'unable to detach volume[%s] from vm[uuid:%s], %s' % (volume.installPath, self.uuid, str(ex)))
 
+    def _record_volume_detach_timeout(self, volume):
+        Vm.timeout_detached_vol.add(volume.installPath + "-" + self.uuid)
+
+    def _volume_detach_timed_out(self, volume):
+        return volume.installPath + "-" + self.uuid in Vm.timeout_detached_vol
+
+    def _clean_timeout_record(self, volume):
+        Vm.timeout_detached_vol.remove(volume.installPath + "-" + self.uuid)
+
     def _get_back_file(self, volume):
-        ret = shell.call('qemu-img info %s' % volume)
-        for l in ret.split('\n'):
-            l = l.strip(' \n\t\r')
-            if l == '':
-                continue
-
-            k, v = l.split(':')
-            if k == 'backing file':
-                return v.strip()
-
-        return None
+        back = linux.qcow2_get_backing_file(volume)
+        return None if not back else back
 
     def _get_backfile_chain(self, current):
         back_files = []
 
         def get_back_files(volume):
             back_file = self._get_back_file(volume)
-            if back_file is None:
+            if not back_file:
                 return
 
             back_files.append(back_file)
@@ -1989,6 +2316,12 @@ class Vm(object):
 
         get_back_files(current)
         return back_files
+
+    @staticmethod
+    def ensure_no_internal_snapshot(volume):
+        if os.path.exists(volume) and shell.run("%s --backing-chain %s | grep 'Snapshot list:'"
+                                                        % (qemu_img.subcmd('info'), volume)) == 0:
+            raise kvmagent.KvmError('found internal snapshot in the backing chain of volume[path:%s].' % volume)
 
     # NOTE: code from Openstack nova
     def _wait_for_block_job(self, disk_path, abort_on_error=False,
@@ -2020,6 +2353,32 @@ class Vm(object):
             job_ended = cur == end
 
         return not job_ended
+
+    def _get_target_disk_by_path(self, installPath, is_exception=True):
+        if installPath.startswith('sharedblock'):
+            installPath = shared_block_to_file(installPath)
+
+        for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
+            if not xmlobject.has_element(disk, 'source'):
+                continue
+
+            # file
+            if disk.source.file__ and disk.source.file_ == installPath:
+                return disk, disk.target.dev_
+
+            # ceph
+            if disk.source.name__ and disk.source.name_ in installPath:
+                return disk, disk.target.dev_
+
+            # 'block':
+            if disk.source.dev__ and disk.source.dev_ in installPath:
+                return disk, disk.target.dev_
+
+        if not is_exception:
+            return None, None
+
+        logger.debug('%s is not found on the vm[uuid:%s]' % (installPath, self.uuid))
+        raise kvmagent.KvmError('unable to find volume[installPath:%s] on vm[uuid:%s]' % (installPath, self.uuid))
 
     def _get_target_disk(self, volume, is_exception=True):
         if volume.installPath.startswith('sharedblock'):
@@ -2090,10 +2449,7 @@ class Vm(object):
             """
             :rtype: long
             """
-            size = linux.get_local_file_disk_usage(install_path)
-            if size is None or size == 0:
-                size = linux.qcow2_virtualsize(install_path)
-            return size
+            return VmPlugin._get_snapshot_size(install_path)
 
         logger.debug(vs_structs)
         for vs_struct in vs_structs:
@@ -2190,6 +2546,7 @@ class Vm(object):
 
     def block_stream_disk(self, volume):
         target_disk, disk_name = self._get_target_disk(volume)
+        install_path = target_disk.source.file_
         logger.debug('start block stream for disk %s' % disk_name)
         self.domain.blockRebase(disk_name, None, 0, 0)
 
@@ -2201,6 +2558,12 @@ class Vm(object):
 
         if not linux.wait_callback_success(wait_job, timeout=21600, ignore_exception_in_callback=True):
             raise kvmagent.KvmError('block stream failed')
+
+        def wait_backing_file_cleared(_):
+            return not linux.qcow2_get_backing_file(install_path)
+
+        if not linux.wait_callback_success(wait_backing_file_cleared, timeout=60, ignore_exception_in_callback=True):
+            raise kvmagent.KvmError('block stream succeeded, but backing file is not cleared')
 
     def list_blk_sources(self):
         """list domain blocks (aka. domblklist) -- but with sources only"""
@@ -2218,8 +2581,7 @@ class Vm(object):
         return res
 
     def migrate(self, cmd):
-        current_hostname = shell.call('hostname')
-        current_hostname = current_hostname.strip(' \t\n\r')
+        current_hostname = linux.get_host_name()
         if cmd.migrateFromDestination:
             hostname = cmd.destHostIp.replace('.', '-')
         else:
@@ -2252,7 +2614,34 @@ class Vm(object):
         if cmd.useNuma:
             flag |= libvirt.VIR_MIGRATE_PERSIST_DEST
 
+        report = Report.from_cmd(cmd, 'MigrateVm')
+        stage = get_task_stage(cmd)
+
         timeout = 1800 if cmd.timeout is None else cmd.timeout
+
+        @thread.AsyncThread
+        def report_progress():
+            def _get_progress_until_migrated(_):
+                try:
+                    stats = self.domain.jobStats()
+                    if libvirt.VIR_DOMAIN_JOB_DATA_REMAINING in stats and libvirt.VIR_DOMAIN_JOB_DATA_TOTAL in stats:
+                        remain = stats[libvirt.VIR_DOMAIN_JOB_DATA_REMAINING]
+                        total = stats[libvirt.VIR_DOMAIN_JOB_DATA_TOTAL]
+                        if total == 0:
+                            return
+
+                        percent = min(99, 100.0 - remain * 100.0 / total)
+                        report.progress_report(get_exact_percent(percent, stage), 'report')
+                except libvirt.libvirtError:
+                    # vm migrated, check twice.
+                    logger.debug("vm migrated[uuid:%s], will stop to report progress" % self.uuid)
+                    return self.wait_for_state_change(None)
+                except:
+                    logger.debug(linux.get_exception_stacktrace())
+
+            linux.wait_callback_success(_get_progress_until_migrated, callback_data=None, timeout=timeout)
+
+
         def cancel_migration():
             logger.debug('timeout after %d seconds, cancelling migration' % timeout)
             try: self.domain.abortJob()
@@ -2261,6 +2650,7 @@ class Vm(object):
         t = threading.Timer(timeout, cancel_migration)
         t.start()
 
+        report_progress()
         try:
             logger.debug('migrating vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
             self.domain.migrateToURI2(destUrl, tcpUri, None, flag, None, 0)
@@ -2270,11 +2660,10 @@ class Vm(object):
 
         try:
             logger.debug('migrating vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
-            timeo = 1800 if cmd.timeout is None else cmd.timeout
-            if not linux.wait_callback_success(self.wait_for_state_change, callback_data=None, timeout=timeo):
+            if not linux.wait_callback_success(self.wait_for_state_change, callback_data=None, timeout=timeout):
                 try: self.domain.abortJob()
                 except: pass
-                raise kvmagent.KvmError('timeout after %d seconds' % timeo)
+                raise kvmagent.KvmError('timeout after %d seconds' % timeout)
         except kvmagent.KvmError:
             raise
         except:
@@ -2283,7 +2672,8 @@ class Vm(object):
         logger.debug('successfully migrated vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
 
     def _interface_cmd_to_xml(self, cmd):
-        interface = Vm._build_interface_xml(cmd.nic)
+        vhostSrcPath = cmd.addons['vhostSrcPath'] if cmd.addons else None
+        interface = Vm._build_interface_xml(cmd.nic, None, vhostSrcPath)
 
         def addon():
             if cmd.addons and cmd.addons['NicQos']:
@@ -2355,14 +2745,14 @@ class Vm(object):
 
             if "QEMU command 'change': error connecting: Operation not supported" in err:
                 raise Exception('cannot hotplug ISO to the VM[uuid:%s]. It is a libvirt bug: %s.'
-                        ' you can power-off the vm and attach again.' %
-                        (self.uuid, 'https://bugzilla.redhat.com/show_bug.cgi?id=1541702'))
-
-            if 'timed out waiting for disk tray status update' in err:
+                                ' you can power-off the vm and attach again.' %
+                                (self.uuid, 'https://bugzilla.redhat.com/show_bug.cgi?id=1541702'))
+            elif 'timed out waiting for disk tray status update' in err:
                 raise Exception(
                     'unable to attach the iso to the VM[uuid:%s]. It seems met some internal error,'
                     ' you can reboot the vm and try again' % self.uuid)
-
+            else:
+                raise Exception('unable to attach the iso to the VM[uuid:%s].' % self.uuid)
 
         def check(_):
             me = get_vm_by_uuid(self.uuid)
@@ -2413,6 +2803,9 @@ class Vm(object):
                 raise Exception(
                     'unable to detach the iso from the VM[uuid:%s]. It seems the ISO is still mounted in the operating system'
                     ', please umount it first' % self.uuid)
+            else:
+                raise Exception(
+                    'unable to detach the iso from the VM[uuid:%s]' % self.uuid)
 
         def check(_):
             me = get_vm_by_uuid(self.uuid)
@@ -2641,7 +3034,7 @@ class Vm(object):
                 logger.warn(e.message)
                 if e.message.find("child process has failed to set user password") > 0:
                     logger.warn('user [%s] not exist!' % cmd.accountPerference.userAccount)
-                    raise kvmagent.KvmError('user [%s] not exist!' % cmd.accountPerference.userAccount)
+                    raise kvmagent.KvmError('user [%s] not exist on vm[uuid: %s]!' % (cmd.accountPerference.userAccount, uuid))
                 else:
                     raise e
         else:
@@ -2673,7 +3066,7 @@ class Vm(object):
 
             # Double check (c.f. issue #757)
             if self._get_back_file(top) != base:
-                raise kvmagent.KvmError('[bug] live merge snapshot failed')
+                raise kvmagent.KvmError('[libvirt bug] live merge snapshot failed')
 
             logger.debug('end block rebase [active: %s, new backing: %s]' % (top, base))
 
@@ -2708,13 +3101,19 @@ class Vm(object):
             root.set('xmlns:qemu', 'http://libvirt.org/schemas/domain/qemu/1.0')
             elements['root'] = root
 
+        def make_memory_backing():
+            root = elements['root']
+            backing = e(root, 'memoryBacking')
+            e(backing, "hugepages")
+            e(backing, "nosharepages")
+            e(backing, "allocation", attrib={'mode': 'immediate'})
+
         def make_cpu():
             if use_numa and not IS_AARCH64:
                 root = elements['root']
                 e(root, 'vcpu', '128', {'placement': 'static', 'current': str(cmd.cpuNum)})
                 # e(root,'vcpu',str(cmd.cpuNum),{'placement':'static'})
                 tune = e(root, 'cputune')
-                e(tune, 'shares', str(cmd.cpuSpeed * cmd.cpuNum))
                 # enable nested virtualization
                 if cmd.nestedVirtualization == 'host-model':
                     cpu = e(root, 'cpu', attrib={'mode': 'host-model'})
@@ -2740,7 +3139,6 @@ class Vm(object):
                 # e(root, 'vcpu', '128', {'placement': 'static', 'current': str(cmd.cpuNum)})
                 e(root, 'vcpu', str(cmd.cpuNum), {'placement': 'static'})
                 tune = e(root, 'cputune')
-                e(tune, 'shares', str(cmd.cpuSpeed * cmd.cpuNum))
                 # enable nested virtualization
                 if cmd.nestedVirtualization == 'host-model':
                     cpu = e(root, 'cpu', attrib={'mode': 'host-model'})
@@ -2766,7 +3164,7 @@ class Vm(object):
             root = elements['root']
             mem = cmd.memory / 1024
             if use_numa and not IS_AARCH64:
-                e(root, 'maxMemory', str(68719476736), {'slots': str(16), 'unit': 'KiB'})
+                e(root, 'maxMemory', str(34359738368), {'slots': str(16), 'unit': 'KiB'})
                 # e(root,'memory',str(mem),{'unit':'k'})
                 e(root, 'currentMemory', str(mem), {'unit': 'k'})
             else:
@@ -2803,6 +3201,10 @@ class Vm(object):
             system = e(sysinfo, 'system')
             e(system, 'entry', cmd.systemSerialNumber, attrib={'name': 'serial'})
 
+            if cmd.chassisAssetTag is not None:
+                chassis = e(sysinfo, 'chassis')
+                e(chassis, 'entry', cmd.chassisAssetTag, attrib={'name': 'asset'})
+
         def make_features():
             root = elements['root']
             features = e(root, 'features')
@@ -2819,6 +3221,9 @@ class Vm(object):
                 e(hyperv, 'vapic', attrib={'state': 'on'})
                 e(hyperv, 'spinlocks', attrib={'state': 'on', 'retries': '4096'})
                 e(hyperv, 'vendor_id', attrib={'state': 'on', 'value': 'ZStack_Org'})
+            # always set ioapic driver to kvm after libvirt 3.4.0
+            if is_ioapic_supported():
+                e(features, "ioapic", attrib={'driver': 'kvm'})
 
         def make_qemu_commandline():
             if not os.path.exists(QMP_SOCKET_PATH):
@@ -2826,9 +3231,19 @@ class Vm(object):
 
             root = elements['root']
             qcmd = e(root, 'qemu:commandline')
-            e(qcmd, "qemu:arg", attrib={"value": "-qmp"})
-            e(qcmd, "qemu:arg", attrib={"value": "unix:%s/%s.sock,server,nowait" %
-                                        (QMP_SOCKET_PATH, cmd.vmInstanceUuid)})
+            vendor_id, model_name = linux.get_cpu_model()
+            if "hygon" in model_name.lower():
+                if isinstance(cmd.imagePlatform, str) and cmd.imagePlatform.lower() not in ["other", "paravirtualization"]:
+                    e(qcmd, "qemu:arg", attrib={"value": "-cpu"})
+                    e(qcmd, "qemu:arg", attrib={"value": "EPYC,vendor=AuthenticAMD,model_id={} Processor".format(" ".join(model_name.split(" ")[0:3]))})
+            else:
+                e(qcmd, "qemu:arg", attrib={"value": "-qmp"})
+                e(qcmd, "qemu:arg", attrib={"value": "unix:{}/{}.sock,server,nowait".format(QMP_SOCKET_PATH, cmd.vmInstanceUuid)})
+
+            args = cmd.addons['qemuCommandLine']
+            if args is not None:
+                for arg in args:
+                    e(qcmd, "qemu:arg", attrib={"value": arg.strip('"')})
 
         def make_devices():
             root = elements['root']
@@ -2941,7 +3356,10 @@ class Vm(object):
 
             def filebased_volume(_dev_letter, _v):
                 disk = etree.Element('disk', {'type': 'file', 'device': 'disk', 'snapshot': 'external'})
-                e(disk, 'driver', None, {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': _v.cacheMode})
+                if cmd.addons and cmd.addons['useDataPlane'] is True:
+                    e(disk, 'driver', None, {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': _v.cacheMode, 'queues':'1', 'dataplane': 'on'})
+                else:
+                    e(disk, 'driver', None, {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': _v.cacheMode})
                 e(disk, 'source', None, {'file': _v.installPath})
 
                 if _v.shareable:
@@ -3050,6 +3468,16 @@ class Vm(object):
                 else:
                     return fusionstor_blk()
 
+            def spool_volume(_dev_letter, _v):
+                imgfmt = linux.get_img_fmt(_v.installPath)
+                disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
+                e(disk, 'driver', None,
+                  {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'io': 'native'})
+                e(disk, 'source', None,
+                  {'protocol': 'spool', 'name': make_spool_conf(imgfmt, _dev_letter, _v)})
+                e(disk, 'target', None, {'dev': 'vd%s' % _dev_letter, 'bus': 'virtio'})
+                return disk
+
             def block_volume(_dev_letter, _v):
                 disk = etree.Element('disk', {'type': 'block', 'device': 'disk', 'snapshot': 'external'})
                 e(disk, 'driver', None,
@@ -3114,7 +3542,12 @@ class Vm(object):
 
                 dev_letter = Vm.DEVICE_LETTERS[v.deviceId]
                 if v.useVirtioSCSI:
-                    dev_letter = Vm.DEVICE_LETTERS[scsi_device_ids.pop()]
+                    scsi_device_id = scsi_device_ids.pop()
+                    if scsi_device_id >= len(Vm.DEVICE_LETTERS):
+                        err = "exceeds max disk limit, device id[%s], but only 0 ~ %d are allowed" % (scsi_device_id, len(Vm.DEVICE_LETTERS) - 1)
+                        logger.warn(err)
+                        raise kvmagent.KvmError(err)
+                    dev_letter = Vm.DEVICE_LETTERS[scsi_device_id]
 
                 if v.deviceType == 'file':
                     vol = filebased_volume(dev_letter, v)
@@ -3126,6 +3559,8 @@ class Vm(object):
                     vol = fusionstor_volume(dev_letter, v)
                 elif v.deviceType == 'block':
                     vol = block_volume(dev_letter, v)
+                elif v.deviceType == 'spool':
+                    vol = spool_volume(dev_letter, v)
                 else:
                     raise Exception('unknown volume deviceType: %s' % v.deviceType)
 
@@ -3146,8 +3581,9 @@ class Vm(object):
                     Vm._add_qos_to_interface(nic_xml_object, qos)
 
             devices = elements['devices']
+            vhostSrcPath = cmd.addons['vhostSrcPath'] if cmd.addons else None
             for nic in cmd.nics:
-                interface = Vm._build_interface_xml(nic, devices)
+                interface = Vm._build_interface_xml(nic, devices, vhostSrcPath)
                 addon(interface)
 
         def make_meta():
@@ -3157,8 +3593,11 @@ class Vm(object):
             e(root, 'uuid', uuidhelper.to_full_uuid(cmd.vmInstanceUuid))
             e(root, 'description', cmd.vmName)
             e(root, 'on_poweroff', 'destroy')
-            e(root, 'on_crash', 'restart')
             e(root, 'on_reboot', 'restart')
+            on_crash = cmd.addons['onCrash']
+            if on_crash is None:
+                on_crash = 'restart'
+            e(root, 'on_crash', on_crash)
             meta = e(root, 'metadata')
             zs = e(meta, 'zstack', usenamesapce=True)
             e(zs, 'internalId', str(cmd.vmInternalId))
@@ -3181,16 +3620,30 @@ class Vm(object):
 
         def make_spice():
             devices = elements['devices']
-            spice = e(devices, 'graphics', None, {'type': 'spice', 'port': '5900', 'autoport': 'yes'})
+            if cmd.consolePassword == None:
+                spice = e(devices, 'graphics', None, {'type': 'spice', 'port': '5900', 'autoport': 'yes'})
+            else:
+                spice = e(devices, 'graphics', None,
+                          {'type': 'spice', 'port': '5900', 'autoport': 'yes', 'passwd': str(cmd.consolePassword)})
             e(spice, "listen", None, {'type': 'address', 'address': '0.0.0.0'})
+
+            if is_spice_tls() == 0 and cmd.spiceChannels != None:
+                for channel in cmd.spiceChannels:
+                    e(spice, "channel", None, {'name': channel, 'mode': "secure"})
             e(spice, "image", None, {'compression': 'auto_glz'})
             e(spice, "jpeg", None, {'compression': 'always'})
             e(spice, "zlib", None, {'compression': 'never'})
             e(spice, "playback", None, {'compression': 'off'})
             e(spice, "streaming", None, {'mode': cmd.spiceStreamingMode})
             e(spice, "mouse", None, {'mode': 'client'})
-            e(spice, "filetransfer", None, {'enable': 'no'})
-            e(spice, "clipboard", None, {'copypaste': 'no'})
+            e(spice, "filetransfer", None, {'enable': 'yes'})
+            e(spice, "clipboard", None, {'copypaste': 'yes'})
+
+        def make_folder_sharing():
+            devices = elements['devices']
+            chan = e(devices, 'channel', None, {'type': 'spiceport'})
+            e(chan, 'source', None, {'channel': 'org.spice-space.webdav.0'})
+            e(chan, 'target', None, {'type': 'virtio', 'name': 'org.spice-space.webdav.0'})
 
         def make_usb_redirect():
             devices = elements['devices']
@@ -3231,21 +3684,31 @@ class Vm(object):
             else:
                 for monitor in range(cmd.VDIMonitorNumber):
                     video = e(devices, 'video')
-                    e(video, 'model', None, {'type': str(cmd.videoType)})
+                    if cmd.qxlMemory is not None:
+                        e(video, 'model', None, {'type': str(cmd.videoType), 'ram': str(cmd.qxlMemory.ram), 'vram': str(cmd.qxlMemory.vram),
+                                                 'vagmem': str(cmd.qxlMemory.vgamem)})
+                    else:
+                        e(video, 'model', None, {'type': str(cmd.videoType)})
 
 
-        def make_audio_microphone():
-            if cmd.consoleMode == 'spice':
+        def make_sound():
+            if cmd.consoleMode == 'spice' or cmd.consoleMode == 'vncAndSpice':
                 devices = elements['devices']
-                e(devices, 'sound',None,{'model':'ich6'})
-            else:
-                return
+                if cmd.soundType is not None:
+                    e(devices, 'sound', None, {'model': str(cmd.soundType)})
+                else:
+                    e(devices, 'sound', None, {'model': 'ich6'})
 
         def make_graphic_console():
             if cmd.consoleMode == 'spice':
                 make_spice()
-            else:
+            elif cmd.consoleMode == "vnc":
                 make_vnc()
+            elif cmd.consoleMode == "vncAndSpice":
+                make_vnc()
+                make_spice()
+            else:
+                return
 
         def make_addons():
             if not cmd.addons:
@@ -3269,6 +3732,10 @@ class Vm(object):
             if pciDevices:
                 make_pci_device(pciDevices)
 
+            mdevDevices = cmd.addons['mdevDevice']
+            if mdevDevices:
+                make_mdev_device(mdevDevices)
+
             storageDevices = cmd.addons['storageDevice']
             if storageDevices:
                 make_storage_device(storageDevices)
@@ -3287,11 +3754,17 @@ class Vm(object):
                     e(disk, 'source', None, {'dev': volume.installPath})
                     e(disk, 'target', None, {'dev': 'sd%s' % Vm.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
 
-        def make_pci_device(addresses):
+        def make_pci_device(pciDevices):
             devices = elements['devices']
-            for addr in addresses:
+            for pci in pciDevices:
+                addr, spec_uuid = pci.split(',')
+
+                ret, out, err = bash.bash_roe("virsh nodedev-detach pci_%s" % addr.replace(':', '_').replace('.', '_'))
+                if ret != 0:
+                    raise kvmagent.KvmError('failed to nodedev-detach %s: %s, %s' % (addr, out, err))
+
                 if match_pci_device(addr):
-                    hostdev = e(devices, "hostdev", None, {'mode': 'subsystem', 'type': 'pci', 'managed': 'yes'})
+                    hostdev = e(devices, "hostdev", None, {'mode': 'subsystem', 'type': 'pci', 'managed': 'no'})
                     e(hostdev, "driver", None, {'name': 'vfio'})
                     source = e(hostdev, "source")
                     e(source, "address", None, {
@@ -3303,6 +3776,19 @@ class Vm(object):
                 else:
                     raise kvmagent.KvmError(
                        'can not find pci device for address %s' % addr)
+                if spec_uuid:
+                    rom_file = os.path.join(PCI_ROM_PATH, spec_uuid)
+                    # only turn bar on when rom file exists
+                    if os.path.exists(rom_file):
+                        e(hostdev, "rom", None, {'bar': 'on', 'file': rom_file})
+
+        def make_mdev_device(mdevUuids):
+            devices = elements['devices']
+            for mdevUuid in mdevUuids:
+                hostdev = e(devices, "hostdev", None, {'mode': 'subsystem', 'type': 'mdev', 'model': 'vfio-pci', 'managed': 'yes'})
+                source = e(hostdev, "source")
+                # convert mdevUuid to 8-4-4-4-12 format
+                e(source, "address", None, { "uuid": str(uuid.UUID('{%s}' % mdevUuid))})
 
         def make_usb_device(usbDevices):
             next_uhci_port = 2
@@ -3311,35 +3797,59 @@ class Vm(object):
             devices = elements['devices']
             for usb in usbDevices:
                 if match_usb_device(usb):
-                    hostdev = e(devices, "hostdev", None, {'mode': 'subsystem', 'type': 'usb', 'managed': 'yes'})
-                    source = e(hostdev, "source")
-                    e(source, "address", None, {
-                        "bus": str(int(usb.split(":")[0])),
-                        "device": str(int(usb.split(":")[1]))
-                    })
-                    e(source, "vendor", None, {
-                        "id": hex(int(usb.split(":")[2], 16))
-                    })
-                    e(source, "product", None, {
-                        "id": hex(int(usb.split(":")[3], 16))
-                    })
+                    if usb.split(":")[5] == "PassThrough":
+                        hostdev = e(devices, "hostdev", None, {'mode': 'subsystem', 'type': 'usb', 'managed': 'yes'})
+                        source = e(hostdev, "source")
+                        e(source, "address", None, {
+                            "bus": str(int(usb.split(":")[0])),
+                            "device": str(int(usb.split(":")[1]))
+                        })
+                        e(source, "vendor", None, {
+                            "id": hex(int(usb.split(":")[2], 16))
+                        })
+                        e(source, "product", None, {
+                            "id": hex(int(usb.split(":")[3], 16))
+                        })
 
-                    # get controller index from usbVersion
-                    # eg. 1.1 -> 0
-                    # eg. 2.0.0 -> 1
-                    # eg. 3 -> 2
-                    bus = int(usb.split(":")[4][0]) - 1
-                    if bus == 0:
-                        address = e(hostdev, "address", None, {'type': 'usb', 'bus': str(bus), 'port': str(next_uhci_port)})
-                        next_uhci_port += 1
-                    elif bus == 1:
-                        address = e(hostdev, "address", None, {'type': 'usb', 'bus': str(bus), 'port': str(next_ehci_port)})
-                        next_ehci_port += 1
-                    elif bus == 2:
-                        address = e(hostdev, "address", None, {'type': 'usb', 'bus': str(bus), 'port': str(next_xhci_port)})
-                        next_xhci_port += 1
-                    else:
-                        raise kvmagent.KvmError('unknown usb controller %s', bus)
+                        # get controller index from usbVersion
+                        # eg. 1.1 -> 0
+                        # eg. 2.0.0 -> 1
+                        # eg. 3 -> 2
+                        bus = int(usb.split(":")[4][0]) - 1
+                        if bus == 0:
+                            address = e(hostdev, "address", None, {'type': 'usb', 'bus': str(bus), 'port': str(next_uhci_port)})
+                            next_uhci_port += 1
+                        elif bus == 1:
+                            address = e(hostdev, "address", None, {'type': 'usb', 'bus': str(bus), 'port': str(next_ehci_port)})
+                            next_ehci_port += 1
+                        elif bus == 2:
+                            address = e(hostdev, "address", None, {'type': 'usb', 'bus': str(bus), 'port': str(next_xhci_port)})
+                            next_xhci_port += 1
+                        else:
+                            raise kvmagent.KvmError('unknown usb controller %s', bus)
+                    if usb.split(":")[5] == "Redirect":
+                        redirdev = e(devices, "redirdev", None, {'bus': 'usb', 'type': 'tcp'})
+                        source = e(redirdev, "source", None, {'mode': 'connect', 'host': usb.split(":")[7], 'service': usb.split(":")[6]})
+
+                        # get controller index from usbVersion
+                        # eg. 1.1 -> 0
+                        # eg. 2.0.0 -> 1
+                        # eg. 3 -> 2
+                        bus = int(usb.split(":")[4][0]) - 1
+                        if bus == 0:
+                            address = e(redirdev, "address", None,
+                                        {'type': 'usb', 'bus': str(bus), 'port': str(next_uhci_port)})
+                            next_uhci_port += 1
+                        elif bus == 1:
+                            address = e(redirdev, "address", None,
+                                        {'type': 'usb', 'bus': str(bus), 'port': str(next_ehci_port)})
+                            next_ehci_port += 1
+                        elif bus == 2:
+                            address = e(redirdev, "address", None,
+                                        {'type': 'usb', 'bus': str(bus), 'port': str(next_xhci_port)})
+                            next_xhci_port += 1
+                        else:
+                            raise kvmagent.KvmError('unknown usb controller %s', bus)
                 else:
                     raise kvmagent.KvmError('cannot find usb device %s', usb)
 
@@ -3352,12 +3862,14 @@ class Vm(object):
             return True
 
         def match_usb_device(addr):
-            if len(addr.split(':')) == 5:
+            if len(addr.split(':')) == 8:
                 return True
             else:
                 return False
 
         def make_balloon_memory():
+            if cmd.addons['useMemBalloon'] is False:
+                return
             devices = elements['devices']
             b = e(devices, 'memballoon', None, {'model': 'virtio'})
             e(b, 'stats', None, {'period': '10'})
@@ -3378,16 +3890,18 @@ class Vm(object):
             e(devices, 'controller', None, {'type': 'scsi', 'model': 'virtio-scsi'})
 
             if machine_type == "q35":
-                controller = e(devices, 'controller', None, {'type': 'sata', 'index': '0'})
-                e(controller, 'alias', None, {'name': 'sata'})
-                e(controller, 'address', None, {'type': 'pci', 'domain': '0', 'bus': '0', 'slot': '0x1f', 'function': '2'})
+                if not IS_AARCH64:
+                    controller = e(devices, 'controller', None, {'type': 'sata', 'index': '0'})
+                    e(controller, 'alias', None, {'name': 'sata'})
+                    e(controller, 'address', None, {'type': 'pci', 'domain': '0', 'bus': '0', 'slot': '0x1f', 'function': '2'})
 
                 pci_idx_generator = range(cmd.pciePortNums + 3).__iter__()
                 e(devices, 'controller', None, {'type': 'pci', 'model': 'pcie-root', 'index': str(pci_idx_generator.next())})
-                e(devices, 'controller', None, {'type': 'pci', 'model': 'dmi-to-pci-bridge', 'index': str(pci_idx_generator.next())})
-                e(devices, 'controller', None, {'type': 'pci', 'model': 'pci-bridge', 'index': str(pci_idx_generator.next())})
-                for i in pci_idx_generator:
-                    e(devices, 'controller', None, {'type': 'pci', 'model': 'pcie-root-port', 'index': str(i)})
+                if not IS_AARCH64:
+                    e(devices, 'controller', None, {'type': 'pci', 'model': 'dmi-to-pci-bridge', 'index': str(pci_idx_generator.next())})
+                    e(devices, 'controller', None, {'type': 'pci', 'model': 'pci-bridge', 'index': str(pci_idx_generator.next())})
+                    for i in pci_idx_generator:
+                        e(devices, 'controller', None, {'type': 'pci', 'model': 'pcie-root-port', 'index': str(i)})
 
 
         make_root()
@@ -3399,15 +3913,18 @@ class Vm(object):
         make_features()
         make_devices()
         make_video()
-        make_audio_microphone()
+        make_sound()
         make_nics()
         make_volumes()
-        make_graphic_console()
+
+        if not cmd.addons or cmd.addons['noConsole'] is not True:
+            make_graphic_console()
         make_addons()
         make_balloon_memory()
         make_console()
         make_sec_label()
         make_controllers()
+        make_folder_sharing()
         # appliance vm doesn't need any cdrom or usb controller
         if not cmd.isApplianceVm:
             make_cdrom()
@@ -3415,6 +3932,9 @@ class Vm(object):
 
         if cmd.additionalQmp:
             make_qemu_commandline()
+
+        if cmd.useHugePage:
+            make_memory_backing()
 
         root = elements['root']
         xml = etree.tostring(root)
@@ -3426,17 +3946,25 @@ class Vm(object):
         return vm
 
     @staticmethod
-    def _build_interface_xml(nic, devices=None):
+    def _build_interface_xml(nic, devices=None, vhostSrcPath=None):
+        iftype = 'bridge' if vhostSrcPath is None else 'vhostuser'
+
         if devices:
-            interface = e(devices, 'interface', None, {'type': 'bridge'})
+            interface = e(devices, 'interface', None, {'type': iftype})
         else:
-            interface = etree.Element('interface', attrib={'type': 'bridge'})
+            interface = etree.Element('interface', attrib={'type': iftype})
 
         e(interface, 'mac', None, attrib={'address': nic.mac})
-        e(interface, 'source', None, attrib={'bridge': nic.bridgeName})
-        e(interface, 'target', None, attrib={'dev': nic.nicInternalName})
         e(interface, 'alias', None, {'name': 'net%s' % nic.nicInternalName.split('.')[1]})
-        if nic.ips:
+
+        if iftype == 'bridge':
+            e(interface, 'source', None, attrib={'bridge': nic.bridgeName})
+            e(interface, 'target', None, attrib={'dev': nic.nicInternalName})
+        elif iftype == 'vhostuser':
+            e(interface, 'source', None, attrib={'type': 'unix', 'path': vhostSrcPath, 'mode':'client'})
+            e(interface, 'driver', None, attrib={'queues': '1'})
+
+        if nic.ips and iftype == 'bridge':
             ip4Addr = None
             ip6Addrs = []
             for addr in nic.ips:
@@ -3481,7 +4009,7 @@ class Vm(object):
 
 def _stop_world():
     http.AsyncUirHandler.STOP_WORLD = True
-    VmPlugin.queue.put("exit")
+    VmPlugin.queue_singleton.queue.put("exit")
 
 class VmPlugin(kvmagent.KvmAgent):
     KVM_START_VM_PATH = "/vm/start"
@@ -3498,6 +4026,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_ATTACH_VOLUME = "/vm/attachdatavolume"
     KVM_DETACH_VOLUME = "/vm/detachdatavolume"
     KVM_MIGRATE_VM_PATH = "/vm/migrate"
+    KVM_BLOCK_LIVE_MIGRATION_PATH = "/vm/blklivemigration"
     KVM_TAKE_VOLUME_SNAPSHOT_PATH = "/vm/volume/takesnapshot"
     KVM_TAKE_VOLUME_BACKUP_PATH = "/vm/volume/takebackup"
     KVM_BLOCK_STREAM_VOLUME_PATH = "/vm/volume/blockstream"
@@ -3522,13 +4051,19 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_GET_NIC_QOS = "/get/nic/qos"
     KVM_HARDEN_CONSOLE_PATH = "/vm/console/harden"
     KVM_DELETE_CONSOLE_FIREWALL_PATH = "/vm/console/deletefirewall"
-    GET_PCI_DEVICES = "/pcidevice/get"
     HOT_PLUG_PCI_DEVICE = "/pcidevice/hotplug"
     HOT_UNPLUG_PCI_DEVICE = "/pcidevice/hotunplug"
+    ATTACH_PCI_DEVICE_TO_HOST = "/pcidevice/attachtohost"
+    DETACH_PCI_DEVICE_FROM_HOST = "/pcidevice/detachfromhost"
     KVM_ATTACH_USB_DEVICE_PATH = "/vm/usbdevice/attach"
     KVM_DETACH_USB_DEVICE_PATH = "/vm/usbdevice/detach"
+    RELOAD_USB_REDIRECT_PATH = "/vm/usbdevice/reload"
     CHECK_MOUNT_DOMAIN_PATH = "/check/mount/domain"
     KVM_RESIZE_VOLUME_PATH = "/volume/resize"
+    VM_PRIORITY_PATH = "/vm/priority"
+    ATTACH_GUEST_TOOLS_ISO_TO_VM_PATH = "/vm/guesttools/attachiso"
+    GET_VM_GUEST_TOOLS_INFO_PATH = "/vm/guesttools/getinfo"
+    KVM_GET_VM_FIRST_BOOT_DEVICE_PATH = "/vm/getfirstbootdevice"
 
     VM_OP_START = "start"
     VM_OP_STOP = "stop"
@@ -3539,7 +4074,8 @@ class VmPlugin(kvmagent.KvmAgent):
     VM_OP_RESUME = "resume"
 
     timeout_object = linux.TimeoutObject()
-    queue = Queue.Queue()
+    queue_singleton = VmPluginQueueSingleton()
+    secret_keys = {}
 
     if not os.path.exists(QMP_SOCKET_PATH):
         os.mkdir(QMP_SOCKET_PATH)
@@ -3569,7 +4105,8 @@ class VmPlugin(kvmagent.KvmAgent):
                     vm.destroy()
 
             vm = Vm.from_StartVmCmd(cmd)
-            vm.start(cmd.timeout, cmd.createPaused)
+            wait_console = True if not cmd.addons or cmd.addons['noConsole'] is not True else False
+            vm.start(cmd.timeout, cmd.createPaused, wait_console)
         except libvirt.libvirtError as e:
             logger.warn(linux.get_exception_stacktrace())
             if "Device or resource busy" in str(e.message):
@@ -3660,6 +4197,7 @@ class VmPlugin(kvmagent.KvmAgent):
             try:
                 vm_pid = linux.find_vm_pid_by_uuid(cmd.vmInstanceUuid)
                 linux.enable_process_coredump(vm_pid)
+                linux.set_vm_priority(vm_pid, cmd.priorityConfigStruct)
             except Exception as e:
                 logger.warn("enable coredump for VM: %s: %s" % (cmd.vmInstanceUuid, str(e)))
         except kvmagent.KvmError as e:
@@ -3708,9 +4246,10 @@ class VmPlugin(kvmagent.KvmAgent):
         return int(units[unit](int(num)))
 
     def _get_image_mb_size(self, image):
-        backing = shell.call(
-            'qemu-img info %s|grep "backing file:"|awk -F \'backing file:\' \'{print $2}\' ' % image).strip()
-        size = shell.call('qemu-img info %s|grep "disk size:"|awk -F \'disk size:\' \'{print $2}\' ' % image).strip()
+        backing = shell.call('%s %s | grep "backing file:" | awk -F \'backing file:\' \'{print $2}\' ' %
+                (qemu_img.subcmd('info'), image)).strip()
+        size    = shell.call('%s %s | grep "disk size:" | awk -F \'disk size:\' \'{print $2}\' ' %
+                (qemu_img.subcmd('info'), image)).strip()
         if not backing:
             return self._escape(size)
         else:
@@ -3737,6 +4276,8 @@ class VmPlugin(kvmagent.KvmAgent):
         cmd_base = "virsh blkdeviotune %s %s" % (cmd.vmUuid, device_id)
         if (cmd.mode == "total") or (cmd.mode is None):  # to set total(read/write reset)
             shell.call('%s --total_bytes_sec %s' % (cmd_base, cmd.totalBandwidth))
+        elif cmd.mode == "all":
+            shell.call('%s --read_bytes_sec %s --write_bytes_sec %s' % (cmd_base, cmd.readBandwidth, cmd.writeBandwidth))
         elif cmd.mode == "read":  # to set read(write reserved, total reset)
             write_bytes_sec = self._get_volume_bandwidth_value(cmd.vmUuid, device_id, "write")
             shell.call('%s --read_bytes_sec %s --write_bytes_sec %s' % (cmd_base, cmd.readBandwidth, write_bytes_sec))
@@ -3874,7 +4415,7 @@ class VmPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def vm_sync(self, req):
         rsp = VmSyncResponse()
-        rsp.states = get_all_vm_states()
+        rsp.states, rsp.vmInShutdowns = get_all_vm_sync_states()
 
         # In case of an reboot inside the VM.  Note that ZS will only define transient VM's.
         for uuid in rsp.states:
@@ -3964,19 +4505,20 @@ class VmPlugin(kvmagent.KvmAgent):
     def get_vm_console_info(self, vmUuid):
         try:
             vm = get_vm_by_uuid(vmUuid)
-            proto, port = vm.get_console_protocol(), vm.get_console_port()
-            if port > 0:
-                return proto, port
-
+            protocol, vncPort, spicePort, spiceTlsPort = vm.get_vdi_connect_port()
+            ret = check_vdi_port(vncPort, spicePort, spiceTlsPort)
+            if ret is True:
+                return protocol, vncPort, spicePort, spiceTlsPort
             # Occasionally, 'virsh list' would list nothing but conn.lookupByName()
             # can find the VM and dom.XMLDesc(0) will return VNC port '-1'.
             err = 'libvirt failed to get console port for VM %s' % vmUuid
             logger.warn(err)
             raise kvmagent.KvmError(err)
         except kvmagent.KvmError as e:
-            proto, port = get_console_without_libvirt(vmUuid)
-            if port:
-                return proto, port
+            protocol, vncPort, spicePort, spiceTlsPort = get_console_without_libvirt(vmUuid)
+            ret = check_vdi_port(vncPort, spicePort, spiceTlsPort)
+            if ret is True:
+                return protocol, vncPort, spicePort, spiceTlsPort
             raise e
 
     @kvmagent.replyerror
@@ -3984,10 +4526,19 @@ class VmPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetVncPortResponse()
         try:
-            proto, port = self.get_vm_console_info(cmd.vmUuid)
-            rsp.port = port
-            rsp.protocol = proto
-            logger.debug('successfully get vnc port[%s] of vm[uuid:%s]' % (port, cmd.vmUuid))
+            protocol, vncPort, spicePort, spiceTlsPort = self.get_vm_console_info(cmd.vmUuid)
+            rsp.protocol = protocol
+            rsp.vncPort = vncPort
+            rsp.spicePort = spicePort
+            rsp.spiceTlsPort = spiceTlsPort
+
+            if vncPort is not None:
+                rsp.port = vncPort
+            else:
+                rsp.port = spicePort
+
+            logger.debug('successfully get vncPort[%s], spicePort[%s], spiceTlsPort[%s] of vm[uuid:%s]' % (
+                vncPort, spicePort, spiceTlsPort, cmd.vmUuid))
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
@@ -4126,9 +4677,9 @@ class VmPlugin(kvmagent.KvmAgent):
         try:
             volume = cmd.volume
             vm = get_vm_by_uuid(cmd.vmInstanceUuid)
-            if vm.state != Vm.VM_STATE_RUNNING:
+            if vm.state != Vm.VM_STATE_RUNNING and vm.state != Vm.VM_STATE_PAUSED:
                 raise kvmagent.KvmError(
-                    'unable to detach volume[%s] to vm[uuid:%s], vm must be running' % (volume.installPath, vm.uuid))
+                    'unable to detach volume[%s] to vm[uuid:%s], vm must be running or paused' % (volume.installPath, vm.uuid))
             vm.detach_data_volume(volume)
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
@@ -4173,6 +4724,120 @@ class VmPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
+    def _get_new_disk(self, oldDisk, volume):
+        def filebased_volume(_v):
+            disk = etree.Element('disk', {'type': 'file', 'device': 'disk', 'snapshot': 'external'})
+            e(disk, 'driver', None, {'name': 'qemu', 'type': 'qcow2', 'cache': _v.cacheMode})
+            e(disk, 'source', None, {'file': _v.installPath})
+            return disk
+
+        def ceph_volume(_v):
+            def ceph_virtio():
+                vc = VirtioCeph()
+                vc.volume = _v
+                return vc.to_xmlobject()
+
+            def ceph_blk():
+                ic = BlkCeph()
+                ic.volume = _v
+                return ic.to_xmlobject()
+
+            def ceph_virtio_scsi():
+                vsc = VirtioSCSICeph()
+                vsc.volume = _v
+                return vsc.to_xmlobject()
+
+            if _v.useVirtioSCSI:
+                disk = ceph_virtio_scsi()
+                if _v.shareable:
+                    e(disk, 'shareable')
+                return disk
+
+            if _v.useVirtio:
+                return ceph_virtio()
+            else:
+                return ceph_blk()
+
+        def block_volume(_v):
+            disk = etree.Element('disk', {'type': 'block', 'device': 'disk', 'snapshot': 'external'})
+            e(disk, 'driver', None,
+              {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'io': 'native'})
+            e(disk, 'source', None, {'dev': _v.installPath})
+            return disk
+
+        if volume.deviceType == 'file':
+            ele = filebased_volume(volume)
+        elif volume.deviceType == 'ceph':
+            ele = ceph_volume(volume)
+        elif volume.deviceType == 'block':
+            ele = block_volume(volume)
+        else:
+            raise Exception('unsupported volume deviceType[%s]' % volume.deviceType)
+
+        tags_to_keep = [ 'target', 'boot', 'alias', 'address', 'wwn' ]
+        for c in oldDisk.getchildren():
+            if c.tag in tags_to_keep:
+                child = ele.find(c.tag)
+                if child is not None: ele.remove(child)
+                ele.append(c)
+
+        logger.info("updated disk XML: " + etree.tostring(ele))
+        return ele
+
+    def _build_domain_new_xml(self, vm, volumeDicts):
+        migrate_disks = {}
+
+        for oldpath, volume in volumeDicts.items():
+            _, disk_name = vm._get_target_disk_by_path(oldpath)
+            migrate_disks[disk_name] = volume
+
+        fd, fpath = tempfile.mkstemp()
+        with os.fdopen(fd, 'w') as tmpf:
+            tmpf.write(vm.domain_xml)
+
+        tree = etree.parse(fpath)
+        devices = tree.getroot().find('devices')
+        for disk in tree.iterfind('devices/disk'):
+            dev = disk.find('target').attrib['dev']
+            if dev in migrate_disks:
+                new_disk = self._get_new_disk(disk, migrate_disks[dev])
+                parent_index = list(devices).index(disk)
+                devices.remove(disk)
+                devices.insert(parent_index, new_disk)
+
+        tree.write(fpath)
+        return migrate_disks.keys(), fpath
+
+    def _do_block_migration(self, vmUuid, dstHostIp, volumeDicts):
+        vm = get_vm_by_uuid(vmUuid)
+        disks, fpath = self._build_domain_new_xml(vm, volumeDicts)
+
+        dst = 'qemu+tcp://{0}/system'.format(dstHostIp)
+        migurl = 'tcp://{0}'.format(dstHostIp)
+        diskstr = ','.join(disks)
+
+        flags = "--live --p2p --persistent --copy-storage-all"
+        if LIBVIRT_MAJOR_VERSION >= 4:
+            if any(s.startswith('/dev/') for s in vm.list_blk_sources()):
+                flags += " --unsafe"
+
+        cmd = "virsh migrate {} --migrate-disks {} --xml {} {} {} {}".format(flags, diskstr, fpath, vmUuid, dst, migurl)
+
+        try:
+            shell.check_run(cmd)
+        finally:
+            os.remove(fpath)
+
+    @kvmagent.replyerror
+    def block_migrate_vm(self, req):
+        rsp = kvmagent.AgentResponse()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        self._record_operation(cmd.vmUuid, self.VM_OP_MIGRATE)
+        self._do_block_migration(cmd.vmUuid, cmd.destHostIp, cmd.disks.__dict__)
+
+        return jsonobject.dumps(rsp)
+
     @kvmagent.replyerror
     def merge_snapshot_to_volume(self, req):
         rsp = MergeSnapshotRsp()
@@ -4187,6 +4852,16 @@ class VmPlugin(kvmagent.KvmAgent):
         vm.merge_snapshot(cmd)
         return jsonobject.dumps(rsp)
 
+    @staticmethod
+    def _get_snapshot_size(install_path):
+        size = linux.get_local_file_disk_usage(install_path)
+        if size is None or size == 0:
+            if install_path.startswith("/dev/"):
+                size = int(lvm.get_lv_size(install_path))
+            else:
+                size = linux.qcow2_virtualsize(install_path)
+        return size
+
     @kvmagent.replyerror
     def take_volumes_snapshots(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])  # type: TakeSnapshotsCmd
@@ -4199,6 +4874,8 @@ class VmPlugin(kvmagent.KvmAgent):
             if snapshot_job.live != cmd.snapshotJobs[0].live:
                 raise kvmagent.KvmError("can not take snapshot on different live status")
 
+            Vm.ensure_no_internal_snapshot(snapshot_job.volume.installPath)
+
         def makedir_if_need(new_path):
             dirname = os.path.dirname(new_path)
             if not os.path.exists(dirname):
@@ -4208,10 +4885,7 @@ class VmPlugin(kvmagent.KvmAgent):
             """
             :rtype: long
             """
-            size = linux.get_local_file_disk_usage(install_path)
-            if size is None or size == 0:
-                size = linux.qcow2_virtualsize(install_path)
-            return size
+            return VmPlugin._get_snapshot_size(install_path)
 
         def take_full_snapshot_by_qemu_img_convert(previous_install_path, install_path, new_volume_install_path):
             """
@@ -4295,7 +4969,7 @@ class VmPlugin(kvmagent.KvmAgent):
             return previous_install_path, new_volume_path
 
         try:
-            linux.sync()
+            Vm.ensure_no_internal_snapshot(cmd.volumeInstallPath)
             if not cmd.vmUuid:
                 if cmd.fullSnapshot:
                     rsp.snapshotInstallPath, rsp.newVolumeInstallPath = take_full_snapshot_by_qemu_img_convert(
@@ -4333,13 +5007,8 @@ class VmPlugin(kvmagent.KvmAgent):
                         'took delta snapshot on vm[uuid:{0}] volume[id:{1}], snapshot path:{2}, new volulme path:{3}'.format(
                             cmd.vmUuid, cmd.volume.deviceId, rsp.snapshotInstallPath, rsp.newVolumeInstallPath))
 
-            linux.sync()
-            rsp.size = linux.get_local_file_disk_usage(rsp.snapshotInstallPath)
-            if rsp.size is None or rsp.size == 0:
-                if rsp.snapshotInstallPath.startswith("/dev/"):
-                    rsp.size = int(lvm.get_lv_size(rsp.snapshotInstallPath))
-                else:
-                    rsp.size = linux.qcow2_virtualsize(rsp.snapshotInstallPath)
+            linux.sync_file(rsp.snapshotInstallPath)
+            rsp.size = VmPlugin._get_snapshot_size(rsp.snapshotInstallPath)
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
@@ -4400,7 +5069,7 @@ class VmPlugin(kvmagent.KvmAgent):
             backupArgs[deviceId] = get_backup_args()
 
         logger.info('taking backup for vm: %s' % cmd.vmUuid)
-        res = isc.backup_volumes(cmd.vmUuid, backupArgs.values(), dstdir)
+        res = isc.backup_volumes(cmd.vmUuid, backupArgs.values(), dstdir, Report.from_cmd(cmd, "VmBackup"), get_task_stage(cmd))
         logger.info('completed backup for vm: %s' % cmd.vmUuid)
 
         backres = jsonobject.loads(res)
@@ -4470,7 +5139,7 @@ class VmPlugin(kvmagent.KvmAgent):
         if cmd.volumeWriteBandwidth:
             speed = cmd.volumeWriteBandwidth
 
-        mode = isc.backup_volume(cmd.vmUuid, nodename, bitmap, mode, dest, speed)
+        mode = isc.backup_volume(cmd.vmUuid, nodename, bitmap, mode, dest, speed, Report.from_cmd(cmd, "VolumeBackup"), get_task_stage(cmd))
         logger.info('finished backup volume with mode: %s' % mode)
 
         if mode == 'incremental':
@@ -4505,7 +5174,7 @@ class VmPlugin(kvmagent.KvmAgent):
         try:
             vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
             if not vm:
-                raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % vm.uuid)
+                raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % cmd.vmUuid)
 
             self.do_cancel_backup_jobs(cmd)
         except kvmagent.KvmError as e:
@@ -4519,20 +5188,14 @@ class VmPlugin(kvmagent.KvmAgent):
     def take_volumes_backups(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = TakeVolumesBackupsResponse()
-        d = tempfile.mkdtemp() # temporary mount point
 
+        vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
+        if not vm:
+            raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % cmd.vmUuid)
+
+        storage = RemoteStorageFactory.get_remote_storage(cmd)
         try:
-            vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
-            if not vm:
-                raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % vm.uuid)
-
-            if not cmd.networkWriteBandwidth:
-                if 0 != linux.sshfs_mount(cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d):
-                    raise kvmagent.KvmError("failed to prepare backup space for [vm:%s]" % cmd.vmUuid)
-            else:
-                if 0 != linux.sshfs_mount(cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d, cmd.networkWriteBandwidth):
-                    raise kvmagent.KvmError("failed to prepare backup space for [vm:%s]" % cmd.vmUuid)
-
+            storage.mount()
             target_disks = {}
             for volume in cmd.volumes:
                 target_disk, _ = vm._get_target_disk(volume)
@@ -4545,9 +5208,9 @@ class VmPlugin(kvmagent.KvmAgent):
                 bitmaps[deviceId] = bitmap
 
             res = self.do_take_volumes_backup(cmd,
-                    target_disks,
-                    bitmaps,
-                    d)
+                                              target_disks,
+                                              bitmaps,
+                                              storage.local_work_dir)
 
             for r in res:
                 r.backupFile = os.path.join(cmd.uploadDir, r.backupFile)
@@ -4559,9 +5222,8 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.error = str(e)
             rsp.success = False
         finally:
-            for i in xrange(6):
-                linux.fumount(d, 5)
-            linux.rmdir_if_empty(d)
+            storage.umount()
+            storage.clean()
 
         return jsonobject.dumps(rsp)
 
@@ -4569,29 +5231,22 @@ class VmPlugin(kvmagent.KvmAgent):
     def take_volume_backup(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = TakeVolumeBackupResponse()
-        d = tempfile.mkdtemp()
+
+        vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
+        if not vm:
+            raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % cmd.vmUuid)
+
+        storage = RemoteStorageFactory.get_remote_storage(cmd)
         fname = uuidhelper.uuid()+".qcow2"
-
         try:
-            vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
-            if not vm:
-                raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % vm.uuid)
-
-            if not cmd.networkWriteBandwidth:
-                if 0 != linux.sshfs_mount(cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d):
-                    raise kvmagent.KvmError(
-                        "failed to prepare backup space for [vm:%s,deviceId:%d]" % (cmd.vmUuid, cmd.volume.deviceId))
-            else:
-                if 0 != linux.sshfs_mount(cmd.username, cmd.hostname, cmd.sshPort, cmd.password, cmd.uploadDir, d, cmd.networkWriteBandwidth):
-                    raise kvmagent.KvmError(
-                        "failed to prepare backup space for [vm:%s,deviceId:%d]" % (cmd.vmUuid, cmd.volume.deviceId))
-
+            storage.mount()
             target_disk, _ = vm._get_target_disk(cmd.volume)
             bitmap, parent = self.do_take_volume_backup(cmd,
                     target_disk.driver.type_, # 'qcow2' etc.
                     'drive-' + target_disk.alias.name_,  # 'virtio-disk0' etc.
                     target_disk.source,
-                    os.path.join(d, fname))
+                    os.path.join(storage.local_work_dir, fname))
+
             logger.info('finished backup volume with parent: %s' % parent)
             rsp.bitmap = bitmap
             rsp.parentInstallPath = parent
@@ -4604,9 +5259,8 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.success = False
 
         finally:
-            for i in xrange(6):
-                linux.fumount(d, 5)
-            linux.rmdir_if_empty(d)
+            storage.umount()
+            storage.clean()
 
         return jsonobject.dumps(rsp)
 
@@ -4667,7 +5321,14 @@ class VmPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(kvmagent.AgentResponse())
 
     @staticmethod
+    def _reload_ceph_secret_keys():
+        for u, k in VmPlugin.secret_keys.items():
+            VmPlugin._create_ceph_secret_key(k, u)
+
+    @staticmethod
     def _create_ceph_secret_key(userKey, uuid):
+        VmPlugin.secret_keys[uuid] = userKey
+
         sh_cmd = shell.ShellCmd('virsh secret-get-value %s' % uuid)
         sh_cmd(False)
         if sh_cmd.stdout.strip() == userKey:
@@ -4714,84 +5375,36 @@ class VmPlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     @in_bash
-    def get_pci_info(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = GetPciDevicesResponse()
-        r, o, e = bash.bash_roe("grep -E 'intel_iommu(\ )*=(\ )*on' /etc/default/grub")
-        # Note(WeiW): Skip config iommu if enable iommu is false
-        if cmd.enableIommu is False:
-            r = 0
-        # Note(WeiW): Add amdgpu to blacklist for upgrade
-        elif r == 0:
-            success, error = self.add_amdgpu_to_blacklist()
-            if success is False:
-                rsp.success = False
-                rsp.error = error
-                return jsonobject.dumps(rsp)
-
-        if r != 0:
-            r, o, e = bash.bash_roe("sed -i '/GRUB_CMDLINE_LINUX/s/\"$/ intel_iommu=on modprobe.blacklist=snd_hda_intel,amd76x_edac,vga16fb,nouveau,rivafb,nvidiafb,rivatv,amdgpu,radeon\"/g' /etc/default/grub")
-            if r != 0:
-                rsp.success = False
-                rsp.error = "%s %s" % (e, o)
-                return jsonobject.dumps(rsp)
-            r, o, e = bash.bash_roe("grub2-mkconfig -o /boot/grub2/grub.cfg")
-            if r != 0:
-                rsp.success = False
-                rsp.error = "%s %s" % (e, o)
-                return jsonobject.dumps(rsp)
-            r, o, e = bash.bash_roe("grub2-mkconfig -o /etc/grub2-efi.cfg")
-            if r != 0:
-                rsp.success = False
-                rsp.error = "%s %s" % (e, o)
-                return jsonobject.dumps(rsp)
-            r, o, e = bash.bash_roe("modprobe vfio && modprobe vfio-pci")
-            if r != 0:
-                rsp.success = False
-                rsp.error = "%s %s" % (e, o)
-                return jsonobject.dumps(rsp)
-        r_bios, o_bios, e_bios = bash.bash_roe("find /sys -iname dmar*")
-        r_kernel, o_kernel, e_kernel = bash.bash_roe("grep 'intel_iommu=on' /proc/cmdline")
-        if o_bios != '' and r_kernel == 0:
-            rsp.hostIommuStatus = True
-        else:
-            rsp.hostIommuStatus = False
-        r, o, e = bash.bash_roe("lspci -mmnnv")
-        if r!= 0:
-            rsp.success = False
-            rsp.error = "%s %s" % (e, o)
-        else:
-            rsp.pciDevicesInfo = o
-        return jsonobject.dumps(rsp)
-
-    @kvmagent.replyerror
-    @in_bash
     def hot_plug_pci_device(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = HotPlugPciDeviceRsp()
         addr = cmd.pciDeviceAddress
-        domain = hex(0) if len(addr.split(":")) == 2 else hex(int(addr.split(":")[0], 16))
-        bus = hex(int(addr.split(":")[-2], 16))
-        slot = hex(int(addr.split(":")[-1].split(".")[0], 16))
-        function = hex(int(addr.split(":")[-1].split(".")[1], 16))
+        domain, bus, slot, function = parse_pci_device_address(addr)
+
         content = '''
-<hostdev mode='subsystem' type='pci' managed='yes'>
+<hostdev mode='subsystem' type='pci'>
      <driver name='vfio'/>
      <source>
-       <address type='pci' domain='%s' bus='%s' slot='%s' function='%s'/>
+       <address type='pci' domain='0x%s' bus='0x%s' slot='0x%s' function='0x%s'/>
      </source>
 </hostdev>''' % (domain, bus, slot, function)
         spath = linux.write_to_temp_file(content)
+
+        # do not attach pci device immediately after detach pci device from same vm
+        vm = get_vm_by_uuid(cmd.vmUuid)
+        vm._wait_vm_run_until_seconds(60)
+        self.timeout_object.wait_until_object_timeout('hot-unplug-pci-device-from-vm-%s' % cmd.vmUuid)
         r, o, e = bash.bash_roe("virsh attach-device %s %s" % (cmd.vmUuid, spath))
-        logger.debug("attach %s to %s finished, %s, %s" % (
-            spath, cmd.vmUuid, o, e))
-        if r!= 0:
+        self.timeout_object.put('hot-plug-pci-device-to-vm-%s' % cmd.vmUuid, timeout=30)
+        if r != 0:
             rsp.success = False
             err = self.handle_vfio_irq_conflict_with_addr(cmd.vmUuid, addr)
             if err == "":
-                rsp.error = "%s %s" % (e, o)
+                rsp.error = "failed to attach-device %s to %s: %s, %s" % (addr, cmd.vmUuid, o, e)
             else:
-                rsp.error = "%s, details: %s %s" % (err, e, o)
+                rsp.error = "failed to handle_vfio_irq_conflict_with_addr: %s, details: %s %s" % (err, o, e)
+
+        logger.debug("attach-device %s to %s: %s, %s" % (spath, cmd.vmUuid, o, e))
         return jsonobject.dumps(rsp)
 
     @in_bash
@@ -4838,13 +5451,10 @@ class VmPlugin(kvmagent.KvmAgent):
     @in_bash
     def hot_unplug_pci_device(self, req):
         @linux.retry(3, 3)
-        def find_pci_device(vmUuid, pciDeviceAddress):
-            bus = pciDeviceAddress.split(":")[0]
-            slot = pciDeviceAddress.split(":")[1].split(".")[0]
-            func = pciDeviceAddress.split(".")[-1]
-
-            cmd = """virsh dumpxml %s | grep -A3 -E '<hostdev.*pci' | grep "<address domain='0x0000' bus='0x%s' slot='0x%s' function='0x%s'/>" """ % \
-                  (vmUuid, bus, slot, func)
+        def find_pci_device(vm_uuid, pci_addr):
+            domain, bus, slot, function = parse_pci_device_address(pci_addr)
+            cmd = """virsh dumpxml %s | grep -A3 -E '<hostdev.*pci' | grep "<address domain='0x%s' bus='0x%s' slot='0x%s' function='0x%s'/>" """ % \
+                  (vm_uuid, domain, bus, slot, function)
             r, o, e = bash.bash_roe(cmd)
             return o != ""
 
@@ -4856,29 +5466,82 @@ class VmPlugin(kvmagent.KvmAgent):
             logger.debug("pci device %s not found" % addr)
             return jsonobject.dumps(rsp)
 
-        domain = hex(0) if len(addr.split(":")) == 2 else hex(int(addr.split(":")[0], 16))
-        bus = hex(int(addr.split(":")[-2], 16))
-        slot = hex(int(addr.split(":")[-1].split(".")[0], 16))
-        function = hex(int(addr.split(":")[-1].split(".")[1], 16))
+        domain, bus, slot, function = parse_pci_device_address(addr)
         content = '''
-        <hostdev mode='subsystem' type='pci' managed='yes'>
+<hostdev mode='subsystem' type='pci'>
      <driver name='vfio'/>
      <source>
-       <address type='pci' domain='%s' bus='%s' slot='%s' function='%s'/>
+       <address type='pci' domain='0x%s' bus='0x%s' slot='0x%s' function='0x%s'/>
      </source>
 </hostdev>''' % (domain, bus, slot, function)
-        logger.debug("virsh detach xml: %s" % content)
         spath = linux.write_to_temp_file(content)
-        r, o, e = bash.bash_roe("virsh detach-device %s %s" % (cmd.vmUuid, spath))
-        logger.debug("detach %s to %s finished, %s, %s" % (
-            spath, cmd.vmUuid, o, e))
-        if r!= 0:
-            rsp.success = False
-            rsp.error = "%s %s" % (e, o)
-        if not linux.wait_callback_success(lambda args: not find_pci_device(args[0], args[1]), [cmd.vmUuid, addr], timeout=20):
-            rsp.success = False
-            rsp.error = "pci device %s still exists on vm %s after 20s" % (addr, cmd.vmUuid)
 
+        # no need to detach pci device if vm is shutdown
+        vm = get_vm_by_uuid_no_retry(cmd.vmUuid, exception_if_not_existing=False)
+        if not vm or vm.state == Vm.VM_STATE_SHUTDOWN:
+            logger.debug("vm[uuid:%s] is shutdown, no need to detach pci device" % cmd.vmUuid)
+            return jsonobject.dumps(rsp)
+
+        # do not detach pci device immediately after starting vm instance
+        try:
+            vm._wait_vm_run_until_seconds(60)
+        except Exception:
+            logger.debug("cannot find pid of vm[uuid:%s, state:%s], no need to detach pci device" % (cmd.vmUuid, vm.state))
+            return jsonobject.dumps(rsp)
+
+        # do not detach pci device immediately after attach pci device to same vm
+        self.timeout_object.wait_until_object_timeout('hot-plug-pci-device-to-vm-%s' % cmd.vmUuid)
+        self.timeout_object.put('hot-unplug-pci-device-from-vm-%s' % cmd.vmUuid, timeout=10)
+
+        retry_num = 4
+        retry_interval = 5
+        logger.debug("try to virsh detach xml for %d times: %s" % (retry_num, content))
+        for i in range(1, retry_num + 1):
+            r, o, e = bash.bash_roe("virsh detach-device %s %s" % (cmd.vmUuid, spath))
+            succ = linux.wait_callback_success(lambda args: not find_pci_device(args[0], args[1]), [cmd.vmUuid, addr], timeout=retry_interval)
+            if succ:
+                break
+
+            if i < retry_num:
+                continue
+
+            if r != 0:
+                rsp.success = False
+                rsp.error = "failed to detach-device %s from %s: %s, %s" % (addr, cmd.vmUuid, o, e)
+                return jsonobject.dumps(rsp)
+
+            if not succ:
+                rsp.success = False
+                rsp.error = "pci device %s still exists on vm %s after %ds" % (addr, cmd.vmUuid, retry_num * retry_interval)
+                return jsonobject.dumps(rsp)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
+    def attach_pci_device_to_host(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AttachPciDeviceToHostRsp()
+        addr = cmd.pciDeviceAddress
+
+        r, o, e = bash.bash_roe("virsh nodedev-reattach pci_%s" % addr.replace(':', '_').replace('.', '_'))
+        logger.debug("nodedev-reattach %s: %s, %s" % (addr, o, e))
+        if r != 0:
+            rsp.success = False
+            rsp.error = "failed to nodedev-reattach %s: %s, %s" % (addr, o, e)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
+    def detach_pci_device_from_host(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = DetachPciDeviceFromHostRsp()
+        addr = cmd.pciDeviceAddress
+
+        r, o, e = bash.bash_roe("virsh nodedev-detach pci_%s" % addr.replace(':', '_').replace('.', '_'))
+        logger.debug("nodedev-detach %s: %s, %s" % (addr, o, e))
+        if r != 0:
+            rsp.success = False
+            rsp.error = "failed to nodedev-detach %s: %s, %s" % (addr, o, e)
         return jsonobject.dumps(rsp)
 
     def _get_next_usb_port(self, vmUuid, bus):
@@ -4899,6 +5562,11 @@ class VmPlugin(kvmagent.KvmAgent):
                 for address in hostdev.get_child_node_as_list('address'):
                     if address.type_ == 'usb' and address.bus_ == str(bus):
                         usb_ports.append(int(address.port_))
+        for redirdev in domain_xmlobject.devices.get_child_node_as_list('redirdev'):
+            if redirdev.type_ == 'tcp':
+                for address in redirdev.get_child_node_as_list('address'):
+                    if address.type_ == 'usb' and address.bus_ == str(bus):
+                        usb_ports.append(int(address.port_))
         conn.close()
 
         # get the first unused port number
@@ -4911,43 +5579,91 @@ class VmPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = KvmAttachUsbDeviceRsp()
         bus = int(cmd.usbVersion[0]) - 1
-        content = '''
-<hostdev mode='subsystem' type='usb' managed='yes'>
-  <source>
-    <vendor id='0x%s'/>
-    <product id='0x%s'/>
-    <address bus='%s' device='%s'/>
-  </source>
-  <address type='usb' bus='%s' port='%s' />
-</hostdev>''' % (cmd.idVendor, cmd.idProduct, int(cmd.busNum), int(cmd.devNum), bus, self._get_next_usb_port(cmd.vmUuid, bus))
+        r, o, e = self._attach_usb(cmd, bus)
+        if r != 0:
+            rsp.success = False
+            rsp.error = "%s %s" % (e, o)
+        return jsonobject.dumps(rsp)
+
+    def _attach_usb(self, cmd, bus):
+        content = ''
+        if cmd.attachType == "PassThrough":
+            content = '''
+    <hostdev mode='subsystem' type='usb' managed='yes'>
+      <source>
+        <vendor id='0x%s'/>
+        <product id='0x%s'/>
+        <address bus='%s' device='%s'/>
+      </source>
+      <address type='usb' bus='%s' port='%s' />
+    </hostdev>''' % (cmd.idVendor, cmd.idProduct, int(cmd.busNum), int(cmd.devNum), bus, self._get_next_usb_port(cmd.vmUuid, bus))
+        if cmd.attachType == "Redirect":
+            content = '''
+    <redirdev bus='usb' type='tcp'>
+      <source mode='connect' host='%s' service='%s'/>
+      <address type='usb' bus='%s' device='%s'/>
+    </redirdev>''' % (cmd.ip, int(cmd.port), bus, self._get_next_usb_port(cmd.vmUuid, bus))
         spath = linux.write_to_temp_file(content)
         r, o, e = bash.bash_roe("virsh attach-device %s %s" % (cmd.vmUuid, spath))
         logger.debug("attached %s to %s, %s, %s" % (
             spath, cmd.vmUuid, o, e))
-        if r!= 0:
-            rsp.success = False
-            rsp.error = "%s %s" % (e, o)
-        return jsonobject.dumps(rsp)
+        return r, o, e
 
     @kvmagent.replyerror
     def kvm_detach_usb_device(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = KvmDetachUsbDeviceRsp()
-        content = '''
-<hostdev mode='subsystem' type='usb' managed='yes'>
-  <source>
-    <vendor id='0x%s'/>
-    <product id='0x%s'/>
-    <address bus='%s' device='%s'/>
-  </source>
-</hostdev>''' % (cmd.idVendor, cmd.idProduct, int(cmd.busNum), int(cmd.devNum))
+        r, o, e = self._detach_usb(cmd)
+        if r != 0:
+            rsp.success = False
+            rsp.error = "%s %s" % (e, o)
+        return jsonobject.dumps(rsp)
+
+    def _detach_usb(self, cmd):
+        content = ''
+        if cmd.attachType == "PassThrough":
+            content = '''
+    <hostdev mode='subsystem' type='usb' managed='yes'>
+      <source>
+        <vendor id='0x%s'/>
+        <product id='0x%s'/>
+        <address bus='%s' device='%s'/>
+      </source>
+    </hostdev>''' % (cmd.idVendor, cmd.idProduct, int(cmd.busNum), int(cmd.devNum))
+        if cmd.attachType == "Redirect":
+            content = '''
+    <redirdev bus='usb' type='tcp'>
+      <source mode='connect' host='%s' service='%s'/>
+    </redirdev>''' % (cmd.ip, int(cmd.port))
         spath = linux.write_to_temp_file(content)
         r, o, e = bash.bash_roe("virsh detach-device %s %s" % (cmd.vmUuid, spath))
         logger.debug("detached %s from %s, %s, %s" % (
             spath, cmd.vmUuid, o, e))
-        if r!= 0:
+        return r, o, e
+
+    @kvmagent.replyerror
+    def reload_redirect_usb(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = ReloadRedirectUsbRsp()
+
+        r, o, e = self._detach_usb(cmd)
+        if r != 0:
             rsp.success = False
             rsp.error = "%s %s" % (e, o)
+        bus = int(cmd.usbVersion[0]) - 1
+        r, o, e = self._attach_usb(cmd, bus)
+        if r != 0:
+            rsp.success = False
+            rsp.error = "%s %s" % (e, o)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def vm_priority(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = UpdateVmPriorityRsp()
+        for pcs in cmd.priorityConfigStructs:
+            pid = linux.find_vm_pid_by_uuid(pcs.vmUuid)
+            linux.set_vm_priority(pid, pcs)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -4961,10 +5677,92 @@ class VmPlugin(kvmagent.KvmAgent):
         touchQmpSocketWhenExists(cmd.vmUuid)
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    @in_bash
+    def attach_guest_tools_iso_to_vm(self, req):
+        rsp = AttachGuestToolsIsoToVmRsp()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        vm_uuid = cmd.vmInstanceUuid
+
+        if not os.path.exists(GUEST_TOOLS_ISO_PATH):
+            rsp.success = False
+            rsp.error = "%s not exists" % GUEST_TOOLS_ISO_PATH
+            return jsonobject.dumps(rsp)
+
+        r, _, _ = bash.bash_roe("virsh dumpxml %s | grep \"dev='vdz' bus='virtio'\"" % vm_uuid)
+        if cmd.needTempDisk and r != 0:
+            temp_disk = "/var/lib/zstack/guesttools/temp_disk.qcow2"
+            if not os.path.exists(temp_disk):
+                linux.qcow2_create(temp_disk, 1)
+
+            content = """
+<disk type='file' device='disk'>
+<driver type='qcow2' cache='writeback'/>
+  <source file='/var/lib/zstack/guesttools/temp_disk.qcow2'/>
+  <target dev='vdz' bus='virtio'/>
+</disk>
+"""
+            spath = linux.write_to_temp_file(content)
+            r, o, e = bash.bash_roe("virsh attach-device %s %s" % (vm_uuid, spath))
+            if r != 0:
+                rsp.success = False
+                rsp.error = "%s, %s" % (o, e)
+                return jsonobject.dumps(rsp)
+            else:
+                logger.debug("attached temp disk %s to %s, %s, %s" % (spath, vm_uuid, o, e))
+
+        # attach guest tools iso to [hs]dc, whose device id is 0
+        vm = get_vm_by_uuid(vm_uuid, exception_if_not_existing=False)
+        iso = IsoTo()
+        iso.deviceId = 0
+        iso.path = GUEST_TOOLS_ISO_PATH
+
+        # in case same iso already attached
+        detach_cmd = DetachIsoCmd()
+        detach_cmd.vmUuid = vm_uuid
+        detach_cmd.deviceId = iso.deviceId
+        vm.detach_iso(detach_cmd)
+
+        attach_cmd = AttachIsoCmd()
+        attach_cmd.iso = iso
+        attach_cmd.vmUuid = vm_uuid
+        vm.attach_iso(attach_cmd)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
+    def get_vm_guest_tools_info(self, req):
+        rsp = GetVmGuestToolsInfoRsp()
+
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        vm_uuid = cmd.vmInstanceUuid
+        r, o, e = bash.bash_roe("virsh qemu-agent-command %s --cmd '{\"execute\":\"guest-tools-info\"}'" % vm_uuid)
+        logger.debug("get guest tools info from vm[uuid:%s]: %s, %s" % (vm_uuid, o, e))
+        if r != 0:
+            rsp.success = False
+            rsp.error = "%s, %s" % (o, e)
+        else:
+            info = json.loads(o)['return']
+            for k in info.keys():
+                setattr(rsp, k, info[k])
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
+    def get_vm_first_boot_device(self, req):
+        rsp = GetVmFirstBootDeviceRsp()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        vm_uuid = cmd.uuid
+        vm = get_vm_by_uuid_no_retry(vm_uuid, False)
+        boot_dev = find_domain_first_boot_device(vm.domain.XMLDesc(0))
+        rsp.firstBootDevice = boot_dev
+        return jsonobject.dumps(rsp)
+
     def start(self):
         http_server = kvmagent.get_http_server()
 
-        http_server.register_async_uri(self.KVM_START_VM_PATH, self.start_vm)
+        http_server.register_async_uri(self.KVM_START_VM_PATH, self.start_vm, cmd=StartVmCmd())
         http_server.register_async_uri(self.KVM_STOP_VM_PATH, self.stop_vm)
         http_server.register_async_uri(self.KVM_PAUSE_VM_PATH, self.pause_vm)
         http_server.register_async_uri(self.KVM_RESUME_VM_PATH, self.resume_vm)
@@ -4980,21 +5778,22 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_ATTACH_ISO_PATH, self.attach_iso)
         http_server.register_async_uri(self.KVM_DETACH_ISO_PATH, self.detach_iso)
         http_server.register_async_uri(self.KVM_MIGRATE_VM_PATH, self.migrate_vm)
+        http_server.register_async_uri(self.KVM_BLOCK_LIVE_MIGRATION_PATH, self.block_migrate_vm)
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_SNAPSHOT_PATH, self.take_volume_snapshot)
-        http_server.register_async_uri(self.KVM_TAKE_VOLUME_BACKUP_PATH, self.take_volume_backup)
+        http_server.register_async_uri(self.KVM_TAKE_VOLUME_BACKUP_PATH, self.take_volume_backup, cmd=TakeVolumeBackupCommand())
         http_server.register_async_uri(self.KVM_TAKE_VOLUMES_SNAPSHOT_PATH, self.take_volumes_snapshots)
-        http_server.register_async_uri(self.KVM_TAKE_VOLUMES_BACKUP_PATH, self.take_volumes_backups)
+        http_server.register_async_uri(self.KVM_TAKE_VOLUMES_BACKUP_PATH, self.take_volumes_backups, cmd=TakeVolumesBackupsCommand())
         http_server.register_async_uri(self.KVM_CANCEL_VOLUME_BACKUP_JOBS_PATH, self.cancel_backup_jobs)
         http_server.register_async_uri(self.KVM_BLOCK_STREAM_VOLUME_PATH, self.block_stream)
         http_server.register_async_uri(self.KVM_MERGE_SNAPSHOT_PATH, self.merge_snapshot_to_volume)
-        http_server.register_async_uri(self.KVM_LOGOUT_ISCSI_TARGET_PATH, self.logout_iscsi_target)
+        http_server.register_async_uri(self.KVM_LOGOUT_ISCSI_TARGET_PATH, self.logout_iscsi_target, cmd=LoginIscsiTargetCmd)
         http_server.register_async_uri(self.KVM_LOGIN_ISCSI_TARGET_PATH, self.login_iscsi_target)
         http_server.register_async_uri(self.KVM_ATTACH_NIC_PATH, self.attach_nic)
         http_server.register_async_uri(self.KVM_DETACH_NIC_PATH, self.detach_nic)
         http_server.register_async_uri(self.KVM_UPDATE_NIC_PATH, self.update_nic)
         http_server.register_async_uri(self.KVM_CREATE_SECRET, self.create_ceph_secret_key)
         http_server.register_async_uri(self.KVM_VM_CHECK_STATE, self.check_vm_state)
-        http_server.register_async_uri(self.KVM_VM_CHANGE_PASSWORD_PATH, self.change_vm_password)
+        http_server.register_async_uri(self.KVM_VM_CHANGE_PASSWORD_PATH, self.change_vm_password, cmd=ChangeVmPasswordCmd())
         http_server.register_async_uri(self.KVM_SET_VOLUME_BANDWIDTH, self.set_volume_bandwidth)
         http_server.register_async_uri(self.KVM_DELETE_VOLUME_BANDWIDTH, self.delete_volume_bandwidth)
         http_server.register_async_uri(self.KVM_GET_VOLUME_BANDWIDTH, self.get_volume_bandwidth)
@@ -5002,14 +5801,21 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_GET_NIC_QOS, self.get_nic_qos)
         http_server.register_async_uri(self.KVM_HARDEN_CONSOLE_PATH, self.harden_console)
         http_server.register_async_uri(self.KVM_DELETE_CONSOLE_FIREWALL_PATH, self.delete_console_firewall_rule)
-        http_server.register_async_uri(self.GET_PCI_DEVICES, self.get_pci_info)
         http_server.register_async_uri(self.HOT_PLUG_PCI_DEVICE, self.hot_plug_pci_device)
         http_server.register_async_uri(self.HOT_UNPLUG_PCI_DEVICE, self.hot_unplug_pci_device)
+        http_server.register_async_uri(self.ATTACH_PCI_DEVICE_TO_HOST, self.attach_pci_device_to_host)
+        http_server.register_async_uri(self.DETACH_PCI_DEVICE_FROM_HOST, self.detach_pci_device_from_host)
         http_server.register_async_uri(self.KVM_ATTACH_USB_DEVICE_PATH, self.kvm_attach_usb_device)
         http_server.register_async_uri(self.KVM_DETACH_USB_DEVICE_PATH, self.kvm_detach_usb_device)
+        http_server.register_async_uri(self.RELOAD_USB_REDIRECT_PATH, self.reload_redirect_usb)
         http_server.register_async_uri(self.CHECK_MOUNT_DOMAIN_PATH, self.check_mount_domain)
         http_server.register_async_uri(self.KVM_RESIZE_VOLUME_PATH, self.kvm_resize_volume)
+        http_server.register_async_uri(self.VM_PRIORITY_PATH, self.vm_priority)
+        http_server.register_async_uri(self.ATTACH_GUEST_TOOLS_ISO_TO_VM_PATH, self.attach_guest_tools_iso_to_vm)
+        http_server.register_async_uri(self.GET_VM_GUEST_TOOLS_INFO_PATH, self.get_vm_guest_tools_info)
+        http_server.register_async_uri(self.KVM_GET_VM_FIRST_BOOT_DEVICE_PATH, self.get_vm_first_boot_device)
 
+        self.clean_old_sshfs_mount_points()
         self.register_libvirt_event()
 
         self.enable_auto_extend = True
@@ -5024,7 +5830,7 @@ class VmPlugin(kvmagent.KvmAgent):
         def wait_end_signal():
             while True:
                 try:
-                    self.queue.get(True)
+                    self.queue_singleton.queue.get(True)
 
                     while http.AsyncUirHandler.HANDLER_COUNTER.get() != 0:
                         time.sleep(0.1)
@@ -5051,6 +5857,9 @@ class VmPlugin(kvmagent.KvmAgent):
                 except:
                     content = traceback.format_exc()
                     logger.warn(content)
+                finally:
+                    os._exit(1)
+
 
         wait_end_signal()
 
@@ -5058,7 +5867,7 @@ class VmPlugin(kvmagent.KvmAgent):
         def monitor_libvirt():
             while True:
                 pid = linux.get_libvirtd_pid()
-                if not linux.process_exists(pid):
+                if not pid or not linux.process_exists(pid):
                     logger.warn(
                         "cannot find the libvirt process, assume it's dead, ask the mgmt server to reconnect us")
                     _stop_world()
@@ -5141,9 +5950,10 @@ class VmPlugin(kvmagent.KvmAgent):
             match = re.search(r"""<boot\s+dev='""", domain_xml)
             lindex = 0 if match is None else match.end()
             rindex = domain_xml[lindex:].index("'")
-            if lindex == 0 or domain_xml[lindex:lindex+rindex] != 'cdrom':
+            boot_dev = "not cdrom" if lindex == 0 else domain_xml[lindex:lindex+rindex]
+            if lindex == 0 or boot_dev != 'cdrom':
                 logger.debug("the vm[uuid:%s]'s boot device is %s, nothing to do, skip this reboot event" % (
-                    vm_uuid, domain_xml[lindex:lindex+rindex]))
+                    vm_uuid, boot_dev))
                 return
 
             logger.debug(
@@ -5166,8 +5976,8 @@ class VmPlugin(kvmagent.KvmAgent):
     @bash.in_bash
     @misc.ignoreerror
     def _extend_sharedblock(self, conn, dom, event, detail, opaque):
-        logger.debug("extend sharedblock got event from libvirt, %s %s %s %s" %
-                     (dom.name(), type(dom), LibvirtEventManager.event_to_string(event), LibvirtEventManager.suspend_event_to_string(detail)))
+        logger.debug("got event from libvirt, %s %s %s %s" %
+                     (dom.name(), LibvirtEventManager.event_to_string(event), detail, opaque))
 
         if not self.enable_auto_extend:
             return
@@ -5179,12 +5989,14 @@ class VmPlugin(kvmagent.KvmAgent):
             # virtual_size = int(linux.qcow2_virtualsize(file))
             return int(lv_size) < int(virtual_size), image_offest, lv_size, virtual_size
 
-        def extend_lv(event, path, vm, device):
+        @bash.in_bash
+        def extend_lv(event_str, path, vm, device):
+            # type: (str, str, Vm, object) -> object
             r, image_offest, lv_size, virtual_size = check_lv(path, vm, device)
             logger.debug("lv %s image offest: %s, lv size: %s, virtual size: %s" %
                          (path, image_offest, lv_size, virtual_size))
             if not r:
-                logger.debug("lv %s skip to extend for event %s" % (path, event))
+                logger.debug("lv %s skip to extend for event %s" % (path, event_str))
                 return
 
             extend_size = lv_size + self.auto_extend_size if virtual_size > lv_size + self.auto_extend_size else virtual_size
@@ -5192,7 +6004,15 @@ class VmPlugin(kvmagent.KvmAgent):
                 lvm.resize_lv(path, extend_size)
             except Exception as e:
                 logger.warn("extend lv[%s] to size[%s] failed" % (path, extend_size))
-            logger.debug("lv %s extend to %s success" % (path, extend_size))
+                if "incompatible mode" not in e.message.lower():
+                    return
+                try:
+                    with lvm.OperateLv(path, shared=False, delete_when_exception=False):
+                        lvm.resize_lv(path, extend_size)
+                except Exception as e:
+                    logger.warn("extend lv[%s] to size[%s] with operate failed" % (path, extend_size))
+            else:
+                logger.debug("lv %s extend to %s sucess" % (path, extend_size))
 
         def get_path_by_device(device_name, vm):
             for dev in vm.domain_xmlobject.devices.disk:
@@ -5201,7 +6021,10 @@ class VmPlugin(kvmagent.KvmAgent):
 
         @thread.AsyncThread
         @lock.lock("sharedblock-extend-vm-%s" % dom.name())
-        def handle_event(dom, event):
+        def handle_event(dom, event_str):
+            # type: (libvirt.virDomain, str) -> object
+            logger.debug("extend sharedblock got suspend event from libvirt, %s %s %s" %
+                         (dom.name(), event_str, LibvirtEventManager.suspend_event_to_string(detail)))
             disk_errors = dom.diskErrors()  # type: dict
             vm_uuid = dom.name()
             fixed = False
@@ -5220,7 +6043,7 @@ class VmPlugin(kvmagent.KvmAgent):
                         if not lvm.lv_exists(path):
                             logger.debug("it is not a lvm volume %s, skip to extend" % path)
                             continue
-                        extend_lv(event, path, vm, device)
+                        extend_lv(event_str, path, vm, device)
             except Exception as e:
                 logger.warn("got excetion: %s" % e)
 
@@ -5229,14 +6052,14 @@ class VmPlugin(kvmagent.KvmAgent):
                 vm.resume()
                 touchQmpSocketWhenExists(vm_uuid)
 
-        event = LibvirtEventManager.event_to_string(event)
-        if event not in (LibvirtEventManager.EVENT_SUSPENDED,):
+        event_str = LibvirtEventManager.event_to_string(event)
+        if event_str not in (LibvirtEventManager.EVENT_SUSPENDED,):
             return
-        handle_event(dom, event)
+        handle_event(dom, event_str)
 
     @bash.in_bash
     def _release_sharedblocks(self, conn, dom, event, detail, opaque):
-        logger.debug("release sharedblock got event from libvirt, %s %s" % (dom.name(), LibvirtEventManager.event_to_string(event)))
+        logger.debug("got event from libvirt, %s %s" % (dom.name(), LibvirtEventManager.event_to_string(event)))
 
         @linux.retry(times=5, sleep_time=1)
         def wait_volume_unused(volume):
@@ -5245,8 +6068,15 @@ class VmPlugin(kvmagent.KvmAgent):
                 raise RetryException("volume %s still used: %s" % (volume, used_process))
 
         @thread.AsyncThread
-        def deactivate_volume(event, file, vm_uuid):
+        @bash.in_bash
+        def deactivate_volume(event_str, file, vm_uuid):
+            # type: (str, str, str) -> object
             volume = file.strip().split("'")[1]
+            logger.debug("deactivating volume %s for vm %s" % (file, vm_uuid))
+            lock_type = bash.bash_o("lvs --noheading --nolocking %s -ovg_lock_type" % volume).strip()
+            if "sanlock" not in lock_type:
+                logger.debug("%s not sanlock, skip to deactive" % file)
+                return
             try:
                 wait_volume_unused(volume)
             finally:
@@ -5255,25 +6085,58 @@ class VmPlugin(kvmagent.KvmAgent):
                 try:
                     lvm.deactive_lv(volume, False)
                     logger.debug(
-                        "deactivated volume %s for event %s happend on vm %s success" % (volume, event, vm_uuid))
+                        "deactivated volume %s for event %s happend on vm %s success" % (volume, event_str, vm_uuid))
                 except Exception as e:
                     logger.debug("deactivate volume %s for event %s happend on vm %s failed, %s" % (
-                        volume, event, vm_uuid, e.message))
+                        volume, event_str, vm_uuid, e.message))
                     content = traceback.format_exc()
                     logger.warn("traceback: %s" % content)
             else:
                 logger.debug("volume %s still used: %s, skip to deactivate" % (volume, used_process))
 
         try:
+            event_str = LibvirtEventManager.event_to_string(event)
+            if event_str not in (LibvirtEventManager.EVENT_SHUTDOWN, LibvirtEventManager.EVENT_STOPPED):
+                return
+
+            vm_uuid = dom.name()
+            vm_op_judger = self._get_operation(vm_uuid)
+            if vm_op_judger and event_str in vm_op_judger.ignore_libvirt_events():
+                logger.info("expected event for zstack op %s, ignore event %s on vm %s" % (vm_op_judger.op, event_str, vm_uuid))
+                return
+
+            out = bash.bash_o("virsh dumpxml %s | grep \"source file='/dev/\"" % vm_uuid).strip().splitlines()
+            if len(out) != 0:
+                for file in out:
+                    deactivate_volume(event_str, file, vm_uuid)
+            else:
+                logger.debug("can not find sharedblock related volume for vm %s, skip to release" % vm_uuid)
+        except:
+            content = traceback.format_exc()
+            logger.warn("traceback: %s" % content)
+
+    def _vm_shutdown_event(self, conn, dom, event, detail, opaque):
+        try:
             event = LibvirtEventManager.event_to_string(event)
             if event not in (LibvirtEventManager.EVENT_SHUTDOWN,):
                 return
 
             vm_uuid = dom.name()
-            out = bash.bash_o("virsh dumpxml %s | grep \"source file='/dev/\"" % vm_uuid).strip().splitlines()
-            if len(out) != 0:
-                for file in out:
-                    deactivate_volume(event, file, vm_uuid)
+
+            # this is an operation outside zstack, report it
+            url = self.config.get(kvmagent.SEND_COMMAND_URL)
+            if not url:
+                logger.warn('cannot find SEND_COMMAND_URL, unable to report shutdown event of vm[uuid:%s]' % vm_uuid)
+                return
+
+            @thread.AsyncThread
+            def report_to_management_node():
+                cmd = ReportVmShutdownEventCmd()
+                cmd.vmUuid = vm_uuid
+                logger.debug('report shutdown event of vm ' + vm_uuid)
+                http.json_dump_post(url, cmd, {'commandpath': '/kvm/reportvmshutdown'})
+
+            report_to_management_node()
         except:
             content = traceback.format_exc()
             logger.warn("traceback: %s" % content)
@@ -5338,14 +6201,42 @@ class VmPlugin(kvmagent.KvmAgent):
             content = traceback.format_exc()
             logger.warn(content)
 
+    def _delete_pushgateway_metric(self, conn, dom, event, detail, opaque):
+        try:
+            event = LibvirtEventManager.event_to_string(event)
+            if event != LibvirtEventManager.EVENT_STOPPED:
+                return
+            output = shell.call('ps aux | grep [p]ushgateway')
+            if '/var/lib/zstack/kvm/pushgateway' not in output:
+                return
+            port = None
+            lines = output.splitlines()
+            for line in lines:
+                if '/var/lib/zstack/kvm/pushgateway' in line:
+                    port = line[line.rindex('web.listen-address :') + 20:]
+                    break;
+            vm_uuid = dom.name()
+            url = "http://localhost:%s/metrics/job/zwatch_vm_agent/vmUuid/%s" % (port, vm_uuid)
+            shell.run('curl -X DELETE ' + url)
+        except Exception as e:
+            logger.warn("delete pushgateway metric when vm stoped failed: %s" % e.message)
+
     def register_libvirt_event(self):
         #LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._vm_lifecycle_event)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE,
                                                   self._set_vnc_port_iptable_rule)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_REBOOT, self._vm_reboot_event)
+        LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._vm_shutdown_event)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._release_sharedblocks)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._extend_sharedblock)
+        LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._delete_pushgateway_metric)
         LibvirtAutoReconnect.register_libvirt_callbacks()
+
+    def clean_old_sshfs_mount_points(self):
+        mpts = shell.call("mount -t fuse.sshfs | awk '{print $3}'").splitlines()
+        for mpt in mpts:
+            if mpt.startswith(tempfile.gettempdir()):
+                linux.fumount(mpt, 2)
 
     def stop(self):
         pass

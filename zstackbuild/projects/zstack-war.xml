@@ -5,11 +5,6 @@
         <checkProperty property="zstack.source" />
         <checkFile file="${zstack.source}" />
 
-        <exec executable="git" dir="${zstack.source}" failonerror="true">
-            <arg value="checkout" />
-            <arg value="${zstack.build_version}" />
-        </exec>
-
         <condition property="war.build.script" value="${build.premium.war.script}" else="${build.zstack.war.script}">
             <and>
                 <isset property="build_war_flag"/>

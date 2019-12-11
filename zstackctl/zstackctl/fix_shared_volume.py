@@ -5,6 +5,7 @@ import json
 from zstacklib.utils import bash
 from zstacklib.utils import lvm
 from zstacklib.utils import log
+from zstacklib.utils import qemu_img
 
 log.configure_log("/var/log/zstack/convert_volume.log", log_to_console=False)
 logger = log.get_logger(__name__)
@@ -17,7 +18,7 @@ QCOW2_SUFFIX = "_zs_convert_qcow2"
 
 @bash.in_bash
 def get_volume_format(path):
-    info = json.loads(bash.bash_o("qemu-img info %s --output json" % path))
+    info = json.loads(bash.bash_o("%s %s --output json" % (qemu_img.subcmd('info'), path)))
     logger.debug(info)
     return info["format"]
 
@@ -36,7 +37,7 @@ def check(volume_abs_path, raw_volume_abs_path):
 
 @bash.in_bash
 def qcow2_convert_to_raw(src, dst):
-    return bash.bash_roe('/usr/bin/qemu-img convert -f qcow2 -O raw %s %s' % (src, dst))
+    return bash.bash_roe('%s -f qcow2 -O raw %s %s' % (qemu_img.subcmd('convert'), src, dst))
 
 
 def do_convert(args):

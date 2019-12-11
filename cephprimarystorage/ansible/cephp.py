@@ -2,6 +2,7 @@
 # encoding: utf-8
 import argparse
 from zstacklib import *
+from distutils.version import LooseVersion
 
 # create log
 logger_dir = "/var/log/zstack/"
@@ -21,6 +22,7 @@ virtualenv_version = "12.1.1"
 remote_user = "root"
 remote_pass = None
 remote_port = None
+host_uuid = None
 
 
 # get parameter from shell
@@ -40,6 +42,7 @@ cephp_root = "%s/cephp/package" % zstack_root
 host_post_info = HostPostInfo()
 host_post_info.host_inventory = args.i
 host_post_info.host = host
+host_post_info.host_uuid = host_uuid
 host_post_info.post_url = post_url
 host_post_info.chrony_servers = chrony_servers
 host_post_info.private_key = args.private_key
@@ -48,6 +51,11 @@ host_post_info.remote_pass = remote_pass
 host_post_info.remote_port = remote_port
 if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
+
+IS_AARCH64 = get_remote_host_arch(host_post_info) == 'aarch64'
+if IS_AARCH64:
+    qemu_img_pkg = "files/kvm/qemu-img-aarch64"
+    qemu_img_local_pkg = "%s/qemu-img-aarch64" % cephp_root
 
 # include zstacklib.py
 (distro, distro_version, distro_release, _) = get_remote_host_info(host_post_info)
@@ -77,20 +85,33 @@ run_remote_command("rm -rf %s/*" % cephp_root, host_post_info)
 
 if distro in RPM_BASED_OS:
     if zstack_repo != 'false':
-        command = ("pkg_list=`rpm -q wget qemu-img-ev libvirt libguestfs-winsupport libguestfs-tools"
-                   " | grep \"not installed\" | awk '{ print $2 }'` && for pkg"
-                   " in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % zstack_repo
+        command = ("pkg_list=`rpm -q wget qemu-img nmap| grep \"not installed\" | awk '{ print $2 }'` && for pkg"
+                   " in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (zstack_repo)
         run_remote_command(command, host_post_info)
         if distro_version >= 7:
             command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
             run_remote_command(command, host_post_info)
     else:
-        for pkg in ["wget", "qemu-img-ev", "libvirt", "libguestfs-winsupport", "libguestfs-tools"]:
+        for pkg in ["wget", "qemu-img", "nmap"]:
             yum_install_package(pkg, host_post_info)
         if distro_version >= 7:
             command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
             run_remote_command(command, host_post_info)
     set_selinux("state=disabled", host_post_info)
+
+    # replace qemu-img binary if qemu-img-ev before 2.12.0 is installed, to fix zstack-11004 / zstack-13594 / zstack-20983
+    command = "qemu-img --version | grep 'qemu-img version' | cut -d ' ' -f 3 | cut -d '(' -f 1"
+    (status, qemu_img_version) = run_remote_command(command, host_post_info, False, True)
+    if IS_AARCH64 and LooseVersion(qemu_img_version) < LooseVersion('2.12.0'):
+        copy_arg = CopyArg()
+        copy_arg.src = "%s" % qemu_img_pkg
+        copy_arg.dest = "%s" % qemu_img_local_pkg
+        copy(copy_arg, host_post_info)
+
+        command = "for i in {1..5}; do /bin/cp %s `which qemu-img` && break || sleep 2; done; sync" % qemu_img_local_pkg
+        host_post_info.post_label = "ansible.shell.install.pkg"
+        host_post_info.post_label_param = "qemu-img"
+        run_remote_command(command, host_post_info)
 
 elif distro in DEB_BASED_OS:
     install_pkg_list = ["wget", "qemu-utils","libvirt-bin", "libguestfs-tools"]
@@ -149,8 +170,16 @@ if distro in RPM_BASED_OS:
 elif distro in DEB_BASED_OS:
     command = "update-rc.d zstack-ceph-primarystorage start 97 3 4 5 . stop 3 0 1 2 6 . && service zstack-ceph-primarystorage stop && service zstack-ceph-primarystorage start"
 run_remote_command(command, host_post_info)
+
 # change ceph config
-set_ini_file("/etc/ceph/ceph.conf", 'global', "rbd_default_format", "2", host_post_info)
+# xsky does not need this configuration
+#    xsky v3.1.x rbd_default_format = 2 (by default)
+#    xsky v3.2.x rbd_default_format = 128 (by default)
+command = "test -f /usr/bin/xms-cli"
+status = run_remote_command(command, host_post_info, True, False)
+if status is False:
+    set_ini_file("/etc/ceph/ceph.conf", 'global', "rbd_default_format", "2", host_post_info)
+
 host_post_info.start_time = start_time
 handle_ansible_info("SUCC: Deploy ceph primary agent successful", host_post_info, "INFO")
 

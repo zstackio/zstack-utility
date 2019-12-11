@@ -150,24 +150,24 @@ class PxeServerAgent(object):
         return total, total - used
 
     def _start_pxe_server(self):
-        ret = bash_r("ps -ef | grep -v 'grep' | grep 'dnsmasq -C {0}' || dnsmasq -C {0} -u root".format(self.DNSMASQ_CONF_PATH))
+        ret, _, err = bash_roe("ps -ef | grep -v 'grep' | grep 'dnsmasq -C {0}' || dnsmasq -C {0} -u root".format(self.DNSMASQ_CONF_PATH))
         if ret != 0:
-            raise PxeServerError("failed to start dnsmasq on baremetal pxeserver[uuid:%s]" % self.uuid)
+            raise PxeServerError("failed to start dnsmasq on baremetal pxeserver[uuid:%s]: %s" % (self.uuid, err))
 
-        ret = bash_r("ps -ef | grep -v 'grep' | grep 'vsftpd {0}' || vsftpd {0}".format(self.VSFTPD_CONF_PATH))
+        ret, _, err = bash_roe("ps -ef | grep -v 'grep' | grep 'vsftpd {0}' || vsftpd {0}".format(self.VSFTPD_CONF_PATH))
         if ret != 0:
-            raise PxeServerError("failed to start vsftpd on baremetal pxeserver[uuid:%s]" % self.uuid)
+            raise PxeServerError("failed to start vsftpd on baremetal pxeserver[uuid:%s]: %s" % (self.uuid, err))
 
-        ret = bash_r("ps -ef | grep -v 'grep' | grep 'websockify' | grep 'baremetal' || "
+        ret, _, err = bash_roe("ps -ef | grep -v 'grep' | grep 'websockify' | grep 'baremetal' || "
                      "python %s/utils/websockify/run --web %s --token-plugin TokenFile --token-source=%s -D 6080"
                      % (self.NOVNC_INSTALL_PATH, self.NOVNC_INSTALL_PATH, self.NOVNC_TOKEN_PATH))
         if ret != 0:
-            raise PxeServerError("failed to start noVNC on baremetal pxeserver[uuid:%s]" % self.uuid)
+            raise PxeServerError("failed to start noVNC on baremetal pxeserver[uuid:%s]: %s" % (self.uuid, err))
 
         # in case nginx config is updated during nginx running
-        ret = bash_r("systemctl start nginx && systemctl reload nginx")
+        ret, _, err = bash_roe("systemctl start nginx && systemctl reload nginx")
         if ret != 0:
-            raise PxeServerError("failed to start nginx on baremetal pxeserver[uuid:%s]" % self.uuid)
+            raise PxeServerError("failed to start nginx on baremetal pxeserver[uuid:%s]: %s" % (self.uuid, err))
 
     # we do not stop nginx on pxeserver because it may be needed by bm with terminal proxy
     # stop pxeserver means stop dnsmasq actually
@@ -175,6 +175,7 @@ class PxeServerAgent(object):
         bash_r("kill -9 `ps -ef | grep -v grep | grep 'vsftpd %s' | awk '{ print $2 }'`" % self.VSFTPD_CONF_PATH)
         bash_r("kill -9 `ps -ef | grep -v grep | grep websockify | grep baremetal | awk '{ print $2 }'`")
         bash_r("kill -9 `ps -ef | grep -v grep | grep 'dnsmasq -C %s' | awk '{ print $2 }'`" % self.DNSMASQ_CONF_PATH)
+        bash_r("systemctl stop nginx")
 
     @staticmethod
     def _get_mac_address(ifname):
@@ -338,8 +339,8 @@ http {
         with open("/etc/nginx/nginx.conf", 'w') as fw:
             fw.write(nginx_conf)
 
-        # create nginx proxy for http://MN_IP:8080/zstack/asyncrest/sendcommand
-        content = "location / { proxy_pass http://%s:8080/; }" % cmd.managementIp
+        # create nginx proxy for http://MN_IP:MN_PORT/zstack/asyncrest/sendcommand
+        content = "location / { proxy_pass http://%s:%s/; }" % (cmd.managementIp, cmd.managementPort)
         with open("/etc/nginx/conf.d/pxe_mn/zstack_mn.conf", 'w') as fw:
             fw.write(content)
 
@@ -511,53 +512,73 @@ poweroff
         pre_script += more_script
         with open(os.path.join(self.ZSTACK_SCRIPTS_PATH, "pre_%s.sh" % cmd.pxeNicMac), 'w') as f:
             f.write(pre_script)
+        logger.debug("create pre_%s.sh with content: %s" % (cmd.pxeNicMac, pre_script))
 
     def _create_post_scripts(self, cmd, pxeserver_dhcp_nic_ip, more_script = ""):
         post_script = more_script
-        post_script += """# notify deploy complete
+        post_script += """
+bm_log='/tmp/zstack_bm.log'
+curr_time=`date +"%Y-%m-%d %H:%M:%S"`
+echo -e "Current time: \t$curr_time" >> $bm_log
+
+# notify deploy complete
+echo "\nnotify zstack that bm instance deploy completed:" >> $bm_log
 curl -X POST -H "Content-Type:application/json" \
 -H "commandpath:/baremetal/instance/deploycomplete" \
 -d {{"baremetalInstanceUuid":"{BMUUID}"}} \
 --retry 5 \
-http://{PXESERVER_DHCP_NIC_IP}:7771/zstack/asyncrest/sendcommand || \
+http://{PXESERVER_DHCP_NIC_IP}:7771/zstack/asyncrest/sendcommand >>$bm_log 2>&1 || \
 wget -O- --header="Content-Type:application/json" \
 --header="commandpath:/baremetal/instance/deploycomplete" \
 --post-data={{"baremetalInstanceUuid":"{BMUUID}"}} \
 --tries=5 \
-http://{PXESERVER_DHCP_NIC_IP}:7771/zstack/asyncrest/sendcommand
+http://{PXESERVER_DHCP_NIC_IP}:7771/zstack/asyncrest/sendcommand >>$bm_log 2>&1
 
-# baby agent
+# install shellinaboxd
 wget -P /usr/bin ftp://{PXESERVER_DHCP_NIC_IP}/shellinaboxd || curl -o /usr/bin/shellinaboxd ftp://{PXESERVER_DHCP_NIC_IP}/shellinaboxd
 chmod a+x /usr/bin/shellinaboxd
 
-[ -f /etc/rc.local ] && cp /etc/rc.local /etc/rc.local.bck
-[ -f /etc/init.d/after.local ] && cp /etc/init.d/after.local /etc/init.d/after.local.bck
-for init_file in /etc/rc.local /etc/init.d/after.local
-do
-cat > $init_file << EOF
+# baby agent
+cat > /usr/local/bin/zstack_bm_agent.sh << EOF
 #!/bin/bash
 iptables-save | grep -- "-I INPUT -p tcp -m tcp --dport 4200 -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 4200 -j ACCEPT && service iptables save)
 firewall-cmd --query-port=4200/tcp || (firewall-cmd --zone=public --add-port=4200/tcp --permanent && service firewalld restart)
-shellinaboxd -b -t -s /:SSH:127.0.0.1
+ps -ef | grep [s]hellinahoxd || shellinaboxd -b -t -s /:SSH:127.0.0.1
 
+echo "\nnotify zstack that bm instance is running:" >> $bm_log
 curl -X POST -H "Content-Type:application/json" \
 -H "commandpath:/baremetal/instance/osrunning" \
 -d {{"baremetalInstanceUuid":"{BMUUID}"}} \
 --retry 5 \
-http://{PXESERVER_DHCP_NIC_IP}:7771/zstack/asyncrest/sendcommand || \
+http://{PXESERVER_DHCP_NIC_IP}:7771/zstack/asyncrest/sendcommand >>$bm_log 2>&1 || \
 wget -O- --header="Content-Type:application/json" \
 --header="commandpath:/baremetal/instance/osrunning" \
 --post-data={{"baremetalInstanceUuid":"{BMUUID}"}} \
 --tries=5 \
-http://{PXESERVER_DHCP_NIC_IP}:7771/zstack/asyncrest/sendcommand
-
-exit 0
+http://{PXESERVER_DHCP_NIC_IP}:7771/zstack/asyncrest/sendcommand >>$bm_log 2>&1
 EOF
-chmod a+x $init_file
-done
+
+cat > /etc/systemd/system/zstack-bm-agent.service << EOF
+[Unit]
+Description=ZStack Baremetal Instance Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/bash /usr/local/bin/zstack_bm_agent.sh
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable zstack-bm-agent.service
 """.format(BMUUID=cmd.bmUuid, PXESERVER_DHCP_NIC_IP=pxeserver_dhcp_nic_ip)
         with open(os.path.join(self.ZSTACK_SCRIPTS_PATH, "post_%s.sh" % cmd.pxeNicMac), 'w') as f:
             f.write(post_script)
+        logger.debug("create post_%s.sh with content: %s" % (cmd.pxeNicMac, post_script))
 
     def _render_kickstart_template(self, cmd, pxeserver_dhcp_nic_ip):
         context = dict()
@@ -598,11 +619,10 @@ echo "BONDING_MASTER=yes" >> $IFCFGFILE
 echo "BONDING_OPTS='mode={{ cfg.bondMode }} {{ cfg.bondOpts }}'" >> $IFCFGFILE
 
 {% for slave in cfg.bondSlaves %}
-SLAVENAME=`ip -o link show | grep {{ slave }} | awk -F ': ' '{ printf "%s", $2 }'`
+SLAVENAME=`ip -o link show | grep {{ slave }} | awk -F ': ' '{ print $2 }'`
 SLAVECFG=/etc/sysconfig/network-scripts/ifcfg-${SLAVENAME}
 echo "BOOTPROTO=none" > $SLAVECFG
 echo "DEVICE=${SLAVENAME}" >> $SLAVECFG
-echo "HWADDR={{ slave }}" >> $SLAVECFG
 echo "MASTER={{ cfg.bondName }}" >> $SLAVECFG
 echo "SLAVE=yes" >> $SLAVECFG
 echo "PEERDNS=no" >> $SLAVECFG
@@ -612,13 +632,12 @@ echo "ONBOOT=yes" >> $SLAVECFG
 
 {% else %}
 
-DEVNAME=`ip -o link show | grep {{ cfg.mac }} | awk -F ': ' '{ printf "%s", $2 }'`
+DEVNAME=`ip -o link show | grep {{ cfg.mac }} | awk -F ': ' '{ print $2 }'`
 IFCFGFILE=/etc/sysconfig/network-scripts/ifcfg-${DEVNAME}
 VLANCFGNAME=${DEVNAME}.{{ cfg.vlanid }}
 VLANCFGFILE=/etc/sysconfig/network-scripts/ifcfg-${DEVNAME}.{{ cfg.vlanid }}
 echo "BOOTPROTO=none" > $IFCFGFILE
 echo "DEVICE=${DEVNAME}" >> $IFCFGFILE
-echo "HWADDR={{ cfg.mac }}" >> $IFCFGFILE
 echo "PEERDNS=no" >> $IFCFGFILE
 echo "PEERROUTES=no" >> $IFCFGFILE
 echo "ONBOOT=yes" >> $IFCFGFILE
@@ -628,7 +647,7 @@ echo "BOOTPROTO=static" > $VLANCFGFILE
 echo "DEVICE=${VLANCFGNAME}" >> $VLANCFGFILE
 echo "IPADDR={{ cfg.ip }}" >> $VLANCFGFILE
 echo "NETMASK={{ cfg.netmask }}" >> $VLANCFGFILE
-echo "#GATEWAY={{ cfg.gateway }}" >> $VLANCFGFILE
+echo "GATEWAY={{ cfg.gateway }}" >> $VLANCFGFILE
 echo "VLAN=yes" >> $VLANCFGFILE
 echo "PEERDNS=no" >> $VLANCFGFILE
 echo "PEERROUTES=no" >> $VLANCFGFILE
@@ -643,7 +662,7 @@ echo "BOOTPROTO=static" > $IFCFGFILE
 echo "DEVICE=${DEVNAME}" >> $IFCFGFILE
 echo "IPADDR={{ cfg.ip }}" >> $IFCFGFILE
 echo "NETMASK={{ cfg.netmask }}" >> $IFCFGFILE
-echo "#GATEWAY={{ cfg.gateway }}" >> $IFCFGFILE
+echo "GATEWAY={{ cfg.gateway }}" >> $IFCFGFILE
 echo "PEERDNS=no" >> $IFCFGFILE
 echo "PEERROUTES=no" >> $IFCFGFILE
 echo "ONBOOT=yes" >> $IFCFGFILE
@@ -652,11 +671,10 @@ echo "BONDING_MASTER=yes" >> $IFCFGFILE
 echo "BONDING_OPTS='mode={{ cfg.bondMode }} {{ cfg.bondOpts }}'" >> $IFCFGFILE
 
 {% for slave in cfg.bondSlaves %}
-SLAVENAME=`ip -o link show | grep {{ slave }} | awk -F ': ' '{ printf "%s", $2 }'`
+SLAVENAME=`ip -o link show | grep {{ slave }} | awk -F ': ' '{ print $2 }'`
 SLAVECFG=/etc/sysconfig/network-scripts/ifcfg-${SLAVENAME}
 echo "BOOTPROTO=none" > $SLAVECFG
 echo "DEVICE=${SLAVENAME}" >> $SLAVECFG
-echo "HWADDR={{ slave }}" >> $SLAVECFG
 echo "MASTER={{ cfg.bondName }}" >> $SLAVECFG
 echo "SLAVE=yes" >> $SLAVECFG
 echo "PEERDNS=no" >> $SLAVECFG
@@ -666,14 +684,13 @@ echo "ONBOOT=yes" >> $SLAVECFG
 
 {% else %}
 
-DEVNAME=`ip -o link show | grep {{ cfg.mac }} | awk -F ': ' '{ printf "%s", $2 }'`
+DEVNAME=`ip -o link show | grep {{ cfg.mac }} | awk -F ': ' '{ print $2 }'`
 IFCFGFILE=/etc/sysconfig/network-scripts/ifcfg-${DEVNAME}
 echo "BOOTPROTO=static" > $IFCFGFILE
 echo "DEVICE=${DEVNAME}" >> $IFCFGFILE
-echo "HWADDR={{ cfg.mac }}" >> $IFCFGFILE
 echo "IPADDR={{ cfg.ip }}" >> $IFCFGFILE
 echo "NETMASK={{ cfg.netmask }}" >> $IFCFGFILE
-echo "#GATEWAY={{ cfg.gateway }}" >> $IFCFGFILE
+echo "GATEWAY={{ cfg.gateway }}" >> $IFCFGFILE
 echo "PEERDNS=no" >> $IFCFGFILE
 echo "PEERROUTES=no" >> $IFCFGFILE
 echo "ONBOOT=yes" >> $IFCFGFILE
@@ -719,35 +736,77 @@ echo "ONBOOT=yes" >> $IFCFGFILE
 
         niccfgs = json_object.loads(cmd.nicCfgs) if cmd.nicCfgs is not None else []
         # post script snippet for network configuration
-        niccfg_post_script = """echo 'loop lp rtc bonding 8021q' >> /etc/modules
+        niccfg_post_script = """
+echo 'loop' >> /etc/modules
+echo 'lp' >> /etc/modules
+echo 'rtc' >> /etc/modules
+echo 'bonding' >> /etc/modules
+echo '8021q' >> /etc/modules
+
+{% set count = 0 %}
 {% for cfg in niccfgs %}
+  {% if cfg.bondName %}
+    {% set count = count + 1 %}
+    echo "options bonding max_bonds={{ count }}" > /etc/modprobe.d/bonding.conf
+  {% endif %}
+{% endfor %}
 
-{% if cfg.bondName %}
-DEVNAME={{ cfg.bondName }}{%- if cfg.vlanid -%}.{{ cfg.vlanid }}{%- endif -%}
-{% else %}
-DEVNAME=`ip -o link show | grep {{ cfg.mac }} | awk -F ': ' '{ printf $2 }'`{%- if cfg.vlanid -%}.{{ cfg.vlanid }}{%- endif -%}
-{% endif %}
+INTERFACES_FILE=/etc/network/interfaces
 
-echo "auto ${DEVNAME}" >> /etc/network/interfaces
-echo "iface ${DEVNAME} inet static" >> /etc/network/interfaces
-echo 'address {{ cfg.ip }}' >> /etc/network/interfaces
-echo 'netmask {{ cfg.netmask }}' >> /etc/network/interfaces
-echo 'gateway {{ cfg.gateway }}' >> /etc/network/interfaces
+{% for cfg in niccfgs %}
+  {% if cfg.bondName %}
+    RAWDEVNAME={{ cfg.bondName }}
+  {% else %}
+    RAWDEVNAME=`ip -o link show | grep {{ cfg.mac }} | awk -F ': ' '{ print $2 }'`
+  {% endif %}
+  DEVNAME=${RAWDEVNAME}{%- if cfg.vlanid -%}.{{ cfg.vlanid }}{%- endif -%}
 
-{% if cfg.bondName %}
-echo 'bond-mode {{ cfg.bondMode }}' >> /etc/network/interfaces
-{% if cfg.bondOpts %}echo '{{ cfg.bondOpts }}' >> /etc/network/interfaces{% endif %}
-echo 'bond-slaves '{%- for slave in cfg.bondSlaves -%}`ip -o link show | grep {{ slave }} | awk -F ': ' '{ printf $2 }'` {{ PH }}{%- endfor -%}
-{% endif %}
+  {% if cfg.vlanid %}
+    echo "auto ${DEVNAME}" >> ${INTERFACES_FILE}
+    echo "iface ${DEVNAME} inet static" >> ${INTERFACES_FILE}
+    echo "address {{ cfg.ip }}" >> ${INTERFACES_FILE}
+    echo "netmask {{ cfg.netmask }}" >> ${INTERFACES_FILE}
+    echo "gateway {{ cfg.gateway }}" >> ${INTERFACES_FILE}
+    echo "vlan-raw-device ${RAWDEVNAME}" >> ${INTERFACES_FILE}
+    echo '' >> ${INTERFACES_FILE}
+  {% endif %}
 
-{% if cfg.vlanid %}
-{% if cfg.bondName %}
-RAWDEVNAME={{ cfg.bondName }}
-{% else %}
-RAWDEVNAME=`ip -o link show | grep {{ cfg.mac }} | awk -F ': ' '{ printf $2 }'`
-{% endif %}
-echo "vlan-raw-device ${RAWDEVNAME}" >> /etc/network/interfaces
-{% endif %}
+  {% if cfg.bondName %}
+    echo "auto ${RAWDEVNAME}" >> ${INTERFACES_FILE}
+    {% if cfg.vlanid %}
+      echo "iface ${RAWDEVNAME} inet manual" >> ${INTERFACES_FILE}
+    {% else %}
+      echo "iface ${RAWDEVNAME} inet static" >> ${INTERFACES_FILE}
+      echo "address {{ cfg.ip }}" >> ${INTERFACES_FILE}
+      echo "netmask {{ cfg.netmask }}" >> ${INTERFACES_FILE}
+      echo "gateway {{ cfg.gateway }}" >> ${INTERFACES_FILE}
+    {% endif %}
+    echo "bond-mode {{ cfg.bondMode }}" >> ${INTERFACES_FILE}
+    {% if cfg.bondOpts %}
+      echo "{{ cfg.bondOpts }}" >> ${INTERFACES_FILE}
+    {% else %}
+      echo "bond-miimon 100" >> ${INTERFACES_FILE}
+    {% endif %}
+    echo "bond-slaves none" >> ${INTERFACES_FILE}
+    echo '' >> ${INTERFACES_FILE}
+
+    {% for slave in cfg.bondSlaves %}
+      slave_nic=`ip -o link show | grep {{ slave }} | awk -F ': ' '{ print $2 }'`
+      echo "auto ${slave_nic}" >> ${INTERFACES_FILE}
+      echo "iface ${slave_nic} inet manual" >> ${INTERFACES_FILE}
+      echo "bond-master {{ cfg.bondName }}" >> ${INTERFACES_FILE}
+      echo '' >> ${INTERFACES_FILE}
+    {% endfor %}
+  {% endif %}
+
+  {% if not cfg.bondName and not cfg.vlanid %}
+    echo "auto ${DEVNAME}" >> ${INTERFACES_FILE}
+    echo "iface ${DEVNAME} inet static" >> ${INTERFACES_FILE}
+    echo "address {{ cfg.ip }}" >> ${INTERFACES_FILE}
+    echo "netmask {{ cfg.netmask }}" >> ${INTERFACES_FILE}
+    echo "gateway {{ cfg.gateway }}" >> ${INTERFACES_FILE}
+    echo '' >> ${INTERFACES_FILE}
+  {% endif %}
 
 {% endfor %}
 """
@@ -774,7 +833,15 @@ echo "vlan-raw-device ${RAWDEVNAME}" >> /etc/network/interfaces
 
         niccfgs = json_object.loads(cmd.nicCfgs) if cmd.nicCfgs is not None else []
         # post script snippet for network configuration
-        niccfg_post_script = """
+        niccfg_post_script = """echo -e 'loop\nlp\nrtc\nbonding\n8021q' >> /etc/modules-load.d/ifcfg.conf
+{% set count = 0 %}
+{% for cfg in niccfgs %}
+  {% if cfg.bondName %}
+    {% set count = count + 1 %}
+    echo "options bonding max_bonds={{ count }}" > /etc/modprobe.d/bonding.conf
+  {% endif %}
+{% endfor %}
+
 {% for cfg in niccfgs %}
 
 {% if cfg.vlanid %}
@@ -785,58 +852,31 @@ IFCFGFILE=/etc/sysconfig/network/ifcfg-${DEVNAME}
 VLANCFGNAME=${DEVNAME}.{{ cfg.vlanid }}
 VLANCFGFILE=/etc/sysconfig/network/ifcfg-${DEVNAME}.{{ cfg.vlanid }}
 echo "BOOTPROTO='none'" > $IFCFGFILE
-echo "IPADDR=''" >> $IFCFGFILE
-echo "NETMASK=''" >> $IFCFGFILE
-echo "MTU=''" >> $IFCFGFILE
-echo "NAME=''" >> $IFCFGFILE
-echo "NETWORK=''" >> $IFCFGFILE
-echo "BROADCAST=''" >> $IFCFGFILE
 echo "STARTMODE='auto'" >> $IFCFGFILE
-echo "ETHTOOL_OPTIONS=''" >> $IFCFGFILE
 echo "BONDING_MASTER='yes'" >> $IFCFGFILE
-echo "BONDING_MODULE_OPTS='mode={{ cfg.bondMode }} {% if cfg.bondOpts %}{{ cfg.bondOpts }}{% endif %}'" >> $IFCFGFILE
+echo "BONDING_MODULE_OPTS='mode={{ cfg.bondMode }} miimon=100 {% if cfg.bondOpts %}{{ cfg.bondOpts }}{% endif %}'" >> $IFCFGFILE
 
 {% for slave in cfg.bondSlaves %}
-SLAVENAME=`ip -o link show | grep {{ slave }} | awk -F ': ' '{ printf "%s", $2 }'`
+SLAVENAME=`ip -o link show | grep {{ slave }} | awk -F ': ' '{ print $2 }'`
 SLAVECFG=/etc/sysconfig/network/ifcfg-${SLAVENAME}
-echo "BONDING_SLAVE{{ loop.index0 }}='${ SLAVENAME }'" >> $IFCFGFILE
+echo "BONDING_SLAVE{{ loop.index0 }}='${SLAVENAME}'" >> $IFCFGFILE
 echo "BOOTPROTO='none'" > $SLAVECFG
-echo "MTU=''" >> $SLAVECFG
-echo "NAME=''" >> $SLAVECFG
-echo "IPADDR=''" >> $SLAVECFG
-echo "NETMASK=''" >> $SLAVECFG
-echo "NETWORK=''" >> $SLAVECFG
-echo "BROADCAST=''" >> $SLAVECFG
-echo "STARTMODE='auto'" >> $SLAVECFG
-echo "ETHTOOL_OPTIONS=''" >> $SLAVECFG
-echo "STARTMODE=hotplug" >> $SLAVECFG
+echo "STARTMODE='hotplug'" >> $SLAVECFG
 {% endfor %}
 
 {% else %}
-DEVNAME=`ip -o link show | grep {{ cfg.mac }} | awk -F ': ' '{ printf "%s", $2 }'`
+DEVNAME=`ip -o link show | grep {{ cfg.mac }} | awk -F ': ' '{ print $2 }'`
 IFCFGFILE=/etc/sysconfig/network/ifcfg-${DEVNAME}
 VLANCFGNAME=${DEVNAME}.{{ cfg.vlanid }}
 VLANCFGFILE=/etc/sysconfig/network/ifcfg-${DEVNAME}.{{ cfg.vlanid }}
 echo "BOOTPROTO='none'" > $IFCFGFILE
-echo "IPADDR=''" >> $IFCFGFILE
-echo "NETMASK=''" >> $IFCFGFILE
-echo "MTU=''" >> $IFCFGFILE
-echo "NAME=''" >> $IFCFGFILE
-echo "NETWORK=''" >> $IFCFGFILE
-echo "BROADCAST=''" >> $IFCFGFILE
 echo "STARTMODE='auto'" >> $IFCFGFILE
-echo "ETHTOOL_OPTIONS=''" >> $IFCFGFILE
 {% endif %}
 
 echo "BOOTPROTO='static'" > $VLANCFGFILE
 echo "IPADDR={{ cfg.ip }}" >> $VLANCFGFILE
 echo "NETMASK={{ cfg.netmask }}" >> $VLANCFGFILE
-echo "MTU=''" >> $VLANCFGFILE
-echo "NAME=''" >> $VLANCFGFILE
-echo "NETWORK=''" >> $VLANCFGFILE
-echo "BROADCAST=''" >> $VLANCFGFILE
 echo "STARTMODE='auto'" >> $VLANCFGFILE
-echo "ETHTOOL_OPTIONS=''" >> $VLANCFGFILE
 echo "ETHERDEVICE=${DEVNAME}" >> $VLANCFGFILE
 echo "VLAN_ID={{ cfg.vlanid }}" >> $VLANCFGFILE
 
@@ -848,43 +888,25 @@ IFCFGFILE=/etc/sysconfig/network/ifcfg-${DEVNAME}
 echo "BOOTPROTO='static'" > $IFCFGFILE
 echo "IPADDR='{{ cfg.ip }}'" >> $IFCFGFILE
 echo "NETMASK='{{ cfg.netmask }}'" >> $IFCFGFILE
-echo "MTU=''" >> $IFCFGFILE
-echo "NAME=''" >> $IFCFGFILE
-echo "NETWORK=''" >> $IFCFGFILE
-echo "BROADCAST=''" >> $IFCFGFILE
 echo "STARTMODE='auto'" >> $IFCFGFILE
-echo "ETHTOOL_OPTIONS=''" >> $IFCFGFILE
 echo "BONDING_MASTER='yes'" >> $IFCFGFILE
-echo "BONDING_MODULE_OPTS='mode={{ cfg.bondMode }} {% if cfg.bondOpts %}{{ cfg.bondOpts }}{% endif %}'" >> $IFCFGFILE
+echo "BONDING_MODULE_OPTS='mode={{ cfg.bondMode }} miimon=100 {% if cfg.bondOpts %}{{ cfg.bondOpts }}{% endif %}'" >> $IFCFGFILE
 
 {% for slave in cfg.bondSlaves %}
-SLAVENAME=`ip -o link show | grep {{ slave }} | awk -F ': ' '{ printf "%s", $2 }'`
+SLAVENAME=`ip -o link show | grep {{ slave }} | awk -F ': ' '{ print $2 }'`
 SLAVECFG=/etc/sysconfig/network/ifcfg-${SLAVENAME}
-echo "BONDING_SLAVE{{ loop.index0 }}='${ SLAVENAME }'" >> $IFCFGFILE
+echo "BONDING_SLAVE{{ loop.index0 }}='${SLAVENAME}'" >> $IFCFGFILE
 echo "BOOTPROTO='none'" > $SLAVECFG
-echo "MTU=''" >> $SLAVECFG
-echo "NAME=''" >> $SLAVECFG
-echo "IPADDR=''" >> $SLAVECFG
-echo "NETMASK=''" >> $SLAVECFG
-echo "NETWORK=''" >> $SLAVECFG
-echo "BROADCAST=''" >> $SLAVECFG
-echo "STARTMODE='auto'" >> $SLAVECFG
-echo "ETHTOOL_OPTIONS=''" >> $SLAVECFG
-echo "STARTMODE=hotplug" >> $SLAVECFG
+echo "STARTMODE='hotplug'" >> $SLAVECFG
 {% endfor %}
 
 {% else %}
-DEVNAME=`ip -o link show | grep {{ cfg.mac }} | awk -F ': ' '{ printf "%s", $2 }'`
+DEVNAME=`ip -o link show | grep {{ cfg.mac }} | awk -F ': ' '{ print $2 }'`
 IFCFGFILE=/etc/sysconfig/network/ifcfg-${DEVNAME}
 echo "BOOTPROTO='static'" > $IFCFGFILE
 echo "IPADDR='{{ cfg.ip }}'" >> $IFCFGFILE
 echo "NETMASK='{{ cfg.netmask }}'" >> $IFCFGFILE
-echo "MTU=''" >> $IFCFGFILE
-echo "NAME=''" >> $IFCFGFILE
-echo "NETWORK=''" >> $IFCFGFILE
-echo "BROADCAST=''" >> $IFCFGFILE
 echo "STARTMODE='auto'" >> $IFCFGFILE
-echo "ETHTOOL_OPTIONS=''" >> $IFCFGFILE
 {% endif %}
 
 {% endif %}
@@ -949,7 +971,9 @@ echo "ETHTOOL_OPTIONS=''" >> $IFCFGFILE
         nginx_proxy_file = os.path.join(self.NGINX_TERMINAL_PROXY_CONF_PATH, cmd.bmUuid)
         with open(nginx_proxy_file, 'w') as f:
             f.write(cmd.upstream)
-        bash_r("systemctl reload nginx")
+        ret, _, err = bash_roe("systemctl reload nginx || systemctl reload nginx")
+        if ret != 0:
+            logger.debug("failed to reload nginx.service: " + err)
 
         logger.info("successfully create terminal nginx proxy for baremetal instance[uuid:%s] on pxeserver[uuid:%s]" % (cmd.bmUuid, self.uuid))
         return json_object.dumps(rsp)
@@ -962,7 +986,9 @@ echo "ETHTOOL_OPTIONS=''" >> $IFCFGFILE
         nginx_proxy_file = os.path.join(self.NGINX_TERMINAL_PROXY_CONF_PATH, cmd.bmUuid)
         if os.path.exists(nginx_proxy_file):
             os.remove(nginx_proxy_file)
-        bash_r("systemctl reload nginx")
+        ret, _, err = bash_roe("systemctl reload nginx || systemctl reload nginx")
+        if ret != 0:
+            logger.debug("failed to reload nginx.service: " + err)
 
         logger.info("successfully deleted terminal nginx proxy for baremetal instance[uuid:%s] on pxeserver[uuid:%s]" % (cmd.bmUuid, self.uuid))
         return json_object.dumps(rsp)

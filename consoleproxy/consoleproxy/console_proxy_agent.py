@@ -200,7 +200,7 @@ class ConsoleProxyAgent(object):
             for pid in pids:
                 try:
                     os.kill(pid, 15)
-                except:
+                except OSError:
                     continue
 
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -270,7 +270,6 @@ class ConsoleProxyAgent(object):
 
         rsp.token = token_file.get_full_name()
         token_file.flush_write('%s: %s:%s' % (token_file.get_full_name(), cmd.targetHostname, cmd.targetPort))
-                
         info = {
                  'proxyHostname': cmd.proxyHostname,
                  'proxyPort': cmd.proxyPort,
@@ -284,17 +283,29 @@ class ConsoleProxyAgent(object):
         self.db.set(cmd.token, info_str)
         rsp.proxyPort = cmd.proxyPort
         logger.debug('successfully add new proxy token file %s' % info_str)
-        ##if process exists,return
-        out = shell.call("ps aux | grep websockify")
+
+        ## kill garbage websockify process: same proxyip:proxyport, different cert file
+        if not cmd.sslCertFile:
+            command = "ps aux | grep '[z]stack.*websockify_init' | grep '%s:%d' | grep 'cert=' | awk '{ print $2 }'" % (cmd.proxyHostname, cmd.proxyPort)
+        else:
+            command = "ps aux | grep '[z]stack.*websockify_init' | grep '%s:%d' | grep -v '%s' | awk '{ print $2 }'" % (cmd.proxyHostname, cmd.proxyPort, cmd.sslCertFile)
+        ret,out,err = bash_roe(command)
+        for pid in out.splitlines():
+            try:
+                os.kill(int(pid), 15)
+            except OSError:
+                continue
+
+        ## if websockify process exists, then return
         alive = False
-        for o in out.split('\n'):
-            if o.find(cmd.proxyHostname) != -1:
+        ret,out,err = bash_roe("ps aux | grep '[z]stack.*websockify_init'")
+        for o in out.splitlines():
+            if o.find("%s:%d" % (cmd.proxyHostname, cmd.proxyPort)) != -1:
                 alive = True
                 break
-                
         if alive:
-            return jsonobject.dumps(rsp)    
-        
+            return jsonobject.dumps(rsp)
+
         ##start a new websockify process
         timeout = cmd.idleTimeout
         if not timeout:

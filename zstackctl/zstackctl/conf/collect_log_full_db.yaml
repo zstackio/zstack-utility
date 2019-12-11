@@ -1,9 +1,10 @@
 host:
     description: host server
     type: target
-    list: {exec: "mysql -uzstack -pzstack.password zstack -e 'select h.managementIp from HostVO h where h.status =  \"Connected\" and h.hypervisorType = \"KVM\"'"}
+    list: {exec: "select h.managementIp from HostVO h where h.hypervisorType = \"KVM\""}
     logs:
       - {name: kvmagent-logs, dir: /var/log/zstack/, file: zstack-kvmagent.log*}
+      - {name: mini-fencer-logs, dir: /var/log/zstack/, file: mini-fencer.log*}
       - {name: zstack-logs, dir: /var/log/zstack/, file: zstack.log*}
       - {name: iscsi-logs, dir: /var/log/zstack/, file: zstack-iscsi-filesystem-agent*}
       - {name: agentcollectd-logs, dir: /var/log/zstack/zstack-agent/, file: collectd.log*}
@@ -21,11 +22,11 @@ host:
 mn:
     description: management node
     type: target
-    list: {exec: "mysql -uzstack -pzstack.password zstack -e 'select h.hostName from ManagementNodeVO h'"}
+    list: {exec: "AutoCollect"}
     logs:
      - {name: mn-logs, dir: $ZSTACK_HOME/../../logs/, file: 'management-server*'}
      - {name: ui-logs, dir: $ZSTACK_HOME/../../logs/, file: 'zstack-ui*'}
-     - {name: mysql-database, exec: 'mysqldump --database -uzstack -pzstack.password -P 3306 --single-transaction --quick zstack zstack_rest'}
+     - {name: mysql-database, exec: 'AutoCollect'}
      - {name: sar-log, dir: /var/log/sa/, file: 'sa[0-9]*'}
      - {name: api-logs, dir: $ZSTACK_HOME/../../logs/, file: 'zstack-api*'}
      - {name: catalina-logs, dir: $ZSTACK_HOME/../../logs/, file: 'catalina*'}
@@ -43,18 +44,21 @@ mn:
      - {name: host-info, exec: 'uptime && last reboot && free -h && cat /proc/cpuinfo && ip add && df -h'}
      - {name: pkg-list, exec: 'rpm -qa | sort'}
      - {name: git-commit, dir: $ZSTACK_HOME/../../webapps/zstack/, file: '*git-commit'}
+     - {name: zstack-logs, dir: /var/log/zstack/, file: zstack.log*}
+     - {name: zstack-installation-logs, dir: /tmp/, file: zstack_installation.log*}
 vrouter:
     description: vrouter
     type: target
-    list: {exec: "mysql -uzstack -pzstack.password zstack -e 'select ip from VmNicVO where deviceId = 0 and vmInstanceUuid in (select uuid from VirtualRouterVmVO)'"}
+    list: {exec: "select ip from VmNicVO where deviceId = 0 and vmInstanceUuid in (select uuid from VirtualRouterVmVO)"}
     logs:
       - {name: config-boot, dir: /config/, file: 'config.boot*'}
       - {name: zstack-log, dir: /var/log/zstack/, file: }
       - {name: vrouter-log, dir: /home/vyos/zvr/, file: }
+      - {name: zstack-logs, dir: /var/log/zstack/, file: zstack.log*}
 ceph-bs:
     description: ceph backstorage
     type: target
-    list: {exec: "mysql -uzstack -pzstack.password zstack -e 'select hostname from CephBackupStorageMonVO'"}
+    list: {exec: "select hostname from CephBackupStorageMonVO"}
     logs:
       - {name: cephbs-log, dir: /var/log/zstack/, file: ceph-backupstorage*}
       - {name: dmesg-logs, dir: /var/log/, file: 'dmesg*'}
@@ -65,10 +69,11 @@ ceph-bs:
       - {name: journalctl-info, exec: 'journalctl -x'}
       - {name: host-info, exec: 'uptime && last reboot && free -h && cat /proc/cpuinfo && ip add && df -h'}
       - {name: pkg-list, exec: 'rpm -qa | sort'}
+      - {name: zstack-logs, dir: /var/log/zstack/, file: zstack.log*}
 sftp-bs:
     description: sftp backstorage
     type: target
-    list: {exec: "mysql -uzstack -pzstack.password zstack -e 'select hostname from SftpBackupStorageVO'"}
+    list: {exec: "select hostname from SftpBackupStorageVO"}
     logs:
       - {name: sftpbs-log, dir: /var/log/zstack/, file: zstack-sftpbackupstorage*}
       - {name: dmesg-logs, dir: /var/log/, file: 'dmesg*'}
@@ -79,10 +84,11 @@ sftp-bs:
       - {name: journalctl-info, exec: 'journalctl -x'}
       - {name: host-info, exec: 'uptime && last reboot && free -h && cat /proc/cpuinfo && ip add && df -h'}
       - {name: pkg-list, exec: 'rpm -qa | sort'}
+      - {name: zstack-logs, dir: /var/log/zstack/, file: zstack.log*}
 imageStore-bs:
     description: imagestore backstorage
     type: target
-    list: {exec: "mysql -uzstack -pzstack.password zstack -e 'select hostname from ImageStoreBackupStorageVO'"}
+    list: {exec: "select hostname from ImageStoreBackupStorageVO"}
     logs:
       - {name: zstore-log, dir: /var/log/zstack/zstack-store/, file: zstore*}
       - {name: dmesg-logs, dir: /var/log/, file: 'dmesg*'}
@@ -93,10 +99,11 @@ imageStore-bs:
       - {name: journalctl-info, exec: 'journalctl -x'}
       - {name: host-info, exec: 'uptime && last reboot && free -h && cat /proc/cpuinfo && ip add && df -h'}
       - {name: pkg-list, exec: 'rpm -qa | sort'}
+      - {name: zstack-logs, dir: /var/log/zstack/, file: zstack.log*}
 ceph-ps:
     descrption: ceph primarystorage
     type: target
-    list: {exec: "mysql -uzstack -pzstack.password zstack -e 'select hostname from CephPrimaryStorageMonVO'"}
+    list: {exec: "select hostname from CephPrimaryStorageMonVO"}
     logs:
       - {name: cephps-log, dir: /var/log/zstack/, file: ceph-primarystorage*}
       - {name: dmesg-logs, dir: /var/log/, file: 'dmesg*'}
@@ -107,10 +114,11 @@ ceph-ps:
       - {name: journalctl-info, exec: 'journalctl -x'}
       - {name: host-info, exec: 'uptime && last reboot && free -h && cat /proc/cpuinfo && ip add && df -h'}
       - {name: pkg-list, exec: 'rpm -qa | sort'}
+      - {name: zstack-logs, dir: /var/log/zstack/, file: zstack.log*}
 sharedblock:
     description: sharedblock log
     type: target
-    list: {exec: "mysql -uzstack -pzstack.password zstack -e 'select h.managementIp from HostVO h where h.status =  \"Connected\" and h.hypervisorType = \"KVM\"'"}
+    list: {exec: "select h.managementIp from HostVO h where h.hypervisorType = \"KVM\""}
     logs:
       - {name: lsblk-info, exec: 'lsblk -p -o NAME,TYPE,FSTYPE,LABEL,UUID,VENDOR,MODEL,MODE,WWN,SIZE'}
       - {name: ls_dev_disk_by-id_info, exec: 'ls -l /dev/disk/by-id'}
@@ -118,13 +126,24 @@ sharedblock:
       - {name: multipath-info, exec: 'multipath -ll -v3'}
       - {name: sanlock-logs, dir: /var/log/, file: sanlock.log*}
       - {name: lvmlock-logs, dir: /var/log/lvmlock/, file: lvmlockd.log*}
-      - {name: sanlock_client_info, exec: 'sanlock client status'}
-      - {name: sanlock_host_info, exec: 'sanlock client host_status'}
+      - {name: sanlock_client_info, exec: 'sanlock client status -D'}
+      - {name: sanlock_host_info, exec: 'sanlock client host_status -D'}
       - {name: lvm_lvs_info, exec: 'lvs --nolocking -oall'}
       - {name: lvm_vgs_info, exec: 'vgs --nolocking -oall'}
       - {name: lvm_config_diff_info, exec: 'lvmconfig --type diff'}
       - {name: lvm-etc, dir: /etc/lvm/, file: }
       - {name: sanlock-etc, dir: /etc/sanlock/, file: }
       - {name: zsblk-agent, dir: /var/log/zstack/zsblk-agent/, file: }
-
-
+pxeserver:
+    description: baremetal pxeserver log
+    type: target
+    list: {exec: "select hostname from BaremetalPxeServerVO"}
+    logs:
+      - {name: dnsmasq-logs, dir: /var/log/zstack/baremetal/, file: }
+      - {name: vsftpd-cfgs, dir: /var/lib/zstack/baremetal/vsftpd/, file: }
+      - {name: dnsmasq-confs, dir: /var/lib/zstack/baremetal/dnsmasq/, file: }
+      - {name: kickstart-confs, dir: /var/lib/zstack/baremetal/ftp/ks/, file: }
+      - {name: novnc-tokens, dir: /var/lib/zstack/baremetal/noVNC/tokens/, file: }
+      - {name: kickstart-scripts, dir: /var/lib/zstack/baremetal/ftp/scripts/, file: }
+      - {name: pxelinux-cfgs, dir: /var/lib/zstack/baremetal/tftpboot/pxelinux.cfg/, file: }
+      - {name: pxeserver-agent-logs, dir: /var/log/zstack/, file: zstack-baremetalpxeserver.log*}

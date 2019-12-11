@@ -1,13 +1,16 @@
-import subprocess
 import functools
-import json
-from jinja2 import Template
-from zstacklib.utils import log
 import inspect
-import time
+import json
 import re
+import subprocess
+import time
+
+from jinja2 import Template
+
 from progress_report import WatchThread_1
 from zstacklib.utils import linux
+from zstacklib.utils import log
+from zstacklib.utils import shell
 
 logger = log.get_logger(__name__)
 
@@ -48,10 +51,11 @@ def bash_eval(raw_str, ctx=None):
 
 # @return: return code, stdout, stderr
 def bash_roe(cmd, errorout=False, ret_code = 0, pipe_fail=False):
+    # type: (str, bool, int, bool) -> (int, str, str)
     ctx = __collect_locals_on_stack()
 
     cmd = bash_eval(cmd, ctx)
-    p = subprocess.Popen('/bin/bash', stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True)
+    p = shell.get_process("/bin/bash", pipe=True)
     if pipe_fail:
         cmd = 'set -o pipefail; %s' % cmd
     o, e = p.communicate(cmd)
@@ -75,6 +79,7 @@ def bash_roe(cmd, errorout=False, ret_code = 0, pipe_fail=False):
 
 # @return: return code, stdout
 def bash_ro(cmd, pipe_fail=False):
+    # type: (str, bool) -> (int, str)
     ret, o, _ = bash_roe(cmd, pipe_fail=pipe_fail)
     return ret, o
 
@@ -91,6 +96,7 @@ def bash_r(cmd, pipe_fail=False):
 
 # @return: stdout
 def bash_errorout(cmd, code=0, pipe_fail=False):
+    # type: (str, int, bool) -> str
     _, o, _ = bash_roe(cmd, errorout=True, ret_code=code, pipe_fail=pipe_fail)
     return o
 

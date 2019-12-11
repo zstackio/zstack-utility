@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # encoding: utf-8
+import re
 import argparse
 import os.path
 from zstacklib import *
@@ -21,11 +22,14 @@ current_dir = os.path.dirname(os.path.realpath(__file__))
 post_url = ""
 chrony_servers = None
 fs_rootpath = ""
+max_capacity = 0
 client = "false"
 remote_user = "root"
 remote_pass = None
 remote_port = None
+host_uuid = None
 require_python_env = "false"
+skip_packages = ""
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy image backupstorage to host')
@@ -44,6 +48,7 @@ imagestore_root = "%s/imagestorebackupstorage/package" % zstack_root
 host_post_info = HostPostInfo()
 host_post_info.host_inventory = args.i
 host_post_info.host = host
+host_post_info.host_uuid = host_uuid
 host_post_info.post_url = post_url
 host_post_info.chrony_servers = chrony_servers
 host_post_info.private_key = args.private_key
@@ -78,7 +83,12 @@ zstacklib = ZstackLib(zstacklib_args)
 
 if distro in RPM_BASED_OS:
     qemu_pkg = 'qemu-kvm-ev' if distro_version >= 7 else 'qemu-kvm'
-    qemu_pkg += ' fuse-sshfs'
+    qemu_pkg += ' fuse-sshfs nmap'
+
+    # skip these packages
+    _skip_list = re.split(r'[|;,\s]\s*', skip_packages)
+    _qemu_pkg = [ pkg for pkg in qemu_pkg.split() if pkg not in _skip_list ]
+    qemu_pkg = ' '.join(_qemu_pkg)
 
     if client == "true" :
         if distro_version < 7:
@@ -135,7 +145,7 @@ copy_arg.args = "mode=400"
 copy(copy_arg, host_post_info)
 
 # name: install zstack-store
-command = "bash %s %s " % (dest_pkg, fs_rootpath)
+command = "bash %s %s %s" % (dest_pkg, fs_rootpath, max_capacity)
 run_remote_command(command, host_post_info)
 
 

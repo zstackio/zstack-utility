@@ -29,6 +29,8 @@ import socket
 
 logger = log.get_logger(__name__)
 EBTABLES_CMD = ebtables.get_ebtables_cmd()
+IPTABLES_CMD = iptables.get_iptables_cmd()
+IP6TABLES_CMD = iptables.get_ip6tables_cmd()
 
 class ApplyDhcpRsp(kvmagent.AgentResponse):
     pass
@@ -80,6 +82,20 @@ class RemoveForwardDnsRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(RemoveForwardDnsRsp, self).__init__()
 
+def get_phy_dev_from_bridge_name(bridge_name):
+    # for vlan, BR_NAME is "br_eth0_100", vlan sub interface: eth0.100,
+    # for vxlan, BR_NAME is "br_vx_7863", vxlan sub interface vxlan7863"
+    phy_dev = bridge_name.replace('br_', '', 1)
+    if phy_dev[:2] == "vx":
+        phy_dev = phy_dev.replace("vx", "vxlan").replace("_", "")
+    else:
+        phy_dev = phy_dev.replace("_", ".")
+
+    return phy_dev
+
+def get_l3_uuid(namespace):
+    items = namespace.split('_')
+    return items[-1]
 
 class UserDataEnv(object):
     def __init__(self, bridge_name, namespace_name):
@@ -108,9 +124,9 @@ class UserDataEnv(object):
         logger.debug('use id[%s] for the namespace[%s]' % (NAMESPACE_ID, NAMESPACE_NAME))
 
         BR_NAME = self.bridge_name
-        BR_PHY_DEV = self.bridge_name.replace('br_', '', 1).replace('_', '.', 1)
-        self.outer_dev = OUTER_DEV = "outer%s" % NAMESPACE_ID
-        self.inner_dev = INNER_DEV = "inner%s" % NAMESPACE_ID
+        BR_PHY_DEV = get_phy_dev_from_bridge_name(self.bridge_name)
+        OUTER_DEV = "outer%s" % NAMESPACE_ID
+        INNER_DEV = "inner%s" % NAMESPACE_ID
 
         ret = bash_r('ip netns exec {{NAMESPACE_NAME}} ip link show')
         if ret != 0:
@@ -138,7 +154,8 @@ class UserDataEnv(object):
             bash_errorout('ip link set {{INNER_DEV}} netns {{NAMESPACE_NAME}}')
 
         bash_errorout('ip netns exec {{NAMESPACE_NAME}} ip link set {{INNER_DEV}} up')
-
+        self.inner_dev = INNER_DEV
+        self.outer_dev = OUTER_DEV
 
 class DhcpEnv(object):
     DHCP6_STATEFUL = "Stateful-DHCP"
@@ -198,7 +215,7 @@ class DhcpEnv(object):
             ret = bash_r("iptables-save | grep -- '-p udp -m udp --dport 68 -j CHECKSUM --checksum-fill'")
             if ret != 0:
                 bash_errorout(
-                    'iptables -w -t mangle -A POSTROUTING -p udp -m udp --dport 68 -j CHECKSUM --checksum-fill')
+                    '%s -t mangle -A POSTROUTING -p udp -m udp --dport 68 -j CHECKSUM --checksum-fill' % IPTABLES_CMD)
 
         def _add_ebtables_rule6(rule):
             ret = bash_r(
@@ -207,12 +224,8 @@ class DhcpEnv(object):
                 bash_errorout(
                     EBTABLES_CMD + ' -I {{DHCP6_CHAIN_NAME}} {{rule}}')
 
-        def _get_l3_uuid():
-            items = NAMESPACE_NAME.split('_')
-            return items[-1]
-
         def _prepare_dhcp6_iptables():
-            l3Uuid = _get_l3_uuid()
+            l3Uuid = get_l3_uuid(NAMESPACE_NAME)
             DHCP6_CHAIN_NAME = "ZSTACK-DHCP6-%s" % l3Uuid[0:9]
             serverip = ip.Ipv6Address(DHCP_IP)
             ns_multicast_address = serverip.get_solicited_node_multicast_address() + "/ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"
@@ -260,7 +273,7 @@ class DhcpEnv(object):
             ret = bash_r("ip6tables-save | grep -- '-p udp -m udp --dport 546 -j CHECKSUM --checksum-fill'")
             if ret != 0:
                 bash_errorout(
-                    'ip6tables -w -t mangle -A POSTROUTING -p udp -m udp --dport 546 -j CHECKSUM --checksum-fill')
+                    '%s -t mangle -A POSTROUTING -p udp -m udp --dport 546 -j CHECKSUM --checksum-fill' % IP6TABLES_CMD)
 
         NAMESPACE_ID = None
 
@@ -285,7 +298,7 @@ class DhcpEnv(object):
             PREFIX_LEN = linux.netmask_to_cidr(DHCP_NETMASK)
 
         ADDRESS_MODE = self.addressMode
-        BR_PHY_DEV = self.bridge_name.replace('br_', '', 1).replace('_', '.', 1)
+        BR_PHY_DEV = get_phy_dev_from_bridge_name(self.bridge_name)
         OUTER_DEV = "outer%s" % NAMESPACE_ID
         INNER_DEV = "inner%s" % NAMESPACE_ID
         CHAIN_NAME = "ZSTACK-%s" % DHCP_IP
@@ -362,10 +375,12 @@ class Mevoco(kvmagent.KvmAgent):
     CONNECT_ALL_NETNS_BR_INNER_IP = "169.254.64.2"
     IP_MASK_BIT = 18
 
+    KVM_HOST_AGENT_PORT = "7070"
     KVM_HOST_PUSHGATEWAY_PORT = "9092"
 
     def __init__(self):
         self.signal_count = 0
+        self.userData_vms = {}
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -475,7 +490,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
     @in_bash
     def _delete_dhcp4(self, namspace):
-        dhcp_ip = bash_o("ip netns exec %s ip route | awk '{print $9}'" % namspace)
+        dhcp_ip = bash_o("ip netns exec {{namspace}} ip add | grep inet | awk '{print $2}' | awk -F '/' '{print $1}' | head -1")
         dhcp_ip = dhcp_ip.strip(" \t\n\r")
 
         if dhcp_ip:
@@ -515,79 +530,118 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
     @kvmagent.replyerror
     @in_bash
-    def restore_ebtables_nat_chain_except_libvirt(self):
+    def restore_ebtables_chain_except_kvmagent(self):
         class EbtablesRules(object):
+            default_tables = ["nat", "filter", "broute"]
+            default_rules = {"nat": "*nat\n:PREROUTING ACCEPT\n:OUTPUT ACCEPT\n:POSTROUTING ACCEPT\n",
+                             "filter": "*filter\n:INPUT ACCEPT\n:FORWARD ACCEPT\n:OUTPUT ACCEPT\n",
+                             "broute": "*broute\n:BROUTING ACCEPT"}
+
             @in_bash
             def __init__(self):
                 self.raw_text = bash_o("ebtables-save").strip(" \t\r\n").splitlines()
-                self.nat_table = self._get_nat_table()
-                self.nat_chain_names = self._get_nat_chain_names()
+                self.tables = {}
+                self.chain_names = {}
+                for table in EbtablesRules.default_tables:
+                    self.tables[table] = self._get_table(table)  # type: dict[str, list]
+                    self.chain_names[table] = self._get_chain_names(table)  # type: dict[str, list]
 
-            def _get_nat_table(self):
+            def _get_table(self, table):
                 result = []
-                is_nat_table = False
+                is_table = False
+
+                if table not in EbtablesRules.default_tables:
+                    raise Exception('invalid ebtables table %s' % table)
 
                 for line in self.raw_text:
                     if len(line) < 1:
                         continue
-                    if "*nat" in line:
-                        is_nat_table = True
+                    if "*"+table in line:
+                        is_table = True
                     elif line[0] == "*":
-                        is_nat_table = False
+                        is_table = False
 
-                    if is_nat_table:
+                    if is_table:
                         result.append(line)
 
                 return result
 
-            def _get_nat_chain_names(self):
+            def _get_chain_names(self, table):
                 result = []
-                for line in self.nat_table:
+                for line in self.tables[table]:
                     if line[0] == ':':
                         result.append(line.split(" ")[0].strip(":"))
 
                 return result
 
-            def _get_related_nat_chain_names(self, keyword):
-                # type: (str) -> list[str]
+            def _get_related_chain_names(self, table, keyword):
+                # type: (str, str) -> list[str]
                 result = []
-                for name in self.nat_chain_names:
+                for name in self.chain_names[table]:
                     if keyword in name:
                         result.append(name)
 
-                for line in self.nat_table:
+                for line in self.tables[table]:
                     if line[0] == ':':
                         continue
                     if len(list(filter(lambda x: '-A %s ' % x in line, result))) < 1:
                         continue
-                    jump_chain = self._get_jump_nat_chain_name_from_cmd(line)
+                    jump_chain = self._get_jump_chain_name_from_cmd(table, line)
                     if jump_chain:
-                        result.extend(self._get_related_nat_chain_names(jump_chain))
+                        result.extend(self._get_related_chain_names(table, jump_chain))
 
                 return list(set(result))
 
-            def _get_jump_nat_chain_name_from_cmd(self, cmd):
+            def _get_jump_chain_name_from_cmd(self, table, cmd):
                 jump = cmd.split(" -j ")[1]
-                if jump in self.nat_chain_names:
+                if jump in self.chain_names[table]:
                     return jump
                 return None
 
-            def get_related_nat_rules(self, keyword):
+            def _get_related_top_chain_names(self, table, pattern):
+                # type: (str, str) -> list[str]
                 result = []
-                related_chains = self._get_related_nat_chain_names(keyword)
-                for line in self.nat_table:
+                for name in self.chain_names[table]:
+                    if re.search(pattern, name):
+                        result.append(name)
+                return list(set(result))
+
+            def _get_related_table_rules(self, table, keywords):
+                # type: (str, list) -> list[str]
+                result = []
+                related_chains = []
+                for keyword in list(set(keywords)):
+                    related_chains.extend(self._get_related_chain_names(table, keyword))
+                for line in self.tables[table]:
                     if len(list(filter(lambda x: x in line, related_chains))) > 0:
                         result.append(line)
 
-                default_rules = "*nat\n:PREROUTING ACCEPT\n:OUTPUT ACCEPT\n:POSTROUTING ACCEPT\n"
+                default_rules = EbtablesRules.default_rules[table]
                 r = default_rules.splitlines()
                 r.extend(result)
                 return r
 
+            def get_related_rules_re(self, patterns):
+                # type: (dict[str, list]) -> list[str]
+                result = []
+                if patterns.keys() not in EbtablesRules.default_tables:
+                    raise Exception('invalid parameter table %s' % patterns.keys())
+
+                for key, value in patterns.items():
+                    keywords = []
+                    for pattern in value:
+                        keywords.extend(self._get_related_top_chain_names(key, pattern))
+                    if len(keywords) > 0:
+                        result.extend(self._get_related_table_rules(key, keywords))
+
+                return result
+
         logger.debug("start clean ebtables...")
         ebtables_obj = EbtablesRules()
         fd, path = tempfile.mkstemp(".ebtables.dump")
-        restore_data = "\n".join(ebtables_obj.get_related_nat_rules("libvirt")) + "\n"
+        #ZSTAC-24684 restore the rule created by libvirt & zsn
+        patterns={"nat":["libvirt","(^z|^s)[0-9]*_"], "filter":["(^z|^s)[0-9]*_"]}
+        restore_data = "\n".join(ebtables_obj.get_related_rules_re(patterns)) + "\n"
         logger.debug("restore ebtables: %s" % restore_data)
         with os.fdopen(fd, 'w') as fs:
             fs.write(restore_data)
@@ -595,50 +649,13 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         os.remove(path)
         logger.debug("clean ebtables successfully")
 
-
-    @kvmagent.replyerror
-    @in_bash
-    def delete_ebtables_nat_chain_except_libvirt(self):
-        def makecmd(cmd):
-            return EBTABLES_CMD + " -t nat " + cmd
-        logger.debug("start clean ebtables...\n")
-        chain = {}
-        chain_names = []
-        chain_name = "libvirt-"
-        o = bash_o("ebtables-save | grep {{chain_name}} |grep -- -A|grep -v ACCEPT|grep -v DROP|grep -v RETURN")
-        o = o.strip(" \t\r\n")
-        if o:
-            #logger.debug("chain_name:%s\n" % o)
-            chain_names.append(chain_name)
-            for l in o.split("\n"):
-                chain_names.append(l.split(" ")[-1])
-            #logger.debug("ebtables chain-name:%s" % chain_names)
-
-            for l in chain_names:
-                if cmp(l, chain_name) == 0:
-                    o = bash_o("ebtables-save | grep {{l}} |grep -- -A")
-                    chain[l] = list( map(makecmd, o.strip(" \t\r\n").split("\n")) )
-                else:
-                    o = bash_o("ebtables-save | grep {{l}} |grep -- -A| grep -v {{chain_name}}")
-                    chain[l] = list( map(makecmd, o.strip(" \t\r\n").split("\n")) )
-                #logger.debug("ebtables chain-name:%s %s\n" %(l, chain[l]) )
-
-        shell.call(EBTABLES_CMD + ' -t nat -F')
-
-        for l in chain_names:
-            cmds = chain[l]
-            if cmds:
-                logger.debug("ebtables chain-name:%s  cmds:%s\n" % (l, cmds))
-                bash_r("\n".join(cmds))
-        logger.debug("clean ebtables successful\n")
-
     @kvmagent.replyerror
     def connect(self, req):
         shell.call(EBTABLES_CMD + ' -F')
-        #shell.call(EBTABLES_CMD + ' -t nat -F')
-        # this is workaround, for anti-spoofing feature, there is no googd way to proccess this reconnect-host case,
-        # it's just keep the ebtables rules from libvirt and remove others when reconnect hosts
-        self.restore_ebtables_nat_chain_except_libvirt()
+        # shell.call(EBTABLES_CMD + ' -t nat -F')
+        # this is workaround, for anti-spoofing & distributed virtual routing feature, there is no good way to proccess this reconnect-host case,
+        # it's just keep the ebtables rules from libvirt & zsn and remove others when reconnect hosts
+        self.restore_ebtables_chain_except_kvmagent()
         return jsonobject.dumps(ConnectRsp())
 
     @kvmagent.replyerror
@@ -668,6 +685,11 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
         bash_errorout("ps aux | grep lighttpd | grep {{BR_NAME}} | grep -w userdata | awk '{print $2}' | xargs -r kill -9")
 
+        html_folder = os.path.join(self.USERDATA_ROOT, cmd.namespaceName)
+        linux.rm_dir_force(html_folder)
+
+        del self.userData_vms[cmd.l3NetworkUuid][:]
+
         return jsonobject.dumps(kvmagent.AgentResponse())
 
     @kvmagent.replyerror
@@ -680,6 +702,12 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
         namespaces = {}
         for u in cmd.userdata:
+            if u.l3NetworkUuid in self.userData_vms:
+                if u.vmIp not in self.userData_vms[u.l3NetworkUuid]:
+                    self.userData_vms[u.l3NetworkUuid].append(u.vmIp)
+            else:
+                self.userData_vms[u.l3NetworkUuid] = [u.vmIp]
+
             if u.namespaceName not in namespaces:
                 namespaces[u.namespaceName] = u
             else:
@@ -715,6 +743,16 @@ tag:{{TAG}},option:dns-server,{{DNS}}
     @in_bash
     @lock.file_lock('/run/xtables.lock')
     def _apply_userdata_xtables(self, to):
+        def create_default_userdata(http_root):
+            root = os.path.join(http_root, "zstack-default")
+            meta_root = os.path.join(root, 'meta-data')
+            if not os.path.exists(meta_root):
+                shell.call('mkdir -p %s' % meta_root)
+
+            index_file_path = os.path.join(meta_root, 'index.html')
+            with open(index_file_path, 'w') as fd:
+                fd.write('')
+
         def prepare_br_connect_ns(ns, ns_inner_dev, ns_outer_dev):
             bridge_name = self.CONNECT_ALL_NETNS_BR_NAME
             bridge_ip = "%s/%s" % (self.CONNECT_ALL_NETNS_BR_OUTER_IP, self.IP_MASK_BIT)
@@ -731,8 +769,9 @@ tag:{{TAG}},option:dns-server,{{DNS}}
             if ret != 0:
                 bash_errorout('ip addr add %s dev %s' % (bridge_ip, bridge_name))
 
-            userdata_br_outer_dev = "userdata_" + ns_outer_dev
-            userdata_br_inner_dev = "userdata_" + ns_inner_dev
+            #"ip link add %s type veth peer name %s", max length of second parameter is 15 characters
+            userdata_br_outer_dev = "ud_" + ns_outer_dev
+            userdata_br_inner_dev = "ud_" + ns_inner_dev
 
             ret = bash_r('ip link | grep -w %s > /dev/null' % userdata_br_outer_dev)
             if ret != 0:
@@ -793,8 +832,8 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
         # set ebtables
         BR_NAME = to.bridgeName
-        # BR_NAME is "br_%s_%s"
-        ETH_NAME = BR_NAME.replace('br_', '', 1).replace('_', '.', 1)
+        ETH_NAME = get_phy_dev_from_bridge_name(BR_NAME)
+
         MAC = bash_errorout("ip netns exec {{NS_NAME}} ip link show {{INNER_DEV}} | grep -w ether | awk '{print $2}'").strip(' \t\r\n')
         CHAIN_NAME="USERDATA-%s" % BR_NAME
         # max length of ebtables chain name is 31
@@ -812,7 +851,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
         # ebtables has a bug that will eliminate 0 in MAC, for example, aa:bb:0c will become aa:bb:c
         cidr = ip.IpAddress(to.vmIp).toCidr(to.netmask)
-        RULE = "-p IPv4 --ip-dst 169.254.169.254 --ip-source %s -j dnat --to-dst %s --dnat-target ACCEPT" % (cidr, MAC.replace(":0", ":"))
+        RULE = "-p IPv4 --ip-src %s --ip-dst 169.254.169.254 -j dnat --to-dst %s --dnat-target ACCEPT" % (cidr, MAC.replace(":0", ":"))
         ret = bash_r(EBTABLES_CMD + ' -t nat -L {{EBCHAIN_NAME}} | grep -- "{{RULE}}" > /dev/null')
         if ret != 0:
             bash_errorout(EBTABLES_CMD + ' -t nat -I {{EBCHAIN_NAME}} {{RULE}}')
@@ -854,6 +893,17 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         conf_path = os.path.join(conf_folder, 'lighttpd.conf')
         http_root = os.path.join(conf_folder, 'html')
 
+        if to.l3NetworkUuid in self.userData_vms:
+            if to.vmIp not in self.userData_vms[to.l3NetworkUuid]:
+                self.userData_vms[to.l3NetworkUuid].append(to.vmIp)
+        else:
+            self.userData_vms[to.l3NetworkUuid] = [to.vmIp]
+
+        if to.l3NetworkUuid in self.userData_vms:
+            userdata_vm_ips = self.userData_vms[to.l3NetworkUuid]
+        else:
+            userdata_vm_ips = []
+
         conf = '''\
 server.document-root = "{{http_root}}"
 
@@ -862,23 +912,43 @@ server.bind = "169.254.169.254"
 dir-listing.activate = "enable"
 index-file.names = ( "index.html" )
 
-server.modules += ("mod_proxy", "mod_rewrite")
+server.modules += ("mod_proxy", "mod_rewrite", "mod_access", "mod_accesslog",)
+accesslog.filename = "/var/log/lighttpd/lighttpd_access.log"
+server.errorlog = "/var/log/lighttpd/lighttpd_error.log"
 
 $HTTP["remoteip"] =~ "^(.*)$" {
     $HTTP["url"] =~ "^/metrics/job" {
         proxy.server = ( "" =>
            ( ( "host" => "{{pushgateway_ip}}", "port" => {{pushgateway_port}} ) )
         )
+    } else $HTTP["url"] =~ "^/host" {
+        proxy.server = ( "" =>
+           ( ( "host" => "{{kvmagent_ip}}", "port" => {{kvmagent_port}} ) )
+        )
+{% for ip in userdata_vm_ips -%}
+    } else $HTTP["remoteip"] == "{{ip}}" {
+        url.rewrite-once = (
+            "^/.*/meta-data/(.+)$" => "/{{ip}}/meta-data/$1",
+            "^/.*/meta-data$" => "/{{ip}}/meta-data",
+            "^/.*/meta-data/$" => "/{{ip}}/meta-data/",
+            "^/.*/user-data$" => "/{{ip}}/user-data",
+            "^/.*/user_data$" => "/{{ip}}/user_data",
+            "^/.*/meta_data.json$" => "/{{ip}}/meta_data.json",
+            "^/.*/password$" => "/{{ip}}/password",
+            "^/.*/$" => "/{{ip}}/$1"
+        )
+        dir-listing.activate = "enable"
+{% endfor -%}
     } else $HTTP["remoteip"] =~ "^(.*)$" {
         url.rewrite-once = (
-            "^/.*/meta-data/(.+)$" => "../%1/meta-data/$1",
-            "^/.*/meta-data$" => "../%1/meta-data",
-            "^/.*/meta-data/$" => "../%1/meta-data/",
-            "^/.*/user-data$" => "../%1/user-data",
-            "^/.*/user_data$" => "../%1/user_data",
-            "^/.*/meta_data.json$" => "../%1/meta_data.json",
-            "^/.*/password$" => "../%1/password",
-            "^/.*/$" => "../%1/$1"
+            "^/.*/meta-data/(.+)$" => "../zstack-default/meta-data/$1",
+            "^/.*/meta-data$" => "../zstack-default/meta-data",
+            "^/.*/meta-data/$" => "../zstack-default/meta-data/",
+            "^/.*/user-data$" => "../zstack-default/user-data",
+            "^/.*/user_data$" => "../zstack-default/user_data",
+            "^/.*/meta_data.json$" => "../zstack-default/meta_data.json",
+            "^/.*/password$" => "../zstack-default/password",
+            "^/.*/$" => "../zstack-default/$1"
         )
         dir-listing.activate = "enable"
     }
@@ -896,7 +966,10 @@ mimetype.assign = (
             'http_root': http_root,
             'port': to.port,
             'pushgateway_ip' : self.CONNECT_ALL_NETNS_BR_OUTER_IP,
-            'pushgateway_port' : self.KVM_HOST_PUSHGATEWAY_PORT
+            'pushgateway_port' : self.KVM_HOST_PUSHGATEWAY_PORT,
+            'kvmagent_ip' : self.CONNECT_ALL_NETNS_BR_OUTER_IP,
+            'kvmagent_port' : self.KVM_HOST_AGENT_PORT,
+            'userdata_vm_ips': userdata_vm_ips
         })
 
         linux.mkdir(http_root, 0777)
@@ -912,6 +985,7 @@ mimetype.assign = (
                 with open(conf_path, 'w') as fd:
                     fd.write(conf)
 
+        create_default_userdata(http_root)
         self.apply_zwatch_vm_agent(http_root)
 
     def apply_zwatch_vm_agent(self, http_root):
@@ -1009,21 +1083,24 @@ mimetype.assign = (
                 fd.write('')
 
     @in_bash
-    @lock.file_lock('/run/xtables.lock')
+    @lock.lock('lighttpd')
     def _apply_userdata_restart_httpd(self, to):
+        def check(_):
+            pid = linux.find_process_by_cmdline([conf_path])
+            return pid is not None
+
         conf_folder = os.path.join(self.USERDATA_ROOT, to.namespaceName)
         conf_path = os.path.join(conf_folder, 'lighttpd.conf')
         pid = linux.find_process_by_cmdline([conf_path])
-        if not pid:
-            shell.call('ip netns exec %s lighttpd -f %s' % (to.namespaceName, conf_path))
+        if pid:
+            linux.kill_process(pid)
 
-            def check(_):
-                pid = linux.find_process_by_cmdline([conf_path])
-                return pid is not None
+        #restart lighttpd to load new configration
+        shell.call('ip netns exec %s lighttpd -f %s' % (to.namespaceName, conf_path))
+        if not linux.wait_callback_success(check, None, 5):
+            raise Exception('lighttpd[conf-file:%s] is not running after being started %s seconds' % (conf_path, 5))
 
-            if not linux.wait_callback_success(check, None, 5):
-                raise Exception('lighttpd[conf-file:%s] is not running after being started %s seconds' % (conf_path, 5))
-
+    @in_bash
     @lock.file_lock('/run/xtables.lock')
     def work_userdata_iptables(self, CHAIN_NAME, to):
         # DNAT port 80
@@ -1034,21 +1111,21 @@ mimetype.assign = (
         if OLD_CHAIN and OLD_CHAIN != CHAIN_NAME:
             ret = bash_r('iptables-save -t nat | grep -- "-j {{OLD_CHAIN}}"')
             if ret == 0:
-                bash_r('iptables -w -t nat -D PREROUTING -j {{OLD_CHAIN}}')
+                bash_r('%s -t nat -D PREROUTING -j {{OLD_CHAIN}}' % IPTABLES_CMD)
 
-            bash_errorout('iptables -w -t nat -F {{OLD_CHAIN}}')
-            bash_errorout('iptables -w -t nat -X {{OLD_CHAIN}}')
+            bash_errorout('%s -t nat -F {{OLD_CHAIN}}' % IPTABLES_CMD)
+            bash_errorout('%s -t nat -X {{OLD_CHAIN}}' % IPTABLES_CMD)
         ret = bash_r('iptables-save | grep -w ":{{PORT_CHAIN_NAME}}" > /dev/null')
         if ret != 0:
-            self.bash_ignore_exist_for_ipt('iptables -w -t nat -N {{PORT_CHAIN_NAME}}')
-        ret = bash_r('iptables -w -t nat -L PREROUTING | grep -- "-j {{PORT_CHAIN_NAME}}"')
+            self.bash_ignore_exist_for_ipt('%s -t nat -N {{PORT_CHAIN_NAME}}' % IPTABLES_CMD)
+        ret = bash_r('%s -t nat -L PREROUTING | grep -- "-j {{PORT_CHAIN_NAME}}"' % IPTABLES_CMD)
         if ret != 0:
-            self.bash_ignore_exist_for_ipt('iptables -w -t nat -I PREROUTING -j {{PORT_CHAIN_NAME}}')
+            self.bash_ignore_exist_for_ipt('%s -t nat -I PREROUTING -j {{PORT_CHAIN_NAME}}' % IPTABLES_CMD)
         ret = bash_r(
             'iptables-save -t nat | grep -- "{{PORT_CHAIN_NAME}} -d 169.254.169.254/32 -p tcp -j DNAT --to-destination :{{PORT}}"')
         if ret != 0:
             self.bash_ignore_exist_for_ipt(
-                'iptables -w -t nat -A {{PORT_CHAIN_NAME}} -d 169.254.169.254/32 -p tcp -j DNAT --to-destination :{{PORT}}')
+                '%s -t nat -A {{PORT_CHAIN_NAME}} -d 169.254.169.254/32 -p tcp -j DNAT --to-destination :{{PORT}}' % IPTABLES_CMD)
 
     @staticmethod
     def bash_ignore_exist_for_ipt(cmd):
@@ -1065,6 +1142,9 @@ mimetype.assign = (
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         html_folder = os.path.join(self.USERDATA_ROOT, cmd.namespaceName, 'html', cmd.vmIp)
         linux.rm_dir_force(html_folder)
+        l3Uuid = get_l3_uuid(cmd.namespaceName)
+        if cmd.vmIp in self.userData_vms[l3Uuid]:
+            self.userData_vms[l3Uuid].remove(cmd.vmIp)
         return jsonobject.dumps(ReleaseUserdataRsp())
 
     def _make_conf_path(self, namespace_name):
@@ -1097,7 +1177,7 @@ mimetype.assign = (
     def _get_dhcp_server_ip_from_namespace(self, namespace_name):
         '''
         :param namespace_name:
-        :return: dhcp server ip address in namespace
+        :return: dhcp server ip address in namespace, or empty string when failed
         # ip netns exec br_eth0_100_a9c8b01132444866a61d4c2ae03230ba ip add
         1: lo: <LOOPBACK> mtu 65536 qdisc noop state DOWN qlen 1
         link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
@@ -1110,7 +1190,9 @@ mimetype.assign = (
         inet6 fe80::fc34:72ff:fe29:3564/64 scope link
         valid_lft forever preferred_lft forever
         '''
-        dhcp_ip = bash_o("ip netns exec {{namespace_name}} ip add | grep inet | awk '{print $2}' | awk -F '/' '{print $1}' | head -1")
+        r, dhcp_ip = bash_ro("ip netns exec {{namespace_name}} ip add | grep inet | grep -v 169.254 | awk '{print $2}' | awk -F '/' '{print $1}' | head -1")
+        if r != 0:
+            return ""
         return dhcp_ip.strip(" \t\r\n")
 
     @lock.lock('prepare_dhcp')
@@ -1127,7 +1209,7 @@ mimetype.assign = (
         p.addressMode = cmd.addressMode
 
         old_dhcp_ip = self._get_dhcp_server_ip_from_namespace(cmd.namespaceName)
-        if old_dhcp_ip != cmd.dhcpServerIp:
+        if old_dhcp_ip != "" and old_dhcp_ip != cmd.dhcpServerIp:
             if cmd.ipVersion == 4:
                 self._delete_dhcp4(cmd.namespaceName)
             else:
@@ -1243,6 +1325,7 @@ dhcp-range={{g}},static
                 for route in d.hostRoutes:
                     routes.append(','.join([route.prefix, route.nexthop]))
                 dhcp_info['routes'] = ','.join(routes)
+                dhcp_info['vmMultiGateway'] = d.vmMultiGateway
                 info.append(dhcp_info)
 
                 if not cmd.rebuild:
@@ -1281,10 +1364,16 @@ tag:{{o.tag}},option:domain-name,{{o.dnsDomain}}
 {% endif -%}
 {% if o.routes -%}
 tag:{{o.tag}},option:classless-static-route,{{o.routes}}
+tag:{{o.tag}},option:microsoft-249,{{o.routes}}
 {% endif -%}
 {% else -%}
 tag:{{o.tag}},3
 tag:{{o.tag}},6
+{% if o.vmMultiGateway -%}
+{% if o.gateway -%}
+tag:{{o.tag}},option:router,{{o.gateway}}
+{% endif -%}
+{% endif -%}
 {% endif -%}
 tag:{{o.tag}},option:netmask,{{o.netmask}}
 {% if o.mtu -%}

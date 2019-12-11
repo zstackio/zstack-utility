@@ -3,6 +3,7 @@ from jinja2 import Template
 from kvmagent import kvmagent
 from zstacklib.utils import http
 from zstacklib.utils import ip
+from zstacklib.utils import iptables
 from zstacklib.utils import jsonobject
 from zstacklib.utils import lock
 from zstacklib.utils import log
@@ -16,6 +17,8 @@ import netaddr
 
 logger = log.get_logger(__name__)
 EBTABLES_CMD = ebtables.get_ebtables_cmd()
+IPTABLES_CMD = iptables.get_iptables_cmd()
+IP6TABLES_CMD = iptables.get_ip6tables_cmd()
 
 class AgentRsp(object):
     def __init__(self):
@@ -216,6 +219,15 @@ class DEip(kvmagent.KvmAgent):
                 bash_errorout(EBTABLES_CMD + ' -t nat -F {{CHAIN_NAME}}')
                 bash_errorout(EBTABLES_CMD + ' -t nat -X {{CHAIN_NAME}}')
 
+            PRI_ODEV_CHAIN = "{{PRI_ODEV}}-gw"
+            if bash_r(EBTABLES_CMD + ' -t nat -L {{PRI_ODEV_CHAIN}} >/dev/null 2>&1') == 0:
+                RULE = "-i {{PRI_ODEV}} -j {{PRI_ODEV_CHAIN}}"
+                if bash_r(EBTABLES_CMD + ' -t nat -L PREROUTING | grep -- "{{RULE}}" > /dev/null') == 0:
+                    bash_errorout(EBTABLES_CMD + ' -t nat -D PREROUTING {{RULE}}')
+
+                bash_errorout(EBTABLES_CMD + ' -t nat -F {{PRI_ODEV_CHAIN}}')
+                bash_errorout(EBTABLES_CMD + ' -t nat -X {{PRI_ODEV_CHAIN}}')
+
             for BLOCK_DEV in [PRI_ODEV, PUB_ODEV, NIC_NAME]:
                 BLOCK_CHAIN_NAME = '{{BLOCK_DEV}}-arp'
 
@@ -346,14 +358,14 @@ class DEip(kvmagent.KvmAgent):
         def set_eip_rules():
             DNAT_NAME = "DNAT-{{VIP}}"
             if bash_r('eval {{NS}} iptables-save | grep -w ":{{DNAT_NAME}}" > /dev/null') != 0:
-                bash_errorout('eval {{NS}} iptables -w -t nat -N {{DNAT_NAME}}')
+                bash_errorout('eval {{NS}} %s -t nat -N {{DNAT_NAME}}' % IPTABLES_CMD)
 
             create_iptable_rule_if_needed("iptables", "-t nat", 'PREROUTING -d {{VIP}}/32 -j {{DNAT_NAME}}')
             create_iptable_rule_if_needed("iptables", "-t nat", '{{DNAT_NAME}} -j DNAT --to-destination {{NIC_IP}}')
 
             FWD_NAME = "FWD-{{VIP}}"
             if bash_r('eval {{NS}} iptables-save | grep -w ":{{FWD_NAME}}" > /dev/null') != 0:
-                bash_errorout('eval {{NS}} iptables -w -N {{FWD_NAME}}')
+                bash_errorout('eval {{NS}} %s -N {{FWD_NAME}}' % IPTABLES_CMD)
 
             create_iptable_rule_if_needed("iptables", "-t filter", "FORWARD ! -d {{NIC_IP}}/32 -i {{PUB_IDEV}} -j REJECT --reject-with icmp-port-unreachable")
             create_iptable_rule_if_needed("iptables", "-t filter", "FORWARD -i {{PRI_IDEV}} -o {{PUB_IDEV}} -j {{FWD_NAME}}")
@@ -362,7 +374,7 @@ class DEip(kvmagent.KvmAgent):
 
             SNAT_NAME = "SNAT-{{VIP}}"
             if bash_r('eval {{NS}} iptables-save | grep -w ":{{SNAT_NAME}}" > /dev/null ') != 0:
-                bash_errorout('eval {{NS}} iptables -w -t nat -N {{SNAT_NAME}}')
+                bash_errorout('eval {{NS}} %s -t nat -N {{SNAT_NAME}}' % IPTABLES_CMD)
 
             create_iptable_rule_if_needed("iptables", "-t nat", "POSTROUTING -s {{NIC_IP}}/32 -j {{SNAT_NAME}}")
             create_iptable_rule_if_needed("iptables", "-t nat", "{{SNAT_NAME}} -j SNAT --to-source {{VIP}}")
@@ -371,14 +383,14 @@ class DEip(kvmagent.KvmAgent):
         def set_eip_rules_v6():
             DNAT_NAME = "EIP6-DNAT-{{EIP_UUID}}"
             if bash_r('eval {{NS}} ip6tables-save | grep -w ":{{DNAT_NAME}}" > /dev/null') != 0:
-                bash_errorout('eval {{NS}} ip6tables -w -t nat -N {{DNAT_NAME}}')
+                bash_errorout('eval {{NS}} %s -t nat -N {{DNAT_NAME}}' % IP6TABLES_CMD)
 
             create_iptable_rule_if_needed("ip6tables", "-t nat", 'PREROUTING -d {{VIP}}/128 -j {{DNAT_NAME}}')
             create_iptable_rule_if_needed("ip6tables", "-t nat", '{{DNAT_NAME}} -j DNAT --to-destination {{NIC_IP}}')
 
             FWD_NAME = "EIP6-FWD-{{EIP_UUID}}"
             if bash_r('eval {{NS}} ip6tables-save | grep -w ":{{FWD_NAME}}" > /dev/null') != 0:
-                bash_errorout('eval {{NS}} ip6tables -w -N {{FWD_NAME}}')
+                bash_errorout('eval {{NS}} %s -N {{FWD_NAME}}' % IP6TABLES_CMD)
 
             create_iptable_rule_if_needed("ip6tables", "-t filter", "FORWARD ! -d {{NIC_IP}}/128 -i {{PUB_IDEV}} -j REJECT --reject-with icmp6-addr-unreachable")
             create_iptable_rule_if_needed("ip6tables", "-t filter", "FORWARD -i {{PRI_IDEV}} -o {{PUB_IDEV}} -j {{FWD_NAME}}")
@@ -387,7 +399,7 @@ class DEip(kvmagent.KvmAgent):
 
             SNAT_NAME = "EIP6-SNAT-{{EIP_UUID}}"
             if bash_r('eval {{NS}} ip6tables-save | grep -w ":{{SNAT_NAME}}" > /dev/null ') != 0:
-                bash_errorout('eval {{NS}} ip6tables -w -t nat -N {{SNAT_NAME}}')
+                bash_errorout('eval {{NS}} %s -t nat -N {{SNAT_NAME}}' % IP6TABLES_CMD)
 
             create_iptable_rule_if_needed("ip6tables", "-t nat", "POSTROUTING -s {{NIC_IP}}/128 -j {{SNAT_NAME}}")
             create_iptable_rule_if_needed("ip6tables", "-t nat", "{{SNAT_NAME}} -j SNAT --to-source {{VIP}}")
@@ -472,7 +484,7 @@ class DEip(kvmagent.KvmAgent):
                 raise Exception("cannot find CIDR of vnic ip[%s] in namespace %s" % (NIC_IP, NS_NAME))
 
             CHAIN_NAME = "vip-perf"
-            bash_r("eval {{NS}} iptables -w -N {{CHAIN_NAME}} > /dev/null")
+            bash_r("eval {{NS}} %s -N {{CHAIN_NAME}} > /dev/null" % IPTABLES_CMD)
             create_iptable_rule_if_needed("iptables", "-t filter", "FORWARD -s {{NIC_IP}}/32 ! -d {{cidr}} -j {{CHAIN_NAME}}", True)
             create_iptable_rule_if_needed("iptables", "-t filter", "FORWARD ! -s {{cidr}} -d {{NIC_IP}}/32 -j {{CHAIN_NAME}}", True)
             create_iptable_rule_if_needed("iptables", "-t filter", "{{CHAIN_NAME}} -s {{NIC_IP}}/32 -j RETURN")
@@ -496,13 +508,32 @@ class DEip(kvmagent.KvmAgent):
                 raise Exception("cannot find CIDR of vnic ip[%s] in namespace %s" % (NIC_IP, NS_NAME))
 
             CHAIN_NAME = "vip-perf"
-            bash_r("eval {{NS}} ip6tables -w -N {{CHAIN_NAME}} > /dev/null")
+            bash_r("eval {{NS}} %s -N {{CHAIN_NAME}} > /dev/null" % IP6TABLES_CMD)
             create_iptable_rule_if_needed("ip6tables", "-t filter", "FORWARD -s {{NIC_IP}}/128 ! -d {{cidr}} -j {{CHAIN_NAME}}", True)
             create_iptable_rule_if_needed("ip6tables", "-t filter", "FORWARD ! -s {{cidr}} -d {{NIC_IP}}/128 -j {{CHAIN_NAME}}", True)
             create_iptable_rule_if_needed("ip6tables", "-t filter", "{{CHAIN_NAME}} -s {{NIC_IP}}/128 -j RETURN")
             create_iptable_rule_if_needed("ip6tables", "-t filter", "{{CHAIN_NAME}} -d {{NIC_IP}}/128 -j RETURN")
 
+        @bash.in_bash
+        def add_filter_to_prevent_namespace_arp_request():
+            #add arp neighbor for private ip
+            bash_r('ip netns exec {{NS_NAME}} ip neighbor del {{NIC_IP}} dev {{PRI_IDEV}}')
+            bash_r('ip netns exec {{NS_NAME}} ip neighbor add {{NIC_IP}} lladdr {{NIC_MAC}} dev {{PRI_IDEV}}')
+
+            #add ebtales to prevent eip namaespace send arp request
+            PRI_ODEV_CHAIN = "{{PRI_ODEV}}-gw"
+
+            if bash_r(EBTABLES_CMD + ' -t nat -L {{PRI_ODEV_CHAIN}} > /dev/null 2>&1') != 0:
+                bash_errorout(EBTABLES_CMD + ' -t nat -N {{PRI_ODEV_CHAIN}}')
+
+            create_ebtable_rule_if_needed('nat', 'PREROUTING', '-i {{PRI_ODEV}} -j {{PRI_ODEV_CHAIN}}')
+            create_ebtable_rule_if_needed('nat', PRI_ODEV_CHAIN,
+                                          "-p ARP --arp-op Request --arp-ip-dst {{NIC_IP}} -j arpreply --arpreply-mac {{NIC_MAC}}", True)
+            create_ebtable_rule_if_needed('nat', PRI_ODEV_CHAIN, "-p ARP --arp-op Request -j DROP")
+
+        newCreated = False
         if bash_r('eval {{NS}} ip link show > /dev/null') != 0:
+            newCreated = True
             bash_errorout('ip netns add {{NS_NAME}}')
 
         # To be compatibled with old version
@@ -523,10 +554,18 @@ class DEip(kvmagent.KvmAgent):
         add_dev_namespace_if_needed(PRI_IDEV, NS_NAME)
 
         if int(eip.ipVersion) == 4:
+            bash_r('eval {{NS}} ip link set {{PUB_IDEV}} up')
+            if newCreated :
+                r, o = bash.bash_ro('eval {{NS}} arping -D -w 1 -c 3 -I {{PUB_IDEV}} {{VIP}}')
+                if r != 0 and "Unicast reply from" in o:
+                    raise Exception('there are dupicated public [ip:%s] on public network, output: %s' % (VIP, o))
+
             vipPrefixLen = linux.netmask_to_cidr(VIP_NETMASK)
             set_ip_to_idev_if_needed(PUB_IDEV, "ip", VIP, vipPrefixLen)
             nicPrefixLen = linux.netmask_to_cidr(NIC_NETMASK)
             set_ip_to_idev_if_needed(PRI_IDEV, "ip", NIC_GATEWAY, nicPrefixLen)
+            add_filter_to_prevent_namespace_arp_request()
+
             # ping VIP gateway
             bash_r('eval {{NS}} arping -q -A -w 2.5 -c 3 -I {{PUB_IDEV}} {{VIP}} > /dev/null')
             set_gateway_arp_if_needed()

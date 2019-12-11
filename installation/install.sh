@@ -9,6 +9,12 @@ SS100_STORAGE='SS100-Storage'
 VERSION=${PRODUCT_VERSION:-""}
 VERSION_RELEASE_NR=`echo $PRODUCT_VERSION | awk -F '.' '{print $1"."$2"."$3}'`
 ZSTACK_INSTALL_ROOT=${ZSTACK_INSTALL_ROOT:-"/usr/local/zstack"}
+MINI_INSTALL_ROOT=${ZSTACK_INSTALL_ROOT}/zstack-mini/
+
+# zstack mini server before 1.1.0 is installed in /usr/local/zstack-mini
+LEGACY_MINI_INSTALL_ROOT="/usr/local/zstack-mini/"
+
+export TERM=xterm
 
 OS=''
 CENTOS6='CENTOS6'
@@ -18,10 +24,13 @@ UBUNTU1604='UBUNTU16.04'
 UBUNTU='UBUNTU'
 RHEL7='RHEL7'
 ISOFT4='ISOFT4'
+ALIOS7='AliOS7'
 UPGRADE='n'
 FORCE='n'
+MINI_INSTALL='n'
+SANYUAN_INSTALL='n'
 MANAGEMENT_INTERFACE=`ip route | grep default | head -n 1 | cut -d ' ' -f 5`
-SUPPORTED_OS="$CENTOS7, $UBUNTU1604, $UBUNTU1404, $ISOFT4, $RHEL7"
+SUPPORTED_OS="$CENTOS7, $UBUNTU1604, $UBUNTU1404, $ISOFT4, $RHEL7, $ALIOS7"
 ZSTACK_INSTALL_LOG='/tmp/zstack_installation.log'
 ZSTACKCTL_INSTALL_LOG='/tmp/zstack_ctl_installation.log'
 [ -f $ZSTACK_INSTALL_LOG ] && /bin/rm -f $ZSTACK_INSTALL_LOG
@@ -67,6 +76,7 @@ NEED_SET_MN_IP=''
 INSTALL_ENTERPRISE='n'
 
 MYSQL_ROOT_PASSWORD=''
+MYSQL_PORT='3306'
 MYSQL_NEW_ROOT_PASSWORD='zstack.mysql.password'
 MYSQL_USER_PASSWORD='zstack.password'
 MYSQL_UI_USER_PASSWORD='zstack.ui.password'
@@ -98,6 +108,7 @@ CHANGE_HOSTS=''
 DELETE_PY_CRYPTO=''
 SETUP_EPEL=''
 CONSOLE_PROXY_ADDRESS=''
+CURRENT_VERSION=''
 
 LICENSE_PATH=''
 LICENSE_FILE='zstack-license'
@@ -105,6 +116,13 @@ LICENSE_FOLDER='/var/lib/zstack/license/'
 ZSTACK_TRIAL_LICENSE='./zstack_trial_license'
 ZSTACK_OLD_LICENSE_FOLDER=$ZSTACK_INSTALL_ROOT/license
 
+DEFAULT_MN_PORT='8080'
+MN_PORT="$DEFAULT_MN_PORT"
+
+DEFAULT_UI_PORT='5000'
+
+BASEARCH=`uname -m`
+ZSTACK_RELEASE=''
 # start/stop zstack_tui
 ZSTACK_TUI_SERVICE='/usr/lib/systemd/system/getty@tty1.service'
 start_zstack_tui() {
@@ -135,6 +153,12 @@ upgrade_params_array[3]='2.3.1,-Dzwatch.migrateFromOldMonitorImplementation=true
 upgrade_params_array[4]='3.2.0,-DupgradeVolumeQos=true'
 upgrade_params_array[5]='3.3.0,-DaddCdRomToHistoricalVm=true'
 upgrade_params_array[6]='3.4.0,-DupgradeTwoFactorAuthenticationSecret=true'
+upgrade_params_array[7]='3.4.1,-DgenerateBillsImmediately=true'
+upgrade_params_array[8]='3.5.0,-DupgradeVolumeBackupHistory=true'
+upgrade_params_array[9]='3.6.0,-Diam2.upgradeIAM2Attribute=true'
+upgrade_params_array[10]='3.7.0,-DinitRunningVmPriority=true'
+upgrade_params_array[11]='3.7.2,-DgeneratePriceEndDate=true'
+upgrade_params_array[12]='3.8.0,-DinitRunningApplianceVmPriority=true'
 
 # version compare
 # eg. 1 = 1.0
@@ -169,6 +193,43 @@ vercomp () {
     done
     return 0
 }
+check_zstack_release(){
+
+    rpm -q zstack-release >/dev/null 2>&1
+    if [ $? -eq 0 ];then
+        ZSTACK_RELEASE=`rpm -qi zstack-release |awk -F ':' '/Version/{print $2}' |sed 's/ //g'`
+        source /etc/profile >/dev/null 2>&1
+    else
+        fail2 "zstack-release is not installed, use zstack-upgrade -r/-a zstack-xxx.iso(>=3.7.0) to upgrade zstack-dvd and install zstack-release."
+    fi
+}
+
+# get mn port from zstack properties
+get_mn_port() {
+    local zstack_properties=$ZSTACK_INSTALL_ROOT/$ZSTACK_PROPERTIES
+    [ ! -f "$zstack_properties" ] && return
+
+    local mn_port=`awk -F '=' '/RESTFacade.port/{ print $NF }' ${zstack_properties} | xargs`
+    [ ! -z "$mn_port" ] && MN_PORT="$mn_port"
+} >>$ZSTACK_INSTALL_LOG 2>&1
+
+# adjust iptables rules before zstack installation/upgrade
+pre_scripts_to_adjust_iptables_rules() {
+  # allow remote mysql connection from 127.0.0.1
+  if [ x"$UPGRADE" = x'n' ]; then
+    db_port=$MYSQL_PORT
+  else
+    db_port=`zstack-ctl show_configuration | awk -F ':' '/DB.url/{ print $NF }'`
+  fi
+  iptables -L INPUT | grep 'zstack allow login mysql from 127.0.0.1' || \
+  iptables -I INPUT -p tcp --dport ${db_port} -s 127.0.0.1 -j ACCEPT -m comment --comment 'zstack allow login mysql from 127.0.0.1'
+} >>$ZSTACK_INSTALL_LOG 2>&1
+
+# restore iptables rules after zstack installation/upgrade
+post_scripts_to_restore_iptables_rules() {
+  iptables -D INPUT `iptables -L INPUT --line-numbers | grep 'zstack allow login mysql from 127.0.0.1' | awk '{ print $1 }'`
+  service iptables save
+} >>$ZSTACK_INSTALL_LOG 2>&1
 
 cleanup_function(){
     /bin/rm -f $UPGRADE_LOCK
@@ -245,6 +306,9 @@ show_spinner()
     done
 
     if [ -f $INSTALLATION_FAILURE ]; then
+        # clean up iptables rules added by zstack installation script if failed
+        post_scripts_to_restore_iptables_rules
+
         failure_reason=`cat $INSTALLATION_FAILURE`
         #tput cub 6
         if [ -z $DEBUG ]; then
@@ -311,7 +375,7 @@ fail2(){
     sync
     cleanup_function
     tput cub 6
-    echo -e "$(tput setaf 1) FAIL\n$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
+    echo -e "$(tput setaf 1) \nFAIL\n$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
     echo -e "$(tput setaf 1) Reason: $*\n$(tput sgr0)"|tee -a $ZSTACK_INSTALL_LOG
     echo "-------------"
     echo "$*  \n\nThe detailed installation log could be found in $ZSTACK_INSTALL_LOG " > $INSTALLATION_FAILURE
@@ -394,19 +458,19 @@ udpate_tomcat_info() {
     if [ $? -eq 0 ]; then
         local properties_file=org/apache/catalina/util/ServerInfo.properties
         if grep -q "server.info=Apache Tomcat" $properties_file; then
-	        sed -i "/^server.info=/c\server.info=X\r" $properties_file
-	        sed -i "/^server.number=/c\server.number=5.5\r" $properties_file
-	        sed -i "/^server.built=/c\server.built=Dec 1 2015 22:30:46 UTC\r" $properties_file
-	        sync
+            sed -i "/^server.info=/c\server.info=X\r" $properties_file
+            sed -i "/^server.number=/c\server.number=5.5\r" $properties_file
+            sed -i "/^server.built=/c\server.built=Dec 1 2015 22:30:46 UTC\r" $properties_file
+            sync
 
-	        jar cvf catalina.jar org META-INF > /dev/nul
-	        if [ $? -eq 0 ]; then
-	            rm -f $jar_file
-	            mv catalina.jar $jar_file
-	            echo "Tomcat server info updated." >>$ZSTACK_INSTALL_LOG
-	        else
-	            echo "Zip $jar_file error." >>$ZSTACK_INSTALL_LOG
-	        fi
+            jar cvf catalina.jar org META-INF > /dev/nul
+            if [ $? -eq 0 ]; then
+                rm -f $jar_file
+                mv catalina.jar $jar_file
+                echo "Tomcat server info updated." >>$ZSTACK_INSTALL_LOG
+            else
+                echo "Zip $jar_file error." >>$ZSTACK_INSTALL_LOG
+            fi
         fi
     else
         echo "Unzip $jar_file error." >>$ZSTACK_INSTALL_LOG
@@ -441,7 +505,7 @@ set_tomcat_config() {
     enable_tomcat_linking
 }
 
-cs_check_hostname(){
+cs_check_hostname_zstack(){
     which hostname &>/dev/null
     [ $? -ne 0 ] && return 
 
@@ -520,6 +584,23 @@ You can also add '-q' to installer, then Installer will help you to set one.
     grep -q "$HOSTS_ITEM" /etc/hosts || echo "$HOSTS_ITEM" >> /etc/hosts
 }
 
+cs_check_hostname_mini () {
+    which hostname &>/dev/null
+    [ $? -ne 0 ] && return
+
+    CURRENT_HOSTNAME=`hostname`
+    CHANGE_HOSTNAME="zstack-mini-`dmidecode -s system-serial-number | tr -d '-' | awk '{print substr($0, length($0)-6)}' | tr 'A-Z' 'a-z'`"
+    [ x"$CURRENT_HOSTNAME" = x"$CHANGE_HOSTNAME" ] && return
+    
+    which hostnamectl >>/dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        hostname $CHANGE_HOSTNAME >>$ZSTACK_INSTALL_LOG 2>&1
+    else
+        hostnamectl set-hostname $CHANGE_HOSTNAME >>$ZSTACK_INSTALL_LOG 2>&1
+        hostname $CHANGE_HOSTNAME >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+}
+
 cs_check_mysql_password () {
     #If user didn't assign mysql root password, then check original zstack mysql password status
     if [ 'y' != $UPGRADE ]; then
@@ -541,7 +622,7 @@ cs_check_mysql_password () {
                         mysql -u root --password=$MYSQL_NEW_ROOT_PASSWORD -e 'exit' >/dev/null 2>&1
                         if [ $? -ne 0 ]; then
                             if [ -z $QUIET_INSTALLATION ]; then
-                                fail2 "\nCannot not login mysql!
+                                fail2 "\nCannot login mysql!
      If you have mysql root password, please add option '-P MYSQL_ROOT_PASSWORD'.
      If you do not set mysql root password or mysql server is not started up, please add option '-q' and try again.\n"
                             fi
@@ -593,33 +674,27 @@ cs_check_zstack_data_exist(){
 check_system(){
     echo_title "Check System"
     echo ""
-    cat /etc/*-release |egrep -i -h "centos |Red Hat Enterprise" >>$ZSTACK_INSTALL_LOG 2>&1
+    cat /etc/*-release |egrep -i -h "centos |Red Hat Enterprise|Alibaba" >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -eq 0 ]; then
-        grep 'CentOS release 6' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1
-        if [ $? -eq 0 ]; then
+        grep 'CentOS release 6' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1; IS_CENTOS_6=$?
+        grep 'CentOS Linux release 7' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1; IS_CENTOS_7=$?
+        grep 'Red Hat Enterprise Linux Server release 7' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1; IS_RHEL_7=$?
+        grep 'Alibaba Group Enterprise Linux' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1; IS_ALIOS_7=$?
+        grep 'iSoft Linux release 4' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1; IS_ISOFT_4=$?
+        if [ $IS_CENTOS_6 -eq 0 ]; then
             OS=$CENTOS6
-            fail2 "Host OS checking failure: your system is: `cat /etc/redhat-release`, $PRODUCT_NAME management node only supports $SUPPORTED_OS currently"
+        elif [ $IS_CENTOS_7 -eq 0 ]; then
+            OS=$CENTOS7
+            rpm -q libvirt | grep 1.1.1-29 >/dev/null 2>&1 && fail2 "Your OS is old CentOS7, as its libvirt is `rpm -q libvirt`. \
+              You need to use \`yum upgrade\` to upgrade your system to latest CentOS7."
+        elif [ $IS_RHEL_7 -eq 0 ]; then
+            OS=$RHEL7
+        elif [ $IS_ALIOS_7 -eq 0 ]; then
+            OS=$ALIOS7
+        elif [ $IS_ISOFT_4 -eq 0 ]; then
+            OS=$ISOFT4
         else
-            grep 'CentOS Linux release 7' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1
-            if [ $? -eq 0 ]; then
-                OS=$CENTOS7
-                rpm -q libvirt |grep 1.1.1-29 >/dev/null 2>&1
-                if [ $? -eq 0 ]; then
-                    fail2 "Your OS is old CentOS7, as its libvirt is `rpm -q libvirt`. You need to use \`yum upgrade\` to upgrade your system to latest CentOS7."
-                fi
-            else
-                grep 'iSoft Linux release 4' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1
-                if [ $? -eq 0 ]; then
-                    OS=$ISOFT4
-                else
-                    grep 'Red Hat Enterprise Linux Server release 7' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1
-                    if [ $? -eq 0 ]; then
-                        OS=$RHEL7
-                    else
-                        fail2 "Host OS checking failure: your system is: `cat /etc/redhat-release`, $PRODUCT_NAME management node only supports $SUPPORTED_OS currently"
-                    fi
-                fi
-            fi
+            fail2 "Host OS checking failure: your system is: `cat /etc/redhat-release`, $PRODUCT_NAME management node only supports $SUPPORTED_OS currently"
         fi
     else
         grep 'Ubuntu' /etc/issue >>$ZSTACK_INSTALL_LOG 2>&1
@@ -641,7 +716,7 @@ check_system(){
         fi
     fi
 
-    if [ $OS != $CENTOS7 -a $OS != $UBUNTU1404 -a $OS != $UBUNTU1604 ]; then
+    if [ $OS != $CENTOS7 -a $OS != $UBUNTU1404 -a $OS != $UBUNTU1604 -a $OS != $ALIOS7 ]; then
         #only support offline installation for CentoS7.x
         if [ -z "$YUM_ONLINE_REPO" ]; then
             fail2 "Your system is $OS . ${PRODUCT_NAME} installer can not use '-o' or '-R' option on your system. Please remove '-o' or '-R' option and try again."
@@ -657,7 +732,21 @@ check_system(){
     fi
     show_spinner cs_pre_check
     cs_check_epel
-    cs_check_hostname
+    if [ x"$MINI_INSTALL" = x"y" ];then
+        cs_check_hostname_mini
+    elif [ x"$UPGRADE" = x"y" ];then
+        ui_mode=`zstack-ctl show_configuration |awk '/ui_mode/{print $3}'` >/dev/null 2>&1
+        if [ x"$ui_mode" = x"" ];then
+            echo 'ui_mode is not configured, it will be set based on your environment.' >>$ZSTACK_INSTALL_LOG 2>&1
+            [ -d ${LEGACY_MINI_INSTALL_ROOT} -o -d $MINI_INSTALL_ROOT ] && zstack-ctl configure ui_mode=mini || zstack-ctl configure ui_mode=zstack
+            [ -d ${LEGACY_MINI_INSTALL_ROOT} -o -d $MINI_INSTALL_ROOT ] && zstack-ctl configure log.management.server.retentionSizeGB=200
+            [ -d ${LEGACY_MINI_INSTALL_ROOT} -o -d $MINI_INSTALL_ROOT ] && zstack-ctl configure AppCenter.server.mode=on
+            ui_mode=`zstack-ctl show_configuration |awk '/ui_mode/{print $3}'`
+        fi
+        cs_check_hostname_zstack
+    else
+        cs_check_hostname_zstack
+    fi
     show_spinner do_check_system
     cs_check_zstack_data_exist
     show_spinner cs_create_repo
@@ -896,7 +985,7 @@ ia_install_pip(){
 
 ia_install_ansible(){
     echo_subtitle "Install Ansible"
-    if [ $OS = $CENTOS7 -o $OS = $CENTOS6 -o $OS = $RHEL7 -o $OS = $ISOFT4 ]; then
+    if [ $OS = $CENTOS7 -o $OS = $CENTOS6 -o $OS = $RHEL7 -o $OS = $ISOFT4 -o $OS = $ALIOS7 ]; then
         yum remove -y ansible >>$ZSTACK_INSTALL_LOG 2>&1
     else
         apt-get --assume-yes remove ansible >>$ZSTACK_INSTALL_LOG 2>&1
@@ -955,15 +1044,10 @@ download_zstack(){
 iu_deploy_zstack_repo() {
     echo_subtitle "Deploy yum repo for ${PRODUCT_NAME}"
 
-    BASEARCH=`uname -m`
-    DISTRO=$(sed -n 's/^distroverpkg=//p' /etc/yum.conf)
-    RELEASEVER=$(rpm -q --qf "%{version}" -f /etc/$DISTRO)
-    [ x"$BASEARCH" = x'aarch64' ] && ALTARCH='x86_64' || ALTARCH='aarch64'
-    mkdir -p ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/{x86_64,aarch64}
-    ln -s /opt/zstack-dvd/ ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/${BASEARCH}/os >/dev/null 2>&1
-    ln -s /opt/zstack-dvd/Extra/qemu-kvm-ev ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/${BASEARCH}/qemu-kvm-ev >/dev/null 2>&1
-    ln -s /opt/zstack-dvd-altarch/ ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/${ALTARCH}/os >/dev/null 2>&1
-    ln -s /opt/zstack-dvd-altarch/Extra/qemu-kvm-ev ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/${ALTARCH}/qemu-kvm-ev >/dev/null 2>&1
+    [ -z "$ZSTACK_RELEASE" ] && fail "failed to get zstack releasever, please make sure zstack-release is installed."
+    mkdir -p ${ZSTACK_HOME}/static/zstack-repo/
+    ln -s /opt/zstack-dvd/x86_64 ${ZSTACK_HOME}/static/zstack-repo/x86_64 >/dev/null 2>&1
+    ln -s /opt/zstack-dvd/aarch64 ${ZSTACK_HOME}/static/zstack-repo/aarch64 >/dev/null 2>&1
     chown -R zstack:zstack ${ZSTACK_HOME}/static/zstack-repo
 }
 
@@ -1003,17 +1087,18 @@ upgrade_zstack(){
     fi
     #rerun install system libs, upgrade might need new libs
     is_install_system_libs
+    show_spinner is_enable_chronyd
     show_spinner uz_stop_zstack
     show_spinner uz_stop_zstack_ui
     show_spinner uz_upgrade_zstack
     show_spinner upgrade_tomcat_security
     show_spinner iu_deploy_zstack_repo
+    show_spinner cp_third_party_tools
 
     cd /
     show_spinner cs_add_cronjob
     show_spinner cs_install_zstack_service
     show_spinner cs_enable_zstack_service
-    show_spinner is_enable_chronyd
     show_spinner cs_config_zstack_properties
     show_spinner cs_append_iptables
     show_spinner cs_setup_nginx
@@ -1024,7 +1109,29 @@ upgrade_zstack(){
             echo "upgrade zstack web ui" >>$ZSTACK_INSTALL_LOG
             rm -f /etc/init.d/zstack-dashboard
             rm -f /etc/init.d/zstack-ui
+
             show_spinner sd_install_zstack_ui
+
+            zstack-ctl config_ui --init
+
+            # try to deploy zstack_ui database, if already exists then do upgrade
+            UI_DATABASE_EXISTS='y'
+            mysql -uroot -p"$MYSQL_NEW_ROOT_PASSWORD" -h"$MANAGEMENT_IP" -e "use zstack_ui" >/dev/null 2>&1
+            if [ $? -ne 0 ]; then
+                UI_DATABASE_EXISTS='n'
+            fi
+
+            if [ -z $MYSQL_ROOT_PASSWORD ]; then
+                if [ x"$UI_DATABASE_EXISTS" = x'n' ]; then
+                    zstack-ctl deploy_ui_db --root-password="${MYSQL_NEW_ROOT_PASSWORD}" --zstack-ui-password="$MYSQL_UI_USER_PASSWORD" --host="$MANAGEMENT_IP" --port=${MYSQL_PORT} >>$ZSTACKCTL_INSTALL_LOG 2>&1
+                fi
+            else
+                if [ x"$UI_DATABASE_EXISTS" = x'n' ]; then
+                    zstack-ctl deploy_ui_db --root-password="${MYSQL_ROOT_PASSWORD}" --zstack-ui-password="$MYSQL_UI_USER_PASSWORD" --host="$MANAGEMENT_IP" --port=${MYSQL_PORT} >>$ZSTACKCTL_INSTALL_LOG 2>&1
+                fi
+            fi
+
+            show_spinner uz_upgrade_zstack_ui_db
         fi
 
         # Who is the new UI? zstack-dashboard(1.x) or zstack-ui(2.0)
@@ -1034,9 +1141,6 @@ upgrade_zstack(){
         elif [ -f /etc/init.d/zstack-ui ]; then
           UI_INSTALLATION_STATUS='y'
           DASHBOARD_INSTALLATION_STATUS='n'
-          # try to deploy zstack_ui database, if already exists then do upgrade
-          mysql -uroot -p"$MYSQL_NEW_ROOT_PASSWORD" -h"$MANAGEMENT_IP" -e "use zstack_ui" >/dev/null 2>&1
-          [ $? -ne 0 ] && zstack-ctl deploy_ui_db --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-ui-password="$MYSQL_UI_USER_PASSWORD" --host="$MANAGEMENT_IP" >>$ZSTACKCTL_INSTALL_LOG 2>&1 || show_spinner uz_upgrade_zstack_ui_db
         else
           fail "failed to upgrade zstack web ui"
         fi
@@ -1067,18 +1171,20 @@ upgrade_zstack(){
     #set zstack upgrade params 
     upgrade_params=''
     post_upgrade_version=`zstack-ctl get_version`
-
+    echo "CURRENT_VERSION: $CURRENT_VERSION" >>$ZSTACK_INSTALL_LOG
+    echo "post_upgrade_version: $post_upgrade_version" >>$ZSTACK_INSTALL_LOG
     for item in ${upgrade_params_array[*]}; do
         version=`echo $item | cut -d ',' -f 1`
         param=`echo $item | cut -d ',' -f 2`
 
         # pre < version && version <= post
-        vercomp ${pre_upgrade_version} ${version}; cmp1=$?
+        vercomp ${CURRENT_VERSION} ${version}; cmp1=$?
         vercomp ${version} ${post_upgrade_version}; cmp2=$?
         if [ ${cmp1} -eq 2 -a ${cmp2} -ne 1 ]; then
             upgrade_params="${upgrade_params} ${param}"
         fi
     done
+    echo "upgrade_params: $upgrade_params" >>$ZSTACK_INSTALL_LOG
     [ ! -z "$upgrade_params" ] && zstack-ctl setenv ZSTACK_UPGRADE_PARAMS=$upgrade_params
 
     # set ticket.sns.topic.http.url if not exists
@@ -1152,21 +1258,26 @@ cs_pre_check(){
 }
 
 sharedblock_check_qcow2_volume(){
+    vercomp '3.7.0' ${CURRENT_VERSION}; cmp=$?
+    if [ ${cmp} -ne 1 ]; then
+        return
+    fi
+
     db_ip=`zstack-ctl getenv MYSQL_LATEST_IP | awk -F '=' '{print $2}'`
     db_port=`zstack-ctl getenv MYSQL_LATEST_PORT | awk -F '=' '{print $2}'`
     db_username=`zstack-ctl show_configuration | grep DB.user | awk -F '=' '{print $2}' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'`
     db_password=`zstack-ctl show_configuration | grep DB.password | awk -F '=' '{print $2}' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'`
     if [ x"$db_password" != "x" ]; then
-        mysql --vertical -h $db_ip -P $db_port -u $db_username -p$db_password zstack -e 'select count(vol.uuid) from VolumeVO vol, PrimaryStorageVO ps where ps.Type="sharedblock" and vol.primaryStorageUuid = ps.uuid and vol.isShareable <> 0 and vol.format ="qcow2"' > /dev/null
+        mysql --vertical -h $db_ip -P $db_port -u $db_username -p$db_password zstack -e 'select count(vol.uuid) from VolumeVO vol, PrimaryStorageVO ps where ps.Type="sharedblock" and vol.primaryStorageUuid = ps.uuid and vol.isShareable <> 0 and vol.format ="qcow2"' >>$ZSTACK_INSTALL_LOG 2>&1
         sql_running=$?
         result=`mysql --vertical -h $db_ip -P $db_port -u $db_username -p$db_password zstack -e 'select count(vol.uuid) from VolumeVO vol, PrimaryStorageVO ps where ps.Type="sharedblock" and vol.primaryStorageUuid = ps.uuid and vol.isShareable <> 0 and vol.format ="qcow2"' | grep count | awk -F ':' '{print $2}' | tr -d '[:space:]'`
     else
-        mysql --vertical -h $db_ip -P $db_port -u $db_username zstack -e 'select count(vol.uuid) from VolumeVO vol, PrimaryStorageVO ps where ps.Type="sharedblock" and vol.primaryStorageUuid = ps.uuid and vol.isShareable <> 0 and vol.format ="qcow2"' > /dev/null
+        mysql --vertical -h $db_ip -P $db_port -u $db_username zstack -e 'select count(vol.uuid) from VolumeVO vol, PrimaryStorageVO ps where ps.Type="sharedblock" and vol.primaryStorageUuid = ps.uuid and vol.isShareable <> 0 and vol.format ="qcow2"' >>$ZSTACK_INSTALL_LOG 2>&1
         sql_running=$?
         result=`mysql --vertical -h $db_ip -P $db_port -u $db_username zstack -e 'select count(vol.uuid) from VolumeVO vol, PrimaryStorageVO ps where ps.Type="sharedblock" and vol.primaryStorageUuid = ps.uuid and vol.isShareable <> 0 and vol.format ="qcow2"' | grep count | awk -F ':' '{print $2}' | tr -d '[:space:]'`
     fi
     if [ x"$sql_running" != x'0' ]; then
-        echo "can not connect to mysql or execute sql, skip check qcow2 shared volume"
+        echo "can not connect to mysql or execute sql, skip check qcow2 shared volume" >>$ZSTACK_INSTALL_LOG 2>&1
         return
     fi
     if [ x"$result" != x'0' ]; then
@@ -1177,7 +1288,7 @@ sharedblock_check_qcow2_volume(){
 install_ansible(){
     echo_title "Install Ansible"
     echo ""
-    if [ $OS = $CENTOS7 -o $OS = $CENTOS6 -o $OS = $RHEL7 -o $OS = $ISOFT4 ]; then
+    if [ $OS = $CENTOS7 -o $OS = $CENTOS6 -o $OS = $RHEL7 -o $OS = $ISOFT4 -o $OS = $ALIOS7 ]; then
         show_spinner ia_disable_selinux
         show_spinner ia_install_python_gcc_rh
     elif [ $OS = $UBUNTU1404 -o $OS = $UBUNTU1604 ]; then
@@ -1209,12 +1320,6 @@ iz_install_unzip(){
 
 is_install_general_libs_rh(){
     echo_subtitle "Install General Libraries (takes a couple of minutes)"
-    which mysql >/dev/null 2>&1
-    if [ $? -eq 0 ];then
-        mysql_pkg=''
-    else
-        mysql_pkg='mysql'
-    fi
 
     # Just install what is not installed
     deps_list="libselinux-python \
@@ -1227,6 +1332,7 @@ is_install_general_libs_rh(){
             vconfig \
             python-devel \
             gcc \
+            grafana \
             autoconf \
             chrony \
             iptables \
@@ -1246,34 +1352,34 @@ is_install_general_libs_rh(){
             net-tools \
             bash-completion \
             dmidecode \
-            $mysql_pkg \
+            mysql \
+            mcelog \
             MySQL-python \
             ipmitool \
             nginx \
             psmisc \
             python-backports-ssl_match_hostname \
-            python-setuptools"
+            python-setuptools \
+            avahi \
+            avahi-tools"
 
+    always_update_list="mysql openssh"
     missing_list=`LANG=en_US.UTF-8 && rpm -q $deps_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
 
     [ x"$ZSTACK_OFFLINE_INSTALL" = x'y' ] && missing_list=$deps_list
-    if [ ! -z "$missing_list" ]; then
-        if [ ! -z $ZSTACK_YUM_REPOS ]; then
-            yum --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS clean metadata >/dev/null 2>&1
-            echo yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y general libs... >>$ZSTACK_INSTALL_LOG
-            yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y $missing_list >>$ZSTACK_INSTALL_LOG 2>&1
-        else
-            yum clean metadata >/dev/null 2>&1
-            echo "yum install -y libselinux-python java ..." >>$ZSTACK_INSTALL_LOG
-            yum install -y $missing_list >>$ZSTACK_INSTALL_LOG 2>&1
-        fi
-
-        if [ $? -ne 0 ];then
-            #yum clean metadata >/dev/null 2>&1
-            fail "install system libraries failed."
-        fi
+    if [ ! -z $ZSTACK_YUM_REPOS ]; then
+        yum --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS clean metadata >/dev/null 2>&1
+        echo yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y general libs... >>$ZSTACK_INSTALL_LOG
+        yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y $always_update_list $missing_list >>$ZSTACK_INSTALL_LOG 2>&1
     else
-        echo general libs are already installed... >>$ZSTACK_INSTALL_LOG
+        yum clean metadata >/dev/null 2>&1
+        echo "yum install -y libselinux-python java ..." >>$ZSTACK_INSTALL_LOG
+        yum install -y $always_update_list $missing_list >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+
+    if [ $? -ne 0 ];then
+        #yum clean metadata >/dev/null 2>&1
+        fail "install system libraries failed."
     fi
 
     rpm -q java-1.8.0-openjdk >>$ZSTACK_INSTALL_LOG 2>&1 || java -version 2>&1 |grep 1.8 >/dev/null
@@ -1376,7 +1482,7 @@ is_install_general_libs_deb(){
 }
 
 is_install_system_libs(){
-    if [ $OS = $CENTOS7 -o $OS = $CENTOS6 -o $OS = $RHEL7 -o $OS = $ISOFT4 ]; then
+    if [ $OS = $CENTOS7 -o $OS = $CENTOS6 -o $OS = $RHEL7 -o $OS = $ISOFT4 -o $OS = $ALIOS7 ]; then
         show_spinner is_install_general_libs_rh
     else
         show_spinner is_install_general_libs_deb
@@ -1396,7 +1502,7 @@ install_system_libs(){
 
 is_enable_chronyd(){
     echo_subtitle "Enable chronyd"
-    if [ $OS = $CENTOS7 -o $OS = $CENTOS6 -o $OS = $RHEL7 -o $OS = $ISOFT4 ];then
+    if [ $OS = $CENTOS7 -o $OS = $CENTOS6 -o $OS = $RHEL7 -o $OS = $ISOFT4 -o $OS = $ALIOS7 ];then
         if [ x"$ZSTACK_OFFLINE_INSTALL" = x'n' ];then
             grep '^server 0.centos.pool.ntp.org' /etc/chrony.conf >/dev/null 2>&1
             if [ $? -ne 0 ]; then
@@ -1524,6 +1630,13 @@ uz_stop_zstack_ui(){
     ps axu | grep zstack-ui.war | grep -v 'grep' >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -eq 0 ]; then
         fail "Failed to stop ${PRODUCT_NAME} UI!"
+    fi
+    if [ -d ${LEGACY_MINI_INSTALL_ROOT} -o -d ${MINI_INSTALL_ROOT} ]; then
+        systemctl stop zstack-mini
+        ps -ef | grep -w mini-server | grep -w java | grep -v 'grep' >>$ZSTACK_INSTALL_LOG 2>&1
+        if [ $? -eq 0 ]; then
+            fail "Failed to stop ${PRODUCT_NAME} MINI UI!"
+        fi
     fi
     pass
 }
@@ -1683,15 +1796,15 @@ uz_upgrade_zstack(){
         if [ -z $NEED_KEEP_DB ];then
             if [ ! -z $DEBUG ]; then
                 if [ x"$FORCE" = x'n' ];then
-                    zstack-ctl upgrade_db
+                    zstack-ctl upgrade_db --update-schema-version
                 else
-                    zstack-ctl upgrade_db --force
+                    zstack-ctl upgrade_db --force --update-schema-version
                 fi
             else
                 if [ x"$FORCE" = x'n' ];then
-                    zstack-ctl upgrade_db >>$ZSTACK_INSTALL_LOG 2>&1
+                    zstack-ctl upgrade_db --update-schema-version >>$ZSTACK_INSTALL_LOG 2>&1
                 else
-                    zstack-ctl upgrade_db --force >>$ZSTACK_INSTALL_LOG 2>&1
+                    zstack-ctl upgrade_db --force --update-schema-version >>$ZSTACK_INSTALL_LOG 2>&1
                 fi
             fi
         fi 
@@ -1818,15 +1931,36 @@ iz_install_zstackctl(){
     pass
 }
 
+install_zstack_network()
+{
+    bash $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_CLASSES/ansible/zsnagentansible/zsn-agent.bin
+    /bin/cp -f /usr/local/zstack/zsn-agent/bin/zstack-network-agent.service /usr/lib/systemd/system/
+    pkill zsn-agent
+    systemctl daemon-reload
+    systemctl enable zstack-network-agent.service
+    systemctl restart zstack-network-agent.service
+} >>$ZSTACK_INSTALL_LOG 2>&1
+
+cp_third_party_tools(){
+    echo_subtitle "Copy third-party tools to ZStack install path"
+    if [ -d "/opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/tools" ]; then
+        /bin/cp -rn /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/tools/* $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS >/dev/null 2>&1
+        chown -R zstack.zstack $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS/*
+    fi
+    install_zstack_network
+    pass
+}
+
 install_zstack(){
     echo_title "Install ${PRODUCT_NAME} Tools"
     echo ""
     show_spinner iz_chown_install_root
     show_spinner iz_install_zstackcli
     show_spinner iz_install_zstackctl
+    show_spinner cp_third_party_tools
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
-      show_spinner sd_install_zstack_ui
-      zstack-ctl config_ui --restore
+        show_spinner sd_install_zstack_ui
+        zstack-ctl config_ui --restore
     fi
 }
 
@@ -1849,6 +1983,25 @@ install_db(){
     cs_clean_ssh_tmp_key $ssh_tmp_dir
 }
 
+setup_install_param(){
+    echo_title "Setup Install Parameters"
+    echo ""
+    if [ x"$MINI_INSTALL" = x"y" ];then
+        show_spinner sd_install_zstack_mini_ui
+        DEFAULT_UI_PORT=8200
+        zstack-ctl configure ui_mode=mini
+        zstack-ctl configure AppCenter.server.mode=on
+        zstack-ctl configure log.management.server.retentionSizeGB=200
+    else
+        zstack-ctl configure ui_mode=zstack
+    fi
+
+    if [ x"$SANYUAN_INSTALL" = x"y" ];then
+        zstack-ctl configure identity.init.type="PRIVILEGE_ADMIN"
+        zstack-ctl configure sanyuan.installed=true
+    fi
+}
+
 install_license(){
     echo_title "Install License"
     echo ""
@@ -1868,7 +2021,7 @@ il_install_license(){
       # if -E is set
       zstack-ctl install_license --license $ZSTACK_TRIAL_LICENSE >>$ZSTACK_INSTALL_LOG 2>&1
     fi
-
+    chown -R zstack:zstack /var/lib/zstack/license >>$ZSTACK_INSTALL_LOG 2>&1
     #cd $ZSTACK_INSTALL_ROOT
     #if [ -f $LICENSE_FILE ]; then
     #    zstack-ctl install_license --license $LICENSE_FILE >>$ZSTACK_INSTALL_LOG 2>&1
@@ -2142,7 +2295,7 @@ cs_setup_nfs(){
         chkconfig rpcbind on >>$ZSTACK_INSTALL_LOG 2>&1
         service rpcbind restart >>$ZSTACK_INSTALL_LOG 2>&1
         service nfs restart >>$ZSTACK_INSTALL_LOG 2>&1
-    elif [ $OS = $CENTOS7 -o $OS = $RHEL7 -o $OS = $ISOFT4 ]; then
+    elif [ $OS = $CENTOS7 -o $OS = $RHEL7 -o $OS = $ISOFT4 -o $OS = $ALIOS7 ]; then
         systemctl enable rpcbind >>$ZSTACK_INSTALL_LOG 2>&1
         systemctl enable nfs-server >>$ZSTACK_INSTALL_LOG 2>&1
         systemctl enable nfs-lock >>$ZSTACK_INSTALL_LOG 2>&1
@@ -2218,8 +2371,10 @@ http {
 EOF
 iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 8090 -j ACCEPT" > /dev/null 2>&1 || iptables -I INPUT -p tcp -m tcp --dport 8090 -j ACCEPT >/dev/null 2>&1
 service iptables save >/dev/null 2>&1
-systemctl enable nginx > /dev/null 2>&1
-systemctl start nginx > /dev/null 2>&1
+
+# start nginx when it's necessary
+systemctl stop nginx > /dev/null 2>&1
+systemctl disable nginx > /dev/null 2>&1
 }
 
 cs_setup_http(){
@@ -2227,7 +2382,7 @@ cs_setup_http(){
     mkdir $HTTP_FOLDER
     chmod 777 $HTTP_FOLDER
     chmod o+x $ZSTACK_INSTALL_ROOT
-    if [ $OS = $CENTOS7 -o $OS = $RHEL7 -o $OS = $ISOFT4 ]; then
+    if [ $OS = $CENTOS7 -o $OS = $RHEL7 -o $OS = $ISOFT4 -o $OS = $ALIOS7 ]; then
         chkconfig httpd on >>$ZSTACK_INSTALL_LOG 2>&1
         cat > /etc/httpd/conf.d/zstack-http.conf <<EOF
 Alias /image "$HTTP_FOLDER/"
@@ -2265,14 +2420,14 @@ EOF
         /etc/init.d/apache2 restart >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     [ $? -ne 0 ] && fail "failed to setup HTTP Server"
-    iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 80 -j ACCEPT" > /dev/null 2>&1 || iptables -I INPUT -p tcp -m tcp --dport 80 -j ACCEPT >>$ZSTACK_INSTALL_LOG 2>&1
-    iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 8080 -j ACCEPT" > /dev/null 2>&1 || iptables -I INPUT -p tcp -m tcp --dport 8080 -j ACCEPT >>$ZSTACK_INSTALL_LOG 2>&1
-    service iptables save >> $ZSTACK_INSTALL_LOG 2>&1
+    iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 80 -j ACCEPT" > /dev/null 2>&1 || iptables -I INPUT -p tcp -m tcp --dport 80 -j ACCEPT
+    iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport $MN_PORT -j ACCEPT" > /dev/null 2>&1 || iptables -I INPUT -p tcp -m tcp --dport "$MN_PORT" -j ACCEPT
+    service iptables save
     pass
-}
+} >> $ZSTACK_INSTALL_LOG 2>&1
 
 check_zstack_server(){
-    curl --noproxy -H "Content-Type: application/json" -d '{"org.zstack.header.apimediator.APIIsReadyToGoMsg": {}}' http://localhost:8080/zstack/api >>$ZSTACK_INSTALL_LOG 2>&1
+    curl --noproxy -H "Content-Type: application/json" -d '{"org.zstack.header.apimediator.APIIsReadyToGoMsg": {}}' http://localhost:"$MN_PORT"/zstack/api >>$ZSTACK_INSTALL_LOG 2>&1
     return $?
 }
 
@@ -2310,14 +2465,19 @@ cs_deploy_db(){
 
 cs_deploy_ui_db(){
     echo_subtitle "Initialize ZStack UI Database"
+    echo "--------test start--------\n" >> $ZSTACKCTL_INSTALL_LOG
+    echo "Initialize ZStack UI Database\n" >> $ZSTACKCTL_INSTALL_LOG
+    echo $MYSQL_PORT"\n" >> $ZSTACKCTL_INSTALL_LOG
+    echo ${MYSQL_PORT}"\n" >> $ZSTACKCTL_INSTALL_LOG
+    echo "--------test end--------\n" >> $ZSTACKCTL_INSTALL_LOG
     if [ -z $NEED_DROP_DB ]; then
         if [ -z $NEED_KEEP_DB ]; then
-            zstack-ctl deploy_ui_db --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-ui-password="$MYSQL_UI_USER_PASSWORD" --host=$MANAGEMENT_IP >>$ZSTACKCTL_INSTALL_LOG 2>&1
+            zstack-ctl deploy_ui_db --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-ui-password="$MYSQL_UI_USER_PASSWORD" --host=${MANAGEMENT_IP} --port=${MYSQL_PORT} >>$ZSTACKCTL_INSTALL_LOG 2>&1
         else
-            zstack-ctl deploy_ui_db --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-ui-password="$MYSQL_UI_USER_PASSWORD" --host=$MANAGEMENT_IP --keep-db >>$ZSTACKCTL_INSTALL_LOG 2>&1
+            zstack-ctl deploy_ui_db --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-ui-password="$MYSQL_UI_USER_PASSWORD" --host=${MANAGEMENT_IP} --port=${MYSQL_PORT} --keep-db >>$ZSTACKCTL_INSTALL_LOG 2>&1
         fi
     else
-        zstack-ctl deploy_ui_db --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-ui-password="$MYSQL_UI_USER_PASSWORD" --host=$MANAGEMENT_IP --drop >>$ZSTACKCTL_INSTALL_LOG 2>&1
+        zstack-ctl deploy_ui_db --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-ui-password="$MYSQL_UI_USER_PASSWORD" --host=${MANAGEMENT_IP} --port=${MYSQL_PORT} --drop >>$ZSTACKCTL_INSTALL_LOG 2>&1
     fi
     if [ $? -ne 0 ];then
         grep 'detected existing zstack_ui database' $ZSTACKCTL_INSTALL_LOG >& /dev/null
@@ -2377,6 +2537,16 @@ sd_install_zstack_ui(){
     pass
 }
 
+# For MINI UI Server
+sd_install_zstack_mini_ui(){
+    echo_subtitle "Install ${PRODUCT_NAME} MINI-UI (takes a couple of minutes)"
+    bash /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/zstack_mini_server.bin -a >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ $? -ne 0 ];then
+        fail "failed to install ${PRODUCT_NAME} MINI-UI in $MINI_INSTALL_ROOT"
+    fi
+    pass
+}
+
 # For UI 1.x
 sd_start_dashboard(){
     echo_subtitle "Start ${PRODUCT_NAME} Dashboard"
@@ -2395,9 +2565,30 @@ sd_start_zstack_ui(){
     chmod a+x /etc/init.d/zstack-ui
     cd /
     zstack-ctl stop_ui >>$ZSTACK_INSTALL_LOG 2>&1
-    zstack-ctl start_ui >>$ZSTACK_INSTALL_LOG 2>&1
+    ui_mode=`zstack-ctl get_configuration ui_mode`
+    if [ x"$ui_mode" = x"zstack" ];then
+        zstack-ctl start_ui >>$ZSTACK_INSTALL_LOG 2>&1
+    elif [ x"$ui_mode" = x"mini" ];then
+        systemctl start zstack-mini >>$ZSTACK_INSTALL_LOG 2>&1
+    else
+        fail "Unknown ui_mode, please make sure your configuration is correct."
+    fi
     [ $? -ne 0 ] && fail "failed to start zstack web ui"
     pass
+}
+
+#Ensure that the current version is lower than the upgrade version
+check_version(){
+    # CURRENT_VERSION=`zstack-ctl status | awk '/version/{gsub(")",""); print $4 }'`
+    CURRENT_VERSION=`awk '{print $2}' $ZSTACK_VERSION`
+    UPGRADE_VERSION=${VERSION}
+    if [ -z "$CURRENT_VERSION" -o -z "$UPGRADE_VERSION" ];then
+        fail2 "Version verification failed! Cannot get your current version or upgrade version, please check zstack status and use the correct iso/bin to upgrade."
+    fi
+    HIGHER=`echo "$CURRENT_VERSION $UPGRADE_VERSION"|tr " " "\n" | sort -V |awk 'END {print}'`
+    if [ x"$HIGHER" != x"$UPGRADE_VERSION" ];then
+        fail2 "Upgrade version is lower than the current version, please download and use the higher one."
+    fi
 }
 
 #create zstack local apt source list
@@ -2564,78 +2755,85 @@ get_zstack_repo(){
     fi
 }
 
+install_sync_repo_dependences() {
+    pkg_list="createrepo curl yum-utils rsync"
+    missing_list=`LANG=en_US.UTF-8 && rpm -q $pkg_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
+    [ -z "$missing_list" ] || yum -y --disablerepo=* --enablerepo=zstack-local install ${missing_list} >>$ZSTACK_INSTALL_LOG 2>&1 || echo_hints_to_upgrade_iso
+}
+
 create_local_repo_files() {
-mkdir -p /opt/zstack-dvd/Extra/{qemu-kvm-ev,ceph,galera,virtio-win}
+mkdir -p /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/Extra/{qemu-kvm-ev,ceph,galera,virtio-win}
 
 repo_file=/etc/yum.repos.d/zstack-local.repo
-if [ ! -f $repo_file ]; then
 echo "create $repo_file" >> $ZSTACK_INSTALL_LOG
 cat > $repo_file << EOF
 [zstack-local]
 name=zstack-local
-baseurl=file:///opt/zstack-dvd/
+baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0
 gpgcheck=0
 enabled=1
 EOF
-fi
 
 repo_file=/etc/yum.repos.d/qemu-kvm-ev.repo
-if [ ! -f $repo_file ]; then
 echo "create $repo_file" >> $ZSTACK_INSTALL_LOG
 cat > $repo_file << EOF
 [qemu-kvm-ev]
 name=Qemu KVM EV
-baseurl=file:///opt/zstack-dvd/Extra/qemu-kvm-ev
+baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0/Extra/qemu-kvm-ev
 gpgcheck=0
 enabled=0
 EOF
-fi
 
 repo_file=/etc/yum.repos.d/ceph.repo
-if [ ! -f $repo_file ]; then
 echo "create $repo_file" >> $ZSTACK_INSTALL_LOG
 cat > $repo_file << EOF
 [ceph]
 name=Ceph
-baseurl=file:///opt/zstack-dvd/Extra/ceph
+baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0/Extra/ceph
 gpgcheck=0
 enabled=0
 EOF
-fi
 
 repo_file=/etc/yum.repos.d/galera.repo
-if [ ! -f $repo_file ]; then
 echo "create $repo_file" >> $ZSTACK_INSTALL_LOG
 cat > $repo_file << EOF
 [mariadb]
 name = MariaDB
-baseurl=file:///opt/zstack-dvd/Extra/galera
+baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0/Extra/galera
 gpgcheck=0
 enabled=0
 EOF
-fi
 
 repo_file=/etc/yum.repos.d/virtio-win.repo
-if [ ! -f $repo_file ]; then
 echo "create $repo_file" >> $ZSTACK_INSTALL_LOG
 cat > $repo_file << EOF
 [virtio-win]
 name=virtio-win
-baseurl=file:///opt/zstack-dvd/Extra/virtio-win
+baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0/Extra/virtio-win
 gpgcheck=0
 enabled=0
 EOF
-fi
 
 # Fixes ZSTAC-18536: delete invalid repo file virt-win.repo
 invalid_virt_win_repo=/etc/yum.repos.d/virt-win.repo
 [ -f $invalid_virt_win_repo ] && rm -f $invalid_virt_win_repo
 }
 
+check_hybrid_arch(){
+    if [ -d /opt/zstack-dvd/x86_64 -a -d /opt/zstack-dvd/aarch64 ];then
+        fail2 "Hybrid arch exists but repo not matched all, please contact and get correct iso to upgrade local repo first."
+    fi
+    return 1
+}
+
 check_sync_local_repos() {
   echo_subtitle "Check local repo version"
-  [ -f ".repo_version" -a -f "/opt/zstack-dvd/.repo_version" ] || echo_hints_to_upgrade_iso
-  cmp -s .repo_version /opt/zstack-dvd/.repo_version
+  [ -f ".repo_version" ] || fail2 "Cannot found current repo_version file, please make sure you have correct zstack-installer package."
+  if [ -d /opt/zstack-dvd/$BASEARCH ];then
+    for release in `ls /opt/zstack-dvd/$BASEARCH`;do
+      cmp -s .repo_version /opt/zstack-dvd/$BASEARCH/$release/.repo_version || check_hybrid_arch
+    done
+  fi
   if [ $? -eq 0 ]; then
       return 0
   elif [ x"$SKIP_SYNC" = x'y' ]; then
@@ -2648,30 +2846,37 @@ check_sync_local_repos() {
 echo_subtitle "Sync from repo.zstack.io (takes a couple of minutes)"
 # if current local repo is based on centos7.2, then sync with eg. 2.3.1_c72
 # if current local repo is based on centos7.4, then sync with eg. 2.3.1_c74
-C72_CENTOS_RELEASE='/opt/zstack-dvd/Packages/centos-release-7-2.*.rpm'
-C74_CENTOS_RELEASE='/opt/zstack-dvd/Packages/centos-release-7-4.*.rpm'
-if ls ${C72_CENTOS_RELEASE} >/dev/null 2>&1; then
-    BASEURL=rsync://rsync.repo.zstack.io/${VERSION_RELEASE_NR}_c72
-elif ls ${C74_CENTOS_RELEASE} >/dev/null 2>&1; then
-    BASEURL=rsync://rsync.repo.zstack.io/${VERSION_RELEASE_NR}_c74
+if [ x"$UPGRADE" = x'y' ]; then
+    cluster_os_version=`mysql -uzstack -p"$MYSQL_USER_PASSWORD" zstack -e "select distinct tag from SystemTagVO where (resourceType='HostVO' and tag like '%os::version%');"`
+    cluster_type_num=`echo -e "$cluster_os_version"|grep version|wc -l`
+    cluster_type=`echo -e "$cluster_os_version"|awk -F"::" '/version/{print $3}'|awk -F "." '{print "c"$1$2}'`
+    [ $cluster_type_num -gt 1 ] && fail2 "Hybrid cluster exists, sync online-repo will take a long time, please download $cluster_type iso manually to upgrade your repo."
+fi
+if [ x"$ZSTACK_RELEASE" = x"c72" -o x"$ZSTACK_RELEASE" = x"c74" -o x"$ZSTACK_RELEASE" = x"c76" ];then
+    BASEURL=rsync://rsync.repo.zstack.io/${VERSION_RELEASE_NR}/$BASEARCH/$ZSTACK_RELEASE/
 else
-    BASEURL=rsync://rsync.repo.zstack.io/${VERSION_RELEASE_NR}
+    BASEURL=rsync://rsync.repo.zstack.io/${VERSION_RELEASE_NR}/
 fi
 
-pkg_list="createrepo curl yum-utils rsync"
-missing_list=`LANG=en_US.UTF-8 && rpm -q $pkg_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
-[ -z "$missing_list" ] || yum -y --disablerepo=* --enablerepo=zstack-local install ${missing_list} >>$ZSTACK_INSTALL_LOG 2>&1 || echo_hints_to_upgrade_iso
 # it takes about 2 min to compare md5sum of 1800+ files in iso
-umount /opt/zstack-dvd/Extra/qemu-kvm-ev >/dev/null 2>&1
-rsync -aP --delete --exclude zstack-installer.bin --exclude .repo_version ${BASEURL} /opt/zstack-dvd >> $ZSTACK_INSTALL_LOG 2>&1 || echo_hints_to_upgrade_iso
+umount /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/Extra/qemu-kvm-ev >/dev/null 2>&1
+rsync -aP --delete --exclude zstack-installer.bin --exclude .repo_version ${BASEURL} /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/ >> $ZSTACK_INSTALL_LOG 2>&1 || echo_hints_to_upgrade_iso
 
 [ -f /etc/yum.repos.d/epel.repo ] && sed -i 's/enabled=1/enabled=0/g' /etc/yum.repos.d/epel.repo
+export YUM0="$ZSTACK_RELEASE"
 yum --enablerepo=* clean all >/dev/null 2>&1
 rpm -qa | grep zstack-manager >/dev/null 2>&1 && yum --disablerepo=* --enablerepo=zstack-local -y install zstack-manager >/dev/null 2>&1 || true
+rpm -qa | grep zstack-release >/dev/null 2>&1 || yum --disablerepo=* --enablerepo=zstack-local -y install zstack-release >/dev/null 2>&1 && true
 
 # update .repo_version after syncing
-cat .repo_version > /opt/zstack-dvd/.repo_version
-
+cat .repo_version > /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/.repo_version
+cd /opt/zstack-dvd
+rm -rf `ls |egrep -v "(x86_64|aarch64)"`
+cd -
+if [ ! -f /opt/zstack-dvd/zstack-image-1.4.qcow2 ];then
+    cp -rf /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/zstack-image-1.4.qcow2 /opt/zstack-dvd/
+    cp -rf /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/GPL /opt/zstack-dvd/
+fi
 pass
 }
 
@@ -2768,6 +2973,8 @@ Options:
   -t ZSTACK_START_TIMEOUT
         The timeout for waiting ZStack start. The default value is $ZSTACK_START_TIMEOUT
 
+  -T MYSQL_PORT   port for MySQL. 3306 is set by default
+
   -u    Upgrade zstack management node and database. Make sure to backup your database, before executing upgrade command: mysqldump -u root -proot_password --host mysql_ip --port mysql_port zstack > path_to_db_dump.sql
 
   -z    Only install ZStack, without start ZStack management node.
@@ -2824,55 +3031,74 @@ Following command installs ${PRODUCT_NAME} management node and monitor. It will 
     exit 1
 }
 
+check_myarg() {
+    myarg=$2
+    initial=${myarg:0:1}
+    if [ x"$initial" = x"-" ];then
+        echo "Unexpected parameter for $1"
+        exit 1
+    fi
+}
+
 OPTIND=1
-while getopts "f:H:I:n:p:P:r:R:t:y:acC:L:dDEFhiklmMNoOqsuz" Option
+TEMP=`getopt -o f:H:I:n:p:P:r:R:t:y:acC:L:T:dDEFhiklmMNoOqsuz --long mini,SY -- "$@"`
+if [ $? != 0 ]; then
+    usage
+fi
+eval set -- "$TEMP"
+while :
 do
-    case $Option in
-        a ) NEED_NFS='y' && NEED_HTTP='y' && YUM_ONLINE_REPO='y';;
-        c ) ONLY_UPGRADE_CTL='y' && UPGRADE='y';;
-        C ) CONSOLE_PROXY_ADDRESS=$OPTARG;;
-        d ) DEBUG='y';;
-        D ) NEED_DROP_DB='y';;
-        E ) INSTALL_ENTERPRISE='y';;
-        H ) NEED_HTTP='y' && HTTP_FOLDER=$OPTARG;;
-        f ) ZSTACK_ALL_IN_ONE=$OPTARG;;
-        F ) FORCE='y';;
-        i ) ONLY_INSTALL_ZSTACK='y' && NEED_NFS='' && NEED_HTTP='' ;;
-        I ) MANAGEMENT_INTERFACE=$OPTARG && NEED_SET_MN_IP='y';;
-        k ) NEED_KEEP_DB='y';;
-        l ) ONLY_INSTALL_LIBS='y';;
-        L ) LICENSE_PATH=$OPTARG;;
-        m ) INSTALL_MONITOR='y';;
-        M ) UPGRADE_MONITOR='y';;
-        n ) NEED_NFS='y' && NFS_FOLDER=$OPTARG;;
+    [ -z "$1" ] && break;
+    case "$1" in
+        -a ) NEED_NFS='y' && NEED_HTTP='y' && YUM_ONLINE_REPO='y';shift;;
+        -c ) ONLY_UPGRADE_CTL='y' && UPGRADE='y';shift;;
+        -C ) check_myarg $1 $2;CONSOLE_PROXY_ADDRESS=$2;shift 2;;
+        -d ) DEBUG='y';shift;;
+        -D ) NEED_DROP_DB='y';shift;;
+        -E ) INSTALL_ENTERPRISE='y';shift;;
+        -H ) check_myarg $1 $2;NEED_HTTP='y' && HTTP_FOLDER=$2;shift 2;;
+        -f ) check_myarg $1 $2;ZSTACK_ALL_IN_ONE=$2;shift 2;;
+        -F ) FORCE='y';shift;;
+        -i ) ONLY_INSTALL_ZSTACK='y' && NEED_NFS='' && NEED_HTTP='' ;shift;;
+        -I ) check_myarg $1 $2;MANAGEMENT_INTERFACE=$2 && NEED_SET_MN_IP='y';shift 2;;
+        -k ) NEED_KEEP_DB='y';shift;;
+        -l ) ONLY_INSTALL_LIBS='y';shift;;
+        -L ) check_myarg $1 $2;LICENSE_PATH=$2;shift 2;;
+        -m ) INSTALL_MONITOR='y';shift;;
+        -M ) UPGRADE_MONITOR='y';shift;;
+        -n ) check_myarg $1 $2;NEED_NFS='y' && NFS_FOLDER=$2;shift 2;;
         # -o: do not use yum online repo
-        o ) YUM_ONLINE_REPO='' && ZSTACK_OFFLINE_INSTALL='y' && 
-        [ "zstack.org" = "$WEBSITE" ] && WEBSITE='localhost';;
+        -o ) YUM_ONLINE_REPO='' && ZSTACK_OFFLINE_INSTALL='y' && 
+        [ "zstack.org" = "$WEBSITE" ] && WEBSITE='localhost';shift;;
         # -O: use yum online repo
-        O ) if [ x"${CHECK_REPO_VERSION}" != x"True" ]; then
+        -O ) if [ x"${CHECK_REPO_VERSION}" != x"True" ]; then
         YUM_ONLINE_REPO='y'
         ZSTACK_OFFLINE_INSTALL=''
         else
         fail2 "$PRODUCT_NAME don't support '-O' option! Please remove '-O' and try again."
-        fi;;
-        P ) MYSQL_ROOT_PASSWORD=$OPTARG && MYSQL_NEW_ROOT_PASSWORD=$OPTARG;;
-        p ) MYSQL_USER_PASSWORD=$OPTARG;;
-        q ) QUIET_INSTALLATION='y';;
-        r ) ZSTACK_INSTALL_ROOT=$OPTARG;;
+        fi;shift;;
+        -P ) check_myarg $1 $2;MYSQL_ROOT_PASSWORD=$2 && MYSQL_NEW_ROOT_PASSWORD=$2;shift 2;;
+        -p ) check_myarg $1 $2;MYSQL_USER_PASSWORD=$2;shift 2;;
+        -q ) QUIET_INSTALLATION='y';shift;;
+        -r ) check_myarg $1 $2;ZSTACK_INSTALL_ROOT=$2;shift 2;;
         # -R: use yum third party repo
-        R ) if [ x"${CHECK_REPO_VERSION}" != x"True" ]; then
-        ZSTACK_PKG_MIRROR=$OPTARG
+        -R ) check_myarg $1 $2;if [ x"${CHECK_REPO_VERSION}" != x"True" ]; then
+        ZSTACK_PKG_MIRROR=$2
         YUM_ONLINE_REPO='y'
         ZSTACK_OFFLINE_INSTALL=''
         else
         fail2 "$PRODUCT_NAME don't support '-R' option! Please remove '-R' and try again."
-        fi;;
+        fi;shift 2;;
         # -s: skip syncing from repo.zstack.io
-        s ) SKIP_SYNC='y';;
-        t ) ZSTACK_START_TIMEOUT=$OPTARG;;
-        u ) UPGRADE='y';;
-        y ) HTTP_PROXY=$OPTARG;;
-        z ) NOT_START_ZSTACK='y';;
+        -s ) SKIP_SYNC='y';shift;;
+        -t ) check_myarg $1 $2;ZSTACK_START_TIMEOUT=$2;shift 2;;
+        -T ) check_myarg $1 $2;MYSQL_PORT=$2;shift 2;;
+        -u ) UPGRADE='y';shift;;
+        -y ) check_myarg $1 $2;HTTP_PROXY=$2;shift 2;;
+        -z ) NOT_START_ZSTACK='y';shift;;
+        --mini) MINI_INSTALL='y';shift;;
+        --SY) SANYUAN_INSTALL='y';shift;;
+        --) shift;;
         * ) usage;;
     esac
 done
@@ -2881,9 +3107,21 @@ done
 [ $# -eq $((OPTIND-1)) ] || usage
 OPTIND=1
 
+# Fix ZSTAC-21974
+get_mn_port
+
+# Fix ZSTAC-22364
+pre_scripts_to_adjust_iptables_rules
+
 if [ x"$ZSTACK_OFFLINE_INSTALL" = x'y' ]; then
-    if [ ! -d /opt/zstack-dvd/ ]; then
-        fail2 "Did not find the /opt/zstack-dvd folder, offline installation cannot proceed!"
+    if [ ! -d /opt/zstack-dvd/$BASEARCH/ ]; then
+        cd /opt/zstack-dvd/Packages/
+        ZSTACK_RELEASE=`ls |grep centos-release|awk -F"." '{print $1}'|awk -F"-" '{print "c"$3$4}'| head -1`
+        [ x"$ZSTACK_RELEASE" = x"c72" ] && ZSTACK_RELEASE="c74"
+        mkdir -p /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE
+        cd -
+    else
+        check_zstack_release
     fi
 fi
 
@@ -2931,7 +3169,7 @@ else
 fi
 
 if [ -z $MANAGEMENT_INTERFACE ]; then
-    fail2 "Cannot not identify default network interface. Please set management
+    fail2 "Cannot identify default network interface. Please set management
    node IP address by '-I MANAGEMENT_NODE_IP_ADDRESS'."
 fi
 
@@ -3049,7 +3287,8 @@ export HISTTIMEFORMAT HISTSIZE HISTFILESIZE PROMPT_COMMAND
 EOF
 }
 
-# make sure local repo files exist
+# make sure local repo exist and dependences installed
+install_sync_repo_dependences
 create_local_repo_files
 
 # CHECK_REPO_VERSION
@@ -3058,6 +3297,7 @@ if [ x"${CHECK_REPO_VERSION}" == x"True" ]; then
     echo
     show_spinner check_sync_local_repos
 fi
+check_zstack_release
 
 # whether mevoco-1\.*.jar exists
 MEVOCO_1_EXISTS='n'
@@ -3080,7 +3320,14 @@ if [ x"$UPGRADE" = x'y' ]; then
         echo -e "$(tput setaf 1)  Reason: $UPGRADE_LOCK exist. If no other upgrading operation, please manually remove $UPGRADE_LOCK.\n$(tput sgr0)"
         exit 1
     fi
+
     ZSTACK_INSTALL_ROOT=`eval echo "~zstack"`
+    ZSTACK_VERSION=$ZSTACK_INSTALL_ROOT/VERSION
+
+    MINI_INSTALL_ROOT=${ZSTACK_INSTALL_ROOT}/zstack-mini/
+    MINI_VERSION=${MINI_INSTALL_ROOT}/VERSION
+
+    check_version
     touch $UPGRADE_LOCK
     upgrade_folder=`mktemp`
     rm -f $upgrade_folder
@@ -3104,6 +3351,8 @@ if [ x"$UPGRADE" = x'y' ]; then
 
     UI_CURRENT_STATUS='n'
     UI_INSTALLATION_STATUS='n'
+    # for zstack-mini-1.0.0, 'zstack-ctl stop' cannot stop mini-server
+    [ -d /usr/local/zstack-mini ] && systemctl stop zstack-mini
     if [ -f /etc/init.d/zstack-ui ]; then
         UI_INSTALLATION_STATUS='y'
         zstack-ctl status 2>/dev/null|grep -q 'UI status' >/dev/null 2>&1
@@ -3144,13 +3393,6 @@ check_system
 download_zstack
 
 if [ x"$UPGRADE" = x'y' ]; then
-    # no get_version before zstack 2.4.0
-    zstack-ctl get_version >/dev/null 2>&1
-    if [ $? -eq 0 ]; then
-        pre_upgrade_version=`zstack-ctl get_version`
-    else
-        pre_upgrade_version=`zstack-ctl status | grep version | awk '{ print $2 }'`
-    fi
 
     #only upgrade zstack
     upgrade_zstack
@@ -3207,6 +3449,7 @@ if [ x"$UPGRADE" = x'y' ]; then
     echo " Your old zstack was saved in $zstack_home/upgrade/`ls $zstack_home/upgrade/ -rt|tail -1`"
     echo_star_line
     start_zstack_tui
+    post_scripts_to_restore_iptables_rules
     exit 0
 fi
 
@@ -3262,11 +3505,15 @@ fi
 #Install Mysql
 install_db
 
+#Setup install parameters
+setup_install_param
+
 #Delete old monitoring data if NEED_DROP_DB
 if [ -n "$NEED_DROP_DB" ]; then
   kill -9 `ps aux | grep "/var/lib/zstack/prometheus/data" | grep -v 'grep' | awk -F ' ' '{ print $2 }'` 2>/dev/null
   pkill -9 influxd 2>/dev/null
-  rm -rf /var/lib/zstack/prometheus/data
+  rm -rf /var/lib/zstack/prometheus/data/*
+  rm -rf /var/lib/zstack/prometheus/data2/*
   rm -rf /var/lib/zstack/influxdb/
 fi
 
@@ -3310,6 +3557,17 @@ if [ -f /bin/systemctl ]; then
     systemctl start zstack.service >/dev/null 2>&1
 fi
 
+#Start bootstrap service for mini
+if [ x"$MINI_INSTALL" = x"y" ];then
+    install_zstack_network
+    cp /opt/zstack-dvd/${BASEARCH}/${ZSTACK_RELEASE}/mini_auto_check /etc/init.d/
+    chmod +x /etc/init.d/mini_auto_check
+    echo "systemctl start zstack-network-agent" >> /etc/rc.local
+    echo "[ -f /etc/init.d/mini_auto_check ] && bash /etc/init.d/mini_auto_check" >> /etc/rc.local
+    echo "[ -f /etc/issue.bak ] && mv /etc/issue.bak /etc/issue" >> /etc/profile
+    cp /etc/issue /etc/issue.bak
+fi
+
 #Print all installation message
 if [ -z $NOT_START_ZSTACK ]; then
     [ -z $VERSION ] && VERSION=`zstack-ctl status 2>/dev/null|grep version|awk '{print $2}'`
@@ -3318,10 +3576,11 @@ fi
 echo ""
 echo_star_line
 touch $README
+
 echo -e "${PRODUCT_NAME} All In One ${VERSION} Installation Completed:
  - Installation path: $ZSTACK_INSTALL_ROOT
 
- - UI is running, visit $(tput setaf 4)http://$MANAGEMENT_IP:5000$(tput sgr0) in Chrome
+ - UI is running, visit $(tput setaf 4)http://$MANAGEMENT_IP:$DEFAULT_UI_PORT$(tput sgr0) in Chrome
       Use $(tput setaf 3)zstack-ctl [stop_ui|start_ui]$(tput sgr0) to stop/start the UI service
 
  - Management node is running
@@ -3358,3 +3617,4 @@ fi
 echo_chrony_server_warning_if_need
 echo_star_line
 start_zstack_tui
+post_scripts_to_restore_iptables_rules

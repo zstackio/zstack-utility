@@ -10,16 +10,6 @@
         <checkFile file="${zstack.ui.source}/mevoco-ui2/zstack-ui" />
         <checkFile file="${zstack.ui.source}/mevoco-ui-server" />
 
-        <exec executable="git" dir="${zstack.ui.source}/mevoco-ui2" failonerror="true">
-            <arg value="checkout" />
-            <arg value="${mevocoui2.build_version}" />
-        </exec>
-
-        <exec executable="git" dir="${zstack.ui.source}/mevoco-ui-server" failonerror="true">
-            <arg value="checkout" />
-            <arg value="${mevocouiserver.build_version}" />
-        </exec>
-
         <exec executable="bash" dir="${zstack.ui.source}" failonerror="true">
             <env key="BUILD_VERSION" value="${vendor.name}" />
             <env key="CUSTOM_PATH" value="${vendor.custom.path}" />

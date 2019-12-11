@@ -9,6 +9,8 @@ from zstacklib.utils import jsonobject
 from zstacklib.utils import http
 from zstacklib.utils import log
 from zstacklib.utils import shell
+from zstacklib.utils import traceable_shell
+from zstacklib.utils import rollback
 from zstacklib.utils import linux
 import zstacklib.utils.uuidhelper as uuidhelper
 
@@ -69,7 +71,6 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
     CONNECT_PATH = "/sharedmountpointprimarystorage/connect"
     CREATE_VOLUME_FROM_CACHE_PATH = "/sharedmountpointprimarystorage/createrootvolume"
     DELETE_BITS_PATH = "/sharedmountpointprimarystorage/bits/delete"
-    GET_SUBPATH_PATH = "/sharedmountpointprimarystorage/sub/path"
     CREATE_TEMPLATE_FROM_VOLUME_PATH = "/sharedmountpointprimarystorage/createtemplatefromvolume"
     UPLOAD_BITS_TO_SFTP_BACKUPSTORAGE_PATH = "/sharedmountpointprimarystorage/sftp/upload"
     DOWNLOAD_BITS_FROM_SFTP_BACKUPSTORAGE_PATH = "/sharedmountpointprimarystorage/sftp/download"
@@ -90,7 +91,6 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CONNECT_PATH, self.connect)
         http_server.register_async_uri(self.CREATE_VOLUME_FROM_CACHE_PATH, self.create_root_volume)
         http_server.register_async_uri(self.DELETE_BITS_PATH, self.delete_bits)
-        http_server.register_async_uri(self.GET_SUBPATH_PATH, self.get_sub_path)
         http_server.register_async_uri(self.CREATE_TEMPLATE_FROM_VOLUME_PATH, self.create_template_from_volume)
         http_server.register_async_uri(self.UPLOAD_BITS_TO_SFTP_BACKUPSTORAGE_PATH, self.upload_to_sftp)
         http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_SFTP_BACKUPSTORAGE_PATH, self.download_from_sftp)
@@ -178,7 +178,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
                 for file_uuid in file_uuids:
                     linux.rm_file_force(os.path.join(id_dir, file_uuid))
                 linux.touch_file(self.id_files[uuid])
-                linux.sync()
+                linux.sync_file(self.id_files[uuid])
 
         rsp = ConnectRsp()
         check_other_smp_and_set_id_file(cmd.uuid, cmd.existUuids)
@@ -216,20 +216,21 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
-    def get_sub_path(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = GetSubPathRsp()
-        rsp.paths = kvmagent.listPath(cmd.path)
-        return jsonobject.dumps(rsp)
-
-    @kvmagent.replyerror
+    @rollback.rollback
     def create_template_from_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
         dirname = os.path.dirname(cmd.installPath)
         if not os.path.exists(dirname):
             os.makedirs(dirname, 0755)
-        linux.create_template(cmd.volumePath, cmd.installPath)
+
+        @rollback.rollbackable
+        def _0():
+            linux.rm_file_force(cmd.installPath)
+        _0()
+
+        t_shell = traceable_shell.get_shell(cmd)
+        linux.create_template(cmd.volumePath, cmd.installPath, shell=t_shell)
 
         logger.debug('successfully created template[%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
@@ -274,7 +275,8 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def download_from_imagestore(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        self.imagestore_client.download_from_imagestore(cmd.mountPoint, cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
+        cachedir = None if cmd.isData else cmd.mountPoint
+        self.imagestore_client.download_from_imagestore(cachedir, cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
         rsp = AgentRsp()
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
         return jsonobject.dumps(rsp)

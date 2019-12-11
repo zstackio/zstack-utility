@@ -1,5 +1,6 @@
 __author__ = 'frank'
 
+import os
 import os.path
 import traceback
 
@@ -9,10 +10,19 @@ from kvmagent.plugins.imagestore import ImageStoreClient
 from zstacklib.utils import jsonobject
 from zstacklib.utils import linux
 from zstacklib.utils import shell
+from zstacklib.utils import traceable_shell
+from zstacklib.utils import rollback
 from zstacklib.utils.bash import *
 from zstacklib.utils.report import *
+from zstacklib.utils.plugin import completetask
 
 logger = log.get_logger(__name__)
+
+
+class AgentCommand(object):
+    def __init__(self):
+        pass
+
 
 class AgentResponse(object):
     def __init__(self):
@@ -20,6 +30,21 @@ class AgentResponse(object):
         self.availableCapacity = None
         self.success = None
         self.error = None
+
+
+class CopyBitsFromRemoteCmd(AgentCommand):
+    @log.sensitive_fields("dstPassword")
+    def __init__(self):
+        super(CopyBitsFromRemoteCmd, self).__init__()
+        self.sendCommandUrl = None
+        self.paths = []
+        self.dstIp = None
+        self.dstPassword = None
+        self.dstUsername = None
+        self.dstPort = 22
+        self.stage = None
+        self.volumeUuid = None
+
 
 class RevertVolumeFromSnapshotRsp(AgentResponse):
     def __init__(self):
@@ -100,7 +125,6 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     CREATE_VOLUME_FROM_CACHE_PATH = "/localstorage/volume/createvolumefromcache"
     DELETE_BITS_PATH = "/localstorage/delete"
     DELETE_DIR_PATH = "/localstorage/deletedir"
-    GET_LIST_PATH = "/localstorage/list"
     UPLOAD_BIT_PATH = "/localstorage/sftp/upload"
     DOWNLOAD_BIT_PATH = "/localstorage/sftp/download"
     UPLOAD_TO_IMAGESTORE_PATH = "/localstorage/imagestore/upload"
@@ -127,6 +151,8 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     REINIT_IMAGE_PATH = "/localstorage/reinit/image"
     CHECK_INITIALIZED_FILE = "/localstorage/check/initializedfile"
     CREATE_INITIALIZED_FILE = "/localstorage/create/initializedfile"
+    DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/localstorage/kvmhost/download"
+    CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/localstorage/kvmhost/download/cancel";
 
     LOCAL_NOT_ROOT_USER_MIGRATE_TMP_PATH = "primary_storage_tmp_dir"
 
@@ -138,7 +164,6 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CREATE_VOLUME_FROM_CACHE_PATH, self.create_root_volume_from_template)
         http_server.register_async_uri(self.DELETE_BITS_PATH, self.delete)
         http_server.register_async_uri(self.DELETE_DIR_PATH, self.deletedir)
-        http_server.register_async_uri(self.GET_LIST_PATH, self.list)
         http_server.register_async_uri(self.DOWNLOAD_BIT_PATH, self.download_from_sftp)
         http_server.register_async_uri(self.UPLOAD_BIT_PATH, self.upload_to_sftp)
         http_server.register_async_uri(self.UPLOAD_TO_IMAGESTORE_PATH, self.upload_to_imagestore)
@@ -154,7 +179,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.REBASE_ROOT_VOLUME_TO_BACKING_FILE_PATH, self.rebase_root_volume_to_backing_file)
         http_server.register_async_uri(self.VERIFY_SNAPSHOT_CHAIN_PATH, self.verify_backing_file_chain)
         http_server.register_async_uri(self.REBASE_SNAPSHOT_BACKING_FILES_PATH, self.rebase_backing_files)
-        http_server.register_async_uri(self.COPY_TO_REMOTE_BITS_PATH, self.copy_bits_to_remote)
+        http_server.register_async_uri(self.COPY_TO_REMOTE_BITS_PATH, self.copy_bits_to_remote, cmd=CopyBitsFromRemoteCmd())
         http_server.register_async_uri(self.GET_MD5_PATH, self.get_md5)
         http_server.register_async_uri(self.CHECK_MD5_PATH, self.check_md5)
         http_server.register_async_uri(self.GET_BACKING_FILE_PATH, self.get_backing_file_path)
@@ -165,11 +190,44 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
         http_server.register_async_uri(self.CHECK_INITIALIZED_FILE, self.check_initialized_file)
         http_server.register_async_uri(self.CREATE_INITIALIZED_FILE, self.create_initialized_file)
+        http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.download_from_kvmhost)
+        http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
 
         self.imagestore_client = ImageStoreClient()
 
     def stop(self):
         pass
+
+    @kvmagent.replyerror
+    def cancel_download_from_kvmhost(self, req):
+        return self.cancel_download_from_sftp(req)
+
+    def cancel_download_from_sftp(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentResponse()
+
+        shell.run("pkill -9 -f '%s'" % cmd.primaryStorageInstallPath)
+
+        self.do_delete_bits(cmd.primaryStorageInstallPath)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @completetask
+    def download_from_kvmhost(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentResponse()
+
+        install_path = cmd.primaryStorageInstallPath
+
+        # todo: assume agent will not restart, maybe need clean
+        last_task = self.load_and_save_task(req, rsp, os.path.exists, install_path)
+        if last_task and last_task.agent_pid == os.getpid():
+            rsp = self.wait_task_complete(last_task)
+            return jsonobject.dumps(rsp)
+
+        self.do_download_from_sftp(cmd)
+        return jsonobject.dumps(rsp)
+
 
     @kvmagent.replyerror
     def check_initialized_file(self, req):
@@ -291,7 +349,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             logger.debug("getProgress in get_md5")
             if not os.path.exists(PFILE):
                 return synced
-            last = shell.call('tail -1 %s' % PFILE).strip()
+            last = linux.tail_1(PFILE).strip()
             if not last or not last.isdigit():
                 return synced
             percent = int(round((float(written) * 100 + os.path.getsize(to.path) * float(last)) / total * (end - start) / 100) + start)
@@ -343,7 +401,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             logger.debug("getProgress in check_md5")
             if not os.path.exists(PFILE):
                 return synced
-            last = shell.call('tail -1 %s' % PFILE).strip()
+            last = linux.tail_1(PFILE).strip()
             if not last or not last.isdigit():
                 return synced
             percent = int(round((float(written) * 100 + os.path.getsize(to.path) * float(last)) / total * (end - start) / 100) + start)
@@ -492,6 +550,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    @rollback.rollback
     def create_template_from_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentResponse()
@@ -499,7 +558,13 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         if not os.path.exists(dirname):
             os.makedirs(dirname, 0755)
 
-        linux.create_template(cmd.volumePath, cmd.installPath)
+        @rollback.rollbackable
+        def _0():
+            linux.rm_file_force(cmd.insallPath)
+        _0()
+
+        t_shell = traceable_shell.get_shell(cmd)
+        linux.create_template(cmd.volumePath, cmd.installPath, shell=t_shell)
 
         logger.debug('successfully created template[%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
@@ -604,6 +669,10 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
 
         if not os.path.exists(cmd.path):
             os.makedirs(cmd.path, 0755)
+        if cmd.initFilePath:
+            if not os.path.exists(cmd.initFilePath):
+                f = open(cmd.initFilePath, 'w')
+                f.close()
 
         rsp = AgentResponse()
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.path)
@@ -660,14 +729,6 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
-    def list(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = ListResponse()
-
-        rsp.paths = kvmagent.listPath(cmd.path)
-        return jsonobject.dumps(rsp)
-
-    @kvmagent.replyerror
     def deletedir(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentResponse()
@@ -714,8 +775,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentResponse()
         try:
-            linux.scp_download(cmd.hostname, cmd.sshKey, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath, cmd.username, cmd.sshPort)
-            logger.debug('successfully download %s/%s to %s' % (cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath))
+            self.do_download_from_sftp(cmd)
         except Exception as e:
             content = traceback.format_exc()
             logger.warn(content)
@@ -726,10 +786,15 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
         return jsonobject.dumps(rsp)
 
+    def do_download_from_sftp(self, cmd):
+        linux.scp_download(cmd.hostname, cmd.sshKey, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath, cmd.username, cmd.sshPort, cmd.bandWidth)
+        logger.debug('successfully download %s/%s to %s' % (cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath))
+
     @kvmagent.replyerror
     def download_from_imagestore(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        self.imagestore_client.download_from_imagestore(cmd.storagePath, cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
+        cachedir = None if cmd.isData else cmd.storagePath
+        self.imagestore_client.download_from_imagestore(cachedir, cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
         rsp = AgentResponse()
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
         return jsonobject.dumps(rsp)

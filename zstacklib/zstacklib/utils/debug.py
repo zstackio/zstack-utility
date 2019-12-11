@@ -6,6 +6,7 @@ import sys
 import threading
 import operator
 import gc
+import beeprint
 try:
     from types import InstanceType
 except ImportError:
@@ -13,6 +14,7 @@ except ImportError:
     InstanceType = None
 
 from zstacklib.utils import log
+from zstacklib.utils import thread
 
 logger = log.get_logger(__name__)
 
@@ -31,10 +33,10 @@ def dump_stack():
 
 def dump_debug_info(signum, fram, *argv):
     try:
-        dump_threads()
-        dump_objects()
+        thread.ThreadFacade.run_in_thread(dump_threads)
+        thread.ThreadFacade.run_in_thread(dump_objects)
     except Exception as e:
-        logger.warn(e)
+        logger.warn("get error when dump debug info %s" % e.message)
 
 def dump_threads():
     logger.debug('dumping threads')
@@ -46,8 +48,11 @@ def dump_threads():
         try:
             for stack in traceback.format_stack(sys._current_frames()[th.ident]):
                 output = "%s%s" % (output, stack)
+            thread_locals = sys._current_frames()[th.ident].f_locals
+            output = "%s\n%s\n\n" % (output, beeprint.pp(thread_locals, output=False))
+
         except Exception as e:
-            logger.warn(e)
+            logger.warn("get error when dump thread %s: %s" % (th, e.message))
     output = "there are %s threads: \n%s" % (threads, output)
     logger.debug(output)
     return

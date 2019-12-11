@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="guest-tools builder" basedir="../">
+    <property name="guest.tools.ansible.dir" location="${ansible.dir}/guesttools/" />
+    <target name="assemble-guest-tools" if="build_war_flag">
+        <makeDir dir="${guest.tools.ansible.dir}" />
+
+        <copy todir="${guest.tools.ansible.dir}">
+            <fileset dir="${guesttoolsansibleplaybook.source}/ansible">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+    </target>
+</project>

@@ -1,7 +1,11 @@
+import os
 import os.path
 import re
 import random
+import tempfile
 import time
+import traceback
+
 
 from kvmagent import kvmagent
 from kvmagent.plugins.imagestore import ImageStoreClient
@@ -13,6 +17,9 @@ from zstacklib.utils import linux
 from zstacklib.utils import lock
 from zstacklib.utils import lvm
 from zstacklib.utils import bash
+from zstacklib.utils import qemu_img
+from zstacklib.utils import traceable_shell
+from zstacklib.utils.report import *
 from zstacklib.utils.plugin import completetask
 import zstacklib.utils.uuidhelper as uuidhelper
 
@@ -93,6 +100,10 @@ class RetryException(Exception):
     pass
 
 
+class SharedBlockConnectException(Exception):
+    pass
+
+
 class GetBlockDevicesRsp(AgentRsp):
     blockDevices = None  # type: list[lvm.SharedBlockCandidateStruct]
 
@@ -103,10 +114,12 @@ class GetBlockDevicesRsp(AgentRsp):
 
 class GetBackingChainRsp(AgentRsp):
     backingChain = None  # type: list[str]
+    totalSize = 0L
 
     def __init__(self):
         super(GetBackingChainRsp, self).__init__()
         self.backingChain = None
+        self.totalSize = 0L
 
 
 class SharedBlockMigrateVolumeStruct:
@@ -147,7 +160,7 @@ class CheckDisk(object):
     def __init__(self, identifier):
         self.identifier = identifier
 
-    def get_path(self):
+    def get_path(self, raise_exception=True):
         o = self.check_disk_by_wwid()
         if o is not None:
             return o
@@ -155,6 +168,9 @@ class CheckDisk(object):
         o = self.check_disk_by_uuid()
         if o is not None:
             return o
+
+        if raise_exception is False:
+            return None
 
         raise Exception("can not find disk with %s as wwid, uuid or wwn, "
                         "or multiple disks qualify but no mpath device found" % self.identifier)
@@ -216,12 +232,6 @@ class CheckDisk(object):
             if cmd.return_code == 0:
                 return cmd.stdout.strip()
 
-    def set_fail_if_no_path(self):
-        if not lvm.is_multipath_running():
-            return
-        cmd = shell.ShellCmd('ms=`multipath -l -v1`; for m in $ms; do dmsetup message $m 0 "fail_if_no_path"; done')
-        cmd(is_exception=False)
-
 
 class SharedBlockPlugin(kvmagent.KvmAgent):
 
@@ -252,6 +262,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/sharedblock/kvmhost/download/cancel"
     GET_BACKING_CHAIN_PATH = "/sharedblock/volume/backingchain"
     CONVERT_VOLUME_PROVISIONING_PATH = "/sharedblock/volume/convertprovisioning"
+    CONFIG_FILTER_PATH = "/sharedblock/disks/filter"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -282,6 +293,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
         http_server.register_async_uri(self.GET_BACKING_CHAIN_PATH, self.get_backing_chain)
         http_server.register_async_uri(self.CONVERT_VOLUME_PROVISIONING_PATH, self.convert_volume_provisioning)
+        http_server.register_async_uri(self.CONFIG_FILTER_PATH, self.config_filter)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -292,13 +304,13 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     def check_disks(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
+        if cmd.failIfNoPath:
+            linux.set_fail_if_no_path()
         for diskUuid in cmd.sharedBlockUuids:
             disk = CheckDisk(diskUuid)
             path = disk.get_path()
             if cmd.rescan:
                 disk.rescan(path.split("/")[-1])
-            if cmd.failIfNoPath:
-                disk.set_fail_if_no_path()
 
         if cmd.vgUuid is not None and lvm.vg_exists(cmd.vgUuid):
             rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid, False)
@@ -323,6 +335,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             if forceWipe is True:
                 lvm.wipe_fs(diskPaths, vgUuid)
 
+            lvm.check_gl_lock()
             cmd = shell.ShellCmd("vgcreate -qq --shared --addtag '%s::%s::%s::%s' --metadatasize %s %s %s" %
                                  (INIT_TAG, hostUuid, time.time(), bash.bash_o("hostname").strip(),
                                   DEFAULT_VG_METADATA_SIZE, vgUuid, " ".join(diskPaths)))
@@ -335,8 +348,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 if find_vg(vgUuid) is True:
                     return True
             except RetryException as ee:
-                raise Exception("can not find vg %s with disks: %s and create vg return: %s %s %s " %
-                                (vgUuid, diskPaths, cmd.return_code, cmd.stdout, cmd.stderr))
+                raise Exception("can not find vg %s with disks: %s and create vg with forceWipw=%s return: %s %s %s " %
+                                (vgUuid, diskPaths, forceWipe, cmd.return_code, cmd.stdout, cmd.stderr))
             except Exception as ee:
                 raise ee
         except Exception as e:
@@ -345,11 +358,68 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         return False
 
     @kvmagent.replyerror
-    @lock.file_lock(LOCK_FILE)
     def connect(self, req):
+        @linux.retry(times=10, sleep_time=random.uniform(0.1, 1))
+        def get_lock(sblk_lock):
+            sblk_lock.lock = lock._get_lock(sblk_lock.name)
+            if sblk_lock.lock.acquire(False) is False:
+                raise SharedBlockConnectException("can not get %s lock, there is other thread running" % sblk_lock.name)
+
+        def release_lock(sblk_lock):
+            try:
+                sblk_lock.lock.release()
+            except Exception:
+                return
+
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        sblk_lock = lock.NamedLock("sharedblock-%s" % cmd.vgUuid)
+        rsp = None
+        try:
+            get_lock(sblk_lock)
+            rsp = self.do_connect(req)
+        except SharedBlockConnectException as e:
+            r = AgentRsp()
+            r.success = False
+            r.error = "can not connect sharedblock primary storage[uuid: %s] on host[uuid: %s], " \
+                        "because other thread is connecting now" % (cmd.vgUuid, cmd.hostUuid)
+            rsp = jsonobject.dumps(r)
+        except Exception as e:
+            if rsp is None:
+                r = AgentRsp()
+                r.success = False
+                content = traceback.format_exc()
+                r.error = "%s\n%s" % (str(e), content)
+                rsp = jsonobject.dumps(r)
+        finally:
+            release_lock(sblk_lock)
+            return rsp
+
+    @kvmagent.replyerror
+    @lock.file_lock(LOCK_FILE)
+    def do_connect(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = ConnectRsp()
         diskPaths = set()
+        allDiskPaths = set()
+
+        for diskUuid in cmd.sharedBlockUuids:
+            disk = CheckDisk(diskUuid)
+            diskPaths.add(disk.get_path())
+
+        for diskUuid in cmd.allSharedBlockUuids:
+            disk = CheckDisk(diskUuid)
+            p = disk.get_path()
+            if p is not None:
+                allDiskPaths.add(p)
+        allDiskPaths = allDiskPaths.union(diskPaths)
+
+        try:
+            root_disks = ["%s[0-9]*" % d for d in linux.get_root_physical_disk()]
+            allDiskPaths = allDiskPaths.union(root_disks)
+        except Exception as e:
+            logger.warn("get exception: %s" % e.message)
+            allDiskPaths.add("/dev/sd*")
+            allDiskPaths.add("/dev/vd*")
 
         def config_lvm(host_id, enableLvmetad=False):
             lvm.backup_lvm_config()
@@ -366,7 +436,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             lvm.config_lvm_by_sed("reserved_stack", "reserved_stack=256", ["lvm.conf", "lvmlocal.conf"])
             lvm.config_lvm_by_sed("reserved_memory", "reserved_memory=131072", ["lvm.conf", "lvmlocal.conf"])
 
-            lvm.config_lvm_filter(["lvm.conf", "lvmlocal.conf"])
+            lvm.config_lvm_filter(["lvm.conf", "lvmlocal.conf"], preserve_disks=allDiskPaths)
 
             lvm.config_sanlock_by_sed("sh_retries", "sh_retries=20")
             lvm.config_sanlock_by_sed("logfile_priority", "logfile_priority=7")
@@ -376,13 +446,12 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
             sanlock_hostname = "%s-%s-%s" % (cmd.vgUuid[:8], cmd.hostUuid[:8], bash.bash_o("hostname").strip()[:20])
             lvm.config_sanlock_by_sed("our_host_name", "our_host_name=%s" % sanlock_hostname)
+            shell.call("sed -i 's/.*rotate .*/rotate 10/g' /etc/logrotate.d/sanlock", exception=False)
+            shell.call("sed -i 's/.*size .*/size 20M/g' /etc/logrotate.d/sanlock", exception=False)
 
         config_lvm(cmd.hostId, cmd.enableLvmetad)
-        for diskUuid in cmd.sharedBlockUuids:
-            disk = CheckDisk(diskUuid)
-            diskPaths.add(disk.get_path())
+
         lvm.start_lvmlockd()
-        lvm.check_gl_lock()
         logger.debug("find/create vg %s lock..." % cmd.vgUuid)
         rsp.isFirst = self.create_vg_if_not_found(cmd.vgUuid, diskPaths, cmd.hostUuid, cmd.forceWipe)
 
@@ -393,11 +462,10 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         if lvm.lvm_vgck(cmd.vgUuid, 60)[0] is False and lvm.lvm_check_operation(cmd.vgUuid) is False:
             lvm.drop_vg_lock(cmd.vgUuid)
             logger.debug("restarting vg %s lock..." % cmd.vgUuid)
-            lvm.check_gl_lock()
             lvm.start_vg_lock(cmd.vgUuid)
 
-        lvm.clean_vg_exists_host_tags(cmd.vgUuid, cmd.hostUuid, HEARTBEAT_TAG)
-        lvm.add_vg_tag(cmd.vgUuid, "%s::%s::%s::%s" % (HEARTBEAT_TAG, cmd.hostUuid, time.time(), bash.bash_o('hostname').strip()))
+        # lvm.clean_vg_exists_host_tags(cmd.vgUuid, cmd.hostUuid, HEARTBEAT_TAG)
+        # lvm.add_vg_tag(cmd.vgUuid, "%s::%s::%s::%s" % (HEARTBEAT_TAG, cmd.hostUuid, time.time(), bash.bash_o('hostname').strip()))
         self.clear_stalled_qmp_socket()
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
@@ -446,7 +514,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 return True
 
             logger.debug("can not find vg %s with tag %s" % (vgUuid, INIT_TAG))
-            cmd = shell.ShellCmd("vgs %s" % vgUuid)
+            cmd = shell.ShellCmd("vgs --nolocking %s" % vgUuid)
             cmd(is_exception=False)
             if cmd.return_code == 0:
                 logger.warn("found vg %s without tag %s" % (vgUuid, INIT_TAG))
@@ -478,6 +546,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         lvm.stop_vg_lock(cmd.vgUuid)
         if cmd.stopServices:
             lvm.quitLockServices()
+        lvm.clean_lvm_archive_files(cmd.vgUuid)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -485,14 +554,25 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     def add_disk(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         disk = CheckDisk(cmd.diskUuid)
+
+        allDiskPaths = set()
+
+        for diskUuid in cmd.allSharedBlockUuids:
+            disk = CheckDisk(diskUuid)
+            p = disk.get_path()
+            if p is not None:
+                allDiskPaths.add(p)
+        allDiskPaths.add(disk.get_path())
+        lvm.config_lvm_filter(["lvm.conf", "lvmlocal.conf"], preserve_disks=allDiskPaths)
+
         command = shell.ShellCmd("vgs --nolocking %s -otags | grep %s" % (cmd.vgUuid, INIT_TAG))
         command(is_exception=False)
         if command.return_code != 0:
             self.create_vg_if_not_found(cmd.vgUuid, [disk.get_path()], cmd.hostUuid, cmd.forceWipe)
         else:
-            lvm.check_gl_lock()
             if cmd.forceWipe is True:
                 lvm.wipe_fs([disk.get_path()], cmd.vgUuid)
+            lvm.check_gl_lock()
             lvm.add_pv(cmd.vgUuid, disk.get_path(), DEFAULT_VG_METADATA_SIZE)
 
         rsp = AgentRsp
@@ -506,7 +586,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         with lvm.RecursiveOperateLv(install_abs_path, shared=False):
             lvm.resize_lv_from_cmd(install_abs_path, cmd.size, cmd)
-            if not cmd.live:
+            fmt = linux.get_img_fmt(install_abs_path)
+            if not cmd.live and fmt == 'qcow2':
                 shell.call("qemu-img resize %s %s" % (install_abs_path, cmd.size))
             ret = linux.qcow2_virtualsize(install_abs_path)
 
@@ -521,7 +602,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp = AgentRsp()
         template_abs_path_cache = translate_absolute_path_from_install_path(cmd.templatePathInCache)
         install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
-        qcow2_options = self.calc_qcow2_option(self, cmd.qcow2Options, True, cmd.provisioning)
+        qcow2_options = self.calc_qcow2_option(self, cmd.kvmHostAddons, True, cmd.provisioning)
 
         with lvm.RecursiveOperateLv(template_abs_path_cache, shared=True, skip_deactivate_tags=[IMAGE_TAG]):
             virtual_size = linux.qcow2_virtualsize(template_abs_path_cache)
@@ -567,9 +648,10 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         with lvm.RecursiveOperateLv(volume_abs_path, shared=cmd.sharedVolume, skip_deactivate_tags=[IMAGE_TAG]):
             virtual_size = linux.qcow2_virtualsize(volume_abs_path)
-            total_size = 0
-            for qcow2 in linux.qcow2_get_file_chain(volume_abs_path):
-                total_size += int(lvm.get_lv_size(qcow2))
+            if linux.get_img_fmt(volume_abs_path) == "qcow2":
+                total_size = linux.qcow2_measure_required_size(volume_abs_path)
+            else:
+                total_size = virtual_size
 
             if total_size > virtual_size:
                 total_size = virtual_size
@@ -578,11 +660,12 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 lvm.create_lv_from_absolute_path(install_abs_path, total_size,
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
             with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
-                linux.create_template(volume_abs_path, install_abs_path)
+                t_shell = traceable_shell.get_shell(cmd)
+                linux.create_template(volume_abs_path, install_abs_path, shell=t_shell)
                 logger.debug('successfully created template[%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
                 if cmd.compareQcow2 is True:
                     logger.debug("comparing qcow2 between %s and %s")
-                    bash.bash_errorout("time qemu-img compare %s %s" % (volume_abs_path, install_abs_path))
+                    bash.bash_errorout("time %s %s %s" % (qemu_img.subcmd('compare'), volume_abs_path, install_abs_path))
                     logger.debug("confirmed qcow2 %s and %s are identical" % (volume_abs_path, install_abs_path))
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
@@ -677,7 +760,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def download_from_imagestore(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        self.imagestore_client.download_from_imagestore(cmd.mountPoint, cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
+        self.imagestore_client.download_from_imagestore(None, cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
         self.do_active_lv(cmd.primaryStorageInstallPath, cmd.lockType, True)
         rsp = AgentRsp()
         return jsonobject.dumps(rsp)
@@ -687,7 +770,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = RevertVolumeFromSnapshotRsp()
         snapshot_abs_path = translate_absolute_path_from_install_path(cmd.snapshotInstallPath)
-        qcow2_options = self.calc_qcow2_option(self, cmd.qcow2Options, True, cmd.provisioning)
+        qcow2_options = self.calc_qcow2_option(self, cmd.kvmHostAddons, True, cmd.provisioning)
         new_volume_path = cmd.installPath
         if new_volume_path is None or new_volume_path == "":
             new_volume_path = "/dev/%s/%s" % (cmd.vgUuid, uuidhelper.uuid())
@@ -765,7 +848,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
 
         if cmd.backingFile:
-            qcow2_options = self.calc_qcow2_option(self, cmd.qcow2Options, True, cmd.provisioning)
+            qcow2_options = self.calc_qcow2_option(self, cmd.kvmHostAddons, True, cmd.provisioning)
             backing_abs_path = translate_absolute_path_from_install_path(cmd.backingFile)
             with lvm.RecursiveOperateLv(backing_abs_path, shared=True):
                 virtual_size = linux.qcow2_virtualsize(backing_abs_path)
@@ -779,7 +862,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             lvm.create_lv_from_cmd(install_abs_path, cmd.size, cmd,
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
             if cmd.volumeFormat != 'raw':
-                qcow2_options = self.calc_qcow2_option(self, cmd.qcow2Options, False, cmd.provisioning)
+                qcow2_options = self.calc_qcow2_option(self, cmd.kvmHostAddons, False, cmd.provisioning)
                 with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
                     linux.qcow2_create_with_option(install_abs_path, cmd.size, qcow2_options)
                     linux.qcow2_fill(0, 1048576, install_abs_path)
@@ -810,12 +893,23 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid, False)
         return jsonobject.dumps(rsp)
 
-    def do_active_lv(self, installPath, lockType, recursive):
+    def do_active_lv(self, installPath, lockType, recursive, killProcess=False):
         def handle_lv(lockType, fpath):
             if lockType > lvm.LvmlockdLockType.NULL:
                 lvm.active_lv(fpath, lockType == lvm.LvmlockdLockType.SHARE)
             else:
-                lvm.deactive_lv(fpath)
+                try:
+                    lvm.deactive_lv(fpath)
+                except Exception as e:
+                    if not killProcess:
+                        return
+                    qemus = lvm.find_qemu_for_lv_in_use(fpath)
+                    if len(qemus) == 0:
+                        return
+                    for qemu in qemus:
+                        if qemu.state != "running":
+                            linux.kill_process(qemu.pid)
+                    lvm.deactive_lv(fpath)
 
         install_abs_path = translate_absolute_path_from_install_path(installPath)
         handle_lv(lockType, install_abs_path)
@@ -837,7 +931,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp = AgentRsp()
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid, raise_exception=False)
 
-        self.do_active_lv(cmd.installPath, cmd.lockType, cmd.recursive)
+        self.do_active_lv(cmd.installPath, cmd.lockType, cmd.recursive, cmd.killProcess)
 
         return jsonobject.dumps(rsp)
 
@@ -859,27 +953,57 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
 
+        total_size = 0
+        migrated_size = 0
+
         for struct in cmd.migrateVolumeStructs:
             target_abs_path = translate_absolute_path_from_install_path(struct.targetInstallPath)
             current_abs_path = translate_absolute_path_from_install_path(struct.currentInstallPath)
             with lvm.OperateLv(current_abs_path, shared=True):
-                lv_size = lvm.get_lv_size(current_abs_path)
+                lv_size = int(lvm.get_lv_size(current_abs_path))
+                struct.put('lv_size', lv_size)
 
                 if lvm.lv_exists(target_abs_path):
+                    if struct.skipIfExisting:
+                        struct.put('skip_copy', True)
+                        continue
                     target_ps_uuid = get_primary_storage_uuid_from_install_path(struct.targetInstallPath)
                     raise Exception("found %s already exists on ps %s" %
                                     (target_abs_path, target_ps_uuid))
                 lvm.create_lv_from_absolute_path(target_abs_path, lvm.getOriginalSize(lv_size),
                                                      "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
                 lvm.active_lv(target_abs_path, lvm.LvmlockdLockType.SHARE)
+                total_size += lv_size
 
+        fd, PFILE = tempfile.mkstemp()
         try:
+            report = Report.from_cmd(cmd, 'MigrateVolumes')
+            parent_stage = get_task_stage(cmd, "10-90")
+
+            def _get_progress(synced):
+                last = linux.tail_1(PFILE).strip()
+                if not last or not last.isdigit():
+                    return synced
+
+                report.progress_report(get_exact_percent_from_scale(last, start, end), "report")
+                return synced
+
             for struct in cmd.migrateVolumeStructs:
                 target_abs_path = translate_absolute_path_from_install_path(struct.targetInstallPath)
                 current_abs_path = translate_absolute_path_from_install_path(struct.currentInstallPath)
 
+                if struct.skip_copy:
+                    migrated_size += struct.lv_size
+                    continue
+
+                start = get_exact_percent(float(migrated_size) / total_size * 100, parent_stage)
+                end = get_exact_percent(float(struct.lv_size + migrated_size) / total_size * 100, parent_stage)
+
                 with lvm.OperateLv(current_abs_path, shared=True):
-                    bash.bash_errorout("cp %s %s" % (current_abs_path, target_abs_path))
+                    t_bash = traceable_shell.get_shell(cmd)
+                    t_bash.bash_progress_1("pv -n %s > %s 2>%s" % (current_abs_path, target_abs_path, PFILE), _get_progress)
+
+                migrated_size += struct.lv_size
 
             for struct in cmd.migrateVolumeStructs:
                 target_abs_path = translate_absolute_path_from_install_path(struct.targetInstallPath)
@@ -902,6 +1026,9 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                         linux.qcow2_rebase_no_check(target_backing_file, target_abs_path)
         except Exception as e:
             for struct in cmd.migrateVolumeStructs:
+                if struct.skip_copy:
+                    continue
+
                 target_abs_path = translate_absolute_path_from_install_path(struct.targetInstallPath)
                 if struct.currentInstallPath == struct.targetInstallPath:
                     logger.debug("current install path %s equals target %s, skip to delete" %
@@ -912,19 +1039,25 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             raise e
         finally:
             for struct in cmd.migrateVolumeStructs:
+                if struct.skip_copy:
+                    continue
+
                 target_abs_path = translate_absolute_path_from_install_path(struct.targetInstallPath)
                 lvm.deactive_lv(target_abs_path)
+
+            os.close(fd)
+            linux.rm_file_force(PFILE)
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
 
     @staticmethod
     def calc_qcow2_option(self, options, has_backing_file, provisioning=None):
-        if options is None or options == "":
+        if options is None or options == "" or options.qcow2Options is None or options.qcow2Options == "":
             return " "
         if has_backing_file or provisioning == lvm.VolumeProvisioningStrategy.ThinProvisioning:
-            return re.sub("-o preallocation=\w* ", " ", options)
-        return options
+            return re.sub("-o preallocation=\w* ", " ", options.qcow2Options)
+        return options.qcow2Options
 
     @kvmagent.replyerror
     def get_block_devices(self, req):
@@ -940,6 +1073,12 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         with lvm.RecursiveOperateLv(abs_path, shared=True, skip_deactivate_tags=[IMAGE_TAG], delete_when_exception=False):
             rsp.backingChain = linux.qcow2_get_file_chain(abs_path)
+            if not cmd.containSelf:
+                rsp.backingChain.pop(0)
+
+            rsp.totalSize = 0L
+            for path in rsp.backingChain:
+                rsp.totalSize += long(lvm.get_lv_size(path))
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
@@ -956,7 +1095,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         abs_path = translate_absolute_path_from_install_path(cmd.installPath)
         with lvm.RecursiveOperateLv(abs_path, shared=False):
             image_offest = long(
-                bash.bash_o("qemu-img check %s | grep 'Image end offset' | awk -F ': ' '{print $2}'" % abs_path).strip())
+                bash.bash_o("%s %s | grep 'Image end offset' | awk -F ': ' '{print $2}'" %
+                        (qemu_img.subcmd('check'), abs_path)).strip())
             current_size = long(lvm.get_lv_size(abs_path))
             virtual_size = linux.qcow2_virtualsize(abs_path)
             size = image_offest + cmd.addons[lvm.thinProvisioningInitializeSize]
@@ -968,4 +1108,30 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         rsp.actualSize = size
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @lock.file_lock(LOCK_FILE)
+    def config_filter(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentRsp()
+
+        allDiskPaths = set()
+
+        for diskUuid in cmd.allSharedBlockUuids:
+            disk = CheckDisk(diskUuid)
+            p = disk.get_path()
+            if p is not None:
+                allDiskPaths.add(p)
+
+        try:
+            root_disks = ["%s[0-9]*" % d for d in linux.get_root_physical_disk()]
+            allDiskPaths = allDiskPaths.union(root_disks)
+        except Exception as e:
+            logger.warn("get exception: %s" % e.message)
+            allDiskPaths.add("/dev/sd*")
+            allDiskPaths.add("/dev/vd*")
+
+        lvm.config_lvm_filter(["lvm.conf", "lvmlocal.conf"], preserve_disks=allDiskPaths)
+
         return jsonobject.dumps(rsp)

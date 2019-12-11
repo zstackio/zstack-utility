@@ -2,11 +2,14 @@
 
 @author: frank
 '''
+import os
 import os.path
 import traceback
 import tempfile
+import fcntl
 
 import zstacklib.utils.uuidhelper as uuidhelper
+
 from kvmagent import kvmagent
 from kvmagent.plugins.imagestore import ImageStoreClient
 from zstacklib.utils import http
@@ -15,7 +18,11 @@ from zstacklib.utils import linux
 from zstacklib.utils import log
 from zstacklib.utils import shell
 from zstacklib.utils import lock
+from zstacklib.utils import qemu_img
+from zstacklib.utils import traceable_shell
 from zstacklib.utils.bash import *
+from zstacklib.utils.report import *
+from zstacklib.utils.plugin import completetask
 
 logger = log.get_logger(__name__)
 
@@ -169,7 +176,6 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     REVERT_VOLUME_FROM_SNAPSHOT_PATH = "/nfsprimarystorage/revertvolumefromsnapshot"
     REINIT_IMAGE_PATH = "/nfsprimarystorage/reinitimage"
     DELETE_PATH = "/nfsprimarystorage/delete"
-    LIST_PATH = "/nfsprimarystorage/listpath"
     CHECK_BITS_PATH = "/nfsprimarystorage/checkbits"
     UPLOAD_TO_SFTP_PATH = "/nfsprimarystorage/uploadtosftpbackupstorage"
     DOWNLOAD_FROM_SFTP_PATH = "/nfsprimarystorage/downloadfromsftpbackupstorage"
@@ -188,9 +194,11 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     RESIZE_VOLUME_PATH = "/nfsprimarystorage/volume/resize"
     NFS_TO_NFS_MIGRATE_BITS_PATH = "/nfsprimarystorage/migratebits"
     NFS_REBASE_VOLUME_BACKING_FILE_PATH = "/nfsprimarystorage/rebasevolumebackingfile"
+    DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/nfsprimarystorage/kvmhost/download"
+    CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/nfsprimarystorage/kvmhost/download/cancel"
 
     ERR_UNABLE_TO_FIND_IMAGE_IN_CACHE = "unable to find image in cache"
-    
+
     def start(self):
         http_server = kvmagent.get_http_server()
         http_server.register_sync_uri(self.MOUNT_PATH, self.mount)
@@ -200,7 +208,6 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.DOWNLOAD_FROM_SFTP_PATH, self.download_from_sftp)
         http_server.register_async_uri(self.GET_CAPACITY_PATH, self.get_capacity)
         http_server.register_async_uri(self.DELETE_PATH, self.delete)
-        http_server.register_async_uri(self.LIST_PATH, self.list)
         http_server.register_async_uri(self.CREATE_TEMPLATE_FROM_VOLUME_PATH, self.create_template_from_root_volume)
         http_server.register_async_uri(self.CHECK_BITS_PATH, self.check_bits)
         http_server.register_async_uri(self.REVERT_VOLUME_FROM_SNAPSHOT_PATH, self.revert_volume_from_snapshot)
@@ -221,6 +228,8 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
         http_server.register_async_uri(self.NFS_TO_NFS_MIGRATE_BITS_PATH, self.migrate_bits)
         http_server.register_async_uri(self.NFS_REBASE_VOLUME_BACKING_FILE_PATH, self.rebase_volume_backing_file)
+        http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.download_from_kvmhost)
+        http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
         self.mount_path = {}
         self.image_cache = None
         self.imagestore_client = ImageStoreClient()
@@ -236,6 +245,9 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         mount_path = cmd.mountPath
         dst_folder_path = cmd.dstFolderPath
         temp_dir = None
+        fd, PFILE = tempfile.mkstemp()
+        os.close(fd)
+        f = open(PFILE, 'r')
 
         try:
             if not cmd.isMounted:
@@ -250,14 +262,47 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
                 if not linux.is_mounted(mount_path, cmd.url):
                     linux.mount(cmd.url, mount_path, cmd.options, "nfs4")
 
-            # Report task progress based on flow chain for now
-            # To get more accurate progress, we need to report from here someday
-
             # begin migration, then check md5 sums
-            shell.call("mkdir -p %s; cp -r %s/* %s; sync" % (dst_folder_path, cmd.srcFolderPath, dst_folder_path))
-            src_md5 = shell.call(
-                "find %s -type f -exec md5sum {} \; | awk '{ print $1 }' | sort | md5sum" % cmd.srcFolderPath)
-            dst_md5 = shell.call("find %s -type f -exec md5sum {} \; | awk '{ print $1 }' | sort | md5sum" % dst_folder_path)
+            linux.mkdir(dst_folder_path)
+
+            t_shell = traceable_shell.get_shell(cmd)
+            rsync_excludes = ""
+            md5_excludes = ""
+            if cmd.filtPaths:
+                for filtPath in cmd.filtPaths:
+                    # filtPath cannot start with '/', because it must be a relative path
+                    if filtPath.startswith('/'):
+                        filtPath = filtPath[1:]
+                    if filtPath != '':
+                        rsync_excludes = rsync_excludes + " --exclude=%s" % filtPath
+                        md5_excludes = md5_excludes + " ! -path %s/%s" % (cmd.srcFolderPath, filtPath)
+
+            total_size = int(shell.call("rsync -aznv %s/ %s %s | grep -o -P 'total size is \K\d*'" %
+                                        (cmd.srcFolderPath, dst_folder_path, rsync_excludes)))
+
+            stage = get_task_stage(cmd)
+            reporter = Report.from_cmd(cmd, "MigrateVolume")
+
+            def _get_progress(synced):
+                def get_written(regex):
+                    matcher = re.match(regex, line)
+                    return int(matcher.group(1)) if matcher else 0
+
+                lines = f.readlines()
+                writing = 0
+                for line in lines:
+                    if line[1] == ' ' and line[-1] == '\n':
+                        synced += get_written(r'\s.*?(\d+)\s+100%')
+                    elif line[-1] == '\r' and line[1] == ' ':
+                        writing = get_written(r'.*?(\d+)\s+\d+%[^\r]*\r$')
+                reporter.progress_report(get_exact_percent(float(synced + writing) / total_size * 100, stage))
+                return synced
+
+            t_shell.bash_progress_1("rsync -az --progress %s/ %s %s > %s" % (cmd.srcFolderPath, dst_folder_path, rsync_excludes, PFILE), _get_progress)
+
+            src_md5 = t_shell.call(
+                "find %s -type f %s -exec md5sum {} \; | awk '{ print $1 }' | sort | md5sum" % (cmd.srcFolderPath, md5_excludes))
+            dst_md5 = t_shell.call("find %s -type f -exec md5sum {} \; | awk '{ print $1 }' | sort | md5sum" % dst_folder_path)
             if src_md5 != dst_md5:
                 rsp.error = "failed to copy files from %s to %s, md5sum not match" % (cmd.srcFolderPath, dst_folder_path)
                 rsp.success = False
@@ -277,6 +322,8 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
                 else:
                     logger.warn("temp_dir %s still had mounted destination primary storage, skip cleanup operation" % temp_dir)
 
+            f.close()
+            linux.rm_file_force(PFILE)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -290,13 +337,20 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             qcow2s = shell.call("find %s %s -type f -regex '.*\.qcow2$'" % (cmd.dstVolumeFolderPath, cmd.dstImageCacheTemplateFolderPath))
 
         for qcow2 in qcow2s.split():
-            fmt = shell.call("qemu-img info %s | grep '^file format' | awk -F ': ' '{ print $2 }'" % qcow2)
+            fmt = shell.call("%s %s | grep '^file format' | awk -F ': ' '{ print $2 }'" % (qemu_img.subcmd('info'), qcow2))
             if fmt.strip() != "qcow2":
                 continue
+
             backing_file = linux.qcow2_get_backing_file(qcow2)
             if backing_file == "":
                 continue
+
+            # actions like `create snapshot -> recover snapshot -> delete snapshot` may produce garbage qcow2, whose backing file doesn't exist
             new_backing_file = backing_file.replace(cmd.srcPsMountPath, cmd.dstPsMountPath)
+            if not os.path.exists(new_backing_file):
+                logger.debug("the backing file[%s] of volume[%s] doesn't exist, skip rebasing" % (new_backing_file, qcow2))
+                continue
+
             linux.qcow2_rebase_no_check(new_backing_file, qcow2)
         return jsonobject.dumps(rsp)
 
@@ -361,6 +415,9 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     @in_bash
     def ping(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        if cmd.uuid not in self.mount_path.keys():
+            self.mount_path[cmd.uuid] = cmd.mountPath
+
         mount_path = self.mount_path[cmd.uuid]
         # if nfs service stop, os.path.isdir will hung
         if not linux.timeout_isdir(mount_path) or not linux.is_mounted(path=mount_path):
@@ -501,7 +558,8 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         mount_path = self.mount_path.get(cmd.uuid)
         self.check_nfs_mounted(mount_path)
-        self.imagestore_client.download_from_imagestore(mount_path, cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
+        cachedir = None if cmd.isData else mount_path
+        self.imagestore_client.download_from_imagestore(cachedir, cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
         rsp = kvmagent.AgentResponse()
         self._set_capacity_to_response(cmd.uuid, rsp)
         return jsonobject.dumps(rsp)
@@ -557,14 +615,6 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
-    def list(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = ListResponse()
-
-        rsp.paths = kvmagent.listPath(cmd.path)
-        return jsonobject.dumps(rsp)
-
-    @kvmagent.replyerror
     def remount(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = MountResponse()
@@ -581,32 +631,39 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = MountResponse()
         linux.is_valid_nfs_url(cmd.url)
-        
+
         if not linux.is_mounted(cmd.mountPath, cmd.url):
             linux.mount(cmd.url, cmd.mountPath, cmd.options, "nfs4")
-        
+
+            with tempfile.TemporaryFile(dir=cmd.mountPath) as f:
+                try:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_EX|fcntl.LOCK_NB)
+                except IOError:
+                    linux.umount(cmd.mountPath)
+                    raise Exception('File lock unavailable on NFS: {}, mount options: {}'.format(cmd.url, cmd.options))
+
         self.mount_path[cmd.uuid] = cmd.mountPath
         logger.debug(http.path_msg(self.MOUNT_PATH, 'mounted %s on %s' % (cmd.url, cmd.mountPath)))
         self._set_capacity_to_response(cmd.uuid, rsp)
         return jsonobject.dumps(rsp)
-    
+
     @kvmagent.replyerror
     def umount(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = UnmountResponse()
-        if linux.is_mounted(path=cmd.mountPath): 
+        if linux.is_mounted(path=cmd.mountPath):
             ret = linux.umount(cmd.mountPath)
             if not ret: logger.warn(http.path_msg(self.UNMOUNT_PATH, 'unmount %s from %s failed' % (cmd.mountPath, cmd.url)))
         logger.debug(http.path_msg(self.UNMOUNT_PATH, 'umounted %s from %s' % (cmd.mountPath, cmd.url)))
         return jsonobject.dumps(rsp)
-    
+
     @kvmagent.replyerror
     def get_capacity(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetCapacityResponse()
         self._set_capacity_to_response(cmd.uuid, rsp)
         return jsonobject.dumps(rsp)
-        
+
     @kvmagent.replyerror
     def create_empty_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -615,14 +672,14 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             dirname = os.path.dirname(cmd.installUrl)
             if not os.path.exists(dirname):
                 os.makedirs(dirname)
-                
+
             linux.qcow2_create_with_cmd(cmd.installUrl, cmd.size, cmd)
         except Exception as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = 'unable to create empty volume[uuid:%s, name:%s], %s' % (cmd.uuid, cmd.name, str(e))
             rsp.success = False
             return jsonobject.dumps(rsp)
-        
+
         meta = VolumeMeta()
         meta.account_uuid = cmd.accountUuid
         meta.hypervisor_type = cmd.hypervisorType
@@ -636,7 +693,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         self._set_capacity_to_response(cmd.uuid, rsp)
         logger.debug('successfully create empty volume[uuid:%s, name:%s, size:%s] at %s' % (cmd.uuid, cmd.name, cmd.size, cmd.installUrl))
         return jsonobject.dumps(rsp)
-        
+
     @kvmagent.replyerror
     def create_template_from_root_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -645,8 +702,11 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             dirname = os.path.dirname(cmd.installPath)
             if not os.path.exists(dirname):
                 os.makedirs(dirname, 0755)
-            linux.create_template(cmd.rootVolumePath, cmd.installPath)
+
+            t_shell = traceable_shell.get_shell(cmd)
+            linux.create_template(cmd.rootVolumePath, cmd.installPath, shell=t_shell)
         except linux.LinuxError as e:
+            linux.rm_file_force(cmd.installPath)
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = 'unable to create image to root@%s:%s from root volume[%s], %s' % (cmd.sftpBackupStorageHostName,
                                                                                            cmd.installPath, cmd.rootVolumePath, str(e))
@@ -655,7 +715,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         self._set_capacity_to_response(cmd.uuid, rsp)
         logger.debug('successfully created template[%s] from root volume[%s]' % (cmd.installPath, cmd.rootVolumePath))
         return jsonobject.dumps(rsp)
-    
+
     def check_nfs_mounted(self, mount_path):
         if not linux.is_mounted(mount_path):
             raise Exception('NFS not mounted on: %s' % mount_path)
@@ -675,9 +735,9 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             err = "unable to download %s/%s, because %s" % (cmd.hostname, cmd.backupStorageInstallPath, str(e))
             rsp.error = err
             rsp.success = False
-            
+
         return jsonobject.dumps(rsp)
-        
+
     @kvmagent.replyerror
     def create_root_volume_from_template(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -686,12 +746,12 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             rsp.error = self.ERR_UNABLE_TO_FIND_IMAGE_IN_CACHE
             rsp.success = False
             return jsonobject.dumps(rsp)
-            
+
         try:
             dirname = os.path.dirname(cmd.installUrl)
             if not os.path.exists(dirname):
                 os.makedirs(dirname, 0775)
-                
+
             linux.qcow2_clone_with_cmd(cmd.templatePathInCache, cmd.installUrl, cmd)
             logger.debug('successfully create root volume[%s] from template in cache[%s]' % (cmd.installUrl, cmd.templatePathInCache))
             meta = VolumeMeta()
@@ -711,6 +771,33 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             err = 'unable to clone qcow2 template[%s] to %s' % (cmd.templatePathInCache, cmd.installUrl)
             rsp.error = err
             rsp.success = False
-            
 
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @completetask
+    def download_from_kvmhost(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+
+        install_abs_path = cmd.primaryStorageInstallPath
+
+        last_task = self.load_and_save_task(req, rsp, os.path.exists, install_abs_path)
+        if last_task and last_task.agent_pid == os.getpid():
+            rsp = self.wait_task_complete(last_task)
+            return jsonobject.dumps(rsp)
+
+        linux.scp_download(cmd.hostname, cmd.sshKey, cmd.backupStorageInstallPath, install_abs_path, cmd.username, cmd.sshPort, cmd.bandWidth)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def cancel_download_from_kvmhost(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+
+        install_abs_path = cmd.primaryStorageInstallPath
+        shell.run("pkill -9 -f '%s'" % install_abs_path)
+
+        linux.rm_file_force(cmd.primaryStorageInstallPath)
         return jsonobject.dumps(rsp)

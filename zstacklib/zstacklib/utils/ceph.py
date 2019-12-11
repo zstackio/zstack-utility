@@ -2,11 +2,21 @@
 
 @author: lining
 '''
+import os
 import zstacklib.utils.jsonobject as jsonobject
 from zstacklib.utils import shell
 from zstacklib.utils import log
 
 logger = log.get_logger(__name__)
+
+
+def is_xsky():
+    return os.path.exists("/usr/bin/xms-cli")
+
+
+def is_sandstone():
+    return os.path.exists("/opt/sandstone/bin/sds")
+
 
 def getCephPoolsCapacity():
     result = []
@@ -45,6 +55,8 @@ def getCephPoolsCapacity():
 
     # fill crushItemOsds
     o = shell.call('ceph osd tree -f json')
+    # In the open source Ceph 10 version, the value returned by executing 'ceph osd tree -f json' might have '-nan', causing json parsing to fail.
+    o = o.replace("-nan", "\"\"")
     tree = jsonobject.loads(o)
     if not tree.nodes:
         return result
@@ -91,6 +103,8 @@ def getCephPoolsCapacity():
 
     # fill crushItemOsdsTotalSize, poolTotalSize
     o = shell.call('ceph osd df -f json')
+    # In the open source Ceph 10 version, the value returned by executing 'ceph osd df -f json' might have '-nan', causing json parsing to fail.
+    o = o.replace("-nan", "\"\"")
     osds = jsonobject.loads(o)
     if not osds.nodes:
         return result
