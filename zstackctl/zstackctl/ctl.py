@@ -8787,9 +8787,10 @@ class MiniResetHostCmd(Command):
         self.sn = self.sn.strip()
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--target', help='reset target, can be %s' % self.target, required=True)
+        parser.add_argument('--target', help='reset target, could be %s' % self.target, required=False)
 
     def run(self, args):
+        args = self._intercept(args)
         if args.target in ["peer", "both"]:
             peer_ip = self._get_peer_address()
             info("reseting host %s ..." % peer_ip)
@@ -8801,6 +8802,22 @@ class MiniResetHostCmd(Command):
             self._run_script()
             self._wait_node_has_ip("local")
         info("mini host reset complete!")
+
+    def _intercept(self, args):
+        if args.target == "local":
+            return args
+
+        if args.target is None or args.target.strip() == "":
+            warn("target not specified, will reset node A and B both...")
+            time.sleep(3)
+            args.target = "both"
+
+        _, o, _ = shell_return_stdout_stderr("curl 127.0.0.1:7274/bootstrap/hosts/local")
+        j = simplejson.loads(o)
+        if j.get("peer") is None:
+            raise Exception("Can not connect to peer, you can reset local node via "
+                            "'zstack-ctl reset_mini_host --target local'")
+        return args
 
     def _wait_node_has_ip(self, node):
         info("script copy complete\nwaiting node %s reset complete ..." % node)
