@@ -5677,19 +5677,23 @@ class VmPlugin(kvmagent.KvmAgent):
 
         r, _, _ = bash.bash_roe("virsh dumpxml %s | grep \"dev='vdz' bus='virtio'\"" % vm_uuid)
         if cmd.needTempDisk and r != 0:
-            temp_disk = "/var/lib/zstack/guesttools/temp_disk.qcow2"
+            temp_disk = "/var/lib/zstack/guesttools/temp_disk_%s.qcow2" % vm_uuid
             if not os.path.exists(temp_disk):
                 linux.qcow2_create(temp_disk, 1)
 
             content = """
 <disk type='file' device='disk'>
 <driver type='qcow2' cache='writeback'/>
-  <source file='/var/lib/zstack/guesttools/temp_disk.qcow2'/>
+  <source file='%s'/>
   <target dev='vdz' bus='virtio'/>
 </disk>
-"""
+""" % temp_disk
             spath = linux.write_to_temp_file(content)
             r, o, e = bash.bash_roe("virsh attach-device %s %s" % (vm_uuid, spath))
+
+            # temp_disk will be truly deleted after it's closed by qemu-kvm
+            linux.rm_file_force(temp_disk)
+
             if r != 0:
                 rsp.success = False
                 rsp.error = "%s, %s" % (o, e)
