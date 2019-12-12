@@ -159,8 +159,9 @@ elif distro in DEB_BASED_OS:
         command = "/etc/network/if-pre-up.d/iptables.up"
         run_remote_command(command, host_post_info)
     # name: enable appliancevm service for Debian -1
-    command = "sed -i '/zstack-appliancevm start/d' /etc/rc.local"
-    run_remote_command(command, host_post_info)
+    replace_content("/etc/rc.local",
+                    "regexp='zstack-appliancevm start'",
+                    host_post_info)
     # name: enable appliancevm service for Debian -2
     update_arg = "insertbefore='^exit 0' line='/etc/init.d/zstack-appliancevm start\n'"
     update_file("/etc/rc.local", update_arg, host_post_info)
