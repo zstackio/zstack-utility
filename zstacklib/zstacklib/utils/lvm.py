@@ -785,7 +785,10 @@ class ThinPool(object):
         if len(self.thin_lvs) == 0 and not is_thin_lv(path):
             self.free = self.total
         else:
-            self.free = self.total * (100 - float(o.split(" ")[1].strip("B")))/100
+            try:
+                self.free = self.total * (100 - float(o.split(" ")[1].strip("B")))/100
+            except Exception as e:
+                self.free = self.total
 
 
 def get_thin_pools_from_vg(vgName):
