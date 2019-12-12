@@ -557,6 +557,7 @@ def backup_super_block(disk_path):
 
 @bash.in_bash
 def wipe_fs(disks, expected_vg=None, with_lock=True):
+    @bash.in_bash
     def clear_lvmlock(vg_name):
         bash.bash_r("lvmlockctl -D %s; lvmlockctl -k %s; lvmlockctl -r %s" % (vg_name, vg_name, vg_name))
 
