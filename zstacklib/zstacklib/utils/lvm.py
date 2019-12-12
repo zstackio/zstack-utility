@@ -10,6 +10,7 @@ from zstacklib.utils import lock
 from zstacklib.utils import log
 from zstacklib.utils import linux
 from zstacklib.utils import qemu_img
+from zstacklib.utils import thread
 
 logger = log.get_logger(__name__)
 LV_RESERVED_SIZE = 1024*1024*4
@@ -556,15 +557,18 @@ def backup_super_block(disk_path):
 
 @bash.in_bash
 def wipe_fs(disks, expected_vg=None, with_lock=True):
+    def clear_lvmlock(vg_name):
+        bash.bash_r("lvmlockctl -D %s; lvmlockctl -k %s; lvmlockctl -r %s" % (vg_name, vg_name, vg_name))
+
     for disk in disks:
         exists_vg = None
-        r = bash.bash_r("pvdisplay %s | grep %s" % (disk, expected_vg))
-        if r == 0:
-            continue
 
         r, o = bash.bash_ro("pvs --nolocking --noheading -o vg_name %s" % disk)
         if r == 0 and o.strip() != "":
             exists_vg = o.strip()
+
+        if expected_vg in o.strip():
+            continue
 
         backup = backup_super_block(disk)
         if bash.bash_r("grep %s %s" % (expected_vg, backup)) == 0:
@@ -576,6 +580,10 @@ def wipe_fs(disks, expected_vg=None, with_lock=True):
         cmd_type = bash.bash_o("lsblk %s -oTYPE | grep mpath" % disk)
         if cmd_type.strip() != "":
             need_flush_mpath = True
+
+        if exists_vg is not None:
+            thread.ThreadFacade.run_in_thread(clear_lvmlock, [exists_vg])
+            time.sleep(1)
 
         bash.bash_roe("wipefs -af %s" % disk)
 
