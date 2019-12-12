@@ -173,8 +173,9 @@ else:
     if distro in RPM_BASED_OS:
         service_status("zstack-virtualrouter", "enabled=yes state=stopped", host_post_info)
     else:
-        command = "sed -i '/zstack-virtualrouter start/d' /etc/rc.local"
-        run_remote_command(command, host_post_info)
+        replace_content("/etc/rc.local",
+                        "regexp='zstack-virtualrouter start'",
+                        host_post_info)
         update_file("/etc/rc.local", regexp="exit 0", insertbefore="exit 0", line="/etc/init.d/zstack-virtualrouter start\n")
 
 host_post_info.start_time = start_time

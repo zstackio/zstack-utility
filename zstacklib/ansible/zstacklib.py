@@ -1360,6 +1360,15 @@ def service_status(name, args, host_post_info, ignore_error=False):
 def replace_content(dest, args, host_post_info):
     '''
     This module will replace all instances of a pattern within a file
+    dest required
+    The file to modify. Before Ansible 2.3 this option was only usable as dest, destfile and name.
+    args:
+    regexp string required
+    The regular expression to look for in the contents of the file. Uses Python regular expressions; see http://docs.python.org/2/library/re.html.
+    replace string
+    The string to replace regexp matches.
+    May contain backreferences that will get expanded with the regexp capture groups if the regexp matches.
+    If not set, matches are removed entirely.
     '''
     start_time = datetime.now()
     host_post_info.start_time = start_time
