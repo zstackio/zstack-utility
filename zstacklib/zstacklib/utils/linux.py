@@ -1906,7 +1906,7 @@ def updateGrubFile(grepCmd, sedCmd, files):
     return True, None
 
 def set_fail_if_no_path():
-    cmd = shell.ShellCmd('ms=`multipath -l -v1`; for m in $ms; do dmsetup message $m 0 "fail_if_no_path"; done')
+    cmd = shell.ShellCmd('ms=`dmsetup ls --target multipath | awk \'{print $1}\'`; for m in $ms; do dmsetup message $m 0 "fail_if_no_path"; done')
     cmd(is_exception=False, logcmd=False)
 
 def get_root_physical_disk():
