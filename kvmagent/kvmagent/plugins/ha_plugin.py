@@ -62,7 +62,7 @@ def kill_vm(maxAttempts, mountPaths=None, isFileSystem=None):
             continue
 
         if mountPaths and isFileSystem is not None \
-                and not is_need_kill(vm_uuid, mountPaths, isFileSystem):
+                and not need_kill(vm_uuid, mountPaths, isFileSystem):
             continue
 
         vm_pid = shell.call("ps aux | grep qemu-kvm | grep -v grep | awk '/%s/{print $2}'" % vm_uuid)
@@ -112,42 +112,40 @@ def kill_progresses_using_mount_path(mount_path):
     logger.warn('kill the progresses with mount path: %s, killed process: %s' % (mount_path, o.stdout))
 
 
-def is_need_kill(vmUuid, mountPaths, isFileSystem):
-    def vm_match_storage_type(vmUuid, isFileSystem):
-        o = shell.ShellCmd("virsh dumpxml %s | grep \"disk type='file'\" | grep -v \"device='cdrom'\"" % vmUuid)
-        o(False)
-        if (o.return_code == 0 and isFileSystem) or (o.return_code != 0 and not isFileSystem):
-            return True
-        return False
+def get_running_vm_root_volume_path(vm_uuid, is_file_system):
+    # 1. get "-drive ... -device ... bootindex=1,
+    # 2. get "-boot order=dc ... -drive id=drive-virtio-disk"
+    # 3. make sure io has error
+    # 4. filter for pv
+    out = shell.call("pgrep -a qemu-kvm | grep %s" % vm_uuid)
+    if not out:
+        return None
 
-    def vm_in_this_file_system_storage(vm_uuid, ps_paths):
-        cmd = shell.ShellCmd("virsh dumpxml %s | grep \"source file=\" | head -1 |awk -F \"'\" '{print $2}'" % vm_uuid)
-        cmd(False)
-        vm_path = cmd.stdout.strip()
-        if cmd.return_code != 0 or vm_in_storage_list(vm_path, ps_paths):
-            return True
-        return False
+    pid = out.split(" ")[0]
+    cmdline = out.split(" ", 3)[-1]
+    if "bootindex=1" in cmdline:
+        root_volume_path = cmdline.split("bootindex=1")[0].split(" -drive file=")[-1].split(",")[0]
+    elif " -boot order=dc" in cmdline:
+        # TODO: maybe support scsi volume as boot volume one day
+        root_volume_path = cmdline.split("id=drive-virtio-disk0")[0].split(" -drive file=")[-1].split(",")[0]
+    else:
+        logger.warn("found strange vm[pid: %s, cmdline: %s], can not find boot volume" % (pid, cmdline))
+        return None
 
-    def vm_in_this_distributed_storage(vm_uuid, ps_paths):
-        cmd = shell.ShellCmd("virsh dumpxml %s | grep \"source protocol\" | head -1 | awk -F \"'\" '{print $4}'" % vm_uuid)
-        cmd(False)
-        vm_path = cmd.stdout.strip()
-        if cmd.return_code != 0 or vm_in_storage_list(vm_path, ps_paths):
-            return True
-        return False
+    if not is_file_system:
+        return root_volume_path.replace("rbd:", "")
 
-    def vm_in_storage_list(vm_path, storage_paths):
-        if vm_path == "" or any([vm_path.startswith(ps_path) for ps_path in storage_paths]):
-            return True
-        return False
+    return root_volume_path
 
-    if vm_match_storage_type(vmUuid, isFileSystem):
-        if isFileSystem and vm_in_this_file_system_storage(vmUuid, mountPaths):
-            return True
-        elif not isFileSystem and vm_in_this_distributed_storage(vmUuid, mountPaths):
-            return True
+
+def need_kill(vm_uuid, storage_paths, is_file_system):
+    vm_path = get_running_vm_root_volume_path(vm_uuid, is_file_system)
+
+    if not vm_path or vm_path == "" or any([vm_path.startswith(ps_path) for ps_path in storage_paths]):
+        return True
 
     return False
+
 
 class HaPlugin(kvmagent.KvmAgent):
     SCAN_HOST_PATH = "/ha/scanhost"
