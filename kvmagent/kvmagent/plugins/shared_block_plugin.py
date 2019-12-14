@@ -894,16 +894,38 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid, False)
         return jsonobject.dumps(rsp)
 
+    @staticmethod
+    def get_temp_lv_path(install_path):
+        return "%s_temp" % install_path
+
     @kvmagent.replyerror
     def convert_volume_format(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = ConvertVolumeFormatRsp()
-
         install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
-        with lvm.OperateLv(install_abs_path, shared=True):
-            shell.call('%s -f %s -O %s %s %s' % (qemu_img.subcmd('convert'),
-                                                 cmd.srcFormat, cmd.dstFormat,
-                                                 install_abs_path, install_abs_path))
+        temp_path = self.get_temp_lv_path(install_abs_path)
+        with lvm.RecursiveOperateLv(install_abs_path, shared=False):
+            src_format = linux.get_img_fmt(install_abs_path)
+            if cmd.dstFormat != src_format:
+                lv_size = lvm.get_lv_size(install_abs_path)
+
+                if lvm.lv_exists(temp_path):
+                    lvm.delete_lv(temp_path)
+
+                lvm.create_lv_from_absolute_path(temp_path, lv_size)
+                with lvm.OperateLv(temp_path, shared=False, delete_when_exception=True):
+                    shell.call('%s -f %s -O %s %s %s' % (qemu_img.subcmd('convert'),
+                                                         src_format, cmd.dstFormat,
+                                                         install_abs_path, temp_path))
+                    converted_format = linux.get_img_fmt(temp_path)
+                    if converted_format != cmd.dstFormat:
+                        rsp.success = False
+                        rsp.error = "convert volume format failed, dest format %s, actual format %s" % (cmd.dstFormt, converted_format)
+                        lvm.delete_lv(temp_path)
+                        lvm.delete_lv(install_abs_path)
+                    else:
+                        lvm.lv_rename(temp_path, install_abs_path, True)
+
         return jsonobject.dumps(rsp)
 
     def do_active_lv(self, installPath, lockType, recursive, killProcess=False):
