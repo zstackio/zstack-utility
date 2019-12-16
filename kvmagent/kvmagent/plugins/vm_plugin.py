@@ -15,6 +15,7 @@ import uuid
 import json
 
 import libvirt
+import xml.dom.minidom as minidom
 #from typing import List, Any, Union
 
 import zstacklib.utils.ip as ip
@@ -702,11 +703,25 @@ def find_domain_cdrom_address(domain_xml, target_dev):
 
 def find_domain_first_boot_device(domain_xml):
     domain_xmlobject = xmlobject.loads(domain_xml)
+    disks = domain_xmlobject.devices.get_children_nodes()['disk']
+    ifaces = domain_xmlobject.devices.get_children_nodes()['interface']
+    for d in disks:
+        if d.get_child_node('boot') is None:
+            continue
+        if d.device_ == 'disk' and d.get_child_node('boot').order_ == '1':
+            return "HardDisk"
+        if d.device_ == 'cdrom' and d.get_child_node('boot').order_ == '1':
+            return "CdRom"
+    for i in ifaces:
+        if i.get_child_node('boot') is None:
+            continue
+        if i.get_child_node('boot').order_ == '1':
+            return "Network"
+
     devs = domain_xmlobject.os.get_child_node_as_list('boot')
     if devs and devs[0].dev_ == 'cdrom':
         return "CdRom"
-    else:
-        return "HardDisk"
+    return "HardDisk"
 
 def compare_version(version1, version2):
     def normalize(v):
@@ -1077,7 +1092,7 @@ class IsoCeph(object):
     def __init__(self):
         self.iso = None
 
-    def to_xmlobject(self, target_dev, target_bus_type, bus=None, unit=None):
+    def to_xmlobject(self, target_dev, target_bus_type, bus=None, unit=None, bootOrder=None):
         disk = etree.Element('disk', {'type': 'network', 'device': 'cdrom'})
         source = e(disk, 'source', None, {'name': self.iso.path.lstrip('ceph:').lstrip('//'), 'protocol': 'rbd'})
         if self.iso.secretUuid:
@@ -1090,6 +1105,8 @@ class IsoCeph(object):
         if bus and unit:
             e(disk, 'address', None, {'type': 'drive', 'bus': bus, 'unit': unit})
         e(disk, 'readonly', None)
+        if bootOrder is not None and bootOrder > 0:
+            e(disk, 'boot', None, {'order': str(bootOrder)})
         return disk
 
 
@@ -1159,7 +1176,7 @@ class IsoFusionstor(object):
     def __init__(self):
         self.iso = None
 
-    def to_xmlobject(self, target_dev, target_bus_type, bus=None, unit=None):
+    def to_xmlobject(self, target_dev, target_bus_type, bus=None, unit=None, bootOrder=None):
         protocol = lichbd.get_protocol()
         snap = self.iso.path.lstrip('fusionstor:').lstrip('//')
         path = self.iso.path.lstrip('fusionstor:').lstrip('//').split('@')[0]
@@ -1201,6 +1218,8 @@ class IsoFusionstor(object):
         if bus and unit:
             e(disk, 'address', None, {'type': 'drive', 'bus': bus, 'unit': unit})
         e(disk, 'readonly', None)
+        if bootOrder is not None and bootOrder > 0:
+            e(disk, 'boot', None, {'order': str(bootOrder)})
         return disk
 
 
@@ -3172,11 +3191,6 @@ class Vm(object):
                 elif cmd.addons['loaderRom'] is not None:
                     e(os, 'loader', cmd.addons['loaderRom'], {'type': 'rom'})
 
-            # if not booting from cdrom, don't add any boot element in os section
-            if cmd.bootDev[0] == "cdrom":
-                for boot_dev in cmd.bootDev:
-                    e(os, 'boot', None, {'dev': boot_dev})
-
             if cmd.useBootMenu:
                 e(os, 'bootmenu', attrib={'enable': 'yes'})
 
@@ -3301,12 +3315,14 @@ class Vm(object):
             if len(empty_cdrom_configs) != max_cdrom_num:
                 logger.error('ISO_DEVICE_LETTERS or EMPTY_CDROM_CONFIGS config error')
 
-            def make_empty_cdrom(target_dev, bus, unit):
+            def make_empty_cdrom(target_dev, bus, unit, bootOrder):
                 cdrom = e(devices, 'disk', None, {'type': 'file', 'device': 'cdrom'})
                 e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
                 e(cdrom, 'target', None, {'dev': target_dev, 'bus': default_bus_type})
                 e(cdrom, 'address', None, {'type': 'drive', 'bus': bus, 'unit': unit})
                 e(cdrom, 'readonly', None)
+                if bootOrder is not None and bootOrder > 0:
+                    e(cdrom, 'boot', None, {'order': str(bootOrder)})
                 return cdrom
 
             """
@@ -3322,7 +3338,7 @@ class Vm(object):
                 cdrom_config = empty_cdrom_configs[iso.deviceId]
 
                 if iso.isEmpty:
-                    make_empty_cdrom(cdrom_config.targetDev, cdrom_config.bus, cdrom_config.unit)
+                    make_empty_cdrom(cdrom_config.targetDev, cdrom_config.bus, cdrom_config.unit, iso.bootOrder)
                     continue
 
                 if iso.path.startswith('ceph'):
@@ -3334,11 +3350,13 @@ class Vm(object):
                     ic.iso = iso
                     devices.append(ic.to_xmlobject(cdrom_config.targetDev, default_bus_type, cdrom_config.bus, cdrom_config.unit))
                 else:
-                    cdrom = make_empty_cdrom(cdrom_config.targetDev, cdrom_config.bus , cdrom_config.unit)
+                    cdrom = make_empty_cdrom(cdrom_config.targetDev, cdrom_config.bus , cdrom_config.unit, iso.bootOrder)
                     e(cdrom, 'source', None, {'file': iso.path})
+
 
         def make_volumes():
             devices = elements['devices']
+            #guarantee rootVolume is the first of the set
             volumes = [cmd.rootVolume]
             volumes.extend(cmd.dataVolumes)
 
@@ -3553,9 +3571,8 @@ class Vm(object):
                     raise Exception('unknown volume deviceType: %s' % v.deviceType)
 
                 assert vol is not None, 'vol cannot be None'
-                # set boot order for root volume when boot from hd
-                if v.deviceId == 0 and cmd.bootDev[0] == 'hd' and cmd.useBootMenu:
-                    e(vol, 'boot', None, {'order': '1'})
+                if v.bootOrder is not None and v.bootOrder > 0 and v.deviceId == 0:
+                    e(vol, 'boot', None, {'order': str(v.bootOrder)})
                 Vm.set_volume_qos(cmd.addons, v.volumeUuid, vol)
                 volume_native_aio(vol)
                 devices.append(vol)
@@ -3981,6 +3998,8 @@ class Vm(object):
             e(interface, 'model', None, attrib={'type': 'virtio'})
         else:
             e(interface, 'model', None, attrib={'type': 'e1000'})
+        if nic.bootOrder is not None and nic.bootOrder > 0:
+            e(interface, 'boot', None, attrib={'order': str(nic.bootOrder)})
         return interface
 
     @staticmethod
@@ -5934,31 +5953,55 @@ class VmPlugin(kvmagent.KvmAgent):
             domain_xml = dom.XMLDesc(0)
             vm_uuid = dom.name()
 
-            match = re.search(r"""<boot\s+dev='""", domain_xml)
-            lindex = 0 if match is None else match.end()
-            rindex = domain_xml[lindex:].index("'")
-            boot_dev = "not cdrom" if lindex == 0 else domain_xml[lindex:lindex+rindex]
-            if lindex == 0 or boot_dev != 'cdrom':
-                logger.debug("the vm[uuid:%s]'s boot device is %s, nothing to do, skip this reboot event" % (
-                    vm_uuid, boot_dev))
+            is_cdrom = self._check_boot_from_cdrom(domain_xml)
+            if not is_cdrom:
+                logger.debug(
+                    "the vm[uuid:%s]'s boot device is not cdrom, nothing to do, skip this reboot event" % (vm_uuid))
                 return
-
             logger.debug(
-                'the vm[uuid:%s] is set to boot from the cdrom, for the policy[bootFromHardDisk], the reboot will'
-                ' boot from hdd' % vm_uuid)
-
+                'the vm[uuid:%s] is set to boot from the cdrom, for the policy[bootFromHardDisk], the reboot will boot from hdd' % vm_uuid)
             self._record_operation(vm_uuid, VmPlugin.VM_OP_REBOOT)
+            try:
+                dom.destroy()
+            except:
+                pass
 
-            try: dom.destroy()
-            except: pass
-
-            domain_xml = domain_xml[:lindex] + 'hd' + domain_xml[lindex+rindex:]
-            xml = re.sub(r"""\stray\s*=\s*'open'""", """ tray='closed'""", domain_xml)
+            xml = self.update_root_volume_boot_order(domain_xml)
+            xml = re.sub(r"""\stray\s*=\s*'open'""", """ tray='closed'""", xml)
             domain = conn.defineXML(xml)
             domain.createWithFlags(0)
         except:
             content = traceback.format_exc()
             logger.warn(content)
+
+    # update the boot order of the root volume to 1, rely on the make_volumes() function
+    def update_root_volume_boot_order(self, domain_xml):
+        xml = minidom.parseString(domain_xml)
+        disks = xml.getElementsByTagName('disk')
+        boots = xml.getElementsByTagName("boot")
+        for boot in boots:
+            boot.parentNode.removeChild(boot);
+        order = xml.createElement("boot")
+        order.setAttribute("order", "1")
+        disks[0].appendChild(order)
+        xml = xml.toxml()
+        return xml
+
+    def _check_boot_from_cdrom(self, domain_xml):
+        is_cdrom = False
+        xml = minidom.parseString(domain_xml)
+        disks = xml.getElementsByTagName('disk')
+        for disk in disks:
+            if disk.getAttribute("device") == "cdrom" and disk.getElementsByTagName("boot").length > 0 and \
+                    disk.getElementsByTagName("boot")[0].getAttribute("order") == "1":
+                is_cdrom = True
+                break
+        if not is_cdrom:
+            os = xml.getElementsByTagName("os")[0]
+            if os.getElementsByTagName("boot").length > 0 and os.getElementsByTagName("boot")[0].getAttribute(
+                    "device") == "cdrom":
+                is_cdrom = True
+        return is_cdrom
 
     @bash.in_bash
     @misc.ignoreerror
