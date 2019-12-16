@@ -75,6 +75,8 @@ def get_qemu_path():
         elif os.path.exists('/usr/bin/qemu-system-x86_64'):
             # ubuntu
             _qemu_path = '/usr/bin/qemu-system-x86_64'
+        elif os.path.exists('/usr/bin/qemu-system-aarch64'):
+            _qemu_path = '/usr/bin/qemu-system-aarch64'
         else:
             raise KvmError('Could not find qemu-kvm in /bin/qemu-kvm or /usr/libexec/qemu-kvm or /usr/bin/qemu-system-x86_64')
 
