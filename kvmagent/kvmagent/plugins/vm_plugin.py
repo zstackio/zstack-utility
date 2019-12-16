@@ -4043,7 +4043,7 @@ class Vm(object):
             e(interface, 'target', None, attrib={'dev': nic.nicInternalName})
         elif iftype == 'vhostuser':
             e(interface, 'source', None, attrib={'type': 'unix', 'path': vhostSrcPath, 'mode':'client'})
-            e(interface, 'driver', None, attrib={'queues': '1'})
+            e(interface, 'driver', None, attrib={'queues': '16', 'vhostforce':'on'})
 
         if nic.ips and iftype == 'bridge':
             ip4Addr = None
