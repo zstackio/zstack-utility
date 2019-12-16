@@ -542,7 +542,7 @@ chmod a+x /usr/bin/shellinaboxd
 wget -P /usr/bin ftp://{PXESERVER_DHCP_NIC_IP}/zwatch-vm-agent.linux-amd64.bin || curl -o /usr/bin/zwatch-vm-agent.linux-amd64.bin ftp://{PXESERVER_DHCP_NIC_IP}/zwatch-vm-agent.linux-amd64.bin
 chmod a+x /usr/bin/zwatch-vm-agent.linux-amd64.bin
 /usr/bin/zwatch-vm-agent.linux-amd64.bin -i
-echo "\npushGatewayUrl:  http://{PXESERVER_DHCP_NIC_IP}:9093/metrics/job/zwtach-vm-agent/vmUuid/" >> /usr/local/zstack/zwatch-vm-agent/conf.yaml
+echo "\npushGatewayUrl:  http://{PXESERVER_DHCP_NIC_IP}:9093" >> /usr/local/zstack/zwatch-vm-agent/conf.yaml
 echo "vmInstanceUuid: {BMUUID}" >> /usr/local/zstack/zwatch-vm-agent/conf.yaml
 echo "versionFileUrl:  ftp://{PXESERVER_DHCP_NIC_IP}/agent_version" >> /usr/local/zstack/zwatch-vm-agent/conf.yaml
 systemctl start zwatch-vm-agent.service
