@@ -3411,7 +3411,11 @@ class Vm(object):
             else:
                 for monitor in range(cmd.VDIMonitorNumber):
                     video = e(devices, 'video')
-                    e(video, 'model', None, {'type': str(cmd.videoType)})
+                    if cmd.qxlMemory is not None:
+                        e(video, 'model', None, {'type': str(cmd.videoType), 'ram': str(cmd.qxlMemory.ram), 'vram': str(cmd.qxlMemory.vram),
+                                                 'vgamem': str(cmd.qxlMemory.vgamem)})
+                    else:
+                        e(video, 'model', None, {'type': str(cmd.videoType)})
 
 
         def make_audio_microphone():
