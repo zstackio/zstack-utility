@@ -13,6 +13,7 @@ from zstacklib.utils import traceable_shell
 from zstacklib.utils import rollback
 from zstacklib.utils import linux
 import zstacklib.utils.uuidhelper as uuidhelper
+from zstacklib.utils.plugin import completetask
 
 logger = log.get_logger(__name__)
 
@@ -85,6 +86,8 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
     GET_VOLUME_SIZE_PATH = "/sharedmountpointprimarystorage/volume/getsize"
     RESIZE_VOLUME_PATH = "/sharedmountpointprimarystorage/volume/resize"
     REINIT_IMAGE_PATH = "/sharedmountpointprimarystorage/volume/reinitimage"
+    DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/nfsprimarystorage/kvmhost/download"
+    CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/nfsprimarystorage/kvmhost/download/cancel"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -105,6 +108,8 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.GET_VOLUME_SIZE_PATH, self.get_volume_size)
         http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
         http_server.register_async_uri(self.REINIT_IMAGE_PATH, self.reinit_image)
+        http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.download_from_kvmhost)
+        http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
 
         self.imagestore_client = ImageStoreClient()
         self.id_files = {}
@@ -361,4 +366,31 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CheckBitsRsp()
         rsp.existing = os.path.exists(cmd.path)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @completetask
+    def download_from_kvmhost(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+
+        install_abs_path = cmd.primaryStorageInstallPath
+
+        last_task = self.load_and_save_task(req, rsp, os.path.exists, install_abs_path)
+        if last_task and last_task.agent_pid == os.getpid():
+            rsp = self.wait_task_complete(last_task)
+            return jsonobject.dumps(rsp)
+
+        linux.scp_download(cmd.hostname, cmd.sshKey, cmd.backupStorageInstallPath, install_abs_path, cmd.username, cmd.sshPort, cmd.bandWidth)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def cancel_download_from_kvmhost(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+
+        install_abs_path = cmd.primaryStorageInstallPath
+        shell.run("pkill -9 -f '%s'" % install_abs_path)
+
+        linux.rm_file_force(cmd.primaryStorageInstallPath)
         return jsonobject.dumps(rsp)
