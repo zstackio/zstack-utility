@@ -1,4 +1,5 @@
 import os
+import platform
 
 from zstacklib.utils import linux
 from zstacklib.utils import bash
@@ -120,9 +121,9 @@ class DrbdResource(object):
         if "conflicting use of device-minor" in o+e:
             logger.debug("detect conflicting use of device-minor! %s" % e)
             return
-        if 0 == bash.bash_r("cat /proc/drbd | grep '^%s: cs:Unconfigured'" % self.config.local_host.minor):
+        if 0 == bash.bash_r("cat /proc/drbd | grep '^[[:space:]]*%s: cs:Unconfigured'" % self.config.local_host.minor):
             return
-        if 1 == bash.bash_r("cat /proc/drbd | grep '^%s: '" % self.config.local_host.minor):
+        if 1 == bash.bash_r("cat /proc/drbd | grep '^[[:space:]]*%s: '" % self.config.local_host.minor):
             return
         raise Exception("demote resource %s failed: %s, %s, %s" % (self.name, r, o, e))
 
@@ -179,7 +180,7 @@ class DrbdResource(object):
         return "/dev/drbd%s" % self.config.local_host.minor
 
     @bash.in_bash
-    @linux.retry(times=60, sleep_time=2)
+    @linux.retry(times=90, sleep_time=3)
     def clear_bits(self):
         bash.bash_errorout("drbdadm new-current-uuid --clear-bitmap %s" % self.name)
 
@@ -195,7 +196,7 @@ class DrbdResource(object):
 
     @bash.in_bash
     def initialize(self, primary, cmd, backing=None, skip_clear_bits=False):
-        bash.bash_errorout("echo yes | drbdadm create-md %s" % self.name)
+        bash.bash_errorout("echo yes | drbdadm create-md %s --force" % self.name)
         self.up()
         if skip_clear_bits:
             return
@@ -372,6 +373,9 @@ class DrbdHostStruct(DrbdStruct):
         self.minor = None
         self.meta_disk = "internal"
 
+    def get_drbd_device(self):
+        return "/dev/drbd%s" % self.minor
+
 
 class DrbdNetStruct(DrbdStruct):
     def __init__(self):
@@ -399,7 +403,9 @@ def install_drbd():
     mod_installed = bash.bash_r("lsmod | grep drbd") == 0
     mod_exists = bash.bash_r("modinfo drbd") == 0
     utils_installed = bash.bash_r("rpm -ql drbd-utils || rpm -ql drbd84-utils") == 0
-    utils_exists, o = bash.bash_ro("ls /opt/zstack-dvd/Packages/drbd-utils*")
+    basearch = platform.machine()
+    releasever = bash.bash_o("awk '{print $3}' /etc/zstack-release")
+    utils_exists, o = bash.bash_ro("ls /opt/zstack-dvd/{}/{}/Packages/drbd-utils*".format(basearch, releasever))
 
     if mod_installed and utils_exists:
         return
@@ -448,7 +454,7 @@ def up_all_resouces():
     for name in all_names:
         try:
             r = DrbdResource(name.split(".")[0])
-            if r.config.local_host.disk is not None and linux.linux_lsof(r.config.local_host.disk).strip() == "":
+            if r.config.local_host.minor is not None and linux.linux_lsof(r.config.local_host.get_drbd_device()).strip() == "":
                 r.demote()
         except Exception as e:
             logger.warn("up resource %s failed: %s" % (name, e.message))

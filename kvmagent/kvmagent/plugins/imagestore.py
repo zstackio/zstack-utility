@@ -6,6 +6,7 @@ import os.path
 from kvmagent import kvmagent
 from zstacklib.utils import jsonobject
 from zstacklib.utils import shell
+from zstacklib.utils import traceable_shell
 from zstacklib.utils.bash import bash_progress_1, in_bash, bash_r
 from zstacklib.utils.report import *
 
@@ -130,6 +131,7 @@ class ImageStoreClient(object):
             self.ZSTORE_CLI_PATH, cmd.hostname, self.ZSTORE_DEF_PORT, req[http.REQUEST_HEADER].get(http.CALLBACK_URI),
             taskid, cmd.imageUuid, extpara, cmd.primaryStorageInstallPath)
         logger.debug('pushing %s to image store' % cmd.primaryStorageInstallPath)
+        shell = traceable_shell.get_shell(cmd)
         shell.call(cmdstr)
         logger.debug('%s pushed to image store' % cmd.primaryStorageInstallPath)
 
@@ -144,7 +146,7 @@ class ImageStoreClient(object):
         fpath = cmd.primaryStorageInstallPath
 
         # Synchronize cached writes for 'fpath'
-        linux.sync()
+        linux.sync_file(fpath)
 
         # Add the image to registry
         cmdstr = '%s -json  -callbackurl %s -taskid %s -imageUuid %s add -desc \'%s\' -file %s' % (self.ZSTORE_CLI_PATH, req[http.REQUEST_HEADER].get(http.CALLBACK_URI),

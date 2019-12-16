@@ -5,6 +5,7 @@ import os
 import json
 import commands
 import platform
+import string
 
 from kvmagent import kvmagent
 from zstacklib.utils import jsonobject
@@ -13,6 +14,7 @@ from zstacklib.utils import log
 from zstacklib.utils import shell
 from zstacklib.utils import http
 from zstacklib.utils import thread
+from zstacklib.utils import qemu_img
 from zstacklib.utils.bash import in_bash
 from zstacklib.utils.linux import shellquote
 from zstacklib.utils.plugin import completetask
@@ -82,8 +84,9 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             rsp.error = "v2v feature is not supported on centos 7.2"
             return jsonobject.dumps(rsp)
 
-        yum_cmd = "yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn " \
-                  "install libguestfs-tools libguestfs-winsupport virt-v2v -y"
+        releasever = kvmagent.get_host_yum_release()
+        yum_cmd = "export YUM0={}; yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn " \
+                  "install libguestfs-tools libguestfs-winsupport virt-v2v -y".format(releasever)
         if shell.run(yum_cmd) != 0:
             rsp.success = False
             rsp.error = "failed to update install conversion host dependencies from zstack-mn,qemu-kvm-ev-mn repo"
@@ -99,7 +102,12 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             else:
                 with open(version_file, 'r') as vfd:
                     return vfd.readline()
-
+        tmpl = {'releasever': releasever}
+        virtioDriverUrl = string.Template(cmd.virtioDriverUrl)
+        vddkLibUrl = string.Template(cmd.vddkLibUrl)
+        
+        cmd.virtioDriverUrl = virtioDriverUrl.substitute(tmpl)
+        cmd.vddkLibUrl = vddkLibUrl.substitute(tmpl)
         if not os.path.exists(WINDOWS_VIRTIO_DRIVE_ISO_VERSION) \
                 and os.path.exists(V2V_LIB_PATH + 'zstack-windows-virtio-driver.iso'):
             last_modified = shell.call("curl -I %s | grep 'Last-Modified'" % cmd.virtioDriverUrl)
@@ -196,7 +204,8 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
         v2v_pid_path, virt_v2v_cmd, v2v_cmd_ret_path)
 
         src_vm_uri = cmd.srcVmUri
-        vmware_host_ip = src_vm_uri.split('/')[-1]
+        vmware_host_ip = linux.get_host_by_name(src_vm_uri.split('/')[-1])
+
         interface = linux.find_route_interface_by_destination_ip(vmware_host_ip)
 
         if interface:
@@ -246,7 +255,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
                 fd.write('\n>>> virt_v2v command: %s\n' % virt_v2v_cmd)
             return jsonobject.dumps(rsp)
 
-        root_vol = r"%s/%s-sda" % (storage_dir, cmd.srcVmName)
+        root_vol = (r"%s/%s-sda" % (storage_dir, cmd.srcVmName)).encode('utf-8')
         logger.debug(root_vol)
         if not os.path.exists(root_vol):
             rsp.success = False
@@ -260,7 +269,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
 
         rsp.dataVolumeInfos = []
         for dev in 'bcdefghijklmnopqrstuvwxyz':
-            data_vol = r"%s/%s-sd%c" % (storage_dir, cmd.srcVmName, dev)
+            data_vol = (r"%s/%s-sd%c" % (storage_dir, cmd.srcVmName, dev)).encode('utf-8')
             if os.path.exists(data_vol):
                 aSize, vSize = self._get_qcow2_sizes(data_vol)
                 rsp.dataVolumeInfos.append({"installPath": data_vol,
@@ -270,7 +279,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             else:
                 break
 
-        xml = r"%s/%s.xml" % (storage_dir, cmd.srcVmName)
+        xml = (r"%s/%s.xml" % (storage_dir, cmd.srcVmName)).encode('utf-8')
         if self._check_str_in_file(xml, "<nvram "):
             rsp.bootMode = 'UEFI'
 
@@ -312,7 +321,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
 
     @in_bash
     def _get_qcow2_sizes(self, path):
-        cmd = "qemu-img info --output=json '%s'" % path
+        cmd = "%s --output=json '%s'" % (qemu_img.subcmd('info'), path)
         _, output = commands.getstatusoutput(cmd)
         return long(json.loads(output)['actual-size']), long(json.loads(output)['virtual-size'])
 
@@ -372,10 +381,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
                 return shell.run(config_qos_cmd)
 
             for vcenter_ip in cmd.vCenterIps:
-                interface = linux.find_route_interface_by_destination_ip(vcenter_ip)
-
-                if interface is None:
-                    interface = linux.find_route_interface_by_destination_ip(linux.get_host_by_name(vcenter_ip))
+                interface = linux.find_route_interface_by_destination_ip(linux.get_host_by_name(vcenter_ip))
 
                 if interface and interface not in interface_setup_rule:
                     if set_up_qos_rules(interface) == 0:
@@ -392,7 +398,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
                 # will get a url format like
                 # vpx://administrator%40vsphere.local@xx.xx.xx.xx/Datacenter-xxx/Cluster-xxx/127.0.0.1?no_verify=1
                 for url in list_url_cmd.stdout.split('\n'):
-                    vmware_host_ip = url.split('/')[-1].split('?')[0]
+                    vmware_host_ip = linux.get_host_by_name(url.split('/')[-1].split('?')[0])
                     interface = linux.find_route_interface_by_destination_ip(vmware_host_ip)
 
                     if interface:
@@ -423,10 +429,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
                     shell.run(cmdstr)
 
             for vcenter_ip in cmd.vCenterIps:
-                interface = linux.find_route_interface_by_destination_ip(vcenter_ip)
-
-                if interface is None:
-                    interface = linux.find_route_interface_by_destination_ip(linux.get_host_by_name(vcenter_ip))
+                interface = linux.find_route_interface_by_destination_ip(linux.get_host_by_name(vcenter_ip))
 
                 if interface:
                     delete_qos_rules(interface)

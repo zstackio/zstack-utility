@@ -18,6 +18,8 @@ from zstacklib.utils.bash import *
 from zstacklib.utils.report import Report
 from zstacklib.utils import shell
 from zstacklib.utils import ceph
+from zstacklib.utils import qemu_img
+from zstacklib.utils import traceable_shell
 from zstacklib.utils.rollback import rollback, rollbackable
 
 logger = log.get_logger(__name__)
@@ -30,6 +32,12 @@ class CephPoolCapacity(object):
         self.usedCapacity = used
         self.totalCapacity = totalCapacity
 
+
+class AgentCommand(object):
+    def __init__(self):
+        pass
+
+
 class AgentResponse(object):
     def __init__(self, success=True, error=None):
         self.success = success
@@ -37,7 +45,7 @@ class AgentResponse(object):
         self.totalCapacity = None
         self.availableCapacity = None
         self.poolCapacities = None
-        self.xsky = False
+        self.type = None
 
 class InitRsp(AgentResponse):
     def __init__(self):
@@ -49,6 +57,21 @@ class DownloadRsp(AgentResponse):
         super(DownloadRsp, self).__init__()
         self.size = None
         self.actualSize = None
+
+
+class CephToCephMigrateImageCmd(AgentCommand):
+    @log.sensitive_fields("dstMonSshPassword")
+    def __init__(self):
+        super(CephToCephMigrateImageCmd, self).__init__()
+        self.imageUuid = None
+        self.imageSize = None  # type:long
+        self.srcInstallPath = None
+        self.dstInstallPath = None
+        self.dstMonHostname = None
+        self.dstMonSshUsername = None
+        self.dstMonSshPassword = None
+        self.dstMonSshPort = None  # type:int
+
 
 class UploadProgressRsp(AgentResponse):
     def __init__(self):
@@ -311,7 +334,8 @@ def stream_body(task, fpath, entity, boundary):
                 conf = '%s\n%s\n' % (conf, 'rbd default format = 2')
                 conf_path = linux.write_to_temp_file(conf)
 
-            shell.check_run('qemu-img convert -f qcow2 -O rbd rbd:%s rbd:%s:conf=%s' % (task.tmpPath, task.dstPath, conf_path))
+            shell.check_run('%s -f qcow2 -O rbd rbd:%s rbd:%s:conf=%s' % 
+                    (qemu_img.subcmd('convert'), task.tmpPath, task.dstPath, conf_path))
         except Exception as e:
             task.fail('cannot convert Qcow2 image %s to rbd' % task.imageUuid)
             logger.warn('convert image %s failed: %s', (task.imageUuid, str(e)))
@@ -330,6 +354,7 @@ def stream_body(task, fpath, entity, boundary):
 class CephAgent(object):
     INIT_PATH = "/ceph/backupstorage/init"
     DOWNLOAD_IMAGE_PATH = "/ceph/backupstorage/image/download"
+    JOB_CANCEL = "/job/cancel"
     UPLOAD_IMAGE_PATH = "/ceph/backupstorage/image/upload"
     UPLOAD_PROGRESS_PATH = "/ceph/backupstorage/image/progress"
     DELETE_IMAGE_PATH = "/ceph/backupstorage/image/delete"
@@ -359,6 +384,7 @@ class CephAgent(object):
         self.http_server.register_raw_uri(self.UPLOAD_IMAGE_PATH, self.upload)
         self.http_server.register_async_uri(self.UPLOAD_PROGRESS_PATH, self.get_upload_progress)
         self.http_server.register_async_uri(self.DELETE_IMAGE_PATH, self.delete)
+        self.http_server.register_async_uri(self.JOB_CANCEL, self.cancel)
         self.http_server.register_async_uri(self.PING_PATH, self.ping)
         self.http_server.register_async_uri(self.GET_IMAGE_SIZE_PATH, self.get_image_size)
         self.http_server.register_async_uri(self.GET_FACTS, self.get_facts)
@@ -369,7 +395,7 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.DELETE_IMAGES_METADATA, self.delete_image_metadata_from_file)
         self.http_server.register_async_uri(self.CHECK_POOL_PATH, self.check_pool)
         self.http_server.register_async_uri(self.GET_LOCAL_FILE_SIZE, self.get_local_file_size)
-        self.http_server.register_async_uri(self.MIGRATE_IMAGE_PATH, self.migrate_image)
+        self.http_server.register_async_uri(self.MIGRATE_IMAGE_PATH, self.migrate_image, cmd=CephToCephMigrateImageCmd())
 
     def _get_capacity(self):
         o = shell.call('ceph df -f json')
@@ -416,7 +442,8 @@ class CephAgent(object):
         rsp.totalCapacity = total
         rsp.availableCapacity = avail
         rsp.poolCapacities = poolCapacities
-        rsp.xsky = xsky
+        if xsky:
+            rsp.type = "xsky"
 
     @replyerror
     def echo(self, req):
@@ -729,6 +756,7 @@ class CephAgent(object):
             return image_format
 
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        shell = traceable_shell.get_shell(cmd)
         pool, image_name = self._parse_install_path(cmd.installPath)
         tmp_image_name = 'tmp-%s' % image_name
 
@@ -797,7 +825,7 @@ class CephAgent(object):
 
             logger.debug("content-length is: %s" % total)
 
-            _, _, err = bash_progress_1('set -o pipefail;wget --no-check-certificate -O - %s 2>%s| rbd import --image-format 2 - %s/%s'
+            _, _, err = shell.bash_progress_1('set -o pipefail;wget --no-check-certificate -O - %s 2>%s| rbd import --image-format 2 - %s/%s'
                        % (cmd.url, PFILE, pool, tmp_image_name), _getProgress)
             if err:
                 raise err
@@ -809,12 +837,14 @@ class CephAgent(object):
         elif url.scheme == 'sftp':
             port = (url.port, 22)[url.port is None]
             _, PFILE = tempfile.mkstemp()
+            ssh_pswd_file = None
             pipe_path = PFILE + "fifo"
             scp_to_pipe_cmd = "scp -P %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s:%s %s" % (port, url.username, url.hostname, url.path, pipe_path)
             sftp_command = "sftp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=no -P %s -b /dev/stdin %s@%s" % (port, url.username, url.hostname) + " <<EOF\n%s\nEOF\n"
             if url.password is not None:
-                scp_to_pipe_cmd = 'sshpass -p %s %s' % (linux.shellquote(url.password), scp_to_pipe_cmd)
-                sftp_command = 'sshpass -p %s %s' % (linux.shellquote(url.password), sftp_command)
+                ssh_pswd_file = linux.write_to_temp_file(url.password)
+                scp_to_pipe_cmd = 'sshpass -f %s %s' % (ssh_pswd_file, scp_to_pipe_cmd)
+                sftp_command = 'sshpass -f %s %s' % (ssh_pswd_file, sftp_command)
 
             actual_size = shell.call(sftp_command % ("ls -l " + url.path)).splitlines()[1].strip().split()[4]
             os.mkfifo(pipe_path)
@@ -835,14 +865,14 @@ class CephAgent(object):
 
             get_content_from_pipe_cmd = "pv -s %s -n %s 2>%s" % (actual_size, pipe_path, PFILE)
             import_from_pipe_cmd = "rbd import --image-format 2 - %s/%s" % (pool, tmp_image_name)
-            _, _, err = bash_progress_1('set -o pipefail; %s & %s | %s' %
+            _, _, err = shell.bash_progress_1('set -o pipefail; %s & %s | %s' %
                                         (scp_to_pipe_cmd, get_content_from_pipe_cmd, import_from_pipe_cmd), _get_progress)
 
-            if os.path.exists(PFILE):
-                os.remove(PFILE)
+            if ssh_pswd_file:
+                linux.rm_file_force(ssh_pswd_file)
 
-            if os.path.exists(pipe_path):
-                os.remove(pipe_path)
+            linux.rm_file_force(PFILE)
+            linux.rm_file_force(pipe_path)
 
             if err:
                 raise err
@@ -861,8 +891,8 @@ class CephAgent(object):
         else:
             raise Exception('unknown url[%s]' % cmd.url)
 
-        file_format = shell.call(
-            "set -o pipefail; qemu-img info rbd:%s/%s | grep 'file format' | cut -d ':' -f 2" % (pool, tmp_image_name))
+        file_format = shell.call("set -o pipefail; %s rbd:%s/%s | grep 'file format' | cut -d ':' -f 2" %
+                (qemu_img.subcmd('info'), pool, tmp_image_name))
         file_format = file_format.strip()
         if file_format not in ['qcow2', 'raw']:
             raise Exception('unknown image format: %s' % file_format)
@@ -875,7 +905,8 @@ class CephAgent(object):
                     conf = '%s\n%s\n' % (conf, 'rbd default format = 2')
                     conf_path = linux.write_to_temp_file(conf)
 
-                shell.check_run('qemu-img convert -f qcow2 -O rbd rbd:%s/%s rbd:%s/%s:conf=%s' % (pool, tmp_image_name, pool, image_name, conf_path))
+                shell.check_run('%s -f qcow2 -O rbd rbd:%s/%s rbd:%s/%s:conf=%s' % 
+                        (qemu_img.subcmd('convert'), pool, tmp_image_name, pool, image_name, conf_path))
                 shell.check_run('rbd rm %s/%s' % (pool, tmp_image_name))
             finally:
                 if conf_path:
@@ -981,12 +1012,14 @@ class CephAgent(object):
         src_install_path = self._normalize_install_path(src_install_path)
         dst_install_path = self._normalize_install_path(dst_install_path)
 
-        rst = shell.run("rbd export %s - | tee >(md5sum >/tmp/%s_src_md5) | sshpass -p %s ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s -p %s 'tee >(md5sum >/tmp/%s_dst_md5) | rbd import - %s'" % (src_install_path, image_uuid, linux.shellquote(dst_mon_passwd), dst_mon_user, dst_mon_addr, dst_mon_port, image_uuid, dst_install_path))
+        ssh_cmd, tmp_file = linux.build_sshpass_cmd(dst_mon_addr, dst_mon_passwd, 'tee >(md5sum >/tmp/%s_dst_md5) | rbd import - %s' % (image_uuid, dst_install_path), dst_mon_user, dst_mon_port)
+        rst = shell.run("rbd export %s - | tee >(md5sum >/tmp/%s_src_md5) | %s" % (src_install_path, image_uuid, ssh_cmd))
+        linux.rm_file_force(tmp_file)
         if rst != 0:
             return rst
 
         src_md5 = self._read_file_content('/tmp/%s_src_md5' % image_uuid)
-        dst_md5 = shell.call("sshpass -p %s ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s -p %s 'cat /tmp/%s_dst_md5'" % (linux.shellquote(dst_mon_passwd), dst_mon_user, dst_mon_addr, dst_mon_port, image_uuid))
+        dst_md5 = linux.sshpass_call(dst_mon_addr, dst_mon_passwd, 'cat /tmp/%s_dst_md5' % image_uuid, dst_mon_user, dst_mon_port)
         if src_md5 != dst_md5:
             return -1
         else:
@@ -1002,6 +1035,15 @@ class CephAgent(object):
             rsp.success = False
             rsp.error = "Failed to migrate image from one ceph backup storage to another."
         self._set_capacity_to_response(rsp)
+        return jsonobject.dumps(rsp)
+
+    @replyerror
+    def cancel(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentResponse()
+        if not traceable_shell.cancel_job(cmd):
+            rsp.success = False
+            rsp.error = "no matched job to cancel"
         return jsonobject.dumps(rsp)
 
 class CephDaemon(daemon.Daemon):

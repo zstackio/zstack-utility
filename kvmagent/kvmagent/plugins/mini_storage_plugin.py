@@ -33,12 +33,31 @@ DEFAULT_CHUNK_SIZE = "4194304"
 DRBD_START_PORT = 20000
 
 
+class AgentCmd(object):
+    def __init__(self):
+        pass
+
+
 class AgentRsp(object):
     def __init__(self):
         self.success = True
         self.error = None
         self.totalCapacity = None
         self.availableCapacity = None
+
+
+class ConnectCmd(AgentCmd):
+    @log.sensitive_fields("peerSshPassword", "peerSshUsername")
+    def __init__(self):
+        super(ConnectCmd, self).__init__()
+        self.diskIdentifiers = []
+        self.forceWipe = False
+        self.storageNetworkCidr = None
+        self.fencerAddress = None
+        self.magementAddress = None
+        self.peerManagementAddress = None
+        self.peerSshPassword = None
+        self.peerSshUsername = None
 
 
 class ConnectRsp(AgentRsp):
@@ -59,6 +78,7 @@ class VolumeRsp(AgentRsp):
         self.remoteRole = None
         self.remoteDiskStatus = None
         self.remoteNetworkStatus = None
+        self.minor = None
 
     def _init_from_drbd(self, r):
         """
@@ -68,13 +88,15 @@ class VolumeRsp(AgentRsp):
         if not r.minor_allocated():
             self.localNetworkStatus = drbd.DrbdNetState.Unconfigured
             return
-        self.actualSize = lvm.get_lv_size(r.config.local_host.disk)
+        self.actualSize = int(lvm.get_lv_size(r.config.local_host.disk))
         self.resourceUuid = r.name
         self.localRole = r.get_role()
         self.localDiskStatus = r.get_dstate()
         self.remoteRole = r.get_remote_role()
         self.remoteDiskStatus = r.get_remote_dstate()
         self.localNetworkStatus = r.get_cstate()
+        self.minor = int(r.config.local_host.minor)
+
 
 
 class ActiveRsp(VolumeRsp):
@@ -232,7 +254,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
 
     def start(self):
         http_server = kvmagent.get_http_server()
-        http_server.register_async_uri(self.CONNECT_PATH, self.connect)
+        http_server.register_async_uri(self.CONNECT_PATH, self.connect, cmd=ConnectCmd())
         http_server.register_async_uri(self.DISCONNECT_PATH, self.disconnect)
         http_server.register_async_uri(self.CREATE_VOLUME_FROM_CACHE_PATH, self.create_root_volume)
         http_server.register_async_uri(self.DELETE_BITS_PATH, self.delete_bits)
@@ -336,7 +358,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         return False
 
     @kvmagent.replyerror
-    @lock.file_lock(LOCK_FILE)
+    @lock.file_lock(LOCK_FILE, debug=True)
     def connect(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = ConnectRsp()
@@ -392,6 +414,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         rsp.vgLvmUuid = lvm.get_vg_lvm_uuid(cmd.vgUuid)
         rsp.hostUuid = cmd.hostUuid
+        logger.debug("mini primary storage[uuid: %s] on host[uuid: %s] connected" % (cmd.vgUuid, cmd.hostUuid))
         return jsonobject.dumps(rsp)
 
     @staticmethod
@@ -400,7 +423,9 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         def configure_ssh_key():
             bash.bash_roe("/bin/rm %s*" % mini_fencer.MINI_FENCER_KEY)
             bash.bash_roe("ssh-keygen -P \"\" -f %s" % mini_fencer.MINI_FENCER_KEY)
-            r, o, e = bash.bash_roe("sshpass -p '%s' ssh-copy-id -i %s %s@%s" % (peer_password, mini_fencer.MINI_FENCER_KEY, peer_username, peer_addr))
+            ssh_pswd_file = linux.write_to_temp_file(peer_password)
+            r, o, e = bash.bash_roe("sshpass -f %s ssh-copy-id -i %s %s@%s" % (ssh_pswd_file, mini_fencer.MINI_FENCER_KEY, peer_username, peer_addr))
+            linux.write_to_temp_file(ssh_pswd_file)
             if r == 0:
                 return
 
@@ -410,6 +435,8 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         bash.bash_roe("sed -i 's/^PEER_USERNAME = .*$/PEER_USERNAME = \"%s\"/g' %s" % (peer_username, fencer_path))
         bash.bash_roe("sed -i 's/^PEER_MGMT_ADDR = .*$/PEER_MGMT_ADDR = \"%s\"/g' %s" % (peer_addr, fencer_path))
         bash.bash_roe("cp %s /usr/lib/drbd/mini_fencer.py" % fencer_path)
+        linux.sync_file(fencer_path)
+        linux.sync_file("/usr/lib/drbd/mini_fencer.py")
         bash.bash_roe("sudo chmod 777 /usr/lib/drbd/mini_fencer.py")
 
     @kvmagent.replyerror
@@ -470,7 +497,6 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         if command.return_code != 0:
             self.create_vg_if_not_found(cmd.vgUuid, [disk.get_path()], cmd.hostUuid, cmd.forceWipe)
         else:
-            lvm.check_gl_lock()
             if cmd.forceWipe is True:
                 lvm.wipe_fs([disk.get_path()], cmd.vgUuid)
             lvm.add_pv(cmd.vgUuid, disk.get_path(), DEFAULT_VG_METADATA_SIZE)
@@ -495,7 +521,8 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
             r.resize()
 
         with drbd.OperateDrbd(r):
-            if not cmd.live:
+            fmt = linux.get_img_fmt(r.get_dev_path())
+            if not cmd.live and fmt == 'qcow2':
                 shell.call("qemu-img resize %s %s" % (r.get_dev_path(), cmd.size))
             ret = linux.qcow2_virtualsize(r.get_dev_path())
         rsp.size = ret
@@ -625,9 +652,18 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def download_from_imagestore(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        if cmd.size is not None and cmd.provisioning is not None:
+            lvm.create_lv_from_cmd(self.convertInstallPathToAbsolute(cmd.primaryStorageInstallPath), cmd.size, cmd,
+                                   "%s::%s::%s" % (IMAGE_TAG, cmd.hostUuid, time.time()), False)
+            lvm.active_lv(self.convertInstallPathToAbsolute(cmd.primaryStorageInstallPath))
         self.imagestore_client.download_from_imagestore(cmd.mountPoint, cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
         rsp = AgentRsp()
         return jsonobject.dumps(rsp)
+
+    @staticmethod
+    def convertInstallPathToAbsolute(path):
+        # type: (string) -> string
+        return path.replace("mini:/", "/dev")
 
     @kvmagent.replyerror
     def create_empty_volume(self, req):
@@ -730,6 +766,9 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
             drbdResource.demote()
             rsp._init_from_drbd(drbdResource)
             return jsonobject.dumps(rsp)
+
+        if drbdResource.exists is False:
+            raise Exception("can not find volume %s" % cmd.installPath)
 
         if self.test_network_ok_to_peer(drbdResource.config.remote_host.address.split(":")[0]) is False \
                 and mini_fencer.test_fencer(cmd.vgUuid, drbdResource.name) is False:

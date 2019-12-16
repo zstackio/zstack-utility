@@ -33,6 +33,7 @@ fs_rootpath = ""
 remote_user = "root"
 remote_pass = None
 remote_port = None
+host_uuid = None
 require_python_env = "false"
 tmout = None
 
@@ -53,6 +54,7 @@ zsn_root = "%s/zsn-agent/package" % zstack_root
 host_post_info = HostPostInfo()
 host_post_info.host_inventory = args.i
 host_post_info.host = host
+host_post_info.host_uuid = host_uuid
 host_post_info.post_url = post_url
 host_post_info.chrony_servers = chrony_servers
 host_post_info.private_key = args.private_key
@@ -129,21 +131,24 @@ post_msg(msg, post_url)
 
 if successTmout is True and len(stdoutMd5.strip()) != 0 and stdoutMd5.split(" ")[0] == oldMd5.split(" ")[0]:
     host_post_info.start_time = start_time
-    handle_ansible_info("SUCC: Deploy zstack network agent successful", host_post_info, "INFO")
+    command = "systemctl daemon-reload && systemctl enable zstack-network-agent.service && systemctl start zstack-network-agent.service"
+    run_remote_command(add_true_in_command(command), host_post_info)
+    handle_ansible_info("SUCC: Deploy zstack network agent successful(only enable and start)", host_post_info, "INFO")
     sys.exit(0)
 
 run_remote_command(add_true_in_command("pkill zsn-agent; /bin/rm /etc/init.d/zstack-network-agent"), host_post_info)
 
 service_env = "'ZSNARGS=-log-file /var/log/zstack/zsn-agent/zsn-agent.log -tmout %s'" % int(tmout)
 service_env = service_env.replace("/", "\/")
-command = "sed -i \"s/.*Environment=.*/Environment=%s/g\" /usr/lib/systemd/system/zstack-network-agent.service" % service_env
+
+replace_content("/usr/lib/systemd/system/zstack-network-agent.service", "regexp='.*Environment=.*' replace='Environment=\'%s\''" % service_env, host_post_info)
 run_remote_command(add_true_in_command(command), host_post_info)
 
 command = "systemctl daemon-reload && systemctl enable zstack-network-agent.service && systemctl restart zstack-network-agent.service"
 run_remote_command(add_true_in_command(command), host_post_info)
 
 host_post_info.start_time = start_time
-handle_ansible_info("SUCC: Deploy zstack network agent successful", host_post_info, "INFO")
+handle_ansible_info("SUCC: Deploy zstack network agent successful(killed old one and restart)", host_post_info, "INFO")
 
 sys.exit(0)
 

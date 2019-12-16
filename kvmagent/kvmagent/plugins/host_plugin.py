@@ -5,32 +5,36 @@
 import base64
 import copy
 import hashlib
+import os
+import os.path
 import platform
+import re
+import tempfile
+import time
+import uuid
+
+import libvirt
+from typing import Dict
+
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
 from kvmagent.plugins.imagestore import ImageStoreClient
-from zstacklib.utils import jsonobject
 from zstacklib.utils import http
-from zstacklib.utils import lock
-from zstacklib.utils import log
-from zstacklib.utils import shell
-from zstacklib.utils import sizeunit
 from zstacklib.utils import linux
+from zstacklib.utils import iptables
+from zstacklib.utils import jsonobject
+from zstacklib.utils import lock
+from zstacklib.utils import sizeunit
+from zstacklib.utils import thread
+from zstacklib.utils import traceable_shell
 from zstacklib.utils import xmlobject
 from zstacklib.utils.bash import *
-from zstacklib.utils.report import Report
-from zstacklib.utils import iptables
-from zstacklib.utils import thread
 from zstacklib.utils.ip import get_nic_supported_max_speed
-import os
-import os.path
-import re
-import time
-import uuid
-import tempfile
+from zstacklib.utils.report import Report
 
 IS_AARCH64 = platform.machine() == 'aarch64'
 GRUB_FILES = ["/boot/grub2/grub.cfg", "/boot/grub/grub.cfg", "/etc/grub2-efi.cfg", "/etc/grub-efi.cfg", "/boot/efi/EFI/centos/grub.cfg"]
+IPTABLES_CMD = iptables.get_iptables_cmd()
 
 class ConnectResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -160,29 +164,35 @@ class HostNetworkBondingInventory(object):
         self._init_from_name()
 
     def _init_from_name(self):
+        def get_nic(n, i):
+            o = HostNetworkInterfaceInventory(n)
+            self.slaves[i] = o
+
         if self.bondingName is None:
             return
-        self.mode = bash_o("cat /sys/class/net/%s/bonding/mode" % self.bondingName).strip()
-        self.xmitHashPolicy = bash_o("cat /sys/class/net/%s/bonding/xmit_hash_policy" % self.bondingName).strip()
-        self.miiStatus = bash_o("cat /sys/class/net/%s/bonding/mii_status" % self.bondingName).strip()
-        self.mac = bash_o("cat /sys/class/net/%s/address" % self.bondingName).strip()
+        self.mode = linux.read_file("/sys/class/net/%s/bonding/mode" % self.bondingName).strip()
+        self.xmitHashPolicy = linux.read_file("/sys/class/net/%s/bonding/xmit_hash_policy" % self.bondingName).strip()
+        self.miiStatus = linux.read_file("/sys/class/net/%s/bonding/mii_status" % self.bondingName).strip()
+        self.mac = linux.read_file("/sys/class/net/%s/address" % self.bondingName).strip()
         self.ipAddresses = [x.strip() for x in
-                          bash_o("ip -o a show %s | grep 'inet ' | awk '{print $4}'" % self.bondingName).splitlines()]
+                          bash_o("ip -o a show %s | awk '/inet /{print $4}'" % self.bondingName).splitlines()]
         if len(self.ipAddresses) == 0:
-            r, master = bash_ro("cat /sys/class/net/%s/master/ifindex" % self.bondingName)
-            if r == 0:
+            master = linux.read_file("/sys/class/net/%s/master/ifindex" % self.bondingName)
+            if master:
                 self.ipAddresses = [x.strip() for x in bash_o(
-                    "ip -o a list | grep '^%s: ' | grep 'inet ' | awk '{print $4}'" % master.strip()).splitlines()]
-        self.miimon = bash_o("cat /sys/class/net/%s/bonding/miimon" % self.bondingName).strip()
-        self.allSlavesActive = bash_o(
-            "cat /sys/class/net/%s/bonding/all_slaves_active" % self.bondingName).strip() == "0"
-        self.slaves = []
-        slave_names = bash_o("cat /sys/class/net/%s/bonding/slaves" % self.bondingName).strip().split(" ")
+                    "ip -o a list | grep '^%s: ' | awk '/inet /{print $4}'" % master.strip()).splitlines()]
+        self.miimon = linux.read_file("/sys/class/net/%s/bonding/miimon" % self.bondingName).strip()
+        self.allSlavesActive = linux.read_file("/sys/class/net/%s/bonding/all_slaves_active" % self.bondingName).strip() == "0"
+        slave_names = linux.read_file("/sys/class/net/%s/bonding/slaves" % self.bondingName).strip().split(" ")
         if len(slave_names) == 0:
             return
 
-        for name in slave_names:
-            self.slaves.append(HostNetworkInterfaceInventory(name))
+        self.slaves = [None] * len(slave_names)
+        threads = []
+        for idx, name in enumerate(slave_names, start=0):
+            threads.append(thread.ThreadFacade.run_in_thread(get_nic, [name.strip(), idx]))
+        for t in threads:
+            t.join()
 
     def _to_dict(self):
         to_dict = self.__dict__
@@ -194,7 +204,9 @@ class HostNetworkBondingInventory(object):
 
 
 class HostNetworkInterfaceInventory(object):
-    def __init__(self, name=None):
+    __cache__ = dict()  # type: Dict[str, List[int, HostNetworkInterfaceInventory]]
+
+    def init(self, name):
         super(HostNetworkInterfaceInventory, self).__init__()
         self.interfaceName = name
         self.speed = None
@@ -206,27 +218,47 @@ class HostNetworkInterfaceInventory(object):
         self.master = None
         self._init_from_name()
 
+    @classmethod
+    def __get_cache__(cls, name):
+        # type: (str) -> HostNetworkInterfaceInventory
+        c = cls.__cache__.get(name)
+        if c is None:
+            return None
+        if (time.time() - c[0]) < 60:
+            return c[1]
+        return None
+
+    def __new__(cls, name, *args, **kwargs):
+        o = cls.__get_cache__(name)
+        if o:
+            return o
+        o = super(HostNetworkInterfaceInventory, cls).__new__(cls)
+        o.init(name)
+        cls.__cache__[name] = [int(time.time()), o]
+        return o
+
+    @in_bash
     def _init_from_name(self):
         if self.interfaceName is None:
             return
         self.speed = get_nic_supported_max_speed(self.interfaceName)
-        self.carrierActive = bash_o("cat /sys/class/net/%s/carrier" % self.interfaceName).strip() == "1"
-        self.mac = bash_o("cat /sys/class/net/%s/address" % self.interfaceName).strip()
+        self.carrierActive = linux.read_file("/sys/class/net/%s/carrier" % self.interfaceName).strip() == "1"
+        self.mac = linux.read_file("/sys/class/net/%s/address" % self.interfaceName).strip()
         self.ipAddresses = [x.strip() for x in
-                          bash_o("ip -o a show %s | grep 'inet ' | awk '{print $4}'" % self.interfaceName).splitlines()]
+                          bash_o("ip -o a show %s | awk '/inet /{print $4}'" % self.interfaceName).splitlines()]
 
-        r, master = bash_ro("cat /sys/class/net/%s/master/ifindex" % self.interfaceName)
-        if r == 0 and master.strip() != "":
+        master = linux.read_file("/sys/class/net/%s/master/ifindex" % self.interfaceName)
+        if master and master.strip() != "":
             self.master = bash_o("ip link | grep -E '^%s: ' | awk '{print $2}'" % master.strip()).strip().strip(":")
         if len(self.ipAddresses) == 0:
-            if r == 0:
+            if master is not None:
                 self.ipAddresses = [x.strip() for x in bash_o(
-                    "ip -o a list | grep '^%s: ' | grep 'inet ' | awk '{print $4}'" % master.strip()).splitlines()]
+                    "ip -o a list | grep '^%s: ' | awk '/inet /{print $4}'" % master.strip()).splitlines()]
         if self.master is None:
             self.interfaceType = "noMaster"
         elif len(bash_o("ip link show type bond_slave %s" % self.interfaceName).strip()) > 0:
             self.interfaceType = "bondingSlave"
-            self.slaveActive = self.interfaceName in bash_o("cat /sys/class/net/%s/bonding/active_slave" % self.master)
+            self.slaveActive = self.interfaceName in linux.read_file("/sys/class/net/%s/bonding/active_slave" % self.master)
         else:
             self.interfaceType = "bridgeSlave"
 
@@ -299,6 +331,34 @@ class UngenerateVfioMdevDevicesRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(UngenerateVfioMdevDevicesRsp, self).__init__()
 
+class UpdateSpiceChannelConfigResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(UpdateSpiceChannelConfigResponse, self).__init__()
+        self.restartLibvirt = False
+
+# using kvmagent to transmit vm operations to management node
+# like start/stop/reboot a specific vm instance
+class VmOperation(object):
+    def __init__(self):
+        self.uuid = None
+        self.operation = None
+
+class TransmitVmOperationToMnCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(TransmitVmOperationToMnCmd, self).__init__()
+        self.uuid = None
+        self.operation = None
+
+class TransmitVmOperationToMnRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(TransmitVmOperationToMnRsp, self).__init__()
+
+class ChangeHostPasswordCmd(kvmagent.AgentCommand):
+    @log.sensitive_fields("password")
+    def __init__(self):
+        super(ChangeHostPasswordCmd, self).__init__()
+        self.password = None  # type:str
+
 class PciDeviceTO(object):
     def __init__(self):
         self.name = ""
@@ -321,13 +381,14 @@ class UpdateConfigration(object):
     def __init__(self):
         self.path = None
         self.enableIommu = None
+        self.iommu_type = 'amd_iommu' if 'hygon' in linux.get_cpu_model()[1].lower() or 'amd' in linux.get_cpu_model()[1].lower() else 'intel_iommu'
 
     def executeCmdOnFile(self, shellCmd):
         return bash_roe("%s %s" % (shellCmd, self.path))
 
     def updateHostIommu(self):
-        r_on, o_on, e_on = self.executeCmdOnFile("grep -E 'intel_iommu(\ )*=(\ )*on'")
-        r_off, o_off, e_off = self.executeCmdOnFile("grep -E 'intel_iommu(\ )*=(\ )*off'")
+        r_on, o_on, e_on = self.executeCmdOnFile("grep -E '{}(\ )*=(\ )*on'".format(self.iommu_type))
+        r_off, o_off, e_off = self.executeCmdOnFile("grep -E '{}(\ )*=(\ )*off'".format(self.iommu_type))
         r_modprobe_blacklist, o_modprobe_blacklist, e_modprobe_blacklist = self.executeCmdOnFile("grep -E 'modprobe.blacklist(\ )*='")
         #When iommu has not changed,  No need to update /etc/default/grub
         if self.enableIommu is False:
@@ -338,11 +399,11 @@ class UpdateConfigration(object):
                 return True,None
 
         if r_on == 0:
-            r, o, e = self.executeCmdOnFile( "sed -i '/GRUB_CMDLINE_LINUX/s/[[:blank:]]*intel_iommu[[:blank:]]*=[[:blank:]]*on//g'")
+            r, o, e = self.executeCmdOnFile( "sed -i '/GRUB_CMDLINE_LINUX/s/[[:blank:]]*{}[[:blank:]]*=[[:blank:]]*on//g'".format(self.iommu_type))
             if r != 0:
                 return False, "%s %s" % (e, o)
         if r_off == 0:
-            r, o, e = self.executeCmdOnFile("sed -i '/GRUB_CMDLINE_LINUX/s/[[:blank:]]*intel_iommu[[:blank:]]*=[[:blank:]]*off//g'")
+            r, o, e = self.executeCmdOnFile("sed -i '/GRUB_CMDLINE_LINUX/s/[[:blank:]]*{}[[:blank:]]*=[[:blank:]]*off//g'".format(self.iommu_type))
             if r != 0:
                 return False, "%s %s" % (e, o)
         if r_modprobe_blacklist == 0:
@@ -357,18 +418,18 @@ class UpdateConfigration(object):
                     return False, "%s %s" % (e, o)
 
         if self.enableIommu is True:
-            r, o, e = self.executeCmdOnFile("sed -i '/GRUB_CMDLINE_LINUX/s/\"$/ intel_iommu=on modprobe.blacklist=snd_hda_intel,amd76x_edac,vga16fb,nouveau,rivafb,nvidiafb,rivatv,amdgpu,radeon\"/g'")
+            r, o, e = self.executeCmdOnFile("sed -i '/GRUB_CMDLINE_LINUX/s/\"$/ {}=on modprobe.blacklist=snd_hda_intel,amd76x_edac,vga16fb,nouveau,rivafb,nvidiafb,rivatv,amdgpu,radeon\"/g'".format(self.iommu_type))
             if r != 0:
                 return False, "%s %s" % (e, o)
 
         return True, None
 
     def updateGrubConfig(self):
-        linux.updateGrubFile("grep -E 'intel_iommu(\ )*=(\ )*on'", "sed -i '/^[[:space:]]*linux/s/[[:blank:]]*intel_iommu[[:blank:]]*=[[:blank:]]*on//g'", GRUB_FILES)
-        linux.updateGrubFile("grep -E 'intel_iommu(\ )*=(\ )*off'", "sed -i '/^[[:space:]]*linux/s/[[:blank:]]*intel_iommu[[:blank:]]*=[[:blank:]]*off//g'", GRUB_FILES)
+        linux.updateGrubFile("grep -E '{0}(\ )*=(\ )*on'", "sed -i '/^[[:space:]]*linux/s/[[:blank:]]*{0}[[:blank:]]*=[[:blank:]]*on//g'".format(self.iommu_type), GRUB_FILES)
+        linux.updateGrubFile("grep -E '{0}(\ )*=(\ )*off'", "sed -i '/^[[:space:]]*linux/s/[[:blank:]]*{0}[[:blank:]]*=[[:blank:]]*off//g'".format(self.iommu_type), GRUB_FILES)
         linux.updateGrubFile("grep -E 'modprobe.blacklist(\ )*='", "sed -i '/^[[:space:]]*linux/s/[[:blank:]]*modprobe.blacklist[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g'", GRUB_FILES)
         if self.enableIommu is True:
-            linux.updateGrubFile(None, "sed -i '/^[[:space:]]*linux/s/$/ intel_iommu=on modprobe.blacklist=snd_hda_intel,amd76x_edac,vga16fb,nouveau,rivafb,nvidiafb,rivatv,amdgpu,radeon/g'", GRUB_FILES)
+            linux.updateGrubFile(None, "sed -i '/^[[:space:]]*linux/s/$/ {}=on modprobe.blacklist=snd_hda_intel,amd76x_edac,vga16fb,nouveau,rivafb,nvidiafb,rivatv,amdgpu,radeon/g'".format(self.iommu_type), GRUB_FILES)
         bash_o("modprobe vfio && modprobe vfio-pci")
 
 logger = log.get_logger(__name__)
@@ -410,6 +471,7 @@ class HostPlugin(kvmagent.KvmAgent):
     HOST_STOP_USB_REDIRECT_PATH = "/host/usbredirect/stop"
     CHECK_USB_REDIRECT_PORT = "/host/usbredirect/check"
     IDENTIFY_HOST = "/host/identify"
+    CHANGE_PASSWORD = "/host/changepassword"
     GET_HOST_NETWORK_FACTS = "/host/networkfacts"
     HOST_XFS_SCRAPE_PATH = "/host/xfs/scrape"
     HOST_SHUTDOWN = "/host/shutdown"
@@ -419,7 +481,10 @@ class HostPlugin(kvmagent.KvmAgent):
     UNGENERATE_SRIOV_PCI_DEVICES = "/pcidevice/ungenerate"
     GENERATE_VFIO_MDEV_DEVICES = "/mdevdevice/generate"
     UNGENERATE_VFIO_MDEV_DEVICES = "/mdevdevice/ungenerate"
+    HOST_UPDATE_SPICE_CHANNEL_CONFIG_PATH = "/host/updateSpiceChannelConfig";
+    TRANSMIT_VM_OPERATION_TO_MN_PATH = "/host/transmitvmoperation"
 
+    host_network_facts_cache = {}  # type: Dict[float, list[list, list]]
 
     def _get_libvirt_version(self):
         ret = shell.call('libvirtd --version')
@@ -439,9 +504,9 @@ class HostPlugin(kvmagent.KvmAgent):
         """Prepare firewall rules for libvirt live migration."""
 
         mrule = "-A INPUT -p tcp -m tcp --dport 49152:49261 -j ACCEPT"
-        rules = bash_o("iptables -w -S INPUT").splitlines()
+        rules = bash_o("%s -S INPUT" % IPTABLES_CMD).splitlines()
         if not mrule in rules:
-            bash_r("iptables -w %s" % mrule.replace("-A ", "-I "))
+            bash_r("%s %s" % (IPTABLES_CMD, mrule.replace("-A ", "-I ")))
 
     @lock.file_lock('/run/xtables.lock')
     @in_bash
@@ -533,6 +598,8 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.qemuImgVersion = qemu_img_version
         rsp.libvirtVersion = self.libvirt_version
         rsp.ipAddresses = ipV4Addrs.splitlines()
+        rsp.cpuArchitecture = platform.machine()
+
         if IS_AARCH64:
             # FIXME how to check vt of aarch64?
             rsp.hvmCpuFlag = 'vt'
@@ -594,8 +661,8 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.totalMemory = _get_total_memory()
         rsp.usedMemory = used_memory
 
-        ninfo = self._get_node_info()
-        rsp.cpuSockets = ninfo[4] * ninfo[5]
+        sockets = bash_o('grep "physical id" /proc/cpuinfo | sort -u | wc -l').strip()
+        rsp.cpuSockets = int(sockets)
         if rsp.cpuSockets == 0:
             rsp.cpuSockets = 1
 
@@ -809,7 +876,7 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.usbDevicesInfo = usbDevicesInfo
         return jsonobject.dumps(rsp)
 
-    @lock.file_lock('/usr/bin/_report_device_event.sh')
+    @lock.file_lock('/run/usb_rules.lock')
     def handle_usb_device_events(self):
         bash_str = """#!/usr/bin/env python
 import urllib2
@@ -823,12 +890,12 @@ if __name__ == "__main__":
     post_msg("{'hostUuid':'%s'}", '%s')
 """ % (self.config.get(kvmagent.HOST_UUID), self.config.get(kvmagent.SEND_COMMAND_URL))
 
-        bash_file = '/usr/bin/_report_device_event.py'
-        with open(bash_file, 'w') as f:
+        event_report_script = '/usr/bin/_report_device_event.py'
+        with open(event_report_script, 'w') as f:
             f.write(bash_str)
-        os.chmod(bash_file, 0o755)
+        os.chmod(event_report_script, 0o755)
 
-        rule_str = 'ACTION=="add|remove", SUBSYSTEM=="usb", RUN="%s"' % bash_file
+        rule_str = 'ACTION=="add|remove", SUBSYSTEM=="usb", RUN="%s"' % event_report_script
         rule_path = '/etc/udev/rules.d/'
         rule_file = os.path.join(rule_path, 'usb.rules')
         if not os.path.exists(rule_path):
@@ -840,21 +907,19 @@ if __name__ == "__main__":
     @in_bash
     def update_os(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        if not cmd.excludePackages:
-            exclude = ""
-        else:
-            exclude = "--exclude=" + cmd.excludePackages
-        yum_cmd = "yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn%s %s update -y" % \
-                (',zstack-experimental-mn' if cmd.enableExpRepo else '', exclude)
-
+        exclude = "--exclude=" + cmd.excludePackages if cmd.excludePackages else ""
+        updates = cmd.updatePackages if cmd.updatePackages else ""
+        releasever = cmd.releaseVersion if cmd.releaseVersion else kvmagent.get_host_yum_release()
+        yum_cmd = "export YUM0={};yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{} {} update {} -y"
+        yum_cmd = yum_cmd.format(releasever, ',zstack-experimental-mn' if cmd.enableExpRepo else '', exclude, updates)
         rsp = UpdateHostOSRsp()
         if shell.run("which yum") != 0:
             rsp.success = False
             rsp.error = "no yum command found, cannot update host os"
-        elif shell.run("yum --disablerepo=* --enablerepo=zstack-mn repoinfo") != 0:
+        elif shell.run("export YUM0={};yum --disablerepo=* --enablerepo=zstack-mn repoinfo".format(releasever)) != 0:
             rsp.success = False
             rsp.error = "no zstack-mn repo found, cannot update host os"
-        elif shell.run("yum --disablerepo=* --enablerepo=qemu-kvm-ev-mn repoinfo") != 0:
+        elif shell.run("export YUM0={};yum --disablerepo=* --enablerepo=qemu-kvm-ev-mn repoinfo".format(releasever)) != 0:
             rsp.success = False
             rsp.error = "no qemu-kvm-ev-mn repo found, cannot update host os"
         elif shell.run(yum_cmd) != 0:
@@ -868,14 +933,15 @@ if __name__ == "__main__":
     @in_bash
     def update_dependency(self, req):
         rsp = UpdateDependencyRsp()
-        yum_cmd = "yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install `cat /var/lib/zstack/dependencies` -y"
+        releasever = kvmagent.get_host_yum_release()
+        yum_cmd = "export YUM0={};yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install `cat /var/lib/zstack/dependencies` -y".format(releasever)
         if shell.run("which yum") != 0:
             rsp.success = False
             rsp.error = "no yum command found, cannot update kvmagent dependencies"
-        elif shell.run("yum --disablerepo=* --enablerepo=zstack-mn repoinfo") != 0:
+        elif shell.run("export YUM0={};yum --disablerepo=* --enablerepo=zstack-mn repoinfo".format(releasever)) != 0:
             rsp.success = False
             rsp.error = "no zstack-mn repo found, cannot update kvmagent dependencies"
-        elif shell.run("yum --disablerepo=* --enablerepo=qemu-kvm-ev-mn repoinfo") != 0:
+        elif shell.run("export YUM0={};yum --disablerepo=* --enablerepo=qemu-kvm-ev-mn repoinfo".format(releasever)) != 0:
             rsp.success = False
             rsp.error = "no qemu-kvm-ev-mn repo found, cannot update kvmagent dependencies"
         elif shell.run(yum_cmd) != 0:
@@ -1050,6 +1116,16 @@ done
         isc.clean_imagestore_cache(cmd.mountPath)
         return jsonobject.dumps(kvmagent.AgentResponse())
 
+    @kvmagent.replyerror
+    def change_password(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+        tmpfile = linux.write_to_temp_file("root:" + str(cmd.password))
+        shell.call("/usr/sbin/chpasswd < %s" % tmpfile)
+        os.remove(tmpfile)
+        return jsonobject.dumps(rsp)
+
+
     def identify_host(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
@@ -1060,25 +1136,59 @@ done
     @kvmagent.replyerror
     def get_host_network_facts(self, req):
         rsp = GetHostNetworkBongdingResponse()
+        cache = HostPlugin.__get_cache__()
+        if cache is not None:
+            rsp.bondings = cache[0]
+            rsp.nics = cache[1]
+            return jsonobject.dumps(rsp)
+
         rsp.bondings = self.get_host_networking_bonds()
         rsp.nics = self.get_host_networking_interfaces()
+
+        HostPlugin.__store_cache__(rsp.bondings, rsp.nics)
         return jsonobject.dumps(rsp)
+
+    @classmethod
+    def __get_cache__(cls):
+        # type: () -> (list, list)
+        keys = cls.host_network_facts_cache.keys()
+        if keys is None or len(keys) == 0:
+            return None
+        if (time.time() - keys[0]) < 10:
+            return cls.host_network_facts_cache.get(keys[0])
+        return None
+
+    @classmethod
+    def __store_cache__(cls, bonds, nics):
+        # type: (list, list) -> None
+        cls.host_network_facts_cache.clear()
+        cls.host_network_facts_cache.update({time.time(): [bonds, nics]})
 
     @staticmethod
     def get_host_networking_interfaces():
         nics = []
+
+        def get_nic(n, i):
+            o = HostNetworkInterfaceInventory(n)
+            nics[i] = o
+
+        threads = []
         nic_names = bash_o("find /sys/class/net -type l -not -lname '*virtual*' -printf '%f\\n'").splitlines()
         if len(nic_names) == 0:
             return nics
-        for nic in nic_names:
-            nics.append(HostNetworkInterfaceInventory(nic.strip()))
+
+        nics = [None] * len(nic_names)
+        for idx, nic in enumerate(nic_names, start=0):
+            threads.append(thread.ThreadFacade.run_in_thread(get_nic, [nic.strip(), idx]))
+        for t in threads:
+            t.join()
         return nics
 
     @staticmethod
     def get_host_networking_bonds():
         bonds = []
-        r, bond_names = bash_ro("cat /sys/class/net/bonding_masters")
-        if r != 0:
+        bond_names = linux.read_file("/sys/class/net/bonding_masters")
+        if not bond_names:
             return bonds
         bond_names = bond_names.strip().split(" ")
         if len(bond_names) == 0:
@@ -1256,9 +1366,12 @@ done
             return jsonobject.dumps(rsp)
 
         updateConfigration.updateGrubConfig()
-
-        r_bios, o_bios, e_bios = bash_roe("find /sys -iname dmar*")
-        r_kernel, o_kernel, e_kernel = bash_roe("grep 'intel_iommu=on' /proc/cmdline")
+        iommu_type = updateConfigration.iommu_type
+        if iommu_type == "amd_iommu":
+            r_bios, o_bios, e_bios = bash_roe("dmesg | grep -e DMAR -e IOMMU")
+        else:
+            r_bios, o_bios, e_bios = bash_roe("find /sys -iname dmar*")
+        r_kernel, o_kernel, e_kernel = bash_roe("grep '{}=on' /proc/cmdline".format(iommu_type))
         if o_bios != '' and r_kernel == 0:
             rsp.hostIommuStatus = True
         else:
@@ -1453,6 +1566,61 @@ done
             rsp.error = "failed to ungenerate vfio mdev devices from pci device[addr:%s]" % addr
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    @in_bash
+    def update_spice_channel_config(self, req):
+        # Note: /etc/libvirt/qemu.conf is overwritten when connect host
+        rsp = UpdateSpiceChannelConfigResponse()
+        r1 = bash_r("grep '^[[:space:]]*spice_tls[[:space:]]*=[[:space:]]*1' /etc/libvirt/qemu.conf")
+        r2 = bash_r("grep '^[[:space:]]*spice_tls_x509_cert_dir[[:space:]]*=[[:space:]]*' /etc/libvirt/qemu.conf")
+
+        if r1 == 0 and r2 == 0:
+            return jsonobject.dumps(rsp)
+
+        if r1 != 0:
+            r = bash_r("sed -i '$a spice_tls = 1' /etc/libvirt/qemu.conf")
+            if r != 0:
+                rsp.success = False
+                rsp.error = "update /etc/libvirt/qemu.conf failed, please check qemu.conf"
+                return jsonobject.dumps(rsp)
+
+        if r2 != 0:
+            r = bash_r("sed -i '$a spice_tls_x509_cert_dir = \"/var/lib/zstack/kvm/package/spice-certs/\"' /etc/libvirt/qemu.conf")
+            if r != 0:
+                rsp.success = False
+                rsp.error = "update /etc/libvirt/qemu.conf failed, please check qemu.conf"
+                return jsonobject.dumps(rsp)
+
+        shell.call('systemctl restart libvirtd')
+        rsp.restartLibvirt = True
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def cancel(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+        if not traceable_shell.cancel_job(cmd):
+            rsp.success = False
+            rsp.error = "no matched job to cancel"
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def transmit_vm_operation_to_vm(self, req):
+        rsp = TransmitVmOperationToMnRsp()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        vm_operation = VmOperation()
+        vm_operation.uuid = cmd.uuid
+        vm_operation.operation = cmd.operation
+        url = self.config.get(kvmagent.SEND_COMMAND_URL)
+        if not url:
+            raise kvmagent.KvmError("cannot find SEND_COMMAND_URL, unable to transmit vm operation to management node")
+
+        logger.debug('transmitting vm operation [uuid:%s, operation:%s] to management node'% (cmd.uuid, cmd.operation))
+        http.json_dump_post(url, vm_operation, {'commandpath': '/host/transmitvmoperation'})
+        return jsonobject.dumps(rsp)
+
     def start(self):
         self.host_uuid = None
 
@@ -1473,6 +1641,7 @@ done
         http_server.register_async_uri(self.HOST_STOP_USB_REDIRECT_PATH, self.stop_usb_redirect_server)
         http_server.register_async_uri(self.CHECK_USB_REDIRECT_PORT, self.check_usb_server_port)
         http_server.register_async_uri(self.IDENTIFY_HOST, self.identify_host)
+        http_server.register_async_uri(self.CHANGE_PASSWORD, self.change_password, cmd=ChangeHostPasswordCmd())
         http_server.register_async_uri(self.GET_HOST_NETWORK_FACTS, self.get_host_network_facts)
         http_server.register_async_uri(self.HOST_XFS_SCRAPE_PATH, self.get_xfs_frag_data)
         http_server.register_async_uri(self.HOST_SHUTDOWN, self.shutdown_host)
@@ -1482,6 +1651,9 @@ done
         http_server.register_async_uri(self.UNGENERATE_SRIOV_PCI_DEVICES, self.ungenerate_sriov_pci_devices)
         http_server.register_async_uri(self.GENERATE_VFIO_MDEV_DEVICES, self.generate_vfio_mdev_devices)
         http_server.register_async_uri(self.UNGENERATE_VFIO_MDEV_DEVICES, self.ungenerate_vfio_mdev_devices)
+        http_server.register_async_uri(self.HOST_UPDATE_SPICE_CHANNEL_CONFIG_PATH, self.update_spice_channel_config)
+        http_server.register_async_uri(self.CANCEL_JOB, self.cancel)
+        http_server.register_sync_uri(self.TRANSMIT_VM_OPERATION_TO_MN_PATH, self.transmit_vm_operation_to_vm)
 
         self.heartbeat_timer = {}
         self.libvirt_version = self._get_libvirt_version()

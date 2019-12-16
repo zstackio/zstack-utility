@@ -17,6 +17,7 @@ from zstacklib.utils import shell
 from zstacklib.utils import http
 from zstacklib.utils import xmlobject
 from zstacklib.utils.bash import in_bash
+from zstacklib.utils.plugin import completetask
 
 logger = log.get_logger(__name__)
 
@@ -67,6 +68,10 @@ class ConvertRsp(AgentRsp):
 
 def getHostname(uri):
     return urlparse.urlparse(uri).hostname
+
+def getUsername(uri):
+    u = urlparse.urlparse(uri)
+    return u.username if u.username else 'root'
 
 def getSshTargetAndPort(uri):
     u = urlparse.urlparse(uri)
@@ -225,7 +230,11 @@ def listVirtualMachines(url, sasluser, saslpass, keystr):
             logger.info("domain xml for vm: {}\n{}".format(info.name, xmldesc))
 
             dxml = xmlobject.loads(xmldesc)
-            info.macAddresses = getMacs(dxml.devices.interface)
+            if dxml.devices.hasattr('interface'):
+                info.macAddresses = getMacs(dxml.devices.interface)
+            else:
+                info.macAddresses = []
+
             info.volumes = getVolumes(dom, dxml)
 
             vms.append(info)
@@ -272,12 +281,21 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
     def init(self, req):
         rsp = AgentRsp()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        spath = None
         if cmd.storagePath:
             spath = getRealStoragePath(cmd.storagePath)
+            linux.mkdir(spath)
+
             with open('/etc/exports.d/zs-v2v.exports', 'w') as f:
                 f.write("{} *(rw,sync,no_root_squash)\n".format(spath))
 
         shell.check_run('systemctl restart nfs-server')
+
+        if spath is not None:
+            fstype = shell.call("""stat -f -c '%T' {}""".format(spath)).strip()
+            if fstype not in [ "xfs", "ext2", "ext3", "ext4", "jfs", "btrfs" ]:
+                raise Exception("unexpected fstype '{}' on '{}'".format(fstype, cmd.storagePath))
+
         shell.check_run('iptables-save | grep -w 2049 || iptables -I INPUT -p tcp --dport 2049 -j ACCEPT')
         return jsonobject.dumps(rsp)
 
@@ -289,16 +307,18 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
 
         if cmd.sshPassword and not cmd.sshPrivKey:
             target, port = getSshTargetAndPort(cmd.libvirtURI)
+            ssh_pswd_file = linux.write_to_temp_file(cmd.sshPassword)
             if not os.path.exists(V2V_PRIV_KEY) or not os.path.exists(V2V_PUB_KEY):
                 shell.check_run("yes | ssh-keygen -t rsa -N '' -f {}".format(V2V_PRIV_KEY))
-            cmdstr = "HOME={4} timeout 30 sshpass -p {0} ssh-copy-id -i {5} -p {1} {2} {3}".format(
-                    linux.shellquote(cmd.sshPassword),
+            cmdstr = "HOME={4} timeout 30 sshpass -f {0} ssh-copy-id -i {5} -p {1} {2} {3}".format(
+                    ssh_pswd_file,
                     port,
                     DEF_SSH_OPTS,
                     target,
                     os.path.expanduser("~"),
                     V2V_PUB_KEY)
             shell.check_run(cmdstr)
+            linux.rm_file_force(ssh_pswd_file)
 
         rsp.qemuVersion, rsp.libvirtVersion, rsp.vms = listVirtualMachines(cmd.libvirtURI,
                 cmd.saslUser,
@@ -307,44 +327,66 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    @completetask
     def convert(self, req):
         def buildFilterDict(filterList):
             fdict = {}
             if not filterList:
                 return fdict
             for f in filterList:
-                fdict[f.identifier] = f
+                fdict[f.deviceId] = f
             return fdict
 
         def skipVolume(fdict, name):
             f = fdict.get(name)
             return f and f.skip
 
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = ConvertRsp()
+        def get_mount_command(cmd):
+            timeout_str = "timeout 30"
+            username = getUsername(cmd.libvirtURI)
+            if username == 'root':
+                return "{0} mount".format(timeout_str)
+            if cmd.sshPassword:
+                return "echo {0} | {1} sudo -S mount".format(cmd.sshPassword, timeout_str)
+            return "{0} sudo mount".format(timeout_str)
 
+        def validate_and_make_dir(_dir):
+            exists = os.path.exists(_dir)
+            if not exists:
+                linux.mkdir(_dir)
+            return exists
+
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
         real_storage_path = getRealStoragePath(cmd.storagePath)
         storage_dir = os.path.join(real_storage_path, cmd.srcVmUuid)
-        linux.mkdir(storage_dir)
+
+        rsp = ConvertRsp()
+        last_task = self.load_and_save_task(req, rsp, validate_and_make_dir, storage_dir)
+        if last_task and last_task.agent_pid == os.getpid():
+            rsp = self.wait_task_complete(last_task)
+            return jsonobject.dumps(rsp)
 
         local_mount_point = os.path.join("/tmp/zs-v2v/", cmd.managementIp)
         vm_v2v_dir = os.path.join(local_mount_point, cmd.srcVmUuid)
+        mount_cmd = get_mount_command(cmd)
+        mount_paths = "{}:{} {}".format(cmd.managementIp, real_storage_path, local_mount_point)
+        alternative_mount = mount_cmd + " -o vers=3"
 
         try:
             with lock.NamedLock(local_mount_point):
                 runSshCmd(cmd.libvirtURI, cmd.sshPrivKey,
-                        "mkdir -p {0} && ls {1} 2>/dev/null || timeout 30 mount {2}:{3} {4}".format(
+                        "mkdir -p {0} && ls {1} 2>/dev/null || {2} {3} || {4} {3}".format(
                             local_mount_point,
                             vm_v2v_dir,
-                            cmd.managementIp,
-                            real_storage_path,
-                            local_mount_point))
+                            mount_cmd,
+                            mount_paths,
+                            alternative_mount))
         except shell.ShellError as ex:
             logger.info(str(ex))
             raise Exception('target host cannot access NFS on {}'.format(cmd.managementIp))
 
         libvirtHost = getHostname(cmd.libvirtURI)
-        if linux.find_route_interface_by_destination_ip(libvirtHost):
+        if linux.find_route_interface_by_destination_ip(linux.get_host_by_name(libvirtHost)):
             cmdstr = "tc filter replace dev %s protocol ip parent 1: prio 1 u32 match ip src %s/32 flowid 1:1" \
                      % (QOS_IFB, libvirtHost)
             shell.run(cmdstr)
@@ -357,11 +399,12 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
             if not dom:
                 raise Exception('VM not found: {}'.format(cmd.srcVmUuid))
 
-            dxml = xmlobject.loads(dom.XMLDesc(0))
+            xmlDesc = dom.XMLDesc(0)
+            dxml = xmlobject.loads(xmlDesc)
             if dxml.os.hasattr('firmware_') and dxml.os.firmware_ == 'efi' or dxml.os.hasattr('loader'):
                 rsp.bootMode = 'UEFI'
 
-            volumes = getVolumes(dom, dxml)
+            volumes = filter(lambda v: not skipVolume(filters, v.name), getVolumes(dom, dxml))
             oldstat, _ = dom.state()
             needResume = True
 
@@ -369,10 +412,14 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                 dom.suspend()
                 needResume = False
 
-            for v in volumes:
-                if skipVolume(filters, v.name):
-                    continue
+            # libvirt >= 3.7.0 ?
+            flags = 0 if c.getLibVersion() < 3 * 1000000 + 7 * 1000 else libvirt.VIR_DOMAIN_BLOCK_COPY_TRANSIENT_JOB
+            needDefine = False
+            if flags == 0 and dom.isPersistent():
+                dom.undefine()
+                needDefine = True
 
+            for v in volumes:
                 localpath = os.path.join(storage_dir, v.name)
                 info = dom.blockJobInfo(v.name, 0)
                 if os.path.exists(localpath) and not info:
@@ -382,19 +429,27 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                 if info:
                     continue
 
+                logger.info("start copying {}/{} ...".format(cmd.srcVmUuid, v.name))
+
+                # c.f. https://github.com/OpenNebula/one/issues/2646
+                linux.touch_file(localpath)
+
                 dom.blockCopy(v.name,
-                    "<disk type='file'><source file='{}'/><driver type='qcow2'/></disk>".format(os.path.join(vm_v2v_dir, v.name)),
+                    "<disk type='file'><source file='{}'/><driver type='{}'/></disk>".format(os.path.join(vm_v2v_dir, v.name), cmd.format),
                     None,
-                    libvirt.VIR_DOMAIN_BLOCK_COPY_TRANSIENT_JOB)
+                    flags)
 
             while True:
                 for v in volumes:
+                    if v.endTime:
+                        continue
                     info = dom.blockJobInfo(v.name, 0)
                     if not info:
                         raise Exception('blockjob not found on disk: '+v.name)
                     if info['cur'] == info['end']:
                         v.endTime = time.time()
-                if all(map(lambda v: v.endTime)):
+                        logger.info("completed copying {}/{} ...".format(cmd.srcVmUuid, v.name))
+                if all(map(lambda v: v.endTime, volumes)):
                     break
                 time.sleep(5)
 
@@ -408,6 +463,8 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
             finally:
                 if needResume:
                     dom.resume()
+                if needDefine:
+                    c.defineXML(xmlDesc)
 
         # TODO
         #  - monitor progress

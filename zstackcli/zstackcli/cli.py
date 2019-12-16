@@ -388,6 +388,8 @@ Parse command parameters error:
                     all_params[params[0]] = eval_string(params[0], params[1])
                 elif apiname == 'APIGetIAM2VirtualIDAPIPermissionMsg' and params[0] == 'apisToCheck':
                     all_params[params[0]] = eval_string(params[0], params[1], True)
+                elif apiname == 'APICreatePriceTableMsg' and params[0] == 'prices':
+                    all_params[params[0]] = eval_string(params[0], params[1])
                 elif is_api_param_a_list(apiname, params[0]):
                     all_params[params[0]] = escape_split(params[1])
                 else:
@@ -514,6 +516,13 @@ Parse command parameters error:
                 setattr(msg, key, value)
             return msg
 
+        def create_event(apiname):
+            event_name = apiname[0:-3] + "Event"
+            try:
+                return eval('inventory.%s()' % event_name)
+            except:
+                return None
+
         def set_session_to_api(msg):
             session = inventory.Session()
             session.uuid = self.session_uuid
@@ -538,6 +547,7 @@ Parse command parameters error:
             raise CliError("No session uuid defined")
 
         msg = create_msg(apiname, all_params)
+        event = create_event(apiname)
         set_session_to_api(msg)
         try:
             if apiname in [self.LOGIN_MESSAGE_NAME, self.LOGIN_BY_USER_NAME, self.CREATE_ACCOUNT_NAME,
@@ -560,7 +570,7 @@ Parse command parameters error:
                     setattr(msg, 'sessionUuid', self.session_uuid)
 
             start_time = time.time()
-            (name, event) = self.api.async_call_wait_for_complete(msg, fail_soon=True)
+            (name, event) = self.api.async_call_wait_for_complete(msg, apievent=event, fail_soon=True)
             end_time = time.time()
 
             if apiname in [self.LOGIN_MESSAGE_NAME, self.LOGIN_BY_USER_NAME, self.LOGIN_BY_LDAP_MESSAGE_NAME,

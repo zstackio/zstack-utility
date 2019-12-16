@@ -17,8 +17,9 @@ import functools
 import threading
 import re
 import platform
-import mmap
 
+from zstacklib.utils import qemu_img
+from zstacklib.utils import lock
 from zstacklib.utils import shell
 from zstacklib.utils import log
 
@@ -286,6 +287,9 @@ def remount(url, path, options=None):
     elif o.return_code != 0:
         o.raise_error()
 
+def get_host_name():
+    return os.uname()[1]
+
 def sshfs_mount_with_vm_uuid(vmuuid, username, hostname, port, password, url, mountpoint, writebandwidth=None):
     is_aio = shell.run("pgrep -a qemu-kvm | grep %s | grep aio=native" % vmuuid) == 0
     return sshfs_mount(username, hostname, port, password, url, mountpoint, writebandwidth, not is_aio)
@@ -488,6 +492,36 @@ def ssh(hostname, sshkey, cmd, user='root', sshPort=22):
         if sshkey_file:
             os.remove(sshkey_file)
 
+def sshpass_run(hostname, password, cmd, user='root', port=22):
+    sshpass_file = write_to_temp_file(password)
+    os.chmod(sshpass_file, 0600)
+
+    try:
+        s = shell.ShellCmd('sshpass -f %s ssh -p %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s "%s"' % (
+            sshpass_file, port, user, hostname, cmd))
+        s(False)
+        return s.return_code, s.stdout, s.stderr
+    finally:
+        rm_file_force(sshpass_file)
+
+def sshpass_call(hostname, password, cmd, user='root', port=22):
+    sshpass_file = write_to_temp_file(password)
+    os.chmod(sshpass_file, 0600)
+
+    try:
+        return shell.call('sshpass -f %s ssh -p %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s "%s"' % (
+            sshpass_file, port, user, hostname, cmd))
+    finally:
+        rm_file_force(sshpass_file)
+
+def build_sshpass_cmd(hostname, password, cmd, user='root', port=22):
+    sshpass_file = write_to_temp_file(password)
+    os.chmod(sshpass_file, 0600)
+
+    cmd = 'sshpass -f %s ssh -p %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s "%s"' % (
+            sshpass_file, port, user, hostname, cmd)
+    return cmd, sshpass_file
+
 def get_local_file_size(path):
     return os.path.getsize(path)
 
@@ -622,7 +656,8 @@ def sftp_get(hostname, sshkey, filename, download_to, timeout=0, interval=1, cal
             os.remove(batch_file_path)
 
 def qcow2_size_and_actual_size(file_path):
-    cmd = shell.ShellCmd('''set -o pipefail; qemu-img info %s |  awk '{if (/^virtual size:/) {vs=substr($4,2)}; if (/^disk size:/) {ds=$3} } END{print vs?vs:"null", ds?ds:"null"}' ''' % file_path)
+    cmd = shell.ShellCmd('''set -o pipefail; %s %s | awk '{if (/^virtual size:/) {vs=substr($4,2)}; if (/^disk size:/) {ds=$3} } END{print vs?vs:"null", ds?ds:"null"}' ''' %
+            (qemu_img.subcmd('info'), file_path))
     cmd(False)
     if cmd.return_code != 0:
         raise Exception('cannot get the virtual/actual size of the file[%s], %s %s' % (shellquote(file_path), cmd.stdout, cmd.stderr))
@@ -662,7 +697,8 @@ def get_img_file_fmt(src):
     return fmt
 
 def get_img_fmt(src):
-    fmt = shell.call("set -o pipefail; /usr/bin/qemu-img info %s | grep -w '^file format' | awk '{print $3}'" % src)
+    fmt = shell.call("set -o pipefail; %s %s | grep -w '^file format' | awk '{print $3}'" %
+            (qemu_img.subcmd('info'), src))
     fmt = fmt.strip(' \t\r\n')
     if fmt != 'raw' and fmt != 'qcow2':
         logger.debug("/usr/bin/qemu-img info %s" % src)
@@ -732,37 +768,38 @@ def raw_create(dst, size):
     shell.check_run('/usr/bin/qemu-img create -f raw %s %s' % (dst, size))
     os.chmod(dst, 0666)
 
-def create_template(src, dst, compress=False):
+def create_template(src, dst, compress=False, shell=shell):
     fmt = get_img_fmt(src)
     if fmt == 'raw':
-        return raw_create_template(src, dst)
+        return raw_create_template(src, dst, shell=shell)
     if fmt == 'qcow2':
-        return qcow2_create_template(src, dst, compress)
+        return qcow2_create_template(src, dst, compress, shell=shell)
     raise Exception('unknown format[%s] of the image file[%s]' % (fmt, src))
 
-def qcow2_create_template(src, dst, compress):
+def qcow2_create_template(src, dst, compress, shell=shell):
     if compress:
-        shell.call('/usr/bin/qemu-img convert -c -f qcow2 -O qcow2 %s %s' % (src, dst))
+        shell.call('%s -c -f qcow2 -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
     else:
-        shell.call('/usr/bin/qemu-img convert -f qcow2 -O qcow2 %s %s' % (src, dst))
+        shell.call('%s -f qcow2 -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
 
-def raw_create_template(src, dst):
-    shell.call('/usr/bin/qemu-img convert -f raw -O qcow2 %s %s' % (src, dst))
+def raw_create_template(src, dst, shell=shell):
+    shell.call('%s -f raw -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
 
 def qcow2_convert_to_raw(src, dst):
-    shell.call('/usr/bin/qemu-img convert -f qcow2 -O raw %s %s' % (src, dst))
+    shell.call('%s -f qcow2 -O raw %s %s' % (qemu_img.subcmd('convert'), src, dst))
 
 def qcow2_rebase(backing_file, target):
     fmt = get_img_fmt(backing_file)
-    shell.call('/usr/bin/qemu-img rebase -F %s -f qcow2 -b %s %s' % (fmt, backing_file, target))
+    shell.call('%s -F %s -f qcow2 -b %s %s' % (qemu_img.subcmd('rebase'), fmt, backing_file, target))
 
 def qcow2_rebase_no_check(backing_file, target):
     fmt = get_img_fmt(backing_file)
-    shell.call('/usr/bin/qemu-img rebase -F %s -u -f qcow2 -b %s %s' % (fmt, backing_file, target))
+    shell.call('%s -F %s -u -f qcow2 -b %s %s' % (qemu_img.subcmd('rebase'), fmt, backing_file, target))
 
 def qcow2_virtualsize(file_path):
     file_path = shellquote(file_path)
-    cmd = shell.ShellCmd("set -o pipefail; qemu-img info %s | grep -w 'virtual size' | awk -F '(' '{print $2}' | awk '{print $1}'" % file_path)
+    cmd = shell.ShellCmd("set -o pipefail; %s %s | grep -w 'virtual size' | awk -F '(' '{print $2}' | awk '{print $1}'" %
+            (qemu_img.subcmd('info'), file_path))
     cmd(False)
     if cmd.return_code != 0:
         raise Exception('cannot get the virtual size of the file[%s], %s %s' % (file_path, cmd.stdout, cmd.stderr))
@@ -772,7 +809,8 @@ def qcow2_virtualsize(file_path):
 def qcow2_get_backing_file(path):
     if not os.path.exists(path):
         # for rbd image
-        out = shell.call("qemu-img info %s | grep 'backing file:' | cut -d ':' -f 2" % path)
+        out = shell.call("%s %s | grep 'backing file:' | cut -d ':' -f 2" %
+                (qemu_img.subcmd('info'), path))
         return out.strip(' \t\r\n')
 
     with open(path, 'r') as resp:
@@ -808,7 +846,8 @@ def qcow2_direct_get_backing_file(path):
 
 # Get derived file and all its backing files
 def qcow2_get_file_chain(path):
-    out = shell.call("qemu-img info --backing-chain %s | grep 'image:' | awk '{print $2}'" % path)
+    out = shell.call("%s --backing-chain %s | grep 'image:' | awk '{print $2}'" %
+            (qemu_img.subcmd('info'), path))
     return out.splitlines()
 
 def get_qcow2_file_chain_size(path):
@@ -826,8 +865,8 @@ def get_qcow2_base_image_recusively(vol_install_dir, image_cache_dir):
     real_vol_dir = os.path.realpath(vol_install_dir)
     real_cache_dir = os.path.realpath(image_cache_dir)
     backing_files = shell.call(
-        "set -o pipefail; find %s -type f -name '*.qcow2' -exec qemu-img info {} \;| grep 'backing file:' | awk '{print $3}'"
-        % real_vol_dir).splitlines()
+        "set -o pipefail; find %s -type f -name '*.qcow2' -exec %s {} \;| grep 'backing file:' | awk '{print $3}'"
+        % (real_vol_dir, qemu_img.subcmd('info'))).splitlines()
 
     base_image = set()
     for backing_file in backing_files:
@@ -851,7 +890,7 @@ def qcow2_fill(seek, length, path, raise_excpetion=False):
 
 def qcow2_measure_required_size(path):
     out = shell.call("/usr/bin/qemu-img measure -f qcow2 -O qcow2 %s | grep 'required size' | cut -d ':' -f 2" % path)
-    return out.strip(' \t\r\n')
+    return long(out.strip(' \t\r\n'))
 
 def rmdir_if_empty(dirpath):
     try:
@@ -950,31 +989,12 @@ def find_route_interface_by_destination_ip(ip_addr):
     '''
         find the interface for route, when connect to the destination ip.
     '''
-    route = find_route_destination_ip(ip_addr)
+    route = shell.call("ip r get {}".format(ip_addr))
     if route:
         return route.split('dev')[1].strip().split()[0]
 
-def find_route_destination_ip(ip_addr):
-    def check_ip_mask():
-        ip_obj = netaddr.IPNetwork('%s/%s' % (ip_addr, mask))
-        if str(ip_obj.network) == ip:
-            return True
-
-    routes = []
-    out = shell.call('ip route')
-    for line in out.split('\n'):
-        line.strip()
-        if line:
-            if "/" in line.split()[0]:
-                routes.append(line)
-
-    for route in routes:
-        ip, mask = route.split()[0].split('/')
-        if check_ip_mask():
-            return route
-
 def find_route_interface_ip_by_destination_ip(ip_addr):
-    route = find_route_destination_ip(ip_addr)
+    route = shell.call("ip r get {}".format(ip_addr))
     if route:
         return route.split('src')[1].strip().split()[0]
 
@@ -1096,6 +1116,11 @@ def get_cpu_num():
     out = shell.call("grep -c processor /proc/cpuinfo")
     return int(out)
 
+def get_cpu_model():
+    vendor_id = shell.call("lscpu |awk -F':' '{IGNORECASE=1}/Vendor ID/{print $2}'").strip()
+    model_name = shell.call("lscpu |awk -F':' '{IGNORECASE=1}/Model name/{print $2}'").strip()
+    return vendor_id, model_name
+
 @retry(times=3, sleep_time=3)
 def get_cpu_speed():
     max_freq = '/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq'
@@ -1143,6 +1168,15 @@ def get_pids_by_process_name(name):
     if cmd.return_code != 0:
         return None
     return output.split('\n')
+
+def get_pids_by_process_fullname(name):
+    cmd = shell.ShellCmd("pkill -0 -e -f '%s'" % name)
+    output = cmd(False)
+    if cmd.return_code != 0:
+        return None
+
+    # format from 'bash killed (pid 32162)'
+    return [line[17:-1] for line in output.splitlines()]
 
 def get_nic_name_by_mac(mac):
     names = get_nic_names_by_mac(mac)
@@ -1256,6 +1290,16 @@ def create_vlan_bridge(bridgename, ethname, vlan, ip=None, netmask=None):
 def enable_process_coredump(pid):
     memsize = 4 * 1024 * 1024
     shell.run('prlimit --core=%d --pid %s' % (memsize, pid))
+
+def set_vm_priority(pid, priorityConfig):
+    cmd = shell.ShellCmd("virsh schedinfo %s --set cpu_shares=%s --live" % (priorityConfig.vmUuid, priorityConfig.cpuShares))
+    cmd(is_exception=False)
+    if cmd.return_code != 0:
+        logger.warn("set vm %s cpu_shares failed" % priorityConfig.vmUuid)
+
+    oom_score_adj_path = "/proc/%s/oom_score_adj" % pid
+    if write_file(oom_score_adj_path, priorityConfig.oomScoreAdj) is None:
+        logger.warn("set vm %s oomScoreAdj failed" % priorityConfig.vmUuid)
 
 def find_vm_pid_by_uuid(uuid):
     return shell.call("ps aux | grep qemu[-]kvm | awk '/%s/{print $2}'" % uuid).strip()
@@ -1523,6 +1567,7 @@ class TimeoutObject(object):
             raise Exception('after %s seconds, the object[%s] is still there, not timeout' % (timeout, name))
 
     def _start(self):
+        @lock.lock("timeout-object")
         def clean_timeout_object():
             current_time = time.time()
             for name, obj in self.objects.items():
@@ -1551,6 +1596,21 @@ def kill_process(pid, timeout=5):
     os.kill(int(pid), 9)
     if not wait_callback_success(check, None, timeout):
         raise Exception('cannot kill -9 process[pid:%s];the process still exists after %s seconds' % (pid, timeout))
+
+def kill_all_child_process(ppid, timeout=5):
+    def check(_):
+        return not os.path.exists('/proc/%s' % ppid)
+
+    if check(None):
+        return
+
+    shell.run("pkill -15 -P %s" % ppid)
+    if wait_callback_success(check, None, timeout):
+        return
+
+    shell.run("pkill -9 -P %s" % ppid)
+    if not wait_callback_success(check, None, timeout):
+        raise Exception('cannot kill -9 child process[ppid:%s];the process still exists after %s seconds' % (ppid, timeout))
 
 def get_gateway_by_default_route():
     cmd = shell.ShellCmd("ip route | grep default | head -n 1 | cut -d ' ' -f 3")
@@ -1643,23 +1703,20 @@ def create_vxlan_bridge(interf, bridgeName, ips):
     populate_vxlan_fdb(interf, ips)
 
 def populate_vxlan_fdb(interf, ips):
-    success = True
+    cmds = []
     for ip in ips:
-        cmd = shell.ShellCmd("bridge fdb append to 00:00:00:00:00:00 dev %s dst %s" % (
-            interf, ip))
-        cmd(is_exception=False)
-        success = success and (cmd.return_code == 0)
+        cmd = "bridge fdb append to 00:00:00:00:00:00 dev %s dst %s" % (interf, ip)
+        cmds.append(cmd)
 
-    return success
+    cmd = shell.ShellCmd(";".join(cmds))
+    cmd(is_exception=False)
+
+    return cmd.return_code == 0
 
 def get_interfs_from_uuids(uuids):
-    strUuids = ""
-    for uuid in uuids:
-        strUuids += "%s|" % uuid
+    strUuids = "\|".join(uuids)
 
-    strUuids.rstrip("|")
-
-    cmd = shell.ShellCmd("ip link | grep -E '%s' -B2 | grep vxlan | awk '{ print $2}' | tr ':' ' '" % strUuids)
+    cmd = shell.ShellCmd("ip link | grep '%s' -B2 | grep vxlan | awk '{ print $2}' | tr ':' ' '" % strUuids)
     o = cmd(is_exception=False)
 
     if o == "":
@@ -1764,6 +1821,15 @@ def read_file(path):
     with open(path, 'r') as fd:
         return fd.read()
 
+def write_file(path, content, create_if_not_exist = False):
+    if not os.path.exists(path) and not create_if_not_exist:
+        logger.warn("write file failed because the path %s was not found", path)
+        return None
+
+    with open(path, "w") as f:
+        f.write(str(content))
+    return path
+
 
 def tail_1(path):
     if not os.path.exists(path):
@@ -1779,6 +1845,9 @@ def tail_1(path):
 
 
 def get_libvirtd_pid():
+    if not os.path.exists('/var/run/libvirtd.pid'):
+        return None
+
     with open('/var/run/libvirtd.pid') as f:
         return int(f.read())
 
@@ -1805,13 +1874,20 @@ def get_agent_pid_by_name(name):
     output = output.strip(" \t\r")
     return output
 
-if hasattr(os, 'sync'):
-    sync = os.sync
-else:
-    import ctypes
-    libc = ctypes.CDLL("libc.so.6")
-    def sync():
-        libc.sync()
+import ctypes
+libc = ctypes.CDLL("libc.so.6")
+
+def sync_file(fpath):
+    if not os.path.isfile(fpath):
+        return
+
+    fd = os.open(fpath, os.O_RDONLY|os.O_NONBLOCK)
+    try:
+        libc.syncfs(fd)
+    except:
+        pass
+    finally:
+        os.close(fd)
 
 def updateGrubFile(grepCmd, sedCmd, files):
     if not grepCmd is None:
@@ -1830,5 +1906,23 @@ def updateGrubFile(grepCmd, sedCmd, files):
     return True, None
 
 def set_fail_if_no_path():
-    cmd = shell.ShellCmd('ms=`multipath -l -v1`; for m in $ms; do dmsetup message $m 0 "fail_if_no_path"; done')
+    cmd = shell.ShellCmd('ms=`dmsetup ls --target multipath | awk \'{print $1}\'`; for m in $ms; do dmsetup message $m 0 "fail_if_no_path"; done')
+    cmd(is_exception=False, logcmd=False)
+
+def get_root_physical_disk():
+    # type: () -> list[str]
+    def remove_digits(str_list):
+        pattern = '[0-9]'
+        str_list = [re.sub(pattern, '', i) for i in str_list]
+        return str_list
+
+    root_disk = shell.call("mount | grep 'on / ' | grep -o '/dev/.* on' | cut -d ' ' -f1", False).strip()
+    cmd = shell.ShellCmd("dmsetup table %s" % root_disk)
     cmd(is_exception=False)
+    if cmd.return_code != 0:
+        return remove_digits([root_disk])
+    dm_name = shell.call("readlink -e %s | awk -F '/' '{print $NF}'" % root_disk).strip()
+    slaves = shell.call("ls /sys/block/%s/slaves/" % dm_name).splitlines()
+
+    return remove_digits(["/dev/%s" % slave for slave in slaves])
+

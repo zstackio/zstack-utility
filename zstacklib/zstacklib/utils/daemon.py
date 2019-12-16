@@ -3,7 +3,7 @@
 import sys, os, time, atexit
 import traceback
 import locale
-from signal import SIGTERM,SIGKILL 
+from signal import SIGTERM,SIGKILL
 from zstacklib.utils import linux
 from zstacklib.utils import log
 
@@ -12,22 +12,27 @@ logger = log.get_logger(__name__)
 class Daemon(object):
     """
     A generic daemon class.
-    
+
     Usage: subclass the Daemon class and override the run() method
     """
     atexit_hooks = []
-    
+
     def __init__(self, pidfile, py_process_name, stdin='/dev/null', stdout='/dev/null', stderr='/dev/null'):
         self.stdin = stdin
         self.stdout = stdout
         self.stderr = stderr
         self.pidfile = pidfile
         self.py_process_name = py_process_name
-    
+
     @staticmethod
     def register_atexit_hook(hook):
         Daemon.atexit_hooks.append(hook)
-        
+
+    @staticmethod
+    def _log_and_dump_message(msg, fileobj=sys.stdout):
+        logger.info(msg)
+        if fileobj: fileobj.write(msg)
+
     @staticmethod
     def _atexit():
         for hook in Daemon.atexit_hooks:
@@ -37,37 +42,41 @@ class Daemon(object):
                 content = traceback.format_exc()
                 err = 'Exception when calling atexit hook[%s]\n%s' % (hook.__name__, content)
                 logger.error(err)
-                
+
     def daemonize(self):
         """
-        do the UNIX double-fork magic, see Stevens' "Advanced 
+        do the UNIX double-fork magic, see Stevens' "Advanced
         Programming in the UNIX Environment" for details (ISBN 0201563177)
         http://www.erlenstar.demon.co.uk/unix/faq_2.html#SEC16
         """
-        try: 
-            pid = os.fork() 
+        Daemon._log_and_dump_message("Daemonizing...\n")
+
+        try:
+            pid = os.fork()
             if pid > 0:
                 # exit first parent
-                sys.exit(0) 
-        except OSError, e: 
-            sys.stderr.write("fork #1 failed: %d (%s)\n" % (e.errno, e.strerror))
+                sys.exit(0)
+        except OSError, e:
+            message = "fork #1 failed: %d (%s)\n" % (e.errno, e.strerror)
+            Daemon._log_and_dump_message(message, sys.stderr)
             sys.exit(1)
-    
+
         # decouple from parent environment
-        os.chdir("/") 
-        os.setsid() 
-        os.umask(0) 
-    
+        os.chdir("/")
+        os.setsid()
+        os.umask(0)
+
         # do second fork
-        try: 
-            pid = os.fork() 
+        try:
+            pid = os.fork()
             if pid > 0:
                 # exit from second parent
                 os._exit(0)
-        except OSError, e: 
-            sys.stderr.write("fork #2 failed: %d (%s)\n" % (e.errno, e.strerror))
+        except OSError, e:
+            message = "fork #2 failed: %d (%s)\n" % (e.errno, e.strerror)
+            Daemon._log_and_dump_message(message, sys.stderr)
             os._exit(1)
-    
+
         # redirect standard file descriptors
         sys.stdout.flush()
         sys.stderr.flush()
@@ -77,23 +86,30 @@ class Daemon(object):
         os.dup2(si.fileno(), sys.stdin.fileno())
         os.dup2(so.fileno(), sys.stdout.fileno())
         os.dup2(se.fileno(), sys.stderr.fileno())
-    
+
         # write pidfile
         Daemon.register_atexit_hook(self.delpid)
         atexit.register(Daemon._atexit)
-        file(self.pidfile,'w').write("%d\n" % os.getpid())
-    
+
+        # systemd needs this for non-native service
+        pid = os.getpid()
+        logger.info("writing pidfile (pid=%d)" % pid)
+        try:
+            file(self.pidfile,'w').write("%d\n" % pid)
+        except IOError as e:
+            logger.error(str(e))
+
     def delpid(self):
-        os.remove(self.pidfile)
+        linux.rm_file_force(self.pidfile)
 
     def start(self):
         """
         Start the daemon
         """
-        logger.debug("Start Daemon...")
-        print "Start Daemon..."
+        Daemon._log_and_dump_message("Start Daemon...")
 
         locale.setlocale(locale.LC_ALL, 'C')
+        os.environ["LC_ALL"]="C"
 
         # Get the pid from the pidfile
         try:
@@ -104,12 +120,12 @@ class Daemon(object):
             pid = None
 
         if pid and linux.process_exists(pid):
-            message = "Daemon already running, pid is %s\n"
-            sys.stderr.write(message % pid)
+            message = "Daemon already running, pid is %s\n" % pid
+            Daemon._log_and_dump_message(message, sys.stderr)
             sys.exit(0)
         else:
-            message = "pidfile %s does not exist. Daemon not running?\n"
-            sys.stderr.write(message % self.pidfile)
+            message = "pidfile %s does not exist. Daemon not running?\n" % self.pidfile
+            Daemon._log_and_dump_message(message, sys.stderr)
             self.get_start_agent_by_name()
 
         # Start the daemon
@@ -128,8 +144,8 @@ class Daemon(object):
         """
         Stop the daemon
         """
-        logger.debug("Stop Daemon...")
-        print "Stop Daemon..."
+        Daemon._log_and_dump_message("Stop Daemon...")
+
         #wait 2s for gracefully shutdown, then will force kill
         wait_stop = 2
 
@@ -143,14 +159,13 @@ class Daemon(object):
         if pid and linux.process_exists(pid):
             self.stop_agent_by_pid(pid, wait_stop)
         else:
-            message = "pidfile %s does not exist. Daemon not running?\n"
-            sys.stderr.write(message % self.pidfile)
+            message = "pidfile %s does not exist. Daemon not running?\n" % self.pidfile
+            Daemon._log_and_dump_message(message)
 
             pids = linux.get_agent_pid_by_name(self.py_process_name)
 
             if not pids:
-                message = "Daemon not running?\n"
-                sys.stderr.write(message)
+                Daemon._log_and_dump_message("Daemon not running?\n", sys.stderr)
                 return # not an error in a restart
 
             # exclude self pid
@@ -180,8 +195,8 @@ class Daemon(object):
             if pid and int(pid) != os.getpid():
                 pid = int(pid)
                 if linux.process_exists(pid):
-                    message = "Daemon already running, pid is %s\n"
-                    sys.stderr.write(message % pid)
+                    message = "Daemon already running, pid is %s\n" % pid
+                    Daemon._log_and_dump_message(message)
                     sys.exit(0)
 
     def stop_agent_by_pid(self, pid, wait_stop):

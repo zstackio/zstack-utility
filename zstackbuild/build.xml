@@ -84,6 +84,8 @@
     <import file="${basedir}/projects/zstack-network.xml" optional="false" />
     <import file="${basedir}/projects/zstack-sharedblock.xml" optional="false" />
     <import file="${basedir}/projects/zstack-distro.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-promtail.xml" optional="false" />
+    <import file="${basedir}/projects/guest-tools.xml" optional="false" />
     <import file="${basedir}/projects/build-pypi-source.xml" optional="false" />
     <import file="${basedir}/projects/install-all-zstack-agents-to-local-virtualenv.xml" optional="false" />
 
@@ -392,6 +394,12 @@
             </sequential>
             <sequential>
                 <antcall target="assemble-zstack-sharedblock"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-zstack-promtail"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-guest-tools"/>
             </sequential>
         </parallel>
 

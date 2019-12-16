@@ -21,3 +21,24 @@ def rm_file_force(fpath):
         os.remove(fpath)
     except:
         pass
+
+def read_file(path):
+    if not os.path.exists(path):
+        return None
+    with open(path, 'r') as fd:
+        return fd.read()
+
+import ctypes
+libc = ctypes.CDLL("libc.so.6")
+
+def sync_file(fpath):
+    if not os.path.isfile(fpath):
+        return
+
+    fd = os.open(fpath, os.O_RDONLY|os.O_NONBLOCK)
+    try:
+        libc.syncfs(fd)
+    except:
+        pass
+    finally:
+        os.close(fd)

@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 # encoding=utf-8
 import argparse
+import os.path
+import os
+import re
 from zstacklib import *
 from distutils.version import LooseVersion
 
@@ -25,12 +28,14 @@ virtualenv_version = "12.1.1"
 remote_user = "root"
 remote_pass = None
 remote_port = None
+host_uuid = None
 libvirtd_conf_file = "/etc/libvirt/libvirtd.conf"
+skip_packages = ""
 update_packages = 'false'
-skip_install_virt_pkgs = 'false'
 zstack_lib_dir = "/var/lib/zstack"
 zstack_libvirt_nwfilter_dir = "%s/nwfilter" % zstack_lib_dir
 skipIpv6 = 'false'
+bridgeDisableIptables = 'false'
 
 def update_libvritd_config(host_post_info):
     command = "grep -i ^host_uuid %s" % libvirtd_conf_file
@@ -76,7 +81,7 @@ def check_nested_kvm(host_post_info):
             command = "modprobe -r kvm_intel"
             run_remote_command(command, host_post_info, return_status=True)
         modprobe_arg.name = 'kvm_intel'
-    elif 'amd' in cpu_info:
+    elif 'amd' in cpu_info or 'hygon' in cpu_info:
         if enabled_nested_flag is False:
             command = "modprobe -r kvm_amd"
             run_remote_command(command, host_post_info, return_status=True)
@@ -111,6 +116,7 @@ iproute_local_pkg = "%s/iproute-2.6.32-130.el6ost.netns.2.x86_64.rpm" % kvm_root
 host_post_info = HostPostInfo()
 host_post_info.host_inventory = args.i
 host_post_info.host = host
+host_post_info.host_uuid = host_uuid
 host_post_info.post_url = post_url
 host_post_info.chrony_servers = chrony_servers
 host_post_info.private_key = args.private_key
@@ -121,7 +127,36 @@ if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
 
 # get remote host arch
-IS_AARCH64 = get_remote_host_arch(host_post_info) == 'aarch64'
+host_arch = get_remote_host_arch(host_post_info)
+IS_AARCH64 = host_arch == 'aarch64'
+
+# get remote releasever
+get_releasever_script = '''
+cat << 'EOF' > /opt/get_releasever
+rpm -q zstack-release > /dev/null 2>&1
+[ $? -eq 0 ] && echo `rpm -q zstack-release |awk -F"-" '{print $3}'` && exit 0
+rpm -q centos-release > /dev/null 2>&1
+[ $? -eq 0 ] && echo `rpm -q centos-release|awk -F"." '{print $1}'|awk -F"-" '{print "c"$3$4}'` && exit 0
+rpm -q alios-release-server > /dev/null 2>&1
+[ $? -eq 0 ] && echo `rpm -q alios-release-server |awk -F"-" '{print "c"$4}'|tr -d '.'` && exit 0
+rpm -q redhat-release-server > /dev/null 2>&1
+[ $? -eq 0 ] && echo `rpm -q redhat-release-server |awk -F"-" '{print "c"$4}'|tr -d '.'` && exit 0
+exit 1'''
+run_remote_command(get_releasever_script, host_post_info)
+(status, output) = run_remote_command("bash /opt/get_releasever", host_post_info, True, True)
+if status:
+    # c72 is no longer supported, force set c74
+    releasever = 'c74' if output.strip() == 'c72' else output.strip()
+else:
+    releasever = sorted(os.listdir("/opt/zstack-dvd/{}".format(host_arch)))[-1]
+
+# copy and install zstack-release
+copy_arg = CopyArg()
+copy_arg.src = '/opt/zstack-dvd/{0}/{1}/Packages/zstack-release-{1}-1.el7.zstack.noarch.rpm'.format(host_arch, releasever)
+copy_arg.dest = '/opt/'
+copy(copy_arg, host_post_info)
+run_remote_command("rpm -q zstack-release;[[ $? -eq 0 ]] || yum install -y /opt/zstack-release-{}-1.el7.zstack.noarch.rpm".format(releasever), host_post_info)
+
 if IS_AARCH64:
     dnsmasq_pkg = "%s/dnsmasq-2.76-2.el7.aarch64.rpm" % file_root
     dnsmasq_local_pkg = "%s/dnsmasq-2.76-2.el7.aarch64.rpm" % kvm_root
@@ -168,6 +203,7 @@ zstacklib_args.zstack_root = zstack_root
 zstacklib_args.host_post_info = host_post_info
 zstacklib_args.pip_url = pip_url
 zstacklib_args.trusted_host = trusted_host
+zstacklib_args.zstack_releasever = releasever
 zstacklib = ZstackLib(zstacklib_args)
 
 # name: judge this process is init install or upgrade
@@ -194,9 +230,9 @@ if distro in RPM_BASED_OS:
         extra_pkg = 'collectd-virt' if major_version >= 7 else ""
 
         # common kvmagent deps of x86 and arm that need to update
-        common_update_list = "sanlock sysfsutils hwdata sg3_utils lvm2 lvm2-libs lvm2-lockd systemd"
+        common_update_list = "sanlock sysfsutils hwdata sg3_utils lvm2 lvm2-libs lvm2-lockd systemd openssh"
         # common kvmagent deps of x86 and arm that no need to update
-        common_dep_list = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof MegaCli net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils python-pyudev pv rsync sed smartmontools sshpass usbutils vconfig wget %s %s %s" % (qemu_pkg, extra_pkg, common_update_list)
+        common_dep_list = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof mcelog MegaCli net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils python-pyudev pv rsync sed smartmontools sshpass usbutils vconfig wget %s %s %s" % (qemu_pkg, extra_pkg, common_update_list)
 
         # zstack mini needs higher version kernel etc.
         C76_KERNEL_OR_HIGHER = '3.10.0-957' in get_remote_host_kernel_version(host_post_info)
@@ -217,12 +253,13 @@ if distro in RPM_BASED_OS:
         (status, output) = run_remote_command(command, host_post_info, True, True)
 
         versions = distro_version.split('.')
-        if output and len(versions) > 2 and versions[0] == '7' and versions[1] == '2' or skip_install_virt_pkgs == 'true':
+        if output and len(versions) > 2 and versions[0] == '7' and versions[1] == '2':
             dep_list = dep_list.replace('libvirt libvirt-client libvirt-python ', '')
-        if skip_install_virt_pkgs == 'true':
-            dep_list = dep_list.replace('collectd-virt', '')
-            dep_list = dep_list.replace('qemu-kvm-ev', '')
-            dep_list = dep_list.replace('qemu-kvm', '')
+
+        # skip these packages when connect host
+        _skip_list = re.split(r'[|;,\s]\s*', skip_packages)
+        _dep_list = [ pkg for pkg in dep_list.split() if pkg not in _skip_list ]
+        dep_list = ' '.join(_dep_list)
 
         # name: install/update kvm related packages on RedHat based OS from user defined repo
         # if zstack-manager is not installed, then install/upgrade zstack-host and ignore failures
@@ -237,7 +274,7 @@ if distro in RPM_BASED_OS:
         run_remote_command(command, host_post_info)
     else:
         # name: install kvm related packages on RedHat based OS from online
-        for pkg in ['openssh-clients', 'bridge-utils', 'wget', 'chrony', 'sed', 'libvirt-python', 'libvirt', 'nfs-utils', 'vconfig',
+        for pkg in ['zstack-release', 'openssh-clients', 'bridge-utils', 'wget', 'chrony', 'sed', 'libvirt-python', 'libvirt', 'nfs-utils', 'vconfig',
                     'libvirt-client', 'net-tools', 'iscsi-initiator-utils', 'lighttpd', 'iproute', 'sshpass',
                     'libguestfs-winsupport', 'libguestfs-tools', 'pv', 'rsync', 'nmap', 'ipset', 'usbutils', 'pciutils', 'expect',
                     'lvm2', 'lvm2-lockd', 'sanlock', 'sysfsutils', 'smartmontools', 'device-mapper-multipath', 'hwdata', 'sg3_utils']:
@@ -385,19 +422,25 @@ elif distro in DEB_BASED_OS:
     copy_arg.dest = '/etc/default/libvirt-bin'
     libvirt_bin_status = copy(copy_arg, host_post_info)
     # name: enable bridge forward on UBUNTU
-    command = "modprobe br_netfilter; echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables ; " \
+    if bridgeDisableIptables == "true":
+        command = "modprobe br_netfilter; echo 0 > /proc/sys/net/bridge/bridge-nf-call-iptables ; " \
               "echo 1 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged ; echo 1 > /proc/sys/net/ipv4/conf/default/forwarding"
-    host_post_info.post_label = "ansible.shell.enable.module"
-    host_post_info.post_label_param = "br_netfilter"
-    run_remote_command(command, host_post_info)
-
+        host_post_info.post_label = "ansible.shell.enable.module"
+        host_post_info.post_label_param = "br_netfilter"
+        run_remote_command(command, host_post_info)
+    else:
+        command = "modprobe br_netfilter; echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables ; " \
+                  "echo 1 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged ; echo 1 > /proc/sys/net/ipv4/conf/default/forwarding"
+        host_post_info.post_label = "ansible.shell.enable.module"
+        host_post_info.post_label_param = "br_netfilter"
+        run_remote_command(command, host_post_info)
 else:
     error("unsupported OS!")
 
 #copy scripts
 #copy zs-xxx from mn_node to host_node
 copy_arg = CopyArg()
-copy_arg.src = '/opt/zstack-dvd/scripts/'
+copy_arg.src = '/opt/zstack-dvd/{}/{}/scripts/'.format(host_arch, releasever)
 copy_arg.dest = '/usr/local/bin/'
 copy(copy_arg, host_post_info)
 
@@ -430,10 +473,16 @@ host_post_info.post_label_param = "/etc/libvirt/hooks/qemu"
 run_remote_command(command, host_post_info)
 
 # name: enable bridge forward
-command = "echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables ; echo 1 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged ; echo 1 > /proc/sys/net/ipv4/conf/default/forwarding"
-host_post_info.post_label = "ansible.shell.enable.service"
-host_post_info.post_label_param = "bridge forward"
-run_remote_command(command, host_post_info)
+if bridgeDisableIptables == "true":
+    command = "echo 0 > /proc/sys/net/bridge/bridge-nf-call-iptables ; echo 1 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged ; echo 1 > /proc/sys/net/ipv4/conf/default/forwarding"
+    host_post_info.post_label = "ansible.shell.enable.service"
+    host_post_info.post_label_param = "bridge forward"
+    run_remote_command(command, host_post_info)
+else:
+    command = "echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables ; echo 1 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged ; echo 1 > /proc/sys/net/ipv4/conf/default/forwarding"
+    host_post_info.post_label = "ansible.shell.enable.service"
+    host_post_info.post_label_param = "bridge forward"
+    run_remote_command(command, host_post_info)
 
 if skipIpv6 != 'true':
     # name: copy ip6tables initial rules in RedHat
@@ -442,7 +491,8 @@ if skipIpv6 != 'true':
     copy_arg.src = "%s/ip6tables" % file_root
     copy_arg.dest = "/etc/sysconfig/ip6tables"
     copy(copy_arg, host_post_info)
-    command = "sed -i 's/syslog.target,iptables.service/syslog.target iptables.service/' %s || true;" % IP6TABLE_SERVICE_FILE
+    replace_content(IP6TABLE_SERVICE_FILE,
+                    "regexp='syslog.target,iptables.service' replace='syslog.target iptables.service'", host_post_info)
     run_remote_command(command, host_post_info)
     service_status("ip6tables", "state=restarted enabled=yes", host_post_info)
 
@@ -501,6 +551,43 @@ copy_arg.src = mxgpu_driver_local_tar
 copy_arg.dest = mxgpu_driver_dst_tar
 copy(copy_arg, host_post_info)
 
+
+def copy_spice_certificates_to_host():
+    # name: copy spice certificates
+    if kvm_root is not None:
+        run_remote_command("rm -rf %s/%s && mkdir -p %s/%s " % (kvm_root, "spice-certs", kvm_root, "spice-certs"),
+                           host_post_info)
+
+    local_cert_dir = os.path.join(file_root, "spice-certs")
+    copy_arg = CopyArg()
+    copy_arg.src = "%s/%s" % (local_cert_dir, "ca-cert.pem")
+    copy_arg.dest = "%s/%s/%s" % (kvm_root, "spice-certs", "ca-cert.pem")
+    copy_arg.args = "mode=644"
+    copy(copy_arg, host_post_info)
+
+    copy_arg = CopyArg()
+    copy_arg.src = "%s/%s" % (local_cert_dir, "ca-key.pem")
+    copy_arg.dest = "%s/%s/%s" % (kvm_root, "spice-certs", "ca-key.pem")
+    copy_arg.args = "mode=400"
+    copy(copy_arg, host_post_info)
+
+    copy_arg = CopyArg()
+    copy_arg.src = "%s/%s" % (local_cert_dir, "server-cert.pem")
+    copy_arg.dest = "%s/%s/%s" % (kvm_root, "spice-certs", "server-cert.pem")
+    copy_arg.args = "mode=644"
+    copy(copy_arg, host_post_info)
+
+    copy_arg = CopyArg()
+    copy_arg.src = "%s/%s" % (local_cert_dir, "server-key.pem")
+    copy_arg.dest = "%s/%s/%s" % (kvm_root, "spice-certs", "server-key.pem")
+    copy_arg.args = "mode=400"
+    copy(copy_arg, host_post_info)
+
+
+spice_certificates_path = os.path.join(file_root, "spice-certs")
+if os.path.isdir(spice_certificates_path):
+    copy_spice_certificates_to_host()
+
 # name: install virtualenv
 virtual_env_status = check_and_install_virtual_env(virtualenv_version, trusted_host, pip_url, host_post_info)
 if virtual_env_status is False:
@@ -536,11 +623,11 @@ if copy_kvmagent != "changed:False":
 # name: add audit rules for signals
 AUDIT_CONF_FILE = '/etc/audit/auditd.conf'
 AUDIT_NUM_LOG = 50
-command = "sed -i 's/num_logs = .*/num_logs = %d/' %s || true;" \
-          "systemctl enable auditd; systemctl restart auditd || true; " \
+replace_content(AUDIT_CONF_FILE, "regexp='num_logs = .*' replace='num_logs = %d'" % AUDIT_NUM_LOG, host_post_info)
+command = "systemctl enable auditd; systemctl restart auditd || true; " \
           "auditctl -D -k zstack_log_kill || true; " \
           "auditctl -a always,exit -F arch=b64 -F a1=9 -S kill -k zstack_log_kill || true; " \
-          "auditctl -a always,exit -F arch=b64 -F a1=15 -S kill -k zstack_log_kill || true" % (AUDIT_NUM_LOG, AUDIT_CONF_FILE)
+          "auditctl -a always,exit -F arch=b64 -F a1=15 -S kill -k zstack_log_kill || true"
 host_post_info.post_label = "ansible.shell.audit.signal"
 host_post_info.post_label_param = None
 run_remote_command(command, host_post_info)
@@ -559,7 +646,12 @@ if chroot_env == 'false':
     # name: restart kvmagent, do not use ansible systemctl due to kvmagent can start by itself, so systemctl will not know
     # the kvm agent status when we want to restart it to use the latest kvm agent code
     if distro in RPM_BASED_OS and major_version >= 7:
-        command = "systemctl stop zstack-kvmagent && systemctl start zstack-kvmagent && systemctl enable zstack-kvmagent"
+        # NOTE(weiw): dump threads and wait 1 second for dumping
+        command = "pkill -USR2 -P 1 -ef 'kvmagent import kdaemon' || true && sleep 1"
+        host_post_info.post_label = "ansible.shell.dump.service"
+        host_post_info.post_label_param = "zstack-kvmagent"
+        run_remote_command(command, host_post_info)
+        command = "service zstack-kvmagent stop && service zstack-kvmagent start && chkconfig zstack-kvmagent on"
     elif distro in RPM_BASED_OS:
         command = "service zstack-kvmagent stop && service zstack-kvmagent start && chkconfig zstack-kvmagent on"
     elif distro in DEB_BASED_OS:

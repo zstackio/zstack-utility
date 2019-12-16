@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 import sys, os
 
-version = '3.6.0'
+version = '3.8.0'
 
 setup(name='consoleproxy',
       version=version,

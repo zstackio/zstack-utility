@@ -1,6 +1,7 @@
 import random
 import time
 import string
+import os.path
 
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
@@ -20,6 +21,11 @@ logger = log.get_logger(__name__)
 
 class RetryException(Exception):
     pass
+
+
+class AgentCmd(object):
+    def __init__(self):
+        pass
 
 
 class AgentRsp(object):
@@ -138,12 +144,34 @@ class FcSanScanRsp(AgentRsp):
         self.hbaWwnns = []
 
 
+class IscsiLoginCmd(AgentCmd):
+    @log.sensitive_fields("iscsiChapUserPassword")
+    def __init__(self):
+        super(IscsiLoginCmd, self).__init__()
+        self.iscsiServerIp = None
+        self.iscsiServerPort = None
+        self.iscsiChapUserName = None
+        self.iscsiChapUserPassword = None
+        self.iscsiTargets = []
+
+
 class IscsiLoginRsp(AgentRsp):
     iscsiTargetStructList = None  # type: list[IscsiTargetStruct]
 
     def __init__(self):
         super(IscsiLoginRsp, self).__init__()
         self.iscsiTargetStructList = []
+
+
+class IscsiLogoutCmd(AgentCmd):
+    @log.sensitive_fields("iscsiChapUserPassword")
+    def __init__(self):
+        super(IscsiLogoutCmd, self).__init__()
+        self.iscsiServerIp = None
+        self.iscsiServerPort = None
+        self.iscsiChapUserName = None
+        self.iscsiChapUserPassword = None
+        self.iscsiTargets = []
 
 
 class StorageDevicePlugin(kvmagent.KvmAgent):
@@ -161,8 +189,8 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
     def start(self):
         http_server = kvmagent.get_http_server()
-        http_server.register_async_uri(self.ISCSI_LOGIN_PATH, self.iscsi_login)
-        http_server.register_async_uri(self.ISCSI_LOGOUT_PATH, self.iscsi_logout)
+        http_server.register_async_uri(self.ISCSI_LOGIN_PATH, self.iscsi_login, cmd=IscsiLoginCmd())
+        http_server.register_async_uri(self.ISCSI_LOGOUT_PATH, self.iscsi_logout, cmd=IscsiLogoutCmd())
         http_server.register_async_uri(self.FC_SCAN_PATH, self.scan_sg_devices)
         http_server.register_async_uri(self.MULTIPATH_ENABLE_PATH, self.enable_multipath)
         http_server.register_async_uri(self.ATTACH_SCSI_LUN_PATH, self.attach_scsi_lun)
@@ -243,6 +271,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 if e != None and e != "":
                     err += " ,error: %s" % e
                 raise RetryException(e)
+            bash.bash_o("iscsiadm -m session -r %s --rescan" % sid)
             #Get the host_Number of iqn, Will match the HTCL attribute of iscsi according to Host_number
             host_Number = bash.bash_o("iscsiadm -m session -P 3 --sid=%s | grep 'Host Number:' | awk '{print $3}'" % sid).strip()
             #Use HCTL, IQN, "-" to match the number of unmounted Luns according to lsscsi --transport
@@ -300,9 +329,9 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @staticmethod
-    def clean_iscsi_cache_configuration(path,iscsiServerIp,iscsiServerPort):
-        #clean cache configuration file:/var/lib/iscsi/nodes/iqnxxx/ip,port
-        results =  bash.bash_o(("ls %s/*/ | grep %s | grep %s" % (path, iscsiServerIp, iscsiServerPort))).strip().splitlines()
+    def clean_iscsi_cache_configuration(path, iscsiServerIp, iscsiServerPort):
+        # clean cache configuration file:/var/lib/iscsi/nodes/iqnxxx/ip,port
+        results = bash.bash_o(("ls %s/*/ | grep %s | grep %s" % (path, iscsiServerIp, iscsiServerPort))).strip().splitlines()
         if results is None or len(results) == 0:
             return
         for result in results:
@@ -310,7 +339,11 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             if dpaths is None or len(dpaths) == 0:
                 continue
             for dpath in dpaths:
-                linux.rm_dir_force("%s/%s" % (dpath, result))
+                ipath = "%s/%s" % (dpath, result)
+                if os.path.isdir(ipath):
+                    linux.rm_dir_force(ipath)
+                else:
+                    linux.rm_file_force(ipath)
 
     @staticmethod
     def get_disk_info_by_path(path):
@@ -364,7 +397,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         #1. find fc devices
         #2. distinct by device wwid and storage wwn
         rsp = FcSanScanRsp()
-        bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -r")
+        bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh")
         rsp.fiberChannelLunStructs = self.get_fc_luns()
         linux.set_fail_if_no_path()
         return jsonobject.dumps(rsp)
@@ -520,7 +553,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         rsp = RaidScanRsp()
         r, o, e = bash.bash_roe("smartctl --scan | grep megaraid")
         if r != 0 or o.strip() == "":
-            return rsp
+            return jsonobject.dumps(rsp)
         rsp.raidPhysicalDriveStructs = self.get_megaraid_devices(o)
         return jsonobject.dumps(rsp)
 
@@ -740,12 +773,6 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         lvm.enable_multipath()
 
         bash.bash_roe("sed -i 's/^[[:space:]]*alias/#alias/g' /etc/multipath.conf")
-        current_t = time.time()
-        bash.bash_roe("mv /etc/multipath/bindings /etc/multipath/bindings.%s " % current_t +
-                      "&& md5sum /etc/multipath/bindings.*  | awk 'p[$1]++ { printf \"rm %s\\n\",$2;}' | bash")
-        bash.bash_roe("mv /etc/multipath/wwids /etc/multipath/wwids.%s " % current_t +
-                      "&& md5sum /etc/multipath/wwids.*  | awk 'p[$1]++ { printf \"rm %s\\n\",$2;}' | bash")
-        bash.bash_roe("multipath -F; systemctl restart multipathd.service")
         linux.set_fail_if_no_path()
         return jsonobject.dumps(rsp)
 

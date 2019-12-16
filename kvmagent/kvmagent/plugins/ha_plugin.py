@@ -6,6 +6,7 @@ from zstacklib.utils import shell
 from zstacklib.utils import linux
 from zstacklib.utils import lvm
 from zstacklib.utils import thread
+from zstacklib.utils import qemu_img
 import os.path
 import time
 import traceback
@@ -61,7 +62,7 @@ def kill_vm(maxAttempts, mountPaths=None, isFileSystem=None):
             continue
 
         if mountPaths and isFileSystem is not None \
-                and not is_need_kill(vm_uuid, mountPaths, isFileSystem):
+                and not need_kill(vm_uuid, mountPaths, isFileSystem):
             continue
 
         vm_pid = shell.call("ps aux | grep qemu-kvm | grep -v grep | awk '/%s/{print $2}'" % vm_uuid)
@@ -111,42 +112,40 @@ def kill_progresses_using_mount_path(mount_path):
     logger.warn('kill the progresses with mount path: %s, killed process: %s' % (mount_path, o.stdout))
 
 
-def is_need_kill(vmUuid, mountPaths, isFileSystem):
-    def vm_match_storage_type(vmUuid, isFileSystem):
-        o = shell.ShellCmd("virsh dumpxml %s | grep \"disk type='file'\" | grep -v \"device='cdrom'\"" % vmUuid)
-        o(False)
-        if (o.return_code == 0 and isFileSystem) or (o.return_code != 0 and not isFileSystem):
-            return True
-        return False
+def get_running_vm_root_volume_path(vm_uuid, is_file_system):
+    # 1. get "-drive ... -device ... bootindex=1,
+    # 2. get "-boot order=dc ... -drive id=drive-virtio-disk"
+    # 3. make sure io has error
+    # 4. filter for pv
+    out = shell.call("pgrep -a qemu-kvm | grep %s" % vm_uuid)
+    if not out:
+        return None
 
-    def vm_in_this_file_system_storage(vm_uuid, ps_paths):
-        cmd = shell.ShellCmd("virsh dumpxml %s | grep \"source file=\" | head -1 |awk -F \"'\" '{print $2}'" % vm_uuid)
-        cmd(False)
-        vm_path = cmd.stdout.strip()
-        if cmd.return_code != 0 or vm_in_storage_list(vm_path, ps_paths):
-            return True
-        return False
+    pid = out.split(" ")[0]
+    cmdline = out.split(" ", 3)[-1]
+    if "bootindex=1" in cmdline:
+        root_volume_path = cmdline.split("bootindex=1")[0].split(" -drive file=")[-1].split(",")[0]
+    elif " -boot order=dc" in cmdline:
+        # TODO: maybe support scsi volume as boot volume one day
+        root_volume_path = cmdline.split("id=drive-virtio-disk0")[0].split(" -drive file=")[-1].split(",")[0]
+    else:
+        logger.warn("found strange vm[pid: %s, cmdline: %s], can not find boot volume" % (pid, cmdline))
+        return None
 
-    def vm_in_this_distributed_storage(vm_uuid, ps_paths):
-        cmd = shell.ShellCmd("virsh dumpxml %s | grep \"source protocol\" | head -1 | awk -F \"'\" '{print $4}'" % vm_uuid)
-        cmd(False)
-        vm_path = cmd.stdout.strip()
-        if cmd.return_code != 0 or vm_in_storage_list(vm_path, ps_paths):
-            return True
-        return False
+    if not is_file_system:
+        return root_volume_path.replace("rbd:", "")
 
-    def vm_in_storage_list(vm_path, storage_paths):
-        if vm_path == "" or any([vm_path.startswith(ps_path) for ps_path in storage_paths]):
-            return True
-        return False
+    return root_volume_path
 
-    if vm_match_storage_type(vmUuid, isFileSystem):
-        if isFileSystem and vm_in_this_file_system_storage(vmUuid, mountPaths):
-            return True
-        elif not isFileSystem and vm_in_this_distributed_storage(vmUuid, mountPaths):
-            return True
+
+def need_kill(vm_uuid, storage_paths, is_file_system):
+    vm_path = get_running_vm_root_volume_path(vm_uuid, is_file_system)
+
+    if not vm_path or vm_path == "" or any([vm_path.startswith(ps_path) for ps_path in storage_paths]):
+        return True
 
     return False
+
 
 class HaPlugin(kvmagent.KvmAgent):
     SCAN_HOST_PATH = "/ha/scanhost"
@@ -166,6 +165,7 @@ class HaPlugin(kvmagent.KvmAgent):
     def __init__(self):
         # {ps_uuid: created_time} e.g. {'07ee15b2f68648abb489f43182bd59d7': 1544513500.163033}
         self.run_fencer_timestamp = {}  # type: dict[str, float]
+        self.fencer_fire_timestamp = {}  # type: dict[str, float]
         self.fencer_lock = threading.RLock()
 
     @kvmagent.replyerror
@@ -220,6 +220,10 @@ class HaPlugin(kvmagent.KvmAgent):
 
                     try:
                         logger.warn("aliyun nas storage %s fencer fired!" % cmd.uuid)
+
+                        if cmd.strategy == 'Permissive':
+                            continue
+
                         vm_uuids = kill_vm(cmd.maxAttempts).keys()
 
                         if vm_uuids:
@@ -256,19 +260,21 @@ class HaPlugin(kvmagent.KvmAgent):
 
         @thread.AsyncThread
         def heartbeat_on_sharedblock():
+            fire = 0
             failure = 0
 
             while self.run_fencer(cmd.vgUuid, created_time):
                 try:
                     time.sleep(cmd.interval)
                     global last_multipath_run
-                    if cmd.fail_if_no_path and time.time() - last_multipath_run > 4:
+                    if cmd.fail_if_no_path and time.time() - last_multipath_run > 3600:
                         last_multipath_run = time.time()
-                        linux.set_fail_if_no_path()
+                        thread.ThreadFacade.run_in_thread(linux.set_fail_if_no_path)
 
                     health = lvm.check_vg_status(cmd.vgUuid, cmd.storageCheckerTimeout, check_pv=False)
                     logger.debug("sharedblock group primary storage %s fencer run result: %s" % (cmd.vgUuid, health))
                     if health[0] is True:
+                        fire = 0
                         failure = 0
                         continue
 
@@ -276,9 +282,24 @@ class HaPlugin(kvmagent.KvmAgent):
                     if failure < cmd.maxAttempts:
                         continue
 
+                    if self.fencer_fire_timestamp.get(cmd.vgUuid) is not None and \
+                            time.time() > self.fencer_fire_timestamp.get(cmd.vgUuid) and \
+                            time.time() - self.fencer_fire_timestamp.get(cmd.vgUuid) < (300 * (fire + 1 if fire < 10 else 10)):
+                        logger.warn("last fencer fire: %s, now: %s, passed: %s seconds, within %s seconds, skip fire",
+                                    self.fencer_fire_timestamp[cmd.vgUuid], time.time(),
+                                    time.time() - self.fencer_fire_timestamp.get(cmd.vgUuid),
+                                    300 * (fire + 1 if fire < 10 else 10))
+                        failure = 0
+                        continue
+
+                    self.fencer_fire_timestamp[cmd.vgUuid] = time.time()
                     try:
                         logger.warn("shared block storage %s fencer fired!" % cmd.vgUuid)
                         self.report_storage_status([cmd.vgUuid], 'Disconnected', health[1])
+                        fire += 1
+
+                        if cmd.strategy == 'Permissive':
+                            continue
 
                         # we will check one qcow2 per pv to determine volumes on pv should be kill
                         invalid_pv_uuids = lvm.get_invalid_pv_uuids(cmd.vgUuid, cmd.checkIo)
@@ -316,12 +337,12 @@ class HaPlugin(kvmagent.KvmAgent):
                             lvm.drop_vg_lock(cmd.vgUuid)
                             lvm.remove_device_map_for_vg(cmd.vgUuid)
 
-                        # reset the failure count
-                        failure = 0
                     except Exception as e:
                         logger.warn("kill vm failed, %s" % e.message)
                         content = traceback.format_exc()
                         logger.warn("traceback: %s" % content)
+                    finally:
+                        failure = 0
 
                 except Exception as e:
                     logger.debug('self-fencer on sharedblock primary storage %s stopped abnormally, try again soon...' % cmd.vgUuid)
@@ -341,22 +362,6 @@ class HaPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def setup_ceph_self_fencer(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-
-        def check_tools():
-            ceph = shell.run('which ceph')
-            rbd = shell.run('which rbd')
-
-            if ceph == 0 and rbd == 0:
-                return True
-
-            return False
-
-        if not check_tools():
-            rsp = AgentRsp()
-            rsp.error = "no ceph or rbd on current host, please install the tools first"
-            rsp.success = False
-            return jsonobject.dumps(rsp)
-
         mon_url = '\;'.join(cmd.monUrls)
         mon_url = mon_url.replace(':', '\\\:')
 
@@ -380,8 +385,8 @@ class HaPlugin(kvmagent.KvmAgent):
             return not (health_status.startswith('HEALTH_OK') or health_status.startswith('HEALTH_WARN'))
 
         def heartbeat_file_exists():
-            touch = shell.ShellCmd('timeout %s qemu-img info %s' %
-                                   (cmd.storageCheckerTimeout, get_ceph_rbd_args()))
+            touch = shell.ShellCmd('timeout %s %s %s' %
+                    (cmd.storageCheckerTimeout, qemu_img.subcmd('info'), get_ceph_rbd_args()))
             touch(False)
 
             if touch.return_code == 0:
@@ -423,6 +428,9 @@ class HaPlugin(kvmagent.KvmAgent):
                         #  1. Create heart-beat file, failed with 'File exists'
                         #  2. Query the hb file in step 1, and failed again with 'No such file or directory'
                         if ceph_in_error_stat():
+                            if cmd.strategy == 'Permissive':
+                                continue
+
                             path = (os.path.split(cmd.heartbeatImagePath))[0]
                             vm_uuids = kill_vm(cmd.maxAttempts, [path], False).keys()
 
@@ -497,7 +505,7 @@ class HaPlugin(kvmagent.KvmAgent):
 
             def prepare_heartbeat_dir():
                 heartbeat_dir = os.path.join(mount_path, "zs-heartbeat")
-                if linux.is_mounted(mount_path):
+                if not mounted_by_zstack or linux.is_mounted(mount_path):
                     if not os.path.exists(heartbeat_dir):
                         os.makedirs(heartbeat_dir, 0755)
                 else:
@@ -522,6 +530,10 @@ class HaPlugin(kvmagent.KvmAgent):
                         logger.warn('failed to touch the heartbeat file[%s] %s times, we lost the connection to the storage,'
                                     'shutdown ourselves' % (heartbeat_file_path, cmd.maxAttempts))
                         self.report_storage_status([ps_uuid], 'Disconnected')
+
+                        if cmd.strategy == 'Permissive':
+                            continue
+
                         killed_vms = kill_vm(cmd.maxAttempts, [mount_path], True)
 
                         if len(killed_vms) != 0:

@@ -19,6 +19,8 @@ from zstacklib.utils import plugin
 from zstacklib.utils import linux
 from zstacklib.utils import ceph
 from zstacklib.utils import bash
+from zstacklib.utils import qemu_img
+from zstacklib.utils import traceable_shell
 from imagestore import ImageStoreClient
 from zstacklib.utils.linux import remote_shell_quote
 
@@ -33,6 +35,12 @@ class CephPoolCapacity(object):
         self.usedCapacity = used
         self.totalCapacity = totalCapacity
 
+
+class AgentCommand(object):
+    def __init__(self):
+        pass
+
+
 class AgentResponse(object):
     def __init__(self, success=True, error=None):
         self.success = success
@@ -40,11 +48,26 @@ class AgentResponse(object):
         self.totalCapacity = None
         self.availableCapacity = None
         self.poolCapacities = None
-        self.xsky = False
+        self.type = None
 
     def set_err(self, err):
         self.success = False
         self.error = err
+
+
+class CephToCephMigrateVolumeSegmentCmd(AgentCommand):
+    @log.sensitive_fields("dstMonSshPassword")
+    def __init__(self):
+        super(CephToCephMigrateVolumeSegmentCmd, self).__init__()
+        self.parentUuid = None
+        self.resourceUuid = None
+        self.srcInstallPath = None
+        self.dstInstallPath = None
+        self.dstMonHostname = None
+        self.dstMonSshUsername = None
+        self.dstMonSshPassword = None
+        self.dstMonSshPort = None  # type:int
+
 
 class CheckIsBitsExistingRsp(AgentResponse):
     def __init__(self):
@@ -212,7 +235,7 @@ class CephAgent(plugin.TaskManager):
         self.http_server.register_async_uri(self.CHECK_BITS_PATH, self.check_bits)
         self.http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
         self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
-        self.http_server.register_async_uri(self.MIGRATE_VOLUME_SEGMENT_PATH, self.migrate_volume_segment)
+        self.http_server.register_async_uri(self.MIGRATE_VOLUME_SEGMENT_PATH, self.migrate_volume_segment, cmd=CephToCephMigrateVolumeSegmentCmd())
         self.http_server.register_async_uri(self.GET_VOLUME_SNAPINFOS_PATH, self.get_volume_snapinfos)
         self.http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.download_from_kvmhost)
         self.http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
@@ -239,7 +262,8 @@ class CephAgent(plugin.TaskManager):
 
         rsp.totalCapacity = total
         rsp.availableCapacity = avail
-        rsp.xsky = ceph.is_xsky()
+        if ceph.is_xsky():
+            rsp.type = "xsky"
 
         if not df.pools:
             return
@@ -463,12 +487,14 @@ class CephAgent(plugin.TaskManager):
                 report.progress_report(get_exact_percent(percent, stage), "report")
             return synced
 
-        _, _, err = bash_progress_1('rbd cp %s %s 2> %s' % (src_path, dst_path, PFILE), _get_progress)
+        t_shell = traceable_shell.get_shell(cmd)
+        _, _, err = t_shell.bash_progress_1('rbd cp %s %s 2> %s' % (src_path, dst_path, PFILE), _get_progress)
 
         if os.path.exists(PFILE):
             os.remove(PFILE)
 
         if err:
+            shell.run('rbd rm %s' % dst_path)
             raise err
 
         rsp = CpRsp()
@@ -775,7 +801,8 @@ class CephAgent(plugin.TaskManager):
         _1()
 
         file_format = shell.call(
-            "set -o pipefail; qemu-img info rbd:%s/%s | grep 'file format' | cut -d ':' -f 2" % (pool, tmp_image_name))
+            "set -o pipefail; %s rbd:%s/%s | grep 'file format' | cut -d ':' -f 2" %
+                    (qemu_img.subcmd('info'), pool, tmp_image_name))
         file_format = file_format.strip()
         if file_format not in ['qcow2', 'raw']:
             raise Exception('unknown image format: %s' % file_format)
@@ -789,8 +816,8 @@ class CephAgent(plugin.TaskManager):
                     conf = '%s\n%s\n' % (conf, 'rbd default format = 2')
                     conf_path = linux.write_to_temp_file(conf)
 
-                shell.call('qemu-img convert -f qcow2 -O rbd rbd:%s/%s rbd:%s/%s:conf=%s' % (
-                    pool, tmp_image_name, pool, image_name, conf_path))
+                shell.call('%s -f qcow2 -O rbd rbd:%s/%s rbd:%s/%s:conf=%s' % (
+                    qemu_img.subcmd('convert'), pool, tmp_image_name, pool, image_name, conf_path))
                 shell.call('rbd rm %s/%s' % (pool, tmp_image_name))
             finally:
                 if conf_path:
@@ -850,56 +877,38 @@ class CephAgent(plugin.TaskManager):
         return jsonobject.dumps(rsp)
 
     def _get_dst_volume_size(self, dst_install_path, dst_mon_addr, dst_mon_user, dst_mon_passwd, dst_mon_port):
-        o = shell.call('sshpass -p "{DST_MON_PASSWD}" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null {DST_MON_USER}@{DST_MON_ADDR} -p {DST_MON_PORT} \'rbd --format json info {DST_INSTALL_PATH}\''.format(
-            DST_MON_ADDR=dst_mon_addr,
-            DST_MON_PORT=dst_mon_port,
-            DST_MON_USER=dst_mon_user,
-            DST_MON_PASSWD=dst_mon_passwd,
-            DST_INSTALL_PATH = dst_install_path
-        ))
+        o = linux.sshpass_call(dst_mon_addr, dst_mon_passwd, "rbd --format json info %s" % dst_install_path, dst_mon_user, dst_mon_port)
         o = jsonobject.loads(o)
         return long(o.size_)
 
     def _resize_dst_volume(self, dst_install_path, size, dst_mon_addr, dst_mon_user, dst_mon_passwd, dst_mon_port):
-        r, _, e = bash_roe('sshpass -p "{DST_MON_PASSWD}" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null {DST_MON_USER}@{DST_MON_ADDR} -p {DST_MON_PORT} \'qemu-img resize -f raw rbd:{DST_INSTALL_PATH} {SIZE}\''.format(
-                DST_MON_ADDR=dst_mon_addr,
-                DST_MON_PORT=dst_mon_port,
-                DST_MON_USER=dst_mon_user,
-                DST_MON_PASSWD=dst_mon_passwd,
-                DST_INSTALL_PATH=dst_install_path,
-                SIZE = size
-        ))
+        r, _, e = linux.sshpass_run(dst_mon_addr, dst_mon_passwd, "qemu-img resize -f raw rbd:%s %s" % (dst_install_path, size), dst_mon_user, dst_mon_port)
         if r != 0:
             logger.error('failed to resize volume %s before migrate, cause: %s' % (dst_install_path, e))
             return r
         return 0
 
-    def _migrate_volume_segment(self, parent_uuid, resource_uuid, src_install_path, dst_install_path, dst_mon_addr, dst_mon_user, dst_mon_passwd, dst_mon_port):
+    def _migrate_volume_segment(self, parent_uuid, resource_uuid, src_install_path,
+                                dst_install_path, dst_mon_addr, dst_mon_user, dst_mon_passwd, dst_mon_port, cmd):
         src_install_path = self._normalize_install_path(src_install_path)
         dst_install_path = self._normalize_install_path(dst_install_path)
 
-        r, _, e = bash_roe('set -o pipefail; rbd export-diff {FROM_SNAP} {SRC_INSTALL_PATH} - | tee >(md5sum >/tmp/{RESOURCE_UUID}_src_md5) | sshpass -p {DST_MON_PASSWD} ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null {DST_MON_USER}@{DST_MON_ADDR} -p {DST_MON_PORT} \'tee >(md5sum >/tmp/{RESOURCE_UUID}_dst_md5) | rbd import-diff - {DST_INSTALL_PATH}\''.format(
-            PARENT_UUID = parent_uuid,
-            DST_MON_ADDR = dst_mon_addr,
-            DST_MON_PORT = dst_mon_port,
-            DST_MON_USER = dst_mon_user,
-            DST_MON_PASSWD = linux.shellquote(dst_mon_passwd),
-            RESOURCE_UUID = resource_uuid,
-            SRC_INSTALL_PATH = src_install_path,
-            DST_INSTALL_PATH = dst_install_path,
-            FROM_SNAP = '--from-snap ' + parent_uuid if parent_uuid != '' else ''))
+        traceable_bash = traceable_shell.get_shell(cmd)
+        ssh_cmd, tmp_file = linux.build_sshpass_cmd(dst_mon_addr, dst_mon_passwd, "tee >(md5sum >/tmp/%s_dst_md5) | rbd import-diff - %s"
+                                                    % (resource_uuid, dst_install_path), dst_mon_user, dst_mon_port)
+        r, _, e = traceable_bash.bash_roe('set -o pipefail; rbd export-diff {FROM_SNAP} {SRC_INSTALL_PATH} - | tee >(md5sum >/tmp/{RESOURCE_UUID}_src_md5) | {SSH_CMD}'.format(
+            RESOURCE_UUID=resource_uuid,
+            SSH_CMD=ssh_cmd,
+            SRC_INSTALL_PATH=src_install_path,
+            FROM_SNAP='--from-snap ' + parent_uuid if parent_uuid != '' else ''))
+        linux.rm_file_force(tmp_file)
         if r != 0:
             logger.error('failed to migrate volume %s: %s' % (src_install_path, e))
             return r
 
         # compare md5sum of src/dst segments
         src_segment_md5 = self._read_file_content('/tmp/%s_src_md5' % resource_uuid)
-        dst_segment_md5 = shell.call('sshpass -p {DST_MON_PASSWD} ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null {DST_MON_USER}@{DST_MON_ADDR} -p {DST_MON_PORT} \'cat /tmp/{RESOURCE_UUID}_dst_md5\''.format(
-            DST_MON_ADDR = dst_mon_addr,
-            DST_MON_PORT = dst_mon_port,
-            DST_MON_USER = dst_mon_user,
-            DST_MON_PASSWD = linux.shellquote(dst_mon_passwd),
-            RESOURCE_UUID = resource_uuid))
+        dst_segment_md5 = linux.sshpass_call(dst_mon_addr, dst_mon_passwd, 'cat /tmp/%s_dst_md5' % resource_uuid, dst_mon_user, dst_mon_port)
         if src_segment_md5 != dst_segment_md5:
             logger.error('check sum mismatch after migration: %s' % src_install_path)
             return -1
@@ -935,8 +944,9 @@ class CephAgent(plugin.TaskManager):
                 rsp.error = "Failed to resize volume before migrate."
                 return jsonobject.dumps(rsp)
 
-
-        ret = self._migrate_volume_segment(cmd.parentUuid, cmd.resourceUuid, cmd.srcInstallPath, cmd.dstInstallPath, cmd.dstMonHostname, cmd.dstMonSshUsername, cmd.dstMonSshPassword, cmd.dstMonSshPort)
+        ret = self._migrate_volume_segment(cmd.parentUuid, cmd.resourceUuid, cmd.srcInstallPath,
+                                           cmd.dstInstallPath, cmd.dstMonHostname, cmd.dstMonSshUsername,
+                                           cmd.dstMonSshPassword, cmd.dstMonSshPort, cmd)
         if ret != 0:
             rsp.success = False
             rsp.error = "Failed to migrate volume segment from one ceph primary storage to another."

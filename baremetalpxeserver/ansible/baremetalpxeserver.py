@@ -22,6 +22,7 @@ virtualenv_version = "12.1.1"
 remote_user = "root"
 remote_pass = None
 remote_port = None
+host_uuid = None
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy baremetal pxeserver agent to host')
@@ -40,6 +41,7 @@ baremetalpxeserver_root = "%s/baremetalpxeserver/package" % zstack_root
 host_post_info = HostPostInfo()
 host_post_info.host_inventory = args.i
 host_post_info.host = host
+host_post_info.host_uuid = host_uuid
 host_post_info.post_url = post_url
 host_post_info.chrony_servers = chrony_servers
 host_post_info.private_key = args.private_key
@@ -89,7 +91,7 @@ run_remote_command(command, host_post_info)
 # name: install dependencies
 if distro in RPM_BASED_OS:
     if zstack_repo != 'false':
-        command = ("pkg_list=`rpm -q dnsmasq nginx syslinux vsftpd nmap | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % zstack_repo
+        command = ("pkg_list=`rpm -q dnsmasq nginx syslinux vsftpd nmap | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (zstack_repo)
         run_remote_command(command, host_post_info)
     else:
         for pkg in ["dnsmasq", "nginx", "vsftpd", "syslinux", "nmap"]:
@@ -107,18 +109,19 @@ else:
 
 # name: check and mount /opt/zstack-dvd
 command = """
-[ -f /opt/zstack-dvd/GPL ] || exit 1;
+basearch=`uname -m`;releasever=`awk '{print $3}' /etc/zstack-release`;
+[ -f /opt/zstack-dvd/$basearch/$releasever/GPL ] || exit 1;
 mkdir -p /var/lib/zstack/baremetal/{dnsmasq,ftp/{ks,zstack-dvd,scripts},tftpboot/{zstack,pxelinux.cfg},vsftpd} /var/log/zstack/baremetal/;
 cp -f /usr/share/syslinux/pxelinux.0 /var/lib/zstack/baremetal/tftpboot/;
-cp -f /opt/zstack-dvd/images/pxeboot/{vmlinuz,initrd.img} /var/lib/zstack/baremetal/tftpboot/zstack/;
-grep 'zstack-dvd' /etc/fstab || echo '/opt/zstack-dvd /var/lib/zstack/baremetal/ftp/zstack-dvd none defaults,bind 0 0' >> /etc/fstab;
+cp -f /opt/zstack-dvd/$basearch/$releasever/images/pxeboot/{vmlinuz,initrd.img} /var/lib/zstack/baremetal/tftpboot/zstack/;
+grep 'zstack-dvd' /etc/fstab || echo "/opt/zstack-dvd/$basearch/$releasever /var/lib/zstack/baremetal/ftp/zstack-dvd none defaults,bind 0 0" >> /etc/fstab;
 mount -a;
 """
 run_remote_command(command, host_post_info)
 
 # name: config iptables
+replace_content("/etc/sysconfig/iptables-config", "regexp='IPTABLES_MODULES=""' replace='IPTABLES_MODULES=\"nf_conntrack_ftp\"'", host_post_info)
 command = """
-sed -i 's/IPTABLES_MODULES=""/IPTABLES_MODULES="nf_conntrack_ftp"/g' /etc/sysconfig/iptables-config;
 /sbin/iptables-save | grep -w -q 67 || iptables -I INPUT -p udp -m state --state NEW --sport 67:68 --dport 67:68 -j ACCEPT;
 /sbin/iptables-save | grep -w -q 69 || iptables -I INPUT -p udp -m state --state NEW --dport 69 -j ACCEPT;
 /sbin/iptables-save | grep -q "dport 21" || iptables -I INPUT -p tcp -m state --state NEW --dport 21 -j ACCEPT;

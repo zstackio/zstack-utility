@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 import sys, os
 
-version = '3.6.0'
+version = '3.8.0'
 
 setup(name='zstacklib',
       version=version,
@@ -26,7 +26,8 @@ Python support library for zstack""",
           'pickledb',
           'urllib3==1.10.4',
           'netaddr',
-          'Jinja2'
+          'Jinja2',
+          "beeprint"
       ],
       entry_points="""
       # -*- Entry points: -*-

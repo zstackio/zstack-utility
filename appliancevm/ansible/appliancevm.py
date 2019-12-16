@@ -19,6 +19,7 @@ virtualenv_version = "12.1.1"
 remote_user = "root"
 remote_pass = None
 remote_port = None
+host_uuid = None
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy appliancevm to management node')
@@ -40,6 +41,7 @@ create_log(logger_dir)
 host_post_info = HostPostInfo()
 host_post_info.host_inventory = args.i
 host_post_info.host = host
+host_post_info.host_uuid = host_uuid
 host_post_info.post_url = post_url
 host_post_info.chrony_servers = chrony_servers
 host_post_info.private_key = args.private_key
@@ -115,7 +117,7 @@ if distro in RPM_BASED_OS:
     if zstack_repo != 'false':
         # name: install appliance vm related packages on RedHat based OS from user defined repo
         command = ("pkg_list=`rpm -q iputils tcpdump ethtool | grep \"not installed\" | awk '{ print $2 }'` && for pkg"
-                   " in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % zstack_repo
+                   " in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (zstack_repo)
         run_remote_command(command, host_post_info)
     else:
         # name: install appliance vm related packages on RedHat based OS
@@ -157,8 +159,9 @@ elif distro in DEB_BASED_OS:
         command = "/etc/network/if-pre-up.d/iptables.up"
         run_remote_command(command, host_post_info)
     # name: enable appliancevm service for Debian -1
-    command = "sed -i '/zstack-appliancevm start/d' /etc/rc.local"
-    run_remote_command(command, host_post_info)
+    replace_content("/etc/rc.local",
+                    "regexp='zstack-appliancevm start'",
+                    host_post_info)
     # name: enable appliancevm service for Debian -2
     update_arg = "insertbefore='^exit 0' line='/etc/init.d/zstack-appliancevm start\n'"
     update_file("/etc/rc.local", update_arg, host_post_info)

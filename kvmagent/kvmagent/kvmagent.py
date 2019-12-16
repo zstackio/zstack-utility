@@ -14,6 +14,7 @@ import traceback
 import pprint
 import functools
 import sys
+import commands
 
 reload(sys)
 sys.setdefaultencoding('utf-8')
@@ -61,6 +62,8 @@ def new_rest_service(config={}):
 def get_http_server():
     return _rest_service.http_server
 
+def get_host_yum_release():
+    return commands.getoutput("rpm -q zstack-release |awk -F'-' '{print $3}'").strip()
 
 def get_qemu_path():
     global _qemu_path

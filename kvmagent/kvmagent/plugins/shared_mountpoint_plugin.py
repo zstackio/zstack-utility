@@ -9,6 +9,8 @@ from zstacklib.utils import jsonobject
 from zstacklib.utils import http
 from zstacklib.utils import log
 from zstacklib.utils import shell
+from zstacklib.utils import traceable_shell
+from zstacklib.utils import rollback
 from zstacklib.utils import linux
 import zstacklib.utils.uuidhelper as uuidhelper
 
@@ -176,7 +178,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
                 for file_uuid in file_uuids:
                     linux.rm_file_force(os.path.join(id_dir, file_uuid))
                 linux.touch_file(self.id_files[uuid])
-                linux.sync()
+                linux.sync_file(self.id_files[uuid])
 
         rsp = ConnectRsp()
         check_other_smp_and_set_id_file(cmd.uuid, cmd.existUuids)
@@ -214,13 +216,21 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    @rollback.rollback
     def create_template_from_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
         dirname = os.path.dirname(cmd.installPath)
         if not os.path.exists(dirname):
             os.makedirs(dirname, 0755)
-        linux.create_template(cmd.volumePath, cmd.installPath)
+
+        @rollback.rollbackable
+        def _0():
+            linux.rm_file_force(cmd.installPath)
+        _0()
+
+        t_shell = traceable_shell.get_shell(cmd)
+        linux.create_template(cmd.volumePath, cmd.installPath, shell=t_shell)
 
         logger.debug('successfully created template[%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)

@@ -7,6 +7,8 @@ import sys
 import os.path
 import gzip
 import shutil
+
+import simplejson
 from concurrentlog_handler import ConcurrentRotatingFileHandler
 from random import randint
 
@@ -167,3 +169,38 @@ def cleanup_log(hostname, username, password, port = 22):
 def cleanup_local_log():
     import shell
     shell.call('''cd /var/log/zstack; tar --ignore-failed-read -zcf zstack-logs-`date +%y%m%d-%H%M%S`.tgz *.log.* *.log; find . -name "*.log"|while read file; do echo "" > $file; done''')
+
+
+SENSITIVE_FIELD_NAME = 'SENSITIVE_FIELDS'
+
+def sensitive_fields(*paths, **typed_paths):
+    """
+        paths must be a path like "password" or "vmInfo.password"
+    """
+    def ret(old_init):
+        def __init__(self, *args, **kwargs):
+            if paths:
+                ps = ["obj['" + p.replace(".", "']['") + "']" for p in paths]
+                setattr(self, SENSITIVE_FIELD_NAME, ps)
+            old_init(self)
+        return __init__
+    return ret
+
+
+def mask_sensitive_field(cmd, cmd_str):
+    # type:(object, str) -> str
+    if not cmd or not hasattr(cmd, SENSITIVE_FIELD_NAME):
+        return cmd_str
+
+    field_paths = getattr(cmd, SENSITIVE_FIELD_NAME)
+    obj = simplejson.loads(cmd_str)
+    if isinstance(obj, dict):
+        for path in field_paths:
+            try:
+                exec ("if {0}: {0}='*****'".format(path)) in {'obj': obj}
+            except:
+                pass
+        if SENSITIVE_FIELD_NAME in obj:
+            del obj[SENSITIVE_FIELD_NAME]
+
+    return simplejson.dumps(obj)

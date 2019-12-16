@@ -22,6 +22,7 @@ virtualenv_version = "12.1.1"
 remote_user = "root"
 remote_pass = None
 remote_port = None
+host_uuid = None
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy virtual Router to host')
@@ -40,6 +41,7 @@ vr_root = "%s/virtualrouter/package" % zstack_root
 host_post_info = HostPostInfo()
 host_post_info.host_inventory = args.i
 host_post_info.host = host
+host_post_info.host_uuid = host_uuid
 host_post_info.post_url = post_url
 host_post_info.chrony_servers = chrony_servers
 host_post_info.private_key = args.private_key
@@ -78,7 +80,7 @@ if distro in RPM_BASED_OS:
     if zstack_repo != 'false':
         # name: install vr related packages on RedHat based OS from user defined repo
         command = ("pkg_list=`rpm -q haproxy dnsmasq | grep \"not installed\" | awk '{ print $2 }'` && for pkg"
-                   " in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % zstack_repo
+                   " in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (zstack_repo)
         run_remote_command(command, host_post_info)
     else:
         # name: install virtual router related packages for RedHat
@@ -171,8 +173,9 @@ else:
     if distro in RPM_BASED_OS:
         service_status("zstack-virtualrouter", "enabled=yes state=stopped", host_post_info)
     else:
-        command = "sed -i '/zstack-virtualrouter start/d' /etc/rc.local"
-        run_remote_command(command, host_post_info)
+        replace_content("/etc/rc.local",
+                        "regexp='zstack-virtualrouter start'",
+                        host_post_info)
         update_file("/etc/rc.local", regexp="exit 0", insertbefore="exit 0", line="/etc/init.d/zstack-virtualrouter start\n")
 
 host_post_info.start_time = start_time

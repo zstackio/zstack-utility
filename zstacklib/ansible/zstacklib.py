@@ -45,6 +45,7 @@ class AgentInstallArg(object):
 class ZstackLibArgs(object):
     def __init__(self):
         self.zstack_repo = None
+        self.zstack_releasever = None
         self.yum_server = None
         self.distro = None
         self.distro_version = None
@@ -82,6 +83,7 @@ class HostPostInfo(object):
         self.private_key = None
         self.host_inventory = None
         self.host = None
+        self.host_uuid = None
         self.vip= None
         self.chrony_servers = None
         self.post_url = ""
@@ -218,6 +220,8 @@ def create_log(logger_dir):
     handler.setFormatter(fmt)
     logger.addHandler(handler)
 
+def get_mn_yum_release():
+    return commands.getoutput("rpm -q zstack-release |awk -F'-' '{print $3}'").strip()
 
 def post_msg(msg, post_url):
     '''post message to zstack, label for support i18n'''
@@ -884,6 +888,9 @@ def check_host_reachable(host_post_info, warning=False):
 @retry(times=3, sleep_time=3)
 def run_remote_command(command, host_post_info, return_status=False, return_output=False):
     '''return status all the time except return_status is False, return output is set to True'''
+    if 'yum' in command:
+        set_yum0 = "rpm -q zstack-release && releasever=`awk '{print $3}' /etc/zstack-release` || releasever=%s;export YUM0=$releasever;" % (get_mn_yum_release())
+        command = set_yum0 + command
     start_time = datetime.now()
     host_post_info.start_time = start_time
     host = host_post_info.host
@@ -1054,34 +1061,54 @@ def file_operation(file, args, host_post_info):
             handle_ansible_info(details, host_post_info, "INFO")
             return True
 
-@retry(times=3, sleep_time=3)
-def get_remote_host_info(host_post_info):
-    start_time = datetime.now()
-    host_post_info.start_time = start_time
-    host = host_post_info.host
-    post_url = host_post_info.post_url
-    host_post_info.post_label = "ansible.get.host.info"
-    host_post_info.post_label_param = host
-    handle_ansible_info("INFO: starting get remote host %s info ... " % host, host_post_info, "INFO")
+def _write_remote_host_result(path, content):
+    parent_dir = os.path.dirname(path)
+    if not os.path.exists(parent_dir):
+        os.makedirs(parent_dir)
+
+    fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_TRUNC)
+    os.write(fd, str(content))
+    os.close(fd)
+
+def _read_remote_host_result(path):
+    if not os.path.exists(path):
+        return ""
+    fd = open(path, 'r')
+    result = fd.read()
+    fd.close()
+    return result
+
+def _get_ansible_cache_file(host_post_info, ansible_filter):
+    return os.path.join("/var/lib/zstack", ".ansible.cache", "%s-%s" % (host_post_info.host, host_post_info.host_uuid), ansible_filter)
+
+def _get_remote_host_info(host_post_info, cache_file, ansible_filter, func):
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'setup'
-    runner_args.module_args = 'filter=ansible_distribution*'
+    runner_args.module_args = 'filter=%s' % ansible_filter
     zstack_runner = ZstackRunner(runner_args)
     result = zstack_runner.run()
     logger.debug(result)
+    if not not host_post_info.host_uuid:
+        _write_remote_host_result(cache_file, result)
+    return func(result, host_post_info)
+
+
+def _get_remote_host_info_from_result(result, host_post_info):
+    host = host_post_info.host
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
         ansible_start.host = host
-        ansible_start.post_url = post_url
+        ansible_start.post_url = host_post_info.post_url
         ansible_start.result = result
         handle_ansible_start(ansible_start)
     else:
         if 'ansible_facts' in result['contacted'][host]:
-            (distro, major_version, release, distro_version) = [result['contacted'][host]['ansible_facts']['ansible_distribution'],
-                                 int(result['contacted'][host]['ansible_facts']['ansible_distribution_major_version']),
-                                 result['contacted'][host]['ansible_facts']['ansible_distribution_release'],
-                                 result['contacted'][host]['ansible_facts']['ansible_distribution_version']]
+            (distro, major_version, release, distro_version) = [
+                result['contacted'][host]['ansible_facts']['ansible_distribution'],
+                int(result['contacted'][host]['ansible_facts']['ansible_distribution_major_version']),
+                result['contacted'][host]['ansible_facts']['ansible_distribution_release'],
+                result['contacted'][host]['ansible_facts']['ansible_distribution_version']]
             host_post_info.post_label = "ansible.get.host.info.succ"
             handle_ansible_info("SUCC: Get remote host %s info successful" % host, host_post_info, "INFO")
             return (distro, major_version, release, distro_version)
@@ -1091,25 +1118,27 @@ def get_remote_host_info(host_post_info):
             raise Exception(result)
 
 @retry(times=3, sleep_time=3)
-def get_remote_host_cpu(host_post_info):
+def get_remote_host_info(host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
-    host = host_post_info.host
-    post_url = host_post_info.post_url
     host_post_info.post_label = "ansible.get.host.info"
-    host_post_info.post_label_param = host
-    handle_ansible_info("INFO: starting get remote host %s cpu info ... " % host, host_post_info, "INFO")
-    runner_args = ZstackRunnerArg()
-    runner_args.host_post_info = host_post_info
-    runner_args.module_name = 'setup'
-    runner_args.module_args = 'filter=ansible_processor'
-    zstack_runner = ZstackRunner(runner_args)
-    result = zstack_runner.run()
-    logger.debug(result)
+    host_post_info.post_label_param = host_post_info.host
+    handle_ansible_info("INFO: starting get remote host %s info ... " % host, host_post_info, "INFO")
+    # we use host_uuid rather than host(ip) to identify resources,
+    # because different resources might use same ip in some situations
+    cache_file = _get_ansible_cache_file(host_post_info, "ansible_distribution")
+    result = _read_remote_host_result(cache_file)
+    if not not host_post_info.host_uuid and result != "":
+        return _get_remote_host_info_from_result(eval(result), host_post_info)
+    else:
+        return _get_remote_host_info(host_post_info, cache_file, "ansible_distribution*", func=_get_remote_host_info_from_result)
+
+def _get_remote_host_cpu_from_result(result, host_post_info):
+    host = host_post_info.host
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
         ansible_start.host = host
-        ansible_start.post_url = post_url
+        ansible_start.post_url = host_post_info.post_url
         ansible_start.result = result
         handle_ansible_start(ansible_start)
     else:
@@ -1122,25 +1151,26 @@ def get_remote_host_cpu(host_post_info):
             host_post_info.post_label = "ansible.get.host.cpu.false"
 
 @retry(times=3, sleep_time=3)
-def get_remote_host_arch(host_post_info):
+def get_remote_host_cpu(host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
-    host = host_post_info.host
-    post_url = host_post_info.post_url
     host_post_info.post_label = "ansible.get.host.info"
-    host_post_info.post_label_param = host
-    handle_ansible_info("INFO: starting get remote host %s arch ... " % host, host_post_info, "INFO")
-    runner_args = ZstackRunnerArg()
-    runner_args.host_post_info = host_post_info
-    runner_args.module_name = 'setup'
-    runner_args.module_args = 'filter=ansible_machine'
-    zstack_runner = ZstackRunner(runner_args)
-    result = zstack_runner.run()
-    logger.debug(result)
+    host_post_info.post_label_param = host_post_info.host
+    handle_ansible_info("INFO: starting get remote host %s cpu info ... " % host_post_info.host, host_post_info, "INFO")
+
+    cache_file = _get_ansible_cache_file(host_post_info, "ansible_processor")
+    result = _read_remote_host_result(cache_file)
+    if not not host_post_info.host_uuid and result != "":
+        return _get_remote_host_cpu_from_result(eval(result), host_post_info)
+    else:
+        return _get_remote_host_info(host_post_info, cache_file, "ansible_processor", _get_remote_host_cpu_from_result)
+
+def _get_remote_host_arch_from_result(result, host_post_info):
+    host = host_post_info.host
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
         ansible_start.host = host
-        ansible_start.post_url = post_url
+        ansible_start.post_url = host_post_info.post_url
         ansible_start.result = result
         handle_ansible_start(ansible_start)
     else:
@@ -1153,25 +1183,28 @@ def get_remote_host_arch(host_post_info):
             host_post_info.post_label = "ansible.get.host.arch.false"
 
 @retry(times=3, sleep_time=3)
-def get_remote_host_kernel_version(host_post_info):
+def get_remote_host_arch(host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
+    host_post_info.post_label = "ansible.get.host.info"
+    host_post_info.post_label_param = host_post_info.host
+    handle_ansible_info("INFO: starting get remote host %s arch ... " % host_post_info.host, host_post_info, "INFO")
+
+    cache_file = _get_ansible_cache_file(host_post_info, "ansible_machine")
+    result = _read_remote_host_result(cache_file)
+    logger.debug(host_post_info.host)
+    if not not host_post_info.host_uuid and result != "":
+        return _get_remote_host_arch_from_result(eval(result), host_post_info)
+    else:
+        return _get_remote_host_info(host_post_info, cache_file, "ansible_machine", _get_remote_host_arch_from_result)
+
+
+def _get_remote_host_kernel_version_from_result(result, host_post_info):
     host = host_post_info.host
-    post_url = host_post_info.post_url
-    host_post_info.post_label = "ansible.get.host.kernel.version"
-    host_post_info.post_label_param = host
-    handle_ansible_info("INFO: starting get remote host %s kernel version ... " % host, host_post_info, "INFO")
-    runner_args = ZstackRunnerArg()
-    runner_args.host_post_info = host_post_info
-    runner_args.module_name = 'setup'
-    runner_args.module_args = 'filter=ansible_kernel'
-    zstack_runner = ZstackRunner(runner_args)
-    result = zstack_runner.run()
-    logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
         ansible_start.host = host
-        ansible_start.post_url = post_url
+        ansible_start.post_url = host_post_info.post_url
         ansible_start.result = result
         handle_ansible_start(ansible_start)
     else:
@@ -1182,6 +1215,22 @@ def get_remote_host_kernel_version(host_post_info):
             return host_kernel_version
         else:
             host_post_info.post_label = "ansible.get.host.kernel.version.false"
+
+@retry(times=3, sleep_time=3)
+def get_remote_host_kernel_version(host_post_info):
+    start_time = datetime.now()
+    host_post_info.start_time = start_time
+    host_post_info.post_label = "ansible.get.host.kernel.version"
+    host_post_info.post_label_param = host_post_info.host
+    handle_ansible_info("INFO: starting get remote host %s kernel version ... " % host_post_info.host, host_post_info, "INFO")
+
+    cache_file = _get_ansible_cache_file(host_post_info, "ansible_kernel")
+    result = _read_remote_host_result(cache_file)
+    if not not host_post_info.host_uuid and result != "":
+        return _get_remote_host_kernel_version_from_result(eval(result), host_post_info)
+    else:
+        return _get_remote_host_info(host_post_info, cache_file, "ansible_kernel", _get_remote_host_kernel_version_from_result)
+
 
 def set_ini_file(file, section, option, value, host_post_info):
     start_time = datetime.now()
@@ -1311,6 +1360,15 @@ def service_status(name, args, host_post_info, ignore_error=False):
 def replace_content(dest, args, host_post_info):
     '''
     This module will replace all instances of a pattern within a file
+    dest required
+    The file to modify. Before Ansible 2.3 this option was only usable as dest, destfile and name.
+    args:
+    regexp string required
+    The regular expression to look for in the contents of the file. Uses Python regular expressions; see http://docs.python.org/2/library/re.html.
+    replace string
+    The string to replace regexp matches.
+    May contain backreferences that will get expanded with the regexp capture groups if the regexp matches.
+    If not set, matches are removed entirely.
     '''
     start_time = datetime.now()
     host_post_info.start_time = start_time
@@ -1650,6 +1708,7 @@ class ZstackLib(object):
         pip_url = args.pip_url
         pip_version = "7.0.3"
         yum_server = args.yum_server
+        zstack_releasever = args.zstack_releasever
         current_dir =  os.path.dirname(os.path.realpath(__file__))
         #require_python_env for deploy host which may not need python environment, default is true
         if args.require_python_env is not None:
@@ -1791,7 +1850,7 @@ gpgcheck=0
                     generate_mn_repo_raw_command = """
 echo -e "[zstack-mn]
 name=zstack-mn
-baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$releasever/\$basearch/os/
+baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$basearch/\$YUM0/
 gpgcheck=0
 enabled=0" >  /etc/yum.repos.d/zstack-mn.repo
                """
@@ -1805,7 +1864,7 @@ enabled=0" >  /etc/yum.repos.d/zstack-mn.repo
                     generate_kvm_repo_raw_command = """
 echo -e "[qemu-kvm-ev-mn]
 name=qemu-kvm-ev-mn
-baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$releasever/\$basearch/qemu-kvm-ev/
+baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$basearch/\$YUM0/Extra/qemu-kvm-ev/
 gpgcheck=0
 enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
 """
@@ -1822,7 +1881,7 @@ enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
                 generate_exp_repo_raw_command = """
 echo -e "[zstack-experimental-mn]
 name=zstack-experimental-mn
-baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$releasever/\$basearch/zstack-experimental/
+baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$basearch/\$YUM0/Extra/zstack-experimental/
 gpgcheck=0
 enabled=0" >  /etc/yum.repos.d/zstack-experimental-mn.repo
 """
