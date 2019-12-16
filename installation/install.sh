@@ -156,7 +156,7 @@ upgrade_params_array[6]='3.4.0,-DupgradeTwoFactorAuthenticationSecret=true'
 upgrade_params_array[7]='3.4.1,-DgenerateBillsImmediately=true'
 upgrade_params_array[8]='3.5.0,-DupgradeVolumeBackupHistory=true'
 upgrade_params_array[9]='3.6.0,-Diam2.upgradeIAM2Attribute=true'
-upgrade_params_array[10]='3.7.0,-DinitRunningVmPriority=true'
+upgrade_params_array[10]='3.7.0,-DinitRunningVmPriority=true -DImageStoreBackupStorage.enableQuota=true'
 
 # version compare
 # eg. 1 = 1.0
