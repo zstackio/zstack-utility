@@ -3675,7 +3675,7 @@ class Vm(object):
                     video = e(devices, 'video')
                     if cmd.qxlMemory is not None:
                         e(video, 'model', None, {'type': str(cmd.videoType), 'ram': str(cmd.qxlMemory.ram), 'vram': str(cmd.qxlMemory.vram),
-                                                 'vagmem': str(cmd.qxlMemory.vgamem)})
+                                                 'vgamem': str(cmd.qxlMemory.vgamem)})
                     else:
                         e(video, 'model', None, {'type': str(cmd.videoType)})
 
