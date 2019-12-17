@@ -709,10 +709,15 @@ Parse command parameters error:
         return prompt_with_account_info
 
     def completer_print(self, substitution, matches, longest_match_length):
+        hide_parameters = [log.SENSITIVE_FIELD_NAME]
+
         def print_match(columes, new_matches, max_match_length):
             cur_col = 1
 
             for match in new_matches:
+                if match[0:-1] in hide_parameters:
+                    continue
+
                 if cur_col == columes:
                     end_sign = '\n'
                     cur_col = 1
