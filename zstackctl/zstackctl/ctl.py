@@ -8803,7 +8803,24 @@ class MiniResetHostCmd(Command):
             self._wait_node_has_ip("local")
         info("mini host reset complete!")
 
+    def _write_to_temp_file(content):
+        (tmp_fd, tmp_path) = tempfile.mkstemp()
+        tmp_fd = os.fdopen(tmp_fd, 'w')
+        tmp_fd.write(content)
+        tmp_fd.close()
+        return tmp_path
+
+    def _check_root_password(self):
+        import getpass
+        password = getpass.getpass(prompt='Enter root password for localhost to continue...\n')
+        tmpfile = self._write_to_temp_file(str(password))
+        r = shell_return("timeout 5 sshpass -f %s ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no 127.0.0.1 date" % tmpfile)
+        os.remove(tmpfile)
+        if r != 0:
+            raise Exception("check root password failed!")
+
     def _intercept(self, args):
+        self._check_root_password()
         if args.target == "local":
             return args
 
