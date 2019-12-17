@@ -392,6 +392,10 @@ Parse command parameters error:
                     all_params[params[0]] = eval_string(params[0], params[1], True)
                 elif apiname == 'APICreatePriceTableMsg' and params[0] == 'prices':
                     all_params[params[0]] = eval_string(params[0], params[1])
+                elif apiname == 'APICreateClusterDRSMsg' and params[0] == 'thresholds':
+                    all_params[params[0]] = eval_string(params[0], params[1])
+                elif apiname == 'APIUpdateClusterDRSMsg' and params[0] == 'thresholds':
+                    all_params[params[0]] = eval_string(params[0], params[1])
                 elif is_api_param_a_list(apiname, params[0]):
                     all_params[params[0]] = escape_split(params[1])
                 else:
