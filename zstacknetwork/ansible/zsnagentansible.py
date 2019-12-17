@@ -138,11 +138,8 @@ if successTmout is True and len(stdoutMd5.strip()) != 0 and stdoutMd5.split(" ")
 
 run_remote_command(add_true_in_command("pkill zsn-agent; /bin/rm /etc/init.d/zstack-network-agent"), host_post_info)
 
-service_env = "'ZSNARGS=-log-file /var/log/zstack/zsn-agent/zsn-agent.log -tmout %s'" % int(tmout)
-service_env = service_env.replace("/", "\/")
-
-replace_content("/usr/lib/systemd/system/zstack-network-agent.service", "regexp='.*Environment=.*' replace='Environment=\'%s\''" % service_env, host_post_info)
-run_remote_command(add_true_in_command(command), host_post_info)
+service_env = "ZSNARGS=-log-file /var/log/zstack/zsn-agent/zsn-agent.log -tmout %s" % int(tmout)
+replace_content("/usr/lib/systemd/system/zstack-network-agent.service", '''regexp='.*Environment=.*' replace="Environment='%s'"''' % service_env, host_post_info)
 
 command = "systemctl daemon-reload && systemctl enable zstack-network-agent.service && systemctl restart zstack-network-agent.service"
 run_remote_command(add_true_in_command(command), host_post_info)
