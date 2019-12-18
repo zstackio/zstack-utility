@@ -281,13 +281,18 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
                          (cmd.longJobUuid, new_task.current_pid, new_task.current_process_name))
 
         def get_v2v_cmd(cmd, rsp):
+            extra_params = ""
+            if cmd.extraParams:
+                for k, v in cmd.extraParams.__dict__.items():
+                    extra_params = ' '.join((extra_params, ("--%s" % k), v))
+
             if cmd.vddkVersion == '6.5':
                 return 'VIRTIO_WIN=/var/lib/zstack/v2v/zstack-windows-virtio-driver.iso \
                         virt-v2v -ic vpx://{0}?no_verify=1 {1} -it vddk \
                         --vddk-libdir=/var/lib/zstack/v2v/vmware-vix-disklib-distrib \
-                        --vddk-thumbprint={3} -o local -os {2} --password-file {2}/passwd \
+                        --vddk-thumbprint={3} -o local -os {2} --password-file {2}/passwd {5} \
                         -of {4} > {2}/virt_v2v_log 2>&1'.format(cmd.srcVmUri, shellquote(cmd.srcVmName), storage_dir,
-                                                                cmd.thumbprint, cmd.format)
+                                                                cmd.thumbprint, cmd.format, extra_params)
             if cmd.vddkVersion == '5.5':
                 if not self._ndbkit_is_work():
                     rsp.success = False
@@ -298,10 +303,10 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
                         VIRTIO_WIN=/var/lib/zstack/v2v/zstack-windows-virtio-driver.iso \
                         virt-v2v -ic vpx://{0}?no_verify=1 {1} -it vddk \
                         --vddk-libdir=/var/lib/zstack/v2v/nbdkit_build_lib/vmware-vix-disklib-distrib \
-                        --vddk-thumbprint={3} -o local -os {2} --password-file {2}/passwd \
+                        --vddk-thumbprint={3} -o local -os {2} --password-file {2}/passwd {6} \
                         -of {4} > {2}/virt_v2v_log 2>&1'.format(cmd.srcVmUri, shellquote(cmd.srcVmName),
                                                                 storage_dir,
-                                                                cmd.thumbprint, cmd.format, self._get_nbdkit_dir_path())
+                                                                cmd.thumbprint, cmd.format, self._get_nbdkit_dir_path(), extra_params)
 
         virt_v2v_cmd = get_v2v_cmd(cmd, rsp)
         src_vm_uri = cmd.srcVmUri
