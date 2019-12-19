@@ -1835,6 +1835,34 @@ done
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def add_verification_file(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AddVerificationFileRsp()
+        rsp.digest = linux.get_file_hash(cmd.path, cmd.hexType)
+        rsp.backup = linux.copy_file(cmd.path, os.path.join(BACKUPFILE_DIR, cmd.uuid))
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def check_and_restore_file(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = FileVerificationRsp()
+        for fv in cmd.files:
+            if os.path.isfile(fv.path):
+                digest = linux.get_file_hash(fv.path, fv.hexType)
+                if digest == fv.digest:
+                    continue
+            elif os.path.isdir(fv.path):
+                rsp.restoreFailedList.append(fv.uuid)
+                rsp.changeList.append(fv.uuid)
+                continue
+            backup = os.path.join(BACKUPFILE_DIR, fv.uuid)
+            res = linux.copy_file(backup, fv.path)
+            if not res:
+                rsp.restoreFailedList.append(fv.uuid)
+            rsp.changeList.append(fv.uuid)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     def transmit_vm_operation_to_vm(self, req):
         rsp = TransmitVmOperationToMnRsp()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
