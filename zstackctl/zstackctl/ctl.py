@@ -8838,11 +8838,11 @@ class MiniResetHostCmd(Command):
 
     def _wait_node_has_ip(self, node):
         info("script copy complete\nwaiting node %s reset complete ..." % node)
-        for i in range(72):
+        for i in range(100):
             if self._node_has_special_ip(node):
                 return
-            time.sleep(5)
-        error("%s reset not success after 360 secondes" % node)
+            time.sleep(6)
+        error("%s reset not success after 600 secondes" % node)
 
     @staticmethod
     def _node_has_special_ip(node):
