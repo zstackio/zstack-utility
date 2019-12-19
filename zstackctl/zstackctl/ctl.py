@@ -8787,7 +8787,7 @@ class MiniResetHostCmd(Command):
         self.sn = self.sn.strip()
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--target', help='reset target, could be %s' % self.target, required=False)
+        parser.add_argument('--target', help='reset target, could be %s, default is both' % self.target, required=False)
 
     def run(self, args):
         args = self._intercept(args)
@@ -8803,7 +8803,7 @@ class MiniResetHostCmd(Command):
             self._wait_node_has_ip("local")
         info("mini host reset complete!")
 
-    def _write_to_temp_file(content):
+    def _write_to_temp_file(self, content):
         (tmp_fd, tmp_path) = tempfile.mkstemp()
         tmp_fd = os.fdopen(tmp_fd, 'w')
         tmp_fd.write(content)
