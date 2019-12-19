@@ -197,6 +197,11 @@ copy_arg.dest = VSFTPD_ROOT_PATH
 copy(copy_arg, host_post_info)
 
 copy_arg = CopyArg()
+copy_arg.src = "%s/zwatch-install.sh" % file_root
+copy_arg.dest = VSFTPD_ROOT_PATH
+copy(copy_arg, host_post_info)
+
+copy_arg = CopyArg()
 copy_arg.src = "%s/pxeServerPushGateway.service" % file_root
 copy_arg.dest = "/etc/systemd/system/"
 copy(copy_arg, host_post_info)

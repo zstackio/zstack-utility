@@ -992,24 +992,32 @@ mimetype.assign = (
 
         agent_file_target_path = os.path.join(http_root, "zwatch-vm-agent.linux-amd64.bin")
         if not os.path.exists(agent_file_target_path):
-            shutil.copyfile(agent_file_source_path, agent_file_target_path)
-        else:
-            source_md5 = shell.call("md5sum %s | cut -d ' ' -f 1" % agent_file_source_path)
-            target_md5 = shell.call("md5sum %s | cut -d ' ' -f 1" % agent_file_target_path)
-            if source_md5 != target_md5:
-                shutil.copyfile(agent_file_source_path, agent_file_target_path)
+            bash_r("ln -s %s %s" % (agent_file_source_path, agent_file_target_path))
+        elif not os.path.islink(agent_file_target_path):
+            linux.rm_file_force(agent_file_target_path)
+            bash_r("ln -s %s %s" % (agent_file_source_path, agent_file_target_path))
 
         tool_sh_file_path = "/var/lib/zstack/kvm/vm-tools.sh"
         if not os.path.exists(tool_sh_file_path):
             logger.error("Can't find file %s" % tool_sh_file_path)
             return
-        shutil.copyfile(tool_sh_file_path, os.path.join(http_root, "vm-tools.sh"))
+        target_tool_sh_file_path = os.path.join(http_root, "vm-tools.sh")
+        if not os.path.exists(target_tool_sh_file_path):
+            bash_r("ln -s %s %s" % (tool_sh_file_path, target_tool_sh_file_path))
+        elif not os.path.islink(target_tool_sh_file_path):
+            linux.rm_file_force(target_tool_sh_file_path)
+            bash_r("ln -s %s %s" % (tool_sh_file_path, target_tool_sh_file_path))
 
         version_file_path = "/var/lib/zstack/kvm/agent_version"
         if not os.path.exists(version_file_path):
             logger.error("Can't find file %s" % version_file_path)
             return
-        shutil.copyfile(version_file_path, os.path.join(http_root, "agent_version"))
+        target_version_file_path = os.path.join(http_root, "agent_version")
+        if not os.path.exists(target_version_file_path):
+            bash_r("ln -s %s %s" % (version_file_path, target_version_file_path))
+        elif not os.path.islink(target_version_file_path):
+            linux.rm_file_force(target_version_file_path)
+            bash_r("ln -s %s %s" % (version_file_path, target_version_file_path))
 
     @in_bash
     @lock.file_lock('/run/xtables.lock')
