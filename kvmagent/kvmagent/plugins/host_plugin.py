@@ -1618,8 +1618,13 @@ done
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = FileVerificationRsp()
         for fv in cmd.files:
-            digest = linux.get_file_hash(fv.path, fv.hexType)
-            if digest == fv.digest:
+            if os.path.isfile(fv.path):
+                digest = linux.get_file_hash(fv.path, fv.hexType)
+                if digest == fv.digest:
+                    continue
+            elif os.path.isdir(fv.path):
+                rsp.restoreFailedList.append(fv.uuid)
+                rsp.changeList.append(fv.uuid)
                 continue
             backup = os.path.join(BACKUPFILE_DIR, fv.uuid)
             res = linux.copy_file(backup, fv.path)
