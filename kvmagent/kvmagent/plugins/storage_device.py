@@ -751,7 +751,8 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         luns = []
         for fc_target in fc_targets:
             t = filter(lambda x: "[%s" % fc_target in x, o)
-            luns.extend(map(lambda x: self.get_device_info(x.split("/dev/")[1]), t))
+            mapped_t = map(lambda x: self.get_device_info(x.split("/dev/")[1]), t)
+            luns.extend(filter(lambda x: x is not None, mapped_t))
 
         luns_info = {}
         for lun in luns:  # type: FiberChannelLunStruct
@@ -779,10 +780,13 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     def get_device_info(self, dev_name):
         # type: (str) -> FiberChannelLunStruct
         s = FiberChannelLunStruct()
-        o = shell.call(
-            "lsblk --pair -b -p -o NAME,VENDOR,MODEL,WWN,SERIAL,HCTL,TYPE,SIZE /dev/%s" % dev_name).strip().split("\n")[0]
-        if o == "":
-            raise Exception("can not get device information from %s" % dev_name)
+        r, o, e = bash.bash_roe(
+            "lsblk --pair -b -p -o NAME,VENDOR,MODEL,WWN,SERIAL,HCTL,TYPE,SIZE /dev/%s" % dev_name, False)
+        if r != 0 or o.strip() == "":
+            logger.warn("can not get device information from %s" % dev_name)
+            return None
+
+        o = o.strip().splitlines()[0]
 
         def get_data(e):
             return e.split("=")[1].strip().strip('"')
