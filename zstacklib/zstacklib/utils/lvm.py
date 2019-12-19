@@ -1,5 +1,6 @@
 import functools
 import random
+import os
 import os.path
 import time
 
@@ -13,6 +14,7 @@ from zstacklib.utils import qemu_img
 logger = log.get_logger(__name__)
 LV_RESERVED_SIZE = 1024*1024*4
 LVM_CONFIG_PATH = "/etc/lvm"
+LVM_CONFIG_FILE = '/etc/lvm/lvm.conf'
 SANLOCK_CONFIG_FILE_PATH = "/etc/sanlock/sanlock.conf"
 SANLOCK_IO_TIMEOUT = 40
 LVMLOCKD_LOG_FILE_PATH = "/var/log/lvmlockd/lvmlockd.log"
@@ -309,11 +311,10 @@ def config_lvm_by_sed(keyword, entry, files):
     if not os.path.exists(LVM_CONFIG_PATH):
         raise Exception("can not find lvm config path: %s, config lvm failed" % LVM_CONFIG_PATH)
 
-    for file in files:
+    for f in files:
         cmd = shell.ShellCmd("sed -i 's/.*\\b%s\\b.*/%s/g' %s/%s" %
-                             (keyword, entry, LVM_CONFIG_PATH, file))
+                             (keyword, entry, LVM_CONFIG_PATH, f))
         cmd(is_exception=False)
-    linux.sync()
     logger.debug(bash.bash_o("lvmconfig --type diff"))
 
 
@@ -331,8 +332,9 @@ def config_lvm_filter(files, no_drbd=False):
 
     filter_str += ']'
 
-    for file in files:
-        bash.bash_r("sed -i 's/.*\\b%s.*/%s/g' %s/%s" % ("filter", filter_str, LVM_CONFIG_PATH, file))
+    for f in files:
+        bash.bash_r("sed -i 's/.*\\b%s.*/%s/g' %s/%s" % ("filter", filter_str, LVM_CONFIG_PATH, f))
+    linux.sync_file(LVM_CONFIG_FILE)
 
 
 def config_sanlock_by_sed(keyword, entry):
@@ -342,7 +344,7 @@ def config_sanlock_by_sed(keyword, entry):
     cmd = shell.ShellCmd("sed -i 's/.*%s.*/%s/g' %s" %
                          (keyword, entry, SANLOCK_CONFIG_FILE_PATH))
     cmd(is_exception=False)
-    linux.sync()
+    linux.sync_file(SANLOCK_CONFIG_FILE_PATH)
 
 
 def config_lvmlockd():
@@ -375,10 +377,11 @@ WantedBy=multi-user.target
 """ % LVMLOCKD_LOG_FILE_PATH
         with open(LVMLOCKD_LOG_RSYSLOG_PATH, 'w') as f:
             f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
         os.chmod(LVMLOCKD_LOG_RSYSLOG_PATH, 0644)
         shell.call("systemctl restart rsyslog", exception=False)
 
-    linux.sync()
     cmd = shell.ShellCmd("systemctl daemon-reload")
     cmd(is_exception=False)
 
@@ -416,8 +419,9 @@ def start_lvmlockd():
 }"""
     with open(LVMLOCKD_LOG_LOGROTATE_PATH, 'w') as f:
         f.write(content)
+        f.flush()
+        os.fsync(f.fileno())
     os.chmod(LVMLOCKD_LOG_LOGROTATE_PATH, 0644)
-    linux.sync()
 
 
 @bash.in_bash
