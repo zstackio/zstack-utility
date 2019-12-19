@@ -48,6 +48,9 @@ def encrypt_img(img_path):
     os.remove(tmp_path)
 
 def get_image_encrypt_uuid_and_hash(img_path):
+    if not is_img_encrypted(img_path):
+        return None, None
+
     _, uuid = commands.getstatusoutput("qemu-img info %s | grep uuid | awk -F ': ' '{ print $NF }'" % img_path)
     _, md5  = commands.getstatusoutput("md5sum %s | cut -d ' ' -f 1" % img_path)
     return uuid, md5

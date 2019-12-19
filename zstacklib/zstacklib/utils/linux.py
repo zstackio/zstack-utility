@@ -886,11 +886,6 @@ def qcow2_create_with_option(dst, size, opt=""):
 
 def qcow2_create_with_backing_file(backing_file, dst):
     fmt = get_img_fmt(backing_file)
-
-    if secret.is_img_encrypted(backing_file):
-        opt += secret.get_qemu_encrypt_options()
-        backing_file = secret.get_img_path_with_secret_objects(backing_file)
-
     shell.call('/usr/bin/qemu-img create -F %s -f qcow2 -b %s %s' % (fmt, backing_file, dst))
     os.chmod(dst, 0o660)
 
@@ -927,13 +922,10 @@ def create_template(src, dst, compress=False, shell=shell):
     raise Exception('unknown format[%s] of the image file[%s]' % (fmt, src))
 
 def qcow2_create_template(src, dst, compress, shell=shell):
-    if secret.is_img_encrypted(src):
-        src = ' --object secret,id={0},file={1},format=base64 '\
-              ' --image-opts driver=qcow2,encrypt.key-secret={0},file.filename={2} '\
-              ' -o encrypt.format=luks,encrypt.key-secret={0} '\
-              .format(secret.ZSTACK_SECRET_OBJECT_ID, secret.ZSTACK_ENCRYPT_B64_PATH, src)
-    else:
-        src = ' -f qcow2 ' + src
+    src = ' --object secret,id={0},file={1},format=base64 '\
+          ' --image-opts driver=qcow2,encrypt.key-secret={0},file.filename={2} '\
+          ' -o encrypt.format=luks,encrypt.key-secret={0} '\
+          .format(secret.ZSTACK_SECRET_OBJECT_ID, secret.ZSTACK_ENCRYPT_B64_PATH, src)
 
     if compress:
         shell.call('%s -c -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
