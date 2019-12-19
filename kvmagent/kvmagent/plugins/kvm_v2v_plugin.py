@@ -18,6 +18,7 @@ from zstacklib.utils import http
 from zstacklib.utils import xmlobject
 from zstacklib.utils.bash import in_bash
 from zstacklib.utils.plugin import completetask
+from zstacklib.utils.report import *
 
 logger = log.get_logger(__name__)
 
@@ -439,16 +440,36 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                     None,
                     flags)
 
+            end_progress = 60
+            total_volume_size = sum(volume.size for volume in volumes)
+
+            if cmd.sendCommandUrl:
+                Report.url = cmd.sendCommandUrl
+
+            report = Report(cmd.threadContext, cmd.threadContextStack)
+            report.processType = "KVM-V2V"
             while True:
+                current_progress = 0.0
                 for v in volumes:
                     if v.endTime:
+                        current_progress += 1.0 * float(v.size) / float(total_volume_size)
                         continue
+
                     info = dom.blockJobInfo(v.name, 0)
                     if not info:
                         raise Exception('blockjob not found on disk: '+v.name)
-                    if info['cur'] == info['end']:
+                    end = info['end']
+                    cur = info['cur']
+                    if cur == end :
                         v.endTime = time.time()
                         logger.info("completed copying {}/{} ...".format(cmd.srcVmUuid, v.name))
+                        progress = 1.0
+                    else:
+                        progress = float(cur) / float(end)
+
+                    current_progress += progress * float(v.size) / float(total_volume_size)
+
+                report.progress_report(str(int(current_progress * float(end_progress))), "start")
                 if all(map(lambda v: v.endTime, volumes)):
                     break
                 time.sleep(5)

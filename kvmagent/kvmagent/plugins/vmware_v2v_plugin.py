@@ -6,6 +6,7 @@ import json
 import commands
 import platform
 import string
+import re
 
 from kvmagent import kvmagent
 from zstacklib.utils import jsonobject
@@ -42,6 +43,13 @@ class ConvertRsp(AgentRsp):
         self.bootMode = None
 
 
+class GetConvertProgressRsp(AgentRsp):
+    def __init__(self):
+        super(GetConvertProgressRsp, self).__init__()
+        self.currentDiskNum = None
+        self.currentProgress = None
+
+
 QOS_IFB = "ifb0"
 
 VDDK_VERSION = '/var/lib/zstack/v2v/vddk_version'
@@ -51,6 +59,7 @@ V2V_LIB_PATH = '/var/lib/zstack/v2v/'
 class VMwareV2VPlugin(kvmagent.KvmAgent):
     INIT_PATH = "/vmwarev2v/conversionhost/init"
     CONVERT_PATH = "/vmwarev2v/conversionhost/convert"
+    CONVERT_PROGRESS_PATH = "/vmwarev2v/conversionhost/convert/progress"
     CLEAN_PATH = "/vmwarev2v/conversionhost/clean"
     CHECK_BITS = "/vmwarev2v/conversionhost/checkbits"
     CONFIG_QOS_PATH = "/vmwarev2v/conversionhost/qos/config"
@@ -61,6 +70,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
         http_server = kvmagent.get_http_server()
         http_server.register_async_uri(self.INIT_PATH, self.init)
         http_server.register_async_uri(self.CONVERT_PATH, self.convert)
+        http_server.register_async_uri(self.CONVERT_PROGRESS_PATH, self.get_convert_progress)
         http_server.register_async_uri(self.CLEAN_PATH, self.clean)
         http_server.register_async_uri(self.CANCEL_CONVERT_PATH, self.clean_convert)
         http_server.register_async_uri(self.CHECK_BITS, self.check_bits)
@@ -152,6 +162,48 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
                     fd.write(current_version)
 
         return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def get_convert_progress(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetConvertProgressRsp()
+
+        storage_dir = os.path.join(cmd.storagePath, cmd.srcVmUuid)
+        v2v_pid_path = os.path.join(storage_dir, "convert.pid")
+        pid = linux.read_file(v2v_pid_path)
+        if not pid:
+            rsp.success = False
+            rsp.error = "no v2v process exists"
+            return jsonobject.dumps(rsp)
+
+        v2v_log_file = "%s/virt_v2v_log" % storage_dir
+
+        tail_log_cmd = shell.ShellCmd('tail -2 %s' % v2v_log_file)
+        tail_log_cmd(False)
+
+        if tail_log_cmd.return_code == 0 and tail_log_cmd.stdout:
+            out = tail_log_cmd.stdout
+            if 'Converting' in out and 'to run on KVM' in out:
+                rsp.currentDiskNum = '0'
+                rsp.currentProgress = '10'
+            elif 'Inspecting the overlay' in out:
+                rsp.currentDiskNum = '0'
+                rsp.currentProgress = '7'
+            elif 'Opening the overlay' in out:
+                rsp.currentDiskNum = '0'
+                rsp.currentProgress = '3'
+            elif 'Copying disk' in out:
+                output = out.split('\n')
+                percentage = output[1].replace('\015', '').split(' ')[-1].replace('(', '').split('/')[0]
+                rsp.currentDiskNum = re.search("Copying disk.*.to", output[0]).group().split(' ')[2].split('/')[0]
+                rsp.currentProgress = percentage
+            else:
+                logger.debug("not handled log keep progress")
+        else:
+            logger.debug("Failed to tail log, keep the progress")
+
+        return jsonobject.dumps(rsp)
+
 
     @in_bash
     @kvmagent.replyerror
