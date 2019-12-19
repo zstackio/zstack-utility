@@ -2421,6 +2421,7 @@ class Vm(object):
         """
         disk_names = []
         return_structs = []
+        memory_snapshot_struct = None
 
         snapshot = etree.Element('domainsnapshot')
         disks = e(snapshot, 'disks')
@@ -2436,10 +2437,22 @@ class Vm(object):
             return VmPlugin._get_snapshot_size(install_path)
 
         logger.debug(vs_structs)
+        need_memory_snapshot = False
         for vs_struct in vs_structs:
             if vs_struct.live is False or vs_struct.full is True:
                 raise kvmagent.KvmError("volume %s is not live or full snapshot specified, "
                                         "can not proceed")
+
+            if vs_struct.memory:
+                e(snapshot, 'memory', None, attrib={'snapshot': 'external', 'file': vs_struct.installPath})
+                need_memory_snapshot = True
+                snapshot_dir = os.path.dirname(vs_struct.installPath)
+                if not os.path.exists(snapshot_dir):
+                    os.makedirs(snapshot_dir)
+
+                memory_snapshot_struct = vs_struct
+                continue
+
             target_disk, disk_name = self._get_target_disk(vs_struct.volume)
             if target_disk is None:
                 logger.debug("can not find %s" % vs_struct.volume.deviceId)
@@ -2465,12 +2478,21 @@ class Vm(object):
 
         xml = etree.tostring(snapshot)
         logger.debug('creating live snapshot for vm[uuid:{0}] volumes[id:{1}]:\n{2}'.format(self.uuid, disk_names, xml))
-        snap_flags = libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_DISK_ONLY | \
-                     libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_NO_METADATA | \
-                     libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_ATOMIC
+
+        snap_flags = libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_NO_METADATA | libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_ATOMIC
+        if not need_memory_snapshot:
+            snap_flags |= libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_DISK_ONLY
 
         try:
             self.domain.snapshotCreateXML(xml, snap_flags)
+
+            if memory_snapshot_struct:
+                return_structs.append(VolumeSnapshotResultStruct(
+                    memory_snapshot_struct.volumeUuid,
+                    memory_snapshot_struct.installPath,
+                    memory_snapshot_struct.installPath,
+                    get_size(memory_snapshot_struct.installPath)))
+
             return return_structs
         except libvirt.libvirtError as ex:
             logger.warn(linux.get_exception_stacktrace())
@@ -4086,6 +4108,15 @@ class VmPlugin(kvmagent.KvmAgent):
         return o[0]
 
     def _start_vm(self, cmd):
+        if cmd.memorySnapshotPath:
+            # TODO: 1. enable hair_pin mode
+            @LibvirtAutoReconnect
+            def restore_from_file(conn):
+                return conn.restore(cmd.memorySnapshotPath)
+
+            restore_from_file()
+            return
+
         try:
             vm = get_vm_by_uuid_no_retry(cmd.vmInstanceUuid, False)
 
@@ -6249,13 +6280,14 @@ class EmptyCdromConfig():
 
 class VolumeSnapshotJobStruct(object):
     def __init__(self, volumeUuid, volume, installPath, vmInstanceUuid, previousInstallPath,
-                 newVolumeInstallPath, live=True, full=False):
+                 newVolumeInstallPath, live=True, full=False, memory=False):
         self.volumeUuid = volumeUuid
         self.volume = volume
         self.installPath = installPath
         self.vmInstanceUuid = vmInstanceUuid
         self.previousInstallPath = previousInstallPath
         self.newVolumeInstallPath = newVolumeInstallPath
+        self.memory = memory
         self.live = live
         self.full = full
 
