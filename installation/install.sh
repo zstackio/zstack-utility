@@ -657,6 +657,12 @@ cs_check_zstack_data_exist(){
                 fi
             fi
 
+            s=$(mysql --user=root --password="$MYSQL_NEW_ROOT_PASSWORD" --host="$MANAGEMENT_IP" -s -e "show slave status \G")
+            if [ -n "$NEED_DROP_DB" ] && [ -n "$s" ]; then
+                echo "$s" >> $ZSTACK_INSTALL_LOG
+                fail2 "Drop ${PRODUCT_NAME} database aborted, because database replication is still active."
+            fi
+
             # check zstack_ui database
             mysql --user=root --password=$MYSQL_NEW_ROOT_PASSWORD --host=$MANAGEMENT_IP -e "use zstack_ui" >/dev/null 2>&1
             if [ $? -eq  0 ];then
@@ -2442,11 +2448,6 @@ cs_deploy_db(){
             zstack-ctl deploydb --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP --keep-db >>$ZSTACKCTL_INSTALL_LOG 2>&1
         fi
     else
-        s=$(mysql -u root -p"$MYSQL_NEW_ROOT_PASSWORD" -h "$MANAGEMENT_IP" -s -e "show slave status \G")
-        if [ -n "$s" ]; then
-            echo "$s" >> $ZSTACK_INSTALL_LOG
-            fail "Drop ${PRODUCT_NAME} database aborted, because database replication is still active."
-        fi
         zstack-ctl deploydb --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP --drop >>$ZSTACKCTL_INSTALL_LOG 2>&1
     fi
     if [ $? -ne 0 ];then
