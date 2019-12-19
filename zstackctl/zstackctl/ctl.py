@@ -8832,7 +8832,7 @@ class MiniResetHostCmd(Command):
         _, o, _ = shell_return_stdout_stderr("curl 127.0.0.1:7274/bootstrap/hosts/local")
         j = simplejson.loads(o)
         if j.get("peer") is None:
-            raise Exception("Can not connect to peer, you can reset local node via "
+            error("Can not connect to peer, you can reset local node via "
                             "'zstack-ctl reset_mini_host --target local'")
         return args
 
@@ -8842,7 +8842,7 @@ class MiniResetHostCmd(Command):
             if self._node_has_special_ip(node):
                 return
             time.sleep(5)
-        raise Exception("%s reset not success after 360 secondes" % node)
+        error("%s reset not success after 360 secondes" % node)
 
     @staticmethod
     def _node_has_special_ip(node):
@@ -8857,7 +8857,7 @@ class MiniResetHostCmd(Command):
 
     def _validate_args(self, args):
         if args.target not in self.target:
-            raise Exception("target must be local, peer or both")
+            error("target must be local, peer or both")
 
     @staticmethod
     def _get_peer_address():
@@ -8872,7 +8872,7 @@ class MiniResetHostCmd(Command):
         r = shell_return("timeout 5 ssh -i %s root@%s date" % (self.key, peer_ip))
         if r == 0:
             return False
-        raise Exception("can not connect %s via ssh" % peer_ip)
+        error("can not connect %s via ssh" % peer_ip)
 
     def _run_script(self, peer_ip=None):
         if not peer_ip:
