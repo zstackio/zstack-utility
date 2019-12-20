@@ -316,6 +316,8 @@ def reset_system():
     reset_network()
     p = "enN0YWNrLm9yZ0A2MzdF"
     bash_r("echo 'root:%s' | chpasswd" % base64.decodestring(p))
+    logger.info("reset system done")
+
 
 
 def main(args):
