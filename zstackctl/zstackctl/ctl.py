@@ -1854,13 +1854,13 @@ class StartCmd(Command):
             return
         # clean the error log before booting
         boot_error_log = os.path.join(ctl.USER_ZSTACK_HOME_DIR, 'bootError.log')
-        shell('rm -f %s' % boot_error_log)
+        linux.rm_file_force(boot_error_log)
         pid = get_management_node_pid()
         if pid:
             info('the management node[pid:%s] is already running' % pid)
             return
         else:
-            shell('rm -f %s' % os.path.join(os.path.expanduser('~zstack'), "management-server.pid"))
+            linux.rm_file_force(os.path.join(os.path.expanduser('~zstack'), "management-server.pid"))
 
         def check_java_version():
             ver = shell('java -version 2>&1 | grep -w version')
@@ -1914,6 +1914,11 @@ class StartCmd(Command):
                 error("management.server.ip not configured")
             if 0 != shell_return("ip a | grep 'inet ' | grep -w '%s'" % mn_ip):
                 error("management.server.ip[%s] is not found on any device" % mn_ip)
+
+        def check_ha():
+            _, output, _ = shell_return_stdout_stderr("systemctl is-enabled zstack-ha")
+            if output and output.strip() == "enabled":
+                error("please use 'zsha2 start-node'")
 
         def check_chrony():
             if ctl.read_property('syncNodeTime') == "false":
@@ -2071,6 +2076,7 @@ class StartCmd(Command):
         check_mn_port()
         check_prometheus_port()
         check_msyql()
+        check_ha()
         check_mn_ip()
         check_chrony()
         restart_console_proxy()
