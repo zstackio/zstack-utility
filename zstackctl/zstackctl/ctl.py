@@ -216,6 +216,12 @@ def ssh_run_no_pipe(ip, cmd, params=[]):
         scmd.raise_error()
     return scmd.stdout
 
+def kill_process(pid, sig=signal.SIGTERM):
+    try:
+        os.kill(int(pid), sig)
+    except OSError:
+        pass
+
 class CtlError(Exception):
     pass
 
@@ -1374,7 +1380,7 @@ class ShowStatusCmd(Command):
 
             def dump_mn():
                 if pid:
-                    os.kill(int(pid), signal.SIGQUIT)
+                    kill_process(pid, signal.SIGQUIT)
 
                 shell_return("echo 'management node became Unknown on %s, you can check status in catalina.out' >> %s"
                              % (datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), log_path))
@@ -2262,7 +2268,7 @@ class StopCmd(Command):
                 info('unable to stop management node within %s seconds, kill it' % timeout)
             with on_error('unable to kill -9 %s' % pid):
                 logger.info('graceful shutdown failed, try to kill management node process:%s' % pid)
-                os.kill(int(pid), signal.SIGKILL)
+                kill_process(pid, signal.SIGKILL)
                 clear_leftover_mn_heartbeat()
 
 class RestartNodeCmd(Command):
@@ -5539,8 +5545,8 @@ class CollectLogCmd(Command):
         # dump mn status
         mn_pid = get_management_node_pid()
         if mn_pid:
-            os.kill(int(mn_pid), signal.SIGQUIT)
-            os.kill(int(mn_pid), signal.SIGUSR2)
+            kill_process(mn_pid, signal.SIGQUIT)
+            kill_process(mn_pid, signal.SIGUSR2)
 
         run_command_dir = os.getcwd()
         time_stamp =  datetime.now().strftime("%Y-%m-%d_%H-%M")
@@ -5678,8 +5684,8 @@ class ConfiguredCollectLogCmd(Command):
         # dump mn status
         mn_pid = get_management_node_pid()
         if mn_pid:
-            os.kill(int(mn_pid), signal.SIGQUIT)
-            os.kill(int(mn_pid), signal.SIGUSR2)
+            kill_process(mn_pid, signal.SIGQUIT)
+            kill_process(mn_pid, signal.SIGUSR2)
         run_command_dir = os.getcwd()
         time_stamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
         # create log
@@ -7525,12 +7531,12 @@ class StopDashboardCmd(Command):
             with open(pidfile, 'r') as fd:
                 pid = fd.readline()
                 pid = pid.strip(' \t\n\r')
-                shell('kill %s >/dev/null 2>&1' % pid, is_exception=False)
+                kill_process(pid)
 
         def stop_all():
             pid = find_process_by_cmdline('zstack_dashboard')
             if pid:
-                shell('kill -9 %s >/dev/null 2>&1' % pid)
+                kill_process(pid, signal.SIGKILL)
                 stop_all()
             else:
                 return
@@ -7564,12 +7570,12 @@ class StopUiCmd(Command):
             with open(pidfile, 'r') as fd:
                 pid = fd.readline()
                 pid = pid.strip(' \t\n\r')
-                shell('kill %s >/dev/null 2>&1' % pid, is_exception=False)
+                kill_process(pid)
 
         def stop_all():
             pid = find_process_by_cmdline('zstack-ui')
             if pid:
-                shell('kill -9 %s >/dev/null 2>&1' % pid)
+                kill_process(pid, signal.SIGKILL)
                 stop_all()
             else:
                 return
@@ -7594,7 +7600,7 @@ class StopUiCmd(Command):
         if "Stopped" in status_output:
             mini_pid = get_ui_pid('mini')
             if mini_pid:
-                shell('kill -9 %s >/dev/null 2>&1'.format(pid))
+                kill_process(pid, signal.SIGKILL)
             linux.rm_dir_force("/var/run/zstack/zstack-mini-ui.port")
             linux.rm_dir_force("/var/run/zstack/zstack-mini-ui.pid")
             info('successfully stopped the MINI UI server')
@@ -7622,12 +7628,12 @@ class StopVDIUiCmd(Command):
             with open(pidfile, 'r') as fd:
                 pid = fd.readline()
                 pid = pid.strip(' \t\n\r')
-                shell('kill %s >/dev/null 2>&1' % pid, is_exception=False)
+                kill_process(pid)
 
         def stop_all():
             pid = find_process_by_cmdline('zstack-vdi')
             if pid:
-                shell('kill -9 %s >/dev/null 2>&1' % pid)
+                kill_process(pid, signal.SIGKILL)
                 stop_all()
             else:
                 return
@@ -8038,7 +8044,7 @@ class StartDashboardCmd(Command):
         pid = find_process_by_cmdline('zstack_dashboard')
         if pid:
             info('found a zombie UI server[PID:%s], kill it and start a new one' % pid)
-            shell('kill -9 %s > /dev/null' % pid)
+            kill_process(pid, signal.SIGKILL)
 
         return True
 
@@ -8189,7 +8195,7 @@ class StartUiCmd(Command):
         pid = find_process_by_cmdline('zstack-ui.war')
         if pid:
             info('found a zombie UI server[PID:%s], kill it and start a new one' % pid)
-            shell('kill -9 %s > /dev/null' % pid)
+            kill_process(pid, signal.SIGKILL)
         return True
 
     def _gen_default_ssl_keystore(self):
@@ -8690,7 +8696,7 @@ class StartVDIUICmd(Command):
         pid = find_process_by_cmdline('zstack-vdi')
         if pid:
             info('found a zombie VDI UI server[PID:%s], kill it and start a new one' % pid)
-            shell('kill -9 %s > /dev/null' % pid)
+            kill_process(pid, signal.SIGKILL)
         return True
 
     def run(self, args):
