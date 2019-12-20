@@ -267,6 +267,7 @@ def cleanup_storage():
 
 @in_bash
 def cleanup_zstack():
+    bash_r("mysql -uroot -pzstack.mysql.password -e 'STOP SLAVE; RESET SLAVE ALL;'")
     bash_r("rm -rf /usr/local/zstack/apache-tomcat/logs/")
     bash_r("rm -rf /var/log/zstack/")
     bash_r("rm -rf /usr/local/zstack")
@@ -315,6 +316,8 @@ def reset_system():
     reset_network()
     p = "enN0YWNrLm9yZ0A2MzdF"
     bash_r("echo 'root:%s' | chpasswd" % base64.decodestring(p))
+    logger.info("reset system done")
+
 
 
 def main(args):
