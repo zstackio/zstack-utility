@@ -3,6 +3,7 @@ import os.path
 import re
 import random
 import time
+import traceback
 
 from kvmagent import kvmagent
 from kvmagent.plugins.imagestore import ImageStoreClient
@@ -92,6 +93,10 @@ class GetVolumeSizeRsp(AgentRsp):
 
 
 class RetryException(Exception):
+    pass
+
+
+class SharedBlockConnectException(Exception):
     pass
 
 
@@ -343,8 +348,44 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         return False
 
     @kvmagent.replyerror
-    @lock.file_lock(LOCK_FILE)
     def connect(self, req):
+        @linux.retry(times=10, sleep_time=random.uniform(0.1, 1))
+        def get_lock(sblk_lock):
+            sblk_lock.lock = lock._get_lock(sblk_lock.name)
+            if sblk_lock.lock.acquire(False) is False:
+                raise SharedBlockConnectException("can not get %s lock, there is other thread running" % sblk_lock.name)
+
+        def release_lock(sblk_lock):
+            try:
+                sblk_lock.lock.release()
+            except Exception:
+                return
+
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        sblk_lock = lock.NamedLock("sharedblock-%s" % cmd.vgUuid)
+        rsp = None
+        try:
+            get_lock(sblk_lock)
+            rsp = self.do_connect(req)
+        except SharedBlockConnectException as e:
+            r = AgentRsp()
+            r.success = False
+            r.error = "can not connect sharedblock primary storage[uuid: %s] on host[uuid: %s], " \
+                        "because other thread is connecting now" % (cmd.vgUuid, cmd.hostUuid)
+            rsp = jsonobject.dumps(r)
+        except Exception as e:
+            if rsp is None:
+                r = AgentRsp()
+                r.success.success = False
+                content = traceback.format_exc()
+                r.error = "%s\n%s" % (str(e), content)
+                rsp = jsonobject.dumps(r)
+        finally:
+            release_lock(sblk_lock)
+            return rsp
+
+    @kvmagent.replyerror
+    def do_connect(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = ConnectRsp()
         diskPaths = set()
