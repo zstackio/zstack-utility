@@ -350,6 +350,8 @@ resource {{ name }} {
             raise Exception("minor %s has already been defined %s" % (self.local_host.minor, o))
         with open(self.path, "w") as f:
             f.write(config.render(self.make_ctx()).strip())
+            f.flush()
+            os.fsync(f.fileno())
 
     def make_ctx(self):
         ctx = {}
