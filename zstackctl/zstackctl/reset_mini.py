@@ -292,7 +292,7 @@ def reset_network():
         "ip link set dev eno1 nomaster; ip link set dev eno2 nomaster; ip link set dev ens2f0 nomaster; ip link set dev ens2f1 nomaster")
     bash_r("ip -4 a flush eno1; ip -4 a flush eno2; ip -4 a flush ens2f0; ip -4 a flush ens2f1")
     bash_r("ip r del default")
-    bash_r("ls /etc/sysconfig/network-scripts/ifcfg-* | grep -E 'ifcfg-eno1|ifcfg-eno2|ifcfg-ens2f0|ifcfg-ens2f1' | xargs sed -i -E 's/(IPADDR.*|NETMASK.*|GATEWAY.*)//g'")
+    bash_r("ls /etc/sysconfig/network-scripts/ifcfg-* | grep -E 'ifcfg-eno1|ifcfg-eno2|ifcfg-ens2f0|ifcfg-ens2f1' | xargs sed -i -E 's/(IPADDR.*|NETMASK.*|GATEWAY.*|SLAVE.*|MASTER.*)//g'")
     bash_r("ls /etc/sysconfig/network-scripts/ifcfg-* | grep -Ev 'ifcfg-lo|ifcfg-eno1|ifcfg-eno2|ifcfg-ens2f0|ifcfg-ens2f1' | xargs /bin/rm")
     bash_r("systemctl restart network")
     clear_network()
