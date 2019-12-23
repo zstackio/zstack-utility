@@ -3648,10 +3648,6 @@ class Vm(object):
             devices = elements['devices']
             e(devices, 'controller', None, {'type': 'usb', 'index': '0'})
 
-            # if aarch64, then only create default usb controller
-            if IS_AARCH64:
-                return
-
             # make sure there are three usb controllers, each for USB 1.1/2.0/3.0
             e(devices, 'controller', None, {'type': 'usb', 'index': '1', 'model': 'ehci'})
             e(devices, 'controller', None, {'type': 'usb', 'index': '2', 'model': 'nec-xhci'})
@@ -3659,6 +3655,10 @@ class Vm(object):
             # USB2.0 Controller for redirect
             e(devices, 'controller', None, {'type': 'usb', 'index': '3', 'model': 'ehci'})
             e(devices, 'controller', None, {'type': 'usb', 'index': '4', 'model': 'nec-xhci'})
+
+            # qemu-system-aarch64 is not support chardev 'spicevmc'
+            if IS_AARCH64:
+                return
             chan = e(devices, 'channel', None, {'type': 'spicevmc'})
             e(chan, 'target', None, {'type': 'virtio', 'name': 'com.redhat.spice.0'})
             e(chan, 'address', None, {'type': 'virtio-serial'})
