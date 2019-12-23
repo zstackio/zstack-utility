@@ -165,6 +165,8 @@ declare -a upgrade_params_array=(
     '3.7.0,-DinitRunningVmPriority=true'
     '3.7.2,-DgeneratePriceEndDate=true'
     '3.8.0,-DinitRunningApplianceVmPriority=true'
+    '3.9.0,-DupgradeDatabaseBackupHistory=true'
+    '3.9.0,-DupgradeSchedulerJobHistory=true'
 )
 #other than the upon params_array, this one could be persisted in zstack.properties
 declare -a upgrade_persist_params_array=(
