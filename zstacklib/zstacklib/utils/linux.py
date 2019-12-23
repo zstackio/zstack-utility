@@ -604,6 +604,11 @@ def mkdir(path, mode=0o755):
 
     return False
 
+def write_to_file(fpath, content):
+    with open(fpath, 'w') as f:
+        f.write(content)
+        f.flush()
+        os.fsync(f)
 
 def write_to_temp_file(content):
     (tmp_fd, tmp_path) = tempfile.mkstemp()

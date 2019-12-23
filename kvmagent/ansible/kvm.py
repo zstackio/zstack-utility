@@ -99,6 +99,7 @@ def update_libvritd_config(host_post_info):
 
     return file_changed_flag
 
+
 @with_arch(todo_list=['x86_64'], host_arch=host_arch)
 def check_nested_kvm(host_post_info):
     """aarch64 does not need to modprobe kvm"""
