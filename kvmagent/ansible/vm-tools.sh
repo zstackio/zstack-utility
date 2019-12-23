@@ -40,11 +40,13 @@ if [[ ! ${AGENT_VERSION} =~ "md5-$NAME=${BIN_MD5}" ]]; then
     exit 1
 fi
 
-
+vmInstanceUuid=`curl http://169.254.169.254/2009-04-04/meta-data/instance-id`
+version=`echo $AGENT_VERSION | awk -F '=' '{print $2}' | awk '{print $1}'`
 echo "install ${BIN_NAME}"
 chmod +x ${BIN_NAME}
 ./${BIN_NAME} -i
 if [ $? != 0 ]; then
+     curl -H "Content-Type: application/json" -H "commandpath: /host/zwatchInstallResult" -X POST -d '{"vmInstanceUuid": "$vmInstanceUuid", "version": "NotSupport"}' http://169.254.169.254/host/zwatchInstallResult
      echo "install ${BIN_NAME} fail"
      exit 1
 fi
@@ -53,8 +55,10 @@ fi
 echo "start zwatch-vm-agent"
 service zwatch-vm-agent start
 if [ $? != 0 ]; then
+     curl -H "Content-Type: application/json" -H "commandpath: /host/zwatchInstallResult" -X POST -d '{"vmInstanceUuid": "$vmInstanceUuid", "version": "NotSupport"}' http://169.254.169.254/host/zwatchInstallResult
      echo "service zwatch-vm-agent start fail"
      exit 1
 fi
 
+curl -H "Content-Type: application/json" -H "commandpath: /host/zwatchInstallResult" -X POST -d '{"vmInstanceUuid": "$vmInstanceUuid", "version": "$version"}' http://169.254.169.254/host/zwatchInstallResult
 echo "start zwatch-vm-agent successflly"
