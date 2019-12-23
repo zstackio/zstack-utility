@@ -9,6 +9,7 @@ import os
 import os.path
 import platform
 import re
+import shutil
 import tempfile
 import time
 import uuid
@@ -63,6 +64,7 @@ class HostFactResponse(kvmagent.AgentResponse):
         self.libvirtVersion = None
         self.hvmCpuFlag = None
         self.cpuModelName = None
+        self.hostname = None
         self.systemSerialNumber = None
         self.eptFlag = None
 
@@ -350,6 +352,19 @@ class UpdateSpiceChannelConfigResponse(kvmagent.AgentResponse):
         super(UpdateSpiceChannelConfigResponse, self).__init__()
         self.restartLibvirt = False
 
+class DeployQemuTlsCommand(kvmagent.AgentResponse):
+    def __init__(self):
+        super(DeployQemuTlsCommand, self).__init__()
+        self.caCert = None
+        self.serverCert = None
+        self.clientCert = None
+        self.serverKey = None
+        self.clientKey = None
+
+class DeployQemuTlsResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(DeployQemuTlsResponse, self).__init__()
+
 # using kvmagent to transmit vm operations to management node
 # like start/stop/reboot a specific vm instance
 class VmOperation(object):
@@ -493,6 +508,7 @@ class HostPlugin(kvmagent.KvmAgent):
     HOST_ADD_VERIFICATION_FILE = "/host/file/add"
     TRANSMIT_VM_OPERATION_TO_MN_PATH = "/host/transmitvmoperation"
     CREATE_QCOW2_SECRET_PATH = "/host/createqcow2secret"
+    DEPLOY_QEMU_TLS_PATH = "/host/deployqemutls"
 
     host_network_facts_cache = {}  # type: Dict[float, list[list, list]]
 
@@ -609,6 +625,7 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.libvirtVersion = self.libvirt_version
         rsp.ipAddresses = ipV4Addrs.splitlines()
         rsp.cpuArchitecture = platform.machine()
+        rsp.hostname = os.uname()[1]
 
         if IS_AARCH64:
             # FIXME how to check vt of aarch64?
@@ -1656,6 +1673,48 @@ done
         HostPlugin._create_qcow2_secret_key(b64_secret)
         return jsonobject.dumps(kvmagent.AgentResponse())
 
+    @kvmagent.replyerror
+    def deploy_qemu_tls(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = DeployQemuTlsResponse()
+
+        linux.mkdir('/etc/pki/libvirt', 0755)
+        linux.mkdir('/etc/pki/libvirt/private', 0750)
+
+        linux.write_to_file('/etc/pki/CA/cacert.pem', cmd.caCert)
+        os.chmod('/etc/pki/CA/cacert.pem',  0444)
+
+        linux.write_to_file('/etc/pki/libvirt/servercert.pem', cmd.serverCert)
+        os.chmod('/etc/pki/libvirt/servercert.pem', 0440)
+
+        linux.write_to_file('/etc/pki/libvirt/private/serverkey.pem', cmd.serverKey)
+        os.chmod('/etc/pki/libvirt/private/serverkey.pem', 0600)
+
+        linux.write_to_file('/etc/pki/libvirt/clientcert.pem', cmd.clientCert)
+        os.chmod('/etc/pki/libvirt/clientcert.pem', 0440)
+
+        linux.write_to_file('/etc/pki/libvirt/private/clientkey.pem', cmd.clientKey)
+        os.chmod('/etc/pki/libvirt/private/clientkey.pem', 0644)
+
+        linux.mkdir('/etc/pki/qemu', 0755)
+        shutil.copyfile('/etc/pki/CA/cacert.pem', '/etc/pki/qemu/ca-cert.pem')
+        shutil.copyfile('/etc/pki/libvirt/servercert.pem', '/etc/pki/qemu/server-cert.pem')
+        shutil.copyfile('/etc/pki/libvirt/private/serverkey.pem', '/etc/pki/qemu/server-key.pem')
+        shutil.copyfile('/etc/pki/libvirt/clientcert.pem', '/etc/pki/qemu/client-cert.pem')
+        shutil.copyfile('/etc/pki/libvirt/private/clientkey.pem', '/etc/pki/qemu/client-key.pem')
+
+        with open('/etc/libvirt/libvirtd.conf') as f:
+            content = f.read()
+        linux.write_to_file('/etc/libvirt/libvirtd.conf.bak', content)
+
+        content = re.sub('#key_file', 'key_file', content, 1)
+        content = re.sub('#cert_file', 'cert_file', content, 1)
+        content = re.sub('#ca_file', 'ca_file', content, 1)
+        content = re.sub('listen_tls = 0', 'listen_tls = 1', content, 1)
+        linux.write_to_file('/etc/libvirt/libvirtd.conf', content)
+
+        return jsonobject.dumps(rsp)
+
     @staticmethod
     def _create_qcow2_secret_key(secret):
         uuid = _secret.ZSTACK_ENCRYPT_KEY_UUID
@@ -1707,6 +1766,7 @@ done
         http_server.register_async_uri(self.HOST_FILEVERIFICATION, self.check_and_restore_file)
         http_server.register_async_uri(self.HOST_ADD_VERIFICATION_FILE, self.add_verification_file)
         http_server.register_async_uri(self.CREATE_QCOW2_SECRET_PATH, self.create_qcow2_secret)
+        http_server.register_async_uri(self.DEPLOY_QEMU_TLS_PATH, self.deploy_qemu_tls)
         http_server.register_sync_uri(self.TRANSMIT_VM_OPERATION_TO_MN_PATH, self.transmit_vm_operation_to_vm)
 
         self.heartbeat_timer = {}
