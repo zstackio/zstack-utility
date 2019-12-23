@@ -9,6 +9,7 @@ import os
 import os.path
 import platform
 import re
+import shutil
 import tempfile
 import time
 import uuid
@@ -84,6 +85,7 @@ class HostFactResponse(kvmagent.AgentResponse):
         self.libvirtVersion = None
         self.hvmCpuFlag = None
         self.cpuModelName = None
+        self.hostname = None
         self.systemSerialNumber = None
         self.eptFlag = None
         self.libvirtCapabilities = []
@@ -407,6 +409,19 @@ class UpdateSpiceChannelConfigResponse(kvmagent.AgentResponse):
         super(UpdateSpiceChannelConfigResponse, self).__init__()
         self.restartLibvirt = False
 
+class DeployQemuTlsCommand(kvmagent.AgentResponse):
+    def __init__(self):
+        super(DeployQemuTlsCommand, self).__init__()
+        self.caCert = None
+        self.serverCert = None
+        self.clientCert = None
+        self.serverKey = None
+        self.clientKey = None
+
+class DeployQemuTlsResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(DeployQemuTlsResponse, self).__init__()
+
 # using kvmagent to transmit vm operations to management node
 # like start/stop/reboot a specific vm instance
 class VmOperation(object):
@@ -623,6 +638,8 @@ class HostPlugin(kvmagent.KvmAgent):
     DEPLOY_COLO_QEMU_PATH = "/deploy/colo/qemu"
     UPDATE_CONFIGURATION_PATH = "/host/update/configuration"
     GET_NUMA_TOPOLOGY_PATH = "/numa/topology"
+    DEPLOY_QEMU_TLS_PATH = "/host/deployqemutls"
+    CANCEL_JOB = "/job/cancel"
 
     host_network_facts_cache = {}  # type: dict[float, list[list, list]]
     cpu_sockets = 0
@@ -810,6 +827,7 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.libvirtVersion = self.libvirt_version
         rsp.ipAddresses = ipV4Addrs
         rsp.cpuArchitecture = platform.machine()
+        rsp.hostname = os.uname()[1]
 
         libvirtCapabilitiesList = []
         features = self._get_features_in_libvirt()
@@ -2318,6 +2336,48 @@ done
         rsp.topology = NumaTopology()()
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    def deploy_qemu_tls(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = DeployQemuTlsResponse()
+
+        linux.mkdir('/etc/pki/libvirt', 0755)
+        linux.mkdir('/etc/pki/libvirt/private', 0750)
+
+        linux.write_to_file('/etc/pki/CA/cacert.pem', cmd.caCert)
+        os.chmod('/etc/pki/CA/cacert.pem',  0444)
+
+        linux.write_to_file('/etc/pki/libvirt/servercert.pem', cmd.serverCert)
+        os.chmod('/etc/pki/libvirt/servercert.pem', 0440)
+
+        linux.write_to_file('/etc/pki/libvirt/private/serverkey.pem', cmd.serverKey)
+        os.chmod('/etc/pki/libvirt/private/serverkey.pem', 0600)
+
+        linux.write_to_file('/etc/pki/libvirt/clientcert.pem', cmd.clientCert)
+        os.chmod('/etc/pki/libvirt/clientcert.pem', 0440)
+
+        linux.write_to_file('/etc/pki/libvirt/private/clientkey.pem', cmd.clientKey)
+        os.chmod('/etc/pki/libvirt/private/clientkey.pem', 0644)
+
+        linux.mkdir('/etc/pki/qemu', 0755)
+        shutil.copyfile('/etc/pki/CA/cacert.pem', '/etc/pki/qemu/ca-cert.pem')
+        shutil.copyfile('/etc/pki/libvirt/servercert.pem', '/etc/pki/qemu/server-cert.pem')
+        shutil.copyfile('/etc/pki/libvirt/private/serverkey.pem', '/etc/pki/qemu/server-key.pem')
+        shutil.copyfile('/etc/pki/libvirt/clientcert.pem', '/etc/pki/qemu/client-cert.pem')
+        shutil.copyfile('/etc/pki/libvirt/private/clientkey.pem', '/etc/pki/qemu/client-key.pem')
+
+        with open('/etc/libvirt/libvirtd.conf') as f:
+            content = f.read()
+        linux.write_to_file('/etc/libvirt/libvirtd.conf.bak', content)
+
+        content = re.sub('#key_file', 'key_file', content, 1)
+        content = re.sub('#cert_file', 'cert_file', content, 1)
+        content = re.sub('#ca_file', 'ca_file', content, 1)
+        content = re.sub('listen_tls = 0', 'listen_tls = 1', content, 1)
+        linux.write_to_file('/etc/libvirt/libvirtd.conf', content)
+
+        return jsonobject.dumps(rsp)
+
     def start(self):
         self.host_uuid = None
         self.host_socket = None
@@ -2355,6 +2415,7 @@ done
         http_server.register_async_uri(self.UNGENERATE_VFIO_MDEV_DEVICES, self.ungenerate_vfio_mdev_devices)
         http_server.register_async_uri(self.HOST_UPDATE_SPICE_CHANNEL_CONFIG_PATH, self.update_spice_channel_config)
         http_server.register_async_uri(self.CANCEL_JOB, self.cancel)
+        http_server.register_async_uri(self.DEPLOY_QEMU_TLS_PATH, self.deploy_qemu_tls)
         http_server.register_sync_uri(self.TRANSMIT_VM_OPERATION_TO_MN_PATH, self.transmit_vm_operation_to_vm)
         http_server.register_sync_uri(self.TRANSMIT_ZWATCH_INSTALL_RESULT_TO_MN_PATH, self.transmit_zwatch_install_result_to_mn)
         http_server.register_async_uri(self.SCAN_VM_PORT_PATH, self.scan_vm_port)
