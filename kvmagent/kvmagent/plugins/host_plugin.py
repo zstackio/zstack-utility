@@ -359,7 +359,7 @@ class ZwatchInstallResult(object):
 
 class ZwatchInstallResultRsp(kvmagent.AgentResponse):
     def __init__(self):
-        super(ZwatchInstallResult, self).__init__()
+        super(kvmagent.AgentResponse, self).__init__()
 
 class PciDeviceTO(object):
     def __init__(self):
