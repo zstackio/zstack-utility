@@ -699,6 +699,8 @@ class Ctl(object):
     # always install zstack-mini-server inside zstack_install_root
     MINI_DIR = os.path.join(USER_ZSTACK_HOME_DIR, 'zstack-mini')
     NEED_ENCRYPT_PROPERTIES = ['DB.password']
+
+    NEED_ENCRYPT_PROPERTIES_UI = ['db_password']
     # get basharch and zstack-release
     BASEARCH = platform.machine()
     ZS_RELEASE = os.popen("awk '{print $3}' /etc/zstack-release").read().strip()
@@ -996,6 +998,10 @@ class Ctl(object):
         if db_password is None:
             raise CtlError("cannot find zstack_ui db password in %s. please set db_password" % self.ui_properties_file_path)
 
+        cipher = AESCipher()
+        if cipher.is_encrypted(db_password):
+            db_password = cipher.decrypt(db_password)
+            
         db_url = self.get_ui_db_url()
         host_name_ports = []
 
@@ -8450,10 +8456,18 @@ class StartUiCmd(Command):
         mini_port = 8200
         ui_addr = ", http://{}:{}".format(default_ip, mini_port) if default_ip else ""
         info('successfully started MINI UI server on the local host, PID[{}]{}'.format(mini_pid, ui_addr))
-        
+
             
     def run(self, args):
+        def encrypt_properties_if_need():
+            cipher = AESCipher()
+            for key in Ctl.NEED_ENCRYPT_PROPERTIES_UI:
+                value = ctl.read_ui_property(key)
+                if value and not cipher.is_encrypted(value):
+                    ctl.write_properties([(key, cipher.encrypt(value))])
+
         ui_mode = ctl.read_property('ui_mode')
+        encrypt_properties_if_need()
         if ui_mode == "zstack":
             self.run_zstack_ui(args)
         elif ui_mode == "mini" and not args.force:
