@@ -703,8 +703,8 @@ def find_domain_cdrom_address(domain_xml, target_dev):
 
 def find_domain_first_boot_device(domain_xml):
     domain_xmlobject = xmlobject.loads(domain_xml)
-    disks = domain_xmlobject.devices.get_children_nodes()['disk']
-    ifaces = domain_xmlobject.devices.get_children_nodes()['interface']
+    disks = domain_xmlobject.devices.get_child_node_as_list('disk')
+    ifaces = domain_xmlobject.devices.get_child_node_as_list('interface')
     for d in disks:
         if d.get_child_node('boot') is None:
             continue
