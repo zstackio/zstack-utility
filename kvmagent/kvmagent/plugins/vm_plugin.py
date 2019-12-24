@@ -2598,8 +2598,9 @@ class Vm(object):
             shell.call('hostname %s.zstack.org' % hostname)
 
         destHostIp = cmd.destHostIp
-        destUrl = "qemu+tcp://{0}/system".format(destHostIp)
-        tcpUri = "tcp://{0}".format(destHostIp)
+        proto = "tls" if cmd.useTls else "tcp"
+        destUrl = "qemu+{1}://{0}/system".format(destHostIp, proto)
+        tcpUri = "{1}://{0}".format(destHostIp, proto)
         flag = (libvirt.VIR_MIGRATE_LIVE |
                 libvirt.VIR_MIGRATE_PEER2PEER |
                 libvirt.VIR_MIGRATE_UNDEFINE_SOURCE)
