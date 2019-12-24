@@ -186,6 +186,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
             logger.debug('%s is a bridge device. Interface %s is attached to bridge. No need to create bridge or attach device interface' % (cmd.bridgeName, cmd.physicalInterfaceName))
             self._configure_bridge(cmd.disableIptables)
             linux.set_device_uuid_alias(cmd.physicalInterfaceName, cmd.l2NetworkUuid)
+            self._ifup_device_if_down(cmd.bridgeName)
             return jsonobject.dumps(rsp)
         
         try:
@@ -212,6 +213,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
             self._ifup_device_if_down('%s.%s' % (cmd.physicalInterfaceName, cmd.vlan))
             self._configure_bridge(cmd.disableIptables)
             linux.set_device_uuid_alias('%s.%s' % (cmd.physicalInterfaceName, cmd.vlan), cmd.l2NetworkUuid)
+            self._ifup_device_if_down(cmd.bridgeName)
             return jsonobject.dumps(rsp)
         
         try:
