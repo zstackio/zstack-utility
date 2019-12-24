@@ -357,6 +357,29 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                 linux.mkdir(_dir)
             return exists
 
+        def do_ssh_mount(cmd, local_mount_point, vm_v2v_dir, real_storage_path):
+            mount_cmd = get_mount_command(cmd)
+            mount_paths = "{}:{} {}".format(cmd.managementIp, real_storage_path, local_mount_point)
+            alternative_mount = mount_cmd + " -o vers=3"
+
+            with lock.NamedLock(local_mount_point):
+                cmdstr = "mkdir -p {0} && ls {1} 2>/dev/null || {2} {3} || {4} {3}".format(
+                            local_mount_point,
+                            vm_v2v_dir,
+                            mount_cmd,
+                            mount_paths,
+                            alternative_mount)
+                try:
+                    runSshCmd(cmd.libvirtURI, cmd.sshPrivKey, cmdstr)
+                except shell.ShellError as ex:
+                    if "Stale file handle" in str(ex):
+                        cmdstr = "umount {0} && {1} {2} || {3} {2}".format(
+                                local_mount_point,
+                                mount_cmd,
+                                mount_paths,
+                                alternative_mount)
+                        runSshCmd(cmd.libvirtURI, cmd.sshPrivKey, cmdstr)
+
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         real_storage_path = getRealStoragePath(cmd.storagePath)
         storage_dir = os.path.join(real_storage_path, cmd.srcVmUuid)
@@ -369,24 +392,14 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
 
         local_mount_point = os.path.join("/tmp/zs-v2v/", cmd.managementIp)
         vm_v2v_dir = os.path.join(local_mount_point, cmd.srcVmUuid)
-        mount_cmd = get_mount_command(cmd)
-        mount_paths = "{}:{} {}".format(cmd.managementIp, real_storage_path, local_mount_point)
-        alternative_mount = mount_cmd + " -o vers=3"
+        libvirtHost = getHostname(cmd.libvirtURI)
 
         try:
-            with lock.NamedLock(local_mount_point):
-                runSshCmd(cmd.libvirtURI, cmd.sshPrivKey,
-                        "mkdir -p {0} && ls {1} 2>/dev/null || {2} {3} || {4} {3}".format(
-                            local_mount_point,
-                            vm_v2v_dir,
-                            mount_cmd,
-                            mount_paths,
-                            alternative_mount))
+            do_ssh_mount(cmd, local_mount_point, vm_v2v_dir, real_storage_path)
         except shell.ShellError as ex:
             logger.info(str(ex))
-            raise Exception('target host cannot access NFS on {}'.format(cmd.managementIp))
+            raise Exception('host {} cannot access NFS on {}'.format(libvirtHost, cmd.managementIp))
 
-        libvirtHost = getHostname(cmd.libvirtURI)
         if linux.find_route_interface_by_destination_ip(linux.get_host_by_name(libvirtHost)):
             cmdstr = "tc filter replace dev %s protocol ip parent 1: prio 1 u32 match ip src %s/32 flowid 1:1" \
                      % (QOS_IFB, libvirtHost)
