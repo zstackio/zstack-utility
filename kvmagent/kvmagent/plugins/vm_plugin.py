@@ -3344,11 +3344,11 @@ class Vm(object):
                 if iso.path.startswith('ceph'):
                     ic = IsoCeph()
                     ic.iso = iso
-                    devices.append(ic.to_xmlobject(cdrom_config.targetDev, default_bus_type, cdrom_config.bus, cdrom_config.unit))
+                    devices.append(ic.to_xmlobject(cdrom_config.targetDev, default_bus_type, cdrom_config.bus, cdrom_config.unit, iso.bootOrder))
                 elif iso.path.startswith('fusionstor'):
                     ic = IsoFusionstor()
                     ic.iso = iso
-                    devices.append(ic.to_xmlobject(cdrom_config.targetDev, default_bus_type, cdrom_config.bus, cdrom_config.unit))
+                    devices.append(ic.to_xmlobject(cdrom_config.targetDev, default_bus_type, cdrom_config.bus, cdrom_config.unit, iso.bootOrder))
                 else:
                     cdrom = make_empty_cdrom(cdrom_config.targetDev, cdrom_config.bus , cdrom_config.unit, iso.bootOrder)
                     e(cdrom, 'source', None, {'file': iso.path})
