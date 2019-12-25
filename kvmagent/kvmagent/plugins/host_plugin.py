@@ -1687,13 +1687,13 @@ done
         os.chmod('/etc/pki/libvirt/servercert.pem', 0440)
 
         linux.write_to_file('/etc/pki/libvirt/private/serverkey.pem', cmd.serverKey)
-        os.chmod('/etc/pki/libvirt/private/serverkey.pem', 0440)
+        os.chmod('/etc/pki/libvirt/private/serverkey.pem', 0600)
 
         linux.write_to_file('/etc/pki/libvirt/clientcert.pem', cmd.clientCert)
-        os.chmod('/etc/pki/libvirt/clientcert.pem', 0400)
+        os.chmod('/etc/pki/libvirt/clientcert.pem', 0440)
 
         linux.write_to_file('/etc/pki/libvirt/private/clientkey.pem', cmd.clientKey)
-        os.chmod('/etc/pki/libvirt/private/clientkey.pem', 0400)
+        os.chmod('/etc/pki/libvirt/private/clientkey.pem', 0600)
 
         with open('/etc/libvirt/libvirtd.conf') as f:
             content = f.read()
