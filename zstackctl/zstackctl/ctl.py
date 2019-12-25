@@ -8464,7 +8464,7 @@ class StartUiCmd(Command):
             for key in Ctl.NEED_ENCRYPT_PROPERTIES_UI:
                 value = ctl.read_ui_property(key)
                 if value and not cipher.is_encrypted(value):
-                    ctl.write_ui_property([(key, cipher.encrypt(value))])
+                    ctl.write_ui_property(key, cipher.encrypt(value))
 
         ui_mode = ctl.read_property('ui_mode')
         encrypt_properties_if_need()
