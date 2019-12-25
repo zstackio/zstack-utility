@@ -158,7 +158,8 @@ upgrade_params_array[8]='3.5.0,-DupgradeVolumeBackupHistory=true'
 upgrade_params_array[9]='3.6.0,-Diam2.upgradeIAM2Attribute=true'
 upgrade_params_array[10]='3.7.0,-DinitRunningVmPriority=true'
 upgrade_params_array[11]='3.7.2,-DgeneratePriceEndDate=true'
-upgrade_params_array[12]='3.8.0,-DinitRunningApplianceVmPriority=true -DupgradeDatabaseBackupHistory=true'
+upgrade_params_array[12]='3.8.0,-DinitRunningApplianceVmPriority=true'
+upgrade_params_array[13]='3.8.0,-DupgradeDatabaseBackupHistory=true'
 
 # version compare
 # eg. 1 = 1.0
