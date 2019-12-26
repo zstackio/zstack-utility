@@ -359,6 +359,15 @@ class ChangeHostPasswordCmd(kvmagent.AgentCommand):
         super(ChangeHostPasswordCmd, self).__init__()
         self.password = None  # type:str
 
+class ZwatchInstallResult(object):
+    def __init__(self):
+        self.vmInstanceUuid = None
+        self.version = None
+
+class ZwatchInstallResultRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(kvmagent.AgentResponse, self).__init__()
+
 class PciDeviceTO(object):
     def __init__(self):
         self.name = ""
@@ -483,6 +492,7 @@ class HostPlugin(kvmagent.KvmAgent):
     UNGENERATE_VFIO_MDEV_DEVICES = "/mdevdevice/ungenerate"
     HOST_UPDATE_SPICE_CHANNEL_CONFIG_PATH = "/host/updateSpiceChannelConfig";
     TRANSMIT_VM_OPERATION_TO_MN_PATH = "/host/transmitvmoperation"
+    TRANSMIT_ZWATCH_INSTALL_RESULT_TO_MN_PATH = "/host/zwatchInstallResult"
 
     host_network_facts_cache = {}  # type: Dict[float, list[list, list]]
 
@@ -1621,6 +1631,22 @@ done
         http.json_dump_post(url, vm_operation, {'commandpath': '/host/transmitvmoperation'})
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    def transmit_zwatch_install_result_to_mn(self, req):
+        rsp = ZwatchInstallResultRsp()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        result = ZwatchInstallResult()
+        result.vmInstanceUuid = cmd.vmInstanceUuid
+        result.version = cmd.version
+        url = self.config.get(kvmagent.SEND_COMMAND_URL)
+        if not url:
+            raise kvmagent.KvmError("cannot find SEND_COMMAND_URL, unable to transmit zwatch install result to management node")
+
+        logger.debug('transmitting zwatch install result [uuid:%s, version:%s] to management node' % (cmd.vmInstanceUuid, cmd.version))
+        http.json_dump_post(url, result, {'commandpath': '/host/zwatchInstallResult'})
+        return jsonobject.dumps(rsp)
+
     def start(self):
         self.host_uuid = None
 
@@ -1654,6 +1680,7 @@ done
         http_server.register_async_uri(self.HOST_UPDATE_SPICE_CHANNEL_CONFIG_PATH, self.update_spice_channel_config)
         http_server.register_async_uri(self.CANCEL_JOB, self.cancel)
         http_server.register_sync_uri(self.TRANSMIT_VM_OPERATION_TO_MN_PATH, self.transmit_vm_operation_to_vm)
+        http_server.register_sync_uri(self.TRANSMIT_ZWATCH_INSTALL_RESULT_TO_MN_PATH, self.transmit_zwatch_install_result_to_mn)
 
         self.heartbeat_timer = {}
         self.libvirt_version = self._get_libvirt_version()

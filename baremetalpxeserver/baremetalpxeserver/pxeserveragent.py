@@ -538,6 +538,15 @@ http://{PXESERVER_DHCP_NIC_IP}:7771/zstack/asyncrest/sendcommand >>$bm_log 2>&1
 wget -P /usr/bin ftp://{PXESERVER_DHCP_NIC_IP}/shellinaboxd || curl -o /usr/bin/shellinaboxd ftp://{PXESERVER_DHCP_NIC_IP}/shellinaboxd
 chmod a+x /usr/bin/shellinaboxd
 
+# install zstack zwatch-vm-agent
+wget -P /usr/bin ftp://{PXESERVER_DHCP_NIC_IP}/zwatch-vm-agent.linux-amd64.bin || curl -o /usr/bin/zwatch-vm-agent.linux-amd64.bin ftp://{PXESERVER_DHCP_NIC_IP}/zwatch-vm-agent.linux-amd64.bin
+chmod a+x /usr/bin/zwatch-vm-agent.linux-amd64.bin
+/usr/bin/zwatch-vm-agent.linux-amd64.bin -i
+echo "\npushGatewayUrl:  http://{PXESERVER_DHCP_NIC_IP}:9093" >> /usr/local/zstack/zwatch-vm-agent/conf.yaml
+echo "vmInstanceUuid: {BMUUID}" >> /usr/local/zstack/zwatch-vm-agent/conf.yaml
+echo "versionFileUrl:  ftp://{PXESERVER_DHCP_NIC_IP}/agent_version" >> /usr/local/zstack/zwatch-vm-agent/conf.yaml
+systemctl start zwatch-vm-agent.service
+
 # baby agent
 cat > /usr/local/bin/zstack_bm_agent.sh << EOF
 #!/bin/bash
