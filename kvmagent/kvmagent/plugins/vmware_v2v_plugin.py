@@ -101,7 +101,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
 
         releasever = kvmagent.get_host_yum_release()
         yum_cmd = "export YUM0={}; yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn " \
-                  "install libguestfs-tools libguestfs-winsupport virt-v2v -y".format(releasever)
+                  "install libguestfs-tools libguestfs-tools-c perl-Sys-Guestfs libguestfs-winsupport virt-v2v -y".format(releasever)
         if shell.run(yum_cmd) != 0:
             rsp.success = False
             rsp.error = "failed to update install conversion host dependencies from zstack-mn,qemu-kvm-ev-mn repo"
