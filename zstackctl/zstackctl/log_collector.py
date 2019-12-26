@@ -60,7 +60,7 @@ class CollectFromYml(object):
     since = None
     logger_dir = '/var/log/zstack/'
     logger_file = 'zstack-ctl.log'
-    zstack_log_dir = "/var/log/zstack/"
+    vrouter_tmp_log_path = '/home'
     success_count = 0
     fail_count = 0
     threads = []
@@ -375,14 +375,14 @@ class CollectFromYml(object):
         fetch_arg.dest = local_collect_dir
         fetch_arg.args = "fail_on_missing=yes flat=yes"
         fetch(fetch_arg, host_post_info)
-        command = "rm -rf %s/../%s-collect-log.tar.gz %s" % (tmp_log_dir, type, tmp_log_dir)
+        command = "rm -rf %s../%s-collect-log.tar.gz %s" % (tmp_log_dir, type, tmp_log_dir)
         run_remote_command(command, host_post_info)
         (status, output) = commands.getstatusoutput(
             "cd %s && tar zxf %s-collect-log.tar.gz" % (local_collect_dir, type))
         if status != 0:
-            warn("Uncompress %s/%s-collect-log.tar.gz meet problem: %s" % (local_collect_dir, type, output))
+            warn("Uncompress %s%s-collect-log.tar.gz meet problem: %s" % (local_collect_dir, type, output))
 
-        (status, output) = commands.getstatusoutput("rm -f %s/%s-collect-log.tar.gz" % (local_collect_dir, type))
+        commands.getstatusoutput("rm -f %s%s-collect-log.tar.gz" % (local_collect_dir, type))
 
     def add_collect_thread(self, type, params):
         if "vrouter" in params:
@@ -408,7 +408,7 @@ class CollectFromYml(object):
         if len(self.vrouter_task_list) > 0:
             info_verbose("Start collecting vrouter log...")
             for param in self.vrouter_task_list:
-                self.get_host_log(param[0], param[1], param[2], param[3])
+                self.get_host_log(param[0], param[1], param[2], param[3], self.vrouter_tmp_log_path)
 
     def get_mn_list(self):
         def find_value_from_conf(content, key, begin, end):
@@ -608,7 +608,7 @@ class CollectFromYml(object):
         return result
 
     @ignoreerror
-    def get_host_log(self, host_post_info, log_list, collect_dir, type):
+    def get_host_log(self, host_post_info, log_list, collect_dir, type, tmp_path = "/tmp"):
         if self.check_host_reachable_in_queen(host_post_info) is True:
             if self.check:
                 for log in log_list:
@@ -626,7 +626,7 @@ class CollectFromYml(object):
                 info_verbose("Collecting log from %s %s ..." % (type, host_post_info.host))
                 start = datetime.now()
                 local_collect_dir = collect_dir + '%s-%s/' % (type, host_post_info.host)
-                tmp_log_dir = "/tmp/%s-tmp-log/" % type
+                tmp_log_dir = "%s/%s-tmp-log/" % (tmp_path, type)
                 try:
                     # file system broken shouldn't block collect log process
                     if not os.path.exists(local_collect_dir):
