@@ -81,19 +81,19 @@ class AliyunEbsStoragePlugin(kvmagent.KvmAgent):
             if startCmd.return_code != 0:
                 linux.mkdir("/apsara", 0755)
                 kernel_version = shell.call("uname -r")
-                yum_cmd = "export YUM0={}; yum --enablerepo=zstack-mn,qemu-kvm-ev-mn clean metadata".format(kvmagent.get_host_yum_release())
+                yum_cmd = "export YUM0={}; yum --enablerepo=zstack-mn,qemu-kvm-ev-mn clean metadata"
                 shell.call(yum_cmd)
                 # e = shell.ShellCmd('rpm -qi kernel-%s-vrbd-1.0-0.1.release1.alios7.x86_64' % kernel_version.strip())
                 e = shell.ShellCmd('rpm -qi kernel-3.10.0-693.11.1.el7.x86_64-vrbd-1.0-0.1.release1.alios7.x86_64')
                 e(False)
                 if e.return_code != 0:
                     # yum_cmd = "yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install -y kernel-%s-vrbd-1.0-0.1.release1.alios7.x86_64" % kernel_version.strip()
-                    yum_cmd = "export YUM0={}; yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install -y kernel-3.10.0-693.11.1.el7.x86_64-vrbd-1.0-0.1.release1.alios7.x86_64".format(kvmagent.get_host_yum_release())
+                    yum_cmd = "export YUM0={}; yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install -y kernel-3.10.0-693.11.1.el7.x86_64-vrbd-1.0-0.1.release1.alios7.x86_64"
                     shell.call(yum_cmd)
                 e = shell.ShellCmd('rpm -qi tdc-unified-8.2.0.release.el5.x86_64')
                 e(False)
                 if e.return_code != 0:
-                    yum_cmd = "export YUM0={}; yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install -y tdc-unified-8.2.0.release.el5.x86_64".format(kvmagent.get_host_yum_release())
+                    yum_cmd = "export YUM0={}; yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install -y tdc-unified-8.2.0.release.el5.x86_64"
                     shell.call(yum_cmd)
                 shell.call("service tdc restart")
 
@@ -106,7 +106,7 @@ class AliyunEbsStoragePlugin(kvmagent.KvmAgent):
 
 
             if cmd.tdcConfig and cmd.nuwaConfig and cmd.nuwaCfg:
-                tdc = updateTdcConfig(cmd.tdcConfig, '/opt/tdc/apsara_global_config.json')
+                tdc = updateTdcConfig(cmd.tdcConfig, '/opt/tdc/apsara_global_flag.json')
                 nuwa1 = updateTdcConfig(cmd.nuwaConfig, '/apsara/conf/conffiles/nuwa/client/nuwa_config.json')
                 nuwa2 = updateTdcConfig(cmd.nuwaCfg, '/apsara/nuwa/nuwa.cfg')
                 if tdc or nuwa1 or nuwa2:
