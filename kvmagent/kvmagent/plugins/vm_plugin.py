@@ -1701,6 +1701,13 @@ class Vm(object):
 
         self.start(cmd.timeout)
 
+    def restore(self, path):
+        @LibvirtAutoReconnect
+        def restore_from_file(conn):
+            return conn.restoreFlags(path, self.domain_xml)
+
+        restore_from_file()
+
     def start(self, timeout=60, create_paused=False, wait_console=True):
         # TODO: 1. enable hair_pin mode
         logger.debug('creating vm:\n%s' % self.domain_xml)
@@ -4113,15 +4120,6 @@ class VmPlugin(kvmagent.KvmAgent):
         return o[0]
 
     def _start_vm(self, cmd):
-        if cmd.memorySnapshotPath:
-            # TODO: 1. enable hair_pin mode
-            @LibvirtAutoReconnect
-            def restore_from_file(conn):
-                return conn.restore(cmd.memorySnapshotPath)
-
-            restore_from_file()
-            return
-
         try:
             vm = get_vm_by_uuid_no_retry(cmd.vmInstanceUuid, False)
 
@@ -4133,6 +4131,11 @@ class VmPlugin(kvmagent.KvmAgent):
                     vm.destroy()
 
             vm = Vm.from_StartVmCmd(cmd)
+
+            if cmd.memorySnapshotPath:
+                vm.restore(cmd.memorySnapshotPath)
+                return
+
             wait_console = True if not cmd.addons or cmd.addons['noConsole'] is not True else False
             vm.start(cmd.timeout, cmd.createPaused, wait_console)
         except libvirt.libvirtError as e:
