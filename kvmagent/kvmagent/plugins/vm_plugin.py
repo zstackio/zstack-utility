@@ -4596,15 +4596,6 @@ class VmPlugin(kvmagent.KvmAgent):
         bash.bash_r("ebtables-save | uniq | ebtables-restore")
 
     def _start_vm(self, cmd):
-        if cmd.memorySnapshotPath:
-            # TODO: 1. enable hair_pin mode
-            @LibvirtAutoReconnect
-            def restore_from_file(conn):
-                return conn.restore(cmd.memorySnapshotPath)
-
-            restore_from_file()
-            return
-
         try:
             vm = get_vm_by_uuid_no_retry(cmd.vmInstanceUuid, False)
 
