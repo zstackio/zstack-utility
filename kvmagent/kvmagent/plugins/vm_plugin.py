@@ -3101,7 +3101,7 @@ class Vm(object):
             e(backing, "allocation", attrib={'mode': 'immediate'})
 
         def make_cpu():
-            if use_numa and not IS_AARCH64:
+            if use_numa:
                 root = elements['root']
                 e(root, 'vcpu', '128', {'placement': 'static', 'current': str(cmd.cpuNum)})
                 # e(root,'vcpu',str(cmd.cpuNum),{'placement':'static'})
@@ -3152,7 +3152,7 @@ class Vm(object):
         def make_memory():
             root = elements['root']
             mem = cmd.memory / 1024
-            if use_numa and not IS_AARCH64:
+            if use_numa:
                 e(root, 'maxMemory', str(34359738368), {'slots': str(16), 'unit': 'KiB'})
                 # e(root,'memory',str(mem),{'unit':'k'})
                 e(root, 'currentMemory', str(mem), {'unit': 'k'})
@@ -4439,11 +4439,6 @@ class VmPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = IncreaseMemoryResponse()
 
-        if IS_AARCH64:
-            rsp.error = 'increase memory of vm[uuid:%s] on arrch64 is not supported yet' % cmd.vmUuid
-            rsp.success = False
-            return jsonobject.dumps(rsp)
-
         try:
             vm = get_vm_by_uuid(cmd.vmUuid)
             memory_size = cmd.memorySize
@@ -4462,11 +4457,6 @@ class VmPlugin(kvmagent.KvmAgent):
     def online_increase_cpu(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = IncreaseCpuResponse()
-
-        if IS_AARCH64:
-            rsp.error = 'increase cpu of vm[uuid:%s] on arrch64 is not supported yet' % cmd.vmUuid
-            rsp.success = False
-            return jsonobject.dumps(rsp)
 
         try:
             vm = get_vm_by_uuid(cmd.vmUuid)
