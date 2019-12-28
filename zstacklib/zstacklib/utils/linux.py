@@ -1611,8 +1611,8 @@ def kill_process(pid, timeout=5, is_exception=True):
             logger.debug("kill -%d process[pid %s]" % (sig, pid))
             os.kill(int(pid), sig)
         except OSError as e:
-            if e.errno == errno.ESRCH:
-                return
+            if e.errno != errno.ESRCH:
+                raise e
 
     def check(_):
         return not os.path.exists('/proc/%s' % pid)
