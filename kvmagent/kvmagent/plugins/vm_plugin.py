@@ -124,7 +124,10 @@ class SshfsRemoteStorage(RemoteStorage):
 
     def umount(self):
         for i in xrange(6):
-            linux.fumount(self.mount_point, 5)
+            if linux.fumount(self.mount_point, 5) == 0:
+                break
+            else:
+                time.sleep(5)
 
 
 class StartVmCmd(kvmagent.AgentCommand):
@@ -4268,8 +4271,7 @@ class VmPlugin(kvmagent.KvmAgent):
 
     def get_vm_stat_with_ps(self, uuid):
         """In case libvirtd is stopped or misbehaved"""
-        ret = shell.run("ps x | grep -w qemu | grep -v grep | grep -w -q %s" % uuid)
-        if ret != 0:
+        if linux.find_vm_pid_by_uuid(uuid):
             return Vm.VM_STATE_SHUTDOWN
         return Vm.VM_STATE_RUNNING
 
@@ -6304,9 +6306,14 @@ class VmPlugin(kvmagent.KvmAgent):
         mpts = shell.call("mount -t fuse.sshfs | awk '{print $3}'").splitlines()
         for mpt in mpts:
             if mpt.startswith(tempfile.gettempdir()):
+                pids = linux.get_pids_by_process_fullname(mpt)
+                for pid in pids:
+                    linux.kill_process(pid, is_exception=False)
+
                 linux.fumount(mpt, 2)
 
     def stop(self):
+        self.clean_old_sshfs_mount_points()
         pass
 
     def configure(self, config):

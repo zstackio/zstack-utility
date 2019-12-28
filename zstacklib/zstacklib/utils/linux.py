@@ -17,6 +17,7 @@ import functools
 import threading
 import re
 import platform
+import errno
 
 from zstacklib.utils import qemu_img
 from zstacklib.utils import lock
@@ -1197,10 +1198,10 @@ def get_pids_by_process_fullname(name):
     cmd = shell.ShellCmd("pkill -0 -e -f '%s'" % name)
     output = cmd(False)
     if cmd.return_code != 0:
-        return None
+        return []
 
     # format from 'bash killed (pid 32162)'
-    return [line[17:-1] for line in output.splitlines()]
+    return [line.split()[-1][0:-1] for line in output.splitlines()]
 
 def get_nic_name_by_mac(mac):
     names = get_nic_names_by_mac(mac)
@@ -1603,23 +1604,30 @@ class TimeoutObject(object):
 
         clean_timeout_object()
 
-def kill_process(pid, timeout=5):
+
+def kill_process(pid, timeout=5, is_exception=True):
+    def kill(sig):
+        try:
+            logger.debug("kill -%d process[pid %s]" % (sig, pid))
+            os.kill(int(pid), sig)
+        except OSError as e:
+            if e.errno == errno.ESRCH:
+                return
+
     def check(_):
         return not os.path.exists('/proc/%s' % pid)
 
     if check(None):
         return
 
-    logger.debug("kill -15 process[pid %s]" % pid)
-    os.kill(int(pid), 15)
-
+    kill(15)
     if wait_callback_success(check, None, timeout):
         return
 
-    logger.debug("kill -9 process[pid %s]" % pid)
-    os.kill(int(pid), 9)
-    if not wait_callback_success(check, None, timeout):
+    kill(9)
+    if not wait_callback_success(check, None, timeout) and is_exception:
         raise Exception('cannot kill -9 process[pid:%s];the process still exists after %s seconds' % (pid, timeout))
+
 
 def kill_all_child_process(ppid, timeout=5):
     def check(_):
