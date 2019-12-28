@@ -199,7 +199,7 @@ class ConsoleProxyAgent(object):
             pids = [line.strip().split(' ')[-1].split('/')[0] for line in out.stdout.splitlines()]
             for pid in pids:
                 try:
-                    os.kill(pid, 15)
+                    os.kill(int(pid), 15)
                 except OSError:
                     continue
 
