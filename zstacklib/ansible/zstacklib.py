@@ -77,6 +77,7 @@ class AnsibleStartResult(object):
 class HostPostInfo(object):
     def __init__(self):
         self.trusted_host = None
+        self.environment = {"LC_ALL": "C"}
         self.remote_user = 'root'
         self.remote_pass = None
         self.remote_port = None
@@ -158,6 +159,7 @@ class ZstackRunner(object):
         self.become_user = runner_args.host_post_info.become_user
         self.become_pass = runner_args.host_post_info.remote_pass
         self.transport = runner_args.host_post_info.transport
+        self.environment = runner_args.host_post_info.environment
 
     def run(self):
         runner = ansible.runner.Runner(
@@ -172,7 +174,8 @@ class ZstackRunner(object):
             remote_pass=self.remote_pass,
             become = self.become,
             become_user=self.become_user,
-            become_pass=self.become_pass
+            become_pass=self.become_pass,
+            environment=self.environment
         )
         result = runner.run()
         return  result
