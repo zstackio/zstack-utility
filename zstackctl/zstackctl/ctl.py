@@ -1984,6 +1984,10 @@ class StartCmd(Command):
         else:
             shell('rm -f %s' % os.path.join(os.path.expanduser('~zstack'), "management-server.pid"))
 
+        def check_is_ha_upgrading():
+            if shell_return("ps -ef|grep '[z]sha2 upgrade-mn'") == 0:
+                raise CtlError('HA environment is upgrading, please wait patiently for the upgrade to complete.')
+
         def check_java_version():
             ver = shell('java -version 2>&1 | grep -w version')
             if '1.8' not in ver:
@@ -2186,6 +2190,7 @@ class StartCmd(Command):
             raise CtlError('please use sudo or root user')
 
         prepare_env()
+        check_is_ha_upgrading()
         check_java_version()
         check_mn_port()
         check_prometheus_port()
