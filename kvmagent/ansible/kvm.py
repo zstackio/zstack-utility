@@ -151,6 +151,9 @@ else:
     releasever = sorted(os.listdir("/opt/zstack-dvd/{}".format(host_arch)))[-1]
 
 # copy and install zstack-release
+repo_dir = "/opt/zstack-dvd/{}".format(host_arch)
+if not os.path.isdir(repo_dir):
+    error("Missing directory '{}', please try 'zstack-upgrade -a {}_iso'".format(repo_dir, host_arch))
 copy_arg = CopyArg()
 copy_arg.src = '/opt/zstack-dvd/{0}/{1}/Packages/zstack-release-{1}-1.el7.zstack.noarch.rpm'.format(host_arch, releasever)
 copy_arg.dest = '/opt/'
