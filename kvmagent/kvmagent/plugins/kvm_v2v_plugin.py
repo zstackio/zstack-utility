@@ -34,6 +34,7 @@ class VolumeInfo(object):
         self.physicalSize = -1 # type: long
         self.type = None       # type: str
         self.bus = None        # type: str
+        self.protocol = None   # type: str
         self.endTime = None    # type: float
 
 class VmInfo(object):
@@ -45,6 +46,7 @@ class VmInfo(object):
         self.memorySize = -1    # type: long
         self.macAddresses = []  # type: list[str]
         self.volumes = []       # type: list[VolumeInfo]
+        self.v2vCaps = {}       # type: dict[str, bool]
 
 class ListVmRsp(AgentRsp):
     def __init__(self):
@@ -173,6 +175,8 @@ def getVolumes(dom, dxml=None):
 
         v.name = diskxml.target.dev_
         v.bus = diskxml.target.bus_
+        if hasattr(diskxml.source, 'protocol_'):
+            v.protocol = diskxml.source.protocol_
         v.size, _, v.physicalSize = dom.blockInfo(v.name)
         return v
 
@@ -195,6 +199,9 @@ def getVolumes(dom, dxml=None):
 
     return volumes
 
+def getVerNumber(major, minor, build=0):
+    return major * 1000000 + minor * 1000 + build
+
 def listVirtualMachines(url, sasluser, saslpass, keystr):
     def getMac(ifxml):
         return ifxml.mac.address_ if ifxml.mac else ""
@@ -206,7 +213,16 @@ def listVirtualMachines(url, sasluser, saslpass, keystr):
             return [ getMac(inf) for inf in iface ]
         return [ getMac(iface) ]
 
+    def getV2vCap(qemuver, libvirtver, vminfo):
+        if qemuver < getVerNumber(1, 1):
+            return False
+
+        if any(map(lambda v: v.protocol == 'rbd', vminfo.volumes)):
+            return libvirtver >= getVerNumber(1, 2, 16)
+        return libvirtver >= getVerNumber(0, 9, 12)
+
     vms = []
+    v2vCaps = {}
     qemuVersion, libvirtVersion = None, None
     with LibvirtConn(url, sasluser, saslpass, keystr) as c:
         qemuVersion = c.getVersion()
@@ -237,10 +253,12 @@ def listVirtualMachines(url, sasluser, saslpass, keystr):
                 info.macAddresses = []
 
             info.volumes = getVolumes(dom, dxml)
+            cap = getV2vCap(qemuVersion, libvirtVersion, info)
+            v2vCaps[info.uuid] = cap
 
             vms.append(info)
 
-    return qemuVersion, libvirtVersion, vms
+    return qemuVersion, libvirtVersion, vms, v2vCaps
 
 
 QOS_IFB = "ifb0"
@@ -321,7 +339,7 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
             shell.check_run(cmdstr)
             linux.rm_file_force(ssh_pswd_file)
 
-        rsp.qemuVersion, rsp.libvirtVersion, rsp.vms = listVirtualMachines(cmd.libvirtURI,
+        rsp.qemuVersion, rsp.libvirtVersion, rsp.vms, rsp.v2vCaps = listVirtualMachines(cmd.libvirtURI,
                 cmd.saslUser,
                 cmd.saslPass,
                 cmd.sshPrivKey)
@@ -427,7 +445,7 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                 needResume = False
 
             # libvirt >= 3.7.0 ?
-            flags = 0 if c.getLibVersion() < 3 * 1000000 + 7 * 1000 else libvirt.VIR_DOMAIN_BLOCK_COPY_TRANSIENT_JOB
+            flags = 0 if c.getLibVersion() < getVerNumber(3, 7) else libvirt.VIR_DOMAIN_BLOCK_COPY_TRANSIENT_JOB
             needDefine = False
             if flags == 0 and dom.isPersistent():
                 dom.undefine()
