@@ -1645,7 +1645,10 @@ class Vm(object):
                 return True
             raise e
 
-        return self.state == state
+        if isinstance(state, list):
+            return self.state in state
+        else:
+            return self.state == state
 
     def get_cpu_num(self):
         cpuNum = self.domain_xmlobject.vcpu.current__
@@ -1683,10 +1686,10 @@ class Vm(object):
             return False
 
     def _wait_for_vm_running(self, timeout=60, wait_console=True):
-        if not linux.wait_callback_success(self.wait_for_state_change, self.VM_STATE_RUNNING, interval=0.5,
+        if not linux.wait_callback_success(self.wait_for_state_change, [self.VM_STATE_RUNNING, self.VM_STATE_PAUSED], interval=0.5,
                                            timeout=timeout):
             raise kvmagent.KvmError('unable to start vm[uuid:%s, name:%s], vm state is not changing to '
-                                    'running after %s seconds' % (self.uuid, self.get_name(), timeout))
+                                    'running/paused after %s seconds' % (self.uuid, self.get_name(), timeout))
 
         if not wait_console:
             return
