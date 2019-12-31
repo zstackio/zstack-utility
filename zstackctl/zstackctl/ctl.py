@@ -117,6 +117,12 @@ if [ $? -ne 0 ]; then
     sed -i '/\[mysqld\]/a wait_timeout=100\' $mysql_conf
 fi
 
+grep 'slave_net_timeout=' $mysql_conf >/dev/null 2>&1
+if [ $? -ne 0 ]; then
+    echo "slave_net_timeout=60"
+    sed -i '/\[mysqld\]/a slave_net_timeout=60\' $mysql_conf
+fi
+
 mkdir -p /etc/systemd/system/mariadb.service.d/
 echo -e "[Service]\nLimitNOFILE=2048" > /etc/systemd/system/mariadb.service.d/limits.conf
 systemctl daemon-reload || true
