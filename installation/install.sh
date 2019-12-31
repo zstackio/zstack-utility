@@ -2578,6 +2578,10 @@ sd_start_zstack_ui(){
     pass
 }
 
+get_higher_version() {
+    echo "$@" | tr " " "\n" | sort -V | tail -1
+}
+
 #Ensure that the current version is lower than the upgrade version
 check_version(){
     # CURRENT_VERSION=`zstack-ctl status | awk '/version/{gsub(")",""); print $4 }'`
@@ -2586,7 +2590,7 @@ check_version(){
     if [ -z "$CURRENT_VERSION" -o -z "$UPGRADE_VERSION" ];then
         fail2 "Version verification failed! Cannot get your current version or upgrade version, please check zstack status and use the correct iso/bin to upgrade."
     fi
-    HIGHER=`echo "$CURRENT_VERSION $UPGRADE_VERSION"|tr " " "\n" | sort -V |awk 'END {print}'`
+    HIGHER=`get_higher_version $CURRENT_VERSION $UPGRADE_VERSION`
     if [ x"$HIGHER" != x"$UPGRADE_VERSION" ];then
         fail2 "Upgrade version is lower than the current version, please download and use the higher one."
     fi
@@ -3265,6 +3269,26 @@ echo_chrony_server_warning_if_need()
     fi
 }
 
+check_ha_need_upgrade()
+{
+    [ x"$BASEARCH" != x"x86_64" ] && return
+    [ x`systemctl is-enabled zstack-ha 2>/dev/null` != x"enabled" ] && return
+
+    local newha="$ZSTACK_HOME/WEB-INF/classes/tools/zsha2"
+    chmod u+x "$newha" 2>/dev/null
+    [ -x "$newha" ] || return
+
+    local curver=`zsha2 version 2>/dev/null | awk -F"[ ,]" '{print $2}'`
+    local newver=`"$newha" version 2>/dev/null | awk -F"[ ,]" '{print $2}'`
+    [ x"$curver" = x"$newver" ] && return
+
+    local higher=`get_higher_version "$curver" "$newver"`
+    if [ x"$higher" = x"$newver" ]; then
+        echo  -e "$(tput setaf 3) - a newer version of zsha2 is available at $newha. $(tput sgr0)"
+        echo
+    fi
+}
+
 enforce_history() {
 mkdir -p /var/log/history.d/
 cat << 'EOF' > /etc/logrotate.d/history
@@ -3447,6 +3471,7 @@ if [ x"$UPGRADE" = x'y' ]; then
     echo ""
     zstack_home=`eval echo ~zstack`
     echo_chrony_server_warning_if_need
+    check_ha_need_upgrade
     echo " Your old zstack was saved in $zstack_home/upgrade/`ls $zstack_home/upgrade/ -rt|tail -1`"
     echo_star_line
     start_zstack_tui
@@ -3498,6 +3523,7 @@ if [ ! -z $ONLY_INSTALL_ZSTACK ]; then
     echo "${PRODUCT_NAME} ${VERSION}management node is installed to $ZSTACK_INSTALL_ROOT."
     echo "Mysql and are not installed. You can use zstack-ctl to install them and start ${PRODUCT_NAME} service later. "
     echo_chrony_server_warning_if_need
+    check_ha_need_upgrade
     echo_star_line
     start_zstack_tui
     exit 0
@@ -3616,6 +3642,7 @@ fi
 [ ! -z $NEED_HTTP ] && echo -e "$(tput setaf 7) - http://$MANAGEMENT_IP/image is ready for storing images as an EXAMPLE.  After copy your_image_name to the folder $HTTP_FOLDER, your image local url is http://$MANAGEMENT_IP/image/your_image_name$(tput sgr0)"
 
 echo_chrony_server_warning_if_need
+check_ha_need_upgrade
 echo_star_line
 start_zstack_tui
 post_scripts_to_restore_iptables_rules
