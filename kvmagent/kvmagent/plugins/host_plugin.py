@@ -1249,7 +1249,7 @@ done
         if r != 0:
             return False  # only support nvidia-smi now
 
-        r, o, e = bash_roe("nvidia-smi vgpu -i %s -v -s | grep -v %s" % (addr, addr))
+        r, o, e = bash_roe("nvidia-smi vgpu -i %s -v -s | sed -n '1!p'" % addr)
         for line in o.split('\n'):
             parts = line.split(':')
             if len(parts) < 2: continue
@@ -1353,7 +1353,8 @@ done
                 elif title == "SDevice":
                     to.subdeviceId = content.split('[')[-1].strip(']')
             to.name = "%s_%s" % (subvendor_name if subvendor_name else vendor_name, device_name)
-            if not self._get_sriov_info(to) and not self._get_vfio_mdev_info(to):
+            # if support both mdev and sriov, then set the pci device to VFIO_MDEV_VIRTUALIZABLE
+            if not self._get_vfio_mdev_info(to) and not self._get_sriov_info(to):
                 to.virtStatus = "UNVIRTUALIZABLE"
             if to.vendorId != '' and to.deviceId != '':
                 rsp.pciDevicesInfo.append(to)
