@@ -47,6 +47,7 @@ class VmInfo(object):
         self.macAddresses = []  # type: list[str]
         self.volumes = []       # type: list[VolumeInfo]
         self.v2vCaps = {}       # type: dict[str, bool]
+        self.cdromNum = 0       # type: int
 
 class ListVmRsp(AgentRsp):
     def __init__(self):
@@ -162,6 +163,27 @@ def runSshCmd(libvirtURI, keystr, cmdstr):
     finally:
         os.remove(tmpkeyfile)
 
+def getCdromNum(dom, dxml=None):
+    if not dxml:
+        dxml = xmlobject.loads(dom.XMLDesc(0))
+
+    def countCdrom(domain_xml):
+        disk = domain_xml.devices.disk
+
+        if not disk:
+            return 0
+
+        if isinstance(disk, list):
+            counter = 0
+            for disk_xml in disk:
+                if disk_xml.device_ == 'cdrom':
+                    counter += 1
+        else:
+            return 0
+
+    return getCdromNum(dxml)
+
+
 def getVolumes(dom, dxml=None):
     def getVolume(dom, diskxml):
         v = VolumeInfo()
@@ -191,6 +213,7 @@ def getVolumes(dom, dxml=None):
         dxml = xmlobject.loads(dom.XMLDesc(0))
 
     volumes = filter(lambda v:v, listVolumes(dom, dxml.devices.disk))
+
     if len(volumes) == 0:
         raise Exception("no disks found for VM: "+dom.name())
 
@@ -255,6 +278,7 @@ def listVirtualMachines(url, sasluser, saslpass, keystr):
             info.volumes = getVolumes(dom, dxml)
             cap = getV2vCap(qemuVersion, libvirtVersion, info)
             v2vCaps[info.uuid] = cap
+            info.cdromNum = getCdromNum(dom, dxml)
 
             vms.append(info)
 
