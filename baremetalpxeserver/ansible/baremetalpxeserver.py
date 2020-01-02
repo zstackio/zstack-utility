@@ -130,13 +130,6 @@ run_remote_command(command, host_post_info)
 # name: config iptables
 replace_content("/etc/sysconfig/iptables-config", "regexp='IPTABLES_MODULES=""' replace='IPTABLES_MODULES=\"nf_conntrack_ftp\"'", host_post_info)
 command = """
-/sbin/iptables-save | grep -w -q 67 || iptables -I INPUT -p udp -m state --state NEW --sport 67:68 --dport 67:68 -j ACCEPT;
-/sbin/iptables-save | grep -w -q 69 || iptables -I INPUT -p udp -m state --state NEW --dport 69 -j ACCEPT;
-/sbin/iptables-save | grep -q "dport 21" || iptables -I INPUT -p tcp -m state --state NEW --dport 21 -j ACCEPT;
-/sbin/iptables-save | grep -q "dport 6080" || iptables -I INPUT -p tcp -m tcp --dport 6080 -j ACCEPT;
-/sbin/iptables-save | grep -q "dport 7770" || iptables -I INPUT -p tcp -m tcp --dport 7770 -j ACCEPT;
-/sbin/iptables-save | grep -q "dport 7771" || iptables -I INPUT -p tcp -m tcp --dport 7771 -j ACCEPT;
-/sbin/iptables-save | grep -q "dport 7772" || iptables -I INPUT -p tcp -m tcp --dport 7772 -j ACCEPT;
 /sbin/service iptables save;
 /sbin/service iptables restart
 systemctl enable iptables.service

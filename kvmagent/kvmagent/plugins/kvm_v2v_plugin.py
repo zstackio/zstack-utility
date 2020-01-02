@@ -339,7 +339,6 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
             if fstype not in [ "xfs", "ext2", "ext3", "ext4", "jfs", "btrfs" ]:
                 raise Exception("unexpected fstype '{}' on '{}'".format(fstype, cmd.storagePath))
 
-        shell.check_run('iptables-save | grep -w 2049 || iptables -I INPUT -p tcp --dport 2049 -j ACCEPT')
         return jsonobject.dumps(rsp)
 
     @in_bash

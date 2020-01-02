@@ -27,10 +27,6 @@ def main():
     prepare_pid_dir(pidfile)
 
     try:
-        iptc = iptables.from_iptables_save()
-        iptc.add_rule('-A INPUT -p tcp -m tcp --dport 7770 -j ACCEPT')
-        iptc.iptable_restore()
-
         cmd = sys.argv[1]
         py_process_name = 'from baremetalpxeserver import cdaemon'
         agentdaemon = pxeserveragent.PxeServerDaemon(pidfile, py_process_name)

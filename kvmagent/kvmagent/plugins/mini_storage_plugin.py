@@ -381,7 +381,6 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
 
         def config_drbd():
             bash.bash_r("sed -i 's/usage-count yes/usage-count no/g' /etc/drbd.d/global_common.conf")
-            bash.bash_r("iptables -I INPUT -p tcp -m tcp --dport 20000:30000 -j ACCEPT")
 
         drbd.install_drbd()
         config_lvm()
