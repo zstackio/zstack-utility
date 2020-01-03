@@ -61,7 +61,9 @@ class AgentInstallArg(object):
 class ZstackLibArgs(object):
     def __init__(self):
         self.zstack_repo = None
+        self.zstack_apt_source = None
         self.yum_server = None
+        self.apt_server = None
         self.distro = None
         self.distro_version = None
         self.distro_release = None
@@ -230,6 +232,9 @@ def create_log(logger_dir, logger_file):
 def get_mn_yum_release():
     return commands.getoutput("rpm -q zstack-release |awk -F'-' '{print $3}'").strip()
 
+def get_mn_apt_release():
+    return commands.getoutput("awk '{print $3}' /etc/zstack-release").strip()
+    
 def post_msg(msg, post_url):
     logger.info(msg.data.details)
     if msg.type == "log":
@@ -607,6 +612,12 @@ def apt_install_packages(name_list, host_post_info):
         for pkg in name_list:
             _apt_install_package(pkg, host_post_info)
 
+def apt_update_packages(name_list, host_post_info):
+    pkg_list = ' '.join(name_list)
+    command = "apt-get clean && apt-get install -y --allow-unauthenticated --only-upgrade {}".format(pkg_list)
+    apt_update_status = run_remote_command(command, host_post_info, return_status=True)
+    if apt_update_status is False:
+        error("apt-get update packages on host {} failed, please update the repo on the host manually and try again.".format(host_post_info.host))
 
 
 
