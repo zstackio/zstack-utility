@@ -1131,6 +1131,8 @@ class BlkCeph(object):
 
         dev_format = Vm._get_disk_target_dev_format(self.bus_type)
         e(disk, 'target', None, {'dev': dev_format % self.dev_letter, 'bus': self.bus_type})
+        if self.volume.physicalBlockSize:
+            e(disk, 'blockio', None, {'physical_block_size': str(self.volume.physicalBlockSize)})
         return disk
 
 
@@ -1149,6 +1151,8 @@ class VirtioCeph(object):
         for minfo in self.volume.monInfo:
             e(source, 'host', None, {'name': minfo.hostname, 'port': str(minfo.port)})
         e(disk, 'target', None, {'dev': 'vd%s' % self.dev_letter, 'bus': 'virtio'})
+        if self.volume.physicalBlockSize:
+            e(disk, 'blockio', None, {'physical_block_size': str(self.volume.physicalBlockSize)})
         return disk
 
 
@@ -1172,6 +1176,8 @@ class VirtioSCSICeph(object):
         if self.volume.shareable:
             e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none'})
             e(disk, 'shareable')
+        if self.volume.physicalBlockSize:
+            e(disk, 'blockio', None, {'physical_block_size': str(self.volume.physicalBlockSize)})
         return disk
 
 
@@ -3467,16 +3473,22 @@ class Vm(object):
                     vsc.dev_letter = _dev_letter
                     return vsc.to_xmlobject()
 
-                if _v.useVirtioSCSI:
-                    disk = ceph_virtio_scsi()
-                    if _v.shareable:
-                        e(disk, 'shareable')
-                    return disk
+                def build_ceph_disk():
+                    if _v.useVirtioSCSI:
+                        disk = ceph_virtio_scsi()
+                        if _v.shareable:
+                            e(disk, 'shareable')
+                        return disk
 
-                if _v.useVirtio:
-                    return ceph_virtio()
-                else:
-                    return ceph_blk()
+                    if _v.useVirtio:
+                        return ceph_virtio()
+                    else:
+                        return ceph_blk()
+
+                d = build_ceph_disk()
+                if _v.physicalBlockSize:
+                    e(d, 'blockio', None, {'physical_block_size': str(_v.physicalBlockSize)})
+                return d
 
             def fusionstor_volume(_dev_letter, _v):
                 def fusionstor_virtio():
