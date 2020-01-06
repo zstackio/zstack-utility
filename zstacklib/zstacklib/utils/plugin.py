@@ -18,8 +18,6 @@ import ConfigParser
 import time
 
 from zstacklib.utils import jsonobject, http
-from typing import Dict, List
-
 from zstacklib.utils.report import get_api_id, AutoReporter
 
 PLUGIN_CONFIG_SECTION_NAME = 'plugins'
@@ -128,13 +126,13 @@ class TaskDaemon(object):
         pass
 
 
-task_daemons = {}
+task_daemons = {}  # type: dict[str, list[TaskDaemon]]
 task_operator_lock = threading.RLock()
 
 
 class TaskManager(object):
     CANCEL_JOB = "/job/cancel"
-    global task_daemons  # type: Dict[str, List[TaskDaemon]]
+    global task_daemons
     global task_operator_lock
 
     def __init__(self):
