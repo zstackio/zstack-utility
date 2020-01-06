@@ -106,7 +106,7 @@ class AliyunEbsStoragePlugin(kvmagent.KvmAgent):
 
 
             if cmd.tdcConfig and cmd.nuwaConfig and cmd.nuwaCfg:
-                tdc = updateTdcConfig(cmd.tdcConfig, '/opt/tdc/apsara_global_config.json')
+                tdc = updateTdcConfig(cmd.tdcConfig, '/opt/tdc/apsara_global_flag.json')
                 nuwa1 = updateTdcConfig(cmd.nuwaConfig, '/apsara/conf/conffiles/nuwa/client/nuwa_config.json')
                 nuwa2 = updateTdcConfig(cmd.nuwaCfg, '/apsara/nuwa/nuwa.cfg')
                 if tdc or nuwa1 or nuwa2:
