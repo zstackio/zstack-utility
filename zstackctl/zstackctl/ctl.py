@@ -1007,7 +1007,7 @@ class Ctl(object):
         cipher = AESCipher()
         if cipher.is_encrypted(db_password):
             db_password = cipher.decrypt(db_password)
-            
+
         db_url = self.get_ui_db_url()
         host_name_ports = []
 
@@ -8865,7 +8865,7 @@ class MiniResetHostCmd(Command):
         self.sn = self.sn.strip()
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--target', help='reset target, could be %s' % self.target, required=False)
+        parser.add_argument('--target', help='reset target, could be %s, default is both' % self.target, required=False)
 
     def run(self, args):
         args = self._intercept(args)
@@ -8881,7 +8881,24 @@ class MiniResetHostCmd(Command):
             self._wait_node_has_ip("local")
         info("mini host reset complete!")
 
+    def _write_to_temp_file(self, content):
+        (tmp_fd, tmp_path) = tempfile.mkstemp()
+        tmp_fd = os.fdopen(tmp_fd, 'w')
+        tmp_fd.write(content)
+        tmp_fd.close()
+        return tmp_path
+
+    def _check_root_password(self):
+        import getpass
+        password = getpass.getpass(prompt='Enter root password for localhost to continue...\n')
+        tmpfile = self._write_to_temp_file(str(password))
+        r = shell_return("timeout 5 sshpass -f %s ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no 127.0.0.1 date" % tmpfile)
+        os.remove(tmpfile)
+        if r != 0:
+            raise Exception("check root password failed!")
+
     def _intercept(self, args):
+        self._check_root_password()
         if args.target == "local":
             return args
 
@@ -8893,17 +8910,17 @@ class MiniResetHostCmd(Command):
         _, o, _ = shell_return_stdout_stderr("curl 127.0.0.1:7274/bootstrap/hosts/local")
         j = simplejson.loads(o)
         if j.get("peer") is None:
-            raise Exception("Can not connect to peer, you can reset local node via "
+            error("Can not connect to peer, you can reset local node via "
                             "'zstack-ctl reset_mini_host --target local'")
         return args
 
     def _wait_node_has_ip(self, node):
         info("script copy complete\nwaiting node %s reset complete ..." % node)
-        for i in range(72):
+        for i in range(100):
             if self._node_has_special_ip(node):
                 return
-            time.sleep(5)
-        raise Exception("%s reset not success after 360 secondes" % node)
+            time.sleep(6)
+        error("%s reset not success after 600 secondes" % node)
 
     @staticmethod
     def _node_has_special_ip(node):
@@ -8918,7 +8935,7 @@ class MiniResetHostCmd(Command):
 
     def _validate_args(self, args):
         if args.target not in self.target:
-            raise Exception("target must be local, peer or both")
+            error("target must be local, peer or both")
 
     @staticmethod
     def _get_peer_address():
@@ -8933,7 +8950,7 @@ class MiniResetHostCmd(Command):
         r = shell_return("timeout 5 ssh -i %s root@%s date" % (self.key, peer_ip))
         if r == 0:
             return False
-        raise Exception("can not connect %s via ssh" % peer_ip)
+        error("can not connect %s via ssh" % peer_ip)
 
     def _run_script(self, peer_ip=None):
         if not peer_ip:
