@@ -368,6 +368,11 @@ class ZwatchInstallResultRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(kvmagent.AgentResponse, self).__init__()
 
+class ScanVmPortRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(ScanVmPortRsp, self).__init__()
+        self.portStatus = {}
+
 class PciDeviceTO(object):
     def __init__(self):
         self.name = ""
@@ -493,11 +498,12 @@ class HostPlugin(kvmagent.KvmAgent):
     HOST_UPDATE_SPICE_CHANNEL_CONFIG_PATH = "/host/updateSpiceChannelConfig";
     TRANSMIT_VM_OPERATION_TO_MN_PATH = "/host/transmitvmoperation"
     TRANSMIT_ZWATCH_INSTALL_RESULT_TO_MN_PATH = "/host/zwatchInstallResult"
+    SCAN_VM_PORT_PATH = "/host/vm/scanport"
 
     host_network_facts_cache = {}  # type: Dict[float, list[list, list]]
     IS_YUM = False
     IS_APT = False
-    
+
     def __init__(self):
         if shell.run("which yum") == 0:
             self.IS_YUM = True
@@ -1666,6 +1672,28 @@ done
         http.json_dump_post(url, result, {'commandpath': '/host/zwatchInstallResult'})
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    def scan_vm_port(self, req):
+        rsp = ScanVmPortRsp()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        ports = []
+        # r, o, e = bash_roe("ip netns exec %s nmap -sT -p %s %s" % (cmd.brname, cmd.port, cmd.ip))
+        if "," in str(cmd.port):
+            ports = str(cmd.port).split(",")
+        else:
+            ports.append(cmd.port)
+
+        for port in ports:
+            r, o, e = bash_roe("ip netns exec %s nping --tcp -p %s -c 1 %s" % (cmd.brname, port, cmd.ip))
+            if r != 0:
+                rsp.success = False
+                rsp.error = e
+                return jsonobject.dumps(rsp)
+            else:
+                rsp.portStatus.update(linux.check_nping_result(port, o))
+
+        return jsonobject.dumps(rsp)
+
     def start(self):
         self.host_uuid = None
 
@@ -1700,6 +1728,7 @@ done
         http_server.register_async_uri(self.CANCEL_JOB, self.cancel)
         http_server.register_sync_uri(self.TRANSMIT_VM_OPERATION_TO_MN_PATH, self.transmit_vm_operation_to_vm)
         http_server.register_sync_uri(self.TRANSMIT_ZWATCH_INSTALL_RESULT_TO_MN_PATH, self.transmit_zwatch_install_result_to_mn)
+        http_server.register_async_uri(self.SCAN_VM_PORT_PATH, self.scan_vm_port)
 
         self.heartbeat_timer = {}
         self.libvirt_version = self._get_libvirt_version()
