@@ -2,6 +2,7 @@ import bash
 import shell
 from zstacklib.utils import linux
 from zstacklib.utils import log
+from zstacklib.utils.report import get_api_id
 
 logger = log.get_logger(__name__)
 
@@ -10,8 +11,8 @@ class TraceableShell(object):
         self.id = id
 
     def call(self, cmd, exception=True, workdir=None):
-        cmd = self.wrap_cmd(cmd)
         # type: (str, bool, bool) -> str
+        cmd = self.wrap_cmd(cmd)
         return shell.ShellCmd(cmd, workdir)(exception)
 
     def run(self, cmd, workdir=None):
@@ -50,10 +51,8 @@ def _build_id_cmd(id):
 
 
 def get_shell(cmd):
-    if cmd.threadContext and cmd.threadContext.api:
-        return TraceableShell(cmd.threadContext.api)
-    else:
-        return TraceableShell(None)
+    return TraceableShell(get_api_id(cmd))
+
 
 def cancel_job(cmd):
     keywords = _build_id_cmd(cmd.cancellationApiId)

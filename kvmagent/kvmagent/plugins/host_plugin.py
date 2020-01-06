@@ -1628,7 +1628,10 @@ done
     def cancel(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
-        if not traceable_shell.cancel_job(cmd):
+
+        process_canceled = traceable_shell.cancel_job(cmd)
+        canceled_task_count = self.cancel_task(cmd.cancellationApiId)
+        if not process_canceled and not canceled_task_count:
             rsp.success = False
             rsp.error = "no matched job to cancel"
 

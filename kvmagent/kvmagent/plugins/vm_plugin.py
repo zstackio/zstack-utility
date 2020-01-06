@@ -2,6 +2,7 @@
 @author: Frank
 '''
 import Queue
+import contextlib
 import os.path
 import tempfile
 import threading
@@ -24,7 +25,7 @@ import zstacklib.utils.lock as lock
 
 from kvmagent import kvmagent
 from kvmagent.plugins.imagestore import ImageStoreClient
-from zstacklib.utils import bash
+from zstacklib.utils import bash, plugin
 from zstacklib.utils.bash import in_bash
 from zstacklib.utils import http
 from zstacklib.utils import jsonobject
@@ -998,7 +999,6 @@ class LibvirtAutoReconnect(object):
                 return self.func(LibvirtAutoReconnect.conn)
             else:
                 raise
-
 
 class IscsiLogin(object):
     def __init__(self):
@@ -2633,6 +2633,9 @@ class Vm(object):
         return res
 
     def migrate(self, cmd):
+        if self.state == Vm.VM_STATE_SHUTDOWN:
+            raise kvmagent.KvmError('vm[uuid:%s] is stopped, cannot live migrate,' % cmd.vmUuid)
+
         current_hostname = linux.get_host_name()
         if cmd.migrateFromDestination:
             hostname = cmd.destHostIp.replace('.', '-')
@@ -2666,14 +2669,15 @@ class Vm(object):
         if cmd.useNuma:
             flag |= libvirt.VIR_MIGRATE_PERSIST_DEST
 
-        report = Report.from_cmd(cmd, 'MigrateVm')
         stage = get_task_stage(cmd)
-
         timeout = 1800 if cmd.timeout is None else cmd.timeout
 
-        @thread.AsyncThread
-        def report_progress():
-            def _get_progress_until_migrated(_):
+        class MigrateDaemon(plugin.TaskDaemon):
+            def __init__(self, domain):
+                super(MigrateDaemon, self).__init__(cmd, 'MigrateVm', timeout)
+                self.domain = domain
+
+            def _get_percent(self):
                 try:
                     stats = self.domain.jobStats()
                     if libvirt.VIR_DOMAIN_JOB_DATA_REMAINING in stats and libvirt.VIR_DOMAIN_JOB_DATA_TOTAL in stats:
@@ -2683,32 +2687,25 @@ class Vm(object):
                             return
 
                         percent = min(99, 100.0 - remain * 100.0 / total)
-                        report.progress_report(get_exact_percent(percent, stage), 'report')
+                        return get_exact_percent(percent, stage)
                 except libvirt.libvirtError:
-                    # vm migrated, check twice.
-                    logger.debug("vm migrated[uuid:%s], will stop to report progress" % self.uuid)
-                    return self.wait_for_state_change(None)
+                    pass
                 except:
                     logger.debug(linux.get_exception_stacktrace())
 
-            linux.wait_callback_success(_get_progress_until_migrated, callback_data=None, timeout=timeout)
+            def _cancel(self):
+                logger.debug('cancelling vm[uuid:%s] migration' % cmd.vmUuid)
+                self.domain.abortJob()
 
+            def __exit__(self, exc_type, exc_val, exc_tb):
+                super(MigrateDaemon, self).__exit__(exc_type, exc_val, exc_tb)
+                if exc_type == libvirt.libvirtError:
+                    raise kvmagent.KvmError(
+                        'unable to migrate vm[uuid:%s] to %s, %s' % (cmd.vmUuid, destUrl, str(exc_val)))
 
-        def cancel_migration():
-            logger.debug('timeout after %d seconds, cancelling migration' % timeout)
-            try: self.domain.abortJob()
-            except: pass
-
-        t = threading.Timer(timeout, cancel_migration)
-        t.start()
-
-        report_progress()
-        try:
+        with MigrateDaemon(self.domain):
             logger.debug('migrating vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
             self.domain.migrateToURI2(destUrl, tcpUri, None, flag, None, 0)
-            t.cancel()
-        except libvirt.libvirtError as ex:
-            raise kvmagent.KvmError('unable to migrate vm[uuid:%s] to %s, %s' % (self.uuid, destUrl, str(ex)))
 
         try:
             logger.debug('migrating vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
@@ -4304,7 +4301,7 @@ class VmPlugin(kvmagent.KvmAgent):
 
     def get_vm_stat_with_ps(self, uuid):
         """In case libvirtd is stopped or misbehaved"""
-        if linux.find_vm_pid_by_uuid(uuid):
+        if not linux.find_vm_pid_by_uuid(uuid):
             return Vm.VM_STATE_SHUTDOWN
         return Vm.VM_STATE_RUNNING
 
@@ -4767,7 +4764,11 @@ class VmPlugin(kvmagent.KvmAgent):
     def migrate_vm(self, req):
         @linux.retry(times=3, sleep_time=1)
         def get_connect(srcHostIP):
-            return libvirt.open('qemu+tcp://{0}/system'.format(srcHostIP))
+            conn = libvirt.open('qemu+tcp://{0}/system'.format(srcHostIP))
+            if conn is None:
+                logger.warn('unable to connect qemu on host {0}'.format(cmd.srcHostIp))
+                raise kvmagent.KvmError('unable to connect qemu on host %s' % (cmd.srcHostIp))
+            return conn
 
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = MigrateVmResponse()
@@ -4775,19 +4776,12 @@ class VmPlugin(kvmagent.KvmAgent):
             self._record_operation(cmd.vmUuid, self.VM_OP_MIGRATE)
 
             if cmd.migrateFromDestination:
-                conn = get_connect(cmd.srcHostIp)
-                if conn is None:
-                    logger.warn('unable to connect qemu on host {0}'.format(cmd.srcHostIp))
-                    raise kvmagent.KvmError('unable to connect qemu on host %s' % (cmd.srcHostIp))
-
-                vm = get_vm_by_uuid(cmd.vmUuid, False, conn)
-                if vm is None:
-                    conn.close()
-                    logger.warn('unable to find vm {0} on host {1}'.format(cmd.vmUuid, cmd.srcHostIp))
-                    raise kvmagent.KvmError('unable to find vm %s on host %s' % (cmd.vmUuid, cmd.srcHostIp))
-
-                vm.migrate(cmd)
-                conn.close()
+                with contextlib.closing(get_connect(cmd.srcHostIp)) as conn:
+                    vm = get_vm_by_uuid(cmd.vmUuid, False, conn)
+                    if vm is None:
+                        logger.warn('unable to find vm {0} on host {1}'.format(cmd.vmUuid, cmd.srcHostIp))
+                        raise kvmagent.KvmError('unable to find vm %s on host %s' % (cmd.vmUuid, cmd.srcHostIp))
+                    vm.migrate(cmd)
             else:
                 vm = get_vm_by_uuid(cmd.vmUuid)
                 vm.migrate(cmd)

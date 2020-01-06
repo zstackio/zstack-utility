@@ -1,3 +1,4 @@
+import time
 from zstacklib.utils import http
 from zstacklib.utils import log
 from zstacklib.utils import thread
@@ -36,6 +37,13 @@ def get_task_stage(cmd, default=None):
         if cmd.threadContext['task-stage']:
             stage = cmd.threadContext['task-stage']
     return stage
+
+
+def get_api_id(cmd):
+    if cmd.threadContext and cmd.threadContext.api:
+        return cmd.threadContext.api
+    else:
+        return None
 
 
 class Report(object):
@@ -88,3 +96,31 @@ class Report(object):
         logger.debug("url: %s, progress: %s, header: %s", Report.url, cmd.progress, self.header)
         http.json_dump_post(Report.url, cmd, self.header)
 
+
+class AutoReporter(object):
+    def __init__(self, report, progress_getter, timeout=259200):
+        # type: (Report, callable, int) -> AutoReporter
+        self.report = report
+        self.progress_getter = progress_getter
+        self.over = False
+        self.timeout = timeout
+
+    @staticmethod
+    def from_cmd(cmd, progress_type, progress_getter):
+        report = Report.from_cmd(cmd, progress_type)
+        return AutoReporter(report, progress_getter)
+
+    @thread.AsyncThread
+    def start(self):
+        def report(_):
+            if self.over:
+                return True
+
+            percent = self.progress_getter()
+            if percent and str(percent).isdigit():
+                self.report.progress_report(str(percent), "report")
+
+        linux.wait_callback_success(report, callback_data=None, timeout=self.timeout)
+
+    def close(self):
+        self.over = True

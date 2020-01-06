@@ -17,7 +17,10 @@ import ConfigParser
 
 import time
 
-from zstacklib.utils import jsonobject, http, traceable_shell
+from zstacklib.utils import jsonobject, http
+from typing import Dict, List
+
+from zstacklib.utils.report import get_api_id, AutoReporter
 
 PLUGIN_CONFIG_SECTION_NAME = 'plugins'
 
@@ -57,9 +60,82 @@ def completetask(func):
     return wrap
 
 
+class TaskDaemon(object):
+    __metaclass__ = abc.ABCMeta
+
+    '''
+    A daemon to track a long task, task will be canceled automatically when timeout or canceled by api.
+    '''
+
+    def __init__(self, cmd, task_name, timeout=0, report_progress=True):
+        self.api_id = get_api_id(cmd)
+        self.task_name = task_name
+        self.timeout = timeout
+        self.progress_reporter = AutoReporter.from_cmd(cmd, task_name, self._get_percent) if report_progress else None
+        self.cancel_thread = threading.Timer(timeout, self._timeout_cancel) if timeout > 0 else None
+        self.closed = False
+
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        try:
+            self.close()
+        except:
+            pass
+
+    def start(self):
+        if self.api_id:
+            TaskManager.add_task(self.api_id, self)
+
+        if self.cancel_thread:
+            self.cancel_thread.start()
+
+        if self.progress_reporter:
+            self.progress_reporter.start()
+
+    def close(self):
+        if self.closed:
+            return
+
+        if self.api_id:
+            TaskManager.remove_task(self.api_id, self)
+
+        if self.progress_reporter:
+            self.progress_reporter.close()
+
+        if self.cancel_thread:
+            self.cancel_thread.cancel()
+
+        self.closed = True
+
+    def _timeout_cancel(self):
+        logger.debug('timeout after %d seconds, cancelling %s.' % (self.timeout, self.task_name))
+        self._cancel()
+
+    def cancel(self):
+        logger.debug('It is going to cancel %s.' % self.task_name)
+        self._cancel()
+
+    @abc.abstractmethod
+    def _cancel(self):
+        pass
+
+    @abc.abstractmethod
+    def _get_percent(self):
+        # type: () -> int
+        pass
+
+
+task_daemons = {}
+task_operator_lock = threading.RLock()
+
+
 class TaskManager(object):
     CANCEL_JOB = "/job/cancel"
-    http_server = None
+    global task_daemons  # type: Dict[str, List[TaskDaemon]]
+    global task_operator_lock
 
     def __init__(self):
         '''
@@ -68,6 +144,7 @@ class TaskManager(object):
         self.mapper_lock = threading.RLock()
         self.longjob_progress_mapper = {}
 
+    # TODO(MJ): use task daemon instead
     def load_task(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         if cmd.identificationCode in self.longjob_progress_mapper.keys():
@@ -127,6 +204,33 @@ class TaskManager(object):
             rsp.error = "timeout to wait other task"
             return rsp
 
+    @staticmethod
+    def add_task(api_id, task):
+        with task_operator_lock:
+            if api_id in task_daemons:
+                task_daemons[api_id].append(task)
+            else:
+                task_daemons[api_id] = [task]
+
+    @staticmethod
+    def remove_task(api_id, task):
+        with task_operator_lock:
+            if api_id in task_daemons:
+                tasks = task_daemons[api_id]
+                if task in tasks:
+                    tasks.remove(task)
+                if len(tasks) == 0:
+                    task_daemons.pop(api_id)
+
+    @staticmethod
+    def cancel_task(api_id):
+        with task_operator_lock:
+            to_cancel_tasks = task_daemons.pop(api_id, [])
+
+        for task in to_cancel_tasks:
+            task.cancel()
+
+        return len(to_cancel_tasks)
 
 class Plugin(TaskManager):
     __metaclass__  = abc.ABCMeta
