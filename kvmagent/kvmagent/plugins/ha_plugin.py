@@ -359,19 +359,150 @@ class HaPlugin(kvmagent.KvmAgent):
         heartbeat_on_sharedblock()
         return jsonobject.dumps(AgentRsp())
 
+    class CephSelfFencer(object):
+        CEPH_HEARTBEAT_CONF_DIR = "/var/lib/zstack/ceph/conf"
+
+        rbd = __import__('rbd')
+        rados = __import__('rados')
+
+        def __init__(self):
+            self.client = None
+            self.ioctx = None
+            self.image = None
+            self.cmd = None
+            self.pool_name = None
+            self.heartbeat_file_name = None
+            self.rbd_inst = None
+
+        def __exit__(self):
+            if self.image:
+                self.image.close()
+                self.image = None
+                self.rbd_inst = None
+
+            if self.ioctx:
+                self.ioctx.close()
+                self.ioctx = None
+
+            if self.client:
+                self.client.shutdown()
+                self.client = None
+
+        @linux.retry(times=3, sleep_time=3)
+        def init_fencer(self):
+            if not os.path.exists(self.CEPH_HEARTBEAT_CONF_DIR):
+                os.makedirs(self.CEPH_HEARTBEAT_CONF_DIR, 0755)
+
+            paths = os.path.split(self.cmd.heartbeatImagePath)
+            self.pool_name = paths[0]
+            self.heartbeat_file_name = paths[1]
+
+            config = self.get_ceph_config(self.CEPH_HEARTBEAT_CONF_DIR)
+            self.client = self.rados.Rados(**config)
+
+            try:
+                self.client.connect()
+            except Exception as e:
+                logger.debug("Client failed to connect, because %s. "
+                             "Raise exception to request retry" % e.message)
+                raise e
+
+            try:
+                self.ioctx = self.client.open_ioctx(self.pool_name)
+            except Exception as e:
+                logger.debug("Fail to open ioctx, because %s. "
+                             "Shutdown the client and raise exception to request retry" % e.message)
+                self.client.shutdown()
+                raise e
+
+            self.rbd_inst = self.rbd.RBD()
+            logger.debug("init ceph fencer succeed")
+
+        def create_heartbeat_file(self):
+            logger.debug("start to create heartbeat file, %s" % self.heartbeat_file_name)
+            try:
+                self.rbd_inst.create(self.ioctx, self.heartbeat_file_name, 256)
+            except:
+                logger.debug("heartbeat file exists path:%", self.cmd.heartbeatImagePath)
+
+            self.image = self.rbd.Image(self.ioctx, self.heartbeat_file_name)
+
+            try:
+                self.image.write('zstack-fencer-heartbeat', 0)
+            except:
+                logger.debug("cannot create heartbeat image: %s" % self.cmd.heartbeatImagePath)
+                return False
+
+            logger.debug("successfully create heartbeat file, %s" % self.heartbeat_file_name)
+            return True
+
+        def read_heartbeat(self):
+            # if no image exists, return False directly
+            if not self.image:
+                return False
+
+            try:
+                result = self.image.read(0, 256)
+                if 'zstack-fencer-heartbeat' in result:
+                    logger.debug("ceph primary storage %s fencer read heartbeat[path: %s] success"
+                                 % (self.cmd.uuid, self.heartbeat_file_name))
+                    return True
+            except:
+                pass
+
+            logger.warn('cannot query heartbeat image: %s' % self.cmd.heartbeatImagePath)
+            return False
+
+        def delete_heartbeat(self):
+            # if no image exists, return False directly
+            if not self.image:
+                return True
+
+            self.image.close()
+            self.rbd_inst.remove(self.ioctx, self.heartbeat_file_name)
+
+        def get_ceph_config(self, config_dir):
+            config_args = {}
+            mon_hosts = []
+
+            for url in self.cmd.monUrls:
+                mon_hosts.append(url.split(":")[0])
+
+            ceph_cfg = '''[global]
+mon_host = %s
+''' % ','.join(mon_hosts)
+
+            ceph_cfg_path = os.path.join(config_dir, "ceph.conf")
+            with open(ceph_cfg_path, 'w') as fd:
+                fd.write(ceph_cfg)
+
+            if self.cmd.userKey:
+                keyring_cfg = '''[client.zstack]
+   key = %s
+''' % self.cmd.userKey
+
+                keyring_cfg_path = os.path.join(config_dir, "ceph.client.zstack.keyring")
+                with open(keyring_cfg_path, 'w') as fd:
+                    fd.write(keyring_cfg)
+
+                config_args['keyring'] = keyring_cfg_path
+
+            config_args['client_mount_timeout'] = '5'
+            config_args['rados_mon_op_timeout'] = '5'
+            config_args['rados_osd_op_timeout'] = '5'
+
+            return {'conffile': ceph_cfg_path, 'conf': config_args, 'name': 'client.zstack'}
+
     @kvmagent.replyerror
     def setup_ceph_self_fencer(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        mon_url = '\;'.join(cmd.monUrls)
-        mon_url = mon_url.replace(':', '\\\:')
+
+        fencer = self.CephSelfFencer()
+        fencer.cmd = cmd
+        fencer.init_fencer()
 
         created_time = time.time()
         self.setup_fencer(cmd.uuid, created_time)
-
-        def get_ceph_rbd_args():
-            if cmd.userKey is None:
-                return 'rbd:%s:mon_host=%s' % (cmd.heartbeatImagePath, mon_url)
-            return 'rbd:%s:id=zstack:key=%s:auth_supported=cephx\;none:mon_host=%s' % (cmd.heartbeatImagePath, cmd.userKey, mon_url)
 
         def ceph_in_error_stat():
             # HEALTH_OK,HEALTH_WARN,HEALTH_ERR and others(may be empty)...
@@ -385,30 +516,13 @@ class HaPlugin(kvmagent.KvmAgent):
             return not (health_status.startswith('HEALTH_OK') or health_status.startswith('HEALTH_WARN'))
 
         def heartbeat_file_exists():
-            touch = shell.ShellCmd('timeout %s %s %s' %
-                    (cmd.storageCheckerTimeout, qemu_img.subcmd('info'), get_ceph_rbd_args()))
-            touch(False)
-
-            if touch.return_code == 0:
-                return True
-
-            logger.warn('cannot query heartbeat image: %s: %s' % (cmd.heartbeatImagePath, touch.stderr))
-            return False
+            return fencer.read_heartbeat()
 
         def create_heartbeat_file():
-            create = shell.ShellCmd('timeout %s qemu-img create -f raw %s 1' %
-                                        (cmd.storageCheckerTimeout, get_ceph_rbd_args()))
-            create(False)
-
-            if create.return_code == 0 or "File exists" in create.stderr:
-                return True
-
-            logger.warn('cannot create heartbeat image: %s: %s' % (cmd.heartbeatImagePath, create.stderr))
-            return False
+            return fencer.create_heartbeat_file()
 
         def delete_heartbeat_file():
-            shell.run("timeout %s rbd rm --id zstack %s -m %s" %
-                    (cmd.storageCheckerTimeout, cmd.heartbeatImagePath, mon_url))
+            fencer.delete_heartbeat()
 
         @thread.AsyncThread
         def heartbeat_on_ceph():
@@ -449,6 +563,8 @@ class HaPlugin(kvmagent.KvmAgent):
                 logger.warn(content)
 
         heartbeat_on_ceph()
+
+        logger.debug("start heartbeat")
 
         return jsonobject.dumps(AgentRsp())
 
