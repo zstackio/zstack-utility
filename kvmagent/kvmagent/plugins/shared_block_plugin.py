@@ -306,11 +306,17 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp = AgentRsp()
         if cmd.failIfNoPath:
             linux.set_fail_if_no_path()
-        for diskUuid in cmd.sharedBlockUuids:
-            disk = CheckDisk(diskUuid)
-            path = disk.get_path()
-            if cmd.rescan:
-                disk.rescan(path.split("/")[-1])
+        try:
+            for diskUuid in cmd.sharedBlockUuids:
+                disk = CheckDisk(diskUuid)
+                path = disk.get_path()
+                if cmd.rescan:
+                    disk.rescan(path.split("/")[-1])
+        except Exception as e:
+            if cmd.vgUuid is not None and lvm.vg_exists(cmd.vgUuid) and not cmd.rescan:
+                logger.warn("disk missing but volume group exists! pass it since no rescan required. details: %s" % e)
+            else:
+                raise e
 
         if cmd.vgUuid is not None and lvm.vg_exists(cmd.vgUuid):
             rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid, False)
