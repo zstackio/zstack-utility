@@ -14,7 +14,6 @@ import time
 import uuid
 
 import libvirt
-from typing import Dict
 
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
@@ -204,7 +203,7 @@ class HostNetworkBondingInventory(object):
 
 
 class HostNetworkInterfaceInventory(object):
-    __cache__ = dict()  # type: Dict[str, List[int, HostNetworkInterfaceInventory]]
+    __cache__ = dict()  # type: dict[str, list[int, HostNetworkInterfaceInventory]]
 
     def init(self, name):
         super(HostNetworkInterfaceInventory, self).__init__()
@@ -494,7 +493,7 @@ class HostPlugin(kvmagent.KvmAgent):
     TRANSMIT_VM_OPERATION_TO_MN_PATH = "/host/transmitvmoperation"
     TRANSMIT_ZWATCH_INSTALL_RESULT_TO_MN_PATH = "/host/zwatchInstallResult"
 
-    host_network_facts_cache = {}  # type: Dict[float, list[list, list]]
+    host_network_facts_cache = {}  # type: dict[float, list[list, list]]
     IS_YUM = False
     IS_APT = False
     
