@@ -385,10 +385,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             r = bash.bash_r("iscsiadm -m session | grep %s:%s | grep %s" % (cmd.iscsiServerIp, cmd.iscsiServerPort, iqn))
             if r == 0:
                 shell.call('timeout 10 iscsiadm --mode node --targetname "%s" -p %s:%s --logout' % (iqn, cmd.iscsiServerIp, cmd.iscsiServerPort))
-            
-            shell.call('timeout 10 iscsiadm -m node -o delete -T "%s" -p %s:%s' % (
-                iqn, cmd.iscsiServerIp, cmd.iscsiServerPort))
-
+                shell.call('timeout 10 iscsiadm -m node -o delete -T "%s" -p %s:%s' % (iqn, cmd.iscsiServerIp, cmd.iscsiServerPort))
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
