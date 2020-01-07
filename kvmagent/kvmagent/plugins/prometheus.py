@@ -429,14 +429,16 @@ LoadPlugin virt
                 start_collectd(cmd)
 
             pid = linux.find_process_by_cmdline([cmd.binaryPath])
-            if not pid:
-                EXPORTER_PATH = cmd.binaryPath
-                LOG_FILE = os.path.join(os.path.dirname(EXPORTER_PATH), cmd.binaryPath + '.log')
-                ARGUMENTS = cmd.startupArguments
-                if not ARGUMENTS:
-                    ARGUMENTS = ""
-                bash_errorout('chmod +x {{EXPORTER_PATH}}')
-                bash_errorout("nohup {{EXPORTER_PATH}} {{ARGUMENTS}} >{{LOG_FILE}} 2>&1 < /dev/null &\ndisown")
+            if pid:
+                linux.kill_process(pid)
+
+            EXPORTER_PATH = cmd.binaryPath
+            LOG_FILE = os.path.join(os.path.dirname(EXPORTER_PATH), cmd.binaryPath + '.log')
+            ARGUMENTS = cmd.startupArguments
+            if not ARGUMENTS:
+                ARGUMENTS = ""
+            bash_errorout('chmod +x {{EXPORTER_PATH}}')
+            bash_errorout("nohup {{EXPORTER_PATH}} {{ARGUMENTS}} >{{LOG_FILE}} 2>&1 < /dev/null &\ndisown")
 
         para = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
