@@ -19,6 +19,7 @@ import re
 import platform
 import errno
 
+from zstacklib.utils import thread
 from zstacklib.utils import qemu_img
 from zstacklib.utils import lock
 from zstacklib.utils import shell
@@ -1592,7 +1593,6 @@ class TimeoutObject(object):
             raise Exception('after %s seconds, the object[%s] is still there, not timeout' % (timeout, name))
 
     def _start(self):
-        @lock.lock("timeout-object")
         def clean_timeout_object():
             current_time = time.time()
             for name, obj in self.objects.items():
@@ -1600,9 +1600,7 @@ class TimeoutObject(object):
                 if current_time >= timeout:
                     del self.objects[name]
 
-            threading.Timer(1, clean_timeout_object).start()
-
-        clean_timeout_object()
+        thread.timer(1, clean_timeout_object, stop_on_exception=False).start()
 
 
 def kill_process(pid, timeout=5, is_exception=True):
