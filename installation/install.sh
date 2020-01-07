@@ -158,6 +158,7 @@ declare -a upgrade_params_array=(
     '3.4.1,-DgenerateBillsImmediately=true'
     '3.5.0,-DupgradeVolumeBackupHistory=true'
     '3.6.0,-Diam2.upgradeIAM2Attribute=true'
+    '3.7.0,-DImageStoreBackupStorage.enableQuota=true'
     '3.7.0,-DinitRunningVmPriority=true'
     '3.7.2,-DgeneratePriceEndDate=true'
     '3.8.0,-DinitRunningApplianceVmPriority=true'
@@ -2686,7 +2687,7 @@ EOF
         mkdir /etc/apt/sources.list.d/tmp_bak
         mv /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/tmp_bak 2>/dev/null
     fi
-    #Fix Ubuntu conflicted dpkg lock issue. 
+    #Fix Ubuntu conflicted dpkg lock issue.
     if [ -f /etc/init.d/unattended-upgrades ]; then
         /etc/init.d/unattended-upgrades stop  >>$ZSTACK_INSTALL_LOG 2>&1
         update-rc.d -f unattended-upgrades remove >>$ZSTACK_INSTALL_LOG 2>&1
@@ -2908,7 +2909,7 @@ check_hybrid_arch(){
 
 create_local_source_list_files() {
     echo "create $list_file" >> $ZSTACK_INSTALL_LOG
-    
+
 list_file=/etc/apt/sources.list.d/zstack-local.list
 cat > $list_file << EOF
 deb file:///opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/ Packages/
@@ -3407,7 +3408,7 @@ if [ "$IS_YUM" = "y" ];then
     create_local_repo_files
 elif [ "$IS_APT" = "y" ];then
     create_local_source_list_files
-else 
+else
     fail2 "Command yum or apt not found, cannot create local repo."
 fi
 

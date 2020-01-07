@@ -3275,7 +3275,7 @@ class Vm(object):
                 e(hyperv, 'spinlocks', attrib={'state': 'on', 'retries': '4096'})
                 e(hyperv, 'vendor_id', attrib={'state': 'on', 'value': 'ZStack_Org'})
             # always set ioapic driver to kvm after libvirt 3.4.0
-            if is_ioapic_supported and not IS_AARCH64:
+            if is_ioapic_supported() and not IS_AARCH64:
                 e(features, "ioapic", attrib={'driver': 'kvm'})
 
         def make_qemu_commandline():
