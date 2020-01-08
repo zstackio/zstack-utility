@@ -95,7 +95,7 @@ class CollectFromYml(object):
                         "--ignore-table=zstack.NotificationVO --ignore-table=zstack.PubIpVmNicBandwidthUsageHistoryVO " \
                         "--ignore-table=zstack.DataVolumeUsageHistoryVO --ignore-table=zstack.RestAPIVO " \
                         "--ignore-table=zstack.ResourceUsageVO --ignore-table=zstack.PciDeviceUsageHistoryVO " \
-                        "--ignore-table=PubIpVipBandwidthUsageHistoryVO"
+                        "--ignore-table=zstack.PubIpVipBandwidthUsageHistoryVO"
         db_hostname, db_port, db_user, db_password = self.ctl.get_live_mysql_portal()
         if db_password:
             cmd = "mysqldump --database -u%s -p%s -P %s --single-transaction --quick zstack zstack_rest information_schema performance_schema %s" % (db_user, db_password, db_port, mysqldump_skip_tables)
