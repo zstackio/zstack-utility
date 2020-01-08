@@ -425,7 +425,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
             value = '1'
 
         for nic in cmd.nicNames:
-            shell.call('echo %s > /sys/devices/virtual/net/%s/brport/multicast_router' % (value, nic))
+            linux.write_file("/sys/devices/virtual/net/%s/brport/multicast_router" % nic, value)
 
         rsp.success = True
         return jsonobject.dumps(rsp)
