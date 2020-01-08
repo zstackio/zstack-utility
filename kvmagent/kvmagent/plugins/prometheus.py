@@ -423,14 +423,50 @@ LoadPlugin virt
                     if not mpid:
                         bash_errorout('collectdmon -- -C %s' % conf_path)
 
+        def run_in_systemd(binPath, args, log):
+            def get_systemd_name(path):
+                if "collectd_exporter" in path:
+                    return "collectd_exporter"
+                elif "node_exporter" in path:
+                    return "node_exporter"
+                elif "pushgateway" in path:
+                    return "pushgateway"
+
+            def reload_and_restart_service(service_name):
+                bash_errorout("systemctl daemon-reload && systemctl restart %s.service" % service_name)
+
+            service_name = get_systemd_name(binPath)
+            service_path = '/etc/systemd/system/%s.service' % service_name
+
+            service_conf = '''
+Description=prometheus %s
+After=network.target
+
+[Service]
+ExecStart=/bin/sh -c '%s %s > %s 2>&1'
+
+Restart=always
+RestartSec=30s
+[Install]
+WantedBy=multi-user.target
+''' % (service_name, binPath, args, log)
+
+            if not os.path.exists(service_path):
+                linux.write_file(service_path, service_conf, True)
+                reload_and_restart_service(service_name)
+                return
+
+            if linux.read_file(service_path) != service_conf:
+                linux.write_file(service_path, service_conf, True)
+                logger.info("%s.service conf changed" % service_name)
+
+            # restart service regardless of conf changes, for ZSTAC-23539
+            reload_and_restart_service(service_name)
+
         @in_bash
         def start_exporter(cmd):
             if "collectd_exporter" in cmd.binaryPath:
                 start_collectd(cmd)
-
-            pid = linux.find_process_by_cmdline([cmd.binaryPath])
-            if pid:
-                linux.kill_process(pid)
 
             EXPORTER_PATH = cmd.binaryPath
             LOG_FILE = os.path.join(os.path.dirname(EXPORTER_PATH), cmd.binaryPath + '.log')
@@ -438,7 +474,7 @@ LoadPlugin virt
             if not ARGUMENTS:
                 ARGUMENTS = ""
             bash_errorout('chmod +x {{EXPORTER_PATH}}')
-            bash_errorout("nohup {{EXPORTER_PATH}} {{ARGUMENTS}} >{{LOG_FILE}} 2>&1 < /dev/null &\ndisown")
+            run_in_systemd(EXPORTER_PATH, ARGUMENTS, LOG_FILE)
 
         para = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
