@@ -154,7 +154,7 @@ mysqldump_skip_tables = "--ignore-table=zstack.VmUsageHistoryVO --ignore-table=z
                         "--ignore-table=zstack.NotificationVO --ignore-table=zstack.PubIpVmNicBandwidthUsageHistoryVO " \
                         "--ignore-table=zstack.DataVolumeUsageHistoryVO --ignore-table=zstack.RestAPIVO " \
                         "--ignore-table=zstack.ResourceUsageVO --ignore-table=zstack.PciDeviceUsageHistoryVO " \
-                        "--ignore-table=PubIpVipBandwidthUsageHistoryVO"
+                        "--ignore-table=zstack.PubIpVipBandwidthUsageHistoryVO"
 
 def signal_handler(signal, frame):
     sys.exit(0)
