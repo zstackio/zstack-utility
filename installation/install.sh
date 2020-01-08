@@ -1774,6 +1774,14 @@ upgrade_mysql_configuration(){
         sed -i '/\[mysqld\]/a log_bin_trust_function_creators=1\' $mysql_conf
     fi
 
+    # Fixes ZSTAC-24460
+    # if max_allowed_packet is not configured, then update from default value 1M to 2M
+    grep 'max_allowed_packet' $mysql_conf >/dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        echo "max_allowed_packet=2M" >>$ZSTACK_INSTALL_LOG 2>&1
+        sed -i '/\[mysqld\]/a max_allowed_packet=2M\' $mysql_conf
+    fi
+
     if [ $OS = $UBUNTU1404 -o $OS = $UBUNTU1604 ]; then
         service mysql restart >>$ZSTACK_INSTALL_LOG 2>&1
     else
