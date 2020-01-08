@@ -1599,6 +1599,7 @@ class TimeoutObject(object):
                 timeout = obj[1]
                 if current_time >= timeout:
                     del self.objects[name]
+            return True
 
         thread.timer(1, clean_timeout_object, stop_on_exception=False).start()
 
