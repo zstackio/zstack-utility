@@ -2300,6 +2300,76 @@ class StopCmd(Command):
                 kill_process(pid, signal.SIGKILL)
                 clear_leftover_mn_heartbeat()
 
+class RefreshAuditCmd(Command):
+    audit_rule_file = "/etc/audit/rules.d/audit.rules"
+
+    def __init__(self):
+        super(RefreshAuditCmd, self).__init__()
+        self.name = 'refresh_audit'
+        self.description = 'refresh audit list'
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--add', '-a', help='Add audit rule at file')
+        parser.add_argument('--delete', '-d', help='Delete audit rule at file')
+        parser.add_argument('--search', '-s', help='Search file change history')
+        parser.add_argument('--list', '-l', help='Show audit rule list', action="store_true", default=False)
+        parser.add_argument('--refresh', '-r', help='Refresh audit rule from audit.list', action="store_true", default=False)
+
+    def run(self, args):
+        if not os.path.isfile(RefreshAuditCmd.audit_rule_file):
+            info('ERROR: %s not exist' % RefreshAuditCmd.audit_rule_file)
+            return
+
+        if args.add:
+            (status, output, stderr) = shell_return_stdout_stderr('auditctl -w %s -p wa -k zstack' % args.add)
+            if status == 0:
+                info('Successfully add rule at %s' % args.add)
+                with open(RefreshAuditCmd.audit_rule_file, "a") as f:
+                    f.write('-w %s -p wa -k zstack\n' % args.add)
+            else:
+                info('ERROR: %s' % stderr.strip('\n'))
+
+        if args.delete:
+            (status, output, stderr) = shell_return_stdout_stderr('auditctl -W %s -p wa -k zstack' % args.delete)
+            if status == 0:
+                info('Successfully delete rule at %s' % args.delete.strip('\n'))
+                with open(RefreshAuditCmd.audit_rule_file, "r") as f:
+                    lines = f.readlines()
+                with open(RefreshAuditCmd.audit_rule_file, "w") as f_w:
+                    for line in lines:
+                        if args.delete in line:
+                            continue
+                        f_w.write(line)
+            else:
+                info('ERROR: %s' % stderr.strip('\n'))
+
+        if args.search:
+            cmd = ShellCmd('ausearch -i -f %s' % args.search.strip('\n'), pipe=False)
+            cmd(False)
+            return
+
+        if args.list:
+            (status, output, stderr) = shell_return_stdout_stderr('auditctl -l')
+            info(output.strip('\n'))
+            return
+
+        if args.refresh:
+            with open(RefreshAuditCmd.audit_rule_file, 'r') as fd:
+                all_lines = fd.readlines()
+                maxlength = max(len(line.strip('\n')) for line in all_lines) + 1
+                info('Rule'.ljust(maxlength) + 'Result')
+            for line in all_lines:
+                (status, output, stderr) = shell_return_stdout_stderr('auditctl %s' % line)
+                if ("rule exists" not in stderr.lower()) and (status != 0) and ("-k zstack" in line):
+                    info(line.strip('\n').ljust(maxlength) + stderr.strip('\n'))
+                elif ("-k zstack" in line):
+                    info(line.strip('\n').ljust(maxlength) + 'success')
+
+        info("\nCurrent rule list")
+        (status, output, stderr) = shell_return_stdout_stderr('auditctl -l')
+        info(output.strip('\n'))
+
 class RestartNodeCmd(Command):
 
     def __init__(self):
@@ -9244,6 +9314,7 @@ def main():
     GetZStackVersion()
     SharedBlockQcow2SharedVolumeFixCmd()
     MiniResetHostCmd()
+    RefreshAuditCmd()
 
     # If tools/zstack-ui.war exists, then install zstack-ui
     # else, install zstack-dashboard

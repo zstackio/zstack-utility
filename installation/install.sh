@@ -64,6 +64,8 @@ zstack_163_repo_file=/etc/yum.repos.d/zstack-163-yum.repo
 zstack_ali_repo_file=/etc/yum.repos.d/zstack-aliyun-yum.repo
 PRODUCT_TITLE_FILE='./product_title_file'
 UPGRADE_LOCK=/tmp/zstack_upgrade.lock
+MYSQL_CONF_FILE=''
+AUDIT_RULE_FILE='/etc/audit/rules.d/audit.rules'
 
 [ ! -z $http_proxy ] && HTTP_PROXY=$http_proxy
 
@@ -1755,31 +1757,35 @@ uz_upgrade_zstack_ctl(){
     pass
 }
 
-upgrade_mysql_configuration(){
-    echo "modify my.cnf" >>$ZSTACK_INSTALL_LOG 2>&1
+get_mysql_conf_file(){
     if [ -f /etc/mysql/mariadb.conf.d/50-server.cnf ]; then
         #ubuntu 16.04
-        mysql_conf=/etc/mysql/mariadb.conf.d/50-server.cnf
+        MYSQL_CONF_FILE=/etc/mysql/mariadb.conf.d/50-server.cnf
     elif [ -f /etc/mysql/my.cnf ]; then
         # Ubuntu 14.04
-        mysql_conf=/etc/mysql/my.cnf
+        MYSQL_CONF_FILE=/etc/mysql/my.cnf
     elif [ -f /etc/my.cnf ]; then
         # centos
-        mysql_conf=/etc/my.cnf
+        MYSQL_CONF_FILE=/etc/my.cnf
     fi
+}
 
-    grep 'log_bin_trust_function_creators=' $mysql_conf >/dev/null 2>&1
+upgrade_mysql_configuration(){
+    echo "modify my.cnf" >>$ZSTACK_INSTALL_LOG 2>&1
+    get_mysql_conf_file
+
+    grep 'log_bin_trust_function_creators=' $MYSQL_CONF_FILE >/dev/null 2>&1
     if [ $? -ne 0 ]; then
         echo "log_bin_trust_function_creators=1" >>$ZSTACK_INSTALL_LOG 2>&1
-        sed -i '/\[mysqld\]/a log_bin_trust_function_creators=1\' $mysql_conf
+        sed -i '/\[mysqld\]/a log_bin_trust_function_creators=1\' $MYSQL_CONF_FILE
     fi
 
     # Fixes ZSTAC-24460
     # if max_allowed_packet is not configured, then update from default value 1M to 2M
-    grep 'max_allowed_packet' $mysql_conf >/dev/null 2>&1
+    grep 'max_allowed_packet' $MYSQL_CONF_FILE >/dev/null 2>&1
     if [ $? -ne 0 ]; then
         echo "max_allowed_packet=2M" >>$ZSTACK_INSTALL_LOG 2>&1
-        sed -i '/\[mysqld\]/a max_allowed_packet=2M\' $mysql_conf
+        sed -i '/\[mysqld\]/a max_allowed_packet=2M\' $MYSQL_CONF_FILE
     fi
 
     if [ $OS = $UBUNTU1404 -o $OS = $UBUNTU1604 ]; then
@@ -2211,6 +2217,16 @@ cs_gen_sshkey(){
         /sbin/restorecon /root/.ssh /root/.ssh/authorized_keys >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     pass
+}
+
+setup_audit_file(){
+    if [ ! -f $AUDIT_RULE_FILE ]; then
+        return 1
+    fi
+
+    get_mysql_conf_file
+    zstack-ctl refresh_audit --add $ZSTACK_INSTALL_ROOT/$ZSTACK_PROPERTIES > /dev/null
+    zstack-ctl refresh_audit --add $MYSQL_CONF_FILE > /dev/null
 }
 
 cs_install_mysql(){
@@ -3527,6 +3543,9 @@ if [ x"$UPGRADE" = x'y' ]; then
     #only upgrade zstack
     upgrade_zstack
 
+    #Setup audit.rules
+    setup_audit_file
+
     cd /; rm -rf $upgrade_folder
     cleanup_function
 
@@ -3612,6 +3631,9 @@ fi
 
 #Download and install ${PRODUCT_NAME} Package
 install_zstack
+
+#Setup audit.rules
+setup_audit_file
 
 #Post Configuration, including apache, zstack-server, NFS Server, HTTP Server
 config_system

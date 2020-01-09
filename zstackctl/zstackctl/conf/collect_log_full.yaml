@@ -45,6 +45,7 @@ mn:
       - {name: git-commit, dir: $ZSTACK_HOME/../../webapps/zstack/, file: '*git-commit'}
       - {name: zstack-logs, dir: /var/log/zstack/, file: zstack.log*}
       - {name: zstack-installation-logs, dir: /tmp/, file: zstack_installation.log*}
+      - {name: audit-log, dir: /var/log/audit/, file: 'audit.log*'}
 vrouter:
     description: vrouter
     type: target
