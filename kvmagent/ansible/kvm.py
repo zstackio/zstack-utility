@@ -264,7 +264,7 @@ if distro in RPM_BASED_OS:
         # common kvmagent deps of x86 and arm that need to update
         common_update_list = "sanlock sysfsutils hwdata sg3_utils lvm2 lvm2-libs lvm2-lockd systemd openssh"
         # common kvmagent deps of x86 and arm that no need to update
-        common_dep_list = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof mcelog MegaCli net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils python-pyudev pv rsync sed smartmontools sshpass usbutils vconfig wget audit %s %s %s" % (qemu_pkg, extra_pkg, common_update_list)
+        common_dep_list = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof mcelog MegaCli net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils python-pyudev pv rsync sed smartmontools sshpass usbutils vconfig wget audit python-rados python-rbd %s %s %s" % (qemu_pkg, extra_pkg, common_update_list)
 
         # zstack mini needs higher version kernel etc.
         C76_KERNEL_OR_HIGHER = '3.10.0-957' in get_remote_host_kernel_version(host_post_info)
@@ -403,7 +403,8 @@ elif distro in DEB_BASED_OS:
                         'libvirt-daemon-system', 'libfdt-dev', 'libvirt-dev', 'libvirt-clients', 'chrony','vlan', 
                         'libguestfs-tools', 'sed', 'nfs-common', 'open-iscsi','ebtables', 'pv', 'usbutils', 
                         'pciutils', 'expect', 'lighttpd', 'sshpass', 'rsync', 'iputils-arping', 'nmap', 'collectd', 
-                        'iptables', 'python-pip', 'dmidecode', 'ovmf', 'dnsmasq', 'auditd']
+                        'iptables', 'python-pip', 'dmidecode', 'ovmf', 'dnsmasq', 'auditd', 'python-rados',
+                        'python-rbd']
     apt_install_packages(install_pkg_list, host_post_info)
     if zstack_repo == 'false':
         command_deb_list = "echo %s >/var/lib/zstack/dependencies".format(' '.join(install_pkg_list))
