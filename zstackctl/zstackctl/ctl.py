@@ -95,11 +95,11 @@ if [ $? -ne 0 ]; then
 fi
 
 # Fixes ZSTAC-24460
-# if max_allowed_packet is not configured, then update from default value 1M to 2M
+# if max_allowed_packet is not configured, then update from default value 1M to 4M
 grep 'max_allowed_packet' $mysql_conf >/dev/null 2>&1
 if [ $? -ne 0 ]; then
-    echo "max_allowed_packet=2M"
-    sed -i '/\[mysqld\]/a max_allowed_packet=2M\' $mysql_conf
+    echo "max_allowed_packet=4M"
+    sed -i '/\[mysqld\]/a max_allowed_packet=4M\' $mysql_conf
 fi
 
 # wanted_files = 10+max_connections+table_open_cache*2
