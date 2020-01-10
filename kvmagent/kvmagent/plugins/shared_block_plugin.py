@@ -780,10 +780,15 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         with lvm.RecursiveOperateLv(src_abs_path, shared=True):
             virtual_size = linux.qcow2_virtualsize(src_abs_path)
             if not lvm.lv_exists(dst_abs_path):
-                lvm.create_lv_from_absolute_path(dst_abs_path, virtual_size,
-                                                 "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
+                raise Exception("can not find dest volume path: %s" % dst_abs_path)
             with lvm.RecursiveOperateLv(dst_abs_path, shared=False):
                 if not cmd.fullRebase:
+                    try:
+                        required_size = linux.qcow2_measure_required_size(dst_abs_path)
+                    except Exception as e:
+                        logger.warn("can not get qcow2 measure size: %s" % e)
+                        required_size = virtual_size
+                    lvm.resize_lv_from_cmd(dst_abs_path, required_size, extend_thin_by_specified_size=True)
                     linux.qcow2_rebase(src_abs_path, dst_abs_path)
                 else:
                     tmp_lv = 'tmp_%s' % uuidhelper.uuid()
