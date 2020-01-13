@@ -3,6 +3,8 @@ import random
 import os
 import os.path
 import time
+import mmap
+import errno
 
 from zstacklib.utils import shell
 from zstacklib.utils import bash
@@ -1552,10 +1554,24 @@ def get_running_vm_root_volume_on_pv(vgUuid, pvUuids, checkIo=True):
             logger.warn("found strange vm[pid: %s, cmdline: %s], can not find boot volume" % (vm.pid, vm.cmdline))
             continue
 
-        r = bash.bash_r("%s --backing-chain %s" % (qemu_img.subcmd('info'), vm.root_volume))
-        if checkIo is True and r == 0:
-            logger.debug("volume %s for vm %s io success, skiped" % (vm.root_volume, vm.uuid))
-            continue
+        if checkIo is True:
+            fd = None
+            succeed = False
+            try:
+                fd = os.open(vm.root_volume, os.O_DIRECT | os.O_RDWR | os.O_NONBLOCK)
+                fo = os.fdopen(fd, 'rb+')
+                m = mmap.mmap(-1, 4096)
+                fo.readinto(m)
+                succeed = True
+            except Exception as e:
+                logger.debug("Failed to test io because: %s" % e.message)
+            finally:
+                if fd:
+                    os.close(fd)
+
+            if succeed:
+                logger.debug("volume %s for vm %s io success, skiped" % (vm.root_volume, vm.uuid))
+                continue
 
         out = bash.bash_o("virsh dumpxml %s | grep \"source file='/dev/\"" % vm.uuid).strip().splitlines()
         if len(out) != 0:
