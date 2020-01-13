@@ -806,7 +806,8 @@ def resize_lv(path, size, force=False):
 
 
 @bash.in_bash
-def resize_lv_from_cmd(path, size, cmd):
+def resize_lv_from_cmd(path, size, cmd, extend_thin_by_specified_size=False):
+    # type: (str, long, object, bool) -> None
     if cmd.provisioning is None or \
             cmd.addons is None or \
             cmd.provisioning != VolumeProvisioningStrategy.ThinProvisioning:
@@ -814,6 +815,16 @@ def resize_lv_from_cmd(path, size, cmd):
         return
 
     current_size = int(get_lv_size(path))
+
+    if extend_thin_by_specified_size:
+        v_size = linux.qcow2_virtualsize(path)
+        if size + cmd.addons[thinProvisioningInitializeSize] > v_size:
+            size = v_size
+        else:
+            size = size + cmd.addons[thinProvisioningInitializeSize]
+        resize_lv(path, size)
+        return
+
     if int(size) - current_size > cmd.addons[thinProvisioningInitializeSize]:
         resize_lv(path, current_size + cmd.addons[thinProvisioningInitializeSize])
     else:
