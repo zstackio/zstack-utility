@@ -247,7 +247,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
                 fd.write('\n>>> virt_v2v command: %s\n' % virt_v2v_cmd)
             return jsonobject.dumps(rsp)
 
-        root_vol = r"%s/%s-sda" % (storage_dir, cmd.srcVmName)
+        root_vol = (r"%s/%s-sda" % (storage_dir, cmd.srcVmName)).encode('utf-8')
         logger.debug(root_vol)
         if not os.path.exists(root_vol):
             rsp.success = False
@@ -261,7 +261,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
 
         rsp.dataVolumeInfos = []
         for dev in 'bcdefghijklmnopqrstuvwxyz':
-            data_vol = r"%s/%s-sd%c" % (storage_dir, cmd.srcVmName, dev)
+            data_vol = (r"%s/%s-sd%c" % (storage_dir, cmd.srcVmName, dev)).encode('utf-8')
             if os.path.exists(data_vol):
                 aSize, vSize = self._get_qcow2_sizes(data_vol)
                 rsp.dataVolumeInfos.append({"installPath": data_vol,
@@ -271,7 +271,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             else:
                 break
 
-        xml = r"%s/%s.xml" % (storage_dir, cmd.srcVmName)
+        xml = (r"%s/%s.xml" % (storage_dir, cmd.srcVmName)).encode('utf-8')
         if self._check_str_in_file(xml, "<nvram "):
             rsp.bootMode = 'UEFI'
 
