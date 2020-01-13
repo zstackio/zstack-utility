@@ -827,8 +827,10 @@ def resize_lv(path, size, force=False):
     _force = "" if force is False else " --force "
     r, o, e = bash.bash_roe("lvresize %s --size %sb %s" % (_force, calcLvReservedSize(size), path))
     if r == 0:
+        logger.debug("successfully resize lv %s size to %s" % (path, size))
         return
     elif "matches existing size" in e or "matches existing size" in o:
+        logger.debug("lv %s size already matches existing size: %s, return as successful" % (path, size))
         return
     else:
         raise Exception("resize lv %s to size %s failed, return code: %s, stdout: %s, stderr: %s" %
