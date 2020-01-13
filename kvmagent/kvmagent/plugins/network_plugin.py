@@ -257,14 +257,6 @@ class NetworkPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def check_vxlan_cidr(self, req):
 
-        def install_iptables(rules, port):
-            needle = '-A INPUT -p udp -m udp --dport %d' % port
-            drules = [r.replace("-A ", "-D ") for r in rules if needle in r]
-            for rule in drules:
-                bash_r("%s %s" % (IPTABLES_CMD, rule))
-
-            bash_r("%s -I INPUT -p udp --dport %s -j ACCEPT" % (IPTABLES_CMD, port))
-
         def filter_vxlan_nics(nics, interf, requireIp):
             valid_nics = []
 
@@ -335,10 +327,6 @@ class NetworkPlugin(kvmagent.KvmAgent):
             rsp.error = "the qualified vtep ip bound to multiple interfaces"
         else:
             rsp.error = "multiple interface qualify with cidr [%s] and no interface name provided" % cmd.cidr
-
-        rules = bash_o("%s -S INPUT" % IPTABLES_CMD).splitlines()
-        install_iptables(rules, 8472)
-        install_iptables(rules, 4789)
 
         return jsonobject.dumps(rsp)
 

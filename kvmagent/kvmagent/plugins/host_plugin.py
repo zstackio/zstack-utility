@@ -524,14 +524,6 @@ class HostPlugin(kvmagent.KvmAgent):
                 return words[words.index(w)+1].strip().split('(')[0].replace(',' ,'')
         raise kvmagent.KvmError('cannot get qemu version[%s]' % ret)
 
-    def _prepare_firewall_for_migration(self):
-        """Prepare firewall rules for libvirt live migration."""
-
-        mrule = "-A INPUT -p tcp -m tcp --dport 49152:49261 -j ACCEPT"
-        rules = bash_o("%s -S INPUT" % IPTABLES_CMD).splitlines()
-        if not mrule in rules:
-            bash_r("%s %s" % (IPTABLES_CMD, mrule.replace("-A ", "-I ")))
-
     @lock.file_lock('/run/xtables.lock')
     @in_bash
     def apply_iptables_rules(self, rules):
@@ -1735,7 +1727,6 @@ done
         self.heartbeat_timer = {}
         self.libvirt_version = self._get_libvirt_version()
         self.qemu_version = self._get_qemu_version()
-        self._prepare_firewall_for_migration()
         filepath = r'/etc/libvirt/qemu/networks/autostart/default.xml'
         if os.path.exists(filepath):
             os.unlink(filepath)

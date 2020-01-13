@@ -495,25 +495,7 @@ WantedBy=multi-user.target
         for cmd in para.cmds:
             start_exporter(cmd)
 
-        self.install_iptables()
-
         return jsonobject.dumps(rsp)
-
-    @in_bash
-    @lock.file_lock('/run/xtables.lock')
-    def install_iptables(self):
-        def install_iptables_port(rules, port):
-            needle = '-A INPUT -p tcp -m tcp --dport %d' % port
-            drules = [ r.replace("-A ", "-D ") for r in rules if needle in r ]
-            for rule in drules:
-                bash_r("%s %s" % (IPTABLES_CMD, rule))
-
-            bash_r("%s -I INPUT -p tcp --dport %s -j ACCEPT" % (IPTABLES_CMD, port))
-
-        rules = bash_o("%s -S INPUT" % IPTABLES_CMD).splitlines()
-        install_iptables_port(rules, 7069)
-        install_iptables_port(rules, 9100)
-        install_iptables_port(rules, 9103)
 
     def install_colletor(self):
         class Collector(object):
