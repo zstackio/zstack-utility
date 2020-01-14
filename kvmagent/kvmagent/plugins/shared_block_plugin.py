@@ -747,11 +747,12 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                     except Exception as e:
                         logger.warn("can not get qcow2 measure size: %s" % e)
                         required_size = virtual_size
-                    lvm.resize_lv_from_cmd(dst_abs_path, required_size, cmd, extend_thin_by_specified_size=True)
+                    current_size = int(lvm.get_lv_size(dst_abs_path))
+                    if current_size < required_size:
+                        lvm.resize_lv_from_cmd(dst_abs_path, required_size, cmd, extend_thin_by_specified_size=True)
                     linux.qcow2_rebase(src_abs_path, dst_abs_path)
                 else:
                     tmp_lv = 'tmp_%s' % uuidhelper.uuid()
-                    tmp_abs_path = os.path.join(os.path.dirname(dst_abs_path), tmp_lv)
                     tmp_abs_path = os.path.join(os.path.dirname(dst_abs_path), tmp_lv)
                     logger.debug("creating temp lv %s" % tmp_abs_path)
                     lvm.create_lv_from_absolute_path(tmp_abs_path, virtual_size,
