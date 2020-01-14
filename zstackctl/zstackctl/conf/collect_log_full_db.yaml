@@ -43,7 +43,7 @@ mn:
      - {name: journalctl-info, exec: 'journalctl -x'}
      - {name: host-info, exec: 'uptime && last reboot && free -h && cat /proc/cpuinfo && ip add && df -h'}
      - {name: pkg-list, exec: 'rpm -qa | sort'}
-     - {name: git-commit, dir: $ZSTACK_HOME/../../webapps/zstack/, file: '*git-commit'}
+     - {name: git-commit, dir: $ZSTACK_HOME/../../webapps/zstack/, file: '*git-commit', mode: "All"}
      - {name: zstack-logs, dir: /var/log/zstack/, file: zstack.log*}
      - {name: zstack-installation-logs, dir: /tmp/, file: zstack_installation.log*}
      - {name: audit-log, dir: /var/log/audit/, file: 'audit.log*'}

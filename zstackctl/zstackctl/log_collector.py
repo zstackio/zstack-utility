@@ -179,6 +179,7 @@ class CollectFromYml(object):
                 dir_value = log.get('dir')
                 file_value = log.get('file')
                 exec_value = log.get('exec')
+                mode_value = log.get('mode')
                 if name_value is None:
                     decode_error = 'log name can not be None in %s' % log
                     break
@@ -207,6 +208,8 @@ class CollectFromYml(object):
                     if file_value is not None and file_value.startswith('/'):
                         decode_error = 'file value can not be an absolute path in %s' % log
                         break
+                if mode_value is None:
+                    log['mode'] = "Normal"
 
             # collect `history` by default
             if not history_configured:
@@ -219,17 +222,22 @@ class CollectFromYml(object):
         decode_result['decode_error'] = decode_error
         return decode_result
 
-    def build_collect_cmd(self, dir_value, file_value, collect_dir):
+    def build_collect_cmd(self, log, collect_dir):
+        dir_value = log['dir']
+        file_value = log['file']
+        mode_value = log['mode']
         cmd = 'find %s -type f' % dir_value
         if file_value is not None:
             if file_value.startswith('regex='):
                 cmd = cmd + ' -regex \'%s\'' % file_value
             else:
                 cmd = cmd + ' -name \'%s\'' % file_value
-        cmd = cmd + ' -exec ls --full-time {} \; | sort -k6 | awk \'{print $6\":\"$7\"|\"$9\"|\"$5}\''
-        cmd = cmd + ' | awk -F \'|\' \'BEGIN{preview=0;} {if(NR==1 && ( $1 > \"%s\" || (\"%s\" < $1 && $1  <= \"%s\"))) print $2\"|\"$3; \
-                               else if ((\"%s\" < $1 && $1 <= \"%s\") || ( $1> \"%s\" && preview < \"%s\")) print $2\"|\"$3; preview = $1}\'' \
-              % (self.t_date, self.f_date, self.t_date, self.f_date, self.t_date, self.t_date, self.t_date)
+
+        if mode_value == "Normal":
+            cmd = cmd + ' -exec ls --full-time {} \; | sort -k6 | awk \'{print $6\":\"$7\"|\"$9\"|\"$5}\''
+            cmd = cmd + ' | awk -F \'|\' \'BEGIN{preview=0;} {if(NR==1 && ( $1 > \"%s\" || (\"%s\" < $1 && $1  <= \"%s\"))) print $2\"|\"$3; \
+                                   else if ((\"%s\" < $1 && $1 <= \"%s\") || ( $1> \"%s\" && preview < \"%s\")) print $2\"|\"$3; preview = $1}\'' \
+                  % (self.t_date, self.f_date, self.t_date, self.f_date, self.t_date, self.t_date, self.t_date)
         if self.check:
             cmd = cmd + '| awk -F \'|\' \'BEGIN{size=0;} \
                    {size = size + $2/1024/1024;}  END{size=sprintf("%.1f", size); print size\"M\";}\''
@@ -426,16 +434,17 @@ class CollectFromYml(object):
                 idx3 = sub2.index(end)
                 return sub2[:idx3].strip('\t\r\n ')
             except Exception as e:
-                error_verbose("get ha mn ip failed, please check keepalived conf, %s" % e)
+                logger.warn("get ha mn ip failed, please check keepalived conf, %s" % e)
+                return "localhost"
 
         def decode_kp_conf():
             content = linux.read_file(self.HA_KEEPALIVED_CONF)
-            ha_mn_list.append(find_value_from_conf(content, "unicast_src_ip", " ", "\n"))
-            ha_mn_list.append(find_value_from_conf(content, "unicast_peer", "{", "}"))
+            ha_mn_list.add(find_value_from_conf(content, "unicast_src_ip", " ", "\n"))
+            ha_mn_list.add(find_value_from_conf(content, "unicast_peer", "{", "}"))
 
-        ha_mn_list = []
+        ha_mn_list = set()
         if not os.path.exists(self.HA_KEEPALIVED_CONF):
-            ha_mn_list.append("localhost")
+            ha_mn_list.add("localhost")
         else:
             decode_kp_conf()
 
@@ -485,7 +494,7 @@ class CollectFromYml(object):
                     continue
                 else:
                     if os.path.exists(log['dir']):
-                        command = self.build_collect_cmd(log['dir'], log['file'], None)
+                        command = self.build_collect_cmd(log, None)
                         (status, output) = commands.getstatusoutput(command)
                         if status == 0:
                             key = "%s:%s:%s" % (type, 'localhost', log['name'])
@@ -517,7 +526,7 @@ class CollectFromYml(object):
                             self.add_fail_count(1, error_log_name, output)
                     else:
                         if os.path.exists(log['dir']):
-                            command = self.build_collect_cmd(log['dir'], log['file'], dest_log_dir)
+                            command = self.build_collect_cmd(log, dest_log_dir)
                             (status, output) = commands.getstatusoutput(command)
                             if status == 0:
                                 self.add_success_count()
@@ -620,7 +629,7 @@ class CollectFromYml(object):
                         continue
                     else:
                         if file_dir_exist("path=%s" % log['dir'], host_post_info):
-                            command = self.build_collect_cmd(log['dir'], log['file'], None)
+                            command = self.build_collect_cmd(log, None)
                             (status, output) = run_remote_command(command, host_post_info, return_status=True,
                                                                   return_output=True)
                             if status is True:
@@ -658,7 +667,7 @@ class CollectFromYml(object):
                                 self.add_fail_count(1, error_log_name, output)
                         else:
                             if file_dir_exist("path=%s" % log['dir'], host_post_info):
-                                command = self.build_collect_cmd(log['dir'], log['file'], dest_log_dir)
+                                command = self.build_collect_cmd(log, dest_log_dir)
                                 (status, output) = run_remote_command(command, host_post_info, return_status=True,
                                                                       return_output=True)
                                 if status is True:
