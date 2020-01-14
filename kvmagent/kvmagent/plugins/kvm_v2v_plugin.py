@@ -181,7 +181,7 @@ def getCdromNum(dom, dxml=None):
         else:
             return 0
 
-    return getCdromNum(dxml)
+    return countCdrom(dxml)
 
 
 def getVolumes(dom, dxml=None):
