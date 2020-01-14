@@ -52,6 +52,17 @@ if [ $? != 0 ]; then
      exit 1
 fi
 
+echo "pushGatewayUrl:  http://$DEPLOY_SERVER:9093" >> /usr/local/zstack/zwatch-vm-agent/conf.yaml
+echo "versionFileUrl:  ftp://$DEPLOY_SERVER/agent_version" >> /usr/local/zstack/zwatch-vm-agent/conf.yaml
+
+# baremetal instance Uuid is stored in /usr/local/zstack/baremetalInstanceUuid
+# for version(before 3.8) there is no such file, we have to get baremetalInstanceUuid from /usr/local/bin/zstack_bm_agent.sh
+if [ -f /usr/local/zstack/baremetalInstanceUuid ]; then
+    BMUUID=`cat /usr/local/zstack/baremetalInstanceUuid`
+else
+    BMUUID=`grep "baremetalInstanceUuid" /usr/local/bin/zstack_bm_agent.sh  | awk -F '{' '{print $2}' | awk -F '}' '{print $1}' | awk -F ':' '{print $2}' | sed 's/"//g'`
+fi
+echo "vmInstanceUuid:  $BMUUID" >> /usr/local/zstack/zwatch-vm-agent/conf.yaml
 
 echo "start zwatch-vm-agent"
 service zwatch-vm-agent start
