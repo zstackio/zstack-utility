@@ -2,6 +2,7 @@
 
 @author: frank
 '''
+from zstacklib.utils import report
 from zstacklib.utils import plugin, traceable_shell
 from zstacklib.utils import http
 from zstacklib.utils import jsonobject
@@ -250,6 +251,8 @@ class SftpBackupStorageAgent(object):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         self.storage_path = cmd.storagePath
         self.uuid = cmd.uuid
+        report.Report.url = cmd.sendCommandUrl
+
         if os.path.isfile(self.storage_path):
             raise Exception('storage path: %s is a file' % self.storage_path)
         if not os.path.exists(self.storage_path):
@@ -400,13 +403,15 @@ class SftpBackupStorageAgent(object):
     def download_image(self, req):
         #TODO: report percentage to mgmt server
         def percentage_callback(percent, url):
-            logger.debug('Downloading %s ... %s%%' % (url, percent))
+            reporter.progress_report(int(percent))
 
         def use_wget(url, name, workdir, timeout):
             return linux.wget(url, workdir=workdir, rename=name, timeout=timeout, interval=2, callback=percentage_callback, callback_data=url)
 
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        shell = traceable_shell.get_shell(cmd)
+        reporter = report.Report.from_cmd(cmd, "DownloadImage")
+
+        t_shell = traceable_shell.get_shell(cmd)
         rsp = DownloadResponse()
         # for download failure
         (total, avail) = self.get_capacity()
@@ -429,7 +434,6 @@ class SftpBackupStorageAgent(object):
         url = urlparse.urlparse(cmd.url)
         if cmd.urlScheme in [self.URL_HTTP, self.URL_HTTPS, self.URL_FTP]:
             try:
-                image_name = linux.shellquote(image_name)
                 cmd.url = linux.shellquote(cmd.url)
                 ret = use_wget(cmd.url, image_name, path, timeout)
                 if ret != 0:
@@ -445,32 +449,44 @@ class SftpBackupStorageAgent(object):
                 return jsonobject.dumps(rsp)
         elif cmd.urlScheme == self.URL_SFTP:
             ssh_pass_file = None
-            try:
-                port = (url.port, 22)[url.port is None]
-                commond = "sftp -P %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s:%s %s" % (port, url.username, url.hostname, url.path, cmd.installPath)
+            port = (url.port, 22)[url.port is None]
+
+            class SftpDownloadDaemon(plugin.TaskDaemon):
+                def _cancel(self):
+                    pass
+
+                def _get_percent(self):
+                    return os.stat(install_path).st_size / (total_size / 100) if os.path.exists(install_path) else 0
+
+                def __exit__(self, exc_type, exc_val, exc_tb):
+                    super(SftpDownloadDaemon, self).__exit__(exc_type, exc_val, exc_tb)
+                    if ssh_pass_file:
+                        linux.rm_file_force(ssh_pass_file)
+                    if exc_val is not None:
+                        linux.rm_file_force(install_path)
+                        traceback.format_exc()
+
+            with SftpDownloadDaemon(cmd, "DownloadImage"):
+                sftp_cmd = "sftp -P %d -o BatchMode=no -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -b /dev/stdin %s@%s " \
+                           "<<EOF\n%%s\nEOF\n" % (port, url.username, url.hostname)
                 if url.password is not None:
                     ssh_pass_file = linux.write_to_temp_file(url.password)
-                    commond = 'sshpass -f %s %s' % (ssh_pass_file, commond)
+                    sftp_cmd = 'sshpass -f %s %s' % (ssh_pass_file, sftp_cmd)
 
-                shell.call(commond)
-            except linux.LinuxError as e:
-                linux.rm_file_force(install_path)
-                traceback.format_exc()
-                rsp.success = False
-                rsp.error = str(e)
-                return jsonobject.dumps(rsp)
-            finally:
-                if ssh_pass_file:
-                    linux.rm_file_force(ssh_pass_file)
+                total_size = int(shell.call(sftp_cmd % ("ls -l " + url.path)).splitlines()[1].split()[4])
+                t_shell.call(sftp_cmd % ("reget %s %s" % (url.path, install_path)))
+
         elif cmd.urlScheme == self.URL_FILE:
             src_path = cmd.url.lstrip('file:')
             src_path = os.path.normpath(src_path)
             if not os.path.isfile(src_path):
                 raise Exception('cannot find the file[%s]' % src_path)
             logger.debug("src_path is: %s" % src_path)
-            shell.call('yes | cp %s %s' % (src_path, linux.shellquote(install_path) ))
-
-
+            try:
+                t_shell.call('yes | cp %s %s' % (src_path, linux.shellquote(install_path)))
+            except shell.ShellError as e:
+                linux.rm_file_force(install_path)
+                raise e
 
         os.chmod(cmd.installPath, stat.S_IRUSR + stat.S_IRGRP + stat.S_IROTH)
 
