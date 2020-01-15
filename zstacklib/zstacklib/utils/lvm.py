@@ -864,6 +864,7 @@ def deactive_lv(path, raise_exception=True):
 @bash.in_bash
 def delete_lv(path, raise_exception=True):
     logger.debug("deleting lv %s" % path)
+    deactive_lv(path, False)
     # remove meta-lv if any
     if lv_exists(get_meta_lv_path(path)):
         shell.run("lvremove -y %s" % get_meta_lv_path(path))
