@@ -624,7 +624,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
             def get_related_rules_re(self, patterns):
                 # type: (dict[str, list]) -> list[str]
                 result = []
-                if patterns.keys() not in EbtablesRules.default_tables:
+                if not set(patterns.keys()).issubset(EbtablesRules.default_tables):
                     raise Exception('invalid parameter table %s' % patterns.keys())
 
                 for key, value in patterns.items():
