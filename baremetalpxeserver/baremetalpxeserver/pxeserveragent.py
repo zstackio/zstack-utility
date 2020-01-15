@@ -221,6 +221,7 @@ class PxeServerAgent(object):
         # init dnsmasq.conf
         dhcp_conf = """interface={DHCP_INTERFACE}
 port=0
+bind-interfaces
 dhcp-boot=pxelinux.0
 enable-tftp
 tftp-root={TFTPBOOT_PATH}
