@@ -40,6 +40,7 @@ skip_packages = ""
 update_packages = 'false'
 zstack_lib_dir = "/var/lib/zstack"
 zstack_libvirt_nwfilter_dir = "%s/nwfilter" % zstack_lib_dir
+suricata_src_dir = "%s/suricata" % file_root
 skipIpv6 = 'false'
 bridgeDisableIptables = 'false'
 releasever = ''
@@ -659,7 +660,7 @@ def set_legacy_iptables_ebtables():
     host_post_info.post_label_param = None
     run_remote_command(command, host_post_info)
 
- 
+
 def do_auditd_config():
     """add audit rules for signals"""
     AUDIT_CONF_FILE = '/etc/audit/auditd.conf'
@@ -672,6 +673,7 @@ def do_auditd_config():
     host_post_info.post_label = "ansible.shell.audit.signal"
     host_post_info.post_label_param = None
     run_remote_command(command, host_post_info)
+
 
 def start_kvmagent():
     if chroot_env != 'false':
