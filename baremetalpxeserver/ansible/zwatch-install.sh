@@ -52,7 +52,7 @@ if [ $? != 0 ]; then
      exit 1
 fi
 
-echo "pushGatewayUrl:  http://$DEPLOY_SERVER:9093" >> /usr/local/zstack/zwatch-vm-agent/conf.yaml
+echo "\npushGatewayUrl:  http://$DEPLOY_SERVER:9093" >> /usr/local/zstack/zwatch-vm-agent/conf.yaml
 echo "versionFileUrl:  ftp://$DEPLOY_SERVER/agent_version" >> /usr/local/zstack/zwatch-vm-agent/conf.yaml
 
 # baremetal instance Uuid is stored in /usr/local/zstack/baremetalInstanceUuid
