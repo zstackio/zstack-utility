@@ -108,7 +108,7 @@ DELETE_PY_CRYPTO=''
 SETUP_EPEL=''
 CONSOLE_PROXY_ADDRESS=''
 CURRENT_VERSION=''
-
+RELEASEVER=''
 LICENSE_PATH=''
 LICENSE_FILE='zstack-license'
 LICENSE_FOLDER='/var/lib/zstack/license/'
@@ -386,6 +386,17 @@ echo_subtitle(){
     echo -n "    $*:"|tee -a $ZSTACK_INSTALL_LOG
 }
 
+
+set_os_releasever() {
+    rpm -q neokylin-release-server >/dev/null 2>&1
+    if [ $? -eq 0 ];then
+        RELEASEVER=$(rpm -q --provides $(rpm -q --whatprovides "system-release(releasever)") | grep "neokylin-release-server(x86-64)"|cut -d ' ' -f 3)  
+    else
+        RELEASEVER=$(rpm -q --provides $(rpm -q --whatprovides "system-release(releasever)") | grep "system-release(releasever)" | cut -d ' ' -f 3)
+    fi
+    [ -z "$RELEASEVER" ] && fail "failed to get system releasever, check distroverpkg in /etc/yum.conf please"
+}
+
 enable_tomcat_linking() {
     local context_xml_file=$ZSTACK_INSTALL_ROOT/apache-tomcat/conf/context.xml
     if ! grep -q -w allowLinking $context_xml_file; then
@@ -658,11 +669,12 @@ cs_check_zstack_data_exist(){
 check_system(){
     echo_title "Check System"
     echo ""
-    cat /etc/*-release |egrep -i -h "centos |Red Hat Enterprise|Alibaba" >>$ZSTACK_INSTALL_LOG 2>&1
+    cat /etc/*-release |egrep -i -h "centos |Red Hat Enterprise|Alibaba|NeoKylin" >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -eq 0 ]; then
         grep 'CentOS release 6' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1; IS_CENTOS_6=$?
         grep 'CentOS Linux release 7' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1; IS_CENTOS_7=$?
         grep 'Red Hat Enterprise Linux Server release 7' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1; IS_RHEL_7=$?
+        grep 'NeoKylin Linux Advanced Server release V7' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1; IS_RHEL_7=$?
         grep 'Alibaba Group Enterprise Linux' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1; IS_ALIOS_7=$?
         grep 'iSoft Linux release 4' /etc/system-release >>$ZSTACK_INSTALL_LOG 2>&1; IS_ISOFT_4=$?
         if [ $IS_CENTOS_6 -eq 0 ]; then
@@ -700,7 +712,7 @@ check_system(){
         fi
     fi
 
-    if [ $OS != $CENTOS7 -a $OS != $UBUNTU1404 -a $OS != $UBUNTU1604 -a $OS != $ALIOS7 ]; then
+    if [ $OS != $CENTOS7 -a $OS != $UBUNTU1404 -a $OS != $UBUNTU1604 -a $OS != $ALIOS7 -a $OS != $RHEL7 ]; then
         #only support offline installation for CentoS7.x
         if [ -z "$YUM_ONLINE_REPO" ]; then
             fail2 "Your system is $OS . ${PRODUCT_NAME} installer can not use '-o' or '-R' option on your system. Please remove '-o' or '-R' option and try again."
@@ -730,6 +742,7 @@ check_system(){
     else
         cs_check_hostname_zstack
     fi
+    set_os_releasever
     show_spinner do_check_system
     cs_check_zstack_data_exist
     show_spinner cs_create_repo
@@ -1029,8 +1042,6 @@ iu_deploy_zstack_repo() {
 
     BASEARCH=`uname -m`
     [ x"$BASEARCH" = x'aarch64' ] && ALTARCH='x86_64' || ALTARCH='aarch64'
-    RELEASEVER=$(rpm -q --provides $(rpm -q --whatprovides "system-release(releasever)") | grep "system-release(releasever)" | cut -d ' ' -f 3)
-    [ -z "$RELEASEVER" ] && fail "failed to get system releasever, check distroverpkg in /etc/yum.conf please"
     mkdir -p ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/{x86_64,aarch64}
     ln -s /opt/zstack-dvd/ ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/${BASEARCH}/os >/dev/null 2>&1
     ln -s /opt/zstack-dvd/Extra/qemu-kvm-ev ${ZSTACK_HOME}/static/zstack-repo/${RELEASEVER}/${BASEARCH}/qemu-kvm-ev >/dev/null 2>&1
