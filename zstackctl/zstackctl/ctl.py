@@ -8464,14 +8464,18 @@ class StartUiCmd(Command):
         if args.ssl_keystore_type == 'PKCS12' and not ctl.read_property('consoleProxyCertFile'):
             ctl.write_property('consoleProxyCertFile', ctl.ZSTACK_UI_KEYSTORE_PEM)
 
-        # ui_db
+        # ui_db use encrypted db_password in args
         self._get_db_info()
         if not args.db_url or args.db_url.strip() == '':
             args.db_url = self.db_url
         if not args.db_username or args.db_username.strip() == '':
             args.db_username = self.db_username
         if not args.db_password or args.db_password.strip() == '':
-            args.db_password = self.db_password
+            cipher = AESCipher()
+            if not cipher.is_encrypted(self.db_password):
+                args.db_password = cipher.encrypt(self.db_password)
+            else:
+                args.db_password = self.db_password
 
         shell("mkdir -p %s" % args.log)
         zstackui = ctl.ZSTACK_UI_HOME
