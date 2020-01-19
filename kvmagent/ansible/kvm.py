@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # encoding=utf-8
 import argparse
+import commands
 import os.path
 import os
 import re
@@ -501,7 +502,6 @@ def set_max_performance():
     host_post_info.post_label = "ansible.shell.set.tuned.profile"
     host_post_info.post_label_param = "set profile as virtual-host"
     run_remote_command(command, host_post_info)
-
 
 def do_libvirt_qemu_config():
     """special configration"""
