@@ -164,7 +164,6 @@ declare -a upgrade_params_array=(
     '3.7.0,-DinitRunningVmPriority=true'
     '3.7.2,-DgeneratePriceEndDate=true'
     '3.8.0,-DinitRunningApplianceVmPriority=true'
-    '3.8.0,-DInfluxdb.upgrade.audit=true'
 )
 
 # version compare
