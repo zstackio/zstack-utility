@@ -178,6 +178,8 @@ def getCdromNum(dom, dxml=None):
             for disk_xml in disk:
                 if disk_xml.device_ == 'cdrom':
                     counter += 1
+
+            return counter
         else:
             return 0
 
