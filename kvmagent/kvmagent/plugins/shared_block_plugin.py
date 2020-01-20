@@ -226,7 +226,7 @@ class CheckDisk(object):
                 return pattern.findall(cmd.stdout)[0]
 
     def check_disk_by_wwid(self):
-        for cond in ['dm-uuid-mpath-', '']:
+        for cond in ['dm-uuid-mpath-', "", 'scsi-']:
             cmd = shell.ShellCmd("readlink -e /dev/disk/by-id/%s%s" % (cond, self.identifier))
             cmd(is_exception=False)
             if cmd.return_code == 0:
