@@ -25,8 +25,8 @@ collectResultLock = threading.RLock()
 
 def collect_host_network_statistics():
 
-    all_eths = bash_o("ls /sys/class/net/").split()
-    virtual_eths = bash_o("ls /sys/devices/virtual/net/").split()
+    all_eths = os.listdir("/sys/class/net/")
+    virtual_eths = os.listdir("/sys/devices/virtual/net/")
 
     interfaces = []
     for eth in all_eths:
@@ -46,22 +46,22 @@ def collect_host_network_statistics():
     all_out_packets = 0
     all_out_errors = 0
     for intf in interfaces:
-        res = bash_o("cat /sys/class/net/{}/statistics/rx_bytes".format(intf))
+        res = linux.read_file("/sys/class/net/{}/statistics/rx_bytes".format(intf))
         all_in_bytes += int(res)
 
-        res = bash_o("cat /sys/class/net/{}/statistics/rx_packets".format(intf))
+        res = linux.read_file("/sys/class/net/{}/statistics/rx_packets".format(intf))
         all_in_packets += int(res)
 
-        res = bash_o("cat /sys/class/net/{}/statistics/rx_errors".format(intf))
+        res = linux.read_file("/sys/class/net/{}/statistics/rx_errors".format(intf))
         all_in_errors += int(res)
 
-        res = bash_o("cat /sys/class/net/{}/statistics/tx_bytes".format(intf))
+        res = linux.read_file("/sys/class/net/{}/statistics/tx_bytes".format(intf))
         all_out_bytes += int(res)
 
-        res = bash_o("cat /sys/class/net/{}/statistics/tx_packets".format(intf))
+        res = linux.read_file("/sys/class/net/{}/statistics/tx_packets".format(intf))
         all_out_packets += int(res)
 
-        res = bash_o("cat /sys/class/net/{}/statistics/tx_errors".format(intf))
+        res = linux.read_file("/sys/class/net/{}/statistics/tx_errors".format(intf))
         all_out_errors += int(res)
 
     metrics = {
