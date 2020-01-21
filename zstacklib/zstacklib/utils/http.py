@@ -83,6 +83,7 @@ class SyncUriHandler(object):
         logger.debug('sync http call: %s' % req.body)
         rsp = self._do_index(req)
         self._check_response(rsp)
+        logger.debug("sync http reply to %s: \"%s\"" % (cherrypy.url(), rsp))
         return rsp
 
 class RawUriHandler(object):
@@ -122,6 +123,7 @@ class AsyncUirHandler(SyncUriHandler):
 
         try:
             json_post(callback_uri, content, headers)
+            logger.debug("async http reply[task uuid: %s] to %s: %s" % (task_uuid, callback_uri, content))
         finally:
             self.HANDLER_COUNTER.dec()
         
@@ -165,7 +167,7 @@ class HttpServer(object):
     classdocs
     '''
 
-    def __init__(self, port=7070, async_callback_uri = None):
+    def __init__(self, port=7700, async_callback_uri = None):
         '''
         Constructor
         '''
@@ -407,7 +409,7 @@ class UriBuilder(object):
     def __init__(self, uri=None):
         self.scheme = 'http'
         self.host = None
-        self.port = 7070
+        self.port = 7700
         self.paths = []
         if uri:
             self._parse(uri)
