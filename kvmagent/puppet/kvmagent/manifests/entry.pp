@@ -50,7 +50,7 @@ class kvm_system {
      require => Package["qemu-kvm", "$libvirtd", "$libvirtpython"],
    }
 
-   zstackbase::iptables {"-A INPUT -p tcp -m tcp --dport 7700 -j ACCEPT":}
+   zstackbase::iptables {"-A INPUT -p tcp -m tcp --dport 7070 -j ACCEPT":}
 }
 
 class kvm_agent {
