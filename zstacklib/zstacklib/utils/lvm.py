@@ -690,27 +690,26 @@ def create_lv_from_absolute_path(path, size, tag="zs::sharedblock::volume", lock
     vgName = path.split("/")[2]
     lvName = path.split("/")[3]
 
-    r, o, e = bash.bash_roe("lvcreate -an --addtag %s --size %sb --name %s %s" %
+    r, o, e = bash.bash_roe("lvcreate -ay --addtag %s --size %sb --name %s %s" %
                          (tag, round_to(calcLvReservedSize(size), 512), lvName, vgName))
     if not lv_exists(path):
         raise Exception("can not find lv %s after create, lvcreate return: %s, %s, %s" % (path, r, o, e))
 
     if lock:
-        with OperateLv(path, shared=False):
-            dd_zero(path)
+        dd_zero(path)
+        deactive_lv(path)
     else:
-        active_lv(path)
         dd_zero(path)
 
 
-def create_lv_from_cmd(path, size, cmd, tag="zs::sharedblock::volume", lock=True):
+def create_lv_from_cmd(path, size, cmd, tag="zs::sharedblock::volume", lvmlock=True):
     # TODO(weiw): fix it
     if "ministorage" in tag and cmd.provisioning == VolumeProvisioningStrategy.ThinProvisioning:
-        create_thin_lv_from_absolute_path(path, size, tag, lock)
+        create_thin_lv_from_absolute_path(path, size, tag, lvmlock)
     elif cmd.provisioning == VolumeProvisioningStrategy.ThinProvisioning and size > cmd.addons[thinProvisioningInitializeSize]:
-        create_lv_from_absolute_path(path, cmd.addons[thinProvisioningInitializeSize], tag, lock)
+        create_lv_from_absolute_path(path, cmd.addons[thinProvisioningInitializeSize], tag, lvmlock)
     else:
-        create_lv_from_absolute_path(path, size, tag, lock)
+        create_lv_from_absolute_path(path, size, tag, lvmlock)
 
 
 @bash.in_bash
