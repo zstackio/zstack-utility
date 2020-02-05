@@ -81,9 +81,11 @@ class SecurityInspection(kvmagent.KvmAgent):
         rsp = kvmagent.AgentResponse()
 
         self.action = cmd.action
+        ifNames = cmd.suricataInterface.split(",")
+        ifParams = " ".join("-i {0}".format(x) for x in ifNames)
 
-        r, o, e = bash_roe("echo '' > {0}; pids=`pidof /usr/local/bin/suricata`; for pid in $pids; do kill $pid; done;rm -rf /usr/local/var/run/suricata.pid; /usr/local/bin/suricata -c /etc/suricata/suricata.yaml -l /var/log/suricata/ -i {1} -D"
-                           .format(self.SURICATA_FAST_LOG_FILE, cmd.suricataInterface))
+        r, o, e = bash_roe("echo '' > {0}; pids=`pidof /usr/local/bin/suricata`; for pid in $pids; do kill $pid; done;rm -rf /usr/local/var/run/suricata.pid; /usr/local/bin/suricata -c /etc/suricata/suricata.yaml -l /var/log/suricata/ {1} -D"
+                           .format(self.SURICATA_FAST_LOG_FILE, ifParams))
         if r != 0:
             rsp.success = False
             rsp.error = e
@@ -131,7 +133,8 @@ class SecurityInspection(kvmagent.KvmAgent):
             cmds =[]
             gateways = gateway.split("\n")
             for g in gateways:
-                cmds.append("ip route del default via {0}".format(g))
+                if g != "":
+                    cmds.append("ip route del default via {0}".format(g))
             cmds.append("ip route add default via {0}".format(self.expected_gateway_ip))
             r, o, e = bash_roe(";".join(cmds))
             if r != 0:
@@ -195,12 +198,16 @@ class SecurityInspection(kvmagent.KvmAgent):
 
             if self.action == self.ACTION_REPAIR:
                 r, o, e = bash_roe(
-                    "iptables -D FORWARD -d {0}/32 -p tcp -m comment --comment 'block invalid http proxy' -m tcp --dport {1} -j DROP; iptables -I FORWARD -d {2}/32 -p tcp -m comment --comment 'block invalid http proxy' -m tcp --dport {3} -j DROP"
-                        .format(dst_ip, dst_port, dst_ip, dst_port))
+                    """iptables -D OUTPUT -d {0}/32 -p tcp -m comment --comment 'block invalid http proxy' -m tcp --dport {1} -j DROP;
+                     iptables -D FORWARD -d {0}/32 -p tcp -m comment --comment 'block invalid http proxy' -m tcp --dport {1} -j DROP;
+                     iptables -I OUTPUT -d {0}/32 -p tcp -m comment --comment 'block invalid http proxy' -m tcp --dport {1} -j DROP;
+                     iptables -I FORWARD -d {0}/32 -p tcp -m comment --comment 'block invalid http proxy' -m tcp --dport {1} -j DROP;"""
+                        .format(dst_ip, dst_port))
                 if r != 0:
                     logger.debug('blocked invalid http proxy failed: error {0}, output {1}'.format(e, o))
                 else:
-                    cmd.content = ("iptables -I FORWARD -d {0}/32 -p tcp -m comment --comment 'block invalid http proxy' -m tcp --dport {1} -j DROP"
+                    cmd.content = ("""iptables -I OUTPUT -d {0}/32 -p tcp -m comment --comment 'block invalid http proxy' -m tcp --dport {1} -j DROP;
+                                      iptables -I FORWARD -d {0}/32 -p tcp -m comment --comment 'block invalid http proxy' -m tcp --dport {1} -j DROP"""
                                    .format(dst_ip, dst_port))
                     cmd.repair = True
                     http.json_dump_post(self.url, cmd, {'commandpath': '/kvm/invalidHttpProxy'})
