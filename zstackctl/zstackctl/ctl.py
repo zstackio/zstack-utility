@@ -6590,6 +6590,14 @@ class UpgradeManagementNodeCmd(Command):
                 info('restoring the zstack.properties ...')
                 ctl.internal_run('restore_config', '--restore-from %s' % os.path.dirname(property_file_backup_path))
 
+            def copy_tools():
+                info("copy third-party tools to zstack install path ...")
+                src_tools_path = "/opt/zstack-dvd/tools"
+                dst_tools_path = os.path.join(ctl.zstack_home, "WEB-INF/classes/tools")
+                if os.path.exists(src_tools_path):
+                    shell("cp -rn %s/* %s >/dev/null 2>&1" % (src_tools_path, dst_tools_path))
+                    info("successfully copied third-party tools to zstack install path")
+
             def install_tools():
                 info('upgrading zstack-cli, zstack-ctl; this may cost several minutes ...')
                 install_script = os.path.join(ctl.zstack_home, "WEB-INF/classes/tools/install.sh")
@@ -6613,6 +6621,7 @@ class UpgradeManagementNodeCmd(Command):
             stop_node()
             upgrade()
             restore_config()
+            copy_tools()
             install_tools()
             save_new_war()
             chown_to_zstack()
