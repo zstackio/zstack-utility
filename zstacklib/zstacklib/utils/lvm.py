@@ -629,10 +629,13 @@ def add_pv(vg_uuid, disk_path, metadata_size):
 
 
 def get_vg_size(vgUuid, raise_exception=True):
-    r, o, _ = bash.bash_roe("vgs --nolocking %s --noheadings --separator : --units b -o vg_size,vg_free" % vgUuid, errorout=raise_exception)
+    r, o, _ = bash.bash_roe("vgs --nolocking %s --noheadings --separator : --units b -o vg_size,vg_free,vg_lock_type" % vgUuid, errorout=raise_exception)
     if r != 0:
         return None, None
     vg_size, vg_free = o.strip().split(':')[0].strip("B"), o.strip().split(':')[1].strip("B")
+    if "sanlock" in o:
+        return vg_size, vg_free
+
     pools = get_thin_pools_from_vg(vgUuid)
     if len(pools) == 0:
         return vg_size, vg_free
