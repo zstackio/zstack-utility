@@ -1693,7 +1693,7 @@ done
         os.chmod('/etc/pki/libvirt/clientcert.pem', 0440)
 
         linux.write_to_file('/etc/pki/libvirt/private/clientkey.pem', cmd.clientKey)
-        os.chmod('/etc/pki/libvirt/private/clientkey.pem', 0600)
+        os.chmod('/etc/pki/libvirt/private/clientkey.pem', 0644)
 
         with open('/etc/libvirt/libvirtd.conf') as f:
             content = f.read()
