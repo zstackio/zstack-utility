@@ -80,8 +80,8 @@ class AliyunEbsStoragePlugin(kvmagent.KvmAgent):
                 e = shell.ShellCmd('rpm -qi tdc-unified-8.2.0.release.el5.x86_64')
                 e(False)
                 if e.return_code != 0:
-                    shell.call("yum --enablerepo=zstack-mn,qemu-kvm-ev-mn clean metadata")
-                    shell.call("yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install -y tdc-unified-8.2.0.release.el5.x86_64")
+                    shell.call("export YUM0={}; yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn clean metadata".format(kvmagent.get_host_yum_release()))
+                    shell.call("export YUM0={}; yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install -y tdc-unified-8.2.0.release.el5.x86_64".format(kvmagent.get_host_yum_release()))
                 shell.call("service tdc restart")
 
                 startCmd = shell.ShellCmd("/opt/tdc/tdc_admin lsi")
@@ -97,8 +97,8 @@ class AliyunEbsStoragePlugin(kvmagent.KvmAgent):
                 e = shell.ShellCmd('rpm -qi kernel-3.10.0-693.11.1.el7.x86_64-vrbd-1.0-0.1.release1.alios7.x86_64')
                 e(False)
                 if e.return_code != 0:
-                    shell.call("yum --enablerepo=zstack-mn,qemu-kvm-ev-mn clean metadata")
-                    shell.call("yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install -y kernel-3.10.0-693.11.1.el7.x86_64-vrbd-1.0-0.1.release1.alios7.x86_64")
+                    shell.call("export YUM0={}; yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn clean metadata".format(kvmagent.get_host_yum_release()))
+                    shell.call("export YUM0={}; yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install -y kernel-3.10.0-693.11.1.el7.x86_64-vrbd-1.0-0.1.release1.alios7.x86_64".format(kvmagent.get_host_yum_release()))
                 shell.call("modprobe vrbd")
             else:
                 return
