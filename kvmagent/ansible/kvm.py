@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # encoding=utf-8
 import argparse
+import commands
 import os.path
 import os
 import re
@@ -34,6 +35,7 @@ skip_packages = ""
 update_packages = 'false'
 zstack_lib_dir = "/var/lib/zstack"
 zstack_libvirt_nwfilter_dir = "%s/nwfilter" % zstack_lib_dir
+suricata_src_dir = "%s/suricata" % file_root
 skipIpv6 = 'false'
 
 def update_libvritd_config(host_post_info):
@@ -465,6 +467,20 @@ host_post_info.post_label = "ansible.shell.remove.file"
 host_post_info.post_label_param = "/etc/libvirt/hooks/qemu"
 run_remote_command(command, host_post_info)
 
+# name: report usb storage device attached
+status, mn_ip = commands.getstatusoutput('zstack-ctl get_configuration management.server.ip')
+if status:
+    mn_ip = "127.0.0.1"
+status, mn_port = commands.getstatusoutput('zstack-ctl get_configuration RESTFacade.port')
+if status:
+    mn_port = 8080
+
+command = '''echo install usb_storage curl -X POST -H "Content-Type:application/json" -H "commandpath:/host/usb_storage/detected" -d "{'hostUuid':'%s'}" --retry 5 http://%s:%s/zstack/asyncrest/sendcommand > /etc/modprobe.d/block_usb_storage.conf''' % (host_uuid, mn_ip, mn_port)
+host_post_info.post_label = "ansible.shell.report.usb.storage"
+host_post_info.post_label_param = "report usb storage device attached"
+run_remote_command(command, host_post_info)
+
+
 # name: enable bridge forward
 command = "echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables ; echo 1 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged ; echo 1 > /proc/sys/net/ipv4/conf/default/forwarding"
 host_post_info.post_label = "ansible.shell.enable.service"
@@ -616,6 +632,64 @@ command = "sed -i 's/num_logs = .*/num_logs = %d/' %s || true;" \
           "auditctl -a always,exit -F arch=b64 -F a1=15 -S kill -k zstack_log_kill || true" % (AUDIT_NUM_LOG, AUDIT_CONF_FILE)
 host_post_info.post_label = "ansible.shell.audit.signal"
 host_post_info.post_label_param = None
+run_remote_command(command, host_post_info)
+
+#install suricata
+command = "mkdir -p /etc/suricata/; mkdir -p /var/log/suricata/; mkdir -p /var/lib/suricata/rules/"
+run_remote_command(command, host_post_info)
+
+copy_arg = CopyArg()
+copy_arg.src = "{0}/suricata.yaml".format(suricata_src_dir)
+copy_arg.dest = "/etc/suricata/suricata.yaml"
+copy_arg.args = "mode=777"
+copy(copy_arg, host_post_info)
+
+copy_arg = CopyArg()
+copy_arg.src = "{0}/classification.config".format(suricata_src_dir)
+copy_arg.dest = "/etc/suricata/classification.config"
+copy_arg.args = "mode=777"
+copy(copy_arg, host_post_info)
+
+copy_arg = CopyArg()
+copy_arg.src = "{0}/reference.config".format(suricata_src_dir)
+copy_arg.dest = "/etc/suricata/reference.config"
+copy_arg.args = "mode=777"
+copy(copy_arg, host_post_info)
+
+copy_arg = CopyArg()
+copy_arg.src = "{0}/threshold.config".format(suricata_src_dir)
+copy_arg.dest = "/etc/suricata/threshold.config"
+copy_arg.args = "mode=777"
+copy(copy_arg, host_post_info)
+
+copy_arg = CopyArg()
+copy_arg.src = "{0}/zstack.rules".format(suricata_src_dir)
+copy_arg.dest = "/var/lib/suricata/rules/zstack.rules"
+copy_arg.args = "mode=777"
+copy(copy_arg, host_post_info)
+
+copy_arg = CopyArg()
+copy_arg.src = "{0}/suricata".format(suricata_src_dir)
+copy_arg.dest = "/usr/local/bin/suricata"
+copy_arg.args = "mode=777"
+copy(copy_arg, host_post_info)
+
+copy_arg = CopyArg()
+copy_arg.src = "{0}/libhtp.so.2.0.0".format(suricata_src_dir)
+copy_arg.dest = "/usr/local/lib/"
+copy_arg.args = "mode=777"
+copy(copy_arg, host_post_info)
+
+copy_arg = CopyArg()
+copy_arg.src = "{0}/libyaml-0.so.2.0.4".format(suricata_src_dir)
+copy_arg.dest = "/usr/lib64/"
+copy_arg.args = "mode=777"
+copy(copy_arg, host_post_info)
+
+command = "cd /usr/local/lib/;if [ ! -f libhtp.so.2 ]; then ln -s libhtp.so.2.0.0 libhtp.so.2; fi; if [ ! -f libhtp.so ]; then ln -s libhtp.so.2.0.0 libhtp.so; fi"
+run_remote_command(command, host_post_info)
+
+command = "cd /usr/lib64/;if [ ! -f libyaml-0.so.2 ]; then ln -s libyaml-0.so.2.0.4 libyaml-0.so.2; fi"
 run_remote_command(command, host_post_info)
 
 # handlers

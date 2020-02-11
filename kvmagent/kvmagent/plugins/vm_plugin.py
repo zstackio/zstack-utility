@@ -13,6 +13,8 @@ import platform
 import netaddr
 import uuid
 import json
+import base64
+import shutil
 
 import libvirt
 #from typing import List, Any, Union
@@ -1701,6 +1703,20 @@ class Vm(object):
 
         self.start(cmd.timeout)
 
+    def restore(self, path):
+        @LibvirtAutoReconnect
+        def restore_from_file(conn):
+            # base64 decode memory snapshot
+            dec_path = path + '.dec'
+            with open(path, 'r') as _input:
+                with open(dec_path, 'w') as _output:
+                    base64.decode(_input, _output)
+            logger.debug('restoring vm:\n%s' % self.domain_xml)
+            conn.restoreFlags(dec_path, self.domain_xml)
+            os.remove(dec_path)
+
+        restore_from_file()
+
     def start(self, timeout=60, create_paused=False, wait_console=True):
         # TODO: 1. enable hair_pin mode
         logger.debug('creating vm:\n%s' % self.domain_xml)
@@ -2492,6 +2508,14 @@ class Vm(object):
                     memory_snapshot_struct.installPath,
                     memory_snapshot_struct.installPath,
                     get_size(memory_snapshot_struct.installPath)))
+
+                # base64 encode memory snapshot
+                input_file = memory_snapshot_struct.installPath
+                output_file = input_file + '.b64'
+                with open(input_file, 'r') as _input:
+                    with open(output_file, 'w') as _output:
+                        base64.encode(_input, _output)
+                shutil.move(output_file, input_file)
 
             return return_structs
         except libvirt.libvirtError as ex:
@@ -3373,10 +3397,18 @@ class Vm(object):
                 else:
                     e(disk, 'driver', None, {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': _v.cacheMode})
 
-                # SM ONLY
                 source = e(disk, 'source', None, {'file': _v.installPath})
-                encryption = e(source, 'encryption', None, {'format': 'luks'})
-                e(encryption, 'secret', None, {'type':'passphrase', 'uuid': secret.ZSTACK_ENCRYPT_KEY_UUID})
+
+                # SM ONLY
+                if secret.is_img_encrypted(_v.installPath):
+                    encryption = e(source, 'encryption', None, {'format': 'luks'})
+                    e(encryption, 'secret', None, {'type':'passphrase', 'uuid': secret.ZSTACK_ENCRYPT_KEY_UUID})
+                else:
+                    disk_id = ord(_dev_letter) - ord('a')
+                    root = elements['root']
+                    qcmd = e(root, 'qemu:commandline')
+                    e(qcmd, "qemu:arg", attrib={"value": "-object"})
+                    e(qcmd, "qemu:arg", attrib={"value": "secret,id=virtio-disk{}-luks-secret0,file={},format=base64".format(disk_id, secret.ZSTACK_ENCRYPT_B64_PATH)})
 
                 if _v.shareable:
                     e(disk, 'shareable')
@@ -4109,15 +4141,6 @@ class VmPlugin(kvmagent.KvmAgent):
         return o[0]
 
     def _start_vm(self, cmd):
-        if cmd.memorySnapshotPath:
-            # TODO: 1. enable hair_pin mode
-            @LibvirtAutoReconnect
-            def restore_from_file(conn):
-                return conn.restore(cmd.memorySnapshotPath)
-
-            restore_from_file()
-            return
-
         try:
             vm = get_vm_by_uuid_no_retry(cmd.vmInstanceUuid, False)
 
@@ -4129,6 +4152,11 @@ class VmPlugin(kvmagent.KvmAgent):
                     vm.destroy()
 
             vm = Vm.from_StartVmCmd(cmd)
+
+            if cmd.memorySnapshotPath:
+                vm.restore(cmd.memorySnapshotPath)
+                return
+
             wait_console = True if not cmd.addons or cmd.addons['noConsole'] is not True else False
             vm.start(cmd.timeout, cmd.createPaused, wait_console)
         except libvirt.libvirtError as e:
