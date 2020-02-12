@@ -6593,6 +6593,8 @@ class UpgradeManagementNodeCmd(Command):
             def copy_tools():
                 info("copy third-party tools to zstack install path ...")
                 src_tools_path = "/opt/zstack-dvd/tools"
+                if not os.path.exists(src_tools_path):
+                    src_tools_path = "/opt/zstack-dvd/%s/%s/tools" % (ctl.BASEARCH, ctl.ZS_RELEASE)
                 dst_tools_path = os.path.join(ctl.zstack_home, "WEB-INF/classes/tools")
                 if os.path.exists(src_tools_path):
                     shell("cp -rn %s/* %s >/dev/null 2>&1" % (src_tools_path, dst_tools_path))
