@@ -2976,7 +2976,9 @@ class AddManagementNodeCmd(Command):
         command = "ssh -q -i %s -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no root@%s zstack-ctl " \
                   "start_node " % (key, host_info.host)
         (status, output) = commands.getstatusoutput(command)
-        command = "ln -s /opt/zstack-dvd/ /usr/local/zstack/apache-tomcat/webapps/zstack/static/zstack-dvd"
+        command = "mkdir -p /usr/local/zstack/apache-tomcat/webapps/zstack/static/zstack-repo" \
+                  "ln -s /opt/zstack-dvd/x86_64 /usr/local/zstack/apache-tomcat/webapps/zstack/static/zstack-repo/x86_64" \
+                  "ln -s /opt/zstack-dvd/aarch64 /usr/local/zstack/apache-tomcat/webapps/zstack/static/zstack-repo/aarch64"
         run_remote_command(command, host_info, True, True)
         if status != 0:
             error("start node on host %s failed:\n %s" % (host_info.host, output))
@@ -6893,8 +6895,8 @@ class UpgradeManagementNodeCmd(Command):
                 shell('cp %s %s' % (new_war.path, webapp_dir))
                 ShellCmd('unzip %s -d zstack' % os.path.basename(new_war.path), workdir=webapp_dir)()
                 #create local repo folder for possible zstack local yum repo
-                zstack_dvd_repo = '%s/zstack/static/zstack-dvd' % webapp_dir
-                shell('rm -f %s; ln -s /opt/zstack-dvd %s' % (zstack_dvd_repo, zstack_dvd_repo))
+                zstack_dvd_repo = '{}/zstack/static/zstack-repo'.format(webapp_dir)
+                shell('rm -f {0}; mkdir -p {0};ln -s /opt/zstack-dvd/x86_64 {0}/x86_64; ln -s /opt/zstack-dvd/aarch64 {0}/aarch64; chown -R zstack:zstack {0}'.format(zstack_dvd_repo))
 
             def restore_config():
                 info('restoring the zstack.properties ...')
