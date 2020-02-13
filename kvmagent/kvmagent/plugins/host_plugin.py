@@ -9,6 +9,7 @@ import os
 import os.path
 import platform
 import re
+import shutil
 import tempfile
 import time
 import uuid
@@ -1694,6 +1695,13 @@ done
 
         linux.write_to_file('/etc/pki/libvirt/private/clientkey.pem', cmd.clientKey)
         os.chmod('/etc/pki/libvirt/private/clientkey.pem', 0644)
+
+        linux.mkdir('/etc/pki/qemu', 0755)
+        shutil.copyfile('/etc/pki/CA/cacert.pem', '/etc/pki/qemu/ca-cert.pem')
+        shutil.copyfile('/etc/pki/libvirt/servercert.pem', '/etc/pki/qemu/server-cert.pem')
+        shutil.copyfile('/etc/pki/libvirt/private/serverkey.pem', '/etc/pki/qemu/server-key.pem')
+        shutil.copyfile('/etc/pki/libvirt/clientcert.pem', '/etc/pki/qemu/client-cert.pem')
+        shutil.copyfile('/etc/pki/libvirt/private/clientkey.pem', '/etc/pki/qemu/client-key.pem')
 
         with open('/etc/libvirt/libvirtd.conf') as f:
             content = f.read()
