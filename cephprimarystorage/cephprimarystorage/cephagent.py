@@ -654,6 +654,10 @@ class CephAgent(plugin.TaskManager):
         if cmd.isCreate and realname in pool_names:
             raise Exception('have pool named[%s] in the ceph cluster, can\'t create new pool with same name' % realname)
 
+        if (ceph.is_xsky() or ceph.is_sandstone()) and cmd.isCreate and realname not in pool_names:
+                raise Exception(
+                    'current ceph storage type only support add exist pool, please create it manually')
+
         if realname not in pool_names:
             shell.call('ceph osd pool create %s 128' % realname)
 
