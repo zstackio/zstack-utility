@@ -795,7 +795,7 @@ class CephAgent(plugin.TaskManager):
         _0()
 
         try:
-            shell.run('rbd rm %s/%s' % (pool, tmp_image_name))
+            shell.check_run('rbd rm %s/%s' % (pool, tmp_image_name))
             shell.call('set -o pipefail; ssh -p %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s root@%s cat %s | %s rbd import --image-format 2 - %s/%s' % (port, prikey_file, hostname, remote_shell_quote(cmd.backupStorageInstallPath), bandWidth, pool, tmp_image_name))
         finally:
             os.remove(prikey_file)
@@ -813,7 +813,7 @@ class CephAgent(plugin.TaskManager):
         if file_format not in ['qcow2', 'raw']:
             raise Exception('unknown image format: %s' % file_format)
 
-        shell.run('rbd rm %s/%s' % (pool, image_name))
+        shell.check_run('rbd rm %s/%s' % (pool, image_name))
         if file_format == 'qcow2':
             conf_path = None
             try:
