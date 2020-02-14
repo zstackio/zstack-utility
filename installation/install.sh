@@ -1064,23 +1064,26 @@ download_zstack(){
 }
 
 # create symbol links for zstack-repo
+create_symbol_link() {
+    mkdir -p ${ZSTACK_HOME}/static/zstack-repo/
+    if [ ! -L ${ZSTACK_HOME}/static/zstack-repo/x86_64 ];then
+        ln -s /opt/zstack-dvd/x86_64 ${ZSTACK_HOME}/static/zstack-repo/x86_64 >/dev/null 2>&1
+        ln -s /opt/zstack-dvd/aarch64 ${ZSTACK_HOME}/static/zstack-repo/aarch64 >/dev/null 2>&1
+    fi
+    chown -R zstack:zstack ${ZSTACK_HOME}/static/zstack-repo
+}
+
 iu_deploy_zstack_repo() {
     echo_subtitle "Deploy yum repo for ${PRODUCT_NAME}"
 
     [ -z "$ZSTACK_RELEASE" ] && fail "failed to get zstack releasever, please make sure zstack-release is installed."
-    mkdir -p ${ZSTACK_HOME}/static/zstack-repo/
-    ln -s /opt/zstack-dvd/x86_64 ${ZSTACK_HOME}/static/zstack-repo/x86_64 >/dev/null 2>&1
-    ln -s /opt/zstack-dvd/aarch64 ${ZSTACK_HOME}/static/zstack-repo/aarch64 >/dev/null 2>&1
-    chown -R zstack:zstack ${ZSTACK_HOME}/static/zstack-repo
+    create_symbol_link
 }
 
 iu_deploy_zstack_apt_source() {
     echo_subtitle "Deploy apt source for ${PRODUCT_NAME}"
 
-    mkdir -p ${ZSTACK_HOME}/static/zstack-repo
-    ln -s /opt/zstack-dvd/x86_64 ${ZSTACK_HOME}/static/zstack-repo/x86_64 >/dev/null 2>&1
-    ln -s /opt/zstack-dvd/aarch64 ${ZSTACK_HOME}/static/zstack-repo/aarch64 >/dev/null 2>&1
-    chown -R zstack:zstack ${ZSTACK_HOME}/static/zstack-repo
+    create_symbol_link
 }
 
 unpack_zstack_into_tomcat(){
