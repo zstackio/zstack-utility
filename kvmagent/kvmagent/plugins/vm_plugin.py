@@ -669,7 +669,6 @@ class VncPortIptableRule(object):
 def e(parent, tag, value=None, attrib={}, usenamesapce = False):
     if usenamesapce:
         tag = '{%s}%s' % (ZS_XML_NAMESPACE, tag)
-
     el = etree.SubElement(parent, tag, attrib)
     if value:
         el.text = value
@@ -1067,6 +1066,7 @@ class BlkIscsi(object):
         return login.login()
 
     def to_xmlobject(self):
+        # type: () -> etree.Element
         device_path = self._login_portal()
         if self.is_cdrom:
             root = etree.Element('disk', {'type': 'block', 'device': 'cdrom'})
@@ -1178,7 +1178,6 @@ class VirtioSCSICeph(object):
             e(source, 'host', None, {'name': minfo.hostname, 'port': str(minfo.port)})
         e(disk, 'target', None, {'dev': 'sd%s' % self.dev_letter, 'bus': 'scsi'})
         e(disk, 'wwn', self.volume.wwn)
-        e(disk, 'address', None, {'type': 'drive', 'controller': '0', 'unit': Vm.get_device_unit(self.volume.deviceId)})
         if self.volume.shareable:
             e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none'})
             e(disk, 'shareable')
@@ -1619,6 +1618,7 @@ class Vm(object):
 
     @staticmethod
     def get_device_unit(device_id):
+        # type: (int) -> int
         if device_id >= len(Vm.DEVICE_LETTERS):
             err = "exceeds max disk limit, device id[%s], but only 0 ~ %d are allowed" % (device_id, len(Vm.DEVICE_LETTERS) - 1)
             logger.warn(err)
@@ -1627,10 +1627,10 @@ class Vm(object):
         # aarch64 use device_letter as address->unit
         # e.g. sda -> unit 0    sdf -> unit 5
         if IS_AARCH64:
-            return str(ord(Vm.DEVICE_LETTERS[device_id]) - ord(Vm.DEVICE_LETTERS[0]))
+            return ord(Vm.DEVICE_LETTERS[device_id]) - ord(Vm.DEVICE_LETTERS[0])
 
         # x86_64 use device_id as address->unit
-        return str(device_id)
+        return device_id
 
     @staticmethod
     def get_iso_device_unit(device_id):
@@ -1641,6 +1641,19 @@ class Vm(object):
         return str(ord(Vm.ISO_DEVICE_LETTERS[device_id]) - ord(Vm.DEVICE_LETTERS[0]))
 
     timeout_object = linux.TimeoutObject()
+
+    @staticmethod
+    def set_device_address(disk_element, vol, vm=None):
+        #  type: (etree.Element, jsonobject.JsonObject, Vm) -> None
+
+        target = disk_element.find('target')
+        bus = target.get('bus') if target is not None else None
+
+        if bus == 'scsi':
+            occupied_units = vm.get_occupied_disk_address_units(bus='scsi', controller=0) if vm else []
+            default_unit = Vm.get_device_unit(vol.deviceId)
+            unit = default_unit if default_unit not in occupied_units else max(occupied_units) + 1
+            e(disk_element, 'address', None, {'type': 'drive', 'controller': '0', 'unit': str(unit)})
 
     def __init__(self):
         self.uuid = None
@@ -1661,6 +1674,23 @@ class Vm(object):
             return self.state in state
         else:
             return self.state == state
+
+    def get_occupied_disk_address_units(self, bus, controller):
+        # type: (str, int) -> list[int]
+        result = []
+        for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
+            if not xmlobject.has_element(disk, 'address') or not xmlobject.has_element(disk, 'target'):
+                continue
+
+            if not disk.target.bus__ or not disk.target.bus_ == bus:
+                continue
+
+            if not disk.address.controller__ or not str(disk.address.controller_) == str(controller):
+                continue
+
+            result.append(int(disk.address.unit_))
+
+        return result
 
     def get_cpu_num(self):
         cpuNum = self.domain_xmlobject.vcpu.current__
@@ -2014,7 +2044,6 @@ class Vm(object):
             if volume.useVirtioSCSI:
                 e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
                 e(disk, 'wwn', volume.wwn)
-                e(disk, 'address', None, {'type': 'drive', 'controller': '0', 'unit': self.get_device_unit(volume.deviceId)})
             elif volume.useVirtio:
                 e(disk, 'target', None, {'dev': 'vd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'virtio'})
             else:
@@ -2024,7 +2053,7 @@ class Vm(object):
 
             Vm.set_volume_qos(addons, volume.volumeUuid, disk)
             volume_native_aio(disk)
-            return etree.tostring(disk)
+            return disk
 
         def scsilun_volume():
             disk = etree.Element('disk', attrib={'type': 'block', 'device': 'lun', 'sgio': 'unfiltered'})
@@ -2033,9 +2062,10 @@ class Vm(object):
             e(disk, 'source', None, {'dev': volume.installPath})
             e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
             #NOTE(weiw): scsi lun not support aio or qos
-            return etree.tostring(disk)
+            return disk
 
         def iscsibased_volume():
+            # type: () -> etree.Element
             def virtio_iscsi():
                 vi = VirtioIscsi()
                 portal, vi.target, vi.lun = volume.installPath.lstrip('iscsi://').split('/')
@@ -2046,7 +2076,7 @@ class Vm(object):
                 vi.chap_password = volume.chapPassword
                 Vm.set_volume_qos(addons, volume.volumeUuid, vi)
                 volume_native_aio(vi)
-                return etree.tostring(vi.to_xmlobject())
+                return vi.to_xmlobject()
 
             def blk_iscsi():
                 bi = BlkIscsi()
@@ -2058,7 +2088,7 @@ class Vm(object):
                 bi.chap_password = volume.chapPassword
                 Vm.set_volume_qos(addons, volume.volumeUuid, bi)
                 volume_native_aio(bi)
-                return etree.tostring(bi.to_xmlobject())
+                return bi.to_xmlobject()
 
             if volume.useVirtio:
                 return virtio_iscsi()
@@ -2066,6 +2096,7 @@ class Vm(object):
                 return blk_iscsi()
 
         def ceph_volume():
+            # type: () -> etree.Element
             def virtoio_ceph():
                 vc = VirtioCeph()
                 vc.volume = volume
@@ -2073,7 +2104,7 @@ class Vm(object):
                 xml_obj = vc.to_xmlobject()
                 Vm.set_volume_qos(addons, volume.volumeUuid, xml_obj)
                 volume_native_aio(xml_obj)
-                return etree.tostring(xml_obj)
+                return xml_obj
 
             def blk_ceph():
                 ic = BlkCeph()
@@ -2083,7 +2114,7 @@ class Vm(object):
                 xml_obj = ic.to_xmlobject()
                 Vm.set_volume_qos(addons, volume.volumeUuid, xml_obj)
                 volume_native_aio(xml_obj)
-                return etree.tostring(xml_obj)
+                return xml_obj
 
             def virtio_scsi_ceph():
                 vsc = VirtioSCSICeph()
@@ -2092,7 +2123,7 @@ class Vm(object):
                 xml_obj = vsc.to_xmlobject()
                 Vm.set_volume_qos(addons, volume.volumeUuid, xml_obj)
                 volume_native_aio(xml_obj)
-                return etree.tostring(xml_obj)
+                return xml_obj
 
             if volume.useVirtioSCSI:
                 return virtio_scsi_ceph()
@@ -2103,6 +2134,7 @@ class Vm(object):
                     return blk_ceph()
 
         def fusionstor_volume():
+            # type: () -> etree.Element
             def virtoio_fusionstor():
                 vc = VirtioFusionstor()
                 vc.volume = volume
@@ -2110,7 +2142,7 @@ class Vm(object):
                 xml_obj = vc.to_xmlobject()
                 Vm.set_volume_qos(addons, volume.volumeUuid, xml_obj)
                 volume_native_aio(xml_obj)
-                return etree.tostring(xml_obj)
+                return xml_obj
 
             def blk_fusionstor():
                 ic = BlkFusionstor()
@@ -2120,7 +2152,7 @@ class Vm(object):
                 xml_obj = ic.to_xmlobject()
                 Vm.set_volume_qos(addons, volume.volumeUuid, xml_obj)
                 volume_native_aio(xml_obj)
-                return etree.tostring(xml_obj)
+                return xml_obj
 
             def virtio_scsi_fusionstor():
                 vsc = VirtioSCSIFusionstor()
@@ -2129,7 +2161,7 @@ class Vm(object):
                 xml_obj = vsc.to_xmlobject()
                 Vm.set_volume_qos(addons, volume.volumeUuid, xml_obj)
                 volume_native_aio(xml_obj)
-                return etree.tostring(xml_obj)
+                return xml_obj
 
             if volume.useVirtioSCSI:
                 return virtio_scsi_fusionstor()
@@ -2140,6 +2172,7 @@ class Vm(object):
                     return blk_fusionstor()
 
         def block_volume():
+            # type: () -> etree.Element
             def blk():
                 disk = etree.Element('disk', {'type': 'block', 'device': 'disk', 'snapshot': 'external'})
                 e(disk, 'driver', None,
@@ -2152,10 +2185,11 @@ class Vm(object):
                 else:
                     e(disk, 'target', None, {'dev': 'vd%s' % dev_letter, 'bus': 'virtio'})
 
-                return etree.tostring(disk)
+                return disk
             return blk()
 
         def spool_volume():
+            # type: () -> etree.Element
             def blk():
                 imgfmt = linux.get_img_fmt(volume.installPath)
                 disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
@@ -2164,28 +2198,30 @@ class Vm(object):
                 e(disk, 'source', None,
                   {'protocol': 'spool', 'name': make_spool_conf(imgfmt, dev_letter, volume)})
                 e(disk, 'target', None, {'dev': 'vd%s' % dev_letter, 'bus': 'virtio'})
-                return etree.tostring(disk)
+                return disk
 
             return blk()
 
         dev_letter = self._get_device_letter(volume, addons)
         if volume.deviceType == 'iscsi':
-            xml = iscsibased_volume()
+            disk_element = iscsibased_volume()
         elif volume.deviceType == 'file':
-            xml = filebased_volume()
+            disk_element = filebased_volume()
         elif volume.deviceType == 'ceph':
-            xml = ceph_volume()
+            disk_element = ceph_volume()
         elif volume.deviceType == 'fusionstor':
-            xml = fusionstor_volume()
+            disk_element = fusionstor_volume()
         elif volume.deviceType == 'scsilun':
-            xml = scsilun_volume()
+            disk_element = scsilun_volume()
         elif volume.deviceType == 'block':
-            xml = block_volume()
+            disk_element = block_volume()
         elif volume.deviceType == 'spool':
-            xml = spool_volume()
+            disk_element = spool_volume()
         else:
             raise Exception('unsupported volume deviceType[%s]' % volume.deviceType)
 
+        Vm.set_device_address(disk_element, volume, get_vm_by_uuid(self.uuid))
+        xml = etree.tostring(disk_element)
         logger.debug('attaching volume[%s] to vm[uuid:%s]:\n%s' % (volume.installPath, self.uuid, xml))
         try:
             # libvirt has a bug that if attaching volume just after vm created, it likely fails. So we retry three time here
@@ -3425,7 +3461,6 @@ class Vm(object):
                 if _v.useVirtioSCSI:
                     e(disk, 'target', None, {'dev': 'sd%s' % _dev_letter, 'bus': 'scsi'})
                     e(disk, 'wwn', _v.wwn)
-                    e(disk, 'address', None, {'type': 'drive', 'controller': '0', 'unit': Vm.get_device_unit(_v.deviceId)})
                     return disk
 
                 if _v.useVirtio:
@@ -3628,6 +3663,7 @@ class Vm(object):
                     raise Exception('unknown volume deviceType: %s' % v.deviceType)
 
                 assert vol is not None, 'vol cannot be None'
+                Vm.set_device_address(vol, v)
                 if v.bootOrder is not None and v.bootOrder > 0 and v.deviceId == 0:
                     e(vol, 'boot', None, {'order': str(v.bootOrder)})
                 Vm.set_volume_qos(cmd.addons, v.volumeUuid, vol)
@@ -3812,6 +3848,7 @@ class Vm(object):
             if usbDevices:
                 make_usb_device(usbDevices)
 
+        # FIXME: manage scsi device in one place.
         def make_storage_device(storageDevices):
             lvm.unpriv_sgio()
             devices = elements['devices']
@@ -3821,6 +3858,7 @@ class Vm(object):
                     e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw'})
                     e(disk, 'source', None, {'dev': volume.installPath})
                     e(disk, 'target', None, {'dev': 'sd%s' % Vm.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
+                    Vm.set_device_address(disk, volume)
 
         def make_pci_device(pciDevices):
             devices = elements['devices']
