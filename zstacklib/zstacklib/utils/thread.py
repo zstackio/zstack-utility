@@ -61,7 +61,7 @@ class PeriodicTimer(object):
 
         self.callback = wrapper
 
-    @AsyncThread
+    #@AsyncThread
     def start(self):
         self.thread = threading.Timer(self.interval, self.callback, self.args, self.kwargs)
         self.thread.start()
