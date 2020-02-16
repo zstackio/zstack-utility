@@ -1,5 +1,6 @@
 from jinja2 import Template
 
+import time
 from kvmagent import kvmagent
 from zstacklib.utils import jsonobject
 from zstacklib.utils import log
@@ -57,6 +58,7 @@ class SecurityInspection(kvmagent.KvmAgent):
     url = None
     host_uuid = None
     expected_gateway_ip = None
+    start_time = None
 
     @kvmagent.replyerror
     def vm_gateway_changed(self, req):
@@ -81,6 +83,7 @@ class SecurityInspection(kvmagent.KvmAgent):
         rsp = kvmagent.AgentResponse()
 
         self.action = cmd.action
+        self.start_time = time.time()
         ifNames = cmd.suricataInterface.split(",")
         ifParams = " ".join("-i {0}".format(x) for x in ifNames)
 
@@ -91,10 +94,12 @@ class SecurityInspection(kvmagent.KvmAgent):
             rsp.error = e
             return jsonobject.dumps(rsp)
 
-        gatewayTimer = thread.timer(cmd.gatewayCheckInterval, self._gateway_inspection)
+        gatewayTimer = thread.timer(cmd.gatewayCheckInterval, self._gateway_inspection,
+                                    args=[self.start_time], stop_on_exception=False)
         gatewayTimer.start()
 
-        suricateTimer = thread.timer(cmd.suricataInterval, self._suricata_inspection)
+        suricateTimer = thread.timer(cmd.suricataInterval, self._suricata_inspection,
+                                     args=[self.start_time], stop_on_exception=False)
         suricateTimer.start()
 
         # this is an operation outside zstack, report it
@@ -115,7 +120,11 @@ class SecurityInspection(kvmagent.KvmAgent):
 
     #suppose there is only 1 gateway
     @in_bash
-    def _gateway_inspection(self):
+    def _gateway_inspection(self, start_time):
+        if start_time != self.start_time:
+            logger.debug('old timer detected!!! start at '.format(time.asctime(time.localtime(start_time))))
+            return False
+
         gateway = bash_o("ip route | grep default | awk '{print $3}'").strip()
         if self.expected_gateway_ip == gateway:
             return True
@@ -148,7 +157,7 @@ class SecurityInspection(kvmagent.KvmAgent):
         return True
 
     @in_bash
-    def _suricata_inspection(self):
+    def _suricata_inspection(self, start_time):
 
         def getTupleFromAlert(alert):
             ''' alert format:
@@ -166,6 +175,10 @@ class SecurityInspection(kvmagent.KvmAgent):
             dst = itemss[1].strip().split(":")
 
             return True, src[0], src[1], dst[0], dst[1]
+
+        if start_time != self.start_time:
+            logger.debug('old timer detected!!! start at '.format(time.asctime(time.localtime(start_time))))
+            return False
 
         content = linux.read_file(self.SURICATA_FAST_LOG_FILE).strip()
         alerts = content.split("\n")
