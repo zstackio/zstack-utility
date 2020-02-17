@@ -1624,13 +1624,8 @@ class Vm(object):
             logger.warn(err)
             raise kvmagent.KvmError(err)
 
-        # aarch64 use device_letter as address->unit
-        # e.g. sda -> unit 0    sdf -> unit 5
-        if IS_AARCH64:
-            return ord(Vm.DEVICE_LETTERS[device_id]) - ord(Vm.DEVICE_LETTERS[0])
-
-        # x86_64 use device_id as address->unit
-        return device_id
+        # e.g. sda -> unit 0    sdf -> unit 5, same as libvirt
+        return ord(Vm.DEVICE_LETTERS[device_id]) - ord(Vm.DEVICE_LETTERS[0])
 
     @staticmethod
     def get_iso_device_unit(device_id):
@@ -1643,14 +1638,14 @@ class Vm(object):
     timeout_object = linux.TimeoutObject()
 
     @staticmethod
-    def set_device_address(disk_element, vol, vm=None):
+    def set_device_address(disk_element, vol, vm_to_attach=None):
         #  type: (etree.Element, jsonobject.JsonObject, Vm) -> None
 
         target = disk_element.find('target')
         bus = target.get('bus') if target is not None else None
 
         if bus == 'scsi':
-            occupied_units = vm.get_occupied_disk_address_units(bus='scsi', controller=0) if vm else []
+            occupied_units = vm_to_attach.get_occupied_disk_address_units(bus='scsi', controller=0) if vm_to_attach else []
             default_unit = Vm.get_device_unit(vol.deviceId)
             unit = default_unit if default_unit not in occupied_units else max(occupied_units) + 1
             e(disk_element, 'address', None, {'type': 'drive', 'controller': '0', 'unit': str(unit)})
