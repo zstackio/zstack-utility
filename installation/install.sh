@@ -1410,6 +1410,7 @@ is_install_general_libs_rh(){
             python-devel \
             gcc \
             grafana \
+            gnutls-utils \
             autoconf \
             chrony \
             iptables \
