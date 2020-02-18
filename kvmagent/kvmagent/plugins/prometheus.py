@@ -439,17 +439,19 @@ LoadPlugin virt
             service_path = '/etc/systemd/system/%s.service' % service_name
 
             service_conf = '''
+[Unit]
 Description=prometheus %s
 After=network.target
 
 [Service]
 ExecStart=/bin/sh -c '%s %s > %s 2>&1'
+ExecStop=/bin/sh -c 'pkill -TERM -f %s'
 
 Restart=always
 RestartSec=30s
 [Install]
 WantedBy=multi-user.target
-''' % (service_name, binPath, args, log)
+''' % (service_name, binPath, args, log, binPath)
 
             if not os.path.exists(service_path):
                 linux.write_file(service_path, service_conf, True)
