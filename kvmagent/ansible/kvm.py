@@ -46,7 +46,7 @@ def update_libvritd_config(host_post_info):
     copy_arg.src = "%s/libvirtd.conf" % file_root
     copy_arg.dest =  libvirtd_conf_file
     file_changed_flag = '"changed:False'
-    if command.find('listen_tls') < 0:
+    if output.find('listen_tls') < 0:
         file_changed_flag = copy(copy_arg, host_post_info)
     if status is True:
         replace_content(libvirtd_conf_file, "regexp='#host_uuid.*' replace='%s'" % output, host_post_info)
