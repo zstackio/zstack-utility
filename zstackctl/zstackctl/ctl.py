@@ -1954,7 +1954,7 @@ class StartCmd(Command):
     START_SCRIPT = '../../bin/startup.sh'
     SET_ENV_SCRIPT = '../../bin/setenv.sh'
     BEAN_CONTEXT_REF_XML = "WEB-INF/classes/beanRefContext.xml"
-    HEAP_DUMP_DIR = '../../logs'
+    HEAP_DUMP_DIR = '../../logs/heap.hprof'
     MINIMAL_CPU_NUMBER = 4
     #MINIMAL_MEM_SIZE unit is KB, here is 6GB, in linxu, 6GB is 5946428 KB
     #Save some memory for kdump etc. The actual limitation is 5000000KB
