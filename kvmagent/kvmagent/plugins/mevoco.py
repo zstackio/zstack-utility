@@ -651,7 +651,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
     @kvmagent.replyerror
     def connect(self, req):
-        shell.call(EBTABLES_CMD + ' -F')
+        #shell.call(EBTABLES_CMD + ' -F')
         # shell.call(EBTABLES_CMD + ' -t nat -F')
         # this is workaround, for anti-spoofing & distributed virtual routing feature, there is no good way to proccess this reconnect-host case,
         # it's just keep the ebtables rules from libvirt & zsn and remove others when reconnect hosts
