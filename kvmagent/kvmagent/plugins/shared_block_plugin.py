@@ -169,6 +169,10 @@ class CheckDisk(object):
         if o is not None:
             return o
 
+        o = self.check_disk_by_absolute_path()
+        if o is not None:
+            return o
+
         if raise_exception is False:
             return None
 
@@ -231,6 +235,13 @@ class CheckDisk(object):
             cmd(is_exception=False)
             if cmd.return_code == 0:
                 return cmd.stdout.strip()
+
+    def check_disk_by_absolute_path(self):
+        try:
+            os.open(self.identifier, os.O_RDONLY | os.O_NONBLOCK)
+        except Exception as e:
+            return None
+        return self.identifier
 
 
 class SharedBlockPlugin(kvmagent.KvmAgent):
