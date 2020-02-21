@@ -38,7 +38,7 @@ class AgentResponse(object):
         self.totalCapacity = None
         self.availableCapacity = None
         self.poolCapacities = None
-        self.xsky = False
+        self.type = None
 
 class InitRsp(AgentResponse):
     def __init__(self):
@@ -418,7 +418,8 @@ class CephAgent(object):
         rsp.totalCapacity = total
         rsp.availableCapacity = avail
         rsp.poolCapacities = poolCapacities
-        rsp.xsky = xsky
+        if xsky:
+            rsp.type = "xsky"
 
     @replyerror
     def echo(self, req):
