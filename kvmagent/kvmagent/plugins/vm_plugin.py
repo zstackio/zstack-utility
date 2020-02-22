@@ -3363,8 +3363,8 @@ class Vm(object):
 
             devices = elements['devices']
             vhostSrcPath = cmd.addons['vhostSrcPath'] if cmd.addons else None
-            for nic in cmd.nics:
-                interface = Vm._build_interface_xml(nic, devices, vhostSrcPath)
+            for index, nic in enumerate(cmd.nics):
+                interface = Vm._build_interface_xml(nic, devices, vhostSrcPath, index)
                 addon(interface)
 
         def make_meta():
@@ -3702,7 +3702,7 @@ class Vm(object):
         return vm
 
     @staticmethod
-    def _build_interface_xml(nic, devices=None, vhostSrcPath=None):
+    def _build_interface_xml(nic, devices=None, vhostSrcPath=None, index=0):
         iftype = 'bridge' if vhostSrcPath is None else 'vhostuser'
 
         if devices:
@@ -3717,8 +3717,13 @@ class Vm(object):
             e(interface, 'source', None, attrib={'bridge': nic.bridgeName})
             e(interface, 'target', None, attrib={'dev': nic.nicInternalName})
         elif iftype == 'vhostuser':
-            e(interface, 'source', None, attrib={'type': 'unix', 'path': vhostSrcPath, 'mode':'client'})
-            e(interface, 'driver', None, attrib={'queues': '16', 'vhostforce':'on'})
+            brMode = cmd.addons['brMode'] if cmd.addons else None
+            if brMode != 'mocbr':
+                e(interface, 'source', None, attrib={'type': 'unix', 'path': vhostSrcPath, 'mode':'client'})
+                e(interface, 'driver', None, attrib={'queues': '16', 'vhostforce':'on'})
+            else:
+                e(interface, 'source', None, attrib={'type': 'unix', 'path': '/var/run/phynic{}'.format(index+1), 'mode':'server'})
+                e(interface, 'driver', None, attrib={'queues': '8'})
 
         if nic.ips and iftype == 'bridge':
             ip4Addr = None
