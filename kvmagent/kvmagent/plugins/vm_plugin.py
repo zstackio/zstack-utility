@@ -17,6 +17,7 @@ import libvirt
 #from typing import List, Any, Union
 
 import zstacklib.utils.ip as ip
+import zstacklib.utils.ebtables as ebtables
 import zstacklib.utils.iptables as iptables
 import zstacklib.utils.lock as lock
 
@@ -3847,6 +3848,30 @@ class VmPlugin(kvmagent.KvmAgent):
             return None
         return o[0]
 
+    def _prepare_ebtables_for_mocbr(self, cmd):
+        brMode = cmd.addons['brMode'] if cmd.addons else None
+        if brMode != 'mocbr':
+            return
+
+        l3mapping = cmd.addons['l3mapping'] if cmd.addons else None
+        if not l3mapping:
+            return
+
+        if not cmd.nics:
+            return
+
+        mappings = {}  # mac -> l3uuid
+        for ele in l3mapping.split(","):
+            m = ele.split("-")
+            mappings[m[0]] = m[1]
+
+        EBTABLES_CMD = ebtables.get_ebtables_cmd()
+        for nic in cmd.nics:
+            ns = "{}_{}".format(nic.bridgeName, mappings[nic.mac])
+            outerdev = "outer%s" % ip.get_namespace_id(ns)
+            rule = " -t nat -A PREROUTING -i {} -d {} -j dnat --to-destination ff:ff:ff:ff:ff:ff".format(outerdev, nic.mac)
+            bash.bash_r(EBTABLES_CMD + rule)
+
     def _start_vm(self, cmd):
         try:
             vm = get_vm_by_uuid_no_retry(cmd.vmInstanceUuid, False)
@@ -3860,6 +3885,7 @@ class VmPlugin(kvmagent.KvmAgent):
 
             vm = Vm.from_StartVmCmd(cmd)
             wait_console = True if not cmd.addons or cmd.addons['noConsole'] is not True else False
+            self._prepare_ebtables_for_mocbr(cmd)
             vm.start(cmd.timeout, cmd.createPaused, wait_console)
         except libvirt.libvirtError as e:
             logger.warn(linux.get_exception_stacktrace())
