@@ -4,11 +4,13 @@
 '''
 import sys, os, os.path
 from zstacklib.utils import log
+
+log.configure_log('/var/log/zstack/zstack-kvmagent.log')
+
 from zstacklib.utils import linux
 import zstacklib.utils.iptables as iptables
 
 pidfile = '/var/run/zstack/kvmagent.pid'
-log.configure_log('/var/log/zstack/zstack-kvmagent.log')
 logger = log.get_logger(__name__)
 
 import kvmagent
