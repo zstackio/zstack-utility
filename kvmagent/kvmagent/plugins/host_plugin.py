@@ -901,7 +901,7 @@ if __name__ == "__main__":
 
     @kvmagent.replyerror
     @in_bash
-    def update_os(self, req):
+    def init_host_moc(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
         if cmd.mode not in ["iohub", "mocbr"]:
@@ -909,6 +909,8 @@ if __name__ == "__main__":
             rsp.error = "unexpected mode: " + cmd.mode
         else:
             shell.run("/usr/local/bin/iohub_mocbr.sh %s start", cmd.mode)
+            if mode == 'mocbr':
+                shell.run("ip link set dev {} master {}".format(cmd.masterVethName, cmd.bridgeName))
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
