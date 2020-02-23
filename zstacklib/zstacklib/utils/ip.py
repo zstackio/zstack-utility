@@ -169,9 +169,9 @@ def get_nic_supported_max_speed(nic):
 
 def get_namespace_id(namespace_name):
     NAMESPACE_NAME = namespace_name
-    out = bash_errorout("ip netns list-id | grep -w {{NAMESPACE_NAME}} | awk '{print $2}'").strip()
+    out = bash.bash_errorout("ip netns list-id | grep -w {{NAMESPACE_NAME}} | awk '{print $2}'").strip()
     if not out:
-        out = bash_errorout("ip netns list-id | awk 'END{print $2}'").strip()
+        out = bash.bash_errorout("ip netns list-id | awk 'END{print $2}'").strip()
         if not out:
             return 0
         return int(out) + 1
