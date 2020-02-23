@@ -2454,7 +2454,8 @@ class Vm(object):
 
     def _interface_cmd_to_xml(self, cmd):
         vhostSrcPath = cmd.addons['vhostSrcPath'] if cmd.addons else None
-        interface = Vm._build_interface_xml(cmd.nic, None, vhostSrcPath)
+        brMode = cmd.addons['brMode'] if cmd.addons else None
+        interface = Vm._build_interface_xml(cmd.nic, None, vhostSrcPath, brMode)
 
         def addon():
             if cmd.addons and cmd.addons['NicQos']:
@@ -3364,8 +3365,9 @@ class Vm(object):
 
             devices = elements['devices']
             vhostSrcPath = cmd.addons['vhostSrcPath'] if cmd.addons else None
+            brMode = cmd.addons['brMode'] if cmd.addons else None
             for index, nic in enumerate(cmd.nics):
-                interface = Vm._build_interface_xml(nic, devices, vhostSrcPath, index)
+                interface = Vm._build_interface_xml(nic, devices, vhostSrcPath, brMode, index)
                 addon(interface)
 
         def make_meta():
@@ -3703,7 +3705,7 @@ class Vm(object):
         return vm
 
     @staticmethod
-    def _build_interface_xml(nic, devices=None, vhostSrcPath=None, index=0):
+    def _build_interface_xml(nic, devices=None, vhostSrcPath=None, brMode=None, index=0):
         iftype = 'bridge' if vhostSrcPath is None else 'vhostuser'
 
         if devices:
@@ -3718,7 +3720,6 @@ class Vm(object):
             e(interface, 'source', None, attrib={'bridge': nic.bridgeName})
             e(interface, 'target', None, attrib={'dev': nic.nicInternalName})
         elif iftype == 'vhostuser':
-            brMode = cmd.addons['brMode'] if cmd.addons else None
             if brMode != 'mocbr':
                 e(interface, 'source', None, attrib={'type': 'unix', 'path': vhostSrcPath, 'mode':'client'})
                 e(interface, 'driver', None, attrib={'queues': '16', 'vhostforce':'on'})
