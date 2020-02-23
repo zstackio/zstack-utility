@@ -649,6 +649,8 @@ class PropertyFile(object):
         self.use_zstack = use_zstack
         if not os.path.isfile(self.path):
             raise CtlError('cannot find property file at %s' % self.path)
+        if not os.access(self.path, os.W_OK|os.R_OK):
+            raise CtlError('%s: permission denied' % self.path)
 
         with on_error("errors on reading %s" % self.path):
             self.config = ConfigObj(self.path, write_empty_values=True)
@@ -763,6 +765,8 @@ class Ctl(object):
         self.ssh_public_key = os.path.join(self.zstack_home, 'WEB-INF/classes/ansible/rsaKeys/id_rsa.pub')
         if not os.path.isfile(self.properties_file_path):
             warn('cannot find %s, your ZStack installation may have crashed' % self.properties_file_path)
+        if os.path.getsize(self.properties_file_path) == 0:
+            warn('%s: file empty' % self.properties_file_path)
 
     def get_env(self, name):
         env = PropertyFile(SetEnvironmentVariableCmd.PATH)
