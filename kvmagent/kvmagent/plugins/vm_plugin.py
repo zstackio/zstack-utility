@@ -3862,7 +3862,7 @@ class VmPlugin(kvmagent.KvmAgent):
             return
 
         mappings = {}  # mac -> l3uuid
-        for ele in l3mapping.split(","):
+        for ele in l3mapping:
             m = ele.split("-")
             mappings[m[0]] = m[1]
 
@@ -3872,6 +3872,7 @@ class VmPlugin(kvmagent.KvmAgent):
             outerdev = "outer%s" % ip.get_namespace_id(ns)
             rule = " -t nat -A PREROUTING -i {} -d {} -j dnat --to-destination ff:ff:ff:ff:ff:ff".format(outerdev, nic.mac)
             bash.bash_r(EBTABLES_CMD + rule)
+        bash.bash_r("ebtables-save | uniq | ebtables-restore")
 
     def _start_vm(self, cmd):
         try:
