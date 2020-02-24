@@ -292,10 +292,15 @@ def get_host_name():
     return os.uname()[1]
 
 def sshfs_mount_with_vm_uuid(vmuuid, username, hostname, port, password, url, mountpoint, writebandwidth=None):
-    is_aio = shell.run("pgrep -a qemu-kvm | grep %s | grep aio=native" % vmuuid) == 0
-    return sshfs_mount(username, hostname, port, password, url, mountpoint, writebandwidth, not is_aio)
+    out = shell.call("pgrep -a 'qemu-kvm|qemu-system' | grep -w %s | grep [-]machine" % vmuuid)
+    is_aio, uid = False, 0
 
-def sshfs_mount(username, hostname, port, password, url, mountpoint, writebandwidth=None, direct_io=True):
+    if out:
+        is_aio = "aio=native" in out
+        uid = int(out.split(" ", 2)[0])
+    return sshfs_mount(username, hostname, port, password, url, mountpoint, writebandwidth, not is_aio, uid)
+
+def sshfs_mount(username, hostname, port, password, url, mountpoint, writebandwidth=None, direct_io=True, uid=0):
     fd, fname = tempfile.mkstemp()
     os.chmod(fname, 0500)
 
@@ -315,10 +320,12 @@ def sshfs_mount(username, hostname, port, password, url, mountpoint, writebandwi
 
     os.close(fd)
 
+    allow = 'allow_root' if uid == 0 else 'allow_other'
+
     if direct_io:
-        ret = shell.check_run("/usr/bin/sshfs %s@%s:%s %s -o allow_root,direct_io,compression=no,ssh_command='%s'" % (username, hostname, url, mountpoint, fname))
+        ret = shell.check_run("/usr/bin/sshfs %s@%s:%s %s -o %s,direct_io,compression=no,ssh_command='%s'" % (username, hostname, url, mountpoint, allow, fname))
     else:
-        ret = shell.check_run("/usr/bin/sshfs %s@%s:%s %s -o allow_root,compression=no,ssh_command='%s'" % (username, hostname, url, mountpoint, fname))
+        ret = shell.check_run("/usr/bin/sshfs %s@%s:%s %s -o %s,compression=no,ssh_command='%s'" % (username, hostname, url, mountpoint, allow, fname))
     os.remove(fname)
     return ret
 
