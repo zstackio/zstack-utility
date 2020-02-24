@@ -908,9 +908,9 @@ if __name__ == "__main__":
             rsp.success = False
             rsp.error = "unexpected mode: " + cmd.mode
         else:
-            shell.run("/usr/local/bin/iohub_mocbr.sh %s start", cmd.mode)
+            bash_r("/usr/local/bin/iohub_mocbr.sh %s start", cmd.mode)
             if cmd.mode == 'mocbr':
-                shell.run("ip link set dev {} master {}".format(cmd.masterVethName, cmd.bridgeName))
+                bash_r("ip link set dev {} master {}".format(cmd.masterVethName, cmd.bridgeName))
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
