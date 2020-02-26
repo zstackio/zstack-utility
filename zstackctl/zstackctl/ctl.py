@@ -1976,6 +1976,7 @@ class StartCmd(Command):
         parser.add_argument('--timeout', help='Wait for ZStack Server startup timeout, default is 300 seconds.', default=300)
         parser.add_argument('--daemon', help='Start ZStack in daemon mode. Only used with systemd.', action='store_true', default=False)
         parser.add_argument('--simulator', help='Start Zstack in simulator mode.', action='store_true', default=False)
+        parser.add_argument('--mysql_process_list', help='Check mysql wait timeout connection', action='store_true', default=False)
 
     def _start_remote(self, args):
         info('it may take a while because zstack-ctl will wait for management node ready to serve API')
@@ -2032,6 +2033,9 @@ class StartCmd(Command):
 
             with on_error('unable to connect to MySQL'):
                 shell('mysql --host=%s --user=%s --password=%s --port=%s -e "select 1"' % (db_hostname, db_user, db_password, db_port))
+
+            if args.mysql_process_list:
+                ctl.internal_run('mysql_process_list', '--check')
 
         def open_iptables_port(protocol, port_list):
             distro = platform.dist()[0]
@@ -2368,6 +2372,120 @@ class RefreshAuditCmd(Command):
         info("\nCurrent rule list")
         (status, output, stderr) = shell_return_stdout_stderr('auditctl -l')
         info(output.strip('\n'))
+
+class MysqlProcessList(Command):
+
+    def __init__(self):
+        super(MysqlProcessList, self).__init__()
+        self.name = 'mysql_process_list'
+        self.description = 'show mysql processlist'
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--check', help='check mysql wait timeout connection for zstack start_node', action="store_true")
+        parser.add_argument('--time', help='the time of wait timeout, must >= 1')
+        parser.add_argument('--kill', help='kill wait timeout connection', action="store_true")
+        parser.add_argument('--detail', help='show the detail of mysql wait timeout connection', action="store_true")
+        parser.add_argument('--desc', help='order by time desc, used with detail', action="store_true")
+        parser.add_argument('--asc', help='order by time asc, used with detail', action="store_true")
+        parser.add_argument('--host', help='the connected host')
+
+    def get_wait_timeout(self):
+        (db_hostname, db_port, db_user, db_password) = ctl.get_live_mysql_portal()
+        sql = '''mysql -u %s -p%s --host %s -P %s -e "show variables where variable_name='wait_timeout'"| grep wait_timeout| awk '{print $2}' ''' % (db_user, db_password, db_hostname, db_port)
+        (status, output, stderr) = shell_return_stdout_stderr(sql)
+        if status != 0:
+            error("get mysql wait timeout error")
+        return output.strip('\n')
+
+    def check_argument(self, args):
+        if args.time:
+            try:
+                time = int(args.time)
+                if time < 1:
+                    error("time must >= 1")
+                    return
+            except:
+                error("time must be positive integer")
+
+        if args.desc & args.asc:
+            error("asc and desc cannot be used at the same time")
+
+    def run(self, args):
+        (db_hostname, db_port, db_user, db_password) = ctl.get_live_mysql_portal()
+        self.check_argument(args)
+
+        if args.check:
+            sql = '''mysql -u %s -p%s --host %s -P %s -e "select count(*) from information_schema.processlist where command = 'Sleep' and time > (%s * 2)" |awk 'NR>1' ''' % (db_user, db_password, db_hostname, db_port, self.get_wait_timeout())
+            (status, output, stderr) = shell_return_stdout_stderr(sql)
+            if status != 0:
+                error(stderr)
+            if int(output.strip("\n")) > 0:
+                error("mysql wait timeout connection[%s]" % output.strip("\n"))
+            return
+
+        if args.detail:
+            if args.time:
+                sql = '''mysql -u %s -p%s --host %s -P %s -e "select * from information_schema.processlist where command = 'Sleep' and time > %s''' % (db_user, db_password, db_hostname, db_port, args.time)
+            else:
+                sql = '''mysql -u %s -p%s --host %s -P %s -e "select * from information_schema.processlist where command = 'Sleep' and time > (%s * 2)''' % (db_user, db_password, db_hostname, db_port, self.get_wait_timeout())
+            if args.host:
+                sql = sql + " and host like'%" + args.host + "%'"
+            if args.asc:
+                sql = sql + " order by time asc"
+            if args.desc:
+                sql = sql + " order by time desc"
+            sql = sql + "\""
+            (status, output, stderr) = shell_return_stdout_stderr(sql)
+            if status != 0:
+                error(stderr)
+            if output == "":
+                print("no wait timeout connection")
+                return
+            info(output)
+            count = output.count('\n') - 1
+            info("%d wait timeout connection" % count)
+            return
+
+        if args.kill:
+            if args.time:
+                sql = '''mysql -u %s -p%s --host %s -P %s -e "select id from information_schema.processlist where command = 'Sleep' and time > %s ''' % (db_user, db_password, db_hostname, db_port, args.time)
+            else:
+                sql = '''mysql -u %s -p%s --host %s -P %s -e "select id from information_schema.processlist where command = 'Sleep' and time > (%s * 2) ''' % (db_user, db_password, db_hostname, db_port, self.get_wait_timeout())
+            if args.host:
+                sql = sql + " and host like'%" + args.host + "%'"
+            sql = sql + "\"" + "|awk 'NR>1'"
+            (status, output, stderr) = shell_return_stdout_stderr(sql)
+            if status != 0:
+                error(stderr)
+            if output == "":
+                info("no wait timeout connection")
+                return
+            ids = output.split("\n")
+            info("kill such id")
+            count = 0
+            for id in ids:
+                if id == "":
+                    if count > 0:
+                        info("kill %d wait timeout connection" % count)
+                    return
+                info(id)
+                sql = '''mysql -u %s -p%s --host %s -P %s -e "kill %s" ''' % (db_user, db_password, db_hostname, db_port, id)
+                (status, output, stderr) = shell_return_stdout_stderr(sql)
+                if status != 0:
+                    error("kill mysql connection id[%s] error, because: %s" % (id, stderr))
+                count = count + 1
+            return
+
+        else:
+            if args.time:
+                sql = '''mysql -u %s -p%s --host %s -P %s -e "select count(*) as count from information_schema.processlist where command = 'Sleep' and time > %s" ''' % (db_user, db_password, db_hostname, db_port, args.time)
+            else:
+                sql = '''mysql -u %s -p%s --host %s -P %s -e "select count(*) as count from information_schema.processlist where command = 'Sleep' and time > (%s * 2)" ''' % (db_user, db_password, db_hostname, db_port, self.get_wait_timeout())
+            (status, output, stderr) = shell_return_stdout_stderr(sql)
+            if status != 0:
+                error(stderr)
+            info(output)
 
 class RestartNodeCmd(Command):
 
@@ -9329,6 +9447,7 @@ def main():
     SharedBlockQcow2SharedVolumeFixCmd()
     MiniResetHostCmd()
     RefreshAuditCmd()
+    MysqlProcessList()
 
     # If tools/zstack-ui.war exists, then install zstack-ui
     # else, install zstack-dashboard
