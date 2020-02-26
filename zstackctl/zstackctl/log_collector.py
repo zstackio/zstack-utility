@@ -213,7 +213,7 @@ class CollectFromYml(object):
 
             # collect `history` by default
             if not history_configured:
-                logs.append({'name': 'history', 'dir': '/var/log/history.d/', 'file': 'history'})
+                logs.append({'name': 'history', 'mode': 'Normal', 'dir': '/var/log/history.d/', 'file': 'history'})
 
             decode_result[collect_type] = dict(
                 (key, value) for key, value in conf_value.items() if key == 'list' or key == 'logs')
