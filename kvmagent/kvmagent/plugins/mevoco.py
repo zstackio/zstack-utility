@@ -97,6 +97,7 @@ def get_l3_uuid(namespace):
     items = namespace.split('_')
     return items[-1]
 
+
 class UserDataEnv(object):
     def __init__(self, bridge_name, namespace_name):
         self.bridge_name = bridge_name
@@ -108,18 +109,8 @@ class UserDataEnv(object):
     @lock.file_lock('/run/xtables.lock')
     @in_bash
     def prepare(self):
-        NAMESPACE_ID = None
-
         NAMESPACE_NAME = self.namespace_name
-        out = bash_errorout("ip netns list-id | grep -w {{NAMESPACE_NAME}} | awk '{print $2}'").strip(' \t\n\r')
-        if not out:
-            out = bash_errorout("ip netns list-id | tail -n 1 | awk '{print $2}'").strip(' \t\r\n')
-            if not out:
-                NAMESPACE_ID = 0
-            else:
-                NAMESPACE_ID = int(out) + 1
-        else:
-            NAMESPACE_ID = int(out)
+        NAMESPACE_ID = ip.get_namespace_id(self.namespace_name)
 
         logger.debug('use id[%s] for the namespace[%s]' % (NAMESPACE_ID, NAMESPACE_NAME))
 
@@ -288,18 +279,8 @@ class DhcpEnv(object):
                 bash_errorout(
                     '%s -t mangle -A POSTROUTING -p udp -m udp --dport 546 -j CHECKSUM --checksum-fill' % IP6TABLES_CMD)
 
-        NAMESPACE_ID = None
-
         NAMESPACE_NAME = self.namespace_name
-        out = bash_errorout("ip netns list-id | grep -w {{NAMESPACE_NAME}} | awk '{print $2}'").strip(' \t\n\r')
-        if not out:
-            out = bash_errorout("ip netns list-id | tail -n 1 | awk '{print $2}'").strip(' \t\r\n')
-            if not out:
-                NAMESPACE_ID = 0
-            else:
-                NAMESPACE_ID = int(out) + 1
-        else:
-            NAMESPACE_ID = int(out)
+        NAMESPACE_ID = ip.get_namespace_id(self.namespace_name)
 
         logger.debug('use id[%s] for the namespace[%s]' % (NAMESPACE_ID, NAMESPACE_NAME))
 
