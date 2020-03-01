@@ -2327,6 +2327,14 @@ cs_install_zstack_service(){
     pass
 }
 
+disable_probe_interfaces() {
+    if grep -E -sq '^Set[[:space:]]+probe_interfaces[[:space:]]+false' /etc/sudo.conf; then
+        :
+    else
+        echo "Set probe_interfaces false" >> /etc/sudo.conf
+    fi
+}
+
 cs_enable_zstack_service(){
     echo_subtitle "Enable ${PRODUCT_NAME} bootstrap service"
     if [ -f /bin/systemctl ]; then
@@ -2356,6 +2364,11 @@ EOF
             update-rc.d zstack-server start 97 3 4 5 . stop 3 0 1 2 6 .  >> $ZSTACK_INSTALL_LOG 2>&1
         fi
     fi
+
+    # work-around 'sudo' with large number of L2 devices
+    # c.f. https://bugs.launchpad.net/ubuntu/+source/sudo/+bug/1272414
+    disable_probe_interfaces
+
     pass
 }
 
