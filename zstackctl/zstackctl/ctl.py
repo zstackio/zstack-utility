@@ -5208,9 +5208,8 @@ class CollectLogCmd(Command):
     vrouter_log_dir_list = ["/home/vyos/zvr", "/var/log/zstack"]
     host_log_list = ['zstack.log','zstack-kvmagent.log','zstack-iscsi-filesystem-agent.log',
                      'zstack-agent/collectd.log','zstack-agent/server.log', 'mini-fencer.log']
-    bs_log_list = ['zstack-sftpbackupstorage.log','ceph-backupstorage.log','zstack-store/zstore.log',
-                   'fusionstor-backupstorage.log']
-    ps_log_list = ['ceph-primarystorage.log','fusionstor-primarystorage.log']
+    bs_log_list = ['zstack-sftpbackupstorage.log','ceph-backupstorage.log','zstack-store/zstore.log']
+    ps_log_list = ['ceph-primarystorage.log']
     # management-server.log is not in the same dir, will collect separately
     mn_log_list = ['deploy.log', 'ha.log', 'zstack-console-proxy.log', 'zstack.log', 'zstack-cli', 'zstack-ui.log',
                    'zstack-dashboard.log', 'zstack-ctl.log']
@@ -5471,13 +5470,6 @@ class CollectLogCmd(Command):
             password = ssh_info['sshPassword']
             ssh_port = ssh_info['sshPort']
             return (username, password, ssh_port)
-        elif type == "fusionStor_bs":
-            query.sql = "select * from FusionstorPrimaryStorageMonVO where hostname='%s'" % host_ip
-            ssh_info = query.query()[0]
-            username = ssh_info['sshUsername']
-            password = ssh_info['sshPassword']
-            ssh_port = ssh_info['sshPort']
-            return (username, password, ssh_port)
         elif type == "imageStore_bs":
             query.sql = "select * from ImageStoreBackupStorageVO where hostname='%s'" % host_ip
             ssh_info = query.query()[0]
@@ -5487,13 +5479,6 @@ class CollectLogCmd(Command):
             return (username, password, ssh_port)
         elif type == "ceph_ps":
             query.sql = "select * from CephPrimaryStorageMonVO where hostname='%s'" % host_ip
-            ssh_info = query.query()[0]
-            username = ssh_info['sshUsername']
-            password = ssh_info['sshPassword']
-            ssh_port = ssh_info['sshPort']
-            return (username, password, ssh_port)
-        elif type == "fusionStor_ps":
-            query.sql = "select * from FusionstorPrimaryStorageMonVO where hostname='%s'" % host_ip
             ssh_info = query.query()[0]
             username = ssh_info['sshUsername']
             password = ssh_info['sshPassword']
@@ -5705,11 +5690,6 @@ class CollectLogCmd(Command):
             bs_ip = bs['hostname']
             self.get_storage_log(self.generate_host_post_info(bs_ip, "ceph_bs"), collect_dir, "ceph_bs")
 
-        fusionStor_bs_vo = get_host_list("FusionstorBackupStorageMonVO")
-        for bs in fusionStor_bs_vo:
-            bs_ip = bs['hostname']
-            self.get_storage_log(self.generate_host_post_info(bs_ip, "fusionStor_bs"), collect_dir, "fusionStor_bs")
-
         imageStore_bs_vo = get_host_list("ImageStoreBackupStorageVO")
         for bs in imageStore_bs_vo:
             bs_ip = bs['hostname']
@@ -5720,11 +5700,6 @@ class CollectLogCmd(Command):
         for ps in ceph_ps_vo:
             ps_ip = ps['hostname']
             self.get_storage_log(self.generate_host_post_info(ps_ip,"ceph_ps"), collect_dir, "ceph_ps")
-
-        fusionStor_ps_vo = get_host_list("FusionstorPrimaryStorageMonVO")
-        for ps in fusionStor_ps_vo:
-            ps_ip = ps['hostname']
-            self.get_storage_log(self.generate_host_post_info(ps_ip,"fusionStor_ps"), collect_dir, "fusionStor_ps")
 
         #collect vrouter log
         vrouter_ip_list = get_vrouter_list()
