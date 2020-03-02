@@ -326,13 +326,6 @@ class CollectFromYml(object):
             password = ssh_info['sshPassword']
             ssh_port = ssh_info['sshPort']
             return (username, password, ssh_port)
-        elif type == "fs-bs":
-            query.sql = "select * from FusionstorPrimaryStorageMonVO where hostname='%s'" % host_ip
-            ssh_info = query.query()[0]
-            username = ssh_info['sshUsername']
-            password = ssh_info['sshPassword']
-            ssh_port = ssh_info['sshPort']
-            return (username, password, ssh_port)
         elif type == 'imageStore-bs':
             query.sql = "select * from ImageStoreBackupStorageVO where hostname='%s'" % host_ip
             ssh_info = query.query()[0]
@@ -342,13 +335,6 @@ class CollectFromYml(object):
             return (username, password, ssh_port)
         elif type == "ceph-ps":
             query.sql = "select * from CephPrimaryStorageMonVO where hostname='%s'" % host_ip
-            ssh_info = query.query()[0]
-            username = ssh_info['sshUsername']
-            password = ssh_info['sshPassword']
-            ssh_port = ssh_info['sshPort']
-            return (username, password, ssh_port)
-        elif type == "fs-ps":
-            query.sql = "select * from FusionstorPrimaryStorageMonVO where hostname='%s'" % host_ip
             ssh_info = query.query()[0]
             username = ssh_info['sshUsername']
             password = ssh_info['sshPassword']

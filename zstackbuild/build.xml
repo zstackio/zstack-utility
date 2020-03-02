@@ -62,8 +62,6 @@
     <import file="${basedir}/projects/zstack-iscsi.xml" optional="false" />
     <import file="${basedir}/projects/zstack-cephb.xml" optional="false" />
     <import file="${basedir}/projects/zstack-cephp.xml" optional="false" />
-    <import file="${basedir}/projects/zstack-fusionstorb.xml" optional="false" />
-    <import file="${basedir}/projects/zstack-fusionstorp.xml" optional="false" />
     <import file="${basedir}/projects/zstack-baremetalpxeserver.xml" optional="false" />
     <import file="${basedir}/projects/zstack-appbuildsystem.xml" optional="false" />
     <import file="${basedir}/projects/zstack-console-proxy.xml" optional="false" />
@@ -285,12 +283,6 @@
                 <antcall target="build-zstack-store"/>
             </sequential>
             <sequential>
-                <antcall target="build-fusionstorb"/>
-            </sequential>
-            <sequential>
-                <antcall target="build-fusionstorp"/>
-            </sequential>
-            <sequential>
                 <antcall target="build-baremetalpxeserver"/>
             </sequential>
             <sequential>
@@ -380,12 +372,6 @@
             </sequential>
             <sequential>
                 <antcall target="copy-pypi-source"/>
-            </sequential>
-            <sequential>
-                <antcall target="assemble-fusionstorb"/>
-            </sequential>
-            <sequential>
-                <antcall target="assemble-fusionstorp"/>
             </sequential>
             <sequential>
                 <antcall target="assemble-baremetalpxeserver"/>

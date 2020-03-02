@@ -1185,149 +1185,6 @@ class VirtioSCSICeph(object):
             e(disk, 'blockio', None, {'physical_block_size': str(self.volume.physicalBlockSize)})
         return disk
 
-
-class IsoFusionstor(object):
-    def __init__(self):
-        self.iso = None
-
-    def to_xmlobject(self, target_dev, target_bus_type, bus=None, unit=None, bootOrder=None):
-        protocol = lichbd.get_protocol()
-        snap = self.iso.path.lstrip('fusionstor:').lstrip('//')
-        path = self.iso.path.lstrip('fusionstor:').lstrip('//').split('@')[0]
-        if protocol == 'lichbd':
-            iqn = lichbd.lichbd_get_iqn()
-            port = lichbd.lichbd_get_iscsiport()
-            lichbd.makesure_qemu_img_with_lichbd()
-
-            shellcmd = shell.ShellCmd(lichbdfactory.get_lichbd_version_class().LICHBD_CMD_POOL_CREATE+' %s -p iscsi' % path.split('/')[0])
-            shellcmd(False)
-            if shellcmd.return_code != 0 and shellcmd.return_code != 17:
-                shellcmd.raise_error()
-
-            shellcmd = shell.ShellCmd(
-                'lich.snapshot --clone %s %s' % (os.path.join('/lichbd/', snap), os.path.join('/iscsi/', path)))
-            shellcmd(False)
-            if shellcmd.return_code != 0 and shellcmd.return_code != 17:
-                shellcmd.raise_error()
-
-            pool = path.split('/')[0]
-            image = path.split('/')[1]
-            # iqn:pool.volume/0
-            path = '%s:%s.%s/0' % (iqn, pool, image)
-            protocol = 'iscsi'
-        elif protocol == 'sheepdog' or protocol == 'nbd':
-            pass
-        else:
-            raise shell.ShellError('Do not supprot protocols, only supprot lichbd, sheepdog and nbd')
-
-        disk = etree.Element('disk', {'type': 'network', 'device': 'cdrom'})
-        source = e(disk, 'source', None, {'name': path, 'protocol': protocol})
-        if protocol == 'iscsi':
-            e(source, 'host', None, {'name': '127.0.0.1', 'port': '3260'})
-        elif protocol == 'sheepdog':
-            e(source, 'host', None, {'name': '127.0.0.1', 'port': '7000'})
-        elif protocol == 'nbd':
-            e(source, 'host', None, {'name': 'unix', 'port': '/tmp/nbd-socket'})
-        e(disk, 'target', None, {'dev': target_dev, 'bus': target_bus_type})
-        if bus and unit:
-            e(disk, 'address', None, {'type': 'drive', 'bus': bus, 'unit': unit})
-        e(disk, 'readonly', None)
-        if bootOrder is not None and bootOrder > 0:
-            e(disk, 'boot', None, {'order': str(bootOrder)})
-        return disk
-
-
-class BlkFusionstor(object):
-    def __init__(self):
-        self.volume = None
-        self.dev_letter = None
-        self.bus_type = None
-
-    def to_xmlobject(self):
-        protocol = lichbd.get_protocol()
-        if protocol == 'lichbd':
-            lichbd.makesure_qemu_img_with_lichbd()
-        elif protocol == 'sheepdog' or protocol == 'nbd':
-            pass
-        else:
-            raise shell.ShellError('Do not supprot protocols, only supprot lichbd, sheepdog and nbd')
-
-        path = self.volume.installPath.lstrip('fusionstor:').lstrip('//')
-        file_format = lichbd.lichbd_get_format(path)
-
-        disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
-        source = e(disk, 'source', None, {'name': path, 'protocol': protocol})
-        if protocol == 'sheepdog':
-            e(source, 'host', None, {'name': '127.0.0.1', 'port': '7000'})
-        elif protocol == 'nbd':
-            e(source, 'host', None, {'name': 'unix', 'port': '/tmp/nbd-socket'})
-
-        dev_format = Vm._get_disk_target_dev_format(self.bus_type)
-        e(disk, 'target', None, {'dev': dev_format % self.dev_letter, 'bus': self.bus_type})
-        e(disk, 'driver', None, {'cache': 'none', 'name': 'qemu', 'io': 'native', 'type': file_format})
-        return disk
-
-
-class VirtioFusionstor(object):
-    def __init__(self):
-        self.volume = None
-        self.dev_letter = None
-
-    def to_xmlobject(self):
-        protocol = lichbd.get_protocol()
-        if protocol == 'lichbd':
-            lichbd.makesure_qemu_img_with_lichbd()
-        elif protocol == 'sheepdog' or protocol == 'nbd':
-            pass
-        else:
-            raise shell.ShellError('Do not supprot protocols, only supprot lichbd, sheepdog and nbd')
-
-        path = self.volume.installPath.lstrip('fusionstor:').lstrip('//')
-        file_format = lichbd.lichbd_get_format(path)
-
-        disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
-        source = e(disk, 'source', None, {'name': path, 'protocol': protocol})
-        if protocol == 'sheepdog':
-            e(source, 'host', None, {'name': '127.0.0.1', 'port': '7000'})
-        elif protocol == 'nbd':
-            e(source, 'host', None, {'name': 'unix', 'port': '/tmp/nbd-socket'})
-        e(disk, 'target', None, {'dev': 'vd%s' % self.dev_letter, 'bus': 'virtio'})
-        e(disk, 'driver', None, {'cache': 'none', 'name': 'qemu', 'io': 'native', 'type': file_format})
-        return disk
-
-
-class VirtioSCSIFusionstor(object):
-    def __init__(self):
-        self.volume = None
-        self.dev_letter = None
-
-    def to_xmlobject(self):
-        protocol = lichbd.get_protocol()
-        if protocol == 'lichbd':
-            lichbd.makesure_qemu_img_with_lichbd()
-        elif protocol == 'sheepdog' or protocol == 'nbd':
-            pass
-        else:
-            raise shell.ShellError('Protocol[%s] not supported, only support [lichbd, sheepdog, nbd]' % protocol)
-
-        path = self.volume.installPath.lstrip('fusionstor:').lstrip('//')
-        file_format = lichbd.lichbd_get_format(path)
-
-        disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
-        source = e(disk, 'source', None, {'name': path, 'protocol': protocol})
-        if protocol == 'sheepdog':
-            e(source, 'host', None, {'name': '127.0.0.1', 'port': '7000'})
-        elif protocol == 'nbd':
-            e(source, 'host', None, {'name': 'unix', 'port': '/tmp/nbd-socket'})
-
-        e(disk, 'target', None, {'dev': 'sd%s' % self.dev_letter, 'bus': 'scsi'})
-        e(disk, 'driver', None, {'cache': 'none', 'name': 'qemu', 'io': 'native', 'type': file_format})
-        e(disk, 'wwn', self.volume.wwn)
-        if self.volume.shareable:
-            e(disk, 'shareable')
-        return disk
-
-
 class VirtioIscsi(object):
     def __init__(self):
         self.volume_uuid = None
@@ -2128,44 +1985,6 @@ class Vm(object):
                 else:
                     return blk_ceph()
 
-        def fusionstor_volume():
-            # type: () -> etree.Element
-            def virtoio_fusionstor():
-                vc = VirtioFusionstor()
-                vc.volume = volume
-                vc.dev_letter = dev_letter
-                xml_obj = vc.to_xmlobject()
-                Vm.set_volume_qos(addons, volume.volumeUuid, xml_obj)
-                volume_native_aio(xml_obj)
-                return xml_obj
-
-            def blk_fusionstor():
-                ic = BlkFusionstor()
-                ic.volume = volume
-                ic.dev_letter = dev_letter
-                ic.bus_type = self._get_controller_type()
-                xml_obj = ic.to_xmlobject()
-                Vm.set_volume_qos(addons, volume.volumeUuid, xml_obj)
-                volume_native_aio(xml_obj)
-                return xml_obj
-
-            def virtio_scsi_fusionstor():
-                vsc = VirtioSCSIFusionstor()
-                vsc.volume = volume
-                vsc.dev_letter = dev_letter
-                xml_obj = vsc.to_xmlobject()
-                Vm.set_volume_qos(addons, volume.volumeUuid, xml_obj)
-                volume_native_aio(xml_obj)
-                return xml_obj
-
-            if volume.useVirtioSCSI:
-                return virtio_scsi_fusionstor()
-            else:
-                if volume.useVirtio:
-                    return virtoio_fusionstor()
-                else:
-                    return blk_fusionstor()
-
         def block_volume():
             # type: () -> etree.Element
             def blk():
@@ -2204,8 +2023,6 @@ class Vm(object):
             disk_element = filebased_volume()
         elif volume.deviceType == 'ceph':
             disk_element = ceph_volume()
-        elif volume.deviceType == 'fusionstor':
-            disk_element = fusionstor_volume()
         elif volume.deviceType == 'scsilun':
             disk_element = scsilun_volume()
         elif volume.deviceType == 'block':
@@ -2460,9 +2277,6 @@ class Vm(object):
                 if disk.source.file__ and disk.source.file_ == volume.installPath:
                     return disk, disk.target.dev_
             elif volume.deviceType == 'ceph':
-                if disk.source.name__ and disk.source.name_ in volume.installPath:
-                    return disk, disk.target.dev_
-            elif volume.deviceType == 'fusionstor':
                 if disk.source.name__ and disk.source.name_ in volume.installPath:
                     return disk, disk.target.dev_
             elif volume.deviceType == 'scsilun':
@@ -2792,10 +2606,6 @@ class Vm(object):
 
         if iso.path.startswith('ceph'):
             ic = IsoCeph()
-            ic.iso = iso
-            cdrom = ic.to_xmlobject(dev, bus)
-        elif iso.path.startswith('fusionstor'):
-            ic = IsoFusionstor()
             ic.iso = iso
             cdrom = ic.to_xmlobject(dev, bus)
         else:
@@ -3427,10 +3237,6 @@ class Vm(object):
                     ic = IsoCeph()
                     ic.iso = iso
                     devices.append(ic.to_xmlobject(cdrom_config.targetDev, default_bus_type, cdrom_config.bus, cdrom_config.unit, iso.bootOrder))
-                elif iso.path.startswith('fusionstor'):
-                    ic = IsoFusionstor()
-                    ic.iso = iso
-                    devices.append(ic.to_xmlobject(cdrom_config.targetDev, default_bus_type, cdrom_config.bus, cdrom_config.unit, iso.bootOrder))
                 else:
                     cdrom = make_empty_cdrom(cdrom_config.targetDev, cdrom_config.bus , cdrom_config.unit, iso.bootOrder)
                     e(cdrom, 'source', None, {'file': iso.path})
@@ -3530,37 +3336,6 @@ class Vm(object):
                     e(d, 'blockio', None, {'physical_block_size': str(_v.physicalBlockSize)})
                 return d
 
-            def fusionstor_volume(_dev_letter, _v):
-                def fusionstor_virtio():
-                    vc = VirtioFusionstor()
-                    vc.volume = _v
-                    vc.dev_letter = _dev_letter
-                    return vc.to_xmlobject()
-
-                def fusionstor_blk():
-                    ic = BlkFusionstor()
-                    ic.volume = _v
-                    ic.dev_letter = _dev_letter
-                    ic.bus_type = default_bus_type
-                    return ic.to_xmlobject()
-
-                def fusionstor_virtio_scsi():
-                    vsc = VirtioSCSIFusionstor()
-                    vsc.volume = _v
-                    vsc.dev_letter = _dev_letter
-                    return vsc.to_xmlobject()
-
-                if _v.useVirtioSCSI:
-                    disk = fusionstor_virtio_scsi()
-                    if _v.shareable:
-                        e(disk, 'shareable')
-                    return disk
-
-                if _v.useVirtio:
-                    return fusionstor_virtio()
-                else:
-                    return fusionstor_blk()
-
             def spool_volume(_dev_letter, _v):
                 imgfmt = linux.get_img_fmt(_v.installPath)
                 disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
@@ -3648,8 +3423,6 @@ class Vm(object):
                     vol = iscsibased_volume(dev_letter, v)
                 elif v.deviceType == 'ceph':
                     vol = ceph_volume(dev_letter, v)
-                elif v.deviceType == 'fusionstor':
-                    vol = fusionstor_volume(dev_letter, v)
                 elif v.deviceType == 'block':
                     vol = block_volume(dev_letter, v)
                 elif v.deviceType == 'spool':
