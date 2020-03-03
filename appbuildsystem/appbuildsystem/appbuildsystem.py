@@ -11,6 +11,8 @@ import zstacklib.utils.jsonobject as jsonobject
 from zstacklib.utils.bash import *
 from zstacklib.utils import shell
 import shutil
+import base64
+import re
 
 logger = log.get_logger(__name__)
 
@@ -53,7 +55,10 @@ class CreateAppRsp(AgentResponse):
         self.dstSize = None
         self.dstPath = None
         self.imageInfos = None
-        self.descInfo = None
+        self.template = None
+        self.dstInfo = None
+        self.logo = None
+        self.thumbs = []
 
 class ExportAppRsp(AgentResponse):
     def __init__(self):
@@ -190,12 +195,26 @@ class AppBuildSystemAgent(object):
             os.remove(imageMeta)
             return target
 
+        def _encode_thumbs(srcDir, regex):
+            files= os.listdir(srcDir)
+            thumbs = []
+            for f in files:
+                if re.match(regex, f):
+                    with open(srcDir+"/"+f, 'r') as thumb:
+                        thumbs.append(base64.b64encode(thumb.read()))
+            return thumbs
+
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CreateAppRsp()
         checkParam(srcPath=cmd.srcPath, dstPath=cmd.dstPath)
 
         rsp.imageInfos = _read_info(cmd.srcPath, "application-image-meta.json")
-        rsp.descInfo = _read_info(cmd.srcPath, "application-desc.json")
+        rsp.dstInfo = _read_info(cmd.srcPath, "application-desc.json")
+        rsp.template = _read_info(cmd.srcPath, "raw-cloudformation-template.json")
+        with open(cmd.srcPath+"/logo.jpg", 'r') as logo:
+            rsp.logo = base64.b64encode(logo.read())
+        rsp.thumbs = _encode_thumbs(cmd.srcPath, "thumbs.*.jpg")
+
         target = _copy_app(cmd.srcPath, cmd.dstPath)
         rsp.dstSize = linux.get_folder_size(target)
         rsp.dstPath = target
