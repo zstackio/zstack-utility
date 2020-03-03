@@ -683,16 +683,17 @@ def get_meta_lv_path(path):
     return path+"_meta"
 
 
-def delete_image(path, tag):
-    def activate_and_remove(f):
-        active_lv(f, shared=False)
+def delete_image(path, tag, deactive=True):
+    def activate_and_remove(f, deactive):
+        if deactive:
+            active_lv(f, shared=False)
         backing = linux.qcow2_get_backing_file(f)
         shell.check_run("lvremove -y -Stags={%s} %s" % (tag, f))
         return backing
 
     fpath = path
-    backing = activate_and_remove(fpath)
-    activate_and_remove(get_meta_lv_path(fpath))
+    backing = activate_and_remove(fpath, deactive)
+    activate_and_remove(get_meta_lv_path(fpath), deactive)
 
 
 def clean_vg_exists_host_tags(vgUuid, hostUuid, tag):
@@ -894,9 +895,10 @@ def deactive_lv(path, raise_exception=True):
 
 
 @bash.in_bash
-def delete_lv(path, raise_exception=True):
+def delete_lv(path, raise_exception=True, deactive=True):
     logger.debug("deleting lv %s" % path)
-    deactive_lv(path, False)
+    if deactive:
+        deactive_lv(path, False)
     # remove meta-lv if any
     if lv_exists(get_meta_lv_path(path)):
         shell.run("lvremove -y %s" % get_meta_lv_path(path))
