@@ -582,13 +582,13 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         if lvm.has_lv_tag(install_abs_path, IMAGE_TAG):
             logger.info('deleting lv image: ' + install_abs_path)
             if lvm.lv_exists(install_abs_path):
-                lvm.delete_image(install_abs_path, IMAGE_TAG)
+                lvm.delete_image(install_abs_path, IMAGE_TAG, deactive=False)
         else:
             logger.info('deleting lv volume: ' + install_abs_path)
             r = drbd.DrbdResource(self.get_name_from_installPath(path))
             if r.exists is True:
                 r.destroy()
-            lvm.delete_lv(install_abs_path)
+            lvm.delete_lv(install_abs_path, deactive=False)
         lvm.delete_snapshots(install_abs_path)
 
     @kvmagent.replyerror
