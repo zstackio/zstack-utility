@@ -1945,7 +1945,7 @@ class AESCipher:
     def decrypt(self, enc):
         denc = base64.b64decode(enc)
         ret = self._unpad(self.cipher.decrypt(denc), self.BLOCK_SIZE).decode('utf8')
-        return ret.lstrip(self.prefix) if ret.startswith(self.prefix) else enc
+        return ret[len(self.prefix):] if ret.startswith(self.prefix) else enc
 
     def is_encrypted(self, enc):
         try:
