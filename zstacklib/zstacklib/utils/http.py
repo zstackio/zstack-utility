@@ -221,7 +221,6 @@ class HttpServer(object):
     def _add_mapping(self, uri_obj):
         if not self.mapper: self.mapper = cherrypy.dispatch.RoutesDispatcher()
         self.mapper.connect(name=uri_obj.uri, route=uri_obj.uri, controller=uri_obj.controller, action="index")
-        logger.debug('function[%s] registered uri: %s' % (uri_obj.func.__name__, uri_obj.uri))
         if not uri_obj.uri.endswith('/'):
             nuri = uri_obj.uri + '/'
             self.mapper.connect(name=nuri, route=nuri, controller=uri_obj.controller, action="index")
