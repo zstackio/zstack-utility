@@ -50,7 +50,7 @@ def collect_host_network_statistics():
     all_out_errors = 0
     for intf in interfaces:
         all_in_bytes += read_number("/sys/class/net/{}/statistics/rx_bytes".format(intf))
-        all_in_packets += read_number"/sys/class/net/{}/statistics/rx_packets".format(intf))
+        all_in_packets += read_number("/sys/class/net/{}/statistics/rx_packets".format(intf))
         all_in_errors += read_number("/sys/class/net/{}/statistics/rx_errors".format(intf))
         all_out_bytes += read_number("/sys/class/net/{}/statistics/tx_bytes".format(intf))
         all_out_packets += read_number("/sys/class/net/{}/statistics/tx_packets".format(intf))
