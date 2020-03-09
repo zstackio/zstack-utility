@@ -145,6 +145,11 @@ class NetworkPlugin(kvmagent.KvmAgent):
         shell.call('echo 1 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged')
         shell.call('echo 1 > /proc/sys/net/ipv4/conf/default/forwarding')
 
+    def _configure_bridge_mtu(self, bridgeName, interf, mtu=None):
+        if mtu is not None:
+            shell.call("ip link set mtu %d dev %s" % (mtu, interf))
+            #shell.call("ip link set mtu %d dev %s" % (mtu, bridgeName))
+
     @kvmagent.replyerror
     def check_physical_network_interface(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -185,6 +190,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         if linux.is_vif_on_bridge(cmd.bridgeName, cmd.physicalInterfaceName):
             logger.debug('%s is a bridge device. Interface %s is attached to bridge. No need to create bridge or attach device interface' % (cmd.bridgeName, cmd.physicalInterfaceName))
             self._configure_bridge(cmd.disableIptables)
+            self._configure_bridge_mtu(cmd.bridgeName, cmd.physicalInterfaceName, cmd.mtu)
             linux.set_device_uuid_alias(cmd.physicalInterfaceName, cmd.l2NetworkUuid)
             self._ifup_device_if_down(cmd.bridgeName)
             return jsonobject.dumps(rsp)
@@ -192,8 +198,8 @@ class NetworkPlugin(kvmagent.KvmAgent):
         try:
             linux.create_bridge(cmd.bridgeName, cmd.physicalInterfaceName)
             linux.set_device_uuid_alias(cmd.physicalInterfaceName, cmd.l2NetworkUuid)
-
             self._configure_bridge(cmd.disableIptables)
+            self._configure_bridge_mtu(cmd.bridgeName, cmd.physicalInterfaceName, cmd.mtu)
             logger.debug('successfully realize bridge[%s] from device[%s]' % (cmd.bridgeName, cmd.physicalInterfaceName))
         except Exception as e:
             logger.warning(traceback.format_exc())
@@ -207,11 +213,13 @@ class NetworkPlugin(kvmagent.KvmAgent):
     def create_vlan_bridge(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CreateVlanBridgeResponse()
+        vlanInterfName = '%s.%s' % (cmd.physicalInterfaceName, cmd.vlan)
 
         if linux.is_bridge(cmd.bridgeName):
             logger.debug('%s is a bridge device, no need to create bridge' % cmd.bridgeName)
-            self._ifup_device_if_down('%s.%s' % (cmd.physicalInterfaceName, cmd.vlan))
+            self._ifup_device_if_down(vlanInterfName)
             self._configure_bridge(cmd.disableIptables)
+            self._configure_bridge_mtu(cmd.bridgeName, vlanInterfName, cmd.mtu)
             linux.set_device_uuid_alias('%s.%s' % (cmd.physicalInterfaceName, cmd.vlan), cmd.l2NetworkUuid)
             self._ifup_device_if_down(cmd.bridgeName)
             return jsonobject.dumps(rsp)
@@ -219,6 +227,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         try:
             linux.create_vlan_bridge(cmd.bridgeName, cmd.physicalInterfaceName, cmd.vlan)
             self._configure_bridge(cmd.disableIptables)
+            self._configure_bridge_mtu(cmd.bridgeName, vlanInterfName, cmd.mtu)
             linux.set_device_uuid_alias('%s.%s' % (cmd.physicalInterfaceName, cmd.vlan), cmd.l2NetworkUuid)
             logger.debug('successfully realize vlan bridge[name:%s, vlan:%s] from device[%s]' % (cmd.bridgeName, cmd.vlan, cmd.physicalInterfaceName))
         except Exception as e:
@@ -346,6 +355,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         interf = "vxlan" + str(cmd.vni)
         linux.create_vxlan_bridge(interf, cmd.bridgeName, cmd.peers)
         linux.set_device_uuid_alias(interf, cmd.l2NetworkUuid)
+        self._configure_bridge_mtu(cmd.bridgeName, interf, cmd.mtu)
 
         return jsonobject.dumps(rsp)
 
@@ -365,6 +375,8 @@ class NetworkPlugin(kvmagent.KvmAgent):
             interf = "vxlan" + str(vni)
             linux.create_vxlan_bridge(interf, "br_vx_%s" % vni, cmd.peers)
             linux.set_device_uuid_alias(interf, l2NetworkUuid)
+            #this api is called for vxlan pool, bridgeName is None
+            self._configure_bridge_mtu(cmd.bridgeName, interf, cmd.mtu)
 
         return jsonobject.dumps(rsp)
 
