@@ -57,7 +57,7 @@ prompt = '>>>'
 
 query_param_keys = \
     ['conditions', 'count', 'limit', 'start', 'timeout',
-     'replyWithCount', 'sortBy', 'sortDirection', 'fields']
+     'replyWithCount', 'sortBy', 'sortDirection', 'fields', 'filterName']
 
 NOT_QUERY_MYSQL_APIS = [
     'APIQueryLogMsg',
