@@ -3388,15 +3388,6 @@ echo_hints_to_upgrade_iso()
         "For more information, see ${UPGRADE_WIKI}"
 }
 
-echo_custom_pcidevice_xml_warning_if_need() {
-    zstack_home=`eval echo ~zstack`
-    old_xml="$zstack_home/upgrade/`ls $zstack_home/upgrade/ -rt | tail -1`/zstack/WEB-INF/classes/mevoco/pciDevice/customPciDevices.xml"
-    [ -f $old_xml ] || return
-
-    new_xml="$zstack_home/apache-tomcat/webapps/zstack/WEB-INF/classes/mevoco/pciDevice/customPciDevices.xml"
-    diff $old_xml $new_xml >/dev/null || echo -e "$(tput setaf 3) Your old customPciDevices.xml was saved in $old_xml"
-}
-
 echo_chrony_server_warning_if_need()
 {
     CHRONY_SERVER=(`zstack-ctl show_configuration | grep "^[[:space:]]*chrony.serverIp" | awk -F '=' '{print $2}' | sed s/[[:space:]]//g`)
@@ -3621,7 +3612,6 @@ if [ x"$UPGRADE" = x'y' ]; then
     echo_chrony_server_warning_if_need
     check_ha_need_upgrade
     echo " Your old zstack was saved in $zstack_home/upgrade/`ls $zstack_home/upgrade/ -rt|tail -1`"
-    echo_custom_pcidevice_xml_warning_if_need
     echo_star_line
     start_zstack_tui
     post_scripts_to_restore_iptables_rules

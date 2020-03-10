@@ -6994,6 +6994,21 @@ class UpgradeManagementNodeCmd(Command):
                 info('restoring the zstack.properties ...')
                 ctl.internal_run('restore_config', '--restore-from %s' % os.path.dirname(property_file_backup_path))
 
+            def restore_custom_pcidevice_xml():
+                info('restoring the customPciDevices.xml ...')
+                custom_pcidevice_xml_path = os.path.join(ctl.USER_ZSTACK_HOME_DIR, 'apache-tomcat/webapps/zstack/WEB-INF/classes/mevoco/pciDevice/')
+                custom_pcidevice_xml_backup_path = os.path.join(upgrade_tmp_dir, 'zstack/WEB-INF/classes/mevoco/pciDevice/customPciDevices.xml')
+                if not os.path.isfile(custom_pcidevice_xml_backup_path):
+                    info('no backup customPciDevices.xml found')
+                    return
+
+                if not os.path.isdir(custom_pcidevice_xml_path):
+                    info('%s does not exists' % custom_pcidevice_xml_path)
+                    return
+
+                copyfile(custom_pcidevice_xml_backup_path, os.path.join(custom_pcidevice_xml_path, 'customPciDevices.xml'))
+                info('successfully restored the customPciDevices.xml')
+
             def copy_tools():
                 info("copy third-party tools to zstack install path ...")
                 src_tools_path = "/opt/zstack-dvd/%s/%s/tools" % (ctl.BASEARCH, ctl.ZS_RELEASE)
@@ -7025,6 +7040,7 @@ class UpgradeManagementNodeCmd(Command):
             stop_node()
             upgrade()
             restore_config()
+            restore_custom_pcidevice_xml()
             copy_tools()
             install_tools()
             save_new_war()
