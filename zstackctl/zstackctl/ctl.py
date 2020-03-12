@@ -5188,6 +5188,43 @@ class SingleMysqlRestorer(MysqlRestorer):
         return db_hostname in self.all_local_ip
 
 
+class ZBoxRecoverCmd(Command):
+    def __init__(self):
+        super(ZBoxRecoverCmd, self).__init__()
+        self.name = "zbox_recover"
+        self.description = (
+            "recover ZStack from zbox backupz"
+        )
+        self.hide = True
+        self.sensitive_args = ['--mysql-root-password', '--ui-mysql-root-password']
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--from-file', '-f',
+                            help="The mysql backup filename under /var/zbox-${zbox-uuid}/zstack-backup/${backupname}-${version}-${backup-uuid}/",
+                            required=True)
+        parser.add_argument('--mysql-root-password',
+                            help="mysql root password of zstack database",
+                            default=None)
+        parser.add_argument('--ui-mysql-root-password',
+                            help="mysql root password of zstack_ui database, same as --mysql-root-password by default",
+                            default=None)
+
+    def run(self, args):
+        pswd_arg = "--mysql-root-password '%s'" % args.mysql_root_password if args.mysql_root_password else ""
+        ui_pswd_arg = "'--ui-mysql-root-password '%s'" % args.ui_mysql_root_password if args.ui_mysql_root_password else ""
+
+        info("start to recover database...")
+        ctl.internal_run('restore_mysql', "-f %s %s %s" % (args.from_file, pswd_arg, ui_pswd_arg))
+
+        info("start management node...")
+        if os.path.exists("/usr/local/bin/zsha2"):
+            shell("/usr/local/bin/zsha2 start-node")
+            info("please start another node after recover completed.")
+        else:
+            ctl.internal_run("start")
+
+
 class PullDatabaseBackupCmd(Command):
     mysql_backup_dir = "/var/lib/zstack/mysql-backup/"
     ZSTORE_PROTOSTR = "zstore://"
@@ -9434,6 +9471,7 @@ def main():
     RestartNodeCmd()
     RestoreMysqlPreCheckCmd()
     RestoreMysqlCmd()
+    ZBoxRecoverCmd()
     RecoverHACmd()
     ScanDatabaseBackupCmd()
     ShowStatusCmd()
