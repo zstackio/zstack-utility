@@ -43,6 +43,11 @@ apply_resource_settings() {
 		ulimit -Hn 32768 && ulimit -Sn 32768 || true
 	fi
 
+	n=$(sysctl fs.inotify.max_user_instances -n)
+	if [ "$n" -lt 1024 ]; then
+		sysctl -w fs.inotify.max_user_instances=1024 >> /etc/sysctl.conf || true
+	fi
+
 	# try to avoid 'hung_task_timeout_secs' issue
 	sysctl -w vm.dirty_ratio=10 > /dev/null
 	sysctl -w vm.dirty_background_ratio=5 > /dev/null
