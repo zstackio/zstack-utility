@@ -860,8 +860,8 @@ def qcow2_rebase(backing_file, target):
     fmt = get_img_fmt(backing_file)
     shell.call('%s -F %s -f qcow2 -b %s %s' % (qemu_img.subcmd('rebase'), fmt, backing_file, target))
 
-def qcow2_rebase_no_check(backing_file, target):
-    fmt = get_img_fmt(backing_file)
+def qcow2_rebase_no_check(backing_file, target, backing_fmt=None):
+    fmt = backing_fmt if backing_fmt else get_img_fmt(backing_file)
     shell.call('%s -F %s -u -f qcow2 -b "%s" %s' % (qemu_img.subcmd('rebase'), fmt, backing_file, target))
 
 def qcow2_virtualsize(file_path):
@@ -896,6 +896,23 @@ def qcow2_get_backing_file(path):
         backing_file_size = struct.unpack('>L', backing_file_info[8:])[0]
         resp.seek(backing_file_offset)
         return resp.read(backing_file_size)
+
+def qcow2_get_virtual_size(path):
+    # type: (str) -> int
+    if not os.path.exists(path):
+        # for rbd image
+        out = shell.call("%s %s | grep -P -o 'virtual size:\K.*' | awk -F '[()a-zA-Z]' '{print $3}'" %
+                (qemu_img.subcmd('info'), path))
+        return int(out.strip())
+
+    with open(path, 'r') as resp:
+        magic = resp.read(4)
+        if magic != 'QFI\xfb':
+            return os.path.getsize(path)
+
+        # read virtual size info from header
+        resp.seek(24)
+        return struct.unpack('>Q', resp.read(8))[0]
 
 def qcow2_direct_get_backing_file(path):
     o = shell.call('dd if=%s bs=4k count=1 iflag=direct' % path)
@@ -972,15 +989,12 @@ class AbstractFileConverter(object):
         pass
 
     @abc.abstractmethod
-    def convert_from_file(self, src, dst):
+    def convert_from_file_with_backing(self, src, dst, backing, backing_fmt):
+        # type: (str, str, str, str) -> int
         pass
 
     @abc.abstractmethod
     def get_backing_file(self, path):
-        pass
-
-    @abc.abstractmethod
-    def rebase_no_check(self, backing_file, target):
         pass
 
 def upload_chain_to_filesystem(converter, first_node_path, dst_vol_dir, overwrite=False):
@@ -1007,22 +1021,26 @@ def upload_chain_to_filesystem(converter, first_node_path, dst_vol_dir, overwrit
         parent_path = converter.get_backing_file(parent_path)
 
 
-def download_chain_from_filesystem(converter, first_node_path, dst_vol_dir):
-    # type: (AbstractFileConverter, str, str) -> None
-
+def download_chain_from_filesystem(converter, first_node_path, dst_vol_dir, overwrite=False):
+    # type: (AbstractFileConverter, str, str, bool) -> list[tuple[str, int]]
+    downloaded_chain_info = []
     def download(src_path):
         dst_path = os.path.join(dst_vol_dir, os.path.basename(src_path))
-        converter.convert_from_file(src_path, dst_path)
-        return dst_path
+        src_backing_path = qcow2_get_backing_file(src_path)
+        dst_backing_path = os.path.join(dst_vol_dir, os.path.basename(src_backing_path)) if src_backing_path else ''
+        if os.path.exists(dst_path):
+            if overwrite:
+                rm_file_force(dst_path)
+            else:
+                return
+        backing_fmt = get_img_fmt(src_backing_path) if src_backing_path else None
+        size = converter.convert_from_file_with_backing(src_path, dst_path, dst_backing_path, backing_fmt)
+        downloaded_chain_info.append((dst_path, size))
+        if src_backing_path:
+            download(src_backing_path)
 
-    dst_current_node_path = download(first_node_path)
-    parent_path = qcow2_get_backing_file(first_node_path)
-    while parent_path:
-        dst_parent_path = download(parent_path)
-        converter.rebase_no_check(dst_parent_path, dst_current_node_path)
-
-        dst_current_node_path = dst_parent_path
-        parent_path = qcow2_get_backing_file(parent_path)
+    download(first_node_path)
+    return downloaded_chain_info
 
 
 def rmdir_if_empty(dirpath):

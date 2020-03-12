@@ -86,11 +86,6 @@ def get_zbox_label(devname):
     cmd(False)
     return None if cmd.return_code != 0 else cmd.stdout.strip()
 
-def get_label(devname):
-    cmd = shell.ShellCmd('''blkid %s | grep -o -P 'LABEL="\Kzbox-[a-zA-Z0-9]*"' ''' % devname)
-    cmd(False)
-    return None if cmd.return_code != 0 else cmd.stdout.strip()
-
 
 def get_zbox_devname_and_label():
     cmd = shell.ShellCmd('lsblk /dev/sd* -o NAME,LABEL | grep zbox')

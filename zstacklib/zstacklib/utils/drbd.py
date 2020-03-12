@@ -211,6 +211,21 @@ class DrbdResource(object):
             self.demote()
 
     @bash.in_bash
+    def initialize_with_file(self, primary, src_path, backing=None, backing_fmt=None, skip_clear_bits=False):
+        bash.bash_errorout("echo yes | drbdadm create-md %s --force" % self.name)
+        self.up()
+        if skip_clear_bits:
+            return
+        if not primary:
+            self.clear_bits()
+        else:
+            self.promote()
+            bash.bash_errorout('dd if=%s of=%s conv=sparse' % (src_path, self.get_dev_path()))
+            if backing:
+                linux.qcow2_rebase_no_check(backing, self.get_dev_path(), backing_fmt=backing_fmt)
+            self.demote()
+
+    @bash.in_bash
     def is_defined(self):
         assert self.name is not None
         assert self.name.strip() != ""
@@ -229,6 +244,15 @@ class DrbdResource(object):
     @bash.in_bash
     def resize(self):
         bash.bash_errorout("drbdadm -- --assume-clean resize %s" % self.name)
+
+    @bash.in_bash
+    def dd_out(self, dst_path):
+        need_promte_first = self.get_role() == DrbdRole.Secondary
+        need_promte_first and self.promote()
+        try:
+            bash.bash_errorout('dd if=%s of=%s iflag=direct conv=sparse' % (self.get_dev_path(), dst_path))
+        finally:
+            need_promte_first and self.demote()
 
 
 class DrbdStruct(object):

@@ -192,7 +192,13 @@ class UploadBitsToFileSystemRsp(AgentRsp):
 class DownloadBitsFromFileSystemRsp(AgentRsp):
     def __init__(self):
         super(DownloadBitsFromFileSystemRsp, self).__init__()
-        self.totalSize = 0
+        self.downloadedInfos = []  # type: list[LvInfo]
+
+
+class LvInfo(object):
+    def __init__(self, install_path, size):
+        self.installPath = install_path
+        self.size = size
 
 
 def get_absolute_path_from_install_path(path):
@@ -269,24 +275,68 @@ class CheckDisk(object):
 
 
 class MiniFileConverter(linux.AbstractFileConverter):
-    def __init__(self, provisioning=None):
+    def __init__(self, cmd=None):
         super(MiniFileConverter, self).__init__()
-        self.provisioning = provisioning
+        self.cmd = cmd
+        self.resourceId = os.path.basename(cmd.srcInstallPath) if cmd else None
 
     def get_backing_file(self, path):
         return linux.qcow2_direct_get_backing_file(path)
 
-    def rebase_no_check(self, backing_file, target):
-        r = drbd.DrbdResource(os.path.basename(target))
-        r._init_from_disk(target)
-        with drbd.OperateDrbd(r):
-            linux.qcow2_rebase_no_check(backing_file, target)
-
-    def convert_from_file(self, src, dst):
-        pass
+    def convert_from_file_with_backing(self, src, dst, dst_backing, backing_fmt):
+        # type: (str, str, str, str) -> int
+        if self.cmd.srcInstallPath != src:  # base:
+            return self._convert_image_from_file(src, dst, dst_backing, backing_fmt)
+        else:  # top
+            return self._convert_volume_from_file(src, dst, dst_backing, backing_fmt)
 
     def convert_to_file(self, src, dst):
-        shell.call('dd if=%s of=%s iflag=direct' % (src, dst))
+        drbd_res = drbd.DrbdResource(os.path.basename(src))
+        if drbd_res.exists:
+            drbd_res.dd_out(dst)
+        else:
+            shell.call('dd if=%s of=%s iflag=direct conv=sparse' % (src, dst))
+
+    def _convert_volume_from_file(self, src, dst, dst_backing, backing_fmt):
+        drbdResource = drbd.DrbdResource(os.path.basename(dst), False)
+        drbdResource.config.local_host.hostname = self.cmd.local_host_name
+        drbdResource.config.local_host.disk = dst
+        drbdResource.config.local_host.minor = self.cmd.local_host_port - DRBD_START_PORT
+        drbdResource.config.local_host.address = "%s:%s" % (self.cmd.local_address, self.cmd.local_host_port)
+
+        drbdResource.config.remote_host.hostname = self.cmd.remote_host_name
+        drbdResource.config.remote_host.disk = dst
+        drbdResource.config.remote_host.minor = self.cmd.remote_host_port - DRBD_START_PORT
+        drbdResource.config.remote_host.address = "%s:%s" % (self.cmd.remote_address, self.cmd.remote_host_port)
+
+        drbdResource.config.write_config()
+
+        size = linux.qcow2_get_virtual_size(src)
+        tag = "%s::%s::%s" % (VOLUME_TAG, self.cmd.hostUuid, time.time())
+
+        try:
+            if not lvm.lv_exists(dst):
+                lvm.create_lv_from_cmd(dst, size, self.cmd, tag, False)
+            lvm.active_lv(dst)
+            drbdResource.initialize_with_file(True, src, backing=dst_backing, backing_fmt=backing_fmt)
+            return size
+        except Exception as e:
+            drbdResource.destroy()
+            lvm.delete_lv(dst)
+            logger.debug('failed to convert lv from file[size:%s] at %s' % (size, dst))
+            raise e
+
+    def _convert_image_from_file(self, src, dst, dst_backing, backing_fmt):
+        size = linux.get_local_file_disk_usage(src)
+        tag = "%s::%s::%s" % (IMAGE_TAG, self.cmd.hostUuid, time.time())
+        if not lvm.lv_exists(dst):
+            lvm.create_lv_from_cmd(dst, size, self.cmd, tag, False)
+        lvm.active_lv(dst)
+        bash.bash_errorout('dd if=%s of=%s iflag=direct conv=sparse' % (src, dst))
+        if dst_backing:
+            linux.qcow2_rebase_no_check(dst_backing, dst, backing_fmt=backing_fmt)
+
+        return size
 
 
 class MiniStoragePlugin(kvmagent.KvmAgent):
@@ -300,6 +350,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
     COMMIT_BITS_TO_IMAGESTORE_PATH = "/ministorage/imagestore/commit"
     DOWNLOAD_BITS_FROM_IMAGESTORE_PATH = "/ministorage/imagestore/download"
     CREATE_EMPTY_VOLUME_PATH = "/ministorage/volume/createempty"
+    CREATE_SECONDARY_VOLUME = "/ministorage/volume/createsecondary"
     CHECK_BITS_PATH = "/ministorage/bits/check"
     RESIZE_VOLUME_PATH = "/ministorage/volume/resize"
     CONVERT_IMAGE_TO_VOLUME = "/ministorage/image/tovolume"
@@ -312,6 +363,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
     FLUSH_CACHE = "/ministorage/cache/flush"
     UPLOAD_BITS_TO_FILESYSTEM_PATH = "/ministorage/filesystem/upload"
     DOWNLOAD_BITS_FROM_FILESYSTEM_PATH = "/ministorage/filesystem/download"
+    SYNC_BACKING_CHAIN = "/ministorage/volume/syncbackingchain"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -324,6 +376,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.COMMIT_BITS_TO_IMAGESTORE_PATH, self.commit_to_imagestore)
         http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_IMAGESTORE_PATH, self.download_from_imagestore)
         http_server.register_async_uri(self.CREATE_EMPTY_VOLUME_PATH, self.create_empty_volume)
+        http_server.register_async_uri(self.CREATE_SECONDARY_VOLUME, self.create_secondary_volume)
         http_server.register_async_uri(self.CONVERT_IMAGE_TO_VOLUME, self.convert_image_to_volume)
         http_server.register_async_uri(self.CHECK_BITS_PATH, self.check_bits)
         http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
@@ -335,6 +388,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.FLUSH_CACHE, self.flush_cache)
         http_server.register_async_uri(self.UPLOAD_BITS_TO_FILESYSTEM_PATH, self.upload_to_filesystem)
         http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_FILESYSTEM_PATH, self.download_from_filesystem)
+        http_server.register_async_uri(self.SYNC_BACKING_CHAIN, self.sync_backing_chain)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -747,7 +801,31 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
     def download_from_filesystem(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = DownloadBitsFromFileSystemRsp()
-        linux.download_chain_from_filesystem(MiniFileConverter(), cmd.srcInstallPath, cmd.dstFolderPath)
+        dst_dir = os.path.dirname(self.convertInstallPathToAbsolute(cmd.dstInstallPath))
+        chain_info = linux.download_chain_from_filesystem(MiniFileConverter(cmd=cmd), cmd.srcInstallPath, dst_dir,
+                                                          overwrite=not cmd.skipIfExisting)
+
+        for info in chain_info:
+            rsp.downloadedInfos.append(LvInfo(install_path=info[0], size=info[1]))
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def sync_backing_chain(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        remote_hostname = cmd.remoteHostname
+        # rsync cannot satisfy without --keep-links(it is supposed to be similar to --keep-dirlinks)
+        for info in cmd.backingFileInfos:
+            if not lvm.lv_exists(info.installPath):
+                lvm.create_lv_from_cmd(info.installPath, info.size, cmd,
+                                   "%s::%s::%s" % (IMAGE_TAG, cmd.hostUuid, time.time()), False)
+            lvm.active_lv(info.installPath)
+            sync_command = "ssh %s dd if=%s iflag=direct conv=sparse | dd of=%s conv=sparse" % \
+                           (remote_hostname, info.installPath, info.installPath)
+            shell.call(sync_command)
+
+        rsp = AgentRsp()
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -793,6 +871,43 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         rsp._init_from_drbd(drbdResource)
         return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def create_secondary_volume(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = VolumeRsp()
+
+        install_abs_path = get_absolute_path_from_install_path(cmd.installPath)
+        drbdResource = drbd.DrbdResource(self.get_name_from_installPath(cmd.installPath), False)
+        drbdResource.config.local_host.hostname = cmd.local_host_name
+        drbdResource.config.local_host.disk = install_abs_path
+        drbdResource.config.local_host.minor = cmd.local_host_port - DRBD_START_PORT
+        drbdResource.config.local_host.address = "%s:%s" % (cmd.local_address, cmd.local_host_port)
+
+        drbdResource.config.remote_host.hostname = cmd.remote_host_name
+        drbdResource.config.remote_host.disk = install_abs_path
+        drbdResource.config.remote_host.minor = cmd.remote_host_port - DRBD_START_PORT
+        drbdResource.config.remote_host.address = "%s:%s" % (cmd.remote_address, cmd.remote_host_port)
+
+        drbdResource.config.write_config()
+
+        try:
+            if not lvm.lv_exists(install_abs_path):
+                lvm.create_lv_from_cmd(install_abs_path, cmd.size, cmd,
+                                   "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()), False)
+                lvm.active_lv(install_abs_path)
+                drbdResource.initialize(primary=False, cmd=cmd)
+        except Exception as e:
+            drbdResource.destroy()
+            lvm.delete_lv(install_abs_path)
+            logger.debug('failed to create secondary volume[uuid:%s, size:%s] at %s' % (cmd.resourceUuid, cmd.size, cmd.installPath))
+            raise e
+
+        logger.debug('successfully create secondary volume[uuid:%s, size:%s] at %s' % (cmd.resourceUuid, cmd.size, cmd.installPath))
+        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+        rsp._init_from_drbd(drbdResource)
+        return jsonobject.dumps(rsp)
+
 
     @staticmethod
     def get_name_from_installPath(path):
