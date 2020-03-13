@@ -3,6 +3,8 @@ import re
 import random
 import time
 
+from typing import Dict, Any
+
 from kvmagent import kvmagent
 from kvmagent.plugins.imagestore import ImageStoreClient
 from kvmagent.plugins import mini_fencer
@@ -106,9 +108,24 @@ class ActiveRsp(VolumeRsp):
 
 
 class CheckBitsRsp(AgentRsp):
+    replications = {}  # type: Dict[str, ReplicationInformation]
+
     def __init__(self):
         super(CheckBitsRsp, self).__init__()
         self.existing = False
+        self.replications = dict()
+
+
+class ReplicationInformation(object):
+    diskStatus = None  # type: str
+    networkStatus = None  # type: str
+    role = None  # type: str
+    size = None  # type: long
+    name = None  # type: str
+    minor = None  # type: long
+
+    def __init__(self):
+        super(ReplicationInformation, self).__init__()
 
 
 class GetVolumeSizeRsp(VolumeRsp):
@@ -743,11 +760,36 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
     def check_bits(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CheckBitsRsp()
-        install_abs_path = get_absolute_path_from_install_path(cmd.path)
-        rsp.existing = lvm.lv_exists(install_abs_path)
+        if cmd.path is not None:
+            install_abs_path = get_absolute_path_from_install_path(cmd.path)
+            rsp.existing = lvm.lv_exists(install_abs_path)
+        else:
+            rsp = self.replications_status()
         if cmd.vgUuid is not None and lvm.vg_exists(cmd.vgUuid):
             rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid, False)
         return jsonobject.dumps(rsp)
+
+    @staticmethod
+    def replications_status():
+        # type: () -> CheckBitsRsp
+        r = CheckBitsRsp()
+        raw = linux.read_file("/proc/drbd")
+
+        for line in raw.splitlines():
+            splited = line.strip().split(" ")
+            if ": cs:" in line:
+                info = ReplicationInformation()
+                info.minor = splited[0].split(":")[0]
+                info.networkStatus = splited[1].split(":")[1]
+                info.diskStatus = splited[3].split(":")[1].split("/")[0]
+                info.role = splited[2].split(":")[1].split("/")[0]
+                configPath = bash.bash_o("grep 'minor %s;' /etc/drbd.d/*.res -l | awk -F '.res' '{print $1}'" % info.minor).strip()
+                info.name = configPath.split("/")[-1]
+
+                r.replications[info.name] = info
+
+        return r
+
 
     @kvmagent.replyerror
     def active_lv(self, req):
