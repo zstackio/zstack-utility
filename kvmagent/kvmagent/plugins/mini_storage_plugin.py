@@ -108,6 +108,7 @@ class ActiveRsp(VolumeRsp):
 
 
 class CheckBitsRsp(AgentRsp):
+    existing = False  # type: bool
     replications = {}  # type: Dict[str, ReplicationInformation]
 
     def __init__(self):
@@ -126,6 +127,13 @@ class ReplicationInformation(object):
 
     def __init__(self):
         super(ReplicationInformation, self).__init__()
+        self.diskStatus = None  # type: str
+        self.networkStatus = None  # type: str
+        self.role = None  # type: str
+        self.size = None  # type: long
+        self.name = None  # type: str
+        self.minor = None  # type: long
+
 
 
 class GetVolumeSizeRsp(VolumeRsp):
@@ -776,18 +784,26 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         raw = linux.read_file("/proc/drbd")
 
         for line in raw.splitlines():
-            splited = line.strip().split(" ")
-            if ": cs:" in line:
-                info = ReplicationInformation()
-                info.minor = splited[0].split(":")[0]
-                info.networkStatus = splited[1].split(":")[1]
-                info.diskStatus = splited[3].split(":")[1].split("/")[0]
-                info.role = splited[2].split(":")[1].split("/")[0]
-                configPath = bash.bash_o("grep 'minor %s;' /etc/drbd.d/*.res -l | awk -F '.res' '{print $1}'" % info.minor).strip()
-                info.name = configPath.split("/")[-1]
+            try:
+                splited = line.strip().split(" ")
+                if ": cs:" in line:
+                    info = ReplicationInformation()
+                    info.minor = splited[0].split(":")[0]
+                    info.networkStatus = splited[1].split(":")[1]
+                    info.diskStatus = splited[3].split(":")[1].split("/")[0]
+                    info.role = splited[2].split(":")[1].split("/")[0]
+                    configPath = bash.bash_o("grep 'minor %s;' /etc/drbd.d/*.res -l | awk -F '.res' '{print $1}'" % info.minor).strip()
+                    info.name = configPath.split("/")[-1]
+                    size = lvm.get_lv_size(
+                        bash.bash_o("grep -E 'disk .*/dev' %s.res | head -n1  | awk '{print $2}'" % configPath).strip().strip(";"))
+                    if size != '':
+                        info.size = int(size)
 
-                r.replications[info.name] = info
+                    r.replications[info.name] = info
+            except Exception as e:
+                logger.warn("exception %s when get info of %s" % (e, line))
 
+        logger.debug(jsonobject.dumps(r.replications))
         return r
 
 
