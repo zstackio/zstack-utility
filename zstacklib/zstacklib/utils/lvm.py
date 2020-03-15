@@ -809,11 +809,10 @@ def get_lv_size(path):
     if is_thin_lv(path):
         return get_thin_lv_size(path)
     cmd = shell.ShellCmd("lvs --nolocking --noheading -osize --units b %s" % path)
-    cmd(is_exception=True)
+    cmd(is_exception=True, logcmd=False)
     return cmd.stdout.strip().strip("B")
 
 
-@bash.in_bash
 def get_thin_lv_size(path):
     l = ThinPool(path)
     return str(int(l.total - l.free))
