@@ -111,6 +111,7 @@ class AsyncUirHandler(SyncUriHandler):
     
     @thread.AsyncThread
     def _run_index(self, task_uuid, request):
+        self.HANDLER_COUNTER.inc()
         callback_uri = self._get_callback_uri(request)
         headers = {TASK_UUID : task_uuid}
         try:
@@ -151,7 +152,6 @@ class AsyncUirHandler(SyncUriHandler):
             logger.warn(err)
             raise cherrypy.HTTPError(400, err)
 
-        self.HANDLER_COUNTER.inc()
         task_uuid = cherrypy.request.headers[TASK_UUID]
         req = Request.from_cherrypy_request(cherrypy.request)
         logger.debug('async http call[task uuid: %s], body: %s' % (task_uuid, req.body))
