@@ -313,10 +313,17 @@ def collect_node_disk_wwid():
 
     pvs = bash_o("pvs --nolocking --noheading -o pv_name").strip().splitlines()
     for pv in pvs:
-        device_name = pv.split("/")[-1].strip()
-        wwid = bash_o("ls -l /dev/disk/by-id/ | grep -w %s | awk '{print $9}' | grep -v '^lvm-pv' | head -n 1" % device_name).strip()
-        if wwid != "":
-            metrics['node_disk_wwid'].add_metric([device_name, wwid], 1)
+        multipath_wwid = None
+        if bash_r("dmsetup table %s | grep multipath" % pv) == 0:
+            multipath_wwid = bash_o("udevadm info -n %s | grep -E '^S: disk/by-id/dm-uuid' | awk -F '-' '{print $NF}'" % pv).strip()
+        disks = linux.get_physical_disk(pv)
+        for disk in disks:
+            disk_name = disk.split("/")[-1].strip()
+            wwids = bash_o("udevadm info -n %s | grep -E '^S: disk/by-id' | awk -F '/' '{print $NF}' | grep -v '^lvm-pv' | sort" % disk).strip().splitlines()
+            if multipath_wwid is not None:
+                wwids.append(multipath_wwid)
+            if len(wwids) > 0:
+                metrics['node_disk_wwid'].add_metric([disk_name, ";".join([w.strip() for w in wwids])], 1)
 
     collect_node_disk_wwid_last_result = metrics.values()
     return metrics.values()
