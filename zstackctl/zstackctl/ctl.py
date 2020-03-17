@@ -643,6 +643,16 @@ class UseUserZstack(object):
 def use_user_zstack():
     return UseUserZstack()
 
+class ConfigObjEx(ConfigObj):
+    def __init__(self, filename):
+        super(ConfigObjEx, self).__init__(filename, write_empty_values=True)
+
+    def write(self):
+        with open(self.filename, 'wb') as f:
+            super(ConfigObjEx, self).write(f)
+            f.flush()
+            os.fsync(f.fileno())
+
 class PropertyFile(object):
     def __init__(self, path, use_zstack=True):
         self.path = path
@@ -653,7 +663,7 @@ class PropertyFile(object):
             raise CtlError('%s: permission denied' % self.path)
 
         with on_error("errors on reading %s" % self.path):
-            self.config = ConfigObj(self.path, write_empty_values=True)
+            self.config = ConfigObjEx(self.path)
 
     def read_all_properties(self):
         with on_error("errors on reading %s" % self.path):
