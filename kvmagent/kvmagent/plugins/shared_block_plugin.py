@@ -431,7 +431,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         allDiskPaths = allDiskPaths.union(diskPaths)
 
         try:
-            root_disks = ["%s[0-9]*" % d for d in linux.get_root_physical_disk()]
+            root_disks = ["%s[0-9]*" % d for d in linux.get_physical_disk()]
             allDiskPaths = allDiskPaths.union(root_disks)
         except Exception as e:
             logger.warn("get exception: %s" % e.message)
@@ -1148,7 +1148,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 allDiskPaths.add(p)
 
         try:
-            root_disks = ["%s[0-9]*" % d for d in linux.get_root_physical_disk()]
+            root_disks = ["%s[0-9]*" % d for d in linux.get_physical_disk()]
             allDiskPaths = allDiskPaths.union(root_disks)
         except Exception as e:
             logger.warn("get exception: %s" % e.message)
