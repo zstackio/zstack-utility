@@ -1403,6 +1403,7 @@ is_install_general_libs_rh(){
             python-backports-ssl_match_hostname \
             python-setuptools \
             avahi \
+            gnutls-utils \
             avahi-tools"
 
     always_update_list="mysql openssh"
