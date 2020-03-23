@@ -380,6 +380,13 @@ class DisableZeroCopyRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(DisableZeroCopyRsp, self).__init__()
 
+class GetDevCapacityRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(GetDevCapacityRsp, self).__init__()
+        self.totalSize = None
+        self.availableSize = None
+        self.dirSize = None
+
 class PciDeviceTO(object):
     def __init__(self):
         self.name = ""
@@ -508,6 +515,7 @@ class HostPlugin(kvmagent.KvmAgent):
     SCAN_VM_PORT_PATH = "/host/vm/scanport"
     ENABLE_ZEROCOPY = "/host/enable/zerocopy"
     DISABLE_ZEROCOPY = "/host/disable/zerocopy"
+    GET_DEV_CAPACITY = "/host/dev/capacity"
 
     host_network_facts_cache = {}  # type: dict[float, list[list, list]]
     IS_YUM = False
@@ -1741,6 +1749,14 @@ done
         self._check_vhost_net_conf(0)
         self._try_reload_modprobe('vhost_net')
 
+    @kvmagent.replyerror
+    def get_dev_capacity(self, req):
+        rsp = GetDevCapacityRsp()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp.totalSize = linux.get_total_disk_size(cmd.dirPath)
+        rsp.availableSize = linux.get_free_disk_size(cmd.dirPath)
+        rsp.dirSize = linux.get_used_disk_apparent_size(cmd.dirPath, 4, 1)
+
         return jsonobject.dumps(rsp)
 
     def start(self):
@@ -1780,6 +1796,7 @@ done
         http_server.register_async_uri(self.SCAN_VM_PORT_PATH, self.scan_vm_port)
         http_server.register_async_uri(self.ENABLE_ZEROCOPY, self.enable_zerocopy)
         http_server.register_async_uri(self.DISABLE_ZEROCOPY, self.disable_zerocopy)
+        http_server.register_async_uri(self.GET_DEV_CAPACITY, self.get_dev_capacity)
 
         self.heartbeat_timer = {}
         self.libvirt_version = self._get_libvirt_version()
