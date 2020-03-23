@@ -1858,7 +1858,7 @@ def clear_leftover_mn_heartbeat():
         return
 
     mysql("DELETE FROM ManagementNodeVO WHERE hostName = '%s'" % mn_ip)
-    info("cleared management node heartbeat")
+    info("cleared management node heartbeat for %s" % mn_ip)
 
 class StopAllCmd(Command):
     def __init__(self):
