@@ -162,6 +162,11 @@ class NfsRebaseVolumeBackingFileRsp(NfsResponse):
     def __init__(self):
         super(NfsRebaseVolumeBackingFileRsp, self).__init__()
 
+class GetDownloadBitsFromKvmHostProgressRsp(NfsResponse):
+    def __init__(self):
+        super(GetDownloadBitsFromKvmHostProgressRsp, self).__init__()
+        self.totalSize = None
+
 class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     '''
     classdocs
@@ -197,6 +202,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     NFS_REBASE_VOLUME_BACKING_FILE_PATH = "/nfsprimarystorage/rebasevolumebackingfile"
     DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/nfsprimarystorage/kvmhost/download"
     CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/nfsprimarystorage/kvmhost/download/cancel"
+    GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH = "/nfsprimarystorage/kvmhost/download/progress"
 
     ERR_UNABLE_TO_FIND_IMAGE_IN_CACHE = "unable to find image in cache"
 
@@ -232,6 +238,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.NFS_REBASE_VOLUME_BACKING_FILE_PATH, self.rebase_volume_backing_file)
         http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.download_from_kvmhost)
         http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
+        http_server.register_async_uri(self.GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH, self.get_download_bits_from_kvmhost_progress)
         self.mount_path = {}
         self.image_cache = None
         self.imagestore_client = ImageStoreClient()
@@ -820,4 +827,11 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         shell.run("pkill -9 -f '%s'" % install_abs_path)
 
         linux.rm_file_force(cmd.primaryStorageInstallPath)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def get_download_bits_from_kvmhost_progress(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetDownloadBitsFromKvmHostProgressRsp()
+        rsp.totalSize = linux.get_total_file_size(cmd.volumePaths)
         return jsonobject.dumps(rsp)

@@ -67,6 +67,12 @@ class GetSubPathRsp(AgentRsp):
         super(GetSubPathRsp, self).__init__()
         self.paths = []
 
+class GetDownloadBitsFromKvmHostProgressRsp(AgentRsp):
+    def __init__(self):
+        super(GetDownloadBitsFromKvmHostProgressRsp, self).__init__()
+        self.totalSize = None
+
+
 class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
 
     CONNECT_PATH = "/sharedmountpointprimarystorage/connect"
@@ -89,6 +95,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
     REINIT_IMAGE_PATH = "/sharedmountpointprimarystorage/volume/reinitimage"
     DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/sharedmountpointprimarystorage/kvmhost/download"
     CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/sharedmountpointprimarystorage/kvmhost/download/cancel"
+    GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH = "/sharedmountpointprimarystorage/kvmhost/download/progress"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -112,6 +119,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.REINIT_IMAGE_PATH, self.reinit_image)
         http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.download_from_kvmhost)
         http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
+        http_server.register_async_uri(self.GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH, self.get_download_bits_from_kvmhost_progress)
 
         self.imagestore_client = ImageStoreClient()
         self.id_files = {}
@@ -408,4 +416,11 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         shell.run("pkill -9 -f '%s'" % install_abs_path)
 
         linux.rm_file_force(cmd.primaryStorageInstallPath)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def get_download_bits_from_kvmhost_progress(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetDownloadBitsFromKvmHostProgressRsp()
+        rsp.totalSize = linux.get_total_file_size(cmd.volumePaths)
         return jsonobject.dumps(rsp)

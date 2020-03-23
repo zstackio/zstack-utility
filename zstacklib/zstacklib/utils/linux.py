@@ -226,6 +226,17 @@ def get_used_disk_apparent_size(dir_path):
     output = shell.call('du --apparent-size --max-depth=1 %s | tail -1' % dir_path)
     return long(output.split()[0])
 
+def get_total_file_size(paths):
+    total = 0
+    for path in paths:
+        if not os.path.exists(path):
+            continue
+        if not os.path.isfile(path):
+            continue
+        total += os.path.getsize(path)
+
+    return total
+
 def get_disk_capacity_by_df(dir_path):
     total = shell.call("df %s|tail -1|awk '{print $(NF-4)}'" % dir_path)
     avail = shell.call("df %s|tail -1|awk '{print $(NF-2)}'" % dir_path)

@@ -372,6 +372,13 @@ class ScanVmPortRsp(kvmagent.AgentResponse):
         super(ScanVmPortRsp, self).__init__()
         self.portStatus = {}
 
+class GetDevCapacityRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(GetDevCapacityRsp, self).__init__()
+        self.totalSize = None
+        self.availableSize = None
+        self.dirSize = None
+
 class PciDeviceTO(object):
     def __init__(self):
         self.name = ""
@@ -498,6 +505,7 @@ class HostPlugin(kvmagent.KvmAgent):
     TRANSMIT_VM_OPERATION_TO_MN_PATH = "/host/transmitvmoperation"
     TRANSMIT_ZWATCH_INSTALL_RESULT_TO_MN_PATH = "/host/zwatchInstallResult"
     SCAN_VM_PORT_PATH = "/host/vm/scanport"
+    GET_DEV_CAPACITY = "/host/dev/capacity"
 
     host_network_facts_cache = {}  # type: dict[float, list[list, list]]
     IS_YUM = False
@@ -1688,6 +1696,16 @@ done
 
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    def get_dev_capacity(self, req):
+        rsp = GetDevCapacityRsp()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp.totalSize = linux.get_total_disk_size(cmd.dirPath)
+        rsp.availableSize = linux.get_free_disk_size(cmd.dirPath)
+        rsp.dirSize = linux.get_used_disk_apparent_size(cmd.dirPath)
+
+        return jsonobject.dumps(rsp)
+
     def start(self):
         self.host_uuid = None
 
@@ -1723,6 +1741,8 @@ done
         http_server.register_sync_uri(self.TRANSMIT_VM_OPERATION_TO_MN_PATH, self.transmit_vm_operation_to_vm)
         http_server.register_sync_uri(self.TRANSMIT_ZWATCH_INSTALL_RESULT_TO_MN_PATH, self.transmit_zwatch_install_result_to_mn)
         http_server.register_async_uri(self.SCAN_VM_PORT_PATH, self.scan_vm_port)
+        http_server.register_async_uri(self.GET_DEV_CAPACITY, self.get_dev_capacity)
+
 
         self.heartbeat_timer = {}
         self.libvirt_version = self._get_libvirt_version()

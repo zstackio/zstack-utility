@@ -359,6 +359,14 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
                                                                 storage_dir,
                                                                 cmd.thumbprint, cmd.format, self._get_nbdkit_dir_path(), extra_params)
 
+        def dnat_to_convert_interface(ip, dnat_ip, dnat_interface):
+            if shell.run("route -n |grep %s |grep %s" % (ip, dnat_interface)) != 0:
+                shell.run("route add -host %s dev %s" % (ip, dnat_interface))
+
+            if shell.run("iptables -t nat -nL --line-number | grep DNAT |grep %s | grep %s" % (ip, dnat_ip)) != 0:
+                shell.run("iptables -t nat -A OUTPUT -d %s -j DNAT --to-destination %s" % (ip, dnat_ip))
+
+
         virt_v2v_cmd = get_v2v_cmd(cmd, rsp)
         src_vm_uri = cmd.srcVmUri
         host_name = src_vm_uri.split('/')[-1]
@@ -374,10 +382,14 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
 
         vmware_host_ip = linux.get_host_by_name(host_name)
         interface = linux.find_route_interface_by_destination_ip(vmware_host_ip)
+        convertInterface = linux.find_route_interface_by_destination_ip(cmd.srcHostIp)
 
-        if interface:
+        if vmware_host_ip != cmd.srcHostIp:
+            dnat_to_convert_interface(vmware_host_ip, cmd.srcHostIp, convertInterface)
+
+        if convertInterface:
             cmdstr = "tc filter replace dev %s protocol ip parent 1: prio 1 u32 match ip src %s/32 flowid 1:1" \
-                     % (QOS_IFB, vmware_host_ip)
+                     % (QOS_IFB, cmd.srcHostIp)
             shell.run(cmdstr)
 
         def run_convert_if_need():
@@ -495,6 +507,17 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
     @in_bash
     @kvmagent.replyerror
     def clean(self, req):
+        def clean_dnat(dnatInfo):
+            vmware_host_ip = linux.get_host_by_name(dnatInfo.hostName)
+            dnat_interface = linux.find_route_interface_by_destination_ip(dnatInfo.convertIp)
+            if vmware_host_ip != dnatInfo.convertIp:
+                if shell.run("route -n |grep %s |grep %s" % (vmware_host_ip, dnat_interface)) == 0:
+                    shell.run("route del -host %s dev %s" % (vmware_host_ip, dnat_interface))
+
+                if shell.run("iptables -t nat -nL --line-number | grep DNAT |grep %s | grep %s" % (vmware_host_ip, dnatInfo.convertIp)) == 0:
+                    nat_number = shell.call("iptables -t nat -nL --line-number | grep DNAT |grep %s | grep %s" % (vmware_host_ip, dnatInfo.convertIp)).split(" ")[0]
+                    shell.run("iptables -D OUTPUT %s -t nat" % nat_number)
+
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
         if not cmd.srcVmUuid:
@@ -502,7 +525,8 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
         else:
             cleanUpPath = os.path.join(cmd.storagePath, cmd.srcVmUuid)
             shell.run("pkill -9 -f '%s'" % cleanUpPath)
-
+        if cmd.needCleanDnat:
+            clean_dnat(cmd.dnatInfo)
         linux.rm_dir_force(cleanUpPath)
         return jsonobject.dumps(rsp)
 
