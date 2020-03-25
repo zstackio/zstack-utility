@@ -1948,7 +1948,7 @@ enabled=0" >  /etc/yum.repos.d/zstack-experimental-mn.repo
             copy_arg.dest = "/etc/apt/apt.conf"
             copy(copy_arg, host_post_info)
 
-            command = '/bin/cp -f /etc/apt/sources.list /etc/apt/sources.list.zstack.%s' % datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            command = '[ -f /etc/apt/sources.list ] &&  /bin/mv -f /etc/apt/sources.list /etc/apt/sources.list.zstack.%s || true' % datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             host_post_info.post_label = "ansible.shell.backup.file"
             host_post_info.post_label_param = "/etc/apt/srouces.list"
             run_remote_command(command, host_post_info)
