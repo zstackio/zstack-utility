@@ -412,14 +412,20 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
         if run_convert_if_need() != 0:
             v2v_log_file = "/tmp/v2v_log/%s-virt-v2v-log" % cmd.longJobUuid
 
-            rsp.success = False
-            rsp.error = "failed to run virt-v2v command, log in conversion host: %s" % v2v_log_file
-
             # create folder to save virt-v2v log
             tail_cmd = 'mkdir -p /tmp/v2v_log; tail -c 1M %s/virt_v2v_log > %s' % (storage_dir, v2v_log_file)
             shell.run(tail_cmd)
             with open(v2v_log_file, 'a') as fd:
                 fd.write('\n>>> virt_v2v command: %s\n' % virt_v2v_cmd)
+
+            rsp.success = False
+            # Check if the v2v convert fails due to vCenter 5.5 bug: https://bugzilla.redhat.com/show_bug.cgi?id=1287681#c14
+            ret = shell.call("grep -io 'File name .* refers to non-existing datastore .*' %s | tail -n 1" % v2v_log_file)
+            if ret:
+                rsp.error = ret.strip("\n") + ". This may be a bug in vCenter 5.5, please detach ISO in vSphere client and try again"
+            else:
+                rsp.error = "failed to run virt-v2v command, log in conversion host: %s" % v2v_log_file
+
             return jsonobject.dumps(rsp)
 
         root_vol = (r"%s/%s-sda" % (storage_dir, cmd.srcVmName)).encode('utf-8')
