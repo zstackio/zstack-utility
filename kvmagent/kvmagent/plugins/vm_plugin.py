@@ -4693,7 +4693,7 @@ class VmPlugin(kvmagent.KvmAgent):
         migurl = 'tcp://{0}'.format(dstHostIp)
         diskstr = ','.join(disks)
 
-        flags = "--live --p2p --persistent --copy-storage-all"
+        flags = "--live --p2p --copy-storage-all"
         if LIBVIRT_MAJOR_VERSION >= 4:
             if any(s.startswith('/dev/') for s in vm.list_blk_sources()):
                 flags += " --unsafe"
