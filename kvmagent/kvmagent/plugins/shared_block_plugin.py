@@ -393,7 +393,9 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             lvm.config_lvm_by_sed("issue_discards", "issue_discards=1", ["lvm.conf", "lvmlocal.conf"])
             lvm.config_lvm_by_sed("reserved_stack", "reserved_stack=256", ["lvm.conf", "lvmlocal.conf"])
             lvm.config_lvm_by_sed("reserved_memory", "reserved_memory=131072", ["lvm.conf", "lvmlocal.conf"])
-
+            if kvmagent.get_host_os_type() == "debian":
+                lvm.config_lvm_by_sed("udev_rules", "udev_rules=0", ["lvm.conf", "lvmlocal.conf"])
+                lvm.config_lvm_by_sed("udev_sync", "udev_sync=0", ["lvm.conf", "lvmlocal.conf"])
             lvm.config_lvm_filter(["lvm.conf", "lvmlocal.conf"], preserve_disks=allDiskPaths)
 
             lvm.config_sanlock_by_sed("sh_retries", "sh_retries=20")
