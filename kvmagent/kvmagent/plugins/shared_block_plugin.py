@@ -142,6 +142,11 @@ class ConvertVolumeProvisioningRsp(AgentRsp):
         super(ConvertVolumeProvisioningRsp, self).__init__()
         self.actualSize = 0
 
+class GetDownloadBitsFromKvmHostProgressRsp(AgentRsp):
+    def __init__(self):
+        super(GetDownloadBitsFromKvmHostProgressRsp, self).__init__()
+        self.totalSize = None
+
 
 def translate_absolute_path_from_install_path(path):
     if path is None:
@@ -271,6 +276,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     GET_BLOCK_DEVICES_PATH = "/sharedblock/blockdevices"
     DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/sharedblock/kvmhost/download"
     CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/sharedblock/kvmhost/download/cancel"
+    GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH = "/sharedblock/kvmhost/download/progress"
     GET_BACKING_CHAIN_PATH = "/sharedblock/volume/backingchain"
     CONVERT_VOLUME_PROVISIONING_PATH = "/sharedblock/volume/convertprovisioning"
     CONFIG_FILTER_PATH = "/sharedblock/disks/filter"
@@ -305,6 +311,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.GET_BACKING_CHAIN_PATH, self.get_backing_chain)
         http_server.register_async_uri(self.CONVERT_VOLUME_PROVISIONING_PATH, self.convert_volume_provisioning)
         http_server.register_async_uri(self.CONFIG_FILTER_PATH, self.config_filter)
+        http_server.register_async_uri(self.GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH, self.get_download_bits_from_kvmhost_progress)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -1157,4 +1164,11 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         lvm.config_lvm_filter(["lvm.conf", "lvmlocal.conf"], preserve_disks=allDiskPaths)
 
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def get_download_bits_from_kvmhost_progress(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetDownloadBitsFromKvmHostProgressRsp()
+        rsp.totalSize = linux.get_total_file_size(cmd.volumePaths)
         return jsonobject.dumps(rsp)

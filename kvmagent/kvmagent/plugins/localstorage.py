@@ -117,6 +117,11 @@ class CheckInitializedFileRsp(AgentResponse):
         super(CheckInitializedFileRsp, self).__init__()
         self.existed = True
 
+class GetDownloadBitsFromKvmHostProgressRsp(AgentResponse):
+    def __init__(self):
+        super(GetDownloadBitsFromKvmHostProgressRsp, self).__init__()
+        self.totalSize = None
+
 
 class LocalStoragePlugin(kvmagent.KvmAgent):
     INIT_PATH = "/localstorage/init"
@@ -153,7 +158,8 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     CHECK_INITIALIZED_FILE = "/localstorage/check/initializedfile"
     CREATE_INITIALIZED_FILE = "/localstorage/create/initializedfile"
     DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/localstorage/kvmhost/download"
-    CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/localstorage/kvmhost/download/cancel";
+    CANCEL_DOWNLOAD_BITS_PROGRESS_FROM_KVM_HOST_PATH = "/localstorage/kvmhost/download/cancel"
+    GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH = "/localstorage/kvmhost/download/progress"
 
     LOCAL_NOT_ROOT_USER_MIGRATE_TMP_PATH = "primary_storage_tmp_dir"
 
@@ -194,6 +200,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CREATE_INITIALIZED_FILE, self.create_initialized_file)
         http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.download_from_kvmhost)
         http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
+        http_server.register_async_uri(self.GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH, self.get_download_bits_from_kvmhost_progress)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -203,6 +210,13 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def cancel_download_from_kvmhost(self, req):
         return self.cancel_download_from_sftp(req)
+
+    @kvmagent.replyerror
+    def get_download_bits_from_kvmhost_progress(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetDownloadBitsFromKvmHostProgressRsp()
+        rsp.totalSize = linux.get_total_file_size(cmd.volumePaths)
+        return jsonobject.dumps(rsp)
 
     def cancel_download_from_sftp(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
