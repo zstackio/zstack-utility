@@ -149,6 +149,7 @@ stop_zstack_tui
 
 #define extra upgrade params
 #USE THIS PATTERN: upgrade_params_array[INDEX]='VERSION,PARAM'
+#this params_array is appeared only once and not persisted
 declare -a upgrade_params_array=(
     '1.3,-DsyncImageActualSize=true'
     '1.4,-DtapResourcesForBilling=true'
@@ -164,6 +165,10 @@ declare -a upgrade_params_array=(
     '3.7.0,-DinitRunningVmPriority=true'
     '3.7.2,-DgeneratePriceEndDate=true'
     '3.8.0,-DinitRunningApplianceVmPriority=true'
+)
+#other than the upon params_array, this one could be persisted in zstack.properties
+declare -a upgrade_persist_params_array=(
+    '3.9.0,InfluxDB.enable.message.retention=false'
 )
 
 # version compare
@@ -1229,6 +1234,21 @@ upgrade_zstack(){
     done
     echo "upgrade_params: $upgrade_params" >>$ZSTACK_INSTALL_LOG
     [ ! -z "$upgrade_params" ] && zstack-ctl setenv ZSTACK_UPGRADE_PARAMS=$upgrade_params
+
+    upgrade_persist_params=''
+    for item in ${upgrade_persist_params_array[*]}; do
+        version=`echo $item | cut -d ',' -f 1`
+        param=`echo $item | cut -d ',' -f 2`
+
+        # pre < version
+        vercomp ${CURRENT_VERSION} ${version}; cmp1=$?
+        if [ ${cmp1} -eq 2 ]; then
+            upgrade_persist_params="${param}"
+        fi
+        echo "upgrade_persist_params: $upgrade_persist_params" >>$ZSTACK_INSTALL_LOG
+    [ ! -z "$upgrade_persist_params" ] && zstack-ctl configure $upgrade_persist_params
+    done
+
 
     # set ticket.sns.topic.http.url if not exists
     zstack-ctl show_configuration | grep 'ticket.sns.topic.http.url' >/dev/null 2>&1
