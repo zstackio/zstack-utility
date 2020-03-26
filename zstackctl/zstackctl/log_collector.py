@@ -180,6 +180,7 @@ class CollectFromYml(object):
                 file_value = log.get('file')
                 exec_value = log.get('exec')
                 mode_value = log.get('mode')
+                exec_type_value = log.get('exec_type')
                 if name_value is None:
                     decode_error = 'log name can not be None in %s' % log
                     break
@@ -198,6 +199,8 @@ class CollectFromYml(object):
                         break
                     if name_value == 'mysql-database' and exec_value == 'AutoCollect':
                         log['exec'] = self.get_dump_sql()
+                    if exec_type_value is None:
+                        log['exec_type'] = 'RunAndRedirect'
                 else:
                     if str(dir_value).startswith('$ZSTACK_HOME'):
                         dir_value = str(dir_value).replace('$ZSTACK_HOME', self.DEFAULT_ZSTACK_HOME)
@@ -503,7 +506,13 @@ class CollectFromYml(object):
                     if 'exec' in log:
                         command = log['exec']
                         file_path = dest_log_dir + '%s' % (log['name'])
-                        (status, output) = commands.getstatusoutput('(%s) > %s' % (command, file_path))
+                        exec_type = log['exec_type']
+                        exec_cmd = None
+                        if exec_type == 'RunAndRedirect':
+                            exec_cmd = '(%s) > %s' % (command, file_path)
+                        if exec_type == 'CdAndRun':
+                            exec_cmd = 'cd %s && %s' % (dest_log_dir, command)
+                        (status, output) = commands.getstatusoutput(exec_cmd)
                         if status == 0:
                             self.add_success_count()
                             logger.info(
@@ -642,7 +651,13 @@ class CollectFromYml(object):
                         if 'exec' in log:
                             command = log['exec']
                             file_path = dest_log_dir + '%s' % (log['name'])
-                            (status, output) = run_remote_command('(%s) > %s' % (command, file_path),
+                            exec_type = log['exec_type']
+                            exec_cmd = None
+                            if exec_type == 'RunAndRedirect':
+                                exec_cmd = '(%s) > %s' % (command, file_path)
+                            if exec_type == 'CdAndRun':
+                                exec_cmd = 'cd %s && %s' % (dest_log_dir, command)
+                            (status, output) = run_remote_command(exec_cmd,
                                                                   host_post_info, return_status=True,
                                                                   return_output=True)
                             if status is True:
