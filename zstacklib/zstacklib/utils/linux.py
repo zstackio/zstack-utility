@@ -1849,8 +1849,11 @@ def touch_file(fpath):
 def read_file(path):
     if not os.path.exists(path):
         return None
-    with open(path, 'r') as fd:
-        return fd.read()
+    try:
+        with open(path, 'r') as fd:
+            return fd.read()
+    except IOError as e:
+        return str(e)
 
 def write_file(path, content, create_if_not_exist = False):
     if not os.path.exists(path) and not create_if_not_exist:
