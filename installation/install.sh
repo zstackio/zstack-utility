@@ -2986,7 +2986,7 @@ check_sync_local_repos() {
   fi
   if [ $? -eq 0 ]; then
       return 0
-  elif [ x"$SKIP_SYNC" = x'y' -o $OS == $KYLIN402 -o $OS = $DEBIAN9 ]; then
+  elif [ x"$SKIP_SYNC" = x'y' -o x"$OS" = x"$KYLIN402" -o x"$OS" = x"$DEBIAN9" ]; then
       echo " ... $(tput setaf 1)NOT MATCH$(tput sgr0)" | tee -a $ZSTAC_INSTALL_LOG
       echo_hints_to_upgrade_iso
   else
