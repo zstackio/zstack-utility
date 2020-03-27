@@ -111,6 +111,9 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
         if not os.path.exists(path):
             os.makedirs(path, 0775)
 
+        if not os.path.exists(cmd.storagePath):
+            os.makedirs(cmd.storagePath, 0775)
+
         def get_dep_version_from_version_file(version_file):
             if not os.path.exists(version_file):
                 return None

@@ -158,7 +158,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     CHECK_INITIALIZED_FILE = "/localstorage/check/initializedfile"
     CREATE_INITIALIZED_FILE = "/localstorage/create/initializedfile"
     DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/localstorage/kvmhost/download"
-    CANCEL_DOWNLOAD_BITS_PROGRESS_FROM_KVM_HOST_PATH = "/localstorage/kvmhost/download/cancel"
+    CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/localstorage/kvmhost/download/cancel"
     GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH = "/localstorage/kvmhost/download/progress"
 
     LOCAL_NOT_ROOT_USER_MIGRATE_TMP_PATH = "primary_storage_tmp_dir"
