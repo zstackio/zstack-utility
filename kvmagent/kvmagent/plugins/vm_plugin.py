@@ -1427,6 +1427,17 @@ def make_spool_conf(imgfmt, dev_letter, volume):
 def is_spice_tls():
     return bash.bash_r("grep '^[[:space:]]*spice_tls[[:space:]]*=[[:space:]]*1' /etc/libvirt/qemu.conf")
 
+
+def get_dom_error(uuid):
+    try:
+        domblkerror = shell.call('virsh domblkerror %s' % uuid)
+    except:
+        return None
+
+    if 'No errors found' in domblkerror:
+        return None
+    return domblkerror.replace('\n', '')
+
 class Vm(object):
     VIR_DOMAIN_NOSTATE = 0
     VIR_DOMAIN_RUNNING = 1
@@ -1780,7 +1791,11 @@ class Vm(object):
                     raise
 
         if not linux.wait_callback_success(loop_resume, None, timeout=60):
-            raise kvmagent.KvmError('failed to resume vm ,timeout after 60 secs')
+            domblkerror = get_dom_error(self.uuid)
+            if domblkerror is None:
+                raise kvmagent.KvmError('failed to resume vm ,timeout after 60 secs')
+            else:
+                raise kvmagent.KvmError('failed to resume vm , because  %s' % domblkerror)
 
     def harden_console(self, mgmt_ip):
         if is_namespace_used():
