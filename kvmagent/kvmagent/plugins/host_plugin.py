@@ -215,6 +215,7 @@ class HostNetworkInterfaceInventory(object):
         self.ipAddresses = None
         self.interfaceType = None
         self.master = None
+        self.pciDeviceAddress = None
         self._init_from_name()
 
     @classmethod
@@ -260,6 +261,8 @@ class HostNetworkInterfaceInventory(object):
             self.slaveActive = self.interfaceName in linux.read_file("/sys/class/net/%s/bonding/active_slave" % self.master)
         else:
             self.interfaceType = "bridgeSlave"
+
+        self.pciDeviceAddress = os.readlink("/sys/class/net/%s/device" % self.interfaceName).strip().split('/')[-1]
 
     def _to_dict(self):
         to_dict = self.__dict__
@@ -387,6 +390,10 @@ class GetDevCapacityRsp(kvmagent.AgentResponse):
         self.availableSize = None
         self.dirSize = None
 
+class AddBridgeFdbEntryRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(AddBridgeFdbEntryRsp, self).__init__()
+
 class PciDeviceTO(object):
     def __init__(self):
         self.name = ""
@@ -415,6 +422,24 @@ class UpdateConfigration(object):
         return bash_roe("%s %s" % (shellCmd, self.path))
 
     def updateHostIommu(self):
+        # fix 'failed to set iommu for container: Operation not permitted'
+        def _create_iommu_conf():
+            _conf_lost = False
+            _conf_file = '/etc/modprobe.d/iommu_unsafe_interrupts.conf'
+            _conf_text = "options vfio_iommu_type1 allow_unsafe_interrupts=1"
+            if not os.path.exists(_conf_file):
+                _conf_lost = True
+            else:
+                with open(_conf_file, 'r') as f:
+                    if _conf_text not in f.read():
+                        _conf_lost = True
+
+            if _conf_lost:
+                with open(_conf_file, 'a') as f:
+                    f.write(_conf_text)
+
+        _create_iommu_conf()
+
         r_on, o_on, e_on = self.executeCmdOnFile("grep -E '{}(\ )*=(\ )*on'".format(self.iommu_type))
         r_off, o_off, e_off = self.executeCmdOnFile("grep -E '{}(\ )*=(\ )*off'".format(self.iommu_type))
         r_modprobe_blacklist, o_modprobe_blacklist, e_modprobe_blacklist = self.executeCmdOnFile("grep -E 'modprobe.blacklist(\ )*='")
@@ -516,6 +541,7 @@ class HostPlugin(kvmagent.KvmAgent):
     ENABLE_ZEROCOPY = "/host/enable/zerocopy"
     DISABLE_ZEROCOPY = "/host/disable/zerocopy"
     GET_DEV_CAPACITY = "/host/dev/capacity"
+    ADD_BRIDGE_FDB_ENTRY_PATH = "/bridgefdb/add"
 
     host_network_facts_cache = {}  # type: dict[float, list[list, list]]
     IS_YUM = False
@@ -1250,26 +1276,28 @@ done
         addr = to.pciDeviceAddress
         dev = os.path.join("/sys/bus/pci/devices/", addr)
         totalvfs = os.path.join(dev, "sriov_totalvfs")
+        numvfs = os.path.join(dev, "sriov_numvfs")
         physfn = os.path.join(dev, "physfn")
-        gpuvf  = os.path.join(dev, "gpuvf")
+        gpuvf = os.path.join(dev, "gpuvf")
 
         if os.path.exists(totalvfs):
             # for pf, to.maxPartNum means the number of possible vfs
             with open(totalvfs, 'r') as f:
-                to.maxPartNum = f.read()
-            if os.path.exists(gpuvf):
-                to.virtStatus = "SRIOV_VIRTUALIZED"
-            else:
-                to.virtStatus = "SRIOV_VIRTUALIZABLE"
+                to.maxPartNum = f.read().strip()
+
+            with open(numvfs, 'r') as f:
+                if f.read().strip() != '0':
+                    to.virtStatus = "SRIOV_VIRTUALIZED"
+                else:
+                    to.virtStatus = "SRIOV_VIRTUALIZABLE"
         elif os.path.exists(physfn):
             # for vf, to.maxPartNum means the number of current vfs
             numvfs = os.path.join(physfn, "sriov_numvfs")
             if os.path.exists(numvfs):
                 with open(numvfs, 'r') as f:
-                    to.maxPartNum = f.read()
+                    to.maxPartNum = f.read().strip()
             to.virtStatus = "SRIOV_VIRTUAL"
-            # ../0000:06:00.0 --> 06:00.0
-            to.parentAddress = os.readlink(physfn).split('0000:')[-1]
+            to.parentAddress = os.readlink(physfn).split('/')[-1]
             if os.path.exists(gpuvf):
                 with open(gpuvf, 'r') as f:
                     for line in f.readlines():
@@ -1319,7 +1347,6 @@ done
         else:
             return name.replace('Co., Ltd ', '')
 
-    @in_bash
     def _collect_format_pci_device_info(self, rsp):
         r, o, e = bash_roe("lspci -Dmmnnv")
         if r != 0:
@@ -1342,56 +1369,61 @@ done
                     to.pciDeviceAddress = content
                     group_path = os.path.join('/sys/bus/pci/devices/', to.pciDeviceAddress, 'iommu_group')
                     to.iommuGroup = os.path.realpath(group_path)
-                    r, o, e = bash_roe("lspci -s %s" % content)
-                    if r == 0:
-                        descs = ' '.join(o.split(' ')[1:]).strip().split(':')
-                        to.description = ':'.join(descs[1:]) + ', ' + descs[0]
                 elif title == 'Class':
-                    _class = content.strip('[')
-                    gpu_vendors = ["NVIDIA", "AMD"]
-                    if any(vendor in to.description for vendor in gpu_vendors) \
-                            and 'VGA compatible controller' in _class:
-                        to.type = "GPU_Video_Controller"
-                    elif any(vendor in to.description for vendor in gpu_vendors) \
-                            and 'Audio device' in _class:
-                        to.type = "GPU_Audio_Controller"
-                    elif any(vendor in to.description for vendor in gpu_vendors) \
-                            and 'USB controller' in _class:
-                        to.type = "GPU_USB_Controller"
-                    elif any(vendor in to.description for vendor in gpu_vendors) \
-                            and 'Serial bus controller' in _class:
-                        to.type = "GPU_Serial_Controller"
-                    elif any(vendor in to.description for vendor in gpu_vendors) \
-                            and '3D controller' in _class:
-                        to.type = "GPU_3D_Controller"
-                    elif 'Ethernet controller' in _class:
-                        to.type = "Ethernet_Controller"
-                    elif 'Audio device' in _class:
-                        to.type = "Audio_Controller"
-                    elif 'USB controller' in _class:
-                        to.type = "USB_Controller"
-                    elif 'Serial controller' in _class:
-                        to.type = "Serial_Controller"
-                    elif 'Moxa Technologies' in _class:
-                        to.type = "Moxa_Device"
-                    elif 'Host bridge' in _class:
-                        to.type = "Host_Bridge"
-                    elif 'PCI bridge' in _class:
-                        to.type = "PCI_Bridge"
-                    else:
-                        to.type = "Generic"
+                    _class = content.split('[')[0]
+                    to.type = _class
+                    to.description = _class + ": "
                 elif title == 'Vendor':
                     vendor_name = self._simplify_pci_device_name('['.join(content.split('[')[:-1]).strip())
                     to.vendorId = content.split('[')[-1].strip(']')
+                    to.description += content.split('[')[0]
                 elif title == "Device":
                     device_name = self._simplify_pci_device_name('['.join(content.split('[')[:-1]).strip())
                     to.deviceId = content.split('[')[-1].strip(']')
+                    to.description += content.split('[')[0]
                 elif title == "SVendor":
                     subvendor_name = self._simplify_pci_device_name('['.join(content.split('[')[:-1]).strip())
                     to.subvendorId = content.split('[')[-1].strip(']')
                 elif title == "SDevice":
                     to.subdeviceId = content.split('[')[-1].strip(']')
             to.name = "%s_%s" % (subvendor_name if subvendor_name else vendor_name, device_name)
+
+            def _set_pci_to_type():
+                gpu_vendors = ["NVIDIA", "AMD"]
+                if any(vendor in to.description for vendor in gpu_vendors) \
+                        and 'VGA compatible controller' in to.type:
+                    to.type = "GPU_Video_Controller"
+                elif any(vendor in to.description for vendor in gpu_vendors) \
+                        and 'Audio device' in to.type:
+                    to.type = "GPU_Audio_Controller"
+                elif any(vendor in to.description for vendor in gpu_vendors) \
+                        and 'USB controller' in to.type:
+                    to.type = "GPU_USB_Controller"
+                elif any(vendor in to.description for vendor in gpu_vendors) \
+                        and 'Serial bus controller' in to.type:
+                    to.type = "GPU_Serial_Controller"
+                elif any(vendor in to.description for vendor in gpu_vendors) \
+                        and '3D controller' in to.type:
+                    to.type = "GPU_3D_Controller"
+                elif 'Ethernet controller' in to.type:
+                    to.type = "Ethernet_Controller"
+                elif 'Audio device' in to.type:
+                    to.type = "Audio_Controller"
+                elif 'USB controller' in to.type:
+                    to.type = "USB_Controller"
+                elif 'Serial controller' in to.type:
+                    to.type = "Serial_Controller"
+                elif 'Moxa Technologies' in to.type:
+                    to.type = "Moxa_Device"
+                elif 'Host bridge' in to.type:
+                    to.type = "Host_Bridge"
+                elif 'PCI bridge' in to.type:
+                    to.type = "PCI_Bridge"
+                else:
+                    to.type = "Generic"
+
+            _set_pci_to_type()
+
             # if support both mdev and sriov, then set the pci device to VFIO_MDEV_VIRTUALIZABLE
             if not self._get_vfio_mdev_info(to) and not self._get_sriov_info(to):
                 to.virtStatus = "UNVIRTUALIZABLE"
@@ -1400,7 +1432,6 @@ done
 
     # moved from vm_plugin to host_plugin
     @kvmagent.replyerror
-    @in_bash
     def get_pci_info(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetPciDevicesResponse()
@@ -1455,97 +1486,169 @@ done
             logger.debug("successfully write rom content into %s" % rom_file)
         return jsonobject.dumps(rsp)
 
-    @kvmagent.replyerror
     @in_bash
+    def _generate_sriov_gpu_devices(self, cmd, rsp):
+        # make install mxgpu driver if need to
+        mxgpu_driver_tar = "/var/lib/zstack/mxgpu_driver.tar.gz"
+        if os.path.exists(mxgpu_driver_tar):
+            r, o, e = bash_roe("tar xvf %s -C /tmp; cd /tmp/mxgpu_driver; make install" % mxgpu_driver_tar)
+            if r != 0:
+                rsp.success = False
+                rsp.error = "failed to install mxgpu driver, %s, %s" % (o, e)
+                return
+            # rm mxgpu driver tar
+            os.remove(mxgpu_driver_tar)
+
+        # check installed ko
+        r, _, _ = bash_roe("lsmod | grep gim")
+        if r == 0:
+            rsp.success = False
+            rsp.error = "gim.ko already installed, need to run `modprobe -r gim` first"
+            return
+
+        # prepare gim_config
+        gim_config = "/etc/gim_config"
+        with open(gim_config, 'w') as f:
+            f.write("vf_num=%s" % cmd.virtPartNum)
+
+        # install gim.ko
+        r, o, e = bash_roe("modprobe gim")
+        if r != 0:
+            rsp.success = False
+            rsp.error = "failed to install gim.ko, %s, %s" % (o, e)
+            return
+
+
+    @in_bash
+    def _generate_sriov_net_devices(self, cmd, rsp):
+        numvfs = os.path.join('/sys/bus/pci/devices/', cmd.pciDeviceAddress, 'sriov_numvfs')
+        if not os.path.exists(numvfs):
+            rsp.success = False
+            rsp.error = 'cannot find sriov_numvfs file for pci device[addr:%s, type:%s]' % (cmd.pciDeviceAddress, cmd.pciDeviceType)
+            return
+
+        r, o, e = bash_roe("echo %s > %s" % (cmd.virtPartNum, numvfs))
+        if r != 0:
+            rsp.success = False
+            rsp.error = 'failed to generate virtual functions on pci device[addr:%s, type:%s]' % (cmd.pciDeviceAddress, cmd.pciDeviceType)
+            return
+
+        # set pf learning off
+        nic_name_path = os.path.join(numvfs, '../net/')
+        if os.path.exists(nic_name_path):
+            nic_names = os.listdir(nic_name_path)
+            if nic_names:
+                nic_name = nic_names[0]
+                bash_roe("bridge link set dev %s learning off" % nic_name)
+
+
+    @kvmagent.replyerror
     def generate_sriov_pci_devices(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GenerateSriovPciDevicesRsp()
-        logger.debug("generate_sriov_pci_devices: pciAddr[%s], reSplite[%s]" % (cmd.pciDeviceAddress, cmd.reSplite))
+        logger.debug("generate_sriov_pci_devices: pciType[%s], pciAddr[%s], reSplite[%s]" % (cmd.pciDeviceType, cmd.pciDeviceAddress, cmd.reSplite))
 
-        GIM = "gim"         # gpu-iov kernel module, for AMD MxGPU only
-
-        # get device type using device address, get device driver using device type
+        # ramdisk file in /dev/shm to mark host rebooting
         addr = cmd.pciDeviceAddress
-        dev = os.path.join("/sys/bus/pci/devices/", addr)
-        totalvfs = os.path.join(dev, "sriov_totalvfs")
-        if os.path.exists(totalvfs):
-            ko_name = GIM
+
+        no_domain_addr = addr if len(addr.split(':')) != 3 else ':'.join(addr.split(':')[1:])
+        ramdisk = os.path.join('/dev/shm', 'pci-' + no_domain_addr)
+        if cmd.reSplite and os.path.exists(ramdisk):
+            logger.debug("no need to re-splite pci device[addr:%s] into sriov pci devices" % addr)
+            return jsonobject.dumps(rsp)
+
+        if cmd.pciDeviceType == 'GPU_Video_Controller' or cmd.pciDeviceType == 'GPU_3D_Controller':
+            self._generate_sriov_gpu_devices(cmd, rsp)
+        elif cmd.pciDeviceType == 'Ethernet_Controller':
+            self._generate_sriov_net_devices(cmd, rsp)
         else:
             rsp.success = False
             rsp.error = "do not support sriov of pci device [addr:%s]" % addr
-            return jsonobject.dumps(rsp)
 
-        if ko_name == GIM:
-            # ramdisk file in /dev/shm to mark host rebooting
-            ramdisk = "/dev/shm/pci_sriov_gim"
-            if cmd.reSplite and os.path.exists(ramdisk):
-                logger.debug("no need to re-splite pci device[addr:%s] into sriov pci devices" % addr)
-                return jsonobject.dumps(rsp)
+        if rsp.success:
+            # create ramdisk file after pci device virtualization
+            open(ramdisk, 'a').close()
 
-            # make install mxgpu driver if need to
-            mxgpu_driver_tar = "/var/lib/zstack/mxgpu_driver.tar.gz"
-            if os.path.exists(mxgpu_driver_tar):
-                r, o, e = bash_roe("tar xvf %s -C /tmp; cd /tmp/mxgpu_driver; make install" % mxgpu_driver_tar)
-                if r != 0:
-                    rsp.success = False
-                    rsp.error = "failed to install mxgpu driver, %s, %s" % (o, e)
-                    return jsonobject.dumps(rsp)
-                # rm mxgpu driver tar
-                os.remove(mxgpu_driver_tar)
-
-            # check installed ko
-            r, _, _ = bash_roe("lsmod | grep gim")
-            if r == 0:
-                rsp.success = False
-                rsp.error = "gim.ko already installed, need to run `modprobe -r gim` first"
-                return jsonobject.dumps(rsp)
-
-            # prepare gim_config
-            gim_config = "/etc/gim_config"
-            with open(gim_config, 'w') as f:
-                f.write("vf_num=%s" % cmd.virtPartNum)
-
-            # install gim.ko
-            r, o, e = bash_roe("modprobe gim")
-            if r != 0:
-                rsp.success = False
-                rsp.error = "failed to install gim.ko, %s, %s" % (o, e)
-                return jsonobject.dumps(rsp)
-
-        # create ramdisk file after pci device virtualization
-        open(ramdisk, 'a').close()
         return jsonobject.dumps(rsp)
 
-    @kvmagent.replyerror
+
     @in_bash
+    def _ungenerate_sriov_gpu_devices(self, cmd, rsp):
+        # remote gim.ko
+        r, o, e = bash_roe("modprobe -r gim")
+        if r != 0:
+            rsp.success = False
+            rsp.error = "failed to remove gim.ko, %s, %s" % (o, e)
+            return
+
+
+    @in_bash
+    def _ungenerate_sriov_net_devices(self, cmd, rsp):
+        numvfs = os.path.join('/sys/bus/pci/devices/', cmd.pciDeviceAddress, 'sriov_numvfs')
+        if not os.path.exists(numvfs):
+            rsp.success = False
+            rsp.error = 'cannot find sriov_numvfs file for pci device[addr:%s, type:%s]' % (cmd.pciDeviceAddress, cmd.pciDeviceType)
+            return
+
+        def _check_allocated_virtual_functions():
+            _addr = cmd.pciDeviceAddress
+
+            if len(_addr.split(':')) != 3:
+                _addr = '0000:' + _addr
+
+            pf = "pci_%s_%s_%s_%s" % tuple(re.split(':|\.', _addr))
+            r, vf_lines, e = bash_roe("virsh nodedev-dumpxml %s | grep 'address domain'" % pf)
+            if r != 0:
+                return "failed to run `virsh nodedev-dumpxml %s`: %s" % (pf, e)
+
+            pattern = re.compile(r'.*0x([0-9a-f]*).*0x([0-9a-f]*).*0x([0-9a-f]*).*0x([0-9a-f]*).*')
+            for vf_line in vf_lines.split('\n'):
+                vf_line = vf_line.strip()
+                match = pattern.match(vf_line)
+                if match:
+                    vf = "pci_%s_%s_%s_%s" % tuple(match.groups())
+                    r, o, e = bash_roe("virsh nodedev-dumpxml %s | grep vfio-pci" % vf)
+                    if r == 0:
+                        return "virtual function %s of pf %s still allocated to some vm" % (vf, pf)
+
+        _error = _check_allocated_virtual_functions()
+        if _error:
+            rsp.success = False
+            rsp.error = _error
+            return
+
+        r, o, e = bash_roe("lspci >/dev/null && echo 0 > %s" % numvfs)
+        if r != 0:
+            rsp.success = False
+            rsp.error = 'failed to ungenerate virtual functions on pci device[addr:%s, type:%s]' % (cmd.pciDeviceAddress, cmd.pciDeviceType)
+            return
+
+
+    @kvmagent.replyerror
     def ungenerate_sriov_pci_devices(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = UngenerateSriovPciDevicesRsp()
 
-        GIM = "gim"         # gpu-iov kernel module, for AMD MxGPU only
-
-        # get device type using device address, get device driver using device type
         addr = cmd.pciDeviceAddress
-        dev = os.path.join("/sys/bus/pci/devices/", addr)
-        totalvfs = os.path.join(dev, "sriov_totalvfs")
-        if os.path.exists(totalvfs):
-            ko_name = GIM
+
+        if cmd.pciDeviceType == 'GPU_Video_Controller' or cmd.pciDeviceType == 'GPU_3D_Controller':
+            self._ungenerate_sriov_gpu_devices(cmd, rsp)
+        elif cmd.pciDeviceType == 'Ethernet_Controller':
+            self._ungenerate_sriov_net_devices(cmd, rsp)
         else:
             rsp.success = False
             rsp.error = "do not support sriov of pci device [addr:%s]" % addr
-            return jsonobject.dumps(rsp)
 
-        if ko_name == GIM:
-            # remote gim.ko
-            r, o, e = bash_roe("modprobe -r gim")
-            if r != 0:
-                rsp.success = False
-                rsp.error = "failed to remove gim.ko, %s, %s" % (o, e)
-                return jsonobject.dumps(rsp)
+        if rsp.success:
+            # delete ramdisk file after pci device unvirtualized
+            no_domain_addr = addr if len(addr.split(':')) != 3 else ':'.join(addr.split(':')[1:])
+            ramdisk = os.path.join('/dev/shm', 'pci-' + no_domain_addr)
+            if os.path.exists(ramdisk):
+                os.remove(ramdisk)
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
-    @in_bash
     def generate_vfio_mdev_devices(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GenerateVfioMdevDevicesRsp()
@@ -1759,6 +1862,68 @@ done
 
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    @in_bash
+    def add_bridge_fdb_entry(self, req):
+        rsp = AddBridgeFdbEntryRsp()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        errors = []
+
+        def _add_bridge_fdb_entry_for_inner_devs():
+            r, netns_ids, e = bash_roe("ip netns list-id")
+            if r != 0:
+                errors.append('failed to get ip netns list')
+                return
+
+            for netns_id in netns_ids.strip().split('\n'):
+                NAMESPACE_ID = netns_id.split()[1].strip()
+                NAMESPACE_NAME = netns_id.split()[-1].strip(')')
+                INNER_DEV = 'inner' + NAMESPACE_ID
+                OUTER_DEV = 'outer' + NAMESPACE_ID
+
+                # get bridge name of outer dev
+                r, BR_NAME, e = bash_roe("ip link show {{OUTER_DEV}} | grep -w 'master' | awk -F 'master' '{ print $NF }' | awk '{ print $1 }'")
+                if r != 0:
+                    logger.error("cannot get bridge name of " + OUTER_DEV)
+                    return
+                BR_NAME = BR_NAME.strip(' \t\n\r')
+
+                # get pf name for inner dev
+                r, PHY_DEV, e = bash_roe("brctl show {{BR_NAME}} | grep -w {{BR_NAME}} | head -n 1 | awk '{ print $NF }' | { read name; echo ${name%%.*}; }")
+                if r != 0:
+                    logger.error("cannot get physical interface name from bridge " + BR_NAME)
+                    return
+                PHY_DEV = PHY_DEV.strip(' \t\n\r')
+
+                # get mac address of inner dev
+                r, INNER_MAC, e = bash_roe("ip netns exec {{NAMESPACE_NAME}} ip link show {{INNER_DEV}} | grep -w ether | awk '{print $2}'")
+                if r != 0:
+                    logger.error("cannot get mac address of " + INNER_DEV)
+                    return
+                INNER_MAC = INNER_MAC.strip(' \t\n\r')
+
+                # add bridge fdb entry for inner dev
+                if bash_r("bridge fdb | grep '{{INNER_MAC}} dev {{PHY_DEV}} self permanent'") != 0:
+                    bash_r('bridge fdb add {{INNER_MAC}} dev {{PHY_DEV}}')
+
+        if cmd.macs:
+            for mac in cmd.macs:
+                _cmd = "bridge fdb add %s dev %s" % (mac, cmd.physicalInterface)
+                r, o, e = bash_roe(_cmd)
+                if r != 0 and 'File exists' not in e:
+                    errors.append("failed to run %s because %s" % (_cmd, e))
+        else:
+            # empty cmd.macs means add bridge fdb entrys for all inner devs in the host
+            _add_bridge_fdb_entry_for_inner_devs()
+
+        if errors:
+            rsp.success = False
+            rsp.error = ';'.join(errors)
+
+        return jsonobject.dumps(rsp)
+
+
     def start(self):
         self.host_uuid = None
 
@@ -1797,6 +1962,7 @@ done
         http_server.register_async_uri(self.ENABLE_ZEROCOPY, self.enable_zerocopy)
         http_server.register_async_uri(self.DISABLE_ZEROCOPY, self.disable_zerocopy)
         http_server.register_async_uri(self.GET_DEV_CAPACITY, self.get_dev_capacity)
+        http_server.register_async_uri(self.ADD_BRIDGE_FDB_ENTRY_PATH, self.add_bridge_fdb_entry)
 
         self.heartbeat_timer = {}
         self.libvirt_version = self._get_libvirt_version()

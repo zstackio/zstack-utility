@@ -178,7 +178,7 @@ class DhcpEnv(object):
 
             ret = bash_r(EBTABLES_CMD + ' -L FORWARD | grep -- "-j {{CHAIN_NAME}}" > /dev/null')
             if ret != 0:
-                bash_errorout(EBTABLES_CMD + ' -I FORWARD -j {{CHAIN_NAME}}')
+                bash_errorout(EBTABLES_CMD + ' -A FORWARD -j {{CHAIN_NAME}}')
 
             ret = bash_r(
                 EBTABLES_CMD + ' -L {{CHAIN_NAME}} | grep -- "-p ARP -o {{BR_PHY_DEV}} --arp-ip-dst {{DHCP_IP}} -j DROP" > /dev/null')
@@ -346,10 +346,33 @@ class DhcpEnv(object):
             logger.debug("no dhcp ip[{{DHCP_IP}}] or netmask[{{DHCP_NETMASK}}] for {{INNER_DEV}} in {{NAMESPACE_NAME}}, skip ebtables/iptables config")
             return
 
+
+        # to apply userdata service to vf nics, we need to add bridge fdb to allow vf <-> innerX
+        def _add_bridge_fdb_entry_for_inner_dev():
+            # get pf name for inner dev
+            r, PHY_DEV, e = bash_roe("brctl show {{BR_NAME}} | grep -w {{BR_NAME}} | head -n 1 | awk '{ print $NF }' | { read name; echo ${name%%.*}; }")
+            if r != 0:
+                logger.error("cannot get physical interface name from bridge " + BR_NAME)
+                return
+            PHY_DEV = PHY_DEV.strip(' \t\n\r')
+
+            # get mac address of inner dev
+            r, INNER_MAC, e = bash_roe("ip netns exec {{NAMESPACE_NAME}} ip link show {{INNER_DEV}} | grep -w ether | awk '{print $2}'")
+            if r != 0:
+                logger.error("cannot get mac address of " + INNER_DEV)
+                return
+            INNER_MAC = INNER_MAC.strip(' \t\n\r')
+
+            # add bridge fdb entry for inner dev
+            if bash_r("bridge fdb | grep '{{INNER_MAC}} dev {{PHY_DEV}} self permanent'") != 0:
+                bash_r('bridge fdb add {{INNER_MAC}} dev {{PHY_DEV}}')
+
         if self.ipVersion == 6:
             _prepare_dhcp6_iptables()
         else:
             _prepare_dhcp4_iptables()
+            _add_bridge_fdb_entry_for_inner_dev()
+
 
 class Mevoco(kvmagent.KvmAgent):
     APPLY_DHCP_PATH = "/flatnetworkprovider/dhcp/apply"

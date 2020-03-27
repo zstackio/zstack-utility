@@ -35,6 +35,7 @@ from zstacklib.utils import uuidhelper
 from zstacklib.utils import xmlobject
 from zstacklib.utils import misc
 from zstacklib.utils import qemu_img
+from zstacklib.utils import ebtables
 from zstacklib.utils.report import *
 from zstacklib.utils.vm_plugin_queue_singleton import VmPluginQueueSingleton
 
@@ -2579,9 +2580,9 @@ class Vm(object):
 
         logger.debug('successfully migrated vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
 
-    def _interface_cmd_to_xml(self, cmd):
+    def _interface_cmd_to_xml(self, cmd, action=None):
         vhostSrcPath = cmd.addons['vhostSrcPath'] if cmd.addons else None
-        interface = Vm._build_interface_xml(cmd.nic, None, vhostSrcPath)
+        interface = Vm._build_interface_xml(cmd.nic, None, vhostSrcPath, action)
 
         def addon():
             if cmd.addons and cmd.addons['NicQos']:
@@ -2773,7 +2774,11 @@ class Vm(object):
             self.refresh()
             for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
                 if iface.mac.address_ == cmd.nic.mac:
-                    return shell.run('ip link | grep -w -q %s' % cmd.nic.nicInternalName) == 0
+                    # vf nic doesn't have internal name
+                    if cmd.nic.pciDeviceAddress is not None:
+                        return True
+                    else:
+                        return shell.run('ip link | grep -w -q %s' % cmd.nic.nicInternalName) == 0
 
             return False
 
@@ -2781,7 +2786,7 @@ class Vm(object):
             if check_device(None):
                 return
 
-            xml = self._interface_cmd_to_xml(cmd)
+            xml = self._interface_cmd_to_xml(cmd, action='Attach')
             logger.debug('attaching nic:\n%s' % xml)
             if self.state == self.VM_STATE_RUNNING or self.state == self.VM_STATE_PAUSED:
                 self.domain.attachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
@@ -2830,7 +2835,7 @@ class Vm(object):
             return
 
         try:
-            xml = self._interface_cmd_to_xml(cmd)
+            xml = self._interface_cmd_to_xml(cmd, action='Detach')
             logger.debug('detaching nic:\n%s' % xml)
             if self.state == self.VM_STATE_RUNNING or self.state == self.VM_STATE_PAUSED:
                 self.domain.detachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
@@ -3467,7 +3472,7 @@ class Vm(object):
             devices = elements['devices']
             vhostSrcPath = cmd.addons['vhostSrcPath'] if cmd.addons else None
             for nic in cmd.nics:
-                interface = Vm._build_interface_xml(nic, devices, vhostSrcPath)
+                interface = Vm._build_interface_xml(nic, devices, vhostSrcPath, action='Attach')
                 addon(interface)
 
         def make_meta():
@@ -3853,24 +3858,42 @@ class Vm(object):
         return vm
 
     @staticmethod
-    def _build_interface_xml(nic, devices=None, vhostSrcPath=None):
-        iftype = 'bridge' if vhostSrcPath is None else 'vhostuser'
+    def _build_interface_xml(nic, devices=None, vhostSrcPath=None, action=None):
+        if nic.pciDeviceAddress is not None:
+            iftype = 'hostdev'
+            device_attr = {'type': iftype, 'managed': 'yes'}
+        elif vhostSrcPath is not None:
+            iftype = 'vhostuser'
+            device_attr = {'type': iftype}
+        else:
+            iftype = 'bridge'
+            device_attr = {'type': iftype}
 
         if devices:
-            interface = e(devices, 'interface', None, {'type': iftype})
+            interface = e(devices, 'interface', None, device_attr)
         else:
-            interface = etree.Element('interface', attrib={'type': iftype})
+            interface = etree.Element('interface', attrib=device_attr)
 
         e(interface, 'mac', None, attrib={'address': nic.mac})
         e(interface, 'alias', None, {'name': 'net%s' % nic.nicInternalName.split('.')[1]})
         e(interface, 'mtu', None, attrib={'size': '%d' % nic.mtu})
 
-        if iftype == 'bridge':
+        if iftype == 'hostdev':
+            domain, bus, slot, function = parse_pci_device_address(nic.pciDeviceAddress)
+            source = e(interface, 'source')
+            e(source, 'address', None, attrib={'type': 'pci', 'domain': '0x' + domain, 'bus': '0x' + bus, 'slot': '0x' + slot, 'function': '0x' + function})
+            e(interface, 'driver', None, attrib={'name': 'vfio'})
+            if nic.vlanId is not None:
+                vlan = e(interface, 'vlan')
+                e(vlan, 'tag', None, attrib={'id': nic.vlanId})
+        elif iftype == 'vhostuser':
+            e(interface, 'source', None, attrib={'type': 'unix', 'path': vhostSrcPath, 'mode': 'client'})
+            e(interface, 'driver', None, attrib={'queues': '16', 'vhostforce': 'on'})
+            e(interface, 'alias', None, {'name': 'net%s' % nic.nicInternalName.split('.')[1]})
+        else:
             e(interface, 'source', None, attrib={'bridge': nic.bridgeName})
             e(interface, 'target', None, attrib={'dev': nic.nicInternalName})
-        elif iftype == 'vhostuser':
-            e(interface, 'source', None, attrib={'type': 'unix', 'path': vhostSrcPath, 'mode':'client'})
-            e(interface, 'driver', None, attrib={'queues': '16', 'vhostforce':'on'})
+            e(interface, 'alias', None, {'name': 'net%s' % nic.nicInternalName.split('.')[1]})
 
         if nic.ips and iftype == 'bridge':
             ip4Addr = None
@@ -3897,17 +3920,57 @@ class Vm(object):
                     e(filterref, 'parameter', None, {'name': 'GLOBAL_IP', 'value': addr6})
                 e(filterref, 'parameter', None, {'name': 'LINK_LOCAL_IP', 'value': ip.get_link_local_address(nic.mac)})
 
-        if nic.driverType:
+        if iftype == 'hostdev':
+            pass
+        elif nic.driverType:
             e(interface, 'model', None, attrib={'type': nic.driverType})
+        elif nic.useVirtio:
+            e(interface, 'model', None, attrib={'type': 'virtio'})
         else:
-            if nic.useVirtio:
-                e(interface, 'model', None, attrib={'type': 'virtio'})
-            else:
-                e(interface, 'model', None, attrib={'type': 'e1000'})
+            e(interface, 'model', None, attrib={'type': 'e1000'})
+
         if nic.driverType == 'virtio' and nic.vHostAddOn.queueNum != 1:
             e(interface, 'driver ', None, attrib={'name': 'vhost', 'txmode': 'iothread', 'ioeventfd': 'on', 'event_idx': 'off', 'queues': str(nic.vHostAddOn.queueNum), 'rx_queue_size': str(nic.vHostAddOn.rxBufferSize) if nic.vHostAddOn.rxBufferSize is not None else '256', 'tx_queue_size': str(nic.vHostAddOn.txBufferSize) if nic.vHostAddOn.txBufferSize is not None else '256'})
+
         if nic.bootOrder is not None and nic.bootOrder > 0:
             e(interface, 'boot', None, attrib={'order': str(nic.bootOrder)})
+
+        @in_bash
+        @lock.file_lock('/run/xtables.lock')
+        def _config_ebtable_rules_for_vfnics():
+            VF_NIC_MAC = nic.mac
+            CHAIN_NAME = 'ZSTACK-VF-NICS'
+            EBTABLES_CMD = ebtables.get_ebtables_cmd()
+
+            if action == 'Attach':
+                if bash.bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} > /dev/null 2>&1') != 0:
+                    bash.bash_r(EBTABLES_CMD + ' -N {{CHAIN_NAME}}')
+
+                if bash.bash_r(EBTABLES_CMD + ' -L FORWARD | grep -- "-j {{CHAIN_NAME}}" > /dev/null') != 0:
+                    bash.bash_r(EBTABLES_CMD + ' -I FORWARD -j {{CHAIN_NAME}}')
+
+                if bash.bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} --Lmac2 | grep -- "-p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT" > /dev/null') != 0:
+                    bash.bash_r(EBTABLES_CMD + ' -I {{CHAIN_NAME}} -p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
+
+            elif action == 'Detach':
+                # FIXME: when vm is destroyed, no vnic detaching function will be called and left some garbage rules
+                if bash.bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} --Lmac2 | grep -- "-p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT" > /dev/null') == 0:
+                    bash.bash_r(EBTABLES_CMD + ' -D {{CHAIN_NAME}} -p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
+
+        @in_bash
+        def _add_bridge_fdb_entry_for_vnic():
+            if action == 'Attach':
+                if bash.bash_r("bridge fdb | grep '%s dev %s self permanent'" % (nic.mac, nic.physicalInterface)) != 0:
+                    bash.bash_r("bridge fdb add %s dev %s" % (nic.mac, nic.physicalInterface))
+
+        # to allow vf nic dhcp
+        if nic.pciDeviceAddress is not None:
+            _config_ebtable_rules_for_vfnics()
+
+        # to allow vnic/vf communication in same host
+        if nic.pciDeviceAddress is None and nic.physicalInterface is not None:
+            _add_bridge_fdb_entry_for_vnic()
+
         return interface
 
     @staticmethod
