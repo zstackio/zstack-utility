@@ -710,15 +710,17 @@ def round_to(n, r):
 
 @bash.in_bash
 @linux.retry(times=15, sleep_time=random.uniform(0.1, 3))
-def create_lv_from_absolute_path(path, size, tag="zs::sharedblock::volume", lock=True):
+def create_lv_from_absolute_path(path, size, tag="zs::sharedblock::volume", lock=True, exact_size=False):
     if lv_exists(path):
         return
 
     vgName = path.split("/")[2]
     lvName = path.split("/")[3]
 
+    if not exact_size:
+        size = round_to(calcLvReservedSize(size), 512)
     r, o, e = bash.bash_roe("lvcreate -an --addtag %s --size %sb --name %s %s" %
-                         (tag, round_to(calcLvReservedSize(size), 512), lvName, vgName))
+                         (tag, size, lvName, vgName))
     if not lv_exists(path):
         raise Exception("can not find lv %s after create, lvcreate return: %s, %s, %s" % (path, r, o, e))
 
