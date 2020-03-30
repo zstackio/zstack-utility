@@ -3754,6 +3754,15 @@ class Vm(object):
                 e(filterref, 'parameter', None, {'name': 'LINK_LOCAL_IP', 'value': ip.get_link_local_address(nic.mac)})
         if nic.useVirtio:
             e(interface, 'model', None, attrib={'type': 'virtio'})
+            if nic.vHostAddOn.queueNum != 1:
+                e(interface, 'driver ', None,
+                  attrib={'name': 'vhost',
+                          'txmode': 'iothread',
+                          'ioeventfd': 'on',
+                          'event_idx': 'off',
+                          'queues': str(nic.vHostAddOn.queueNum),
+                          'rx_queue_size': str(nic.vHostAddOn.rxBufferSize) if nic.vHostAddOn.rxBufferSize is not None else '256',
+                          'tx_queue_size': str(nic.vHostAddOn.txBufferSize) if nic.vHostAddOn.txBufferSize is not None else '256'})
         else:
             e(interface, 'model', None, attrib={'type': 'e1000'})
         return interface
