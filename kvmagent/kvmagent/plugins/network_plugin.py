@@ -32,6 +32,11 @@ KVM_SET_BRIDGE_ROUTER_PORT_PATH = "/host/bridge/routerport"
 logger = log.get_logger(__name__)
 IPTABLES_CMD = iptables.get_iptables_cmd()
 
+
+class DeviceNotExistedError(Exception):
+    pass
+
+
 class CheckPhysicalNetworkInterfaceCmd(kvmagent.AgentCommand):
     def __init__(self):
         super(CheckPhysicalNetworkInterfaceCmd, self).__init__()
@@ -126,7 +131,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         state_path = '/sys/class/net/%s/operstate' % device_name
 
         if not os.path.exists(state_path):
-            raise Exception('cannot find %s' % state_path)
+            raise DeviceNotExistedError('cannot find %s' % state_path)
 
         with open(state_path, 'r') as fd:
             state = fd.read()
@@ -217,7 +222,10 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
         if linux.is_bridge(cmd.bridgeName):
             logger.debug('%s is a bridge device, no need to create bridge' % cmd.bridgeName)
-            self._ifup_device_if_down(vlanInterfName)
+            try:
+                self._ifup_device_if_down('%s.%s' % (cmd.physicalInterfaceName, cmd.vlan))
+            except DeviceNotExistedError:
+                linux.create_vlan_eth(cmd.physicalInterfaceName, cmd.vlan)
             self._configure_bridge(cmd.disableIptables)
             self._configure_bridge_mtu(cmd.bridgeName, vlanInterfName, cmd.mtu)
             linux.set_device_uuid_alias('%s.%s' % (cmd.physicalInterfaceName, cmd.vlan), cmd.l2NetworkUuid)
