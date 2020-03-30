@@ -629,10 +629,13 @@ def add_pv(vg_uuid, disk_path, metadata_size):
 
 
 def get_vg_size(vgUuid, raise_exception=True):
-    r, o, _ = bash.bash_roe("vgs --nolocking %s --noheadings --separator : --units b -o vg_size,vg_free" % vgUuid, errorout=raise_exception)
+    r, o, _ = bash.bash_roe("vgs --nolocking %s --noheadings --separator : --units b -o vg_size,vg_free,vg_lock_type" % vgUuid, errorout=raise_exception)
     if r != 0:
         return None, None
     vg_size, vg_free = o.strip().split(':')[0].strip("B"), o.strip().split(':')[1].strip("B")
+    if "sanlock" in o:
+        return vg_size, vg_free
+
     pools = get_thin_pools_from_vg(vgUuid)
     if len(pools) == 0:
         return vg_size, vg_free
@@ -720,27 +723,27 @@ def create_lv_from_absolute_path(path, size, tag="zs::sharedblock::volume", lock
 
     if not exact_size:
         size = round_to(calcLvReservedSize(size), 512)
-    r, o, e = bash.bash_roe("lvcreate -an --addtag %s --size %sb --name %s %s" %
+    r, o, e = bash.bash_roe("lvcreate -ay --addtag %s --size %sb --name %s %s" %
                          (tag, size, lvName, vgName))
+
     if not lv_exists(path):
         raise Exception("can not find lv %s after create, lvcreate return: %s, %s, %s" % (path, r, o, e))
 
     if lock:
-        with OperateLv(path, shared=False):
-            dd_zero(path)
+        dd_zero(path)
+        deactive_lv(path)
     else:
-        active_lv(path)
         dd_zero(path)
 
 
-def create_lv_from_cmd(path, size, cmd, tag="zs::sharedblock::volume", lock=True):
+def create_lv_from_cmd(path, size, cmd, tag="zs::sharedblock::volume", lvmlock=True):
     # TODO(weiw): fix it
     if "ministorage" in tag and cmd.provisioning == VolumeProvisioningStrategy.ThinProvisioning:
-        create_thin_lv_from_absolute_path(path, size, tag, lock)
+        create_thin_lv_from_absolute_path(path, size, tag, lvmlock)
     elif cmd.provisioning == VolumeProvisioningStrategy.ThinProvisioning and size > cmd.addons[thinProvisioningInitializeSize]:
-        create_lv_from_absolute_path(path, cmd.addons[thinProvisioningInitializeSize], tag, lock)
+        create_lv_from_absolute_path(path, cmd.addons[thinProvisioningInitializeSize], tag, lvmlock)
     else:
-        create_lv_from_absolute_path(path, size, tag, lock)
+        create_lv_from_absolute_path(path, size, tag, lvmlock)
 
 
 @bash.in_bash

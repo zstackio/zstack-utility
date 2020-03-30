@@ -617,7 +617,6 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
-    @lock.file_lock(LOCK_FILE)
     def create_root_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
@@ -627,13 +626,13 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         with lvm.RecursiveOperateLv(template_abs_path_cache, shared=True, skip_deactivate_tags=[IMAGE_TAG]):
             virtual_size = linux.qcow2_virtualsize(template_abs_path_cache)
-            if not lvm.lv_exists(install_abs_path):
-                lvm.create_lv_from_cmd(install_abs_path, virtual_size, cmd,
-                                                 "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
-            with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
-                linux.qcow2_clone_with_option(template_abs_path_cache, install_abs_path, qcow2_options)
+            lvm.create_lv_from_cmd(install_abs_path, virtual_size, cmd,
+                                   "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()), lvmlock=False)
+            linux.qcow2_clone_with_option(template_abs_path_cache, install_abs_path, qcow2_options)
 
-        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+        lvm.deactive_lv(install_abs_path)
+
+        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid, False)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
