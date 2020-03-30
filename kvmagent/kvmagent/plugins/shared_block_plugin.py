@@ -382,6 +382,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             diskPaths.add(disk.get_path())
         lvm.start_lvmlockd()
         lvm.check_gl_lock()
+
+        lvm.start_lvmlockd(cmd.ioTimeout)
         logger.debug("find/create vg %s lock..." % cmd.vgUuid)
         rsp.isFirst = self.create_vg_if_not_found(cmd.vgUuid, diskPaths, cmd.hostUuid, cmd.forceWipe)
 
