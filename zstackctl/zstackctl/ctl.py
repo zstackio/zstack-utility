@@ -2009,13 +2009,13 @@ class StartCmd(Command):
             return
         # clean the error log before booting
         boot_error_log = os.path.join(ctl.USER_ZSTACK_HOME_DIR, 'bootError.log')
-        shell('rm -f %s' % boot_error_log)
+        linux.rm_file_force(boot_error_log)
         pid = get_management_node_pid()
         if pid:
             info('the management node[pid:%s] is already running' % pid)
             return
         else:
-            shell('rm -f %s' % os.path.join(os.path.expanduser('~zstack'), "management-server.pid"))
+            linux.rm_file_force(os.path.join(os.path.expanduser('~zstack'), "management-server.pid"))
 
         def check_java_version():
             ver = shell('java -version 2>&1 | grep -w version')
@@ -2072,6 +2072,12 @@ class StartCmd(Command):
                 error("management.server.ip not configured")
             if 0 != shell_return("ip a | grep 'inet ' | grep -w '%s'" % mn_ip):
                 error("management.server.ip[%s] is not found on any device" % mn_ip)
+
+        def check_ha():
+            _, output, _ = shell_return_stdout_stderr("systemctl is-enabled zstack-ha")
+            status, _, _ = shell_return_stdout_stderr("pgrep -x zstack-hamon")
+            if output and output.strip() == "enabled" and status != 0:
+                error("please use 'zsha2 start-node'")
 
         def check_chrony():
             if ctl.read_property('syncNodeTime') == "false":
@@ -2226,6 +2232,7 @@ class StartCmd(Command):
         check_mn_port()
         check_prometheus_port()
         check_msyql()
+        check_ha()
         check_mn_ip()
         check_chrony()
         restart_console_proxy()
@@ -2310,8 +2317,13 @@ class StopCmd(Command):
                 info('unable to stop management node within %s seconds, kill it' % timeout)
             with on_error('unable to kill -9 %s' % pid):
                 logger.info('graceful shutdown failed, try to kill management node process:%s' % pid)
+                kill_process(pid, signal.SIGTERM)
+                time.sleep(1)
                 kill_process(pid, signal.SIGKILL)
                 clear_leftover_mn_heartbeat()
+
+                if get_management_node_pid():
+                    raise CtlError('failed to kill management node, pid = %s' % pid)
 
 class RefreshAuditCmd(Command):
     audit_rule_file = "/etc/audit/rules.d/audit.rules"
