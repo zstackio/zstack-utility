@@ -295,7 +295,7 @@ class MiniFileConverter(linux.AbstractFileConverter):
         if drbd_res.exists:
             drbd_res.dd_out(dst)
         else:
-            shell.call('dd if=%s of=%s iflag=direct conv=sparse' % (src, dst))
+            shell.call('dd if=%s of=%s conv=sparse' % (src, dst))
 
     def _convert_volume_from_file(self, src, dst, dst_backing, backing_fmt):
         drbdResource = drbd.DrbdResource(os.path.basename(dst), False)
