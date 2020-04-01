@@ -1170,5 +1170,10 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     def get_download_bits_from_kvmhost_progress(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetDownloadBitsFromKvmHostProgressRsp()
-        rsp.totalSize = linux.get_total_file_size(cmd.volumePaths)
+        totalSize = 0
+        for path in cmd.volumePaths:
+            install_abs_path = translate_absolute_path_from_install_path(path)
+            actualSize = lvm.get_lv_size(install_abs_path)
+            totalSize += long(actualSize)
+        rsp.totalSize = totalSize
         return jsonobject.dumps(rsp)
