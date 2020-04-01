@@ -38,6 +38,8 @@ zstack_lib_dir = "/var/lib/zstack"
 zstack_libvirt_nwfilter_dir = "%s/nwfilter" % zstack_lib_dir
 skipIpv6 = 'false'
 bridgeDisableIptables = 'false'
+# supported distro list
+distro_list = ['centos', 'alibaba']
 
 def update_libvritd_config(host_post_info):
     command = "grep -i ^host_uuid %s" % libvirtd_conf_file
@@ -138,7 +140,7 @@ repo_dir = "/opt/zstack-dvd/{}".format(host_arch)
 if not os.path.isdir(repo_dir):
     error("Missing directory '{}', please try 'zstack-upgrade -a {}_iso'".format(repo_dir, host_arch))
 
-if distro.lower() == "centos":
+if distro.lower() in distro_list:
     # get remote releasever
     get_releasever_script = '''
     cat << 'EOF' > /opt/get_releasever
