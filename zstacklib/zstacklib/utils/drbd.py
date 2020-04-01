@@ -250,7 +250,7 @@ class DrbdResource(object):
         need_promte_first = self.get_role() == DrbdRole.Secondary
         need_promte_first and self.promote()
         try:
-            bash.bash_errorout('dd if=%s of=%s iflag=direct conv=sparse' % (self.get_dev_path(), dst_path))
+            bash.bash_errorout('dd if=%s of=%s conv=sparse' % (self.get_dev_path(), dst_path))
         finally:
             need_promte_first and self.demote()
 
