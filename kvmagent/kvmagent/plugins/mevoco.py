@@ -1,14 +1,11 @@
 __author__ = 'frank'
 
 from kvmagent import kvmagent
-from kvmagent.plugins import vm_plugin
 from zstacklib.utils import jsonobject
 from zstacklib.utils import http
 from zstacklib.utils import log
 from zstacklib.utils import shell
-from zstacklib.utils import sizeunit
 from zstacklib.utils import linux
-from zstacklib.utils import thread
 from zstacklib.utils import iptables
 from zstacklib.utils import ebtables
 from zstacklib.utils import lock
@@ -16,14 +13,11 @@ from zstacklib.utils.bash import *
 from zstacklib.utils import ip
 import os.path
 import re
-import threading
-import time
 import email
 import tempfile
 import cStringIO as c
 from email.mime.multipart import MIMEMultipart
 from jinja2 import Template
-import shutil
 import struct
 import socket
 
