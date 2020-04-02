@@ -597,6 +597,14 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             if p is not None:
                 allDiskPaths.add(p)
         allDiskPaths.add(disk.get_path())
+        try:
+            root_disks = ["%s[0-9]*" % d for d in linux.get_physical_disk()]
+            allDiskPaths = allDiskPaths.union(root_disks)
+        except Exception as e:
+            logger.warn("get exception: %s" % e.message)
+            allDiskPaths.add("/dev/sd*")
+            allDiskPaths.add("/dev/vd*")
+
         lvm.config_lvm_filter(["lvm.conf", "lvmlocal.conf"], preserve_disks=allDiskPaths)
 
         if cmd.onlyGenerateFilter:
