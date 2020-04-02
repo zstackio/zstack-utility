@@ -1021,10 +1021,13 @@ class CephAgent(plugin.TaskManager):
         rsp = GetDownloadBitsFromKvmHostProgressRsp()
         totalSize = 0
         for path in cmd.volumePaths:
-            path = self._normalize_install_path(path)
+            pool, image_name = self._parse_install_path(path)
+            path = "%s/tmp-%s" % (pool, image_name)
             if bash_r('rbd info %s' % path) != 0:
                 continue
-            totalSize += self._get_file_size(path)
+            size = self._get_file_actual_size(path)
+            if size is not None:
+                totalSize += long(size)
 
         rsp.totalSize = totalSize
         return jsonobject.dumps(rsp)
