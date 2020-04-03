@@ -538,7 +538,7 @@ class HostPlugin(kvmagent.KvmAgent):
         rule = item.strip()
         if rule[0] == '"' or rule[0] == "'":
             rule = eval(rule).strip()
-        return ' '.join(rule.split(' ')[1:])
+        return rule
 
     @lock.file_lock('/run/xtables.lock')
     @in_bash
@@ -546,7 +546,8 @@ class HostPlugin(kvmagent.KvmAgent):
         logger.debug("starting add iptables rules : %s" % rules)
         if len(rules) != 0 and rules is not None:
             for item in rules:
-                clean_rule = self.get_clean_rule(item)
+                rule = self.get_clean_rule(item)
+                clean_rule = ' '.join(rule.split(' ')[1:])
                 ret = bash_r("iptables -C %s " % clean_rule)
                 if ret == 0:
                     continue
