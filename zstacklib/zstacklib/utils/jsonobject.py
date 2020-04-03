@@ -178,7 +178,12 @@ def _dump(obj):
         if _is_primitive_types(val):
             ret[key] = val
         elif isinstance(val, types.DictType):
-            ret[key] = val
+            if len(val) == 0:
+                ret[key] = val
+                continue
+
+            nmap = _dump(val)
+            ret[key] = nmap
         elif isinstance(val, types.ListType):
             nlst = _dump_list(val)
             ret[key] = nlst
