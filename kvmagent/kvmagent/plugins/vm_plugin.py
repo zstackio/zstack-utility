@@ -1,7 +1,3 @@
-'''
-@author: Frank
-'''
-import Queue
 import contextlib
 import os.path
 import tempfile
@@ -12,7 +8,6 @@ import xml.etree.ElementTree as etree
 import re
 import platform
 import netaddr
-import uuid
 import json
 
 import libvirt
@@ -632,15 +627,11 @@ class VncPortIptableRule(object):
         ipt.delete_chain(chain_name)
         ipt.iptable_restore()
 
-    @lock.file_lock('/run/xtables.lock')
-    def delete_stale_chains(self):
-        vms = get_running_vms()
-        ipt = iptables.from_iptables_save()
-        tbl = ipt.get_table()
-
+    def find_vm_internal_ids(self, vms):
         internal_ids = []
+        namespace_used = is_namespace_used()
         for vm in vms:
-            if is_namespace_used():
+            if namespace_used:
                 vm_id_node = find_zstack_metadata_node(etree.fromstring(vm.domain_xml), 'internalId')
                 if vm_id_node is None:
                     continue
@@ -654,6 +645,18 @@ class VncPortIptableRule(object):
 
             if vm_id:
                 internal_ids.append(vm_id)
+        return internal_ids
+
+    @lock.file_lock('/run/xtables.lock')
+    def delete_stale_chains(self):
+        ipt = iptables.from_iptables_save()
+        tbl = ipt.get_table()
+        if not tbl:
+            ipt.iptable_restore()
+            return
+
+        vms = get_running_vms()
+        internal_ids = self.find_vm_internal_ids(vms)
 
         # delete all vnc chains
         chains = tbl.children[:]
@@ -3892,7 +3895,7 @@ class Vm(object):
                 hostdev = e(devices, "hostdev", None, {'mode': 'subsystem', 'type': 'mdev', 'model': 'vfio-pci', 'managed': 'yes'})
                 source = e(hostdev, "source")
                 # convert mdevUuid to 8-4-4-4-12 format
-                e(source, "address", None, { "uuid": str(uuid.UUID('{%s}' % mdevUuid))})
+                e(source, "address", None, { "uuid": uuidhelper.to_full_uuid(mdevUuid) })
 
         def make_usb_device(usbDevices):
             next_uhci_port = 2
