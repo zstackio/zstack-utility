@@ -2757,7 +2757,11 @@ class Vm(object):
             self.refresh()
             for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
                 if iface.mac.address_ == cmd.nic.mac:
-                    return shell.run('ip link | grep -w -q %s' % cmd.nic.nicInternalName) == 0
+                    # vf nic doesn't have internal name
+                    if cmd.nic.pciDeviceAddress is not None:
+                        return True
+                    else:
+                        return shell.run('ip link | grep -w -q %s' % cmd.nic.nicInternalName) == 0
 
             return False
 
@@ -3832,22 +3836,39 @@ class Vm(object):
 
     @staticmethod
     def _build_interface_xml(nic, devices=None, vhostSrcPath=None):
-        iftype = 'bridge' if vhostSrcPath is None else 'vhostuser'
+        if nic.pciDeviceAddress is not None:
+            iftype = 'hostdev'
+            device_attr = {'type': iftype, 'managed': 'yes'}
+        elif vhostSrcPath is not None:
+            iftype = 'vhostuser'
+            device_attr = {'type': iftype}
+        else:
+            iftype = 'bridge'
+            device_attr = {'type': iftype}
 
         if devices:
-            interface = e(devices, 'interface', None, {'type': iftype})
+            interface = e(devices, 'interface', None, device_attr)
         else:
-            interface = etree.Element('interface', attrib={'type': iftype})
+            interface = etree.Element('interface', attrib=device_attr)
 
         e(interface, 'mac', None, attrib={'address': nic.mac})
-        e(interface, 'alias', None, {'name': 'net%s' % nic.nicInternalName.split('.')[1]})
 
-        if iftype == 'bridge':
+        if iftype == 'hostdev':
+            domain, bus, slot, function = parse_pci_device_address(nic.pciDeviceAddress)
+            source = e(interface, 'source')
+            e(source, 'address', None, attrib={'type': 'pci', 'domain': '0x' + domain, 'bus': '0x' + bus, 'slot': '0x' + slot, 'function': '0x' + function})
+            e(interface, 'driver', None, attrib={'name': 'vfio'})
+            if nic.vlanId is not None:
+                vlan = e(interface, 'vlan')
+                e(vlan, 'tag', None, attrib={'id': nic.vlanId})
+        elif iftype == 'vhostuser':
+            e(interface, 'source', None, attrib={'type': 'unix', 'path': vhostSrcPath, 'mode': 'client'})
+            e(interface, 'driver', None, attrib={'queues': '16', 'vhostforce': 'on'})
+            e(interface, 'alias', None, {'name': 'net%s' % nic.nicInternalName.split('.')[1]})
+        else:
             e(interface, 'source', None, attrib={'bridge': nic.bridgeName})
             e(interface, 'target', None, attrib={'dev': nic.nicInternalName})
-        elif iftype == 'vhostuser':
-            e(interface, 'source', None, attrib={'type': 'unix', 'path': vhostSrcPath, 'mode':'client'})
-            e(interface, 'driver', None, attrib={'queues': '16', 'vhostforce':'on'})
+            e(interface, 'alias', None, {'name': 'net%s' % nic.nicInternalName.split('.')[1]})
 
         if nic.ips and iftype == 'bridge':
             ip4Addr = None
@@ -3873,12 +3894,17 @@ class Vm(object):
                 for addr6 in ip6Addrs:
                     e(filterref, 'parameter', None, {'name': 'GLOBAL_IP', 'value': addr6})
                 e(filterref, 'parameter', None, {'name': 'LINK_LOCAL_IP', 'value': ip.get_link_local_address(nic.mac)})
-        if nic.useVirtio:
+
+        if iftype == 'hostdev':
+            pass
+        elif nic.useVirtio:
             e(interface, 'model', None, attrib={'type': 'virtio'})
         else:
             e(interface, 'model', None, attrib={'type': 'e1000'})
+
         if nic.bootOrder is not None and nic.bootOrder > 0:
             e(interface, 'boot', None, attrib={'order': str(nic.bootOrder)})
+
         return interface
 
     @staticmethod

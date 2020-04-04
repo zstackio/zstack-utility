@@ -215,6 +215,7 @@ class HostNetworkInterfaceInventory(object):
         self.ipAddresses = None
         self.interfaceType = None
         self.master = None
+        self.pciDeviceAddress = None
         self._init_from_name()
 
     @classmethod
@@ -260,6 +261,8 @@ class HostNetworkInterfaceInventory(object):
             self.slaveActive = self.interfaceName in linux.read_file("/sys/class/net/%s/bonding/active_slave" % self.master)
         else:
             self.interfaceType = "bridgeSlave"
+
+        self.pciDeviceAddress = os.readlink("/sys/class/net/%s/device" % self.interfaceName).strip().split('/')[-1]
 
     def _to_dict(self):
         to_dict = self.__dict__
@@ -1226,26 +1229,28 @@ done
         addr = to.pciDeviceAddress
         dev = os.path.join("/sys/bus/pci/devices/", addr)
         totalvfs = os.path.join(dev, "sriov_totalvfs")
+        numvfs = os.path.join(dev, "sriov_numvfs")
         physfn = os.path.join(dev, "physfn")
-        gpuvf  = os.path.join(dev, "gpuvf")
+        gpuvf = os.path.join(dev, "gpuvf")
 
         if os.path.exists(totalvfs):
             # for pf, to.maxPartNum means the number of possible vfs
             with open(totalvfs, 'r') as f:
-                to.maxPartNum = f.read()
-            if os.path.exists(gpuvf):
-                to.virtStatus = "SRIOV_VIRTUALIZED"
-            else:
-                to.virtStatus = "SRIOV_VIRTUALIZABLE"
+                to.maxPartNum = f.read().strip()
+
+            with open(numvfs, 'r') as f:
+                if f.read().strip() != '0':
+                    to.virtStatus = "SRIOV_VIRTUALIZED"
+                else:
+                    to.virtStatus = "SRIOV_VIRTUALIZABLE"
         elif os.path.exists(physfn):
             # for vf, to.maxPartNum means the number of current vfs
             numvfs = os.path.join(physfn, "sriov_numvfs")
             if os.path.exists(numvfs):
                 with open(numvfs, 'r') as f:
-                    to.maxPartNum = f.read()
+                    to.maxPartNum = f.read().strip()
             to.virtStatus = "SRIOV_VIRTUAL"
-            # ../0000:06:00.0 --> 06:00.0
-            to.parentAddress = os.readlink(physfn).split('0000:')[-1]
+            to.parentAddress = os.readlink(physfn).split('/')[-1]
             if os.path.exists(gpuvf):
                 with open(gpuvf, 'r') as f:
                     for line in f.readlines():
@@ -1431,66 +1436,109 @@ done
             logger.debug("successfully write rom content into %s" % rom_file)
         return jsonobject.dumps(rsp)
 
+    @in_bash
+    def _generate_sriov_gpu_devices(self, cmd, rsp):
+        # make install mxgpu driver if need to
+        mxgpu_driver_tar = "/var/lib/zstack/mxgpu_driver.tar.gz"
+        if os.path.exists(mxgpu_driver_tar):
+            r, o, e = bash_roe("tar xvf %s -C /tmp; cd /tmp/mxgpu_driver; make install" % mxgpu_driver_tar)
+            if r != 0:
+                rsp.success = False
+                rsp.error = "failed to install mxgpu driver, %s, %s" % (o, e)
+                return
+            # rm mxgpu driver tar
+            os.remove(mxgpu_driver_tar)
+
+        # check installed ko
+        r, _, _ = bash_roe("lsmod | grep gim")
+        if r == 0:
+            rsp.success = False
+            rsp.error = "gim.ko already installed, need to run `modprobe -r gim` first"
+            return
+
+        # prepare gim_config
+        gim_config = "/etc/gim_config"
+        with open(gim_config, 'w') as f:
+            f.write("vf_num=%s" % cmd.virtPartNum)
+
+        # install gim.ko
+        r, o, e = bash_roe("modprobe gim")
+        if r != 0:
+            rsp.success = False
+            rsp.error = "failed to install gim.ko, %s, %s" % (o, e)
+            return
+
+
+    @in_bash
+    def _generate_sriov_net_devices(self, cmd, rsp):
+        numvfs = os.path.join('/sys/bus/pci/devices/', cmd.pciDeviceAddress, 'sriov_numvfs')
+        if not os.path.exists(numvfs):
+            rsp.success = False
+            rsp.error = 'cannot find sriov_numvfs file for pci device[addr:%s, type:%s]' % (cmd.pciDeviceAddress, cmd.pciDeviceType)
+            return
+
+        r, o, e = bash_roe("echo %s > %s" % (cmd.virtPartNum, numvfs))
+        if r != 0:
+            rsp.success = False
+            rsp.error = 'failed to generate virtual functions on pci device[addr:%s, type:%s]' % (cmd.pciDeviceAddress, cmd.pciDeviceType)
+            return
+
+
     @kvmagent.replyerror
     @in_bash
     def generate_sriov_pci_devices(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GenerateSriovPciDevicesRsp()
-        logger.debug("generate_sriov_pci_devices: pciAddr[%s], reSplite[%s]" % (cmd.pciDeviceAddress, cmd.reSplite))
+        logger.debug("generate_sriov_pci_devices: pciType[%s], pciAddr[%s], reSplite[%s]" % (cmd.pciDeviceType, cmd.pciDeviceAddress, cmd.reSplite))
 
-        GIM = "gim"         # gpu-iov kernel module, for AMD MxGPU only
-
-        # get device type using device address, get device driver using device type
+        # ramdisk file in /dev/shm to mark host rebooting
         addr = cmd.pciDeviceAddress
-        dev = os.path.join("/sys/bus/pci/devices/", addr)
-        totalvfs = os.path.join(dev, "sriov_totalvfs")
-        if os.path.exists(totalvfs):
-            ko_name = GIM
+        ramdisk = "/dev/shm/pci_sriov_gim"
+        if cmd.reSplite and os.path.exists(ramdisk):
+            logger.debug("no need to re-splite pci device[addr:%s] into sriov pci devices" % addr)
+            return jsonobject.dumps(rsp)
+
+        if cmd.pciDeviceType == 'GPU_Video_Controller' or cmd.pciDeviceType == 'GPU_3D_Controller':
+            self._generate_sriov_gpu_devices(cmd, rsp)
+        elif cmd.pciDeviceType == 'Ethernet_Controller':
+            self._generate_sriov_net_devices(cmd, rsp)
         else:
             rsp.success = False
             rsp.error = "do not support sriov of pci device [addr:%s]" % addr
             return jsonobject.dumps(rsp)
 
-        if ko_name == GIM:
-            # ramdisk file in /dev/shm to mark host rebooting
-            ramdisk = "/dev/shm/pci_sriov_gim"
-            if cmd.reSplite and os.path.exists(ramdisk):
-                logger.debug("no need to re-splite pci device[addr:%s] into sriov pci devices" % addr)
-                return jsonobject.dumps(rsp)
-
-            # make install mxgpu driver if need to
-            mxgpu_driver_tar = "/var/lib/zstack/mxgpu_driver.tar.gz"
-            if os.path.exists(mxgpu_driver_tar):
-                r, o, e = bash_roe("tar xvf %s -C /tmp; cd /tmp/mxgpu_driver; make install" % mxgpu_driver_tar)
-                if r != 0:
-                    rsp.success = False
-                    rsp.error = "failed to install mxgpu driver, %s, %s" % (o, e)
-                    return jsonobject.dumps(rsp)
-                # rm mxgpu driver tar
-                os.remove(mxgpu_driver_tar)
-
-            # check installed ko
-            r, _, _ = bash_roe("lsmod | grep gim")
-            if r == 0:
-                rsp.success = False
-                rsp.error = "gim.ko already installed, need to run `modprobe -r gim` first"
-                return jsonobject.dumps(rsp)
-
-            # prepare gim_config
-            gim_config = "/etc/gim_config"
-            with open(gim_config, 'w') as f:
-                f.write("vf_num=%s" % cmd.virtPartNum)
-
-            # install gim.ko
-            r, o, e = bash_roe("modprobe gim")
-            if r != 0:
-                rsp.success = False
-                rsp.error = "failed to install gim.ko, %s, %s" % (o, e)
-                return jsonobject.dumps(rsp)
+        if not rsp.success:
+            return jsonobject.dumps(rsp)
 
         # create ramdisk file after pci device virtualization
         open(ramdisk, 'a').close()
         return jsonobject.dumps(rsp)
+
+
+    @in_bash
+    def _ungenerate_sriov_gpu_devices(self, cmd, rsp):
+        # remote gim.ko
+        r, o, e = bash_roe("modprobe -r gim")
+        if r != 0:
+            rsp.success = False
+            rsp.error = "failed to remove gim.ko, %s, %s" % (o, e)
+            return
+
+
+    @in_bash
+    def _ungenerate_sriov_net_devices(self, cmd, rsp):
+        numvfs = os.path.join('/sys/bus/pci/devices/', cmd.pciDeviceAddress, 'sriov_numvfs')
+        if not os.path.exists(numvfs):
+            rsp.success = False
+            rsp.error = 'cannot find sriov_numvfs file for pci device[addr:%s, type:%s]' % (cmd.pciDeviceAddress, cmd.pciDeviceType)
+            return
+
+        r, o, e = bash_roe("echo 0 > %s" % numvfs)
+        if r != 0:
+            rsp.success = False
+            rsp.error = 'failed to ungenerate virtual functions on pci device[addr:%s, type:%s]' % (cmd.pciDeviceAddress, cmd.pciDeviceType)
+            return
+
 
     @kvmagent.replyerror
     @in_bash
@@ -1498,26 +1546,20 @@ done
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = UngenerateSriovPciDevicesRsp()
 
-        GIM = "gim"         # gpu-iov kernel module, for AMD MxGPU only
-
-        # get device type using device address, get device driver using device type
         addr = cmd.pciDeviceAddress
-        dev = os.path.join("/sys/bus/pci/devices/", addr)
-        totalvfs = os.path.join(dev, "sriov_totalvfs")
-        if os.path.exists(totalvfs):
-            ko_name = GIM
+
+        if cmd.pciDeviceType == 'GPU_Video_Controller' or cmd.pciDeviceType == 'GPU_3D_Controller':
+            self._ungenerate_sriov_gpu_devices(cmd, rsp)
+        elif cmd.pciDeviceType == 'Ethernet_Controller':
+            self._ungenerate_sriov_net_devices(cmd, rsp)
         else:
             rsp.success = False
             rsp.error = "do not support sriov of pci device [addr:%s]" % addr
             return jsonobject.dumps(rsp)
 
-        if ko_name == GIM:
-            # remote gim.ko
-            r, o, e = bash_roe("modprobe -r gim")
-            if r != 0:
-                rsp.success = False
-                rsp.error = "failed to remove gim.ko, %s, %s" % (o, e)
-                return jsonobject.dumps(rsp)
+        if not rsp.success:
+            return jsonobject.dumps(rsp)
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
