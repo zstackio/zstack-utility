@@ -574,6 +574,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     @lock.file_lock(LOCK_FILE)
     def add_disk(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
         disk = CheckDisk(cmd.diskUuid)
 
         allDiskPaths = set()
@@ -585,6 +586,11 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 allDiskPaths.add(p)
         allDiskPaths.add(disk.get_path())
         lvm.config_lvm_filter(["lvm.conf", "lvmlocal.conf"], preserve_disks=allDiskPaths)
+
+        if cmd.onlyGenerateFilter:
+            rsp = AgentRsp
+            rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+            return jsonobject.dumps(rsp)
 
         command = shell.ShellCmd("vgs --nolocking %s -otags | grep %s" % (cmd.vgUuid, INIT_TAG))
         command(is_exception=False)
