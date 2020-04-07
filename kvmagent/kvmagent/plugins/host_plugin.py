@@ -1483,6 +1483,14 @@ done
             rsp.error = 'failed to generate virtual functions on pci device[addr:%s, type:%s]' % (cmd.pciDeviceAddress, cmd.pciDeviceType)
             return
 
+        # set pf learning off
+        nic_name_path = os.path.join(numvfs, '../net/')
+        if os.path.exists(nic_name_path):
+            nic_names = os.listdir(nic_name_path)
+            if nic_names:
+                nic_name = nic_names[0]
+                bash_roe("bridge link set dev %s learning off" % nic_name)
+
 
     @kvmagent.replyerror
     @in_bash
@@ -1493,7 +1501,9 @@ done
 
         # ramdisk file in /dev/shm to mark host rebooting
         addr = cmd.pciDeviceAddress
-        ramdisk = "/dev/shm/pci_sriov_gim"
+
+        no_domain_addr = addr if len(addr.split(':')) != 3 else ':'.join(addr.split(':')[1:])
+        ramdisk = os.path.join('/dev/shm', 'pci-' + no_domain_addr)
         if cmd.reSplite and os.path.exists(ramdisk):
             logger.debug("no need to re-splite pci device[addr:%s] into sriov pci devices" % addr)
             return jsonobject.dumps(rsp)
