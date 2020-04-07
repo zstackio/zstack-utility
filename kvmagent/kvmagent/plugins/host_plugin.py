@@ -1702,7 +1702,7 @@ done
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp.totalSize = linux.get_total_disk_size(cmd.dirPath)
         rsp.availableSize = linux.get_free_disk_size(cmd.dirPath)
-        rsp.dirSize = linux.get_used_disk_apparent_size(cmd.dirPath)
+        rsp.dirSize = linux.get_used_disk_apparent_size(cmd.dirPath, 4, 1)
 
         return jsonobject.dumps(rsp)
 
