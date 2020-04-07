@@ -20,6 +20,7 @@ SANLOCK_CONFIG_FILE_PATH = "/etc/sanlock/sanlock.conf"
 SANLOCK_IO_TIMEOUT = 40
 LVMLOCKD_LOG_FILE_PATH = "/var/log/lvmlockd/lvmlockd.log"
 LVMLOCKD_LOG_RSYSLOG_PATH = "/etc/rsyslog.d/lvmlockd.conf"
+LVMLOCKD_SERVICE_PATH = "/lib/systemd/system/lvm2-lvmlockd.service"
 LVMLOCKD_LOG_LOGROTATE_PATH = "/etc/logrotate.d/lvmlockd"
 LVM_CONFIG_BACKUP_PATH = "/etc/lvm/zstack-backup"
 LVM_CONFIG_ARCHIVE_PATH = "/etc/lvm/archive"
@@ -352,8 +353,17 @@ def config_lvm_filter(files, no_drbd=False, preserve_disks=None):
 
 
 def config_sanlock_by_sed(keyword, entry):
+    content = """use_watchdog=0
+renewal_read_extend_sec=24
+sh_retries=20
+"""
+    if not os.path.exists(os.path.dirname(SANLOCK_CONFIG_FILE_PATH)):
+        linux.mkdir(os.path.dirname(SANLOCK_CONFIG_FILE_PATH))
+        with open(SANLOCK_CONFIG_FILE_PATH, 'w') as f:
+            f.write(content)
     if not os.path.exists(SANLOCK_CONFIG_FILE_PATH):
-        raise Exception("can not find sanlock config path: %s, config sanlock failed" % LVM_CONFIG_PATH)
+        raise Exception("can not find sanlock config path: %s, config sanlock failed" % SANLOCK_CONFIG_FILE_PATH)
+
 
     cmd = shell.ShellCmd("sed -i 's/.*%s.*/%s/g' %s" %
                          (keyword, entry, SANLOCK_CONFIG_FILE_PATH))
@@ -381,11 +391,11 @@ SendSIGKILL=no
 [Install]
 WantedBy=multi-user.target
 """ % io_timeout
-    with open("/usr/lib/systemd/system/lvm2-lvmlockd.service", 'w') as f:
+    with open(LVMLOCKD_SERVICE_PATH, 'w') as f:
         f.write(content)
         f.flush()
         os.fsync(f.fileno())
-    os.chmod("/usr/lib/systemd/system/lvm2-lvmlockd.service", 0644)
+    os.chmod(LVMLOCKD_SERVICE_PATH, 0644)
 
     if not os.path.exists(LVMLOCKD_LOG_RSYSLOG_PATH):
         content = """if $programname == 'lvmlockd' then %s 

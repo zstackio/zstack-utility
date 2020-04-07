@@ -404,7 +404,7 @@ elif distro in DEB_BASED_OS:
                         'libguestfs-tools', 'sed', 'nfs-common', 'open-iscsi','ebtables', 'pv', 'usbutils', 
                         'pciutils', 'expect', 'lighttpd', 'sshpass', 'rsync', 'iputils-arping', 'nmap', 'collectd', 
                         'iptables', 'python-pip', 'dmidecode', 'ovmf', 'dnsmasq', 'auditd', 'firewalld', 'ipset', 'multipath-tools',
-                        'lvm2', 'lvm2-lockd', 'udev']
+                        'lvm2', 'lvm2-lockd', 'udev', 'sanlock']
     apt_install_packages(install_pkg_list, host_post_info)
     if zstack_repo == 'false':
         command_deb_list = "echo %s >/var/lib/zstack/dependencies".format(' '.join(install_pkg_list))
