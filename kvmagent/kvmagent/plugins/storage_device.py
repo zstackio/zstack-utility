@@ -260,7 +260,12 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                     iscsiServerIp, iscsiServerPort))
             if r != 0:
                 raise RetryException("can not discovery iscsi portal %s:%s, cause %s" % (iscsiServerIp, iscsiServerPort, e))
-            return [i.strip().split(" ")[-1] for i in o.splitlines()]
+
+            iqns = []
+            for i in o.splitlines():
+                if i.startswith("%s:%s," % (iscsiServerIp, iscsiServerPort)):
+                    iqns.append(i.strip().split(" ")[-1])
+            return iqns
 
         @linux.retry(times=20, sleep_time=1)
         def wait_iscsi_mknode(iscsiServerIp, iscsiServerPort, iscsiIqn, e=None):
