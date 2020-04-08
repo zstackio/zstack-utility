@@ -17,6 +17,7 @@ import functools
 import threading
 import re
 import platform
+import pprint
 import errno
 
 from zstacklib.utils import thread
@@ -37,6 +38,17 @@ RTNETLINK answers: Numerical result out of range
 [root@10-0-67-98 ~]# ip link set mtu 9600 dev eth0.100
 '''
 MAX_MTU_OF_VNIC = 65500
+
+def ignoreerror(func):
+    @functools.wraps(func)
+    def wrap(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            content = traceback.format_exc()
+            err = '%s\n%s\nargs:%s' % (str(e), content, pprint.pformat([args, kwargs]))
+            logger.warn(err)
+    return wrap
 
 class LinuxError(Exception):
     ''' some utils failed '''
@@ -1623,12 +1635,17 @@ def kill_process(pid, timeout=5, is_exception=True):
             if e.errno != errno.ESRCH:
                 raise e
 
+    @ignoreerror
+    def get_cmdline():
+        return read_file("/proc/%s/cmdline" % pid)
+
     def check(_):
         return not os.path.exists('/proc/%s' % pid)
 
     if check(None):
         return
 
+    logger.debug("killing process[pid: %s, cmdline: %s]" % (pid, get_cmdline()))
     kill(15)
     if wait_callback_success(check, None, timeout):
         return
