@@ -222,8 +222,8 @@ def get_free_disk_size(dir_path):
 def get_used_disk_size(dir_path):
     return get_total_disk_size(dir_path) - get_free_disk_size(dir_path)
 
-def get_used_disk_apparent_size(dir_path):
-    output = shell.call('du --apparent-size --max-depth=1 %s | tail -1' % dir_path)
+def get_used_disk_apparent_size(dir_path, max_depth = 1, block_size = 1):
+    output = shell.call('du --apparent-size --block-size=%s --max-depth=%s %s | tail -1' % (block_size, max_depth, dir_path))
     return long(output.split()[0])
 
 def get_total_file_size(paths):
