@@ -244,7 +244,7 @@ def listVirtualMachines(url, sasluser, saslpass, keystr):
 
         if any(map(lambda v: v.protocol == 'rbd', vminfo.volumes)):
             return libvirtver >= getVerNumber(1, 2, 16)
-        return libvirtver >= getVerNumber(0, 9, 12)
+        return libvirtver >= getVerNumber(1, 2, 9)
 
     vms = []
     v2vCaps = {}
