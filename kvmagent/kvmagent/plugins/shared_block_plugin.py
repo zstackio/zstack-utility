@@ -147,6 +147,11 @@ class GetDownloadBitsFromKvmHostProgressRsp(AgentRsp):
         super(GetDownloadBitsFromKvmHostProgressRsp, self).__init__()
         self.totalSize = None
 
+class DownloadBitsFromKvmHostRsp(AgentRsp):
+    def __init__(self):
+        super(DownloadBitsFromKvmHostRsp, self).__init__()
+        self.format = None
+
 
 def translate_absolute_path_from_install_path(path):
     if path is None:
@@ -754,7 +759,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     @completetask
     def download_from_kvmhost(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AgentRsp()
+        rsp = DownloadBitsFromKvmHostRsp()
 
         install_abs_path = translate_absolute_path_from_install_path(cmd.primaryStorageInstallPath)
 
@@ -765,6 +770,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             return jsonobject.dumps(rsp)
 
         self.do_download_from_sftp(cmd, install_abs_path)
+        rsp.format = linux.get_img_fmt(install_abs_path)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror

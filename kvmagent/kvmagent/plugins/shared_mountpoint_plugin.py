@@ -72,6 +72,11 @@ class GetDownloadBitsFromKvmHostProgressRsp(AgentRsp):
         super(GetDownloadBitsFromKvmHostProgressRsp, self).__init__()
         self.totalSize = None
 
+class DownloadBitsFromKvmHostRsp(AgentRsp):
+    def __init__(self):
+        super(DownloadBitsFromKvmHostRsp, self).__init__()
+        self.format = None
+
 
 class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
 
@@ -395,7 +400,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
     @completetask
     def download_from_kvmhost(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = kvmagent.AgentResponse()
+        rsp = DownloadBitsFromKvmHostRsp()
 
         install_abs_path = cmd.primaryStorageInstallPath
 
@@ -405,6 +410,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
             return jsonobject.dumps(rsp)
 
         linux.scp_download(cmd.hostname, cmd.sshKey, cmd.backupStorageInstallPath, install_abs_path, cmd.username, cmd.sshPort, cmd.bandWidth)
+        rsp.format = linux.get_img_fmt(install_abs_path)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
