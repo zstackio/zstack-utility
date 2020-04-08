@@ -155,7 +155,8 @@ class ZBoxPlugin(kvmagent.KvmAgent):
         if not label:
             info.uuid = uuidhelper.uuid()
             label = build_label(info.uuid)
-            shell.call("mkfs.ext4 -F -L %s %s" % (label, target_dev_name))
+            if cmd.skipFormat == False:
+                shell.call("mkfs.ext4 -F -L %s %s" % (label, target_dev_name))
 
         mount_path = build_mount_path(label)
         mount_label(label, mount_path)
