@@ -29,7 +29,7 @@ import glob
 from shutil import copyfile
 from shutil import rmtree
 
-from utils import linux
+from utils import linux, lock
 from zstacklib import *
 import log_collector
 import jinja2
@@ -1115,14 +1115,17 @@ def script(cmd, args=None, no_pipe=False):
     finally:
         os.remove(script_path)
 
+@lock.lock("subprocess.popen")
+def get_process(cmd, workdir, pipe):
+    if pipe:
+        return subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, cwd=workdir)
+    else:
+        return subprocess.Popen(cmd, shell=True, cwd=workdir)
+
 class ShellCmd(object):
     def __init__(self, cmd, workdir=None, pipe=True):
         self.cmd = cmd
-        if pipe:
-            self.process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, cwd=workdir)
-        else:
-            self.process = subprocess.Popen(cmd, shell=True, cwd=workdir)
-
+        self.process = get_process(cmd, workdir, pipe)
         self.return_code = None
         self.stdout = None
         self.stderr = None
@@ -5191,9 +5194,9 @@ class SingleMysqlRestorer(MysqlRestorer):
 class ZBoxRecoverCmd(Command):
     def __init__(self):
         super(ZBoxRecoverCmd, self).__init__()
-        self.name = "zbox_recover"
+        self.name = "recover_zbox"
         self.description = (
-            "recover ZStack from zbox backupz"
+            "recover ZStack from zbox backup"
         )
         self.hide = True
         self.sensitive_args = ['--mysql-root-password', '--ui-mysql-root-password']
@@ -5217,12 +5220,36 @@ class ZBoxRecoverCmd(Command):
         info("start to recover database...")
         ctl.internal_run('restore_mysql', "-f %s %s %s" % (args.from_file, pswd_arg, ui_pswd_arg))
 
+        recover_succ = [False]
+        def get_progress():
+            log_path = os.path.join(ctl.zstack_home, "../../logs/management-server.log")
+            log_path = os.path.normpath(log_path)
+            if not os.path.isfile(log_path):
+                warn("cannot find log file. create one.")
+                shell("touch %s" % log_path, is_exception=False)
+
+            cmd = "tail -f %s | stdbuf -oL grep -Po 'recover backup:.{35}\K.*' |" \
+                  "sed '/succeed to recover ZStack data from backup./q0; /fail to recover data from backup./q1' " % log_path
+            scmd = ShellCmd(cmd, pipe=False)
+            scmd(False)
+            recover_succ[0] = scmd.return_code == 0
+
+        t = threading.Thread(target=get_progress)
+        t.start()
+
         info("start management node...")
-        if os.path.exists("/usr/local/bin/zsha2"):
+        zsha2 = os.path.exists("/usr/local/bin/zsha2")
+        if zsha2:
             shell("/usr/local/bin/zsha2 start-node")
-            info("please start another node after recover completed.")
         else:
             ctl.internal_run("start")
+
+        info("if you do not care about the progress, you can exit now.")
+        t.join()
+
+        if recover_succ[0] and zsha2:
+            info("start peer management node...")
+            Zsha2Utils().excute_on_peer("/usr/local/bin/zsha2 start-node")
 
 
 class PullDatabaseBackupCmd(Command):
