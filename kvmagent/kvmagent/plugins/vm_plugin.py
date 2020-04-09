@@ -10,6 +10,7 @@ import xml.etree.ElementTree as etree
 import re
 import platform
 import netaddr
+import simplejson
 
 import libvirt
 import xml.dom.minidom as minidom
