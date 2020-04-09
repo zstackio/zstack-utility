@@ -3905,6 +3905,9 @@ class Vm(object):
         if nic.bootOrder is not None and nic.bootOrder > 0:
             e(interface, 'boot', None, attrib={'order': str(nic.bootOrder)})
 
+        if nic.physicalInterface is not None:
+            bash.bash_roe("bridge fdb add %s dev %s" % (nic.mac, nic.physicalInterface))
+
         return interface
 
     @staticmethod
