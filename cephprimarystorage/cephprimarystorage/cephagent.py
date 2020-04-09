@@ -155,6 +155,11 @@ class GetDownloadBitsFromKvmHostProgressRsp(AgentResponse):
         super(GetDownloadBitsFromKvmHostProgressRsp, self).__init__()
         self.totalSize = None
 
+class DownloadBitsFromKvmHostRsp(AgentResponse):
+    def __init__(self):
+        super(DownloadBitsFromKvmHostRsp, self).__init__()
+        self.format = None
+
 
 def replyerror(func):
     @functools.wraps(func)
@@ -986,7 +991,7 @@ class CephAgent(plugin.TaskManager):
     @rollback
     def download_from_kvmhost(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AgentResponse()
+        rsp = DownloadBitsFromKvmHostRsp()
 
         pool, image_name = self._parse_install_path(cmd.primaryStorageInstallPath)
 
@@ -999,6 +1004,7 @@ class CephAgent(plugin.TaskManager):
             return jsonobject.dumps(rsp)
 
         self.do_sftp_download(cmd, pool, image_name)
+        rsp.format = linux.get_img_fmt("rbd:%s/%s" % (pool, image_name))
         return jsonobject.dumps(rsp)
 
     @replyerror

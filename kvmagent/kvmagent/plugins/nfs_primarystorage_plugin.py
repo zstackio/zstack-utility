@@ -167,6 +167,11 @@ class GetDownloadBitsFromKvmHostProgressRsp(NfsResponse):
         super(GetDownloadBitsFromKvmHostProgressRsp, self).__init__()
         self.totalSize = None
 
+class DownloadBitsFromKvmHostRsp(NfsResponse):
+    def __init__(self):
+        super(DownloadBitsFromKvmHostRsp, self).__init__()
+        self.format = None
+
 class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     '''
     classdocs
@@ -806,7 +811,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     @completetask
     def download_from_kvmhost(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = kvmagent.AgentResponse()
+        rsp = DownloadBitsFromKvmHostRsp()
 
         install_abs_path = cmd.primaryStorageInstallPath
 
@@ -816,6 +821,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             return jsonobject.dumps(rsp)
 
         linux.scp_download(cmd.hostname, cmd.sshKey, cmd.backupStorageInstallPath, install_abs_path, cmd.username, cmd.sshPort, cmd.bandWidth)
+        rsp.format = linux.get_img_fmt(install_abs_path)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror

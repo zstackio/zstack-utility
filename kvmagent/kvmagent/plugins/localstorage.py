@@ -122,6 +122,11 @@ class GetDownloadBitsFromKvmHostProgressRsp(AgentResponse):
         super(GetDownloadBitsFromKvmHostProgressRsp, self).__init__()
         self.totalSize = None
 
+class DownloadBitsFromKvmHostRsp(AgentResponse):
+    def __init__(self):
+        super(DownloadBitsFromKvmHostRsp, self).__init__()
+        self.format = None
+
 
 class LocalStoragePlugin(kvmagent.KvmAgent):
     INIT_PATH = "/localstorage/init"
@@ -231,7 +236,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     @completetask
     def download_from_kvmhost(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AgentResponse()
+        rsp = DownloadBitsFromKvmHostRsp()
 
         install_path = cmd.primaryStorageInstallPath
 
@@ -242,6 +247,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             return jsonobject.dumps(rsp)
 
         self.do_download_from_sftp(cmd)
+        rsp.format = linux.get_img_fmt(install_path)
         return jsonobject.dumps(rsp)
 
 
