@@ -4342,7 +4342,9 @@ class VmPlugin(kvmagent.KvmAgent):
         # 'rsp.states' agaist QEMU process lists.
         output = bash.bash_o("ps x | grep -P -o 'qemu-kvm.*?-name\s+(guest=)?\K.*?,' | sed 's/.$//'").splitlines()
         for guest in output:
-            if guest in rsp.states or guest.lower() == "ZStack Management Node VM".lower():
+            if guest in rsp.states \
+                    or guest.lower() == "ZStack Management Node VM".lower()\
+                    or guest.startswith("guestfs-"):
                 continue
             logger.warn('guest [%s] not found in virsh list' % guest)
             rsp.states[guest] = Vm.VM_STATE_RUNNING
