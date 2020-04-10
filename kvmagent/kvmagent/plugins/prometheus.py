@@ -22,6 +22,10 @@ latest_collect_result = {}
 collectResultLock = threading.RLock()
 IPTABLES_CMD = iptables.get_iptables_cmd()
 
+def read_number(fname):
+    res = linux.read_file(fname)
+    return 0 if not res else int(res)
+
 def collect_host_network_statistics():
 
     all_eths = os.listdir("/sys/class/net/")
@@ -45,23 +49,12 @@ def collect_host_network_statistics():
     all_out_packets = 0
     all_out_errors = 0
     for intf in interfaces:
-        res = linux.read_file("/sys/class/net/{}/statistics/rx_bytes".format(intf))
-        all_in_bytes += int(res)
-
-        res = linux.read_file("/sys/class/net/{}/statistics/rx_packets".format(intf))
-        all_in_packets += int(res)
-
-        res = linux.read_file("/sys/class/net/{}/statistics/rx_errors".format(intf))
-        all_in_errors += int(res)
-
-        res = linux.read_file("/sys/class/net/{}/statistics/tx_bytes".format(intf))
-        all_out_bytes += int(res)
-
-        res = linux.read_file("/sys/class/net/{}/statistics/tx_packets".format(intf))
-        all_out_packets += int(res)
-
-        res = linux.read_file("/sys/class/net/{}/statistics/tx_errors".format(intf))
-        all_out_errors += int(res)
+        all_in_bytes += read_number("/sys/class/net/{}/statistics/rx_bytes".format(intf))
+        all_in_packets += read_number("/sys/class/net/{}/statistics/rx_packets".format(intf))
+        all_in_errors += read_number("/sys/class/net/{}/statistics/rx_errors".format(intf))
+        all_out_bytes += read_number("/sys/class/net/{}/statistics/tx_bytes".format(intf))
+        all_out_packets += read_number("/sys/class/net/{}/statistics/tx_packets".format(intf))
+        all_out_errors += read_number("/sys/class/net/{}/statistics/tx_errors".format(intf))
 
     metrics = {
         'host_network_all_in_bytes': GaugeMetricFamily('host_network_all_in_bytes',
@@ -279,18 +272,23 @@ def collect_vm_statistics():
         arr = pid_vm.split()
         pid_vm_map[arr[0]] = arr[1]
 
-    vm_pid_arr_str = ','.join(pid_vm_map.keys())
+    def collect(vm_pid_arr):
+        vm_pid_arr_str = ','.join(vm_pid_arr)
 
-    r, pid_cpu_usages_str = bash_ro("top -b -n 1 -p %s | grep qemu-kvm | awk '{print $1,$9}'" % vm_pid_arr_str)
-    if r != 0 or len(pid_cpu_usages_str.splitlines()) == 0:
-        return metrics.values()
+        r, pid_cpu_usages_str = bash_ro("top -b -n 1 -p %s | grep qemu-kvm | awk '{print $1,$9}'" % vm_pid_arr_str)
+        if r != 0 or len(pid_cpu_usages_str.splitlines()) == 0:
+            return
 
-    for pid_cpu_usage in pid_cpu_usages_str.splitlines():
-        arr = pid_cpu_usage.split()
-        pid = arr[0]
-        vm_uuid = pid_vm_map[pid]
-        cpu_usage = arr[1]
-        metrics['cpu_occupied_by_vm'].add_metric([vm_uuid], float(cpu_usage))
+        for pid_cpu_usage in pid_cpu_usages_str.splitlines():
+            arr = pid_cpu_usage.split()
+            pid = arr[0]
+            vm_uuid = pid_vm_map[pid]
+            cpu_usage = arr[1]
+            metrics['cpu_occupied_by_vm'].add_metric([vm_uuid], float(cpu_usage))
+
+    n = 10
+    for i in range(0, len(pid_vm_map.keys()), n):
+        collect(pid_vm_map.keys()[i:i + n])
 
     return metrics.values()
 
@@ -439,20 +437,23 @@ LoadPlugin virt
             service_path = '/etc/systemd/system/%s.service' % service_name
 
             service_conf = '''
+[Unit]
 Description=prometheus %s
 After=network.target
 
 [Service]
 ExecStart=/bin/sh -c '%s %s > %s 2>&1'
+ExecStop=/bin/sh -c 'pkill -TERM -f %s'
 
 Restart=always
 RestartSec=30s
 [Install]
 WantedBy=multi-user.target
-''' % (service_name, binPath, args, log)
+''' % (service_name, binPath, args, log, binPath)
 
             if not os.path.exists(service_path):
                 linux.write_file(service_path, service_conf, True)
+                os.chmod(service_path, 0644)
                 reload_and_restart_service(service_name)
                 return
 
@@ -460,6 +461,7 @@ WantedBy=multi-user.target
                 linux.write_file(service_path, service_conf, True)
                 logger.info("%s.service conf changed" % service_name)
 
+            os.chmod(service_path, 0644)
             # restart service regardless of conf changes, for ZSTAC-23539
             reload_and_restart_service(service_name)
 
@@ -495,25 +497,7 @@ WantedBy=multi-user.target
         for cmd in para.cmds:
             start_exporter(cmd)
 
-        self.install_iptables()
-
         return jsonobject.dumps(rsp)
-
-    @in_bash
-    @lock.file_lock('/run/xtables.lock')
-    def install_iptables(self):
-        def install_iptables_port(rules, port):
-            needle = '-A INPUT -p tcp -m tcp --dport %d' % port
-            drules = [ r.replace("-A ", "-D ") for r in rules if needle in r ]
-            for rule in drules:
-                bash_r("%s %s" % (IPTABLES_CMD, rule))
-
-            bash_r("%s -I INPUT -p tcp --dport %s -j ACCEPT" % (IPTABLES_CMD, port))
-
-        rules = bash_o("%s -S INPUT" % IPTABLES_CMD).splitlines()
-        install_iptables_port(rules, 7069)
-        install_iptables_port(rules, 9100)
-        install_iptables_port(rules, 9103)
 
     def install_colletor(self):
         class Collector(object):

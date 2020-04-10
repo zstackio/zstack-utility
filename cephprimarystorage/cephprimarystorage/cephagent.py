@@ -465,6 +465,12 @@ class CephAgent(plugin.TaskManager):
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
+    @staticmethod
+    def _wrap_shareable_cmd(cmd, cmd_string):
+        if cmd.shareable:
+            return cmd_string + " --image-shared"
+        return cmd_string
+
     @replyerror
     def cp(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -490,7 +496,7 @@ class CephAgent(plugin.TaskManager):
             return synced
 
         t_shell = traceable_shell.get_shell(cmd)
-        _, _, err = t_shell.bash_progress_1('rbd cp %s %s 2> %s' % (src_path, dst_path, PFILE), _get_progress)
+        _, _, err = t_shell.bash_progress_1(self._wrap_shareable_cmd(cmd, 'rbd cp %s %s 2> %s' % (src_path, dst_path, PFILE)) , _get_progress)
 
         if os.path.exists(PFILE):
             os.remove(PFILE)
@@ -654,6 +660,10 @@ class CephAgent(plugin.TaskManager):
         if cmd.isCreate and realname in pool_names:
             raise Exception('have pool named[%s] in the ceph cluster, can\'t create new pool with same name' % realname)
 
+        if (ceph.is_xsky() or ceph.is_sandstone()) and cmd.isCreate and realname not in pool_names:
+                raise Exception(
+                    'current ceph storage type only support add exist pool, please create it manually')
+
         if realname not in pool_names:
             shell.call('ceph osd pool create %s 128' % realname)
 
@@ -727,8 +737,8 @@ class CephAgent(plugin.TaskManager):
             call_string = 'rbd create --size %s --image-format 2 %s' % (size_M, path)
             rsp.size = cmd.size + sizeunit.MegaByte.toByte(1)
 
-        if cmd.shareable:
-            call_string = call_string + " --image-shared"
+
+        call_string = self._wrap_shareable_cmd(cmd, call_string)
 
         skip_cmd = "rbd info %s ||" % path if cmd.skipIfExisting else ""
         shell.call(skip_cmd + call_string)
@@ -790,9 +800,13 @@ class CephAgent(plugin.TaskManager):
 
         _0()
 
+        def rbd_check_rm(pool, name):
+            if shell.run('rbd info %s/%s' % (pool, name)) == 0:
+                shell.check_run('rbd rm %s/%s' % (pool, name))
+
         try:
-            shell.run('rbd rm %s/%s' % (pool, tmp_image_name))
-            shell.call('set -o pipefail; ssh -p %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s root@%s cat %s | %s rbd import --image-format 2 - %s/%s' % (port, prikey_file, hostname, remote_shell_quote(cmd.backupStorageInstallPath), bandWidth, pool, tmp_image_name))
+            rbd_check_rm(pool, tmp_image_name)
+            shell.call(self._wrap_shareable_cmd(cmd, 'set -o pipefail; ssh -p %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s root@%s cat %s | %s rbd import --image-format 2 - %s/%s' % (port, prikey_file, hostname, remote_shell_quote(cmd.backupStorageInstallPath), bandWidth, pool, tmp_image_name)))
         finally:
             os.remove(prikey_file)
 
@@ -809,7 +823,7 @@ class CephAgent(plugin.TaskManager):
         if file_format not in ['qcow2', 'raw']:
             raise Exception('unknown image format: %s' % file_format)
 
-        shell.run('rbd rm %s/%s' % (pool, image_name))
+        rbd_check_rm(pool, image_name)
         if file_format == 'qcow2':
             conf_path = None
             try:

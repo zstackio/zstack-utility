@@ -317,6 +317,8 @@ class DEip(kvmagent.KvmAgent):
                 bash_errorout('ip link add {{outer_dev}} type veth peer name {{inner_dev}}')
                 bash_errorout('ip link set {{outer_dev}} alias {{outer_dev_desc}}')
                 bash_errorout('ip link set {{inner_dev}} alias {{inner_dev_desc}}')
+                bash_errorout('ip link set mtu %d dev %s' % (linux.MAX_MTU_OF_VNIC, outer_dev))
+                bash_errorout('ip link set mtu %d dev %s' % (linux.MAX_MTU_OF_VNIC, inner_dev))
 
             bash_errorout('ip link set {{outer_dev}} up')
 

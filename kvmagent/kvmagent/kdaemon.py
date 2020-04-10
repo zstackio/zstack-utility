@@ -4,11 +4,13 @@
 '''
 import sys, os, os.path
 from zstacklib.utils import log
+
+log.configure_log('/var/log/zstack/zstack-kvmagent.log')
+
 from zstacklib.utils import linux
 import zstacklib.utils.iptables as iptables
 
 pidfile = '/var/run/zstack/kvmagent.pid'
-log.configure_log('/var/log/zstack/zstack-kvmagent.log')
 logger = log.get_logger(__name__)
 
 import kvmagent
@@ -28,11 +30,6 @@ def main():
     prepare_pid_dir(pidfile)
 
     try:
-        iptc = iptables.from_iptables_save()
-        iptc.add_rule('-A INPUT -p tcp -m tcp --dport 7070 -j ACCEPT')
-        iptc.add_rule('-A INPUT -p tcp -m tcp --dport 16509 -j ACCEPT')
-        iptc.iptable_restore()
-
         cmd = sys.argv[1]
         py_process_name = 'from kvmagent import kdaemon'
         agentdaemon = kvmagent.KvmDaemon(pidfile, py_process_name)

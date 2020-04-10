@@ -180,7 +180,7 @@ class BtrfsPlugin(plugin.Plugin):
 
         if cmd.volumeUuid:
             iscsi_path = cmd.iscsiPath
-            target_name = iscsi_path.lstrip('iscsi://').split('/')[1]
+            target_name = iscsi_path.lstrip('iscsi:').lstrip('//').split('/')[1]
             self._delete_target(target_name, cmd.volumeUuid)
 
         sub_vol_dir = os.path.dirname(cmd.installPath)

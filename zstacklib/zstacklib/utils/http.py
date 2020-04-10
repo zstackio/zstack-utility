@@ -114,6 +114,7 @@ class AsyncUirHandler(SyncUriHandler):
     
     @thread.AsyncThread
     def _run_index(self, task_uuid, request):
+        self.HANDLER_COUNTER.inc()
         callback_uri = self._get_callback_uri(request)
         headers = {TASK_UUID : task_uuid}
         try:
@@ -154,7 +155,6 @@ class AsyncUirHandler(SyncUriHandler):
             logger.warn(err)
             raise cherrypy.HTTPError(400, err)
 
-        self.HANDLER_COUNTER.inc()
         task_uuid = cherrypy.request.headers[TASK_UUID]
         req = Request.from_cherrypy_request(cherrypy.request)
 
@@ -221,7 +221,6 @@ class HttpServer(object):
     def _add_mapping(self, uri_obj):
         if not self.mapper: self.mapper = cherrypy.dispatch.RoutesDispatcher()
         self.mapper.connect(name=uri_obj.uri, route=uri_obj.uri, controller=uri_obj.controller, action="index")
-        logger.debug('function[%s] registered uri: %s' % (uri_obj.func.__name__, uri_obj.uri))
         if not uri_obj.uri.endswith('/'):
             nuri = uri_obj.uri + '/'
             self.mapper.connect(name=nuri, route=nuri, controller=uri_obj.controller, action="index")

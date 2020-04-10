@@ -810,7 +810,6 @@ class CephAgent(object):
             total = _getRealSize(content_length)
 
             def _getProgress(synced):
-                logger.debug("getProgress in ceph-bs-agent, synced: %s, total: %s" % (synced, total))
                 last = linux.tail_1(PFILE).strip()
                 if not last or len(last.split()) < 1 or 'HTTP request sent, awaiting response' in last:
                     return synced
@@ -854,7 +853,6 @@ class CephAgent(object):
             _1()
 
             def _get_progress(synced):
-                logger.debug("getProgress in add image")
                 if not os.path.exists(PFILE):
                     return synced
                 last = linux.tail_1(PFILE).strip()

@@ -64,6 +64,8 @@ zstack_163_repo_file=/etc/yum.repos.d/zstack-163-yum.repo
 zstack_ali_repo_file=/etc/yum.repos.d/zstack-aliyun-yum.repo
 PRODUCT_TITLE_FILE='./product_title_file'
 UPGRADE_LOCK=/tmp/zstack_upgrade.lock
+MYSQL_CONF_FILE=''
+AUDIT_RULE_FILE='/etc/audit/rules.d/audit.rules'
 
 [ ! -z $http_proxy ] && HTTP_PROXY=$http_proxy
 
@@ -147,6 +149,7 @@ stop_zstack_tui
 
 #define extra upgrade params
 #USE THIS PATTERN: upgrade_params_array[INDEX]='VERSION,PARAM'
+#this params_array is appeared only once and not persisted
 declare -a upgrade_params_array=(
     '1.3,-DsyncImageActualSize=true'
     '1.4,-DtapResourcesForBilling=true'
@@ -162,7 +165,10 @@ declare -a upgrade_params_array=(
     '3.7.0,-DinitRunningVmPriority=true'
     '3.7.2,-DgeneratePriceEndDate=true'
     '3.8.0,-DinitRunningApplianceVmPriority=true'
-    '3.8.0,-DInfluxdb.upgrade.audit=true'
+)
+#other than the upon params_array, this one could be persisted in zstack.properties
+declare -a upgrade_persist_params_array=(
+    '3.9.0,InfluxDB.enable.message.retention=false'
 )
 
 # version compare
@@ -1063,23 +1069,26 @@ download_zstack(){
 }
 
 # create symbol links for zstack-repo
+create_symbol_link() {
+    mkdir -p ${ZSTACK_HOME}/static/zstack-repo/
+    if [ ! -L ${ZSTACK_HOME}/static/zstack-repo/x86_64 ];then
+        ln -s /opt/zstack-dvd/x86_64 ${ZSTACK_HOME}/static/zstack-repo/x86_64 >/dev/null 2>&1
+        ln -s /opt/zstack-dvd/aarch64 ${ZSTACK_HOME}/static/zstack-repo/aarch64 >/dev/null 2>&1
+    fi
+    chown -R zstack:zstack ${ZSTACK_HOME}/static/zstack-repo
+}
+
 iu_deploy_zstack_repo() {
     echo_subtitle "Deploy yum repo for ${PRODUCT_NAME}"
 
     [ -z "$ZSTACK_RELEASE" ] && fail "failed to get zstack releasever, please make sure zstack-release is installed."
-    mkdir -p ${ZSTACK_HOME}/static/zstack-repo/
-    ln -s /opt/zstack-dvd/x86_64 ${ZSTACK_HOME}/static/zstack-repo/x86_64 >/dev/null 2>&1
-    ln -s /opt/zstack-dvd/aarch64 ${ZSTACK_HOME}/static/zstack-repo/aarch64 >/dev/null 2>&1
-    chown -R zstack:zstack ${ZSTACK_HOME}/static/zstack-repo
+    create_symbol_link
 }
 
 iu_deploy_zstack_apt_source() {
     echo_subtitle "Deploy apt source for ${PRODUCT_NAME}"
 
-    mkdir -p ${ZSTACK_HOME}/static/zstack-repo
-    ln -s /opt/zstack-dvd/x86_64 ${ZSTACK_HOME}/static/zstack-repo/x86_64 >/dev/null 2>&1
-    ln -s /opt/zstack-dvd/aarch64 ${ZSTACK_HOME}/static/zstack-repo/aarch64 >/dev/null 2>&1
-    chown -R zstack:zstack ${ZSTACK_HOME}/static/zstack-repo
+    create_symbol_link
 }
 
 unpack_zstack_into_tomcat(){
@@ -1225,6 +1234,21 @@ upgrade_zstack(){
     done
     echo "upgrade_params: $upgrade_params" >>$ZSTACK_INSTALL_LOG
     [ ! -z "$upgrade_params" ] && zstack-ctl setenv ZSTACK_UPGRADE_PARAMS=$upgrade_params
+
+    upgrade_persist_params=''
+    for item in ${upgrade_persist_params_array[*]}; do
+        version=`echo $item | cut -d ',' -f 1`
+        param=`echo $item | cut -d ',' -f 2`
+
+        # pre < version
+        vercomp ${CURRENT_VERSION} ${version}; cmp1=$?
+        if [ ${cmp1} -eq 2 ]; then
+            upgrade_persist_params="${param}"
+        fi
+        echo "upgrade_persist_params: $upgrade_persist_params" >>$ZSTACK_INSTALL_LOG
+    [ ! -z "$upgrade_persist_params" ] && zstack-ctl configure $upgrade_persist_params
+    done
+
 
     # set ticket.sns.topic.http.url if not exists
     zstack-ctl show_configuration | grep 'ticket.sns.topic.http.url' >/dev/null 2>&1
@@ -1399,6 +1423,7 @@ is_install_general_libs_rh(){
             python-backports-ssl_match_hostname \
             python-setuptools \
             avahi \
+            gnutls-utils \
             avahi-tools"
 
     always_update_list="mysql openssh"
@@ -1755,31 +1780,35 @@ uz_upgrade_zstack_ctl(){
     pass
 }
 
-upgrade_mysql_configuration(){
-    echo "modify my.cnf" >>$ZSTACK_INSTALL_LOG 2>&1
+get_mysql_conf_file(){
     if [ -f /etc/mysql/mariadb.conf.d/50-server.cnf ]; then
         #ubuntu 16.04
-        mysql_conf=/etc/mysql/mariadb.conf.d/50-server.cnf
+        MYSQL_CONF_FILE=/etc/mysql/mariadb.conf.d/50-server.cnf
     elif [ -f /etc/mysql/my.cnf ]; then
         # Ubuntu 14.04
-        mysql_conf=/etc/mysql/my.cnf
+        MYSQL_CONF_FILE=/etc/mysql/my.cnf
     elif [ -f /etc/my.cnf ]; then
         # centos
-        mysql_conf=/etc/my.cnf
+        MYSQL_CONF_FILE=/etc/my.cnf
     fi
+}
 
-    grep 'log_bin_trust_function_creators=' $mysql_conf >/dev/null 2>&1
+upgrade_mysql_configuration(){
+    echo "modify my.cnf" >>$ZSTACK_INSTALL_LOG 2>&1
+    get_mysql_conf_file
+
+    grep 'log_bin_trust_function_creators=' $MYSQL_CONF_FILE >/dev/null 2>&1
     if [ $? -ne 0 ]; then
         echo "log_bin_trust_function_creators=1" >>$ZSTACK_INSTALL_LOG 2>&1
-        sed -i '/\[mysqld\]/a log_bin_trust_function_creators=1\' $mysql_conf
+        sed -i '/\[mysqld\]/a log_bin_trust_function_creators=1\' $MYSQL_CONF_FILE
     fi
 
     # Fixes ZSTAC-24460
     # if max_allowed_packet is not configured, then update from default value 1M to 2M
-    grep 'max_allowed_packet' $mysql_conf >/dev/null 2>&1
+    grep 'max_allowed_packet' $MYSQL_CONF_FILE >/dev/null 2>&1
     if [ $? -ne 0 ]; then
         echo "max_allowed_packet=2M" >>$ZSTACK_INSTALL_LOG 2>&1
-        sed -i '/\[mysqld\]/a max_allowed_packet=2M\' $mysql_conf
+        sed -i '/\[mysqld\]/a max_allowed_packet=2M\' $MYSQL_CONF_FILE
     fi
 
     if [ $OS = $UBUNTU1404 -o $OS = $UBUNTU1604 ]; then
@@ -2213,6 +2242,16 @@ cs_gen_sshkey(){
     pass
 }
 
+setup_audit_file(){
+    if [ ! -f $AUDIT_RULE_FILE ]; then
+        return 1
+    fi
+
+    get_mysql_conf_file
+    zstack-ctl refresh_audit --add $ZSTACK_INSTALL_ROOT/$ZSTACK_PROPERTIES > /dev/null
+    zstack-ctl refresh_audit --add $MYSQL_CONF_FILE > /dev/null
+}
+
 cs_install_mysql(){
     echo_subtitle "Install Mysql Server"
     rsa_key_file=$1/id_rsa
@@ -2309,6 +2348,14 @@ cs_install_zstack_service(){
     pass
 }
 
+disable_probe_interfaces() {
+    if grep -E -sq '^Set[[:space:]]+probe_interfaces[[:space:]]+false' /etc/sudo.conf; then
+        :
+    else
+        echo "Set probe_interfaces false" >> /etc/sudo.conf
+    fi
+}
+
 cs_enable_zstack_service(){
     echo_subtitle "Enable ${PRODUCT_NAME} bootstrap service"
     if [ -f /bin/systemctl ]; then
@@ -2338,6 +2385,11 @@ EOF
             update-rc.d zstack-server start 97 3 4 5 . stop 3 0 1 2 6 .  >> $ZSTACK_INSTALL_LOG 2>&1
         fi
     fi
+
+    # work-around 'sudo' with large number of L2 devices
+    # c.f. https://bugs.launchpad.net/ubuntu/+source/sudo/+bug/1272414
+    disable_probe_interfaces
+
     pass
 }
 
@@ -2934,7 +2986,7 @@ check_sync_local_repos() {
   fi
   if [ $? -eq 0 ]; then
       return 0
-  elif [ x"$SKIP_SYNC" = x'y' -o $OS == $KYLIN402 -o $OS = $DEBIAN9 ]; then
+  elif [ x"$SKIP_SYNC" = x'y' -o x"$OS" = x"$KYLIN402" -o x"$OS" = x"$DEBIAN9" ]; then
       echo " ... $(tput setaf 1)NOT MATCH$(tput sgr0)" | tee -a $ZSTAC_INSTALL_LOG
       echo_hints_to_upgrade_iso
   else
@@ -3527,6 +3579,9 @@ if [ x"$UPGRADE" = x'y' ]; then
     #only upgrade zstack
     upgrade_zstack
 
+    #Setup audit.rules
+    setup_audit_file
+
     cd /; rm -rf $upgrade_folder
     cleanup_function
 
@@ -3612,6 +3667,9 @@ fi
 
 #Download and install ${PRODUCT_NAME} Package
 install_zstack
+
+#Setup audit.rules
+setup_audit_file
 
 #Post Configuration, including apache, zstack-server, NFS Server, HTTP Server
 config_system

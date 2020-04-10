@@ -1,19 +1,16 @@
 '''
 @author: Frank
 '''
-import Queue
 import contextlib
 import os.path
 import tempfile
-import threading
 import time
 import traceback
 import xml.etree.ElementTree as etree
 import re
 import platform
 import netaddr
-import uuid
-import json
+import simplejson
 
 import libvirt
 import xml.dom.minidom as minidom
@@ -29,8 +26,6 @@ from zstacklib.utils import bash, plugin
 from zstacklib.utils.bash import in_bash
 from zstacklib.utils import http
 from zstacklib.utils import jsonobject
-from zstacklib.utils import lichbd
-import zstacklib.utils.lichbd_factory as lichbdfactory
 from zstacklib.utils import linux
 from zstacklib.utils import log
 from zstacklib.utils import lvm
@@ -631,15 +626,11 @@ class VncPortIptableRule(object):
         ipt.delete_chain(chain_name)
         ipt.iptable_restore()
 
-    @lock.file_lock('/run/xtables.lock')
-    def delete_stale_chains(self):
-        vms = get_running_vms()
-        ipt = iptables.from_iptables_save()
-        tbl = ipt.get_table()
-
+    def find_vm_internal_ids(self, vms):
         internal_ids = []
+        namespace_used = is_namespace_used()
         for vm in vms:
-            if is_namespace_used():
+            if namespace_used:
                 vm_id_node = find_zstack_metadata_node(etree.fromstring(vm.domain_xml), 'internalId')
                 if vm_id_node is None:
                     continue
@@ -653,6 +644,18 @@ class VncPortIptableRule(object):
 
             if vm_id:
                 internal_ids.append(vm_id)
+        return internal_ids
+
+    @lock.file_lock('/run/xtables.lock')
+    def delete_stale_chains(self):
+        ipt = iptables.from_iptables_save()
+        tbl = ipt.get_table()
+        if not tbl:
+            ipt.iptable_restore()
+            return
+
+        vms = get_running_vms()
+        internal_ids = self.find_vm_internal_ids(vms)
 
         # delete all vnc chains
         chains = tbl.children[:]
@@ -669,7 +672,6 @@ class VncPortIptableRule(object):
 def e(parent, tag, value=None, attrib={}, usenamesapce = False):
     if usenamesapce:
         tag = '{%s}%s' % (ZS_XML_NAMESPACE, tag)
-
     el = etree.SubElement(parent, tag, attrib)
     if value:
         el.text = value
@@ -1067,6 +1069,7 @@ class BlkIscsi(object):
         return login.login()
 
     def to_xmlobject(self):
+        # type: () -> etree.Element
         device_path = self._login_portal()
         if self.is_cdrom:
             root = etree.Element('disk', {'type': 'block', 'device': 'cdrom'})
@@ -1178,156 +1181,12 @@ class VirtioSCSICeph(object):
             e(source, 'host', None, {'name': minfo.hostname, 'port': str(minfo.port)})
         e(disk, 'target', None, {'dev': 'sd%s' % self.dev_letter, 'bus': 'scsi'})
         e(disk, 'wwn', self.volume.wwn)
-        e(disk, 'address', None, {'type': 'drive', 'controller': '0', 'unit': Vm.get_device_unit(self.volume.deviceId)})
         if self.volume.shareable:
             e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none'})
             e(disk, 'shareable')
         if self.volume.physicalBlockSize:
             e(disk, 'blockio', None, {'physical_block_size': str(self.volume.physicalBlockSize)})
         return disk
-
-
-class IsoFusionstor(object):
-    def __init__(self):
-        self.iso = None
-
-    def to_xmlobject(self, target_dev, target_bus_type, bus=None, unit=None, bootOrder=None):
-        protocol = lichbd.get_protocol()
-        snap = self.iso.path.lstrip('fusionstor:').lstrip('//')
-        path = self.iso.path.lstrip('fusionstor:').lstrip('//').split('@')[0]
-        if protocol == 'lichbd':
-            iqn = lichbd.lichbd_get_iqn()
-            port = lichbd.lichbd_get_iscsiport()
-            lichbd.makesure_qemu_img_with_lichbd()
-
-            shellcmd = shell.ShellCmd(lichbdfactory.get_lichbd_version_class().LICHBD_CMD_POOL_CREATE+' %s -p iscsi' % path.split('/')[0])
-            shellcmd(False)
-            if shellcmd.return_code != 0 and shellcmd.return_code != 17:
-                shellcmd.raise_error()
-
-            shellcmd = shell.ShellCmd(
-                'lich.snapshot --clone %s %s' % (os.path.join('/lichbd/', snap), os.path.join('/iscsi/', path)))
-            shellcmd(False)
-            if shellcmd.return_code != 0 and shellcmd.return_code != 17:
-                shellcmd.raise_error()
-
-            pool = path.split('/')[0]
-            image = path.split('/')[1]
-            # iqn:pool.volume/0
-            path = '%s:%s.%s/0' % (iqn, pool, image)
-            protocol = 'iscsi'
-        elif protocol == 'sheepdog' or protocol == 'nbd':
-            pass
-        else:
-            raise shell.ShellError('Do not supprot protocols, only supprot lichbd, sheepdog and nbd')
-
-        disk = etree.Element('disk', {'type': 'network', 'device': 'cdrom'})
-        source = e(disk, 'source', None, {'name': path, 'protocol': protocol})
-        if protocol == 'iscsi':
-            e(source, 'host', None, {'name': '127.0.0.1', 'port': '3260'})
-        elif protocol == 'sheepdog':
-            e(source, 'host', None, {'name': '127.0.0.1', 'port': '7000'})
-        elif protocol == 'nbd':
-            e(source, 'host', None, {'name': 'unix', 'port': '/tmp/nbd-socket'})
-        e(disk, 'target', None, {'dev': target_dev, 'bus': target_bus_type})
-        if bus and unit:
-            e(disk, 'address', None, {'type': 'drive', 'bus': bus, 'unit': unit})
-        e(disk, 'readonly', None)
-        if bootOrder is not None and bootOrder > 0:
-            e(disk, 'boot', None, {'order': str(bootOrder)})
-        return disk
-
-
-class BlkFusionstor(object):
-    def __init__(self):
-        self.volume = None
-        self.dev_letter = None
-        self.bus_type = None
-
-    def to_xmlobject(self):
-        protocol = lichbd.get_protocol()
-        if protocol == 'lichbd':
-            lichbd.makesure_qemu_img_with_lichbd()
-        elif protocol == 'sheepdog' or protocol == 'nbd':
-            pass
-        else:
-            raise shell.ShellError('Do not supprot protocols, only supprot lichbd, sheepdog and nbd')
-
-        path = self.volume.installPath.lstrip('fusionstor:').lstrip('//')
-        file_format = lichbd.lichbd_get_format(path)
-
-        disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
-        source = e(disk, 'source', None, {'name': path, 'protocol': protocol})
-        if protocol == 'sheepdog':
-            e(source, 'host', None, {'name': '127.0.0.1', 'port': '7000'})
-        elif protocol == 'nbd':
-            e(source, 'host', None, {'name': 'unix', 'port': '/tmp/nbd-socket'})
-
-        dev_format = Vm._get_disk_target_dev_format(self.bus_type)
-        e(disk, 'target', None, {'dev': dev_format % self.dev_letter, 'bus': self.bus_type})
-        e(disk, 'driver', None, {'cache': 'none', 'name': 'qemu', 'io': 'native', 'type': file_format})
-        return disk
-
-
-class VirtioFusionstor(object):
-    def __init__(self):
-        self.volume = None
-        self.dev_letter = None
-
-    def to_xmlobject(self):
-        protocol = lichbd.get_protocol()
-        if protocol == 'lichbd':
-            lichbd.makesure_qemu_img_with_lichbd()
-        elif protocol == 'sheepdog' or protocol == 'nbd':
-            pass
-        else:
-            raise shell.ShellError('Do not supprot protocols, only supprot lichbd, sheepdog and nbd')
-
-        path = self.volume.installPath.lstrip('fusionstor:').lstrip('//')
-        file_format = lichbd.lichbd_get_format(path)
-
-        disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
-        source = e(disk, 'source', None, {'name': path, 'protocol': protocol})
-        if protocol == 'sheepdog':
-            e(source, 'host', None, {'name': '127.0.0.1', 'port': '7000'})
-        elif protocol == 'nbd':
-            e(source, 'host', None, {'name': 'unix', 'port': '/tmp/nbd-socket'})
-        e(disk, 'target', None, {'dev': 'vd%s' % self.dev_letter, 'bus': 'virtio'})
-        e(disk, 'driver', None, {'cache': 'none', 'name': 'qemu', 'io': 'native', 'type': file_format})
-        return disk
-
-
-class VirtioSCSIFusionstor(object):
-    def __init__(self):
-        self.volume = None
-        self.dev_letter = None
-
-    def to_xmlobject(self):
-        protocol = lichbd.get_protocol()
-        if protocol == 'lichbd':
-            lichbd.makesure_qemu_img_with_lichbd()
-        elif protocol == 'sheepdog' or protocol == 'nbd':
-            pass
-        else:
-            raise shell.ShellError('Protocol[%s] not supported, only support [lichbd, sheepdog, nbd]' % protocol)
-
-        path = self.volume.installPath.lstrip('fusionstor:').lstrip('//')
-        file_format = lichbd.lichbd_get_format(path)
-
-        disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
-        source = e(disk, 'source', None, {'name': path, 'protocol': protocol})
-        if protocol == 'sheepdog':
-            e(source, 'host', None, {'name': '127.0.0.1', 'port': '7000'})
-        elif protocol == 'nbd':
-            e(source, 'host', None, {'name': 'unix', 'port': '/tmp/nbd-socket'})
-
-        e(disk, 'target', None, {'dev': 'sd%s' % self.dev_letter, 'bus': 'scsi'})
-        e(disk, 'driver', None, {'cache': 'none', 'name': 'qemu', 'io': 'native', 'type': file_format})
-        e(disk, 'wwn', self.volume.wwn)
-        if self.volume.shareable:
-            e(disk, 'shareable')
-        return disk
-
 
 class VirtioIscsi(object):
     def __init__(self):
@@ -1573,6 +1432,17 @@ def make_spool_conf(imgfmt, dev_letter, volume):
 def is_spice_tls():
     return bash.bash_r("grep '^[[:space:]]*spice_tls[[:space:]]*=[[:space:]]*1' /etc/libvirt/qemu.conf")
 
+
+def get_dom_error(uuid):
+    try:
+        domblkerror = shell.call('virsh domblkerror %s' % uuid)
+    except:
+        return None
+
+    if 'No errors found' in domblkerror:
+        return None
+    return domblkerror.replace('\n', '')
+
 class Vm(object):
     VIR_DOMAIN_NOSTATE = 0
     VIR_DOMAIN_RUNNING = 1
@@ -1619,18 +1489,14 @@ class Vm(object):
 
     @staticmethod
     def get_device_unit(device_id):
+        # type: (int) -> int
         if device_id >= len(Vm.DEVICE_LETTERS):
             err = "exceeds max disk limit, device id[%s], but only 0 ~ %d are allowed" % (device_id, len(Vm.DEVICE_LETTERS) - 1)
             logger.warn(err)
             raise kvmagent.KvmError(err)
 
-        # aarch64 use device_letter as address->unit
-        # e.g. sda -> unit 0    sdf -> unit 5
-        if IS_AARCH64:
-            return str(ord(Vm.DEVICE_LETTERS[device_id]) - ord(Vm.DEVICE_LETTERS[0]))
-
-        # x86_64 use device_id as address->unit
-        return str(device_id)
+        # e.g. sda -> unit 0    sdf -> unit 5, same as libvirt
+        return ord(Vm.DEVICE_LETTERS[device_id]) - ord(Vm.DEVICE_LETTERS[0])
 
     @staticmethod
     def get_iso_device_unit(device_id):
@@ -1641,6 +1507,19 @@ class Vm(object):
         return str(ord(Vm.ISO_DEVICE_LETTERS[device_id]) - ord(Vm.DEVICE_LETTERS[0]))
 
     timeout_object = linux.TimeoutObject()
+
+    @staticmethod
+    def set_device_address(disk_element, vol, vm_to_attach=None):
+        #  type: (etree.Element, jsonobject.JsonObject, Vm) -> None
+
+        target = disk_element.find('target')
+        bus = target.get('bus') if target is not None else None
+
+        if bus == 'scsi':
+            occupied_units = vm_to_attach.get_occupied_disk_address_units(bus='scsi', controller=0) if vm_to_attach else []
+            default_unit = Vm.get_device_unit(vol.deviceId)
+            unit = default_unit if default_unit not in occupied_units else max(occupied_units) + 1
+            e(disk_element, 'address', None, {'type': 'drive', 'controller': '0', 'unit': str(unit)})
 
     def __init__(self):
         self.uuid = None
@@ -1661,6 +1540,23 @@ class Vm(object):
             return self.state in state
         else:
             return self.state == state
+
+    def get_occupied_disk_address_units(self, bus, controller):
+        # type: (str, int) -> list[int]
+        result = []
+        for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
+            if not xmlobject.has_element(disk, 'address') or not xmlobject.has_element(disk, 'target'):
+                continue
+
+            if not disk.target.bus__ or not disk.target.bus_ == bus:
+                continue
+
+            if not disk.address.controller__ or not str(disk.address.controller_) == str(controller):
+                continue
+
+            result.append(int(disk.address.unit_))
+
+        return result
 
     def get_cpu_num(self):
         cpuNum = self.domain_xmlobject.vcpu.current__
@@ -1900,7 +1796,11 @@ class Vm(object):
                     raise
 
         if not linux.wait_callback_success(loop_resume, None, timeout=60):
-            raise kvmagent.KvmError('failed to resume vm ,timeout after 60 secs')
+            domblkerror = get_dom_error(self.uuid)
+            if domblkerror is None:
+                raise kvmagent.KvmError('failed to resume vm ,timeout after 60 secs')
+            else:
+                raise kvmagent.KvmError('failed to resume vm , because  %s' % domblkerror)
 
     def harden_console(self, mgmt_ip):
         if is_namespace_used():
@@ -2014,7 +1914,6 @@ class Vm(object):
             if volume.useVirtioSCSI:
                 e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
                 e(disk, 'wwn', volume.wwn)
-                e(disk, 'address', None, {'type': 'drive', 'controller': '0', 'unit': self.get_device_unit(volume.deviceId)})
             elif volume.useVirtio:
                 e(disk, 'target', None, {'dev': 'vd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'virtio'})
             else:
@@ -2024,7 +1923,7 @@ class Vm(object):
 
             Vm.set_volume_qos(addons, volume.volumeUuid, disk)
             volume_native_aio(disk)
-            return etree.tostring(disk)
+            return disk
 
         def scsilun_volume():
             disk = etree.Element('disk', attrib={'type': 'block', 'device': 'lun', 'sgio': 'unfiltered'})
@@ -2033,9 +1932,10 @@ class Vm(object):
             e(disk, 'source', None, {'dev': volume.installPath})
             e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
             #NOTE(weiw): scsi lun not support aio or qos
-            return etree.tostring(disk)
+            return disk
 
         def iscsibased_volume():
+            # type: () -> etree.Element
             def virtio_iscsi():
                 vi = VirtioIscsi()
                 portal, vi.target, vi.lun = volume.installPath.lstrip('iscsi://').split('/')
@@ -2046,7 +1946,7 @@ class Vm(object):
                 vi.chap_password = volume.chapPassword
                 Vm.set_volume_qos(addons, volume.volumeUuid, vi)
                 volume_native_aio(vi)
-                return etree.tostring(vi.to_xmlobject())
+                return vi.to_xmlobject()
 
             def blk_iscsi():
                 bi = BlkIscsi()
@@ -2058,7 +1958,7 @@ class Vm(object):
                 bi.chap_password = volume.chapPassword
                 Vm.set_volume_qos(addons, volume.volumeUuid, bi)
                 volume_native_aio(bi)
-                return etree.tostring(bi.to_xmlobject())
+                return bi.to_xmlobject()
 
             if volume.useVirtio:
                 return virtio_iscsi()
@@ -2066,6 +1966,7 @@ class Vm(object):
                 return blk_iscsi()
 
         def ceph_volume():
+            # type: () -> etree.Element
             def virtoio_ceph():
                 vc = VirtioCeph()
                 vc.volume = volume
@@ -2073,7 +1974,7 @@ class Vm(object):
                 xml_obj = vc.to_xmlobject()
                 Vm.set_volume_qos(addons, volume.volumeUuid, xml_obj)
                 volume_native_aio(xml_obj)
-                return etree.tostring(xml_obj)
+                return xml_obj
 
             def blk_ceph():
                 ic = BlkCeph()
@@ -2083,7 +1984,7 @@ class Vm(object):
                 xml_obj = ic.to_xmlobject()
                 Vm.set_volume_qos(addons, volume.volumeUuid, xml_obj)
                 volume_native_aio(xml_obj)
-                return etree.tostring(xml_obj)
+                return xml_obj
 
             def virtio_scsi_ceph():
                 vsc = VirtioSCSICeph()
@@ -2092,7 +1993,7 @@ class Vm(object):
                 xml_obj = vsc.to_xmlobject()
                 Vm.set_volume_qos(addons, volume.volumeUuid, xml_obj)
                 volume_native_aio(xml_obj)
-                return etree.tostring(xml_obj)
+                return xml_obj
 
             if volume.useVirtioSCSI:
                 return virtio_scsi_ceph()
@@ -2102,44 +2003,8 @@ class Vm(object):
                 else:
                     return blk_ceph()
 
-        def fusionstor_volume():
-            def virtoio_fusionstor():
-                vc = VirtioFusionstor()
-                vc.volume = volume
-                vc.dev_letter = dev_letter
-                xml_obj = vc.to_xmlobject()
-                Vm.set_volume_qos(addons, volume.volumeUuid, xml_obj)
-                volume_native_aio(xml_obj)
-                return etree.tostring(xml_obj)
-
-            def blk_fusionstor():
-                ic = BlkFusionstor()
-                ic.volume = volume
-                ic.dev_letter = dev_letter
-                ic.bus_type = self._get_controller_type()
-                xml_obj = ic.to_xmlobject()
-                Vm.set_volume_qos(addons, volume.volumeUuid, xml_obj)
-                volume_native_aio(xml_obj)
-                return etree.tostring(xml_obj)
-
-            def virtio_scsi_fusionstor():
-                vsc = VirtioSCSIFusionstor()
-                vsc.volume = volume
-                vsc.dev_letter = dev_letter
-                xml_obj = vsc.to_xmlobject()
-                Vm.set_volume_qos(addons, volume.volumeUuid, xml_obj)
-                volume_native_aio(xml_obj)
-                return etree.tostring(xml_obj)
-
-            if volume.useVirtioSCSI:
-                return virtio_scsi_fusionstor()
-            else:
-                if volume.useVirtio:
-                    return virtoio_fusionstor()
-                else:
-                    return blk_fusionstor()
-
         def block_volume():
+            # type: () -> etree.Element
             def blk():
                 disk = etree.Element('disk', {'type': 'block', 'device': 'disk', 'snapshot': 'external'})
                 e(disk, 'driver', None,
@@ -2152,10 +2017,11 @@ class Vm(object):
                 else:
                     e(disk, 'target', None, {'dev': 'vd%s' % dev_letter, 'bus': 'virtio'})
 
-                return etree.tostring(disk)
+                return disk
             return blk()
 
         def spool_volume():
+            # type: () -> etree.Element
             def blk():
                 imgfmt = linux.get_img_fmt(volume.installPath)
                 disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
@@ -2164,28 +2030,28 @@ class Vm(object):
                 e(disk, 'source', None,
                   {'protocol': 'spool', 'name': make_spool_conf(imgfmt, dev_letter, volume)})
                 e(disk, 'target', None, {'dev': 'vd%s' % dev_letter, 'bus': 'virtio'})
-                return etree.tostring(disk)
+                return disk
 
             return blk()
 
         dev_letter = self._get_device_letter(volume, addons)
         if volume.deviceType == 'iscsi':
-            xml = iscsibased_volume()
+            disk_element = iscsibased_volume()
         elif volume.deviceType == 'file':
-            xml = filebased_volume()
+            disk_element = filebased_volume()
         elif volume.deviceType == 'ceph':
-            xml = ceph_volume()
-        elif volume.deviceType == 'fusionstor':
-            xml = fusionstor_volume()
+            disk_element = ceph_volume()
         elif volume.deviceType == 'scsilun':
-            xml = scsilun_volume()
+            disk_element = scsilun_volume()
         elif volume.deviceType == 'block':
-            xml = block_volume()
+            disk_element = block_volume()
         elif volume.deviceType == 'spool':
-            xml = spool_volume()
+            disk_element = spool_volume()
         else:
             raise Exception('unsupported volume deviceType[%s]' % volume.deviceType)
 
+        Vm.set_device_address(disk_element, volume, get_vm_by_uuid(self.uuid))
+        xml = etree.tostring(disk_element)
         logger.debug('attaching volume[%s] to vm[uuid:%s]:\n%s' % (volume.installPath, self.uuid, xml))
         try:
             # libvirt has a bug that if attaching volume just after vm created, it likely fails. So we retry three time here
@@ -2429,9 +2295,6 @@ class Vm(object):
                 if disk.source.file__ and disk.source.file_ == volume.installPath:
                     return disk, disk.target.dev_
             elif volume.deviceType == 'ceph':
-                if disk.source.name__ and disk.source.name_ in volume.installPath:
-                    return disk, disk.target.dev_
-            elif volume.deviceType == 'fusionstor':
                 if disk.source.name__ and disk.source.name_ in volume.installPath:
                     return disk, disk.target.dev_
             elif volume.deviceType == 'scsilun':
@@ -2761,10 +2624,6 @@ class Vm(object):
 
         if iso.path.startswith('ceph'):
             ic = IsoCeph()
-            ic.iso = iso
-            cdrom = ic.to_xmlobject(dev, bus)
-        elif iso.path.startswith('fusionstor'):
-            ic = IsoFusionstor()
             ic.iso = iso
             cdrom = ic.to_xmlobject(dev, bus)
         else:
@@ -3232,6 +3091,9 @@ class Vm(object):
                 e(os, 'type', 'hvm', attrib={'machine': machine_type})
                 # if boot mode is UEFI
                 if cmd.bootMode == "UEFI":
+                    e(os, 'loader', '/usr/share/edk2.git/ovmf-x64/OVMF_CODE-pure-efi.fd', attrib={'readonly': 'yes', 'type': 'pflash'})
+                    e(os, 'nvram', '/var/lib/libvirt/qemu/nvram/%s.fd' % cmd.vmInstanceUuid, attrib={'template': '/usr/share/edk2.git/ovmf-x64/OVMF_VARS-pure-efi.fd'})
+                elif cmd.bootMode == "UEFI_WITH_CSM":
                     e(os, 'loader', '/usr/share/edk2.git/ovmf-x64/OVMF_CODE-with-csm.fd', attrib={'readonly': 'yes', 'type': 'pflash'})
                     e(os, 'nvram', '/var/lib/libvirt/qemu/nvram/%s.fd' % cmd.vmInstanceUuid, attrib={'template': '/usr/share/edk2.git/ovmf-x64/OVMF_VARS-with-csm.fd'})
                 elif cmd.addons['loaderRom'] is not None:
@@ -3275,7 +3137,7 @@ class Vm(object):
                 e(hyperv, 'spinlocks', attrib={'state': 'on', 'retries': '4096'})
                 e(hyperv, 'vendor_id', attrib={'state': 'on', 'value': 'ZStack_Org'})
             # always set ioapic driver to kvm after libvirt 3.4.0
-            if is_ioapic_supported() and not IS_AARCH64:
+            if is_ioapic_supported():
                 e(features, "ioapic", attrib={'driver': 'kvm'})
 
         def make_qemu_commandline():
@@ -3393,10 +3255,6 @@ class Vm(object):
                     ic = IsoCeph()
                     ic.iso = iso
                     devices.append(ic.to_xmlobject(cdrom_config.targetDev, default_bus_type, cdrom_config.bus, cdrom_config.unit, iso.bootOrder))
-                elif iso.path.startswith('fusionstor'):
-                    ic = IsoFusionstor()
-                    ic.iso = iso
-                    devices.append(ic.to_xmlobject(cdrom_config.targetDev, default_bus_type, cdrom_config.bus, cdrom_config.unit, iso.bootOrder))
                 else:
                     cdrom = make_empty_cdrom(cdrom_config.targetDev, cdrom_config.bus , cdrom_config.unit, iso.bootOrder)
                     e(cdrom, 'source', None, {'file': iso.path})
@@ -3422,7 +3280,6 @@ class Vm(object):
                 if _v.useVirtioSCSI:
                     e(disk, 'target', None, {'dev': 'sd%s' % _dev_letter, 'bus': 'scsi'})
                     e(disk, 'wwn', _v.wwn)
-                    e(disk, 'address', None, {'type': 'drive', 'controller': '0', 'unit': Vm.get_device_unit(_v.deviceId)})
                     return disk
 
                 if _v.useVirtio:
@@ -3496,37 +3353,6 @@ class Vm(object):
                 if _v.physicalBlockSize:
                     e(d, 'blockio', None, {'physical_block_size': str(_v.physicalBlockSize)})
                 return d
-
-            def fusionstor_volume(_dev_letter, _v):
-                def fusionstor_virtio():
-                    vc = VirtioFusionstor()
-                    vc.volume = _v
-                    vc.dev_letter = _dev_letter
-                    return vc.to_xmlobject()
-
-                def fusionstor_blk():
-                    ic = BlkFusionstor()
-                    ic.volume = _v
-                    ic.dev_letter = _dev_letter
-                    ic.bus_type = default_bus_type
-                    return ic.to_xmlobject()
-
-                def fusionstor_virtio_scsi():
-                    vsc = VirtioSCSIFusionstor()
-                    vsc.volume = _v
-                    vsc.dev_letter = _dev_letter
-                    return vsc.to_xmlobject()
-
-                if _v.useVirtioSCSI:
-                    disk = fusionstor_virtio_scsi()
-                    if _v.shareable:
-                        e(disk, 'shareable')
-                    return disk
-
-                if _v.useVirtio:
-                    return fusionstor_virtio()
-                else:
-                    return fusionstor_blk()
 
             def spool_volume(_dev_letter, _v):
                 imgfmt = linux.get_img_fmt(_v.installPath)
@@ -3615,8 +3441,6 @@ class Vm(object):
                     vol = iscsibased_volume(dev_letter, v)
                 elif v.deviceType == 'ceph':
                     vol = ceph_volume(dev_letter, v)
-                elif v.deviceType == 'fusionstor':
-                    vol = fusionstor_volume(dev_letter, v)
                 elif v.deviceType == 'block':
                     vol = block_volume(dev_letter, v)
                 elif v.deviceType == 'spool':
@@ -3625,6 +3449,7 @@ class Vm(object):
                     raise Exception('unknown volume deviceType: %s' % v.deviceType)
 
                 assert vol is not None, 'vol cannot be None'
+                Vm.set_device_address(vol, v)
                 if v.bootOrder is not None and v.bootOrder > 0 and v.deviceId == 0:
                     e(vol, 'boot', None, {'order': str(v.bootOrder)})
                 Vm.set_volume_qos(cmd.addons, v.volumeUuid, vol)
@@ -3809,6 +3634,7 @@ class Vm(object):
             if usbDevices:
                 make_usb_device(usbDevices)
 
+        # FIXME: manage scsi device in one place.
         def make_storage_device(storageDevices):
             lvm.unpriv_sgio()
             devices = elements['devices']
@@ -3818,6 +3644,7 @@ class Vm(object):
                     e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw'})
                     e(disk, 'source', None, {'dev': volume.installPath})
                     e(disk, 'target', None, {'dev': 'sd%s' % Vm.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
+                    Vm.set_device_address(disk, volume)
 
         def make_pci_device(pciDevices):
             devices = elements['devices']
@@ -3853,7 +3680,7 @@ class Vm(object):
                 hostdev = e(devices, "hostdev", None, {'mode': 'subsystem', 'type': 'mdev', 'model': 'vfio-pci', 'managed': 'yes'})
                 source = e(hostdev, "source")
                 # convert mdevUuid to 8-4-4-4-12 format
-                e(source, "address", None, { "uuid": str(uuid.UUID('{%s}' % mdevUuid))})
+                e(source, "address", None, { "uuid": uuidhelper.to_full_uuid(mdevUuid) })
 
         def make_usb_device(usbDevices):
             next_uhci_port = 2
@@ -4034,13 +3861,14 @@ class Vm(object):
 
         e(interface, 'mac', None, attrib={'address': nic.mac})
         e(interface, 'alias', None, {'name': 'net%s' % nic.nicInternalName.split('.')[1]})
+        e(interface, 'mtu', None, attrib={'size': '%d' % nic.mtu})
 
         if iftype == 'bridge':
             e(interface, 'source', None, attrib={'bridge': nic.bridgeName})
             e(interface, 'target', None, attrib={'dev': nic.nicInternalName})
         elif iftype == 'vhostuser':
             e(interface, 'source', None, attrib={'type': 'unix', 'path': vhostSrcPath, 'mode':'client'})
-            e(interface, 'driver', None, attrib={'queues': '1'})
+            e(interface, 'driver', None, attrib={'queues': '16', 'vhostforce':'on'})
 
         if nic.ips and iftype == 'bridge':
             ip4Addr = None
@@ -4066,10 +3894,16 @@ class Vm(object):
                 for addr6 in ip6Addrs:
                     e(filterref, 'parameter', None, {'name': 'GLOBAL_IP', 'value': addr6})
                 e(filterref, 'parameter', None, {'name': 'LINK_LOCAL_IP', 'value': ip.get_link_local_address(nic.mac)})
-        if nic.useVirtio:
-            e(interface, 'model', None, attrib={'type': 'virtio'})
+
+        if nic.driverType:
+            e(interface, 'model', None, attrib={'type': nic.driverType})
         else:
-            e(interface, 'model', None, attrib={'type': 'e1000'})
+            if nic.useVirtio:
+                e(interface, 'model', None, attrib={'type': 'virtio'})
+            else:
+                e(interface, 'model', None, attrib={'type': 'e1000'})
+        if nic.driverType == 'virtio' and nic.vHostAddOn.queueNum != 1:
+            e(interface, 'driver ', None, attrib={'name': 'vhost', 'txmode': 'iothread', 'ioeventfd': 'on', 'event_idx': 'off', 'queues': str(nic.vHostAddOn.queueNum), 'rx_queue_size': str(nic.vHostAddOn.rxBufferSize) if nic.vHostAddOn.rxBufferSize is not None else '256', 'tx_queue_size': str(nic.vHostAddOn.txBufferSize) if nic.vHostAddOn.txBufferSize is not None else '256'})
         if nic.bootOrder is not None and nic.bootOrder > 0:
             e(interface, 'boot', None, attrib={'order': str(nic.bootOrder)})
         return interface
@@ -4509,7 +4343,9 @@ class VmPlugin(kvmagent.KvmAgent):
         # 'rsp.states' agaist QEMU process lists.
         output = bash.bash_o("ps x | grep -P -o 'qemu-kvm.*?-name\s+(guest=)?\K.*?,' | sed 's/.$//'").splitlines()
         for guest in output:
-            if guest in rsp.states or guest.lower() == "ZStack Management Node VM".lower():
+            if guest in rsp.states \
+                    or guest.lower() == "ZStack Management Node VM".lower()\
+                    or guest.startswith("guestfs-"):
                 continue
             logger.warn('guest [%s] not found in virsh list' % guest)
             rsp.states[guest] = Vm.VM_STATE_RUNNING
@@ -4885,7 +4721,7 @@ class VmPlugin(kvmagent.KvmAgent):
         migurl = 'tcp://{0}'.format(dstHostIp)
         diskstr = ','.join(disks)
 
-        flags = "--live --p2p --persistent --copy-storage-all"
+        flags = "--live --p2p --copy-storage-all"
         if LIBVIRT_MAJOR_VERSION >= 4:
             if any(s.startswith('/dev/') for s in vm.list_blk_sources()):
                 flags += " --unsafe"
@@ -5815,7 +5651,7 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.success = False
             rsp.error = "%s, %s" % (o, e)
         else:
-            info = json.loads(o)['return']
+            info = simplejson.loads(o)['return']
             for k in info.keys():
                 setattr(rsp, k, info[k])
         return jsonobject.dumps(rsp)

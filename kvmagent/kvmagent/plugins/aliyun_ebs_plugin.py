@@ -68,49 +68,58 @@ class AliyunEbsStoragePlugin(kvmagent.KvmAgent):
             c.close()
             return updated
 
+        def installTdc(cmd):
+            logger.debug('install tdc pkg')
+            if cmd.version != tdcversion:
+                return "no matched tdc version found, agent need version %d" % tdcversion
 
-        logger.debug('install tdc pkg')
-        rsp = kvmagent.AgentResponse()
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-
-        if cmd.version != tdcversion:
-            rsp.error = "no matched tdc version found, agent need version %d" % tdcversion
-        else:
             startCmd = shell.ShellCmd("/opt/tdc/tdc_admin lsi")
             startCmd(False)
             if startCmd.return_code != 0:
                 linux.mkdir("/apsara", 0755)
-                kernel_version = shell.call("uname -r")
-                yum_cmd = "export YUM0={}; yum --enablerepo=zstack-mn,qemu-kvm-ev-mn clean metadata".format(kvmagent.get_host_yum_release())
-                shell.call(yum_cmd)
-                # e = shell.ShellCmd('rpm -qi kernel-%s-vrbd-1.0-0.1.release1.alios7.x86_64' % kernel_version.strip())
-                e = shell.ShellCmd('rpm -qi kernel-3.10.0-693.11.1.el7.x86_64-vrbd-1.0-0.1.release1.alios7.x86_64')
-                e(False)
-                if e.return_code != 0:
-                    # yum_cmd = "yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install -y kernel-%s-vrbd-1.0-0.1.release1.alios7.x86_64" % kernel_version.strip()
-                    yum_cmd = "export YUM0={}; yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install -y kernel-3.10.0-693.11.1.el7.x86_64-vrbd-1.0-0.1.release1.alios7.x86_64".format(kvmagent.get_host_yum_release())
-                    shell.call(yum_cmd)
                 e = shell.ShellCmd('rpm -qi tdc-unified-8.2.0.release.el5.x86_64')
                 e(False)
                 if e.return_code != 0:
-                    yum_cmd = "export YUM0={}; yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install -y tdc-unified-8.2.0.release.el5.x86_64".format(kvmagent.get_host_yum_release())
-                    shell.call(yum_cmd)
+                    shell.call("export YUM0={}; yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn clean metadata".format(kvmagent.get_host_yum_release()))
+                    shell.call("export YUM0={}; yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install -y tdc-unified-8.2.0.release.el5.x86_64".format(kvmagent.get_host_yum_release()))
                 shell.call("service tdc restart")
 
                 startCmd = shell.ShellCmd("/opt/tdc/tdc_admin lsi")
                 startCmd(False)
                 if startCmd.return_code != 0:
-                    rsp.success = False
-                    rsp.error = "tdc_admin lsi failed: %s" % startCmd.stderr
-                    return jsonobject.dumps(rsp)
+                    return "tdc_admin lsi failed: %s" % startCmd.stderr
+            return None
+        def installVrbd():
+            logger.debug('modprobe vrbd')
+            lsModCmd = shell.ShellCmd("lsmod|grep vrbd")
+            lsModCmd(False)
+            if lsModCmd.return_code != 0:
+                e = shell.ShellCmd('rpm -qi kernel-3.10.0-693.11.1.el7.x86_64-vrbd-1.0-0.1.release1.alios7.x86_64')
+                e(False)
+                if e.return_code != 0:
+                    shell.call("export YUM0={}; yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn clean metadata".format(kvmagent.get_host_yum_release()))
+                    shell.call("export YUM0={}; yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install -y kernel-3.10.0-693.11.1.el7.x86_64-vrbd-1.0-0.1.release1.alios7.x86_64".format(kvmagent.get_host_yum_release()))
+                shell.call("modprobe vrbd")
+            else:
+                return
+            lsModCmd(False)
+            if lsModCmd.return_code != 0:
+                return "cannot attach vrbd mod"
 
+        rsp = kvmagent.AgentResponse()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
-            if cmd.tdcConfig and cmd.nuwaConfig and cmd.nuwaCfg:
-                tdc = updateTdcConfig(cmd.tdcConfig, '/opt/tdc/apsara_global_config.json')
-                nuwa1 = updateTdcConfig(cmd.nuwaConfig, '/apsara/conf/conffiles/nuwa/client/nuwa_config.json')
-                nuwa2 = updateTdcConfig(cmd.nuwaCfg, '/apsara/nuwa/nuwa.cfg')
-                if tdc or nuwa1 or nuwa2:
-                    shell.call("service tdc restart")
+        rsp.error = installTdc(cmd) or installVrbd()
+        if rsp.error is not None:
+            return jsonobject.dumps(rsp)
+
+        if cmd.tdcConfig and cmd.nuwaConfig and cmd.nuwaCfg:
+            tdc = updateTdcConfig(cmd.tdcConfig, '/opt/tdc/apsara_global_flag.json')
+            nuwa1 = updateTdcConfig(cmd.nuwaConfig, '/apsara/conf/conffiles/nuwa/client/nuwa_config.json')
+            nuwa2 = updateTdcConfig(cmd.nuwaCfg, '/apsara/nuwa/nuwa.cfg')
+            if tdc or nuwa1 or nuwa2:
+                logger.debug('config changed, restart tdc service')
+                shell.call("service tdc restart")
 
         return jsonobject.dumps(rsp)
 

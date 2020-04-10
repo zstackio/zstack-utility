@@ -178,10 +178,12 @@ def getCdromNum(dom, dxml=None):
             for disk_xml in disk:
                 if disk_xml.device_ == 'cdrom':
                     counter += 1
+
+            return counter
         else:
             return 0
 
-    return getCdromNum(dxml)
+    return countCdrom(dxml)
 
 
 def getVolumes(dom, dxml=None):
@@ -242,7 +244,7 @@ def listVirtualMachines(url, sasluser, saslpass, keystr):
 
         if any(map(lambda v: v.protocol == 'rbd', vminfo.volumes)):
             return libvirtver >= getVerNumber(1, 2, 16)
-        return libvirtver >= getVerNumber(0, 9, 12)
+        return libvirtver >= getVerNumber(1, 2, 9)
 
     vms = []
     v2vCaps = {}
@@ -339,7 +341,6 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
             if fstype not in [ "xfs", "ext2", "ext3", "ext4", "jfs", "btrfs" ]:
                 raise Exception("unexpected fstype '{}' on '{}'".format(fstype, cmd.storagePath))
 
-        shell.check_run('iptables-save | grep -w 2049 || iptables -I INPUT -p tcp --dport 2049 -j ACCEPT')
         return jsonobject.dumps(rsp)
 
     @in_bash

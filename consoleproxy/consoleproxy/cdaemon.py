@@ -26,7 +26,6 @@ def main():
     prepare_pid_dir(pidfile)
     
     try:
-        iptables.insert_single_rule_to_filter_table('-A INPUT -p tcp -m tcp --dport 7758 -j ACCEPT')
         cmd = sys.argv[1]
         py_process_name = 'from consoleproxy import cdaemon'
         agentdaemon = console_proxy_agent.ConsoleProxyDaemon(pidfile, py_process_name)
