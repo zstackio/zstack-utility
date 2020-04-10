@@ -22,6 +22,7 @@ SANLOCK_CONFIG_FILE_PATH = "/etc/sanlock/sanlock.conf"
 SANLOCK_IO_TIMEOUT = 40
 LVMLOCKD_LOG_FILE_PATH = "/var/log/lvmlockd/lvmlockd.log"
 LVMLOCKD_LOG_RSYSLOG_PATH = "/etc/rsyslog.d/lvmlockd.conf"
+LVMLOCKD_SERVICE_PATH = "/lib/systemd/system/lvm2-lvmlockd.service"
 LVMLOCKD_LOG_LOGROTATE_PATH = "/etc/logrotate.d/lvmlockd"
 LVM_CONFIG_BACKUP_PATH = "/etc/lvm/zstack-backup"
 LVM_CONFIG_ARCHIVE_PATH = "/etc/lvm/archive"
@@ -354,8 +355,17 @@ def config_lvm_filter(files, no_drbd=False, preserve_disks=None):
 
 
 def config_sanlock_by_sed(keyword, entry):
+    content = """use_watchdog=0
+renewal_read_extend_sec=24
+sh_retries=20
+"""
+    if not os.path.exists(os.path.dirname(SANLOCK_CONFIG_FILE_PATH)):
+        linux.mkdir(os.path.dirname(SANLOCK_CONFIG_FILE_PATH))
+        with open(SANLOCK_CONFIG_FILE_PATH, 'w') as f:
+            f.write(content)
     if not os.path.exists(SANLOCK_CONFIG_FILE_PATH):
-        raise Exception("can not find sanlock config path: %s, config sanlock failed" % LVM_CONFIG_PATH)
+        raise Exception("can not find sanlock config path: %s, config sanlock failed" % SANLOCK_CONFIG_FILE_PATH)
+
 
     cmd = shell.ShellCmd("sed -i 's/.*%s.*/%s/g' %s" %
                          (keyword, entry, SANLOCK_CONFIG_FILE_PATH))
@@ -363,7 +373,7 @@ def config_sanlock_by_sed(keyword, entry):
     linux.sync_file(SANLOCK_CONFIG_FILE_PATH)
 
 
-def config_lvmlockd():
+def config_lvmlockd(io_timeout=40):
     content = """[Unit]
 Description=LVM2 lock daemon
 Documentation=man:lvmlockd(8)
@@ -382,10 +392,12 @@ SendSIGKILL=no
 
 [Install]
 WantedBy=multi-user.target
-""" % SANLOCK_IO_TIMEOUT
-    with open("/usr/lib/systemd/system/lvm2-lvmlockd.service", 'w') as f:
+""" % io_timeout
+    with open(LVMLOCKD_SERVICE_PATH, 'w') as f:
         f.write(content)
-    os.chmod("/usr/lib/systemd/system/lvm2-lvmlockd.service", 0644)
+        f.flush()
+        os.fsync(f.fileno())
+    os.chmod(LVMLOCKD_SERVICE_PATH, 0644)
 
     if not os.path.exists(LVMLOCKD_LOG_RSYSLOG_PATH):
         content = """if $programname == 'lvmlockd' then %s 
@@ -413,11 +425,11 @@ def config_lvmlocal_conf(node, value):
 
 
 @bash.in_bash
-def start_lvmlockd():
+def start_lvmlockd(io_timeout=40):
     if not os.path.exists(os.path.dirname(LVMLOCKD_LOG_FILE_PATH)):
         os.mkdir(os.path.dirname(LVMLOCKD_LOG_FILE_PATH))
 
-    config_lvmlockd()
+    config_lvmlockd(io_timeout)
     for service in ["wdmd", "sanlock", "lvm2-lvmlockd"]:
         cmd = shell.ShellCmd("timeout 30 systemctl start %s" % service)
         cmd(is_exception=True)
@@ -631,10 +643,13 @@ def add_pv(vg_uuid, disk_path, metadata_size):
 
 
 def get_vg_size(vgUuid, raise_exception=True):
-    r, o, _ = bash.bash_roe("vgs --nolocking %s --noheadings --separator : --units b -o vg_size,vg_free" % vgUuid, errorout=raise_exception)
+    r, o, _ = bash.bash_roe("vgs --nolocking %s --noheadings --separator : --units b -o vg_size,vg_free,vg_lock_type" % vgUuid, errorout=raise_exception)
     if r != 0:
         return None, None
     vg_size, vg_free = o.strip().split(':')[0].strip("B"), o.strip().split(':')[1].strip("B")
+    if "sanlock" in o:
+        return vg_size, vg_free
+
     pools = get_thin_pools_from_vg(vgUuid)
     if len(pools) == 0:
         return vg_size, vg_free
@@ -685,16 +700,17 @@ def get_meta_lv_path(path):
     return path+"_meta"
 
 
-def delete_image(path, tag):
-    def activate_and_remove(f):
-        active_lv(f, shared=False)
+def delete_image(path, tag, deactive=True):
+    def activate_and_remove(f, deactive):
+        if deactive:
+            active_lv(f, shared=False)
         backing = linux.qcow2_get_backing_file(f)
         shell.check_run("lvremove -y -Stags={%s} %s" % (tag, f))
         return backing
 
     fpath = path
-    backing = activate_and_remove(fpath)
-    activate_and_remove(get_meta_lv_path(fpath))
+    backing = activate_and_remove(fpath, deactive)
+    activate_and_remove(get_meta_lv_path(fpath), deactive)
 
 
 def clean_vg_exists_host_tags(vgUuid, hostUuid, tag):
@@ -712,34 +728,36 @@ def round_to(n, r):
 
 @bash.in_bash
 @linux.retry(times=15, sleep_time=random.uniform(0.1, 3))
-def create_lv_from_absolute_path(path, size, tag="zs::sharedblock::volume", lock=True):
+def create_lv_from_absolute_path(path, size, tag="zs::sharedblock::volume", lock=True, exact_size=False):
     if lv_exists(path):
         return
 
     vgName = path.split("/")[2]
     lvName = path.split("/")[3]
 
-    r, o, e = bash.bash_roe("lvcreate -an --addtag %s --size %sb --name %s %s" %
-                         (tag, round_to(calcLvReservedSize(size), 512), lvName, vgName))
+    if not exact_size:
+        size = round_to(calcLvReservedSize(size), 512)
+    r, o, e = bash.bash_roe("lvcreate -ay --addtag %s --size %sb --name %s %s" %
+                         (tag, size, lvName, vgName))
+
     if not lv_exists(path):
         raise Exception("can not find lv %s after create, lvcreate return: %s, %s, %s" % (path, r, o, e))
 
     if lock:
-        with OperateLv(path, shared=False):
-            dd_zero(path)
+        dd_zero(path)
+        deactive_lv(path)
     else:
-        active_lv(path)
         dd_zero(path)
 
 
-def create_lv_from_cmd(path, size, cmd, tag="zs::sharedblock::volume", lock=True):
+def create_lv_from_cmd(path, size, cmd, tag="zs::sharedblock::volume", lvmlock=True):
     # TODO(weiw): fix it
     if "ministorage" in tag and cmd.provisioning == VolumeProvisioningStrategy.ThinProvisioning:
-        create_thin_lv_from_absolute_path(path, size, tag, lock)
+        create_thin_lv_from_absolute_path(path, size, tag, lvmlock)
     elif cmd.provisioning == VolumeProvisioningStrategy.ThinProvisioning and size > cmd.addons[thinProvisioningInitializeSize]:
-        create_lv_from_absolute_path(path, cmd.addons[thinProvisioningInitializeSize], tag, lock)
+        create_lv_from_absolute_path(path, cmd.addons[thinProvisioningInitializeSize], tag, lvmlock)
     else:
-        create_lv_from_absolute_path(path, size, tag, lock)
+        create_lv_from_absolute_path(path, size, tag, lvmlock)
 
 
 @bash.in_bash
@@ -810,11 +828,10 @@ def get_lv_size(path):
     if is_thin_lv(path):
         return get_thin_lv_size(path)
     cmd = shell.ShellCmd("lvs --nolocking --noheading -osize --units b %s" % path)
-    cmd(is_exception=True)
+    cmd(is_exception=True, logcmd=False)
     return cmd.stdout.strip().strip("B")
 
 
-@bash.in_bash
 def get_thin_lv_size(path):
     l = ThinPool(path)
     return str(int(l.total - l.free))
@@ -829,8 +846,10 @@ def resize_lv(path, size, force=False):
     _force = "" if force is False else " --force "
     r, o, e = bash.bash_roe("lvresize %s --size %sb %s" % (_force, calcLvReservedSize(size), path))
     if r == 0:
+        logger.debug("successfully resize lv %s size to %s" % (path, size))
         return
     elif "matches existing size" in e or "matches existing size" in o:
+        logger.debug("lv %s size already matches existing size: %s, return as successful" % (path, size))
         return
     else:
         raise Exception("resize lv %s to size %s failed, return code: %s, stdout: %s, stderr: %s" %
@@ -838,7 +857,8 @@ def resize_lv(path, size, force=False):
 
 
 @bash.in_bash
-def resize_lv_from_cmd(path, size, cmd):
+def resize_lv_from_cmd(path, size, cmd, extend_thin_by_specified_size=False):
+    # type: (str, long, object, bool) -> None
     if cmd.provisioning is None or \
             cmd.addons is None or \
             cmd.provisioning != VolumeProvisioningStrategy.ThinProvisioning:
@@ -846,6 +866,16 @@ def resize_lv_from_cmd(path, size, cmd):
         return
 
     current_size = int(get_lv_size(path))
+
+    if extend_thin_by_specified_size:
+        v_size = linux.qcow2_virtualsize(path)
+        if size + cmd.addons[thinProvisioningInitializeSize] > v_size:
+            size = v_size
+        else:
+            size = size + cmd.addons[thinProvisioningInitializeSize]
+        resize_lv(path, size)
+        return
+
     if int(size) - current_size > cmd.addons[thinProvisioningInitializeSize]:
         resize_lv(path, current_size + cmd.addons[thinProvisioningInitializeSize])
     else:
@@ -883,8 +913,10 @@ def deactive_lv(path, raise_exception=True):
 
 
 @bash.in_bash
-def delete_lv(path, raise_exception=True):
+def delete_lv(path, raise_exception=True, deactive=True):
     logger.debug("deleting lv %s" % path)
+    if deactive:
+        deactive_lv(path, False)
     # remove meta-lv if any
     if lv_exists(get_meta_lv_path(path)):
         shell.run("lvremove -y %s" % get_meta_lv_path(path))

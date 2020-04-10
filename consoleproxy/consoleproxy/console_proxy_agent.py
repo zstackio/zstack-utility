@@ -311,10 +311,6 @@ class ConsoleProxyAgent(object):
         if not timeout:
             timeout = 600
 
-        @lock.file_lock('/run/xtables.lock')
-        def enable_proxy_port():
-            bash_errorout("iptables-save | grep -- '-A INPUT -p tcp -m tcp --dport {{PROXY_PORT}}' > /dev/null || iptables -I INPUT -p tcp -m tcp --dport {{PROXY_PORT}} -j ACCEPT")
-
         @in_bash
         def start_proxy():
             LOG_FILE = log_file
@@ -336,8 +332,6 @@ class ConsoleProxyAgent(object):
                     err.append('stdout: %s' % out)
                     err.append('stderr: %s' % err)
                 raise ConsoleProxyError('\n'.join(err))
-            else:
-                enable_proxy_port()
 
         start_proxy()
         logger.debug('successfully establish new proxy%s' % info_str)

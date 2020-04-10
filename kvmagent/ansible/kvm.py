@@ -399,12 +399,12 @@ if distro in RPM_BASED_OS:
 
 elif distro in DEB_BASED_OS:
     # name: install kvm related packages on Debian based OS
-    install_pkg_list = ['curl', 'qemu', 'qemu-system', 'bridge-utils', 'wget', 'qemu-utils', 'python-libvirt', 
-                        'libvirt-daemon-system', 'libfdt-dev', 'libvirt-dev', 'libvirt-clients', 'chrony','vlan', 
-                        'libguestfs-tools', 'sed', 'nfs-common', 'open-iscsi','ebtables', 'pv', 'usbutils', 
-                        'pciutils', 'expect', 'lighttpd', 'sshpass', 'rsync', 'iputils-arping', 'nmap', 'collectd', 
-                        'iptables', 'python-pip', 'dmidecode', 'ovmf', 'dnsmasq', 'auditd', 'python-rados',
-                        'python-rbd']
+    install_pkg_list = ['curl', 'qemu', 'qemu-system', 'bridge-utils', 'wget', 'qemu-utils', 'python-libvirt',
+                        'libvirt-daemon-system', 'libfdt-dev', 'libvirt-dev', 'libvirt-clients', 'chrony','vlan',
+                        'libguestfs-tools', 'sed', 'nfs-common', 'open-iscsi','ebtables', 'pv', 'usbutils',
+                        'pciutils', 'expect', 'lighttpd', 'sshpass', 'rsync', 'iputils-arping', 'nmap', 'collectd',
+                        'iptables', 'python-pip', 'dmidecode', 'ovmf', 'dnsmasq', 'auditd', 'firewalld', 'ipset', 'multipath-tools',
+                        'lvm2', 'lvm2-lockd', 'udev', 'sanlock', 'python-rados', 'python-rbd']
     apt_install_packages(install_pkg_list, host_post_info)
     if zstack_repo == 'false':
         command_deb_list = "echo %s >/var/lib/zstack/dependencies".format(' '.join(install_pkg_list))

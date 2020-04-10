@@ -42,9 +42,12 @@ mn:
       - {name: journalctl-info, exec: 'journalctl -x'}
       - {name: host-info, exec: 'uptime && last reboot && free -h && cat /proc/cpuinfo && ip add && df -h'}
       - {name: pkg-list, exec: 'rpm -qa | sort'}
-      - {name: git-commit, dir: $ZSTACK_HOME/../../webapps/zstack/, file: '*git-commit'}
+      - {name: git-commit, dir: $ZSTACK_HOME/../../webapps/zstack/, file: '*git-commit', mode: "All"}
       - {name: zstack-logs, dir: /var/log/zstack/, file: zstack.log*}
       - {name: zstack-installation-logs, dir: /tmp/, file: zstack_installation.log*}
+      - {name: audit-log, dir: /var/log/audit/, file: 'audit.log*'}
+      - {name: mariadb-log, dir: /var/log/mariadb/, file: 'mariadb.log*'}
+      - {name: zsha2-log, exec: 'which zsha2 && zsha2 collect-log', exec_type: "CdAndRun"}
 vrouter:
     description: vrouter
     type: target

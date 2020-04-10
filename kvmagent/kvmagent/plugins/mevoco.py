@@ -1,14 +1,11 @@
 __author__ = 'frank'
 
 from kvmagent import kvmagent
-from kvmagent.plugins import vm_plugin
 from zstacklib.utils import jsonobject
 from zstacklib.utils import http
 from zstacklib.utils import log
 from zstacklib.utils import shell
-from zstacklib.utils import sizeunit
 from zstacklib.utils import linux
-from zstacklib.utils import thread
 from zstacklib.utils import iptables
 from zstacklib.utils import ebtables
 from zstacklib.utils import lock
@@ -16,14 +13,11 @@ from zstacklib.utils.bash import *
 from zstacklib.utils import ip
 import os.path
 import re
-import threading
-import time
 import email
 import tempfile
 import cStringIO as c
 from email.mime.multipart import MIMEMultipart
 from jinja2 import Template
-import shutil
 import struct
 import socket
 
@@ -127,6 +121,7 @@ class UserDataEnv(object):
         BR_PHY_DEV = get_phy_dev_from_bridge_name(self.bridge_name)
         OUTER_DEV = "outer%s" % NAMESPACE_ID
         INNER_DEV = "inner%s" % NAMESPACE_ID
+        MAX_MTU = linux.MAX_MTU_OF_VNIC
 
         ret = bash_r('ip netns exec {{NAMESPACE_NAME}} ip link show')
         if ret != 0:
@@ -142,6 +137,8 @@ class UserDataEnv(object):
         ret = bash_r('ip link | grep -w {{OUTER_DEV}} > /dev/null')
         if ret != 0:
             bash_errorout('ip link add {{OUTER_DEV}} type veth peer name {{INNER_DEV}}')
+            bash_errorout('ip link set mtu {{MAX_MTU}} dev {{INNER_DEV}}')
+            bash_errorout('ip link set mtu {{MAX_MTU}} dev {{OUTER_DEV}}')
 
         bash_errorout('ip link set {{OUTER_DEV}} up')
 
@@ -302,6 +299,7 @@ class DhcpEnv(object):
         OUTER_DEV = "outer%s" % NAMESPACE_ID
         INNER_DEV = "inner%s" % NAMESPACE_ID
         CHAIN_NAME = "ZSTACK-%s" % DHCP_IP
+        MAX_MTU = linux.MAX_MTU_OF_VNIC
 
         ret = bash_r('ip netns exec {{NAMESPACE_NAME}} ip link show')
         if ret != 0:
@@ -317,6 +315,8 @@ class DhcpEnv(object):
         ret = bash_r('ip link | grep -w {{OUTER_DEV}} > /dev/null')
         if ret != 0:
             bash_errorout('ip link add {{OUTER_DEV}} type veth peer name {{INNER_DEV}}')
+            bash_errorout('ip link set mtu {{MAX_MTU}} dev {{INNER_DEV}}')
+            bash_errorout('ip link set mtu {{MAX_MTU}} dev {{OUTER_DEV}}')
 
         bash_errorout('ip link set {{OUTER_DEV}} up')
 
@@ -624,7 +624,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
             def get_related_rules_re(self, patterns):
                 # type: (dict[str, list]) -> list[str]
                 result = []
-                if patterns.keys() not in EbtablesRules.default_tables:
+                if not set(patterns.keys()).issubset(EbtablesRules.default_tables):
                     raise Exception('invalid parameter table %s' % patterns.keys())
 
                 for key, value in patterns.items():
@@ -651,7 +651,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
     @kvmagent.replyerror
     def connect(self, req):
-        shell.call(EBTABLES_CMD + ' -F')
+        #shell.call(EBTABLES_CMD + ' -F')
         # shell.call(EBTABLES_CMD + ' -t nat -F')
         # this is workaround, for anti-spoofing & distributed virtual routing feature, there is no good way to proccess this reconnect-host case,
         # it's just keep the ebtables rules from libvirt & zsn and remove others when reconnect hosts
@@ -772,10 +772,13 @@ tag:{{TAG}},option:dns-server,{{DNS}}
             #"ip link add %s type veth peer name %s", max length of second parameter is 15 characters
             userdata_br_outer_dev = "ud_" + ns_outer_dev
             userdata_br_inner_dev = "ud_" + ns_inner_dev
+            MAX_MTU = linux.MAX_MTU_OF_VNIC
 
             ret = bash_r('ip link | grep -w %s > /dev/null' % userdata_br_outer_dev)
             if ret != 0:
                 bash_errorout('ip link add %s type veth peer name %s' % (userdata_br_outer_dev, userdata_br_inner_dev))
+                bash_errorout('ip link set mtu %d dev %s' % (MAX_MTU, userdata_br_outer_dev))
+                bash_errorout('ip link set mtu %d dev %s' % (MAX_MTU, userdata_br_inner_dev))
 
             bash_errorout('ip link set %s up' % userdata_br_outer_dev)
 

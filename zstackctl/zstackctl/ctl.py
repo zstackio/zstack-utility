@@ -95,11 +95,11 @@ if [ $? -ne 0 ]; then
 fi
 
 # Fixes ZSTAC-24460
-# if max_allowed_packet is not configured, then update from default value 1M to 2M
+# if max_allowed_packet is not configured, then update from default value 1M to 4M
 grep 'max_allowed_packet' $mysql_conf >/dev/null 2>&1
 if [ $? -ne 0 ]; then
-    echo "max_allowed_packet=2M"
-    sed -i '/\[mysqld\]/a max_allowed_packet=2M\' $mysql_conf
+    echo "max_allowed_packet=4M"
+    sed -i '/\[mysqld\]/a max_allowed_packet=4M\' $mysql_conf
 fi
 
 # wanted_files = 10+max_connections+table_open_cache*2
@@ -643,15 +643,27 @@ class UseUserZstack(object):
 def use_user_zstack():
     return UseUserZstack()
 
+class ConfigObjEx(ConfigObj):
+    def __init__(self, filename):
+        super(ConfigObjEx, self).__init__(filename, write_empty_values=True)
+
+    def write(self):
+        with open(self.filename, 'wb') as f:
+            super(ConfigObjEx, self).write(f)
+            f.flush()
+            os.fsync(f.fileno())
+
 class PropertyFile(object):
     def __init__(self, path, use_zstack=True):
         self.path = path
         self.use_zstack = use_zstack
         if not os.path.isfile(self.path):
             raise CtlError('cannot find property file at %s' % self.path)
+        if not os.access(self.path, os.W_OK|os.R_OK):
+            raise CtlError('%s: permission denied' % self.path)
 
         with on_error("errors on reading %s" % self.path):
-            self.config = ConfigObj(self.path, write_empty_values=True)
+            self.config = ConfigObjEx(self.path)
 
     def read_all_properties(self):
         with on_error("errors on reading %s" % self.path):
@@ -763,6 +775,8 @@ class Ctl(object):
         self.ssh_public_key = os.path.join(self.zstack_home, 'WEB-INF/classes/ansible/rsaKeys/id_rsa.pub')
         if not os.path.isfile(self.properties_file_path):
             warn('cannot find %s, your ZStack installation may have crashed' % self.properties_file_path)
+        if os.path.getsize(self.properties_file_path) == 0:
+            warn('%s: file empty' % self.properties_file_path)
 
     def get_env(self, name):
         env = PropertyFile(SetEnvironmentVariableCmd.PATH)
@@ -1844,7 +1858,7 @@ def clear_leftover_mn_heartbeat():
         return
 
     mysql("DELETE FROM ManagementNodeVO WHERE hostName = '%s'" % mn_ip)
-    info("cleared management node heartbeat")
+    info("cleared management node heartbeat for %s" % mn_ip)
 
 class StopAllCmd(Command):
     def __init__(self):
@@ -1941,7 +1955,7 @@ class AESCipher:
     def decrypt(self, enc):
         denc = base64.b64decode(enc)
         ret = self._unpad(self.cipher.decrypt(denc), self.BLOCK_SIZE).decode('utf8')
-        return ret.lstrip(self.prefix) if ret.startswith(self.prefix) else enc
+        return ret[len(self.prefix):] if ret.startswith(self.prefix) else enc
 
     def is_encrypted(self, enc):
         try:
@@ -1954,7 +1968,7 @@ class StartCmd(Command):
     START_SCRIPT = '../../bin/startup.sh'
     SET_ENV_SCRIPT = '../../bin/setenv.sh'
     BEAN_CONTEXT_REF_XML = "WEB-INF/classes/beanRefContext.xml"
-    HEAP_DUMP_DIR = '../../logs'
+    HEAP_DUMP_DIR = '../../logs/heap.hprof'
     MINIMAL_CPU_NUMBER = 4
     #MINIMAL_MEM_SIZE unit is KB, here is 6GB, in linxu, 6GB is 5946428 KB
     #Save some memory for kdump etc. The actual limitation is 5000000KB
@@ -1972,6 +1986,7 @@ class StartCmd(Command):
         parser.add_argument('--timeout', help='Wait for ZStack Server startup timeout, default is 300 seconds.', default=300)
         parser.add_argument('--daemon', help='Start ZStack in daemon mode. Only used with systemd.', action='store_true', default=False)
         parser.add_argument('--simulator', help='Start Zstack in simulator mode.', action='store_true', default=False)
+        parser.add_argument('--mysql_process_list', help='Check mysql wait timeout connection', action='store_true', default=False)
 
     def _start_remote(self, args):
         info('it may take a while because zstack-ctl will wait for management node ready to serve API')
@@ -1994,17 +2009,13 @@ class StartCmd(Command):
             return
         # clean the error log before booting
         boot_error_log = os.path.join(ctl.USER_ZSTACK_HOME_DIR, 'bootError.log')
-        shell('rm -f %s' % boot_error_log)
+        linux.rm_file_force(boot_error_log)
         pid = get_management_node_pid()
         if pid:
             info('the management node[pid:%s] is already running' % pid)
             return
         else:
-            shell('rm -f %s' % os.path.join(os.path.expanduser('~zstack'), "management-server.pid"))
-
-        def check_is_ha_upgrading():
-            if shell_return("ps -ef|grep '[z]sha2 upgrade-mn'") == 0:
-                raise CtlError('HA environment is upgrading, please wait patiently for the upgrade to complete.')
+            linux.rm_file_force(os.path.join(os.path.expanduser('~zstack'), "management-server.pid"))
 
         def check_java_version():
             ver = shell('java -version 2>&1 | grep -w version')
@@ -2033,6 +2044,9 @@ class StartCmd(Command):
             with on_error('unable to connect to MySQL'):
                 shell('mysql --host=%s --user=%s --password=%s --port=%s -e "select 1"' % (db_hostname, db_user, db_password, db_port))
 
+            if args.mysql_process_list:
+                ctl.internal_run('mysql_process_list', '--check')
+
         def open_iptables_port(protocol, port_list):
             distro = platform.dist()[0]
             if type(port_list) is not list:
@@ -2058,6 +2072,12 @@ class StartCmd(Command):
                 error("management.server.ip not configured")
             if 0 != shell_return("ip a | grep 'inet ' | grep -w '%s'" % mn_ip):
                 error("management.server.ip[%s] is not found on any device" % mn_ip)
+
+        def check_ha():
+            _, output, _ = shell_return_stdout_stderr("systemctl is-enabled zstack-ha")
+            status, _, _ = shell_return_stdout_stderr("pgrep -x zstack-hamon")
+            if output and output.strip() == "enabled" and status != 0:
+                error("please use 'zsha2 start-node'")
 
         def check_chrony():
             if ctl.read_property('syncNodeTime') == "false":
@@ -2109,7 +2129,7 @@ class StartCmd(Command):
                 '-XX:-OmitStackTraceInFastThrow',
                 '-XX:MaxMetaspaceSize=512m',
                 '-XX:+HeapDumpOnOutOfMemoryError',
-                '-XX:HeapDumpPath=%s' % self.HEAP_DUMP_DIR,
+                '-XX:HeapDumpPath=%s' % os.path.join(ctl.zstack_home, self.HEAP_DUMP_DIR),
                 '-XX:+UseAltSigs'
             ]
 
@@ -2208,11 +2228,11 @@ class StartCmd(Command):
             raise CtlError('please use sudo or root user')
 
         prepare_env()
-        check_is_ha_upgrading()
         check_java_version()
         check_mn_port()
         check_prometheus_port()
         check_msyql()
+        check_ha()
         check_mn_ip()
         check_chrony()
         restart_console_proxy()
@@ -2297,8 +2317,197 @@ class StopCmd(Command):
                 info('unable to stop management node within %s seconds, kill it' % timeout)
             with on_error('unable to kill -9 %s' % pid):
                 logger.info('graceful shutdown failed, try to kill management node process:%s' % pid)
+                kill_process(pid, signal.SIGTERM)
+                time.sleep(1)
                 kill_process(pid, signal.SIGKILL)
                 clear_leftover_mn_heartbeat()
+
+                if get_management_node_pid():
+                    raise CtlError('failed to kill management node, pid = %s' % pid)
+
+class RefreshAuditCmd(Command):
+    audit_rule_file = "/etc/audit/rules.d/audit.rules"
+
+    def __init__(self):
+        super(RefreshAuditCmd, self).__init__()
+        self.name = 'refresh_audit'
+        self.description = 'refresh audit list'
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--add', '-a', help='Add audit rule at file')
+        parser.add_argument('--delete', '-d', help='Delete audit rule at file')
+        parser.add_argument('--search', '-s', help='Search file change history')
+        parser.add_argument('--list', '-l', help='Show audit rule list', action="store_true", default=False)
+        parser.add_argument('--refresh', '-r', help='Refresh audit rule from audit.list', action="store_true", default=False)
+
+    def run(self, args):
+        if not os.path.isfile(RefreshAuditCmd.audit_rule_file):
+            info('ERROR: %s not exist' % RefreshAuditCmd.audit_rule_file)
+            return
+
+        if args.add:
+            (status, output, stderr) = shell_return_stdout_stderr('auditctl -w %s -p wa -k zstack' % args.add)
+            if status == 0:
+                info('Successfully add rule at %s' % args.add)
+                with open(RefreshAuditCmd.audit_rule_file, "a") as f:
+                    f.write('-w %s -p wa -k zstack\n' % args.add)
+            else:
+                info('ERROR: %s' % stderr.strip('\n'))
+
+        if args.delete:
+            (status, output, stderr) = shell_return_stdout_stderr('auditctl -W %s -p wa -k zstack' % args.delete)
+            if status == 0:
+                info('Successfully delete rule at %s' % args.delete.strip('\n'))
+                with open(RefreshAuditCmd.audit_rule_file, "r") as f:
+                    lines = f.readlines()
+                with open(RefreshAuditCmd.audit_rule_file, "w") as f_w:
+                    for line in lines:
+                        if args.delete in line:
+                            continue
+                        f_w.write(line)
+            else:
+                info('ERROR: %s' % stderr.strip('\n'))
+
+        if args.search:
+            cmd = ShellCmd('ausearch -i -f %s' % args.search.strip('\n'), pipe=False)
+            cmd(False)
+            return
+
+        if args.list:
+            (status, output, stderr) = shell_return_stdout_stderr('auditctl -l')
+            info(output.strip('\n'))
+            return
+
+        if args.refresh:
+            with open(RefreshAuditCmd.audit_rule_file, 'r') as fd:
+                all_lines = fd.readlines()
+                maxlength = max(len(line.strip('\n')) for line in all_lines) + 1
+                info('Rule'.ljust(maxlength) + 'Result')
+            for line in all_lines:
+                (status, output, stderr) = shell_return_stdout_stderr('auditctl %s' % line)
+                if ("rule exists" not in stderr.lower()) and (status != 0) and ("-k zstack" in line):
+                    info(line.strip('\n').ljust(maxlength) + stderr.strip('\n'))
+                elif ("-k zstack" in line):
+                    info(line.strip('\n').ljust(maxlength) + 'success')
+
+        info("\nCurrent rule list")
+        (status, output, stderr) = shell_return_stdout_stderr('auditctl -l')
+        info(output.strip('\n'))
+
+class MysqlProcessList(Command):
+
+    def __init__(self):
+        super(MysqlProcessList, self).__init__()
+        self.name = 'mysql_process_list'
+        self.description = 'show mysql processlist'
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--check', help='check mysql wait timeout connection for zstack start_node', action="store_true")
+        parser.add_argument('--time', help='the time of wait timeout, must >= 1')
+        parser.add_argument('--kill', help='kill wait timeout connection', action="store_true")
+        parser.add_argument('--detail', help='show the detail of mysql wait timeout connection', action="store_true")
+        parser.add_argument('--desc', help='order by time desc, used with detail', action="store_true")
+        parser.add_argument('--asc', help='order by time asc, used with detail', action="store_true")
+        parser.add_argument('--host', help='the connected host')
+
+    def get_wait_timeout(self):
+        (db_hostname, db_port, db_user, db_password) = ctl.get_live_mysql_portal()
+        sql = '''mysql -u %s -p%s --host %s -P %s -e "show variables where variable_name='wait_timeout'"| grep wait_timeout| awk '{print $2}' ''' % (db_user, db_password, db_hostname, db_port)
+        (status, output, stderr) = shell_return_stdout_stderr(sql)
+        if status != 0:
+            error("get mysql wait timeout error")
+        return output.strip('\n')
+
+    def check_argument(self, args):
+        if args.time:
+            try:
+                time = int(args.time)
+                if time < 1:
+                    error("time must >= 1")
+                    return
+            except:
+                error("time must be positive integer")
+
+        if args.desc & args.asc:
+            error("asc and desc cannot be used at the same time")
+
+    def run(self, args):
+        (db_hostname, db_port, db_user, db_password) = ctl.get_live_mysql_portal()
+        self.check_argument(args)
+
+        if args.check:
+            sql = '''mysql -u %s -p%s --host %s -P %s -e "select count(*) from information_schema.processlist where command = 'Sleep' and time > (%s * 2)" |awk 'NR>1' ''' % (db_user, db_password, db_hostname, db_port, self.get_wait_timeout())
+            (status, output, stderr) = shell_return_stdout_stderr(sql)
+            if status != 0:
+                error(stderr)
+            if int(output.strip("\n")) > 0:
+                error("mysql wait timeout connection[%s]" % output.strip("\n"))
+            return
+
+        if args.detail:
+            if args.time:
+                sql = '''mysql -u %s -p%s --host %s -P %s -e "select * from information_schema.processlist where command = 'Sleep' and time > %s''' % (db_user, db_password, db_hostname, db_port, args.time)
+            else:
+                sql = '''mysql -u %s -p%s --host %s -P %s -e "select * from information_schema.processlist where command = 'Sleep' and time > (%s * 2)''' % (db_user, db_password, db_hostname, db_port, self.get_wait_timeout())
+            if args.host:
+                sql = sql + " and host like'%" + args.host + "%'"
+            if args.asc:
+                sql = sql + " order by time asc"
+            if args.desc:
+                sql = sql + " order by time desc"
+            sql = sql + "\""
+            (status, output, stderr) = shell_return_stdout_stderr(sql)
+            if status != 0:
+                error(stderr)
+            if output == "":
+                print("no wait timeout connection")
+                return
+            info(output)
+            count = output.count('\n') - 1
+            info("%d wait timeout connection" % count)
+            return
+
+        if args.kill:
+            if args.time:
+                sql = '''mysql -u %s -p%s --host %s -P %s -e "select id from information_schema.processlist where command = 'Sleep' and time > %s ''' % (db_user, db_password, db_hostname, db_port, args.time)
+            else:
+                sql = '''mysql -u %s -p%s --host %s -P %s -e "select id from information_schema.processlist where command = 'Sleep' and time > (%s * 2) ''' % (db_user, db_password, db_hostname, db_port, self.get_wait_timeout())
+            if args.host:
+                sql = sql + " and host like'%" + args.host + "%'"
+            sql = sql + "\"" + "|awk 'NR>1'"
+            (status, output, stderr) = shell_return_stdout_stderr(sql)
+            if status != 0:
+                error(stderr)
+            if output == "":
+                info("no wait timeout connection")
+                return
+            ids = output.split("\n")
+            info("kill such id")
+            count = 0
+            for id in ids:
+                if id == "":
+                    if count > 0:
+                        info("kill %d wait timeout connection" % count)
+                    return
+                info(id)
+                sql = '''mysql -u %s -p%s --host %s -P %s -e "kill %s" ''' % (db_user, db_password, db_hostname, db_port, id)
+                (status, output, stderr) = shell_return_stdout_stderr(sql)
+                if status != 0:
+                    error("kill mysql connection id[%s] error, because: %s" % (id, stderr))
+                count = count + 1
+            return
+
+        else:
+            if args.time:
+                sql = '''mysql -u %s -p%s --host %s -P %s -e "select count(*) as count from information_schema.processlist where command = 'Sleep' and time > %s" ''' % (db_user, db_password, db_hostname, db_port, args.time)
+            else:
+                sql = '''mysql -u %s -p%s --host %s -P %s -e "select count(*) as count from information_schema.processlist where command = 'Sleep' and time > (%s * 2)" ''' % (db_user, db_password, db_hostname, db_port, self.get_wait_timeout())
+            (status, output, stderr) = shell_return_stdout_stderr(sql)
+            if status != 0:
+                error(stderr)
+            info(output)
 
 class RestartNodeCmd(Command):
 
@@ -2906,7 +3115,9 @@ class AddManagementNodeCmd(Command):
         command = "ssh -q -i %s -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no root@%s zstack-ctl " \
                   "start_node " % (key, host_info.host)
         (status, output) = commands.getstatusoutput(command)
-        command = "ln -s /opt/zstack-dvd/ /usr/local/zstack/apache-tomcat/webapps/zstack/static/zstack-dvd"
+        command = "mkdir -p /usr/local/zstack/apache-tomcat/webapps/zstack/static/zstack-repo" \
+                  "ln -s /opt/zstack-dvd/x86_64 /usr/local/zstack/apache-tomcat/webapps/zstack/static/zstack-repo/x86_64" \
+                  "ln -s /opt/zstack-dvd/aarch64 /usr/local/zstack/apache-tomcat/webapps/zstack/static/zstack-repo/aarch64"
         run_remote_command(command, host_info, True, True)
         if status != 0:
             error("start node on host %s failed:\n %s" % (host_info.host, output))
@@ -5137,9 +5348,8 @@ class CollectLogCmd(Command):
     vrouter_log_dir_list = ["/home/vyos/zvr", "/var/log/zstack"]
     host_log_list = ['zstack.log','zstack-kvmagent.log','zstack-iscsi-filesystem-agent.log',
                      'zstack-agent/collectd.log','zstack-agent/server.log', 'mini-fencer.log']
-    bs_log_list = ['zstack-sftpbackupstorage.log','ceph-backupstorage.log','zstack-store/zstore.log',
-                   'fusionstor-backupstorage.log']
-    ps_log_list = ['ceph-primarystorage.log','fusionstor-primarystorage.log']
+    bs_log_list = ['zstack-sftpbackupstorage.log','ceph-backupstorage.log','zstack-store/zstore.log']
+    ps_log_list = ['ceph-primarystorage.log']
     # management-server.log is not in the same dir, will collect separately
     mn_log_list = ['deploy.log', 'ha.log', 'zstack-console-proxy.log', 'zstack.log', 'zstack-cli', 'zstack-ui.log',
                    'zstack-dashboard.log', 'zstack-ctl.log']
@@ -5400,13 +5610,6 @@ class CollectLogCmd(Command):
             password = ssh_info['sshPassword']
             ssh_port = ssh_info['sshPort']
             return (username, password, ssh_port)
-        elif type == "fusionStor_bs":
-            query.sql = "select * from FusionstorPrimaryStorageMonVO where hostname='%s'" % host_ip
-            ssh_info = query.query()[0]
-            username = ssh_info['sshUsername']
-            password = ssh_info['sshPassword']
-            ssh_port = ssh_info['sshPort']
-            return (username, password, ssh_port)
         elif type == "imageStore_bs":
             query.sql = "select * from ImageStoreBackupStorageVO where hostname='%s'" % host_ip
             ssh_info = query.query()[0]
@@ -5416,13 +5619,6 @@ class CollectLogCmd(Command):
             return (username, password, ssh_port)
         elif type == "ceph_ps":
             query.sql = "select * from CephPrimaryStorageMonVO where hostname='%s'" % host_ip
-            ssh_info = query.query()[0]
-            username = ssh_info['sshUsername']
-            password = ssh_info['sshPassword']
-            ssh_port = ssh_info['sshPort']
-            return (username, password, ssh_port)
-        elif type == "fusionStor_ps":
-            query.sql = "select * from FusionstorPrimaryStorageMonVO where hostname='%s'" % host_ip
             ssh_info = query.query()[0]
             username = ssh_info['sshUsername']
             password = ssh_info['sshPassword']
@@ -5634,11 +5830,6 @@ class CollectLogCmd(Command):
             bs_ip = bs['hostname']
             self.get_storage_log(self.generate_host_post_info(bs_ip, "ceph_bs"), collect_dir, "ceph_bs")
 
-        fusionStor_bs_vo = get_host_list("FusionstorBackupStorageMonVO")
-        for bs in fusionStor_bs_vo:
-            bs_ip = bs['hostname']
-            self.get_storage_log(self.generate_host_post_info(bs_ip, "fusionStor_bs"), collect_dir, "fusionStor_bs")
-
         imageStore_bs_vo = get_host_list("ImageStoreBackupStorageVO")
         for bs in imageStore_bs_vo:
             bs_ip = bs['hostname']
@@ -5649,11 +5840,6 @@ class CollectLogCmd(Command):
         for ps in ceph_ps_vo:
             ps_ip = ps['hostname']
             self.get_storage_log(self.generate_host_post_info(ps_ip,"ceph_ps"), collect_dir, "ceph_ps")
-
-        fusionStor_ps_vo = get_host_list("FusionstorPrimaryStorageMonVO")
-        for ps in fusionStor_ps_vo:
-            ps_ip = ps['hostname']
-            self.get_storage_log(self.generate_host_post_info(ps_ip,"fusionStor_ps"), collect_dir, "fusionStor_ps")
 
         #collect vrouter log
         vrouter_ip_list = get_vrouter_list()
@@ -6823,12 +7009,35 @@ class UpgradeManagementNodeCmd(Command):
                 shell('cp %s %s' % (new_war.path, webapp_dir))
                 ShellCmd('unzip %s -d zstack' % os.path.basename(new_war.path), workdir=webapp_dir)()
                 #create local repo folder for possible zstack local yum repo
-                zstack_dvd_repo = '%s/zstack/static/zstack-dvd' % webapp_dir
-                shell('rm -f %s; ln -s /opt/zstack-dvd %s' % (zstack_dvd_repo, zstack_dvd_repo))
+                zstack_dvd_repo = '{}/zstack/static/zstack-repo'.format(webapp_dir)
+                shell('rm -f {0}; mkdir -p {0};ln -s /opt/zstack-dvd/x86_64 {0}/x86_64; ln -s /opt/zstack-dvd/aarch64 {0}/aarch64; chown -R zstack:zstack {0}'.format(zstack_dvd_repo))
 
             def restore_config():
                 info('restoring the zstack.properties ...')
                 ctl.internal_run('restore_config', '--restore-from %s' % os.path.dirname(property_file_backup_path))
+
+            def restore_custom_pcidevice_xml():
+                info('restoring the customPciDevices.xml ...')
+                custom_pcidevice_xml_path = os.path.join(ctl.USER_ZSTACK_HOME_DIR, 'apache-tomcat/webapps/zstack/WEB-INF/classes/mevoco/pciDevice/')
+                custom_pcidevice_xml_backup_path = os.path.join(upgrade_tmp_dir, 'zstack/WEB-INF/classes/mevoco/pciDevice/customPciDevices.xml')
+                if not os.path.isfile(custom_pcidevice_xml_backup_path):
+                    info('no backup customPciDevices.xml found')
+                    return
+
+                if not os.path.isdir(custom_pcidevice_xml_path):
+                    info('%s does not exists' % custom_pcidevice_xml_path)
+                    return
+
+                copyfile(custom_pcidevice_xml_backup_path, os.path.join(custom_pcidevice_xml_path, 'customPciDevices.xml'))
+                info('successfully restored the customPciDevices.xml')
+
+            def copy_tools():
+                info("copy third-party tools to zstack install path ...")
+                src_tools_path = "/opt/zstack-dvd/%s/%s/tools" % (ctl.BASEARCH, ctl.ZS_RELEASE)
+                dst_tools_path = os.path.join(ctl.zstack_home, "WEB-INF/classes/tools")
+                if os.path.exists(src_tools_path):
+                    shell("cp -rn %s/* %s >/dev/null 2>&1" % (src_tools_path, dst_tools_path))
+                    info("successfully copied third-party tools to zstack install path")
 
             def install_tools():
                 info('upgrading zstack-cli, zstack-ctl; this may cost several minutes ...')
@@ -6853,6 +7062,8 @@ class UpgradeManagementNodeCmd(Command):
             stop_node()
             upgrade()
             restore_config()
+            restore_custom_pcidevice_xml()
+            copy_tools()
             install_tools()
             save_new_war()
             chown_to_zstack()
@@ -8394,14 +8605,18 @@ class StartUiCmd(Command):
         if args.ssl_keystore_type == 'PKCS12' and not ctl.read_property('consoleProxyCertFile'):
             ctl.write_property('consoleProxyCertFile', ctl.ZSTACK_UI_KEYSTORE_PEM)
 
-        # ui_db
+        # ui_db use encrypted db_password in args
         self._get_db_info()
         if not args.db_url or args.db_url.strip() == '':
             args.db_url = self.db_url
         if not args.db_username or args.db_username.strip() == '':
             args.db_username = self.db_username
         if not args.db_password or args.db_password.strip() == '':
-            args.db_password = self.db_password
+            cipher = AESCipher()
+            if not cipher.is_encrypted(self.db_password):
+                args.db_password = cipher.encrypt(self.db_password)
+            else:
+                args.db_password = self.db_password
 
         shell("mkdir -p %s" % args.log)
         zstackui = ctl.ZSTACK_UI_HOME
@@ -8906,12 +9121,16 @@ class MiniResetHostCmd(Command):
 
     def _check_root_password(self):
         import getpass
-        password = getpass.getpass(prompt='Enter root password for localhost to continue...\n')
+        if sys.stdin.isatty():
+            password = getpass.getpass(prompt='Enter root password for localhost to continue...\n')
+        else:
+            print("Enter root password for localhost to continue...\n")
+            password = sys.stdin.readline().rstrip()
         tmpfile = self._write_to_temp_file(str(password))
         r = shell_return("timeout 5 sshpass -f %s ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no 127.0.0.1 date" % tmpfile)
         os.remove(tmpfile)
         if r != 0:
-            raise Exception("check root password failed!")
+            error("check root password of localhost failed!")
 
     def _intercept(self, args):
         self._check_root_password()
@@ -9240,6 +9459,8 @@ def main():
     GetZStackVersion()
     SharedBlockQcow2SharedVolumeFixCmd()
     MiniResetHostCmd()
+    RefreshAuditCmd()
+    MysqlProcessList()
 
     # If tools/zstack-ui.war exists, then install zstack-ui
     # else, install zstack-dashboard

@@ -27,10 +27,6 @@ def main():
     prepare_pid_dir(pidfile)
 
     try:
-        iptc = iptables.from_iptables_save()
-        iptc.add_rule('-A INPUT -p tcp -m tcp --dport 7762 -j ACCEPT')
-        iptc.iptable_restore()
-
         cmd = sys.argv[1]
         py_process_name = 'from cephprimarystorage import cdaemon'
         agentdaemon = cephagent.CephDaemon(pidfile, py_process_name)

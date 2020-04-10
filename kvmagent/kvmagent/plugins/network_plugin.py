@@ -32,6 +32,11 @@ KVM_SET_BRIDGE_ROUTER_PORT_PATH = "/host/bridge/routerport"
 logger = log.get_logger(__name__)
 IPTABLES_CMD = iptables.get_iptables_cmd()
 
+
+class DeviceNotExistedError(Exception):
+    pass
+
+
 class CheckPhysicalNetworkInterfaceCmd(kvmagent.AgentCommand):
     def __init__(self):
         super(CheckPhysicalNetworkInterfaceCmd, self).__init__()
@@ -126,7 +131,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         state_path = '/sys/class/net/%s/operstate' % device_name
 
         if not os.path.exists(state_path):
-            raise Exception('cannot find %s' % state_path)
+            raise DeviceNotExistedError('cannot find %s' % state_path)
 
         with open(state_path, 'r') as fd:
             state = fd.read()
@@ -144,6 +149,11 @@ class NetworkPlugin(kvmagent.KvmAgent):
             shell.call('echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables')
         shell.call('echo 1 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged')
         shell.call('echo 1 > /proc/sys/net/ipv4/conf/default/forwarding')
+
+    def _configure_bridge_mtu(self, bridgeName, interf, mtu=None):
+        if mtu is not None:
+            shell.call("ip link set mtu %d dev %s" % (mtu, interf))
+            #shell.call("ip link set mtu %d dev %s" % (mtu, bridgeName))
 
     @kvmagent.replyerror
     def check_physical_network_interface(self, req):
@@ -185,6 +195,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         if linux.is_vif_on_bridge(cmd.bridgeName, cmd.physicalInterfaceName):
             logger.debug('%s is a bridge device. Interface %s is attached to bridge. No need to create bridge or attach device interface' % (cmd.bridgeName, cmd.physicalInterfaceName))
             self._configure_bridge(cmd.disableIptables)
+            self._configure_bridge_mtu(cmd.bridgeName, cmd.physicalInterfaceName, cmd.mtu)
             linux.set_device_uuid_alias(cmd.physicalInterfaceName, cmd.l2NetworkUuid)
             self._ifup_device_if_down(cmd.bridgeName)
             return jsonobject.dumps(rsp)
@@ -192,8 +203,8 @@ class NetworkPlugin(kvmagent.KvmAgent):
         try:
             linux.create_bridge(cmd.bridgeName, cmd.physicalInterfaceName)
             linux.set_device_uuid_alias(cmd.physicalInterfaceName, cmd.l2NetworkUuid)
-
             self._configure_bridge(cmd.disableIptables)
+            self._configure_bridge_mtu(cmd.bridgeName, cmd.physicalInterfaceName, cmd.mtu)
             logger.debug('successfully realize bridge[%s] from device[%s]' % (cmd.bridgeName, cmd.physicalInterfaceName))
         except Exception as e:
             logger.warning(traceback.format_exc())
@@ -207,11 +218,16 @@ class NetworkPlugin(kvmagent.KvmAgent):
     def create_vlan_bridge(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CreateVlanBridgeResponse()
+        vlanInterfName = '%s.%s' % (cmd.physicalInterfaceName, cmd.vlan)
 
         if linux.is_bridge(cmd.bridgeName):
             logger.debug('%s is a bridge device, no need to create bridge' % cmd.bridgeName)
-            self._ifup_device_if_down('%s.%s' % (cmd.physicalInterfaceName, cmd.vlan))
+            try:
+                self._ifup_device_if_down('%s.%s' % (cmd.physicalInterfaceName, cmd.vlan))
+            except DeviceNotExistedError:
+                linux.create_vlan_eth(cmd.physicalInterfaceName, cmd.vlan)
             self._configure_bridge(cmd.disableIptables)
+            self._configure_bridge_mtu(cmd.bridgeName, vlanInterfName, cmd.mtu)
             linux.set_device_uuid_alias('%s.%s' % (cmd.physicalInterfaceName, cmd.vlan), cmd.l2NetworkUuid)
             self._ifup_device_if_down(cmd.bridgeName)
             return jsonobject.dumps(rsp)
@@ -219,6 +235,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         try:
             linux.create_vlan_bridge(cmd.bridgeName, cmd.physicalInterfaceName, cmd.vlan)
             self._configure_bridge(cmd.disableIptables)
+            self._configure_bridge_mtu(cmd.bridgeName, vlanInterfName, cmd.mtu)
             linux.set_device_uuid_alias('%s.%s' % (cmd.physicalInterfaceName, cmd.vlan), cmd.l2NetworkUuid)
             logger.debug('successfully realize vlan bridge[name:%s, vlan:%s] from device[%s]' % (cmd.bridgeName, cmd.vlan, cmd.physicalInterfaceName))
         except Exception as e:
@@ -256,14 +273,6 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     def check_vxlan_cidr(self, req):
-
-        def install_iptables(rules, port):
-            needle = '-A INPUT -p udp -m udp --dport %d' % port
-            drules = [r.replace("-A ", "-D ") for r in rules if needle in r]
-            for rule in drules:
-                bash_r("%s %s" % (IPTABLES_CMD, rule))
-
-            bash_r("%s -I INPUT -p udp --dport %s -j ACCEPT" % (IPTABLES_CMD, port))
 
         def filter_vxlan_nics(nics, interf, requireIp):
             valid_nics = []
@@ -336,10 +345,6 @@ class NetworkPlugin(kvmagent.KvmAgent):
         else:
             rsp.error = "multiple interface qualify with cidr [%s] and no interface name provided" % cmd.cidr
 
-        rules = bash_o("%s -S INPUT" % IPTABLES_CMD).splitlines()
-        install_iptables(rules, 8472)
-        install_iptables(rules, 4789)
-
         return jsonobject.dumps(rsp)
 
     @lock.lock('create_bridge')
@@ -358,6 +363,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         interf = "vxlan" + str(cmd.vni)
         linux.create_vxlan_bridge(interf, cmd.bridgeName, cmd.peers)
         linux.set_device_uuid_alias(interf, cmd.l2NetworkUuid)
+        self._configure_bridge_mtu(cmd.bridgeName, interf, cmd.mtu)
 
         return jsonobject.dumps(rsp)
 
@@ -377,6 +383,8 @@ class NetworkPlugin(kvmagent.KvmAgent):
             interf = "vxlan" + str(vni)
             linux.create_vxlan_bridge(interf, "br_vx_%s" % vni, cmd.peers)
             linux.set_device_uuid_alias(interf, l2NetworkUuid)
+            #this api is called for vxlan pool, bridgeName is None
+            self._configure_bridge_mtu(cmd.bridgeName, interf, cmd.mtu)
 
         return jsonobject.dumps(rsp)
 
@@ -425,7 +433,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
             value = '1'
 
         for nic in cmd.nicNames:
-            shell.call('echo %s > /sys/devices/virtual/net/%s/brport/multicast_router' % (value, nic))
+            linux.write_file("/sys/devices/virtual/net/%s/brport/multicast_router" % nic, value)
 
         rsp.success = True
         return jsonobject.dumps(rsp)

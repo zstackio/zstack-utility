@@ -193,10 +193,6 @@ def get_backup_storage(xml_root, session_uuid=None):
             json_to_xml = JsonToXml(bs, 'imageStoreBackupStorage', xml_item,
                                     'attachedZoneUuids availableCapacity totalCapacity')
             json_to_xml.generate_mon_xml()
-        elif bs.type == inventory.FUSIONSTOR_BACKUP_STORAGE_TYPE:
-            json_to_xml = JsonToXml(bs, 'fusionStorBackupStorage', xml_item,
-                                    'attachedZoneUuids availableCapacity totalCapacity')
-            json_to_xml.generate_mon_xml()
 
     cond = res_ops.gen_query_conditions('type', '=', 'SimulatorBackupStorage')
     simulator_bss = res_ops.safely_get_resource(res_ops.BACKUP_STORAGE,

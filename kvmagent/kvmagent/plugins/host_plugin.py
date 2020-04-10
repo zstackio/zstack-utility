@@ -372,6 +372,14 @@ class ScanVmPortRsp(kvmagent.AgentResponse):
         super(ScanVmPortRsp, self).__init__()
         self.portStatus = {}
 
+class EnableZeroCopyRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(EnableZeroCopyRsp, self).__init__()
+
+class DisableZeroCopyRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(DisableZeroCopyRsp, self).__init__()
+
 class PciDeviceTO(object):
     def __init__(self):
         self.name = ""
@@ -498,6 +506,8 @@ class HostPlugin(kvmagent.KvmAgent):
     TRANSMIT_VM_OPERATION_TO_MN_PATH = "/host/transmitvmoperation"
     TRANSMIT_ZWATCH_INSTALL_RESULT_TO_MN_PATH = "/host/zwatchInstallResult"
     SCAN_VM_PORT_PATH = "/host/vm/scanport"
+    ENABLE_ZEROCOPY = "/host/enable/zerocopy"
+    DISABLE_ZEROCOPY = "/host/disable/zerocopy"
 
     host_network_facts_cache = {}  # type: dict[float, list[list, list]]
     IS_YUM = False
@@ -524,13 +534,11 @@ class HostPlugin(kvmagent.KvmAgent):
                 return words[words.index(w)+1].strip().split('(')[0].replace(',' ,'')
         raise kvmagent.KvmError('cannot get qemu version[%s]' % ret)
 
-    def _prepare_firewall_for_migration(self):
-        """Prepare firewall rules for libvirt live migration."""
-
-        mrule = "-A INPUT -p tcp -m tcp --dport 49152:49261 -j ACCEPT"
-        rules = bash_o("%s -S INPUT" % IPTABLES_CMD).splitlines()
-        if not mrule in rules:
-            bash_r("%s %s" % (IPTABLES_CMD, mrule.replace("-A ", "-I ")))
+    def get_clean_rule(self, item):
+        rule = item.strip()
+        if rule[0] == '"' or rule[0] == "'":
+            rule = eval(rule).strip()
+        return rule
 
     @lock.file_lock('/run/xtables.lock')
     @in_bash
@@ -538,7 +546,7 @@ class HostPlugin(kvmagent.KvmAgent):
         logger.debug("starting add iptables rules : %s" % rules)
         if len(rules) != 0 and rules is not None:
             for item in rules:
-                rule = item.strip("'").strip('"')
+                rule = self.get_clean_rule(item)
                 clean_rule = ' '.join(rule.split(' ')[1:])
                 ret = bash_r("iptables -C %s " % clean_rule)
                 if ret == 0:
@@ -1696,6 +1704,45 @@ done
 
         return jsonobject.dumps(rsp)
 
+    def _try_reload_modprobe(self, module_name):
+        o = shell.ShellCmd("modprobe -r %s" % module_name)
+        o(False)
+        if o.return_code != 0:
+            logger.warn("reload module %s failed" % module_name)
+        else:
+            shell.run("modprobe %s" % module_name)
+
+    def _check_vhost_net_conf(self, expect_value):
+        conf_path = "/etc/modprobe.d/vhost-net.conf"
+        expect_conf = "options vhost_net experimental_zcopytx=%s" % expect_value
+        if not os.path.exists(conf_path):
+            linux.write_file(conf_path, expect_conf, True)
+            return
+
+        exist_conf = linux.read_file(conf_path)
+        if exist_conf != expect_conf:
+            linux.write_file(conf_path, expect_conf)
+
+    @kvmagent.replyerror
+    @in_bash
+    def enable_zerocopy(self, req):
+        rsp = EnableZeroCopyRsp()
+
+        self._check_vhost_net_conf(1)
+        self._try_reload_modprobe('vhost_net')
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
+    def disable_zerocopy(self, req):
+        rsp = EnableZeroCopyRsp()
+
+        self._check_vhost_net_conf(0)
+        self._try_reload_modprobe('vhost_net')
+
+        return jsonobject.dumps(rsp)
+
     def start(self):
         self.host_uuid = None
 
@@ -1731,11 +1778,12 @@ done
         http_server.register_sync_uri(self.TRANSMIT_VM_OPERATION_TO_MN_PATH, self.transmit_vm_operation_to_vm)
         http_server.register_sync_uri(self.TRANSMIT_ZWATCH_INSTALL_RESULT_TO_MN_PATH, self.transmit_zwatch_install_result_to_mn)
         http_server.register_async_uri(self.SCAN_VM_PORT_PATH, self.scan_vm_port)
+        http_server.register_async_uri(self.ENABLE_ZEROCOPY, self.enable_zerocopy)
+        http_server.register_async_uri(self.DISABLE_ZEROCOPY, self.disable_zerocopy)
 
         self.heartbeat_timer = {}
         self.libvirt_version = self._get_libvirt_version()
         self.qemu_version = self._get_qemu_version()
-        self._prepare_firewall_for_migration()
         filepath = r'/etc/libvirt/qemu/networks/autostart/default.xml'
         if os.path.exists(filepath):
             os.unlink(filepath)

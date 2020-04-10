@@ -3,6 +3,8 @@ import re
 import random
 import time
 
+from typing import Dict, Any
+
 from kvmagent import kvmagent
 from kvmagent.plugins.imagestore import ImageStoreClient
 from kvmagent.plugins import mini_fencer
@@ -106,9 +108,32 @@ class ActiveRsp(VolumeRsp):
 
 
 class CheckBitsRsp(AgentRsp):
+    existing = False  # type: bool
+    replications = {}  # type: Dict[str, ReplicationInformation]
+
     def __init__(self):
         super(CheckBitsRsp, self).__init__()
         self.existing = False
+        self.replications = dict()
+
+
+class ReplicationInformation(object):
+    diskStatus = None  # type: str
+    networkStatus = None  # type: str
+    role = None  # type: str
+    size = None  # type: long
+    name = None  # type: str
+    minor = None  # type: long
+
+    def __init__(self):
+        super(ReplicationInformation, self).__init__()
+        self.diskStatus = None  # type: str
+        self.networkStatus = None  # type: str
+        self.role = None  # type: str
+        self.size = None  # type: long
+        self.name = None  # type: str
+        self.minor = None  # type: long
+
 
 
 class GetVolumeSizeRsp(VolumeRsp):
@@ -381,7 +406,6 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
 
         def config_drbd():
             bash.bash_r("sed -i 's/usage-count yes/usage-count no/g' /etc/drbd.d/global_common.conf")
-            bash.bash_r("iptables -I INPUT -p tcp -m tcp --dport 20000:30000 -j ACCEPT")
 
         drbd.install_drbd()
         config_lvm()
@@ -583,13 +607,13 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         if lvm.has_lv_tag(install_abs_path, IMAGE_TAG):
             logger.info('deleting lv image: ' + install_abs_path)
             if lvm.lv_exists(install_abs_path):
-                lvm.delete_image(install_abs_path, IMAGE_TAG)
+                lvm.delete_image(install_abs_path, IMAGE_TAG, deactive=False)
         else:
             logger.info('deleting lv volume: ' + install_abs_path)
             r = drbd.DrbdResource(self.get_name_from_installPath(path))
             if r.exists is True:
                 r.destroy()
-            lvm.delete_lv(install_abs_path)
+            lvm.delete_lv(install_abs_path, deactive=False)
         lvm.delete_snapshots(install_abs_path)
 
     @kvmagent.replyerror
@@ -744,11 +768,44 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
     def check_bits(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CheckBitsRsp()
-        install_abs_path = get_absolute_path_from_install_path(cmd.path)
-        rsp.existing = lvm.lv_exists(install_abs_path)
+        if cmd.path is not None:
+            install_abs_path = get_absolute_path_from_install_path(cmd.path)
+            rsp.existing = lvm.lv_exists(install_abs_path)
+        else:
+            rsp = self.replications_status()
         if cmd.vgUuid is not None and lvm.vg_exists(cmd.vgUuid):
             rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid, False)
         return jsonobject.dumps(rsp)
+
+    @staticmethod
+    def replications_status():
+        # type: () -> CheckBitsRsp
+        r = CheckBitsRsp()
+        raw = linux.read_file("/proc/drbd")
+
+        for line in raw.splitlines():
+            try:
+                splited = line.strip().split(" ")
+                if ": cs:" in line:
+                    info = ReplicationInformation()
+                    info.minor = splited[0].split(":")[0]
+                    info.networkStatus = splited[1].split(":")[1]
+                    info.diskStatus = splited[3].split(":")[1].split("/")[0]
+                    info.role = splited[2].split(":")[1].split("/")[0]
+                    configPath = bash.bash_o("grep 'minor %s;' /etc/drbd.d/*.res -l | awk -F '.res' '{print $1}'" % info.minor).strip()
+                    info.name = configPath.split("/")[-1]
+                    size = lvm.get_lv_size(
+                        bash.bash_o("grep -E 'disk .*/dev' %s.res | head -n1  | awk '{print $2}'" % configPath).strip().strip(";"))
+                    if size != '':
+                        info.size = int(size)
+
+                    r.replications[info.name] = info
+            except Exception as e:
+                logger.warn("exception %s when get info of %s" % (e, line))
+
+        logger.debug(jsonobject.dumps(r.replications))
+        return r
+
 
     @kvmagent.replyerror
     def active_lv(self, req):

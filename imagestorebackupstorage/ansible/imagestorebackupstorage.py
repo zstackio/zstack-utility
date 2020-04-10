@@ -156,9 +156,9 @@ copy(copy_arg, host_post_info)
 command = "bash %s %s %s" % (dest_pkg, fs_rootpath, max_capacity)
 run_remote_command(command, host_post_info)
 
-
 # name: restart image store server
-if client != "true":
+server = client != "true" or run_remote_command("pkill -0 zstore", host_post_info, return_status=True, return_output=False)
+if server:
     # integrate zstack-store with init.d
     run_remote_command("/bin/cp -f /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage /etc/init.d/", host_post_info)
     if distro in RPM_BASED_OS:
