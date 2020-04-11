@@ -476,6 +476,11 @@ copy_arg.src = zwatch_vm_agent_version_local
 copy_arg.dest = zwatch_vm_agent_version_dst
 copy(copy_arg, host_post_info)
 
+copy_arg = CopyArg()
+copy_arg.src = "%s/kvmagent-iptables" % file_root
+copy_arg.dest = "%s/kvmagent-iptables" % workplace
+copy(copy_arg, host_post_info)
+
 # copy uefi_raw
 if distro in DEB_BASED_OS:
     copy_arg = CopyArg()

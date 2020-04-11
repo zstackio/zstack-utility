@@ -135,6 +135,12 @@ copy_arg.src = "%s/%s" % (file_root, src_pkg_imagestorebackupstorage)
 copy_arg.dest = dest_pkg
 copy(copy_arg, host_post_info)
 
+# name: copy iptables-scrpit
+copy_arg = CopyArg()
+copy_arg.src = "%s/zstore-iptables" % file_root
+copy_arg.dest = "%s/zstore-iptables" % imagestore_root
+copy(copy_arg, host_post_info)
+
 # name: copy necessary certificates
 xs = current_dir.split('/')
 local_install_dir = '/'.join(xs[:xs.index('ansible')])
