@@ -4040,7 +4040,7 @@ class Vm(object):
         make_console()
         make_sec_label()
         make_controllers()
-        if is_spiceport_driver_supported():
+        if is_spiceport_driver_supported() and cmd.consoleMode in ["spice", "vncAndSpice"]:
             make_folder_sharing()
         # appliance vm doesn't need any cdrom or usb controller
         if not cmd.isApplianceVm:
