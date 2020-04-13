@@ -375,6 +375,10 @@ class ScanVmPortRsp(kvmagent.AgentResponse):
         super(ScanVmPortRsp, self).__init__()
         self.portStatus = {}
 
+class AddBridgeFdbEntryRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(AddBridgeFdbEntryRsp, self).__init__()
+
 class PciDeviceTO(object):
     def __init__(self):
         self.name = ""
@@ -501,6 +505,7 @@ class HostPlugin(kvmagent.KvmAgent):
     TRANSMIT_VM_OPERATION_TO_MN_PATH = "/host/transmitvmoperation"
     TRANSMIT_ZWATCH_INSTALL_RESULT_TO_MN_PATH = "/host/zwatchInstallResult"
     SCAN_VM_PORT_PATH = "/host/vm/scanport"
+    ADD_BRIDGE_FDB_ENTRY_PATH = "/bridgefdb/add"
 
     host_network_facts_cache = {}  # type: dict[float, list[list, list]]
     IS_YUM = False
@@ -1515,13 +1520,11 @@ done
         else:
             rsp.success = False
             rsp.error = "do not support sriov of pci device [addr:%s]" % addr
-            return jsonobject.dumps(rsp)
 
-        if not rsp.success:
-            return jsonobject.dumps(rsp)
+        if rsp.success:
+            # create ramdisk file after pci device virtualization
+            open(ramdisk, 'a').close()
 
-        # create ramdisk file after pci device virtualization
-        open(ramdisk, 'a').close()
         return jsonobject.dumps(rsp)
 
 
@@ -1565,10 +1568,13 @@ done
         else:
             rsp.success = False
             rsp.error = "do not support sriov of pci device [addr:%s]" % addr
-            return jsonobject.dumps(rsp)
 
-        if not rsp.success:
-            return jsonobject.dumps(rsp)
+        if rsp.success:
+            # delete ramdisk file after pci device unvirtualized
+            no_domain_addr = addr if len(addr.split(':')) != 3 else ':'.join(addr.split(':')[1:])
+            ramdisk = os.path.join('/dev/shm', 'pci-' + no_domain_addr)
+            if os.path.exists(ramdisk):
+                os.remove(ramdisk)
 
         return jsonobject.dumps(rsp)
 
@@ -1740,6 +1746,24 @@ done
 
         return jsonobject.dumps(rsp)
 
+    def add_bridge_fdb_entry(self, req):
+        rsp = AddBridgeFdbEntryRsp()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        errors = []
+        for mac in cmd.macs:
+            _cmd = "bridge fdb add %s dev %s" % (mac, cmd.physicalInterface)
+            r, o, e = bash_roe(_cmd)
+            if r != 0 and 'File exists' not in e:
+                errors.append("failed to run %s because %s" % (_cmd, e))
+
+        if errors:
+            rsp.success = False
+            rsp.error = ';'.join(errors)
+
+        return jsonobject.dumps(rsp)
+
+
     def start(self):
         self.host_uuid = None
 
@@ -1775,6 +1799,7 @@ done
         http_server.register_sync_uri(self.TRANSMIT_VM_OPERATION_TO_MN_PATH, self.transmit_vm_operation_to_vm)
         http_server.register_sync_uri(self.TRANSMIT_ZWATCH_INSTALL_RESULT_TO_MN_PATH, self.transmit_zwatch_install_result_to_mn)
         http_server.register_async_uri(self.SCAN_VM_PORT_PATH, self.scan_vm_port)
+        http_server.register_async_uri(self.ADD_BRIDGE_FDB_ENTRY_PATH, self.add_bridge_fdb_entry)
 
         self.heartbeat_timer = {}
         self.libvirt_version = self._get_libvirt_version()
