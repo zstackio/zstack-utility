@@ -377,7 +377,7 @@ After=lvm2-lvmetad.service
 [Service]
 Type=simple
 NonBlocking=true
-ExecStart=/usr/sbin/lvmlockd --daemon-debug --sanlock-timeout %s
+ExecStart=/sbin/lvmlockd --daemon-debug --sanlock-timeout %s
 StandardError=syslog
 StandardOutput=syslog
 SyslogIdentifier=lvmlockd
