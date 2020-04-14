@@ -1305,7 +1305,6 @@ done
         else:
             return name.replace('Co., Ltd ', '')
 
-    @in_bash
     def _collect_format_pci_device_info(self, rsp):
         r, o, e = bash_roe("lspci -Dmmnnv")
         if r != 0:
@@ -1328,56 +1327,61 @@ done
                     to.pciDeviceAddress = content
                     group_path = os.path.join('/sys/bus/pci/devices/', to.pciDeviceAddress, 'iommu_group')
                     to.iommuGroup = os.path.realpath(group_path)
-                    r, o, e = bash_roe("lspci -s %s" % content)
-                    if r == 0:
-                        descs = ' '.join(o.split(' ')[1:]).strip().split(':')
-                        to.description = ':'.join(descs[1:]) + ', ' + descs[0]
                 elif title == 'Class':
-                    _class = content.strip('[')
-                    gpu_vendors = ["NVIDIA", "AMD"]
-                    if any(vendor in to.description for vendor in gpu_vendors) \
-                            and 'VGA compatible controller' in _class:
-                        to.type = "GPU_Video_Controller"
-                    elif any(vendor in to.description for vendor in gpu_vendors) \
-                            and 'Audio device' in _class:
-                        to.type = "GPU_Audio_Controller"
-                    elif any(vendor in to.description for vendor in gpu_vendors) \
-                            and 'USB controller' in _class:
-                        to.type = "GPU_USB_Controller"
-                    elif any(vendor in to.description for vendor in gpu_vendors) \
-                            and 'Serial bus controller' in _class:
-                        to.type = "GPU_Serial_Controller"
-                    elif any(vendor in to.description for vendor in gpu_vendors) \
-                            and '3D controller' in _class:
-                        to.type = "GPU_3D_Controller"
-                    elif 'Ethernet controller' in _class:
-                        to.type = "Ethernet_Controller"
-                    elif 'Audio device' in _class:
-                        to.type = "Audio_Controller"
-                    elif 'USB controller' in _class:
-                        to.type = "USB_Controller"
-                    elif 'Serial controller' in _class:
-                        to.type = "Serial_Controller"
-                    elif 'Moxa Technologies' in _class:
-                        to.type = "Moxa_Device"
-                    elif 'Host bridge' in _class:
-                        to.type = "Host_Bridge"
-                    elif 'PCI bridge' in _class:
-                        to.type = "PCI_Bridge"
-                    else:
-                        to.type = "Generic"
+                    _class = content.split('[')[0]
+                    to.type = _class
+                    to.description = _class + ": "
                 elif title == 'Vendor':
                     vendor_name = self._simplify_pci_device_name('['.join(content.split('[')[:-1]).strip())
                     to.vendorId = content.split('[')[-1].strip(']')
+                    to.description += content.split('[')[0]
                 elif title == "Device":
                     device_name = self._simplify_pci_device_name('['.join(content.split('[')[:-1]).strip())
                     to.deviceId = content.split('[')[-1].strip(']')
+                    to.description += content.split('[')[0]
                 elif title == "SVendor":
                     subvendor_name = self._simplify_pci_device_name('['.join(content.split('[')[:-1]).strip())
                     to.subvendorId = content.split('[')[-1].strip(']')
                 elif title == "SDevice":
                     to.subdeviceId = content.split('[')[-1].strip(']')
             to.name = "%s_%s" % (subvendor_name if subvendor_name else vendor_name, device_name)
+
+            def _set_pci_to_type():
+                gpu_vendors = ["NVIDIA", "AMD"]
+                if any(vendor in to.description for vendor in gpu_vendors) \
+                        and 'VGA compatible controller' in to.type:
+                    to.type = "GPU_Video_Controller"
+                elif any(vendor in to.description for vendor in gpu_vendors) \
+                        and 'Audio device' in to.type:
+                    to.type = "GPU_Audio_Controller"
+                elif any(vendor in to.description for vendor in gpu_vendors) \
+                        and 'USB controller' in to.type:
+                    to.type = "GPU_USB_Controller"
+                elif any(vendor in to.description for vendor in gpu_vendors) \
+                        and 'Serial bus controller' in to.type:
+                    to.type = "GPU_Serial_Controller"
+                elif any(vendor in to.description for vendor in gpu_vendors) \
+                        and '3D controller' in to.type:
+                    to.type = "GPU_3D_Controller"
+                elif 'Ethernet controller' in to.type:
+                    to.type = "Ethernet_Controller"
+                elif 'Audio device' in to.type:
+                    to.type = "Audio_Controller"
+                elif 'USB controller' in to.type:
+                    to.type = "USB_Controller"
+                elif 'Serial controller' in to.type:
+                    to.type = "Serial_Controller"
+                elif 'Moxa Technologies' in to.type:
+                    to.type = "Moxa_Device"
+                elif 'Host bridge' in to.type:
+                    to.type = "Host_Bridge"
+                elif 'PCI bridge' in to.type:
+                    to.type = "PCI_Bridge"
+                else:
+                    to.type = "Generic"
+
+            _set_pci_to_type()
+
             # if support both mdev and sriov, then set the pci device to VFIO_MDEV_VIRTUALIZABLE
             if not self._get_vfio_mdev_info(to) and not self._get_sriov_info(to):
                 to.virtStatus = "UNVIRTUALIZABLE"
@@ -1386,7 +1390,6 @@ done
 
     # moved from vm_plugin to host_plugin
     @kvmagent.replyerror
-    @in_bash
     def get_pci_info(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetPciDevicesResponse()
