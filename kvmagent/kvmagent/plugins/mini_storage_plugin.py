@@ -327,12 +327,16 @@ class MiniFileConverter(linux.AbstractFileConverter):
             raise e
 
     def _convert_image_from_file(self, src, dst, dst_backing, backing_fmt):
-        size = linux.get_local_file_disk_usage(src)
+        try:
+            size = linux.qcow2_measure_required_size(src)
+        except Exception as e:
+            logger.warn("can not get qcow2 %s measure size: %s" % (src, e))
+            size = linux.get_local_file_size(src)
         tag = "%s::%s::%s" % (IMAGE_TAG, self.cmd.hostUuid, time.time())
         if not lvm.lv_exists(dst):
             lvm.create_lv_from_cmd(dst, size, self.cmd, tag, False)
         lvm.active_lv(dst)
-        bash.bash_errorout('dd if=%s of=%s iflag=direct conv=sparse' % (src, dst))
+        bash.bash_errorout('dd if=%s of=%s conv=sparse' % (src, dst))
         if dst_backing:
             linux.qcow2_rebase_no_check(dst_backing, dst, backing_fmt=backing_fmt)
 
