@@ -1498,7 +1498,6 @@ done
 
 
     @kvmagent.replyerror
-    @in_bash
     def generate_sriov_pci_devices(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GenerateSriovPciDevicesRsp()
@@ -1546,7 +1545,34 @@ done
             rsp.error = 'cannot find sriov_numvfs file for pci device[addr:%s, type:%s]' % (cmd.pciDeviceAddress, cmd.pciDeviceType)
             return
 
-        r, o, e = bash_roe("echo 0 > %s" % numvfs)
+        def _check_allocated_virtual_functions():
+            _addr = cmd.pciDeviceAddress
+
+            if len(_addr.split(':')) != 3:
+                _addr = '0000:' + _addr
+
+            pf = "pci_%s_%s_%s_%s" % tuple(re.split(':|\.', _addr))
+            r, vf_lines, e = bash_roe("virsh nodedev-dumpxml %s | grep 'address domain'" % pf)
+            if r != 0:
+                return "failed to run `virsh nodedev-dumpxml %s`: %s" % (pf, e)
+
+            pattern = re.compile(r'.*0x([0-9a-f]*).*0x([0-9a-f]*).*0x([0-9a-f]*).*0x([0-9a-f]*).*')
+            for vf_line in vf_lines.split('\n'):
+                vf_line = vf_line.strip()
+                match = pattern.match(vf_line)
+                if match:
+                    vf = "pci_%s_%s_%s_%s" % tuple(match.groups())
+                    r, o, e = bash_roe("virsh nodedev-dumpxml %s | grep vfio-pci" % vf)
+                    if r == 0:
+                        return "virtual function %s of pf %s still allocated to some vm" % (vf, pf)
+
+        _error = _check_allocated_virtual_functions()
+        if _error:
+            rsp.success = False
+            rsp.error = _error
+            return
+
+        r, o, e = bash_roe("lspci >/dev/null && echo 0 > %s" % numvfs)
         if r != 0:
             rsp.success = False
             rsp.error = 'failed to ungenerate virtual functions on pci device[addr:%s, type:%s]' % (cmd.pciDeviceAddress, cmd.pciDeviceType)
@@ -1554,7 +1580,6 @@ done
 
 
     @kvmagent.replyerror
-    @in_bash
     def ungenerate_sriov_pci_devices(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = UngenerateSriovPciDevicesRsp()
@@ -1579,7 +1604,6 @@ done
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
-    @in_bash
     def generate_vfio_mdev_devices(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GenerateVfioMdevDevicesRsp()
