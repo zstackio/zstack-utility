@@ -16,6 +16,8 @@ import re
 
 logger = log.get_logger(__name__)
 
+pic_prefix = "data:image/png;base64,"
+
 def replyerror(func):
     @functools.wraps(func)
     def wrap(*args, **kwargs):
@@ -201,7 +203,7 @@ class AppBuildSystemAgent(object):
             for f in files:
                 if re.match(regex, f):
                     with open(srcDir+"/"+f, 'r') as thumb:
-                        thumbs.append(base64.b64encode(thumb.read()))
+                        thumbs.append(pic_prefix + base64.b64encode(thumb.read()))
             return thumbs
 
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -212,7 +214,7 @@ class AppBuildSystemAgent(object):
         rsp.dstInfo = _read_info(cmd.srcPath, "application-desc.json")
         rsp.template = _read_info(cmd.srcPath, "raw-cloudformation-template.json")
         with open(cmd.srcPath+"/logo.jpg", 'r') as logo:
-            rsp.logo = base64.b64encode(logo.read())
+            rsp.logo = pic_prefix + base64.b64encode(logo.read())
         rsp.thumbs = _encode_thumbs(cmd.srcPath, "thumbs.*.jpg")
 
         target = _copy_app(cmd.srcPath, cmd.dstPath)
