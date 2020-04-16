@@ -142,6 +142,16 @@ class ConvertVolumeProvisioningRsp(AgentRsp):
         super(ConvertVolumeProvisioningRsp, self).__init__()
         self.actualSize = 0
 
+class GetDownloadBitsFromKvmHostProgressRsp(AgentRsp):
+    def __init__(self):
+        super(GetDownloadBitsFromKvmHostProgressRsp, self).__init__()
+        self.totalSize = None
+
+class DownloadBitsFromKvmHostRsp(AgentRsp):
+    def __init__(self):
+        super(DownloadBitsFromKvmHostRsp, self).__init__()
+        self.format = None
+
 
 def translate_absolute_path_from_install_path(path):
     if path is None:
@@ -271,6 +281,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     GET_BLOCK_DEVICES_PATH = "/sharedblock/blockdevices"
     DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/sharedblock/kvmhost/download"
     CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/sharedblock/kvmhost/download/cancel"
+    GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH = "/sharedblock/kvmhost/download/progress"
     GET_BACKING_CHAIN_PATH = "/sharedblock/volume/backingchain"
     CONVERT_VOLUME_PROVISIONING_PATH = "/sharedblock/volume/convertprovisioning"
     CONFIG_FILTER_PATH = "/sharedblock/disks/filter"
@@ -307,6 +318,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CONVERT_VOLUME_PROVISIONING_PATH, self.convert_volume_provisioning)
         http_server.register_async_uri(self.CONFIG_FILTER_PATH, self.config_filter)
         http_server.register_async_uri(self.CONVERT_VOLUME_FORMAT_PATH, self.convert_volume_format)
+        http_server.register_async_uri(self.GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH, self.get_download_bits_from_kvmhost_progress)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -756,7 +768,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     @completetask
     def download_from_kvmhost(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AgentRsp()
+        rsp = DownloadBitsFromKvmHostRsp()
 
         install_abs_path = translate_absolute_path_from_install_path(cmd.primaryStorageInstallPath)
 
@@ -767,6 +779,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             return jsonobject.dumps(rsp)
 
         self.do_download_from_sftp(cmd, install_abs_path)
+        rsp.format = linux.get_img_fmt(install_abs_path)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -1200,4 +1213,16 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         lvm.config_lvm_filter(["lvm.conf", "lvmlocal.conf"], preserve_disks=allDiskPaths)
 
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def get_download_bits_from_kvmhost_progress(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetDownloadBitsFromKvmHostProgressRsp()
+        totalSize = 0
+        for path in cmd.volumePaths:
+            install_abs_path = translate_absolute_path_from_install_path(path)
+            actualSize = lvm.get_lv_size(install_abs_path)
+            totalSize += long(actualSize)
+        rsp.totalSize = totalSize
         return jsonobject.dumps(rsp)

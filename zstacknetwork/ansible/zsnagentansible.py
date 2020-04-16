@@ -84,6 +84,14 @@ else :
     zstacklib_args.yum_server = yum_server
 zstacklib = ZstackLib(zstacklib_args)
 
+# get remote host arch
+IS_AARCH64 = get_remote_host_arch(host_post_info) == 'aarch64'
+if IS_AARCH64:
+    src_pkg_zsnagent = "zsn-agent.aarch64.bin"
+else:
+    src_pkg_zsnagent = "zsn-agent.bin"
+dst_pkg_zsnagent = "zsn-agent.bin"
+
 if distro in RPM_BASED_OS:
     if zstack_repo == 'false':
         yum_install_package("libpcap", host_post_info)
@@ -104,10 +112,11 @@ run_remote_command(add_true_in_command(command), host_post_info)
 
 # name: copy zsn binary
 copy_arg = CopyArg()
-dest_pkg = "%s/%s" % (zsn_root, pkg_zsn)
-copy_arg.src = "%s/%s" % (file_root, pkg_zsn)
+dest_pkg = "%s/%s" % (zsn_root, dst_pkg_zsnagent)
+copy_arg.src = "%s/%s" % (file_root, src_pkg_zsnagent)
 copy_arg.dest = dest_pkg
 copy(copy_arg, host_post_info)
+
 
 command = "/bin/cp /usr/local/zstack/zsn-agent/bin/zsn-agent /usr/local/zstack/zsn-agent/bin/zsn-agent.bak || touch /usr/local/zstack/zsn-agent/bin/zsn-agent.bak"
 run_remote_command(add_true_in_command(command), host_post_info)

@@ -150,6 +150,16 @@ class CreateEmptyVolumeRsp(AgentResponse):
         super(CreateEmptyVolumeRsp, self).__init__()
         self.size = 0
 
+class GetDownloadBitsFromKvmHostProgressRsp(AgentResponse):
+    def __init__(self):
+        super(GetDownloadBitsFromKvmHostProgressRsp, self).__init__()
+        self.totalSize = None
+
+class DownloadBitsFromKvmHostRsp(AgentResponse):
+    def __init__(self):
+        super(DownloadBitsFromKvmHostRsp, self).__init__()
+        self.format = None
+
 
 def replyerror(func):
     @functools.wraps(func)
@@ -201,6 +211,7 @@ class CephAgent(plugin.TaskManager):
     DOWNLOAD_IMAGESTORE_PATH = "/ceph/primarystorage/imagestore/backupstorage/download"
     DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/ceph/primarystorage/kvmhost/download"
     CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/ceph/primarystorage/kvmhost/download/cancel"
+    GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH = "/ceph/primarystorage/kvmhost/download/progress"
     JOB_CANCEL = "/job/cancel"
 
     http_server = http.HttpServer(port=7762)
@@ -241,6 +252,7 @@ class CephAgent(plugin.TaskManager):
         self.http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.download_from_kvmhost)
         self.http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
         self.http_server.register_async_uri(self.JOB_CANCEL, self.cancel)
+        self.http_server.register_async_uri(self.GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH, self.get_download_bits_from_kvmhost_progress)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -985,7 +997,7 @@ class CephAgent(plugin.TaskManager):
     @rollback
     def download_from_kvmhost(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AgentResponse()
+        rsp = DownloadBitsFromKvmHostRsp()
 
         pool, image_name = self._parse_install_path(cmd.primaryStorageInstallPath)
 
@@ -998,6 +1010,7 @@ class CephAgent(plugin.TaskManager):
             return jsonobject.dumps(rsp)
 
         self.do_sftp_download(cmd, pool, image_name)
+        rsp.format = linux.get_img_fmt("rbd:%s/%s" % (pool, image_name))
         return jsonobject.dumps(rsp)
 
     @replyerror
@@ -1012,6 +1025,23 @@ class CephAgent(plugin.TaskManager):
         if not traceable_shell.cancel_job(cmd):
             rsp.success = False
             rsp.error = "no matched job to cancel"
+        return jsonobject.dumps(rsp)
+
+    @replyerror
+    def get_download_bits_from_kvmhost_progress(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetDownloadBitsFromKvmHostProgressRsp()
+        totalSize = 0
+        for path in cmd.volumePaths:
+            pool, image_name = self._parse_install_path(path)
+            path = "%s/tmp-%s" % (pool, image_name)
+            if bash_r('rbd info %s' % path) != 0:
+                continue
+            size = self._get_file_actual_size(path)
+            if size is not None:
+                totalSize += long(size)
+
+        rsp.totalSize = totalSize
         return jsonobject.dumps(rsp)
 
 class CephDaemon(daemon.Daemon):

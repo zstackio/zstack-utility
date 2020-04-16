@@ -353,6 +353,13 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     @staticmethod
     def get_disk_info_by_path(path):
         # type: (str) -> IscsiLunStruct
+        r = bash.bash_r("multipath -l | grep -e '/multipath.conf' | grep -e 'line'")
+        if r == 0:
+            current_hostname = shell.call('hostname')
+            current_hostname = current_hostname.strip(' \t\n\r')
+            raise Exception(
+                "The multipath.conf setting on host[%s] may be error, please check and try again" % current_hostname)
+
         abs_path = bash.bash_o("readlink -e /dev/disk/by-path/%s" % path).strip()
         candidate_struct = lvm.get_device_info(abs_path.split("/")[-1])
         lun_struct = IscsiLunStruct()
