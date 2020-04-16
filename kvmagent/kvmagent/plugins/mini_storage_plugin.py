@@ -297,19 +297,28 @@ class MiniFileConverter(linux.AbstractFileConverter):
         else:
             shell.call('dd if=%s of=%s conv=sparse' % (src, dst))
 
+    def get_size(self, path):
+        # type: (str) -> int
+        return lvm.get_lv_size(path)
+
+    def exists(self, path):
+        # type: (str) -> bool
+        return os.path.exists(path)
+
     def _convert_volume_from_file(self, src, dst, dst_backing, backing_fmt):
         drbdResource = drbd.DrbdResource(os.path.basename(dst), False)
-        drbdResource.config.local_host.hostname = self.cmd.local_host_name
-        drbdResource.config.local_host.disk = dst
-        drbdResource.config.local_host.minor = self.cmd.local_host_port - DRBD_START_PORT
-        drbdResource.config.local_host.address = "%s:%s" % (self.cmd.local_address, self.cmd.local_host_port)
+        if not drbdResource.exists or drbdResource.config.local_host.minor != str(self.cmd.local_host_port - DRBD_START_PORT):
+            drbdResource.config.local_host.hostname = self.cmd.local_host_name
+            drbdResource.config.local_host.disk = dst
+            drbdResource.config.local_host.minor = self.cmd.local_host_port - DRBD_START_PORT
+            drbdResource.config.local_host.address = "%s:%s" % (self.cmd.local_address, self.cmd.local_host_port)
 
-        drbdResource.config.remote_host.hostname = self.cmd.remote_host_name
-        drbdResource.config.remote_host.disk = dst
-        drbdResource.config.remote_host.minor = self.cmd.remote_host_port - DRBD_START_PORT
-        drbdResource.config.remote_host.address = "%s:%s" % (self.cmd.remote_address, self.cmd.remote_host_port)
+            drbdResource.config.remote_host.hostname = self.cmd.remote_host_name
+            drbdResource.config.remote_host.disk = dst
+            drbdResource.config.remote_host.minor = self.cmd.remote_host_port - DRBD_START_PORT
+            drbdResource.config.remote_host.address = "%s:%s" % (self.cmd.remote_address, self.cmd.remote_host_port)
 
-        drbdResource.config.write_config()
+            drbdResource.config.write_config()
 
         size = linux.qcow2_get_virtual_size(src)
         tag = "%s::%s::%s" % (VOLUME_TAG, self.cmd.hostUuid, time.time())
@@ -883,17 +892,19 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
 
         install_abs_path = get_absolute_path_from_install_path(cmd.installPath)
         drbdResource = drbd.DrbdResource(self.get_name_from_installPath(cmd.installPath), False)
-        drbdResource.config.local_host.hostname = cmd.local_host_name
-        drbdResource.config.local_host.disk = install_abs_path
-        drbdResource.config.local_host.minor = cmd.local_host_port - DRBD_START_PORT
-        drbdResource.config.local_host.address = "%s:%s" % (cmd.local_address, cmd.local_host_port)
 
-        drbdResource.config.remote_host.hostname = cmd.remote_host_name
-        drbdResource.config.remote_host.disk = install_abs_path
-        drbdResource.config.remote_host.minor = cmd.remote_host_port - DRBD_START_PORT
-        drbdResource.config.remote_host.address = "%s:%s" % (cmd.remote_address, cmd.remote_host_port)
+        if not drbdResource.exists or drbdResource.config.local_host.minor != str(cmd.local_host_port - DRBD_START_PORT):
+            drbdResource.config.local_host.hostname = cmd.local_host_name
+            drbdResource.config.local_host.disk = install_abs_path
+            drbdResource.config.local_host.minor = cmd.local_host_port - DRBD_START_PORT
+            drbdResource.config.local_host.address = "%s:%s" % (cmd.local_address, cmd.local_host_port)
 
-        drbdResource.config.write_config()
+            drbdResource.config.remote_host.hostname = cmd.remote_host_name
+            drbdResource.config.remote_host.disk = install_abs_path
+            drbdResource.config.remote_host.minor = cmd.remote_host_port - DRBD_START_PORT
+            drbdResource.config.remote_host.address = "%s:%s" % (cmd.remote_address, cmd.remote_host_port)
+
+            drbdResource.config.write_config()
 
         try:
             if not lvm.lv_exists(install_abs_path):

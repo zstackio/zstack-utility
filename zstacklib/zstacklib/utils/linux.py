@@ -997,6 +997,16 @@ class AbstractFileConverter(object):
     def get_backing_file(self, path):
         pass
 
+    @abc.abstractmethod
+    def get_size(self, path):
+        # type: (str) -> int
+        pass
+
+    @abc.abstractmethod
+    def exists(self, path):
+        # type: (str) -> bool
+        pass
+
 def upload_chain_to_filesystem(converter, first_node_path, dst_vol_dir, overwrite=False):
     # type: (AbstractFileConverter, str, str, bool) -> None
 
@@ -1028,13 +1038,12 @@ def download_chain_from_filesystem(converter, first_node_path, dst_vol_dir, over
         dst_path = os.path.join(dst_vol_dir, os.path.basename(src_path))
         src_backing_path = qcow2_get_backing_file(src_path)
         dst_backing_path = os.path.join(dst_vol_dir, os.path.basename(src_backing_path)) if src_backing_path else ''
-        if os.path.exists(dst_path):
-            if overwrite:
-                rm_file_force(dst_path)
-            else:
-                return
-        backing_fmt = get_img_fmt(src_backing_path) if src_backing_path else None
-        size = converter.convert_from_file_with_backing(src_path, dst_path, dst_backing_path, backing_fmt)
+        if converter.exists(dst_path) and not overwrite:
+            size = converter.get_size(dst_path)
+        else:
+            backing_fmt = get_img_fmt(src_backing_path) if src_backing_path else None
+            size = converter.convert_from_file_with_backing(src_path, dst_path, dst_backing_path, backing_fmt)
+
         downloaded_chain_info.append((dst_path, size))
         if src_backing_path:
             download(src_backing_path)
