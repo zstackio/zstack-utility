@@ -683,7 +683,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
             cmds.append(EBTABLES_CMD + " -t nat -X %s" % CHAIN_NAME)
             bash_r("\n".join(cmds))
 
-        bash_errorout("ps aux | grep lighttpd | grep {{BR_NAME}} | grep -w userdata | awk '{print $2}' | xargs -r kill -9")
+        bash_errorout("pkill -9 -f 'lighttpd.*/userdata/{{BR_NAME}}'")
 
         html_folder = os.path.join(self.USERDATA_ROOT, cmd.namespaceName)
         linux.rm_dir_force(html_folder)
@@ -697,7 +697,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
         if cmd.rebuild:
-            # kill all lighttped processes which will be restarted later
+            # kill all lighttpd processes which will be restarted later
             shell.call('pkill -9 lighttpd || true')
 
         namespaces = {}
@@ -747,7 +747,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
             root = os.path.join(http_root, "zstack-default")
             meta_root = os.path.join(root, 'meta-data')
             if not os.path.exists(meta_root):
-                shell.call('mkdir -p %s' % meta_root)
+                linux.mkdir(meta_root, 0o750)
 
             index_file_path = os.path.join(meta_root, 'index.html')
             with open(index_file_path, 'w') as fd:
@@ -891,7 +891,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
         conf_folder = os.path.join(self.USERDATA_ROOT, to.namespaceName)
         if not os.path.exists(conf_folder):
-            shell.call('mkdir -p %s' % conf_folder)
+            linux.mkdir(conf_folder, 0o750)
 
         conf_path = os.path.join(conf_folder, 'lighttpd.conf')
         http_root = os.path.join(conf_folder, 'html')
@@ -1058,7 +1058,7 @@ mimetype.assign = (
         root = os.path.join(http_root, to.vmIp)
         meta_root = os.path.join(root, 'meta-data')
         if not os.path.exists(meta_root):
-            shell.call('mkdir -p %s' % meta_root)
+            linux.mkdir(meta_root, 0o750)
 
         index_file_path = os.path.join(meta_root, 'index.html')
         with open(index_file_path, 'w') as fd:
@@ -1106,6 +1106,7 @@ mimetype.assign = (
         if pid:
             linux.kill_process(pid)
 
+        linux.mkdir('/var/log/lighttpd', 0o750)
         #restart lighttpd to load new configration
         shell.call('ip netns exec %s lighttpd -f %s' % (to.namespaceName, conf_path))
         if not linux.wait_callback_success(check, None, 5):
@@ -1161,7 +1162,7 @@ mimetype.assign = (
     def _make_conf_path(self, namespace_name):
         folder = os.path.join(self.DNSMASQ_CONF_FOLDER, namespace_name)
         if not os.path.exists(folder):
-            shell.call('mkdir -p %s' % folder)
+            linux.mkdir(folder, 0o750)
 
         # the conf is created at the initializing time
         conf = os.path.join(folder, 'dnsmasq.conf')
