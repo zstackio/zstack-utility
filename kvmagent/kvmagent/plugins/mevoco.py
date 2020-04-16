@@ -364,10 +364,8 @@ class DhcpEnv(object):
             INNER_MAC = INNER_MAC.strip(' \t\n\r')
 
             # add bridge fdb entry for inner dev
-            ret = bash_r('bridge fdb add {{INNER_MAC}} dev {{PHY_DEV}}')
-            if ret != 0:
-                logger.error("failed to add bridge fdb for %s to dev %s" % (INNER_MAC, PHY_DEV))
-
+            if bash_r("bridge fdb | grep '{{INNER_MAC}} dev {{PHY_DEV}} self permanent'") != 0:
+                bash_r('bridge fdb add {{INNER_MAC}} dev {{PHY_DEV}}')
 
         if self.ipVersion == 6:
             _prepare_dhcp6_iptables()
