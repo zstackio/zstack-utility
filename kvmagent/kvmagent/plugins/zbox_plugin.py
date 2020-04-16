@@ -290,10 +290,21 @@ class ZBoxPlugin(kvmagent.KvmAgent):
     def delete_bits(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = DeleteBitsResponse()
+
+        dpath = cmd.installPath.strip()
+        if not dpath.startswith("/var/zbox-"):
+            raise Exception('you can only delete bits under zbox')
+
+        pids = linux.get_pids_by_process_fullname(dpath)
+        if pids:
+            logger.debug("it is going to kill process %s.", pids)
+            for pid in pids:
+                linux.kill_all_child_process(pid)
+
         if cmd.isDir:
-            linux.rm_dir_force(cmd.installPath)
+            shell.call("rm -rf " + dpath)
         else:
-            linux.rm_file_force(cmd.installPath)
+            linux.rm_file_force(dpath)
 
         return jsonobject.dumps(rsp)
 
