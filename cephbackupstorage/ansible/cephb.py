@@ -172,6 +172,10 @@ copy_arg.dest = "/etc/init.d/"
 copy_arg.args = "mode=755"
 copy(copy_arg, host_post_info)
 
+copy_arg = CopyArg()
+copy_arg.src = "%s/cephbs-iptables" % file_root
+copy_arg.dest = "/var/lib/zstack/cephb/package/cephbs-iptables"
+copy(copy_arg, host_post_info)
 
 # name: restart cephbagent
 if distro in RPM_BASED_OS:

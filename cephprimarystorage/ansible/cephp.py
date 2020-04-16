@@ -168,6 +168,12 @@ copy_arg.src = "%s/zstack-ceph-primarystorage" % file_root
 copy_arg.dest = "/etc/init.d/"
 copy_arg.args = "mode=755"
 copy(copy_arg, host_post_info)
+
+copy_arg = CopyArg()
+copy_arg.src = "%s/cephps-iptables" % file_root
+copy_arg.dest = "/var/lib/zstack/cephp/package/cephps-iptables"
+copy(copy_arg, host_post_info)
+
 # name: restart cephpagent
 if distro in RPM_BASED_OS:
     command = "service zstack-ceph-primarystorage stop && service zstack-ceph-primarystorage start" \

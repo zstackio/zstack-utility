@@ -145,6 +145,11 @@ copy_arg.dest = "/etc/init.d/"
 copy_arg.args = "mode=755"
 copy(copy_arg, host_post_info)
 
+copy_arg = CopyArg()
+copy_arg.src = "%s/sftp-iptables" % file_root
+copy_arg.dest = "%s/sftp-iptables" % sftp_root
+sftp_copy_result = copy(copy_arg, host_post_info)
+
 # name: install sftp
 if sftp_copy_result != "changed:False":
     agent_install_arg = AgentInstallArg(trusted_host, pip_url, virtenv_path, init_install)

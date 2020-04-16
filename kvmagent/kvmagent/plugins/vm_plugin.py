@@ -1703,7 +1703,7 @@ class Vm(object):
                     pid = linux.find_process_by_cmdline(['qemu', self.uuid])
                     if pid:
                         # force to kill the VM
-                        shell.call('kill -9 %s' % pid)
+                        linux.kill_process(pid, is_exception=False)
 
             try:
                 flags = 0
@@ -1733,7 +1733,7 @@ class Vm(object):
                 else:
                     raise
 
-        do_destroy = True
+        do_destroy, isPersistent = True, self.domain.isPersistent()
         if graceful:
             if linux.wait_callback_success(loop_shutdown, None, timeout=60):
                 do_destroy = False
@@ -1747,12 +1747,8 @@ class Vm(object):
 
         cleanup_addons()
 
-        vm = get_vm_by_uuid(self.uuid, False)
-        if vm:
-            # undefine domain only if it is persistent
-            if not self.domain.isPersistent():
-                return
-        else:
+        # undefine domain only if it is persistent
+        if not isPersistent:
             return
 
         if not linux.wait_callback_success(loop_undefine, None, timeout=60):
@@ -3828,7 +3824,7 @@ class Vm(object):
         make_console()
         make_sec_label()
         make_controllers()
-        if is_spiceport_driver_supported():
+        if is_spiceport_driver_supported() and cmd.consoleMode in ["spice", "vncAndSpice"]:
             make_folder_sharing()
         # appliance vm doesn't need any cdrom or usb controller
         if not cmd.isApplianceVm:
@@ -4784,7 +4780,7 @@ class VmPlugin(kvmagent.KvmAgent):
         def makedir_if_need(new_path):
             dirname = os.path.dirname(new_path)
             if not os.path.exists(dirname):
-                os.makedirs(dirname, 0755)
+                os.makedirs(dirname, 0o755)
 
         def get_size(install_path):
             """

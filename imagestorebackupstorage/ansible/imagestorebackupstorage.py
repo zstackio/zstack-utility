@@ -117,7 +117,7 @@ elif distro in DEB_BASED_OS:
     if client == "true" and distro_version < 16:
         Warning("Client only support distribution version newer than 16.04")
     if distro == "Kylin":
-        apt_install_packages(["sshfs"], host_post_info)
+        apt_install_packages(["qemu-utils", "qemu-system", "sshfs"], host_post_info)
     else:
         apt_install_packages(["qemu-kvm", "sshfs"], host_post_info)
 
@@ -133,6 +133,12 @@ copy_arg = CopyArg()
 dest_pkg = "%s/%s" % (imagestore_root, dst_pkg_imagestorebackupstorage)
 copy_arg.src = "%s/%s" % (file_root, src_pkg_imagestorebackupstorage)
 copy_arg.dest = dest_pkg
+copy(copy_arg, host_post_info)
+
+# name: copy iptables-scrpit
+copy_arg = CopyArg()
+copy_arg.src = "%s/zstore-iptables" % file_root
+copy_arg.dest = "%s/zstore-iptables" % imagestore_root
 copy(copy_arg, host_post_info)
 
 # name: copy necessary certificates

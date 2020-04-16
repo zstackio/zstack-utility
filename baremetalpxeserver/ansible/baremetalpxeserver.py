@@ -204,13 +204,18 @@ copy_arg.src = "%s/pxeServerPushGateway.service" % file_root
 copy_arg.dest = "/etc/systemd/system/"
 copy(copy_arg, host_post_info)
 
+copy_arg = CopyArg()
+copy_arg.src = "%s/baremetal-iptables" % file_root
+copy_arg.dest = "/var/lib/zstack/baremetal/baremetal-iptables"
+copy(copy_arg, host_post_info)
+
 # name: copy pushgateway
 copy_arg = CopyArg()
 copy_arg.src = "%s/pushgateway" % file_root
 copy_arg.dest = baremetalpxeserver_pushgateway_root
 copy(copy_arg, host_post_info)
-run_remote_command(("/sbin/iptables-save | grep -q 'dport 9093' || iptables -I INPUT -p tcp -m tcp --dport 9093 -j ACCEPT; chmod a+x %s/pushgateway;" %
-                    (baremetalpxeserver_pushgateway_root)), host_post_info)
+
+run_remote_command(("chmod a+x %s/pushgateway;" % baremetalpxeserver_pushgateway_root), host_post_info)
 run_remote_command(("systemctl restart pxeServerPushGateway"), host_post_info)
 
 # name: restart baremetalpxeserveragent
