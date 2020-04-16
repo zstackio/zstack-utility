@@ -3906,10 +3906,6 @@ class Vm(object):
         if nic.bootOrder is not None and nic.bootOrder > 0:
             e(interface, 'boot', None, attrib={'order': str(nic.bootOrder)})
 
-        # to allow vnic/vf communication in same host
-        if nic.pciDeviceAddress is None and nic.physicalInterface is not None:
-            bash.bash_errorout("bridge fdb add %s dev %s" % (nic.mac, nic.physicalInterface))
-
         @in_bash
         @lock.file_lock('/run/xtables.lock')
         def _config_ebtable_rules_for_vfnics():
@@ -3919,22 +3915,32 @@ class Vm(object):
 
             if action == 'Attach':
                 if bash.bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} > /dev/null 2>&1') != 0:
-                    bash.bash_errorout(EBTABLES_CMD + ' -N {{CHAIN_NAME}}')
+                    bash.bash_r(EBTABLES_CMD + ' -N {{CHAIN_NAME}}')
 
                 if bash.bash_r(EBTABLES_CMD + ' -L FORWARD | grep -- "-j {{CHAIN_NAME}}" > /dev/null') != 0:
-                    bash.bash_errorout(EBTABLES_CMD + ' -I FORWARD -j {{CHAIN_NAME}}')
+                    bash.bash_r(EBTABLES_CMD + ' -I FORWARD -j {{CHAIN_NAME}}')
 
                 if bash.bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} --Lmac2 | grep -- "-p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT" > /dev/null') != 0:
-                    bash.bash_errorout(EBTABLES_CMD + ' -I {{CHAIN_NAME}} -p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
+                    bash.bash_r(EBTABLES_CMD + ' -I {{CHAIN_NAME}} -p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
 
             elif action == 'Detach':
                 # FIXME: when vm is destroyed, no vnic detaching function will be called and left some garbage rules
                 if bash.bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} --Lmac2 | grep -- "-p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT" > /dev/null') == 0:
-                    bash.bash_errorout(EBTABLES_CMD + ' -D {{CHAIN_NAME}} -p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
+                    bash.bash_r(EBTABLES_CMD + ' -D {{CHAIN_NAME}} -p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
+
+        @in_bash
+        def _add_bridge_fdb_entry_for_vnic():
+            if action == 'Attach':
+                if bash.bash_r("bridge fdb | grep '%s dev %s self permanent'" % (nic.mac, nic.physicalInterface)) != 0:
+                    bash.bash_r("bridge fdb add %s dev %s" % (nic.mac, nic.physicalInterface))
 
         # to allow vf nic dhcp
         if nic.pciDeviceAddress is not None:
             _config_ebtable_rules_for_vfnics()
+
+        # to allow vnic/vf communication in same host
+        if nic.pciDeviceAddress is None and nic.physicalInterface is not None:
+            _add_bridge_fdb_entry_for_vnic()
 
         return interface
 
