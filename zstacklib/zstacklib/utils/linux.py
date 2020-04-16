@@ -512,7 +512,7 @@ def md5sum(file_path):
     #sum5 = output.split(' ')[0]
     #return sum5.strip()
 
-def mkdir(path, mode=0755):
+def mkdir(path, mode=0o755):
     if os.path.isdir(path):
         return True
 
