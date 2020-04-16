@@ -38,6 +38,7 @@ from zstacklib.utils import uuidhelper
 from zstacklib.utils import xmlobject
 from zstacklib.utils import misc
 from zstacklib.utils import qemu_img
+from zstacklib.utils import ebtables
 from zstacklib.utils.report import *
 from zstacklib.utils.vm_plugin_queue_singleton import VmPluginQueueSingleton
 
@@ -2563,9 +2564,9 @@ class Vm(object):
 
         logger.debug('successfully migrated vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
 
-    def _interface_cmd_to_xml(self, cmd):
+    def _interface_cmd_to_xml(self, cmd, action=None):
         vhostSrcPath = cmd.addons['vhostSrcPath'] if cmd.addons else None
-        interface = Vm._build_interface_xml(cmd.nic, None, vhostSrcPath)
+        interface = Vm._build_interface_xml(cmd.nic, None, vhostSrcPath, action)
 
         def addon():
             if cmd.addons and cmd.addons['NicQos']:
@@ -2769,7 +2770,7 @@ class Vm(object):
             if check_device(None):
                 return
 
-            xml = self._interface_cmd_to_xml(cmd)
+            xml = self._interface_cmd_to_xml(cmd, action='Attach')
             logger.debug('attaching nic:\n%s' % xml)
             if self.state == self.VM_STATE_RUNNING or self.state == self.VM_STATE_PAUSED:
                 self.domain.attachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
@@ -2818,7 +2819,7 @@ class Vm(object):
             return
 
         try:
-            xml = self._interface_cmd_to_xml(cmd)
+            xml = self._interface_cmd_to_xml(cmd, action='Detach')
             logger.debug('detaching nic:\n%s' % xml)
             if self.state == self.VM_STATE_RUNNING or self.state == self.VM_STATE_PAUSED:
                 self.domain.detachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
@@ -3452,7 +3453,7 @@ class Vm(object):
             devices = elements['devices']
             vhostSrcPath = cmd.addons['vhostSrcPath'] if cmd.addons else None
             for nic in cmd.nics:
-                interface = Vm._build_interface_xml(nic, devices, vhostSrcPath)
+                interface = Vm._build_interface_xml(nic, devices, vhostSrcPath, action='Attach')
                 addon(interface)
 
         def make_meta():
@@ -3835,7 +3836,7 @@ class Vm(object):
         return vm
 
     @staticmethod
-    def _build_interface_xml(nic, devices=None, vhostSrcPath=None):
+    def _build_interface_xml(nic, devices=None, vhostSrcPath=None, action=None):
         if nic.pciDeviceAddress is not None:
             iftype = 'hostdev'
             device_attr = {'type': iftype, 'managed': 'yes'}
@@ -3907,7 +3908,33 @@ class Vm(object):
 
         # to allow vnic/vf communication in same host
         if nic.pciDeviceAddress is None and nic.physicalInterface is not None:
-            bash.bash_roe("bridge fdb add %s dev %s" % (nic.mac, nic.physicalInterface))
+            bash.bash_errorout("bridge fdb add %s dev %s" % (nic.mac, nic.physicalInterface))
+
+        @in_bash
+        @lock.file_lock('/run/xtables.lock')
+        def _config_ebtable_rules_for_vfnics():
+            VF_NIC_MAC = nic.mac
+            CHAIN_NAME = 'ZSTACK-VF-NICS'
+            EBTABLES_CMD = ebtables.get_ebtables_cmd()
+
+            if action == 'Attach':
+                if bash.bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} > /dev/null 2>&1') != 0:
+                    bash.bash_errorout(EBTABLES_CMD + ' -N {{CHAIN_NAME}}')
+
+                if bash.bash_r(EBTABLES_CMD + ' -L FORWARD | grep -- "-j {{CHAIN_NAME}}" > /dev/null') != 0:
+                    bash.bash_errorout(EBTABLES_CMD + ' -I FORWARD -j {{CHAIN_NAME}}')
+
+                if bash.bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} --Lmac2 | grep -- "-p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT" > /dev/null') != 0:
+                    bash.bash_errorout(EBTABLES_CMD + ' -I {{CHAIN_NAME}} -p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
+
+            elif action == 'Detach':
+                # FIXME: when vm is destroyed, no vnic detaching function will be called and left some garbage rules
+                if bash.bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} --Lmac2 | grep -- "-p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT" > /dev/null') == 0:
+                    bash.bash_errorout(EBTABLES_CMD + ' -D {{CHAIN_NAME}} -p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
+
+        # to allow vf nic dhcp
+        if nic.pciDeviceAddress is not None:
+            _config_ebtable_rules_for_vfnics()
 
         return interface
 

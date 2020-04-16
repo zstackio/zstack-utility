@@ -1778,11 +1778,54 @@ done
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
         errors = []
-        for mac in cmd.macs:
-            _cmd = "bridge fdb add %s dev %s" % (mac, cmd.physicalInterface)
-            r, o, e = bash_roe(_cmd)
-            if r != 0 and 'File exists' not in e:
-                errors.append("failed to run %s because %s" % (_cmd, e))
+
+        def _add_bridge_fdb_entry_for_inner_devs():
+            r, netns_ids, e = bash_roe("ip netns list-id | awk -F ' ' '{ print $2 }'")
+            if r != 0:
+                errors.append('failed to get ip netns list')
+                return
+
+            for netns_id in netns_ids.split('\n'):
+                netns_id = netns_id.strip(' \t\n\r')
+                INNER_DEV = 'inner' + netns_id
+                OUTER_DEV = 'outer' + netns_id
+
+                # get bridge name of outer dev
+                r, BR_NAME, e = bash_roe("ip link show {{OUTER_DEV}} | grep -w 'master' | awk -F 'master' '{ print $NF }' | awk '{ print $1 }'")
+                if r != 0:
+                    logger.error("cannot get bridge name of " + OUTER_DEV)
+                    return
+                BR_NAME = BR_NAME.strip(' \t\n\r')
+
+                # get pf name for inner dev
+                r, PHY_DEV, e = bash_roe("brctl show {{BR_NAME}} | grep -w {{BR_NAME}} | head -n 1 | awk '{ print $NF }' | { read name; echo ${name%%.*}; }")
+                if r != 0:
+                    logger.error("cannot get physical interface name from bridge " + BR_NAME)
+                    return
+                PHY_DEV = PHY_DEV.strip(' \t\n\r')
+
+                # get mac address of inner dev
+                r, INNER_MAC, e = bash_roe("ip netns exec {{NAMESPACE_NAME}} ip link show {{INNER_DEV}} | grep -w ether | awk '{print $2}'")
+                if r != 0:
+                    logger.error("cannot get mac address of " + INNER_DEV)
+                    return
+                INNER_MAC = INNER_MAC.strip(' \t\n\r')
+
+                # add bridge fdb entry for inner dev
+                ret = bash_r('bridge fdb add {{INNER_MAC}} dev {{PHY_DEV}}')
+                if ret != 0:
+                    logger.error("failed to add bridge fdb for %s to dev %s" % (INNER_MAC, PHY_DEV))
+
+
+        if cmd.macs:
+            for mac in cmd.macs:
+                _cmd = "bridge fdb add %s dev %s" % (mac, cmd.physicalInterface)
+                r, o, e = bash_roe(_cmd)
+                if r != 0 and 'File exists' not in e:
+                    errors.append("failed to run %s because %s" % (_cmd, e))
+        else:
+            # empty cmd.macs means add bridge fdb entrys for all inner devs in the host
+            _add_bridge_fdb_entry_for_inner_devs()
 
         if errors:
             rsp.success = False
