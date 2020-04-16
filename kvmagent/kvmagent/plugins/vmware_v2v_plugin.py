@@ -268,9 +268,19 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
                 rsp.currentProgress = '3'
             elif 'Copying disk' in out:
                 output = out.split('\n')
-                percentage = output[1].replace('\015', '').split(' ')[-1].replace('(', '').split('/')[0]
-                rsp.currentDiskNum = re.search("Copying disk.*.to", output[0]).group().split(' ')[2].split('/')[0]
-                rsp.currentProgress = percentage
+                percentage = None
+                search_result = None
+
+                if 'Copying disk' in output[1]:
+                    percentage = '0'
+                    search_result = re.search("Copying disk.*.to", output[1])
+                else:
+                    percentage = output[1].replace('\015', '').split(' ')[-1].replace('(', '').split('/')[0]
+                    search_result = re.search("Copying disk.*.to", output[0])
+
+                if search_result is not None:
+                    rsp.currentDiskNum = search_result.group().split(' ')[2].split('/')[0]
+                    rsp.currentProgress = percentage
             else:
                 logger.debug("not handled log keep progress")
         else:
