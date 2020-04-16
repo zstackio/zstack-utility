@@ -327,7 +327,9 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 else:
                     disks = bash.bash_o("ls /dev/disk/by-path | grep %s:%s | grep %s" % (cmd.iscsiServerIp, cmd.iscsiServerPort, iqn)).strip().splitlines()
                     for d in disks:
-                        t.iscsiLunStructList.append(self.get_disk_info_by_path(d.strip()))
+                        lun_struct = self.get_disk_info_by_path(d.strip())
+                        if lun_struct is not None:
+                            t.iscsiLunStructList.append(lun_struct)
                     rsp.iscsiTargetStructList.append(t)
 
         linux.set_fail_if_no_path()
@@ -362,6 +364,8 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
         abs_path = bash.bash_o("readlink -e /dev/disk/by-path/%s" % path).strip()
         candidate_struct = lvm.get_device_info(abs_path.split("/")[-1])
+        if candidate_struct is None:
+            return None
         lun_struct = IscsiLunStruct()
         lun_struct.path = path
         lun_struct.size = candidate_struct.size
