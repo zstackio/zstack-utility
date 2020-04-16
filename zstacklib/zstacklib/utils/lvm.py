@@ -600,13 +600,13 @@ def wipe_fs(disks, expected_vg=None, with_lock=True):
 
         bash.bash_roe("wipefs -af %s" % disk)
 
-        if need_flush_mpath:
-            bash.bash_roe("multipath -f %s && systemctl restart multipathd.service && sleep 1" % disk)
-
         for holder in get_disk_holders([disk.split("/")[-1]]):
             if not holder.startswith("dm-"):
                 continue
             bash.bash_roe("dmsetup remove /dev/%s" % holder)
+
+        if need_flush_mpath:
+            bash.bash_roe("multipath -f %s && systemctl reload multipathd.service && sleep 1" % disk)
 
         if exists_vg is not None:
             bash.bash_r("grep %s /etc/drbd.d/* | awk '{print $1}' | sort | uniq | tr -d ':' | xargs rm" % exists_vg)

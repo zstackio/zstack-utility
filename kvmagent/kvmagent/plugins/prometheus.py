@@ -292,9 +292,47 @@ def collect_vm_statistics():
 
     return metrics.values()
 
+
+collect_node_disk_wwid_last_time = None
+collect_node_disk_wwid_last_result = None
+
+def collect_node_disk_wwid():
+    global collect_node_disk_wwid_last_time
+    global collect_node_disk_wwid_last_result
+
+    # NOTE(weiw): some storage can not afford frequent TUR. ref: ZSTAC-23416
+    if collect_node_disk_wwid_last_time is None:
+        collect_node_disk_wwid_last_time = time.time()
+    elif time.time() - collect_node_disk_wwid_last_time < 60 and collect_node_disk_wwid_last_result is not None:
+        return collect_node_disk_wwid_last_result
+
+    metrics = {
+        'node_disk_wwid': GaugeMetricFamily('node_disk_wwid',
+                                           'node disk wwid', None, ["disk", "wwid"])
+    }
+
+    pvs = bash_o("pvs --nolocking --noheading -o pv_name").strip().splitlines()
+    for pv in pvs:
+        multipath_wwid = None
+        if bash_r("dmsetup table %s | grep multipath" % pv) == 0:
+            multipath_wwid = bash_o("udevadm info -n %s | grep -E '^S: disk/by-id/dm-uuid' | awk -F '-' '{print $NF}'" % pv).strip()
+        disks = linux.get_physical_disk(pv)
+        for disk in disks:
+            disk_name = disk.split("/")[-1].strip()
+            wwids = bash_o("udevadm info -n %s | grep -E '^S: disk/by-id' | awk -F '/' '{print $NF}' | grep -v '^lvm-pv' | sort" % disk).strip().splitlines()
+            if multipath_wwid is not None:
+                wwids.append(multipath_wwid)
+            if len(wwids) > 0:
+                metrics['node_disk_wwid'].add_metric([disk_name, ";".join([w.strip() for w in wwids])], 1)
+
+    collect_node_disk_wwid_last_result = metrics.values()
+    return metrics.values()
+
+
 kvmagent.register_prometheus_collector(collect_host_network_statistics)
 kvmagent.register_prometheus_collector(collect_host_capacity_statistics)
 kvmagent.register_prometheus_collector(collect_vm_statistics)
+kvmagent.register_prometheus_collector(collect_node_disk_wwid)
 
 if misc.isMiniHost():
     kvmagent.register_prometheus_collector(collect_lvm_capacity_statistics)
@@ -531,8 +569,10 @@ WantedBy=multi-user.target
                             if Collector.check(vl) is False:
                                 return False
                     if isinstance(v, dict):
-                        for vv in v.itervalues():
-                            if Collector.check(vv) is False:
+                        for vk in v.iterkeys():
+                            if vk == "timestamp" or vk == "exemplar":
+                                continue
+                            if Collector.check(v[vk]) is False:
                                 return False
                 except Exception as e:
                     logger.warn("got exception in check value %s: %s" % (v, e))
@@ -550,7 +590,7 @@ WantedBy=multi-user.target
 
                     r = f()
                     if not Collector.check(r):
-                        logger.warn("result from collector %s contains illegal character None" % fname)
+                        logger.warn("result from collector %s contains illegal character None, details: \n%s" % (fname, r))
                         return
                     with collectResultLock:
                         latest_collect_result[fname] = r

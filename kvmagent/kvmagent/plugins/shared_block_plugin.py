@@ -349,7 +349,15 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @staticmethod
-    def create_vg_if_not_found(vgUuid, diskPaths, hostUuid, forceWipe=False):
+    def get_disk_paths(disks):
+        diskPaths = set()
+        for disk in disks:
+            diskPaths.add(disk.get_path())
+
+        return diskPaths
+
+    def create_vg_if_not_found(self, vgUuid, disks, hostUuid, forceWipe=False):
+        # type: (str, list[CheckDisk], str, bool) -> bool
         @linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
         def find_vg(vgUuid, raise_exception = True):
             cmd = shell.ShellCmd("timeout 5 vgscan --ignorelockingfailure; vgs --nolocking %s -otags | grep %s" % (vgUuid, INIT_TAG))
@@ -364,12 +372,12 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             find_vg(vgUuid)
         except RetryException as e:
             if forceWipe is True:
-                lvm.wipe_fs(diskPaths, vgUuid)
+                lvm.wipe_fs(self.get_disk_paths(disks), vgUuid)
 
             lvm.check_gl_lock()
             cmd = shell.ShellCmd("vgcreate -qq --shared --addtag '%s::%s::%s::%s' --metadatasize %s %s %s" %
                                  (INIT_TAG, hostUuid, time.time(), bash.bash_o("hostname").strip(),
-                                  DEFAULT_VG_METADATA_SIZE, vgUuid, " ".join(diskPaths)))
+                                  DEFAULT_VG_METADATA_SIZE, vgUuid, " ".join(self.get_disk_paths(disks))))
             cmd(is_exception=False)
             logger.debug("created vg %s, ret: %s, stdout: %s, stderr: %s" %
                          (vgUuid, cmd.return_code, cmd.stdout, cmd.stderr))
@@ -380,7 +388,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                     return True
             except RetryException as ee:
                 raise Exception("can not find vg %s with disks: %s and create vg with forceWipw=%s return: %s %s %s " %
-                                (vgUuid, diskPaths, forceWipe, cmd.return_code, cmd.stdout, cmd.stderr))
+                                (vgUuid, self.get_disk_paths(disks), forceWipe, cmd.return_code, cmd.stdout, cmd.stderr))
             except Exception as ee:
                 raise ee
         except Exception as e:
@@ -432,9 +440,11 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp = ConnectRsp()
         diskPaths = set()
         allDiskPaths = set()
+        disks = set()
 
         for diskUuid in cmd.sharedBlockUuids:
             disk = CheckDisk(diskUuid)
+            disks.add(disk)
             diskPaths.add(disk.get_path())
 
         for diskUuid in cmd.allSharedBlockUuids:
@@ -445,7 +455,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         allDiskPaths = allDiskPaths.union(diskPaths)
 
         try:
-            root_disks = ["%s[0-9]*" % d for d in linux.get_root_physical_disk()]
+            root_disks = ["%s[0-9]*" % d for d in linux.get_physical_disk()]
             allDiskPaths = allDiskPaths.union(root_disks)
         except Exception as e:
             logger.warn("get exception: %s" % e.message)
@@ -486,7 +496,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         lvm.start_lvmlockd(cmd.ioTimeout)
         logger.debug("find/create vg %s lock..." % cmd.vgUuid)
-        rsp.isFirst = self.create_vg_if_not_found(cmd.vgUuid, diskPaths, cmd.hostUuid, cmd.forceWipe)
+        rsp.isFirst = self.create_vg_if_not_found(cmd.vgUuid, disks, cmd.hostUuid, cmd.forceWipe)
 
         lvm.check_stuck_vglk()
         logger.debug("starting vg %s lock..." % cmd.vgUuid)
@@ -597,6 +607,14 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             if p is not None:
                 allDiskPaths.add(p)
         allDiskPaths.add(disk.get_path())
+        try:
+            root_disks = ["%s[0-9]*" % d for d in linux.get_physical_disk()]
+            allDiskPaths = allDiskPaths.union(root_disks)
+        except Exception as e:
+            logger.warn("get exception: %s" % e.message)
+            allDiskPaths.add("/dev/sd*")
+            allDiskPaths.add("/dev/vd*")
+
         lvm.config_lvm_filter(["lvm.conf", "lvmlocal.conf"], preserve_disks=allDiskPaths)
 
         if cmd.onlyGenerateFilter:
@@ -607,7 +625,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         command = shell.ShellCmd("vgs --nolocking %s -otags | grep %s" % (cmd.vgUuid, INIT_TAG))
         command(is_exception=False)
         if command.return_code != 0:
-            self.create_vg_if_not_found(cmd.vgUuid, [disk.get_path()], cmd.hostUuid, cmd.forceWipe)
+            self.create_vg_if_not_found(cmd.vgUuid, [disk], cmd.hostUuid, cmd.forceWipe)
         else:
             if cmd.forceWipe is True:
                 lvm.wipe_fs([disk.get_path()], cmd.vgUuid)
@@ -1204,7 +1222,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 allDiskPaths.add(p)
 
         try:
-            root_disks = ["%s[0-9]*" % d for d in linux.get_root_physical_disk()]
+            root_disks = ["%s[0-9]*" % d for d in linux.get_physical_disk()]
             allDiskPaths = allDiskPaths.union(root_disks)
         except Exception as e:
             logger.warn("get exception: %s" % e.message)
