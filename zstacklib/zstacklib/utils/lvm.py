@@ -131,6 +131,8 @@ def get_block_devices():
 
             slave_devices.extend(slaves)
             struct = get_device_info(slaves[0])
+            if struct is None:
+                continue
             cmd = shell.ShellCmd("udevadm info -n %s | grep dm-uuid-mpath | grep -o 'dm-uuid-mpath-\S*' | head -n 1 | awk -F '-' '{print $NF}'" % dm)
             cmd(is_exception=True)
             struct.wwids = [cmd.stdout.strip().strip("()")]
@@ -146,6 +148,8 @@ def get_block_devices():
             if disk.split("/")[-1] in slave_devices or is_slave_of_multipath(disk):
                 continue
             d = get_device_info(disk.strip().split("/")[-1])
+            if d is None:
+                continue
             if len(d.wwids) is 0:
                 continue
             if get_pv_uuid_by_path("/dev/disk/by-id/%s" % d.wwids[0]) not in ("", None):
@@ -218,9 +222,10 @@ def get_multipath_name(dev_name):
 def get_device_info(dev_name):
     # type: (str) -> SharedBlockCandidateStruct
     s = SharedBlockCandidateStruct()
-    o = shell.call("lsblk --pair -b -p -o NAME,VENDOR,MODEL,WWN,SERIAL,HCTL,TYPE,SIZE /dev/%s" % dev_name).strip().split("\n")[0]
-    if o == "":
-        raise Exception("can not get device information from %s" % dev_name)
+    r, o, e = bash.bash_roe("lsblk --pair -b -p -o NAME,VENDOR,MODEL,WWN,SERIAL,HCTL,TYPE,SIZE /dev/%s" % dev_name, False)
+    if r != 0 or o.strip() == "":
+        logger.warn("can not get device information from %s" % dev_name)
+        return None
 
     def get_data(e):
         return e.split("=")[1].strip().strip('"')
@@ -231,7 +236,7 @@ def get_device_info(dev_name):
     def get_path(dev):
         return shell.call("udevadm info -n %s | grep 'by-path' | grep -v DEVLINKS | head -n1 | awk -F 'by-path/' '{print $2}'" % dev).strip()
 
-    for entry in o.split('" '):  # type: str
+    for entry in o.strip().split("\n")[0].split('" '):  # type: str
         if entry.startswith("VENDOR"):
             s.vendor = get_data(entry)
         elif entry.startswith("MODEL"):
