@@ -351,7 +351,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
             find_vg(vgUuid)
         except RetryException as e:
             if forceWipe is True:
-                running_vm = bash.bash_o("virsh list | grep running | awk '{print $2}'").strip().split()
+                running_vm = bash.bash_o("virsh list | grep -E 'running|paused' | awk '{print $2}'").strip().split()
                 if running_vm != [] and running_vm[0] != "":
                     for vm in running_vm:
                         bash.bash_r("virsh destroy %s" % vm)
