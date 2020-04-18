@@ -407,6 +407,24 @@ class UpdateConfigration(object):
         return bash_roe("%s %s" % (shellCmd, self.path))
 
     def updateHostIommu(self):
+        # fix 'failed to set iommu for container: Operation not permitted'
+        def _create_iommu_conf():
+            _conf_lost = False
+            _conf_file = '/etc/modprobe.d/iommu_unsafe_interrupts.conf'
+            _conf_text = "options vfio_iommu_type1 allow_unsafe_interrupts=1"
+            if not os.path.exists(_conf_file):
+                _conf_lost = True
+            else:
+                with open(_conf_file, 'r') as f:
+                    if _conf_text not in f.read():
+                        _conf_lost = True
+
+            if _conf_lost:
+                with open(_conf_file, 'a') as f:
+                    f.write(_conf_text)
+
+        _create_iommu_conf()
+
         r_on, o_on, e_on = self.executeCmdOnFile("grep -E '{}(\ )*=(\ )*on'".format(self.iommu_type))
         r_off, o_off, e_off = self.executeCmdOnFile("grep -E '{}(\ )*=(\ )*off'".format(self.iommu_type))
         r_modprobe_blacklist, o_modprobe_blacklist, e_modprobe_blacklist = self.executeCmdOnFile("grep -E 'modprobe.blacklist(\ )*='")
