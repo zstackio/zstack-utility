@@ -1798,15 +1798,16 @@ done
         errors = []
 
         def _add_bridge_fdb_entry_for_inner_devs():
-            r, netns_ids, e = bash_roe("ip netns list-id | awk -F ' ' '{ print $2 }'")
+            r, netns_ids, e = bash_roe("ip netns list-id")
             if r != 0:
                 errors.append('failed to get ip netns list')
                 return
 
-            for netns_id in netns_ids.split('\n'):
-                netns_id = netns_id.strip(' \t\n\r')
-                INNER_DEV = 'inner' + netns_id
-                OUTER_DEV = 'outer' + netns_id
+            for netns_id in netns_ids.strip().split('\n'):
+                NAMESPACE_ID = netns_id.split()[1].strip()
+                NAMESPACE_NAME = netns_id.split()[-1].strip(')')
+                INNER_DEV = 'inner' + NAMESPACE_ID
+                OUTER_DEV = 'outer' + NAMESPACE_ID
 
                 # get bridge name of outer dev
                 r, BR_NAME, e = bash_roe("ip link show {{OUTER_DEV}} | grep -w 'master' | awk -F 'master' '{ print $NF }' | awk '{ print $1 }'")
@@ -1842,7 +1843,10 @@ done
                     errors.append("failed to run %s because %s" % (_cmd, e))
         else:
             # empty cmd.macs means add bridge fdb entrys for all inner devs in the host
-            _add_bridge_fdb_entry_for_inner_devs()
+            try:
+                _add_bridge_fdb_entry_for_inner_devs()
+            except Exception as e:
+                errors.append("failed to add bridge fdb entry for inner devs: %s" % e.message)
 
         if errors:
             rsp.success = False
