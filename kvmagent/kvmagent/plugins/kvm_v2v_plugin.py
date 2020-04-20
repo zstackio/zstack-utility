@@ -482,7 +482,7 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                 if os.path.exists(localpath) and not info:
                     os.remove(localpath)
                 if not os.path.exists(localpath) and info:
-                    raise Exception("unknown blockjob on disk: "+v.name)
+                    raise Exception("blockjob already exists on disk: "+v.name)
                 if info:
                     continue
 
