@@ -4814,6 +4814,9 @@ class DumpMysqlCmd(Command):
                             help="ZStack will delete expired files under remote host backup dir /var/lib/zstack/from-zstack-remote-backup/ "
                                  "to make sure the content under remote host backup dir synchronize with local backup dir",
                             required=False)
+        parser.add_argument('--append-sql-file',
+                            help="specify a append sql to operate zstack database",
+                            required=False)
 
     def sync_local_backup_db_to_remote_host(self, args, user, private_key, remote_host_ip, remote_host_port):
         (status, output, stderr) = shell_return_stdout_stderr("mkdir -p %s" % self.ui_backup_dir)
@@ -4894,7 +4897,12 @@ class DumpMysqlCmd(Command):
                 ui_db_connect_password = "-p" + ui_db_password
             command_3 = "mysqldump --databases -u %s %s --host %s -P %s %s zstack_ui" % (ui_db_user, ui_db_connect_password, ui_db_hostname, ui_db_port, mysqldump_options)
 
-        cmd = ShellCmd("(%s; %s; %s) | gzip > %s" % (command_1, command_2, command_3, db_backupf_file_path))
+        if args.append_sql_file:
+            append_sql_command = "echo 'USE `zstack`;\n'; cat %s;" % args.append_sql_file
+        else:
+            append_sql_command = ""
+
+        cmd = ShellCmd("(%s; %s; %s %s) | gzip > %s" % (command_1, command_2, append_sql_command, command_3, db_backupf_file_path))
         cmd(True)
         info("Backup mysql successfully! You can check the file at %s" % db_backupf_file_path)
 
@@ -5221,18 +5229,22 @@ class ZBoxRecoverCmd(Command):
         ctl.internal_run('restore_mysql', "-f %s %s %s" % (args.from_file, pswd_arg, ui_pswd_arg))
 
         recover_succ = [False]
-        def get_progress():
-            log_path = os.path.join(ctl.zstack_home, "../../logs/management-server.log")
-            log_path = os.path.normpath(log_path)
-            if not os.path.isfile(log_path):
-                warn("cannot find log file. create one.")
-                shell("touch %s" % log_path, is_exception=False)
 
-            cmd = "tail -f %s | stdbuf -oL grep -Po 'recover backup:.{35}\K.*' |" \
-                  "sed '/succeed to recover ZStack data from backup./q0; /fail to recover data from backup./q1' " % log_path
-            scmd = ShellCmd(cmd, pipe=False)
-            scmd(False)
-            recover_succ[0] = scmd.return_code == 0
+        def get_progress():
+            progress_path = os.path.join(ctl.zstack_home, "../../temp/RecoverExternalBackup.log")
+            linux.rm_file_force(progress_path)
+            while not os.path.exists(progress_path):
+                time.sleep(1)
+
+            with open(progress_path, 'r') as f:
+                while not time.sleep(1):
+                    lines = f.readlines()
+                    for line in lines:
+                        if line.strip().startswith('EOF'):
+                            recover_succ[0] = line.strip().endswith("success")
+                            return
+
+                        info(colored(line.strip(), 'red' if line.startswith("fail") else 'blue'))
 
         t = threading.Thread(target=get_progress)
         t.start()
@@ -5250,6 +5262,8 @@ class ZBoxRecoverCmd(Command):
         if recover_succ[0] and zsha2:
             info("start peer management node...")
             Zsha2Utils().excute_on_peer("/usr/local/bin/zsha2 start-node")
+        elif not recover_succ[0]:
+            sys.exit(1)
 
 
 class PullDatabaseBackupCmd(Command):
