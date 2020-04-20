@@ -396,7 +396,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             if kvmagent.get_host_os_type() == "debian":
                 lvm.config_lvm_by_sed("udev_rules", "udev_rules=0", ["lvm.conf", "lvmlocal.conf"])
                 lvm.config_lvm_by_sed("udev_sync", "udev_sync=0", ["lvm.conf", "lvmlocal.conf"])
-            lvm.config_lvm_filter(["lvm.conf", "lvmlocal.conf"], preserve_disks=allDiskPaths)
+            else :
+                lvm.config_lvm_filter(["lvm.conf", "lvmlocal.conf"], preserve_disks=allDiskPaths)
 
             lvm.config_sanlock_by_sed("sh_retries", "sh_retries=20")
             lvm.config_sanlock_by_sed("logfile_priority", "logfile_priority=7")
@@ -518,8 +519,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         allDiskPaths = []
 
         for diskUuid in cmd.allSharedBlockUuids:
-            disk = CheckDisk(diskUuid)
-            p = disk.get_path()
+            _disk = CheckDisk(diskUuid)
+            p = _disk.get_path()
             if p is not None:
                 allDiskPaths.append(p)
         allDiskPaths.append(disk.get_path())
