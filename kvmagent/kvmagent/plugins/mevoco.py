@@ -747,7 +747,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
             root = os.path.join(http_root, "zstack-default")
             meta_root = os.path.join(root, 'meta-data')
             if not os.path.exists(meta_root):
-                linux.mkdir(meta_root, 0o750)
+                linux.mkdir(meta_root)
 
             index_file_path = os.path.join(meta_root, 'index.html')
             with open(index_file_path, 'w') as fd:
@@ -891,7 +891,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
         conf_folder = os.path.join(self.USERDATA_ROOT, to.namespaceName)
         if not os.path.exists(conf_folder):
-            linux.mkdir(conf_folder, 0o750)
+            linux.mkdir(conf_folder)
 
         conf_path = os.path.join(conf_folder, 'lighttpd.conf')
         http_root = os.path.join(conf_folder, 'html')
@@ -1058,7 +1058,7 @@ mimetype.assign = (
         root = os.path.join(http_root, to.vmIp)
         meta_root = os.path.join(root, 'meta-data')
         if not os.path.exists(meta_root):
-            linux.mkdir(meta_root, 0o750)
+            linux.mkdir(meta_root)
 
         index_file_path = os.path.join(meta_root, 'index.html')
         with open(index_file_path, 'w') as fd:
@@ -1162,7 +1162,7 @@ mimetype.assign = (
     def _make_conf_path(self, namespace_name):
         folder = os.path.join(self.DNSMASQ_CONF_FOLDER, namespace_name)
         if not os.path.exists(folder):
-            linux.mkdir(folder, 0o750)
+            linux.mkdir(folder)
 
         # the conf is created at the initializing time
         conf = os.path.join(folder, 'dnsmasq.conf')
