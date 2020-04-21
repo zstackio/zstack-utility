@@ -220,7 +220,7 @@ class DrbdResource(object):
             self.clear_bits()
         else:
             self.promote()
-            bash.bash_errorout('dd if=%s of=%s conv=sparse' % (src_path, self.get_dev_path()))
+            bash.bash_errorout('dd if=%s of=%s bs=1M oflag=direct' % (src_path, self.get_dev_path()))
             if backing:
                 linux.qcow2_rebase_no_check(backing, self.get_dev_path(), backing_fmt=backing_fmt)
             self.demote()
@@ -246,11 +246,11 @@ class DrbdResource(object):
         bash.bash_errorout("drbdadm -- --assume-clean resize %s" % self.name)
 
     @bash.in_bash
-    def dd_out(self, dst_path):
+    def dd_out(self, dst_path, sparse=True):
         need_promte_first = self.get_role() == DrbdRole.Secondary
         need_promte_first and self.promote()
         try:
-            bash.bash_errorout('dd if=%s of=%s conv=sparse' % (self.get_dev_path(), dst_path))
+            bash.bash_errorout('dd if=%s of=%s bs=1M %s' % (self.get_dev_path(), dst_path, 'conv=sparse' if sparse else ''))
         finally:
             need_promte_first and self.demote()
 
