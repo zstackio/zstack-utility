@@ -378,7 +378,10 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         lun_struct.wwids = candidate_struct.wwids
         if lvm.is_slave_of_multipath(abs_path):
             lun_struct.type = "mpath"
-            mpath_wwid = bash.bash_o("multipath -l %s | head -n1 | awk '{print $2}'" % abs_path).strip("() \n")
+            if kvmagent.get_host_os_type() == "debian":
+                mpath_wwid = bash.bash_o("multipath -l %s | head -n1 | awk '{print $1}'" % abs_path).strip()
+            else :
+                mpath_wwid = bash.bash_o("multipath -l %s | head -n1 | awk '{print $2}'" % abs_path).strip("() \n")
             lun_struct.wwids = [mpath_wwid]
         return lun_struct
 
@@ -838,7 +841,10 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         s.path = get_path(dev_name)
         if lvm.is_slave_of_multipath("/dev/%s" % dev_name):
             s.type = "mpath"
-            wwid = bash.bash_o("multipath -l /dev/%s | head -n1 | awk '{print $2}'" % dev_name).strip().strip("()")
+            if kvmagent.get_host_os_type() == "debian":
+                wwid = bash.bash_o("multipath -l /dev/%s | head -n1 | awk '{print $1}'" % dev_name).strip()
+            else :
+                wwid = bash.bash_o("multipath -l /dev/%s | head -n1 | awk '{print $2}'" % dev_name).strip().strip("()")
             s.wwids = [wwid] if wwid != "" else s.wwids
         s.storageWwnn = get_storage_wwnn(s.hctl)
 
