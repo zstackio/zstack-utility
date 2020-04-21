@@ -295,7 +295,7 @@ class MiniFileConverter(linux.AbstractFileConverter):
         if drbd_res.exists:
             drbd_res.dd_out(dst)
         else:
-            shell.call('dd if=%s of=%s conv=sparse' % (src, dst))
+            shell.call('dd if=%s of=%s conv=sparse bs=1M' % (src, dst))
 
     def get_size(self, path):
         # type: (str) -> int
@@ -345,7 +345,7 @@ class MiniFileConverter(linux.AbstractFileConverter):
         if not lvm.lv_exists(dst):
             lvm.create_lv_from_cmd(dst, size, self.cmd, tag, False)
         lvm.active_lv(dst)
-        bash.bash_errorout('dd if=%s of=%s conv=sparse' % (src, dst))
+        bash.bash_errorout('dd if=%s of=%s bs=1M' % (src, dst))
         if dst_backing:
             linux.qcow2_rebase_no_check(dst_backing, dst, backing_fmt=backing_fmt)
 
@@ -834,7 +834,8 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
                 lvm.create_lv_from_cmd(info.installPath, info.size, cmd,
                                    "%s::%s::%s" % (IMAGE_TAG, cmd.hostUuid, time.time()), False)
             lvm.active_lv(info.installPath)
-            sync_command = "ssh %s dd if=%s iflag=direct conv=sparse | dd of=%s conv=sparse" % \
+            sync_command = "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s " \
+                           "dd if=%s bs=1M | dd of=%s bs=1M" % \
                            (remote_hostname, info.installPath, info.installPath)
             shell.call(sync_command)
 
