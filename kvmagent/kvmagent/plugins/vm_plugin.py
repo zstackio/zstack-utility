@@ -1988,7 +1988,11 @@ class Vm(object):
             return etree.tostring(disk)
 
         def scsilun_volume():
-            disk = etree.Element('disk', attrib={'type': 'block', 'device': 'lun', 'sgio': 'unfiltered'})
+            if kvmagent.get_host_os_type() == "debian":
+                # default value of sgio is 'filtered'
+                disk = etree.Element('disk', attrib={'type': 'block', 'device': 'lun'})
+            else:
+                disk = etree.Element('disk', attrib={'type': 'block', 'device': 'lun', 'sgio': 'unfiltered'})
             e(disk, 'driver', None,
               {'name': 'qemu', 'type': 'raw'})
             e(disk, 'source', None, {'dev': volume.installPath})
