@@ -4,6 +4,7 @@
 '''
 
 import os
+import re
 
 b = 1
 k = b * 1024
@@ -110,28 +111,40 @@ class TeraByte(object):
     @staticmethod
     def toTeraByte(s):
         return s
-        
+
+# for unit lookup, in upper cases.
+units = {
+    "B": 1,
+    "K": 1024,    "KIB": 1024,
+    "M": 1024**2, "MIB": 1024**2,
+    "G": 1024**3, "GIB": 1024**3,
+    "T": 1024**4, "TIB": 1024**4,
+}
+
 def get_size(size):
-    size = size.lower()
-
+    """convert a size string to bytes
+    get_size("1024")     -> 1024,
+    get_size("1024K")    -> 1048576,
+    get_size("1.5K")     -> 1536,
+    get_size("1024 K")   -> 1048576,
+    get_size("1024 KiB") -> 1048576,
+    """
     if size.isdigit():
-        return size
+        return int(size)
 
-    def strip_size_unit():
-        return float(size[:-1])
+    def do_get_size(num, unit):
+        n = units[unit]
+        if num.find('.') == -1:
+            return int(num) * u
+        return int(float(num) * u)
 
-    if size.endswith('b') or size.endswith('B'):
-        s = Byte.toByte(strip_size_unit())
-    elif size.endswith('k') or size.endswith('K'):
-        s = KiloByte.toByte(strip_size_unit())
-    elif size.endswith('m') or size.endswith('M'):
-        s = MegaByte.toByte(strip_size_unit())
-    elif size.endswith('g') or size.endswith('G'):
-        s = GigaByte.toByte(strip_size_unit())
-    elif size.endswith('t') or size.endswith('T'):
-        s = TeraByte.toByte(strip_size_unit())
+    s = size.strip().upper()
+    if s.find(' ') == -1:
+        num, unit = re.sub(r"([\d.]+)", r"\1 ", s).split()
     else:
-        raise Exception('unknown size unit[%s]' % size)
+        num, unit = s.split()
 
-    return long(s)
-
+    try:
+        return do_get_size(num, unit)
+    except KeyError:
+	raise Exception('unknown size unit[%s]' % size)
