@@ -3876,7 +3876,9 @@ class Vm(object):
 
         e(interface, 'mac', None, attrib={'address': nic.mac})
         e(interface, 'alias', None, {'name': 'net%s' % nic.nicInternalName.split('.')[1]})
-        e(interface, 'mtu', None, attrib={'size': '%d' % nic.mtu})
+
+        if iftype != 'hostdev':
+            e(interface, 'mtu', None, attrib={'size': '%d' % nic.mtu})
 
         if iftype == 'hostdev':
             domain, bus, slot, function = parse_pci_device_address(nic.pciDeviceAddress)
