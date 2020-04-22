@@ -1978,7 +1978,7 @@ def set_fail_if_no_path():
     cmd = shell.ShellCmd('ms=`dmsetup ls --target multipath | awk \'{print $1}\'`; for m in $ms; do dmsetup message $m 0 "fail_if_no_path"; done')
     cmd(is_exception=False, logcmd=False)
 
-def get_physical_disk(disk=None):
+def get_physical_disk(disk=None, logCommand=True):
     # type: () -> list[str]
     def remove_digits(str_list):
         pattern = '[0-9]'
@@ -1988,7 +1988,7 @@ def get_physical_disk(disk=None):
     if disk is None:
         disk = shell.call("mount | grep 'on / ' | grep -o '/dev/.* on' | cut -d ' ' -f1", False).strip()
     cmd = shell.ShellCmd("dmsetup table %s" % disk)
-    cmd(is_exception=False)
+    cmd(is_exception=False, logcmd=logCommand)
     if cmd.return_code != 0:
         return remove_digits([disk])
     dm_name = shell.call("readlink -e %s | awk -F '/' '{print $NF}'" % disk).strip()
