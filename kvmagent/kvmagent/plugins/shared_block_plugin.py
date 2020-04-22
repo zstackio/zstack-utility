@@ -1075,6 +1075,9 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     def config_filter(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
+        # do not config filter on 3.7.1_arm kylin (ZSTACK-26864)
+        if kvmagent.get_host_os_type() == "debian":
+            return jsonobject.dumps(rsp)
 
         allDiskPaths = set()
 
