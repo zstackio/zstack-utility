@@ -133,7 +133,7 @@ def get_size(size):
         return int(size)
 
     def do_get_size(num, unit):
-        n = units[unit]
+        u = units[unit]
         if num.find('.') == -1:
             return int(num) * u
         return int(float(num) * u)
