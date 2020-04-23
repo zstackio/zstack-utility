@@ -45,6 +45,12 @@ class EjectZBoxResponse(kvmagent.AgentResponse):
         super(EjectZBoxResponse, self).__init__()
 
 
+class SyncZBoxResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(SyncZBoxResponse, self).__init__()
+        self.info = None  # type: ZBoxInfo
+
+
 class RefreshZBoxResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(RefreshZBoxResponse, self).__init__()
@@ -167,6 +173,7 @@ class ZBoxPlugin(kvmagent.KvmAgent):
     INIT_ZBOX = "/zbox/init"
     EJECT_ZBOX = "/zbox/eject"
     REFRESH_ZBOX = "/zbox/refresh"
+    SYNC_ZBOX = "/zbox/sync"
 
     def __init__(self):
         super(ZBoxPlugin, self).__init__()
@@ -287,6 +294,19 @@ class ZBoxPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def sync_zbox(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = SyncZBoxResponse()
+        if linux.is_mounted(cmd.mountPath):
+            info = ZBoxInfo()
+            info.totalCapacity, info.availableCapacity = linux.get_disk_capacity_by_df(cmd.mountPath)
+            rsp.info = info
+        else:
+            rsp.error = "zbox is not mounted."
+            rsp.success = False
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     def delete_bits(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = DeleteBitsResponse()
@@ -316,6 +336,7 @@ class ZBoxPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.INIT_ZBOX, self.init_zbox)
         http_server.register_async_uri(self.EJECT_ZBOX, self.eject_zbox)
         http_server.register_async_uri(self.REFRESH_ZBOX, self.refresh_zbox)
+        http_server.register_async_uri(self.SYNC_ZBOX, self.sync_zbox)
         http_server.register_async_uri(self.DELETE_BITS, self.delete_bits)
 
     def stop(self):
