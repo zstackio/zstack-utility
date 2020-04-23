@@ -245,6 +245,7 @@ class ZBoxPlugin(kvmagent.KvmAgent):
         rsp = RefreshZBoxResponse()
 
         mounted_dev = get_mounted_zbox_mountpath_and_devname()
+        time.sleep(5)
         for devname, label in get_zbox_devname_and_label():
             mount_path = build_mount_path(label)
             busnum, devnum = get_usb_bus_dev_num(devname)
@@ -255,7 +256,7 @@ class ZBoxPlugin(kvmagent.KvmAgent):
             info.devNum = devnum
 
             if mount_path in mounted_dev:
-                if mounted_dev[mount_path] != devname:
+                if os.path.basename(mounted_dev[mount_path]) != devname:
                     # zbox maybe removed before, remount
                     if shell.run("umount -f %s" % mount_path) == 0 and not mount_label(label, mount_path, raise_exception=False):
                         info.status = 'Error'
