@@ -1996,3 +1996,18 @@ def get_physical_disk(disk=None):
 
     return remove_digits(["/dev/%s" % slave for slave in slaves])
 
+def check_nping_result(port, result):
+    # Starting Nping 0.6.40 ( http://nmap.org/nping ) at 2019-11-28 11:14 CST
+    # SENT (0.0180s) TCP x.x.x.x:33243 > x.x.x.x:22 S ttl=64 id=3565 iplen=40  seq=1425405791 win=1480
+    # RCVD (0.0189s) TCP x.x.x.x:22 > x.x.x.x:33243 SA ttl=64 id=0 iplen=44  seq=4279460929 win=29200 <mss 1460>
+    #
+    # Max rtt: 0.614ms | Min rtt: 0.614ms | Avg rtt: 0.614ms
+    # Raw packets sent: 1 (40B) | Rcvd: 1 (44B) | Lost: 0 (0.00%)
+    # Nping done: 1 IP address pinged in 1.04 seconds
+    port_state = {}
+    r = result.strip('\t\n\r')
+    if "Lost: 0 (0.00%)" in r:
+        port_state[port] = "open"
+    else:
+        port_state[port] = "close"
+    return port_state
