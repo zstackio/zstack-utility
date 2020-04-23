@@ -3229,7 +3229,7 @@ class Vm(object):
             # always set ioapic driver to kvm after libvirt 3.4.0
             if is_ioapic_supported and not IS_AARCH64:
                 e(features, "ioapic", attrib={'driver': 'kvm'})
-            if kvmagent.get_host_os_type() == "debian":
+            if IS_AARCH64 and int(cmd.cpuNum) <= 8:
                 e(features, "gic", attrib={'version': '2'})
 
         def make_qemu_commandline():
