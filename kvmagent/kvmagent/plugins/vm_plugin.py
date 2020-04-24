@@ -4343,8 +4343,11 @@ class VmPlugin(kvmagent.KvmAgent):
 
             if vm:
                 if vm.state == Vm.VM_STATE_RUNNING:
-                    raise kvmagent.KvmError(
-                        'vm[uuid:%s, name:%s] is already running' % (cmd.vmInstanceUuid, vm.get_name()))
+                    # http://jira.zstack.io/browse/ZSTAC-26937
+                    #raise kvmagent.KvmError(
+                    #    'vm[uuid:%s, name:%s] is already running' % (cmd.vmInstanceUuid, vm.get_name()))
+                    logger.debug('vm[uuid:%s, name:%s] is already running' % (cmd.vmInstanceUuid, vm.get_name()))
+                    return
                 else:
                     vm.destroy()
 
