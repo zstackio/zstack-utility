@@ -115,6 +115,7 @@ class CheckBitsRsp(AgentRsp):
         super(CheckBitsRsp, self).__init__()
         self.existing = False
         self.replications = dict()
+        self.storageNetworkStatus = "Connected"
 
 
 class ReplicationInformation(object):
@@ -773,9 +774,27 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
             rsp.existing = lvm.lv_exists(install_abs_path)
         else:
             rsp = self.replications_status()
+
         if cmd.vgUuid is not None and lvm.vg_exists(cmd.vgUuid):
             rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid, False)
+
+        if cmd.peerIps is None:
+            return jsonobject.dumps(rsp)
+
+        successCount = 0
+        for ip in cmd.peerIps:
+            if self.test_network_ok_to_peer(ip):
+                successCount += 1
+
+        if successCount == cmd.peerIps:
+            rsp.storageNetworkStatus = "Connected"
+        elif successCount > 0:
+            rsp.storageNetworkStatus = "PartialConnected"
+        else:
+            rsp.storageNetworkStatus = "Disconnected"
+
         return jsonobject.dumps(rsp)
+
 
     @staticmethod
     def replications_status():
