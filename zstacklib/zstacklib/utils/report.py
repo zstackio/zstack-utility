@@ -31,17 +31,17 @@ def get_exact_percent_from_scale(percent, start, end):
     return int(float(percent)/100 * (end - start) + start)
 
 
-def get_task_stage(cmd, default=None):
+def get_task_stage(spec, default=None):
     stage = default
-    if cmd.threadContext:
-        if cmd.threadContext['task-stage']:
-            stage = cmd.threadContext['task-stage']
+    if spec.threadContext:
+        if spec.threadContext['task-stage']:
+            stage = spec.threadContext['task-stage']
     return stage
 
 
-def get_api_id(cmd):
-    if cmd.threadContext and cmd.threadContext.api:
-        return cmd.threadContext.api
+def get_api_id(spec):
+    if spec.threadContext and spec.threadContext.api:
+        return spec.threadContext.api
     else:
         return None
 
@@ -59,7 +59,7 @@ class Report(object):
         self.ctxStack = ctxStack
 
     @staticmethod
-    def from_cmd(cmd, progress_type):
+    def from_spec(cmd, progress_type):
         if cmd.sendCommandUrl:
             Report.url = cmd.sendCommandUrl
 
@@ -106,8 +106,8 @@ class AutoReporter(object):
         self.timeout = timeout
 
     @staticmethod
-    def from_cmd(cmd, progress_type, progress_getter):
-        report = Report.from_cmd(cmd, progress_type)
+    def from_spec(spec, progress_type, progress_getter):
+        report = Report.from_spec(spec, progress_type)
         return AutoReporter(report, progress_getter)
 
     @thread.AsyncThread

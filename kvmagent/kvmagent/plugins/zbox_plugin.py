@@ -185,10 +185,10 @@ class ZBoxPlugin(kvmagent.KvmAgent):
         vm = vm_plugin.get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
 
         if not cmd.remoteInfo:
-            vm.take_volumes_shallow_backup(cmd.volumes, cmd.dstDeviceIdPath)
+            vm.take_volumes_shallow_backup(cmd, cmd.volumes, cmd.dstDeviceIdPath)
         else:
             with SshfsRemoteStorage(cmd.vmUuid, cmd.remoteInfo):
-                vm.take_volumes_shallow_backup(cmd.volumes, cmd.dstDeviceIdPath)
+                vm.take_volumes_shallow_backup(cmd, cmd.volumes, cmd.dstDeviceIdPath)
 
         return jsonobject.dumps(rsp)
 
@@ -316,11 +316,13 @@ class ZBoxPlugin(kvmagent.KvmAgent):
         if not dpath.startswith("/var/zbox-"):
             raise Exception('you can only delete bits under zbox')
 
-        pids = linux.get_pids_by_process_fullname(dpath)
-        if pids:
-            logger.debug("it is going to kill process %s.", pids)
-            for pid in pids:
-                linux.kill_all_child_process(pid)
+        def all_killed(_):
+            return all(not os.path.exists('/proc/%s' % pid) for pid in pids)
+
+        pids = linux.kill_process_by_fullname(dpath, 15)
+        if not linux.wait_callback_success(all_killed, None, 5):
+            linux.kill_process_by_fullname(dpath, 9)
+            linux.wait_callback_success(all_killed, None, 5)
 
         if cmd.isDir:
             shell.call("rm -rf " + dpath)
