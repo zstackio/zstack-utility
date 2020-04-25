@@ -3962,8 +3962,20 @@ class Vm(object):
         @in_bash
         def _add_bridge_fdb_entry_for_vnic():
             if action == 'Attach':
-                if bash.bash_r("bridge fdb | grep '%s dev %s self permanent'" % (nic.mac, nic.physicalInterface)) != 0:
-                    bash.bash_r("bridge fdb add %s dev %s" % (nic.mac, nic.physicalInterface))
+                # if nic.physicalInterface is bond, then find the first splited pf name out of its slaves
+                _phy_dev_name = nic.physicalInterface
+                _phy_dev_folder = os.path.join('/sys/class/net', _phy_dev_name)
+                for fname in os.listdir(_phy_dev_folder):
+                    if fname.startswith('slave_'):
+                        _slave_numvfs = os.path.join(_phy_dev_folder, fname, 'device/sriov_numvfs')
+                        if os.path.isfile(_slave_numvfs):
+                            with open(_slave_numvfs, 'r') as f:
+                                if int(f.read().strip()) != 0:
+                                    _phy_dev_name = fname.replace('slave_', '').strip(' \t\n\r')
+                                    break
+
+                if bash.bash_r("bridge fdb | grep '%s dev %s self permanent'" % (nic.mac, _phy_dev_name)) != 0:
+                    bash.bash_r("bridge fdb add %s dev %s" % (nic.mac, _phy_dev_name))
 
         # to allow vf nic dhcp
         if nic.pciDeviceAddress is not None:
