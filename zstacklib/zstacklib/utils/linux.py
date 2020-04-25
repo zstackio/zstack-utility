@@ -1330,13 +1330,19 @@ def get_pids_by_process_name(name):
     return output.split('\n')
 
 def get_pids_by_process_fullname(name):
-    cmd = shell.ShellCmd("pkill -0 -e -f '%s'" % name)
+    return kill_process_by_fullname(name, 0)
+
+def kill_process_by_fullname(name, sig):
+    #type: (str, int) -> list[str]
+    cmd = shell.ShellCmd("pkill -%d -e -f '%s'" % (sig, name))
     output = cmd(False)
     if cmd.return_code != 0:
         return []
 
     # format from 'bash killed (pid 32162)'
-    return [line.split()[-1][0:-1] for line in output.splitlines()]
+    pids = [line.split()[-1][0:-1] for line in output.splitlines()]
+    logger.debug("killed -%d process details: %s" % (sig, output))
+    return pids
 
 def get_nic_name_by_mac(mac):
     names = get_nic_names_by_mac(mac)

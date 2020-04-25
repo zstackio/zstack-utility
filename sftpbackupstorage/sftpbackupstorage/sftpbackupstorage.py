@@ -409,7 +409,7 @@ class SftpBackupStorageAgent(object):
             return linux.wget(url, workdir=workdir, rename=name, timeout=timeout, interval=2, callback=percentage_callback, callback_data=url)
 
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        reporter = report.Report.from_cmd(cmd, "DownloadImage")
+        reporter = report.Report.from_spec(cmd, "DownloadImage")
 
         t_shell = traceable_shell.get_shell(cmd)
         rsp = DownloadResponse()

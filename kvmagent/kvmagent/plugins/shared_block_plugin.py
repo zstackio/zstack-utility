@@ -1082,7 +1082,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         fd, PFILE = tempfile.mkstemp()
         try:
-            report = Report.from_cmd(cmd, 'MigrateVolumes')
+            report = Report.from_spec(cmd, 'MigrateVolumes')
             parent_stage = get_task_stage(cmd, "10-90")
 
             def _get_progress(synced):

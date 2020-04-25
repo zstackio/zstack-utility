@@ -3017,18 +3017,36 @@ class Vm(object):
         else:
             do_pull(cmd.srcPath, cmd.destPath)
 
-    def take_volumes_shallow_backup(self, volumes, dst_backup_paths):
-        # type: (Vm, list[xmlobject.XmlObject], dict[str, str]) -> None
+    def take_volumes_shallow_backup(self, task_spec, volumes, dst_backup_paths):
+        # type: (Vm, jsonobject.JsonObject, list[xmlobject.XmlObject], dict[str, str]) -> None
         class VolumeInfo(object):
             def __init__(self, dev_name):
                 self.dev_name = dev_name  # type: str
                 self.end_time = None  # type: float
+
+        class ShallowBackupDaemon(plugin.TaskDaemon):
+            def __init__(self, domain):
+                super(ShallowBackupDaemon, self).__init__(task_spec, 'TakeVolumeBackup', report_progress=False)
+                self.domain = domain
+
+            def _cancel(self):
+                logger.debug("cancel vm[uuid:%s] backup" % self.domain.name())
+                for v in volume_backup_info.values():
+                    if self.domain.blockJobInfo(v.dev_name, 0):
+                        self.domain.blockJobAbort(v.dev_name)
+
+            def _get_percent(self):
+                pass
 
         volume_backup_info = {}
         for volume in volumes:
             target_disk, _ = self._get_target_disk(volume)
             volume_backup_info[str(volume.deviceId)] = VolumeInfo(target_disk.target.dev_)
 
+        with ShallowBackupDaemon(self.domain):
+            self._do_take_volumes_shallow_backup(volume_backup_info, dst_backup_paths)
+
+    def _do_take_volumes_shallow_backup(self, volume_backup_info, dst_backup_paths):
         dom = self.domain
         flags = libvirt.VIR_DOMAIN_BLOCK_COPY_TRANSIENT_JOB | libvirt.VIR_DOMAIN_BLOCK_COPY_SHALLOW
         for device_id, v in volume_backup_info.items():
@@ -5135,7 +5153,7 @@ class VmPlugin(kvmagent.KvmAgent):
             backupArgs[deviceId] = get_backup_args()
 
         logger.info('taking backup for vm: %s' % cmd.vmUuid)
-        res = isc.backup_volumes(cmd.vmUuid, backupArgs.values(), dstdir, Report.from_cmd(cmd, "VmBackup"), get_task_stage(cmd))
+        res = isc.backup_volumes(cmd.vmUuid, backupArgs.values(), dstdir, Report.from_spec(cmd, "VmBackup"), get_task_stage(cmd))
         logger.info('completed backup for vm: %s' % cmd.vmUuid)
 
         backres = jsonobject.loads(res)
@@ -5205,7 +5223,7 @@ class VmPlugin(kvmagent.KvmAgent):
         if cmd.volumeWriteBandwidth:
             speed = cmd.volumeWriteBandwidth
 
-        mode = isc.backup_volume(cmd.vmUuid, nodename, bitmap, mode, dest, speed, Report.from_cmd(cmd, "VolumeBackup"), get_task_stage(cmd))
+        mode = isc.backup_volume(cmd.vmUuid, nodename, bitmap, mode, dest, speed, Report.from_spec(cmd, "VolumeBackup"), get_task_stage(cmd))
         logger.info('finished backup volume with mode: %s' % mode)
 
         if mode == 'incremental':
