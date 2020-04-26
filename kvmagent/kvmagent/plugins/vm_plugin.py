@@ -4169,7 +4169,10 @@ class VmPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
 
-        vm = get_vm_by_uuid(cmd.vmUuid)
+        vm = get_vm_by_uuid(cmd.vmUuid, False)
+        if not vm:
+            return jsonobject.dumps(rsp)
+
         vm.detach_nic(cmd)
 
         return jsonobject.dumps(rsp)
