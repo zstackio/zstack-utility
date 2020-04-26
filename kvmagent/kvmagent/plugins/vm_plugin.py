@@ -4558,7 +4558,8 @@ class VmPlugin(kvmagent.KvmAgent):
 
         logger.debug('killing vm %s' % vm_uuid)
         vm_pid = linux.find_vm_pid_by_uuid(vm_uuid)
-        linux.kill_process(vm_pid)
+        if vm_pid:
+            linux.kill_process(vm_pid)
 
     @kvmagent.replyerror
     def stop_vm(self, req):
