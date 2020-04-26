@@ -1872,6 +1872,9 @@ done
 
         def _add_bridge_fdb_entry_for_inner_devs():
             r, netns_ids, e = bash_roe("ip netns list-id")
+            if not netns_ids.strip():
+                return
+
             if r != 0:
                 errors.append('failed to get ip netns list')
                 return
@@ -1895,6 +1898,17 @@ done
                     logger.error("cannot get physical interface name from bridge " + BR_NAME)
                     return
                 PHY_DEV = PHY_DEV.strip(' \t\n\r')
+
+                # if PHY_DEV is bond, then find the first splited pf name out of its slaves
+                _phy_dev_folder = os.path.join('/sys/class/net', PHY_DEV)
+                for fname in os.listdir(_phy_dev_folder):
+                    if fname.startswith('slave_'):
+                        _slave_numvfs = os.path.join(_phy_dev_folder, fname, 'device/sriov_numvfs')
+                        if os.path.isfile(_slave_numvfs):
+                            with open(_slave_numvfs, 'r') as f:
+                                if int(f.read().strip()) != 0:
+                                    PHY_DEV = fname.replace('slave_', '').strip(' \t\n\r')
+                                    break
 
                 # get mac address of inner dev
                 r, INNER_MAC, e = bash_roe("ip netns exec {{NAMESPACE_NAME}} ip link show {{INNER_DEV}} | grep -w ether | awk '{print $2}'")
