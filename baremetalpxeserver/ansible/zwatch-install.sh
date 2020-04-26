@@ -5,6 +5,16 @@ echo "installing zwatch-vm-agent"
 export LANG=en_US.UTF-8
 export LANGUAGE=en_US:
 
+usage()
+{
+    echo "usage: zwatch-install.sh depolyServerIp"
+}
+
+if [ $# -ne 1 ]; then
+    usage
+    exit 1
+fi
+
 DEPLOY_SERVER=$1
 
 case `uname -s` in
