@@ -186,6 +186,18 @@ def getCdromNum(dom, dxml=None):
     return countCdrom(dxml)
 
 
+def buildFilterDict(filterList):
+    fdict = {}
+    if not filterList:
+        return fdict
+    for f in filterList:
+        fdict[f.deviceId] = f
+    return fdict
+
+def skipVolume(fdict, name):
+    f = fdict.get(name)
+    return f and f.skip
+
 def getVolumes(dom, dxml=None):
     def getVolume(dom, diskxml):
         v = VolumeInfo()
@@ -373,18 +385,6 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     @completetask
     def convert(self, req):
-        def buildFilterDict(filterList):
-            fdict = {}
-            if not filterList:
-                return fdict
-            for f in filterList:
-                fdict[f.deviceId] = f
-            return fdict
-
-        def skipVolume(fdict, name):
-            f = fdict.get(name)
-            return f and f.skip
-
         def get_mount_command(cmd):
             timeout_str = "timeout 30"
             username = getUsername(cmd.libvirtURI)
@@ -506,6 +506,7 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
             report.processType = "KVM-V2V"
             while True:
                 current_progress = 0.0
+                job_canceled = False
                 for v in volumes:
                     if v.endTime:
                         current_progress += 1.0 * float(v.size) / float(total_volume_size)
@@ -513,7 +514,10 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
 
                     info = dom.blockJobInfo(v.name, 0)
                     if not info:
-                        raise Exception('blockjob not found on disk: '+v.name)
+                        err_msg = 'blockjob not found on disk %s, maybe job has been canceled' % v.name
+                        logger.warn(err_msg)
+                        job_canceled = True
+                        continue
                     end = info['end']
                     cur = info['cur']
                     if cur == end :
@@ -526,9 +530,13 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                     current_progress += progress * float(v.size) / float(total_volume_size)
 
                 report.progress_report(str(int(current_progress * float(end_progress))), "start")
-                if all(map(lambda v: v.endTime, volumes)):
+                if all(map(lambda v: v.endTime, volumes)) or job_canceled:
                     break
                 time.sleep(5)
+
+            if job_canceled:
+                rsp.success = False
+                rsp.error = "cannot find blockjob on vm %s, maybe it has been canceled" % cmd.srcVmUuid
 
             if not cmd.pauseVm and oldstat != libvirt.VIR_DOMAIN_PAUSED:
                 dom.suspend()
@@ -536,7 +544,8 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
 
             try:
                 for v in volumes:
-                    dom.blockJobAbort(v.name)
+                    if dom.blockJobInfo(v.name, 0):
+                        dom.blockJobAbort(v.name)
             finally:
                 if needResume:
                     dom.resume()
@@ -554,6 +563,9 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                      "deviceName":  v.name,
                      "downloadTime": int(v.endTime - startTime),
                      "deviceId":    devId }
+
+        if not rsp.success:
+            return jsonobject.dumps(rsp)
 
         idx = 1
         rv, dvs = None, []
@@ -587,12 +599,30 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
     @in_bash
     @kvmagent.replyerror
     def cancel_and_clean_convert(self, req):
+        def abort_block_job(conn, filters):
+            with LibvirtConn(conn.libvirtURI, conn.saslUser, conn.saslPass, conn.sshPrivKey) as c:
+                dom = c.lookupByUUIDString(cmd.srcVmUuid)
+                if not dom:
+                    logger.info('VM not found: {}'.format(cmd.srcVmUuid))
+                    return
+
+                xmlDesc = dom.XMLDesc(0)
+                dxml = xmlobject.loads(xmlDesc)
+
+                volumes = filter(lambda v: not skipVolume(filters, v.name), getVolumes(dom, dxml))
+
+                for v in volumes:
+                    info = dom.blockJobInfo(v.name, 0)
+                    if info:
+                        dom.blockJobAbort(v.name)
+
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
-
+        abort_block_job(cmd.libvirtConn, buildFilterDict(cmd.volumeFilters))
         real_storage_path = getRealStoragePath(cmd.storagePath)
         clean_up_path = os.path.join(real_storage_path, cmd.srcVmUuid)
         linux.rm_dir_force(clean_up_path)
+
         return jsonobject.dumps(rsp)
 
     @in_bash
