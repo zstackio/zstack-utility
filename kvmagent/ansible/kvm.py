@@ -38,8 +38,6 @@ zstack_lib_dir = "/var/lib/zstack"
 zstack_libvirt_nwfilter_dir = "%s/nwfilter" % zstack_lib_dir
 skipIpv6 = 'false'
 bridgeDisableIptables = 'false'
-# supported distro list
-distro_list = ['centos', 'alibaba']
 
 def update_libvritd_config(host_post_info):
     command = "grep -i ^host_uuid %s" % libvirtd_conf_file
@@ -140,7 +138,7 @@ repo_dir = "/opt/zstack-dvd/{}".format(host_arch)
 if not os.path.isdir(repo_dir):
     error("Missing directory '{}', please try 'zstack-upgrade -a {}_iso'".format(repo_dir, host_arch))
 
-if distro.lower() in distro_list:
+if distro in RPM_BASED_OS:
     # get remote releasever
     get_releasever_script = '''
     cat << 'EOF' > /opt/get_releasever
@@ -167,14 +165,16 @@ if distro.lower() in distro_list:
     copy_arg.dest = '/opt/'
     copy(copy_arg, host_post_info)
     run_remote_command("rpm -q zstack-release || yum install -y /opt/zstack-release-{}-1.el7.zstack.noarch.rpm".format(releasever), host_post_info)
-elif IS_AARCH64 and 'kylin' in distro.lower():
+elif distro in DEB_BASED_OS:
     releasever = get_mn_apt_release()
     # copy and install zstack-release
     copy_arg = CopyArg()
-    copy_arg.src = '/opt/zstack-dvd/{0}/{1}/Packages/zstack-release_{1}_arm64.deb'.format(host_arch, releasever)
+    copy_arg.src = '/opt/zstack-dvd/{0}/{1}/Packages/zstack-release_{1}_all.deb'.format(host_arch, releasever)
     copy_arg.dest = '/opt/'
     copy(copy_arg, host_post_info)
-    run_remote_command("dpkg -l zstack-release || dpkg -i /opt/zstack-release_{}_arm64.deb".format(releasever), host_post_info)
+    run_remote_command("dpkg -l zstack-release || dpkg -i /opt/zstack-release_{}_all.deb".format(releasever), host_post_info)
+else:
+    error("unsupported OS!")
 
 if IS_AARCH64:
     if distro.lower() == "centos":
