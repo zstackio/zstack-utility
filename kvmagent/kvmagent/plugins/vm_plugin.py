@@ -728,7 +728,11 @@ def is_namespace_used():
 def is_ioapic_supported():
     return compare_version(LIBVIRT_VERSION, '3.4.0') >= 0 and not IS_AARCH64
 
-IS_KYLIN402 = "kylin402" in linux.read_file('/etc/zstack-release').splitlines()[0]
+def is_kylin402():
+    zstack_release = linux.read_file('/etc/zstack-release')
+    if zstack_release is None:
+        return False
+    return "kylin402" in zstack_release.splitlines()[0]
 
 def is_spiceport_driver_supported():
     # qemu-system-aarch64 not supported char driver: spiceport
@@ -3231,7 +3235,7 @@ class Vm(object):
             # always set ioapic driver to kvm after libvirt 3.4.0
             if is_ioapic_supported and not IS_AARCH64:
                 e(features, "ioapic", attrib={'driver': 'kvm'})
-            if IS_AARCH64 and IS_KYLIN402 and int(cmd.cpuNum) <= 8:
+            if IS_AARCH64 and is_kylin402() and int(cmd.cpuNum) <= 8:
                 e(features, "gic", attrib={'version': '2'})
 
         def make_qemu_commandline():
