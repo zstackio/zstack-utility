@@ -57,6 +57,9 @@ vrouter:
       - {name: zstack-log, dir: /var/log/zstack/, file: }
       - {name: vrouter-log, dir: /home/vyos/zvr/, file: }
       - {name: zstack-logs, dir: /var/log/zstack/, file: zstack.log*}
+      - {name: iptables-logs, exec: 'iptables-save'}
+      - {name: host-info, exec: 'uptime && last reboot && free && cat /proc/cpuinfo && ip add && ip route && df -h'}
+
 ceph-bs:
     description: ceph backstorage
     type: target
