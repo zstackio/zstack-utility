@@ -1802,7 +1802,7 @@ done
         if "," in str(cmd.port):
             ports = str(cmd.port).split(",")
         else:
-            ports.append(cmd.port)
+            ports.append(str(cmd.port))
 
         for port in ports:
             r, o, e = bash_roe("ip netns exec %s nping --tcp -p %s -c 1 %s" % (cmd.brname, port, cmd.ip))
