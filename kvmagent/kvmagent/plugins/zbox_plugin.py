@@ -200,6 +200,7 @@ class ZBoxPlugin(kvmagent.KvmAgent):
         if not os.path.exists(cmd.installPath):
             logger.debug("init backup[uuid:%s] on zbox[uuid:%s]" % (cmd.backupUuid, cmd.zboxUuid))
             os.makedirs(cmd.installPath, 0755)
+            linux.write_file(os.path.join(cmd.installPath, "name"), cmd.name, create_if_not_exist=True)
 
         return jsonobject.dumps(rsp)
 

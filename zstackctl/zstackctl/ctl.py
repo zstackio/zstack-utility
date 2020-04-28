@@ -5199,12 +5199,64 @@ class SingleMysqlRestorer(MysqlRestorer):
         return db_hostname in self.all_local_ip
 
 
-class ZBoxRecoverCmd(Command):
+class ZBoxBackupScanCmd(Command):
     def __init__(self):
-        super(ZBoxRecoverCmd, self).__init__()
-        self.name = "recover_zbox"
+        super(ZBoxBackupScanCmd, self).__init__()
+        self.name = "scan_zbox_backup"
         self.description = (
-            "recover ZStack from zbox backup"
+            "get ZStack backup details from zbox."
+        )
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--path', '-p',
+                            help="The absolutely zbox mount path, usually under /var/",
+                            required=False)
+
+    def run(self, args):
+        if args.path:
+            self.print_zbox_backup(args.path)
+            return
+
+        for dir_name in os.listdir('/var'):
+            if not re.match("zbox-[a-z0-9]{10}", dir_name):
+                continue
+            self.print_zbox_backup(os.path.join('/var', dir_name))
+
+    @staticmethod
+    def print_zbox_backup(zbox_path):
+        backup_dir = os.path.join(zbox_path, 'zstack-backup')
+        if not os.path.isdir(backup_dir):
+            return
+
+        for install_dir_name in os.listdir(backup_dir):
+            if not re.match("[0-9.]*-[a-z0-9]{32}", install_dir_name):
+                continue
+            backup_install_path = os.path.join(backup_dir, install_dir_name)
+            version = install_dir_name.split("-")[0]
+            mysql_path = os.path.join(backup_install_path, 'mysql-backup-%s.gz' % version)
+            conf_path = os.path.join(backup_install_path, 'recover.conf')
+            name_path = os.path.join(backup_install_path, 'name')
+
+            if not os.path.exists(mysql_path):
+                continue
+
+            if not os.path.exists(name_path):
+                name = "unknown"
+            else:
+                with open(name_path, 'r') as fd:
+                    name = fd.read().strip()
+
+            create_date = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(os.stat(mysql_path).st_mtime))
+            info("name:\t\t\t%s\nversion:\t\t%s\nmysql backup path:\t%s\nconfig path:\t\t%s\ncreate date:\t\t%s\n\n"
+                 % (name, version, mysql_path, conf_path, create_date))
+
+class ZBoxBackupRestoreCmd(Command):
+    def __init__(self):
+        super(ZBoxBackupRestoreCmd, self).__init__()
+        self.name = "restore_zbox_backup"
+        self.description = (
+            "restore ZStack from zbox backup"
         )
         self.hide = True
         self.sensitive_args = ['--mysql-root-password', '--ui-mysql-root-password']
@@ -5225,7 +5277,7 @@ class ZBoxRecoverCmd(Command):
         pswd_arg = "--mysql-root-password '%s'" % args.mysql_root_password if args.mysql_root_password else ""
         ui_pswd_arg = "'--ui-mysql-root-password '%s'" % args.ui_mysql_root_password if args.ui_mysql_root_password else ""
 
-        info("start to recover database...")
+        info("start to restore database...")
         ctl.internal_run('restore_mysql', "-f %s %s %s" % (args.from_file, pswd_arg, ui_pswd_arg))
 
         recover_succ = [False]
@@ -9512,7 +9564,8 @@ def main():
     RestartNodeCmd()
     RestoreMysqlPreCheckCmd()
     RestoreMysqlCmd()
-    ZBoxRecoverCmd()
+    ZBoxBackupScanCmd()
+    ZBoxBackupRestoreCmd()
     RecoverHACmd()
     ScanDatabaseBackupCmd()
     ShowStatusCmd()
