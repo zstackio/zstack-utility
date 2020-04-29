@@ -158,6 +158,18 @@ class StartVmResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(StartVmResponse, self).__init__()
 
+class PciAddressInfo():
+    def __init__(self):
+        self.type = None
+        self.domain = None
+        self.bus = None
+        self.slot = None
+        self.function = None
+
+class AttchNicResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(AttchNicResponse, self).__init__()
+        self.pciAddress = PciAddressInfo()
 
 class GetVncPortCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -3901,6 +3913,9 @@ class Vm(object):
             e(interface, 'target', None, attrib={'dev': nic.nicInternalName})
             e(interface, 'alias', None, {'name': 'net%s' % nic.nicInternalName.split('.')[1]})
 
+        if nic.pci is not None and (iftype == 'bridge' or iftype == 'vhostuser'):
+            e(interface, 'address', None, attrib={'type': nic.pci.type, 'domain': nic.pci.domain, 'bus': nic.pci.bus, 'slot': nic.pci.slot, "function": nic.pci.function})
+
         if nic.ips and iftype == 'bridge':
             ip4Addr = None
             ip6Addrs = []
@@ -4160,10 +4175,18 @@ class VmPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def attach_nic(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = kvmagent.AgentResponse()
+        rsp = AttchNicResponse()
 
         vm = get_vm_by_uuid(cmd.vmUuid)
         vm.attach_nic(cmd)
+
+        for iface in vm.domain_xmlobject.devices.get_child_node_as_list('interface'):
+            if iface.mac.address_ == cmd.nic.mac:
+                rsp.pciAddress.bus = iface.address.bus_
+                rsp.pciAddress.function = iface.address.function_
+                rsp.pciAddress.type = iface.address.type_
+                rsp.pciAddress.domain = iface.address.domain_
+                rsp.pciAddress.slot = iface.address.slot_
 
         return jsonobject.dumps(rsp)
 
