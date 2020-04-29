@@ -1168,8 +1168,7 @@ done
                 with open(numvfs, 'r') as f:
                     to.maxPartNum = f.read()
             to.virtStatus = "SRIOV_VIRTUAL"
-            # ../0000:06:00.0 --> 06:00.0
-            to.parentAddress = os.readlink(physfn).split('0000:')[-1]
+            to.parentAddress = os.readlink(physfn).split('/')[-1]
             if os.path.exists(gpuvf):
                 with open(gpuvf, 'r') as f:
                     for line in f.readlines():
