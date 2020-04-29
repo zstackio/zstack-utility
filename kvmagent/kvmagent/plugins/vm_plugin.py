@@ -36,6 +36,7 @@ from zstacklib.utils import xmlobject
 from zstacklib.utils import misc
 from zstacklib.utils import qemu_img
 from zstacklib.utils import ebtables
+from zstacklib.utils import vm_operator
 from zstacklib.utils.report import *
 from zstacklib.utils.vm_plugin_queue_singleton import VmPluginQueueSingleton
 
@@ -1229,6 +1230,16 @@ class VirtioIscsi(object):
         secret = call_libvirt()
         secret.setValue(self.chap_password)
         return secret.UUIDString()
+
+
+@linux.retry(times=3, sleep_time=1)
+def get_connect(src_host_ip):
+    conn = libvirt.open('qemu+tcp://{0}/system'.format(src_host_ip))
+    if conn is None:
+        logger.warn('unable to connect qemu on host {0}'.format(src_host_ip))
+        raise kvmagent.KvmError('unable to connect qemu on host %s' % (src_host_ip))
+    return conn
+
 
 def get_vm_by_uuid(uuid, exception_if_not_existing=True, conn=None):
     try:
@@ -2984,6 +2995,63 @@ class Vm(object):
         else:
             do_pull(cmd.srcPath, cmd.destPath)
 
+    def take_volumes_shallow_backup(self, task_spec, volumes, dst_backup_paths):
+        # type: (Vm, jsonobject.JsonObject, list[xmlobject.XmlObject], dict[str, str]) -> None
+        class VolumeInfo(object):
+            def __init__(self, dev_name):
+                self.dev_name = dev_name  # type: str
+                self.end_time = None  # type: float
+
+        class ShallowBackupDaemon(plugin.TaskDaemon):
+            def __init__(self, domain):
+                super(ShallowBackupDaemon, self).__init__(task_spec, 'TakeVolumeBackup', report_progress=False)
+                self.domain = domain
+
+            def _cancel(self):
+                logger.debug("cancel vm[uuid:%s] backup" % self.domain.name())
+                for v in volume_backup_info.values():
+                    if self.domain.blockJobInfo(v.dev_name, 0):
+                        self.domain.blockJobAbort(v.dev_name)
+
+            def _get_percent(self):
+                pass
+
+        volume_backup_info = {}
+        for volume in volumes:
+            target_disk, _ = self._get_target_disk(volume)
+            volume_backup_info[str(volume.deviceId)] = VolumeInfo(target_disk.target.dev_)
+
+        with ShallowBackupDaemon(self.domain):
+            self._do_take_volumes_shallow_backup(volume_backup_info, dst_backup_paths)
+
+    def _do_take_volumes_shallow_backup(self, volume_backup_info, dst_backup_paths):
+        dom = self.domain
+        flags = libvirt.VIR_DOMAIN_BLOCK_COPY_TRANSIENT_JOB | libvirt.VIR_DOMAIN_BLOCK_COPY_SHALLOW
+        for device_id, v in volume_backup_info.items():
+            vol_dir = os.path.dirname(dst_backup_paths[device_id])
+            linux.rm_dir_force(vol_dir)
+            os.makedirs(vol_dir, 0755)
+
+            logger.info("start copying {}/{} ...".format(self.uuid, v.dev_name))
+            dom.blockCopy(v.dev_name, "<disk type='file'><source file='{}'/><driver type='qcow2'/></disk>"
+                          .format(dst_backup_paths[device_id]), None, flags)
+
+        while time.sleep(5) or any(not v.end_time for v in volume_backup_info.values()):
+            for v in volume_backup_info.values():
+                if v.end_time:
+                    continue
+
+                info = dom.blockJobInfo(v.dev_name, 0)
+                if not info:
+                    raise Exception('blockjob not found on disk: ' + v.dev_name)
+                elif info['cur'] == info['end']:
+                    v.end_time = time.time()
+                    logger.info("completed copying {}/{} ...".format(self.uuid, v.dev_name))
+
+        with vm_operator.TemporaryPauseVmOperator(dom):
+            for v in volume_backup_info.values():
+                dom.blockJobAbort(v.dev_name)
+
     @staticmethod
     def from_virt_domain(domain):
         vm = Vm()
@@ -4682,16 +4750,9 @@ class VmPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
+
     @kvmagent.replyerror
     def migrate_vm(self, req):
-        @linux.retry(times=3, sleep_time=1)
-        def get_connect(srcHostIP):
-            conn = libvirt.open('qemu+tcp://{0}/system'.format(srcHostIP))
-            if conn is None:
-                logger.warn('unable to connect qemu on host {0}'.format(cmd.srcHostIp))
-                raise kvmagent.KvmError('unable to connect qemu on host %s' % (cmd.srcHostIp))
-            return conn
-
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = MigrateVmResponse()
         try:
@@ -5060,7 +5121,7 @@ class VmPlugin(kvmagent.KvmAgent):
             backupArgs[deviceId] = get_backup_args()
 
         logger.info('taking backup for vm: %s' % cmd.vmUuid)
-        res = isc.backup_volumes(cmd.vmUuid, backupArgs.values(), dstdir, Report.from_cmd(cmd, "VmBackup"), get_task_stage(cmd))
+        res = isc.backup_volumes(cmd.vmUuid, backupArgs.values(), dstdir, Report.from_spec(cmd, "VmBackup"), get_task_stage(cmd))
         logger.info('completed backup for vm: %s' % cmd.vmUuid)
 
         backres = jsonobject.loads(res)
@@ -5130,7 +5191,7 @@ class VmPlugin(kvmagent.KvmAgent):
         if cmd.volumeWriteBandwidth:
             speed = cmd.volumeWriteBandwidth
 
-        mode = isc.backup_volume(cmd.vmUuid, nodename, bitmap, mode, dest, speed, Report.from_cmd(cmd, "VolumeBackup"), get_task_stage(cmd))
+        mode = isc.backup_volume(cmd.vmUuid, nodename, bitmap, mode, dest, speed, Report.from_spec(cmd, "VolumeBackup"), get_task_stage(cmd))
         logger.info('finished backup volume with mode: %s' % mode)
 
         if mode == 'incremental':

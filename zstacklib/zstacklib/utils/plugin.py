@@ -65,11 +65,11 @@ class TaskDaemon(object):
     A daemon to track a long task, task will be canceled automatically when timeout or canceled by api.
     '''
 
-    def __init__(self, cmd, task_name, timeout=0, report_progress=True):
-        self.api_id = get_api_id(cmd)
+    def __init__(self, task_spec, task_name, timeout=0, report_progress=True):
+        self.api_id = get_api_id(task_spec)
         self.task_name = task_name
         self.timeout = timeout
-        self.progress_reporter = AutoReporter.from_cmd(cmd, task_name, self._get_percent) if report_progress else None
+        self.progress_reporter = AutoReporter.from_spec(task_spec, task_name, self._get_percent) if report_progress else None
         self.cancel_thread = threading.Timer(timeout, self._timeout_cancel) if timeout > 0 else None
         self.closed = False
 
