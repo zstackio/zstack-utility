@@ -52,6 +52,58 @@ def get_default_ip():
     cmd(False)
     return cmd.stdout.strip()
 
+class CollectTime(object):
+    def __init__(self, start_time, end_time, total_collect_time):
+        self.start_time = start_time.strftime("%Y-%m-%d %H:%M:%S")
+        self.end_time = end_time.strftime("%Y-%m-%d %H:%M:%S")
+        self.total_collect_time = total_collect_time
+
+class FailDetail(object):
+    def __init__(self, fail_log_name, fail_cause):
+        self.fail_log_name = fail_log_name
+        self.fail_cause = fail_cause
+
+class Summary(object):
+    def __init__(self):
+        self.fail_count = 0
+        self.success_count = 0
+        self.collect_time_list = {}
+        self.fail_list = {}
+
+    def add_fail(self, log_type, ip, fail_detail):
+        ip_dict = self.fail_list.get(log_type)
+        if ip_dict is None:
+            self.fail_list[log_type] = {ip: [fail_detail]}
+            return
+
+        detail_list = ip_dict.get(ip)
+        if detail_list is None:
+            ip_dict[ip] = [fail_detail]
+            return
+
+        detail_list.append(fail_detail)
+
+    def add_collect_time(self, log_type, ip, collect_time):
+        ip_dict = self.collect_time_list.get(log_type)
+        if ip_dict is None:
+            self.collect_time_list[log_type] = {ip: [collect_time]}
+            return
+
+        time_list = ip_dict.get(ip)
+        if time_list is None:
+            ip_dict[ip] = [collect_time]
+            return
+
+        time_list.append(collect_time)
+
+    def persist(self, collect_dir):
+        summary_file = collect_dir + 'summary'
+        with open(summary_file, 'a+') as f:
+            f.write(json.dumps({"fail_count": self.fail_count,
+                                "success_count": self.success_count,
+                                "fail_list": self.fail_list,
+                                "collect_time_list": self.collect_time_list}, default=lambda o: o.__dict__,
+                               indent=4))
 
 class CollectFromYml(object):
     failed_flag = False
@@ -61,16 +113,12 @@ class CollectFromYml(object):
     logger_dir = '/var/log/zstack/'
     logger_file = 'zstack-ctl.log'
     vrouter_tmp_log_path = '/home'
-    success_count = 0
-    fail_count = 0
     threads = []
     local_type = 'local'
     host_type = 'host'
     check_lock = threading.Lock()
     suc_lock = threading.Lock()
     fail_lock = threading.Lock()
-    fail_list = []
-    collect_time_list = []
     ha_conf_dir = "/var/lib/zstack/ha/"
     ha_conf_file = ha_conf_dir + "ha.yaml"
     check = False
@@ -79,6 +127,7 @@ class CollectFromYml(object):
     max_thread_num = 20
     DEFAULT_ZSTACK_HOME = '/usr/local/zstack/apache-tomcat/webapps/zstack/'
     HA_KEEPALIVED_CONF = "/etc/keepalived/keepalived.conf"
+    summary = Summary()
 
     def __init__(self, ctl, collect_dir, detail_version, time_stamp, args):
         self.ctl = ctl
@@ -497,7 +546,6 @@ class CollectFromYml(object):
                 if not os.path.exists(local_collect_dir):
                     os.makedirs(local_collect_dir)
                 for log in log_list:
-                    error_log_name = "%s\t%s\t%s" % (type, get_default_ip(), log['name'])
                     dest_log_dir = local_collect_dir
                     if 'name' in log:
                         dest_log_dir = local_collect_dir + '%s/' % log['name']
@@ -518,7 +566,7 @@ class CollectFromYml(object):
                             logger.info(
                                 "exec shell %s successfully!You can check the file at %s" % (command, file_path))
                         elif type != 'sharedblock':
-                            self.add_fail_count(1, error_log_name, output)
+                            self.add_fail_count(1, type, get_default_ip(), log['name'], output)
                     else:
                         if os.path.exists(log['dir']):
                             command = self.build_collect_cmd(log, dest_log_dir)
@@ -531,9 +579,9 @@ class CollectFromYml(object):
                                     warn("Didn't find log [%s] on %s localhost" % (log['name'], type))
                                     logger.warn("Didn't find log [%s] on %s" % (log['name'], type))
                             else:
-                                self.add_fail_count(1, error_log_name, output)
+                                self.add_fail_count(1, type, get_default_ip(), log['name'], output)
                         else:
-                            self.add_fail_count(1, error_log_name,
+                            self.add_fail_count(1, type, get_default_ip(), log['name'],
                                                 "the dir path %s did't find on %s localhost" % (log['dir'], type))
                             logger.warn("the dir path %s did't find on %s localhost" % (log['dir'], type))
                             warn("the dir path %s did't find on %s localhost" % (log['dir'], type))
@@ -545,8 +593,7 @@ class CollectFromYml(object):
                 return 1
             end = datetime.now()
             total_collect_time = str(round((end - start).total_seconds(), 1)) + 's'
-            self.collect_time_list.append(
-                '%s\t%s\t%s\t%s\t%s\n' % (type, get_default_ip(), start, end, total_collect_time))
+            self.summary.add_collect_time(type, get_default_ip(), CollectTime(start, end, total_collect_time))
             command = 'test "$(ls -A "%s" 2>/dev/null)" || echo The directory is empty' % local_collect_dir
             (status, output) = commands.getstatusoutput(command)
             if "The directory is empty" in output:
@@ -557,14 +604,14 @@ class CollectFromYml(object):
 
     def add_success_count(self):
         self.suc_lock.acquire()
-        self.success_count += 1
+        self.summary.success_count += 1
         self.suc_lock.release()
 
-    def add_fail_count(self, fail_log_number, fail_log_name, fail_cause):
+    def add_fail_count(self, fail_log_number, log_type, ip, fail_log_name, fail_cause):
         self.fail_lock.acquire()
         try:
-            self.fail_count += fail_log_number
-            self.fail_list.append('%s\t%s\n' % (fail_log_name, fail_cause))
+            self.summary.fail_count += fail_log_number
+            self.summary.add_fail(log_type, ip, FailDetail(fail_log_name, fail_cause))
         except Exception:
             self.fail_lock.release()
         self.fail_lock.release()
@@ -642,7 +689,6 @@ class CollectFromYml(object):
                     command = "mkdir -p %s " % tmp_log_dir
                     run_remote_command(command, host_post_info)
                     for log in log_list:
-                        error_log_name = "%s\t%s\t%s" % (type, host_post_info.host, log['name'])
                         dest_log_dir = tmp_log_dir
                         if 'name' in log:
                             command = "mkdir -p %s" % tmp_log_dir + '%s/' % log['name']
@@ -665,7 +711,7 @@ class CollectFromYml(object):
                                 logger.info(
                                     "exec shell %s successfully!You can check the file at %s" % (command, file_path))
                             elif type != 'sharedblock':
-                                self.add_fail_count(1, error_log_name, output)
+                                self.add_fail_count(1, type, host_post_info.host, log['name'], output)
                         else:
                             if file_dir_exist("path=%s" % log['dir'], host_post_info):
                                 command = self.build_collect_cmd(log, dest_log_dir)
@@ -681,9 +727,9 @@ class CollectFromYml(object):
                                         logger.warn(
                                             "Didn't find log [%s] on %s %s" % (log['name'], type, host_post_info.host))
                                 else:
-                                    self.add_fail_count(1, error_log_name, output)
+                                    self.add_fail_count(1, type, host_post_info.host, log['name'], output)
                             else:
-                                self.add_fail_count(1, error_log_name, "the dir path %s did't find on %s %s" % (
+                                self.add_fail_count(1, type, host_post_info.host, log['name'], "the dir path %s did't find on %s %s" % (
                                     log['dir'], type, host_post_info.host))
                                 logger.warn(
                                     "the dir path %s did't find on %s %s" % (log['dir'], type, host_post_info.host))
@@ -698,8 +744,8 @@ class CollectFromYml(object):
 
                 end = datetime.now()
                 total_collect_time = str(round((end - start).total_seconds(), 1)) + 's'
-                self.collect_time_list.append(
-                    '%s\t%s\t%s\t%s\t%s\n' % (type, host_post_info.host, start, end, total_collect_time))
+                self.summary.add_collect_time(
+                    type, host_post_info.host, CollectTime(start, end, total_collect_time))
                 command = 'test "$(ls -A "%s" 2>/dev/null)" || echo The directory is empty' % tmp_log_dir
                 (status, output) = run_remote_command(command, host_post_info, return_status=True, return_output=True)
                 if "The directory is empty" in output:
@@ -711,7 +757,7 @@ class CollectFromYml(object):
                 info_verbose("Successfully collect log from %s %s!" % (type, host_post_info.host))
         else:
             warn("%s %s is unreachable!" % (type, host_post_info.host))
-            self.add_fail_count(len(log_list), "%s\t%s\t%s" % (type, host_post_info.host, 'unreachable'),
+            self.add_fail_count(len(log_list), type, host_post_info.host, 'unreachable',
                                 ("%s %s is unreachable!" % (type, host_post_info.host)))
 
     def get_total_size(self):
@@ -730,15 +776,6 @@ class CollectFromYml(object):
         print '%-50s%-50s' % ('TotalSize(exclude exec statements)', colored(total_size, 'green'))
         for key in sorted(self.check_result.keys()):
             print '%-50s%-50s' % (key, colored(self.check_result[key], 'green'))
-
-    def generate_summary(self, collect_dir):
-        summary_file = collect_dir + 'summary.txt'
-        with open(summary_file, 'a+') as f:
-            f.write('success:\t%s\tfail:\t%s' % (self.success_count, self.fail_count) + '\n')
-            for item in self.collect_time_list:
-                f.write(item)
-            for item in self.fail_list:
-                f.write(item)
 
     def format_date(self, str_date):
         try:
@@ -811,7 +848,6 @@ class CollectFromYml(object):
             error_verbose("timeout must be a positive integer")
 
     def run(self, collect_dir, detail_version, time_stamp, args):
-
         zstack_path = os.environ.get('ZSTACK_HOME', None)
         if zstack_path and zstack_path != self.DEFAULT_ZSTACK_HOME:
             self.DEFAULT_ZSTACK_HOME = zstack_path
@@ -839,7 +875,7 @@ class CollectFromYml(object):
         if self.check:
             self.get_total_size()
         else:
-            self.generate_summary(collect_dir)
+            self.summary.persist(collect_dir)
             if len(threading.enumerate()) > 1:
                 info_verbose("It seems that some collect log thread timeout, "
                              "if compress failed, please use \'cd %s && tar zcf collect-log-%s-%s.tar.gz collect-log-%s-%s\' manually"
@@ -847,9 +883,9 @@ class CollectFromYml(object):
             self.generate_tar_ball(run_command_dir, detail_version, time_stamp)
             if self.failed_flag is True:
                 info_verbose("The collect log generate at: %s.tar.gz,success %s,fail %s" % (
-                    collect_dir, self.success_count, self.fail_count))
+                    collect_dir, self.summary.success_count, self.summary.fail_count))
                 info_verbose(colored("Please check the reason of failed task in log: %s\n" % (
                         self.logger_dir + self.logger_file), 'yellow'))
             else:
                 info_verbose("The collect log generate at: %s/collect-log-%s-%s.tar.gz,success %s,fail %s" % (
-                    run_command_dir, detail_version, time_stamp, self.success_count, self.fail_count))
+                    run_command_dir, detail_version, time_stamp, self.summary.success_count, self.summary.fail_count))
