@@ -428,6 +428,10 @@ class ReportVmShutdownEventCmd(object):
     def __init__(self):
         self.vmUuid = None
 
+class ReportVmRebootEventCmd(object):
+    def __init__(self):
+        self.vmUuid = None
+
 class CheckVmStateRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(CheckVmStateRsp, self).__init__()
@@ -5944,6 +5948,30 @@ class VmPlugin(kvmagent.KvmAgent):
             domain_xml = dom.XMLDesc(0)
             vm_uuid = dom.name()
 
+            @thread.AsyncThread
+            def report_to_management_node():
+                cmd = ReportVmRebootEventCmd()
+                cmd.vmUuid = vm_uuid
+                logger.debug('report reboot event of vm ' + vm_uuid)
+                http.json_dump_post(url, cmd, {'commandpath': '/kvm/reportvmreboot'})
+
+            # make sure reboot event only report once
+            op = self._get_operation(vm_uuid)
+            if op is None or op.op != VmPlugin.VM_OP_REBOOT:
+                if op is None:
+                    logger.debug("ruanshixin op is None")
+                else:
+                    logger.debug("ruanshixin %s" % (op.op))
+                url = self.config.get(kvmagent.SEND_COMMAND_URL)
+                if not url:
+                    logger.warn(
+                        'cannot find SEND_COMMAND_URL, unable to report shutdown event of vm[uuid:%s]' % vm_uuid)
+                    return
+
+                report_to_management_node()
+
+            self._record_operation(vm_uuid, VmPlugin.VM_OP_REBOOT)
+
             is_cdrom = self._check_boot_from_cdrom(domain_xml)
             if not is_cdrom:
                 logger.debug(
@@ -5951,7 +5979,6 @@ class VmPlugin(kvmagent.KvmAgent):
                 return
             logger.debug(
                 'the vm[uuid:%s] is set to boot from the cdrom, for the policy[bootFromHardDisk], the reboot will boot from hdd' % vm_uuid)
-            self._record_operation(vm_uuid, VmPlugin.VM_OP_REBOOT)
             try:
                 dom.destroy()
             except:
