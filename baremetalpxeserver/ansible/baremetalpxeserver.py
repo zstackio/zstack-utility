@@ -11,6 +11,7 @@ banner("Starting to deploy baremetal pxeserver agent")
 start_time = datetime.now()
 # set default value
 file_root = "files/baremetalpxeserver"
+kvm_file_root = "files/kvm"
 pip_url = "https=//pypi.python.org/simple/"
 proxy = ""
 sproxy = ""
@@ -54,6 +55,7 @@ host_post_info.remote_port = remote_port
 if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
 
+host_arch = get_remote_host_arch(host_post_info)
 # include zstacklib.py
 (distro, distro_version, distro_release, _) = get_remote_host_info(host_post_info)
 zstacklib_args = ZstackLibArgs()
@@ -190,10 +192,11 @@ copy_arg.src = "%s/noVNC.tar.gz" % file_root
 copy_arg.dest = "/var/lib/zstack/baremetal/"
 copy(copy_arg, host_post_info)
 
-# name: copy zwatch-vm-agent.linux-amd64.bin
+# name: copy zwatch-vm-agent
+zwatch_vm_agent_name = "zwatch-vm-agent{}".format('' if host_arch == 'x86_64' else '_' + host_arch)
 copy_arg = CopyArg()
-copy_arg.src = "%s/zwatch-vm-agent.linux-amd64.bin" % file_root
-copy_arg.dest = VSFTPD_ROOT_PATH
+copy_arg.src = os.path.join(kvm_file_root, zwatch_vm_agent_name)
+copy_arg.dest = os.path.join(VSFTPD_ROOT_PATH, 'zwatch-vm-agent')
 copy(copy_arg, host_post_info)
 
 copy_arg = CopyArg()
