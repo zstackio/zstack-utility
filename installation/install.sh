@@ -692,13 +692,14 @@ cs_check_zstack_data_exist(){
 check_system(){
     echo_title "Check System"
     echo ""
-    cat /etc/*-release |egrep -i -h "centos |Red Hat Enterprise|Alibaba" >>$ZSTACK_INSTALL_LOG 2>&1
+    cat /etc/*-release |egrep -i -h "centos |Red Hat Enterprise|Alibaba|NeoKylin" >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -eq 0 ]; then
         grep -q 'CentOS release 6' /etc/system-release && IS_CENTOS_6=0 || IS_CENTOS_6=1
         grep -q 'CentOS Linux release 7' /etc/system-release && IS_CENTOS_7=0 || IS_CENTOS_7=1
         grep -q 'Red Hat Enterprise Linux Server release 7' /etc/system-release && IS_RHEL_7=0 || IS_RHEL_7=1
         grep -q 'Alibaba Group Enterprise Linux' /etc/system-release && IS_ALIOS_7=0 || IS_ALIOS_7=1
         grep -q 'iSoft Linux release 4' /etc/system-release && IS_ISOFT_4=0 || IS_ISOFT_4=1
+        grep -q 'NeoKylin Linux' /etc/system-release && IS_CENTOS_7=0 || IS_CENTOS_7=1
         if [ $IS_CENTOS_6 -eq 0 ]; then
             OS=$CENTOS6
         elif [ $IS_CENTOS_7 -eq 0 ]; then
