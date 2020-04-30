@@ -3668,6 +3668,11 @@ class Vm(object):
             e(devices, 'controller', None, {'type': 'usb', 'index': '0'})
 
             # make sure there are three usb controllers, each for USB 1.1/2.0/3.0
+            if IS_AARCH64 and kvmagent.get_host_os_type() == "centos":
+                # for aarch64 centos, only support default controller(qemu-xhci 3.0) on current qemu version(2.12_0-18)
+                e(devices, 'controller', None, {'type': 'usb', 'index': '1'})
+                e(devices, 'controller', None, {'type': 'usb', 'index': '2'})
+                return
             e(devices, 'controller', None, {'type': 'usb', 'index': '1', 'model': 'ehci'})
             e(devices, 'controller', None, {'type': 'usb', 'index': '2', 'model': 'nec-xhci'})
 
