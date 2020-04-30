@@ -1852,6 +1852,8 @@ done
         self._check_vhost_net_conf(0)
         self._try_reload_modprobe('vhost_net')
 
+        return jsonobject.dumps(rsp)
+
     @kvmagent.replyerror
     def get_dev_capacity(self, req):
         rsp = GetDevCapacityRsp()
