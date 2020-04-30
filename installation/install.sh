@@ -1363,7 +1363,7 @@ iz_install_unzip(){
     fi
     if [ $OS = $CENTOS6 ]; then
         rpm -ivh $unzip_el6_rpm >>$ZSTACK_INSTALL_LOG 2>&1
-    elif [ $OS = $CENTOS6 ];then
+    elif [ $OS = $CENTOS7 ];then
         rpm -ivh $unzip_el7_rpm >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     [ $? -ne 0 ] && fail "Install unzip fail."

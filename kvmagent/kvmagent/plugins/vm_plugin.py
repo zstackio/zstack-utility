@@ -15,6 +15,7 @@ import uuid
 import json
 
 import libvirt
+from distutils.version import LooseVersion
 #from typing import List, Any, Union
 
 import zstacklib.utils.ip as ip
@@ -737,6 +738,11 @@ def is_kylin402():
 def is_spiceport_driver_supported():
     # qemu-system-aarch64 not supported char driver: spiceport
     return True if shell.run("which qemu-system-aarch64") == 1 else shell.run("qemu-system-aarch64 -h | grep 'chardev spiceport'") == 0
+
+def get_gic_version(cpu_num):
+    kernel_release = platform.release().split("-")[0]
+    if is_kylin402() and cpu_num <= 8 and LooseVersion(kernel_release) < LooseVersion('4.15.0'):
+        return 2
 
 # Occasionally, libvirt might fail to list VM ...
 def get_console_without_libvirt(vmUuid):
@@ -3219,7 +3225,7 @@ class Vm(object):
             features = e(root, 'features')
             for f in ['apic', 'pae']:
                 e(features, f)
-            if 'kylin' not in OS_VERSION.lower():
+            if not is_kylin402():
                 e(features, 'acpi')
             if cmd.kvmHiddenState is True:
                 kvm = e(features, "kvm")
@@ -3235,7 +3241,7 @@ class Vm(object):
             # always set ioapic driver to kvm after libvirt 3.4.0
             if is_ioapic_supported and not IS_AARCH64:
                 e(features, "ioapic", attrib={'driver': 'kvm'})
-            if IS_AARCH64 and is_kylin402() and int(cmd.cpuNum) <= 8:
+            if get_gic_version(cmd.cpuNum) == 2:
                 e(features, "gic", attrib={'version': '2'})
 
         def make_qemu_commandline():
