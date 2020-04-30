@@ -134,7 +134,7 @@ if remote_pass is not None and remote_user != 'root':
 host_arch = get_remote_host_arch(host_post_info)
 IS_AARCH64 = host_arch == 'aarch64'
 
-if distro.lower() == "centos":
+if distro in RPM_BASED_OS:
     # get remote releasever
     get_releasever_script = '''
     cat << 'EOF' > /opt/get_releasever
@@ -161,11 +161,19 @@ if distro.lower() == "centos":
     copy_arg.dest = '/opt/'
     copy(copy_arg, host_post_info)
     run_remote_command("rpm -q zstack-release;[[ $? -eq 0 ]] || yum install -y /opt/zstack-release-{}-1.el7.zstack.noarch.rpm".format(releasever), host_post_info)
-elif IS_AARCH64 and 'kylin' in distro.lower():
+elif distro in DEB_BASED_OS:
     releasever = get_mn_apt_release()
+    # copy and install zstack-release
+    copy_arg = CopyArg()
+    copy_arg.src = '/opt/zstack-dvd/{0}/{1}/Packages/zstack-release_{1}_arm64.deb'.format(host_arch, releasever)
+    copy_arg.dest = '/opt/'
+    copy(copy_arg, host_post_info)
+    run_remote_command("dpkg -l zstack-release || dpkg -i /opt/zstack-release_{}_arm64.deb".format(releasever), host_post_info)
+else:
+    error("unsupported OS!")
 
 if IS_AARCH64:
-    if distro.lower() == "centos":
+    if distro in RPM_BASED_OS:
         dnsmasq_pkg = "%s/dnsmasq-2.76-2.el7.aarch64.rpm" % file_root
         dnsmasq_local_pkg = "%s/dnsmasq-2.76-2.el7.aarch64.rpm" % kvm_root
         collectd_pkg = "%s/collectd_exporter_aarch64" % file_root
@@ -178,7 +186,7 @@ if IS_AARCH64:
         zwatch_vm_agent_install_sh_local = "%s/vm-tools.sh" % file_root
         zwatch_vm_agent_version_local = "%s/agent_version" % file_root
         pushgateway_local_pkg = "%s/pushgateway" % file_root
-    elif distro in ["Kylin", "Debian"]:
+    elif distro in DEB_BASED_OS:
         collectd_pkg = "%s/collectd_exporter_aarch64" % file_root
         node_collectd_pkg = "%s/node_exporter_aarch64" % file_root
         qemu_img_pkg = "%s/qemu-img-aarch64" % file_root
