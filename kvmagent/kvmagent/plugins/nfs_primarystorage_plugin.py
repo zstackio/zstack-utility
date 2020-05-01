@@ -295,7 +295,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
                                         (cmd.srcFolderPath, dst_folder_path, rsync_excludes)))
 
             stage = get_task_stage(cmd)
-            reporter = Report.from_cmd(cmd, "MigrateVolume")
+            reporter = Report.from_spec(cmd, "MigrateVolume")
 
             def _get_progress(synced):
                 def get_written(regex):

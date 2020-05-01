@@ -2,6 +2,7 @@
 
 @author: frank
 '''
+import abc
 import os
 import os.path
 import socket
@@ -260,6 +261,14 @@ def get_folder_size(path = "."):
         for f in filenames:
             fp = os.path.join(dirpath, f)
             total_size += (get_local_file_disk_usage(fp) if os.path.isfile(fp) else 0)
+    return total_size
+
+def get_filesystem_folder_size(path = "."):
+    total_size = 0
+    for dirpath, dirnames, filenames in os.walk(path):
+        for f in filenames:
+            fp = os.path.join(dirpath, f)
+            total_size += (os.path.getsize(fp) if os.path.isfile(fp) else 0)
     return total_size
 
 def is_mounted(path=None, url=None):
@@ -851,9 +860,9 @@ def qcow2_rebase(backing_file, target):
     fmt = get_img_fmt(backing_file)
     shell.call('%s -F %s -f qcow2 -b %s %s' % (qemu_img.subcmd('rebase'), fmt, backing_file, target))
 
-def qcow2_rebase_no_check(backing_file, target):
-    fmt = get_img_fmt(backing_file)
-    shell.call('%s -F %s -u -f qcow2 -b %s %s' % (qemu_img.subcmd('rebase'), fmt, backing_file, target))
+def qcow2_rebase_no_check(backing_file, target, backing_fmt=None):
+    fmt = backing_fmt if backing_fmt else get_img_fmt(backing_file)
+    shell.call('%s -F %s -u -f qcow2 -b "%s" %s' % (qemu_img.subcmd('rebase'), fmt, backing_file, target))
 
 def qcow2_virtualsize(file_path):
     file_path = shellquote(file_path)
@@ -887,6 +896,23 @@ def qcow2_get_backing_file(path):
         backing_file_size = struct.unpack('>L', backing_file_info[8:])[0]
         resp.seek(backing_file_offset)
         return resp.read(backing_file_size)
+
+def qcow2_get_virtual_size(path):
+    # type: (str) -> int
+    if not os.path.exists(path):
+        # for rbd image
+        out = shell.call("%s %s | grep -P -o 'virtual size:\K.*' | awk -F '[()a-zA-Z]' '{print $3}'" %
+                (qemu_img.subcmd('info'), path))
+        return int(out.strip())
+
+    with open(path, 'r') as resp:
+        magic = resp.read(4)
+        if magic != 'QFI\xfb':
+            return os.path.getsize(path)
+
+        # read virtual size info from header
+        resp.seek(24)
+        return struct.unpack('>Q', resp.read(8))[0]
 
 def qcow2_direct_get_backing_file(path):
     o = shell.call('dd if=%s bs=4k count=1 iflag=direct' % path)
@@ -950,6 +976,81 @@ def qcow2_fill(seek, length, path, raise_excpetion=False):
 def qcow2_measure_required_size(path):
     out = shell.call("/usr/bin/qemu-img measure -f qcow2 -O qcow2 %s | grep 'required size' | cut -d ':' -f 2" % path)
     return long(out.strip(' \t\r\n'))
+
+
+class AbstractFileConverter(object):
+    __metaclass__ = abc.ABCMeta
+
+    def __init__(self):
+        pass
+
+    @abc.abstractmethod
+    def convert_to_file(self, src, dst):
+        pass
+
+    @abc.abstractmethod
+    def convert_from_file_with_backing(self, src, dst, backing, backing_fmt):
+        # type: (str, str, str, str) -> int
+        pass
+
+    @abc.abstractmethod
+    def get_backing_file(self, path):
+        pass
+
+    @abc.abstractmethod
+    def get_size(self, path):
+        # type: (str) -> int
+        pass
+
+    @abc.abstractmethod
+    def exists(self, path):
+        # type: (str) -> bool
+        pass
+
+def upload_chain_to_filesystem(converter, first_node_path, dst_vol_dir, overwrite=False):
+    # type: (AbstractFileConverter, str, str, bool) -> None
+
+    def upload(src_path):
+        dst_path = os.path.join(dst_vol_dir, os.path.basename(src_path))
+        if os.path.exists(dst_path):
+            if overwrite:
+                rm_file_force(dst_path)
+            else:
+                return dst_path
+
+        converter.convert_to_file(src_path, dst_path)
+        return dst_path
+
+    dst_current_node_path = upload(first_node_path)
+    parent_path = converter.get_backing_file(first_node_path)
+    while parent_path:
+        dst_parent_path = upload(parent_path)
+        qcow2_rebase_no_check(dst_parent_path, dst_current_node_path)
+
+        dst_current_node_path = dst_parent_path
+        parent_path = converter.get_backing_file(parent_path)
+
+
+def download_chain_from_filesystem(converter, first_node_path, dst_vol_dir, overwrite=False):
+    # type: (AbstractFileConverter, str, str, bool) -> list[tuple[str, int]]
+    downloaded_chain_info = []
+    def download(src_path):
+        dst_path = os.path.join(dst_vol_dir, os.path.basename(src_path))
+        src_backing_path = qcow2_get_backing_file(src_path)
+        dst_backing_path = os.path.join(dst_vol_dir, os.path.basename(src_backing_path)) if src_backing_path else ''
+        if converter.exists(dst_path) and not overwrite:
+            size = converter.get_size(dst_path)
+        else:
+            backing_fmt = get_img_fmt(src_backing_path) if src_backing_path else None
+            size = converter.convert_from_file_with_backing(src_path, dst_path, dst_backing_path, backing_fmt)
+
+        downloaded_chain_info.append((dst_path, size))
+        if src_backing_path:
+            download(src_backing_path)
+
+    download(first_node_path)
+    return downloaded_chain_info
+
 
 def rmdir_if_empty(dirpath):
     try:
@@ -1229,13 +1330,19 @@ def get_pids_by_process_name(name):
     return output.split('\n')
 
 def get_pids_by_process_fullname(name):
-    cmd = shell.ShellCmd("pkill -0 -e -f '%s'" % name)
+    return kill_process_by_fullname(name, 0)
+
+def kill_process_by_fullname(name, sig):
+    #type: (str, int) -> list[str]
+    cmd = shell.ShellCmd("pkill -%d -e -f '%s'" % (sig, name))
     output = cmd(False)
     if cmd.return_code != 0:
         return []
 
     # format from 'bash killed (pid 32162)'
-    return [line.split()[-1][0:-1] for line in output.splitlines()]
+    pids = [line.split()[-1][0:-1] for line in output.splitlines()]
+    logger.debug("killed -%d process details: %s" % (sig, output))
+    return pids
 
 def get_nic_name_by_mac(mac):
     names = get_nic_names_by_mac(mac)

@@ -1,5 +1,9 @@
+import contextlib
+import libvirt
 import os
+import time
 
+from zstacklib.utils import vm_operator
 from zstacklib.utils import log
 from zstacklib.utils import uuidhelper, xmlobject
 from zstacklib.utils import shell
@@ -8,8 +12,20 @@ from zstacklib.utils import linux
 from zstacklib.utils.sqlite import Sqlite
 
 from kvmagent import kvmagent
+from kvmagent.plugins import vm_plugin
 
 logger = log.get_logger(__name__)
+
+
+class TakeVolumesBackupsResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(TakeVolumesBackupsResponse, self).__init__()
+        self.volumeBackupInfos = []  # type:list[VolumeBackupInfo]
+
+
+class InitZBoxBackupResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(InitZBoxBackupResponse, self).__init__()
 
 
 class VolumeBackupInfo(object):
@@ -27,6 +43,12 @@ class InitZBoxResponse(kvmagent.AgentResponse):
 class EjectZBoxResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(EjectZBoxResponse, self).__init__()
+
+
+class SyncZBoxResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(SyncZBoxResponse, self).__init__()
+        self.info = None  # type: ZBoxInfo
 
 
 class RefreshZBoxResponse(kvmagent.AgentResponse):
@@ -124,14 +146,63 @@ def get_mounted_zbox_mountpath_and_devname():
     return dicts
 
 
+class SshfsRemoteStorage(object):
+    def __init__(self, vm_uuid, info):
+        self.vm_uuid = vm_uuid
+        self.info = info
+
+    def __enter__(self):
+        if not os.path.exists(self.info.zboxPath):
+            os.makedirs(self.info.zboxPath, 0755)
+        linux.sshfs_mount_with_vm_uuid(self.vm_uuid, self.info.username, self.info.hostname, self.info.sshPort,
+                                       self.info.password, self.info.zboxPath, self.info.zboxPath)
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        for i in xrange(6):
+            if linux.fumount(self.info.zboxPath, 5) == 0:
+                break
+            else:
+                time.sleep(5)
+
+
 class ZBoxPlugin(kvmagent.KvmAgent):
+    KVM_TAKE_VOLUMES_SHALLOW_BACKUP_PATH = "/zbox/volumes/takeshallowbackup"
+    KVM_ZBOX_BACKUP_INIT_PATH = "/zbox/backup/init"
+
     DELETE_BITS = "/zbox/deletebits"
     INIT_ZBOX = "/zbox/init"
     EJECT_ZBOX = "/zbox/eject"
     REFRESH_ZBOX = "/zbox/refresh"
+    SYNC_ZBOX = "/zbox/sync"
 
     def __init__(self):
         super(ZBoxPlugin, self).__init__()
+
+    @kvmagent.replyerror
+    def take_volumes_shallow_backup(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = TakeVolumesBackupsResponse()
+        vm = vm_plugin.get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
+
+        if not cmd.remoteInfo:
+            vm.take_volumes_shallow_backup(cmd, cmd.volumes, cmd.dstDeviceIdPath)
+        else:
+            with SshfsRemoteStorage(cmd.vmUuid, cmd.remoteInfo):
+                vm.take_volumes_shallow_backup(cmd, cmd.volumes, cmd.dstDeviceIdPath)
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def init_zbox_backup(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = InitZBoxBackupResponse()
+
+        if not os.path.exists(cmd.installPath):
+            logger.debug("init backup[uuid:%s] on zbox[uuid:%s]" % (cmd.backupUuid, cmd.zboxUuid))
+            os.makedirs(cmd.installPath, 0755)
+            linux.write_file(os.path.join(cmd.installPath, "name"), cmd.name, create_if_not_exist=True)
+
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def init_zbox(self, req):
@@ -175,6 +246,7 @@ class ZBoxPlugin(kvmagent.KvmAgent):
         rsp = RefreshZBoxResponse()
 
         mounted_dev = get_mounted_zbox_mountpath_and_devname()
+        time.sleep(5)
         for devname, label in get_zbox_devname_and_label():
             mount_path = build_mount_path(label)
             busnum, devnum = get_usb_bus_dev_num(devname)
@@ -185,7 +257,7 @@ class ZBoxPlugin(kvmagent.KvmAgent):
             info.devNum = devnum
 
             if mount_path in mounted_dev:
-                if mounted_dev[mount_path] != devname:
+                if os.path.basename(mounted_dev[mount_path]) != devname:
                     # zbox maybe removed before, remount
                     if shell.run("umount -f %s" % mount_path) == 0 and not mount_label(label, mount_path, raise_exception=False):
                         info.status = 'Error'
@@ -224,22 +296,51 @@ class ZBoxPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def sync_zbox(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = SyncZBoxResponse()
+        if linux.is_mounted(cmd.mountPath):
+            info = ZBoxInfo()
+            info.totalCapacity, info.availableCapacity = linux.get_disk_capacity_by_df(cmd.mountPath)
+            rsp.info = info
+        else:
+            rsp.error = "zbox is not mounted."
+            rsp.success = False
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     def delete_bits(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = DeleteBitsResponse()
+
+        dpath = cmd.installPath.strip()
+        if not dpath.startswith("/var/zbox-"):
+            raise Exception('you can only delete bits under zbox')
+
+        def all_killed(_):
+            return all(not os.path.exists('/proc/%s' % pid) for pid in pids)
+
+        pids = linux.kill_process_by_fullname(dpath, 15)
+        if not linux.wait_callback_success(all_killed, None, 5):
+            linux.kill_process_by_fullname(dpath, 9)
+            linux.wait_callback_success(all_killed, None, 5)
+
         if cmd.isDir:
-            linux.rm_dir_force(cmd.installPath)
+            shell.call("rm -rf " + dpath)
         else:
-            linux.rm_file_force(cmd.installPath)
+            linux.rm_file_force(dpath)
 
         return jsonobject.dumps(rsp)
 
     def start(self):
         http_server = kvmagent.get_http_server()
 
+        http_server.register_async_uri(self.KVM_TAKE_VOLUMES_SHALLOW_BACKUP_PATH, self.take_volumes_shallow_backup)
+        http_server.register_async_uri(self.KVM_ZBOX_BACKUP_INIT_PATH, self.init_zbox_backup)
         http_server.register_async_uri(self.INIT_ZBOX, self.init_zbox)
         http_server.register_async_uri(self.EJECT_ZBOX, self.eject_zbox)
         http_server.register_async_uri(self.REFRESH_ZBOX, self.refresh_zbox)
+        http_server.register_async_uri(self.SYNC_ZBOX, self.sync_zbox)
         http_server.register_async_uri(self.DELETE_BITS, self.delete_bits)
 
     def stop(self):

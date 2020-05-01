@@ -1153,6 +1153,7 @@ upgrade_zstack(){
     show_spinner cs_config_zstack_properties
     show_spinner cs_append_iptables
     show_spinner cs_setup_nginx
+    show_spinner cs_enable_usb_storage
 
     # if -i is used, then do not upgrade zstack ui
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
@@ -2132,6 +2133,7 @@ config_system(){
     show_spinner cs_add_cronjob
     show_spinner cs_append_iptables
     show_spinner cs_setup_nginx
+    show_spinner cs_enable_usb_storage
     if [ ! -z $NEED_NFS ];then
         show_spinner cs_setup_nfs
     fi
@@ -2538,6 +2540,15 @@ EOF
     service iptables save
     pass
 } >> $ZSTACK_INSTALL_LOG 2>&1
+
+cs_enable_usb_storage(){
+    echo_subtitle "Configure usb storage mod"
+    lsmod | grep -q usb_storage
+    if [[ $? -ne 0 ]]; then
+        modprobe usb_storage || true
+        echo 'usb_storage' > /etc/modules-load.d/usb-storage.conf || true
+    fi
+}
 
 check_zstack_server(){
     curl --noproxy -H "Content-Type: application/json" -d '{"org.zstack.header.apimediator.APIIsReadyToGoMsg": {}}' http://localhost:"$MN_PORT"/zstack/api >>$ZSTACK_INSTALL_LOG 2>&1
