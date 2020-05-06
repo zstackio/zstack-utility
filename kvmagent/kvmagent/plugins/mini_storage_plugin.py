@@ -364,6 +364,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
     DOWNLOAD_BITS_FROM_IMAGESTORE_PATH = "/ministorage/imagestore/download"
     CREATE_EMPTY_VOLUME_PATH = "/ministorage/volume/createempty"
     CREATE_SECONDARY_VOLUME = "/ministorage/volume/createsecondary"
+    CREATE_EMPTY_CACHE_VOLUME_PATH = "/ministorage/cachevolume/createempty"
     CHECK_BITS_PATH = "/ministorage/bits/check"
     RESIZE_VOLUME_PATH = "/ministorage/volume/resize"
     CONVERT_IMAGE_TO_VOLUME = "/ministorage/image/tovolume"
@@ -390,6 +391,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_IMAGESTORE_PATH, self.download_from_imagestore)
         http_server.register_async_uri(self.CREATE_EMPTY_VOLUME_PATH, self.create_empty_volume)
         http_server.register_async_uri(self.CREATE_SECONDARY_VOLUME, self.create_secondary_volume)
+        http_server.register_async_uri(self.CREATE_EMPTY_CACHE_VOLUME_PATH, self.create_empty_cache_volume)
         http_server.register_async_uri(self.CONVERT_IMAGE_TO_VOLUME, self.convert_image_to_volume)
         http_server.register_async_uri(self.CHECK_BITS_PATH, self.check_bits)
         http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
@@ -464,6 +466,8 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
                 if r == 0:
                     bash.bash_r("mkdir -p %s" % BACKUP_DIR)
                     bash.bash_r("mv /etc/drbd.d/*.res %s" % BACKUP_DIR)
+
+                linux.umount_by_url("/var/lib/zstack/colo/cachevolumes/")
                 lvm.wipe_fs(diskPaths, vgUuid)
 
             cmd = shell.ShellCmd("vgcreate -qq --addtag '%s::%s::%s::%s' --metadatasize %s %s %s" %
@@ -714,6 +718,8 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
             if lvm.lv_exists(install_abs_path):
                 lvm.delete_image(install_abs_path, IMAGE_TAG, deactive=False)
         else:
+            linux.umount_by_url(install_abs_path)
+
             logger.info('deleting lv volume: ' + install_abs_path)
             r = drbd.DrbdResource(self.get_name_from_installPath(path))
             if r.exists is True:
@@ -793,6 +799,45 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
     def convertInstallPathToAbsolute(path):
         # type: (str) -> str
         return path.replace("mini:/", "/dev")
+
+    @staticmethod
+    def convertInstallPathToMount(path):
+        # type: (string) -> string
+        return path.replace("mini:/", "/tmp")
+
+    @kvmagent.replyerror
+    def create_empty_cache_volume(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = VolumeRsp()
+
+        install_abs_path = get_absolute_path_from_install_path(cmd.installPath)
+        try:
+            if not lvm.lv_exists(install_abs_path):
+                lvm.create_lv_from_cmd(install_abs_path, cmd.size, cmd,
+                                       "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()), False)
+                lvm.active_lv(install_abs_path)
+                shell.call("mkfs.ext4 -F %s" % install_abs_path)
+                mountPath = self.convertInstallPathToMount(cmd.installPath)
+                if not os.path.exists(mountPath):
+                    linux.mkdir(mountPath)
+
+                if not linux.is_mounted(cmd.mountPath):
+                    linux.mount(install_abs_path, mountPath)
+
+                linux.qcow2_create(mountPath + '/' + mountPath.rsplit('/', 1)[-1], cmd.size)
+                linux.umount(mountPath)
+                linux.rmdir_if_empty(mountPath)
+                lvm.deactive_lv(install_abs_path)
+        except Exception as e:
+            lvm.delete_lv(install_abs_path)
+            logger.debug('failed to create empty volume[uuid:%s, size:%s] at %s' %
+                         (cmd.volumeUuid, cmd.size, cmd.installPath))
+            raise e
+
+        logger.debug('successfully create empty volume[uuid:%s, size:%s] at %s and mount' %
+                     (cmd.volumeUuid, cmd.size, cmd.installPath))
+        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def upload_to_filesystem(self, req):
@@ -1017,6 +1062,25 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         return r
 
 
+    @staticmethod
+    def handle_cache_volume(drbd_role, mount_path, install_abs_path):
+        if drbd_role == drbd.DrbdRole.Primary:
+            lvm.active_lv(install_abs_path)
+
+            if not os.path.exists(mount_path):
+                linux.mkdir(mount_path)
+
+            if not linux.is_mounted(mount_path, install_abs_path):
+                linux.mount(install_abs_path, mount_path)
+
+            logger.debug("successfully mount %s to %s" % (install_abs_path, mount_path))
+        else:
+            if linux.is_mounted(mount_path):
+                linux.umount(mount_path)
+
+            lvm.deactive_lv(install_abs_path)
+
+
     @kvmagent.replyerror
     def active_lv(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -1026,6 +1090,10 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         install_abs_path = get_absolute_path_from_install_path(cmd.installPath)
         if lvm.has_lv_tag(install_abs_path, IMAGE_TAG):
             lvm.qcow2_lv_recursive_active(install_abs_path, lvm.LvmlockdLockType.SHARE)
+            return jsonobject.dumps(rsp)
+
+        if cmd.mountPath:
+            self.handle_cache_volume(cmd.role, cmd.mountPath, install_abs_path)
             return jsonobject.dumps(rsp)
 
         drbdResource = drbd.DrbdResource(self.get_name_from_installPath(cmd.installPath))
