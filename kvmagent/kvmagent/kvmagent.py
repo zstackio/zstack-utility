@@ -72,6 +72,9 @@ def get_host_os_type():
     is_debian = any(map(lambda x: x in os_info, debian_list))
     return 'debian' if is_debian else 'centos'
 
+def get_colo_qemu_path():
+    return '/var/lib/zstack/colo/qemu-system-x86_64'
+
 def get_qemu_path():
     global _qemu_path
     if not _qemu_path:
