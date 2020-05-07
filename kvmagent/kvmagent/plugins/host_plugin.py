@@ -1491,7 +1491,7 @@ done
         # make install mxgpu driver if need to
         mxgpu_driver_tar = "/var/lib/zstack/mxgpu_driver.tar.gz"
         if os.path.exists(mxgpu_driver_tar):
-            r, o, e = bash_roe("tar xvf %s -C /tmp; cd /tmp/mxgpu_driver; make install" % mxgpu_driver_tar)
+            r, o, e = bash_roe("tar xvf %s -C /tmp; cd /tmp/mxgpu_driver; make; make install" % mxgpu_driver_tar)
             if r != 0:
                 rsp.success = False
                 rsp.error = "failed to install mxgpu driver, %s, %s" % (o, e)
@@ -1499,11 +1499,12 @@ done
             # rm mxgpu driver tar
             os.remove(mxgpu_driver_tar)
 
-        # check installed ko
-        r, _, _ = bash_roe("lsmod | grep gim")
-        if r == 0:
+        # check installed ko and its usage
+        _, used, _ = bash_roe("lsmod | grep gim | awk '{ print $3 }'")
+        used = used.strip()
+        if used and int(used) > 0:
             rsp.success = False
-            rsp.error = "gim.ko already installed, need to run `modprobe -r gim` first"
+            rsp.error = "gim.ko already installed and being used, need to run `modprobe -r gim` first"
             return
 
         # prepare gim_config
