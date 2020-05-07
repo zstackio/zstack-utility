@@ -1502,10 +1502,18 @@ done
         # check installed ko and its usage
         _, used, _ = bash_roe("lsmod | grep gim | awk '{ print $3 }'")
         used = used.strip()
+
         if used and int(used) > 0:
             rsp.success = False
             rsp.error = "gim.ko already installed and being used, need to run `modprobe -r gim` first"
             return
+
+        if used and int(used) == 0:
+            _, used, _ = bash_roe("modprobe -r gim; lsmod | grep gim | awk '{ print $3 }'")
+            if used:
+                rsp.success = False
+                rsp.error = "failed to uninstall gim.ko, need to run `modprobe -r gim` manually"
+                return
 
         # prepare gim_config
         gim_config = "/etc/gim_config"
