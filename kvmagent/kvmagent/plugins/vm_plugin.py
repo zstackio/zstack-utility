@@ -4211,6 +4211,8 @@ class Vm(object):
         if iftype != 'hostdev':
             if nic.driverType:
                 e(interface, 'model', None, attrib={'type': nic.driverType})
+                e(interface, 'rom', None, attrib={'file': ''})
+                e(interface, 'driver', None, attrib={'name': 'qemu'})
             elif nic.useVirtio:
                 e(interface, 'model', None, attrib={'type': 'virtio'})
                 e(interface, 'rom', None, attrib={'file': ''})
