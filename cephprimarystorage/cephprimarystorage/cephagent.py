@@ -299,7 +299,11 @@ class CephAgent(plugin.TaskManager):
         if ret != 0 and not ceph.is_xsky():
             return None
 
-        r, size = bash.bash_ro("rbd du %s | tail -1 | awk '{ print $3 }'" % path)
+        r, jstr = bash.bash_ro("rbd du %s --format json" % path)
+        if r == 0 and bool(jstr):
+            return jsonobject.loads(jstr).images[0].used_size
+
+        r, size = bash.bash_ro("rbd du %s | awk 'END { print $3 }'" % path)
 
         if r != 0:
             return None
