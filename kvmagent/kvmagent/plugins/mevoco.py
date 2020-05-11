@@ -83,7 +83,11 @@ def get_phy_dev_from_bridge_name(bridge_name):
     if phy_dev[:2] == "vx":
         phy_dev = phy_dev.replace("vx", "vxlan").replace("_", "")
     else:
-        phy_dev = phy_dev.replace("_", ".")
+        phy_nic = linux.get_bridge_phy_nic_name_from_alias(bridge_name)
+        if not phy_nic:
+            phy_dev = phy_dev.replace("_", ".")
+        else:
+            phy_dev = re.sub(r"^.*_", "%s." % phy_nic, phy_dev)
 
     return phy_dev
 
