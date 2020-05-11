@@ -224,6 +224,13 @@ def get_ethernet_info():
 
     return devices.values()
 
+# only for novlan and vlan networks
+def set_bridge_alias_using_phy_nic_name(bridge_name, nic_name):
+    shell.call("ip link set %s alias 'phy_nic: %s'" % (bridge_name, nic_name))
+
+def get_bridge_phy_nic_name_from_alias(bridge_name):
+    return shell.call("ip link show %s | grep alias | head -1 | awk '{ print $NF }'" % bridge_name).strip()
+
 def get_total_disk_size(dir_path):
     stat = os.statvfs(dir_path)
     return stat.f_blocks * stat.f_frsize
