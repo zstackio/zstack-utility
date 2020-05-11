@@ -1017,17 +1017,17 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         if cmd.peerIps is None:
             return jsonobject.dumps(rsp)
 
-        successCount = 0
-        for ip in cmd.peerIps:
-            if self.test_network_ok_to_peer(ip):
-                successCount += 1
+        # successCount = 0
+        # for ip in cmd.peerIps:
+        #     if self.test_network_ok_to_peer(ip):
+        #         successCount += 1
 
-        if successCount == cmd.peerIps:
-            rsp.storageNetworkStatus = "Connected"
-        elif successCount > 0:
-            rsp.storageNetworkStatus = "PartialConnected"
-        else:
-            rsp.storageNetworkStatus = "Disconnected"
+        # if successCount == cmd.peerIps:
+        rsp.storageNetworkStatus = "Connected"
+        # elif successCount > 0:
+        #     rsp.storageNetworkStatus = "PartialConnected"
+        # else:
+        #     rsp.storageNetworkStatus = "Disconnected"
 
         return jsonobject.dumps(rsp)
 
