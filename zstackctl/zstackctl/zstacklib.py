@@ -30,8 +30,8 @@ yum_server = ""
 trusted_host = ""
 ansible.constants.HOST_KEY_CHECKING = False
 
-RPM_BASED_OS = "CentOS", "RedHat", "Alibaba"
-DEB_BASED_OS = "Ubuntu", "Debian"
+RPM_BASED_OS = ["centos", "redhat", "alibaba"]
+DEB_BASED_OS = ["ubuntu", "kylin", "uos", "debian"]
 
 
 def ignoreerror(func):
@@ -1021,7 +1021,8 @@ def get_remote_host_info(host_post_info):
         handle_ansible_start(ansible_start)
     else:
         if 'ansible_facts' in result['contacted'][host]:
-            (distro, major_version, release, distro_version) = [result['contacted'][host]['ansible_facts']['ansible_distribution'],
+            (distro, major_version, release, distro_version) = [
+                                 result['contacted'][host]['ansible_facts']['ansible_distribution'].lower(),
                                  int(result['contacted'][host]['ansible_facts']['ansible_distribution_major_version']),
                                  result['contacted'][host]['ansible_facts']['ansible_distribution_release'],
                                  result['contacted'][host]['ansible_facts']['ansible_distribution_version']]

@@ -27,9 +27,10 @@ yum_server = ""
 apt_server = ""
 trusted_host = ""
 ansible.constants.HOST_KEY_CHECKING = False
+supported_arch_list = ["x86_64", "aarch64", "mips64el"]
 
-RPM_BASED_OS = "CentOS", "RedHat", "Alibaba"
-DEB_BASED_OS = "Ubuntu", "Debian", "Kylin"
+RPM_BASED_OS = ["centos", "redhat", "alibaba"]
+DEB_BASED_OS = ["ubuntu", "uos", "kylin", "debian"]
 
 class AgentInstallArg(object):
     def __init__(self, trusted_host, pip_url, virtenv_path, init_install):
@@ -225,6 +226,44 @@ def create_log(logger_dir):
                                                    backupCount=30)
     handler.setFormatter(fmt)
     logger.addHandler(handler)
+
+def with_arch(todo_list=supported_arch_list, host_arch=None):
+    def wrap(f):
+        @functools.wraps(f)
+        def inner(*args, **kwargs):
+            if set(todo_list) - set(supported_arch_list):
+                error("Unknown arch in {}".format(todo_list))
+            if not host_arch:
+                error("Host arch is needed.")
+            if host_arch in todo_list:
+                return f(*args, **kwargs)
+            else :
+                logger.info("Skip function[{}] on {} host.".format(f.__name__, host_arch))
+        return inner
+    return wrap
+
+
+def on_redhat_based(distro=None, exclude=[]):
+    def wrap(f):
+        @functools.wraps(f)
+        def innner(*args, **kwargs):
+            if not distro:
+                error("Distro info is needed.")
+            if distro in list(set(RPM_BASED_OS) - set(exclude)):
+                return f(*args, **kwargs)
+        return innner
+    return wrap
+
+def on_debian_based(distro=None, exclude=[]):
+    def wrap(f):
+        @functools.wraps(f)
+        def innner(*args, **kwargs):
+            if not distro:
+                error("Distro info is needed.")
+            if distro in list(set(DEB_BASED_OS) - set(exclude)):
+                return f(*args, **kwargs)
+        return innner
+    return wrap
 
 def get_mn_yum_release():
     return commands.getoutput("rpm -q zstack-release |awk -F'-' '{print $3}'").strip()
@@ -794,6 +833,13 @@ def copy(copy_arg, host_post_info):
             # pass the copy result to outside
             return change_status
 
+def copy_to_remote(src, dest, args, host_post_info):
+    copy_arg = CopyArg()
+    copy_arg.src = src
+    copy_arg.dest = dest
+    copy_arg.args = args
+    return copy(copy_arg, host_post_info)
+
 def sync(sync_arg, host_post_info):
     '''The copy module recursively copy facility does not scale to lots (>hundreds) of files.
     so we add sync module which will use ansible synchronize module, which is a wrapper around rsync.'''
@@ -905,7 +951,7 @@ def check_host_reachable(host_post_info, warning=False):
 def run_remote_command(command, host_post_info, return_status=False, return_output=False):
     '''return status all the time except return_status is False, return output is set to True'''
     if 'yum' in command:
-        set_yum0 = "rpm -q zstack-release && releasever=`awk '{print $3}' /etc/zstack-release` || releasever=%s;export YUM0=$releasever;" % (get_mn_yum_release())
+        set_yum0 = "rpm -q zstack-release >/dev/null && releasever=`awk '{print $3}' /etc/zstack-release` || releasever=%s;export YUM0=$releasever;" % (get_mn_yum_release())
         command = set_yum0 + command
     start_time = datetime.now()
     host_post_info.start_time = start_time
@@ -1121,7 +1167,7 @@ def _get_remote_host_info_from_result(result, host_post_info):
     else:
         if 'ansible_facts' in result['contacted'][host]:
             (distro, major_version, release, distro_version) = [
-                result['contacted'][host]['ansible_facts']['ansible_distribution'],
+                result['contacted'][host]['ansible_facts']['ansible_distribution'].lower(),
                 int(result['contacted'][host]['ansible_facts']['ansible_distribution_major_version']),
                 result['contacted'][host]['ansible_facts']['ansible_distribution_release'],
                 result['contacted'][host]['ansible_facts']['ansible_distribution_version']]
