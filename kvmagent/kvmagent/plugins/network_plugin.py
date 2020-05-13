@@ -150,10 +150,12 @@ class NetworkPlugin(kvmagent.KvmAgent):
         shell.call('echo 1 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged')
         shell.call('echo 1 > /proc/sys/net/ipv4/conf/default/forwarding')
 
+    @in_bash
     def _configure_bridge_mtu(self, bridgeName, interf, mtu=None):
         if mtu is not None:
             shell.call("ip link set mtu %d dev %s" % (mtu, interf))
-            #shell.call("ip link set mtu %d dev %s" % (mtu, bridgeName))
+            if bridgeName is not None:
+                shell.call("ip link set mtu %d dev %s" % (mtu, bridgeName))
 
     def _configure_bridge_learning(self, bridgeName, interf, learning='off'):
         shell.call("bridge link set dev %s learning %s" % (interf, learning))
@@ -358,6 +360,14 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
+    def create_single_vxlan_bridge(self, cmd):
+        linux.create_vxlan_interface(cmd.vni, cmd.vtepIp)
+
+        interf = "vxlan" + str(cmd.vni)
+        linux.create_vxlan_bridge(interf, cmd.bridgeName, cmd.peers)
+        linux.set_device_uuid_alias(interf, cmd.l2NetworkUuid)
+        self._configure_bridge_mtu(cmd.bridgeName, interf, cmd.mtu)
+
     @lock.lock('create_bridge')
     @kvmagent.replyerror
     def create_vxlan_bridge(self, req):
@@ -369,12 +379,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
             rsp.success = False
             return jsonobject.dumps(rsp)
 
-        linux.create_vxlan_interface(cmd.vni, cmd.vtepIp)
-
-        interf = "vxlan" + str(cmd.vni)
-        linux.create_vxlan_bridge(interf, cmd.bridgeName, cmd.peers)
-        linux.set_device_uuid_alias(interf, cmd.l2NetworkUuid)
-        self._configure_bridge_mtu(cmd.bridgeName, interf, cmd.mtu)
+        self.create_single_vxlan_bridge(cmd)
 
         return jsonobject.dumps(rsp)
 
@@ -384,18 +389,15 @@ class NetworkPlugin(kvmagent.KvmAgent):
         # Create VXLAN interface using vtep ip then create bridge
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CreateVxlanBridgesResponse()
-        if not (cmd.l2Networks and cmd.vtepIp):
-            rsp.error = "vni or vtepip is none"
-            rsp.success = False
-            return jsonobject.dumps(rsp)
 
-        for l2NetworkUuid, vni in cmd.l2Networks.__dict__.items():
-            linux.create_vxlan_interface(vni, cmd.vtepIp)
-            interf = "vxlan" + str(vni)
-            linux.create_vxlan_bridge(interf, "br_vx_%s" % vni, cmd.peers)
-            linux.set_device_uuid_alias(interf, l2NetworkUuid)
-            #this api is called for vxlan pool, bridgeName is None
-            self._configure_bridge_mtu(cmd.bridgeName, interf, cmd.mtu)
+        for bridgeCmd in cmd.bridgeCmds:
+            if not (bridgeCmd.vni and bridgeCmd.vtepIp):
+                rsp.error = "vni or vtepip is none"
+                rsp.success = False
+                return jsonobject.dumps(rsp)
+
+        for bridgeCmd in cmd.bridgeCmds:
+            self.create_single_vxlan_bridge(bridgeCmd)
 
         return jsonobject.dumps(rsp)
 
