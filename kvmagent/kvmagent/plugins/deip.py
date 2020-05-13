@@ -20,15 +20,21 @@ EBTABLES_CMD = ebtables.get_ebtables_cmd()
 IPTABLES_CMD = iptables.get_iptables_cmd()
 IP6TABLES_CMD = iptables.get_ip6tables_cmd()
 
+
 class AgentRsp(object):
     def __init__(self):
         self.success = True
         self.error = None
 
+class Eip(object):
+    def _ipv6address2tag(self, ip):
+        return ip.replace(":", "-")
 
-def collect_vip_statistics():
-    def parse_eip_string(estr):
-        vnic_ip = ip = vip_uuid = None
+    def _tag2ipv6address(self, tag):
+        return tag.replace("-", ":")
+
+    def parse_eip_string(self, estr):
+        nic_ip = ip = vip_uuid = vm_uuid = nic_name = eip_uuid = None
         ws = estr.split(',')
         for w in ws:
             if w.startswith('eip_addr'):
@@ -36,28 +42,39 @@ def collect_vip_statistics():
             elif w.startswith('vip'):
                 vip_uuid = w.split(':')[1]
             elif w.startswith('vnic_ip'):
-                vnic_ip = w.split(':')[1]
+                nic_ip = w.split(':')[1]
+            elif w.startswith('vm'):
+                vm_uuid = w.split(':')[1]
+            elif w.startswith('eip:'):
+                eip_uuid = w.split(':')[1]
+            elif w.startswith('vnic:'):
+                nic_name = w.split(':')[1]
 
         #ipv6 addr has been formatted
         try:
             vipAddr = netaddr.IPAddress(ip)
             version = vipAddr.version
         except Exception as e:
-            ip = ipv6TagToIpv6Address(ip)
+            ip = self._tag2ipv6address(ip)
             version = 6
 
         try:
-            netaddr.IPAddress(vnic_ip)
+            netaddr.IPAddress(nic_ip)
         except Exception as e:
-            vnic_ip = ipv6TagToIpv6Address(vnic_ip)
+            nic_ip = self._tag2ipv6address(nic_ip)
 
-        return ip, vip_uuid, vnic_ip, version
+        # logger.debug('parse_eip_string: {} {} {} {} {} {} {}'.format(ip, vip_uuid, nic_ip, version, vm_uuid, eip_uuid, nic_name))
 
-    def find_namespace_name_by_ip(ipAddr, version):
+        return ip, vip_uuid, nic_ip, version, vm_uuid, eip_uuid, nic_name
+
+    def generate_namespace_name(self, bridge, vip):
+        return "%s_%s" % (bridge, vip.replace(".", "_"))
+
+    def find_namespace_name_by_ip(self, ipaddr, version):
         if version == 4:
-            ns_name_suffix = ipAddr.replace('.', '_')
+            ns_name_suffix = ipaddr.replace('.', '_')
         else:
-            ns_name_suffix = ipAddr
+            ns_name_suffix = ipaddr
 
         o = bash_o('ip netns')
         for l in o.split('\n'):
@@ -67,135 +84,16 @@ def collect_vip_statistics():
 
         return None
 
-    def create_metric(line, ip, vip_uuid, vnic_ip, metrics, version):
-        pairs = line.split()
-        pkts = pairs[0]
-        bs = pairs[1]
-        if version == 4:
-            src = pairs[7]
-            dst = pairs[8]
-        else:
-            src = pairs[6]
-            dst = pairs[7]
-
-        # out traffic
-        if src.startswith(vnic_ip):
-            g = metrics['zstack_vip_out_bytes']
-            g.add_metric([vip_uuid], float(bs))
-
-            g = metrics['zstack_vip_out_packages']
-            g.add_metric([vip_uuid], float(pkts))
-        # in traffic
-        if dst.startswith(vnic_ip):
-            g = metrics['zstack_vip_in_bytes']
-            g.add_metric([vip_uuid], float(bs))
-
-            g = metrics['zstack_vip_in_packages']
-            g.add_metric([vip_uuid], float(pkts))
-
-    def collect(ip, vip_uuid, vnic_ip, version):
-        ns_name = find_namespace_name_by_ip(ip, version)
-        if not ns_name:
-            return []
-
-        CHAIN_NAME = "vip-perf"
-        if version == 4:
-            o = bash_o("ip netns exec {{ns_name}} iptables -nvxL {{CHAIN_NAME}} | sed '1,2d'")
-        else:
-            o = bash_o("ip netns exec {{ns_name}} ip6tables -nvxL {{CHAIN_NAME}} | sed '1,2d'")
-
-        for l in o.split('\n'):
-            l = l.strip(' \t\r\n')
-            if l:
-                create_metric(l, ip, vip_uuid, vnic_ip, metrics, version)
-
-    o = bash_o('ip -o -d link')
-    words = o.split()
-    eip_strings = [w for w in words if w.startswith('eip:')]
-
-    ret = []
-    eips = {}
-    for estr in eip_strings:
-        ip, vip_uuid, vnic_ip, version = parse_eip_string(estr)
-        if ip is None:
-            logger.warn("no ip field found in %s" % estr)
-            continue
-        if vip_uuid is None:
-            logger.warn("no vip field found in %s" % estr)
-            continue
-        if vnic_ip is None:
-            logger.warn("no vnic_ip field found in %s" % estr)
-            continue
-
-        eips[ip] = (vip_uuid, vnic_ip, version)
-
-    VIP_LABEL_NAME = 'VipUUID'
-    metrics = {
-        'zstack_vip_out_bytes': GaugeMetricFamily('zstack_vip_out_bytes', 'VIP outbound traffic in bytes', labels=[VIP_LABEL_NAME]),
-        'zstack_vip_out_packages': GaugeMetricFamily('zstack_vip_out_packages', 'VIP outbound traffic packages', labels=[VIP_LABEL_NAME]),
-        'zstack_vip_in_bytes': GaugeMetricFamily('zstack_vip_in_bytes', 'VIP inbound traffic in bytes', labels=[VIP_LABEL_NAME]),
-        'zstack_vip_in_packages': GaugeMetricFamily('zstack_vip_in_packages', 'VIP inbound traffic packages', labels=[VIP_LABEL_NAME])
-    }
-
-    for ip, (vip_uuid, vnic_ip, version) in eips.items():
-        collect(ip, vip_uuid, vnic_ip, version)
-
-    return metrics.values()
-
-kvmagent.register_prometheus_collector(collect_vip_statistics)
-
-class DEip(kvmagent.KvmAgent):
-
-    APPLY_EIP_PATH = "/flatnetworkprovider/eip/apply"
-    DELETE_EIP_PATH = "/flatnetworkprovider/eip/delete"
-    BATCH_APPLY_EIP_PATH = "/flatnetworkprovider/eip/batchapply"
-    BATCH_DELETE_EIP_PATH = "/flatnetworkprovider/eip/batchdelete"
-
-    def start(self):
-        http_server = kvmagent.get_http_server()
-
-        http_server.register_async_uri(self.APPLY_EIP_PATH, self.apply_eip)
-        http_server.register_async_uri(self.BATCH_APPLY_EIP_PATH, self.apply_eips)
-        http_server.register_async_uri(self.DELETE_EIP_PATH, self.delete_eip)
-        http_server.register_async_uri(self.BATCH_DELETE_EIP_PATH, self.delete_eips)
-
-    def stop(self):
-        pass
-
-    @kvmagent.replyerror
-    def apply_eip(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        self._apply_eips([cmd.eip])
-        return jsonobject.dumps(AgentRsp())
-
-    @kvmagent.replyerror
-    def apply_eips(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        self._apply_eips(cmd.eips)
-        return jsonobject.dumps(AgentRsp())
-
-    @kvmagent.replyerror
-    def delete_eips(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        self._delete_eips(cmd.eips)
-        return jsonobject.dumps(AgentRsp())
-
-    @kvmagent.replyerror
-    def delete_eip(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        self._delete_eips([cmd.eip])
-        return jsonobject.dumps(AgentRsp())
-
     @bash.in_bash
     @lock.file_lock('/run/xtables.lock')
-    def _delete_eip(self, eip):
-        dev_base_name = eip.nicName.replace('vnic', '', 1)
+    def delete_eip_with_ns(self, ns, eip_uuid, version, nic_name):
+        dev_base_name = nic_name.replace('vnic', '', 1)
         dev_base_name = dev_base_name.replace(".", "_")
 
-        NIC_NAME = eip.nicName
+        NIC_NAME = nic_name
         CHAIN_NAME = '%s-gw' % NIC_NAME
-        NS_NAME = "%s_%s" % (eip.publicBridgeName, eip.vip.replace(".", "_"))
-        EIP_UUID = eip.eipUuid[-9:]
+        NS_NAME = ns
+        EIP_UUID = eip_uuid[-9:]
         PUB_ODEV = "%s_eo" % (EIP_UUID)
         PRI_ODEV = "%s_o" % (EIP_UUID)
 
@@ -251,19 +149,19 @@ class DEip(kvmagent.KvmAgent):
 
         delete_namespace()
         delete_outer_dev()
-        if int(eip.ipVersion) == 4:
+        if version == 4:
             delete_arp_rules()
-        else :
+        else:
             delete_ipv6_rules()
 
-    @lock.lock('eip')
-    def _delete_eips(self, eips):
-        for eip in eips:
-            self._delete_eip(eip)
+    @bash.in_bash
+    def delete_eip(self, eip):
+        ns = self.generate_namespace_name(eip.publicBridgeName, eip.vip)
+        self.delete_eip_with_ns(ns, eip.eipUuid, eip.ipVersion, eip.nicName)
 
     @bash.in_bash
     @lock.file_lock('/run/xtables.lock')
-    def _apply_eip(self, eip):
+    def apply_eip(self, eip):
         dev_base_name = eip.nicName.replace('vnic', '', 1)
         dev_base_name = dev_base_name.replace(".", "_")
         PUB_BR = eip.publicBridgeName
@@ -297,8 +195,8 @@ class DEip(kvmagent.KvmAgent):
         if int(eip.ipVersion) == 4:
             EIP_DESC = "eip:%s,eip_addr:%s,vnic:%s,vnic_ip:%s,vm:%s,vip:%s" % (eip.eipUuid, VIP, eip.nicName, NIC_IP, eip.vmUuid, eip.vipUuid)
         else:
-            vip_tag = ipv6AddressToTag(VIP)
-            nic_tag = ipv6AddressToTag(NIC_IP)
+            vip_tag = self._ipv6address2tag(VIP)
+            nic_tag = self._ipv6address2tag(NIC_IP)
             EIP_DESC = "eip:%s,eip_addr:%s,vnic:%s,vnic_ip:%s,vm:%s,vip:%s" % (eip.eipUuid, vip_tag, eip.nicName, nic_tag, eip.vmUuid, eip.vipUuid)
 
         NS = "ip netns exec {{NS_NAME}}"
@@ -518,11 +416,11 @@ class DEip(kvmagent.KvmAgent):
 
         @bash.in_bash
         def add_filter_to_prevent_namespace_arp_request():
-            #add arp neighbor for private ip
+            # add arp neighbor for private ip
             bash_r('ip netns exec {{NS_NAME}} ip neighbor del {{NIC_IP}} dev {{PRI_IDEV}}')
             bash_r('ip netns exec {{NS_NAME}} ip neighbor add {{NIC_IP}} lladdr {{NIC_MAC}} dev {{PRI_IDEV}}')
 
-            #add ebtales to prevent eip namaespace send arp request
+            # add ebtales to prevent eip namaespace send arp request
             PRI_ODEV_CHAIN = "{{PRI_ODEV}}-gw"
 
             if bash_r(EBTABLES_CMD + ' -t nat -L {{PRI_ODEV_CHAIN}} > /dev/null 2>&1') != 0:
@@ -557,7 +455,7 @@ class DEip(kvmagent.KvmAgent):
 
         if int(eip.ipVersion) == 4:
             bash_r('eval {{NS}} ip link set {{PUB_IDEV}} up')
-            if newCreated :
+            if newCreated:
                 r, o = bash.bash_ro('eval {{NS}} arping -D -w 1 -c 3 -I {{PUB_IDEV}} {{VIP}}')
                 if r != 0 and "Unicast reply from" in o:
                     raise Exception('there are dupicated public [ip:%s] on public network, output: %s' % (VIP, o))
@@ -583,13 +481,178 @@ class DEip(kvmagent.KvmAgent):
             enable_ipv6_forwarding()
             create_ipv6_perf_monitor()
 
+
+def collect_vip_statistics():
+    def create_metric(line, ip, vip_uuid, vnic_ip, metrics, version):
+        pairs = line.split()
+        pkts = pairs[0]
+        bs = pairs[1]
+        if version == 4:
+            src = pairs[7]
+            dst = pairs[8]
+        else:
+            src = pairs[6]
+            dst = pairs[7]
+
+        # out traffic
+        if src.startswith(vnic_ip):
+            g = metrics['zstack_vip_out_bytes']
+            g.add_metric([vip_uuid], float(bs))
+
+            g = metrics['zstack_vip_out_packages']
+            g.add_metric([vip_uuid], float(pkts))
+        # in traffic
+        if dst.startswith(vnic_ip):
+            g = metrics['zstack_vip_in_bytes']
+            g.add_metric([vip_uuid], float(bs))
+
+            g = metrics['zstack_vip_in_packages']
+            g.add_metric([vip_uuid], float(pkts))
+
+    def collect(ip, vip_uuid, vnic_ip, version, ns_name):
+        if not ns_name:
+            return []
+
+        CHAIN_NAME = "vip-perf"
+        if version == 4:
+            o = bash_o("ip netns exec {{ns_name}} iptables -nvxL {{CHAIN_NAME}} | sed '1,2d'")
+        else:
+            o = bash_o("ip netns exec {{ns_name}} ip6tables -nvxL {{CHAIN_NAME}} | sed '1,2d'")
+
+        for l in o.split('\n'):
+            l = l.strip(' \t\r\n')
+            if l:
+                create_metric(l, ip, vip_uuid, vnic_ip, metrics, version)
+
+    o = bash_o('ip -o -d link')
+    words = o.split()
+    eip_strings = [w for w in words if w.startswith('eip:')]
+
+    ret = []
+    eips = {}
+    eip_cmd = Eip()
+
+    for estr in eip_strings:
+        ip, vip_uuid, vnic_ip, version, _,_,_ = eip_cmd.parse_eip_string(estr)
+        if ip is None:
+            logger.warn("no ip field found in %s" % estr)
+            continue
+        if vip_uuid is None:
+            logger.warn("no vip field found in %s" % estr)
+            continue
+        if vnic_ip is None:
+            logger.warn("no vnic_ip field found in %s" % estr)
+            continue
+
+        eips[ip] = (vip_uuid, vnic_ip, version)
+
+    VIP_LABEL_NAME = 'VipUUID'
+    metrics = {
+        'zstack_vip_out_bytes': GaugeMetricFamily('zstack_vip_out_bytes', 'VIP outbound traffic in bytes', labels=[VIP_LABEL_NAME]),
+        'zstack_vip_out_packages': GaugeMetricFamily('zstack_vip_out_packages', 'VIP outbound traffic packages', labels=[VIP_LABEL_NAME]),
+        'zstack_vip_in_bytes': GaugeMetricFamily('zstack_vip_in_bytes', 'VIP inbound traffic in bytes', labels=[VIP_LABEL_NAME]),
+        'zstack_vip_in_packages': GaugeMetricFamily('zstack_vip_in_packages', 'VIP inbound traffic packages', labels=[VIP_LABEL_NAME])
+    }
+
+    for ip, (vip_uuid, vnic_ip, version) in eips.items():
+        ns_name = eip_cmd.find_namespace_name_by_ip(ip, version)
+        collect(ip, vip_uuid, vnic_ip, version, ns_name)
+
+    return metrics.values()
+
+
+@lock.lock('eip')
+def clean_eips_by_vms(vm_uuids):
+    # type: (list[str]) -> None
+    if len(vm_uuids) == 0:
+        return
+
+    vm_uuids = [u.replace('-', '') for u in vm_uuids]
+    o = bash_o('ip -o -d link')
+    words = o.split()
+    eip_strings = [w for w in words if w.startswith('eip:')]
+    # logger.debug('clean_eips_by_vms: ' + ','.join(vm_uuids) + ','.join(eip_strings))
+
+    eips = {}
+    eip = Eip()
+
+    for estr in eip_strings:
+        vip, _, vnic_ip, version, vm_uuid, eip_uuid, vnic_name = eip.parse_eip_string(estr)
+        # logger.debug('parse_eip_string: {} {} {} {} {} {}'.format(vip, vnic_ip, version, vm_uuid, eip_uuid, vnic_name))
+
+        if vm_uuid not in vm_uuids:
+            continue
+        if vip is None:
+            logger.warn("no ip field found in %s" % estr)
+            continue
+        if vnic_name is None:
+            logger.warn("no nic name field found in %s" % estr)
+            continue
+        if eip_uuid is None:
+            logger.warn("no eip_uuid field found in %s" % estr)
+            continue
+        ns_name = eip.find_namespace_name_by_ip(vip, version)
+        eips[vm_uuid] = (eip_uuid, ns_name, vnic_name, version)
+
+    logger.debug('clean_eips_by_vms eips: ' + ','.join(eips))
+
+    for vm_uuid, (eip_uuid, ns_name, nic_name, version) in eips.items():
+        eip.delete_eip_with_ns(ns_name, eip_uuid, version, nic_name)
+
+
+kvmagent.register_prometheus_collector(collect_vip_statistics)
+kvmagent.register_ha_cleanup_handler(clean_eips_by_vms)
+
+
+class DEip(kvmagent.KvmAgent):
+    APPLY_EIP_PATH = "/flatnetworkprovider/eip/apply"
+    DELETE_EIP_PATH = "/flatnetworkprovider/eip/delete"
+    BATCH_APPLY_EIP_PATH = "/flatnetworkprovider/eip/batchapply"
+    BATCH_DELETE_EIP_PATH = "/flatnetworkprovider/eip/batchdelete"
+
+    def start(self):
+        http_server = kvmagent.get_http_server()
+
+        http_server.register_async_uri(self.APPLY_EIP_PATH, self.apply_eip)
+        http_server.register_async_uri(self.BATCH_APPLY_EIP_PATH, self.apply_eips)
+        http_server.register_async_uri(self.DELETE_EIP_PATH, self.delete_eip)
+        http_server.register_async_uri(self.BATCH_DELETE_EIP_PATH, self.delete_eips)
+
+    def stop(self):
+        pass
+
+    @kvmagent.replyerror
+    def apply_eip(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        self._apply_eips([cmd.eip])
+        return jsonobject.dumps(AgentRsp())
+
+    @kvmagent.replyerror
+    def apply_eips(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        self._apply_eips(cmd.eips)
+        return jsonobject.dumps(AgentRsp())
+
+    @kvmagent.replyerror
+    def delete_eips(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        self._delete_eips(cmd.eips)
+        return jsonobject.dumps(AgentRsp())
+
+    @kvmagent.replyerror
+    def delete_eip(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        self._delete_eips([cmd.eip])
+        return jsonobject.dumps(AgentRsp())
+
+    @lock.lock('eip')
+    def _delete_eips(self, eips):
+        eip_cmd = Eip()
+        for eip in eips:
+            eip_cmd.delete_eip(eip)
+
     @lock.lock('eip')
     def _apply_eips(self, eips):
+        eip_cmd = Eip()
         for eip in eips:
-            self._apply_eip(eip)
-
-def ipv6AddressToTag(ip):
-    return ip.replace(":", "-")
-
-def ipv6TagToIpv6Address(tag):
-    return tag.replace("-", ":")
+            eip_cmd.apply_eip(eip)

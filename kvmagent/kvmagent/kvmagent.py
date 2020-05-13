@@ -41,6 +41,14 @@ class KvmAgent(plugin.Plugin):
         linux.recover_fake_dead('kvmagent')
         super(KvmAgent, self).__init__()
 
+ha_cleanup_handlers = [] # type: list[function]
+
+def register_ha_cleanup_handler(handler):
+    # type: (function) -> None
+    logger.debug('start registered ha cleanup handler %s' % handler)
+    global ha_cleanup_handlers
+    ha_cleanup_handlers.append(handler)
+    logger.debug('success registered ha cleanup handlers %s' % ha_cleanup_handlers)
 
 metric_collectors = []  # type: list[function]
 

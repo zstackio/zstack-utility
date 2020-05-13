@@ -45,6 +45,12 @@ class ReportSelfFencerCmd(object):
 last_multipath_run = time.time()
 
 
+def clean_network_config(vm_uuids):
+    for c in kvmagent.ha_cleanup_handlers:
+        logger.debug('clean network config handler: %s\n' % c)
+        thread.ThreadFacade.run_in_thread(c, (vm_uuids,))
+
+
 def kill_vm(maxAttempts, mountPaths=None, isFileSystem=None):
     zstack_uuid_pattern = "'[0-9a-f]{8}[0-9a-f]{4}[1-5][0-9a-f]{3}[89ab][0-9a-f]{3}[0-9a-f]{12}'"
 
@@ -228,6 +234,7 @@ class HaPlugin(kvmagent.KvmAgent):
 
                         if vm_uuids:
                             self.report_self_fencer_triggered([cmd.uuid], ','.join(vm_uuids))
+                            clean_network_config(vm_uuids)
 
                         # reset the failure count
                         failure = 0
@@ -331,6 +338,8 @@ class HaPlugin(kvmagent.KvmAgent):
 
                         if len(killed_vm_uuids) != 0:
                             self.report_self_fencer_triggered([cmd.vgUuid], ','.join(killed_vm_uuids))
+                            clean_network_config(killed_vm_uuids)
+
                         lvm.remove_partial_lv_dm(cmd.vgUuid)
 
                         if lvm.check_vg_status(cmd.vgUuid, cmd.storageCheckerTimeout, True)[0] is False:
@@ -436,6 +445,7 @@ class HaPlugin(kvmagent.KvmAgent):
 
                             if vm_uuids:
                                 self.report_self_fencer_triggered([cmd.uuid], ','.join(vm_uuids))
+                                clean_network_config(vm_uuids)
                         else:
                             delete_heartbeat_file()
 
@@ -538,6 +548,8 @@ class HaPlugin(kvmagent.KvmAgent):
 
                         if len(killed_vms) != 0:
                             self.report_self_fencer_triggered([ps_uuid], ','.join(killed_vms.keys()))
+                            clean_network_config(killed_vms.keys())
+
                         killed_vm_pids = killed_vms.values()
                         after_kill_vm()
 
