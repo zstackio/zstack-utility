@@ -352,6 +352,7 @@ class PrometheusPlugin(kvmagent.KvmAgent):
             conf_path = os.path.join(os.path.dirname(cmd.binaryPath), 'collectd.conf')
 
             conf = '''Interval {{INTERVAL}}
+# version {{VERSION}}
 FQDNLookup false
 
 LoadPlugin syslog
@@ -427,6 +428,7 @@ LoadPlugin virt
             conf = tmpt.render({
                 'INTERVAL': cmd.interval,
                 'INTERFACES': interfaces,
+                'VERSION': cmd.version,
             })
 
             need_restart_collectd = False
@@ -447,17 +449,17 @@ LoadPlugin virt
             mpid = linux.find_process_by_command('collectdmon', [conf_path])
 
             if not cpid:
-                bash_errorout('collectdmon -- -C %s' % conf_path)
+                bash_errorout('pkill -TERM -x collectdmon; collectdmon -- -C %s' % conf_path)
             else:
                 bash_errorout('kill -TERM %s' % cpid)
                 if need_restart_collectd:
                     if not mpid:
-                        bash_errorout('collectdmon -- -C %s' % conf_path)
+                        bash_errorout('pkill -TERM -x collectdmon; collectdmon -- -C %s' % conf_path)
                     else:
                         bash_errorout('kill -HUP %s' % mpid)
                 else:
                     if not mpid:
-                        bash_errorout('collectdmon -- -C %s' % conf_path)
+                        bash_errorout('pkill -TERM -x collectdmon; collectdmon -- -C %s' % conf_path)
 
         def run_in_systemd(binPath, args, log):
             def get_systemd_name(path):
@@ -503,11 +505,13 @@ WantedBy=multi-user.target
             # restart service regardless of conf changes, for ZSTAC-23539
             reload_and_restart_service(service_name)
 
+        @lock.file_lock("/run/collectd-conf.lock", locker=lock.Flock())
+        def start_collectd_exporter(cmd):
+            start_collectd(cmd)
+            start_exporter(cmd)
+
         @in_bash
         def start_exporter(cmd):
-            if "collectd_exporter" in cmd.binaryPath:
-                start_collectd(cmd)
-
             EXPORTER_PATH = cmd.binaryPath
             LOG_FILE = os.path.join(os.path.dirname(EXPORTER_PATH), cmd.binaryPath + '.log')
             ARGUMENTS = cmd.startupArguments
@@ -533,7 +537,10 @@ WantedBy=multi-user.target
                 interfaces.append(eth)
 
         for cmd in para.cmds:
-            start_exporter(cmd)
+            if "collectd_exporter" in cmd.binaryPath:
+                start_collectd_exporter(cmd)
+            else:
+                start_exporter(cmd)
 
         return jsonobject.dumps(rsp)
 

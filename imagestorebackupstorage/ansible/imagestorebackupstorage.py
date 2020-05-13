@@ -13,6 +13,7 @@ banner("Starting to deploy image store backup storage agent")
 start_time = datetime.now()
 # set default value
 file_root = "files/imagestorebackupstorage"
+kvm_file_root = "files/kvm"
 pip_url = "https=//pypi.python.org/simple/"
 proxy = ""
 sproxy = ""
@@ -44,6 +45,7 @@ argument_dict = eval(args.e)
 # update the variable from shell arguments
 locals().update(argument_dict)
 imagestore_root = "%s/imagestorebackupstorage/package" % zstack_root
+utils_root = "%s/imagestorebackupstorage" % zstack_root
 
 host_post_info = HostPostInfo()
 host_post_info.host_inventory = args.i
@@ -62,9 +64,12 @@ if remote_pass is not None and remote_user != 'root':
 IS_AARCH64 = get_remote_host_arch(host_post_info) == 'aarch64'
 if IS_AARCH64:
     src_pkg_imagestorebackupstorage = "zstack-store.aarch64.bin"
+    src_pkg_exporter = "collectd_exporter_aarch64"
 else:
     src_pkg_imagestorebackupstorage = "zstack-store.bin"
+    src_pkg_exporter = "collectd_exporter"
 dst_pkg_imagestorebackupstorage = "zstack-store.bin"
+dst_pkg_exporter = "collectd_exporter"
 
 # include zstacklib.py
 (distro, distro_version, distro_release, _) = get_remote_host_info(host_post_info)
@@ -133,6 +138,12 @@ copy_arg = CopyArg()
 dest_pkg = "%s/%s" % (imagestore_root, dst_pkg_imagestorebackupstorage)
 copy_arg.src = "%s/%s" % (file_root, src_pkg_imagestorebackupstorage)
 copy_arg.dest = dest_pkg
+copy(copy_arg, host_post_info)
+
+# name: copy exporter binary
+copy_arg = CopyArg()
+copy_arg.src = "%s/%s" % (kvm_file_root, src_pkg_exporter)
+copy_arg.dest = "%s/%s" % (utils_root, dst_pkg_exporter)
 copy(copy_arg, host_post_info)
 
 # name: copy iptables-scrpit

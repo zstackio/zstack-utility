@@ -1493,26 +1493,19 @@ def find_process_by_cmdline(cmdlines):
     return None
 
 def find_process_by_command(comm, cmdlines):
-    pids_str = shell.call("pidof %s" % comm, exception=False)
-    if not pids_str:
-        return None
-
-    pids = pids_str.split()
-
+    pids = [pid for pid in os.listdir('/proc') if pid.isdigit()]
     for pid in pids:
-        cmdline = shell.call("ps -p %s -o cmd | tail -n 1" % pid)
+        try:
+            comm_path = os.readlink(os.path.join('/proc', pid, 'exe'))
+            if comm_path != comm and os.path.basename(comm_path) != comm:
+                continue
 
-        found = True
-        for c in cmdlines:
-            if c not in cmdline:
-                found = False
-                break
-
-        if not found:
+            with open(os.path.join('/proc', pid, 'cmdline'), 'r') as fd:
+                cmdline = fd.read().replace('\x00', ' ').strip()
+                if all(c in cmdline for c in cmdlines):
+                    return pid
+        except (IOError, OSError):
             continue
-
-        return pid
-
     return None
 
 def error_if_path_missing(path):
