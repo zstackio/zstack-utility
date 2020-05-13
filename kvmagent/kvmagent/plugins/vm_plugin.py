@@ -6088,10 +6088,6 @@ class VmPlugin(kvmagent.KvmAgent):
             # make sure reboot event only report once
             op = self._get_operation(vm_uuid)
             if op is None or op.op != VmPlugin.VM_OP_REBOOT:
-                if op is None:
-                    logger.debug("ruanshixin op is None")
-                else:
-                    logger.debug("ruanshixin %s" % (op.op))
                 url = self.config.get(kvmagent.SEND_COMMAND_URL)
                 if not url:
                     logger.warn(
