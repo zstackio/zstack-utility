@@ -394,6 +394,7 @@ class Mevoco(kvmagent.KvmAgent):
 
 
     DNSMASQ_CONF_FOLDER = "/var/lib/zstack/dnsmasq/"
+    DNSMASQ_LOG_LOGROTATE_PATH = "/etc/logrotate.d/dnsmasq"
 
     USERDATA_ROOT = "/var/lib/zstack/userdata/"
 
@@ -1196,21 +1197,37 @@ mimetype.assign = (
 
         dhcp = os.path.join(folder, 'hosts.dhcp')
         if not os.path.exists(dhcp):
-            shell.call('touch %s' % dhcp)
+            linux.touch_file(dhcp)
 
         dns = os.path.join(folder, 'hosts.dns')
         if not os.path.exists(dns):
-            shell.call('touch %s' % dns)
+            linux.touch_file(dns)
 
         option = os.path.join(folder, 'hosts.option')
         if not os.path.exists(option):
-            shell.call('touch %s' % option)
+            linux.touch_file(option)
 
         log = os.path.join(folder, 'dnsmasq.log')
         if not os.path.exists(log):
-            shell.call('touch %s' % log)
+            linux.touch_file(log)
 
+        self._make_dnsmasq_logrotate_conf()
         return conf, dhcp, dns, option, log
+
+    def _make_dnsmasq_logrotate_conf(self):
+        if not os.path.exists(self.DNSMASQ_LOG_LOGROTATE_PATH):
+            content = """/var/lib/zstack/dnsmasq/*/dnsmasq.log {
+        rotate 10
+        missingok
+        copytruncate
+        size 30M
+        compress
+}"""
+            with open(self.DNSMASQ_LOG_LOGROTATE_PATH, 'w') as f:
+                f.write(content)
+                f.flush()
+                os.fsync(f.fileno())
+            os.chmod(self.DNSMASQ_LOG_LOGROTATE_PATH, 0644)
 
     @in_bash
     def _get_dhcp_server_ip_from_namespace(self, namespace_name):
