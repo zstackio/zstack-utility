@@ -47,15 +47,15 @@ IFS=,
 read -ra portss <<<"$ports"
 for port in ${portss[@]}; do
     if [ x"$mnCidrs" = x"" ]; then
-        if [[ $a == "u*" ]]; then
-            udpPort=${port/u//}
+        if [[ $port = u* ]]; then
+            udpPort=${port/u/}
             iptables -I INPUT -p udp -m comment --comment $comments -m udp --dport $udpPort -j ACCEPT
         else
             iptables -I INPUT -p tcp -m comment --comment $comments -m tcp --dport $port -j ACCEPT
         fi
     else
-        if [[ $a == "u*" ]]; then
-            udpPort=${port/u//}
+        if [[ $port = u* ]]; then
+            udpPort=${port/u/}
             iptables -I INPUT -m set --match-set ZS-MN src -p udp -m comment --comment $comments -m tcp --dport $udpPort -j ACCEPT
         else
             iptables -I INPUT -m set --match-set ZS-MN src -p tcp -m comment --comment $comments -m tcp --dport $port -j ACCEPT
