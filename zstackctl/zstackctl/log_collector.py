@@ -144,7 +144,7 @@ class CollectFromYml(object):
     def get_dump_sql(self):
         mysqldump_skip_tables = "--ignore-table=zstack.VmUsageHistoryVO --ignore-table=zstack.RootVolumeUsageHistoryVO " \
                         "--ignore-table=zstack.NotificationVO --ignore-table=zstack.PubIpVmNicBandwidthUsageHistoryVO " \
-                        "--ignore-table=zstack.DataVolumeUsageHistoryVO --ignore-table=zstack.RestAPIVO " \
+                        "--ignore-table=zstack.DataVolumeUsageHistoryVO " \
                         "--ignore-table=zstack.ResourceUsageVO --ignore-table=zstack.PciDeviceUsageHistoryVO " \
                         "--ignore-table=zstack.PubIpVipBandwidthUsageHistoryVO"
         db_hostname, db_port, db_user, db_password = self.ctl.get_live_mysql_portal()
