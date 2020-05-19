@@ -6120,7 +6120,7 @@ class VmPlugin(kvmagent.KvmAgent):
             lv_size = int(lvm.get_lv_size(file))
             # image_offest = int(bash.bash_o("qemu-img check %s | grep 'Image end offset' | awk -F ': ' '{print $2}'" % file).strip())
             # virtual_size = int(linux.qcow2_virtualsize(file))
-            return int(lv_size) < int(virtual_size), image_offest, lv_size, virtual_size
+            return int(lv_size) < int(virtual_size) * 3, image_offest, lv_size, virtual_size
 
         @bash.in_bash
         def extend_lv(event_str, path, vm, device):
@@ -6129,10 +6129,10 @@ class VmPlugin(kvmagent.KvmAgent):
             logger.debug("lv %s image offest: %s, lv size: %s, virtual size: %s" %
                          (path, image_offest, lv_size, virtual_size))
             if not r:
-                logger.debug("lv %s skip to extend for event %s" % (path, event_str))
+                logger.debug("lv %s is larager than virtual size * 3, skip extend for event %s" % (path, event_str))
                 return
 
-            extend_size = lv_size + self.auto_extend_size if virtual_size > lv_size + self.auto_extend_size else virtual_size
+            extend_size = lv_size + self.auto_extend_size
             try:
                 lvm.resize_lv(path, extend_size)
             except Exception as e:
