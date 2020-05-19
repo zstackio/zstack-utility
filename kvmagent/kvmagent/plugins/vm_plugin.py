@@ -5710,12 +5710,14 @@ class VmPlugin(kvmagent.KvmAgent):
     def kvm_detach_usb_device(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = KvmDetachUsbDeviceRsp()
-        r, o, e = self._detach_usb(cmd)
-        if r != 0:
+        try:
+            self._detach_usb(cmd)
+        except Exception as e:
             rsp.success = False
-            rsp.error = "%s %s" % (e, o)
+            rsp.error = str(e)
         return jsonobject.dumps(rsp)
 
+    @linux.retry(times=5, sleep_time=2)
     def _detach_usb(self, cmd):
         content = ''
         if cmd.attachType == "PassThrough":
@@ -5734,9 +5736,10 @@ class VmPlugin(kvmagent.KvmAgent):
     </redirdev>''' % (cmd.ip, int(cmd.port))
         spath = linux.write_to_temp_file(content)
         r, o, e = bash.bash_roe("virsh detach-device %s %s" % (cmd.vmUuid, spath))
-        logger.debug("detached %s from %s, %s, %s" % (
-            spath, cmd.vmUuid, o, e))
-        return r, o, e
+        if r:
+            raise RetryException("failed to detach usb device from %s: %s, %s" % cmd.vmUuid, o, e)
+        else:
+            logger.debug("detached usb device %s from %s" % (spath, cmd.vmUuid))
 
     @kvmagent.replyerror
     def reload_redirect_usb(self, req):

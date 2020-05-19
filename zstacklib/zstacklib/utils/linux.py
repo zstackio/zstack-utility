@@ -90,7 +90,7 @@ def retry(times=3, sleep_time=3):
                     return f(*args, **kwargs)
                 except:
                     time.sleep(sleep_time)
-            raise Exception("retry max times[%s] but failed", times)
+            raise Exception("retry %s %d times but failed" % (f.__name__, times))
 
         return inner
     return wrap
