@@ -160,7 +160,7 @@ fi
 
 mysqldump_skip_tables = "--ignore-table=zstack.VmUsageHistoryVO --ignore-table=zstack.RootVolumeUsageHistoryVO " \
                         "--ignore-table=zstack.NotificationVO --ignore-table=zstack.PubIpVmNicBandwidthUsageHistoryVO " \
-                        "--ignore-table=zstack.DataVolumeUsageHistoryVO --ignore-table=zstack.RestAPIVO " \
+                        "--ignore-table=zstack.DataVolumeUsageHistoryVO " \
                         "--ignore-table=zstack.ResourceUsageVO --ignore-table=zstack.PciDeviceUsageHistoryVO " \
                         "--ignore-table=zstack.PubIpVipBandwidthUsageHistoryVO"
 
