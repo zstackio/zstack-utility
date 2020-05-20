@@ -128,6 +128,9 @@ class Daemon(object):
             Daemon._log_and_dump_message(message, sys.stderr)
             self.get_start_agent_by_name()
 
+        Daemon._log_and_dump_message("configure hosts...")
+        Daemon.configure_hosts()
+
         # Start the daemon
         self.daemonize()
 
@@ -214,3 +217,19 @@ class Daemon(object):
                 break
 
         print "Stop Daemon Successfully"
+
+
+    @staticmethod
+    def configure_hosts():
+        hosts_path = "/etc/hosts"
+        to_add_line = "127.0.0.1 %s  # added by ZStack" % linux.get_host_name()
+        origin_lines = linux.read_file_lines(hosts_path)
+        for line in origin_lines[:]:
+            if line.strip() == to_add_line:
+                return
+
+            if line.endswith("# added by ZStack"):
+                origin_lines.remove(line)
+
+        origin_lines.append(to_add_line)
+        linux.write_file_lines(hosts_path, origin_lines)

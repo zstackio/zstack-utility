@@ -2000,7 +2000,20 @@ def read_file(path):
         with open(path, 'r') as fd:
             return fd.read()
     except IOError as e:
-        return str(e)
+        logger.error(e)
+        return None
+
+
+def read_file_lines(path):
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, 'r') as fd:
+            return fd.readlines()
+    except IOError as e:
+        logger.error(e)
+        return None
+
 
 def write_file(path, content, create_if_not_exist = False):
     if not os.path.exists(path) and not create_if_not_exist:
@@ -2009,6 +2022,20 @@ def write_file(path, content, create_if_not_exist = False):
 
     with open(path, "w") as f:
         f.write(str(content))
+        f.flush()
+        os.fsync(f.fileno())
+    return path
+
+
+def write_file_lines(path, contents, create_if_not_exist=False):
+    if not os.path.exists(path) and not create_if_not_exist:
+        logger.warn("write file failed because the path %s was not found", path)
+        return None
+
+    with open(path, "w") as f:
+        f.writelines(contents)
+        f.flush()
+        os.fsync(f.fileno())
     return path
 
 
