@@ -85,12 +85,14 @@ def retry(times=3, sleep_time=3):
     def wrap(f):
         @functools.wraps(f)
         def inner(*args, **kwargs):
+            orig_except = None
             for i in range(0, times):
                 try:
                     return f(*args, **kwargs)
-                except:
+                except Exception as e:
+                    orig_except = e
                     time.sleep(sleep_time)
-            raise Exception("retry %s %d times but failed" % (f.__name__, times))
+            raise orig_except
 
         return inner
     return wrap
