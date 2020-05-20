@@ -354,7 +354,7 @@ def sshfs_mount_with_vm_uuid(vmuuid, username, hostname, port, password, url, mo
 
 def sshfs_mount(username, hostname, port, password, url, mountpoint, writebandwidth=None, direct_io=True, uid=0):
     fd, fname = tempfile.mkstemp()
-    os.chmod(fname, 0500)
+    os.chmod(fname, 0o500)
 
     if not writebandwidth:
         os.write(fd,
@@ -561,7 +561,7 @@ def ssh(hostname, sshkey, cmd, user='root', sshPort=22):
         return write_to_temp_file(sshkey)
 
     sshkey_file = create_ssh_key_file()
-    os.chmod(sshkey_file, 0600)
+    os.chmod(sshkey_file, 0o600)
 
     try:
         return shell.call('ssh -p %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s %s@%s "%s"' % (sshPort, sshkey_file, user, hostname, cmd))
@@ -571,7 +571,7 @@ def ssh(hostname, sshkey, cmd, user='root', sshPort=22):
 
 def sshpass_run(hostname, password, cmd, user='root', port=22):
     sshpass_file = write_to_temp_file(password)
-    os.chmod(sshpass_file, 0600)
+    os.chmod(sshpass_file, 0o600)
 
     try:
         s = shell.ShellCmd('sshpass -f %s ssh -p %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s "%s"' % (
@@ -583,7 +583,7 @@ def sshpass_run(hostname, password, cmd, user='root', port=22):
 
 def sshpass_call(hostname, password, cmd, user='root', port=22):
     sshpass_file = write_to_temp_file(password)
-    os.chmod(sshpass_file, 0600)
+    os.chmod(sshpass_file, 0o600)
 
     try:
         return shell.call('sshpass -f %s ssh -p %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s "%s"' % (
@@ -593,7 +593,7 @@ def sshpass_call(hostname, password, cmd, user='root', port=22):
 
 def build_sshpass_cmd(hostname, password, cmd, user='root', port=22):
     sshpass_file = write_to_temp_file(password)
-    os.chmod(sshpass_file, 0600)
+    os.chmod(sshpass_file, 0o600)
 
     cmd = 'sshpass -f %s ssh -p %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s "%s"' % (
             sshpass_file, port, user, hostname, cmd)
@@ -621,14 +621,14 @@ def scp_download(hostname, sshkey, src_filepath, dst_filepath, host_account='roo
         bandWidth = ''
 
     sshkey_file = create_ssh_key_file()
-    os.chmod(sshkey_file, 0600)
+    os.chmod(sshkey_file, 0o600)
     try:
         dst_dir = os.path.dirname(dst_filepath)
         if not os.path.exists(dst_dir):
             os.makedirs(dst_dir)
         scp_cmd = 'scp {6} -P {0} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {1} {2}@{3}:{4} {5}'.format(sshPort, sshkey_file, host_account, hostname, remote_shell_quote(src_filepath), dst_filepath, bandWidth)
         shell.call(scp_cmd)
-        os.chmod(dst_filepath, 0664)
+        os.chmod(dst_filepath, 0o664)
     finally:
         if sshkey_file:
             os.remove(sshkey_file)
@@ -641,7 +641,7 @@ def scp_upload(hostname, sshkey, src_filepath, dst_filepath, host_account='root'
         raise LinuxError('cannot find file[%s] to upload to %s@%s:%s' % (src_filepath, host_account, hostname, dst_filepath))
 
     sshkey_file = create_ssh_key_file()
-    os.chmod(sshkey_file, 0600)
+    os.chmod(sshkey_file, 0o600)
     try:
         dst_dir = os.path.dirname(dst_filepath)
         ssh_cmd = 'ssh -p %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s %s@%s "mkdir -m 777 -p %s"' % (sshPort, sshkey_file, host_account, hostname, dst_dir)
@@ -785,7 +785,7 @@ def get_img_fmt(src):
 def qcow2_clone(src, dst):
     fmt = get_img_fmt(src)
     shell.check_run('/usr/bin/qemu-img create -F %s -b %s -f qcow2 %s' % (fmt, src, dst))
-    os.chmod(dst, 0666)
+    os.chmod(dst, 0o660)
 
 def qcow2_clone_with_cmd(src, dst, cmd=None):
     if cmd is None or cmd.kvmHostAddons is None or cmd.kvmHostAddons.qcow2Options is None:
@@ -800,15 +800,15 @@ def qcow2_clone_with_option(src, dst, opt=""):
 
     fmt = get_img_fmt(src)
     shell.check_run('/usr/bin/qemu-img create -F %s %s -b %s -f qcow2 %s' % (fmt, opt, src, dst))
-    os.chmod(dst, 0666)
+    os.chmod(dst, 0o660)
 
 def raw_clone(src, dst):
     shell.check_run('/usr/bin/qemu-img create -b %s -f raw %s' % (src, dst))
-    os.chmod(dst, 0666)
+    os.chmod(dst, 0o660)
 
 def qcow2_create(dst, size):
     shell.check_run('/usr/bin/qemu-img create -f qcow2 %s %s' % (dst, size))
-    os.chmod(dst, 0666)
+    os.chmod(dst, 0o660)
 
 def qcow2_create_with_cmd(dst, size, cmd=None):
     if cmd is None or cmd.kvmHostAddons is None or cmd.kvmHostAddons.qcow2Options is None:
@@ -818,12 +818,12 @@ def qcow2_create_with_cmd(dst, size, cmd=None):
 
 def qcow2_create_with_option(dst, size, opt=""):
     shell.check_run('/usr/bin/qemu-img create -f qcow2 %s %s %s' % (opt, dst, size))
-    os.chmod(dst, 0666)
+    os.chmod(dst, 0o660)
 
 def qcow2_create_with_backing_file(backing_file, dst):
     fmt = get_img_fmt(backing_file)
     shell.call('/usr/bin/qemu-img create -F %s -f qcow2 -b %s %s' % (fmt, backing_file, dst))
-    os.chmod(dst, 0666)
+    os.chmod(dst, 0o660)
 
 def qcow2_create_with_backing_file_and_cmd(backing_file, dst, cmd=None):
     if cmd is None or cmd.kvmHostAddons is None or cmd.kvmHostAddons.qcow2Options is None:
@@ -839,11 +839,11 @@ def qcow2_create_with_backing_file_and_option(backing_file, dst, opt=""):
     opt = re.sub(pattern, " ", opt)
 
     shell.call('/usr/bin/qemu-img create -F %s -f qcow2 %s -b %s %s' % (fmt, opt, backing_file, dst))
-    os.chmod(dst, 0666)
+    os.chmod(dst, 0o660)
 
 def raw_create(dst, size):
     shell.check_run('/usr/bin/qemu-img create -f raw %s %s' % (dst, size))
-    os.chmod(dst, 0666)
+    os.chmod(dst, 0o660)
 
 def create_template(src, dst, compress=False, shell=shell):
     fmt = get_img_fmt(src)
