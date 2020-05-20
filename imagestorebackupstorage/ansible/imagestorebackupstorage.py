@@ -93,7 +93,7 @@ zstacklib = ZstackLib(zstacklib_args)
 
 if distro in RPM_BASED_OS:
     qemu_pkg = 'qemu-img'
-    qemu_pkg += ' fuse-sshfs nmap'
+    qemu_pkg += ' fuse-sshfs nmap collectd'
 
     # skip these packages
     _skip_list = re.split(r'[|;,\s]\s*', skip_packages)
@@ -122,9 +122,9 @@ elif distro in DEB_BASED_OS:
     if client == "true" and distro_version < 16:
         Warning("Client only support distribution version newer than 16.04")
     if distro == "Kylin":
-        apt_install_packages(["qemu-utils", "qemu-system", "sshfs"], host_post_info)
+        apt_install_packages(["qemu-utils", "qemu-system", "sshfs", "collectd"], host_post_info)
     else:
-        apt_install_packages(["qemu-img", "sshfs"], host_post_info)
+        apt_install_packages(["qemu-img", "sshfs", "collectd"], host_post_info)
 
 else:
     error("ERROR: Unsupported distribution")
