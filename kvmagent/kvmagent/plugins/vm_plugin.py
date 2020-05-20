@@ -751,6 +751,13 @@ def is_spiceport_driver_supported():
     # qemu-system-aarch64 not supported char driver: spiceport
     return True if shell.run("which qemu-system-aarch64") == 1 else shell.run("qemu-system-aarch64 -h | grep 'chardev spiceport'") == 0
 
+def is_virtual_machine():
+    product_name = shell.call("dmidecode -s system-product-name").strip()
+    return product_name == "KVM Virtual Machine" or product_name == "KVM"
+
+def get_domain_type():
+    return "qemu" if HOST_ARCH == "aarch64" and is_virtual_machine() else "kvm"
+
 # Occasionally, libvirt might fail to list VM ...
 def get_console_without_libvirt(vmUuid):
     output = bash.bash_o("""ps x | awk '/qemu[-]kvm.*%s/{print $1, index($0, " -vnc ")}'""" % vmUuid).splitlines()
@@ -3179,8 +3186,7 @@ class Vm(object):
 
         def make_root():
             root = etree.Element('domain')
-            root.set('type', 'kvm')
-            # self._root.set('type', 'qemu')
+            root.set('type', get_domain_type())
             root.set('xmlns:qemu', 'http://libvirt.org/schemas/domain/qemu/1.0')
             elements['root'] = root
 
@@ -3235,8 +3241,12 @@ class Vm(object):
                     return cpu
                     
                 def on_aarch64():
-                    cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
-                    e(cpu, 'model', attrib={'fallback': 'allow'})
+                    if is_virtual_machine():
+                        cpu = e(root, 'cpu')
+                        e(cpu, 'model', 'cortex-a57')
+                    else :
+                        cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
+                        e(cpu, 'model', attrib={'fallback': 'allow'})
                     return cpu
 
                 def on_mips64el():
