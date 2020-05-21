@@ -2165,7 +2165,7 @@ cs_config_generate_ssh_key(){
     #generate local ssh key
     rsa_key_folder=${ZSTACK_INSTALL_ROOT}/${CATALINA_ZSTACK_CLASSES}/ansible/rsaKeys
     /bin/rm -f ${rsa_key_folder}/*
-    ssh-keygen -f ${rsa_key_folder}/id_rsa -N '' -q >>$ZSTACK_INSTALL_LOG 2>&1
+    ssh-keygen -f ${rsa_key_folder}/id_rsa -N '' -m PEM -q >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
         fail "failed to generate local ssh keys in ${rsa_key_folder}"
     fi
