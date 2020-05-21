@@ -3775,6 +3775,21 @@ if [ x"$MINI_INSTALL" = x"y" ];then
     cp /etc/issue /etc/issue.bak
 fi
 
+config_journal(){
+#create journal log dir
+    which systemd-tmpfiles >/dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        journal_path="/var/log/journal"
+        if [ ! -d $journal_path ]; then
+            mkdir -p $journal_path
+            systemd-tmpfiles --create --prefix $journal_path
+            systemctl restart systemd-journald
+        fi
+    fi
+}
+
+config_journal
+
 #Print all installation message
 if [ -z $NOT_START_ZSTACK ]; then
     [ -z $VERSION ] && VERSION=`zstack-ctl status 2>/dev/null|grep version|awk '{print $2}'`
