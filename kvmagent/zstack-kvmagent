@@ -81,6 +81,19 @@ rm_ebtables_dangling_lock() {
         unlink $lockfile
 }
 
+#create journal log dir
+config_journal(){
+    which systemd-tmpfiles >/dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        journal_path="/var/log/journal"
+        if [ ! -d $journal_path ]; then
+            mkdir -p $journal_path
+            systemd-tmpfiles --create --prefix $journal_path
+            systemctl restart systemd-journald
+        fi
+    fi
+}
+
 if [ "$@" = "status" ]; then
 	check_status
 else
@@ -89,6 +102,7 @@ else
 		enable_qemukvm_coredump
 		rm_ebtables_dangling_lock '/var/lib/ebtables/lock' #C72
 		rm_ebtables_dangling_lock '/run/ebtables.lock'   #C74
+		config_journal
 	fi
 
 	. /var/lib/zstack/virtualenv/kvm/bin/activate && python -c "from kvmagent import kdaemon; kdaemon.main()" "$@"
