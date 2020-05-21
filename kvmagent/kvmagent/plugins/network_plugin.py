@@ -154,8 +154,9 @@ class NetworkPlugin(kvmagent.KvmAgent):
     def _configure_bridge_mtu(self, bridgeName, interf, mtu=None):
         if mtu is not None:
             shell.call("ip link set mtu %d dev %s" % (mtu, interf))
-            if bridgeName is not None:
-                shell.call("ip link set mtu %d dev %s" % (mtu, bridgeName))
+            #bridge mtu must be bigger than all vnic mtu, so will not change it
+            #if bridgeName is not None:
+            #    shell.call("ip link set mtu %d dev %s" % (mtu, bridgeName))
 
     def _configure_bridge_learning(self, bridgeName, interf, learning='off'):
         shell.call("bridge link set dev %s learning %s" % (interf, learning))
