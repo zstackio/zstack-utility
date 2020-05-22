@@ -6184,9 +6184,20 @@ class VmPlugin(kvmagent.KvmAgent):
         finally:
             s.close()
 
-        if rsp.success:
-            self.vm_heartbeat[cmd.vmInstanceUuid] = cmd
-            self.start_vm_heart_beat(cmd)
+        if not rsp.success:
+            return jsonobject.dumps(rsp)
+
+        if self.vm_heartbeat.get(cmd.vmInstanceUuid) is not None and self.vm_heartbeat.get(cmd.vmInstanceUuid).is_alive():
+            logger.debug("vm heartbeat thread exists, skip it")
+            return jsonobject.dumps(rsp)
+
+        self.vm_heartbeat[cmd.vmInstanceUuid] = thread.ThreadFacade.run_in_thread(self.start_vm_heart_beat, (cmd,))
+        if self.vm_heartbeat.get(cmd.vmInstanceUuid).is_alive():
+            logger.debug("successfully start vm heartbeat")
+        else:
+            logger.debug("Failed to start vm heartbeat")
+            rsp.success = False
+            rsp.error = "Failed to start vm heartbeat address[%s:%s]" % (cmd.targetHostIp, cmd.heartbeatPort)
 
         return jsonobject.dumps(rsp)
 
@@ -6469,7 +6480,6 @@ class VmPlugin(kvmagent.KvmAgent):
 
         clean_stale_vm_vnc_port_chain()
 
-    @thread.AsyncThread
     def start_vm_heart_beat(self, cmd):
         def send_failover(vm_instance_uuid, host_uuid, primary_failure):
             url = self.config.get(kvmagent.SEND_COMMAND_URL)
