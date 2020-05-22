@@ -3388,7 +3388,7 @@ class Vm(object):
             tablet = e(devices, 'input', None, {'type': 'tablet', 'bus': 'usb'})
             e(tablet, 'address', None, {'type':'usb', 'bus':'0', 'port':'1'})
 
-            @linux.with_arch(todo_list=['aarch64'])
+            @linux.with_arch(todo_list=['aarch64','mips64el'])
             def set_keyboard():
                 keyboard = e(devices, 'input', None, {'type': 'keyboard', 'bus': 'usb'})
 
