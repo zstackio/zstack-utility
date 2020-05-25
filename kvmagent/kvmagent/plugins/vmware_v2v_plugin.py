@@ -49,6 +49,7 @@ class GetConvertProgressRsp(AgentRsp):
         super(GetConvertProgressRsp, self).__init__()
         self.currentDiskNum = None
         self.currentProgress = None
+        self.totalDiskNum = None
 
 
 QOS_IFB = "ifb0"
@@ -279,8 +280,11 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
                     search_result = re.search("Copying disk.*.to", output[0])
 
                 if search_result is not None:
-                    rsp.currentDiskNum = search_result.group().split(' ')[2].split('/')[0]
+                    num_ret = search_result.group().split(' ')[2].split('/')
+                    rsp.currentDiskNum = num_ret[0]
                     rsp.currentProgress = percentage
+                    if len(num_ret) > 1 and num_ret[1].isdigit():
+                        rsp.totalDiskNum = num_ret[1]
             else:
                 logger.debug("not handled log keep progress")
         else:
