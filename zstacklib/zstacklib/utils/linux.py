@@ -2023,7 +2023,10 @@ def write_file(path, content, create_if_not_exist = False):
     with open(path, "w") as f:
         f.write(str(content))
         f.flush()
-        os.fsync(f.fileno())
+        try:
+            os.fsync(f.fileno())
+        except OSError:
+            pass
     return path
 
 
@@ -2035,7 +2038,10 @@ def write_file_lines(path, contents, create_if_not_exist=False):
     with open(path, "w") as f:
         f.writelines(contents)
         f.flush()
-        os.fsync(f.fileno())
+        try:
+            os.fsync(f.fileno())
+        except OSError:
+            pass
     return path
 
 
