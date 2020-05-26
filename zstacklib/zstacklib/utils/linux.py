@@ -1878,7 +1878,8 @@ def create_vxlan_bridge(interf, bridgeName, ips):
         cmd = shell.ShellCmd("brctl addif %s %s" % (bridgeName, interf))
         cmd(is_exception=False)
 
-    populate_vxlan_fdb(interf, ips)
+    if ips is not None:
+        populate_vxlan_fdb(interf, ips)
 
 def populate_vxlan_fdb(interf, ips):
     cmds = []
