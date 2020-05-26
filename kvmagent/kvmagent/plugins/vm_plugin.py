@@ -15,6 +15,7 @@ import base64
 import uuid
 import json
 import socket
+import threading
 
 import libvirt
 import xml.dom.minidom as minidom
@@ -6187,7 +6188,8 @@ class VmPlugin(kvmagent.KvmAgent):
         if not rsp.success:
             return jsonobject.dumps(rsp)
 
-        if self.vm_heartbeat.get(cmd.vmInstanceUuid) is not None and self.vm_heartbeat.get(cmd.vmInstanceUuid).is_alive():
+        if self.vm_heartbeat.get(cmd.vmInstanceUuid) is not None and self.vm_heartbeat.get(
+                    cmd.vmInstanceUuid).is_alive():
             logger.debug("vm heartbeat thread exists, skip it")
             return jsonobject.dumps(rsp)
 
@@ -6532,22 +6534,27 @@ class VmPlugin(kvmagent.KvmAgent):
                                                                     '"arguments":{"id":"red-mirror-%s"}}' % i)
                             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del","arguments":{'
                                                                     ' "id": "rew-%s" } }' % i)
-                    try:
-                        self.vm_heartbeat.pop(cmd.vmInstanceUuid)
-                    except KeyError:
-                        logger.debug("ignore error occurs when remove %s from heartbeat",
-                                     cmd.vmInstanceUuid)
 
                     send_failover(cmd.vmInstanceUuid, cmd.hostUuid, not cmd.coloPrimary)
+                    return True
 
                 logger.debug("vm [uuid:%s] heartbeat finished", cmd.vmInstanceUuid)
+                return False
 
-        while True:
-            if cmd.vmInstanceUuid not in self.vm_heartbeat.keys():
+        t = threading.currentThread()
+        while getattr(t, "do_heart_beat", True):
+            need_break = test_heart_beat()
+
+            if need_break:
                 break
 
-            test_heart_beat()
             time.sleep(1)
+
+        try:
+            self.vm_heartbeat.pop(cmd.vmInstanceUuid)
+        except KeyError:
+            logger.debug("ignore error occurs when remove %s from heartbeat",
+                         cmd.vmInstanceUuid)
 
     def _vm_lifecycle_event(self, conn, dom, event, detail, opaque):
         try:
@@ -6770,7 +6777,12 @@ class VmPlugin(kvmagent.KvmAgent):
             return
 
         vm_uuid = dom.name()
-        self.vm_heartbeat.pop(vm_uuid)
+        heartbeat_thread = self.vm_heartbeat.pop(vm_uuid)
+        
+        if not heartbeat_thread and heartbeat_thread.is_alive():
+            heartbeat_thread.do_heart_beat = False
+            heartbeat_thread.join()
+
         logger.debug("clean vm colo heartbeat of vm[uuid:%s]" % vm_uuid)
 
     @bash.in_bash
