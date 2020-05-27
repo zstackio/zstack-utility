@@ -158,7 +158,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
             #if bridgeName is not None:
             #    shell.call("ip link set mtu %d dev %s" % (mtu, bridgeName))
 
-    def _configure_bridge_learning(self, bridgeName, interf, learning='off'):
+    def _configure_bridge_learning(self, bridgeName, interf, learning='on'):
         shell.call("bridge link set dev %s learning %s" % (interf, learning))
 
     @kvmagent.replyerror
