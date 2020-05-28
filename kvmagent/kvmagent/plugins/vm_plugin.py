@@ -3372,6 +3372,10 @@ class Vm(object):
                 for arg in args:
                     e(qcmd, "qemu:arg", attrib={"value": arg.strip('"')})
 
+            if cmd.useColoBinary:
+                e(qcmd, "qemu:arg", attrib={"value": '-L'})
+                e(qcmd, "qemu:arg", attrib={"value": '/usr/share/qemu-kvm/'})
+
             if cmd.coloPrimary:
                 e(qcmd, "qemu:arg", attrib={"value": '-L'})
                 e(qcmd, "qemu:arg", attrib={"value": '/usr/share/qemu-kvm/'})
@@ -3428,7 +3432,7 @@ class Vm(object):
             if cmd.addons and cmd.addons['qemuPath']:
                 e(devices, 'emulator', cmd.addons['qemuPath'])
             else:
-                if cmd.coloPrimary or cmd.coloSecondary:
+                if cmd.coloPrimary or cmd.coloSecondary or cmd.useColoBinary:
                     e(devices, 'emulator', kvmagent.get_colo_qemu_path())
                 else:
                     e(devices, 'emulator', kvmagent.get_qemu_path())
@@ -4123,7 +4127,7 @@ class Vm(object):
         # appliance vm doesn't need any cdrom or usb controller
         if not cmd.isApplianceVm:
             make_cdrom()
-            if not cmd.coloPrimary and not cmd.coloSecondary:
+            if not cmd.coloPrimary and not cmd.coloSecondary and not cmd.useColoBinary:
                 make_usb_redirect()
 
         if cmd.additionalQmp:
