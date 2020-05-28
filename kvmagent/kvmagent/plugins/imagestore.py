@@ -174,7 +174,15 @@ class ImageStoreClient(object):
             cmdstr = '%s -url %s:%s pull -installpath %s %s:%s' % (self.ZSTORE_CLI_PATH, host, self.ZSTORE_DEF_PORT, primaryStorageInstallPath, name, imageid)
 
         logger.debug('pulling %s:%s from image store' % (name, imageid))
-        shell.call(cmdstr)
+
+        try:
+            shell.call(cmdstr)
+        except Exception as ex:
+            err = str(ex)
+            if 'Please check whether ImageStore directory is correctly mounted' in err:
+                raise Exception("target image not found, Please check whether ImageStore directory is correctly mounted.")
+            raise ex
+        
         logger.debug('%s:%s pulled to local cache' % (name, imageid))
 
         return
