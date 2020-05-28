@@ -1370,17 +1370,17 @@ done
                     group_path = os.path.join('/sys/bus/pci/devices/', to.pciDeviceAddress, 'iommu_group')
                     to.iommuGroup = os.path.realpath(group_path)
                 elif title == 'Class':
-                    _class = content.split('[')[0]
+                    _class = content.split('[')[0].strip()
                     to.type = _class
                     to.description = _class + ": "
                 elif title == 'Vendor':
                     vendor_name = self._simplify_pci_device_name('['.join(content.split('[')[:-1]).strip())
                     to.vendorId = content.split('[')[-1].strip(']')
-                    to.description += content.split('[')[0]
+                    to.description += vendor_name + " "
                 elif title == "Device":
                     device_name = self._simplify_pci_device_name('['.join(content.split('[')[:-1]).strip())
                     to.deviceId = content.split('[')[-1].strip(']')
-                    to.description += content.split('[')[0]
+                    to.description += device_name
                 elif title == "SVendor":
                     subvendor_name = self._simplify_pci_device_name('['.join(content.split('[')[:-1]).strip())
                     to.subvendorId = content.split('[')[-1].strip(']')
