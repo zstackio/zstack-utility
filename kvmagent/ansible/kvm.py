@@ -153,7 +153,7 @@ def get_host_release_info():
     rpm -q centos-release > /dev/null 2>&1
     [ $? -eq 0 ] && echo `rpm -q centos-release|awk -F"." '{print $1}'|awk -F"-" '{print "c"$3$4}'` && exit 0
     rpm -q alios-release-server > /dev/null 2>&1
-    [ $? -eq 0 ] && echo `rpm -q alios-release-server |awk -F"-" '{print "c"$4}'|tr -d '.'` && exit 0
+    [ $? -eq 0 ] && echo `rpm -q alios-release-server |awk -F"." '{print $3}'` && exit 0
     rpm -q redhat-release-server > /dev/null 2>&1
     [ $? -eq 0 ] && echo `rpm -q redhat-release-server |awk -F"-" '{print "c"$4}'|tr -d '.'` && exit 0
     rpm -q neokylin-release-server > /dev/null 2>&1
@@ -480,7 +480,7 @@ def copy_zs_scripts():
     copy_to_remote(_src, _dst, None, host_post_info)
 
 
-@on_redhat_based(distro, exclude=['Alibaba'])
+@on_redhat_based(distro, exclude=['alibaba'])
 def set_max_performance():
     # AliOS 7u2 does not support tuned-adm
     command = "tuned-adm profile virtual-host; echo virtual-host > /etc/tuned/active_profile"
