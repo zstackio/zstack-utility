@@ -6216,7 +6216,7 @@ class VmPlugin(kvmagent.KvmAgent):
         if cmd.fullSync:
             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "drive-mirror", "arguments":{ "device": "colo-disk0",'
                                                     ' "job-id": "zs-ft-resync", "target": "nbd://%s:%s/parent0",'
-                                                    ' "mode": "existing", "format": "qcow2", "sync": "top"} }'
+                                                    ' "mode": "existing", "format": "nbd", "sync": "full"} }'
                                 % (cmd.secondaryVmHostIp, cmd.nbdServerPort))
             while True:
                 time.sleep(3)
