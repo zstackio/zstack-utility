@@ -4392,6 +4392,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_REGISTER_PRIMARY_VM_HEARTBEAT = "/register/primary/vm/heartbeat"
     CHECK_COLO_VM_STATE_PATH = "/check/colo/vm/state"
     WAIT_COLO_VM_READY_PATH = "/wait/colo/vm/ready"
+    ROLLBACK_QUORUM_CONFIG_PATH = "/rollback/quorum/config"
 
     VM_OP_START = "start"
     VM_OP_STOP = "stop"
@@ -6156,6 +6157,23 @@ class VmPlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     @in_bash
+    def rollback_quorum_config(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+
+        vm = get_vm_by_uuid_no_retry(cmd.vmInstanceUuid, False)
+        if not vm:
+            raise Exception('vm[uuid:%s] not exists, failed' % cmd.vmInstanceUuid)
+
+        execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "x-blockdev-change",'
+                                                ' "arguments": {"parent": "colo-disk0", "child": "children.1"}}')
+        execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "human-monitor-command",'
+                                                ' "arguments":{"command-line": "drive_del replication0"}}')
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
     def wait_secondary_vm_ready(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
@@ -6472,6 +6490,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_REGISTER_PRIMARY_VM_HEARTBEAT, self.register_primary_vm_heartbeat)
         http_server.register_async_uri(self.CHECK_COLO_VM_STATE_PATH, self.check_colo_vm_state)
         http_server.register_async_uri(self.WAIT_COLO_VM_READY_PATH, self.wait_secondary_vm_ready)
+        http_server.register_async_uri(self.ROLLBACK_QUORUM_CONFIG_PATH, self.rollback_quorum_config)
 
         self.clean_old_sshfs_mount_points()
         self.register_libvirt_event()
