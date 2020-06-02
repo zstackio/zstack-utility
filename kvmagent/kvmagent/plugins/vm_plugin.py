@@ -6257,6 +6257,8 @@ class VmPlugin(kvmagent.KvmAgent):
         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate-set-parameters",'
                                                 ' "arguments": {"x-checkpoint-delay": %s}}'
                                                 % cmd.checkpointDelay)
+        execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "trace-event-set-state",'
+                                                ' "arguments": {"name": "colo*", "enable": true}}')
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
