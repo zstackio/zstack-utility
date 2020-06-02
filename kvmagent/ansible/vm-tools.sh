@@ -61,4 +61,4 @@ if [ $? != 0 ]; then
 fi
 
 curl -H "Content-Type: application/json" -H "commandpath: /host/zwatchInstallResult" -X POST -d "{\"vmInstanceUuid\": \"${vmInstanceUuid}\", \"version\": \"${version}\"}" http://169.254.169.254/host/zwatchInstallResult
-echo "start zwatch-vm-agent successflly"
+echo "start zwatch-vm-agent successfully"
