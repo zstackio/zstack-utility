@@ -1542,14 +1542,6 @@ done
             rsp.error = 'failed to generate virtual functions on pci device[addr:%s, type:%s]' % (cmd.pciDeviceAddress, cmd.pciDeviceType)
             return
 
-        # set pf learning off
-        nic_name_path = os.path.join(numvfs, '../net/')
-        if os.path.exists(nic_name_path):
-            nic_names = os.listdir(nic_name_path)
-            if nic_names:
-                nic_name = nic_names[0]
-                bash_roe("bridge link set dev %s learning off" % nic_name)
-
 
     @kvmagent.replyerror
     def generate_sriov_pci_devices(self, req):
