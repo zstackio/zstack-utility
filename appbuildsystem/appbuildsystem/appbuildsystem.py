@@ -358,7 +358,7 @@ class AppBuildSystemAgent(object):
         if os.path.isdir(dir):
             shutil.rmtree(dir)
         linux.mkdir(dir, 0755)
-        cmd = shell.ShellCmd("wget -c -q --no-check-certificate %s -O %s" % (cmd.srcUrl, cmd.downloadPath))
+        cmd = shell.ShellCmd("wget -c -t 5 --no-check-certificate %s -O %s" % (cmd.srcUrl, cmd.downloadPath))
         cmd(False)
         if cmd.return_code != 0:
             rsp.error = cmd.stderr
