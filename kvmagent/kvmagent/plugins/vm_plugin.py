@@ -6285,6 +6285,12 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.error = "Failed to check qemu config, report error"
             return jsonobject.dumps(rsp)
 
+        vm = get_vm_by_uuid(cmd.vmInstanceUuid)
+
+        domain_xml = vm.domain.XMLDesc(0)
+
+        is_origin_secondary = 'filter-rewriter' in domain_xml
+
         char_devices = json.loads(o)['return']
         mirror_device_nums = [int(dev['label'][-1]) for dev in char_devices if dev['label'].startswith('zs-mirror')]
         logger.debug("get mirror char device of vm[uuid:%s] devices: %s" % (cmd.vmInstanceUuid, mirror_device_nums))
@@ -6323,18 +6329,38 @@ class VmPlugin(kvmagent.KvmAgent):
                                                     ' "backend": {"type": "socket", "data": {"addr": { "type":'
                                                     ' "inet", "data": { "host": "%s", "port": "%s" } },'
                                                     ' "server": false } } } }' % (count, cmd.hostIp, config.primaryOutPort))
-            execute_qmp_command(cmd.vmInstanceUuid,
-                                '{"execute": "object-add", "arguments":{ "qom-type": "filter-mirror", "id": "fm-%s",'
-                                ' "props": { "netdev": "hostnet%s", "queue": "tx", "outdev": "zs-mirror-%s" } } }'
-                                % (count, count, count))
-            execute_qmp_command(cmd.vmInstanceUuid,
-                                '{"execute": "object-add", "arguments":{ "qom-type": "filter-redirector",'
-                                ' "id": "primary-out-redirect-%s", "props": { "netdev": "hostnet%s", "queue": "rx",'
-                                ' "indev": "primary-out-s-%s"}}}' % (count, count, count))
-            execute_qmp_command(cmd.vmInstanceUuid,
-                                '{"execute": "object-add", "arguments":{ "qom-type": "filter-redirector", "id":'
-                                ' "primary-in-redirect-%s", "props": { "netdev": "hostnet%s", "queue": "rx",'
-                                ' "outdev": "primary-in-s-%s"}}}' % (count, count, count))
+
+            if not is_origin_secondary:
+                execute_qmp_command(cmd.vmInstanceUuid,
+                                    '{"execute": "object-add", "arguments":{ "qom-type": "filter-mirror", "id": "fm-%s",'
+                                    ' "props": { "netdev": "hostnet%s", "queue": "tx", "outdev": "zs-mirror-%s" } } }'
+                                    % (count, count, count))
+                execute_qmp_command(cmd.vmInstanceUuid,
+                                    '{"execute": "object-add", "arguments":{ "qom-type": "filter-redirector",'
+                                    ' "id": "primary-out-redirect-%s", "props": { "netdev": "hostnet%s", "queue": "rx",'
+                                    ' "indev": "primary-out-s-%s"}}}' % (count, count, count))
+                execute_qmp_command(cmd.vmInstanceUuid,
+                                    '{"execute": "object-add", "arguments":{ "qom-type": "filter-redirector", "id":'
+                                    ' "primary-in-redirect-%s", "props": { "netdev": "hostnet%s", "queue": "rx",'
+                                    ' "outdev": "primary-in-s-%s"}}}' % (count, count, count))
+            else:
+                execute_qmp_command(cmd.vmInstanceUuid,
+                                    '{"execute": "object-add", "arguments":{ "qom-type": "filter-mirror",'
+                                    ' "id": "fm-%s", "props": { "insert": "before", "position": "id=rew-%s", '
+                                    ' "netdev": "hostnet%s", "queue": "tx", "outdev": "zs-mirror-%s" } } }'
+                                    % (count, count, count, count))
+                execute_qmp_command(cmd.vmInstanceUuid,
+                                    '{"execute": "object-add", "arguments":{ "qom-type": "filter-redirector",'
+                                    ' "id": "primary-out-redirect-%s", "props":'
+                                    ' { "insert": "before", "position": "id=rew-%s",'
+                                    ' "netdev": "hostnet%s", "queue": "rx",'
+                                    ' "indev": "primary-out-s-%s"}}}' % (count, count, count, count))
+                execute_qmp_command(cmd.vmInstanceUuid,
+                                    '{"execute": "object-add", "arguments":{ "qom-type": "filter-redirector", "id":'
+                                    ' "primary-in-redirect-%s", "props": { "insert": "before", "position": "id=rew-%s",'
+                                    ' "netdev": "hostnet%s", "queue": "rx",'
+                                    ' "outdev": "primary-in-s-%s"}}}' % (count, count, count, count))
+
             execute_qmp_command(cmd.vmInstanceUuid,
                                 '{"execute": "object-add", "arguments":{ "qom-type": "colo-compare", "id": "comp-%s",'
                                 ' "props": { "primary_in": "primary-in-c-%s", "secondary_in": "secondary-in-s-%s",'
@@ -6538,8 +6564,6 @@ class VmPlugin(kvmagent.KvmAgent):
                                                                     '"arguments":{"id":"red-secondary-%s"}}' % i)
                             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "chardev-remove",'
                                                                     '"arguments":{"id":"red-mirror-%s"}}' % i)
-                            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del","arguments":{'
-                                                                    ' "id": "rew-%s" } }' % i)
 
                     send_failover(cmd.vmInstanceUuid, cmd.hostUuid, not cmd.coloPrimary)
                     return True
