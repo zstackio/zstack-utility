@@ -3012,19 +3012,22 @@ echo_subtitle "Sync from repo.zstack.io (takes a couple of minutes)"
 # if current local repo is based on centos7.4, then sync with eg. 2.3.1_c74
 if [ x"$UPGRADE" = x'y' ]; then
     cluster_os_version=`mysql -uzstack -p"$MYSQL_USER_PASSWORD" zstack -e "select distinct tag from SystemTagVO where (resourceType='HostVO' and tag like '%os::version%');"`
-    cluster_type_num=`echo -e "$cluster_os_version"|grep version|wc -l`
-    cluster_type=`echo -e "$cluster_os_version"|awk -F"::" '/version/{print $3}'|awk -F "." '{print "c"$1$2}'`
-    [ $cluster_type_num -gt 1 ] && fail2 "Hybrid cluster exists, sync online-repo will take a long time, please download $cluster_type iso manually to upgrade your repo."
+    cluster_os_type=`echo -e "$cluster_os_version"|awk -F"::" '/version/{print $3}'|awk -F "." '{print "c"$1$2}'`
 fi
 if [ x"$ZSTACK_RELEASE" = x"c72" -o x"$ZSTACK_RELEASE" = x"c74" -o x"$ZSTACK_RELEASE" = x"c76" ];then
-    BASEURL=rsync://rsync.repo.zstack.io/${VERSION_RELEASE_NR}/$BASEARCH/$ZSTACK_RELEASE/
+    BASEURL=rsync://rsync.repo.zstack.io/${VERSION_RELEASE_NR}/$BASEARCH/
 else
     BASEURL=rsync://rsync.repo.zstack.io/${VERSION_RELEASE_NR}/
 fi
 
 # it takes about 2 min to compare md5sum of 1800+ files in iso
-umount /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/Extra/qemu-kvm-ev >/dev/null 2>&1
-rsync -aP --delete --exclude zstack-installer.bin --exclude .repo_version ${BASEURL} /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/ >> $ZSTACK_INSTALL_LOG 2>&1 || echo_hints_to_upgrade_iso
+for os_release in $cluster_os_type;do
+    [ ! -d /opt/zstack-dvd/$BASEARCH/$os_release ] && fail2 "$os_release cluster exists but no local repo matched, please download $os_release iso manually to upgrade your repo."
+    umount /opt/zstack-dvd/$BASEARCH/$os_release/Extra/qemu-kvm-ev >/dev/null 2>&1
+    rsync -aP --delete --exclude zstack-installer.bin --exclude .repo_version ${BASEURL}${os_release}/ /opt/zstack-dvd/$BASEARCH/$os_release/ >> $ZSTACK_INSTALL_LOG 2>&1 || echo_hints_to_upgrade_iso
+    # update .repo_version after syncing
+    cat .repo_version > /opt/zstack-dvd/$BASEARCH/$os_release/.repo_version
+done
 
 [ -f /etc/yum.repos.d/epel.repo ] && sed -i 's/enabled=1/enabled=0/g' /etc/yum.repos.d/epel.repo
 export YUM0="$ZSTACK_RELEASE"
@@ -3032,10 +3035,8 @@ yum --enablerepo=* clean all >/dev/null 2>&1
 rpm -qa | grep zstack-manager >/dev/null 2>&1 && yum --disablerepo=* --enablerepo=zstack-local -y install zstack-manager >/dev/null 2>&1 || true
 rpm -qa | grep zstack-release >/dev/null 2>&1 || yum --disablerepo=* --enablerepo=zstack-local -y install zstack-release >/dev/null 2>&1 && true
 
-# update .repo_version after syncing
-cat .repo_version > /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/.repo_version
 cd /opt/zstack-dvd
-rm -rf `ls |egrep -v "(x86_64|aarch64)"`
+rm -rf `ls |egrep -v "(x86_64|aarch64|mips64el)"`
 cd -
 if [ ! -f /opt/zstack-dvd/zstack-image-1.4.qcow2 ];then
     cp -rf /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/zstack-image-1.4.qcow2 /opt/zstack-dvd/
