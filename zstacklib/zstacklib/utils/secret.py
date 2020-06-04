@@ -47,10 +47,9 @@ def encrypt_img(img_path):
     shell.call('%s -f qcow2 -O qcow2 %s %s %s' % (qemu_img.subcmd('convert'), opt, tmp_path, img_path))
     os.remove(tmp_path)
 
+# memory snapshots are base64 encrypted, there is no luks encrypt uuid for it, so only return it's md5sum
+# otherwise, return luks encrypt uuid and md5sum
 def get_image_encrypt_uuid_and_hash(img_path):
-    if not is_img_encrypted(img_path):
-        return None, None
-
     _, uuid = commands.getstatusoutput("qemu-img info %s | grep uuid | awk -F ': ' '{ print $NF }'" % img_path)
     _, md5  = commands.getstatusoutput("md5sum %s | cut -d ' ' -f 1" % img_path)
     return uuid, md5
