@@ -489,6 +489,12 @@ if distro in DEB_BASED_OS:
     copy_arg.src = "/opt/zstack-dvd/{}/{}/ovmf_tools/".format(host_arch, releasever)
     copy_arg.dest = "/usr/share/OVMF/"
     copy(copy_arg, host_post_info)
+
+    copy_arg = CopyArg()
+    copy_arg.src = os.path.join(file_root, "lsusb.py")
+    copy_arg.dest = "/usr/local/bin/"
+    copy_arg.args = "mode=755"
+    copy(copy_arg, host_post_info)
     
 # name: copy updated dnsmasq
 if distro in RPM_BASED_OS:
