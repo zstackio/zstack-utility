@@ -425,8 +425,7 @@ def copy_tools():
         pkg_path = os.path.join(file_root, real_name)
         pkg_dest_path = "/usr/local/zstack/dnsmasq" if tool == "dnsmasq" else os.path.join(workplace, tool)
         if os.path.exists(pkg_path):
-            copy_to_remote(pkg_path, pkg_dest_path, None, host_post_info)
-            run_remote_command("chmod +x {} || true".format(pkg_dest_path), host_post_info)
+            copy_to_remote(pkg_path, pkg_dest_path, "mode=755", host_post_info)
 
 def copy_kvm_files():
     """copy kvmagent files and packages"""
@@ -471,6 +470,12 @@ def copy_ovmf_tools():
     _src = "/opt/zstack-dvd/{}/{}/ovmf_tools/".format(host_arch, releasever)
     _dst = "/usr/share/OVMF/"
     copy_to_remote(_src, _dst, None, host_post_info)
+
+@on_debian_based(distro)
+def copy_lsusb_scripts():
+    _src = os.path.join(file_root, "lsusb.py")
+    _dst = "/usr/local/bin/"
+    copy_to_remote(_src, _dst, "mode=755", host_post_info)
 
 @on_redhat_based(distro)
 def copy_zs_scripts():
@@ -700,6 +705,7 @@ copy_tools()
 copy_kvm_files()
 copy_gpudriver()
 copy_ovmf_tools()
+copy_lsusb_scripts()
 copy_zs_scripts()
 set_max_performance()
 do_libvirt_qemu_config()
