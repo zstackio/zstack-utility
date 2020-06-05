@@ -521,7 +521,6 @@ def do_libvirt_qemu_config():
     host_post_info.post_label_param = "/etc/libvirt/hooks/qemu"
     run_remote_command(command, host_post_info)
 
-
 def do_network_config():
     # name: enable bridge forward
     if bridgeDisableIptables == "true":
