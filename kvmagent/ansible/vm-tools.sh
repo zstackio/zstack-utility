@@ -42,6 +42,10 @@ fi
 
 vmInstanceUuid=`curl http://169.254.169.254/2009-04-04/meta-data/instance-id`
 version=`echo $AGENT_VERSION | awk -F '=' '{print $2}' | awk '{print $1}'`
+
+echo "stopping zwatch-vm-agent"
+service zwatch-vm-agent stop
+
 echo "install ${BIN_NAME}"
 chmod +x ${BIN_NAME}
 ./${BIN_NAME} -i
@@ -52,7 +56,7 @@ if [ $? != 0 ]; then
 fi
 
 
-echo "start zwatch-vm-agent"
+echo "starting zwatch-vm-agent"
 service zwatch-vm-agent start
 if [ $? != 0 ]; then
      curl -H "Content-Type: application/json" -H "commandpath: /host/zwatchInstallResult" -X POST -d "{\"vmInstanceUuid\": \"${vmInstanceUuid}\", \"version\": \"${InstallFailed}\"}" http://169.254.169.254/host/zwatchInstallResult
