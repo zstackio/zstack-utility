@@ -4904,7 +4904,7 @@ class DumpMysqlCmd(Command):
 
         cmd = ShellCmd("(%s; %s; %s %s) | gzip > %s" % (command_1, command_2, append_sql_command, command_3, db_backupf_file_path))
         cmd(True)
-        info("Backup mysql successfully! You can check the file at %s" % db_backupf_file_path)
+        info("Successfully backed up database. You can check the file at %s" % db_backupf_file_path)
 
         # remove old file
         if len(os.listdir(db_backup_dir)) > keep_amount:
@@ -4954,11 +4954,11 @@ class RestoreMysqlPreCheckCmd(Command):
             error("Failed to connect to jdbc:mysql://%s:%s with root password '%s'" % (
                 self.hostname, self.port, args.mysql_root_password))
         elif not o.strip():
-            info("check pass")
+            info("Check pass.")
             return
 
         if os.path.exists(args.from_file) is False:
-            error("file not exists: %s" % args.from_file)
+            error("File not exists: %s." % args.from_file)
         error_if_tool_is_missing('gunzip')
 
         create_tmp_table = "drop table if exists `TempVolumeEO`; " \
@@ -4980,11 +4980,11 @@ class RestoreMysqlPreCheckCmd(Command):
         os.remove(fname)
 
         if r != 0:
-            error("failed to check, because: %s" % e)
+            error("Check failed. Reason: %s." % e)
         elif o:
-            error("install path of some volumes has been changed, restore mysql has risk:\n%s" % o)
+            error("The install path of some volume(s) has been changed. Restoring mysql has risk:\n%s" % o)
         else:
-            info("check pass")
+            info("Check pass.")
 
 
 class RestoreMysqlCmd(Command):
@@ -5078,11 +5078,11 @@ class RestoreMysqlCmd(Command):
         cmd(False)
         running = get_mgmt_node_state_from_result(cmd) is True
 
-        info("Backup mysql before restore data ...")
+        info("Backing up database before restore data ...")
         ctl.internal_run('dump_mysql')
         restorer.stop_node(args)
 
-        info("Starting restore zstack data ...")
+        info("Restoring database ...")
         for database in ['zstack', 'zstack_rest']:
             command = "mysql -uroot %s -P %s  %s -e 'drop database if exists %s; create database %s'  >> /dev/null 2>&1" \
                       % (db_connect_password, db_port, db_hostname, database, database)
@@ -5098,14 +5098,14 @@ class RestoreMysqlCmd(Command):
         restorer.restore_other_node(args)
         if args.skip_ui:
             if running:
-                info("Recover data successfully! start management node now")
+                info("Successfully restored database. Start management node now.")
                 restorer.start_node(args)
             else:
-                info("Recover data successfully! You can start node manually")
+                info("Successfully restored database. You can start node manually.")
             return
 
         ctl.internal_run('stop_ui')
-        info("Starting restore zstack_ui data ...")
+        info("Restoring UI database ...")
         command = "mysql -uroot %s -P %s  %s -e 'drop database if exists zstack_ui; create database zstack_ui' >> /dev/null 2>&1" \
                   % (ui_db_connect_password, db_port, ui_db_hostname)
         shell_no_pipe(command)
@@ -5113,7 +5113,7 @@ class RestoreMysqlCmd(Command):
               % (db_backup_name, ui_db_hostname_origin_cp, ui_db_connect_password, ui_db_hostname, ui_db_port)
         shell_no_pipe(command)
 
-        info("Recover data successfully! You can start node by: zstack-ctl start")
+        info("Successfully restored database. You can start node by running zstack-ctl start.")
 
 class RestorerFactory(object):
     @staticmethod
@@ -5149,28 +5149,28 @@ class MultiMysqlRestorer(MysqlRestorer):
 
     def start_node(self, args):
         if not args.only_restore_self:
-            info("starting self node...")
+            info("Starting self node...")
             shell("/usr/local/bin/zsha2 start-node")
-            info("starting peer node...")
+            info("Starting peer node...")
             self.utils.excute_on_peer("/usr/local/bin/zsha2 start-node")
 
     def stop_node(self, args):
         if not args.only_restore_self:
-            info("stopping self node...")
+            info("Stopping self node...")
             shell("/usr/local/bin/zsha2 stop-node -keepui")
-            info("stopping peer node...")
+            info("Stopping peer node...")
             self.utils.excute_on_peer("/usr/local/bin/zsha2 stop-node -keepui")
         else:
             cmd = create_check_mgmt_node_command()
             cmd(False)
             self_running = get_mgmt_node_state_from_result(cmd) is True
             if self_running:
-                warn("how can I still running? stop it")
+                warn("How can self node still running? Stopping ...")
                 shell("/usr/local/bin/zsha2 stop-node -keepui")
 
     def restore_other_node(self, args):
         if not args.only_restore_self:
-            info("Starting restore zstack peer node data...")
+            info("Restoring peer node database...")
             slave_file_path = "/var/lib/zstack/tmp-db-backup.gz"
             self.utils.scp_to_peer(args.from_file, slave_file_path)
             self.utils.excute_on_peer(
@@ -5277,7 +5277,7 @@ class ZBoxBackupRestoreCmd(Command):
         pswd_arg = "--mysql-root-password '%s'" % args.mysql_root_password if args.mysql_root_password else ""
         ui_pswd_arg = "'--ui-mysql-root-password '%s'" % args.ui_mysql_root_password if args.ui_mysql_root_password else ""
 
-        info("start to restore database...")
+        info("Restoring database...")
         ctl.internal_run('restore_mysql', "-f %s %s %s" % (args.from_file, pswd_arg, ui_pswd_arg))
 
         recover_succ = [False]
@@ -5301,18 +5301,18 @@ class ZBoxBackupRestoreCmd(Command):
         t = threading.Thread(target=get_progress)
         t.start()
 
-        info("start management node...")
+        info("Starting management node...")
         zsha2 = os.path.exists("/usr/local/bin/zsha2")
         if zsha2:
             shell("/usr/local/bin/zsha2 start-node")
         else:
             ctl.internal_run("start")
 
-        info("if you do not care about the progress, you can exit now.")
+        info("If you do not care about the progress, you can exit now by pressing Ctrl+Z.")
         t.join()
 
         if recover_succ[0] and zsha2:
-            info("start peer management node...")
+            info("Starting peer management node...")
             Zsha2Utils().excute_on_peer("/usr/local/bin/zsha2 start-node")
         elif not recover_succ[0]:
             sys.exit(1)
