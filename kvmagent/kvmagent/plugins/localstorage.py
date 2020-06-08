@@ -767,7 +767,8 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     def delete(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentResponse()
-        kvmagent.deleteImage(cmd.path)
+        if cmd.path:
+            kvmagent.deleteImage(cmd.path)
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
         return jsonobject.dumps(rsp)
 
