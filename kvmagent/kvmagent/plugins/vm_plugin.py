@@ -3250,7 +3250,8 @@ class Vm(object):
                     return cpu
 
                 def on_mips64el():
-                    cpu = e(root, 'cpu')
+                    cpu = e(root, 'cpu', attrib={'mode': 'custom', 'match': 'exact', 'check': 'partial'})
+                    e(cpu, 'model', 'Loongson-3A4000-COMP', attrib={'fallback': 'allow'})
                     return cpu
 
                 cpu = eval("on_{}".format(HOST_ARCH))()
@@ -3309,7 +3310,7 @@ class Vm(object):
             if cmd.useBootMenu:
                 e(os, 'bootmenu', attrib={'enable': 'yes'})
 
-            if cmd.systemSerialNumber:
+            if cmd.systemSerialNumber and HOST_ARCH != 'mips64el':
                 e(os, 'smbios', attrib={'mode': 'sysinfo'})
 
         def make_sysinfo():
@@ -3388,9 +3389,10 @@ class Vm(object):
             tablet = e(devices, 'input', None, {'type': 'tablet', 'bus': 'usb'})
             e(tablet, 'address', None, {'type':'usb', 'bus':'0', 'port':'1'})
 
-            @linux.with_arch(todo_list=['aarch64','mips64el'])
+            @linux.with_arch(todo_list=['aarch64', 'mips64el'])
             def set_keyboard():
                 keyboard = e(devices, 'input', None, {'type': 'keyboard', 'bus': 'usb'})
+                e(keyboard, 'address', None, {'type': 'usb', 'bus': '0', 'port': '2'})
 
             set_keyboard()
             elements['devices'] = devices
@@ -3401,7 +3403,7 @@ class Vm(object):
             max_cdrom_num = len(Vm.ISO_DEVICE_LETTERS)
             empty_cdrom_configs = None
 
-            if HOST_ARCH == 'aarch64':
+            if HOST_ARCH in ['aarch64', 'mips64el']:
                 # SCSI controller only supports 1 bus
                 empty_cdrom_configs = [
                     EmptyCdromConfig('sd%s' % Vm.ISO_DEVICE_LETTERS[0], '0', Vm.get_iso_device_unit(0)),
@@ -3947,7 +3949,10 @@ class Vm(object):
                 e(source, "address", None, { "uuid": str(uuid.UUID('{%s}' % mdevUuid))})
 
         def make_usb_device(usbDevices):
-            next_uhci_port = 2
+            if HOST_ARCH in ['aarch64', 'mips64el']:
+                next_uhci_port = 3
+            else:
+                next_uhci_port = 2
             next_ehci_port = 1
             next_xhci_port = 1
             devices = elements['devices']
@@ -5711,9 +5716,11 @@ class VmPlugin(kvmagent.KvmAgent):
         dom = conn.lookupByName(vmUuid)
         domain_xml = dom.XMLDesc(0)
         domain_xmlobject = xmlobject.loads(domain_xml)
-        # if uhci, port 0 and 1 are hard-coded reserved
-        # if ehci/xhci, port 0 is hard-coded reserved
-        if bus == 0:
+        # if arm or misp uhci, port 0, 1, 2 are hard-coded reserved
+        # else uhci, port 0, 1 are hard-coded reserved
+        if bus == 0 and HOST_ARCH in ['aarch64', 'mips64el']:
+            usb_ports = [0, 1, 2]
+        elif bus == 0:
             usb_ports = [0, 1]
         else:
             usb_ports = [0]

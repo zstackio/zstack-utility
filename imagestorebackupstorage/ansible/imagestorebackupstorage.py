@@ -59,9 +59,13 @@ if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
 
 # get remote host arch
-IS_AARCH64 = get_remote_host_arch(host_post_info) == 'aarch64'
+HOST_ARCH = get_remote_host_arch(host_post_info)
+IS_AARCH64 = HOST_ARCH == 'aarch64'
+IS_MIPS64EL = HOST_ARCH == 'mips64el'
 if IS_AARCH64:
     src_pkg_imagestorebackupstorage = "zstack-store.aarch64.bin"
+elif IS_MIPS64EL:
+    src_pkg_imagestorebackupstorage = "zstack-store.mips64el.bin"
 else:
     src_pkg_imagestorebackupstorage = "zstack-store.bin"
 dst_pkg_imagestorebackupstorage = "zstack-store.bin"
