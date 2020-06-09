@@ -711,7 +711,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
             cmds.append(EBTABLES_CMD + " -t nat -X %s" % CHAIN_NAME)
             bash_r("\n".join(cmds))
 
-        bash_errorout("pkill -9 -f 'lighttpd.*/userdata/{{BR_NAME}} || true'")
+        bash_errorout("pkill -9 -f 'lighttpd.*/userdata/{{BR_NAME}}' || true")
 
         html_folder = os.path.join(self.USERDATA_ROOT, cmd.namespaceName)
         linux.rm_dir_force(html_folder)
