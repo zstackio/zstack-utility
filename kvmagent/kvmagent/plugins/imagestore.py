@@ -180,7 +180,7 @@ class ImageStoreClient(object):
         except Exception as ex:
             err = str(ex)
             if 'Please check whether ImageStore directory is correctly mounted' in err:
-                raise Exception("target image not found, Please check whether ImageStore directory is correctly mounted.")
+                raise Exception("Target image not found, please check whether ImageStore directory is correctly mounted.")
             raise ex
         
         logger.debug('%s:%s pulled to local cache' % (name, imageid))
