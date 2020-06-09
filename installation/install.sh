@@ -1395,7 +1395,8 @@ is_install_general_libs_rh(){
             python-backports-ssl_match_hostname \
             python-setuptools \
             avahi \
-            avahi-tools"
+            avahi-tools \
+            audit"
 
     always_update_list="mysql openssh"
     missing_list=`LANG=en_US.UTF-8 && rpm -q $deps_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
@@ -1458,6 +1459,7 @@ is_install_general_libs_deb(){
         openjdk-8-jdk \
         bridge-utils \
         wget \
+        auditd \
         curl \
         vlan \
         python-dev \
