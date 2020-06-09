@@ -113,7 +113,16 @@ class ImageStoreClient(object):
         cmdstr = '%s -url %s:%s pull %s %s:%s' % (
         self.ZSTORE_CLI_PATH, cmd.hostname, self.ZSTORE_DEF_PORT, args, name, imageid)
         logger.debug('pulling %s:%s from image store' % (name, imageid))
-        shell.call(cmdstr)
+
+        try:
+            shell.call(cmdstr)
+        except Exception as ex:
+            err = str(ex)
+            if 'Please check whether ImageStore directory is correctly mounted' in err:
+                raise Exception(
+                    "Target image not found, please check whether ImageStore directory is correctly mounted.")
+            raise ex
+
         logger.debug('%s:%s pulled to ceph storage' % (name, imageid))
         return jsonobject.dumps(rsp)
 
