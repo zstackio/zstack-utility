@@ -248,6 +248,11 @@ def install_kvm_pkg():
                         smartmontools sshpass usbutils vconfig wget audit dnsmasq \
                         qemu collectd-virt storcli edk2-aarch64 python2-pyudev collectd-disk"
 
+        mips64el_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
+                         usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof mcelog \
+                         net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils python-pyudev pv rsync sed \
+                         qemu-kvm-ev smartmontools sshpass usbutils vconfig wget audit dnsmasq tuned collectd-virt"
+
         # handle zstack_repo
         if zstack_repo != 'false':
             common_dep_list = eval("%s_%s" % (host_arch, releasever))
@@ -263,6 +268,7 @@ def install_kvm_pkg():
 
             dep_list = common_dep_list
             update_list = common_update_list
+
             command = "which virsh"
             host_post_info.post_label = "ansible.shell.install.pkg"
             host_post_info.post_label_param = "libvirt"
