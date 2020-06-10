@@ -8940,6 +8940,8 @@ class ConfigUiCmd(Command):
                 ctl.write_ui_property("ssl_keystore_type", 'PKCS12')
             if not ctl.read_ui_property("ssl_keystore_password"):
                 ctl.write_ui_property("ssl_keystore_password", 'password')
+            if not ctl.read_ui_property("server.ssl.enabled-protocols"):
+                ctl.write_ui_property("server.ssl.enabled-protocols", 'TLSv1.2')
             if not ctl.read_ui_property("db_url"):
                 ctl.write_ui_property("db_url", 'jdbc:mysql://127.0.0.1:3306')
             if not ctl.read_ui_property("db_username"):
@@ -8964,6 +8966,7 @@ class ConfigUiCmd(Command):
             ctl.write_ui_property("ssl_keystore", ctl.ZSTACK_UI_KEYSTORE)
             ctl.write_ui_property("ssl_keystore_type", 'PKCS12')
             ctl.write_ui_property("ssl_keystore_password", 'password')
+            ctl.write_ui_property("server.ssl.enabled-protocols", 'TLSv1.2')
             ctl.write_ui_property("db_url", 'jdbc:mysql://127.0.0.1:3306')
             ctl.write_ui_property("db_username", 'zstack_ui')
             ctl.write_ui_property("db_password", 'zstack.ui.password')
