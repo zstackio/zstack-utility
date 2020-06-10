@@ -8772,9 +8772,9 @@ class StartUiCmd(Command):
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT ' % (args.webhook_port, args.webhook_port))
 
         if args.enable_ssl:
-            scmd = "runuser -l zstack -c 'LOGGING_PATH=%s java %s -jar %szstack-ui.war --mn.host=%s --mn.port=%s --webhook.host=%s --webhook.port=%s --server.port=%s --ssl.enabled=true --ssl.keyalias=%s --ssl.keystore=%s --ssl.keystore-type=%s --ssl.keystore-password=%s --db.url=%s --db.username=%s --db.password=%s %s >/dev/null 2>&1 &'" % (args.log, args.catalina_opts, zstackui, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.ssl_keyalias, args.ssl_keystore, args.ssl_keystore_type, args.ssl_keystore_password, args.db_url, args.db_username, args.db_password, custom_props)
+            scmd = "runuser -l zstack -s /bin/bash -c 'LOGGING_PATH=%s java %s -jar %szstack-ui.war --mn.host=%s --mn.port=%s --webhook.host=%s --webhook.port=%s --server.port=%s --ssl.enabled=true --ssl.keyalias=%s --ssl.keystore=%s --ssl.keystore-type=%s --ssl.keystore-password=%s --db.url=%s --db.username=%s --db.password=%s %s >/dev/null 2>&1 &'" % (args.log, args.catalina_opts, zstackui, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.ssl_keyalias, args.ssl_keystore, args.ssl_keystore_type, args.ssl_keystore_password, args.db_url, args.db_username, args.db_password, custom_props)
         else:
-            scmd = "runuser -l zstack -c 'LOGGING_PATH=%s java %s -jar %szstack-ui.war --mn.host=%s --mn.port=%s --webhook.host=%s --webhook.port=%s --server.port=%s --db.url=%s --db.username=%s --db.password=%s %s >/dev/null 2>&1 &'" % (args.log, args.catalina_opts, zstackui, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.db_url, args.db_username, args.db_password, custom_props)
+            scmd = "runuser -l zstack -s /bin/bash -c 'LOGGING_PATH=%s java %s -jar %szstack-ui.war --mn.host=%s --mn.port=%s --webhook.host=%s --webhook.port=%s --server.port=%s --db.url=%s --db.username=%s --db.password=%s %s >/dev/null 2>&1 &'" % (args.log, args.catalina_opts, zstackui, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.db_url, args.db_username, args.db_password, custom_props)
 
         script(scmd, no_pipe=True)
 
@@ -9121,7 +9121,7 @@ class StartVDIUICmd(Command):
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT ' % (args.server_port, args.server_port))
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT ' % (args.webhook_port, args.webhook_port))
 
-        scmd = "runuser -l zstack -c 'LOGGING_PATH=%s java -jar -Dmn.port=%s -Dwebhook.port=%s -Dserver.port=%s %s >>%s/zstack-vdi.log 2>&1 &'" % (args.log, args.mn_port, args.webhook_port, args.server_port, args.vdi_path, args.log)
+        scmd = "runuser -l zstack -s /bin/bash -c 'LOGGING_PATH=%s java -jar -Dmn.port=%s -Dwebhook.port=%s -Dserver.port=%s %s >>%s/zstack-vdi.log 2>&1 &'" % (args.log, args.mn_port, args.webhook_port, args.server_port, args.vdi_path, args.log)
 
         script(scmd, no_pipe=True)
 
