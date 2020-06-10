@@ -1,13 +1,1 @@
-#!/bin/bash
-line=$(wc -l $0|awk '{print $1}')
-line=$(expr $line - 11)
-tmpdir=$(mktemp -d)
-/bin/rm -rf $tmpdir
-mkdir -p $tmpdir
-tail -n $line $0 |tar x -C $tmpdir
-cd $tmpdir
-INSTALL_PATH=/usr/local/zstack/zwatch-vm-agent bash install.sh $@
-ret=$?
-rm -rf $tmpdir
-exit $ret
-./
+../../kvmagent/ansible/zwatch-vm-agent.linux-amd64.bin
