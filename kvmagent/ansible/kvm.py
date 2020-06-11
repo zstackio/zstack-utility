@@ -153,7 +153,7 @@ def get_host_release_info():
     rpm -q centos-release > /dev/null 2>&1
     [ $? -eq 0 ] && echo `rpm -q centos-release|awk -F"." '{print $1}'|awk -F"-" '{print "c"$3$4}'` && exit 0
     rpm -q alios-release-server > /dev/null 2>&1
-    [ $? -eq 0 ] && echo `rpm -q alios-release-server |awk -F"-" '{print "c"$4}'|tr -d '.'` && exit 0
+    [ $? -eq 0 ] && echo `rpm -q alios-release-server |awk -F"." '{print $3}'` && exit 0
     rpm -q redhat-release-server > /dev/null 2>&1
     [ $? -eq 0 ] && echo `rpm -q redhat-release-server |awk -F"-" '{print "c"$4}'|tr -d '.'` && exit 0
     rpm -q neokylin-release-server > /dev/null 2>&1
@@ -375,7 +375,7 @@ def install_kvm_pkg():
                             'libguestfs-tools', 'sed', 'nfs-common', 'open-iscsi','ebtables', 'pv', 'usbutils', 
                             'pciutils', 'expect', 'lighttpd', 'sshpass', 'rsync', 'iputils-arping', 'nmap', 'collectd', 
                             'iptables', 'python-pip', 'dmidecode', 'ovmf', 'dnsmasq', 'auditd', 'firewalld', 'ipset',
-                            'multipath-tools', 'uuid-runtime']
+                            'multipath-tools', 'uuid-runtime', 'lvm2', 'lvm2-lockd', 'udev', 'sanlock', 'usbredirserver']
         apt_install_packages(install_pkg_list, host_post_info)
         if zstack_repo == 'false':
             command_deb_list = "echo %s >/var/lib/zstack/dependencies".format(' '.join(install_pkg_list))
@@ -485,7 +485,7 @@ def copy_zs_scripts():
     copy_to_remote(_src, _dst, None, host_post_info)
 
 
-@on_redhat_based(distro, exclude=['Alibaba'])
+@on_redhat_based(distro, exclude=['alibaba'])
 def set_max_performance():
     # AliOS 7u2 does not support tuned-adm
     command = "tuned-adm profile virtual-host; echo virtual-host > /etc/tuned/active_profile"

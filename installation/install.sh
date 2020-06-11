@@ -17,7 +17,7 @@ LEGACY_MINI_INSTALL_ROOT="/usr/local/zstack-mini/"
 export TERM=xterm
 
 OS=''
-REDHAT_OS="CENTOS6 CENTOS7 RHEL7 AliOS7 ISOFT4"
+REDHAT_OS="CENTOS6 CENTOS7 RHEL7 ALIOS7 ISOFT4"
 DEBIAN_OS="UBUNTU14.04 UBUNTU16.04 UBUNTU KYLIN4.0.2 DEBIAN9 UOS20"
 SUPPORTED_OS="$REDHAT_OS $DEBIAN_OS"
 REDHAT_WITHOUT_CENTOS6=`echo $REDHAT_OS |sed s/CENTOS6//`
@@ -1395,7 +1395,8 @@ is_install_general_libs_rh(){
             python-backports-ssl_match_hostname \
             python-setuptools \
             avahi \
-            avahi-tools"
+            avahi-tools \
+            audit"
 
     always_update_list="mysql openssh"
     missing_list=`LANG=en_US.UTF-8 && rpm -q $deps_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
@@ -1458,6 +1459,7 @@ is_install_general_libs_deb(){
         openjdk-8-jdk \
         bridge-utils \
         wget \
+        auditd \
         curl \
         vlan \
         python-dev \

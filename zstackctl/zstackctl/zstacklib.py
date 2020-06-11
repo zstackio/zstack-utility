@@ -1467,8 +1467,7 @@ enabled=0" >  /etc/yum.repos.d/zstack-experimental-mn.repo
 
 
         elif distro in DEB_BASED_OS:
-            command = '/bin/cp -f /etc/apt/sources.list /etc/apt/sources.list.zstack.%s' \
-                      % datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            command = '[ -f /etc/apt/sources.list ] && /bin/mv -f /etc/apt/sources.list /etc/apt/sources.list.zstack.bak || true'
             run_remote_command(command, host_post_info)
             update_repo_raw_command = """
 cat > /etc/apt/sources.list << EOF

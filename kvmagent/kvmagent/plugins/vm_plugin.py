@@ -18,6 +18,7 @@ import json
 import libvirt
 import xml.dom.minidom as minidom
 #from typing import List, Any, Union
+from distutils.version import LooseVersion
 
 import zstacklib.utils.ip as ip
 import zstacklib.utils.iptables as iptables
@@ -747,6 +748,12 @@ def is_namespace_used():
 def is_ioapic_supported():
     return compare_version(LIBVIRT_VERSION, '3.4.0') >= 0 
 
+def is_kylin402():
+    zstack_release = linux.read_file('/etc/zstack-release')
+    if zstack_release is None:
+        return False
+    return "kylin402" in zstack_release.splitlines()[0]
+
 def is_spiceport_driver_supported():
     # qemu-system-aarch64 not supported char driver: spiceport
     return True if shell.run("which qemu-system-aarch64") == 1 else shell.run("qemu-system-aarch64 -h | grep 'chardev spiceport'") == 0
@@ -757,6 +764,11 @@ def is_virtual_machine():
 
 def get_domain_type():
     return "qemu" if HOST_ARCH == "aarch64" and is_virtual_machine() else "kvm"
+
+def get_gic_version(cpu_num):
+    kernel_release = platform.release().split("-")[0]
+    if is_kylin402() and cpu_num <= 8 and LooseVersion(kernel_release) < LooseVersion('4.15.0'):
+        return 2
 
 # Occasionally, libvirt might fail to list VM ...
 def get_console_without_libvirt(vmUuid):
@@ -3350,6 +3362,11 @@ class Vm(object):
             # always set ioapic driver to kvm after libvirt 3.4.0
             if is_ioapic_supported():
                 e(features, "ioapic", attrib={'driver': 'kvm'})
+
+            if get_gic_version(cmd.cpuNum) == 2:
+                e(features, "gic", attrib={'version': '2'})
+
+
 
 
         def make_qemu_commandline():
