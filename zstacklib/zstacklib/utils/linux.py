@@ -926,24 +926,37 @@ def create_template(src, dst, compress=False, shell=shell):
         return qcow2_create_template(src, dst, compress, shell=shell)
     raise Exception('unknown format[%s] of the image file[%s]' % (fmt, src))
 
-def qcow2_create_template(src, dst, compress, shell=shell):
-    src = ' --object secret,id={0},file={1},format=base64 '\
-          ' --image-opts driver=qcow2,encrypt.key-secret={0},file.filename={2} '\
-          ' -o encrypt.format=luks,encrypt.key-secret={0} '\
-          .format(secret.ZSTACK_SECRET_OBJECT_ID, secret.ZSTACK_ENCRYPT_B64_PATH, src)
+def _generate_qcow2_src_with_secrets(src):
+    src_with_secret = ' --object secret,id={0},file={1},format=base64 '\
+            ' --image-opts driver=qcow2,encrypt.key-secret={0},file.filename={2} '\
+            ' -o encrypt.format=luks,encrypt.key-secret={0} '\
+            .format(secret.ZSTACK_SECRET_OBJECT_ID, secret.ZSTACK_ENCRYPT_B64_PATH, src)
 
+    # FIXME: hardcode disk secret name from virtio-disk0-luks-secret0 to virtio-disk9-luks-secret9
+    for i in range(10):
+        for j in range(10):
+           src_with_secret += ' --object secret,id=virtio-disk{0}-luks-secret{1},file={2},format=base64 '\
+                   ' -o encrypt.format=luks,encrypt.key-secret=virtio-disk{0}-luks-secret{1} '\
+                   .format(i, j, secret.ZSTACK_ENCRYPT_B64_PATH)
+    return src_with_secret
+
+def qcow2_create_template(src, dst, compress, shell=shell):
+    src = _generate_qcow2_src_with_secrets(src)
     if compress:
         shell.call('%s -c -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
     else:
         shell.call('%s -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
 
 def raw_create_template(src, dst, shell=shell):
+    src = _generate_qcow2_src_with_secrets(src)
     shell.call('%s -f raw -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
 
 def qcow2_convert_to_raw(src, dst):
+    src = _generate_qcow2_src_with_secrets(src)
     shell.call('%s -f qcow2 -O raw %s %s' % (qemu_img.subcmd('convert'), src, dst))
 
 def qcow2_rebase(backing_file, target):
+    src = _generate_qcow2_src_with_secrets(src)
     fmt = get_img_fmt(backing_file)
     shell.call('%s -F %s -f qcow2 -b %s %s' % (qemu_img.subcmd('rebase'), fmt, backing_file, target))
 
