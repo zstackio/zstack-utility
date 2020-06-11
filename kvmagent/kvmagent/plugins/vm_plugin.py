@@ -2073,13 +2073,23 @@ class Vm(object):
             return disk
 
         def scsilun_volume():
-            disk = etree.Element('disk', attrib={'type': 'block', 'device': 'lun', 'sgio': 'unfiltered'})
-            e(disk, 'driver', None,
-              {'name': 'qemu', 'type': 'raw'})
-            e(disk, 'source', None, {'dev': volume.installPath})
-            e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
+            def on_debian():
+                # default value of sgio is 'filtered'
+                disk = etree.Element('disk', attrib={'type': 'block', 'device': 'lun'})
+                e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw'})
+                e(disk, 'source', None, {'dev': volume.installPath})
+                e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
+                return disk
+
+            def on_redhat():
+                disk = etree.Element('disk', attrib={'type': 'block', 'device': 'lun', 'sgio': 'unfiltered'})
+                e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw'})
+                e(disk, 'source', None, {'dev': volume.installPath})
+                e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
+                return disk
+
             #NOTE(weiw): scsi lun not support aio or qos
-            return disk
+            return eval("on_{}".format(kvmagent.get_host_os_type()))()
 
         def iscsibased_volume():
             # type: () -> etree.Element
