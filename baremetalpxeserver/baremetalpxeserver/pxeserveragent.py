@@ -599,6 +599,7 @@ systemctl enable zstack-bm-agent.service
         context['PRE_SCRIPTS'] = 'sh -c "$(curl -fsSL ftp://%s/scripts/pre_%s.sh)"' % (pxeserver_dhcp_nic_ip, cmd.pxeNicMac)
         context['POST_SCRIPTS'] = 'sh -c "$(curl -fsSL ftp://%s/scripts/post_%s.sh)"' % (pxeserver_dhcp_nic_ip, cmd.pxeNicMac)
         context['FORCE_INSTALL'] = "clearpart --all --initlabel" if cmd.forceInstall else ""
+        context['IMAGE_UUID'] = cmd.imageUuid
 
         niccfgs = json_object.loads(cmd.nicCfgs) if cmd.nicCfgs is not None else []
         pxe_niccfg_content = """
