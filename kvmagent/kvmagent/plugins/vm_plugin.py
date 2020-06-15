@@ -5705,6 +5705,7 @@ class VmPlugin(kvmagent.KvmAgent):
     </redirdev>''' % (cmd.ip, int(cmd.port), bus, self._get_next_usb_port(cmd.vmUuid, bus))
         spath = linux.write_to_temp_file(content)
         r, o, e = bash.bash_roe("virsh attach-device %s %s" % (cmd.vmUuid, spath))
+        os.remove(spath)
         logger.debug("attached %s to %s, %s, %s" % (
             spath, cmd.vmUuid, o, e))
         return r, o, e
@@ -5739,6 +5740,7 @@ class VmPlugin(kvmagent.KvmAgent):
     </redirdev>''' % (cmd.ip, int(cmd.port))
         spath = linux.write_to_temp_file(content)
         r, o, e = bash.bash_roe("virsh detach-device %s %s" % (cmd.vmUuid, spath))
+        os.remove(spath)
         if r:
             raise RetryException("failed to detach usb device from %s: %s, %s" % cmd.vmUuid, o, e)
         else:
