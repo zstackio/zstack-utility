@@ -2159,6 +2159,7 @@ done
         content = re.sub('#key_file', 'key_file', content, 1)
         content = re.sub('#cert_file', 'cert_file', content, 1)
         content = re.sub('#ca_file', 'ca_file', content, 1)
+        content = re.sub('#tls_port =', 'tls_port =', content, 1)
         content = re.sub('listen_tls = 0', 'listen_tls = 1', content, 1)
         linux.write_to_file('/etc/libvirt/libvirtd.conf', content)
 
