@@ -3379,11 +3379,6 @@ class Vm(object):
             if cmd.coloPrimary:
                 e(qcmd, "qemu:arg", attrib={"value": '-L'})
                 e(qcmd, "qemu:arg", attrib={"value": '/usr/share/qemu-kvm/'})
-                e(qcmd, "qemu:arg", attrib={"value": '-drive'})
-                e(qcmd, "qemu:arg", attrib={"value": 'if=none,driver=quorum,read-pattern=fifo,cache=none'
-                                                     ',id=colo-disk0,children.0.file.filename='
-                                                     + cmd.rootVolume.installPath +
-                                                     ',children.0.driver=qcow2,vote-threshold=1'})
                 e(qcmd, "qemu:arg", attrib={"value": '-monitor'})
                 e(qcmd, "qemu:arg", attrib={"value": 'tcp::%s,server,nowait' % cmd.addons['primaryMonitorPort']})
             elif cmd.coloSecondary:
@@ -3408,19 +3403,6 @@ class Vm(object):
                                                          % (count, count)})
                     count += 1
 
-                e(qcmd, "qemu:arg", attrib={"value": '-drive'})
-                e(qcmd, "qemu:arg", attrib={"value": 'if=none,id=parent0,file.filename='
-                                                     + cmd.rootVolume.installPath + ',driver=qcow2'})
-                e(qcmd, "qemu:arg", attrib={"value": '-drive'})
-                e(qcmd, "qemu:arg", attrib={"value": 'if=none,id=childs0,driver=replication,mode=secondary'
-                                                     ',file.driver=qcow2,top-id=childs0,file.file.filename='
-                                                     + cmd.cacheVolumes[0].installPath + ','
-                                                     'file.backing.driver=qcow2,file.backing.file.filename='
-                                                     + cmd.cacheVolumes[1].installPath + ','
-                                                     'file.backing.backing=parent0'})
-                e(qcmd, "qemu:arg", attrib={"value": '-drive'})
-                e(qcmd, "qemu:arg", attrib={"value": 'if=none,id=colo-disk0,driver=quorum,'
-                                                     'read-pattern=fifo,vote-threshold=1,children.0=childs0'})
                 e(qcmd, "qemu:arg", attrib={"value": '-incoming'})
                 e(qcmd, "qemu:arg", attrib={"value": 'tcp:0:%s' % cmd.addons['blockReplicationPort']})
                 e(qcmd, "qemu:arg", attrib={"value": '-monitor'})
@@ -3539,6 +3521,51 @@ class Vm(object):
             #guarantee rootVolume is the first of the set
             volumes = [cmd.rootVolume]
             volumes.extend(cmd.dataVolumes)
+
+            def quorumbased_volume(_dev_letter, _v):
+                def make_backingstore(volume_path):
+                    disk = etree.Element('disk', {'type': 'quorum', 'device': 'disk', 'threshold': '1', 'mode': 'primary'})
+                    paths = linux.qcow2_get_file_chain(volume_path)
+                    if len(paths) == 0:
+                    # could not read qcow2
+                        raise Exception("could not read qcow2")
+                        
+                    backingStore = None
+                    for path in paths:
+                        logger.debug('disk path %s' % path)
+                        xml = etree.tostring(disk)
+                        logger.debug('disk xml is %s' % xml)
+
+                        if backingStore:
+                            backingStore = e(backingStore, 'backingStore', None, {'type': 'file'})
+                        else:
+                            backingStore = e(disk, 'backingStore', None, {'type': 'file'})
+
+                        # if backingStore:
+                        #     backingStore = e(backingStore, 'backingStore', None, {'type': 'file'})
+                        # else:
+                        #     backingStore = e(disk, 'backingStore', None, {'type': 'file'})
+
+                        e(backingStore, 'format', None, {'type': 'qcow2'})
+                        xml = etree.tostring(disk)
+                        logger.debug('disk xml is %s' % xml)
+                        if cmd.coloSecondary:
+                            e(backingStore, 'active', None, {'file': cmd.cacheVolumes[0].installPath})
+                            e(backingStore, 'hidden', None, {'file': cmd.cacheVolumes[1].installPath})        
+
+                        e(backingStore, 'source', None, {'file': path})
+                            
+                    return disk
+
+                disk = make_backingstore(_v.installPath)
+
+                if _v.useVirtio:
+                    e(disk, 'target', None, {'dev': 'vd%s' % _dev_letter, 'bus': 'virtio'})
+                else:
+                    dev_format = Vm._get_disk_target_dev_format(default_bus_type)
+                    e(disk, 'target', None, {'dev': dev_format % _dev_letter, 'bus': default_bus_type})
+                
+                return disk
 
             def filebased_volume(_dev_letter, _v):
                 disk = etree.Element('disk', {'type': 'file', 'device': 'disk', 'snapshot': 'external'})
@@ -3709,7 +3736,9 @@ class Vm(object):
                         raise kvmagent.KvmError(err)
                     dev_letter = Vm.DEVICE_LETTERS[scsi_device_id]
 
-                if v.deviceType == 'file':
+                if cmd.coloPrimary or cmd.coloSecondary:
+                    vol = quorumbased_volume(dev_letter, v)
+                elif v.deviceType == 'file':
                     vol = filebased_volume(dev_letter, v)
                 elif v.deviceType == 'iscsi':
                     vol = iscsibased_volume(dev_letter, v)
