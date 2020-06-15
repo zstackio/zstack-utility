@@ -4,7 +4,6 @@
 '''
 import copy
 from kvmagent import kvmagent
-from zstacklib.utils import iptables
 from zstacklib.utils import jsonobject
 from zstacklib.utils import http
 from zstacklib.utils import log
@@ -30,7 +29,6 @@ KVM_POPULATE_FDB_L2VXLAN_NETWORKS_PATH = "/network/l2vxlan/populatefdbs"
 KVM_SET_BRIDGE_ROUTER_PORT_PATH = "/host/bridge/routerport"
 
 logger = log.get_logger(__name__)
-IPTABLES_CMD = iptables.get_iptables_cmd()
 
 class CheckPhysicalNetworkInterfaceCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -138,12 +136,9 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
     def _configure_bridge(self, disableIptables):
         shell.call('modprobe br_netfilter || true')
-        if disableIptables:
-            shell.call('echo 0 > /proc/sys/net/bridge/bridge-nf-call-iptables')
-        else:
-            shell.call('echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables')
-        shell.call('echo 1 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged')
-        shell.call('echo 1 > /proc/sys/net/ipv4/conf/default/forwarding')
+        linux.write_file('/proc/sys/net/bridge/bridge-nf-call-iptables', '0' if disableIptables else '1')
+        linux.write_file('/proc/sys/net/bridge/bridge-nf-filter-vlan-tagged', '1')
+        linux.write_file('proc/sys/net/ipv4/conf/default/forwarding', '1')
 
     @kvmagent.replyerror
     def check_physical_network_interface(self, req):

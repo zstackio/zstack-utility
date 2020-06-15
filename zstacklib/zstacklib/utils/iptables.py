@@ -19,7 +19,7 @@ def get_iptables_cmd(command = None):
 
     def checkIptablesLock():
         global _iptablesUseLock
-        if shell.run("iptables -w -L > /dev/null") == 0:
+        if shell.run("iptables -w -nL > /dev/null") == 0:
             _iptablesUseLock = True
         else:
             _iptablesUseLock = False
@@ -40,7 +40,7 @@ def get_ip6tables_cmd(command = None):
 
     def checkIp6tablesLock():
         global _ip6tablesUseLock
-        if shell.run("ip6tables -w -L > /dev/null") == 0:
+        if shell.run("ip6tables -w -nL > /dev/null") == 0:
             _ip6tablesUseLock = True
         else:
             _ip6tablesUseLock = False
