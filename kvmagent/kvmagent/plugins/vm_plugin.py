@@ -6347,7 +6347,8 @@ class VmPlugin(kvmagent.KvmAgent):
             for line in lines:
                 if '/var/lib/zstack/kvm/pushgateway' in line:
                     port = line[line.rindex('web.listen-address :') + 20:]
-                    break;
+                    port = port.split()[0]
+                    break
             vm_uuid = dom.name()
             url = "http://localhost:%s/metrics/job/zwatch_vm_agent/vmUuid/%s" % (port, vm_uuid)
             shell.run('curl -X DELETE ' + url)
