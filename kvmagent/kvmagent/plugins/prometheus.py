@@ -515,7 +515,7 @@ WantedBy=multi-user.target
             ARGUMENTS = cmd.startupArguments
             if not ARGUMENTS:
                 ARGUMENTS = ""
-            bash_errorout('chmod +x {{EXPORTER_PATH}}')
+            os.chmod(EXPORTER_PATH, 0o755)
             run_in_systemd(EXPORTER_PATH, ARGUMENTS, LOG_FILE)
 
         para = jsonobject.loads(req[http.REQUEST_BODY])

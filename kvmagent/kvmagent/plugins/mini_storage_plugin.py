@@ -566,7 +566,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         bash.bash_roe("cp %s /usr/lib/drbd/mini_fencer.py" % fencer_path)
         linux.sync_file(fencer_path)
         linux.sync_file("/usr/lib/drbd/mini_fencer.py")
-        bash.bash_roe("sudo chmod 777 /usr/lib/drbd/mini_fencer.py")
+        os.chmod("/usr/lib/drbd/mini_fencer.py", 0o755)
 
     @kvmagent.replyerror
     @lock.file_lock(LOCK_FILE)

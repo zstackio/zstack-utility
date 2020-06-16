@@ -393,10 +393,10 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
     def _cleanup_conntrack(self, ips=None, ip_version="ipv4"):
         if ips:
             for ip in ips:
-                shell.run("sudo conntrack -d %s -f %s -D" % (ip, ip_version))
+                shell.run("conntrack -d %s -f %s -D" % (ip, ip_version))
                 logger.debug('clean up conntrack -d %s -D' % ip)
         else:
-            shell.run("sudo conntrack -D")
+            shell.run("conntrack -D")
             logger.debug('clean up conntrack -D')
 
     @bash.in_bash
