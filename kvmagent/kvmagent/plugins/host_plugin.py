@@ -33,6 +33,7 @@ from zstacklib.utils.report import Report
 
 IS_AARCH64 = platform.machine() == 'aarch64'
 GRUB_FILES = ["/boot/grub2/grub.cfg", "/boot/grub/grub.cfg", "/etc/grub2-efi.cfg", "/etc/grub-efi.cfg", "/boot/efi/EFI/centos/grub.cfg"]
+IPTABLES_CMD = iptables.get_iptables_cmd()
 
 class ConnectResponse(kvmagent.AgentResponse):
     def __init__(self):

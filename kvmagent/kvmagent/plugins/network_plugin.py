@@ -4,6 +4,7 @@
 '''
 import copy
 from kvmagent import kvmagent
+from zstacklib.utils import iptables
 from zstacklib.utils import jsonobject
 from zstacklib.utils import http
 from zstacklib.utils import log
@@ -29,6 +30,7 @@ KVM_POPULATE_FDB_L2VXLAN_NETWORKS_PATH = "/network/l2vxlan/populatefdbs"
 KVM_SET_BRIDGE_ROUTER_PORT_PATH = "/host/bridge/routerport"
 
 logger = log.get_logger(__name__)
+IPTABLES_CMD = iptables.get_iptables_cmd()
 
 class CheckPhysicalNetworkInterfaceCmd(kvmagent.AgentCommand):
     def __init__(self):

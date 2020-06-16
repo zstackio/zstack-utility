@@ -7,6 +7,7 @@ from prometheus_client.core import GaugeMetricFamily, REGISTRY
 
 from kvmagent import kvmagent
 from zstacklib.utils import http
+from zstacklib.utils import iptables
 from zstacklib.utils import jsonobject
 from zstacklib.utils import lock
 from zstacklib.utils import lvm
@@ -19,6 +20,7 @@ logger = log.get_logger(__name__)
 collector_dict = {}  # type: Dict[str, threading.Thread]
 latest_collect_result = {}
 collectResultLock = threading.RLock()
+IPTABLES_CMD = iptables.get_iptables_cmd()
 
 def collect_host_network_statistics():
 
