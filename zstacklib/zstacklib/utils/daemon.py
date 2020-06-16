@@ -225,11 +225,8 @@ class Daemon(object):
         to_add_line = "127.0.0.1 %s  # added by ZStack" % linux.get_host_name()
         origin_lines = linux.read_file_lines(hosts_path)
         for line in origin_lines[:]:
-            if line.strip() == to_add_line:
+            if line.strip().startswith(to_add_line):
                 return
 
-            if line.endswith("# added by ZStack"):
-                origin_lines.remove(line)
-
-        origin_lines.append(to_add_line)
+        origin_lines.append(to_add_line + '\n')
         linux.write_file_lines(hosts_path, origin_lines)
