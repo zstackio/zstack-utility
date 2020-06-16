@@ -1732,7 +1732,7 @@ class TailLogCmd(Command):
             if pid:
                 with open('/proc/%s/cmdline' % pid, 'r') as fd:
                     cmdline = fd.read()
-                    if 'ssl.enabled' in cmdline:
+                    if 'ssl.enabled=true' in cmdline:
                         return "--ssl --sslkey " + ctl.ZSTACK_UI_KEYSTORE_PEM + " --sslcert " + ctl.ZSTACK_UI_KEYSTORE_PEM
             return ""
 
