@@ -78,6 +78,7 @@ ONLY_INSTALL_ZSTACK=''
 NOT_START_ZSTACK=''
 NEED_SET_MN_IP=''
 INSTALL_ENTERPRISE='n'
+REPO_MATCHED='true'
 
 MYSQL_ROOT_PASSWORD=''
 MYSQL_PORT='3306'
@@ -2978,7 +2979,7 @@ check_hybrid_arch(){
     if [ -d /opt/zstack-dvd/x86_64 -a -d /opt/zstack-dvd/aarch64 ];then
         fail2 "Hybrid arch exists but repo not matched all, please contact and get correct iso to upgrade local repo first."
     fi
-    return 1
+    REPO_MATCHED=false
 }
 
 create_local_source_list_files() {
@@ -2998,7 +2999,7 @@ check_sync_local_repos() {
       cmp -s .repo_version /opt/zstack-dvd/$BASEARCH/$release/.repo_version || check_hybrid_arch
     done
   fi
-  if [ $? -eq 0 ]; then
+  if [ x"$REPO_MATCHED" = x"true" ]; then
       return 0
   elif [ x"$SKIP_SYNC" = x'y' -o x"$OS" = x"$KYLIN402" -o x"$OS" = x"$DEBIAN9" ]; then
       echo " ... $(tput setaf 1)NOT MATCH$(tput sgr0)" | tee -a $ZSTAC_INSTALL_LOG
