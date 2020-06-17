@@ -3975,7 +3975,7 @@ class Vm(object):
                 e(source, "address", None, { "uuid": str(uuid.UUID('{%s}' % mdevUuid))})
 
         def make_usb_device(usbDevices):
-            if IS_AARCH64:
+            if HOST_ARCH == 'aarch64':
                 next_uhci_port = 3
             else:
                 next_uhci_port = 2
@@ -5745,7 +5745,7 @@ class VmPlugin(kvmagent.KvmAgent):
         # if arm uhci, port 0, 1, 2 are hard-coded reserved
         # else uhci, port 0, 1 are hard-coded reserved
         # if ehci/xhci, port 0 is hard-coded reserved
-        if bus == 0 and IS_AARCH64:
+        if bus == 0 and HOST_ARCH == 'aarch64':
             usb_ports = [0, 1, 2]
         elif bus == 0:
             usb_ports = [0, 1]
