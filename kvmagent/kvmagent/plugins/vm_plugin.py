@@ -3524,7 +3524,7 @@ class Vm(object):
 
             def quorumbased_volume(_dev_letter, _v):
                 def make_backingstore(volume_path):
-                    disk = etree.Element('disk', {'type': 'quorum', 'device': 'disk', 'threshold': '1', 'mode': 'primary'})
+                    disk = etree.Element('disk', {'type': 'quorum', 'device': 'disk', 'threshold': '1', 'mode': 'primary' if cmd.coloPrimary else 'secondary'})
                     paths = linux.qcow2_get_file_chain(volume_path)
                     if len(paths) == 0:
                     # could not read qcow2
