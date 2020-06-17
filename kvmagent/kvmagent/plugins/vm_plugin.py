@@ -3813,7 +3813,6 @@ class Vm(object):
         def make_usb_redirect():
             devices = elements['devices']
             e(devices, 'controller', None, {'type': 'usb', 'index': '0'})
-            exit_flag = 0
             # make sure there are three usb controllers, each for USB 1.1/2.0/3.0
             @linux.on_redhat_based(DIST_NAME)
             @linux.with_arch(todo_list=['aarch64'])
@@ -3821,7 +3820,7 @@ class Vm(object):
                 # for aarch64 centos, only support default controller(qemu-xhci 3.0) on current qemu version(2.12_0-18)
                 e(devices, 'controller', None, {'type': 'usb', 'index': '1'})
                 e(devices, 'controller', None, {'type': 'usb', 'index': '2'})
-                exit_flag = 1
+                return True
                 
 
             def set_usb2_3():
@@ -3848,8 +3847,7 @@ class Vm(object):
                 redirdev4 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
                 e(redirdev4, 'address', None, {'type': 'usb', 'bus': '4', 'port': '2'})
 
-            set_default()
-            if exit_flag:
+            if set_default():
                 return
             set_usb2_3()
             set_redirdev()
