@@ -9323,12 +9323,12 @@ class MiniResetHostCmd(Command):
     def _run_script(self, peer_ip=None):
         if not peer_ip:
             shell_return("/bin/cp %s %s" % (self.local_script_path, self.script_path))
-            shell_return("python %s > /tmp/reset_mini.log 2>1" % self.script_path)
+            shell_return("python %s > /tmp/reset_mini.log 2>&1" % self.script_path)
         elif self._ssh_no_auth(peer_ip):
-            cmd = ShellCmd("ssh root@%s 'nohup python %s > /tmp/reset_mini.log 2>1 &'" % (peer_ip, self.script_path))
+            cmd = ShellCmd("ssh root@%s 'nohup python %s > /tmp/reset_mini.log 2>&1 &'" % (peer_ip, self.script_path))
             cmd(True)
         else:
-            cmd = ShellCmd("ssh -i %s root@%s 'nohup python %s > /tmp/reset_mini.log 2>1 &'" % (self.key, peer_ip, self.script_path))
+            cmd = ShellCmd("ssh -i %s root@%s 'nohup python %s > /tmp/reset_mini.log 2>&1 &'" % (self.key, peer_ip, self.script_path))
             cmd(True)
 
     def _copy_script(self, peer_ip):
