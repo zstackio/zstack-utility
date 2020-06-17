@@ -569,13 +569,16 @@ def scp_download(hostname, sshkey, src_filepath, dst_filepath, host_account='roo
     else:
         bandWidth = ''
 
+    filename_check_option = '`scp -T 2>&1 | grep -q "unknown option" || echo "-T"`'
+
     sshkey_file = create_ssh_key_file()
     os.chmod(sshkey_file, 0600)
     try:
         dst_dir = os.path.dirname(dst_filepath)
         if not os.path.exists(dst_dir):
             os.makedirs(dst_dir)
-        scp_cmd = 'scp {6} -P {0} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {1} {2}@{3}:{4} {5}'.format(sshPort, sshkey_file, host_account, hostname, remote_shell_quote(src_filepath), dst_filepath, bandWidth)
+        scp_cmd = 'scp {7} {6} -P {0} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {1} {2}@{3}:{4} {5}'\
+            .format(sshPort, sshkey_file, host_account, hostname, remote_shell_quote(src_filepath), dst_filepath, bandWidth, filename_check_option)
         shell.call(scp_cmd)
         os.chmod(dst_filepath, 0664)
     finally:
