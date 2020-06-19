@@ -690,7 +690,7 @@ cs_check_zstack_data_exist(){
 check_system(){
     echo_title "Check System"
     echo ""
-    cat /etc/*-release |egrep -i -h "centos |Red Hat Enterprise|Alibaba|NeoKylin" >>$ZSTACK_INSTALL_LOG 2>&1
+    cat /etc/*-release |egrep -i -h "centos |Red Hat Enterprise|Alibaba|NeoKylin|Kylin Linux Advanced Server release V10" >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -eq 0 ]; then
         grep -q 'CentOS release 6' /etc/system-release && OS="CENTOS6"
         grep -q 'CentOS Linux release 7' /etc/system-release && OS="CENTOS7"
@@ -698,6 +698,7 @@ check_system(){
         grep -q 'Alibaba Group Enterprise Linux' /etc/system-release && OS="ALIOS7"
         grep -q 'iSoft Linux release 4' /etc/system-release && OS="ISOFT4"
         grep -q 'NeoKylin Linux' /etc/system-release && OS="RHEL7"
+        grep -q 'Kylin Linux Advanced Server release V10' /etc/system-release && OS="RHEL7"
         if [[ -z "$OS" ]];then
             fail2 "Host OS checking failure: your system is: `cat /etc/redhat-release`, $PRODUCT_NAME management node only supports $SUPPORTED_OS currently"
         elif [[ $OS == "CENTOS7" ]];then
