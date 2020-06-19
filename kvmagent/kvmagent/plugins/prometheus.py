@@ -273,24 +273,29 @@ def collect_vm_statistics():
     38232 afa02edca7eb4afcb5d2904ac1216eb1
     '''
 
-    pid_vm_map = {
-    }
+    pid_vm_map = {}
     for pid_vm in pid_vm_map_str.splitlines():
         arr = pid_vm.split()
-        pid_vm_map[arr[0]] = arr[1]
+        if len(arr) == 2:
+            pid_vm_map[arr[0]] = arr[1]
 
-    vm_pid_arr_str = ','.join(pid_vm_map.keys())
+    def collect(vm_pid_arr):
+        vm_pid_arr_str = ','.join(vm_pid_arr)
 
-    r, pid_cpu_usages_str = bash_ro("top -b -n 1 -p %s | grep qemu-kvm | awk '{print $1,$9}'" % vm_pid_arr_str)
-    if r != 0 or len(pid_cpu_usages_str.splitlines()) == 0:
-        return metrics.values()
+        r, pid_cpu_usages_str = bash_ro("top -b -n 1 -p %s | awk '/qemu-kvm/{print $1,$9}'" % vm_pid_arr_str)
+        if r != 0 or len(pid_cpu_usages_str.splitlines()) == 0:
+            return
 
-    for pid_cpu_usage in pid_cpu_usages_str.splitlines():
-        arr = pid_cpu_usage.split()
-        pid = arr[0]
-        vm_uuid = pid_vm_map[pid]
-        cpu_usage = arr[1]
-        metrics['cpu_occupied_by_vm'].add_metric([vm_uuid], float(cpu_usage))
+        for pid_cpu_usage in pid_cpu_usages_str.splitlines():
+            arr = pid_cpu_usage.split()
+            pid = arr[0]
+            vm_uuid = pid_vm_map[pid]
+            cpu_usage = arr[1]
+            metrics['cpu_occupied_by_vm'].add_metric([vm_uuid], float(cpu_usage))
+
+    n = 10
+    for i in range(0, len(pid_vm_map.keys()), n):
+        collect(pid_vm_map.keys()[i:i + n])
 
     return metrics.values()
 
