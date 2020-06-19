@@ -6306,6 +6306,30 @@ class VmPlugin(kvmagent.KvmAgent):
                                                 % cmd.checkpointDelay)
         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "trace-event-set-state",'
                                                 ' "arguments": {"name": "colo*", "enable": true}}')
+
+        # wait primary vm migrate job finished
+        while True:
+            r, o, err = execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "query-migrate"}')
+            if err:
+                rsp.success = False
+                rsp.error = "Failed to query migrate info, because %s" % err
+                return jsonobject.dumps(rsp)
+            
+            migrate_info = json.loads(o)['return']
+            if migrate_info['status'] == 'colo':
+                logger.debug("migrate finished")
+                break
+            elif migrate_info['status'] == 'active':
+                ram_info = migrate_info['ram']
+                logger.debug("current migrate %s/%s, percentage %s"
+                 % (ram_info['total'], ram_info['remaining'], 100 * (float(ram_info['remaining'] / float(ram_info['total'])))))
+            else:
+                rsp.success = False
+                rsp.error = "unknown migrate status: %s" % migrate_info['status']
+                return jsonobject.dumps(rsp)
+
+            time.sleep(2)
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
