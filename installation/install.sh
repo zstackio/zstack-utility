@@ -1344,7 +1344,7 @@ iz_install_unzip(){
         pass
         return
     fi
-    if [ $OS = $CENTOS6 ]; then
+    if [ "$OS" = "CENTOS6" ]; then
         rpm -ivh $unzip_el6_rpm >>$ZSTACK_INSTALL_LOG 2>&1
     else
         rpm -ivh $unzip_el7_rpm >>$ZSTACK_INSTALL_LOG 2>&1
@@ -2354,7 +2354,7 @@ cs_setup_nfs(){
     if [ $? -ne 0 ]; then 
         echo "$NFS_FOLDER *(rw,sync,no_root_squash)" >> /etc/exports
     fi
-    if [[ $OS = $CENTOS6 ]]; then
+    if [[ "$OS" = "CENTOS6" ]]; then
         chkconfig nfs on >>$ZSTACK_INSTALL_LOG 2>&1
         chkconfig rpcbind on >>$ZSTACK_INSTALL_LOG 2>&1
         service rpcbind restart >>$ZSTACK_INSTALL_LOG 2>&1
