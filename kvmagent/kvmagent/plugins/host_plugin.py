@@ -546,6 +546,8 @@ class HostPlugin(kvmagent.KvmAgent):
     IS_YUM = False
     IS_APT = False
 
+    NVIDIA_SMI_INSTALLED = False
+
     def __init__(self):
         if shell.run("which yum") == 0:
             self.IS_YUM = True
@@ -553,6 +555,9 @@ class HostPlugin(kvmagent.KvmAgent):
         elif shell.run("which apt") == 0:
             self.IS_APT = True
             self.IS_YUM = False
+
+        if shell.run("which nvidia-smi") == 0:
+            self.NVIDIA_SMI_INSTALLED = True
 
     def _get_libvirt_version(self):
         ret = shell.call('libvirtd --version')
@@ -1311,9 +1316,9 @@ done
 
     def _get_vfio_mdev_info(self, to):
         addr = to.pciDeviceAddress
-        r, o, e = bash_roe("nvidia-smi vgpu -i %s -v -s" % addr)
-        if r != 0:
-            return False  # only support nvidia-smi now
+
+        if not self.NVIDIA_SMI_INSTALLED:
+            return False
 
         r, o, e = bash_roe("nvidia-smi vgpu -i %s -v -s | sed -n '1!p'" % addr)
         for line in o.split('\n'):
