@@ -3340,6 +3340,7 @@ class Vm(object):
                 hyperv = e(features, "hyperv")
                 e(hyperv, 'relaxed', attrib={'state': 'on'})
                 e(hyperv, 'vapic', attrib={'state': 'on'})
+                e(hyperv, 'frequencies', attrib={'state': 'on'})
                 e(hyperv, 'spinlocks', attrib={'state': 'on', 'retries': '4096'})
                 e(hyperv, 'vendor_id', attrib={'state': 'on', 'value': 'ZStack_Org'})
             # always set ioapic driver to kvm after libvirt 3.4.0
