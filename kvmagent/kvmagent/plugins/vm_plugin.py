@@ -2073,7 +2073,7 @@ class Vm(object):
             return disk
 
         def scsilun_volume():
-            def on_debian():
+            def on_aarch64():
                 # default value of sgio is 'filtered'
                 disk = etree.Element('disk', attrib={'type': 'block', 'device': 'lun'})
                 e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw'})
@@ -2081,7 +2081,15 @@ class Vm(object):
                 e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
                 return disk
 
-            def on_redhat():
+            def on_mips64el():
+                # default value of sgio is 'filtered'
+                disk = etree.Element('disk', attrib={'type': 'block', 'device': 'lun'})
+                e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw'})
+                e(disk, 'source', None, {'dev': volume.installPath})
+                e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
+                return disk
+
+            def on_x86_64():
                 disk = etree.Element('disk', attrib={'type': 'block', 'device': 'lun', 'sgio': 'unfiltered'})
                 e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw'})
                 e(disk, 'source', None, {'dev': volume.installPath})
@@ -2089,7 +2097,7 @@ class Vm(object):
                 return disk
 
             #NOTE(weiw): scsi lun not support aio or qos
-            return eval("on_{}".format(kvmagent.get_host_os_type()))()
+            return eval("on_{}".format(HOST_ARCH))()
 
         def iscsibased_volume():
             # type: () -> etree.Element
@@ -3930,7 +3938,10 @@ class Vm(object):
             devices = elements['devices']
             for volume in storageDevices:
                 if match_storage_device(volume.installPath):
-                    disk = e(devices, 'disk', None, attrib={'type': 'block', 'device': 'lun', 'sgio': 'unfiltered'})
+                    if HOST_ARCH in ['aarch64', 'mips64el']:
+                        disk = e(devices, 'disk', None, attrib={'type': 'block', 'device': 'lun'})
+                    else:
+                        disk = e(devices, 'disk', None, attrib={'type': 'block', 'device': 'lun', 'sgio': 'unfiltered'})
                     e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw'})
                     e(disk, 'source', None, {'dev': volume.installPath})
                     e(disk, 'target', None, {'dev': 'sd%s' % Vm.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
