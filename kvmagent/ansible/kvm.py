@@ -222,6 +222,8 @@ zwatch_vm_agent_version_dst = "%s/agent_version" % workplace
 pushgateway_dst_pkg = "%s/pushgateway" % workplace
 mxgpu_driver_local_tar = "%s/mxgpu_driver.tar.gz" % file_root
 mxgpu_driver_dst_tar = "/var/lib/zstack/mxgpu_driver.tar.gz"
+pushgateway_log_ratation = "%s/pushgateway.log.rotation" % file_root
+pushgateway_log_target = "/etc/logrotate.d/pushgateway"
 
 # include zstacklib.py
 zstacklib_args = ZstackLibArgs()
@@ -459,6 +461,12 @@ copy(copy_arg, host_post_info)
 copy_arg = CopyArg()
 copy_arg.src = pushgateway_local_pkg
 copy_arg.dest = pushgateway_dst_pkg
+copy(copy_arg, host_post_info)
+
+# copy pushgateway.log.rotation to /etc/logrotate.d/
+copy_arg = CopyArg()
+copy_arg.src = pushgateway_log_ratation
+copy_arg.dest = pushgateway_log_target
 copy(copy_arg, host_post_info)
 
 # copy zwatch-vm-agent.linux-amd64.bin
