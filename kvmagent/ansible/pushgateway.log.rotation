@@ -1,0 +1,7 @@
+/var/lib/zstack/kvm/pushgateway.log {
+    rotate 10
+    missingok
+    copytruncate
+    size 10M
+    compress
+}
