@@ -2061,7 +2061,10 @@ class Vm(object):
             return disk
 
         def scsilun_volume():
-            disk = etree.Element('disk', attrib={'type': 'block', 'device': 'lun', 'sgio': 'unfiltered'})
+            if HOST_ARCH in ['aarch64', 'mips64el']:
+                disk = etree.Element('disk', attrib={'type': 'block', 'device': 'lun'})
+            else:
+                disk = etree.Element('disk', attrib={'type': 'block', 'device': 'lun', 'sgio': 'unfiltered'})
             e(disk, 'driver', None,
               {'name': 'qemu', 'type': 'raw'})
             e(disk, 'source', None, {'dev': volume.installPath})
@@ -3906,7 +3909,10 @@ class Vm(object):
             devices = elements['devices']
             for volume in storageDevices:
                 if match_storage_device(volume.installPath):
-                    disk = e(devices, 'disk', None, attrib={'type': 'block', 'device': 'lun', 'sgio': 'unfiltered'})
+                    if HOST_ARCH in ['aarch64', 'mips64el']:
+                        disk = e(devices, 'disk', None, attrib={'type': 'block', 'device': 'lun'})
+                    else:
+                        disk = e(devices, 'disk', None, attrib={'type': 'block', 'device': 'lun', 'sgio': 'unfiltered'})
                     e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw'})
                     e(disk, 'source', None, {'dev': volume.installPath})
                     e(disk, 'target', None, {'dev': 'sd%s' % Vm.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
