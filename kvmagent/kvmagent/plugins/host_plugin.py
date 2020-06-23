@@ -1553,11 +1553,10 @@ done
         rsp = GenerateSriovPciDevicesRsp()
         logger.debug("generate_sriov_pci_devices: pciType[%s], pciAddr[%s], reSplite[%s]" % (cmd.pciDeviceType, cmd.pciDeviceAddress, cmd.reSplite))
 
-        # ramdisk file in /dev/shm to mark host rebooting
         addr = cmd.pciDeviceAddress
 
-        no_domain_addr = addr if len(addr.split(':')) != 3 else ':'.join(addr.split(':')[1:])
-        ramdisk = os.path.join('/dev/shm', 'pci-' + no_domain_addr)
+        # ramdisk file in /dev/shm to mark host rebooting
+        ramdisk = "/dev/shm/pci_sriov_gim"
         if cmd.reSplite and os.path.exists(ramdisk):
             logger.debug("no need to re-splite pci device[addr:%s] into sriov pci devices" % addr)
             return jsonobject.dumps(rsp)
@@ -1643,13 +1642,6 @@ done
         else:
             rsp.success = False
             rsp.error = "do not support sriov of pci device [addr:%s]" % addr
-
-        if rsp.success:
-            # delete ramdisk file after pci device unvirtualized
-            no_domain_addr = addr if len(addr.split(':')) != 3 else ':'.join(addr.split(':')[1:])
-            ramdisk = os.path.join('/dev/shm', 'pci-' + no_domain_addr)
-            if os.path.exists(ramdisk):
-                os.remove(ramdisk)
 
         return jsonobject.dumps(rsp)
 
