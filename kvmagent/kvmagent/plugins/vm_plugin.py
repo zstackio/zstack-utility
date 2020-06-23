@@ -814,6 +814,9 @@ def parse_pci_device_address(addr):
     function = addr.split(".")[-1]
     return domain, bus, slot, function
 
+def is_q35_supported():
+    return HOST_ARCH not in ['aarch64', 'mips64el']
+
 
 class LibvirtEventManager(object):
     EVENT_DEFINED = "Defined"
@@ -4058,23 +4061,21 @@ class Vm(object):
             devices = elements['devices']
             e(devices, 'controller', None, {'type': 'scsi', 'model': 'virtio-scsi'})
 
-            if machine_type == "q35":
-                if not HOST_ARCH == 'aarch64':
-                    controller = e(devices, 'controller', None, {'type': 'sata', 'index': '0'})
-                    e(controller, 'alias', None, {'name': 'sata'})
-                    e(controller, 'address', None, {'type': 'pci', 'domain': '0', 'bus': '0', 'slot': '0x1f', 'function': '2'})
+            if machine_type == 'q35' and is_q35_supported():
+                controller = e(devices, 'controller', None, {'type': 'sata', 'index': '0'})
+                e(controller, 'alias', None, {'name': 'sata'})
+                e(controller, 'address', None, {'type': 'pci', 'domain': '0', 'bus': '0', 'slot': '0x1f', 'func''tion': '2'})
 
                 pci_idx_generator = range(cmd.pciePortNums + 3).__iter__()
                 e(devices, 'controller', None, {'type': 'pci', 'model': 'pcie-root', 'index': str(pci_idx_generator.next())})
-                if not HOST_ARCH == 'aarch64':
-                    e(devices, 'controller', None, {'type': 'pci', 'model': 'dmi-to-pci-bridge', 'index': str(pci_idx_generator.next())})
+                e(devices, 'controller', None, {'type': 'pci', 'model': 'dmi-to-pci-bridge', 'index': str(pci_idx_generator.next())})
 
-                    for _ in xrange(cmd.predefinedPciBridgeNum):
-                        e(devices, 'controller', None,
-                          {'type': 'pci', 'model': 'pci-bridge', 'index': str(pci_idx_generator.next())})
+                for _ in xrange(cmd.predefinedPciBridgeNum):
+                    e(devices, 'controller', None,
+                      {'type': 'pci', 'model': 'pci-bridge', 'index': str(pci_idx_generator.next())})
 
-                    for i in pci_idx_generator:
-                        e(devices, 'controller', None, {'type': 'pci', 'model': 'pcie-root-port', 'index': str(i)})
+                for i in pci_idx_generator:
+                    e(devices, 'controller', None, {'type': 'pci', 'model': 'pcie-root-port', 'index': str(i)})
             else:
                 if not cmd.predefinedPciBridgeNum:
                     return
