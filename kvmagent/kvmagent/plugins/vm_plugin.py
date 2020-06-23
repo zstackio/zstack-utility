@@ -6970,12 +6970,11 @@ class VmPlugin(kvmagent.KvmAgent):
                 for file in out:
                     deactivate_volume(event_str, file, vm_uuid)
 
-            out = bash.bash_o("virsh dumpxml %s | grep \"driver=replication,mode=secondary\"" % vm_uuid).strip()
+            out = bash.bash_o('virsh dumpxml %s | grep -E "active file=|hidden file="' % vm_uuid).strip().splitlines()
             if len(out) != 0:
-                for config in out.split(','):
-                    if 'file.file.filename' in config or 'file.backing.file.filename' in config:
-                        path = config.split('=')[1].rsplit('/', 1)[0]
-                        deactivate_colo_cache_volume(event_str, path, vm_uuid)
+                for cache_config in out:
+                    path = cache_config.split('=')[1].rsplit('/', 1)[0]
+                    deactivate_colo_cache_volume(event_str, path, vm_uuid)
 
             else:
                 logger.debug("can not find sharedblock related volume for vm %s, skip to release" % vm_uuid)
