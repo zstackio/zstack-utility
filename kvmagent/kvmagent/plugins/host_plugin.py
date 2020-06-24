@@ -623,8 +623,8 @@ class HostPlugin(kvmagent.KvmAgent):
         # create udev rule
         self.handle_usb_device_events()
 
-        ignore_msrs = 1 if cmd.ignoreMsrs else 0
-        shell.run("/bin/echo %s > /sys/module/kvm/parameters/ignore_msrs" % ignore_msrs)
+        ignore_msrs = "1" if cmd.ignoreMsrs else "0"
+        linux.write_file('/sys/module/kvm/parameters/ignore_msrs', ignore_msrs)
 
         vm_plugin.cleanup_stale_vnc_iptable_chains()
         apply_iptables_result = self.apply_iptables_rules(cmd.iptablesRules)
