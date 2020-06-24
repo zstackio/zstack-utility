@@ -627,17 +627,11 @@ class VncPortIptableRule(object):
 
         ipt = iptables.from_iptables_save()
         chain_name = self._make_chain_name()
-
-        # get ipv4 address via ping
-        current_ip = shell.call('ping %s -c 1 | fgrep "icmp" | grep -o \'[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\'' % self.host_ip)
-        if "" == current_ip:
-            err = 'cannot get host ip for %s' % self.host_ip
-            logger.warn(err)
-            raise kvmagent.KvmError(err)
+        current_ip = linux.get_host_by_name(self.host_ip)
 
         # get ipv4 subnet
-        current_ip_with_netmask = shell.call('ip -o -f inet addr show | awk \'/scope global/ {print $4}\' | fgrep %s' % current_ip).strip().split('\n', 1)[0]
-        if "" == shell.call("echo %s | grep -o \'[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}/[0-9]\{1,2\}\'" % current_ip_with_netmask):
+        current_ip_with_netmask = shell.call('ip -o -f inet addr show | awk \'/scope global/ {print $4}\' | fgrep -w %s' % current_ip).splitlines()[0]
+        if not current_ip_with_netmask:
             err = 'cannot get host ip with netmask for %s' % self.host_ip
             logger.warn(err)
             raise kvmagent.KvmError(err)
