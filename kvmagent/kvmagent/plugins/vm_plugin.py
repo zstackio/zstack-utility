@@ -3206,26 +3206,56 @@ class Vm(object):
         def make_cpu():
             if use_numa:
                 root = elements['root']
-                e(root, 'vcpu', '128', {'placement': 'static', 'current': str(cmd.cpuNum)})
-                # e(root,'vcpu',str(cmd.cpuNum),{'placement':'static'})
-                tune = e(root, 'cputune')
-                # enable nested virtualization
-                if cmd.nestedVirtualization == 'host-model':
-                    cpu = e(root, 'cpu', attrib={'mode': 'host-model'})
-                    e(cpu, 'model', attrib={'fallback': 'allow'})
-                elif cmd.nestedVirtualization == 'host-passthrough':
-                    cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
-                    e(cpu, 'model', attrib={'fallback': 'allow'})
-                elif cmd.nestedVirtualization == 'custom':
-                    cpu = e(root, 'cpu', attrib={'mode': 'custom', 'match': 'minimum'})
-                    e(cpu, 'model', cmd.vmCpuModel, attrib={'fallback': 'allow'})
-                else:
-                    cpu = e(root, 'cpu')
-                    # e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
-                mem = cmd.memory / 1024
-                e(cpu, 'topology', attrib={'sockets': str(32), 'cores': str(4), 'threads': '1'})
-                numa = e(cpu, 'numa')
-                e(numa, 'cell', attrib={'id': '0', 'cpus': '0-127', 'memory': str(mem), 'unit': 'KiB'})
+                def on_x86_64():
+                    e(root, 'vcpu', '128', {'placement': 'static', 'current': str(cmd.cpuNum)})
+                    # e(root,'vcpu',str(cmd.cpuNum),{'placement':'static'})
+                    tune = e(root, 'cputune')
+                    # enable nested virtualization
+
+                    if cmd.nestedVirtualization == 'host-model':
+                        cpu = e(root, 'cpu', attrib={'mode': 'host-model'})
+                        e(cpu, 'model', attrib={'fallback': 'allow'})
+                    elif cmd.nestedVirtualization == 'host-passthrough':
+                        cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
+                        e(cpu, 'model', attrib={'fallback': 'allow'})
+                    elif cmd.nestedVirtualization == 'custom':
+                        cpu = e(root, 'cpu', attrib={'mode': 'custom', 'match': 'minimum'})
+                        e(cpu, 'model', cmd.vmCpuModel, attrib={'fallback': 'allow'})
+                    else:
+                        cpu = e(root, 'cpu')
+                        # e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
+                    mem = cmd.memory / 1024
+                    e(cpu, 'topology', attrib={'sockets': '32', 'cores': '4', 'threads': '1'})
+                    numa = e(cpu, 'numa')
+                    e(numa, 'cell', attrib={'id': '0', 'cpus': '0-127', 'memory': str(mem), 'unit': 'KiB'})
+
+                def on_aarch64():
+                    e(root, 'vcpu', '128', {'placement': 'static', 'current': str(cmd.cpuNum)})
+                    # e(root,'vcpu',str(cmd.cpuNum),{'placement':'static'})
+                    tune = e(root, 'cputune')
+                    # enable nested virtualization
+
+                    cpu = e(root, 'cpu', attrib={'mode': 'custom'})
+                    e(cpu, 'model', 'host', attrib={'fallback': 'allow'})
+                    mem = cmd.memory / 1024
+                    e(cpu, 'topology', attrib={'sockets': '32', 'cores': '4', 'threads': '1'})
+                    numa = e(cpu, 'numa')
+                    e(numa, 'cell', attrib={'id': '0', 'cpus': '0-127', 'memory': str(mem), 'unit': 'KiB'})
+
+                def on_mips64el():
+                    e(root, 'vcpu', '8', {'placement': 'static', 'current': str(cmd.cpuNum)})
+                    # e(root,'vcpu',str(cmd.cpuNum),{'placement':'static'})
+                    tune = e(root, 'cputune')
+                    # enable nested virtualization
+
+                    cpu = e(root, 'cpu', attrib={'mode': 'custom', 'match': 'exact', 'check': 'partial'})
+                    e(cpu, 'model', 'Loongson-3A4000-COMP', attrib={'fallback': 'allow'})
+                    mem = cmd.memory / 1024
+                    e(cpu, 'topology', attrib={'sockets': '2', 'cores': '4', 'threads': '1'})
+                    numa = e(cpu, 'numa')
+                    e(numa, 'cell', attrib={'id': '0', 'cpus': '0-7', 'memory': str(mem), 'unit': 'KiB'})
+
+                eval("on_{}".format(HOST_ARCH))()
             else:
                 root = elements['root']
                 # e(root, 'vcpu', '128', {'placement': 'static', 'current': str(cmd.cpuNum)})
