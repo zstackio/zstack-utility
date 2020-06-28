@@ -241,7 +241,7 @@ def install_kvm_pkg():
             common_dep_list = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                             usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof mcelog \
                             net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils python-pyudev pv rsync sed \
-                            smartmontools sshpass usbutils vconfig wget audit dnsmasq tuned %s %s %s" % (qemu_pkg, extra_pkg, common_update_list)
+                            smartmontools sshpass usbutils vconfig wget audit dnsmasq tuned fuse-sshfs %s %s %s" % (qemu_pkg, extra_pkg, common_update_list)
             # zstack mini needs higher version kernel etc.
             C76_KERNEL_OR_HIGHER = '3.10.0-957' in get_remote_host_kernel_version(host_post_info)
             mini_dep_list = " drbd84-utils kmod-drbd84" if C76_KERNEL_OR_HIGHER and not IS_AARCH64 else ""
