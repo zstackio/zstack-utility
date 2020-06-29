@@ -1737,7 +1737,7 @@ class Vm(object):
         else:
             self._wait_for_vm_running(timeout, wait_console)
 
-    def stop(self, graceful=True, timeout=5, undefine=True):
+    def stop(self, strategy='grace', timeout=5, undefine=True):
         def cleanup_addons():
             for chan in self.domain_xmlobject.devices.get_child_node_as_list('channel'):
                 if chan.type_ == 'unix':
@@ -1796,6 +1796,12 @@ class Vm(object):
 
             return self.wait_for_state_change(None)
 
+        def kill_vm():
+            pid = linux.find_process_by_cmdline(['qemu', self.uuid])
+            if pid:
+                # force to kill the VM
+                linux.kill_process(pid, is_exception=False)
+
         def loop_destroy(_):
             try:
                 self.domain.destroy()
@@ -1812,8 +1818,8 @@ class Vm(object):
                 else:
                     raise
 
-        do_destroy, isPersistent = True, self.domain.isPersistent()
-        if graceful:
+        do_destroy, isPersistent = strategy == 'grace' or strategy == 'cold', self.domain.isPersistent()
+        if strategy == 'grace':
             if linux.wait_callback_success(loop_shutdown, None, timeout=60):
                 do_destroy = False
 
@@ -1823,6 +1829,9 @@ class Vm(object):
             if not linux.wait_callback_success(loop_destroy, None, timeout=60):
                 logger.warn('failed to destroy vm, timeout after 60 secs')
                 raise kvmagent.KvmError('failed to stop vm, timeout after 60 secs')
+
+        if strategy == 'force':
+            kill_vm()
 
         cleanup_addons()
 
@@ -1835,7 +1844,7 @@ class Vm(object):
             raise kvmagent.KvmError('failed to stop vm, timeout after 60 secs')
 
     def destroy(self):
-        self.stop(graceful=False)
+        self.stop(strategy='cold')
 
     def pause(self, timeout=5):
         def loop_suspend(_):
@@ -4903,8 +4912,9 @@ class VmPlugin(kvmagent.KvmAgent):
         try:
             vm = get_vm_by_uuid(cmd.uuid)
 
-            if str(cmd.type) == "cold":
-                vm.stop(graceful=False)
+            strategy = str(cmd.type)
+            if strategy == "cold" or strategy == "force":
+                vm.stop(strategy=strategy)
             else:
                 vm.stop(timeout=cmd.timeout / 2)
         except kvmagent.KvmError as e:
