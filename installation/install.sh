@@ -3015,6 +3015,7 @@ echo_subtitle "Sync from repo.zstack.io (takes a couple of minutes)"
 if [ x"$UPGRADE" = x'y' ]; then
     cluster_os_version=`mysql -uzstack -p"$MYSQL_USER_PASSWORD" zstack -e "select distinct tag from SystemTagVO where (resourceType='HostVO' and tag like '%os::version%');"`
     cluster_os_type=`echo -e "$cluster_os_version"|awk -F"::" '/version/{print $3}'|awk -F "." '{print "c"$1$2}'`
+    [ -z $cluster_os_type ] && cluster_os_type=$ZSTACK_RELEASE
 fi
 if [ x"$ZSTACK_RELEASE" = x"c72" -o x"$ZSTACK_RELEASE" = x"c74" -o x"$ZSTACK_RELEASE" = x"c76" ];then
     BASEURL=rsync://rsync.repo.zstack.io/${VERSION_RELEASE_NR}/$BASEARCH/
@@ -3038,7 +3039,7 @@ rpm -qa | grep zstack-manager >/dev/null 2>&1 && yum --disablerepo=* --enablerep
 rpm -qa | grep zstack-release >/dev/null 2>&1 || yum --disablerepo=* --enablerepo=zstack-local -y install zstack-release >/dev/null 2>&1 && true
 
 cd /opt/zstack-dvd
-rm -rf `ls |egrep -v "(x86_64|aarch64|mips64el)"`
+rm -rf `ls -a|egrep -v "(x86_64|aarch64|mips64el)"`  > /dev/null 2>&1
 cd -
 if [ ! -f /opt/zstack-dvd/zstack-image-1.4.qcow2 ];then
     cp -rf /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/zstack-image-1.4.qcow2 /opt/zstack-dvd/
