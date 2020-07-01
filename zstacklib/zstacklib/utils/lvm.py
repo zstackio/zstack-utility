@@ -11,6 +11,7 @@ from zstacklib.utils import log
 from zstacklib.utils import linux
 from zstacklib.utils import qemu_img
 from zstacklib.utils import thread
+from distutils.version import LooseVersion
 
 logger = log.get_logger(__name__)
 LV_RESERVED_SIZE = 1024*1024*4
@@ -213,6 +214,12 @@ def get_multipath_dmname(dev_name):
 def get_multipath_name(dev_name):
     return bash.bash_o("multipath /dev/%s -l -v1" % dev_name).strip()
 
+def get_lvmlockd_service_name():
+    service_name = 'lvm2-lvmlockd.service'
+    lvmlockd_version = shell.call("""lvmlockd --version | awk '{print $3}' | awk -F'.' '{print $1"."$2}'""").strip()
+    if LooseVersion(lvmlockd_version) > LooseVersion("2.02"):
+        service_name = 'lvmlockd.service'
+    return service_name
 
 def get_device_info(dev_name):
     # type: (str) -> SharedBlockCandidateStruct
@@ -352,8 +359,17 @@ def config_lvm_filter(files, no_drbd=False, preserve_disks=None):
 
 
 def config_sanlock_by_sed(keyword, entry):
+    content = """use_watchdog=0
+renewal_read_extend_sec=24
+sh_retries=20
+"""
+    if not os.path.exists(os.path.dirname(SANLOCK_CONFIG_FILE_PATH)):
+        linux.mkdir(os.path.dirname(SANLOCK_CONFIG_FILE_PATH))
+        with open(SANLOCK_CONFIG_FILE_PATH, 'w') as f:
+            f.write(content)
+
     if not os.path.exists(SANLOCK_CONFIG_FILE_PATH):
-        raise Exception("can not find sanlock config path: %s, config sanlock failed" % LVM_CONFIG_PATH)
+        raise Exception("can not find sanlock config path: %s, config sanlock failed" % SANLOCK_CONFIG_FILE_PATH)
 
     cmd = shell.ShellCmd("sed -i 's/.*%s.*/%s/g' %s" %
                          (keyword, entry, SANLOCK_CONFIG_FILE_PATH))
@@ -370,7 +386,7 @@ After=lvm2-lvmetad.service
 [Service]
 Type=simple
 NonBlocking=true
-ExecStart=/usr/sbin/lvmlockd --daemon-debug --sanlock-timeout %s
+ExecStart=/sbin/lvmlockd --daemon-debug --sanlock-timeout %s
 StandardError=syslog
 StandardOutput=syslog
 SyslogIdentifier=lvmlockd
@@ -381,9 +397,10 @@ SendSIGKILL=no
 [Install]
 WantedBy=multi-user.target
 """ % SANLOCK_IO_TIMEOUT
-    with open("/usr/lib/systemd/system/lvm2-lvmlockd.service", 'w') as f:
+    lvmlockd_service_path = os.path.join("/lib/systemd/system", get_lvmlockd_service_name())
+    with open(lvmlockd_service_path, 'w') as f:
         f.write(content)
-    os.chmod("/usr/lib/systemd/system/lvm2-lvmlockd.service", 0644)
+    os.chmod(lvmlockd_service_path, 0644)
 
     if not os.path.exists(LVMLOCKD_LOG_RSYSLOG_PATH):
         content = """if $programname == 'lvmlockd' then %s 
@@ -416,7 +433,7 @@ def start_lvmlockd():
         os.mkdir(os.path.dirname(LVMLOCKD_LOG_FILE_PATH))
 
     config_lvmlockd()
-    for service in ["wdmd", "sanlock", "lvm2-lvmlockd"]:
+    for service in ["sanlock", get_lvmlockd_service_name()]:
         cmd = shell.ShellCmd("timeout 30 systemctl start %s" % service)
         cmd(is_exception=True)
 
