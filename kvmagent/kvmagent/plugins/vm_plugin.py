@@ -2383,7 +2383,7 @@ class Vm(object):
             volume.installPath = shared_block_to_file(volume.installPath)
 
         for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
-            if not xmlobject.has_element(disk, 'source'):
+            if not xmlobject.has_element(disk, 'source') and not volume.deviceType == 'quorum':
                 continue
 
             if volume.deviceType == 'iscsi':
@@ -2405,6 +2405,13 @@ class Vm(object):
             elif volume.deviceType == 'block':
                 if disk.source.dev__ and disk.source.dev_ in volume.installPath:
                     return disk, disk.target.dev_
+            elif volume.deviceType == 'quorum':
+                logger.debug("quorum file path is %s" % disk.backingStore.source.file_)
+                if disk.backingStore.source.file_ and disk.backingStore.source.file_ in volume.installPath:
+                    disk.alias.name_ = "colo-disk0"
+                    disk.driver.type_ = "qcow2"
+                    disk.source = disk.backingStore.source
+                    return disk, disk.backingStore.source.file_
         if not is_exception:
             return None, None
 
@@ -3746,7 +3753,7 @@ class Vm(object):
                         raise kvmagent.KvmError(err)
                     dev_letter = Vm.DEVICE_LETTERS[scsi_device_id]
 
-                if cmd.coloPrimary or cmd.coloSecondary:
+                if v.deviceType == 'quorum':
                     vol = quorumbased_volume(dev_letter, v)
                 elif v.deviceType == 'file':
                     vol = filebased_volume(dev_letter, v)
@@ -5400,7 +5407,11 @@ class VmPlugin(kvmagent.KvmAgent):
         for deviceId in device_ids:
             target_disk = target_disks[deviceId]
             drivertype = target_disk.driver.type_
-            nodename = 'drive-' + target_disk.alias.name_
+
+            if target_disk.type_ == 'quorum':
+                nodename = target_disk.alias.name_
+            else:
+                nodename = 'drive-' + target_disk.alias.name_
             source = target_disk.source
             bitmap = bitmaps[deviceId]
 
