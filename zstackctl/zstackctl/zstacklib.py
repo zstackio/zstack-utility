@@ -30,8 +30,8 @@ yum_server = ""
 trusted_host = ""
 ansible.constants.HOST_KEY_CHECKING = False
 
-RPM_BASED_OS = "CentOS", "RedHat", "Alibaba"
-DEB_BASED_OS = "Ubuntu", "Debian"
+RPM_BASED_OS = ["centos", "redhat", "alibaba"]
+DEB_BASED_OS = ["ubuntu", "kylin", "uos", "debian"]
 
 
 def ignoreerror(func):
@@ -1021,7 +1021,8 @@ def get_remote_host_info(host_post_info):
         handle_ansible_start(ansible_start)
     else:
         if 'ansible_facts' in result['contacted'][host]:
-            (distro, major_version, release, distro_version) = [result['contacted'][host]['ansible_facts']['ansible_distribution'],
+            (distro, major_version, release, distro_version) = [
+                                 result['contacted'][host]['ansible_facts']['ansible_distribution'].lower(),
                                  int(result['contacted'][host]['ansible_facts']['ansible_distribution_major_version']),
                                  result['contacted'][host]['ansible_facts']['ansible_distribution_release'],
                                  result['contacted'][host]['ansible_facts']['ansible_distribution_version']]
@@ -1466,8 +1467,7 @@ enabled=0" >  /etc/yum.repos.d/zstack-experimental-mn.repo
 
 
         elif distro in DEB_BASED_OS:
-            command = '/bin/cp -f /etc/apt/sources.list /etc/apt/sources.list.zstack.%s' \
-                      % datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            command = '[ -f /etc/apt/sources.list ] && /bin/mv -f /etc/apt/sources.list /etc/apt/sources.list.zstack.bak || true'
             run_remote_command(command, host_post_info)
             update_repo_raw_command = """
 cat > /etc/apt/sources.list << EOF
