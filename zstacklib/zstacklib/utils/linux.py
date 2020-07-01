@@ -28,6 +28,11 @@ from zstacklib.utils import log
 
 logger = log.get_logger(__name__)
 
+RPM_BASED_OS = ['redhat', 'centos', 'alibaba']
+DEB_BASED_OS = ['uos', 'kylin', 'debian', 'ubuntu']
+SUPPORTED_ARCH = ['x86_64', 'aarch64', 'mips64el']
+HOST_ARCH = platform.machine()
+
 class LinuxError(Exception):
     ''' some utils failed '''
 
@@ -71,6 +76,42 @@ def retry(times=3, sleep_time=3):
 
         return inner
     return wrap
+
+def with_arch(todo_list=SUPPORTED_ARCH, host_arch=HOST_ARCH):
+    def wrap(f):
+        @functools.wraps(f)
+        def inner(*args, **kwargs):
+            if set(todo_list) - set(SUPPORTED_ARCH):
+                error("Unknown arch in {}".format(todo_list))
+            if host_arch in todo_list:
+                return f(*args, **kwargs)
+            else :
+                logger.info("Skip function[{}] on {} host.".format(f.__name__, host_arch))
+        return inner
+    return wrap
+
+def on_redhat_based(distro=None, exclude=[]):
+    def wrap(f):
+        @functools.wraps(f)
+        def innner(*args, **kwargs):
+            if not distro:
+                error("Distro info is needed.")
+            if distro in list(set(RPM_BASED_OS) - set(exclude)):
+                return f(*args, **kwargs)
+        return innner
+    return wrap
+
+def on_debian_based(distro=None, exclude=[]):
+    def wrap(f):
+        @functools.wraps(f)
+        def innner(*args, **kwargs):
+            if not distro:
+                error("Distro info is needed.")
+            if distro in list(set(DEB_BASED_OS) - set(exclude)):
+                return f(*args, **kwargs)
+        return innner
+    return wrap
+
 
 def get_current_timestamp():
     return time.mktime(datetime.datetime.now().timetuple())
@@ -1331,7 +1372,7 @@ def set_vm_priority(pid, priorityConfig):
         logger.warn("set vm %s oomScoreAdj failed" % priorityConfig.vmUuid)
 
 def find_vm_pid_by_uuid(uuid):
-    return shell.call("ps aux | grep qemu[-]kvm | awk '/%s/{print $2}'" % uuid).strip()
+    return shell.call("""ps aux | egrep "qemu[-]kvm|qemu[-]system" | awk '/%s/{print $2}'""" % uuid).strip()
 
 def find_process_by_cmdline(cmdlines):
     pids = [pid for pid in os.listdir('/proc') if pid.isdigit()]
