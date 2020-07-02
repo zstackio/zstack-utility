@@ -6321,6 +6321,8 @@ class VmPlugin(kvmagent.KvmAgent):
                                                 '{"parent": "colo-disk0","node": "replication0" } }')
         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate-set-capabilities","arguments":'
                                                 '{"capabilities":[ {"capability": "x-colo", "state":true}]}}')
+        execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate-set-parameters", "arguments":'
+                                                '{ "max-bandwidth": 3355443200 }}')
         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate", "arguments": {"uri": "tcp:%s:%s"}}'
                                                 % (cmd.secondaryVmHostIp, cmd.blockReplicationPort))
         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate-set-parameters",'
