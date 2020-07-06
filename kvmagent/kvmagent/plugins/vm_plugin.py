@@ -6347,6 +6347,8 @@ class VmPlugin(kvmagent.KvmAgent):
                 ram_info = migrate_info['ram']
                 logger.debug("current migrate %s/%s, percentage %s"
                  % (ram_info['total'], ram_info['remaining'], 100 * (float(ram_info['remaining'] / float(ram_info['total'])))))
+            elif migrate_info['status'] == 'failed':
+                rsp.error = "could not finish colo migration. %s" % migrate_info['error-desc']
             else:
                 rsp.success = False
                 rsp.error = "unknown migrate status: %s" % migrate_info['status']
