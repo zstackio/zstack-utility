@@ -2486,7 +2486,7 @@ http {
     }
 }
 EOF
-iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 8090 -j ACCEPT" > /dev/null 2>&1 || iptables -I INPUT -p tcp -m tcp --dport 8090 -j ACCEPT >/dev/null 2>&1
+iptables-save 2>&1 | grep -- "-A INPUT -p tcp -m tcp --dport 8090 -j ACCEPT" > /dev/null 2>&1 || iptables -I INPUT -p tcp -m tcp --dport 8090 -j ACCEPT >/dev/null 2>&1
 service iptables save >/dev/null 2>&1
 
 # start nginx when it's necessary
@@ -3686,9 +3686,6 @@ fi
 #Download and install ${PRODUCT_NAME} Package
 install_zstack
 
-#Setup audit.rules
-setup_audit_file
-
 #Post Configuration, including apache, zstack-server, NFS Server, HTTP Server
 config_system
 
@@ -3715,6 +3712,9 @@ fi
 
 #Install Mysql
 install_db
+
+#Setup audit.rules
+setup_audit_file
 
 #Setup install parameters
 setup_install_param
