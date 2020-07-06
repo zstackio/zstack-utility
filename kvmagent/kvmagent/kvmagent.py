@@ -61,6 +61,7 @@ def register_prometheus_collector(collector):
 
 _rest_service = None
 _qemu_path = None
+os_arch = linux.HOST_ARCH
 
 def new_rest_service(config={}):
     global _rest_service
@@ -75,25 +76,21 @@ def get_host_yum_release():
     return commands.getoutput("rpm -q zstack-release |awk -F'-' '{print $3}'").strip()
 
 def get_host_os_type():
-    debian_list = ['ubuntu', 'Kylin', 'debian']
-    os_info = platform.platform()
-    is_debian = any(map(lambda x: x in os_info, debian_list))
-    return 'debian' if is_debian else 'centos'
+    os_info = platform.platform().lower()
+    is_debian = any(map(lambda x: x in os_info, linux.DEB_BASED_OS))
+    return 'debian' if is_debian else 'redhat'
 
 def get_qemu_path():
-    global _qemu_path
+    global _qemu_path, os_arch
     if not _qemu_path:
         if os.path.exists('/usr/libexec/qemu-kvm'):
             _qemu_path = '/usr/libexec/qemu-kvm'
         elif os.path.exists('/bin/qemu-kvm'):
             _qemu_path = '/bin/qemu-kvm'
-        elif os.path.exists('/usr/bin/qemu-system-x86_64') and platform.machine() == 'x86_64':
-            # ubuntu
-            _qemu_path = '/usr/bin/qemu-system-x86_64'
-        elif os.path.exists('/usr/bin/qemu-system-aarch64') and platform.machine() == 'aarch64':
-            _qemu_path = '/usr/bin/qemu-system-aarch64'
+        elif os.path.exists('/usr/bin/qemu-system-{}'.format(os_arch)):
+            _qemu_path = '/usr/bin/qemu-system-{}'.format(os_arch)
         else:
-            raise KvmError('Could not find qemu-kvm in /bin/qemu-kvm or /usr/libexec/qemu-kvm or /usr/bin/qemu-system-x86_64')
+            raise KvmError('Could not find qemu-kvm in /bin/qemu-kvm or /usr/libexec/qemu-kvm or /usr/bin/qemu-system-{}'.format(os_arch))
 
     return _qemu_path
         
