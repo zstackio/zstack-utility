@@ -5,6 +5,9 @@ echo "installing zwatch-vm-agent"
 export LANG=en_US.UTF-8
 export LANGUAGE=en_US:
 
+LABLE=''
+ARCH=`uname -m`
+
 case `uname -s` in
   Linux)
     AGENT_OS="linux"
@@ -15,15 +18,12 @@ case `uname -s` in
     ;;
 esac
 
-if [ `uname -m` = "x86_64" ]; then
-    ARCH="amd64"
-else
-    ARCH="386"
+if [ x"$ARCH" != "x86_64" ]; then
+    LABLE="_$ARCH"
 fi
 
-BIN_NAME=zwatch-vm-agent.${AGENT_OS}-${ARCH}.bin
-
-NAME=zwatch-vm-agent.${AGENT_OS}-${ARCH}
+BIN_NAME="zwatch-vm-agent${LABLE}"
+NAME=zwatch-vm-agent
 
 AGENT_VERSION=`curl -s http://169.254.169.254/agent_version`
 if [[ ! ${AGENT_VERSION} =~ $NAME ]]; then
