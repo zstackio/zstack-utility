@@ -31,7 +31,8 @@ from zstacklib.utils.bash import *
 from zstacklib.utils.ip import get_nic_supported_max_speed
 from zstacklib.utils.report import Report
 
-IS_AARCH64 = platform.machine() == 'aarch64'
+host_arch = platform.machine()
+IS_AARCH64 = host_arch == 'aarch64'
 GRUB_FILES = ["/boot/grub2/grub.cfg", "/boot/grub/grub.cfg", "/etc/grub2-efi.cfg", "/etc/grub-efi.cfg", "/boot/efi/EFI/centos/grub.cfg"]
 IPTABLES_CMD = iptables.get_iptables_cmd()
 
@@ -618,7 +619,7 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.systemProductName = 'unknown'
         rsp.systemSerialNumber = 'unknown'
         is_dmidecode = shell.run("dmidecode")
-        if str(is_dmidecode) == '0' and rsp.osDistribution != 'Kylin':
+        if str(is_dmidecode) == '0' and kvmagent.os_arch == "x86_64":
             system_product_name = shell.call('dmidecode -s system-product-name').strip()
             baseboard_product_name = shell.call('dmidecode -s baseboard-product-name').strip()
             system_serial_number = shell.call('dmidecode -s system-serial-number').strip()
