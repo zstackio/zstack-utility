@@ -11,6 +11,7 @@ from zstacklib.utils import log
 from zstacklib.utils import linux
 from zstacklib.utils import qemu_img
 from zstacklib.utils import thread
+from distutils.version import LooseVersion
 
 logger = log.get_logger(__name__)
 LV_RESERVED_SIZE = 1024*1024*4
@@ -218,6 +219,12 @@ def get_multipath_dmname(dev_name):
 def get_multipath_name(dev_name):
     return bash.bash_o("multipath /dev/%s -l -v1" % dev_name).strip()
 
+def get_lvmlockd_service_name():
+    service_name = 'lvm2-lvmlockd.service'
+    lvmlockd_version = shell.call("""lvmlockd --version | awk '{print $3}' | awk -F'.' '{print $1"."$2}'""").strip()
+    if LooseVersion(lvmlockd_version) > LooseVersion("2.02"):
+        service_name = 'lvmlockd.service'
+    return service_name
 
 def get_device_info(dev_name):
     # type: (str) -> SharedBlockCandidateStruct
@@ -369,7 +376,6 @@ sh_retries=20
     if not os.path.exists(SANLOCK_CONFIG_FILE_PATH):
         raise Exception("can not find sanlock config path: %s, config sanlock failed" % SANLOCK_CONFIG_FILE_PATH)
 
-
     cmd = shell.ShellCmd("sed -i 's/.*%s.*/%s/g' %s" %
                          (keyword, entry, SANLOCK_CONFIG_FILE_PATH))
     cmd(is_exception=False)
@@ -396,11 +402,12 @@ SendSIGKILL=no
 [Install]
 WantedBy=multi-user.target
 """ % io_timeout
-    with open(LVMLOCKD_SERVICE_PATH, 'w') as f:
+    lvmlockd_service_path = os.path.join("/lib/systemd/system", get_lvmlockd_service_name())
+    with open(lvmlockd_service_path, 'w') as f:
         f.write(content)
         f.flush()
         os.fsync(f.fileno())
-    os.chmod(LVMLOCKD_SERVICE_PATH, 0644)
+    os.chmod(lvmlockd_service_path, 0644)
 
     if not os.path.exists(LVMLOCKD_LOG_RSYSLOG_PATH):
         content = """if $programname == 'lvmlockd' then %s 
@@ -433,7 +440,7 @@ def start_lvmlockd(io_timeout=40):
         os.mkdir(os.path.dirname(LVMLOCKD_LOG_FILE_PATH))
 
     config_lvmlockd(io_timeout)
-    for service in ["wdmd", "sanlock", "lvm2-lvmlockd"]:
+    for service in ["sanlock", get_lvmlockd_service_name()]:
         cmd = shell.ShellCmd("timeout 30 systemctl start %s" % service)
         cmd(is_exception=True)
 
@@ -920,6 +927,7 @@ def delete_lv(path, raise_exception=True, deactive=True):
     logger.debug("deleting lv %s" % path)
     if deactive:
         deactive_lv(path, False)
+
     # remove meta-lv if any
     if lv_exists(get_meta_lv_path(path)):
         shell.run("lvremove -y %s" % get_meta_lv_path(path))

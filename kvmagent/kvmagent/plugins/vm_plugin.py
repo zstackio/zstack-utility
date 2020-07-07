@@ -16,6 +16,7 @@ import base64
 import libvirt
 import xml.dom.minidom as minidom
 #from typing import List, Any, Union
+from distutils.version import LooseVersion
 
 import zstacklib.utils.ip as ip
 import zstacklib.utils.iptables as iptables
@@ -43,8 +44,8 @@ from zstacklib.utils.vm_plugin_queue_singleton import VmPluginQueueSingleton
 
 logger = log.get_logger(__name__)
 
-IS_AARCH64 = platform.machine() == 'aarch64'
-OS_VERSION = platform.version()
+HOST_ARCH = platform.machine()
+DIST_NAME = platform.dist()[0]
 
 ZS_XML_NAMESPACE = 'http://zstack.org'
 
@@ -770,8 +771,15 @@ LIBVIRT_MAJOR_VERSION = LIBVIRT_VERSION.split('.')[0]
 def is_namespace_used():
     return compare_version(LIBVIRT_VERSION, '1.3.3') >= 0
 
+@linux.with_arch(todo_list=['x86_64'])
 def is_ioapic_supported():
-    return compare_version(LIBVIRT_VERSION, '3.4.0') >= 0 and not IS_AARCH64
+    return compare_version(LIBVIRT_VERSION, '3.4.0') >= 0 
+
+def is_kylin402():
+    zstack_release = linux.read_file('/etc/zstack-release')
+    if zstack_release is None:
+        return False
+    return "kylin402" in zstack_release.splitlines()[0]
 
 def is_kylin402():
     zstack_release = linux.read_file('/etc/zstack-release')
@@ -782,6 +790,18 @@ def is_kylin402():
 def is_spiceport_driver_supported():
     # qemu-system-aarch64 not supported char driver: spiceport
     return True if shell.run("which qemu-system-aarch64") == 1 else shell.run("qemu-system-aarch64 -h | grep 'chardev spiceport'") == 0
+
+def is_virtual_machine():
+    product_name = shell.call("dmidecode -s system-product-name").strip()
+    return product_name == "KVM Virtual Machine" or product_name == "KVM"
+
+def get_domain_type():
+    return "qemu" if HOST_ARCH == "aarch64" and is_virtual_machine() else "kvm"
+
+def get_gic_version(cpu_num):
+    kernel_release = platform.release().split("-")[0]
+    if is_kylin402() and cpu_num <= 8 and LooseVersion(kernel_release) < LooseVersion('4.15.0'):
+        return 2
 
 # Occasionally, libvirt might fail to list VM ...
 def get_console_without_libvirt(vmUuid):
@@ -1519,10 +1539,12 @@ class Vm(object):
     # IDE is supported in x86_64/i440fx
     # so cdroms use hd[c-e]
     # virtio and virtioSCSI volumes share (sd[a-z] - sdc)
-    if IS_AARCH64:
-        DEVICE_LETTERS = 'abfghijklmnopqrstuvwxyz'
-    else:
-        DEVICE_LETTERS = 'abdefghijklmnopqrstuvwxyz'
+    device_letter_config = {
+        'aarch64': 'abfghijklmnopqrstuvwxyz',
+        'mips64el': 'abfghijklmnopqrstuvwxyz',
+        'x86_64': 'abdefghijklmnopqrstuvwxyz'
+    }
+    DEVICE_LETTERS = device_letter_config[HOST_ARCH]
     ISO_DEVICE_LETTERS = 'cde'
 
     timeout_detached_vol = set()
@@ -1962,13 +1984,31 @@ class Vm(object):
             return disk
 
         def scsilun_volume():
-            disk = etree.Element('disk', attrib={'type': 'block', 'device': 'lun', 'sgio': 'unfiltered'})
-            e(disk, 'driver', None,
-              {'name': 'qemu', 'type': 'raw'})
-            e(disk, 'source', None, {'dev': volume.installPath})
-            e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
+            def on_aarch64():
+                # default value of sgio is 'filtered'
+                disk = etree.Element('disk', attrib={'type': 'block', 'device': 'lun'})
+                e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw'})
+                e(disk, 'source', None, {'dev': volume.installPath})
+                e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
+                return disk
+
+            def on_mips64el():
+                # default value of sgio is 'filtered'
+                disk = etree.Element('disk', attrib={'type': 'block', 'device': 'lun'})
+                e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw'})
+                e(disk, 'source', None, {'dev': volume.installPath})
+                e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
+                return disk
+
+            def on_x86_64():
+                disk = etree.Element('disk', attrib={'type': 'block', 'device': 'lun', 'sgio': 'unfiltered'})
+                e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw'})
+                e(disk, 'source', None, {'dev': volume.installPath})
+                e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
+                return disk
+
             #NOTE(weiw): scsi lun not support aio or qos
-            return disk
+            return eval("on_{}".format(HOST_ARCH))()
 
         def iscsibased_volume():
             # type: () -> etree.Element
@@ -2633,7 +2673,7 @@ class Vm(object):
         return etree.tostring(interface)
 
     def _wait_vm_run_until_seconds(self, sec):
-        vm_pid = linux.find_process_by_cmdline(['kvm', self.uuid])
+        vm_pid = linux.find_process_by_cmdline([kvmagent.get_qemu_path(), self.uuid])
         if not vm_pid:
             raise Exception('cannot find pid for vm[uuid:%s]' % self.uuid)
 
@@ -2765,11 +2805,11 @@ class Vm(object):
 
     def _get_controller_type(self):
         is_q35 = 'q35' in self.domain_xmlobject.os.type.machine_
-        return ('ide', 'sata', 'scsi')[max(is_q35, IS_AARCH64 * 2)]
+        return ('ide', 'sata', 'scsi')[max(is_q35, (HOST_ARCH in ['aarch64', 'mips64el']) * 2)]
 
     @staticmethod
     def _get_iso_target_dev(device_letter):
-        return "sd%s" % device_letter if IS_AARCH64 else 'hd%s' % device_letter
+        return "sd%s" % device_letter if (HOST_ARCH in ['aarch64', 'mips64el']) else 'hd%s' % device_letter
 
     @staticmethod
     def _get_disk_target_dev_format(bus_type):
@@ -3096,13 +3136,12 @@ class Vm(object):
     def from_StartVmCmd(cmd):
         use_numa = cmd.useNuma
         machine_type = cmd.machineType if cmd.machineType else 'pc'
-        default_bus_type = ('ide', 'sata', 'scsi')[max(machine_type == 'q35', IS_AARCH64 * 2)]
+        default_bus_type = ('ide', 'sata', 'scsi')[max(machine_type == 'q35', (HOST_ARCH in ['aarch64', 'mips64el']) * 2)]
         elements = {}
 
         def make_root():
             root = etree.Element('domain')
-            root.set('type', 'kvm')
-            # self._root.set('type', 'qemu')
+            root.set('type', get_domain_type())
             root.set('xmlns:qemu', 'http://libvirt.org/schemas/domain/qemu/1.0')
             elements['root'] = root
 
@@ -3120,42 +3159,76 @@ class Vm(object):
                 # e(root,'vcpu',str(cmd.cpuNum),{'placement':'static'})
                 tune = e(root, 'cputune')
                 # enable nested virtualization
-                if cmd.nestedVirtualization == 'host-model':
-                    cpu = e(root, 'cpu', attrib={'mode': 'host-model'})
-                    e(cpu, 'model', attrib={'fallback': 'allow'})
-                elif cmd.nestedVirtualization == 'host-passthrough':
-                    cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
-                    e(cpu, 'model', attrib={'fallback': 'allow'})
-                elif cmd.nestedVirtualization == 'custom':
-                    cpu = e(root, 'cpu', attrib={'mode': 'custom', 'match': 'minimum'})
-                    e(cpu, 'model', cmd.vmCpuModel, attrib={'fallback': 'allow'})
-                else:
-                    cpu = e(root, 'cpu')
-                    # e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
-                mem = cmd.memory / 1024
-                e(cpu, 'topology', attrib={'sockets': str(32), 'cores': str(4), 'threads': '1'})
-                numa = e(cpu, 'numa')
-                e(numa, 'cell', attrib={'id': '0', 'cpus': '0-127', 'memory': str(mem), 'unit': 'KiB'})
+                def on_x86_64():
+                    if cmd.nestedVirtualization == 'host-model':
+                        cpu = e(root, 'cpu', attrib={'mode': 'host-model'})
+                        e(cpu, 'model', attrib={'fallback': 'allow'})
+                    elif cmd.nestedVirtualization == 'host-passthrough':
+                        cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
+                        e(cpu, 'model', attrib={'fallback': 'allow'})
+                    elif cmd.nestedVirtualization == 'custom':
+                        cpu = e(root, 'cpu', attrib={'mode': 'custom', 'match': 'minimum'})
+                        e(cpu, 'model', cmd.vmCpuModel, attrib={'fallback': 'allow'})
+                    else:
+                        cpu = e(root, 'cpu')
+                        # e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
+                    mem = cmd.memory / 1024
+                    e(cpu, 'topology', attrib={'sockets': '32', 'cores': '4', 'threads': '1'})
+                    numa = e(cpu, 'numa')
+                    e(numa, 'cell', attrib={'id': '0', 'cpus': '0-127', 'memory': str(mem), 'unit': 'KiB'})
+
+                def on_aarch64():
+                    cpu = e(root, 'cpu', attrib={'mode': 'custom'})
+                    e(cpu, 'model', 'host', attrib={'fallback': 'allow'})                                                
+                    mem = cmd.memory / 1024
+                    e(cpu, 'topology', attrib={'sockets': '32', 'cores': '4', 'threads': '1'})
+                    numa = e(cpu, 'numa')
+                    e(numa, 'cell', attrib={'id': '0', 'cpus': '0-127', 'memory': str(mem), 'unit': 'KiB'})
+
+                def on_mips64el():
+                    cpu = e(root, 'cpu', attrib={'mode': 'custom'})
+                    e(cpu, 'model', 'Loongson-3A4000-COMP', attrib={'fallback': 'allow'})
+                    mem = cmd.memory / 1024
+                    e(cpu, 'topology', attrib={'sockets': '2', 'cores': '4', 'threads': '1'})
+                    numa = e(cpu, 'numa')
+                    e(numa, 'cell', attrib={'id': '0', 'cpus': '0-7', 'memory': str(mem), 'unit': 'KiB'})
+
+                eval("on_{}".format(HOST_ARCH))()
+
             else:
                 root = elements['root']
                 # e(root, 'vcpu', '128', {'placement': 'static', 'current': str(cmd.cpuNum)})
                 e(root, 'vcpu', str(cmd.cpuNum), {'placement': 'static'})
                 tune = e(root, 'cputune')
                 # enable nested virtualization
-                if cmd.nestedVirtualization == 'host-model':
-                    cpu = e(root, 'cpu', attrib={'mode': 'host-model'})
-                    e(cpu, 'model', attrib={'fallback': 'allow'})
-                elif cmd.nestedVirtualization == 'host-passthrough':
-                    cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
-                    e(cpu, 'model', attrib={'fallback': 'allow'})
-                elif cmd.nestedVirtualization == 'custom':
-                    cpu = e(root, 'cpu', attrib={'mode': 'custom'})
-                    e(cpu, 'model', cmd.vmCpuModel, attrib={'fallback': 'allow'})
-                elif IS_AARCH64:
-                    cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
-                    e(cpu, 'model', attrib={'fallback': 'allow'})
-                else:
+                def on_x86_64():
+                    if cmd.nestedVirtualization == 'host-model':
+                        cpu = e(root, 'cpu', attrib={'mode': 'host-model'})
+                        e(cpu, 'model', attrib={'fallback': 'allow'})
+                    elif cmd.nestedVirtualization == 'host-passthrough':
+                        cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
+                        e(cpu, 'model', attrib={'fallback': 'allow'})
+                    elif cmd.nestedVirtualization == 'custom':
+                        cpu = e(root, 'cpu', attrib={'mode': 'custom'})
+                        e(cpu, 'model', cmd.vmCpuModel, attrib={'fallback': 'allow'})
+                    else:
+                        cpu = e(root, 'cpu')
+                    return cpu
+                    
+                def on_aarch64():
+                    if is_virtual_machine():
+                        cpu = e(root, 'cpu')
+                        e(cpu, 'model', 'cortex-a57')
+                    else :
+                        cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
+                        e(cpu, 'model', attrib={'fallback': 'allow'})
+                    return cpu
+
+                def on_mips64el():
                     cpu = e(root, 'cpu')
+                    return cpu
+
+                cpu = eval("on_{}".format(HOST_ARCH))()
                 e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
 
             if cmd.addons.cpuPinning:
@@ -3176,15 +3249,9 @@ class Vm(object):
         def make_os():
             root = elements['root']
             os = e(root, 'os')
-            if IS_AARCH64:
-                if kvmagent.get_host_os_type() == 'centos':
-                    e(os, 'type', 'hvm', attrib={'arch': 'aarch64'})
-                    e(os, 'loader', '/usr/share/edk2.git/aarch64/QEMU_EFI-pflash.raw', attrib={'readonly': 'yes', 'type': 'pflash'})
-                else :
-                    e(os, 'type', 'hvm', attrib={'arch': 'aarch64', 'machine': 'virt'})
-                    e(os, 'loader', '/usr/share/OVMF/QEMU_EFI-pflash.raw', attrib={'readonly': 'yes', 'type': 'rom'})
-                    e(os, 'nvram', '/var/lib/libvirt/qemu/nvram/%s.fd' % cmd.vmInstanceUuid, attrib={'template': '/usr/share/OVMF/vars-template-pflash.raw'})
-            else:
+            host_arch = kvmagent.os_arch
+
+            def on_x86_64():
                 e(os, 'type', 'hvm', attrib={'machine': machine_type})
                 # if boot mode is UEFI
                 if cmd.bootMode == "UEFI":
@@ -3195,6 +3262,24 @@ class Vm(object):
                     e(os, 'nvram', '/var/lib/libvirt/qemu/nvram/%s.fd' % cmd.vmInstanceUuid, attrib={'template': '/usr/share/edk2.git/ovmf-x64/OVMF_VARS-with-csm.fd'})
                 elif cmd.addons['loaderRom'] is not None:
                     e(os, 'loader', cmd.addons['loaderRom'], {'type': 'rom'})
+
+            def on_aarch64():
+
+                def on_redhat():
+                    e(os, 'type', 'hvm', attrib={'arch': 'aarch64'})
+                    e(os, 'loader', '/usr/share/edk2.git/aarch64/QEMU_EFI-pflash.raw', attrib={'readonly': 'yes', 'type': 'pflash'})
+                def on_debian():
+                    e(os, 'type', 'hvm', attrib={'arch': 'aarch64', 'machine': 'virt'})
+                    e(os, 'loader', '/usr/share/OVMF/QEMU_EFI-pflash.raw', attrib={'readonly': 'yes', 'type': 'rom'})
+                    e(os, 'nvram', '/var/lib/libvirt/qemu/nvram/%s.fd' % cmd.vmInstanceUuid, attrib={'template': '/usr/share/OVMF/vars-template-pflash.raw'})
+                    
+                eval("on_{}".format(kvmagent.get_host_os_type()))()
+
+            def on_mips64el():
+                e(os, 'type', 'hvm', attrib={'arch': 'mips64el', 'machine': 'loongson3a'})
+                e(os, 'loader', '/usr/share/qemu/ls3a_bios.bin', attrib={'readonly': 'yes', 'type': 'rom'})
+
+            eval("on_{}".format(host_arch))()
 
             if cmd.useBootMenu:
                 e(os, 'bootmenu', attrib={'enable': 'yes'})
@@ -3220,8 +3305,12 @@ class Vm(object):
             features = e(root, 'features')
             for f in ['apic', 'pae']:
                 e(features, f)
-            if 'kylin' not in OS_VERSION.lower():
+
+            @linux.with_arch(todo_list=['x86_64'])
+            def make_acpi():
                 e(features, 'acpi')
+
+            make_acpi()
             if cmd.kvmHiddenState is True:
                 kvm = e(features, "kvm")
                 e(kvm, 'hidden', None, {'state': 'on'})
@@ -3236,8 +3325,12 @@ class Vm(object):
             # always set ioapic driver to kvm after libvirt 3.4.0
             if is_ioapic_supported():
                 e(features, "ioapic", attrib={'driver': 'kvm'})
-            if IS_AARCH64 and is_kylin402() and int(cmd.cpuNum) <= 8:
+
+            if get_gic_version(cmd.cpuNum) == 2:
                 e(features, "gic", attrib={'version': '2'})
+
+
+
 
         def make_qemu_commandline():
             if not os.path.exists(QMP_SOCKET_PATH):
@@ -3274,9 +3367,13 @@ class Vm(object):
 
             tablet = e(devices, 'input', None, {'type': 'tablet', 'bus': 'usb'})
             e(tablet, 'address', None, {'type':'usb', 'bus':'0', 'port':'1'})
-            if IS_AARCH64:
+
+            @linux.with_arch(todo_list=['aarch64','mips64el'])
+            def set_keyboard():
                 keyboard = e(devices, 'input', None, {'type': 'keyboard', 'bus': 'usb'})
-                e(keyboard, 'address', None, {'type':'usb', 'bus':'0', 'port':'2'})
+                e(keyboard, 'address', None, {'type': 'usb', 'bus': '0', 'port': '2'})
+
+            set_keyboard()
             elements['devices'] = devices
 
         def make_cdrom():
@@ -3285,7 +3382,7 @@ class Vm(object):
             max_cdrom_num = len(Vm.ISO_DEVICE_LETTERS)
             empty_cdrom_configs = None
 
-            if IS_AARCH64:
+            if HOST_ARCH == 'aarch64':
                 # SCSI controller only supports 1 bus
                 empty_cdrom_configs = [
                     EmptyCdromConfig('sd%s' % Vm.ISO_DEVICE_LETTERS[0], '0', Vm.get_iso_device_unit(0)),
@@ -3633,39 +3730,48 @@ class Vm(object):
         def make_usb_redirect():
             devices = elements['devices']
             e(devices, 'controller', None, {'type': 'usb', 'index': '0'})
-
             # make sure there are three usb controllers, each for USB 1.1/2.0/3.0
-            if IS_AARCH64 and kvmagent.get_host_os_type() == "centos":
+            @linux.on_redhat_based(DIST_NAME)
+            @linux.with_arch(todo_list=['aarch64'])
+            def set_default():
                 # for aarch64 centos, only support default controller(qemu-xhci 3.0) on current qemu version(2.12_0-18)
                 e(devices, 'controller', None, {'type': 'usb', 'index': '1'})
                 e(devices, 'controller', None, {'type': 'usb', 'index': '2'})
-                return
-            e(devices, 'controller', None, {'type': 'usb', 'index': '1', 'model': 'ehci'})
-            e(devices, 'controller', None, {'type': 'usb', 'index': '2', 'model': 'nec-xhci'})
+                return True
+                
 
-            # USB2.0 Controller for redirect
-            e(devices, 'controller', None, {'type': 'usb', 'index': '3', 'model': 'ehci'})
-            e(devices, 'controller', None, {'type': 'usb', 'index': '4', 'model': 'nec-xhci'})
+            def set_usb2_3():
+                e(devices, 'controller', None, {'type': 'usb', 'index': '1', 'model': 'ehci'})
+                e(devices, 'controller', None, {'type': 'usb', 'index': '2', 'model': 'nec-xhci'})
+
+                # USB2.0 Controller for redirect
+                e(devices, 'controller', None, {'type': 'usb', 'index': '3', 'model': 'ehci'})
+                e(devices, 'controller', None, {'type': 'usb', 'index': '4', 'model': 'nec-xhci'})
 
             # qemu-system-aarch64 is not support chardev 'spicevmc'
-            if IS_AARCH64:
-                return
-            chan = e(devices, 'channel', None, {'type': 'spicevmc'})
-            e(chan, 'target', None, {'type': 'virtio', 'name': 'com.redhat.spice.0'})
-            e(chan, 'address', None, {'type': 'virtio-serial'})
+            @linux.with_arch(todo_list=["x86_64", "mips64el"])
+            def set_redirdev():
+                chan = e(devices, 'channel', None, {'type': 'spicevmc'})
+                e(chan, 'target', None, {'type': 'virtio', 'name': 'com.redhat.spice.0'})
+                e(chan, 'address', None, {'type': 'virtio-serial'})
 
-            redirdev1 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
-            e(redirdev1, 'address', None, {'type': 'usb', 'bus': '3', 'port': '1'})
-            redirdev2 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
-            e(redirdev2, 'address', None, {'type': 'usb', 'bus': '3', 'port': '2'})
-            redirdev3 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
-            e(redirdev3, 'address', None, {'type': 'usb', 'bus': '4', 'port': '1'})
-            redirdev4 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
-            e(redirdev4, 'address', None, {'type': 'usb', 'bus': '4', 'port': '2'})
+                redirdev1 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
+                e(redirdev1, 'address', None, {'type': 'usb', 'bus': '3', 'port': '1'})
+                redirdev2 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
+                e(redirdev2, 'address', None, {'type': 'usb', 'bus': '3', 'port': '2'})
+                redirdev3 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
+                e(redirdev3, 'address', None, {'type': 'usb', 'bus': '4', 'port': '1'})
+                redirdev4 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
+                e(redirdev4, 'address', None, {'type': 'usb', 'bus': '4', 'port': '2'})
+
+            if set_default():
+                return
+            set_usb2_3()
+            set_redirdev()
 
         def make_video():
             devices = elements['devices']
-            if IS_AARCH64:
+            if HOST_ARCH == 'aarch64':
                 video = e(devices, 'video')
                 e(video, 'model', None, {'type': 'virtio'})
             elif cmd.videoType != "qxl":
@@ -3740,7 +3846,10 @@ class Vm(object):
             devices = elements['devices']
             for volume in storageDevices:
                 if match_storage_device(volume.installPath):
-                    disk = e(devices, 'disk', None, attrib={'type': 'block', 'device': 'lun', 'sgio': 'unfiltered'})
+                    if HOST_ARCH in ['aarch64', 'mips64el']:
+                        disk = e(devices, 'disk', None, attrib={'type': 'block', 'device': 'lun'})
+                    else:
+                        disk = e(devices, 'disk', None, attrib={'type': 'block', 'device': 'lun', 'sgio': 'unfiltered'})
                     e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw'})
                     e(disk, 'source', None, {'dev': volume.installPath})
                     e(disk, 'target', None, {'dev': 'sd%s' % Vm.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
@@ -3783,7 +3892,7 @@ class Vm(object):
                 e(source, "address", None, { "uuid": uuidhelper.to_full_uuid(mdevUuid) })
 
         def make_usb_device(usbDevices):
-            if IS_AARCH64:
+            if HOST_ARCH == 'aarch64':
                 next_uhci_port = 3
             else:
                 next_uhci_port = 2
@@ -3887,14 +3996,14 @@ class Vm(object):
             e(devices, 'controller', None, {'type': 'scsi', 'model': 'virtio-scsi'})
 
             if machine_type == "q35":
-                if not IS_AARCH64:
+                if not HOST_ARCH == 'aarch64':
                     controller = e(devices, 'controller', None, {'type': 'sata', 'index': '0'})
                     e(controller, 'alias', None, {'name': 'sata'})
                     e(controller, 'address', None, {'type': 'pci', 'domain': '0', 'bus': '0', 'slot': '0x1f', 'function': '2'})
 
                 pci_idx_generator = range(cmd.pciePortNums + 3).__iter__()
                 e(devices, 'controller', None, {'type': 'pci', 'model': 'pcie-root', 'index': str(pci_idx_generator.next())})
-                if not IS_AARCH64:
+                if not HOST_ARCH == 'aarch64':
                     e(devices, 'controller', None, {'type': 'pci', 'model': 'dmi-to-pci-bridge', 'index': str(pci_idx_generator.next())})
 
                     for _ in xrange(cmd.predefinedPciBridgeNum):
@@ -5645,7 +5754,7 @@ class VmPlugin(kvmagent.KvmAgent):
         # if arm uhci, port 0, 1, 2 are hard-coded reserved
         # else uhci, port 0, 1 are hard-coded reserved
         # if ehci/xhci, port 0 is hard-coded reserved
-        if bus == 0 and IS_AARCH64:
+        if bus == 0 and HOST_ARCH == 'aarch64':
             usb_ports = [0, 1, 2]
         elif bus == 0:
             usb_ports = [0, 1]
