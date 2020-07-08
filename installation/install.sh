@@ -2408,6 +2408,7 @@ http {
     sendfile            on;
     tcp_nopush          on;
     tcp_nodelay         on;
+    server_tokens       off;
     keepalive_timeout   1000;
     types_hash_max_size 2048;
     include             /etc/nginx/mime.types;
