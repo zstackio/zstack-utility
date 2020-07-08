@@ -1519,6 +1519,7 @@ is_install_general_libs_deb(){
         libffi-dev \
         libssl-dev \
         bash-completion \
+        gnutls-bin \
         >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -ne 0 ] && fail "install system lib 2 failed"
 
