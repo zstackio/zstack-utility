@@ -1353,12 +1353,18 @@ iz_install_unzip(){
         pass
         return
     fi
-    if [ "$OS" = "CENTOS6" ]; then
-        rpm -ivh $unzip_el6_rpm >>$ZSTACK_INSTALL_LOG 2>&1
+
+    if [ ! -z $ZSTACK_YUM_REPOS ];then
+        yum clean metadata >/dev/null 2>&1
+        yum -y --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS install unzip>>$ZSTACK_INSTALL_LOG 2>&1
     else
-        rpm -ivh $unzip_el7_rpm >>$ZSTACK_INSTALL_LOG 2>&1
+        yum clean metadata >/dev/null 2>&1
+        yum -y install $req_pkgs>>$ZSTACK_INSTALL_LOG 2>&1
     fi
-    [ $? -ne 0 ] && fail "Install unzip fail."
+
+    if [ $? -ne 0 ]; then
+        fail "Install unzip fail."
+    fi
     pass
 }
 
