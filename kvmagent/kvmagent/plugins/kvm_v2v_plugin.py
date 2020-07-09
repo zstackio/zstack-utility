@@ -185,7 +185,6 @@ def getCdromNum(dom, dxml=None):
 
     return countCdrom(dxml)
 
-
 def buildFilterDict(filterList):
     fdict = {}
     if not filterList:

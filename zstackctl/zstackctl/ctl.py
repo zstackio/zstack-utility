@@ -48,6 +48,7 @@ from Crypto.Util.py3compat import *
 from hashlib import md5
 
 mysql_db_config_script='''
+#!/bin/bash
 echo "modify my.cnf"
 if [ -f /etc/mysql/mariadb.conf.d/50-server.cnf ]; then
     #ubuntu 16.04
@@ -547,6 +548,7 @@ class Ansible(object):
         error_if_tool_is_missing('ansible-playbook')
 
         cmd = '''
+#!/bin/bash
 yaml_file=`mktemp`
 cat <<EOF >> $$yaml_file
 $yaml
@@ -2665,8 +2667,8 @@ class InstallDbCmd(Command):
       shell: apt-get -y install --allow-unauthenticated mariadb-server mariadb-client netfilter-persistent
       register: install_result
 
-    - name: install MySQL for Kylin
-      when: ansible_os_family == 'Kylin'
+    - name: install MySQL for Kylin/UOS
+      when: ansible_os_family == 'Kylin' or ansible_os_family == 'Uos'
       shell: apt-get -y install --allow-unauthenticated mariadb-server mariadb-client netfilter-persistent
       register: install_result
 
@@ -2697,8 +2699,8 @@ class InstallDbCmd(Command):
       when: ansible_os_family == 'Debian'
       service: name=mariadb state=restarted enabled=yes
 
-    - name: enable MySQL on Kylin
-      when: ansible_os_family == 'Kylin'
+    - name: enable MySQL on Kylin/UOS
+      when: ansible_os_family == 'Kylin' or ansible_os_family == 'Uos'
       service: name=mariadb state=restarted enabled=yes
 
     - name: change root password
@@ -2769,6 +2771,7 @@ class InstallDbCmd(Command):
             change_root_password_cmd = '/usr/bin/mysqladmin -u root password {{root_password}}'
 
         pre_install_script = '''
+#!/bin/bash
 if [ -f /etc/redhat-release ] ; then
 
 grep ' 7' /etc/redhat-release

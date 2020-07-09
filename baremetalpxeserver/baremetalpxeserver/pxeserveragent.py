@@ -540,9 +540,9 @@ wget -P /usr/bin ftp://{PXESERVER_DHCP_NIC_IP}/shellinaboxd || curl -o /usr/bin/
 chmod a+x /usr/bin/shellinaboxd
 
 # install zstack zwatch-vm-agent
-wget -P /usr/bin ftp://{PXESERVER_DHCP_NIC_IP}/zwatch-vm-agent.linux-amd64.bin || curl -o /usr/bin/zwatch-vm-agent.linux-amd64.bin ftp://{PXESERVER_DHCP_NIC_IP}/zwatch-vm-agent.linux-amd64.bin
-chmod a+x /usr/bin/zwatch-vm-agent.linux-amd64.bin
-/usr/bin/zwatch-vm-agent.linux-amd64.bin -i
+wget -P /usr/bin ftp://{PXESERVER_DHCP_NIC_IP}/zwatch-vm-agent || curl -o /usr/bin/zwatch-vm-agent ftp://{PXESERVER_DHCP_NIC_IP}/zwatch-vm-agent
+chmod a+x /usr/bin/zwatch-vm-agent
+/usr/bin/zwatch-vm-agent -i
 echo "\npushGatewayUrl:  http://{PXESERVER_DHCP_NIC_IP}:9093" >> /usr/local/zstack/zwatch-vm-agent/conf.yaml
 echo "vmInstanceUuid: {BMUUID}" >> /usr/local/zstack/zwatch-vm-agent/conf.yaml
 echo "versionFileUrl:  ftp://{PXESERVER_DHCP_NIC_IP}/agent_version" >> /usr/local/zstack/zwatch-vm-agent/conf.yaml

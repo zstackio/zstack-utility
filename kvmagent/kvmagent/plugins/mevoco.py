@@ -1020,12 +1020,12 @@ mimetype.assign = (
         self.apply_zwatch_vm_agent(http_root)
 
     def apply_zwatch_vm_agent(self, http_root):
-        agent_file_source_path = "/var/lib/zstack/kvm/zwatch-vm-agent.linux-amd64.bin"
+        agent_file_source_path = "/var/lib/zstack/kvm/zwatch-vm-agent"
         if not os.path.exists(agent_file_source_path):
             logger.error("Can't find file %s" % agent_file_source_path)
             return
 
-        agent_file_target_path = os.path.join(http_root, "zwatch-vm-agent.linux-amd64.bin")
+        agent_file_target_path = os.path.join(http_root, "zwatch-vm-agent")
         if not os.path.exists(agent_file_target_path):
             bash_r("ln -s %s %s" % (agent_file_source_path, agent_file_target_path))
         elif not os.path.islink(agent_file_target_path):
