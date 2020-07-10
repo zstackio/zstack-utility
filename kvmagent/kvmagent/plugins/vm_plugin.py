@@ -6348,7 +6348,15 @@ class VmPlugin(kvmagent.KvmAgent):
                 logger.debug("current migrate %s/%s, percentage %s"
                  % (ram_info['total'], ram_info['remaining'], 100 * (float(ram_info['remaining'] / float(ram_info['total'])))))
             elif migrate_info['status'] == 'failed':
-                rsp.error = "could not finish colo migration. %s" % migrate_info['error-desc']
+                rsp.error = "could not finish colo migration."
+                try:
+                    vm = get_vm_by_uuid_no_retry(cmd.vmInstanceUuid, False)
+                    if vm:
+                        vm.resume()
+                        logger.debug('successfully, resume vm [uuid:%s]' % cmd.uuid)
+                except kvmagent.KvmError as e:
+                    logger.warn(linux.get_exception_stacktrace())
+                break
             else:
                 rsp.success = False
                 rsp.error = "unknown migrate status: %s" % migrate_info['status']
