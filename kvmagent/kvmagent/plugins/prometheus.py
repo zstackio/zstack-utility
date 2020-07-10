@@ -21,6 +21,7 @@ collector_dict = {}  # type: Dict[str, threading.Thread]
 latest_collect_result = {}
 collectResultLock = threading.RLock()
 IPTABLES_CMD = iptables.get_iptables_cmd()
+QEMU_CMD = kvmagent.get_qemu_path().split("/")[-1]
 
 def collect_host_network_statistics():
 
@@ -264,7 +265,7 @@ def collect_vm_statistics():
                                      'Percentage of CPU used by vm', None, ['vmUuid'])
     }
 
-    r, pid_vm_map_str = bash_ro("ps --no-headers u -C \"qemu-kvm -name\" | awk '{print $2,$13}'")
+    r, pid_vm_map_str = bash_ro("ps --no-headers u -C \"%s -name\" | awk '{print $2,$13}'" % QEMU_CMD)
     if r != 0 or len(pid_vm_map_str.splitlines()) == 0:
         return metrics.values()
     pid_vm_map_str = pid_vm_map_str.replace(",debug-threads=on", "").replace("guest=", "")
@@ -281,7 +282,7 @@ def collect_vm_statistics():
 
     vm_pid_arr_str = ','.join(pid_vm_map.keys())
 
-    r, pid_cpu_usages_str = bash_ro("top -b -n 1 -p %s | grep qemu-kvm | awk '{print $1,$9}'" % vm_pid_arr_str)
+    r, pid_cpu_usages_str = bash_ro("top -b -n 1 -p %s | grep qemu | awk '{print $1,$9}'" % vm_pid_arr_str)
     if r != 0 or len(pid_cpu_usages_str.splitlines()) == 0:
         return metrics.values()
 
