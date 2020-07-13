@@ -628,6 +628,16 @@ class GetVmFirstBootDeviceRsp(kvmagent.AgentResponse):
         super(GetVmFirstBootDeviceRsp, self).__init__()
         self.firstBootDevice = None
 
+class FailColoPrimaryVmCmd(kvmagent.AgentCommand):
+    @log.sensitive_fields("targetHostPassword")
+    def __init__(self):
+        super(FailColoPrimaryVmCmd, self).__init__()
+        self.vmInstanceUuid = None
+        self.targetHostIp = None
+        self.targetHostPort = None
+        self.targetHostPassword = None
+
+
 class VncPortIptableRule(object):
     def __init__(self):
         self.host_ip = None
@@ -4409,6 +4419,7 @@ class VmPlugin(kvmagent.KvmAgent):
     CHECK_COLO_VM_STATE_PATH = "/check/colo/vm/state"
     WAIT_COLO_VM_READY_PATH = "/wait/colo/vm/ready"
     ROLLBACK_QUORUM_CONFIG_PATH = "/rollback/quorum/config"
+    FAIL_COLO_PVM_PATH = "/fail/colo/pvm"
 
     VM_OP_START = "start"
     VM_OP_STOP = "stop"
@@ -6176,6 +6187,21 @@ class VmPlugin(kvmagent.KvmAgent):
         _close_version_file()
         return jsonobject.dumps(rsp)
 
+
+    @kvmagent.replyerror
+    @in_bash
+    def fail_colo_pvm(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+
+        r, _, e = linux.sshpass_run(cmd.targetHostIp, cmd.targetHostPassword, "pkill -f 'qemu-system-x86_64 -name guest=%s'" % cmd.vmInstanceUuid, "root", cmd.targetHostPort)
+        if r != 0:
+            rsp.success = False
+            rsp.error = 'failed to kill vm %s on host %s, cause: %s' % (cmd.vmInstanceUuid, cmd.targetHostIp, e)
+
+        return jsonobject.dumps(rsp)
+
+
     @kvmagent.replyerror
     @in_bash
     def rollback_quorum_config(self, req):
@@ -6548,6 +6574,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CHECK_COLO_VM_STATE_PATH, self.check_colo_vm_state)
         http_server.register_async_uri(self.WAIT_COLO_VM_READY_PATH, self.wait_secondary_vm_ready)
         http_server.register_async_uri(self.ROLLBACK_QUORUM_CONFIG_PATH, self.rollback_quorum_config)
+        http_server.register_async_uri(self.FAIL_COLO_PVM_PATH, self.fail_colo_pvm, cmd=FailColoPrimaryVmCmd())
 
         self.clean_old_sshfs_mount_points()
         self.register_libvirt_event()
