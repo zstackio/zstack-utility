@@ -2408,7 +2408,6 @@ class Vm(object):
             elif volume.deviceType == 'quorum':
                 logger.debug("quorum file path is %s" % disk.backingStore.source.file_)
                 if disk.backingStore.source.file_ and disk.backingStore.source.file_ in volume.installPath:
-                    disk.alias.name_ = "colo-disk0"
                     disk.driver.type_ = "qcow2"
                     disk.source = disk.backingStore.source
                     return disk, disk.backingStore.source.file_
@@ -6188,7 +6187,7 @@ class VmPlugin(kvmagent.KvmAgent):
             raise Exception('vm[uuid:%s] not exists, failed' % cmd.vmInstanceUuid)
 
         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "x-blockdev-change",'
-                                                ' "arguments": {"parent": "colo-disk0", "child": "children.1"}}')
+                                                ' "arguments": {"parent": "virtio-disk0", "child": "children.1"}}')
         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "human-monitor-command",'
                                                 ' "arguments":{"command-line": "drive_del replication0"}}')
 
@@ -6283,7 +6282,7 @@ class VmPlugin(kvmagent.KvmAgent):
         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "qmp_capabilities"}')
 
         if cmd.fullSync:
-            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "drive-mirror", "arguments":{ "device": "colo-disk0",'
+            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "drive-mirror", "arguments":{ "device": "virtio-disk0",'
                                                     ' "job-id": "zs-ft-resync", "target": "nbd://%s:%s/parent0",'
                                                     ' "mode": "existing", "format": "nbd", "sync": "full"} }'
                                 % (cmd.secondaryVmHostIp, cmd.nbdServerPort))
@@ -6318,7 +6317,7 @@ class VmPlugin(kvmagent.KvmAgent):
                                                 'file.port=%s,file.export=parent0,node-name=replication0"}}'
                                                 % (cmd.secondaryVmHostIp, cmd.nbdServerPort))
         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "x-blockdev-change","arguments":'
-                                                '{"parent": "colo-disk0","node": "replication0" } }')
+                                                '{"parent": "virtio-disk0","node": "replication0" } }')
         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate-set-capabilities","arguments":'
                                                 '{"capabilities":[ {"capability": "x-colo", "state":true}]}}')
         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate-set-parameters", "arguments":'
@@ -6653,7 +6652,7 @@ class VmPlugin(kvmagent.KvmAgent):
                     if cmd.coloPrimary:
                         execute_qmp_command(cmd.vmInstanceUuid,
                                             '{"execute": "x-blockdev-change", "arguments": {"parent":'
-                                            ' "colo-disk0", "child": "children.1"}}')
+                                            ' "virtio-disk0", "child": "children.1"}}')
                         execute_qmp_command(cmd.vmInstanceUuid,
                                             '{"execute": "human-monitor-command", "arguments":'
                                             '{"command-line": "drive_del replication0" } }')
