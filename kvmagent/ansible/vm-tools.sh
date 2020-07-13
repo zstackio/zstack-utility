@@ -18,15 +18,14 @@ case `uname -s` in
     ;;
 esac
 
-if [ x"$ARCH" != "x86_64" ]; then
+if [ x"$ARCH" != x"x86_64" ]; then
     LABLE="_$ARCH"
 fi
 
 BIN_NAME="zwatch-vm-agent${LABLE}"
-NAME=zwatch-vm-agent
 
 AGENT_VERSION=`curl -s http://169.254.169.254/agent_version`
-if [[ ! ${AGENT_VERSION} =~ $NAME ]]; then
+if [[ ! ${AGENT_VERSION} =~ ${BIN_NAME} ]]; then
     echo "can't get the ${BIN_NAME} latest version"
     exit 1
 fi
@@ -35,7 +34,7 @@ echo "downloading ${BIN_NAME}"
 curl http://169.254.169.254/${BIN_NAME} --silent -O
 
 BIN_MD5=`md5sum ${BIN_NAME} | awk '{print $1}'`
-if [[ ! ${AGENT_VERSION} =~ "md5-$NAME=${BIN_MD5}" ]]; then
+if [[ ! ${AGENT_VERSION} =~ "md5-${BIN_NAME}=${BIN_MD5}" ]]; then
     echo "there was an error downloading the ${BIN_NAME}, check md5sum fail"
     exit 1
 fi
