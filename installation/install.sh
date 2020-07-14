@@ -1986,7 +1986,14 @@ iz_install_zstackctl(){
 
 install_zstack_network()
 {
-    bash $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_CLASSES/ansible/zsnagentansible/zsn-agent.bin
+    if [ "$BASEARCH" == 'aarch64']; then
+        zsn_agent='zsn-agent.aarch64.bin'
+    elif [ "$BASEARCH" == 'mips64el']; then
+        zsn_agent='zsn-agent.mips64el.bin'
+    else
+        zsn_agent='zsn-agent.bin'
+    fi
+    bash $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_CLASSES/ansible/zsnagentansible/${zsn_agent}
     /bin/cp -f /usr/local/zstack/zsn-agent/bin/zstack-network-agent.service /usr/lib/systemd/system/
     pkill zsn-agent
     systemctl daemon-reload
