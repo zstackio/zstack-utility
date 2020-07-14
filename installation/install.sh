@@ -1404,6 +1404,7 @@ is_install_general_libs_rh(){
             openssh \
             openssh-clients \
             openssh-server \
+            rsync \
             sshpass \
             sudo \
             bzip2 \
@@ -1514,6 +1515,7 @@ is_install_general_libs_deb(){
         sqlite3 \
         unzip \
         apache2 \
+        rsync \
         sshpass \
         bzip2 \
         libffi-dev \
@@ -2868,7 +2870,7 @@ get_zstack_repo(){
 }
 
 install_sync_repo_dependences() {
-    pkg_list="createrepo curl yum-utils rsync"
+    pkg_list="createrepo curl yum-utils"
     missing_list=`LANG=en_US.UTF-8 && rpm -q $pkg_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
     [ -z "$missing_list" ] || yum -y --disablerepo=* --enablerepo=zstack-local install ${missing_list} >>$ZSTACK_INSTALL_LOG 2>&1 || echo_hints_to_upgrade_iso
 }
