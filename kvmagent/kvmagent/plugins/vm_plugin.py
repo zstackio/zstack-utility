@@ -4107,7 +4107,7 @@ class Vm(object):
                 for i in pci_idx_generator:
                     e(devices, 'controller', None, {'type': 'pci', 'model': 'pcie-root-port', 'index': str(i)})
             else:
-                if not cmd.predefinedPciBridgeNum:
+                if not cmd.predefinedPciBridgeNum or HOST_ARCH == 'mips64el':
                     return
 
                 for i in xrange(cmd.predefinedPciBridgeNum):
