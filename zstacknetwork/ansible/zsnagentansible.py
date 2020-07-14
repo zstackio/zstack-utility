@@ -85,9 +85,11 @@ else :
 zstacklib = ZstackLib(zstacklib_args)
 
 # get remote host arch
-IS_AARCH64 = get_remote_host_arch(host_post_info) == 'aarch64'
-if IS_AARCH64:
+HOST_ARCH = get_remote_host_arch(host_post_info)
+if HOST_ARCH == 'aarch64':
     src_pkg_zsnagent = "zsn-agent.aarch64.bin"
+elif HOST_ARCH == 'mips64el':
+    src_pkg_zsnagent = "zsn-agent.mips64el.bin"
 else:
     src_pkg_zsnagent = "zsn-agent.bin"
 dst_pkg_zsnagent = "zsn-agent.bin"
