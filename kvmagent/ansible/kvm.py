@@ -36,6 +36,7 @@ update_packages = 'false'
 zstack_lib_dir = "/var/lib/zstack"
 zstack_libvirt_nwfilter_dir = "%s/nwfilter" % zstack_lib_dir
 suricata_src_dir = "%s/suricata" % file_root
+io_control_dir = "%s/ioControl" % file_root
 skipIpv6 = 'false'
 
 def update_libvritd_config(host_post_info):
@@ -685,6 +686,24 @@ copy(copy_arg, host_post_info)
 copy_arg = CopyArg()
 copy_arg.src = "{0}/libyaml-0.so.2.0.4".format(suricata_src_dir)
 copy_arg.dest = "/usr/lib64/"
+copy_arg.args = "mode=777"
+copy(copy_arg, host_post_info)
+
+copy_arg = CopyArg()
+copy_arg.src = "{0}/ioControl".format(io_control_dir)
+copy_arg.dest = "/var/lib/zstack/ioControl/ioControl"
+copy_arg.args = "mode=777"
+copy(copy_arg, host_post_info)
+
+copy_arg = CopyArg()
+copy_arg.src = "{0}/inetv.tpl".format(io_control_dir)
+copy_arg.dest = "/var/lib/zstack/ioControl/inetv.tpl"
+copy_arg.args = "mode=777"
+copy(copy_arg, host_post_info)
+
+copy_arg = CopyArg()
+copy_arg.src = "{0}/netHelper.tpl".format(io_control_dir)
+copy_arg.dest = "/var/lib/zstack/ioControl/netHelper.tpl"
 copy_arg.args = "mode=777"
 copy(copy_arg, host_post_info)
 
