@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # encoding=utf-8
 import argparse
-import commands
 import os.path
 import os
 import re
