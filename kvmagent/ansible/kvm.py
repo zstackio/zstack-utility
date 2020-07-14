@@ -477,7 +477,7 @@ status, mn_port = commands.getstatusoutput('zstack-ctl get_configuration RESTFac
 if status:
     mn_port = 8080
 
-command = '''echo install usb_storage /bin/true > /etc/modprobe.d/block_usb_storage.conf'''
+command = '''echo install usb_storage curl -X POST -H "Content-Type:application/json" -H "commandpath:/host/usb_storage/detected" -d "{'hostUuid':'%s'}" --retry 5 http://%s:%s/zstack/asyncrest/sendcommand > /etc/modprobe.d/block_usb_storage.conf''' % (host_uuid, mn_ip, mn_port)
 host_post_info.post_label = "ansible.shell.report.usb.storage"
 host_post_info.post_label_param = "report usb storage device attached"
 run_remote_command(command, host_post_info)

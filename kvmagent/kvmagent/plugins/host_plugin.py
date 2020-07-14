@@ -906,29 +906,15 @@ class HostPlugin(kvmagent.KvmAgent):
     @lock.file_lock('/run/usb_rules.lock')
     def handle_usb_device_events(self):
         bash_str = """#!/usr/bin/env python
-import os
-import sys
 import urllib2
-
-def report_device_event(data, post_url):
+def post_msg(data, post_url):
     headers = {"content-type": "application/json", "commandpath": "/host/reportdeviceevent"}
     req = urllib2.Request(post_url, data, headers)
     response = urllib2.urlopen(req)
     response.close()
 
-def report_usb_attached(data, post_url):
-    headers = {"content-type": "application/json", "commandpath": "/host/usb_storage/detected"}
-    req = urllib2.Request(post_url, data, headers)
-    response = urllib2.urlopen(req)
-    response.close()
-
 if __name__ == "__main__":
-    _data = "{'hostUuid':'%s'}"
-    _post_url = '%s'
-
-    report_device_event(_data, _post_url)
-    if sys.argv[1] == 'add':
-        report_usb_attached(_data, _post_url)
+    post_msg("{'hostUuid':'%s'}", '%s')
 """ % (self.config.get(kvmagent.HOST_UUID), self.config.get(kvmagent.SEND_COMMAND_URL))
 
         event_report_script = '/usr/bin/_report_device_event.py'
@@ -936,7 +922,7 @@ if __name__ == "__main__":
             f.write(bash_str)
         os.chmod(event_report_script, 0o755)
 
-        rule_str = 'ACTION=="add", SUBSYSTEM=="usb", RUN="{0} add"\nACTION=="remove", SUBSYSTEM=="usb", RUN="{0} remove"'.format(event_report_script)
+        rule_str = 'ACTION=="add|remove", SUBSYSTEM=="usb", RUN="%s"' % event_report_script
         rule_path = '/etc/udev/rules.d/'
         rule_file = os.path.join(rule_path, 'usb.rules')
         if not os.path.exists(rule_path):
