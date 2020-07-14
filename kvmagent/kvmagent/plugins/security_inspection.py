@@ -73,7 +73,7 @@ class SecurityInspection(kvmagent.KvmAgent):
 
         logger.debug('transmitting vm gateway changed [uuid:{0}] cmd [expectedGateway:{1}, gateway: {2}, repair:{3}] to management node'
                      .format(cmd.vmInstanceUuid, cmd.expectedGateway, cmd.gateway, cmd.repair))
-        http.json_dump_post(self.url, result, {'commandpath': '/kvm/VmGatewayChanged'})
+        # http.json_dump_post(self.url, result, {'commandpath': '/kvm/VmGatewayChanged'})
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -82,25 +82,25 @@ class SecurityInspection(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
 
-        self.action = cmd.action
-        self.start_time = time.time()
-        ifNames = cmd.suricataInterface.split(",")
-        ifParams = " ".join("-i {0}".format(x) for x in ifNames)
+        # self.action = cmd.action
+        # self.start_time = time.time()
+        # ifNames = cmd.suricataInterface.split(",")
+        # ifParams = " ".join("-i {0}".format(x) for x in ifNames)
 
-        r, o, e = bash_roe("echo '' > {0}; pids=`pidof /usr/local/bin/suricata`; for pid in $pids; do kill $pid; done;rm -rf /usr/local/var/run/suricata.pid; /usr/local/bin/suricata -c /etc/suricata/suricata.yaml -l /var/log/suricata/ {1} -D"
-                           .format(self.SURICATA_FAST_LOG_FILE, ifParams))
-        if r != 0:
-            rsp.success = False
-            rsp.error = e
-            return jsonobject.dumps(rsp)
+        # r, o, e = bash_roe("echo '' > {0}; pids=`pidof /usr/local/bin/suricata`; for pid in $pids; do kill $pid; done;rm -rf /usr/local/var/run/suricata.pid; /usr/local/bin/suricata -c /etc/suricata/suricata.yaml -l /var/log/suricata/ {1} -D"
+        #                    .format(self.SURICATA_FAST_LOG_FILE, ifParams))
+        # if r != 0:
+        #     rsp.success = False
+        #     rsp.error = e
+        #     return jsonobject.dumps(rsp)
 
-        gatewayTimer = thread.timer(cmd.gatewayCheckInterval, self._gateway_inspection,
-                                    args=[self.start_time], stop_on_exception=False)
-        gatewayTimer.start()
+        # gatewayTimer = thread.timer(cmd.gatewayCheckInterval, self._gateway_inspection,
+        #                             args=[self.start_time], stop_on_exception=False)
+        # gatewayTimer.start()
 
-        suricateTimer = thread.timer(cmd.suricataInterval, self._suricata_inspection,
-                                     args=[self.start_time], stop_on_exception=False)
-        suricateTimer.start()
+        # suricateTimer = thread.timer(cmd.suricataInterval, self._suricata_inspection,
+        #                              args=[self.start_time], stop_on_exception=False)
+        # suricateTimer.start()
 
         # this is an operation outside zstack, report it
         self.url = self.config.get(kvmagent.SEND_COMMAND_URL)
@@ -116,6 +116,22 @@ class SecurityInspection(kvmagent.KvmAgent):
             return jsonobject.dumps(rsp)
 
         self.expected_gateway_ip = cmd.gateway_ip
+
+        host_config = """
+{
+   "hostUuid":"{HOST_UUID}",
+   "hostExpectedGateway":"{HOST_EXPECTED_GATE_WAY}",
+   "vmExpectedGateway":"172.20.0.1",
+   "callbackUrl":"172.21.0.201:8080/zstack/asyncrest/sendcommand"
+}
+""".format(HOST_UUID=self.host_uuid,
+           HOST_EXPECTED_GATE_WAY=self.expected_gateway_ip)
+           
+        with open("/var/lib/zstack/ioControl/host.json", 'w') as fd:
+            fd.write(host_config)
+
+        bash_roe("/var/lib/zstack/ioControl/ioControl -s /var/lib/zstack/ioControl/host.json")
+
         return jsonobject.dumps(rsp)
 
     #suppose there is only 1 gateway
@@ -131,28 +147,28 @@ class SecurityInspection(kvmagent.KvmAgent):
 
         logger.debug('detected host {0} default gateway change to {1}'.format(self.host_uuid, gateway))
 
-        cmd = ReportHostGatewayChangeCmd()
-        cmd.hostUuid = self.host_uuid
-        cmd.expectedGateway = self.expected_gateway_ip
-        cmd.gateway = gateway
-        cmd.repair = False
-        http.json_dump_post(self.url, cmd, {'commandpath': '/kvm/HostGatewayChanged'})
+        # cmd = ReportHostGatewayChangeCmd()
+        # cmd.hostUuid = self.host_uuid
+        # cmd.expectedGateway = self.expected_gateway_ip
+        # cmd.gateway = gateway
+        # cmd.repair = False
+        # http.json_dump_post(self.url, cmd, {'commandpath': '/kvm/HostGatewayChanged'})
 
-        if self.action == self.ACTION_REPAIR:
-            cmds =[]
-            gateways = gateway.split("\n")
-            for g in gateways:
-                if g != "":
-                    cmds.append("ip route del default via {0}".format(g))
-            cmds.append("ip route add default via {0}".format(self.expected_gateway_ip))
-            r, o, e = bash_roe(";".join(cmds))
-            if r != 0:
-                logger.debug('restore default route failed: error {0}, output {1}'.format(e, o))
-            else:
-                gateway = bash_o("ip route | grep default | awk '{print $3}'").strip()
-                cmd.gateway = gateway
-                cmd.repair = True
-                http.json_dump_post(self.url, cmd, {'commandpath': '/kvm/HostGatewayChanged'})
+        # if self.action == self.ACTION_REPAIR:
+        #     cmds =[]
+        #     gateways = gateway.split("\n")
+        #     for g in gateways:
+        #         if g != "":
+        #             cmds.append("ip route del default via {0}".format(g))
+        #     cmds.append("ip route add default via {0}".format(self.expected_gateway_ip))
+        #     r, o, e = bash_roe(";".join(cmds))
+        #     if r != 0:
+        #         logger.debug('restore default route failed: error {0}, output {1}'.format(e, o))
+        #     else:
+        #         gateway = bash_o("ip route | grep default | awk '{print $3}'").strip()
+        #         cmd.gateway = gateway
+        #         cmd.repair = True
+        #         http.json_dump_post(self.url, cmd, {'commandpath': '/kvm/HostGatewayChanged'})
 
         return True
 
@@ -207,23 +223,23 @@ class SecurityInspection(kvmagent.KvmAgent):
                 cmd.dst_ip = dst_ip
                 cmd.dst_port = dst_port
 
-            http.json_dump_post(self.url, cmd, {'commandpath': '/kvm/invalidHttpProxy'})
+            # http.json_dump_post(self.url, cmd, {'commandpath': '/kvm/invalidHttpProxy'})
 
-            if self.action == self.ACTION_REPAIR:
-                r, o, e = bash_roe(
-                    """iptables -D OUTPUT -d {0}/32 -p tcp -m comment --comment 'block invalid http proxy' -m tcp --dport {1} -j DROP;
-                     iptables -D FORWARD -d {0}/32 -p tcp -m comment --comment 'block invalid http proxy' -m tcp --dport {1} -j DROP;
-                     iptables -I OUTPUT -d {0}/32 -p tcp -m comment --comment 'block invalid http proxy' -m tcp --dport {1} -j DROP;
-                     iptables -I FORWARD -d {0}/32 -p tcp -m comment --comment 'block invalid http proxy' -m tcp --dport {1} -j DROP;"""
-                        .format(dst_ip, dst_port))
-                if r != 0:
-                    logger.debug('blocked invalid http proxy failed: error {0}, output {1}'.format(e, o))
-                else:
-                    cmd.content = ("""iptables -I OUTPUT -d {0}/32 -p tcp -m comment --comment 'block invalid http proxy' -m tcp --dport {1} -j DROP;
-                                      iptables -I FORWARD -d {0}/32 -p tcp -m comment --comment 'block invalid http proxy' -m tcp --dport {1} -j DROP"""
-                                   .format(dst_ip, dst_port))
-                    cmd.repair = True
-                    http.json_dump_post(self.url, cmd, {'commandpath': '/kvm/invalidHttpProxy'})
+            # if self.action == self.ACTION_REPAIR:
+            #     r, o, e = bash_roe(
+            #         """iptables -D OUTPUT -d {0}/32 -p tcp -m comment --comment 'block invalid http proxy' -m tcp --dport {1} -j DROP;
+            #          iptables -D FORWARD -d {0}/32 -p tcp -m comment --comment 'block invalid http proxy' -m tcp --dport {1} -j DROP;
+            #          iptables -I OUTPUT -d {0}/32 -p tcp -m comment --comment 'block invalid http proxy' -m tcp --dport {1} -j DROP;
+            #          iptables -I FORWARD -d {0}/32 -p tcp -m comment --comment 'block invalid http proxy' -m tcp --dport {1} -j DROP;"""
+            #             .format(dst_ip, dst_port))
+            #     if r != 0:
+            #         logger.debug('blocked invalid http proxy failed: error {0}, output {1}'.format(e, o))
+            #     else:
+            #         cmd.content = ("""iptables -I OUTPUT -d {0}/32 -p tcp -m comment --comment 'block invalid http proxy' -m tcp --dport {1} -j DROP;
+            #                           iptables -I FORWARD -d {0}/32 -p tcp -m comment --comment 'block invalid http proxy' -m tcp --dport {1} -j DROP"""
+            #                        .format(dst_ip, dst_port))
+            #         cmd.repair = True
+            #         http.json_dump_post(self.url, cmd, {'commandpath': '/kvm/invalidHttpProxy'})
 
         self.line = line
 
