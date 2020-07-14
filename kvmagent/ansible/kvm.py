@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # encoding=utf-8
 import argparse
-import commands
 import os.path
 import os
 import re
@@ -469,20 +468,6 @@ command = "rm -f /etc/libvirt/hooks/qemu"
 host_post_info.post_label = "ansible.shell.remove.file"
 host_post_info.post_label_param = "/etc/libvirt/hooks/qemu"
 run_remote_command(command, host_post_info)
-
-# name: report usb storage device attached
-status, mn_ip = commands.getstatusoutput('zstack-ctl get_configuration management.server.ip')
-if status:
-    mn_ip = "127.0.0.1"
-status, mn_port = commands.getstatusoutput('zstack-ctl get_configuration RESTFacade.port')
-if status:
-    mn_port = 8080
-
-command = '''echo install usb_storage /bin/true > /etc/modprobe.d/block_usb_storage.conf'''
-host_post_info.post_label = "ansible.shell.report.usb.storage"
-host_post_info.post_label_param = "report usb storage device attached"
-run_remote_command(command, host_post_info)
-
 
 # name: enable bridge forward
 command = "echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables ; echo 1 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged ; echo 1 > /proc/sys/net/ipv4/conf/default/forwarding"
