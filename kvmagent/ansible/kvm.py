@@ -40,7 +40,7 @@ update_packages = 'false'
 zstack_lib_dir = "/var/lib/zstack"
 zstack_libvirt_nwfilter_dir = "%s/nwfilter" % zstack_lib_dir
 suricata_src_dir = "%s/suricata" % file_root
-io_control_dir = "%s/ioControl" % file_root
+io_control_dir = "%s/io-control" % file_root
 skipIpv6 = 'false'
 bridgeDisableIptables = 'false'
 releasever = ''
@@ -699,6 +699,7 @@ def start_kvmagent():
     host_post_info.post_label = "ansible.shell.restart.service"
     host_post_info.post_label_param = "zstack-kvmagent"
     run_remote_command(command, host_post_info)
+
 
 
 check_nested_kvm(host_post_info)
