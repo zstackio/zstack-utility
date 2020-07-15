@@ -676,6 +676,7 @@ def do_auditd_config():
     host_post_info.post_label_param = None
     run_remote_command(command, host_post_info)
 
+
 def start_kvmagent():
     if chroot_env != 'false':
         return
@@ -699,7 +700,6 @@ def start_kvmagent():
     host_post_info.post_label = "ansible.shell.restart.service"
     host_post_info.post_label_param = "zstack-kvmagent"
     run_remote_command(command, host_post_info)
-
 
 
 check_nested_kvm(host_post_info)

@@ -73,7 +73,7 @@ class SecurityInspection(kvmagent.KvmAgent):
 
         logger.debug('transmitting vm gateway changed [uuid:{0}] cmd [expectedGateway:{1}, gateway: {2}, repair:{3}] to management node'
                      .format(cmd.vmInstanceUuid, cmd.expectedGateway, cmd.gateway, cmd.repair))
-        # http.json_dump_post(self.url, result, {'commandpath': '/kvm/VmGatewayChanged'})
+        http.json_dump_post(self.url, result, {'commandpath': '/kvm/VmGatewayChanged'})
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
