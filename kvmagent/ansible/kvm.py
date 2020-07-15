@@ -662,6 +662,7 @@ def set_legacy_iptables_ebtables():
     host_post_info.post_label_param = None
     run_remote_command(command, host_post_info)
 
+
 def do_auditd_config():
     """add audit rules for signals"""
     AUDIT_CONF_FILE = '/etc/audit/auditd.conf'
