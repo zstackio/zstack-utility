@@ -6357,6 +6357,7 @@ class VmPlugin(kvmagent.KvmAgent):
                                                 ' "arguments": {"name": "colo*", "enable": true}}')
 
         # wait primary vm migrate job finished
+        failure = 0
         while True:
             r, o, err = execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "query-migrate"}')
             if err:
@@ -6383,9 +6384,21 @@ class VmPlugin(kvmagent.KvmAgent):
                     logger.warn(linux.get_exception_stacktrace())
                 break
             else:
-                rsp.success = False
-                rsp.error = "unknown migrate status: %s" % migrate_info['status']
-                return jsonobject.dumps(rsp)
+                # those status are not handled but vm should not stuck in
+                # MIGRATION_STATUS_POSTCOPY_ACTIVE:
+                # MIGRATION_STATUS_POSTCOPY_PAUSED:
+                # MIGRATION_STATUS_POSTCOPY_RECOVER:
+                # MIGRATION_STATUS_SETUP:
+                # MIGRATION_STATUS_PRE_SWITCHOVER:
+                # MIGRATION_STATUS_DEVICE:
+                if failure < 2:
+                    failure += 1
+                else:
+                    rsp.success = False
+                    rsp.error = "unknown migrate status: %s" % migrate_info['status']
+                    # cancel migrate if vm stuck in unexpected status
+                    execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate_cancel"}')
+                    return jsonobject.dumps(rsp)
 
             time.sleep(2)
 
