@@ -73,7 +73,7 @@ class SecurityInspection(kvmagent.KvmAgent):
 
         logger.debug('transmitting vm gateway changed [uuid:{0}] cmd [expectedGateway:{1}, gateway: {2}, repair:{3}] to management node'
                      .format(cmd.vmInstanceUuid, cmd.expectedGateway, cmd.gateway, cmd.repair))
-        # http.json_dump_post(self.url, result, {'commandpath': '/kvm/VmGatewayChanged'})
+        http.json_dump_post(self.url, result, {'commandpath': '/kvm/VmGatewayChanged'})
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -89,7 +89,7 @@ class SecurityInspection(kvmagent.KvmAgent):
 
         if cmd.stopIOControlModule:
             r, o, e = bash_roe("pids=`pidof /usr/local/bin/suricata`; for pid in $pids; do kill $pid; done;")
-        else
+        else:
             r, o, e = bash_roe("echo '' > {0}; pids=`pidof /usr/local/bin/suricata`; for pid in $pids; do kill $pid; done;rm -rf /usr/local/var/run/suricata.pid; /usr/local/bin/suricata -c /etc/suricata/suricata.yaml -l /var/log/suricata/ {1} -D"
                                .format(self.SURICATA_FAST_LOG_FILE, ifParams))
             if r != 0:
@@ -129,7 +129,7 @@ class SecurityInspection(kvmagent.KvmAgent):
            HOST_EXPECTED_GATE_WAY=self.expected_gateway_ip,
            CALLBACK_URL=self.url.replace("http://", ""))
 
-        with open("/var/lib/zstack/ioControl/host.json", 'w') as fd:
+        with open("/var/lib/zstack/io-control/host.json", 'w') as fd:
             fd.write(host_config)
         
         net_config = """[{
@@ -143,26 +143,26 @@ class SecurityInspection(kvmagent.KvmAgent):
    "port":"808"
 }]"""
 
-        with open("/var/lib/zstack/ioControl/net.json", 'w') as fd:
+        with open("/var/lib/zstack/io-control/net.json", 'w') as fd:
             fd.write(net_config)
 
-        detect_config = """
-[{
+        detect_config = """[{
    "ip":"172.21.0.201",
    "port":"22"
 }]
 """
 
-        with open("/var/lib/zstack/ioControl/detect.json", 'w') as fd:
+        with open("/var/lib/zstack/io-control/detect.json", 'w') as fd:
             fd.write(detect_config)
 
         if cmd.stopIOControlModule:
-            bash_roe("pids=`pidof /var/lib/zstack/ioControl/ioControl`; for pid in $pids; do kill $pid; done;")
+            bash_roe("pids=`pidof /var/lib/zstack/io-control/ioControl`; for pid in $pids; do kill $pid; done;")
         else:
-            bash_roe("pids=`pidof /var/lib/zstack/ioControl/ioControl`; for pid in $pids; do kill $pid; done;"
-                     "nohup /var/lib/zstack/ioControl/ioControl -s /var/lib/zstack/ioControl/host.json "
-                     "-n /var/lib/zstack/ioControl/net.json -t /var/lib/zstack/ioControl/detect.json"
-                    "> /var/lib/zstack/ioControl/ioControl.log 2>&1 &")
+            bash_roe("pids=`pidof /var/lib/zstack/io-control/ioControl`; for pid in $pids; do kill $pid; done;"
+                     "cd /var/lib/zstack/io-control/;"
+                     "nohup /var/lib/zstack/io-control/ioControl -s /var/lib/zstack/io-control/host.json "
+                     "-n /var/lib/zstack/io-control/net.json -t /var/lib/zstack/io-control/detect.json"
+                     "> /var/lib/zstack/io-control/ioControl.log 2>&1 &")
 
         return jsonobject.dumps(rsp)
 
