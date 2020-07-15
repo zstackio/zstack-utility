@@ -110,7 +110,7 @@ if HOST_ARCH == 'aarch64':
 elif HOST_ARCH == 'mips64el':
     src_pkg_zsn = 'zsn-agent.mips64el.bin'
 else:
-    src_pkg_zsn = 'zns-agent.bin'
+    src_pkg_zsn = 'zsn-agent.bin'
 
 copy_arg = CopyArg()
 dest_pkg = "%s/%s" % (zsn_root, dest_pkg_zsn)
