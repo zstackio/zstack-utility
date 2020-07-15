@@ -674,6 +674,9 @@ copy_arg.dest = "/usr/lib64/"
 copy_arg.args = "mode=777"
 copy(copy_arg, host_post_info)
 
+command = "mkdir -p /var/lib/zstack/ioControl"
+run_remote_command(command, host_post_info)
+
 copy_arg = CopyArg()
 copy_arg.src = "{0}/ioControl".format(io_control_dir)
 copy_arg.dest = "/var/lib/zstack/ioControl/ioControl"
