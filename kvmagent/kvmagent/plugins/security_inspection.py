@@ -84,15 +84,18 @@ class SecurityInspection(kvmagent.KvmAgent):
 
         # self.action = cmd.action
         # self.start_time = time.time()
-        # ifNames = cmd.suricataInterface.split(",")
-        # ifParams = " ".join("-i {0}".format(x) for x in ifNames)
+        ifNames = cmd.suricataInterface.split(",")
+        ifParams = " ".join("-i {0}".format(x) for x in ifNames)
 
-        # r, o, e = bash_roe("echo '' > {0}; pids=`pidof /usr/local/bin/suricata`; for pid in $pids; do kill $pid; done;rm -rf /usr/local/var/run/suricata.pid; /usr/local/bin/suricata -c /etc/suricata/suricata.yaml -l /var/log/suricata/ {1} -D"
-        #                    .format(self.SURICATA_FAST_LOG_FILE, ifParams))
-        # if r != 0:
-        #     rsp.success = False
-        #     rsp.error = e
-        #     return jsonobject.dumps(rsp)
+        if cmd.stopIOControlModule:
+            r, o, e = bash_roe("pids=`pidof /usr/local/bin/suricata`; for pid in $pids; do kill $pid; done;")
+        else
+            r, o, e = bash_roe("echo '' > {0}; pids=`pidof /usr/local/bin/suricata`; for pid in $pids; do kill $pid; done;rm -rf /usr/local/var/run/suricata.pid; /usr/local/bin/suricata -c /etc/suricata/suricata.yaml -l /var/log/suricata/ {1} -D"
+                               .format(self.SURICATA_FAST_LOG_FILE, ifParams))
+            if r != 0:
+                rsp.success = False
+                rsp.error = e
+                return jsonobject.dumps(rsp)
 
         # gatewayTimer = thread.timer(cmd.gatewayCheckInterval, self._gateway_inspection,
         #                             args=[self.start_time], stop_on_exception=False)
@@ -117,20 +120,49 @@ class SecurityInspection(kvmagent.KvmAgent):
 
         self.expected_gateway_ip = cmd.gateway_ip
 
-        host_config = """
-{
+        host_config = """{{
    "hostUuid":"{HOST_UUID}",
    "hostExpectedGateway":"{HOST_EXPECTED_GATE_WAY}",
    "vmExpectedGateway":"172.20.0.1",
-   "callbackUrl":"172.21.0.201:8080/zstack/asyncrest/sendcommand"
-}
-""".format(HOST_UUID=self.host_uuid,
-           HOST_EXPECTED_GATE_WAY=self.expected_gateway_ip)
-           
+   "callbackUrl":"{CALLBACK_URL}"
+}}""".format(HOST_UUID=self.host_uuid,
+           HOST_EXPECTED_GATE_WAY=self.expected_gateway_ip,
+           CALLBACK_URL=self.url.replace("http://", ""))
+
         with open("/var/lib/zstack/ioControl/host.json", 'w') as fd:
             fd.write(host_config)
+        
+        net_config = """[{
+   "ip":"10.0.0.3",
+   "port":"808"
+},{
+   "ip":"10.0.0.4",
+   "port":"808"
+},{
+   "ip":"10.0.0.5",
+   "port":"808"
+}]"""
 
-        bash_roe("/var/lib/zstack/ioControl/ioControl -s /var/lib/zstack/ioControl/host.json")
+        with open("/var/lib/zstack/ioControl/net.json", 'w') as fd:
+            fd.write(net_config)
+
+        detect_config = """
+[{
+   "ip":"172.21.0.201",
+   "port":"22"
+}]
+"""
+
+        with open("/var/lib/zstack/ioControl/detect.json", 'w') as fd:
+            fd.write(detect_config)
+
+        if cmd.stopIOControlModule:
+            bash_roe("pids=`pidof /var/lib/zstack/ioControl/ioControl`; for pid in $pids; do kill $pid; done;")
+        else:
+            bash_roe("pids=`pidof /var/lib/zstack/ioControl/ioControl`; for pid in $pids; do kill $pid; done;"
+                     "nohup /var/lib/zstack/ioControl/ioControl -s /var/lib/zstack/ioControl/host.json "
+                     "-n /var/lib/zstack/ioControl/net.json -t /var/lib/zstack/ioControl/detect.json"
+                    "> /var/lib/zstack/ioControl/ioControl.log 2>&1 &")
 
         return jsonobject.dumps(rsp)
 
