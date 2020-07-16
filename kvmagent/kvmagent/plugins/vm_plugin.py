@@ -13,7 +13,8 @@ import re
 import platform
 import netaddr
 import uuid
-import json
+import simplejson
+import base64
 
 import libvirt
 import xml.dom.minidom as minidom
@@ -587,6 +588,8 @@ class GetVmGuestToolsInfoCmd(kvmagent.AgentCommand):
 class GetVmGuestToolsInfoRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(GetVmGuestToolsInfoRsp, self).__init__()
+        self.version = None
+        self.status = None
 
 class GetVmFirstBootDeviceCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -5983,18 +5986,42 @@ class VmPlugin(kvmagent.KvmAgent):
     @in_bash
     def get_vm_guest_tools_info(self, req):
         rsp = GetVmGuestToolsInfoRsp()
-
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        # get guest tools info by reading VERSION file inside vm
         vm_uuid = cmd.vmInstanceUuid
-        r, o, e = bash.bash_roe("virsh qemu-agent-command %s --cmd '{\"execute\":\"guest-tools-info\"}'" % vm_uuid)
-        logger.debug("get guest tools info from vm[uuid:%s]: %s, %s" % (vm_uuid, o, e))
+
+
+        r, o, e = bash.bash_roe('virsh qemu-agent-command %s --cmd \'{"execute":"guest-file-open", \
+                "arguments":{"path":"C:\\\Program Files\\\Common Files\\\GuestTools\\\VERSION", "mode":"r"}}\'' % vm_uuid)
         if r != 0:
+            _r, _o, _e = bash.bash_roe("virsh qemu-agent-command %s --cmd '{\"execute\":\"guest-tools-info\"}'" % vm_uuid)
+            if _r == 0:
+                info = simplejson.loads(_o)['return']
+                for k in info.keys():
+                    setattr(rsp, k, info[k])
+                return jsonobject.dumps(rsp)
+            else:
+                rsp.success = False
+                rsp.error = "%s, %s" % (o, e)
+                return jsonobject.dumps(rsp)
+
+        fd = simplejson.loads(o)['return']
+
+        def _close_version_file():
+            bash.bash_roe('virsh qemu-agent-command %s --cmd \'{"execute":"guest-file-close", "arguments":{"handle":%s}}\'' % (vm_uuid, fd))
+
+        r, o, e = bash.bash_roe('virsh qemu-agent-command %s --cmd \'{"execute":"guest-file-read", "arguments":{"handle":%s}}\'' % (vm_uuid, fd))
+        if r != 0:
+            _close_version_file()
             rsp.success = False
             rsp.error = "%s, %s" % (o, e)
-        else:
-            info = json.loads(o)['return']
-            for k in info.keys():
-                setattr(rsp, k, info[k])
+            return jsonobject.dumps(rsp)
+
+        version = base64.b64decode(simplejson.loads(o)['return']['buf-b64']).strip()
+        rsp.version = version
+        rsp.status = 'Running'
+        _close_version_file()
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
