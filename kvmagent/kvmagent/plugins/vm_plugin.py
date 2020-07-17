@@ -6310,7 +6310,7 @@ class VmPlugin(kvmagent.KvmAgent):
 
         if cmd.fullSync:
             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "drive-mirror", "arguments":{ "device": "virtio-disk0",'
-                                                    ' "job-id": "zs-ft-resync", "target": "nbd://%s:%s/parent0",'
+                                                    ' "job-id": "virtio-disk0", "target": "nbd://%s:%s/parent0",'
                                                     ' "mode": "existing", "format": "nbd", "sync": "full"} }'
                                 % (cmd.secondaryVmHostIp, cmd.nbdServerPort))
             while True:
@@ -6318,12 +6318,12 @@ class VmPlugin(kvmagent.KvmAgent):
                 r, o, err = execute_qmp_command(cmd.vmInstanceUuid, '{"execute":"query-block-jobs"}')
                 if err:
                     rsp.success = False
-                    rsp.error = "Failed to get zs-ft-resync job, report error"
+                    rsp.error = "Failed to get virtio-disk0 job, report error"
                     return jsonobject.dumps(rsp)
 
                 block_jobs = json.loads(o)['return']
 
-                job = next((job for job in block_jobs if job['device'] == 'zs-ft-resync'), None)
+                job = next((job for job in block_jobs if job['device'] == 'virtio-disk0'), None)
 
                 if not job:
                     logger.debug("job finished, start colo sync")
@@ -6337,7 +6337,7 @@ class VmPlugin(kvmagent.KvmAgent):
 
             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "stop"}')
             execute_qmp_command(cmd.vmInstanceUuid,
-                                '{"execute": "block-job-cancel", "arguments":{ "device": "zs-ft-resync"}}')
+                                '{"execute": "block-job-cancel", "arguments":{ "device": "virtio-disk0"}}')
         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "human-monitor-command","arguments":'
                                                 ' {"command-line":"drive_add -n buddy'
                                                 ' driver=replication,mode=primary,file.driver=nbd,file.host=%s,'
