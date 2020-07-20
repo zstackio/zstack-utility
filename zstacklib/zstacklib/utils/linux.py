@@ -3,6 +3,7 @@
 @author: frank
 '''
 import abc
+import contextlib
 import os
 import os.path
 import socket
@@ -1751,6 +1752,14 @@ def get_free_port():
     port = s.getsockname()[1]
     s.close()
     return port
+
+def is_port_available(port):
+    with contextlib.closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+        try:
+            s.bind(('', int(port)))
+            return True
+        except:
+            return False
 
 def get_all_ethernet_device_names():
     return os.listdir('/sys/class/net/')
