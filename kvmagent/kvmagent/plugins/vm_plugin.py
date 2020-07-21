@@ -3418,10 +3418,10 @@ class Vm(object):
                 count = 0
                 for config in cmd.addons['ftSecondaryVmNicConfig']:
                     e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
-                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=red-mirror-%s,host=%s,port=%s,reconnect=1'
+                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=red-mirror-%s,host=%s,port=%s'
                                                          % (count, cmd.addons['primaryVmHostIp'], config.mirrorPort)})
                     e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
-                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=red-secondary-%s,host=%s,port=%s,reconnect=1'
+                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=red-secondary-%s,host=%s,port=%s'
                                                          % (count, cmd.addons['primaryVmHostIp'], config.secondaryInPort)})
                     e(qcmd, "qemu:arg", attrib={"value": '-object'})
                     e(qcmd, "qemu:arg", attrib={"value": 'filter-redirector,id=fr-mirror-%s,netdev=hostnet%s,queue=tx,'
