@@ -8403,10 +8403,10 @@ class SetDeploymentCmd(Command):
             raise CtlError('unexpected size: %s' % args.size)
 
         heap, psize, ratio, sint = deploymentProfiles[s]
-        ctl.internal_run('setenv', "CATALINA_OPTS='%s'" % self.build_catalina_opts(heap))
-        ctl.internal_run('configure', 'DbFacadeDataSource.maxPoolSize=%s' % psize)
-        ctl.internal_run('configure', 'KvmHost.maxThreads.ratio=%s' % ratio)
-        ctl.internal_run('configure', 'Prometheus.scrapeInterval=%s' % sint)
+        commands.getstatusoutput("zstack-ctl setenv CATALINA_OPTS='%s'" % self.build_catalina_opts(heap))
+        commands.getstatusoutput("zstack-ctl configure DbFacadeDataSource.maxPoolSize=%s" % psize)
+        commands.getstatusoutput("zstack-ctl configure KvmHost.maxThreads.ratio=%s" % ratio)
+        commands.getstatusoutput("zstack-ctl configure Prometheus.scrapeInterval=%s" % sint)
 
 class ClearLicenseCmd(Command):
     def __init__(self):
