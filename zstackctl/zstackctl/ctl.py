@@ -8370,7 +8370,7 @@ deploymentProfiles = {
 
 class SetDeploymentCmd(Command):
     def __init__(self):
-        super(InstallLicenseCmd, self).__init__()
+        super(SetDeploymentCmd, self).__init__()
         self.name = "set_deployment"
         self.description = "set instance offering size of management node"
         ctl.register_command(self)
