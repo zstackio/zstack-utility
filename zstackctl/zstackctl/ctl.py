@@ -8378,19 +8378,19 @@ class SetDeploymentCmd(Command):
     def install_argparse_arguments(self, parser):
         parser.add_argument('--size', '-s', help="instance size, one of 'small', 'medium', 'large'", required=True)
 
-    def find_opt(opts, prefix):
+    def find_opt(self, opts, prefix):
         for opt in opts:
             if opt.startswith(prefix):
                 return opt
         return None
 
-    def build_catalina_opts(heap):
+    def build_catalina_opts(self, heap):
         co = ctl.get_env('CATALINA_OPTS')
         if not co:
             return '-Xmx%sG' % heap
 
         opts = co.split(' ')
-        cur = find_opt(opts, '-Xmx')
+        cur = self.find_opt(opts, '-Xmx')
         if cur is None:
             return '-Xmx%sG %s' % (heap, co)
 
@@ -8403,7 +8403,7 @@ class SetDeploymentCmd(Command):
             raise CtlError('unexpected size: %s' % args.size)
 
         heap, psize, ratio, sint = deploymentProfiles[s]
-        ctl.internal_run('setenv', "CATALINA_OPTS='%s'" % build_catalina_opts(heap))
+        ctl.internal_run('setenv', "CATALINA_OPTS='%s'" % self.build_catalina_opts(heap))
         ctl.internal_run('configure', 'DbFacadeDataSource.maxPoolSize=%s' % psize)
         ctl.internal_run('configure', 'KvmHost.maxThreads.ratio=%s' % ratio)
         ctl.internal_run('configure', 'Prometheus.scrapeInterval=%s' % sint)
