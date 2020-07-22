@@ -8362,6 +8362,52 @@ class InstallLicenseCmd(Command):
             shell('''chown zstack:zstack %s/pri.key''' % license_folder)
             info("successfully installed the private key file to %s/pri.key" % license_folder)
 
+deploymentProfiles = {
+        'small':  ( 4,  64, 0.6, 15),
+        'medium': ( 8, 128, 0.5, 30),
+        'large':  (16, 128, 0.4, 60),
+}
+
+class SetDeploymentCmd(Command):
+    def __init__(self):
+        super(SetDeploymentCmd, self).__init__()
+        self.name = "set_deployment"
+        self.description = "set instance offering size of management node"
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--size', '-s', help="instance size, one of 'small', 'medium', 'large'", required=True)
+
+    def find_opt(self, opts, prefix):
+        for opt in opts:
+            if opt.startswith(prefix):
+                return opt
+        return None
+
+    def build_catalina_opts(self, heap):
+        co = ctl.get_env('CATALINA_OPTS')
+        if not co:
+            return '-Xmx%sG' % heap
+
+        opts = co.split(' ')
+        cur = self.find_opt(opts, '-Xmx')
+        if cur is None:
+            return '-Xmx%sG %s' % (heap, co)
+
+        opts.remove(cur)
+        return '-Xmx%sG %s' % (heap, ' '.join(opts))
+
+    def run(self, args):
+        s = args.size.lower()
+        if not s in deploymentProfiles.keys():
+            raise CtlError('unexpected size: %s' % args.size)
+
+        heap, psize, ratio, sint = deploymentProfiles[s]
+        commands.getstatusoutput("zstack-ctl setenv CATALINA_OPTS='%s'" % self.build_catalina_opts(heap))
+        commands.getstatusoutput("zstack-ctl configure DbFacadeDataSource.maxPoolSize=%s" % psize)
+        commands.getstatusoutput("zstack-ctl configure KvmHost.maxThreads.ratio=%s" % ratio)
+        commands.getstatusoutput("zstack-ctl configure Prometheus.scrapeInterval=%s" % sint)
+
 class ClearLicenseCmd(Command):
     def __init__(self):
         super(ClearLicenseCmd, self).__init__()
@@ -9561,6 +9607,7 @@ def main():
     ShowConfiguration()
     GetConfiguration()
     SetEnvironmentVariableCmd()
+    SetDeploymentCmd()
     PullDatabaseBackupCmd()
     RollbackManagementNodeCmd()
     RollbackDatabaseCmd()
