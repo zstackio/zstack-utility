@@ -2595,6 +2595,9 @@ class Vm(object):
         if cmd.autoConverge:
             flag |= libvirt.VIR_MIGRATE_AUTO_CONVERGE
 
+        if cmd.xbzrle:
+            flag |= libvirt.VIR_MIGRATE_COMPRESSED
+            
         if cmd.storageMigrationPolicy == 'FullCopy':
             flag |= libvirt.VIR_MIGRATE_NON_SHARED_DISK
         elif cmd.storageMigrationPolicy == 'IncCopy':
