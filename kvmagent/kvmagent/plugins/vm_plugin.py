@@ -3470,7 +3470,7 @@ class Vm(object):
                 block_replication_port = cmd.addons['blockReplicationPort']
                 secondary_vm_host_ip = cmd.addons['secondaryVmHostIp']
                 e(qcmd, "qemu:arg", attrib={"value": '-incoming'})
-                e(qcmd, "qemu:arg", attrib={"value": 'tcp:%s:%s' % (secondary_vm_host_ip block_replication_port)})
+                e(qcmd, "qemu:arg", attrib={"value": 'tcp:%s:%s' % (secondary_vm_host_ip, block_replication_port)})
 
                 secondary_monitor_port = cmd.addons['secondaryMonitorPort']
                 e(qcmd, "qemu:arg", attrib={"value": '-monitor'})
