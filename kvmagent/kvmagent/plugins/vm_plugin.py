@@ -3406,12 +3406,45 @@ class Vm(object):
                 e(qcmd, "qemu:arg", attrib={"value": '-L'})
                 e(qcmd, "qemu:arg", attrib={"value": '/usr/share/qemu-kvm/'})
 
-                primary_monitor_port = cmd.addons['primaryMonitorPort']
-                if not linux.is_port_available(primary_monitor_port):
-                    raise Exception("failed to start primary vm, because monitor port %d is occupied" % primary_monitor_port)
+                count = 0
+                primary_host_ip = cmd.addons['primaryVmHostIp']
+                for config in cmd.addons['primaryVmNicConfig']:
+                    e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
+                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=zs-mirror-%s,host=%s,port=%s,server,nowait' 
+                                                          % (count, primary_host_ip, config.mirrorPort)})
+
+                    e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
+                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-in-s-%s,host=%s,port=%s,server,nowait' 
+                                                          % (count, primary_host_ip, config.primaryInPort)})
+                    e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
+                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=secondary-in-s-%s,host=%s,port=%s,server,nowait' 
+                                                          % (count, primary_host_ip, config.secondaryInPort)})
+                    e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
+                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-in-c-%s,host=%s,port=%s,nowait' 
+                                                          % (count, primary_host_ip, config.primaryInPort)})
+                    e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
+                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-out-s-%s,host=%s,port=%s,server,nowait' 
+                                                          % (count, primary_host_ip, config.primaryOutPort)})
+                    e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
+                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-out-c-%s,host=%s,port=%s,nowait' 
+                                                          % (count, primary_host_ip, config.primaryOutPort)})
+                    
+                    e(qcmd, "qemu:arg", attrib={"value": '-object'})
+                    e(qcmd, "qemu:arg", attrib={"value": 'filter-mirror,id=fm-%s,netdev=hostnet%s,queue=tx,'
+                                                         'outdev=zs-mirror-%s' % (count, count, count)})
+                    e(qcmd, "qemu:arg", attrib={"value": '-object'})
+                    e(qcmd, "qemu:arg", attrib={"value": 'filter-redirector,id=primary-out-redirect-%s,netdev=hostnet%s,queue=rx,'
+                                                         'indev=primary-out-s-%s' % (count, count, count)})
+                    e(qcmd, "qemu:arg", attrib={"value": '-object'})
+                    e(qcmd, "qemu:arg", attrib={"value": 'filter-redirector,id=primary-in-redirect-%s,netdev=hostnet%s,queue=rx,'
+                                                         'outdev=primary-in-s-%s' % (count, count, count)})
+                    e(qcmd, "qemu:arg", attrib={"value": '-object'})
+                    e(qcmd, "qemu:arg", attrib={"value": 'colo-compare,id=comp-%s,primary_in=primary-in-c-%s,secondary_in=secondary-in-s-%s,'
+                                                         'outdev=primary-out-c-%s,iothread=iothread%s' % (count, count, count, count, int(count) + 1)})
+                    count += 1
 
                 e(qcmd, "qemu:arg", attrib={"value": '-monitor'})
-                e(qcmd, "qemu:arg", attrib={"value": 'tcp::%s,server,nowait' % primary_monitor_port})
+                e(qcmd, "qemu:arg", attrib={"value": 'tcp:%s:%s,server,nowait' % (primary_host_ip, cmd.addons['primaryMonitorPort'])})
             elif cmd.coloSecondary:
                 e(qcmd, "qemu:arg", attrib={"value": '-L'})
                 e(qcmd, "qemu:arg", attrib={"value": '/usr/share/qemu-kvm/'})
@@ -3435,18 +3468,13 @@ class Vm(object):
                     count += 1
 
                 block_replication_port = cmd.addons['blockReplicationPort']
-                if not linux.is_port_available(block_replication_port):
-                    raise Exception("failed to start secondary vm, because migrate port %d is occupied" % block_replication_port)
-
+                secondary_vm_host_ip = cmd.addons['secondaryVmHostIp']
                 e(qcmd, "qemu:arg", attrib={"value": '-incoming'})
-                e(qcmd, "qemu:arg", attrib={"value": 'tcp:0:%s' % block_replication_port})
+                e(qcmd, "qemu:arg", attrib={"value": 'tcp:%s:%s' % (secondary_vm_host_ip block_replication_port)})
 
                 secondary_monitor_port = cmd.addons['secondaryMonitorPort']
-                if not linux.is_port_available(secondary_monitor_port):
-                    raise Exception("failed to start secondary vm, because monitor port %d is occupied" % secondary_monitor_port)
-
                 e(qcmd, "qemu:arg", attrib={"value": '-monitor'})
-                e(qcmd, "qemu:arg", attrib={"value": 'tcp::%s,server,nowait' % secondary_monitor_port})
+                e(qcmd, "qemu:arg", attrib={"value": 'tcp:%s:%s,server,nowait' % (primary_host_ip, secondary_monitor_port)})
 
         def make_devices():
             root = elements['root']
