@@ -2388,6 +2388,18 @@ class Vm(object):
         logger.debug('%s is not found on the vm[uuid:%s]' % (installPath, self.uuid))
         raise kvmagent.KvmError('unable to find volume[installPath:%s] on vm[uuid:%s]' % (installPath, self.uuid))
 
+    def _get_all_volume_alias_names(self, volumes):
+        volumes.sort(key=lambda d: d.deviceId)
+        target_disk_alias_names = []
+        for volume in volumes:
+            target_disk, _ = self._get_target_disk(volume)
+            target_disk_alias_names.append(target_disk.alias.name_)
+
+        if len(volumes) != len(target_disk_alias_names):
+            raise Exception('not all disk have alias names, skip rollback')
+
+        return target_disk_alias_names
+
     def _get_target_disk(self, volume, is_exception=True):
         if volume.installPath.startswith('sharedblock'):
             volume.installPath = shared_block_to_file(volume.installPath)
@@ -6243,7 +6255,6 @@ class VmPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
-
     @kvmagent.replyerror
     @in_bash
     def rollback_quorum_config(self, req):
@@ -6254,10 +6265,13 @@ class VmPlugin(kvmagent.KvmAgent):
         if not vm:
             raise Exception('vm[uuid:%s] not exists, failed' % cmd.vmInstanceUuid)
 
-        execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "x-blockdev-change",'
-                                                ' "arguments": {"parent": "virtio-disk0", "child": "children.1"}}')
-        execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "human-monitor-command",'
-                                                ' "arguments":{"command-line": "drive_del replication0"}}')
+        count = 0
+        for alias_name in vm._get_all_volume_alias_names(cmd.volumes):
+            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "x-blockdev-change",'
+                                                    ' "arguments": {"parent": "%s", "child": "children.1"}}' % alias_name)
+            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "human-monitor-command",'
+                                                    ' "arguments":{"command-line": "drive_del replication%s"}}' % count)
+            count += 1
 
         return jsonobject.dumps(rsp)
 
@@ -6349,49 +6363,60 @@ class VmPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "qmp_capabilities"}')
 
-        if cmd.fullSync:
-            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "drive-mirror", "arguments":{ "device": "virtio-disk0",'
-                                                    ' "job-id": "zs-ft-resync", "target": "nbd://%s:%s/parent0",'
-                                                    ' "mode": "existing", "format": "nbd", "sync": "full"} }'
-                                % (cmd.secondaryVmHostIp, cmd.nbdServerPort))
-            while True:
-                time.sleep(3)
-                r, o, err = execute_qmp_command(cmd.vmInstanceUuid, '{"execute":"query-block-jobs"}')
-                if err:
-                    rsp.success = False
-                    rsp.error = "Failed to get zs-ft-resync job, report error"
-                    return jsonobject.dumps(rsp)
+        vm = get_vm_by_uuid_no_retry(cmd.vmInstanceUuid, False)
+        if not vm:
+            raise Exception('vm[uuid:%s] not exists, failed' % cmd.vmInstanceUuid)
 
-                block_jobs = json.loads(o)['return']
+        count = 0
+        for alias_name in vm._get_all_volume_alias_names(cmd.volumes):
+            if cmd.fullSync:
+                execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "drive-mirror", "arguments":{ "device": "%s",'
+                                                        ' "job-id": "zs-ft-resync", "target": "nbd://%s:%s/parent%s",'
+                                                        ' "mode": "existing", "format": "nbd", "sync": "full"} }'
+                                    % (alias_name, cmd.secondaryVmHostIp, cmd.nbdServerPort, count))
+                while True:
+                    time.sleep(3)
+                    r, o, err = execute_qmp_command(cmd.vmInstanceUuid, '{"execute":"query-block-jobs"}')
+                    if err:
+                        rsp.success = False
+                        rsp.error = "Failed to get zs-ft-resync job, report error"
+                        return jsonobject.dumps(rsp)
 
-                job = next((job for job in block_jobs if job['device'] == 'zs-ft-resync'), None)
+                    block_jobs = json.loads(o)['return']
 
-                if not job:
-                    logger.debug("job finished, start colo sync")
-                    break
+                    job = next((job for job in block_jobs if job['device'] == 'zs-ft-resync'), None)
 
-                if job['status'] == 'ready':
-                    break
+                    if not job:
+                        logger.debug("job finished, start colo sync")
+                        break
 
-                logger.debug("current resync %s/%s, percentage %s" % (
-                    job['len'], job['offset'], 100 * (float(job['offset'] / float(job['len'])))))
+                    if job['status'] == 'ready':
+                        break
 
-            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "stop"}')
-            execute_qmp_command(cmd.vmInstanceUuid,
+                    logger.debug("current resync %s/%s, percentage %s" % (
+                        job['len'], job['offset'], 100 * (float(job['offset'] / float(job['len'])))))
+
+                execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "stop"}')
+                execute_qmp_command(cmd.vmInstanceUuid,
                                 '{"execute": "block-job-cancel", "arguments":{ "device": "zs-ft-resync"}}')
-        execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "human-monitor-command","arguments":'
+            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "human-monitor-command","arguments":'
                                                 ' {"command-line":"drive_add -n buddy'
                                                 ' driver=replication,mode=primary,file.driver=nbd,file.host=%s,'
-                                                'file.port=%s,file.export=parent0,node-name=replication0"}}'
-                                                % (cmd.secondaryVmHostIp, cmd.nbdServerPort))
-        execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "x-blockdev-change","arguments":'
-                                                '{"parent": "virtio-disk0","node": "replication0" } }')
+                                                'file.port=%s,file.export=parent%s,node-name=replication%s"}}'
+                                                % (cmd.secondaryVmHostIp, cmd.nbdServerPort, count, count))
+            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "x-blockdev-change","arguments":'
+                                                '{"parent": "%s","node": "replication%s" } }' % (alias_name, count))
+            count+=1
+        
         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate-set-capabilities","arguments":'
                                                 '{"capabilities":[ {"capability": "x-colo", "state":true}]}}')
+        
         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate-set-parameters", "arguments":'
                                                 '{ "max-bandwidth": 3355443200 }}')
+        
         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate", "arguments": {"uri": "tcp:%s:%s"}}'
                                                 % (cmd.secondaryVmHostIp, cmd.blockReplicationPort))
+        
         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate-set-parameters",'
                                                 ' "arguments": {"x-checkpoint-delay": %s}}'
                                                 % cmd.checkpointDelay)
@@ -6744,13 +6769,20 @@ class VmPlugin(kvmagent.KvmAgent):
                         "lost heartbeat to %s:%s, because %s" % (cmd.targetHostIp, cmd.heartbeatPort, ex))
 
                     if cmd.coloPrimary:
-                        execute_qmp_command(cmd.vmInstanceUuid,
-                                            '{"execute": "x-blockdev-change", "arguments": {"parent":'
-                                            ' "virtio-disk0", "child": "children.1"}}')
-                        execute_qmp_command(cmd.vmInstanceUuid,
-                                            '{"execute": "human-monitor-command", "arguments":'
-                                            '{"command-line": "drive_del replication0" } }')
-                        execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "x-colo-lost-heartbeat"}')
+                        vm = get_vm_by_uuid_no_retry(cmd.vmInstanceUuid, False)
+                        if not vm:
+                            raise Exception('vm[uuid:%s] not exists, failed' % cmd.vmInstanceUuid)
+
+                        count = 0
+                        for alias_name in vm._get_all_volume_alias_names(cmd.volumes):
+                            execute_qmp_command(cmd.vmInstanceUuid,
+                                                '{"execute": "x-blockdev-change", "arguments": {"parent":'
+                                                ' "%s", "child": "children.1"}}' % alias_name)
+                            execute_qmp_command(cmd.vmInstanceUuid,
+                                                '{"execute": "human-monitor-command", "arguments":'
+                                                '{"command-line": "drive_del replication%s" } }' % count)
+                            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "x-colo-lost-heartbeat"}')
+                            count += 1
                     else:
                         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "nbd-server-stop"}')
                         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "x-colo-lost-heartbeat"}')
