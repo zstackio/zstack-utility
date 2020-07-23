@@ -3474,7 +3474,7 @@ class Vm(object):
 
                 secondary_monitor_port = cmd.addons['secondaryMonitorPort']
                 e(qcmd, "qemu:arg", attrib={"value": '-monitor'})
-                e(qcmd, "qemu:arg", attrib={"value": 'tcp:%s:%s,server,nowait' % (primary_host_ip, secondary_monitor_port)})
+                e(qcmd, "qemu:arg", attrib={"value": 'tcp:%s:%s,server,nowait' % (secondary_vm_host_ip, secondary_monitor_port)})
 
         def make_devices():
             root = elements['root']
