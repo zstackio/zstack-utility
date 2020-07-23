@@ -1,0 +1,473 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="zstack build system" default="help" basedir=".">
+    <description>
+        builders for all zstack bits
+    </description>
+
+    <property file="build.properties" />
+    <property file="${zstack.source}/VERSION" />
+    <property name="build.dir" location="${basedir}/target" />
+    <property name="war.file" location="${build.dir}/zstack.war" />
+    <property name="war.dir" location="${build.dir}/zstack-assemble" />
+    <property name="pypi.parent.dir" location="${war.dir}/static/" />
+    <property name="zstack.install" location="${zstackutility.source}/installation/install.sh" />
+    <property name="zstack.trial.license" location="${zstackutility.source}/installation/zstack_trial_license" />
+    <condition property="allinone.file" value="${build.dir}/zstack-all-in-one-${MAJOR}.${MINOR}.${UPDATE}.${build.num}.tgz" else="${build.dir}/zstack-all-in-one-${MAJOR}.${MINOR}.${UPDATE}.tgz">
+        <and>
+            <isset property="build.num"/>
+        </and>
+    </condition>
+
+    <condition property="product.version" value="${MAJOR}.${MINOR}.${UPDATE}.${build.num}" else="${MAJOR}.${MINOR}.${UPDATE}">
+        <and>
+            <isset property="build.num"/>
+        </and>
+    </condition>
+
+    <condition property="bin.version" value="${MAJOR}.${MINOR}.${UPDATE}.${build.num}" else="${MAJOR}.${MINOR}.${UPDATE}">
+        <and>
+            <isset property="build.num"/>
+        </and>
+    </condition>
+
+    <property name="allinone.dir" location="${build.dir}/zstack-all-in-one" />
+    <property name="allinone.versionfile" location="${allinone.dir}/VERSION" />
+    <property name="allinone.bin.dir" location="${build.dir}/zstack" />
+    <property name="allinone.offline.file" location="${build.dir}/zstack-offline.tgz" />
+    <property name="allinone.bin.product.title" location="${allinone.bin.dir}/product_title_file" />
+    <property name="libs.dir" location="${allinone.dir}/libs" />
+
+    <condition property="allinone.version" value="${MAJOR}.${MINOR}.${UPDATE}.${build.num}" else="${MAJOR}.${MINOR}.${UPDATE}">
+        <and>
+            <isset property="build.num"/>
+        </and>
+    </condition>
+
+    <property name="war.classpath.dir" location="${build.dir}/zstack-assemble/WEB-INF/classes/" />
+    <property name="componentsHome.dir" location="${war.classpath.dir}/componentsHome" />
+    <property name="commonModules.dir" location="${componentsHome.dir}/puppet/commonModules" />
+    <property name="salt.dir" location="${war.classpath.dir}/salt"/>
+    <property name="ansible.dir" location="${war.classpath.dir}/ansible"/>
+    <property name="tools.dir" location="${war.classpath.dir}/tools"/>
+    <property name="woodpecker.dir" location="${build.dir}/woodpecker" />
+
+    <import file="${basedir}/utils.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-war.xml" optional="false" />
+    <import file="${basedir}/projects/zstacklib.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-kvmagent.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-virtualrouter.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-appliancevm.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-sftpbackupstorage.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-iscsi.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-cephb.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-cephp.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-baremetalpxeserver.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-appbuildsystem.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-console-proxy.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-setting.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-testagent.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-buildallinone.xml" optional="false" />
+    <import file="${basedir}/projects/package.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-testconf.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-buildvr.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-apibinding.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-cli.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-dashboard.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-ui-war.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-pysdk.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-ctl.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-agent.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-store.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-vyos.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-network.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-sharedblock.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-promtail.xml" optional="false" />
+    <import file="${basedir}/projects/guest-tools.xml" optional="false" />
+    <import file="${basedir}/projects/build-pypi-source.xml" optional="false" />
+    <import file="${basedir}/projects/install-all-zstack-agents-to-local-virtualenv.xml" optional="false" />
+
+    <target name="prepare">
+        <makeDir dir="${build.dir}" />
+        <makeDir dir="${allinone.dir}" />
+        <makeDir dir="${tools.dir}" />
+    </target>
+
+    <target name="copy-pypi-source" >
+        <makeDir dir="${pypi.parent.dir}" />
+         <exec executable="bash" dir="${pypi.source.folder}" failonerror="true">
+            <arg value="${patch.pypi.source}" />
+             <arg value="websockify-0.6.1.zip" />
+             <arg value="websockify.patch" />
+        </exec>
+        <exec executable="cp" dir="${pypi.parent.dir}" failonerror="true">
+            <arg value="-a" />
+            <arg value="${pypi.source.folder}" />
+            <arg value="./" />
+        </exec>
+        <exec executable="bash" dir="${pypi.parent.dir}" failonerror="true">
+            <arg value="${remove.pypi.symlink}" />
+            <arg value="${pypi.parent.dir}/pypi" />
+        </exec>
+        <exec executable="cp" dir="${pypi.parent.dir}/pypi/simple/websockify" failonerror="true">
+             <arg value="websockify-0.6.1.zip" />
+             <arg value="./websockify-0.6.1.1.zip" />
+        </exec>
+    </target>
+
+    <target name="copy-centos6-repo" >
+        <copydir src="${centos6.repo.dir}" dest="${pypi.parent.dir}/centos6_repo/" />
+        <makeDir dir="${libs.dir}" />
+        <exec executable="cp" dir="${libs.dir}" failonerror="true">
+            <arg value="-f" />
+            <arg value="${centos6.unzip.rpm}" />
+            <arg value="./" />
+        </exec>
+    </target>
+
+    <target name="copy-centos7-repo" >
+        <copydir src="${centos7.repo.dir}" dest="${pypi.parent.dir}/centos7_repo" />
+        <makeDir dir="${libs.dir}" />
+        <exec executable="cp" dir="${libs.dir}" failonerror="true">
+            <arg value="-f" />
+            <arg value="${centos7.unzip.rpm}" />
+            <arg value="./" />
+        </exec>
+    </target>
+
+    <target name="unzip-war">
+        <makeDir dir="${war.dir}" />
+
+        <unzip src="${war.file}" dest="${war.dir}" />
+        <makeDir dir="${componentsHome.dir}" />
+        <makeDir dir="${commonModules.dir}" />
+
+        <property name="allinone.versionfile.in.war" location="${war.dir}/VERSION" />
+        <echo file="${allinone.versionfile.in.war}" append="true">${product.name} ${allinone.version}</echo>
+
+        <exec executable="git" dir="${zstack.source}" failonerror="true" output="${war.dir}/git-commit">
+            <arg value="log" />
+            <arg value="--name-status" />
+            <arg value="HEAD^..HEAD" />
+        </exec>
+
+        <exec executable="git" dir="${zstackutility.source}" failonerror="true" error="/dev/null" output="${war.dir}/zstackutility-git-commit">
+            <arg value="--git-dir=${zstackutility.source}/.git" />
+            <arg value="log" />
+            <arg value="--name-status" />
+            <arg value="HEAD^..HEAD" />
+        </exec>
+
+        <exec executable="git" failonerror="false" error="/dev/null" output="${war.dir}/agent-git-commit">
+            <arg value="--git-dir=${agent.source}/.git" />
+            <arg value="log" />
+            <arg value="--name-status" />
+            <arg value="HEAD^..HEAD" />
+        </exec>
+
+        <exec executable="git" failonerror="false" error="/dev/null" output="${war.dir}/imagestore-git-commit">
+            <arg value="--git-dir=${imagestore.source}/.git" />
+            <arg value="log" />
+            <arg value="--name-status" />
+            <arg value="HEAD^..HEAD" />
+        </exec>
+
+        <exec executable="git" failonerror="false" error="/dev/null" output="${war.dir}/premium-git-commit">
+            <arg value="--git-dir=${zstack.source}/premium/.git" />
+            <arg value="log" />
+            <arg value="--name-status" />
+            <arg value="HEAD^..HEAD" />
+        </exec>
+        <exec executable="git" failonerror="false" error="/dev/null" output="${war.dir}/zstackdashboard-git-commit">
+            <arg value="--git-dir=${zstackdashboard.source}/.git" />
+            <arg value="log" />
+            <arg value="--name-status" />
+            <arg value="HEAD^..HEAD" />
+        </exec>
+        <exec executable="git" failonerror="false" error="/dev/null" output="${war.dir}/mevocoui-git-commit">
+            <arg value="--git-dir=${mevocoui.source}/.git" />
+            <arg value="log" />
+            <arg value="--name-status" />
+            <arg value="HEAD^..HEAD" />
+        </exec>
+        <exec executable="git" failonerror="false" error="/dev/null" output="${war.dir}/zsn-git-commit">
+            <arg value="--git-dir=${zstacknetwork.source}/.git" />
+            <arg value="log" />
+            <arg value="--name-status" />
+            <arg value="HEAD^..HEAD" />
+        </exec>
+        <exec executable="git" failonerror="false" error="/dev/null" output="${war.dir}/zsblk-git-commit">
+            <arg value="--git-dir=${zstacksharedblock.source}/.git" />
+            <arg value="log" />
+            <arg value="--name-status" />
+            <arg value="HEAD^..HEAD" />
+        </exec>
+    </target>
+
+    <target name="zip-war">
+        <jar destfile="${war.file}" basedir="${war.dir}"/>
+
+        <echo message="successfully build zstack.war at ${war.file}" />
+    </target>
+
+    <!-- For UI 1.x -->
+    <target name="build-zstack-dashboard-on-condition" unless="${build.zstack.ui.war}">
+        <antcall target="build-zstack-dashboard" />
+    </target>
+
+    <target name="assemble-zstack-dashboard-on-condition" unless="${build.zstack.ui.war}">
+        <antcall target="assemble-zstack-dashboard" />
+    </target>
+
+    <!-- For UI 2.0 -->
+    <target name="build-zstack-ui-war-on-condition" if="${build.zstack.ui.war}">
+        <antcall target="build-zstack-ui-war" />
+    </target>
+
+    <target name="assemble-zstack-ui-war-on-condition" if="${build.zstack.ui.war}">
+        <antcall target="assemble-zstack-ui-war" />
+    </target>
+
+    <target name="help">
+        <echo message="usage: ant [build-war|package|all|build-vr] -Dzstack_build_root=YOUR_ZSTACK_PACKAGE_ROOT" />
+        <echo message="[zstack_build_root] default path is /usr/local/zstack/root/, which is defined in build.properties. It should be the same parent folder for zstack-utility and zstack-woodpecker." />
+    </target>
+
+
+    <target name="do-build-zstack" depends="prepare, build-zstack-war" >
+        <parallel failonany="true">
+            <sequential>
+                <antcall target="build-zstacklib"/>
+            </sequential>
+            <sequential>
+                <antcall target="build-kvmagent"/>
+            </sequential>
+            <sequential>
+                <antcall target="build-sftpbackupstorage"/>
+            </sequential>
+            <sequential>
+                <antcall target="build-virtualrouter"/>
+            </sequential>
+            <sequential>
+                <antcall target="build-consoleproxy"/>
+            </sequential>
+            <sequential>
+                <antcall target="build-appliancevm"/>
+            </sequential>
+            <sequential>
+                <antcall target="build-ctl"/>
+            </sequential>
+            <sequential>
+                <antcall target="build-cli"/>
+            </sequential>
+            <sequential>
+                <antcall target="build-apibinding"/>
+            </sequential>
+            <sequential>
+                <antcall target="build-zstack-dashboard-on-condition"/>
+            </sequential>
+            <sequential>
+                <antcall target="build-iscsi"/>
+            </sequential>
+            <sequential>
+                <antcall target="build-cephb"/>
+            </sequential>
+            <sequential>
+                <antcall target="build-cephp"/>
+            </sequential>
+            <sequential>
+                <antcall target="build-zstack-agent"/>
+            </sequential>
+            <sequential>
+                <antcall target="build-zstack-store"/>
+            </sequential>
+            <sequential>
+                <antcall target="build-baremetalpxeserver"/>
+            </sequential>
+            <sequential>
+                <antcall target="build-appbuildsystem"/>
+            </sequential>
+            <sequential>
+                <antcall target="build-zstack-vyos"/>
+            </sequential>
+        </parallel>
+    </target>
+
+    <target name="do-build" depends="prepare" >
+        <parallel failonany="true">
+            <sequential>
+                <antcall target="do-build-zstack"/>
+            </sequential>
+            <sequential>
+                <antcall target="build-zstack-ui-war-on-condition"/>
+            </sequential>
+        </parallel>
+    </target>
+
+    <target name="pre-assemble" depends="unzip-war" >
+        <parallel failonany="true">
+            <sequential>
+                <antcall target="assemble-zstacklib"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-kvmagent"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-sftpbackupstorage"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-virtualrouter"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-consoleproxy"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-appliancevm"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-ctl"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-zstack-dashboard-on-condition"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-zstack-ui-war-on-condition"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-zstack-pysdk"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-cli"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-apibinding"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-iscsi"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-cephb"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-cephp"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-agent-server"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-agent-collectd"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-zstack-store"/>
+            </sequential>
+            <sequential>
+                <antcall target="copy-pypi-source"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-baremetalpxeserver"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-appbuildsystem"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-zstack-vyos"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-zstack-promtail"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-guest-tools"/>
+            </sequential>
+        </parallel>
+
+        <makeDir dir="${libs.dir}" />
+        <exec executable="cp" dir="${libs.dir}" failonerror="true">
+            <arg value="-f" />
+            <arg value="${centos6.unzip.rpm}" />
+            <arg value="./" />
+        </exec>
+        <exec executable="cp" dir="${libs.dir}" failonerror="true">
+            <arg value="-f" />
+            <arg value="${centos7.unzip.rpm}" />
+            <arg value="./" />
+        </exec>
+        <exec executable="cp" dir="${libs.dir}" failonerror="true">
+            <arg value="-f" />
+            <arg value="${centos7.unzip.aarch64.rpm}" />
+            <arg value="./" />
+        </exec>
+        <exec executable="cp" dir="${libs.dir}" failonerror="true">
+            <arg value="-f" />
+            <arg value="${tomcat.root.app.zip}" />
+            <arg value="./" />
+        </exec>
+    </target>
+
+    <target name="assemble" depends="pre-assemble, zip-war" >
+        <property name="allinone.bin.file" location="${build.dir}/${product.bin.name}-${bin.version}.bin" />
+    </target>
+
+    <target name="assemble-centos6-offline" depends="pre-assemble, copy-centos6-repo, zip-war" />
+
+    <target name="assemble-centos7-offline" depends="pre-assemble, copy-centos7-repo, zip-war" />
+
+    <target name="assemble-centos-offline" depends="pre-assemble, copy-centos6-repo, copy-centos7-repo, zip-war" />
+
+    <target name="build-war" depends="do-build, assemble" />
+
+    <target name="build-war-centos6-offline" depends="do-build, assemble-centos6-offline" >
+        <property name="allinone.bin.file" location="${build.dir}/${product.bin.name}-centos6-${bin.version}.bin" />
+    </target>
+
+    <target name="build-war-centos7-offline" depends="do-build, assemble-centos7-offline" >
+        <property name="allinone.bin.file" location="${build.dir}/${product.bin.name}-centos7-${bin.version}.bin" />
+    </target>
+
+    <target name="build-war-centos-offline" depends="do-build, assemble-centos-offline" >
+        <property name="allinone.bin.file" location="${build.dir}/${product.bin.name}-centos-6-and-7-${bin.version}.bin" />
+    </target>
+
+    <target name="package" depends="build-war, build-setting, do-package" />
+    <target name="buildtestagent" depends="build-zstacklib, build-testagent, assemble-testagent" />
+    <target name="build-woodpecker" depends="prepare, build-zstacklib, buildtestagent, build-testconf" />
+    <target name="all" depends="build-war, build-testconf, buildtestagent">
+        <echo message="--------------------------------------------------------------------" />
+        <echo message="successfully build zstack.war at ${build.dir}/zstack.war" />
+        <echo message="successfully build zstacktestagent.tar.bz at ${testagent.tar.file}" />
+        <echo message="successfully copy zstck.properties conf to ${testconf.dir}" />
+        <echo message="--------------------------------------------------------------------" />
+    </target>
+    <target name="build-vr" depends="all, build-vr-image, update-vr-image">
+        <echo message="--------------------------------------------------------------------" />
+        <echo message="successfully build zstack-vr.img in /root/build_zstack_vr_image/zstack-vr.img" />
+        <echo message="--------------------------------------------------------------------" />
+    </target>
+
+    <target name="all-in-one" depends="build-war, build-allinone"> 
+        <echo message="--------------------------------------------------------------------" />
+        <echo message="successfully build ${product.bin.name} all in one package at ${allinone.bin.file} " />
+        <echo message="--------------------------------------------------------------------" />
+    </target>
+
+    <target name="build-allinone" depends="build-centos-offline">
+    </target>
+
+    <target name="offline-centos6" depends="build-war-centos6-offline, build-centos-offline">
+        <echo message="--------------------------------------------------------------------" />
+        <echo message="successfully build zstack centos6 offline package at ${allinone.bin.file} " />
+        <echo message="--------------------------------------------------------------------" />
+    </target>
+
+    <target name="offline-centos7" depends="build-war-centos7-offline, build-centos-offline">
+        <echo message="--------------------------------------------------------------------" />
+        <echo message="successfully build zstack centos7 offline package at ${allinone.bin.file} " />
+        <echo message="--------------------------------------------------------------------" />
+    </target>
+
+    <target name="offline-centos-all" depends="build-war-centos-offline, build-centos-offline"> 
+        <echo message="--------------------------------------------------------------------" />
+        <echo message="successfully build zstack centos6/centos7 offline package at ${allinone.bin.file} " />
+        <echo message="--------------------------------------------------------------------" />
+    </target>
+
+</project>
