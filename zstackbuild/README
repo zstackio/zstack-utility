@@ -1,6 +1,28 @@
 Preparation:
 -------------
-ant is required to be installed. 
+`ant' is required to be installed. Golang and Python2 is also needed.
+
+Build zstack.war:
+---------------
+
+# ant -propertyfile build.oss.properties \
+      -buildfile build.oss.xml \
+      -Dzstack_build_root=/your/path/to/zstack-repos \
+      -Dbuild.zstack.ui.war=false \
+      build-war
+
+
+Build all-in-one installer:
+--------------------------
+# (cd /your/path/to/zstack-repos; wget -c https://archive.apache.org/dist/tomcat/tomcat-8/v8.5.51/bin/apache-tomcat-8.5.51.zip)
+# ant -propertyfile build.oss.properties \
+      -buildfile build.oss.xml \
+      -Dzstack_build_root=/your/path/to/zstack-repos \
+      -Dbuild.zstack.ui.war=false \
+      all-in-one
+
+
+The following instructions has dependency on repositories not publicly released yet.
 
 Build zstack.war:
 -------------
