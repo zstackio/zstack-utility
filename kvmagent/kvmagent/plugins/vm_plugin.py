@@ -4315,7 +4315,6 @@ class Vm(object):
                 e(interface, 'model', None, attrib={'type': nic.driverType})
                 e(interface, 'rom', None, attrib={'file': ''})
                 driver = e(interface, 'driver', None, attrib={'name': 'qemu'})
-                e(driver, 'host', None, {'csum': 'off'})
             elif nic.useVirtio:
                 e(interface, 'model', None, attrib={'type': 'virtio'})
                 e(interface, 'rom', None, attrib={'file': ''})
