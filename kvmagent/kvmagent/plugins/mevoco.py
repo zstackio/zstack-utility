@@ -165,6 +165,7 @@ class DhcpEnv(object):
     def __init__(self):
         self.bridge_name = None
         self.dhcp_server_ip = None
+        self.dhcp_server6_ip = None
         self.dhcp_netmask = None
         self.namespace_name = None
         self.ipVersion = 0
@@ -179,6 +180,8 @@ class DhcpEnv(object):
             ret = bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} > /dev/null 2>&1')
             if ret != 0:
                 bash_errorout(EBTABLES_CMD + ' -N {{CHAIN_NAME}}')
+
+            ret = bash_r(EBTABLES_CMD + ' -F {{CHAIN_NAME}} > /dev/null 2>&1')
 
             ret = bash_r(EBTABLES_CMD + ' -L FORWARD | grep -- "-j {{CHAIN_NAME}}" > /dev/null')
             if ret != 0:
@@ -220,26 +223,25 @@ class DhcpEnv(object):
 
         def _add_ebtables_rule6(rule):
             ret = bash_r(
-                EBTABLES_CMD + ' -L {{DHCP6_CHAIN_NAME}} | grep -- {{rule}} > /dev/null')
+                EBTABLES_CMD + ' -L {{CHAIN_NAME}} | grep -- {{rule}} > /dev/null')
             if ret != 0:
                 bash_errorout(
-                    EBTABLES_CMD + ' -I {{DHCP6_CHAIN_NAME}} {{rule}}')
+                    EBTABLES_CMD + ' -I {{CHAIN_NAME}} {{rule}}')
 
-        def _prepare_dhcp6_iptables():
-            l3Uuid = get_l3_uuid(NAMESPACE_NAME)
-            DHCP6_CHAIN_NAME = "ZSTACK-DHCP6-%s" % l3Uuid[0:9]
-            serverip = ip.Ipv6Address(DHCP_IP)
+        def _prepare_dhcp6_iptables(dualStack=True):
+            serverip = ip.Ipv6Address(DHCP6_IP)
             ns_multicast_address = serverip.get_solicited_node_multicast_address() + "/ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"
 
-            ret = bash_r(EBTABLES_CMD + ' -L {{DHCP6_CHAIN_NAME}} > /dev/null 2>&1')
-            if ret != 0:
-                bash_errorout(EBTABLES_CMD + ' -N {{DHCP6_CHAIN_NAME}}')
+            if not dualStack:
+                ret = bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} > /dev/null 2>&1')
+                if ret != 0:
+                    bash_errorout(EBTABLES_CMD + ' -N {{CHAIN_NAME}}')
 
-            ret = bash_r(EBTABLES_CMD + ' -F {{DHCP6_CHAIN_NAME}} > /dev/null 2>&1')
+                ret = bash_r(EBTABLES_CMD + ' -F {{CHAIN_NAME}} > /dev/null 2>&1')
 
-            ret = bash_r(EBTABLES_CMD + ' -L FORWARD | grep -- "-j {{DHCP6_CHAIN_NAME}}" > /dev/null')
-            if ret != 0:
-                bash_errorout(EBTABLES_CMD + ' -I FORWARD -j {{DHCP6_CHAIN_NAME}}')
+                ret = bash_r(EBTABLES_CMD + ' -L FORWARD | grep -- "-j {{CHAIN_NAME}}" > /dev/null')
+                if ret != 0:
+                    bash_errorout(EBTABLES_CMD + ' -I FORWARD -j {{CHAIN_NAME}}')
 
             ns_rule_o = "-p IPv6 -o {{BR_PHY_DEV}} --ip6-dst {{ns_multicast_address}} --ip6-proto ipv6-icmp --ip6-icmp-type neighbour-solicitation -j DROP"
             _add_ebtables_rule6(ns_rule_o)
@@ -266,9 +268,9 @@ class DhcpEnv(object):
             dhcpv6_rule_i = "-p IPv6 -i {{BR_PHY_DEV}} --ip6-proto udp --ip6-sport 546:547 -j DROP"
             _add_ebtables_rule6(dhcpv6_rule_i)
 
-            ret = bash_r("ebtables-save | grep -- '-A {{DHCP6_CHAIN_NAME}} -j RETURN'")
+            ret = bash_r("ebtables-save | grep -- '-A {{CHAIN_NAME}} -j RETURN'")
             if ret != 0:
-                bash_errorout(EBTABLES_CMD + ' -A {{DHCP6_CHAIN_NAME}} -j RETURN')
+                bash_errorout(EBTABLES_CMD + ' -A {{CHAIN_NAME}} -j RETURN')
 
             # Note(WeiW): fix dhcp checksum, see more at #982
             ret = bash_r("ip6tables-save | grep -- '-p udp -m udp --dport 546 -j CHECKSUM --checksum-fill'")
@@ -293,16 +295,21 @@ class DhcpEnv(object):
 
         BR_NAME = self.bridge_name
         DHCP_IP = self.dhcp_server_ip
+        DHCP6_IP = self.dhcp_server6_ip
         DHCP_NETMASK = self.dhcp_netmask
-        PREFIX_LEN = self.prefixLen
-        if self.ipVersion == 4:
+        PREFIX_LEN = None
+        if DHCP_NETMASK is not None:
             PREFIX_LEN = linux.netmask_to_cidr(DHCP_NETMASK)
-
+        PREFIX6_LEN = self.prefixLen
         ADDRESS_MODE = self.addressMode
         BR_PHY_DEV = get_phy_dev_from_bridge_name(self.bridge_name)
         OUTER_DEV = "outer%s" % NAMESPACE_ID
         INNER_DEV = "inner%s" % NAMESPACE_ID
-        CHAIN_NAME = "ZSTACK-%s" % DHCP_IP
+        if DHCP_IP is not None:
+            CHAIN_NAME = "ZSTACK-%s" % DHCP_IP
+        elif DHCP6_IP is not None:
+            CHAIN_NAME = "ZSTACK-DHCP-%s" % DHCP6_IP[0:9]
+
         MAX_MTU = linux.MAX_MTU_OF_VNIC
 
         ret = bash_r('ip netns exec {{NAMESPACE_NAME}} ip link show')
@@ -333,11 +340,14 @@ class DhcpEnv(object):
             bash_errorout('ip link set {{INNER_DEV}} netns {{NAMESPACE_NAME}}')
 
         ret = bash_r('ip netns exec {{NAMESPACE_NAME}} ip addr show {{INNER_DEV}} | grep -w {{DHCP_IP}} > /dev/null')
-        if ret != 0 and DHCP_IP != None and (DHCP_NETMASK != None or self.prefixLen != None):
+        if ret != 0 and (PREFIX_LEN != None or PREFIX6_LEN != None):
             bash_errorout('ip netns exec {{NAMESPACE_NAME}} ip addr flush dev {{INNER_DEV}}')
-            bash_errorout('ip netns exec {{NAMESPACE_NAME}} ip addr add {{DHCP_IP}}/{{PREFIX_LEN}} dev {{INNER_DEV}}')
+            if DHCP_IP is not None:
+                bash_errorout('ip netns exec {{NAMESPACE_NAME}} ip addr add {{DHCP_IP}}/{{PREFIX_LEN}} dev {{INNER_DEV}}')
+            if DHCP6_IP is not None:
+                bash_errorout('ip netns exec {{NAMESPACE_NAME}} ip addr add {{DHCP6_IP}}/{{PREFIX6_LEN}} dev {{INNER_DEV}}')
 
-        if self.ipVersion == 6:
+        if DHCP6_IP is not None:
             mac = bash_o("ip netns exec {{NAMESPACE_NAME}} ip link show {{INNER_DEV}} | grep -w 'link/ether' | awk '{print $2}'")
             link_local = ip.get_link_local_address(mac)
             ret = bash_r('ip netns exec {{NAMESPACE_NAME}} ip add | grep -w {{link_local}} > /dev/null')
@@ -346,10 +356,9 @@ class DhcpEnv(object):
 
         bash_errorout('ip netns exec {{NAMESPACE_NAME}} ip link set {{INNER_DEV}} up')
 
-        if DHCP_IP is None or (DHCP_NETMASK is None and self.prefixLen is None):
+        if (DHCP_IP is None and DHCP6_IP is None) or (PREFIX_LEN is None and PREFIX6_LEN is None):
             logger.debug("no dhcp ip[{{DHCP_IP}}] or netmask[{{DHCP_NETMASK}}] for {{INNER_DEV}} in {{NAMESPACE_NAME}}, skip ebtables/iptables config")
             return
-
 
         # to apply userdata service to vf nics, we need to add bridge fdb to allow vf <-> innerX
         def _add_bridge_fdb_entry_for_inner_dev():
@@ -371,11 +380,12 @@ class DhcpEnv(object):
             if bash_r("bridge fdb | grep '{{INNER_MAC}} dev {{PHY_DEV}} self permanent'") != 0:
                 bash_r('bridge fdb add {{INNER_MAC}} dev {{PHY_DEV}}')
 
-        if self.ipVersion == 6:
-            _prepare_dhcp6_iptables()
-        else:
+        if DHCP_IP is not None:
             _prepare_dhcp4_iptables()
             _add_bridge_fdb_entry_for_inner_dev()
+
+        if DHCP6_IP is not None:
+            _prepare_dhcp6_iptables(DHCP_IP is not None)
 
 
 class Mevoco(kvmagent.KvmAgent):
@@ -1246,7 +1256,15 @@ mimetype.assign = (
         inet6 fe80::fc34:72ff:fe29:3564/64 scope link
         valid_lft forever preferred_lft forever
         '''
-        r, dhcp_ip = bash_ro("ip netns exec {{namespace_name}} ip add | grep inet | grep -v 169.254 | awk '{print $2}' | awk -F '/' '{print $1}' | head -1")
+        r, dhcp_ip = bash_ro("ip netns exec {{namespace_name}} ip add | grep -w inet | grep -v 169.254 | awk '{print $2}' | awk -F '/' '{print $1}' | head -1")
+        if r != 0:
+            return ""
+        return dhcp_ip.strip(" \t\r\n")
+
+    @in_bash
+    def _get_dhcp6_server_ip_from_namespace(self, namespace_name):
+        r, dhcp_ip = bash_ro(
+            "ip netns exec {{namespace_name}} ip add | grep -w inet6 | grep -v fe80:: | awk '{print $2}' | awk -F '/' '{print $1}' | head -1")
         if r != 0:
             return ""
         return dhcp_ip.strip(" \t\r\n")
@@ -1258,6 +1276,7 @@ mimetype.assign = (
         p = DhcpEnv()
         p.bridge_name = cmd.bridgeName
         p.dhcp_server_ip = cmd.dhcpServerIp
+        p.dhcp_server6_ip = cmd.dhcp6ServerIp
         p.dhcp_netmask = cmd.dhcpNetmask
         p.namespace_name = cmd.namespaceName
         p.ipVersion = cmd.ipVersion
@@ -1266,10 +1285,11 @@ mimetype.assign = (
 
         old_dhcp_ip = self._get_dhcp_server_ip_from_namespace(cmd.namespaceName)
         if old_dhcp_ip != "" and old_dhcp_ip != cmd.dhcpServerIp:
-            if cmd.ipVersion == 4:
-                self._delete_dhcp4(cmd.namespaceName)
-            else:
-                self._delete_dhcp6(cmd.namespaceName)
+            self._delete_dhcp4(cmd.namespaceName)
+
+        old_dhcp6_ip = self._get_dhcp6_server_ip_from_namespace(cmd.namespaceName)
+        if old_dhcp6_ip != "" and old_dhcp6_ip != cmd.dhcp6ServerIp:
+            self._delete_dhcp6(cmd.namespaceName)
 
         p.prepare()
 
@@ -1334,7 +1354,7 @@ except-interface=lo
 bind-interfaces
 leasefile-ro
 {% for g in gateways -%}
-dhcp-range={{g}},static
+dhcp-range={{g}}
 {% endfor -%}
 '''
 
@@ -1343,6 +1363,23 @@ dhcp-range={{g}},static
             if not br_num:
                 raise Exception('cannot find the ID for the namespace[%s]' % namespace_name)
 
+            dinfo4 = None
+            dinfo6 = None
+            for d in dhcp:
+                if d.ipVersion == 4:
+                    dinfo4 = d
+                elif d.ipVersion == 6:
+                    dinfo6 = d
+                elif d.ipVersion == 46:
+                    dinfo4 = d
+                    dinfo6 = d
+
+            ranges = []
+            if dinfo4 is not None:
+                ranges.append("%s,static" % dinfo4.gateway)
+            if dinfo6 is not None:
+                ranges.append(dinfo6.firstIp + "," + dinfo6.endIp + ",static," + str(dinfo6.prefixLength) + ",24h",)
+
             tmpt = Template(conf_file)
             conf_file = tmpt.render({
                 'dns': dns_path,
@@ -1350,7 +1387,7 @@ dhcp-range={{g}},static
                 'option': option_path,
                 'log': log_path,
                 'iface_name': 'inner%s' % br_num,
-                'gateways': [d.gateway for d in dhcp if d.gateway]
+                'gateways': ranges
             })
 
             restart_dnsmasq = cmd.rebuild
@@ -1373,7 +1410,11 @@ dhcp-range={{g}},static
             for d in dhcp:
                 dhcp_info = {'tag': d.mac.replace(':', '')}
                 dhcp_info.update(d.__dict__)
-                dhcp_info['dns'] = ','.join(d.dns)
+                if d.dns is not None:
+                    dhcp_info['dns'] = ','.join(d.dns)
+                if d.dns6 is not None:
+                    dnslist = ['[%s]' % dns for dns in d.dns6]
+                    dhcp_info['dns6'] = ",".join(dnslist)
                 routes = []
                 # add classless-static-route (option 121) for gateway:
                 if d.isDefaultL3Network:
@@ -1390,7 +1431,7 @@ dhcp-range={{g}},static
             dhcp_conf = '''\
 {% for d in dhcp -%}
 {% if d.isDefaultL3Network -%}
-{{d.mac}},set:{{d.tag}},{{d.ip}},{{d.hostname}},infinite
+{{d.mac}},set:{{d.tag}},[{{d.ip6}}],{{d.ip}},{{d.hostname}},infinite
 {% else -%}
 {{d.mac}},set:{{d.tag}},{{d.ip}},infinite
 {% endif -%}
@@ -1414,6 +1455,9 @@ tag:{{o.tag}},option:router,{{o.gateway}}
 {% endif -%}
 {% if o.dns -%}
 tag:{{o.tag}},option:dns-server,{{o.dns}}
+{% endif -%}
+{% if o.dns -%}
+tag:{{o.tag}},option6:dns-server,{{o.dns6}}
 {% endif -%}
 {% if o.dnsDomain -%}
 tag:{{o.tag}},option:domain-name,{{o.dnsDomain}}
@@ -1447,6 +1491,7 @@ tag:{{o.tag}},option:mtu,{{o.mtu}}
 {% for h in hostnames -%}
 {% if h.isDefaultL3Network and h.hostname -%}
 {{h.ip}} {{h.hostname}}
+{{h.ip6}} {{h.hostname}}
 {% endif -%}
 {% endfor -%}
     '''
@@ -1519,8 +1564,8 @@ dhcp-range={{range}}
             for d in dhcp:
                 dhcp_info = {'tag': d.mac.replace(':', '')}
                 dhcp_info.update(d.__dict__)
-                if d.dns is not None:
-                    dnslist = ['[%s]' % dns for dns in d.dns]
+                if d.dns6 is not None:
+                    dnslist = ['[%s]' % dns for dns in d.dns6]
                     dhcp_info['dnslist'] = ",".join(dnslist)
                 if d.dnsDomain is not None:
                     dhcp_info['domainList'] = ",".join(d.dnsDomain)
@@ -1587,7 +1632,7 @@ tag:{{o.tag}},option6:domain-search,{{o.domainList}}
                 self._refresh_dnsmasq(namespace_name, conf_file_path)
 
         for k, v in namespace_dhcp.iteritems():
-            if v[0].ipVersion == 4:
+            if v[0].ipVersion == 4 or v[0].ipVersion == 46:
                 apply(v)
             else:
                 applyv6(v)
