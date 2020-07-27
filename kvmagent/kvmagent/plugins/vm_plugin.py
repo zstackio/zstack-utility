@@ -7036,7 +7036,7 @@ class VmPlugin(kvmagent.KvmAgent):
             return
 
         vm_uuid = dom.name()
-        heartbeat_thread = self.vm_heartbeat.pop(vm_uuid)
+        heartbeat_thread = self.vm_heartbeat.pop(vm_uuid, None)
         
         if not heartbeat_thread and heartbeat_thread.is_alive():
             heartbeat_thread.do_heart_beat = False
