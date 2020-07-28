@@ -15,6 +15,7 @@ import base64
 import uuid
 import json
 import socket
+from signal import SIGKILL
 import threading
 
 import libvirt
@@ -1792,7 +1793,7 @@ class Vm(object):
                     pid = linux.find_process_by_cmdline(['qemu', self.uuid])
                     if pid:
                         # force to kill the VM
-                        linux.kill_process(pid, is_exception=False)
+                        os.kill(int(pid), SIGKILL)
 
             try:
                 flags = 0
