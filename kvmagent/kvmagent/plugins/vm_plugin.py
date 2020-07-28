@@ -38,6 +38,7 @@ from zstacklib.utils import misc
 from zstacklib.utils import qemu_img
 from zstacklib.utils import ebtables
 from zstacklib.utils import vm_operator
+from zstacklib.utils import pci
 from zstacklib.utils.report import *
 from zstacklib.utils.vm_plugin_queue_singleton import VmPluginQueueSingleton
 
@@ -609,6 +610,21 @@ class GetVmFirstBootDeviceRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(GetVmFirstBootDeviceRsp, self).__init__()
         self.firstBootDevice = None
+
+
+class GetVmDeviceAddressRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(GetVmDeviceAddressRsp, self).__init__()
+        self.addresses = {}  # type:map[str, list[VmDeviceAddress]]
+
+
+class VmDeviceAddress(object):
+    def __init__(self, uuid, device_type, address_type, address):
+        self.uuid = uuid
+        self.deviceType = device_type
+        self.addressType = address_type
+        self.address = address
+
 
 class VncPortIptableRule(object):
     def __init__(self):
@@ -4154,6 +4170,7 @@ class VmPlugin(kvmagent.KvmAgent):
     DETACH_GUEST_TOOLS_ISO_FROM_VM_PATH = "/vm/guesttools/detachiso"
     GET_VM_GUEST_TOOLS_INFO_PATH = "/vm/guesttools/getinfo"
     KVM_GET_VM_FIRST_BOOT_DEVICE_PATH = "/vm/getfirstbootdevice"
+    GET_VM_DEVICE_ADDRESS_PATH = "/vm/getdeviceaddress"
 
     VM_OP_START = "start"
     VM_OP_STOP = "stop"
@@ -5915,6 +5932,56 @@ class VmPlugin(kvmagent.KvmAgent):
         rsp.firstBootDevice = boot_dev
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    def get_vm_device_address(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        vm_uuid = cmd.uuid
+        rsp = GetVmDeviceAddressRsp()
+        vm = get_vm_by_uuid_no_retry(vm_uuid, False)
+
+        for resource_type in cmd.deviceTOs.__dict__.keys():
+            tos = getattr(cmd.deviceTOs, resource_type)
+            if resource_type == 'VolumeVO':
+                addresses = VmPlugin._find_volume_device_address(vm, tos)
+            else:
+                addresses = []
+            rsp.addresses[resource_type] = addresses
+
+        return jsonobject.dumps(rsp)
+
+    @staticmethod
+    def _find_volume_device_address(vm, volumes):
+        #  type:(Vm, list[jsonobject.JsonObject]) -> list[VmDeviceAddress]
+        addresses = []
+        o = simplejson.loads(shell.call('virsh qemu-monitor-command %s --cmd \'{"execute":"query-pci"}\'' % vm.uuid))
+
+        # only PCI buses up to 0 are available
+        devices = o['return'][0]['devices']
+        for vol in volumes:
+            disk, _ = vm._get_target_disk(vol)
+            if hasattr(disk, 'wwn'):
+                addresses.append(VmDeviceAddress(vol.volumeUuid, 'disk', 'wwn', disk.wwn.text_))
+                continue
+            elif disk.address.type_ == 'pci':
+                device = VmPlugin._find_pci_device(devices, disk.alias.name_)
+                if device:
+                    addresses.append(VmDeviceAddress(vol.volumeUuid, 'disk', 'pci', pci.fmt_pci_address(device)))
+
+            addresses.append(VmDeviceAddress(vol.volumeUuid, 'disk', disk.target.bus_, 'unknown'))
+        return addresses
+
+    @staticmethod
+    def _find_pci_device(devices, qdev_id):
+        for device in devices:
+            if device['qdev_id'] == qdev_id:
+                return device
+            elif 'pci_bridge' in device:
+                target = VmPlugin._find_pci_device(device['pci_bridge']['devices'], qdev_id)
+                if target:
+                    return target
+
+        return None
+
     def start(self):
         http_server = kvmagent.get_http_server()
 
@@ -5942,7 +6009,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_CANCEL_VOLUME_BACKUP_JOBS_PATH, self.cancel_backup_jobs)
         http_server.register_async_uri(self.KVM_BLOCK_STREAM_VOLUME_PATH, self.block_stream)
         http_server.register_async_uri(self.KVM_MERGE_SNAPSHOT_PATH, self.merge_snapshot_to_volume)
-        http_server.register_async_uri(self.KVM_LOGOUT_ISCSI_TARGET_PATH, self.logout_iscsi_target, cmd=LoginIscsiTargetCmd)
+        http_server.register_async_uri(self.KVM_LOGOUT_ISCSI_TARGET_PATH, self.logout_iscsi_target, cmd=LoginIscsiTargetCmd())
         http_server.register_async_uri(self.KVM_LOGIN_ISCSI_TARGET_PATH, self.login_iscsi_target)
         http_server.register_async_uri(self.KVM_ATTACH_NIC_PATH, self.attach_nic)
         http_server.register_async_uri(self.KVM_DETACH_NIC_PATH, self.detach_nic)
@@ -5971,6 +6038,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.DETACH_GUEST_TOOLS_ISO_FROM_VM_PATH, self.detach_guest_tools_iso_from_vm)
         http_server.register_async_uri(self.GET_VM_GUEST_TOOLS_INFO_PATH, self.get_vm_guest_tools_info)
         http_server.register_async_uri(self.KVM_GET_VM_FIRST_BOOT_DEVICE_PATH, self.get_vm_first_boot_device)
+        http_server.register_async_uri(self.GET_VM_DEVICE_ADDRESS_PATH, self.get_vm_device_address)
 
         self.clean_old_sshfs_mount_points()
         self.register_libvirt_event()
