@@ -892,7 +892,7 @@ class HostPlugin(kvmagent.KvmAgent):
         # use 'lsusb.py -U' to get device ID, like '0751:9842'
         rsp = GetUsbDevicesRsp()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        r, o, e = bash_roe("lsusb.py -U")
+        r, o, e = bash_roe("timeout 5 lsusb.py -U")
         if r != 0:
             rsp.success = False
             rsp.error = "%s %s" % (e, o)
