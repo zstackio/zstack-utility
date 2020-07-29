@@ -219,7 +219,7 @@ rm -f %s
 exit \$ret
 EOF''' % (remote_path, cmd, remote_path, ' '.join(params), remote_path)
 
-    scmd = ShellCmd("ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s '%s'" % (ip, script), pipe=pipe)
+    scmd = ShellCmd("ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s \"%s\"" % (ip, script), pipe=pipe)
     scmd(False)
     return scmd
 
@@ -4726,6 +4726,154 @@ class InstallRabbitCmd(Command):
     def run(self, args):
         info("zstack no longer depend on rabbitmq, exit")
 
+
+class MysqlRestrictConnection(Command):
+    def __init__(self):
+        super(MysqlRestrictConnection, self).__init__()
+        self.name = "mysql_restrict_connection"
+        self.description = "set mysql restrict connection for account: root, zstack, zstack_ui"
+        self.sensitive_args = ['--restrict', '--restore', '--root-password', '--include-root']
+        self.file="%s/mysql_restrict_connection" % os.path.expanduser('~zstack')
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--root-password', required=True,
+                            help="Current mysql root password")
+        parser.add_argument('--restrict', required=False, action="store_true",
+                            help="Set mysql restrict connection")
+        parser.add_argument('--restore', required=False, action="store_true",
+                            help="Restore mysql restrict connection")
+        parser.add_argument('--include-root', required=False, action="store_true",
+                            help='Set mysql restrict connection including root account')
+
+    def check_root_password(self, root_password, remote_ip=None):
+        if remote_ip is not None:
+            status, output = commands.getstatusoutput(
+                "mysql -u root -p%s -h '%s' -e 'show databases;'" % (root_password, remote_ip))
+        else:
+            status, output = commands.getstatusoutput(
+                "mysql -u root -p%s -e 'show databases;'" % root_password)
+
+        if status != 0:
+            error(output)
+
+
+    def get_db_portal(self):
+        db_host, db_port, db_user, db_password = ctl.get_live_mysql_portal()
+        if db_user != "zstack":
+            error("DB.user in the zstack.properties is not set to zstack")
+
+        return db_host, db_port, db_user, db_password
+
+    def get_ui_db_portal(self):
+        ui_db_host, ui_db_port, ui_db_user, ui_db_password = ctl.get_live_mysql_portal(ui=True)
+
+        if ui_db_user != "zstack_ui":
+            error("db_username in the zstack.ui.properties is not set to zstack_ui")
+
+        return ui_db_host, ui_db_port, ui_db_user, ui_db_password
+
+    def get_mn_ip(self):
+        mn_ip = ctl.read_property('management.server.ip')
+        if not mn_ip:
+            error("management.server.ip not configured")
+        if 0 != shell_return("ip a | grep 'inet ' | grep -w '%s'" % mn_ip):
+            error("management.server.ip[%s] is not found on any device" % mn_ip)
+
+        return mn_ip
+
+    def check_ha(self):
+        _, output, _ = shell_return_stdout_stderr("systemctl is-enabled zstack-ha")
+        if output and output.strip() == "enabled":
+            return True
+        return False
+
+    def grant_restrict_privilege(self, db_password, ui_db_password, root_password_, host, include_root):
+        grant_access_cmd = " GRANT USAGE ON *.* TO 'zstack'@'%s' IDENTIFIED BY '%s' WITH GRANT OPTION;" % (host, db_password)
+        grant_access_cmd = grant_access_cmd + (" GRANT USAGE ON *.* TO 'zstack_ui'@'%s' IDENTIFIED BY '%s' WITH GRANT OPTION;" % (host, ui_db_password))
+
+        if include_root:
+            grant_access_cmd = grant_access_cmd + (" GRANT ALL PRIVILEGES ON *.* TO 'root'@'%s' IDENTIFIED BY '%s' WITH GRANT OPTION;" % (host, root_password_))
+
+        return grant_access_cmd
+
+    def grant_restore_privilege(self, db_password, ui_db_password, root_password_):
+        return " GRANT USAGE ON *.* TO 'zstack'@'%%' IDENTIFIED BY '%s' WITH GRANT OPTION;" \
+               " GRANT USAGE ON *.* TO 'zstack_ui'@'%%' IDENTIFIED BY '%s' WITH GRANT OPTION;" \
+               " GRANT USAGE ON *.* TO 'root'@'%%' IDENTIFIED BY '%s' WITH GRANT OPTION;" % (
+               db_password, ui_db_password, root_password_)
+
+    def delete_privilege(self, host, include_root):
+        if include_root:
+            grant_access_cmd = " DELETE FROM user WHERE Host='%s' and (User='zstack' or User = 'zstack_ui' or User = 'root');" % host
+        else:
+            grant_access_cmd = " DELETE FROM user WHERE Host='%s' and (User='zstack' or User = 'zstack_ui');" % host
+        return grant_access_cmd
+
+    def run(self, args):
+        if args.restrict and args.restore:
+            error("argument: '--restrict' or '--restore' can only choose one")
+        if args.restrict == False and args.restore == False:
+            error("Must select a argument: '--restrict' or '--restore'")
+
+        root_password_ = ''.join(map(check_special_root, args.root_password))
+        self.check_root_password(root_password_)
+
+        mn_ip = self.get_mn_ip()
+
+        db_host, db_port, db_user, db_password = self.get_db_portal()
+        ui_db_host, ui_db_port, ui_db_user, ui_db_password = self.get_ui_db_portal()
+
+        restrict_ips = []
+        is_ha = self.check_ha()
+        if is_ha:
+            zsha2_utils = Zsha2Utils()
+            self.check_root_password(root_password_, zsha2_utils.config['peerip'])
+
+            restrict_ips.append(zsha2_utils.config['dbvip'])
+            restrict_ips.append(zsha2_utils.config['nodeip'])
+            restrict_ips.append(zsha2_utils.config['peerip'])
+        else:
+            restrict_ips.append(mn_ip)
+
+        if db_host not in restrict_ips or ui_db_host not in restrict_ips:
+            error("mysql is not deployed under the management node")
+
+        if args.restrict:
+            grant_access_cmd = "USE mysql;" + self.delete_privilege("%", args.include_root)
+
+            for ip in restrict_ips:
+                grant_access_cmd = grant_access_cmd + self.grant_restrict_privilege(db_password, ui_db_password, root_password_, ip, args.include_root)
+
+            grant_access_cmd = grant_access_cmd + " FLUSH PRIVILEGES;"
+
+            shell('''mysql -u root -p%s -e "%s"''' % (root_password_, grant_access_cmd))
+
+            restrict_flags = "root" if args.include_root else "non-root"
+            shell("echo %s > %s" % (restrict_flags, self.file))
+
+            if is_ha:
+                zsha2_utils.excute_on_peer('''`mysql -u root -p%s -e "%s"` \n echo %s > %s''' % (root_password_, grant_access_cmd, restrict_flags, self.file))
+
+            info("Successfully set mysql restrict connection")
+            return
+
+        if args.restore:
+            grant_access_cmd = "USE mysql;"
+            for ip in restrict_ips:
+                grant_access_cmd = grant_access_cmd + self.delete_privilege(ip, True)
+
+            grant_access_cmd = grant_access_cmd + self.grant_restore_privilege(db_password, ui_db_password,root_password_) +" FLUSH PRIVILEGES;"
+
+            shell('''mysql -u root -p%s -e "%s"''' % (root_password_, grant_access_cmd))
+            linux.rm_file_force(self.file)
+
+            if is_ha:
+                zsha2_utils.excute_on_peer('''`mysql -u root -p%s -e "%s"`\n rm -f %s''' % (root_password_, grant_access_cmd, self.file))
+
+            info("Successfully restore mysql restrict connection")
+            return
+
 class ChangeMysqlPasswordCmd(Command):
     def __init__(self):
         super(ChangeMysqlPasswordCmd, self).__init__()
@@ -5121,15 +5269,10 @@ class RestoreMysqlCmd(Command):
 class RestorerFactory(object):
     @staticmethod
     def get_restorer(db_hostname, db_root_password, db_port):
-        def get_deploy_type():
-            ret = shell_return("stat /usr/local/bin/zsha2")
-            return 'multiDatabase' if ret == 0 else 'singleDatabase'
-
-        if get_deploy_type() == 'multiDatabase':
+        _, output, _ = shell_return_stdout_stderr("systemctl is-enabled zstack-ha")
+        if output and output.strip() == "enabled":
             return MultiMysqlRestorer()
-        else:
-            return SingleMysqlRestorer()
-
+        return SingleMysqlRestorer()
 
 class MysqlRestorer(object):
     def start_node(self, args):
@@ -6077,9 +6220,73 @@ class ChangeIpCmd(Command):
                                          'zstack config file' , required=True)
         parser.add_argument('--cloudbus_server_ip', help='The new IP address of CloudBus.serverIp.0, default will use value from --ip', required=False)
         parser.add_argument('--mysql_ip', help='The new IP address of DB.url, default will use value from --ip', required=False)
+        parser.add_argument('--root-password',
+                            help='When mysql_restrict_connection is enabled, --root-password needs to be set ',
+                            required=False)
+
+    def check_ha(self):
+        _, output, _ = shell_return_stdout_stderr("systemctl is-enabled zstack-ha")
+        if output and output.strip() == "enabled":
+            return True
+        return False
 
     def isVirtualIp(self, ip):
         return shell("ip a | grep -w %s" % ip, False).strip().endswith("zs")
+
+    def check_root_password(self, root_password):
+        status, output = commands.getstatusoutput(
+            "mysql -u root -p%s -e 'show databases;'" % root_password)
+        if status != 0:
+            error(output)
+
+    def grant_restore_privilege(self, db_password, ui_db_password, root_password_):
+        return " GRANT USAGE ON *.* TO 'zstack'@'%%' IDENTIFIED BY '%s' WITH GRANT OPTION;" \
+               " GRANT USAGE ON *.* TO 'zstack_ui'@'%%' IDENTIFIED BY '%s' WITH GRANT OPTION;" \
+               " GRANT USAGE ON *.* TO 'root'@'%%' IDENTIFIED BY '%s' WITH GRANT OPTION;" % (
+               db_password, ui_db_password, root_password_)
+
+    def restoreMysqlRestrictConnection(self, root_password, zsha2_utils):
+        host_name_ports, db_user, db_password = ctl.get_database_portal()
+        ui_host_name_ports, ui_db_user, ui_db_password = ctl.get_ui_database_portal()
+
+        if db_user != "zstack":
+            error("need to set 'DB.user = zstack' in zstack.properties when updating mysql restrict connection")
+        if ui_db_user != "zstack_ui":
+            error("need to set 'db_username = zstack_ui' in zstack.ui.properties when updating mysql restrict connection")
+
+        grant_access_cmd = "USE mysql;%s FLUSH PRIVILEGES;" % self.grant_restore_privilege(db_password, ui_db_password, root_password)
+
+        shell('''mysql -u root -p%s -e "%s"''' % (root_password, grant_access_cmd))
+        if zsha2_utils is not None:
+            zsha2_utils.excute_on_peer('''`mysql -u root -p%s -e "%s"`''' % (root_password, grant_access_cmd))
+
+    def checkMysqlRestrictConnection(self, mysql_ip, root_password):
+        if shell_return("ip a | grep 'inet ' | grep -w '%s'" % mysql_ip) != 0:
+            return
+
+        (status, output) = commands.getstatusoutput("cat /usr/local/zstack/mysql_restrict_connection")
+        if status != 0 or (output != "non-root" and output != "root"):
+            return
+
+        if root_password is None:
+            error("--root-password needs to be set")
+
+        if self.check_ha():
+            try:
+                zsha2_utils = Zsha2Utils()
+                self.restoreMysqlRestrictConnection(root_password, zsha2_utils)
+            except SystemExit:
+                warn("Failed to update mysql restrict connection, skip this operation, reason: cannot get zsha2 status")
+                return
+        else:
+            self.restoreMysqlRestrictConnection(root_password, None)
+
+        if output == "non-root":
+            shell("zstack-ctl mysql_restrict_connection --root-password %s --restrict" % root_password)
+        elif output == "root":
+            shell("zstack-ctl mysql_restrict_connection --root-password %s --restrict --include-root" % root_password)
+
+        info("update mysql restrict connection successfully")
 
     def run(self, args):
         if args.ip == '0.0.0.0':
@@ -6092,6 +6299,9 @@ class ChangeIpCmd(Command):
             mysql_ip = args.mysql_ip
         else:
             mysql_ip = args.ip
+        if args.root_password is not None:
+            root_password_ = ''.join(map(check_special_root, args.root_password))
+            self.check_root_password(root_password_)
 
         zstack_conf_file = ctl.properties_file_path
         ip_check = re.compile('^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$')
@@ -6163,24 +6373,26 @@ class ChangeIpCmd(Command):
             # update zstack db url
             db_url = ctl.read_property('DB.url')
             db_old_ip = re.findall(r'[0-9]+(?:\.[0-9]{1,3}){3}|localhost', db_url)
-            if self.isVirtualIp(db_old_ip[0]) or db_old_ip[0] == ctl.read_property('management.server.vip'):
-                warn("you are changing mysql ip from virtual ip, it may causes unexpected consequences!")
-
-            db_new_url = db_url.split(db_old_ip[0])[0] + mysql_ip + db_url.split(db_old_ip[0])[1]
-            ctl.write_properties([
-              ('DB.url', db_new_url),
-            ])
-            info("Update mysql new url %s in %s " % (db_new_url, zstack_conf_file))
+            if not self.isVirtualIp(db_old_ip[0]) and not db_old_ip[0] == ctl.read_property('management.server.vip'):
+                db_new_url = db_url.split(db_old_ip[0])[0] + mysql_ip + db_url.split(db_old_ip[0])[1]
+                ctl.write_properties([
+                    ('DB.url', db_new_url),
+                ])
+                info("Update mysql new url %s in %s " % (db_new_url, zstack_conf_file))
 
             # update zstack_ui db url
             if os.path.isfile(ctl.ui_properties_file_path):
                 db_url = ctl.read_ui_property('db_url')
                 db_old_ip = re.findall(r'[0-9]+(?:\.[0-9]{1,3}){3}|localhost', db_url)
-                db_new_url = db_url.split(db_old_ip[0])[0] + mysql_ip + db_url.split(db_old_ip[0])[1]
-                ctl.write_ui_properties([
-                    ('db_url', db_new_url),
-                ])
-                info("Update mysql new url %s in %s " % (db_new_url, ctl.ui_properties_file_path))
+                if not self.isVirtualIp(db_old_ip[0]) and not db_old_ip[0] == ctl.read_property('management.server.vip'):
+                    db_new_url = db_url.split(db_old_ip[0])[0] + mysql_ip + db_url.split(db_old_ip[0])[1]
+                    ctl.write_ui_properties([
+                        ('db_url', db_new_url),
+                    ])
+                    info("Update mysql new url %s in %s " % (db_new_url, ctl.ui_properties_file_path))
+
+            # update mysql restrict connection configuration
+            self.checkMysqlRestrictConnection(args.ip, args.root_password)
         else:
             info("Didn't find %s, skip update new ip" % zstack_conf_file  )
             return 1
@@ -9599,6 +9811,7 @@ def main():
     MiniResetHostCmd()
     RefreshAuditCmd()
     MysqlProcessList()
+    MysqlRestrictConnection()
 
     # If tools/zstack-ui.war exists, then install zstack-ui
     # else, install zstack-dashboard
