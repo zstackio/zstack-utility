@@ -1410,8 +1410,7 @@ dhcp-range={{g}}
             for d in dhcp:
                 dhcp_info = {'tag': d.mac.replace(':', '')}
                 dhcp_info.update(d.__dict__)
-                if d.dns is not None:
-                    dhcp_info['dns'] = ','.join(d.dns)
+                dhcp_info['dns'] = ','.join(d.dns)
                 if d.dns6 is not None:
                     dnslist = ['[%s]' % dns for dns in d.dns6]
                     dhcp_info['dns6'] = ",".join(dnslist)
@@ -1423,6 +1422,12 @@ dhcp-range={{g}}
                     routes.append(','.join([route.prefix, route.nexthop]))
                 dhcp_info['routes'] = ','.join(routes)
                 dhcp_info['vmMultiGateway'] = d.vmMultiGateway
+                address = ""
+                if d.ip6 is not None:
+                    address="[%s],%s" % (d.ip6, d.ip)
+                else:
+                    address = "%s" % (d.ip)
+                dhcp_info['address'] = address
                 info.append(dhcp_info)
 
                 if not cmd.rebuild:
@@ -1431,9 +1436,9 @@ dhcp-range={{g}}
             dhcp_conf = '''\
 {% for d in dhcp -%}
 {% if d.isDefaultL3Network -%}
-{{d.mac}},set:{{d.tag}},[{{d.ip6}}],{{d.ip}},{{d.hostname}},infinite
+{{d.mac}},set:{{d.tag}},{{d.address}},{{d.hostname}},infinite
 {% else -%}
-{{d.mac}},set:{{d.tag}},{{d.ip}},infinite
+{{d.mac}},set:{{d.tag}},{{d.address}},infinite
 {% endif -%}
 {% endfor -%}
 '''
@@ -1456,7 +1461,7 @@ tag:{{o.tag}},option:router,{{o.gateway}}
 {% if o.dns -%}
 tag:{{o.tag}},option:dns-server,{{o.dns}}
 {% endif -%}
-{% if o.dns -%}
+{% if o.dns6 -%}
 tag:{{o.tag}},option6:dns-server,{{o.dns6}}
 {% endif -%}
 {% if o.dnsDomain -%}
@@ -1491,7 +1496,9 @@ tag:{{o.tag}},option:mtu,{{o.mtu}}
 {% for h in hostnames -%}
 {% if h.isDefaultL3Network and h.hostname -%}
 {{h.ip}} {{h.hostname}}
+{% if h.ip6 -%}
 {{h.ip6}} {{h.hostname}}
+{% endif -%}
 {% endif -%}
 {% endfor -%}
     '''
@@ -1569,13 +1576,6 @@ dhcp-range={{range}}
                     dhcp_info['dnslist'] = ",".join(dnslist)
                 if d.dnsDomain is not None:
                     dhcp_info['domainList'] = ",".join(d.dnsDomain)
-                routes = []
-                # add classless-static-route (option 121) for gateway:
-                if d.isDefaultL3Network:
-                    routes.append(','.join(['0.0.0.0/0', d.gateway]))
-                for route in d.hostRoutes:
-                    routes.append(','.join([route.prefix, route.nexthop]))
-                dhcp_info['routes'] = ','.join(routes)
                 info.append(dhcp_info)
 
                 if not cmd.rebuild:
@@ -1583,7 +1583,7 @@ dhcp-range={{range}}
 
             dhcp_conf = '''\
 {% for d in dhcp -%}
-{{d.mac}},set:{{d.tag}},[{{d.ip}}],{{d.hostname}},infinite
+{{d.mac}},set:{{d.tag}},[{{d.ip6}}],{{d.hostname}},infinite
 {% endfor -%}
 '''
 
@@ -1616,7 +1616,7 @@ tag:{{o.tag}},option6:domain-search,{{o.domainList}}
             hostname_conf = '''\
 {% for h in hostnames -%}
 {% if h.isDefaultL3Network and h.hostname -%}
-{{h.ip}} {{h.hostname}}
+{{h.ip6}} {{h.hostname}}
 {% endif -%}
 {% endfor -%}
 '''
