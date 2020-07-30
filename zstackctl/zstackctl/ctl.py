@@ -157,6 +157,7 @@ if [ $? -ne 0 ]; then
     echo "tmpdir=$mysql_tmp_path"
     sed -i "/\[mysqld\]/a tmpdir=$mysql_tmp_path" $mysql_conf
 fi
+systemctl restart mariadb
 '''
 
 mysqldump_skip_tables = "--ignore-table=zstack.VmUsageHistoryVO --ignore-table=zstack.RootVolumeUsageHistoryVO " \
@@ -2668,7 +2669,7 @@ class InstallDbCmd(Command):
       register: install_result
 
     - name: install MySQL for Kylin/UOS
-      when: ansible_os_family == 'Kylin' or ansible_os_family == 'Uos'
+      when: ansible_os_family == 'Kylin' or ansible_os_family == 'Uos' or ansible_os_family == 'Uniontech os server 20 enterprise'
       shell: apt-get -y install --allow-unauthenticated mariadb-server mariadb-client netfilter-persistent
       register: install_result
 
@@ -2700,7 +2701,7 @@ class InstallDbCmd(Command):
       service: name=mariadb state=restarted enabled=yes
 
     - name: enable MySQL on Kylin/UOS
-      when: ansible_os_family == 'Kylin' or ansible_os_family == 'Uos'
+      when: ansible_os_family == 'Kylin' or ansible_os_family == 'Uos' or ansible_os_family == 'Uniontech os server 20 enterprise'
       service: name=mariadb state=restarted enabled=yes
 
     - name: change root password
