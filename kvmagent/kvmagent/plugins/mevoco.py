@@ -340,7 +340,8 @@ class DhcpEnv(object):
             bash_errorout('ip link set {{INNER_DEV}} netns {{NAMESPACE_NAME}}')
 
         ret = bash_r('ip netns exec {{NAMESPACE_NAME}} ip addr show {{INNER_DEV}} | grep -w {{DHCP_IP}} > /dev/null')
-        if ret != 0 and (PREFIX_LEN != None or PREFIX6_LEN != None):
+        ret6 = bash_r('ip netns exec {{NAMESPACE_NAME}} ip addr show {{INNER_DEV}} | grep -w {{DHCP6_IP}} > /dev/null')
+        if (ret != 0 and PREFIX_LEN != None) or (ret6 != 0 and PREFIX6_LEN != None):
             bash_errorout('ip netns exec {{NAMESPACE_NAME}} ip addr flush dev {{INNER_DEV}}')
             if DHCP_IP is not None:
                 bash_errorout('ip netns exec {{NAMESPACE_NAME}} ip addr add {{DHCP_IP}}/{{PREFIX_LEN}} dev {{INNER_DEV}}')
@@ -726,7 +727,8 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         html_folder = os.path.join(self.USERDATA_ROOT, cmd.namespaceName)
         linux.rm_dir_force(html_folder)
 
-        del self.userData_vms[cmd.l3NetworkUuid][:]
+        if self.userData_vms[cmd.l3NetworkUuid] is not None:
+            del self.userData_vms[cmd.l3NetworkUuid][:]
 
         return jsonobject.dumps(kvmagent.AgentResponse())
 
