@@ -710,6 +710,7 @@ check_system(){
         grep -q 'Ubuntu' /etc/issue && IS_UBUNTU='y' 
         grep -q 'Kylin 4.0.2' /etc/issue && OS="KYLIN4.0.2"
         grep -q 'uos GNU/Linux 20' /etc/issue && OS="UOS20"
+        grep -q 'Uniontech OS Server 20' /etc/issue && OS="UOS20"
         if [ "$IS_UBUNTU" = "y" ]; then
             grep -q '16.04' /etc/issue && OS="UBUNTU16.04"
             grep -q '14.04' /etc/issue && OS="UBUNTU14.04"                                                                                                       
