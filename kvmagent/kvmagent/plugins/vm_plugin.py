@@ -5966,6 +5966,7 @@ class VmPlugin(kvmagent.KvmAgent):
                 device = VmPlugin._find_pci_device(devices, disk.alias.name_)
                 if device:
                     addresses.append(VmDeviceAddress(vol.volumeUuid, 'disk', 'pci', pci.fmt_pci_address(device)))
+                    continue
 
             addresses.append(VmDeviceAddress(vol.volumeUuid, 'disk', disk.target.bus_, 'unknown'))
         return addresses
