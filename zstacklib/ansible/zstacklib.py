@@ -29,8 +29,9 @@ trusted_host = ""
 ansible.constants.HOST_KEY_CHECKING = False
 supported_arch_list = ["x86_64", "aarch64", "mips64el"]
 
-RPM_BASED_OS = ["centos", "redhat", "alibaba"]
-DEB_BASED_OS = ["ubuntu", "uos", "kylin", "debian", "uniontech"]
+RPM_BASED_OS = ["centos", "redhat", "alibaba", "kylin10"]
+DEB_BASED_OS = ["ubuntu", "uos", "kylin4.0.2", "debian"]
+DISTRO_WITH_RPM_DEB = ["kylin"]
 
 class AgentInstallArg(object):
     def __init__(self, trusted_host, pip_url, virtenv_path, init_install):
@@ -1173,6 +1174,8 @@ def _get_remote_host_info_from_result(result, host_post_info):
                 result['contacted'][host]['ansible_facts']['ansible_distribution_version']]
             host_post_info.post_label = "ansible.get.host.info.succ"
             handle_ansible_info("SUCC: Get remote host %s info successful" % host, host_post_info, "INFO")
+            if distro in DISTRO_WITH_RPM_DEB:
+                distro = "%s%s" % (distro, major_version)
             return (distro, major_version, release, distro_version)
         else:
             host_post_info.post_label = "ansible.get.host.info.fail"
@@ -1855,7 +1858,7 @@ gpgcheck=0
                     yum_enable_repo("epel-release", "epel-release-source", host_post_info)
                 set_ini_file("/etc/yum.repos.d/epel.repo", 'epel', "enabled", "1", host_post_info)
                 if require_python_env == "true":
-                    for pkg in ["python-devel", "python-setuptools", "python-pip", "gcc", "autoconf"]:
+                    for pkg in ["python-devel", "python-setuptools", "python2-pip", "gcc", "autoconf"]:
                         yum_install_package(pkg, host_post_info)
                     if distro_version >=7:
                         # to avoid install some pkgs on virtual router which release is Centos 6.x
@@ -1958,12 +1961,12 @@ enabled=0" >  /etc/yum.repos.d/zstack-experimental-mn.repo
 
                 # install libselinux-python and other command system libs from user defined repos
                 host_post_info.post_label = "ansible.shell.install.pkg"
-                host_post_info.post_label_param = "libselinux-python,python-devel,python-setuptools,python-pip,gcc," \
+                host_post_info.post_label_param = "libselinux-python,python-devel,python-setuptools,python2-pip,gcc," \
                                                   "autoconf,chrony,python-backports-ssl_match_hostname,iptables-services"
                 if require_python_env == "true":
                     command = (
                               "yum clean --enablerepo=%s metadata &&  pkg_list=`rpm -q libselinux-python python-devel "
-                              "python-setuptools python-pip gcc autoconf | grep \"not installed\" | awk"
+                              "python-setuptools python2-pip gcc autoconf | grep \"not installed\" | awk"
                               " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
                               "-y $pkg; done;") % (zstack_repo, zstack_repo)
                     run_remote_command(command, host_post_info)
@@ -1986,25 +1989,6 @@ enabled=0" >  /etc/yum.repos.d/zstack-experimental-mn.repo
                     run_remote_command(command, host_post_info)
                     # enable chrony service for RedHat
                     enable_chrony(trusted_host, host_post_info, distro)
-
-            if require_python_env == "true":
-                # check the pip 7.0.3 exist in system to avoid site-packages enable potential issue
-                pip_match = check_pip_version(pip_version, host_post_info)
-                if pip_match is False:
-                    # make dir for copy pip
-                    host_post_info.post_label = "ansible.shell.mkdir"
-                    host_post_info.post_label_param = zstack_root
-                    run_remote_command("mkdir -p %s" % zstack_root, host_post_info)
-                    # copy pip 7.0.3
-                    copy_arg = CopyArg()
-                    copy_arg.src = "files/pip-7.0.3.tar.gz"
-                    copy_arg.dest = "%s/pip-7.0.3.tar.gz" % zstack_root
-                    copy(copy_arg, host_post_info)
-                    # install pip 7.0.3
-                    pip_install_dir = copy_arg.dest.rstrip("pip-7.0.3.tar.gz")
-                    install_pip_command = "tar zxvf %s -C %s;python %s install;rm -rf %s" % (copy_arg.dest, pip_install_dir, pip_install_dir + "pip-7.0.3/setup.py", pip_install_dir + "pip-7.0.3")
-                    logger.debug(install_pip_command)
-                    run_remote_command(install_pip_command, host_post_info)
 
         elif distro in DEB_BASED_OS:
             #copy apt-conf
@@ -2074,8 +2058,6 @@ deb http://{{ apt_server }}/zstack/static/zstack-repo/$basearch/{{ zstack_releas
                 enable_chrony(trusted_host, host_post_info, distro)
         else:
             error("ERROR: Unsupported distribution")
-
-
 
 def main():
     # Reserve for test api
