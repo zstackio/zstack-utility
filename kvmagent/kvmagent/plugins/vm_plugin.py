@@ -1793,7 +1793,7 @@ class Vm(object):
                     pid = linux.find_process_by_cmdline(['qemu', self.uuid])
                     if pid:
                         # force to kill the VM
-                        os.kill(int(pid), SIGKILL)
+                        linux.kill_process(pid, is_exception=False)
 
             try:
                 flags = 0
@@ -1807,11 +1807,13 @@ class Vm(object):
 
             return self.wait_for_state_change(None)
 
-        def kill_vm():
+        def kill_vm(_):
             pid = linux.find_process_by_cmdline(['qemu', self.uuid])
             if pid:
                 # force to kill the VM
-                linux.kill_process(pid, is_exception=False)
+                os.kill(int(pid), SIGKILL)
+            
+            return self.wait_for_state_change(None)
 
         def loop_destroy(_):
             try:
@@ -1841,10 +1843,13 @@ class Vm(object):
                 logger.warn('failed to destroy vm, timeout after 60 secs')
                 raise kvmagent.KvmError('failed to stop vm, timeout after 60 secs')
 
-        if strategy == 'force':
-            kill_vm()
-
         cleanup_addons()
+
+        if strategy == 'force':
+            if not linux.wait_callback_success(kill_vm, None, timeout=60):
+                logger.warn('failed to kill vm, timeout after 60 secs')
+                raise kvmagent.KvmError('failed to stop vm, timeout after 60 secs')
+            return
 
         # undefine domain only if it is persistent
         if not isPersistent:
@@ -7057,11 +7062,10 @@ class VmPlugin(kvmagent.KvmAgent):
         vm_uuid = dom.name()
         heartbeat_thread = self.vm_heartbeat.pop(vm_uuid, None)
         
-        if not heartbeat_thread and heartbeat_thread.is_alive():
+        if heartbeat_thread and heartbeat_thread.is_alive():
+            logger.debug("clean vm[uuid:%s] heartbeat, due to evnet %s" % (dom.name(), LibvirtEventManager.event_to_string(event)))
             heartbeat_thread.do_heart_beat = False
             heartbeat_thread.join()
-
-        logger.debug("clean vm colo heartbeat of vm[uuid:%s]" % vm_uuid)
 
     @bash.in_bash
     def _release_sharedblocks(self, conn, dom, event, detail, opaque):
