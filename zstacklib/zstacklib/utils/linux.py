@@ -28,9 +28,10 @@ from zstacklib.utils import log
 
 logger = log.get_logger(__name__)
 
-RPM_BASED_OS = ['redhat', 'centos', 'alibaba']
-DEB_BASED_OS = ['uos', 'kylin', 'debian', 'ubuntu', 'uniontech']
+RPM_BASED_OS = ['redhat', 'centos', 'alibaba', 'kylin10']
+DEB_BASED_OS = ['uos', 'kylin4.0.2', 'debian', 'ubuntu', 'uniontech']
 SUPPORTED_ARCH = ['x86_64', 'aarch64', 'mips64el']
+DIST_WITH_RPM_DEB = ['kylin']
 HOST_ARCH = platform.machine()
 
 class LinuxError(Exception):

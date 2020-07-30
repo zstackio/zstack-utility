@@ -780,7 +780,7 @@ def is_kylin402():
 
 def is_spiceport_driver_supported():
     # qemu-system-aarch64 not supported char driver: spiceport
-    return True if shell.run("which qemu-system-aarch64") == 1 else shell.run("qemu-system-aarch64 -h | grep 'chardev spiceport'") == 0
+    return shell.run("%s -h | grep 'chardev spiceport'" % kvmagent.get_qemu_path()) == 0
 
 def is_virtual_machine():
     product_name = shell.call("dmidecode -s system-product-name").strip()
@@ -3365,8 +3365,10 @@ class Vm(object):
             def on_aarch64():
 
                 def on_redhat():
-                    e(os, 'type', 'hvm', attrib={'arch': 'aarch64'})
-                    e(os, 'loader', '/usr/share/edk2.git/aarch64/QEMU_EFI-pflash.raw', attrib={'readonly': 'yes', 'type': 'pflash'})
+                    e(os, 'type', 'hvm', attrib={'arch': 'aarch64', 'machine': 'virt'})
+                    e(os, 'loader', '/usr/share/edk2/aarch64/QEMU_EFI-pflash.raw', attrib={'readonly': 'yes', 'type': 'pflash'})
+                    e(os, 'nvram', '/var/lib/libvirt/qemu/nvram/%s.fd' % cmd.vmInstanceUuid, attrib={'template': '/usr/share/edk2/aarch64/vars-template-pflash.raw'})
+
                 def on_debian():
                     e(os, 'type', 'hvm', attrib={'arch': 'aarch64', 'machine': 'virt'})
                     e(os, 'loader', '/usr/share/OVMF/QEMU_EFI-pflash.raw', attrib={'readonly': 'yes', 'type': 'rom'})
