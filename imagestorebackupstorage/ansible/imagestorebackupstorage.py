@@ -59,7 +59,8 @@ if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
 
 # get remote host arch
-IS_AARCH64 = get_remote_host_arch(host_post_info) == 'aarch64'
+host_arch = get_remote_host_arch(host_post_info)
+IS_AARCH64 = host_arch == 'aarch64'
 if IS_AARCH64:
     src_pkg_imagestorebackupstorage = "zstack-store.aarch64.bin"
 else:
@@ -87,11 +88,18 @@ else :
 zstacklib = ZstackLib(zstacklib_args)
 
 if distro in RPM_BASED_OS:
-    qemu_pkg = 'qemu-img-ev'
-    qemu_pkg += ' fuse-sshfs nmap'
-    if get_remote_host_arch(host_post_info) == "mips64el":
-        qemu_pkg = 'qemu-kvm nmap'
+    (status, output) = run_remote_command("rpm -q zstack-release >/dev/null && echo `awk '{print $3}' /etc/zstack-release`", host_post_info, True, True)
+    if status:
+        # c72 is no longer supported, force set c74
+        releasever = 'c74' if output.strip() == 'c72' else output.strip()
+    else:
+        releasever = get_mn_yum_release()
+    x86_64_c74 = "qemu-img-ev fuse-sshfs nmap"
+    x86_64_c76 = "qemu-img-ev fuse-sshfs nmap"
+    aarch64_ns10 = "qemu fuse-sshfs nmap"
+    mips64el_ns10 = "qemu-kvm fuse-sshfs nmap"
 
+    qemu_pkg = eval("%s_%s" % (host_arch, releasever))
     # skip these packages
     _skip_list = re.split(r'[|;,\s]\s*', skip_packages)
     _qemu_pkg = [ pkg for pkg in qemu_pkg.split() if pkg not in _skip_list ]
