@@ -30,7 +30,7 @@ ansible.constants.HOST_KEY_CHECKING = False
 supported_arch_list = ["x86_64", "aarch64", "mips64el"]
 
 RPM_BASED_OS = ["centos", "redhat", "alibaba"]
-DEB_BASED_OS = ["ubuntu", "uos", "kylin", "debian"]
+DEB_BASED_OS = ["ubuntu", "uos", "kylin", "debian", "uniontech"]
 
 class AgentInstallArg(object):
     def __init__(self, trusted_host, pip_url, virtenv_path, init_install):
@@ -1167,7 +1167,7 @@ def _get_remote_host_info_from_result(result, host_post_info):
     else:
         if 'ansible_facts' in result['contacted'][host]:
             (distro, major_version, release, distro_version) = [
-                result['contacted'][host]['ansible_facts']['ansible_distribution'].lower(),
+                result['contacted'][host]['ansible_facts']['ansible_distribution'].split()[0].lower(),
                 int(result['contacted'][host]['ansible_facts']['ansible_distribution_major_version']),
                 result['contacted'][host]['ansible_facts']['ansible_distribution_release'],
                 result['contacted'][host]['ansible_facts']['ansible_distribution_version']]
