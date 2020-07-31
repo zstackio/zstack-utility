@@ -459,6 +459,13 @@ def is_valid_nfs_url(url):
     if not os.path.isabs(path): raise InvalidNfsUrlError(url, '%s is not an absolute path' % path)
     return True
 
+def get_mount_url(path):
+    cmdstr = "findmnt %s | tail -1" % path
+    cmd = shell.ShellCmd(cmdstr)
+    out = cmd(is_exception=False)
+    if len(out) != 0:
+        return out.strip('\n').split(' ')[1]
+
 def get_mounted_path(url):
     paths = []
     if not is_mounted(url=url): return paths
