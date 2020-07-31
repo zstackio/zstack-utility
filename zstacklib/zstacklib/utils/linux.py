@@ -3,6 +3,7 @@
 @author: frank
 '''
 import abc
+import contextlib
 import os
 import os.path
 import socket
@@ -458,6 +459,13 @@ def is_valid_nfs_url(url):
 
     if not os.path.isabs(path): raise InvalidNfsUrlError(url, '%s is not an absolute path' % path)
     return True
+
+def get_mount_url(path):
+    cmdstr = "findmnt %s | tail -1" % path
+    cmd = shell.ShellCmd(cmdstr)
+    out = cmd(is_exception=False)
+    if len(out) != 0:
+        return out.strip('\n').split(' ')[1]
 
 def get_mounted_path(url):
     paths = []
@@ -1744,6 +1752,14 @@ def get_free_port():
     port = s.getsockname()[1]
     s.close()
     return port
+
+def is_port_available(port):
+    with contextlib.closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+        try:
+            s.bind(('', int(port)))
+            return True
+        except:
+            return False
 
 def get_all_ethernet_device_names():
     return os.listdir('/sys/class/net/')

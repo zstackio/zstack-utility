@@ -455,7 +455,7 @@ class Eip(object):
 
         if int(eip.ipVersion) == 4:
             bash_r('eval {{NS}} ip link set {{PUB_IDEV}} up')
-            if newCreated:
+            if newCreated and not eip.skipArpCheck:
                 r, o = bash.bash_ro('eval {{NS}} arping -D -w 1 -c 3 -I {{PUB_IDEV}} {{VIP}}')
                 if r != 0 and "Unicast reply from" in o:
                     raise Exception('there are dupicated public [ip:%s] on public network, output: %s' % (VIP, o))

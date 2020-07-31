@@ -12,6 +12,7 @@ import re
 import tempfile
 import time
 import uuid
+import string
 
 import libvirt
 
@@ -34,6 +35,9 @@ from zstacklib.utils.report import Report
 host_arch = platform.machine()
 IS_AARCH64 = host_arch == 'aarch64'
 GRUB_FILES = ["/boot/grub2/grub.cfg", "/boot/grub/grub.cfg", "/etc/grub2-efi.cfg", "/etc/grub-efi.cfg", "/boot/efi/EFI/centos/grub.cfg"]
+
+COLO_QEMU_KVM_VERSION = '/var/lib/zstack/colo/qemu_kvm_version'
+COLO_LIB_PATH = '/var/lib/zstack/colo/'
 
 class ConnectResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -542,6 +546,7 @@ class HostPlugin(kvmagent.KvmAgent):
     DISABLE_ZEROCOPY = "/host/disable/zerocopy"
     GET_DEV_CAPACITY = "/host/dev/capacity"
     ADD_BRIDGE_FDB_ENTRY_PATH = "/bridgefdb/add"
+    DEPLOY_COLO_QEMU_PATH = "/deploy/colo/qemu"
 
     host_network_facts_cache = {}  # type: dict[float, list[list, list]]
     IS_YUM = False
@@ -1792,6 +1797,41 @@ done
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def deploy_colo_qemu(self, req):
+        rsp = kvmagent.AgentResponse()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        releasever = kvmagent.get_host_yum_release()
+        tmpl = {'releasever': releasever}
+        qemu_url = string.Template(cmd.qemuUrl).substitute(tmpl)
+
+        if not os.path.exists(COLO_LIB_PATH):
+            os.makedirs(COLO_LIB_PATH, 0775)
+
+        def get_dep_version_from_version_file(version_file):
+            if not os.path.exists(version_file):
+                return None
+            else:
+                with open(version_file, 'r') as vfd:
+                    return vfd.readline()
+
+        last_modified = shell.call("curl -I %s | grep 'Last-Modified'" % qemu_url).strip('\n\r')
+        version = get_dep_version_from_version_file(COLO_QEMU_KVM_VERSION)
+        if version != last_modified:
+            cmdstr = 'cd {} && rm -f qemu-system-x86_64.tar.gz && wget -c {} -O qemu-system-x86_64.tar.gz && ' \
+                     'tar zxf qemu-system-x86_64.tar.gz && chown root:root qemu-system-x86_64'.format(COLO_LIB_PATH, qemu_url)
+            if shell.run(cmdstr) != 0:
+                rsp.success = False
+                rsp.error = "failed to download qemu-system-x86_64.tar.gz from management node"
+                return jsonobject.dumps(rsp)
+
+        with open(COLO_QEMU_KVM_VERSION, 'w') as fd:
+            fd.write(last_modified)
+
+        return jsonobject.dumps(rsp)
+
+
+    @kvmagent.replyerror
     def scan_vm_port(self, req):
         rsp = ScanVmPortRsp()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -1977,6 +2017,7 @@ done
         http_server.register_async_uri(self.DISABLE_ZEROCOPY, self.disable_zerocopy)
         http_server.register_async_uri(self.GET_DEV_CAPACITY, self.get_dev_capacity)
         http_server.register_async_uri(self.ADD_BRIDGE_FDB_ENTRY_PATH, self.add_bridge_fdb_entry)
+        http_server.register_async_uri(self.DEPLOY_COLO_QEMU_PATH, self.deploy_colo_qemu)
 
         self.heartbeat_timer = {}
         self.libvirt_version = self._get_libvirt_version()
