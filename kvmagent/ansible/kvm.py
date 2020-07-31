@@ -569,8 +569,6 @@ def do_network_config():
                        virsh nwfilter-undefine zstack-clean-traffic-ip46; \
                        virsh nwfilter-define %s/zstack-clean-traffic-ip46) || true") \
                       % (zstack_libvirt_nwfilter_dir, zstack_libvirt_nwfilter_dir, zstack_libvirt_nwfilter_dir,
-                         zstack_libvirt_nwfilter_dir, zstack_libvirt_nwfilter_dir, zstack_libvirt_nwfilter_dir,
-                         zstack_libvirt_nwfilter_dir, zstack_libvirt_nwfilter_dir, zstack_libvirt_nwfilter_dir,
                          zstack_libvirt_nwfilter_dir, zstack_libvirt_nwfilter_dir, zstack_libvirt_nwfilter_dir)
             run_remote_command(command, host_post_info)
 
