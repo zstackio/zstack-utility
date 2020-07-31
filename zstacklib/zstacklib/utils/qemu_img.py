@@ -30,7 +30,7 @@ def get_check_result(path):
     check_cmd = "%s --out json %s" % (subcmd('check'), path)
     result = json.loads(shell.call(check_cmd))
     return CheckResult(result.get("image-end-offset"), result.get("total-clusters"),
-                       result.get("check-errors"), result.get("allocated_clusters"),
+                       result.get("check-errors"), result.get("allocated-clusters"),
                        result.get("filename"), result.get("format"))
 
 

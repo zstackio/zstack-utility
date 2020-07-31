@@ -1272,7 +1272,6 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         with lvm.RecursiveOperateLv(abs_path, shared=False):
             old_size = long(lvm.get_lv_size(abs_path))
-            size = old_size
             check_result = qemu_img.get_check_result(abs_path)  # type: qemu_img.CheckResult
             if check_result.allocated_clusters is None:
                 size = check_result.image_end_offset
@@ -1282,6 +1281,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 if check_result.allocated_clusters != check_result.total_clusters:
                     size = check_result.image_end_offset
                     lvm.resize_lv(abs_path, size, True)
+
+            size = long(lvm.get_lv_size(abs_path))
 
         rsp.oldSize = old_size
         rsp.size = size
