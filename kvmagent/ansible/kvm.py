@@ -551,35 +551,34 @@ def do_network_config():
             command = "ip6tables-save"
             run_remote_command(command, host_post_info)
 
-        # name: copy libvirt nw-filter
-        copy_arg = CopyArg()
-        copy_arg.src = "%s/zstack-libvirt-nwfilter/" % file_root
-        copy_arg.dest = "%s/" % zstack_libvirt_nwfilter_dir
-        copy(copy_arg, host_post_info)
-        command = ("(virsh nwfilter-undefine %s/zstack-allow-incoming-ipv6; \
-                   virsh nwfilter-define %s/zstack-allow-incoming-ipv6;  \
-                   virsh nwfilter-undefine %s/zstack-no-dhcpv6-server;  \
-                   virsh nwfilter-define %s/zstack-no-dhcpv6-server;  \
-                   virsh nwfilter-undefine %s/zstack-no-ipv6-router-advertisement;  \
-                   virsh nwfilter-define %s/zstack-no-ipv6-router-advertisement;  \
-                   virsh nwfilter-undefine %s/zstack-no-ipv6-spoofing; \
-                   virsh nwfilter-define %s/zstack-no-ipv6-spoofing; \
-                   virsh nwfilter-undefine %s/zstack-clean-traffic-ipv6; \
-                   virsh nwfilter-define %s/zstack-clean-traffic-ipv6; \
-                   virsh nwfilter-undefine %s/zstack-clean-traffic-ip46; \
-                   virsh nwfilter-define %s/zstack-clean-traffic-ip46) || true") \
-                  % (zstack_libvirt_nwfilter_dir, zstack_libvirt_nwfilter_dir, zstack_libvirt_nwfilter_dir,
-                     zstack_libvirt_nwfilter_dir, zstack_libvirt_nwfilter_dir, zstack_libvirt_nwfilter_dir,
-                     zstack_libvirt_nwfilter_dir, zstack_libvirt_nwfilter_dir, zstack_libvirt_nwfilter_dir,
-                     zstack_libvirt_nwfilter_dir, zstack_libvirt_nwfilter_dir, zstack_libvirt_nwfilter_dir)
-        run_remote_command(command, host_post_info)
+            # name: copy libvirt nw-filter
+            copy_arg = CopyArg()
+            copy_arg.src = "%s/zstack-libvirt-nwfilter/" % file_root
+            copy_arg.dest = "%s/" % zstack_libvirt_nwfilter_dir
+            copy(copy_arg, host_post_info)
+            command = ("(virsh nwfilter-undefine zstack-allow-incoming-ipv6; \
+                       virsh nwfilter-define %s/zstack-allow-incoming-ipv6;  \
+                       virsh nwfilter-undefine zstack-no-dhcpv6-server;  \
+                       virsh nwfilter-define %s/zstack-no-dhcpv6-server;  \
+                       virsh nwfilter-undefine zstack-no-ipv6-router-advertisement;  \
+                       virsh nwfilter-define %s/zstack-no-ipv6-router-advertisement;  \
+                       virsh nwfilter-undefine zstack-no-ipv6-spoofing; \
+                       virsh nwfilter-define %s/zstack-no-ipv6-spoofing; \
+                       virsh nwfilter-undefine zstack-clean-traffic-ipv6; \
+                       virsh nwfilter-define %s/zstack-clean-traffic-ipv6; \
+                       virsh nwfilter-undefine zstack-clean-traffic-ip46; \
+                       virsh nwfilter-define %s/zstack-clean-traffic-ip46) || true") \
+                      % (zstack_libvirt_nwfilter_dir, zstack_libvirt_nwfilter_dir, zstack_libvirt_nwfilter_dir,
+                         zstack_libvirt_nwfilter_dir, zstack_libvirt_nwfilter_dir, zstack_libvirt_nwfilter_dir,
+                         zstack_libvirt_nwfilter_dir, zstack_libvirt_nwfilter_dir, zstack_libvirt_nwfilter_dir,
+                         zstack_libvirt_nwfilter_dir, zstack_libvirt_nwfilter_dir, zstack_libvirt_nwfilter_dir)
+            run_remote_command(command, host_post_info)
 
-        # name: enable bridge forward
-        command = "echo 1 > /proc/sys/net/bridge/bridge-nf-call-ip6tables ; echo 1 > /proc/sys/net/ipv6/conf/default/forwarding"
-        host_post_info.post_label = "ansible.shell.enable.service"
-        host_post_info.post_label_param = "bridge forward"
-        run_remote_command(command, host_post_info)
-
+            # name: enable bridge forward
+            command = "echo 1 > /proc/sys/net/bridge/bridge-nf-call-ip6tables ; echo 1 > /proc/sys/net/ipv6/conf/default/forwarding"
+            host_post_info.post_label = "ansible.shell.enable.service"
+            host_post_info.post_label_param = "bridge forward"
+            run_remote_command(command, host_post_info)
 
 
 def copy_spice_certificates_to_host():
