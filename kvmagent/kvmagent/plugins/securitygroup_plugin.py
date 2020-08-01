@@ -97,10 +97,10 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
     WORLD_OPEN_CIDR_IPV6 = '::/0'
     
     ZSTACK_DEFAULT_CHAIN = 'sg-default'
-    ZSTACK_IPSET_NAME_FORMAT = 'zstack-sg'
     IPV4 = 4
     IPV6 = 6
     ZSTACK_IPSET_FAMILYS = {4: "inet", 6: "inet6"}
+    ZSTACK_IPSET_NAME_FORMAT = {4: "zstack-sg", 6: "zstack-sg6"}
     
     def _make_in_chain_name(self, vif_name):
         return '%s-in' % vif_name
@@ -123,10 +123,10 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
     def _end_egress_rule(self, out_chain_name):
         return '-A %s -j DROP' % out_chain_name
 
-    def _make_security_group_ipset_name(self, uuid):
+    def _make_security_group_ipset_name(self, uuid, ip_version):
         # max ipset name is 31 char
         uuid_part = uuid[0:19]
-        return '%s-%s' % (self.ZSTACK_IPSET_NAME_FORMAT, uuid_part)
+        return '%s-%s' % (self.ZSTACK_IPSET_NAME_FORMAT[ip_version], uuid_part)
 
     def _create_rule_from_setting(self, sto, ipset_mn, ip_version):
         vif_name = sto.vmNicInternalName
@@ -246,7 +246,7 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
             for r in sto.securityGroupBaseRules:
                 if ip_version != int(r.ipVersion):
                     continue
-                set_name = self._make_security_group_ipset_name(r.remoteGroupUuid)
+                set_name = self._make_security_group_ipset_name(r.remoteGroupUuid, ip_version)
                 if r.type == self.RULE_TYPE_INGRESS:
                     rule = make_ingress_rule(r)
                     grule = ' '.join([rule, '-m set --match-set %s src' % set_name])
@@ -432,7 +432,7 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
         used_ipset = ipt.list_used_ipset_name()
 
         def match_set_name(name):
-            return name.startswith(self.ZSTACK_IPSET_NAME_FORMAT)
+            return name.startswith(self.ZSTACK_IPSET_NAME_FORMAT[self.IPV4])
         ips_mn.cleanup_other_ipset(match_set_name, used_ipset)
 
     def _apply_rules_using_iprange_match_ip6(self, cmd, iptable=None, ipset_mn=None):
@@ -467,7 +467,7 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
         used_ipset = ipt.list_used_ipset_name()
 
         def match_set_name(name):
-            return name.startswith(self.ZSTACK_IPSET_NAME_FORMAT)
+            return name.startswith(self.ZSTACK_IPSET_NAME_FORMAT[self.IPV6])
 
         ips_mn.cleanup_other_ipset(match_set_name, used_ipset)
 
@@ -528,24 +528,26 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CleanupUnusedRulesOnHostResponse()
 
+        def match_set_name(name):
+            return name.startswith(self.ZSTACK_IPSET_NAME_FORMAT[self.IPV4])
+
+        def match_set_name_ip6(name):
+            return name.startswith(self.ZSTACK_IPSET_NAME_FORMAT[self.IPV6])
+
         ipt = iptables.from_iptables_save()
         ips_mn = ipset.IPSetManager()
         self._cleanup_stale_chains(ipt)
         ipt.iptable_restore()
         used_ipset = ipt.list_used_ipset_name()
+        ips_mn.cleanup_other_ipset(match_set_name, used_ipset)
 
         if not cmd.skipIpv6:
             ip6t = iptables.from_ip6tables_save()
             self._cleanup_stale_chains(ip6t)
             ip6t.iptable_restore()
             used_ipset6 = ip6t.list_used_ipset_name()
-            for uset in used_ipset6:
-                used_ipset.appaned(uset)
+            ips_mn.cleanup_other_ipset(match_set_name_ip6, used_ipset6)
 
-        def match_set_name(name):
-            return name.startswith(self.ZSTACK_IPSET_NAME_FORMAT)
-
-        ips_mn.cleanup_other_ipset(match_set_name, used_ipset)
         self._cleanup_conntrack()
 
         return jsonobject.dumps(rsp)
@@ -556,24 +558,15 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = UpdateGroupMemberResponse()
 
-        utos4 = []
-        utos6 = []
-        for uto in cmd.updateGroupTOs:
-            if int(uto.ipVersion) == 4:
-                utos4.append(uto)
-            else:
-                utos6.append(uto)
-
         ips_mn = ipset.IPSetManager()
         ipt = iptables.from_iptables_save()
         to_del_ipset_names = []
-        for uto in utos4:
+        for uto in cmd.updateGroupTOs:
             if uto.actionCode == self.ACTION_CODE_DELETE_GROUP:
-                to_del_ipset_names.append(self._make_security_group_ipset_name(uto.securityGroupUuid))
+                to_del_ipset_names.append(self._make_security_group_ipset_name(uto.securityGroupUuid, self.IPV4))
             elif uto.actionCode == self.ACTION_CODE_UPDATE_GROUP_MEMBER:
-                set_name = self._make_security_group_ipset_name(uto.securityGroupUuid)
-                ip_version = self.ZSTACK_IPSET_FAMILYS[int(uto.ipVersion)]
-                ips_mn.create_set(name=set_name, match_ips=uto.securityGroupVmIps, ip_version=ip_version)
+                set_name = self._make_security_group_ipset_name(uto.securityGroupUuid, self.IPV4)
+                ips_mn.create_set(name=set_name, match_ips=uto.securityGroupVmIps, ip_version=self.ZSTACK_IPSET_FAMILYS[self.IPV4])
 
         ips_mn.refresh_my_ipsets()
         if len(to_del_ipset_names) > 0:
@@ -586,13 +579,12 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
         ip6s_mn = ipset.IPSetManager()
         ip6t = iptables.from_ip6tables_save()
         to_del_ipset_names = []
-        for uto in utos6:
+        for uto in cmd.updateGroupTOs:
             if uto.actionCode == self.ACTION_CODE_DELETE_GROUP:
-                to_del_ipset_names.append(self._make_security_group_ipset_name(uto.securityGroupUuid))
+                to_del_ipset_names.append(self._make_security_group_ipset_name(uto.securityGroupUuid, self.IPV6))
             elif uto.actionCode == self.ACTION_CODE_UPDATE_GROUP_MEMBER:
-                set_name = self._make_security_group_ipset_name(uto.securityGroupUuid)
-                ip_version = self.ZSTACK_IPSET_FAMILYS[int(uto.ipVersion)]
-                ip6s_mn.create_set(name=set_name, match_ips=uto.securityGroupVmIps, ip_version=ip_version)
+                set_name = self._make_security_group_ipset_name(uto.securityGroupUuid, self.IPV6)
+                ip6s_mn.create_set(name=set_name, match_ips=uto.securityGroupVmIp6s, ip_version=self.ZSTACK_IPSET_FAMILYS[self.IPV6])
 
         ip6s_mn.refresh_my_ipsets()
         if len(to_del_ipset_names) > 0:
