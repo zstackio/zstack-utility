@@ -58,6 +58,7 @@ vrouter:
       - {name: zstack-log, dir: /var/log/zstack/, file: }
       - {name: vrouter-log, dir: /home/vyos/zvr/, file: }
       - {name: zstack-logs, dir: /var/log/zstack/, file: zstack.log*}
+      - {name: haproxy-log, dir: /var/log/, file: 'haproxy.log'}
 ceph-bs:
     description: ceph backstorage
     type: target
