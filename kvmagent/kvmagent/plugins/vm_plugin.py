@@ -6475,7 +6475,7 @@ class VmPlugin(kvmagent.KvmAgent):
             if err:
                 rsp.success = False
                 rsp.error = "Failed to query migrate info, because %s" % err
-                colo_qemu_object_clean_up()
+                colo_qemu_object_cleanup()
                 break
             
             migrate_info = json.loads(o)['return']
@@ -7087,11 +7087,13 @@ class VmPlugin(kvmagent.KvmAgent):
                 used_process = linux.linux_lsof(path)
 
             if len(used_process) == 0:
-                sblk_volume_path = linux.get_mount_url(path)
-                linux.umount(path)
+                mount_path = s.rsplit('/',1)[0]
+                sblk_volume_path = linux.get_mount_url(mount_path)
+                linux.umount(mount_path)
+                linux.rm_dir_force(mount_path)
 
                 if not sblk_volume_path:
-                    logger.debug("no mount url found for %s" % path)
+                    logger.debug("no mount url found for %s" % mount_path)
 
                 try:
                     lvm.deactive_lv(sblk_volume_path, False)
