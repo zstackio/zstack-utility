@@ -59,7 +59,7 @@ vrouter:
       - {name: zstack-logs, dir: /var/log/zstack/, file: zstack.log*}
       - {name: iptables-logs, exec: 'iptables-save'}
       - {name: host-info, exec: 'uptime && last reboot && free && cat /proc/cpuinfo && ip add && ip route && df -h'}
-
+      - {name: haproxy-log, dir: /var/log/, file: 'haproxy.log'}
 ceph-bs:
     description: ceph backstorage
     type: target
