@@ -12,6 +12,11 @@ import platform
 import netaddr
 import simplejson
 import base64
+import uuid
+import json
+import socket
+from signal import SIGKILL
+import threading
 
 import libvirt
 import xml.dom.minidom as minidom
@@ -143,6 +148,7 @@ class StartVmCmd(kvmagent.AgentCommand):
         self.bootDev = None
         self.rootVolume = None
         self.dataVolumes = []
+        self.cacheVolumes = []
         self.isoPath = None
         self.nics = []
         self.timeout = None
@@ -452,6 +458,11 @@ class CheckVmStateRsp(kvmagent.AgentResponse):
         super(CheckVmStateRsp, self).__init__()
         self.states = {}
 
+class CheckColoVmStateRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(CheckColoVmStateRsp, self).__init__()
+        self.state = None
+        self.mode = None
 
 class ChangeVmPasswordCmd(kvmagent.AgentCommand):
     @log.sensitive_fields("accountPerference.accountPassword")
@@ -478,6 +489,13 @@ class ReconnectMeCmd(object):
     def __init__(self):
         self.hostUuid = None
         self.reason = None
+
+class FailOverCmd(object):
+    def __init__(self):
+        self.vmInstanceUuid = None
+        self.hostUuid = None
+        self.reason = None
+        self.primaryVmFailure = None
 
 class HotPlugPciDeviceCommand(kvmagent.AgentCommand):
     def __init__(self):
@@ -610,6 +628,16 @@ class GetVmFirstBootDeviceRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(GetVmFirstBootDeviceRsp, self).__init__()
         self.firstBootDevice = None
+
+class FailColoPrimaryVmCmd(kvmagent.AgentCommand):
+    @log.sensitive_fields("targetHostPassword")
+    def __init__(self):
+        super(FailColoPrimaryVmCmd, self).__init__()
+        self.vmInstanceUuid = None
+        self.targetHostIp = None
+        self.targetHostPort = None
+        self.targetHostPassword = None
+
 
 class VncPortIptableRule(object):
     def __init__(self):
@@ -1720,7 +1748,7 @@ class Vm(object):
         else:
             self._wait_for_vm_running(timeout, wait_console)
 
-    def stop(self, graceful=True, timeout=5, undefine=True):
+    def stop(self, strategy='grace', timeout=5, undefine=True):
         def cleanup_addons():
             for chan in self.domain_xmlobject.devices.get_child_node_as_list('channel'):
                 if chan.type_ == 'unix':
@@ -1779,6 +1807,14 @@ class Vm(object):
 
             return self.wait_for_state_change(None)
 
+        def kill_vm(_):
+            pid = linux.find_process_by_cmdline(['qemu', self.uuid])
+            if pid:
+                # force to kill the VM
+                os.kill(int(pid), SIGKILL)
+            
+            return self.wait_for_state_change(None)
+
         def loop_destroy(_):
             try:
                 self.domain.destroy()
@@ -1795,8 +1831,8 @@ class Vm(object):
                 else:
                     raise
 
-        do_destroy, isPersistent = True, self.domain.isPersistent()
-        if graceful:
+        do_destroy, isPersistent = strategy == 'grace' or strategy == 'cold', self.domain.isPersistent()
+        if strategy == 'grace':
             if linux.wait_callback_success(loop_shutdown, None, timeout=60):
                 do_destroy = False
 
@@ -1809,6 +1845,12 @@ class Vm(object):
 
         cleanup_addons()
 
+        if strategy == 'force':
+            if not linux.wait_callback_success(kill_vm, None, timeout=60):
+                logger.warn('failed to kill vm, timeout after 60 secs')
+                raise kvmagent.KvmError('failed to stop vm, timeout after 60 secs')
+            return
+
         # undefine domain only if it is persistent
         if not isPersistent:
             return
@@ -1818,7 +1860,7 @@ class Vm(object):
             raise kvmagent.KvmError('failed to stop vm, timeout after 60 secs')
 
     def destroy(self):
-        self.stop(graceful=False)
+        self.stop(strategy='cold')
 
     def pause(self, timeout=5):
         def loop_suspend(_):
@@ -2352,12 +2394,24 @@ class Vm(object):
         logger.debug('%s is not found on the vm[uuid:%s]' % (installPath, self.uuid))
         raise kvmagent.KvmError('unable to find volume[installPath:%s] on vm[uuid:%s]' % (installPath, self.uuid))
 
+    def _get_all_volume_alias_names(self, volumes):
+        volumes.sort(key=lambda d: d.deviceId)
+        target_disk_alias_names = []
+        for volume in volumes:
+            target_disk, _ = self._get_target_disk(volume)
+            target_disk_alias_names.append(target_disk.alias.name_)
+
+        if len(volumes) != len(target_disk_alias_names):
+            raise Exception('not all disk have alias names, skip rollback')
+
+        return target_disk_alias_names
+
     def _get_target_disk(self, volume, is_exception=True):
         if volume.installPath.startswith('sharedblock'):
             volume.installPath = shared_block_to_file(volume.installPath)
 
         for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
-            if not xmlobject.has_element(disk, 'source'):
+            if not xmlobject.has_element(disk, 'source') and not volume.deviceType == 'quorum':
                 continue
 
             if volume.deviceType == 'iscsi':
@@ -2379,6 +2433,12 @@ class Vm(object):
             elif volume.deviceType == 'block':
                 if disk.source.dev__ and disk.source.dev_ in volume.installPath:
                     return disk, disk.target.dev_
+            elif volume.deviceType == 'quorum':
+                logger.debug("quorum file path is %s" % disk.backingStore.source.file_)
+                if disk.backingStore.source.file_ and disk.backingStore.source.file_ in volume.installPath:
+                    disk.driver.type_ = "qcow2"
+                    disk.source = disk.backingStore.source
+                    return disk, disk.backingStore.source.file_
         if not is_exception:
             return None, None
 
@@ -3323,6 +3383,7 @@ class Vm(object):
                 hyperv = e(features, "hyperv")
                 e(hyperv, 'relaxed', attrib={'state': 'on'})
                 e(hyperv, 'vapic', attrib={'state': 'on'})
+                e(hyperv, 'frequencies', attrib={'state': 'on'})
                 e(hyperv, 'spinlocks', attrib={'state': 'on', 'retries': '4096'})
                 e(hyperv, 'vendor_id', attrib={'state': 'on', 'value': 'ZStack_Org'})
             # always set ioapic driver to kvm after libvirt 3.4.0
@@ -3355,13 +3416,82 @@ class Vm(object):
                 for arg in args:
                     e(qcmd, "qemu:arg", attrib={"value": arg.strip('"')})
 
+            if cmd.useColoBinary:
+                e(qcmd, "qemu:arg", attrib={"value": '-L'})
+                e(qcmd, "qemu:arg", attrib={"value": '/usr/share/qemu-kvm/'})
+
+            if cmd.coloPrimary:
+                e(qcmd, "qemu:arg", attrib={"value": '-L'})
+                e(qcmd, "qemu:arg", attrib={"value": '/usr/share/qemu-kvm/'})
+
+                count = 0
+                primary_host_ip = cmd.addons['primaryVmHostIp']
+                for config in cmd.addons['primaryVmNicConfig']:
+                    e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
+                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=zs-mirror-%s,host=%s,port=%s,server,nowait' 
+                                                          % (count, primary_host_ip, config.mirrorPort)})
+
+                    e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
+                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-in-s-%s,host=%s,port=%s,server,nowait' 
+                                                          % (count, primary_host_ip, config.primaryInPort)})
+                    e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
+                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=secondary-in-s-%s,host=%s,port=%s,server,nowait' 
+                                                          % (count, primary_host_ip, config.secondaryInPort)})
+                    e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
+                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-in-c-%s,host=%s,port=%s,nowait' 
+                                                          % (count, primary_host_ip, config.primaryInPort)})
+                    e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
+                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-out-s-%s,host=%s,port=%s,server,nowait' 
+                                                          % (count, primary_host_ip, config.primaryOutPort)})
+                    e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
+                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-out-c-%s,host=%s,port=%s,nowait' 
+                                                          % (count, primary_host_ip, config.primaryOutPort)})
+                    
+                    count += 1
+
+                e(qcmd, "qemu:arg", attrib={"value": '-monitor'})
+                e(qcmd, "qemu:arg", attrib={"value": 'tcp:%s:%s,server,nowait' % (primary_host_ip, cmd.addons['primaryMonitorPort'])})
+            elif cmd.coloSecondary:
+                e(qcmd, "qemu:arg", attrib={"value": '-L'})
+                e(qcmd, "qemu:arg", attrib={"value": '/usr/share/qemu-kvm/'})
+                count = 0
+                for config in cmd.addons['ftSecondaryVmNicConfig']:
+                    e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
+                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=red-mirror-%s,host=%s,port=%s'
+                                                         % (count, cmd.addons['primaryVmHostIp'], config.mirrorPort)})
+                    e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
+                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=red-secondary-%s,host=%s,port=%s'
+                                                         % (count, cmd.addons['primaryVmHostIp'], config.secondaryInPort)})
+                    e(qcmd, "qemu:arg", attrib={"value": '-object'})
+                    e(qcmd, "qemu:arg", attrib={"value": 'filter-redirector,id=fr-mirror-%s,netdev=hostnet%s,queue=tx,'
+                                                         'indev=red-mirror-%s' % (count, count, count)})
+                    e(qcmd, "qemu:arg", attrib={"value": '-object'})
+                    e(qcmd, "qemu:arg", attrib={"value": 'filter-redirector,id=fr-secondary-%s,netdev=hostnet%s,'
+                                                         'queue=rx,outdev=red-secondary-%s' % (count, count, count)})
+                    e(qcmd, "qemu:arg", attrib={"value": '-object'})
+                    e(qcmd, "qemu:arg", attrib={"value": 'filter-rewriter,id=rew-%s,netdev=hostnet%s,queue=all'
+                                                         % (count, count)})
+                    count += 1
+
+                block_replication_port = cmd.addons['blockReplicationPort']
+                secondary_vm_host_ip = cmd.addons['secondaryVmHostIp']
+                e(qcmd, "qemu:arg", attrib={"value": '-incoming'})
+                e(qcmd, "qemu:arg", attrib={"value": 'tcp:%s:%s' % (secondary_vm_host_ip, block_replication_port)})
+
+                secondary_monitor_port = cmd.addons['secondaryMonitorPort']
+                e(qcmd, "qemu:arg", attrib={"value": '-monitor'})
+                e(qcmd, "qemu:arg", attrib={"value": 'tcp:%s:%s,server,nowait' % (secondary_vm_host_ip, secondary_monitor_port)})
+
         def make_devices():
             root = elements['root']
             devices = e(root, 'devices')
             if cmd.addons and cmd.addons['qemuPath']:
                 e(devices, 'emulator', cmd.addons['qemuPath'])
             else:
-                e(devices, 'emulator', kvmagent.get_qemu_path())
+                if cmd.coloPrimary or cmd.coloSecondary or cmd.useColoBinary:
+                    e(devices, 'emulator', kvmagent.get_colo_qemu_path())
+                else:
+                    e(devices, 'emulator', kvmagent.get_qemu_path())
             # no default usb controller and tablet device for appliance vm
             if cmd.isApplianceVm:
                 e(devices, 'controller', None, {'type': 'usb', 'model': 'none'})
@@ -3465,6 +3595,51 @@ class Vm(object):
             #guarantee rootVolume is the first of the set
             volumes = [cmd.rootVolume]
             volumes.extend(cmd.dataVolumes)
+
+            def quorumbased_volume(_dev_letter, _v):
+                def make_backingstore(volume_path):
+                    disk = etree.Element('disk', {'type': 'quorum', 'device': 'disk', 'threshold': '1', 'mode': 'primary' if cmd.coloPrimary else 'secondary'})
+                    paths = linux.qcow2_get_file_chain(volume_path)
+                    if len(paths) == 0:
+                    # could not read qcow2
+                        raise Exception("could not read qcow2")
+                        
+                    backingStore = None
+                    for path in paths:
+                        logger.debug('disk path %s' % path)
+                        xml = etree.tostring(disk)
+                        logger.debug('disk xml is %s' % xml)
+
+                        if backingStore:
+                            backingStore = e(backingStore, 'backingStore', None, {'type': 'file'})
+                        else:
+                            backingStore = e(disk, 'backingStore', None, {'type': 'file'})
+
+                        # if backingStore:
+                        #     backingStore = e(backingStore, 'backingStore', None, {'type': 'file'})
+                        # else:
+                        #     backingStore = e(disk, 'backingStore', None, {'type': 'file'})
+
+                        e(backingStore, 'format', None, {'type': 'qcow2'})
+                        xml = etree.tostring(disk)
+                        logger.debug('disk xml is %s' % xml)
+                        if cmd.coloSecondary:
+                            e(backingStore, 'active', None, {'file': cmd.cacheVolumes[0].installPath})
+                            e(backingStore, 'hidden', None, {'file': cmd.cacheVolumes[1].installPath})        
+
+                        e(backingStore, 'source', None, {'file': path})
+                            
+                    return disk
+
+                disk = make_backingstore(_v.installPath)
+
+                if _v.useVirtio:
+                    e(disk, 'target', None, {'dev': 'vd%s' % _dev_letter, 'bus': 'virtio'})
+                else:
+                    dev_format = Vm._get_disk_target_dev_format(default_bus_type)
+                    e(disk, 'target', None, {'dev': dev_format % _dev_letter, 'bus': default_bus_type})
+                
+                return disk
 
             def filebased_volume(_dev_letter, _v):
                 disk = etree.Element('disk', {'type': 'file', 'device': 'disk', 'snapshot': 'external'})
@@ -3635,7 +3810,9 @@ class Vm(object):
                         raise kvmagent.KvmError(err)
                     dev_letter = Vm.DEVICE_LETTERS[scsi_device_id]
 
-                if v.deviceType == 'file':
+                if v.deviceType == 'quorum':
+                    vol = quorumbased_volume(dev_letter, v)
+                elif v.deviceType == 'file':
                     vol = filebased_volume(dev_letter, v)
                 elif v.deviceType == 'iscsi':
                     vol = iscsibased_volume(dev_letter, v)
@@ -3675,6 +3852,9 @@ class Vm(object):
             root = elements['root']
 
             e(root, 'name', cmd.vmInstanceUuid)
+
+            if cmd.coloPrimary or cmd.coloSecondary:
+                e(root, 'iothreads', str(len(cmd.nics)))
             e(root, 'uuid', uuidhelper.to_full_uuid(cmd.vmInstanceUuid))
             e(root, 'description', cmd.vmName)
             e(root, 'on_poweroff', 'destroy')
@@ -3687,7 +3867,9 @@ class Vm(object):
             zs = e(meta, 'zstack', usenamesapce=True)
             e(zs, 'internalId', str(cmd.vmInternalId))
             e(zs, 'hostManagementIp', str(cmd.hostManagementIp))
+            # <clock offset="utc" />
             clock = e(root, 'clock', None, {'offset': cmd.clock})
+            # <rom bar='off'/>
             if cmd.clock == 'localtime':
                 e(clock, 'timer', None, {'name': 'rtc', 'tickpolicy': 'catchup'})
                 e(clock, 'timer', None, {'name': 'pit', 'tickpolicy': 'delay'})
@@ -4043,12 +4225,13 @@ class Vm(object):
         make_console()
         make_sec_label()
         make_controllers()
-        if is_spiceport_driver_supported() and cmd.consoleMode in ["spice", "vncAndSpice"]:
+        if is_spiceport_driver_supported() and cmd.consoleMode in ["spice", "vncAndSpice"] and not cmd.coloPrimary and not cmd.coloSecondary:
             make_folder_sharing()
         # appliance vm doesn't need any cdrom or usb controller
         if not cmd.isApplianceVm:
             make_cdrom()
-            make_usb_redirect()
+            if not cmd.coloPrimary and not cmd.coloSecondary and not cmd.useColoBinary:
+                make_usb_redirect()
 
         if cmd.additionalQmp:
             make_qemu_commandline()
@@ -4136,10 +4319,17 @@ class Vm(object):
         if iftype != 'hostdev':
             if nic.driverType:
                 e(interface, 'model', None, attrib={'type': nic.driverType})
+                e(interface, 'rom', None, attrib={'file': ''})
+                driver = e(interface, 'driver', None, attrib={'name': 'qemu'})
+                e(driver, 'host', None, {'gso': 'off'})
             elif nic.useVirtio:
                 e(interface, 'model', None, attrib={'type': 'virtio'})
+                e(interface, 'rom', None, attrib={'file': ''})
+                e(interface, 'driver', None, attrib={'name': 'qemu'})
             else:
                 e(interface, 'model', None, attrib={'type': 'e1000'})
+                e(interface, 'rom', None, attrib={'file': ''})
+                e(interface, 'driver', None, attrib={'name': 'qemu'})
 
             if nic.driverType == 'virtio' and nic.vHostAddOn.queueNum != 1:
                 e(interface, 'driver ', None, attrib={'name': 'vhost', 'txmode': 'iothread', 'ioeventfd': 'on', 'event_idx': 'off', 'queues': str(nic.vHostAddOn.queueNum), 'rx_queue_size': str(nic.vHostAddOn.rxBufferSize) if nic.vHostAddOn.rxBufferSize is not None else '256', 'tx_queue_size': str(nic.vHostAddOn.txBufferSize) if nic.vHostAddOn.txBufferSize is not None else '256'})
@@ -4212,6 +4402,12 @@ def _stop_world():
     http.AsyncUirHandler.STOP_WORLD = True
     VmPlugin.queue_singleton.queue.put("exit")
 
+
+@in_bash
+def execute_qmp_command(domain_id, command):
+    return bash.bash_roe("virsh qemu-monitor-command %s '%s' --pretty" % (domain_id, command))
+
+
 class VmPlugin(kvmagent.KvmAgent):
     KVM_START_VM_PATH = "/vm/start"
     KVM_STOP_VM_PATH = "/vm/stop"
@@ -4266,6 +4462,14 @@ class VmPlugin(kvmagent.KvmAgent):
     DETACH_GUEST_TOOLS_ISO_FROM_VM_PATH = "/vm/guesttools/detachiso"
     GET_VM_GUEST_TOOLS_INFO_PATH = "/vm/guesttools/getinfo"
     KVM_GET_VM_FIRST_BOOT_DEVICE_PATH = "/vm/getfirstbootdevice"
+    KVM_CONFIG_PRIMARY_VM_PATH = "/primary/vm/config"
+    KVM_CONFIG_SECONDARY_VM_PATH = "/secondary/vm/config"
+    KVM_START_COLO_SYNC_PATH = "/start/colo/sync"
+    KVM_REGISTER_PRIMARY_VM_HEARTBEAT = "/register/primary/vm/heartbeat"
+    CHECK_COLO_VM_STATE_PATH = "/check/colo/vm/state"
+    WAIT_COLO_VM_READY_PATH = "/wait/colo/vm/ready"
+    ROLLBACK_QUORUM_CONFIG_PATH = "/rollback/quorum/config"
+    FAIL_COLO_PVM_PATH = "/fail/colo/pvm"
 
     VM_OP_START = "start"
     VM_OP_STOP = "stop"
@@ -4278,6 +4482,7 @@ class VmPlugin(kvmagent.KvmAgent):
     timeout_object = linux.TimeoutObject()
     queue_singleton = VmPluginQueueSingleton()
     secret_keys = {}
+    vm_heartbeat = {}
 
     if not os.path.exists(QMP_SOCKET_PATH):
         os.mkdir(QMP_SOCKET_PATH)
@@ -4638,9 +4843,12 @@ class VmPlugin(kvmagent.KvmAgent):
         rsp.states, rsp.vmInShutdowns = get_all_vm_sync_states()
 
         # In case of an reboot inside the VM.  Note that ZS will only define transient VM's.
+        retry_for_paused = []
         for uuid in rsp.states:
             if rsp.states[uuid] == Vm.VM_STATE_SHUTDOWN:
                 rsp.states[uuid] = Vm.VM_STATE_RUNNING
+            elif rsp.states[uuid] == Vm.VM_STATE_PAUSED:
+                retry_for_paused.append(uuid)
 
         # Occasionally, virsh might not be able to list all VM instances with
         # uri=qemu://system.  To prevend this situation, we double check the
@@ -4653,6 +4861,15 @@ class VmPlugin(kvmagent.KvmAgent):
                 continue
             logger.warn('guest [%s] not found in virsh list' % guest)
             rsp.states[guest] = Vm.VM_STATE_RUNNING
+
+        time.sleep(0.5)
+        if len(retry_for_paused) > 0:
+            states, in_shutdown = get_all_vm_sync_states()
+            for uuid in states:
+                if states[uuid] == Vm.VM_STATE_SHUTDOWN:
+                    rsp.states[uuid] = Vm.VM_STATE_RUNNING
+                elif states[uuid] != Vm.VM_STATE_PAUSED:
+                    rsp.states[uuid] = states[uuid]
 
         return jsonobject.dumps(rsp)
 
@@ -4762,8 +4979,9 @@ class VmPlugin(kvmagent.KvmAgent):
         try:
             vm = get_vm_by_uuid(cmd.uuid)
 
-            if str(cmd.type) == "cold":
-                vm.stop(graceful=False)
+            strategy = str(cmd.type)
+            if strategy == "cold" or strategy == "force":
+                vm.stop(strategy=strategy)
             else:
                 vm.stop(timeout=cmd.timeout / 2)
         except kvmagent.KvmError as e:
@@ -5249,7 +5467,11 @@ class VmPlugin(kvmagent.KvmAgent):
         for deviceId in device_ids:
             target_disk = target_disks[deviceId]
             drivertype = target_disk.driver.type_
-            nodename = 'drive-' + target_disk.alias.name_
+
+            if target_disk.type_ == 'quorum':
+                nodename = target_disk.alias.name_
+            else:
+                nodename = 'drive-' + target_disk.alias.name_
             source = target_disk.source
             bitmap = bitmaps[deviceId]
 
@@ -6015,6 +6237,373 @@ class VmPlugin(kvmagent.KvmAgent):
         _close_version_file()
         return jsonobject.dumps(rsp)
 
+
+    @kvmagent.replyerror
+    @in_bash
+    def fail_colo_pvm(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+
+        r, _, e = linux.sshpass_run(cmd.targetHostIp, cmd.targetHostPassword, "pkill -f 'qemu-system-x86_64 -name guest=%s'" % cmd.vmInstanceUuid, "root", cmd.targetHostPort)
+        if r != 0:
+            rsp.success = False
+            rsp.error = 'failed to kill vm %s on host %s, cause: %s' % (cmd.vmInstanceUuid, cmd.targetHostIp, e)
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
+    def rollback_quorum_config(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+
+        vm = get_vm_by_uuid_no_retry(cmd.vmInstanceUuid, False)
+        if not vm:
+            raise Exception('vm[uuid:%s] not exists, failed' % cmd.vmInstanceUuid)
+
+        count = 0
+        for alias_name in vm._get_all_volume_alias_names(cmd.volumes):
+            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "x-blockdev-change",'
+                                                    ' "arguments": {"parent": "%s", "child": "children.1"}}' % alias_name)
+            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "human-monitor-command",'
+                                                    ' "arguments":{"command-line": "drive_del replication%s"}}' % count)
+            count += 1
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
+    def wait_secondary_vm_ready(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+
+        def wait_for_colo_state_change(_):
+            vm = get_vm_by_uuid_no_retry(cmd.vmInstanceUuid, False)
+            if not vm:
+                raise Exception('vm[uuid:%s] not exists, failed' % cmd.vmInstanceUuid)
+
+            r, o, err = execute_qmp_command(cmd.vmInstanceUuid, '{"execute":"query-colo-status"}')
+            if err:
+                raise Exception('Failed to check vm[uuid:%s] colo status by query-colo-status' % cmd.vmInstanceUuid)
+
+            colo_status = json.loads(o)['return']
+            mode = colo_status['mode']
+            return mode == 'secondary'
+
+        if not linux.wait_callback_success(wait_for_colo_state_change, None, interval=3, timeout=cmd.coloCheckTimeout):
+            raise Exception('unable to wait secondary vm[uuid:%s] ready, after %s seconds'
+                            % (cmd.vmInstanceUuid, cmd.coloCheckTimeout))
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
+    def check_colo_vm_state(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        states = get_all_vm_states()
+        rsp = CheckColoVmStateRsp()
+        state = states.get(cmd.vmInstanceUuid)
+        if state != Vm.VM_STATE_RUNNING or state != Vm.VIR_DOMAIN_PAUSED:
+            rsp.state = state
+            return jsonobject.dumps(rsp)
+
+        r, o, err = execute_qmp_command(cmd.vmInstanceUuid, '{"execute":"query-colo-status"}')
+        if err:
+            rsp.success = False
+            rsp.error = "Failed to check vm colo status"
+            return jsonobject.dumps(rsp)
+
+        colo_status = json.loads(o)['return']
+        rsp.mode = colo_status['mode']
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def register_primary_vm_heartbeat(self, req):
+        rsp = kvmagent.AgentResponse()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(10)
+        try:
+            s.connect((cmd.targetHostIp, cmd.heartbeatPort))
+            logger.debug("Successfully test heartbeat to address[%s:%s]" % (cmd.targetHostIp, cmd.heartbeatPort))
+        except socket.error as ex:
+            logger.debug("Failed to detect heartbeat connection return error")
+            rsp.success = False
+            rsp.error = "Failed connect to heartbeat address[%s:%s], because %s" % (cmd.targetHostIp, cmd.heartbeatPort, ex)
+        finally:
+            s.close()
+
+        if not rsp.success:
+            return jsonobject.dumps(rsp)
+
+        if self.vm_heartbeat.get(cmd.vmInstanceUuid) is not None and self.vm_heartbeat.get(
+                    cmd.vmInstanceUuid).is_alive():
+            logger.debug("vm heartbeat thread exists, skip it")
+            return jsonobject.dumps(rsp)
+
+        self.vm_heartbeat[cmd.vmInstanceUuid] = thread.ThreadFacade.run_in_thread(self.start_vm_heart_beat, (cmd,))
+        if self.vm_heartbeat.get(cmd.vmInstanceUuid).is_alive():
+            logger.debug("successfully start vm heartbeat")
+        else:
+            logger.debug("Failed to start vm heartbeat")
+            rsp.success = False
+            rsp.error = "Failed to start vm heartbeat address[%s:%s]" % (cmd.targetHostIp, cmd.heartbeatPort)
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def start_colo_sync(self, req):
+        rsp = kvmagent.AgentResponse()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "qmp_capabilities"}')
+
+        vm = get_vm_by_uuid_no_retry(cmd.vmInstanceUuid, False)
+        if not vm:
+            raise Exception('vm[uuid:%s] not exists, failed' % cmd.vmInstanceUuid)
+
+        count = 0
+        for alias_name in vm._get_all_volume_alias_names(cmd.volumes):
+            if cmd.fullSync:
+                execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "drive-mirror", "arguments":{ "device": "%s",'
+                                                        ' "job-id": "zs-ft-resync", "target": "nbd://%s:%s/parent%s",'
+                                                        ' "mode": "existing", "format": "nbd", "sync": "full"} }'
+                                    % (alias_name, cmd.secondaryVmHostIp, cmd.nbdServerPort, count))
+                while True:
+                    time.sleep(3)
+                    r, o, err = execute_qmp_command(cmd.vmInstanceUuid, '{"execute":"query-block-jobs"}')
+                    if err:
+                        rsp.success = False
+                        rsp.error = "Failed to get zs-ft-resync job, report error"
+                        return jsonobject.dumps(rsp)
+
+                    block_jobs = json.loads(o)['return']
+
+                    job = next((job for job in block_jobs if job['device'] == 'zs-ft-resync'), None)
+
+                    if not job:
+                        logger.debug("job finished, start colo sync")
+                        break
+
+                    if job['status'] == 'ready':
+                        break
+
+                    logger.debug("current resync %s/%s, percentage %s" % (
+                        job['len'], job['offset'], 100 * (float(job['offset'] / float(job['len'])))))
+
+                execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "stop"}')
+                execute_qmp_command(cmd.vmInstanceUuid,
+                                '{"execute": "block-job-cancel", "arguments":{ "device": "zs-ft-resync"}}')
+            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "human-monitor-command","arguments":'
+                                                ' {"command-line":"drive_add -n buddy'
+                                                ' driver=replication,mode=primary,file.driver=nbd,file.host=%s,'
+                                                'file.port=%s,file.export=parent%s,node-name=replication%s"}}'
+                                                % (cmd.secondaryVmHostIp, cmd.nbdServerPort, count, count))
+            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "x-blockdev-change","arguments":'
+                                                '{"parent": "%s","node": "replication%s" } }' % (alias_name, count))
+            count+=1
+
+        domain_xml = vm.domain.XMLDesc(0)
+        is_origin_secondary = 'filter-rewriter' in domain_xml
+        for count in xrange(0, cmd.nicNumber):
+            if not is_origin_secondary:
+                execute_qmp_command(cmd.vmInstanceUuid,
+                                    '{"execute": "object-add", "arguments":{ "qom-type": "filter-mirror", "id": "fm-%s",'
+                                    ' "props": { "netdev": "hostnet%s", "queue": "tx", "outdev": "zs-mirror-%s" } } }'
+                                    % (count, count, count))
+                execute_qmp_command(cmd.vmInstanceUuid,
+                                    '{"execute": "object-add", "arguments":{ "qom-type": "filter-redirector",'
+                                    ' "id": "primary-out-redirect-%s", "props": { "netdev": "hostnet%s", "queue": "rx",'
+                                    ' "indev": "primary-out-s-%s"}}}' % (count, count, count))
+                execute_qmp_command(cmd.vmInstanceUuid,
+                                    '{"execute": "object-add", "arguments":{ "qom-type": "filter-redirector", "id":'
+                                    ' "primary-in-redirect-%s", "props": { "netdev": "hostnet%s", "queue": "rx",'
+                                    ' "outdev": "primary-in-s-%s"}}}' % (count, count, count))
+            else:
+                execute_qmp_command(cmd.vmInstanceUuid,
+                                    '{"execute": "object-add", "arguments":{ "qom-type": "filter-mirror",'
+                                    ' "id": "fm-%s", "props": { "insert": "before", "position": "id=rew-%s", '
+                                    ' "netdev": "hostnet%s", "queue": "tx", "outdev": "zs-mirror-%s" } } }'
+                                    % (count, count, count, count))
+                execute_qmp_command(cmd.vmInstanceUuid,
+                                    '{"execute": "object-add", "arguments":{ "qom-type": "filter-redirector",'
+                                    ' "id": "primary-out-redirect-%s", "props":'
+                                    ' { "insert": "before", "position": "id=rew-%s",'
+                                    ' "netdev": "hostnet%s", "queue": "rx",'
+                                    ' "indev": "primary-out-s-%s"}}}' % (count, count, count, count))
+                execute_qmp_command(cmd.vmInstanceUuid,
+                                    '{"execute": "object-add", "arguments":{ "qom-type": "filter-redirector", "id":'
+                                    ' "primary-in-redirect-%s", "props": { "insert": "before", "position": "id=rew-%s",'
+                                    ' "netdev": "hostnet%s", "queue": "rx",'
+                                    ' "outdev": "primary-in-s-%s"}}}' % (count, count, count, count))
+            
+            execute_qmp_command(cmd.vmInstanceUuid,
+                                '{"execute": "object-add", "arguments":{ "qom-type": "colo-compare", "id": "comp-%s",'
+                                ' "props": { "primary_in": "primary-in-c-%s", "secondary_in": "secondary-in-s-%s",'
+                                ' "outdev":"primary-out-c-%s", "iothread": "iothread%s" } } }'
+                                % (count, count, count, count, int(count) + 1))
+        
+        execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate-set-capabilities","arguments":'
+                                                '{"capabilities":[ {"capability": "x-colo", "state":true}]}}')
+        
+        execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate-set-parameters", "arguments":'
+                                                '{ "max-bandwidth": 3355443200 }}')
+
+        execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate", "arguments": {"uri": "tcp:%s:%s"}}'
+                                                % (cmd.secondaryVmHostIp, cmd.blockReplicationPort))
+        
+        execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate-set-parameters",'
+                                                ' "arguments": {"x-checkpoint-delay": %s}}'
+                                                % cmd.checkpointDelay)
+
+        def colo_qemu_object_cleanup():
+            for i in xrange(cmd.redirectNum):
+                execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
+                                                        '"arguments":{"id":"fm-%s"}}' % i)
+                execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
+                                                        '"arguments":{"id":"primary-out-redirect-%s"}}' % i)
+                execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
+                                                        '"arguments":{"id":"primary-in-redirect-%s"}}' % i)
+                execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
+                                                        '"arguments":{"id":"comp-%s"}}' % i)
+
+        # wait primary vm migrate job finished
+        failure = 0
+        while True:
+            r, o, err = execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "query-migrate"}')
+            if err:
+                rsp.success = False
+                rsp.error = "Failed to query migrate info, because %s" % err
+                colo_qemu_object_clean_up()
+                break
+            
+            migrate_info = json.loads(o)['return']
+            if migrate_info['status'] == 'colo':
+                logger.debug("migrate finished")
+                break
+            elif migrate_info['status'] == 'active':
+                ram_info = migrate_info['ram']
+                logger.debug("current migrate %s/%s, percentage %s"
+                 % (ram_info['total'], ram_info['remaining'], 100 * (float(ram_info['remaining'] / float(ram_info['total'])))))
+            elif migrate_info['status'] == 'failed':
+                rsp.success = False
+                rsp.error = "could not finish colo migration."
+                try:
+                    vm = get_vm_by_uuid_no_retry(cmd.vmInstanceUuid, False)
+                    if vm:
+                        vm.resume()
+                        logger.debug('successfully, resume vm [uuid:%s]' % cmd.uuid)
+                except kvmagent.KvmError as e:
+                    logger.warn(linux.get_exception_stacktrace())
+                break
+            else:
+                # those status are not handled but vm should not stuck in
+                # MIGRATION_STATUS_POSTCOPY_ACTIVE:
+                # MIGRATION_STATUS_POSTCOPY_PAUSED:
+                # MIGRATION_STATUS_POSTCOPY_RECOVER:
+                # MIGRATION_STATUS_SETUP:
+                # MIGRATION_STATUS_PRE_SWITCHOVER:
+                # MIGRATION_STATUS_DEVICE:
+                if failure < 2:
+                    failure += 1
+                else:
+                    rsp.success = False
+                    rsp.error = "unknown migrate status: %s" % migrate_info['status']
+                    # cancel migrate if vm stuck in unexpected status
+                    execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate_cancel"}')
+                    break
+
+            time.sleep(2)
+        
+        if not rsp.success:
+            colo_qemu_object_cleanup()
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def config_secondary_vm(self, req):
+        rsp = kvmagent.AgentResponse()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "qmp_capabilities"}')
+        execute_qmp_command(cmd.vmInstanceUuid, '{"execute":"nbd-server-start", "arguments":{"addr":{"type":"inet",'
+                                                ' "data":{"host":"%s", "port":"%s"}}}}'
+                            % (cmd.primaryVmHostIp, cmd.nbdServerPort))
+        execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "nbd-server-add",'
+                                                ' "arguments": {"device": "parent0", "writable": true }}')
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def config_primary_vm(self, req):
+        rsp = GetVmFirstBootDeviceRsp()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "qmp_capabilities"}')
+
+        r, o, err = execute_qmp_command(cmd.vmInstanceUuid, '{"execute":"query-chardev"}')
+        if err:
+            rsp.success = False
+            rsp.error = "Failed to check qemu config, report error"
+            return jsonobject.dumps(rsp)
+
+        vm = get_vm_by_uuid(cmd.vmInstanceUuid)
+
+        domain_xml = vm.domain.XMLDesc(0)
+
+        is_origin_secondary = 'filter-rewriter' in domain_xml
+
+        char_devices = json.loads(o)['return']
+        mirror_device_nums = [int(dev['label'][-1]) for dev in char_devices if dev['label'].startswith('zs-mirror')]
+        logger.debug("get mirror char device of vm[uuid:%s] devices: %s" % (cmd.vmInstanceUuid, mirror_device_nums))
+        if len(mirror_device_nums) == len(cmd.configs):
+            logger.debug("config and devices matched, just return success")
+            return jsonobject.dumps(rsp)
+        elif len(mirror_device_nums) > len(cmd.configs):
+            logger.debug("vm over config, please check what happened")
+            return jsonobject.dumps(rsp)
+
+        count = len(mirror_device_nums)
+        for config in cmd.configs[len(mirror_device_nums):]:
+            if not linux.is_port_available(config.mirrorPort):
+                raise Exception("failed to config primary vm, because mirrorPort port %d is occupied" % config.mirrorPort)
+            
+            if not linux.is_port_available(config.primaryInPort):
+                raise Exception("failed to config primary vm, because primaryInPort port %d is occupied" % config.primaryInPort)
+
+            if not linux.is_port_available(config.secondaryInPort):
+                raise Exception("failed to config primary vm, because secondaryInPort port %d is occupied" % config.secondaryInPort)
+
+            if not linux.is_port_available(config.primaryOutPort):
+                raise Exception("failed to config primary vm, because mirrorPort port %d is occupied" % config.primaryOutPort)
+
+            execute_qmp_command(cmd.vmInstanceUuid,
+                                '{"execute": "chardev-add", "arguments":{ "id": "zs-mirror-%s", "backend":'
+                                ' {"type": "socket", "data": {"addr": { "type": "inet", "data":'
+                                ' { "host": "%s", "port": "%s" } }, "server": true}}}}'
+                                % (count, cmd.hostIp, config.mirrorPort))
+            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "chardev-add", "arguments":{ "id": "primary-in-s-%s",'
+                                                    ' "backend": {"type": "socket", "data": {"addr": { "type":'
+                                                    ' "inet", "data": { "host": "%s", "port": "%s" } },'
+                                                    ' "server": true } } } }' % (count, cmd.hostIp, config.primaryInPort))
+            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "chardev-add", "arguments":{'
+                                                    ' "id": "secondary-in-s-%s","backend": {"type":'
+                                                    ' "socket", "data": {"addr": {"type":'
+                                                    ' "inet", "data": { "host": "%s", "port": "%s" } },'
+                                                    ' "server": true } } } }' % (count, cmd.hostIp, config.secondaryInPort))
+            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "chardev-add", "arguments":{ "id": "primary-in-c-%s",'
+                                                    ' "backend": {"type": "socket", "data": {"addr": { "type":'
+                                                    ' "inet", "data": { "host": "%s", "port": "%s" } },'
+                                                    ' "server": false } } } }' % (count, cmd.hostIp, config.primaryInPort))
+            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "chardev-add", "arguments":{ "id": "primary-out-s-%s",'
+                                                    ' "backend": {"type": "socket", "data": {"addr": { "type":'
+                                                    ' "inet", "data": { "host": "%s", "port": "%s" } },'
+                                                    ' "server": true } } } }' % (count, cmd.hostIp, config.primaryOutPort))
+            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "chardev-add", "arguments":{ "id": "primary-out-c-%s",'
+                                                    ' "backend": {"type": "socket", "data": {"addr": { "type":'
+                                                    ' "inet", "data": { "host": "%s", "port": "%s" } },'
+                                                    ' "server": false } } } }' % (count, cmd.hostIp, config.primaryOutPort))
+            count += 1
+        return jsonobject.dumps(rsp)
+
     @kvmagent.replyerror
     @in_bash
     def get_vm_first_boot_device(self, req):
@@ -6083,6 +6672,14 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.DETACH_GUEST_TOOLS_ISO_FROM_VM_PATH, self.detach_guest_tools_iso_from_vm)
         http_server.register_async_uri(self.GET_VM_GUEST_TOOLS_INFO_PATH, self.get_vm_guest_tools_info)
         http_server.register_async_uri(self.KVM_GET_VM_FIRST_BOOT_DEVICE_PATH, self.get_vm_first_boot_device)
+        http_server.register_async_uri(self.KVM_CONFIG_PRIMARY_VM_PATH, self.config_primary_vm)
+        http_server.register_async_uri(self.KVM_CONFIG_SECONDARY_VM_PATH, self.config_secondary_vm)
+        http_server.register_async_uri(self.KVM_START_COLO_SYNC_PATH, self.start_colo_sync)
+        http_server.register_async_uri(self.KVM_REGISTER_PRIMARY_VM_HEARTBEAT, self.register_primary_vm_heartbeat)
+        http_server.register_async_uri(self.CHECK_COLO_VM_STATE_PATH, self.check_colo_vm_state)
+        http_server.register_async_uri(self.WAIT_COLO_VM_READY_PATH, self.wait_secondary_vm_ready)
+        http_server.register_async_uri(self.ROLLBACK_QUORUM_CONFIG_PATH, self.rollback_quorum_config)
+        http_server.register_async_uri(self.FAIL_COLO_PVM_PATH, self.fail_colo_pvm, cmd=FailColoPrimaryVmCmd())
 
         self.clean_old_sshfs_mount_points()
         self.register_libvirt_event()
@@ -6153,6 +6750,95 @@ class VmPlugin(kvmagent.KvmAgent):
                 time.sleep(600)
 
         clean_stale_vm_vnc_port_chain()
+
+    def start_vm_heart_beat(self, cmd):
+        def send_failover(vm_instance_uuid, host_uuid, primary_failure):
+            url = self.config.get(kvmagent.SEND_COMMAND_URL)
+            if not url:
+                logger.warn('cannot find SEND_COMMAND_URL')
+                return
+
+            logger.warn("heartbeat of vm %s lost, failover" % vm_instance_uuid)
+            fcmd = FailOverCmd()
+            fcmd.vmInstanceUuid = vm_instance_uuid
+            fcmd.reason = "network failure"
+            fcmd.hostUuid = host_uuid
+            fcmd.primaryVmFailure = primary_failure
+
+            try:
+                http.json_dump_post(url, fcmd, {'commandpath': '/kvm/reportfailover'})
+            except Exception as e:
+                logger.debug('failed to report fail')
+
+        def test_heart_beat():
+            logger.debug("vm [uuid:%s] heartbeat finished", cmd.vmInstanceUuid)
+            with contextlib.closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+                s.settimeout(0.5)
+                try:
+                    s.connect((cmd.targetHostIp, cmd.heartbeatPort))
+                    logger.debug("successfully connect to address[%s:%s]" % (cmd.targetHostIp, cmd.heartbeatPort))
+                except socket.error as ex:
+                    logger.debug(
+                        "lost heartbeat to %s:%s, because %s" % (cmd.targetHostIp, cmd.heartbeatPort, ex))
+
+                    if cmd.coloPrimary:
+                        vm = get_vm_by_uuid_no_retry(cmd.vmInstanceUuid, False)
+                        if not vm:
+                            raise Exception('vm[uuid:%s] not exists, failed' % cmd.vmInstanceUuid)
+
+                        count = 0
+                        for alias_name in vm._get_all_volume_alias_names(cmd.volumes):
+                            execute_qmp_command(cmd.vmInstanceUuid,
+                                                '{"execute": "x-blockdev-change", "arguments": {"parent":'
+                                                ' "%s", "child": "children.1"}}' % alias_name)
+                            execute_qmp_command(cmd.vmInstanceUuid,
+                                                '{"execute": "human-monitor-command", "arguments":'
+                                                '{"command-line": "drive_del replication%s" } }' % count)
+                            count += 1
+
+                        for i in xrange(cmd.redirectNum):
+                            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
+                                                                    '"arguments":{"id":"fm-%s"}}' % i)
+                            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
+                                                                    '"arguments":{"id":"primary-out-redirect-%s"}}' % i)
+                            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
+                                                                    '"arguments":{"id":"primary-in-redirect-%s"}}' % i)
+                            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
+                                                                    '"arguments":{"id":"comp-%s"}}' % i)
+                        execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "x-colo-lost-heartbeat"}')
+                    else:
+                        execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "nbd-server-stop"}')
+                        execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "x-colo-lost-heartbeat"}')
+                        for i in xrange(cmd.redirectNum):
+                            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
+                                                                    '"arguments":{"id":"fr-secondary-%s"}}' % i)
+                            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
+                                                                    '"arguments":{ "id": "fr-mirror-%s"}}' % i)
+                            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "chardev-remove",'
+                                                                    '"arguments":{"id":"red-secondary-%s"}}' % i)
+                            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "chardev-remove",'
+                                                                    '"arguments":{"id":"red-mirror-%s"}}' % i)
+
+                    send_failover(cmd.vmInstanceUuid, cmd.hostUuid, not cmd.coloPrimary)
+                    return True
+
+                logger.debug("vm [uuid:%s] heartbeat finished", cmd.vmInstanceUuid)
+                return False
+
+        t = threading.currentThread()
+        while getattr(t, "do_heart_beat", True):
+            need_break = test_heart_beat()
+
+            if need_break:
+                break
+
+            time.sleep(1)
+
+        try:
+            self.vm_heartbeat.pop(cmd.vmInstanceUuid)
+        except KeyError:
+            logger.debug("ignore error occurs when remove %s from heartbeat",
+                         cmd.vmInstanceUuid)
 
     def _vm_lifecycle_event(self, conn, dom, event, detail, opaque):
         try:
@@ -6369,6 +7055,19 @@ class VmPlugin(kvmagent.KvmAgent):
             return
         handle_event(dom, event_str)
 
+    def _clean_colo_heartbeat(self, conn, dom, event, detail, opaque):
+        event_str = LibvirtEventManager.event_to_string(event)
+        if event_str not in (LibvirtEventManager.EVENT_SHUTDOWN, LibvirtEventManager.EVENT_STOPPED):
+            return
+
+        vm_uuid = dom.name()
+        heartbeat_thread = self.vm_heartbeat.pop(vm_uuid, None)
+        
+        if heartbeat_thread and heartbeat_thread.is_alive():
+            logger.debug("clean vm[uuid:%s] heartbeat, due to evnet %s" % (dom.name(), LibvirtEventManager.event_to_string(event)))
+            heartbeat_thread.do_heart_beat = False
+            heartbeat_thread.join()
+
     @bash.in_bash
     def _release_sharedblocks(self, conn, dom, event, detail, opaque):
         logger.debug("got event from libvirt, %s %s" % (dom.name(), LibvirtEventManager.event_to_string(event)))
@@ -6378,6 +7077,35 @@ class VmPlugin(kvmagent.KvmAgent):
             used_process = linux.linux_lsof(volume)
             if len(used_process) != 0:
                 raise RetryException("volume %s still used: %s" % (volume, used_process))
+
+        @thread.AsyncThread
+        @bash.in_bash
+        def deactivate_colo_cache_volume(event_str, path, vm_uuid):
+            try:
+                wait_volume_unused(path)
+            finally:
+                used_process = linux.linux_lsof(path)
+
+            if len(used_process) == 0:
+                sblk_volume_path = linux.get_mount_url(path)
+                linux.umount(path)
+
+                if not sblk_volume_path:
+                    logger.debug("no mount url found for %s" % path)
+
+                try:
+                    lvm.deactive_lv(sblk_volume_path, False)
+                    logger.debug(
+                        "deactivated volume %s for event %s happend on vm %s success" % (
+                        sblk_volume_path, event_str, vm_uuid))
+                except Exception as e:
+                    logger.debug("deactivate volume %s for event %s happend on vm %s failed, %s" % (
+                        sblk_volume_path, event_str, vm_uuid, e.message))
+                    content = traceback.format_exc()
+                    logger.warn("traceback: %s" % content)
+            else:
+                logger.debug("volume %s still used: %s, skip to deactivate" % (path, used_process))
+
 
         @thread.AsyncThread
         @bash.in_bash
@@ -6421,6 +7149,13 @@ class VmPlugin(kvmagent.KvmAgent):
             if len(out) != 0:
                 for file in out:
                     deactivate_volume(event_str, file, vm_uuid)
+
+            out = bash.bash_o('virsh dumpxml %s | grep -E "active file=|hidden file="' % vm_uuid).strip().splitlines()
+            if len(out) != 0:
+                for cache_config in out:
+                    path = cache_config.split('=')[1].rsplit('/', 1)[0]
+                    deactivate_colo_cache_volume(event_str, path, vm_uuid)
+
             else:
                 logger.debug("can not find sharedblock related volume for vm %s, skip to release" % vm_uuid)
         except:
@@ -6541,6 +7276,7 @@ class VmPlugin(kvmagent.KvmAgent):
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_REBOOT, self._vm_reboot_event)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._vm_shutdown_event)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._release_sharedblocks)
+        LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._clean_colo_heartbeat)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._extend_sharedblock)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._delete_pushgateway_metric)
         LibvirtAutoReconnect.register_libvirt_callbacks()
