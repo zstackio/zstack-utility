@@ -1286,4 +1286,5 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         rsp.oldSize = old_size
         rsp.size = size
+        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
