@@ -561,6 +561,15 @@ class AttachGuestToolsIsoToVmRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(AttachGuestToolsIsoToVmRsp, self).__init__()
 
+class DetachGuestToolsIsoFromVmCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(DetachGuestToolsIsoFromVmCmd, self).__init__()
+        self.vmInstanceUuid = None
+
+class DetachGuestToolsIsoFromVmRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(DetachGuestToolsIsoFromVmRsp, self).__init__()
+
 class IsoTo(object):
     def __init__(self):
         super(IsoTo, self).__init__()
@@ -4309,6 +4318,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_RESIZE_VOLUME_PATH = "/volume/resize"
     VM_PRIORITY_PATH = "/vm/priority"
     ATTACH_GUEST_TOOLS_ISO_TO_VM_PATH = "/vm/guesttools/attachiso"
+    DETACH_GUEST_TOOLS_ISO_FROM_VM_PATH = "/vm/guesttools/detachiso"
     GET_VM_GUEST_TOOLS_INFO_PATH = "/vm/guesttools/getinfo"
     KVM_GET_VM_FIRST_BOOT_DEVICE_PATH = "/vm/getfirstbootdevice"
 
@@ -5929,6 +5939,19 @@ class VmPlugin(kvmagent.KvmAgent):
         touchQmpSocketWhenExists(cmd.vmUuid)
         return jsonobject.dumps(rsp)
 
+
+    def _create_xml_for_guesttools_temp_disk(self, vm_uuid):
+        temp_disk = "/var/lib/zstack/guesttools/temp_disk_%s.qcow2" % vm_uuid
+        content = """
+<disk type='file' device='disk'>
+<driver type='qcow2' cache='writeback'/>
+<source file='%s'/>
+<target dev='vdz' bus='virtio'/>
+</disk>
+""" % temp_disk
+        return linux.write_to_temp_file(content)
+
+
     @kvmagent.replyerror
     @in_bash
     def attach_guest_tools_iso_to_vm(self, req):
@@ -5947,14 +5970,7 @@ class VmPlugin(kvmagent.KvmAgent):
             if not os.path.exists(temp_disk):
                 linux.qcow2_create(temp_disk, 1)
 
-            content = """
-<disk type='file' device='disk'>
-<driver type='qcow2' cache='writeback'/>
-  <source file='%s'/>
-  <target dev='vdz' bus='virtio'/>
-</disk>
-""" % temp_disk
-            spath = linux.write_to_temp_file(content)
+            spath = self._create_xml_for_guesttools_temp_disk(vm_uuid)
             r, o, e = bash.bash_roe("virsh attach-device %s %s" % (vm_uuid, spath))
 
             # temp_disk will be truly deleted after it's closed by qemu-kvm
@@ -5983,6 +5999,29 @@ class VmPlugin(kvmagent.KvmAgent):
         attach_cmd.iso = iso
         attach_cmd.vmUuid = vm_uuid
         vm.attach_iso(attach_cmd)
+        return jsonobject.dumps(rsp)
+
+
+    @kvmagent.replyerror
+    @in_bash
+    def detach_guest_tools_iso_from_vm(self, req):
+        rsp = DetachGuestToolsIsoFromVmRsp()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        vm_uuid = cmd.vmInstanceUuid
+
+        # detach temp_disk from vm
+        spath = self._create_xml_for_guesttools_temp_disk(vm_uuid)
+        bash.bash_roe("virsh detach-device %s %s" % (vm_uuid, spath))
+
+        # detach guesttools iso from vm
+        r, _, _ = bash.bash_roe("virsh dumpxml %s | grep %s" % (vm_uuid, GUEST_TOOLS_ISO_PATH))
+        if r == 0:
+            vm = get_vm_by_uuid(vm_uuid, exception_if_not_existing=False)
+            detach_cmd = DetachIsoCmd()
+            detach_cmd.vmUuid = vm_uuid
+            detach_cmd.deviceId = 0
+            vm.detach_iso(detach_cmd)
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -6092,6 +6131,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_RESIZE_VOLUME_PATH, self.kvm_resize_volume)
         http_server.register_async_uri(self.VM_PRIORITY_PATH, self.vm_priority)
         http_server.register_async_uri(self.ATTACH_GUEST_TOOLS_ISO_TO_VM_PATH, self.attach_guest_tools_iso_to_vm)
+        http_server.register_async_uri(self.DETACH_GUEST_TOOLS_ISO_FROM_VM_PATH, self.detach_guest_tools_iso_from_vm)
         http_server.register_async_uri(self.GET_VM_GUEST_TOOLS_INFO_PATH, self.get_vm_guest_tools_info)
         http_server.register_async_uri(self.KVM_GET_VM_FIRST_BOOT_DEVICE_PATH, self.get_vm_first_boot_device)
 
