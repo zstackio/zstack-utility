@@ -462,11 +462,6 @@ def copy_kvm_files():
     args = "mode=755"
     copy_to_remote(kvmagt_svc_src, kvmagt_svc_dst, args, host_post_info)
 
-    # copy pushgateway_log_rotation
-    psgw_lr_src = os.path.join(file_root, "pushgateway.log.rotation")
-    psgw_lr_dst = "/etc/logrotate.d/pushgateway"
-    copy_to_remote(psgw_lr_src, psgw_lr_dst, None, host_post_info)
-
 def copy_gpudriver():
     """copy mxgpu driver"""
     _src = "{}/mxgpu_driver.tar.gz".format(file_root)

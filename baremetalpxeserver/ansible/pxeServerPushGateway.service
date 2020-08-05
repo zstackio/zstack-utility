@@ -4,7 +4,7 @@ Description=pxe-server-promethus-pushgateway
 [Service]
 StartLimitInterval=5
 StartLimitBurst=10
-ExecStart=/var/lib/zstack/baremetal/pushgateway -persistence.file /var/lib/zstack/baremetal/persistence.data -persistence.interval 1m -web.listen-address :9093
+ExecStart=/var/lib/zstack/baremetal/pushgateway -persistence.file /var/lib/zstack/baremetal/persistence.data -persistence.interval 1m -web.listen-address :9093 >/dev/null 2>&1
 ExecStop=/bin/kill -s QUIT $MAINPID
 
 Restart=always
