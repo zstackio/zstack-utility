@@ -1374,7 +1374,9 @@ dhcp-range={{g}}
                     dinfo6 = d
                 elif d.ipVersion == 46:
                     dinfo4 = d
-                    dinfo6 = d
+                    # for dual stack nic with slaac ipv6, ipVersion is 46, but no ip6 address
+                    if d.ip6 is not None:
+                        dinfo6 = d
 
             ranges = []
             if dinfo4 is not None:
