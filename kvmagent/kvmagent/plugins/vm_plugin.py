@@ -6292,6 +6292,16 @@ class VmPlugin(kvmagent.KvmAgent):
                                                     ' "arguments":{"command-line": "drive_del replication%s"}}' % count)
             count += 1
 
+        for count in xrange(0, cmd.nicNumber):
+            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
+                                                    '"arguments":{"id":"fm-%s"}}' % i)
+            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
+                                                    '"arguments":{"id":"primary-out-redirect-%s"}}' % i)
+            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
+                                                    '"arguments":{"id":"primary-in-redirect-%s"}}' % i)
+            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
+                                                    '"arguments":{"id":"comp-%s"}}' % i)
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -6387,6 +6397,29 @@ class VmPlugin(kvmagent.KvmAgent):
             raise Exception('vm[uuid:%s] not exists, failed' % cmd.vmInstanceUuid)
 
         count = 0
+        replication_list = []
+
+        def colo_qemu_replication_cleanup():
+            for replication in replication_list:
+                if replication.alias_name:
+                    execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "x-blockdev-change",'
+                                                        ' "arguments": {"parent": "%s", "child": "children.1"}}' % replication.alias_name)
+                execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "human-monitor-command",'
+                                                    ' "arguments":{"command-line": "drive_del replication%s"}}' % replication.replication_id)
+
+        @linux.retry(times=3, sleep_time=0.5)
+        def add_nbd_client_to_quorum(alias_name, count):
+            r, stdout, err = execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "x-blockdev-change","arguments":'
+                                                '{"parent": "%s","node": "replication%s" } }' % (alias_name, count))
+
+            if err:
+                return False
+            elif 'does not support adding a child' in stdout:
+                raise RetryException("failed to add child to %s" % alias_name)                                                
+            else:
+                return True
+
+
         for alias_name in vm._get_all_volume_alias_names(cmd.volumes):
             if cmd.fullSync:
                 execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "drive-mirror", "arguments":{ "device": "%s",'
@@ -6423,8 +6456,23 @@ class VmPlugin(kvmagent.KvmAgent):
                                                 ' driver=replication,mode=primary,file.driver=nbd,file.host=%s,'
                                                 'file.port=%s,file.export=parent%s,node-name=replication%s"}}'
                                                 % (cmd.secondaryVmHostIp, cmd.nbdServerPort, count, count))
-            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "x-blockdev-change","arguments":'
-                                                '{"parent": "%s","node": "replication%s" } }' % (alias_name, count))
+
+            successed = False
+            try:
+                successed = add_nbd_client_to_quorum(alias_name, count)
+            except Exception as e:
+                logger.debug("ignore excetion raised by retry")
+
+            if not successed:
+                replication_list.append(ColoReplicationConfig(None, count))
+                colo_qemu_replication_cleanup()
+                execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "cont"}')
+                rsp.success = False
+                rsp.error = "Failed to setup quorum replication node, report error"
+                return jsonobject.dumps(rsp)
+            
+            replication_list.append(ColoReplicationConfig(alias_name, count))
+
             count+=1
 
         domain_xml = vm.domain.XMLDesc(0)
@@ -6466,6 +6514,7 @@ class VmPlugin(kvmagent.KvmAgent):
                                 ' "props": { "primary_in": "primary-in-c-%s", "secondary_in": "secondary-in-s-%s",'
                                 ' "outdev":"primary-out-c-%s", "iothread": "iothread%s" } } }'
                                 % (count, count, count, count, int(count) + 1))
+            count += 1
         
         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate-set-capabilities","arguments":'
                                                 '{"capabilities":[ {"capability": "x-colo", "state":true}]}}')
@@ -6541,6 +6590,7 @@ class VmPlugin(kvmagent.KvmAgent):
         
         if not rsp.success:
             colo_qemu_object_cleanup()
+            colo_qemu_replication_cleanup()
 
         return jsonobject.dumps(rsp)
 
@@ -7330,6 +7380,12 @@ class EmptyCdromConfig():
         self.targetDev = targetDev
         self.bus = bus
         self.unit = unit
+
+
+class ColoReplicationConfig():
+    def __init__(self, alias_name, replication_id):
+        self.alias_name = alias_name
+        self.replication_id = replication_id
 
 
 class VolumeSnapshotJobStruct(object):
