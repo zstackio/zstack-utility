@@ -2,7 +2,9 @@ import functools
 import random
 import os
 import os.path
+import threading
 import time
+import weakref
 
 from zstacklib.utils import shell
 from zstacklib.utils import bash
@@ -740,7 +742,7 @@ def get_meta_lv_path(path):
 def delete_image(path, tag, deactive=True):
     def activate_and_remove(f, deactive):
         if deactive:
-            active_lv(f, shared=False)
+            _active_lv(f, shared=False)
         backing = linux.qcow2_get_backing_file(f)
         shell.check_run("lvremove -y -Stags={%s} %s" % (tag, f))
         return backing
@@ -919,9 +921,25 @@ def resize_lv_from_cmd(path, size, cmd, extend_thin_by_specified_size=False):
         resize_lv(path, size)
 
 
+def active_lv(path, shared=False):
+    op = LvLockOperator.get_lock_cnt_or_else_none(path)
+    if op:
+        op.lock(LvmlockdLockType.SHARE if shared else LvmlockdLockType.EXCLUSIVE)
+    else:
+        _active_lv(path, shared)
+
+
+def deactive_lv(path, raise_exception=True):
+    op = LvLockOperator.get_lock_cnt_or_else_none(path)
+    if op:
+        op.unlock_all(raise_exception)
+    else:
+        _deactive_lv(path, raise_exception)
+
+
 @bash.in_bash
 @linux.retry(times=10, sleep_time=random.uniform(0.1, 3))
-def active_lv(path, shared=False):
+def _active_lv(path, shared=False):
     flag = "-ay"
     if shared:
         flag = "-asy"
@@ -933,7 +951,7 @@ def active_lv(path, shared=False):
 
 @bash.in_bash
 @linux.retry(times=3, sleep_time=random.uniform(0.1, 3))
-def deactive_lv(path, raise_exception=True):
+def _deactive_lv(path, raise_exception=True):
     if not lv_exists(path):
         return
     if not lv_is_active(path):
@@ -953,7 +971,7 @@ def deactive_lv(path, raise_exception=True):
 def delete_lv(path, raise_exception=True, deactive=True):
     logger.debug("deleting lv %s" % path)
     if deactive:
-        deactive_lv(path, False)
+        _deactive_lv(path, False)
     # remove meta-lv if any
     if lv_exists(get_meta_lv_path(path)):
         shell.run("lvremove -y %s" % get_meta_lv_path(path))
@@ -1196,43 +1214,96 @@ def qcow2_lv_recursive_active(abs_path, lock_type):
         qcow2_lv_recursive_active(backing, LvmlockdLockType.SHARE)
 
 
+_internal_lock = threading.RLock()
+_lv_locks = weakref.WeakValueDictionary()
+
+
+class LvLockOperator(object):
+    def __init__(self, abs_path):
+        self.op_lock = threading.Lock()
+        self.inited = False
+        self.abs_path = abs_path
+        self.exists_locks = []
+
+    def _init(self):
+        exists_lock = get_lv_locking_type(self.abs_path)
+        self.exists_locks = [] if exists_lock == LvmlockdLockType.NULL else [exists_lock]
+        self.inited = True
+
+    def lock(self, target_lock):
+        with self.op_lock:
+            if not self.inited:
+                self._init()
+
+            if all(l < target_lock for l in self.exists_locks):
+                _active_lv(self.abs_path, target_lock == LvmlockdLockType.SHARE)
+            self.exists_locks.append(target_lock)
+
+    def unlock(self, target_lock):
+        with self.op_lock:
+            try:
+                self.exists_locks.remove(target_lock)
+            except ValueError:
+                pass
+
+            after_lock_type = LvmlockdLockType.NULL if len(self.exists_locks) == 0 else max(self.exists_locks)
+            if after_lock_type == LvmlockdLockType.NULL:
+                _deactive_lv(self.abs_path, raise_exception=False)
+            elif after_lock_type == LvmlockdLockType.SHARE:
+                _active_lv(self.abs_path, True)
+
+    def unlock_all(self, raise_exception=True):
+        with self.op_lock:
+            del self.exists_locks[:]
+            _deactive_lv(self.abs_path, raise_exception)
+
+    @staticmethod
+    def get_lock_cnt(abs_path):
+        global _lv_locks, _internal_lock
+        with _internal_lock:
+            lock_cnt = _lv_locks.get(abs_path, LvLockOperator(abs_path))
+            if not abs_path in _lv_locks:
+                _lv_locks[abs_path] = lock_cnt
+            return lock_cnt
+
+    @staticmethod
+    def get_lock_cnt_or_else_none(abs_path):
+        global _lv_locks, _internal_lock
+        with _internal_lock:
+            return _lv_locks.get(abs_path)
+
 class OperateLv(object):
     def __init__(self, abs_path, shared=False, delete_when_exception=False):
+        global lv_lock_ref_cnt
         self.abs_path = abs_path
-        self.shared = shared
-        self.exists_lock = get_lv_locking_type(abs_path)
+        self.lock_ref_cnt = LvLockOperator.get_lock_cnt(abs_path)
         self.target_lock = LvmlockdLockType.EXCLUSIVE if shared is False else LvmlockdLockType.SHARE
         self.delete_when_exception = delete_when_exception
 
     def __enter__(self):
-        if self.exists_lock < self.target_lock:
-            active_lv(self.abs_path, self.shared)
+        self.lock_ref_cnt.lock(self.target_lock)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if exc_val is not None and self.delete_when_exception is True:
             delete_lv(self.abs_path, False)
             return
 
-        if self.exists_lock == LvmlockdLockType.NULL:
-            deactive_lv(self.abs_path, raise_exception=False)
-        else:
-            active_lv(self.abs_path, self.exists_lock == LvmlockdLockType.SHARE)
+        self.lock_ref_cnt.unlock(self.target_lock)
 
 
 class RecursiveOperateLv(object):
     def __init__(self, abs_path, shared=False, skip_deactivate_tags=None, delete_when_exception=False):
-        # type: (str, bool, list[str], bool) -> object
+        # type: (str, bool, list[str], bool) -> None
         self.abs_path = abs_path
         self.shared = shared
-        self.exists_lock = get_lv_locking_type(abs_path)
+        self.lock_ref_cnt = LvLockOperator.get_lock_cnt(abs_path)
         self.target_lock = LvmlockdLockType.EXCLUSIVE if shared is False else LvmlockdLockType.SHARE
         self.backing = None
         self.delete_when_exception = delete_when_exception
         self.skip_deactivate_tags = skip_deactivate_tags
 
     def __enter__(self):
-        if self.exists_lock < self.target_lock:
-            active_lv(self.abs_path, self.shared)
+        self.lock_ref_cnt.lock(self.target_lock)
         if linux.qcow2_get_backing_file(self.abs_path) != "":
             self.backing = RecursiveOperateLv(
                 linux.qcow2_get_backing_file(self.abs_path), True, self.skip_deactivate_tags, False)
@@ -1253,16 +1324,8 @@ class RecursiveOperateLv(object):
         if has_one_lv_tag_sub_string(self.abs_path, self.skip_deactivate_tags):
             logger.debug("the volume %s has skip tag: %s" %
                          (self.abs_path, has_one_lv_tag_sub_string(self.abs_path, self.skip_deactivate_tags)))
-            return
 
-        if self.exists_lock > self.target_lock:
-            return
-
-        if self.exists_lock == LvmlockdLockType.NULL:
-            deactive_lv(self.abs_path, raise_exception=False)
-        else:
-            active_lv(self.abs_path, self.exists_lock == LvmlockdLockType.SHARE)
-
+        self.lock_ref_cnt.unlock(self.target_lock)
 
 def get_lockspace(vgUuid):
     @linux.retry(times=3, sleep_time=0.5)
