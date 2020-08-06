@@ -6375,7 +6375,7 @@ class ChangeIpCmd(Command):
                     info("Update mysql new url %s in %s " % (db_new_url, ctl.ui_properties_file_path))
 
             # update mysql restrict connection configuration
-            self.checkMysqlRestrictConnection(args.ip, old_ip, root_password_)
+            self.checkMysqlRestrictConnection(args.ip, old_ip, args.root_password)
         else:
             info("Didn't find %s, skip update new ip" % zstack_conf_file  )
             return 1
