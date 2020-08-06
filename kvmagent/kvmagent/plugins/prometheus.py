@@ -342,8 +342,6 @@ class PrometheusPlugin(kvmagent.KvmAgent):
 
     COLLECTD_PATH = "/prometheus/collectdexporter/start"
 
-    PUSHGATEWAY_LOG_LOGROTATE_PATH = "/etc/logrotate.d/pushgateway"
-
     @kvmagent.replyerror
     @in_bash
     def start_prometheus_exporter(self, req):
@@ -489,7 +487,7 @@ Restart=always
 RestartSec=30s
 [Install]
 WantedBy=multi-user.target
-''' % (service_name, binPath, args, log, binPath)
+''' % (service_name, binPath, args, '/dev/null' if log.endswith('/pushgateway.log') else log, binPath)
 
             if not os.path.exists(service_path):
                 linux.write_file(service_path, service_conf, True)
@@ -630,27 +628,11 @@ WantedBy=multi-user.target
 
         REGISTRY.register(Collector())
 
-    def _make_pushgateway_logrotate_conf(self):
-        if not os.path.exists(self.PUSHGATEWAY_LOG_LOGROTATE_PATH):
-            content = """/var/lib/zstack/kvm/pushgateway.log {
-    rotate 10
-    missingok
-    copytruncate
-    size 20M
-    compress
-}"""
-            with open(self.PUSHGATEWAY_LOG_LOGROTATE_PATH, 'w') as f:
-                f.write(content)
-                f.flush()
-                os.fsync(f.fileno())
-            os.chmod(self.PUSHGATEWAY_LOG_LOGROTATE_PATH, 0644)
-
     def start(self):
         http_server = kvmagent.get_http_server()
         http_server.register_async_uri(self.COLLECTD_PATH, self.start_prometheus_exporter)
 
         self.install_colletor()
-        self._make_pushgateway_logrotate_conf()
         start_http_server(7069)
 
     def stop(self):
