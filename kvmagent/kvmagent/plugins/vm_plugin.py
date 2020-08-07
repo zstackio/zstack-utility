@@ -6292,7 +6292,7 @@ class VmPlugin(kvmagent.KvmAgent):
                                                     ' "arguments":{"command-line": "drive_del replication%s"}}' % count)
             count += 1
 
-        for count in xrange(0, cmd.nicNumber):
+        for i in xrange(0, cmd.nicNumber):
             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
                                                     '"arguments":{"id":"fm-%s"}}' % i)
             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
