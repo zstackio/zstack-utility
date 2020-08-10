@@ -6451,6 +6451,22 @@ class VmPlugin(kvmagent.KvmAgent):
                 execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "stop"}')
                 execute_qmp_command(cmd.vmInstanceUuid,
                                 '{"execute": "block-job-cancel", "arguments":{ "device": "zs-ft-resync"}}')
+            
+                while True:
+                    time.sleep(1)
+                    r, o, err = execute_qmp_command(cmd.vmInstanceUuid, '{"execute":"query-block-jobs"}')
+                    if err:
+                        rsp.success = False
+                        rsp.error = "Failed to query block jobs, report error"
+                        return jsonobject.dumps(rsp)
+                    
+                    block_jobs = json.loads(o)['return']
+                    job = next((job for job in block_jobs if job['device'] == 'zs-ft-resync'), None)
+                    if job:
+                        continue
+
+                    break
+
             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "human-monitor-command","arguments":'
                                                 ' {"command-line":"drive_add -n buddy'
                                                 ' driver=replication,mode=primary,file.driver=nbd,file.host=%s,'
