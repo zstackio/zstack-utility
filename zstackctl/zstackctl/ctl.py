@@ -430,6 +430,11 @@ def error_if_tool_is_missing(tool):
     if shell_return('which %s' % tool) != 0:
         raise CtlError('cannot find tool "%s", please install it and re-run' % tool)
 
+def check_gunzip_file(path):
+    r, _, e = shell_return_stdout_stderr("gunzip -t " + path)
+    if r != 0:
+        raise CtlError(e)
+
 def expand_path(path):
     if path.startswith('~'):
         return os.path.expanduser(path)
@@ -5212,6 +5217,7 @@ class RestoreMysqlCmd(Command):
         if os.path.exists(db_backup_name) is False:
             error("Didn't find file: %s ! Stop recover database! " % db_backup_name)
         error_if_tool_is_missing('gunzip')
+        check_gunzip_file(db_backup_name)
 
         if not args.skip_check:
             ctl.internal_run('check_restore_mysql', "-f %s --mysql-root-password '%s'" % (db_backup_name, db_password))
