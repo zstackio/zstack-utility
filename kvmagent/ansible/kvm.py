@@ -6,6 +6,7 @@ import os
 import re
 from zstacklib import *
 from distutils.version import LooseVersion
+from uuid import uuid4
 
 # create log
 logger_dir = "/var/log/zstack/"
@@ -85,20 +86,12 @@ if not os.path.isdir(repo_dir):
 
 
 def update_libvritd_config(host_post_info):
-    command = "grep -i ^host_uuid %s" % libvirtd_conf_file
-    status, output = run_remote_command(command, host_post_info, True, True)
-    # name: copy libvirtd conf
+    # name: copy libvirtd conf to keep environment consistent,only update host_uuid
     copy_arg = CopyArg()
     copy_arg.src = "%s/libvirtd.conf" % file_root
     copy_arg.dest =  libvirtd_conf_file
     file_changed_flag = copy(copy_arg, host_post_info)
-    if status is True:
-        replace_content(libvirtd_conf_file, "regexp='#host_uuid.*' replace='%s'" % output, host_post_info)
-    else:
-        command = "uuidgen"
-        status, output = run_remote_command(command, host_post_info, True, True)
-        replace_content(libvirtd_conf_file, "regexp='#host_uuid.*' replace='host_uuid=\"%s\"'" % output , host_post_info)
-
+    replace_content(libvirtd_conf_file, "regexp='#host_uuid.*' replace='host_uuid=\"%s\"'" % uuid4(), host_post_info)
 
     return file_changed_flag
 
