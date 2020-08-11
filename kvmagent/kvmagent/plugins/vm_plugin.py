@@ -1826,14 +1826,6 @@ class Vm(object):
 
             return self.wait_for_state_change(None)
 
-        def kill_vm(_):
-            pid = linux.find_process_by_cmdline(['qemu', self.uuid])
-            if pid:
-                # force to kill the VM
-                os.kill(int(pid), SIGKILL)
-            
-            return self.wait_for_state_change(None)
-
         def loop_destroy(_):
             try:
                 self.domain.destroy()
@@ -1865,9 +1857,14 @@ class Vm(object):
         cleanup_addons()
 
         if strategy == 'force':
-            if not linux.wait_callback_success(kill_vm, None, timeout=60):
-                logger.warn('failed to kill vm, timeout after 60 secs')
-                raise kvmagent.KvmError('failed to stop vm, timeout after 60 secs')
+            pid = linux.find_process_by_cmdline(['qemu', self.uuid])
+            if pid:
+                # force to kill the VM
+                try:
+                    linux.kill_process(int(pid), 60, True, False)
+                except Exception as e:
+                    logger.warn('failed to kill vm, timeout after 60 secs')
+                    raise kvmagent.KvmError('failed to kill vm, timeout after 60 secs')
             return
 
         # undefine domain only if it is persistent
