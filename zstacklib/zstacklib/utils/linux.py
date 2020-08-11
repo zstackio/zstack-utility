@@ -1803,7 +1803,7 @@ class TimeoutObject(object):
         thread.timer(1, clean_timeout_object, stop_on_exception=False).start()
 
 
-def kill_process(pid, timeout=5, is_exception=True):
+def kill_process(pid, timeout=5, is_exception=True, is_graceful=True):
     def kill(sig):
         try:
             logger.debug("kill -%d process[pid %s]" % (sig, pid))
@@ -1823,9 +1823,10 @@ def kill_process(pid, timeout=5, is_exception=True):
         return
 
     logger.debug("killing process[pid: %s, cmdline: %s]" % (pid, get_cmdline()))
-    kill(15)
-    if wait_callback_success(check, None, timeout):
-        return
+    if is_graceful:
+        kill(15)
+        if wait_callback_success(check, None, timeout):
+            return
 
     kill(9)
     if not wait_callback_success(check, None, timeout) and is_exception:
