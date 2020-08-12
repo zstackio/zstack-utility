@@ -152,6 +152,12 @@ class DownloadBitsFromKvmHostRsp(AgentRsp):
         super(DownloadBitsFromKvmHostRsp, self).__init__()
         self.format = None
 
+class ShrinkSnapShotRsp(AgentRsp):
+    def __init__(self):
+        super(ShrinkSnapShotRsp, self).__init__()
+        self.oldSize = None
+        self.size = None
+
 
 def translate_absolute_path_from_install_path(path):
     if path is None:
@@ -286,6 +292,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     CONVERT_VOLUME_PROVISIONING_PATH = "/sharedblock/volume/convertprovisioning"
     CONFIG_FILTER_PATH = "/sharedblock/disks/filter"
     CONVERT_VOLUME_FORMAT_PATH = "/sharedblock/volume/convertformat"
+    SHRINK_SNAPSHOT_PATH = "/sharedblock/snapshot/shrink"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -319,6 +326,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CONFIG_FILTER_PATH, self.config_filter)
         http_server.register_async_uri(self.CONVERT_VOLUME_FORMAT_PATH, self.convert_volume_format)
         http_server.register_async_uri(self.GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH, self.get_download_bits_from_kvmhost_progress)
+        http_server.register_async_uri(self.SHRINK_SNAPSHOT_PATH, self.shrink_snapshot)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -1251,4 +1259,32 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             actualSize = lvm.get_lv_size(install_abs_path)
             totalSize += long(actualSize)
         rsp.totalSize = totalSize
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def shrink_snapshot(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = ShrinkSnapShotRsp()
+
+        size = None
+        old_size = None
+        abs_path = translate_absolute_path_from_install_path(cmd.installPath)
+
+        with lvm.RecursiveOperateLv(abs_path, shared=False):
+            old_size = long(lvm.get_lv_size(abs_path))
+            check_result = qemu_img.get_check_result(abs_path)  # type: qemu_img.CheckResult
+            if check_result.allocated_clusters is None:
+                size = check_result.image_end_offset
+                lvm.resize_lv(abs_path, size, True)
+            else:
+                # if full allocated, do nothing
+                if check_result.allocated_clusters != check_result.total_clusters:
+                    size = check_result.image_end_offset
+                    lvm.resize_lv(abs_path, size, True)
+
+            size = long(lvm.get_lv_size(abs_path))
+
+        rsp.oldSize = old_size
+        rsp.size = size
+        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
