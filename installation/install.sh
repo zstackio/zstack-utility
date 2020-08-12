@@ -3452,6 +3452,18 @@ HISTFILESIZE=5000
 PROMPT_COMMAND='(umask 000; msg=$(history 1 | { read x y; echo $y; }); echo [$(who am i | awk "{print \$(NF-2),\$(NF-1),\$NF}")] [$(whoami)@`pwd`]" $msg" >>/var/log/history.d/history)'
 export HISTTIMEFORMAT HISTSIZE HISTFILESIZE PROMPT_COMMAND
 EOF
+# modify libvirtd.qemu logrotate configuration file.
+cat << 'EOF' > /etc/logrotate.d/libvirtd.qemu
+/var/log/libvirt/qemu/*.log {
+    weekly
+    missingok
+	notifempty
+    rotate 2
+    compress
+    delaycompress
+    copytruncate
+}
+EOF
 }
 
 # make sure local repo files exist
