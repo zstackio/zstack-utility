@@ -309,10 +309,6 @@ class DetachDataVolumeResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(DetachDataVolumeResponse, self).__init__()
 
-class GetLibvirtdHostUuidResponse(kvmagent.AgentResponse):
-    def __init__(self):
-        super(GetLibvirtdHostUuidResponse, self).__init__()
-
 class MigrateVmResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(MigrateVmResponse, self).__init__()
@@ -4425,7 +4421,6 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_VM_SYNC_PATH = "/vm/vmsync"
     KVM_ATTACH_VOLUME = "/vm/attachdatavolume"
     KVM_DETACH_VOLUME = "/vm/detachdatavolume"
-    KVM_GET_LIBVIRTD_HOSTUUID_PATH = "/host/libvirtd/hostuuid"
     KVM_MIGRATE_VM_PATH = "/vm/migrate"
     KVM_BLOCK_LIVE_MIGRATION_PATH = "/vm/blklivemigration"
     KVM_TAKE_VOLUME_SNAPSHOT_PATH = "/vm/volume/takesnapshot"
@@ -5116,26 +5111,6 @@ class VmPlugin(kvmagent.KvmAgent):
                 raise kvmagent.KvmError(
                     'unable to detach volume[%s] to vm[uuid:%s], vm must be running or paused' % (volume.installPath, vm.uuid))
             vm.detach_data_volume(volume)
-        except kvmagent.KvmError as e:
-            logger.warn(linux.get_exception_stacktrace())
-            rsp.error = str(e)
-            rsp.success = False
-
-        return jsonobject.dumps(rsp)
-
-    @kvmagent.replyerror
-    def get_libvirtd_hostuuid(self, req):
-        rsp = GetLibvirtdHostUuidResponse()
-        try:
-            host_uuid = bash.bash_o('virsh capabilities | grep uuid')
-
-            output = re.compile('>(.*)<').findall(host_uuid)
-            if output:
-                rsp.libvirtdHostUuid = output[0]
-            else:
-                rsp.error = "The UUID found by the command is empty"
-                rsp.success = False
-
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
@@ -6723,7 +6698,6 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_DETACH_VOLUME, self.detach_data_volume)
         http_server.register_async_uri(self.KVM_ATTACH_ISO_PATH, self.attach_iso)
         http_server.register_async_uri(self.KVM_DETACH_ISO_PATH, self.detach_iso)
-	http_server.register_async_uri(self.KVM_GET_LIBVIRTD_HOSTUUID_PATH, self.get_libvirtd_hostuuid)
         http_server.register_async_uri(self.KVM_MIGRATE_VM_PATH, self.migrate_vm)
         http_server.register_async_uri(self.KVM_BLOCK_LIVE_MIGRATION_PATH, self.block_migrate_vm)
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_SNAPSHOT_PATH, self.take_volume_snapshot)
