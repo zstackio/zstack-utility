@@ -6543,7 +6543,7 @@ class VmPlugin(kvmagent.KvmAgent):
                                                 % cmd.checkpointDelay)
 
         def colo_qemu_object_cleanup():
-            for i in xrange(cmd.redirectNum):
+            for i in xrange(cmd.nicNumber):
                 execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
                                                         '"arguments":{"id":"fm-%s"}}' % i)
                 execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
