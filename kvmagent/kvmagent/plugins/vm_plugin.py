@@ -7323,7 +7323,7 @@ class VmPlugin(kvmagent.KvmAgent):
                 used_process = linux.linux_lsof(path)
 
             if len(used_process) == 0:
-                mount_path = s.rsplit('/',1)[0]
+                mount_path = path.rsplit('/',1)[0]
                 sblk_volume_path = linux.get_mount_url(mount_path)
                 linux.umount(mount_path)
                 linux.rm_dir_force(mount_path)
