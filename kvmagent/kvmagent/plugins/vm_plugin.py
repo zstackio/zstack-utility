@@ -2520,6 +2520,7 @@ class Vm(object):
                 vs_struct.installPath,
                 get_size(target_disk.source.file_)))
 
+        self.refresh()
         for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
             if disk.target.dev_ not in disk_names:
                 e(disks, 'disk', None, attrib={'name': disk.target.dev_, 'snapshot': 'no'})
@@ -2568,6 +2569,7 @@ class Vm(object):
 
             # QEMU 2.3 default create snapshots on all devices
             # but we only need for one
+            self.refresh()
             for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
                 if disk.target.dev_ != disk_name:
                     e(disks, 'disk', None, attrib={'name': disk.target.dev_, 'snapshot': 'no'})
