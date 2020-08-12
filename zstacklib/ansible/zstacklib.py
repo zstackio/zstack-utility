@@ -1707,19 +1707,17 @@ def do_enable_ntp(trusted_host, host_post_info, distro):
 
 
 def do_deploy_chrony(host_post_info, svrs, distro):
-    if distro in RPM_BASED_OS:
-        yum_install_package("chrony", host_post_info)
-        # ensure config file not locked by user
-        run_remote_command("chattr -i /etc/chrony.conf || true", host_post_info)
-        replace_content("/etc/chrony.conf", "regexp='^server ' replace='#server '", host_post_info)
-        for svr in svrs:
-            update_file("/etc/chrony.conf", "regexp='#server %s' state=absent" % svr, host_post_info)
-            update_file("/etc/chrony.conf", "line='server %s iburst'" % svr, host_post_info)
+    # ensure config file not locked by user
+    run_remote_command("chattr -i /etc/chrony.conf || true", host_post_info)
+    replace_content("/etc/chrony.conf", "regexp='^server ' replace='#server '", host_post_info)
+    for svr in svrs:
+        update_file("/etc/chrony.conf", "regexp='#server %s' state=absent" % svr, host_post_info)
+        update_file("/etc/chrony.conf", "line='server %s iburst'" % svr, host_post_info)
 
-        command = "systemctl disable ntpd || true; systemctl enable chronyd; systemctl restart chronyd || true"
-        host_post_info.post_label = "ansible.shell.enable.chronyd"
-        host_post_info.post_label_param = None
-        run_remote_command(command, host_post_info)
+    command = "systemctl disable ntpd || true; systemctl enable chronyd; systemctl restart chronyd || true"
+    host_post_info.post_label = "ansible.shell.enable.chronyd"
+    host_post_info.post_label_param = None
+    run_remote_command(command, host_post_info)
 
 def enable_chrony(trusted_host, host_post_info, distro):
     if not host_post_info.chrony_servers:
