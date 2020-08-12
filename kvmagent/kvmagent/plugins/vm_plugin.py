@@ -5,6 +5,7 @@ import contextlib
 import os.path
 import tempfile
 import time
+import datetime
 import traceback
 import xml.etree.ElementTree as etree
 import re
@@ -6814,6 +6815,7 @@ class VmPlugin(kvmagent.KvmAgent):
 
         self.clean_old_sshfs_mount_points()
         self.register_libvirt_event()
+        self.register_qemu_log_cleaner()
 
         self.enable_auto_extend = True
         self.auto_extend_size = 1073741824 * 2
@@ -7413,6 +7415,48 @@ class VmPlugin(kvmagent.KvmAgent):
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._extend_sharedblock)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._delete_pushgateway_metric)
         LibvirtAutoReconnect.register_libvirt_callbacks()
+
+    def register_qemu_log_cleaner(self):
+        def pick_uuid_from_filename(filename):
+            pattern = r'^([0-9a-f]{32})\.log'
+            matcher = re.match(pattern, filename)
+            if matcher:
+                return matcher.group(1) # return uuid
+            else:
+                return None
+
+        def qemu_log_cleaner():
+            logger.debug('Clean libvirt log task start')
+            try:
+                log_paths = kvmagent.listPath('/var/log/libvirt/qemu/')
+                all_active_vm_uuids = set(get_all_vm_states())
+
+                # log life : 180 days
+                clean_time = datetime.datetime.now() - datetime.timedelta(days=180)
+
+                for p in log_paths:
+                    filename = os.path.basename(p)
+                    uuid = pick_uuid_from_filename(filename)
+                    if uuid and uuid in all_active_vm_uuids:
+                        # vm exists
+                        continue
+                        
+                    try:
+                        modify_time = datetime.datetime.fromtimestamp(os.stat(p).st_mtime)
+                        if modify_time < clean_time:
+                            linux.rm_file_force(p)
+                    
+                    except Exception as ex_inner:
+                        logger.warn('Failed to clean libvirt log files `%s` because : %s' % (p, str(ex_inner)))
+                    
+            except Exception as ex_outer:
+                logger.warn('Failed to clean libvirt log files because : %s' % str(ex_outer))
+
+            # run cleaner : once a day
+            thread.timer(24 * 3600, qemu_log_cleaner).start()
+        
+        # first time
+        thread.timer(60, qemu_log_cleaner).start()
 
     def clean_old_sshfs_mount_points(self):
         mpts = shell.call("mount -t fuse.sshfs | awk '{print $3}'").splitlines()
