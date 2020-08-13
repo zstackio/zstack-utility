@@ -4260,8 +4260,12 @@ class Vm(object):
 
         vm = Vm()
         vm.uuid = cmd.vmInstanceUuid
-        vm.domain_xml = xml
-        vm.domain_xmlobject = xmlobject.loads(xml)
+        if cmd.addons["userDefinedXml"] is not None:
+            vm.domain_xml = base64.b64decode(cmd.addons["userDefinedXml"])
+            vm.domain_xmlobject = xmlobject.loads(vm.domain_xml)
+        else:
+            vm.domain_xml = xml
+            vm.domain_xmlobject = xmlobject.loads(xml)
         return vm
 
     @staticmethod
