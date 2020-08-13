@@ -384,6 +384,7 @@ LoadPlugin virt
     PluginInstanceFormat name
     BlockDevice "/:hd[a-z]/"
     IgnoreSelected true
+    ExtraStats "vcpu memory"
 </Plugin>
 
 <Plugin network>
