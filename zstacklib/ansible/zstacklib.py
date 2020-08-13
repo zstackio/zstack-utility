@@ -360,10 +360,7 @@ def agent_install(install_arg, host_post_info):
     host_post_info.post_label_param = [install_arg.agent_name]
     handle_ansible_info("INFO: Start to install %s ......" % install_arg.agent_name, host_post_info, "INFO")
     pip_install_arg = PipInstallArg()
-    if install_arg.pkg_name.startswith('zstacklib'):
-        pip_install_arg.extra_args = "\"--upgrade --force-reinstall --trusted-host %s -i %s\"" % (install_arg.trusted_host, install_arg.pip_url)
-    else:
-        pip_install_arg.extra_args = "\"--trusted-host %s -i %s\"" % (install_arg.trusted_host, install_arg.pip_url)
+    pip_install_arg.extra_args = "\"--trusted-host %s -i %s\"" % (install_arg.trusted_host, install_arg.pip_url)
     # upgrade only
     if install_arg.init_install is False:
         host_post_info.post_label = "ansible.upgrade.agent"
