@@ -221,6 +221,9 @@ def stop_server():
         raise Exception(
             "stop zstack failed, return code: %s, stdout: %s, stderr: %s, pgrep zstack return code: %s, stdout: %s" %
             (r, o, e, r1, o1))
+    
+    bash_roe("systemctl stop zstack-ha.service")
+    bash_roe("systemctl disable zstack-ha.service")
 
 
 @in_bash
