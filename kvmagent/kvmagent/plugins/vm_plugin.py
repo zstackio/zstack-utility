@@ -3886,8 +3886,6 @@ class Vm(object):
                 e(devices, 'controller', None, {'type': 'usb', 'index': '3', 'model': 'ehci'})
                 e(devices, 'controller', None, {'type': 'usb', 'index': '4', 'model': 'nec-xhci'})
 
-            # qemu-system-aarch64 is not support chardev 'spicevmc'
-            @linux.with_arch(todo_list=["x86_64", "mips64el"])
             def set_redirdev():
                 chan = e(devices, 'channel', None, {'type': 'spicevmc'})
                 e(chan, 'target', None, {'type': 'virtio', 'name': 'com.redhat.spice.0'})
