@@ -139,11 +139,39 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
         shell.call('ip link set %s up' % device_name)
 
+    def modifySysConfiguration(self, name, old_value, new_value):
+        sysconf_path = "/etc/sysctl.conf"
+        if not os.path.exists(sysconf_path):
+            return False
+        all_lines = linux.read_file_lines(sysconf_path)
+        old_value_str = str(old_value)
+        new_value_str = str(new_value)
+        new_str = name + " = " + new_value_str
+        for line in all_lines:
+            strs = line.strip().split(" = ")
+            if len(strs) == 2 and strs[0] == name:
+                if strs[1] != new_value_str:
+                    line.replace(old_value_str, new_value_str)
+                    all_lines = "".join(all_lines)
+                    if linux.write_file(sysconf_path, all_lines) == None:
+                        return False
+                    return True
+                else:
+                    return True
+        all_lines = "".join(all_lines) + new_str + "\n"
+        if linux.write_file(sysconf_path, all_lines) == None:
+            return False
+        return True
+
     def _configure_bridge(self, disableIptables):
         shell.call('modprobe br_netfilter || true')
+        if disableIptables:
+            self.modifySysConfiguration("net.bridge.bridge-nf-call-iptables", 1, 0)
+        else:
+            self.modifySysConfiguration("net.bridge.bridge-nf-call-iptables", 0, 1)
         linux.write_file('/proc/sys/net/bridge/bridge-nf-call-iptables', '0' if disableIptables else '1')
         linux.write_file('/proc/sys/net/bridge/bridge-nf-filter-vlan-tagged', '1')
-        linux.write_file('proc/sys/net/ipv4/conf/default/forwarding', '1')
+        linux.write_file('/proc/sys/net/ipv4/conf/default/forwarding', '1')
 
     @in_bash
     def _configure_bridge_mtu(self, bridgeName, interf, mtu=None):

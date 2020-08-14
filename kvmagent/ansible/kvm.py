@@ -381,18 +381,10 @@ def install_kvm_pkg():
         copy_arg.dest = '/etc/default/libvirt-bin'
         libvirt_bin_status = copy(copy_arg, host_post_info)
         # name: enable bridge forward on UBUNTU
-        if bridgeDisableIptables == "true":
-            command = "modprobe br_netfilter; echo 0 > /proc/sys/net/bridge/bridge-nf-call-iptables ; " \
-                  "echo 1 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged ; echo 1 > /proc/sys/net/ipv4/conf/default/forwarding"
-            host_post_info.post_label = "ansible.shell.enable.module"
-            host_post_info.post_label_param = "br_netfilter"
-            run_remote_command(command, host_post_info)
-        else:
-            command = "modprobe br_netfilter; echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables ; " \
-                      "echo 1 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged ; echo 1 > /proc/sys/net/ipv4/conf/default/forwarding"
-            host_post_info.post_label = "ansible.shell.enable.module"
-            host_post_info.post_label_param = "br_netfilter"
-            run_remote_command(command, host_post_info)
+        command = "modprobe br_netfilter"
+        host_post_info.post_label = "ansible.shell.enable.module"
+        host_post_info.post_label_param = "br_netfilter"
+        run_remote_command(command, host_post_info)
         update_pkg_list = ['ebtables', 'python-libvirt', 'qemu-system-arm']
         apt_update_packages(update_pkg_list, host_post_info)
         libvirtd_conf_status = update_libvritd_config(host_post_info)
@@ -510,12 +502,12 @@ def do_libvirt_qemu_config():
 def do_network_config():
     # name: enable bridge forward
     if bridgeDisableIptables == "true":
-        command = "echo 0 > /proc/sys/net/bridge/bridge-nf-call-iptables ; echo 1 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged ; echo 1 > /proc/sys/net/ipv4/conf/default/forwarding"
+        command = " [ `sysctl -n net.bridge.bridge-nf-call-iptables` -eq 1 ] && sysctl -w net.bridge.bridge-nf-call-iptables=0 >> /etc/sysctl.conf ; echo 1 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged ; echo 1 > /proc/sys/net/ipv4/conf/default/forwarding"
         host_post_info.post_label = "ansible.shell.enable.service"
         host_post_info.post_label_param = "bridge forward"
         run_remote_command(command, host_post_info)
     else:
-        command = "echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables ; echo 1 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged ; echo 1 > /proc/sys/net/ipv4/conf/default/forwarding"
+        command = " [ `sysctl -n net.bridge.bridge-nf-call-iptables` -eq 0 ] && sysctl -w net.bridge.bridge-nf-call-iptables=1 >> /etc/sysctl.conf ; echo 1 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged ; echo 1 > /proc/sys/net/ipv4/conf/default/forwarding"
         host_post_info.post_label = "ansible.shell.enable.service"
         host_post_info.post_label_param = "bridge forward"
         run_remote_command(command, host_post_info)
