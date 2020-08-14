@@ -9552,7 +9552,7 @@ class MiniResetHostCmd(Command):
             print("Enter root password for localhost to continue...\n")
             password = sys.stdin.readline().rstrip()
         tmpfile = self._write_to_temp_file(str(password))
-        r = shell_return("timeout 5 sshpass -f %s ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no 127.0.0.1 date" % tmpfile)
+        r = shell_return("timeout 5 sshpass -f %s ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null 127.0.0.1 date" % tmpfile)
         os.remove(tmpfile)
         if r != 0:
             error("check root password of localhost failed!")
