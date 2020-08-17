@@ -71,7 +71,8 @@ def get_host_os_type():
     dist, version, _ = platform.dist()
     if dist.lower() in linux.DIST_WITH_RPM_DEB:
         dist = "%s%s" % (dist.lower(), version)
-    return 'debian' if dist.lower() in linux.DEB_BASED_OS else 'redhat'
+    is_debian = any(map(lambda x: x in dist.lower(), linux.DEB_BASED_OS))
+    return 'debian' if is_debian else 'redhat'
 
 def get_qemu_path():
     global _qemu_path, os_arch
