@@ -30,7 +30,7 @@ ansible.constants.HOST_KEY_CHECKING = False
 supported_arch_list = ["x86_64", "aarch64", "mips64el"]
 
 RPM_BASED_OS = ["centos", "redhat", "alibaba", "kylin10"]
-DEB_BASED_OS = ["ubuntu", "uos", "kylin4.0.2", "debian"]
+DEB_BASED_OS = ["ubuntu", "uos", "kylin4.0.2", "debian", "uniontech"]
 DISTRO_WITH_RPM_DEB = ["kylin"]
 
 class AgentInstallArg(object):
