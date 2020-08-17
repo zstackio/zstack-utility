@@ -780,7 +780,7 @@ def is_kylin402():
 
 def is_spiceport_driver_supported():
     # qemu-system-aarch64 not supported char driver: spiceport
-    return True if shell.run("which qemu-system-aarch64") == 1 else shell.run("qemu-system-aarch64 -h | grep 'chardev spiceport'") == 0
+    return shell.run("%s -h | grep 'chardev spiceport'" % kvmagent.get_qemu_path()) == 0
 
 def is_virtual_machine():
     product_name = shell.call("dmidecode -s system-product-name").strip()
@@ -3235,6 +3235,7 @@ class Vm(object):
     def from_StartVmCmd(cmd):
         use_numa = cmd.useNuma
         machine_type = cmd.machineType if cmd.machineType else 'pc'
+        machine_type = 'virt' if HOST_ARCH == "aarch64" else machine_type
         default_bus_type = ('ide', 'sata', 'scsi')[max(machine_type == 'q35', (HOST_ARCH in ['aarch64', 'mips64el']) * 2)]
         elements = {}
 
@@ -3365,8 +3366,10 @@ class Vm(object):
             def on_aarch64():
 
                 def on_redhat():
-                    e(os, 'type', 'hvm', attrib={'arch': 'aarch64'})
-                    e(os, 'loader', '/usr/share/edk2.git/aarch64/QEMU_EFI-pflash.raw', attrib={'readonly': 'yes', 'type': 'pflash'})
+                    e(os, 'type', 'hvm', attrib={'arch': 'aarch64', 'machine': 'virt'})
+                    e(os, 'loader', '/usr/share/edk2/aarch64/QEMU_EFI-pflash.raw', attrib={'readonly': 'yes', 'type': 'pflash'})
+                    e(os, 'nvram', '/var/lib/libvirt/qemu/nvram/%s.fd' % cmd.vmInstanceUuid, attrib={'template': '/usr/share/edk2/aarch64/vars-template-pflash.raw'})
+
                 def on_debian():
                     e(os, 'type', 'hvm', attrib={'arch': 'aarch64', 'machine': 'virt'})
                     e(os, 'loader', '/usr/share/OVMF/QEMU_EFI-pflash.raw', attrib={'readonly': 'yes', 'type': 'rom'})
@@ -3884,8 +3887,6 @@ class Vm(object):
                 e(devices, 'controller', None, {'type': 'usb', 'index': '3', 'model': 'ehci'})
                 e(devices, 'controller', None, {'type': 'usb', 'index': '4', 'model': 'nec-xhci'})
 
-            # qemu-system-aarch64 is not support chardev 'spicevmc'
-            @linux.with_arch(todo_list=["x86_64", "mips64el"])
             def set_redirdev():
                 chan = e(devices, 'channel', None, {'type': 'spicevmc'})
                 e(chan, 'target', None, {'type': 'virtio', 'name': 'com.redhat.spice.0'})
@@ -4131,23 +4132,20 @@ class Vm(object):
             devices = elements['devices']
             e(devices, 'controller', None, {'type': 'scsi', 'model': 'virtio-scsi'})
 
-            if machine_type == "q35":
-                if not HOST_ARCH == 'aarch64':
-                    controller = e(devices, 'controller', None, {'type': 'sata', 'index': '0'})
-                    e(controller, 'alias', None, {'name': 'sata'})
-                    e(controller, 'address', None, {'type': 'pci', 'domain': '0', 'bus': '0', 'slot': '0x1f', 'function': '2'})
+            if machine_type == "q35" or machine_type == "virt":
+                controller = e(devices, 'controller', None, {'type': 'sata', 'index': '0'})
+                e(controller, 'alias', None, {'name': 'sata'})
+                e(controller, 'address', None, {'type': 'pci', 'domain': '0', 'bus': '0', 'slot': '0x1f', 'function': '2'})
 
                 pci_idx_generator = range(cmd.pciePortNums + 3).__iter__()
                 e(devices, 'controller', None, {'type': 'pci', 'model': 'pcie-root', 'index': str(pci_idx_generator.next())})
-                if not HOST_ARCH == 'aarch64':
-                    e(devices, 'controller', None, {'type': 'pci', 'model': 'dmi-to-pci-bridge', 'index': str(pci_idx_generator.next())})
+                e(devices, 'controller', None, {'type': 'pci', 'model': 'dmi-to-pci-bridge', 'index': str(pci_idx_generator.next())})
 
-                    for _ in xrange(cmd.predefinedPciBridgeNum):
-                        e(devices, 'controller', None,
-                          {'type': 'pci', 'model': 'pci-bridge', 'index': str(pci_idx_generator.next())})
+                for _ in xrange(cmd.predefinedPciBridgeNum):
+                    e(devices, 'controller', None, {'type': 'pci', 'model': 'pci-bridge', 'index': str(pci_idx_generator.next())})
 
-                    for i in pci_idx_generator:
-                        e(devices, 'controller', None, {'type': 'pci', 'model': 'pcie-root-port', 'index': str(i)})
+                for i in pci_idx_generator:
+                    e(devices, 'controller', None, {'type': 'pci', 'model': 'pcie-root-port', 'index': str(i)})
             else:
                 if not cmd.predefinedPciBridgeNum:
                     return

@@ -68,9 +68,10 @@ def get_host_yum_release():
     return commands.getoutput("rpm -q zstack-release |awk -F'-' '{print $3}'").strip()
 
 def get_host_os_type():
-    os_info = platform.platform().lower()
-    is_debian = any(map(lambda x: x in os_info, linux.DEB_BASED_OS))
-    return 'debian' if is_debian else 'redhat'
+    dist, version, _ = platform.dist()
+    if dist.lower() in linux.DIST_WITH_RPM_DEB:
+        dist = "%s%s" % (dist.lower(), version)
+    return 'debian' if dist.lower() in linux.DEB_BASED_OS else 'redhat'
 
 def get_qemu_path():
     global _qemu_path, os_arch

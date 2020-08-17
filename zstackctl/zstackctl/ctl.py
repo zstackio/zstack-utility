@@ -2522,13 +2522,13 @@ class InstallDbCmd(Command):
       shell: "yum clean metadata; yum --nogpgcheck install -y mysql mysql-server "
       register: install_result
 
-    - name: install MySQL for RedHat 7 from local
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repo != 'false'
+    - name: install MySQL for RedHat 7/Kylin10 from local
+      when: (ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repo != 'false') or (ansible_os_family == 'Kylin' and ansible_distribution_version == '10' and yum_repo != 'false')
       shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y  mariadb mariadb-server iptables-services
       register: install_result
 
-    - name: install MySQL for RedHat 7 from local
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repo == 'false'
+    - name: install MySQL for RedHat 7/Kylin10 or from local
+      when: (ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repo == 'false') or (ansible_os_family == 'Kylin' and ansible_distribution_version == '10' and yum_repo == 'false')
       shell: yum clean metadata; yum --nogpgcheck install -y  mariadb mariadb-server iptables-services
       register: install_result
 
@@ -2547,17 +2547,17 @@ class InstallDbCmd(Command):
       shell: apt-get -y install --allow-unauthenticated mariadb-server mariadb-client netfilter-persistent
       register: install_result
 
-    - name: install MySQL for Kylin/UOS
-      when: ansible_os_family == 'Kylin' or ansible_os_family == 'Uos' or ansible_os_family == 'Uniontech os server 20 enterprise'
+    - name: install MySQL for Kylin402/UOS
+      when: (ansible_os_family == 'Kylin' and ansible_distribution_version == '4.0.2')  or ansible_os_family == 'Uos'
       shell: apt-get -y install --allow-unauthenticated mariadb-server mariadb-client netfilter-persistent
       register: install_result
 
     - name: open 3306 port
-      when: ansible_os_family == 'RedHat' or ansible_os_family == 'Alibaba'
+      when: ansible_os_family == 'RedHat' or ansible_os_family == 'Alibaba' or (ansible_os_family == 'Kylin' and ansible_distribution_version == '10')
       shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 3306 -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 3306 -j ACCEPT && service iptables save)
 
     - name: open 3306 port
-      when: ansible_os_family != 'RedHat' and ansible_os_family != 'Alibaba'
+      when: ansible_os_family != 'RedHat' and ansible_os_family != 'Alibaba' and (ansible_os_family == 'Kylin' and ansible_distribution_version == '4.0.2')
       shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 3306 -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 3306 -j ACCEPT && /etc/init.d/netfilter-persistent save)
 
     - name: run post-install script
@@ -2567,8 +2567,8 @@ class InstallDbCmd(Command):
       when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7'
       service: name=mysqld state=restarted enabled=yes
 
-    - name: enable MySQL daemon on RedHat 7
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7'
+    - name: enable MySQL daemon on RedHat 7/Kyliin10
+      when: (ansible_os_family == 'RedHat' and ansible_distribution_version >= '7') or (ansible_os_family == 'Kylin' and ansible_distribution_version == '10')
       service: name=mariadb state=restarted enabled=yes
 
     - name: enable MySQL daemon on AliOS 7
@@ -2579,8 +2579,8 @@ class InstallDbCmd(Command):
       when: ansible_os_family == 'Debian'
       service: name=mariadb state=restarted enabled=yes
 
-    - name: enable MySQL on Kylin/UOS
-      when: ansible_os_family == 'Kylin' or ansible_os_family == 'Uos' or ansible_os_family == 'Uniontech os server 20 enterprise'
+    - name: enable MySQL on Kylin402/UOS
+      when: (ansible_os_family == 'Kylin' and ansible_distribution_version == '4.0.2') or ansible_os_family == 'Uos'
       service: name=mariadb state=restarted enabled=yes
 
     - name: change root password
@@ -2599,6 +2599,10 @@ class InstallDbCmd(Command):
     - name: rollback MySQL installation on RedHat 7
       when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and change_root_result.rc != 0 and install_result.changed == True
       shell: rpm -ev mariadb mariadb-server
+      
+    - name: rollback MySQL installation on Kylin10
+      when: ansible_os_family == 'Kylin' and ansible_distribution_version == '10' and change_root_result.rc != 0 and install_result.changed == True
+      shell: rpm -ev mariadb mariadb-server
 
     - name: rollback MySQL installation on AliOS 7
       when: ansible_os_family == 'Alibaba' and ansible_distribution_version >= '7' and change_root_result.rc != 0 and install_result.changed == True
@@ -2611,8 +2615,8 @@ class InstallDbCmd(Command):
         - mariadb-client
         - mariadb-server
 
-    - name: rollback MySql installation on Kylin
-      when: ansible_os_family == 'Kylin' and change_root_result.rc != 0 and install_result.changed == True
+    - name: rollback MySql installation on Kylin402
+      when: ansible_os_family == 'Kylin' and ansible_distribution_version == '4.0.2' and change_root_result.rc != 0 and install_result.changed == True
       apt: pkg={{item}} state=absent update_cache=yes
       with_items:
         - mariadb-client
@@ -2634,7 +2638,7 @@ class InstallDbCmd(Command):
                 if not ip:
                     continue
                 more_cmd += "GRANT ALL PRIVILEGES ON *.* TO 'root'@'%s' IDENTIFIED BY '' WITH GRANT OPTION;"  % ip
-            grant_access_cmd = '''/usr/bin/mysql -u root -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'localhost' IDENTIFIED BY '' WITH GRANT OPTION; GRANT ALL PRIVILEGES ON *.* TO 'root'@'%s' IDENTIFIED BY '' WITH GRANT OPTION; %s FLUSH PRIVILEGES;"''' % (args.host, more_cmd)
+            grant_access_cmd = '''/usr/bin/mysql -u root -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'localhost' IDENTIFIED BY '' WITH GRANT OPTION; GRANT ALL PRIVILEGES ON *.* TO 'root'@'%s' IDENTIFIED BY '' WITH GRANT OPTION; GRANT ALL PRIVILEGES ON *.* TO 'root'@'%s' IDENTIFIED BY '' WITH GRANT OPTION; %s FLUSH PRIVILEGES;"''' % (args.host, args.host.replace(".", "-"), more_cmd)
         else:
             if not args.root_password:
                 args.root_password = args.login_password
@@ -2643,7 +2647,7 @@ class InstallDbCmd(Command):
                 if not ip:
                     continue
                 more_cmd += "GRANT ALL PRIVILEGES ON *.* TO 'root'@'%s' IDENTIFIED BY '%s' WITH GRANT OPTION;"  % (ip, args.root_password)
-            grant_access_cmd = '''/usr/bin/mysql -u root -p%s -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'localhost' IDENTIFIED BY '%s' WITH GRANT OPTION; GRANT ALL PRIVILEGES ON *.* TO 'root'@'%s' IDENTIFIED BY '%s' WITH GRANT OPTION; %s FLUSH PRIVILEGES;"''' % (args.root_password, args.root_password, args.host, args.root_password, more_cmd)
+            grant_access_cmd = '''/usr/bin/mysql -u root -p%s -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'localhost' IDENTIFIED BY '%s' WITH GRANT OPTION; GRANT ALL PRIVILEGES ON *.* TO 'root'@'%s' IDENTIFIED BY '%s' WITH GRANT OPTION; GRANT ALL PRIVILEGES ON *.* TO 'root'@'%s' IDENTIFIED BY '%s' WITH GRANT OPTION; %s FLUSH PRIVILEGES;"''' % (args.root_password, args.root_password, args.host, args.root_password, args.host.replace(".", "-"), args.root_password, more_cmd)
 
         if args.login_password is not None:
             change_root_password_cmd = '/usr/bin/mysqladmin -u root -p{{login_password}} password {{root_password}}'

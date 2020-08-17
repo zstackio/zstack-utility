@@ -230,32 +230,39 @@ run_remote_command("rm -rf {}/*; mkdir -p /usr/local/zstack/ || true".format(kvm
 
 def install_kvm_pkg():
     def rpm_based_install():
+        x86_64_c74 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
+                      usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
+                      net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
+                      smartmontools sshpass usbutils vconfig wget audit dnsmasq \
+                      qemu-kvm-ev collectd-virt OVMF edk2.git-ovmf-x64 mcelog MegaCli python-pyudev"
+
+        x86_64_c76 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
+                      usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
+                      net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
+                      smartmontools sshpass usbutils vconfig wget audit dnsmasq \
+                      qemu-kvm-ev collectd-virt OVMF edk2.git-ovmf-x64 mcelog MegaCli python-pyudev"
+
+        aarch64_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
+                        usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
+                        net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
+                        smartmontools sshpass usbutils vconfig wget audit dnsmasq \
+                        qemu collectd-virt storcli edk2-aarch64 python2-pyudev collectd-disk"
+
         # handle zstack_repo
         if zstack_repo != 'false':
-            qemu_pkg = 'qemu-kvm-ev' if major_version >= 7 else 'qemu-kvm'
-            extra_pkg = 'collectd-virt' if major_version >= 7 else ""
-
+            common_dep_list = eval("%s_%s" % (host_arch, releasever))
             # common kvmagent deps of x86 and arm that need to update
             common_update_list = "sanlock sysfsutils hwdata sg3_utils lvm2 lvm2-libs lvm2-lockd systemd openssh"
             # common kvmagent deps of x86 and arm that no need to update
-            common_dep_list = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
-                            usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof mcelog \
-                            MegaCli net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils python-pyudev pv rsync sed \
-                            smartmontools sshpass usbutils vconfig wget audit dnsmasq %s %s %s" % (qemu_pkg, extra_pkg, common_update_list)
+            common_dep_list = "%s %s" % (common_dep_list, common_update_list)
 
             # zstack mini needs higher version kernel etc.
             C76_KERNEL_OR_HIGHER = '3.10.0-957' in get_remote_host_kernel_version(host_post_info)
             mini_dep_list = " drbd84-utils kmod-drbd84" if C76_KERNEL_OR_HIGHER and not IS_AARCH64 else ""
             common_dep_list += mini_dep_list
 
-            # arch specific deps
-            if IS_AARCH64:
-                dep_list = common_dep_list + " AAVMF edk2.git-aarch64"
-                update_list = common_update_list
-            else:
-                dep_list = common_dep_list + " OVMF edk2.git-ovmf-x64"
-                update_list = common_update_list
-
+            dep_list = common_dep_list
+            update_list = common_update_list
             command = "which virsh"
             host_post_info.post_label = "ansible.shell.install.pkg"
             host_post_info.post_label_param = "libvirt"
