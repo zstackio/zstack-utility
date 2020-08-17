@@ -235,6 +235,7 @@ def stop_kvmagent():
 @in_bash
 def stop_vms():
     bash_roe("pkill -f -9 '/usr/libexec/qemu-kvm -name guest'")
+    bash_roe("pkill -f -9 '/var/lib/zstack/colo/qemu-system-x86_64 -name guest'")
     time.sleep(1)
 
 
