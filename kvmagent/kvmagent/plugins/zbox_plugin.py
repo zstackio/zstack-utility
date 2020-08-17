@@ -75,7 +75,7 @@ class ZBoxInfo(object):
 
 
 def find_usb_devices():
-    devcmd = shell.ShellCmd("find /dev/disk/by-path/ -name '*-usb-*' -lname *sd* | xargs readlink -f")
+    devcmd = shell.ShellCmd("lsblk -p -oTRAN,NAME | grep  -oP '^usb\s*\K.*'")
     devcmd(False)
     return [] if devcmd.return_code != 0 else devcmd.stdout.splitlines()
 
