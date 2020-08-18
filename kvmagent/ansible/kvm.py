@@ -238,7 +238,7 @@ def install_kvm_pkg():
             extra_pkg = 'collectd-virt' if major_version >= 7 else ""
 
             # common kvmagent deps of x86 and arm that need to update
-            common_update_list = "sanlock sysfsutils hwdata sg3_utils lvm2 lvm2-libs lvm2-lockd systemd openssh"
+            common_update_list = "sanlock sysfsutils hwdata sg3_utils lvm2 lvm2-libs lvm2-lockd systemd openssh glusterfs"
             # common kvmagent deps of x86 and arm that no need to update
             common_dep_list = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                             usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof mcelog \
