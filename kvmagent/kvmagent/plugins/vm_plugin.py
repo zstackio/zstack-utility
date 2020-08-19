@@ -851,7 +851,7 @@ def parse_pci_device_address(addr):
     return domain, bus, slot, function
 
 def is_q35_supported():
-    return HOST_ARCH in ['x86_64']
+    return HOST_ARCH in ['x86_64', 'aarch64']
 
 class LibvirtEventManager(object):
     EVENT_DEFINED = "Defined"
