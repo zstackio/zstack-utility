@@ -1959,14 +1959,15 @@ enabled=0" >  /etc/yum.repos.d/zstack-experimental-mn.repo
 
                 # install libselinux-python and other command system libs from user defined repos
                 host_post_info.post_label = "ansible.shell.install.pkg"
-                host_post_info.post_label_param = "libselinux-python,python-devel,python-setuptools,python2-pip,gcc," \
-                                                  "autoconf,chrony,python-backports-ssl_match_hostname,iptables-services"
+                python_pip_pkg = "python2-pip" if distro_version >= 7 else "python-pip"
+                host_post_info.post_label_param = "libselinux-python,python-devel,python-setuptools,gcc," \
+                                                  "autoconf,chrony,python-backports-ssl_match_hostname,iptables-services, %s" % python_pip_pkg
                 if require_python_env == "true":
                     command = (
                               "yum clean --enablerepo=%s metadata &&  pkg_list=`rpm -q libselinux-python python-devel "
-                              "python-setuptools python2-pip gcc autoconf | grep \"not installed\" | awk"
+                              "python-setuptools gcc autoconf %s | grep \"not installed\" | awk"
                               " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
-                              "-y $pkg; done;") % (zstack_repo, zstack_repo)
+                              "-y $pkg; done;") % (zstack_repo, python_pip_pkg, zstack_repo)
                     run_remote_command(command, host_post_info)
                     if distro_version >= 7:
                         # to avoid install some pkgs on virtual router which release is Centos 6.x
