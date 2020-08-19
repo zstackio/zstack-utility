@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 import sys, os
 
-version = '3.9.0'
+version = '3.10.0'
 
 setup(name='kvmagent',
       version=version,
