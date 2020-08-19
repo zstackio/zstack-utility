@@ -33,6 +33,7 @@ from zstacklib.utils.report import Report
 
 host_arch = platform.machine()
 IS_AARCH64 = host_arch == 'aarch64'
+IS_MIPS64EL = host_arch == 'mips64el'
 GRUB_FILES = ["/boot/grub2/grub.cfg", "/boot/grub/grub.cfg", "/etc/grub2-efi.cfg", "/etc/grub-efi.cfg", "/boot/efi/EFI/centos/grub.cfg"]
 IPTABLES_CMD = iptables.get_iptables_cmd()
 
@@ -649,6 +650,17 @@ class HostPlugin(kvmagent.KvmAgent):
             # in case lscpu doesn't show cpu max mhz
             cpuMHz = "2500.0000" if cpuMHz.strip() == '' else cpuMHz
             rsp.cpuGHz = '%.2f' % (float(cpuMHz) / 1000)
+        elif IS_MIPS64EL:
+            rsp.hvmCpuFlag = 'vt'
+            rsp.cpuModelName = self._get_host_cpu_model()
+
+            host_cpu_info = shell.call("grep -m2 -P -o -i '(model name|cpu MHz)\s*:\s*\K.*' /proc/cpuinfo").splitlines()
+            host_cpu_model_name = host_cpu_info[0]
+            rsp.hostCpuModelName = host_cpu_model_name
+
+            transient_cpuGHz = '%.2f' % (float(host_cpu_info[1]) / 1000)
+            static_cpuGHz_re = re.search('[0-9.]*GHz', host_cpu_model_name)
+            rsp.cpuGHz = static_cpuGHz_re.group(0)[:-3] if static_cpuGHz_re else transient_cpuGHz
         else:
             if shell.run('grep vmx /proc/cpuinfo') == 0:
                 rsp.hvmCpuFlag = 'vmx'
