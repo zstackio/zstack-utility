@@ -1708,7 +1708,7 @@ def do_enable_ntp(trusted_host, host_post_info, distro):
 
 def do_deploy_chrony(host_post_info, svrs, distro):
     # ensure config file not locked by user
-    run_remote_command("chattr -i /etc/chrony.conf || true", host_post_info)
+    run_remote_command("[ -f /etc/chrony.conf ] || touch /etc/chrony.conf && true; chattr -i /etc/chrony.conf || true", host_post_info)
     replace_content("/etc/chrony.conf", "regexp='^server ' replace='#server '", host_post_info)
     for svr in svrs:
         update_file("/etc/chrony.conf", "regexp='#server %s' state=absent" % svr, host_post_info)
