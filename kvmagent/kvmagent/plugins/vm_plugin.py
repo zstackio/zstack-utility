@@ -3237,7 +3237,8 @@ class Vm(object):
     def from_StartVmCmd(cmd):
         use_numa = cmd.useNuma
         machine_type = cmd.machineType if cmd.machineType else 'pc'
-        machine_type = 'virt' if HOST_ARCH == "aarch64" else machine_type
+        if HOST_ARCH == "aarch64" and machine_type == 'pc':
+            raise kvmagent.KvmError("Aarch64 does not support legacy, please change boot mode to UEFI instead of Legacy on your VM or Image.")
         default_bus_type = ('ide', 'sata', 'scsi')[max(machine_type == 'q35', (HOST_ARCH in ['aarch64', 'mips64el']) * 2)]
         elements = {}
 
