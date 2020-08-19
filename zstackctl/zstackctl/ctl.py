@@ -5076,13 +5076,13 @@ class DumpMysqlCmd(Command):
                 ui_db_connect_password = ""
             else:
                 ui_db_connect_password = "-p" + ui_db_password
-            command_3 = "mysqldump --databases -u %s %s -P %s %s zstack_ui" % (ui_db_user, ui_db_connect_password, ui_db_port, mysqldump_options)
+            command_3 = "mysqldump --databases -u %s %s -P %s %s -f zstack_ui zstack_mini" % (ui_db_user, ui_db_connect_password, ui_db_port, mysqldump_options)
         else:
             if ui_db_password is None or ui_db_password == "":
                 ui_db_connect_password = ""
             else:
                 ui_db_connect_password = "-p" + ui_db_password
-            command_3 = "mysqldump --databases -u %s %s --host %s -P %s %s zstack_ui" % (ui_db_user, ui_db_connect_password, ui_db_hostname, ui_db_port, mysqldump_options)
+            command_3 = "mysqldump --databases -u %s %s --host %s -P %s %s -f zstack_ui zstack_mini" % (ui_db_user, ui_db_connect_password, ui_db_hostname, ui_db_port, mysqldump_options)
 
         if args.append_sql_file:
             append_sql_command = "echo 'USE `zstack`;\n'; cat %s;" % args.append_sql_file
@@ -5294,12 +5294,18 @@ class RestoreMysqlCmd(Command):
 
         ctl.internal_run('stop_ui')
         info("Restoring UI database ...")
-        command = "mysql -uroot %s -P %s  %s -e 'drop database if exists zstack_ui; create database zstack_ui' >> /dev/null 2>&1" \
-                  % (ui_db_connect_password, db_port, ui_db_hostname)
-        shell_no_pipe(command)
-        command = "gunzip < %s | sed -e '/DROP DATABASE IF EXISTS/d' -e '/CREATE DATABASE .* IF NOT EXISTS/d' |sed 's/DEFINER=`[^\*\/]*`@`[^\*\/]*`/DEFINER=`root`@`%s`/' | mysql -uroot %s %s -P %s --one-database zstack_ui" \
-              % (db_backup_name, ui_db_hostname_origin_cp, ui_db_connect_password, ui_db_hostname, ui_db_port)
-        shell_no_pipe(command)
+
+        ui_db_names = ['zstack_ui']
+        if shell_return('gunzip < %s | grep -q \'USE `zstack_mini`;\'' % db_backup_name) == 0:
+            ui_db_names.append('zstack_mini')
+
+        for database in ui_db_names:
+            command = "mysql -uroot %s -P %s  %s -e 'drop database if exists %s; create database %s' >> /dev/null 2>&1" \
+                      % (ui_db_connect_password, db_port, ui_db_hostname, database, database)
+            shell_no_pipe(command)
+            command = "gunzip < %s | sed -e '/DROP DATABASE IF EXISTS/d' -e '/CREATE DATABASE .* IF NOT EXISTS/d' |sed 's/DEFINER=`[^\*\/]*`@`[^\*\/]*`/DEFINER=`root`@`%s`/' | mysql -uroot %s %s -P %s --one-database %s" \
+                      % (db_backup_name, ui_db_hostname_origin_cp, ui_db_connect_password, ui_db_hostname, ui_db_port, database)
+            shell_no_pipe(command)
 
         info("Successfully restored database. You can start node by running zstack-ctl start.")
 
