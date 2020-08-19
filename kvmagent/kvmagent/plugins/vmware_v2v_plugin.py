@@ -61,6 +61,7 @@ NBDKIT_VERSION_PATH = '/var/lib/zstack/v2v/nbdkit_build_lib/nbdkit_version'
 ADAPTED_VDDK_VERSION_PATH = '/var/lib/zstack/v2v/nbdkit_build_lib/vddk_version'
 WINDOWS_VIRTIO_DRIVE_ISO_VERSION = '/var/lib/zstack/v2v/windows_virtio_version'
 V2V_LIB_PATH = '/var/lib/zstack/v2v/'
+LIBGUESTFS_TEST_LOG_PATH = '/var/lib/zstack/v2v/libguestfs-test.log'
 
 class VMwareV2VPlugin(kvmagent.KvmAgent):
     INIT_PATH = "/vmwarev2v/conversionhost/init"
@@ -131,6 +132,14 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
         cmd.vddkLibUrl = vddkLibUrl.substitute(tmpl)
         cmd.adaptedVddkLibUrl = adaptedVddkLibUrl.substitute(tmpl)
         cmd.nbdkitUrl = nbdkitUrl.substitute(tmpl)
+
+        def check_libguestfs():
+            cmd = "/usr/bin/libguestfs-test-tool > {} 2>&1".format(LIBGUESTFS_TEST_LOG_PATH)
+
+            if shell.run(cmd) != 0:
+                rsp.success = False
+                rsp.error = "libguestfs test failed, log file: %s" % LIBGUESTFS_TEST_LOG_PATH
+                return jsonobject.dumps(rsp)
 
         def check_nbdkit_version(cmd, rsp):
             if os.path.exists(NBDKIT_VERSION_PATH) and os.path.exists(ADAPTED_VDDK_VERSION_PATH):
@@ -236,6 +245,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
                     fd.write(current_version)
 
         check_nbdkit_version(cmd, rsp)
+        check_libguestfs()
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
