@@ -853,6 +853,11 @@ def parse_pci_device_address(addr):
 def is_q35_supported():
     return HOST_ARCH in ['x86_64', 'aarch64']
 
+def get_machineType(machine_type):
+    if HOST_ARCH == "aarch64":
+        return "virt"
+    return machine_type if machine_type else "pc"
+
 class LibvirtEventManager(object):
     EVENT_DEFINED = "Defined"
     EVENT_UNDEFINED = "Undefined"
@@ -3236,8 +3241,8 @@ class Vm(object):
     @staticmethod
     def from_StartVmCmd(cmd):
         use_numa = cmd.useNuma
-        machine_type = cmd.machineType if cmd.machineType else 'pc'
-        if HOST_ARCH == "aarch64" and machine_type == 'pc':
+        machine_type = get_machineType(cmd.machineType)
+        if HOST_ARCH == "aarch64" and cmd.bootMode == 'Legacy':
             raise kvmagent.KvmError("Aarch64 does not support legacy, please change boot mode to UEFI instead of Legacy on your VM or Image.")
         default_bus_type = ('ide', 'sata', 'scsi')[max(machine_type == 'q35', (HOST_ARCH in ['aarch64', 'mips64el']) * 2)]
         elements = {}
