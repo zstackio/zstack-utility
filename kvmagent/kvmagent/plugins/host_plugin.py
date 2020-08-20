@@ -919,13 +919,13 @@ class HostPlugin(kvmagent.KvmAgent):
                 rsp.error = "%s %s" % (e, o)
                 return jsonobject.dumps(rsp)
 
+            info = UsbDeviceInfo()
             for line in o.split('\n'):
                 line = line.strip().split()
                 if len(line) < 2:
                     continue
 
-                if line[0] == 'Bus':
-                    info = UsbDeviceInfo()
+                if line[0] == 'Bus' and len(line) > 3:
                     info.idVendor, info.idProduct = devId.split(':')
                     info.busNum = line[1]
                     info.devNum = line[3].rsplit(':')[0]
@@ -944,12 +944,14 @@ class HostPlugin(kvmagent.KvmAgent):
                     info.iProduct = ' '.join(line[2:])
                 elif line[0] == 'iSerial':
                     info.iSerial = ' '.join(line[2:]) if len(line) > 2 else ""
-                    if info.busNum == '' or info.devNum == '' or info.idVendor == '' or info.idProduct == '':
-                        rsp.success = False
-                        rsp.error = "cannot get enough info of usb device"
-                        return jsonobject.dumps(rsp)
-                    else:
-                        usbDevicesInfo += info.toString()
+
+            if info.busNum == '' or info.devNum == '' or info.idVendor == '' \
+                    or info.idProduct == '' or '(error)' in info.iManufacturer or '(error)' in info.iProduct:
+                rsp.success = False
+                rsp.error = "cannot get enough info of usb device"
+                return jsonobject.dumps(rsp)
+            else:
+                usbDevicesInfo += info.toString()
         rsp.usbDevicesInfo = usbDevicesInfo
         return jsonobject.dumps(rsp)
 
