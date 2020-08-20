@@ -23,6 +23,8 @@ from zstacklib.utils.plugin import completetask
 
 logger = log.get_logger(__name__)
 
+class RetryException(Exception):
+    pass
 
 class AgentRsp(object):
     def __init__(self):
@@ -419,14 +421,29 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
                      % (QOS_IFB, cmd.srcHostIp)
             shell.run(cmdstr)
 
+        max_retry_times = 1
+        retry_counter = [0]
+
+        @linux.retry(times=max_retry_times+1, sleep_time=1)
         def run_convert_if_need():
             def do_run():
                 save_pid()
                 ret = shell.run(echo_pid_cmd)
                 new_task.current_process_return_code = ret
+                retry_if_needed(ret)
                 return ret
 
+            def retry_if_needed(ret):
+                if ret == 0:
+                    return
+
+                if retry_counter[0] != max_retry_times and shell.run("grep -q 'guestfs_launch failed' %s" % log_path) == 0:
+                    retry_counter[0] += 1
+                    raise RetryException(
+                        "launch guestfs failed, rerun v2v longjob %s" % cmd.longJobUuid)
+
             pid = linux.read_file(v2v_pid_path)
+            log_path = "%s/virt_v2v_log" % storage_dir
             if not pid:
                 return do_run()
 
@@ -446,6 +463,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
                 os.remove(passwd_file)
 
             ret = linux.read_file(v2v_cmd_ret_path)
+            retry_if_needed(ret)
             return int(ret.strip() if ret else 126)
 
         if run_convert_if_need() != 0:
