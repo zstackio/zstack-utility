@@ -5057,32 +5057,22 @@ class DumpMysqlCmd(Command):
 
         mysqldump_options = "--single-transaction --quick"
         if db_hostname == "localhost" or db_hostname == "127.0.0.1":
-            if db_password is None or db_password == "":
-                db_connect_password = ""
-            else:
-                db_connect_password = "-p" + db_password
-            command_1 = "mysqldump --databases -u %s %s -P %s %s -d zstack zstack_rest" % (db_user, db_connect_password, db_port, mysqldump_options)
-            command_2 = "mysqldump --databases -u %s %s -P %s %s zstack zstack_rest %s" % (db_user, db_connect_password, db_port, mysqldump_options, mysqldump_skip_tables)
+            command_1 = "mysqldump --databases -u %s --password='%s' -P %s %s -d zstack zstack_rest" \
+                        % (db_user, db_password, db_port, mysqldump_options)
+            command_2 = "mysqldump --databases -u %s --password='%s' -P %s %s zstack zstack_rest %s" \
+                        % (db_user, db_password, db_port, mysqldump_options, mysqldump_skip_tables)
         else:
-            if db_password is None or db_password == "":
-                db_connect_password = ""
-            else:
-                db_connect_password = "-p" + db_password
-            command_1 = "mysqldump --databases -u %s %s --host %s -P %s %s -d zstack zstack_rest" % (db_user, db_connect_password, db_hostname, db_port, mysqldump_options)
-            command_2 = "mysqldump --databases -u %s %s --host %s -P %s %s zstack zstack_rest %s" % (db_user, db_connect_password, db_hostname, db_port, mysqldump_options, mysqldump_skip_tables)
+            command_1 = "mysqldump --databases -u %s --password='%s' --host %s -P %s %s -d zstack zstack_rest" \
+                        % (db_user, db_password, db_hostname, db_port, mysqldump_options)
+            command_2 = "mysqldump --databases -u %s --password='%s' --host %s -P %s %s zstack zstack_rest %s" \
+                        % (db_user, db_password, db_hostname, db_port, mysqldump_options, mysqldump_skip_tables)
 
         if ui_db_hostname == "localhost" or ui_db_hostname == "127.0.0.1":
-            if ui_db_password is None or ui_db_password == "":
-                ui_db_connect_password = ""
-            else:
-                ui_db_connect_password = "-p" + ui_db_password
-            command_3 = "mysqldump --databases -u %s %s -P %s %s -f zstack_ui zstack_mini" % (ui_db_user, ui_db_connect_password, ui_db_port, mysqldump_options)
+            command_3 = "mysqldump --databases -u %s --password='%s' -P %s %s -f zstack_ui zstack_mini" \
+                        % (ui_db_user, ui_db_password, ui_db_port, mysqldump_options)
         else:
-            if ui_db_password is None or ui_db_password == "":
-                ui_db_connect_password = ""
-            else:
-                ui_db_connect_password = "-p" + ui_db_password
-            command_3 = "mysqldump --databases -u %s %s --host %s -P %s %s -f zstack_ui zstack_mini" % (ui_db_user, ui_db_connect_password, ui_db_hostname, ui_db_port, mysqldump_options)
+            command_3 = "mysqldump --databases -u %s --password='%s' --host %s -P %s %s -f zstack_ui zstack_mini" \
+                        % (ui_db_user, ui_db_password, ui_db_hostname, ui_db_port, mysqldump_options)
 
         if args.append_sql_file:
             append_sql_command = "echo 'USE `zstack`;\n'; cat %s;" % args.append_sql_file
@@ -5210,14 +5200,13 @@ class RestoreMysqlCmd(Command):
                             action="store_true",
                             default=False)
 
-    def test_mysql_connection(self, db_connect_password, db_port, db_hostname):
-        command = "mysql -uroot %s -P %s  %s -e 'show databases'  >> /dev/null 2>&1" \
-                      % (db_connect_password, db_port, db_hostname)
+    def test_mysql_connection(self, db_password, db_port, db_hostname):
+        command = "mysql -uroot --password='%s' -P %s  %s -e 'show databases'  >> /dev/null 2>&1" \
+                      % (db_password, db_port, db_hostname)
         try:
             shell_no_pipe(command)
         except:
-            db_connect_password = db_connect_password.split('-p')[1] if db_connect_password.startswith('-p') else db_connect_password
-            error("Failed to connect to jdbc:mysql://%s:%s with root password '%s'" % (db_hostname, db_port, db_connect_password))
+            error("Failed to connect to jdbc:mysql://%s:%s with root password '%s'" % (db_hostname, db_port, db_password))
 
     def run(self, args):
         (db_hostname, db_port, _, _) = ctl.get_live_mysql_portal()
@@ -5242,25 +5231,17 @@ class RestoreMysqlCmd(Command):
         restorer = RestorerFactory.get_restorer(db_hostname_origin_cp, db_password, db_port)
 
         # test mysql connection
-        if db_password is None or db_password == "":
-            db_connect_password = ""
-        else:
-            db_connect_password = "-p" + db_password
         if db_hostname == "localhost" or db_hostname == "127.0.0.1" or restorer.is_local_ip(db_hostname):
             db_hostname = ""
         else:
             db_hostname = "--host %s" % db_hostname
-        self.test_mysql_connection(db_connect_password, db_port, db_hostname)
+        self.test_mysql_connection(db_password, db_port, db_hostname)
 
-        if ui_db_password is None or ui_db_password == "":
-            ui_db_connect_password = ""
-        else:
-            ui_db_connect_password = "-p" + ui_db_password
         if ui_db_hostname == "localhost" or ui_db_hostname == "127.0.0.1" or restorer.is_local_ip(db_hostname):
             ui_db_hostname = ""
         else:
             ui_db_hostname = "--host %s" % ui_db_hostname
-        self.test_mysql_connection(ui_db_connect_password, ui_db_port, ui_db_hostname)
+        self.test_mysql_connection(ui_db_password, ui_db_port, ui_db_hostname)
 
         cmd = create_check_mgmt_node_command()
         cmd(False)
@@ -5272,15 +5253,18 @@ class RestoreMysqlCmd(Command):
 
         info("Restoring database ...")
         for database in ['zstack', 'zstack_rest']:
-            command = "mysql -uroot %s -P %s  %s -e 'drop database if exists %s; create database %s'  >> /dev/null 2>&1" \
-                      % (db_connect_password, db_port, db_hostname, database, database)
+            command = "mysql -uroot --password='%s' -P %s  %s" \
+                      " -e 'drop database if exists %s; create database %s'  >> /dev/null 2>&1" \
+                      % (db_password, db_port, db_hostname, database, database)
             shell_no_pipe(command)
 
             # modify DEFINER of view, trigger and so on
             # from: /* ... */ /*!50017 DEFINER=`old_user`@`old_hostname`*/ /*...
             # to:   /* ... */ /*!50017 DEFINER=`root`@`new_hostname`*/ /*...
-            command = "gunzip < %s | sed -e '/DROP DATABASE IF EXISTS/d' -e '/CREATE DATABASE .* IF NOT EXISTS/d' |sed 's/DEFINER=`[^\*\/]*`@`[^\*\/]*`/DEFINER=`root`@`%s`/' | mysql -uroot %s %s -P %s --one-database %s" \
-                  % (db_backup_name, db_hostname_origin_cp, db_connect_password, db_hostname, db_port, database)
+            command = "gunzip < %s | sed -e '/DROP DATABASE IF EXISTS/d' -e '/CREATE DATABASE .* IF NOT EXISTS/d' " \
+                      "| sed 's/DEFINER=`[^\*\/]*`@`[^\*\/]*`/DEFINER=`root`@`%s`/' " \
+                      "| mysql -uroot --password='%s' %s -P %s --one-database %s" \
+                  % (db_backup_name, db_hostname_origin_cp, db_password, db_hostname, db_port, database)
             shell_no_pipe(command)
 
         restorer.restore_other_node(args)
@@ -5300,11 +5284,14 @@ class RestoreMysqlCmd(Command):
             ui_db_names.append('zstack_mini')
 
         for database in ui_db_names:
-            command = "mysql -uroot %s -P %s  %s -e 'drop database if exists %s; create database %s' >> /dev/null 2>&1" \
-                      % (ui_db_connect_password, db_port, ui_db_hostname, database, database)
+            command = "mysql -uroot --password='%s' -P %s  %s" \
+                      " -e 'drop database if exists %s; create database %s' >> /dev/null 2>&1" \
+                      % (ui_db_password, db_port, ui_db_hostname, database, database)
             shell_no_pipe(command)
-            command = "gunzip < %s | sed -e '/DROP DATABASE IF EXISTS/d' -e '/CREATE DATABASE .* IF NOT EXISTS/d' |sed 's/DEFINER=`[^\*\/]*`@`[^\*\/]*`/DEFINER=`root`@`%s`/' | mysql -uroot %s %s -P %s --one-database %s" \
-                      % (db_backup_name, ui_db_hostname_origin_cp, ui_db_connect_password, ui_db_hostname, ui_db_port, database)
+            command = "gunzip < %s | sed -e '/DROP DATABASE IF EXISTS/d' -e '/CREATE DATABASE .* IF NOT EXISTS/d' " \
+                      "| sed 's/DEFINER=`[^\*\/]*`@`[^\*\/]*`/DEFINER=`root`@`%s`/' " \
+                      "| mysql -uroot --password='%s' %s -P %s --one-database %s" \
+                      % (db_backup_name, ui_db_hostname_origin_cp, ui_db_password, ui_db_hostname, ui_db_port, database)
             shell_no_pipe(command)
 
         info("Successfully restored database. You can start node by running zstack-ctl start.")
@@ -8464,15 +8451,11 @@ class VDIUiStatusCmd(Command):
 def mysql(cmd):
     (db_hostname_origin, db_port, db_user, db_password) = ctl.get_live_mysql_portal()
     db_hostname = db_hostname_origin
-    if db_password is None or db_password == "":
-        db_connect_password = ""
-    else:
-        db_connect_password = "-p" + db_password
     if db_hostname == "localhost" or db_hostname == "127.0.0.1" or (db_hostname in RestoreMysqlCmd.all_local_ip):
         db_hostname = ""
     else:
         db_hostname = "--host %s" % db_hostname
-    command = "mysql -uzstack %s -P %s %s zstack -e \"%s\"" % (db_connect_password, db_port, db_hostname, cmd)
+    command = "mysql -uzstack --password='%s' -P %s %s zstack -e \"%s\"" % (db_password, db_port, db_hostname, cmd)
     r, o, e = shell_return_stdout_stderr(command)
     if r == 0:
         return o.strip()
@@ -8485,7 +8468,7 @@ def mysql(cmd):
         raise CtlError('\n'.join(err))
     else:
         db_hostname = "--host %s" % db_hostname_origin
-        command = "mysql -uzstack %s -P %s %s zstack -e \"%s\"" % (db_connect_password, db_port, db_hostname, cmd)
+        command = "mysql -uzstack --password='%s' -P %s %s zstack -e \"%s\"" % (db_password, db_port, db_hostname, cmd)
         return shell(command).strip()
 
 
