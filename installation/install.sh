@@ -1,4 +1,5 @@
 #!/bin/bash
+
 # Mevoco Installer
 # Usage: bash install.sh
 #DEBUG='y'
@@ -2013,9 +2014,9 @@ iz_install_zstackctl(){
 
 install_zstack_network()
 {
-    if [ "$BASEARCH" == 'aarch64']; then
+    if [ "$BASEARCH" == 'aarch64' ]; then
         zsn_agent='zsn-agent.aarch64.bin'
-    elif [ "$BASEARCH" == 'mips64el']; then
+    elif [ "$BASEARCH" == 'mips64el' ]; then
         zsn_agent='zsn-agent.mips64el.bin'
     else
         zsn_agent='zsn-agent.bin'
@@ -2499,7 +2500,7 @@ cs_setup_http(){
     mkdir $HTTP_FOLDER
     chmod 777 $HTTP_FOLDER
     chmod o+x $ZSTACK_INSTALL_ROOT
-    if [ $REDHAT_WITHOUT_CENTOS6 =~ $OS ]]; then
+    if [[ $REDHAT_WITHOUT_CENTOS6 =~ $OS ]]; then
         chkconfig httpd on >>$ZSTACK_INSTALL_LOG 2>&1
         cat > /etc/httpd/conf.d/zstack-http.conf <<EOF
 Alias /image "$HTTP_FOLDER/"
@@ -2547,7 +2548,7 @@ cs_enable_usb_storage(){
     echo_subtitle "Configure usb storage mod"
     lsmod | grep -q usb_storage
     if [[ $? -ne 0 ]]; then
-        modprobe usb_storage || true
+        modprobe usb_storage 2>/dev/null || true
         echo 'usb_storage' > /etc/modules-load.d/usb-storage.conf || true
     fi
 }
