@@ -5845,7 +5845,11 @@ class VmPlugin(kvmagent.KvmAgent):
         r, o, e = bash.bash_roe("virsh detach-device %s %s" % (cmd.vmUuid, spath))
         os.remove(spath)
         if r:
-            raise RetryException("failed to detach usb device from %s: %s, %s" % cmd.vmUuid, o, e)
+            if "redirdev was not found" in e:
+                logger.debug("cannot find matching redirdev from vm %s domainxml, maybe usb has been detached" % cmd.vmUuid)
+                return
+
+            raise RetryException("failed to detach usb device from %s: %s, %s" % (cmd.vmUuid, o, e))
         else:
             logger.debug("detached usb device %s from %s" % (spath, cmd.vmUuid))
 
@@ -5854,10 +5858,7 @@ class VmPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = ReloadRedirectUsbRsp()
 
-        r, o, e = self._detach_usb(cmd)
-        if r != 0:
-            rsp.success = False
-            rsp.error = "%s %s" % (e, o)
+        self._detach_usb(cmd)
         bus = int(cmd.usbVersion[0]) - 1
         r, o, e = self._attach_usb(cmd, bus)
         if r != 0:
