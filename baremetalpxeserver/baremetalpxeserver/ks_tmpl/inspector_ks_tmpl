@@ -28,8 +28,10 @@ def get_ip_address(mac):
     )[20:24])
 
 # ipmi address
+cmd0 = r'''modprobe ipmi_watchdog; modprobe ipmi_poweroff; modprobe ipmi_devintf; modprobe ipmi_si; modprobe ipmi_msghandler'''
 cmd1 = r'''for i in {1..15}; do ipmitool lan print $i && break; done | grep "IP Address\s*:"'''
 cmd2 = r'''ipmitool sol info 1 2>/dev/null | grep "Payload Port\s*:"'''
+status0, output0 = commands.getstatusoutput(cmd0)
 status1, output1 = commands.getstatusoutput(cmd1)
 status2, output2 = commands.getstatusoutput(cmd2)
 if status1:
