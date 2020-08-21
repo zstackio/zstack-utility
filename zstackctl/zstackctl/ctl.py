@@ -8579,6 +8579,7 @@ deploymentProfiles = {
         'small':  ( 4,  64, 0.6, 15),
         'medium': ( 8, 128, 0.5, 30),
         'large':  (16, 128, 0.4, 60),
+        'default':( 4, 100, 0.6, 15),
 }
 
 class SetDeploymentCmd(Command):
@@ -8589,7 +8590,7 @@ class SetDeploymentCmd(Command):
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--size', '-s', help="instance size, one of 'small', 'medium', 'large'", required=True)
+        parser.add_argument('--size', '-s', help="instance size, one of %s" % deploymentProfiles.keys(), required=True)
 
     def find_opt(self, opts, prefix):
         for opt in opts:
