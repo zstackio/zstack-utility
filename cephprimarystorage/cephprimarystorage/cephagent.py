@@ -311,15 +311,14 @@ class CephAgent(plugin.TaskManager):
         if r == 0 and bool(jstr):
             return jsonobject.loads(jstr).images[0].used_size
 
-        r, size = bash.bash_ro("rbd du %s | awk 'END { print $3 }'" % path)
-
+        r, size = bash.bash_ro("rbd du %s | awk 'END { print $3 }'" % path, pipe_fail=True)
         if r != 0:
             return None
-        
+
+        size = size.strip()
         if not size:
             return None
 
-        size = size.strip('\t\n ')
         return sizeunit.get_size(size)
 
     def _get_file_size(self, path):
