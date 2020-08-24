@@ -184,11 +184,14 @@ class ZBoxPlugin(kvmagent.KvmAgent):
         rsp = TakeVolumesBackupsResponse()
         vm = vm_plugin.get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
 
+        for path in cmd.dstDeviceIdPath.__dict__.values():
+            linux.rm_dir_force(path)
+
         if not cmd.remoteInfo:
-            vm.take_volumes_shallow_backup(cmd, cmd.volumes, cmd.dstDeviceIdPath)
+            vm.take_volumes_shallow_backup(cmd, cmd.volumes, cmd.dstDeviceIdPath.__dict__)
         else:
             with SshfsRemoteStorage(cmd.vmUuid, cmd.remoteInfo):
-                vm.take_volumes_shallow_backup(cmd, cmd.volumes, cmd.dstDeviceIdPath)
+                vm.take_volumes_shallow_backup(cmd, cmd.volumes, cmd.dstDeviceIdPath.__dict__)
 
         return jsonobject.dumps(rsp)
 
