@@ -32,6 +32,7 @@ IMAGE_TAG = "zs::sharedblock::image"
 DEFAULT_VG_METADATA_SIZE = "2g"
 DEFAULT_SANLOCK_LV_SIZE = "1024"
 QMP_SOCKET_PATH = "/var/lib/libvirt/qemu/zstack"
+MAX_ACTUAL_SIZE_FACTOR = 3
 
 
 class AgentRsp(object):
@@ -420,6 +421,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 return
 
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        global MAX_ACTUAL_SIZE_FACTOR
+        MAX_ACTUAL_SIZE_FACTOR = cmd.maxActualSizeFactor
         sblk_lock = lock.NamedLock("sharedblock-%s" % cmd.vgUuid)
         rsp = None
         try:
