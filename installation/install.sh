@@ -1985,9 +1985,9 @@ iz_install_zstackctl(){
 
 install_zstack_network()
 {
-    if [ "$BASEARCH" == 'aarch64']; then
+    if [ "$BASEARCH" == 'aarch64' ]; then
         zsn_agent='zsn-agent.aarch64.bin'
-    elif [ "$BASEARCH" == 'mips64el']; then
+    elif [ "$BASEARCH" == 'mips64el' ]; then
         zsn_agent='zsn-agent.mips64el.bin'
     else
         zsn_agent='zsn-agent.bin'
