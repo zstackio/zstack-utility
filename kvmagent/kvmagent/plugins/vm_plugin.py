@@ -3611,6 +3611,12 @@ class Vm(object):
             #guarantee rootVolume is the first of the set
             volumes = [cmd.rootVolume]
             volumes.extend(cmd.dataVolumes)
+            #When platform=other and default_bus_type=ide, the maximum number of volume is three
+            volume_ide_configs = [
+                VolumeIDEConfig('0', '0'),
+                VolumeIDEConfig('1', '1'),
+                VolumeIDEConfig('1', '0')
+            ]
 
             def quorumbased_volume(_dev_letter, _v):
                 def make_backingstore(volume_path):
@@ -3654,6 +3660,8 @@ class Vm(object):
                 else:
                     dev_format = Vm._get_disk_target_dev_format(default_bus_type)
                     e(disk, 'target', None, {'dev': dev_format % _dev_letter, 'bus': default_bus_type})
+                    if default_bus_type == "ide" and cmd.imagePlatform.lower() == "other":
+                        allocat_ide_config(disk)
                 
                 return disk
 
@@ -3678,6 +3686,8 @@ class Vm(object):
                 else:
                     dev_format = Vm._get_disk_target_dev_format(default_bus_type)
                     e(disk, 'target', None, {'dev': dev_format % _dev_letter, 'bus': default_bus_type})
+                    if default_bus_type == "ide" and cmd.imagePlatform.lower() == "other":
+                        allocat_ide_config(disk)
                 return disk
 
             def iscsibased_volume(_dev_letter, _v):
@@ -3738,7 +3748,10 @@ class Vm(object):
                     if _v.useVirtio:
                         return ceph_virtio()
                     else:
-                        return ceph_blk()
+                        disk = ceph_blk()
+                        if default_bus_type == "ide" and cmd.imagePlatform.lower() == "other":
+                            allocat_ide_config(disk)
+                        return disk
 
                 d = build_ceph_disk()
                 if _v.physicalBlockSize:
@@ -3809,6 +3822,16 @@ class Vm(object):
 
                 drivers[0].set("io", "native")
 
+            def allocat_ide_config(_disk):
+                if len(volume_ide_configs) == 0:
+                    err = "insufficient IDE address."
+                    logger.warn(err)
+                    raise kvmagent.KvmError(err)
+                volume_ide_config = volume_ide_configs.pop(0)
+                e(_disk, 'address', None, {'type': 'drive', 'bus': volume_ide_config.bus, 'unit': volume_ide_config.unit})
+
+            if default_bus_type == "ide" and cmd.imagePlatform.lower() == "other":
+                Vm.DEVICE_LETTERS=Vm.DEVICE_LETTERS.replace('de','')
             volumes.sort(key=lambda d: d.deviceId)
             scsi_device_ids = [v.deviceId for v in volumes if v.useVirtioSCSI]
             for v in volumes:
@@ -7490,6 +7513,10 @@ class EmptyCdromConfig():
         self.bus = bus
         self.unit = unit
 
+class VolumeIDEConfig():
+    def __init__(self, bus, unit):
+        self.bus = bus
+        self.unit = unit
 
 class ColoReplicationConfig():
     def __init__(self, alias_name, replication_id):
