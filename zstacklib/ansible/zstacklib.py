@@ -969,6 +969,10 @@ def run_remote_command(command, host_post_info, return_status=False, return_outp
     result = zstack_runner.run()
     logger.debug(result)
     if result['contacted'] == {}:
+        if 'Broken pipe' in str(result):
+            logger.debug("find broken pipe in ansible result, retry it")
+            raise Exception(result)
+
         ansible_start = AnsibleStartResult()
         ansible_start.host = host
         ansible_start.post_url = post_url

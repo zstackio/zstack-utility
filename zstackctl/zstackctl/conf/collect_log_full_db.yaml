@@ -57,7 +57,8 @@ vrouter:
       - {name: config-boot, dir: /config/, file: 'config.boot*'}
       - {name: zstack-log, dir: /var/log/zstack/, file: }
       - {name: vrouter-log, dir: /home/vyos/zvr/, file: }
-      - {name: zstack-logs, dir: /var/log/zstack/, file: zstack.log*}
+      - {name: iptables-logs, exec: 'iptables-save'}
+      - {name: host-info, exec: 'uptime && last reboot && free && cat /proc/cpuinfo && ip add && ip route && df -h'}
       - {name: haproxy-log, dir: /var/log/, file: 'haproxy.log'}
 ceph-bs:
     description: ceph backstorage

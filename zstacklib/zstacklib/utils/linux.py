@@ -170,7 +170,8 @@ def rm_dir_force(dpath, only_check=False):
         else:
             rm_file_force(dpath)
     else:
-        return dpath
+        rm_cmd = "rm -rf %s" % dpath
+        return rm_cmd
 
 def rm_file_checked(fpath):
     if not os.path.exists(fpath):
