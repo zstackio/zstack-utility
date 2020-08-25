@@ -7357,7 +7357,7 @@ class VmPlugin(kvmagent.KvmAgent):
                 used_process = linux.linux_lsof(path)
 
             if len(used_process) == 0:
-                mount_path = path.rsplit('/',1)[0]
+                mount_path = path.rsplit('/',1)[0].replace("'", '')
                 sblk_volume_path = linux.get_mount_url(mount_path)
                 linux.umount(mount_path)
                 linux.rm_dir_force(mount_path)
@@ -7422,7 +7422,7 @@ class VmPlugin(kvmagent.KvmAgent):
                 for file in out:
                     deactivate_volume(event_str, file, vm_uuid)
 
-            out = bash.bash_o('virsh dumpxml %s | grep -E "active file=|hidden file="' % vm_uuid).strip().splitlines()
+            out = bash.bash_o('virsh dumpxml %s | grep -E "active file=|hidden file=' % vm_uuid).strip().splitlines()
             if len(out) != 0:
                 for cache_config in out:
                     path = cache_config.split('=')[1].rsplit('/', 1)[0]
