@@ -4362,18 +4362,17 @@ class Vm(object):
         if iftype != 'hostdev':
             if nic.driverType:
                 e(interface, 'model', None, attrib={'type': nic.driverType})
+                e(interface, 'rom', None, attrib={'file': ''})
                 driver = e(interface, 'driver', None, attrib={'name': 'qemu'})
                 e(driver, 'host', None, {'gso': 'off'})
             elif nic.useVirtio:
                 e(interface, 'model', None, attrib={'type': 'virtio'})
+                e(interface, 'rom', None, attrib={'file': ''})
                 e(interface, 'driver', None, attrib={'name': 'qemu'})
             else:
                 e(interface, 'model', None, attrib={'type': 'e1000'})
-                e(interface, 'driver', None, attrib={'name': 'qemu'})
-
-            # if not ft related, then nic rom is needed, otherwise vm cannot boot from network
-            if cmd.coloPrimary or cmd.coloSecondary or cmd.useColoBinary:
                 e(interface, 'rom', None, attrib={'file': ''})
+                e(interface, 'driver', None, attrib={'name': 'qemu'})
 
             if nic.driverType == 'virtio' and nic.vHostAddOn.queueNum != 1:
                 e(interface, 'driver ', None, attrib={'name': 'vhost', 'txmode': 'iothread', 'ioeventfd': 'on', 'event_idx': 'off', 'queues': str(nic.vHostAddOn.queueNum), 'rx_queue_size': str(nic.vHostAddOn.rxBufferSize) if nic.vHostAddOn.rxBufferSize is not None else '256', 'tx_queue_size': str(nic.vHostAddOn.txBufferSize) if nic.vHostAddOn.txBufferSize is not None else '256'})
