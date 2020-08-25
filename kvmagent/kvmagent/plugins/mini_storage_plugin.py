@@ -295,6 +295,8 @@ class MiniFileConverter(linux.AbstractFileConverter):
         if drbd_res.exists:
             drbd_res.dd_out(dst)
         else:
+            if not os.path.exists(src):
+                lvm.active_lv(src, shared=True)
             shell.call('dd if=%s of=%s conv=sparse bs=1M' % (src, dst))
 
     def get_size(self, path):
