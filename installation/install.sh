@@ -3007,7 +3007,7 @@ rpm -qa | grep zstack-release >/dev/null 2>&1 || yum --disablerepo=* --enablerep
 
 cd /opt/zstack-dvd
 rm -rf `ls -a|egrep -v "(x86_64|aarch64|mips64el)"`  > /dev/null 2>&1
-cd -
+cd - > /dev/null
 if [ ! -f /opt/zstack-dvd/zstack-image-1.4.qcow2 ];then
     cp -rf /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/zstack-image-1.4.qcow2 /opt/zstack-dvd/
     cp -rf /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/GPL /opt/zstack-dvd/
@@ -3258,7 +3258,7 @@ if [ x"$ZSTACK_OFFLINE_INSTALL" = x'y' ]; then
         ZSTACK_RELEASE=`ls |grep centos-release|awk -F"." '{print $1}'|awk -F"-" '{print "c"$3$4}'| head -1`
         [ x"$ZSTACK_RELEASE" = x"c72" ] && ZSTACK_RELEASE="c74"
         mkdir -p /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE
-        cd -
+        cd - > /dev/null
     else
         check_zstack_release
     fi
