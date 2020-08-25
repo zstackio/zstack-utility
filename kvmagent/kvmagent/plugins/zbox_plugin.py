@@ -200,6 +200,9 @@ class ZBoxPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = InitZBoxBackupResponse()
 
+        if not linux.is_mounted(cmd.mountPath):
+            raise Exception('zbox is not mounted on ' + cmd.mountPath)
+
         if not os.path.exists(cmd.installPath):
             logger.debug("init backup[uuid:%s] on zbox[uuid:%s]" % (cmd.backupUuid, cmd.zboxUuid))
             os.makedirs(cmd.installPath, 0755)
