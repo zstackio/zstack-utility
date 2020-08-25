@@ -952,7 +952,7 @@ def check_host_reachable(host_post_info, warning=False):
 def run_remote_command(command, host_post_info, return_status=False, return_output=False):
     '''return status all the time except return_status is False, return output is set to True'''
     if 'yum' in command:
-        set_yum0 = "rpm -q zstack-release >/dev/null && releasever=`awk '{print $3}' /etc/zstack-release` || releasever=%s;export YUM0=$releasever;" % (get_mn_yum_release())
+        set_yum0 = "rpm -q zstack-release >/dev/null && releasever=`awk '{print $3}' /etc/zstack-release` || releasever=%s;export YUM0=$releasever; grep $releasever /etc/yum/vars/YUM0 || echo $releasever > /etc/yum/vars/YUM0;" % (get_mn_yum_release())
         command = set_yum0 + command
     start_time = datetime.now()
     host_post_info.start_time = start_time
