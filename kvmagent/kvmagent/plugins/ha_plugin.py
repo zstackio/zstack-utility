@@ -8,6 +8,7 @@ from zstacklib.utils import lvm
 from zstacklib.utils import thread
 from zstacklib.utils import qemu_img
 import os.path
+import re
 import time
 import traceback
 import threading
@@ -22,10 +23,16 @@ class AgentRsp(object):
         self.success = True
         self.error = None
 
-class ScanRsp(object):
+class ScanRsp(AgentRsp):
     def __init__(self):
         super(ScanRsp, self).__init__()
         self.result = None
+
+
+class SanlockScanRsp(AgentRsp):
+    def __init__(self):
+        super(ScanRsp, self).__init__()
+        self.result = None  # type: dict[str, bool]
 
 
 class ReportPsStatusCmd(object):
@@ -40,6 +47,66 @@ class ReportSelfFencerCmd(object):
         self.hostUuid = None
         self.psUuids = None
         self.reason = None
+
+
+class SanlockHostStatus(object):
+    def __init__(self, record):
+        lines = record.strip().splitlines()
+        hid, s, ts = lines[0].split()
+        if s != 'timestamp':
+            raise Exception('unexpected sanlock host status: ' + record)
+        self.host_id = int(hid)
+        self.timestamp = int(ts)
+
+        for line in lines[1:]:
+            k, v = line.strip().split('=', 2)
+            if k == 'io_timeout': self.io_timeout = int(v)
+            elif k == 'last_check': self.last_check = int(v)
+            elif k == 'last_live': self.last_live = int(v)
+
+        if not all([self.io_timeout, self.last_check, self.last_live]):
+            raise Exception('unexpected sanlock host status: ' + record)
+
+        def get_timestamp(self):
+            return self.timestamp
+
+        def get_io_timeout(self):
+            return self.io_timeout
+
+        def get_last_check(self):
+            return self.last_check
+
+        def get_last_live(self):
+            return self.last_live
+
+
+class SanlockHostStatusParser(object):
+    def __init__(self, status):
+        self.status = status
+
+    def is_timed_out(self, hostId):
+        r = self.get_record(hostId)
+        if r is None:
+            return None
+
+        return r.get_timestamp() == 0 or r.get_last_check() - r.get_last_live() > 10 * r.get_io_timeout()
+
+    def is_alive(self, hostId):
+        r = self.get_record(hostId)
+        if r is None:
+            return None
+
+        return r.get_timestamp() != 0 and r.get_last_check() - r.get_last_live() < 2 * r.get_io_timeout()
+
+    def get_record(self, hostId):
+        m = re.search(r"^%d\b" % hostId, self.status, re.M)
+        if not m:
+            return None
+
+        substr = self.status[m.end():]
+        m = re.search(r"^\d+\b", substr, re.M)
+        remainder = substr if not m else substr[:m.start()]
+        return SanlockHostStatus(str(hostId) + remainder)
 
 
 last_multipath_run = time.time()
@@ -155,6 +222,7 @@ def need_kill(vm_uuid, storage_paths, is_file_system):
 
 class HaPlugin(kvmagent.KvmAgent):
     SCAN_HOST_PATH = "/ha/scanhost"
+    SANLOCK_SCAN_HOST_PATH = "/sanlock/scanhost"
     SETUP_SELF_FENCER_PATH = "/ha/selffencer/setup"
     CANCEL_SELF_FENCER_PATH = "/ha/selffencer/cancel"
     CEPH_SELF_FENCER = "/ha/ceph/setupselffencer"
@@ -613,9 +681,43 @@ class HaPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
 
+    @kvmagent.replyerror
+    def sanlock_scan_host(self, req):
+        rsp = SanlockScanRsp()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        cstatus = shell.call("timeout 5 sanlock client gets -h 1")
+        logger.info("[SANLOCK] reports client status:\n" + cstatus)
+        myIds = [ int(line.split(':', 3)[1]) for line in filter(lambda x: x.startswith('s'), cstatus.splitlines()) ]
+
+        if len(myIds) == 0:
+            logger.info("[SANLOCK] host id not found")
+            return jsonobject.dumps(rsp)
+
+        hstatus = shell.call("timeout 5 sanlock client host_status -D")
+        parser = SanlockHostStatusParser(hstatus)
+
+        is_alive = False
+        for hostId in myIds:
+            is_alive = parser.is_alive(hostId)
+            if is_alive: break
+
+        if not is_alive:
+            logger.info("[SANLOCK] current node has no LIVE records")
+            return jsonobject.dumps(rsp)
+
+        result = {}
+        for hostId in cmd.hostIds:
+            timed_out = parser.is_timed_out(hostId)
+            if timed_out is not None:
+                result[hostId] = timed_out
+
+        rsp.result = result
+        return jsonobject.dumps(rsp)
+
     def start(self):
         http_server = kvmagent.get_http_server()
         http_server.register_async_uri(self.SCAN_HOST_PATH, self.scan_host)
+        http_server.register_async_uri(self.SANLOCK_SCAN_HOST_PATH, self.sanlock_scan_host)
         http_server.register_async_uri(self.SETUP_SELF_FENCER_PATH, self.setup_self_fencer)
         http_server.register_async_uri(self.CEPH_SELF_FENCER, self.setup_ceph_self_fencer)
         http_server.register_async_uri(self.CANCEL_SELF_FENCER_PATH, self.cancel_filesystem_self_fencer)
