@@ -26,6 +26,8 @@ chrony_servers = None
 post_url = ""
 pkg_kvmagent = ""
 libvirtd_status = ""
+libvirtd_conf_status = ""
+qemu_conf_status = ""
 virtualenv_version = "12.1.1"
 remote_user = "root"
 remote_pass = None
@@ -684,16 +686,9 @@ def do_auditd_config():
 def start_kvmagent():
     if chroot_env != 'false':
         return
-
-    if distro in RPM_BASED_OS:
-        if libvirtd_status != "changed:False" or libvirtd_conf_status != "changed:False" \
-                or qemu_conf_status != "changed:False":
-            # name: restart redhat libvirtd
-            service_status("libvirtd", "state=restarted enabled=yes", host_post_info)
-    # elif distro in DEB_BASED_OS:
-    #     if libvirt_bin_status != "changed:False" or libvirtd_conf_status != "changed:False" or qemu_conf_status != "changed:False":
-    #         # name: restart debian libvirtd
-    #         service_status("libvirt-bin", "state=restarted enabled=yes", host_post_info)
+    if any(status != "changed:False" for status in [libvirtd_status, libvirtd_conf_status, qemu_conf_status]):
+        # name: restart libvirtd if status is stop or cfg changed
+        service_status("libvirtd", "state=restarted enabled=yes", host_post_info)
     # name: restart kvmagent, do not use ansible systemctl due to kvmagent can start by itself, so systemctl will not know
     # the kvm agent status when we want to restart it to use the latest kvm agent code
     if distro in RPM_BASED_OS and major_version >= 7:
