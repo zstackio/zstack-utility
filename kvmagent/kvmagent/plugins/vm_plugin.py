@@ -807,8 +807,13 @@ def compare_version(version1, version2):
 LIBVIRT_VERSION = linux.get_libvirt_version()
 LIBVIRT_MAJOR_VERSION = LIBVIRT_VERSION.split('.')[0]
 
+QEMU_VERSION = linux.get_qemu_version()
+
 def is_namespace_used():
     return compare_version(LIBVIRT_VERSION, '1.3.3') >= 0
+
+def is_hv_freq_supported():
+    return compare_version(QEMU_VERSION, '2.12.0') >= 0
 
 @linux.with_arch(todo_list=['x86_64'])
 def is_ioapic_supported():
@@ -3396,7 +3401,7 @@ class Vm(object):
                 hyperv = e(features, "hyperv")
                 e(hyperv, 'relaxed', attrib={'state': 'on'})
                 e(hyperv, 'vapic', attrib={'state': 'on'})
-                e(hyperv, 'frequencies', attrib={'state': 'on'})
+                if is_hv_freq_supported(): e(hyperv, 'frequencies', attrib={'state': 'on'})
                 e(hyperv, 'spinlocks', attrib={'state': 'on', 'retries': '4096'})
                 e(hyperv, 'vendor_id', attrib={'state': 'on', 'value': 'ZStack_Org'})
             # always set ioapic driver to kvm after libvirt 3.4.0
