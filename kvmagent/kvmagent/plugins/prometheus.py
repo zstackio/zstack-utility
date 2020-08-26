@@ -114,10 +114,6 @@ def collect_lvm_capacity_statistics():
                                       'volume group and thin pool free size', None, ['vg_name']),
     }
 
-    r = bash_r("grep '^[[:space:]]*use_lvmlockd=1' /etc/lvm/lvm.conf")
-    if r == 0:
-        return metrics.values()
-
     r = bash_r("grep -Ev '^[[:space:]]*#|^[[:space:]]*$' /etc/multipath/wwids")
     if r == 0:
         linux.set_fail_if_no_path()
