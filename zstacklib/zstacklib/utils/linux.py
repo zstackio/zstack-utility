@@ -1673,6 +1673,9 @@ def delete_vip_by_ip(vip):
         raise LinuxError('cannot find nic having ip[%s]' % vip)
     shell.call('ifconfig %s down' % nic_name)
 
+def listPath(path):
+    return [ os.path.realpath(p) for p in os.listdir(path) ]
+
 def find_file(file_name, current_path, parent_path_depth=2, sub_folder_first=False):
     ''' find_file will return a file path, when finding a file in given path.
         The default search parent path depth is 2. It means loader will only

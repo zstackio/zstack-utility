@@ -7460,7 +7460,7 @@ class VmPlugin(kvmagent.KvmAgent):
         def qemu_log_cleaner():
             logger.debug('Clean libvirt log task start')
             try:
-                log_paths = kvmagent.listPath('/var/log/libvirt/qemu/')
+                log_paths = linux.listPath('/var/log/libvirt/qemu/')
                 all_active_vm_uuids = set(get_all_vm_states())
 
                 # log life : 180 days
