@@ -6018,11 +6018,7 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.error = "failed to nodedev-detach %s: %s, %s" % (addr, o, e)
         return jsonobject.dumps(rsp)
 
-    def _get_next_usb_port(self, vmUuid, bus):
-        conn = libvirt.open('qemu:///system')
-        if not conn:
-            raise Exception('unable to get libvirt connection')
-        dom = conn.lookupByName(vmUuid)
+    def _get_next_usb_port(self, dom, bus):
         domain_xml = dom.XMLDesc(0)
         domain_xmlobject = xmlobject.loads(domain_xml)
         # if arm uhci, port 0, 1, 2 are hard-coded reserved
@@ -6044,7 +6040,6 @@ class VmPlugin(kvmagent.KvmAgent):
                 for address in redirdev.get_child_node_as_list('address'):
                     if address.type_ == 'usb' and address.bus_ == str(bus):
                         usb_ports.append(int(address.port_))
-        conn.close()
 
         # get the first unused port number
         for i in range(len(usb_ports) + 1):
@@ -6056,13 +6051,73 @@ class VmPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = KvmAttachUsbDeviceRsp()
         bus = int(cmd.usbVersion[0]) - 1
-        r, o, e = self._attach_usb(cmd, bus)
-        if r != 0:
+        r, ex = self._attach_usb_by_libvirt(cmd, bus)
+        if not r:
             rsp.success = False
-            rsp.error = "%s %s" % (e, o)
+            rsp.error = ex
         return jsonobject.dumps(rsp)
 
+    @linux.retry(times=5, sleep_time=2)
+    def _detach_usb_by_libvirt(self, cmd):
+        vm = get_vm_by_uuid(cmd.vmUuid)
+
+        root = None
+        if cmd.attachType == "PassThrough":
+            root = etree.Element('hostdev', {'mode': 'subsystem', 'type': 'usb', 'managed': 'yes'})
+            d = e(root, 'source')
+            e(d, 'vendor', None, {'id': '0x%s' % cmd.idVendor})
+            e(d, 'product', None, {'id': '0x%s' % cmd.idProduct})
+            e(d, 'address', None, {'bus': str(cmd.busNum), 'device': str(cmd.devNum)})
+
+        if cmd.attachType == "Redirect":
+            root = etree.Element('redirdev', {'bus': 'usb', 'type': 'tcp'})
+            e(root, 'source', None, {'mode': 'connect', 'host': cmd.ip, 'service': str(cmd.port)})
+
+        xml = etree.tostring(root)
+        logger.info(xml)
+        try:
+            vm.domain.detachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
+        except libvirt.libvirtError as ex:
+            logger.warn('detach usb device to domain[%s] failed: %s' % (cmd.vmUuid, str(ex)))
+            if "redirdev was not found" in e:
+                logger.debug(
+                    "cannot find matching redirdev from vm %s domainxml, maybe usb has been detached" % cmd.vmUuid)
+                return True
+
+            raise RetryException("failed to detach usb device from %s: %s" % (cmd.vmUuid, str(ex)))
+
+        logger.debug("detached usb device from %s successfully" % cmd.vmUuid)
+
+    def _attach_usb_by_libvirt(self, cmd, bus):
+        vm = get_vm_by_uuid(cmd.vmUuid)
+
+        root = None
+        if cmd.attachType == "PassThrough":
+            root = etree.Element('hostdev', {'mode': 'subsystem', 'type': 'usb', 'managed': 'yes'})
+            d = e(root, 'source')
+            e(d, 'vendor', None, {'id': '0x%s' % cmd.idVendor})
+            e(d, 'product', None, {'id': '0x%s' % cmd.idProduct})
+            e(d, 'address', None, {'bus': str(cmd.busNum), 'device': str(cmd.devNum)})
+            e(root, 'address', None, {'type': 'usb', 'bus': str(bus), 'port': str(self._get_next_usb_port(vm.domain, bus))})
+
+        if cmd.attachType == "Redirect":
+            root = etree.Element('redirdev', {'bus': 'usb', 'type': 'tcp'})
+            e(root, 'source', None, {'mode': 'connect', 'host': cmd.ip, 'service': str(cmd.port)})
+            e(root, 'address', None, {'type': 'usb', 'bus': str(bus), 'port': str(self._get_next_usb_port(vm.domain, bus))})
+
+        xml = etree.tostring(root)
+        logger.info(xml)
+        try:
+            vm.domain.attachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
+        except libvirt.libvirtError as ex:
+            logger.warn('attach usb device to domain[%s] failed: %s' % (cmd.vmUuid, str(ex)))
+            return False, str(ex)
+
+        return True, None
+
+    # deprecated
     def _attach_usb(self, cmd, bus):
+        vm = get_vm_by_uuid(cmd.vmUuid)
         content = ''
         if cmd.attachType == "PassThrough":
             content = '''
@@ -6073,13 +6128,13 @@ class VmPlugin(kvmagent.KvmAgent):
         <address bus='%s' device='%s'/>
       </source>
       <address type='usb' bus='%s' port='%s' />
-    </hostdev>''' % (cmd.idVendor, cmd.idProduct, int(cmd.busNum), int(cmd.devNum), bus, self._get_next_usb_port(cmd.vmUuid, bus))
+    </hostdev>''' % (cmd.idVendor, cmd.idProduct, int(cmd.busNum), int(cmd.devNum), bus, self._get_next_usb_port(vm.domain, bus))
         if cmd.attachType == "Redirect":
             content = '''
     <redirdev bus='usb' type='tcp'>
       <source mode='connect' host='%s' service='%s'/>
       <address type='usb' bus='%s' port='%s'/>
-    </redirdev>''' % (cmd.ip, int(cmd.port), bus, self._get_next_usb_port(cmd.vmUuid, bus))
+    </redirdev>''' % (cmd.ip, int(cmd.port), bus, self._get_next_usb_port(vm.domain, bus))
         spath = linux.write_to_temp_file(content)
         r, o, e = bash.bash_roe("virsh attach-device %s %s" % (cmd.vmUuid, spath))
         os.remove(spath)
@@ -6092,12 +6147,13 @@ class VmPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = KvmDetachUsbDeviceRsp()
         try:
-            self._detach_usb(cmd)
+            self._detach_usb_by_libvirt(cmd)
         except Exception as e:
             rsp.success = False
             rsp.error = str(e)
         return jsonobject.dumps(rsp)
 
+    # deprecated
     @linux.retry(times=5, sleep_time=2)
     def _detach_usb(self, cmd):
         content = ''
@@ -6132,12 +6188,12 @@ class VmPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = ReloadRedirectUsbRsp()
 
-        self._detach_usb(cmd)
+        self._detach_usb_by_libvirt(cmd)
         bus = int(cmd.usbVersion[0]) - 1
-        r, o, e = self._attach_usb(cmd, bus)
-        if r != 0:
+        r, ex = self._attach_usb_by_libvirt(cmd, bus)
+        if not r:
             rsp.success = False
-            rsp.error = "%s %s" % (e, o)
+            rsp.error = ex
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
