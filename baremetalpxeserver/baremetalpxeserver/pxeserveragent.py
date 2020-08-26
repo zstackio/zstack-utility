@@ -552,8 +552,19 @@ systemctl start zwatch-vm-agent.service
 # baby agent
 cat > /usr/local/bin/zstack_bm_agent.sh << EOF
 #!/bin/bash
-iptables-save | grep -- "-I INPUT -p tcp -m tcp --dport 4200 -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 4200 -j ACCEPT && service iptables save)
-firewall-cmd --query-port=4200/tcp || (firewall-cmd --zone=public --add-port=4200/tcp --permanent && service firewalld restart)
+
+iptables -C INPUT -p tcp -m tcp --dport 4200 -j ACCEPT
+if [ \$? -ne 0 ]; then
+    iptables -I INPUT -p tcp -m tcp --dport 4200 -j ACCEPT || true
+    service iptables save || true
+fi
+
+firewall-cmd --query-port=4200/tcp
+if [ \$? -ne 0 ]; then
+    firewall-cmd --zone=public --add-port=4200/tcp --permanent || true
+    systemctl is-enabled firewalld.service && systemctl restart firewalld.service || true
+fi
+
 ps -ef | grep [s]hellinahoxd || shellinaboxd -b -t -s /:SSH:127.0.0.1
 
 echo "\nnotify zstack that bm instance is running:" >> $bm_log
@@ -572,11 +583,11 @@ EOF
 cat > /etc/systemd/system/zstack-bm-agent.service << EOF
 [Unit]
 Description=ZStack Baremetal Instance Agent
-After=network-online.target
-Wants=network-online.target
+After=network-online.target NetworkManager.service iptables.service firewalld.service
 
 [Service]
-Type=oneshot
+Restart=on-failure
+RestartSec=10
 RemainAfterExit=yes
 ExecStart=/bin/bash /usr/local/bin/zstack_bm_agent.sh
 
