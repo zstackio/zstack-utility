@@ -803,15 +803,17 @@ def compare_version(version1, version2):
         return [int(x) for x in re.sub(r'(\.0+)*$','', v).split(".")]
     return cmp(normalize(version1), normalize(version2))
 
-def get_libvirt_version():
-    ret = shell.call('libvirtd --version')
-    return ret.split()[-1]
 
-LIBVIRT_VERSION = get_libvirt_version()
+LIBVIRT_VERSION = linux.get_libvirt_version()
 LIBVIRT_MAJOR_VERSION = LIBVIRT_VERSION.split('.')[0]
+
+QEMU_VERSION = linux.get_qemu_version()
 
 def is_namespace_used():
     return compare_version(LIBVIRT_VERSION, '1.3.3') >= 0
+
+def is_hv_freq_supported():
+    return compare_version(QEMU_VERSION, '2.12.0') >= 0
 
 @linux.with_arch(todo_list=['x86_64'])
 def is_ioapic_supported():
@@ -3399,7 +3401,7 @@ class Vm(object):
                 hyperv = e(features, "hyperv")
                 e(hyperv, 'relaxed', attrib={'state': 'on'})
                 e(hyperv, 'vapic', attrib={'state': 'on'})
-                e(hyperv, 'frequencies', attrib={'state': 'on'})
+                if is_hv_freq_supported(): e(hyperv, 'frequencies', attrib={'state': 'on'})
                 e(hyperv, 'spinlocks', attrib={'state': 'on', 'retries': '4096'})
                 e(hyperv, 'vendor_id', attrib={'state': 'on', 'value': 'ZStack_Org'})
             # always set ioapic driver to kvm after libvirt 3.4.0
@@ -7460,7 +7462,7 @@ class VmPlugin(kvmagent.KvmAgent):
         def qemu_log_cleaner():
             logger.debug('Clean libvirt log task start')
             try:
-                log_paths = kvmagent.listPath('/var/log/libvirt/qemu/')
+                log_paths = linux.listPath('/var/log/libvirt/qemu/')
                 all_active_vm_uuids = set(get_all_vm_states())
 
                 # log life : 180 days

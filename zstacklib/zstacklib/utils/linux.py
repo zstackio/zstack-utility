@@ -1673,6 +1673,9 @@ def delete_vip_by_ip(vip):
         raise LinuxError('cannot find nic having ip[%s]' % vip)
     shell.call('ifconfig %s down' % nic_name)
 
+def listPath(path):
+    return [ os.path.realpath(p) for p in os.listdir(path) ]
+
 def find_file(file_name, current_path, parent_path_depth=2, sub_folder_first=False):
     ''' find_file will return a file path, when finding a file in given path.
         The default search parent path depth is 2. It means loader will only
@@ -1998,6 +2001,15 @@ class ShowLibvirtErrorOnException(object):
                 logger.info(shell.call('virsh domjobinfo %s' % self.vmUuid))
             except:
                 pass
+
+
+def get_libvirt_version():
+    return shell.call("libvirtd --version").split()[-1]
+
+
+def get_qemu_version():
+    return shell.call("virsh version | awk '/hypervisor.*QEMU/{print $4}'", pipe_fail=True).strip()
+
 
 def get_unmanaged_vms(include_not_zstack_but_in_virsh = False):
     libvirt_uuid_pattern = "'[0-9a-z]{8}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{12}'"
