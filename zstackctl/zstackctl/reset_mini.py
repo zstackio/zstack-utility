@@ -7,7 +7,8 @@ import re
 import subprocess
 import sys
 import time
-
+import os
+import shutil
 from jinja2 import Template
 
 
@@ -133,6 +134,41 @@ def bash_o(cmd, pipe_fail=False):
 def bash_r(cmd, pipe_fail=False):
     ret, _, _ = bash_roe(cmd, pipe_fail=pipe_fail)
     return ret
+
+
+def rm_file_force(fpath):
+    try:
+        os.remove(fpath)
+    except:
+        pass
+
+
+def rm_dir_force(dpath, only_check=False):
+    black_dpath_list = ["", "/", "*", "/root", "/var", "/bin", "/lib", "/sys"]
+    if dpath.strip() in black_dpath_list:
+        raise Exception("how dare you delete directory %s" % dpath)
+    if os.path.exists(dpath) and not only_check:
+        if os.path.isdir(dpath):
+            shutil.rmtree(dpath)
+        else:
+            rm_file_force(dpath)
+    else:
+        return dpath
+
+
+def umount_by_path(path):
+    paths = get_mounted_url_by_dir(path)
+    if not paths: return
+    for p in paths:
+        bash_r('umount -f -l %s' % p)
+
+
+def get_mounted_url_by_dir(path):
+    r, o = bash_ro("mount | grep '%s'" % path)
+    if r:
+        return []
+    else:
+        return [l.split(' ')[2] for l in o.splitlines()]
 
 
 def get_disk_holders(disk_names):
@@ -266,6 +302,9 @@ def cleanup_storage():
             kill_drbd_holder(m)
         bash_roe("drbdadm down all")
     bash_r("/bin/rm /etc/drbd.d/*.res")
+    mini_cache_volume_mount_dir = "/var/lib/zstack/colo/cachevolumes/"
+    umount_by_path(mini_cache_volume_mount_dir)
+    rm_dir_force(mini_cache_volume_mount_dir)
     wipe_fs(get_mini_pv())
 
 
