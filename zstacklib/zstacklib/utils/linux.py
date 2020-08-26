@@ -2002,6 +2002,15 @@ class ShowLibvirtErrorOnException(object):
             except:
                 pass
 
+
+def get_libvirt_version():
+    return shell.call("libvirtd --version").split()[-1]
+
+
+def get_qemu_version():
+    return shell.call("virsh version | awk '/hypervisor.*QEMU/{print $4}'", pipe_fail=True).strip()
+
+
 def get_unmanaged_vms(include_not_zstack_but_in_virsh = False):
     libvirt_uuid_pattern = "'[0-9a-z]{8}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{12}'"
     cmd = shell.ShellCmd("pgrep -a qemu-kvm | grep -E -o '\-uuid %s' | awk '{print $2}'" % libvirt_uuid_pattern)

@@ -803,11 +803,8 @@ def compare_version(version1, version2):
         return [int(x) for x in re.sub(r'(\.0+)*$','', v).split(".")]
     return cmp(normalize(version1), normalize(version2))
 
-def get_libvirt_version():
-    ret = shell.call('libvirtd --version')
-    return ret.split()[-1]
 
-LIBVIRT_VERSION = get_libvirt_version()
+LIBVIRT_VERSION = linux.get_libvirt_version()
 LIBVIRT_MAJOR_VERSION = LIBVIRT_VERSION.split('.')[0]
 
 def is_namespace_used():

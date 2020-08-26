@@ -14,8 +14,6 @@ import time
 import uuid
 import string
 
-import libvirt
-
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
 from kvmagent.plugins.imagestore import ImageStoreClient
@@ -564,19 +562,6 @@ class HostPlugin(kvmagent.KvmAgent):
 
         if shell.run("which nvidia-smi") == 0:
             self.NVIDIA_SMI_INSTALLED = True
-
-    def _get_libvirt_version(self):
-        ret = shell.call('libvirtd --version')
-        return ret.split()[-1]
-
-    def _get_qemu_version(self):
-        # to be compatible with both `2.6.0` and `2.9.0(qemu-kvm-ev-2.9.0-16.el7_4.8.1)`
-        ret = shell.call('%s -version' % kvmagent.get_qemu_path())
-        words = ret.split()
-        for w in words:
-            if w == 'version':
-                return words[words.index(w)+1].strip().split('(')[0].replace(',' ,'')
-        raise kvmagent.KvmError('cannot get qemu version[%s]' % ret)
 
     def get_clean_rule(self, item):
         rule = item.strip()
@@ -2022,8 +2007,8 @@ done
         http_server.register_async_uri(self.DEPLOY_COLO_QEMU_PATH, self.deploy_colo_qemu)
 
         self.heartbeat_timer = {}
-        self.libvirt_version = self._get_libvirt_version()
-        self.qemu_version = self._get_qemu_version()
+        self.libvirt_version = linux.get_libvirt_version()
+        self.qemu_version = linux.get_qemu_version()
         filepath = r'/etc/libvirt/qemu/networks/autostart/default.xml'
         if os.path.exists(filepath):
             os.unlink(filepath)
