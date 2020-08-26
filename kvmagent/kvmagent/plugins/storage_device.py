@@ -508,7 +508,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @bash.in_bash
-    def get_bus_number():
+    def get_bus_number(self):
         r, megaraid_info, e = bash.bash_roe("smartctl --scan | grep 'megaraid_disk_00\], SCSI device'")
         if r != 0:
             raise Exception("failed to get bus info")
