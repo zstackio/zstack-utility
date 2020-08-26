@@ -500,7 +500,10 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                             (bus_number, cmd.deviceNumber, cmd.slotNumber, cmd.wwn, drive.wwn))
 
         command = "start" if cmd.locate is True else "stop"
-        bash.bash_errorout("/opt/MegaRAID/MegaCli/MegaCli64 -PdLocate -%s -physdrv[%d:%d] -a%d" % (command, cmd.enclosureDeviceID, cmd.slotNumber, bus_number))
+        
+        # -a specific a adaptor id but not bus number
+        # TODO: fix hardcode because mini only have one adaptor
+        bash.bash_errorout("/opt/MegaRAID/MegaCli/MegaCli64 -PdLocate -%s -physdrv[%d:%d] -a0" % (command, cmd.enclosureDeviceID, cmd.slotNumber))
         return jsonobject.dumps(rsp)
 
     @bash.in_bash
