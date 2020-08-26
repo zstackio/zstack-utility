@@ -1674,7 +1674,9 @@ def delete_vip_by_ip(vip):
     shell.call('ifconfig %s down' % nic_name)
 
 def listPath(path):
-    return [ os.path.realpath(p) for p in os.listdir(path) ]
+    if os.path.isabs(path):
+        return [ os.path.join(path, p) for p in os.listdir(path) ]
+    return [ os.path.realpath(os.path.join(path, p)) for p in os.listdir(path) ]
 
 def find_file(file_name, current_path, parent_path_depth=2, sub_folder_first=False):
     ''' find_file will return a file path, when finding a file in given path.
