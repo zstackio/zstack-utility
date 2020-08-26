@@ -3886,6 +3886,9 @@ class Vm(object):
                 if cmd.addons and cmd.addons['NicQos'] and cmd.addons['NicQos'][nic.uuid]:
                     qos = cmd.addons['NicQos'][nic.uuid]
                     Vm._add_qos_to_interface(nic_xml_object, qos)
+                
+                if cmd.coloPrimary or cmd.coloSecondary:
+                    Vm._ignore_colo_vm_nic_rom_file_on_interface(nic_xml_object)
 
             devices = elements['devices']
             vhostSrcPath = cmd.addons['vhostSrcPath'] if cmd.addons else None
@@ -4364,16 +4367,13 @@ class Vm(object):
         if iftype != 'hostdev':
             if nic.driverType:
                 e(interface, 'model', None, attrib={'type': nic.driverType})
-                e(interface, 'rom', None, attrib={'file': ''})
                 driver = e(interface, 'driver', None, attrib={'name': 'qemu'})
                 e(driver, 'host', None, {'gso': 'off'})
             elif nic.useVirtio:
                 e(interface, 'model', None, attrib={'type': 'virtio'})
-                e(interface, 'rom', None, attrib={'file': ''})
                 e(interface, 'driver', None, attrib={'name': 'qemu'})
             else:
                 e(interface, 'model', None, attrib={'type': 'e1000'})
-                e(interface, 'rom', None, attrib={'file': ''})
                 e(interface, 'driver', None, attrib={'name': 'qemu'})
 
             if nic.driverType == 'virtio' and nic.vHostAddOn.queueNum != 1:
@@ -4431,6 +4431,10 @@ class Vm(object):
             _add_bridge_fdb_entry_for_vnic()
 
         return interface
+    
+    @staticmethod
+    def _ignore_colo_vm_nic_rom_file_on_interface(interface):
+        e(interface, 'rom', None, attrib={'file': ''})
 
     @staticmethod
     def _add_qos_to_interface(interface, qos):
