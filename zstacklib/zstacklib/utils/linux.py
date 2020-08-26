@@ -2008,7 +2008,7 @@ def get_libvirt_version():
 
 
 def get_qemu_version():
-    return shell.call("virsh version | awk '/hypervisor.*QEMU/{print $4}'", pipe_fail=True).strip()
+    return shell.call("virsh version | awk '/hypervisor.*QEMU/{print $4}'").strip()
 
 
 def get_unmanaged_vms(include_not_zstack_but_in_virsh = False):
