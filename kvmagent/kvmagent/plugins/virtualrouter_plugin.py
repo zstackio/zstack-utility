@@ -80,7 +80,7 @@ class VirtualRouterPlugin(kvmagent.KvmAgent):
             info = '%s%s' % (info, padding)
 
         try:
-            logger.debug('send appliance vm bootstrap info to %s\n%s' % (socket_path, info))
+            logger.debug('send appliance vm bootstrap info to %s\nsize:%d\n%s' % (socket_path, len(info), info))
             s.connect(socket_path)
             s.sendall(info)
         finally:
