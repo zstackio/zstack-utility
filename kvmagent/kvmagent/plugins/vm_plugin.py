@@ -1348,6 +1348,7 @@ def get_vm_by_uuid(uuid, exception_if_not_existing=True, conn=None):
                 return conn.lookupByName(uuid)
 
         vm = Vm.from_virt_domain(retry_call_libvirt())
+        logger.debug("find xm xml: %s" % vm.domain_xml)
         return vm
     except libvirt.libvirtError as e:
         error_code = e.get_error_code()
@@ -2458,7 +2459,7 @@ class Vm(object):
         if not is_exception:
             return None, None
 
-        logger.debug('%s is not found on the vm[uuid:%s]' % (volume.installPath, self.uuid))
+        logger.debug('%s is not found on the vm[uuid:%s], xml: %s' % (volume.installPath, self.uuid, self.domain_xml))
         raise kvmagent.KvmError('unable to find volume[installPath:%s] on vm[uuid:%s]' % (volume.installPath, self.uuid))
 
     def resize_volume(self, volume, size):
