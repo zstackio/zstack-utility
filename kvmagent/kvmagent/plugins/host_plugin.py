@@ -244,7 +244,10 @@ class HostNetworkInterfaceInventory(object):
         if self.interfaceName is None:
             return
         self.speed = get_nic_supported_max_speed(self.interfaceName)
-        self.carrierActive = linux.read_file("/sys/class/net/%s/carrier" % self.interfaceName).strip() == "1"
+        # cannot read carrier of vf nic
+        carrier = linux.read_file("/sys/class/net/%s/carrier" % self.interfaceName)
+        if carrier:
+            self.carrierActive = carrier.strip() == "1"
         self.mac = linux.read_file("/sys/class/net/%s/address" % self.interfaceName).strip()
         self.ipAddresses = [x.strip() for x in
                           bash_o("ip -o a show %s | awk '/inet /{print $4}'" % self.interfaceName).splitlines()]
@@ -1313,8 +1316,11 @@ done
         if not self.NVIDIA_SMI_INSTALLED:
             return False
 
-        r, o, e = bash_roe("nvidia-smi vgpu -i %s -v -s | sed -n '1!p'" % addr)
-        for line in o.split('\n'):
+        r, o, e = bash_roe("nvidia-smi vgpu -i %s -v -s" % addr)
+        if r != 0:
+            return False
+
+        for line in o.splitlines()[1:]:
             parts = line.split(':')
             if len(parts) < 2: continue
             title = parts[0].strip()
