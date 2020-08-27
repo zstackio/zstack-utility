@@ -7422,7 +7422,7 @@ class VmPlugin(kvmagent.KvmAgent):
                 for file in out:
                     deactivate_volume(event_str, file, vm_uuid)
 
-            out = bash.bash_o('virsh dumpxml %s | grep -E "active file=|hidden file=' % vm_uuid).strip().splitlines()
+            out = bash.bash_o('virsh dumpxml %s | grep -E "(active|hidden) file="' % vm_uuid).strip().splitlines()
             if len(out) != 0:
                 for cache_config in out:
                     path = cache_config.split('=')[1].rsplit('/', 1)[0]
