@@ -31,7 +31,7 @@ class ScanRsp(AgentRsp):
 
 class SanlockScanRsp(AgentRsp):
     def __init__(self):
-        super(ScanRsp, self).__init__()
+        super(SanlockScanRsp, self).__init__()
         self.result = None  # type: dict[str, bool]
 
 
@@ -67,17 +67,17 @@ class SanlockHostStatus(object):
         if not all([self.io_timeout, self.last_check, self.last_live]):
             raise Exception('unexpected sanlock host status: ' + record)
 
-        def get_timestamp(self):
-            return self.timestamp
+    def get_timestamp(self):
+        return self.timestamp
 
-        def get_io_timeout(self):
-            return self.io_timeout
+    def get_io_timeout(self):
+        return self.io_timeout
 
-        def get_last_check(self):
-            return self.last_check
+    def get_last_check(self):
+        return self.last_check
 
-        def get_last_live(self):
-            return self.last_live
+    def get_last_live(self):
+        return self.last_live
 
 
 class SanlockHostStatusParser(object):
@@ -709,7 +709,7 @@ class HaPlugin(kvmagent.KvmAgent):
         for hostId in cmd.hostIds:
             timed_out = parser.is_timed_out(hostId)
             if timed_out is not None:
-                result[hostId] = timed_out
+                result[str(hostId)] = timed_out
 
         rsp.result = result
         return jsonobject.dumps(rsp)
