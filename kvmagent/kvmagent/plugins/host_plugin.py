@@ -34,7 +34,8 @@ from zstacklib.utils.report import Report
 host_arch = platform.machine()
 IS_AARCH64 = host_arch == 'aarch64'
 IS_MIPS64EL = host_arch == 'mips64el'
-GRUB_FILES = ["/boot/grub2/grub.cfg", "/boot/grub/grub.cfg", "/etc/grub2-efi.cfg", "/etc/grub-efi.cfg", "/boot/efi/EFI/centos/grub.cfg"]
+GRUB_FILES = ["/boot/grub2/grub.cfg", "/boot/grub/grub.cfg", "/etc/grub2-efi.cfg",
+              "/etc/grub-efi.cfg", "/boot/efi/EFI/centos/grub.cfg", "/boot/efi/EFI/kylin/grub.cfg"]
 IPTABLES_CMD = iptables.get_iptables_cmd()
 
 class ConnectResponse(kvmagent.AgentResponse):
@@ -1064,7 +1065,7 @@ if __name__ == "__main__":
 
     def _close_hugepage(self):
         disable_hugepage_script = '''#!/bin/sh
-grubs=("/boot/grub2/grub.cfg" "/boot/grub/grub.cfg" "/etc/grub2-efi.cfg" "/etc/grub-efi.cfg", "/boot/efi/EFI/centos/grub.cfg")
+grubs=("/boot/grub2/grub.cfg" "/boot/grub/grub.cfg" "/etc/grub2-efi.cfg" "/etc/grub-efi.cfg", "/boot/efi/EFI/centos/grub.cfg", "/boot/efi/EFI/kylin/grub.cfg")
 
 # config nr_hugepages
 sysctl -w vm.nr_hugepages=0
@@ -1118,7 +1119,7 @@ done
         pageSize = cmd.pageSize
         reserveSize = cmd.reserveSize
         enable_hugepage_script = '''#!/bin/sh
-grubs=("/boot/grub2/grub.cfg" "/boot/grub/grub.cfg" "/etc/grub2-efi.cfg" "/etc/grub-efi.cfg", "/boot/efi/EFI/centos/grub.cfg")
+grubs=("/boot/grub2/grub.cfg" "/boot/grub/grub.cfg" "/etc/grub2-efi.cfg" "/etc/grub-efi.cfg", "/boot/efi/EFI/centos/grub.cfg", "/boot/efi/EFI/kylin/grub.cfg")
 
 # byte to mib
 let "reserveSize=%s/1024/1024"
@@ -1137,13 +1138,13 @@ echo 3 > /proc/sys/vm/drop_caches
 echo always > /sys/kernel/mm/transparent_hugepage/enabled
 
 # config grub
-sed -i '/GRUB_CMDLINE_LINUX=/s/\"$/ transparent_hugepage=always hugepagesz=\'\"$pageSize\"\'M hugepages=\'\"$pageNum\"\'\"/g' /etc/default/grub
+sed -i '/GRUB_CMDLINE_LINUX=/s/\"$/ transparent_hugepage=always default_hugepagesz=\'\"$pageSize\"\'M hugepagesz=\'\"$pageSize\"\'M hugepages=\'\"$pageNum\"\'\"/g' /etc/default/grub
 
 #config boot grub
 for var in ${grubs[@]} 
 do 
    if [ -f $var ]; then
-       sed -i '/^[[:space:]]*linux/s/$/ transparent_hugepage=always hugepagesz=\'\"$pageSize\"\'M hugepages=\'\"$pageNum\"\'/g' $var
+       sed -i '/^[[:space:]]*linux/s/$/ transparent_hugepage=always default_hugepagesz=\'\"$pageSize\"\'M hugepagesz=\'\"$pageSize\"\'M hugepages=\'\"$pageNum\"\'/g' $var
    fi    
 done
 ''' % (reserveSize, pageSize)
