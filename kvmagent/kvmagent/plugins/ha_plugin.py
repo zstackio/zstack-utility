@@ -709,7 +709,7 @@ class HaPlugin(kvmagent.KvmAgent):
         for hostId in cmd.hostIds:
             timed_out = parser.is_timed_out(hostId)
             if timed_out is not None:
-                result[str(hostId)] = timed_out
+                result[str(hostId)] = not timed_out
 
         rsp.result = result
         return jsonobject.dumps(rsp)
