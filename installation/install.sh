@@ -2146,13 +2146,13 @@ EOF
 
     crontab -l 2>/dev/null |grep 'zstack-ctl dump_mysql' >/dev/null
     if [ $? -ne 0 ]; then
-        crontab <<EOF
+        crontab - <<EOF
 `crontab -l 2>/dev/null`
 30 0,12 * * * zstack-ctl dump_mysql --keep-amount 14
 EOF
     fi
 
-    crontab <<EOF
+    crontab - <<EOF
 `crontab -l 2>/dev/null|sed '/zstack-ctl dump_cassandra/d'`
 EOF
     pass
