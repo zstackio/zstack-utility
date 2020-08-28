@@ -1324,6 +1324,10 @@ done
         if not self.NVIDIA_SMI_INSTALLED:
             return False
 
+        check_mdev_folder = '/sys/bus/pci/devices/%s/mdev_supported_types' % addr
+        if not os.path.isdir(check_mdev_folder):
+            return False
+
         r, o, e = bash_roe("nvidia-smi vgpu -i %s -v -s" % addr)
         if r != 0:
             return False
@@ -1459,12 +1463,11 @@ done
 
         updateConfigration.updateGrubConfig()
         iommu_type = updateConfigration.iommu_type
-        if iommu_type == "amd_iommu":
-            r_bios, o_bios, e_bios = bash_roe("dmesg | grep -e DMAR -e IOMMU")
-        else:
-            r_bios, o_bios, e_bios = bash_roe("find /sys -iname dmar*")
+        # check whether /sys/class/iommu is empty, if not then iommu is activated in bios
+        iommu_folder = '/sys/class/iommu'
+        r_bios = os.path.isdir(iommu_folder) and os.listdir(iommu_folder)
         r_kernel, o_kernel, e_kernel = bash_roe("grep '{}=on' /proc/cmdline".format(iommu_type))
-        if o_bios != '' and r_kernel == 0:
+        if r_bios and r_kernel == 0:
             rsp.hostIommuStatus = True
         else:
             rsp.hostIommuStatus = False
