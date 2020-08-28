@@ -3286,8 +3286,9 @@ class Vm(object):
                     e(numa, 'cell', attrib={'id': '0', 'cpus': '0-127', 'memory': str(mem), 'unit': 'KiB'})
 
                 def on_aarch64():
-                    cpu = e(root, 'cpu', attrib={'mode': 'custom'})
-                    e(cpu, 'model', 'host', attrib={'fallback': 'allow'})
+                    e(root, 'vcpu', '128', {'placement': 'static', 'current': str(cmd.cpuNum)})
+                    tune = e(root, 'cputune')
+                    cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
                     mem = cmd.memory / 1024
                     e(cpu, 'topology', attrib={'sockets': '32', 'cores': '4', 'threads': '1'})
                     numa = e(cpu, 'numa')
