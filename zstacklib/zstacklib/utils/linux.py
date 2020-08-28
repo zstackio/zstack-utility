@@ -1559,7 +1559,7 @@ def find_process_by_command(comm, cmdlines):
     pids = [pid for pid in os.listdir('/proc') if pid.isdigit()]
     for pid in pids:
         try:
-            comm_path = os.readlink(os.path.join('/proc', pid, 'exe'))
+            comm_path = os.readlink(os.path.join('/proc', pid, 'exe')).split(";")[0]
             if comm_path != comm and os.path.basename(comm_path) != comm:
                 continue
 

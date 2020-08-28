@@ -443,17 +443,17 @@ LoadPlugin virt
             mpid = linux.find_process_by_command('collectdmon', [conf_path])
 
             if not cpid:
-                bash_errorout('pkill -TERM -x collectdmon; collectdmon -- -C %s' % conf_path)
+                bash_errorout('collectdmon -- -C %s' % conf_path)
             else:
                 bash_errorout('kill -TERM %s' % cpid)
                 if need_restart_collectd:
                     if not mpid:
-                        bash_errorout('pkill -TERM -x collectdmon; collectdmon -- -C %s' % conf_path)
+                        bash_errorout('collectdmon -- -C %s' % conf_path)
                     else:
                         bash_errorout('kill -HUP %s' % mpid)
                 else:
                     if not mpid:
-                        bash_errorout('pkill -TERM -x collectdmon; collectdmon -- -C %s' % conf_path)
+                        bash_errorout('collectdmon -- -C %s' % conf_path)
 
         def run_in_systemd(binPath, args, log):
             def get_systemd_name(path):
