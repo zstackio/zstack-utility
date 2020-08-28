@@ -4367,15 +4367,11 @@ class Vm(object):
 
         if iftype != 'hostdev':
             if nic.driverType:
-                e(interface, 'model', None, attrib={'type': nic.driverType})
-                driver = e(interface, 'driver', None, attrib={'name': 'qemu'})
-                e(driver, 'host', None, {'gso': 'off'})
+                e(interface, 'model', None, attrib={'type': nic.driverType})            
             elif nic.useVirtio:
                 e(interface, 'model', None, attrib={'type': 'virtio'})
-                e(interface, 'driver', None, attrib={'name': 'qemu'})
             else:
                 e(interface, 'model', None, attrib={'type': 'e1000'})
-                e(interface, 'driver', None, attrib={'name': 'qemu'})
 
             if nic.driverType == 'virtio' and nic.vHostAddOn.queueNum != 1:
                 e(interface, 'driver ', None, attrib={'name': 'vhost', 'txmode': 'iothread', 'ioeventfd': 'on', 'event_idx': 'off', 'queues': str(nic.vHostAddOn.queueNum), 'rx_queue_size': str(nic.vHostAddOn.rxBufferSize) if nic.vHostAddOn.rxBufferSize is not None else '256', 'tx_queue_size': str(nic.vHostAddOn.txBufferSize) if nic.vHostAddOn.txBufferSize is not None else '256'})
@@ -4435,6 +4431,7 @@ class Vm(object):
     
     @staticmethod
     def _ignore_colo_vm_nic_rom_file_on_interface(interface):
+        e(interface, 'driver', None, attrib={'name': 'qemu'})
         e(interface, 'rom', None, attrib={'file': ''})
 
     @staticmethod
