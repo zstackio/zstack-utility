@@ -2881,7 +2881,7 @@ class UpgradeHACmd(Command):
                   " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=zstack-local install "
                   "-y $pkg; done;")
         run_remote_command(command, host_post_info)
-        command = "mkdir -p %s" %  tmp_iso
+        remote_create_dir(tmp_iso, None, host_post_info)
         run_remote_command(command, host_post_info)
         command = "mount -o loop %s %s" % (iso, tmp_iso)
         run_remote_command(command, host_post_info)
@@ -3640,11 +3640,12 @@ class InstallHACmd(Command):
         copy_arg.src = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/"
         copy_arg.dest = ctl.zstack_home + "/WEB-INF/classes/ansible/rsaKeys/"
         copy(copy_arg,self.host2_post_info)
-        command = "chmod 600 %s" % copy_arg.src + "id_rsa"
-        run_remote_command(command, self.host2_post_info)
+        command = "chmod 600 %s" % copy_arg.src + ""
+
+        file_operation('%sid_rsa' % copy_arg.src,"mode=0600", self.host2_post_info)
         if args.host3_info is not False:
             copy(copy_arg,self.host3_post_info)
-            run_remote_command(command, self.host3_post_info)
+            file_operation('%sid_rsa' % copy_arg.src,"mode=0600", self.host3_post_info)
 
         # check whether to recovery the HA cluster
         if args.recovery_from_this_host is True:
@@ -3777,20 +3778,19 @@ class InstallHACmd(Command):
                    'mevoco_url':'http://' + args.vip + ':8888', 'cluster_url':'http://'+ args.vip +':9132/zstack', 'host_list':host_list}
         yaml.dump(ha_info, ha_conf_file, default_flow_style=False)
 
-        command = "mkdir -p %s" % InstallHACmd.conf_dir
-        run_remote_command(command, self.host2_post_info)
+        file_operation(InstallHACmd.conf_dir,"state=directory mode=0755", self.host2_post_info)
         if len(self.host_post_info_list) == 3:
-            run_remote_command(command, self.host3_post_info)
+            file_operation(InstallHACmd.conf_dir,"state=directory mode=0755", self.host3_post_info)
 
         copy_arg = CopyArg()
         copy_arg.src = InstallHACmd.conf_dir
         copy_arg.dest = InstallHACmd.conf_dir
         copy(copy_arg,self.host2_post_info)
-        command = "chmod 600 %s" % InstallHACmd.conf_dir + "ha_key"
-        run_remote_command(command, self.host2_post_info)
+
+        file_operation('%s%s' % (InstallHACmd.conf_dir, ha_key),"mode=0600", self.host2_post_info)
         if len(self.host_post_info_list) == 3:
             copy(copy_arg,self.host3_post_info)
-            run_remote_command(command, self.host3_post_info)
+            file_operation('%s%s' % (InstallHACmd.conf_dir, ha_key),"mode=0600", self.host3_post_info)
 
         # get iptables from system config
         service_status("iptables","state=restarted",self.host1_post_info)
@@ -5739,12 +5739,10 @@ class CollectLogCmd(Command):
             for vrouter_log_dir in CollectLogCmd.vrouter_log_dir_list:
                 local_collect_dir = collect_dir + 'vrouter-%s/' % host_post_info.host
                 tmp_log_dir = "/tmp/tmp-log/"
-                command = "mkdir -p %s " % tmp_log_dir
-                run_remote_command(command, host_post_info)
+                file_operation(tmp_log_dir,"state=directory mode=0755", host_post_info)
                 command = "/opt/vyatta/sbin/vyatta-save-config.pl && cp /config/config.boot %s" % tmp_log_dir
                 run_remote_command(command, host_post_info)
-                command = "cp -r %s %s" % (vrouter_log_dir, tmp_log_dir)
-                run_remote_command(command, host_post_info)
+                remote_force_copy(vrouter_log_dir, tmp_log_dir)
                 self.compress_and_fetch_log(local_collect_dir, tmp_log_dir, host_post_info)
         else:
             warn("Vrouter %s is unreachable!" % host_post_info.host)
@@ -5759,8 +5757,9 @@ class CollectLogCmd(Command):
                 # file system broken shouldn't block collect log process
                 if not os.path.exists(local_collect_dir):
                     os.makedirs(local_collect_dir)
-                command = "mkdir -p %s " % tmp_log_dir
-                run_remote_command(command, host_post_info)
+                
+                force_remove_file(tmp_log_dir, host_post_info)
+                remote_create_dir(tmp_log_dir, "0755", host_post_info)
 
                 for log in CollectLogCmd.host_log_list:
                     if 'zstack-agent' in log:
@@ -5772,10 +5771,9 @@ class CollectLogCmd(Command):
                         if collect_full_log:
                             for num in range(1, 16):
                                 log_name = "%s.%s.gz" % (host_log, num)
-                                command = "/bin/cp -rf %s %s/" % (log_name, tmp_log_dir)
-                                (status, output) = run_remote_command(command, host_post_info, True, True)
-                            command = "/bin/cp -rf %s %s/" % (host_log, tmp_log_dir)
-                            (status, output) = run_remote_command(command, host_post_info, True, True)
+                                remote_force_copy(log_name, "%s/" % tmp_log_dir)
+                                
+                            remote_force_copy(host_log, "%s/" % tmp_log_dir)
                         else:
                             command = "tail -n %d %s > %s " % (CollectLogCmd.collect_lines, host_log, collect_log)
                             run_remote_command(command, host_post_info)
@@ -5784,7 +5782,7 @@ class CollectLogCmd(Command):
                 logger.warn("collect log on host %s failed" % host_post_info.host)
                 command = linux.rm_dir_force(tmp_log_dir, True)
                 CollectLogCmd.failed_flag = True
-                run_remote_command(command, host_post_info)
+                force_remove_file(tmp_log_dir, host_post_info)
                 return 1
 
             command = 'test "$(ls -A "%s" 2>/dev/null)" || echo The directory is empty' % tmp_log_dir
@@ -5792,7 +5790,7 @@ class CollectLogCmd(Command):
             if "The directory is empty" in output:
                 warn("Didn't find log on host: %s " % (host_post_info.host))
                 command = linux.rm_dir_force(tmp_log_dir, True)
-                run_remote_command(command, host_post_info)
+                force_remove_file(tmp_log_dir, host_post_info)
                 return 0
             self.get_system_log(host_post_info, tmp_log_dir)
             self.get_sharedblock_log(host_post_info, tmp_log_dir)
@@ -5813,8 +5811,10 @@ class CollectLogCmd(Command):
             # file system broken shouldn't block collect log process
                 if not os.path.exists(local_collect_dir):
                     os.makedirs(local_collect_dir)
-                command = "rm -rf %s && mkdir -p %s " % (tmp_log_dir, tmp_log_dir)
-                run_remote_command(command, host_post_info)
+
+                force_remove_file(tmp_log_dir, host_post_info)
+                remote_create_dir(tmp_log_dir, "0755", host_post_info)
+                
                 if '_ps' in storage_type:
                     collect_log_list = CollectLogCmd.ps_log_list
                 elif '_bs' in storage_type:
@@ -5823,18 +5823,16 @@ class CollectLogCmd(Command):
                     warn("unknown storage type: %s" % storage_type)
                 for log in collect_log_list:
                     if 'zstack-store' in log:
-                        command = "mkdir -p %s" % tmp_log_dir + '/zstack-store/'
-                        run_remote_command(command, host_post_info)
+                        file_operation("%s/zstack-store/" % tmp_log_dir,"state=directory mode=0755", host_post_info)
                     storage_agent_log = CollectLogCmd.zstack_log_dir + '/' + log
                     collect_log = tmp_log_dir + '/' + log
                     if file_dir_exist("path=%s" % storage_agent_log, host_post_info):
                         if collect_full_log:
                             for num in range(1, 16):
                                 log_name = "%s.%s.gz" % (storage_agent_log, num)
-                                command = "/bin/cp -rf %s %s/" % (log_name, tmp_log_dir)
-                                (status, output) = run_remote_command(command, host_post_info, True, True)
-                            command = "/bin/cp -rf %s %s/" % (storage_agent_log, tmp_log_dir)
-                            (status, output) = run_remote_command(command, host_post_info, True, True)
+                                remote_force_copy(log_name, "%s/" % tmp_log_dir)
+
+                            remote_force_copy(storage_agent_log, "%s/" % tmp_log_dir)
                         else:
                             command = "tail -n %d %s > %s " % (CollectLogCmd.collect_lines, storage_agent_log, collect_log)
                             run_remote_command(command, host_post_info)
@@ -5842,13 +5840,13 @@ class CollectLogCmd(Command):
                 logger.warn("collect log on storage: %s failed" % host_post_info.host)
                 command = linux.rm_dir_force(tmp_log_dir, True)
                 CollectLogCmd.failed_flag = True
-                run_remote_command(command, host_post_info)
+                force_remove_file(tmp_log_dir, host_post_info)
             command = 'test "$(ls -A "%s" 2>/dev/null)" || echo The directory is empty' % tmp_log_dir
             (status, output) = run_remote_command(command, host_post_info, return_status=True, return_output=True)
             if "The directory is empty" in output:
                 warn("Didn't find log on storage host: %s " % host_post_info.host)
                 command = linux.rm_dir_force(tmp_log_dir, True)
-                run_remote_command(command, host_post_info)
+                force_remove_file(tmp_log_dir, host_post_info)
                 return 0
             self.get_system_log(host_post_info, tmp_log_dir)
             self.get_pkg_list(host_post_info, tmp_log_dir)
@@ -5949,12 +5947,10 @@ class CollectLogCmd(Command):
             if collect_full_log:
                 for item in range(0, 15):
                     log_name = "management-server-" + (datetime.today() - timedelta(days=item)).strftime("%Y-%m-%d")
-                    command = "/bin/cp -rf %s/../../logs/%s* %s/" % (ctl.zstack_home, log_name, tmp_log_dir)
-                    (status, output) = run_remote_command(command, host_post_info, True, True)
+                    remote_force_copy("%s/../../logs/%s*" % (ctl.zstack_home, log_name), "%s/" % tmp_log_dir, host_post_info)
 
                     log_name = "catalina." + (datetime.today() - timedelta(days=item)).strftime("%Y-%m-%d")
-                    command = "/bin/cp -rf %s/../../logs/%s* %s/" % (ctl.zstack_home, log_name, tmp_log_dir)
-                    (status, output) = run_remote_command(command, host_post_info, True, True)
+                    remote_force_copy("%s/../../logs/%s*" % (ctl.zstack_home, log_name), "%s/" % tmp_log_dir, host_post_info)
 
             for log in CollectLogCmd.mn_log_list:
                 if file_dir_exist("path=%s/%s" % (CollectLogCmd.zstack_log_dir, log), host_post_info):

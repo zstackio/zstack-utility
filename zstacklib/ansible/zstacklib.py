@@ -1008,6 +1008,22 @@ def run_remote_command(command, host_post_info, return_status=False, return_outp
                     else:
                         return (False, result['contacted'][host]['stdout'])
 
+def remote_force_copy(src, dest, host_post_info):
+    copy_arg = CopyArg()
+    copy_arg.src = src
+    copy_arg.dest = dest
+    copy_arg.args = "force=yes remote_src=yes"
+    copy(copy_arg, host_post_info)
+
+def force_remove_file(dest, host_post_info):
+    file_operation(dest, "state=absent force=yes", host_post_info)
+
+def remote_create_dir(dest, mode, host_post_info):
+    param = "state=directory"
+    if mode:
+        param += " mode=%s" % mode
+
+    file_operation(dest, param, host_post_info)
 
 @retry(times=3, sleep_time=3)
 def check_pip_version(version, host_post_info):
