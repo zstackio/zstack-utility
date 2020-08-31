@@ -57,7 +57,7 @@ elif [ -f /etc/mysql/my.cnf ]; then
     # Ubuntu 14.04
     mysql_conf=/etc/mysql/my.cnf
 elif [ -f /etc/my.cnf.d/mariadb-server.cnf ]; then
-    # MariaDB 10.3.9 Centos8/KylinV10
+    # MariaDB 10.3.9 CentOS.8/Kylin.V10
     mysql_conf=/etc/my.cnf.d/mariadb-server.cnf
 elif [ -f /etc/my.cnf ]; then
     # centos

@@ -18,6 +18,7 @@ import threading
 import re
 import platform
 import errno
+import json
 
 from zstacklib.utils import thread
 from zstacklib.utils import qemu_img
@@ -727,31 +728,19 @@ def sftp_get(hostname, sshkey, filename, download_to, timeout=0, interval=1, cal
             os.remove(batch_file_path)
 
 def qcow2_size_and_actual_size(file_path):
-    cmd = shell.ShellCmd('''set -o pipefail; %s %s | awk '{if (/^virtual size:/) {vs=substr($4,2)}; if (/^disk size:/) {ds=$3} } END{print vs?vs:"null", ds?ds:"null"}' ''' %
-            (qemu_img.subcmd('info'), file_path))
+    cmd = shell.ShellCmd('''set -o pipefail; %s %s --output=json''' % (qemu_img.subcmd('info'), file_path))
     cmd(False)
     if cmd.return_code != 0:
         raise Exception('cannot get the virtual/actual size of the file[%s], %s %s' % (shellquote(file_path), cmd.stdout, cmd.stderr))
 
-    logger.debug('qcow2_size_and_actual_size: %s' % cmd.stdout)
+    logger.debug('qcow2_info: %s' % cmd.stdout)
 
-    out = cmd.stdout.strip(" \t\n\r")
-    virtual_size, actual_size = out.split(" ")
-    if virtual_size == "null" and actual_size == "null":
+    out = json.loads(cmd.stdout.strip(" \t\n\r"))
+    virtual_size, actual_size = out.get('virtual-size'), out.get('actual-size')
+    if not virtual_size and not actual_size:
         raise Exception('cannot get the virtual/actual size of the file[%s], %s %s' % (shellquote(file_path), cmd.stdout, cmd.stderr))
 
-    if virtual_size == "null":
-        virtual_size = None
-    else:
-        virtual_size = long(virtual_size)
-
-    if actual_size == "null":
-        actual_size = None
-    else:
-        # actual_size = sizeunit.get_size(actual_size)
-        # use the get_local_file_size instead of parsing qemu-img output as it's not accurate
-        actual_size = get_local_file_disk_usage(file_path)
-
+    virtual_size = long(virtual_size) if virtual_size else None
     return virtual_size, actual_size
 
 '''  
