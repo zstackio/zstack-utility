@@ -2548,7 +2548,7 @@ class InstallDbCmd(Command):
       register: install_result
 
     - name: install MySQL for Kylin402/UOS
-      when: (ansible_os_family == 'Kylin' and ansible_distribution_version == '4.0.2')  or ansible_os_family == 'Uos'
+      when: (ansible_os_family == 'Kylin' and ansible_distribution_version == '4.0.2')  or ansible_os_family == 'Uos' or ansible_os_family == 'Uniontech os server 20 enterprise'
       shell: apt-get -y install --allow-unauthenticated mariadb-server mariadb-client netfilter-persistent
       register: install_result
 
@@ -2580,7 +2580,7 @@ class InstallDbCmd(Command):
       service: name=mariadb state=restarted enabled=yes
 
     - name: enable MySQL on Kylin402/UOS
-      when: (ansible_os_family == 'Kylin' and ansible_distribution_version == '4.0.2') or ansible_os_family == 'Uos'
+      when: (ansible_os_family == 'Kylin' and ansible_distribution_version == '4.0.2') or ansible_os_family == 'Uos' or ansible_os_family == 'Uniontech os server 20 enterprise'
       service: name=mariadb state=restarted enabled=yes
 
     - name: change root password
