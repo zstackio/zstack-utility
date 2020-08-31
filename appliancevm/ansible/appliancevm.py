@@ -79,7 +79,7 @@ else:
     command = 'mkdir -p %s %s' % (appliancevm_root, virtenv_path)
     run_remote_command(command, host_post_info)
 
-run_remote_command("rm -rf %s/*" % appliancevm_root, host_post_info)
+force_remove_file("%s/" % appliancevm_root, host_post_info)
 # name: copy zstacklib and install
 copy_arg = CopyArg()
 copy_arg.src = "files/zstacklib/%s" % pkg_zstacklib

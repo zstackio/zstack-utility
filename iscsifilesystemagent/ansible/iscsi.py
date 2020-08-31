@@ -78,7 +78,7 @@ else:
     command = 'mkdir -p %s %s' % (iscsi_root, virtenv_path)
     run_remote_command(command, host_post_info)
 
-run_remote_command("rm -rf %s/*" % iscsi_root, host_post_info)
+force_remove_file("%s/" % iscsi_root, host_post_info)
 
 if distro in RPM_BASED_OS:
     if zstack_repo != 'false':
