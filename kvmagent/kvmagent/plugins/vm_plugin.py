@@ -3263,11 +3263,10 @@ class Vm(object):
         def make_cpu():
             if use_numa:
                 root = elements['root']
+                tune = e(root, 'cputune')
                 def on_x86_64():
                     e(root, 'vcpu', '128', {'placement': 'static', 'current': str(cmd.cpuNum)})
                     # e(root,'vcpu',str(cmd.cpuNum),{'placement':'static'})
-                    tune = e(root, 'cputune')
-                    # enable nested virtualization
                     if cmd.nestedVirtualization == 'host-model':
                         cpu = e(root, 'cpu', attrib={'mode': 'host-model'})
                         e(cpu, 'model', attrib={'fallback': 'allow'})
@@ -3287,7 +3286,6 @@ class Vm(object):
 
                 def on_aarch64():
                     e(root, 'vcpu', '128', {'placement': 'static', 'current': str(cmd.cpuNum)})
-                    tune = e(root, 'cputune')
                     cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
                     mem = cmd.memory / 1024
                     e(cpu, 'topology', attrib={'sockets': '32', 'cores': '4', 'threads': '1'})
@@ -3297,9 +3295,6 @@ class Vm(object):
                 def on_mips64el():
                     e(root, 'vcpu', '8', {'placement': 'static', 'current': str(cmd.cpuNum)})
                     # e(root,'vcpu',str(cmd.cpuNum),{'placement':'static'})
-                    tune = e(root, 'cputune')
-                    # enable nested virtualization
-
                     cpu = e(root, 'cpu', attrib={'mode': 'custom', 'match': 'exact', 'check': 'partial'})
                     e(cpu, 'model', 'Loongson-3A4000-COMP', attrib={'fallback': 'allow'})
                     mem = cmd.memory / 1024
