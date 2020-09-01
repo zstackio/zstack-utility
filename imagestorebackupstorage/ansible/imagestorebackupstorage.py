@@ -128,8 +128,6 @@ else:
     error("ERROR: Unsupported distribution")
 
 run_remote_command("rm -rf %s/*" % imagestore_root, host_post_info)
-command = 'mkdir -p %s ' % (imagestore_root + "/certs")
-run_remote_command(command, host_post_info)
 
 # name: copy imagestore binary
 copy_arg = CopyArg()
@@ -157,14 +155,14 @@ local_cert_dir = os.path.join(local_install_dir, "imagestore", "bin", "certs")
 
 copy_arg = CopyArg()
 copy_arg.src = "%s/%s" % (local_cert_dir, "ca.pem")
-copy_arg.dest = "%s/%s/%s" % (imagestore_root, "certs", "ca.pem")
-copy_arg.args = "mode=644"
+copy_arg.dest = "%s/%s/" % (imagestore_root, "certs")
+copy_arg.args = "mode=644 force=yes"
 copy(copy_arg, host_post_info)
 
 copy_arg = CopyArg()
 copy_arg.src = "%s/%s" % (local_cert_dir, "privkey.pem")
-copy_arg.dest = "%s/%s/%s" % (imagestore_root, "certs", "privkey.pem")
-copy_arg.args = "mode=400"
+copy_arg.dest = "%s/%s/" % (imagestore_root, "certs")
+copy_arg.args = "mode=400 force=yes"
 copy(copy_arg, host_post_info)
 
 # name: install zstack-store
