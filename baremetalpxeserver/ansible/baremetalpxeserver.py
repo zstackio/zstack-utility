@@ -216,9 +216,9 @@ copy(copy_arg, host_post_info)
 copy_arg = CopyArg()
 copy_arg.src = "%s/pushgateway" % file_root
 copy_arg.dest = baremetalpxeserver_pushgateway_root
+copy_arg.args = "mode=a+x"
 copy(copy_arg, host_post_info)
 
-run_remote_command(("chmod a+x %s/pushgateway;" % baremetalpxeserver_pushgateway_root), host_post_info)
 run_remote_command(("systemctl restart pxeServerPushGateway"), host_post_info)
 
 # name: restart baremetalpxeserveragent
