@@ -287,15 +287,14 @@ class CephAgent(plugin.TaskManager):
         if ret != 0 and not ceph.is_xsky():
             return None
 
-        r, size = bash.bash_ro("rbd du %s | tail -1 | awk '{ print $3 }'" % path)
-
+        r, size = bash.bash_ro("rbd du %s | tail -1 | awk '{ print $3 }'" % path, pipe_fail=True)
         if r != 0:
             return None
-        
+
+        size = size.strip()
         if not size:
             return None
 
-        size = size.strip('\t\n ')
         return sizeunit.get_size(size)
 
     def _get_file_size(self, path):
