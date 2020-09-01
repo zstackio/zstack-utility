@@ -326,7 +326,8 @@ def install_kvm_pkg():
             if chroot_env == 'false':
                 # name: restart iptables
                 # name: workaround RHEL7 iptables service issue
-                remote_create_dir("/var/lock/subsys/", host_post_info)
+                command = 'mkdir -p /var/lock/subsys/'
+                run_remote_command(command, host_post_info)
                 service_status("iptables", "state=restarted enabled=yes", host_post_info)
 
         #we should check libvirtd config file status before restart the service
@@ -492,9 +493,11 @@ def do_libvirt_qemu_config():
     run_remote_command(command, host_post_info)
 
     # delete A2 qemu hook
+    command = "rm -f /etc/libvirt/hooks/qemu"
     host_post_info.post_label = "ansible.shell.remove.file"
     host_post_info.post_label_param = "/etc/libvirt/hooks/qemu"
-    force_remove_file("/etc/libvirt/hooks/qemu", host_post_info)
+    run_remote_command(command, host_post_info)
+
 
 def do_network_config():
     # name: enable bridge forward
@@ -517,8 +520,8 @@ def do_network_config():
             copy_arg.src = "%s/ip6tables" % file_root
             copy_arg.dest = "/etc/sysconfig/ip6tables"
             copy(copy_arg, host_post_info)
-
-            replace_content(IP6TABLE_SERVICE_FILE, 'regexp="syslog.target,iptables.service" replace="iptables.service"', host_post_info)
+            command = "sed -i 's/syslog.target,iptables.service/syslog.target iptables.service/' %s || true;" % IP6TABLE_SERVICE_FILE
+            run_remote_command(command, host_post_info)
             service_status("ip6tables", "state=restarted enabled=yes", host_post_info)
         elif distro in DEB_BASED_OS:
             copy_arg = CopyArg()

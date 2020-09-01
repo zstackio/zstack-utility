@@ -45,7 +45,8 @@ host_post_info.post_url = post_url
 if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
 
-remote_create_dir(os.path.dirname(dst_promtail_bin), None, host_post_info)
+command = 'sudo mkdir -p %s ' % os.path.dirname(dst_promtail_bin)
+run_remote_command(command, host_post_info)
 
 copy_arg = CopyArg()
 copy_arg.src = src_promtail_bin

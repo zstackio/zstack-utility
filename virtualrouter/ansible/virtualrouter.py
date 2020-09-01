@@ -79,7 +79,7 @@ else:
     command = 'mkdir -p %s %s' % (vr_root, virtenv_path)
     run_remote_command(command, host_post_info)
 
-file_operation("%s/*" % vr_root,"state=absent", host_post_info)
+run_remote_command("rm -rf %s/*" % vr_root, host_post_info)
 
 if distro in RPM_BASED_OS:
     if zstack_repo != 'false':
@@ -109,13 +109,16 @@ command = "[ -f %s/bin/python ] || virtualenv %s " % (virtenv_path, virtenv_path
 run_remote_command(command, host_post_info)
 
 # name: create dnsmasq host dhcp file
-file_operation("/etc/hosts.dhcp","state=touch", host_post_info)
+command = "/bin/touch /etc/hosts.dhcp"
+run_remote_command(command, host_post_info)
 
 # name: create dnsmasq host option file
-file_operation("/etc/hosts.option","state=touch", host_post_info)
+command = "/bin/touch /etc/hosts.option"
+run_remote_command(command, host_post_info)
 
 # name: create dnsmasq host dns file
-file_operation("/etc/hosts.dns","state=touch", host_post_info)
+command = "/bin/touch /etc/hosts.dns"
+run_remote_command(command, host_post_info)
 
 # name: copy sysctl.conf
 copy_arg = CopyArg()

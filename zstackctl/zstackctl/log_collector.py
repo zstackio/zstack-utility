@@ -688,12 +688,14 @@ class CollectFromYml(object):
                     # file system broken shouldn't block collect log process
                     if not os.path.exists(local_collect_dir):
                         os.makedirs(local_collect_dir)
-                    force_remove_file(tmp_log_dir, host_post_info)
-                    remote_create_dir(tmp_log_dir, None, host_post_info)
+                    run_remote_command(linux.rm_dir_force(tmp_log_dir, True), host_post_info)
+                    command = "mkdir -p %s " % tmp_log_dir
+                    run_remote_command(command, host_post_info)
                     for log in log_list:
                         dest_log_dir = tmp_log_dir
                         if 'name' in log:
-                            file_operation("%s%s/" % (tmp_log_dir, log['name']),"state=directory mode=0755", host_post_info)
+                            command = "mkdir -p %s" % tmp_log_dir + '%s/' % log['name']
+                            run_remote_command(command, host_post_info)
                             dest_log_dir = tmp_log_dir + '%s/' % log['name']
                         if 'exec' in log:
                             command = log['exec']
@@ -740,7 +742,7 @@ class CollectFromYml(object):
                     logger.warn("collect log on host %s failed" % host_post_info.host)
                     command = linux.rm_dir_force(tmp_log_dir, True)
                     self.failed_flag = True
-                    force_remove_file(tmp_log_dir, host_post_info)
+                    run_remote_command(command, host_post_info)
                     return 1
 
                 end = datetime.now()
@@ -752,7 +754,7 @@ class CollectFromYml(object):
                 if "The directory is empty" in output:
                     warn("Didn't find log on host: %s " % (host_post_info.host))
                     command = linux.rm_dir_force(tmp_log_dir, True)
-                    force_remove_file(tmp_log_dir, host_post_info)
+                    run_remote_command(command, host_post_info)
                     return 0
                 self.compress_and_fetch_log(local_collect_dir, tmp_log_dir, host_post_info, type)
                 info_verbose("Successfully collect log from %s %s!" % (type, host_post_info.host))

@@ -971,22 +971,6 @@ def file_dir_exist(name, host_post_info):
                 handle_ansible_info(details, host_post_info, "INFO")
                 return False
 
-def remote_force_copy(src, dest, host_post_info):
-    copy_arg = CopyArg()
-    copy_arg.src = src
-    copy_arg.dest = dest
-    copy_arg.args = "force=yes remote_src=yes"
-    copy(copy_arg, host_post_info)
-
-def force_remove_file(dest, host_post_info):
-    file_operation(dest, "state=absent force=yes", host_post_info)
-
-def remote_create_dir(dest, mode, host_post_info):
-    param = "state=directory"
-    if mode:
-        param += " mode=%s" % mode
-
-    file_operation(dest, param, host_post_info)
 
 def file_operation(file, args, host_post_info):
     ''''This function will change file attribute'''

@@ -127,8 +127,9 @@ elif distro in DEB_BASED_OS:
 else:
     error("ERROR: Unsupported distribution")
 
-force_remove_file("%s/" % imagestore_root, host_post_info)
-remote_create_dir(imagestore_root + "/certs", None, host_post_info)
+run_remote_command("rm -rf %s/*" % imagestore_root, host_post_info)
+command = 'mkdir -p %s ' % (imagestore_root + "/certs")
+run_remote_command(command, host_post_info)
 
 # name: copy imagestore binary
 copy_arg = CopyArg()
@@ -174,8 +175,7 @@ run_remote_command(command, host_post_info)
 server = client != "true" or run_remote_command("pkill -0 zstore", host_post_info, return_status=True, return_output=False)
 if server:
     # integrate zstack-store with init.d
-    remote_force_copy("/usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage", "/etc/init.d/", host_post_info) 
-    
+    run_remote_command("/bin/cp -f /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage /etc/init.d/", host_post_info)
     if distro in RPM_BASED_OS:
         command = "/usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage stop && /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage start && chkconfig zstack-imagestorebackupstorage on"
     elif distro in DEB_BASED_OS:

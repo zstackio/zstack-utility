@@ -108,15 +108,17 @@ elif distro in DEB_BASED_OS:
 else:
     error("ERROR: Unsupported distribution")
 
-file_operation("%s/" % (zsn_root),"state=directory mode=0755", host_post_info)
+run_remote_command(add_true_in_command("rm -rf %s/*" % zsn_root), host_post_info)
+command = 'mkdir -p %s ' % (zsn_root)
+run_remote_command(add_true_in_command(command), host_post_info)
 
 # name: copy zsn binary
 copy_arg = CopyArg()
 dest_pkg = "%s/%s" % (zsn_root, dst_pkg_zsnagent)
 copy_arg.src = "%s/%s" % (file_root, src_pkg_zsnagent)
 copy_arg.dest = dest_pkg
-copy_arg.args = "force=yes"
 copy(copy_arg, host_post_info)
+
 
 command = "/bin/cp /usr/local/zstack/zsn-agent/bin/zsn-agent /usr/local/zstack/zsn-agent/bin/zsn-agent.bak || touch /usr/local/zstack/zsn-agent/bin/zsn-agent.bak"
 run_remote_command(add_true_in_command(command), host_post_info)
@@ -126,7 +128,7 @@ command = "bash %s %s " % (dest_pkg, fs_rootpath)
 run_remote_command(add_true_in_command(command), host_post_info)
 
 # integrate zstack-network with systemd
-remote_force_copy("/usr/local/zstack/zsn-agent/bin/zstack-network-agent.service", "/usr/lib/systemd/system/", host_post_info)
+run_remote_command(add_true_in_command("/bin/cp -f /usr/local/zstack/zsn-agent/bin/zstack-network-agent.service /usr/lib/systemd/system/"), host_post_info)
 
 if tmout is None:
     tmout = 960
