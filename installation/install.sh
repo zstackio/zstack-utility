@@ -2841,9 +2841,7 @@ get_zstack_repo(){
 
 install_sync_repo_dependences() {
     pkg_list="createrepo curl rsync"
-    if [ $OS == "KYLIN10" ]; then
-        pkg_list=$pkg_list" dnf-plugins-core"
-    else
+    if [ x"$OS" != x"KYLIN10" ]; then
         pkg_list=$pkg_list" yum-utils"
     fi
     missing_list=`LANG=en_US.UTF-8 && rpm -q $pkg_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
