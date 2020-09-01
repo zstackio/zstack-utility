@@ -95,17 +95,24 @@ else :
     zstacklib_args.yum_server = yum_server
 zstacklib = ZstackLib(zstacklib_args)
 
-remote_create_dir("%s/" % (zsblk_root), "0755", host_post_info)
+
+run_remote_command(add_true_in_command("rm -rf %s/*" % zsblk_root), host_post_info)
+command = 'mkdir -p %s ' % (zsblk_root)
+run_remote_command(add_true_in_command(command), host_post_info)
 
 # name: copy zsblk binary
+copy_arg = CopyArg()
 dest_pkg = "%s/%s" % (zsblk_root, pkg_zsblk)
-remote_force_copy("%s/%s" % (file_root, src_pkg_zsblk), dest_pkg, host_post_info)
+copy_arg.src = "%s/%s" % (file_root, src_pkg_zsblk)
+copy_arg.dest = dest_pkg
+copy(copy_arg, host_post_info)
+
 
 # name: install zstack-sharedblock
 command = "bash %s %s " % (dest_pkg, fs_rootpath)
 run_remote_command(add_true_in_command(command), host_post_info)
 
-remote_force_copy("/usr/local/zstack/zsblk-agent/bin/zstack-sharedblock-agent.service", "/usr/lib/systemd/system/", host_post_info)
+run_remote_command(add_true_in_command("/bin/cp -f /usr/local/zstack/zsblk-agent/bin/zstack-sharedblock-agent.service /usr/lib/systemd/system/"), host_post_info)
 
 service_env = "ZSBLKARGS=-free-space %s -increment %s -log-file %s -qmp-socket-dir %s -utilization-percent %s " \
               "-lk-helper-max-times %s -lk-helper-scan-interval %s -verbose %s" \

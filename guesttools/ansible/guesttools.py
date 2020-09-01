@@ -42,7 +42,8 @@ host_post_info.post_url = post_url
 if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
 
-remote_create_dir(os.path.dirname(dst_guest_tools_iso), None, host_post_info)
+command = 'mkdir -p %s || true' % os.path.dirname(dst_guest_tools_iso)
+run_remote_command(command, host_post_info)
 
 copy_arg = CopyArg()
 copy_arg.src = src_guest_tools_iso
