@@ -69,6 +69,9 @@ class VirtualRouterPlugin(kvmagent.KvmAgent):
         
         s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         s.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 1)
+        if cmd.bootStrapInfoTimeout is not None:
+            timeout = int(cmd['bootStrapInfoTimeout'])
+            s.settimeout(timeout)
         buf_size = s.getsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF)
         info_len = len(info)
         if info_len < buf_size:
