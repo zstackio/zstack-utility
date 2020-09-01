@@ -87,7 +87,6 @@ else:
     command = 'mkdir -p %s %s' % (cephb_root, virtenv_path)
     run_remote_command(command, host_post_info)
 
-run_remote_command("rm -rf %s/*" % cephb_root, host_post_info)
 # name: install virtualenv
 virtual_env_status = check_and_install_virtual_env(virtualenv_version, trusted_host, pip_url, host_post_info)
 if virtual_env_status is False:
@@ -142,6 +141,7 @@ else:
 copy_arg = CopyArg()
 copy_arg.src = "files/zstacklib/%s" % pkg_zstacklib
 copy_arg.dest = "%s/%s" % (cephb_root, pkg_zstacklib)
+copy_arg.args = "force=yes"
 copy_zstacklib = copy(copy_arg, host_post_info)
 
 if copy_zstacklib != "changed:False":
@@ -155,6 +155,7 @@ if copy_zstacklib != "changed:False":
 copy_arg = CopyArg()
 copy_arg.src = "%s/%s" % (file_root, pkg_cephbagent)
 copy_arg.dest = "%s/%s" % (cephb_root, pkg_cephbagent)
+copy_arg.args = "force=yes"
 copy_cephb = copy(copy_arg, host_post_info)
 
 if copy_cephb != "changed:False":
@@ -175,6 +176,7 @@ copy(copy_arg, host_post_info)
 copy_arg = CopyArg()
 copy_arg.src = "%s/cephbs-iptables" % file_root
 copy_arg.dest = "/var/lib/zstack/cephb/package/cephbs-iptables"
+copy_arg.args = "force=yes"
 copy(copy_arg, host_post_info)
 
 # name: restart cephbagent
