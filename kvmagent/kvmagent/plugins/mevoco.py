@@ -1647,7 +1647,7 @@ tag:{{o.tag}},option6:domain-search,{{o.domainList}}
         CONF_FILE = conf_file_path
         #DNSMASQ = bash_errorout('which dnsmasq').strip(' \t\r\n')
         DNSMASQ_BIN = "/usr/local/zstack/dnsmasq"
-        bash_errorout('ip netns exec {{NS_NAME}} {{DNSMASQ_BIN}} --conf-file={{CONF_FILE}} ')
+        bash_errorout('ip netns exec {{NS_NAME}} {{DNSMASQ_BIN}} --conf-file={{CONF_FILE}} -K')
 
         def check(_):
             pid = linux.find_process_by_cmdline([conf_file_path])
