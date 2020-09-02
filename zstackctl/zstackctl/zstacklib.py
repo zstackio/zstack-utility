@@ -30,8 +30,9 @@ yum_server = ""
 trusted_host = ""
 ansible.constants.HOST_KEY_CHECKING = False
 
-RPM_BASED_OS = ["centos", "redhat", "alibaba"]
-DEB_BASED_OS = ["ubuntu", "kylin", "uos", "debian", "uniontech"]
+RPM_BASED_OS = ["centos", "redhat", "alibaba", "kylin10"]
+DEB_BASED_OS = ["ubuntu", "kylin4.0.2", "uos", "debian", "uniontech"]
+DISTRO_WITH_RPM_DEB = ["kylin"]
 
 
 def ignoreerror(func):
@@ -1031,6 +1032,8 @@ def get_remote_host_info(host_post_info):
                                  result['contacted'][host]['ansible_facts']['ansible_distribution_release'],
                                  result['contacted'][host]['ansible_facts']['ansible_distribution_version']]
             handle_ansible_info("SUCC: Get remote host %s info successful" % host, host_post_info, "INFO")
+            if distro in DISTRO_WITH_RPM_DEB:
+                distro = "%s%s" % (distro, major_version)
             return (distro, major_version, release, distro_version)
         else:
             logger.warning("get_remote_host_info on host %s failed!" % host)

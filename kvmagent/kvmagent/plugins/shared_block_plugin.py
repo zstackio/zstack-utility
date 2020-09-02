@@ -377,28 +377,36 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 return False
             return True
 
+        @linux.retry(times=3, sleep_time=random.uniform(0.1, 3))
+        def create_vg(hostUuid, vgUuid, diskPaths, raise_excption = True):
+            cmd = shell.ShellCmd("vgcreate -qq --shared --addtag '%s::%s::%s::%s' --metadatasize %s %s %s" %
+                                 (INIT_TAG, hostUuid, time.time(), bash.bash_o("hostname").strip(),
+                                  DEFAULT_VG_METADATA_SIZE, vgUuid, " ".join(diskPaths)))
+            cmd(is_exception=False)
+            logger.debug("created vg %s, ret: %s, stdout: %s, stderr: %s" %
+                         (vgUuid, cmd.return_code, cmd.stdout, cmd.stderr))
+            if cmd.return_code != 0 and raise_excption:
+                raise RetryException("ret: %s, stdout: %s, stderr: %s" %
+                                (cmd.return_code, cmd.stdout, cmd.stderr))
+            elif cmd.return_code != 0:
+                return False
+            else:
+                return True
+
+        diskPaths = self.get_disk_paths(disks)
         try:
             find_vg(vgUuid)
         except RetryException as e:
             if forceWipe is True:
-                lvm.wipe_fs(self.get_disk_paths(disks), vgUuid)
-                lvm.config_lvm_filter(["lvm.conf", "lvmlocal.conf"], preserve_disks=self.get_disk_paths(allDisks))
+                lvm.wipe_fs(diskPaths, vgUuid)
 
             lvm.check_gl_lock()
-            cmd = shell.ShellCmd("vgcreate -qq --shared --addtag '%s::%s::%s::%s' --metadatasize %s %s %s" %
-                                 (INIT_TAG, hostUuid, time.time(), bash.bash_o("hostname").strip(),
-                                  DEFAULT_VG_METADATA_SIZE, vgUuid, " ".join(self.get_disk_paths(disks))))
-            cmd(is_exception=False)
-            logger.debug("created vg %s, ret: %s, stdout: %s, stderr: %s" %
-                         (vgUuid, cmd.return_code, cmd.stdout, cmd.stderr))
-            if cmd.return_code == 0 and find_vg(vgUuid, False) is True:
-                return True
             try:
-                if find_vg(vgUuid) is True:
-                    return True
+                create_vg(hostUuid, vgUuid, diskPaths)
+                find_vg(vgUuid)
             except RetryException as ee:
-                raise Exception("can not find vg %s with disks: %s and create vg with forceWipw=%s return: %s %s %s " %
-                                (vgUuid, self.get_disk_paths(disks), forceWipe, cmd.return_code, cmd.stdout, cmd.stderr))
+                raise Exception("can not find vg %s with disks: %s and create vg with forceWipw=%s, %s" %
+                                (vgUuid, diskPaths, forceWipe, str(ee)))
             except Exception as ee:
                 raise ee
         except Exception as e:

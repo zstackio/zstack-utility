@@ -373,6 +373,7 @@ sh_retries=20
         linux.mkdir(os.path.dirname(SANLOCK_CONFIG_FILE_PATH))
         with open(SANLOCK_CONFIG_FILE_PATH, 'w') as f:
             f.write(content)
+
     if not os.path.exists(SANLOCK_CONFIG_FILE_PATH):
         raise Exception("can not find sanlock config path: %s, config sanlock failed" % SANLOCK_CONFIG_FILE_PATH)
 

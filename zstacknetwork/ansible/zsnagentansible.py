@@ -26,7 +26,8 @@ chroot_env = 'false'
 zstack_repo = 'false'
 current_dir = os.path.dirname(os.path.realpath(__file__))
 file_root = "files/zsnagentansible"
-pkg_zsn = ""
+src_pkg_zsn = ""
+dest_pkg_zsn = "zsn-agent.bin"
 post_url = ""
 chrony_servers = None
 fs_rootpath = ""
@@ -113,6 +114,14 @@ command = 'mkdir -p %s ' % (zsn_root)
 run_remote_command(add_true_in_command(command), host_post_info)
 
 # name: copy zsn binary
+HOST_ARCH = get_remote_host_arch(host_post_info)
+if HOST_ARCH == 'aarch64':
+    src_pkg_zsn = 'zsn-agent.aarch64.bin'
+elif HOST_ARCH == 'mips64el':
+    src_pkg_zsn = 'zsn-agent.mips64el.bin'
+else:
+    src_pkg_zsn = 'zsn-agent.bin'
+
 copy_arg = CopyArg()
 dest_pkg = "%s/%s" % (zsn_root, dst_pkg_zsnagent)
 copy_arg.src = "%s/%s" % (file_root, src_pkg_zsnagent)

@@ -12,6 +12,7 @@ import traceback
 import simplejson
 from jinja2 import Template
 from netaddr import IPNetwork, IPAddress
+import platform
 
 import zstacklib.utils.daemon as daemon
 import zstacklib.utils.http as http
@@ -365,9 +366,10 @@ http {
 
         # DETECT ROGUE DHCP SERVER
         cmd = json_object.loads(req[http.REQUEST_BODY])
-        ret, output = bash_ro("nmap -sU -p67 --script broadcast-dhcp-discover -e %s | grep 'Server Identifier'" % cmd.dhcpInterface)
-        if ret == 0:
-            raise PxeServerError("rogue dhcp server[IP:%s] detected" % output.strip().split(' ')[-1])
+        if platform.machine() == "x86_64":
+            ret, output = bash_ro("nmap -sU -p67 --script broadcast-dhcp-discover -e %s | grep 'Server Identifier'" % cmd.dhcpInterface)
+            if ret == 0:
+                raise PxeServerError("rogue dhcp server[IP:%s] detected" % output.strip().split(' ')[-1])
 
         # make sure pxeserver is running if it's Enabled
         if cmd.enabled:

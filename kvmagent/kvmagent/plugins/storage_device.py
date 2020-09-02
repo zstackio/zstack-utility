@@ -286,6 +286,10 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 raise RetryException("iscsiadm says there are [%s] disks but only found [%s] disks on /dev/disk[%s], so not all disks loged in, and you can check the iscsi mounted disk by lsscsi --transport"
                                      "it may recover after a while so check and login again" %((len(disks_by_iscsi) - len(disks_by_no_mapping_lun)), len(disks_by_dev), disks_by_dev))
 
+        def check_iscsi_conf():
+            shell.call("sed -i 's/.*iscsid.startup.*=.*/iscsid.startup = \/bin\/systemctl start iscsid.socket iscsiuio.soccket/' /etc/iscsi/iscsid.conf", exception=False)
+
+        check_iscsi_conf()
         path = "/var/lib/iscsi/nodes"
         self.clean_iscsi_cache_configuration(path, cmd.iscsiServerIp, cmd.iscsiServerPort)
         iqns = cmd.iscsiTargets
