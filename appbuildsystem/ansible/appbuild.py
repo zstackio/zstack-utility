@@ -73,7 +73,6 @@ else:
     command = 'mkdir -p %s %s' % (appbuild_root, virtenv_path)
     run_remote_command(command, host_post_info)
 
-run_remote_command("rm -rf %s/*" % appbuild_root, host_post_info)
 # name: install virtualenv
 virtual_env_status = check_and_install_virtual_env(virtualenv_version, trusted_host, pip_url, host_post_info)
 if virtual_env_status is False:
@@ -114,6 +113,7 @@ else:
 copy_arg = CopyArg()
 copy_arg.src = "files/zstacklib/%s" % pkg_zstacklib
 copy_arg.dest = "%s/%s" % (appbuild_root, pkg_zstacklib)
+copy_arg.args = "force=yes"
 copy_zstacklib = copy(copy_arg, host_post_info)
 
 if copy_zstacklib != "changed:False":
@@ -127,6 +127,7 @@ if copy_zstacklib != "changed:False":
 copy_arg = CopyArg()
 copy_arg.src = "%s/%s" % (file_root, pkg_appbuildsystemagent)
 copy_arg.dest = "%s/%s" % (appbuild_root, pkg_appbuildsystemagent)
+copy_arg.args = "force=yes"
 copy_appbuild = copy(copy_arg, host_post_info)
 
 if copy_appbuild != "changed:False":
@@ -141,7 +142,7 @@ if copy_appbuild != "changed:False":
 copy_arg = CopyArg()
 copy_arg.src = "%s/zstack-app-buildsystem" % file_root
 copy_arg.dest = "/etc/init.d/"
-copy_arg.args = "mode=755"
+copy_arg.args = "mode=755 force=yes"
 copy(copy_arg, host_post_info)
 
 

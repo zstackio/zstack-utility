@@ -74,17 +74,17 @@ else:
     command = 'mkdir -p %s %s' % (consoleproxy_root, virtenv_path)
     run_remote_command(command, host_post_info)
 
-run_remote_command("rm -rf %s/*" % consoleproxy_root, host_post_info)
-
 # name: copy zstacklib
 copy_arg = CopyArg()
 copy_arg.src = "files/zstacklib/%s" % pkg_zstacklib
 copy_arg.dest = "%s/%s" % (consoleproxy_root, pkg_zstacklib)
+copy_arg.args = "force=yes"
 copy_zstacklib = copy(copy_arg, host_post_info)
 # name: copy consoleproxy
 copy_arg = CopyArg()
 copy_arg.src = "%s/%s" % (file_root, pkg_consoleproxy)
 copy_arg.dest = "%s/%s" % (consoleproxy_root, pkg_consoleproxy)
+copy_arg.args = "force=yes"
 copy_consoleproxy = copy(copy_arg, host_post_info)
 # only for os using init.d not systemd
 copy_arg = CopyArg()

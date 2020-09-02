@@ -86,8 +86,6 @@ else:
     command = 'mkdir -p %s %s' % (cephp_root, virtenv_path)
     run_remote_command(command, host_post_info)
 
-run_remote_command("rm -rf %s/*" % cephp_root, host_post_info)
-
 if distro in RPM_BASED_OS:
     if zstack_repo != 'false':
         command = ("pkg_list=`rpm -q wget qemu-img nmap| grep \"not installed\" | awk '{ print $2 }'` && for pkg"
@@ -141,6 +139,7 @@ run_remote_command(command, host_post_info)
 copy_arg = CopyArg()
 copy_arg.src = "files/zstacklib/%s" % pkg_zstacklib
 copy_arg.dest = "%s/%s" % (cephp_root, pkg_zstacklib)
+copy_arg.args = "force=yes"
 zstack_lib_copy = copy(copy_arg, host_post_info)
 if zstack_lib_copy != "changed:False":
     agent_install_arg = AgentInstallArg(trusted_host, pip_url, virtenv_path, init_install)
@@ -153,6 +152,7 @@ if zstack_lib_copy != "changed:False":
 copy_arg = CopyArg()
 copy_arg.src = "%s/%s" % (file_root, pkg_cephpagent)
 copy_arg.dest = "%s/%s" % (cephp_root, pkg_cephpagent)
+copy_arg.args = "force=yes"
 cephpagent_copy = copy(copy_arg, host_post_info)
 if cephpagent_copy != "changed:False":
     agent_install_arg = AgentInstallArg(trusted_host, pip_url, virtenv_path, init_install)
@@ -172,6 +172,7 @@ copy(copy_arg, host_post_info)
 copy_arg = CopyArg()
 copy_arg.src = "%s/cephps-iptables" % file_root
 copy_arg.dest = "/var/lib/zstack/cephp/package/cephps-iptables"
+copy_arg.args = "force=yes"
 copy(copy_arg, host_post_info)
 
 # name: restart cephpagent
