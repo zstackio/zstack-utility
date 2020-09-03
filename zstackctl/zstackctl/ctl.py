@@ -157,7 +157,10 @@ if [ $? -ne 0 ]; then
     echo "tmpdir=$mysql_tmp_path"
     sed -i "/\[mysqld\]/a tmpdir=$mysql_tmp_path" $mysql_conf
 fi
-systemctl restart mariadb
+
+if [ `systemctl is-active mariadb` != "unknown" ]; then 
+    systemctl restart mariadb
+fi
 '''
 
 mysqldump_skip_tables = "--ignore-table=zstack.VmUsageHistoryVO --ignore-table=zstack.RootVolumeUsageHistoryVO " \
