@@ -92,7 +92,7 @@ else :
 zstacklib = ZstackLib(zstacklib_args)
 
 if distro in RPM_BASED_OS:
-    qemu_pkg = 'qemu-img'
+    qemu_pkg = 'qemu-img-ev'
     qemu_pkg += ' fuse-sshfs nmap collectd'
 
     # skip these packages
