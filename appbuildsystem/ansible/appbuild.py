@@ -112,7 +112,7 @@ else:
 # name: copy zstacklib
 copy_arg = CopyArg()
 copy_arg.src = "files/zstacklib/%s" % pkg_zstacklib
-copy_arg.dest = "%s/%s" % (appbuild_root, pkg_zstacklib)
+copy_arg.dest = "%s/" % appbuild_root
 copy_arg.args = "force=yes"
 copy_zstacklib = copy(copy_arg, host_post_info)
 

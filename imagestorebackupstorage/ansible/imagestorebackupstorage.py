@@ -131,14 +131,14 @@ else:
 copy_arg = CopyArg()
 dest_pkg = "%s/%s" % (imagestore_root, dst_pkg_imagestorebackupstorage)
 copy_arg.src = "%s/%s" % (file_root, src_pkg_imagestorebackupstorage)
-copy_arg.dest = dest_pkg
+copy_arg.dest = "%s/" % imagestore_root
 copy_arg.args = "force=yes"
 copy(copy_arg, host_post_info)
 
 # name: copy exporter binary
 copy_arg = CopyArg()
 copy_arg.src = "%s/%s" % (kvm_file_root, src_pkg_exporter)
-copy_arg.dest = "%s/%s" % (utils_root, dst_pkg_exporter)
+copy_arg.dest = "%s/" % utils_root
 copy_arg.args = "force=yes"
 copy(copy_arg, host_post_info)
 
