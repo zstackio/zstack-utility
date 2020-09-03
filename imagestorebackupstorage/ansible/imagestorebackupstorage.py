@@ -87,7 +87,7 @@ else :
 zstacklib = ZstackLib(zstacklib_args)
 
 if distro in RPM_BASED_OS:
-    qemu_pkg = 'qemu-kvm-ev' if distro_version >= 7 else 'qemu-kvm'
+    qemu_pkg = 'qemu-img-ev'
     qemu_pkg += ' fuse-sshfs nmap'
     if get_remote_host_arch(host_post_info) == "mips64el":
         qemu_pkg = 'qemu-kvm nmap'
