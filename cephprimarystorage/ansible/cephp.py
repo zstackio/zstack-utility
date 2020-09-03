@@ -138,7 +138,7 @@ run_remote_command(command, host_post_info)
 # name: copy zstacklib and install
 copy_arg = CopyArg()
 copy_arg.src = "files/zstacklib/%s" % pkg_zstacklib
-copy_arg.dest = "%s/%s" % (cephp_root, pkg_zstacklib)
+copy_arg.dest = "%s/" % cephp_root
 copy_arg.args = "force=yes"
 zstack_lib_copy = copy(copy_arg, host_post_info)
 if zstack_lib_copy != "changed:False":

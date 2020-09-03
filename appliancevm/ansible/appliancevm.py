@@ -82,7 +82,7 @@ else:
 # name: copy zstacklib and install
 copy_arg = CopyArg()
 copy_arg.src = "files/zstacklib/%s" % pkg_zstacklib
-copy_arg.dest = "%s/%s" % (appliancevm_root, pkg_zstacklib)
+copy_arg.dest = "%s/" % appliancevm_root
 copy_arg.args = "force=yes"
 copy_zstacklib = copy(copy_arg, host_post_info)
 
