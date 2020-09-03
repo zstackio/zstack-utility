@@ -535,8 +535,13 @@ class CephAgent(plugin.TaskManager):
                 report.progress_report(get_exact_percent(percent, stage), "report")
             return synced
 
+        def _get_cp_cmd():
+            return "deep cp" if shell.run("rbd help deep cp > /dev/null") == 0 else "cp"
+
         t_shell = traceable_shell.get_shell(cmd)
-        _, _, err = t_shell.bash_progress_1(self._wrap_shareable_cmd(cmd, 'rbd cp %s %s 2> %s' % (src_path, dst_path, PFILE)) , _get_progress)
+        _, _, err = t_shell.bash_progress_1(
+            self._wrap_shareable_cmd(cmd, 'rbd %s %s %s 2> %s' % (_get_cp_cmd(), src_path, dst_path, PFILE)),
+            _get_progress)
 
         if os.path.exists(PFILE):
             os.remove(PFILE)
