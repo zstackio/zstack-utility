@@ -83,7 +83,6 @@ if not os.path.isdir(repo_dir):
     error("Missing directory '{}', please try 'zstack-upgrade -a {}_iso'".format(repo_dir, host_arch))
 
 
-
 def update_libvritd_config(host_post_info):
     command = "grep -i ^host_uuid %s" % libvirtd_conf_file
     status, output = run_remote_command(command, host_post_info, True, True)
@@ -370,10 +369,10 @@ def install_kvm_pkg():
 
     def deb_based_install():
         # name: install kvm related packages on Debian based OS
-        install_pkg_list = ['curl', 'qemu', 'qemu-system', 'bridge-utils', 'wget', 'qemu-utils', 'python-libvirt', 
-                            'libvirt-daemon-system', 'libfdt-dev', 'libvirt-dev', 'libvirt-clients', 'chrony','vlan', 
-                            'libguestfs-tools', 'sed', 'nfs-common', 'open-iscsi','ebtables', 'pv', 'usbutils', 
-                            'pciutils', 'expect', 'lighttpd', 'sshpass', 'rsync', 'iputils-arping', 'nmap', 'collectd', 
+        install_pkg_list = ['curl', 'qemu', 'qemu-system', 'bridge-utils', 'wget', 'qemu-utils', 'python-libvirt',
+                            'libvirt-daemon-system', 'libfdt-dev', 'libvirt-dev', 'libvirt-clients', 'chrony','vlan',
+                            'libguestfs-tools', 'sed', 'nfs-common', 'open-iscsi','ebtables', 'pv', 'usbutils',
+                            'pciutils', 'expect', 'lighttpd', 'sshpass', 'rsync', 'iputils-arping', 'nmap', 'collectd',
                             'iptables', 'python-pip', 'dmidecode', 'ovmf', 'dnsmasq', 'auditd', 'ipset',
                             'multipath-tools', 'uuid-runtime', 'lvm2', 'lvm2-lockd', 'udev', 'sanlock', 'usbredirserver']
         apt_install_packages(install_pkg_list, host_post_info)
@@ -654,7 +653,7 @@ def set_legacy_iptables_ebtables():
     host_post_info.post_label_param = None
     run_remote_command(command, host_post_info)
 
- 
+
 def do_auditd_config():
     """add audit rules for signals"""
     AUDIT_CONF_FILE = '/etc/audit/auditd.conf'

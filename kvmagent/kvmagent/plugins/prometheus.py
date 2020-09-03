@@ -22,6 +22,10 @@ latest_collect_result = {}
 collectResultLock = threading.RLock()
 IPTABLES_CMD = iptables.get_iptables_cmd()
 
+def read_number(fname):
+    res = linux.read_file(fname)
+    return 0 if not res else int(res)
+
 def collect_host_network_statistics():
 
     all_eths = os.listdir("/sys/class/net/")
@@ -45,23 +49,12 @@ def collect_host_network_statistics():
     all_out_packets = 0
     all_out_errors = 0
     for intf in interfaces:
-        res = linux.read_file("/sys/class/net/{}/statistics/rx_bytes".format(intf))
-        all_in_bytes += int(res)
-
-        res = linux.read_file("/sys/class/net/{}/statistics/rx_packets".format(intf))
-        all_in_packets += int(res)
-
-        res = linux.read_file("/sys/class/net/{}/statistics/rx_errors".format(intf))
-        all_in_errors += int(res)
-
-        res = linux.read_file("/sys/class/net/{}/statistics/tx_bytes".format(intf))
-        all_out_bytes += int(res)
-
-        res = linux.read_file("/sys/class/net/{}/statistics/tx_packets".format(intf))
-        all_out_packets += int(res)
-
-        res = linux.read_file("/sys/class/net/{}/statistics/tx_errors".format(intf))
-        all_out_errors += int(res)
+        all_in_bytes += read_number("/sys/class/net/{}/statistics/rx_bytes".format(intf))
+        all_in_packets += read_number("/sys/class/net/{}/statistics/rx_packets".format(intf))
+        all_in_errors += read_number("/sys/class/net/{}/statistics/rx_errors".format(intf))
+        all_out_bytes += read_number("/sys/class/net/{}/statistics/tx_bytes".format(intf))
+        all_out_packets += read_number("/sys/class/net/{}/statistics/tx_packets".format(intf))
+        all_out_errors += read_number("/sys/class/net/{}/statistics/tx_errors".format(intf))
 
     metrics = {
         'host_network_all_in_bytes': GaugeMetricFamily('host_network_all_in_bytes',

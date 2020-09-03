@@ -172,7 +172,7 @@ class HttpServer(object):
     classdocs
     '''
 
-    def __init__(self, port=7070, async_callback_uri = None):
+    def __init__(self, port=7700, async_callback_uri = None):
         '''
         Constructor
         '''
@@ -418,7 +418,7 @@ class UriBuilder(object):
     def __init__(self, uri=None):
         self.scheme = 'http'
         self.host = None
-        self.port = 7070
+        self.port = 7700
         self.paths = []
         if uri:
             self._parse(uri)

@@ -33,6 +33,16 @@ DEB_BASED_OS = ['uos', 'kylin', 'debian', 'ubuntu', 'uniontech']
 SUPPORTED_ARCH = ['x86_64', 'aarch64', 'mips64el']
 HOST_ARCH = platform.machine()
 
+'''
+[root@10-0-67-98 ~]# ip link set mtu 65522 dev vnic2.0
+RTNETLINK answers: Invalid argument
+[root@10-0-67-98 ~]# ip link set mtu 65521 dev vnic2.0
+[root@10-0-67-98 ~]# ip link set mtu 9601 dev eth0.100
+RTNETLINK answers: Numerical result out of range
+[root@10-0-67-98 ~]# ip link set mtu 9600 dev eth0.100
+'''
+MAX_MTU_OF_VNIC = 65500
+
 class LinuxError(Exception):
     ''' some utils failed '''
 
