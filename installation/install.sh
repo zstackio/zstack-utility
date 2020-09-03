@@ -1410,7 +1410,7 @@ is_install_general_libs_rh(){
             avahi-tools \
             audit"
     if [ "$BASEARCH" == "x86_64" ]; then
-      deps_list=${deps_list}" mecelog"
+      deps_list="${deps_list} mcelog"
     fi
     always_update_list="openssh"
     missing_list=`LANG=en_US.UTF-8 && rpm -q $deps_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
