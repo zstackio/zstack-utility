@@ -62,6 +62,13 @@ apply_resource_settings() {
 	fi
 }
 
+check_security_settings() {
+	rpm -q centos-release-7 >/dev/null || return
+	grep -q ^Ciphers /etc/ssh/sshd_config && return
+	echo "Ciphers chacha20-poly1305@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr,aes128-gcm@openssh.com,aes256-gcm@openssh.com" >> /etc/ssh/sshd_config
+	systemctl restart sshd
+}
+
 # enable coredump for existing qemu-kvm processes
 enable_qemukvm_coredump() {
 	for pid in `ps -x -ocomm,pid | awk '$1 == "qemu-kvm" {print $2}'`; do
@@ -81,6 +88,7 @@ if [ "$@" = "status" ]; then
 else
 	if [ "$@" = "start" ]; then
 		apply_resource_settings
+		check_security_settings
 		enable_qemukvm_coredump
 		rm_ebtables_dangling_lock '/var/lib/ebtables/lock' #C72
 		rm_ebtables_dangling_lock '/run/ebtables.lock'   #C74
