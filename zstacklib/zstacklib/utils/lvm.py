@@ -377,7 +377,7 @@ sh_retries=20
     linux.sync_file(SANLOCK_CONFIG_FILE_PATH)
 
 
-def config_lvmlockd():
+def config_lvmlockd(io_timeout=40):
     content = """[Unit]
 Description=LVM2 lock daemon
 Documentation=man:lvmlockd(8)
@@ -396,10 +396,12 @@ SendSIGKILL=no
 
 [Install]
 WantedBy=multi-user.target
-""" % SANLOCK_IO_TIMEOUT
+""" % io_timeout
     lvmlockd_service_path = os.path.join("/lib/systemd/system", get_lvmlockd_service_name())
     with open(lvmlockd_service_path, 'w') as f:
         f.write(content)
+        f.flush()
+        os.fsync(f.fileno())
     os.chmod(lvmlockd_service_path, 0644)
 
     if not os.path.exists(LVMLOCKD_LOG_RSYSLOG_PATH):
@@ -428,11 +430,11 @@ def config_lvmlocal_conf(node, value):
 
 
 @bash.in_bash
-def start_lvmlockd():
+def start_lvmlockd(io_timeout=40):
     if not os.path.exists(os.path.dirname(LVMLOCKD_LOG_FILE_PATH)):
         os.mkdir(os.path.dirname(LVMLOCKD_LOG_FILE_PATH))
 
-    config_lvmlockd()
+    config_lvmlockd(io_timeout)
     for service in ["sanlock", get_lvmlockd_service_name()]:
         cmd = shell.ShellCmd("timeout 30 systemctl start %s" % service)
         cmd(is_exception=True)

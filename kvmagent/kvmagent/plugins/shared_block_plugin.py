@@ -457,7 +457,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         config_lvm(cmd.hostId, cmd.enableLvmetad)
 
-        lvm.start_lvmlockd()
+        lvm.start_lvmlockd(cmd.ioTimeout)
         logger.debug("find/create vg %s lock..." % cmd.vgUuid)
         rsp.isFirst = self.create_vg_if_not_found(cmd.vgUuid, diskPaths, cmd.hostUuid, cmd.forceWipe)
 

@@ -1,11 +1,9 @@
 '''
 @author: Frank
 '''
-import Queue
 import contextlib
 import os.path
 import tempfile
-import threading
 import time
 import traceback
 import xml.etree.ElementTree as etree
@@ -15,6 +13,7 @@ import netaddr
 import uuid
 import simplejson
 import base64
+import json
 
 import libvirt
 import xml.dom.minidom as minidom
@@ -22,6 +21,7 @@ import xml.dom.minidom as minidom
 from distutils.version import LooseVersion
 
 import zstacklib.utils.ip as ip
+import zstacklib.utils.ebtables as ebtables
 import zstacklib.utils.iptables as iptables
 import zstacklib.utils.lock as lock
 
@@ -656,15 +656,11 @@ class VncPortIptableRule(object):
         ipt.delete_chain(chain_name)
         ipt.iptable_restore()
 
-    @lock.file_lock('/run/xtables.lock')
-    def delete_stale_chains(self):
-        vms = get_running_vms()
-        ipt = iptables.from_iptables_save()
-        tbl = ipt.get_table()
-
+    def find_vm_internal_ids(self, vms):
         internal_ids = []
+        namespace_used = is_namespace_used()
         for vm in vms:
-            if is_namespace_used():
+            if namespace_used:
                 vm_id_node = find_zstack_metadata_node(etree.fromstring(vm.domain_xml), 'internalId')
                 if vm_id_node is None:
                     continue
@@ -678,6 +674,18 @@ class VncPortIptableRule(object):
 
             if vm_id:
                 internal_ids.append(vm_id)
+        return internal_ids
+
+    @lock.file_lock('/run/xtables.lock')
+    def delete_stale_chains(self):
+        ipt = iptables.from_iptables_save()
+        tbl = ipt.get_table()
+        if not tbl:
+            ipt.iptable_restore()
+            return
+
+        vms = get_running_vms()
+        internal_ids = self.find_vm_internal_ids(vms)
 
         # delete all vnc chains
         chains = tbl.children[:]
@@ -770,7 +778,7 @@ def is_namespace_used():
 
 @linux.with_arch(todo_list=['x86_64'])
 def is_ioapic_supported():
-    return compare_version(LIBVIRT_VERSION, '3.4.0') >= 0 
+    return compare_version(LIBVIRT_VERSION, '3.4.0') >= 0
 
 def is_kylin402():
     zstack_release = linux.read_file('/etc/zstack-release')
@@ -2817,7 +2825,8 @@ class Vm(object):
 
     def _interface_cmd_to_xml(self, cmd):
         vhostSrcPath = cmd.addons['vhostSrcPath'] if cmd.addons else None
-        interface = Vm._build_interface_xml(cmd.nic, None, vhostSrcPath)
+        brMode = cmd.addons['brMode'] if cmd.addons else None
+        interface = Vm._build_interface_xml(cmd.nic, None, vhostSrcPath, brMode)
 
         def addon():
             if cmd.addons and cmd.addons['NicQos']:
@@ -3278,7 +3287,7 @@ class Vm(object):
 
                 def on_aarch64():
                     cpu = e(root, 'cpu', attrib={'mode': 'custom'})
-                    e(cpu, 'model', 'host', attrib={'fallback': 'allow'})                                                
+                    e(cpu, 'model', 'host', attrib={'fallback': 'allow'})
                     mem = cmd.memory / 1024
                     e(cpu, 'topology', attrib={'sockets': '32', 'cores': '4', 'threads': '1'})
                     numa = e(cpu, 'numa')
@@ -3313,7 +3322,7 @@ class Vm(object):
                     else:
                         cpu = e(root, 'cpu')
                     return cpu
-                    
+
                 def on_aarch64():
                     if is_virtual_machine():
                         cpu = e(root, 'cpu')
@@ -3371,7 +3380,7 @@ class Vm(object):
                     e(os, 'type', 'hvm', attrib={'arch': 'aarch64', 'machine': 'virt'})
                     e(os, 'loader', '/usr/share/OVMF/QEMU_EFI-pflash.raw', attrib={'readonly': 'yes', 'type': 'rom'})
                     e(os, 'nvram', '/var/lib/libvirt/qemu/nvram/%s.fd' % cmd.vmInstanceUuid, attrib={'template': '/usr/share/OVMF/vars-template-pflash.raw'})
-                    
+
                 eval("on_{}".format(kvmagent.get_host_os_type()))()
 
             def on_mips64el():
@@ -3800,8 +3809,9 @@ class Vm(object):
 
             devices = elements['devices']
             vhostSrcPath = cmd.addons['vhostSrcPath'] if cmd.addons else None
-            for nic in cmd.nics:
-                interface = Vm._build_interface_xml(nic, devices, vhostSrcPath)
+            brMode = cmd.addons['brMode'] if cmd.addons else None
+            for index, nic in enumerate(cmd.nics):
+                interface = Vm._build_interface_xml(nic, devices, vhostSrcPath, brMode, index)
                 addon(interface)
 
         def make_meta():
@@ -3874,7 +3884,7 @@ class Vm(object):
                 e(devices, 'controller', None, {'type': 'usb', 'index': '1'})
                 e(devices, 'controller', None, {'type': 'usb', 'index': '2'})
                 return True
-                
+
 
             def set_usb2_3():
                 e(devices, 'controller', None, {'type': 'usb', 'index': '1', 'model': 'ehci'})
@@ -4025,7 +4035,7 @@ class Vm(object):
                 hostdev = e(devices, "hostdev", None, {'mode': 'subsystem', 'type': 'mdev', 'model': 'vfio-pci', 'managed': 'yes'})
                 source = e(hostdev, "source")
                 # convert mdevUuid to 8-4-4-4-12 format
-                e(source, "address", None, { "uuid": str(uuid.UUID('{%s}' % mdevUuid))})
+                e(source, "address", None, { "uuid": uuidhelper.to_full_uuid(mdevUuid) })
 
         def make_usb_device(usbDevices):
             if HOST_ARCH == 'aarch64':
@@ -4176,7 +4186,7 @@ class Vm(object):
         make_console()
         make_sec_label()
         make_controllers()
-        if is_spiceport_driver_supported():
+        if is_spiceport_driver_supported() and cmd.consoleMode in ["spice", "vncAndSpice"]:
             make_folder_sharing()
         # appliance vm doesn't need any cdrom or usb controller
         if not cmd.isApplianceVm:
@@ -4199,7 +4209,7 @@ class Vm(object):
         return vm
 
     @staticmethod
-    def _build_interface_xml(nic, devices=None, vhostSrcPath=None):
+    def _build_interface_xml(nic, devices=None, vhostSrcPath=None, brMode=None, index=0):
         iftype = 'bridge' if vhostSrcPath is None else 'vhostuser'
 
         if devices:
@@ -4209,13 +4219,18 @@ class Vm(object):
 
         e(interface, 'mac', None, attrib={'address': nic.mac})
         e(interface, 'alias', None, {'name': 'net%s' % nic.nicInternalName.split('.')[1]})
+        e(interface, 'mtu', None, attrib={'size': '%d' % nic.mtu})
 
         if iftype == 'bridge':
             e(interface, 'source', None, attrib={'bridge': nic.bridgeName})
             e(interface, 'target', None, attrib={'dev': nic.nicInternalName})
         elif iftype == 'vhostuser':
-            e(interface, 'source', None, attrib={'type': 'unix', 'path': vhostSrcPath, 'mode':'client'})
-            e(interface, 'driver', None, attrib={'queues': '16', 'vhostforce':'on'})
+            if brMode != 'mocbr':
+                e(interface, 'source', None, attrib={'type': 'unix', 'path': vhostSrcPath, 'mode':'client'})
+                e(interface, 'driver', None, attrib={'queues': '16', 'vhostforce':'on'})
+            else:
+                e(interface, 'source', None, attrib={'type': 'unix', 'path': '/var/run/phynic{}'.format(index+1), 'mode':'server'})
+                e(interface, 'driver', None, attrib={'queues': '8'})
 
         if nic.pci is not None and (iftype == 'bridge' or iftype == 'vhostuser'):
             e(interface, 'address', None, attrib={'type': nic.pci.type, 'domain': nic.pci.domain, 'bus': nic.pci.bus, 'slot': nic.pci.slot, "function": nic.pci.function})
@@ -4350,6 +4365,31 @@ class VmPlugin(kvmagent.KvmAgent):
             return None
         return o[0]
 
+    def _prepare_ebtables_for_mocbr(self, cmd):
+        brMode = cmd.addons['brMode'] if cmd.addons else None
+        if brMode != 'mocbr':
+            return
+
+        l3mapping = cmd.addons['l3mapping'] if cmd.addons else None
+        if not l3mapping:
+            return
+
+        if not cmd.nics:
+            return
+
+        mappings = {}  # mac -> l3uuid
+        for ele in l3mapping:
+            m = ele.split("-")
+            mappings[m[0]] = m[1]
+
+        EBTABLES_CMD = ebtables.get_ebtables_cmd()
+        for nic in cmd.nics:
+            ns = "{}_{}".format(nic.bridgeName, mappings[nic.mac])
+            outerdev = "outer%s" % ip.get_namespace_id(ns)
+            rule = " -t nat -A PREROUTING -i {} -d {} -j dnat --to-destination ff:ff:ff:ff:ff:ff".format(outerdev, nic.mac)
+            bash.bash_r(EBTABLES_CMD + rule)
+        bash.bash_r("ebtables-save | uniq | ebtables-restore")
+
     def _start_vm(self, cmd):
         try:
             vm = get_vm_by_uuid_no_retry(cmd.vmInstanceUuid, False)
@@ -4371,6 +4411,7 @@ class VmPlugin(kvmagent.KvmAgent):
                 return
 
             wait_console = True if not cmd.addons or cmd.addons['noConsole'] is not True else False
+            self._prepare_ebtables_for_mocbr(cmd)
             vm.start(cmd.timeout, cmd.createPaused, wait_console)
         except libvirt.libvirtError as e:
             logger.warn(linux.get_exception_stacktrace())

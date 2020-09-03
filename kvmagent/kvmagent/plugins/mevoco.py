@@ -97,6 +97,7 @@ def get_l3_uuid(namespace):
     items = namespace.split('_')
     return items[-1]
 
+
 class UserDataEnv(object):
     def __init__(self, bridge_name, namespace_name):
         self.bridge_name = bridge_name
@@ -108,18 +109,8 @@ class UserDataEnv(object):
     @lock.file_lock('/run/xtables.lock')
     @in_bash
     def prepare(self):
-        NAMESPACE_ID = None
-
         NAMESPACE_NAME = self.namespace_name
-        out = bash_errorout("ip netns list-id | grep -w {{NAMESPACE_NAME}} | awk '{print $2}'").strip(' \t\n\r')
-        if not out:
-            out = bash_errorout("ip netns list-id | tail -n 1 | awk '{print $2}'").strip(' \t\r\n')
-            if not out:
-                NAMESPACE_ID = 0
-            else:
-                NAMESPACE_ID = int(out) + 1
-        else:
-            NAMESPACE_ID = int(out)
+        NAMESPACE_ID = ip.get_namespace_id(self.namespace_name)
 
         logger.debug('use id[%s] for the namespace[%s]' % (NAMESPACE_ID, NAMESPACE_NAME))
 
@@ -127,6 +118,7 @@ class UserDataEnv(object):
         BR_PHY_DEV = get_phy_dev_from_bridge_name(self.bridge_name)
         OUTER_DEV = "outer%s" % NAMESPACE_ID
         INNER_DEV = "inner%s" % NAMESPACE_ID
+        MAX_MTU = linux.MAX_MTU_OF_VNIC
 
         ret = bash_r('ip netns exec {{NAMESPACE_NAME}} ip link show')
         if ret != 0:
@@ -142,6 +134,8 @@ class UserDataEnv(object):
         ret = bash_r('ip link | grep -w {{OUTER_DEV}} > /dev/null')
         if ret != 0:
             bash_errorout('ip link add {{OUTER_DEV}} type veth peer name {{INNER_DEV}}')
+            bash_errorout('ip link set mtu {{MAX_MTU}} dev {{INNER_DEV}}')
+            bash_errorout('ip link set mtu {{MAX_MTU}} dev {{OUTER_DEV}}')
 
         bash_errorout('ip link set {{OUTER_DEV}} up')
 
@@ -275,18 +269,8 @@ class DhcpEnv(object):
                 bash_errorout(
                     '%s -t mangle -A POSTROUTING -p udp -m udp --dport 546 -j CHECKSUM --checksum-fill' % IP6TABLES_CMD)
 
-        NAMESPACE_ID = None
-
         NAMESPACE_NAME = self.namespace_name
-        out = bash_errorout("ip netns list-id | grep -w {{NAMESPACE_NAME}} | awk '{print $2}'").strip(' \t\n\r')
-        if not out:
-            out = bash_errorout("ip netns list-id | tail -n 1 | awk '{print $2}'").strip(' \t\r\n')
-            if not out:
-                NAMESPACE_ID = 0
-            else:
-                NAMESPACE_ID = int(out) + 1
-        else:
-            NAMESPACE_ID = int(out)
+        NAMESPACE_ID = ip.get_namespace_id(self.namespace_name)
 
         logger.debug('use id[%s] for the namespace[%s]' % (NAMESPACE_ID, NAMESPACE_NAME))
 
@@ -302,6 +286,7 @@ class DhcpEnv(object):
         OUTER_DEV = "outer%s" % NAMESPACE_ID
         INNER_DEV = "inner%s" % NAMESPACE_ID
         CHAIN_NAME = "ZSTACK-%s" % DHCP_IP
+        MAX_MTU = linux.MAX_MTU_OF_VNIC
 
         ret = bash_r('ip netns exec {{NAMESPACE_NAME}} ip link show')
         if ret != 0:
@@ -317,6 +302,8 @@ class DhcpEnv(object):
         ret = bash_r('ip link | grep -w {{OUTER_DEV}} > /dev/null')
         if ret != 0:
             bash_errorout('ip link add {{OUTER_DEV}} type veth peer name {{INNER_DEV}}')
+            bash_errorout('ip link set mtu {{MAX_MTU}} dev {{INNER_DEV}}')
+            bash_errorout('ip link set mtu {{MAX_MTU}} dev {{OUTER_DEV}}')
 
         bash_errorout('ip link set {{OUTER_DEV}} up')
 
@@ -772,10 +759,13 @@ tag:{{TAG}},option:dns-server,{{DNS}}
             #"ip link add %s type veth peer name %s", max length of second parameter is 15 characters
             userdata_br_outer_dev = "ud_" + ns_outer_dev
             userdata_br_inner_dev = "ud_" + ns_inner_dev
+            MAX_MTU = linux.MAX_MTU_OF_VNIC
 
             ret = bash_r('ip link | grep -w %s > /dev/null' % userdata_br_outer_dev)
             if ret != 0:
                 bash_errorout('ip link add %s type veth peer name %s' % (userdata_br_outer_dev, userdata_br_inner_dev))
+                bash_errorout('ip link set mtu %d dev %s' % (MAX_MTU, userdata_br_outer_dev))
+                bash_errorout('ip link set mtu %d dev %s' % (MAX_MTU, userdata_br_inner_dev))
 
             bash_errorout('ip link set %s up' % userdata_br_outer_dev)
 
