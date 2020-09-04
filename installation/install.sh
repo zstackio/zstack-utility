@@ -164,6 +164,7 @@ declare -a upgrade_params_array=(
     '3.9.0,-DupgradeDatabaseBackupHistory=true'
     '3.9.0,-DupgradeSchedulerJobHistory=true'
     '3.9.0,-Dft.upgradeFaultToleranceGlobalConfig=true'
+    '3.10.0,-DupgradeVpcNetworkService=true'
 )
 #other than the upon params_array, this one could be persisted in zstack.properties
 declare -a upgrade_persist_params_array=(
