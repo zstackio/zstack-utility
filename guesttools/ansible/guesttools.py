@@ -42,12 +42,9 @@ host_post_info.post_url = post_url
 if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
 
-command = 'mkdir -p %s || true' % os.path.dirname(dst_guest_tools_iso)
-run_remote_command(command, host_post_info)
-
 copy_arg = CopyArg()
 copy_arg.src = src_guest_tools_iso
-copy_arg.dest = dst_guest_tools_iso
+copy_arg.dest = dst_guest_tools_iso + '/'
 copy_arg.args = "mode=644"
 copy(copy_arg, host_post_info)
 

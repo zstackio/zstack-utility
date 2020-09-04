@@ -520,8 +520,7 @@ def do_network_config():
             copy_arg.src = "%s/ip6tables" % file_root
             copy_arg.dest = "/etc/sysconfig/ip6tables"
             copy(copy_arg, host_post_info)
-            command = "sed -i 's/syslog.target,iptables.service/syslog.target iptables.service/' %s || true;" % IP6TABLE_SERVICE_FILE
-            run_remote_command(command, host_post_info)
+            replace_content(IP6TABLE_SERVICE_FILE, "regexp='syslog.target,iptables.service' replace='syslog.target iptables.service'", host_post_info)
             service_status("ip6tables", "state=restarted enabled=yes", host_post_info)
         elif distro in DEB_BASED_OS:
             copy_arg = CopyArg()
