@@ -74,7 +74,7 @@ class Lockf(Locker):
 
 
 # NOTE(weiw): caller should manually clean up lock file if not need anymore
-def file_lock(name, locker=Lockf(), debug=False):
+def file_lock(name, locker=Lockf(), debug=True):
     def wrap(f):
         @functools.wraps(f)
         def inner(*args, **kwargs):

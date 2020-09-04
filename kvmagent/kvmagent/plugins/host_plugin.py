@@ -15,6 +15,8 @@ import uuid
 import string
 import socket
 import sys
+import ctypes
+import libvirt
 
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
@@ -84,6 +86,7 @@ class HostFactResponse(kvmagent.AgentResponse):
         self.cpuModelName = None
         self.systemSerialNumber = None
         self.eptFlag = None
+        self.sscardId = None
 
 class SetupMountablePrimaryStorageHeartbeatCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -778,6 +781,15 @@ class HostPlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     def fact(self, req):
+        def getSscardId():
+            opt = ctypes.create_string_buffer(1024)
+            ret = None
+            sscardSoPath = "/opt/SSCard/sharedlib/libcheck.so"
+            so = ctypes.cdll.LoadLibrary(sscardSoPath)
+            ret = so.rbow_sscard_opt_read(opt, 16)
+            if ret != 16 and ret != 32 and ret != 48:
+                raise Exception("get SSCard info error")
+            return opt.raw[0:16]
         rsp = HostFactResponse()
         rsp.osDistribution, rsp.osVersion, rsp.osRelease = platform.dist()
         rsp.osRelease = rsp.osRelease if rsp.osRelease else "Core"
@@ -788,6 +800,7 @@ class HostPlugin(kvmagent.KvmAgent):
             lambda x: x.address != '127.0.0.1' and not x.ifname.endswith('zs'), iproute.query_addresses(ip_version=4))]
         rsp.systemProductName = 'unknown'
         rsp.systemSerialNumber = 'unknown'
+        rsp.sscardId = getSscardId()
         is_dmidecode = shell.run("dmidecode")
         if str(is_dmidecode) == '0' and kvmagent.host_arch == "x86_64":
             system_product_name = shell.call('dmidecode -s system-product-name').strip()

@@ -425,12 +425,16 @@ def sshfs_mount(username, hostname, port, password, url, mountpoint, writebandwi
     fd, fname = tempfile.mkstemp()
     os.chmod(fname, 0o500)
 
+    cmd = ''
     if not writebandwidth:
         os.write(fd,
                  "#!/bin/bash\n/usr/bin/sshpass -p %s ssh "
                  "-o StrictHostKeyChecking=no "
                  "-o UserKnownHostsFile=/dev/null -p %d $*\n" % (
-                 shellquote(password), port))
+                     shellquote(password), port))
+        cmd = "/usr/bin/sshpass -p %s ssh " \
+              "-o StrictHostKeyChecking=no " \
+              "-o UserKnownHostsFile=/dev/null -p %d -x -a -oClearAllForwardings=yes -ocompression=no -2" % (shellquote(password), port)
     else:
         os.write(fd,
                  "#!/bin/bash\n/usr/bin/sshpass -p %s ssh "
@@ -438,6 +442,11 @@ def sshfs_mount(username, hostname, port, password, url, mountpoint, writebandwi
                  "-o StrictHostKeyChecking=no "
                  "-o UserKnownHostsFile=/dev/null -p %d $*\n" % (
                      shellquote(password), writebandwidth / 1024 / 8, hostname, port, port))
+        cmd = "/usr/bin/sshpass -p %s ssh " \
+              "-o 'ProxyCommand pv -q -L %sk | nc %s %s' " \
+              "-o StrictHostKeyChecking=no " \
+              "-o UserKnownHostsFile=/dev/null -p %d -x -a -oClearAllForwardings=yes -ocompression=no -2" % (
+              shellquote(password), writebandwidth / 1024 / 8, hostname, port, port)
 
     os.close(fd)
 
@@ -450,6 +459,7 @@ def sshfs_mount(username, hostname, port, password, url, mountpoint, writebandwi
     finally:
         os.remove(fname)
     return ret
+
 
 def fumount(mountpoint, timeout = 10):
     return shell.run("timeout %s fusermount -u %s" % (timeout, mountpoint))

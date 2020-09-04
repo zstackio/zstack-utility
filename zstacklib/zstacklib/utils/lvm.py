@@ -516,6 +516,8 @@ def modify_sanlock_config(key, value):
 
 
 def config_lvmlockd(io_timeout=40):
+    # tmpChange
+    '''
     content = """[Unit]
 Description=LVM2 lock daemon
 Documentation=man:lvmlockd(8)
@@ -541,7 +543,7 @@ WantedBy=multi-user.target
         f.flush()
         os.fsync(f.fileno())
     os.chmod(lvmlockd_service_path, 0o644)
-
+    '''
     if not os.path.exists(LVMLOCKD_LOG_RSYSLOG_PATH):
         content = """if $programname == 'lvmlockd' then %s 
 & stop

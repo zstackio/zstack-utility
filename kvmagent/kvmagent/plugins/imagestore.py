@@ -9,6 +9,7 @@ from zstacklib.utils import shell
 from zstacklib.utils import traceable_shell
 from zstacklib.utils.bash import bash_progress_1, in_bash, bash_r, bash_roe
 from zstacklib.utils.report import *
+from zstacklib.utils import qemu_img
 
 logger = log.get_logger(__name__)
 

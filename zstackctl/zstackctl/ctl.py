@@ -173,6 +173,8 @@ mysqldump_skip_tables = "--ignore-table=zstack.VmUsageHistoryVO --ignore-table=z
                         "--ignore-table=zstack.ResourceUsageVO --ignore-table=zstack.PciDeviceUsageHistoryVO " \
                         "--ignore-table=zstack.PubIpVipBandwidthUsageHistoryVO"
 
+ENABLE_KYSEC = False
+
 def signal_handler(signal, frame):
     sys.exit(0)
 
@@ -1184,17 +1186,25 @@ def script(cmd, args=None, no_pipe=False):
         t = string.Template(cmd)
         cmd = t.substitute(args)
 
-    fd, script_path = tempfile.mkstemp(suffix='.sh')
-    os.fdopen(fd, 'w').write(cmd)
-    try:
+    if ENABLE_KYSEC:
         if ctl.verbose:
             info('execute script:\n%s\n' % cmd)
         if no_pipe:
-            shell_no_pipe('bash %s' % script_path)
+            shell_no_pipe('%s' % cmd)
         else:
-            shell('bash %s' % script_path)
-    finally:
-        os.remove(script_path)
+            shell('bash %s' % cmd)
+    else:
+        fd, script_path = tempfile.mkstemp(suffix='.sh')
+        os.fdopen(fd, 'w').write(cmd)
+        try:
+            if ctl.verbose:
+                info('execute script:\n%s\n' % cmd)
+            if no_pipe:
+                shell_no_pipe('bash %s' % script_path)
+            else:
+                shell('bash %s' % script_path)
+        finally:
+            os.remove(script_path)
 
 @lock.lock("subprocess.popen")
 def get_process(cmd, workdir, pipe):
@@ -1655,7 +1665,7 @@ class DeployDBCmd(Command):
         else:
             check_existing_db = 'mysql --user=root --host=%s --port=%s -e "use zstack"' % (args.host, args.port)
 
-        self.update_db_config()
+        #self.update_db_config()
         cmd = ShellCmd(check_existing_db)
         cmd(False)
         if not args.root_password:
@@ -1743,7 +1753,7 @@ class DeployUIDBCmd(Command):
             check_existing_db = 'mysql --user=root --host=%s --port=%s -e "use zstack_ui"' % (args.host, args.port)
             drop_mini_db = 'mysql --user=root --host=%s --port=%s -e "DROP DATABASE IF EXISTS zstack_mini;"' % (args.host, args.port)
 
-        self.update_db_config()
+        #self.update_db_config()
         cmd = ShellCmd(check_existing_db)
         cmd(False)
         if not args.root_password:
@@ -2743,9 +2753,6 @@ class InstallDbCmd(Command):
       yum_repo: "$yum_repo"
 
   tasks:
-    - name: pre-install script
-      script: $pre_install_script
-
     - name: install MySQL for RedHat 6 through user defined repos
       when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7' and yum_repo != 'false'
       shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y mysql mysql-server
@@ -2864,6 +2871,12 @@ class InstallDbCmd(Command):
         again with --login-password set."
       when: change_root_result.rc != 0 and install_result.changed == False
 '''
+        if not args.yum:
+            args.yum = get_yum_repo_from_property()
+
+        script = ShellCmd("ip addr | grep 'inet ' | awk '{print $2}' | awk -F '/' '{print $1}'")
+        script(True)
+        current_host_ips = script.stdout.split('\n')
 
         if not args.root_password and not args.login_password:
             args.root_password = '''"''"'''
@@ -2887,81 +2900,25 @@ class InstallDbCmd(Command):
             change_root_password_cmd = '/usr/bin/mysqladmin -u root -p{{login_password}} password {{root_password}}'
         else:
             change_root_password_cmd = '/usr/bin/mysqladmin -u root password {{root_password}}'
-
-        pre_install_script = '''
-#!/bin/bash
-if [ -f /etc/redhat-release ] ; then
-
-grep ' 7' /etc/redhat-release
-if [ $? -eq 0 ]; then
-[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
-else
-[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-6&arch=\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
-fi
-
-[ -d /etc/yum.repos.d/ ] && echo -e "#aliyun base\n[alibase]\nname=CentOS-\$releasever - Base - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[aliupdates]\nname=CentOS-\$releasever - Updates - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliextras]\nname=CentOS-\$releasever - Extras - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nbaseurl=http://mirrors.aliyun.com/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-aliyun-yum.repo
-
-[ -d /etc/yum.repos.d/ ] && echo -e "#163 base\n[163base]\nname=CentOS-\$releasever - Base - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[163updates]\nname=CentOS-\$releasever - Updates - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n#additional packages that may be useful\n[163extras]\nname=CentOS-\$releasever - Extras - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[ustcepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearch - ustc \nbaseurl=http://centos.ustc.edu.cn/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-163-yum.repo
-fi
-
-###################
-#Check DNS hijacking
-###################
-
-hostname=`hostname`
-
-pintret=`ping -c 1 -W 2 $hostname 2>/dev/null | head -n1`
-echo $pintret | grep 'PING' > /dev/null
-[ $? -ne 0 ] && exit 0
-
-ip=`echo $pintret | cut -d' ' -f 3 | cut -d'(' -f 2 | cut -d')' -f 1`
-
-ip_1=`echo $ip | cut -d'.' -f 1`
-[ "127" = "$ip_1" ] && exit 0
-
-ip addr | grep $ip > /dev/null
-[ $? -eq 0 ] && exit 0
-
-echo "The hostname($hostname) of your machine is resolved to IP($ip) which is none of IPs of your machine.
-It's likely your DNS server has been hijacking, please try fixing it or add \"ip_of_your_host $hostname\" to /etc/hosts.
-DNS hijacking will cause MySQL not working."
-exit 1
-'''
-        fd, pre_install_script_path = tempfile.mkstemp()
-        os.fdopen(fd, 'w').write(pre_install_script)
-
-        def cleanup_pre_install_script():
-            os.remove(pre_install_script_path)
-
-        self.install_cleanup_routine(cleanup_pre_install_script)
-
-        post_install_script = mysql_db_config_script
-        fd, post_install_script_path = tempfile.mkstemp()
-        os.fdopen(fd, 'w').write(post_install_script)
-
-        def cleanup_post_install_script():
-            os.remove(post_install_script_path)
-
-        self.install_cleanup_routine(cleanup_post_install_script)
-
-        t = string.Template(yaml)
-        if args.yum:
-            yum_repo = args.yum
-        else:
-            yum_repo = 'false'
-        yaml = t.substitute({
-            'host': args.host,
-            'change_password_cmd': change_root_password_cmd,
-            'root_password': args.root_password,
-            'login_password': args.login_password,
-            'grant_access_cmd': grant_access_cmd,
-            'pre_install_script': pre_install_script_path,
-            'yum_folder': ctl.zstack_home,
-            'yum_repo': yum_repo,
-            'post_install_script': post_install_script_path
-        })
-
-        ansible(yaml, args.host, args.debug, args.ssh_key)
+        #install mariadb
+        script = ShellCmd("rpm -q mariadb-server || (yum clean metadata; yum --disablerepo=* --enablerepo=zstack-local --nogpgcheck install -y  mariadb mariadb-server iptables-services)")
+        script(True)
+        #iptables 3306
+        script = ShellCmd('''iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 3306 -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 3306 -j ACCEPT && service iptables save)''')
+        script(True)
+        #config mariadb
+        post_install_script_path = "/usr/local/zstack/apache-tomcat/webapps/zstack/WEB-INF/classes/ansible/zstacklib/mysql_db_config_script.sh"
+        script = ShellCmd("/bin/bash %s" % post_install_script_path)
+        script(True)
+        #enable mariadb
+        script = ShellCmd("systemctl enable mariadb")
+        script(True)
+        #change root password
+        script = ShellCmd("/usr/bin/mysqladmin -u root -p password zstack.mysql.password")
+        script(True)
+        #grant remote access
+        script = ShellCmd(grant_access_cmd)
+        script(True)
 
 class UpgradeHACmd(Command):
     '''This feature only support zstack offline image currently'''
@@ -7937,7 +7894,7 @@ class UpgradeDbCmd(Command):
 
             info('Successfully upgraded the database to the latest version.\n')
 
-        update_db_config()
+        #update_db_config()
         backup_current_database()
         create_schema_version_table_if_needed()
 
@@ -9326,13 +9283,21 @@ class StartUiCmd(Command):
             logger.debug('user consoleProxyCertFile as ui pem')
             realpem = ctl.read_property('consoleProxyCertFile')
         scmd = Template("runuser -l root -s /bin/bash -c 'bash ${STOP} && sleep 2 && LOGGING_PATH=${LOGGING_PATH} bash ${START} --mn.host=${MN_HOST} --mn.port=${MN_PORT} --webhook.host=${WEBHOOK_HOST} --webhook.port=${WEBHOOK_PORT} --server.port=${SERVER_PORT} --ssl.enabled=${SSL_ENABLE} --ssl.keyalias=${SSL_KEYALIAS} --ssl.keystore=${SSL_KEYSTORE} --ssl.keystore-type=${SSL_KEYSTORE_TYPE} --ssl.keystore-password=${SSL_KETSTORE_PASSWORD} --db.url=${DB_URL} --db.username=${DB_USERNAME} --db.password=${DB_PASSWORD} ${CUSTOM_PROPS} --ssl.pem=${ZSTACK_UI_KEYSTORE_PEM}'")
-
         scmd = scmd.substitute(LOGGING_PATH=args.log,STOP=StartUiCmd.ZSTACK_UI_STOP,START=StartUiCmd.ZSTACK_UI_START,MN_HOST=args.mn_host,MN_PORT=args.mn_port,WEBHOOK_HOST=args.webhook_host,WEBHOOK_PORT=args.webhook_port,SERVER_PORT=args.server_port,SSL_ENABLE=enableSSL,SSL_KEYALIAS=args.ssl_keyalias,SSL_KEYSTORE=args.ssl_keystore,SSL_KEYSTORE_TYPE=args.ssl_keystore_type,SSL_KETSTORE_PASSWORD=args.ssl_keystore_password,DB_URL=args.db_url,DB_USERNAME=args.db_username,DB_PASSWORD=args.db_password,ZSTACK_UI_KEYSTORE_PEM=realpem,CUSTOM_PROPS=custom_props)
-
         script(scmd, no_pipe=True)
         os.system('mkdir -p /var/run/zstack/')
         with open(StartUiCmd.PORT_FILE, 'w') as fd:
             fd.write(args.server_port)
+
+        @loop_until_timeout(5, 0.5)
+        def write_pid():
+            pid = find_process_by_cmdline('zstack-ui.war')
+            if pid:
+                with open(self.PID_FILE, 'w') as fd:
+                    fd.write(str(pid))
+                return True
+            else:
+                return False
 
         timeout = int(args.timeout)
         @loop_until_timeout(timeout)
@@ -9653,6 +9618,11 @@ class StartVDIUICmd(Command):
         return True
 
     def run(self, args):
+        global ENABLE_KYSEC
+        if shell_return("getenforce | grep Enforcing") != 0:
+            ENABLE_KYSEC = False
+        else:
+            ENABLE_KYSEC = True
         shell("mkdir -p %s" % args.log)
         zstack_vdi =  args.vdi_path
         if not os.path.exists(zstack_vdi):

@@ -34,3 +34,7 @@ def get_check_result(path):
                        result.get("filename"), result.get("format"))
 
 
+def getVmName(vm_uuid):
+    vm_id = filter(str.isdigit, str(vm_uuid))[0:6]
+    vm_name = str('0300020002' + vm_id)
+    return vm_name

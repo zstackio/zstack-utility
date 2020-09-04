@@ -15,6 +15,7 @@ import functools
 import jinja2
 import commands
 import yaml
+import subprocess
 
 # set global default value
 start_time = datetime.now()
@@ -279,9 +280,11 @@ def on_debian_based(distro=None, exclude=[]):
         return innner
     return wrap
 
-def get_mn_release():
-    # file /etc/zstack-release from zstack-release.rpm
-    # file content like: ZStack release c76
+def get_mn_yum_release():
+    return "ns10"
+    #return commands.getoutput("rpm -q zstack-release |awk -F'-' '{print $3}'").strip()
+
+def get_mn_apt_release():
     return commands.getoutput("awk '{print $3}' /etc/zstack-release").strip()
 
 def get_host_releasever(ansible_distribution):
@@ -976,8 +979,72 @@ def check_host_reachable(host_post_info, warning=False):
             warn("Unknown error when check host %s is reachable" % host)
         return False
 
+def remote_command_call(command, host_post_info, return_status=False):
+    if return_status:
+        e = False
+    else:
+        e = True
+    return call(command, exception=e)
+
+def get_process(cmd, shell=None, workdir=None, pipe=None, executable=None):
+    if pipe:
+        return subprocess.Popen(cmd, shell=shell, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                close_fds=True, executable=executable, cwd=workdir)
+    else:
+        return subprocess.Popen(cmd, shell=shell, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                close_fds=True, executable=executable, cwd=workdir)
+
+class ShellError(Exception):
+    '''shell error'''
+
+class ShellCmd(object):
+    '''
+    classdocs
+    '''
+
+    def __init__(self, cmd, workdir=None, pipe=True):
+        '''
+        Constructor
+        '''
+        self.cmd = cmd
+        self.process = get_process(cmd, True, workdir, pipe, "/bin/bash")
+
+        self.stdout = None
+        self.stderr = None
+        self.return_code = None
+
+    def raise_error(self):
+        err = []
+        err.append('failed to execute shell command: %s' % self.cmd.split(' ', 1)[0])
+        err.append('return code: %s' % self.process.returncode)
+        err.append('stdout: %s' % self.stdout)
+        err.append('stderr: %s' % self.stderr)
+        raise ShellError('\n'.join(err))
+
+    def __call__(self, is_exception=True, logcmd=True):
+        (self.stdout, self.stderr) = self.process.communicate()
+        if is_exception and self.process.returncode != 0:
+            self.raise_error()
+
+        self.return_code = self.process.returncode
+        return self.return_code
+
+def call(cmd, exception=True, workdir=None):
+    # type: (str, bool, bool) -> str
+    return ShellCmd(cmd, workdir)(exception)
+
+def run(cmd, workdir=None):
+    s = ShellCmd(cmd, workdir, False)
+    s(False)
+    return s.return_code
+
+def check_run(cmd, workdir=None):
+    s = ShellCmd(cmd, workdir, False)
+    s(True)
+    return s.return_code
+
 @retry(times=3, sleep_time=3)
-def run_remote_command(command, host_post_info, return_status=False, return_output=False):
+def run_remote_command(command, host_post_info, return_status=False, return_output=False, ansible=False, ssh=False):
     '''return status all the time except return_status is False, return output is set to True'''
     if 'yum' in command:
         set_yum0 = '''rpm -q zstack-release >/dev/null && releasever=`awk '{print $3}' /etc/zstack-release` || releasever=%s;\
@@ -990,53 +1057,65 @@ def run_remote_command(command, host_post_info, return_status=False, return_outp
     if host_post_info.post_label is None:
         host_post_info.post_label = "ansible.command"
         host_post_info.post_label_param = command
-    handle_ansible_info("INFO: starting run command [ %s ] ..." % command, host_post_info, "INFO")
-    runner_args = ZstackRunnerArg()
-    runner_args.host_post_info = host_post_info
-    runner_args.module_name = 'shell'
-    runner_args.module_args = command
-    zstack_runner = ZstackRunner(runner_args)
-    result = zstack_runner.run()
-    logger.debug(result)
-    if result['contacted'] == {}:
-        if 'Broken pipe' in str(result):
-            logger.debug("find broken pipe in ansible result, retry it")
-            raise Exception(result)
 
-        ansible_start = AnsibleStartResult()
-        ansible_start.host = host
-        ansible_start.post_url = post_url
-        ansible_start.result = result
-        handle_ansible_start(ansible_start)
-        sys.exit(1)
+    if ansible is False:
+        command = "sshpass -p '%s' ssh -q -o UserKnownHostsFile=/dev/null -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -p %s %s@%s \"\"\"%s\"\"\"" % (host_post_info.remote_pass, host_post_info.remote_port, host_post_info.remote_user, host_post_info.host, command)
+        handle_ansible_info("INFO: starting run command [ %s ] ..." % command, host_post_info, "INFO")
+        remote_command_call(command, host_post_info, return_status)
+        details = "SUCC: run shell command: %s successfully " % command
+        host_post_info.post_label = host_post_info.post_label + ".succ"
+        handle_ansible_info(details, host_post_info, "INFO")
+    elif ssh is True:
+        command = "ssh -q -o UserKnownHostsFile=%s -i %s -o StrictHostKeyChecking=no -p %s %s@%s \"\"\"%s\"\"\"" % (host_post_info.host_inventory, host_post_info.private_key, host_post_info.remote_port, host_post_info.remote_user, host_post_info.host, command)
+        handle_ansible_info("INFO: starting run command [ %s ] ..." % command, host_post_info, "INFO")
+        remote_command_call(command, host_post_info, return_status)
+        details = "SUCC: run shell command: %s successfully " % command
+        host_post_info.post_label = host_post_info.post_label + ".succ"
+        handle_ansible_info(details, host_post_info, "INFO")
     else:
-        if 'rc' not in result['contacted'][host]:
-            logger.warning("Network problem, try again now, ansible reply is below:\n %s" % result)
-            raise Exception(result)
+        handle_ansible_info("INFO: starting run command [ %s ] ..." % command, host_post_info, "INFO")
+        runner_args = ZstackRunnerArg()
+        runner_args.host_post_info = host_post_info
+        runner_args.module_name = 'shell'
+        runner_args.module_args = command
+        zstack_runner = ZstackRunner(runner_args)
+        result = zstack_runner.run()
+        logger.debug(result)
+        if result['contacted'] == {}:
+            ansible_start = AnsibleStartResult()
+            ansible_start.host = host
+            ansible_start.post_url = post_url
+            ansible_start.result = result
+            handle_ansible_start(ansible_start)
+            sys.exit(1)
         else:
-            status = result['contacted'][host]['rc']
-            if status == 0:
-                details = "SUCC: run shell command: %s successfully " % command
-                host_post_info.post_label = host_post_info.post_label + ".succ"
-                handle_ansible_info(details, host_post_info, "INFO")
-                if return_output is False:
-                    return True
-                else:
-                    return (True, result['contacted'][host]['stdout'])
+            if 'rc' not in result['contacted'][host]:
+                logger.warning("Network problem, try again now, ansible reply is below:\n %s" % result)
+                raise Exception(result)
             else:
-                if return_status is False:
-                    description = "ERROR: run shell command: %s failed!" % command
-                    host_post_info.post_label = host_post_info.post_label + ".fail"
-                    handle_ansible_failed(description, result, host_post_info)
-                    sys.exit(1)
-                else:
-                    details = "ERROR: shell command %s failed " % command
-                    host_post_info.post_label = host_post_info.post_label + ".fail"
-                    handle_ansible_info(details, host_post_info, "WARNING")
+                status = result['contacted'][host]['rc']
+                if status == 0:
+                    details = "SUCC: run shell command: %s successfully " % command
+                    host_post_info.post_label = host_post_info.post_label + ".succ"
+                    handle_ansible_info(details, host_post_info, "INFO")
                     if return_output is False:
-                        return False
+                        return True
                     else:
-                        return (False, result['contacted'][host]['stdout'])
+                        return (True, result['contacted'][host]['stdout'])
+                else:
+                    if return_status is False:
+                        description = "ERROR: run shell command: %s failed!" % command
+                        host_post_info.post_label = host_post_info.post_label + ".fail"
+                        handle_ansible_failed(description, result, host_post_info)
+                        sys.exit(1)
+                    else:
+                        details = "ERROR: shell command %s failed " % command
+                        host_post_info.post_label = host_post_info.post_label + ".fail"
+                        handle_ansible_info(details, host_post_info, "WARNING")
+                        if return_output is False:
+                            return False
+                        else:
+                            return (False, result['contacted'][host]['stdout'])
 
 
 @retry(times=3, sleep_time=3)
@@ -1534,6 +1613,7 @@ def update_file(dest, args, host_post_info):
 
 
 def set_selinux(args, host_post_info):
+    return True
     start_time = datetime.now()
     host_post_info.start_time = start_time
     host = host_post_info.host
@@ -1742,7 +1822,7 @@ def do_enable_ntp(trusted_host, host_post_info, distro):
 def do_deploy_chrony(host_post_info, svrs, distro):
     # ensure config file not locked by user
     run_remote_command("[ -f /etc/chrony.conf ] || touch /etc/chrony.conf && true; chattr -i /etc/chrony.conf || true", host_post_info)
-    replace_content("/etc/chrony.conf", "regexp='^server ' replace='#server '", host_post_info)
+    #replace_content("/etc/chrony.conf", "regexp='^server ' replace='#server '", host_post_info)
     for svr in svrs:
         update_file("/etc/chrony.conf", "regexp='#server %s' state=absent" % svr, host_post_info)
         update_file("/etc/chrony.conf", "line='server %s iburst'" % svr, host_post_info)
