@@ -964,6 +964,7 @@ class CephAgent(object):
         else:
             shell.run("rados -p '%s' rm '%s'" % (pool, objname))
 
+        linux.write_uuids("cephmonbs", "cephmonbs=%s" % cmd.monUuid)
         return jsonobject.dumps(rsp)
 
     @replyerror

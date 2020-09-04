@@ -620,6 +620,8 @@ class HostPlugin(kvmagent.KvmAgent):
         ignore_msrs = "1" if cmd.ignoreMsrs else "0"
         linux.write_file('/sys/module/kvm/parameters/ignore_msrs', ignore_msrs)
 
+        linux.write_uuids("host", "host=%s" % self.host_uuid)
+
         vm_plugin.cleanup_stale_vnc_iptable_chains()
         apply_iptables_result = self.apply_iptables_rules(cmd.iptablesRules)
         rsp.iptablesSucc = apply_iptables_result

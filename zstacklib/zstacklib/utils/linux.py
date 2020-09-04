@@ -2233,3 +2233,16 @@ def check_nping_result(port, result):
     else:
         port_state[port] = "close"
     return port_state
+
+def write_uuids(type, str):
+    if str is None or len(str) == 0:
+        return
+    uuids = read_file('/etc/zstack-uuids')
+    if uuids is None:
+        write_file('/etc/zstack-uuids', str, True)
+        return
+    if "%s=" % type in uuids:
+        uuids = re.sub('%s=.*' % type, str, uuids)
+    else:
+        uuids += "\n%s" % str
+    write_file('/etc/zstack-uuids', uuids.strip())
