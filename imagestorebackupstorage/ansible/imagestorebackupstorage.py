@@ -127,27 +127,26 @@ elif distro in DEB_BASED_OS:
 else:
     error("ERROR: Unsupported distribution")
 
-run_remote_command("rm -rf %s/*" % imagestore_root, host_post_info)
-command = 'mkdir -p %s ' % (imagestore_root + "/certs")
-run_remote_command(command, host_post_info)
-
 # name: copy imagestore binary
 copy_arg = CopyArg()
 dest_pkg = "%s/%s" % (imagestore_root, dst_pkg_imagestorebackupstorage)
 copy_arg.src = "%s/%s" % (file_root, src_pkg_imagestorebackupstorage)
-copy_arg.dest = dest_pkg
+copy_arg.dest = "%s/" % imagestore_root
+copy_arg.args = "force=yes"
 copy(copy_arg, host_post_info)
 
 # name: copy exporter binary
 copy_arg = CopyArg()
 copy_arg.src = "%s/%s" % (kvm_file_root, src_pkg_exporter)
-copy_arg.dest = "%s/%s" % (utils_root, dst_pkg_exporter)
+copy_arg.dest = "%s/" % utils_root
+copy_arg.args = "force=yes"
 copy(copy_arg, host_post_info)
 
 # name: copy iptables-scrpit
 copy_arg = CopyArg()
 copy_arg.src = "%s/zstore-iptables" % file_root
 copy_arg.dest = "%s/zstore-iptables" % imagestore_root
+copy_arg.args = "force=yes"
 copy(copy_arg, host_post_info)
 
 # name: copy necessary certificates
@@ -157,14 +156,14 @@ local_cert_dir = os.path.join(local_install_dir, "imagestore", "bin", "certs")
 
 copy_arg = CopyArg()
 copy_arg.src = "%s/%s" % (local_cert_dir, "ca.pem")
-copy_arg.dest = "%s/%s/%s" % (imagestore_root, "certs", "ca.pem")
-copy_arg.args = "mode=644"
+copy_arg.dest = "%s/%s/" % (imagestore_root, "certs")
+copy_arg.args = "mode=644 force=yes"
 copy(copy_arg, host_post_info)
 
 copy_arg = CopyArg()
 copy_arg.src = "%s/%s" % (local_cert_dir, "privkey.pem")
-copy_arg.dest = "%s/%s/%s" % (imagestore_root, "certs", "privkey.pem")
-copy_arg.args = "mode=400"
+copy_arg.dest = "%s/%s/" % (imagestore_root, "certs")
+copy_arg.args = "mode=400 force=yes"
 copy(copy_arg, host_post_info)
 
 # name: install zstack-store

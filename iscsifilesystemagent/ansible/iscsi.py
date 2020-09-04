@@ -122,6 +122,7 @@ run_remote_command(command, host_post_info)
 copy_arg = CopyArg()
 copy_arg.src = "files/zstacklib/%s" % pkg_zstacklib
 copy_arg.dest = "%s/%s" % (iscsi_root, pkg_zstacklib)
+copy_arg.args = "force=yes"
 zstack_lib_copy = copy(copy_arg, host_post_info)
 if zstack_lib_copy != "changed:False":
     agent_install_arg = AgentInstallArg(trusted_host, pip_url, virtenv_path, init_install)
@@ -134,13 +135,14 @@ if zstack_lib_copy != "changed:False":
 copy_arg = CopyArg()
 copy_arg.src = "%s/%s" % (file_root, pkg_iscsiagent)
 copy_arg.dest = "%s/%s" % (iscsi_root, pkg_iscsiagent)
+copy_arg.args = "force=yes"
 iscsiagent_copy = copy(copy_arg, host_post_info)
 
 # name: copy iscsi service file
 copy_arg = CopyArg()
 copy_arg.src = "files/iscsi/zstack-iscsi"
 copy_arg.dest = "/etc/init.d/"
-copy_arg.args = "mode=755"
+copy_arg.args = "mode=755 force=yes"
 copy(copy_arg, host_post_info)
 
 if iscsiagent_copy != "changed:False":

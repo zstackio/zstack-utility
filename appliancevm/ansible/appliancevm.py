@@ -79,24 +79,25 @@ else:
     command = 'mkdir -p %s %s' % (appliancevm_root, virtenv_path)
     run_remote_command(command, host_post_info)
 
-run_remote_command("rm -rf %s/*" % appliancevm_root, host_post_info)
 # name: copy zstacklib and install
 copy_arg = CopyArg()
 copy_arg.src = "files/zstacklib/%s" % pkg_zstacklib
-copy_arg.dest = "%s/%s" % (appliancevm_root, pkg_zstacklib)
+copy_arg.dest = "%s/" % appliancevm_root
+copy_arg.args = "force=yes"
 copy_zstacklib = copy(copy_arg, host_post_info)
 
 # name: copy appliancevm and install
 copy_arg = CopyArg()
 copy_arg.src = "%s/%s" % (file_root, pkg_appliancevm)
 copy_arg.dest = "%s/%s" % (appliancevm_root, pkg_appliancevm)
+copy_arg.args = "force=yes"
 copy_appliancevm = copy(copy_arg, host_post_info)
 
 # name: copy bootstrap script
 copy_arg = CopyArg()
 copy_arg.src = "%s/zstack-appliancevm-bootstrap.py" % file_root
 copy_arg.dest = '/sbin/zstack-appliancevm-bootstrap.py'
-copy_arg.args = "mode=0777"
+copy_arg.args = "mode=0777 force=yes"
 copy(copy_arg, host_post_info)
 
 # name: copy appliancevm service file

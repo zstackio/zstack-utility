@@ -84,7 +84,6 @@ else:
     command = 'mkdir -p %s %s' % (baremetalpxeserver_root, virtenv_path)
     run_remote_command(command, host_post_info)
 
-run_remote_command("rm -rf %s/*" % baremetalpxeserver_root, host_post_info)
 # name: install virtualenv
 virtual_env_status = check_and_install_virtual_env(virtualenv_version, trusted_host, pip_url, host_post_info)
 if virtual_env_status is False:
@@ -141,7 +140,8 @@ run_remote_command(command, host_post_info)
 # name: copy zstacklib
 copy_arg = CopyArg()
 copy_arg.src = "files/zstacklib/%s" % pkg_zstacklib
-copy_arg.dest = "%s/%s" % (baremetalpxeserver_root, pkg_zstacklib)
+copy_arg.dest = "%s/" % baremetalpxeserver_root
+copy_arg.args = "force=yes"
 copy_zstacklib = copy(copy_arg, host_post_info)
 
 if copy_zstacklib != "changed:False":
@@ -155,6 +155,7 @@ if copy_zstacklib != "changed:False":
 copy_arg = CopyArg()
 copy_arg.src = "%s/%s" % (file_root, pkg_baremetalpxeserver)
 copy_arg.dest = "%s/%s" % (baremetalpxeserver_root, pkg_baremetalpxeserver)
+copy_arg.args = "force=yes"
 copy_baremetalpxeserver = copy(copy_arg, host_post_info)
 
 if copy_baremetalpxeserver != "changed:False":
@@ -177,12 +178,14 @@ VSFTPD_ROOT_PATH = "/var/lib/zstack/baremetal/ftp"
 copy_arg = CopyArg()
 copy_arg.src = "%s/shellinaboxd" % file_root
 copy_arg.dest = VSFTPD_ROOT_PATH
+copy_arg.args = "force=yes"
 copy(copy_arg, host_post_info)
 
 # name: copy noVNC.tar.gz
 copy_arg = CopyArg()
 copy_arg.src = "%s/noVNC.tar.gz" % file_root
 copy_arg.dest = "/var/lib/zstack/baremetal/"
+copy_arg.args = "force=yes"
 copy(copy_arg, host_post_info)
 
 # name: copy zwatch-vm-agent
@@ -190,35 +193,40 @@ zwatch_vm_agent_name = "zwatch-vm-agent{}".format('' if host_arch == 'x86_64' el
 copy_arg = CopyArg()
 copy_arg.src = os.path.join(kvm_file_root, zwatch_vm_agent_name)
 copy_arg.dest = os.path.join(VSFTPD_ROOT_PATH, 'zwatch-vm-agent')
+copy_arg.args = "force=yes"
 copy(copy_arg, host_post_info)
 
 copy_arg = CopyArg()
 copy_arg.src = "%s/agent_version" % file_root
 copy_arg.dest = VSFTPD_ROOT_PATH
+copy_arg.args = "force=yes"
 copy(copy_arg, host_post_info)
 
 copy_arg = CopyArg()
 copy_arg.src = "%s/zwatch-install.sh" % file_root
 copy_arg.dest = VSFTPD_ROOT_PATH
+copy_arg.args = "force=yes"
 copy(copy_arg, host_post_info)
 
 copy_arg = CopyArg()
 copy_arg.src = "%s/pxeServerPushGateway.service" % file_root
 copy_arg.dest = "/etc/systemd/system/"
+copy_arg.args = "force=yes"
 copy(copy_arg, host_post_info)
 
 copy_arg = CopyArg()
 copy_arg.src = "%s/baremetal-iptables" % file_root
 copy_arg.dest = "/var/lib/zstack/baremetal/baremetal-iptables"
+copy_arg.args = "force=yes"
 copy(copy_arg, host_post_info)
 
 # name: copy pushgateway
 copy_arg = CopyArg()
 copy_arg.src = "%s/pushgateway" % file_root
 copy_arg.dest = baremetalpxeserver_pushgateway_root
+copy_arg.args = "mode=a+x"
 copy(copy_arg, host_post_info)
 
-run_remote_command(("chmod a+x %s/pushgateway;" % baremetalpxeserver_pushgateway_root), host_post_info)
 run_remote_command(("systemctl restart pxeServerPushGateway"), host_post_info)
 
 # name: restart baremetalpxeserveragent
