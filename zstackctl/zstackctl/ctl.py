@@ -1228,10 +1228,10 @@ def create_check_ui_status_command(timeout=10, ui_ip='127.0.0.1', ui_port='5000'
     protocol = 'https' if if_https else 'http'
     if shell_return('which wget') == 0:
         return ShellCmd(
-            '''wget --no-proxy -O- --tries=%s --no-check-certificate --timeout=1 %s://%s:%s/health''' % (timeout, protocol, ui_ip, ui_port))
+            '''wget --no-proxy -O- --tries=%s --no-check-certificate --timeout=1 %s://%s:%s/live''' % (timeout, protocol, ui_ip, ui_port))
     elif shell_return('which curl') == 0:
             return ShellCmd(
-                '''curl -k --noproxy --connect-timeout=1 --retry %s --retry-delay 0 --retry-max-time %s --max-time %s %s://%s:%s/health''' % (
+                '''curl -k --noproxy --connect-timeout=1 --retry %s --retry-delay 0 --retry-max-time %s --max-time %s %s://%s:%s/live''' % (
                     timeout, timeout, timeout, protocol, ui_ip, ui_port))
     else:
         return None
