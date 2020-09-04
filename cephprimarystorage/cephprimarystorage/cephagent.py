@@ -448,6 +448,7 @@ class CephAgent(plugin.TaskManager):
                     rsp.error = "%s %s" % (e, o)
 
         doPing()
+        linux.write_uuids("cephmonps", "cephmonps=%s" % cmd.monUuid)
 
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
