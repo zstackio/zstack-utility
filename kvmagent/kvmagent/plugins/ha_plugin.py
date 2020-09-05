@@ -791,7 +791,7 @@ class HaPlugin(kvmagent.KvmAgent):
 
     def run_fencer(self, ps_uuid, created_time):
         with self.fencer_lock:
-            if not self.run_fencer_timestamp[ps_uuid] or self.run_fencer_timestamp[ps_uuid] > created_time:
+            if ps_uuid not in self.run_fencer_timestamp or self.run_fencer_timestamp[ps_uuid] > created_time:
                 return False
 
             self.run_fencer_timestamp[ps_uuid] = created_time
