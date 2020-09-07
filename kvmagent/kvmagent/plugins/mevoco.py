@@ -20,11 +20,13 @@ from email.mime.multipart import MIMEMultipart
 from jinja2 import Template
 import struct
 import socket
+import platform
 
 logger = log.get_logger(__name__)
 EBTABLES_CMD = ebtables.get_ebtables_cmd()
 IPTABLES_CMD = iptables.get_iptables_cmd()
 IP6TABLES_CMD = iptables.get_ip6tables_cmd()
+HOST_ARCH = platform.machine()
 
 class ApplyDhcpRsp(kvmagent.AgentResponse):
     pass
@@ -228,6 +230,8 @@ class DhcpEnv(object):
                 bash_errorout(EBTABLES_CMD + ' -A {{CHAIN_NAME}} -j RETURN')
 
             # Note(WeiW): fix dhcp checksum, see more at #982
+            if HOST_ARCH == 'mips64el':
+                return
             ret = bash_r("iptables-save | grep -- '-p udp -m udp --dport 68 -j CHECKSUM --checksum-fill'")
             if ret != 0:
                 bash_errorout(

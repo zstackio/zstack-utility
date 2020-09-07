@@ -29,8 +29,9 @@ trusted_host = ""
 ansible.constants.HOST_KEY_CHECKING = False
 supported_arch_list = ["x86_64", "aarch64", "mips64el"]
 
-RPM_BASED_OS = ["centos", "redhat", "alibaba"]
-DEB_BASED_OS = ["ubuntu", "uos", "kylin", "debian", "uniontech"]
+RPM_BASED_OS = ["centos", "redhat", "alibaba", "kylin10"]
+DEB_BASED_OS = ["ubuntu", "uos", "kylin4.0.2", "debian", "uniontech"]
+DISTRO_WITH_RPM_DEB = ["kylin"]
 
 class AgentInstallArg(object):
     def __init__(self, trusted_host, pip_url, virtenv_path, init_install):
@@ -951,7 +952,7 @@ def check_host_reachable(host_post_info, warning=False):
 def run_remote_command(command, host_post_info, return_status=False, return_output=False):
     '''return status all the time except return_status is False, return output is set to True'''
     if 'yum' in command:
-        set_yum0 = "rpm -q zstack-release >/dev/null && releasever=`awk '{print $3}' /etc/zstack-release` || releasever=%s;export YUM0=$releasever;" % (get_mn_yum_release())
+        set_yum0 = "rpm -q zstack-release >/dev/null && releasever=`awk '{print $3}' /etc/zstack-release` || releasever=%s;export YUM0=$releasever; grep $releasever /etc/yum/vars/YUM0 || echo $releasever > /etc/yum/vars/YUM0;" % (get_mn_yum_release())
         command = set_yum0 + command
     start_time = datetime.now()
     host_post_info.start_time = start_time
@@ -1177,6 +1178,8 @@ def _get_remote_host_info_from_result(result, host_post_info):
                 result['contacted'][host]['ansible_facts']['ansible_distribution_version']]
             host_post_info.post_label = "ansible.get.host.info.succ"
             handle_ansible_info("SUCC: Get remote host %s info successful" % host, host_post_info, "INFO")
+            if distro in DISTRO_WITH_RPM_DEB:
+                distro = "%s%s" % (distro, major_version)
             return (distro, major_version, release, distro_version)
         else:
             host_post_info.post_label = "ansible.get.host.info.fail"
@@ -1708,19 +1711,17 @@ def do_enable_ntp(trusted_host, host_post_info, distro):
 
 
 def do_deploy_chrony(host_post_info, svrs, distro):
-    if distro in RPM_BASED_OS:
-        yum_install_package("chrony", host_post_info)
-        # ensure config file not locked by user
-        run_remote_command("chattr -i /etc/chrony.conf || true", host_post_info)
-        replace_content("/etc/chrony.conf", "regexp='^server ' replace='#server '", host_post_info)
-        for svr in svrs:
-            update_file("/etc/chrony.conf", "regexp='#server %s' state=absent" % svr, host_post_info)
-            update_file("/etc/chrony.conf", "line='server %s iburst'" % svr, host_post_info)
+    # ensure config file not locked by user
+    run_remote_command("[ -f /etc/chrony.conf ] || touch /etc/chrony.conf && true; chattr -i /etc/chrony.conf || true", host_post_info)
+    replace_content("/etc/chrony.conf", "regexp='^server ' replace='#server '", host_post_info)
+    for svr in svrs:
+        update_file("/etc/chrony.conf", "regexp='#server %s' state=absent" % svr, host_post_info)
+        update_file("/etc/chrony.conf", "line='server %s iburst'" % svr, host_post_info)
 
-        command = "systemctl disable ntpd || true; systemctl enable chronyd; systemctl restart chronyd || true"
-        host_post_info.post_label = "ansible.shell.enable.chronyd"
-        host_post_info.post_label_param = None
-        run_remote_command(command, host_post_info)
+    command = "systemctl disable ntpd || true; systemctl enable chronyd; systemctl restart chronyd || true"
+    host_post_info.post_label = "ansible.shell.enable.chronyd"
+    host_post_info.post_label_param = None
+    run_remote_command(command, host_post_info)
 
 def enable_chrony(trusted_host, host_post_info, distro):
     if not host_post_info.chrony_servers:
@@ -1859,7 +1860,7 @@ gpgcheck=0
                     yum_enable_repo("epel-release", "epel-release-source", host_post_info)
                 set_ini_file("/etc/yum.repos.d/epel.repo", 'epel', "enabled", "1", host_post_info)
                 if require_python_env == "true":
-                    for pkg in ["python-devel", "python-setuptools", "python-pip", "gcc", "autoconf"]:
+                    for pkg in ["python-devel", "python-setuptools", "python2-pip", "gcc", "autoconf"]:
                         yum_install_package(pkg, host_post_info)
                     if distro_version >=7:
                         # to avoid install some pkgs on virtual router which release is Centos 6.x
@@ -1960,14 +1961,15 @@ enabled=0" >  /etc/yum.repos.d/zstack-experimental-mn.repo
 
                 # install libselinux-python and other command system libs from user defined repos
                 host_post_info.post_label = "ansible.shell.install.pkg"
-                host_post_info.post_label_param = "libselinux-python,python-devel,python-setuptools,python-pip,gcc," \
-                                                  "autoconf,chrony,python-backports-ssl_match_hostname,iptables-services"
+                python_pip_pkg = "python2-pip" if distro_version >= 7 else "python-pip"
+                host_post_info.post_label_param = "libselinux-python,python-devel,python-setuptools,gcc," \
+                                                  "autoconf,chrony,python-backports-ssl_match_hostname,iptables-services, %s" % python_pip_pkg
                 if require_python_env == "true":
                     command = (
                               "yum clean --enablerepo=%s metadata &&  pkg_list=`rpm -q libselinux-python python-devel "
-                              "python-setuptools python-pip gcc autoconf | grep \"not installed\" | awk"
+                              "python-setuptools gcc autoconf %s | grep \"not installed\" | awk"
                               " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
-                              "-y $pkg; done;") % (zstack_repo, zstack_repo)
+                              "-y $pkg; done;") % (zstack_repo, python_pip_pkg, zstack_repo)
                     run_remote_command(command, host_post_info)
                     if distro_version >= 7:
                         # to avoid install some pkgs on virtual router which release is Centos 6.x
@@ -2076,8 +2078,6 @@ deb http://{{ apt_server }}/zstack/static/zstack-repo/$basearch/{{ zstack_releas
                 enable_chrony(trusted_host, host_post_info, distro)
         else:
             error("ERROR: Unsupported distribution")
-
-
 
 def main():
     # Reserve for test api
