@@ -287,7 +287,17 @@ class CephAgent(plugin.TaskManager):
         if ret != 0 and not ceph.is_xsky():
             return None
 
-        r, size = bash.bash_ro("rbd du %s | tail -1 | awk '{ print $3 }'" % path, pipe_fail=True)
+        # use json format result first
+        r, jstr = bash.bash_ro("rbd du %s --format json" % path)
+        if r == 0 and bool(jstr):
+            total_size = 0
+            result = jsonobject.loads(jstr)
+            if result.images is not None:
+                for item in result.images:
+                    total_size += int(item.used_size)
+                return total_size
+
+        r, size = bash.bash_ro("rbd du %s | awk 'END {if(NF==3) {print $3} else {print $4,$5} }' | sed s/[[:space:]]//g" % path, pipe_fail=True)
         if r != 0:
             return None
 
