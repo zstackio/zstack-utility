@@ -3509,12 +3509,12 @@ class Vm(object):
                                                          % (count, cmd.addons['primaryVmHostIp'], config.secondaryInPort)})
                     e(qcmd, "qemu:arg", attrib={"value": '-object'})
                     e(qcmd, "qemu:arg", attrib={"value": 'filter-redirector,id=fr-mirror-%s,netdev=hostnet%s,queue=tx,'
-                                                         'indev=red-mirror-%s' % (count, count, count)})
+                                                         'indev=red-mirror-%s,vnet_hdr_support' % (count, count, count)})
                     e(qcmd, "qemu:arg", attrib={"value": '-object'})
                     e(qcmd, "qemu:arg", attrib={"value": 'filter-redirector,id=fr-secondary-%s,netdev=hostnet%s,'
-                                                         'queue=rx,outdev=red-secondary-%s' % (count, count, count)})
+                                                         'queue=rx,outdev=red-secondary-%s,vnet_hdr_support' % (count, count, count)})
                     e(qcmd, "qemu:arg", attrib={"value": '-object'})
-                    e(qcmd, "qemu:arg", attrib={"value": 'filter-rewriter,id=rew-%s,netdev=hostnet%s,queue=all'
+                    e(qcmd, "qemu:arg", attrib={"value": 'filter-rewriter,id=rew-%s,netdev=hostnet%s,queue=all,vnet_hdr_support'
                                                          % (count, count)})
                     count += 1
 
@@ -3882,19 +3882,19 @@ class Vm(object):
             if not cmd.nics:
                 return
 
-            def addon(nic_xml_object):
+            def addon(nic, nic_xml_object):
                 if cmd.addons and cmd.addons['NicQos'] and cmd.addons['NicQos'][nic.uuid]:
                     qos = cmd.addons['NicQos'][nic.uuid]
                     Vm._add_qos_to_interface(nic_xml_object, qos)
                 
                 if cmd.coloPrimary or cmd.coloSecondary:
-                    Vm._ignore_colo_vm_nic_rom_file_on_interface(nic_xml_object)
+                    Vm._ignore_colo_vm_nic_rom_file_on_interface(nic, nic_xml_object)
 
             devices = elements['devices']
             vhostSrcPath = cmd.addons['vhostSrcPath'] if cmd.addons else None
             for nic in cmd.nics:
                 interface = Vm._build_interface_xml(nic, devices, vhostSrcPath, action='Attach')
-                addon(interface)
+                addon(nic, interface)
 
         def make_meta():
             root = elements['root']
@@ -4429,8 +4429,14 @@ class Vm(object):
         return interface
     
     @staticmethod
-    def _ignore_colo_vm_nic_rom_file_on_interface(interface):
-        e(interface, 'driver', None, attrib={'name': 'qemu'})
+    def _ignore_colo_vm_nic_rom_file_on_interface(nic, interface):
+        driver = e(interface, 'driver', None, attrib={'name': 'qemu'})
+
+        if nic.driverType == 'virtio' or nic.useVirtio:
+            e(driver, 'host', None, {'gso': 'off'})
+            e(driver, 'host', None, {'csum': 'off'})
+            e(driver, 'host', None, {'mrg_rxbuf': 'off'})
+
         e(interface, 'rom', None, attrib={'file': ''})
 
     @staticmethod
@@ -6337,13 +6343,13 @@ class VmPlugin(kvmagent.KvmAgent):
 
         for i in xrange(0, cmd.nicNumber):
             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
+                                                    '"arguments":{"id":"comp-%s"}}' % i)
+            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
                                                     '"arguments":{"id":"fm-%s"}}' % i)
             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
                                                     '"arguments":{"id":"primary-out-redirect-%s"}}' % i)
             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
                                                     '"arguments":{"id":"primary-in-redirect-%s"}}' % i)
-            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
-                                                    '"arguments":{"id":"comp-%s"}}' % i)
 
         return jsonobject.dumps(rsp)
 
@@ -6469,74 +6475,24 @@ class VmPlugin(kvmagent.KvmAgent):
                                                         ' "job-id": "zs-ft-resync", "target": "nbd://%s:%s/parent%s",'
                                                         ' "mode": "existing", "format": "nbd", "sync": "full"} }'
                                     % (alias_name, cmd.secondaryVmHostIp, cmd.nbdServerPort, count))
-                while True:
-                    time.sleep(3)
-                    r, o, err = execute_qmp_command(cmd.vmInstanceUuid, '{"execute":"query-block-jobs"}')
-                    if err:
-                        rsp.success = False
-                        rsp.error = "Failed to get zs-ft-resync job, report error"
-                        return jsonobject.dumps(rsp)
-
-                    block_jobs = json.loads(o)['return']
-
-                    job = next((job for job in block_jobs if job['device'] == 'zs-ft-resync'), None)
-
-                    if not job:
-                        logger.debug("job finished, start colo sync")
-                        break
-
-                    if job['status'] == 'ready':
-                        break
-
-                    logger.debug("current resync %s/%s, percentage %s" % (
-                        job['len'], job['offset'], 100 * (float(job['offset'] / float(job['len'])))))
-
-                execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "stop"}')
-                execute_qmp_command(cmd.vmInstanceUuid,
-                                '{"execute": "block-job-cancel", "arguments":{ "device": "zs-ft-resync"}}')
-
-                while True:
-                    time.sleep(1)
-                    r, o, err = execute_qmp_command(cmd.vmInstanceUuid, '{"execute":"query-block-jobs"}')
-                    if err:
-                        rsp.success = False
-                        rsp.error = "Failed to query block jobs, report error"
-                        return jsonobject.dumps(rsp)
-
-                    block_jobs = json.loads(o)['return']
-                    job = next((job for job in block_jobs if job['device'] == 'zs-ft-resync'), None)
-                    if job:
-                        continue
-
-                    break
 
             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "human-monitor-command","arguments":'
                                                 ' {"command-line":"drive_add -n buddy'
                                                 ' driver=replication,mode=primary,file.driver=nbd,file.host=%s,'
-                                                'file.port=%s,file.export=parent%s,node-name=replication%s"}}'
+                                                'file.port=%s,file.export=parent%s,node-name=replication%s",' 
+                                                ' "colo-switch": true }}'
                                                 % (cmd.secondaryVmHostIp, cmd.nbdServerPort, count, count))
-
-            successed = False
-            try:
-                successed = add_nbd_client_to_quorum(alias_name, count)
-            except Exception as e:
-                logger.debug("ignore excetion raised by retry")
-
-            if not successed:
-                replication_list.append(ColoReplicationConfig(None, count))
-                colo_qemu_replication_cleanup()
-                execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "cont"}')
-                rsp.success = False
-                rsp.error = "Failed to setup quorum replication node, report error"
-                return jsonobject.dumps(rsp)
-
-            replication_list.append(ColoReplicationConfig(alias_name, count))
-
             count+=1
 
         domain_xml = vm.domain.XMLDesc(0)
         is_origin_secondary = 'filter-rewriter' in domain_xml
         for count in xrange(0, cmd.nicNumber):
+            execute_qmp_command(cmd.vmInstanceUuid,
+                                '{"execute": "object-add", "arguments":{ "qom-type": "colo-compare", "id": "comp-%s",'
+                                ' "props": { "primary_in": "primary-in-c-%s", "secondary_in": "secondary-in-s-%s",'
+                                ' "outdev":"primary-out-c-%s", "iothread": "iothread%s", "vnet_hdr_support": true } } }'
+                                % (count, count, count, count, int(count) + 1))
+
             if not is_origin_secondary:
                 execute_qmp_command(cmd.vmInstanceUuid,
                                     '{"execute": "object-add", "arguments":{ "qom-type": "filter-mirror", "id": "fm-%s",'
@@ -6545,11 +6501,11 @@ class VmPlugin(kvmagent.KvmAgent):
                 execute_qmp_command(cmd.vmInstanceUuid,
                                     '{"execute": "object-add", "arguments":{ "qom-type": "filter-redirector",'
                                     ' "id": "primary-out-redirect-%s", "props": { "netdev": "hostnet%s", "queue": "rx",'
-                                    ' "indev": "primary-out-s-%s"}}}' % (count, count, count))
+                                    ' "indev": "primary-out-s-%s", "vnet_hdr_support": true}}}' % (count, count, count))
                 execute_qmp_command(cmd.vmInstanceUuid,
                                     '{"execute": "object-add", "arguments":{ "qom-type": "filter-redirector", "id":'
                                     ' "primary-in-redirect-%s", "props": { "netdev": "hostnet%s", "queue": "rx",'
-                                    ' "outdev": "primary-in-s-%s"}}}' % (count, count, count))
+                                    ' "outdev": "primary-in-s-%s", "vnet_hdr_support": true}}}' % (count, count, count))
             else:
                 execute_qmp_command(cmd.vmInstanceUuid,
                                     '{"execute": "object-add", "arguments":{ "qom-type": "filter-mirror",'
@@ -6561,43 +6517,57 @@ class VmPlugin(kvmagent.KvmAgent):
                                     ' "id": "primary-out-redirect-%s", "props":'
                                     ' { "insert": "before", "position": "id=rew-%s",'
                                     ' "netdev": "hostnet%s", "queue": "rx",'
-                                    ' "indev": "primary-out-s-%s"}}}' % (count, count, count, count))
+                                    ' "indev": "primary-out-s-%s", "vnet_hdr_support": true}}}' % (count, count, count, count))
                 execute_qmp_command(cmd.vmInstanceUuid,
                                     '{"execute": "object-add", "arguments":{ "qom-type": "filter-redirector", "id":'
                                     ' "primary-in-redirect-%s", "props": { "insert": "before", "position": "id=rew-%s",'
                                     ' "netdev": "hostnet%s", "queue": "rx",'
-                                    ' "outdev": "primary-in-s-%s"}}}' % (count, count, count, count))
+                                    ' "outdev": "primary-in-s-%s", "vnet_hdr_support": true}}}' % (count, count, count, count))
 
-            execute_qmp_command(cmd.vmInstanceUuid,
-                                '{"execute": "object-add", "arguments":{ "qom-type": "colo-compare", "id": "comp-%s",'
-                                ' "props": { "primary_in": "primary-in-c-%s", "secondary_in": "secondary-in-s-%s",'
-                                ' "outdev":"primary-out-c-%s", "iothread": "iothread%s" } } }'
-                                % (count, count, count, count, int(count) + 1))
             count += 1
 
         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate-set-capabilities","arguments":'
                                                 '{"capabilities":[ {"capability": "x-colo", "state":true}]}}')
 
+        execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate-set-capabilities", "arguments":'
+                                                '{"capabilities": [ {"capability": "auto-converge", "state":true}]}}')
+                                            
+        execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate-set-parameters", "arguments":'
+                                                '{ "colo-job-id": "zs-ft-resync" }}')
+
+        volume = next(vol for vol in cmd.volumes if vol.deviceId == 0)
+
+        alias_name = vm._get_all_volume_alias_names([volume])[0]
+
+        execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate-set-parameters", "arguments":'
+                                                '{ "colo-disk": "%s" }}' % alias_name)
+
+        execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate-set-parameters", "arguments":'
+                                                '{ "colo-node": "replication0" }}')
+
         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate-set-parameters", "arguments":'
                                                 '{ "max-bandwidth": 3355443200 }}')
-
-        execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate", "arguments": {"uri": "tcp:%s:%s"}}'
-                                                % (cmd.secondaryVmHostIp, cmd.blockReplicationPort))
 
         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate-set-parameters",'
                                                 ' "arguments": {"x-checkpoint-delay": %s}}'
                                                 % cmd.checkpointDelay)
 
+        execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "trace-event-set-state",'
+                                                '"arguments": {"name": "colo*", "enable": true} }')
+
+        execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate", "arguments": {"uri": "tcp:%s:%s"}}'
+                                                % (cmd.secondaryVmHostIp, cmd.blockReplicationPort))
+
         def colo_qemu_object_cleanup():
             for i in xrange(cmd.nicNumber):
+                execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
+                                                        '"arguments":{"id":"comp-%s"}}' % i)
                 execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
                                                         '"arguments":{"id":"fm-%s"}}' % i)
                 execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
                                                         '"arguments":{"id":"primary-out-redirect-%s"}}' % i)
                 execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
                                                         '"arguments":{"id":"primary-in-redirect-%s"}}' % i)
-                execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
-                                                        '"arguments":{"id":"comp-%s"}}' % i)
 
         # wait primary vm migrate job finished
         failure = 0
@@ -6663,6 +6633,8 @@ class VmPlugin(kvmagent.KvmAgent):
                             % (cmd.primaryVmHostIp, cmd.nbdServerPort))
         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "nbd-server-add",'
                                                 ' "arguments": {"device": "parent0", "writable": true }}')
+        execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "trace-event-set-state",'
+                                                '"arguments": {"name": "colo*", "enable": true} }')
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -6710,29 +6682,29 @@ class VmPlugin(kvmagent.KvmAgent):
             execute_qmp_command(cmd.vmInstanceUuid,
                                 '{"execute": "chardev-add", "arguments":{ "id": "zs-mirror-%s", "backend":'
                                 ' {"type": "socket", "data": {"addr": { "type": "inet", "data":'
-                                ' { "host": "%s", "port": "%s" } }, "server": true}}}}'
-                                % (count, cmd.hostIp, config.mirrorPort))
+                                ' { "host": "0.0.0.0", "port": "%s" } }, "server": true}}}}'
+                                % (count, config.mirrorPort))
             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "chardev-add", "arguments":{ "id": "primary-in-s-%s",'
                                                     ' "backend": {"type": "socket", "data": {"addr": { "type":'
-                                                    ' "inet", "data": { "host": "%s", "port": "%s" } },'
-                                                    ' "server": true } } } }' % (count, cmd.hostIp, config.primaryInPort))
+                                                    ' "inet", "data": { "host": "0.0.0.0", "port": "%s" } },'
+                                                    ' "server": true } } } }' % (count, config.primaryInPort))
             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "chardev-add", "arguments":{'
                                                     ' "id": "secondary-in-s-%s","backend": {"type":'
                                                     ' "socket", "data": {"addr": {"type":'
-                                                    ' "inet", "data": { "host": "%s", "port": "%s" } },'
-                                                    ' "server": true } } } }' % (count, cmd.hostIp, config.secondaryInPort))
+                                                    ' "inet", "data": { "host": "0.0.0.0", "port": "%s" } },'
+                                                    ' "server": true } } } }' % (count, config.secondaryInPort))
             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "chardev-add", "arguments":{ "id": "primary-in-c-%s",'
                                                     ' "backend": {"type": "socket", "data": {"addr": { "type":'
-                                                    ' "inet", "data": { "host": "%s", "port": "%s" } },'
-                                                    ' "server": false } } } }' % (count, cmd.hostIp, config.primaryInPort))
+                                                    ' "inet", "data": { "host": "0.0.0.0", "port": "%s" } },'
+                                                    ' "server": false } } } }' % (count, config.primaryInPort))
             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "chardev-add", "arguments":{ "id": "primary-out-s-%s",'
                                                     ' "backend": {"type": "socket", "data": {"addr": { "type":'
-                                                    ' "inet", "data": { "host": "%s", "port": "%s" } },'
-                                                    ' "server": true } } } }' % (count, cmd.hostIp, config.primaryOutPort))
+                                                    ' "inet", "data": { "host": "0.0.0.0", "port": "%s" } },'
+                                                    ' "server": true } } } }' % (count, config.primaryOutPort))
             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "chardev-add", "arguments":{ "id": "primary-out-c-%s",'
                                                     ' "backend": {"type": "socket", "data": {"addr": { "type":'
-                                                    ' "inet", "data": { "host": "%s", "port": "%s" } },'
-                                                    ' "server": false } } } }' % (count, cmd.hostIp, config.primaryOutPort))
+                                                    ' "inet", "data": { "host": "0.0.0.0", "port": "%s" } },'
+                                                    ' "server": false } } } }' % (count, config.primaryOutPort))
             count += 1
         return jsonobject.dumps(rsp)
 
@@ -6931,13 +6903,13 @@ class VmPlugin(kvmagent.KvmAgent):
 
                         for i in xrange(cmd.redirectNum):
                             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
+                                                                    '"arguments":{"id":"comp-%s"}}' % i)
+                            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
                                                                     '"arguments":{"id":"fm-%s"}}' % i)
                             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
                                                                     '"arguments":{"id":"primary-out-redirect-%s"}}' % i)
                             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
                                                                     '"arguments":{"id":"primary-in-redirect-%s"}}' % i)
-                            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
-                                                                    '"arguments":{"id":"comp-%s"}}' % i)
                         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "x-colo-lost-heartbeat"}')
                     else:
                         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "nbd-server-stop"}')
