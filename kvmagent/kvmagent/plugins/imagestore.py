@@ -24,6 +24,8 @@ class ImageStoreClient(object):
     COMMIT_BIT_PATH = "/imagestore/commit"
     CONVERT_TO_RAW = "/imagestore/convert/raw"
 
+    RESERVE_CAPACITY = 1024 * 1024 * 1024
+
     def _check_zstore_cli(self):
         if not os.path.exists(self.ZSTORE_CLI_BIN):
             errmsg = '%s not found. Please reconnect all hosts, and try again.' % self.ZSTORE_CLI_BIN
@@ -65,7 +67,16 @@ class ImageStoreClient(object):
             cmdstr = '%s stopbak -domain %s' % (self.ZSTORE_CLI_PATH, vm)
             return shell.call(cmdstr).strip()
 
+    @staticmethod
+    def check_capacity(dstdir):
+        avaliable = linux.get_free_disk_size(dstdir)
+        if avaliable < ImageStoreClient.RESERVE_CAPACITY:
+            raise Exception(
+                'storage free size is less than reserved capacity: %d' % ImageStoreClient.RESERVE_CAPACITY)
+
     def backup_volume(self, vm, node, bitmap, mode, dest, speed, reporter, stage):
+        self.check_capacity(os.path.dirname(dest))
+
         _, PFILE = tempfile.mkstemp()
 
         def _get_progress(synced):
@@ -82,6 +93,7 @@ class ImageStoreClient(object):
             _, mode, err = bash_progress_1(cmdstr, _get_progress)
             linux.rm_file_force(PFILE)
             if err:
+                self.check_capacity(os.path.dirname(dest))
                 raise Exception('fail to backup vm %s, because %s' % (vm, str(err)))
             return mode.strip()
 
@@ -89,6 +101,7 @@ class ImageStoreClient(object):
     # {'drive-virtio-disk0': { "backupFile": "foo", "mode":"full" },
     #  'drive-virtio-disk1': { "backupFile": "bar", "mode":"top" }}
     def backup_volumes(self, vm, args, dstdir, reporter, stage):
+        self.check_capacity(dstdir)
         _, PFILE = tempfile.mkstemp()
 
         def _get_progress(synced):
@@ -105,6 +118,7 @@ class ImageStoreClient(object):
             _, mode, err = bash_progress_1(cmdstr, _get_progress)
             linux.rm_file_force(PFILE)
             if err:
+                self.check_capacity(dstdir)
                 raise Exception('fail to backup vm %s, because %s' % (vm, str(err)))
             return mode.strip()
 
