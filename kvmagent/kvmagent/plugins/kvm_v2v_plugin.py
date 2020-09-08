@@ -7,6 +7,7 @@ import random
 import tempfile
 import time
 import urlparse
+import re
 
 from kvmagent import kvmagent
 from zstacklib.utils import jsonobject
@@ -48,6 +49,17 @@ class VmInfo(object):
         self.volumes = []       # type: list[VolumeInfo]
         self.v2vCaps = {}       # type: dict[str, bool]
         self.cdromNum = 0       # type: int
+
+
+class ListVmCmd(object):
+    @log.sensitive_fields("libvirtURI", "sshPassword", "saslPass", "sshPrivKey")
+    def __init__(self):
+        self.libvirtURI = None
+        self.sshPassword = None
+        self.sshPrivKey = None
+        self.saslUser = None
+        self.saslPass = None
+
 
 class ListVmRsp(AgentRsp):
     def __init__(self):
@@ -126,6 +138,10 @@ class LibvirtConn(object):
         try:
             self.conn = self.get_connection(self.uri, self.sasluser, self.saslpass)
             return self.conn
+        except Exception as e:
+            e.args = (re.sub(":[^:]*@", ":*****@", arg) for arg in e.args)
+            e.message = re.sub(":[^:]*@", ":*****@", e.message)
+            raise
         finally:
             if tmpkeyfile:
                 os.remove(tmpkeyfile)
@@ -322,7 +338,7 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
         random.seed()
         http_server = kvmagent.get_http_server()
         http_server.register_async_uri(self.INIT_PATH, self.init)
-        http_server.register_async_uri(self.LIST_VM_PATH, self.listvm)
+        http_server.register_async_uri(self.LIST_VM_PATH, self.listvm, cmd=ListVmCmd())
         http_server.register_async_uri(self.CONVERT_PATH, self.convert)
         http_server.register_async_uri(self.CLEAN_PATH, self.clean)
         http_server.register_async_uri(self.CANCEL_CONVERT_PATH, self.cancel_and_clean_convert)
