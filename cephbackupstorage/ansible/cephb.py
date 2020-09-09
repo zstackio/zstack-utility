@@ -93,10 +93,9 @@ if virtual_env_status is False:
     command = "rm -rf %s && rm -rf %s" % (virtenv_path, cephb_root)
     run_remote_command(command, host_post_info)
     sys.exit(1)
+
 # name: make sure virtualenv has been setup
-# here change "rm -rf virtualenv" to "-f %s/bin/python" till zstack 2.0 due to a bug exist in old version, we need to
-# make sure all users upgrade to new version
-command = "rm -rf %s && virtualenv --system-site-packages %s " % (virtenv_path, virtenv_path)
+command = "[ -f %s/bin/python ] || virtualenv --system-site-packages %s " % (virtenv_path, virtenv_path)
 run_remote_command(command, host_post_info)
 
 if distro in RPM_BASED_OS:
