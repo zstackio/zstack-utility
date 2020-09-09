@@ -206,18 +206,20 @@ class AppBuildSystemAgent(object):
                         thumbs.append(pic_prefix + base64.b64encode(thumb.read()))
             return thumbs
 
+# Note: cmd.srcPath drop the last '/' first
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CreateAppRsp()
-        checkParam(srcPath=cmd.srcPath, dstPath=cmd.dstPath)
+        srcPath = cmd.srcPath.rstrip('/')
+        checkParam(srcPath=srcPath, dstPath=cmd.dstPath)
 
-        rsp.imageInfos = _read_info(cmd.srcPath, "application-image-meta.json")
-        rsp.dstInfo = _read_info(cmd.srcPath, "application-desc.json")
-        rsp.template = _read_info(cmd.srcPath, "raw-cloudformation-template.json")
-        with open(cmd.srcPath+"/logo.jpg", 'r') as logo:
+        rsp.imageInfos = _read_info(srcPath, "application-image-meta.json")
+        rsp.dstInfo = _read_info(srcPath, "application-desc.json")
+        rsp.template = _read_info(srcPath, "raw-cloudformation-template.json")
+        with open(srcPath+"/logo.jpg", 'r') as logo:
             rsp.logo = pic_prefix + base64.b64encode(logo.read())
-        rsp.thumbs = _encode_thumbs(cmd.srcPath, "thumbs.*.jpg")
+        rsp.thumbs = _encode_thumbs(srcPath, "thumbs.*.jpg")
 
-        target = _copy_app(cmd.srcPath, cmd.dstPath)
+        target = _copy_app(srcPath, cmd.dstPath)
         rsp.dstSize = linux.get_folder_size(target)
         rsp.dstPath = target
         if cmd.url is not None:
