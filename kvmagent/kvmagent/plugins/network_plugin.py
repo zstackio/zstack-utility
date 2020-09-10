@@ -167,11 +167,15 @@ class NetworkPlugin(kvmagent.KvmAgent):
         shell.call('modprobe br_netfilter || true')
         if disableIptables:
             self.modifySysConfiguration("net.bridge.bridge-nf-call-iptables", 1, 0)
+            self.modifySysConfiguration("net.bridge.bridge-nf-call-ip6tables", 1, 0)
         else:
             self.modifySysConfiguration("net.bridge.bridge-nf-call-iptables", 0, 1)
+            self.modifySysConfiguration("net.bridge.bridge-nf-call-ip6tables", 0, 1)
         linux.write_file('/proc/sys/net/bridge/bridge-nf-call-iptables', '0' if disableIptables else '1')
+        linux.write_file('/proc/sys/net/bridge/bridge-nf-call-ip6tables', '0' if disableIptables else '1')
         linux.write_file('/proc/sys/net/bridge/bridge-nf-filter-vlan-tagged', '1')
         linux.write_file('/proc/sys/net/ipv4/conf/default/forwarding', '1')
+        linux.write_file('/proc/sys/net/ipv6/conf/default/forwarding', '1')
 
     @in_bash
     def _configure_bridge_mtu(self, bridgeName, interf, mtu=None):
