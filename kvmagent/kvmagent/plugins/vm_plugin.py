@@ -3113,7 +3113,7 @@ class Vm(object):
         finish_time = time.time() + (timeout / 1000)
         while time.time() < finish_time:
             state = get_all_vm_states().get(uuid)
-            if state != Vm.VM_STATE_RUNNING:
+            if state != Vm.VM_STATE_RUNNING and state != Vm.VM_STATE_PAUSED:
                 raise kvmagent.KvmError("vm's state is %s, not running" % state)
             r, o, e = bash.bash_roe("virsh qemu-agent-command %s --cmd '{\"execute\":\"guest-info\"}'" % self.uuid)
             if r != 0:
