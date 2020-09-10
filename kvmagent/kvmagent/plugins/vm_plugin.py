@@ -3473,24 +3473,24 @@ class Vm(object):
                 primary_host_ip = cmd.addons['primaryVmHostIp']
                 for config in cmd.addons['primaryVmNicConfig']:
                     e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
-                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=zs-mirror-%s,host=%s,port=%s,server,nowait'
-                                                          % (count, primary_host_ip, config.mirrorPort)})
+                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=zs-mirror-%s,host=0.0.0.0,port=%s,server,nowait'
+                                                          % (count, config.mirrorPort)})
 
                     e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
-                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-in-s-%s,host=%s,port=%s,server,nowait'
-                                                          % (count, primary_host_ip, config.primaryInPort)})
+                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-in-s-%s,host=0.0.0.0,port=%s,server,nowait'
+                                                          % (count, config.primaryInPort)})
                     e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
-                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=secondary-in-s-%s,host=%s,port=%s,server,nowait'
-                                                          % (count, primary_host_ip, config.secondaryInPort)})
+                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=secondary-in-s-%s,host=0.0.0.0,port=%s,server,nowait'
+                                                          % (count, config.secondaryInPort)})
                     e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
-                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-in-c-%s,host=%s,port=%s,nowait'
-                                                          % (count, primary_host_ip, config.primaryInPort)})
+                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-in-c-%s,host=0.0.0.0,port=%s,nowait'
+                                                          % (count, config.primaryInPort)})
                     e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
-                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-out-s-%s,host=%s,port=%s,server,nowait'
-                                                          % (count, primary_host_ip, config.primaryOutPort)})
+                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-out-s-%s,host=0.0.0.0,port=%s,server,nowait'
+                                                          % (count, config.primaryOutPort)})
                     e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
-                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-out-c-%s,host=%s,port=%s,nowait'
-                                                          % (count, primary_host_ip, config.primaryOutPort)})
+                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-out-c-%s,host=0.0.0.0,port=%s,nowait'
+                                                          % (count, config.primaryOutPort)})
 
                     count += 1
 
@@ -6555,7 +6555,7 @@ class VmPlugin(kvmagent.KvmAgent):
         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "trace-event-set-state",'
                                                 '"arguments": {"name": "colo*", "enable": true} }')
 
-        execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate", "arguments": {"uri": "tcp:%s:%s"}}'
+        execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate", "arguments": {"uri": "tcp:%s:%s", "colo": true}}'
                                                 % (cmd.secondaryVmHostIp, cmd.blockReplicationPort))
 
         def colo_qemu_object_cleanup():
