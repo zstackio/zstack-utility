@@ -130,7 +130,7 @@ mount -a;
 run_remote_command(command, host_post_info)
 
 # name: config iptables
-replace_content("/etc/sysconfig/iptables-config", "regexp='IPTABLES_MODULES=""' replace='IPTABLES_MODULES=\"nf_conntrack_ftp\"'", host_post_info)
+replace_content("/etc/sysconfig/iptables-config", "regexp='IPTABLES_MODULES=\"\"' replace='IPTABLES_MODULES=\"nf_conntrack_ftp\"'", host_post_info)
 command = """
 /sbin/iptables-save | grep -w -q 67 || iptables -I INPUT -p udp -m state --state NEW --sport 67:68 --dport 67:68 -j ACCEPT;
 /sbin/iptables-save | grep -w -q 69 || iptables -I INPUT -p udp -m state --state NEW --dport 69 -j ACCEPT;
