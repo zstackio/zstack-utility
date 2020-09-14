@@ -138,7 +138,7 @@ mount -a;
 run_remote_command(command, host_post_info)
 
 # name: config iptables
-replace_content("/etc/sysconfig/iptables-config", "regexp='IPTABLES_MODULES=""' replace='IPTABLES_MODULES=\"nf_conntrack_ftp\"'", host_post_info)
+replace_content("/etc/sysconfig/iptables-config", "regexp='IPTABLES_MODULES=\"\"' replace='IPTABLES_MODULES=\"nf_conntrack_ftp\"'", host_post_info)
 command = """
 /sbin/service iptables save;
 /sbin/service iptables restart
