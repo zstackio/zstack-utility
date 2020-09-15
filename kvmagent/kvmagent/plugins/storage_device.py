@@ -770,7 +770,11 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         rsp = AgentRsp()
         lvm.enable_multipath()
 
-        bash.bash_roe("sed -i 's/^[[:space:]]*alias/#alias/g' /etc/multipath.conf")
+        r = bash.bash_r("grep '^[[:space:]]*alias' /etc/multipath.conf")
+        if r == 0:
+            bash.bash_roe("sed -i 's/^[[:space:]]*alias/#alias/g' /etc/multipath.conf")
+            bash.bash_roe("systemctl reload multipathd")
+
         linux.set_fail_if_no_path()
         return jsonobject.dumps(rsp)
 
