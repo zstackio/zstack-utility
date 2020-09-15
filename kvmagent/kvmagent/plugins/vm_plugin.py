@@ -6355,26 +6355,37 @@ class VmPlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     @in_bash
-    def wait_secondary_vm_ready(self, req):
+    def wait_colo_vm_status_ready(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
 
-        def wait_for_colo_state_change(_):
-            vm = get_vm_by_uuid_no_retry(cmd.vmInstanceUuid, False)
-            if not vm:
-                raise Exception('vm[uuid:%s] not exists, failed' % cmd.vmInstanceUuid)
+        vm = get_vm_by_uuid_no_retry(cmd.vmInstanceUuid, False)
+        if not vm:
+            raise Exception('vm[uuid:%s] not exists, failed' % cmd.vmInstanceUuid)
 
+        if cmd.coloPrimary:
             r, o, err = execute_qmp_command(cmd.vmInstanceUuid, '{"execute":"query-colo-status"}')
             if err:
-                raise Exception('Failed to check vm[uuid:%s] colo status by query-colo-status' % cmd.vmInstanceUuid)
+                raise Exception('Failed to check vm[uuid:%s] colo status by query-colo-status, because %s' % (cmd.vmInstanceUuid, err))
 
             colo_status = json.loads(o)['return']
             mode = colo_status['mode']
-            return mode == 'secondary'
+            if mode != 'primary':
+                raise Exception('Failed to rebuild colo for vm[uuid:%s], because %s' % (cmd.vmInstanceUuid, err))
 
-        if not linux.wait_callback_success(wait_for_colo_state_change, None, interval=3, timeout=cmd.coloCheckTimeout):
-            raise Exception('unable to wait secondary vm[uuid:%s] ready, after %s seconds'
-                            % (cmd.vmInstanceUuid, cmd.coloCheckTimeout))
+        else:
+            while True:
+                r, o, err = execute_qmp_command(cmd.vmInstanceUuid, '{"execute":"query-colo-status"}')
+                if err:
+                    raise Exception('Failed to check vm[uuid:%s] colo status by query-colo-status, because %s' % (cmd.vmInstanceUuid, err))
+
+                colo_status = json.loads(o)['return']
+                mode = colo_status['mode']
+                if mode == 'secondary':
+                    break
+            
+                time.sleep(3)
+
 
         return jsonobject.dumps(rsp)
 
@@ -6447,28 +6458,6 @@ class VmPlugin(kvmagent.KvmAgent):
 
         count = 0
         replication_list = []
-
-        def colo_qemu_replication_cleanup():
-            for replication in replication_list:
-                if replication.alias_name:
-                    execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "x-blockdev-change",'
-                                                        ' "arguments": {"parent": "%s", "child": "children.1"}}' % replication.alias_name)
-                execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "human-monitor-command",'
-                                                    ' "arguments":{"command-line": "drive_del replication%s"}}' % replication.replication_id)
-
-        @linux.retry(times=3, sleep_time=0.5)
-        def add_nbd_client_to_quorum(alias_name, count):
-            r, stdout, err = execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "x-blockdev-change","arguments":'
-                                                '{"parent": "%s","node": "replication%s" } }' % (alias_name, count))
-
-            if err:
-                return False
-            elif 'does not support adding a child' in stdout:
-                raise RetryException("failed to add child to %s" % alias_name)
-            else:
-                return True
-
-
         for alias_name in vm._get_all_volume_alias_names(cmd.volumes):
             if cmd.fullSync:
                 execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "drive-mirror", "arguments":{ "device": "%s",'
@@ -6492,37 +6481,20 @@ class VmPlugin(kvmagent.KvmAgent):
                                 ' "props": { "primary_in": "primary-in-c-%s", "secondary_in": "secondary-in-s-%s",'
                                 ' "outdev":"primary-out-c-%s", "iothread": "iothread%s", "vnet_hdr_support": true } } }'
                                 % (count, count, count, count, int(count) + 1))
+            execute_qmp_command(cmd.vmInstanceUuid,
+                                '{"execute": "object-add", "arguments":{ "qom-type": "filter-mirror", "id": "fm-%s",'
+                                ' "props": { "netdev": "hostnet%s", "queue": "tx", "outdev": "zs-mirror-%s",'
+                                ' "vnet_hdr_support": true} } }'
+                                % (count, count, count))
+            execute_qmp_command(cmd.vmInstanceUuid,
+                                '{"execute": "object-add", "arguments":{ "qom-type": "filter-redirector",'
+                                ' "id": "primary-out-redirect-%s", "props": { "netdev": "hostnet%s", "queue": "rx",'
+                                ' "indev": "primary-out-s-%s", "vnet_hdr_support": true}}}' % (count, count, count))
+            execute_qmp_command(cmd.vmInstanceUuid,
+                                '{"execute": "object-add", "arguments":{ "qom-type": "filter-redirector", "id":'
+                                ' "primary-in-redirect-%s", "props": { "netdev": "hostnet%s", "queue": "rx",'
+                                ' "outdev": "primary-in-s-%s", "vnet_hdr_support": true}}}' % (count, count, count))
 
-            if not is_origin_secondary:
-                execute_qmp_command(cmd.vmInstanceUuid,
-                                    '{"execute": "object-add", "arguments":{ "qom-type": "filter-mirror", "id": "fm-%s",'
-                                    ' "props": { "netdev": "hostnet%s", "queue": "tx", "outdev": "zs-mirror-%s" } } }'
-                                    % (count, count, count))
-                execute_qmp_command(cmd.vmInstanceUuid,
-                                    '{"execute": "object-add", "arguments":{ "qom-type": "filter-redirector",'
-                                    ' "id": "primary-out-redirect-%s", "props": { "netdev": "hostnet%s", "queue": "rx",'
-                                    ' "indev": "primary-out-s-%s", "vnet_hdr_support": true}}}' % (count, count, count))
-                execute_qmp_command(cmd.vmInstanceUuid,
-                                    '{"execute": "object-add", "arguments":{ "qom-type": "filter-redirector", "id":'
-                                    ' "primary-in-redirect-%s", "props": { "netdev": "hostnet%s", "queue": "rx",'
-                                    ' "outdev": "primary-in-s-%s", "vnet_hdr_support": true}}}' % (count, count, count))
-            else:
-                execute_qmp_command(cmd.vmInstanceUuid,
-                                    '{"execute": "object-add", "arguments":{ "qom-type": "filter-mirror",'
-                                    ' "id": "fm-%s", "props": { "insert": "before", "position": "id=rew-%s", '
-                                    ' "netdev": "hostnet%s", "queue": "tx", "outdev": "zs-mirror-%s" } } }'
-                                    % (count, count, count, count))
-                execute_qmp_command(cmd.vmInstanceUuid,
-                                    '{"execute": "object-add", "arguments":{ "qom-type": "filter-redirector",'
-                                    ' "id": "primary-out-redirect-%s", "props":'
-                                    ' { "insert": "before", "position": "id=rew-%s",'
-                                    ' "netdev": "hostnet%s", "queue": "rx",'
-                                    ' "indev": "primary-out-s-%s", "vnet_hdr_support": true}}}' % (count, count, count, count))
-                execute_qmp_command(cmd.vmInstanceUuid,
-                                    '{"execute": "object-add", "arguments":{ "qom-type": "filter-redirector", "id":'
-                                    ' "primary-in-redirect-%s", "props": { "insert": "before", "position": "id=rew-%s",'
-                                    ' "netdev": "hostnet%s", "queue": "rx",'
-                                    ' "outdev": "primary-in-s-%s", "vnet_hdr_support": true}}}' % (count, count, count, count))
 
             count += 1
 
@@ -6557,69 +6529,6 @@ class VmPlugin(kvmagent.KvmAgent):
 
         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate", "arguments": {"uri": "tcp:%s:%s", "colo": true}}'
                                                 % (cmd.secondaryVmHostIp, cmd.blockReplicationPort))
-
-        def colo_qemu_object_cleanup():
-            for i in xrange(cmd.nicNumber):
-                execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
-                                                        '"arguments":{"id":"comp-%s"}}' % i)
-                execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
-                                                        '"arguments":{"id":"fm-%s"}}' % i)
-                execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
-                                                        '"arguments":{"id":"primary-out-redirect-%s"}}' % i)
-                execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
-                                                        '"arguments":{"id":"primary-in-redirect-%s"}}' % i)
-
-        # wait primary vm migrate job finished
-        failure = 0
-        while True:
-            r, o, err = execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "query-migrate"}')
-            if err:
-                rsp.success = False
-                rsp.error = "Failed to query migrate info, because %s" % err
-                colo_qemu_object_cleanup()
-                break
-
-            migrate_info = json.loads(o)['return']
-            if migrate_info['status'] == 'colo':
-                logger.debug("migrate finished")
-                break
-            elif migrate_info['status'] == 'active':
-                ram_info = migrate_info['ram']
-                logger.debug("current migrate %s/%s, percentage %s"
-                 % (ram_info['total'], ram_info['remaining'], 100 * (float(ram_info['remaining'] / float(ram_info['total'])))))
-            elif migrate_info['status'] == 'failed':
-                rsp.success = False
-                rsp.error = "could not finish colo migration."
-                try:
-                    vm = get_vm_by_uuid_no_retry(cmd.vmInstanceUuid, False)
-                    if vm:
-                        vm.resume()
-                        logger.debug('successfully, resume vm [uuid:%s]' % cmd.uuid)
-                except kvmagent.KvmError as e:
-                    logger.warn(linux.get_exception_stacktrace())
-                break
-            else:
-                # those status are not handled but vm should not stuck in
-                # MIGRATION_STATUS_POSTCOPY_ACTIVE:
-                # MIGRATION_STATUS_POSTCOPY_PAUSED:
-                # MIGRATION_STATUS_POSTCOPY_RECOVER:
-                # MIGRATION_STATUS_SETUP:
-                # MIGRATION_STATUS_PRE_SWITCHOVER:
-                # MIGRATION_STATUS_DEVICE:
-                if failure < 2:
-                    failure += 1
-                else:
-                    rsp.success = False
-                    rsp.error = "unknown migrate status: %s" % migrate_info['status']
-                    # cancel migrate if vm stuck in unexpected status
-                    execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate_cancel"}')
-                    break
-
-            time.sleep(2)
-
-        if not rsp.success:
-            colo_qemu_object_cleanup()
-            colo_qemu_replication_cleanup()
 
         return jsonobject.dumps(rsp)
 
@@ -6782,7 +6691,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_START_COLO_SYNC_PATH, self.start_colo_sync)
         http_server.register_async_uri(self.KVM_REGISTER_PRIMARY_VM_HEARTBEAT, self.register_primary_vm_heartbeat)
         http_server.register_async_uri(self.CHECK_COLO_VM_STATE_PATH, self.check_colo_vm_state)
-        http_server.register_async_uri(self.WAIT_COLO_VM_READY_PATH, self.wait_secondary_vm_ready)
+        http_server.register_async_uri(self.WAIT_COLO_VM_READY_PATH, self.wait_colo_vm_status_ready)
         http_server.register_async_uri(self.ROLLBACK_QUORUM_CONFIG_PATH, self.rollback_quorum_config)
         http_server.register_async_uri(self.FAIL_COLO_PVM_PATH, self.fail_colo_pvm, cmd=FailColoPrimaryVmCmd())
 
