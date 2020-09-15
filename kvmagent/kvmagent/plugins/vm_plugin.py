@@ -4433,9 +4433,8 @@ class Vm(object):
         driver = e(interface, 'driver', None, attrib={'name': 'qemu'})
 
         if nic.driverType == 'virtio' or nic.useVirtio:
-            e(driver, 'host', None, {'gso': 'off'})
-            e(driver, 'host', None, {'csum': 'off'})
-            e(driver, 'host', None, {'mrg_rxbuf': 'off'})
+            # e.g. <host csum='off' gso='off' tso4='off' tso6='off' ecn='off' ufo='off' mrg_rxbuf='off'/>
+            e(driver, 'host', None, {'gso': 'off', 'csum': 'off', 'mrg_rxbuf': 'off'})
 
         e(interface, 'rom', None, attrib={'file': ''})
 
@@ -4456,8 +4455,14 @@ def _stop_world():
 
 
 @in_bash
-def execute_qmp_command(domain_id, command):
-    return bash.bash_roe("virsh qemu-monitor-command %s '%s' --pretty" % (domain_id, command))
+def execute_qmp_command(domain_id, command, error_out=False):
+    r, o, e = bash.bash_roe("virsh qemu-monitor-command %s '%s' --pretty" % (domain_id, command))
+    if e and "error: Timed out during operation: cannot acquire state change lock" in e:
+        logger.debug("failed to execute qmp command %s" % command)
+        if error_out:
+            raise Exception("command not executed")
+    
+    return r, o, e
 
 
 class VmPlugin(kvmagent.KvmAgent):
@@ -6550,7 +6555,7 @@ class VmPlugin(kvmagent.KvmAgent):
     def config_primary_vm(self, req):
         rsp = GetVmFirstBootDeviceRsp()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "qmp_capabilities"}')
+        execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "qmp_capabilities"}', True)
 
         r, o, err = execute_qmp_command(cmd.vmInstanceUuid, '{"execute":"query-chardev"}')
         if err:
