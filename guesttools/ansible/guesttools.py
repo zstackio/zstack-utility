@@ -42,9 +42,19 @@ host_post_info.post_url = post_url
 if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
 
+# create symlink at GuestTools.iso to GuestTools-x.y.z.iso
+# so that we can ansible copy with dest as a directory
+src_iso_symlink = os.path.join(os.path.dirname(src_guest_tools_iso), os.path.basename(dst_guest_tools_iso))
+
+if os.path.islink(src_iso_symlink) and os.path.realpath(src_iso_symlink) != src_guest_tools_iso:
+    os.remove(src_iso_symlink)
+
+if not os.path.exists(src_iso_symlink):
+    os.symlink(src_guest_tools_iso, src_iso_symlink)
+
 copy_arg = CopyArg()
-copy_arg.src = src_guest_tools_iso
-copy_arg.dest = dst_guest_tools_iso + '/'
+copy_arg.src = src_iso_symlink
+copy_arg.dest = os.path.join(os.path.dirname(dst_guest_tools_iso), '')
 copy_arg.args = "mode=644"
 copy(copy_arg, host_post_info)
 
