@@ -467,7 +467,7 @@ class CephAgent(plugin.TaskManager):
         path = self._normalize_install_path(cmd.volumePath)
         rsp = GetVolumeWatchersRsp()
 
-        watchers_result = shell.call('rbd status %s' % path)
+        watchers_result = shell.call('timeout 10 rbd status %s' % path)
         if not watchers_result:
             return jsonobject.dumps(rsp)
 
