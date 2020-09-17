@@ -6469,6 +6469,27 @@ class VmPlugin(kvmagent.KvmAgent):
                                                         ' "job-id": "zs-ft-resync", "target": "nbd://%s:%s/parent%s",'
                                                         ' "mode": "existing", "format": "nbd", "sync": "full"} }'
                                     % (alias_name, cmd.secondaryVmHostIp, cmd.nbdServerPort, count))
+                while True:
+                    time.sleep(3)
+                    r, o, err = execute_qmp_command(cmd.vmInstanceUuid, '{"execute":"query-block-jobs"}')
+                    if err:
+                        rsp.success = False
+                        rsp.error = "Failed to get zs-ft-resync job, report error"
+                        return jsonobject.dumps(rsp)
+
+                    block_jobs = json.loads(o)['return']
+
+                    job = next((job for job in block_jobs if job['device'] == 'zs-ft-resync'), None)
+
+                    if not job:
+                        logger.debug("job finished, start colo sync")
+                        break
+
+                    if job['status'] == 'ready':
+                        break
+
+                    logger.debug("current resync %s/%s, percentage %s" % (
+                        job['len'], job['offset'], 100 * (float(job['offset'] / float(job['len'])))))            
 
             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "human-monitor-command","arguments":'
                                                 ' {"command-line":"drive_add -n buddy'
