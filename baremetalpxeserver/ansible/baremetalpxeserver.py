@@ -132,10 +132,10 @@ run_remote_command(command, host_post_info)
 # name: config iptables
 command = """
 /bin/cp -f /etc/sysconfig/iptables-config /etc/sysconfig/iptables-config-bck;
-sed -e '/IPTABLES_MODULES/s/"nf_conntrack_ftp"".*$/""/g' \
-    -e '/IPTABLES_MODULES/s/nf_conntrack_ftp\s*//g' \
-    -e '/IPTABLES_MODULES/s/="/="nf_conntrack_ftp /g' \
-    -e '/IPTABLES_MODULES/s/\s*"$/"/g' \
+sed -e '/IPTABLES_MODULES=/s/"nf_conntrack_ftp"".*$/""/g' \
+    -e '/IPTABLES_MODULES=/s/nf_conntrack_ftp\s*//g' \
+    -e '/IPTABLES_MODULES=/s/="/="nf_conntrack_ftp /g' \
+    -e '/IPTABLES_MODULES=/s/\s*"$/"/g' \
     -i /etc/sysconfig/iptables-config;
 /sbin/service iptables save;
 /sbin/service iptables restart
