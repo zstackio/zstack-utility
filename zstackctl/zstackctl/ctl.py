@@ -657,6 +657,7 @@ class ConfigObjEx(ConfigObj):
             os.fsync(f.fileno())
 
 class PropertyFile(object):
+    @lock.file_lock('/run/zstack.properties.lock')
     def __init__(self, path, use_zstack=True):
         self.path = path
         self.use_zstack = use_zstack
@@ -672,6 +673,7 @@ class PropertyFile(object):
         with on_error("errors on reading %s" % self.path):
             return self.config.items()
 
+    @lock.file_lock('/run/zstack.properties.lock')
     def delete_properties(self, keys):
         for k in keys:
             if k in self.config:
@@ -684,6 +686,7 @@ class PropertyFile(object):
         with on_error("errors on reading %s" % self.path):
             return self.config.get(key, None)
 
+    @lock.file_lock('/run/zstack.properties.lock')
     def write_property(self, key, value):
         with on_error("errors on writing (%s=%s) to %s" % (key, value, self.path)):
             if self.use_zstack:
@@ -694,6 +697,7 @@ class PropertyFile(object):
                 self.config[key] = value
                 self.config.write()
 
+    @lock.file_lock('/run/zstack.properties.lock')
     def write_properties(self, lst):
         with on_error("errors on writing list of key-value%s to %s" % (lst, self.path)):
             if self.use_zstack:
