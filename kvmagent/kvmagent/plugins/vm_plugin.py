@@ -34,6 +34,7 @@ from zstacklib.utils import bash, plugin
 from zstacklib.utils.bash import in_bash
 from zstacklib.utils import jsonobject
 from zstacklib.utils import lvm
+from zstacklib.utils import ft
 from zstacklib.utils import shell
 from zstacklib.utils import uuidhelper
 from zstacklib.utils import xmlobject
@@ -6578,6 +6579,7 @@ class VmPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "qmp_capabilities"}', True)
 
+        ft.cleanup_vm_before_setup_colo_primary_vm(cmd.vmInstanceUuid)
         r, o, err = execute_qmp_command(cmd.vmInstanceUuid, '{"execute":"query-chardev"}')
         if err:
             rsp.success = False
