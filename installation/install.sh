@@ -3595,6 +3595,17 @@ if [ "$IS_YUM" = "y" ]; then
      install_sync_repo_dependences
 fi
 
+## set ln
+cloudCtlPath="/usr/bin/cloud-ctl"
+if [[ ! -f "$cloudCtlPath" ]]; then
+  ln -s /usr/bin/zstack-ctl /usr/bin/cloud-ctl
+fi
+
+cloudCliPath="/usr/bin/cloud-cli"
+if [[ ! -f "$cloudCliPath" ]]; then
+  ln -s /usr/bin/zstack-cli /usr/bin/cloud-cli
+fi
+
 #Download ${PRODUCT_NAME} all in one package
 download_zstack
 

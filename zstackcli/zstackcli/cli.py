@@ -125,7 +125,7 @@ class Cli(object):
 
     def usage(self):
         print '''
-  ZStack command line tool
+  Cloud command line tool
   Type "help" for more information
   Type Tab key for auto-completion
   Type "quit" or "exit" or Ctrl-d to exit
@@ -1184,7 +1184,7 @@ def main():
         dest="host",
         default='localhost',
         action='store',
-        help="[Optional] IP address or DNS name of a ZStack management node. Default value: localhost")
+        help="[Optional] IP address or DNS name of a Cloud management node. Default value: localhost")
 
     parser.add_option(
         "-p",
@@ -1192,7 +1192,7 @@ def main():
         dest="port",
         default='8080',
         action='store',
-        help="[Optional] Port that the ZStack management node is listening on. Default value: 8080")
+        help="[Optional] Port that the Cloud management node is listening on. Default value: 8080")
 
     parser.add_option(
         "-d",
