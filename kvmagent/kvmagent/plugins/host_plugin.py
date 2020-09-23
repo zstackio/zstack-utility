@@ -632,9 +632,25 @@ class HostPlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     def ping(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = PingResponse()
         rsp.hostUuid = self.host_uuid
+        logger.debug("cmd: uuid: %s, check: %s" % (cmd.hostUuid, cmd.checkIdleState))
+        if cmd.checkIdleState:
+            self.check_idle_states()
         return jsonobject.dumps(rsp)
+
+    def check_idle_states(self):
+        logger.debug("start check idle state")
+
+        qemu_not_exist = shell.run('ps -ae | egrep "qemu[-]kvm|qemu[-]system"') != 0
+        logger.debug("no qemu running: %s" % qemu_not_exist)
+
+        mn_not_exist = not os.path.exists('/bin/zstack-ctl')
+        logger.debug("no mn exist: %s" % mn_not_exist)
+
+        if qemu_not_exist and mn_not_exist:
+            self.do_shutdown_host()
 
     @kvmagent.replyerror
     def echo(self, req):
