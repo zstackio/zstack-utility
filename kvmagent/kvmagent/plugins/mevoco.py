@@ -1205,7 +1205,7 @@ mimetype.assign = (
         html_folder = os.path.join(self.USERDATA_ROOT, cmd.namespaceName, 'html', cmd.vmIp)
         linux.rm_dir_force(html_folder)
         l3Uuid = get_l3_uuid(cmd.namespaceName)
-        if l3Uuid in self.userData_vms[l3Uuid] and cmd.vmIp in self.userData_vms[l3Uuid]:
+        if l3Uuid in self.userData_vms and cmd.vmIp in self.userData_vms[l3Uuid]:
             self.userData_vms[l3Uuid].remove(cmd.vmIp)
         return jsonobject.dumps(ReleaseUserdataRsp())
 
