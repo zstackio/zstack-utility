@@ -746,8 +746,7 @@ def create_lv_from_absolute_path(path, size, tag="zs::sharedblock::volume", lock
     vgName = path.split("/")[2]
     lvName = path.split("/")[3]
 
-    if not exact_size:
-        size = round_to(calcLvReservedSize(size), 512)
+    size = round_to(size, 512) if exact_size else round_to(calcLvReservedSize(size), 512)
     r, o, e = bash.bash_roe("lvcreate -ay --addtag %s --size %sb --name %s %s" %
                          (tag, size, lvName, vgName))
 
@@ -768,7 +767,7 @@ def create_lv_from_cmd(path, size, cmd, tag="zs::sharedblock::volume", lvmlock=T
     elif cmd.provisioning == VolumeProvisioningStrategy.ThinProvisioning and size > cmd.addons[thinProvisioningInitializeSize]:
         create_lv_from_absolute_path(path, cmd.addons[thinProvisioningInitializeSize], tag, lvmlock)
     else:
-        create_lv_from_absolute_path(path, size, tag, lvmlock)
+        create_lv_from_absolute_path(path, size, tag, lvmlock, cmd.volumeFormat == 'raw')
 
 
 @bash.in_bash
