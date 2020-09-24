@@ -41,6 +41,7 @@ zstack_lib_dir = "/var/lib/zstack"
 zstack_libvirt_nwfilter_dir = "%s/nwfilter" % zstack_lib_dir
 skipIpv6 = 'false'
 bridgeDisableIptables = 'false'
+isMini = 'false'
 releasever = ''
 
 
@@ -259,8 +260,9 @@ def install_kvm_pkg():
 
             # zstack mini needs higher version kernel etc.
             C76_KERNEL_OR_HIGHER = '3.10.0-957' in get_remote_host_kernel_version(host_post_info)
-            mini_dep_list = " drbd84-utils kmod-drbd84" if C76_KERNEL_OR_HIGHER and not IS_AARCH64 else ""
-            common_dep_list += mini_dep_list
+            if isMini == 'true':
+                mini_dep_list = " drbd84-utils kmod-drbd84" if C76_KERNEL_OR_HIGHER and not IS_AARCH64 else ""
+                common_dep_list += mini_dep_list
 
             dep_list = common_dep_list
             update_list = common_update_list
