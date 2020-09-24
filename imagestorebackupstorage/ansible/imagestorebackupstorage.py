@@ -98,10 +98,11 @@ if distro in RPM_BASED_OS:
         releasever = 'c74' if output.strip() == 'c72' else output.strip()
     else:
         releasever = get_mn_yum_release()
-    x86_64_c74 = "qemu-kvm-ev fuse-sshfs nmap"
-    x86_64_c76 = "qemu-kvm-ev fuse-sshfs nmap"
-    aarch64_ns10 = "qemu fuse-sshfs nmap"
-    mips64el_ns10 = "qemu-kvm fuse-sshfs nmap"
+    x86_64_c74 = "qemu-img-ev fuse-sshfs nmap"
+    x86_64_c76 = "qemu-img-ev fuse-sshfs nmap"
+    aarch64_ns10 = "qemu-img fuse-sshfs nmap"
+    mips64el_ns10 = "qemu-img-ev fuse-sshfs nmap"
+    x86_64_ns10 = "qemu-img fuse-sshfs nmap"
 
     qemu_pkg = eval("%s_%s" % (host_arch, releasever))
     # skip these packages
