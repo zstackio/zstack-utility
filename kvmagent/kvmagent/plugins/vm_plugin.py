@@ -12,6 +12,7 @@ import re
 import platform
 import netaddr
 import uuid
+import shutil
 import simplejson
 import base64
 import uuid
@@ -33,13 +34,9 @@ from kvmagent import kvmagent
 from kvmagent.plugins.imagestore import ImageStoreClient
 from zstacklib.utils import bash, plugin
 from zstacklib.utils.bash import in_bash
-from zstacklib.utils import http
 from zstacklib.utils import jsonobject
-from zstacklib.utils import linux
-from zstacklib.utils import log
 from zstacklib.utils import lvm
 from zstacklib.utils import shell
-from zstacklib.utils import thread
 from zstacklib.utils import uuidhelper
 from zstacklib.utils import xmlobject
 from zstacklib.utils import misc
@@ -818,7 +815,7 @@ def is_hv_freq_supported():
 
 @linux.with_arch(todo_list=['x86_64'])
 def is_ioapic_supported():
-    return compare_version(LIBVIRT_VERSION, '3.4.0') >= 0 
+    return compare_version(LIBVIRT_VERSION, '3.4.0') >= 0
 
 def is_kylin402():
     zstack_release = linux.read_file('/etc/zstack-release')
@@ -2461,6 +2458,9 @@ class Vm(object):
         logger.debug('%s is not found on the vm[uuid:%s], xml: %s' % (volume.installPath, self.uuid, self.domain_xml))
         raise kvmagent.KvmError('unable to find volume[installPath:%s] on vm[uuid:%s]' % (volume.installPath, self.uuid))
 
+    def _is_ft_vm(self):
+        return any(disk.type_ == "quorum" for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'))
+
     def resize_volume(self, volume, size):
         device_id = volume.deviceId
         target_disk, disk_name = self._get_target_disk(volume)
@@ -2675,7 +2675,7 @@ class Vm(object):
 
         if cmd.xbzrle:
             flag |= libvirt.VIR_MIGRATE_COMPRESSED
-            
+
         if cmd.storageMigrationPolicy == 'FullCopy':
             flag |= libvirt.VIR_MIGRATE_NON_SHARED_DISK
         elif cmd.storageMigrationPolicy == 'IncCopy':
@@ -3145,6 +3145,52 @@ class Vm(object):
             do_pull(cmd.srcPath, cmd.destPath)
 
     def take_volumes_shallow_backup(self, task_spec, volumes, dst_backup_paths):
+        if self._is_ft_vm():
+            self._take_volumes_top_drive_backup(task_spec, volumes, dst_backup_paths)
+        else:
+            self._take_volumes_shallow_block_copy(task_spec, volumes, dst_backup_paths)
+
+    def _take_volumes_top_drive_backup(self, task_spec, volumes, dst_backup_paths):
+        class DriveBackupDaemon(plugin.TaskDaemon):
+            def __init__(self, domain_uuid):
+                super(DriveBackupDaemon, self).__init__(task_spec, 'TakeVolumeBackup', report_progress=False)
+                self.domain_uuid = domain_uuid
+
+            def __exit__(self, exc_type, exc_val, exc_tb):
+                super(DriveBackupDaemon, self).__exit__(exc_type, exc_val, exc_tb)
+                os.unlink(tmp_workspace)
+
+            def _cancel(self):
+                logger.debug("cancel vm[uuid:%s] backup" % self.domain_uuid)
+                ImageStoreClient().stop_backup_jobs(self.domain_uuid)
+
+            def _get_percent(self):
+                pass
+
+        tmp_workspace = os.path.join(tempfile.gettempdir(), uuidhelper.uuid())
+        with DriveBackupDaemon(self.uuid):
+            self._do_take_volumes_top_drive_backup(volumes, dst_backup_paths, tmp_workspace)
+
+    def _do_take_volumes_top_drive_backup(self, volumes, dst_backup_paths, tmp_workspace):
+        args = {}
+        for volume in volumes:
+            target_disk, _ = self._get_target_disk(volume)
+            args[str(volume.deviceId)] = VmPlugin.get_backup_device_name(target_disk), 0
+
+        dst_workspace = os.path.join(os.path.dirname(dst_backup_paths['0']), 'workspace')
+        linux.mkdir(dst_workspace)
+        os.symlink(dst_workspace, tmp_workspace)
+
+        res = ImageStoreClient().top_backup_volumes(self.uuid, args.values(), tmp_workspace)
+
+        job_res = jsonobject.loads(res)
+        for device_id, dst_path in dst_backup_paths.items():
+            device_name = args[device_id][0]
+            back_path = os.path.join(dst_workspace, job_res[device_name].backupFile)
+            linux.mkdir(os.path.dirname(dst_path))
+            shutil.move(back_path, dst_path)
+
+    def _take_volumes_shallow_block_copy(self, task_spec, volumes, dst_backup_paths):
         # type: (Vm, jsonobject.JsonObject, list[xmlobject.XmlObject], dict[str, str]) -> None
         class VolumeInfo(object):
             def __init__(self, dev_name):
@@ -3171,15 +3217,14 @@ class Vm(object):
             volume_backup_info[str(volume.deviceId)] = VolumeInfo(target_disk.target.dev_)
 
         with ShallowBackupDaemon(self.domain):
-            self._do_take_volumes_shallow_backup(volume_backup_info, dst_backup_paths)
+            self._do_take_volumes_shallow_block_copy(volume_backup_info, dst_backup_paths)
 
-    def _do_take_volumes_shallow_backup(self, volume_backup_info, dst_backup_paths):
+    def _do_take_volumes_shallow_block_copy(self, volume_backup_info, dst_backup_paths):
         dom = self.domain
         flags = libvirt.VIR_DOMAIN_BLOCK_COPY_TRANSIENT_JOB | libvirt.VIR_DOMAIN_BLOCK_COPY_SHALLOW
         for device_id, v in volume_backup_info.items():
             vol_dir = os.path.dirname(dst_backup_paths[device_id])
-            linux.rm_dir_force(vol_dir)
-            os.makedirs(vol_dir, 0755)
+            linux.mkdir(vol_dir)
 
             logger.info("start copying {}/{} ...".format(self.uuid, v.dev_name))
             dom.blockCopy(v.dev_name, "<disk type='file'><source file='{}'/><driver type='qcow2'/></disk>"
@@ -3260,8 +3305,8 @@ class Vm(object):
                     e(numa, 'cell', attrib={'id': '0', 'cpus': '0-127', 'memory': str(mem), 'unit': 'KiB'})
 
                 def on_aarch64():
-                    e(root, 'vcpu', '128', {'placement': 'static', 'current': str(cmd.cpuNum)})
-                    cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
+                    cpu = e(root, 'cpu', attrib={'mode': 'custom'})
+                    e(cpu, 'model', 'host', attrib={'fallback': 'allow'})
                     mem = cmd.memory / 1024
                     e(cpu, 'topology', attrib={'sockets': '32', 'cores': '4', 'threads': '1'})
                     numa = e(cpu, 'numa')
@@ -3297,7 +3342,7 @@ class Vm(object):
                     else:
                         cpu = e(root, 'cpu')
                     return cpu
-                    
+
                 def on_aarch64():
                     if is_virtual_machine():
                         cpu = e(root, 'cpu')
@@ -3358,7 +3403,7 @@ class Vm(object):
                     e(os, 'type', 'hvm', attrib={'arch': 'aarch64', 'machine': 'virt'})
                     e(os, 'loader', '/usr/share/OVMF/QEMU_EFI-pflash.raw', attrib={'readonly': 'yes', 'type': 'rom'})
                     e(os, 'nvram', '/var/lib/libvirt/qemu/nvram/%s.fd' % cmd.vmInstanceUuid, attrib={'template': '/usr/share/OVMF/vars-template-pflash.raw'})
-                    
+
                 eval("on_{}".format(kvmagent.get_host_os_type()))()
 
             def on_mips64el():
@@ -3451,25 +3496,25 @@ class Vm(object):
                 primary_host_ip = cmd.addons['primaryVmHostIp']
                 for config in cmd.addons['primaryVmNicConfig']:
                     e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
-                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=zs-mirror-%s,host=%s,port=%s,server,nowait' 
+                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=zs-mirror-%s,host=%s,port=%s,server,nowait'
                                                           % (count, primary_host_ip, config.mirrorPort)})
 
                     e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
-                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-in-s-%s,host=%s,port=%s,server,nowait' 
+                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-in-s-%s,host=%s,port=%s,server,nowait'
                                                           % (count, primary_host_ip, config.primaryInPort)})
                     e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
-                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=secondary-in-s-%s,host=%s,port=%s,server,nowait' 
+                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=secondary-in-s-%s,host=%s,port=%s,server,nowait'
                                                           % (count, primary_host_ip, config.secondaryInPort)})
                     e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
-                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-in-c-%s,host=%s,port=%s,nowait' 
+                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-in-c-%s,host=%s,port=%s,nowait'
                                                           % (count, primary_host_ip, config.primaryInPort)})
                     e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
-                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-out-s-%s,host=%s,port=%s,server,nowait' 
+                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-out-s-%s,host=%s,port=%s,server,nowait'
                                                           % (count, primary_host_ip, config.primaryOutPort)})
                     e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
-                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-out-c-%s,host=%s,port=%s,nowait' 
+                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-out-c-%s,host=%s,port=%s,nowait'
                                                           % (count, primary_host_ip, config.primaryOutPort)})
-                    
+
                     count += 1
 
                 e(qcmd, "qemu:arg", attrib={"value": '-monitor'})
@@ -3632,7 +3677,7 @@ class Vm(object):
                     if len(paths) == 0:
                     # could not read qcow2
                         raise Exception("could not read qcow2")
-                        
+
                     backingStore = None
                     for path in paths:
                         logger.debug('disk path %s' % path)
@@ -3654,10 +3699,10 @@ class Vm(object):
                         logger.debug('disk xml is %s' % xml)
                         if cmd.coloSecondary:
                             e(backingStore, 'active', None, {'file': cmd.cacheVolumes[0].installPath})
-                            e(backingStore, 'hidden', None, {'file': cmd.cacheVolumes[1].installPath})        
+                            e(backingStore, 'hidden', None, {'file': cmd.cacheVolumes[1].installPath})
 
                         e(backingStore, 'source', None, {'file': path})
-                            
+
                     return disk
 
                 disk = make_backingstore(_v.installPath)
@@ -3972,7 +4017,7 @@ class Vm(object):
                 e(devices, 'controller', None, {'type': 'usb', 'index': '1'})
                 e(devices, 'controller', None, {'type': 'usb', 'index': '2'})
                 return True
-                
+
 
             def set_usb2_3():
                 e(devices, 'controller', None, {'type': 'usb', 'index': '1', 'model': 'ehci'})
@@ -5526,11 +5571,7 @@ class VmPlugin(kvmagent.KvmAgent):
         for deviceId in device_ids:
             target_disk = target_disks[deviceId]
             drivertype = target_disk.driver.type_
-
-            if target_disk.type_ == 'quorum':
-                nodename = target_disk.alias.name_
-            else:
-                nodename = 'drive-' + target_disk.alias.name_
+            nodename = self.get_backup_device_name(target_disk)
             source = target_disk.source
             bitmap = bitmaps[deviceId]
 
@@ -5636,6 +5677,10 @@ class VmPlugin(kvmagent.KvmAgent):
 
         return bitmap, parent
 
+    @staticmethod
+    def get_backup_device_name(disk):
+        return ('' if disk.type_ == 'quorum' else 'drive-') + disk.alias.name_
+
     def getLastBackup(self, deviceId, backupInfos):
         for info in backupInfos:
             if info.deviceId == deviceId:
@@ -5727,7 +5772,7 @@ class VmPlugin(kvmagent.KvmAgent):
             target_disk, _ = vm._get_target_disk(cmd.volume)
             bitmap, parent = self.do_take_volume_backup(cmd,
                     target_disk.driver.type_, # 'qcow2' etc.
-                    'drive-' + target_disk.alias.name_,  # 'virtio-disk0' etc.
+                    self.get_backup_device_name(target_disk),  # 'virtio-disk0' etc.
                     target_disk.source,
                     os.path.join(storage.local_work_dir, fname))
 
@@ -6507,7 +6552,7 @@ class VmPlugin(kvmagent.KvmAgent):
             if err:
                 return False
             elif 'does not support adding a child' in stdout:
-                raise RetryException("failed to add child to %s" % alias_name)                                                
+                raise RetryException("failed to add child to %s" % alias_name)
             else:
                 return True
 
@@ -6543,7 +6588,7 @@ class VmPlugin(kvmagent.KvmAgent):
                 execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "stop"}')
                 execute_qmp_command(cmd.vmInstanceUuid,
                                 '{"execute": "block-job-cancel", "arguments":{ "device": "zs-ft-resync"}}')
-            
+
                 while True:
                     time.sleep(1)
                     r, o, err = execute_qmp_command(cmd.vmInstanceUuid, '{"execute":"query-block-jobs"}')
@@ -6551,7 +6596,7 @@ class VmPlugin(kvmagent.KvmAgent):
                         rsp.success = False
                         rsp.error = "Failed to query block jobs, report error"
                         return jsonobject.dumps(rsp)
-                    
+
                     block_jobs = json.loads(o)['return']
                     job = next((job for job in block_jobs if job['device'] == 'zs-ft-resync'), None)
                     if job:
@@ -6578,7 +6623,7 @@ class VmPlugin(kvmagent.KvmAgent):
                 rsp.success = False
                 rsp.error = "Failed to setup quorum replication node, report error"
                 return jsonobject.dumps(rsp)
-            
+
             replication_list.append(ColoReplicationConfig(alias_name, count))
 
             count+=1
@@ -6616,23 +6661,23 @@ class VmPlugin(kvmagent.KvmAgent):
                                     ' "primary-in-redirect-%s", "props": { "insert": "before", "position": "id=rew-%s",'
                                     ' "netdev": "hostnet%s", "queue": "rx",'
                                     ' "outdev": "primary-in-s-%s"}}}' % (count, count, count, count))
-            
+
             execute_qmp_command(cmd.vmInstanceUuid,
                                 '{"execute": "object-add", "arguments":{ "qom-type": "colo-compare", "id": "comp-%s",'
                                 ' "props": { "primary_in": "primary-in-c-%s", "secondary_in": "secondary-in-s-%s",'
                                 ' "outdev":"primary-out-c-%s", "iothread": "iothread%s" } } }'
                                 % (count, count, count, count, int(count) + 1))
             count += 1
-        
+
         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate-set-capabilities","arguments":'
                                                 '{"capabilities":[ {"capability": "x-colo", "state":true}]}}')
-        
+
         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate-set-parameters", "arguments":'
                                                 '{ "max-bandwidth": 3355443200 }}')
 
         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate", "arguments": {"uri": "tcp:%s:%s"}}'
                                                 % (cmd.secondaryVmHostIp, cmd.blockReplicationPort))
-        
+
         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate-set-parameters",'
                                                 ' "arguments": {"x-checkpoint-delay": %s}}'
                                                 % cmd.checkpointDelay)
@@ -6657,7 +6702,7 @@ class VmPlugin(kvmagent.KvmAgent):
                 rsp.error = "Failed to query migrate info, because %s" % err
                 colo_qemu_object_cleanup()
                 break
-            
+
             migrate_info = json.loads(o)['return']
             if migrate_info['status'] == 'colo':
                 logger.debug("migrate finished")
@@ -6695,7 +6740,7 @@ class VmPlugin(kvmagent.KvmAgent):
                     break
 
             time.sleep(2)
-        
+
         if not rsp.success:
             colo_qemu_object_cleanup()
             colo_qemu_replication_cleanup()
@@ -6746,7 +6791,7 @@ class VmPlugin(kvmagent.KvmAgent):
         for config in cmd.configs[len(mirror_device_nums):]:
             if not linux.is_port_available(config.mirrorPort):
                 raise Exception("failed to config primary vm, because mirrorPort port %d is occupied" % config.mirrorPort)
-            
+
             if not linux.is_port_available(config.primaryInPort):
                 raise Exception("failed to config primary vm, because primaryInPort port %d is occupied" % config.primaryInPort)
 
@@ -7298,7 +7343,7 @@ class VmPlugin(kvmagent.KvmAgent):
 
         vm_uuid = dom.name()
         heartbeat_thread = self.vm_heartbeat.pop(vm_uuid, None)
-        
+
         if heartbeat_thread and heartbeat_thread.is_alive():
             logger.debug("clean vm[uuid:%s] heartbeat, due to evnet %s" % (dom.name(), LibvirtEventManager.event_to_string(event)))
             heartbeat_thread.do_heart_beat = False
