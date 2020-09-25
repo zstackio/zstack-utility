@@ -50,25 +50,32 @@ def colo_lost_heartbeat(vmInstanceUuid):
     execute_qmp_command(vmInstanceUuid, '{"execute": "x-colo-lost-heartbeat"}')
 
 def cleanup_secondary_vm_qom_if_needed(vmInstanceUuid):
-    cleanup_qom_match_prefix_if_needed(vmInstanceUuid, ['red-secondary-', 'red-mirror-'])
+    cleanup_qom_match_prefix_if_needed(vmInstanceUuid, ['fr-secondary-', 'fr-secondary-'])
+    cleanup_qom_match_prefix_if_needed(vmInstanceUuid, ['red-secondary-', 'red-mirror-'], False)
 
 def cleanup_primary_vm_qom(vmInstanceUuid):
-    cleanup_qom_match_prefix_if_needed(vmInstanceUuid, ['zs-mirror-', 'primary-out-s-', 'primary-out-c-', 'secondary-in-s-', 'primary-in-s-', 'primary-in-c-'])
+    cleanup_qom_match_prefix_if_needed(vmInstanceUuid, ['comp-', 'fm-', 'primary-out-redirect-', 'primary-in-redirect-'])
 
-def cleanup_qom_match_prefix_if_needed(vmInstanceUuid, target_prefix_list=[]):
-    r, o, err = execute_qmp_command(vmInstanceUuid, '{"execute": "qom-list", "arguments": { "path": "/chardevs" }}')
+def cleanup_qom_match_prefix_if_needed(vmInstanceUuid, target_prefix_list=[], is_object=True):
+    r, o, err = None, None, None
+    if is_object:
+        r, o, err = execute_qmp_command(vmInstanceUuid, '{"execute": "qom-list", "arguments": { "path": "/objects" }}')
+    else:
+        r, o, err = execute_qmp_command(vmInstanceUuid, '{"execute": "qom-list", "arguments": { "path": "/chardevs" }}')
+
     if err:
         raise Exception("Failed to query qemu qom, report error")
 
     qom_list = json.loads(o)['return']
 
     for qom_entry in qom_list:
-        if qom_entry['type'] != "child<chardev-socket>":
-            continue
-
         qom_name = qom_entry['name']
         if any(prefix in qom_name for prefix in target_prefix_list):
-            execute_qmp_command(vmInstanceUuid, '{"execute": "object-del","arguments":{"id":"%s"}}' % qom_name)
+            if is_object:
+                execute_qmp_command(vmInstanceUuid, '{"execute": "object-del","arguments":{"id":"%s"}}' % qom_name)
+            else:
+                execute_qmp_command(vmInstanceUuid, '{"execute": "chardev-remove","arguments":{"id":"%s"}}' % qom_name)
+
 
 def cleanup_vm_before_setup_colo_primary_vm(vmInstanceUuid):
     check_if_need_to_update_quorum_children(vmInstanceUuid)
