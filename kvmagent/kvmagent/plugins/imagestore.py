@@ -7,7 +7,7 @@ from kvmagent import kvmagent
 from zstacklib.utils import jsonobject
 from zstacklib.utils import shell
 from zstacklib.utils import traceable_shell
-from zstacklib.utils.bash import bash_progress_1, in_bash, bash_r
+from zstacklib.utils.bash import bash_progress_1, in_bash, bash_r, bash_roe
 from zstacklib.utils.report import *
 
 logger = log.get_logger(__name__)
@@ -120,6 +120,15 @@ class ImageStoreClient(object):
             if err:
                 self.check_capacity(dstdir)
                 raise Exception('fail to backup vm %s, because %s' % (vm, str(err)))
+            return mode.strip()
+
+    def top_backup_volumes(self, vm, args, dstdir):
+        with linux.ShowLibvirtErrorOnException(vm):
+            cmdstr = '%s battopbak -domain %s -destdir %s -args %s' % \
+                     (self.ZSTORE_CLI_PATH, vm, dstdir, ':'.join(["%s,%s" % x for x in args]))
+            _, mode, err = bash_roe(cmdstr)
+            if err:
+                raise Exception('fail to top backup vm %s, because %s' % (vm, str(err)))
             return mode.strip()
 
     def image_already_pushed(self, hostname, imf):

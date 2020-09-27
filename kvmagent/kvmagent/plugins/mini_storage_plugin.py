@@ -295,6 +295,8 @@ class MiniFileConverter(linux.AbstractFileConverter):
         if drbd_res.exists:
             drbd_res.dd_out(dst)
         else:
+            if not os.path.exists(src):
+                lvm.active_lv(src, shared=True)
             shell.call('dd if=%s of=%s conv=sparse bs=1M' % (src, dst))
 
     def get_size(self, path):
@@ -467,7 +469,9 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
                     bash.bash_r("mkdir -p %s" % BACKUP_DIR)
                     bash.bash_r("mv /etc/drbd.d/*.res %s" % BACKUP_DIR)
 
-                linux.umount_by_url("/var/lib/zstack/colo/cachevolumes/")
+                mini_cache_volume_mount_dir = "/var/lib/zstack/colo/cachevolumes/"
+                linux.umount_by_path(mini_cache_volume_mount_dir)
+                linux.rm_dir_force(mini_cache_volume_mount_dir)
                 lvm.wipe_fs(diskPaths, vgUuid)
 
             cmd = shell.ShellCmd("vgcreate -qq --addtag '%s::%s::%s::%s' --metadatasize %s %s %s" %
