@@ -30,12 +30,12 @@ if [[ ! ${AGENT_VERSION} =~ ${BIN_NAME} ]]; then
     exit 1
 fi
 
-echo "downloading ${BIN_NAME}"
-curl http://169.254.169.254/${BIN_NAME} --silent -O
+echo "downloading zwatch-vm-agent"
+curl http://169.254.169.254/zwatch-vm-agent --silent -O
 
-BIN_MD5=`md5sum ${BIN_NAME} | awk '{print $1}'`
+BIN_MD5=`md5sum zwatch-vm-agent | awk '{print $1}'`
 if [[ ! ${AGENT_VERSION} =~ "md5-${BIN_NAME}=${BIN_MD5}" ]]; then
-    echo "there was an error downloading the ${BIN_NAME}, check md5sum fail"
+    echo "there was an error downloading the zwatch-vm-agent, check md5sum fail"
     exit 1
 fi
 
@@ -45,12 +45,12 @@ version=`echo $AGENT_VERSION | awk -F '=' '{print $2}' | awk '{print $1}'`
 echo "stopping zwatch-vm-agent"
 service zwatch-vm-agent stop
 
-echo "install ${BIN_NAME}"
-chmod +x ${BIN_NAME}
-./${BIN_NAME} -i
+echo "install zwatch-vm-agent"
+chmod +x zwatch-vm-agent
+./zwatch-vm-agent -i
 if [ $? != 0 ]; then
      curl -H "Content-Type: application/json" -H "commandpath: /host/zwatchInstallResult" -X POST -d "{\"vmInstanceUuid\": \"${vmInstanceUuid}\", \"version\": \"${InstallFailed}\"}" http://169.254.169.254/host/zwatchInstallResult
-     echo "install ${BIN_NAME} fail"
+     echo "install zwatch-vm-agent fail"
      exit 1
 fi
 

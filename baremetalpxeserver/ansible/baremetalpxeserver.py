@@ -100,8 +100,19 @@ run_remote_command(command, host_post_info)
 
 # name: install dependencies
 if distro in RPM_BASED_OS:
+    status, output = run_remote_command("rpm -q zstack-release >/dev/null && echo `awk '{print $3}' /etc/zstack-release`", host_post_info, True, True)
+    if status:
+        # c72 is no longer supported, force set c74
+        releasever = 'c74' if output.strip() == 'c72' else output.strip()
+    else:
+        releasever = get_mn_yum_release()
+    x86_64_c74 = "dnsmasq nginx syslinux vsftpd nmap"
+    x86_64_c76 = "dnsmasq nginx syslinux vsftpd nmap"
+    aarch64_ns10 = "dnsmasq nginx vsftpd nmap net-tools"
+    mips64el_ns10 = "dnsmasq nginx vsftpd nmap net-tools"
+    dep_pkg = eval("%s_%s" % (host_arch, releasever))
     if zstack_repo != 'false':
-        command = ("pkg_list=`rpm -q dnsmasq nginx syslinux vsftpd nmap | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (zstack_repo)
+        command = ("pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (dep_pkg, zstack_repo)
         run_remote_command(command, host_post_info)
     else:
         for pkg in ["dnsmasq", "nginx", "vsftpd", "syslinux", "nmap"]:
@@ -197,12 +208,13 @@ copy_arg.src = "%s/noVNC.tar.gz" % file_root
 copy_arg.dest = "/var/lib/zstack/baremetal/"
 copy(copy_arg, host_post_info)
 
-# name: copy zwatch-vm-agent
-zwatch_vm_agent_name = "zwatch-vm-agent{}".format('' if host_arch == 'x86_64' else '_' + host_arch)
-copy_arg = CopyArg()
-copy_arg.src = os.path.join(kvm_file_root, zwatch_vm_agent_name)
-copy_arg.dest = os.path.join(VSFTPD_ROOT_PATH, 'zwatch-vm-agent')
-copy(copy_arg, host_post_info)
+if host_arch == "x86_64":
+    # name: copy zwatch-vm-agent
+    zwatch_vm_agent_name = "zwatch-vm-agent{}".format('' if host_arch == 'x86_64' else '_' + host_arch)
+    copy_arg = CopyArg()
+    copy_arg.src = os.path.join(kvm_file_root, zwatch_vm_agent_name)
+    copy_arg.dest = os.path.join(VSFTPD_ROOT_PATH, 'zwatch-vm-agent')
+    copy(copy_arg, host_post_info)
 
 copy_arg = CopyArg()
 copy_arg.src = "%s/agent_version" % file_root
