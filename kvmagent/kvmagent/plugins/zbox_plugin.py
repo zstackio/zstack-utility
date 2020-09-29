@@ -80,6 +80,28 @@ def find_usb_devices():
     return [] if devcmd.return_code != 0 else devcmd.stdout.splitlines()
 
 
+def get_blk_fstype(devname):
+    # type: (str) -> dict[str, str]
+    devcmd = shell.ShellCmd("lsblk -prn -oNAME,FSTYPE %s" % devname)
+    devcmd(False)
+    ret = {}
+    if devcmd.return_code == 0:
+        for l in devcmd.stdout.splitlines():
+            kv = l.split()
+            if len(kv) == 2:
+                ret[kv[0]] = kv[1]
+    return ret
+
+
+def label_zbox_on_formatted_storage(devname, label):
+    for dev_path, fstype in get_blk_fstype(devname).items():
+        if fstype == 'ext4':
+            shell.call("e2label %s %s" % (dev_path, label))
+            return dev_path
+
+    raise Exception('filesystem type of storage must be ext4.')
+
+
 def get_usb_bus_dev_num(devname):
     lines = shell.call("udevadm info -a -n %s | grep -Em 2 'busnum|devnum'" % devname).splitlines()
     busnum = lines[0].split("==")[1].strip('"')
@@ -233,7 +255,7 @@ class ZBoxPlugin(kvmagent.KvmAgent):
             info.uuid = uuidhelper.uuid()
             label = build_label(info.uuid)
             if cmd.skipFormat:
-                shell.call("e2label %s %s" % (target_dev_name, label))
+                label_zbox_on_formatted_storage(target_dev_name, label)
             else:
                 shell.call("mkfs.ext4 -F -L %s %s" % (label, target_dev_name))
 
