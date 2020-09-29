@@ -383,21 +383,6 @@
         <makeDir dir="${libs.dir}" />
         <exec executable="cp" dir="${libs.dir}" failonerror="true">
             <arg value="-f" />
-            <arg value="${centos6.unzip.rpm}" />
-            <arg value="./" />
-        </exec>
-        <exec executable="cp" dir="${libs.dir}" failonerror="true">
-            <arg value="-f" />
-            <arg value="${centos7.unzip.rpm}" />
-            <arg value="./" />
-        </exec>
-        <exec executable="cp" dir="${libs.dir}" failonerror="true">
-            <arg value="-f" />
-            <arg value="${centos7.unzip.aarch64.rpm}" />
-            <arg value="./" />
-        </exec>
-        <exec executable="cp" dir="${libs.dir}" failonerror="true">
-            <arg value="-f" />
             <arg value="${tomcat.root.app.zip}" />
             <arg value="./" />
         </exec>
