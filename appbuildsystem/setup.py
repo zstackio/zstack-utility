@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 import sys, os
 
-version = '3.10.0'
+version = '4.0.0'
 
 setup(name='appbuildsystem',
       version=version,
