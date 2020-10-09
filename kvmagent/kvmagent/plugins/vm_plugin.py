@@ -6866,6 +6866,20 @@ class VmPlugin(kvmagent.KvmAgent):
                                                 '{"command-line": "drive_del replication%s" } }' % count)
                             count += 1
 
+                        execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "x-colo-lost-heartbeat"}')
+                        
+                        while True:
+                            r, o, err = execute_qmp_command(cmd.vmInstanceUuid, '{"execute":"query-status"}')
+                            if err:
+                                break
+
+                            colo_status = json.loads(o)['return']
+                            status = colo_status['status']
+                            if status == 'running':
+                                break
+                            
+                            time.sleep(1)
+
                         for i in xrange(cmd.redirectNum):
                             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
                                                                     '"arguments":{"id":"comp-%s"}}' % i)
@@ -6875,7 +6889,6 @@ class VmPlugin(kvmagent.KvmAgent):
                                                                     '"arguments":{"id":"primary-out-redirect-%s"}}' % i)
                             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
                                                                     '"arguments":{"id":"primary-in-redirect-%s"}}' % i)
-                        execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "x-colo-lost-heartbeat"}')
                     else:
                         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "nbd-server-stop"}')
                         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "x-colo-lost-heartbeat"}')
