@@ -88,7 +88,7 @@ if not os.path.isdir(repo_dir):
 
 
 
-def update_libvritd_config(host_post_info):
+def update_libvirtd_config(host_post_info):
     # name: copy libvirtd conf to keep environment consistent,only update host_uuid
     copy_arg = CopyArg()
     copy_arg.src = "%s/libvirtd.conf" % file_root
@@ -140,31 +140,6 @@ def check_nested_kvm(host_post_info):
     modprobe_arg.state = 'present'
     modprobe(modprobe_arg, host_post_info)
 
-
-def get_host_release_info():
-    get_releasever_script = '''
-    cat << 'EOF' > /opt/get_releasever
-    rpm -q zstack-release > /dev/null 2>&1
-    [ $? -eq 0 ] && echo `rpm -q zstack-release |awk -F"-" '{print $3}'` && exit 0
-    rpm -q centos-release > /dev/null 2>&1
-    [ $? -eq 0 ] && echo `rpm -q centos-release|awk -F"." '{print $1}'|awk -F"-" '{print "c"$3$4}'` && exit 0
-    rpm -q alios-release-server > /dev/null 2>&1
-    [ $? -eq 0 ] && echo `rpm -q alios-release-server |awk -F"." '{print $3}'` && exit 0
-    rpm -q redhat-release-server > /dev/null 2>&1
-    [ $? -eq 0 ] && echo `rpm -q redhat-release-server |awk -F"-" '{print "c"$4}'|tr -d '.'` && exit 0
-    rpm -q neokylin-release-server > /dev/null 2>&1
-    [ $? -eq 0] && echo `rpm -q neokylin-release-server |awk -F"." '{print $3}'|awk -F"_" '{print $1}'` && exit 0
-    exit 1'''
-    run_remote_command(get_releasever_script, host_post_info)
-    (status, output) = run_remote_command("bash /opt/get_releasever", host_post_info, True, True)
-    if status:
-        # c72 is no longer supported, force set c74
-        releasever = 'c74' if output.strip() == 'c72' else output.strip()
-    else:
-        releasever = sorted(os.listdir("/opt/zstack-dvd/{}".format(host_arch)))[-1]
-
-    return releasever
-
 def install_release_on_host(is_rpm):
     # copy and install zstack-release
     if is_rpm:
@@ -199,11 +174,10 @@ def load_zstacklib():
         zstacklib_args.yum_server = yum_server
     zstacklib = ZstackLib(zstacklib_args)
 
+releasever = get_host_releasever([distro, distro_release, distro_version])
 if distro in RPM_BASED_OS:
-    releasever = get_host_release_info()
     install_release_on_host(True)
 elif distro in DEB_BASED_OS:
-    releasever = get_mn_apt_release()
     install_release_on_host(False)
 else:
     error("Unsupported OS: {}".format(distro))
@@ -352,7 +326,7 @@ def install_kvm_pkg():
                 service_status("iptables", "state=restarted enabled=yes", host_post_info)
 
         #we should check libvirtd config file status before restart the service
-        libvirtd_conf_status = update_libvritd_config(host_post_info)
+        libvirtd_conf_status = update_libvirtd_config(host_post_info)
         if chroot_env == 'false':
             # name: enable libvirt daemon on RedHat based OS
             service_status("libvirtd", "state=started enabled=yes", host_post_info)
@@ -410,7 +384,7 @@ def install_kvm_pkg():
         run_remote_command(command, host_post_info)
         update_pkg_list = ['ebtables', 'python-libvirt', 'qemu-system-arm']
         apt_update_packages(update_pkg_list, host_post_info)
-        libvirtd_conf_status = update_libvritd_config(host_post_info)
+        libvirtd_conf_status = update_libvirtd_config(host_post_info)
         if chroot_env == 'false':
             # name: enable libvirt daemon on RedHat based OS
             service_status("libvirtd", "state=started enabled=yes", host_post_info)
