@@ -3202,6 +3202,8 @@ class Vm(object):
         machine_type = get_machineType(cmd.machineType)
         if HOST_ARCH == "aarch64" and cmd.bootMode == 'Legacy':
             raise kvmagent.KvmError("Aarch64 does not support legacy, please change boot mode to UEFI instead of Legacy on your VM or Image.")
+        if cmd.architecture and cmd.architecture != HOST_ARCH:
+            raise kvmagent.KvmError("Image architecture[{}] not matched host architecture[{}].".format(cmd.architecture, HOST_ARCH))
         default_bus_type = ('ide', 'sata', 'scsi')[max(machine_type == 'q35', (HOST_ARCH in ['aarch64', 'mips64el']) * 2)]
         elements = {}
 
@@ -3412,7 +3414,7 @@ class Vm(object):
             if "hygon" in model_name.lower():
                 if isinstance(cmd.imagePlatform, str) and cmd.imagePlatform.lower() not in ["other", "paravirtualization"]:
                     e(qcmd, "qemu:arg", attrib={"value": "-cpu"})
-                    e(qcmd, "qemu:arg", attrib={"value": "EPYC,vendor=AuthenticAMD,model_id={} Processor".format(" ".join(model_name.split(" ")[0:3]))})
+                    e(qcmd, "qemu:arg", attrib={"value": "EPYC,vendor=AuthenticAMD,model_id={} Processor,+svm".format(" ".join(model_name.split(" ")[0:3]))})
             else:
                 e(qcmd, "qemu:arg", attrib={"value": "-qmp"})
                 e(qcmd, "qemu:arg", attrib={"value": "unix:{}/{}.sock,server,nowait".format(QMP_SOCKET_PATH, cmd.vmInstanceUuid)})
