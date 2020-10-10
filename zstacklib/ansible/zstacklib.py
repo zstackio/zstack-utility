@@ -272,6 +272,18 @@ def get_mn_yum_release():
 def get_mn_apt_release():
     return commands.getoutput("awk '{print $3}' /etc/zstack-release").strip()
 
+def get_host_releasever(ansible_distribution):
+    supported_release_info = {
+        "kylin10 tercel 10": "ns10",
+        "uniontech fou 20": "uos20",
+        "redhat maipo 7.4": "ns10", # old kylinV10, oem 7.4 incompletely
+        "centos core 7.6.1810": "c76",
+        "centos core 7.4.1708": "c74",
+        "centos core 7.2.1511": "c72",
+    }
+    _key = " ".join(ansible_distribution).lower()
+    return supported_release_info.get(_key)
+
 def post_msg(msg, post_url):
     '''post message to zstack, label for support i18n'''
     if msg.parameters is not None:
