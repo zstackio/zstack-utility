@@ -52,7 +52,7 @@ if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
 
 # include zstacklib.py
-(distro, distro_version, distro_release, _) = get_remote_host_info(host_post_info)
+(distro, major_version, distro_release, distro_version) = get_remote_host_info(host_post_info)
 zstacklib_args = ZstackLibArgs()
 zstacklib_args.distro = distro
 zstacklib_args.distro_release = distro_release
@@ -62,10 +62,10 @@ zstacklib_args.zstack_root = zstack_root
 zstacklib_args.host_post_info = host_post_info
 zstacklib_args.pip_url = pip_url
 zstacklib_args.trusted_host = trusted_host
+zstacklib_args.zstack_releasever = get_host_releasever([distro, distro_release, distro_version])
 if distro in DEB_BASED_OS:
     zstacklib_args.apt_server = yum_server
     zstacklib_args.zstack_apt_source = zstack_repo
-    zstacklib_args.zstack_releasever = get_mn_apt_release()
 else :
     zstacklib_args.yum_server = yum_server
 zstacklib = ZstackLib(zstacklib_args)
