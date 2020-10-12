@@ -751,7 +751,7 @@ class Ctl(object):
     def __init__(self):
         self.commands = {}
         self.command_list = []
-        self.main_parser = CtlParser(prog='zstack-ctl', description="Cloud management tool", formatter_class=argparse.RawTextHelpFormatter)
+        self.main_parser = CtlParser(prog='cloud-ctl', description="Cloud management tool", formatter_class=argparse.RawTextHelpFormatter)
         self.main_parser.add_argument('-v', help="verbose, print execution details", dest="verbose", action="store_true", default=False)
         self.zstack_home = None
         self.properties_file_path = None
