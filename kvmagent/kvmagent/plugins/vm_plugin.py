@@ -4268,7 +4268,7 @@ class Vm(object):
             devices = elements['devices']
             if cmd.consoleLogToFile:
                 logfilename = '%s-vm-kernel.log' % cmd.vmInstanceUuid
-                logpath = os.path.join('/tmp', logfilename)
+                logpath = os.path.join(tempfile.gettempdir(), logfilename)
                 
                 serial = e(devices, 'serial', None, {'type': 'file'})
                 e(serial, 'target', None, {'port': '0'})
