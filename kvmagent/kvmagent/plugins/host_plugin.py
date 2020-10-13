@@ -625,7 +625,11 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.libvirtVersion = self.libvirt_version
         rsp.ipAddresses = ipV4Addrs.splitlines()
         rsp.cpuArchitecture = platform.machine()
-        rsp.hostname = os.uname()[1]
+
+        hostname = os.uname()[1]
+        if hostname == 'localhost.localdomain' or hostname == 'localhost':
+            hostname = self.replace_hostname_from_ip(rsp.ipAddresses[0])
+        rsp.hostname = hostname
 
         if IS_AARCH64:
             # FIXME how to check vt of aarch64?
@@ -667,6 +671,11 @@ class HostPlugin(kvmagent.KvmAgent):
             rsp.cpuGHz = static_cpuGHz_re.group(0)[:-3] if static_cpuGHz_re else transient_cpuGHz
 
         return jsonobject.dumps(rsp)
+
+    def replace_hostname_from_ip(self, ip):
+        hostname = '%s.zstack.org' % ip.replace('.', '-')
+        shell.call('hostname %s' % hostname)
+        return hostname
 
     @vm_plugin.LibvirtAutoReconnect
     def _get_host_cpu_model(conn):
