@@ -401,7 +401,9 @@ class DhcpEnv(object):
 
 class Mevoco(kvmagent.KvmAgent):
     APPLY_DHCP_PATH = "/flatnetworkprovider/dhcp/apply"
+    BATCH_APPLY_DHCP_PATH = "/flatnetworkprovider/dhcp/batchApply"
     PREPARE_DHCP_PATH = "/flatnetworkprovider/dhcp/prepare"
+    BATCH_PREPARE_DHCP_PATH = "/flatnetworkprovider/dhcp/batchPrepare"
     RELEASE_DHCP_PATH = "/flatnetworkprovider/dhcp/release"
     DHCP_CONNECT_PATH = "/flatnetworkprovider/dhcp/connect"
     RESET_DEFAULT_GATEWAY_PATH = "/flatnetworkprovider/dhcp/resetDefaultGateway"
@@ -436,9 +438,11 @@ class Mevoco(kvmagent.KvmAgent):
 
         http_server.register_async_uri(self.DHCP_CONNECT_PATH, self.connect)
         http_server.register_async_uri(self.APPLY_DHCP_PATH, self.apply_dhcp)
+        http_server.register_async_uri(self.BATCH_APPLY_DHCP_PATH, self.batch_apply_dhcp)
         http_server.register_async_uri(self.BATCH_APPLY_USER_DATA, self.batch_apply_userdata)
         http_server.register_async_uri(self.RELEASE_DHCP_PATH, self.release_dhcp)
         http_server.register_async_uri(self.PREPARE_DHCP_PATH, self.prepare_dhcp)
+        http_server.register_async_uri(self.BATCH_PREPARE_DHCP_PATH, self.batch_prepare_dhcp)
         http_server.register_async_uri(self.APPLY_USER_DATA, self.apply_userdata)
         http_server.register_async_uri(self.RELEASE_USER_DATA, self.release_userdata)
         http_server.register_async_uri(self.RESET_DEFAULT_GATEWAY_PATH, self.reset_default_gateway)
@@ -1307,6 +1311,34 @@ mimetype.assign = (
 
         return jsonobject.dumps(PrepareDhcpRsp())
 
+    @lock.lock('prepare_dhcp')
+    @kvmagent.replyerror
+    def batch_prepare_dhcp(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        for info in cmd.dhcpInfos:
+            p = DhcpEnv()
+            p.bridge_name = info.bridgeName
+            p.dhcp_server_ip = info.dhcpServerIp
+            p.dhcp_server6_ip = info.dhcp6ServerIp
+            p.dhcp_netmask = info.dhcpNetmask
+            p.namespace_name = info.namespaceName
+            p.ipVersion = info.ipVersion
+            p.prefixLen = info.prefixLen
+            p.addressMode = info.addressMode
+
+            old_dhcp_ip = self._get_dhcp_server_ip_from_namespace(info.namespaceName)
+            if old_dhcp_ip != "" and old_dhcp_ip != info.dhcpServerIp:
+                self._delete_dhcp4(info.namespaceName)
+
+            old_dhcp6_ip = self._get_dhcp6_server_ip_from_namespace(info.namespaceName)
+            if old_dhcp6_ip != "" and old_dhcp6_ip != info.dhcp6ServerIp:
+                self._delete_dhcp6(info.namespaceName)
+
+            p.prepare()
+
+        return jsonobject.dumps(PrepareDhcpRsp())
+
     @lock.lock('dnsmasq')
     @kvmagent.replyerror
     def reset_default_gateway(self, req):
@@ -1344,7 +1376,32 @@ mimetype.assign = (
                 lst = []
                 namespace_dhcp[d.namespaceName] = lst
             lst.append(d)
+        
+        self.do_apply_dhcp(namespace_dhcp, cmd.rebuild)
+        rsp = ApplyDhcpRsp()
+        return jsonobject.dumps(rsp)
 
+
+    @lock.lock('dnsmasq')
+    @kvmagent.replyerror
+    def batch_apply_dhcp(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        namespace_dhcp = {}
+
+        for info in cmd.dhcpInfos:
+            for d in info.dhcp:
+                lst = namespace_dhcp.get(d.namespaceName)
+                if not lst:
+                    lst = []
+                    namespace_dhcp[d.namespaceName] = lst
+                lst.append(d)
+
+        self.do_apply_dhcp(namespace_dhcp, cmd.rebuild)
+        rsp = ApplyDhcpRsp()
+        return jsonobject.dumps(rsp)
+
+    def do_apply_dhcp(self, namespace_dhcp, rebuild):
         @in_bash
         def apply(dhcp):
             bridge_name = dhcp[0].bridgeName
@@ -1404,8 +1461,8 @@ dhcp-range={{g}}
                 'gateways': ranges
             })
 
-            restart_dnsmasq = cmd.rebuild
-            if not os.path.exists(conf_file_path) or cmd.rebuild:
+            restart_dnsmasq = rebuild
+            if not os.path.exists(conf_file_path) or rebuild:
                 with open(conf_file_path, 'w') as fd:
                     fd.write(conf_file)
             else:
@@ -1444,7 +1501,7 @@ dhcp-range={{g}}
                 dhcp_info['address'] = address
                 info.append(dhcp_info)
 
-                if not cmd.rebuild:
+                if not rebuild:
                     self._erase_configurations(d.mac, d.ip, dhcp_path, dns_path, option_path)
 
             dhcp_conf = '''\
@@ -1460,7 +1517,7 @@ dhcp-range={{g}}
             tmpt = Template(dhcp_conf)
             dhcp_conf = tmpt.render({'dhcp': info})
             mode = 'a+'
-            if cmd.rebuild:
+            if rebuild:
                 mode = 'w'
 
             with open(dhcp_path, mode) as fd:
@@ -1566,8 +1623,8 @@ dhcp-range={{range}}
                 'range': dhcp[0].firstIp + "," + dhcp[0].endIp + ",static," + str(dhcp[0].prefixLength) + ",24h",
             })
 
-            restart_dnsmasq = cmd.rebuild
-            if not os.path.exists(conf_file_path) or cmd.rebuild:
+            restart_dnsmasq = rebuild
+            if not os.path.exists(conf_file_path) or rebuild:
                 with open(conf_file_path, 'w') as fd:
                     fd.write(conf_file)
             else:
@@ -1592,7 +1649,7 @@ dhcp-range={{range}}
                     dhcp_info['domainList'] = ",".join(d.dnsDomain)
                 info.append(dhcp_info)
 
-                if not cmd.rebuild:
+                if not rebuild:
                     self._erase_configurations(d.mac, d.ip, dhcp_path, dns_path, option_path)
 
             dhcp_conf = '''\
@@ -1604,7 +1661,7 @@ dhcp-range={{range}}
             tmpt = Template(dhcp_conf)
             dhcp_conf = tmpt.render({'dhcp': info})
             mode = 'a+'
-            if cmd.rebuild:
+            if rebuild:
                 mode = 'w'
 
             with open(dhcp_path, mode) as fd:
@@ -1650,9 +1707,6 @@ tag:{{o.tag}},option6:domain-search,{{o.domainList}}
                 apply(v)
             else:
                 applyv6(v)
-
-        rsp = ApplyDhcpRsp()
-        return jsonobject.dumps(rsp)
 
     def _restart_dnsmasq(self, ns_name, conf_file_path):
         pid = linux.find_process_by_cmdline([conf_file_path])
