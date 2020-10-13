@@ -6961,7 +6961,7 @@ class ShowConfiguration(Command):
             maxlength = max([len(key[0]) for key in properties])
             ret = [' = '.join([key[0].ljust(maxlength), key[1]]) for key in properties]
         else :
-            ret = [' = '.join(key) for key in properties]
+            ret = [' = '.join(map(str, key)) for key in properties]
 
         info('\n'.join(ret))
 
