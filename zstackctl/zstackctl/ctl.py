@@ -941,8 +941,11 @@ class Ctl(object):
 
     def get_db_url(self):
         db_url = self.read_property("DB.url")
+        regex = "^jdbc:mysql://.*"
         if not db_url:
             db_url = self.read_property('DbFacadeDataSource.jdbcUrl')
+        if not re.match(regex, db_url):
+            raise CtlError("invalid value DB url %s. please check again " % db_url)
         if not db_url:
             raise CtlError("cannot find DB url in %s. please set DB.url" % self.properties_file_path)
         return db_url
