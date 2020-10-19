@@ -6379,29 +6379,19 @@ class VmPlugin(kvmagent.KvmAgent):
         if not vm:
             raise Exception('vm[uuid:%s] not exists, failed' % cmd.vmInstanceUuid)
 
-        if cmd.coloPrimary:
+        expected_mode = 'primary' if cmd.coloPrimary else 'secondary'
+
+        while True:
             r, o, err = execute_qmp_command(cmd.vmInstanceUuid, '{"execute":"query-colo-status"}')
             if err:
                 raise Exception('Failed to check vm[uuid:%s] colo status by query-colo-status, because %s' % (cmd.vmInstanceUuid, err))
 
             colo_status = json.loads(o)['return']
             mode = colo_status['mode']
-            if mode != 'primary':
-                raise Exception('Failed to rebuild colo for vm[uuid:%s], because %s' % (cmd.vmInstanceUuid, err))
+            if mode == expected_mode:
+                break
 
-        else:
-            while True:
-                r, o, err = execute_qmp_command(cmd.vmInstanceUuid, '{"execute":"query-colo-status"}')
-                if err:
-                    raise Exception('Failed to check vm[uuid:%s] colo status by query-colo-status, because %s' % (cmd.vmInstanceUuid, err))
-
-                colo_status = json.loads(o)['return']
-                mode = colo_status['mode']
-                if mode == 'secondary':
-                    break
-            
-                time.sleep(3)
-
+            time.sleep(3)
 
         return jsonobject.dumps(rsp)
 
