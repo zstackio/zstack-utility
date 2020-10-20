@@ -682,7 +682,8 @@ class HostPlugin(kvmagent.KvmAgent):
                     cpu_model = os.uname()[-1]
 
             rsp.cpuModelName = cpu_model
-            rsp.hostCpuModelName = "aarch64"
+            host_cpu_model_name = shell.call("lscpu | awk -F':' '/Model name/{print $2}'")
+            rsp.hostCpuModelName = host_cpu_model_name.strip() if host_cpu_model_name  else "aarch64"
 
             cpuMHz = shell.call("lscpu | awk '/max MHz/{ print $NF }'")
             # in case lscpu doesn't show cpu max mhz
@@ -704,7 +705,7 @@ class HostPlugin(kvmagent.KvmAgent):
                 rsp.hvmCpuFlag = 'vmx'
 
             if not rsp.hvmCpuFlag:
-                if shell.run('grep svm /proc/cpuinfo') == 0:
+                if shell.run('grep svm /proc/cpuinfo') == 0q:
                     rsp.hvmCpuFlag = 'svm'
 
             if shell.run('grep -w ept /proc/cpuinfo') == 0:

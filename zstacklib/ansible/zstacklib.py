@@ -272,6 +272,18 @@ def get_mn_yum_release():
 def get_mn_apt_release():
     return commands.getoutput("awk '{print $3}' /etc/zstack-release").strip()
 
+def get_host_releasever(ansible_distribution):
+    supported_release_info = {
+        "kylin10 tercel 10": "ns10",
+        "uniontech fou 20": "uos20",
+        "redhat maipo 7.4": "ns10", # old kylinV10, oem 7.4 incompletely
+        "centos core 7.6.1810": "c76",
+        "centos core 7.4.1708": "c74",
+        "centos core 7.2.1511": "c72",
+    }
+    _key = " ".join(ansible_distribution).lower()
+    return supported_release_info.get(_key)
+
 def post_msg(msg, post_url):
     '''post message to zstack, label for support i18n'''
     if msg.parameters is not None:
@@ -1990,25 +2002,6 @@ enabled=0" >  /etc/yum.repos.d/zstack-experimental-mn.repo
                     run_remote_command(command, host_post_info)
                     # enable chrony service for RedHat
                     enable_chrony(trusted_host, host_post_info, distro)
-
-            if require_python_env == "true":
-                # check the pip 7.0.3 exist in system to avoid site-packages enable potential issue
-                pip_match = check_pip_version(pip_version, host_post_info)
-                if pip_match is False:
-                    # make dir for copy pip
-                    host_post_info.post_label = "ansible.shell.mkdir"
-                    host_post_info.post_label_param = zstack_root
-                    run_remote_command("mkdir -p %s" % zstack_root, host_post_info)
-                    # copy pip 7.0.3
-                    copy_arg = CopyArg()
-                    copy_arg.src = "files/pip-7.0.3.tar.gz"
-                    copy_arg.dest = "%s/pip-7.0.3.tar.gz" % zstack_root
-                    copy(copy_arg, host_post_info)
-                    # install pip 7.0.3
-                    pip_install_dir = copy_arg.dest.rstrip("pip-7.0.3.tar.gz")
-                    install_pip_command = "tar zxvf %s -C %s;python %s install;rm -rf %s" % (copy_arg.dest, pip_install_dir, pip_install_dir + "pip-7.0.3/setup.py", pip_install_dir + "pip-7.0.3")
-                    logger.debug(install_pip_command)
-                    run_remote_command(install_pip_command, host_post_info)
 
         elif distro in DEB_BASED_OS:
             #copy apt-conf
