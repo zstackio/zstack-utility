@@ -148,6 +148,23 @@ class DisableHugePageRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(DisableHugePageRsp, self).__init__()
 
+class FileVerificationRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(FileVerificationRsp, self).__init__()
+        self.changeList = []
+        self.restoreFailedList = []
+
+class AddVerificationFileRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(AddVerificationFileRsp, self).__init__()
+        self.digest = ''
+        self.backup = True
+
+class ConfirmVerificationFilesRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(ConfirmVerificationFilesRsp, self).__init__()
+        self.paths = []
+
 class GetHostNetworkBongdingResponse(kvmagent.AgentResponse):
     bondings = None  # type: list[HostNetworkBondingInventory]
     nics = None  # type: list[HostNetworkInterfaceInventory]
@@ -561,6 +578,10 @@ class HostPlugin(kvmagent.KvmAgent):
     GENERATE_VFIO_MDEV_DEVICES = "/mdevdevice/generate"
     UNGENERATE_VFIO_MDEV_DEVICES = "/mdevdevice/ungenerate"
     HOST_UPDATE_SPICE_CHANNEL_CONFIG_PATH = "/host/updateSpiceChannelConfig";
+    HOST_UPDATE_SPICE_CHANNEL_CONFIG_PATH = "/host/updateSpiceChannelConfig"
+    HOST_FILEVERIFICATION = "/host/file/check"
+    HOST_ADD_VERIFICATION_FILE = "/host/file/add"
+    HOST_CONFIRM_INIT_VERIFICATION_FILE = "/host/file/initConfirm"
     TRANSMIT_VM_OPERATION_TO_MN_PATH = "/host/transmitvmoperation"
     TRANSMIT_ZWATCH_INSTALL_RESULT_TO_MN_PATH = "/host/zwatchInstallResult"
     SCAN_VM_PORT_PATH = "/host/vm/scanport"
@@ -1867,6 +1888,18 @@ done
         rsp.digest = linux.get_file_hash(cmd.path, cmd.hexType)
         rsp.backup = linux.copy_file(cmd.path, os.path.join(BACKUPFILE_DIR, cmd.uuid))
         return jsonobject.dumps(rsp)
+    
+    @kvmagent.replyerror
+    @in_bash
+    def confirm_init_verification_file(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = ConfirmVerificationFilesRsp()
+
+        for pattern in cmd.patterns:
+            paths = shell.call("find %s -name %s" % (os.path.dirname(pattern), os.path.basename(pattern))).split()
+            rsp.paths.extend(paths)
+        
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def check_and_restore_file(self, req):
@@ -2213,6 +2246,7 @@ done
         http_server.register_async_uri(self.CANCEL_JOB, self.cancel)
         http_server.register_async_uri(self.HOST_FILEVERIFICATION, self.check_and_restore_file)
         http_server.register_async_uri(self.HOST_ADD_VERIFICATION_FILE, self.add_verification_file)
+        http_server.register_async_uri(self.HOST_CONFIRM_INIT_VERIFICATION_FILE, self.confirm_init_verification_file)
         http_server.register_async_uri(self.CREATE_QCOW2_SECRET_PATH, self.create_qcow2_secret)
         http_server.register_async_uri(self.DEPLOY_QEMU_TLS_PATH, self.deploy_qemu_tls)
         http_server.register_sync_uri(self.TRANSMIT_VM_OPERATION_TO_MN_PATH, self.transmit_vm_operation_to_vm)
