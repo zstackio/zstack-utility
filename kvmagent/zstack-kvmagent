@@ -38,7 +38,7 @@ if [ $# -eq 0 ]; then
 fi
 
 apply_resource_settings() {
-	ulimit -Hn 4096 && ulimit -Sn 4096 || true
+	{ ulimit -Hn 4096; ulimit -Sn 4096; } 2>/dev/null || true
 
 	# try to avoid 'hung_task_timeout_secs' issue
 	sysctl -w vm.dirty_ratio=10 > /dev/null
