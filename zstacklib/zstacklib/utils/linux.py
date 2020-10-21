@@ -1038,9 +1038,12 @@ def qcow2_direct_get_backing_file(path):
 
 # Get derived file and all its backing files
 def qcow2_get_file_chain(path):
-    out = shell.call("%s --backing-chain %s | grep 'image:' | awk '{print $2}'" %
+    out = shell.call("%s --backing-chain %s | grep 'image:' | awk '{$1=\"\"; print $0}'" %
             (qemu_img.subcmd('info'), path))
-    return out.splitlines()
+
+    return map(lambda text: 
+            json.loads(text.split(':', 1)[-1])['file']['filename'].strip() if text.strip().startswith('json:') else text.strip(),
+            out.strip().splitlines())
 
 def get_qcow2_file_chain_size(path):
     chain = qcow2_get_file_chain(path)
