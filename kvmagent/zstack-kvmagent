@@ -38,7 +38,7 @@ if [ $# -eq 0 ]; then
 fi
 
 apply_resource_settings() {
-	ulimit -Hn 4096 && ulimit -Sn 4096 || true
+	{ ulimit -Hn 4096; ulimit -Sn 4096; } 2>/dev/null || true
 	
 	n=$(sysctl fs.inotify.max_user_instances -n)
 	if [ "$n" -lt 1024 ]; then
