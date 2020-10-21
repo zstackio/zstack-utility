@@ -396,8 +396,8 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
                 shell.run("conntrack -d %s -f %s -D" % (ip, ip_version))
                 logger.debug('clean up conntrack -d %s -D' % ip)
         else:
-            shell.run("conntrack -D")
-            logger.debug('clean up conntrack -D')
+            shell.run("conntrack -f %s -D" % ip_version)
+            logger.debug('clean up conntrack -f %s -D' % ip_version)
 
     @bash.in_bash
     def _apply_rules_using_iprange_match(self, cmd, iptable=None, ipset_mn=None):
@@ -609,6 +609,7 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
         if not default_chain:
             self._create_default_rules(ipt)
             ipt.iptable_restore()
+            self._cleanup_conntrack(ip_version="ipv4")
 
         if not cmd.skipIpv6:
             ip6t = iptables.from_ip6tables_save()
@@ -616,9 +617,7 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
             if not default_chain6:
                 self._create_default_rules_ip6(ip6t)
                 ip6t.iptable_restore()
-
-        if not default_chain or not default_chain6:
-            self._cleanup_conntrack()
+                self._cleanup_conntrack(ip_version="ipv6")
 
         return jsonobject.dumps(rsp)
 
