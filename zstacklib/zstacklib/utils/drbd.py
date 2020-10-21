@@ -128,7 +128,7 @@ class DrbdResource(object):
         raise Exception("demote resource %s failed: %s, %s, %s" % (self.name, r, o, e))
 
     @bash.in_bash
-    def promote(self, force=False, retry=90, sleep=3):
+    def promote(self, force=False, retry=90, sleep=3, single=False):
         @bash.in_bash
         @linux.retry(times=retry, sleep_time=sleep)
         def do_promote():
@@ -138,9 +138,11 @@ class DrbdResource(object):
                 raise RetryException("promote failed, return: %s, %s, %s. resource %s still not in role %s" % (
                     r, o, e, self.name, DrbdRole.Primary))
 
-        if not force:
+        if not force and not single:
             do_promote()
         else:
+            if not single and self.get_dstate() != "UpToDate":
+                bash.bash_r("drbdadm fence-peer %s" % self.name)
             bash.bash_errorout("drbdadm primary %s --force" % self.name)
 
     @bash.in_bash
@@ -151,6 +153,22 @@ class DrbdResource(object):
             bash.bash_errorout("drbdadm secondary %s" % self.name)
 
         do_demote()
+
+    @bash.in_bash
+    def discard(self):
+        self.demote()
+        self.force_disconnect()
+        self.force_connect(discard=True)
+
+    @bash.in_bash
+    def force_disconnect(self):
+        bash.bash_r("drbdadm disconnect %s" % self.name)
+
+    @bash.in_bash
+    def force_connect(self, discard=False):
+        if self.get_cstate() not in ('Connecting', 'Connected', 'WFConnection'):
+            discard_cmd = "-- --discard-my-data" if discard else ""
+            bash.bash_errorout("drbdadm %s connect %s" % (discard_cmd, self.name))
 
     @bash.in_bash
     def get_cstate(self):
@@ -203,7 +221,7 @@ class DrbdResource(object):
         if not primary:
             self.clear_bits()
         else:
-            self.promote()
+            self.promote(single=cmd.single)
             if backing:
                 linux.qcow2_create_with_backing_file_and_cmd(backing, self.get_dev_path(), cmd)
             else:

@@ -374,6 +374,8 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
     UPLOAD_BITS_TO_FILESYSTEM_PATH = "/ministorage/filesystem/upload"
     DOWNLOAD_BITS_FROM_FILESYSTEM_PATH = "/ministorage/filesystem/download"
     SYNC_BACKING_CHAIN = "/ministorage/volume/syncbackingchain"
+    DISCARD_RESOURCE = "/ministorage/volume/discard"
+    FORCE_CONNECT_RESOURCE = "/ministorage/volume/connect"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -400,6 +402,8 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.UPLOAD_BITS_TO_FILESYSTEM_PATH, self.upload_to_filesystem)
         http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_FILESYSTEM_PATH, self.download_from_filesystem)
         http_server.register_async_uri(self.SYNC_BACKING_CHAIN, self.sync_backing_chain)
+        http_server.register_async_uri(self.DISCARD_RESOURCE, self.discard_resource)
+        http_server.register_async_uri(self.FORCE_CONNECT_RESOURCE, self.force_connect_resource)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -905,6 +909,24 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def discard_resource(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentRsp()
+        drbd_resource = drbd.DrbdResource(cmd.resourceUuid)
+        drbd_resource.discard()
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def force_connect_resource(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentRsp()
+        drbd_resource = drbd.DrbdResource(cmd.resourceUuid)
+        drbd_resource.force_connect()
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     def create_empty_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = VolumeRsp()
@@ -1123,19 +1145,16 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         if drbdResource.exists is False:
             raise Exception("can not find volume %s" % cmd.installPath)
 
-        if self.test_network_ok_to_peer(drbdResource.config.remote_host.address.split(":")[0]) is False \
-                and mini_fencer.test_fencer(cmd.vgUuid, drbdResource.name) is False:
-            raise Exception("can not connect storage network or fencer")
-
         if cmd.checkPeer and drbdResource.get_remote_role() == drbd.DrbdRole.Primary:
             raise Exception("remote is also in primary role, can not promote")
 
-        if drbdResource.get_dstate() != "UpToDate":
-            raise Exception("local data is not uptodate, can not promote")
+        # if drbdResource.get_dstate() != "UpToDate":
+        #    raise Exception("local data is not uptodate, can not promote")
 
         lvm.qcow2_lv_recursive_active(install_abs_path, lvm.LvmlockdLockType.EXCLUSIVE)
         try:
-            drbdResource.promote()
+            force = self.test_network_ok_to_peer(drbdResource.config.remote_host.address.split(":")[0]) is False
+            drbdResource.promote(force=force, single=cmd.single)
         except Exception as e:
             if not cmd.force:
                 raise e
