@@ -188,6 +188,22 @@ class GetHostPhysicalMemoryFactsResponse(kvmagent.AgentResponse):
         super(GetHostPhysicalMemoryFactsResponse, self).__init__()
         self.physicalMemoryFacts = []
 
+class FileVerificationRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(FileVerificationRsp, self).__init__()
+        self.changeList = []
+        self.restoreFailedList = []
+
+class AddVerificationFileRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(AddVerificationFileRsp, self).__init__()
+        self.digest = ''
+        self.backup = True
+
+class ConfirmVerificationFilesRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(ConfirmVerificationFilesRsp, self).__init__()
+        self.paths = []
 
 class GetHostNetworkBongdingResponse(kvmagent.AgentResponse):
     bondings = None  # type: list[HostNetworkBondingInventory]
@@ -627,6 +643,10 @@ class HostPlugin(kvmagent.KvmAgent):
     GENERATE_VFIO_MDEV_DEVICES = "/mdevdevice/generate"
     UNGENERATE_VFIO_MDEV_DEVICES = "/mdevdevice/ungenerate"
     HOST_UPDATE_SPICE_CHANNEL_CONFIG_PATH = "/host/updateSpiceChannelConfig";
+    HOST_UPDATE_SPICE_CHANNEL_CONFIG_PATH = "/host/updateSpiceChannelConfig"
+    HOST_FILEVERIFICATION = "/host/file/check"
+    HOST_ADD_VERIFICATION_FILE = "/host/file/add"
+    HOST_CONFIRM_INIT_VERIFICATION_FILE = "/host/file/initConfirm"
     TRANSMIT_VM_OPERATION_TO_MN_PATH = "/host/transmitvmoperation"
     TRANSMIT_ZWATCH_INSTALL_RESULT_TO_MN_PATH = "/host/zwatchInstallResult"
     SCAN_VM_PORT_PATH = "/host/vm/scanport"
@@ -2069,6 +2089,46 @@ done
         return jsonobject.dumps(plugin.cancel_job(cmd, rsp))
 
     @kvmagent.replyerror
+    def add_verification_file(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AddVerificationFileRsp()
+        rsp.digest = linux.get_file_hash(cmd.path, cmd.hexType)
+        rsp.backup = linux.copy_file(cmd.path, os.path.join(BACKUPFILE_DIR, cmd.uuid))
+        return jsonobject.dumps(rsp)
+    
+    @kvmagent.replyerror
+    @in_bash
+    def confirm_init_verification_file(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = ConfirmVerificationFilesRsp()
+
+        for pattern in cmd.patterns:
+            paths = shell.call("find %s -name %s" % (os.path.dirname(pattern), os.path.basename(pattern))).split()
+            rsp.paths.extend(paths)
+        
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def check_and_restore_file(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = FileVerificationRsp()
+        for fv in cmd.files:
+            if os.path.isfile(fv.path):
+                digest = linux.get_file_hash(fv.path, fv.hexType)
+                if digest == fv.digest:
+                    continue
+            elif os.path.isdir(fv.path):
+                rsp.restoreFailedList.append(fv.uuid)
+                rsp.changeList.append(fv.uuid)
+                continue
+            backup = os.path.join(BACKUPFILE_DIR, fv.uuid)
+            res = linux.copy_file(backup, fv.path)
+            if not res:
+                rsp.restoreFailedList.append(fv.uuid)
+            rsp.changeList.append(fv.uuid)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     def transmit_vm_operation_to_vm(self, req):
         rsp = TransmitVmOperationToMnRsp()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -2416,6 +2476,9 @@ done
         http_server.register_async_uri(self.UNGENERATE_VFIO_MDEV_DEVICES, self.ungenerate_vfio_mdev_devices)
         http_server.register_async_uri(self.HOST_UPDATE_SPICE_CHANNEL_CONFIG_PATH, self.update_spice_channel_config)
         http_server.register_async_uri(self.CANCEL_JOB, self.cancel)
+        http_server.register_async_uri(self.HOST_FILEVERIFICATION, self.check_and_restore_file)
+        http_server.register_async_uri(self.HOST_ADD_VERIFICATION_FILE, self.add_verification_file)
+        http_server.register_async_uri(self.HOST_CONFIRM_INIT_VERIFICATION_FILE, self.confirm_init_verification_file)
         http_server.register_async_uri(self.DEPLOY_QEMU_TLS_PATH, self.deploy_qemu_tls)
         http_server.register_sync_uri(self.TRANSMIT_VM_OPERATION_TO_MN_PATH, self.transmit_vm_operation_to_vm)
         http_server.register_sync_uri(self.TRANSMIT_ZWATCH_INSTALL_RESULT_TO_MN_PATH, self.transmit_zwatch_install_result_to_mn)
