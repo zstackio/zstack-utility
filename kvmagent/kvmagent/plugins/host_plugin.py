@@ -745,7 +745,7 @@ class HostPlugin(kvmagent.KvmAgent):
                 rsp.hvmCpuFlag = 'vmx'
 
             if not rsp.hvmCpuFlag:
-                if shell.run('grep svm /proc/cpuinfo') == 0q:
+                if shell.run('grep svm /proc/cpuinfo') == 0:
                     rsp.hvmCpuFlag = 'svm'
 
             if shell.run('grep -w ept /proc/cpuinfo') == 0:
