@@ -164,10 +164,10 @@ class FaultToleranceFecnerPlugin(kvmagent.KvmAgent):
             is_bridge, o = getstatusoutput("brctl show %s" % device)
             if is_bridge == 0 and "can't get info" not in o.lower():
                 _, o = getstatusoutput("brctl show %s | awk '{print $NF}' | grep -vw interfaces" % device)
-            for i in o.splitlines():
-                r = test_device(i.strip(), ttl-1)
-            if r:
-                return r
+                for i in o.splitlines():
+                    r = test_device(i.strip(), ttl-1)
+                    if r:
+                        return r
 
             if "." in device:
                 return test_device(device.split(".", ttl-1)[0])
