@@ -1864,8 +1864,11 @@ def clear_leftover_mn_heartbeat():
         warn("management.server.ip not configured")
         return
 
-    mysql("DELETE FROM ManagementNodeVO WHERE hostName = '%s'" % mn_ip)
-    info("cleared management node heartbeat")
+    try:
+        mysql("DELETE FROM ManagementNodeVO WHERE hostName = '%s'" % mn_ip)
+        info("cleared management node heartbeat for %s" % mn_ip)
+    except:
+        pass
 
 class StopAllCmd(Command):
     def __init__(self):
