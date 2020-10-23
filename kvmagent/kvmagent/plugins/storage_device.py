@@ -14,6 +14,7 @@ from zstacklib.utils import shell
 from zstacklib.utils import lvm
 from zstacklib.utils import bash
 from zstacklib.utils import linux
+from zstacklib.utils import thread
 from zstacklib import *
 
 logger = log.get_logger(__name__)
@@ -768,19 +769,27 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             logger.debug("not find any usable fc disks")
             return []
 
-        luns = []
-        for fc_target in fc_targets:
+        luns = [None] * len(fc_targets)
+
+        def get_lun_info(fc_target, i):
             t = filter(lambda x: "[%s" % fc_target in x, o)
             mapped_t = map(lambda x: self.get_device_info(x.split("/dev/")[1]), t)
-            luns.extend(filter(lambda x: x is not None, mapped_t))
+            luns[i] = filter(lambda x: x is not None, mapped_t)
+
+        threads = []
+        for idx, fc_target in enumerate(fc_targets, start=0):
+            threads.append(thread.ThreadFacade.run_in_thread(get_lun_info, [fc_target, idx]))
+        for t in threads:
+            t.join()
 
         luns_info = {}
-        for lun in luns:  # type: FiberChannelLunStruct
-            if lun.storageWwnn not in luns_info or len(luns_info[lun.storageWwnn])==0:
-                luns_info[lun.storageWwnn] = []
-                luns_info[lun.storageWwnn].append(lun)
-            elif lun.wwids[0] not in map(lambda x:x.wwids[0], luns_info[lun.storageWwnn]):
-                luns_info[lun.storageWwnn].append(lun)
+        for lun_list in luns:
+            for lun in lun_list:  # type: FiberChannelLunStruct
+                if lun.storageWwnn not in luns_info or len(luns_info[lun.storageWwnn])==0:
+                    luns_info[lun.storageWwnn] = []
+                    luns_info[lun.storageWwnn].append(lun)
+                elif lun.wwids[0] not in map(lambda x:x.wwids[0], luns_info[lun.storageWwnn]):
+                    luns_info[lun.storageWwnn].append(lun)
 
         result = []
         for i in luns_info.values():
