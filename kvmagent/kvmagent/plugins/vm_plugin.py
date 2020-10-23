@@ -3484,13 +3484,13 @@ class Vm(object):
                     e(qcmd, "qemu:arg", attrib={"value": 'socket,id=secondary-in-s-%s,host=0.0.0.0,port=%s,server,nowait'
                                                           % (count, config.secondaryInPort)})
                     e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
-                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-in-c-%s,host=0.0.0.0,port=%s,nowait'
+                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-in-c-%s,host=0.0.0.0,port=%s,reconnect=1,nowait'
                                                           % (count, config.primaryInPort)})
                     e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
                     e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-out-s-%s,host=0.0.0.0,port=%s,server,nowait'
                                                           % (count, config.primaryOutPort)})
                     e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
-                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-out-c-%s,host=0.0.0.0,port=%s,nowait'
+                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-out-c-%s,host=0.0.0.0,port=%s,reconnect=1,nowait'
                                                           % (count, config.primaryOutPort)})
 
                     count += 1
@@ -6651,7 +6651,7 @@ class VmPlugin(kvmagent.KvmAgent):
             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "chardev-add", "arguments":{ "id": "primary-in-c-%s",'
                                                     ' "backend": {"type": "socket", "data": {"addr": { "type":'
                                                     ' "inet", "data": { "host": "0.0.0.0", "port": "%s" } },'
-                                                    ' "server": false } } } }' % (count, config.primaryInPort))
+                                                    ' "server": false, "reconnect": 1 } } } }' % (count, config.primaryInPort))
             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "chardev-add", "arguments":{ "id": "primary-out-s-%s",'
                                                     ' "backend": {"type": "socket", "data": {"addr": { "type":'
                                                     ' "inet", "data": { "host": "0.0.0.0", "port": "%s" } },'
@@ -6659,7 +6659,7 @@ class VmPlugin(kvmagent.KvmAgent):
             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "chardev-add", "arguments":{ "id": "primary-out-c-%s",'
                                                     ' "backend": {"type": "socket", "data": {"addr": { "type":'
                                                     ' "inet", "data": { "host": "0.0.0.0", "port": "%s" } },'
-                                                    ' "server": false } } } }' % (count, config.primaryOutPort))
+                                                    ' "server": false, "reconnect": 1 } } } }' % (count, config.primaryOutPort))
             count += 1
         return jsonobject.dumps(rsp)
 
