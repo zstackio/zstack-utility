@@ -218,15 +218,15 @@ class DrbdResource(object):
         self.up()
         if skip_clear_bits:
             return
-        if not primary:
-            self.clear_bits()
-        else:
+        if primary:
             self.promote(single=cmd.single)
             if backing:
                 linux.qcow2_create_with_backing_file_and_cmd(backing, self.get_dev_path(), cmd)
             else:
                 linux.qcow2_create_with_cmd(self.get_dev_path(), cmd.size, cmd)
             self.demote()
+        elif self.get_remote_dstate() != 'UpToDate':
+            self.clear_bits()
 
     @bash.in_bash
     def initialize_with_file(self, primary, src_path, backing=None, backing_fmt=None, skip_clear_bits=False):
@@ -234,14 +234,14 @@ class DrbdResource(object):
         self.up()
         if skip_clear_bits:
             return
-        if not primary:
-            self.clear_bits()
-        else:
+        if primary:
             self.promote()
             bash.bash_errorout('dd if=%s of=%s bs=1M oflag=direct' % (src_path, self.get_dev_path()))
             if backing:
                 linux.qcow2_rebase_no_check(backing, self.get_dev_path(), backing_fmt=backing_fmt)
             self.demote()
+        elif self.get_remote_dstate() != 'UpToDate':
+            self.clear_bits()
 
     @bash.in_bash
     def is_defined(self):
