@@ -61,21 +61,6 @@ class FaultToleranceFecnerPlugin(kvmagent.KvmAgent):
 
         @in_bash
         def do_host_disk_raid_state_fencer():
-            raid_info = bash_o("/opt/MegaRAID/MegaCli/MegaCli64 -LDInfo -LALL -aAll | grep -E 'Target Id|State'").strip().splitlines()
-            target_id = state = "unknown"
-            for info in raid_info:
-                if "Target Id" in info:
-                    continue
-                else:
-                    state = info.strip().split(" ")[-1].lower()
-                    if state == "optimal":
-                        continue
-                    
-                    # raid is degraded
-                    logger.debug("raid is degraded, kill ft vms if needed")
-                    kill_fault_tolerance_vms()
-                    return
-
             disk_info = bash_o(
                 "/opt/MegaRAID/MegaCli/MegaCli64 -PDList -aAll | grep -E 'Slot Number|DiskGroup|Firmware state|Drive Temperature'").strip().splitlines()
             need_failover_count = 0
