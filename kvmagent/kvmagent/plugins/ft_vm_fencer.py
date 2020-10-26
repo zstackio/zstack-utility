@@ -117,7 +117,7 @@ class FaultToleranceFecnerPlugin(kvmagent.KvmAgent):
                     continue
                 
                 mode = colo_status['mode']
-                if mode == 'None':
+                if mode == 'none':
                     # colo is not take effects no need to kill it
                     continue
 
