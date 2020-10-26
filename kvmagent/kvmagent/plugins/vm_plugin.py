@@ -3585,13 +3585,13 @@ class Vm(object):
                     e(qcmd, "qemu:arg", attrib={"value": 'socket,id=secondary-in-s-%s,host=%s,port=%s,server,nowait'
                                                           % (count, primary_host_ip, config.secondaryInPort)})
                     e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
-                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-in-c-%s,host=%s,port=%s,nowait'
+                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-in-c-%s,host=%s,port=%s,reconnect=1,nowait'
                                                           % (count, primary_host_ip, config.primaryInPort)})
                     e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
                     e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-out-s-%s,host=%s,port=%s,server,nowait'
                                                           % (count, primary_host_ip, config.primaryOutPort)})
                     e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
-                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-out-c-%s,host=%s,port=%s,nowait'
+                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-out-c-%s,host=%s,port=%s,reconnect=1,nowait'
                                                           % (count, primary_host_ip, config.primaryOutPort)})
 
                     count += 1
@@ -7231,7 +7231,7 @@ host side snapshot files chian:
             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "chardev-add", "arguments":{ "id": "primary-in-c-%s",'
                                                     ' "backend": {"type": "socket", "data": {"addr": { "type":'
                                                     ' "inet", "data": { "host": "%s", "port": "%s" } },'
-                                                    ' "server": false } } } }' % (count, cmd.hostIp, config.primaryInPort))
+                                                    ' "server": false, "reconnect": 1 } } } }' % (count, cmd.hostIp, config.primaryInPort))
             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "chardev-add", "arguments":{ "id": "primary-out-s-%s",'
                                                     ' "backend": {"type": "socket", "data": {"addr": { "type":'
                                                     ' "inet", "data": { "host": "%s", "port": "%s" } },'
@@ -7239,7 +7239,7 @@ host side snapshot files chian:
             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "chardev-add", "arguments":{ "id": "primary-out-c-%s",'
                                                     ' "backend": {"type": "socket", "data": {"addr": { "type":'
                                                     ' "inet", "data": { "host": "%s", "port": "%s" } },'
-                                                    ' "server": false } } } }' % (count, cmd.hostIp, config.primaryOutPort))
+                                                    ' "server": false, "reconnect": 1 } } } }' % (count, cmd.hostIp, config.primaryOutPort))
             count += 1
         return jsonobject.dumps(rsp)
 
