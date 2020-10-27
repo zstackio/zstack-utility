@@ -1,6 +1,7 @@
 import os
 import platform
 
+import time
 from zstacklib.utils import linux
 from zstacklib.utils import bash
 from zstacklib.utils import lvm
@@ -197,6 +198,18 @@ class DrbdResource(object):
         assert self.config.local_host.minor is not None
         return "/dev/drbd%s" % self.config.local_host.minor
 
+    def wait_remote_dstate(self, dstate, times=3, sleep_times=1):
+        first_dstate = self.get_remote_dstate()
+        if first_dstate == dstate:
+            return True
+        elif first_dstate == 'DUnknown':
+            for i in range(times):
+                time.sleep(sleep_times)
+                if self.get_remote_dstate() == dstate:
+                    return True
+
+        return False
+
     @bash.in_bash
     @linux.retry(times=90, sleep_time=3)
     def clear_bits(self):
@@ -225,7 +238,7 @@ class DrbdResource(object):
             else:
                 linux.qcow2_create_with_cmd(self.get_dev_path(), cmd.size, cmd)
             self.demote()
-        elif self.get_remote_dstate() != 'UpToDate':
+        elif not self.wait_remote_dstate('UpToDate'):
             self.clear_bits()
 
     @bash.in_bash
@@ -240,7 +253,7 @@ class DrbdResource(object):
             if backing:
                 linux.qcow2_rebase_no_check(backing, self.get_dev_path(), backing_fmt=backing_fmt)
             self.demote()
-        elif self.get_remote_dstate() != 'UpToDate':
+        elif not self.wait_remote_dstate('UpToDate'):
             self.clear_bits()
 
     @bash.in_bash
