@@ -63,21 +63,39 @@ class FaultToleranceFecnerPlugin(kvmagent.KvmAgent):
         def do_host_disk_raid_state_fencer():
             disk_info = bash_o(
                 "/opt/MegaRAID/MegaCli/MegaCli64 -PDList -aAll | grep -E 'Slot Number|DiskGroup|Firmware state|Drive Temperature'").strip().splitlines()
-            need_failover_count = 0
-            for info in disk_info:
-                if "Slot Number" in info or "DiskGroup" in info or "Drive Temperature" in info:
-                    continue
-                else:
-                    state = info.strip().split(":")[-1].lower()
-                    if "online" in state or "jobd" in state:
-                        continue
-                    else:
-                        need_failover_count += 1
             
-            logger.debug("failure disk number: %s" % need_failover_count)
-            if need_failover_count >= 2:
-                kill_fault_tolerance_vms()
+            group_health_dict = {}
+            disk_group = "unknown"
+            for info in disk_info:
+                if "Slot Number" in info or "Drive Temperature" in info:
+                    continue
+                elif "DiskGroup" in info:
+                    kvs = info.replace("Drive's position: ", "").split(",")
+                    disk_group = filter(lambda x: "DiskGroup" in x, kvs)[0]
+                    disk_group = disk_group.split(" ")[-1]
+                else:
+                    disk_group = "unknown" if disk_group is None else disk_group
+                    state = info.strip().split(":")[-1].lower()
+                    if "jobd" in state or "rebuild" in state or disk_group == "unknown":
+                        continue
+                    elif "online" in state:
+                        health_count = group_health_dict.get(disk_group)
+                        if health_count is None:
+                            group_health_dict[disk_group] = 1
+                        else:
+                            health_count += 1
+                            group_health_dict[disk_group] = health_count
+                    else:
+                        continue
 
+            logger.debug("health disk info: %s" % group_health_dict)
+            if group_health_dict.get("0") is None:
+                shell.call("init 0")
+            else:
+                for key, value in group_health_dict.iteritems():
+                    if key == "1" and value <= 2:
+                        kill_fault_tolerance_vms()
+                    
         def kill_fault_tolerance_vms():
             # kill all vm
             zstack_uuid_pattern = "'[0-9a-f]{8}[0-9a-f]{4}[1-5][0-9a-f]{3}[89ab][0-9a-f]{3}[0-9a-f]{12}'"
