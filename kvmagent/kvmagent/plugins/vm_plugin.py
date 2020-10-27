@@ -4341,9 +4341,6 @@ class Vm(object):
         if nic.pci is not None and (iftype == 'bridge' or iftype == 'vhostuser'):
             e(interface, 'address', None, attrib={'type': nic.pci.type, 'domain': nic.pci.domain, 'bus': nic.pci.bus, 'slot': nic.pci.slot, "function": nic.pci.function})
 
-        if nic.pci is not None and (iftype == 'bridge' or iftype == 'vhostuser'):
-            e(interface, 'address', None, attrib={'type': nic.pci.type, 'domain': nic.pci.domain, 'bus': nic.pci.bus, 'slot': nic.pci.slot, "function": nic.pci.function})
-
         if nic.ips and iftype == 'bridge':
             ip4Addr = None
             ip6Addrs = []
