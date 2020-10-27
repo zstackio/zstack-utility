@@ -1,0 +1,6 @@
+# Proxy tcp traffic to windows's tightvnc
+
+server {
+    listen {{ gateway_port }};
+    proxy_pass {{ bm_instance_ip }}:{{ bm_instance_vnc_port }};
+}

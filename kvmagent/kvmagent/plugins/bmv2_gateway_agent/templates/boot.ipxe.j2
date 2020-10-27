@@ -1,0 +1,16 @@
+#!ipxe
+
+:retry_dhcp
+dhcp || goto retry_dhcp
+
+# load the MAC-specific file or fail if it's not found
+:boot_system
+chain pxelinux.cfg/${mac:hexhyp} || goto inspector
+
+:inspector
+:retry_boot
+imgfree
+kernel --timeout 30000 {{ inspect_kernel_uri }} devfs=nomount ksdevice=bootif ks={{ inspect_ks_uri }} initrd=initrd.img console=tty0 console=ttyS0 vnc || goto retry_boot
+initrd {{ inspect_initramfs_uri }} --timeout 30000 || goto retry_boot
+
+boot
