@@ -1,0 +1,13 @@
+[Unit]
+Description=DHCP and DNS caching server
+After=network.target
+
+[Service]
+Restart=always
+RestartSec=3
+PIDFile={{ zstack_bm_dnsmasq_pid }}
+ExecStart=/usr/sbin/dnsmasq -k --conf-file={{ zstack_bm_dnsmasq_conf_path }}
+ExecReload=/bin/kill -HUP $MAINPID
+
+[Install]
+WantedBy=multi-user.target

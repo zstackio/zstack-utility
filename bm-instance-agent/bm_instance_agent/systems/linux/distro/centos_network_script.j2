@@ -1,0 +1,24 @@
+
+# The Type could be ib or other, comment it, let sys to adjust the type.
+# TYPE=Ethernet
+PROXY_METHOD=none
+BROWSER_ONLY=no
+BOOTPROTO=none
+DEFROUTE={{ 'yes' if default_route else 'no' }}
+IPV4_FAILURE_FATAL=no
+IPV6INIT=yes
+IPV6_AUTOCONF=yes
+IPV6_DEFROUTE=yes
+IPV6_FAILURE_FATAL=no
+IPV6_ADDR_GEN_MODE=stable-privacy
+NAME={{ iface_name }}
+ONBOOT=yes
+DEVICE={{ iface_name }}
+IPADDR={{ ip_address }}
+NETMASK={{ netmask }}
+{% if gateway %}
+GATEWAY={{ gateway }}
+{% endif %}
+{% if vlan_id %}
+VLAN=yes
+{% endif %}

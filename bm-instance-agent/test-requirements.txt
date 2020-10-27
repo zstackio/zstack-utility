@@ -1,0 +1,4 @@
+flake8
+mock
+oslotest
+stestr

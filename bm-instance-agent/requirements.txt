@@ -1,0 +1,16 @@
+distro
+futures
+jinja2
+jsonschema
+netaddr
+netifaces
+oslo.concurrency
+oslo.config
+oslo.log < 4.4.0
+oslo.serialization
+oslo.service < 2.4.0
+oslo.utils
+pbr
+pecan
+psutil
+py-cpuinfo

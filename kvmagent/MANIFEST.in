@@ -1,0 +1,2 @@
+include kvmagent/plugins/bmv2_gateway_agent/templates/*
+include kvmagent/plugins/bmv2_gateway_agent/scripts/*
