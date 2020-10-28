@@ -1,6 +1,8 @@
 #!/bin/bash
 cd $1
+cd premium
 chmod +x OEMNeutral.sh
-bash -xe OEMNeutral.sh > a || sleep 36000
+./OEMNeutral.sh
+cd ..
 ./runMavenProfile premium
 ./runMavenProfile deploydb
