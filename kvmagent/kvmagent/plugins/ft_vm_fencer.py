@@ -21,6 +21,10 @@ class AgentRsp(object):
         self.success = True
         self.error = None
 
+class ReportHostMaintainCmd(object):
+    def __init__(self):
+        self.hostUuid = None
+
 class FaultToleranceFecnerPlugin(kvmagent.KvmAgent):
     SETUP_SELF_FENCER_PATH = "/ft/selffencer/setup"
 
@@ -90,12 +94,35 @@ class FaultToleranceFecnerPlugin(kvmagent.KvmAgent):
 
             logger.debug("health disk info: %s" % group_health_dict)
             if group_health_dict.get("0") is None:
-                shell.call("init 0")
+                linux.write_file('/proc/sys/kernel/sysrq', '1')
+                linux.write_file('/proc/sysrq-trigger', 'o')
             else:
                 for key, value in group_health_dict.iteritems():
                     if key == "1" and value <= 2:
-                        kill_fault_tolerance_vms()
-                    
+                        report_to_mn_for_host_maintenance()
+                    elif key == "0" and value == 1:
+                        report_to_mn_for_host_maintenance()
+
+        def report_to_mn_for_host_maintenance():
+            url = self.config.get(kvmagent.SEND_COMMAND_URL)
+            if not url:
+                logger.warn('cannot find SEND_COMMAND_URL, unable to report self fencer triggered on [psList:%s]' % ps_uuids)
+                return
+
+            host_uuid = self.config.get(kvmagent.HOST_UUID)
+            if not host_uuid:
+                logger.warn(
+                    'cannot find HOST_UUID, unable to report self fencer triggered on [psList:%s]' % ps_uuids)
+                return
+
+            cmd = ReportHostMaintainCmd()
+            cmd.hostUuid = host_uuid
+
+            logger.debug(
+                'host[uuid:%s] triggered self fencer, report it to %s' % (
+                    host_uuid, url))
+            http.json_dump_post(url, cmd, {'commandpath': '/kvm/requestmaintainhost'})
+
         def kill_fault_tolerance_vms():
             # kill all vm
             zstack_uuid_pattern = "'[0-9a-f]{8}[0-9a-f]{4}[1-5][0-9a-f]{3}[89ab][0-9a-f]{3}[0-9a-f]{12}'"
