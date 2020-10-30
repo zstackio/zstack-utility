@@ -6817,7 +6817,7 @@ host side snapshot files chian:
         rsp = kvmagent.AgentResponse()
 
         r, _, e = linux.sshpass_run(cmd.targetHostIp, cmd.targetHostPassword, "pkill -f 'qemu-system-x86_64 -name guest=%s'" % cmd.vmInstanceUuid, "root", cmd.targetHostPort)
-        if r != 0 or r != 1:
+        if r != 0 and r != 1:
             rsp.success = False
             rsp.error = 'failed to kill vm %s on host %s, cause: %s' % (cmd.vmInstanceUuid, cmd.targetHostIp, e)
 
