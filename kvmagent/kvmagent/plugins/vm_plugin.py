@@ -12,6 +12,7 @@ import re
 import platform
 import netaddr
 import uuid
+import base64
 
 import libvirt
 #from typing import List, Any, Union
