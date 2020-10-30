@@ -911,19 +911,23 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def discard_resource(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AgentRsp()
+        rsp = VolumeRsp()
         drbd_resource = drbd.DrbdResource(cmd.resourceUuid)
         drbd_resource.discard()
 
+        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+        rsp._init_from_drbd(drbd_resource)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def force_connect_resource(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AgentRsp()
+        rsp = VolumeRsp()
         drbd_resource = drbd.DrbdResource(cmd.resourceUuid)
         drbd_resource.force_connect()
 
+        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+        rsp._init_from_drbd(drbd_resource)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
