@@ -1896,8 +1896,14 @@ done
         rsp = ConfirmVerificationFilesRsp()
 
         for pattern in cmd.patterns:
-            paths = shell.call("find %s -name %s" % (os.path.dirname(pattern), os.path.basename(pattern))).split()
-            rsp.paths.extend(paths)
+            try:
+                paths = shell.call("find %s -name %s" % (os.path.dirname(pattern), os.path.basename(pattern))).split()
+                rsp.paths.extend(paths)
+            except shell.ShellError as e:
+                # Why not use os.path.exists? 
+                #   `pattern` may like : 'aaa/*/bbb', then os.path.exists(pattern) always return False.
+                # Ignore file not exists.
+                logger.info(str(e))
         
         return jsonobject.dumps(rsp)
 
