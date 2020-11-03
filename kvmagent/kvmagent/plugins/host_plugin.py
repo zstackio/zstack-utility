@@ -524,6 +524,7 @@ class HostPlugin(kvmagent.KvmAgent):
     GET_USB_DEVICES_PATH = "/host/usbdevice/get"
     SETUP_MOUNTABLE_PRIMARY_STORAGE_HEARTBEAT = "/host/mountableprimarystorageheartbeat"
     UPDATE_OS_PATH = "/host/updateos"
+    INIT_HOST_MOC_PATH = "/host/initmoc"
     UPDATE_DEPENDENCY = "/host/updatedependency"
     ENABLE_HUGEPAGE = "/host/enable/hugepage"
     DISABLE_HUGEPAGE = "/host/disable/hugepage"
@@ -1010,6 +1011,20 @@ if __name__ == "__main__":
             rsp.error = "failed to update host os using zstack-mn,qemu-kvm-ev-mn repo"
         else:
             logger.debug("successfully run: %s" % yum_cmd)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
+    def init_host_moc(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+        if cmd.mode not in ["iohub", "mocbr"]:
+            rsp.success = False
+            rsp.error = "unexpected mode: " + cmd.mode
+        else:
+            bash_r("/usr/local/bin/iohub_mocbr.sh %s start" % cmd.mode)
+            if cmd.mode == 'mocbr':
+                bash_r("ip link set dev {} master {}".format(cmd.masterVethName, cmd.bridgeName))
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -2002,6 +2017,7 @@ done
         http_server.register_async_uri(self.FACT_PATH, self.fact)
         http_server.register_async_uri(self.GET_USB_DEVICES_PATH, self.get_usb_devices)
         http_server.register_async_uri(self.UPDATE_OS_PATH, self.update_os)
+        http_server.register_async_uri(self.INIT_HOST_MOC_PATH, self.init_host_moc)
         http_server.register_async_uri(self.UPDATE_DEPENDENCY, self.update_dependency)
         http_server.register_async_uri(self.ENABLE_HUGEPAGE, self.enable_hugepage)
         http_server.register_async_uri(self.DISABLE_HUGEPAGE, self.disable_hugepage)
