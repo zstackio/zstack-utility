@@ -101,67 +101,93 @@ class SharedBlockCandidateStruct:
 
 
 def get_block_devices():
-    # 1. get multi path devices
-    # 2. get multi path device information from raw device
-    # 3. get information of other devices
+    # 1. get multi path devices information
+    block_devices, slave_devices = get_multi_path_block_devices()
+    # 2. get information of other devices
+    block_devices.extend(get_disk_block_devices(slave_devices))
+
+    return block_devices
+
+def get_multi_path_block_devices():
     mpath_devices = []
-    block_devices = []  # type: List[SharedBlockCandidateStruct]
-    slave_devices = []
+
     cmd = shell.ShellCmd("multipath -l -v1")
     cmd(is_exception=False)
     if cmd.return_code == 0 and cmd.stdout.strip() != "":
         mpath_devices = cmd.stdout.strip().split("\n")
 
-    for mpath_device in mpath_devices:  # type: str
+    slave_devices_list = [None] * len(mpath_devices)
+    block_devices_list = [None] * len(mpath_devices)
+
+    def get_block_devices(mpath_device, i):
         try:
             cmd = shell.ShellCmd("realpath /dev/mapper/%s | grep -E -o 'dm-.*'" % mpath_device)
             cmd(is_exception=False)
             if cmd.return_code != 0 or cmd.stdout.strip() == "":
-                continue
+                return
 
             dm = cmd.stdout.strip()
             slaves = shell.call("ls /sys/class/block/%s/slaves/" % dm).strip().split("\n")
             if slaves is None or len(slaves) == 0:
                 struct = SharedBlockCandidateStruct()
-                cmd = shell.ShellCmd("udevadm info -n %s | grep dm-uuid-mpath | grep -o 'dm-uuid-mpath-\S*' | head -n 1 | awk -F '-' '{print $NF}'" % dm)
+                cmd = shell.ShellCmd(
+                    "udevadm info -n %s | grep dm-uuid-mpath | grep -o 'dm-uuid-mpath-\S*' | head -n 1 | awk -F '-' '{print $NF}'" % dm)
                 cmd(is_exception=True)
                 struct.wwids = [cmd.stdout.strip().strip("()")]
                 struct.type = "mpath"
-                block_devices.append(struct)
-                continue
+                block_devices_list[i] = struct
+                return
 
-            slave_devices.extend(slaves)
+            slave_devices_list[i] = slaves
             struct = get_device_info(slaves[0])
             if struct is None:
-                continue
-            cmd = shell.ShellCmd("udevadm info -n %s | grep dm-uuid-mpath | grep -o 'dm-uuid-mpath-\S*' | head -n 1 | awk -F '-' '{print $NF}'" % dm)
+                return
+            cmd = shell.ShellCmd(
+                "udevadm info -n %s | grep dm-uuid-mpath | grep -o 'dm-uuid-mpath-\S*' | head -n 1 | awk -F '-' '{print $NF}'" % dm)
             cmd(is_exception=True)
             struct.wwids = [cmd.stdout.strip().strip("()")]
             struct.type = "mpath"
-            block_devices.append(struct)
+            block_devices_list[i] = struct
         except Exception as e:
             logger.warn(linux.get_exception_stacktrace())
-            continue
+            return
 
+    threads = []
+    for idx, mpath_device in enumerate(mpath_devices, start=0):
+        threads.append(thread.ThreadFacade.run_in_thread(get_block_devices, [mpath_device, idx]))
+    for t in threads:
+        t.join()
+
+    return filter(None, block_devices_list), sum(filter(None, slave_devices_list), [])
+
+
+def get_disk_block_devices(slave_devices):
     disks = shell.call("lsblk -p -o NAME,TYPE | grep disk | awk '{print $1}'").strip().split()
-    for disk in disks:
+    block_devices_list = [None] * len(disks)
+
+    def get_block_devices(disk, i):
         try:
             if disk.split("/")[-1] in slave_devices or is_slave_of_multipath(disk):
-                continue
+                return
             d = get_device_info(disk.strip().split("/")[-1])
             if d is None:
-                continue
+                return
             if len(d.wwids) is 0:
-                continue
+                return
             if get_pv_uuid_by_path("/dev/disk/by-id/%s" % d.wwids[0]) not in ("", None):
                 d.type = "lvm-pv"
-            block_devices.append(d)
+            block_devices_list[i] = d
         except Exception as e:
             logger.warn(linux.get_exception_stacktrace())
-            continue
+            return
 
-    return block_devices
+    threads = []
+    for idx, disk in enumerate(disks, start=0):
+        threads.append(thread.ThreadFacade.run_in_thread(get_block_devices, [disk, idx]))
+    for t in threads:
+        t.join()
 
+    return filter(None, block_devices_list)
 
 def is_multipath_running():
     r = bash.bash_r("multipath -t")
