@@ -10,6 +10,7 @@ from zstacklib.utils import misc
 
 logger = log.get_logger(__name__)
 
+
 class PerformanceTunePlugin(kvmagent.KvmAgent):
 
     @misc.ignoreerror
@@ -43,12 +44,28 @@ class PerformanceTunePlugin(kvmagent.KvmAgent):
 
         release = platform.release().split("-")[0].split(".")
         version = float(release[0] + '.' + release[1])
-        
-        # set buckets
-        if  version > 4.8:
-            shell.call('echo {} > /proc/sys/net/netfilter/nf_conntrack_buckets'.format(buckets))
-        else:
-            shell.call('echo {} > /sys/module/nf_conntrack/parameters/hashsize'.format(buckets))
 
         # set totalsize
-        shell.call('echo {} > /proc/sys/net/netfilter/nf_conntrack_max'.format(totalsize))
+        with open('/proc/sys/net/netfilter/nf_conntrack_max', 'r+') as f:
+            currentSize = int(f.read())
+
+            if currentSize >= totalsize:
+                logger.info("current conntrack table size {} >= {}, remain unchanged".format(
+                    currentSize, totalsize))
+                return
+            else:
+                f.seek(0)
+                f.write(str(totalsize))
+                #logger.info("change conntrack table total size to {}".format(totalsize))
+            f.close()
+
+        # set buckets
+        if version > 4.8:
+            bucketsPath = "/proc/sys/net/netfilter/nf_conntrack_buckets"
+        else:
+            bucketsPath = "/sys/module/nf_conntrack/parameters/hashsize"
+
+        with open(bucketsPath, 'r+') as f:
+            f.write(str(buckets))
+            #logger.info("change conntrack bucket size to {}".format(buckets))
+            f.close()
