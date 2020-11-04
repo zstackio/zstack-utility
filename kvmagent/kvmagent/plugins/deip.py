@@ -104,7 +104,7 @@ class Eip(object):
 
         @bash.in_bash
         def delete_outer_dev():
-            if bash_r('ip link | grep -w {{PUB_ODEV}} > /dev/null') == 0:
+            if linux.is_network_device_existing(PUB_ODEV):
                 bash_r('ip link del {{PUB_ODEV}}')
 
         @bash.in_bash
@@ -205,13 +205,13 @@ class Eip(object):
         # deleting the orphan link and recreate it
         @bash.in_bash
         def delete_orphan_outer_dev(inner_dev, outer_dev):
-            if bash_r('ip netns exec {{NS_NAME}} ip link | grep -w {{inner_dev}} > /dev/null') != 0:
+            if bash_r('ip netns exec {{NS_NAME}} ip link show {{inner_dev}} > /dev/null') != 0:
                 # ignore error
                 bash_r('ip link del {{outer_dev}} &> /dev/null')
 
         @bash.in_bash
         def create_dev_if_needed(outer_dev, outer_dev_desc, inner_dev, inner_dev_desc):
-            if bash_r('ip link | grep -w {{outer_dev}} > /dev/null ') != 0:
+            if not linux.is_network_device_existing(outer_dev):
                 bash_errorout('ip link add {{outer_dev}} type veth peer name {{inner_dev}}')
                 bash_errorout('ip link set {{outer_dev}} alias {{outer_dev_desc}}')
                 bash_errorout('ip link set {{inner_dev}} alias {{inner_dev_desc}}')
@@ -226,7 +226,7 @@ class Eip(object):
                 bash_errorout('brctl addif {{bridge}} {{device}}')
 
         def add_dev_namespace_if_needed(device, namespace):
-            if bash_r('eval {{NS}} ip link | grep -w {{device}} > /dev/null') != 0:
+            if bash_r('eval {{NS}} ip link show {{device}} > /dev/null') != 0:
                 bash_errorout('ip link set {{device}} netns {{namespace}}')
 
         @bash.in_bash
@@ -317,7 +317,7 @@ class Eip(object):
                 bash_errorout(EBTABLES_CMD + ' -t nat -N {{CHAIN_NAME}}')
 
             create_ebtable_rule_if_needed('nat', 'PREROUTING', '-i {{NIC_NAME}} -j {{CHAIN_NAME}}')
-            GATEWAY = bash_o("eval {{NS}} ip link | grep -w {{PRI_IDEV}} -A 1 | awk '/link\/ether/{print $2}'").strip()
+            GATEWAY = bash_o("eval {{NS}} ip link show {{PRI_IDEV}} | awk '/link\/ether/{print $2}'").strip()
             if not GATEWAY:
                 raise Exception('cannot find the device[%s] in the namespace[%s]' % (PRI_IDEV, NS_NAME))
 
@@ -347,7 +347,7 @@ class Eip(object):
                 bash_errorout(EBTABLES_CMD + ' -t nat -N {{CHAIN_NAME}}')
 
             create_ebtable_rule_if_needed('nat', 'PREROUTING', '-i {{NIC_NAME}} -j {{CHAIN_NAME}}', at_head=True)
-            GATEWAY = bash_o("eval {{NS}} ip link | grep -w {{PRI_IDEV}} -A 1 | awk '/link\/ether/{print $2}'").strip()
+            GATEWAY = bash_o("eval {{NS}} ip link show {{PRI_IDEV}} | awk '/link\/ether/{print $2}'").strip()
             if not GATEWAY:
                 raise Exception('cannot find the device[%s] in the namespace[%s]' % (PRI_IDEV, NS_NAME))
 

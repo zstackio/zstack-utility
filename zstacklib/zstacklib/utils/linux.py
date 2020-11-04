@@ -1146,9 +1146,7 @@ def is_ip_existing(ip):
     return cmd.return_code == 0
 
 def is_network_device_existing(dev):
-    cmd = shell.ShellCmd('ip link show %s' % dev)
-    cmd(is_exception=False)
-    return cmd.return_code == 0
+    return os.path.exists("/sys/class/net/%s" % dev)
 
 def is_bridge(dev):
     path = "/sys/class/net/%s/bridge" % dev
