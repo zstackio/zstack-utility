@@ -139,19 +139,21 @@ elif distro in DEB_BASED_OS:
 else:
     error("ERROR: Unsupported distribution")
 
+run_remote_command("rm -rf %s/*" % imagestore_root, host_post_info)
+command = 'mkdir -p %s ' % (imagestore_root + "/certs")
+run_remote_command(command, host_post_info)
+
 # name: copy imagestore binary
 copy_arg = CopyArg()
 dest_pkg = "%s/%s" % (imagestore_root, dst_pkg_imagestorebackupstorage)
 copy_arg.src = "%s/%s" % (file_root, src_pkg_imagestorebackupstorage)
-copy_arg.dest = "%s/" % imagestore_root
-copy_arg.args = "force=yes"
+copy_arg.dest = dest_pkg
 copy(copy_arg, host_post_info)
 
 # name: copy exporter binary
 copy_arg = CopyArg()
 copy_arg.src = "%s/%s" % (kvm_file_root, src_pkg_exporter)
-copy_arg.dest = "%s/" % utils_root
-copy_arg.args = "force=yes"
+copy_arg.dest = "%s/%s" % (utils_root, dst_pkg_exporter)
 copy(copy_arg, host_post_info)
 
 # name: copy iptables-scrpit
