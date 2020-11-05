@@ -3013,7 +3013,7 @@ class Vm(object):
             self.refresh()
             for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
                 if iface.mac.address_ == cmd.nic.mac:
-                    return shell.run('ip link | grep -w -q %s' % cmd.nic.nicInternalName) == 0
+                    return linux.is_network_device_existing(cmd.nic.nicInternalName)
 
             return False
 
@@ -3107,7 +3107,7 @@ class Vm(object):
             self.refresh()
             for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
                 if iface.mac.address_ == nic.mac:
-                    return shell.run('ip link | grep -w -q %s' % nic.nicInternalName) == 0
+                    return linux.is_network_device_existing(nic.nicInternalName)
 
             return False
 
