@@ -2002,6 +2002,10 @@ class Vm(object):
             if qos.totalIops:
                 virsh_key = "%s_iops_sec" % mode
                 e(iotune, virsh_key, str(qos.totalIops))
+    @staticmethod
+    def set_volume_serial_id(vol_uuid, volume_xml_obj):
+        if volume_xml_obj.get('type') != 'block' or volume_xml_obj.get('device') != 'lun':
+            e(volume_xml_obj, 'serial', vol_uuid)
 
     def _attach_data_volume(self, volume, addons):
         if volume.deviceId >= len(self.DEVICE_LETTERS):
@@ -2041,8 +2045,6 @@ class Vm(object):
                 dev_format = Vm._get_disk_target_dev_format(bus_type)
                 e(disk, 'target', None, {'dev': dev_format % dev_letter, 'bus': bus_type})
 
-            Vm.set_volume_qos(addons, volume.volumeUuid, disk)
-            volume_native_aio(disk)
             return disk
 
         def scsilun_volume():
@@ -2082,8 +2084,6 @@ class Vm(object):
                 vi.volume_uuid = volume.volumeUuid
                 vi.chap_username = volume.chapUsername
                 vi.chap_password = volume.chapPassword
-                Vm.set_volume_qos(addons, volume.volumeUuid, vi)
-                volume_native_aio(vi)
                 return vi.to_xmlobject()
 
             def blk_iscsi():
@@ -2094,8 +2094,6 @@ class Vm(object):
                 bi.volume_uuid = volume.volumeUuid
                 bi.chap_username = volume.chapUsername
                 bi.chap_password = volume.chapPassword
-                Vm.set_volume_qos(addons, volume.volumeUuid, bi)
-                volume_native_aio(bi)
                 return bi.to_xmlobject()
 
             if volume.useVirtio:
@@ -2109,29 +2107,20 @@ class Vm(object):
                 vc = VirtioCeph()
                 vc.volume = volume
                 vc.dev_letter = dev_letter
-                xml_obj = vc.to_xmlobject()
-                Vm.set_volume_qos(addons, volume.volumeUuid, xml_obj)
-                volume_native_aio(xml_obj)
-                return xml_obj
+                return vc.to_xmlobject()
 
             def blk_ceph():
                 ic = BlkCeph()
                 ic.volume = volume
                 ic.dev_letter = dev_letter
                 ic.bus_type = self._get_controller_type()
-                xml_obj = ic.to_xmlobject()
-                Vm.set_volume_qos(addons, volume.volumeUuid, xml_obj)
-                volume_native_aio(xml_obj)
-                return xml_obj
+                return ic.to_xmlobject()
 
             def virtio_scsi_ceph():
                 vsc = VirtioSCSICeph()
                 vsc.volume = volume
                 vsc.dev_letter = dev_letter
-                xml_obj = vsc.to_xmlobject()
-                Vm.set_volume_qos(addons, volume.volumeUuid, xml_obj)
-                volume_native_aio(xml_obj)
-                return xml_obj
+                return vsc.to_xmlobject()
 
             if volume.useVirtioSCSI:
                 return virtio_scsi_ceph()
@@ -2189,6 +2178,9 @@ class Vm(object):
             raise Exception('unsupported volume deviceType[%s]' % volume.deviceType)
 
         Vm.set_device_address(disk_element, volume, get_vm_by_uuid(self.uuid))
+        Vm.set_volume_qos(addons, volume.volumeUuid, disk_element)
+        Vm.set_volume_serial_id(volume.volumeUuid, disk_element)
+        volume_native_aio(disk_element)
         xml = etree.tostring(disk_element)
         logger.debug('attaching volume[%s] to vm[uuid:%s]:\n%s' % (volume.installPath, self.uuid, xml))
         try:
@@ -3881,6 +3873,7 @@ class Vm(object):
                 if v.bootOrder is not None and v.bootOrder > 0 and v.deviceId == 0:
                     e(vol, 'boot', None, {'order': str(v.bootOrder)})
                 Vm.set_volume_qos(cmd.addons, v.volumeUuid, vol)
+                Vm.set_volume_serial_id(v.volumeUuid, vol)
                 volume_native_aio(vol)
                 devices.append(vol)
 
