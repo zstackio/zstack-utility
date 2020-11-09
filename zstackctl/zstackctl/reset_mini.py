@@ -7,7 +7,8 @@ import re
 import subprocess
 import sys
 import time
-
+import os
+import shutil
 from jinja2 import Template
 
 
@@ -135,6 +136,41 @@ def bash_r(cmd, pipe_fail=False):
     return ret
 
 
+def rm_file_force(fpath):
+    try:
+        os.remove(fpath)
+    except:
+        pass
+
+
+def rm_dir_force(dpath, only_check=False):
+    black_dpath_list = ["", "/", "*", "/root", "/var", "/bin", "/lib", "/sys"]
+    if dpath.strip() in black_dpath_list:
+        raise Exception("how dare you delete directory %s" % dpath)
+    if os.path.exists(dpath) and not only_check:
+        if os.path.isdir(dpath):
+            shutil.rmtree(dpath)
+        else:
+            rm_file_force(dpath)
+    else:
+        return dpath
+
+
+def umount_by_path(path):
+    paths = get_mounted_url_by_dir(path)
+    if not paths: return
+    for p in paths:
+        bash_r('umount -f -l %s' % p)
+
+
+def get_mounted_url_by_dir(path):
+    r, o = bash_ro("mount | grep '%s'" % path)
+    if r:
+        return []
+    else:
+        return [l.split(' ')[2] for l in o.splitlines()]
+
+
 def get_disk_holders(disk_names):
     holders = []
     for disk_name in disk_names:
@@ -221,6 +257,9 @@ def stop_server():
         raise Exception(
             "stop zstack failed, return code: %s, stdout: %s, stderr: %s, pgrep zstack return code: %s, stdout: %s" %
             (r, o, e, r1, o1))
+    
+    bash_roe("systemctl stop zstack-ha.service")
+    bash_roe("systemctl disable zstack-ha.service")
 
 
 @in_bash
@@ -232,6 +271,7 @@ def stop_kvmagent():
 @in_bash
 def stop_vms():
     bash_roe("pkill -f -9 '/usr/libexec/qemu-kvm -name guest'")
+    bash_roe("pkill -f -9 '/var/lib/zstack/colo/qemu-system-x86_64 -name guest'")
     time.sleep(1)
 
 
@@ -262,6 +302,9 @@ def cleanup_storage():
             kill_drbd_holder(m)
         bash_roe("drbdadm down all")
     bash_r("/bin/rm /etc/drbd.d/*.res")
+    mini_cache_volume_mount_dir = "/var/lib/zstack/colo/cachevolumes/"
+    umount_by_path(mini_cache_volume_mount_dir)
+    rm_dir_force(mini_cache_volume_mount_dir)
     wipe_fs(get_mini_pv())
 
 

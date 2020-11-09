@@ -433,12 +433,14 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         r, raid_info, e = bash.bash_roe("/opt/MegaRAID/MegaCli/MegaCli64 -LdPdInfo -aALL")
         if r != 0:
             raise Exception("can not execute MegaCli: returnCode: %s, stdout: %s, stderr: %s" % (r, raid_info, e))
-        drive = self.get_raid_device_info("/dev/bus/%d -d megaraid,%d" % (cmd.busNumber, cmd.deviceNumber), raid_info)
+
+        bus_number = self.get_bus_number()
+        drive = self.get_raid_device_info("/dev/bus/%d -d megaraid,%d" % (bus_number, cmd.deviceNumber), raid_info)
         if drive.wwn != cmd.wwn:
             raise Exception("expect drive[busNumber %s, deviceId %s, slotNumber %s] wwn is %s, but is %s actually" %
-                            (cmd.busNumber, cmd.deviceNumber, cmd.slotNumber, cmd.wwn, drive.wwn))
+                            (bus_number, cmd.deviceNumber, cmd.slotNumber, cmd.wwn, drive.wwn))
 
-        rsp.smartDataStructs = self.get_smart_data(cmd.busNumber, cmd.deviceNumber)
+        rsp.smartDataStructs = self.get_smart_data(bus_number, cmd.deviceNumber)
         return jsonobject.dumps(rsp)
 
     @staticmethod
@@ -496,31 +498,48 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         r, raid_info, e = bash.bash_roe("/opt/MegaRAID/MegaCli/MegaCli64 -LdPdInfo -aALL")
         if r != 0:
             raise Exception("can not execute MegaCli: returnCode: %s, stdout: %s, stderr: %s" % (r, raid_info, e))
-        drive = self.get_raid_device_info("/dev/bus/%d -d megaraid,%d" % (cmd.busNumber, cmd.deviceNumber), raid_info)
+        
+        bus_number = self.get_bus_number()
+        drive = self.get_raid_device_info("/dev/bus/%d -d megaraid,%d" % (bus_number, cmd.deviceNumber), raid_info)
         if drive.wwn != cmd.wwn:
             raise Exception("expect drive[busNumber %s, deviceId %s, slotNumber %s] wwn is %s, but is %s actually" %
-                            (cmd.busNumber, cmd.deviceNumber, cmd.slotNumber, cmd.wwn, drive.wwn))
+                            (bus_number, cmd.deviceNumber, cmd.slotNumber, cmd.wwn, drive.wwn))
 
         command = "start" if cmd.locate is True else "stop"
-        bash.bash_errorout("/opt/MegaRAID/MegaCli/MegaCli64 -PdLocate -%s -physdrv[%d:%d] -a%d" % (command, cmd.enclosureDeviceID, cmd.slotNumber, cmd.busNumber))
+        
+        # -a specific a adaptor id but not bus number
+        # TODO: fix hardcode because mini only have one adaptor
+        bash.bash_errorout("/opt/MegaRAID/MegaCli/MegaCli64 -PdLocate -%s -physdrv[%d:%d] -a0" % (command, cmd.enclosureDeviceID, cmd.slotNumber))
         return jsonobject.dumps(rsp)
+
+    @bash.in_bash
+    def get_bus_number(self):
+        r, megaraid_info, e = bash.bash_roe("smartctl --scan | grep 'megaraid_disk_00\], SCSI device'")
+        if r != 0:
+            raise Exception("failed to get bus info")
+        
+        # get megaraid_info like following 
+        # /dev/bus/0 -d megaraid,0 # /dev/bus/0 [megaraid_disk_00], SCSI device
+        return int(megaraid_info.split(" ")[0][-1])
+            
 
     @kvmagent.replyerror
     @bash.in_bash
     def drive_self_test(self, req):
-
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = RaidPhysicalDriveSmartTestRsp()
 
         r, raid_info, e = bash.bash_roe("/opt/MegaRAID/MegaCli/MegaCli64 -LdPdInfo -aALL")
         if r != 0:
             raise Exception("can not execute MegaCli: returnCode: %s, stdout: %s, stderr: %s" % (r, raid_info, e))
-        drive = self.get_raid_device_info("/dev/bus/%d -d megaraid,%d" % (cmd.busNumber, cmd.deviceNumber), raid_info)
+
+        bus_number = self.get_bus_number()
+        drive = self.get_raid_device_info("/dev/bus/%d -d megaraid,%d" % (bus_number, cmd.deviceNumber), raid_info)
         if drive.wwn != cmd.wwn:
             raise Exception("expect drive[busNumber %s, deviceId %s, slotNumber %s] wwn is %s, but is %s actually" %
-                            (cmd.busNumber, cmd.deviceNumber, cmd.slotNumber, cmd.wwn, drive.wwn))
+                            (bus_number, cmd.deviceNumber, cmd.slotNumber, cmd.wwn, drive.wwn))
 
-        rsp.result = self.run_self_test(cmd.busNumber, cmd.deviceNumber, cmd.wwn)
+        rsp.result = self.run_self_test(bus_number, cmd.deviceNumber, cmd.wwn)
         return jsonobject.dumps(rsp)
 
     @staticmethod

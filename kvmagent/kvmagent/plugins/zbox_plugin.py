@@ -75,7 +75,7 @@ class ZBoxInfo(object):
 
 
 def find_usb_devices():
-    devcmd = shell.ShellCmd("find /dev/disk/by-path/ -name '*-usb-*' -lname *sd* | xargs readlink -f")
+    devcmd = shell.ShellCmd("lsblk -p -oTRAN,NAME | grep  -oP '^usb\s*\K.*'")
     devcmd(False)
     return [] if devcmd.return_code != 0 else devcmd.stdout.splitlines()
 
@@ -184,11 +184,14 @@ class ZBoxPlugin(kvmagent.KvmAgent):
         rsp = TakeVolumesBackupsResponse()
         vm = vm_plugin.get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
 
+        for path in cmd.dstDeviceIdPath.__dict__.values():
+            linux.rm_dir_force(path)
+
         if not cmd.remoteInfo:
-            vm.take_volumes_shallow_backup(cmd, cmd.volumes, cmd.dstDeviceIdPath)
+            vm.take_volumes_shallow_backup(cmd, cmd.volumes, cmd.dstDeviceIdPath.__dict__)
         else:
             with SshfsRemoteStorage(cmd.vmUuid, cmd.remoteInfo):
-                vm.take_volumes_shallow_backup(cmd, cmd.volumes, cmd.dstDeviceIdPath)
+                vm.take_volumes_shallow_backup(cmd, cmd.volumes, cmd.dstDeviceIdPath.__dict__)
 
         return jsonobject.dumps(rsp)
 
@@ -196,6 +199,9 @@ class ZBoxPlugin(kvmagent.KvmAgent):
     def init_zbox_backup(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = InitZBoxBackupResponse()
+
+        if not linux.is_mounted(cmd.mountPath):
+            raise Exception('zbox is not mounted on ' + cmd.mountPath)
 
         if not os.path.exists(cmd.installPath):
             logger.debug("init backup[uuid:%s] on zbox[uuid:%s]" % (cmd.backupUuid, cmd.zboxUuid))
