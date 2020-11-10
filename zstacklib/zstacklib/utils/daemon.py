@@ -222,10 +222,14 @@ class Daemon(object):
     @staticmethod
     def configure_hosts():
         hosts_path = "/etc/hosts"
-        to_add_line = "127.0.0.1 %s  # added by ZStack" % linux.get_host_name()
+        hostname = linux.get_host_name()
+        to_add_line = "127.0.0.1 %s  # added by ZStack" % hostname
         origin_lines = linux.read_file_lines(hosts_path)
         for line in origin_lines[:]:
             if line.strip().startswith(to_add_line):
+                return
+
+            if line.strip().find(hostname) != -1:
                 return
 
         origin_lines.append(to_add_line + '\n')
