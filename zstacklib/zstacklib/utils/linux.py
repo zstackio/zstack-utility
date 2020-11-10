@@ -277,7 +277,7 @@ def set_bridge_alias_using_phy_nic_name(bridge_name, nic_name):
     shell.call("ip link set %s alias 'phy_nic: %s'" % (bridge_name, nic_name))
 
 def get_bridge_phy_nic_name_from_alias(bridge_name):
-    return shell.call("ip link show %s | grep alias | head -1 | awk '{ print $NF }'" % bridge_name).strip()
+    return shell.call("ip link show %s | awk '/alias/{ print $NF; exit }'" % bridge_name).strip()
 
 def get_total_disk_size(dir_path):
     stat = os.statvfs(dir_path)
@@ -1224,6 +1224,21 @@ def find_route_interface_ip_by_destination_ip(ip_addr):
     if route:
         return route.split('src')[1].strip().split()[0]
 
+def get_interface_master_device(interface):
+    lines = read_file_lines("/sys/class/net/%s/master/uevent" % self.interface)
+    if not lines:
+        return None
+
+    for line in lines:
+        if line.startswith('INTERFACE='): return line.split('=')[1]
+    return None
+
+
+def get_interface_ip_addresses(interface):
+    output = shell.call("ip -4 -o a show %s | awk '{print $4}'" % interface)
+    return output.splitlines() if output else None
+
+
 def create_bridge(bridge_name, interface, move_route=True):
     if is_bridge(interface):
         raise Exception('interface %s is bridge' % interface)
@@ -1247,7 +1262,7 @@ def create_bridge(bridge_name, interface, move_route=True):
     #Set bridge MAC address as network device MAC address. It will avoid of 
     # bridge MAC address is reset to other new added dummy network device's 
     # MAC address.
-    shell.call("mac=`ip link show %s|grep ether|awk '{print $2}'`;ip link set %s address $mac" % (interface, bridge_name))
+    shell.call("ip link set %s address `cat /sys/class/net/%s/address`" % (bridge_name, interface))
 
     if not move_route:
         return
@@ -1966,7 +1981,7 @@ def populate_vxlan_fdb(interf, ips):
 def get_interfs_from_uuids(uuids):
     strUuids = "\|".join(uuids)
 
-    cmd = shell.ShellCmd("ip link | grep '%s' -B2 | grep vxlan | awk '{ print $2}' | tr ':' ' '" % strUuids)
+    cmd = shell.ShellCmd("ip link | grep '%s' -B2 | awk '/vxlan/{ print $2}' | tr ':' ' '" % strUuids)
     o = cmd(is_exception=False)
 
     if o == "":
