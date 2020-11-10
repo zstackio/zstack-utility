@@ -252,16 +252,12 @@ class HostNetworkInterfaceInventory(object):
         if carrier:
             self.carrierActive = carrier.strip() == "1"
         self.mac = linux.read_file("/sys/class/net/%s/address" % self.interfaceName).strip()
-        self.ipAddresses = [x.strip() for x in
-                          bash_o("ip -o a show %s | awk '/inet /{print $4}'" % self.interfaceName).splitlines()]
+        self.ipAddresses = linux.get_interface_ip_addresses(self.interfaceName)
 
-        master = linux.read_file("/sys/class/net/%s/master/ifindex" % self.interfaceName)
-        if master and master.strip() != "":
-            self.master = bash_o("ip link | grep -E '^%s: ' | awk '{print $2}'" % master.strip()).strip().strip(":")
+        self.master = linux.get_interface_master_device(self.interfaceName)
         if len(self.ipAddresses) == 0:
-            if master is not None:
-                self.ipAddresses = [x.strip() for x in bash_o(
-                    "ip -o a list | grep '^%s: ' | awk '/inet /{print $4}'" % master.strip()).splitlines()]
+            if self.master:
+                self.ipAddresses = linux.get_interface_ip_addresses(self.master)
         if self.master is None:
             self.interfaceType = "noMaster"
         elif len(bash_o("ip link show type bond_slave %s" % self.interfaceName).strip()) > 0:

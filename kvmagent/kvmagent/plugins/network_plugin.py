@@ -193,7 +193,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CheckPhysicalNetworkInterfaceResponse()
         for i in cmd.interfaceNames:
-            if shell.run("ip link | grep -q -w '%s'" % i) != 0:
+            if not linux.is_network_device_existing(i):
                 rsp.failedInterfaceNames = [i]
                 rsp.success = False
                 return jsonobject.dumps(rsp)

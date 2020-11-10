@@ -127,12 +127,11 @@ class UserDataEnv(object):
 
         # in case the namespace deleted and the orphan outer link leaves in the system,
         # deleting the orphan link and recreate it
-        ret = bash_r('ip netns exec {{NAMESPACE_NAME}} ip link | grep -w {{INNER_DEV}} > /dev/null')
+        ret = bash_r('ip netns exec {{NAMESPACE_NAME}} ip link show {{INNER_DEV}} > /dev/null')
         if ret != 0:
             bash_r('ip link del {{OUTER_DEV}} &> /dev/null')
 
-        ret = bash_r('ip link | grep -w {{OUTER_DEV}} > /dev/null')
-        if ret != 0:
+        if not linux.is_network_device_existing(OUTER_DEV):
             bash_errorout('ip link add {{OUTER_DEV}} type veth peer name {{INNER_DEV}}')
             bash_errorout('ip link set mtu {{MAX_MTU}} dev {{INNER_DEV}}')
             bash_errorout('ip link set mtu {{MAX_MTU}} dev {{OUTER_DEV}}')
@@ -143,7 +142,7 @@ class UserDataEnv(object):
         if ret != 0:
             bash_errorout('brctl addif {{BR_NAME}} {{OUTER_DEV}}')
 
-        ret = bash_r('ip netns exec {{NAMESPACE_NAME}} ip link | grep -w {{INNER_DEV}} > /dev/null')
+        ret = bash_r('ip netns exec {{NAMESPACE_NAME}} ip link show {{INNER_DEV}} > /dev/null')
         if ret != 0:
             bash_errorout('ip link set {{INNER_DEV}} netns {{NAMESPACE_NAME}}')
 
@@ -310,12 +309,11 @@ class DhcpEnv(object):
 
         # in case the namespace deleted and the orphan outer link leaves in the system,
         # deleting the orphan link and recreate it
-        ret = bash_r('ip netns exec {{NAMESPACE_NAME}} ip link | grep -w {{INNER_DEV}} > /dev/null')
+        ret = bash_r('ip netns exec {{NAMESPACE_NAME}} ip link show {{INNER_DEV}} > /dev/null')
         if ret != 0:
             bash_r('ip link del {{OUTER_DEV}} &> /dev/null')
 
-        ret = bash_r('ip link | grep -w {{OUTER_DEV}} > /dev/null')
-        if ret != 0:
+        if not linux.is_network_device_existing(OUTER_DEV):
             bash_errorout('ip link add {{OUTER_DEV}} type veth peer name {{INNER_DEV}}')
             bash_errorout('ip link set mtu {{MAX_MTU}} dev {{INNER_DEV}}')
             bash_errorout('ip link set mtu {{MAX_MTU}} dev {{OUTER_DEV}}')
@@ -326,7 +324,7 @@ class DhcpEnv(object):
         if ret != 0:
             bash_errorout('brctl addif {{BR_NAME}} {{OUTER_DEV}}')
 
-        ret = bash_r('ip netns exec {{NAMESPACE_NAME}} ip link | grep -w {{INNER_DEV}} > /dev/null')
+        ret = bash_r('ip netns exec {{NAMESPACE_NAME}} ip link show {{INNER_DEV}} > /dev/null')
         if ret != 0:
             bash_errorout('ip link set {{INNER_DEV}} netns {{NAMESPACE_NAME}}')
 
@@ -805,8 +803,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
             userdata_br_inner_dev = "ud_" + ns_inner_dev
             MAX_MTU = linux.MAX_MTU_OF_VNIC
 
-            ret = bash_r('ip link | grep -w %s > /dev/null' % userdata_br_outer_dev)
-            if ret != 0:
+            if not linux.is_network_device_existing(userdata_br_outer_dev):
                 bash_errorout('ip link add %s type veth peer name %s' % (userdata_br_outer_dev, userdata_br_inner_dev))
                 bash_errorout('ip link set mtu %d dev %s' % (MAX_MTU, userdata_br_outer_dev))
                 bash_errorout('ip link set mtu %d dev %s' % (MAX_MTU, userdata_br_inner_dev))
@@ -817,7 +814,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
             if ret != 0:
                 bash_errorout('brctl addif %s %s' % (bridge_name, userdata_br_outer_dev))
 
-            ret = bash_r('ip netns exec %s ip link | grep -w %s > /dev/null' % (ns, userdata_br_inner_dev))
+            ret = bash_r('ip netns exec %s ip link show %s > /dev/null' % (ns, userdata_br_inner_dev))
             if ret != 0:
                 bash_errorout('ip link set %s netns %s' % (userdata_br_inner_dev, ns))
 
