@@ -574,6 +574,8 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         self.check_nfs_mounted(mount_path)
         cachedir = None if cmd.isData else mount_path
         self.imagestore_client.download_from_imagestore(cachedir, cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
+        if cmd.isData:
+            self.imagestore_client.clean_meta(cmd.primaryStorageInstallPath)
         rsp = kvmagent.AgentResponse()
         self._set_capacity_to_response(cmd.uuid, rsp)
         return jsonobject.dumps(rsp)

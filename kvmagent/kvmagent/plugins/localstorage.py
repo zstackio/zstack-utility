@@ -839,6 +839,8 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         cachedir = None if cmd.isData else cmd.storagePath
         self.imagestore_client.download_from_imagestore(cachedir, cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
+        if cmd.isData:
+            self.imagestore_client.clean_meta(cmd.primaryStorageInstallPath)
         rsp = AgentResponse()
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
         return jsonobject.dumps(rsp)

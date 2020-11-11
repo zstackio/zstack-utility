@@ -987,6 +987,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         lvm.active_lv(install_abs_path)
         lvm.clean_lv_tag(install_abs_path, IMAGE_TAG)
         lvm.add_lv_tag(install_abs_path, "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
+        lvm.delete_lv_meta(install_abs_path)
 
         drbdResource = drbd.DrbdResource(install_abs_path.split("/")[-1], False)
         drbdResource.config.local_host.hostname = cmd.local_host_name
