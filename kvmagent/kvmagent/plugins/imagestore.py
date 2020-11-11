@@ -191,8 +191,6 @@ class ImageStoreClient(object):
         shell.call(cmdstr)
         logger.debug('%s:%s pulled to local cache' % (name, imageid))
 
-        return
-
     @in_bash
     def clean_imagestore_cache(self, cachedir):
         if not cachedir or not os.path.exists(cachedir):
@@ -203,6 +201,11 @@ class ImageStoreClient(object):
         bash_r(cmdstr)
         cmdstr = "find %s -depth -mindepth 1 -type d -empty -exec rmdir {} \;" % cdir
         bash_r(cmdstr)
+
+    def clean_meta(self, path):
+        meta_path = os.path.splitext(path)[0] + ".imf"
+        linux.rm_file_force(meta_path)
+        linux.rm_file_force(meta_path + "2")
 
     def convert_image_raw(self, cmd):
         destPath = cmd.srcPath.replace('.qcow2', '.raw')

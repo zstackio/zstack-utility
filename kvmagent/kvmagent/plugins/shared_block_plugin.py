@@ -893,6 +893,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             lvm.clean_lv_tag(install_abs_path, IMAGE_TAG)
             lvm.add_lv_tag(install_abs_path, "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
 
+        lvm.delete_lv_meta(install_abs_path)
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
