@@ -1949,8 +1949,8 @@ done
                 OUTER_DEV = 'outer' + NAMESPACE_ID
 
                 # get bridge name of outer dev
-                r, BR_NAME, e = bash_roe("ip link show {{OUTER_DEV}} | grep -w 'master' | awk -F 'master' '{ print $NF }' | awk '{ print $1 }'")
-                if r != 0:
+                BR_NAME = linux.get_interface_master_device(OUTER_DEV)
+                if not BR_NAME:
                     logger.error("cannot get bridge name of " + OUTER_DEV)
                     return
                 BR_NAME = BR_NAME.strip(' \t\n\r')
@@ -1981,7 +1981,7 @@ done
                 INNER_MAC = INNER_MAC.strip(' \t\n\r')
 
                 # add bridge fdb entry for inner dev
-                if bash_r("bridge fdb | grep '{{INNER_MAC}} dev {{PHY_DEV}} self permanent'") != 0:
+                if not linux.bridge_fdb_has_self_rule(INNER_MAC, PHY_DEV):
                     bash_r('bridge fdb add {{INNER_MAC}} dev {{PHY_DEV}}')
 
         if cmd.macs:

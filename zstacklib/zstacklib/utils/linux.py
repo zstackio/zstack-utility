@@ -1155,8 +1155,7 @@ def remove_device_ip(dev):
         return cmd.return_code == 0
 
 def is_ip_existing(ip):
-    ip_str = ' %s/' % ip
-    cmd = shell.ShellCmd('ip a|grep inet|grep "%s"' % ip_str)
+    cmd = shell.ShellCmd('ip -4 a|grep -m 1 -w "%s"' % ip)
     cmd(is_exception=False)
     return cmd.return_code == 0
 
@@ -1167,12 +1166,6 @@ def is_bridge(dev):
     path = "/sys/class/net/%s/bridge" % dev
     return os.path.exists(path)
 
-def is_interface_bridge(bridge_name):
-    cmd = shell.ShellCmd("brctl show |sed -n '2,$p'|cut -f 1")
-    cmd(is_exception=False)
-    bridges = cmd.stdout.split('\n')
-    if bridge_name in bridges:
-        return True
 
 def is_vif_on_bridge(bridge_name, interface):
     vifs = get_all_bridge_interface(bridge_name)
@@ -1877,13 +1870,12 @@ def kill_all_child_process(ppid, timeout=5):
         raise Exception('cannot kill -9 child process[ppid:%s];the process still exists after %s seconds' % (ppid, timeout))
 
 def get_gateway_by_default_route():
-    cmd = shell.ShellCmd("ip route | grep default | head -n 1 | cut -d ' ' -f 3")
+    cmd = shell.ShellCmd("ip route | awk '/^default/{print $3; exit}'")
     cmd(False)
     if cmd.return_code != 0:
         return None
 
-    out = cmd.stdout
-    out = out.strip(' \t\n\r')
+    out = cmd.stdout.strip()
     if not out:
         return None
 
@@ -1958,7 +1950,7 @@ def create_vxlan_interface(vni, vtepIp):
     return cmd.return_code == 0
 
 def create_vxlan_bridge(interf, bridgeName, ips):
-    if is_interface_bridge(bridgeName) is not True:
+    if not is_bridge(bridgeName):
         create_bridge(bridgeName, interf, False)
     elif is_vif_on_bridge(bridgeName, interf) is None:
         cmd = shell.ShellCmd("brctl addif %s %s" % (bridgeName, interf))
@@ -1977,6 +1969,10 @@ def populate_vxlan_fdb(interf, ips):
     cmd(is_exception=False)
 
     return cmd.return_code == 0
+
+
+def bridge_fdb_has_self_rule(mac, dev):
+    return shell.run("bridge fdb show dev %s | grep -m 1 '%s dev %s self permanent'" % (dev, mac, dev)) == 0
 
 def get_interfs_from_uuids(uuids):
     strUuids = "\|".join(uuids)
