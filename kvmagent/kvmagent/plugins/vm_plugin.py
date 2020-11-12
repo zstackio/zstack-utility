@@ -4471,7 +4471,7 @@ class Vm(object):
                                     _phy_dev_name = fname.replace('slave_', '').strip(' \t\n\r')
                                     break
 
-                if bash.bash_r("bridge fdb | grep '%s dev %s self permanent'" % (nic.mac, _phy_dev_name)) != 0:
+                if not linux.bridge_fdb_has_self_rule(nic.mac, _phy_dev_name):
                     bash.bash_r("bridge fdb add %s dev %s" % (nic.mac, _phy_dev_name))
 
         # to allow vf nic dhcp
