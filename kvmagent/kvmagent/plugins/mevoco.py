@@ -367,7 +367,7 @@ class DhcpEnv(object):
             INNER_MAC = INNER_MAC.strip(' \t\n\r')
 
             # add bridge fdb entry for inner dev
-            if bash_r("bridge fdb | grep '{{INNER_MAC}} dev {{PHY_DEV}} self permanent'") != 0:
+            if not linux.bridge_fdb_has_self_rule(INNER_MAC, PHY_DEV):
                 bash_r('bridge fdb add {{INNER_MAC}} dev {{PHY_DEV}}')
 
         if DHCP_IP is not None:
