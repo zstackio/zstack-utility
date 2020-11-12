@@ -363,7 +363,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         lun_struct.wwids = candidate_struct.wwids
         if lvm.is_slave_of_multipath(abs_path):
             lun_struct.type = "mpath"
-            mpath_wwid = bash.bash_o("multipath -l %s | head -n1 | awk '{print $2}'" % abs_path).strip("() \n")
+            mpath_wwid = bash.bash_o("lsscsi -i | awk '$6 == \"%s\" {print $NF}'" % abs_path).strip()
             lun_struct.wwids = [mpath_wwid]
         return lun_struct
 
