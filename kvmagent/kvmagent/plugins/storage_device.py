@@ -864,10 +864,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         s.path = get_path(dev_name)
         if lvm.is_slave_of_multipath("/dev/%s" % dev_name):
             s.type = "mpath"
-            if kvmagent.get_host_os_type() == "debian":
-                wwid = bash.bash_o("multipath -l /dev/%s | head -n1 | awk '{print $1}'" % dev_name).strip()
-            else :
-                wwid = bash.bash_o("multipath -l /dev/%s | head -n1 | awk '{print $2}'" % dev_name).strip().strip("()")
+            wwid = bash.bash_o("lsscsi -i | awk '$6 == \"%s\" {print $NF}'" % dev_name).strip()
             s.wwids = [wwid] if wwid != "" else s.wwids
         s.storageWwnn = get_storage_wwnn(s.hctl)
 
