@@ -548,6 +548,7 @@ class HostPlugin(kvmagent.KvmAgent):
     GET_DEV_CAPACITY = "/host/dev/capacity"
     ADD_BRIDGE_FDB_ENTRY_PATH = "/bridgefdb/add"
     DEPLOY_COLO_QEMU_PATH = "/deploy/colo/qemu"
+    UPDATE_CONFIGURATION_PATH = "/host/update/configuration"
 
     host_network_facts_cache = {}  # type: dict[float, list[list, list]]
     IS_YUM = False
@@ -608,6 +609,7 @@ class HostPlugin(kvmagent.KvmAgent):
         self.host_uuid = cmd.hostUuid
         self.config[kvmagent.HOST_UUID] = self.host_uuid
         self.config[kvmagent.SEND_COMMAND_URL] = cmd.sendCommandUrl
+        self.config[kvmagent.VERSION] = cmd.version
         Report.serverUuid = self.host_uuid
         Report.url = cmd.sendCommandUrl
         logger.debug(http.path_msg(self.CONNECT_PATH, 'host[uuid: %s] connected' % cmd.hostUuid))
@@ -631,6 +633,8 @@ class HostPlugin(kvmagent.KvmAgent):
     def ping(self, req):
         rsp = PingResponse()
         rsp.hostUuid = self.host_uuid
+        rsp.sendCommandUrl = self.config[kvmagent.SEND_COMMAND_URL]
+        rsp.version = self.config[kvmagent.VERSION]
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -1820,6 +1824,16 @@ done
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def update_host_configuration(self, req):
+        rsp = kvmagent.AgentResponse()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        self.config[kvmagent.SEND_COMMAND_URL] = cmd.sendCommandUrl
+        Report.url = cmd.sendCommandUrl
+
+        return rsp
+
+    @kvmagent.replyerror
     def deploy_colo_qemu(self, req):
         rsp = kvmagent.AgentResponse()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -2042,6 +2056,7 @@ done
         http_server.register_async_uri(self.GET_DEV_CAPACITY, self.get_dev_capacity)
         http_server.register_async_uri(self.ADD_BRIDGE_FDB_ENTRY_PATH, self.add_bridge_fdb_entry)
         http_server.register_async_uri(self.DEPLOY_COLO_QEMU_PATH, self.deploy_colo_qemu)
+        http_server.register_async_uri(self.UPDATE_CONFIGURATION_PATH, self.update_host_configuration)
 
         self.heartbeat_timer = {}
         self.libvirt_version = linux.get_libvirt_version()
