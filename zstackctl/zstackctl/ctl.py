@@ -5127,8 +5127,8 @@ class RestoreMysqlPreCheckCmd(Command):
                             default="")
 
     def execute_sql(self, password, sql):
-        return shell_return_stdout_stderr("mysql -uroot --password='%s' -P %s --host=%s -e \"%s\""
-                                          % (password, self.port, self.hostname, sql))
+        return shell_return_stdout_stderr("mysql -uroot --password=%s -P %s --host=%s -e \"%s\""
+                                          % (shell_quote(password), self.port, self.hostname, sql))
 
     def run(self, args):
         (self.hostname, self.port, _, _) = ctl.get_live_mysql_portal()
@@ -5207,8 +5207,8 @@ class RestoreMysqlCmd(Command):
                             default=False)
 
     def test_mysql_connection(self, db_password, db_port, db_hostname):
-        command = "mysql -uroot --password='%s' -P %s  %s -e 'show databases'  >> /dev/null 2>&1" \
-                      % (db_password, db_port, db_hostname)
+        command = "mysql -uroot --password=%s -P %s  %s -e 'show databases'  >> /dev/null 2>&1" \
+                      % (shell_quote(db_password), db_port, db_hostname)
         try:
             shell_no_pipe(command)
         except:
@@ -5231,7 +5231,7 @@ class RestoreMysqlCmd(Command):
         check_gunzip_file(db_backup_name)
 
         if not args.skip_check:
-            ctl.internal_run('check_restore_mysql', "-f %s --mysql-root-password '%s'" % (db_backup_name, db_password))
+            ctl.internal_run('check_restore_mysql', "-f %s --mysql-root-password %s" % (db_backup_name, db_password))
 
         # get deploy type
         restorer = RestorerFactory.get_restorer(db_hostname_origin_cp, db_password, db_port)
@@ -5259,9 +5259,9 @@ class RestoreMysqlCmd(Command):
 
         info("Restoring database ...")
         for database in ['zstack', 'zstack_rest']:
-            command = "mysql -uroot --password='%s' -P %s  %s" \
+            command = "mysql -uroot --password=%s -P %s  %s" \
                       " -e 'drop database if exists %s; create database %s'  >> /dev/null 2>&1" \
-                      % (db_password, db_port, db_hostname, database, database)
+                      % (shell_quote(db_password), db_port, db_hostname, database, database)
             shell_no_pipe(command)
 
             # modify DEFINER of view, trigger and so on
@@ -5269,8 +5269,8 @@ class RestoreMysqlCmd(Command):
             # to:   /* ... */ /*!50017 DEFINER=`root`@`new_hostname`*/ /*...
             command = "gunzip < %s | sed -e '/DROP DATABASE IF EXISTS/d' -e '/CREATE DATABASE .* IF NOT EXISTS/d' " \
                       "| sed 's/DEFINER=`[^\*\/]*`@`[^\*\/]*`/DEFINER=`root`@`%s`/' " \
-                      "| mysql -uroot --password='%s' %s -P %s --one-database %s" \
-                  % (db_backup_name, db_hostname_origin_cp, db_password, db_hostname, db_port, database)
+                      "| mysql -uroot --password=%s %s -P %s --one-database %s" \
+                  % (db_backup_name, db_hostname_origin_cp, shell_quote(db_password), db_hostname, db_port, database)
             shell_no_pipe(command)
 
         restorer.restore_other_node(args)
@@ -5290,14 +5290,14 @@ class RestoreMysqlCmd(Command):
             ui_db_names.append('zstack_mini')
 
         for database in ui_db_names:
-            command = "mysql -uroot --password='%s' -P %s  %s" \
+            command = "mysql -uroot --password=%s -P %s  %s" \
                       " -e 'drop database if exists %s; create database %s' >> /dev/null 2>&1" \
-                      % (ui_db_password, db_port, ui_db_hostname, database, database)
+                      % (shell_quote(ui_db_password), db_port, ui_db_hostname, database, database)
             shell_no_pipe(command)
             command = "gunzip < %s | sed -e '/DROP DATABASE IF EXISTS/d' -e '/CREATE DATABASE .* IF NOT EXISTS/d' " \
                       "| sed 's/DEFINER=`[^\*\/]*`@`[^\*\/]*`/DEFINER=`root`@`%s`/' " \
-                      "| mysql -uroot --password='%s' %s -P %s --one-database %s" \
-                      % (db_backup_name, ui_db_hostname_origin_cp, ui_db_password, ui_db_hostname, ui_db_port, database)
+                      "| mysql -uroot --password=%s %s -P %s --one-database %s" \
+                      % (db_backup_name, ui_db_hostname_origin_cp, shell_quote(ui_db_password), ui_db_hostname, ui_db_port, database)
             shell_no_pipe(command)
 
         info("Successfully restored database. You can start node by running zstack-ctl start.")
