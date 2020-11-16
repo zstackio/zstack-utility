@@ -27,6 +27,7 @@ UPGRADE='n'
 FORCE='n'
 MINI_INSTALL='n'
 SANYUAN_INSTALL='n'
+SDS_INSTALL='n'
 MANAGEMENT_INTERFACE=`ip route | grep default | head -n 1 | cut -d ' ' -f 5`
 ZSTACK_INSTALL_LOG='/tmp/zstack_installation.log'
 ZSTACKCTL_INSTALL_LOG='/tmp/zstack_ctl_installation.log'
@@ -61,6 +62,7 @@ PRODUCT_TITLE_FILE='./product_title_file'
 UPGRADE_LOCK=/tmp/zstack_upgrade.lock
 MYSQL_CONF_FILE=''
 AUDIT_RULE_FILE='/etc/audit/rules.d/audit.rules'
+SDS_PORT='8056'
 
 [ ! -z $http_proxy ] && HTTP_PROXY=$http_proxy
 
@@ -2083,6 +2085,13 @@ install_db(){
     cs_clean_ssh_tmp_key $ssh_tmp_dir
 }
 
+install_sds(){
+    echo_title "Install SDS"
+    echo ""
+    show_spinner is_install_sds
+    show_spinner is_append_iptables
+}
+
 setup_install_param(){
     echo_title "Setup Install Parameters"
     echo ""
@@ -2716,6 +2725,26 @@ sd_start_zstack_ui(){
     pass
 }
 
+is_install_sds(){
+    echo_subtitle "Install SDS"
+    TMP=`mktemp -d /tmp/tmp-XXXXXX`
+    trap "rm -rf $TMP* 2>/dev/null" EXIT
+    tar -zxf /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/ZCE-installer-SDS.tar.gz -C $TMP
+    pushd $TMP >/dev/null
+    sed -i "s/^PROMETHEUS_PORT=.*/PROMETHEUS_PORT=9089/g" install.conf
+    bash install.sh ${MANAGEMENT_IP} >>$ZSTACK_INSTALL_LOG 2>&1
+    [ $? -ne 0 ] && fail "failed to install SDS"
+    popd >/dev/null
+    pass
+}
+
+is_append_iptables(){
+    echo_subtitle "Append iptables"
+    iptables-save 2>&1 | grep -- "-A INPUT -p tcp -m tcp --dport $SDS_PORT -j ACCEPT" > /dev/null 2>&1 || iptables -I INPUT -p tcp -m tcp --dport $SDS_PORT -j ACCEPT >/dev/null 2>&1
+    service iptables save >/dev/null 2>&1
+    pass
+}
+
 get_higher_version() {
     echo "$@" | tr " " "\n" | sort -V | tail -1
 }
@@ -3191,7 +3220,7 @@ check_myarg() {
 }
 
 OPTIND=1
-TEMP=`getopt -o f:H:I:n:p:P:r:R:t:y:acC:L:T:dDEFhiklmMNoOqsuz --long mini,SY -- "$@"`
+TEMP=`getopt -o f:H:I:n:p:P:r:R:t:y:acC:L:T:dDEFhiklmMNoOqsuz --long mini,SY,sds -- "$@"`
 if [ $? != 0 ]; then
     usage
 fi
@@ -3248,6 +3277,7 @@ do
         -z ) NOT_START_ZSTACK='y';shift;;
         --mini) MINI_INSTALL='y';shift;;
         --SY) SANYUAN_INSTALL='y';shift;;
+        --sds) SDS_INSTALL='y';shift;;
         --) shift;;
         * ) usage;;
     esac
@@ -3801,6 +3831,11 @@ config_journal(){
 
 config_journal
 
+#Install SDS
+if [ x"$SDS_INSTALL" = x"y" ];then
+    install_sds
+fi
+
 #Print all installation message
 if [ -z $NOT_START_ZSTACK ]; then
     [ -z $VERSION ] && VERSION=`zstack-ctl status 2>/dev/null|grep version|awk '{print $2}'`
@@ -3823,6 +3858,10 @@ echo -e "${PRODUCT_NAME} All In One ${VERSION} Installation Completed:
  - ${PRODUCT_NAME} control tool is installed: zstack-ctl
 
  - For system security, $(tput setaf 4) database root password is set to: $MYSQL_NEW_ROOT_PASSWORD $(tput sgr0) . You can use \`mysqladmin -u root --password=$MYSQL_NEW_ROOT_PASSWORD password NEW_PASSWORD\` to change it. To be noticed: ${PRODUCT_NAME} will use 'zstack' user to access database. Change 'root' password won't impact 'zstack' access database."|tee -a $README
+
+if [ x"$SDS_INSTALL" = x"y" ];then
+    echo " - SDS successfully installed, Please visit http://${MANAGEMENT_IP}:8056 to continue the installation"
+fi
 
 if [ ! -z QUIET_INSTALLATION ]; then
     if [ -z "$CHANGE_HOSTNAME" -a -z "$CHANGE_HOSTS" -a -z "$DELETE_PY_CRYPTO" -a -z "$SETUP_EPEL" ];then
