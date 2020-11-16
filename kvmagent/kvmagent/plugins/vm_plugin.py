@@ -4317,14 +4317,14 @@ class Vm(object):
         elif iftype == 'vhostuser':
             e(interface, 'source', None, attrib={'type': 'unix', 'path': vhostSrcPath, 'mode': 'client'})
             e(interface, 'driver', None, attrib={'queues': '16', 'vhostforce': 'on'})
-            e(interface, 'alias', None, {'name': 'net%s' % nic.nicInternalName.split('.')[1]})
         else:
             e(interface, 'source', None, attrib={'bridge': nic.bridgeName})
             e(interface, 'target', None, attrib={'dev': nic.nicInternalName})
-            e(interface, 'alias', None, {'name': 'net%s' % nic.nicInternalName.split('.')[1]})
 
         if nic.pci is not None and (iftype == 'bridge' or iftype == 'vhostuser'):
             e(interface, 'address', None, attrib={'type': nic.pci.type, 'domain': nic.pci.domain, 'bus': nic.pci.bus, 'slot': nic.pci.slot, "function": nic.pci.function})
+        else:
+            e(interface, 'address', None, attrib={'type': "pci"})
 
         if nic.ips and iftype == 'bridge':
             ip4Addr = None
