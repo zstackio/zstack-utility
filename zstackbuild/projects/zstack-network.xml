@@ -20,10 +20,8 @@
 
         <copy todir="${zsn.bdir}/">
             <fileset dir="${zstacknetwork.source}/target/package/zsn-agent">
-                <include name="vyos" />
-                <include name="vyos/zsn-agent.bin" />
-                <include name="vyos/zsn-agent.aarch64.bin" />
                 <include name="zsn-agent.bin" />
+                <include name="zsn-agent.aarch64.bin" />
             </fileset>
         </copy>
     </target>
