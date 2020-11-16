@@ -981,7 +981,7 @@ class Ctl(object):
         errors = []
         for hostname, port in hostname_ports:
             if password:
-                sql = 'mysql --host=%s --port=%s --user=%s --password=%s -e "select 1"' % (hostname, port, user, password)
+                sql = 'mysql --host=%s --port=%s --user=%s --password=%s -e "select 1"' % (hostname, port, user, shell_quote(password))
             else:
                 sql = 'mysql --host=%s --port=%s --user=%s -e "select 1"' % (hostname, port, user)
 
@@ -1375,7 +1375,7 @@ class MySqlCommandLineQuery(object):
 
         sql = "%s\G" % self.sql
         if self.password:
-            cmd = '''mysql -u %s -p%s --host %s --port %s -t %s -e "%s"''' % (self.user, self.password, self.host,
+            cmd = '''mysql -u %s -p%s --host %s --port %s -t %s -e "%s"''' % (self.user, shell_quote(self.password), self.host,
                                                                                self.port, self.table, sql)
         else:
             cmd = '''mysql -u %s --host %s --port %s -t %s -e "%s"''' % (self.user, self.host, self.port, self.table, sql)
@@ -1486,7 +1486,7 @@ class ShowStatusCmd(Command):
 
             if db_password:
                 cmd = ShellCmd('''mysql -u %s -p%s --host %s --port %s -t zstack -e "show tables like 'schema_version'"''' %
-                            (db_user, db_password, db_hostname, db_port))
+                            (db_user, shell_quote(db_password), db_hostname, db_port))
             else:
                 cmd = ShellCmd('''mysql -u %s --host %s --port %s -t zstack -e "show tables like 'schema_version'"''' %
                             (db_user, db_hostname, db_port))
@@ -2069,7 +2069,7 @@ class StartCmd(Command):
                 raise CtlError('unable to connect to %s:%s, please check if the MySQL is running and the firewall rules' % (db_hostname, db_port))
 
             with on_error('unable to connect to MySQL'):
-                shell('mysql --host=%s --user=%s --password=%s --port=%s -e "select 1"' % (db_hostname, db_user, db_password, db_port))
+                shell('mysql --host=%s --user=%s --password=%s --port=%s -e "select 1"' % (db_hostname, db_user, shell_quote(db_password), db_port))
 
             if args.mysql_process_list:
                 ctl.internal_run('mysql_process_list', '--check')
@@ -8461,7 +8461,7 @@ def mysql(cmd):
         db_hostname = ""
     else:
         db_hostname = "--host %s" % db_hostname
-    command = "mysql -uzstack --password='%s' -P %s %s zstack -e \"%s\"" % (db_password, db_port, db_hostname, cmd)
+    command = "mysql -uzstack --password=%s -P %s %s zstack -e \"%s\"" % (shell_quote(db_password), db_port, db_hostname, cmd)
     r, o, e = shell_return_stdout_stderr(command)
     if r == 0:
         return o.strip()
@@ -8474,7 +8474,7 @@ def mysql(cmd):
         raise CtlError('\n'.join(err))
     else:
         db_hostname = "--host %s" % db_hostname_origin
-        command = "mysql -uzstack --password='%s' -P %s %s zstack -e \"%s\"" % (db_password, db_port, db_hostname, cmd)
+        command = "mysql -uzstack --password=%s -P %s %s zstack -e \"%s\"" % (shell_quote(db_password), db_port, db_hostname, cmd)
         return shell(command).strip()
 
 
