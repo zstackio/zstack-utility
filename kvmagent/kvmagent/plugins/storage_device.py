@@ -383,7 +383,9 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         lun_struct.wwids = candidate_struct.wwids
         if lvm.is_slave_of_multipath(abs_path):
             lun_struct.type = "mpath"
-            mpath_wwid = bash.bash_o("lsscsi -i | awk '$6 == \"%s\" {print $NF}'" % abs_path).strip()
+            # 'lsscsi -i' output format:
+            # [16:0:4:98] disk COMPELNT Compellent Vol 0702 /dev/xxx 36000d31000e568000000000000000081
+            mpath_wwid = bash.bash_o("lsscsi -i | awk '$(NF-1) == \"%s\" {print $NF}'" % abs_path).strip()
             lun_struct.wwids = [mpath_wwid]
         return lun_struct
 
@@ -855,7 +857,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         s.path = get_path(dev_name)
         if lvm.is_slave_of_multipath("/dev/%s" % dev_name):
             s.type = "mpath"
-            wwid = bash.bash_o("lsscsi -i | awk '$6 == \"%s\" {print $NF}'" % dev_name).strip()
+            wwid = bash.bash_o("lsscsi -i | awk '$(NF-1) == \"/dev/%s\" {print $NF}'" % dev_name).strip()
             s.wwids = [wwid] if wwid != "" else s.wwids
         s.storageWwnn = get_storage_wwnn(s.hctl)
 
