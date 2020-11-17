@@ -416,9 +416,10 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     def scan_sg_devices(self, req):
         #1. find fc devices
         #2. distinct by device wwid and storage wwn
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = FcSanScanRsp()
         bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -a")
-        rsp.fiberChannelLunStructs = self.get_fc_luns()
+        rsp.fiberChannelLunStructs = self.get_fc_luns(cmd.rescan)
         linux.set_fail_if_no_path()
         return jsonobject.dumps(rsp)
 
@@ -756,7 +757,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             return origin.strip()
 
     @bash.in_bash
-    def get_fc_luns(self):
+    def get_fc_luns(self, rescan):
         o = bash.bash_o("ls -1c /sys/bus/scsi/devices/target*/fc_transport | grep ^target | awk -F 'target' '{print $2}'")
         fc_targets = o.strip().splitlines()
         if len(fc_targets) == 0 or (len(fc_targets) == 1 and fc_targets[0] == ""):
@@ -772,7 +773,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
         def get_lun_info(fc_target, i):
             t = filter(lambda x: "[%s" % fc_target in x, o)
-            mapped_t = map(lambda x: self.get_device_info(x.split("/dev/")[1]), t)
+            mapped_t = map(lambda x: self.get_device_info(x.split("/dev/")[1], rescan), t)
             luns[i] = filter(lambda x: x is not None, mapped_t)
 
         threads = []
@@ -809,9 +810,17 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         linux.set_fail_if_no_path()
         return jsonobject.dumps(rsp)
 
-    def get_device_info(self, dev_name):
+    def get_device_info(self, dev_name, rescan):
         # type: (str) -> FiberChannelLunStruct
         s = FiberChannelLunStruct()
+
+        # rescan disk size
+        if rescan:
+            _cmd = shell.ShellCmd("echo 1 > /sys/block/%s/device/rescan" % dev_name.strip())
+            _cmd(is_exception=False)
+            logger.debug("rescaned disk %s, return code: %s, stdout %s, stderr: %s" % (
+            dev_name, _cmd.return_code, _cmd.stdout, _cmd.stderr))
+
         r, o, e = bash.bash_roe(
             "lsblk --pair -b -p -o NAME,VENDOR,MODEL,WWN,SERIAL,HCTL,TYPE,SIZE /dev/%s" % dev_name, False)
         if r != 0 or o.strip() == "":
