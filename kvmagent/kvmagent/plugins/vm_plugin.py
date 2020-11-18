@@ -5322,7 +5322,7 @@ class VmPlugin(kvmagent.KvmAgent):
         else:
             raise Exception('unsupported volume deviceType[%s]' % volume.deviceType)
 
-        tags_to_keep = [ 'target', 'boot', 'alias', 'address', 'wwn' ]
+        tags_to_keep = [ 'target', 'boot', 'alias', 'address', 'wwn', 'serial']
         for c in oldDisk.getchildren():
             if c.tag in tags_to_keep:
                 child = ele.find(c.tag)
