@@ -1217,7 +1217,7 @@ def find_route_interface_ip_by_destination_ip(ip_addr):
         return route.split('src')[1].strip().split()[0]
 
 def get_interface_master_device(interface):
-    lines = read_file_lines("/sys/class/net/%s/master/uevent" % self.interface)
+    lines = read_file_lines("/sys/class/net/%s/master/uevent" % interface)
     if not lines:
         return None
 
