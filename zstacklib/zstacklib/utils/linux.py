@@ -306,8 +306,7 @@ def get_total_file_size(paths):
     return total
 
 def get_disk_capacity_by_df(dir_path):
-    total = shell.call("df %s|tail -1|awk '{print $(NF-4)}'" % dir_path)
-    avail = shell.call("df %s|tail -1|awk '{print $(NF-2)}'" % dir_path)
+    total, avail = shell.call("df %s|tail -1|awk '{print $(NF-4), $(NF-2)}'" % dir_path).split()
     return long(total) * 1024, long(avail) * 1024
 
 def get_folder_size(path = "."):
