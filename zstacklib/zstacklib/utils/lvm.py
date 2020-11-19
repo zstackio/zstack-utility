@@ -109,6 +109,7 @@ def get_block_devices():
     return block_devices
 
 def get_multi_path_block_devices():
+    slave_devices = []
     mpath_devices = []
 
     cmd = shell.ShellCmd("multipath -l -v1")
@@ -116,30 +117,11 @@ def get_multi_path_block_devices():
     if cmd.return_code == 0 and cmd.stdout.strip() != "":
         mpath_devices = cmd.stdout.strip().split("\n")
 
-    slave_devices_list = [None] * len(mpath_devices)
     block_devices_list = [None] * len(mpath_devices)
 
-    def get_block_devices(mpath_device, i):
+    def get_block_devices(slave, dm, i):
         try:
-            cmd = shell.ShellCmd("realpath /dev/mapper/%s | grep -E -o 'dm-.*'" % mpath_device)
-            cmd(is_exception=False)
-            if cmd.return_code != 0 or cmd.stdout.strip() == "":
-                return
-
-            dm = cmd.stdout.strip()
-            slaves = shell.call("ls /sys/class/block/%s/slaves/" % dm).strip().split("\n")
-            if slaves is None or len(slaves) == 0:
-                struct = SharedBlockCandidateStruct()
-                cmd = shell.ShellCmd(
-                    "udevadm info -n %s | grep dm-uuid-mpath | grep -o 'dm-uuid-mpath-\S*' | head -n 1 | awk -F '-' '{print $NF}'" % dm)
-                cmd(is_exception=True)
-                struct.wwids = [cmd.stdout.strip().strip("()")]
-                struct.type = "mpath"
-                block_devices_list[i] = struct
-                return
-
-            slave_devices_list[i] = slaves
-            struct = get_device_info(slaves[0])
+            struct = get_device_info(slave)
             if struct is None:
                 return
             cmd = shell.ShellCmd(
@@ -154,12 +136,34 @@ def get_multi_path_block_devices():
 
     threads = []
     for idx, mpath_device in enumerate(mpath_devices, start=0):
-        threads.append(thread.ThreadFacade.run_in_thread(get_block_devices, [mpath_device, idx]))
+        try:
+            cmd = shell.ShellCmd("realpath /dev/mapper/%s | grep -E -o 'dm-.*'" % mpath_device)
+            cmd(is_exception=False)
+            if cmd.return_code != 0 or cmd.stdout.strip() == "":
+                continue
+
+            dm = cmd.stdout.strip()
+            slaves = shell.call("ls /sys/class/block/%s/slaves/" % dm).strip().split("\n")
+            if slaves is None or len(slaves) == 0:
+                struct = SharedBlockCandidateStruct()
+                cmd = shell.ShellCmd(
+                    "udevadm info -n %s | grep dm-uuid-mpath | grep -o 'dm-uuid-mpath-\S*' | head -n 1 | awk -F '-' '{print $NF}'" % dm)
+                cmd(is_exception=True)
+                struct.wwids = [cmd.stdout.strip().strip("()")]
+                struct.type = "mpath"
+                block_devices_list[idx] = struct
+                continue
+
+            slave_devices.extend(slaves)
+            threads.append(thread.ThreadFacade.run_in_thread(get_block_devices, [slaves[0], dm, idx]))
+        except Exception as e:
+            logger.warn(linux.get_exception_stacktrace())
+            continue
+
     for t in threads:
         t.join()
 
-    return filter(None, block_devices_list), sum(filter(None, slave_devices_list), [])
-
+    return filter(None, block_devices_list), slave_devices
 
 def get_disk_block_devices(slave_devices):
     disks = shell.call("lsblk -p -o NAME,TYPE | grep disk | awk '{print $1}'").strip().split()
@@ -167,8 +171,6 @@ def get_disk_block_devices(slave_devices):
 
     def get_block_devices(disk, i):
         try:
-            if disk.split("/")[-1] in slave_devices or is_slave_of_multipath(disk):
-                return
             d = get_device_info(disk.strip().split("/")[-1])
             if d is None:
                 return
@@ -183,7 +185,14 @@ def get_disk_block_devices(slave_devices):
 
     threads = []
     for idx, disk in enumerate(disks, start=0):
-        threads.append(thread.ThreadFacade.run_in_thread(get_block_devices, [disk, idx]))
+        try:
+            if disk.split("/")[-1] in slave_devices or is_slave_of_multipath(disk):
+                continue
+            threads.append(thread.ThreadFacade.run_in_thread(get_block_devices, [disk, idx]))
+        except Exception as e:
+            logger.warn(linux.get_exception_stacktrace())
+            continue
+
     for t in threads:
         t.join()
 
