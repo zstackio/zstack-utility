@@ -903,9 +903,6 @@ def parse_pci_device_address(addr):
     function = addr.split(".")[-1]
     return domain, bus, slot, function
 
-def is_q35_supported():
-    return HOST_ARCH in ['x86_64', 'aarch64']
-
 def get_machineType(machine_type):
     if HOST_ARCH == "aarch64":
         return "virt"
@@ -3318,12 +3315,12 @@ class Vm(object):
             def on_aarch64():
 
                 def on_redhat():
-                    e(os, 'type', 'hvm', attrib={'arch': 'aarch64', 'machine': 'virt'})
+                    e(os, 'type', 'hvm', attrib={'arch': 'aarch64', 'machine': machine_type})
                     e(os, 'loader', '/usr/share/edk2/aarch64/QEMU_EFI-pflash.raw', attrib={'readonly': 'yes', 'type': 'pflash'})
                     e(os, 'nvram', '/var/lib/libvirt/qemu/nvram/%s.fd' % cmd.vmInstanceUuid, attrib={'template': '/usr/share/edk2/aarch64/vars-template-pflash.raw'})
 
                 def on_debian():
-                    e(os, 'type', 'hvm', attrib={'arch': 'aarch64', 'machine': 'virt'})
+                    e(os, 'type', 'hvm', attrib={'arch': 'aarch64', 'machine': machine_type})
                     e(os, 'loader', '/usr/share/OVMF/QEMU_EFI-pflash.raw', attrib={'readonly': 'yes', 'type': 'rom'})
                     e(os, 'nvram', '/var/lib/libvirt/qemu/nvram/%s.fd' % cmd.vmInstanceUuid, attrib={'template': '/usr/share/OVMF/vars-template-pflash.raw'})
                     
@@ -4187,7 +4184,7 @@ class Vm(object):
             devices = elements['devices']
             e(devices, 'controller', None, {'type': 'scsi', 'model': 'virtio-scsi'})
 
-            if (machine_type == "q35" or machine_type == "virt") and is_q35_supported():
+            if machine_type in ['q35', 'virt']:
                 controller = e(devices, 'controller', None, {'type': 'sata', 'index': '0'})
                 e(controller, 'alias', None, {'name': 'sata'})
                 e(controller, 'address', None, {'type': 'pci', 'domain': '0', 'bus': '0', 'slot': '0x1f', 'function': '2'})
