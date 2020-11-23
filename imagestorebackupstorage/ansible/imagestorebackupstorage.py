@@ -78,7 +78,7 @@ dst_pkg_imagestorebackupstorage = "zstack-store.bin"
 dst_pkg_exporter = "collectd_exporter"
 
 # include zstacklib.py
-(distro, distro_version, distro_release, _) = get_remote_host_info(host_post_info)
+(distro, major_version, distro_release, distro_version) = get_remote_host_info(host_post_info)
 zstacklib_args = ZstackLibArgs()
 zstacklib_args.distro = distro
 zstacklib_args.distro_release = distro_release
@@ -89,10 +89,10 @@ zstacklib_args.host_post_info = host_post_info
 zstacklib_args.pip_url = pip_url
 zstacklib_args.trusted_host = trusted_host
 zstacklib_args.require_python_env = require_python_env
+zstacklib_args.zstack_releasever = get_host_releasever([distro, distro_release, distro_version])
 if distro in DEB_BASED_OS:
     zstacklib_args.apt_server = yum_server
     zstacklib_args.zstack_apt_source = zstack_repo
-    zstacklib_args.zstack_releasever = get_mn_apt_release()
 else :
     zstacklib_args.yum_server = yum_server
 zstacklib = ZstackLib(zstacklib_args)
@@ -108,6 +108,7 @@ if distro in RPM_BASED_OS:
     x86_64_c76 = "qemu-img-ev fuse-sshfs nmap collectd"
     aarch64_ns10 = "qemu-img fuse-sshfs nmap collectd"
     mips64el_ns10 = "qemu-img-ev fuse-sshfs nmap collectd"
+    x86_64_ns10 = "qemu-img fuse-sshfs nmap collectd"
     qemu_pkg = eval("%s_%s" % (host_arch, releasever))
     # skip these packages
     _skip_list = re.split(r'[|;,\s]\s*', skip_packages)
@@ -139,11 +140,9 @@ elif distro in DEB_BASED_OS:
 else:
     error("ERROR: Unsupported distribution")
 
-run_remote_command("rm -rf %s/*" % imagestore_root, host_post_info)
-command = 'mkdir -p %s ' % (imagestore_root + "/certs")
-run_remote_command(command, host_post_info)
-
 # name: copy imagestore binary
+command = 'rm -rf {};mkdir -p {}'.format(imagestore_root, imagestore_root + "/certs")
+run_remote_command(command, host_post_info)
 copy_arg = CopyArg()
 dest_pkg = "%s/%s" % (imagestore_root, dst_pkg_imagestorebackupstorage)
 copy_arg.src = "%s/%s" % (file_root, src_pkg_imagestorebackupstorage)
