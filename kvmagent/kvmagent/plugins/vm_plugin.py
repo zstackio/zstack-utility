@@ -47,6 +47,7 @@ from zstacklib.utils import vm_operator
 from zstacklib.utils import pci
 from zstacklib.utils.report import *
 from zstacklib.utils.vm_plugin_queue_singleton import VmPluginQueueSingleton
+from distutils.version import LooseVersion
 
 logger = log.get_logger(__name__)
 
@@ -3061,13 +3062,16 @@ class Vm(object):
             state = get_all_vm_states().get(uuid)
             if state != Vm.VM_STATE_RUNNING:
                 raise kvmagent.KvmError("vm's state is %s, not running" % state)
-            ping_json = shell.call('virsh qemu-agent-command %s \'{"execute":"guest-ping"}\'' % self.uuid, False)
-            try:
-                logger.debug("ping_json: %s" % ping_json)
-                if ping_json.find("{\"return\":{}}") != -1:
+            r, o, e = bash.bash_roe("virsh qemu-agent-command %s --cmd '{\"execute\":\"guest-info\"}'" % self.uuid)
+            if r != 0:
+                logger.warn("get guest info from vm[uuid:%s]: %s, %s" % (self.uuid, o, e))
+            else:
+                logger.debug("qga_json: %s" % o)
+                info = json.loads(o)['return']
+                if LooseVersion(info["version"]) < LooseVersion('2.3'):
+                    raise kvmagent.KvmError("You need to install version 2.3 or above to support set user password ,qga current version is %s" % info["version"])
+                else:
                     return True
-            except Exception as err:
-                logger.warn(err.message)
             time.sleep(2)
         raise kvmagent.KvmError("qemu-agent service is not ready in vm...")
 
