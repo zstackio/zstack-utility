@@ -650,8 +650,8 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         """
         self._ensure_env()
         with bm_utils.rollback(self.destroy_network, req):
-            # Destroy previous configuration
-            self.destroy_network(req)
+            # Do not destroy previous configuration
+            # self.destroy_network(req)
 
             network_obj = NetworkObj.from_json(req)
             self._prepare_provision_network(network_obj)
