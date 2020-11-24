@@ -1,0 +1,12 @@
+[Unit]
+Description=ZStack baremetal instance agent
+After=network.target
+StartLimitIntervalSec=0[Service]
+Type=simple
+Restart=always
+RestartSec=1
+User=root
+ExecStart=/var/lib/zstack/baremetalv2/bm-instance-agent/bm-instance-agent.pex
+
+[Install]
+WantedBy=multi-user.target

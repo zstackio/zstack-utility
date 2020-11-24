@@ -1,0 +1,34 @@
+port=0
+
+interface={{ provision_dhcp_interface }}
+bind-interfaces
+
+dhcp-sequential-ip
+dhcp-range={{ provision_network_dhcp_range }}
+dhcp-option=1,{{ provision_network_netmask }}
+{% if provision_network_gateway %}
+dhcp-option=3,{{ provision_network_gateway }}
+{% endif %}
+dhcp-option=6,223.5.5.5,8.8.8.8
+
+dhcp-hostsfile={{ provision_dhcp_hosts_file }}
+
+dhcp-option=option:tftp-server,{{ bm_gateway_provision_ip }}
+dhcp-option=option:server-ip-address,{{ bm_gateway_provision_ip }}
+dhcp-option=210,/tftpboot
+
+enable-tftp
+tftp-root={{ bm_gateway_tftpboot_dir }}
+log-facility={{ provision_dhcp_log_path }}
+
+# Configure ipxe
+dhcp-match=ipxe,175
+dhcp-match=set:efi,option:client-arch,7
+dhcp-match=set:efi,option:client-arch,9
+# Client is already running iPXE; move to next stage of chainloading
+dhcp-option=tag:ipxe,option:bootfile-name,boot.ipxe
+# Client is PXE booting over EFI without iPXE ROM,
+# send EFI version of iPXE chainloader
+dhcp-option=tag:efi,tag:!ipxe,option:bootfile-name,ipxe.efi
+
+dhcp-option=option:bootfile-name,undionly.kpxe

@@ -32,6 +32,8 @@ import zstacklib.utils.iptables as iptables
 import zstacklib.utils.lock as lock
 
 from kvmagent import kvmagent
+from kvmagent.plugins.baremetal_v2_gateway_agent import \
+    BaremetalV2GatewayAgentPlugin as BmV2GwAgent
 from kvmagent.plugins.imagestore import ImageStoreClient
 from zstacklib.utils import bash, plugin
 from zstacklib.utils.bash import in_bash
@@ -5494,6 +5496,24 @@ class VmPlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     def take_volume_snapshot(self, req):
+        """ Take snapshot for a volume
+
+        :param req: The request obj, exmaple of req.body::
+            {
+                'vmUuid': '0dc62031-678d-4040-95e4-64fb217a2669',
+                'volumeUuid': '2e9fd964-ba33-4214-aaad-c6e16b9ae72b',
+                'volume': {
+
+                },
+                'installPath': '',
+                'volumeInstallPath': '',
+                'newVolumeUuid': '',
+                'newVolumeInstallPath': '',
+                'fullSnapshot': False,
+                'isBaremetalInstance': False,
+                'isBaremetalInstanceOnline': False
+            }
+        """
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = TakeSnapshotResponse()
 
@@ -5527,24 +5547,43 @@ class VmPlugin(kvmagent.KvmAgent):
                         cmd.volumeInstallPath, cmd.installPath)
 
             else:
-                vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
-
-                if vm and vm.state != vm.VM_STATE_RUNNING and vm.state != vm.VM_STATE_SHUTDOWN and vm.state != vm.VM_STATE_PAUSED:
-                    raise kvmagent.KvmError(
-                        'unable to take snapshot on vm[uuid:{0}] volume[id:{1}], because vm is not Running, Stopped or Paused, current state is {2}'.format(
-                            vm.uuid, cmd.volume.deviceId, vm.state))
-
-                if vm and (vm.state == vm.VM_STATE_RUNNING or vm.state == vm.VM_STATE_PAUSED):
-                    rsp.snapshotInstallPath, rsp.newVolumeInstallPath = vm.take_volume_snapshot(cmd.volume,
-                                                                                                cmd.installPath,
-                                                                                                cmd.fullSnapshot)
-                else:
-                    if cmd.fullSnapshot:
-                        rsp.snapshotInstallPath, rsp.newVolumeInstallPath = take_full_snapshot_by_qemu_img_convert(
-                            cmd.volumeInstallPath, cmd.installPath)
+                # New params in cmd:
+                # A flag to show the instance is bm instance
+                # A flag to show the snapshot is online or offline
+                if cmd.isBaremetalInstance:
+                    if cmd.isBaremetalInstanceOnline:
+                        src_vol_driver, dst_vol_driver = BmV2GwAgent.pre_take_volume_snapshot(cmd)
+                        try:
+                            rsp.snapshotInstallPath, rsp.newVolumeInstallPath = take_delta_snapshot_by_qemu_img_convert(
+                                cmd.volumeInstallPath, cmd.installPath)
+                            BmV2GwAgent.post_take_volume_snapshot(src_vol_driver, dst_vol_driver)
+                        except Exception as e:
+                            # Try to resume the dm device
+                            src_vol_driver.resume()
+                            logger.error(traceback.format_exc())
+                            raise e
                     else:
                         rsp.snapshotInstallPath, rsp.newVolumeInstallPath = take_delta_snapshot_by_qemu_img_convert(
                             cmd.volumeInstallPath, cmd.installPath)
+                else:
+                    vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
+
+                    if vm and vm.state != vm.VM_STATE_RUNNING and vm.state != vm.VM_STATE_SHUTDOWN and vm.state != vm.VM_STATE_PAUSED:
+                        raise kvmagent.KvmError(
+                            'unable to take snapshot on vm[uuid:{0}] volume[id:{1}], because vm is not Running, Stopped or Paused, current state is {2}'.format(
+                                vm.uuid, cmd.volume.deviceId, vm.state))
+
+                    if vm and (vm.state == vm.VM_STATE_RUNNING or vm.state == vm.VM_STATE_PAUSED):
+                        rsp.snapshotInstallPath, rsp.newVolumeInstallPath = vm.take_volume_snapshot(cmd.volume,
+                                                                                                    cmd.installPath,
+                                                                                                    cmd.fullSnapshot)
+                    else:
+                        if cmd.fullSnapshot:
+                            rsp.snapshotInstallPath, rsp.newVolumeInstallPath = take_full_snapshot_by_qemu_img_convert(
+                                cmd.volumeInstallPath, cmd.installPath)
+                        else:
+                            rsp.snapshotInstallPath, rsp.newVolumeInstallPath = take_delta_snapshot_by_qemu_img_convert(
+                                cmd.volumeInstallPath, cmd.installPath)
 
                 if cmd.fullSnapshot:
                     logger.debug(
@@ -5562,7 +5601,8 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.error = str(e)
             rsp.success = False
 
-        touchQmpSocketWhenExists(cmd.vmUuid)
+        if not cmd.isBaremetalVolumeSnapshot:
+            touchQmpSocketWhenExists(cmd.vmUuid)
         return jsonobject.dumps(rsp)
 
     def push_backing_files(self, isc, hostname, drivertype, source):

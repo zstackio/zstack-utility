@@ -2248,6 +2248,7 @@ def check_nping_result(port, result):
         port_state[port] = "close"
     return port_state
 
+
 def write_uuids(type, str):
     if str is None or len(str) == 0:
         return
