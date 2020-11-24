@@ -214,11 +214,13 @@ check_zstack_release(){
         rpm -q zstack-release >/dev/null 2>&1
         if [ $? -eq 0 ];then
             ZSTACK_RELEASE=`rpm -qi zstack-release |awk -F ':' '/Version/{print $2}' |sed 's/ //g'`
-            source /etc/profile >/dev/null 2>&1
             [ ! -f /etc/zstack-release ] && yum reinstall -y zstack-release > /dev/null 2>&1
         else
-            fail2 "rpm package zstack-release is not installed, use zstack-upgrade -r/-a zstack-xxx.iso(>=3.7.0) to upgrade zstack-dvd and install zstack-release."
+            ZSTACK_RELEASE=`rpm -q centos-release | awk -F '.' '{print $1}' | awk -F '-' '{print "c"$3$4}'`
+            find /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE -type f -name zstack-release-$ZSTACK_RELEASE-\* -exec rpm -i {} >/dev/null 2>&1 \; || \
+                    fail2 "RPM package zstack-release is not installed, use zstack-upgrade -r/-a zstack-xxx.iso(>=3.7.0) to upgrade zstack-dvd and install zstack-release RPM from /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE"
         fi
+        source /etc/profile >/dev/null 2>&1
     else
         dpkg -l zstack-release > /dev/null 2>&1
         if [ $? -eq 0 ];then
