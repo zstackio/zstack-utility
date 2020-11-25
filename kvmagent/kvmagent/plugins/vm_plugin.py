@@ -6159,7 +6159,7 @@ class VmPlugin(kvmagent.KvmAgent):
             vm.domain.detachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
         except libvirt.libvirtError as ex:
             logger.warn('detach usb device to domain[%s] failed: %s' % (cmd.vmUuid, str(ex)))
-            if "redirdev was not found" in e:
+            if "redirdev was not found" in str(ex):
                 logger.debug(
                     "cannot find matching redirdev from vm %s domainxml, maybe usb has been detached" % cmd.vmUuid)
                 return True
