@@ -252,7 +252,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         if not os.path.exists(self.DNSMASQ_HOSTS_FILE):
             return
 
-        host = '{mac_addr}:{ip_addr}'.format(
+        host = '{mac_addr},{ip_addr}'.format(
             mac_addr=instance_obj.provision_mac,
             ip_addr=instance_obj.provision_ip)
 
