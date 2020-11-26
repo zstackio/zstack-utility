@@ -1,5 +1,7 @@
 port=0
 
+pid-file={{ zstack_bm_dnsmasq_pid }}
+
 interface={{ provision_dhcp_interface }}
 bind-interfaces
 
@@ -12,6 +14,7 @@ dhcp-option=3,{{ provision_network_gateway }}
 dhcp-option=6,223.5.5.5,8.8.8.8
 
 dhcp-hostsfile={{ provision_dhcp_hosts_file }}
+dhcp-leasefile={{ provision_dhcp_leases_file }}
 
 dhcp-option=option:tftp-server,{{ bm_gateway_provision_ip }}
 dhcp-option=option:server-ip-address,{{ bm_gateway_provision_ip }}
