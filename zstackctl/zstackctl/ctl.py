@@ -1997,9 +1997,9 @@ class StartCmd(Command):
     BEAN_CONTEXT_REF_XML = "WEB-INF/classes/beanRefContext.xml"
     HEAP_DUMP_DIR = '../../logs/heap.hprof'
     MINIMAL_CPU_NUMBER = 4
-    #MINIMAL_MEM_SIZE unit is KB, here is 6GB, in linxu, 6GB is 5946428 KB
-    #Save some memory for kdump etc. The actual limitation is 5000000KB
-    MINIMAL_MEM_SIZE = 5000000
+    #MINIMAL_MEM_SIZE unit is KB, here is 8GB, in linxu, 8GB is 8388608 KB
+    #Save some memory for kdump etc. The actual limitation is 8000000KB
+    MINIMAL_MEM_SIZE = 8000000
     SIMULATOR = 'SIMULATOR'
 
     def __init__(self):
@@ -2181,7 +2181,7 @@ class StartCmd(Command):
             if not has_opt('-Xms'):
                 catalina_opts.append('-Xms512M')
             if not has_opt('-Xmx'):
-                catalina_opts.append('-Xmx4096M')
+                catalina_opts.append('-Xmx6144M')
 
             with open(setenv_path, 'w') as fd:
                 fd.write('export CATALINA_OPTS=" %s"' % ' '.join(catalina_opts))
@@ -8603,7 +8603,7 @@ deploymentProfiles = {
         'small':  ( 4,  64, 0.6, 15),
         'medium': ( 8, 128, 0.5, 30),
         'large':  (16, 128, 0.4, 60),
-        'default':( 4, 100, 0.6, 15),
+        'default':( 6, 100, 0.6, 15),
 }
 
 class SetDeploymentCmd(Command):

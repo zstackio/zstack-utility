@@ -1317,9 +1317,9 @@ cs_pre_check(){
             fail "Your system only has $current_cpu CPUs. $PRODUCT_NAME needs at least 4 CPUs."
         fi
         current_memory=`free -m|grep Mem|awk '{print $2}'`
-        #Save some memory for kdump etc. The actual limitation is 5000MB
-        if [ $current_memory -lt 5000 ]; then
-            fail "Your system only has $current_memory MB memory. $PRODUCT_NAME needs at least 5 GB memory, we recommend 8 GB."
+        #Save some memory for kdump etc. The actual limitation is 8000MB
+        if [ $current_memory -lt 8000 ]; then
+            fail "Your system only has $current_memory MB memory. $PRODUCT_NAME needs at least 8 GB memory, we recommend 12 GB."
         fi
     fi
     #change zstack.properties config
