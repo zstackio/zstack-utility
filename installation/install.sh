@@ -1318,8 +1318,8 @@ cs_pre_check(){
             fail "Your system only has $current_cpu CPUs. $PRODUCT_NAME needs at least 4 CPUs."
         fi
         current_memory=`free -m|grep Mem|awk '{print $2}'`
-        #Save some memory for kdump etc. The actual limitation is 8000MB
-        if [ $current_memory -lt 8000 ]; then
+        # Save some memory for kdump etc.
+        if [ $current_memory -lt 7168 ]; then
             fail "Your system only has $current_memory MB memory. $PRODUCT_NAME needs at least 8 GB memory, we recommend 12 GB."
         fi
     fi
