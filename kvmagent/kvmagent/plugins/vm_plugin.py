@@ -3532,21 +3532,24 @@ class Vm(object):
                     e(devices, 'emulator', kvmagent.get_colo_qemu_path())
                 else:
                     e(devices, 'emulator', kvmagent.get_qemu_path())
-            # no default usb controller and tablet device for appliance vm
-            if cmd.isApplianceVm:
-                e(devices, 'controller', None, {'type': 'usb', 'model': 'none'})
-                elements['devices'] = devices
-                return
-
-            tablet = e(devices, 'input', None, {'type': 'tablet', 'bus': 'usb'})
-            e(tablet, 'address', None, {'type':'usb', 'bus':'0', 'port':'1'})
 
             @linux.with_arch(todo_list=['aarch64', 'mips64el'])
             def set_keyboard():
                 keyboard = e(devices, 'input', None, {'type': 'keyboard', 'bus': 'usb'})
                 e(keyboard, 'address', None, {'type': 'usb', 'bus': '0', 'port': '2'})
 
-            set_keyboard()
+            def set_tablet():
+                tablet = e(devices, 'input', None, {'type': 'tablet', 'bus': 'usb'})
+                e(tablet, 'address', None, {'type':'usb', 'bus':'0', 'port':'1'})
+
+            # no default usb controller and tablet device for appliance vm
+            if cmd.isApplianceVm:
+                e(devices, 'controller', None, {'type': 'usb', 'model': 'ehci'})
+                set_keyboard()
+            else:
+                set_keyboard()
+                set_tablet()
+
             elements['devices'] = devices
 
         def make_cdrom():
