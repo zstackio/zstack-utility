@@ -44,9 +44,12 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
     # Dnsmasq configuration
     DNSMASQ_DIR = os.path.join(BAREMETAL_LIB_DIR, 'dnsmasq/')
     DNSMASQ_CONF_PATH = os.path.join(DNSMASQ_DIR, 'dnsmasq.conf')
-    DNSMASQ_HOSTS_FILE = os.path.join(DNSMASQ_DIR, 'hosts')
+    DNSMASQ_HOSTS_PATH = os.path.join(DNSMASQ_DIR, 'hosts')
+    DNSMASQ_LEASE_PATH = os.path.join(DNSMASQ_DIR, 'leases')
     DNSMASQ_LOG_PATH=os.path.join(BAREMETAL_LOG_DIR, 'dnsmasq.log')
-    DNSMASQ_PID_PATH = os.path.join(PID_DIR, 'dnsmasq.pid')
+    DNSMASQ_PID_PATH = os.path.join(PID_DIR, 'zstack-bm-dnsmasq.pid')
+    DNSMASQ_SYSTEMD_SERVICE_PATH = \
+            '/usr/lib/systemd/system/zstack-baremetal-dnsmasq.service'
 
     TFTPBOOT_DIR = os.path.join(BAREMETAL_LIB_DIR, 'tftpboot/')
     PXELINUX_CFG_DIR = os.path.join(TFTPBOOT_DIR, 'pxelinux.cfg/')
@@ -56,8 +59,6 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
     NGINX_CONF_PATH = os.path.join(NGINX_CONF_DIR, 'nginx.conf')
     NGINX_BM_AGENT_PROXY_CONF_DIR = os.path.join(NGINX_CONF_DIR, 'conf.d')
     NGINX_LOG_DIR = os.path.join(BAREMETAL_LOG_DIR, 'nginx')
-    # NGINX_CONF_PATH = '/etc/nginx/nginx.conf'
-    # NGINX_BM_AGENT_PROXY_CONF_DIR = '/etc/nginx/conf.d/proxy/'
     NGINX_PID_PATH = os.path.join(PID_DIR, 'zstack-bm-nginx.pid')
     NGINX_SYSTEMD_SERVICE_PATH = \
             '/usr/lib/systemd/system/zstack-baremetal-nginx.service'
@@ -91,8 +92,9 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                          'pciutils-devel', 'ncurses-devel', 'python-docutils',
                          'flex', 'targetcli']
         yum_release = kvmagent.get_host_yum_release()
-        cmd = ('export YUM0={yum_release}; pkg_list=`rpm -q {pkg_list} | '
-               'grep "not installed" | awk '
+        cmd = ('export YUM0={yum_release}; yum --disablerepo=* '
+               '--enablerepo=zstack-mn clean all; '
+               'pkg_list=`rpm -q {pkg_list} | grep "not installed" | awk '
                '\'{{ print $2 }}\'`; for pkg in $pkg_list; do yum '
                '--disablerepo=* --enablerepo=zstack-mn install -y '
                '$pkg > /dev/null || exit 1; done;').format(
@@ -160,7 +162,9 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             'nginx_proxy_to_agent_tcp': os.path.join(
                 template_dir, 'nginx-proxy-to-agent-tcp.j2'),
             'nginx_systemd_service': os.path.join(
-                template_dir, 'zstack-baremetal-nginx.service.j2')
+                template_dir, 'zstack-baremetal-nginx.service.j2'),
+            'dnsmasq_systemd_service': os.path.join(
+                template_dir, 'zstack-baremetal-dnsmasq.service.j2')
         }
         with open(k_v_mapping.get(template), 'r') as f:
             return Template(f.read())
@@ -197,31 +201,45 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             start=network_obj.dhcp_range_start_ip,
             end=network_obj.dhcp_range_end_ip)
         conf = template.render(
+            zstack_bm_dnsmasq_pid=self.DNSMASQ_PID_PATH,
             provision_dhcp_interface=network_obj.dhcp_interface,
             provision_network_dhcp_range = ip_range,
             provision_network_netmask=network_obj.dhcp_range_netmask,
             provision_network_gateway=network_obj.dhcp_range_gateway,
-            provision_dhcp_hosts_file=self.DNSMASQ_HOSTS_FILE,
+            provision_dhcp_hosts_file=self.DNSMASQ_HOSTS_PATH,
+            provision_dhcp_leases_file=self.DNSMASQ_LEASE_PATH,
             bm_gateway_provision_ip=network_obj.provision_nic_ip,
             bm_gateway_tftpboot_dir=self.TFTPBOOT_DIR,
             provision_dhcp_log_path=self.DNSMASQ_LOG_PATH)
         with open(self.DNSMASQ_CONF_PATH, 'w') as f:
             f.write(conf)
 
-        cmd = ('dnsmasq --conf-file={conf} --pid-file={pid} '
-                '--dhcp-hostsfile={hosts}').format(
-                    conf=self.DNSMASQ_CONF_PATH,
-                    pid=self.DNSMASQ_PID_PATH,
-                    hosts=self.DNSMASQ_HOSTS_FILE)
+        if not os.path.exists(self.DNSMASQ_SYSTEMD_SERVICE_PATH):
+            dnsmasq_template = self._load_template('dnsmasq_systemd_service')
+            dnsmasq_conf = dnsmasq_template.render(
+                zstack_bm_dnsmasq_pid=self.DNSMASQ_PID_PATH,
+                zstack_bm_dnsmasq_conf_path=self.DNSMASQ_CONF_PATH)
+            with open(self.DNSMASQ_SYSTEMD_SERVICE_PATH, 'w') as f:
+                f.write(dnsmasq_conf)
+            cmd = 'systemctl daemon-reload'
+            shell.call(cmd)
+
+        cmd = ('systemctl start zstack-baremetal-dnsmasq && '
+               'systemctl reload zstack-baremetal-dnsmasq')
         shell.call(cmd)
 
     def _destroy_dnsmasq(self):
         """ Destroy dnsmasq configuration
         """
-        pid = linux.find_process_by_cmdline([self.DNSMASQ_PID_PATH])
-        if pid:
-            shell.call('kill %s' % pid)
-        linux.rm_file_force(self.DNSMASQ_HOSTS_FILE)
+        # pid = linux.find_process_by_cmdline([self.DNSMASQ_PID_PATH])
+        # if pid:
+        #     shell.call('kill %s' % pid)
+        cmd = ('systemctl is-active zstack-baremetal-dnsmasq || exit 0; '
+               'systemctl stop zstack-baremetal-dnsmasq.service')
+        shell.call(cmd)
+
+        linux.rm_file_force(self.DNSMASQ_HOSTS_PATH)
+        linux.rm_file_force(self.DNSMASQ_LEASE_PATH)
         linux.rm_file_force(self.DNSMASQ_CONF_PATH)
         linux.rm_file_force(self.DNSMASQ_PID_PATH)
 
@@ -233,35 +251,54 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             ip_addr=instance_obj.provision_ip)
 
         dnsmasq_hosts = ''
-        if os.path.exists(self.DNSMASQ_HOSTS_FILE):
-            with open(self.DNSMASQ_HOSTS_FILE, 'r') as f:
+        if os.path.exists(self.DNSMASQ_HOSTS_PATH):
+            with open(self.DNSMASQ_HOSTS_PATH, 'r') as f:
                 dnsmasq_hosts = f.read()
 
         if not host in dnsmasq_hosts:
             cmd = 'echo {host} >> {conf_path}'.format(
-                host=host, conf_path=self.DNSMASQ_HOSTS_FILE)
+                host=host, conf_path=self.DNSMASQ_HOSTS_PATH)
             shell.call(cmd)
 
-        pid = linux.find_process_by_cmdline([self.DNSMASQ_PID_PATH])
-        cmd = 'kill -s SIGHUP {pid}'.format(pid=pid)
+        # Ensure the ip address not leased by dnsmasq, if leased, remove the
+        # record
+        if os.path.exists(self.DNSMASQ_LEASE_PATH):
+            with open(self.DNSMASQ_LEASE_PATH, 'r') as f:
+                dnsmasq_leases = f.read()
+            if instance_obj.provision_ip in dnsmasq_leases:
+                cmd = 'sed -i /{ip_addr}/d {lease_path}'.format(
+                    mac_addr=instance_obj.provision_mac,
+                    ip_addr=instance_obj.provision_ip,
+                    lease_path=self.DNSMASQ_LEASE_PATH)
+                shell.call(cmd)
+
+        cmd = ('systemctl start zstack-baremetal-dnsmasq && '
+               'systemctl reload zstack-baremetal-dnsmasq')
         shell.call(cmd)
 
     def _delete_dnsmasq_host(self, instance_obj):
         """ Delete dnsmasq configuration
         """
-        if not os.path.exists(self.DNSMASQ_HOSTS_FILE):
+        if not os.path.exists(self.DNSMASQ_HOSTS_PATH):
             return
 
-        host = '{mac_addr}:{ip_addr}'.format(
+        # Use . for regexp, to match ','(in hosts) and ' '(in leases)
+        host = '{mac_addr}.{ip_addr}'.format(
             mac_addr=instance_obj.provision_mac,
             ip_addr=instance_obj.provision_ip)
 
         cmd = 'sed -i /{host}/d {conf_path}'.format(
-            host=host, conf_path=self.DNSMASQ_HOSTS_FILE)
+            host=host, conf_path=self.DNSMASQ_HOSTS_PATH)
         shell.call(cmd)
 
-        pid = linux.find_process_by_cmdline([self.DNSMASQ_PID_PATH])
-        cmd = 'kill -s SIGHUP {pid}'.format(pid=pid)
+        cmd = 'sed -i /{host}/d {lease_path}'.format(
+            host=host, lease_path=self.DNSMASQ_LEASE_PATH)
+        shell.call(cmd)
+
+        # pid = linux.find_process_by_cmdline([self.DNSMASQ_PID_PATH])
+        # cmd = 'kill -s SIGHUP {pid}'.format(pid=pid)
+        cmd = ('systemctl start zstack-baremetal-dnsmasq && '
+               'systemctl reload zstack-baremetal-dnsmasq')
         shell.call(cmd)
 
     def _prepare_nginx(self, network_obj):
@@ -304,7 +341,8 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         Include proxy shellinaboxd, proxy bm instance agent API, inspect http
         web server, mn proxy.
         """
-        cmd = ('systemctl stop zstack-baremetal-nginx')
+        cmd = ('systemctl is-active zstack-baremetal-nginx || exit 0; '
+               'systemctl stop zstack-baremetal-nginx.service')
         shell.call(cmd)
         # NOTE(ya.wang) The exist configuration file will rewrite during
         # network prepare, therefore the main conf do not need remove.
@@ -360,12 +398,11 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             msg = ('The nginx configuration file: {file_path} was '
                    'deleted before the operate').format(file_path=file_path)
             logger.warning(msg)
-        os.remove(file_path)
+        linux.rm_file_force(file_path)
 
         file_path = os.path.join(self.NGINX_BM_AGENT_PROXY_CONF_DIR,
                                 instance_obj.uuid + '.tcp')
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        linux.rm_file_force(file_path)
 
         cmd = ('systemctl start zstack-baremetal-nginx && '
                'systemctl reload zstack-baremetal-nginx')
@@ -555,7 +592,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                        ipxe_file_path=ipxe_file_name)
             logger.warning(msg)
             return
-        os.remove(ipxe_file_path)
+        linux.rm_file_force(ipxe_file_path)
 
     def _append_conf_to_ipxe_configuration(self, instance_obj, volume_driver):
         """ Append a sanhook to a exist ipxe configuration
@@ -650,8 +687,8 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         """
         self._ensure_env()
         with bm_utils.rollback(self.destroy_network, req):
-            # Destroy previous configuration
-            self.destroy_network(req)
+            # Do not destroy previous configuration
+            # self.destroy_network(req)
 
             network_obj = NetworkObj.from_json(req)
             self._prepare_provision_network(network_obj)
@@ -689,8 +726,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         self._destroy_nginx()
         self._destroy_dnsmasq()
         self._destroy_provision_network(network_obj)
-        if os.path.exists(self.BAREMETAL_GATEWAY_AGENT_CONF_CACHE):
-            os.remove(self.BAREMETAL_GATEWAY_AGENT_CONF_CACHE)
+        linux.rm_file_force(self.BAREMETAL_GATEWAY_AGENT_CONF_CACHE)
 
         return jsonobject.dumps(kvmagent.AgentResponse())
 
