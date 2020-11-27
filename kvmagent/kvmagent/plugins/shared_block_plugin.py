@@ -680,7 +680,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     @staticmethod
     @bash.in_bash
     def compare(src, dst):
-        return bash.bash_r("cmp %s %s" % (src, dst)) == 0
+        return bash.bash_r("%s %s %s" % (qemu_img.subcmd('compare'), src, dst)) == 0
 
     @kvmagent.replyerror
     def upload_to_sftp(self, req):
