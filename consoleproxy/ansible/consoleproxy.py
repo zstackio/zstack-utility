@@ -18,6 +18,7 @@ zstack_repo = 'false'
 post_url = ""
 chrony_servers = None
 pkg_consoleproxy = ""
+http_console_proxy_port = "4901"
 virtualenv_version = "12.1.1"
 remote_user = "root"
 remote_pass = None
@@ -73,6 +74,69 @@ else:
     # name: create root directories
     command = 'mkdir -p %s %s' % (consoleproxy_root, virtenv_path)
     run_remote_command(command, host_post_info)
+
+# name: create bm2-console-proxy.service
+command = """
+mkdir -p /var/log/zstack/bm2-console-proxy/
+touch /var/log/zstack/bm2-console-proxy/error.log
+touch /var/log/zstack/bm2-console-proxy/access.log
+mkdir -p /etc/zstack/bm2-console-proxy/conf.d/
+
+echo -e "[Unit]
+Description=BareMetal2 instance console proxy
+After=network.target remote-fs.target nss-lookup.target
+
+[Service]
+Type=forking
+Restart=always
+RestartSec=3
+PIDFile=/var/run/zstack/bm2-console-proxy.pid
+ExecStartPre=/usr/bin/rm -f /var/run/zstack/bm2-console-proxy.pid
+ExecStartPre=/usr/sbin/nginx -t -c /etc/zstack/bm2-console-proxy/nginx.conf
+ExecStart=/usr/sbin/nginx -c /etc/zstack/bm2-console-proxy/nginx.conf
+ExecReload=/bin/kill -s HUP \$MAINPID
+KillSignal=SIGQUIT
+TimeoutStopSec=5
+KillMode=process
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target" > /usr/lib/systemd/system/bm2-console-proxy.service
+
+systemctl disable bm2-console-proxy.service
+
+echo -e "user nginx;
+worker_processes auto;
+error_log /var/log/zstack/bm2-console-proxy/error.log;
+pid /var/run/zstack/bm2-console-proxy.pid;
+include /usr/share/nginx/modules/*.conf;
+
+events {{
+    worker_connections 1024;
+}}
+
+http {{
+    access_log          /var/log/zstack/bm2-console-proxy/access.log;
+    sendfile            on;
+    tcp_nopush          on;
+    tcp_nodelay         on;
+    keepalive_timeout   1000;
+    types_hash_max_size 2048;
+    include             /etc/nginx/mime.types;
+    default_type        application/octet-stream;
+
+    map \$http_upgrade \$connection_upgrade {{
+        default upgrade;
+        ''      close;
+    }}
+
+    server {{
+        listen  {PORT};
+        include /etc/zstack/bm2-console-proxy/conf.d/*.conf;
+    }}
+}}" > /etc/zstack/bm2-console-proxy/nginx.conf
+"""
+run_remote_command(command.format(PORT=http_console_proxy_port), host_post_info)
 
 # name: copy zstacklib
 copy_arg = CopyArg()
