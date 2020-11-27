@@ -43,6 +43,12 @@ def get_ipmi_info():
     }
 
 
+def get_boot_mode():
+    if os.path.exists('/sys/firmware/efi'):
+        return 'UEFI'
+    return 'Legacy'
+
+
 def get_basic_info():
     arch = os.uname()[-1]
     cpu_model_name = ''
@@ -59,7 +65,8 @@ def get_basic_info():
         'architecture': arch,
         'cpuModelName': cpu_model_name,
         'cpuNum': str(cpu_num),
-        'memorySize': str(memory_bytes)
+        'memorySize': str(memory_bytes),
+        'bootMode': get_boot_mode()
     }
 
 
