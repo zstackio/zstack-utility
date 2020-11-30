@@ -10,6 +10,7 @@ from zstacklib.utils import log
 from zstacklib.utils import shell
 
 from kvmagent import kvmagent
+from kvmagent.plugins.bmv2_gateway_agent import exception
 from kvmagent.plugins.bmv2_gateway_agent.object import BmInstanceObj
 from kvmagent.plugins.bmv2_gateway_agent.object import NetworkObj
 from kvmagent.plugins.bmv2_gateway_agent.object import VolumeObj
@@ -665,6 +666,13 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         with open(self.INSPECTOR_KS_CFG, 'w') as f:
             f.write(conf)
 
+    def _check_management_provision_network_mixed(self, network_obj):
+        """ Check whether mgmt network nic and provision network nic same
+        """
+        mgmt_iface = linux.get_nic_name_by_ip(network_obj.management_ip)
+        if mgmt_iface == network_obj.dhcp_interface:
+            raise exception.ManagementNetProvisionNetMixed()
+
     @kvmagent.replyerror
     def prepare_network(self, req):
         """ Attach provision network
@@ -680,17 +688,19 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                 'dhcpRangeNetmask': '255.255.255.0',
                 'dhcpRangeGateway': '10.0.201.1',
                 'provisionNicIp': '10.0.201.10',
+                'managementIp': '10.0.201.101',
                 'callBackIp': '10.1.1.10',
                 'callBackPort': '8080'
             }
         }
         """
+        network_obj = NetworkObj.from_json(req)
+        self._check_management_provision_network_mixed(network_obj)
         self._ensure_env()
         with bm_utils.rollback(self.destroy_network, req):
             # Do not destroy previous configuration
             # self.destroy_network(req)
 
-            network_obj = NetworkObj.from_json(req)
             self._prepare_provision_network(network_obj)
             self._prepare_dnsmasq(network_obj)
             self._prepare_nginx(network_obj)

@@ -147,3 +147,12 @@ class PrimaryStorageTypeNotSupport(BmV2GwAgentException):
         msg = ('The primary storage type: {primary_storage_type} not '
                'support yet.').format(**kwargs)
         super(PrimaryStorageTypeNotSupport, self).__init__(msg)
+
+
+class ManagementNetProvisionNetMixed(BmV2GwAgentException):
+
+    def __init__(self, **kwargs):
+        msg = ('The management network interface and provision network '
+               'interface are mixed, please choose another network '
+               'interface and try again.')
+        super(ManagementNetProvisionNetMixed, self).__init__(msg)
