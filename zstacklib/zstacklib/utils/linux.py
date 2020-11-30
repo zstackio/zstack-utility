@@ -1213,8 +1213,8 @@ def get_interface_master_device(interface):
 
 
 def get_interface_ip_addresses(interface):
-    output = shell.call("ip -4 -o a show %s | awk '{print $4}'" % interface)
-    return output.splitlines() if output else None
+    output = shell.call("ip -4 -o a show %s | awk '{print $4}'" % interface.strip())
+    return output.splitlines() if output else []
 
 
 def create_bridge(bridge_name, interface, move_route=True):
