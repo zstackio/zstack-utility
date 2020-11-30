@@ -262,7 +262,8 @@ class HostNetworkInterfaceInventory(object):
             self.interfaceType = "noMaster"
         elif len(bash_o("ip link show type bond_slave %s" % self.interfaceName).strip()) > 0:
             self.interfaceType = "bondingSlave"
-            self.slaveActive = self.interfaceName in linux.read_file("/sys/class/net/%s/bonding/active_slave" % self.master)
+            activeSlave = linux.read_file("/sys/class/net/%s/bonding/active_slave" % self.master)
+            self.slaveActive = self.interfaceName in activeSlave if activeSlave is not None else None
         else:
             self.interfaceType = "bridgeSlave"
 
