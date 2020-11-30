@@ -88,6 +88,7 @@ class PortObj(Base):
         'ipAddress': '10.0.120.10',
         'netmask': '255.255.255.0',
         'gateway': '10.0.120.1',
+        'vlanId': '1024',
         'defaultRoute': True
     }
 
@@ -95,22 +96,24 @@ class PortObj(Base):
     """
 
     allowed_keys = ['mac', 'ip_address', 'netmask', 'gateway',
-                    'default_route', 'iface_name']
+                    'default_route', 'iface_name', 'vlan_id']
 
     @classmethod
     def from_json(cls, port):
         obj = cls()
         obj.construct(port)
 
-        # if hasattr(obj, 'next_default_route_port') and \
-        #         obj.next_default_route_port:
-        #     route_port_obj = PortObj.from_json(obj.next_default_route_port)
-        #     obj.next_default_route_port = route_port_obj
-
         local_ifaces = utils.get_interfaces()
         if obj.mac not in local_ifaces:
-            raise exception.NewtorkInterfaceNotFound(mac=obj.mac)
-        setattr(obj, 'iface_name', local_ifaces.get(obj.mac))
+            raise exception.NewtorkInterfaceNotFound(mac=obj.mac,
+                                                     vlan_id=obj.vlan_id)
+        # NOTE(ya.wang) For vlan nic, the name is 'iface.vlan_id', therefore
+        # try to split it.
+        iface_name = local_ifaces.get(obj.mac).split('.')[0]
+        if obj.vlan_id:
+            iface_name = '{iface_name}.{vlan_id}'.format(
+                iface_name=iface_name, vlan_id=obj.vlan_id)
+        setattr(obj, 'iface_name', iface_name)
 
         return obj
 
@@ -125,6 +128,7 @@ class NetworkObj(Base):
             'ipAddress': '10.0.120.10',
             'netmask': '255.255.255.0',
             'gateway': '10.0.120.1',
+            'vlanId': '1024',
             'defaultRoute': True
         }
     }
@@ -137,6 +141,7 @@ class NetworkObj(Base):
                 'ipAddress': '10.0.120.10',
                 'netmask': '255.255.255.0',
                 'gateway': '10.0.120.1',
+                'vlanId': '1024',
                 'defaultRoute': True
             },
             {
@@ -144,6 +149,7 @@ class NetworkObj(Base):
                 'ipAddress': '10.0.130.10',
                 'netmask': '255.255.255.0',
                 'gateway': '10.0.130.1',
+                'vlanId': '1024',
                 'defaultRoute': False
             }
         ]

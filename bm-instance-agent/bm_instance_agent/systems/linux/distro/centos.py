@@ -26,25 +26,33 @@ class CentOSDriver(linux_driver.LinuxDriver):
             iface_name=port.iface_name,
             ip_address=port.ip_address,
             netmask=port.netmask,
-            gateway=port.gateway)
+            gateway=port.gateway,
+            vlan_id=port.vlan_id)
         with open(conf_file_path, 'w') as f:
             f.write(conf)
 
-    def _post_attach_port(self, instance_obj, network_obj):
-        """ Setup configuration files
-        """
+    def attach_port(self, instance_obj, network_obj):
         for port in network_obj.ports:
             self._write_network_conf(port)
-        # FIXME(ya.wang) Should we restart/enable networking service here?
 
-    def _post_detach_port(self, instance_obj, network_obj):
-        """ Clean network configuration
-        """
+            cmd = ['ifdown', port.iface_name]
+            processutils.execute(*cmd)
+
+            cmd = ['ifup', port.iface_name]
+            processutils.execute(*cmd)
+
+    def detach_port(self, instance_obj, network_obj):
         for port in network_obj.ports:
+            # Ensure that the conf file exist because command ifdown
+            # requires it.
+            self._write_network_conf(port)
+
+            cmd = ['ifdown', port.iface_name]
+            processutils.execute(*cmd)
+
             conf_file_path = '/etc/sysconfig/network-scripts/ifcfg-{}'.format(
                 port.iface_name)
-            if os.path.exists(conf_file_path):
-                os.remove(conf_file_path)
+            os.remove(conf_file_path)
 
     def update_default_route(
         self, instance_obj, old_network_obj, new_network_obj):
@@ -55,31 +63,6 @@ class CentOSDriver(linux_driver.LinuxDriver):
         gw if new gw is not equal to exist gw.
         """
 
-        # # Clean old gateway
-        # gw_addr, gw_iface = bm_utils.get_gateway()
-        # if not gw_addr and not old_network_obj.gateway:
-        #     return
-
-        # if gw_addr:
-        #     if not gw_addr == old_network_obj.gateway:
-        #         raise exception.DefaultGatewayAddressNotEqual(
-        #             old_address=old_network_obj.ip_address,
-        #             exist_address=gw_addr)
-        #     cmd = ['ip', 'route', 'delete', 'default', 'via', gw_addr,
-        #            'dev', gw_iface]
-        #     processutils.execute(*cmd)
-
-        # self._write_network_conf(old_network_obj)
-
-        # # Add new gateway
-        # if not new_network_obj.gateway:
-        #     return
-
-        # cmd = ['ip', 'route', 'add', 'default', 'via',
-        #        new_network_obj.gateway, 'dev', new_network_obj.iface_name]
-        # processutils.execute(*cmd)
-
-        # self._write_network_conf(new_network_obj)
         if old_network_obj:
             self._write_network_conf(old_network_obj.ports[0])
 

@@ -34,7 +34,7 @@ class TestObject(base.TestCase):
     @mock.patch('netifaces.AF_LINK', 17)
     @mock.patch('netifaces.ifaddresses')
     @mock.patch('netifaces.interfaces')
-    def test_network_obj(self, mock_ifaces, mock_ifaddr):
+    def test_network_obj_without_vlan(self, mock_ifaces, mock_ifaddr):
         mock_ifaces.return_value = ['enp4s0f0', 'enp4s0f1']
         mock_ifaddr.side_effect = (fake.IFACE_PORT1, fake.IFACE_PORT2)
         network_obj = objects.NetworkObj.from_json(
@@ -46,10 +46,32 @@ class TestObject(base.TestCase):
             'netmask': '255.255.255.0',
             'gateway': '10.0.0.1',
             'default_route': True,
-            'iface_name': 'enp4s0f1'
+            'iface_name': 'enp4s0f1',
+            'vlan_id': None
         }
         self.assertEqual(data, network_obj.ports[0].to_json())
         self.assertEqual('10.0.0.1', network_obj.default_gw_addr)
+
+    @mock.patch('netifaces.AF_LINK', 17)
+    @mock.patch('netifaces.ifaddresses')
+    @mock.patch('netifaces.interfaces')
+    def test_network_obj_with_vlan(self, mock_ifaces, mock_ifaddr):
+        mock_ifaces.return_value = ['enp4s0f0', 'enp4s0f1']
+        mock_ifaddr.side_effect = (fake.IFACE_PORT1, fake.IFACE_PORT2)
+        network_obj = objects.NetworkObj.from_json(
+            bm_utils.camel_obj_to_snake(fake.PORT3))
+
+        data = {
+            'mac': '52:54:00:4a:c0:1f',
+            'ip_address': '10.0.10.20',
+            'netmask': '255.255.255.0',
+            'gateway': '10.0.10.1',
+            'default_route': True,
+            'iface_name': 'enp4s0f1.130',
+            'vlan_id': 130
+        }
+        self.assertEqual(data, network_obj.ports[0].to_json())
+        self.assertEqual('10.0.10.1', network_obj.default_gw_addr)
 
     def test_header_obj(self):
         header_obj = objects.HeaderObj.from_headers(fake.HEADERS)

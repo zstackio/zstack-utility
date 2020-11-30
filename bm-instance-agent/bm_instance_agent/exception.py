@@ -39,7 +39,7 @@ class NewtorkInterfaceNotFound(BmV2InstanceAgentException):
 
     def __init__(self, **kwargs):
         msg = ('Unable to find a network interface matching the mac '
-               'address: {mac}').format(**kwargs)
+               'address: {mac}, vlan id: {vlan_id}').format(**kwargs)
         super(NewtorkInterfaceNotFound, self).__init__(msg)
 
 

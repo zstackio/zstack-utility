@@ -49,6 +49,15 @@ PORT2 = {
     'defaultRoute': True
 }
 
+PORT3 = {
+    'mac': '52:54:00:4a:c0:1f',
+    'ipAddress': '10.0.10.20',
+    'netmask': '255.255.255.0',
+    'gateway': '10.0.10.1',
+    'defaultRoute': True,
+    'vlanId': 130
+}
+
 
 IFACE_PORT1 = {
     17: [{
@@ -83,6 +92,26 @@ IFACE_PORT2 = {
 
 
 IFACE_PORT2_NONE_IP = {
+    17: [{
+        'addr': '52:54:00:4a:c0:1f',
+        'broadcast': 'ff:ff:ff:ff:ff:ff'
+    }]
+}
+
+
+IFACE_PORT3 = {
+    17: [{
+        'addr': '52:54:00:4a:c0:1f',
+        'broadcast': 'ff:ff:ff:ff:ff:ff'
+    }],
+    2: [{
+        'addr': '10.0.10.20',
+        'netmask': '255.255.255.0',
+    }]
+}
+
+
+IFACE_PORT3_NONE_IP = {
     17: [{
         'addr': '52:54:00:4a:c0:1f',
         'broadcast': 'ff:ff:ff:ff:ff:ff'
