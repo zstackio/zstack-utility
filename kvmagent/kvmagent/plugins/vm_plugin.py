@@ -51,6 +51,9 @@ from zstacklib.utils import vm_operator
 from zstacklib.utils import pci
 from zstacklib.utils.report import *
 from zstacklib.utils.vm_plugin_queue_singleton import VmPluginQueueSingleton
+from zstacklib.utils.libvirt_event_manager_singleton import LibvirtEventManager
+from zstacklib.utils.libvirt_event_manager_singleton import LibvirtEventManagerSingleton
+from distutils.version import LooseVersion
 
 logger = log.get_logger(__name__)
 
@@ -912,75 +915,13 @@ def get_sgio_value():
     device_name = [x for x in os.listdir("/sys/block") if not x.startswith("loop")][0]
     return "unfiltered" if os.path.isfile("/sys/block/{}/queue/unpriv_sgio".format(device_name)) else "filtered"
 
-class LibvirtEventManager(object):
-    EVENT_DEFINED = "Defined"
-    EVENT_UNDEFINED = "Undefined"
-    EVENT_STARTED = "Started"
-    EVENT_SUSPENDED = "Suspended"
-    EVENT_RESUMED = "Resumed"
-    EVENT_STOPPED = "Stopped"
-    EVENT_SHUTDOWN = "Shutdown"
-
-    event_strings = (
-        EVENT_DEFINED,
-        EVENT_UNDEFINED,
-        EVENT_STARTED,
-        EVENT_SUSPENDED,
-        EVENT_RESUMED,
-        EVENT_STOPPED,
-        EVENT_SHUTDOWN
-    )
-
-    suspend_events = {}
-    suspend_events[0] = "VIR_DOMAIN_EVENT_SUSPENDED_PAUSED"
-    suspend_events[1] = "VIR_DOMAIN_EVENT_SUSPENDED_MIGRATED"
-    suspend_events[2] = "VIR_DOMAIN_EVENT_SUSPENDED_IOERROR"
-    suspend_events[3] = "VIR_DOMAIN_EVENT_SUSPENDED_WATCHDOG"
-    suspend_events[4] = "VIR_DOMAIN_EVENT_SUSPENDED_RESTORED"
-    suspend_events[5] = "VIR_DOMAIN_EVENT_SUSPENDED_FROM_SNAPSHOT"
-    suspend_events[6] = "VIR_DOMAIN_EVENT_SUSPENDED_API_ERROR"
-    suspend_events[7] = "VIR_DOMAIN_EVENT_SUSPENDED_POSTCOPY"
-    suspend_events[8] = "VIR_DOMAIN_EVENT_SUSPENDED_POSTCOPY_FAILED"
-
-    def __init__(self):
-        self.stopped = False
-        libvirt.virEventRegisterDefaultImpl()
-
-        @thread.AsyncThread
-        def run():
-            logger.debug("virEventRunDefaultImpl starts")
-            while not self.stopped:
-                try:
-                    if libvirt.virEventRunDefaultImpl() < 0:
-                        logger.warn("virEventRunDefaultImpl quit with error")
-                except:
-                    content = traceback.format_exc()
-                    logger.warn(content)
-
-            logger.debug("virEventRunDefaultImpl stopped")
-
-        run()
-
-    def stop(self):
-        self.stopped = True
-
-    @staticmethod
-    def event_to_string(index):
-        # type: (int) -> str
-        return LibvirtEventManager.event_strings[index]
-
-    @staticmethod
-    def suspend_event_to_string(index):
-        return LibvirtEventManager.suspend_events[index]
-
-
 class LibvirtAutoReconnect(object):
     conn = libvirt.open('qemu:///system')
 
     if not conn:
         raise Exception('unable to get libvirt connection')
 
-    evtMgr = LibvirtEventManager()
+    evtMgr = LibvirtEventManagerSingleton()
 
     libvirt_event_callbacks = {}
 
@@ -1028,6 +969,13 @@ class LibvirtAutoReconnect(object):
         LibvirtAutoReconnect.conn.domainEventRegisterAny(None, libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE,
                                                          lifecycle_callback, None)
 
+        def libvirtClosedCallback(conn, reason, opaque):
+            reasonStrings = (
+              "Error", "End-of-file", "Keepalive", "Client",
+            )
+            logger.debug("got libvirt closed callback: %s: %s" % (conn.getURI(), reasonStrings[reason]))
+
+        LibvirtAutoReconnect.conn.registerCloseCallback(libvirtClosedCallback, None)
         # NOTE: the keepalive doesn't work on some libvirtd even the versions are the same
         # the error is like "the caller doesn't support keepalive protocol; perhaps it's missing event loop implementation"
 
