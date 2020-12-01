@@ -298,7 +298,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def get_qcow2_reference(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        out = shell.call('find %s -type f' % cmd.searchingDir)
+        out = shell.call('find %s/ -type f' % cmd.searchingDir)
 
         rsp = GetQCOW2ReferenceRsp()
         rsp.referencePaths = []
