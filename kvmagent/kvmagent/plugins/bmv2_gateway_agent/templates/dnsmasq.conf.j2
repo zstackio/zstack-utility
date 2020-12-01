@@ -10,6 +10,8 @@ dhcp-range={{ provision_network_dhcp_range }}
 dhcp-option=1,{{ provision_network_netmask }}
 {% if provision_network_gateway %}
 dhcp-option=3,{{ provision_network_gateway }}
+{% else %}
+dhcp-option=3
 {% endif %}
 dhcp-option=6,223.5.5.5,8.8.8.8
 
