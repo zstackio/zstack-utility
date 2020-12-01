@@ -18,8 +18,21 @@ def is_sandstone():
     return os.path.exists("/opt/sandstone/bin/sds")
 
 
-def getCephPoolsCapacity():
+def parseDfPools(pools):
+    res = {}
+
+    for pool in pools:
+        if not pool.name: continue
+
+        st = pool.stats
+        if st and st.bytes_used and st.max_avail:
+            res[pool.name] = (st.bytes_used, st.max_avail)
+
+    return res
+
+def getCephPoolsCapacity(pools):
     result = []
+    poolDfDict = parseDfPools(pools)
 
     o = shell.call('ceph osd dump -f json')
     df = jsonobject.loads(o)
@@ -126,6 +139,14 @@ def getCephPoolsCapacity():
         if poolCapacity.usedCapacity != 0 and poolCapacity.replicatedSize != 0:
             poolCapacity.usedCapacity = poolCapacity.usedCapacity / poolCapacity.replicatedSize
 
+    for poolCapacity in result:
+        try:
+            bytes_used, max_avail = poolDfDict[poolCapacity.poolName]
+            poolCapacity.usedCapacity = bytes_used
+            poolCapacity.availableCapacity = max_avail
+            poolCapacity.poolTotalSize = max_avail
+        except KeyError:
+            pass
     return result
 
 
