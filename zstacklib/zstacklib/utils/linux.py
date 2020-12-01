@@ -213,6 +213,9 @@ def get_ethernet_info():
         link = link.replace('\\', '')
         tokens = link.split()
         ethname = tokens[1].strip(':')
+        # NOTE(ya.wang) VLAN nic's iface name in `link show`('eth0.1024@eth0')
+        # is different to `addr show`('eth0.1024')
+        ethname = ethname.split('@')[0] if '@' in ethname else ethname
         if ethname == 'lo':
             continue
 

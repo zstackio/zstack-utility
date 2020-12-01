@@ -141,19 +141,17 @@ class TestCentOSDriver(base.TestCase):
 
     @mock.patch('netifaces.AF_INET', 2)
     @mock.patch('netifaces.AF_LINK', 17)
-    @mock.patch('netifaces.gateways')
     @mock.patch('netifaces.ifaddresses')
     @mock.patch('netifaces.interfaces')
     @mock.patch('bm_instance_agent.systems.linux.distro.centos.open')
     @mock.patch('oslo_concurrency.processutils.execute')
     def test_port_attach_not_default_route(
-        self, mock_execute, mock_open, mock_ifaces, mock_ifaddr, mock_gw):
+        self, mock_execute, mock_open, mock_ifaces, mock_ifaddr):
         mock_execute.return_value = None, None
         mock_ifaces.return_value = ['enp4s0f0', 'enp4s0f1']
         mock_ifaddr.side_effect = (
             fake.IFACE_PORT1_NONE_IP, fake.IFACE_PORT2_NONE_IP,
             fake.IFACE_PORT1_NONE_IP)
-        mock_gw.return_value = fake.IFACE_GATEWAYS
 
         instance_obj = objects.BmInstanceObj.from_json(
             bm_utils.camel_obj_to_snake(fake.BM_INSTANCE1))
@@ -171,11 +169,8 @@ class TestCentOSDriver(base.TestCase):
         driver.attach_port(instance_obj, network_obj)
 
         calls = (
-            mock.call(*['ip', 'address', 'flush', 'dev', 'enp4s0f0']),
-            mock.call(
-                *['ip', 'address', 'add', '10.0.120.10/24',
-                  'dev', 'enp4s0f0']),
-            mock.call(*['ip', 'link', 'set', 'dev', 'enp4s0f0', 'up'])
+            mock.call(*['ifdown', 'enp4s0f0']),
+            mock.call(*['ifup', 'enp4s0f0'])
         )
         mock_execute.assert_has_calls(calls)
 
@@ -199,24 +194,23 @@ IPADDR=10.0.120.10
 NETMASK=255.255.255.0
 
 GATEWAY=10.0.120.1
+
 '''
         handle.write.assert_called_once_with(conf)
 
     @mock.patch('netifaces.AF_INET', 2)
     @mock.patch('netifaces.AF_LINK', 17)
-    @mock.patch('netifaces.gateways')
     @mock.patch('netifaces.ifaddresses')
     @mock.patch('netifaces.interfaces')
     @mock.patch('bm_instance_agent.systems.linux.distro.centos.open')
     @mock.patch('oslo_concurrency.processutils.execute')
-    def test_port_attach_default_route(
-        self, mock_execute, mock_open, mock_ifaces, mock_ifaddr, mock_gw):
+    def test_port_attach_default_route_no_vlan(
+        self, mock_execute, mock_open, mock_ifaces, mock_ifaddr):
         mock_execute.return_value = None, None
         mock_ifaces.return_value = ['enp4s0f0', 'enp4s0f1']
         mock_ifaddr.side_effect = (
             fake.IFACE_PORT1_NONE_IP, fake.IFACE_PORT2_NONE_IP,
             fake.IFACE_PORT2_NONE_IP)
-        mock_gw.return_value = fake.IFACE_GATEWAYS
 
         instance_obj = objects.BmInstanceObj.from_json(
             bm_utils.camel_obj_to_snake(fake.BM_INSTANCE1))
@@ -234,13 +228,8 @@ GATEWAY=10.0.120.1
         driver.attach_port(instance_obj, network_obj)
 
         calls = (
-            mock.call(*['ip', 'address', 'flush', 'dev', 'enp4s0f1']),
-            mock.call(
-                *['ip', 'address', 'add', '10.0.0.20/24', 'dev', 'enp4s0f1']),
-            mock.call(*['ip', 'link', 'set', 'dev', 'enp4s0f1', 'up']),
-            mock.call(*['ip', 'route', 'delete', 'default', 'via',
-                        '10.0.120.1', 'dev', 'enp4s0f0']),
-            mock.call(*['ip', 'route', 'add', 'default', 'via', '10.0.0.1'])
+            mock.call(*['ifdown', 'enp4s0f1']),
+            mock.call(*['ifup', 'enp4s0f1'])
         )
         mock_execute.assert_has_calls(calls)
 
@@ -264,18 +253,79 @@ IPADDR=10.0.0.20
 NETMASK=255.255.255.0
 
 GATEWAY=10.0.0.1
+
 '''
         handle.write.assert_called_once_with(conf)
 
     @mock.patch('netifaces.AF_INET', 2)
     @mock.patch('netifaces.AF_LINK', 17)
-    @mock.patch('netifaces.gateways')
     @mock.patch('netifaces.ifaddresses')
     @mock.patch('netifaces.interfaces')
     @mock.patch('bm_instance_agent.systems.linux.distro.centos.open')
     @mock.patch('oslo_concurrency.processutils.execute')
-    def test_port_attach_exist_same_ip(
-        self, mock_execute, mock_open, mock_ifaces, mock_ifaddr, mock_gw):
+    def test_port_attach_default_route_with_vlan(
+        self, mock_execute, mock_open, mock_ifaces, mock_ifaddr):
+        mock_execute.return_value = None, None
+        mock_ifaces.return_value = ['enp4s0f0', 'enp4s0f1']
+        mock_ifaddr.side_effect = (
+            fake.IFACE_PORT3_NONE_IP, fake.IFACE_PORT2_NONE_IP,
+            fake.IFACE_PORT3_NONE_IP)
+
+        instance_obj = objects.BmInstanceObj.from_json(
+            bm_utils.camel_obj_to_snake(fake.BM_INSTANCE1))
+        network_obj = objects.NetworkObj.from_json(
+            bm_utils.camel_obj_to_snake(fake.PORT3))
+
+        handle = mock_open().__enter__()
+        path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            '../../../systems/linux/distro/centos_network_script.j2')
+        with open(path, 'r') as f:
+            handle.read.return_value = f.read()
+
+        driver = centos.CentOSDriver()
+        driver.attach_port(instance_obj, network_obj)
+
+        calls = (
+            mock.call(*['ifdown', 'enp4s0f1.130']),
+            mock.call(*['ifup', 'enp4s0f1.130'])
+        )
+        mock_execute.assert_has_calls(calls)
+
+        conf = '''
+# The Type could be ib or other, comment it, let sys to adjust the type.
+# TYPE=Ethernet
+PROXY_METHOD=none
+BROWSER_ONLY=no
+BOOTPROTO=none
+DEFROUTE=yes
+IPV4_FAILURE_FATAL=no
+IPV6INIT=yes
+IPV6_AUTOCONF=yes
+IPV6_DEFROUTE=yes
+IPV6_FAILURE_FATAL=no
+IPV6_ADDR_GEN_MODE=stable-privacy
+NAME=enp4s0f1.130
+ONBOOT=yes
+DEVICE=enp4s0f1.130
+IPADDR=10.0.10.20
+NETMASK=255.255.255.0
+
+GATEWAY=10.0.10.1
+
+
+VLAN=yes
+'''
+        handle.write.assert_called_once_with(conf)
+
+    @mock.patch('netifaces.AF_INET', 2)
+    @mock.patch('netifaces.AF_LINK', 17)
+    @mock.patch('netifaces.ifaddresses')
+    @mock.patch('netifaces.interfaces')
+    @mock.patch('bm_instance_agent.systems.linux.distro.centos.open')
+    @mock.patch('oslo_concurrency.processutils.execute')
+    def test_port_attach_exist_diff_ip(
+        self, mock_execute, mock_open, mock_ifaces, mock_ifaddr):
         iface_port = {
             17: [{
                 'addr': '52:54:00:23:f1:c0',
@@ -290,7 +340,6 @@ GATEWAY=10.0.0.1
         mock_ifaces.return_value = ['enp4s0f0', 'enp4s0f1']
         mock_ifaddr.side_effect = (
             fake.IFACE_PORT1, fake.IFACE_PORT2_NONE_IP, iface_port)
-        mock_gw.return_value = fake.IFACE_GATEWAYS
 
         instance_obj = objects.BmInstanceObj.from_json(
             bm_utils.camel_obj_to_snake(fake.BM_INSTANCE1))
@@ -308,11 +357,8 @@ GATEWAY=10.0.0.1
         driver.attach_port(instance_obj, network_obj)
 
         calls = (
-            mock.call(*['ip', 'address', 'flush', 'dev', 'enp4s0f0']),
-            mock.call(
-                *['ip', 'address', 'add', '10.0.120.10/24',
-                  'dev', 'enp4s0f0']),
-            mock.call(*['ip', 'link', 'set', 'dev', 'enp4s0f0', 'up'])
+            mock.call(*['ifdown', 'enp4s0f0']),
+            mock.call(*['ifup', 'enp4s0f0'])
         )
         mock_execute.assert_has_calls(calls)
 
@@ -336,24 +382,23 @@ IPADDR=10.0.120.10
 NETMASK=255.255.255.0
 
 GATEWAY=10.0.120.1
+
 '''
         handle.write.assert_called_once_with(conf)
 
     @mock.patch('netifaces.AF_INET', 2)
     @mock.patch('netifaces.AF_LINK', 17)
-    @mock.patch('netifaces.gateways')
     @mock.patch('netifaces.ifaddresses')
     @mock.patch('netifaces.interfaces')
     @mock.patch('bm_instance_agent.systems.linux.distro.centos.open')
     @mock.patch('oslo_concurrency.processutils.execute')
-    def test_port_attach_exist_diff_ip(
-        self, mock_execute, mock_open, mock_ifaces, mock_ifaddr, mock_gw):
+    def test_port_attach_exist_same_ip(
+        self, mock_execute, mock_open, mock_ifaces, mock_ifaddr):
         mock_execute.return_value = None, None
         mock_ifaces.return_value = ['enp4s0f0', 'enp4s0f1']
         mock_ifaddr.side_effect = (
             fake.IFACE_PORT1, fake.IFACE_PORT2_NONE_IP,
             fake.IFACE_PORT1)
-        mock_gw.return_value = fake.IFACE_GATEWAYS
 
         instance_obj = objects.BmInstanceObj.from_json(
             bm_utils.camel_obj_to_snake(fake.BM_INSTANCE1))
@@ -370,7 +415,11 @@ GATEWAY=10.0.120.1
         driver = centos.CentOSDriver()
         driver.attach_port(instance_obj, network_obj)
 
-        mock_execute.assert_not_called()
+        calls = (
+            mock.call(*['ifdown', 'enp4s0f0']),
+            mock.call(*['ifup', 'enp4s0f0'])
+        )
+        mock_execute.assert_has_calls(calls)
 
         conf = '''
 # The Type could be ib or other, comment it, let sys to adjust the type.
@@ -392,6 +441,7 @@ IPADDR=10.0.120.10
 NETMASK=255.255.255.0
 
 GATEWAY=10.0.120.1
+
 '''
         handle.write.assert_called_once_with(conf)
 
@@ -400,12 +450,11 @@ GATEWAY=10.0.120.1
     @mock.patch('netifaces.ifaddresses')
     @mock.patch('netifaces.interfaces')
     @mock.patch('os.remove')
-    @mock.patch('os.path.exists')
+    @mock.patch('bm_instance_agent.systems.linux.distro.centos.open')
     @mock.patch('oslo_concurrency.processutils.execute')
     def test_port_detach(
-        self, mock_execute, mock_exist, mock_rm, mock_ifaces, mock_ifaddr):
+        self, mock_execute, mock_open, mock_rm, mock_ifaces, mock_ifaddr):
         mock_execute.return_value = None, None
-        mock_exist.return_value = True
         mock_ifaces.return_value = ['enp4s0f0', 'enp4s0f1']
         mock_ifaddr.side_effect = (
             fake.IFACE_PORT1, fake.IFACE_PORT2_NONE_IP,
@@ -416,15 +465,103 @@ GATEWAY=10.0.120.1
         network_obj = objects.NetworkObj.from_json(
             bm_utils.camel_obj_to_snake(fake.PORT1))
 
+        handle = mock_open().__enter__()
+        path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            '../../../systems/linux/distro/centos_network_script.j2')
+        with open(path, 'r') as f:
+            handle.read.return_value = f.read()
+
         driver = centos.CentOSDriver()
         driver.detach_port(instance_obj, network_obj)
 
-        mock_exist.assert_called_once_with(
-            '/etc/sysconfig/network-scripts/ifcfg-enp4s0f0')
         mock_rm.assert_called_once_with(
             '/etc/sysconfig/network-scripts/ifcfg-enp4s0f0')
-        mock_execute.assert_called_once_with(
-            *['ip', 'address', 'flush', 'dev', 'enp4s0f0'])
+        mock_execute.assert_called_once_with(*['ifdown', 'enp4s0f0'])
+
+        conf = '''
+# The Type could be ib or other, comment it, let sys to adjust the type.
+# TYPE=Ethernet
+PROXY_METHOD=none
+BROWSER_ONLY=no
+BOOTPROTO=none
+DEFROUTE=no
+IPV4_FAILURE_FATAL=no
+IPV6INIT=yes
+IPV6_AUTOCONF=yes
+IPV6_DEFROUTE=yes
+IPV6_FAILURE_FATAL=no
+IPV6_ADDR_GEN_MODE=stable-privacy
+NAME=enp4s0f0
+ONBOOT=yes
+DEVICE=enp4s0f0
+IPADDR=10.0.120.10
+NETMASK=255.255.255.0
+
+GATEWAY=10.0.120.1
+
+'''
+        handle.write.assert_called_once_with(conf)
+
+    @mock.patch('netifaces.AF_INET', 2)
+    @mock.patch('netifaces.AF_LINK', 17)
+    @mock.patch('netifaces.ifaddresses')
+    @mock.patch('netifaces.interfaces')
+    @mock.patch('os.remove')
+    @mock.patch('bm_instance_agent.systems.linux.distro.centos.open')
+    @mock.patch('oslo_concurrency.processutils.execute')
+    def test_port_detach_vlan(
+        self, mock_execute, mock_open, mock_rm, mock_ifaces, mock_ifaddr):
+        mock_execute.return_value = None, None
+        mock_ifaces.return_value = ['enp4s0f0', 'enp4s0f1']
+        mock_ifaddr.side_effect = (
+            fake.IFACE_PORT3, fake.IFACE_PORT2_NONE_IP,
+            fake.IFACE_PORT3)
+
+        instance_obj = objects.BmInstanceObj.from_json(
+            bm_utils.camel_obj_to_snake(fake.BM_INSTANCE1))
+        network_obj = objects.NetworkObj.from_json(
+            bm_utils.camel_obj_to_snake(fake.PORT3))
+
+        handle = mock_open().__enter__()
+        path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            '../../../systems/linux/distro/centos_network_script.j2')
+        with open(path, 'r') as f:
+            handle.read.return_value = f.read()
+
+        driver = centos.CentOSDriver()
+        driver.detach_port(instance_obj, network_obj)
+
+        mock_rm.assert_called_once_with(
+            '/etc/sysconfig/network-scripts/ifcfg-enp4s0f1.130')
+        mock_execute.assert_called_once_with(*['ifdown', 'enp4s0f1.130'])
+
+        conf = '''
+# The Type could be ib or other, comment it, let sys to adjust the type.
+# TYPE=Ethernet
+PROXY_METHOD=none
+BROWSER_ONLY=no
+BOOTPROTO=none
+DEFROUTE=yes
+IPV4_FAILURE_FATAL=no
+IPV6INIT=yes
+IPV6_AUTOCONF=yes
+IPV6_DEFROUTE=yes
+IPV6_FAILURE_FATAL=no
+IPV6_ADDR_GEN_MODE=stable-privacy
+NAME=enp4s0f1.130
+ONBOOT=yes
+DEVICE=enp4s0f1.130
+IPADDR=10.0.10.20
+NETMASK=255.255.255.0
+
+GATEWAY=10.0.10.1
+
+
+VLAN=yes
+'''
+        handle.write.assert_called_once_with(conf)
 
     @mock.patch('netifaces.AF_LINK', 17)
     @mock.patch('netifaces.ifaddresses')
@@ -484,6 +621,7 @@ IPADDR=10.0.0.20
 NETMASK=255.255.255.0
 
 GATEWAY=10.0.0.1
+
 '''
         handle.write.assert_called_once_with(conf)
 
@@ -540,6 +678,7 @@ IPADDR=10.0.120.10
 NETMASK=255.255.255.0
 
 GATEWAY=10.0.120.1
+
 '''
         handle.write.assert_called_once_with(conf)
 
@@ -635,6 +774,7 @@ IPADDR=10.0.120.10
 NETMASK=255.255.255.0
 
 GATEWAY=10.0.120.1
+
 '''
         conf_port2 = '''
 # The Type could be ib or other, comment it, let sys to adjust the type.
@@ -656,6 +796,7 @@ IPADDR=10.0.0.20
 NETMASK=255.255.255.0
 
 GATEWAY=10.0.0.1
+
 '''
         calls = (
             mock.call(conf_port1),

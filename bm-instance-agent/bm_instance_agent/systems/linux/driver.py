@@ -25,10 +25,6 @@ class LinuxDriver(base.SystemDriverBase):
             if 'shutdown -r now' not in e:
                 raise e
 
-        # if stderr:
-        #     raise exception.BmInstanceRebootFailed(bm_uuid=instance_obj.uuid,
-        #                                            stderr=stderr)
-
     def stop(self, instance_obj):
         cmd = ['shutdown', '-h', 'now']
         try:
@@ -36,10 +32,6 @@ class LinuxDriver(base.SystemDriverBase):
         except Exception as e:
             if 'shutdown -h now' not in e:
                 raise e
-
-        # if stderr:
-        #     raise exception.BmInstanceRebootFailed(bm_uuid=instance_obj.uuid,
-        #                                            stderr=stderr)
 
     def attach_volume(self, instance_obj, volume_obj):
         """ Attach a given iSCSI lun
@@ -137,66 +129,15 @@ class LinuxDriver(base.SystemDriverBase):
         cmd = 'echo 1 > {path}'.format(path=delete_path)
         processutils.execute(cmd, shell=True)
 
-    def _pre_attach_port(self, instance_obj, network_obj):
-        """ Configure the ip address and default route via iproute2
-        """
-        # Configure ip address
-        for port in network_obj.ports:
-            curr_address = bm_utils.get_addr(port.iface_name)
-            if not curr_address.get('addr') == port.ip_address or \
-                    not curr_address.get('netmask') == port.netmask:
-                cmd = ['ip', 'address', 'flush', 'dev', port.iface_name]
-                processutils.execute(*cmd)
-
-                cidr = bm_utils.convert_netmask(port.netmask)
-                addr = '%s/%d' % (port.ip_address, cidr)
-                cmd = ['ip', 'address', 'add', addr, 'dev', port.iface_name]
-                processutils.execute(*cmd)
-
-                # Set the link up
-                cmd = ['ip', 'link', 'set', 'dev', port.iface_name, 'up']
-                processutils.execute(*cmd)
-
-        # Configure default gateway
-        gw_addr, gw_iface = bm_utils.get_gateway()
-        if not network_obj.default_gw_addr or \
-                gw_addr == network_obj.default_gw_addr:
-            return
-
-        if gw_addr:
-            cmd = ['ip', 'route', 'delete', 'default', 'via', gw_addr,
-                   'dev', gw_iface]
-            processutils.execute(*cmd)
-
-        cmd = ['ip', 'route', 'add', 'default', 'via',
-               network_obj.default_gw_addr]
-        processutils.execute(*cmd)
-
-    def _post_attach_port(self, instance_obj, network_obj):
-        """ Setup the persistent configuration files
-        """
-
     def attach_port(self, instance_obj, network_obj):
         """ Attach a (list) port(s)
         """
-        self._pre_attach_port(instance_obj, network_obj)
-        self._post_attach_port(instance_obj, network_obj)
-
-    def _pre_detach_port(self, instance_obj, network_obj):
-        """ Flush the network interface configuration via iproute2
-        """
-        # Configure ip address
-        for port in network_obj.ports:
-            cmd = ['ip', 'address', 'flush', 'dev', port.iface_name]
-            processutils.execute(*cmd)
-
-    def _post_detach_port(self, instance_obj, network_obj):
-        """ Flush or remove the configuration files
-        """
+        raise NotImplementedError()
 
     def detach_port(self, instance_obj, network_obj):
-        self._pre_detach_port(instance_obj, network_obj)
-        self._post_detach_port(instance_obj, network_obj)
+        """ Detach a (list) port(s)
+        """
+        raise NotImplementedError()
 
     def update_default_route(
             self, instance_obj, old_network_obj, new_network_obj):
