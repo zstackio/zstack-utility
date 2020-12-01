@@ -290,7 +290,7 @@ class CephAgent(plugin.TaskManager):
         if not df.pools:
             return
 
-        pools = ceph.getCephPoolsCapacity()
+        pools = ceph.getCephPoolsCapacity(df.pools)
         if not pools:
             return
 
