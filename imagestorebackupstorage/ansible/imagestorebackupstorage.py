@@ -194,7 +194,7 @@ else:
 run_remote_command(command, host_post_info)
 
 # if user is not root , Change the owner of the directory to ordinary user
-if fs_rootpath != '' and remote_user != 'root':
+if remote_user != 'root':
     run_remote_command("sudo chown -R -H --dereference %s: %s" % (remote_user, fs_rootpath), host_post_info)
 
 # name: restart image store server
