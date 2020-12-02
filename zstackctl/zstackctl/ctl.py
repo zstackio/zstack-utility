@@ -1998,8 +1998,8 @@ class StartCmd(Command):
     HEAP_DUMP_DIR = '../../logs/heap.hprof'
     MINIMAL_CPU_NUMBER = 4
     #MINIMAL_MEM_SIZE unit is KB, here is 8GB, in linxu, 8GB is 8388608 KB
-    #Save some memory for kdump etc. The actual limitation is 8000000KB
-    MINIMAL_MEM_SIZE = 8000000
+    #Save some memory for kdump etc. 7GB = 7340032KB
+    MINIMAL_MEM_SIZE = 7300000
     SIMULATOR = 'SIMULATOR'
 
     def __init__(self):
