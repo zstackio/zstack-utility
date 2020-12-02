@@ -185,6 +185,10 @@ else:
     command = "bash " + dest_pkg
 run_remote_command(command, host_post_info)
 
+# if user is not root , Change the owner of the directory to ordinary user
+if remote_user != 'root':
+    run_remote_command("sudo chown -R -H --dereference %s: %s" % (remote_user, fs_rootpath), host_post_info)
+
 # name: restart image store server
 server = client != "true" or run_remote_command("pkill -0 zstore", host_post_info, return_status=True, return_output=False)
 if server:
