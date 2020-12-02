@@ -439,6 +439,27 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                                 alternative_mount)
                         runSshCmd(cmd.libvirtURI, cmd.sshPrivKey, cmdstr)
 
+        def do_blockcopy(cmd, dom, volumes, storage_dir, flags):
+            for v in volumes:
+                localpath = os.path.join(storage_dir, v.name)
+                info = dom.blockJobInfo(v.name, 0)
+                if os.path.exists(localpath) and not info:
+                    os.remove(localpath)
+                if not os.path.exists(localpath) and info:
+                    raise Exception("blockjob already exists on disk: "+v.name)
+                if info:
+                    continue
+
+                logger.info("start copying {}/{} ...".format(cmd.srcVmUuid, v.name))
+
+                # c.f. https://github.com/OpenNebula/one/issues/2646
+                linux.touch_file(localpath)
+
+                dom.blockCopy(v.name,
+                    "<disk type='file'><source file='{}'/><driver type='{}'/></disk>".format(os.path.join(vm_v2v_dir, v.name), cmd.format),
+                    None,
+                    flags)
+
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         real_storage_path = getRealStoragePath(cmd.storagePath)
         storage_dir = os.path.join(real_storage_path, cmd.srcVmUuid)
@@ -480,37 +501,20 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
             volumes = filter(lambda v: not skipVolume(filters, v.name), getVolumes(dom, dxml))
             oldstat, _ = dom.state()
             needResume = True
+            needDefine = False
 
             if cmd.pauseVm and oldstat != libvirt.VIR_DOMAIN_PAUSED:
                 dom.suspend()
                 needResume = False
 
-            # libvirt >= 3.7.0 ?
-            flags = 0 if c.getLibVersion() < getVerNumber(3, 7) else libvirt.VIR_DOMAIN_BLOCK_COPY_TRANSIENT_JOB
-            needDefine = False
-            if flags == 0 and dom.isPersistent():
-                dom.undefine()
-                needDefine = True
-
-            for v in volumes:
-                localpath = os.path.join(storage_dir, v.name)
-                info = dom.blockJobInfo(v.name, 0)
-                if os.path.exists(localpath) and not info:
-                    os.remove(localpath)
-                if not os.path.exists(localpath) and info:
-                    raise Exception("blockjob already exists on disk: "+v.name)
-                if info:
-                    continue
-
-                logger.info("start copying {}/{} ...".format(cmd.srcVmUuid, v.name))
-
-                # c.f. https://github.com/OpenNebula/one/issues/2646
-                linux.touch_file(localpath)
-
-                dom.blockCopy(v.name,
-                    "<disk type='file'><source file='{}'/><driver type='{}'/></disk>".format(os.path.join(vm_v2v_dir, v.name), cmd.format),
-                    None,
-                    flags)
+            try:
+                do_blockcopy(cmd, dom, volumes, storage_dir, libvirt.VIR_DOMAIN_BLOCK_COPY_TRANSIENT_JOB)
+            except libvirt.libvirtError as ex:
+                if 'unsupported flags' in str(ex):
+                    if dom.isPersistent():
+                        dom.undefine()
+                        needDefine = True
+                    do_blockcopy(cmd, dom, volume, storage_dir, 0)
 
             end_progress = 60
             total_volume_size = sum(volume.size for volume in volumes)
