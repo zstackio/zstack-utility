@@ -46,6 +46,7 @@ import base64
 from Crypto.Cipher import AES
 from Crypto.Util.py3compat import *
 from hashlib import md5
+from string import Template
 
 mysql_db_config_script='''
 #!/bin/bash
@@ -7247,12 +7248,12 @@ class InstallZstackUiCmd(Command):
         parser.add_argument('--ssh-key', help="the path of private key for SSH login $host; if provided, Ansible will use the specified key as private key to SSH login the $host", default=None)
 
     def _install_to_local(self, args):
-        install_script = os.path.join(ctl.zstack_home, "WEB-INF/classes/tools/install.sh")
+        install_script = os.path.join(ctl.zstack_home, "WEB-INF/classes/tools/zstack_ui.bin")
         if not os.path.isfile(install_script):
             raise CtlError('cannot find %s, please make sure you have installed ZStack management node' % install_script)
 
         info('found installation script at %s, start installing ZStack web UI' % install_script)
-        shell('bash %s zstack-ui' % install_script)
+        shell("runuser -l root -s /bin/bash -c 'bash %s'" % install_script)
 
     def install_mini_ui(self):
         mini_bin = "/opt/zstack-dvd/{}/{}/zstack_mini_server.bin".format(ctl.BASEARCH, ctl.ZS_RELEASE)
@@ -7274,11 +7275,10 @@ class InstallZstackUiCmd(Command):
         if not os.path.isdir(tools_path):
             raise CtlError('cannot find %s, please make sure you have installed ZStack management node' % tools_path)
 
-        ui_binary = 'zstack-ui.war'
+        ui_binary = 'zstack_ui.bin'
         if not ui_binary in os.listdir(tools_path):
             raise CtlError('cannot find zstack-ui package under %s, please make sure you have installed ZStack management node' % tools_path)
         ui_binary_path = os.path.join(tools_path, ui_binary)
-
         yaml = '''---
 - hosts: ${host}
   remote_user: root
@@ -8176,6 +8176,10 @@ class StopDashboardCmd(Command):
 
 # For UI 2.0
 class StopUiCmd(Command):
+    USER_ZSTACK_HOME_DIR = os.path.expanduser('~zstack')
+    ZSTACK_UI_HOME = os.path.join(USER_ZSTACK_HOME_DIR, 'zstack-ui/')
+    ZSTACK_UI_START = os.path.join(ZSTACK_UI_HOME, 'scripts/start.sh') 
+    ZSTACK_UI_STOP = os.path.join(ZSTACK_UI_HOME, 'scripts/stop.sh') 
     def __init__(self):
         super(StopUiCmd, self).__init__()
         self.name = 'stop_ui'
@@ -8186,36 +8190,22 @@ class StopUiCmd(Command):
         parser.add_argument('--host', help="UI server IP. [DEFAULT] localhost", default='localhost')
 
     def _remote_stop(self, host):
-        cmd = '/etc/init.d/zstack-ui stop'
+        cmd = 'zstack-ctl stop_ui'
         ssh_run_no_pipe(host, cmd)
 
     def stop_zstack_ui(self, args, show_info=True):
         if args.host != 'localhost':
             self._remote_stop(args.host)
             return
-
-        pidfile = '/var/run/zstack/zstack-ui.pid'
+        start_sh = 'sudo bash ' + StopUiCmd.ZSTACK_UI_STOP 
+        (status_code, status_output) = commands.getstatusoutput(start_sh)
+        if status_code != 0: 
+            info('failed to stop UI server since '+ status_output)
+            return
         portfile = '/var/run/zstack/zstack-ui.port'
-        if os.path.exists(pidfile):
-            with open(pidfile, 'r') as fd:
-                pid = fd.readline()
-                pid = pid.strip(' \t\n\r')
-                kill_process(pid)
-
-        def stop_all():
-            pid = find_process_by_cmdline('zstack-ui')
-            if pid:
-                kill_process(pid, signal.SIGKILL)
-                stop_all()
-            else:
-                return
-
         def clean_pid_port():
-            shell('rm -f %s' % pidfile)
             shell('rm -f %s' % portfile)
 
-        stop_all()
-        clean_pid_port()
         if show_info:
             info('successfully stopped the UI server')
 
@@ -8344,6 +8334,9 @@ def get_ui_pid(ui_mode='zstack'):
 
 # For UI 2.0
 class UiStatusCmd(Command):
+    USER_ZSTACK_HOME_DIR = os.path.expanduser('~zstack')
+    ZSTACK_UI_HOME = os.path.join(USER_ZSTACK_HOME_DIR, 'zstack-ui/')
+    ZSTACK_UI_STATUS = os.path.join(ZSTACK_UI_HOME, 'scripts/status.sh') 
     def __init__(self):
         super(UiStatusCmd, self).__init__()
         self.name = "ui_status"
@@ -8381,38 +8374,24 @@ class UiStatusCmd(Command):
         def write_status(status):
             info('UI status: %s' % status)
 
-        pid = get_ui_pid(ui_mode)
-        check_pid_cmd = ShellCmd('ps %s' % pid)
-        output = check_pid_cmd(is_exception=False)
-        cmd = create_check_ui_status_command(ui_port=port, if_https='--ssl.enabled=true' in output)
+        cmd = ShellCmd("runuser -l root -s /bin/bash -c 'bash %s'" % (UiStatusCmd.ZSTACK_UI_STATUS),pipe=False)
 
         if not cmd:
-            write_status('cannot detect status, no wget and curl installed')
+            write_status('cannot detect status')
             return
 
         cmd(False)
 
         if cmd.return_code != 0:
-            if cmd.stdout or 'Failed' in cmd.stdout and pid:
-                write_status('Starting, should be ready in a few seconds')
-            elif pid:
-                write_status(
-                    '%s, the ui seems to become zombie as it stops responding APIs but the '
-                    'process(PID: %s) is still running. Please stop the node using zstack-ctl stop_ui' %
-                    (colored('Zombie', 'yellow'), pid))
-            else:
-                write_status(colored('Stopped', 'red'))
+            write_status(cmd.stdout)
             return False
-        elif 'UP' in cmd.stdout:
+        else:
             default_ip = get_ui_address()
             if not default_ip:
-                info('UI status: %s [PID:%s]' % (colored('Running', 'green'), pid))
+                info('UI status: %s ' % (colored('Running', 'green')))
             else:
-                http = 'https' if '--ssl.enabled=true' in output else 'http'
-                info('UI status: %s [PID:%s] %s://%s:%s' % (
-                    colored('Running', 'green'), pid, http, default_ip, port))
-        else:
-            write_status(colored('Unknown', 'yellow'))
+                info('UI status: %s  //%s:%s' % (
+                    colored('Running', 'green'), default_ip, port))
 
 # For VDI UI 2.1
 class VDIUiStatusCmd(Command):
@@ -8795,17 +8774,17 @@ class StartDashboardCmd(Command):
 
 # For UI 2.0
 class StartUiCmd(Command):
-    PID_FILE = '/var/run/zstack/zstack-ui.pid'
     PORT_FILE = '/var/run/zstack/zstack-ui.port'
-
+    USER_ZSTACK_HOME_DIR = os.path.expanduser('~zstack')
+    ZSTACK_UI_HOME = os.path.join(USER_ZSTACK_HOME_DIR, 'zstack-ui/')
+    ZSTACK_UI_START = os.path.join(ZSTACK_UI_HOME, 'scripts/start.sh') 
+    ZSTACK_UI_STOP = os.path.join(ZSTACK_UI_HOME, 'scripts/stop.sh') 
     def __init__(self):
         super(StartUiCmd, self).__init__()
         self.name = "start_ui"
         self.description = "start UI server on the local or remote host"
         self.sensitive_args = ['--ssl-keystore-password', '--db-password']
         ctl.register_command(self)
-        if not os.path.exists(os.path.dirname(self.PID_FILE)):
-            shell("mkdir -p %s" % os.path.dirname(self.PID_FILE))
 
     def install_argparse_arguments(self, parser):
         ui_logging_path = os.path.normpath(os.path.join(ctl.zstack_home, "../../logs/"))
@@ -8837,38 +8816,28 @@ class StartUiCmd(Command):
 
     def _remote_start(self, host, mn_host, mn_port, webhook_host, webhook_port, server_port, log, enable_ssl, ssl_keyalias, ssl_keystore, ssl_keystore_type, ssl_keystore_password, db_url, db_username, db_password):
         if enable_ssl:
-            cmd = '/etc/init.d/zstack-ui start --mn-host %s --mn-port %s --webhook-host %s --webhook-port %s --server-port %s --log %s --enable-ssl --ssl-keyalias %s --ssl-keystore %s --ssl-keystore-type %s --ssl-keystore-password %s --db-url %s --db-username %s --db-password %s' % (mn_host, mn_port, webhook_host, webhook_port, server_port, log, ssl_keyalias, ssl_keystore, ssl_keystore_type, ssl_keystore_password, db_url, db_username, db_password)
+            cmd = 'zstack-ctl start_ui --mn-host %s --mn-port %s --webhook-host %s --webhook-port %s --server-port %s --log %s --enable-ssl --ssl-keyalias %s --ssl-keystore %s --ssl-keystore-type %s --ssl-keystore-password %s --db-url %s --db-username %s --db-password %s' % (mn_host, mn_port, webhook_host, webhook_port, server_port, log, ssl_keyalias, ssl_keystore, ssl_keystore_type, ssl_keystore_password, db_url, db_username, db_password)
         else:
-            cmd = '/etc/init.d/zstack-ui start --mn-host %s --mn-port %s --webhook-host %s --webhook-port %s --server-port %s --log %s --db-url %s --db-username %s --db-password %s' % (mn_host, mn_port, webhook_host, webhook_port, server_port, log, db_url, db_username, db_password)
+            cmd = 'zstack-ctl start_ui --mn-host %s --mn-port %s --webhook-host %s --webhook-port %s --server-port %s --log %s --db-url %s --db-username %s --db-password %s' % (mn_host, mn_port, webhook_host, webhook_port, server_port, log, db_url, db_username, db_password)
         ssh_run_no_pipe(host, cmd)
         info('successfully start the UI server on the remote host[%s:%s]' % (host, server_port))
 
     def _check_status(self):
-        port = 5000
-        if os.path.exists(self.PORT_FILE):
-            with open(self.PORT_FILE, 'r') as fd:
-                port = fd.readline()
-                port = port.strip(' \t\n\r')
-        if os.path.exists(self.PID_FILE):
-            with open(self.PID_FILE, 'r') as fd:
-                pid = fd.readline()
-                pid = pid.strip(' \t\n\r')
-                check_pid_cmd = ShellCmd('ps -p %s > /dev/null' % pid)
-                check_pid_cmd(is_exception=False)
-                if check_pid_cmd.return_code == 0:
-                    default_ip = get_ui_address()
-                    if not default_ip:
-                        info('UI server is still running[PID:%s]' % pid)
-                    else:
-                        check_https_cmd = ShellCmd('ps -f -p %s | grep ssl.enabled=true >/dev/null' % pid)
-                        check_https_cmd(is_exception=False)
-                        info('UI server is still running[PID:%s], %s://%s:%s' % (pid, 'https' if check_https_cmd.return_code == 0 else 'http', default_ip, port))
-                    return False
+        cmd = ShellCmd("runuser -l root -s /bin/bash -c 'bash %s'" % (UiStatusCmd.ZSTACK_UI_STATUS),pipe=False)
+        if not cmd:
+            write_status('cannot detect status')
+            return
 
-        pid = find_process_by_cmdline('zstack-ui.war')
-        if pid:
-            info('found a zombie UI server[PID:%s], kill it and start a new one' % pid)
-            kill_process(pid, signal.SIGKILL)
+        cmd(False)
+
+        if cmd.return_code == 0:
+            default_ip = get_ui_address()
+            if not default_ip:
+                info('UI status: %s ' % (colored('Running', 'green')))
+            else:
+                info('UI status: %s  //%s:%s' % (
+                    colored('Running', 'green'), default_ip, port))
+                return False
         return True
 
     def _gen_default_ssl_keystore(self):
@@ -8985,8 +8954,8 @@ class StartUiCmd(Command):
             self._gen_default_ssl_keystore()
 
         # server_port default value is 5443 if enable_ssl is True
-        if args.enable_ssl and args.webhook_port == '5000':
-            args.webhook_port = '5443'
+        # if args.enable_ssl and args.webhook_port == '5000':
+        #     args.webhook_port = '5443'
         if args.enable_ssl and args.server_port == '5000':
             args.server_port = '5443'
 
@@ -9041,8 +9010,8 @@ class StartUiCmd(Command):
             raise CtlError('%s not found. Are you sure the UI server is installed on %s?' % (zstackui, args.host))
 
         # ui still running
-        if not self._check_status():
-            return
+        #if not self._check_status():
+        #    return
 
         distro = platform.dist()[0]
         if distro in RPM_BASED_OS:
@@ -9057,26 +9026,14 @@ class StartUiCmd(Command):
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 5000 -j ACCEPT ' % args.server_port)
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT ' % (args.server_port, args.server_port))
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT ' % (args.webhook_port, args.webhook_port))
-
+        enableSSL = 'false'
         if args.enable_ssl:
-            scmd = "runuser -l zstack -s /bin/bash -c 'LOGGING_PATH=%s java %s -jar %szstack-ui.war --mn.host=%s --mn.port=%s --webhook.host=%s --webhook.port=%s --server.port=%s --ssl.enabled=true --ssl.keyalias=%s --ssl.keystore=%s --ssl.keystore-type=%s --ssl.keystore-password=%s --db.url=%s --db.username=%s --db.password=%s %s >/dev/null 2>&1 &'" % (args.log, args.catalina_opts, zstackui, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.ssl_keyalias, args.ssl_keystore, args.ssl_keystore_type, args.ssl_keystore_password, args.db_url, args.db_username, args.db_password, custom_props)
-        else:
-            scmd = "runuser -l zstack -s /bin/bash -c 'LOGGING_PATH=%s java %s -jar %szstack-ui.war --mn.host=%s --mn.port=%s --webhook.host=%s --webhook.port=%s --server.port=%s --db.url=%s --db.username=%s --db.password=%s %s >/dev/null 2>&1 &'" % (args.log, args.catalina_opts, zstackui, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.db_url, args.db_username, args.db_password, custom_props)
+            enableSSL = 'true'
+        scmd = Template("runuser -l root -s /bin/bash -c 'LOGGING_PATH=${LOGGING_PATH} bash ${STOP} && bash ${START} --mn.host=${MN_HOST} --mn.port=${MN_PORT} --webhook.host=${WEBHOOK_HOST} --webhook.port=${WEBHOOK_PORT} --server.port=${SERVER_PORT} --ssl.enabled=${SSL_ENABLE} --ssl.keyalias=${SSL_KEYALIAS} --ssl.keystore=${SSL_KEYSTORE} --ssl.keystore-type=${SSL_KEYSTORE_TYPE} --ssl.keystore-password=${SSL_KETSTORE_PASSWORD} --db.url=${DB_URL} --db.username=${DB_USERNAME} --db.password=${DB_PASSWORD} ${CUSTOM_PROPS} --ssl.pem=${ZSTACK_UI_KEYSTORE_PEM}'") 
+
+        scmd = scmd.substitute(LOGGING_PATH=args.log,STOP=StartUiCmd.ZSTACK_UI_STOP,START=StartUiCmd.ZSTACK_UI_START,MN_HOST=args.mn_host,MN_PORT=args.mn_port,WEBHOOK_HOST=args.webhook_host,WEBHOOK_PORT=args.webhook_port,SERVER_PORT=args.server_port,SSL_ENABLE=enableSSL,SSL_KEYALIAS=args.ssl_keyalias,SSL_KEYSTORE=args.ssl_keystore,SSL_KEYSTORE_TYPE=args.ssl_keystore_type,SSL_KETSTORE_PASSWORD=args.ssl_keystore_password,DB_URL=args.db_url,DB_USERNAME=args.db_username,DB_PASSWORD=args.db_password,ZSTACK_UI_KEYSTORE_PEM=ctl.ZSTACK_UI_KEYSTORE_PEM,CUSTOM_PROPS=custom_props)
 
         script(scmd, no_pipe=True)
-
-        @loop_until_timeout(5, 0.5)
-        def write_pid():
-            pid = find_process_by_cmdline('zstack-ui.war')
-            if pid:
-                with open(self.PID_FILE, 'w') as fd:
-                    fd.write(str(pid))
-                return True
-            else:
-                return False
-
-        write_pid()
-
         os.system('mkdir -p /var/run/zstack/')
         with open('/var/run/zstack/zstack-ui.port', 'w') as fd:
             fd.write(args.server_port)
@@ -9095,15 +9052,13 @@ class StartUiCmd(Command):
             info('fail to start UI server on the localhost. Use zstack-ctl start_ui to restart it. zstack UI log could be found in %s/zstack-ui.log' % args.log)
             shell('zstack-ctl stop_ui')
             linux.rm_dir_force("/var/run/zstack/zstack-ui.port")
-            linux.rm_dir_force("/var/run/zstack/zstack-ui.pid")
             return False
 
-        pid = find_process_by_cmdline('zstack-ui')
         default_ip = get_default_ip()
         if not default_ip:
-            info('successfully started UI server on the local host, PID[%s]' % pid)
+            info('successfully started UI server on the local host') 
         else:
-            info('successfully started UI server on the local host, PID[%s], %s://%s:%s' % (pid, 'https' if args.enable_ssl else 'http', default_ip, args.server_port))
+            info('successfully started UI server on the local host %s://%s:%s' % ('https' if args.enable_ssl else 'http', default_ip, args.server_port))
 
     def run_mini_ui(self):
         shell_return("systemctl start zstack-mini")
@@ -9212,7 +9167,8 @@ class ConfigUiCmd(Command):
             if not ctl.read_ui_property("webhook_host"):
                 ctl.write_ui_property("webhook_host", '127.0.0.1')
             if not ctl.read_ui_property("webhook_port"):
-                ctl.write_ui_property("webhook_port", '5000')
+                # from 4.0 set webhook_port to 5001,since the 5000 is for nginx
+                ctl.write_ui_property("webhook_port", '5001')
             if not ctl.read_ui_property("server_port"):
                 ctl.write_ui_property("server_port", '5000')
             if not ctl.read_ui_property("log"):
@@ -9245,7 +9201,7 @@ class ConfigUiCmd(Command):
             ctl.write_ui_property("mn_host", '127.0.0.1')
             ctl.write_ui_property("mn_port", '8080')
             ctl.write_ui_property("webhook_host", '127.0.0.1')
-            ctl.write_ui_property("webhook_port", '5000')
+            ctl.write_ui_property("webhook_port", '5001')
             ctl.write_ui_property("server_port", '5000')
             ctl.write_ui_property("log", ui_logging_path)
             ctl.write_ui_property("enable_ssl", 'false')
@@ -9270,8 +9226,8 @@ class ConfigUiCmd(Command):
 
         # use 5443 instead if enable_ssl
         if args.enable_ssl and args.enable_ssl.lower() == 'true':
-            if args.webhook_port == '5000':
-                args.webhook_port = '5443'
+            # if args.webhook_port == '5000':
+            #     args.webhook_port = '5443'
             if args.server_port == '5000':
                 args.server_port = '5443'
 
@@ -9889,18 +9845,12 @@ def main():
     # If tools/zstack-ui.war exists, then install zstack-ui
     # else, install zstack-dashboard
     ctl.locate_zstack_home()
-    if os.path.exists(ctl.zstack_home + "/WEB-INF/classes/tools/zstack-ui.war"):
-        InstallZstackUiCmd()
-        StartUiCmd()
-        StopUiCmd()
-        UiStatusCmd()
-        ConfigUiCmd()
-        ShowUiCfgCmd()
-    else:
-        InstallDashboardCmd()
-        StartDashboardCmd()
-        StopDashboardCmd()
-        DashboardStatusCmd()
+    InstallZstackUiCmd()
+    StartUiCmd()
+    StopUiCmd()
+    UiStatusCmd()
+    ConfigUiCmd()
+    ShowUiCfgCmd()
 
     try:
         ctl.run()

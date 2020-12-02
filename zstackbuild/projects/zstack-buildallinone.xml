@@ -82,6 +82,7 @@
             <arg value="${allinone.bin.file}" />
         </exec>
 
+
         <echo message="successfully build zstack all in one package at ${allinone.file}" />
     </target>
 </project>

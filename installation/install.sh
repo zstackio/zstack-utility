@@ -1207,8 +1207,8 @@ upgrade_zstack(){
           fail "failed to upgrade zstack web ui"
         fi
     elif [ -f /etc/init.d/zstack-ui ]; then
-        # fill CATALINA_ZSTACK_TOOLS with old zstack-ui.war if not exists
-        /bin/cp -n $ZSTACK_INSTALL_ROOT/zstack-ui/zstack-ui.war $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS >/dev/null 2>&1
+        # fill CATALINA_ZSTACK_TOOLS with old zstack_ui.bin if not exists
+        /bin/cp -n $ZSTACK_INSTALL_ROOT/zstack-ui/zstack_ui.bin $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS >/dev/null 2>&1
     fi
 
     #check old license folder and copy old license files to new folder.
@@ -1715,7 +1715,7 @@ uz_stop_zstack_ui(){
     echo_subtitle "Stop ${PRODUCT_NAME} UI"
     zstack-ctl stop_ui >>$ZSTACK_INSTALL_LOG 2>&1
     # make sure zstack ui is stopped
-    ps axu | grep zstack-ui.war | grep -v 'grep' >>$ZSTACK_INSTALL_LOG 2>&1
+    ps axu | grep zstack_ui_server | grep -v 'grep' >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -eq 0 ]; then
         fail "Failed to stop ${PRODUCT_NAME} UI!"
     fi
@@ -2716,7 +2716,6 @@ sd_start_zstack_ui(){
     echo_subtitle "Start ${PRODUCT_NAME} Web UI"
     zstack_home=$ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_PATH
     ui_logging_path=$zstack_home/../../logs/
-    chmod a+x /etc/init.d/zstack-ui
     cd /
     zstack-ctl stop_ui >>$ZSTACK_INSTALL_LOG 2>&1
     ui_mode=`zstack-ctl get_configuration ui_mode`
@@ -3798,7 +3797,7 @@ fi
 
 #Start ${PRODUCT_NAME}-UI
 if [ -z $NOT_START_ZSTACK ]; then
-    if [ -f $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS/zstack-ui.war ]; then
+    if [ -f $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS/zstack_ui.bin ]; then
         start_zstack_ui
         rm -f /etc/init.d/zstack-dashboard
     else
