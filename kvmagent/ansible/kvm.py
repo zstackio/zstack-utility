@@ -525,7 +525,7 @@ def do_network_config():
         elif distro in DEB_BASED_OS:
             copy_arg = CopyArg()
             copy_arg.src = "%s/ip6tables" % file_root
-            copy_arg.dest = "/sbin/ip6tables"
+            copy_arg.dest = "/etc/iptables/rules.v6"
             copy(copy_arg, host_post_info)
             command = "ip6tables-save"
             run_remote_command(command, host_post_info)
