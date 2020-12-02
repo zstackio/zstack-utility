@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 
 from jinja2 import Template
 from zstacklib.utils import http
@@ -55,6 +56,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
     TFTPBOOT_DIR = os.path.join(BAREMETAL_LIB_DIR, 'tftpboot/')
     PXELINUX_CFG_DIR = os.path.join(TFTPBOOT_DIR, 'pxelinux.cfg/')
     BOOT_IPXE_PATH = os.path.join(TFTPBOOT_DIR, 'boot.ipxe')
+    DEFAULT_PXE_PATH = os.path.join(PXELINUX_CFG_DIR, 'default')
 
     NGINX_CONF_DIR = os.path.join(BAREMETAL_LIB_DIR, 'nginx')
     NGINX_CONF_PATH = os.path.join(NGINX_CONF_DIR, 'nginx.conf')
@@ -91,7 +93,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                          'zlib-devel', 'binutils-devel', 'bison',
                          'audit-libs-devel', 'java-devel', 'numactl-devel',
                          'pciutils-devel', 'ncurses-devel', 'python-docutils',
-                         'flex', 'targetcli']
+                         'flex', 'targetcli', 'syslinux']
         yum_release = kvmagent.get_host_yum_release()
         cmd = ('export YUM0={yum_release}; yum --disablerepo=* '
                '--enablerepo=zstack-mn clean all; '
@@ -117,22 +119,35 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         cmd = 'mkdir -p {dirs}'.format(dirs=' '.join(directories))
         shell.call(cmd)
 
-        # Prepare tftpboot, copy ipxe rom
-        cmd = 'yes | cp -rf /usr/share/ipxe/* ''{tftpboot}'.format(
-            tftpboot=self.TFTPBOOT_DIR)
-        shell.call(cmd)
+        # Prepare tftpboot, copy ipxe/pxelinux.0 rom
+        # cmd = 'yes | cp -rf /usr/share/ipxe/* ''{tftpboot}'.format(
+        #     tftpboot=self.TFTPBOOT_DIR)
+        # shell.call(cmd)
+        bm_utils.copy_dir_files_to_another_dir(
+            '/usr/share/ipxe', self.TFTPBOOT_DIR)
+        # bm_utils.copy_dir_files_to_another_dir(
+        #     '/usr/share/syslinux', self.TFTPBOOT_DIR)
+        shutil.copy('/usr/share/syslinux/pxelinux.0', self.TFTPBOOT_DIR)
 
         # Prepare httpboot, link zstack-dvd, copy kernel&initramfs
         if os.path.exists(self.ZSTACK_DVD_LINKED_DIR):
             os.unlink(self.ZSTACK_DVD_LINKED_DIR)
-        cmd = ('release=`cat /etc/zstack-release | awk \'{{ print $3 }}\'`; '
-               'ln -s /opt/zstack-dvd/x86_64/$release '
-               '{zstack_dvd_linked_dir}; '
-               'yes | cp -rf {zstack_dvd_linked_dir}/images/pxeboot/* '
-               '{httpboot}').format(
-                   zstack_dvd_linked_dir=self.ZSTACK_DVD_LINKED_DIR,
-                   httpboot=self.HTTPBOOT_DIR)
-        shell.call(cmd)
+        # cmd = ('release=`cat /etc/zstack-release | awk \'{{ print $3 }}\'`; '
+        #        'ln -s /opt/zstack-dvd/x86_64/$release '
+        #        '{zstack_dvd_linked_dir}; '
+        #        'yes | cp -rf {zstack_dvd_linked_dir}/images/pxeboot/* '
+        #        '{httpboot}').format(
+        #            zstack_dvd_linked_dir=self.ZSTACK_DVD_LINKED_DIR,
+        #            httpboot=self.HTTPBOOT_DIR)
+        # shell.call(cmd)
+        os.symlink('/opt/zstack-dvd/x86_64/%s' % yum_release,
+                   self.ZSTACK_DVD_LINKED_DIR)
+        bm_utils.copy_dir_files_to_another_dir(
+            os.path.join(self.ZSTACK_DVD_LINKED_DIR, 'images', 'pxeboot'),
+            self.HTTPBOOT_DIR)
+        bm_utils.copy_dir_files_to_another_dir(
+            os.path.join(self.ZSTACK_DVD_LINKED_DIR, 'images', 'pxeboot'),
+            self.TFTPBOOT_DIR)
 
         # Start and enable target service
         cmd = 'systemctl start target && systemctl enable target'
@@ -153,8 +168,9 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             'bmv2_gateway_agent/templates')
         k_v_mapping = {
             'boot.ipxe': os.path.join(template_dir, 'boot.ipxe.j2'),
-            'dnsmasq.conf': os.path.join(template_dir, 'dnsmasq.conf.j2'),
             'config.ipxe': os.path.join(template_dir, 'config.ipxe.j2'),
+            'default.pxe': os.path.join(template_dir, 'default.pxe.j2'),
+            'dnsmasq.conf': os.path.join(template_dir, 'dnsmasq.conf.j2'),
             'inspector.ks': os.path.join(template_dir, 'inspector.ks.j2'),
             'nginx_proxy_to_mn': os.path.join(template_dir,
                                               'nginx-proxy-to-mn.conf.j2'),
@@ -247,7 +263,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
     def _create_dnsmasq_host(self, instance_obj):
         """ Create dnsmasq configuration
         """
-        host = '{mac_addr},{ip_addr}'.format(
+        host = '{mac_addr},{ip_addr},set:instance'.format(
             mac_addr=instance_obj.provision_mac,
             ip_addr=instance_obj.provision_ip)
 
@@ -547,14 +563,19 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         inspect_ks_uri = 'http://{ip}:{port}/httpboot/inspector.ks'.format(
             ip=network_obj.provision_nic_ip, port=self.HTTP_PORT)
 
-        template = self._load_template('boot.ipxe')
-        conf = template.render(
+        ipxe_template = self._load_template('boot.ipxe')
+        ipxe_conf = ipxe_template.render(
             inspect_kernel_uri=inspect_kernel_uri,
             inspect_initramfs_uri=inspect_initrd_uri,
             inspect_ks_uri=inspect_ks_uri)
-
         with open(self.BOOT_IPXE_PATH, 'w') as f:
-            f.write(conf)
+            f.write(ipxe_conf)
+
+        pxe_template = self._load_template('default.pxe')
+        pxe_conf = pxe_template.render(
+            inspect_ks_uri=inspect_ks_uri)
+        with open(self.DEFAULT_PXE_PATH, 'w') as f:
+            f.write(pxe_conf)
 
     def _create_ipxe_configuration(self, instance_obj, volume_drivers):
         """ Generate ipxe cfg for a bm instance

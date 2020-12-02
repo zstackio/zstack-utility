@@ -30,10 +30,15 @@ log-facility={{ provision_dhcp_log_path }}
 dhcp-match=ipxe,175
 dhcp-match=set:efi,option:client-arch,7
 dhcp-match=set:efi,option:client-arch,9
+
 # Client is already running iPXE; move to next stage of chainloading
 dhcp-option=tag:ipxe,option:bootfile-name,boot.ipxe
 # Client is PXE booting over EFI without iPXE ROM,
 # send EFI version of iPXE chainloader
 dhcp-option=tag:efi,tag:!ipxe,option:bootfile-name,ipxe.efi
 
-dhcp-option=option:bootfile-name,undionly.kpxe
+# Client is a baremetal instance and boot mode is legacy, send undionly.kpxe
+dhcp-option=tag:instance,tag:!efi,tag:!ipxe,option:bootfile-name,undionly.kpxe
+# Client is not instance and boot mode is legacy, assume it's inspect action,
+# send pxelinux.0 for compatibility
+dhcp-option=tag:!instance,tag:!efi,option:bootfile-name,pxelinux.0
