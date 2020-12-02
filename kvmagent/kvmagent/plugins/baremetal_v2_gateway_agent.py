@@ -461,18 +461,70 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         Suspend the device mapper dev before take snapshot.
 
         NOTE(ya.wang): Support shared block backend only.
+
+        Example of cmd:
+        {
+            "vmUuid":"279a7944312b47ff933efdff542ec3f0",
+            "volumeUuid":"489e231dcfe2487c9580034ed95d0680",
+            "volume":{
+                "installPath":"/dev/2611cba5038046bca64b7d966df4292b/fd31270d25f54a52b916b7015446ab2f",
+                "deviceId":0,
+                "deviceType":"file",
+                "volumeUuid":"489e231dcfe2487c9580034ed95d0680",
+                "useVirtio":true,
+                "useVirtioSCSI":false,
+                "shareable":false,
+                "cacheMode":"none",
+                "wwn":"0x000f33eedc1868d9",
+                "bootOrder":0,
+                "physicalBlockSize":0,
+                "type":"Root",
+                "format":"qcow2",
+                "primaryStorageType":"SharedBlock"
+            },
+            "installPath":"/dev/2611cba5038046bca64b7d966df4292b/72a8809b48754d2f98cdbcc65f45d1b1",
+            "fullSnapshot":false,
+            "volumeInstallPath":"/dev/2611cba5038046bca64b7d966df4292b/fd31270d25f54a52b916b7015446ab2f",
+            "newVolumeUuid":"72a8809b48754d2f98cdbcc65f45d1b1",
+            "newVolumeInstallPath":"/dev/2611cba5038046bca64b7d966df4292b/72a8809b48754d2f98cdbcc65f45d1b1",
+            "isBaremetal2InstanceOnlineSnapshot":true,
+            "kvmHostAddons":{
+                "qcow2Options":" -o cluster_size=2097152 "
+            }
+        }
+        Need to point some params in cmd:
+        volumeUuid: The origin volume's uuid, not snapshot
+        volume.volumeUuid: Same as volumeUuid
+        volume.installPath: If the volume has not snapshot, then the path is
+          the volume's path, if the volume has snapshot, then the path is the
+          snapshot's path
+        installPath: The new snapshot's path
+        volumeInstallPath: Same as volume.installPath
+        newVolumeUuid: The new snapshot's uuid
+        newVolumeInstallPath: San as installPath, the new snapshot's path
+        isBaremetal2InstanceOnlineSnapshot: Flag that the snapshot action is
+          for as online baremetal instance
         """
         instance_obj = BmInstanceObj()
         setattr(instance_obj, 'uuid', cmd.vmUuid)
 
+        volume_map = json.loads(jsonobject.dumps(cmd.volume))
         src_volume = {'body': {
-            'volume': json.loads(jsonobject.dumps(cmd.volume))}}
+            'volume': {
+                'uuid': volume_map.get('volumeUuid'),
+                'primaryStorageType': volume_map.get('primaryStorageType'),
+                'type': volume_map.get('type'),
+                'path': volume_map.get('installPath'),
+                'format': volume_map.get('format'),
+                'deviceId': volume_map.get('deviceId')
+            }
+        }}
         src_volume_obj = VolumeObj.from_json(src_volume)
         src_volume_driver = volume.get_driver(instance_obj, src_volume_obj)
 
         dst_volume = { 'body': {
             'volume': {
-                'uuid': cmd.newVolumeUuid,
+                'uuid': src_volume_obj.uuid,
                 'primaryStorageType': src_volume_obj.primary_storage_type,
                 'type': src_volume_obj.type,
                 'path': cmd.newVolumeInstallPath,
