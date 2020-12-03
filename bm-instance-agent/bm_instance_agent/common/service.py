@@ -1,3 +1,5 @@
+import time
+
 from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_service import service
@@ -71,6 +73,8 @@ class WSGIService(service.ServiceBase):
 
         :returns: None
         """
+        # NOTE: Sleep 3 seconds to send the api callback
+        time.sleep(3)
         self.server.stop()
 
     def wait(self):
