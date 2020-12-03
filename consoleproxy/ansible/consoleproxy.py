@@ -75,7 +75,7 @@ else:
     command = 'mkdir -p %s %s' % (consoleproxy_root, virtenv_path)
     run_remote_command(command, host_post_info)
 
-# name: create bm2-console-proxy.service
+# name: create zstack-bm2-console-proxy.service
 command = """
 mkdir -p /var/log/zstack/bm2-console-proxy/
 touch /var/log/zstack/bm2-console-proxy/error.log
@@ -83,7 +83,7 @@ touch /var/log/zstack/bm2-console-proxy/access.log
 mkdir -p /etc/zstack/bm2-console-proxy/conf.d/
 
 echo -e "[Unit]
-Description=BareMetal2 instance console proxy
+Description=ZStack BareMetal2 Instance Console Proxy
 After=network.target remote-fs.target nss-lookup.target
 
 [Service]
@@ -101,9 +101,9 @@ KillMode=process
 PrivateTmp=true
 
 [Install]
-WantedBy=multi-user.target" > /usr/lib/systemd/system/bm2-console-proxy.service
+WantedBy=multi-user.target" > /usr/lib/systemd/system/zstack-bm2-console-proxy.service
 
-systemctl disable bm2-console-proxy.service
+systemctl disable zstack-bm2-console-proxy.service
 
 echo -e "user nginx;
 worker_processes auto;
