@@ -108,7 +108,7 @@ class SharedBlockVolume(base.BaseVolume):
         helper.NbdDeviceOperator(src_vol).disconnect()
 
         # Rename the dm dev to new volume's dm name
-        dm_operator.rename(self)
+        #dm_operator.rename(self)
 
     def resume(self):
         # NOTE: self should be src_vol

@@ -3710,7 +3710,7 @@ class Vm(object):
                     e(disk, 'target', None, {'dev': dev_format % _dev_letter, 'bus': default_bus_type})
                     if default_bus_type == "ide" and cmd.imagePlatform.lower() == "other":
                         allocat_ide_config(disk)
-                
+
                 return disk
 
             def filebased_volume(_dev_letter, _v):
@@ -3929,7 +3929,7 @@ class Vm(object):
                 if cmd.addons and cmd.addons['NicQos'] and cmd.addons['NicQos'][nic.uuid]:
                     qos = cmd.addons['NicQos'][nic.uuid]
                     Vm._add_qos_to_interface(nic_xml_object, qos)
-                
+
                 if cmd.coloPrimary or cmd.coloSecondary:
                     Vm._ignore_colo_vm_nic_rom_file_on_interface(nic_xml_object)
 
@@ -4260,7 +4260,7 @@ class Vm(object):
             if cmd.consoleLogToFile:
                 logfilename = '%s-vm-kernel.log' % cmd.vmInstanceUuid
                 logpath = os.path.join(tempfile.gettempdir(), logfilename)
-                
+
                 serial = e(devices, 'serial', None, {'type': 'file'})
                 e(serial, 'target', None, {'port': '0'})
                 e(serial, 'source', None, {'path': logpath})
@@ -4423,7 +4423,7 @@ class Vm(object):
 
         if iftype != 'hostdev':
             if nic.driverType:
-                e(interface, 'model', None, attrib={'type': nic.driverType})            
+                e(interface, 'model', None, attrib={'type': nic.driverType})
             elif nic.useVirtio:
                 e(interface, 'model', None, attrib={'type': 'virtio'})
             else:
@@ -4484,7 +4484,7 @@ class Vm(object):
             _add_bridge_fdb_entry_for_vnic()
 
         return interface
-    
+
     @staticmethod
     def _ignore_colo_vm_nic_rom_file_on_interface(interface):
         e(interface, 'driver', None, attrib={'name': 'qemu'})
@@ -5510,8 +5510,7 @@ class VmPlugin(kvmagent.KvmAgent):
                 'newVolumeUuid': '',
                 'newVolumeInstallPath': '',
                 'fullSnapshot': False,
-                'isBaremetalInstance': False,
-                'isBaremetalInstanceOnline': False
+                'isBaremetal2InstanceOnlineSnapshot': False
             }
         """
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -5548,23 +5547,19 @@ class VmPlugin(kvmagent.KvmAgent):
 
             else:
                 # New params in cmd:
-                # A flag to show the instance is bm instance
-                # A flag to show the snapshot is online or offline
-                if cmd.isBaremetalInstance:
-                    if cmd.isBaremetalInstanceOnline:
-                        src_vol_driver, dst_vol_driver = BmV2GwAgent.pre_take_volume_snapshot(cmd)
-                        try:
-                            rsp.snapshotInstallPath, rsp.newVolumeInstallPath = take_delta_snapshot_by_qemu_img_convert(
-                                cmd.volumeInstallPath, cmd.installPath)
-                            BmV2GwAgent.post_take_volume_snapshot(src_vol_driver, dst_vol_driver)
-                        except Exception as e:
-                            # Try to resume the dm device
-                            src_vol_driver.resume()
-                            logger.error(traceback.format_exc())
-                            raise e
-                    else:
+                # A flag to show the instance is bm instance and the instance
+                # status is online
+                if cmd.isBaremetal2InstanceOnlineSnapshot:
+                    src_vol_driver, dst_vol_driver = BmV2GwAgent.pre_take_volume_snapshot(cmd)
+                    try:
                         rsp.snapshotInstallPath, rsp.newVolumeInstallPath = take_delta_snapshot_by_qemu_img_convert(
                             cmd.volumeInstallPath, cmd.installPath)
+                        BmV2GwAgent.post_take_volume_snapshot(src_vol_driver, dst_vol_driver)
+                    except Exception as e:
+                        # Try to resume the dm device
+                        src_vol_driver.resume()
+                        logger.error(traceback.format_exc())
+                        raise e
                 else:
                     vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
 
@@ -5601,7 +5596,7 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.error = str(e)
             rsp.success = False
 
-        if not cmd.isBaremetalVolumeSnapshot:
+        if not cmd.isBaremetal2InstanceOnlineSnapshot:
             touchQmpSocketWhenExists(cmd.vmUuid)
         return jsonobject.dumps(rsp)
 
@@ -7651,21 +7646,21 @@ class VmPlugin(kvmagent.KvmAgent):
                     if uuid and uuid in all_active_vm_uuids:
                         # vm exists
                         continue
-                        
+
                     try:
                         modify_time = datetime.datetime.fromtimestamp(os.stat(p).st_mtime)
                         if modify_time < clean_time:
                             linux.rm_file_force(p)
-                    
+
                     except Exception as ex_inner:
                         logger.warn('Failed to clean libvirt log files `%s` because : %s' % (p, str(ex_inner)))
-                    
+
             except Exception as ex_outer:
                 logger.warn('Failed to clean libvirt log files because : %s' % str(ex_outer))
 
             # run cleaner : once a day
             thread.timer(24 * 3600, qemu_log_cleaner).start()
-        
+
         # first time
         thread.timer(60, qemu_log_cleaner).start()
 
