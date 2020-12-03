@@ -2035,29 +2035,23 @@ def get_unmanaged_vms(include_not_zstack_but_in_virsh = False):
             unmanaged_vms.append(vm)
     return unmanaged_vms
 
-def linux_lsof(file, process="qemu-kvm", find_rpath=True):
+
+def linux_lsof(abs_path, process="qemu-kvm", find_rpath=True):
     """
 
-    :param file: target file to run lsof
+    :param abs_path: target file to run lsof
     :param process: process name to find, it can't find correctly in CentOS 7.4, so give process name is necessary
     :param find_rpath: use realpath to find deeper, it should be true in most cases
     :return: stdout of lsof
     """
+
     r = ""
-    o = shell.call("lsof -b -c %s | grep %s" % (process, file), False).strip().splitlines()
-    if len(o) != 0:
-        for line in o:
-            if line not in r:
-                r = r.strip() + "\n" + line
+    if find_rpath:
+        r_path = os.path.realpath(abs_path)
+        if r_path != abs_path:
+            abs_path += "|%s" % r_path
 
-    if not find_rpath:
-        return r.strip()
-
-    r_path = shell.call("realpath %s" % file).strip()
-    if r_path == file:
-        return r.strip()
-
-    o = shell.call("lsof -b -c %s | grep %s" % (process, r_path), False).strip().splitlines()
+    o = shell.call("lsof -b -c %s | grep -wE '%s'" % (process, abs_path), False).strip().splitlines()
     if len(o) != 0:
         for line in o:
             if line not in r:
