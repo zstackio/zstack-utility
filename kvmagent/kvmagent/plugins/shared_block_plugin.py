@@ -1147,7 +1147,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                             raise Exception("qcow2 %s and %s are not identical" % (current_abs_path, target_abs_path))
                         logger.debug("confirmed qcow2 %s and %s are identical" % (current_abs_path, target_abs_path))
                     if current_backing_file is not None and current_backing_file != "":
-                        lvm.do_active_lv(target_backing_file, lvm.LvmlockdLockType.SHARE, False)
+                        lvm.active_lv(target_backing_file, lvm.LvmlockdLockType.SHARE)
                         logger.debug("rebase %s to %s" % (target_abs_path, target_backing_file))
                         linux.qcow2_rebase_no_check(target_backing_file, target_abs_path)
         except Exception as e:
