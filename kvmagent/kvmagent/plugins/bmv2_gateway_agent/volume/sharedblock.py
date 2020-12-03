@@ -86,29 +86,33 @@ class SharedBlockVolume(base.BaseVolume):
 
     def pre_take_volume_snapshot(self):
         # NOTE: self is src_vol
-        helper.NbdDeviceOperator(self).fetch_nbd_id()
+        nbd_operator = helper.NbdDeviceOperator(self)
+        nbd_operator.fetch_nbd_id()
 
         dm_operator = helper.DmDeviceOperator(self)
         with bm_utils.rollback(dm_operator.resume):
             dm_operator.suspend()
+            nbd_operator.disconnect()
 
     def post_take_volume_snapshot(self, src_vol):
         # NOTE: self is dst_vol
-        # Use src vol to init dm device operator
-        dm_operator = helper.DmDeviceOperator(src_vol)
-        # Use dst vol to init nbd device operator
-        nbd_operator = helper.NbdDeviceOperator(self)
+        src_nbd_operator = helper.NbdDeviceOperator(src_vol)
+        with bm_utils.rollback(src_nbd_operator.connect):
+            # Use src vol to init dm device operator
+            dm_operator = helper.DmDeviceOperator(src_vol)
+            # Use dst vol to init nbd device operator
+            nbd_operator = helper.NbdDeviceOperator(self)
 
-        nbd_operator.connect()
+            nbd_operator.connect()
 
-        with bm_utils.rollback(nbd_operator.disconnect):
-            dm_operator.reload(self)
+            with bm_utils.rollback(nbd_operator.disconnect):
+                dm_operator.reload(self)
 
-        dm_operator.resume()
-        helper.NbdDeviceOperator(src_vol).disconnect()
+            dm_operator.resume()
+            # helper.NbdDeviceOperator(src_vol).disconnect()
 
-        # Rename the dm dev to new volume's dm name
-        #dm_operator.rename(self)
+            # Rename the dm dev to new volume's dm name
+            #dm_operator.rename(self)
 
     def resume(self):
         # NOTE: self should be src_vol
