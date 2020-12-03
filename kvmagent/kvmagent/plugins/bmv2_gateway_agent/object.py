@@ -49,13 +49,6 @@ class BmInstanceObj(Base):
     """ Construct a bm instance obj from req body
 
     Bm instance part of req::
-    # {
-    #     'bmInstance': {
-    #         'uuid': 'uuid',
-    #         'provisionIpAddress': '192.168.101.10',
-    #         'provisionNicMac': '00-00-00-00-00-00'
-    #     }
-    # }
     {
         'bmInstance': {
             'uuid': 'uuid',
@@ -65,11 +58,6 @@ class BmInstanceObj(Base):
     }
     """
 
-    # k_v_mapping = {
-    #     'uuid': 'uuid',
-    #     'provisionIpAddress': 'provision_ip_address',
-    #     'provisionNicMac': 'provision_nic_mac'
-    # }
     k_v_mapping = {
         'uuid': 'uuid',
         'provisionIp': 'provision_ip',
@@ -88,17 +76,6 @@ class NetworkObj(Base):
     """ Construct a network obj from req body
     
     A req body example::
-    # {
-    #     'provisionNetwork': {
-    #         'nicName': 'eno1',
-    #         'ipAddress': '10.0.201.10',
-    #         'ispRange': '10.0.201.20,10.0.201.30',
-    #         'netmask': '255.255.255.0',
-    #         'gateway': '10.0.201.1',
-    #         'callbackIp': '10.1.1.10',
-    #         'callbackPort': 8080
-    #     }
-    # }
     {
         'provisionNetwork': {
             'dhcpInterface': 'eno1',
@@ -114,15 +91,6 @@ class NetworkObj(Base):
     }
     """
 
-    # k_v_mapping = {
-    #     'nicName': 'nic_name',
-    #     'ipAddress': 'ip_address',
-    #     'ipRange': 'ip_range',
-    #     'netmask': 'netmask',
-    #     'gateway': 'gateway',
-    #     'callbackIp': 'callback_ip',
-    #     'callbackPort': 'callback_port'
-    # }
     k_v_mapping = {
         'dhcpInterface': 'dhcp_interface',
         'dhcpRangeStartIp': 'dhcp_range_start_ip',

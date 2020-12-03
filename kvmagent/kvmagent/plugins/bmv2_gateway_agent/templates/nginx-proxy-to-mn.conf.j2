@@ -4,7 +4,7 @@ worker_processes auto;
 
 error_log {{ zstack_bm_nginx_log_dir }}/error.log;
 
-pid {{ zstack_bm_nginx_pid }};
+pid {{ zstack_bm_gateway_nginx_pid }};
 
 include /usr/share/nginx/modules/*.conf;
 

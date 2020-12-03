@@ -64,7 +64,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
     NGINX_LOG_DIR = os.path.join(BAREMETAL_LOG_DIR, 'nginx')
     NGINX_PID_PATH = os.path.join(PID_DIR, 'zstack-bm-nginx.pid')
     NGINX_SYSTEMD_SERVICE_PATH = \
-            '/usr/lib/systemd/system/zstack-baremetal-nginx.service'
+            '/usr/lib/systemd/system/zstack-baremetal-gateway-nginx.service'
 
     HTTPBOOT_DIR = os.path.join(BAREMETAL_LIB_DIR, 'httpboot/')
     ZSTACK_DVD_LINKED_DIR = os.path.join(HTTPBOOT_DIR, 'zstack-dvd')
@@ -179,7 +179,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             'nginx_proxy_to_agent_tcp': os.path.join(
                 template_dir, 'nginx-proxy-to-agent-tcp.j2'),
             'nginx_systemd_service': os.path.join(
-                template_dir, 'zstack-baremetal-nginx.service.j2'),
+                template_dir, 'zstack-baremetal-gateway-nginx.service.j2'),
             'dnsmasq_systemd_service': os.path.join(
                 template_dir, 'zstack-baremetal-dnsmasq.service.j2')
         }
@@ -333,7 +333,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             bm_gateway_httpboot=self.BAREMETAL_LIB_DIR,
             bm_agent_proxy_conf_dir=self.NGINX_BM_AGENT_PROXY_CONF_DIR,
             zstack_bm_nginx_log_dir=self.NGINX_LOG_DIR,
-            zstack_bm_nginx_pid=self.NGINX_PID_PATH
+            zstack_bm_gateway_nginx_pid=self.NGINX_PID_PATH
         )
         with open(self.NGINX_CONF_PATH, 'w') as f:
             f.write(conf)
@@ -341,15 +341,15 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         if not os.path.exists(self.NGINX_SYSTEMD_SERVICE_PATH):
             bm_nginx_template = self._load_template('nginx_systemd_service')
             bm_nginx_conf = bm_nginx_template.render(
-                zstack_bm_nginx_pid=self.NGINX_PID_PATH,
-                zstack_bm_nginx_conf_path=self.NGINX_CONF_PATH)
+                zstack_bm_gateway_nginx_pid=self.NGINX_PID_PATH,
+                zstack_bm_gateway_nginx_conf_path=self.NGINX_CONF_PATH)
             with open(self.NGINX_SYSTEMD_SERVICE_PATH, 'w') as f:
                 f.write(bm_nginx_conf)
             cmd = 'systemctl daemon-reload'
             shell.call(cmd)
 
-        cmd = ('systemctl start zstack-baremetal-nginx && '
-               'systemctl reload zstack-baremetal-nginx')
+        cmd = ('systemctl start zstack-baremetal-gateway-nginx && '
+               'systemctl reload zstack-baremetal-gateway-nginx')
         shell.call(cmd)
 
     def _destroy_nginx(self):
@@ -358,8 +358,8 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         Include proxy shellinaboxd, proxy bm instance agent API, inspect http
         web server, mn proxy.
         """
-        cmd = ('systemctl is-active zstack-baremetal-nginx || exit 0; '
-               'systemctl stop zstack-baremetal-nginx.service')
+        cmd = ('systemctl is-active zstack-baremetal-gateway-nginx || exit 0; '
+               'systemctl stop zstack-baremetal-gateway-nginx.service')
         shell.call(cmd)
         # NOTE(ya.wang) The exist configuration file will rewrite during
         # network prepare, therefore the main conf do not need remove.
@@ -400,8 +400,8 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         with open(file_path, 'w') as f:
             f.write(conf)
 
-        cmd = ('systemctl start zstack-baremetal-nginx && '
-               'systemctl reload zstack-baremetal-nginx')
+        cmd = ('systemctl start zstack-baremetal-gateway-nginx && '
+               'systemctl reload zstack-baremetal-gateway-nginx')
         shell.call(cmd)
 
     def _delete_nginx_agent_proxy_configuration(self, instance_obj):
@@ -421,8 +421,8 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                                 instance_obj.uuid + '.tcp')
         linux.rm_file_force(file_path)
 
-        cmd = ('systemctl start zstack-baremetal-nginx && '
-               'systemctl reload zstack-baremetal-nginx')
+        cmd = ('systemctl start zstack-baremetal-gateway-nginx && '
+               'systemctl reload zstack-baremetal-gateway-nginx')
         shell.call(cmd)
 
     def _attach_volume(self, instance_obj, volume_obj):
@@ -596,8 +596,8 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         with open(file_path, 'w') as f:
             f.write(conf)
 
-        cmd = ('systemctl start zstack-baremetal-nginx && '
-               'systemctl reload zstack-baremetal-nginx')
+        cmd = ('systemctl start zstack-baremetal-gateway-nginx && '
+               'systemctl reload zstack-baremetal-gateway-nginx')
         shell.call(cmd)
 
         return gw_port
