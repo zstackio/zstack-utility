@@ -135,7 +135,8 @@ class NbdDeviceOperator(object):
                 logger.info(msg)
                 return
 
-            self.volume.nbd_id = self._get_available_nbd_id()
+            if not self.volume.nbd_id:
+                self.volume.nbd_id = self._get_available_nbd_id()
             socket_path = os.path.join(self.QEMU_NBD_SOCKET_DIR,
                                        self.volume.nbd_socket)
             cmd = ('qemu-nbd --format {format} --connect /dev/nbd{nbd_id} '
