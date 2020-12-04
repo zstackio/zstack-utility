@@ -244,7 +244,19 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         rsp = AgentRsp()
 
         vm = vm_plugin.get_vm_by_uuid(cmd.vmInstanceUuid)
-        vm.detach_data_volume(cmd.volume)
+        try:
+            vm.detach_data_volume(cmd.volume)
+        except Exception as e:
+            # failure to detach volume may be due to the multipath of the scsi changed, try again.
+            if cmd.volume.installPath == "/dev/disk/by-id/scsi-%s" % cmd.wwid:
+                cmd.volume.installPath = "/dev/disk/by-id/dm-uuid-mpath-%s" % cmd.wwid
+                vm.detach_data_volume(cmd.volume)
+            elif cmd.volume.installPath == "/dev/disk/by-id/dm-uuid-mpath-%s" % cmd.wwid:
+                cmd.volume.installPath = "/dev/disk/by-id/scsi-%s" % cmd.wwid
+                vm.detach_data_volume(cmd.volume)
+            else:
+                raise e
+
         return jsonobject.dumps(rsp)
 
     @lock.lock('iscsiadm')
@@ -331,8 +343,9 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                     rsp.iscsiTargetStructList.append(t)
                 else:
                     disks = bash.bash_o("ls /dev/disk/by-path | grep %s:%s | grep %s" % (cmd.iscsiServerIp, cmd.iscsiServerPort, iqn)).strip().splitlines()
+                    scsi_info = lvm.get_lsscsi_info()
                     for d in disks:
-                        lun_struct = self.get_disk_info_by_path(d.strip())
+                        lun_struct = self.get_disk_info_by_path(d.strip(), scsi_info)
                         if lun_struct is not None:
                             t.iscsiLunStructList.append(lun_struct)
                     rsp.iscsiTargetStructList.append(t)
@@ -358,7 +371,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                     linux.rm_file_force(ipath)
 
     @staticmethod
-    def get_disk_info_by_path(path):
+    def get_disk_info_by_path(path, scsi_info):
         # type: (str) -> IscsiLunStruct
         r = bash.bash_r("multipath -l | grep -e '/multipath.conf' | grep -e 'line'")
         if r == 0:
@@ -368,7 +381,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 "The multipath.conf setting on host[%s] may be error, please check and try again" % current_hostname)
 
         abs_path = bash.bash_o("readlink -e /dev/disk/by-path/%s" % path).strip()
-        candidate_struct = lvm.get_device_info(abs_path.split("/")[-1])
+        candidate_struct = lvm.get_device_info(abs_path.split("/")[-1], scsi_info)
         if candidate_struct is None:
             return None
         lun_struct = IscsiLunStruct()
@@ -380,13 +393,9 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         lun_struct.vendor = candidate_struct.vendor
         lun_struct.type = candidate_struct.type
         lun_struct.wwn = candidate_struct.wwn
-        lun_struct.wwids = candidate_struct.wwids
+        lun_struct.wwids = [candidate_struct.wwid]
         if lvm.is_slave_of_multipath(abs_path):
             lun_struct.type = "mpath"
-            # 'lsscsi -i' output format:
-            # [16:0:4:98] disk COMPELNT Compellent Vol 0702 /dev/xxx 36000d31000e568000000000000000081
-            mpath_wwid = bash.bash_o("lsscsi -i | awk '$(NF-1) == \"%s\" {print $NF}'" % abs_path).strip()
-            lun_struct.wwids = [mpath_wwid]
         return lun_struct
 
     @lock.lock('iscsiadm')
@@ -783,7 +792,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             logger.debug("not find any fc targets")
             return []
 
-        o = bash.bash_o("lsscsi | grep '\/dev\/'").strip().splitlines()
+        o = bash.bash_o("lsscsi -i | grep '\/dev\/'").strip().splitlines()
         if len(o) == 0 or (len(o) == 1 and o[0] == ""):
             logger.debug("not find any usable fc disks")
             return []
@@ -792,7 +801,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
         def get_lun_info(fc_target, i):
             t = filter(lambda x: "[%s" % fc_target in x, o)
-            mapped_t = map(lambda x: self.get_device_info(x.split("/dev/")[1], rescan), t)
+            mapped_t = map(lambda x: self.get_device_info(x, rescan), t)
             luns[i] = filter(lambda x: x is not None, mapped_t)
 
         threads = []
@@ -801,14 +810,14 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         for t in threads:
             t.join()
 
+        luns = sum(filter(None, luns), [])
         luns_info = {}
-        for lun_list in luns:
-            for lun in lun_list:  # type: FiberChannelLunStruct
-                if lun.storageWwnn not in luns_info or len(luns_info[lun.storageWwnn])==0:
-                    luns_info[lun.storageWwnn] = []
-                    luns_info[lun.storageWwnn].append(lun)
-                elif lun.wwids[0] not in map(lambda x:x.wwids[0], luns_info[lun.storageWwnn]):
-                    luns_info[lun.storageWwnn].append(lun)
+        for lun in luns:  # type: FiberChannelLunStruct
+            if lun.storageWwnn not in luns_info or len(luns_info[lun.storageWwnn]) == 0:
+                luns_info[lun.storageWwnn] = []
+                luns_info[lun.storageWwnn].append(lun)
+            elif lun.wwids[0] not in map(lambda x: x.wwids[0], luns_info[lun.storageWwnn]):
+                luns_info[lun.storageWwnn].append(lun)
 
         result = []
         for i in luns_info.values():
@@ -829,13 +838,18 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         linux.set_fail_if_no_path()
         return jsonobject.dumps(rsp)
 
-    def get_device_info(self, dev_name, rescan):
+    def get_device_info(self, scsi_info, rescan):
         # type: (str) -> FiberChannelLunStruct
         s = FiberChannelLunStruct()
 
+        dev_name = scsi_info.split("/dev/")[1].split(" ")[0].strip()
+        wwid = scsi_info.split("/dev/")[1].split(" ")[-1].strip()
+        if wwid == "" or wwid == "-" or wwid is None:
+            return None
+
         # rescan disk size
         if rescan:
-            _cmd = shell.ShellCmd("echo 1 > /sys/block/%s/device/rescan" % dev_name.strip())
+            _cmd = shell.ShellCmd("echo 1 > /sys/block/%s/device/rescan" % dev_name)
             _cmd(is_exception=False)
             logger.debug("rescaned disk %s, return code: %s, stdout %s, stderr: %s" % (
             dev_name, _cmd.return_code, _cmd.stdout, _cmd.stderr))
@@ -850,10 +864,6 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
         def get_data(e):
             return e.split("=")[1].strip().strip('"')
-
-        def get_wwids(dev):
-            return shell.call(
-                "udevadm info -n %s | grep 'by-id' | grep -v DEVLINKS | awk -F 'by-id/' '{print $2}'" % dev).strip().split()
 
         def get_path(dev):
             return shell.call(
@@ -880,13 +890,9 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             elif entry.startswith('TYPE'):
                 s.type = get_data(entry)
 
-        s.wwids = get_wwids(dev_name)
-        s.wwids.sort()
+        s.wwids = [wwid]
         s.path = get_path(dev_name)
         if lvm.is_slave_of_multipath("/dev/%s" % dev_name):
             s.type = "mpath"
-            wwid = bash.bash_o("lsscsi -i | awk '$(NF-1) == \"/dev/%s\" {print $NF}'" % dev_name).strip()
-            s.wwids = [wwid] if wwid != "" else s.wwids
         s.storageWwnn = get_storage_wwnn(s.hctl)
-
         return s

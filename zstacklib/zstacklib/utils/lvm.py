@@ -88,7 +88,7 @@ class RetryException(Exception):
 
 
 class SharedBlockCandidateStruct:
-    wwids = []  # type: list[str]
+    wwid = None  # type: str
     vendor = None  # type: str
     model = None  # type: str
     wwn = None  # type: str
@@ -103,14 +103,15 @@ class SharedBlockCandidateStruct:
 
 
 def get_block_devices():
+    scsi_info = get_lsscsi_info()
     # 1. get multi path devices information
-    block_devices, slave_devices = get_multi_path_block_devices()
+    block_devices, slave_devices = get_mpath_block_devices(scsi_info)
     # 2. get information of other devices
-    block_devices.extend(get_disk_block_devices(slave_devices))
+    block_devices.extend(get_disk_block_devices(slave_devices, scsi_info))
 
     return block_devices
 
-def get_multi_path_block_devices():
+def get_mpath_block_devices(scsi_info):
     slave_devices = []
     mpath_devices = []
 
@@ -123,13 +124,9 @@ def get_multi_path_block_devices():
 
     def get_block_devices(slave, dm, i):
         try:
-            struct = get_device_info(slave)
+            struct = get_device_info(slave, scsi_info)
             if struct is None:
                 return
-            cmd = shell.ShellCmd(
-                "udevadm info -n %s | grep dm-uuid-mpath | grep -o 'dm-uuid-mpath-\S*' | head -n 1 | awk -F '-' '{print $NF}'" % dm)
-            cmd(is_exception=True)
-            struct.wwids = [cmd.stdout.strip().strip("()")]
             struct.type = "mpath"
             block_devices_list[i] = struct
         except Exception as e:
@@ -151,7 +148,7 @@ def get_multi_path_block_devices():
                 cmd = shell.ShellCmd(
                     "udevadm info -n %s | grep dm-uuid-mpath | grep -o 'dm-uuid-mpath-\S*' | head -n 1 | awk -F '-' '{print $NF}'" % dm)
                 cmd(is_exception=True)
-                struct.wwids = [cmd.stdout.strip().strip("()")]
+                struct.wwid = cmd.stdout.strip().strip("()")
                 struct.type = "mpath"
                 block_devices_list[idx] = struct
                 continue
@@ -167,20 +164,18 @@ def get_multi_path_block_devices():
 
     return filter(None, block_devices_list), slave_devices
 
-def get_disk_block_devices(slave_devices):
+def get_disk_block_devices(slave_devices, scsi_info):
     disks = shell.call("lsblk -p -o NAME,TYPE | grep disk | awk '{print $1}'").strip().split()
     block_devices_list = [None] * len(disks)
 
     def get_block_devices(disk, i):
         try:
-            d = get_device_info(disk.strip().split("/")[-1])
-            if d is None:
+            struct = get_device_info(disk.strip().split("/")[-1], scsi_info)
+            if struct is None:
                 return
-            if len(d.wwids) is 0:
-                return
-            if get_pv_uuid_by_path("/dev/disk/by-id/%s" % d.wwids[0]) not in ("", None):
-                d.type = "lvm-pv"
-            block_devices_list[i] = d
+            if get_pv_uuid_by_path("%s" % disk.strip()) not in ("", None):
+                struct.type = "lvm-pv"
+            block_devices_list[i] = struct
         except Exception as e:
             logger.warn(linux.get_exception_stacktrace())
             return
@@ -199,6 +194,17 @@ def get_disk_block_devices(slave_devices):
         t.join()
 
     return filter(None, block_devices_list)
+
+def get_lsscsi_info():
+    scsi_info = {}
+    o = bash.bash_o("lsscsi -i | grep '\/dev\/'").strip().splitlines()
+    for info in o:
+        dev_name = info.split("/dev/")[1].split(" ")[0].strip()
+        wwid = info.split("/dev/")[1].split(" ")[-1].strip()
+        if wwid == "" or wwid == "-" or wwid is None:
+            continue
+        scsi_info[dev_name] = wwid
+    return scsi_info
 
 def is_multipath_running():
     r = bash.bash_r("multipath -t")
@@ -263,9 +269,11 @@ def get_lvmlockd_service_name():
         service_name = 'lvmlockd.service'
     return service_name
 
-def get_device_info(dev_name):
+def get_device_info(dev_name, scsi_info):
     # type: (str) -> SharedBlockCandidateStruct
     s = SharedBlockCandidateStruct()
+    dev_name = dev_name.strip()
+
     r, o, e = bash.bash_roe("lsblk --pair -b -p -o NAME,VENDOR,MODEL,WWN,SERIAL,HCTL,TYPE,SIZE /dev/%s" % dev_name, False)
     if r != 0 or o.strip() == "":
         logger.warn("can not get device information from %s" % dev_name)
@@ -274,8 +282,17 @@ def get_device_info(dev_name):
     def get_data(e):
         return e.split("=")[1].strip().strip('"')
 
-    def get_wwids(dev):
-        return shell.call("udevadm info -n %s | grep 'by-id' | grep -v DEVLINKS | awk -F 'by-id/' '{print $2}'" % dev).strip().split()
+    def get_wwid(dev):
+        try:
+            if dev in scsi_info.keys():
+                return scsi_info[dev]
+            elif dev.startswith("dm-"):
+                return shell.call("udevadm info -n %s | grep dm-uuid-mpath | grep -o 'dm-uuid-mpath-\S*' | head -n 1 | awk -F '-' '{print $NF}'" % dev).strip().strip("()")
+            else:
+                return None
+        except Exception as e:
+            logger.warn(linux.get_exception_stacktrace())
+            return None
 
     def get_path(dev):
         return shell.call("udevadm info -n %s | grep 'by-path' | grep -v DEVLINKS | head -n1 | awk -F 'by-path/' '{print $2}'" % dev).strip()
@@ -296,7 +313,10 @@ def get_device_info(dev_name):
         elif entry.startswith('TYPE'):
             s.type = get_data(entry)
 
-    s.wwids = get_wwids(dev_name)
+    wwid = get_wwid(dev_name)
+    if wwid == "" or wwid == "-" or wwid is None:
+        return None
+    s.wwid = wwid
     s.path = get_path(dev_name)
     return s
 
