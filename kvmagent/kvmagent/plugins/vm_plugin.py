@@ -6094,7 +6094,8 @@ class VmPlugin(kvmagent.KvmAgent):
             d = e(root, 'source')
             e(d, 'vendor', None, {'id': '0x%s' % cmd.idVendor})
             e(d, 'product', None, {'id': '0x%s' % cmd.idProduct})
-            e(d, 'address', None, {'bus': str(cmd.busNum), 'device': str(cmd.devNum)})
+            if cmd.useAddress:
+                e(d, 'address', None, {'bus': str(cmd.busNum), 'device': str(cmd.devNum)})
 
         if cmd.attachType == "Redirect":
             root = etree.Element('redirdev', {'bus': 'usb', 'type': 'tcp'})
@@ -6124,7 +6125,8 @@ class VmPlugin(kvmagent.KvmAgent):
             d = e(root, 'source')
             e(d, 'vendor', None, {'id': '0x%s' % cmd.idVendor})
             e(d, 'product', None, {'id': '0x%s' % cmd.idProduct})
-            e(d, 'address', None, {'bus': str(cmd.busNum), 'device': str(cmd.devNum)})
+            if cmd.useAddress:
+                e(d, 'address', None, {'bus': str(cmd.busNum), 'device': str(cmd.devNum)})
             e(root, 'address', None, {'type': 'usb', 'bus': str(bus), 'port': str(self._get_next_usb_port(vm.domain, bus))})
 
         if cmd.attachType == "Redirect":
