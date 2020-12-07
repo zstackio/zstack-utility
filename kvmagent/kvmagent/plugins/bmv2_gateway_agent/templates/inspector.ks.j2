@@ -70,15 +70,16 @@ def get_basic_info():
     }
 
 
-def _get_nic_ip_addr(net_dev):
-    stdout = commands.getoutput('ip -4 addr show %s' % net_dev).split()
-    if stdout:
-        addr = stdout[stdout.index('inet') + 1].split('/')[0]
-        return addr
-    return None
-
-
 def get_nic_info():
+    # Get the pxe interface from /proc/cmdline
+    # NOTE: Need to point that the mac addr should start with '01', because
+    # the arp type of ethernet is 1.
+    pxe_iface_mac = ''
+    with open('/proc/cmdline', 'r') as f:
+        for param in f.read().strip().split():
+            if 'BOOTIF' in param:
+                pxe_iface_mac = param.split('=')[-1].replace('-', ':')
+
     net_devs = []
     for net_dev in os.listdir('/sys/class/net'):
         abspath = os.path.join('/sys/class/net', net_dev)
@@ -95,11 +96,7 @@ def get_nic_info():
         with open(os.path.join(abspath, 'address'), 'r') as f:
             mac_address = f.read().strip()
 
-        # TODO(ya.wang): Check the provision nic
-        is_provision_nic = False
-        addr = _get_nic_ip_addr(net_dev)
-        if addr:
-            is_provision_nic = True
+        is_provision_nic = True if mac_address in pxe_iface_mac else False
 
         net_devs.append({
             'nicMac': mac_address,
