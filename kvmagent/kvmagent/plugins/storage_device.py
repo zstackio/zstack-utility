@@ -368,7 +368,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 "The multipath.conf setting on host[%s] may be error, please check and try again" % current_hostname)
 
         abs_path = bash.bash_o("readlink -e /dev/disk/by-path/%s" % path).strip()
-        candidate_struct = lvm.get_device_info(abs_path.split("/")[-1])
+        candidate_struct = lvm.get_device_info(abs_path.split("/")[-1].strip())
         if candidate_struct is None:
             return None
         lun_struct = IscsiLunStruct()
@@ -773,7 +773,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
         def get_lun_info(fc_target, i):
             t = filter(lambda x: "[%s" % fc_target in x, o)
-            mapped_t = map(lambda x: self.get_device_info(x.split("/dev/")[1], rescan), t)
+            mapped_t = map(lambda x: self.get_device_info(x.split("/dev/")[1].strip(), rescan), t)
             luns[i] = filter(lambda x: x is not None, mapped_t)
 
         threads = []
@@ -782,14 +782,14 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         for t in threads:
             t.join()
 
+        luns = sum(filter(None, luns), [])
         luns_info = {}
-        for lun_list in luns:
-            for lun in lun_list:  # type: FiberChannelLunStruct
-                if lun.storageWwnn not in luns_info or len(luns_info[lun.storageWwnn])==0:
-                    luns_info[lun.storageWwnn] = []
-                    luns_info[lun.storageWwnn].append(lun)
-                elif lun.wwids[0] not in map(lambda x:x.wwids[0], luns_info[lun.storageWwnn]):
-                    luns_info[lun.storageWwnn].append(lun)
+        for lun in luns:  # type: FiberChannelLunStruct
+            if lun.storageWwnn not in luns_info or len(luns_info[lun.storageWwnn]) == 0:
+                luns_info[lun.storageWwnn] = []
+                luns_info[lun.storageWwnn].append(lun)
+            elif lun.wwids[0] not in map(lambda x: x.wwids[0], luns_info[lun.storageWwnn]):
+                luns_info[lun.storageWwnn].append(lun)
 
         result = []
         for i in luns_info.values():
