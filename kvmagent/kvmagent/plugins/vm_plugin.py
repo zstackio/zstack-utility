@@ -4428,7 +4428,7 @@ class Vm(object):
             _config_ebtable_rules_for_vfnics()
 
         # to allow vnic/vf communication in same host
-        if nic.pciDeviceAddress is None and nic.physicalInterface is not None:
+        if nic.pciDeviceAddress is None and nic.physicalInterface is not None and brMode != 'mocbr':
             _add_bridge_fdb_entry_for_vnic()
 
         return interface
