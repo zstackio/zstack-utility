@@ -279,10 +279,12 @@ def get_host_releasever(ansible_distribution):
         "redhat maipo 7.4": "ns10", # old kylinV10, oem 7.4 incompletely
         "centos core 7.6.1810": "c76",
         "centos core 7.4.1708": "c74",
-        "centos core 7.2.1511": "c72",
+        "centos core 7.2.1511": "c74", # c74 for old releases
+        "centos core 7.1.1503": "c74",
     }
     _key = " ".join(ansible_distribution).lower()
-    return supported_release_info.get(_key)
+    _releasever = supported_release_info.get(_key)
+    return _releasever if _releasever else get_mn_yum_release()
 
 def post_msg(msg, post_url):
     '''post message to zstack, label for support i18n'''
