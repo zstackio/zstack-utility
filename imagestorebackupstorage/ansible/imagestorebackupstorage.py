@@ -74,7 +74,11 @@ elif IS_MIPS64EL:
 else:
     src_pkg_imagestorebackupstorage = "zstack-store.bin"
     src_pkg_exporter = "collectd_exporter"
-dst_pkg_imagestorebackupstorage = "zstack-store.bin"
+
+if client != "true":
+    dst_pkg_imagestorebackupstorage = "zstack-store.bin"
+else:
+    dst_pkg_imagestorebackupstorage = "zstack-store-client.bin"
 dst_pkg_exporter = "collectd_exporter"
 
 # include zstacklib.py
@@ -142,7 +146,7 @@ else:
     error("ERROR: Unsupported distribution")
 
 # name: copy imagestore binary
-command = 'rm -rf {};mkdir -p {}'.format(imagestore_root, imagestore_root + "/certs")
+command = 'mkdir -p {}'.format(imagestore_root + "/certs")
 run_remote_command(command, host_post_info)
 copy_arg = CopyArg()
 dest_pkg = "%s/%s" % (imagestore_root, dst_pkg_imagestorebackupstorage)
@@ -190,8 +194,7 @@ else:
 run_remote_command(command, host_post_info)
 
 # name: restart image store server
-server = client != "true" or run_remote_command("pkill -0 zstore", host_post_info, return_status=True, return_output=False)
-if server:
+if client != "true":
     # integrate zstack-store with init.d
     run_remote_command("/bin/cp -f /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage /etc/init.d/", host_post_info)
     if distro in RPM_BASED_OS:
