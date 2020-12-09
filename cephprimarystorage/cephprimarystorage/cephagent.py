@@ -99,6 +99,7 @@ class CpRsp(AgentResponse):
         super(CpRsp, self).__init__()
         self.size = None
         self.actualSize = None
+        self.installPath = None
 
 class CreateSnapshotRsp(AgentResponse):
     def __init__(self):
@@ -559,6 +560,7 @@ class CephAgent(plugin.TaskManager):
 
         rsp = CpRsp()
         rsp.size = self._get_file_size(dst_path)
+        rsp.installPath = cmd.dstPath
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
