@@ -482,11 +482,15 @@ class UpdateConfigration(object):
         return True, None
 
     def updateGrubConfig(self):
-        linux.updateGrubFile("grep -E '{0}(\ )*=(\ )*on'", "sed -i '/^[[:space:]]*linux/s/[[:blank:]]*{0}[[:blank:]]*=[[:blank:]]*on//g'".format(self.iommu_type), GRUB_FILES)
-        linux.updateGrubFile("grep -E '{0}(\ )*=(\ )*off'", "sed -i '/^[[:space:]]*linux/s/[[:blank:]]*{0}[[:blank:]]*=[[:blank:]]*off//g'".format(self.iommu_type), GRUB_FILES)
-        linux.updateGrubFile("grep -E 'modprobe.blacklist(\ )*='", "sed -i '/^[[:space:]]*linux/s/[[:blank:]]*modprobe.blacklist[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g'", GRUB_FILES)
-        if self.enableIommu is True:
-            linux.updateGrubFile(None, "sed -i '/^[[:space:]]*linux/s/$/ {}=on modprobe.blacklist=snd_hda_intel,amd76x_edac,vga16fb,nouveau,rivafb,nvidiafb,rivatv,amdgpu,radeon/g'".format(self.iommu_type), GRUB_FILES)
+        for grub_path in GRUB_FILES:
+            content = linux.read_file(grub_path)
+            if content is not None:
+                content = re.sub('{0}\s*=\s*on'.format(self.iommu_type), '', content)
+                content = re.sub('{0}\s*=\s*off'.format(self.iommu_type), '', content)
+                content = re.sub('\s*modprobe.blacklist\s*=\s*\S*', '', content)
+                if self.enableIommu:
+                    content = re.sub(r'(/boot/vmlinuz-.*)', r'\1 {0}=on modprobe.blacklist=snd_hda_intel,amd76x_edac,vga16fb,nouveau,rivafb,nvidiafb,rivatv,amdgpu,radeon'.format(self.iommu_type), content)
+                linux.write_file(grub_path, content)
         bash_o("modprobe vfio && modprobe vfio-pci")
 
 logger = log.get_logger(__name__)
