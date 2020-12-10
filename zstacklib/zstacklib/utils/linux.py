@@ -2188,22 +2188,6 @@ def sync_file(fpath):
     finally:
         os.close(fd)
 
-def updateGrubFile(grepCmd, sedCmd, files):
-    if not grepCmd is None:
-        for file in files:            
-            if os.path.exists(file):
-                cmd = shell.ShellCmd("%s %s" % (grepCmd, file))
-                cmd(is_exception = False)
-                if cmd.return_code == 0:
-                    cmd = shell.ShellCmd("%s %s" % (sedCmd, file))
-                    cmd(is_exception=True)
-    else:
-        for file in files:
-            if os.path.exists(file):
-                cmd = shell.ShellCmd("%s %s" % (sedCmd, file))
-                cmd(is_exception=True)
-    return True, None
-
 def set_fail_if_no_path():
     cmd = shell.ShellCmd('ms=`dmsetup ls --target multipath | awk \'{print $1}\'`; for m in $ms; do dmsetup message $m 0 "fail_if_no_path"; done')
     cmd(is_exception=False, logcmd=False)
