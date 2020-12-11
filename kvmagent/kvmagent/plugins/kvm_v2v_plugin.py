@@ -515,6 +515,8 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                         dom.undefine()
                         needDefine = True
                     do_blockcopy(cmd, dom, volume, storage_dir, 0)
+                else:
+                    raise ex
 
             end_progress = 60
             total_volume_size = sum(volume.size for volume in volumes)
