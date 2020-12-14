@@ -332,7 +332,7 @@ class ZBoxPlugin(kvmagent.KvmAgent):
             linux.wait_callback_success(all_killed, None, 5)
 
         if cmd.isDir:
-            shell.call("rm -rf " + dpath)
+            linux.rm_dir_force(dpath)
         else:
             linux.rm_file_force(dpath)
 
