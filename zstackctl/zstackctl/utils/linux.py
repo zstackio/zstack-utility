@@ -4,17 +4,24 @@ import os
 black_dpath_list = ["", "/", "*", "/root", "/var", "/bin", "/lib", "/sys"]
 
 
-def rm_dir_force(dpath, only_check=False):
-    if dpath.strip() in black_dpath_list:
-        raise Exception("how dare you delete directory %s" % dpath)
-    if os.path.exists(dpath) and not only_check:
-        if os.path.isdir(dpath):
-            shutil.rmtree(dpath)
-        else:
-            rm_file_force(dpath)
+def _check_black_path(path):
+    if path.strip() in black_dpath_list:
+        raise Exception("how dare you delete directory %s" % path)
+
+
+def get_checked_rm_dir_cmd(dpath):
+    _check_black_path(dpath)
+    return "rm -rf " + dpath
+
+
+def rm_dir_force(dpath):
+    _check_black_path(dpath)
+    if not os.path.exists(dpath):
+        return
+    if os.path.isdir(dpath):
+        shutil.rmtree(dpath, ignore_errors=True)
     else:
-        rm_cmd = "rm -rf %s" % dpath
-        return rm_cmd
+        rm_file_force(dpath)
 
 
 def rm_file_force(fpath):

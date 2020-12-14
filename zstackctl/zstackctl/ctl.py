@@ -2914,7 +2914,7 @@ class UpgradeHACmd(Command):
         run_remote_command(command, host_post_info)
         command = "umount %s" % tmp_iso
         run_remote_command(command, host_post_info)
-        command = linux.rm_dir_force(tmp_iso, True)
+        command = linux.get_checked_rm_dir_cmd(tmp_iso)
         run_remote_command(command, host_post_info)
 
     def check_file_exist(self, file, host_post_info_list):
@@ -5817,7 +5817,7 @@ class CollectLogCmd(Command):
             except SystemExit:
                 warn("collect log on host %s failed" % host_post_info.host)
                 logger.warn("collect log on host %s failed" % host_post_info.host)
-                command = linux.rm_dir_force(tmp_log_dir, True)
+                command = linux.get_checked_rm_dir_cmd(tmp_log_dir)
                 CollectLogCmd.failed_flag = True
                 run_remote_command(command, host_post_info)
                 return 1
@@ -5826,7 +5826,7 @@ class CollectLogCmd(Command):
             (status, output) = run_remote_command(command, host_post_info, return_status=True, return_output=True)
             if "The directory is empty" in output:
                 warn("Didn't find log on host: %s " % (host_post_info.host))
-                command = linux.rm_dir_force(tmp_log_dir, True)
+                command = linux.get_checked_rm_dir_cmd(tmp_log_dir)
                 run_remote_command(command, host_post_info)
                 return 0
             self.get_system_log(host_post_info, tmp_log_dir)
@@ -5875,14 +5875,14 @@ class CollectLogCmd(Command):
                             run_remote_command(command, host_post_info)
             except SystemExit:
                 logger.warn("collect log on storage: %s failed" % host_post_info.host)
-                command = linux.rm_dir_force(tmp_log_dir, True)
+                command = linux.get_checked_rm_dir_cmd(tmp_log_dir)
                 CollectLogCmd.failed_flag = True
                 run_remote_command(command, host_post_info)
             command = 'test "$(ls -A "%s" 2>/dev/null)" || echo The directory is empty' % tmp_log_dir
             (status, output) = run_remote_command(command, host_post_info, return_status=True, return_output=True)
             if "The directory is empty" in output:
                 warn("Didn't find log on storage host: %s " % host_post_info.host)
-                command = linux.rm_dir_force(tmp_log_dir, True)
+                command = linux.get_checked_rm_dir_cmd(tmp_log_dir)
                 run_remote_command(command, host_post_info)
                 return 0
             self.get_system_log(host_post_info, tmp_log_dir)

@@ -688,7 +688,7 @@ class CollectFromYml(object):
                     # file system broken shouldn't block collect log process
                     if not os.path.exists(local_collect_dir):
                         os.makedirs(local_collect_dir)
-                    run_remote_command(linux.rm_dir_force(tmp_log_dir, True), host_post_info)
+                    run_remote_command(linux.get_checked_rm_dir_cmd(tmp_log_dir), host_post_info)
                     command = "mkdir -p %s " % tmp_log_dir
                     run_remote_command(command, host_post_info)
                     for log in log_list:
@@ -740,7 +740,7 @@ class CollectFromYml(object):
                 except SystemExit:
                     warn("collect log on host %s failed" % host_post_info.host)
                     logger.warn("collect log on host %s failed" % host_post_info.host)
-                    command = linux.rm_dir_force(tmp_log_dir, True)
+                    command = linux.get_checked_rm_dir_cmd(tmp_log_dir)
                     self.failed_flag = True
                     run_remote_command(command, host_post_info)
                     return 1
@@ -753,7 +753,7 @@ class CollectFromYml(object):
                 (status, output) = run_remote_command(command, host_post_info, return_status=True, return_output=True)
                 if "The directory is empty" in output:
                     warn("Didn't find log on host: %s " % (host_post_info.host))
-                    command = linux.rm_dir_force(tmp_log_dir, True)
+                    command = linux.get_checked_rm_dir_cmd(tmp_log_dir)
                     run_remote_command(command, host_post_info)
                     return 0
                 self.compress_and_fetch_log(local_collect_dir, tmp_log_dir, host_post_info, type)
