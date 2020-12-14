@@ -952,7 +952,7 @@ def resize_lv_from_cmd(path, size, cmd, extend_thin_by_specified_size=False):
 def active_lv(path, shared=False):
     op = LvLockOperator.get_lock_cnt_or_else_none(path)
     if op:
-        op.lock(LvmlockdLockType.SHARE if shared else LvmlockdLockType.EXCLUSIVE)
+        op.force_lock(LvmlockdLockType.SHARE if shared else LvmlockdLockType.EXCLUSIVE)
     else:
         _active_lv(path, shared)
 
@@ -960,7 +960,7 @@ def active_lv(path, shared=False):
 def deactive_lv(path, raise_exception=True):
     op = LvLockOperator.get_lock_cnt_or_else_none(path)
     if op:
-        op.unlock_all(raise_exception)
+        op.force_unlock(raise_exception)
     else:
         _deactive_lv(path, raise_exception)
 
@@ -1257,6 +1257,7 @@ class LvLockOperator(object):
         exists_lock = get_lv_locking_type(self.abs_path)
         self.exists_locks = [] if exists_lock == LvmlockdLockType.NULL else [exists_lock]
         self.inited = True
+        logger.debug("lv [path:%s] lock operator inited, existing lock: %s" % (self.abs_path, exists_lock))
 
     def lock(self, target_lock):
         with self.op_lock:
@@ -1266,6 +1267,14 @@ class LvLockOperator(object):
             if all(l < target_lock for l in self.exists_locks):
                 _active_lv(self.abs_path, target_lock == LvmlockdLockType.SHARE)
             self.exists_locks.append(target_lock)
+            logger.debug("lv [path:%s] add lock %d, existing locks: %s" % (self.abs_path, target_lock, self.exists_locks))
+
+    def force_lock(self, target_lock):
+        with self.op_lock:
+            self.exists_locks = filter(lambda exist_lock: exist_lock <= target_lock, self.exists_locks)
+            _active_lv(self.abs_path, target_lock == LvmlockdLockType.SHARE)
+            self.exists_locks.append(target_lock)
+            logger.debug("lv [path:%s] force lock to %d, existing locks: %s" % (self.abs_path, target_lock, self.exists_locks))
 
     def unlock(self, target_lock):
         with self.op_lock:
@@ -1280,10 +1289,14 @@ class LvLockOperator(object):
             elif after_lock_type == LvmlockdLockType.SHARE:
                 _active_lv(self.abs_path, True)
 
-    def unlock_all(self, raise_exception=True):
+            logger.debug("lv [path:%s] remove lock %d, unlock to %d, existing locks: %s"
+                         % (self.abs_path, target_lock, after_lock_type, self.exists_locks))
+
+    def force_unlock(self, raise_exception=True):
         with self.op_lock:
             del self.exists_locks[:]
             _deactive_lv(self.abs_path, raise_exception)
+            logger.debug("lv [path:%s] force unlock to 0" % self.abs_path)
 
     @staticmethod
     def get_lock_cnt(abs_path):
