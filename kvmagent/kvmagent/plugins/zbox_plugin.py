@@ -80,6 +80,34 @@ def find_usb_devices():
     return [] if devcmd.return_code != 0 else devcmd.stdout.splitlines()
 
 
+def get_blk_fstype(devname):
+    # type: (str) -> dict[str, str]
+    devcmd = shell.ShellCmd("lsblk -prn -oNAME,FSTYPE %s" % devname)
+    devcmd(False)
+    ret = {}
+    if devcmd.return_code == 0:
+        for l in devcmd.stdout.splitlines():
+            kv = l.split()
+            if len(kv) == 2:
+                ret[kv[0]] = kv[1]
+    return ret
+
+
+def label_zbox_on_formatted_storage(devname, label):
+    for dev_path, fstype in get_blk_fstype(devname).items():
+        if fstype == 'ext4':
+            shell.call("e2label %s %s" % (dev_path, label))
+            return label
+        elif fstype == 'vfat':
+            shell.call("fatlabel %s %s" % (dev_path, label[0:11]))
+            return label[0:11]
+        elif fstype == 'exfat':
+            shell.call("exfatlabel %s %s" % (dev_path, label))
+            return label
+
+    raise Exception('filesystem type of storage must be ext4.')
+
+
 def get_usb_bus_dev_num(devname):
     lines = shell.call("udevadm info -a -n %s | grep -Em 2 'busnum|devnum'" % devname).splitlines()
     busnum = lines[0].split("==")[1].strip('"')
@@ -93,10 +121,20 @@ def get_zbox_label(devname):
     return None if cmd.return_code != 0 else cmd.stdout.strip()
 
 
-def get_zbox_devname_and_label():
-    cmd = shell.ShellCmd('lsblk /dev/sd* -o NAME,LABEL | grep zbox')
+def get_zbox_devname_path_and_label():
+    cmd = shell.ShellCmd("lsblk -prn /dev/sd* -o NAME,LABEL | grep '/dev/sd\|zbox'")
     cmd(False)
-    return [] if cmd.return_code != 0 else map(lambda line: line.split(), cmd.stdout.splitlines())
+    ret = []
+    if cmd.return_code == 0:
+        last_dev_name = ''
+        for l in cmd.stdout.splitlines():
+            if l.startswith('/dev/sd'):
+                last_dev_name = l.split()[0]
+
+            if 'zbox' in l:
+                path, label = l.split()
+                ret.append((last_dev_name, path, label))
+    return ret
 
 
 def mount_label(label, mount_path, raise_exception=True):
@@ -139,7 +177,7 @@ def merge_zbox_info(mount_path, uuid=None, name=None):
 def get_mounted_zbox_mountpath_and_devname():
     # type: () -> dict
     # do not use mount -l because label will disappear after remove usb device.
-    lines = shell.call("mount | awk '/zbox-[0-9a-zA-Z]{10}/{print $1,$3}'").splitlines()
+    lines = shell.call("mount | awk '/zbox-[0-9a-zA-Z]{6,10}/{print $1,$3}'").splitlines()
     dicts = {}
     for devname, mount_path in map(lambda l: l.split(), lines):
         dicts[mount_path] = devname
@@ -233,7 +271,7 @@ class ZBoxPlugin(kvmagent.KvmAgent):
             info.uuid = uuidhelper.uuid()
             label = build_label(info.uuid)
             if cmd.skipFormat:
-                shell.call("e2label %s %s" % (target_dev_name, label))
+                label = label_zbox_on_formatted_storage(target_dev_name, label)
             else:
                 shell.call("mkfs.ext4 -F -L %s %s" % (label, target_dev_name))
 
@@ -253,7 +291,7 @@ class ZBoxPlugin(kvmagent.KvmAgent):
 
         mounted_dev = get_mounted_zbox_mountpath_and_devname()
         time.sleep(5)
-        for devname, label in get_zbox_devname_and_label():
+        for devname, path, label in get_zbox_devname_path_and_label():
             mount_path = build_mount_path(label)
             busnum, devnum = get_usb_bus_dev_num(devname)
 
@@ -263,7 +301,7 @@ class ZBoxPlugin(kvmagent.KvmAgent):
             info.devNum = devnum
 
             if mount_path in mounted_dev:
-                if os.path.basename(mounted_dev[mount_path]) != devname:
+                if mounted_dev[mount_path] != path:
                     # zbox maybe removed before, remount
                     if shell.run("umount -f %s" % mount_path) == 0 and not mount_label(label, mount_path, raise_exception=False):
                         info.status = 'Error'
