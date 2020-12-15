@@ -1837,7 +1837,7 @@ done
         self.config[kvmagent.SEND_COMMAND_URL] = cmd.sendCommandUrl
         Report.url = cmd.sendCommandUrl
 
-        return rsp
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def deploy_colo_qemu(self, req):
