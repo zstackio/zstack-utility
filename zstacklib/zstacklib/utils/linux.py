@@ -1804,11 +1804,15 @@ class TimeoutObject(object):
     def remove(self, name):
         del self.objects[name]
 
+    def print_objects(self):
+        logger.warn(self.objects)
+
     def wait_until_object_timeout(self, name, timeout=60):
         def wait(_):
             return not self.has(name)
 
         if not wait_callback_success(wait, timeout=timeout):
+            self.print_objects()
             raise Exception('after %s seconds, the object[%s] is still there, not timeout' % (timeout, name))
 
     def _start(self):
