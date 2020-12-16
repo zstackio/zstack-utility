@@ -637,14 +637,16 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             cmd = 'mkdir -p {dir}'.format(dir=self.PXELINUX_CFG_DIR)
             shell.call(cmd)
 
+        # Due to the limit of iBFT, only add the root volume into ipxe conf
         volumes = {}
         for volume_driver in volume_drivers:
-            uri = 'iscsi:{gw_ip}:::{lun_id}:{target}'.format(
-                gw_ip=self.provision_network_conf.provision_nic_ip,
-                lun_id=volume_driver.iscsi_lun,
-                target=volume_driver.iscsi_target)
-            drive_id = '0x%x' % (128 + volume_driver.iscsi_lun)
-            volumes[uri] = drive_id
+            if volume_driver.volume_obj.type == 'Root':
+                uri = 'iscsi:{gw_ip}:::{lun_id}:{target}'.format(
+                    gw_ip=self.provision_network_conf.provision_nic_ip,
+                    lun_id=volume_driver.iscsi_lun,
+                    target=volume_driver.iscsi_target)
+                drive_id = '0x%x' % (128 + volume_driver.iscsi_lun)
+                volumes[uri] = drive_id
 
         template = self._load_template('config.ipxe')
         conf = template.render(
@@ -954,8 +956,10 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             volume_driver = volume.get_driver(instance_obj, volume_obj)
             volume_driver.attach()
 
-            self._append_conf_to_ipxe_configuration(instance_obj,
-                                                    volume_driver)
+            # Due to the limit of iBFT, there is no need to add new lun
+            # info into ipxe conf file
+            # self._append_conf_to_ipxe_configuration(instance_obj,
+            #                                         volume_driver)
 
         return jsonobject.dumps(kvmagent.AgentResponse())
 
@@ -986,7 +990,8 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         volume_obj = VolumeObj.from_json(req)
         volume_driver = volume.get_driver(instance_obj, volume_obj)
         volume_driver.detach()
-        self._remove_conf_from_ipxe_configuration(instance_obj, volume_driver)
+        # The data lun's info is not in ipxe conf file now.
+        # self._remove_conf_from_ipxe_configuration(instance_obj, volume_driver)
 
         return jsonobject.dumps(kvmagent.AgentResponse())
 

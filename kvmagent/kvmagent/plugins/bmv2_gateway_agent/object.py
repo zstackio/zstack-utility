@@ -118,7 +118,7 @@ class VolumeObj(Base):
         'volume': {
             'uuid': 'uuid',
             'primaryStorageType': 'NFS',
-            'type': 'Data/Sys',
+            'type': 'Root/Data',
             'path': '/path/to/nfs/qcow2/volume',
             'format': 'qcow2'
         }
