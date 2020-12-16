@@ -98,7 +98,7 @@ def getSshTargetAndPort(uri):
 def uriAddQuery(uri, key, val):
     if urlparse.urlparse(uri).query:
         return "{}&{}={}".format(uri, key, val)
-    return "{}&{}={}".format(uri, key, val)
+    return "{}?{}={}".format(uri, key, val)
 
 class LibvirtConn(object):
     @staticmethod
