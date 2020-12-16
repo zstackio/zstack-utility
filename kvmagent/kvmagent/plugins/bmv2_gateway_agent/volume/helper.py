@@ -67,7 +67,7 @@ class NbdDeviceOperator(object):
         """
         self._refresh()
         if not self.volume.nbd_id:
-            raise exception.FailedFindNbdId(
+            raise exception.NbdIdNotFound(
                 instance_uuid=self.volume.instance_uuid,
                 volume_uuid=self.volume.volume_uuid)
 
