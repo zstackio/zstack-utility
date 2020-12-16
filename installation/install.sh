@@ -2575,8 +2575,9 @@ cs_enable_usb_storage(){
     lsmod | grep -q usb_storage
     if [[ $? -ne 0 ]]; then
         modprobe usb_storage 2>/dev/null || true
-        echo 'usb_storage' > /etc/modules-load.d/usb-storage.conf || true
     fi
+
+    [ -f /etc/modules-load.d/usb-storage.conf ] || echo 'usb_storage' > /etc/modules-load.d/usb-storage.conf || true
 }
 
 check_zstack_server(){
