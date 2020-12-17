@@ -1028,7 +1028,7 @@ if __name__ == "__main__":
             rsp.success = False
             rsp.error = "unexpected mode: " + cmd.mode
         else:
-            bash_r("/usr/local/bin/iohub_mocbr.sh %s start" % cmd.mode)
+            bash_r("/usr/local/bin/iohub_mocbr.sh %s start >> /var/log/iohubmocbr.log 2>&1" % cmd.mode)
             if cmd.mode == 'mocbr':
                 bash_r("ip link set dev {} master {}".format(cmd.masterVethName, cmd.bridgeName))
         return jsonobject.dumps(rsp)
