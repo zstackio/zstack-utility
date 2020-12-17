@@ -75,7 +75,6 @@ def get_lock(name, timeout):
             lockinfo = _locks.get(name)
 
             if not lockinfo:
-                logger.info('not lockinfo')
                 l = threading.Lock()
                 _locks[name] = {
                     'lock': l,

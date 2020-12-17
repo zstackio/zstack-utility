@@ -47,7 +47,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
     DNSMASQ_DIR = os.path.join(BAREMETAL_LIB_DIR, 'dnsmasq/')
     DNSMASQ_CONF_PATH = os.path.join(DNSMASQ_DIR, 'dnsmasq.conf')
     DNSMASQ_HOSTS_PATH = os.path.join(DNSMASQ_DIR, 'hosts')
-    DNSMASQ_LEASE_PATH = os.path.join(DNSMASQ_DIR, 'leases')
+    DNSMASQ_OPTS_PATH = os.path.join(DNSMASQ_DIR, 'opts')
     DNSMASQ_LOG_PATH=os.path.join(BAREMETAL_LOG_DIR, 'dnsmasq.log')
     DNSMASQ_PID_PATH = os.path.join(PID_DIR, 'zstack-bm-dnsmasq.pid')
     DNSMASQ_SYSTEMD_SERVICE_PATH = \
@@ -79,7 +79,8 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
     def provision_network_conf(self):
         with open(self.BAREMETAL_GATEWAY_AGENT_CONF_CACHE, 'r') as f:
             raw_conf = json.loads(f.read())
-        conf = NetworkObj.from_json({'body': {'provisionNetwork': raw_conf}})
+        conf, _ = NetworkObj.from_json(
+                {'body': {'provisionNetwork': raw_conf}})
         return conf
 
     def _ensure_env(self):
@@ -171,6 +172,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             'config.ipxe': os.path.join(template_dir, 'config.ipxe.j2'),
             'default.pxe': os.path.join(template_dir, 'default.pxe.j2'),
             'dnsmasq.conf': os.path.join(template_dir, 'dnsmasq.conf.j2'),
+            'dnsmasq.opts': os.path.join(template_dir, 'dnsmasq.opts.j2'),
             'inspector.ks': os.path.join(template_dir, 'inspector.ks.j2'),
             'nginx_proxy_to_mn': os.path.join(template_dir,
                                               'nginx-proxy-to-mn.conf.j2'),
@@ -224,7 +226,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             provision_network_netmask=network_obj.dhcp_range_netmask,
             provision_network_gateway=network_obj.dhcp_range_gateway,
             provision_dhcp_hosts_file=self.DNSMASQ_HOSTS_PATH,
-            provision_dhcp_leases_file=self.DNSMASQ_LEASE_PATH,
+            provision_dhcp_opts_file=self.DNSMASQ_OPTS_PATH,
             bm_gateway_provision_ip=network_obj.provision_nic_ip,
             bm_gateway_tftpboot_dir=self.TFTPBOOT_DIR,
             provision_dhcp_log_path=self.DNSMASQ_LOG_PATH)
@@ -256,38 +258,45 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         shell.call(cmd)
 
         linux.rm_file_force(self.DNSMASQ_HOSTS_PATH)
-        linux.rm_file_force(self.DNSMASQ_LEASE_PATH)
+        linux.rm_file_force(self.DNSMASQ_OPTS_PATH)
         linux.rm_file_force(self.DNSMASQ_CONF_PATH)
         linux.rm_file_force(self.DNSMASQ_PID_PATH)
+
+    def _append_dnsmasq_configuration(self, instance_obj):
+        """ Create dnsmasq configuration
+        """
+        host = '{mac_addr},{ip_addr},set:instance,set:{uuid}\n'.format(
+            mac_addr=instance_obj.provision_mac,
+            ip_addr=instance_obj.provision_ip,
+            uuid=instance_obj.uuid)
+
+        with open(self.DNSMASQ_HOSTS_PATH, 'a+r') as f:
+            if host not in f.read():
+                f.write(host)
+
+        opts_template = self._load_template('dnsmasq.opts')
+        opts = opts_template.render(
+            uuid=instance_obj.uuid,
+            tftp_server_address=instance_obj.gateway_ip)
+        with open(self.DNSMASQ_OPTS_PATH, 'a+r') as f:
+            if opts not in f.read():
+                f.write(opts)
+                f.write('\n')
 
     def _create_dnsmasq_host(self, instance_obj):
         """ Create dnsmasq configuration
         """
-        host = '{mac_addr},{ip_addr},set:instance'.format(
-            mac_addr=instance_obj.provision_mac,
-            ip_addr=instance_obj.provision_ip)
+        self._append_dnsmasq_configuration(instance_obj)
 
-        dnsmasq_hosts = ''
-        if os.path.exists(self.DNSMASQ_HOSTS_PATH):
-            with open(self.DNSMASQ_HOSTS_PATH, 'r') as f:
-                dnsmasq_hosts = f.read()
+        cmd = ('systemctl start zstack-baremetal-dnsmasq && '
+               'systemctl reload zstack-baremetal-dnsmasq')
+        shell.call(cmd)
 
-        if not host in dnsmasq_hosts:
-            cmd = 'echo {host} >> {conf_path}'.format(
-                host=host, conf_path=self.DNSMASQ_HOSTS_PATH)
-            shell.call(cmd)
-
-        # Ensure the ip address not leased by dnsmasq, if leased, remove the
-        # record
-        if os.path.exists(self.DNSMASQ_LEASE_PATH):
-            with open(self.DNSMASQ_LEASE_PATH, 'r') as f:
-                dnsmasq_leases = f.read()
-            if instance_obj.provision_ip in dnsmasq_leases:
-                cmd = 'sed -i /{ip_addr}/d {lease_path}'.format(
-                    mac_addr=instance_obj.provision_mac,
-                    ip_addr=instance_obj.provision_ip,
-                    lease_path=self.DNSMASQ_LEASE_PATH)
-                shell.call(cmd)
+    def _create_dnsmasq_hosts(self, instance_objs):
+        """ Create dnsmasq configurations
+        """
+        for instance_obj in instance_objs:
+            self._append_dnsmasq_configuration(instance_obj)
 
         cmd = ('systemctl start zstack-baremetal-dnsmasq && '
                'systemctl reload zstack-baremetal-dnsmasq')
@@ -296,24 +305,20 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
     def _delete_dnsmasq_host(self, instance_obj):
         """ Delete dnsmasq configuration
         """
-        if not os.path.exists(self.DNSMASQ_HOSTS_PATH):
-            return
+        if os.path.exists(self.DNSMASQ_HOSTS_PATH):
 
-        # Use . for regexp, to match ','(in hosts) and ' '(in leases)
-        host = '{mac_addr}.{ip_addr}'.format(
-            mac_addr=instance_obj.provision_mac,
-            ip_addr=instance_obj.provision_ip)
+            host = '{mac_addr}.{ip_addr}'.format(
+                mac_addr=instance_obj.provision_mac,
+                ip_addr=instance_obj.provision_ip)
+            cmd = 'sed -i /{host}/d {conf_path}'.format(
+                host=host, conf_path=self.DNSMASQ_HOSTS_PATH)
+            shell.call(cmd)
 
-        cmd = 'sed -i /{host}/d {conf_path}'.format(
-            host=host, conf_path=self.DNSMASQ_HOSTS_PATH)
-        shell.call(cmd)
+        if os.path.exists(self.DNSMASQ_OPTS_PATH):
+            cmd = 'sed -i /{uuid}/d {conf_path}'.format(
+                uuid=instance_obj.uuid, conf_path=self.DNSMASQ_OPTS_PATH)
+            shell.call(cmd)
 
-        cmd = 'sed -i /{host}/d {lease_path}'.format(
-            host=host, lease_path=self.DNSMASQ_LEASE_PATH)
-        shell.call(cmd)
-
-        # pid = linux.find_process_by_cmdline([self.DNSMASQ_PID_PATH])
-        # cmd = 'kill -s SIGHUP {pid}'.format(pid=pid)
         cmd = ('systemctl start zstack-baremetal-dnsmasq && '
                'systemctl reload zstack-baremetal-dnsmasq')
         shell.call(cmd)
@@ -771,11 +776,26 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                 'provisionNicIp': '10.0.201.10',
                 'managementIp': '10.0.201.101',
                 'callBackIp': '10.1.1.10',
-                'callBackPort': '8080'
-            }
+                'callBackPort': '8080',
+                'baremetal2InstanceProxyPort': '7090',
+                'bmInstances': [
+                    {
+                        'uuid': 'uuid1',
+                        'provisionIp': '192.168.101.10',
+                        'provisionMac': 'aa:bb:cc:dd:ee:ff',
+                        'gatewayIp': '10.0.0.2'
+                    },
+                    {
+                        'uuid': 'uuid2',
+                        'provisionIp': '192.168.201.34',
+                        'provisionMac': 'ff:ee:dd:cc:bb:aa',
+                        'gatewayIp': 10.0.0.3'
+                    }
+                ]
+             }
         }
         """
-        network_obj = NetworkObj.from_json(req)
+        network_obj, bm_instance_objs = NetworkObj.from_json(req)
         self._check_management_provision_network_mixed(network_obj)
         self._ensure_env()
         with bm_utils.rollback(self.destroy_network, req):
@@ -784,6 +804,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
 
             self._prepare_provision_network(network_obj)
             self._prepare_dnsmasq(network_obj)
+            self._create_dnsmasq_hosts(bm_instance_objs)
             self._prepare_nginx(network_obj)
             self._prepare_ipxe_default_configuration(network_obj)
             self._prepare_ks_configuration(network_obj)
@@ -812,7 +833,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             }
         }
         """
-        network_obj = NetworkObj.from_json(req)
+        network_obj, _ = NetworkObj.from_json(req)
         self._destroy_ipxe()
         self._destroy_nginx()
         self._destroy_dnsmasq()

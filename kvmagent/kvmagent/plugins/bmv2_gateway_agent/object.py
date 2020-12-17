@@ -53,7 +53,8 @@ class BmInstanceObj(Base):
         'bmInstance': {
             'uuid': 'uuid',
             'provisionIp': '192.168.101.10',
-            'provisionMac': '00-00-00-00-00-00'
+            'provisionMac': '00-00-00-00-00-00',
+            'gatewayIp': '10.0.0.2'
         }
     }
     """
@@ -61,7 +62,8 @@ class BmInstanceObj(Base):
     k_v_mapping = {
         'uuid': 'uuid',
         'provisionIp': 'provision_ip',
-        'provisionMac': 'provision_mac'
+        'provisionMac': 'provision_mac',
+        'gatewayIp': 'gateway_ip'
     }
 
     @classmethod
@@ -107,7 +109,16 @@ class NetworkObj(Base):
     def from_json(cls, req):
         obj = cls()
         obj.construct(obj.body(req).get('provisionNetwork', {}))
-        return obj
+
+        bm_instance_objs = []
+        bm_instances = obj.body(req).get(
+            'provisionNetwork', {}).get('bmInstances')
+        if bm_instances:
+            for bm_instance in bm_instances:
+                bm_instance_obj = BmInstanceObj.from_json(
+                    {'body': {'bmInstance': bm_instance}})
+                bm_instance_objs.append(bm_instance_obj)
+        return obj, bm_instance_objs
 
 
 class VolumeObj(Base):
