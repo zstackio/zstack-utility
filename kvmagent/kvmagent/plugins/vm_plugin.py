@@ -19,6 +19,7 @@ import uuid
 import json
 import socket
 from signal import SIGKILL
+import syslog
 import threading
 
 import libvirt
@@ -7158,7 +7159,7 @@ class VmPlugin(kvmagent.KvmAgent):
             def report_to_management_node():
                 cmd = ReportVmRebootEventCmd()
                 cmd.vmUuid = vm_uuid
-                logger.debug('report reboot event of vm ' + vm_uuid)
+                syslog.syslog('report reboot event for vm ' + vm_uuid)
                 http.json_dump_post(url, cmd, {'commandpath': '/kvm/reportvmreboot'})
 
             # make sure reboot event only report once
@@ -7275,32 +7276,32 @@ class VmPlugin(kvmagent.KvmAgent):
         @lock.lock("sharedblock-extend-vm-%s" % dom.name())
         def handle_event(dom, event_str):
             # type: (libvirt.virDomain, str) -> object
-            logger.debug("extend sharedblock got suspend event from libvirt, %s %s %s" %
-                         (dom.name(), event_str, LibvirtEventManager.suspend_event_to_string(detail)))
-            disk_errors = dom.diskErrors()  # type: dict
             vm_uuid = dom.name()
-            fixed = False
-            vm = get_vm_by_uuid_no_retry(dom.name(), False)
+            syslog.syslog("got suspend event from libvirt, %s %s %s" %
+                         (vm_uuid, event_str, LibvirtEventManager.suspend_event_to_string(detail)))
+            disk_errors = dom.diskErrors()  # type: dict
+            vm = get_vm_by_uuid_no_retry(vm_uuid, False)
 
             if len(disk_errors) == 0:
-                logger.debug("no error in vm %s. skip to check and extend volume" % vm_uuid)
+                syslog.syslog("no error in vm %s. skip to check and extend volume" % vm_uuid)
                 return
+
+            fixed = False
 
             try:
                 for device, error in disk_errors.viewitems():
                     if error == libvirt.VIR_DOMAIN_DISK_ERROR_NO_SPACE:
-                        fixed = True
-                        logger.debug("disk %s of vm %s got ENOSPC" % (device, dom.name()))
                         path = get_path_by_device(device, vm)
+                        syslog.syslog("disk %s:%s of vm %s got ENOSPC" % (device, path, vm_uuid))
                         if not lvm.lv_exists(path):
-                            logger.debug("it is not a lvm volume %s, skip to extend" % path)
                             continue
                         extend_lv(event_str, path, vm, device)
+                        fixed = True
             except Exception as e:
-                logger.warn("got excetion: %s" % e)
+                syslog.syslog(str(e))
 
-            if fixed is True:
-                logger.debug("resume vm %s" % dom.name)
+            if fixed:
+                syslog.syslog("resume vm %s" % vm_uuid)
                 vm.resume()
                 touchQmpSocketWhenExists(vm_uuid)
 
@@ -7347,20 +7348,18 @@ class VmPlugin(kvmagent.KvmAgent):
                 linux.rm_dir_force(mount_path)
 
                 if not sblk_volume_path:
-                    logger.debug("no mount url found for %s" % mount_path)
+                    syslog.syslog("vm: %s: no mount url found for %s" % (vm_uuid, mount_path))
 
                 try:
                     lvm.deactive_lv(sblk_volume_path, False)
-                    logger.debug(
-                        "deactivated volume %s for event %s happend on vm %s success" % (
+                    syslog.syslog(
+                        "deactivated volume %s for event %s happend on vm %s" % (
                         sblk_volume_path, event_str, vm_uuid))
                 except Exception as e:
                     logger.debug("deactivate volume %s for event %s happend on vm %s failed, %s" % (
-                        sblk_volume_path, event_str, vm_uuid, e.message))
-                    content = traceback.format_exc()
-                    logger.warn("traceback: %s" % content)
+                        sblk_volume_path, event_str, vm_uuid, str(e)))
             else:
-                logger.debug("volume %s still used: %s, skip to deactivate" % (path, used_process))
+                syslog.syslog("vm: %s, volume %s still used: %s, skip to deactivate" % (vm_uuid, path, used_process))
 
 
         @thread.AsyncThread
@@ -7368,10 +7367,10 @@ class VmPlugin(kvmagent.KvmAgent):
         def deactivate_volume(event_str, file, vm_uuid):
             # type: (str, str, str) -> object
             volume = file.strip().split("'")[1]
-            logger.debug("deactivating volume %s for vm %s" % (file, vm_uuid))
+            syslog.syslog("deactivating volume %s for vm %s" % (file, vm_uuid))
             lock_type = bash.bash_o("lvs --noheading --nolocking %s -ovg_lock_type" % volume).strip()
             if "sanlock" not in lock_type:
-                logger.debug("%s not sanlock, skip to deactive" % file)
+                syslog.syslog("%s has no sanlock, skip to deactive" % file)
                 return
             try:
                 wait_volume_unused(volume)
@@ -7380,15 +7379,13 @@ class VmPlugin(kvmagent.KvmAgent):
             if len(used_process) == 0:
                 try:
                     lvm.deactive_lv(volume, False)
-                    logger.debug(
+                    syslog.syslog(
                         "deactivated volume %s for event %s happend on vm %s success" % (volume, event_str, vm_uuid))
                 except Exception as e:
-                    logger.debug("deactivate volume %s for event %s happend on vm %s failed, %s" % (
-                        volume, event_str, vm_uuid, e.message))
-                    content = traceback.format_exc()
-                    logger.warn("traceback: %s" % content)
+                    syslog.syslog("deactivate volume %s for event %s happend on vm %s failed, %s" % (
+                        volume, event_str, vm_uuid, str(e)))
             else:
-                logger.debug("volume %s still used: %s, skip to deactivate" % (volume, used_process))
+                syslog.syslog("vm: %s, volume %s still used: %s, skip to deactivate" % (vm_uuid, volume, used_process))
 
         try:
             event_str = LibvirtEventManager.event_to_string(event)
@@ -7436,7 +7433,7 @@ class VmPlugin(kvmagent.KvmAgent):
             def report_to_management_node():
                 cmd = ReportVmShutdownEventCmd()
                 cmd.vmUuid = vm_uuid
-                logger.debug('report shutdown event of vm ' + vm_uuid)
+                syslog.syslog('report shutdown event for vm ' + vm_uuid)
                 http.json_dump_post(url, cmd, {'commandpath': '/kvm/reportvmshutdown'})
 
             report_to_management_node()
