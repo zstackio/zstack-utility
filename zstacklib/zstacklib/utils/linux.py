@@ -923,11 +923,13 @@ def qcow2_convert_to_raw(src, dst):
 
 def qcow2_rebase(backing_file, target):
     fmt = get_img_fmt(backing_file)
-    shell.call('%s -F %s -f qcow2 -b %s %s' % (qemu_img.subcmd('rebase'), fmt, backing_file, target))
+    with TempAccessible(target):
+        shell.call('%s -F %s -f qcow2 -b %s %s' % (qemu_img.subcmd('rebase'), fmt, backing_file, target))
 
 def qcow2_rebase_no_check(backing_file, target, backing_fmt=None):
     fmt = backing_fmt if backing_fmt else get_img_fmt(backing_file)
-    shell.call('%s -F %s -u -f qcow2 -b "%s" %s' % (qemu_img.subcmd('rebase'), fmt, backing_file, target))
+    with TempAccessible(target):
+        shell.call('%s -F %s -u -f qcow2 -b "%s" %s' % (qemu_img.subcmd('rebase'), fmt, backing_file, target))
 
 def qcow2_virtualsize(file_path):
     file_path = shellquote(file_path)
@@ -2019,6 +2021,24 @@ class ShowLibvirtErrorOnException(object):
                 logger.info(shell.call('virsh domjobinfo %s' % self.vmUuid))
             except:
                 pass
+
+
+class TempAccessible(object):
+    def __init__(self, fpath):
+        self.fpath = fpath
+        self.fmode = None
+
+    def __enter__(self):
+        st = os.stat(self.fpath)
+        if st.st_mode & 0o600 == 0o600:
+            return
+
+        self.fmode = st.st_mode
+        os.chmod(self.fpath, st.st_mode | 0o600)
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.fmode is not None:
+            os.chmod(self.fpath, self.fmode)
 
 
 def get_libvirt_version():
