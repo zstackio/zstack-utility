@@ -180,7 +180,10 @@ copy_arg.args = "mode=400 force=yes"
 copy(copy_arg, host_post_info)
 
 # name: install zstack-store
-command = "bash %s %s %s" % (dest_pkg, fs_rootpath, max_capacity)
+if client == "false":
+    command = "bash %s %s %s" % (dest_pkg, fs_rootpath, max_capacity)
+else:
+    command = "bash " + dest_pkg
 run_remote_command(command, host_post_info)
 
 # if user is not root , Change the owner of the directory to ordinary user
