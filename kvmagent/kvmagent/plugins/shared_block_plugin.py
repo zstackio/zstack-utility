@@ -505,14 +505,16 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 lvm.config_lvm_by_sed("udev_sync", "udev_sync=0", ["lvm.conf", "lvmlocal.conf"])
             lvm.config_lvm_filter(["lvm.conf", "lvmlocal.conf"], preserve_disks=allDiskPaths)
 
-            lvm.config_sanlock_by_sed("sh_retries", "sh_retries=20")
-            lvm.config_sanlock_by_sed("logfile_priority", "logfile_priority=7")
-            lvm.config_sanlock_by_sed("renewal_read_extend_sec", "renewal_read_extend_sec=24")
-            lvm.config_sanlock_by_sed("debug_renew", "debug_renew=1")
-            lvm.config_sanlock_by_sed("use_watchdog", "use_watchdog=0")
+            lvm.modify_sanlock_config("sh_retries", 20)
+            lvm.modify_sanlock_config("logfile_priority", 7)
+            lvm.modify_sanlock_config("renewal_read_extend_sec", 24)
+            lvm.modify_sanlock_config("debug_renew", 1)
+            lvm.modify_sanlock_config("use_watchdog", 0)
+            lvm.modify_sanlock_config("zstack_vglock_timeout", 0)
+            lvm.modify_sanlock_config("use_zstack_vglock_timeout", 0)
 
             sanlock_hostname = "%s-%s-%s" % (cmd.vgUuid[:8], cmd.hostUuid[:8], bash.bash_o("hostname").strip()[:20])
-            lvm.config_sanlock_by_sed("our_host_name", "our_host_name=%s" % sanlock_hostname)
+            lvm.modify_sanlock_config("our_host_name", sanlock_hostname)
             shell.call("sed -i 's/.*rotate .*/rotate 10/g' /etc/logrotate.d/sanlock", exception=False)
             shell.call("sed -i 's/.*size .*/size 20M/g' /etc/logrotate.d/sanlock", exception=False)
 

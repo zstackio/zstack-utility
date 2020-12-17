@@ -364,23 +364,41 @@ def config_lvm_filter(files, no_drbd=False, preserve_disks=None):
     linux.sync_file(LVM_CONFIG_FILE)
 
 
-def config_sanlock_by_sed(keyword, entry):
-    content = """use_watchdog=0
-renewal_read_extend_sec=24
-sh_retries=20
-"""
+def modify_sanlock_config(key, value):
     if not os.path.exists(os.path.dirname(SANLOCK_CONFIG_FILE_PATH)):
         linux.mkdir(os.path.dirname(SANLOCK_CONFIG_FILE_PATH))
-        with open(SANLOCK_CONFIG_FILE_PATH, 'w') as f:
-            f.write(content)
-
     if not os.path.exists(SANLOCK_CONFIG_FILE_PATH):
         raise Exception("can not find sanlock config path: %s, config sanlock failed" % SANLOCK_CONFIG_FILE_PATH)
-
-    cmd = shell.ShellCmd("sed -i 's/.*%s.*/%s/g' %s" %
-                         (keyword, entry, SANLOCK_CONFIG_FILE_PATH))
-    cmd(is_exception=False)
-    linux.sync_file(SANLOCK_CONFIG_FILE_PATH)
+    with open(SANLOCK_CONFIG_FILE_PATH,'r') as r:
+        lines=r.readlines()
+    with open(SANLOCK_CONFIG_FILE_PATH,'w') as w:
+        value_with_key = key + ' = ' + str(value)
+        find_key = False
+        need_delete_line = False
+        for line in lines:
+            # pure_line is line without comment and space
+            pure_line = line.replace('#', '')
+            pure_line = pure_line.replace(' ', '')
+            if pure_line.startswith(key):
+                if find_key is True:
+                    # more than one key in config file, so delete it
+                    need_delete_line = True
+                else:
+                    find_key = True
+                line = line.replace(line, value_with_key)
+                if need_delete_line is False:
+                    # change line: modify value if key exist && unique
+                    w.write(value_with_key)
+                    w.write('\n')
+                else:
+                    # do nothing to delete, and reset the value
+                    need_delete_line = False
+            else:
+                w.write(line)
+        if find_key is False:
+            # change line: add "key = value" if key not exist
+            w.write('\n')
+            w.write(value_with_key)
 
 
 def config_lvmlockd(io_timeout=40):
@@ -485,7 +503,10 @@ def start_vg_lock(vgUuid):
 
     @linux.retry(times=5, sleep_time=random.uniform(0.1, 10))
     def start_lock(vgUuid):
+        modify_sanlock_config("use_zstack_vglock_timeout", 1)
         r, o, e = bash.bash_roe("vgchange --lock-start %s" % vgUuid)
+        modify_sanlock_config("use_zstack_vglock_timeout", 0)
+
         if r != 0:
             if ("Device or resource busy" in o+e) :
                 bash.bash_roe("dmsetup remove %s-lvmlock" % vgUuid)
