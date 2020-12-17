@@ -156,3 +156,11 @@ class ManagementNetProvisionNetMixed(BmV2GwAgentException):
                'interface are mixed, please choose another network '
                'interface and try again.')
         super(ManagementNetProvisionNetMixed, self).__init__(msg)
+
+
+class LockNotRelease(BmV2GwAgentException):
+
+    def __init__(self, **kwargs):
+        msg = ('The lock {name} is acquired by thread {thread}, acquired '
+               'time: {time}, timeout: {timeout}').format(**kwargs)
+        super(LockNotRelease, self).__init__(msg)

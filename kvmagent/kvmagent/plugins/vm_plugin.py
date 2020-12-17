@@ -34,6 +34,7 @@ import zstacklib.utils.lock as lock
 from kvmagent import kvmagent
 from kvmagent.plugins.baremetal_v2_gateway_agent import \
     BaremetalV2GatewayAgentPlugin as BmV2GwAgent
+from kvmagent.plugins.bmv2_gateway_agent import utils as bm_utils
 from kvmagent.plugins.imagestore import ImageStoreClient
 from zstacklib.utils import bash, plugin
 from zstacklib.utils.bash import in_bash
@@ -5549,16 +5550,17 @@ class VmPlugin(kvmagent.KvmAgent):
                 # A flag to show the instance is bm instance and the instance
                 # status is online
                 if cmd.isBaremetal2InstanceOnlineSnapshot:
-                    src_vol_driver, dst_vol_driver = BmV2GwAgent.pre_take_volume_snapshot(cmd)
-                    try:
-                        rsp.snapshotInstallPath, rsp.newVolumeInstallPath = take_delta_snapshot_by_qemu_img_convert(
-                            cmd.volumeInstallPath, cmd.installPath)
-                        BmV2GwAgent.post_take_volume_snapshot(src_vol_driver, dst_vol_driver)
-                    except Exception as e:
-                        # Try to resume the dm device
-                        src_vol_driver.resume()
-                        logger.error(traceback.format_exc())
-                        raise e
+                    with bm_utils.NamedLock(name='baremetal_v2_volume_operator'):
+                        src_vol_driver, dst_vol_driver = BmV2GwAgent.pre_take_volume_snapshot(cmd)
+                        try:
+                            rsp.snapshotInstallPath, rsp.newVolumeInstallPath = take_delta_snapshot_by_qemu_img_convert(
+                                cmd.volumeInstallPath, cmd.installPath)
+                            BmV2GwAgent.post_take_volume_snapshot(src_vol_driver, dst_vol_driver)
+                        except Exception as e:
+                            # Try to resume the dm device
+                            BmV2GwAgent.resume_device(src_vol_driver)
+                            logger.error(traceback.format_exc())
+                            raise e
                 else:
                     vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
 

@@ -549,6 +549,12 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         """
         dst_vol_driver.post_take_volume_snapshot(src_vol_driver)
 
+    @staticmethod
+    def resume_device(vol_driver):
+        """ Resume the device mapper
+        """
+        vol_driver.resume()
+
     def _open_console(self, instance_obj):
         """ Call bm instance to open the console/vnc and setup proxy on gw
 
@@ -815,6 +821,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(kvmagent.AgentResponse())
 
+    @bm_utils.lock(name='baremetal_v2_volume_operator')
     @kvmagent.replyerror
     def prepare_instance(self, req):
         """ Prepare instance
@@ -872,6 +879,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(kvmagent.AgentResponse())
 
+    @bm_utils.lock(name='baremetal_v2_volume_operator')
     @kvmagent.replyerror
     def destroy_instance(self, req):
         """ Stop instance
@@ -926,6 +934,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(kvmagent.AgentResponse())
 
+    @bm_utils.lock(name='baremetal_v2_volume_operator')
     @kvmagent.replyerror
     def attach_volume(self, req):
         """ Attach volume
@@ -963,6 +972,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(kvmagent.AgentResponse())
 
+    @bm_utils.lock(name='baremetal_v2_volume_operator')
     @kvmagent.replyerror
     def detach_volume(self, req):
         """ Detach volume

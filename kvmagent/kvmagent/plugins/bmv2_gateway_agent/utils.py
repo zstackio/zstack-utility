@@ -1,8 +1,13 @@
+import functools
 import os
 import shutil
+import threading
 import time
 
+from zstacklib.utils import linux
 from zstacklib.utils import log
+
+from kvmagent.plugins.bmv2_gateway_agent import exception
 
 
 logger = log.get_logger(__name__)
@@ -55,6 +60,78 @@ class transcantion(object):
                 err = e
             time.sleep(self.sleep_time)
         raise err
+
+
+_internal_lock = threading.Lock()
+
+
+_locks = {}
+
+
+def get_lock(name, timeout):
+    @linux.retry(times=timeout, sleep_time=1)
+    def _get_lock():
+        with _internal_lock:
+            lockinfo = _locks.get(name)
+
+            if not lockinfo:
+                logger.info('not lockinfo')
+                l = threading.Lock()
+                _locks[name] = {
+                    'lock': l,
+                    'acquire_time': time.time(),
+                    'timeout': timeout,
+                    'thread': threading.current_thread().ident}
+                return l
+
+            l = lockinfo['lock']
+            if l.locked():
+                if lockinfo['acquire_time'] + lockinfo['timeout'] > \
+                        time.time():
+                    raise exception.LockNotRelease(
+                        name=lockinfo['name'],
+                        thread=lockinfo['thread'],
+                        time=lockinfo['time'],
+                        timeout=lockinfo['timeout'])
+                l.release()
+            return l
+
+    return _get_lock()
+
+
+class NamedLock(object):
+    def __init__(self, name, timeout=120):
+        self.name = name
+        self.timeout = timeout
+        self.lock = None
+
+    def __enter__(self):
+        self.lock = get_lock(self.name, self.timeout)
+        self.lock.acquire()
+        lockinfo = {
+            'lock': self.lock,
+            'acquire_time': time.time(),
+            'timeout': self.timeout,
+            'thread': threading.current_thread().ident}
+        _locks[self.name] = lockinfo
+        logger.debug('Acquire lock {name} in thread {thread}'.format(
+            name=self.name, thread=threading.current_thread().ident))
+
+    def __exit__(self, type, value, trackback):
+        self.lock.release()
+        logger.debug('Relese lock {name} in thread {thread}'.format(
+            name=self.name, thread=threading.current_thread().ident))
+
+
+def lock(name='default_lock', timeout=120):
+    def wrap(f):
+        @functools.wraps(f)
+        def inner(*args, **kwargs):
+            with NamedLock(name, timeout):
+                ret = f(*args, **kwargs)
+            return ret
+        return inner
+    return wrap
 
 
 def copy_dir_files_to_another_dir(src, dst):
