@@ -5,10 +5,11 @@ port=0
 
 pid-file={{ zstack_bm_dnsmasq_pid }}
 
+log-facility={{ provision_dhcp_log_path }}
+
 interface={{ provision_dhcp_interface }}
 bind-interfaces
 
-dhcp-sequential-ip
 dhcp-range={{ provision_network_dhcp_range }}
 dhcp-option=1,{{ provision_network_netmask }}
 {% if provision_network_gateway %}
@@ -19,21 +20,11 @@ dhcp-option=3
 dhcp-option=6,223.5.5.5,8.8.8.8
 
 dhcp-hostsfile={{ provision_dhcp_hosts_file }}
-dhcp-leasefile={{ provision_dhcp_leases_file }}
-
-dhcp-option=option:tftp-server,{{ bm_gateway_provision_ip }}
-dhcp-option=option:server-ip-address,{{ bm_gateway_provision_ip }}
-dhcp-option=210,/tftpboot
+dhcp-optsfile={{ provision_dhcp_opts_file }}
+leasefile-ro
 
 enable-tftp
 tftp-root={{ bm_gateway_tftpboot_dir }}
-log-facility={{ provision_dhcp_log_path }}
-
-# Setup delay reply, delay serveral seconds to send DHCP reply for inspect,
-# to ensure the baremetal instance can get corrent DHCP reply.
-# For iPXE, the dhcp client try to send DHCP discover request 4 times, with
-# timeouts of 1, 2, 4, 8. Therefore 2 is a reasonable number.
-dhcp-reply-delay=tag:!instance,2
 
 # Configure ipxe
 dhcp-match=ipxe,175
@@ -51,3 +42,7 @@ dhcp-option=tag:instance,tag:!efi,tag:!ipxe,option:bootfile-name,undionly.kpxe
 # Client is not instance and boot mode is legacy, assume it's inspect action,
 # send pxelinux.0 for compatibility
 dhcp-option=tag:!instance,tag:!efi,option:bootfile-name,pxelinux.0
+
+dhcp-option=tag:!instance,option:tftp-server,{{ bm_gateway_provision_ip }}
+dhcp-option=tag:!instance,option:server-ip-address,{{ bm_gateway_provision_ip }}
+dhcp-option=210,/tftpboot
