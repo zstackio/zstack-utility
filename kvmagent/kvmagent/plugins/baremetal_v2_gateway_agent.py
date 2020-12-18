@@ -306,12 +306,8 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         """ Delete dnsmasq configuration
         """
         if os.path.exists(self.DNSMASQ_HOSTS_PATH):
-
-            host = '{mac_addr}.{ip_addr}'.format(
-                mac_addr=instance_obj.provision_mac,
-                ip_addr=instance_obj.provision_ip)
-            cmd = 'sed -i /{host}/d {conf_path}'.format(
-                host=host, conf_path=self.DNSMASQ_HOSTS_PATH)
+            cmd = 'sed -i /{uuid}/d {conf_path}'.format(
+                uuid=instance_obj.uuid, conf_path=self.DNSMASQ_HOSTS_PATH)
             shell.call(cmd)
 
         if os.path.exists(self.DNSMASQ_OPTS_PATH):
@@ -803,11 +799,14 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             # self.destroy_network(req)
 
             self._prepare_provision_network(network_obj)
-            self._prepare_dnsmasq(network_obj)
-            self._create_dnsmasq_hosts(bm_instance_objs)
             self._prepare_nginx(network_obj)
             self._prepare_ipxe_default_configuration(network_obj)
             self._prepare_ks_configuration(network_obj)
+
+            # Destroy dnsmasq conf to avoid hosts out of sync
+            self._destroy_dnsmasq()
+            self._prepare_dnsmasq(network_obj)
+            self._create_dnsmasq_hosts(bm_instance_objs)
 
             # save the provision network config for furthur usage
             with open(self.BAREMETAL_GATEWAY_AGENT_CONF_CACHE, 'w') as f:
@@ -938,21 +937,25 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             'bmInstance': {
                 'uuid': 'uuid1',
                 'provisionIp': '192.168.101.10',
-                'provisionMac': 'aa:bb:cc:dd:ee:ff'
+                'provisionMac': 'aa:bb:cc:dd:ee:ff',
+                'gatewayIp': '10.0.0.3'
             }
         }
         """
         instance_obj = BmInstanceObj.from_json(req)
         volume_objs = VolumeObj.from_json_list(req)
+        # Full destroy the instance which assign on the gateway,
+        # otherwise delete the dnsmasq conf only.
+        if instance_obj.gateway_ip == \
+                self.provision_network_conf.provision_nic_ip:
+            for volume_obj in volume_objs:
+                volume_driver = volume.get_driver(instance_obj, volume_obj)
+                volume_driver.detach()
 
-        for volume_obj in volume_objs:
-            volume_driver = volume.get_driver(instance_obj, volume_obj)
-            volume_driver.detach()
+            self._delete_ipxe_configuration(instance_obj)
+            self._delete_nginx_agent_proxy_configuration(instance_obj)
 
         self._delete_dnsmasq_host(instance_obj)
-        self._delete_ipxe_configuration(instance_obj)
-        self._delete_nginx_agent_proxy_configuration(instance_obj)
-
         return jsonobject.dumps(kvmagent.AgentResponse())
 
     @bm_utils.lock(name='baremetal_v2_volume_operator')
