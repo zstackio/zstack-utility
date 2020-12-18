@@ -1,6 +1,7 @@
 import os
 
 from zstacklib.utils import shell
+from zstacklib.utils import lvm
 
 from kvmagent.plugins.bmv2_gateway_agent import exception
 from kvmagent.plugins.bmv2_gateway_agent import utils as bm_utils
@@ -18,8 +19,7 @@ class SharedBlockVolume(base.BaseVolume):
 
         For shared block, check both lv path and device mapper path.
         """
-        cmd = 'lvchange -asy {path}'.format(path=self.real_path)
-        shell.call(cmd)
+        lvm.active_lv(self.real_path)
 
         if not os.path.exists(self.real_path):
             raise exception.DeviceNotExist(
@@ -83,6 +83,7 @@ class SharedBlockVolume(base.BaseVolume):
         helper.NbdDeviceOperator(self).disconnect()
         # Do not remove the dm device, because it was created by kernel
         # helper.DmDeviceOperator(self).remove()
+        lvm.deactive_lv(self.real_path)
 
     def pre_take_volume_snapshot(self):
         # NOTE: self is src_vol
