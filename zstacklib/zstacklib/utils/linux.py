@@ -604,10 +604,12 @@ def mkdir(path, mode=0o755):
            os.rename(path, path+"-bak")
         except OSError as e:
            logger.warn('mv -f %s %s-bak failed: %s' % (path, path, e))
+           return False
 
     #This fix for race condition when two processes make the dir at the same time
     try:
         os.makedirs(path, mode)
+        return True
     except OSError as e:
         logger.warn("mkdir for path %s failed: %s " % (path, e))
 

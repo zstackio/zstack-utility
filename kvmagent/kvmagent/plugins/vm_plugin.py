@@ -4603,6 +4603,14 @@ class VmPlugin(kvmagent.KvmAgent):
             vm.start(cmd.timeout, cmd.createPaused, wait_console)
         except libvirt.libvirtError as e:
             logger.warn(linux.get_exception_stacktrace())
+
+            # c.f. https://access.redhat.com/solutions/2735671
+            if "org.fedoraproject.FirewallD1 was not provided" in str(e.message):
+                _stop_world()  # to trigger libvirtd restart
+                raise kvmagent.KvmError(
+                    'unable to start vm[uuid:%s, name:%s], libvirt error: %s' % (
+                    cmd.vmInstanceUuid, cmd.vmName, str(e)))
+
             if "Device or resource busy" in str(e.message):
                 raise kvmagent.KvmError(
                     'unable to start vm[uuid:%s, name:%s], libvirt error: %s' % (
@@ -6943,7 +6951,7 @@ class VmPlugin(kvmagent.KvmAgent):
         # the virtio-channel directory used by VR.
         # libvirt won't create this directory when migrating a VR,
         # we have to do this otherwise VR migration may fail
-        shell.call('mkdir -p /var/lib/zstack/kvm/agentSocket/')
+        linux.mkdir('/var/lib/zstack/kvm/agentSocket/')
 
         @thread.AsyncThread
         def wait_end_signal():
