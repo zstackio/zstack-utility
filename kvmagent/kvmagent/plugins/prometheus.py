@@ -362,6 +362,7 @@ class PrometheusPlugin(kvmagent.KvmAgent):
         @in_bash
         def start_collectd(cmd):
             conf_path = os.path.join(os.path.dirname(cmd.binaryPath), 'collectd.conf')
+            ingore_block_device = "/:sd[c-e]/" if kvmagent.os_arch in ["mips64el", "aarch64"] else "//"
 
             conf = '''Interval {{INTERVAL}}
 # version {{VERSION}}
@@ -427,6 +428,7 @@ LoadPlugin virt
 	HostnameFormat name
     PluginInstanceFormat name
     BlockDevice "/:hd[a-z]/"
+    BlockDevice "{{IGNORE}}"
     IgnoreSelected true
     ExtraStats "vcpu memory"
 </Plugin>
@@ -442,6 +444,7 @@ LoadPlugin virt
                 'INTERVAL': cmd.interval,
                 'INTERFACES': interfaces,
                 'VERSION': cmd.version,
+                'IGNORE': ingore_block_device
             })
 
             need_restart_collectd = False
