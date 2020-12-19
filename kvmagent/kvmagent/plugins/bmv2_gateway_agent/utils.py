@@ -88,7 +88,7 @@ def get_lock(name, timeout):
                 if lockinfo['acquire_time'] + lockinfo['timeout'] > \
                         time.time():
                     raise exception.LockNotRelease(
-                        name=lockinfo['name'],
+                        name=name,
                         thread=lockinfo['thread'],
                         time=lockinfo['time'],
                         timeout=lockinfo['timeout'])
@@ -117,9 +117,14 @@ class NamedLock(object):
             name=self.name, thread=threading.current_thread().ident))
 
     def __exit__(self, type, value, trackback):
-        self.lock.release()
-        logger.debug('Relese lock {name} in thread {thread}'.format(
-            name=self.name, thread=threading.current_thread().ident))
+        try:
+            self.lock.release()
+        except Exception as e:
+            # The lock was released, therefore log it only
+            logger.info(e)
+        finally:
+            logger.debug('Relese lock {name} in thread {thread}'.format(
+              name=self.name, thread=threading.current_thread().ident))
 
 
 def lock(name='default_lock', timeout=120):

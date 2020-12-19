@@ -19,13 +19,13 @@ class SharedBlockVolume(base.BaseVolume):
 
         For shared block, check both lv path and device mapper path.
         """
-        lvm.active_lv(self.real_path)
 
         if not os.path.exists(self.real_path):
-            raise exception.DeviceNotExist(
-                instance_uuid=self.instance_uuid,
-                volume_uuid=self.volume_uuid,
-                dev=self.real_path)
+            lvm.active_lv(self.real_path)
+           # raise exception.DeviceNotExist(
+           #     instance_uuid=self.instance_uuid,
+           #     volume_uuid=self.volume_uuid,
+           #     dev=self.real_path)
 
     @property
     def nbd_backend(self):

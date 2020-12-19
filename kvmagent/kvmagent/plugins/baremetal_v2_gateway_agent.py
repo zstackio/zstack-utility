@@ -888,15 +888,18 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         volume_drivers = []
 
         with bm_utils.rollback(self.destroy_instance, req):
-            for volume_obj in volume_objs:
-                volume_driver = volume.get_driver(instance_obj, volume_obj)
-                volume_driver.attach()
-                volume_drivers.append(volume_driver)
+            # Full prepare the instance which assign on the gateway,
+            # otherwise delete the dnsmasq conf only.
+            if instance_obj.gateway_ip == \
+                    self.provision_network_conf.provision_nic_ip:
+                for volume_obj in volume_objs:
+                    volume_driver = volume.get_driver(instance_obj, volume_obj)
+                    volume_driver.attach()
+                    volume_drivers.append(volume_driver)
 
+                self._create_ipxe_configuration(instance_obj, volume_drivers)
+                self._create_nginx_agent_proxy_configuration(instance_obj)
             self._create_dnsmasq_host(instance_obj)
-            self._create_ipxe_configuration(instance_obj, volume_drivers)
-            self._create_nginx_agent_proxy_configuration(instance_obj)
-
         return jsonobject.dumps(kvmagent.AgentResponse())
 
     @bm_utils.lock(name='baremetal_v2_volume_operator')
