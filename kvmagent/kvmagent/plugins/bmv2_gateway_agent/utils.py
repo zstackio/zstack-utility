@@ -90,7 +90,7 @@ def get_lock(name, timeout):
                     raise exception.LockNotRelease(
                         name=name,
                         thread=lockinfo['thread'],
-                        time=lockinfo['time'],
+                        time=lockinfo['acquire_time'],
                         timeout=lockinfo['timeout'])
                 l.release()
             return l
