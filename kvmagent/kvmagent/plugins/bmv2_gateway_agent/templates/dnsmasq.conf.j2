@@ -21,7 +21,7 @@ dhcp-option=6,223.5.5.5,8.8.8.8
 
 dhcp-hostsfile={{ provision_dhcp_hosts_file }}
 dhcp-optsfile={{ provision_dhcp_opts_file }}
-leasefile-ro
+dhcp-leasefile={{ provision_dhcp_leases_file }}
 
 enable-tftp
 tftp-root={{ bm_gateway_tftpboot_dir }}
