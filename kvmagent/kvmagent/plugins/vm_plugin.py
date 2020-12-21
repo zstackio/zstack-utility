@@ -5557,8 +5557,10 @@ class VmPlugin(kvmagent.KvmAgent):
                                 cmd.volumeInstallPath, cmd.installPath)
                             BmV2GwAgent.post_take_volume_snapshot(src_vol_driver, dst_vol_driver)
                         except Exception as e:
-                            # Try to resume the dm device
-                            BmV2GwAgent.resume_device(src_vol_driver)
+                            # Try to rollback the snapshot action
+                            # BmV2GwAgent.resume_device(src_vol_driver)
+                            BmV2GwAgent.rollback_volume_snapshot(
+                                src_vol_driver, dst_vol_driver)
                             logger.error(traceback.format_exc())
                             raise e
                 else:

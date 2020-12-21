@@ -118,3 +118,23 @@ class SharedBlockVolume(base.BaseVolume):
     def resume(self):
         # NOTE: self should be src_vol
         helper.DmDeviceOperator(self).resume()
+
+    def rollback_volume_snapshot(self, src_vol):
+        """ Rollback volume snapshot if the action failed
+        """
+        src_nbd_operator = helper.NbdDeviceOperator(src_vol)
+        snapshot_nbd_operator = helper.NbdDeviceOperator(self)
+        dm_operator = helper.DmDeviceOperator(src_vol)
+        def _rollback():
+            # Set snapshot vol nbd id to None to disconnect the nbd id
+            self.nbd_id = None
+            snapshot_nbd_operator.disconnect()
+            # No need to set src vol nbd id to None, because the volume
+            # operate processed one by one.
+            # src_vol.nbd_id = None
+            src_nbd_operator.connect()
+            dm_operator.reload(src_vol)
+            dm_operator.resume()
+
+        with bm_utils.transcantion(retries=5, sleep_time=1) as cursor:
+            cursor.execute(_rollback)

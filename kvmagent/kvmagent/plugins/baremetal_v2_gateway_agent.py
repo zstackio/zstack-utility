@@ -577,6 +577,12 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         """
         vol_driver.resume()
 
+    @staticmethod
+    def rollback_volume_snapshot(src_vol_driver, dst_vol_driver):
+        """ Rollback the volume snapshot if the action failed
+        """
+        dst_vol_driver.rollback_volume_snapshot(src_vol_driver)
+
     def _open_console(self, instance_obj):
         """ Call bm instance to open the console/vnc and setup proxy on gw
 
