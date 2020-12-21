@@ -86,7 +86,7 @@ class RemoteStorageFactory(object):
 
 class RemoteStorage(object):
     def __init__(self, cmd):
-        self.mount_point = tempfile.mkdtemp()
+        self.mount_point = tempfile.mkdtemp(prefix="zs-backup")
 
     def mount(self):
         raise Exception('function mount not be implemented')
