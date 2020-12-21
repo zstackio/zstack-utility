@@ -623,13 +623,16 @@ class CephAgent(object):
 
         existing_pools = shell.call('ceph osd lspools')
         for pool in cmd.pools:
-            if pool.predefined and pool.name not in existing_pools:
+            if pool.name in existing_pools:
+                continue
+
+            if pool.predefined:
                 raise Exception('cannot find pool[%s] in the ceph cluster, you must create it manually' % pool.name)
-            if pool.name not in existing_pools and (ceph.is_xsky() or ceph.is_sandstone()):
+            if ceph.is_xsky() or ceph.is_sandstone():
                 raise Exception(
                     'The ceph storage type to be added does not support auto initialize pool, please create it manually')
-            else:
-                shell.call('ceph osd pool create %s 128' % pool.name)
+
+            shell.call('ceph osd pool create %s 128' % pool.name)
 
         rsp = InitRsp()
         rsp.fsid = fsid
