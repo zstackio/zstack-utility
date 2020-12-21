@@ -490,7 +490,7 @@ class UpdateConfigration(object):
                 content = re.sub('{0}\s*=\s*off'.format(self.iommu_type), '', content)
                 content = re.sub('\s*modprobe.blacklist\s*=\s*\S*', '', content)
                 if self.enableIommu:
-                    content = re.sub(r'(/boot/vmlinuz-.*)', r'\1 {0}=on modprobe.blacklist=snd_hda_intel,amd76x_edac,vga16fb,nouveau,rivafb,nvidiafb,rivatv,amdgpu,radeon'.format(self.iommu_type), content)
+                    content = re.sub(r'(/vmlinuz-.*)', r'\1 {0}=on modprobe.blacklist=snd_hda_intel,amd76x_edac,vga16fb,nouveau,rivafb,nvidiafb,rivatv,amdgpu,radeon'.format(self.iommu_type), content)
                 linux.write_file(grub_path, content)
         bash_o("modprobe vfio && modprobe vfio-pci")
 
