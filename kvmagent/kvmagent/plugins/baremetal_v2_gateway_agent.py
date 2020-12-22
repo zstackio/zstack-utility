@@ -447,34 +447,34 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                'systemctl reload zstack-baremetal-gateway-nginx')
         shell.call(cmd)
 
-    def _attach_volume(self, instance_obj, volume_obj):
-        """ Attach a given volume
+    # def _attach_volume(self, instance_obj, volume_obj):
+    #     """ Attach a given volume
 
-        Ceph: use qemu-nbd to attach rbd block device, then map the nbd device
-        to a device-mapper device, final export the dm device as iSCSI target.
-        Sharedblock: use qemu-nbd to connect the sblk device, then map the nbd
-        device to a device-mapper device, final export the dm device as iSCSI
-        target.
-        NFS: Export the file as iSCSI target if it's raw.
-        """
+    #     Ceph: use qemu-nbd to attach rbd block device, then map the nbd device
+    #     to a device-mapper device, final export the dm device as iSCSI target.
+    #     Sharedblock: use qemu-nbd to connect the sblk device, then map the nbd
+    #     device to a device-mapper device, final export the dm device as iSCSI
+    #     target.
+    #     NFS: Export the file as iSCSI target if it's raw.
+    #     """
 
-        # DmDeviceOperator(dev_obj).create()
-        # NbdDeviceOperator(dev_obj).connect()
-        # IscsiOperator(dev_obj).setup()
-        volume_driver = volume.get_driver(instance_obj, volume_obj)
-        volume_driver.attach()
-        return volume_driver
+    #     # DmDeviceOperator(dev_obj).create()
+    #     # NbdDeviceOperator(dev_obj).connect()
+    #     # IscsiOperator(dev_obj).setup()
+    #     volume_driver = volume.get_driver(instance_obj, volume_obj)
+    #     volume_driver.attach()
+    #     return volume_driver
 
-    def _detach_volume(self, instance_obj, volume_obj):
-        """ Detach a given volume
-        """
+    # def _detach_volume(self, instance_obj, volume_obj):
+    #     """ Detach a given volume
+    #     """
 
-        # IscsiOperator(dev_obj).revoke()
-        # NbdDeviceOperator(dev_obj).disconnect()
-        # DmDeviceOperator(dev_obj).remove()
-        volume_driver = volume.get_driver(instance_obj, volume_obj)
-        volume_driver.detach()
-        return volume_driver
+    #     # IscsiOperator(dev_obj).revoke()
+    #     # NbdDeviceOperator(dev_obj).disconnect()
+    #     # DmDeviceOperator(dev_obj).remove()
+    #     volume_driver = volume.get_driver(instance_obj, volume_obj)
+    #     volume_driver.detach()
+    #     return volume_driver
 
     @staticmethod
     def pre_take_volume_snapshot(cmd):
@@ -914,7 +914,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         volume_objs = VolumeObj.from_json_list(req)
         volume_drivers = []
 
-        with bm_utils.rollback(self.destroy_instance, req):
+        with bm_utils.rollback(self._destroy_instance, req):
             # Full prepare the instance which assign on the gateway,
             # otherwise delete the dnsmasq conf only.
             if instance_obj.gateway_ip == \
@@ -927,6 +927,23 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                 self._create_ipxe_configuration(instance_obj, volume_drivers)
                 self._create_nginx_agent_proxy_configuration(instance_obj)
             self._create_dnsmasq_host(instance_obj)
+        return jsonobject.dumps(kvmagent.AgentResponse())
+
+    def _destroy_instance(self, req):
+        instance_obj = BmInstanceObj.from_json(req)
+        volume_objs = VolumeObj.from_json_list(req)
+        # Full destroy the instance which assign on the gateway,
+        # otherwise delete the dnsmasq conf only.
+        if instance_obj.gateway_ip == \
+                self.provision_network_conf.provision_nic_ip:
+            for volume_obj in volume_objs:
+                volume_driver = volume.get_driver(instance_obj, volume_obj)
+                volume_driver.detach()
+
+            self._delete_ipxe_configuration(instance_obj)
+            self._delete_nginx_agent_proxy_configuration(instance_obj)
+
+        self._delete_dnsmasq_host(instance_obj)
         return jsonobject.dumps(kvmagent.AgentResponse())
 
     @bm_utils.lock(name='baremetal_v2_volume_operator')
@@ -972,21 +989,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             }
         }
         """
-        instance_obj = BmInstanceObj.from_json(req)
-        volume_objs = VolumeObj.from_json_list(req)
-        # Full destroy the instance which assign on the gateway,
-        # otherwise delete the dnsmasq conf only.
-        if instance_obj.gateway_ip == \
-                self.provision_network_conf.provision_nic_ip:
-            for volume_obj in volume_objs:
-                volume_driver = volume.get_driver(instance_obj, volume_obj)
-                volume_driver.detach()
-
-            self._delete_ipxe_configuration(instance_obj)
-            self._delete_nginx_agent_proxy_configuration(instance_obj)
-
-        self._delete_dnsmasq_host(instance_obj)
-        return jsonobject.dumps(kvmagent.AgentResponse())
+        self._destroy_instance(req)
 
     @bm_utils.lock(name='baremetal_v2_volume_operator')
     @kvmagent.replyerror
@@ -1015,7 +1018,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         """
         instance_obj = BmInstanceObj.from_json(req)
         volume_obj = VolumeObj.from_json(req)
-        with bm_utils.rollback(self.detach_volume, req):
+        with bm_utils.rollback(self._detach_volume, req):
             volume_driver = volume.get_driver(instance_obj, volume_obj)
             volume_driver.attach()
 
@@ -1023,6 +1026,16 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             # info into ipxe conf file
             # self._append_conf_to_ipxe_configuration(instance_obj,
             #                                         volume_driver)
+
+        return jsonobject.dumps(kvmagent.AgentResponse())
+
+    def _detach_volume(self, req):
+        instance_obj = BmInstanceObj.from_json(req)
+        volume_obj = VolumeObj.from_json(req)
+        volume_driver = volume.get_driver(instance_obj, volume_obj)
+        volume_driver.detach()
+        # The data lun's info is not in ipxe conf file now.
+        # self._remove_conf_from_ipxe_configuration(instance_obj, volume_driver)
 
         return jsonobject.dumps(kvmagent.AgentResponse())
 
@@ -1050,14 +1063,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             }
         }
         """
-        instance_obj = BmInstanceObj.from_json(req)
-        volume_obj = VolumeObj.from_json(req)
-        volume_driver = volume.get_driver(instance_obj, volume_obj)
-        volume_driver.detach()
-        # The data lun's info is not in ipxe conf file now.
-        # self._remove_conf_from_ipxe_configuration(instance_obj, volume_driver)
-
-        return jsonobject.dumps(kvmagent.AgentResponse())
+        self._detach_volume(req)
 
     @kvmagent.replyerror
     def console(self, req):
