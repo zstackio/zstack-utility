@@ -109,8 +109,6 @@ class FaultToleranceFecnerPlugin(kvmagent.KvmAgent):
                 for key, value in group_health_dict.iteritems():
                     if key == "1" and value <= 2:
                         report_to_mn_for_host_maintenance()
-                    elif key == "0" and value == 1:
-                        report_to_mn_for_host_maintenance()
 
         def report_to_mn_for_host_maintenance():
             url = self.config.get(kvmagent.SEND_COMMAND_URL)
