@@ -944,7 +944,6 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             self._delete_nginx_agent_proxy_configuration(instance_obj)
 
         self._delete_dnsmasq_host(instance_obj)
-        return jsonobject.dumps(kvmagent.AgentResponse())
 
     @bm_utils.lock(name='baremetal_v2_volume_operator')
     @kvmagent.replyerror
@@ -990,6 +989,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         }
         """
         self._destroy_instance(req)
+        return jsonobject.dumps(kvmagent.AgentResponse())
 
     @bm_utils.lock(name='baremetal_v2_volume_operator')
     @kvmagent.replyerror
@@ -1037,8 +1037,6 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         # The data lun's info is not in ipxe conf file now.
         # self._remove_conf_from_ipxe_configuration(instance_obj, volume_driver)
 
-        return jsonobject.dumps(kvmagent.AgentResponse())
-
     @bm_utils.lock(name='baremetal_v2_volume_operator')
     @kvmagent.replyerror
     def detach_volume(self, req):
@@ -1064,6 +1062,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         }
         """
         self._detach_volume(req)
+        return jsonobject.dumps(kvmagent.AgentResponse())
 
     @kvmagent.replyerror
     def console(self, req):
