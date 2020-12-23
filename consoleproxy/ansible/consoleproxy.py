@@ -18,7 +18,7 @@ zstack_repo = 'false'
 post_url = ""
 chrony_servers = None
 pkg_consoleproxy = ""
-http_console_proxy_port = "4901"
+http_console_proxy_port = ""
 virtualenv_version = "12.1.1"
 remote_user = "root"
 remote_pass = None
@@ -75,25 +75,30 @@ else:
     command = 'mkdir -p %s %s' % (consoleproxy_root, virtenv_path)
     run_remote_command(command, host_post_info)
 
-# name: create zstack-bm2-console-proxy.service
+# name: create zstack-baremetal-nginx.service
 command = """
-mkdir -p /var/log/zstack/bm2-console-proxy/
-touch /var/log/zstack/bm2-console-proxy/error.log
-touch /var/log/zstack/bm2-console-proxy/access.log
-mkdir -p /etc/zstack/bm2-console-proxy/conf.d/
+mkdir -p /var/log/zstack/zstack-baremetal-nginx
+touch /var/log/zstack/zstack-baremetal-nginx/error.log
+touch /var/log/zstack/zstack-baremetal-nginx/access.log
+mkdir -p /var/lib/zstack/nginx/baremetal/v1/pxeserver/conf.d/
+mkdir -p /var/lib/zstack/nginx/baremetal/v1/management_node/
+mkdir -p /var/lib/zstack/nginx/baremetal/v2/gateway/conf.d/
+mkdir -p /var/lib/zstack/nginx/baremetal/v2/management_node/
+
+iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport {PORT} -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport {PORT} -j ACCEPT
 
 echo -e "[Unit]
-Description=ZStack BareMetal2 Instance Console Proxy
+Description=ZStack BareMetal Nginx Service
 After=network.target remote-fs.target nss-lookup.target
 
 [Service]
 Type=forking
 Restart=always
 RestartSec=3
-PIDFile=/var/run/zstack/bm2-console-proxy.pid
-ExecStartPre=/usr/bin/rm -f /var/run/zstack/bm2-console-proxy.pid
-ExecStartPre=/usr/sbin/nginx -t -c /etc/zstack/bm2-console-proxy/nginx.conf
-ExecStart=/usr/sbin/nginx -c /etc/zstack/bm2-console-proxy/nginx.conf
+PIDFile=/var/run/zstack/zstack-baremetal-nginx.pid
+ExecStartPre=/usr/bin/rm -f /var/run/zstack/zstack-baremetal-nginx.pid
+ExecStartPre=/usr/sbin/nginx -t -c /var/lib/zstack/nginx/baremetal/zstack-baremetal-nginx.conf
+ExecStart=/usr/sbin/nginx -c /var/lib/zstack/nginx/baremetal/zstack-baremetal-nginx.conf
 ExecReload=/bin/kill -s HUP \$MAINPID
 KillSignal=SIGQUIT
 TimeoutStopSec=5
@@ -101,22 +106,22 @@ KillMode=process
 PrivateTmp=true
 
 [Install]
-WantedBy=multi-user.target" > /usr/lib/systemd/system/zstack-bm2-console-proxy.service
+WantedBy=multi-user.target" > /usr/lib/systemd/system/zstack-baremetal-nginx.service
 
-systemctl disable zstack-bm2-console-proxy.service
+systemctl disable zstack-baremetal-nginx.service
 
 echo -e "user nginx;
 worker_processes auto;
-error_log /var/log/zstack/bm2-console-proxy/error.log;
-pid /var/run/zstack/bm2-console-proxy.pid;
 include /usr/share/nginx/modules/*.conf;
+pid /var/run/zstack/zstack-baremetal-nginx.pid;
+error_log /var/log/zstack/zstack-baremetal-nginx/error.log;
 
 events {{
     worker_connections 1024;
 }}
 
 http {{
-    access_log          /var/log/zstack/bm2-console-proxy/access.log;
+    access_log          /var/log/zstack/zstack-baremetal-nginx/access.log;
     sendfile            on;
     tcp_nopush          on;
     tcp_nodelay         on;
@@ -132,9 +137,28 @@ http {{
 
     server {{
         listen  {PORT};
-        include /etc/zstack/bm2-console-proxy/conf.d/*.conf;
+
+        # baremetal v1 proxy conf on pxeserver, e.g. sendcommand / instance terminal
+        include /var/lib/zstack/nginx/baremetal/v1/pxeserver/*.conf;
+
+        # baremetal v1 proxy conf on management node, e.g. instance terminal
+        include /var/lib/zstack/nginx/baremetal/v1/management_node/*.conf;
+
+        # baremetal v2 proxy conf on gateway, e.g. instance agent path / send hardware info / callback
+        include /var/lib/zstack/nginx/baremetal/v2/gateway/*.conf;
+
+        # baremetal v2 proxy conf on management node, e.g. instance terminal
+        include /var/lib/zstack/nginx/baremetal/v2/management_node/*.conf;
     }}
-}}" > /etc/zstack/bm2-console-proxy/nginx.conf
+}}
+
+stream {{
+    # baremetal v1 proxy conf on pxeserver, e.g. instance vnc
+    include /var/lib/zstack/nginx/baremetal/v1/pxeserver/conf.d/*.tcp;
+
+    # baremetal v2 proxy conf on gateway, e.g. instance vnc/rdp/terminal
+    include /var/lib/zstack/nginx/baremetal/v2/gateway/conf.d/*.tcp;
+}}" > /var/lib/zstack/nginx/baremetal/zstack-baremetal-nginx.conf
 """
 run_remote_command(command.format(PORT=http_console_proxy_port), host_post_info)
 

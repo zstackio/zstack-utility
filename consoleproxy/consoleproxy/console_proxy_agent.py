@@ -100,7 +100,7 @@ class ConsoleProxyAgent(object):
     PROXY_LOG_DIR = "/var/log/zstack/consoleProxy/"
     DB_NAME = "consoleProxy"
 
-    BM2_INSTANCE_NGINX_CONF_DIR = "/etc/zstack/bm2-console-proxy/conf.d/"
+    BM2_INSTANCE_NGINX_CONF_DIR = "/var/lib/zstack/nginx/baremetal/v2/management_node/"
 
     #TODO: sync db status and current running processes
     def __init__(self):
@@ -153,13 +153,13 @@ class ConsoleProxyAgent(object):
 
 
     def _check_http_proxy_availability(self, args):
-        ret, out, err = bash_roe("systemctl status zstack-bm2-console-proxy.service")
+        ret, out, err = bash_roe("systemctl status zstack-baremetal-nginx.service")
         if ret != 0:
             # try to restart the service
-            bash_roe("systemctl start zstack-bm2-console-proxy.service")
-            ret, out, err = bash_roe("systemctl status zstack-bm2-console-proxy.service")
+            bash_roe("systemctl start zstack-baremetal-nginx.service")
+            ret, out, err = bash_roe("systemctl status zstack-baremetal-nginx.service")
             if ret != 0:
-                logger.warn('zstack-bm2-console-proxy.service is not running, availability false')
+                logger.warn('zstack-baremetal-nginx.service is not running, availability false')
                 return False
         return True
 
@@ -245,11 +245,11 @@ class ConsoleProxyAgent(object):
         rsp = AgentResponse()
 
         # make sure the service is running
-        ret, out, err = bash_roe("systemctl status zstack-bm2-console-proxy.service")
+        ret, out, err = bash_roe("systemctl status zstack-baremetal-nginx.service")
         if ret != 0:
-            ret, out, err = bash_roe("systemctl start zstack-bm2-console-proxy.service")
+            ret, out, err = bash_roe("systemctl start zstack-baremetal-nginx.service")
             if ret != 0:
-                rsp.error = "failed to start zstack-bm2-console-proxy.service"
+                rsp.error = "failed to start zstack-baremetal-nginx.service"
                 rsp.success = False
             return jsonobject.dumps(rsp)
 
@@ -259,9 +259,9 @@ class ConsoleProxyAgent(object):
             os.remove(conf_path)
 
         # reload the service
-        ret, out, err = bash_roe("systemctl reload zstack-bm2-console-proxy.service")
+        ret, out, err = bash_roe("systemctl reload zstack-baremetal-nginx.service")
         if ret != 0:
-            rsp.error = "failed to reload zstack-bm2-console-proxy.service"
+            rsp.error = "failed to reload zstack-baremetal-nginx.service"
             rsp.success = False
         return jsonobject.dumps(rsp)
 
@@ -349,11 +349,11 @@ class ConsoleProxyAgent(object):
         rsp.token = cmd.token
 
         # make sure the service is running
-        ret, out, err = bash_roe("systemctl status zstack-bm2-console-proxy.service")
+        ret, out, err = bash_roe("systemctl status zstack-baremetal-nginx.service")
         if ret != 0:
-            ret, out, err = bash_roe("systemctl start zstack-bm2-console-proxy.service")
+            ret, out, err = bash_roe("systemctl start zstack-baremetal-nginx.service")
             if ret != 0:
-                rsp.error = "failed to start zstack-bm2-console-proxy.service"
+                rsp.error = "failed to start zstack-baremetal-nginx.service"
                 rsp.success = False
             return jsonobject.dumps(rsp)
 
@@ -367,9 +367,9 @@ class ConsoleProxyAgent(object):
             f.write(content)
 
         # reload the service
-        ret, out, err = bash_roe("systemctl reload zstack-bm2-console-proxy.service")
+        ret, out, err = bash_roe("systemctl reload zstack-baremetal-nginx.service")
         if ret != 0:
-            rsp.error = "failed to reload zstack-bm2-console-proxy.service"
+            rsp.error = "failed to reload zstack-baremetal-nginx.service"
             rsp.success = False
         return jsonobject.dumps(rsp)
 
