@@ -17,6 +17,9 @@ class LinuxDriver(base.SystemDriverBase):
     def __init__(self):
         super(LinuxDriver, self).__init__()
 
+    def ping(self):
+        pass
+
     def reboot(self, instance_obj):
         cmd = ['shutdown', '-r', 'now']
         try:

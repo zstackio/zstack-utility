@@ -1,14 +1,26 @@
 import os
+import shutil
 
 from jinja2 import Template
 from oslo_concurrency import processutils
 
+from bm_instance_agent.common import utils as agent_utils
 from bm_instance_agent.systems.linux import driver as linux_driver
 
 
 class CentOSDriver(linux_driver.LinuxDriver):
 
     driver_name = 'centos'
+
+    def ping(self, instance_obj):
+        iface_name = agent_utils.get_interface_by_mac(
+            instance_obj.provision_mac)
+        conf_dir = '/etc/sysconfig/network-scripts'
+        src_file = os.path.join(conf_dir, 'ifcfg-{}'.format(iface_name))
+        dst_file = os.path.join(conf_dir, '.ifcfg-{}'.format(iface_name))
+        if os.path.exists(src_file):
+            os.chmod(src_file, 0o000)
+            shutil.move(src_file, dst_file)
 
     def _load_template(self):
         template_path = os.path.join(

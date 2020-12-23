@@ -2,6 +2,9 @@ class SystemDriverBase(object):
 
     driver_name = 'base'
 
+    def ping(self, *args, **kwargs):
+        raise NotImplementedError()
+
     def reboot(self, *args, **kwargs):
         raise NotImplementedError()
 
