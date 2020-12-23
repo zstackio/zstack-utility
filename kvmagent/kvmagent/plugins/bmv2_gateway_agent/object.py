@@ -88,7 +88,8 @@ class NetworkObj(Base):
             'provisionNicIp': '10.0.201.10',
             'managementIp': '10.0.201.101',
             'callBackIp': '10.1.1.10',
-            'callBackPort': '8080'
+            'callBackPort': '8080',
+            'baremetal2InstanceProxyPort': '7090'
         }
     }
     """
@@ -102,7 +103,8 @@ class NetworkObj(Base):
         'provisionNicIp': 'provision_nic_ip',
         'managementIp': 'management_ip',
         'callBackIp': 'callback_ip',
-        'callBackPort': 'callback_port'
+        'callBackPort': 'callback_port',
+        'baremetal2InstanceProxyPort': 'baremetal_instance_proxy_port'
     }
 
     @classmethod

@@ -7,6 +7,8 @@ from zstacklib.utils import http
 from zstacklib.utils import jsonobject
 from zstacklib.utils import linux
 from zstacklib.utils import linux_v2
+from zstacklib.utils import iptables
+from zstacklib.utils import lock
 from zstacklib.utils import log
 from zstacklib.utils import shell
 
@@ -41,7 +43,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
 
     BAREMETAL_LIB_DIR = '/var/lib/zstack/baremetalv2/'
     BAREMETAL_LOG_DIR = '/var/log/zstack/baremetalv2/'
-    PID_DIR = '/var/run/'
+    PID_DIR = '/var/run/zstack'
 
     # Dnsmasq configuration
     DNSMASQ_DIR = os.path.join(BAREMETAL_LIB_DIR, 'dnsmasq/')
@@ -50,7 +52,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
     DNSMASQ_OPTS_PATH = os.path.join(DNSMASQ_DIR, 'opts')
     DNSMASQ_LEASE_PATH = os.path.join(DNSMASQ_DIR, 'leases')
     DNSMASQ_LOG_PATH=os.path.join(BAREMETAL_LOG_DIR, 'dnsmasq.log')
-    DNSMASQ_PID_PATH = os.path.join(PID_DIR, 'zstack-bm-dnsmasq.pid')
+    DNSMASQ_PID_PATH = os.path.join(PID_DIR, 'zstack-baremetal-dnsmasq.pid')
     DNSMASQ_SYSTEMD_SERVICE_PATH = \
             '/usr/lib/systemd/system/zstack-baremetal-dnsmasq.service'
 
@@ -59,17 +61,20 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
     BOOT_IPXE_PATH = os.path.join(TFTPBOOT_DIR, 'boot.ipxe')
     DEFAULT_PXE_PATH = os.path.join(PXELINUX_CFG_DIR, 'default')
 
-    NGINX_CONF_DIR = os.path.join(BAREMETAL_LIB_DIR, 'nginx')
+    NGINX_BASIC_CONF_PATH = \
+            '/var/lib/zstack/nginx/baremetal/zstack-baremetal-nginx.conf'
+    # NGINX_CONF_DIR = os.path.join(BAREMETAL_LIB_DIR, 'nginx-gateway')
+    NGINX_CONF_DIR = '/var/lib/zstack/nginx/baremetal/v2/gateway'
     NGINX_CONF_PATH = os.path.join(NGINX_CONF_DIR, 'nginx.conf')
     NGINX_BM_AGENT_PROXY_CONF_DIR = os.path.join(NGINX_CONF_DIR, 'conf.d')
-    NGINX_LOG_DIR = os.path.join(BAREMETAL_LOG_DIR, 'nginx')
-    NGINX_PID_PATH = os.path.join(PID_DIR, 'zstack-bm-nginx.pid')
+    NGINX_LOG_DIR = '/var/log/zstack/zstack-baremetal-nginx/'
+    NGINX_PID_PATH = os.path.join(PID_DIR, 'zstack-baremetal-nginx.pid')
     NGINX_SYSTEMD_SERVICE_PATH = \
-            '/usr/lib/systemd/system/zstack-baremetal-gateway-nginx.service'
+            '/usr/lib/systemd/system/zstack-baremetal-nginx.service'
 
-    HTTPBOOT_DIR = os.path.join(BAREMETAL_LIB_DIR, 'httpboot/')
+    HTTPBOOT_DIR = os.path.join(BAREMETAL_LIB_DIR, 'bmv2httpboot//')
     ZSTACK_DVD_LINKED_DIR = os.path.join(HTTPBOOT_DIR, 'zstack-dvd')
-    HTTP_PORT = 7090
+    BAREMETAL_INSTANCE_AGENT_PORT = 7090
 
     INSPECTOR_KS_CFG = os.path.join(HTTPBOOT_DIR, 'inspector.ks')
 
@@ -111,6 +116,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         directories = [
             self.BAREMETAL_LIB_DIR,
             self.BAREMETAL_LOG_DIR,
+            self.PID_DIR,
             self.DNSMASQ_DIR,
             self.TFTPBOOT_DIR,
             self.PXELINUX_CFG_DIR,
@@ -121,27 +127,18 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         cmd = 'mkdir -p {dirs}'.format(dirs=' '.join(directories))
         shell.call(cmd)
 
+        # Change the pid dir owner
+        cmd = 'chown zstack:zstack {}'.format(self.PID_DIR)
+        shell.call(cmd)
+
         # Prepare tftpboot, copy ipxe/pxelinux.0 rom
-        # cmd = 'yes | cp -rf /usr/share/ipxe/* ''{tftpboot}'.format(
-        #     tftpboot=self.TFTPBOOT_DIR)
-        # shell.call(cmd)
         bm_utils.copy_dir_files_to_another_dir(
             '/usr/share/ipxe', self.TFTPBOOT_DIR)
-        # bm_utils.copy_dir_files_to_another_dir(
-        #     '/usr/share/syslinux', self.TFTPBOOT_DIR)
         shutil.copy('/usr/share/syslinux/pxelinux.0', self.TFTPBOOT_DIR)
 
         # Prepare httpboot, link zstack-dvd, copy kernel&initramfs
         if os.path.exists(self.ZSTACK_DVD_LINKED_DIR):
             os.unlink(self.ZSTACK_DVD_LINKED_DIR)
-        # cmd = ('release=`cat /etc/zstack-release | awk \'{{ print $3 }}\'`; '
-        #        'ln -s /opt/zstack-dvd/x86_64/$release '
-        #        '{zstack_dvd_linked_dir}; '
-        #        'yes | cp -rf {zstack_dvd_linked_dir}/images/pxeboot/* '
-        #        '{httpboot}').format(
-        #            zstack_dvd_linked_dir=self.ZSTACK_DVD_LINKED_DIR,
-        #            httpboot=self.HTTPBOOT_DIR)
-        # shell.call(cmd)
         os.symlink('/opt/zstack-dvd/x86_64/%s' % yum_release,
                    self.ZSTACK_DVD_LINKED_DIR)
         bm_utils.copy_dir_files_to_another_dir(
@@ -175,6 +172,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             'dnsmasq.conf': os.path.join(template_dir, 'dnsmasq.conf.j2'),
             'dnsmasq.opts': os.path.join(template_dir, 'dnsmasq.opts.j2'),
             'inspector.ks': os.path.join(template_dir, 'inspector.ks.j2'),
+            'nginx_basic': os.path.join(template_dir, 'nginx.conf.j2'),
             'nginx_proxy_to_mn': os.path.join(template_dir,
                                               'nginx-proxy-to-mn.conf.j2'),
             'nginx_proxy_to_agent_http': os.path.join(
@@ -182,7 +180,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             'nginx_proxy_to_agent_tcp': os.path.join(
                 template_dir, 'nginx-proxy-to-agent-tcp.j2'),
             'nginx_systemd_service': os.path.join(
-                template_dir, 'zstack-baremetal-gateway-nginx.service.j2'),
+                template_dir, 'zstack-baremetal-nginx.service.j2'),
             'dnsmasq_systemd_service': os.path.join(
                 template_dir, 'zstack-baremetal-dnsmasq.service.j2')
         }
@@ -340,38 +338,71 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                'systemctl reload zstack-baremetal-dnsmasq')
         shell.call(cmd)
 
-    def _prepare_nginx(self, network_obj):
+    def _prepare_nginx_basic(self, network_obj):
+        """ prepare nginx base configuration
+
+        Check that the systemd service wether exist, create the basic
+        nginx configuration. The basic configuration include listen port,
+        include path.
+        """
+        # Check system service exist
+        if not os.path.exists(self.NGINX_SYSTEMD_SERVICE_PATH):
+            bm_nginx_template = self._load_template('nginx_systemd_service')
+            bm_nginx_conf = bm_nginx_template.render(
+                zstack_bm_nginx_pid=self.NGINX_PID_PATH,
+                zstack_bm_nginx_conf_path=self.NGINX_BASIC_CONF_PATH)
+            with open(self.NGINX_SYSTEMD_SERVICE_PATH, 'w') as f:
+                f.write(bm_nginx_conf)
+            cmd = 'systemctl daemon-reload'
+            shell.call(cmd)
+
+        # Check nginx basic config exist or port corrent
+        ctx = None
+        if os.path.exists(self.NGINX_BASIC_CONF_PATH):
+            with open(self.NGINX_BASIC_CONF_PATH, 'r') as f:
+                ctx = f.read()
+        if not ctx \
+            or str(network_obj.baremetal_instance_proxy_port) not in ctx:
+            # Check the portis available
+            if not linux.is_port_available(
+                    network_obj.baremetal_instance_proxy_port):
+                raise exception.PortInUse(
+                    port=network_obj.baremetal_instance_proxy_port)
+
+            template = self._load_template('nginx_basic')
+            conf = template.render(
+                zstack_bm_nginx_log_dir=self.NGINX_LOG_DIR,
+                zstack_bm_nginx_pid=self.NGINX_PID_PATH,
+                port=network_obj.baremetal_instance_proxy_port)
+            with open(self.NGINX_BASIC_CONF_PATH, 'w') as f:
+                f.write(conf)
+
+    def _prepare_nginx(self, network_obj, instance_objs):
         """ Prepare nginx configuration
 
         Include httpboot file server, mn proxy(callback and sendcommand).
         :param network_obj: The network obj
         :type network_obj: NetworkObj
         """
+        self._prepare_nginx_basic(network_obj)
         template = self._load_template('nginx_proxy_to_mn')
         mn_callback_uri = 'http://{ip}:{port}'.format(
             ip=network_obj.callback_ip, port=network_obj.callback_port)
         conf = template.render(
             mn_callback_uri=mn_callback_uri,
             bm_gateway_httpboot=self.BAREMETAL_LIB_DIR,
-            bm_agent_proxy_conf_dir=self.NGINX_BM_AGENT_PROXY_CONF_DIR,
-            zstack_bm_nginx_log_dir=self.NGINX_LOG_DIR,
-            zstack_bm_gateway_nginx_pid=self.NGINX_PID_PATH
+            bm_agent_proxy_conf_dir=self.NGINX_BM_AGENT_PROXY_CONF_DIR
         )
         with open(self.NGINX_CONF_PATH, 'w') as f:
             f.write(conf)
 
-        if not os.path.exists(self.NGINX_SYSTEMD_SERVICE_PATH):
-            bm_nginx_template = self._load_template('nginx_systemd_service')
-            bm_nginx_conf = bm_nginx_template.render(
-                zstack_bm_gateway_nginx_pid=self.NGINX_PID_PATH,
-                zstack_bm_gateway_nginx_conf_path=self.NGINX_CONF_PATH)
-            with open(self.NGINX_SYSTEMD_SERVICE_PATH, 'w') as f:
-                f.write(bm_nginx_conf)
-            cmd = 'systemctl daemon-reload'
-            shell.call(cmd)
+        # Reconfigure the nginx proxy for instance
+        for instance_obj in instance_objs:
+            if instance_obj.gateway_ip == network_obj.provision_nic_ip:
+                self._configure_nginx_agent_proxy(instance_obj, network_obj)
 
-        cmd = ('systemctl start zstack-baremetal-gateway-nginx && '
-               'systemctl reload zstack-baremetal-gateway-nginx')
+        cmd = ('systemctl start zstack-baremetal-nginx && '
+               'systemctl reload zstack-baremetal-nginx')
         shell.call(cmd)
 
     def _destroy_nginx(self):
@@ -380,36 +411,32 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         Include proxy shellinaboxd, proxy bm instance agent API, inspect http
         web server, mn proxy.
         """
-        cmd = ('systemctl is-active zstack-baremetal-gateway-nginx || exit 0; '
-               'systemctl stop zstack-baremetal-gateway-nginx.service')
+        bm_utils.flush_dir(self.NGINX_BM_AGENT_PROXY_CONF_DIR)
+        cmd = ('systemctl start zstack-baremetal-nginx && '
+               'systemctl reload zstack-baremetal-nginx')
         shell.call(cmd)
-        # NOTE(ya.wang) The exist configuration file will rewrite during
-        # network prepare, therefore the main conf do not need remove.
-        # linux.rm_file_force(self.NGINX_CONF_PATH)
-        linux.rm_dir_force(self.NGINX_BM_AGENT_PROXY_CONF_DIR)
 
-    def _create_nginx_agent_proxy_configuration(self, instance_obj):
-        """ Create one nginx configration
-
-        Setup bm instance agent API proxy.
+    def _configure_nginx_agent_proxy(self, instance_obj, network_obj=None):
         """
-        # Ensure the dir exist
+        """
+        if not network_obj:
+            network_obj = self.provision_network_conf
+
         if not os.path.exists(self.NGINX_BM_AGENT_PROXY_CONF_DIR):
-            cmd = 'mkdir -p {dir}'.format(
-                dir=self.NGINX_BM_AGENT_PROXY_CONF_DIR)
-            shell.call(cmd)
+            linux.mkdir(self.NGINX_BM_AGENT_PROXY_CONF_DIR)
 
         template = self._load_template('nginx_proxy_to_agent_http')
         bm_gateway_callback_uri = (
             'http://{gw_ip}:{gw_port}/baremetal_instance_agent/v2/callback'
             ).format(
-                gw_ip=self.provision_network_conf.provision_nic_ip,
-                gw_port=self.HTTP_PORT
+                gw_ip=network_obj.provision_nic_ip,
+                gw_port=network_obj.baremetal_instance_proxy_port
             )
         bm_agent_api_uri = (
             'http://{bm_instance_ip}:{bm_instance_port}/v2').format(
                 bm_instance_ip=instance_obj.provision_ip,
-                bm_instance_port=self.HTTP_PORT
+                bm_instance_port=\
+                    self.BAREMETAL_INSTANCE_AGENT_PORT
             )
         conf = template.render(
             bm_instance_uuid=instance_obj.uuid,
@@ -422,8 +449,15 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         with open(file_path, 'w') as f:
             f.write(conf)
 
-        cmd = ('systemctl start zstack-baremetal-gateway-nginx && '
-               'systemctl reload zstack-baremetal-gateway-nginx')
+    def _create_nginx_agent_proxy_configuration(self, instance_obj):
+        """ Create one nginx configration
+
+        Setup bm instance agent API proxy.
+        """
+        self._configure_nginx_agent_proxy(instance_obj)
+
+        cmd = ('systemctl start zstack-baremetal-nginx && '
+               'systemctl reload zstack-baremetal-nginx')
         shell.call(cmd)
 
     def _delete_nginx_agent_proxy_configuration(self, instance_obj):
@@ -440,41 +474,24 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         linux.rm_file_force(file_path)
 
         file_path = os.path.join(self.NGINX_BM_AGENT_PROXY_CONF_DIR,
-                                instance_obj.uuid + '.tcp')
-        linux.rm_file_force(file_path)
+                                 instance_obj.uuid + '.tcp')
+        # Remove iptables rule, read the configuration to get the port
+        if os.path.exists(file_path):
+            remote_port = None
+            local_port = None
+            with open(file_path, 'r') as f:
+                for line in f.readlines():
+                    if 'listen' in line:
+                        local_port = int(line.split()[-1].strip()[:-1])
+                    if 'proxy_pass' in line:
+                        remote_port = int(line.split(':')[-1].strip()[:-1])
+            if remote_port and local_port:
+                self._remove_iptables_rule(local_port)
+            linux.rm_file_force(file_path)
 
-        cmd = ('systemctl start zstack-baremetal-gateway-nginx && '
-               'systemctl reload zstack-baremetal-gateway-nginx')
+        cmd = ('systemctl start zstack-baremetal-nginx && '
+               'systemctl reload zstack-baremetal-nginx')
         shell.call(cmd)
-
-    # def _attach_volume(self, instance_obj, volume_obj):
-    #     """ Attach a given volume
-
-    #     Ceph: use qemu-nbd to attach rbd block device, then map the nbd device
-    #     to a device-mapper device, final export the dm device as iSCSI target.
-    #     Sharedblock: use qemu-nbd to connect the sblk device, then map the nbd
-    #     device to a device-mapper device, final export the dm device as iSCSI
-    #     target.
-    #     NFS: Export the file as iSCSI target if it's raw.
-    #     """
-
-    #     # DmDeviceOperator(dev_obj).create()
-    #     # NbdDeviceOperator(dev_obj).connect()
-    #     # IscsiOperator(dev_obj).setup()
-    #     volume_driver = volume.get_driver(instance_obj, volume_obj)
-    #     volume_driver.attach()
-    #     return volume_driver
-
-    # def _detach_volume(self, instance_obj, volume_obj):
-    #     """ Detach a given volume
-    #     """
-
-    #     # IscsiOperator(dev_obj).revoke()
-    #     # NbdDeviceOperator(dev_obj).disconnect()
-    #     # DmDeviceOperator(dev_obj).remove()
-    #     volume_driver = volume.get_driver(instance_obj, volume_obj)
-    #     volume_driver.detach()
-    #     return volume_driver
 
     @staticmethod
     def pre_take_volume_snapshot(cmd):
@@ -611,7 +628,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         # If the conf not exist
         uri = 'http://{addr}:{port}/v2/console/prepare'.format(
             addr=instance_obj.provision_ip,
-            port=self.HTTP_PORT,
+            port=self.BAREMETAL_INSTANCE_AGENT_PORT,
             uuid=instance_obj.uuid)
         ret = http.json_post(uri, method='GET')
         # TODO(ya.wang) handle response
@@ -626,13 +643,15 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             bm_instance_ip=instance_obj.provision_ip,
             bm_instance_vnc_port=port)
 
-
         with open(file_path, 'w') as f:
             f.write(conf)
 
-        cmd = ('systemctl start zstack-baremetal-gateway-nginx && '
-               'systemctl reload zstack-baremetal-gateway-nginx')
+        cmd = ('systemctl start zstack-baremetal-nginx && '
+               'systemctl reload zstack-baremetal-nginx')
         shell.call(cmd)
+
+        # Configure the iptables
+        self._add_iptables_rule(gw_port)
 
         return gw_port
 
@@ -642,12 +661,19 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         :param network_obj: The network obj
         :type network_obj: NetworkObj
         """
-        inspect_kernel_uri = 'http://{ip}:{port}/httpboot/vmlinuz'.format(
-            ip=network_obj.provision_nic_ip, port=self.HTTP_PORT)
-        inspect_initrd_uri = 'http://{ip}:{port}/httpboot/initrd.img'.format(
-            ip=network_obj.provision_nic_ip, port=self.HTTP_PORT)
-        inspect_ks_uri = 'http://{ip}:{port}/httpboot/inspector.ks'.format(
-            ip=network_obj.provision_nic_ip, port=self.HTTP_PORT)
+        port = network_obj.baremetal_instance_proxy_port
+        inspect_kernel_uri = ('http://{ip}:{port}/bmv2httpboot/'
+                              'vmlinuz').format(
+                                  ip=network_obj.provision_nic_ip,
+                                  port=port)
+        inspect_initrd_uri = ('http://{ip}:{port}/bmv2httpboot/'
+                              'initrd.img').format(
+                                  ip=network_obj.provision_nic_ip,
+                                  port=port)
+        inspect_ks_uri = ('http://{ip}:{port}/bmv2httpboot/'
+                          'inspector.ks').format(
+                              ip=network_obj.provision_nic_ip,
+                              port=port)
 
         ipxe_template = self._load_template('boot.ipxe')
         ipxe_conf = ipxe_template.render(
@@ -756,14 +782,18 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         :param network_obj: The network obj
         :type network_obj: NetworkObj
         """
-        network_inst_uri = 'http://{ip}:{port}/httpboot/zstack-dvd'.format(
-            ip=network_obj.provision_nic_ip, port=self.HTTP_PORT)
-        network_inst_repo_uri = \
-            'http://{ip}:{port}/httpboot/zstack-dvd/Extra/qemu-kvm-ev'.format(
-                ip=network_obj.provision_nic_ip, port=self.HTTP_PORT)
+        port = network_obj.baremetal_instance_proxy_port
+        network_inst_uri = ('http://{ip}:{port}/bmv2httpboot/'
+                            'zstack-dvd').format(
+                                ip=network_obj.provision_nic_ip,
+                                port=port)
+        network_inst_repo_uri = ('http://{ip}:{port}/bmv2httpboot'
+                                 '/zstack-dvd/Extra/qemu-kvm-ev').format(
+                                     ip=network_obj.provision_nic_ip,
+                                     port=port)
         send_hardware_infos_uri = (
             'http://{ip}:{port}/baremetal_instance_agent/v2/hardwareinfos'
-            ).format(ip=network_obj.provision_nic_ip, port=self.HTTP_PORT)
+            ).format(ip=network_obj.provision_nic_ip, port=port)
 
         template = self._load_template('inspector.ks')
         conf = template.render(
@@ -826,7 +856,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             # self.destroy_network(req)
 
             self._prepare_provision_network(network_obj)
-            self._prepare_nginx(network_obj)
+            self._prepare_nginx(network_obj, bm_instance_objs)
             self._prepare_ipxe_default_configuration(network_obj)
             self._prepare_ks_configuration(network_obj)
 
@@ -834,6 +864,9 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             self._destroy_dnsmasq()
             self._prepare_dnsmasq(network_obj)
             self._create_dnsmasq_hosts(bm_instance_objs)
+
+            # Configure iptables rules
+            self._add_iptables_rule(network_obj.baremetal_instance_proxy_port)
 
             # save the provision network config for furthur usage
             with open(self.BAREMETAL_GATEWAY_AGENT_CONF_CACHE, 'w') as f:
@@ -1088,6 +1121,25 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         setattr(rsp, 'port', port)
 
         return jsonobject.dumps(rsp)
+
+    @lock.file_lock('/run/xtables.lock')
+    def _add_iptables_rule(self, port):
+        ipt = iptables.from_iptables_save()
+        rule = ('-A INPUT -p tcp -m comment --comment '
+                '"baremetalv2gateway.allow.port" -m tcp '
+                '--dport {port} -j ACCEPT').format(port=port)
+        if not ipt.search_all_rule(rule):
+            ipt.add_rule(rule)
+            ipt.iptable_restore()
+
+    @lock.file_lock('/run/xtables.lock')
+    def _remove_iptables_rule(self, port):
+        ipt = iptables.from_iptables_save()
+        rule = ('-A INPUT -p tcp -m comment --comment '
+                '"baremetalv2gateway.allow.port" -m tcp '
+                '--dport {port} -j ACCEPT').format(port=port)
+        ipt.remove_rule(rule)
+        ipt.iptable_restore()
 
     def start(self):
         self.host_uuid = None
