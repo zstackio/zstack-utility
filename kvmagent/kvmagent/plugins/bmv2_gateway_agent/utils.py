@@ -92,6 +92,12 @@ def get_lock(name, timeout):
                         thread=lockinfo['thread'],
                         time=lockinfo['acquire_time'],
                         timeout=lockinfo['timeout'])
+                logger.info('Release the timeout lock: {name}, locked by: '
+                            '{lock_t}, released by: '
+                            '{release_t}'.format(
+                                name=name,
+                                lock_t=lockinfo['thread'],
+                                release_t=threading.current_thread().ident))
                 l.release()
             return l
 
@@ -121,7 +127,7 @@ class NamedLock(object):
             self.lock.release()
         except Exception as e:
             # The lock was released, therefore log it only
-            logger.info(e)
+            logger.warn(e)
         finally:
             logger.debug('Relese lock {name} in thread {thread}'.format(
               name=self.name, thread=threading.current_thread().ident))

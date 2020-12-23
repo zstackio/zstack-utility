@@ -59,6 +59,18 @@ PORT3 = {
 }
 
 
+IFACE_PORT0 = {
+    17: [{
+        'addr': '52:54:00:3b:a5:1f',
+        'broadcast': 'ff:ff:ff:ff:ff:ff'
+    }],
+    2: [{
+        'addr': '10.0.0.10',
+        'netmask': '255.255.255.0'
+    }]
+}
+
+
 IFACE_PORT1 = {
     17: [{
         'addr': '52:54:00:23:f1:c0',

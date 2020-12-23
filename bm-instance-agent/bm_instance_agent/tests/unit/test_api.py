@@ -38,8 +38,14 @@ class ApiTestBase(base.TestCase):
 
 class ApiTest(ApiTestBase):
 
+    @mock.patch('bm_instance_agent.systems.base.SystemDriverBase.ping')
+    @mock.patch('bm_instance_agent.manager.AgentManager._load_driver')
     @mock.patch('bm_instance_agent.api.utils._post')
-    def test_ping(self, mock_post):
+    def test_ping(self, mock_post, mock_driv, mock_ping):
+        mock_driv.return_value = driver_base.SystemDriverBase()
+        mock_ping.return_value = None
+
+        # Call the api
         data = {
             'bmInstance': fake.BM_INSTANCE1
         }

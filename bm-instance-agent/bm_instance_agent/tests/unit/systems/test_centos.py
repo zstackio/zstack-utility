@@ -831,3 +831,49 @@ GATEWAY=10.0.0.1
 
         # mock_popen.assert_called_once_with(
         #     'shellinaboxd -b -t -s :SSH:127.0.0.1')
+
+    @mock.patch('shutil.move')
+    @mock.patch('os.chmod')
+    @mock.patch('os.path.exists')
+    @mock.patch('netifaces.AF_INET', 2)
+    @mock.patch('netifaces.ifaddresses')
+    @mock.patch('netifaces.interfaces')
+    def test_provision_interface_conf_file_hidden(
+        self, mock_ifaces, mock_ifaddr, mock_exists, mock_chmod, mock_move):
+        mock_ifaces.return_value = ['eno1', 'enp4s0f0', 'enp4s0f1']
+        mock_ifaddr.side_effect = [
+            fake.IFACE_PORT0, fake.IFACE_PORT1, fake.IFACE_PORT2]
+        mock_exists.return_value = True
+
+        instance_obj = objects.BmInstanceObj.from_json(
+            bm_utils.camel_obj_to_snake(fake.BM_INSTANCE1))
+
+        driver = centos.CentOSDriver()
+        driver.ping(instance_obj)
+
+        mock_chmod.assert_called_once_with(
+            '/etc/sysconfig/network-scripts/ifcfg-eno1',
+            0o000)
+        mock_move.assert_called_once_with(
+            '/etc/sysconfig/network-scripts/ifcfg-eno1',
+            '/etc/sysconfig/network-scripts/.ifcfg-eno1')
+
+    @mock.patch('shutil.move')
+    @mock.patch('os.path.exists')
+    @mock.patch('netifaces.AF_INET', 2)
+    @mock.patch('netifaces.ifaddresses')
+    @mock.patch('netifaces.interfaces')
+    def test_provision_interface_conf_file_not_exist(
+        self, mock_ifaces, mock_ifaddr, mock_exists, mock_move):
+        mock_ifaces.return_value = ['eno1', 'enp4s0f0', 'enp4s0f1']
+        mock_ifaddr.side_effect = [
+            fake.IFACE_PORT0, fake.IFACE_PORT1, fake.IFACE_PORT2]
+        mock_exists.return_value = False
+
+        instance_obj = objects.BmInstanceObj.from_json(
+            bm_utils.camel_obj_to_snake(fake.BM_INSTANCE1))
+
+        driver = centos.CentOSDriver()
+        driver.ping(instance_obj)
+
+        mock_move.assert_not_called()

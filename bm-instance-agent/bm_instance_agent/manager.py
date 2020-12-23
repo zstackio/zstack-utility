@@ -43,6 +43,7 @@ class AgentManager(object):
         if not BM_INSTANCE_UUID:
             BM_INSTANCE_UUID = instance_obj.uuid
         self._check_uuid_corrent(instance_obj.uuid)
+        self.driver.ping(instance_obj)
         return {'ping': {'bmInstanceUuid': BM_INSTANCE_UUID}}
 
     def reboot(self, bm_instance):

@@ -9,14 +9,17 @@ from bm_instance_agent.tests.unit import fake
 
 class TestManager(base.TestCase):
 
+    @mock.patch('bm_instance_agent.systems.base.SystemDriverBase.ping')
     @mock.patch('bm_instance_agent.systems.base.SystemDriverBase.'
                 'update_password')
     @mock.patch('bm_instance_agent.manager.AgentManager._load_driver')
     def test_ping_bm_uuid_not_corrent(self,
                                       mock_driv,
-                                      mock_driv_update_password):
+                                      mock_driv_update_password,
+                                      mock_ping):
         mock_driv.return_value = driver_base.SystemDriverBase()
         mock_driv_update_password.return_value = None
+        mock_ping.return_value = None
 
         mgmt = manager.AgentManager()
         mgmt.ping(fake.BM_INSTANCE1)
