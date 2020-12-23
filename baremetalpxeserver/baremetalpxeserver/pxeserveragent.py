@@ -599,7 +599,7 @@ if [ \$? -ne 0 ]; then
     systemctl is-enabled firewalld.service && systemctl restart firewalld.service || true
 fi
 
-ps -ef | grep [s]hellinahoxd || shellinaboxd -b -t -s /:SSH:127.0.0.1
+ps -ef | grep [s]hellinaboxd || shellinaboxd -b -t -s /:SSH:127.0.0.1
 
 echo "\nnotify zstack that bm instance is running:" >> $bm_log
 curl -X POST -H "Content-Type:application/json" \
@@ -623,6 +623,7 @@ After=network-online.target NetworkManager.service iptables.service firewalld.se
 Restart=on-failure
 RestartSec=10
 RemainAfterExit=yes
+Type=forking
 ExecStart=/bin/bash /usr/local/bin/zstack_bm_agent.sh
 
 [Install]
@@ -649,7 +650,7 @@ systemctl enable zstack-bm-agent.service
         niccfgs = json_object.loads(cmd.nicCfgs) if cmd.nicCfgs is not None else []
         pxe_niccfg_content = """
 {% for cfg in niccfgs if cfg.pxe %}
-network --bootproto=static --onboot=yes --noipv6 --activate --device {{ cfg.mac }} --ip={{ cfg.ip }} --netmask={{ cfg.netmask }} --gateway={{ cfg.gateway }} --nameserver={{ cfg.nameserver }}
+network --bootproto=static --onboot=yes --noipv6 --activate --device {{ cfg.mac }} --ip={{ cfg.ip }} --netmask={{ cfg.netmask }} --nameserver={{ cfg.nameserver }}
 {% endfor %}
 """
         nic_cfg_tmpl = Template(pxe_niccfg_content)
