@@ -38,7 +38,8 @@ def get_interface_by_mac(mac):
     :return: The network interface's name
     :rtype: string
     """
-    return get_interfaces()[mac]
+    iface_name = get_interfaces()[mac]
+    return iface_name.split('.')[0]
 
 
 def get_addr(iface):
