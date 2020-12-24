@@ -292,8 +292,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             with open(self.DNSMASQ_LEASE_PATH, 'r') as f:
                 dnsmasq_leases = f.read()
             if instance_obj.provision_ip in dnsmasq_leases:
-                cmd = 'sed i /{ip_addr}/d {lease_path}'.format(
-                    mac_addr=instance_obj.provision_mac,
+                cmd = 'sed -i /{ip_addr}/d {lease_path}'.format(
                     ip_addr=instance_obj.provision_ip,
                     lease_path=self.DNSMASQ_LEASE_PATH)
                 shell.call(cmd)
