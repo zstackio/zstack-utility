@@ -3912,7 +3912,10 @@ class Vm(object):
             clock = e(root, 'clock', None, {'offset': cmd.clock})
             # <rom bar='off'/>
             if cmd.clock == 'localtime':
-                e(clock, 'timer', None, {'name': 'rtc', 'tickpolicy': 'catchup'})
+                if cmd.clockTrack:
+                    e(clock, 'timer', None, {'name': 'rtc', 'tickpolicy': 'catchup', 'track': cmd.clockTrack})
+                else:
+                    e(clock, 'timer', None, {'name': 'rtc', 'tickpolicy': 'catchup'})
                 e(clock, 'timer', None, {'name': 'pit', 'tickpolicy': 'delay'})
                 e(clock, 'timer', None, {'name': 'hpet', 'present': 'no'})
                 e(clock, 'timer', None, {'name': 'hypervclock', 'present': 'yes'})
