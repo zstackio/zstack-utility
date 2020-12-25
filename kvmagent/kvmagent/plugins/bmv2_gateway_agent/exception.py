@@ -164,3 +164,11 @@ class LockNotRelease(BmV2GwAgentException):
         msg = ('The lock {name} is acquired by thread {thread}, acquired '
                'time: {time}, timeout: {timeout}').format(**kwargs)
         super(LockNotRelease, self).__init__(msg)
+
+
+class PortInUse(BmV2GwAgentException):
+
+    def __init__(self, **kwargs):
+        msg = ('The port {port} is in using, please change the port and '
+               'try again').format(**kwargs)
+        super(PortInUse, self).__init__(msg)

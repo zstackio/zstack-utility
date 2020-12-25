@@ -149,3 +149,11 @@ def copy_dir_files_to_another_dir(src, dst):
         src_file = os.path.join(src, item)
         dst_file = os.path.join(dst, item)
         shutil.copy(src_file, dst_file)
+
+
+def flush_dir(dir_path):
+    if not os.path.exists(dir_path) or not os.path.isdir(dir_path):
+        return
+
+    for f in os.listdir(dir_path):
+        os.remove(os.path.join(dir_path, f))
