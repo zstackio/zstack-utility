@@ -1,0 +1,25 @@
+#!ipxe
+
+goto boot_iscsi
+
+:boot_iscsi
+imgfree
+
+# iscsi uri: iscsi:server_ip_addr:::lun_id:target_name
+# example: iscsi:192.168.101.10:::0:iqn.2015-01.io.zstack:instance.7852d62a-8f74-4ea3-a55b-419cec7bf983
+
+set initiator-iqn {{ iscsi_initiator_iqn }}
+
+{% for volume, drive_id in volumes.items() %}
+sanhook --drive {{ drive_id }} {{ volume }} || goto fail_iscsi_retry
+{% endfor %}
+
+sanboot --no-describe || goto fail_iscsi_retry
+
+:fail_iscsi_retry
+echo Failed to attach iSCSI volume(s), retrying in 10 seconds.
+sleep 10
+{% for drive_id in volumes.values() %}
+sanunhook --drive {{ drive_id }}
+{% endfor %}
+goto boot_iscsi

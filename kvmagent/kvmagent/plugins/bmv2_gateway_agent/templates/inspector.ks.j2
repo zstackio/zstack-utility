@@ -1,0 +1,205 @@
+# Use network installation
+url --url={{ network_inst_uri }}
+repo --name=qemu-kvm-ev --baseurl={{ network_inst_repo_uri }}
+
+# Text mode
+text
+
+# Hardware inspector
+%pre --interpreter /usr/bin/python
+# TODO(ya.wang) Replace commands, because it's not supported in python3+
+import commands
+import json
+import multiprocessing
+import os
+
+
+units_mapping = {
+    'kb': 1024,
+    'mb': 1024 * 1024,
+    'gb': 1024 * 1024 * 1024
+}
+
+
+def get_ipmi_info():
+    addr = None
+    port = None
+    for channel in range(0, 15):
+        cmd = 'ipmitool lan print %s' % channel
+        stdout = commands.getoutput(cmd)
+        for line in stdout.split('\n'):
+            if 'IP Address' in line and 'Source' not in line:
+                addr = line.split(':')[-1].strip()
+                break
+
+    cmd = 'ipmitool sol info 1'
+    stdout = commands.getoutput(cmd)
+    for line in stdout.split('\n'):
+        if 'Payload Port' in line:
+            port = int(line.split(':')[-1].strip())
+
+    if not addr:
+        raise Exception('Failed to find ipmi address')
+
+    if not port:
+        port = 623
+
+    return {
+        'ipmiAddress': addr,
+        'ipmiPort': port
+    }
+
+
+def get_boot_mode():
+    if os.path.exists('/sys/firmware/efi'):
+        return 'UEFI'
+    return 'Legacy'
+
+
+def get_basic_info():
+    arch = os.uname()[-1]
+    cpu_model_name = ''
+    cpu_num = multiprocessing.cpu_count()
+
+    # Get memory total
+    memory_bytes = 0
+    stdout = commands.getoutput('dmidecode --type memory')
+    for line in stdout.split('\n'):
+        line = line.lower()
+        if 'size' in line and 'no module' not in line:
+            _, size, unit = line.split()
+            memory_bytes += int(size) * units_mapping[unit]
+
+    with open('/proc/cpuinfo', 'r') as f:
+        for line in f.readlines():
+            if 'model name' in line:
+                cpu_model_name = line.split(':')[1].strip()
+                break
+
+    return {
+        'architecture': arch,
+        'cpuModelName': cpu_model_name,
+        'cpuNum': str(cpu_num),
+        'memorySize': str(memory_bytes),
+        'bootMode': get_boot_mode()
+    }
+
+
+def get_nic_info():
+    # Get the pxe interface from /proc/cmdline
+    # NOTE: Need to point that the mac addr should start with '01', because
+    # the arp type of ethernet is 1.
+    pxe_iface_mac = ''
+    with open('/proc/cmdline', 'r') as f:
+        for param in f.read().strip().split():
+            if 'BOOTIF' in param:
+                pxe_iface_mac = param.split('=')[-1].replace('-', ':')
+
+    net_devs = []
+    for net_dev in os.listdir('/sys/class/net'):
+        abspath = os.path.join('/sys/class/net', net_dev)
+
+        realpath = os.path.realpath(abspath)
+        if 'virtual' in realpath:
+            continue
+
+        try:
+            with open(os.path.join(abspath, 'speed'), 'r') as f:
+                speed = '%sMb/s' % f.read().strip()
+        except Exception:
+            speed = 'UNKNOWN'
+        with open(os.path.join(abspath, 'address'), 'r') as f:
+            mac_address = f.read().strip()
+
+        is_provision_nic = True if mac_address in pxe_iface_mac else False
+
+        net_devs.append({
+            'nicMac': mac_address,
+            'nicSpeed': speed,
+            'isProvisionNic': is_provision_nic
+        })
+    return net_devs
+
+
+def get_disk_info():
+    block_devs = []
+
+    cmd = 'lsblk --nodeps --byte --output size,rota,type'
+    # stdout = commands.getoutput(cmd)
+    for line in commands.getoutput(cmd).split('\n')[1:]:
+        size, rotation, type = line.split()
+
+        if type.lower() != 'disk':
+            continue
+
+        disk_type = 'SSD' if rotation == '0' else 'HDD'
+
+        block_devs.append({
+            'diskType': disk_type,
+            'diskSize': size
+        })
+
+    return block_devs
+
+
+def main():
+    """ Inspect
+
+    return::
+    {
+        'params': {
+            'ipmiAddress': '10.0.0.1',
+            'ipmiPort': 623,
+            'hardwareInfo': '{
+                "architecture": "x86_64",
+                "cpuModelName": "Intel(R) Xeon(R) CPU E4-2670 v3 @ 2.30GHz,
+                "cpuNum": 24,
+                "memorySize": 33421254656,
+                "disks": [
+                    {
+                        "diskType": "HDD",
+                        "diskSize": "20737418240"
+                    },
+                    {
+                        "diskTYpe": "SSD",
+                        "diskSize": "20737418240"
+                    }
+                ],
+                "nics": [
+                    {
+                        "nicMac": "aa:bb:cc:dd:ee:ff",
+                        "nicSpeed": "1000Mb/s",
+                        "isProvisionNic": false
+                    },
+                    {
+                        "nicMAc": "aa:bb:cc:dd:ee:fe",
+                        "nicSpeed": "1000Mb/s",
+                        "isProvisionNic": true
+                    }
+                ]
+            }'
+        }
+    }
+    """
+    result = {}
+    result.update(get_ipmi_info())
+
+    hardware_info = {}
+    hardware_info.update(get_basic_info())
+    hardware_info['nics'] = get_nic_info()
+    hardware_info['disks'] = get_disk_info()
+
+    result['hardwareInfo'] = json.dumps(hardware_info)
+
+    cmd = ('curl -X POST -H "Content-Type:application/json" -d \'{data}\' '
+           '--retry 5 {{ send_hardware_infos_uri }} ').format(
+               data=json.dumps({"params": result}))
+    commands.getoutput(cmd)
+
+    commands.getstatusoutput("poweroff")
+
+
+main()
+
+
+%end

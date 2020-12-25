@@ -1,0 +1,4 @@
+include requirements.txt
+include test-requirements.txt
+
+include bm_instance_agent/systems/linux/distro/*.j2

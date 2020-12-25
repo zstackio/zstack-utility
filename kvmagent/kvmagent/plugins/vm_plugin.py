@@ -33,6 +33,9 @@ import zstacklib.utils.iptables as iptables
 import zstacklib.utils.lock as lock
 
 from kvmagent import kvmagent
+from kvmagent.plugins.baremetal_v2_gateway_agent import \
+    BaremetalV2GatewayAgentPlugin as BmV2GwAgent
+from kvmagent.plugins.bmv2_gateway_agent import utils as bm_utils
 from kvmagent.plugins.imagestore import ImageStoreClient
 from zstacklib.utils import bash, plugin
 from zstacklib.utils.bash import in_bash
@@ -3659,7 +3662,7 @@ class Vm(object):
                     e(disk, 'target', None, {'dev': dev_format % _dev_letter, 'bus': default_bus_type})
                     if default_bus_type == "ide" and cmd.imagePlatform.lower() == "other":
                         allocat_ide_config(disk)
-                
+
                 return disk
 
             def filebased_volume(_dev_letter, _v):
@@ -3878,7 +3881,7 @@ class Vm(object):
                 if cmd.addons and cmd.addons['NicQos'] and cmd.addons['NicQos'][nic.uuid]:
                     qos = cmd.addons['NicQos'][nic.uuid]
                     Vm._add_qos_to_interface(nic_xml_object, qos)
-                
+
                 if cmd.coloPrimary or cmd.coloSecondary:
                     Vm._ignore_colo_vm_nic_rom_file_on_interface(nic_xml_object)
 
@@ -4209,7 +4212,7 @@ class Vm(object):
             if cmd.consoleLogToFile:
                 logfilename = '%s-vm-kernel.log' % cmd.vmInstanceUuid
                 logpath = os.path.join(tempfile.gettempdir(), logfilename)
-                
+
                 serial = e(devices, 'serial', None, {'type': 'file'})
                 e(serial, 'target', None, {'port': '0'})
                 e(serial, 'source', None, {'path': logpath})
@@ -4372,7 +4375,7 @@ class Vm(object):
 
         if iftype != 'hostdev':
             if nic.driverType:
-                e(interface, 'model', None, attrib={'type': nic.driverType})            
+                e(interface, 'model', None, attrib={'type': nic.driverType})
             elif nic.useVirtio:
                 e(interface, 'model', None, attrib={'type': 'virtio'})
             else:
@@ -4433,7 +4436,7 @@ class Vm(object):
             _add_bridge_fdb_entry_for_vnic()
 
         return interface
-    
+
     @staticmethod
     def _ignore_colo_vm_nic_rom_file_on_interface(interface):
         e(interface, 'driver', None, attrib={'name': 'qemu'})
@@ -5453,6 +5456,23 @@ class VmPlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     def take_volume_snapshot(self, req):
+        """ Take snapshot for a volume
+
+        :param req: The request obj, exmaple of req.body::
+            {
+                'vmUuid': '0dc62031-678d-4040-95e4-64fb217a2669',
+                'volumeUuid': '2e9fd964-ba33-4214-aaad-c6e16b9ae72b',
+                'volume': {
+
+                },
+                'installPath': '',
+                'volumeInstallPath': '',
+                'newVolumeUuid': '',
+                'newVolumeInstallPath': '',
+                'fullSnapshot': False,
+                'isBaremetal2InstanceOnlineSnapshot': False
+            }
+        """
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = TakeSnapshotResponse()
 
@@ -5486,24 +5506,42 @@ class VmPlugin(kvmagent.KvmAgent):
                         cmd.volumeInstallPath, cmd.installPath)
 
             else:
-                vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
-
-                if vm and vm.state != vm.VM_STATE_RUNNING and vm.state != vm.VM_STATE_SHUTDOWN and vm.state != vm.VM_STATE_PAUSED:
-                    raise kvmagent.KvmError(
-                        'unable to take snapshot on vm[uuid:{0}] volume[id:{1}], because vm is not Running, Stopped or Paused, current state is {2}'.format(
-                            vm.uuid, cmd.volume.deviceId, vm.state))
-
-                if vm and (vm.state == vm.VM_STATE_RUNNING or vm.state == vm.VM_STATE_PAUSED):
-                    rsp.snapshotInstallPath, rsp.newVolumeInstallPath = vm.take_volume_snapshot(cmd.volume,
-                                                                                                cmd.installPath,
-                                                                                                cmd.fullSnapshot)
+                # New params in cmd:
+                # A flag to show the instance is bm instance and the instance
+                # status is online
+                if cmd.isBaremetal2InstanceOnlineSnapshot:
+                    with bm_utils.NamedLock(name='baremetal_v2_volume_operator'):
+                        src_vol_driver, dst_vol_driver = BmV2GwAgent.pre_take_volume_snapshot(cmd)
+                        try:
+                            rsp.snapshotInstallPath, rsp.newVolumeInstallPath = take_delta_snapshot_by_qemu_img_convert(
+                                cmd.volumeInstallPath, cmd.installPath)
+                            BmV2GwAgent.post_take_volume_snapshot(src_vol_driver, dst_vol_driver)
+                        except Exception as e:
+                            # Try to rollback the snapshot action
+                            # BmV2GwAgent.resume_device(src_vol_driver)
+                            BmV2GwAgent.rollback_volume_snapshot(
+                                src_vol_driver, dst_vol_driver)
+                            logger.error(traceback.format_exc())
+                            raise e
                 else:
-                    if cmd.fullSnapshot:
-                        rsp.snapshotInstallPath, rsp.newVolumeInstallPath = take_full_snapshot_by_qemu_img_convert(
-                            cmd.volumeInstallPath, cmd.installPath)
+                    vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
+
+                    if vm and vm.state != vm.VM_STATE_RUNNING and vm.state != vm.VM_STATE_SHUTDOWN and vm.state != vm.VM_STATE_PAUSED:
+                        raise kvmagent.KvmError(
+                            'unable to take snapshot on vm[uuid:{0}] volume[id:{1}], because vm is not Running, Stopped or Paused, current state is {2}'.format(
+                                vm.uuid, cmd.volume.deviceId, vm.state))
+
+                    if vm and (vm.state == vm.VM_STATE_RUNNING or vm.state == vm.VM_STATE_PAUSED):
+                        rsp.snapshotInstallPath, rsp.newVolumeInstallPath = vm.take_volume_snapshot(cmd.volume,
+                                                                                                    cmd.installPath,
+                                                                                                    cmd.fullSnapshot)
                     else:
-                        rsp.snapshotInstallPath, rsp.newVolumeInstallPath = take_delta_snapshot_by_qemu_img_convert(
-                            cmd.volumeInstallPath, cmd.installPath)
+                        if cmd.fullSnapshot:
+                            rsp.snapshotInstallPath, rsp.newVolumeInstallPath = take_full_snapshot_by_qemu_img_convert(
+                                cmd.volumeInstallPath, cmd.installPath)
+                        else:
+                            rsp.snapshotInstallPath, rsp.newVolumeInstallPath = take_delta_snapshot_by_qemu_img_convert(
+                                cmd.volumeInstallPath, cmd.installPath)
 
                 if cmd.fullSnapshot:
                     logger.debug(
@@ -5521,7 +5559,8 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.error = str(e)
             rsp.success = False
 
-        touchQmpSocketWhenExists(cmd.vmUuid)
+        if not cmd.isBaremetal2InstanceOnlineSnapshot:
+            touchQmpSocketWhenExists(cmd.vmUuid)
         return jsonobject.dumps(rsp)
 
     def push_backing_files(self, isc, hostname, drivertype, source):
@@ -7566,21 +7605,21 @@ class VmPlugin(kvmagent.KvmAgent):
                     if uuid and uuid in all_active_vm_uuids:
                         # vm exists
                         continue
-                        
+
                     try:
                         modify_time = datetime.datetime.fromtimestamp(os.stat(p).st_mtime)
                         if modify_time < clean_time:
                             linux.rm_file_force(p)
-                    
+
                     except Exception as ex_inner:
                         logger.warn('Failed to clean libvirt log files `%s` because : %s' % (p, str(ex_inner)))
-                    
+
             except Exception as ex_outer:
                 logger.warn('Failed to clean libvirt log files because : %s' % str(ex_outer))
 
             # run cleaner : once a day
             thread.timer(24 * 3600, qemu_log_cleaner).start()
-        
+
         # first time
         thread.timer(60, qemu_log_cleaner).start()
 

@@ -1,0 +1,8 @@
+# Proxy mn api call to bm instance agent
+
+location ^~/baremetal_instance_agent/v2/{{ bm_instance_uuid }} {
+    proxy_set_header Host $host;
+    proxy_set_header Gateway-Callback-Uri {{ bm_gateway_callback_uri }};
+
+    proxy_pass {{ bm_agent_api_uri }};
+}

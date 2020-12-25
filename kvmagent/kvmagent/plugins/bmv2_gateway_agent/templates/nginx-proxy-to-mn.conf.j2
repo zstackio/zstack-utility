@@ -1,0 +1,18 @@
+location /baremetal_instance_agent/v2/callback {
+    proxy_set_header Host $host;
+    proxy_pass {{ mn_callback_uri }}/zstack/asyncrest/callback;
+}
+
+location /baremetal_instance_agent/v2/hardwareinfos {
+    proxy_set_header Host $host;
+    proxy_pass {{ mn_callback_uri }}/zstack/v1/baremetal2/chassis/ipmi/hardwareinfos;
+}
+
+location /bmv2httpboot {
+    autoindex on;
+    autoindex_exact_size on;
+    autoindex_localtime on;
+    root {{ bm_gateway_httpboot }};
+}
+
+include {{ bm_agent_proxy_conf_dir }}/*.http;

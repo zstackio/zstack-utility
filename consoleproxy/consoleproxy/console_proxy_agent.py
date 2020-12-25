@@ -8,6 +8,7 @@ from zstacklib.utils import linux
 from zstacklib.utils import filedb
 from zstacklib.utils import lock
 from zstacklib.utils.bash import *
+import os
 import os.path
 import atexit
 import time
@@ -33,6 +34,7 @@ class EstablishProxyCmd(AgentCommand):
     def __init__(self):
         super(EstablishProxyCmd, self).__init__()
         self.token = None
+        self.targetSchema = None
         self.targetHostname = None
         self.targetPort = None
         self.proxyHostname = None
@@ -53,6 +55,7 @@ class CheckAvailabilityCmd(AgentCommand):
         self.proxyPort = None
         self.targetPort = None
         self.targetHostname = None
+        self.targetSchema = None
         self.scheme = None
         self.token = None
         self.proxyIdentity = None
@@ -97,6 +100,8 @@ class ConsoleProxyAgent(object):
     PROXY_LOG_DIR = "/var/log/zstack/consoleProxy/"
     DB_NAME = "consoleProxy"
 
+    BM2_INSTANCE_NGINX_CONF_DIR = "/var/lib/zstack/nginx/baremetal/v2/management_node/"
+
     #TODO: sync db status and current running processes
     def __init__(self):
         self.http_server.register_async_uri(self.CHECK_AVAILABILITY_PATH, self.check_proxy_availability)
@@ -137,6 +142,29 @@ class ConsoleProxyAgent(object):
 
 
     def _check_proxy_availability(self, args):
+        targetSchema = args['targetSchema']
+        if targetSchema == 'vnc':
+            return self._check_vnc_proxy_availability(args)
+
+        if targetSchema == 'http':
+            return self._check_http_proxy_availability(args)
+
+        return False
+
+
+    def _check_http_proxy_availability(self, args):
+        ret, out, err = bash_roe("systemctl status zstack-baremetal-nginx.service")
+        if ret != 0:
+            # try to restart the service
+            bash_roe("systemctl start zstack-baremetal-nginx.service")
+            ret, out, err = bash_roe("systemctl status zstack-baremetal-nginx.service")
+            if ret != 0:
+                logger.warn('zstack-baremetal-nginx.service is not running, availability false')
+                return False
+        return True
+
+
+    def _check_vnc_proxy_availability(self, args):
         proxyPort = args['proxyPort']
         targetHostname = args['targetHostname']
         targetPort = args['targetPort']
@@ -182,7 +210,13 @@ class ConsoleProxyAgent(object):
     def check_proxy_availability(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
-        ret = self._check_proxy_availability({'proxyPort':cmd.proxyPort, 'targetHostname':cmd.targetHostname, 'targetPort':cmd.targetPort, 'token':cmd.token})
+        ret = self._check_proxy_availability({
+            'proxyPort':cmd.proxyPort,
+            'targetSchema': cmd.targetSchema,
+            'targetHostname':cmd.targetHostname,
+            'targetPort':cmd.targetPort,
+            'token':cmd.token
+            })
 
         rsp = CheckAvailabilityRsp()
         rsp.available = ret
@@ -192,6 +226,47 @@ class ConsoleProxyAgent(object):
     @replyerror
     @lock.lock('console-proxy')
     def delete(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentResponse()
+
+        if not cmd.targetSchema or cmd.targetSchema == 'vnc':
+            return self._delete_vnc_proxy(req)
+
+        if cmd.targetSchema == 'http':
+            return self._delete_http_proxy(req)
+
+        rsp.error("unknown target schema %s" % cmd.targetSchema)
+        rsp.sucess = False
+        return jsonobject.dumps(rsp)
+
+
+    def _delete_http_proxy(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentResponse()
+
+        # make sure the service is running
+        ret, out, err = bash_roe("systemctl status zstack-baremetal-nginx.service")
+        if ret != 0:
+            ret, out, err = bash_roe("systemctl start zstack-baremetal-nginx.service")
+            if ret != 0:
+                rsp.error = "failed to start zstack-baremetal-nginx.service"
+                rsp.success = False
+            return jsonobject.dumps(rsp)
+
+        # remote nginx configuration for bm instance
+        conf_path = os.path.join(self.BM2_INSTANCE_NGINX_CONF_DIR, cmd.vmUuid + ".conf")
+        if os.path.exists(conf_path):
+            os.remove(conf_path)
+
+        # reload the service
+        ret, out, err = bash_roe("systemctl reload zstack-baremetal-nginx.service")
+        if ret != 0:
+            rsp.error = "failed to reload zstack-baremetal-nginx.service"
+            rsp.success = False
+        return jsonobject.dumps(rsp)
+
+
+    def _delete_vnc_proxy(self, req):
         def kill_proxy_process():
             out = shell.ShellCmd(
                 "netstat -ntp | grep '%s:%s *ESTABLISHED.*python'" % (cmd.targetHostname, cmd.targetPort))
@@ -207,7 +282,7 @@ class ConsoleProxyAgent(object):
         token_file = ConsoleTokenFile(cmd.token)
         self.token_ctrl.delete_by_prefix(token_file.prefix)
         kill_proxy_process()
-        logger.debug('deleted a proxy by command: %s' % req[http.REQUEST_BODY])
+        logger.debug('deleted a vnc proxy by command: %s' % req[http.REQUEST_BODY])
 
         rsp = AgentResponse()
         return jsonobject.dumps(rsp)
@@ -218,7 +293,6 @@ class ConsoleProxyAgent(object):
         # check parameters, generate token file,set db,check process is alive,start process if not,
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = EstablishProxyRsp()
-        log_file = os.path.join(self.PROXY_LOG_DIR, cmd.proxyHostname)
         port_conflict_msg = None
         ##
         def check_parameters():
@@ -257,6 +331,54 @@ class ConsoleProxyAgent(object):
             rsp.success = False
             return jsonobject.dumps(rsp)
 
+        if not cmd.targetSchema or cmd.targetSchema == 'vnc':
+            return self._establish_new_vnc_proxy(req)
+
+        if cmd.targetSchema == 'http':
+            return self._establish_new_http_proxy(req)
+
+        rsp.error("unknown target schema %s" % cmd.targetSchema)
+        rsp.sucess = False
+        return jsonobject.dumps(rsp)
+
+
+    def _establish_new_http_proxy(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = EstablishProxyRsp()
+        rsp.proxyPort = cmd.proxyPort
+        rsp.token = cmd.token
+
+        # make sure the service is running
+        ret, out, err = bash_roe("systemctl status zstack-baremetal-nginx.service")
+        if ret != 0:
+            ret, out, err = bash_roe("systemctl start zstack-baremetal-nginx.service")
+            if ret != 0:
+                rsp.error = "failed to start zstack-baremetal-nginx.service"
+                rsp.success = False
+            return jsonobject.dumps(rsp)
+
+        # add new nginx configuration for bm instance
+        if not os.path.exists(self.BM2_INSTANCE_NGINX_CONF_DIR):
+            os.makedirs(self.BM2_INSTANCE_NGINX_CONF_DIR, exist_ok=True)
+
+        conf_path = os.path.join(self.BM2_INSTANCE_NGINX_CONF_DIR, cmd.vmUuid + ".conf")
+        with open(conf_path, 'w') as f:
+            content = "location ^~/%s/ { proxy_set_header Host $host; proxy_pass http://%s:%s; }" % (cmd.token, cmd.targetHostname, cmd.targetPort)
+            f.write(content)
+
+        # reload the service
+        ret, out, err = bash_roe("systemctl reload zstack-baremetal-nginx.service")
+        if ret != 0:
+            rsp.error = "failed to reload zstack-baremetal-nginx.service"
+            rsp.success = False
+        return jsonobject.dumps(rsp)
+
+
+    def _establish_new_vnc_proxy(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = EstablishProxyRsp()
+        log_file = os.path.join(self.PROXY_LOG_DIR, cmd.proxyHostname)
+
         token_file = ConsoleTokenFile(cmd.token)
         exist_token = self.token_ctrl.search_by_prefix(token_file.prefix)
 
@@ -282,7 +404,7 @@ class ConsoleProxyAgent(object):
         info_str = jsonobject.dumps(info)
         self.db.set(cmd.token, info_str)
         rsp.proxyPort = cmd.proxyPort
-        logger.debug('successfully add new proxy token file %s' % info_str)
+        logger.debug('successfully add new vnc proxy token file %s' % info_str)
 
         ## kill garbage websockify process: same proxyip:proxyport, different cert file
         if not cmd.sslCertFile:
@@ -334,7 +456,7 @@ class ConsoleProxyAgent(object):
                 raise ConsoleProxyError('\n'.join(err))
 
         start_proxy()
-        logger.debug('successfully establish new proxy%s' % info_str)
+        logger.debug('successfully establish new vnc proxy%s' % info_str)
         return jsonobject.dumps(rsp)
 
 
