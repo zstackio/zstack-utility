@@ -139,6 +139,9 @@ class NbdDeviceOperator(object):
                 self.volume.nbd_id = self._get_available_nbd_id()
             socket_path = os.path.join(self.QEMU_NBD_SOCKET_DIR,
                                        self.volume.nbd_socket)
+            # Log the lsof output, to record which process is using the blk.
+            logger.info(shell.call('lsof %s' % self.volume.nbd_backend,
+                                   exception=False))
             cmd = ('qemu-nbd --format {format} --connect /dev/nbd{nbd_id} '
                    '--socket {socket_path} {nbd_backend}').format(
                         format=self.volume.volume_format,
@@ -155,7 +158,7 @@ class NbdDeviceOperator(object):
                     nbd_dev=self.volume.nbd_dev,
                     nbd_backend=self.volume.nbd_backend)
 
-        with bm_utils.transcantion(retries=3) as cursor:
+        with bm_utils.transcantion(retries=5, sleep_time=1) as cursor:
             cursor.execute(_connect)
 
         # Check the nbd dev connected
