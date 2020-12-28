@@ -18,21 +18,8 @@ def is_sandstone():
     return os.path.exists("/opt/sandstone/bin/sds")
 
 
-def parseDfPools(pools):
-    res = {}
-
-    for pool in pools:
-        if not pool.name: continue
-
-        st = pool.stats
-        if st and st.bytes_used and st.max_avail:
-            res[pool.name] = (st.bytes_used, st.max_avail)
-
-    return res
-
-def getCephPoolsCapacity(pools):
+def getCephPoolsCapacity():
     result = []
-    poolDfDict = parseDfPools(pools)
 
     o = shell.call('ceph osd dump -f json')
     df = jsonobject.loads(o)
@@ -45,7 +32,21 @@ def getCephPoolsCapacity(pools):
             crush_rule = pool.crush_rule
         else:
             crush_rule = pool.crush_ruleset
-        poolCapacity = CephPoolCapacity(pool.pool_name, pool.size, crush_rule)
+
+        if pool.type == 1:
+            poolCapacity = CephPoolCapacity(pool.pool_name, pool.size, crush_rule)
+        elif pool.type == 3:
+            prof = shell.call('ceph osd erasure-code-profile get %s -f json' % pool.erasure_code_profile)
+            jprof = jsonobject.loads(prof)
+            if not jprof.k or not jprof.m:
+                raise Exception('unexpected erasure-code-profile for pool: %s' % pool.pool_name)
+            k = int(jprof.k)
+            m = int(jprof.m)
+            r = float(k+m)/k
+            poolCapacity = CephPoolCapacity(pool.pool_name, pool.size, crush_rule, r)
+        else:
+            raise Exception("unexpected pool type: %s:%d" % (pool.pool_name, pool.type))
+
         result.append(poolCapacity)
 
     # fill crushRuleItemName
@@ -132,29 +133,24 @@ def getCephPoolsCapacity(pools):
                 poolCapacity.availableCapacity = poolCapacity.availableCapacity + osd.kb_avail * 1024
                 poolCapacity.usedCapacity = poolCapacity.usedCapacity + osd.kb_used * 1024
 
-        if poolCapacity.crushItemOsdsTotalSize != 0 and poolCapacity.replicatedSize != 0:
-            poolCapacity.poolTotalSize = poolCapacity.crushItemOsdsTotalSize / poolCapacity.replicatedSize
-        if poolCapacity.availableCapacity != 0 and poolCapacity.replicatedSize != 0:
-            poolCapacity.availableCapacity = poolCapacity.availableCapacity / poolCapacity.replicatedSize
-        if poolCapacity.usedCapacity != 0 and poolCapacity.replicatedSize != 0:
-            poolCapacity.usedCapacity = poolCapacity.usedCapacity / poolCapacity.replicatedSize
+        r = poolCapacity.ecRedundancy if poolCapacity.ecRedundancy else poolCapacity.replicatedSize
 
-    for poolCapacity in result:
-        try:
-            bytes_used, max_avail = poolDfDict[poolCapacity.poolName]
-            poolCapacity.usedCapacity = bytes_used
-            poolCapacity.availableCapacity = max_avail
-            poolCapacity.poolTotalSize = max_avail
-        except KeyError:
-            pass
+        if poolCapacity.crushItemOsdsTotalSize != 0 and poolCapacity.replicatedSize != 0:
+            poolCapacity.poolTotalSize = poolCapacity.crushItemOsdsTotalSize / r
+        if poolCapacity.availableCapacity != 0 and poolCapacity.replicatedSize != 0:
+            poolCapacity.availableCapacity = poolCapacity.availableCapacity / r
+        if poolCapacity.usedCapacity != 0 and poolCapacity.replicatedSize != 0:
+            poolCapacity.usedCapacity = poolCapacity.usedCapacity / r
+
     return result
 
 
 class CephPoolCapacity:
 
-    def __init__(self, poolName, replicatedSize, crushRuleSet):
+    def __init__(self, poolName, replicatedSize, crushRuleSet, ecRedundancy=None):
         self.poolName = poolName
         self.replicatedSize = replicatedSize
+        self.ecRedundancy = ecRedundancy
         self.crushRuleSet = crushRuleSet
         self.availableCapacity = 0
         self.usedCapacity = 0
