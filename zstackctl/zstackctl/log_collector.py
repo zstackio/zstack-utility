@@ -405,6 +405,15 @@ class CollectFromYml(object):
             password = ssh_info['sshPassword']
             ssh_port = ssh_info['sshPort']
             return (username, password, ssh_port)
+        elif type == "baremetalv2gateway":
+            query.sql = "select * from HostVO where managementIp='%s'" % host_ip
+            host_uuid = query.query()[0]['uuid']
+            query.sql = "select * from KVMHostVO where uuid='%s'" % host_uuid
+            ssh_info = query.query()[0]
+            username = ssh_info['username']
+            password = ssh_info['password']
+            ssh_port = ssh_info['port']
+            return (username, password, ssh_port)
         else:
             warn("unknown target type: %s" % type)
 

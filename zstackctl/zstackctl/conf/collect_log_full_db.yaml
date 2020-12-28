@@ -152,3 +152,19 @@ pxeserver:
       - {name: kickstart-scripts, dir: /var/lib/zstack/baremetal/ftp/scripts/, file: }
       - {name: pxelinux-cfgs, dir: /var/lib/zstack/baremetal/tftpboot/pxelinux.cfg/, file: }
       - {name: pxeserver-agent-logs, dir: /var/log/zstack/, file: zstack-baremetalpxeserver.log*}
+baremetalv2gateway:
+    description: baremetal v2 gateway log
+    type: target
+    list: {exec: "select h.managementIp from HostVO h where h.hypervisorType = \"baremetal2\""}
+    logs:
+      - {name: dnsmasq-conf, dir: /var/lib/zstack/baremetalv2/dnsmasq/, file: }
+      - {name: dnsmasq-logs, dir: /var/log/zstack/baremetalv2/, file: dnsmasq.log }
+      - {name: nginx-conf, dir: /var/lib/zstack/nginx/baremetal/v2/gateway, file: }
+      - {name: nginx-logs, dir: /var/log/zstack/zstack-baremetal-nginx/, file: }
+      - {name: pxelinux.cfg, dir: /var/lib/zstack/baremetalv2/tftpboot/pxelinux.cfg, file: }
+      - {name: inspector.ks, dir: /var/lib/zstack/baremetalv2/httpboot/, file: inspector.ks }
+      - {name: boot.ipxe, dir: /var/lib/zstack/baremetalv2/tftpboot/, file: boot.ipxe }
+      - {name: targetcli, exec: 'targetcli / ls' }
+      - {name: nbd, exec: 'ps -ef | grep qemu-nbd'}
+      - {name: nbd-socket, exec: 'ls -l /var/run/lock/zstack-qemu-nbd'}
+      - {name: device-mapper, exec: 'ls -l /dev/mapper'}
