@@ -426,7 +426,7 @@ class CephAgent(object):
         if not df.pools:
             return total, avail, poolCapacities, xsky
 
-        pools = ceph.getCephPoolsCapacity(df.pools)
+        pools = ceph.getCephPoolsCapacity()
         if not pools:
             return total, avail, poolCapacities, xsky
 
