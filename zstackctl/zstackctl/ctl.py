@@ -5784,7 +5784,7 @@ class CollectLogCmd(Command):
             info_verbose("Collecting log from vrouter: %s ..." % host_post_info.host)
             for vrouter_log_dir in CollectLogCmd.vrouter_log_dir_list:
                 local_collect_dir = collect_dir + 'vrouter-%s/' % host_post_info.host
-                tmp_log_dir = "/tmp/tmp-log/"
+                tmp_log_dir = "/var/log/zstack/tmp-log/"
                 command = "mkdir -p %s " % tmp_log_dir
                 run_remote_command(command, host_post_info)
                 command = "/opt/vyatta/sbin/vyatta-save-config.pl && cp /config/config.boot %s" % tmp_log_dir
