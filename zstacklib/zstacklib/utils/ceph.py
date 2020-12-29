@@ -136,11 +136,11 @@ def getCephPoolsCapacity():
         r = poolCapacity.ecRedundancy if poolCapacity.ecRedundancy else poolCapacity.replicatedSize
 
         if poolCapacity.crushItemOsdsTotalSize != 0 and poolCapacity.replicatedSize != 0:
-            poolCapacity.poolTotalSize = poolCapacity.crushItemOsdsTotalSize / r
+            poolCapacity.poolTotalSize = int(poolCapacity.crushItemOsdsTotalSize / r)
         if poolCapacity.availableCapacity != 0 and poolCapacity.replicatedSize != 0:
-            poolCapacity.availableCapacity = poolCapacity.availableCapacity / r
+            poolCapacity.availableCapacity = int(poolCapacity.availableCapacity / r)
         if poolCapacity.usedCapacity != 0 and poolCapacity.replicatedSize != 0:
-            poolCapacity.usedCapacity = poolCapacity.usedCapacity / r
+            poolCapacity.usedCapacity = int(poolCapacity.usedCapacity / r)
 
     return result
 
