@@ -95,6 +95,11 @@ class GetVolumeSizeRsp(AgentResponse):
         self.size = None
         self.actualSize = None
 
+class GetVolumeWatchersRsp(AgentResponse):
+    def __init__(self):
+        super(GetVolumeWatchersRsp, self).__init__()
+        self.watchers = None
+
 class GetVolumeSnapshotSizeRsp(AgentResponse):
     def __init__(self):
         super(GetVolumeSnapshotSizeRsp, self).__init__()
@@ -166,6 +171,7 @@ class CephAgent(plugin.TaskManager):
     CP_PATH = "/ceph/primarystorage/volume/cp"
     DELETE_POOL_PATH = "/ceph/primarystorage/deletepool"
     GET_VOLUME_SIZE_PATH = "/ceph/primarystorage/getvolumesize"
+    GET_VOLUME_WATCHES_PATH = "/ceph/primarystorage/getvolumewatchers"
     GET_VOLUME_SNAPSHOT_SIZE_PATH = "/ceph/primarystorage/getvolumesnapshotsize"
     PING_PATH = "/ceph/primarystorage/ping"
     GET_FACTS = "/ceph/primarystorage/facts"
@@ -206,6 +212,7 @@ class CephAgent(plugin.TaskManager):
         self.http_server.register_async_uri(self.DOWNLOAD_IMAGESTORE_PATH, self.download_imagestore)
         self.http_server.register_async_uri(self.DELETE_POOL_PATH, self.delete_pool)
         self.http_server.register_async_uri(self.GET_VOLUME_SIZE_PATH, self.get_volume_size)
+        self.http_server.register_async_uri(self.GET_VOLUME_WATCHES_PATH, self.get_volume_watchers)
         self.http_server.register_async_uri(self.GET_VOLUME_SNAPSHOT_SIZE_PATH, self.get_volume_snapshot_size)
         self.http_server.register_async_uri(self.PING_PATH, self.ping)
         self.http_server.register_async_uri(self.GET_FACTS, self.get_facts)
@@ -412,6 +419,23 @@ class CephAgent(plugin.TaskManager):
         rsp = GetVolumeSizeRsp()
         rsp.size = self._get_file_size(path)
         rsp.actualSize = self._get_file_actual_size(path)
+        return jsonobject.dumps(rsp)
+
+    @replyerror
+    def get_volume_watchers(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        path = self._normalize_install_path(cmd.volumePath)
+        rsp = GetVolumeWatchersRsp()
+
+        watchers_result = shell.call('timeout 10 rbd status %s' % path)
+        if not watchers_result:
+            return jsonobject.dumps(rsp)
+
+        rsp.watchers = []
+        for watcher in watchers_result.splitlines():
+            if "watcher=" in watcher:
+                rsp.watchers.append(watcher.lstrip())
+
         return jsonobject.dumps(rsp)
 
     @replyerror
