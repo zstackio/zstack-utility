@@ -884,6 +884,19 @@ def delete_lv(path, raise_exception=True):
 
 
 @bash.in_bash
+def delete_lv_meta(path, raise_exception=True):
+    logger.debug("deleting lv meta %s" % path)
+    meta_path = get_meta_lv_path(path)
+    if not lv_exists(meta_path):
+        return
+    if raise_exception:
+        o = bash.bash_errorout("lvremove -y %s" % meta_path)
+    else:
+        o = bash.bash_o("lvremove -y %s" % meta_path)
+    return o
+
+
+@bash.in_bash
 def remove_device_map_for_vg(vgUuid):
     o = bash.bash_o("dmsetup ls | grep %s | awk '{print $1}'" % vgUuid).strip().splitlines()
     if len(o) == 0:
