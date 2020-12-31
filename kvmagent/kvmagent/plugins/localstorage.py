@@ -32,6 +32,12 @@ class AgentResponse(object):
         self.error = None
 
 
+class InitRsp(AgentResponse):
+    def __init__(self):
+        super(InitRsp, self).__init__()
+        self.localStorageUsedCapacity = None
+
+
 class CopyBitsFromRemoteCmd(AgentCommand):
     @log.sensitive_fields("dstPassword")
     def __init__(self):
@@ -696,8 +702,9 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
                 f = open(cmd.initFilePath, 'w')
                 f.close()
 
-        rsp = AgentResponse()
+        rsp = InitRsp()
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.path)
+        rsp.localStorageUsedCapacity = linux.get_used_disk_apparent_size(cmd.path, 0, 1)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
