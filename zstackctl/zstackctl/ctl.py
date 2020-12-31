@@ -204,6 +204,12 @@ def ssh_run_no_pipe(ip, cmd, params=[]):
         scmd.raise_error()
     return scmd.stdout
 
+def kill_process(pid, sig=signal.SIGTERM):
+    try:
+        os.kill(int(pid), sig)
+    except OSError:
+        pass
+
 class CtlError(Exception):
     pass
 
