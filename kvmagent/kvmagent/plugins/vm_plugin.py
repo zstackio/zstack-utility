@@ -908,6 +908,10 @@ def get_machineType(machine_type):
         return "virt"
     return machine_type if machine_type else "pc"
 
+def get_sgio_value():
+    device_name = [x for x in os.listdir("/sys/block") if not x.startswith("loop")][0]
+    return "unfiltered" if os.path.isfile("/sys/block/{}/queue/unpriv_sgio".format(device_name)) else "filtered"
+
 class LibvirtAutoReconnect(object):
     conn = libvirt.open('qemu:///system')
 
@@ -1991,31 +1995,13 @@ class Vm(object):
             return disk
 
         def scsilun_volume():
-            def on_aarch64():
-                # default value of sgio is 'filtered'
-                disk = etree.Element('disk', attrib={'type': 'block', 'device': 'lun'})
-                e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw'})
-                e(disk, 'source', None, {'dev': volume.installPath})
-                e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
-                return disk
-
-            def on_mips64el():
-                # default value of sgio is 'filtered'
-                disk = etree.Element('disk', attrib={'type': 'block', 'device': 'lun'})
-                e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw'})
-                e(disk, 'source', None, {'dev': volume.installPath})
-                e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
-                return disk
-
-            def on_x86_64():
-                disk = etree.Element('disk', attrib={'type': 'block', 'device': 'lun', 'sgio': 'unfiltered'})
-                e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw'})
-                e(disk, 'source', None, {'dev': volume.installPath})
-                e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
-                return disk
-
+            # default value of sgio is 'filtered'
             #NOTE(weiw): scsi lun not support aio or qos
-            return eval("on_{}".format(HOST_ARCH))()
+            disk = etree.Element('disk', attrib={'type': 'block', 'device': 'lun', 'sgio': get_sgio_value()})
+            e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw'})
+            e(disk, 'source', None, {'dev': volume.installPath})
+            e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
+            return disk
 
         def iscsibased_volume():
             # type: () -> etree.Element
@@ -3508,21 +3494,24 @@ class Vm(object):
                     e(devices, 'emulator', kvmagent.get_colo_qemu_path())
                 else:
                     e(devices, 'emulator', kvmagent.get_qemu_path())
-            # no default usb controller and tablet device for appliance vm
-            if cmd.isApplianceVm:
-                e(devices, 'controller', None, {'type': 'usb', 'model': 'none'})
-                elements['devices'] = devices
-                return
-
-            tablet = e(devices, 'input', None, {'type': 'tablet', 'bus': 'usb'})
-            e(tablet, 'address', None, {'type':'usb', 'bus':'0', 'port':'1'})
 
             @linux.with_arch(todo_list=['aarch64', 'mips64el'])
             def set_keyboard():
                 keyboard = e(devices, 'input', None, {'type': 'keyboard', 'bus': 'usb'})
                 e(keyboard, 'address', None, {'type': 'usb', 'bus': '0', 'port': '2'})
 
-            set_keyboard()
+            def set_tablet():
+                tablet = e(devices, 'input', None, {'type': 'tablet', 'bus': 'usb'})
+                e(tablet, 'address', None, {'type':'usb', 'bus':'0', 'port':'1'})
+
+            # no default usb controller and tablet device for appliance vm
+            if cmd.isApplianceVm:
+                e(devices, 'controller', None, {'type': 'usb', 'model': 'ehci'})
+                set_keyboard()
+            else:
+                set_keyboard()
+                set_tablet()
+
             elements['devices'] = devices
 
         def make_cdrom():
@@ -4076,10 +4065,7 @@ class Vm(object):
             devices = elements['devices']
             for volume in storageDevices:
                 if match_storage_device(volume.installPath):
-                    if HOST_ARCH in ['aarch64', 'mips64el']:
-                        disk = e(devices, 'disk', None, attrib={'type': 'block', 'device': 'lun'})
-                    else:
-                        disk = e(devices, 'disk', None, attrib={'type': 'block', 'device': 'lun', 'sgio': 'unfiltered'})
+                    disk = e(devices, 'disk', None, attrib={'type': 'block', 'device': 'lun', 'sgio': get_sgio_value()})
                     e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw'})
                     e(disk, 'source', None, {'dev': volume.installPath})
                     e(disk, 'target', None, {'dev': 'sd%s' % Vm.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
