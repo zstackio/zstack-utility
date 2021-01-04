@@ -190,7 +190,7 @@ def get_running_vm_root_volume_path(vm_uuid, is_file_system):
     # 2. get "-boot order=dc ... -drive id=drive-virtio-disk"
     # 3. make sure io has error
     # 4. filter for pv
-    out = shell.call("pgrep -a qemu-kvm | grep %s" % vm_uuid)
+    out = linux.find_vm_process_by_uuid(vm_uuid)
     if not out:
         return None
 
@@ -443,12 +443,11 @@ class HaPlugin(kvmagent.KvmAgent):
         mon_url = mon_url.replace(':', '\\\:')
 
         created_time = time.time()
-        self.setup_fencer(cmd.uuid, created_time)
 
-        def get_ceph_rbd_args():
+        def get_ceph_rbd_args(pool_name):
             if cmd.userKey is None:
-                return 'rbd:%s:mon_host=%s' % (cmd.heartbeatImagePath, mon_url)
-            return 'rbd:%s:id=zstack:key=%s:auth_supported=cephx\;none:mon_host=%s' % (cmd.heartbeatImagePath, cmd.userKey, mon_url)
+                return 'rbd:%s:mon_host=%s' % (get_heartbeat_volume(pool_name, cmd.uuid, cmd.hostUuid), mon_url)
+            return 'rbd:%s:id=zstack:key=%s:auth_supported=cephx\;none:mon_host=%s' % (get_heartbeat_volume(pool_name, cmd.uuid, cmd.hostUuid), cmd.userKey, mon_url)
 
         def ceph_in_error_stat():
             # HEALTH_OK,HEALTH_WARN,HEALTH_ERR and others(may be empty)...
@@ -461,9 +460,9 @@ class HaPlugin(kvmagent.KvmAgent):
             health_status = health.stdout
             return not (health_status.startswith('HEALTH_OK') or health_status.startswith('HEALTH_WARN'))
 
-        def heartbeat_file_exists():
+        def heartbeat_file_exists(pool_name):
             touch = shell.ShellCmd('timeout %s %s %s' %
-                    (cmd.storageCheckerTimeout, qemu_img.subcmd('info'), get_ceph_rbd_args()))
+                    (cmd.storageCheckerTimeout, qemu_img.subcmd('info'), get_ceph_rbd_args(pool_name)))
             touch(False)
 
             if touch.return_code == 0:
@@ -472,9 +471,9 @@ class HaPlugin(kvmagent.KvmAgent):
             logger.warn('cannot query heartbeat image: %s: %s' % (cmd.heartbeatImagePath, touch.stderr))
             return False
 
-        def create_heartbeat_file():
+        def create_heartbeat_file(pool_name):
             create = shell.ShellCmd('timeout %s qemu-img create -f raw %s 1' %
-                                        (cmd.storageCheckerTimeout, get_ceph_rbd_args()))
+                                        (cmd.storageCheckerTimeout, get_ceph_rbd_args(pool_name)))
             create(False)
 
             if create.return_code == 0 or "File exists" in create.stderr:
@@ -483,19 +482,27 @@ class HaPlugin(kvmagent.KvmAgent):
             logger.warn('cannot create heartbeat image: %s: %s' % (cmd.heartbeatImagePath, create.stderr))
             return False
 
-        def delete_heartbeat_file():
+        def delete_heartbeat_file(pool_name):
             shell.run("timeout %s rbd rm --id zstack %s -m %s" %
-                    (cmd.storageCheckerTimeout, cmd.heartbeatImagePath, mon_url))
+                    (cmd.storageCheckerTimeout, get_heartbeat_volume(pool_name, cmd.uuid, cmd.hostUuid), mon_url))
+        
+        def get_heartbeat_volume(pool_name, ps_uuid, host_uuid):
+            return '%s/ceph-ps-%s-host-hb-%s' % (pool_name, ps_uuid, host_uuid)
+
+        def get_fencer_key(ps_uuid, pool_name):
+            return '%s-%s' % (ps_uuid, pool_name)
 
         @thread.AsyncThread
-        def heartbeat_on_ceph():
+        def heartbeat_on_ceph(ps_uuid, pool_name):
+            logger.debug("start run fencer with key %s" % get_fencer_key(ps_uuid, pool_name))
+            self.setup_fencer(get_fencer_key(ps_uuid, pool_name), created_time)
             try:
                 failure = 0
 
-                while self.run_fencer(cmd.uuid, created_time):
+                while self.run_fencer(get_fencer_key(ps_uuid, pool_name), created_time):
                     time.sleep(cmd.interval)
 
-                    if heartbeat_file_exists() or create_heartbeat_file():
+                    if heartbeat_file_exists(pool_name) or create_heartbeat_file(pool_name):
                         failure = 0
                         continue
 
@@ -508,25 +515,28 @@ class HaPlugin(kvmagent.KvmAgent):
                             if cmd.strategy == 'Permissive':
                                 continue
 
-                            path = (os.path.split(cmd.heartbeatImagePath))[0]
-                            vm_uuids = kill_vm(cmd.maxAttempts, [path], False).keys()
+                            # for example, pool name is aaa
+                            # add slash to confirm kill_vm matches vm with volume aaa/volume_path
+                            # but not aaa_suffix/volume_path
+                            vm_uuids = kill_vm(cmd.maxAttempts, ['%s/' % pool_name], False).keys()
 
                             if vm_uuids:
                                 self.report_self_fencer_triggered([cmd.uuid], ','.join(vm_uuids))
                                 clean_network_config(vm_uuids)
                         else:
-                            delete_heartbeat_file()
+                            delete_heartbeat_file(pool_name)
 
                         # reset the failure count
                         failure = 0
 
-                logger.debug('stop self-fencer on ceph primary storage')
+                logger.debug('stop self-fencer on pool %s of ceph primary storage' % pool_name)
             except:
-                logger.debug('self-fencer on ceph primary storage stopped abnormally')
+                logger.debug('self-fencer on pool %s ceph primary storage stopped abnormally' % pool_name)
                 content = traceback.format_exc()
                 logger.warn(content)
 
-        heartbeat_on_ceph()
+        for pool_name in cmd.poolNames:
+            heartbeat_on_ceph(cmd.uuid, pool_name)
 
         return jsonobject.dumps(AgentRsp())
 
@@ -803,4 +813,6 @@ class HaPlugin(kvmagent.KvmAgent):
 
     def cancel_fencer(self, ps_uuid):
         with self.fencer_lock:
-            self.run_fencer_timestamp.pop(ps_uuid, None)
+            for key in self.run_fencer_timestamp.keys():
+                if ps_uuid in key:
+                    self.run_fencer_timestamp.pop(ps_uuid, None)
