@@ -1789,7 +1789,7 @@ def remove_partial_lv_dm(vgUuid):
 
 @bash.in_bash
 def unpriv_sgio():
-    bash.bash_roe("for i in `ls /sys/block/`; do echo 1 > /sys/block/$i/queue/unpriv_sgio; done")
+    bash.bash_roe("for i in `ls /sys/block/ | grep -v loop`; do echo 1 > /sys/block/$i/queue/unpriv_sgio; done")
 
 
 @bash.in_bash

@@ -122,6 +122,7 @@ DEFAULT_MN_PORT='8080'
 MN_PORT="$DEFAULT_MN_PORT"
 
 DEFAULT_UI_PORT='5000'
+RESOLV_CONF='/etc/resolv.conf'
 
 BASEARCH=`uname -m`
 ZSTACK_RELEASE=''
@@ -859,6 +860,11 @@ zstack  hard  nproc  $nr_open
 EOF
 }
 
+do_check_resolv_conf(){
+    [ ! -f $RESOLV_CONF ] && touch $RESOLV_CONF
+    chmod a+r $RESOLV_CONF
+}
+
 do_config_ansible(){
     mkdir -p /etc/ansible
     mkdir -p /var/log/ansible
@@ -953,6 +959,7 @@ You can also add '-q' to installer, then Installer will help you to remove it.
     fi
     do_enable_sudo
     do_config_limits
+    do_check_resolv_conf
     pass
 }
 

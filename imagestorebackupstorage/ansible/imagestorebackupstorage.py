@@ -74,7 +74,11 @@ elif IS_MIPS64EL:
 else:
     src_pkg_imagestorebackupstorage = "zstack-store.bin"
     src_pkg_exporter = "collectd_exporter"
-dst_pkg_imagestorebackupstorage = "zstack-store.bin"
+
+if client != "true":
+    dst_pkg_imagestorebackupstorage = "zstack-store.bin"
+else:
+    dst_pkg_imagestorebackupstorage = "zstack-store-client.bin"
 dst_pkg_exporter = "collectd_exporter"
 
 # include zstacklib.py
@@ -109,6 +113,7 @@ if distro in RPM_BASED_OS:
     aarch64_ns10 = "qemu-img fuse-sshfs nmap collectd"
     mips64el_ns10 = "qemu-img-ev fuse-sshfs nmap collectd"
     x86_64_ns10 = "qemu-img fuse-sshfs nmap collectd"
+
     qemu_pkg = eval("%s_%s" % (host_arch, releasever))
     # skip these packages
     _skip_list = re.split(r'[|;,\s]\s*', skip_packages)
@@ -191,8 +196,7 @@ if remote_user != 'root':
     run_remote_command("sudo chown -R -H --dereference %s: %s" % (remote_user, fs_rootpath), host_post_info)
 
 # name: restart image store server
-server = client != "true" or run_remote_command("pkill -0 zstore", host_post_info, return_status=True, return_output=False)
-if server:
+if client != "true":
     # integrate zstack-store with init.d
     run_remote_command("/bin/cp -f /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage /etc/init.d/", host_post_info)
     if distro in RPM_BASED_OS:
