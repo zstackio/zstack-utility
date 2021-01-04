@@ -722,6 +722,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         return jsonobject.dumps(kvmagent.AgentResponse())
 
     @kvmagent.replyerror
+    @lock.lock('lighttpd')
     def batch_apply_userdata(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
@@ -762,6 +763,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         return jsonobject.dumps(kvmagent.AgentResponse())
 
     @kvmagent.replyerror
+    @lock.lock('lighttpd')
     def apply_userdata(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         self._apply_userdata_xtables(cmd.userdata)
@@ -1055,7 +1057,6 @@ mimetype.assign = (
             bash_r("ln -s %s %s" % (version_file_path, target_version_file_path))
 
     @in_bash
-    @lock.file_lock('/run/xtables.lock')
     def _apply_userdata_vmdata(self, to):
         def packUserdata(userdataList):
             if len(userdataList) == 1:
@@ -1122,7 +1123,6 @@ mimetype.assign = (
                 fd.write('')
 
     @in_bash
-    @lock.lock('lighttpd')
     def _apply_userdata_restart_httpd(self, to):
         def check(_):
             pid = linux.find_process_by_cmdline([conf_path])
