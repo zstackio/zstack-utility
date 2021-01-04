@@ -1270,6 +1270,9 @@ def enable_process_coredump(pid):
 def find_vm_pid_by_uuid(uuid):
     return shell.call("ps aux | grep qemu[-]kvm | awk '/%s/{print $2}'" % uuid).strip()
 
+def find_vm_process_by_uuid(uuid):
+    return shell.call("""ps aux | egrep "qemu[-]kvm|qemu[-]system" | awk '/%s/'""" % uuid).strip()
+
 def find_process_by_cmdline(cmdlines):
     pids = [pid for pid in os.listdir('/proc') if pid.isdigit()]
     for pid in pids:
