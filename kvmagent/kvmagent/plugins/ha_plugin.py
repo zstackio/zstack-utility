@@ -446,12 +446,11 @@ class HaPlugin(kvmagent.KvmAgent):
         mon_url = mon_url.replace(':', '\\\:')
 
         created_time = time.time()
-        self.setup_fencer(cmd.uuid, created_time)
 
         def get_ceph_rbd_args(pool_name):
             if cmd.userKey is None:
                 return 'rbd:%s:mon_host=%s' % (get_heartbeat_volume(pool_name, cmd.uuid, cmd.hostUuid), mon_url)
-            return 'rbd:%s:id=zstack:key=%s:auth_supported=cephx\;none:mon_host=%s' % (cmd.heartbeatImagePath, cmd.userKey, mon_url)
+            return 'rbd:%s:id=zstack:key=%s:auth_supported=cephx\;none:mon_host=%s' % (get_heartbeat_volume(pool_name, cmd.uuid, cmd.hostUuid), cmd.userKey, mon_url)
 
         def ceph_in_error_stat():
             # HEALTH_OK,HEALTH_WARN,HEALTH_ERR and others(may be empty)...
@@ -493,12 +492,17 @@ class HaPlugin(kvmagent.KvmAgent):
         def get_heartbeat_volume(pool_name, ps_uuid, host_uuid):
             return '%s/ceph-ps-%s-host-hb-%s' % (pool_name, ps_uuid, host_uuid)
 
+        def get_fencer_key(ps_uuid, pool_name):
+            return '%s-%s' % (ps_uuid, pool_name)
+
         @thread.AsyncThread
-        def heartbeat_on_ceph(pool_name):
+        def heartbeat_on_ceph(ps_uuid, pool_name):
+            logger.debug("start run fencer with key %s" % get_fencer_key(ps_uuid, pool_name))
+            self.setup_fencer(get_fencer_key(ps_uuid, pool_name), created_time)
             try:
                 failure = 0
 
-                while self.run_fencer("%s-%s" % (cmd.uuid, pool_name), created_time):
+                while self.run_fencer(get_fencer_key(ps_uuid, pool_name), created_time):
                     time.sleep(cmd.interval)
 
                     if heartbeat_file_exists(pool_name) or create_heartbeat_file(pool_name):
@@ -535,7 +539,7 @@ class HaPlugin(kvmagent.KvmAgent):
                 logger.warn(content)
 
         for pool_name in cmd.poolNames:
-            heartbeat_on_ceph(pool_name)
+            heartbeat_on_ceph(cmd.uuid, pool_name)
 
         return jsonobject.dumps(AgentRsp())
 
@@ -824,4 +828,6 @@ class HaPlugin(kvmagent.KvmAgent):
 
     def cancel_fencer(self, ps_uuid):
         with self.fencer_lock:
-            self.run_fencer_timestamp.pop(ps_uuid, None)
+            for key in self.run_fencer_timestamp.keys():
+                if ps_uuid in key:
+                    self.run_fencer_timestamp.pop(ps_uuid, None)
