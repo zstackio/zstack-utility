@@ -3015,11 +3015,7 @@ class Vm(object):
                 logger.warn("get guest info from vm[uuid:%s]: %s, %s" % (self.uuid, o, e))
             else:
                 logger.debug("qga_json: %s" % o)
-                info = json.loads(o)['return']
-                if LooseVersion(info["version"]) < LooseVersion('2.3'):
-                    raise kvmagent.KvmError("You need to install version 2.3 or above to support set user password ,qga current version is %s" % info["version"])
-                else:
-                    return True
+                return json.loads(o)['return']
             time.sleep(2)
         raise kvmagent.KvmError("qemu-agent service is not ready in vm...")
 
@@ -3037,23 +3033,24 @@ class Vm(object):
         # check the vm state first, then choose the method in different way
         state = get_all_vm_states().get(uuid)
         timeout = 60000
-        if state == Vm.VM_STATE_RUNNING:
-            # before set-user-password, we must check if os ready in the guest
-            self._wait_until_qemuga_ready(timeout, uuid)
-            try:
-                escape_password = self._escape_char_password(cmd.accountPerference.accountPassword)
-                shell.call('virsh set-user-password %s %s %s' % (self.uuid,
+        if state != Vm.VM_STATE_RUNNING:
+            raise kvmagent.KvmError("vm is not running, cannot connect to qemu-ga")
+
+
+        # before set-user-password, we must check if os ready in the guest
+        self._wait_until_qemuga_ready(timeout, uuid)
+        try:
+            escape_password = self._escape_char_password(cmd.accountPerference.accountPassword)
+            shell.call('virsh set-user-password %s %s %s' % (self.uuid,
                                                                  cmd.accountPerference.userAccount,
                                                                  escape_password))
-            except Exception as e:
-                logger.warn(e.message)
-                if e.message.find("child process has failed to set user password") > 0:
-                    logger.warn('user [%s] not exist!' % cmd.accountPerference.userAccount)
-                    raise kvmagent.KvmError('user [%s] not exist on vm[uuid: %s]!' % (cmd.accountPerference.userAccount, uuid))
-                else:
-                    raise e
-        else:
-            raise kvmagent.KvmError("vm is not running, cannot connect to qemu-ga")
+        except Exception as e:
+            logger.warn(e.message)
+            if e.message.find("child process has failed to set user password") < 0:
+                raise e
+
+            raise kvmagent.KvmError('unable to execute "chpasswd" in guest[uuid:%s], check if user[%s] existing or guest system log.'
+                                    % (uuid, cmd.accountPerference.userAccount))
 
     def merge_snapshot(self, cmd):
         target_disk, disk_name = self._get_target_disk(cmd.volume)
@@ -4908,14 +4905,7 @@ class VmPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = ChangeVmPasswordRsp()
         vm = get_vm_by_uuid(cmd.accountPerference.vmUuid, False)
-        try:
-            if not vm:
-                raise kvmagent.KvmError('vm is not in running state.')
-            else:
-                vm.change_vm_password(cmd)
-        except kvmagent.KvmError as e:
-            rsp.error = str(e)
-            rsp.success = False
+        vm.change_vm_password(cmd)
         rsp.accountPerference = cmd.accountPerference
         rsp.accountPerference.accountPassword = "******"
         return jsonobject.dumps(rsp)
