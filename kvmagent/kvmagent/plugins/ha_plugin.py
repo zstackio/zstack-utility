@@ -193,7 +193,7 @@ def get_running_vm_root_volume_path(vm_uuid, is_file_system):
     # 2. get "-boot order=dc ... -drive id=drive-virtio-disk"
     # 3. make sure io has error
     # 4. filter for pv
-    out = shell.call("pgrep -a qemu-kvm | grep %s" % vm_uuid)
+    out = linux.find_vm_process_by_uuid(vm_uuid)
     if not out:
         return None
 
