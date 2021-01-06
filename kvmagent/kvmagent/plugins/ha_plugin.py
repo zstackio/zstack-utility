@@ -59,10 +59,13 @@ class SanlockHostStatus(object):
         self.timestamp = int(ts)
 
         for line in lines[1:]:
-            k, v = line.strip().split('=', 2)
-            if k == 'io_timeout': self.io_timeout = int(v)
-            elif k == 'last_check': self.last_check = int(v)
-            elif k == 'last_live': self.last_live = int(v)
+            try:
+                k, v = line.strip().split('=', 2)
+                if k == 'io_timeout': self.io_timeout = int(v)
+                elif k == 'last_check': self.last_check = int(v)
+                elif k == 'last_live': self.last_live = int(v)
+            except ValueError:
+                logger.warn("unexpected sanlock status: %s" % line)
 
         if not all([self.io_timeout, self.last_check, self.last_live]):
             raise Exception('unexpected sanlock host status: ' + record)
@@ -693,33 +696,45 @@ class HaPlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     def sanlock_scan_host(self, req):
+        def parseLockspaceHostIdPair(s):
+            xs = s.split(':', 3)
+            return xs[0].split()[-1], int(xs[1])
+
+        def check_host_status(myHostId, lkspc, hostIds):
+            hstatus = shell.call("timeout 5 sanlock client host_status -s %s -D" % lkspc)
+            parser = SanlockHostStatusParser(hstatus)
+
+            result = {}
+            if not parser.is_alive(myHostId):
+                logger.info("[SANLOCK] current node has no LIVE records for lockspace: %s" % lkspc)
+                return result
+
+            for target in cmd.hostIds:
+                hostId, psUuid = target.hostId, target.psUuid
+                if psUuid not in lkspc: continue
+
+                timed_out = parser.is_timed_out(hostId)
+                if timed_out is not None:
+                    result[psUuid + '_' + str(hostId)] = not timed_out
+            return result
+
         rsp = SanlockScanRsp()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         cstatus = shell.call("timeout 5 sanlock client gets -h 1")
         logger.info("[SANLOCK] reports client status:\n" + cstatus)
-        myIds = [ int(line.split(':', 3)[1]) for line in filter(lambda x: x.startswith('s'), cstatus.splitlines()) ]
+        pairs = [ parseLockspaceHostIdPair(line) for line in filter(lambda x: x.startswith('s'), cstatus.splitlines()) ]
 
-        if len(myIds) == 0:
+        if len(pairs) == 0:
             logger.info("[SANLOCK] host id not found")
             return jsonobject.dumps(rsp)
 
-        hstatus = shell.call("timeout 5 sanlock client host_status -D")
-        parser = SanlockHostStatusParser(hstatus)
-
-        is_alive = False
-        for hostId in myIds:
-            is_alive = parser.is_alive(hostId)
-            if is_alive: break
-
-        if not is_alive:
-            logger.info("[SANLOCK] current node has no LIVE records")
-            return jsonobject.dumps(rsp)
-
         result = {}
-        for hostId in cmd.hostIds:
-            timed_out = parser.is_timed_out(hostId)
-            if timed_out is not None:
-                result[str(hostId)] = not timed_out
+        for lkspc, hid in pairs:
+            res = check_host_status(hid, lkspc, cmd.hostIds)
+            result.update(res)
+
+        if len(result) == 0:
+            return jsonobject.dumps(rsp)
 
         rsp.result = result
         return jsonobject.dumps(rsp)
