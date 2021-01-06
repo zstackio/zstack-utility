@@ -516,7 +516,7 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                     if dom.isPersistent():
                         dom.undefine()
                         needDefine = True
-                    do_blockcopy(cmd, dom, volume, storage_dir, 0)
+                    do_blockcopy(cmd, dom, volumes, storage_dir, 0)
                 else:
                     raise ex
 
