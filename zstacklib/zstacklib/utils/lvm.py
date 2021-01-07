@@ -539,7 +539,7 @@ def start_lvmlockd(io_timeout=40):
 
 
 @bash.in_bash
-def start_vg_lock(vgUuid):
+def start_vg_lock(vgUuid, retry_times_for_checking_vg_lockspace):
     @linux.retry(times=60, sleep_time=random.uniform(1, 10))
     def vg_lock_is_adding(vgUuid):
         # NOTE(weiw): this means vg locking is adding rather than complete
@@ -548,7 +548,7 @@ def start_vg_lock(vgUuid):
             raise RetryException("vg %s lock space is starting" % vgUuid)
         return False
 
-    @linux.retry(times=15, sleep_time=random.uniform(0.1, 2))
+    @linux.retry(times=retry_times_for_checking_vg_lockspace, sleep_time=random.uniform(0.1, 2))
     def vg_lock_exists(vgUuid):
         return_code = bash.bash_r("lvmlockctl -i | grep %s" % vgUuid)
         if return_code != 0:

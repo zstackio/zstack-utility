@@ -524,14 +524,44 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         logger.debug("find/create vg %s lock..." % cmd.vgUuid)
         rsp.isFirst = self.create_vg_if_not_found(cmd.vgUuid, disks, cmd.hostUuid, allDisks, cmd.forceWipe)
 
+#       sanlock table:
+#       
+#       | sanlock patch version | delta lease sleep time | retry times |
+#       | --------------------- | ---------------------- | ----------- |
+#       | 1                     | 40 seconds             | 15          |
+#       | 2 or higher           | 0 second               | 3           |
+#       
+#       
+#       explain:
+#       
+#       In sanlock patch version 1, when you start a vg lock, it takes around 40 seconds
+#       in delta lease. So 15 retry times are required to check if vg lockspace exists.
+#       
+#       In sanlock patch version 2, the sleep time in delta lease can be defined by zstack
+#       utility in sanlock.conf. It's 0 second by default, so retry times can be reduced to
+#       3 in order to save time.
+
+        @bash.in_bash
+        def get_retry_times_for_checking_vg_lockspace():
+            r, sanlock_patch_version = bash.bash_ro("sanlock get_patch_version")
+            # if version is not a digit, e.g. "client action get_patch_version is unknown", it also means that sanlock patch version < 2
+            if sanlock_patch_version.strip().isdigit() is False:
+                return 15
+            elif int(sanlock_patch_version.strip()) >= 2:
+                return 3
+            else:
+                return 15
+
+        retry_times_for_checking_vg_lockspace = get_retry_times_for_checking_vg_lockspace()
+
         lvm.check_stuck_vglk()
         logger.debug("starting vg %s lock..." % cmd.vgUuid)
-        lvm.start_vg_lock(cmd.vgUuid)
+        lvm.start_vg_lock(cmd.vgUuid, retry_times_for_checking_vg_lockspace)
 
         if lvm.lvm_vgck(cmd.vgUuid, 60)[0] is False and lvm.lvm_check_operation(cmd.vgUuid) is False:
             lvm.drop_vg_lock(cmd.vgUuid)
             logger.debug("restarting vg %s lock..." % cmd.vgUuid)
-            lvm.start_vg_lock(cmd.vgUuid)
+            lvm.start_vg_lock(cmd.vgUuid, retry_times_for_checking_vg_lockspace)
 
         # lvm.clean_vg_exists_host_tags(cmd.vgUuid, cmd.hostUuid, HEARTBEAT_TAG)
         # lvm.add_vg_tag(cmd.vgUuid, "%s::%s::%s::%s" % (HEARTBEAT_TAG, cmd.hostUuid, time.time(), bash.bash_o('hostname').strip()))
