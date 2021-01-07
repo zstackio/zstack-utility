@@ -280,6 +280,7 @@ class GetPciDevicesCmd(kvmagent.AgentCommand):
         super(GetPciDevicesCmd, self).__init__()
         self.filterString = None
         self.enableIommu = True
+        self.skipGrubConfig = False
 
 class GetPciDevicesResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -1513,6 +1514,11 @@ done
     def get_pci_info(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetPciDevicesResponse()
+
+        if cmd.skipGrubConfig:
+            rsp.hostIommuStatus = True
+            self._collect_format_pci_device_info(rsp)
+            return jsonobject.dumps(rsp)
 
         # update grub to enable/disable iommu in host
         updateConfigration = UpdateConfigration()
