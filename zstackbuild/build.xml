@@ -54,7 +54,9 @@
 
     <import file="${basedir}/utils.xml" optional="false" />
     <import file="${basedir}/projects/zstack-war.xml" optional="false" />
+    <!-- <import file="${basedir}/projects/zstack-ui.xml" optional="false" /> -->
     <import file="${basedir}/projects/zstacklib.xml" optional="false" />
+    <import file="${build.ui.entry}/build/build.xml" optional="true" />
     <import file="${basedir}/projects/zstack-kvmagent.xml" optional="false" />
     <import file="${basedir}/projects/zstack-virtualrouter.xml" optional="false" />
     <import file="${basedir}/projects/zstack-appliancevm.xml" optional="false" />
@@ -74,7 +76,6 @@
     <import file="${basedir}/projects/zstack-apibinding.xml" optional="false" />
     <import file="${basedir}/projects/zstack-cli.xml" optional="false" />
     <import file="${basedir}/projects/zstack-dashboard.xml" optional="false" />
-    <import file="${basedir}/projects/zstack-ui-war.xml" optional="false" />
     <import file="${basedir}/projects/zstack-pysdk.xml" optional="false" />
     <import file="${basedir}/projects/zstack-ctl.xml" optional="false" />
     <import file="${basedir}/projects/zstack-agent.xml" optional="false" />
@@ -93,7 +94,6 @@
         <makeDir dir="${allinone.dir}" />
         <makeDir dir="${tools.dir}" />
     </target>
-
     <target name="copy-pypi-source" >
         <makeDir dir="${pypi.parent.dir}" />
          <exec executable="bash" dir="${pypi.source.folder}" failonerror="true">
@@ -221,12 +221,12 @@
     </target>
 
     <!-- For UI 2.0 -->
-    <target name="build-zstack-ui-war-on-condition" if="${build.zstack.ui.war}">
-        <antcall target="build-zstack-ui-war" />
+    <target name="build-zstack-ui-on-condition" if="${build.zstack.ui}">
+        <antcall target="build-zstack-ui" />
     </target>
 
-    <target name="assemble-zstack-ui-war-on-condition" if="${build.zstack.ui.war}">
-        <antcall target="assemble-zstack-ui-war" />
+    <target name="assemble-zstack-ui-bin-on-condition" if="${build.zstack.ui}">
+        <antcall target="assemble-zstack-ui-bin" />
     </target>
 
     <target name="help">
@@ -235,7 +235,7 @@
     </target>
 
 
-    <target name="do-build-zstack" depends="prepare, build-zstack-war" >
+    <target name="do-build-zstack" depends="prepare,build-zstack-war" >
         <parallel failonany="true">
             <sequential>
                 <antcall target="build-zstacklib"/>
@@ -309,7 +309,7 @@
                 <antcall target="do-build-zstack"/>
             </sequential>
             <sequential>
-                <antcall target="build-zstack-ui-war-on-condition"/>
+                <antcall target="build-zstack-ui-on-condition"/>
             </sequential>
         </parallel>
     </target>
@@ -341,7 +341,7 @@
                 <antcall target="assemble-zstack-dashboard-on-condition"/>
             </sequential>
             <sequential>
-                <antcall target="assemble-zstack-ui-war-on-condition"/>
+                <antcall target="assemble-zstack-ui-bin-on-condition"/>
             </sequential>
             <sequential>
                 <antcall target="assemble-zstack-pysdk"/>
@@ -418,7 +418,7 @@
 
     <target name="build-war-centos6-offline" depends="do-build, assemble-centos6-offline" >
         <property name="allinone.bin.file" location="${build.dir}/${product.bin.name}-centos6-${bin.version}.bin" />
-    </target>
+    </target >
 
     <target name="build-war-centos7-offline" depends="do-build, assemble-centos7-offline" >
         <property name="allinone.bin.file" location="${build.dir}/${product.bin.name}-centos7-${bin.version}.bin" />
