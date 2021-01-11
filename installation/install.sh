@@ -20,6 +20,7 @@ export TERM=xterm
 OS=''
 REDHAT_OS="CENTOS6 CENTOS7 RHEL7 ALIOS7 ISOFT4 KYLIN10"
 DEBIAN_OS="UBUNTU14.04 UBUNTU16.04 UBUNTU KYLIN4.0.2 DEBIAN9 UOS20"
+XINCHUANG_OS="ns10 uos20"
 SUPPORTED_OS="$REDHAT_OS $DEBIAN_OS"
 REDHAT_WITHOUT_CENTOS6=`echo $REDHAT_OS |sed s/CENTOS6//`
 
@@ -3014,6 +3015,9 @@ EOF
 
 check_sync_local_repos() {
   echo_subtitle "Check local repo version"
+  if [[ $XINCHUANG_OS =~ $ZSTACK_RELEASE ]]; then
+      SKIP_SYNC='y'
+  fi
   [ -f ".repo_version" ] || fail2 "Cannot found current repo_version file, please make sure you have correct zstack-installer package."
   if [ -d /opt/zstack-dvd/$BASEARCH ];then
     for release in `ls /opt/zstack-dvd/$BASEARCH`;do
