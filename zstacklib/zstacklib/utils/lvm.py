@@ -3,6 +3,7 @@ import random
 import os
 import os.path
 import time
+import re
 
 from zstacklib.utils import shell
 from zstacklib.utils import bash
@@ -1644,6 +1645,34 @@ def is_volume_on_pvs(volume_path, pvUuids, includingMissing=True):
             return True
     return False
 
+'''
+e.g. lsblk command output when iscsi disconnected:
+
+    [root@10-0-0-0 linus]# lsblk -P /dev/$VG/$LV -s -o NAME,TYPE,STATE
+    NAME="$VG-$LV" TYPE="lvm" STATE="transport-offline"
+    NAME="sda" TYPE="disk" STATE="running"
+
+explain:
+
+    If you switch off the network/machine for a iscsi based storage,
+    "qemu-img --backing-chain $vm_root_volume" may not be able to determine
+    the running vm I/O on that storage works or not. One solution is check
+    if the state of the disk of lv is "transport-offline".
+'''
+
+@bash.in_bash
+def is_bad_vm_root_volume(vm_root_volume):
+    cmd = "lsblk -P " + vm_root_volume + " -s -o NAME,TYPE,STATE"
+    lsblk_out = bash.bash_o(cmd).strip().split("\n")
+    if len(lsblk_out) < 2: # valid_cmd_out = one_block_info + at_least_one_denpendency_disk_info
+        return False
+    for line in lsblk_out:
+        line_list = re.split(' ', line)
+        block_type = line_list[1].strip().replace('"', '').replace('TYPE=', '')
+        block_state = line_list[2].strip().replace('"', '').replace('STATE=', '')
+        if block_type == "disk" and block_state != "running":
+            return True
+    return False
 
 @bash.in_bash
 def get_running_vm_root_volume_on_pv(vgUuid, pvUuids, checkIo=True):
@@ -1661,6 +1690,7 @@ def get_running_vm_root_volume_on_pv(vgUuid, pvUuids, checkIo=True):
         vm.pid = o.split(" ")[0]
         vm.cmdline = o.split(" ", 3)[-1]
         vm.uuid = o.split(" -uuid ")[-1].split(" ")[0]
+        bad_vm_root_volume_condition = False
         if "bootindex=1" in vm.cmdline:
             vm.root_volume = vm.cmdline.split("bootindex=1")[0].split(" -drive file=")[-1].split(",")[0]
         elif " -boot order=dc" in vm.cmdline:
@@ -1671,7 +1701,9 @@ def get_running_vm_root_volume_on_pv(vgUuid, pvUuids, checkIo=True):
             continue
 
         r = bash.bash_r("%s --backing-chain %s" % (qemu_img.subcmd('info'), vm.root_volume))
-        if checkIo is True and r == 0:
+        if is_bad_vm_root_volume(vm.root_volume) is True:
+            bad_vm_root_volume_condition = True
+        elif checkIo is True and r == 0:
             logger.debug("volume %s for vm %s io success, skiped" % (vm.root_volume, vm.uuid))
             continue
 
@@ -1680,7 +1712,7 @@ def get_running_vm_root_volume_on_pv(vgUuid, pvUuids, checkIo=True):
             for file in out:
                 vm.volumes.append(file.strip().split("'")[1])
 
-        if is_volume_on_pvs(vm.root_volume, pvUuids, True):
+        if is_volume_on_pvs(vm.root_volume, pvUuids, True) or bad_vm_root_volume_condition is True:
             vms.append(vm)
 
     return vms
