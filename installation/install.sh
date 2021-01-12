@@ -2091,7 +2091,7 @@ install_db(){
     #deploy initial database
     show_spinner cs_deploy_db
     #deploy initial database of zstack_ui
-    show_spinner cs_deploy_ui_db
+    #show_spinner cs_deploy_ui_db
     #check hostname and ip again
     ia_check_ip_hijack
     cs_clean_ssh_tmp_key $ssh_tmp_dir
