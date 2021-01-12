@@ -7245,15 +7245,20 @@ class InstallZstackUiCmd(Command):
 
     def install_argparse_arguments(self, parser):
         parser.add_argument('--host', help='target host IP, for example, 192.168.0.212, to install ZStack web UI; if omitted, it will be installed on local machine')
-        parser.add_argument('--ssh-key', help="the path of private key for SSH login $host; if provided, Ansible will use the specified key as private key to SSH login the $host", default=None)
-
+        parser.add_argument('--ssh-key', help="the path of private key for SSH login $host; If provided, Ansible will use the specified key as private key to SSH login the $host", default=None)
+        parser.add_argument('--drop-db', help="drop the ui database", default=None)
     def _install_to_local(self, args):
+        ui_install_log = os.path.join(ctl.ZSTACK_UI_HOME, "logs")
+        create_log(ui_install_log,'ui-install.log')
         install_script = os.path.join(ctl.zstack_home, "WEB-INF/classes/tools/zstack_ui.bin")
         if not os.path.isfile(install_script):
             raise CtlError('cannot find %s, please make sure you have installed ZStack management node' % install_script)
-
+        drop_db = ''
+        if(args.drop_db):
+            drop_db='-D'
+        install_script = install_script+" "+drop_db
         info('found installation script at %s, start installing ZStack web UI' % install_script)
-        shell("runuser -l root -s /bin/bash -c 'bash %s'" % install_script)
+        shell("runuser -l root -s /bin/bash -c 'bash %s > %s'" % (install_script, os.path.join(ui_install_log,'ui-install.log')))
 
     def install_mini_ui(self):
         mini_bin = "/opt/zstack-dvd/{}/{}/zstack_mini_server.bin".format(ctl.BASEARCH, ctl.ZS_RELEASE)
