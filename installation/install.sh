@@ -2780,7 +2780,7 @@ create_apt_source(){
 deb file:///opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/ Packages/
 EOF
     mkdir -p /etc/apt/sources.list.d/tmp_bak
-    mv /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/tmp_bak 2>/dev/null
+    mv /etc/apt/sources.list.d/!\(zstack-local.list\) /etc/apt/sources.list.d/tmp_bak/ 2>/dev/null
     #Fix Ubuntu conflicted dpkg lock issue.
     if [ -f /etc/init.d/unattended-upgrades ]; then
         /etc/init.d/unattended-upgrades stop  >>$ZSTACK_INSTALL_LOG 2>&1
