@@ -1413,7 +1413,6 @@ class ShowStatusCmd(Command):
         self.name = 'status'
         self.description = 'show ZStack status and information.'
         ctl.register_command(self)
-
     def install_argparse_arguments(self, parser):
         parser.add_argument('--host', help='SSH URL, for example, root@192.168.0.10, to show the management node status on a remote machine')
         parser.add_argument('--quiet', '-q', help='Do not log this action.', action='store_true', default=False)
@@ -1646,7 +1645,6 @@ class DeployUIDBCmd(Command):
 
     def update_db_config(self):
         update_db_config_script = mysql_db_config_script
-
         fd, update_db_config_script_path = tempfile.mkstemp()
         os.fdopen(fd, 'w').write(update_db_config_script)
         info('update_db_config_script_path is: %s' % update_db_config_script_path)
@@ -2093,7 +2091,6 @@ class StartCmd(Command):
         def restart_console_proxy():
             cmd = ShellCmd("service zstack-consoleproxy restart")
             cmd(False)
-
         def check_mn_ip():
             mn_ip = ctl.read_property('management.server.ip')
             if not mn_ip:
@@ -7246,17 +7243,14 @@ class InstallZstackUiCmd(Command):
     def install_argparse_arguments(self, parser):
         parser.add_argument('--host', help='target host IP, for example, 192.168.0.212, to install ZStack web UI; if omitted, it will be installed on local machine')
         parser.add_argument('--ssh-key', help="the path of private key for SSH login $host; If provided, Ansible will use the specified key as private key to SSH login the $host", default=None)
-        parser.add_argument('--drop-db', help="drop the ui database", default=None)
     def _install_to_local(self, args):
         ui_install_log = os.path.join(ctl.ZSTACK_UI_HOME, "logs")
         create_log(ui_install_log,'ui-install.log')
         install_script = os.path.join(ctl.zstack_home, "WEB-INF/classes/tools/zstack_ui.bin")
+        params = " ".join(sys.argv[2:])
         if not os.path.isfile(install_script):
             raise CtlError('cannot find %s, please make sure you have installed ZStack management node' % install_script)
-        drop_db = ''
-        if(args.drop_db):
-            drop_db='-D'
-        install_script = install_script+" "+drop_db
+        install_script = install_script+" "+params
         info('found installation script at %s, start installing ZStack web UI' % install_script)
         shell("runuser -l root -s /bin/bash -c 'bash %s > %s'" % (install_script, os.path.join(ui_install_log,'ui-install.log')))
 
@@ -8185,6 +8179,7 @@ class StopUiCmd(Command):
     ZSTACK_UI_HOME = os.path.join(USER_ZSTACK_HOME_DIR, 'zstack-ui/')
     ZSTACK_UI_START = os.path.join(ZSTACK_UI_HOME, 'scripts/start.sh') 
     ZSTACK_UI_STOP = os.path.join(ZSTACK_UI_HOME, 'scripts/stop.sh') 
+    ZSTACK_UI_STATUS = os.path.join(ZSTACK_UI_HOME, 'scripts/status.sh') 
     def __init__(self):
         super(StopUiCmd, self).__init__()
         self.name = 'stop_ui'
@@ -8202,9 +8197,15 @@ class StopUiCmd(Command):
         if args.host != 'localhost':
             self._remote_stop(args.host)
             return
-        start_sh = 'sudo bash ' + StopUiCmd.ZSTACK_UI_STOP 
-        (status_code, status_output) = commands.getstatusoutput(start_sh)
-        if status_code != 0: 
+        stop_sh = 'runuser -l root -s /bin/bash -c "bash %s"' % StopUiCmd.ZSTACK_UI_STOP 
+        status_sh = 'runuser -l root -s /bin/bash -c "bash %s"' % StopUiCmd.ZSTACK_UI_STATUS
+        (stop_code, stop_output) = commands.getstatusoutput(stop_sh)
+        if stop_code != 0: 
+            info('failed to stop UI server since '+ stop_output)
+            return
+        (status_code, status_output) = commands.getstatusoutput(status_sh)
+        # some server not inactive got 512
+        if status_code == 512:
             info('failed to stop UI server since '+ status_output)
             return
         portfile = '/var/run/zstack/zstack-ui.port'
@@ -9034,7 +9035,7 @@ class StartUiCmd(Command):
         enableSSL = 'false'
         if args.enable_ssl:
             enableSSL = 'true'
-        scmd = Template("runuser -l root -s /bin/bash -c 'LOGGING_PATH=${LOGGING_PATH} bash ${STOP} && bash ${START} --mn.host=${MN_HOST} --mn.port=${MN_PORT} --webhook.host=${WEBHOOK_HOST} --webhook.port=${WEBHOOK_PORT} --server.port=${SERVER_PORT} --ssl.enabled=${SSL_ENABLE} --ssl.keyalias=${SSL_KEYALIAS} --ssl.keystore=${SSL_KEYSTORE} --ssl.keystore-type=${SSL_KEYSTORE_TYPE} --ssl.keystore-password=${SSL_KETSTORE_PASSWORD} --db.url=${DB_URL} --db.username=${DB_USERNAME} --db.password=${DB_PASSWORD} ${CUSTOM_PROPS} --ssl.pem=${ZSTACK_UI_KEYSTORE_PEM}'") 
+        scmd = Template("runuser -l root -s /bin/bash -c 'LOGGING_PATH=${LOGGING_PATH} bash ${STOP} && sleep 2 && bash ${START} --mn.host=${MN_HOST} --mn.port=${MN_PORT} --webhook.host=${WEBHOOK_HOST} --webhook.port=${WEBHOOK_PORT} --server.port=${SERVER_PORT} --ssl.enabled=${SSL_ENABLE} --ssl.keyalias=${SSL_KEYALIAS} --ssl.keystore=${SSL_KEYSTORE} --ssl.keystore-type=${SSL_KEYSTORE_TYPE} --ssl.keystore-password=${SSL_KETSTORE_PASSWORD} --db.url=${DB_URL} --db.username=${DB_USERNAME} --db.password=${DB_PASSWORD} ${CUSTOM_PROPS} --ssl.pem=${ZSTACK_UI_KEYSTORE_PEM}'") 
 
         scmd = scmd.substitute(LOGGING_PATH=args.log,STOP=StartUiCmd.ZSTACK_UI_STOP,START=StartUiCmd.ZSTACK_UI_START,MN_HOST=args.mn_host,MN_PORT=args.mn_port,WEBHOOK_HOST=args.webhook_host,WEBHOOK_PORT=args.webhook_port,SERVER_PORT=args.server_port,SSL_ENABLE=enableSSL,SSL_KEYALIAS=args.ssl_keyalias,SSL_KEYSTORE=args.ssl_keystore,SSL_KEYSTORE_TYPE=args.ssl_keystore_type,SSL_KETSTORE_PASSWORD=args.ssl_keystore_password,DB_URL=args.db_url,DB_USERNAME=args.db_username,DB_PASSWORD=args.db_password,ZSTACK_UI_KEYSTORE_PEM=ctl.ZSTACK_UI_KEYSTORE_PEM,CUSTOM_PROPS=custom_props)
 
