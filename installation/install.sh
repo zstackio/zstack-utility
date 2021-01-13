@@ -1183,25 +1183,7 @@ upgrade_zstack(){
             show_spinner sd_install_zstack_ui
 
             zstack-ctl config_ui --init
-
-            # try to deploy zstack_ui database, if already exists then do upgrade
-            UI_DATABASE_EXISTS='y'
-            mysql -uroot -p"$MYSQL_NEW_ROOT_PASSWORD" -h"$MANAGEMENT_IP" -e "use zstack_ui" >/dev/null 2>&1
-            if [ $? -ne 0 ]; then
-                UI_DATABASE_EXISTS='n'
-            fi
-
-            if [ -z $MYSQL_ROOT_PASSWORD ]; then
-                if [ x"$UI_DATABASE_EXISTS" = x'n' ]; then
-                    zstack-ctl deploy_ui_db --root-password="${MYSQL_NEW_ROOT_PASSWORD}" --zstack-ui-password="$MYSQL_UI_USER_PASSWORD" --host="$MANAGEMENT_IP" --port=${MYSQL_PORT} >>$ZSTACKCTL_INSTALL_LOG 2>&1
-                fi
-            else
-                if [ x"$UI_DATABASE_EXISTS" = x'n' ]; then
-                    zstack-ctl deploy_ui_db --root-password="${MYSQL_ROOT_PASSWORD}" --zstack-ui-password="$MYSQL_UI_USER_PASSWORD" --host="$MANAGEMENT_IP" --port=${MYSQL_PORT} >>$ZSTACKCTL_INSTALL_LOG 2>&1
-                fi
-            fi
-
-            show_spinner uz_upgrade_zstack_ui_db
+            start_zstack_ui
         fi
 
         # Who is the new UI? zstack-dashboard(1.x) or zstack-ui(2.0)
