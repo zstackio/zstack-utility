@@ -68,21 +68,22 @@ class VirtualRouterPlugin(kvmagent.KvmAgent):
         socket_path = cmd.socketPath
         
         s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 1)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 4096) #4k
         if cmd.bootStrapInfoTimeout is not None:
             timeout = int(cmd['bootStrapInfoTimeout'])
             s.settimeout(timeout)
         buf_size = s.getsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF)
         info_len = len(info)
-        if info_len < buf_size:
-            # as there is no fflush() in python, we have to create a message
-            # matching to the socket buffer to force it to send the message immediately
-            padding_len = buf_size - info_len
+        # as there is no fflush() in python, we have to create a message
+        # matching to the socket buffer to force it to send the message immediately
+        if info_len % buf_size != 0:
+            padding_len = buf_size * ((info_len / buf_size) + 1) - info_len
             padding = ' ' * padding_len
             info = '%s%s' % (info, padding)
 
         try:
-            logger.debug('send appliance vm bootstrap info to %s\nsize:%d\n%s' % (socket_path, len(info), info))
+            logger.debug('send appliance vm bootstrap info to %s ,buffer size %d \nsize:%d\n%s' %
+                         (socket_path, buf_size, len(info), info))
             s.connect(socket_path)
             s.sendall(info)
         finally:
