@@ -1180,6 +1180,24 @@ upgrade_zstack(){
             rm -f /etc/init.d/zstack-ui
             show_spinner sd_install_zstack_ui
             zstack-ctl config_ui --init
+            # try to deploy zstack_ui database, if already exists then do upgrade
+            UI_DATABASE_EXISTS='y'
+            mysql -uroot -p"$MYSQL_NEW_ROOT_PASSWORD" -h"$MANAGEMENT_IP" -e "use zstack_ui" >/dev/null 2>&1
+            if [ $? -ne 0 ]; then
+                UI_DATABASE_EXISTS='n'
+            fi
+
+            if [ -z $MYSQL_ROOT_PASSWORD ]; then
+                if [ x"$UI_DATABASE_EXISTS" = x'n' ]; then
+                    zstack-ctl deploy_ui_db --root-password="${MYSQL_NEW_ROOT_PASSWORD}" --zstack-ui-password="$MYSQL_UI_USER_PASSWORD" --host="$MANAGEMENT_IP" --port=${MYSQL_PORT} >>$ZSTACKCTL_INSTALL_LOG 2>&1
+                fi
+            else
+                if [ x"$UI_DATABASE_EXISTS" = x'n' ]; then
+                    zstack-ctl deploy_ui_db --root-password="${MYSQL_ROOT_PASSWORD}" --zstack-ui-password="$MYSQL_UI_USER_PASSWORD" --host="$MANAGEMENT_IP" --port=${MYSQL_PORT} >>$ZSTACKCTL_INSTALL_LOG 2>&1
+                fi
+            fi
+
+            show_spinner uz_upgrade_zstack_ui_db
         fi
     elif [ -f /etc/init.d/zstack-ui ]; then
         # fill CATALINA_ZSTACK_TOOLS with old zstack_ui.bin if not exists
@@ -2040,7 +2058,7 @@ install_db(){
     #deploy initial database
     show_spinner cs_deploy_db
     #deploy initial database of zstack_ui
-    #show_spinner cs_deploy_ui_db
+    show_spinner cs_deploy_ui_db
     #check hostname and ip again
     ia_check_ip_hijack
     cs_clean_ssh_tmp_key $ssh_tmp_dir
