@@ -1084,6 +1084,7 @@ download_zstack(){
     echo_title "Get ${PRODUCT_NAME}"
     echo ""
     show_download iz_download_zstack
+    show_spinner uz_stop_zstack_ui
     show_spinner iz_unpack_zstack
 }
 
@@ -1154,7 +1155,6 @@ upgrade_zstack(){
     do_config_ansible
     show_spinner is_enable_chronyd
     show_spinner uz_stop_zstack
-    show_spinner uz_stop_zstack_ui
     show_spinner uz_upgrade_zstack
     show_spinner upgrade_tomcat_security
     if [[ $REDHAT_OS =~ $OS ]]; then
@@ -1172,29 +1172,14 @@ upgrade_zstack(){
     show_spinner cs_append_iptables
     show_spinner cs_setup_nginx
     show_spinner cs_enable_usb_storage
-
     # if -i is used, then do not upgrade zstack ui
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
         if [ x"$UI_INSTALLATION_STATUS" = x'y' -o x"$DASHBOARD_INSTALLATION_STATUS" = x'y' ]; then
             echo "upgrade zstack web ui" >>$ZSTACK_INSTALL_LOG
             rm -f /etc/init.d/zstack-dashboard
             rm -f /etc/init.d/zstack-ui
-
             show_spinner sd_install_zstack_ui
-
             zstack-ctl config_ui --init
-            start_zstack_ui
-        fi
-
-        # Who is the new UI? zstack-dashboard(1.x) or zstack-ui(2.0)
-        if [ -f /etc/init.d/zstack-dashboard ]; then
-          UI_INSTALLATION_STATUS='n'
-          DASHBOARD_INSTALLATION_STATUS='y'
-        elif [ -f /etc/init.d/zstack-ui ]; then
-          UI_INSTALLATION_STATUS='y'
-          DASHBOARD_INSTALLATION_STATUS='n'
-        else
-          fail "failed to upgrade zstack web ui"
         fi
     elif [ -f /etc/init.d/zstack-ui ]; then
         # fill CATALINA_ZSTACK_TOOLS with old zstack_ui.bin if not exists
@@ -1268,32 +1253,12 @@ upgrade_zstack(){
 
     #When using -i option, will not upgrade kariosdb and not start zstack
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
+
         #when using -k option, will not start zstack.
         if [ -z $NEED_KEEP_DB ] && [ $CURRENT_STATUS = 'y' ] && [ -z $NOT_START_ZSTACK ]; then
             show_spinner sz_start_zstack
-        fi
-
-        if [ x"$UI_CURRENT_STATUS" = x'y' -o x"$DASHBOARD_CURRENT_STATUS" = x'y' ]; then
-          if [ x"$UI_INSTALLATION_STATUS" = x'y' ]; then
-              echo "start zstack-ui" >>$ZSTACK_INSTALL_LOG
-              show_spinner sd_start_zstack_ui
-
-              #check ui status after upgrade
-              zstack-ctl status 2>/dev/null |grep 'UI status'|grep Running >/dev/null 2>&1
-              if [ $? -eq 0 ]; then
-                  UI_CURRENT_STATUS='y'
-              else
-                  UI_CURRENT_STATUS='n'
-              fi
-          elif [ x"$DASHBOARD_INSTALLATION_STATUS" = x'y' ]; then
-              echo "start dashboard" >>$ZSTACK_INSTALL_LOG
-              show_spinner sd_start_dashboard
-
-              /etc/init.d/zstack-dashboard status | grep -i 'running' > /dev/null 2>&1
-              if [ $? -eq 0 ]; then
-                  DASHBOARD_CURRENT_STATUS='y'
-              fi
-          fi
+            echo "start zstack-ui" >>$ZSTACK_INSTALL_LOG
+            show_spinner sd_start_zstack_ui
         fi
     fi
 }
@@ -1704,10 +1669,11 @@ uz_stop_zstack(){
 uz_stop_zstack_ui(){
     echo_subtitle "Stop ${PRODUCT_NAME} UI"
     zstack-ctl stop_ui >>$ZSTACK_INSTALL_LOG 2>&1
+    sleep 3
     # make sure zstack ui is stopped
-    ps axu | grep zstack_ui_server | grep -v 'grep' >>$ZSTACK_INSTALL_LOG 2>&1
+    zstack-ctl ui_status 2>/dev/null |grep 'UI status'|grep Running >/dev/null 2>&1
     if [ $? -eq 0 ]; then
-        fail "Failed to stop ${PRODUCT_NAME} UI!"
+        fail "Failed to stop ${PRODUCT_NAME} UI! Maybe run zstack-ctl stop_ui by youself"
     fi
     if [ -d ${LEGACY_MINI_INSTALL_ROOT} -o -d ${MINI_INSTALL_ROOT} ]; then
         systemctl stop zstack-mini
@@ -2707,7 +2673,6 @@ sd_start_zstack_ui(){
     zstack_home=$ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_PATH
     ui_logging_path=$zstack_home/../../logs/
     cd /
-    zstack-ctl stop_ui >>$ZSTACK_INSTALL_LOG 2>&1
     ui_mode=`zstack-ctl get_configuration ui_mode`
     if [ x"$ui_mode" = x"zstack" ];then
         zstack-ctl start_ui >>$ZSTACK_INSTALL_LOG 2>&1
@@ -3578,21 +3543,17 @@ if [ x"$UPGRADE" = x'y' ]; then
             CURRENT_STATUS='n'
         fi
     fi
-
     UI_CURRENT_STATUS='n'
-    UI_INSTALLATION_STATUS='n'
     # for zstack-mini-1.0.0, 'zstack-ctl stop' cannot stop mini-server
     [ -d /usr/local/zstack-mini ] && systemctl stop zstack-mini
-    if [ -f /etc/init.d/zstack-ui ]; then
-        UI_INSTALLATION_STATUS='y'
-        zstack-ctl status 2>/dev/null|grep -q 'UI status' >/dev/null 2>&1
+    UI_INSTALLATION_STATUS='y'
+    zstack-ctl status 2>/dev/null|grep -q 'UI status' >/dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        zstack-ctl status 2>/dev/null |grep 'UI status'|grep Running >/dev/null 2>&1
         if [ $? -eq 0 ]; then
-            zstack-ctl status 2>/dev/null |grep 'UI status'|grep Running >/dev/null 2>&1
-            if [ $? -eq 0 ]; then
-                UI_CURRENT_STATUS='y'
-            else
-                UI_CURRENT_STATUS='n'
-            fi
+            UI_CURRENT_STATUS='y'
+        else
+            UI_CURRENT_STATUS='n'
         fi
     fi
 
