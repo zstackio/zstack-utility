@@ -2269,3 +2269,12 @@ def write_uuids(type, str):
     else:
         uuids += "\n%s" % str
     write_file('/etc/zstack-uuids', uuids.strip())
+
+def cal_file_utime(path):
+    if not os.path.exists(path):
+        return None
+
+    utime = os.stat(path).st_mtime
+    time1 = datetime.datetime.strptime(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(utime)), "%Y-%m-%d %H:%M:%S")
+    time2 = datetime.datetime.strptime(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time())), "%Y-%m-%d %H:%M:%S")
+    return (time2 - time1).seconds
