@@ -328,9 +328,12 @@ class DhcpEnv(object):
         if ret != 0:
             bash_errorout('ip link set {{INNER_DEV}} netns {{NAMESPACE_NAME}}')
 
+        #dhcp namespace should not add ipv6 address based on router advertisement
+        bash_errorout("ip netns exec {{NAMESPACE_NAME}} sysctl -w net.ipv6.conf.all.accept_ra=0")
+        bash_errorout("ip netns exec {{NAMESPACE_NAME}} sysctl -w net.ipv6.conf.{{INNER_DEV}}.accept_ra=0")
         ret = bash_r('ip netns exec {{NAMESPACE_NAME}} ip addr show {{INNER_DEV}} | grep -w {{DHCP_IP}} > /dev/null')
         ret6 = bash_r('ip netns exec {{NAMESPACE_NAME}} ip addr show {{INNER_DEV}} | grep -w {{DHCP6_IP}} > /dev/null')
-        if (ret != 0 and PREFIX_LEN != None) or (ret6 != 0 and PREFIX6_LEN != None):
+        if (ret != 0 and PREFIX_LEN is not None) or (ret6 != 0 and PREFIX6_LEN is not None):
             bash_errorout('ip netns exec {{NAMESPACE_NAME}} ip addr flush dev {{INNER_DEV}}')
             if DHCP_IP is not None:
                 bash_errorout('ip netns exec {{NAMESPACE_NAME}} ip addr add {{DHCP_IP}}/{{PREFIX_LEN}} dev {{INNER_DEV}}')
@@ -493,6 +496,14 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         self._restart_dnsmasq(cmd.nameSpace, conf_file_path)
 
     @in_bash
+    def _delete_dhcp(self, namespace):
+        self._delete_dhcp4(namespace)
+        self._delete_dhcp6(namespace)
+        bash_r("ps aux | grep -v grep | grep -w dnsmasq | grep -w %s | awk '{printf $2}' | xargs -r kill -9" % namespace)
+        bash_r(
+            "ip netns | grep -w %s | grep -v grep | awk '{print $1}' | xargs -r ip netns del %s" % (namespace, namespace))
+
+    @in_bash
     def _delete_dhcp6(self, namspace):
         items = namspace.split('_')
         l3_uuid = items[-1]
@@ -515,10 +526,6 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         if ret != 0:
             bash_r(EBTABLES_CMD + ' -D FORWARD -j {{DHCP6_CHAIN_NAME}}')
             bash_r(EBTABLES_CMD + ' -X {{DHCP6_CHAIN_NAME}}')
-
-        bash_r("ps aux | grep -v grep | grep -w dnsmasq | grep -w %s | awk '{printf $2}' | xargs -r kill -9" % namspace)
-        bash_r(
-            "ip netns | grep -w %s | grep -v grep | awk '{print $1}' | xargs -r ip netns del %s" % (namspace, namspace))
 
     @in_bash
     def _delete_dhcp4(self, namspace):
@@ -546,17 +553,11 @@ tag:{{TAG}},option:dns-server,{{DNS}}
                 bash_r(EBTABLES_CMD + ' -D FORWARD -j {{CHAIN_NAME}}')
                 bash_r(EBTABLES_CMD + ' -X {{CHAIN_NAME}}')
 
-        bash_r("ps aux | grep -v grep | grep -w dnsmasq | grep -w %s | awk '{printf $2}' | xargs -r kill -9" % namspace)
-        bash_r(
-            "ip netns | grep -w %s | grep -v grep | awk '{print $1}' | xargs -r ip netns del %s" % (namspace, namspace))
-
     @kvmagent.replyerror
     @in_bash
     def delete_dhcp_namespace(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        # don't care about ip4, ipv6 because namespaces are different for l3 networks
-        self._delete_dhcp4(cmd.namespaceName)
-        self._delete_dhcp6(cmd.namespaceName)
+        self._delete_dhcp(cmd.namespaceName)
 
         return jsonobject.dumps(DeleteNamespaceRsp())
 
@@ -720,8 +721,8 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         html_folder = os.path.join(self.USERDATA_ROOT, cmd.namespaceName)
         linux.rm_dir_force(html_folder)
 
-        if self.userData_vms[cmd.l3NetworkUuid] is not None:
-            del self.userData_vms[cmd.l3NetworkUuid][:]
+        if cmd.l3NetworkUuid in self.userData_vms:
+            del self.userData_vms[cmd.l3NetworkUuid]
 
         return jsonobject.dumps(kvmagent.AgentResponse())
 
@@ -1250,7 +1251,7 @@ mimetype.assign = (
         inet6 fe80::fc34:72ff:fe29:3564/64 scope link
         valid_lft forever preferred_lft forever
         '''
-        r, dhcp_ip = bash_ro("ip netns exec {{namespace_name}} ip add | grep -w inet | grep -v 169.254 | awk '{print $2}' | awk -F '/' '{print $1}' | head -1")
+        r, dhcp_ip = bash_ro("ip netns exec {{namespace_name}} ip -4 add | grep -w inet | grep -v 169.254 | awk '{print $2}' | awk -F '/' '{print $1}' | head -1")
         if r != 0:
             return ""
         return dhcp_ip.strip(" \t\r\n")
@@ -1258,7 +1259,7 @@ mimetype.assign = (
     @in_bash
     def _get_dhcp6_server_ip_from_namespace(self, namespace_name):
         r, dhcp_ip = bash_ro(
-            "ip netns exec {{namespace_name}} ip add | grep -w inet6 | grep -v fe80:: | awk '{print $2}' | awk -F '/' '{print $1}' | head -1")
+            "ip netns exec {{namespace_name}} ip -6 add | grep -w inet6 | grep -v fe80:: | awk '{print $2}' | awk -F '/' '{print $1}' | head -1")
         if r != 0:
             return ""
         return dhcp_ip.strip(" \t\r\n")
@@ -1277,13 +1278,18 @@ mimetype.assign = (
         p.prefixLen = cmd.prefixLen
         p.addressMode = cmd.addressMode
 
+        dhcpServerIpChanged = False
+        dhcp6ServerIpChanged = False
         old_dhcp_ip = self._get_dhcp_server_ip_from_namespace(cmd.namespaceName)
         if old_dhcp_ip != "" and old_dhcp_ip != cmd.dhcpServerIp:
-            self._delete_dhcp4(cmd.namespaceName)
+            dhcpServerIpChanged = True
 
         old_dhcp6_ip = self._get_dhcp6_server_ip_from_namespace(cmd.namespaceName)
         if old_dhcp6_ip != "" and old_dhcp6_ip != cmd.dhcp6ServerIp:
-            self._delete_dhcp6(cmd.namespaceName)
+            dhcp6ServerIpChanged = True
+
+        if dhcpServerIpChanged or dhcp6ServerIpChanged:
+            self._delete_dhcp()
 
         p.prepare()
 
