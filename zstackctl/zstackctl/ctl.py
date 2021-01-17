@@ -739,6 +739,8 @@ class Ctl(object):
     LOGGER_FILE = "zstack-ctl.log"
     # always install zstack-ui inside zstack_install_root
     ZSTACK_UI_HOME = os.path.join(USER_ZSTACK_HOME_DIR, 'zstack-ui/')
+    ZSTACK_UI_DB = os.path.join(ZSTACK_UI_HOME, 'scripts/deployuidb.sh') 
+    ZSTACK_UI_DB_MIGRATE = os.path.join(ZSTACK_UI_HOME, 'db') 
     ZSTACK_UI_KEYSTORE = ZSTACK_UI_HOME + 'ui.keystore.p12'
     ZSTACK_UI_KEYSTORE_CP = ZSTACK_UI_KEYSTORE + '.cp'
     # for console proxy https
@@ -1627,7 +1629,7 @@ class DeployDBCmd(Command):
         info('Successfully deployed ZStack database and updated corresponding DB information in %s' % property_file_path)
 
 class DeployUIDBCmd(Command):
-    DEPLOY_UI_DB_SCRIPT_PATH = "WEB-INF/classes/deployuidb.sh"
+    DEPLOY_UI_DB_SCRIPT_PATH = Ctl.ZSTACK_UI_DB
     ZSTACK_UI_PROPERTY_FILE = "zstack.ui.properties"
 
     def __init__(self):
@@ -7817,7 +7819,7 @@ class UpgradeUIDbCmd(Command):
         if not os.path.exists(flyway_path):
             raise CtlError('cannot find %s. Have you run upgrade_management_node?' % flyway_path)
 
-        upgrading_schema_dir = os.path.join(ctl.ZSTACK_UI_HOME, 'tmp/WEB-INF/classes/db/migration/')
+        upgrading_schema_dir = Ctl.ZSTACK_UI_DB_MIGRATE
         if not os.path.exists(upgrading_schema_dir):
             raise CtlError('cannot find %s' % upgrading_schema_dir)
 
@@ -8343,6 +8345,7 @@ class UiStatusCmd(Command):
     USER_ZSTACK_HOME_DIR = os.path.expanduser('~zstack')
     ZSTACK_UI_HOME = os.path.join(USER_ZSTACK_HOME_DIR, 'zstack-ui/')
     ZSTACK_UI_STATUS = os.path.join(ZSTACK_UI_HOME, 'scripts/status.sh') 
+    ZSTACK_UI_SSL = 'http'
     def __init__(self):
         super(UiStatusCmd, self).__init__()
         self.name = "ui_status"
@@ -8396,8 +8399,8 @@ class UiStatusCmd(Command):
             if not default_ip:
                 info('UI status: %s ' % (colored('Running', 'green')))
             else:
-                info('UI status: %s  //%s:%s' % (
-                    colored('Running', 'green'), default_ip, port))
+                info('UI status: %s  %s//%s:%s' % (
+                    colored('Running', 'green'),UiStatusCmd.ZSTACK_UI_SSL, default_ip, port))
 
 # For VDI UI 2.1
 class VDIUiStatusCmd(Command):
@@ -9059,6 +9062,11 @@ class StartUiCmd(Command):
             shell('zstack-ctl stop_ui')
             linux.rm_dir_force("/var/run/zstack/zstack-ui.port")
             return False
+        if args.enable_ssl:
+            UiStatusCmd.ZSTACK_UI_SSL = 'https'
+        else:
+            UiStatusCmd.ZSTACK_UI_SSL = 'http'
+            
 
         default_ip = get_default_ip()
         if not default_ip:
@@ -9126,7 +9134,7 @@ class ConfigUiCmd(Command):
         parser.add_argument('--mn-host', help="ZStack Management Host IP. [DEFAULT] 127.0.0.1")
         parser.add_argument('--mn-port', help="ZStack Management Host port. [DEFAULT] 8080")
         parser.add_argument('--webhook-host', help="Webhook Host IP. [DEFAULT] 127.0.0.1")
-        parser.add_argument('--webhook-port', help="Webhook Host port. [DEFAULT] 5000")
+        parser.add_argument('--webhook-port', help="Webhook Host port. [DEFAULT] 5001")
         parser.add_argument('--server-port', help="UI server port. [DEFAULT] 5000")
         parser.add_argument('--ui-address', help="ZStack UI Address.")
         parser.add_argument('--log', help="UI log folder. [DEFAULT] %s" % ui_logging_path)
@@ -9177,6 +9185,12 @@ class ConfigUiCmd(Command):
                 ctl.write_ui_property("webhook_port", '5001')
             if not ctl.read_ui_property("server_port"):
                 ctl.write_ui_property("server_port", '5000')
+            # from 4.0 set webhook_port to 5001,since the 5000 is for nginx
+            if ctl.read_ui_property("webhook_port") == ctl.read_ui_property("server_port"):
+                info('webhook port same with server port in zstack.ui.properties, auto set webhook port to server port +1')
+                port = ctl.read_ui_property("server_port")
+                port = str(int(port)+1)
+                ctl.write_ui_property("webhook_port", port)
             if not ctl.read_ui_property("log"):
                 ctl.write_ui_property("log", ui_logging_path)
             if not ctl.read_ui_property("enable_ssl"):
