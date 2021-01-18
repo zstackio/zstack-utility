@@ -13,6 +13,8 @@ import tempfile
 import time
 import uuid
 import string
+import socket
+import sys
 
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
@@ -549,6 +551,7 @@ class HostPlugin(kvmagent.KvmAgent):
     GET_DEV_CAPACITY = "/host/dev/capacity"
     ADD_BRIDGE_FDB_ENTRY_PATH = "/bridgefdb/add"
     DEPLOY_COLO_QEMU_PATH = "/deploy/colo/qemu"
+    UPDATE_CONFIGURATION_PATH = "/host/update/configuration"
 
     host_network_facts_cache = {}  # type: dict[float, list[list, list]]
     IS_YUM = False
@@ -609,6 +612,7 @@ class HostPlugin(kvmagent.KvmAgent):
         self.host_uuid = cmd.hostUuid
         self.config[kvmagent.HOST_UUID] = self.host_uuid
         self.config[kvmagent.SEND_COMMAND_URL] = cmd.sendCommandUrl
+        self.config[kvmagent.VERSION] = cmd.version
         Report.serverUuid = self.host_uuid
         Report.url = cmd.sendCommandUrl
         logger.debug(http.path_msg(self.CONNECT_PATH, 'host[uuid: %s] connected' % cmd.hostUuid))
@@ -626,12 +630,50 @@ class HostPlugin(kvmagent.KvmAgent):
         vm_plugin.cleanup_stale_vnc_iptable_chains()
         apply_iptables_result = self.apply_iptables_rules(cmd.iptablesRules)
         rsp.iptablesSucc = apply_iptables_result
+
+        if self.host_socket is not None:
+            self.host_socket.close()
+        
+        try:
+            self.host_socket = socket.socket()
+        except socket.error as e:
+            self.host_socket = None
+            
+        ip_address = cmd.sendCommandUrl.split('/')[2].split(':')[0]
+        try:
+            self.host_socket.connect((ip_address, cmd.tcpServerPort))
+
+        except socket.error as msg:
+            self.host_socket.close()
+            self.host_socket = None
+
+        self.start_write_to_server()
+
         return jsonobject.dumps(rsp)
+
+    @thread.AsyncThread
+    def start_write_to_server(self):
+        pkt_counter = 0
+        while True:
+            try:
+                self.host_socket.send(str(pkt_counter))
+            except Exception as e:
+                logger.debug("failed to send pkg to mn")
+                break
+
+            if pkt_counter == sys.maxint:
+                pkt_counter = 0
+
+            pkt_counter += 1
+            time.sleep(2)
+
 
     @kvmagent.replyerror
     def ping(self, req):
         rsp = PingResponse()
         rsp.hostUuid = self.host_uuid
+        rsp.sendCommandUrl = self.config[kvmagent.SEND_COMMAND_URL]
+        rsp.version = self.config[kvmagent.VERSION]
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -1821,6 +1863,16 @@ done
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def update_host_configuration(self, req):
+        rsp = kvmagent.AgentResponse()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        self.config[kvmagent.SEND_COMMAND_URL] = cmd.sendCommandUrl
+        Report.url = cmd.sendCommandUrl
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     def deploy_colo_qemu(self, req):
         rsp = kvmagent.AgentResponse()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -2004,6 +2056,7 @@ done
 
     def start(self):
         self.host_uuid = None
+        self.host_socket = None
 
         http_server = kvmagent.get_http_server()
         http_server.register_sync_uri(self.CONNECT_PATH, self.connect)
@@ -2043,6 +2096,7 @@ done
         http_server.register_async_uri(self.GET_DEV_CAPACITY, self.get_dev_capacity)
         http_server.register_async_uri(self.ADD_BRIDGE_FDB_ENTRY_PATH, self.add_bridge_fdb_entry)
         http_server.register_async_uri(self.DEPLOY_COLO_QEMU_PATH, self.deploy_colo_qemu)
+        http_server.register_async_uri(self.UPDATE_CONFIGURATION_PATH, self.update_host_configuration)
 
         self.heartbeat_timer = {}
         self.libvirt_version = linux.get_libvirt_version()
@@ -2052,6 +2106,9 @@ done
             os.unlink(filepath)
 
     def stop(self):
+        if self.host_socket is not None:
+            self.host_socket.close()
+
         pass
 
     def configure(self, config):

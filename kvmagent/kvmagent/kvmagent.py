@@ -183,3 +183,4 @@ class KvmDaemon(daemon.Daemon):
 
 SEND_COMMAND_URL = 'SEND_COMMAND_URL'
 HOST_UUID = 'HOST_UUID'
+VERSION = 'VERSION'
