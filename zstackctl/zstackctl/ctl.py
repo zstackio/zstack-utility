@@ -2021,8 +2021,14 @@ class StartCmd(Command):
         else:
             warn("Can't get system memory size from /proc/meminfo")
 
+    def check_astack_link(self):
+        """for astack oem"""
+        shell_no_pipe("[ -L /usr/local/astack ] || ln -s /usr/local/zstack /usr/local/astack && true;" \
+                      "[ -L /var/lib/astack ] || ln -s /var/lib/zstack /var/lib/astack && true")
+
     def run(self, args):
         self.check_cpu_mem()
+        self.check_astack_link()
         if args.host:
             self._start_remote(args)
             return
