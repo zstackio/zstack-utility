@@ -33,7 +33,9 @@ from zstacklib.utils.report import Report
 
 host_arch = platform.machine()
 IS_AARCH64 = host_arch == 'aarch64'
-GRUB_FILES = ["/boot/grub2/grub.cfg", "/boot/grub/grub.cfg", "/etc/grub2-efi.cfg", "/etc/grub-efi.cfg", "/boot/efi/EFI/centos/grub.cfg"]
+IS_MIPS64EL = host_arch == 'mips64el'
+GRUB_FILES = ["/boot/grub2/grub.cfg", "/boot/grub/grub.cfg", "/etc/grub2-efi.cfg",
+              "/etc/grub-efi.cfg", "/boot/efi/EFI/centos/grub.cfg", "/boot/efi/EFI/kylin/grub.cfg"]
 IPTABLES_CMD = iptables.get_iptables_cmd()
 
 class ConnectResponse(kvmagent.AgentResponse):
@@ -652,6 +654,17 @@ class HostPlugin(kvmagent.KvmAgent):
             # in case lscpu doesn't show cpu max mhz
             cpuMHz = "2500.0000" if cpuMHz.strip() == '' else cpuMHz
             rsp.cpuGHz = '%.2f' % (float(cpuMHz) / 1000)
+        elif IS_MIPS64EL:
+            rsp.hvmCpuFlag = 'vt'
+            rsp.cpuModelName = self._get_host_cpu_model()
+
+            host_cpu_info = shell.call("grep -m2 -P -o -i '(model name|cpu MHz)\s*:\s*\K.*' /proc/cpuinfo").splitlines()
+            host_cpu_model_name = host_cpu_info[0]
+            rsp.hostCpuModelName = host_cpu_model_name
+
+            transient_cpuGHz = '%.2f' % (float(host_cpu_info[1]) / 1000)
+            static_cpuGHz_re = re.search('[0-9.]*GHz', host_cpu_model_name)
+            rsp.cpuGHz = static_cpuGHz_re.group(0)[:-3] if static_cpuGHz_re else transient_cpuGHz
         else:
             if shell.run('grep vmx /proc/cpuinfo') == 0:
                 rsp.hvmCpuFlag = 'vmx'
@@ -1055,7 +1068,7 @@ if __name__ == "__main__":
 
     def _close_hugepage(self):
         disable_hugepage_script = '''#!/bin/sh
-grubs=("/boot/grub2/grub.cfg" "/boot/grub/grub.cfg" "/etc/grub2-efi.cfg" "/etc/grub-efi.cfg", "/boot/efi/EFI/centos/grub.cfg")
+grubs=("/boot/grub2/grub.cfg" "/boot/grub/grub.cfg" "/etc/grub2-efi.cfg" "/etc/grub-efi.cfg", "/boot/efi/EFI/centos/grub.cfg", "/boot/efi/EFI/kylin/grub.cfg")
 
 # config nr_hugepages
 sysctl -w vm.nr_hugepages=0
@@ -1109,7 +1122,7 @@ done
         pageSize = cmd.pageSize
         reserveSize = cmd.reserveSize
         enable_hugepage_script = '''#!/bin/sh
-grubs=("/boot/grub2/grub.cfg" "/boot/grub/grub.cfg" "/etc/grub2-efi.cfg" "/etc/grub-efi.cfg", "/boot/efi/EFI/centos/grub.cfg")
+grubs=("/boot/grub2/grub.cfg" "/boot/grub/grub.cfg" "/etc/grub2-efi.cfg" "/etc/grub-efi.cfg", "/boot/efi/EFI/centos/grub.cfg", "/boot/efi/EFI/kylin/grub.cfg")
 
 # byte to mib
 let "reserveSize=%s/1024/1024"
@@ -1128,13 +1141,13 @@ echo 3 > /proc/sys/vm/drop_caches
 echo always > /sys/kernel/mm/transparent_hugepage/enabled
 
 # config grub
-sed -i '/GRUB_CMDLINE_LINUX=/s/\"$/ transparent_hugepage=always hugepagesz=\'\"$pageSize\"\'M hugepages=\'\"$pageNum\"\'\"/g' /etc/default/grub
+sed -i '/GRUB_CMDLINE_LINUX=/s/\"$/ transparent_hugepage=always default_hugepagesz=\'\"$pageSize\"\'M hugepagesz=\'\"$pageSize\"\'M hugepages=\'\"$pageNum\"\'\"/g' /etc/default/grub
 
 #config boot grub
 for var in ${grubs[@]} 
 do 
    if [ -f $var ]; then
-       sed -i '/^[[:space:]]*linux/s/$/ transparent_hugepage=always hugepagesz=\'\"$pageSize\"\'M hugepages=\'\"$pageNum\"\'/g' $var
+       sed -i '/^[[:space:]]*linux/s/$/ transparent_hugepage=always default_hugepagesz=\'\"$pageSize\"\'M hugepagesz=\'\"$pageSize\"\'M hugepages=\'\"$pageNum\"\'/g' $var
    fi    
 done
 ''' % (reserveSize, pageSize)

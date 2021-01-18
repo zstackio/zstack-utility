@@ -17,7 +17,7 @@ LEGACY_MINI_INSTALL_ROOT="/usr/local/zstack-mini/"
 export TERM=xterm
 
 OS=''
-REDHAT_OS="CENTOS6 CENTOS7 RHEL7 ALIOS7 ISOFT4"
+REDHAT_OS="CENTOS6 CENTOS7 RHEL7 ALIOS7 ISOFT4 KYLIN10"
 DEBIAN_OS="UBUNTU14.04 UBUNTU16.04 UBUNTU KYLIN4.0.2 DEBIAN9 UOS20"
 SUPPORTED_OS="$REDHAT_OS $DEBIAN_OS"
 REDHAT_WITHOUT_CENTOS6=`echo $REDHAT_OS |sed s/CENTOS6//`
@@ -484,6 +484,7 @@ udpate_tomcat_info() {
             if [ $? -eq 0 ]; then
                 rm -f $jar_file
                 mv catalina.jar $jar_file
+                chmod a+r $jar_file
                 echo "Tomcat server info updated." >>$ZSTACK_INSTALL_LOG
             else
                 echo "Zip $jar_file error." >>$ZSTACK_INSTALL_LOG
@@ -701,7 +702,7 @@ check_system(){
         grep -q 'Alibaba Group Enterprise Linux' /etc/system-release && OS="ALIOS7"
         grep -q 'iSoft Linux release 4' /etc/system-release && OS="ISOFT4"
         grep -q 'NeoKylin Linux' /etc/system-release && OS="RHEL7"
-        grep -q 'Kylin Linux Advanced Server release V10' /etc/system-release && OS="RHEL7"
+        grep -q 'Kylin Linux Advanced Server release V10' /etc/system-release && OS="KYLIN10"
         if [[ -z "$OS" ]];then
             fail2 "Host OS checking failure: your system is: `cat /etc/redhat-release`, $PRODUCT_NAME management node only supports $SUPPORTED_OS currently"
         elif [[ $OS == "CENTOS7" ]];then
@@ -829,8 +830,12 @@ do_enable_sudo(){
 }
 
 do_config_limits(){
-nr_open=`sysctl -n fs.nr_open`
-cat > /etc/security/limits.d/10-zstack.conf << EOF
+    if [ "$OS" == "KYLIN10" ]; then
+      nr_open=1048576
+    else
+      nr_open=`sysctl -n fs.nr_open`
+    fi
+    cat > /etc/security/limits.d/10-zstack.conf << EOF
 zstack  soft  nofile  $nr_open
 zstack  hard  nofile  $nr_open
 zstack  soft  nproc  $nr_open
@@ -1348,12 +1353,18 @@ iz_install_unzip(){
         pass
         return
     fi
-    if [ "$OS" = "CENTOS6" ]; then
-        rpm -ivh $unzip_el6_rpm >>$ZSTACK_INSTALL_LOG 2>&1
+
+    if [ ! -z $ZSTACK_YUM_REPOS ];then
+        yum clean metadata >/dev/null 2>&1
+        yum -y --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS install unzip>>$ZSTACK_INSTALL_LOG 2>&1
     else
-        rpm -ivh $unzip_el7_rpm >>$ZSTACK_INSTALL_LOG 2>&1
+        yum clean metadata >/dev/null 2>&1
+        yum -y install $req_pkgs>>$ZSTACK_INSTALL_LOG 2>&1
     fi
-    [ $? -ne 0 ] && fail "Install unzip fail."
+
+    if [ $? -ne 0 ]; then
+        fail "Install unzip fail."
+    fi
     pass
 }
 
@@ -1391,8 +1402,6 @@ is_install_general_libs_rh(){
             net-tools \
             bash-completion \
             dmidecode \
-            mysql \
-            mcelog \
             MySQL-python \
             ipmitool \
             nginx \
@@ -1403,8 +1412,10 @@ is_install_general_libs_rh(){
             gnutls-utils \
             avahi-tools \
             audit"
-
-    always_update_list="mysql openssh"
+    if [ "$BASEARCH" == "x86_64" ]; then
+      deps_list="${deps_list} mcelog"
+    fi
+    always_update_list="openssh"
     missing_list=`LANG=en_US.UTF-8 && rpm -q $deps_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
 
     [ x"$ZSTACK_OFFLINE_INSTALL" = x'y' ] && missing_list=$deps_list
@@ -2144,13 +2155,13 @@ EOF
 
     crontab -l 2>/dev/null |grep 'zstack-ctl dump_mysql' >/dev/null
     if [ $? -ne 0 ]; then
-        crontab <<EOF
+        crontab - <<EOF
 `crontab -l 2>/dev/null`
 30 0,12 * * * zstack-ctl dump_mysql --keep-amount 14
 EOF
     fi
 
-    crontab <<EOF
+    crontab - <<EOF
 `crontab -l 2>/dev/null|sed '/zstack-ctl dump_cassandra/d'`
 EOF
     pass
@@ -2858,7 +2869,10 @@ get_zstack_repo(){
 }
 
 install_sync_repo_dependences() {
-    pkg_list="createrepo curl yum-utils rsync"
+    pkg_list="createrepo curl rsync"
+    if [ x"$OS" != x"KYLIN10" ]; then
+        pkg_list=$pkg_list" yum-utils"
+    fi
     missing_list=`LANG=en_US.UTF-8 && rpm -q $pkg_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
     [ -z "$missing_list" ] || yum -y --disablerepo=* --enablerepo=zstack-local install ${missing_list} >>$ZSTACK_INSTALL_LOG 2>&1 || echo_hints_to_upgrade_iso
 }
@@ -3435,7 +3449,6 @@ EOF
 # make sure local repo files exist
 if [ "$IS_YUM" = "y" ];then
     # make sure local repo exist and dependences installed
-    install_sync_repo_dependences
     create_local_repo_files
 elif [ "$IS_APT" = "y" ];then
     create_local_source_list_files
@@ -3541,6 +3554,10 @@ fi
 
 #Do preinstallation checking for CentOS and Ubuntu
 check_system
+
+if [ "$IS_YUM" = "y" ]; then
+     install_sync_repo_dependences
+fi
 
 #Download ${PRODUCT_NAME} all in one package
 download_zstack

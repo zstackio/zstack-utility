@@ -12,6 +12,7 @@ import traceback
 import simplejson
 from jinja2 import Template
 from netaddr import IPNetwork, IPAddress
+import platform
 
 import zstacklib.utils.daemon as daemon
 import zstacklib.utils.http as http
@@ -110,6 +111,7 @@ class PxeServerAgent(object):
     NGINX_TERMINAL_PROXY_CONF_PATH = "/etc/nginx/conf.d/terminal/"
     NOVNC_INSTALL_PATH = BAREMETAL_LIB_PATH + "noVNC/"
     NOVNC_TOKEN_PATH = NOVNC_INSTALL_PATH + "tokens/"
+    ARM_GRUB_CFG = TFTPBOOT_PATH + "grub.cfg"
 
     NMAP_BROADCAST_DHCP_DISCOVER_PATH = "/usr/share/nmap/scripts/broadcast-dhcp-discover.nse"
 
@@ -222,7 +224,10 @@ class PxeServerAgent(object):
         dhcp_conf = """interface={DHCP_INTERFACE}
 port=0
 bind-interfaces
-dhcp-boot=pxelinux.0
+dhcp-match=x86PC, option:client-arch, 0 #LEGACLY x86
+dhcp-match=AARCH64_EFI, option:client-arch, 11 #EFI AARCH64
+dhcp-boot=tag:x86PC,pxelinux.0
+dhcp-boot=tag:AARCH64_EFI,grubaa64.efi
 enable-tftp
 tftp-root={TFTPBOOT_PATH}
 log-facility={DNSMASQ_LOG_PATH}
@@ -264,7 +269,7 @@ listen=NO
 listen_ipv6=YES
 pam_service_name=vsftpd
 userlist_enable=YES
-tcp_wrappers=YES
+#tcp_wrappers=YES
 xferlog_enable=YES
 xferlog_std_format=YES
 xferlog_file={VSFTPD_LOG_PATH}
@@ -277,12 +282,23 @@ xferlog_file={VSFTPD_LOG_PATH}
         pxelinux_cfg = """default zstack_baremetal
 prompt 0
 label zstack_baremetal
-kernel zstack/vmlinuz
+kernel zstack/x86_64/vmlinuz
 ipappend 2
-append initrd=zstack/initrd.img devfs=nomount ksdevice=bootif ks=ftp://{PXESERVER_DHCP_NIC_IP}/ks/inspector_ks.cfg vnc
+append initrd=zstack/x86_64/initrd.img devfs=nomount ksdevice=bootif ks=ftp://{PXESERVER_DHCP_NIC_IP}/ks/inspector_ks.cfg vnc
 """.format(PXESERVER_DHCP_NIC_IP=pxeserver_dhcp_nic_ip)
         with open(self.PXELINUX_DEFAULT_CFG, 'w') as f:
             f.write(pxelinux_cfg)
+
+        #init grub.cfg for arm
+        grub_cfg = """set timeout=10
+menuentry 'ZStack Get Hardware Info' {
+    linux zstack/aarch64/vmlinuz ip=dhcp inst.repo=ftp://%s/zstack-dvd inst.ks=ftp://%s/ks/inspector_ks.cfg \
+        console=tty0 console=ttyS0,115200n8 rd.debug rd.udev.debug systemd.log_level=debug
+    initrd zstack/aarch64/initrd.img
+}
+""" % (pxeserver_dhcp_nic_ip, pxeserver_dhcp_nic_ip)
+        with open(self.ARM_GRUB_CFG, 'w') as f:
+            f.write(grub_cfg)
 
         # init inspector_ks.cfg
         ks_tmpl_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'ks_tmpl')
@@ -365,7 +381,8 @@ http {
 
         # DETECT ROGUE DHCP SERVER
         cmd = json_object.loads(req[http.REQUEST_BODY])
-        ret, output = bash_ro("nmap -sU -p67 --script broadcast-dhcp-discover -e %s | grep 'Server Identifier'" % cmd.dhcpInterface)
+        mac = self._get_mac_address(cmd.dhcpInterface)
+        ret, output = bash_ro("nmap -sU -p67 --script broadcast-dhcp-discover --script-args broadcast-dhcp-discover.mac=%s -e %s | grep 'Server Identifier'" % (mac, cmd.dhcpInterface))
         if ret == 0:
             raise PxeServerError("rogue dhcp server[IP:%s] detected" % output.strip().split(' ')[-1])
 
@@ -465,6 +482,23 @@ http {
 
         with open(pxe_cfg_file, 'w') as f:
             f.write(pxelinux_cfg)
+
+        # init grub.cfg-MAC for arm
+        pxe_cfg_file_arm = os.path.join(self.TFTPBOOT_PATH, "grub.cfg-01-" + cmd.pxeNicMac)
+        pxeserver_dhcp_nic_ip = self._get_ip_address(cmd.dhcpInterface).strip()
+        grub_cfg = """set default="0"
+set timeout=10
+menuentry 'ZStack Baremetal' {{
+    linux {IMAGEUUID}/vmlinuz ip=dhcp inst.repo=ftp://{PXESERVER_DHCP_NIC_IP}/{IMAGEUUID}/ inst.ks=ftp://{PXESERVER_DHCP_NIC_IP}/ks/{KS_CFG_NAME} \
+        console=tty0 console=ttyS0,115200n8 rd.debug rd.udev.debug systemd.log_level=debug
+    initrd {IMAGEUUID}/initrd.img
+}}
+        """.format(IMAGEUUID=cmd.imageUuid,
+                   PXESERVER_DHCP_NIC_IP=pxeserver_dhcp_nic_ip,
+                   KS_CFG_NAME=ks_cfg_name
+                   )
+        with open(pxe_cfg_file_arm, 'w') as f:
+            f.write(grub_cfg)
 
     def _create_preconfiguration_file(self, cmd):
         # in case user didn't seleted a preconfiguration template etc.
@@ -966,11 +1000,17 @@ echo "STARTMODE='auto'" >> $IFCFGFILE
                 bash_r("rm -f %s/*" % self.NGINX_TERMINAL_PROXY_CONF_PATH)
             if os.path.exists(self.NOVNC_TOKEN_PATH):
                 bash_r("rm -f %s/*" % self.NOVNC_TOKEN_PATH)
+            if os.path.exists(self.TFTPBOOT_PATH):
+                bash_r("rm -f %s/grub.cfg*" % self.TFTPBOOT_PATH)
         else:
             mac_as_name = cmd.pxeNicMac.replace(":", "-")
             pxe_cfg_file = os.path.join(self.PXELINUX_CFG_PATH, "01-" + mac_as_name)
             if os.path.exists(pxe_cfg_file):
                 os.remove(pxe_cfg_file)
+
+            arm_pxe_cfg_file = os.path.join(self.TFTPBOOT_PATH, "grub.cfg-01-" + mac_as_name)
+            if os.path.exists(arm_pxe_cfg_file):
+                os.remove(arm_pxe_cfg_file)
 
             ks_cfg_file = os.path.join(self.KS_CFG_PATH, mac_as_name)
             if os.path.exists(ks_cfg_file):
@@ -1095,7 +1135,10 @@ echo "STARTMODE='auto'" >> $IFCFGFILE
         # SUSE
         ret5 = bash_r("cp %s %s" % (os.path.join(mount_path, "boot/*/loader/linux"), os.path.join(vmlinuz_path, "vmlinuz")))
         ret6 = bash_r("cp %s %s" % (os.path.join(mount_path, "boot/*/loader/initrd"), os.path.join(vmlinuz_path, "initrd.img")))
-        if (ret1 != 0 or ret2 != 0) and (ret3 != 0 or ret4 != 0) and (ret5 != 0 or ret6 != 0):
+        # ns10
+        ret7 = bash_r("cp %s %s" % (os.path.join(mount_path, "images/pxeboot/vmlinuz"), os.path.join(vmlinuz_path, "vmlinuz")))
+        ret8 = bash_r("cp %s %s" % (os.path.join(mount_path, "images/pxeboot/initrd.img"), os.path.join(vmlinuz_path, "initrd.img")))
+        if (ret1 != 0 or ret2 != 0) and (ret3 != 0 or ret4 != 0) and (ret5 != 0 or ret6 != 0) and (ret7 != 0 or ret8 != 0):
             raise PxeServerError("failed to copy vmlinuz and initrd.img from image[uuid:%s] to baremetal tftp server" % cmd.imageUuid)
 
         logger.info("successfully downloaded image[uuid:%s] and mounted it" % cmd.imageUuid)

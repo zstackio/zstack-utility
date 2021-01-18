@@ -26,6 +26,8 @@ chrony_servers = None
 post_url = ""
 pkg_kvmagent = ""
 libvirtd_status = ""
+libvirtd_conf_status = ""
+qemu_conf_status = ""
 virtualenv_version = "12.1.1"
 remote_user = "root"
 remote_pass = None
@@ -84,7 +86,7 @@ if not os.path.isdir(repo_dir):
 
 
 
-def update_libvritd_config(host_post_info):
+def update_libvirtd_config(host_post_info):
     command = "grep -i ^host_uuid %s" % libvirtd_conf_file
     status, output = run_remote_command(command, host_post_info, True, True)
     # name: copy libvirtd conf
@@ -173,7 +175,7 @@ def install_release_on_host(is_rpm):
     # copy and install zstack-release
     if is_rpm:
         src_pkg = '/opt/zstack-dvd/{0}/{1}/Packages/zstack-release-{1}-1.el7.zstack.noarch.rpm'.format(host_arch, releasever)
-        install_cmd = "rpm -q zstack-release || yum install -y /opt/zstack-release-{}-1.el7.zstack.noarch.rpm".format(releasever)
+        install_cmd = "rpm -q zstack-release || yum --disablerepo=* install -y /opt/zstack-release-{}-1.el7.zstack.noarch.rpm".format(releasever)
     else:
         src_pkg = '/opt/zstack-dvd/{0}/{1}/Packages/zstack-release_{1}_all.deb'.format(host_arch, releasever)
         install_cmd = "dpkg -l zstack-release || dpkg -i /opt/zstack-release_{}_all.deb".format(releasever)
@@ -230,31 +232,50 @@ run_remote_command("rm -rf {}/*; mkdir -p /usr/local/zstack/ || true".format(kvm
 
 def install_kvm_pkg():
     def rpm_based_install():
+        x86_64_c74 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
+                      usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
+                      net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
+                      smartmontools sshpass usbutils vconfig wget audit dnsmasq \
+                      qemu-kvm-ev collectd-virt OVMF edk2.git-ovmf-x64 mcelog MegaCli python-pyudev"
+
+        x86_64_c76 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
+                      usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
+                      net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
+                      smartmontools sshpass usbutils vconfig wget audit dnsmasq \
+                      qemu-kvm-ev collectd-virt OVMF edk2.git-ovmf-x64 mcelog MegaCli python-pyudev"
+
+        aarch64_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
+                        usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
+                        net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
+                        smartmontools sshpass usbutils vconfig wget audit dnsmasq \
+                        qemu collectd-virt storcli edk2-aarch64 python2-pyudev collectd-disk"
+
+        mips64el_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
+                         usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof mcelog \
+                         net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils python-pyudev pv rsync sed \
+                         qemu-kvm-ev smartmontools sshpass usbutils vconfig wget audit dnsmasq tuned collectd-virt"
+
+        x86_64_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
+                        usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
+                        net-tools nfs-utils nmap openssh-clients OpenIPMI pciutils pv rsync sed \
+                        smartmontools sshpass usbutils vconfig wget audit dnsmasq \
+                        qemu collectd-virt storcli edk2.git-ovmf-x64 python2-pyudev collectd-disk"
+
         # handle zstack_repo
         if zstack_repo != 'false':
-            qemu_pkg = 'qemu-kvm-ev' if major_version >= 7 else 'qemu-kvm'
-            extra_pkg = 'collectd-virt' if major_version >= 7 else ""
-
+            common_dep_list = eval("%s_%s" % (host_arch, releasever))
             # common kvmagent deps of x86 and arm that need to update
             common_update_list = "sanlock sysfsutils hwdata sg3_utils lvm2 lvm2-libs lvm2-lockd systemd openssh"
             # common kvmagent deps of x86 and arm that no need to update
-            common_dep_list = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
-                            usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof mcelog \
-                            MegaCli net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils python-pyudev pv rsync sed \
-                            smartmontools sshpass usbutils vconfig wget audit dnsmasq %s %s %s" % (qemu_pkg, extra_pkg, common_update_list)
+            common_dep_list = "%s %s" % (common_dep_list, common_update_list)
 
             # zstack mini needs higher version kernel etc.
             C76_KERNEL_OR_HIGHER = '3.10.0-957' in get_remote_host_kernel_version(host_post_info)
             mini_dep_list = " drbd84-utils kmod-drbd84" if C76_KERNEL_OR_HIGHER and not IS_AARCH64 else ""
             common_dep_list += mini_dep_list
 
-            # arch specific deps
-            if IS_AARCH64:
-                dep_list = common_dep_list + " AAVMF edk2.git-aarch64"
-                update_list = common_update_list
-            else:
-                dep_list = common_dep_list + " OVMF edk2.git-ovmf-x64"
-                update_list = common_update_list
+            dep_list = common_dep_list
+            update_list = common_update_list
 
             command = "which virsh"
             host_post_info.post_label = "ansible.shell.install.pkg"
@@ -319,8 +340,12 @@ def install_kvm_pkg():
             host_post_info.post_label = "ansible.shell.disable.service"
             host_post_info.post_label_param = "firewalld"
             run_remote_command(command, host_post_info)
-            # name: disable NetworkManager in RHEL7 and Centos7
-            service_status("NetworkManager", "state=stopped enabled=no", host_post_info, ignore_error=True)
+            if host_arch in ["aarch64", "x86_64"] and releasever == "ns10":
+                # name: enable NetworkManager in arm and x86 ns10
+                service_status("NetworkManager", "state=started enabled=yes", host_post_info, ignore_error=True)
+            else:
+                # name: disable NetworkManager in RHEL7 and Centos7
+                service_status("NetworkManager", "state=stopped enabled=no", host_post_info, ignore_error=True)
 
         if init == 'true':
             # name: copy iptables initial rules in RedHat
@@ -336,7 +361,7 @@ def install_kvm_pkg():
                 service_status("iptables", "state=restarted enabled=yes", host_post_info)
 
         #we should check libvirtd config file status before restart the service
-        libvirtd_conf_status = update_libvritd_config(host_post_info)
+        libvirtd_conf_status = update_libvirtd_config(host_post_info)
         if chroot_env == 'false':
             # name: enable libvirt daemon on RedHat based OS
             service_status("libvirtd", "state=started enabled=yes", host_post_info)
@@ -400,7 +425,7 @@ def install_kvm_pkg():
             run_remote_command(command, host_post_info)
         update_pkg_list = ['ebtables', 'python-libvirt', 'qemu-system-arm']
         apt_update_packages(update_pkg_list, host_post_info)
-        libvirtd_conf_status = update_libvritd_config(host_post_info)
+        libvirtd_conf_status = update_libvirtd_config(host_post_info)
         if chroot_env == 'false':
             # name: enable libvirt daemon on RedHat based OS
             service_status("libvirtd", "state=started enabled=yes", host_post_info)
@@ -671,16 +696,9 @@ def do_auditd_config():
 def start_kvmagent():
     if chroot_env != 'false':
         return
-
-    if distro in RPM_BASED_OS:
-        if libvirtd_status != "changed:False" or libvirtd_conf_status != "changed:False" \
-                or qemu_conf_status != "changed:False":
-            # name: restart redhat libvirtd
-            service_status("libvirtd", "state=restarted enabled=yes", host_post_info)
-    # elif distro in DEB_BASED_OS:
-    #     if libvirt_bin_status != "changed:False" or libvirtd_conf_status != "changed:False" or qemu_conf_status != "changed:False":
-    #         # name: restart debian libvirtd
-    #         service_status("libvirt-bin", "state=restarted enabled=yes", host_post_info)
+    if any(status != "changed:False" for status in [libvirtd_status, libvirtd_conf_status, qemu_conf_status]):
+        # name: restart libvirtd if status is stop or cfg changed
+        service_status("libvirtd", "state=restarted enabled=yes", host_post_info)
     # name: restart kvmagent, do not use ansible systemctl due to kvmagent can start by itself, so systemctl will not know
     # the kvm agent status when we want to restart it to use the latest kvm agent code
     if distro in RPM_BASED_OS and major_version >= 7:
