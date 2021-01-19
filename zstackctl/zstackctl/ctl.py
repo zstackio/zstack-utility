@@ -757,6 +757,12 @@ class Ctl(object):
     ZS_RELEASE = os.popen("awk '{print $3}' /etc/zstack-release").read().strip()
 
     def __init__(self):
+        versionFile = os.path.join(self.ZSTACK_UI_HOME,'VERSION')
+        if os.path.exists(versionFile):
+            with open(versionFile, 'r') as fd2:
+                self.uiVersion = fd2.readline()
+                self.uiVersion = self.uiVersion.strip(' \t\n\r')
+                self.uiPrimaryVersion = self.uiVersion[0]
         self.commands = {}
         self.command_list = []
         self.main_parser = CtlParser(prog='zstack-ctl', description="ZStack management tool", formatter_class=argparse.RawTextHelpFormatter)
@@ -7270,7 +7276,6 @@ class InstallZstackUiCmd(Command):
         if not args.host:
             self._install_to_local(args)
             return
-
         # remote install
         tools_path = os.path.join(ctl.zstack_home, "WEB-INF/classes/tools/")
         if not os.path.isdir(tools_path):
@@ -8205,12 +8210,20 @@ class StopUiCmd(Command):
         if stop_code != 0: 
             info('failed to stop UI server since '+ stop_output)
             return
+        portfile = '/var/run/zstack/zstack-ui.port'
+        # kill pid by port
+        if os.path.exists(portfile):
+            with open(portfile, 'r') as fd2:
+                port = fd2.readline()
+                port = port.strip(' \t\n\r')
+        else:
+            port = '5000' 
+        commands.getstatusoutput("lsof -i tcp:%s | awk 'NR!=1 {print $2}' | xargs kill -9" % port)
         (status_code, status_output) = commands.getstatusoutput(status_sh)
         # some server not inactive got 512
         if status_code == 512:
             info('failed to stop UI server since '+ status_output)
             return
-        portfile = '/var/run/zstack/zstack-ui.port'
         def clean_pid_port():
             shell('rm -f %s' % portfile)
 
@@ -8393,7 +8406,7 @@ class UiStatusCmd(Command):
             if not default_ip:
                 info('UI status: %s ' % (colored('Running', 'green')))
             else:
-                info('UI status: %s  %s//%s:%s' % (
+                info('UI status: %s  %s://%s:%s' % (
                     colored('Running', 'green'),UiStatusCmd.ZSTACK_UI_SSL, default_ip, port))
 
 # For VDI UI 2.1
@@ -8960,17 +8973,34 @@ class StartUiCmd(Command):
             args.server_port = '5443'
 
         # set http to https is enable ssl set
-        webhook_ip = ctl.read_property('management.server.vip')
-        if not webhook_ip:
-            webhook_ip = 'localhost'
-        system_webhook_url = '%s:%s/zwatch/webhook' % (webhook_ip, args.webhook_port)
-        if args.enable_ssl:
-            system_webhook_url = 'https://' + system_webhook_url
-        else:
-            system_webhook_url = 'http://' + system_webhook_url
 
-        ctl.write_property('ticket.sns.topic.http.url', system_webhook_url)
-        ctl.write_property('sns.systemTopic.endpoints.http.url', system_webhook_url)
+        if ctl.uiPrimaryVersion == '4':
+            webhook_ip = ctl.read_property('management.server.vip')
+            if not webhook_ip:
+                webhook_ip = 'localhost'
+            system_webhook_url = '%s:%s/webhook/zwatch' % (webhook_ip, args.server_port)
+            ticket_webhook_url = '%s:%s/webhook/ticket' % (webhook_ip, args.server_port)
+            if args.enable_ssl:
+                system_webhook_url = 'https://' + system_webhook_url
+                ticket_webhook_url = 'https://' + ticket_webhook_url
+            else:
+                system_webhook_url = 'http://' + system_webhook_url
+                ticket_webhook_url = 'http://' + ticket_webhook_url
+
+            ctl.write_property('ticket.sns.topic.http.url', ticket_webhook_url)
+            ctl.write_property('sns.systemTopic.endpoints.http.url', system_webhook_url)
+        else:
+            webhook_ip = ctl.read_property('management.server.vip')
+            if not webhook_ip:
+                webhook_ip = 'localhost'
+            system_webhook_url = '%s:%s/zwatch/webhook' % (webhook_ip, args.webhook_port)
+            if args.enable_ssl:
+                system_webhook_url = 'https://' + system_webhook_url
+            else:
+                system_webhook_url = 'http://' + system_webhook_url
+
+            ctl.write_property('ticket.sns.topic.http.url', system_webhook_url)
+            ctl.write_property('sns.systemTopic.endpoints.http.url', system_webhook_url)
 
         self._update_system_alarm_endpoint(system_webhook_url)
 
@@ -9035,7 +9065,7 @@ class StartUiCmd(Command):
 
         script(scmd, no_pipe=True)
         os.system('mkdir -p /var/run/zstack/')
-        with open('/var/run/zstack/zstack-ui.port', 'w') as fd:
+        with open(StartUiCmd.PORT_FILE, 'w') as fd:
             fd.write(args.server_port)
 
         timeout = int(args.timeout)
@@ -9178,7 +9208,7 @@ class ConfigUiCmd(Command):
                 ctl.write_ui_property("server_port", '5000')
             # from 4.0 set webhook_port to 5001,since the 5000 is for nginx
             if ctl.read_ui_property("webhook_port") == ctl.read_ui_property("server_port"):
-                info('webhook port same with server port in zstack.ui.properties, auto set webhook port to server port +1')
+            #'webhook port same with server port in zstack.ui.properties, auto set webhook port to server port +1'
                 port = ctl.read_ui_property("server_port")
                 port = str(int(port)+1)
                 ctl.write_ui_property("webhook_port", port)
@@ -9416,6 +9446,7 @@ class GetZStackVersion(Command):
         hostname, port, user, password = ctl.get_live_mysql_portal()
         version = get_zstack_version(hostname, port, user, password)
         sys.stdout.write(version + '\n')
+        sys.stdout.write(ctl.uiVersion + '\n')
 
 class ResetAdminPasswordCmd(Command):
     SYSTEM_ADMIN_TYPE = 'SystemAdmin'
