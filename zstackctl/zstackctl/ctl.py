@@ -964,8 +964,11 @@ class Ctl(object):
             raise CtlError("cannot find zstack_ui db url in %s. please set db_url" % self.ui_properties_file_path)
         return db_url
 
-    def get_live_mysql_portal(self):
-        hostname_ports, user, password = self.get_database_portal()
+    def get_live_mysql_portal(self, ui=False):
+        if ui:
+            hostname_ports, user, password = self.get_ui_database_portal()
+        else:
+            hostname_ports, user, password = self.get_database_portal()
 
         last_ip = ctl.get_env(self.LAST_ALIVE_MYSQL_IP)
         last_port = ctl.get_env(self.LAST_ALIVE_MYSQL_PORT)
@@ -1023,6 +1026,39 @@ class Ctl(object):
             db_password = cipher.decrypt(db_password)
 
         db_url = self.get_db_url()
+        host_name_ports = []
+
+        def parse_hostname_ports(prefix):
+            ips = db_url.lstrip(prefix).lstrip('/').split('/')[0]
+            ips = ips.split(',')
+            for ip in ips:
+                if ":" in ip:
+                    hostname, port = ip.split(':')
+                    host_name_ports.append((hostname, port))
+                else:
+                    host_name_ports.append((ip, '3306'))
+
+        if db_url.startswith('jdbc:mysql:loadbalance:'):
+            parse_hostname_ports('jdbc:mysql:loadbalance:')
+        elif db_url.startswith('jdbc:mysql:'):
+            parse_hostname_ports('jdbc:mysql:')
+
+        return host_name_ports, db_user, db_password
+
+    def get_ui_database_portal(self):
+        db_user = self.read_ui_property("db_username")
+        if not db_user:
+            raise CtlError("cannot find zstack_ui db username in %s. please set db_username" % self.ui_properties_file_path)
+
+        db_password = self.read_ui_property("db_password")
+        if db_password is None:
+            raise CtlError("cannot find zstack_ui db password in %s. please set db_password" % self.ui_properties_file_path)
+
+        cipher = AESCipher()
+        if cipher.is_encrypted(db_password):
+            db_password = cipher.decrypt(db_password)
+
+        db_url = self.get_ui_db_url()
         host_name_ports = []
 
         def parse_hostname_ports(prefix):
@@ -1619,6 +1655,7 @@ class DeployUIDBCmd(Command):
 
     def install_argparse_arguments(self, parser):
         parser.add_argument('--root-password', help='root user password of MySQL. [DEFAULT] empty password')
+        parser.add_argument('--zstack-ui-password', help='password of user "zstack_ui". [DEFAULT] empty password')
         parser.add_argument('--host', help='IP or DNS name of MySQL host; default is localhost', default='localhost')
         parser.add_argument('--port', help='port of MySQL host; default is 3306', type=int, default=3306)
         parser.add_argument('--drop', help='drop existing zstack ui database', action='store_true', default=False)
@@ -1665,6 +1702,16 @@ class DeployUIDBCmd(Command):
                 else:
                     cmd.raise_error()
 
+        if not args.no_update:
+            if args.zstack_ui_password == "''":
+                args.zstack_ui_password = ''
+
+            properties = [
+                    ("db_url", 'jdbc:mysql://%s:%s' % (args.host, args.port)),
+                    ("db_username", "zstack_ui"),
+                    ("db_password", args.zstack_ui_password),
+            ]
+            ctl.write_ui_properties(properties)
         if args.drop:
             drop_mini_db_cmd = ShellCmd(drop_mini_db)
             drop_mini_db_cmd(True)
@@ -4711,7 +4758,7 @@ class MysqlRestrictConnection(Command):
         super(MysqlRestrictConnection, self).__init__()
         self.name = "mysql_restrict_connection"
         self.description = "set mysql restrict connection for account: root, zstack, zstack_ui"
-        self.sensitive_args = ['--root-password']
+        self.sensitive_args = ['--restrict', '--restore', '--root-password', '--include-root']
         self.file="%s/mysql_restrict_connection" % ctl.USER_ZSTACK_HOME_DIR
         ctl.register_command(self)
 
@@ -4744,6 +4791,14 @@ class MysqlRestrictConnection(Command):
 
         return db_host, db_port, db_user, db_password
 
+    def get_ui_db_portal(self):
+        ui_db_host, ui_db_port, ui_db_user, ui_db_password = ctl.get_live_mysql_portal(ui=True)
+
+        if ui_db_user != "zstack_ui":
+            error("db_username in the zstack.ui.properties is not set to zstack_ui")
+
+        return ui_db_host, ui_db_port, ui_db_user, ui_db_password
+
     def get_mn_ip(self):
         mn_ip = ctl.read_property('management.server.ip')
         if not mn_ip:
@@ -4759,24 +4814,27 @@ class MysqlRestrictConnection(Command):
             return True
         return False
 
-    def grant_restrict_privilege(self, db_password, root_password_, host, include_root):
+    def grant_restrict_privilege(self, db_password, ui_db_password, root_password_, host, include_root):
         grant_access_cmd = " GRANT USAGE ON *.* TO 'zstack'@'%s' IDENTIFIED BY '%s' WITH GRANT OPTION;" % (host, db_password)
+        grant_access_cmd = grant_access_cmd + (" GRANT USAGE ON *.* TO 'zstack_ui'@'%s' IDENTIFIED BY '%s' WITH GRANT OPTION;" % (host, ui_db_password))
+
         if include_root:
             grant_access_cmd = grant_access_cmd + (" GRANT ALL PRIVILEGES ON *.* TO 'root'@'%s' IDENTIFIED BY '%s' WITH GRANT OPTION;" % (host, root_password_))
 
         return grant_access_cmd
 
-    def grant_restore_privilege(self, db_password, root_password_):
+    def grant_restore_privilege(self, db_password, ui_db_password, root_password_):
         grant_access_cmd = " DELETE FROM user WHERE Host != 'localhost' AND Host != '127.0.0.1' AND Host != '::1' AND Host != '%%';" \
                " GRANT USAGE ON *.* TO 'zstack'@'%%' IDENTIFIED BY '%s' WITH GRANT OPTION;" \
-               " GRANT USAGE ON *.* TO 'root'@'%%' IDENTIFIED BY '%s' WITH GRANT OPTION;" % (db_password, root_password_)
+               " GRANT USAGE ON *.* TO 'zstack_ui'@'%%' IDENTIFIED BY '%s' WITH GRANT OPTION;" \
+               " GRANT USAGE ON *.* TO 'root'@'%%' IDENTIFIED BY '%s' WITH GRANT OPTION;" % (db_password, ui_db_password, root_password_)
         return grant_access_cmd
 
     def delete_privilege(self, host, include_root):
         if include_root:
-            grant_access_cmd = " DELETE FROM user WHERE Host='%s' and (User='zstack' or User = 'root');" % host
+            grant_access_cmd = " DELETE FROM user WHERE Host='%s' and (User='zstack' or User = 'zstack_ui' or User = 'root');" % host
         else:
-            grant_access_cmd = " DELETE FROM user WHERE Host='%s' and (User='zstack');" % host
+            grant_access_cmd = " DELETE FROM user WHERE Host='%s' and (User='zstack' or User = 'zstack_ui');" % host
         return grant_access_cmd
 
     def grant_views_definer_privilege(self, root_password, remote_ip=None):
@@ -4807,6 +4865,7 @@ class MysqlRestrictConnection(Command):
         mn_ip = self.get_mn_ip()
 
         db_host, db_port, db_user, db_password = self.get_db_portal()
+        ui_db_host, ui_db_port, ui_db_user, ui_db_password = self.get_ui_db_portal()
 
         restrict_ips = []
         is_ha = self.check_ha()
@@ -4820,14 +4879,14 @@ class MysqlRestrictConnection(Command):
         else:
             restrict_ips.append(mn_ip)
 
-        if db_host not in restrict_ips:
+        if db_host not in restrict_ips or ui_db_host not in restrict_ips:
             error("mysql is not deployed under the management node")
 
         if args.restrict:
             grant_access_cmd = "USE mysql;" + self.delete_privilege("%", args.include_root)
 
             for ip in restrict_ips:
-                grant_access_cmd = grant_access_cmd + self.grant_restrict_privilege(db_password, root_password_, ip, args.include_root)
+                grant_access_cmd = grant_access_cmd + self.grant_restrict_privilege(db_password, ui_db_password, root_password_, ip, args.include_root)
 
             grant_access_cmd = grant_access_cmd + " FLUSH PRIVILEGES;"
             grant_views_access_cmd = self.grant_views_definer_privilege(root_password_)
@@ -4846,7 +4905,7 @@ class MysqlRestrictConnection(Command):
 
         if args.restore:
             grant_access_cmd = "USE mysql;"
-            grant_access_cmd = grant_access_cmd + self.grant_restore_privilege(db_password, root_password_) + " FLUSH PRIVILEGES;"
+            grant_access_cmd = grant_access_cmd + self.grant_restore_privilege(db_password, ui_db_password, root_password_) + " FLUSH PRIVILEGES;"
 
             shell('''mysql -u root -p%s -e "%s"''' % (root_password_, grant_access_cmd))
             linux.rm_file_force(self.file)
@@ -4973,6 +5032,7 @@ class DumpMysqlCmd(Command):
 
     def run(self, args):
         (db_hostname, db_port, db_user, db_password) = ctl.get_live_mysql_portal()
+        (ui_db_hostname, ui_db_port, ui_db_user, ui_db_password) = ctl.get_live_mysql_portal(ui=True)
         file_name = args.file_name
         keep_amount = args.keep_amount
         backup_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -5007,15 +5067,18 @@ class DumpMysqlCmd(Command):
                         % (db_user, db_password, db_port, mysqldump_options)
             command_2 = "mysqldump --databases -u %s --password='%s' -P %s %s zstack zstack_rest %s" \
                         % (db_user, db_password, db_port, mysqldump_options, mysqldump_skip_tables)
-            command_3 = "mysqldump --databases -u %s --password='%s' -P %s %s -f zstack_ui zstack_mini" \
-                        % (db_user, db_password, db_port, mysqldump_options)
         else:
             command_1 = "mysqldump --databases -u %s --password='%s' --host %s -P %s %s -d zstack zstack_rest" \
                         % (db_user, db_password, db_hostname, db_port, mysqldump_options)
             command_2 = "mysqldump --databases -u %s --password='%s' --host %s -P %s %s zstack zstack_rest %s" \
                         % (db_user, db_password, db_hostname, db_port, mysqldump_options, mysqldump_skip_tables)
+
+        if ui_db_hostname == "localhost" or ui_db_hostname == "127.0.0.1":
+            command_3 = "mysqldump --databases -u %s --password='%s' -P %s %s -f zstack_ui zstack_mini" \
+                        % (ui_db_user, ui_db_password, ui_db_port, mysqldump_options)
+        else:
             command_3 = "mysqldump --databases -u %s --password='%s' --host %s -P %s %s -f zstack_ui zstack_mini" \
-                        % (db_user, db_password, db_hostname, db_port, mysqldump_options)
+                        % (ui_db_user, ui_db_password, ui_db_hostname, ui_db_port, mysqldump_options)
 
         if args.append_sql_file:
             append_sql_command = "echo 'USE `zstack`;\n'; cat %s;" % args.append_sql_file
@@ -5127,6 +5190,9 @@ class RestoreMysqlCmd(Command):
         parser.add_argument('--mysql-root-password',
                             help="mysql root password of zstack database",
                             default=None)
+        parser.add_argument('--ui-mysql-root-password',
+                            help="mysql root password of zstack_ui database, same as --mysql-root-password by default",
+                            default=None)
         parser.add_argument('--skip-ui',
                             help="skip restore ui db",
                             action="store_true",
@@ -5150,11 +5216,14 @@ class RestoreMysqlCmd(Command):
 
     def run(self, args):
         (db_hostname, db_port, _, _) = ctl.get_live_mysql_portal()
+        (ui_db_hostname, ui_db_port, _, _) = ctl.get_live_mysql_portal(ui=True)
 
         # only root user can restore database
         db_password = args.mysql_root_password
+        ui_db_password = args.ui_mysql_root_password if args.ui_mysql_root_password is not None else args.mysql_root_password
         db_backup_name = args.from_file
         db_hostname_origin_cp = db_hostname
+        ui_db_hostname_origin_cp = ui_db_hostname
 
         if os.path.exists(db_backup_name) is False:
             error("Didn't find file: %s ! Stop recover database! " % db_backup_name)
@@ -5173,6 +5242,12 @@ class RestoreMysqlCmd(Command):
         else:
             db_hostname = "--host %s" % db_hostname
         self.test_mysql_connection(db_password, db_port, db_hostname)
+
+        if ui_db_hostname == "localhost" or ui_db_hostname == "127.0.0.1" or restorer.is_local_ip(db_hostname):
+            ui_db_hostname = ""
+        else:
+            ui_db_hostname = "--host %s" % ui_db_hostname
+        self.test_mysql_connection(ui_db_password, ui_db_port, ui_db_hostname)
 
         cmd = create_check_mgmt_node_command()
         cmd(False)
@@ -5217,12 +5292,12 @@ class RestoreMysqlCmd(Command):
         for database in ui_db_names:
             command = "mysql -uroot --password=%s -P %s  %s" \
                       " -e 'drop database if exists %s; create database %s' >> /dev/null 2>&1" \
-                      % (shell_quote(db_password), db_port, db_hostname, database, database)
+                      % (shell_quote(ui_db_password), db_port, ui_db_hostname, database, database)
             shell_no_pipe(command)
             command = "gunzip < %s | sed -e '/DROP DATABASE IF EXISTS/d' -e '/CREATE DATABASE .* IF NOT EXISTS/d' " \
                       "| sed 's/DEFINER=`[^\*\/]*`@`[^\*\/]*`/DEFINER=`root`@`%s`/' " \
                       "| mysql -uroot --password=%s %s -P %s --one-database %s" \
-                      % (db_backup_name, db_hostname_origin_cp, shell_quote(db_password), db_hostname, db_port, database)
+                      % (db_backup_name, ui_db_hostname_origin_cp, shell_quote(ui_db_password), ui_db_hostname, ui_db_port, database)
             shell_no_pipe(command)
 
         info("Successfully restored database. You can start node by running zstack-ctl start.")
@@ -6201,16 +6276,21 @@ class ChangeIpCmd(Command):
 
     def restoreMysqlConnection(self, root_password):
         _, db_user, db_password = ctl.get_database_portal()
+        _, ui_db_user, ui_db_password = ctl.get_ui_database_portal()
 
         if db_user != "zstack":
             error("need to set 'DB.user = zstack' in zstack.properties when updating mysql restrict connection")
+        if ui_db_user != "zstack_ui":
+            error("need to set 'db_username = zstack_ui' in zstack.ui.properties when updating mysql restrict connection")
 
         self.check_mysql_password(db_user, db_password)
+        self.check_mysql_password(ui_db_user, ui_db_password)
 
         grant_access_cmd = " DELETE FROM user WHERE Host != 'localhost' AND Host != '127.0.0.1' AND Host != '::1' AND Host != '%%';" \
                            " GRANT USAGE ON *.* TO 'zstack'@'%%' IDENTIFIED BY '%s' WITH GRANT OPTION;" \
+                           " GRANT USAGE ON *.* TO 'zstack_ui'@'%%' IDENTIFIED BY '%s' WITH GRANT OPTION;" \
                            " GRANT USAGE ON *.* TO 'root'@'%%' IDENTIFIED BY '%s' WITH GRANT OPTION;" % (
-                               db_password, root_password)
+                               db_password, ui_db_password, root_password)
 
         grant_access_cmd = "USE mysql;" + grant_access_cmd + " FLUSH PRIVILEGES;"
         shell('''mysql -u root -p%s -e "%s"''' % (root_password, grant_access_cmd))
@@ -6328,6 +6408,17 @@ class ChangeIpCmd(Command):
                     ('DB.url', db_new_url),
                 ])
                 info("Update mysql new url %s in %s " % (db_new_url, zstack_conf_file))
+
+            # update zstack_ui db url
+            if os.path.isfile(ctl.ui_properties_file_path):
+                db_url = ctl.read_ui_property('db_url')
+                db_old_ip = re.findall(r'[0-9]+(?:\.[0-9]{1,3}){3}|localhost', db_url)
+                if not self.isVirtualIp(db_old_ip[0]) and not db_old_ip[0] == ctl.read_property('management.server.vip'):
+                    db_new_url = db_url.split(db_old_ip[0])[0] + mysql_ip + db_url.split(db_old_ip[0])[1]
+                    ctl.write_ui_properties([
+                        ('db_url', db_new_url),
+                    ])
+                    info("Update mysql new url %s in %s " % (db_new_url, ctl.ui_properties_file_path))
 
             # update mysql restrict connection configuration
             self.checkMysqlConnection(args.ip, args.root_password)
@@ -7717,12 +7808,12 @@ class UpgradeUIDbCmd(Command):
         error_if_tool_is_missing('mysqldump')
         error_if_tool_is_missing('mysql')
 
-        db_url = ctl.get_db_url()
+        db_url = ctl.get_ui_db_url()
         db_url_params = db_url.split('//')
         db_url = db_url_params[0] + '//' + db_url_params[1].split('/')[0]
         db_url = '%s/zstack_ui' % db_url.rstrip('/')
 
-        db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
+        db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal(ui=True)
 
         flyway_path = os.path.join(ctl.zstack_home, 'WEB-INF/classes/tools/flyway-3.2.1/flyway')
         if not os.path.exists(flyway_path):
@@ -8278,7 +8369,7 @@ class UiStatusCmd(Command):
         # no need to consider ha because it's not supported any more
         #ha_info_file = '/var/lib/zstack/ha/ha.yaml'
         portfile = '/var/run/zstack/zstack-ui.port'
-        ui_port = 3100
+        ui_port = 5000
         if ui_mode == "mini":
             portfile = '/var/run/zstack/zstack-mini-ui.port'
             ui_port = 8200
@@ -8294,7 +8385,6 @@ class UiStatusCmd(Command):
 
         cmd = ShellCmd("runuser -l root -s /bin/bash -c 'bash %s'" % (UiStatusCmd.ZSTACK_UI_STATUS),pipe=False)
         cmd(False)
-
         if cmd.return_code != 0:
             write_status(cmd.stdout)
             return False
@@ -8303,8 +8393,8 @@ class UiStatusCmd(Command):
             if not default_ip:
                 info('UI status: %s ' % (colored('Running', 'green')))
             else:
-                info('UI status: %s %s://%s:%s' % (
-                    colored('Running', 'green'), UiStatusCmd.ZSTACK_UI_SSL, default_ip, port))
+                info('UI status: %s  %s//%s:%s' % (
+                    colored('Running', 'green'),UiStatusCmd.ZSTACK_UI_SSL, default_ip, port))
 
 # For VDI UI 2.1
 class VDIUiStatusCmd(Command):
@@ -8719,26 +8809,34 @@ class StartUiCmd(Command):
         parser.add_argument('--ssl-keystore-type', choices=['PKCS12', 'JKS'], type=str.upper, help="HTTPS SSL KeyStore Type.")
         parser.add_argument('--ssl-keystore-password', help="HTTPS SSL KeyStore Password.")
 
+        # arguments for ui_db
+        parser.add_argument('--db-url', help="zstack_ui database jdbc url")
+        parser.add_argument('--db-username', help="zstack_ui database username")
+        parser.add_argument('--db-password', help="zstack_ui database password")
+        
         # arguments for mini judgment
         parser.add_argument('--force', help="Force start_ui on mini", action='store_true', default=False)
 
-    def _remote_start(self, host, mn_host, mn_port, webhook_host, webhook_port, server_port, log, enable_ssl, ssl_keyalias, ssl_keystore, ssl_keystore_type, ssl_keystore_password):
+    def _remote_start(self, host, mn_host, mn_port, webhook_host, webhook_port, server_port, log, enable_ssl, ssl_keyalias, ssl_keystore, ssl_keystore_type, ssl_keystore_password, db_url, db_username, db_password):
         if enable_ssl:
-            cmd = 'zstack-ctl start_ui --mn-host %s --mn-port %s --webhook-host %s --webhook-port %s --server-port %s --log %s --enable-ssl --ssl-keyalias %s --ssl-keystore %s --ssl-keystore-type %s --ssl-keystore-password %s' % (mn_host, mn_port, webhook_host, webhook_port, server_port, log, ssl_keyalias, ssl_keystore, ssl_keystore_type, ssl_keystore_password)
+            cmd = 'zstack-ctl start_ui --mn-host %s --mn-port %s --webhook-host %s --webhook-port %s --server-port %s --log %s --enable-ssl --ssl-keyalias %s --ssl-keystore %s --ssl-keystore-type %s --ssl-keystore-password %s --db-url %s --db-username %s --db-password %s' % (mn_host, mn_port, webhook_host, webhook_port, server_port, log, ssl_keyalias, ssl_keystore, ssl_keystore_type, ssl_keystore_password, db_url, db_username, db_password)
         else:
-            cmd = 'zstack-ctl start_ui --mn-host %s --mn-port %s --webhook-host %s --webhook-port %s --server-port %s --log %s' % (mn_host, mn_port, webhook_host, webhook_port, server_port, log)
+            cmd = 'zstack-ctl start_ui --mn-host %s --mn-port %s --webhook-host %s --webhook-port %s --server-port %s --log %s --db-url %s --db-username %s --db-password %s' % (mn_host, mn_port, webhook_host, webhook_port, server_port, log, db_url, db_username, db_password)
         ssh_run_no_pipe(host, cmd)
         info('successfully start the UI server on the remote host[%s:%s]' % (host, server_port))
 
     def _check_status(self):
         cmd = ShellCmd("runuser -l root -s /bin/bash -c 'bash %s'" % (UiStatusCmd.ZSTACK_UI_STATUS),pipe=False)
         cmd(False)
+
         if cmd.return_code == 0:
             default_ip = get_ui_address()
             if not default_ip:
                 info('UI status: %s ' % (colored('Running', 'green')))
             else:
-                info('UI status: %s  //%s:%d' % (colored('Running', 'green'), default_ip, 3100))
+                info('UI status: %s  //%s:%s' % (
+                    colored('Running', 'green'), default_ip, "3100"))
+
                 return False
         return True
 
@@ -8772,11 +8870,11 @@ class StartUiCmd(Command):
 
     def _get_db_info(self):
         # get default db_url, db_username, db_password etc.
-        db_url_params = ctl.get_db_url().split('//')
+        db_url_params = ctl.get_ui_db_url().split('//')
         self.db_url = db_url_params[0] + '//' + db_url_params[1].split('/')[0]
-        if 'zstack' not in self.db_url:
-            self.db_url = '%s/zstack' % self.db_url.rstrip('/')
-        _, _, self.db_username, self.db_password = ctl.get_live_mysql_portal()
+        if 'zstack_ui' not in self.db_url:
+            self.db_url = '%s/zstack_ui' % self.db_url.rstrip('/')
+        _, _, self.db_username, self.db_password = ctl.get_live_mysql_portal(ui=True)
 
     def _update_system_alarm_endpoint(self, system_webhook_url):
         mn_ip = ctl.read_property('management.server.ip')
@@ -8799,7 +8897,7 @@ class StartUiCmd(Command):
             raise CtlError('%s is invalid webhook address' % args.webhook_host)
 
         if args.host != 'localhost':
-            self._remote_start(args.host, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.log, args.enable_ssl, args.ssl_keyalias, args.ssl_keystore, args.ssl_keystore_type, args.ssl_keystore_password)
+            self._remote_start(args.host, args.mn_host, args.mn_port, args.webhook_host, args.webhook_port, args.server_port, args.log, args.enable_ssl, args.ssl_keyalias, args.ssl_keystore, args.ssl_keystore_type, args.ssl_keystore_password, args.db_url, args.db_username, args.db_password)
             return
 
         # init zstack.ui.properties
@@ -8820,9 +8918,7 @@ class StartUiCmd(Command):
         cfg_catalina_opts = ctl.read_ui_property("catalina_opts")
 
         custom_props = ""
-        predefined_props = ["mn_host", "mn_port", "webhook_host", "webhook_port",
-                            "server_port", "log", "enable_ssl", "ssl_keyalias", "ssl_keystore", "ssl_keystore_type",
-                            "ssl_keystore_password", "catalina_opts"]
+        predefined_props = ["db_url", "db_username", "db_password", "mn_host", "mn_port", "webhook_host", "webhook_port", "server_port", "log", "enable_ssl", "ssl_keyalias", "ssl_keystore", "ssl_keystore_type", "ssl_keystore_password", "catalina_opts"]
         for k, v in ctl.read_all_ui_properties():
             if k not in predefined_props:
                 custom_props += " --%s=%s" % (k, v)
@@ -8895,8 +8991,18 @@ class StartUiCmd(Command):
         if args.ssl_keystore_type == 'PKCS12' and not ctl.read_property('consoleProxyCertFile'):
             ctl.write_property('consoleProxyCertFile', ctl.ZSTACK_UI_KEYSTORE_PEM)
 
-        # get zstack db info
+        # ui_db use encrypted db_password in args
         self._get_db_info()
+        if not args.db_url or args.db_url.strip() == '':
+            args.db_url = self.db_url
+        if not args.db_username or args.db_username.strip() == '':
+            args.db_username = self.db_username
+        if not args.db_password or args.db_password.strip() == '':
+            cipher = AESCipher()
+            if not cipher.is_encrypted(self.db_password):
+                args.db_password = cipher.encrypt(self.db_password)
+            else:
+                args.db_password = self.db_password
 
         shell("mkdir -p %s" % args.log)
         zstackui = ctl.ZSTACK_UI_HOME
@@ -8923,18 +9029,9 @@ class StartUiCmd(Command):
         enableSSL = 'false'
         if args.enable_ssl:
             enableSSL = 'true'
-        scmd = Template("runuser -l root -s /bin/bash -c 'LOGGING_PATH=${LOGGING_PATH} bash ${STOP} && sleep 2"
-                        " && bash ${START} --mn.host=${MN_HOST} --mn.port=${MN_PORT} --webhook.host=${WEBHOOK_HOST} --webhook.port=${WEBHOOK_PORT}"
-                        " --server.port=${SERVER_PORT} --ssl.enabled=${SSL_ENABLE} --ssl.keyalias=${SSL_KEYALIAS} --ssl.keystore=${SSL_KEYSTORE}"
-                        " --ssl.keystore-type=${SSL_KEYSTORE_TYPE} --ssl.keystore-password=${SSL_KETSTORE_PASSWORD}"
-                        " --db.url=${DB_URL} --db.username=${DB_USERNAME} --db.password=${DB_PASSWORD} ${CUSTOM_PROPS}"
-                        " --ssl.pem=${ZSTACK_UI_KEYSTORE_PEM}'")
-        scmd = scmd.substitute(LOGGING_PATH=args.log, STOP=StartUiCmd.ZSTACK_UI_STOP, START=StartUiCmd.ZSTACK_UI_START,
-                               MN_HOST=args.mn_host, MN_PORT=args.mn_port, WEBHOOK_HOST=args.webhook_host,WEBHOOK_PORT=args.webhook_port,
-                               SERVER_PORT=args.server_port, SSL_ENABLE=enableSSL, SSL_KEYALIAS=args.ssl_keyalias,
-                               SSL_KEYSTORE=args.ssl_keystore, SSL_KEYSTORE_TYPE=args.ssl_keystore_type,SSL_KETSTORE_PASSWORD=args.ssl_keystore_password,
-                               DB_URL=self.db_url, DB_USERNAME=self.db_username, DB_PASSWORD=self.db_password,
-                               ZSTACK_UI_KEYSTORE_PEM=ctl.ZSTACK_UI_KEYSTORE_PEM, CUSTOM_PROPS=custom_props)
+        scmd = Template("runuser -l root -s /bin/bash -c 'LOGGING_PATH=${LOGGING_PATH} bash ${STOP} && sleep 2 && bash ${START} --mn.host=${MN_HOST} --mn.port=${MN_PORT} --webhook.host=${WEBHOOK_HOST} --webhook.port=${WEBHOOK_PORT} --server.port=${SERVER_PORT} --ssl.enabled=${SSL_ENABLE} --ssl.keyalias=${SSL_KEYALIAS} --ssl.keystore=${SSL_KEYSTORE} --ssl.keystore-type=${SSL_KEYSTORE_TYPE} --ssl.keystore-password=${SSL_KETSTORE_PASSWORD} --db.url=${DB_URL} --db.username=${DB_USERNAME} --db.password=${DB_PASSWORD} ${CUSTOM_PROPS} --ssl.pem=${ZSTACK_UI_KEYSTORE_PEM}'") 
+
+        scmd = scmd.substitute(LOGGING_PATH=args.log,STOP=StartUiCmd.ZSTACK_UI_STOP,START=StartUiCmd.ZSTACK_UI_START,MN_HOST=args.mn_host,MN_PORT=args.mn_port,WEBHOOK_HOST=args.webhook_host,WEBHOOK_PORT=args.webhook_port,SERVER_PORT=args.server_port,SSL_ENABLE=enableSSL,SSL_KEYALIAS=args.ssl_keyalias,SSL_KEYSTORE=args.ssl_keystore,SSL_KEYSTORE_TYPE=args.ssl_keystore_type,SSL_KETSTORE_PASSWORD=args.ssl_keystore_password,DB_URL=args.db_url,DB_USERNAME=args.db_username,DB_PASSWORD=args.db_password,ZSTACK_UI_KEYSTORE_PEM=ctl.ZSTACK_UI_KEYSTORE_PEM,CUSTOM_PROPS=custom_props)
 
         script(scmd, no_pipe=True)
         os.system('mkdir -p /var/run/zstack/')
@@ -9041,6 +9138,11 @@ class ConfigUiCmd(Command):
         parser.add_argument('--ssl-keystore-type', choices=['PKCS12', 'JKS'], type=str.upper, help="HTTPS SSL KeyStore Type. [DEFAULT] PKCS12")
         parser.add_argument('--ssl-keystore-password', help="HTTPS SSL KeyStore Password. [DEFAULT] password")
 
+        # arguments for ui_db
+        parser.add_argument('--db-url', help="zstack_ui database jdbc url.")
+        parser.add_argument('--db-username', help="username of zstack_ui database.")
+        parser.add_argument('--db-password', help="password of zstack_ui database.")
+
     def _configure_remote_node(self, args):
         shell_no_pipe('ssh %s "/usr/bin/zstack-ctl config_ui %s"' % (args.host, ' '.join(ctl.extra_arguments)))
 
@@ -9094,6 +9196,12 @@ class ConfigUiCmd(Command):
                 ctl.write_ui_property("ssl_keystore_password", 'password')
             if not ctl.read_ui_property("server.ssl.enabled-protocols"):
                 ctl.write_ui_property("server.ssl.enabled-protocols", 'TLSv1.2')
+            if not ctl.read_ui_property("db_url"):
+                ctl.write_ui_property("db_url", 'jdbc:mysql://127.0.0.1:3306')
+            if not ctl.read_ui_property("db_username"):
+                ctl.write_ui_property("db_username", 'zstack_ui')
+            if not ctl.read_ui_property("db_password"):
+                ctl.write_ui_property("db_password", 'zstack.ui.password')
             if not ctl.read_ui_property("catalina_opts"):
                 ctl.write_ui_property("catalina_opts", ctl.ZSTACK_UI_CATALINA_OPTS)
             return
@@ -9113,6 +9221,9 @@ class ConfigUiCmd(Command):
             ctl.write_ui_property("ssl_keystore_type", 'PKCS12')
             ctl.write_ui_property("ssl_keystore_password", 'password')
             ctl.write_ui_property("server.ssl.enabled-protocols", 'TLSv1.2')
+            ctl.write_ui_property("db_url", 'jdbc:mysql://127.0.0.1:3306')
+            ctl.write_ui_property("db_username", 'zstack_ui')
+            ctl.write_ui_property("db_password", 'zstack.ui.password')
             ctl.write_ui_property("catalina_opts", ctl.ZSTACK_UI_CATALINA_OPTS)
             return
 
@@ -9163,6 +9274,14 @@ class ConfigUiCmd(Command):
             ctl.write_ui_property("ssl_keystore_type", args.ssl_keystore_type.strip())
         if args.ssl_keystore_password or args.ssl_keystore_password == '':
             ctl.write_ui_property("ssl_keystore_password", args.ssl_keystore_password.strip())
+
+        # ui_db
+        if args.db_url or args.db_url == '':
+            ctl.write_ui_property("db_url", args.db_url.strip())
+        if args.db_username or args.db_username == '':
+            ctl.write_ui_property("db_username", args.db_username.strip())
+        if args.db_password or args.db_password == '':
+            ctl.write_ui_property("db_password", args.db_password.strip())
 
         # ui_address
         if args.ui_address:
