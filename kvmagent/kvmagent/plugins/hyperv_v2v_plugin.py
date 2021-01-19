@@ -206,7 +206,7 @@ WantedBy=multi-user.target
 
         releasever = kvmagent.get_host_yum_release()
         yum_cmd = "export YUM0={}; yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn " \
-                  "install libguestfs-tools libguestfs-tools-c perl-Sys-Guestfs libguestfs-winsupport virt-v2v " \
+                  "install vsftpd libguestfs-tools libguestfs-tools-c perl-Sys-Guestfs libguestfs-winsupport virt-v2v " \
                   "powershell omi omi-psrp-server gssntlmssp -y".format(
             releasever)
         if shell.run(yum_cmd) != 0 or shell.run("pwsh --version") != 0:
