@@ -321,7 +321,7 @@ WantedBy=multi-user.target
         real_storage_path = getRealStoragePath(cmd.storagePath)
         if not cmd.srcVmUuid:
             cleanUpPath = real_storage_path
-            shell.call('systemctl stop .service')
+            shell.call('systemctl stop vsftpd.service')
         else:
             cleanUpPath = os.path.join(real_storage_path, ("ftp/%s" % cmd.srcVmUuid))
 
