@@ -1204,6 +1204,16 @@ def shell_return_stdout_stderr(cmd):
     scmd(False)
     return (scmd.return_code, scmd.stdout, scmd.stderr)
 
+
+class UpdateSNSGlobalPropertyCmd(object):
+    def __init__(self):
+        self.ticketTopicHttpURL = None
+        self.systemTopicHttpEndpointURL = None
+
+    def _asdict(self):
+        return self.__dict__
+
+
 class Command(object):
     def __init__(self):
         self.name = None
@@ -8889,16 +8899,16 @@ class StartUiCmd(Command):
             self.db_url = '%s/zstack_ui' % self.db_url.rstrip('/')
         _, _, self.db_username, self.db_password = ctl.get_live_mysql_portal(ui=True)
 
-    def _update_system_alarm_endpoint(self, system_webhook_url):
+    def _report_sns_global_property_updated(self, sns_cmd):
         mn_ip = ctl.read_property('management.server.ip')
         if not mn_ip:
             mn_ip = "127.0.0.1"
         mn_port = ctl.read_property('RESTFacade.port')
         if not mn_port:
             mn_port = 8080
-        content_json = '{"systemTopicHttpEndpointURL":"%s"}' %  system_webhook_url
-        http_cmd = 'curl -X POST -H "Content-Type:application/json" -H "commandpath:/sns/systemtopichttpendpointurl/report" -d \'%s\' --retry 5 http://%s:%s/zstack/asyncrest/sendcommand' % (content_json, mn_ip, mn_port)
-        logger.debug('report system topic http endpoint url:%s' % system_webhook_url)
+        content_json = simplejson.dumps(sns_cmd)
+        http_cmd = 'curl -X POST -H "Content-Type:application/json" -H "commandpath:/sns/globalpropertyupdated" -d \'%s\' --retry 5 http://%s:%s/zstack/asyncrest/sendcommand' % (content_json, mn_ip, mn_port)
+        logger.debug('report sns global property updated')
         ShellCmd(http_cmd)
 
     def run_zstack_ui(self, args):
@@ -8973,36 +8983,26 @@ class StartUiCmd(Command):
             args.server_port = '5443'
 
         # set http to https is enable ssl set
-
-        if ctl.uiPrimaryVersion == '4':
-            webhook_ip = ctl.read_property('management.server.vip')
-            if not webhook_ip:
-                webhook_ip = 'localhost'
-            system_webhook_url = '%s:%s/webhook/zwatch' % (webhook_ip, args.server_port)
-            ticket_webhook_url = '%s:%s/webhook/ticket' % (webhook_ip, args.server_port)
-            if args.enable_ssl:
-                system_webhook_url = 'https://' + system_webhook_url
-                ticket_webhook_url = 'https://' + ticket_webhook_url
-            else:
-                system_webhook_url = 'http://' + system_webhook_url
-                ticket_webhook_url = 'http://' + ticket_webhook_url
-
-            ctl.write_property('ticket.sns.topic.http.url', ticket_webhook_url)
-            ctl.write_property('sns.systemTopic.endpoints.http.url', system_webhook_url)
+        webhook_ip = ctl.read_property('management.server.vip')
+        if not webhook_ip:
+            webhook_ip = 'localhost'
+        system_webhook_url = '%s:%s/webhook/zwatch' % (webhook_ip, args.server_port)
+        ticket_webhook_url = '%s:%s/webhook/ticket' % (webhook_ip, args.server_port)
+        if args.enable_ssl:
+            system_webhook_url = 'https://' + system_webhook_url
+            ticket_webhook_url = 'https://' + ticket_webhook_url
         else:
-            webhook_ip = ctl.read_property('management.server.vip')
-            if not webhook_ip:
-                webhook_ip = 'localhost'
-            system_webhook_url = '%s:%s/zwatch/webhook' % (webhook_ip, args.webhook_port)
-            if args.enable_ssl:
-                system_webhook_url = 'https://' + system_webhook_url
-            else:
-                system_webhook_url = 'http://' + system_webhook_url
+            system_webhook_url = 'http://' + system_webhook_url
+            ticket_webhook_url = 'http://' + ticket_webhook_url
 
-            ctl.write_property('ticket.sns.topic.http.url', system_webhook_url)
-            ctl.write_property('sns.systemTopic.endpoints.http.url', system_webhook_url)
+        ctl.write_property('ticket.sns.topic.http.url', ticket_webhook_url)
+        ctl.write_property('sns.systemTopic.endpoints.http.url', system_webhook_url)
 
-        self._update_system_alarm_endpoint(system_webhook_url)
+        # tell mn the sns global property has changed
+        sns_cmd = UpdateSNSGlobalPropertyCmd()
+        sns_cmd.ticketTopicHttpURL = ticket_webhook_url
+        sns_cmd.systemTopicHttpEndpointURL = system_webhook_url
+        self._report_sns_global_property_updated(sns_cmd)
 
         if not os.path.exists(args.ssl_keystore):
             raise CtlError('%s not found.' % args.ssl_keystore)
