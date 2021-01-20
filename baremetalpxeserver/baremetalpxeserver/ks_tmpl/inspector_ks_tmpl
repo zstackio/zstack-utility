@@ -29,7 +29,7 @@ def get_ip_address(mac):
 
 # ipmi address
 cmd0 = r'''modprobe ipmi_watchdog; modprobe ipmi_poweroff; modprobe ipmi_devintf; modprobe ipmi_si; modprobe ipmi_msghandler'''
-cmd1 = r'''for i in {1..15}; do ipmitool lan print $i 2>/dev/null && break; done | grep "IP Address\s*:"'''
+cmd1 = r'''for i in {1..15}; do ipmitool lan print $i 2>/dev/null | grep -v '0.0.0.0' | grep "IP Address\s*:" | awk -F ": " '{ print $NF }'; done'''
 cmd2 = r'''ipmitool sol info 1 2>/dev/null | grep "Payload Port\s*:"'''
 status0, output0 = commands.getstatusoutput(cmd0)
 status1, output1 = commands.getstatusoutput(cmd1)
@@ -37,7 +37,7 @@ status2, output2 = commands.getstatusoutput(cmd2)
 if status1:
     exit
 
-ipmiAddress = output1.strip().split(": ")[1]
+ipmiAddress = '|'.join(set(x.strip() for x in output1.split('\n')))
 if not status2:
     ipmiPort = int(output2.strip().split(": ")[1])
 else:
