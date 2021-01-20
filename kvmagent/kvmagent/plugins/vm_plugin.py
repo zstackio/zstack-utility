@@ -6846,6 +6846,7 @@ class VmPlugin(kvmagent.KvmAgent):
                         if not vm:
                             raise Exception('vm[uuid:%s] not exists, failed' % cmd.vmInstanceUuid)
 
+                        execute_qmp_command(cmd.vmInstanceUuid, '{"exec-oob": "colo-enable-teardown"}')
                         count = 0
                         for alias_name in vm._get_all_volume_alias_names(cmd.volumes):
                             execute_qmp_command(cmd.vmInstanceUuid,
@@ -6880,6 +6881,7 @@ class VmPlugin(kvmagent.KvmAgent):
                             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
                                                                     '"arguments":{"id":"primary-in-redirect-%s"}}' % i)
                     else:
+                        execute_qmp_command(cmd.vmInstanceUuid, '{"exec-oob": "colo-enable-teardown"}')
                         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "nbd-server-stop"}')
                         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "x-colo-lost-heartbeat"}')
 
