@@ -741,6 +741,7 @@ class Ctl(object):
     ZSTACK_UI_HOME = os.path.join(USER_ZSTACK_HOME_DIR, 'zstack-ui/')
     ZSTACK_UI_DB = os.path.join(ZSTACK_UI_HOME, 'scripts/deployuidb.sh') 
     ZSTACK_UI_DB_MIGRATE = os.path.join(ZSTACK_UI_HOME, 'db') 
+    ZSTACK_UI_DB_MIGRATE_SH = os.path.join(ZSTACK_UI_HOME, 'scripts/migrateforupdate.sh') 
     ZSTACK_UI_KEYSTORE = ZSTACK_UI_HOME + 'ui.keystore.p12'
     ZSTACK_UI_KEYSTORE_CP = ZSTACK_UI_KEYSTORE + '.cp'
     # for console proxy https
@@ -8418,8 +8419,12 @@ class UiStatusCmd(Command):
             if not default_ip:
                 info('UI status: %s ' % (colored('Running', 'green')))
             else:
-                info('UI status: %s  %s://%s:%s' % (
-                    colored('Running', 'green'),UiStatusCmd.ZSTACK_UI_SSL, default_ip, port))
+                if os.path.exists(StartUiCmd.HTTP_FILE):
+                    with open(StartUiCmd.HTTP_FILE, 'r') as fd2:
+                        protcol = fd2.readline()
+                        protcol = protcol.strip(' \t\n\r')
+                        info('UI status: %s  %s://%s:%s' % (
+                            colored('Running', 'green'), protcol, default_ip, port))
 
 # For VDI UI 2.1
 class VDIUiStatusCmd(Command):
@@ -8803,6 +8808,7 @@ class StartDashboardCmd(Command):
 # For UI 2.0
 class StartUiCmd(Command):
     PORT_FILE = '/var/run/zstack/zstack-ui.port'
+    HTTP_FILE = '/var/run/zstack/zstack-ui.http'
     USER_ZSTACK_HOME_DIR = os.path.expanduser('~zstack')
     ZSTACK_UI_HOME = os.path.join(USER_ZSTACK_HOME_DIR, 'zstack-ui/')
     ZSTACK_UI_START = os.path.join(ZSTACK_UI_HOME, 'scripts/start.sh') 
@@ -9059,8 +9065,12 @@ class StartUiCmd(Command):
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT ' % (args.server_port, args.server_port))
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT ' % (args.webhook_port, args.webhook_port))
         enableSSL = 'false'
+        with open(StartUiCmd.HTTP_FILE, 'w') as fd:
+            fd.write('http')
         if args.enable_ssl:
             enableSSL = 'true'
+            with open(StartUiCmd.HTTP_FILE, 'w') as fd:
+                fd.write('https')
         scmd = Template("runuser -l root -s /bin/bash -c 'LOGGING_PATH=${LOGGING_PATH} bash ${STOP} && sleep 2 && bash ${START} --mn.host=${MN_HOST} --mn.port=${MN_PORT} --webhook.host=${WEBHOOK_HOST} --webhook.port=${WEBHOOK_PORT} --server.port=${SERVER_PORT} --ssl.enabled=${SSL_ENABLE} --ssl.keyalias=${SSL_KEYALIAS} --ssl.keystore=${SSL_KEYSTORE} --ssl.keystore-type=${SSL_KEYSTORE_TYPE} --ssl.keystore-password=${SSL_KETSTORE_PASSWORD} --db.url=${DB_URL} --db.username=${DB_USERNAME} --db.password=${DB_PASSWORD} ${CUSTOM_PROPS} --ssl.pem=${ZSTACK_UI_KEYSTORE_PEM}'") 
 
         scmd = scmd.substitute(LOGGING_PATH=args.log,STOP=StartUiCmd.ZSTACK_UI_STOP,START=StartUiCmd.ZSTACK_UI_START,MN_HOST=args.mn_host,MN_PORT=args.mn_port,WEBHOOK_HOST=args.webhook_host,WEBHOOK_PORT=args.webhook_port,SERVER_PORT=args.server_port,SSL_ENABLE=enableSSL,SSL_KEYALIAS=args.ssl_keyalias,SSL_KEYSTORE=args.ssl_keystore,SSL_KEYSTORE_TYPE=args.ssl_keystore_type,SSL_KETSTORE_PASSWORD=args.ssl_keystore_password,DB_URL=args.db_url,DB_USERNAME=args.db_username,DB_PASSWORD=args.db_password,ZSTACK_UI_KEYSTORE_PEM=ctl.ZSTACK_UI_KEYSTORE_PEM,CUSTOM_PROPS=custom_props)
