@@ -5,6 +5,7 @@ import os
 import random
 import string
 import platform
+import uuid
 
 from kvmagent import kvmagent
 from zstacklib.utils import jsonobject
@@ -206,7 +207,7 @@ WantedBy=multi-user.target
 
         releasever = kvmagent.get_host_yum_release()
         yum_cmd = "export YUM0={}; yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn " \
-                  "install libguestfs-tools libguestfs-tools-c perl-Sys-Guestfs libguestfs-winsupport virt-v2v " \
+                  "install vsftpd libguestfs-tools libguestfs-tools-c perl-Sys-Guestfs libguestfs-winsupport virt-v2v " \
                   "powershell omi omi-psrp-server gssntlmssp -y".format(
             releasever)
         if shell.run(yum_cmd) != 0 or shell.run("pwsh --version") != 0:
@@ -250,10 +251,6 @@ WantedBy=multi-user.target
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         real_storage_path = getRealStoragePath(cmd.storagePath)
         storage_dir = os.path.join(real_storage_path, "ftp/%s" % cmd.vmInfo.uuid)
-        if os.path.exists(storage_dir):
-            linux.rm_dir_force(storage_dir)
-        linux.mkdir(storage_dir, 0777)
-
         rsp = ConvertRsp()
         last_task = self.load_and_save_task(req, rsp, validate_and_make_dir, storage_dir)
         if last_task and last_task.agent_pid == os.getpid():
@@ -265,13 +262,22 @@ WantedBy=multi-user.target
                      % (QOS_IFB, cmd.managementIp)
             shell.run(cmdstr)
 
+        if os.path.exists(storage_dir):
+            linux.rm_dir_force(storage_dir)
+        linux.mkdir(storage_dir, 0777)
+
         report = Report(cmd.threadContext, cmd.threadContextStack)
         report.processType = "HYPERV-V2V"
         report.progress_report(10, "start")
 
         startTime = time.time()
         ps = powershell.OpenRemotePS(cmd.credential)
-        ps.test_winrm_connect()
+        vmInfos = ps.get_vm_info(cmd.vmInfo.uuid)
+        if len(vmInfos) < 1:
+            raise Exception("cannot get src vm:%s info" % cmd.credential.srcVmUuid)
+
+        cmd.vmInfo = vmInfos[0]
+        logger.debug("get srcVmInfo: %s" % jsonobject.dumps(cmd.vmInfo))
         ps.fetch_vm_disk(cmd.vmInfo, storage_dir, cmd.managementIp)
 
         report.progress_report(30, "start")
@@ -291,7 +297,20 @@ WantedBy=multi-user.target
                 virt_v2v_cmd = "VIRTIO_WIN=/var/lib/zstack/v2v/zstack-windows-virtio-driver.iso " \
                                "virt-v2v -i disk \"%s\"  -o local -of %s -os %s " \
                                "> %s/virt_v2v_log 2>&1" % (srcPath, cmd.format, storage_dir, storage_dir)
-                shell.call(virt_v2v_cmd.encode('utf-8'))
+                if shell.run(virt_v2v_cmd.encode('utf-8')) != 0:
+                    v2v_log_file = "/tmp/v2v_log/%s-virt-v2v-log" % cmd.longJobUuid
+
+                    # create folder to save virt-v2v log
+                    tail_cmd = 'mkdir -p /tmp/v2v_log; tail -c 1M %s/virt_v2v_log > %s' % (storage_dir, v2v_log_file)
+                    shell.run(tail_cmd)
+                    with open(v2v_log_file, 'a') as fd:
+                        fd.write('\n>>> virt_v2v command: %s\n' % virt_v2v_cmd)
+
+                    rsp.success = False
+                    rsp.error = "failed to run virt-v2v command, log in conversion host: %s" % v2v_log_file
+
+                    return jsonobject.dumps(rsp)
+
                 destPath = "%s-sda" % srcPath
                 rv = makeVolumeInfo(v, startTime, 0, destPath)
             else:
@@ -319,11 +338,12 @@ WantedBy=multi-user.target
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
         real_storage_path = getRealStoragePath(cmd.storagePath)
-        if not cmd.srcVmUuid:
+        if not cmd.credential:
             cleanUpPath = real_storage_path
-            shell.call('systemctl stop .service')
+            shell.call('systemctl stop vsftpd.service')
         else:
-            cleanUpPath = os.path.join(real_storage_path, ("ftp/%s" % cmd.srcVmUuid))
+            normalUuid = str(uuid.UUID(cmd.credential.srcVmUuid))
+            cleanUpPath = os.path.join(real_storage_path, ("ftp/%s" % normalUuid))
 
         linux.rm_dir_force(cleanUpPath)
         return jsonobject.dumps(rsp)

@@ -16,6 +16,7 @@ class VolumeInfo(object):
         self.physicalSize = -1 # type: long
         self.type = None       # type: string
         self.path = None       # type: string
+        self.bus = None        # type: string
 
 class VmInfo(object):
     def __init__(self):
@@ -38,7 +39,7 @@ class OpenRemotePS(object):
         output = self.run_remote_script("Get-Host", "timeout 5s")
         logger.debug("test winrm connect success: %s", output)
 
-    def get_vm_info(self):
+    def get_vm_info(self, vmUuid=None):
         def make_vminfo_from_output(output):
             if output is None or output.strip() is "":
                 return []
@@ -104,10 +105,14 @@ class OpenRemotePS(object):
                     continue
             return vms
 
+        if vmUuid:
+            srcVm = "-ID %s" % vmUuid
+        else:
+            srcVm = ""
         self.test_winrm_connect()
         script = """
 $vmInfos = New-Object -TypeName System.Collections.ArrayList
-$vms = Get-Vm | select VMname, VMID, MemoryStartup, ProcessorCount, Generation
+$vms = Get-Vm %s | select VMname, VMID, MemoryStartup, ProcessorCount, Generation
 foreach ($vm in $vms) 
 {
     $pso = [PSCustomObject]@{
@@ -172,7 +177,7 @@ foreach ($vm in $vms)
 }
 
 $vmInfos | ConvertTo-Json
-"""
+""" % srcVm
         output = self.run_remote_script(script)
         vms = make_vminfo_from_output(output)
         return vms
