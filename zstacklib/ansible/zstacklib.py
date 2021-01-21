@@ -1778,6 +1778,12 @@ export HISTTIMEFORMAT HISTSIZE HISTFILESIZE PROMPT_COMMAND'''
     host_post_info.post_label_param = None
     run_remote_command(enforce_history_cmd, host_post_info)
 
+def check_umask(host_post_info):
+    check_umask_cmd = "[[ ! `umask` == '0022' ]] && echo 'umask 0022' >> /etc/bashrc || true"
+    host_post_info.post_label = "ansible.shell.check.umask"
+    host_post_info.post_label_param = None
+    run_remote_command(check_umask_cmd, host_post_info)
+
 class ZstackLib(object):
     def __init__(self, args):
         distro = args.distro
@@ -1802,6 +1808,7 @@ class ZstackLib(object):
 
         # enforce history
         enforce_history(trusted_host, host_post_info)
+        check_umask(host_post_info)
 
         if distro in RPM_BASED_OS:
             epel_repo_exist = file_dir_exist("path=/etc/yum.repos.d/epel.repo", host_post_info)
