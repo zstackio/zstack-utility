@@ -7887,8 +7887,10 @@ class UpgradeUIDbCmd(Command):
 
             if db_password:
                 shell_no_pipe('bash %s migrate -outOfOrder=true -user=%s -password=%s -url=%s -locations=%s' % (flyway_path, db_user, db_password, db_url, schema_path))
+                shell_no_pipe('bash %s %s %s %s %s' % (ctl.ZSTACK_UI_DB_MIGRATE_SH,db_user,db_password, db_hostname,db_port))
             else:
                 shell_no_pipe('bash %s migrate -outOfOrder=true -user=%s -url=%s -locations=%s' % (flyway_path, db_user, db_url, schema_path))
+                shell_no_pipe('bash %s %s %s %s %s' % (ctl.ZSTACK_UI_DB_MIGRATE_SH,db_user,'zstack.ui.password', db_hostname,db_port))
 
             info('Successfully upgraded the zstack_ui database to the latest version.\n')
 
