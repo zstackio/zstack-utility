@@ -71,7 +71,7 @@ def get_http_server():
     return _rest_service.http_server
 
 def get_host_yum_release():
-    return commands.getoutput("rpm -q zstack-release |awk -F'-' '{print $3}'").strip()
+    return commands.getoutput("rpm -q zstack-release 2>/dev/null | awk -F'-' '{print $3}'").strip()
 
 def get_host_os_type():
     dist, version, _ = platform.dist()
