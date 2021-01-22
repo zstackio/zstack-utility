@@ -106,6 +106,12 @@ class FaultToleranceFecnerPlugin(kvmagent.KvmAgent):
                 linux.write_file('/proc/sys/kernel/sysrq', '1')
                 linux.write_file('/proc/sysrq-trigger', 'o')
             else:
+                # if all disks in raid5(for volume creation) is removed, 
+                # no disk group will be found so maintain current host
+                if group_health_dict.get("1") is None:
+                    report_to_mn_for_host_maintenance()
+                    return
+
                 for key, value in group_health_dict.iteritems():
                     if key == "1" and value <= 2:
                         report_to_mn_for_host_maintenance()
