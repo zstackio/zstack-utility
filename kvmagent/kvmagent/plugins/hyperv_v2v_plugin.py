@@ -316,8 +316,8 @@ WantedBy=multi-user.target
             else:
                 destPath = os.path.join(storage_dir,
                                         "%s%s" % (v.name.rstrip(".vhdx").rstrip(".vhd"), ".%s" % cmd.format))
-                cmd = "%s -p -O %s \"%s\" \"%s\"" % (linux.qemu_img.subcmd("convert"), cmd.format, srcPath, destPath)
-                shell.call(cmd.encode('utf-8'))
+                convert_cmd = "%s -p -O %s \"%s\" \"%s\"" % (linux.qemu_img.subcmd("convert"), cmd.format, srcPath, destPath)
+                shell.call(convert_cmd.encode('utf-8'))
                 dvs.append(makeVolumeInfo(v, startTime, idx, destPath))
                 idx += 1
 
