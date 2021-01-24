@@ -1755,7 +1755,7 @@ explain:
 def is_bad_vm_root_volume(vm_root_volume):
     cmd = "lsblk -P " + vm_root_volume + " -s -o NAME,TYPE,STATE"
     lsblk_out = bash.bash_o(cmd).strip().split("\n")
-    if len(lsblk_out) != 2: # valid_cmd_out = block_info + denpendency_disk_info
+    if len(lsblk_out) < 2: # valid_cmd_out = one_block_info + at_least_one_denpendency_disk_info
         return False
     for line in lsblk_out:
         line_list = re.split(' ', line)

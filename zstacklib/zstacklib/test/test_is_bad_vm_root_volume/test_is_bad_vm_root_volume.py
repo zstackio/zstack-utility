@@ -35,5 +35,8 @@ class Test(unittest.TestCase):
         mock_shell_output("bad_output.txt")
         test_function_works_or_not(False)
 
+        mock_shell_output("bad_offline_multi_path_volume.txt")
+        test_function_works_or_not(True)
+
 if __name__ == "__main__":
     unittest.main()
