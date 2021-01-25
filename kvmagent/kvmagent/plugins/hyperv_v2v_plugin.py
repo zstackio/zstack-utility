@@ -243,7 +243,7 @@ WantedBy=multi-user.target
             return { "installPath": destPath,
                      "actualSize":  v.physicalSize,
                      "virtualSize": v.size,
-                     "virtioScsi":  v.bus == 'scsi',
+                     "virtioScsi":  v.bus == 'SCSI',
                      "deviceName":  v.name,
                      "downloadTime": int(time.time() - startTime),
                      "deviceId":    devId }
