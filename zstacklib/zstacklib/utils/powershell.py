@@ -71,6 +71,8 @@ class OpenRemotePS(object):
                             volume.path = value
                             s = value.split("\\\\")
                             volume.name = s[len(s) - 1]
+                        elif key == "bus":
+                            volume.bus = value
                     vm.volumes.append(volume)
                     continue
 
@@ -155,6 +157,9 @@ foreach ($vm in $vms)
     # fix volume info
     foreach ($disk in $disks)
     {
+        $ct = Get-VM -ID $vm.VMID | Get-VMHardDiskDrive | Where Path -eq $disk.Path | Select ControllerType 
+        $bus = $ct.ControllerType
+        
         $voltype = $null
         if ($i -eq 0) {
             $voltype = "Root"
@@ -165,7 +170,7 @@ foreach ($vm in $vms)
         $volphysicalSize = $disk.FileSize
         $volpath = $disk.Path
 
-        $volstring = "Volume@@@type:$voltype@@@size:$volsize@@@physicalSize:$volphysicalSize@@@path:$volpath"
+        $volstring = "Volume@@@type:$voltype@@@size:$volsize@@@physicalSize:$volphysicalSize@@@path:$volpath@@@bus:$bus"
         $diskindex = $diskarray.Add($volstring)
 
         $i = $i+1
