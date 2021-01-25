@@ -61,6 +61,10 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
     BOOT_IPXE_PATH = os.path.join(TFTPBOOT_DIR, 'boot.ipxe')
     DEFAULT_PXE_PATH = os.path.join(PXELINUX_CFG_DIR, 'default')
 
+    MAPFILE_PATH = os.path.join(BAREMETAL_LIB_DIR, 'map-file')
+    TFTPD_SYSTEMD_SERVICE_PATH = \
+            '/usr/lib/systemd/system/zstack-baremetal-tftpd.service'
+
     NGINX_BASIC_CONF_PATH = \
             '/var/lib/zstack/nginx/baremetal/zstack-baremetal-nginx.conf'
     # NGINX_CONF_DIR = os.path.join(BAREMETAL_LIB_DIR, 'nginx-gateway')
@@ -100,7 +104,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                          'zlib-devel', 'binutils-devel', 'bison',
                          'audit-libs-devel', 'java-devel', 'numactl-devel',
                          'pciutils-devel', 'ncurses-devel', 'python-docutils',
-                         'flex', 'targetcli', 'syslinux']
+                         'flex', 'targetcli', 'syslinux', 'tftp-server']
         yum_release = kvmagent.get_host_yum_release()
         cmd = ('export YUM0={yum_release}; yum --disablerepo=* '
                '--enablerepo=zstack-mn clean all; '
@@ -182,7 +186,10 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             'nginx_systemd_service': os.path.join(
                 template_dir, 'zstack-baremetal-nginx.service.j2'),
             'dnsmasq_systemd_service': os.path.join(
-                template_dir, 'zstack-baremetal-dnsmasq.service.j2')
+                template_dir, 'zstack-baremetal-dnsmasq.service.j2'),
+            'tftp_map_file': os.path.join(template_dir, 'map-file.j2'),
+            'tftp_systemd_service': os.path.join(
+                template_dir, 'zstack-baremetal-tftpd.service.j2')
         }
         with open(k_v_mapping.get(template), 'r') as f:
             return Template(f.read())
@@ -207,6 +214,32 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         :type network_obj: NetworkObj
         """
         linux.flush_device_ip(network_obj.dhcp_interface)
+
+    def _prepare_tftp(self):
+
+        if not os.path.exists(self.MAPFILE_PATH):
+            template_map_file = self._load_template('tftp_map_file')
+            map_file = template_map_file.render(
+                bm_gateway_tftpboot_dir=self.TFTPBOOT_DIR)
+            with open(self.MAPFILE_PATH, 'w') as f:
+                f.write(map_file)
+
+        if not os.path.exists(self.TFTPD_SYSTEMD_SERVICE_PATH):
+            template_systemd_service = self._load_template(
+                'tftp_systemd_service')
+            systemd_service = template_systemd_service.render(
+                bm_gateway_tftpd_mapfile=self.MAPFILE_PATH,
+                bm_gateway_tftpboot_dir=self.TFTPBOOT_DIR)
+            with open(self.TFTPD_SYSTEMD_SERVICE_PATH, 'w') as f:
+                f.write(systemd_service)
+
+        cmd = 'systemctl start zstack-baremetal-tftpd'
+        shell.call(cmd)
+
+    def _destroy_tftp(self):
+        cmd = ('systemctl is-active zstack-baremetal-tftpd || exit 0; '
+               'systemctl stop zstack-baremetal-tftpd.service')
+        shell.call(cmd)
 
     def _prepare_dnsmasq(self, network_obj):
         """ Prepare dnsmasq configuration
@@ -244,7 +277,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             shell.call(cmd)
 
         cmd = ('systemctl start zstack-baremetal-dnsmasq && '
-               'systemctl reload zstack-baremetal-dnsmasq')
+               'systemctl restart zstack-baremetal-dnsmasq')
         shell.call(cmd)
 
     def _destroy_dnsmasq(self):
@@ -301,7 +334,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         self._append_dnsmasq_configuration(instance_obj)
 
         cmd = ('systemctl start zstack-baremetal-dnsmasq && '
-               'systemctl reload zstack-baremetal-dnsmasq')
+               'systemctl restart zstack-baremetal-dnsmasq')
         shell.call(cmd)
 
     def _create_dnsmasq_hosts(self, instance_objs):
@@ -311,7 +344,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             self._append_dnsmasq_configuration(instance_obj)
 
         cmd = ('systemctl start zstack-baremetal-dnsmasq && '
-               'systemctl reload zstack-baremetal-dnsmasq')
+               'systemctl restart zstack-baremetal-dnsmasq')
         shell.call(cmd)
 
     def _delete_dnsmasq_host(self, instance_obj):
@@ -334,7 +367,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             shell.call(cmd)
 
         cmd = ('systemctl start zstack-baremetal-dnsmasq && '
-               'systemctl reload zstack-baremetal-dnsmasq')
+               'systemctl restart zstack-baremetal-dnsmasq')
         shell.call(cmd)
 
     def _prepare_nginx_basic(self, network_obj):
@@ -864,8 +897,15 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             self._prepare_dnsmasq(network_obj)
             self._create_dnsmasq_hosts(bm_instance_objs)
 
-            # Configure iptables rules
-            self._add_iptables_rule(network_obj.baremetal_instance_proxy_port)
+            # Prepare tftp service
+            self._prepare_tftp()
+
+            # Configure iptables rules, allow http port, dhcp port, tftp port
+            self._add_iptables_rule('tcp',
+                                    network_obj.baremetal_instance_proxy_port)
+            self._add_iptables_rule('udp', 67)
+            self._add_iptables_rule('udp', 68)
+            self._add_iptables_rule('udp', 69)
 
             # save the provision network config for furthur usage
             with open(self.BAREMETAL_GATEWAY_AGENT_CONF_CACHE, 'w') as f:
@@ -895,6 +935,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         self._destroy_ipxe()
         self._destroy_nginx()
         self._destroy_dnsmasq()
+        self._destroy_tftp()
         self._destroy_provision_network(network_obj)
         linux.rm_file_force(self.BAREMETAL_GATEWAY_AGENT_CONF_CACHE)
 
@@ -1122,21 +1163,23 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @lock.file_lock('/run/xtables.lock')
-    def _add_iptables_rule(self, port):
+    def _add_iptables_rule(self, protocol, port):
         ipt = iptables.from_iptables_save()
-        rule = ('-A INPUT -p tcp -m comment --comment '
-                '"baremetalv2gateway.allow.port" -m tcp '
-                '--dport {port} -j ACCEPT').format(port=port)
+        rule = ('-A INPUT -p {protocol} -m comment --comment '
+                '"baremetalv2gateway.allow.port" -m {protocol} '
+                '--dport {port} -j ACCEPT').format(protocol=protocol,
+                                                   port=port)
         if not ipt.search_all_rule(rule):
             ipt.add_rule(rule)
             ipt.iptable_restore()
 
     @lock.file_lock('/run/xtables.lock')
-    def _remove_iptables_rule(self, port):
+    def _remove_iptables_rule(self, protocol, port):
         ipt = iptables.from_iptables_save()
-        rule = ('-A INPUT -p tcp -m comment --comment '
-                '"baremetalv2gateway.allow.port" -m tcp '
-                '--dport {port} -j ACCEPT').format(port=port)
+        rule = ('-A INPUT -p {protocol} -m comment --comment '
+                '"baremetalv2gateway.allow.port" -m {protocol} '
+                '--dport {port} -j ACCEPT').format(protocol=protocol,
+                                                   port=port)
         ipt.remove_rule(rule)
         ipt.iptable_restore()
 
