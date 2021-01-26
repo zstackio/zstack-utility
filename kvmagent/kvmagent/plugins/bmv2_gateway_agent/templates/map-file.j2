@@ -1,0 +1,4 @@
+re ^(/tftpboot/) {{ bm_gateway_tftpboot_dir }}\2
+re ^/tftpboot/ {{ bm_gateway_tftpboot_dir }}
+re ^(^/) {{ bm_gateway_tftpboot_dir }}\1
+re ^([^/]) {{ bm_gateway_tftpboot_dir }}\1
