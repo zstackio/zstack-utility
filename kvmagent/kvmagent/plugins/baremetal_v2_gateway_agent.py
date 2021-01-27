@@ -683,7 +683,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         shell.call(cmd)
 
         # Configure the iptables
-        self._add_iptables_rule(gw_port)
+        self._add_iptables_rule('tcp', gw_port)
 
         return gw_port
 
