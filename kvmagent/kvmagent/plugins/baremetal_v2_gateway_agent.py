@@ -518,7 +518,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                     if 'proxy_pass' in line:
                         remote_port = int(line.split(':')[-1].strip()[:-1])
             if remote_port and local_port:
-                self._remove_iptables_rule(local_port)
+                self._remove_iptables_rule('tcp', local_port)
             linux.rm_file_force(file_path)
 
         cmd = ('systemctl start zstack-baremetal-nginx && '
