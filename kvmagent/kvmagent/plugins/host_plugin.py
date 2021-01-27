@@ -991,11 +991,12 @@ class HostPlugin(kvmagent.KvmAgent):
                 elif line[0] == 'iSerial':
                     info.iSerial = ' '.join(line[2:]) if len(line) > 2 else ""
 
-            if info.busNum == '' or info.devNum == '' or info.idVendor == '' \
-                    or info.idProduct == '' or '(error)' in info.iManufacturer or '(error)' in info.iProduct:
-                rsp.success = False
-                rsp.error = "cannot get enough info of usb device"
-                return jsonobject.dumps(rsp)
+            if info.busNum == '' or info.devNum == '' or info.idVendor == '' or info.idProduct == '':
+                logger.debug("cannot get busNum/devNum/idVendor/idProduct info in usbDevice %s" % devId)
+                continue
+            elif '(error)' in info.iManufacturer or '(error)' in info.iProduct:
+                logger.debug("cannot get iManufacturer or iProduct info in usbDevice %s" % devId)
+                usbDevicesInfo += info.toString()
             else:
                 usbDevicesInfo += info.toString()
         rsp.usbDevicesInfo = usbDevicesInfo
