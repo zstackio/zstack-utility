@@ -103,6 +103,8 @@ class PxeServerAgent(object):
     VSFTPD_LOG_PATH = BAREMETAL_LOG_PATH + "vsftpd.log"
     PXELINUX_CFG_PATH = TFTPBOOT_PATH + "pxelinux.cfg/"
     PXELINUX_DEFAULT_CFG = PXELINUX_CFG_PATH + "default"
+    UEFI_GRUB_CFG_PATH = TFTPBOOT_PATH + "EFI/BOOT/"
+    UEFI_DEFAULT_GRUB_CFG = UEFI_GRUB_CFG_PATH + "grub.cfg"
     # we use `KS_CFG_PATH` to hold kickstart/preseed/autoyast preconfiguration files
     KS_CFG_PATH = VSFTPD_ROOT_PATH + "ks/"
     INSPECTOR_KS_CFG = KS_CFG_PATH + "inspector_ks.cfg"
@@ -111,7 +113,6 @@ class PxeServerAgent(object):
     NGINX_TERMINAL_PROXY_CONF_PATH = "/etc/nginx/conf.d/terminal/"
     NOVNC_INSTALL_PATH = BAREMETAL_LIB_PATH + "noVNC/"
     NOVNC_TOKEN_PATH = NOVNC_INSTALL_PATH + "tokens/"
-    ARM_GRUB_CFG = TFTPBOOT_PATH + "grub.cfg"
 
     NMAP_BROADCAST_DHCP_DISCOVER_PATH = "/usr/share/nmap/scripts/broadcast-dhcp-discover.nse"
 
@@ -224,11 +225,14 @@ class PxeServerAgent(object):
         dhcp_conf = """interface={DHCP_INTERFACE}
 port=0
 bind-interfaces
-dhcp-match=x86PC, option:client-arch, 0 #LEGACLY x86
-dhcp-match=AARCH64_EFI, option:client-arch, 11 #EFI AARCH64
-dhcp-boot=tag:x86PC,pxelinux.0
-dhcp-boot=tag:AARCH64_EFI,grubaa64.efi
 enable-tftp
+dhcp-match=set:bios,option:client-arch,0
+dhcp-match=set:efi-x86_64,option:client-arch,7
+dhcp-match=set:efi-x86_64,option:client-arch,9
+dhcp-match=set:efi-aarch64,option:client-arch,11
+dhcp-boot=tag:bios,pxelinux.0
+dhcp-boot=tag:efi-x86_64,EFI/BOOT/grubx64.efi
+dhcp-boot=tag:efi-aarch64,EFI/BOOT/grubaa64.efi
 tftp-root={TFTPBOOT_PATH}
 log-facility={DNSMASQ_LOG_PATH}
 dhcp-range={DHCP_RANGE}
@@ -269,7 +273,6 @@ listen=NO
 listen_ipv6=YES
 pam_service_name=vsftpd
 userlist_enable=YES
-#tcp_wrappers=YES
 xferlog_enable=YES
 xferlog_std_format=YES
 xferlog_file={VSFTPD_LOG_PATH}
@@ -289,15 +292,19 @@ append initrd=zstack/x86_64/initrd.img devfs=nomount ksdevice=bootif ks=ftp://{P
         with open(self.PXELINUX_DEFAULT_CFG, 'w') as f:
             f.write(pxelinux_cfg)
 
-        #init grub.cfg for arm
-        grub_cfg = """set timeout=10
-menuentry 'ZStack Get Hardware Info' {
-    linux zstack/aarch64/vmlinuz ip=dhcp inst.repo=ftp://%s/zstack-dvd inst.ks=ftp://%s/ks/inspector_ks.cfg \
-        console=tty0 console=ttyS0,115200n8 rd.debug rd.udev.debug systemd.log_level=debug
-    initrd zstack/aarch64/initrd.img
+        # init default uefi grub.cfg for x86_64 and aarch64
+        grub_cfg = """set timeout=1
+set arch='x86_64'
+if [ "$grub_cpu" == "arm64" ]; then
+  set arch='aarch64'
+fi
+
+menuentry 'ZStack Get Bare Metal Chassis Hardware Info' --class fedora --class gnu-linux --class gnu --class os {
+        linuxefi (tftp)zstack/$arch/vmlinuz devfs=nomount ksdevice=bootif inst.ks=ftp://%s/ks/inspector_ks.cfg vnc
+        initrdefi (tftp)zstack/$arch/initrd.img
 }
-""" % (pxeserver_dhcp_nic_ip, pxeserver_dhcp_nic_ip)
-        with open(self.ARM_GRUB_CFG, 'w') as f:
+""" % (pxeserver_dhcp_nic_ip)
+        with open(self.UEFI_DEFAULT_GRUB_CFG, 'w') as f:
             f.write(grub_cfg)
 
         # init inspector_ks.cfg
@@ -454,6 +461,7 @@ http {
         return json_object.dumps(rsp)
 
     def _create_pxelinux_cfg(self, cmd):
+        # create pxelinux.cfg/01-MAC for legacy x86_64
         ks_cfg_name = cmd.pxeNicMac
         pxe_cfg_file = os.path.join(self.PXELINUX_CFG_PATH, "01-" + ks_cfg_name)
         pxeserver_dhcp_nic_ip = self._get_ip_address(cmd.dhcpInterface).strip()
@@ -483,21 +491,16 @@ http {
         with open(pxe_cfg_file, 'w') as f:
             f.write(pxelinux_cfg)
 
-        # init grub.cfg-MAC for arm
-        pxe_cfg_file_arm = os.path.join(self.TFTPBOOT_PATH, "grub.cfg-01-" + cmd.pxeNicMac)
-        pxeserver_dhcp_nic_ip = self._get_ip_address(cmd.dhcpInterface).strip()
-        grub_cfg = """set default="0"
-set timeout=10
-menuentry 'ZStack Baremetal' {{
-    linux {IMAGEUUID}/vmlinuz ip=dhcp inst.repo=ftp://{PXESERVER_DHCP_NIC_IP}/{IMAGEUUID}/ inst.ks=ftp://{PXESERVER_DHCP_NIC_IP}/ks/{KS_CFG_NAME} \
-        console=tty0 console=ttyS0,115200n8 rd.debug rd.udev.debug systemd.log_level=debug
-    initrd {IMAGEUUID}/initrd.img
-}}
-        """.format(IMAGEUUID=cmd.imageUuid,
+        # create uefi grub.cfg-01-MAC for x86_64/aarch64 with rhel os
+        grub_cfg_file = os.path.join(self.UEFI_GRUB_CFG_PATH, "grub.cfg-01-" + ks_cfg_name)
+        grub_cfg = """set timeout=1
+menuentry 'Install OS on Bare Metal Instance' --class fedora --class gnu-linux --class gnu --class os {{
+        linuxefi (tftp){IMAGEUUID}/vmlinuz devfs=nomount ksdevice=bootif inst.ks=ftp://{PXESERVER_DHCP_NIC_IP}/ks/{KS_CFG_NAME} vnc
+        initrdefi (tftp){IMAGEUUID}/initrd.img
+}}""".format(IMAGEUUID=cmd.imageUuid,
                    PXESERVER_DHCP_NIC_IP=pxeserver_dhcp_nic_ip,
-                   KS_CFG_NAME=ks_cfg_name
-                   )
-        with open(pxe_cfg_file_arm, 'w') as f:
+                   KS_CFG_NAME=ks_cfg_name)
+        with open(grub_cfg_file, 'w') as f:
             f.write(grub_cfg)
 
     def _create_preconfiguration_file(self, cmd):
@@ -993,6 +996,8 @@ echo "STARTMODE='auto'" >> $IFCFGFILE
         if cmd.pxeNicMac == "*":
             if os.path.exists(self.PXELINUX_CFG_PATH):
                 bash_r("rm -f %s/*" % self.PXELINUX_CFG_PATH)
+            if os.path.exists(self.UEFI_GRUB_CFG_PATH):
+                bash_r("rm -f %s/*" % self.UEFI_GRUB_CFG_PATH)
             if os.path.exists(self.KS_CFG_PATH):
                 bash_r("rm -f %s/*" % self.KS_CFG_PATH)
             if os.path.exists(self.NGINX_MN_PROXY_CONF_PATH):
@@ -1001,17 +1006,15 @@ echo "STARTMODE='auto'" >> $IFCFGFILE
                 bash_r("rm -f %s/*" % self.NGINX_TERMINAL_PROXY_CONF_PATH)
             if os.path.exists(self.NOVNC_TOKEN_PATH):
                 bash_r("rm -f %s/*" % self.NOVNC_TOKEN_PATH)
-            if os.path.exists(self.TFTPBOOT_PATH):
-                bash_r("rm -f %s/grub.cfg*" % self.TFTPBOOT_PATH)
         else:
             mac_as_name = cmd.pxeNicMac.replace(":", "-")
             pxe_cfg_file = os.path.join(self.PXELINUX_CFG_PATH, "01-" + mac_as_name)
             if os.path.exists(pxe_cfg_file):
                 os.remove(pxe_cfg_file)
 
-            arm_pxe_cfg_file = os.path.join(self.TFTPBOOT_PATH, "grub.cfg-01-" + mac_as_name)
-            if os.path.exists(arm_pxe_cfg_file):
-                os.remove(arm_pxe_cfg_file)
+            uefi_grub_cfg_file = os.path.join(self.UEFI_GRUB_CFG_PATH, "grub.cfg-01-" + mac_as_name)
+            if os.path.exists(uefi_grub_cfg_file):
+                os.remove(uefi_grub_cfg_file)
 
             ks_cfg_file = os.path.join(self.KS_CFG_PATH, mac_as_name)
             if os.path.exists(ks_cfg_file):
