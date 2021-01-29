@@ -1,5 +1,6 @@
 import json
 import os
+import pwd
 import shutil
 
 from jinja2 import Template
@@ -131,10 +132,6 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         cmd = 'mkdir -p {dirs}'.format(dirs=' '.join(directories))
         shell.call(cmd)
 
-        # Change the pid dir owner
-        cmd = 'chown zstack:zstack {}'.format(self.PID_DIR)
-        shell.call(cmd)
-
         # Prepare tftpboot, copy ipxe/pxelinux.0 rom
         bm_utils.copy_dir_files_to_another_dir(
             '/usr/share/ipxe', self.TFTPBOOT_DIR)
@@ -233,7 +230,8 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             with open(self.TFTPD_SYSTEMD_SERVICE_PATH, 'w') as f:
                 f.write(systemd_service)
 
-        cmd = 'systemctl start zstack-baremetal-tftpd'
+        cmd = ('systemctl daemon-reload && '
+               'systemctl start zstack-baremetal-tftpd')
         shell.call(cmd)
 
     def _destroy_tftp(self):
