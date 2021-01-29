@@ -10,10 +10,11 @@ class ChangeController(RestController):
         super(ChangeController, self).__init__()
 
     @api_utils.async_expose
-    def post(self, password, bm_instance):
+    def post(self, username, password, bm_instance):
         agent_manager = manager.AgentManager()
         return agent_manager.update_password(
             bm_instance=bm_instance,
+            username=username,
             password=password)
 
 

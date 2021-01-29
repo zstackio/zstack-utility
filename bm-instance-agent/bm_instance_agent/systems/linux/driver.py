@@ -148,8 +148,8 @@ class LinuxDriver(base.SystemDriverBase):
         """
         raise NotImplementedError()
 
-    def update_password(self, instance_obj, password):
-        cmd = 'echo root:%s | chpasswd' % password
+    def update_password(self, instance_obj, username, password):
+        cmd = 'echo %s:%s | chpasswd' % (username, password)
         processutils.execute(cmd, shell=True)
 
     def console(self):
