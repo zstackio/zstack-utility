@@ -26,6 +26,7 @@ class TestManager(base.TestCase):
         self.assertRaises(bm_exception.BmInstanceUuidConflict,
                           mgmt.update_password,
                           fake.BM_INSTANCE2,
+                          'username',
                           'newPassword')
         manager.DRIVER = None
 

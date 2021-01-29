@@ -810,9 +810,9 @@ GATEWAY=10.0.0.1
             bm_utils.camel_obj_to_snake(fake.BM_INSTANCE1))
 
         driver = centos.CentOSDriver()
-        driver.update_password(instance_obj, 'newPassword')
+        driver.update_password(instance_obj, 'username', 'newPassword')
 
-        cmd = 'echo root:%s | chpasswd' % 'newPassword'
+        cmd = 'echo username:%s | chpasswd' % 'newPassword'
         mock_execute.assert_called_once_with(cmd, shell=True)
 
     @mock.patch('bm_instance_agent.common.utils.process_is_running')

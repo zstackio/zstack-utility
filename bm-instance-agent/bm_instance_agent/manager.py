@@ -123,13 +123,13 @@ class AgentManager(object):
         self.driver.update_default_route(
             instance_obj, old_network_obj, new_network_obj)
 
-    def update_password(self, bm_instance, password):
+    def update_password(self, bm_instance, username, password):
         instance_obj = BmInstanceObj.from_json(bm_instance)
 
         self._check_uuid_corrent(instance_obj.uuid)
         msg = ('Call the driver to update user password')
         LOG.info(msg)
-        self.driver.update_password(instance_obj, password)
+        self.driver.update_password(instance_obj, username, password)
 
     def console(self):
         msg = ('Call the driver to start console')

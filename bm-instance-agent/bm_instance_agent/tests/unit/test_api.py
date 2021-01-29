@@ -290,6 +290,7 @@ class ApiTest(ApiTestBase):
 
         # Call the api
         data = {
+            'username': 'username',
             'password': 'newPassword',
             'bmInstance': fake.BM_INSTANCE1
         }
@@ -312,6 +313,7 @@ class ApiTest(ApiTestBase):
         # Assert the call corrent
         mock_update_passwd.assert_called_once_with(
             bm_instance=bm_utils.camel_obj_to_snake(fake.BM_INSTANCE1),
+            username='username',
             password='newPassword')
 
     @mock.patch('bm_instance_agent.manager.AgentManager.console')
