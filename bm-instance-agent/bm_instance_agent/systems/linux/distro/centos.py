@@ -1,11 +1,15 @@
+import bm_instance_agent
 import os
 import shutil
 
 from jinja2 import Template
 from oslo_concurrency import processutils
+from oslo_log import log as logging
 
 from bm_instance_agent.common import utils as agent_utils
 from bm_instance_agent.systems.linux import driver as linux_driver
+
+LOG = logging.getLogger(__name__)
 
 
 class CentOSDriver(linux_driver.LinuxDriver):
@@ -21,6 +25,45 @@ class CentOSDriver(linux_driver.LinuxDriver):
         if os.path.exists(src_file):
             os.chmod(src_file, 0o000)
             shutil.move(src_file, dst_file)
+
+        # Check the network config corrent. Remove unusable configuration
+        # file, generate required configuration file if the conf not exist.
+        if instance_obj.nics is None:
+            return
+        exist_conf_files = filter(
+            lambda x : True if x.startswith('ifcfg-') else False,
+            os.listdir('/etc/sysconfig/network-scripts/'))
+        exist_conf_files.remove('ifcfg-lo')
+        for nic in instance_obj.nics:
+            path = '/etc/sysconfig/network-scripts/ifcfg-{}'.format(
+                nic.iface_name)
+            if os.path.exists(path):
+                with open(path, 'r') as f:
+                    content = f.read()
+                    if nic.iface_name not in content \
+                        or nic.ip_address not in content \
+                        or nic.netmask not in content \
+                        or nic.gateway not in content:
+                        self._attach_port(nic)
+                exist_conf_files.remove('ifcfg-{}'.format(nic.iface_name))
+            else:
+                self._attach_port(nic)
+
+        # flush the iface and remove the conf file
+        for name in exist_conf_files:
+            iface_name = name.split('-')[-1]
+            try:
+                if '.' in iface_name:
+                    # ifdown vlan nic
+                    cmd = ['ifdown', iface_name]
+                else:
+                    # flush physical nic
+                    cmd = ['ip', 'address', 'flush', 'dev', iface_name]
+                processutils.execute(*cmd)
+            except Exception as e:
+                LOG.error(
+                    "Failed to flush {}, error: {}".format(iface_name, e))
+            os.remove('/etc/sysconfig/network-scripts/{}'.format(name))
 
     def _load_template(self):
         template_path = os.path.join(
@@ -43,15 +86,18 @@ class CentOSDriver(linux_driver.LinuxDriver):
         with open(conf_file_path, 'w') as f:
             f.write(conf)
 
+    def _attach_port(self, port):
+        self._write_network_conf(port)
+
+        cmd = ['ifdown', port.iface_name]
+        processutils.execute(*cmd)
+
+        cmd = ['ifup', port.iface_name]
+        processutils.execute(*cmd)
+
     def attach_port(self, instance_obj, network_obj):
         for port in network_obj.ports:
-            self._write_network_conf(port)
-
-            cmd = ['ifdown', port.iface_name]
-            processutils.execute(*cmd)
-
-            cmd = ['ifup', port.iface_name]
-            processutils.execute(*cmd)
+            self._attach_port(port)
 
     def detach_port(self, instance_obj, network_obj):
         for port in network_obj.ports:
