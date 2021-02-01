@@ -3009,7 +3009,7 @@ echo_subtitle "Sync from repo.zstack.io (takes a couple of minutes)"
 if [ x"$UPGRADE" = x'y' ]; then
     cluster_os_version=`mysql -uzstack -p"$MYSQL_USER_PASSWORD" zstack -e "select distinct tag from SystemTagVO where (resourceType='HostVO' and tag like '%os::version%');"`
     cluster_os_type=`echo -e "$cluster_os_version"|awk -F"::" '/version/{print $3}'|awk -F "." '{print "c"$1$2}'`
-    [ -z $cluster_os_type ] && cluster_os_type=$ZSTACK_RELEASE
+    [ -z "$cluster_os_type" ] && cluster_os_type=$ZSTACK_RELEASE
 fi
 if [ x"$ZSTACK_RELEASE" = x"c72" -o x"$ZSTACK_RELEASE" = x"c74" -o x"$ZSTACK_RELEASE" = x"c76" ];then
     BASEURL=rsync://rsync.repo.zstack.io/${VERSION_RELEASE_NR}/$BASEARCH/
