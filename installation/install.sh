@@ -144,6 +144,13 @@ stop_zstack_tui() {
   pkill -9 zstack_tui
 }
 
+disable_zstack_tui() {
+  sed -i '/agetty -n/s/ -n -l \/usr\/local\/zstack_tui\/zstack_tui//g' $ZSTACK_TUI_SERVICE 2>/dev/null
+  systemctl daemon-reload
+  pkill -9 zstack_tui
+  systemctl restart getty@tty1.service
+}
+
 # stop zstack_tui to prevent zstack auto installation
 stop_zstack_tui
 
@@ -3700,7 +3707,7 @@ if [ x"$UPGRADE" = x'y' ]; then
     echo " Your old zstack was saved in $zstack_home/upgrade/`ls $zstack_home/upgrade/ -rt|tail -1`"
     echo_custom_pcidevice_xml_warning_if_need
     echo_star_line
-    start_zstack_tui
+    [ "$BASEARCH" == "x86_64" ] && start_zstack_tui || disable_zstack_tui
     post_scripts_to_restore_iptables_rules
     if [[ $DEBIAN_OS =~ $OS ]];then
         post_restore_source_on_debian
@@ -3900,6 +3907,6 @@ fi
 echo_chrony_server_warning_if_need
 check_ha_need_upgrade
 echo_star_line
-start_zstack_tui
+[ "$BASEARCH" == "x86_64" ] && start_zstack_tui || disable_zstack_tui
 post_scripts_to_restore_iptables_rules
 
