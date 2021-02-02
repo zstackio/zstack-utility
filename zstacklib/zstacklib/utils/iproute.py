@@ -92,7 +92,9 @@ class NoSuchLinkDevice(RuntimeError):
                 'index': ' index=%s' % index if index is not None else '',
                 'cause': ' Because : %s' % cause if cause else ''
             })
-        self.param = param
+        self.ifname = ifname
+        self.index = index
+        self.cause = cause
 
 class IpAddr:
     def __init__(self, chunk, iproute):

@@ -223,7 +223,7 @@ class Eip(object):
 
         def add_dev_namespace_if_needed(device, namespace):
             if not iproute.is_device_ifname_exists(device, NS_NAME):
-                iproute.set_link_attribute(device, NS_NAME, netns=namespace)
+                iproute.set_link_attribute(device, None, netns=namespace)
 
         @bash.in_bash
         def set_ip_to_idev_if_needed(device, ipCmd, ip, prefix):
