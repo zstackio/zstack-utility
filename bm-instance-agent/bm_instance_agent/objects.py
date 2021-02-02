@@ -40,6 +40,16 @@ class BmInstanceObj(Base):
             'uuid': 'uuid',
             'provisionIpAddress': '192.168.101.10',
             'provisionNicMac': 'aa:bb:cc:dd:ee:ff'
+            'nics': [
+                {
+                    'mac': 'aa:bb:cc:dd:ee:fe',
+                    'ipAddress': '192.168.102.10',
+                    'netmask': '255.255.255.0',
+                    'gateway': '192.168.102.1',
+                    'vlanId': '1024',
+                    'defaultRoute': True
+                }
+            ]
         }
     }
     """
@@ -50,6 +60,11 @@ class BmInstanceObj(Base):
     def from_json(cls, bm_instance):
         obj = cls()
         obj.construct(bm_instance)
+
+        setattr(obj, 'nics', [])
+        if 'nics' in bm_instance.keys():
+            for port_dict in bm_instance['nics']:
+                obj.nics.append(PortObj.from_json(port_dict))
 
         return obj
 
