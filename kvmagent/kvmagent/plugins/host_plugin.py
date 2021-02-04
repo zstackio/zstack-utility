@@ -1174,6 +1174,7 @@ sysctl -w vm.nr_hugepages=0
 sysctl vm.nr_hugepages=0
 
 # config default grub
+sed -i '/GRUB_CMDLINE_LINUX=/s/[[:blank:]]*default_[[:graph:]]*//g' /etc/default/grub
 sed -i '/GRUB_CMDLINE_LINUX=/s/[[:blank:]]*hugepagesz[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g' /etc/default/grub
 sed -i '/GRUB_CMDLINE_LINUX=/s/[[:blank:]]*hugepages[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g' /etc/default/grub
 sed -i '/GRUB_CMDLINE_LINUX=/s/[[:blank:]]*transparent_hugepage[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g' /etc/default/grub
@@ -1187,6 +1188,7 @@ fi
 for var in ${grubs[@]} 
 do 
    if [ -f $var ]; then
+       sed -i '/^[[:space:]]*linux/s/[[:blank:]]*default_[[:graph:]]*//g' $var
        sed -i '/^[[:space:]]*linux/s/[[:blank:]]*hugepagesz[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g' $var
        sed -i '/^[[:space:]]*linux/s/[[:blank:]]*hugepages[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g' $var
        sed -i '/^[[:space:]]*linux/s/[[:blank:]]*transparent_hugepage[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g' $var
