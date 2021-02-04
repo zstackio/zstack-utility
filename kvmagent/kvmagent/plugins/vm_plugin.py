@@ -2976,14 +2976,38 @@ class Vm(object):
 
             return False
 
-        def addon(nic_xml_object):
+        def get_interface(nic):
+            self.refresh()
+            for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
+                if iface.mac.address_ == nic.mac:
+                    return iface
+            return None
+
+        def mtu_addon(nic_xml_object, iface):
+            if iface is None or iface.hasattr("mtu") is False:
+                mtu_element_tmp = nic_xml_object.find("mtu")
+                if mtu_element_tmp is not None:
+                    nic_xml_object.remove(mtu_element_tmp)
+                return
+
+            mtu_element = nic_xml_object.find("mtu")
+            if mtu_element is not None:
+                mtu_element.set("size", iface.mtu.size_)
+                return
+
+            e(nic_xml_object, 'mtu', None, attrib={'size': '%d' % int(iface.mtu.size_)})
+
+        def addon(nic_xml_object, nic):
             if cmd.addons and cmd.addons['NicQos'] and cmd.addons['NicQos'][nic.uuid]:
                 qos = cmd.addons['NicQos'][nic.uuid]
                 Vm._add_qos_to_interface(nic_xml_object, qos)
 
+            iface = get_interface(nic)
+            mtu_addon(nic_xml_object, iface)
+
         for nic in cmd.nics:
             interface = Vm._build_interface_xml(nic)
-            addon(interface)
+            addon(interface, nic)
             xml = etree.tostring(interface)
             logger.debug('updating nic:\n%s' % xml)
             if self.state == self.VM_STATE_RUNNING or self.state == self.VM_STATE_PAUSED:
