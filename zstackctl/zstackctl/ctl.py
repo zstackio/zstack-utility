@@ -2198,7 +2198,7 @@ class StartCmd(Command):
             if not has_opt('-Xms'):
                 catalina_opts.append('-Xms512M')
             if not has_opt('-Xmx'):
-                catalina_opts.append('-Xmx6144M')
+                catalina_opts.append('-Xmx12288M')
 
             with open(setenv_path, 'w') as fd:
                 fd.write('export CATALINA_OPTS=" %s"' % ' '.join(catalina_opts))
@@ -8615,7 +8615,7 @@ deploymentProfiles = {
         'small':  ( 4,  64, 0.6, 15),
         'medium': ( 8, 128, 0.5, 30),
         'large':  (16, 128, 0.4, 60),
-        'default':( 6, 100, 0.6, 15),
+        'default':( 12, 100, 0.6, 15),
 }
 
 class SetDeploymentCmd(Command):
