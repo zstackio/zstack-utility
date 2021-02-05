@@ -55,6 +55,7 @@ class GetConvertProgressRsp(AgentRsp):
 
 
 QOS_IFB = "ifb0"
+HOST_ARCH = platform.machine()
 
 VDDK_VERSION = '/var/lib/zstack/v2v/vddk_version'
 NBDKIT_BUILD_LOG_PATH = '/var/lib/zstack/v2v/nbdkit_build_lib/log'
@@ -103,9 +104,14 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             rsp.error = "v2v feature is not supported on centos 7.2"
             return jsonobject.dumps(rsp)
 
+        x86_64_c74 = "libguestfs-tools libguestfs-tools-c perl-Sys-Guestfs libguestfs-winsupport virt-v2v"
+        x86_64_c76 = "libguestfs-tools libguestfs-tools-c perl-Sys-Guestfs libguestfs-winsupport virt-v2v"
+        x86_64_ns10 = "libguestfs"
+
         releasever = kvmagent.get_host_yum_release()
+        dep_list = eval("%s_%s" % (HOST_ARCH, releasever))
         yum_cmd = "export YUM0={}; yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn " \
-                  "install libguestfs-tools libguestfs-tools-c perl-Sys-Guestfs libguestfs-winsupport virt-v2v -y".format(releasever)
+                  "install {} -y".format(releasever, dep_list)
         if shell.run(yum_cmd) != 0:
             rsp.success = False
             rsp.error = "failed to update install conversion host dependencies from zstack-mn,qemu-kvm-ev-mn repo"
@@ -367,12 +373,13 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
                     extra_params = ' '.join((extra_params, ("--%s" % k), v))
 
             if cmd.vddkVersion == '6.5':
-                return 'VIRTIO_WIN=/var/lib/zstack/v2v/zstack-windows-virtio-driver.iso \
+                return 'export PATH={6}:$PATH; \
+                        VIRTIO_WIN=/var/lib/zstack/v2v/zstack-windows-virtio-driver.iso \
                         virt-v2v -ic vpx://{0}?no_verify=1 {1} -it vddk \
                         --vddk-libdir=/var/lib/zstack/v2v/vmware-vix-disklib-distrib \
                         --vddk-thumbprint={3} -o local -os {2} --password-file {2}/passwd {5} \
                         -of {4} > {2}/virt_v2v_log 2>&1'.format(cmd.srcVmUri, shellquote(cmd.srcVmName), storage_dir,
-                                                                cmd.thumbprint, cmd.format, extra_params)
+                                                                cmd.thumbprint, cmd.format, extra_params, self._get_nbdkit_dir_path())
             if cmd.vddkVersion == '5.5':
                 if not self._ndbkit_is_work():
                     rsp.success = False
