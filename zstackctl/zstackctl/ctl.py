@@ -5680,7 +5680,7 @@ class CollectLogCmd(Command):
     bs_log_list = ['zstack-sftpbackupstorage.log','ceph-backupstorage.log','zstack-store/zstore.log']
     ps_log_list = ['ceph-primarystorage.log']
     # management-server.log is not in the same dir, will collect separately
-    mn_log_list = ['deploy.log', 'ha.log', 'zstack-console-proxy.log', 'zstack.log', 'zstack-cli', 'zstack-ui.log',
+    mn_log_list = ['deploy.log', 'ha.log', 'zstack-console-proxy.log', 'zstack.log', 'zstack-cli', 'zstack-ui-server.log',
                    'zstack-dashboard.log', 'zstack-ctl.log']
     collect_lines = 100000
     logger_dir = '/var/log/zstack/'
@@ -5983,10 +5983,10 @@ class CollectLogCmd(Command):
                 warn("get management-server log failed: %s" % output)
 
             # collect zstack-ui log if exists
-            command = "/bin/cp -f  %s/../../logs/zstack-ui.log %s" % (ctl.zstack_home, tmp_log_dir)
+            command = "/bin/cp -f  %s %s" % (os.path.join(ctl.read_ui_property('log'),'zstack-ui-server.log'), tmp_log_dir)
             (status, output) = run_remote_command(command, host_post_info, True, True)
             if status is not True:
-                warn("get zstack-ui log failed: %s" % output)
+                warn("get zstack-ui-server log failed: %s" % output)
 
             command = "/bin/cp -f  %s/../../logs/zstack-api.log %s" % (ctl.zstack_home, tmp_log_dir)
             (status, output) = run_remote_command(command, host_post_info, True, True)
@@ -6035,10 +6035,10 @@ class CollectLogCmd(Command):
             warn("get management-server log failed: %s" % output)
 
         # collect zstack-ui log if exists
-        command = "/bin/cp -f  %s/../../logs/zstack-ui.log %s" % (ctl.zstack_home, mn_log_dir)
+        command = "/bin/cp -f  %s %s" % (os.path.join(ctl.read_ui_property('log'),'zstack-ui-server.log'), mn_log_dir)
         (status, output) = commands.getstatusoutput(command)
         if status != 0:
-            warn("get zstack-ui log failed: %s" % output)
+            warn("get zstack-ui-server log failed: %s" % output)
 
         command = "/bin/cp -f  %s/../../logs/zstack-api.log %s" % (ctl.zstack_home, mn_log_dir)
         (status, output) = commands.getstatusoutput(command)
@@ -8821,7 +8821,6 @@ class StartUiCmd(Command):
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        ui_logging_path = os.path.normpath(os.path.join(ctl.zstack_home, "../../logs/"))
         parser.add_argument('--host', help="UI server IP. [DEFAULT] localhost", default='localhost')
         parser.add_argument('--mn-host', help="ZStack Management Host IP.")
         parser.add_argument('--mn-port', help="ZStack Management Host port.")
@@ -8920,7 +8919,6 @@ class StartUiCmd(Command):
         ShellCmd(http_cmd)
 
     def run_zstack_ui(self, args):
-        ui_logging_path = os.path.normpath(os.path.join(ctl.zstack_home, "../../logs/"))
 
         if args.mn_host and not validate_ip(args.mn_host):
             raise CtlError('%s is invalid mn address' % args.mn_host)
@@ -9091,7 +9089,7 @@ class StartUiCmd(Command):
             return "Running" in output
 
         if not check_ui_status():
-            info('fail to start UI server on the localhost. Use zstack-ctl start_ui to restart it. zstack UI log could be found in %s/zstack-ui.log' % args.log)
+            info('fail to start UI server on the localhost. Use zstack-ctl start_ui to restart it. zstack UI log could be found in %s/zstack-ui-server.log' % os.path.join(ctl.read_ui_property('log'),'zstack-ui-server.log'))
             shell('zstack-ctl stop_ui')
             linux.rm_dir_force("/var/run/zstack/zstack-ui.port")
             return False
@@ -9160,7 +9158,7 @@ class ConfigUiCmd(Command):
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        ui_logging_path = os.path.normpath(os.path.join(ctl.zstack_home, "../../logs/"))
+        ui_logging_path = os.path.join(ctl.ZSTACK_UI_HOME, "logs")
         parser.add_argument('--host', help='SSH URL, for example, root@192.168.0.10, to set properties in zstack.ui.properties on the remote machine')
         parser.add_argument('--init', help='init zstack ui properties to default values', action="store_true", default=False)
         parser.add_argument('--restore', help='restore zstack ui properties to default values', action="store_true", default=False)
@@ -9189,7 +9187,7 @@ class ConfigUiCmd(Command):
         shell_no_pipe('ssh %s "/usr/bin/zstack-ctl config_ui %s"' % (args.host, ' '.join(ctl.extra_arguments)))
 
     def run(self, args):
-        ui_logging_path = os.path.normpath(os.path.join(ctl.zstack_home, "../../logs/"))
+        ui_logging_path = os.path.join(ctl.ZSTACK_UI_HOME, "logs")
         if args.host:
             self._configure_remote_node(args)
             return
