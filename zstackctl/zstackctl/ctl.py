@@ -9040,7 +9040,6 @@ class StartUiCmd(Command):
             else:
                 args.db_password = self.db_password
 
-        shell("mkdir -p %s" % args.log)
         zstackui = ctl.ZSTACK_UI_HOME
         if not os.path.exists(zstackui):
             raise CtlError('%s not found. Are you sure the UI server is installed on %s?' % (zstackui, args.host))
@@ -9069,7 +9068,7 @@ class StartUiCmd(Command):
             enableSSL = 'true'
             with open(StartUiCmd.HTTP_FILE, 'w') as fd:
                 fd.write('https')
-        scmd = Template("runuser -l root -s /bin/bash -c 'LOGGING_PATH=${LOGGING_PATH} bash ${STOP} && sleep 2 && bash ${START} --mn.host=${MN_HOST} --mn.port=${MN_PORT} --webhook.host=${WEBHOOK_HOST} --webhook.port=${WEBHOOK_PORT} --server.port=${SERVER_PORT} --ssl.enabled=${SSL_ENABLE} --ssl.keyalias=${SSL_KEYALIAS} --ssl.keystore=${SSL_KEYSTORE} --ssl.keystore-type=${SSL_KEYSTORE_TYPE} --ssl.keystore-password=${SSL_KETSTORE_PASSWORD} --db.url=${DB_URL} --db.username=${DB_USERNAME} --db.password=${DB_PASSWORD} ${CUSTOM_PROPS} --ssl.pem=${ZSTACK_UI_KEYSTORE_PEM}'") 
+        scmd = Template("runuser -l root -s /bin/bash -c 'bash ${STOP} && sleep 2 && LOGGING_PATH=${LOGGING_PATH} bash ${START} --mn.host=${MN_HOST} --mn.port=${MN_PORT} --webhook.host=${WEBHOOK_HOST} --webhook.port=${WEBHOOK_PORT} --server.port=${SERVER_PORT} --ssl.enabled=${SSL_ENABLE} --ssl.keyalias=${SSL_KEYALIAS} --ssl.keystore=${SSL_KEYSTORE} --ssl.keystore-type=${SSL_KEYSTORE_TYPE} --ssl.keystore-password=${SSL_KETSTORE_PASSWORD} --db.url=${DB_URL} --db.username=${DB_USERNAME} --db.password=${DB_PASSWORD} ${CUSTOM_PROPS} --ssl.pem=${ZSTACK_UI_KEYSTORE_PEM}'") 
 
         scmd = scmd.substitute(LOGGING_PATH=args.log,STOP=StartUiCmd.ZSTACK_UI_STOP,START=StartUiCmd.ZSTACK_UI_START,MN_HOST=args.mn_host,MN_PORT=args.mn_port,WEBHOOK_HOST=args.webhook_host,WEBHOOK_PORT=args.webhook_port,SERVER_PORT=args.server_port,SSL_ENABLE=enableSSL,SSL_KEYALIAS=args.ssl_keyalias,SSL_KEYSTORE=args.ssl_keystore,SSL_KEYSTORE_TYPE=args.ssl_keystore_type,SSL_KETSTORE_PASSWORD=args.ssl_keystore_password,DB_URL=args.db_url,DB_USERNAME=args.db_username,DB_PASSWORD=args.db_password,ZSTACK_UI_KEYSTORE_PEM=ctl.ZSTACK_UI_KEYSTORE_PEM,CUSTOM_PROPS=custom_props)
 
