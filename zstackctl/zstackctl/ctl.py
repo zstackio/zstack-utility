@@ -5063,20 +5063,6 @@ class DumpMysqlCmd(Command):
             db_backupf_file_path = db_backup_dir + file_name + "-" + backup_timestamp + ".gz"
         if args.delete_expired_file is not False and args.host_info is None:
             error("Please specify remote host info with '--host' before you want to delete remote host expired files")
-        if args.host_info is not None:
-            host_info = args.host_info
-            host_connect_info_list = check_host_info_format(host_info, with_public_key=True)
-            remote_host_user = host_connect_info_list[0]
-            remote_host_ip = host_connect_info_list[2]
-            remote_host_port = host_connect_info_list[3]
-            key_path = os.path.expanduser("~/.ssh/")
-            private_key = key_path + "id_rsa"
-            public_key = key_path + "id_rsa.pub"
-            if os.path.isfile(public_key) is not True:
-                error("Didn't find public key: %s" % public_key)
-            if os.path.isfile(private_key) is not True:
-                error("Didn't find private key: %s" % private_key)
-            check_host_connection_with_key(remote_host_ip, remote_host_user, private_key, remote_host_port)
 
         mysqldump_options = "--single-transaction --quick"
         if db_hostname == "localhost" or db_hostname == "127.0.0.1":
@@ -5115,6 +5101,20 @@ class DumpMysqlCmd(Command):
                     os.remove(db_backup_dir + expired_file)
         #remote backup
         if args.host_info is not None:
+            host_info = args.host_info
+            host_connect_info_list = check_host_info_format(host_info, with_public_key=True)
+            remote_host_user = host_connect_info_list[0]
+            remote_host_ip = host_connect_info_list[2]
+            remote_host_port = host_connect_info_list[3]
+            key_path = os.path.expanduser("~/.ssh/")
+            private_key = key_path + "id_rsa"
+            public_key = key_path + "id_rsa.pub"
+            if os.path.isfile(public_key) is not True:
+                error("Didn't find public key: %s" % public_key)
+            if os.path.isfile(private_key) is not True:
+                error("Didn't find private key: %s" % private_key)
+            check_host_connection_with_key(remote_host_ip, remote_host_user, private_key, remote_host_port)
+
             self.sync_local_backup_db_to_remote_host(args, remote_host_user, private_key, remote_host_ip, remote_host_port)
             if args.delete_expired_file is False:
                 info("Sync ZStack backup to remote host %s:%s successfully! " % (remote_host_ip, self.remote_backup_dir))
