@@ -3,6 +3,11 @@
 # Mevoco Installer
 # Usage: bash install.sh
 #DEBUG='y'
+if [ -n $DEBUG ]
+then
+set -x
+fi
+
 PROGNAME=$0
 PRODUCT_NAME=${PRODUCT_NAME:-"ZStack"}
 SS100='SS100'
@@ -1695,13 +1700,23 @@ uz_stop_zstack(){
 
 uz_stop_zstack_ui(){
     echo_subtitle "Stop ${PRODUCT_NAME} UI"
-    zstack-ctl stop_ui >>$ZSTACK_INSTALL_LOG 2>&1
-    sleep 3
-    # make sure zstack ui is stopped
-    zstack-ctl ui_status 2>/dev/null |grep 'UI status'|grep Running >/dev/null 2>&1
-    if [ $? -eq 0 ]; then
-        fail "Failed to stop ${PRODUCT_NAME} UI! Maybe run zstack-ctl stop_ui by youself"
-    fi
+    if [ -e $ZSTACK_HOME ]
+    then
+        zstack-ctl stop_ui >>$ZSTACK_INSTALL_LOG 2>&1
+        sleep 3
+        # make sure zstack ui is stopped
+        zstack-ctl ui_status 2>/dev/null |grep 'UI status'|grep Running >/dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            fail "Failed to stop ${PRODUCT_NAME} UI! Maybe run zstack-ctl stop_ui by youself"
+        fi
+    elif [ -e "/var/run/zstack/zstack-ui.pid" ]
+    then
+        PID=`cat /var/run/zstack/zstack-ui.pid`
+        if [ -n $PID ]
+        then
+            echo `kill -9 $PID`
+        fi
+    fi 
     if [ -d ${LEGACY_MINI_INSTALL_ROOT} -o -d ${MINI_INSTALL_ROOT} ]; then
         systemctl stop zstack-mini
         ps -ef | grep -w mini-server | grep -w java | grep -v 'grep' >>$ZSTACK_INSTALL_LOG 2>&1
