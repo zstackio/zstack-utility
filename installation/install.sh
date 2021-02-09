@@ -3,7 +3,7 @@
 # Mevoco Installer
 # Usage: bash install.sh
 #DEBUG='y'
-if [ -n $DEBUG ]
+if [ -n "$DEBUG" ]
 then
 set -x
 fi
@@ -1712,7 +1712,7 @@ uz_stop_zstack_ui(){
     elif [ -e "/var/run/zstack/zstack-ui.pid" ]
     then
         PID=`cat /var/run/zstack/zstack-ui.pid`
-        if [ -n $PID ]
+        if [ -n "$PID" ]
         then
             echo `kill -9 $PID`
         fi
