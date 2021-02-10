@@ -8587,42 +8587,71 @@ class InstallLicenseCmd(Command):
         parser.add_argument('--prikey', help="[OPTIONAL] the path to the private key used to generate license request")
         parser.add_argument('--addon', '-a', help="install add one license file", action='store_true', default=False)
 
+        parser.add_argument('--xsky', '-x', help="path to the xsky license file", required=False)
+        parser.add_argument('--user', '-u', help="the monitor user", required=False)
+        parser.add_argument('--password', '-p', help="the monitor password", required=False)
+        parser.add_argument('--monitor', '-m', help="the monitor address", required=False)
+
     def run(self, args):
-        lpath = expand_path(args.license)
+        def install_xsky_license(args):
+            lpath = expand_path(args.xsky)
 
-        if not os.path.isfile(lpath):
-            raise CtlError('cannot find the license file at %s' % args.license)
+            if not os.path.isfile(lpath):
+                raise CtlError('cannot find the license file at %s' % args.license)
 
-        if ctl.extra_arguments:
-            raise CtlError('illegal arguments %s' % ctl.extra_arguments)
+            if args.user is None or args.password is None or args.monitor is None:
+                raise CtlError('user|password|monitor is None')
 
-        ppath = None
-        if args.prikey:
-            ppath = expand_path(args.prikey)
-            if not os.path.isfile(ppath):
-                raise CtlError('cannot find the private key file at %s' % args.prikey)
+            target = "/usr/local/hyperconverged/sds.license"
+            scmd = ShellCmd("scp %s root@%s:%s" % (args.xsky, args.monitor, target))
+            scmd(True)
 
-        license_folder = '/var/lib/zstack/license'
-        shell('''mkdir -p %s''' % license_folder)
-        shell('''chown zstack:zstack %s''' % license_folder)
+            cmd = "xms-cli -user %s -p %s license activate %s" % (args.user, args.password, target)
+            scmd = ShellCmd("ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s \"%s\"" % (args.monitor, cmd))
+            scmd(True)
 
-        if shell_return("gzip -t %s" % lpath) == 0:
-            packaged_license_folder = license_folder + '/packaged/' + datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
-            shell('''mkdir -p %s''' % packaged_license_folder)
-            shell('''tar zxf %s -C %s''' % (lpath, packaged_license_folder))
-            shell('''chown -R zstack:zstack %s''' % packaged_license_folder)
-            info("successfully installed the license files to %s" % packaged_license_folder)
-        else:
-            license_file_name = "license_" + uuid.uuid4().hex
 
-            shell('''yes | cp %s %s/%s''' % (lpath, license_folder, license_file_name))
-            shell('''chown zstack:zstack %s/%s''' % (license_folder, license_file_name))
-            info("successfully installed the license file to %s/%s" % (license_folder, license_file_name))
+        def install_zstack_license(args):
+            lpath = expand_path(args.license)
 
-        if ppath:
-            shell('''yes | cp %s %s/pri.key''' % (ppath, license_folder))
-            shell('''chown zstack:zstack %s/pri.key''' % license_folder)
-            info("successfully installed the private key file to %s/pri.key" % license_folder)
+            if not os.path.isfile(lpath):
+                raise CtlError('cannot find the license file at %s' % args.license)
+
+            if ctl.extra_arguments:
+                raise CtlError('illegal arguments %s' % ctl.extra_arguments)
+
+            ppath = None
+            if args.prikey:
+                ppath = expand_path(args.prikey)
+                if not os.path.isfile(ppath):
+                    raise CtlError('cannot find the private key file at %s' % args.prikey)
+
+            license_folder = '/var/lib/zstack/license'
+            shell('''mkdir -p %s''' % license_folder)
+            shell('''chown zstack:zstack %s''' % license_folder)
+
+            if shell_return("gzip -t %s" % lpath) == 0:
+                packaged_license_folder = license_folder + '/packaged/' + datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+                shell('''mkdir -p %s''' % packaged_license_folder)
+                shell('''tar zxf %s -C %s''' % (lpath, packaged_license_folder))
+                shell('''chown -R zstack:zstack %s''' % packaged_license_folder)
+                info("successfully installed the license files to %s" % packaged_license_folder)
+            else:
+                license_file_name = "license_" + uuid.uuid4().hex
+
+                shell('''yes | cp %s %s/%s''' % (lpath, license_folder, license_file_name))
+                shell('''chown zstack:zstack %s/%s''' % (license_folder, license_file_name))
+                info("successfully installed the license file to %s/%s" % (license_folder, license_file_name))
+
+            if ppath:
+                shell('''yes | cp %s %s/pri.key''' % (ppath, license_folder))
+                shell('''chown zstack:zstack %s/pri.key''' % license_folder)
+                info("successfully installed the private key file to %s/pri.key" % license_folder)
+
+        if args.license is not None:
+            install_zstack_license(args)
+        if args.xsky is not None:
+            install_xsky_license(args)
 
 deploymentProfiles = {
         'small':  ( 4,  64, 0.6, 15),
