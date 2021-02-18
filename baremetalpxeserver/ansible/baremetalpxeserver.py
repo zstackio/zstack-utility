@@ -27,6 +27,7 @@ host_uuid = None
 baremetalpxeserver_pushgateway_root="/var/lib/zstack/baremetal/"
 baremetalpxeserver_pushgateway_persistence="/var/lib/zstack/baremetal/persistence.data"
 baremetalpxeserver_pushgateway_port=9093
+update_packages = 'false'
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy baremetal pxeserver agent to host')
@@ -57,7 +58,7 @@ if remote_pass is not None and remote_user != 'root':
 
 host_arch = get_remote_host_arch(host_post_info)
 # include zstacklib.py
-(distro, distro_version, distro_release, _) = get_remote_host_info(host_post_info)
+(distro, major_version, distro_release, distro_version) = get_remote_host_info(host_post_info)
 zstacklib_args = ZstackLibArgs()
 zstacklib_args.distro = distro
 zstacklib_args.distro_release = distro_release
@@ -67,10 +68,10 @@ zstacklib_args.zstack_root = zstack_root
 zstacklib_args.host_post_info = host_post_info
 zstacklib_args.pip_url = pip_url
 zstacklib_args.trusted_host = trusted_host
+zstacklib_args.zstack_releasever = get_host_releasever([distro, distro_release, distro_version])
 if distro in DEB_BASED_OS:
     zstacklib_args.apt_server = yum_server
     zstacklib_args.zstack_apt_source = zstack_repo
-    zstacklib_args.zstack_releasever = get_mn_apt_release()
 else :
     zstacklib_args.yum_server = yum_server
 zstacklib = ZstackLib(zstacklib_args)
@@ -109,7 +110,8 @@ if distro in RPM_BASED_OS:
     mips64el_ns10 = "dnsmasq nginx vsftpd nmap net-tools"
     dep_pkg = eval("%s_%s" % (host_arch, releasever))
     if zstack_repo != 'false':
-        command = ("pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (dep_pkg, zstack_repo)
+        command = ("pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % \
+                  (dep_pkg, dep_pkg if update_packages == 'true' else '$pkg_list', zstack_repo)
         run_remote_command(command, host_post_info)
     else:
         for pkg in ["dnsmasq", "nginx", "vsftpd", "syslinux", "nmap"]:
@@ -129,9 +131,12 @@ else:
 command = """
 basearch=`uname -m`;releasever=`awk '{print $3}' /etc/zstack-release`;
 [ -f /opt/zstack-dvd/$basearch/$releasever/GPL ] || exit 1;
-mkdir -p /var/lib/zstack/baremetal/{dnsmasq,ftp/{ks,zstack-dvd,scripts},tftpboot/{zstack,pxelinux.cfg},vsftpd} /var/log/zstack/baremetal/;
+mkdir -p /var/lib/zstack/baremetal/{dnsmasq,ftp/{ks,zstack-dvd,scripts},tftpboot/{zstack/$basearch,pxelinux.cfg,EFI/BOOT},vsftpd} /var/log/zstack/baremetal/;
+rm -rf /var/lib/zstack/baremetal/tftpboot/{grubaa64.efi,grub.cfg-01-*};
 cp -f /usr/share/syslinux/pxelinux.0 /var/lib/zstack/baremetal/tftpboot/;
-cp -f /opt/zstack-dvd/$basearch/$releasever/images/pxeboot/{vmlinuz,initrd.img} /var/lib/zstack/baremetal/tftpboot/zstack/;
+cp -f /opt/zstack-dvd/$basearch/$releasever/EFI/BOOT/grubx64.efi /var/lib/zstack/baremetal/tftpboot/EFI/BOOT/;
+cp -f /opt/zstack-dvd/$basearch/$releasever/EFI/BOOT/grubaa64.efi /var/lib/zstack/baremetal/tftpboot/EFI/BOOT/;
+cp -f /opt/zstack-dvd/$basearch/$releasever/images/pxeboot/{vmlinuz,initrd.img} /var/lib/zstack/baremetal/tftpboot/zstack/$basearch/;
 grep 'zstack-dvd' /etc/fstab || echo "/opt/zstack-dvd/$basearch/$releasever /var/lib/zstack/baremetal/ftp/zstack-dvd none defaults,bind 0 0" >> /etc/fstab;
 mount -a;
 """
@@ -188,11 +193,12 @@ copy_arg.args = "mode=755"
 copy(copy_arg, host_post_info)
 
 # name: copy shellinaboxd
+shellinaboxd_name = "shellinaboxd_{}".format(host_arch)
 VSFTPD_ROOT_PATH = "/var/lib/zstack/baremetal/ftp"
 copy_arg = CopyArg()
-copy_arg.src = "%s/shellinaboxd" % file_root
-copy_arg.dest = VSFTPD_ROOT_PATH
 copy_arg.args = "force=yes"
+copy_arg.src = "%s/%s" % (file_root, shellinaboxd_name)
+copy_arg.dest = os.path.join(VSFTPD_ROOT_PATH, "shellinaboxd")
 copy(copy_arg, host_post_info)
 
 # name: copy noVNC.tar.gz
@@ -202,13 +208,12 @@ copy_arg.dest = "/var/lib/zstack/baremetal/"
 copy_arg.args = "force=yes"
 copy(copy_arg, host_post_info)
 
-if host_arch != "mips64el":
-    # name: copy zwatch-vm-agent
-    zwatch_vm_agent_name = "zwatch-vm-agent{}".format('' if host_arch == 'x86_64' else '_' + host_arch)
-    copy_arg = CopyArg()
-    copy_arg.src = os.path.join(kvm_file_root, zwatch_vm_agent_name)
-    copy_arg.dest = os.path.join(VSFTPD_ROOT_PATH, 'zwatch-vm-agent')
-    copy(copy_arg, host_post_info)
+# name: copy zwatch-vm-agent
+zwatch_vm_agent_name = "zwatch-vm-agent{}".format('' if host_arch == 'x86_64' else '_' + host_arch)
+copy_arg = CopyArg()
+copy_arg.src = os.path.join(kvm_file_root, zwatch_vm_agent_name)
+copy_arg.dest = os.path.join(VSFTPD_ROOT_PATH, 'zwatch-vm-agent')
+copy(copy_arg, host_post_info)
 
 copy_arg = CopyArg()
 copy_arg.src = "%s/agent_version" % file_root
@@ -235,10 +240,11 @@ copy_arg.args = "force=yes"
 copy(copy_arg, host_post_info)
 
 # name: copy pushgateway
+pushgateway_name = "pushgateway_%s" % host_arch
 copy_arg = CopyArg()
-copy_arg.src = "%s/pushgateway" % file_root
-copy_arg.dest = baremetalpxeserver_pushgateway_root
 copy_arg.args = "mode=a+x"
+copy_arg.src = "%s/%s" % (file_root, pushgateway_name)
+copy_arg.dest = "%s/pushgateway" % baremetalpxeserver_pushgateway_root
 copy(copy_arg, host_post_info)
 
 run_remote_command(("systemctl restart pxeServerPushGateway"), host_post_info)
