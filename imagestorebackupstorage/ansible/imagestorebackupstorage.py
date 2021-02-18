@@ -74,11 +74,15 @@ elif IS_MIPS64EL:
 else:
     src_pkg_imagestorebackupstorage = "zstack-store.bin"
     src_pkg_exporter = "collectd_exporter"
-dst_pkg_imagestorebackupstorage = "zstack-store.bin"
+
+if client != "true":
+    dst_pkg_imagestorebackupstorage = "zstack-store.bin"
+else:
+    dst_pkg_imagestorebackupstorage = "zstack-store-client.bin"
 dst_pkg_exporter = "collectd_exporter"
 
 # include zstacklib.py
-(distro, distro_version, distro_release, _) = get_remote_host_info(host_post_info)
+(distro, major_version, distro_release, distro_version) = get_remote_host_info(host_post_info)
 zstacklib_args = ZstackLibArgs()
 zstacklib_args.distro = distro
 zstacklib_args.distro_release = distro_release
@@ -89,10 +93,10 @@ zstacklib_args.host_post_info = host_post_info
 zstacklib_args.pip_url = pip_url
 zstacklib_args.trusted_host = trusted_host
 zstacklib_args.require_python_env = require_python_env
+zstacklib_args.zstack_releasever = get_host_releasever([distro, distro_release, distro_version])
 if distro in DEB_BASED_OS:
     zstacklib_args.apt_server = yum_server
     zstacklib_args.zstack_apt_source = zstack_repo
-    zstacklib_args.zstack_releasever = get_mn_apt_release()
 else :
     zstacklib_args.yum_server = yum_server
 zstacklib = ZstackLib(zstacklib_args)
@@ -108,6 +112,8 @@ if distro in RPM_BASED_OS:
     x86_64_c76 = "qemu-img-ev fuse-sshfs nmap collectd"
     aarch64_ns10 = "qemu-img fuse-sshfs nmap collectd"
     mips64el_ns10 = "qemu-img-ev fuse-sshfs nmap collectd"
+    x86_64_ns10 = "qemu-img fuse-sshfs nmap collectd"
+
     qemu_pkg = eval("%s_%s" % (host_arch, releasever))
     # skip these packages
     _skip_list = re.split(r'[|;,\s]\s*', skip_packages)
@@ -140,17 +146,19 @@ else:
     error("ERROR: Unsupported distribution")
 
 # name: copy imagestore binary
+command = 'mkdir -p {}'.format(imagestore_root + "/certs")
+run_remote_command(command, host_post_info)
 copy_arg = CopyArg()
 dest_pkg = "%s/%s" % (imagestore_root, dst_pkg_imagestorebackupstorage)
 copy_arg.src = "%s/%s" % (file_root, src_pkg_imagestorebackupstorage)
-copy_arg.dest = "%s/" % imagestore_root
+copy_arg.dest = dest_pkg
 copy_arg.args = "force=yes"
 copy(copy_arg, host_post_info)
 
 # name: copy exporter binary
 copy_arg = CopyArg()
 copy_arg.src = "%s/%s" % (kvm_file_root, src_pkg_exporter)
-copy_arg.dest = "%s/" % utils_root
+copy_arg.dest = "%s/collectd_exporter" % utils_root
 copy_arg.args = "force=yes"
 copy(copy_arg, host_post_info)
 
@@ -186,8 +194,7 @@ else:
 run_remote_command(command, host_post_info)
 
 # name: restart image store server
-server = client != "true" or run_remote_command("pkill -0 zstore", host_post_info, return_status=True, return_output=False)
-if server:
+if client != "true":
     # integrate zstack-store with init.d
     run_remote_command("/bin/cp -f /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage /etc/init.d/", host_post_info)
     if distro in RPM_BASED_OS:

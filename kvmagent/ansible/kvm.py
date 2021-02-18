@@ -87,7 +87,7 @@ if not os.path.isdir(repo_dir):
 
 
 
-def update_libvritd_config(host_post_info):
+def update_libvirtd_config(host_post_info):
     # name: copy libvirtd conf to keep environment consistent,only update host_uuid
     copy_arg = CopyArg()
     copy_arg.src = "%s/libvirtd.conf" % file_root
@@ -139,36 +139,11 @@ def check_nested_kvm(host_post_info):
     modprobe_arg.state = 'present'
     modprobe(modprobe_arg, host_post_info)
 
-
-def get_host_release_info():
-    get_releasever_script = '''
-    cat << 'EOF' > /opt/get_releasever
-    rpm -q zstack-release > /dev/null 2>&1
-    [ $? -eq 0 ] && echo `rpm -q zstack-release |awk -F"-" '{print $3}'` && exit 0
-    rpm -q centos-release > /dev/null 2>&1
-    [ $? -eq 0 ] && echo `rpm -q centos-release|awk -F"." '{print $1}'|awk -F"-" '{print "c"$3$4}'` && exit 0
-    rpm -q alios-release-server > /dev/null 2>&1
-    [ $? -eq 0 ] && echo `rpm -q alios-release-server |awk -F"." '{print $3}'` && exit 0
-    rpm -q redhat-release-server > /dev/null 2>&1
-    [ $? -eq 0 ] && echo `rpm -q redhat-release-server |awk -F"-" '{print "c"$4}'|tr -d '.'` && exit 0
-    rpm -q neokylin-release-server > /dev/null 2>&1
-    [ $? -eq 0] && echo `rpm -q neokylin-release-server |awk -F"." '{print $3}'|awk -F"_" '{print $1}'` && exit 0
-    exit 1'''
-    run_remote_command(get_releasever_script, host_post_info)
-    (status, output) = run_remote_command("bash /opt/get_releasever", host_post_info, True, True)
-    if status:
-        # c72 is no longer supported, force set c74
-        releasever = 'c74' if output.strip() == 'c72' else output.strip()
-    else:
-        releasever = sorted(os.listdir("/opt/zstack-dvd/{}".format(host_arch)))[-1]
-
-    return releasever
-
 def install_release_on_host(is_rpm):
     # copy and install zstack-release
     if is_rpm:
         src_pkg = '/opt/zstack-dvd/{0}/{1}/Packages/zstack-release-{1}-1.el7.zstack.noarch.rpm'.format(host_arch, releasever)
-        install_cmd = "rpm -q zstack-release || yum install -y /opt/zstack-release-{}-1.el7.zstack.noarch.rpm".format(releasever)
+        install_cmd = "rpm -q zstack-release || yum --disablerepo=* install -y /opt/zstack-release-{}-1.el7.zstack.noarch.rpm".format(releasever)
     else:
         src_pkg = '/opt/zstack-dvd/{0}/{1}/Packages/zstack-release_{1}_all.deb'.format(host_arch, releasever)
         install_cmd = "dpkg -l zstack-release || dpkg -i /opt/zstack-release_{}_all.deb".format(releasever)
@@ -198,11 +173,10 @@ def load_zstacklib():
         zstacklib_args.yum_server = yum_server
     zstacklib = ZstackLib(zstacklib_args)
 
+releasever = get_host_releasever([distro, distro_release, distro_version])
 if distro in RPM_BASED_OS:
-    releasever = get_host_release_info()
     install_release_on_host(True)
 elif distro in DEB_BASED_OS:
-    releasever = get_mn_apt_release()
     install_release_on_host(False)
 else:
     error("Unsupported OS: {}".format(distro))
@@ -248,6 +222,12 @@ def install_kvm_pkg():
                          usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof mcelog \
                          net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils python-pyudev pv rsync sed \
                          qemu-kvm-ev smartmontools sshpass usbutils vconfig wget audit dnsmasq tuned collectd-virt"
+
+        x86_64_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
+                        usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
+                        net-tools nfs-utils nmap openssh-clients OpenIPMI pciutils pv rsync sed \
+                        smartmontools sshpass usbutils vconfig wget audit dnsmasq \
+                        qemu collectd-virt storcli edk2.git-ovmf-x64 python2-pyudev collectd-disk"
 
         # handle zstack_repo
         if zstack_repo != 'false':
@@ -328,9 +308,8 @@ def install_kvm_pkg():
             host_post_info.post_label = "ansible.shell.disable.service"
             host_post_info.post_label_param = "firewalld"
             run_remote_command(command, host_post_info)
-
-            if host_arch == "aarch64" and releasever == "ns10":
-                # name: enable NetworkManager in arm ns10
+            if host_arch in ["aarch64", "x86_64"] and releasever == "ns10":
+                # name: enable NetworkManager in arm and x86 ns10
                 service_status("NetworkManager", "state=started enabled=yes", host_post_info, ignore_error=True)
             else:
                 # name: disable NetworkManager in RHEL7 and Centos7
@@ -350,7 +329,7 @@ def install_kvm_pkg():
                 service_status("iptables", "state=restarted enabled=yes", host_post_info)
 
         #we should check libvirtd config file status before restart the service
-        libvirtd_conf_status = update_libvritd_config(host_post_info)
+        libvirtd_conf_status = update_libvirtd_config(host_post_info)
         if chroot_env == 'false':
             # name: enable libvirt daemon on RedHat based OS
             service_status("libvirtd", "state=started enabled=yes", host_post_info)
@@ -408,7 +387,7 @@ def install_kvm_pkg():
         run_remote_command(command, host_post_info)
         update_pkg_list = ['ebtables', 'python-libvirt', 'qemu-system-arm']
         apt_update_packages(update_pkg_list, host_post_info)
-        libvirtd_conf_status = update_libvritd_config(host_post_info)
+        libvirtd_conf_status = update_libvirtd_config(host_post_info)
         if chroot_env == 'false':
             # name: enable libvirt daemon on RedHat based OS
             service_status("libvirtd", "state=started enabled=yes", host_post_info)
@@ -546,7 +525,7 @@ def do_network_config():
         elif distro in DEB_BASED_OS:
             copy_arg = CopyArg()
             copy_arg.src = "%s/ip6tables" % file_root
-            copy_arg.dest = "/sbin/ip6tables"
+            copy_arg.dest = "/etc/iptables/rules.v6"
             copy(copy_arg, host_post_info)
             command = "ip6tables-save"
             run_remote_command(command, host_post_info)
