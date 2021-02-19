@@ -1289,7 +1289,7 @@ mimetype.assign = (
             dhcp6ServerIpChanged = True
 
         if dhcpServerIpChanged or dhcp6ServerIpChanged:
-            self._delete_dhcp()
+            self._delete_dhcp(cmd.namespaceName)
 
         p.prepare()
 
