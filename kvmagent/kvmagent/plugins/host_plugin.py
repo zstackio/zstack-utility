@@ -189,7 +189,7 @@ class HostNetworkBondingInventory(object):
                     "ip -o a list | grep '^%s: ' | awk '/inet /{print $4}'" % master.strip()).splitlines()]
         self.miimon = linux.read_file("/sys/class/net/%s/bonding/miimon" % self.bondingName).strip()
         self.allSlavesActive = linux.read_file("/sys/class/net/%s/bonding/all_slaves_active" % self.bondingName).strip() == "0"
-        slave_names = linux.read_file("/sys/class/net/%s/bonding/slaves" % self.bondingName).strip().split(" ")
+        slave_names = linux.read_file("/sys/class/net/%s/bonding/slaves" % self.bondingName).strip().split()
         if len(slave_names) == 0:
             return
 
