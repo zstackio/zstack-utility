@@ -78,7 +78,10 @@ class AnsibleStartResult(object):
 class HostPostInfo(object):
     def __init__(self):
         self.trusted_host = None
-        self.environment = {"LC_ALL": "C"}
+        self.environment = {
+            "LC_ALL": "C",
+            "PATH": "/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/sbin",
+        }
         self.remote_user = 'root'
         self.remote_pass = None
         self.remote_port = None
