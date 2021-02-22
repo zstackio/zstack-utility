@@ -8865,7 +8865,7 @@ class StartUiCmd(Command):
                 info('UI status: %s ' % (colored('Running', 'green')))
             else:
                 info('UI status: %s  //%s:%s' % (
-                    colored('Running', 'green'), default_ip, "3100"))
+                    colored('Running', 'green'), default_ip, "5000"))
 
                 return False
         return True
@@ -9455,7 +9455,6 @@ class GetZStackVersion(Command):
         hostname, port, user, password = ctl.get_live_mysql_portal()
         version = get_zstack_version(hostname, port, user, password)
         sys.stdout.write(version + '\n')
-        sys.stdout.write(ctl.uiVersion + '\n')
 
 class ResetAdminPasswordCmd(Command):
     SYSTEM_ADMIN_TYPE = 'SystemAdmin'
