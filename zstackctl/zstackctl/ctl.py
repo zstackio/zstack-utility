@@ -8416,15 +8416,18 @@ class UiStatusCmd(Command):
             return False
         else:
             default_ip = get_ui_address()
+            output = shell_return_stdout_stderr(
+                "systemctl show --property MainPID  zstack-ui-nginx.service | awk -F= '{print $2}'")
+            output = output[1]
             if not default_ip:
-                info('UI status: %s ' % (colored('Running', 'green')))
+                info('UI status: %s [PID:%s] ' % (colored('Running', 'green'),output))
             else:
                 if os.path.exists(StartUiCmd.HTTP_FILE):
                     with open(StartUiCmd.HTTP_FILE, 'r') as fd2:
                         protcol = fd2.readline()
                         protcol = protcol.strip(' \t\n\r')
-                        info('UI status: %s  %s://%s:%s' % (
-                            colored('Running', 'green'), protcol, default_ip, port))
+                        info('UI status: %s [PID:%s] %s://%s:%s' % (
+                            colored('Running', 'green'),output, protcol, default_ip, port))
 
 # For VDI UI 2.1
 class VDIUiStatusCmd(Command):
