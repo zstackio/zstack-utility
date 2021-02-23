@@ -8417,7 +8417,7 @@ class UiStatusCmd(Command):
         else:
             default_ip = get_ui_address()
             output = shell_return_stdout_stderr(
-                "systemctl show --property MainPID  zstack-ui-nginx.service | awk -F= '{print $2}'")
+                "systemctl show --property MainPID  zstack-ui-nginx.service | awk -F= '{printf $2}'")
             output = output[1]
             if not default_ip:
                 info('UI status: %s [PID:%s] ' % (colored('Running', 'green'),output))
