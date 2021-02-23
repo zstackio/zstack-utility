@@ -1,5 +1,5 @@
 # Use network installation
-url --url=ftp://PXESERVER_DHCP_NIC_IP/zstack-dvd
+url --url=ftp://PXESERVER_DHCP_NIC_IP/zstack-dvd/ARCH
 repo --name=qemu-kvm-ev --baseurl=ftp://PXESERVER_DHCP_NIC_IP/zstack-dvd/Extra/qemu-kvm-ev
 
 # Text mode
