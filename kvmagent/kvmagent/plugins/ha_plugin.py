@@ -502,17 +502,35 @@ class HaPlugin(kvmagent.KvmAgent):
             self.setup_fencer(get_fencer_key(ps_uuid, pool_name), created_time)
             try:
                 failure = 0
-                failure_reported = False
+                storage_failure = False
+                report_storage_status = False
+
+                if heartbeat_file_exists(pool_name) or create_heartbeat_file(pool_name):
+                    self.report_storage_status([cmd.uuid], 'Connected')
+
                 while self.run_fencer(get_fencer_key(ps_uuid, pool_name), created_time):
                     time.sleep(cmd.interval)
 
-                    if heartbeat_file_exists(pool_name) or create_heartbeat_file(pool_name):
-                        failure = 0
-                        if failure_reported:
-                            self.report_self_fencer_triggered([cmd.uuid], None)
-                            failure_reported = False
-                        continue
+                    heartbeat_success = heartbeat_file_exists(pool_name) or create_heartbeat_file(pool_name)
 
+                    if heartbeat_success and storage_failure and not report_storage_status:
+                        # if heartbeat recovered and storage failure has occured before 
+                        # set report_storage_status to False to report fencer recoverd to management node
+                        report_storage_status = True
+                        storage_failure = False
+
+                    if report_storage_status: 
+                        if storage_failure:
+                            self.report_storage_status([cmd.uuid], 'Disconnected')
+                        else:
+                            self.report_storage_status([cmd.uuid], 'Connected')
+                        
+                        report_storage_status = False
+                    
+                    # after fencer state reported, set fencer_state_reported to False
+                    if heartbeat_success:
+                        continue
+                        
                     failure += 1
                     if failure == cmd.maxAttempts:
                         # c.f. We discovered that, Ceph could behave the following:
@@ -530,7 +548,9 @@ class HaPlugin(kvmagent.KvmAgent):
                             if vm_uuids:
                                 self.report_self_fencer_triggered([cmd.uuid], ','.join(vm_uuids))
                                 clean_network_config(vm_uuids)
-                                failure_reported = True
+                            
+                            storage_failure = True
+                            report_storage_status = True
                         else:
                             delete_heartbeat_file(pool_name)
 
@@ -762,34 +782,6 @@ class HaPlugin(kvmagent.KvmAgent):
 
     def configure(self, config):
         self.config = config
-
-    @thread.AsyncThread
-    def report_self_fencer_recovered(self, ps_uuids):
-        url = self.config.get(kvmagent.SEND_COMMAND_URL)
-        if not url:
-            logger.warn('cannot find SEND_COMMAND_URL, unable to report self fencer triggered on [psList:%s]' % ps_uuids)
-            return
-
-        host_uuid = self.config.get(kvmagent.HOST_UUID)
-        if not host_uuid:
-            logger.warn(
-                'cannot find HOST_UUID, unable to report self fencer triggered on [psList:%s]' % ps_uuids)
-            return
-
-        def report_to_management_node():
-            cmd = ReportSelfFencerCmd()
-            cmd.psUuids = ps_uuids
-            cmd.hostUuid = host_uuid
-            cmd.vmUuidsString = vm_uuids_string
-            cmd.fencerFailure = False
-            cmd.reason = "primary storage[uuids:%s] on host[uuid:%s] heartbeat success, self fencer recovered" % (ps_uuids, host_uuid)
-
-            logger.debug(
-                'host[uuid:%s] primary storage[psList:%s], self fencer recover, report it to %s' % (
-                    host_uuid, ps_uuids, url))
-            http.json_dump_post(url, cmd, {'commandpath': '/kvm/reportselffencer'})
-
-        report_to_management_node()
 
 
     @thread.AsyncThread
