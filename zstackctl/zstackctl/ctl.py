@@ -332,6 +332,11 @@ def get_default_ip():
     cmd(False)
     return cmd.stdout.strip()
 
+def get_all_ips():
+    script = ShellCmd('''ip addr | awk -F '[/| ]+'  '/inet\s+/{sub(/^\s*/,"");print $2}' ''')
+    script(True)
+    return script.stdout.splitlines()
+
 def get_ui_address():
     ui_addr = ctl.read_ui_property("ui_address")
     return ui_addr if ui_addr else get_default_ip()
@@ -2135,7 +2140,7 @@ class StartCmd(Command):
             chrony_running = shell_return("systemctl status chronyd | grep 'active[[:space:]]*(running)'")
 
             # mn is chrony server
-            if mn_ip in source_ips:
+            if set(get_all_ips() + [mn_ip]) & set(source_ips):
                 if chrony_running != 0:
                     warn("chrony source is set to management node, but server is not running, try to restart it now...")
                     shell("systemctl disable ntpd || true; systemctl enable chronyd ; systemctl restart chronyd")
@@ -2652,12 +2657,7 @@ class InstallDbCmd(Command):
         parser.add_argument('--ssh-key', help="the path of private key for SSH login $host; if provided, Ansible will use the specified key as private key to SSH login the $host", default=None)
 
     def run(self, args):
-        if not args.yum:
-            args.yum = get_yum_repo_from_property()
-
-        script = ShellCmd("ip addr | grep 'inet ' | awk '{print $2}' | awk -F '/' '{print $1}'")
-        script(True)
-        current_host_ips = script.stdout.split('\n')
+        current_host_ips = get_all_ips()
         yaml = '''---
 - hosts: $host
   remote_user: root
