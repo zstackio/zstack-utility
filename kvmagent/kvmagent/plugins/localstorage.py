@@ -268,6 +268,8 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             rsp.error = "input file path is None"
         else:
             rsp.existed = os.path.exists(file_path)
+            rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
