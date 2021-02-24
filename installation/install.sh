@@ -215,7 +215,7 @@ check_zstack_release(){
             source /etc/profile >/dev/null 2>&1
             [ ! -f /etc/zstack-release ] && yum reinstall -y zstack-release > /dev/null 2>&1
         else
-            fail2 "rpm package zstack-release is not installed, use zstack-upgrade -r/-a zstack-xxx.iso(>=3.7.0) to upgrade zstack-dvd and install zstack-release."
+            fail2 "rpm package ${PRODUCT_NAME,,}-release is not installed, use ${PRODUCT_NAME,,}-upgrade -r/-a ${PRODUCT_NAME,,}-xxx.iso(>=3.7.0) to upgrade local repo and install ${PRODUCT_NAME,,}-release."
         fi
     else
         dpkg -l zstack-release > /dev/null 2>&1
@@ -639,7 +639,7 @@ cs_check_mysql_password () {
             else
                 dpkg -l | grep mysql-community >>$ZSTACK_INSTALL_LOG 2>&1 && mysql_community='y'
             fi
-            [ "$mysql_community" = "y" ] && fail2 "Detect mysql-community installed, please uninstall it due to ZStack will use mariadb."
+            [ "$mysql_community" = "y" ] && fail2 "Detect mysql-community installed, please uninstall it due to ${PRODUCT_NAME} will use mariadb."
         fi
 
         if [ -z $MYSQL_ROOT_PASSWORD ] && [ -z $ONLY_INSTALL_ZSTACK ]; then
@@ -878,7 +878,7 @@ do_check_system(){
         if [ -d $ZSTACK_INSTALL_ROOT -o -f $ZSTACK_INSTALL_ROOT ];then
             echo "stop zstack all services" >>$ZSTACK_INSTALL_LOG
             zstack-ctl stop >>$ZSTACK_INSTALL_LOG 2>&1
-            fail "$ZSTACK_INSTALL_ROOT is existing. Please delete it manually before installing a new ${PRODUCT_NAME}\n  You might want to save your previous zstack.properties by \`zstack-ctl save_config\` and restore it later.\n All ZStack services have been stopped. Run \`zstack-ctl start\` to recover."
+            fail "$ZSTACK_INSTALL_ROOT is existing. Please delete it manually before installing a new ${PRODUCT_NAME}\n  You might want to save your previous ${PRODUCT_NAME,,}.properties by \`${PRODUCT_NAME,,}-ctl save_config\` and restore it later.\n All ${PRODUCT_NAME} services have been stopped. Run \`${PRODUCT_NAME,,}-ctl start\` to recover."
         fi
 
         # kill zstack if it's still running
@@ -929,7 +929,7 @@ You can also add '-q' to installer, then Installer will help you to remove it.
         #stop zstack before change zstack home dir
         which zstack-ctl >/dev/null 2>&1
         if [ $? -eq 0 ] ;then
-            echo "\nzstack host changed, before: $(echo ~zstack), now: $ZSTACK_INSTALL_ROOT, stopping zstack" >>$ZSTACK_INSTALL_LOG
+            echo "\n${PRODUCT_NAME,,} host changed, before: $(echo ~zstack), now: $ZSTACK_INSTALL_ROOT, stopping ${PRODUCT_NAME,,}" >>$ZSTACK_INSTALL_LOG
             zstack-ctl stop >/dev/null 2>&1
         fi
 
@@ -1088,7 +1088,7 @@ create_symbol_link() {
 iu_deploy_zstack_repo() {
     echo_subtitle "Deploy yum repo for ${PRODUCT_NAME}"
 
-    [ -z "$ZSTACK_RELEASE" ] && fail "failed to get zstack releasever, please make sure zstack-release is installed."
+    [ -z "$ZSTACK_RELEASE" ] && fail "failed to get ${PRODUCT_NAME,,} releasever, please make sure ${PRODUCT_NAME,,}-release is installed."
     create_symbol_link
 }
 
@@ -1119,7 +1119,7 @@ upgrade_zstack(){
     echo ""
 
     if pgrep -x zstack-hamon >/dev/null; then
-        fail2 "You are upgrading ${PRODUCT_NAME} under HA environment.\nPlease run: 'zsha2 upgrade-mn zstack-installer.bin' instead.\n"
+        fail2 "You are upgrading ${PRODUCT_NAME} under HA environment.\nPlease run: 'zsha2 upgrade-mn ${PRODUCT_NAME,,}-installer.bin' instead.\n"
     fi
 
     show_spinner uz_upgrade_tomcat
@@ -1163,7 +1163,7 @@ upgrade_zstack(){
     # if -i is used, then do not upgrade zstack ui
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
         if [ x"$UI_INSTALLATION_STATUS" = x'y' -o x"$DASHBOARD_INSTALLATION_STATUS" = x'y' ]; then
-            echo "upgrade zstack web ui" >>$ZSTACK_INSTALL_LOG
+            echo "upgrade ${PRODUCT_NAME,,} web ui" >>$ZSTACK_INSTALL_LOG
             rm -f /etc/init.d/zstack-dashboard
             rm -f /etc/init.d/zstack-ui
 
@@ -1199,7 +1199,7 @@ upgrade_zstack(){
           UI_INSTALLATION_STATUS='y'
           DASHBOARD_INSTALLATION_STATUS='n'
         else
-          fail "failed to upgrade zstack web ui"
+          fail "failed to upgrade ${PRODUCT_NAME,,} web ui"
         fi
     elif [ -f /etc/init.d/zstack-ui ]; then
         # fill CATALINA_ZSTACK_TOOLS with old zstack-ui.war if not exists
@@ -1280,7 +1280,7 @@ upgrade_zstack(){
 
         if [ x"$UI_CURRENT_STATUS" = x'y' -o x"$DASHBOARD_CURRENT_STATUS" = x'y' ]; then
           if [ x"$UI_INSTALLATION_STATUS" = x'y' ]; then
-              echo "start zstack-ui" >>$ZSTACK_INSTALL_LOG
+              echo "start ${PRODUCT_NAME,,}-ui" >>$ZSTACK_INSTALL_LOG
               show_spinner sd_start_zstack_ui
 
               #check ui status after upgrade
@@ -1464,11 +1464,11 @@ is_install_general_libs_rh(){
 
     rpm -q java-1.8.0-openjdk >>$ZSTACK_INSTALL_LOG 2>&1 || java -version 2>&1 |grep 1.8 >/dev/null
     if [ $? -ne 0 ]; then
-        fail "java-1.8.0-openjdk is not installed. Did you forget updating management node local repos to latest ZStack ISO? Please use following steps to update local repos:
+        fail "java-1.8.0-openjdk is not installed. Did you forget updating management node local repos to latest ${PRODUCT_NAME} ISO? Please use following steps to update local repos:
         1. # cd /opt
-        2. # wget http://cdn.zstack.io/product_downloads/scripts/zstack-upgrade
-        3. download the latest ZStack ISO from http://www.zstack.io/product_downloads into /opt
-        4. # bash zstack-upgrade -r PATH_TO_LATEST_ZSTACK_ISO
+        2. # wget http://cdn.zstack.io/product_downloads/scripts/${PRODUCT_NAME,,}-upgrade
+        3. download the latest ${PRODUCT_NAME} ISO from http://www.zstack.io/product_downloads into /opt
+        4. # bash ${PRODUCT_NAME,,}-upgrade -r PATH_TO_LATEST_ZSTACK_ISO
         "
     else
         #yum clean metadata >/dev/null 2>&1
@@ -1637,7 +1637,7 @@ iz_download_zstack(){
         cp $ZSTACK_ALL_IN_ONE $zstack_tmp_file >>$ZSTACK_INSTALL_LOG 2>&1
         if [ $? -ne 0 ];then
            /bin/rm -f $zstack_tmp_file
-           fail "failed to copy zstack all-in-one package from $ZSTACK_ALL_IN_ONE to $zstack_tmp_file"
+           fail "failed to copy ${PRODUCT_NAME,,} all-in-one package from $ZSTACK_ALL_IN_ONE to $zstack_tmp_file"
         fi
     else
         which wget >/dev/null 2>&1 
@@ -1648,12 +1648,12 @@ iz_download_zstack(){
             if [ $? -eq 0 ]; then
                 curl -L $ZSTACK_ALL_IN_ONE -o $zstack_tmp_file >>$ZSTACK_INSTALL_LOG 2>&1
             else
-                fail "need 'wget' or 'curl' to download zstack all in one package."
+                fail "need 'wget' or 'curl' to download ${PRODUCT_NAME,,} all in one package."
             fi 
         fi
         if [ $? -ne 0 ];then
            /bin/rm -f $zstack_tmp_file
-           fail "failed to download zstack all-in-one package from $ZSTACK_ALL_IN_ONE"
+           fail "failed to download ${PRODUCT_NAME,,} all-in-one package from $ZSTACK_ALL_IN_ONE"
         fi
     fi
     pass 
@@ -1674,7 +1674,7 @@ iz_unpack_zstack(){
         zstack_build_time=`stat zstack.war|grep Modify|awk '{ print substr($0, index($0,$2)) }'`
         zstack_build_date=`date --date="$zstack_build_time" +%s`
         if [ $zstack_build_date -gt $current_date ]; then
-            fail "Your system time is earlier than ZStack build time: $zstack_build_time . Please fix it."
+            fail "Your system time is earlier than ${PRODUCT_NAME} build time: $zstack_build_time . Please fix it."
         fi
     else
         all_in_one=$upgrade_folder/zstack_all_in_one.tgz
@@ -1689,7 +1689,7 @@ iz_unpack_zstack(){
         zstack_build_time=`stat zstack.war|grep Modify|awk '{ print substr($0, index($0,$2)) }'`
         zstack_build_date=`date --date="$zstack_build_time" +%s`
         if [ $zstack_build_date -gt $current_date ]; then
-            fail "Your system time is earlier than ZStack build time: $zstack_build_time . Please fix it."
+            fail "Your system time is earlier than ${PRODUCT_NAME} build time: $zstack_build_time . Please fix it."
         fi
     fi
     pass
@@ -1701,7 +1701,7 @@ uz_stop_zstack(){
     # make sure zstack is stopped
     ps axu | grep java | grep 'appName=zstack' >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -eq 0 ];then
-        fail "Stop zstack failed!"
+        fail "Stop ${PRODUCT_NAME,,} failed!"
     fi
     pass
 }
@@ -1772,7 +1772,7 @@ uz_upgrade_tomcat(){
 }
 
 uz_upgrade_zstack_ctl(){
-    echo_subtitle "Upgrade zstack-ctl"
+    echo_subtitle "Upgrade ${PRODUCT_NAME,,}-ctl"
     cd $upgrade_folder
     unzip -d zstack zstack.war >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
@@ -1787,7 +1787,7 @@ uz_upgrade_zstack_ctl(){
     fi
     if [ $? -ne 0 ];then
         cd /; rm -rf $upgrade_folder
-        fail "failed to upgrade zstack-ctl"
+        fail "failed to upgrade ${PRODUCT_NAME,,}-ctl"
     fi
 
     pass
@@ -1868,7 +1868,7 @@ uz_upgrade_zstack(){
     fi
     if [ $? -ne 0 ];then
         cd /; rm -rf $upgrade_folder
-        fail "failed to upgrade zstack-cli"
+        fail "failed to upgrade ${PRODUCT_NAME,,}-cli"
     fi
 
     bash ${zstore_bin} >>$ZSTACK_INSTALL_LOG 2>&1
@@ -1935,9 +1935,9 @@ uz_upgrade_zstack_ui_db(){
         fi
         if [ $? -ne 0 ];then
             if [ x"$FORCE" = x'n' ]; then
-                fail "ZStack UI Database upgrading dry-run failed. You probably should check SQL file conflict, or use -F option to force upgrade."
+                fail "${PRODUCT_NAME} UI Database upgrading dry-run failed. You probably should check SQL file conflict, or use -F option to force upgrade."
             else
-                fail "ZStack UI Database upgrading dry-run failed. You probably should check SQL file conflict."
+                fail "${PRODUCT_NAME} UI Database upgrading dry-run failed. You probably should check SQL file conflict."
             fi
         fi
     fi
@@ -1959,7 +1959,7 @@ uz_upgrade_zstack_ui_db(){
         fi
     fi
     if [ $? -ne 0 ];then
-        fail "failed to upgrade zstack_ui database"
+        fail "failed to upgrade ${PRODUCT_NAME,,}_ui database"
     fi
 
     pass
@@ -2007,7 +2007,7 @@ iz_install_zstackcli(){
     bash $ZSTACK_TOOLS_INSTALLER zstack-cli >>$ZSTACK_INSTALL_LOG 2>&1
 
     if [ $? -ne 0 ];then
-       fail "failed to install zstackcli in $ZSTACK_INSTALL_ROOT/$ZSTACK_TOOLS_INSTALLER"
+       fail "failed to install ${PRODUCT_NAME,,}-cli in $ZSTACK_INSTALL_ROOT/$ZSTACK_TOOLS_INSTALLER"
     fi
 
     bash ${zstore_bin} >>$ZSTACK_INSTALL_LOG 2>&1
@@ -2021,7 +2021,7 @@ iz_install_zstackctl(){
     bash $ZSTACK_TOOLS_INSTALLER zstack-ctl >>$ZSTACK_INSTALL_LOG 2>&1
 
     if [ $? -ne 0 ];then
-       fail "failed to install zstackctl in $ZSTACK_INSTALL_ROOT/$ZSTACK_TOOLS_INSTALLER"
+       fail "failed to install ${PRODUCT_NAME,,}-ctl in $ZSTACK_INSTALL_ROOT/$ZSTACK_TOOLS_INSTALLER"
     fi
     pass
 }
@@ -2044,7 +2044,7 @@ install_zstack_network()
 } >>$ZSTACK_INSTALL_LOG 2>&1
 
 cp_third_party_tools(){
-    echo_subtitle "Copy third-party tools to ZStack install path"
+    echo_subtitle "Copy third-party tools to ${PRODUCT_NAME} install path"
     if [ -d "/opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/tools" ]; then
         /bin/cp -rn /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/tools/* $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS >/dev/null 2>&1
         chown -R zstack.zstack $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS/*
@@ -2198,7 +2198,7 @@ EOF
 }
 
 cs_config_zstack_properties(){
-    echo_subtitle "Config zstack.properties"
+    echo_subtitle "Configure global properties"
 
     if [ -d /var/lib/zstack ];then
         chown zstack:zstack /var/lib/zstack >>$ZSTACK_INSTALL_LOG 2>&1
@@ -2372,7 +2372,7 @@ cs_install_zstack_service(){
     sed -i "s#^TOMCAT_PATH=.*#TOMCAT_PATH=$tomcat_folder_path#" /etc/init.d/zstack-server
     [ $? -ne 0 ] && fail "failed to install ${PRODUCT_NAME} management node."
     zstack-ctl setenv ZSTACK_HOME=$ZSTACK_HOME >> $ZSTACK_INSTALL_LOG 2>&1 
-    [ $? -ne 0 ] && fail "failed to set ZSTACK_HOME path by zstack-ctl"
+    [ $? -ne 0 ] && fail "failed to set ZSTACK_HOME path by ${PRODUCT_NAME,,}-ctl"
     pass
 }
 
@@ -2600,7 +2600,7 @@ cs_deploy_db(){
         grep 'detected existing zstack database' $ZSTACKCTL_INSTALL_LOG >& /dev/null
         if [ $? -eq 0 ]; then
             cat $ZSTACKCTL_INSTALL_LOG >> $ZSTACK_INSTALL_LOG
-            fail "failed to deploy ${PRODUCT_NAME} database. You might want to add -D to drop previous ${PRODUCT_NAME} database or -k to keep previous zstack database"
+            fail "failed to deploy ${PRODUCT_NAME,,} database. You might want to add -D to drop previous ${PRODUCT_NAME,,} database or -k to keep previous ${PRODUCT_NAME,,} database"
         else
             cat $ZSTACKCTL_INSTALL_LOG >> $ZSTACK_INSTALL_LOG
             fail "failed to deploy ${PRODUCT_NAME} database. Please check mysql accessbility. If your mysql has set root password, please add parameter -PMYSQL_PASSWORD to rerun the installation."
@@ -2612,9 +2612,9 @@ cs_deploy_db(){
 }
 
 cs_deploy_ui_db(){
-    echo_subtitle "Initialize ZStack UI Database"
+    echo_subtitle "Initialize ${PRODUCT_NAME} UI Database"
     echo "--------test start--------\n" >> $ZSTACKCTL_INSTALL_LOG
-    echo "Initialize ZStack UI Database\n" >> $ZSTACKCTL_INSTALL_LOG
+    echo "Initialize ${PRODUCT_NAME} UI Database\n" >> $ZSTACKCTL_INSTALL_LOG
     echo $MYSQL_PORT"\n" >> $ZSTACKCTL_INSTALL_LOG
     echo ${MYSQL_PORT}"\n" >> $ZSTACKCTL_INSTALL_LOG
     echo "--------test end--------\n" >> $ZSTACKCTL_INSTALL_LOG
@@ -2631,7 +2631,7 @@ cs_deploy_ui_db(){
         grep 'detected existing zstack_ui database' $ZSTACKCTL_INSTALL_LOG >& /dev/null
         if [ $? -eq 0 ]; then
             cat $ZSTACKCTL_INSTALL_LOG >> $ZSTACK_INSTALL_LOG
-            fail "failed to deploy ${PRODUCT_NAME} ui database. You might want to add -D to drop previous ${PRODUCT_NAME} ui database or -k to keep previous zstack ui database"
+            fail "failed to deploy ${PRODUCT_NAME} ui database. You might want to add -D to drop previous ${PRODUCT_NAME} ui database or -k to keep previous ${PRODUCT_NAME} ui database"
         else
             cat $ZSTACKCTL_INSTALL_LOG >> $ZSTACK_INSTALL_LOG
             fail "failed to deploy ${PRODUCT_NAME} ui database. Please check mysql accessbility. If your mysql has set root password, please add parameter -PMYSQL_PASSWORD to rerun the installation."
@@ -2646,14 +2646,14 @@ sz_start_zstack(){
     echo_subtitle "Start ${PRODUCT_NAME} management node (takes a couple of minutes)"
     zstack-ctl stop_node -f >>$ZSTACK_INSTALL_LOG 2>&1
     zstack-ctl start_node --timeout=$ZSTACK_START_TIMEOUT >>$ZSTACK_INSTALL_LOG 2>&1
-    [ $? -ne 0 ] && fail "failed to start zstack"
+    [ $? -ne 0 ] && fail "failed to start ${PRODUCT_NAME,,}"
     i=1
     while [ $i -lt 120 ]; do
         i=`expr $i + 1`
         check_zstack_server && pass && return
         sleep 1
     done
-    fail "zstack server failed to start in $i seconds"
+    fail "${PRODUCT_NAME,,} server failed to start in $i seconds"
 }
 
 # For UI 1.x
@@ -2701,7 +2701,7 @@ sd_start_dashboard(){
     chmod a+x /etc/init.d/zstack-dashboard
     cd /
     /etc/init.d/zstack-dashboard restart >>$ZSTACK_INSTALL_LOG 2>&1
-    [ $? -ne 0 ] && fail "failed to start zstack dashboard"
+    [ $? -ne 0 ] && fail "failed to start ${PRODUCT_NAME,,} dashboard"
     pass
 }
 
@@ -2721,7 +2721,7 @@ sd_start_zstack_ui(){
     else
         fail "Unknown ui_mode, please make sure your configuration is correct."
     fi
-    [ $? -ne 0 ] && fail "failed to start zstack web ui"
+    [ $? -ne 0 ] && fail "failed to start ${PRODUCT_NAME,,} web ui"
     pass
 }
 
@@ -2755,7 +2755,7 @@ check_version(){
     CURRENT_VERSION=`awk '{print $2}' $ZSTACK_VERSION`
     UPGRADE_VERSION=${VERSION}
     if [ -z "$CURRENT_VERSION" -o -z "$UPGRADE_VERSION" ];then
-        fail2 "Version verification failed! Cannot get your current version or upgrade version, please check zstack status and use the correct iso/bin to upgrade."
+        fail2 "Version verification failed! Cannot get your current version or upgrade version, please check ${PRODUCT_NAME,,} status and use the correct iso/bin to upgrade."
     fi
     HIGHER=`get_higher_version $CURRENT_VERSION $UPGRADE_VERSION`
     if [ x"$HIGHER" != x"$UPGRADE_VERSION" ];then
@@ -3005,7 +3005,7 @@ EOF
 
 check_sync_local_repos() {
   echo_subtitle "Check local repo version"
-  [ -f ".repo_version" ] || fail2 "Cannot found current repo_version file, please make sure you have correct zstack-installer package."
+  [ -f ".repo_version" ] || fail2 "Cannot found current repo_version file, please make sure you have correct ${PRODUCT_NAME,,}-installer package."
   if [ -d /opt/zstack-dvd/$BASEARCH ];then
     for release in `ls /opt/zstack-dvd/$BASEARCH`;do
       cmp -s .repo_version /opt/zstack-dvd/$BASEARCH/$release/.repo_version || check_hybrid_arch
@@ -3072,7 +3072,7 @@ Usage: ${PROGNAME} [options]
 Options:
   -a    equal to -nH
 
-  -c    Only upgrade zstack-ctl tool.
+  -c    Only upgrade ${PRODUCT_NAME,,}-ctl tool.
 
   -C    specify console proxy address.
 
@@ -3082,7 +3082,7 @@ Options:
   -D    drop previous ${PRODUCT_NAME} database if it exists. An error will be raised
         if a previous ${PRODUCT_NAME} database is detected and no -D or -k option is provided.
 
-  -E    Install ZStack Enterprise version. This option is only valid after ZStack 2.0.
+  -E    Install ${PRODUCT_NAME} Enterprise version. This option is only valid after ${PRODUCT_NAME} 2.0.
 
   -f LOCAL_PATH_OR_URL_OF_ZSTACK_ALL_IN_ONE_PACKAGE
         file path to ${PRODUCT_NAME} all-in-one package. By default the script
@@ -3092,17 +3092,17 @@ Options:
 
   -F    force upgrade management node mysql database. This option is only valid
         when using -u option. It will send --force parameter to 
-        zstack-ctl upgrade_db
+        ${PRODUCT_NAME,,}-ctl upgrade_db
 
   -h    show help message
 
   -H IMAGE_FOLDER_PATH   
         setup an Apache HTTP server and use IMAGE_FOLDER_PATH as url:
         http://CURRENT_MACHINE_IP/image/ . Doesn't effect when use -u to upgrade
-        zstack or -l to install some system libs. 
+        ${PRODUCT_NAME,,} or -l to install some system libs. 
 
   -i    only install ${PRODUCT_NAME} management node and dependent packages.
-        ZStack won't automatically be started when use '-i'.
+        ${PRODUCT_NAME} won't automatically be started when use '-i'.
 
   -I MANAGEMENT_NODE_NETWORK_INTERFACE | MANAGEMENT_NODE_IP_ADDRESS
         e.g. -I eth0, -I eth0:1, -I 192.168.0.1
@@ -3115,7 +3115,7 @@ Options:
         If multiple IP addresses share same net device, e.g. em1, em1:1, em1:2.
         The network interface should be the exact name, like -I em1:1
 
-  -k    keep previous zstack DB if it exists. If using -k with -u, will not upgrade database or start management node. Do not use this option unless you really know what is means.
+  -k    keep previous ${PRODUCT_NAME,,} DB if it exists. If using -k with -u, will not upgrade database or start management node. Do not use this option unless you really know what is means.
 
   -l    only just install ${PRODUCT_NAME} dependent libraries
 
@@ -3124,13 +3124,13 @@ Options:
 
   -m    install monitor. Depends on monitor capability in package.
 
-  -M    install monitor when upgrade. Used when upgrade ZStack to Mevoco.
+  -M    install monitor when upgrade. Used when upgrade ${PRODUCT_NAME} to Mevoco.
 
   -n NFS_PATH
         setup a NFS server and export the NFS path. Doesn't effect when use -u 
-        to upgrade zstack or -l to install some system libs. 
+        to upgrade ${PRODUCT_NAME,,} or -l to install some system libs. 
 
-  -o    offline installation. ${PRODUCT_NAME} required system libs will installed from zstack local repository, which is installed from ZStack customed ISO. ZStack customed ISO could be got from ZStack community.
+  -o    offline installation. ${PRODUCT_NAME} required system libs will installed from ${PRODUCT_NAME,,} local repository, which is installed from ${PRODUCT_NAME} customed ISO. ${PRODUCT_NAME} customed ISO could be got from ${PRODUCT_NAME} community.
 
   -O    online installation. Mevoco don't support this option.
 
@@ -3146,26 +3146,26 @@ Options:
         the path where to install ${PRODUCT_NAME} management node.  The default path is $ZSTACK_INSTALL_ROOT
 
   -R ZSTACK_PKG_MIRROR
-        which yum mirror user want to use to install ZStack required CentOS rpm packages. User can choose 163 or aliyun, like -R aliyun, -R 163 
+        which yum mirror user want to use to install ${PRODUCT_NAME} required CentOS rpm packages. User can choose 163 or aliyun, like -R aliyun, -R 163 
         Mevoco don't support this option.
 
   -t ZSTACK_START_TIMEOUT
-        The timeout for waiting ZStack start. The default value is $ZSTACK_START_TIMEOUT
+        The timeout for waiting ${PRODUCT_NAME} start. The default value is $ZSTACK_START_TIMEOUT
 
   -T MYSQL_PORT   port for MySQL. 3306 is set by default
 
-  -u    Upgrade zstack management node and database. Make sure to backup your database, before executing upgrade command: mysqldump -u root -proot_password --host mysql_ip --port mysql_port zstack > path_to_db_dump.sql
+  -u    Upgrade ${PRODUCT_NAME,,} management node and database. Make sure to backup your database, before executing upgrade command: mysqldump -u root -proot_password --host mysql_ip --port mysql_port zstack > path_to_db_dump.sql
 
-  -z    Only install ZStack, without start ZStack management node.
+  -z    Only install ${PRODUCT_NAME}, without start ${PRODUCT_NAME} management node.
 ------------
 Example:
 
 Following command will install the ${PRODUCT_NAME} management node to /usr/local/zstack and all dependent packages:
 
-. Apache Tomcat 7 with zstack.war deployed
+. Apache Tomcat 7 with ${PRODUCT_NAME,,}.war deployed
 . ${PRODUCT_NAME} web UI
-. ${PRODUCT_NAME} command line tool (zstack-cli)
-. ${PRODUCT_NAME} control tool (zstack-ctl)
+. ${PRODUCT_NAME} command line tool (${PRODUCT_NAME,,}-cli)
+. ${PRODUCT_NAME} control tool (${PRODUCT_NAME,,}-ctl)
 . MySQL
 . NFS server
 . Apache HTTP server
@@ -3434,8 +3434,8 @@ echo_hints_to_upgrade_iso()
     fail "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n" \
         "Syncing local repo with repo.zstack.io has been failed too.\n" \
         "Please download ${ISO_NAME} from ${ISO_DOWNLOAD_LINK} and run:\n" \
-        "# wget http://cdn.zstack.io/product_downloads/scripts/zstack-upgrade\n" \
-        "# bash zstack-upgrade ${ISO_NAME}\n" \
+        "# wget http://cdn.zstack.io/product_downloads/scripts/${PRODUCT_NAME,,}-upgrade\n" \
+        "# bash ${PRODUCT_NAME,,}-upgrade ${ISO_NAME}\n" \
         "For more information, see ${UPGRADE_WIKI}"
 }
 
@@ -3641,7 +3641,7 @@ if [ x"$UPGRADE" = x'y' ]; then
 
     if [ ! -z $ONLY_UPGRADE_CTL ]; then
         echo_star_line
-        echo -e "$(tput setaf 2)zstack-ctl has been upgraded to version: ${VERSION}$(tput sgr0)"
+        echo -e "$(tput setaf 2)${PRODUCT_NAME,,}-ctl has been upgraded to version: ${VERSION}$(tput sgr0)"
         echo ""
         echo_star_line
         start_zstack_tui
@@ -3651,25 +3651,25 @@ if [ x"$UPGRADE" = x'y' ]; then
     [ -z $VERSION ] && VERSION=`zstack-ctl status 2>/dev/null|grep version|awk '{print $2}'`
     echo ""
     echo_star_line
-    echo -e "$(tput setaf 2)${PRODUCT_NAME} in $ZSTACK_INSTALL_ROOT has been successfully upgraded to version: ${VERSION}$(tput sgr0)"
+    echo -e "$(tput setaf 2)${PRODUCT_NAME} has been successfully upgraded to version: ${VERSION}$(tput sgr0)"
     echo ""
     if [ x"$CURRENT_STATUS" = x'y' ]; then
         if [ -z $NEED_KEEP_DB ];then
-            echo -e " $(tput setaf 2)Management node has been started up again.$(tput sgr0) You can use \`zstack-ctl status\` to check its status."
+            echo -e " $(tput setaf 2)Management node has been started up again.$(tput sgr0) You can use \`${PRODUCT_NAME,,}-ctl status\` to check its status."
         else
-            echo -e " $(tput setaf 3)Management node is not started up, since using -k option to skip database upgrading.$(tput sgr0) You can use \`zstack-ctl start\` to start all services, after upgrading database manually."
+            echo -e " $(tput setaf 3)Management node is not started up, since using -k option to skip database upgrading.$(tput sgr0) You can use \`${PRODUCT_NAME,,}-ctl start\` to start all services, after upgrading database manually."
         fi
     else
-        echo -e " $(tput setaf 3)Management node is not started. Please use \`zstack-ctl start\` to start it up.$(tput sgr0)"
+        echo -e " $(tput setaf 3)Management node is not started. Please use \`${PRODUCT_NAME,,}-ctl start\` to start it up.$(tput sgr0)"
     fi
     echo ""
     if [ x"$UI_INSTALLATION_STATUS" = x'y' ]; then
-        echo -e " $(tput setaf 2)zstack-ui has been upgraded.$(tput sgr0)"
+        echo -e " $(tput setaf 2)${PRODUCT_NAME,,}-ui has been upgraded.$(tput sgr0)"
         echo ""
         if [ x"$UI_CURRENT_STATUS" = x'y' -o x"$DASHBOARD_CURRENT_STATUS" = x'y' ]; then
-            echo -e " $(tput setaf 2)zstack-ui has been started up again.$(tput sgr0)"
+            echo -e " $(tput setaf 2)${PRODUCT_NAME,,}-ui has been started up again.$(tput sgr0)"
         else
-            echo -e " $(tput setaf 3)zstack-ui is not started. You can manually start it up by \`zstack-ctl start_ui\`$(tput sgr0)"
+            echo -e " $(tput setaf 3)${PRODUCT_NAME,,}-ui is not started. You can manually start it up by \`${PRODUCT_NAME,,}-ctl start_ui\`$(tput sgr0)"
         fi
     elif [ x"$DASHBOARD_INSTALLATION_STATUS" = x'y' ]; then
         echo -e " $(tput setaf 2)zstack-dashboard has been upgraded.$(tput sgr0)"
@@ -3680,13 +3680,13 @@ if [ x"$UPGRADE" = x'y' ]; then
             echo -e " $(tput setaf 3)zstack-dashboard is not started. You can manually start it up by \`zstack-ctl start_ui\`$(tput sgr0)"
         fi
     else
-        echo " ZStack UI was not upgraded, since there wasn't UI installed before upgrading. You can manually install UI by \`zstack-ctl install_ui\`"
+        echo " ${PRODUCT_NAME} UI was not upgraded, since there wasn't UI installed before upgrading. You can manually install UI by \`${PRODUCT_NAME,,}-ctl install_ui\`"
     fi
     echo ""
     zstack_home=`eval echo ~zstack`
     echo_chrony_server_warning_if_need
     check_ha_need_upgrade
-    echo " Your old zstack was saved in $zstack_home/upgrade/`ls $zstack_home/upgrade/ -rt|tail -1`"
+    #echo " Your old zstack was saved in $zstack_home/upgrade/`ls $zstack_home/upgrade/ -rt|tail -1`"
     echo_custom_pcidevice_xml_warning_if_need
     echo_star_line
     start_zstack_tui
@@ -3739,7 +3739,7 @@ if [ ! -z $ONLY_INSTALL_ZSTACK ]; then
     echo ""
     echo_star_line
     echo "${PRODUCT_NAME} ${VERSION}management node is installed to $ZSTACK_INSTALL_ROOT."
-    echo "Mysql and are not installed. You can use zstack-ctl to install them and start ${PRODUCT_NAME} service later. "
+    echo "Mysql and are not installed. You can use ${PRODUCT_NAME,,}-ctl to install them and start ${PRODUCT_NAME} service later. "
     echo_chrony_server_warning_if_need
     check_ha_need_upgrade
     echo_star_line
@@ -3846,18 +3846,16 @@ echo_star_line
 touch $README
 
 echo -e "${PRODUCT_NAME} All In One ${VERSION} Installation Completed:
- - Installation path: $ZSTACK_INSTALL_ROOT
-
  - UI is running, visit $(tput setaf 4)http://$MANAGEMENT_IP:$DEFAULT_UI_PORT$(tput sgr0) in Chrome
-      Use $(tput setaf 3)zstack-ctl [stop_ui|start_ui]$(tput sgr0) to stop/start the UI service
+      Use $(tput setaf 3)${PRODUCT_NAME,,}-ctl [stop_ui|start_ui]$(tput sgr0) to stop/start the UI service
 
  - Management node is running
-      Use $(tput setaf 3)zstack-ctl [stop|start]$(tput sgr0) to stop/start it
+      Use $(tput setaf 3)${PRODUCT_NAME,,}-ctl [stop|start]$(tput sgr0) to stop/start it
 
- - ${PRODUCT_NAME} command line tool is installed: zstack-cli
- - ${PRODUCT_NAME} control tool is installed: zstack-ctl
+ - ${PRODUCT_NAME} command line tool is installed: ${PRODUCT_NAME,,}-cli
+ - ${PRODUCT_NAME} control tool is installed: ${PRUDUCT_NAME,,}-ctl
 
- - For system security, $(tput setaf 4) database root password is set to: $MYSQL_NEW_ROOT_PASSWORD $(tput sgr0) . You can use \`mysqladmin -u root --password=$MYSQL_NEW_ROOT_PASSWORD password NEW_PASSWORD\` to change it. To be noticed: ${PRODUCT_NAME} will use 'zstack' user to access database. Change 'root' password won't impact 'zstack' access database."|tee -a $README
+ - For system security, change the mysql default password for 'root' user using \`mysqladmin -u root --password=OLD_PASSWORD password NEW_PASSWORD\`" | tee -a $README
 
 if [ x"$SDS_INSTALL" = x"y" ];then
     echo " - SDS successfully installed, Please visit http://${MANAGEMENT_IP}:8056 to continue the installation"
