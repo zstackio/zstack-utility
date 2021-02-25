@@ -639,6 +639,14 @@ def check_special_new(s):
         s = r"\\\\"
     return s
 
+def check_java_version():
+    try:
+        ver = shell('java -version 2>&1 | grep -w version')
+    except CtlError:
+        raise CtlError('Java 8 have not been installed yet. Please install Java 8 first.')
+    if '1.8' not in ver:
+        raise CtlError('Management node requires Java 8, your current version is %s\n'
+                'please run "update-alternatives --config java" to set Java to Java 8' % ver)
 
 class UseUserZstack(object):
     def __init__(self):
@@ -2067,12 +2075,6 @@ class StartCmd(Command):
         else:
             linux.rm_file_force(os.path.join(os.path.expanduser('~zstack'), "management-server.pid"))
 
-        def check_java_version():
-            ver = shell('java -version 2>&1 | grep -w version')
-            if '1.8' not in ver:
-                raise CtlError('ZStack requires Java8, your current version is %s\n'
-                               'please run "update-alternatives --config java" to set Java to Java8')
-
         def check_mn_port():
             mn_port = get_mn_port()
             if shell_return('netstat -nap | grep :%s[[:space:]] | grep LISTEN > /dev/null' % mn_port) == 0:
@@ -2337,6 +2339,8 @@ class StopCmd(Command):
         if args.host:
             self._stop_remote(args)
             return
+
+        check_java_version()
 
         # for zstack-local repo upgrade
         DEFAULT_QEMU_KVM_PATH = '/opt/zstack-dvd/{}/{}/qemu-kvm-ev'.format(ctl.BASEARCH, ctl.ZS_RELEASE)
