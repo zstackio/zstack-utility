@@ -8235,7 +8235,7 @@ class StopUiCmd(Command):
                 port = port.strip(' \t\n\r')
         else:
             port = '5000' 
-        commands.getstatusoutput("lsof -i tcp:%s | awk 'NR!=1 {print $2}' | xargs kill -9" % port)
+        commands.getstatusoutput("netstat -pantu|grep %s|sed 's/^.* \+\([0-9]\+\)\/.*$/\1/' | xargs kill -9" % port)
         (status_code, status_output) = commands.getstatusoutput(status_sh)
         # some server not inactive got 512
         if status_code == 512:
