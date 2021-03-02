@@ -323,11 +323,37 @@ def collect_node_disk_wwid():
     collect_node_disk_wwid_last_result = metrics.values()
     return metrics.values()
 
+def collect_conntrack_count():
+    metrics = {
+        'zstack_conntrack_in_count': GaugeMetricFamily('zstack_conntrack_in_count',
+                                                       'zstack conntrack in count')
+    }
+    cmd = "conntrack -C"
+    conntrack_count = bash_o(cmd)
+
+    metrics['zstack_conntrack_in_count'].add_metric([], float(conntrack_count))
+    return metrics.values()
+
+def collect_conntrack_percent():
+    metrics = {
+        'zstack_conntrack_in_percent': GaugeMetricFamily('zstack_conntrack_in_percent',
+                                                       'zstack conntrack in percent')
+    }
+    cmd1 = "conntrack -C"
+    cmd2 = "cat /proc/sys/net/netfilter/nf_conntrack_max"
+    conntrack_count = bash_o(cmd1)
+    conntrack_max = bash_o(cmd2)
+    percent = float(format(float(conntrack_count) / float(conntrack_max) * 100, '.2f'))
+    conntrack_percent = 1.0 if percent <= 1.0 else percent
+    metrics['zstack_conntrack_in_percent'].add_metric([], conntrack_percent)
+    return metrics.values()
 
 kvmagent.register_prometheus_collector(collect_host_network_statistics)
 kvmagent.register_prometheus_collector(collect_host_capacity_statistics)
 kvmagent.register_prometheus_collector(collect_vm_statistics)
 kvmagent.register_prometheus_collector(collect_node_disk_wwid)
+kvmagent.register_prometheus_collector(collect_conntrack_count)
+kvmagent.register_prometheus_collector(collect_conntrack_percent)
 
 if misc.isMiniHost():
     kvmagent.register_prometheus_collector(collect_lvm_capacity_statistics)
