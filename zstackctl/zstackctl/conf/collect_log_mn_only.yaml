@@ -4,7 +4,7 @@ mn:
     list: {exec: "AutoCollect"}
     logs:
       - {name: mn-logs, dir: $ZSTACK_HOME/../../logs/, file: 'management-server*'}
-      - {name: ui-logs, dir: $ZSTACK_HOME/../../logs/, file: 'zstack-ui*'}
+      - {name: ui-logs, dir: $ZSTACK_HOME/../../../zstack-ui/logs/, file: 'zstack-ui*'}
       - {name: sar-log, dir: /var/log/sa/, file: 'sa[0-9]*'}
       - {name: api-logs, dir: $ZSTACK_HOME/../../logs/, file: 'zstack-api*'}
       - {name: catalina-logs, dir: $ZSTACK_HOME/../../logs/, file: 'catalina*'}
