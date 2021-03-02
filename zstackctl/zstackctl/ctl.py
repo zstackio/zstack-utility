@@ -8235,7 +8235,10 @@ class StopUiCmd(Command):
                 port = port.strip(' \t\n\r')
         else:
             port = '5000' 
-        commands.getstatusoutput("netstat -pantu|grep %s|sed 's/^.* \+\([0-9]\+\)\/.*$/\1/' | xargs kill -9" % port)
+        (_, pids) = commands.getstatusoutput("netstat -pantu|grep %s|sed -n 's/^.* \\+\\([0-9]\\+\\)\\/.*$/\\1/p'" % port)
+        if _ == 0 and pids.strip() != '':
+            info("find pids %s at ui port, kill it" % pids)
+            commands.getstatusoutput("echo '%s' | xargs kill -9" % pids)
         (status_code, status_output) = commands.getstatusoutput(status_sh)
         # some server not inactive got 512
         if status_code == 512:
