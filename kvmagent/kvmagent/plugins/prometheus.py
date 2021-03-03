@@ -328,9 +328,7 @@ def collect_conntrack_count():
         'zstack_conntrack_in_count': GaugeMetricFamily('zstack_conntrack_in_count',
                                                        'zstack conntrack in count')
     }
-    cmd = "conntrack -C"
-    conntrack_count = bash_o(cmd)
-
+    conntrack_count = linux.read_file("/proc/sys/net/netfilter/nf_conntrack_count")
     metrics['zstack_conntrack_in_count'].add_metric([], float(conntrack_count))
     return metrics.values()
 
@@ -339,10 +337,8 @@ def collect_conntrack_percent():
         'zstack_conntrack_in_percent': GaugeMetricFamily('zstack_conntrack_in_percent',
                                                        'zstack conntrack in percent')
     }
-    cmd1 = "conntrack -C"
-    cmd2 = "cat /proc/sys/net/netfilter/nf_conntrack_max"
-    conntrack_count = bash_o(cmd1)
-    conntrack_max = bash_o(cmd2)
+    conntrack_count = linux.read_file("/proc/sys/net/netfilter/nf_conntrack_count")
+    conntrack_max = linux.read_file("/proc/sys/net/netfilter/nf_conntrack_max")
     percent = float(format(float(conntrack_count) / float(conntrack_max) * 100, '.2f'))
     conntrack_percent = 1.0 if percent <= 1.0 else percent
     metrics['zstack_conntrack_in_percent'].add_metric([], conntrack_percent)
