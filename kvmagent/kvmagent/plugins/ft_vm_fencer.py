@@ -136,6 +136,16 @@ class FaultToleranceFecnerPlugin(kvmagent.KvmAgent):
                     host_uuid, url))
             http.json_dump_post(url, cmd, {'commandpath': '/kvm/requestmaintainhost'})
 
+        @in_bash
+        def stop_management_node():
+            r, o, e = bash_roe("zsha2 stop-node || zstack-ctl stop")
+            r1, o1 = bash_ro("pgrep -af -- '-DappName=zstack start'")
+            if r1 == 0:
+                raise Exception(
+                    "stop zstack failed, return code: %s, stdout: %s, stderr: %s, pgrep zstack return code: %s, stdout: %s" %
+                    (r, o, e, r1, o1))
+        
+        @in_bash
         def kill_fault_tolerance_vms():
             # kill all vm
             zstack_uuid_pattern = "'[0-9a-f]{8}[0-9a-f]{4}[1-5][0-9a-f]{3}[89ab][0-9a-f]{3}[0-9a-f]{12}'"
@@ -197,6 +207,7 @@ class FaultToleranceFecnerPlugin(kvmagent.KvmAgent):
                 
                 logger.debug("network down, need to kill ft vm")
                 kill_fault_tolerance_vms()
+                stop_management_node()
 
         @in_bash
         def test_device(device, ttl=12):
