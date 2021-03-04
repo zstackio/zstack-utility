@@ -157,11 +157,11 @@ baremetalv2gateway:
     type: target
     list: {exec: "select h.managementIp from HostVO h where h.hypervisorType = \"baremetal2\""}
     logs:
-      - {name: dnsmasq-conf, dir: /var/lib/zstack/baremetalv2/dnsmasq/, file: }
+      - {name: dnsmasq-conf, dir: /var/lib/zstack/baremetalv2/dnsmasq/, file: , mode: "All"}
       - {name: dnsmasq-logs, dir: /var/log/zstack/baremetalv2/, file: dnsmasq.log }
-      - {name: nginx-conf, dir: /var/lib/zstack/nginx/baremetal/v2/gateway, file: }
-      - {name: nginx-logs, dir: /var/log/zstack/zstack-baremetal-nginx/, file: }
-      - {name: pxelinux.cfg, dir: /var/lib/zstack/baremetalv2/tftpboot/pxelinux.cfg, file: }
+      - {name: nginx-conf, dir: /var/lib/zstack/nginx/baremetal/v2/gateway, file: , mode: "All"}
+      - {name: nginx-logs, dir: /var/log/zstack/zstack-baremetal-nginx/, file: , mode: "All"}
+      - {name: pxelinux.cfg, dir: /var/lib/zstack/baremetalv2/tftpboot/pxelinux.cfg, file: , mode: "All"}
       - {name: inspector.ks, dir: /var/lib/zstack/baremetalv2/httpboot/, file: inspector.ks }
       - {name: boot.ipxe, dir: /var/lib/zstack/baremetalv2/tftpboot/, file: boot.ipxe }
       - {name: targetcli, exec: 'targetcli / ls' }
