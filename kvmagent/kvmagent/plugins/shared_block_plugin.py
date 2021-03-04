@@ -399,10 +399,11 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         except RetryException as e:
             if forceWipe is True:
                 lvm.wipe_fs(diskPaths, vgUuid)
+                lvm.config_lvm_filter(["lvm.conf", "lvmlocal.conf"], preserve_disks=self.get_disk_paths(allDisks))
 
             lvm.check_gl_lock()
             try:
-                create_vg(hostUuid, vgUuid, diskPaths)
+                create_vg(hostUuid, vgUuid, self.get_disk_paths(disks))
                 find_vg(vgUuid)
             except RetryException as ee:
                 raise Exception("can not find vg %s with disks: %s and create vg with forceWipw=%s, %s" %
