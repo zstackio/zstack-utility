@@ -759,6 +759,7 @@ class Ctl(object):
     ZSTACK_UI_KEYSTORE_CP = ZSTACK_UI_KEYSTORE + '.cp'
     # for console proxy https
     ZSTACK_UI_KEYSTORE_PEM = ZSTACK_UI_HOME + 'ui.keystore.pem'
+    ZSTACK_UI_KEYSTORE_PEM_OLD = ZSTACK_UI_HOME + 'ui.keystore.pem.old'
     # to set CATALINA_OPTS of zstack-ui.war
     ZSTACK_UI_CATALINA_OPTS = '-Xmx4096m'
     # always install zstack-mini-server inside zstack_install_root
@@ -9029,8 +9030,8 @@ class StartUiCmd(Command):
             args.ssl_keystore = ctl.ZSTACK_UI_KEYSTORE_CP
 
         # convert args.ssl_keystore to .pem
-        if args.ssl_keystore_type == 'PKCS12' and os.path.exists(ctl.ZSTACK_UI_KEYSTORE_PEM):
-            (status, output) = commands.getstatusoutput('mv %s ui.keystore.pem.old' % ctl.ZSTACK_UI_KEYSTORE_PEM)
+        #if args.ssl_keystore_type == 'PKCS12' and os.path.exists(ctl.ZSTACK_UI_KEYSTORE_PEM):
+        #    (status, output) = commands.getstatusoutput('mv %s ' % ctl.ZSTACK_UI_KEYSTORE_PEM_OLD)
         if args.ssl_keystore_type != 'PKCS12' and not os.path.exists(ctl.ZSTACK_UI_KEYSTORE_PEM):
             raise CtlError('%s not found.' % ctl.ZSTACK_UI_KEYSTORE_PEM)
         if args.ssl_keystore_type == 'PKCS12' and not os.path.exists(ctl.ZSTACK_UI_KEYSTORE_PEM):
@@ -9081,9 +9082,13 @@ class StartUiCmd(Command):
             enableSSL = 'true'
             with open(StartUiCmd.HTTP_FILE, 'w') as fd:
                 fd.write('https')
+        realpem = ctl.ZSTACK_UI_KEYSTORE_PEM
+        if ctl.read_property('consoleProxyCertFile'):
+            logger.debug('user consoleProxyCertFile as ui pem')
+            realpem = ctl.read_property('consoleProxyCertFile')
         scmd = Template("runuser -l root -s /bin/bash -c 'bash ${STOP} && sleep 2 && LOGGING_PATH=${LOGGING_PATH} bash ${START} --mn.host=${MN_HOST} --mn.port=${MN_PORT} --webhook.host=${WEBHOOK_HOST} --webhook.port=${WEBHOOK_PORT} --server.port=${SERVER_PORT} --ssl.enabled=${SSL_ENABLE} --ssl.keyalias=${SSL_KEYALIAS} --ssl.keystore=${SSL_KEYSTORE} --ssl.keystore-type=${SSL_KEYSTORE_TYPE} --ssl.keystore-password=${SSL_KETSTORE_PASSWORD} --db.url=${DB_URL} --db.username=${DB_USERNAME} --db.password=${DB_PASSWORD} ${CUSTOM_PROPS} --ssl.pem=${ZSTACK_UI_KEYSTORE_PEM}'") 
 
-        scmd = scmd.substitute(LOGGING_PATH=args.log,STOP=StartUiCmd.ZSTACK_UI_STOP,START=StartUiCmd.ZSTACK_UI_START,MN_HOST=args.mn_host,MN_PORT=args.mn_port,WEBHOOK_HOST=args.webhook_host,WEBHOOK_PORT=args.webhook_port,SERVER_PORT=args.server_port,SSL_ENABLE=enableSSL,SSL_KEYALIAS=args.ssl_keyalias,SSL_KEYSTORE=args.ssl_keystore,SSL_KEYSTORE_TYPE=args.ssl_keystore_type,SSL_KETSTORE_PASSWORD=args.ssl_keystore_password,DB_URL=args.db_url,DB_USERNAME=args.db_username,DB_PASSWORD=args.db_password,ZSTACK_UI_KEYSTORE_PEM=ctl.ZSTACK_UI_KEYSTORE_PEM,CUSTOM_PROPS=custom_props)
+        scmd = scmd.substitute(LOGGING_PATH=args.log,STOP=StartUiCmd.ZSTACK_UI_STOP,START=StartUiCmd.ZSTACK_UI_START,MN_HOST=args.mn_host,MN_PORT=args.mn_port,WEBHOOK_HOST=args.webhook_host,WEBHOOK_PORT=args.webhook_port,SERVER_PORT=args.server_port,SSL_ENABLE=enableSSL,SSL_KEYALIAS=args.ssl_keyalias,SSL_KEYSTORE=args.ssl_keystore,SSL_KEYSTORE_TYPE=args.ssl_keystore_type,SSL_KETSTORE_PASSWORD=args.ssl_keystore_password,DB_URL=args.db_url,DB_USERNAME=args.db_username,DB_PASSWORD=args.db_password,ZSTACK_UI_KEYSTORE_PEM=realpem,CUSTOM_PROPS=custom_props)
 
         script(scmd, no_pipe=True)
         os.system('mkdir -p /var/run/zstack/')
