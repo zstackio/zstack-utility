@@ -4909,6 +4909,7 @@ class MysqlRestrictConnection(Command):
 
             for ip in restrict_ips:
                 grant_access_cmd = grant_access_cmd + self.grant_restrict_privilege(db_password, ui_db_password, root_password_, ip, args.include_root)
+            grant_access_cmd = grant_access_cmd + self.grant_restrict_privilege(db_password, ui_db_password, root_password_, "127.0.0.1", args.include_root)
 
             grant_access_cmd = grant_access_cmd + " FLUSH PRIVILEGES;"
             grant_views_access_cmd = self.grant_views_definer_privilege(root_password_)
