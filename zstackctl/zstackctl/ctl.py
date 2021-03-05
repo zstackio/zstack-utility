@@ -9029,6 +9029,8 @@ class StartUiCmd(Command):
             args.ssl_keystore = ctl.ZSTACK_UI_KEYSTORE_CP
 
         # convert args.ssl_keystore to .pem
+        if args.ssl_keystore_type == 'PKCS12' and os.path.exists(ctl.ZSTACK_UI_KEYSTORE_PEM):
+            (status, output) = commands.getstatusoutput('mv %s ui.keystore.pem.old' % ctl.ZSTACK_UI_KEYSTORE_PEM)
         if args.ssl_keystore_type != 'PKCS12' and not os.path.exists(ctl.ZSTACK_UI_KEYSTORE_PEM):
             raise CtlError('%s not found.' % ctl.ZSTACK_UI_KEYSTORE_PEM)
         if args.ssl_keystore_type == 'PKCS12' and not os.path.exists(ctl.ZSTACK_UI_KEYSTORE_PEM):
