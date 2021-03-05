@@ -678,6 +678,11 @@ def start_kvmagent():
     host_post_info.post_label_param = "zstack-kvmagent"
     run_remote_command(command, host_post_info)
 
+def modprobe_usb_module():
+    command = "modprobe usb-storage; modprobe uas"
+    host_post_info.post_label = "ansible.shell.modprobe.usb"
+    host_post_info.post_label_param = None
+    run_remote_command(command, host_post_info)
 
 check_nested_kvm(host_post_info)
 install_kvm_pkg()
@@ -695,6 +700,7 @@ install_virtualenv()
 set_legacy_iptables_ebtables()
 install_agent_pkg()
 do_auditd_config()
+modprobe_usb_module()
 start_kvmagent()
 
 host_post_info.start_time = start_time
