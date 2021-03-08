@@ -27,5 +27,4 @@ mn:
       - {name: zstack-installation-logs, dir: /tmp/, file: zstack_installation.log*}
       - {name: mariadb-log, dir: /var/log/mariadb/, file: 'mariadb.log*'}
       - {name: audit-log, dir: /var/log/audit/, file: 'audit.log*'}
-      - {name: mariadb-log, dir: /var/log/mariadb/, file: 'mariadb.log*'}
       - {name: zsha2-log, exec: 'which zsha2 && zsha2 collect-log', exec_type: "CdAndRun"}
