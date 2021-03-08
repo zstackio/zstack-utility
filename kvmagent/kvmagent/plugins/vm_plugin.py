@@ -5155,7 +5155,7 @@ class VmPlugin(kvmagent.KvmAgent):
             content = '''
     <redirdev bus='usb' type='tcp'>
       <source mode='connect' host='%s' service='%s'/>
-      <address type='usb' bus='%s' device='%s'/>
+      <address type='usb' bus='%s' port='%s'/>
     </redirdev>''' % (cmd.ip, int(cmd.port), bus, self._get_next_usb_port(cmd.vmUuid, bus))
         spath = linux.write_to_temp_file(content)
         r, o, e = bash.bash_roe("virsh attach-device %s %s" % (cmd.vmUuid, spath))
