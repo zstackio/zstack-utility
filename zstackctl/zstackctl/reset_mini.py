@@ -355,6 +355,7 @@ def reset_network():
         raise Exception("serial number not last with A or B!")
     # bash.bash_r("sed -i 's/ui_mode = .*/ui_mode = mini/g' /usr/local/zstack/apache-tomcat/webapps/zstack/WEB-INF/classes/zstack.properties")
     bash_r("systemctl restart zstack-network-agent.service")
+    clear_network()
 
 
 @in_bash
