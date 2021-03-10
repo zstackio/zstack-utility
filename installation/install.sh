@@ -3632,7 +3632,7 @@ if [[ ! -f "$cloudCtlPath" ]]; then
 fi
 
 astackCtlPath="/usr/bin/astack-ctl"
-if [[ ! -f "$cloudCtlPath" ]]; then
+if [[ ! -f "$astackCtlPath" ]]; then
   ln -s /usr/bin/zstack-ctl /usr/bin/astack-ctl
 fi
 
@@ -3642,7 +3642,7 @@ if [[ ! -f "$cloudCliPath" ]]; then
 fi
 
 astackCliPath="/usr/bin/astack-cli"
-if [[ ! -f "$cloudCliPath" ]]; then
+if [[ ! -f "$astackCliPath" ]]; then
   ln -s /usr/bin/zstack-cli /usr/bin/astack-cli
 fi
 
