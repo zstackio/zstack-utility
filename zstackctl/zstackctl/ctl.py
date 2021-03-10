@@ -751,7 +751,7 @@ class Ctl(object):
     def __init__(self):
         self.commands = {}
         self.command_list = []
-        self.main_parser = CtlParser(prog='zstack-ctl', description="ZStack management tool", formatter_class=argparse.RawTextHelpFormatter)
+        self.main_parser = CtlParser(prog='cloud-ctl', description="Cloud management tool", formatter_class=argparse.RawTextHelpFormatter)
         self.main_parser.add_argument('-v', help="verbose, print execution details", dest="verbose", action="store_true", default=False)
         self.zstack_home = None
         self.properties_file_path = None
@@ -779,7 +779,7 @@ class Ctl(object):
             self.zstack_home = self.DEFAULT_ZSTACK_HOME
 
         if not os.path.isdir(self.zstack_home):
-            raise CtlError('cannot find ZSTACK_HOME at %s, please set it in .bashrc or use zstack-ctl setenv ZSTACK_HOME=path' % self.zstack_home)
+            raise CtlError('cannot find ZSTACK_HOME at %s, please set it in .bashrc or use cloud-ctl setenv ZSTACK_HOME=path' % self.zstack_home)
 
         os.environ['ZSTACK_HOME'] = self.zstack_home
         self.properties_file_path = os.path.join(self.zstack_home, 'WEB-INF/classes/zstack.properties')
@@ -787,7 +787,7 @@ class Ctl(object):
         self.ssh_private_key = os.path.join(self.zstack_home, 'WEB-INF/classes/ansible/rsaKeys/id_rsa')
         self.ssh_public_key = os.path.join(self.zstack_home, 'WEB-INF/classes/ansible/rsaKeys/id_rsa.pub')
         if not os.path.isfile(self.properties_file_path):
-            warn('cannot find %s, your ZStack installation may have crashed' % self.properties_file_path)
+            warn('cannot find %s, your Cloud installation may have crashed' % self.properties_file_path)
         if os.path.getsize(self.properties_file_path) == 0:
             warn('%s: file empty' % self.properties_file_path)
 
@@ -809,7 +809,7 @@ class Ctl(object):
     def run(self):
         create_log(Ctl.LOGGER_DIR, Ctl.LOGGER_FILE)
         if os.getuid() != 0:
-            raise CtlError('zstack-ctl needs root privilege, please run with sudo')
+            raise CtlError('cloud-ctl needs root privilege, please run with sudo')
 
         if os.path.exists(Ctl.ZSTACK_UI_HOME) and not os.path.exists(self.ui_properties_file_path):
             os.mknod(self.ui_properties_file_path)
@@ -1230,9 +1230,9 @@ class Command(object):
             self.run(*args)
             if not self.quiet:
                 if not self.sensitive_args:
-                    logger.info('Start running command [ zstack-ctl %s ]' % ' '.join(sys.argv[1:]))
+                    logger.info('Start running command [ cloud-ctl %s ]' % ' '.join(sys.argv[1:]))
                 else:
-                    logger.info('Start running command [ zstack-ctl %s ]' % ' '.join(self.mask_sensitive_args(sys.argv[1:])))
+                    logger.info('Start running command [ cloud-ctl %s ]' % ' '.join(self.mask_sensitive_args(sys.argv[1:])))
         finally:
             for c in self.cleanup_routines:
                 c()
@@ -1402,7 +1402,7 @@ class ShowStatusCmd(Command):
     def __init__(self):
         super(ShowStatusCmd, self).__init__()
         self.name = 'status'
-        self.description = 'show ZStack status and information.'
+        self.description = 'show Cloud status and information.'
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
@@ -1534,9 +1534,9 @@ class DeployDBCmd(Command):
         super(DeployDBCmd, self).__init__()
         self.name = "deploydb"
         self.description = (
-            "deploy a new ZStack database, create a user 'zstack' with password specified in '--zstack-password',\n"
-            "and update zstack.properties if --no-update is not set.\n"
-            "\nDANGER: this will erase the existing ZStack database.\n"
+            "deploy a new Cloud database, create a user 'cloud' with password specified in '--cloud-password',\n"
+            "and update properties if --no-update is not set.\n"
+            "\nDANGER: this will erase the existing Cloud database.\n"
             "NOTE: If the database is running on a remote host, please make sure you have granted privileges to the root user by:\n"
             "\n\tGRANT ALL PRIVILEGES ON *.* TO 'root'@'%%' IDENTIFIED BY 'your_root_password' WITH GRANT OPTION;\n"
             "\tFLUSH PRIVILEGES;\n"
@@ -1555,23 +1555,23 @@ class DeployDBCmd(Command):
 
     def install_argparse_arguments(self, parser):
         parser.add_argument('--root-password', help='root user password of MySQL. [DEFAULT] empty password')
-        parser.add_argument('--zstack-password', help='password of user "zstack". [DEFAULT] empty password')
+        parser.add_argument('--zstack-password', help='password of user "cloud". [DEFAULT] empty password')
         parser.add_argument('--host', help='IP or DNS name of MySQL host; default is localhost', default='localhost')
         parser.add_argument('--port', help='port of MySQL host; default is 3306', type=int, default=3306)
-        parser.add_argument('--no-update', help='do NOT update database information to zstack.properties; if you do not know what this means, do not use it', action='store_true', default=False)
-        parser.add_argument('--drop', help='drop existing zstack database', action='store_true', default=False)
-        parser.add_argument('--keep-db', help='keep existing zstack database and not raise error.', action='store_true', default=False)
+        parser.add_argument('--no-update', help='do NOT update database information to properties; if you do not know what this means, do not use it', action='store_true', default=False)
+        parser.add_argument('--drop', help='drop existing cloud database', action='store_true', default=False)
+        parser.add_argument('--keep-db', help='keep existing cloud database and not raise error.', action='store_true', default=False)
 
     def run(self, args):
         error_if_tool_is_missing('mysql')
 
         script_path = os.path.join(ctl.zstack_home, self.DEPLOY_DB_SCRIPT_PATH)
         if not os.path.exists(script_path):
-            error('cannot find %s, your ZStack installation may have been corrupted, please reinstall it' % script_path)
+            error('cannot find %s, your Cloud installation may have been corrupted, please reinstall it' % script_path)
 
         property_file_path = os.path.join(ctl.zstack_home, self.ZSTACK_PROPERTY_FILE)
         if not os.path.exists(property_file_path):
-            error('cannot find %s, your ZStack installation may have been corrupted, please reinstall it' % property_file_path)
+            error('cannot find %s, your Cloud installation may have been corrupted, please reinstall it' % property_file_path)
 
         if args.root_password:
             check_existing_db = 'mysql --user=root --password=%s --host=%s --port=%s -e "use zstack"' % (args.root_password, args.host, args.port)
@@ -1588,9 +1588,9 @@ class DeployDBCmd(Command):
 
         if cmd.return_code == 0 and not args.drop:
             if args.keep_db:
-                info('detected existing zstack database and keep it; if you want to drop it, please append parameter --drop, instead of --keep-db\n')
+                info('detected existing cloud database and keep it; if you want to drop it, please append parameter --drop, instead of --keep-db\n')
             else:
-                raise CtlError('detected existing zstack database; if you are sure to drop it, please append parameter --drop or use --keep-db to keep the database')
+                raise CtlError('detected existing cloud database; if you are sure to drop it, please append parameter --drop or use --keep-db to keep the database')
         else:
             cmd = ShellCmd('bash %s root %s %s %s %s' % (script_path, args.root_password, args.host, args.port, args.zstack_password))
             cmd(False)
@@ -1598,7 +1598,7 @@ class DeployDBCmd(Command):
                 if ('ERROR 1044' in cmd.stdout or 'ERROR 1044' in cmd.stderr) or ('Access denied' in cmd.stdout or 'Access denied' in cmd.stderr):
                     raise CtlError(
                         "failed to deploy database, access denied; if your root password is correct and you use IP rather than localhost,"
-                        "it's probably caused by the privileges are not granted to root user for remote access; please see instructions in 'zstack-ctl -h'."
+                        "it's probably caused by the privileges are not granted to root user for remote access; please see instructions in 'cloud-ctl -h'."
                         "error details: %s, %s\n" % (cmd.stdout, cmd.stderr)
                     )
                 else:
@@ -1616,7 +1616,7 @@ class DeployDBCmd(Command):
 
             ctl.write_properties(properties)
 
-        info('Successfully deployed ZStack database and updated corresponding DB information in %s' % property_file_path)
+        info('Successfully deployed Cloud database and updated corresponding DB information in %s' % property_file_path)
 
 class DeployUIDBCmd(Command):
     DEPLOY_UI_DB_SCRIPT_PATH = "WEB-INF/classes/deployuidb.sh"
@@ -1627,7 +1627,7 @@ class DeployUIDBCmd(Command):
         self.name = "deploy_ui_db"
         self.description = (
             "Deploy a new zstack_ui database.\n"
-            "\nDANGER: this will erase the existing zstack_ui database.\n"
+            "\nDANGER: this will erase the existing database.\n"
             "NOTE: If the database is running on a remote host, please make sure you have granted privileges to the root user by:\n"
             "\n\tGRANT ALL PRIVILEGES ON *.* TO 'root'@'%%' IDENTIFIED BY 'your_root_password' WITH GRANT OPTION;\n"
             "\tFLUSH PRIVILEGES;\n"
@@ -1646,19 +1646,19 @@ class DeployUIDBCmd(Command):
 
     def install_argparse_arguments(self, parser):
         parser.add_argument('--root-password', help='root user password of MySQL. [DEFAULT] empty password')
-        parser.add_argument('--zstack-ui-password', help='password of user "zstack_ui". [DEFAULT] empty password')
+        parser.add_argument('--zstack-ui-password', help='password of user . [DEFAULT] empty password')
         parser.add_argument('--host', help='IP or DNS name of MySQL host; default is localhost', default='localhost')
         parser.add_argument('--port', help='port of MySQL host; default is 3306', type=int, default=3306)
-        parser.add_argument('--drop', help='drop existing zstack ui database', action='store_true', default=False)
-        parser.add_argument('--no-update', help='do NOT update database information to zstack.ui.properties; if you do not know what this means, do not use it', action='store_true', default=False)
-        parser.add_argument('--keep-db', help='keep existing zstack ui database and not raise error.', action='store_true', default=False)
+        parser.add_argument('--drop', help='drop existing cloud ui database', action='store_true', default=False)
+        parser.add_argument('--no-update', help='do NOT update database information to ui.properties; if you do not know what this means, do not use it', action='store_true', default=False)
+        parser.add_argument('--keep-db', help='keep existing cloud ui database and not raise error.', action='store_true', default=False)
 
     def run(self, args):
         error_if_tool_is_missing('mysql')
 
         script_path = os.path.join(ctl.zstack_home, self.DEPLOY_UI_DB_SCRIPT_PATH)
         if not os.path.exists(script_path):
-            error('cannot find %s, your zstack installation may have been corrupted, please reinstall it' % script_path)
+            error('cannot find %s, your cloud installation may have been corrupted, please reinstall it' % script_path)
 
         if args.root_password:
             check_existing_db = 'mysql --user=root --password=%s --host=%s --port=%s -e "use zstack_ui"' % (args.root_password, args.host, args.port)
@@ -1687,7 +1687,7 @@ class DeployUIDBCmd(Command):
                 if ('ERROR 1044' in cmd.stdout or 'ERROR 1044' in cmd.stderr) or ('Access denied' in cmd.stdout or 'Access denied' in cmd.stderr):
                     raise CtlError(
                         "failed to deploy zstack_ui database, access denied; if your root password is correct and you use IP rather than localhost,"
-                        "it's probably caused by the privileges are not granted to root user for remote access; please see instructions in 'zstack-ctl -h'."
+                        "it's probably caused by the privileges are not granted to root user for remote access; please see instructions in 'cloud-ctl -h'."
                         "error details: %s, %s\n" % (cmd.stdout, cmd.stderr)
                     )
                 else:
@@ -1770,9 +1770,9 @@ class ConfigureCmd(Command):
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--host', help='SSH URL, for example, root@192.168.0.10, to set properties in zstack.properties on the remote machine')
-        parser.add_argument('--duplicate-to-remote', help='SSH URL, for example, root@192.168.0.10, to copy zstack.properties on this machine to the remote machine')
-        parser.add_argument('--use-file', help='path to a file that will be used to as zstack.properties')
+        parser.add_argument('--host', help='SSH URL, for example, root@192.168.0.10, to set properties in properties on the remote machine')
+        parser.add_argument('--duplicate-to-remote', help='SSH URL, for example, root@192.168.0.10, to copy properties on this machine to the remote machine')
+        parser.add_argument('--use-file', help='path to a file that will be used to as properties')
 
     def _configure_remote_node(self, args):
         shell_no_pipe('ssh %s "/usr/bin/zstack-ctl configure %s"' % (args.host, ' '.join(ctl.extra_arguments)))
@@ -1883,13 +1883,13 @@ class StopAllCmd(Command):
     def __init__(self):
         super(StopAllCmd, self).__init__()
         self.name = 'stop'
-        self.description = 'stop all ZStack related services including zstack management node, web UI' \
+        self.description = 'stop all Cloud related services including cloud management node, web UI' \
                            ' if those services are installed'
         ctl.register_command(self)
 
     def run(self, args):
         def stop_mgmt_node():
-            info(colored('Stopping ZStack management node, it may take a few minutes...', 'blue'))
+            info(colored('Stopping Cloud management node, it may take a few minutes...', 'blue'))
             ctl.internal_run('stop_node')
 
         def stop_ui():
@@ -1898,7 +1898,7 @@ class StopAllCmd(Command):
                 info('skip stopping web UI, it is not installed')
                 return
 
-            info(colored('Stopping ZStack web UI, it may take a few minutes...', 'blue'))
+            info(colored('Stopping Cloud web UI, it may take a few minutes...', 'blue'))
             ctl.internal_run('stop_ui')
 
         stop_ui()
@@ -1909,16 +1909,16 @@ class StartAllCmd(Command):
     def __init__(self):
         super(StartAllCmd, self).__init__()
         self.name = 'start'
-        self.description = 'start all ZStack related services including zstack management node, web UI' \
+        self.description = 'start all Cloud related services including cloud management node, web UI' \
                            ' if those services are installed'
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--daemon', help='Start ZStack in daemon mode. Only used with systemd.', action='store_true', default=True)
+        parser.add_argument('--daemon', help='Start Cloud in daemon mode. Only used with systemd.', action='store_true', default=True)
 
     def run(self, args):
         def start_mgmt_node():
-            info(colored('Starting ZStack management node, it may take a few minutes...', 'blue'))
+            info(colored('Starting Cloud management node, it may take a few minutes...', 'blue'))
             if args.daemon:
                 ctl.internal_run('start_node', '--daemon')
             else:
@@ -1930,7 +1930,7 @@ class StartAllCmd(Command):
                 info('skip starting web UI, it is not installed')
                 return
 
-            info(colored('Starting ZStack web UI, it may take a few minutes...', 'blue'))
+            info(colored('Starting Cloud web UI, it may take a few minutes...', 'blue'))
             ctl.internal_run('start_ui')
 
         start_mgmt_node()
@@ -1997,18 +1997,18 @@ class StartCmd(Command):
     def __init__(self):
         super(StartCmd, self).__init__()
         self.name = 'start_node'
-        self.description = 'start the ZStack management node on this machine'
+        self.description = 'start the Cloud management node on this machine'
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
         parser.add_argument('--host', help='SSH URL, for example, root@192.168.0.10, to start the management node on a remote machine')
-        parser.add_argument('--timeout', help='Wait for ZStack Server startup timeout, default is 300 seconds.', default=300)
-        parser.add_argument('--daemon', help='Start ZStack in daemon mode. Only used with systemd.', action='store_true', default=False)
-        parser.add_argument('--simulator', help='Start Zstack in simulator mode.', action='store_true', default=False)
+        parser.add_argument('--timeout', help='Wait for Cloud Server startup timeout, default is 300 seconds.', default=300)
+        parser.add_argument('--daemon', help='Start Cloud in daemon mode. Only used with systemd.', action='store_true', default=False)
+        parser.add_argument('--simulator', help='Start Cloud in simulator mode.', action='store_true', default=False)
         parser.add_argument('--mysql_process_list', help='Check mysql wait timeout connection', action='store_true', default=False)
 
     def _start_remote(self, args):
-        info('it may take a while because zstack-ctl will wait for management node ready to serve API')
+        info('it may take a while because cloud-ctl will wait for management node ready to serve API')
         shell_no_pipe('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s "/usr/bin/zstack-ctl start_node --timeout=%s"' % (args.host, args.timeout))
 
     def check_cpu_mem(self):
@@ -2045,7 +2045,7 @@ class StartCmd(Command):
         def check_java_version():
             ver = shell('java -version 2>&1 | grep -w version')
             if '1.8' not in ver:
-                raise CtlError('ZStack requires Java8, your current version is %s\n'
+                raise CtlError('Cloud requires Java8, your current version is %s\n'
                                'please run "update-alternatives --config java" to set Java to Java8')
 
         def check_mn_port():
@@ -2100,7 +2100,7 @@ class StartCmd(Command):
 
         def check_ha():
             _, output, _ = shell_return_stdout_stderr("systemctl is-enabled zstack-ha")
-            status, _, _ = shell_return_stdout_stderr("pgrep -x zstack-hamon")
+            status, _, _ = shell_return_stdout_stderr("pgrep -x cloud-hamon")
             if output and output.strip() == "enabled" and status != 0:
                 error("please use 'zsha2 start-node'")
 
@@ -2167,7 +2167,7 @@ class StartCmd(Command):
 
             co = ctl.get_env('CATALINA_OPTS')
             if co:
-                info('use CATALINA_OPTS[%s] set in environment zstack environment variables; check out them by "zstack-ctl getenv"' % co)
+                info('use CATALINA_OPTS[%s] set in environment cloud environment variables; check out them by "cloud-ctl getenv"' % co)
                 catalina_opts.extend(co.split(' '))
 
             def has_opt(prefix):
@@ -2237,7 +2237,7 @@ class StartCmd(Command):
         def prepareBeanRefContextXml():
             if is_simulator_on():
                 beanXml = "simulator/zstack-simulator2.xml"
-                info("--simulator is set, ZStack will start in simulator mode")
+                info("--simulator is set, Cloud will start in simulator mode")
             else:
                 beanXml = "zstack.xml"
 
@@ -2296,7 +2296,7 @@ class StopCmd(Command):
     def __init__(self):
         super(StopCmd, self).__init__()
         self.name = 'stop_node'
-        self.description = 'stop the ZStack management node on this machine'
+        self.description = 'stop the Cloud management node on this machine'
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
@@ -2429,7 +2429,7 @@ class MysqlProcessList(Command):
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--check', help='check mysql wait timeout connection for zstack start_node', action="store_true")
+        parser.add_argument('--check', help='check mysql wait timeout connection for cloud start_node', action="store_true")
         parser.add_argument('--time', help='the time of wait timeout, must >= 1')
         parser.add_argument('--kill', help='kill wait timeout connection', action="store_true")
         parser.add_argument('--detail', help='show the detail of mysql wait timeout connection', action="store_true")
@@ -2552,11 +2552,11 @@ class SaveConfigCmd(Command):
     def __init__(self):
         super(SaveConfigCmd, self).__init__()
         self.name = 'save_config'
-        self.description = 'save ZStack configuration from ZSTACK_HOME to specified folder'
+        self.description = 'save Cloud configuration from ZSTACK_HOME to specified folder'
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--save-to', help='the folder where ZStack configurations should be saved')
+        parser.add_argument('--save-to', help='the folder where Cloud configurations should be saved')
 
     def run(self, args):
         path = args.save_to
@@ -2582,11 +2582,11 @@ class RestoreConfigCmd(Command):
     def __init__(self):
         super(RestoreConfigCmd, self).__init__()
         self.name = "restore_config"
-        self.description = 'restore ZStack configuration from specified folder to ZSTACK_HOME'
+        self.description = 'restore Cloud configuration from specified folder to ZSTACK_HOME'
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--restore-from', help='the folder where ZStack configurations should be found')
+        parser.add_argument('--restore-from', help='the folder where Cloud configurations should be found')
 
     def run(self, args):
         path = args.restore_from
@@ -2599,7 +2599,7 @@ class RestoreConfigCmd(Command):
         elif os.path.isfile(path):
             properties_file_path = path
         else:
-            raise CtlError('cannot find zstack.properties at %s' % path)
+            raise CtlError('cannot find properties at %s' % path)
 
         shell('yes | cp %s %s' % (properties_file_path, ctl.properties_file_path))
         ssh_private_key_path = os.path.join(path, 'id_rsa')
@@ -2607,7 +2607,7 @@ class RestoreConfigCmd(Command):
         shell('yes | cp %s %s' % (ssh_private_key_path, ctl.ssh_private_key))
         shell('yes | cp %s %s' % (ssh_public_key_path, ctl.ssh_public_key))
 
-        info('successfully restored zstack.properties and ssh identity keys from %s to %s' % (properties_file_path, ctl.properties_file_path))
+        info('successfully restored properties and ssh identity keys from %s to %s' % (properties_file_path, ctl.properties_file_path))
 
 class InstallDbCmd(Command):
     def __init__(self):
@@ -2628,7 +2628,7 @@ class InstallDbCmd(Command):
                             "\n[NOTE] this option is needed only when the machine has MySQL previously installed and removed; the old MySQL root password will be left in the system,"
                             "you need to input it in order to reset root password for the new installed MySQL.", default=None)
         parser.add_argument('--debug', help="open Ansible debug option", action="store_true", default=False)
-        parser.add_argument('--yum', help="Use ZStack predefined yum repositories. The valid options include: alibase,aliepel,163base,ustcepel,zstack-local. NOTE: only use it when you know exactly what it does.", default=None)
+        parser.add_argument('--yum', help="Use CLoud predefined yum repositories. The valid options include: alibase,aliepel,163base,ustcepel,zstack-local. NOTE: only use it when you know exactly what it does.", default=None)
         parser.add_argument('--no-backup', help='do NOT backup the database. If the database is very large and you have manually backup it, using this option will fast the upgrade process. [DEFAULT] false', default=False)
         parser.add_argument('--ssh-key', help="the path of private key for SSH login $host; if provided, Ansible will use the specified key as private key to SSH login the $host", default=None)
 
@@ -2887,7 +2887,7 @@ class UpgradeHACmd(Command):
     def __init__(self):
         super(UpgradeHACmd, self).__init__()
         self.name = "upgrade_ha"
-        self.description =  "upgrade high availability environment for ZStack-Enterprise."
+        self.description =  "upgrade high availability environment for Cloud-Enterprise."
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
@@ -3069,7 +3069,7 @@ class UpgradeHACmd(Command):
         if status != 0:
             error("Upgrade mysql failed: %s" % output)
         else:
-            logger.debug("SUCC: shell command: 'zstack-ctl upgrade_db' successfully" )
+            logger.debug("SUCC: shell command: 'cloud-ctl upgrade_db' successfully" )
 
         spinner_info = SpinnerInfo()
         spinner_info.output = "Starting mevoco"
@@ -3098,12 +3098,12 @@ class AddManagementNodeCmd(Command):
         ctl.register_command(self)
     def install_argparse_arguments(self, parser):
         parser.add_argument('--host-list','--hosts',nargs='+',
-                            help="All hosts connect info follow below format, example: 'zstack-ctl add_multi_management --hosts root:passwd1@host1_ip root:passwd2@host2_ip ...' ",
+                            help="All hosts connect info follow below format, example: 'cloud-ctl add_multi_management --hosts root:passwd1@host1_ip root:passwd2@host2_ip ...' ",
                             required=True)
         parser.add_argument('--force-reinstall','-f',action="store_true", default=False)
         parser.add_argument('--ssh-key',
                             help="the path of private key for SSH login $host; if provided, Ansible will use the "
-                                 "specified key as private key to SSH login the $host, default will use zstack private key",
+                                 "specified key as private key to SSH login the $host, default will use cloud private key",
                             default=None)
 
     def add_public_key_to_host(self, key_path, host_info):
@@ -3302,7 +3302,7 @@ class RecoverHACmd(Command):
         ZstackSpinner(spinner_info)
         host3_exist = False
         if os.path.isfile(RecoverHACmd.conf_file) is not True:
-            error("Didn't find HA config file %s, please use traditional 'zstack-ctl install_ha' to recover your cluster" % RecoverHACmd.conf_file)
+            error("Didn't find HA config file %s, please use traditional 'cloud-ctl install_ha' to recover your cluster" % RecoverHACmd.conf_file)
 
         if os.path.exists(RecoverHACmd.conf_file):
             with open(RecoverHACmd.conf_file, 'r') as f:
@@ -3437,14 +3437,14 @@ class InstallHACmd(Command):
         parser.add_argument('--mysql-root-password','--root-pass',
                             help="Password of MySQL root user", default="zstack123")
         parser.add_argument('--mysql-user-password','--user-pass',
-                            help="Password of MySQL user zstack", default="zstack123")
+                            help="Password of MySQL user", default="zstack123")
         parser.add_argument('--rabbit-password','--rabbit-pass',
                             help="obsoleted since 3.0.1",
                             default="zstack123")
         parser.add_argument('--drop', action='store_true', default=False,
                             help="Force delete mysql data for re-deploy HA")
         parser.add_argument('--keep-db', action='store_true', default=False,
-                            help='keep existing zstack database and not raise error')
+                            help='keep existing cloud database and not raise error')
         parser.add_argument('--recovery-from-this-host','--recover',
                             action='store_true', default=False,
                             help="This argument for admin to recovery mysql from the last shutdown mysql server")
@@ -3519,7 +3519,7 @@ class InstallHACmd(Command):
         zstack_local_repo = os.path.isfile("/etc/yum.repos.d/zstack-local.repo")
         galera_repo = os.path.isfile("/etc/yum.repos.d/galera.repo")
         if zstack_local_repo is False or galera_repo is False:
-            error("This feature only support ZStack community CentOS 7 image")
+            error("This feature only support community CentOS 7 image")
 
         # check network configuration
         interface_list = os.listdir('/sys/class/net/')
@@ -3987,7 +3987,7 @@ class InstallHACmd(Command):
 
         print '''HA deploy finished!
 Mysql user 'root' password: %s
-Mysql user 'zstack' password: %s
+Mysql use password: %s
 Mevoco is running, visit %s in Chrome or Firefox with default user/password : %s
 You can check the cluster status at %s with user/passwd : %s
        ''' % (args.mysql_root_password, args.mysql_user_password,
@@ -4515,7 +4515,7 @@ wsrep_sst_method=rsync
                 time.sleep(5)
                 (status, output) = run_remote_command(command, self.host1_post_info, True, True)
                 if status is False:
-                    error("Failed to set mysql 'zstack' and 'root' password, the reason is %s" % output)
+                    error("Failed to set mysql 'root' password, the reason is %s" % output)
 
         # config mysqlchk_status.sh on zstack-1 and zstack-2
         mysqlchk_raw_script = '''#!/bin/sh
@@ -4729,16 +4729,16 @@ class RabbitmqHA(InstallHACmd):
         self.name = "rabbitmq ha"
         self.description = "rabbitmq HA setup"
     def __call__(self):
-        info("zstack no longer depend on rabbitmq, exit")
+        info("cloud no longer depend on rabbitmq, exit")
 
 class ResetRabbitCmd(Command):
     def __init__(self):
         super(ResetRabbitCmd, self).__init__()
         self.name = "reset_rabbitmq"
-        self.description = "Reset RabbitMQ message broker on local machine based on current configuration in zstack.properties."
+        self.description = "Reset RabbitMQ message broker on local machine based on current configuration in properties."
         ctl.register_command(self)
     def run(self, args):
-        info("zstack no longer depend on rabbitmq, exit")
+        info("cloud no longer depend on rabbitmq, exit")
 
 class InstallRabbitCmd(Command):
     def __init__(self):
@@ -4748,14 +4748,14 @@ class InstallRabbitCmd(Command):
         ctl.register_command(self)
 
     def run(self, args):
-        info("zstack no longer depend on rabbitmq, exit")
+        info("cloud no longer depend on rabbitmq, exit")
 
 
 class MysqlRestrictConnection(Command):
     def __init__(self):
         super(MysqlRestrictConnection, self).__init__()
         self.name = "mysql_restrict_connection"
-        self.description = "set mysql restrict connection for account: root, zstack, zstack_ui"
+        self.description = "set mysql restrict connection for account: root,ui"
         self.sensitive_args = ['--restrict', '--restore', '--root-password', '--include-root']
         self.file="%s/mysql_restrict_connection" % ctl.USER_ZSTACK_HOME_DIR
         ctl.register_command(self)
@@ -4785,7 +4785,7 @@ class MysqlRestrictConnection(Command):
     def get_db_portal(self):
         db_host, db_port, db_user, db_password = ctl.get_live_mysql_portal()
         if db_user != "zstack":
-            error("DB.user in the zstack.properties is not set to zstack")
+            error("DB.user in the properties is not set to cloud")
 
         return db_host, db_port, db_user, db_password
 
@@ -4793,7 +4793,7 @@ class MysqlRestrictConnection(Command):
         ui_db_host, ui_db_port, ui_db_user, ui_db_password = ctl.get_live_mysql_portal(ui=True)
 
         if ui_db_user != "zstack_ui":
-            error("db_username in the zstack.ui.properties is not set to zstack_ui")
+            error("db_username in the ui.properties is not set to ui")
 
         return ui_db_host, ui_db_port, ui_db_user, ui_db_password
 
@@ -4966,9 +4966,9 @@ class ChangeMysqlPasswordCmd(Command):
                 error(output)
             info("Change mysql password for user '%s' successfully! " % args.user_name)
             if args.user_name == 'zstack':
-                info(colored("Please change 'DB.password' in 'zstack.properties' then restart zstack to make the changes effective" , 'yellow'))
+                info(colored("Please change 'DB.password' in 'properties' then restart cloud to make the changes effective" , 'yellow'))
             elif args.user_name == 'zstack_ui':
-                info(colored("Please change 'db_password' in 'zstack.ui.properties' then restart zstack ui to make the changes effective" , 'yellow'))
+                info(colored("Please change 'db_password' in 'ui.properties' then restart cloud ui to make the changes effective" , 'yellow'))
         else:
            error("Only support changing %s and root password" % ', '.join(self.normal_users))
 
@@ -4997,7 +4997,7 @@ class DumpMysqlCmd(Command):
                             help="The amount of backup files you want to keep, older backup files will be deleted, default number is 60",
                             default=60)
         parser.add_argument('--host-info','--host','--h',
-                           help="ZStack will sync the backup database and ui data to remote host dir '/var/lib/zstack/from-zstack-remote-backup/', "
+                           help="Cloud will sync the backup database and ui data to remote host dir '/var/lib/zstack/from-zstack-remote-backup/', "
                                 "the host-info format: 'root@ip_address:port(default port 22)' ",
                            required=False)
         parser.add_argument('--delete-expired-file','--delete','--d',
@@ -5108,9 +5108,9 @@ class DumpMysqlCmd(Command):
         if args.host_info is not None:
             self.sync_local_backup_db_to_remote_host(args, remote_host_user, private_key, remote_host_ip, remote_host_port)
             if args.delete_expired_file is False:
-                info("Sync ZStack backup to remote host %s:%s successfully! " % (remote_host_ip, self.remote_backup_dir))
+                info("Sync Cloud backup to remote host %s:%s successfully! " % (remote_host_ip, self.remote_backup_dir))
             else:
-                info("Sync ZStack backup to remote host %s:%s and delete expired files on remote successfully! " % (remote_host_ip, self.remote_backup_dir))
+                info("Sync Cloud backup to remote host %s:%s and delete expired files on remote successfully! " % (remote_host_ip, self.remote_backup_dir))
 
 
 class RestoreMysqlPreCheckCmd(Command):
@@ -5196,10 +5196,10 @@ class RestoreMysqlCmd(Command):
                             help="The backup filename under /var/lib/zstack/mysql-backup/ ",
                             required=True)
         parser.add_argument('--mysql-root-password',
-                            help="mysql root password of zstack database",
+                            help="mysql root password of cloud database",
                             default=None)
         parser.add_argument('--ui-mysql-root-password',
-                            help="mysql root password of zstack_ui database, same as --mysql-root-password by default",
+                            help="mysql root password of ui database, same as --mysql-root-password by default",
                             default=None)
         parser.add_argument('--skip-ui',
                             help="skip restore ui db",
@@ -5304,7 +5304,7 @@ class RestoreMysqlCmd(Command):
               % (db_backup_name, ui_db_hostname_origin_cp, ui_db_connect_password, ui_db_hostname, ui_db_port)
         shell_no_pipe(command)
 
-        info("Successfully restored database. You can start node by running zstack-ctl start.")
+        info("Successfully restored database. You can start node by running cloud-ctl start.")
 
 class RestorerFactory(object):
     @staticmethod
@@ -5362,7 +5362,7 @@ class MultiMysqlRestorer(MysqlRestorer):
             self.utils.excute_on_peer(
                 "zstack-ctl restore_mysql --mysql-root-password '%s' --skip-ui --skip-check -f %s --only-restore-self && rm -f %s"
                 % (args.mysql_root_password, slave_file_path, slave_file_path))
-            info("Succeed to restore zstack peer node data")
+            info("Succeed to restore cloud peer node data")
 
     def is_local_ip(self, db_hostname):
         return db_hostname in self.all_local_ip or db_hostname == self.utils.config['dbvip']
@@ -5390,7 +5390,7 @@ class ZBoxBackupScanCmd(Command):
         super(ZBoxBackupScanCmd, self).__init__()
         self.name = "scan_zbox_backup"
         self.description = (
-            "get ZStack backup details from zbox."
+            "get Cloud backup details from zbox."
         )
         ctl.register_command(self)
 
@@ -5442,7 +5442,7 @@ class ZBoxBackupRestoreCmd(Command):
         super(ZBoxBackupRestoreCmd, self).__init__()
         self.name = "restore_zbox_backup"
         self.description = (
-            "restore ZStack from zbox backup"
+            "restore Cloud from zbox backup"
         )
         self.hide = True
         self.sensitive_args = ['--mysql-root-password', '--ui-mysql-root-password']
@@ -5453,7 +5453,7 @@ class ZBoxBackupRestoreCmd(Command):
                             help="The mysql backup filename under /var/zbox-${zbox-uuid}/zstack-backup/${backupname}-${version}-${backup-uuid}/",
                             required=True)
         parser.add_argument('--mysql-root-password',
-                            help="mysql root password of zstack database",
+                            help="mysql root password of cloud database",
                             default=None)
         parser.add_argument('--ui-mysql-root-password',
                             help="mysql root password of zstack_ui database, same as --mysql-root-password by default",
@@ -5973,7 +5973,7 @@ class CollectLogCmd(Command):
             command = "/bin/cp -f  %s/../../logs/zstack-ui.log %s" % (ctl.zstack_home, tmp_log_dir)
             (status, output) = run_remote_command(command, host_post_info, True, True)
             if status is not True:
-                warn("get zstack-ui log failed: %s" % output)
+                warn("get cloud-ui log failed: %s" % output)
 
             command = "/bin/cp -f  %s/../../logs/zstack-api.log %s" % (ctl.zstack_home, tmp_log_dir)
             (status, output) = run_remote_command(command, host_post_info, True, True)
@@ -6117,7 +6117,7 @@ class CollectLogCmd(Command):
         if not os.path.exists(collect_dir):
             os.makedirs(collect_dir)
         if len(get_mn_list()) > 1:
-            warn("there are multiple zstack management node[hostName: %s] exist, need to collect management log on others manually" %
+            warn("there are multiple cloud management node[hostName: %s] exist, need to collect management log on others manually" %
                  map(lambda x: x["hostName"], get_mn_list()))
         if os.path.exists(InstallHACmd.conf_file) is not True:
             self.get_local_mn_log(collect_dir, args.full)
@@ -6250,14 +6250,14 @@ class ChangeIpCmd(Command):
         super(ChangeIpCmd, self).__init__()
         self.name = "change_ip"
         self.description = (
-            "update new management ip address to zstack property file"
+            "update new management ip address to property file"
         )
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
         parser.add_argument('--ip', help='The new IP address of management node.'
                                          'This operation will update the new ip address to '
-                                         'zstack config file' , required=True)
+                                         'cloud config file' , required=True)
         parser.add_argument('--cloudbus_server_ip', help='The new IP address of CloudBus.serverIp.0, default will use value from --ip', required=False)
         parser.add_argument('--mysql_ip', help='The new IP address of DB.url, default will use value from --ip', required=False)
         parser.add_argument('--root-password',
@@ -6469,18 +6469,18 @@ class InstallManagementNodeCmd(Command):
         super(InstallManagementNodeCmd, self).__init__()
         self.name = "install_management_node"
         self.description = (
-            "install ZStack management node from current machine to a remote machine with zstack.properties."
+            "install Cloud management node from current machine to a remote machine with properties."
             "\nNOTE: please configure current node before installing node on other machines"
         )
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--host', help='target host IP user and password, for example, root:password@192.168.0.212, to install ZStack management node to a remote machine', required=True)
+        parser.add_argument('--host', help='target host IP user and password, for example, root:password@192.168.0.212, to install Cloud management node to a remote machine', required=True)
         parser.add_argument('--install-path', help='the path on remote machine where Apache Tomcat will be installed, which must be an absolute path; [DEFAULT]: /usr/local/zstack', default='/usr/local/zstack')
         parser.add_argument('--source-dir', help='the source folder containing Apache Tomcat package and zstack.war, if omitted, it will default to a path related to $ZSTACK_HOME')
         parser.add_argument('--debug', help="open Ansible debug option", action="store_true", default=False)
-        parser.add_argument('--force-reinstall', help="delete existing Apache Tomcat and resinstall ZStack", action="store_true", default=False)
-        parser.add_argument('--yum', help="Use ZStack predefined yum repositories. The valid options include: alibase,aliepel,163base,ustcepel,zstack-local. NOTE: only use it when you know exactly what it does.", default=None)
+        parser.add_argument('--force-reinstall', help="delete existing Apache Tomcat and resinstall Cloud", action="store_true", default=False)
+        parser.add_argument('--yum', help="Use Cloud predefined yum repositories. The valid options include: alibase,aliepel,163base,ustcepel,zstack-local. NOTE: only use it when you know exactly what it does.", default=None)
         parser.add_argument('--ssh-key', help="the path of private key for SSH login $host; if provided, Ansible will use the specified key as private key to SSH login the $host", default=None)
 
     def add_public_key_to_host(self, key_path, host_info):
@@ -6536,7 +6536,7 @@ class InstallManagementNodeCmd(Command):
 
         pypi_path = os.path.join(ctl.zstack_home, "static/pypi/")
         if not os.path.isdir(pypi_path):
-            raise CtlError('cannot find %s, please make sure you have installed ZStack management node' % pypi_path)
+            raise CtlError('cannot find %s, please make sure you have installed Cloud management node' % pypi_path)
 
         pypi_tar_path = os.path.join(ctl.zstack_home, "static/pypi.tar.bz")
         static_path = os.path.join(ctl.zstack_home, "static")
@@ -7006,7 +7006,7 @@ class SetEnvironmentVariableCmd(Command):
     def __init__(self):
         super(SetEnvironmentVariableCmd, self).__init__()
         self.name = "setenv"
-        self.description = "set variables to zstack-ctl variable file at %s\nExample:\n\tzstack-ctl setenv CATALINA_OPTS='-Xmx8192M'" % self.PATH
+        self.description = "set variables to cloud-ctl variable file at %s\nExample:\n\tcloud-ctl setenv CATALINA_OPTS='-Xmx8192M'" % self.PATH
         ctl.register_command(self)
 
     def need_zstack_home(self):
@@ -7052,7 +7052,7 @@ class UnsetEnvironmentVariableCmd(Command):
 
         env = PropertyFile(SetEnvironmentVariableCmd.PATH)
         env.delete_properties(ctl.extra_arguments)
-        info('unset zstack environment variables: %s' % ctl.extra_arguments)
+        info('unset cloud environment variables: %s' % ctl.extra_arguments)
 
 
 class GetEnvironmentVariableCmd(Command):
@@ -7089,21 +7089,21 @@ class InstallDashboardCmd(Command):
     def __init__(self):
         super(InstallDashboardCmd, self).__init__()
         self.name = "install_ui"
-        self.description = "install ZStack Web UI"
+        self.description = "install Cloud Web UI"
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--host', help='target host IP, for example, 192.168.0.212, to install ZStack web UI; if omitted, it will be installed on local machine')
+        parser.add_argument('--host', help='target host IP, for example, 192.168.0.212, to install Cloud web UI; if omitted, it will be installed on local machine')
         parser.add_argument('--ssh-key', help="the path of private key for SSH login $host; if provided, Ansible will use the specified key as private key to SSH login the $host", default=None)
-        parser.add_argument('--yum', help="Use ZStack predefined yum repositories. The valid options include: alibase,aliepel,163base,ustcepel,zstack-local. NOTE: only use it when you know exactly what it does.", default=None)
-        parser.add_argument('--force', help="delete existing virtualenv and resinstall zstack ui and all dependencies", action="store_true", default=False)
+        parser.add_argument('--yum', help="Use Cloud predefined yum repositories. The valid options include: alibase,aliepel,163base,ustcepel,zstack-local. NOTE: only use it when you know exactly what it does.", default=None)
+        parser.add_argument('--force', help="delete existing virtualenv and resinstall cloud ui and all dependencies", action="store_true", default=False)
 
     def _install_to_local(self, args):
         install_script = os.path.join(ctl.zstack_home, "WEB-INF/classes/tools/install.sh")
         if not os.path.isfile(install_script):
-            raise CtlError('cannot find %s, please make sure you have installed ZStack management node' % install_script)
+            raise CtlError('cannot find %s, please make sure you have installed Cloud management node' % install_script)
 
-        info('found installation script at %s, start installing ZStack web UI' % install_script)
+        info('found installation script at %s, start installing Cloud web UI' % install_script)
         if args.force:
             shell('bash %s zstack-dashboard force' % install_script)
         else:
@@ -7119,7 +7119,7 @@ class InstallDashboardCmd(Command):
 
         tools_path = os.path.join(ctl.zstack_home, "WEB-INF/classes/tools/")
         if not os.path.isdir(tools_path):
-            raise CtlError('cannot find %s, please make sure you have installed ZStack management node' % tools_path)
+            raise CtlError('cannot find %s, please make sure you have installed Cloud management node' % tools_path)
 
         ui_binary = None
         for l in os.listdir(tools_path):
@@ -7128,13 +7128,13 @@ class InstallDashboardCmd(Command):
                 break
 
         if not ui_binary:
-            raise CtlError('cannot find zstack-dashboard package under %s, please make sure you have installed ZStack management node' % tools_path)
+            raise CtlError('cannot find cloud-dashboard package under %s, please make sure you have installed Cloud management node' % tools_path)
 
         ui_binary_path = os.path.join(tools_path, ui_binary)
 
         pypi_path = os.path.join(ctl.zstack_home, "static/pypi/")
         if not os.path.isdir(pypi_path):
-            raise CtlError('cannot find %s, please make sure you have installed ZStack management node' % pypi_path)
+            raise CtlError('cannot find %s, please make sure you have installed Cloud management node' % pypi_path)
 
         pypi_tar_path = os.path.join(ctl.zstack_home, "static/pypi.tar.bz")
         if not os.path.isfile(pypi_tar_path):
@@ -7243,19 +7243,19 @@ class InstallZstackUiCmd(Command):
     def __init__(self):
         super(InstallZstackUiCmd, self).__init__()
         self.name = "install_ui"
-        self.description = "install ZStack web UI"
+        self.description = "install Cloud web UI"
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--host', help='target host IP, for example, 192.168.0.212, to install ZStack web UI; if omitted, it will be installed on local machine')
+        parser.add_argument('--host', help='target host IP, for example, 192.168.0.212, to install cloud web UI; if omitted, it will be installed on local machine')
         parser.add_argument('--ssh-key', help="the path of private key for SSH login $host; if provided, Ansible will use the specified key as private key to SSH login the $host", default=None)
 
     def _install_to_local(self, args):
         install_script = os.path.join(ctl.zstack_home, "WEB-INF/classes/tools/install.sh")
         if not os.path.isfile(install_script):
-            raise CtlError('cannot find %s, please make sure you have installed ZStack management node' % install_script)
+            raise CtlError('cannot find %s, please make sure you have installed Cloud management node' % install_script)
 
-        info('found installation script at %s, start installing ZStack web UI' % install_script)
+        info('found installation script at %s, start installing Cloud web UI' % install_script)
         shell('bash %s zstack-ui' % install_script)
 
     def install_mini_ui(self):
@@ -7276,11 +7276,11 @@ class InstallZstackUiCmd(Command):
         # remote install
         tools_path = os.path.join(ctl.zstack_home, "WEB-INF/classes/tools/")
         if not os.path.isdir(tools_path):
-            raise CtlError('cannot find %s, please make sure you have installed ZStack management node' % tools_path)
+            raise CtlError('cannot find %s, please make sure you have installed Cloud management node' % tools_path)
 
         ui_binary = 'zstack-ui.war'
         if not ui_binary in os.listdir(tools_path):
-            raise CtlError('cannot find zstack-ui package under %s, please make sure you have installed ZStack management node' % tools_path)
+            raise CtlError('cannot find cloud-ui package under %s, please make sure you have installed Cloud management node' % tools_path)
         ui_binary_path = os.path.join(tools_path, ui_binary)
 
         yaml = '''---
@@ -7310,9 +7310,9 @@ class BootstrapCmd(Command):
         super(BootstrapCmd, self).__init__()
         self.name = 'bootstrap'
         self.description = (
-            'create user and group of "zstack" and add "zstack" to sudoers;'
+            'create user and group of "Cloud" and add "Cloud" to sudoers;'
             '\nthis command is only needed by installation script'
-            ' and users that install ZStack manually'
+            ' and users that install Cloud manually'
         )
         ctl.register_command(self)
 
@@ -7410,29 +7410,29 @@ class UpgradeManagementNodeCmd(Command):
                 info('successfully restored the customPciDevices.xml')
 
             def copy_tools():
-                info("copy third-party tools to zstack install path ...")
+                info("copy third-party tools to cloud install path ...")
                 src_tools_path = "/opt/zstack-dvd/%s/%s/tools" % (ctl.BASEARCH, ctl.ZS_RELEASE)
                 dst_tools_path = os.path.join(ctl.zstack_home, "WEB-INF/classes/tools")
                 if os.path.exists(src_tools_path):
                     shell("cp -rn %s/* %s >/dev/null 2>&1" % (src_tools_path, dst_tools_path))
-                    info("successfully copied third-party tools to zstack install path")
+                    info("successfully copied third-party tools to cloud install path")
 
             def install_tools():
-                info('upgrading zstack-cli, zstack-ctl; this may cost several minutes ...')
+                info('upgrading cloud-cli, cloud-ctl; this may cost several minutes ...')
                 install_script = os.path.join(ctl.zstack_home, "WEB-INF/classes/tools/install.sh")
                 if not os.path.isfile(install_script):
-                    raise CtlError('cannot find %s, please make sure you have installed ZStack management node' % install_script)
+                    raise CtlError('cannot find %s, please make sure you have installed Cloud management node' % install_script)
 
                 shell("bash %s zstack-cli" % install_script)
                 shell("bash %s zstack-ctl" % install_script)
-                info('successfully upgraded zstack-cli, zstack-ctl')
+                info('successfully upgraded cloud-cli, cloud-ctl')
 
             def save_new_war():
                 sdir = os.path.join(ctl.zstack_home, "../../../")
                 shell('yes | cp %s %s' % (new_war.path, sdir))
 
             def chown_to_zstack():
-                info('change permission to user zstack')
+                info('change permission to user cloud')
                 shell('chown -R zstack:zstack %s' % os.path.join(ctl.zstack_home, '../../'))
 
             backup()
@@ -7447,11 +7447,11 @@ class UpgradeManagementNodeCmd(Command):
             chown_to_zstack()
 
             info('----------------------------------------------\n'
-                 'Successfully upgraded the ZStack management node to a new version.\n'
-                 'We backup the old zstack as follows:\n'
+                 'Successfully upgraded the Cloud management node to a new version.\n'
+                 'We backup the old cloud as follows:\n'
                  '\tzstack.properties: %s\n'
-                 '\tzstack folder: %s\n'
-                 'Please test your new ZStack. If everything is OK and stable, you can manually delete those backup by deleting %s.\n'
+                 '\tcloud folder: %s\n'
+                 'Please test your new cloud. If everything is OK and stable, you can manually delete those backup by deleting %s.\n'
                  'Otherwise you can use them to rollback to the previous version\n'
                  '-----------------------------------------------\n' %
                  (property_file_backup_path, os.path.join(upgrade_tmp_dir, 'zstack'), upgrade_tmp_dir))
@@ -7573,7 +7573,7 @@ class UpgradeMultiManagementNodeCmd(Command):
         cmd = create_check_mgmt_node_command()
         cmd(False)
         if not get_mgmt_node_state_from_result(cmd):
-            error("Local management node status is not Running, can't make sure ZStack status is healthy")
+            error("Local management node status is not Running, can't make sure Cloud status is healthy")
         for mn in mn_vo:
             mn_ip_list.append(mn['hostName'])
         mn_ip_list.insert(0, mn_ip_list.pop(mn_ip_list.index(local_mn_ip)))
@@ -7802,7 +7802,7 @@ class UpgradeUIDbCmd(Command):
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--force', help='bypass zstack ui status check.'
+        parser.add_argument('--force', help='bypass cloud ui status check.'
                             '\nNOTE: only use it when you know exactly what it does', action='store_true', default=False)
         parser.add_argument('--no-backup', help='do NOT backup the zstack_ui database. If the database is very large and you have manually backup it, using this option will fast the upgrade process. [DEFAULT] false', default=False)
         parser.add_argument('--dry-run', help='Check if zstack_ui database could be upgraded. [DEFAULT] not set', action='store_true', default=False)
@@ -7829,7 +7829,7 @@ class UpgradeUIDbCmd(Command):
         if not args.force:
             (status, output)= commands.getstatusoutput("zstack-ctl ui_status")
             if status == 0 and 'Running' in output:
-                raise CtlError('ZStack UI is still running. Please stop it before upgrade zstack_ui database.')
+                raise CtlError('Cloud UI is still running. Please stop it before upgrade zstack_ui database.')
 
         if args.dry_run:
             info('Dry run finished. zstack_ui database could be upgraded. ')
@@ -7889,12 +7889,12 @@ class UpgradeCtlCmd(Command):
         super(UpgradeCtlCmd, self).__init__()
         self.name = 'upgrade_ctl'
         self.description = (
-            'upgrade the zstack-ctl to a new version'
+            'upgrade the cloud-ctl to a new version'
         )
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--package', help='the path to the new zstack-ctl package', required=True)
+        parser.add_argument('--package', help='the path to the new cloud-ctl package', required=True)
 
     def run(self, args):
         error_if_tool_is_missing('pip')
@@ -7905,7 +7905,7 @@ class UpgradeCtlCmd(Command):
 
         pypi_path = os.path.join(ctl.zstack_home, "static/pypi/")
         if not os.path.isdir(pypi_path):
-            raise CtlError('cannot find %s, please make sure you have installed ZStack management node' % pypi_path)
+            raise CtlError('cannot find %s, please make sure you have installed Cloud management node' % pypi_path)
 
         install_script = '''set -e
 which virtualenv &>/dev/null
@@ -7923,7 +7923,7 @@ chmod +x /usr/bin/zstack-ctl
 '''
 
         script(install_script, {"pypi_path": pypi_path, "package": args.package})
-        info('successfully upgraded zstack-ctl to %s' % args.package)
+        info('successfully upgraded cloud-ctl to %s' % args.package)
 
 class RollbackManagementNodeCmd(Command):
     def __init__(self):
@@ -7955,10 +7955,10 @@ class RollbackManagementNodeCmd(Command):
 
         def local_rollback():
             def backup_current_zstack():
-                info('start to backup the current zstack ...')
+                info('start to backup the current cloud ...')
                 shell('cp -r %s %s' % (ctl.zstack_home, rollback_tmp_dir))
                 info('backup %s to %s' % (ctl.zstack_home, rollback_tmp_dir))
-                info('successfully backup the current zstack to %s' % os.path.join(rollback_tmp_dir, os.path.basename(ctl.zstack_home)))
+                info('successfully backup the current cloud to %s' % os.path.join(rollback_tmp_dir, os.path.basename(ctl.zstack_home)))
 
             def download_war_if_needed():
                 if need_download:
@@ -7993,14 +7993,14 @@ class RollbackManagementNodeCmd(Command):
                 ctl.internal_run('restore_config', '--restore-from %s' % rollbackinfo.property_file)
 
             def install_tools():
-                info('rollback zstack-cli, zstack-ctl to the previous version. This may cost several minutes ...')
+                info('rollback cloud-cli, cloud-ctl to the previous version. This may cost several minutes ...')
                 install_script = os.path.join(ctl.zstack_home, "WEB-INF/classes/tools/install.sh")
                 if not os.path.isfile(install_script):
-                    raise CtlError('cannot find %s, please make sure you have installed ZStack management node' % install_script)
+                    raise CtlError('cannot find %s, please make sure you have installed Cloud management node' % install_script)
 
                 shell("bash %s zstack-cli" % install_script)
                 shell("bash %s zstack-ctl" % install_script)
-                info('successfully upgraded zstack-cli, zstack-ctl')
+                info('successfully upgraded cloud-cli, cloud-ctl')
 
             backup_current_zstack()
             download_war_if_needed()
@@ -8011,11 +8011,11 @@ class RollbackManagementNodeCmd(Command):
             install_tools()
 
             info('----------------------------------------------\n'
-                 'Successfully rollback the ZStack management node to a previous version.\n'
-                 'We backup the current zstack as follows:\n'
+                 'Successfully rollback the Cloud management node to a previous version.\n'
+                 'We backup the current cloud as follows:\n'
                  '\tzstack.properties: %s\n'
-                 '\tzstack folder: %s\n'
-                 'Please test your ZStack. If everything is OK and stable, you can manually delete those backup by deleting %s.\n'
+                 '\tcloud folder: %s\n'
+                 'Please test your Cloud. If everything is OK and stable, you can manually delete those backup by deleting %s.\n'
                  '-----------------------------------------------\n' %
                  (rollbackinfo.property_file, os.path.join(rollback_tmp_dir, os.path.basename(ctl.zstack_home)), rollback_tmp_dir))
 
@@ -8228,7 +8228,7 @@ class StopUiCmd(Command):
         check_status = "zstack-ctl ui_status"
         (status_code, status_output) = commands.getstatusoutput(check_status)
         if status_code != 0 or "Running" in status_output:
-            info('failed to stop MINI UI server on the localhost. Use zstack-ctl stop_ui to restart it.')
+            info('failed to stop MINI UI server on the localhost. Use cloud-ctl stop_ui to restart it.')
             return False
 
         if "Stopped" in status_output:
@@ -8402,7 +8402,7 @@ class UiStatusCmd(Command):
             elif pid:
                 write_status(
                     '%s, the ui seems to become zombie as it stops responding APIs but the '
-                    'process(PID: %s) is still running. Please stop the node using zstack-ctl stop_ui' %
+                    'process(PID: %s) is still running. Please stop the node using cloud-ctl stop_ui' %
                     (colored('Zombie', 'yellow'), pid))
             else:
                 write_status(colored('Stopped', 'red'))
@@ -8562,7 +8562,7 @@ class InstallLicenseCmd(Command):
     def __init__(self):
         super(InstallLicenseCmd, self).__init__()
         self.name = "install_license"
-        self.description = "install zstack license"
+        self.description = "install cloud license"
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
@@ -8658,7 +8658,7 @@ class ClearLicenseCmd(Command):
     def __init__(self):
         super(ClearLicenseCmd, self).__init__()
         self.name = "clear_license"
-        self.description = "clear and backup zstack license files"
+        self.description = "clear and backup cloud license files"
         ctl.register_command(self)
 
     def run(self, args):
@@ -8682,7 +8682,7 @@ class ClearLicenseCmd(Command):
 
         shell('''find %s -maxdepth 1 -name 'license_*' -type f -exec mv {} %s \;''' % (license_folder, license_bck))
 
-        info("Successfully clear and backup zstack license files to " + license_bck)
+        info("Successfully clear and backup cloud license files to " + license_bck)
 
 # For UI 1.x
 class StartDashboardCmd(Command):
@@ -8788,7 +8788,7 @@ class StartDashboardCmd(Command):
         write_pid()
         pid = find_process_by_cmdline('zstack_dashboard')
         if not pid:
-            info('fail to start UI server on the local host. Use zstack-ctl start_ui to restart it. zstack UI log could be found in /var/log/zstack/zstack-dashboard.log')
+            info('fail to start UI server on the local host. Use cloud-ctl start_ui to restart it. Cloud UI log could be found in /var/log/zstack/zstack-dashboard.log')
             return False
 
         default_ip = get_default_ip()
@@ -8818,18 +8818,18 @@ class StartUiCmd(Command):
     def install_argparse_arguments(self, parser):
         ui_logging_path = os.path.normpath(os.path.join(ctl.zstack_home, "../../logs/"))
         parser.add_argument('--host', help="UI server IP. [DEFAULT] localhost", default='localhost')
-        parser.add_argument('--mn-host', help="ZStack Management Host IP.")
-        parser.add_argument('--mn-port', help="ZStack Management Host port.")
+        parser.add_argument('--mn-host', help="Cloud Management Host IP.")
+        parser.add_argument('--mn-port', help="Cloud Management Host port.")
         parser.add_argument('--webhook-host', help="Webhook Host IP.")
         parser.add_argument('--webhook-port', help="Webhook Host port.")
         parser.add_argument('--server-port', help="UI server port.")
         parser.add_argument('--log', help="UI log folder.")
         parser.add_argument('--catalina-opts', help="UI catalina options, seperated by `,`")
-        parser.add_argument('--timeout', help='Wait for ZStack UI startup timeout, default is 120 seconds.',
+        parser.add_argument('--timeout', help='Wait for Cloud UI startup timeout, default is 120 seconds.',
                             default=120)
 
         # arguments for https
-        parser.add_argument('--enable-ssl', help="Enable HTTPS for ZStack UI.", action="store_true", default=False)
+        parser.add_argument('--enable-ssl', help="Enable HTTPS for Cloud UI.", action="store_true", default=False)
         parser.add_argument('--ssl-keyalias', help="HTTPS SSL KeyAlias.")
         parser.add_argument('--ssl-keystore', help="HTTPS SSL KeyStore Path.")
         parser.add_argument('--ssl-keystore-type', choices=['PKCS12', 'JKS'], type=str.upper, help="HTTPS SSL KeyStore Type.")
@@ -9100,7 +9100,7 @@ class StartUiCmd(Command):
             return "Running" in output
 
         if not check_ui_status():
-            info('fail to start UI server on the localhost. Use zstack-ctl start_ui to restart it. zstack UI log could be found in %s/zstack-ui.log' % args.log)
+            info('fail to start UI server on the localhost. Use cloud-ctl start_ui to restart it. cloud UI log could be found in %s/zstack-ui.log' % args.log)
             shell('zstack-ctl stop_ui')
             linux.rm_dir_force("/var/run/zstack/zstack-ui.port")
             linux.rm_dir_force("/var/run/zstack/zstack-ui.pid")
@@ -9124,7 +9124,7 @@ class StartUiCmd(Command):
             return "Running" in output
 
         if not check_ui_status():
-            info('failed to start MINI UI server on the localhost. Use zstack-ctl start_ui to restart it.')
+            info('failed to start MINI UI server on the localhost. Use cloud-ctl start_ui to restart it.')
             shell('systemctl stop zstack-mini')
             linux.rm_dir_force("/var/run/zstack/zstack-mini-ui.port")
             linux.rm_dir_force("/var/run/zstack/zstack-mini-ui.pid")
@@ -9168,14 +9168,14 @@ class ConfigUiCmd(Command):
     def install_argparse_arguments(self, parser):
         ui_logging_path = os.path.normpath(os.path.join(ctl.zstack_home, "../../logs/"))
         parser.add_argument('--host', help='SSH URL, for example, root@192.168.0.10, to set properties in zstack.ui.properties on the remote machine')
-        parser.add_argument('--init', help='init zstack ui properties to default values', action="store_true", default=False)
-        parser.add_argument('--restore', help='restore zstack ui properties to default values', action="store_true", default=False)
-        parser.add_argument('--mn-host', help="ZStack Management Host IP. [DEFAULT] 127.0.0.1")
-        parser.add_argument('--mn-port', help="ZStack Management Host port. [DEFAULT] 8080")
+        parser.add_argument('--init', help='init cloud ui properties to default values', action="store_true", default=False)
+        parser.add_argument('--restore', help='restore cloud ui properties to default values', action="store_true", default=False)
+        parser.add_argument('--mn-host', help="Cloud Management Host IP. [DEFAULT] 127.0.0.1")
+        parser.add_argument('--mn-port', help="Cloud Management Host port. [DEFAULT] 8080")
         parser.add_argument('--webhook-host', help="Webhook Host IP. [DEFAULT] 127.0.0.1")
         parser.add_argument('--webhook-port', help="Webhook Host port. [DEFAULT] 5000")
         parser.add_argument('--server-port', help="UI server port. [DEFAULT] 5000")
-        parser.add_argument('--ui-address', help="ZStack UI Address.")
+        parser.add_argument('--ui-address', help="Cloud UI Address.")
         parser.add_argument('--log', help="UI log folder. [DEFAULT] %s" % ui_logging_path)
         parser.add_argument('--catalina-opts', help="UI catalina options, seperated by `,`")
 
@@ -9363,7 +9363,7 @@ class StartVDIUICmd(Command):
     def install_argparse_arguments(self, parser):
         ui_logging_path = os.path.normpath(os.path.join(ctl.zstack_home, "../../logs/"))
         vdi_war = "/opt/zstack-dvd/{}/{}/zstack-vdi.war".format(ctl.BASEARCH, ctl.ZS_RELEASE)
-        parser.add_argument('--mn-port', help="ZStack Management Host port. [DEFAULT] 8080", default='8080')
+        parser.add_argument('--mn-port', help="Cloud Management Host port. [DEFAULT] 8080", default='8080')
         parser.add_argument('--webhook-port', help="Webhook Host port. [DEFAULT] 9000", default='9000')
         parser.add_argument('--server-port', help="UI server port. [DEFAULT] 9000", default='9000')
         parser.add_argument('--vdi-path', help="VDI path. [DEFAULT] {}".format(vdi_war), default=vdi_war)
@@ -9433,7 +9433,7 @@ class StartVDIUICmd(Command):
         write_pid()
         pid = find_process_by_cmdline('zstack-vdi')
         if not pid:
-            info('fail to start VDI UI server on the localhost. Use zstack-ctl start_vdi to restart it. zstack VDI portal log could be found in %s/zstack-vdi.log' % args.log)
+            info('fail to start VDI UI server on the localhost. Use cloud-ctl start_vdi to restart it. cloud VDI portal log could be found in %s/zstack-vdi.log' % args.log)
             return False
 
         default_ip = get_default_ip()
@@ -9450,7 +9450,7 @@ class GetZStackVersion(Command):
     def __init__(self):
         super(GetZStackVersion, self).__init__()
         self.name = "get_version"
-        self.description = "get zstack version from database, eg. 2.4.0"
+        self.description = "get cloud version from database, eg. 2.4.0"
         ctl.register_command(self)
 
     def run(self, args):
@@ -9464,7 +9464,7 @@ class ResetAdminPasswordCmd(Command):
     def __init__(self):
         super(ResetAdminPasswordCmd, self).__init__()
         self.name = "reset_password"
-        self.description = "reset ZStack admin account password, if not set, default is 'password'"
+        self.description = "reset Cloud admin account password, if not set, default is 'password'"
         self.sensitive_args = ['--password']
         ctl.register_command(self)
 
@@ -9574,7 +9574,7 @@ class MiniResetHostCmd(Command):
         j = simplejson.loads(o)
         if j.get("peer") is None:
             error("Can not connect to peer, you can reset local node via "
-                            "'zstack-ctl reset_mini_host --target local'")
+                            "'cloud-ctl reset_mini_host --target local'")
         return args
 
     def _wait_node_has_ip(self, node):
@@ -9648,7 +9648,7 @@ class SharedBlockQcow2SharedVolumeFixCmd(Command):
         self.script_path = "/tmp/zstack-convert-volume.py"
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--admin-password', help='password of zstack admin user', required=True)
+        parser.add_argument('--admin-password', help='password of cloud admin user', required=True)
         parser.add_argument('--operation', help='operation, may be: %s' % self.support_operations, required=True)
         parser.add_argument('--dryrun', help='run in dry run mode, default is True, be carefully if set to False', default="True")
         parser.add_argument('--backup-storage-uuid', help='backup storage uuid, need to specify in commit_snapshot_to_image', required=False)

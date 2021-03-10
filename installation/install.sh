@@ -1118,7 +1118,7 @@ upgrade_zstack(){
     echo_title "Upgrade ${PRODUCT_NAME}"
     echo ""
 
-    if pgrep -x zstack-hamon >/dev/null; then
+    if pgrep -x cloud-hamon >/dev/null; then
         fail2 "You are upgrading ${PRODUCT_NAME} under HA environment.\nPlease run: 'zsha2 upgrade-mn ${PRODUCT_NAME,,}-installer.bin' instead.\n"
     fi
 
@@ -3623,6 +3623,27 @@ check_system
 
 if [ "$IS_YUM" = "y" ]; then
      install_sync_repo_dependences
+fi
+
+## set ln
+cloudCtlPath="/usr/bin/cloud-ctl"
+if [[ ! -f "$cloudCtlPath" ]]; then
+  ln -s /usr/bin/zstack-ctl /usr/bin/cloud-ctl
+fi
+
+astackCtlPath="/usr/bin/astack-ctl"
+if [[ ! -f "$cloudCtlPath" ]]; then
+  ln -s /usr/bin/zstack-ctl /usr/bin/astack-ctl
+fi
+
+cloudCliPath="/usr/bin/cloud-cli"
+if [[ ! -f "$cloudCliPath" ]]; then
+  ln -s /usr/bin/zstack-cli /usr/bin/cloud-cli
+fi
+
+astackCliPath="/usr/bin/astack-cli"
+if [[ ! -f "$cloudCliPath" ]]; then
+  ln -s /usr/bin/zstack-cli /usr/bin/astack-cli
 fi
 
 #Download ${PRODUCT_NAME} all in one package
