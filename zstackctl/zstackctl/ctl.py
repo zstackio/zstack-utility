@@ -9163,6 +9163,8 @@ class StartUiCmd(Command):
             self.run_mini_ui()
         elif ui_mode == "mini" and args.force:
             self.run_zstack_ui(args)
+        elif ui_mode == None:
+            self.run_zstack_ui(args)
         else :
             raise CtlError("Unknown ui_mode {}, please make sure your configuration is correct.".format(ui_mode))
 
