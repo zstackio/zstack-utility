@@ -650,6 +650,19 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
 
         if not cmd.drbd:
             lvm.resize_lv_from_cmd(install_abs_path, cmd.size, cmd)
+            if cmd.isFileSystem:
+                lvm.active_lv(install_abs_path)
+                mountPath = self.convertInstallPathToMount(cmd.installPath)
+                if not os.path.exists(mountPath):
+                    linux.mkdir(mountPath)
+
+                if not linux.is_mounted(cmd.mountPath):
+                    linux.mount(install_abs_path, mountPath)
+
+                shell.call("qemu-img resize %s %s" % (mountPath + '/' + mountPath.rsplit('/', 1)[-1], cmd.size))
+                linux.umount(mountPath)
+                linux.rmdir_if_empty(mountPath)
+                lvm.deactive_lv(install_abs_path)
             return jsonobject.dumps(rsp)
 
         r = drbd.DrbdResource(cmd.installPath.split("/")[-1])
