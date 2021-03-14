@@ -174,6 +174,12 @@ class StartVmCmd(kvmagent.AgentCommand):
 class StartVmResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(StartVmResponse, self).__init__()
+        self.nicInfos = []  # type:list[VmNicInfo]
+
+class VmNicInfo():
+    def __init__(self):
+        self.pciInfo = PciAddressInfo()
+        self.macAddress = None
 
 class PciAddressInfo():
     def __init__(self):
@@ -4741,6 +4747,19 @@ class VmPlugin(kvmagent.KvmAgent):
             if err != "":
                 rsp.error = "%s, details: %s" % (err, rsp.error)
             rsp.success = False
+
+        if rsp.success == True:
+            vm = get_vm_by_uuid(cmd.vmInstanceUuid)
+            for iface in vm.domain_xmlobject.devices.get_child_node_as_list('interface'):
+                vmNicInfo = VmNicInfo()
+                vmNicInfo.pciInfo.bus = iface.address.bus_
+                vmNicInfo.pciInfo.function = iface.address.function_
+                vmNicInfo.pciInfo.type = iface.address.type_
+                vmNicInfo.pciInfo.domain = iface.address.domain_
+                vmNicInfo.pciInfo.slot = iface.address.slot_
+                vmNicInfo.macAddress = iface.mac.address_
+                rsp.nicInfos.append(vmNicInfo)
+
         return jsonobject.dumps(rsp)
 
     def get_vm_stat_with_ps(self, uuid):
