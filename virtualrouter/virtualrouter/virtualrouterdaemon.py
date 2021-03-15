@@ -4,13 +4,14 @@
 '''
 
 import sys, os, os.path
-import virtualrouter
 from zstacklib.utils import log
 from zstacklib.utils import linux
 import zstacklib.utils.iptables as iptables
 
 log.configure_log('/var/log/zstack/zstack-virtualrouter.log')
 logger = log.get_logger(__name__)
+
+import virtualrouter
 
 def main():
     usage = 'usage: python -c "from virtualrouter import virtualrouterdaemon; virtualrouterdaemon.main()" start|stop|restart'
