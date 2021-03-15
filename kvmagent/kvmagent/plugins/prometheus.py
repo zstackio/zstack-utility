@@ -252,7 +252,7 @@ def collect_vm_statistics():
                                      'Percentage of CPU used by vm', None, ['vmUuid'])
     }
 
-    r, pid_vm_map_str = bash_ro("ps --no-headers u -C \"%s -name\" | awk '{print $2,$13}'" % QEMU_CMD)
+    r, pid_vm_map_str = bash_ro("ps -aux --no-headers | grep \"%s -name\" | grep -v -E \"grep.*%s -name\" | awk '{print $2,$13}'" %(QEMU_CMD, QEMU_CMD))
     if r != 0 or len(pid_vm_map_str.splitlines()) == 0:
         return metrics.values()
     pid_vm_map_str = pid_vm_map_str.replace(",debug-threads=on", "").replace("guest=", "")
