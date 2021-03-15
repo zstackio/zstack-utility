@@ -7,6 +7,7 @@ import traceback
 import zstacklib.utils.uuidhelper as uuidhelper
 from kvmagent import kvmagent
 from kvmagent.plugins.imagestore import ImageStoreClient
+from zstacklib.utils import qemu_img
 from zstacklib.utils import jsonobject
 from zstacklib.utils import linux
 from zstacklib.utils import shell
@@ -44,6 +45,10 @@ class CopyBitsFromRemoteCmd(AgentCommand):
         super(CopyBitsFromRemoteCmd, self).__init__()
         self.sendCommandUrl = None
         self.paths = []
+        self.originBaseDir = None
+        self.destBaseDir = None
+        self.srcFolderPath = None
+        self.dstFolderPath = None
         self.dstIp = None
         self.dstPassword = None
         self.dstUsername = None
@@ -159,6 +164,9 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     COPY_TO_REMOTE_BITS_PATH = "/localstorage/copytoremote"
     GET_MD5_PATH = "/localstorage/getmd5"
     CHECK_MD5_PATH = "/localstorage/checkmd5"
+    REBASE_QCOW2_FILE = "/localstorage/rebaseqcow2"
+    GET_MD5_BY_DIR_PATH = "/localstorage/getdirmd5"
+    CHECK_MD5_BY_DIR_PATH = "/localstorage/checkdirmd5"
     GET_BACKING_FILE_PATH = "/localstorage/volume/getbackingfile"
     GET_VOLUME_SIZE = "/localstorage/volume/getsize"
     GET_BASE_IMAGE_PATH = "/localstorage/volume/getbaseimagepath"
@@ -201,6 +209,9 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.COPY_TO_REMOTE_BITS_PATH, self.copy_bits_to_remote, cmd=CopyBitsFromRemoteCmd())
         http_server.register_async_uri(self.GET_MD5_PATH, self.get_md5)
         http_server.register_async_uri(self.CHECK_MD5_PATH, self.check_md5)
+        http_server.register_async_uri(self.GET_MD5_BY_DIR_PATH, self.get_md5_by_dir)
+        http_server.register_async_uri(self.CHECK_MD5_BY_DIR_PATH, self.check_md5_by_dir)
+        http_server.register_async_uri(self.REBASE_QCOW2_FILE, self.rebase_volume_backing_file)
         http_server.register_async_uri(self.GET_BACKING_FILE_PATH, self.get_backing_file_path)
         http_server.register_async_uri(self.GET_VOLUME_SIZE, self.get_volume_size)
         http_server.register_async_uri(self.GET_BASE_IMAGE_PATH, self.get_volume_base_image_path)
@@ -353,6 +364,19 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def get_md5_by_dir(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetMd5Rsp()
+        rsp.md5s = []
+        md5_excludes = "".join([" ! -path %s " % i.path for i in cmd.md5s])
+        t_shell = traceable_shell.get_shell(cmd)
+        src_md5 = t_shell.call(
+            "find %s -type f %s -exec md5sum {} \; | awk '{ print $1 }' | sort | md5sum" % (
+                cmd.srcFolderPath, md5_excludes))
+        map(lambda vo: rsp.md5s.append({'resourceUuid': vo.resourceUuid, 'path': vo.path, 'md5': src_md5}), cmd.md5s)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     def get_md5(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetMd5Rsp()
@@ -409,6 +433,24 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def check_md5_by_dir(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        src_md5 = list(set([i.md5 for i in cmd.md5s]))
+        if len(src_md5) != 1:
+            raise Exception("src folder path MD5 data is worry ." % src_md5)
+        md5_excludes = "".join([" ! -path %s " % i.path for i in cmd.md5s])
+        t_shell = traceable_shell.get_shell(cmd)
+        dst_md5 = t_shell.call(
+            "find %s -type f %s -exec md5sum {} \; | awk '{ print $1 }' | sort | md5sum" % (
+                cmd.srcFolderPath, md5_excludes))
+        if dst_md5 != src_md5[0]:
+            raise Exception("MD5 unmatch. The file[volume uuid:%s, folder path:%s]'s md5 (src host:%s, dst host:%s)" %
+                            (cmd.volumeUuid, cmd.srcFolderPath, src_md5, dst_md5))
+        rsp = AgentResponse()
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     def check_md5(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         if cmd.sendCommandUrl:
@@ -440,7 +482,9 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
 
         report.resourceUuid = cmd.volumeUuid
         for to in cmd.md5s:
-            _, dst_md5, _ = bash_progress_1("pv -n %s 2>%s | md5sum | cut -d ' ' -f 1" % (to.path, PFILE), _get_progress)
+            _, dst_md5, _ = bash_progress_1(
+                "pv -n %s 2>%s | md5sum | cut -d ' ' -f 1" % (to.path, PFILE),
+                _get_progress)
 
             if dst_md5 != to.md5:
                 raise Exception("MD5 unmatch. The file[uuid:%s, path:%s]'s md5 (src host:%s, dst host:%s)" %
@@ -466,6 +510,29 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         return linux.get_disk_capacity_by_df(path)
 
     @kvmagent.replyerror
+    def rebase_volume_backing_file(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        qcow2_file_list = []
+        for to in cmd.md5s:
+            fmt = shell.call(
+                "%s %s | grep '^file format' | awk -F ': ' '{ print $2 }'" % (qemu_img.subcmd('info'), to.path))
+            if fmt.strip() != "qcow2":
+                continue
+            qcow2_file_list.append(to.path)
+
+        need_rebase_qcow2_file_list = [(i, linux.qcow2_get_backing_file(i)) for i in
+                                  list(set(qcow2_file_list)) if linux.qcow2_get_backing_file(i) != ""]
+        for target, backing_file in need_rebase_qcow2_file_list:
+            new_backing_file = backing_file.replace(cmd.originBaseDir, cmd.destBaseDir)
+            if not os.path.exists(new_backing_file):
+                logger.debug("the backing file[%s] of volume[%s] doesn't exist, skip rebasing" %
+                             (new_backing_file, target))
+                continue
+            linux.qcow2_rebase_no_check(new_backing_file, target)
+        rsp = AgentResponse()
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     @in_bash
     def copy_bits_to_remote(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -475,6 +542,9 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         chain = sum([linux.qcow2_get_file_chain(p) for p in cmd.paths], [])
         if cmd.sendCommandUrl:
             Report.url = cmd.sendCommandUrl
+
+        originBaseDir = cmd.originBaseDir
+        destBaseDir = cmd.destBaseDir
 
         report = Report(cmd.threadContext, cmd.threadContextStack)
         report.processType = "LocalStorageMigrateVolume"
@@ -519,22 +589,54 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             fpread.close()
             return synced
 
+        def gen_ssh_cmd_base(user=None):
+            port = (cmd.dstPort and cmd.dstPort or "22")
+            ssh_cmd_tmpl = '/usr/bin/sshpass -f{PASSWORD_FILE} ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p {PORT}'
+            if user:
+                ssh_cmd_tmpl = '%s -l %s' % (ssh_cmd_tmpl, user)
+            return ssh_cmd_tmpl.format(
+                    PASSWORD_FILE=PASSWORD_FILE, PORT=port)
+
         for path in set(chain):
             PATH = path
             USER = cmd.dstUsername
             IP = cmd.dstIp
-            PORT = (cmd.dstPort and cmd.dstPort or "22")
             DIR = os.path.dirname(path)
+            NEWPATH = ''
+            if destBaseDir and originBaseDir:
+                NEWPATH = path.replace(originBaseDir, destBaseDir)
+                if os.path.isfile(PATH):
+                    NEWDIR = DIR.replace(originBaseDir, destBaseDir)
+                    # Feature feature-localps-migrate: rsync file have to make dir on dest new local PS
+                    mkdirCmd = '%s {{USER}}@{{IP}} "mkdir -p {{NEWDIR}}"' % gen_ssh_cmd_base()
+                    bash_errorout(mkdirCmd)
+
+            # Fixes ZSTAC-13430: handle extremely complex password like ~ ` !@#$%^&*()_+-=[]{}|?<>;:'"/ .
+            if os.path.isfile(PATH) and NEWPATH:
+                # Feature feature-localps-migrate: support rsync root volume file and cache file to a new local
+                # primary storage, when target is file use full file path.
+                rsyncCmd = 'rsync -av --progress {{PATH}} --rsh="%s" {{IP}}:{{NEWPATH}} 1>{{PFILE}}' % gen_ssh_cmd_base(USER)
+                remoteSyncCmd = '%s {{USER}}@{{IP}} "/bin/sync {{NEWPATH}}"' % gen_ssh_cmd_base()
+
+            else:
+                rsyncCmd = 'rsync -av --progress --relative {{PATH}} --rsh="%s" {{IP}}:/ 1>{{PFILE}}' % gen_ssh_cmd_base(USER)
+                remoteSyncCmd = '%s {{USER}}@{{IP}} "/bin/sync {{PATH}}"' % gen_ssh_cmd_base()
+
+                if NEWPATH:
+                    # Feature feature-localps-migrate: support rsync root volume file and cache file to a new local
+                    # primary storage, when target is directory use dest local ps mount path.
+                    rsyncCmd = 'rsync -av --progress {{PATH}} --rsh="%s" {{IP}}:{{destBaseDir}} 1>{{PFILE}}' % gen_ssh_cmd_base(USER)
+                    remoteSyncCmd = '%s {{USER}}@{{IP}} "/bin/sync {{destBaseDir}}"' % gen_ssh_cmd_base()
             _, _, err = bash_progress_1(
-                # Fixes ZSTAC-13430: handle extremely complex password like ~ ` !@#$%^&*()_+-=[]{}|?<>;:'"/ .
-                'rsync -av --progress --relative {{PATH}} --rsh="/usr/bin/sshpass -f{{PASSWORD_FILE}} ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p {{PORT}} -l {{USER}}" {{IP}}:/ 1>{{PFILE}}', _get_progress, False)
+                rsyncCmd, _get_progress, False)
             if err:
                 linux.rm_file_force(PASSWORD_FILE)
                 linux.rm_file_force(PFILE)
                 raise Exception('fail to migrate vm to host, because %s' % str(err))
 
             written += os.path.getsize(path)
-            bash_errorout('/usr/bin/sshpass -f{{PASSWORD_FILE}} ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p {{PORT}} {{USER}}@{{IP}} "/bin/sync {{PATH}}"')
+            bash_errorout(remoteSyncCmd)
+
             percent = int(round(float(written) / float(total) * (end - start) + start))
             report.progress_report(percent, "report")
 
