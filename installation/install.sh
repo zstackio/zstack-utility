@@ -32,7 +32,7 @@ LEGACY_MINI_INSTALL_ROOT="/usr/local/zstack-mini/"
 export TERM=xterm
 
 OS=''
-REDHAT_OS="CENTOS6 CENTOS7 RHEL7 ALIOS7 ISOFT4 KYLIN10"
+REDHAT_OS="CENTOS6 CENTOS7 RHEL7 ALIOS7 ISOFT4 KYLIN10 EULER20"
 DEBIAN_OS="UBUNTU14.04 UBUNTU16.04 UBUNTU KYLIN4.0.2 DEBIAN9 UOS20"
 XINCHUANG_OS="ns10 uos20"
 SUPPORTED_OS="$REDHAT_OS $DEBIAN_OS"
@@ -754,7 +754,7 @@ check_system(){
     echo_title "Check System"
     echo ""
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
-    cat /etc/*-release |egrep -i -h "centos |Red Hat Enterprise|Alibaba|NeoKylin|Kylin Linux Advanced Server release V10" >>$ZSTACK_INSTALL_LOG 2>&1
+    cat /etc/*-release |egrep -i -h "centos |Red Hat Enterprise|Alibaba|NeoKylin|Kylin Linux Advanced Server release V10|openEuler" >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -eq 0 ]; then
         grep -q 'CentOS release 6' /etc/system-release && OS="CENTOS6"
         grep -q 'CentOS Linux release 7' /etc/system-release && OS="CENTOS7"
@@ -763,6 +763,7 @@ check_system(){
         grep -q 'iSoft Linux release 4' /etc/system-release && OS="ISOFT4"
         grep -q 'NeoKylin Linux' /etc/system-release && OS="RHEL7"
         grep -q 'Kylin Linux Advanced Server release V10' /etc/system-release && OS="KYLIN10"
+        grep -q 'openEuler release 20.03 (LTS-SP1)' /etc/system-release && OS="EULER20"
         if [[ -z "$OS" ]];then
             fail2 "Host OS checking failure: your system is: `cat /etc/redhat-release`, $PRODUCT_NAME management node only supports $SUPPORTED_OS currently"
         elif [[ $OS == "CENTOS7" ]];then
