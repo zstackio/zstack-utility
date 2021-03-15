@@ -227,6 +227,12 @@ def install_kvm_pkg():
                         smartmontools sshpass usbutils vconfig wget audit dnsmasq \
                         qemu collectd-virt storcli edk2-aarch64 python2-pyudev collectd-disk"
 
+        aarch64_euler20 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
+                        usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
+                        net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
+                        smartmontools sshpass usbutils vconfig wget audit dnsmasq \
+                        qemu collectd-virt storcli edk2-aarch64 python2-pyudev collectd-disk"
+
         mips64el_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                          usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof mcelog \
                          net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils python-pyudev pv rsync sed \
@@ -340,6 +346,12 @@ def install_kvm_pkg():
 
         #we should check libvirtd config file status before restart the service
         libvirtd_conf_status = update_libvirtd_config(host_post_info)
+        # in the libvirtd 5.6.0 and later, the libvirtd daemon now prefers to uses systemd socket activation
+        command = "libvirtd --version | grep 'libvirtd (libvirt) ' | cut -d ' ' -f 3 | cut -d '(' -f 1"
+        (status, libvirtd_version) = run_remote_command(command, host_post_info, False, True)
+        if LooseVersion(libvirtd_version) >= LooseVersion('5.6.0'):
+            command = 'systemctl mask libvirtd.socket libvirtd-ro.socket libvirtd-admin.socket libvirtd-tls.socket libvirtd-tcp.socket'
+            run_remote_command(command, host_post_info)
         if chroot_env == 'false':
             # name: enable libvirt daemon on RedHat based OS
             service_status("libvirtd", "state=started enabled=yes", host_post_info)
