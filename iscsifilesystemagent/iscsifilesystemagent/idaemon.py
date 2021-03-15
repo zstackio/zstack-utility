@@ -3,7 +3,6 @@
 @author: frank
 '''
 import sys, os, os.path
-import iscsiagent
 from zstacklib.utils import log
 from zstacklib.utils import linux
 import zstacklib.utils.iptables as iptables
@@ -11,6 +10,8 @@ import zstacklib.utils.iptables as iptables
 pidfile = '/var/run/zstack/iscsi-filesystem-agent.pid'
 log.configure_log('/var/log/zstack/zstack-iscsi-filesystem-agent.log')
 logger = log.get_logger(__name__)
+
+import iscsiagent
 
 def prepare_pid_dir(path):
     pdir = os.path.dirname(path)

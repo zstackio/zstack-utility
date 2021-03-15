@@ -2,7 +2,6 @@
 @author: frank
 '''
 import sys, os, os.path
-import console_proxy_agent
 from zstacklib.utils import log
 from zstacklib.utils import linux
 import zstacklib.utils.iptables as iptables
@@ -10,6 +9,8 @@ import zstacklib.utils.iptables as iptables
 pidfile = '/var/run/zstack/zstack-console-proxy.pid'
 log.configure_log('/var/log/zstack/zstack-console-proxy.log')
 logger = log.get_logger(__name__)
+
+import console_proxy_agent
 
 def prepare_pid_dir(path):
     pdir = os.path.dirname(path)

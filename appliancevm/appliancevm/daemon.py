@@ -2,10 +2,11 @@ import sys,os,os.path
 from zstacklib.utils import log
 from zstacklib.utils import linux
 import zstacklib.utils.iptables as iptables
-import appliancevm
 
 log.configure_log('/var/log/zstack/zstack-appliancevm.log')
 logger = log.get_logger(__name__)
+
+import appliancevm
 
 def main():
     usage = 'usage: python -c "from appliancevm import daemon; daemon.main()" start|stop|restart'
