@@ -107,6 +107,7 @@ if distro in RPM_BASED_OS:
     x86_64_c74 = "dnsmasq nginx syslinux vsftpd nmap"
     x86_64_c76 = "dnsmasq nginx syslinux vsftpd nmap"
     aarch64_ns10 = "dnsmasq nginx vsftpd nmap net-tools"
+    aarch64_euler20 = "dnsmasq nginx vsftpd nmap net-tools"
     mips64el_ns10 = "dnsmasq nginx vsftpd nmap net-tools"
     dep_pkg = eval("%s_%s" % (host_arch, releasever))
     if zstack_repo != 'false':
