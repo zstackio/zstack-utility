@@ -44,6 +44,7 @@ from zstacklib.utils import lvm
 from zstacklib.utils import shell
 from zstacklib.utils import uuidhelper
 from zstacklib.utils import xmlobject
+from zstacklib.utils import xmlhook
 from zstacklib.utils import misc
 from zstacklib.utils import qemu_img
 from zstacklib.utils import ebtables
@@ -1587,6 +1588,19 @@ class Vm(object):
         self.domain_xml = None
         self.domain = None
         self.state = None
+        self.vm_user_defined_xml_hook = False
+        self.vm_xml_hook_script = None
+
+    def set_user_defined_xml_hook(self, xml_hook_script):
+        self.vm_xml_hook_script = xml_hook_script
+        self.vm_user_defined_xml_hook = True
+
+    def get_user_defined_xml_hook(self):
+        if self.vm_user_defined_xml_hook is True:
+            self.vm_user_defined_xml_hook = False
+            return self.vm_xml_hook_script
+        else:
+            return None
 
     def wait_for_state_change(self, state):
         try:
@@ -1707,6 +1721,9 @@ class Vm(object):
 
         @LibvirtAutoReconnect
         def define_xml(conn):
+            xml_hook_script_from_user = self.get_user_defined_xml_hook()
+            if xml_hook_script_from_user is not None:
+                self.domain_xml = xmlhook.get_modified_xml_from_hook(xml_hook_script_from_user, self.domain_xml)
             return conn.defineXML(self.domain_xml)
 
         flag = (0, libvirt.VIR_DOMAIN_START_PAUSED)[create_paused]
@@ -4303,6 +4320,11 @@ class Vm(object):
 
         vm = Vm()
         vm.uuid = cmd.vmInstanceUuid
+
+        if cmd.addons["userDefinedXmlHookScript"] is not None:
+            xml_hook_script = base64.b64decode(cmd.addons["userDefinedXmlHookScript"])
+            vm.set_user_defined_xml_hook(xml_hook_script)
+
         if cmd.addons["userDefinedXml"] is not None:
             vm.domain_xml = base64.b64decode(cmd.addons["userDefinedXml"])
             vm.domain_xmlobject = xmlobject.loads(vm.domain_xml)
