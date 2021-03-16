@@ -22,6 +22,7 @@ from kvmagent.plugins.imagestore import ImageStoreClient
 from zstacklib.utils import http
 from zstacklib.utils import linux
 from zstacklib.utils import iptables
+from zstacklib.utils import iproute
 from zstacklib.utils import jsonobject
 from zstacklib.utils import lock
 from zstacklib.utils import sizeunit
@@ -180,13 +181,12 @@ class HostNetworkBondingInventory(object):
         self.xmitHashPolicy = linux.read_file("/sys/class/net/%s/bonding/xmit_hash_policy" % self.bondingName).strip()
         self.miiStatus = linux.read_file("/sys/class/net/%s/bonding/mii_status" % self.bondingName).strip()
         self.mac = linux.read_file("/sys/class/net/%s/address" % self.bondingName).strip()
-        self.ipAddresses = [x.strip() for x in
-                          bash_o("ip -o a show %s | awk '/inet /{print $4}'" % self.bondingName).splitlines()]
+        self.ipAddresses = ['%s/%d' % (x.address, x.prefixlen) for x in iproute.query_addresses(ifname=self.bondingName, ip_version=4)]
         if len(self.ipAddresses) == 0:
             master = linux.read_file("/sys/class/net/%s/master/ifindex" % self.bondingName)
             if master:
-                self.ipAddresses = [x.strip() for x in bash_o(
-                    "ip -o a list | grep '^%s: ' | awk '/inet /{print $4}'" % master.strip()).splitlines()]
+                self.ipAddresses = ['%s/%d' % (x.address, x.prefixlen)
+                    for x in iproute.query_addresses(index=int(master.strip()), ip_version=4)]
         self.miimon = linux.read_file("/sys/class/net/%s/bonding/miimon" % self.bondingName).strip()
         self.allSlavesActive = linux.read_file("/sys/class/net/%s/bonding/all_slaves_active" % self.bondingName).strip() == "0"
         slave_names = linux.read_file("/sys/class/net/%s/bonding/slaves" % self.bondingName).strip().split()
@@ -698,7 +698,8 @@ class HostPlugin(kvmagent.KvmAgent):
         # to be compatible with both `2.6.0` and `2.9.0(qemu-kvm-ev-2.9.0-16.el7_4.8.1)`
         qemu_img_version = shell.call("qemu-img --version | grep 'qemu-img version' | cut -d ' ' -f 3 | cut -d '(' -f 1")
         qemu_img_version = qemu_img_version.strip('\t\r\n ,')
-        ipV4Addrs = shell.call("ip addr | grep -w inet | grep -v 127.0.0.1 | awk '!/zs$/{print $2}' | cut -d/ -f1")
+        ipV4Addrs = [chunk.address for chunk in filter(
+            lambda x: x.address != '127.0.0.1' and not x.ifname.endswith('zs'), iproute.query_addresses(ip_version=4))]
         rsp.systemProductName = 'unknown'
         rsp.systemSerialNumber = 'unknown'
         is_dmidecode = shell.run("dmidecode")
@@ -711,7 +712,7 @@ class HostPlugin(kvmagent.KvmAgent):
 
         rsp.qemuImgVersion = qemu_img_version
         rsp.libvirtVersion = self.libvirt_version
-        rsp.ipAddresses = ipV4Addrs.splitlines()
+        rsp.ipAddresses = ipV4Addrs
         rsp.cpuArchitecture = platform.machine()
 
         if IS_AARCH64:
@@ -1070,7 +1071,7 @@ if __name__ == "__main__":
         else:
             bash_r("/usr/local/bin/iohub_mocbr.sh %s start >> /var/log/iohubmocbr.log 2>&1" % cmd.mode)
             if cmd.mode == 'mocbr':
-                bash_r("ip link set dev {} master {}".format(cmd.masterVethName, cmd.bridgeName))
+                iproute.set_link_attribute_no_error(cmd.masterVethName, master=cmd.bridgeName)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -2042,11 +2043,11 @@ done
                                     break
 
                 # get mac address of inner dev
-                r, INNER_MAC, e = bash_roe("ip netns exec {{NAMESPACE_NAME}} ip link show {{INNER_DEV}} | grep -w ether | awk '{print $2}'")
-                if r != 0:
+                try:
+                    INNER_MAC = iproute.query_link(INNER_DEV, NAMESPACE_NAME).mac
+                except Exception:
                     logger.error("cannot get mac address of " + INNER_DEV)
                     return
-                INNER_MAC = INNER_MAC.strip(' \t\n\r')
 
                 # add bridge fdb entry for inner dev
                 if not linux.bridge_fdb_has_self_rule(INNER_MAC, PHY_DEV):

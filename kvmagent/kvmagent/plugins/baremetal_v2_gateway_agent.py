@@ -12,6 +12,7 @@ from zstacklib.utils import jsonobject
 from zstacklib.utils import linux
 from zstacklib.utils import linux_v2
 from zstacklib.utils import iptables
+from zstacklib.utils import iproute
 from zstacklib.utils import lock
 from zstacklib.utils import log
 from zstacklib.utils import shell
@@ -236,8 +237,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         linux.set_device_ip(network_obj.dhcp_interface,
                             network_obj.provision_nic_ip,
                             network_obj.dhcp_range_netmask)
-        shell.call('ip link set {nic} up'.format(
-            nic=network_obj.dhcp_interface))
+        iproute.set_link_up(network_obj.dhcp_interface)
 
     def _destroy_provision_network(self, network_obj):
         """ Clear provision network configuration
