@@ -17,6 +17,7 @@ from zstacklib.utils import shell
 from zstacklib.utils import http
 from zstacklib.utils import thread
 from zstacklib.utils import qemu_img
+from zstacklib.utils import iproute
 from zstacklib.utils.bash import in_bash
 from zstacklib.utils.linux import shellquote
 from zstacklib.utils.plugin import completetask
@@ -606,7 +607,8 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
 
-        shell.run("modprobe ifb; ip link set %s up" % QOS_IFB)
+        shell.run("modprobe ifb")
+        iproute.set_link_enable(QOS_IFB)
 
         if cmd.vCenterIps:
             interface_setup_rule = []

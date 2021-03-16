@@ -50,6 +50,7 @@ from zstacklib.utils import qemu_img
 from zstacklib.utils import ebtables
 from zstacklib.utils import vm_operator
 from zstacklib.utils import pci
+from zstacklib.utils import iproute
 from zstacklib.utils.report import *
 from zstacklib.utils.vm_plugin_queue_singleton import VmPluginQueueSingleton
 from zstacklib.utils.libvirt_event_manager_singleton import LibvirtEventManager
@@ -686,11 +687,12 @@ class VncPortIptableRule(object):
         current_ip = linux.get_host_by_name(self.host_ip)
 
         # get ipv4 subnet
-        current_ip_with_netmask = shell.call('ip -o -f inet addr show | awk \'/scope global/ {print $4}\' | fgrep -w %s' % current_ip).splitlines()[0]
-        if not current_ip_with_netmask:
+        current_ip_addr_list = filter(lambda addr: addr.scope == 'global', iproute.query_addresses_by_ip(current_ip, 4))
+        if not current_ip_addr_list:
             err = 'cannot get host ip with netmask for %s' % self.host_ip
             logger.warn(err)
             raise kvmagent.KvmError(err)
+        current_ip_with_netmask = '%s/%d' % (current_ip_addr_list[0].address, current_ip_addr_list[0].prefixlen)
 
         ipt.add_rule('-A INPUT -p tcp -m tcp --dport %s -j %s' % (self.port, chain_name))
         ipt.add_rule('-A %s -d %s -j ACCEPT' % (chain_name, current_ip_with_netmask))
@@ -2941,7 +2943,7 @@ class Vm(object):
                 if iface.mac.address_ == cmd.nic.mac:
                     return False
 
-            return shell.run('ip link show dev %s > /dev/null' % cmd.nic.nicInternalName) != 0
+            return not iproute.is_device_ifname_exists(cmd.nic.nicInternalName)
 
         if check_device(None):
             return
@@ -7576,7 +7578,7 @@ class VmPlugin(kvmagent.KvmAgent):
                 else:
                     vir.host_ip = domain_xmlobject.metadata.hostManagementIp.text_
 
-                if shell.run('ip addr | grep -w %s > /dev/null' % vir.host_ip) != 0:
+                if not iproute.query_addresses_by_ip(vir.host_ip):
                     logger.debug('the vm is migrated from another host, we do not need to set the console firewall, as '
                                  'the management node will take care')
                     return

@@ -17,6 +17,7 @@ from zstacklib.utils import lock
 from zstacklib.utils import lvm
 from zstacklib.utils import bash
 from zstacklib.utils import drbd
+from zstacklib.utils import iproute
 
 logger = log.get_logger(__name__)
 LOCK_FILE = "/var/run/zstack/ministorage.lock"
@@ -1150,7 +1151,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
     @bash.in_bash
     def test_network_ok_to_peer(peer_address, via_dev=None):
         if not via_dev:
-            via_dev = bash.bash_o("ip -o r get %s | awk '{print $3}'" % peer_address).strip()
+            via_dev = iproute.get_routes_by_ip(peer_address)[0].get_related_link_device().ifname
         for i in range(5):
             recv = bash.bash_r("timeout 2 arping -w 1 -b %s -I %s -c 1" % (peer_address, via_dev))
             if recv == 0:
