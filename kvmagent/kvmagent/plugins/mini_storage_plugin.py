@@ -445,7 +445,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
                            (int(round_sector(init_pool_size, 4096)), DEFAULT_CHUNK_SIZE, meta_size, vgUuid, vgUuid))
 
     @staticmethod
-    def create_vg_if_not_found(vgUuid, diskPaths, hostUuid, forceWipe=False):
+    def create_vg_if_not_found(vgUuid, disks, diskPaths, hostUuid, forceWipe=False):
         @linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
         def find_vg(vgUuid, raise_exception=True):
             cmd = shell.ShellCmd("timeout 5 vgscan --ignorelockingfailure; vgs --nolocking %s -otags | grep %s" % (vgUuid, INIT_TAG))
@@ -473,6 +473,10 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
                 linux.umount_by_path(mini_cache_volume_mount_dir)
                 linux.rm_dir_force(mini_cache_volume_mount_dir)
                 lvm.wipe_fs(diskPaths, vgUuid)
+                newDiskPaths = set()
+                for disk in disks:
+                    newDiskPaths.add(disk.get_path())
+                diskPaths = newDiskPaths
 
             cmd = shell.ShellCmd("vgcreate -qq --addtag '%s::%s::%s::%s' --metadatasize %s %s %s" %
                                  (INIT_TAG, hostUuid, time.time(), bash.bash_o("hostname").strip(),
@@ -501,6 +505,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = ConnectRsp()
         diskPaths = set()
+        disks = set()
 
         def config_lvm(enableLvmetad=False):
             lvm.backup_lvm_config()
@@ -525,9 +530,10 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         config_drbd()
         for diskId in cmd.diskIdentifiers:
             disk = CheckDisk(diskId)
+            disks.add(disk)
             diskPaths.add(disk.get_path())
         logger.debug("find/create vg %s ..." % cmd.vgUuid)
-        self.create_vg_if_not_found(cmd.vgUuid, diskPaths, cmd.hostUuid, cmd.forceWipe)
+        self.create_vg_if_not_found(cmd.vgUuid, disks, diskPaths, cmd.hostUuid, cmd.forceWipe)
         self.create_thin_pool_if_not_found(cmd.vgUuid, INIT_POOL_RATIO)
         drbd.up_all_resouces()
 
@@ -632,7 +638,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         command = shell.ShellCmd("vgs --nolocking %s -otags | grep %s" % (cmd.vgUuid, INIT_TAG))
         command(is_exception=False)
         if command.return_code != 0:
-            self.create_vg_if_not_found(cmd.vgUuid, [disk.get_path()], cmd.hostUuid, cmd.forceWipe)
+            self.create_vg_if_not_found(cmd.vgUuid, set(disk), [disk.get_path()], cmd.hostUuid, cmd.forceWipe)
         else:
             if cmd.forceWipe is True:
                 lvm.wipe_fs([disk.get_path()], cmd.vgUuid)
