@@ -1447,6 +1447,7 @@ is_install_general_libs_rh(){
             nfs-utils \
             rpcbind \
             vconfig \
+            vim-minimal \
             python-devel \
             gcc \
             grafana \
