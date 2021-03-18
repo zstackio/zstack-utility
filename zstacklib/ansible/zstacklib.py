@@ -1986,12 +1986,12 @@ enabled=0" >  /etc/yum.repos.d/zstack-experimental-mn.repo
                 # install libselinux-python and other command system libs from user defined repos
                 host_post_info.post_label = "ansible.shell.install.pkg"
                 python_pip_pkg = "python2-pip" if distro_version >= 7 else "python-pip"
-                host_post_info.post_label_param = "libselinux-python,python-devel,python-setuptools,gcc," \
+                host_post_info.post_label_param = "libselinux-python,python-devel,python-setuptools,gcc,vim-minimal" \
                                                   "autoconf,chrony,python-backports-ssl_match_hostname,iptables-services, %s" % python_pip_pkg
                 if require_python_env == "true":
                     command = (
                               "yum clean --enablerepo=%s metadata &&  pkg_list=`rpm -q libselinux-python python-devel "
-                              "python-setuptools gcc autoconf %s | grep \"not installed\" | awk"
+                              "python-setuptools gcc vim-minimal autoconf %s | grep \"not installed\" | awk"
                               " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
                               "-y $pkg; done;") % (zstack_repo, python_pip_pkg, zstack_repo)
                     run_remote_command(command, host_post_info)
@@ -2009,7 +2009,7 @@ enabled=0" >  /etc/yum.repos.d/zstack-experimental-mn.repo
                     # imagestore do not need python environment and only on centos 7
                     command = (
                                   "yum clean --enablerepo=%s metadata &&  pkg_list=`rpm -q libselinux-python "
-                                  "chrony iptables-services | grep \"not installed\" | awk '{ print $2 }'` "
+                                  "chrony vim-minimal iptables-services | grep \"not installed\" | awk '{ print $2 }'` "
                                   "&& for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (zstack_repo, zstack_repo)
                     run_remote_command(command, host_post_info)
                     # enable chrony service for RedHat
