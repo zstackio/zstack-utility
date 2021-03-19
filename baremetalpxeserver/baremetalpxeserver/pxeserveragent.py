@@ -107,7 +107,7 @@ class PxeServerAgent(object):
     UEFI_DEFAULT_GRUB_CFG = UEFI_GRUB_CFG_PATH + "grub.cfg"
     # we use `KS_CFG_PATH` to hold kickstart/preseed/autoyast preconfiguration files
     KS_CFG_PATH = VSFTPD_ROOT_PATH + "ks/"
-    INSPECTOR_KS_CFG = KS_CFG_PATH + "inspector_ks.cfg"
+    INSPECTOR_KS_CFG = KS_CFG_PATH + "inspector_ks_ARCH.cfg"
     ZSTACK_SCRIPTS_PATH = VSFTPD_ROOT_PATH + "scripts/"
     NGINX_MN_PROXY_CONF_PATH = "/etc/nginx/conf.d/pxe_mn/"
     NGINX_TERMINAL_PROXY_CONF_PATH = "/etc/nginx/conf.d/terminal/"
@@ -295,13 +295,18 @@ append initrd=zstack/x86_64/initrd.img devfs=nomount ksdevice=bootif ks=ftp://{P
         # init default uefi grub.cfg for x86_64 and aarch64
         grub_cfg = """set timeout=1
 set arch='x86_64'
+set linux='linuxefi'
+set initrd='initrdefi'
+
 if [ "$grub_cpu" == "arm64" ]; then
   set arch='aarch64'
+  set linux='linux'
+  set initrd='initrd'
 fi
 
 menuentry 'ZStack Get Bare Metal Chassis Hardware Info' --class fedora --class gnu-linux --class gnu --class os {
-        linuxefi (tftp)zstack/$arch/vmlinuz devfs=nomount ksdevice=bootif inst.ks=ftp://%s/ks/inspector_ks.cfg vnc
-        initrdefi (tftp)zstack/$arch/initrd.img
+        $linux (tftp)zstack/$arch/vmlinuz devfs=nomount ksdevice=bootif inst.ks=ftp://%s/ks/inspector_ks_$arch.cfg vnc
+        $initrd (tftp)zstack/$arch/initrd.img
 }
 """ % (pxeserver_dhcp_nic_ip)
         with open(self.UEFI_DEFAULT_GRUB_CFG, 'w') as f:
@@ -310,10 +315,13 @@ menuentry 'ZStack Get Bare Metal Chassis Hardware Info' --class fedora --class g
         # init inspector_ks.cfg
         ks_tmpl_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'ks_tmpl')
         with open("%s/inspector_ks_tmpl" % ks_tmpl_path, 'r') as fr:
-            inspector_ks_cfg = fr.read() \
-                .replace("PXESERVERUUID", cmd.uuid) \
-                .replace("PXESERVER_DHCP_NIC_IP", pxeserver_dhcp_nic_ip)
-            with open(self.INSPECTOR_KS_CFG, 'w') as fw:
+            inspector_ks_cfg_tmp = fr.read()
+        archs = {"x86_64", "aarch64", "mips64el"}
+        for arch in archs:
+            inspector_ks_cfg = inspector_ks_cfg_tmp.replace("PXESERVERUUID", cmd.uuid) \
+                                                   .replace("PXESERVER_DHCP_NIC_IP", pxeserver_dhcp_nic_ip) \
+                                                   .replace("ARCH", arch)
+            with open(self.INSPECTOR_KS_CFG.replace("ARCH", arch), 'w') as fw:
                 fw.write(inspector_ks_cfg)
 
         # config nginx
@@ -494,9 +502,17 @@ http {
         # create uefi grub.cfg-01-MAC for x86_64/aarch64 with rhel os
         grub_cfg_file = os.path.join(self.UEFI_GRUB_CFG_PATH, "grub.cfg-01-" + ks_cfg_name)
         grub_cfg = """set timeout=1
+set linux='linuxefi'
+set initrd='initrdefi'
+
+if [ "$grub_cpu" == "arm64" ]; then
+  set linux='linux'
+  set initrd='initrd'
+fi
+
 menuentry 'Install OS on Bare Metal Instance' --class fedora --class gnu-linux --class gnu --class os {{
-        linuxefi (tftp){IMAGEUUID}/vmlinuz devfs=nomount ksdevice=bootif inst.ks=ftp://{PXESERVER_DHCP_NIC_IP}/ks/{KS_CFG_NAME} vnc
-        initrdefi (tftp){IMAGEUUID}/initrd.img
+        $linux (tftp){IMAGEUUID}/vmlinuz devfs=nomount ksdevice=bootif inst.ks=ftp://{PXESERVER_DHCP_NIC_IP}/ks/{KS_CFG_NAME} vnc
+        $initrd (tftp){IMAGEUUID}/initrd.img
 }}""".format(IMAGEUUID=cmd.imageUuid,
                    PXESERVER_DHCP_NIC_IP=pxeserver_dhcp_nic_ip,
                    KS_CFG_NAME=ks_cfg_name)

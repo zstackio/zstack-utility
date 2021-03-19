@@ -129,15 +129,20 @@ else:
 
 # name: check and mount /opt/zstack-dvd
 command = """
+archRelease='x86_64/c72 x86_64/c74 x86_64/c76 aarch64/ns10 mips64el/ns10' 
 basearch=`uname -m`;releasever=`awk '{print $3}' /etc/zstack-release`;
 [ -f /opt/zstack-dvd/$basearch/$releasever/GPL ] || exit 1;
-mkdir -p /var/lib/zstack/baremetal/{dnsmasq,ftp/{ks,zstack-dvd,scripts},tftpboot/{zstack/$basearch,pxelinux.cfg,EFI/BOOT},vsftpd} /var/log/zstack/baremetal/;
+mkdir -p /var/lib/zstack/baremetal/{dnsmasq,ftp/{ks,zstack-dvd/{x86_64,aarch64,mips64el},scripts},tftpboot/{zstack/{x86_64,aarch64,mips64el},pxelinux.cfg,EFI/BOOT},vsftpd} /var/log/zstack/baremetal/;
 rm -rf /var/lib/zstack/baremetal/tftpboot/{grubaa64.efi,grub.cfg-01-*};
-cp -f /usr/share/syslinux/pxelinux.0 /var/lib/zstack/baremetal/tftpboot/;
-cp -f /opt/zstack-dvd/$basearch/$releasever/EFI/BOOT/grubx64.efi /var/lib/zstack/baremetal/tftpboot/EFI/BOOT/;
-cp -f /opt/zstack-dvd/$basearch/$releasever/EFI/BOOT/grubaa64.efi /var/lib/zstack/baremetal/tftpboot/EFI/BOOT/;
-cp -f /opt/zstack-dvd/$basearch/$releasever/images/pxeboot/{vmlinuz,initrd.img} /var/lib/zstack/baremetal/tftpboot/zstack/$basearch/;
-grep 'zstack-dvd' /etc/fstab || echo "/opt/zstack-dvd/$basearch/$releasever /var/lib/zstack/baremetal/ftp/zstack-dvd none defaults,bind 0 0" >> /etc/fstab;
+for AR in $archRelease;do
+    [ ! -d /opt/zstack-dvd/$AR ] && continue
+    arch=`echo $AR | awk -F '/' '{print $1}'`
+    cp -f /opt/zstack-dvd/$AR/isolinux/pxelinux.0 /var/lib/zstack/baremetal/tftpboot/;
+    cp -f /opt/zstack-dvd/$AR/EFI/BOOT/grubx64.efi /var/lib/zstack/baremetal/tftpboot/EFI/BOOT/;
+    cp -f /opt/zstack-dvd/$AR/EFI/BOOT/grubaa64.efi /var/lib/zstack/baremetal/tftpboot/EFI/BOOT/;
+    cp -f /opt/zstack-dvd/$AR/images/pxeboot/{vmlinuz,initrd.img} /var/lib/zstack/baremetal/tftpboot/zstack/$arch/;
+    grep "ftp/zstack-dvd/$arch" /etc/fstab || echo "/opt/zstack-dvd/$AR /var/lib/zstack/baremetal/ftp/zstack-dvd/$arch none defaults,bind 0 0" >> /etc/fstab;
+done
 mount -a;
 """
 run_remote_command(command, host_post_info)
