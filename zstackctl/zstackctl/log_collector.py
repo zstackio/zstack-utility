@@ -579,6 +579,14 @@ class CollectFromYml(object):
                         elif type != 'sharedblock':
                             self.add_fail_count(1, type, get_default_ip(), log['name'], output)
                     else:
+                        if log['name'] == "ui-logs":
+                            (status, output) = commands.getstatusoutput(
+                                '''zstack-ctl show_ui_config | awk -F= '/^log/{print $2}' | awk '$1=$1' ''')
+                            if status == 0:
+                                warn("ui_logs dir path changes from %s to %s on %s localhost" % (
+                                    log['dir'], output, type))
+                                log['dir'] = output
+
                         if os.path.exists(log['dir']):
                             command = self.build_collect_cmd(log, dest_log_dir)
                             (status, output) = commands.getstatusoutput(command)
@@ -725,6 +733,16 @@ class CollectFromYml(object):
                             elif type != 'sharedblock':
                                 self.add_fail_count(1, type, host_post_info.host, log['name'], output)
                         else:
+                            if log['name'] == "ui-logs": 
+                                (ui_log_status, ui_log_output) = run_remote_command(
+                                    ''' zstack-ctl show_ui_config | awk -F= '/^log/{print $2}' | awk '$1=$1' ''',
+                                    host_post_info, return_status=True,
+                                    return_output=True)
+                                if ui_log_status is True:
+                                    warn("ui_logs dir path changes from %s to %s on %s %s ..." % (
+                                        log['dir'], ui_log_output, type, host_post_info.host))
+                                    log['dir'] = ui_log_output
+
                             if file_dir_exist("path=%s" % log['dir'], host_post_info):
                                 command = self.build_collect_cmd(log, dest_log_dir)
                                 (status, output) = run_remote_command(command, host_post_info, return_status=True,
