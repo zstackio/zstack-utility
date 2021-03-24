@@ -291,7 +291,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
                         rsync_excludes = rsync_excludes + " --exclude=%s" % filtPath
                         md5_excludes = md5_excludes + " ! -path %s/%s" % (cmd.srcFolderPath, filtPath)
 
-            total_size = int(shell.call("rsync -aznv %s/ %s %s | grep -o -P 'total size is \K\d*'" %
+            total_size = int(shell.call("rsync -anv %s/ %s %s | grep -o -P 'total size is \K\d*'" %
                                         (cmd.srcFolderPath, dst_folder_path, rsync_excludes)))
 
             stage = get_task_stage(cmd)
@@ -312,7 +312,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
                 reporter.progress_report(get_exact_percent(float(synced + writing) / total_size * 100, stage))
                 return synced
 
-            t_shell.bash_progress_1("rsync -az --progress %s/ %s %s > %s" % (cmd.srcFolderPath, dst_folder_path, rsync_excludes, PFILE), _get_progress)
+            t_shell.bash_progress_1("rsync -a --progress %s/ %s %s > %s" % (cmd.srcFolderPath, dst_folder_path, rsync_excludes, PFILE), _get_progress)
 
             src_md5 = t_shell.call(
                 "find %s -type f %s -exec md5sum {} \; | awk '{ print $1 }' | sort | md5sum" % (cmd.srcFolderPath, md5_excludes))
