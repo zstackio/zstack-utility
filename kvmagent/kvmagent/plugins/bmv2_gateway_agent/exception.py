@@ -172,3 +172,16 @@ class PortInUse(BmV2GwAgentException):
         msg = ('The port {port} is in using, please change the port and '
                'try again').format(**kwargs)
         super(PortInUse, self).__init__(msg)
+
+
+class CephCommandsNotExist(BmV2GwAgentException):
+
+    def __init__(self, **kwargs):
+        msg = ('Not all commands of {cmds} can be found in the gateway').format(**kwargs)
+        super(CephCommandsNotExist, self).__init__(msg)
+
+class RbdImageNotExist(BmV2GwAgentException):
+
+    def __init__(self, **kwargs):
+        msg = ('RBD image {path} can be found in the gateway').format(**kwargs)
+        super(RbdImageNotExist, self).__init__(msg)

@@ -1,8 +1,10 @@
 from kvmagent.plugins.bmv2_gateway_agent import exception
+from kvmagent.plugins.bmv2_gateway_agent.volume import ceph
 from kvmagent.plugins.bmv2_gateway_agent.volume import sharedblock
 
 
 mapping = {
+    'ceph': ceph.CephVolume,
     'sharedblock': sharedblock.SharedBlockVolume
 }
 
