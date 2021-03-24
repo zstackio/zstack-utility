@@ -1,4 +1,6 @@
 import os
+import socket
+import commands
 
 from zstacklib.utils import log
 from zstacklib.utils import shell
@@ -9,6 +11,41 @@ from kvmagent.plugins.bmv2_gateway_agent import utils as bm_utils
 
 
 logger = log.get_logger(__name__)
+
+
+class RbdImageOperator(object):
+    """ A tool class to operate rbd image
+    """
+
+    def __init__(self, volume):
+        self.volume = volume
+        self._check_required_commands()
+
+    @staticmethod
+    def _check_required_commands():
+        """
+        check if ceph/rbd/rbd-nbd installed
+        """
+        required_cmds = ['ceph', 'rbd', 'rbd-nbd']
+        for cmd in required_cmds:
+            _s, _ = commands.getstatusoutput('which %s' % cmd)
+            if _s:
+                raise exception.CephCommandsNotExist(cmds=required_cmds)
+
+    @staticmethod
+    def _check_rbd_image(image_path):
+        """
+        check if rbd image exists
+        """
+        _s, _ = commands.getstatusoutput('rbd info %s' % image_path)
+        if _s:
+            raise exception.RbdImageNotExist(path=image_path)
+
+    def connect(self):
+        NbdDeviceOperator(self.volume).connect(src_type='rbd')
+
+    def disconnect(self):
+        NbdDeviceOperator(self.volume).disconnect(src_type='rbd')
 
 
 class NbdDeviceOperator(object):
@@ -50,12 +87,12 @@ class NbdDeviceOperator(object):
                 os.remove(os.path.join(self.QEMU_NBD_SOCKET_DIR, nbd_socket))
                 continue
 
-            # Get the source file/dev path
+            # Get the source file/dev/rbd path
             with open(pid_path, 'r') as f:
                 pid = f.read().strip('\n')
             with open('/proc/{}/cmdline'.format(pid), 'r') as f:
                 cmdline = f.read().strip('\n')
-            nbd_backend = cmdline.split('\x00')[7]
+            nbd_backend = cmdline.split('\x00')[-2]
 
             yield instance_uuid, volume_uuid, nbd_backend, nbd_id
 
@@ -112,10 +149,14 @@ class NbdDeviceOperator(object):
             if self._check_nbd_dev_empty(nbd_id):
                 return str(nbd_id)
 
-    def connect(self):
-        """ Connect src file/blk to a nbd device
+    def connect(self, src_type='qemu'):
+        """ Connect src file/blk/rbd to a nbd device
 
-        qemu-nbd --format qcow2 --connect /dev/nbdX --socket /var/lock/zstack-qemu-nbd/X path #noqa
+        if src_type == 'qemu':
+            qemu-nbd --format qcow2 --connect /dev/nbdX --socket /var/lock/zstack-qemu-nbd/X path #noqa
+
+        if src_type == 'rbd':
+            rbd-nbd map pri-v-r-48328ff2f70d42faa61756faa4c9e98d/a36c7603eee64ec8b4f98c176ccbf5a2
         """
 
         def _connect():
@@ -139,15 +180,21 @@ class NbdDeviceOperator(object):
                 self.volume.nbd_id = self._get_available_nbd_id()
             socket_path = os.path.join(self.QEMU_NBD_SOCKET_DIR,
                                        self.volume.nbd_socket)
-            # Log the lsof output, to record which process is using the blk.
-            logger.info(shell.call('lsof %s' % self.volume.nbd_backend,
-                                   exception=False))
-            cmd = ('qemu-nbd --format {format} --connect /dev/nbd{nbd_id} '
-                   '--socket {socket_path} {nbd_backend}').format(
-                        format=self.volume.volume_format,
-                        nbd_id=self.volume.nbd_id,
-                        socket_path=socket_path,
-                        nbd_backend=self.volume.nbd_backend)
+            if src_type == 'qemu':
+                # Log the lsof output, to record which process is using the blk.
+                logger.info(shell.call('lsof %s' % self.volume.nbd_backend, exception=False))
+                cmd = ('qemu-nbd --format {format} --connect /dev/nbd{nbd_id} '
+                       '--socket {socket_path} {nbd_backend}').format(
+                            format=self.volume.volume_format,
+                            nbd_id=self.volume.nbd_id,
+                            socket_path=socket_path,
+                            nbd_backend=self.volume.nbd_backend)
+            else:
+                socket.socket(socket.AF_UNIX).bind(socket_path)
+                cmd = ('rbd-nbd map --device /dev/nbd{nbd_id} '
+                       '{nbd_backend}').format(
+                            nbd_id=self.volume.nbd_id,
+                            nbd_backend=self.volume.nbd_backend)
             shell.call(cmd)
 
         def _check_connected():
@@ -165,12 +212,16 @@ class NbdDeviceOperator(object):
         with bm_utils.transcantion(retries=5) as cursor:
             cursor.execute(_check_connected)
 
-    def disconnect(self):
+    def disconnect(self, src_type='qemu'):
         """ Disconnect a nbd device
         """
         def _disconnect():
-            cmd = 'qemu-nbd --disconnect /dev/nbd{nbd_id}'.format(
-                nbd_id=self.volume.nbd_id)
+            if src_type == 'qemu':
+                cmd = 'qemu-nbd --disconnect /dev/nbd{nbd_id}'.format(
+                    nbd_id=self.volume.nbd_id)
+            else:
+                cmd = 'rbd-nbd unmap /dev/nbd{nbd_id}'.format(
+                    nbd_id=self.volume.nbd_id)
             shell.call(cmd)
 
         def _check_disconnected():
@@ -186,8 +237,9 @@ class NbdDeviceOperator(object):
         # Check whether the device is connected
         if not self.volume.nbd_id or \
                 self._check_nbd_dev_empty(self.volume.nbd_id):
-            msg = ('The nbd dev was disconnected before the '
+            msg = ('The nbd dev {nbd_id} was disconnected before the '
                    'operate. instance: {instance}, volume: {volume}').format(
+                       nbd_id=self.volume.nbd_id,
                        instance=self.volume.instance_uuid,
                        volume=self.volume.volume_uuid)
             logger.info(msg)
@@ -452,6 +504,10 @@ class IscsiOperator(object):
                 logger.info(msg)
                 return
             cmd = 'targetcli /iscsi/ create {target}'.format(
+                target = self.volume.iscsi_target)
+            shell.call(cmd)
+
+            cmd = 'targetcli /iscsi/{target}/tpg1 set attribute authentication=0 demo_mode_write_protect=0 generate_node_acls=1 cache_dynamic_acls=1'.format(
                 target = self.volume.iscsi_target)
             shell.call(cmd)
 
