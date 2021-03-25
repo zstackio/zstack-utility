@@ -703,7 +703,7 @@ def start_kvmagent():
     run_remote_command(command, host_post_info)
 
 def modprobe_usb_module():
-    command = "modprobe usb-storage; modprobe uas"
+    command = "modprobe usb-storage; modprobe uas || true"
     host_post_info.post_label = "ansible.shell.modprobe.usb"
     host_post_info.post_label_param = None
     run_remote_command(command, host_post_info)
