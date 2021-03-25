@@ -110,6 +110,7 @@ if distro in RPM_BASED_OS:
         releasever = get_mn_yum_release()
     x86_64_c74 = "qemu-img-ev fuse-sshfs nmap collectd"
     x86_64_c76 = "qemu-img-ev fuse-sshfs nmap collectd"
+    aarch64_alios7 = "qemu-img-ev fuse-sshfs nmap collectd"
     aarch64_ns10 = "qemu-img fuse-sshfs nmap collectd"
     mips64el_ns10 = "qemu-img-ev fuse-sshfs nmap collectd"
     x86_64_ns10 = "qemu-img fuse-sshfs nmap collectd"
