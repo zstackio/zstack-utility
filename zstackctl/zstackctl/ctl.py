@@ -8499,6 +8499,7 @@ class UiStatusCmd(Command):
                         colored('Running', 'green'), pid, http, default_ip, port))
             else:
                 write_status(colored('Unknown', 'yellow'))
+            return True
         cmd = ShellCmd("runuser -l root -s /bin/bash -c 'bash %s'" % (UiStatusCmd.ZSTACK_UI_STATUS),pipe=False)
         cmd(False)
         if cmd.return_code != 0:
