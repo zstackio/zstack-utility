@@ -278,6 +278,7 @@ def get_mn_apt_release():
 def get_host_releasever(ansible_distribution):
     supported_release_info = {
         "kylin10 tercel 10": "ns10",
+        "alibaba paladin 7.2": "alios7",
         "uniontech fou 20": "uos20",
         "redhat maipo 7.4": "ns10", # old kylinV10, oem 7.4 incompletely
         "centos core 7.6.1810": "c76",
