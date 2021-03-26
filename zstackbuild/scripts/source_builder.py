@@ -116,7 +116,7 @@ def run_with_err_msg(command, err_msg, work_dir=None):
 
 
 class Builder(object):
-    PYPI_DIR = 'zstackbuild/pypi_source/pypi/simple'
+    PYPI_DIR = 'zstackbuild/pypi_source/pypi'
     PYPI_URL = 'https://pypi.tuna.tsinghua.edu.cn/simple'
     EXCLUDES = ['bm-instance-agent']
 
@@ -239,9 +239,7 @@ class Builder(object):
         fd, req_file = tempfile.mkstemp()
         os.write(fd, '\n'.join(req_names))
         os.close(fd)
-        pkg_dir = os.path.dirname(self.PYPI_DIR)
-        call_with_screen_output('pip2tgz %s --index-url %s -r %s --no-binary=:all:' % (pkg_dir, self.PYPI_URL, req_file))
-        call_with_screen_output('dir2pi %s' % pkg_dir)
+        call_with_screen_output('pip2pi %s --index-url %s -r %s --no-binary=:all:' % (self.PYPI_DIR, self.PYPI_URL, req_file))
         os.remove(req_file)
 
         req_names = ['\t%s' % r for r in downloads]
