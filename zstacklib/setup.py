@@ -28,7 +28,6 @@ Python support library for zstack""",
           'netaddr',
           'Jinja2',
           "beeprint",
-	  'mock'
       ],
       entry_points="""
       # -*- Entry points: -*-
