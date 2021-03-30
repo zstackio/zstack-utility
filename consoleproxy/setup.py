@@ -18,7 +18,7 @@ setup(name='consoleproxy',
       include_package_data=True,
       zip_safe=True,
       install_requires=[
-        'websockify',
+        'websockify==0.6.1',
       ],
       entry_points="""
       # -*- Entry points: -*-
