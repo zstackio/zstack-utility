@@ -63,7 +63,9 @@ class BmInstanceObj(Base):
         'uuid': 'uuid',
         'provisionIp': 'provision_ip',
         'provisionMac': 'provision_mac',
-        'gatewayIp': 'gateway_ip'
+        'imageUuid': 'image_uuid',
+        'gatewayIp': 'gateway_ip',
+        'architecture': 'architecture'
     }
 
     @classmethod

@@ -10,7 +10,7 @@ chain pxelinux.cfg/${mac:hexhyp} || goto inspector
 :inspector
 :retry_boot
 imgfree
-kernel --timeout 30000 {{ inspect_kernel_uri }} devfs=nomount ksdevice=bootif ks={{ inspect_ks_uri }} initrd=initrd.img nofb nomodeset vga=normal console=tty0 console=ttyS1,115200n8 BOOTIF=01-${netX/mac} || goto retry_boot
-initrd {{ inspect_initramfs_uri }} --timeout 30000 || goto retry_boot
+kernel --timeout 30000 {{ inspect_kernel_uri }} devfs=nomount ksdevice=bootif ks={{ inspect_ks_cfg_uri }} initrd=initrd.img nofb nomodeset vga=normal console=tty0 console=ttyS1,115200n8 BOOTIF=01-${netX/mac} rhgb quiet || goto retry_boot
+initrd {{ inspect_initrd_uri }} --timeout 30000 || goto retry_boot
 
 boot
