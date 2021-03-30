@@ -47,6 +47,19 @@ class ConnectResponse(kvmagent.AgentResponse):
         super(ConnectResponse, self).__init__()
         self.iptablesSucc = None
 
+class GetTakeOverFlagResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(GetTakeOverFlagResponse, self).__init__()
+        self.hostUuid = None
+        self.uTime = None
+
+class AddTakeOverFlagResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(AddTakeOverFlagResponse, self).__init__()
+
+class DeleteTakeOverFlagResponse(kvmagent.AgentResponse):
+    def __init__(self):
+
 class HostCapacityResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(HostCapacityResponse, self).__init__()
@@ -521,6 +534,9 @@ class HostPlugin(kvmagent.KvmAgent):
     '''
 
     CONNECT_PATH = '/host/connect'
+    GET_TAKEOVERFLAG_PATH = '/host/takeoverflag/get'
+    ADD_TAKEOVERFLAG_PATH = '/host/takeoverflag/add'
+    DELETE_TAKEOVERFLAG_PATH = '/host/takeoverflag/delete'
     CAPACITY_PATH = '/host/capacity'
     ECHO_PATH = '/host/echo'
     FACT_PATH = '/host/fact'
@@ -672,6 +688,34 @@ class HostPlugin(kvmagent.KvmAgent):
             pkt_counter += 1
             time.sleep(2)
 
+
+    @kvmagent.replyerror
+    def get_takeover_flag(self, req):
+        rsp = GetTakeOverFlagResponse()
+        takeOver = linux.read_file(TAKE_OVER_FILE)
+        if takeOver is None:
+            return jsonobject.dumps(rsp)
+        rsp.uTime = linux.cal_file_utime(TAKE_OVER_FILE)
+        rsp.hostUuid = takeOver
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def add_takeover_flag(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AddTakeOverFlagResponse()
+        takeOver = linux.write_file(TAKE_OVER_FILE, cmd.hostUuid, True)
+        if takeOver is None:
+            rsp.error = 'fail to write to file[path:%s],please check agent' % TAKE_OVER_FILE
+            rsp.success = False
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def delete_takeover_flag(self, req):
+        rsp = DeleteTakeOverFlagResponse()
+        if os.path.exists(TAKE_OVER_FILE):
+            os.remove(TAKE_OVER_FILE)
+            logger.debug("delete takeover flag %s success" % TAKE_OVER_FILE)
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def ping(self, req):
@@ -2074,6 +2118,9 @@ done
 
         http_server = kvmagent.get_http_server()
         http_server.register_sync_uri(self.CONNECT_PATH, self.connect)
+        http_server.register_sync_uri(self.GET_TAKEOVERFLAG_PATH, self.get_takeover_flag)
+        http_server.register_sync_uri(self.ADD_TAKEOVERFLAG_PATH, self.add_takeover_flag)
+        http_server.register_sync_uri(self.DELETE_TAKEOVERFLAG_PATH, self.delete_takeover_flag)
         http_server.register_async_uri(self.PING_PATH, self.ping)
         http_server.register_async_uri(self.CAPACITY_PATH, self.capacity)
         http_server.register_sync_uri(self.ECHO_PATH, self.echo)
