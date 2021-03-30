@@ -38,8 +38,9 @@ class BmInstanceObj(Base):
     {
         'bmInstance': {
             'uuid': 'uuid',
-            'provisionIpAddress': '192.168.101.10',
-            'provisionNicMac': 'aa:bb:cc:dd:ee:ff'
+            'provisionIp': '192.168.101.10',
+            'provisionMac': 'aa:bb:cc:dd:ee:ff',
+            'gatewayIp': '192.168.101.11',
             'nics': [
                 {
                     'mac': 'aa:bb:cc:dd:ee:fe',
@@ -54,7 +55,7 @@ class BmInstanceObj(Base):
     }
     """
 
-    allowed_keys = ['uuid', 'provision_ip', 'provision_mac']
+    allowed_keys = ['uuid', 'provision_ip', 'provision_mac', 'gateway_ip']
 
     @classmethod
     def from_json(cls, bm_instance):

@@ -1,3 +1,5 @@
+import yaml
+from oslo_concurrency import processutils
 from oslo_log import log as logging
 from stevedore import driver
 
@@ -13,6 +15,7 @@ LOG = logging.getLogger(__name__)
 
 BM_INSTANCE_UUID = None
 DRIVER = None
+ZWATCH_AGENT_CONF_PATH = "/usr/local/zstack/zwatch-vm-agent/conf.yaml"
 
 
 class AgentManager(object):
@@ -36,6 +39,26 @@ class AgentManager(object):
                 req_instance_uuid=bm_uuid,
                 exist_instance_uuid=BM_INSTANCE_UUID)
 
+    def _check_gateway_ip(self, instance_obj):
+        push_gateway_url = "http://%s:9092" % instance_obj.gateway_ip
+        with open(ZWATCH_AGENT_CONF_PATH) as f:
+            doc = yaml.load(f)
+
+        old_url = doc['pushGatewayUrl']
+        if old_url is not None and old_url == push_gateway_url:
+            return
+
+        LOG.info("pushGatewayUrl changed from %s to %s" % (old_url, push_gateway_url))
+
+        doc['pushGatewayUrl'] = push_gateway_url
+        doc['bm2InstanceUuid'] = instance_obj.uuid
+
+        with open(ZWATCH_AGENT_CONF_PATH) as f:
+            yaml.dump(doc, f)
+
+        cmd = 'service zwatch-vm-agent restart'
+        processutils.execute(cmd, shell=True)
+
     def ping(self, bm_instance):
         instance_obj = BmInstanceObj.from_json(bm_instance)
 
@@ -44,6 +67,7 @@ class AgentManager(object):
             BM_INSTANCE_UUID = instance_obj.uuid
         self._check_uuid_corrent(instance_obj.uuid)
         self.driver.ping(instance_obj)
+        self._check_gateway_ip(instance_obj)
         return {'ping': {'bmInstanceUuid': BM_INSTANCE_UUID}}
 
     def reboot(self, bm_instance):

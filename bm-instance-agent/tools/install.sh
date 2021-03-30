@@ -18,6 +18,7 @@ mkdir -p /var/log/zstack/baremetalv2/
 yes | cp ${temp}/bm-instance-agent.pex /var/lib/zstack/baremetalv2/bm-instance-agent/
 yes | cp ${temp}/shellinaboxd-`uname -i` /var/lib/zstack/baremetalv2/bm-instance-agent/
 yes | cp ${temp}/shellinaboxd-`uname -i` /usr/bin/shellinaboxd
+yes | cp ${temp}/zwatch-vm-agent-`uname -i` /var/lib/zstack/baremetalv2/bm-instance-agent/
 
 popd
 
@@ -43,6 +44,21 @@ EOF
 systemctl daemon-reload \
     && systemctl enable zstack-baremetal-instance-agent \
     && systemctl restart zstack-baremetal-instance-agent
+
+chmod +x /var/lib/zstack/baremetalv2/bm-instance-agent/zwatch-vm-agent-`uname -i`
+/var/lib/zstack/baremetalv2/bm-instance-agent/zwatch-vm-agent-`uname -i` -i
+if [ $? != 0 ]; then
+     echo "install zwatch-vm-agent fail"
+fi
+
+echo "starting zwatch-vm-agent"
+service zwatch-vm-agent start
+if [ $? != 0 ]; then
+     echo "service zwatch-vm-agent start fail"
+     exit 1
+fi
+
+echo "start zwatch-vm-agent successfully"
 
 rm -rf ${temp}
 
