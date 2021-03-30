@@ -2078,15 +2078,25 @@ class StartCmd(Command):
 
         def check_mn_port():
             mn_port = get_mn_port()
-            if shell_return('netstat -nap | grep :%s[[:space:]] | grep LISTEN > /dev/null' % mn_port) == 0:
-                raise CtlError('%s is occupied by some process. Please use netstat to find out and stop it' % mn_port)
+            (code, out, _) = shell_return_stdout_stderr('netstat -nap | grep :%s[[:space:]] | grep LISTEN | awk \'{printf $NF "\\n"}\'' % mn_port)
+            if code == 0:
+                occupied_process_set = set(out.split())
+                if '-' in occupied_process_set:
+                    occupied_process_set.remove('-')
+                if occupied_process_set:
+                    raise CtlError('Port %s is occupied by [%s]. Please stop it and retry.' % (mn_port, ', '.join(occupied_process_set)))
 
         def check_prometheus_port():
             port = ctl.read_property('Prometheus.port')
             if not port:
                 port = 9090
-            if shell_return('netstat -nap | grep :%s[[:space:]] | grep LISTEN | grep -v prometheus > /dev/null' % port) == 0:
-                raise CtlError('%s is occupied by some process. Please use netstat to find out and stop it' % port)
+            (code, out, _) = shell_return_stdout_stderr('netstat -nap | grep :%s[[:space:]] | grep LISTEN | grep -v prometheus | awk \'{printf $NF "\\n"}\'' % port)
+            if code == 0:
+                occupied_process_set = set(out.split())
+                if '-' in occupied_process_set:
+                    occupied_process_set.remove('-')
+                if occupied_process_set:
+                    raise CtlError('Port %s is occupied by [%s]. Please stop it and retry.' % (port, ', '.join(occupied_process_set)))
 
         def check_msyql():
             db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
