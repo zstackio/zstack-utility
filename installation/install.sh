@@ -2718,6 +2718,7 @@ cs_deploy_db(){
 
 cs_deploy_ui_db(){
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+    echo_subtitle "Initialize ${PRODUCT_NAME} UI Database"
     echo "--------test start--------\n" >> $ZSTACKCTL_INSTALL_LOG
     echo "Initialize ${PRODUCT_NAME} UI Database\n" >> $ZSTACKCTL_INSTALL_LOG
     echo $MYSQL_PORT"\n" >> $ZSTACKCTL_INSTALL_LOG
