@@ -285,8 +285,7 @@ class CephAgent(plugin.TaskManager):
 
         rsp.totalCapacity = total
         rsp.availableCapacity = avail
-        if ceph.is_xsky():
-            rsp.type = "xsky"
+        rsp.type = ceph.get_ceph_manufacturer()
 
         if not df.pools:
             return
