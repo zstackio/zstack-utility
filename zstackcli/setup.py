@@ -18,7 +18,7 @@ zstack cli console""",
       include_package_data=True,
       zip_safe=True,
       install_requires=[
-          'termcolor'
+          'termcolor==1.1.0'
       ],
       entry_points="""
       # -*- Entry points: -*-

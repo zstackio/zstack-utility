@@ -19,16 +19,16 @@ Python support library for zstack""",
       zip_safe=True,
       install_requires=[
           'CherryPy==3.2.4',
-          'simplejson',
-          'routes',
-          'paramiko',
+          'simplejson==3.7.3',
+          'routes==2.1',
+          'paramiko==1.16',
           'pyparsing<=1.5.7',
-          'pickledb',
+          'pickledb==0.3',
           'urllib3==1.10.4',
-          'netaddr',
-          'Jinja2',
-          "beeprint",
-          'pip'
+          'netaddr==0.7.14',
+          'Jinja2==2.7.3',
+          "beeprint==2.4.7",
+          'pip==7.0.3'
       ],
       entry_points="""
       # -*- Entry points: -*-
