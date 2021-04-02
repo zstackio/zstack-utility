@@ -19,8 +19,8 @@ ZStack KVM agent REST service""",
       zip_safe=True,
       install_requires=[
             # -*- Extra requirements: -*-
-            "prometheus_client",
-            "typing"
+            "prometheus_client==0.1.1",
+            "typing==3.7.4",
       ],
       entry_points="""
       # -*- Entry points: -*-

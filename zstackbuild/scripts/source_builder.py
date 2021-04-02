@@ -129,6 +129,7 @@ class Builder(object):
         parser = argparse.ArgumentParser(description='Build pypi repo')
         parser.add_argument('--dry-run', '-d', action='store_true', dest='dry', default=False, help='only print modification information instead of do the real build')
         parser.add_argument('--exclude', '-e', action='append', dest='excludes', default=[], help='[Support Multiple] sub projects to be excluded from scan, e.g. -e bm-instance-agent')
+        parser.add_argument('--print', '-p', action='store_true', dest='print_out', default=False, help='only print packages being required')
 
         self.args = parser.parse_args()
 
@@ -213,6 +214,35 @@ class Builder(object):
             lst.append(Requirement.parse(r))
             self.requirements[project_name] = lst
 
+    def _print_requirements(self):
+        print('Below are packages required by projects:')
+        for project_name, reqs in self.requirements.items():
+            print('%s:\n' % project_name)
+            if not reqs:
+                print('\tNone\n')
+            else:
+                req_names = ['\t%s' % r for r in reqs]
+                print('%s\n' % '\n'.join(req_names))
+
+    def _check_requirements(self):
+        errors = {}
+        for project_name, reqs in self.requirements.items():
+            for r in reqs:
+                if not r.specs:
+                    lst = errors.get(project_name, [])
+                    lst.append(r)
+                    errors[project_name] = lst
+
+        if errors:
+            sys.stdout.write('\n\nERROR: below project containing requirements not specifying package version:\n\n')
+
+            for project_name, reqs in errors.items():
+                print('%s:\n' % project_name)
+                req_names = ['\t%s' % r for r in reqs]
+                print('%s\n' % '\n'.join(req_names))
+
+            sys.exit(1)
+
     def build(self):
         if not os.path.isdir(self.PYPI_DIR):
             raise Exception('%s not found. You must run this script in root folder of zstack-utiltiy' % self.PYPI_DIR)
@@ -226,10 +256,14 @@ class Builder(object):
             self._collect_requirements(project_name, requires)
 
         self._collect_system_requirements()
+        self._check_requirements()
+
         self._calculate_modifications()
 
         if self.args.dry:
             self._print_modification_information()
+        elif self.args.print_out:
+            self._print_requirements()
         else:
             self._do_download()
 
@@ -245,19 +279,17 @@ class Builder(object):
 
     def _do_download(self):
         downloads = set()
-        for reqs in self.packages_to_add.values():
-            downloads.update(reqs)
 
-        if not downloads:
-            info('\n\nNO package needs to be added')
-            return
+        for project_name, reqs in self.packages_to_add.items():
+            info('Downloading requirements for project: %s' % project_name)
 
-        req_names = [str(r) for r in downloads]
-        fd, req_file = tempfile.mkstemp()
-        os.write(fd, '\n'.join(req_names))
-        os.close(fd)
-        call_with_screen_output('pip2pi %s --index-url %s -r %s --no-binary=:all:' % (self.PYPI_DIR, self.PYPI_URL, req_file))
-        os.remove(req_file)
+            req_names = [str(r) for r in reqs]
+            downloads.update(req_names)
+            fd, req_file = tempfile.mkstemp()
+            os.write(fd, '\n'.join(req_names))
+            os.close(fd)
+            call_with_screen_output('pip2pi %s --index-url %s -r %s --no-binary=:all:' % (self.PYPI_DIR, self.PYPI_URL, req_file))
+            os.remove(req_file)
 
         req_names = ['\t%s' % r for r in downloads]
         info('SUCCESSFULLY download all requirements:\n\n%s' % '\n'.join(req_names))
