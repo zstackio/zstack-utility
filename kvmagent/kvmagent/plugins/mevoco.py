@@ -777,6 +777,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         return jsonobject.dumps(ApplyUserdataRsp())
 
     @in_bash
+    @lock.lock('prepare_dhcp_namespace')
     @lock.file_lock('/run/xtables.lock')
     def _apply_userdata_xtables(self, to):
         def create_default_userdata(http_root):
