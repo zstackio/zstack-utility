@@ -118,6 +118,7 @@ def run_with_err_msg(command, err_msg, work_dir=None):
 class Builder(object):
     PYPI_DIR = 'zstackbuild/pypi_source/pypi'
     PYPI_URL = 'https://pypi.tuna.tsinghua.edu.cn/simple'
+    REQUIREMENTS_TXT = 'zstackbuild/pypi_source/requirements.txt'
     EXCLUDES = ['bm-instance-agent']
 
     def __init__(self):
@@ -197,6 +198,21 @@ class Builder(object):
 
             self.packages_to_add[project_name] = to_add
 
+    def _collect_system_requirements(self):
+        if not os.path.isfile(self.REQUIREMENTS_TXT):
+            info('%s not found, skip collecting system requirements' % self.REQUIREMENTS_TXT)
+            return
+
+        with open(self.REQUIREMENTS_TXT, 'r') as fd:
+            reqs = fd.readlines()
+
+        project_name = 'system-requirements'
+
+        for r in reqs:
+            lst = self.requirements.get(project_name, [])
+            lst.append(Requirement.parse(r))
+            self.requirements[project_name] = lst
+
     def build(self):
         if not os.path.isdir(self.PYPI_DIR):
             raise Exception('%s not found. You must run this script in root folder of zstack-utiltiy' % self.PYPI_DIR)
@@ -209,6 +225,7 @@ class Builder(object):
             requires = self._get_project_requires(setup_py)
             self._collect_requirements(project_name, requires)
 
+        self._collect_system_requirements()
         self._calculate_modifications()
 
         if self.args.dry:
