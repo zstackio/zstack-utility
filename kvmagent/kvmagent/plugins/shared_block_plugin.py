@@ -786,7 +786,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 linux.create_template(volume_abs_path, install_abs_path, shell=t_shell)
                 logger.debug('successfully created template[%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
 
-                rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installPath)
+                rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(install_abs_path)
                 if cmd.compareQcow2 is True:
                     logger.debug("comparing qcow2 between %s and %s")
                     bash.bash_errorout("time %s %s %s" % (qemu_img.subcmd('compare'), volume_abs_path, install_abs_path))
