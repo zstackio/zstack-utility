@@ -1,0 +1,22 @@
+defaults {
+    user_friendly_names yes
+}
+blacklist_exceptions {
+device {
+    product S/390.*
+    vendor IBM
+}
+
+}
+blacklist {
+
+}
+devices {
+device {
+    features 0
+    no_path_retry fail
+    product *
+    vendor *
+}
+
+}
