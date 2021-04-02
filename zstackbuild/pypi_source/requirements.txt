@@ -30,7 +30,6 @@ urllib3==1.10.4
 virtualenv==12.1.1
 websockify==0.6.1
 Werkzeug==0.10.4
-flask-socketio==2.2
 versiontools==1.7
 prometheus_client==0.1.1
 typing==3.7.4
