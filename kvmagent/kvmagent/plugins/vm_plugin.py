@@ -7160,7 +7160,7 @@ class VmPlugin(kvmagent.KvmAgent):
     # WARNING: it contains quite a few hacks to avoid xmlobject#loads()
     def _vm_reboot_event(self, conn, dom, opaque):
         try:
-            domain_xml = dom.XMLDesc(0)
+            domain_xml = dom.XMLDesc(libvirt.VIR_DOMAIN_XML_SECURE)
             vm_uuid = dom.name()
 
             @thread.AsyncThread
