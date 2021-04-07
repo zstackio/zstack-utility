@@ -419,7 +419,7 @@ def copy_tools():
 
 def copy_kvm_files():
     """copy kvmagent files and packages"""
-    global qemu_conf_status, copy_zstacklib_status, copy_kvmagent_status
+    global qemu_conf_status, copy_zstacklib_status, copy_kvmagent_status, copy_smart_nics_status
 
     # copy agent files
     file_list = ["vm-tools.sh", "agent_version", "kvmagent-iptables"]
@@ -437,6 +437,11 @@ def copy_kvm_files():
     zslib_src = os.path.join("files/zstacklib", pkg_zstacklib)
     zslib_dst = os.path.join(kvm_root, pkg_zstacklib)
     copy_zstacklib_status = copy_to_remote(zslib_src, zslib_dst, None, host_post_info)
+
+    # copy smart-nics file
+    smart_nics_src = os.path.join(file_root, "smart-nics.yaml")
+    smart_nics_dst = "/usr/local/etc/zstack/smart-nics.yaml"
+    copy_smart_nics_status = copy_to_remote(smart_nics_src, smart_nics_dst, None, host_post_info)
 
     # copy kvmagent pkg
     kvmagt_src = os.path.join(file_root, pkg_kvmagent)
@@ -658,7 +663,7 @@ def start_kvmagent():
     if chroot_env != 'false':
         return
 
-    if any(status != "changed:False" for status in [libvirtd_status, libvirtd_conf_status, qemu_conf_status]):
+    if any(status != "changed:False" for status in [libvirtd_status, libvirtd_conf_status, qemu_conf_status, copy_smart_nics_status]):
         # name: restart libvirtd if status is stop or cfg changed
         service_status("libvirtd", "state=restarted enabled=yes", host_post_info)
     # name: restart kvmagent, do not use ansible systemctl due to kvmagent can start by itself, so systemctl will not know
