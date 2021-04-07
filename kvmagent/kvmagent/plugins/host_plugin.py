@@ -30,6 +30,7 @@ from zstacklib.utils import sizeunit
 from zstacklib.utils import thread
 from zstacklib.utils import traceable_shell
 from zstacklib.utils import xmlobject
+from zstacklib.utils import ovs
 from zstacklib.utils.bash import *
 from zstacklib.utils.ip import get_nic_supported_max_speed
 from zstacklib.utils.report import Report
@@ -216,6 +217,8 @@ class HostNetworkInterfaceInventory(object):
 
     def init(self, name):
         super(HostNetworkInterfaceInventory, self).__init__()
+        # TODO： compelete this map
+        self.nic_info = ovs.get_interface_offloadstatus
         self.interfaceName = name
         self.speed = None
         self.slaveActive = None
@@ -225,6 +228,7 @@ class HostNetworkInterfaceInventory(object):
         self.interfaceType = None
         self.master = None
         self.pciDeviceAddress = None
+        self.offloadStatus = None
         self._init_from_name()
 
     @classmethod
@@ -272,6 +276,8 @@ class HostNetworkInterfaceInventory(object):
             self.interfaceType = "bridgeSlave"
 
         self.pciDeviceAddress = os.readlink("/sys/class/net/%s/device" % self.interfaceName).strip().split('/')[-1]
+
+        self.offloadStatus = ovs.get_interface_offloadstatus(self.interfaceName)
 
     def _to_dict(self):
         to_dict = self.__dict__

@@ -1,0 +1,31 @@
+# path: /usr/local/etc/zstack/smart-nics.yaml
+---
+
+- nic:
+    name: ConnectX-5
+    vendor_device: 15b31017
+    offloadstatus:
+      - DPDK
+      - dpdkPartial
+      - vxlanDcap
+      - vxlanEcap
+      - conntrack
+- nic: 
+    name: ConnectX-6
+    vendor_device: 15b31019
+    offloadstatus:
+      - DPDK
+      - dpdkPartial
+      - vxlanDcap
+      - vxlanEcap
+      - conntrack
+- nic: 
+    name: ConnectX-6 DX
+    vendor_device: 15b3101d
+    offloadstatus:
+      - DPDK
+      - dpdkPartial
+      - vxlanDcap
+      - vxlanEcap
+      - conntrack
+      - HWvDPA
