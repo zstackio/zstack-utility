@@ -281,13 +281,13 @@ xferlog_file={VSFTPD_LOG_PATH}
         with open(self.VSFTPD_CONF_PATH, 'w') as f:
             f.write(vsftpd_conf)
 
-        # init pxelinux.cfg
+        # init pxelinux.cfg for x86_64
         pxelinux_cfg = """default zstack_baremetal
 prompt 0
 label zstack_baremetal
 kernel zstack/x86_64/vmlinuz
 ipappend 2
-append initrd=zstack/x86_64/initrd.img devfs=nomount ksdevice=bootif ks=ftp://{PXESERVER_DHCP_NIC_IP}/ks/inspector_ks.cfg vnc
+append initrd=zstack/x86_64/initrd.img devfs=nomount ksdevice=bootif ks=ftp://{PXESERVER_DHCP_NIC_IP}/ks/inspector_ks_x86_64.cfg vnc
 """.format(PXESERVER_DHCP_NIC_IP=pxeserver_dhcp_nic_ip)
         with open(self.PXELINUX_DEFAULT_CFG, 'w') as f:
             f.write(pxelinux_cfg)
