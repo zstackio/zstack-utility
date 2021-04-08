@@ -571,6 +571,7 @@ poweroff
     def _create_post_scripts(self, cmd, pxeserver_dhcp_nic_ip, more_script = ""):
         post_script = more_script
         post_script += """
+host_arch=`uname -m`
 bm_log='/tmp/zstack_bm.log'
 curr_time=`date +"%Y-%m-%d %H:%M:%S"`
 echo -e "Current time: \t$curr_time" >> $bm_log
@@ -589,7 +590,7 @@ wget -O- --header="Content-Type:application/json" \
 http://{PXESERVER_DHCP_NIC_IP}:7771/zstack/asyncrest/sendcommand >>$bm_log 2>&1
 
 # install shellinaboxd
-wget -P /usr/bin ftp://{PXESERVER_DHCP_NIC_IP}/shellinaboxd || curl -o /usr/bin/shellinaboxd ftp://{PXESERVER_DHCP_NIC_IP}/shellinaboxd
+wget -O /usr/bin/shellinaboxd ftp://{PXESERVER_DHCP_NIC_IP}/shellinaboxd_$host_arch || curl -o /usr/bin/shellinaboxd ftp://{PXESERVER_DHCP_NIC_IP}/shellinaboxd_$host_arch
 chmod a+x /usr/bin/shellinaboxd
 
 # install zstack zwatch-vm-agent
