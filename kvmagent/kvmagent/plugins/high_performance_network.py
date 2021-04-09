@@ -207,6 +207,10 @@ class HighPerformanceNetworkPlugin(kvmagent.KvmAgent):
 
     def start(self):
 
+        if not ovs.check_mlnx_ofed():
+            logger.info("can not find mlnxofed softwares and ovs")
+            return 
+
         http_server = kvmagent.get_http_server()
 
         http_server.register_async_uri(
