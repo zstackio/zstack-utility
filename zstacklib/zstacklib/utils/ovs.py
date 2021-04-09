@@ -79,7 +79,9 @@ def get_bonds_interfaces(bondList):
     interface_list = []
     for b in bondList:
         tmp = slaves_p.format(b)
-        tmp_list = read_sysfs(tmp).split()
+        tmp_list = []
+        if os.path.exists(tmp):
+            tmp_list = read_sysfs(tmp).split()
         interface_list.extend(tmp_list)
     return interface_list
 
