@@ -50,9 +50,7 @@ def check_mlnx_ofed():
     # maybe we should check ofed version
     if shell.run("ofed_info -n") != 0:
         return False
-    if shell.run("systemctl restart openvswitch.service") != 0:
-        return False
-    if shell.call("systemctl is-active openvswitch.service") is not 'active':
+    if not os.path.exists("/usr/share/openvswitch/scripts/ovs-ctl"):
         return False
     return True
 
