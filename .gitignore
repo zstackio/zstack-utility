@@ -46,3 +46,4 @@ apibinding/apibinding/inventory.py
 *.orig
 .pydevproject
 .project
+pypi_deps.json
