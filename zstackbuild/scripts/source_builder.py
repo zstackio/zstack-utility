@@ -428,7 +428,8 @@ class Builder(object):
             fd, req_file = tempfile.mkstemp()
             os.write(fd, '\n'.join(req_names))
             os.close(fd)
-            call_with_screen_output('pip2pi %s --index-url %s -r %s --no-binary=:all:' % (self.PYPI_DIR, self.PYPI_URL, req_file))
+            #call_with_screen_output('pip2pi %s --index-url %s -r %s --no-binary=:all:' % (self.PYPI_DIR, self.PYPI_URL, req_file))
+            call_with_screen_output('pip2pi %s --index-url %s -r %s' % (self.PYPI_DIR, self.PYPI_URL, req_file))
             os.remove(req_file)
 
         req_names = ['\t%s' % r for r in downloads]

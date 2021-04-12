@@ -28,7 +28,7 @@ Python support library for zstack""",
           'netaddr==0.7.14',
           'Jinja2==2.7.3',
           "beeprint==2.4.7",
-          'pip==7.0.3'
+          'pip==20.3.4'
       ],
       entry_points="""
       # -*- Entry points: -*-
