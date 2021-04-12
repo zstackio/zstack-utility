@@ -44,6 +44,7 @@ EBTABLES_CMD = ebtables.get_ebtables_cmd()
 
 COLO_QEMU_KVM_VERSION = '/var/lib/zstack/colo/qemu_kvm_version'
 COLO_LIB_PATH = '/var/lib/zstack/colo/'
+HOST_TAKEOVER_FLAG_PATH = 'var/run/zstack/takeOver'
 
 class ConnectResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -684,6 +685,8 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.hostUuid = self.host_uuid
         rsp.sendCommandUrl = self.config.get(kvmagent.SEND_COMMAND_URL)
         rsp.version = self.config[kvmagent.VERSION]
+        if os.path.exists(HOST_TAKEOVER_FLAG_PATH):
+            linux.touch_file(HOST_TAKEOVER_FLAG_PATH)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
