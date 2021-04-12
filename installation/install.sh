@@ -196,6 +196,7 @@ declare -a upgrade_params_array=(
     '4.0.0,-DsyncPciDeviceOfferingRef=true'
     '4.0.0,-DupgradeLoadBalancerServerGroup=true'
     '4.1.0,-DupgradeSystemVipNetworkServicesRefVO=true'
+    '4.1.0,-Dlicense.upgradeLicenseRecords=true'
 )
 #other than the upon params_array, this one could be persisted in zstack.properties
 declare -a upgrade_persist_params_array=(
