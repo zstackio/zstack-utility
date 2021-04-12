@@ -278,7 +278,7 @@ WantedBy=multi-user.target
 
         cmd.vmInfo = vmInfos[0]
         logger.debug("get srcVmInfo: %s" % jsonobject.dumps(cmd.vmInfo))
-        ps.fetch_vm_disk(cmd.vmInfo, storage_dir, cmd.managementIp)
+        ps.fetch_vm_disk(cmd.vmInfo, storage_dir, cmd.managementIp, cmd.exportPath)
 
         report.progress_report(30, "start")
 

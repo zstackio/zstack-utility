@@ -7,8 +7,6 @@ from zstacklib.utils import shell
 
 logger = log.get_logger(__name__)
 
-HYPERV_V2V_EXPORT_PATH = "C:\\Users\\Administrator\\Desktop\\zstack-v2v"
-
 class VolumeInfo(object):
     def __init__(self):
         self.name = None       # type: str
@@ -187,8 +185,8 @@ $vmInfos | ConvertTo-Json
         vms = make_vminfo_from_output(output)
         return vms
 
-    def fetch_vm_disk(self, vmInfo, dest_path, conversionHostIp):
-        export_path = "%s\%s" % (HYPERV_V2V_EXPORT_PATH, vmInfo.uuid)
+    def fetch_vm_disk(self, vmInfo, dest_path, conversionHostIp, exportPath):
+        export_path = "%s\%s" % (exportPath, vmInfo.uuid)
         disk_path = "%s\%s\%s" % (export_path, vmInfo.name, "Virtual Hard Disks")
 
         ftp_path = "ftp://%s/%s/" % (conversionHostIp, vmInfo.uuid)
