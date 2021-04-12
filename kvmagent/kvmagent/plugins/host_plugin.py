@@ -1079,6 +1079,7 @@ if __name__ == "__main__":
         rsp = UpdateDependencyRsp()
         if self.IS_YUM:
             releasever = kvmagent.get_host_yum_release()
+            shell.run("yum remove -y qemu-kvm-tools-ev")
             yum_cmd = "export YUM0={};yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install `cat /var/lib/zstack/dependencies` -y".format(releasever)
             if shell.run("export YUM0={};yum --disablerepo=* --enablerepo=zstack-mn repoinfo".format(releasever)) != 0:
                 rsp.success = False
