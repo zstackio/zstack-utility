@@ -63,6 +63,12 @@ class ReinitImageRsp(AgentResponse):
         super(ReinitImageRsp, self).__init__()
         self.newVolumeInstallPath = None
 
+class CreateTemplateFromVolumeRsp(AgentResponse):
+    def __init__(self):
+        super(CreateTemplateFromVolumeRsp, self).__init__()
+        self.size = None
+        self.actualSize = None
+
 class MergeSnapshotRsp(AgentResponse):
     def __init__(self):
         super(MergeSnapshotRsp, self).__init__()
@@ -583,7 +589,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     @rollback.rollback
     def create_template_from_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AgentResponse()
+        rsp = CreateTemplateFromVolumeRsp()
         dirname = os.path.dirname(cmd.installPath)
         if not os.path.exists(dirname):
             os.makedirs(dirname, 0755)
@@ -597,6 +603,8 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         linux.create_template(cmd.volumePath, cmd.installPath, shell=t_shell)
 
         logger.debug('successfully created template[%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
+
+        rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installPath)
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
         return jsonobject.dumps(rsp)
 

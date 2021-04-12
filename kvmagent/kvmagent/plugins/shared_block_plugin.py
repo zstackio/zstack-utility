@@ -59,6 +59,13 @@ class RevertVolumeFromSnapshotRsp(AgentRsp):
         self.size = None
 
 
+class CreateTemplateFromVolumeRsp(AgentRsp):
+    def __init__(self):
+        super(CreateTemplateFromVolumeRsp, self).__init__()
+        self.size = None
+        self.actualSize = None
+
+
 class MergeSnapshotRsp(AgentRsp):
     def __init__(self):
         super(MergeSnapshotRsp, self).__init__()
@@ -755,7 +762,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def create_template_from_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AgentRsp()
+        rsp = CreateTemplateFromVolumeRsp()
         volume_abs_path = translate_absolute_path_from_install_path(cmd.volumePath)
         install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
 
@@ -779,6 +786,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 t_shell = traceable_shell.get_shell(cmd)
                 linux.create_template(volume_abs_path, install_abs_path, shell=t_shell)
                 logger.debug('successfully created template[%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
+
+                rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(install_abs_path)
                 if cmd.compareQcow2 is True:
                     logger.debug("comparing qcow2 between %s and %s")
                     bash.bash_errorout("time %s %s %s" % (qemu_img.subcmd('compare'), volume_abs_path, install_abs_path))

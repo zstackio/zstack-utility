@@ -80,6 +80,8 @@ class DownloadBitsFromSftpBackupStorageResponse(NfsResponse):
 class CreateTemplateFromRootVolumeRsp(NfsResponse):
     def __init__(self):
         super(CreateTemplateFromRootVolumeRsp, self).__init__()
+        self.size = None
+        self.actualSize = None
 
 class GetCapacityResponse(NfsResponse):
     def __init__(self):
@@ -739,6 +741,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
 
             t_shell = traceable_shell.get_shell(cmd)
             linux.create_template(cmd.rootVolumePath, cmd.installPath, shell=t_shell)
+            rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installPath)
         except linux.LinuxError as e:
             linux.rm_file_force(cmd.installPath)
             logger.warn(linux.get_exception_stacktrace())
