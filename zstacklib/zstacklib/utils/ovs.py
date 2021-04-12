@@ -409,7 +409,7 @@ def check_ovs_status():
 
 
 def start_ovs():
-    shell.run("/usr/share/openvswitch/scripts/ovs-ctl start")
+    shell.run("/usr/share/openvswitch/scripts/ovs-ctl start --no-force-corefiles")
 
 
 def stop_ovs():
