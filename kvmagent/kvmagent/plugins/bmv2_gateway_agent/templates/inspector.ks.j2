@@ -1,6 +1,5 @@
 # Use network installation
 url --url={{ network_inst_uri }}
-repo --name=qemu-kvm-ev --baseurl={{ network_inst_repo_uri }}
 
 # Text mode
 text
@@ -65,8 +64,8 @@ def get_basic_info():
     memory_bytes = 0
     stdout = commands.getoutput('dmidecode --type memory')
     for line in stdout.split('\n'):
-        line = line.lower()
-        if 'size' in line and 'no module' not in line:
+        line = line.lower().strip()
+        if line.startswith('size') and 'no module' not in line:
             _, size, unit = line.split()
             memory_bytes += int(size) * units_mapping[unit]
 
@@ -94,6 +93,15 @@ def get_nic_info():
         for param in f.read().strip().split():
             if 'BOOTIF' in param:
                 pxe_iface_mac = param.split('=')[-1].replace('-', ':')
+
+    if not pxe_iface_mac:
+        pxe_iface_name = commands.getoutput(
+                "ip route | awk '/default/ { print $5 }' | head -n 1")
+        if not pxe_iface_name:
+            pxe_iface_name = commands.getoutput(
+                    "ip route | awk '{ print $3 }' | head -n 1")
+        with open("/sys/class/net/%s/address" % pxe_iface_name, 'r') as f:
+            pxe_iface_mac = f.read().strip()
 
     net_devs = []
     for net_dev in os.listdir('/sys/class/net'):

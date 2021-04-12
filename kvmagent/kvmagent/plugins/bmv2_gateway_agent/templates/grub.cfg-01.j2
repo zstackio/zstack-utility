@@ -1,0 +1,30 @@
+set default="1"
+
+function load_video {
+  if [ x$feature_all_video_module = xy ]; then
+    insmod all_video
+  else
+    insmod efi_gop
+    insmod efi_uga
+    insmod ieee1275_fb
+    insmod vbe
+    insmod vga
+    insmod video_bochs
+    insmod video_cirrus
+  fi
+}
+
+load_video
+set gfxpayload=keep
+insmod gzio
+insmod part_gpt
+insmod ext2
+insmod xfs
+
+set timeout=10
+
+### BEGIN /etc/grub.d/10_linux ###
+menuentry {{ instance_uuid }} --class red --class gnu-linux --class gnu --class os {
+    linux  (tftp)aarch64/{{ image_uuid }}/vmlinuz BOOTIF={{ bootif }} netroot={{ netroot_path }} rd.iscsi.initiator=iqn.2015-01.io.zstack:initiator.instance.{{ instance_uuid }} rd.iscsi.waitnet=0 root=UUID={{ root_uuid }} video=efifb:off video=VGA-1:640x480-32@60me smmu.bypassdev=0x1000:0x17 smmu.bypassdev=0x1000:0x15 rhgb quiet
+    initrd (tftp)aarch64/{{ image_uuid }}/initrd.img
+}

@@ -474,6 +474,13 @@ def copy_zs_scripts():
     _dst = '/usr/local/bin/'
     copy_to_remote(_src, _dst, None, host_post_info)
 
+@on_redhat_based(distro)
+def copy_grubaa64_efi():
+    """copy grubaa64.efi from mn_node to bm2 gateway"""
+    _src = os.path.join(file_root, "grubaa64.efi")
+    _dst = "/tmp/"
+    copy_to_remote(_src, _dst, "mode=755", host_post_info)
+
 
 @on_redhat_based(distro, exclude=['alibaba'])
 def set_max_performance():
@@ -687,6 +694,7 @@ copy_gpudriver()
 copy_ovmf_tools()
 copy_lsusb_scripts()
 copy_zs_scripts()
+copy_grubaa64_efi()
 set_max_performance()
 do_libvirt_qemu_config()
 do_network_config()

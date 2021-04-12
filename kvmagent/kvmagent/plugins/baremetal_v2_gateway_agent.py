@@ -2,6 +2,8 @@ import json
 import os
 import pwd
 import shutil
+import commands
+import tempfile
 
 from jinja2 import Template
 from zstacklib.utils import http
@@ -61,6 +63,10 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
     PXELINUX_CFG_DIR = os.path.join(TFTPBOOT_DIR, 'pxelinux.cfg/')
     BOOT_IPXE_PATH = os.path.join(TFTPBOOT_DIR, 'boot.ipxe')
     DEFAULT_PXE_PATH = os.path.join(PXELINUX_CFG_DIR, 'default')
+    GRUB_CFG_DIR = os.path.join(TFTPBOOT_DIR, 'EFI/centos/')
+    GRUB_CFG_PATH = os.path.join(GRUB_CFG_DIR, 'grub.cfg')
+    X86_64_BOOTIMG_DIR = os.path.join(TFTPBOOT_DIR, 'x86_64')
+    AARCH64_BOOTIMG_DIR = os.path.join(TFTPBOOT_DIR, 'aarch64')
 
     MAPFILE_PATH = os.path.join(BAREMETAL_LIB_DIR, 'map-file')
     TFTPD_SYSTEMD_SERVICE_PATH = \
@@ -79,10 +85,14 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
 
     HTTPBOOT_DIR = os.path.join(BAREMETAL_LIB_DIR, 'bmv2httpboot//')
     ZSTACK_DVD_LINKED_DIR = os.path.join(HTTPBOOT_DIR, 'zstack-dvd')
+    ZSTACK_DVD_X86_64_LINKED_DIR = os.path.join(ZSTACK_DVD_LINKED_DIR, 'x86_64')
+    ZSTACK_DVD_AARCH64_LINKED_DIR = os.path.join(ZSTACK_DVD_LINKED_DIR, 'aarch64')
+
+    KS_CFG_DIR = os.path.join(HTTPBOOT_DIR, 'ks')
+    INSPECTOR_KS_X86_64_CFG = os.path.join(KS_CFG_DIR, 'inspector_ks_x86_64.cfg')
+    INSPECTOR_KS_AARCH64_CFG = os.path.join(KS_CFG_DIR, 'inspector_ks_aarch64.cfg')
+
     BAREMETAL_INSTANCE_AGENT_PORT = 7090
-
-    INSPECTOR_KS_CFG = os.path.join(HTTPBOOT_DIR, 'inspector.ks')
-
     BAREMETAL_GATEWAY_AGENT_CONF_CACHE = os.path.join(BAREMETAL_LIB_DIR,
                                                       '.bm-gateway.conf')
 
@@ -124,30 +134,52 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             self.PID_DIR,
             self.DNSMASQ_DIR,
             self.TFTPBOOT_DIR,
+            self.GRUB_CFG_DIR,
             self.PXELINUX_CFG_DIR,
             self.NGINX_BM_AGENT_PROXY_CONF_DIR,
             self.NGINX_LOG_DIR,
-            self.HTTPBOOT_DIR
+            self.HTTPBOOT_DIR,
+            self.KS_CFG_DIR,
+            self.X86_64_BOOTIMG_DIR,
+            self.AARCH64_BOOTIMG_DIR
         ]
-        cmd = 'mkdir -p {dirs}'.format(dirs=' '.join(directories))
+        cmd = 'mkdir -m 0755 -p {dirs}'.format(dirs=' '.join(directories))
         shell.call(cmd)
 
         # Prepare tftpboot, copy ipxe/pxelinux.0 rom
-        bm_utils.copy_dir_files_to_another_dir(
-            '/usr/share/ipxe', self.TFTPBOOT_DIR)
+        shutil.copy('/usr/share/ipxe/ipxe.efi', self.TFTPBOOT_DIR)
+        shutil.copy('/usr/share/ipxe/undionly.kpxe', self.TFTPBOOT_DIR)
         shutil.copy('/usr/share/syslinux/pxelinux.0', self.TFTPBOOT_DIR)
 
+        # Copy grubaa64.efi
+        shutil.copy('/tmp/grubaa64.efi', self.TFTPBOOT_DIR)
+
         # Prepare httpboot, link zstack-dvd, copy kernel&initramfs
-        if os.path.exists(self.ZSTACK_DVD_LINKED_DIR):
+        if os.path.islink(self.ZSTACK_DVD_LINKED_DIR):
             os.unlink(self.ZSTACK_DVD_LINKED_DIR)
+
+        if not os.path.exists(self.ZSTACK_DVD_LINKED_DIR):
+            linux.mkdir(self.ZSTACK_DVD_LINKED_DIR)
+
+        if os.path.islink(self.ZSTACK_DVD_X86_64_LINKED_DIR):
+            os.unlink(self.ZSTACK_DVD_X86_64_LINKED_DIR)
         os.symlink('/opt/zstack-dvd/x86_64/%s' % yum_release,
-                   self.ZSTACK_DVD_LINKED_DIR)
-        bm_utils.copy_dir_files_to_another_dir(
-            os.path.join(self.ZSTACK_DVD_LINKED_DIR, 'images', 'pxeboot'),
-            self.HTTPBOOT_DIR)
-        bm_utils.copy_dir_files_to_another_dir(
-            os.path.join(self.ZSTACK_DVD_LINKED_DIR, 'images', 'pxeboot'),
-            self.TFTPBOOT_DIR)
+                   self.ZSTACK_DVD_X86_64_LINKED_DIR)
+
+        if os.path.isdir(self.ZSTACK_DVD_X86_64_LINKED_DIR):
+            bm_utils.copy_dir_files_to_another_dir(
+                os.path.join(self.ZSTACK_DVD_X86_64_LINKED_DIR, 'images', 'pxeboot'),
+                self.X86_64_BOOTIMG_DIR)
+
+        if os.path.islink(self.ZSTACK_DVD_AARCH64_LINKED_DIR):
+            os.unlink(self.ZSTACK_DVD_AARCH64_LINKED_DIR)
+        os.symlink('/opt/zstack-dvd/aarch64/ns10',
+                   self.ZSTACK_DVD_AARCH64_LINKED_DIR)
+
+        if os.path.isdir(self.ZSTACK_DVD_AARCH64_LINKED_DIR):
+            bm_utils.copy_dir_files_to_another_dir(
+                os.path.join(self.ZSTACK_DVD_AARCH64_LINKED_DIR, 'images', 'pxeboot'),
+                self.AARCH64_BOOTIMG_DIR)
 
         # Start and enable target service
         cmd = 'systemctl start target && systemctl enable target'
@@ -173,6 +205,8 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             'dnsmasq.conf': os.path.join(template_dir, 'dnsmasq.conf.j2'),
             'dnsmasq.opts': os.path.join(template_dir, 'dnsmasq.opts.j2'),
             'inspector.ks': os.path.join(template_dir, 'inspector.ks.j2'),
+            'grub.cfg': os.path.join(template_dir, 'grub.cfg.j2'),
+            'grub.cfg-01': os.path.join(template_dir, 'grub.cfg-01.j2'),
             'nginx_basic': os.path.join(template_dir, 'nginx.conf.j2'),
             'nginx_proxy_to_mn': os.path.join(template_dir,
                                               'nginx-proxy-to-mn.conf.j2'),
@@ -685,37 +719,110 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
 
         return gw_port
 
+    def _prepare_grub_default_configuration(self, network_obj):
+        """ Prepare default grub configuration
+
+        :param network_obj: The network obj
+        :type network_obj: NetworkObj
+        """
+        inspect_ks_cfg_uri = ('http://{ip}:{port}/bmv2httpboot/ks/inspector_ks_aarch64.cfg').format(
+                ip=network_obj.provision_nic_ip,
+                port=network_obj.baremetal_instance_proxy_port)
+
+        grub_template = self._load_template('grub.cfg')
+        grub_conf = grub_template.render(inspect_ks_cfg_uri=inspect_ks_cfg_uri)
+        with open(self.GRUB_CFG_PATH, 'w') as f:
+            f.write(grub_conf)
+
+
+    def _create_grub_configuration(self, instance_obj, volume_drivers):
+        """ Generate grub cfg for aarch64 bm instance
+        """
+        # guestmount image and copy vmlinuz/initrd.img out
+        image_dir = os.path.join(self.AARCH64_BOOTIMG_DIR, instance_obj.image_uuid)
+        if not os.path.exists(image_dir) or not os.listdir(image_dir):
+            linux.mkdir(image_dir)
+            tempdir = tempfile.mkdtemp()
+
+            nbd_id = '0'
+            for volume_driver in volume_drivers:
+                if volume_driver.volume_obj.type == 'Root':
+                    nbd_id = volume_driver.nbd_id
+                    break
+
+            status,output = commands.getstatusoutput('guestmount --ro -a /dev/nbd%s -m /dev/sda2 %s' % (nbd_id, tempdir))
+            shutil.copy(os.path.join(tempdir, 'baremetal2/vmlinuz'), image_dir)
+            shutil.copy(os.path.join(tempdir, 'baremetal2/initrd.img'), image_dir)
+            shutil.copy(os.path.join(tempdir, 'baremetal2/root_uuid'), image_dir)
+            commands.getoutput('chmod 0777 %s/*; umount %s; rm -rf %s' % (image_dir, tempdir, tempdir))
+
+        root_uuid = ''
+        if os.path.exists(os.path.join(image_dir, 'root_uuid')):
+            with open(os.path.join(image_dir, 'root_uuid'), 'r') as f:
+                root_uuid = f.read().strip()
+
+        # Ensure EFI/centos dir exist
+        if not os.path.exists(self.GRUB_CFG_DIR):
+            linux.mkdir(self.GRUB_CFG_DIR)
+
+        netroot_path = ""
+        for volume_driver in volume_drivers:
+            if volume_driver.volume_obj.type == 'Root':
+                netroot_path = 'iscsi:{gw_ip}:::{lun_id}:{target}'.format(
+                    gw_ip=self.provision_network_conf.provision_nic_ip,
+                    lun_id=volume_driver.iscsi_lun,
+                    target=volume_driver.iscsi_target)
+                break
+
+        template = self._load_template('grub.cfg-01')
+        conf = template.render(
+            root_uuid=root_uuid,
+            netroot_path=netroot_path,
+            instance_uuid=instance_obj.uuid,
+            image_uuid=instance_obj.image_uuid,
+            bootif=instance_obj.provision_mac
+            )
+        grub_file_name = "grub.cfg-01-" + instance_obj.provision_mac.replace(':', '-')
+        grub_file_path = os.path.join(self.GRUB_CFG_DIR, grub_file_name)
+        with open(grub_file_path, 'w') as f:
+            f.write(conf)
+
+    def _delete_grub_configuration(self, instance_obj):
+        """ Delete grub cfg for aarch64 bm instance
+        """
+        grub_file_name = "grub.cfg-01-" + instance_obj.provision_mac.replace(':', '-')
+        grub_file_path = os.path.join(self.GRUB_CFG_DIR, grub_file_name)
+        if not os.path.exists(grub_file_path):
+            msg = ('The grub configuration file: {grub_file_path} was '
+                   'deleted before the operate').format(
+                       grub_file_path=grub_file_name)
+            logger.warning(msg)
+            return
+        linux.rm_file_force(grub_file_path)
+
+
     def _prepare_ipxe_default_configuration(self, network_obj):
         """ Prepare ipxe default configuration
 
         :param network_obj: The network obj
         :type network_obj: NetworkObj
         """
-        port = network_obj.baremetal_instance_proxy_port
-        inspect_kernel_uri = ('http://{ip}:{port}/bmv2httpboot/'
-                              'vmlinuz').format(
-                                  ip=network_obj.provision_nic_ip,
-                                  port=port)
-        inspect_initrd_uri = ('http://{ip}:{port}/bmv2httpboot/'
-                              'initrd.img').format(
-                                  ip=network_obj.provision_nic_ip,
-                                  port=port)
-        inspect_ks_uri = ('http://{ip}:{port}/bmv2httpboot/'
-                          'inspector.ks').format(
-                              ip=network_obj.provision_nic_ip,
-                              port=port)
+        inspect_kernel_uri = 'x86_64/vmlinuz'
+        inspect_initrd_uri = 'x86_64/initrd.img'
+        inspect_ks_cfg_uri = 'http://{ip}:{port}/bmv2httpboot/ks/inspector_ks_x86_64.cfg'.format(
+                ip=network_obj.provision_nic_ip, port=network_obj.baremetal_instance_proxy_port)
 
         ipxe_template = self._load_template('boot.ipxe')
         ipxe_conf = ipxe_template.render(
             inspect_kernel_uri=inspect_kernel_uri,
-            inspect_initramfs_uri=inspect_initrd_uri,
-            inspect_ks_uri=inspect_ks_uri)
+            inspect_initrd_uri=inspect_initrd_uri,
+            inspect_ks_cfg_uri=inspect_ks_cfg_uri)
         with open(self.BOOT_IPXE_PATH, 'w') as f:
             f.write(ipxe_conf)
 
         pxe_template = self._load_template('default.pxe')
         pxe_conf = pxe_template.render(
-            inspect_ks_uri=inspect_ks_uri)
+            inspect_ks_cfg_uri=inspect_ks_cfg_uri)
         with open(self.DEFAULT_PXE_PATH, 'w') as f:
             f.write(pxe_conf)
 
@@ -724,7 +831,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         """
         # Ensure pxelinux.cfg dir exist
         if not os.path.exists(self.PXELINUX_CFG_DIR):
-            cmd = 'mkdir -p {dir}'.format(dir=self.PXELINUX_CFG_DIR)
+            cmd = 'mkdir -m 0755 -p {dir}'.format(dir=self.PXELINUX_CFG_DIR)
             shell.call(cmd)
 
         # Due to the limit of iBFT, only add the root volume into ipxe conf
@@ -813,26 +920,35 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         :type network_obj: NetworkObj
         """
         port = network_obj.baremetal_instance_proxy_port
-        network_inst_uri = ('http://{ip}:{port}/bmv2httpboot/'
-                            'zstack-dvd').format(
-                                ip=network_obj.provision_nic_ip,
-                                port=port)
-        network_inst_repo_uri = ('http://{ip}:{port}/bmv2httpboot'
-                                 '/zstack-dvd/Extra/qemu-kvm-ev').format(
-                                     ip=network_obj.provision_nic_ip,
-                                     port=port)
+
         send_hardware_infos_uri = (
             'http://{ip}:{port}/baremetal_instance_agent/v2/hardwareinfos'
             ).format(ip=network_obj.provision_nic_ip, port=port)
 
         template = self._load_template('inspector.ks')
+
+        # create inspector_ks_x86_64.cfg
+        network_inst_uri = "http://{ip}:{port}/bmv2httpboot/zstack-dvd/x86_64/".format(
+                ip=network_obj.provision_nic_ip, port=port)
+
         conf = template.render(
             network_inst_uri=network_inst_uri,
-            network_inst_repo_uri=network_inst_repo_uri,
             send_hardware_infos_uri=send_hardware_infos_uri
         )
 
-        with open(self.INSPECTOR_KS_CFG, 'w') as f:
+        with open(self.INSPECTOR_KS_X86_64_CFG, 'w') as f:
+            f.write(conf)
+
+        # create inspector_ks_aarch64.cfg
+        network_inst_uri = "http://{ip}:{port}/bmv2httpboot/zstack-dvd/aarch64/".format(
+                ip=network_obj.provision_nic_ip, port=port)
+
+        conf = template.render(
+            network_inst_uri=network_inst_uri,
+            send_hardware_infos_uri=send_hardware_infos_uri
+        )
+
+        with open(self.INSPECTOR_KS_AARCH64_CFG, 'w') as f:
             f.write(conf)
 
     def _check_management_provision_network_mixed(self, network_obj):
@@ -887,6 +1003,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
 
             self._prepare_provision_network(network_obj)
             self._prepare_nginx(network_obj, bm_instance_objs)
+            self._prepare_grub_default_configuration(network_obj)
             self._prepare_ipxe_default_configuration(network_obj)
             self._prepare_ks_configuration(network_obj)
 
@@ -976,6 +1093,8 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             ],
             'bmInstance': {
                 'uuid': 'uuid1',
+                'architecture': 'x86_64',  # or 'aarch64'
+                'rootUuid': 'b0011211-ca57-413d-bd80-d3422350ca0f',
                 'provisionIp': '192.168.101.10',
                 'provisionMac': 'aa:bb:cc:dd:ee:ff'
             }
@@ -995,7 +1114,10 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                     volume_driver.attach()
                     volume_drivers.append(volume_driver)
 
-                self._create_ipxe_configuration(instance_obj, volume_drivers)
+                if instance_obj.architecture == 'aarch64':
+                    self._create_grub_configuration(instance_obj, volume_drivers)
+                else:
+                    self._create_ipxe_configuration(instance_obj, volume_drivers)
                 self._create_nginx_agent_proxy_configuration(instance_obj)
             self._create_dnsmasq_host(instance_obj)
         return jsonobject.dumps(kvmagent.AgentResponse())
@@ -1011,7 +1133,10 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                 volume_driver = volume.get_driver(instance_obj, volume_obj)
                 volume_driver.detach()
 
-            self._delete_ipxe_configuration(instance_obj)
+            if instance_obj.architecture == 'aarch64':
+                self._delete_grub_configuration(instance_obj)
+            else:
+                self._delete_ipxe_configuration(instance_obj)
             self._delete_nginx_agent_proxy_configuration(instance_obj)
 
         self._delete_dnsmasq_host(instance_obj)

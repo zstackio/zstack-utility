@@ -2,6 +2,6 @@ default inspect
 prompt 0
 
 label inspect
-kernel vmlinuz
+kernel x86_64/vmlinuz
 ipappend 2
-append initrd=initrd.img devfs=nomount ksdevice=bootif ks={{ inspect_ks_uri }} nofb nomodeset vga=normal console=tty0 console=ttyS1,115200n8
+append initrd=x86_64/initrd.img devfs=nomount ksdevice=bootif ks={{ inspect_ks_cfg_uri }} nofb nomodeset vga=normal console=tty0 console=ttyS1,115200n8 rhgb quiet
