@@ -1066,7 +1066,8 @@ ia_install_python_gcc_rh(){
 ia_install_pip(){
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Install PIP"
-    which pip >/dev/null 2>&1 && which pip2 >/dev/null && return
+    # upgrade pip anyway
+    #which pip >/dev/null 2>&1 && which pip2 >/dev/null && return
 
     if [ ! -z $DEBUG ]; then
         easy_install -i $pypi_source_easy_install --upgrade pip
