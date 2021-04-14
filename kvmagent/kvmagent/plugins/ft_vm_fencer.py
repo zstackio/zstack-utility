@@ -138,7 +138,8 @@ class FaultToleranceFecnerPlugin(kvmagent.KvmAgent):
 
         @in_bash
         def stop_management_node():
-            r, o, e = bash_roe("zsha2 stop-node -stopvip || zstack-ctl stop")
+            # just stop management node keep ui started
+            r, o, e = bash_roe("zsha2 stop-node -stopvip || zstack-ctl stop_node")
             r1, o1 = bash_ro("pgrep -af -- '-DappName=zstack start'")
             if r1 == 0:
                 raise Exception(
