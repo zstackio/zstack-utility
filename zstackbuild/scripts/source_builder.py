@@ -185,6 +185,7 @@ class Builder(object):
 
         sp = sub_parser.add_parser(name='verify', help='verify the pipy repo through a virtualenv')
         sp.add_argument('--exclude', '-e', action='append', dest='excludes', default=[], help='[Support Multiple] sub projects to be excluded from scan, e.g. -e bm-instance-agent')
+        sp.add_argument('--keep', '-k', action='store_true', dest='keep', default=False, help='keep the verifycation virtualenv not deleted')
 
         sp = sub_parser.add_parser(name='deps', help='show dependencies of project requirements')
         sp.add_argument('--exclude', '-e', action='append', dest='excludes', default=[], help='[Support Multiple] sub projects to be excluded from scan, e.g. -e bm-instance-agent')
@@ -256,11 +257,16 @@ class Builder(object):
             self.requirements[project_name] = reqs
 
     def _generate_existing_package_distribution(self):
+        from pkginfo import Wheel
+
         for root, _, files in os.walk(self.PYPI_DIR):
             for f in files:
                 if f.endswith('.tar.gz') or f.endswith('.zip'):
                     egg = f.replace('tar.gz', 'egg').replace('zip', 'egg')
                     self.existing_packages.append((Distribution.from_filename(egg), os.path.join(root, f)))
+                elif f.endswith('.whl'):
+                    w = Wheel(os.path.join(root, f))
+                    self.existing_packages.append((Distribution.from_filename('%s-%s.egg' % (w.name, w.version)), os.path.join(root, f)))
 
     def _calculate_modifications(self):
         def is_req_to_add(req):
@@ -356,6 +362,8 @@ class Builder(object):
         venv_dir = os.path.join(tmp_dir, 'pypi_verify')
         activate_bin_path = os.path.join(venv_dir, 'bin/activate')
 
+        self._print_requirements()
+
         for project_name, reqs in self.requirements.items():
             info('Verifying requirements in project: %s' % project_name)
             for r in reqs:
@@ -364,8 +372,11 @@ class Builder(object):
                     cleanup()
                     error('failed to install requirement[%s] for project[%s]' % (r, project_name))
 
-        cleanup()
-        info('\n\n\nAll requirements verified successfully')
+        if not self.args.keep:
+            cleanup()
+            info('\n\n\nAll requirements verified successfully')
+        else:
+            info('\n\n\nAll requirements verified successfully, and the virtualenv is kept at %s' % os.path.join(tmp_dir, 'pypi_verify'))
 
     def run(self):
         if not os.path.isdir(self.PYPI_DIR):
@@ -386,7 +397,7 @@ class Builder(object):
         self._scan_setup_py()
 
         for project_name, setup_py in self.sub_projects:
-            info('collecting requirements ...')
+            info('collecting requirements[project: %s] ...' % project_name)
             requires = self._get_project_requires(setup_py)
             self._collect_requirements(project_name, requires)
 
@@ -449,11 +460,16 @@ class Builder(object):
         except ImportError:
             call_with_screen_output('pip install -i %s psutil' % self.PYPI_URL)
 
+        try:
+            import pkginfo
+        except ImportError:
+            call_with_screen_output('pip install -i %s pkginfo' % self.PYPI_URL)
+
     def _deps(self):
         self._collect_requirements_of_projects()
         self._generate_existing_package_distribution()
 
-        def find_tgz(req):
+        def find_req(req):
             for ep in self.existing_packages:
                 distro, path = ep
                 if distro in req:
@@ -469,36 +485,54 @@ class Builder(object):
 
             return None
 
+        def get_requires_of_tgz_zip(req_path):
+            tmp_dir = tempfile.mkdtemp()
+
+            def cleanup():
+                call('rm -rf %s' % tmp_dir)
+                pass
+
+            info('collecting dependencies[project:%s, requirement:%s] ...' % (project_name, r))
+            if req_path.endswith('.zip'):
+                call('unzip %s -d %s' % (req_path, tmp_dir))
+            else:
+                call('tar xzf %s -C %s' % (req_path, tmp_dir))
+
+            setup_py = find_setup_py(tmp_dir)
+            if setup_py is None:
+                cleanup()
+                error('no setup.py found in package[%s], is it broken?' % req_path)
+
+            requires = self._get_project_requires(setup_py)
+            cleanup()
+            return requires
+
+        def get_requires_of_whl(req_path):
+            from pkginfo import Wheel
+            whl = Wheel(req_path)
+            rs = []
+            for rd in whl.requires_dist:
+                rs.append(rd.split(';')[0].strip())
+
+            return rs
+
         result = {}
         for project_name, reqs in self.requirements.items():
             for r in reqs:
-                tgz_path = find_tgz(r)
-                if tgz_path is None:
+                req_path = find_req(r)
+                if req_path is None:
                     error('unable to find any package in %s satisfying %s for project[%s], you may need to run "source_builder build" first' % (self.PYPI_DIR, r, project_name))
 
-                tmp_dir = tempfile.mkdtemp()
-
-                def cleanup():
-                    call('rm -rf %s' % tmp_dir)
-                    pass
-
-                info('collecting dependencies[project:%s, requirement:%s] ...' % (project_name, r))
-                if tgz_path.endswith('.zip'):
-                    call('unzip %s -d %s' % (tgz_path, tmp_dir))
+                if req_path.endswith('.tar.gz') or req_path.endswith('.zip'):
+                    requires = get_requires_of_tgz_zip(req_path)
+                elif req_path.endswith('.whl'):
+                    requires = get_requires_of_whl(req_path)
                 else:
-                    call('tar xzf %s -C %s' % (tgz_path, tmp_dir))
-
-                setup_py = find_setup_py(tmp_dir)
-                if setup_py is None:
-                    cleanup()
-                    error('no setup.py found in package[%s], is it broken?' % tgz_path)
-
-                requires = self._get_project_requires(setup_py)
+                    raise Exception('should not be here. unknown requirement[%s]' % r)
 
                 req_dict = result.get(project_name, {})
                 req_dict[str(r)] = requires
                 result[project_name] = req_dict
-                cleanup()
 
         print('\n\nDependencies are dumped as below:\n\n')
         for project_name, req_dict in result.items():
