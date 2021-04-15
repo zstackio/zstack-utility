@@ -1067,12 +1067,11 @@ ia_install_pip(){
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Install PIP"
     # upgrade pip anyway
-    #which pip >/dev/null 2>&1 && which pip2 >/dev/null && return
 
     if [ ! -z $DEBUG ]; then
-        easy_install -i $pypi_source_easy_install --upgrade pip
+        pip install pip -i $pypi_source_easy_install --upgrade
     else
-        easy_install -i $pypi_source_easy_install --upgrade pip >>$ZSTACK_INSTALL_LOG 2>&1
+        pip install pip -i $pypi_source_easy_install --upgrade >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     [ $? -ne 0 ] && fail "install PIP failed"
     pass
@@ -1478,6 +1477,7 @@ is_install_general_libs_rh(){
             psmisc \
             python-backports-ssl_match_hostname \
             python-setuptools \
+            python2-pip \
             avahi \
             gnutls-utils \
             avahi-tools \
