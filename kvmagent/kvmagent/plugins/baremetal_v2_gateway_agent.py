@@ -751,6 +751,11 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                     break
 
             status,output = commands.getstatusoutput('guestmount --ro -a /dev/nbd%s -m /dev/sda2 %s' % (nbd_id, tempdir))
+            if not os.path.exists(os.path.join(tempdir, 'baremetal2/vmlinuz')) or \
+                    not os.path.exists(os.path.join(tempdir, 'baremetal2/initrd.img')) or \
+                    not os.path.exists(os.path.join(tempdir, 'baremetal2/root_uuid')):
+                commands.getoutput('umount %s; rm -rf %s' % (tempdir, tempdir))
+
             shutil.copy(os.path.join(tempdir, 'baremetal2/vmlinuz'), image_dir)
             shutil.copy(os.path.join(tempdir, 'baremetal2/initrd.img'), image_dir)
             shutil.copy(os.path.join(tempdir, 'baremetal2/root_uuid'), image_dir)
