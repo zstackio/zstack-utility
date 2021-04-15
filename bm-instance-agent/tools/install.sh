@@ -11,6 +11,8 @@ pushd ${temp}
 echo 'MD5_SUM' > md5sum
 md5sum -c md5sum
 
+pkill -9 shellinaboxd || true
+
 tar -zxf bm-instance-agent.tar.gz
 
 mkdir -p /var/lib/zstack/baremetalv2/bm-instance-agent/
@@ -18,6 +20,10 @@ mkdir -p /var/log/zstack/baremetalv2/
 yes | cp ${temp}/bm-instance-agent.pex /var/lib/zstack/baremetalv2/bm-instance-agent/
 yes | cp ${temp}/shellinaboxd-`uname -i` /var/lib/zstack/baremetalv2/bm-instance-agent/
 yes | cp ${temp}/shellinaboxd-`uname -i` /usr/bin/shellinaboxd
+if [ -f /etc/kylin-release ]; then
+  yes | cp ${temp}/shellinaboxd-`uname -i`-kylin /var/lib/zstack/baremetalv2/bm-instance-agent/shellinaboxd-`uname -i`
+  yes | cp ${temp}/shellinaboxd-`uname -i`-kylin /usr/bin/shellinaboxd
+fi
 yes | cp ${temp}/zwatch-vm-agent-`uname -i` /var/lib/zstack/baremetalv2/bm-instance-agent/
 
 popd
@@ -35,6 +41,8 @@ RestartSec=3
 User=root
 ExecStartPre=/bin/sh -c "/sbin/iptables -t filter -C INPUT -p tcp --dport=7090 -j ACCEPT 2>/dev/null || /sbin/iptables -t filter -I INPUT -p tcp --dport=7090 -j ACCEPT"
 ExecStartPre=/bin/sh -c "/sbin/iptables -t filter -C INPUT -p tcp --dport=4200 -j ACCEPT 2>/dev/null || /sbin/iptables -t filter -I INPUT -p tcp --dport=4200 -j ACCEPT"
+ExecStartPre=/bin/sh -c "firewall-cmd --permanent --add-port=7090/tcp && firewall-cmd --reload"
+ExecStartPre=/bin/sh -c "firewall-cmd --permanent --add-port=4200/tcp && firewall-cmd --reload"
 ExecStart=/var/lib/zstack/baremetalv2/bm-instance-agent/bm-instance-agent.pex --log-file=/var/log/zstack/baremetalv2/bm-instance-agent.log
 
 [Install]

@@ -17,7 +17,7 @@ class LinuxDriver(base.SystemDriverBase):
     def __init__(self):
         super(LinuxDriver, self).__init__()
 
-    def ping(self):
+    def ping(self, instance_obj):
         pass
 
     def reboot(self, instance_obj):
