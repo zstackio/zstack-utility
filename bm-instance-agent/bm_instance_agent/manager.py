@@ -44,17 +44,14 @@ class AgentManager(object):
         with open(ZWATCH_AGENT_CONF_PATH) as f:
             doc = yaml.load(f)
 
-        old_url = doc['pushGatewayUrl']
+        old_url = doc.get('pushGatewayUrl')
         if old_url is not None and old_url == push_gateway_url:
             return
 
         LOG.info("pushGatewayUrl changed from %s to %s" % (old_url, push_gateway_url))
 
-        doc['pushGatewayUrl'] = push_gateway_url
-        doc['bm2InstanceUuid'] = instance_obj.uuid
-
-        with open(ZWATCH_AGENT_CONF_PATH) as f:
-            yaml.dump(doc, f)
+        with open(ZWATCH_AGENT_CONF_PATH, 'a') as f:
+            f.write("\npushGatewayUrl: %s\nbm2InstanceUuid: %s\n" % (push_gateway_url, instance_obj.uuid))
 
         cmd = 'service zwatch-vm-agent restart'
         processutils.execute(cmd, shell=True)

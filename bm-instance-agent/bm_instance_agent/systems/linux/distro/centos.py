@@ -33,7 +33,8 @@ class CentOSDriver(linux_driver.LinuxDriver):
         exist_conf_files = filter(
             lambda x : True if x.startswith('ifcfg-') else False,
             os.listdir('/etc/sysconfig/network-scripts/'))
-        exist_conf_files.remove('ifcfg-lo')
+        if 'ifcfg-lo' in exist_conf_files:
+            exist_conf_files.remove('ifcfg-lo')
         for nic in instance_obj.nics:
             path = '/etc/sysconfig/network-scripts/ifcfg-{}'.format(
                 nic.iface_name)

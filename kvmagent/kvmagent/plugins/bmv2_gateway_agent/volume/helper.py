@@ -507,6 +507,10 @@ class IscsiOperator(object):
                 target = self.volume.iscsi_target)
             shell.call(cmd)
 
+            cmd = 'targetcli /iscsi/{target}/tpg1 set attribute authentication=0 demo_mode_write_protect=0 generate_node_acls=1 cache_dynamic_acls=1'.format(
+                target = self.volume.iscsi_target)
+            shell.call(cmd)
+
         # Setup lun
         def _create_lun():
             if self.conf.lun_exist:

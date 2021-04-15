@@ -145,4 +145,10 @@ def get_distro():
             return 'centos_v%s_%s' % (major_version, arch)
         return 'centos'
 
+    if distro_id == 'kylin':
+        version = distro.version()
+        if version == 'V10':
+            return 'kylin_v10_%s' % arch
+        return 'kylin'
+
     return 'linux'
