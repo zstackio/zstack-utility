@@ -3758,22 +3758,22 @@ fi
 ## set ln
 cloudCtlPath="/usr/bin/cloud-ctl"
 if [[ ! -f "$cloudCtlPath" ]]; then
-  ln -s /usr/bin/zstack-ctl /usr/bin/cloud-ctl
+  ln -s /usr/bin/zstack-ctl $cloudCtlPath
 fi
 
 cloudCliPath="/usr/bin/cloud-cli"
 if [[ ! -f "$cloudCliPath" ]]; then
-  ln -s /usr/bin/zstack-cli /usr/bin/cloud-cli
+  ln -s /usr/bin/zstack-cli $cloudCliPath
 fi
 
-productCtlPath="/usr/bin/${PRODUCT_NAME}-ctl"
+productCtlPath="/usr/bin/${PRODUCT_NAME,,}-ctl"
 if [[ ! -f "$productCtlPath" ]]; then
-  ln -s /usr/bin/zstack-ctl /usr/bin/${PRODUCT_NAME}-ctl
+  ln -s /usr/bin/zstack-ctl $productCtlPath
 fi
 
-productCliPath="/usr/bin/${PRODUCT_NAME}-cli"
+productCliPath="/usr/bin/${PRODUCT_NAME,,}-cli"
 if [[ ! -f "$productCliPath" ]]; then
-  ln -s /usr/bin/zstack-cli /usr/bin/${PRODUCT_NAME}-cli
+  ln -s /usr/bin/zstack-cli $productCliPath
 fi
 
 #Download ${PRODUCT_NAME} all in one package
