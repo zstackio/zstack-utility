@@ -138,13 +138,18 @@ class FaultToleranceFecnerPlugin(kvmagent.KvmAgent):
 
         @in_bash
         def stop_management_node():
-            # just stop management node keep ui started
-            r, o, e = bash_roe("zsha2 stop-node -stopvip || zstack-ctl stop_node")
+            r, o, e = bash_roe("/usr/local/bin/zsha2 stop-node -stopvip || zstack-ctl stop")
             r1, o1 = bash_ro("pgrep -af -- '-DappName=zstack start'")
             if r1 == 0:
                 raise Exception(
                     "stop zstack failed, return code: %s, stdout: %s, stderr: %s, pgrep zstack return code: %s, stdout: %s" %
                     (r, o, e, r1, o1))
+            
+            return True
+
+        @in_bash
+        def recover_management_node():
+            r, o, e = bash_roe("/usr/local/bin/zsha2 start-node")
         
         @in_bash
         def kill_fault_tolerance_vms():
@@ -190,10 +195,16 @@ class FaultToleranceFecnerPlugin(kvmagent.KvmAgent):
         @thread.AsyncThread
         @in_bash
         def ft_vm_management_network_fencer(peer_host_management_network_ip, current_host_management_network_ip, peer_host_storage_network_ip, host_uuid, created_time):
+            mn_fenced = False
             while self.run_fencer(host_uuid, created_time):
                 if do_test_network(peer_host_management_network_ip):
                     logger.debug("test connection to %s success" % peer_host_management_network_ip)
                     time.sleep(5)
+
+                    if mn_fenced:
+                        recover_management_node()
+                        mn_fenced = False
+
                     continue
                 
                 # # management network ip lost, test if storage network available
@@ -204,11 +215,14 @@ class FaultToleranceFecnerPlugin(kvmagent.KvmAgent):
                 management_network_available = False if len(mgmt_device) == 0 else test_device(mgmt_device, 5) is not None
                 if management_network_available:
                     time.sleep(5)
+                    if mn_fenced:
+                        recover_management_node()
+                        mn_fenced = False
                     continue    
                 
                 logger.debug("network down, need to kill ft vm")
                 kill_fault_tolerance_vms()
-                stop_management_node()
+                mn_fenced = stop_management_node()
 
         @in_bash
         def test_device(device, ttl=12):
