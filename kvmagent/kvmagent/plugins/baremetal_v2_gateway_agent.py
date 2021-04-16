@@ -687,7 +687,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             # Test wether the port can be reach
             if remote_port and linux_v2.check_remote_port_whether_open(
                 instance_obj.provision_ip, remote_port):
-                return local_port
+                return 'http' if remote_port == 4200 else 'vnc', local_port
 
         # If the conf not exist
         uri = 'http://{addr}:{port}/v2/console/prepare'.format(
@@ -697,7 +697,12 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         ret = http.json_post(uri, method='GET')
         # TODO(ya.wang) handle response
         ret = json.loads(ret) if isinstance(ret, str) else ret
-        port = ret.get('port')
+        if isinstance(ret, dict):
+            scheme = ret.get('scheme')
+            port = ret.get('port')
+        else:
+            scheme = ret[0]
+            port = ret[1]
 
         gw_port = linux.get_free_port()
 
@@ -717,7 +722,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         # Configure the iptables
         self._add_iptables_rule('tcp', gw_port)
 
-        return gw_port
+        return scheme, gw_port
 
     def _prepare_grub_default_configuration(self, network_obj):
         """ Prepare default grub configuration
@@ -1283,9 +1288,11 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         """
         instance_obj = BmInstanceObj.from_json(req)
 
-        port = self._open_console(instance_obj)
+        scheme, port = self._open_console(instance_obj)
 
         rsp = kvmagent.AgentResponse()
+        if scheme:
+            setattr(rsp, 'scheme', scheme)
         setattr(rsp, 'port', port)
 
         return jsonobject.dumps(rsp)
