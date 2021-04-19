@@ -523,9 +523,13 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         def config_drbd():
             bash.bash_r("sed -i 's/usage-count yes/usage-count no/g' /etc/drbd.d/global_common.conf")
 
+        def build_mini_storage_adm_link():
+            bash.bash_r("rm -f /usr/local/bin/mini-storage-adm && ln -s `which drbdadm` /usr/local/bin/mini-storage-adm")
+
         drbd.install_drbd()
         config_lvm()
         config_drbd()
+        build_mini_storage_adm_link()
         for diskId in cmd.diskIdentifiers:
             disk = CheckDisk(diskId)
             disks.add(disk)
