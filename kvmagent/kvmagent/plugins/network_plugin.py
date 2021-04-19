@@ -27,6 +27,9 @@ KVM_REALIZE_L2VXLAN_NETWORKS_PATH = "/network/l2vxlan/createbridges"
 KVM_POPULATE_FDB_L2VXLAN_NETWORK_PATH = "/network/l2vxlan/populatefdb"
 KVM_POPULATE_FDB_L2VXLAN_NETWORKS_PATH = "/network/l2vxlan/populatefdbs"
 KVM_SET_BRIDGE_ROUTER_PORT_PATH = "/host/bridge/routerport"
+KVM_DELETE_L2NOVLAN_NETWORK_PATH = "/network/l2novlan/deletebridge"
+KVM_DELETE_L2VLAN_NETWORK_PATH = "/network/l2vlan/deletebridge"
+KVM_DELETE_L2VXLAN_NETWORK_PATH = "/network/l2vxlan/deletebridge"
 
 logger = log.get_logger(__name__)
 
@@ -119,6 +122,37 @@ class PopulateVxlanFdbResponse(kvmagent.AgentResponse):
 class SetBridgeRouterPortResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(SetBridgeRouterPortResponse, self).__init__()
+
+class DeleteBridgeCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(DeleteBridgeCmd, self).__init__()
+        self.physicalInterfaceName = None
+        self.bridgeName = None
+
+class DeleteBridgeResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(DeleteBridgeResponse, self).__init__()
+
+class DeleteVlanBridgeCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(DeleteVlanBridgeCmd, self).__init__()
+        self.vlan = None
+
+class DeleteVlanBridgeResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(DeleteVlanBridgeResponse, self).__init__()
+
+class DeleteVxlanBridgeCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(DeleteVxlanBridgeCmd, self).__init__()
+        self.bridgeName = None
+        self.vtepIp = None
+        self.vni = None
+        self.peers = None
+
+class DeleteVxlanBridgeResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(DeleteVxlanBridgeResponse, self).__init__()
 
 class NetworkPlugin(kvmagent.KvmAgent):
     '''
@@ -217,7 +251,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         shell.check_run("brctl addif %s %s" % (cmd.bridgeName, cmd.physicalInterfaceName))
         return jsonobject.dumps(rsp)
 
-    @lock.lock('create_bridge')
+    @lock.lock('bridge')
     @kvmagent.replyerror
     def create_bridge(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -249,8 +283,8 @@ class NetworkPlugin(kvmagent.KvmAgent):
             rsp.success = False
             
         return jsonobject.dumps(rsp)
-    
-    @lock.lock('create_bridge')
+
+    @lock.lock('bridge')
     @kvmagent.replyerror
     def create_vlan_bridge(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -286,7 +320,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
             
         return jsonobject.dumps(rsp)
 
-    @lock.lock('create_bridge')
+    @lock.lock('bridge')
     @kvmagent.replyerror
     def check_bridge(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -299,7 +333,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
-    @lock.lock('create_bridge')
+    @lock.lock('bridge')
     @kvmagent.replyerror
     def check_vlan_bridge(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -396,7 +430,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         linux.set_device_uuid_alias(interf, cmd.l2NetworkUuid)
         self._configure_bridge_mtu(cmd.bridgeName, interf, cmd.mtu)
 
-    @lock.lock('create_bridge')
+    @lock.lock('bridge')
     @kvmagent.replyerror
     def create_vxlan_bridge(self, req):
         # Create VXLAN interface using vtep ip then create bridge
@@ -411,7 +445,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
-    @lock.lock('create_bridge')
+    @lock.lock('bridge')
     @kvmagent.replyerror
     def create_vxlan_bridges(self, req):
         # Create VXLAN interface using vtep ip then create bridge
@@ -426,6 +460,27 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
         for bridgeCmd in cmd.bridgeCmds:
             self.create_single_vxlan_bridge(bridgeCmd)
+
+        return jsonobject.dumps(rsp)
+
+    @lock.lock('bridge')
+    @kvmagent.replyerror
+    def delete_vxlan_bridge(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CreateVxlanBridgeResponse()
+        if not (cmd.vni and cmd.vtepIp):
+            rsp.error = "vni or vtepip is none"
+            rsp.success = False
+            return jsonobject.dumps(rsp)
+        try:
+            vxlanInterface = "vxlan" + str(cmd.vni)
+            linux.delete_vxlan_bridge(cmd.bridgeName, vxlanInterface)
+            logger.debug('successfully delete vxlan bridge[name:%s, vni:%s] from vtepIp[%s]' % (
+            cmd.bridgeName, cmd.vni, cmd.vtepIp))
+        except Exception as e:
+            logger.warning(traceback.format_exc())
+            rsp.error = 'failed to delete vxlan bridge[name:%s, vni:%s] from vtepIp[%s], because %s' % (
+                cmd.bridgeName, cmd.vni, cmd.vtepIp, str(e))
 
         return jsonobject.dumps(rsp)
 
@@ -479,6 +534,59 @@ class NetworkPlugin(kvmagent.KvmAgent):
         rsp.success = True
         return jsonobject.dumps(rsp)
 
+    @lock.lock('bridge')
+    @kvmagent.replyerror
+    def delete_novlan_bridge(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = DeleteBridgeResponse()
+        try:
+            linux.delete_novlan_bridge(cmd.bridgeName, cmd.physicalInterfaceName)
+            logger.debug('successfully delete bridge[%s] with physical interface[%s]' % (
+            cmd.bridgeName, cmd.physicalInterfaceName))
+        except Exception as e:
+            logger.warning(traceback.format_exc())
+            rsp.error = 'failed to delete bridge[%s] with physical interface[%s], because %s' % (
+            cmd.bridgeName, cmd.physicalInterfaceName, str(e))
+            rsp.success = False
+
+        return jsonobject.dumps(rsp)
+
+    @lock.lock('bridge')
+    @kvmagent.replyerror
+    def delete_vlan_bridge(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = DeleteVlanBridgeResponse()
+        vlanInterfName = '%s.%s' % (cmd.physicalInterfaceName, cmd.vlan)
+
+        try:
+            linux.delete_vlan_bridge(cmd.bridgeName, vlanInterfName)
+            logger.debug('successfully delete vlan bridge[name:%s, vlan:%s] from device[%s]' % (
+            cmd.bridgeName, cmd.vlan, cmd.physicalInterfaceName))
+        except Exception as e:
+            logger.warning(traceback.format_exc())
+            rsp.error = 'failed to delete vlan bridge[name:%s, vlan:%s] from device[%s], because %s' % (
+                cmd.bridgeName, cmd.vlan, cmd.physicalInterfaceName, str(e))
+            rsp.success = False
+
+        return jsonobject.dumps(rsp)
+
+
+    @lock.lock('bridge')
+    @kvmagent.replyerror
+    def create_vxlan_bridge(self, req):
+        # Create VXLAN interface using vtep ip then create bridge
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CreateVxlanBridgeResponse()
+        if not (cmd.vni and cmd.vtepIp):
+            rsp.error = "vni or vtepip is none"
+            rsp.success = False
+            return jsonobject.dumps(rsp)
+
+        self.create_single_vxlan_bridge(cmd)
+
+        return jsonobject.dumps(rsp)
+
+
     def start(self):
         http_server = kvmagent.get_http_server()
         http_server.register_sync_uri(CHECK_PHYSICAL_NETWORK_INTERFACE_PATH, self.check_physical_network_interface)
@@ -493,6 +601,9 @@ class NetworkPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(KVM_POPULATE_FDB_L2VXLAN_NETWORK_PATH, self.populate_vxlan_fdb)
         http_server.register_async_uri(KVM_POPULATE_FDB_L2VXLAN_NETWORKS_PATH, self.populate_vxlan_fdbs)
         http_server.register_async_uri(KVM_SET_BRIDGE_ROUTER_PORT_PATH, self.set_bridge_router_port)
-
+	
+	http_server.register_async_uri(KVM_DELETE_L2NOVLAN_NETWORK_PATH, self.delete_novlan_bridge)
+        http_server.register_async_uri(KVM_DELETE_L2VLAN_NETWORK_PATH, self.delete_vlan_bridge)
+        http_server.register_async_uri(KVM_DELETE_L2VXLAN_NETWORK_PATH, self.delete_vxlan_bridge)
     def stop(self):
         pass

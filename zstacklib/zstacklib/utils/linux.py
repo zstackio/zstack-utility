@@ -1185,6 +1185,8 @@ def get_all_bridge_interface(bridge_name):
 def delete_bridge(bridge_name):
     vifs = get_all_bridge_interface(bridge_name)
     for vif in vifs:
+        if vif == '':
+            continue
         shell.check_run("brctl delif %s %s" % (bridge_name, vif))
 
     shell.check_run("ip link set %s down" % bridge_name)
@@ -1235,6 +1237,38 @@ def get_interface_ip_addresses(interface):
     output = shell.call("ip -4 -o a show %s | awk '{print $4}'" % interface.strip())
     return output.splitlines() if output else []
 
+def delete_novlan_bridge(bridge_name, interface, move_route=True):
+    if not is_network_device_existing(bridge_name):
+        logger.debug("can not find bridge %s" % bridge_name)
+        return
+    
+    if is_vif_on_bridge(bridge_name, interface):
+        #recode bridge ip
+        out = shell.call('ip addr show dev %s | grep "inet "' % bridge_name, exception=False)
+        
+        #record old routes
+        routes = []
+        r_out = shell.call("ip route show dev %s | grep via | sed 's/onlink//g'" % bridge_name)
+        for line in r_out.split('\n'):
+            if line != "":
+                routes.append(line)
+
+        delete_bridge(bridge_name)
+        
+        #mv ip on bridge to interface
+        shell.call("ip link set %s up" % interface)
+        ip = out.strip().split()[1]
+        shell.call('ip addr add %s dev %s' % (ip, interface))
+
+        #restore routes on bridge
+        if move_route:
+            for r in routes:
+                shell.call('ip route add %s' % r)
+  
+    else:
+        logger.debug("bridge %s do not have interface %s. only delete bridge. " % (bridge_name,interface))
+        delete_bridge(bridge_name)
+        
 
 def create_bridge(bridge_name, interface, move_route=True):
     if is_bridge(interface):
@@ -1524,6 +1558,22 @@ def create_vlan_eth(ethname, vlan, ip=None, netmask=None):
 
     shell.call('ifconfig %s up' % vlan_dev_name)
     return vlan_dev_name
+
+
+def delete_vlan_bridge(bridge_name, vlan_interface):
+    if not is_network_device_existing(bridge_name):
+        logger.debug("can not find bridge %s" % bridge_name)
+        return
+
+    if is_vif_on_bridge(bridge_name, vlan_interface):
+        delete_bridge(bridge_name)
+        delete_vlan_eth(vlan_interface)
+
+    else:
+        logger.debug("bridge %s do not have interface %s. only delete bridge. " % (bridge_name, vlan_interface))
+        delete_bridge(bridge_name)
+
+
 
 def create_vlan_bridge(bridgename, ethname, vlan, ip=None, netmask=None):
     vlan = int(vlan)
@@ -1969,6 +2019,21 @@ def create_vxlan_bridge(interf, bridgeName, ips):
 
     if ips is not None:
         populate_vxlan_fdb(interf, ips)
+
+
+def delete_vxlan_bridge(bridge_name, vxlan_interface):
+    if not is_network_device_existing(bridge_name):
+        logger.debug("can not find bridge %s" % bridge_name)
+        return
+
+    if is_vif_on_bridge(bridge_name, vxlan_interface):
+        delete_bridge(bridge_name)
+        cmd = shell.ShellCmd("ip link del %s" % vxlan_interface)
+        cmd(is_exception=False)
+    else:
+        logger.debug("bridge %s do not have interface %s. only delete bridge. " % (bridge_name, vxlan_interface))
+        delete_bridge(bridge_name)
+
 
 def populate_vxlan_fdb(interf, ips):
     cmds = []
