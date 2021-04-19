@@ -204,6 +204,12 @@ declare -a upgrade_persist_params_array=(
     '3.9.0,InfluxDB.enable.message.retention=false'
 )
 
+#persist more when install/upgrade mini
+ui_mode=`zstack-ctl show_configuration |awk '/ui_mode/{print $3}'` >/dev/null 2>&1
+if [ x"$MINI_INSTALL" = x"y" ] | [ x"$ui_mode" = x"mini" ];then
+    upgrade_persist_params_array+=('4.0.0,Search.autoRegister=false')
+fi
+
 # version compare
 # eg. 1 = 1.0
 # eg. 4.08 < 4.08.01
