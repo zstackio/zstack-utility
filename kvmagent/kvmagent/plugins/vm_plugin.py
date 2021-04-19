@@ -4997,8 +4997,8 @@ class VmPlugin(kvmagent.KvmAgent):
             logger.warn('guest [%s] not found in virsh list' % guest)
             rsp.states[guest] = Vm.VM_STATE_RUNNING
 
-        time.sleep(0.5)
         if len(retry_for_paused) > 0:
+            time.sleep(0.5)
             states, in_shutdown = get_all_vm_sync_states()
             for uuid in states:
                 if states[uuid] == Vm.VM_STATE_SHUTDOWN:
