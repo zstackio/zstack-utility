@@ -5900,7 +5900,7 @@ class VmPlugin(kvmagent.KvmAgent):
         r, o, e = bash.bash_roe(cmd)
         if o == "":
             return "can not get irq"
-        hostname = bash.bash_o("hostname -f")
+        hostname = linux.get_hostname_fqdn()
 
         cmd = "devices=`find /sys/devices/ -iname 'irq' | grep pci | xargs grep %s | grep -v '%s' | awk -F '/' '{ print \"/\"$2\"/\"$3\"/\"$4\"/\"$5 }' | sort | uniq`;" % (o.strip(), addr) + \
               " for dev in $devices; do wc -l $dev/msi_bus; done | grep -E '^.*0 /sys' | awk -F '/' '{ print \"/\"$2\"/\"$3\"/\"$4\"/\"$5 }'"
