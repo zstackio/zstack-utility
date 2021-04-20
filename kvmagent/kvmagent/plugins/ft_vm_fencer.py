@@ -6,6 +6,7 @@ from zstacklib.utils import shell
 from zstacklib.utils import linux
 from zstacklib.utils import lvm
 from zstacklib.utils import thread
+from zstacklib.utils import drbd
 from zstacklib.utils import qemu_img
 from zstacklib.utils.bash import *
 import os.path
@@ -192,6 +193,19 @@ class FaultToleranceFecnerPlugin(kvmagent.KvmAgent):
                 else:
                     logger.warn('failed to kill the vm[uuid:%s, pid:%s] %s' % (vm_uuid, vm_pid, kill.stderr))
 
+        @in_bash
+        def secondary_drbd_if_peer_is_primary():
+            drbd_resources = shell.call("find /etc/drbd.d/*.res | awk -F '.res' '{print $1}' | cut -d/ -f 4")
+            for dbrd_res_uuid in drbd_resources.split("\n"):
+                try:
+                    drbdResource = drbd.DrbdResource(dbrd_res_uuid)
+                    # if management network down and both side of drbd is primary, demote current node's drbd
+                    if drbdResource.get_remote_role() == drbd.DrbdRole.Primary and drbdResource.get_role() == drbd.DrbdRole.Primary:
+                        drbdResource.demote()
+                except Exception as e:
+                    logger.debug("failed to check drbd status of resource[uuid:%s], because %s", dbrd_res_uuid, e)
+
+
         @thread.AsyncThread
         @in_bash
         def ft_vm_management_network_fencer(peer_host_management_network_ip, current_host_management_network_ip, peer_host_storage_network_ip, host_uuid, created_time):
@@ -223,6 +237,7 @@ class FaultToleranceFecnerPlugin(kvmagent.KvmAgent):
                 logger.debug("network down, need to kill ft vm")
                 kill_fault_tolerance_vms()
                 mn_fenced = stop_management_node()
+                secondary_drbd_if_peer_is_primary()
 
         @in_bash
         def test_device(device, ttl=12):
