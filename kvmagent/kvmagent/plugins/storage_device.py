@@ -230,8 +230,8 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             if len(result) == 0:
                 return wwids
 
-        dm = bash.bash_o("realpath %s | grep -E -o 'dm-.*'" % multipath_path)
-        slaves = shell.call("ls -1 /sys/class/block/%s/slaves/" % dm).strip().split("\n")
+        dm = os.path.basename(os.path.realpath(multipath_path))
+        slaves = linux.listdir("/sys/class/block/%s/slaves/" % dm)
         if slaves is None or len(slaves) == 0:
             raise "can not find any slave from multpath device: %s" % multipath_path
         return "/dev/disk/by-id/%s" % get_wwids(slaves[0])[0]
@@ -309,8 +309,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             try:
                 iqns = discovery_iscsi(cmd.iscsiServerIp, cmd.iscsiServerPort)
             except Exception as e:
-                current_hostname = shell.call('hostname')
-                current_hostname = current_hostname.strip(' \t\n\r')
+                current_hostname = linux.get_hostname()
                 rsp.error = "login iscsi server %s:%s on host %s failed, because %s" % \
                             (cmd.iscsiServerIp, cmd.iscsiServerPort, current_hostname, e.message)
                 rsp.success = False
@@ -339,14 +338,12 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 wait_iscsi_mknode(cmd.iscsiServerIp, cmd.iscsiServerPort, iqn, e)
             finally:
                 disks = list_iscsi_disks(cmd.iscsiServerIp, cmd.iscsiServerPort, iqn)
-
                 # refresh mpath dev if any
                 refresh_mpath(disks)
 
                 if len(disks) == 0:
                     rsp.iscsiTargetStructList.append(t)
                 else:
-                    disks = bash.bash_o("ls /dev/disk/by-path | grep %s:%s | grep %s" % (cmd.iscsiServerIp, cmd.iscsiServerPort, iqn)).strip().splitlines()
                     for d in disks:
                         lun_struct = self.get_disk_info_by_path(d.strip())
                         if lun_struct is not None:
@@ -378,12 +375,11 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         # type: (str) -> IscsiLunStruct
         r = bash.bash_r("multipath -l | grep -e '/multipath.conf' | grep -e 'line'")
         if r == 0:
-            current_hostname = shell.call('hostname')
-            current_hostname = current_hostname.strip(' \t\n\r')
+            current_hostname = linux.get_hostname()
             raise Exception(
                 "The multipath.conf setting on host[%s] may be error, please check and try again" % current_hostname)
 
-        abs_path = bash.bash_o("readlink -e /dev/disk/by-path/%s" % path).strip()
+        abs_path = os.path.realpath("/dev/disk/by-path/%s" % path)
         candidate_struct = lvm.get_device_info(abs_path.split("/")[-1].strip())
         if candidate_struct is None:
             return None
@@ -779,7 +775,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
     @bash.in_bash
     def get_fc_luns(self, rescan):
-        o = bash.bash_o("ls -1c /sys/bus/scsi/devices/target*/fc_transport | grep ^target | awk -F 'target' '{print $2}'")
+        o = bash.bash_o("ls -1c /sys/bus/scsi/devices/target*/fc_transport | awk -F 'target' '/^target/{print $2}'")
         fc_targets = o.strip().splitlines()
         if len(fc_targets) == 0 or (len(fc_targets) == 1 and fc_targets[0] == ""):
             logger.debug("not find any fc targets")
@@ -837,10 +833,8 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
         # rescan disk size
         if rescan:
-            _cmd = shell.ShellCmd("echo 1 > /sys/block/%s/device/rescan" % dev_name.strip())
-            _cmd(is_exception=False)
-            logger.debug("rescaned disk %s, return code: %s, stdout %s, stderr: %s" % (
-            dev_name, _cmd.return_code, _cmd.stdout, _cmd.stderr))
+            linux.write_file("/sys/block/%s/device/rescan" % dev_name.strip(), "1")
+            logger.debug("rescaned disk %s" % dev_name.strip())
 
         r, o, e = bash.bash_roe(
             "lsblk --pair -b -p -o NAME,VENDOR,MODEL,WWN,SERIAL,HCTL,TYPE,SIZE /dev/%s" % dev_name, False)
@@ -863,7 +857,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
         def get_storage_wwnn(hctl):
             o = shell.call(
-                "systool -c fc_transport -A node_name | grep '\"target%s\"' -B2 | grep node_name | awk '{print $NF}'" % ":".join(hctl.split(":")[0:3]))
+                "systool -c fc_transport -A node_name | grep '\"target%s\"' -B2 | awk '/node_name/{print $NF}'" % ":".join(hctl.split(":")[0:3]))
             return o.strip().strip('"')
 
         for entry in o.split('" '):  # type: str

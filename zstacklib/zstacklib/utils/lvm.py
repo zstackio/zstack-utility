@@ -172,13 +172,11 @@ def get_mpath_block_devices():
     threads = []
     for idx, mpath_device in enumerate(mpath_devices, start=0):
         try:
-            cmd = shell.ShellCmd("realpath /dev/mapper/%s | grep -E -o 'dm-.*'" % mpath_device)
-            cmd(is_exception=False)
-            if cmd.return_code != 0 or cmd.stdout.strip() == "":
+            dm = os.path.basename(os.path.realpath("/dev/mapper/%s" % mpath_device))
+            if not dm.startswith("dm-"):
                 continue
 
-            dm = cmd.stdout.strip()
-            slaves = shell.call("ls /sys/class/block/%s/slaves/" % dm).strip().split("\n")
+            slaves = os.listdir("/sys/class/block/%s/slaves/" % dm)
             if slaves is None or len(slaves) == 0:
                 struct = SharedBlockCandidateStruct()
                 cmd = shell.ShellCmd(
@@ -201,7 +199,7 @@ def get_mpath_block_devices():
     return filter(None, block_devices_list), slave_devices
 
 def get_disk_block_devices(slave_devices):
-    disks = shell.call("lsblk -p -o NAME,TYPE | grep disk | awk '{print $1}'").strip().split()
+    disks = shell.call("lsblk -p -o NAME,TYPE | awk '/disk/{print $1}'").strip().split()
     block_devices_list = [None] * len(disks)
 
     def get_block_devices(disk, i):
@@ -234,7 +232,7 @@ def get_disk_block_devices(slave_devices):
     return filter(None, block_devices_list)
 
 def is_multipath_running():
-    r = bash.bash_r("multipath -t")
+    r = bash.bash_r("multipath -t > /dev/null")
     if r != 0:
         return False
 
@@ -263,7 +261,7 @@ def is_multipath(dev_name):
     if r == 0:
         return True
 
-    slaves = shell.call("ls /sys/class/block/%s/slaves/" % dev_name).strip().split("\n")
+    slaves = linux.listdir("/sys/class/block/%s/slaves/" % dev_name)
     if slaves is not None and len(slaves) > 0:
         if len(slaves) == 1 and slaves[0] == "":
             return False
@@ -277,7 +275,7 @@ def get_multipath_dmname(dev_name):
     # if is multipath dev, return;
     # if is one of multipath paths, return multipath dev(dm-xxx);
     # else return None
-    slaves = shell.call("ls /sys/class/block/%s/slaves/" % dev_name).strip().splitlines()
+    slaves = linux.listdir("/sys/class/block/%s/slaves/" % dev_name)
     if slaves is not None and len(slaves) > 0 and slaves[0].strip() != "":
         return dev_name
 
@@ -628,9 +626,9 @@ def clean_lvm_archive_files(vgUuid):
     if not os.path.exists(LVM_CONFIG_ARCHIVE_PATH):
         logger.warn("can not find lvm archive path %s" % LVM_CONFIG_ARCHIVE_PATH)
         return
-    archive_files = bash.bash_o("ls -rt %s | grep %s | wc -l" % (LVM_CONFIG_ARCHIVE_PATH, vgUuid))
-    if int(archive_files) > 10:
-        bash.bash_r("ls -rt %s | grep %s | head -n %s | xargs -i rm -rf %s/{}" % (LVM_CONFIG_ARCHIVE_PATH, vgUuid, (int(archive_files)-10), LVM_CONFIG_ARCHIVE_PATH))
+    archive_files = len([ f for f in os.listdir(LVM_CONFIG_ARCHIVE_PATH) if vgUuid in f ])
+    if archive_files > 10:
+        bash.bash_r("ls -rt %s | grep %s | head -n %s | xargs -i rm -rf %s/{}" % (LVM_CONFIG_ARCHIVE_PATH, vgUuid, archive_files-10, LVM_CONFIG_ARCHIVE_PATH))
 
 @bash.in_bash
 def quitLockServices():
@@ -650,7 +648,7 @@ def get_vg_lvm_uuid(vgUuid):
 
 
 def get_running_host_id(vgUuid):
-    cmd = shell.ShellCmd("sanlock client gets | grep %s | awk -F':' '{ print $2 }'" % vgUuid)
+    cmd = shell.ShellCmd("sanlock client gets | awk -F':' '/%s/{ print $2 }'" % vgUuid)
     cmd(is_exception=False)
     if cmd.stdout.strip() == "":
         raise Exception("can not get running host id for vg %s" % vgUuid)
@@ -731,7 +729,7 @@ def wipe_fs(disks, expected_vg=None, with_lock=True):
 def get_disk_holders(disk_names):
     holders = []
     for disk_name in disk_names:
-        h = bash.bash_o("ls /sys/class/block/%s/holders/" % disk_name).strip().splitlines()
+        h = linux.listdir("/sys/class/block/%s/holders/" % disk_name)
         if len(h) == 0:
             continue
         holders.extend(h)
@@ -1050,7 +1048,7 @@ def delete_lv_meta(path, raise_exception=True):
 
 @bash.in_bash
 def remove_device_map_for_vg(vgUuid):
-    o = bash.bash_o("dmsetup ls | grep %s | awk '{print $1}'" % vgUuid).strip().splitlines()
+    o = bash.bash_o("dmsetup ls | awk '/%s/{print $1}'" % vgUuid).strip().splitlines()
     if len(o) == 0:
         return
     for dm in o:
@@ -1176,7 +1174,7 @@ def create_lvm_snapshot(absolutePath, remove_oldest=True, snapName=None, size_pe
         else:
             snap_size = int((virtual_size / 512) * size_percent + 1) * 512
         size_command = " -L %sB " % snap_size
-    bash.bash_errorout("sync; lvcreate --snapshot -n %s %s %s" % (snapName, absolutePath, size_command))
+    bash.bash_errorout("blockdev --flushbufs %s; lvcreate --snapshot -n %s %s %s" % (absolutePath, snapName, absolutePath, size_command))
     path = "/".join(absolutePath.split("/")[:-1]) + "/" + snapName
     if size_command == "":
         bash.bash_r("lvchange -ay -K %s" % path)
@@ -1402,7 +1400,7 @@ def check_stuck_vglk():
 def fix_global_lock():
     if not ENABLE_DUP_GLOBAL_CHECK:
         return
-    vg_names = bash.bash_o("lvmlockctl -i | grep lock_type=sanlock | awk '{print $2}'").strip().splitlines()  # type: list
+    vg_names = bash.bash_o("lvmlockctl -i | awk '/lock_type=sanlock/{print $2}'").strip().splitlines()  # type: list
     vg_names.sort()
     if len(vg_names) < 2:
         return
@@ -1767,7 +1765,10 @@ def remove_partial_lv_dm(vgUuid):
 
 @bash.in_bash
 def unpriv_sgio():
-    bash.bash_roe("for i in `ls /sys/block/ | grep -v loop`; do echo 1 > /sys/block/$i/queue/unpriv_sgio; done")
+    for devname in os.listdir("/sys/block/"):
+        if "loop" in devname:
+            continue
+        linux.write_file("/sys/block/%s/queue/unpriv_sgio" % devname, "1")
 
 
 @bash.in_bash
@@ -1793,6 +1794,6 @@ class QemuStruct(object):
 @bash.in_bash
 def find_qemu_for_lv_in_use(lv_path):
     # type: (str) -> list[QemuStruct]
-    dm_path = bash.bash_o("readlink -e %s" % lv_path)
+    dm_path = os.path.realpath(lv_path)
     pids = [x.strip() for x in bash.bash_o("lsof -b -c qemu-kvm | grep -w %s | awk '{print $2}'" % dm_path).splitlines()]
     return [QemuStruct(pid) for pid in pids]
