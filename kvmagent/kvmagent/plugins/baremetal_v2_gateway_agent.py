@@ -1,3 +1,4 @@
+import ast
 import json
 import os
 import pwd
@@ -697,12 +698,10 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         ret = http.json_post(uri, method='GET')
         # TODO(ya.wang) handle response
         ret = json.loads(ret) if isinstance(ret, str) else ret
-        if isinstance(ret, dict):
-            scheme = ret.get('scheme')
-            port = ret.get('port')
-        else:
-            scheme = ret[0]
-            port = ret[1]
+        if not isinstance(ret, dict):
+            ret = ast.literal_eval(ret)
+        scheme = ret.get('scheme')
+        port = ret.get('port')
 
         gw_port = linux.get_free_port()
 
