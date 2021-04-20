@@ -451,6 +451,15 @@ def is_valid_hostname(hostname):
 def get_host_by_name(host):
     return socket.gethostbyname(host)
 
+def get_hostname():
+    return socket.gethostname()
+
+def get_hostname_fqdn():
+    import sys
+    if sys.version_info.major < 3:
+        return socket.getaddrinfo(socket.gethostname(), 0, 0, 0, 0, socket.AI_CANONNAME)[0][3]
+    return socket.getaddrinfo(socket.gethostname(), 0, flags=socket.AI_CANONNAME)[0][3]
+
 def is_valid_nfs_url(url):
     ts = url.split(':')
     if len(ts) != 2: raise InvalidNfsUrlError(url, 'url should have one and only one ":"')
@@ -1697,6 +1706,12 @@ def listPath(path):
         return [ os.path.join(path, p) for p in os.listdir(path) ]
     return [ os.path.realpath(os.path.join(path, p)) for p in os.listdir(path) ]
 
+def listdir(d):
+    try:
+        return os.listdir(d)
+    except:
+        return []
+
 def find_file(file_name, current_path, parent_path_depth=2, sub_folder_first=False):
     ''' find_file will return a file path, when finding a file in given path.
         The default search parent path depth is 2. It means loader will only
@@ -2236,8 +2251,8 @@ def get_physical_disk(disk=None, logCommand=True):
     cmd(is_exception=False, logcmd=logCommand)
     if cmd.return_code != 0:
         return remove_digits([disk])
-    dm_name = shell.call("readlink -e %s | awk -F '/' '{print $NF}'" % disk).strip()
-    slaves = shell.call("ls /sys/block/%s/slaves/" % dm_name).splitlines()
+    dm_name = os.path.basename(os.path.realpath(disk))
+    slaves = listdir("/sys/block/%s/slaves/" % dm_name)
 
     return remove_digits(["/dev/%s" % slave for slave in slaves])
 
