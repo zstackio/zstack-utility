@@ -112,6 +112,7 @@ def get_block_devices():
 
     return block_devices
 
+@bash.in_bash
 def get_mpath_block_devices(scsi_info):
     slave_devices = []
     mpath_devices = []
@@ -167,12 +168,16 @@ def get_disk_block_devices(slave_devices, scsi_info):
     disks = shell.call("lsblk -p -o NAME,TYPE | awk '/disk/{print $1}'").strip().split()
     block_devices_list = [None] * len(disks)
 
+    slave_multipaths = shell.call("multipath -l | grep -A 1 policy | grep -v policy |awk -F - '{print $2}'| awk '{print $2}'").strip().splitlines()
+    slave_multipaths = filter(None, slave_multipaths)
+    is_multipath_running_sign = is_multipath_running()
+
     def get_block_devices(disk, i):
         try:
             struct = get_device_info(disk.strip().split("/")[-1], scsi_info)
             if struct is None:
                 return
-            if get_pv_uuid_by_path("%s" % disk.strip()) not in ("", None):
+            if bash.bash_r('wipefs -n %s | grep LVM2  > /dev/null' % disk.strip()) == 0:
                 struct.type = "lvm-pv"
             block_devices_list[i] = struct
         except Exception as e:
@@ -182,7 +187,7 @@ def get_disk_block_devices(slave_devices, scsi_info):
     threads = []
     for idx, disk in enumerate(disks, start=0):
         try:
-            if disk.split("/")[-1] in slave_devices or is_slave_of_multipath(disk):
+            if disk.split("/")[-1] in slave_devices or is_slave_of_multipath_list(disk, slave_multipaths, is_multipath_running_sign):
                 continue
             threads.append(thread.ThreadFacade.run_in_thread(get_block_devices, [disk, idx]))
         except Exception as e:
@@ -219,13 +224,23 @@ def is_multipath_running():
 @bash.in_bash
 def is_slave_of_multipath(dev_path):
     # type: (str) -> bool
-    if is_multipath_running is False:
+    if is_multipath_running() is False:
         return False
 
     r = bash.bash_r("multipath %s -l | grep policy" % dev_path)
     if r == 0:
         return True
     return False
+
+
+def is_slave_of_multipath_list(dev_path, slave_multipath, is_multipath_running_sign):
+    if is_multipath_running_sign is False:
+        return False
+
+    if dev_path.split("/")[-1] in slave_multipath:
+        return True
+    else:
+        return False
 
 
 def is_multipath(dev_name):
