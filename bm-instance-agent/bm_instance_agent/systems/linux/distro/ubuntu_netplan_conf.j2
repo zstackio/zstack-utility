@@ -1,0 +1,34 @@
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    {{ iface_name }}:
+      set-name: {{ iface_name }}
+      match:
+        macaddress: {{ mac_address }}
+      {% if not vlan_id -%}
+      dhcp4: no
+      dhcp4-overrides:
+          use-routes: {{ default_route }}
+      addresses: [ {{ ip_address }}/{{ prefix_size }} ]
+      {% if gateway -%}
+      gateway4: {{ gateway }}
+      {%- endif %}
+      nameservers:
+        addresses: [ 223.5.5.5 ]
+      {%- endif %}
+  {% if vlan_id -%}
+  vlans:
+    {{ iface_name }}.{{ vlan_id }}:
+      id: {{ vlan_id }}
+      link: {{ iface_name }}
+      dhcp4: no
+      dhcp4-overrides:
+          use-routes: {{ default_route }}
+      addresses: [ {{ ip_address }}/{{ prefix_size }} ]
+      {% if gateway -%}
+      gateway4: {{ gateway }}
+      {%- endif %}
+      nameservers:
+        addresses: [ 223.5.5.5 ]
+  {% endif %}

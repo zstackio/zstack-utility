@@ -28,6 +28,7 @@ yes | cp ${temp}/zwatch-vm-agent-`uname -i` /var/lib/zstack/baremetalv2/bm-insta
 
 popd
 
+mkdir -p /usr/lib/systemd/system/
 cat << EOF > /usr/lib/systemd/system/zstack-baremetal-instance-agent.service
 [Unit]
 Description=ZStack baremetal instance agent
