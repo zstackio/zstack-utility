@@ -429,7 +429,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         #2. distinct by device wwid and storage wwn
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = FcSanScanRsp()
-        bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -a")
+        bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -a >/dev/null")
         rsp.fiberChannelLunStructs = self.get_fc_luns(cmd.rescan)
         linux.set_fail_if_no_path()
         return jsonobject.dumps(rsp)

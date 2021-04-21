@@ -96,12 +96,11 @@ def collect_host_capacity_statistics():
     }
 
     zstack_used_capacity = 0
-    for dir in zstack_dir:
-        if not os.path.exists(dir):
+    for d in zstack_dir:
+        if not os.path.exists(d):
             continue
-        cmd = "du -bs %s | awk {\'print $1\'}" % dir
-        res = bash_o(cmd)
-        zstack_used_capacity += int(res)
+        res = bash_o("du -bs %s" % d) # split()[0] is far cheaper than awk
+        zstack_used_capacity += int(res.split()[0])
 
     metrics['zstack_used_capacity_in_bytes'].add_metric([], float(zstack_used_capacity))
     return metrics.values()
