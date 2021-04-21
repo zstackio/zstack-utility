@@ -42,6 +42,7 @@ zstack_libvirt_nwfilter_dir = "%s/nwfilter" % zstack_lib_dir
 skipIpv6 = 'false'
 bridgeDisableIptables = 'false'
 isMini = 'false'
+isBareMetal2Gateway='false'
 releasever = ''
 
 
@@ -567,6 +568,22 @@ def do_network_config():
         run_remote_command(command, host_post_info)
 
 
+def do_xdc_config():
+    if isBareMetal2Gateway == 'false':
+        return
+
+    command = """if [ -f /etc/xdc/xdc.conf ]; then
+sed -i '/^xdc_proxy_feature = true$/d' /etc/xdc/xdc.conf; echo xdc_proxy_feature = true >>/etc/xdc/xdc.conf;
+echo -e "iscsi_target_mod\ntarget_core_user\ntarget_core_iblock" > /etc/modules-load.d/target.conf;
+systemctl enable target;
+systemctl enable xdc;
+fi
+"""
+    host_post_info.post_label = "ansible.shell.config.xdc"
+    host_post_info.post_label_param = None
+    run_remote_command(command, host_post_info)
+
+
 def copy_spice_certificates_to_host():
     """copy spice certificates"""
 
@@ -698,6 +715,7 @@ copy_grubaa64_efi()
 set_max_performance()
 do_libvirt_qemu_config()
 do_network_config()
+do_xdc_config()
 copy_spice_certificates_to_host()
 install_virtualenv()
 set_legacy_iptables_ebtables()
