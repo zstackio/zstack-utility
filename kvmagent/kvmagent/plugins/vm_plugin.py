@@ -3243,7 +3243,12 @@ class Vm(object):
 
                 def on_aarch64():
                     e(root, 'vcpu', '128', {'placement': 'static', 'current': str(cmd.cpuNum)})
-                    cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
+                    if is_virtual_machine():
+                        cpu = e(root, 'cpu')
+                        e(cpu, 'model', 'cortex-a57')
+                    else:
+                        cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
+                        e(cpu, 'model', attrib={'fallback': 'allow'})
                     mem = cmd.memory / 1024
                     e(cpu, 'topology', attrib={'sockets': '32', 'cores': '4', 'threads': '1'})
                     numa = e(cpu, 'numa')
