@@ -89,18 +89,16 @@ class RetryException(Exception):
 
 
 class SharedBlockCandidateStruct:
-    wwid = None  # type: str
-    vendor = None  # type: str
-    model = None  # type: str
-    wwn = None  # type: str
-    serial = None  # type: str
-    hctl = None  # type: str
-    type = None  # type: str
-    size = None  # type: long
-    path = None  # type: str
-
     def __init__(self):
-        pass
+        self.wwid = None  # type: str
+        self.vendor = None  # type: str
+        self.model = None  # type: str
+        self.wwn = None  # type: str
+        self.serial = None  # type: str
+        self.hctl = None  # type: str
+        self.type = None  # type: str
+        self.size = None  # type: long
+        self.path = None  # type: str
 
 
 def get_block_devices():
@@ -120,11 +118,11 @@ def get_mpath_block_devices(scsi_info):
     cmd = shell.ShellCmd("multipath -l -v1")
     cmd(is_exception=False)
     if cmd.return_code == 0 and cmd.stdout.strip() != "":
-        mpath_devices = cmd.stdout.strip().split("\n")
+        mpath_devices = cmd.stdout.strip().splitlines()
 
     block_devices_list = [None] * len(mpath_devices)
 
-    def get_block_devices(slave, dm, i):
+    def get_slave_block_devices(slave, dm, i):
         try:
             struct = get_device_info(slave, scsi_info)
             if struct is None:
@@ -145,16 +143,13 @@ def get_mpath_block_devices(scsi_info):
             slaves = os.listdir("/sys/class/block/%s/slaves/" % dm)
             if slaves is None or len(slaves) == 0:
                 struct = SharedBlockCandidateStruct()
-                cmd = shell.ShellCmd(
-                    "udevadm info -n %s | grep dm-uuid-mpath | grep -o 'dm-uuid-mpath-\S*' | head -n 1 | awk -F '-' '{print $NF}'" % dm)
-                cmd(is_exception=True)
-                struct.wwid = cmd.stdout.strip().strip("()")
+                struct.wwid = get_dm_wwid(dm)
                 struct.type = "mpath"
                 block_devices_list[idx] = struct
                 continue
 
             slave_devices.extend(slaves)
-            threads.append(thread.ThreadFacade.run_in_thread(get_block_devices, [slaves[0], dm, idx]))
+            threads.append(thread.ThreadFacade.run_in_thread(get_slave_block_devices, [slaves[0], dm, idx]))
         except Exception as e:
             logger.warn(linux.get_exception_stacktrace())
             continue
@@ -172,7 +167,7 @@ def get_disk_block_devices(slave_devices, scsi_info):
     slave_multipaths = filter(None, slave_multipaths)
     is_multipath_running_sign = is_multipath_running()
 
-    def get_block_devices(disk, i):
+    def get_block_device_info(disk, i):
         try:
             struct = get_device_info(disk.strip().split("/")[-1], scsi_info)
             if struct is None:
@@ -189,7 +184,7 @@ def get_disk_block_devices(slave_devices, scsi_info):
         try:
             if disk.split("/")[-1] in slave_devices or is_slave_of_multipath_list(disk, slave_multipaths, is_multipath_running_sign):
                 continue
-            threads.append(thread.ThreadFacade.run_in_thread(get_block_devices, [disk, idx]))
+            threads.append(thread.ThreadFacade.run_in_thread(get_block_device_info, [disk, idx]))
         except Exception as e:
             logger.warn(linux.get_exception_stacktrace())
             continue
@@ -201,11 +196,12 @@ def get_disk_block_devices(slave_devices, scsi_info):
 
 def get_lsscsi_info():
     scsi_info = {}
-    o = bash.bash_o("lsscsi -i | grep '\/dev\/'").strip().splitlines()
+    o = filter(lambda s: "/dev/" in s, bash.bash_o("lsscsi -i").splitlines())
     for info in o:
-        dev_name = info.split("/dev/")[1].split(" ")[0].strip()
-        wwid = info.split("/dev/")[1].split(" ")[-1].strip()
-        if wwid == "" or wwid == "-" or wwid is None:
+        dev_and_wwid = info.split("/dev/")[1].split(" ")
+        dev_name = dev_and_wwid[0]
+        wwid = dev_and_wwid[-1]
+        if not wwid or wwid == "-":
             continue
         scsi_info[dev_name] = wwid
     return scsi_info
@@ -269,8 +265,7 @@ def get_multipath_dmname(dev_name):
     r = bash.bash_r("multipath /dev/%s -l | grep policy" % dev_name)
     if r != 0:
         return None
-    o = bash.bash_o("multipath -l /dev/%s | head -n1 | awk -F 'dm' '{print $2}' | awk '{print $1}'" % dev_name).strip()
-    return "dm%s" % o
+    return bash.bash_o("multipath -l /dev/%s | head -n1 | grep -Eo 'dm-[[:digits:]]+'" % dev_name).strip()
 
 
 def get_multipath_name(dev_name):
@@ -282,6 +277,14 @@ def get_lvmlockd_service_name():
     if LooseVersion(lvmlockd_version) > LooseVersion("2.02"):
         service_name = 'lvmlockd.service'
     return service_name
+
+def get_dm_wwid(dm):
+    try:
+        stdout = shell.call("set -o pipefail; udevadm info -n %s | grep -o 'dm-uuid-mpath-\S*' | awk -F '-' '{print $NF; exit}'" % dm)
+        return stdout.strip().strip("()")
+    except Exception as e:
+        logger.warn(linux.get_exception_stacktrace())
+        return None
 
 def get_device_info(dev_name, scsi_info):
     # type: (str) -> SharedBlockCandidateStruct
@@ -301,7 +304,7 @@ def get_device_info(dev_name, scsi_info):
             if dev in scsi_info.keys():
                 return scsi_info[dev]
             elif dev.startswith("dm-"):
-                return shell.call("udevadm info -n %s | grep dm-uuid-mpath | grep -o 'dm-uuid-mpath-\S*' | head -n 1 | awk -F '-' '{print $NF}'" % dev).strip().strip("()")
+                return get_dm_wwid(dev)
             else:
                 return None
         except Exception as e:
@@ -309,7 +312,7 @@ def get_device_info(dev_name, scsi_info):
             return None
 
     def get_path(dev):
-        return shell.call("udevadm info -n %s | grep 'by-path' | grep -v DEVLINKS | head -n1 | awk -F 'by-path/' '{print $2}'" % dev).strip()
+        return shell.call("udevadm info -n %s | awk -F 'by-path/' '/^S:.*by-path/{print $2; exit}'" % dev).strip()
 
     for entry in o.strip().split("\n")[0].split('" '):  # type: str
         if entry.startswith("VENDOR"):
