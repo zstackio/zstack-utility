@@ -91,6 +91,7 @@ def test_fencer(vg_name, resource_name):
 
 def do_test_fencer(vg_name):
     # type: (str) -> bool
+    global FENCE_GW_EXISTS
     r, fencer_ip = getstatusoutput("timeout 3 vgs %s -otags --nolocking --noheading | tr ',' '\\n' | grep %s" % (vg_name, FENCER_TAG))
     if r == 0 and fencer_ip and fencer_ip != "" and is_ip_address(fencer_ip):
         fencer_ip = fencer_ip.strip().split("::")[-1]
