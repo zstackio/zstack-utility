@@ -13,6 +13,7 @@ pushd ${project_dir}
 temp=`mktemp -d`
 pex . -v \
     --disable-cache \
+    --no-pypi -i https://pypi.tuna.tsinghua.edu.cn/simple \
     --platform current \
     --console-script bm-instance-agent \
     --output-file ${temp}/bm-instance-agent.pex
