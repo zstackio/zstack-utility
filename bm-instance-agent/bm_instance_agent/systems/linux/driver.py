@@ -17,7 +17,7 @@ class LinuxDriver(base.SystemDriverBase):
     def __init__(self):
         super(LinuxDriver, self).__init__()
 
-    def ping(self):
+    def ping(self, instance_obj):
         pass
 
     def reboot(self, instance_obj):
@@ -167,4 +167,4 @@ class LinuxDriver(base.SystemDriverBase):
                 raise exception.ProcessLaunchFailed(
                     process_name='shellinaboxd')
 
-        return {'port': 4200}
+        return {'scheme': 'http', 'port': 4200}

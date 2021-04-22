@@ -28,8 +28,13 @@ dhcp-leasefile={{ provision_dhcp_leases_file }}
 
 # Configure ipxe
 dhcp-match=ipxe,175
+dhcp-match=set:bios,option:client-arch,0
 dhcp-match=set:efi,option:client-arch,7
 dhcp-match=set:efi,option:client-arch,9
+dhcp-match=set:aarch64_efi,option:client-arch,11
+
+# ARM + UEFI PXE boot from iSCSI LUN
+dhcp-option=tag:aarch64_efi,option:bootfile-name,grubaa64.efi
 
 # Client is already running iPXE; move to next stage of chainloading
 dhcp-option=tag:ipxe,option:bootfile-name,boot.ipxe

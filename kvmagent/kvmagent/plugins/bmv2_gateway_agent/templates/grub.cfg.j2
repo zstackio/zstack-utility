@@ -1,0 +1,29 @@
+set timeout=1
+set default="1"
+
+function load_video {
+  if [ x$feature_all_video_module = xy ]; then
+    insmod all_video
+  else
+    insmod efi_gop
+    insmod efi_uga
+    insmod ieee1275_fb
+    insmod vbe
+    insmod vga
+    insmod video_bochs
+    insmod video_cirrus
+  fi
+}
+
+load_video
+set gfxpayload=keep
+insmod gzio
+insmod part_gpt
+insmod ext2
+insmod xfs
+
+menuentry 'ZStack Get Bare Metal Chassis Hardware Info' --class fedora --class gnu-linux --class gnu --class os {
+        linux (tftp)aarch64/vmlinuz devfs=nomount ksdevice=bootif inst.ks={{ inspect_ks_cfg_uri }} vnc rhgb quiet
+        initrd (tftp)aarch64/initrd.img
+}
+

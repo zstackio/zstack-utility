@@ -46,3 +46,4 @@ apibinding/apibinding/inventory.py
 *.orig
 .pydevproject
 .project
+/bm-instance-agent/.idea/
