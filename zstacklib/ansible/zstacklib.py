@@ -1967,7 +1967,21 @@ enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo; sync
                     host_post_info.post_label = "ansible.shell.deploy.repo"
                     host_post_info.post_label_param = "qemu-kvm-ev-mn"
                     run_remote_command(generate_kvm_repo_command, host_post_info)
-
+                if 'mlnx-ofed' in zstack_repo:
+                    generate_mlnx_repo_raw_command = """
+echo -e "[mlnx-ofed-mn]
+name=mlnx-ofed-mn
+baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$basearch/\$YUM0/Extra/mlnx-ofed/
+gpgcheck=0
+enabled=0" >  /etc/yum.repos.d/mlnx-ofed-mn.repo
+               """
+                    generate_mlnx_repo_template = jinja2.Template(generate_mlnx_repo_raw_command)
+                    generate_mlnx_repo_command = generate_mlnx_repo_template.render({
+                        'yum_server':yum_server
+                    })
+                    run_remote_command(generate_mlnx_repo_command, host_post_info)
+                    run_remote_command("sync", host_post_info)
+                    
                 # generate zstack experimental repo anyway
                 generate_exp_repo_raw_command = """
 echo -e "[zstack-experimental-mn]

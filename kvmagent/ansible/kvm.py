@@ -202,6 +202,12 @@ run_remote_command("rm -rf {}/*; mkdir -p /usr/local/zstack/ || true".format(kvm
 
 def install_kvm_pkg():
     def rpm_based_install():
+        mlnx_ofed_c76 = " python3 unbound libnl3-devel lsof \
+                        libibverbs ibacm librdmacm mlnx-ethtool libibumad ofed-scripts mlnx-dpdk infiniband-diags \
+                        mlnx-dpdk-tools rdma-core mlnx-ofa_kernel kmod-mlnx-ofa_kernel kmod-iser mlnx-ofa_kernel-devel \
+                        rdma-core-devel mstflint kmod-isert mlnx-iproute2 mlnx-dpdk-doc libibverbs-utils librdmacm-utils \
+                        mlnx-dpdk-devel openvswitch kmod-srp mlnx-ofed-dpdk-upstream-libs"
+
         x86_64_c74 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                       usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
                       net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
@@ -212,7 +218,7 @@ def install_kvm_pkg():
                       usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
                       net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
                       smartmontools sshpass usbutils vconfig wget audit dnsmasq \
-                      qemu-kvm-ev collectd-virt OVMF edk2.git-ovmf-x64 mcelog MegaCli python-pyudev seabios-bin"
+                      qemu-kvm-ev collectd-virt OVMF edk2.git-ovmf-x64 mcelog MegaCli python-pyudev seabios-bin" + mlnx_ofed_c76
 
         aarch64_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                         usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \

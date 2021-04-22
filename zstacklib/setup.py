@@ -29,7 +29,6 @@ Python support library for zstack""",
           'Jinja2',
           'pyroute2',
           "beeprint"
-          "beeprint",
           "pyyaml"
       ],
       entry_points="""
