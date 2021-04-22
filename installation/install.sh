@@ -111,7 +111,7 @@ PKG_MIRROR_ALIYUN='aliyun'
 #used for all in one installer and upgrader. 
 ZSTACK_YUM_REPOS=''
 ZSTACK_LOCAL_YUM_REPOS='zstack-local'
-ZSTACK_MN_REPOS='zstack-mn,qemu-kvm-ev-mn'
+ZSTACK_MN_REPOS='zstack-mn,qemu-kvm-ev-mn,mlnx-ofed-mn'
 ZSTACK_MN_UPGRADE_REPOS='zstack-mn'
 MIRROR_163_YUM_REPOS='163base,163updates,163extras,ustcepel,163-qemu-ev'
 MIRROR_163_YUM_WEBSITE='mirrors.163.com'
@@ -3069,6 +3069,16 @@ cat > $repo_file << EOF
 [qemu-kvm-ev]
 name=Qemu KVM EV
 baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0/Extra/qemu-kvm-ev
+gpgcheck=0
+enabled=0
+EOF
+
+repo_file=/etc/yum.repos.d/mlnx-ofed.repo
+echo "create $repo_file" >> $ZSTACK_INSTALL_LOG
+cat > $repo_file << EOF
+[mlnx-ofed]
+name=Mellanox OFED Driver
+baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0/Extra/mlnx-ofed
 gpgcheck=0
 enabled=0
 EOF
