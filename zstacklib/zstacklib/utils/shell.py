@@ -2,10 +2,19 @@
 
 @author: frank
 '''
+import os
 import subprocess
 from zstacklib.utils import log
 from zstacklib.utils import lock
 
+# instead of closing [3, ulimit -n)
+def _linux_close_fds(self, but):
+    for fd in [ int(n) for n in os.listdir('/proc/%d/fd' % os.getpid()) ]:
+        if fd > 2 and fd != but:
+            try: os.close(fd)
+            except: pass
+
+subprocess.Popen._close_fds = _linux_close_fds
 
 @lock.lock("subprocess.popen")
 def get_process(cmd, shell=None, workdir=None, pipe=None, executable=None):
