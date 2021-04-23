@@ -44,6 +44,9 @@ from zstacklib.utils import misc
 from zstacklib.utils import qemu_img
 from zstacklib.utils.report import *
 from zstacklib.utils.vm_plugin_queue_singleton import VmPluginQueueSingleton
+from zstacklib.utils.libvirt_event_manager_singleton import LibvirtEventManager
+from zstacklib.utils.libvirt_event_manager_singleton import LibvirtEventManagerSingleton
+from distutils.version import LooseVersion
 
 logger = log.get_logger(__name__)
 
@@ -930,7 +933,7 @@ class LibvirtAutoReconnect(object):
     if not conn:
         raise Exception('unable to get libvirt connection')
 
-    evtMgr = LibvirtEventManager()
+    evtMgr = LibvirtEventManagerSingleton()
 
     libvirt_event_callbacks = {}
 
@@ -978,6 +981,13 @@ class LibvirtAutoReconnect(object):
         LibvirtAutoReconnect.conn.domainEventRegisterAny(None, libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE,
                                                          lifecycle_callback, None)
 
+        def libvirtClosedCallback(conn, reason, opaque):
+            reasonStrings = (
+              "Error", "End-of-file", "Keepalive", "Client",
+            )
+            logger.debug("got libvirt closed callback: %s: %s" % (conn.getURI(), reasonStrings[reason]))
+
+        LibvirtAutoReconnect.conn.registerCloseCallback(libvirtClosedCallback, None)
         # NOTE: the keepalive doesn't work on some libvirtd even the versions are the same
         # the error is like "the caller doesn't support keepalive protocol; perhaps it's missing event loop implementation"
 
