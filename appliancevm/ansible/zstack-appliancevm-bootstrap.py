@@ -20,7 +20,7 @@ SUPPORTED_OS = [DEBIAN, CENTOS]
 
 dirname = os.path.dirname(log_path)
 if not os.path.exists(dirname):
-    os.makedirs(dirname, 0755)
+    os.makedirs(dirname, 0o755)
 
 logging.basicConfig(filename=log_path, level=logging.DEBUG)
 
@@ -228,7 +228,7 @@ class VRBootStrap(object):
         def mkdirs():
             dirname = os.path.dirname(self.UDEV_PERSISTENT_70_NET)
             if not os.path.exists(dirname):
-                os.makedirs(dirname, 0755)
+                os.makedirs(dirname, 0o755)
                 
         def write_udev_persistent_70_net():
             info = []
@@ -286,7 +286,7 @@ class VRBootStrap(object):
     def configure_public_key(self, pub_key):
         ssh_path = '/root/.ssh'
         if not os.path.exists(ssh_path):
-            os.makedirs(ssh_path, 0700)
+            os.makedirs(ssh_path, 0o700)
         
         auth_file = os.path.join(ssh_path, 'authorized_keys')
         with open(auth_file, 'w') as fd:

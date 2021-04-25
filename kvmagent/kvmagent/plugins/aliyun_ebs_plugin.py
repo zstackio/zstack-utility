@@ -55,7 +55,7 @@ class AliyunEbsStoragePlugin(kvmagent.KvmAgent):
             if not os.path.exists(cfile):
                 d = os.path.dirname(cfile)
                 if not os.path.exists(d):
-                    os.makedirs(d, 0755)
+                    os.makedirs(d, 0o755)
                 overwriteConfig(config, cfile)
                 return True
 
@@ -76,7 +76,7 @@ class AliyunEbsStoragePlugin(kvmagent.KvmAgent):
             startCmd = shell.ShellCmd("/opt/tdc/tdc_admin lsi")
             startCmd(False)
             if startCmd.return_code != 0:
-                linux.mkdir("/apsara", 0755)
+                linux.mkdir("/apsara", 0o755)
                 e = shell.ShellCmd('rpm -qi tdc-unified-8.2.0.release.el5.x86_64')
                 e(False)
                 if e.return_code != 0:

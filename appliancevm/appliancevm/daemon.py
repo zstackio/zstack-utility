@@ -17,7 +17,7 @@ def main():
     pidfile = '/var/run/zstack/appliancevm.pid'
     dirname = os.path.dirname(pidfile)
     if not os.path.exists(dirname):
-        os.makedirs(dirname, 0755)
+        os.makedirs(dirname, 0o755)
     
     try:
         iptables.insert_single_rule_to_filter_table('-A INPUT -i eth0 -p tcp -m tcp --dport 7759 -j ACCEPT')

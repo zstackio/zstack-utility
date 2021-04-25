@@ -508,7 +508,7 @@ WantedBy=multi-user.target
 
             if not os.path.exists(service_path):
                 linux.write_file(service_path, service_conf, True)
-                os.chmod(service_path, 0644)
+                os.chmod(service_path, 0o644)
                 reload_and_restart_service(service_name)
                 return
 
@@ -516,7 +516,7 @@ WantedBy=multi-user.target
                 linux.write_file(service_path, service_conf, True)
                 logger.info("%s.service conf changed" % service_name)
 
-            os.chmod(service_path, 0644)
+            os.chmod(service_path, 0o644)
             # restart service regardless of conf changes, for ZSTAC-23539
             reload_and_restart_service(service_name)
 

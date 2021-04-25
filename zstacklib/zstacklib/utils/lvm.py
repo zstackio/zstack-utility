@@ -500,7 +500,7 @@ WantedBy=multi-user.target
         f.write(content)
         f.flush()
         os.fsync(f.fileno())
-    os.chmod(lvmlockd_service_path, 0644)
+    os.chmod(lvmlockd_service_path, 0o644)
 
     if not os.path.exists(LVMLOCKD_LOG_RSYSLOG_PATH):
         content = """if $programname == 'lvmlockd' then %s 
@@ -510,7 +510,7 @@ WantedBy=multi-user.target
             f.write(content)
             f.flush()
             os.fsync(f.fileno())
-        os.chmod(LVMLOCKD_LOG_RSYSLOG_PATH, 0644)
+        os.chmod(LVMLOCKD_LOG_RSYSLOG_PATH, 0o644)
         shell.call("systemctl restart rsyslog", exception=False)
 
     cmd = shell.ShellCmd("systemctl daemon-reload")
@@ -552,7 +552,7 @@ def start_lvmlockd(io_timeout=40):
         f.write(content)
         f.flush()
         os.fsync(f.fileno())
-    os.chmod(LVMLOCKD_LOG_LOGROTATE_PATH, 0644)
+    os.chmod(LVMLOCKD_LOG_LOGROTATE_PATH, 0o644)
 
 
 @bash.in_bash

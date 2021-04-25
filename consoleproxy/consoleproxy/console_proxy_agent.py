@@ -110,9 +110,9 @@ class ConsoleProxyAgent(object):
         self.http_server.register_sync_uri(self.PING_PATH, self.ping)
 
         if not os.path.exists(self.PROXY_LOG_DIR):
-            os.makedirs(self.PROXY_LOG_DIR, 0755)
+            os.makedirs(self.PROXY_LOG_DIR, 0o755)
         if not os.path.exists(self.TOKEN_FILE_DIR):
-            os.makedirs(self.TOKEN_FILE_DIR, 0755)
+            os.makedirs(self.TOKEN_FILE_DIR, 0o755)
 
         self.db = filedb.FileDB(self.DB_NAME)
 

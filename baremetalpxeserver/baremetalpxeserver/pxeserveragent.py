@@ -326,9 +326,9 @@ menuentry 'ZStack Get Bare Metal Chassis Hardware Info' --class fedora --class g
 
         # config nginx
         if not os.path.exists(self.NGINX_MN_PROXY_CONF_PATH):
-            os.makedirs(self.NGINX_MN_PROXY_CONF_PATH, 0777)
+            os.makedirs(self.NGINX_MN_PROXY_CONF_PATH, 0o777)
         if not os.path.exists(self.NGINX_TERMINAL_PROXY_CONF_PATH):
-            os.makedirs(self.NGINX_TERMINAL_PROXY_CONF_PATH, 0777)
+            os.makedirs(self.NGINX_TERMINAL_PROXY_CONF_PATH, 0o777)
         nginx_conf = """user nginx;
 worker_processes auto;
 error_log /var/log/nginx/error.log;
@@ -419,7 +419,7 @@ http {
             raise PxeServerError('storage path: %s is a file' % self.storage_path)
 
         if not os.path.exists(self.storage_path):
-            os.makedirs(self.storage_path, 0777)
+            os.makedirs(self.storage_path, 0o777)
 
         total, avail = self._get_capacity()
         logger.debug(http.path_msg(self.CONNECT_PATH, 'connected, [storage path:%s, total capacity: %s bytes, '
