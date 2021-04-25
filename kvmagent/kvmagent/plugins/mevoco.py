@@ -1233,7 +1233,7 @@ mimetype.assign = (
                 f.write(content)
                 f.flush()
                 os.fsync(f.fileno())
-            os.chmod(self.DNSMASQ_LOG_LOGROTATE_PATH, 0644)
+            os.chmod(self.DNSMASQ_LOG_LOGROTATE_PATH, 0o644)
 
     @in_bash
     def _get_dhcp_server_ip_from_namespace(self, namespace_name):

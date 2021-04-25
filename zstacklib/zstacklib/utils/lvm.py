@@ -500,7 +500,7 @@ WantedBy=multi-user.target
         f.write(content)
         f.flush()
         os.fsync(f.fileno())
-    os.chmod(lvmlockd_service_path, 0644)
+    os.chmod(lvmlockd_service_path, 0o644)
 
     if not os.path.exists(LVMLOCKD_LOG_RSYSLOG_PATH):
         content = """if $programname == 'lvmlockd' then %s 
@@ -510,7 +510,7 @@ WantedBy=multi-user.target
             f.write(content)
             f.flush()
             os.fsync(f.fileno())
-        os.chmod(LVMLOCKD_LOG_RSYSLOG_PATH, 0644)
+        os.chmod(LVMLOCKD_LOG_RSYSLOG_PATH, 0o644)
         shell.call("systemctl restart rsyslog", exception=False)
 
     cmd = shell.ShellCmd("systemctl daemon-reload")
@@ -552,7 +552,7 @@ def start_lvmlockd(io_timeout=40):
         f.write(content)
         f.flush()
         os.fsync(f.fileno())
-    os.chmod(LVMLOCKD_LOG_LOGROTATE_PATH, 0644)
+    os.chmod(LVMLOCKD_LOG_LOGROTATE_PATH, 0o644)
 
 
 @bash.in_bash
@@ -763,6 +763,35 @@ def get_vg_size(vgUuid, raise_exception=True):
     for pool in pools:
         vg_free += pool.free
     return vg_size, str(int(vg_free))
+
+
+def get_all_vg_size():
+    d = {} # type: (str) -> tuple[int, int]
+
+    o = bash.bash_o("vgs --nolocking %s --noheadings --separator : --units b -o name,vg_size,vg_free,vg_lock_type")
+    if not o:
+        return d
+
+    for line in o.splitlines():
+        xs = line.strip().split(':')
+        vg_name = xs[0]
+        vg_size = int(xs[1].strip("B"))
+        vg_free = int(xs[2].strip("B"))
+
+        if "sanlock" in line:
+            d[vg_name] = (vg_size, vg_free)
+            continue
+
+        pools = get_thin_pools_from_vg(vg_name)
+        if len(pools) == 0:
+            d[vg_name] = (vg_size, vg_free)
+            continue
+
+        for pool in pools:
+            vg_free += int(pool.free)
+        d[vg_name] = (vg_size, vg_free)
+
+    return d
 
 
 def add_vg_tag(vgUuid, tag):

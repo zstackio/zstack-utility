@@ -160,11 +160,11 @@ class AppBuildSystemAgent(object):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
         rsp = AgentResponse()
-        linux.mkdir(cmd.url, 0755)
-        linux.mkdir(cmd.url + '/rawapps', 0755)
-        linux.mkdir(cmd.url + '/builds', 0755)
-        linux.mkdir(cmd.url + '/apps', 0755)
-        linux.mkdir(cmd.url + '/exports', 0755)
+        linux.mkdir(cmd.url, 0o755)
+        linux.mkdir(cmd.url + '/rawapps', 0o755)
+        linux.mkdir(cmd.url + '/builds', 0o755)
+        linux.mkdir(cmd.url + '/apps', 0o755)
+        linux.mkdir(cmd.url + '/exports', 0o755)
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.url)
 
         return jsonobject.dumps(rsp)
@@ -244,7 +244,7 @@ class AppBuildSystemAgent(object):
                 shutil.rmtree(path)
             if os.path.isfile(path):
                 os.remove(path)
-            linux.mkdir(path, 0755)
+            linux.mkdir(path, 0o755)
         def _tar_export(srcDir, dstDir, ctx):
             basename = os.path.basename(srcDir)
             metaPath = shell.call('mktemp XXXXXX-appmeta.json', True, srcDir).strip()  # metaPath is relative path
@@ -305,7 +305,7 @@ class AppBuildSystemAgent(object):
 
         if os.path.isdir(cmd.rawPath):
             shutil.rmtree(cmd.rawPath)
-        linux.mkdir(cmd.rawPath, 0755)
+        linux.mkdir(cmd.rawPath, 0o755)
 
         if cmd.srcUrl.endswith(".gz"):
             shell.call("tar zxf %s -C %s" % (cmd.srcUrl, cmd.rawPath))
@@ -357,7 +357,7 @@ class AppBuildSystemAgent(object):
 
         if os.path.isdir(dir):
             shutil.rmtree(dir)
-        linux.mkdir(dir, 0755)
+        linux.mkdir(dir, 0o755)
         cmd = shell.ShellCmd("wget -c -t 5 --no-check-certificate %s -O %s" % (cmd.srcUrl, cmd.downloadPath))
         cmd(False)
         if cmd.return_code != 0:
