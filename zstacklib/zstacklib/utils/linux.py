@@ -2188,6 +2188,26 @@ def tail_1(path):
         return f.readline()
 
 
+# check if file 'fpath' contains .conf style configurations
+def file_has_config(fpath):
+    blank = re.compile(r'^\s*$')
+    comment = re.compile(r'^\s*#')
+
+    try:
+        with open(fpath) as f:
+            while True:
+                line = f.readline()
+                if not line:  # EOF
+                    return False
+                if comment.search(line) or blank.search(line):
+                    continue
+
+                return True
+
+        return False
+    except:
+        return None
+
 def get_libvirtd_pid():
     if not os.path.exists('/var/run/libvirtd.pid'):
         return None

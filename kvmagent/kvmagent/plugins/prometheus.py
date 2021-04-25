@@ -114,20 +114,13 @@ def collect_lvm_capacity_statistics():
                                       'volume group and thin pool free size', None, ['vg_name']),
     }
 
-    r = bash_r("grep -Ev '^[[:space:]]*#|^[[:space:]]*$' /etc/multipath/wwids")
-    if r == 0:
+    if linux.file_has_config("/etc/multipath/wwids"):
         linux.set_fail_if_no_path()
 
-    r, o, e = bash_roe("vgs --nolocking --noheading -oname")
-    if r != 0 or len(o.splitlines()) == 0:
-        return metrics.values()
-
-    vg_names = o.splitlines()
-    for name in vg_names:
-        name = name.strip()
-        size, avail = lvm.get_vg_size(name, False)
-        metrics['vg_size'].add_metric([name], float(size))
-        metrics['vg_avail'].add_metric([name], float(avail))
+    vg_sizes = lvm.get_all_vg_size()
+    for name, tpl in vg_sizes.items():
+        metrics['vg_size'].add_metric([name], float(tpl[0]))
+        metrics['vg_avail'].add_metric([name], float(tpl[1]))
 
     return metrics.values()
 

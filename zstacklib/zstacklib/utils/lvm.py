@@ -765,6 +765,35 @@ def get_vg_size(vgUuid, raise_exception=True):
     return vg_size, str(int(vg_free))
 
 
+def get_all_vg_size():
+    d = {} # type: (str) -> tuple[int, int]
+
+    o = bash.bash_o("vgs --nolocking %s --noheadings --separator : --units b -o name,vg_size,vg_free,vg_lock_type")
+    if not o:
+        return d
+
+    for line in o.splitlines():
+        xs = line.strip().split(':')
+        vg_name = xs[0]
+        vg_size = int(xs[1].strip("B"))
+        vg_free = int(xs[2].strip("B"))
+
+        if "sanlock" in line:
+            d[vg_name] = (vg_size, vg_free)
+            continue
+
+        pools = get_thin_pools_from_vg(vg_name)
+        if len(pools) == 0:
+            d[vg_name] = (vg_size, vg_free)
+            continue
+
+        for pool in pools:
+            vg_free += int(pool.free)
+        d[vg_name] = (vg_size, vg_free)
+
+    return d
+
+
 def add_vg_tag(vgUuid, tag):
     cmd = shell.ShellCmd("vgchange --addtag %s %s" % (tag, vgUuid))
     cmd(is_exception=True)
