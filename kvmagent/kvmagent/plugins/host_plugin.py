@@ -559,6 +559,7 @@ class HostPlugin(kvmagent.KvmAgent):
     UPDATE_CONFIGURATION_PATH = "/host/update/configuration"
 
     host_network_facts_cache = {}  # type: dict[float, list[list, list]]
+    cpu_sockets = 0
 
     def __init__(self):
         self.IS_YUM = False
@@ -786,10 +787,11 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.totalMemory = _get_total_memory()
         rsp.usedMemory = used_memory
 
-        sockets = bash_o('grep "physical id" /proc/cpuinfo | sort -u | wc -l').strip()
-        rsp.cpuSockets = int(sockets)
-        if rsp.cpuSockets == 0:
-            rsp.cpuSockets = 1
+        if HostPlugin.cpu_sockets < 1:
+            sockets = len(bash_o('grep "physical id" /proc/cpuinfo | sort -u').splitlines())
+            HostPlugin.cpu_sockets = sockets if sockets > 0 else 1
+
+        rsp.cpuSockets = HostPlugin.cpu_sockets
 
         ret = jsonobject.dumps(rsp)
         logger.debug('get host capacity: %s' % ret)
