@@ -299,9 +299,11 @@ def collect_node_disk_wwid():
     }
 
     pvs = bash_o("pvs --nolocking --noheading -o pv_name").strip().splitlines()
+    mpaths = bash_o("dmsetup table | awk -F: '/multipath/{print $1}'").strip().splitlines()
+
     for pv in pvs:
         multipath_wwid = None
-        if bash_r("dmsetup table %s | grep multipath" % pv) == 0:
+        if os.path.basename(pv.strip()) in mpaths:
             multipath_wwid = bash_o("udevadm info -n %s | grep -E '^S: disk/by-id/dm-uuid' | awk -F '-' '{print $NF}'" % pv).strip()
         disks = linux.get_physical_disk(pv, False)
         for disk in disks:
