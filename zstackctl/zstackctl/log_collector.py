@@ -9,7 +9,7 @@ from utils import shell
 from utils.sql_query import MySqlCommandLineQuery
 from termcolor import colored
 from datetime import datetime, timedelta
-
+import time
 
 def info_verbose(*msg):
     if len(msg) == 1:
@@ -877,6 +877,33 @@ class CollectFromYml(object):
         if args.timeout and not str(args.timeout).isdigit():
             error_verbose("timeout must be a positive integer")
 
+    def dump_agent_threads(self,args):
+        exec_cmd = self.get_host_sql(
+            "select h.managementIp from HostVO h where h.hypervisorType = \"KVM\"") + ' | awk \'NR>1\''
+        try:
+            (status, output) = commands.getstatusoutput(exec_cmd)
+            if status == 0 and output.startswith('ERROR') is not True:
+                host_list = output.split('\n')
+            else:
+                warn("dump thread get host_list fail: %s" % output)
+
+            for host_ip in host_list:
+                info_verbose("dump kvm-agent thread for host: %s ..." % host_ip)
+                stack_command = "pkill -USR2 -P 1 -ef 'kvmagent import kdaemon'"
+                if self.check_host_reachable_in_queen(self.generate_host_post_info(host_ip, "host")) is True:
+                    (dump_status, dump_output) = run_remote_command(stack_command,
+                                                                    self.generate_host_post_info(host_ip, "host"),
+                                                                    return_status=True, return_output=True)
+                    if dump_status is False:
+                        warn("run %s dump thread command fail" % host_ip)
+                else:
+                    warn("host %s is unreachable ,dump kvm-agent thread fail!" % host_ip)
+
+        except Exception:
+            error_verbose('dump kvm-agent thread fail: %s' % Exception)
+
+        time.sleep(args.dumptime)
+
     def run(self, collect_dir, detail_version, time_stamp, args):
         zstack_path = os.environ.get('ZSTACK_HOME', None)
         if zstack_path and zstack_path != self.DEFAULT_ZSTACK_HOME:
@@ -887,6 +914,7 @@ class CollectFromYml(object):
             os.makedirs(collect_dir)
 
         self.param_validate(args)
+        self.dump_agent_threads(args)
 
         if args.thread is not None:
             self.max_thread_num = args.thread
