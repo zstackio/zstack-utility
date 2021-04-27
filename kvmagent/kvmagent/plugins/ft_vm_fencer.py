@@ -265,11 +265,11 @@ class FaultToleranceFecnerPlugin(kvmagent.KvmAgent):
             if is_bonding == 0:
                 return "up" in o
 
-            if getoutput("/bin/cat /sys/devices/virtual/net/%s/carrier" % device) == '1':
-                return True
+            # if getoutput("/bin/cat /sys/devices/virtual/net/%s/carrier" % device) == '1':
+            #     return True
 
-            if getoutput("/bin/cat /sys/class/net/%s/carrier" % device) == '1':
-                return True
+            # if getoutput("/bin/cat /sys/class/net/%s/carrier" % device) == '1':
+            #     return True
 
             physical_nics = getoutput("find /sys/class/net -type l -not -lname '*virtual*' -printf '%f\\n'").splitlines()
             if True in [p.strip() == device for p in physical_nics]:
