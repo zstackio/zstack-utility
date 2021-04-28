@@ -390,16 +390,21 @@ def free_vDPA(vmUuid, nicInternalName=None):
             "ovs-vsctl get interface {} options:vdpa-socket-path".format(vDPA_list[0])).strip().strip('"')
     return vDPA_path
 
+
 def get_ofed_version():
     ofed_version = shell.call("ofed_info -n")
 
     return float(ofed_version.split('-')[0])
+
 
 def check_hugepage_status():
     # we need 4G Hugepage for ovs, kB
     HUGEPAGE_SIZE_FOR_OVS = 1024 * 4
     hugepages_path = {2048: "/sys/kernel/mm/hugepages/hugepages-2048kB/",
                       1048576: "/sys/kernel/mm/hugepages/hugepages-1048576kB/"}
+
+    numa_nodes = shell.call("lscpu | grep 'NUMA node(s):'").split()[1]
+    numa_nodes = int(numa_nodes)
 
     # kB
     def_hugepagesz = shell.call(
@@ -417,9 +422,11 @@ def check_hugepage_status():
     if free_hugepagesz < HUGEPAGE_SIZE_FOR_OVS:
         if cur_free_memsz > HUGEPAGE_SIZE_FOR_OVS - free_hugepagesz:
             write_sysfs(hugepages_path[def_hugepagesz] +
-                        "nr_hugepages", str(HUGEPAGE_SIZE_FOR_OVS - free_hugepagesz))
+                        "nr_hugepages", str
+                        (HUGEPAGE_SIZE_FOR_OVS * numa_nodes - free_hugepagesz))
         else:
             raise OvsError("can not malloc enough hugepage for ovs.")
+
 
 def check_ovs_status():
 
@@ -462,6 +469,6 @@ def clear_ovsdb():
                 shell.run("ovs-vsctl del-br {}".format(b))
                 break
 
-    #shell.run("systemctl restart openibd.service")
+    # shell.run("systemctl restart openibd.service")
 
     shell.run("systemctl stop ovsdb-server.service")
