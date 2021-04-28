@@ -79,7 +79,9 @@ def get_bonds_interfaces(bondList):
     interface_list = []
     for b in bondList:
         tmp = slaves_p.format(b)
-        tmp_list = read_sysfs(tmp).split()
+        tmp_list = []
+        if os.path.exists(tmp):
+            tmp_list = read_sysfs(tmp).split()
         interface_list.extend(tmp_list)
     return interface_list
 
@@ -393,8 +395,35 @@ def get_ofed_version():
 
     return float(ofed_version.split('-')[0])
 
+def check_hugepage_status():
+    # we need 4G Hugepage for ovs, kB
+    HUGEPAGE_SIZE_FOR_OVS = 1024 * 4
+    hugepages_path = {2048: "/sys/kernel/mm/hugepages/hugepages-2048kB/",
+                      1048576: "/sys/kernel/mm/hugepages/hugepages-1048576kB/"}
+
+    # kB
+    def_hugepagesz = shell.call(
+        "cat /proc/meminfo | grep Hugepagesize").split()[1]
+    def_hugepagesz = int(def_hugepagesz)
+
+    free_hugepages = read_sysfs(
+        hugepages_path[def_hugepagesz] + "free_hugepages")
+    free_hugepages = int(free_hugepages)
+    free_hugepagesz = free_hugepages * def_hugepagesz
+    # kB
+    cur_free_memsz = shell.call("cat /proc/meminfo | grep MemFree").split()[1]
+    cur_free_memsz = int(cur_free_memsz)
+
+    if free_hugepagesz < HUGEPAGE_SIZE_FOR_OVS:
+        if cur_free_memsz > HUGEPAGE_SIZE_FOR_OVS - free_hugepagesz:
+            write_sysfs(hugepages_path[def_hugepagesz] +
+                        "nr_hugepages", str(HUGEPAGE_SIZE_FOR_OVS - free_hugepagesz))
+        else:
+            raise OvsError("can not malloc enough hugepage for ovs.")
 
 def check_ovs_status():
+
+    check_hugepage_status()
 
     for _ in range(0, 5):
         if shell.run("/usr/share/openvswitch/scripts/ovs-ctl status") == 0:
@@ -407,7 +436,7 @@ def check_ovs_status():
 
 
 def start_ovs():
-    shell.run("/usr/share/openvswitch/scripts/ovs-ctl start")
+    shell.run("/usr/share/openvswitch/scripts/ovs-ctl start --no-force-corefiles")
 
 
 def stop_ovs():
