@@ -2927,6 +2927,8 @@ class Vm(object):
                     # vf nic doesn't have internal name
                     if cmd.nic.pciDeviceAddress is not None:
                         return True
+                    if cmd.nic.type in "vDPA":
+                        return True
                     else:
                         return linux.is_network_device_existing(cmd.nic.nicInternalName)
 
