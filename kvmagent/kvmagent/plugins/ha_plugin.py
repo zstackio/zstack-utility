@@ -9,6 +9,7 @@ from zstacklib.utils import thread
 from zstacklib.utils import qemu_img
 import os.path
 import re
+from string import whitespace
 import time
 import traceback
 import threading
@@ -111,6 +112,164 @@ class SanlockHostStatusParser(object):
         m = re.search(r"^\d+\b", substr, re.M)
         remainder = substr if not m else substr[:m.start()]
         return SanlockHostStatus(str(hostId) + remainder)
+
+
+class SanlockClientStatus(object):
+    def __init__(self, status_lines):
+        self.lockspace = status_lines[0].split()[1]
+        self.is_adding = ':0 ADD' in status_lines[0]
+
+        for line in status_lines[1:]:
+            try:
+                k, v = line.strip().split('=', 2)
+                if k == 'renewal_last_result': self.renewal_last_result = int(v)
+                elif k == 'renewal_last_attempt': self.renewal_last_attempt = int(v)
+                elif k == 'renewal_last_success': self.renewal_last_success = int(v)
+            except ValueError:
+                logger.warn("unexpected sanlock client status: %s" % line)
+
+    def get_lockspace(self):
+        return self.lockspace
+
+    def get_renewal_last_result(self):
+        return self.renewal_last_result
+
+    def get_renewal_last_attempt(self):
+        return self.renewal_last_attempt
+
+    def get_renewal_last_success(self):
+        return self.renewal_last_success
+
+
+class SanlockClientStatusParser(object):
+    def __init__(self, status):
+        self.status = status
+        self.lockspace_records = None  # type: list[SanlockClientStatus]
+
+    def get_lockspace_records(self):
+        if self.lockspace_records is None:
+            self.lockspace_records = self._do_get_lockspace_records()
+        return self.lockspace_records
+
+    def get_lockspace_record(self, needle):
+        for r in self.get_lockspace_records():
+            if needle in r.get_lockspace():
+                return r
+        return None
+
+    def _do_get_lockspace_records(self):
+        records = []
+        current_lines = []
+
+        for line in self.status.splitlines():
+            if len(line) == 0:
+                continue
+
+            if line[0] in whitespace and len(current_lines) > 0:
+                current_lines.append(line)
+                continue
+
+            # found new records - check whether to complete last record.
+            if len(current_lines) > 0:
+                records.append(SanlockClientStatus(current_lines))
+                current_lines = []
+
+            if line.startswith("s "):
+                current_lines.append(line)
+
+        if len(current_lines) > 0:
+            records.append(SanlockClientStatus(current_lines))
+
+        return records
+
+
+class SanlockHealthChecker(object):
+    def __init__(self):
+        self.vg_failures = {}   # type: dict[str, int]
+        self.all_vgs = {}       # type: dict[str, object]
+        self.fencer_created_time = {}     # type: dict[str, float]
+
+    def inc_vg_failure_cnt(self, vg_uuid):
+        count = self.vg_failures.get(vg_uuid)
+        if count is None:
+            self.vg_failures[vg_uuid] = 1
+            return 1
+
+        vg_failures[vg_uuid] = count+1
+        return count+1
+
+    def reset_vg_failure_cnt(self, vg_uuid):
+        self.vg_failures.pop(vg_uuid, None)
+
+    def addvg(self, created_time, fencer_cmd):
+        vg_uuid = fencer_cmd.vgUuid
+        self.all_vgs[vg_uuid] = fencer_cmd
+        self.fencer_created_time[vg_uuid] = created_time
+
+    def delvg(self, vg_uuid):
+        self.all_vgs.pop(vg_uuid, None)
+        self.vg_failures.pop(vg_uuid, None)
+        self.fencer_created_time.pop(vg_uuid, None)
+
+    def get_vg_fencer_cmd(self, vg_uuid):
+        return self.all_vgs.get(vg_uuid)
+
+    def get_created_time(self, vg_uuid):
+        return self.fencer_created_time.get(vg_uuid)
+
+    def _do_health_check_vg(self, vg, lockspaces, r):
+        if not r:
+            failure = "lockspace for vg %s not found" % vg
+            logger.warn(failure)
+            return self.inc_vg_failure_cnt(vg), failure
+
+        if r.is_adding:
+            logger.warn("lockspace for vg %s is adding, skip run fencer" % vg)
+            return 0, None
+
+        if r.get_lockspace() not in lockspaces:
+            failure = "can not find lockspace of %s" % vg
+            logger.warn(failure)
+            return self.inc_vg_failure_cnt(vg), failure
+
+        if r.get_renewal_last_result() != 1:
+            if (r.get_renewal_last_attempt() > r.get_renewal_last_success() and \
+                    r.get_renewal_last_attempt() - r.get_renewal_last_success() > 100) or \
+                    (r.get_renewal_last_attempt() < r.get_renewal_last_success() - 100 < r.get_renewal_last_success()):
+                failure = "sanlock last renewal failed with %s and last attempt is %s, last success is %s" % \
+                        (r.get_renewal_last_result(), r.get_renewal_last_attempt(), r.get_renewal_last_success())
+                logger.warn(failure)
+                return self.inc_vg_failure_cnt(vg), failure
+
+        return 0, None
+
+    def _do_get_client_status():
+        return bash.bash_o("sanlock client status -D")
+
+    def _do_get_lockspaces():
+        lines = bash.bash_o("sanlock client gets").splitlines()
+        return [ s.split()[1] for s in lines if s.startswith('s ') ]
+
+    def _do_health_check(self, storage_timeout, max_failure):
+        lockspaces = _do_get_lockspaces()
+        p = SanlockClientStatusParser(_do_get_client_status())
+        victims = {}  # type: dict[str, str]
+
+        for vg in self.all_vgs:
+            r = p.get_lockspace_record(vg)
+            try:
+                cnt, failure = self._do_health_check_vg(vg, lockspace, r)
+                if cnt == 0:
+                    self.reset_vg_failure_cnt(vg)
+                elif cnt >= max_failure:
+                    victims[vg] = failure
+            except Exception as e:
+                logger.warn("_do_health_check_vg(%s) failed, %s" % (vg, e.message))
+
+        return victims
+
+    def runonce(self, storage_timeout, max_failure):
+        return {} if len(self.all_vgs) == 0 else self._do_health_check(storage_timeout, max_failure)
 
 
 last_multipath_run = time.time()
