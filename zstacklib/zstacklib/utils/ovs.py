@@ -403,7 +403,7 @@ def check_hugepage_status():
     hugepages_path = {2048: "/sys/kernel/mm/hugepages/hugepages-2048kB/",
                       1048576: "/sys/kernel/mm/hugepages/hugepages-1048576kB/"}
 
-    numa_nodes = shell.call("lscpu | grep 'NUMA node(s):'").split()[1]
+    numa_nodes = shell.call("lscpu | grep 'NUMA node(s):'").split()[2]
     numa_nodes = int(numa_nodes)
 
     # kB
