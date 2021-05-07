@@ -3,6 +3,7 @@ from zstacklib.utils import http
 from zstacklib.utils import jsonobject
 from zstacklib.utils import lock
 from zstacklib.utils import log
+from zstacklib.utils import iproute
 from zstacklib.utils.bash import *
 
 logger = log.get_logger(__name__)
@@ -95,8 +96,8 @@ class VipQos(kvmagent.KvmAgent):
     @in_bash
     def _find_ns_name(self, vip):
         vip = vip.replace('.', '_')
-        o = bash_o("ip netns | grep {{vip}} | awk '{print $1}'")
-        return o
+        nslist = filter(lambda x: x.find(vip) >= 0, iproute.query_all_namespaces())
+        return nslist[0] if nslist else ""
 
     @in_bash
     def _apply_vipqos_rule_to_nic(self, nic, ns_cmd, port, bandiwith):

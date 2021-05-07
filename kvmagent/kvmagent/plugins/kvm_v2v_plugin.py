@@ -16,6 +16,7 @@ from zstacklib.utils import lock
 from zstacklib.utils import log
 from zstacklib.utils import shell
 from zstacklib.utils import http
+from zstacklib.utils import iproute
 from zstacklib.utils import xmlobject
 from zstacklib.utils.bash import in_bash
 from zstacklib.utils.plugin import completetask
@@ -665,7 +666,8 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
 
-        shell.run("modprobe ifb; ip link set %s up" % QOS_IFB)
+        shell.run("modprobe ifb")
+        iproute.set_link_enable(QOS_IFB)
 
         if not cmd.sourceHosts:
             return jsonobject.dumps(rsp)

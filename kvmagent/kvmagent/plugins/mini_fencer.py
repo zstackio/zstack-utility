@@ -8,6 +8,8 @@ import re
 import signal
 import threading
 
+from zstacklib.utils import iproute
+
 FENCER_TAG = "zs::ministorage::fencer"
 MANAGEMENT_TAG = "zs::ministorage::management"
 
@@ -100,16 +102,19 @@ def do_test_fencer(vg_name):
         if r == 0 and is_ip_address(fencer_ip):
             return test_ip_address(fencer_ip)
 
-    r, default_gateway = getstatusoutput("ip r get 8.8.8.8 | head -n1 | grep -o 'via.*dev' | awk '{print $2}'")
-    if r == 0 and default_gateway and default_gateway != "" and is_ip_address(default_gateway):
-        return test_ip_address(default_gateway)
+    try:
+        default_gateway = iproute.get_routes_by_ip('8.8.8.8')[0].via_ip
+        if default_gateway and is_ip_address(default_gateway):
+            return test_ip_address(default_gateway)
+    except:
+        logger.warn("can not get default gateway")
 
     mgmt_ip = getoutput("timeout 3 vgs %s -otags --nolocking --noheading | tr ',' '\\n' | grep %s" % (vg_name, MANAGEMENT_TAG))
     mgmt_ip = mgmt_ip.strip().split("::")[-1]
     if not is_ip_address(mgmt_ip):
         logger.error("can not get mgmt nic")
         return False
-    mgmt_device = getoutput("ip a | grep %s | awk '{print $NF}'" % mgmt_ip)
+    mgmt_device = iproute.query_addresses_by_ip(mgmt_ip)[0].ifname
     return test_device(mgmt_device, 12) is None
 
 
@@ -148,7 +153,7 @@ def is_ip_address(ip):
 
 def test_ip_address(ip):
     # type: (str) -> bool
-    device = getoutput("ip r get %s | grep -Eo 'dev.*src' | awk '{print $2}'" % ip)
+    device = iproute.get_routes_by_ip(ip)[0].get_related_link_device().ifname
     for i in range(3):
         r, o = getstatusoutput("timeout 2 arping -b -c 1 -w 1 -I %s %s" % (device, ip))
         if r == 0:

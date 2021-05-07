@@ -10,6 +10,7 @@ from zstacklib.utils import log
 from zstacklib.utils import lock
 from zstacklib.utils import shell
 from zstacklib.utils import linux
+from zstacklib.utils import iproute
 from zstacklib.utils.bash import *
 import os
 import traceback
@@ -137,7 +138,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         if 'up' in state:
             return
 
-        shell.call('ip link set %s up' % device_name)
+        iproute.set_link_enable(device_name)
 
     def modifySysConfiguration(self, name, old_value, new_value):
         sysconf_path = "/etc/sysctl.conf"
@@ -180,7 +181,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
     @in_bash
     def _configure_bridge_mtu(self, bridgeName, interf, mtu=None):
         if mtu is not None:
-            shell.call("ip link set mtu %d dev %s" % (mtu, interf))
+            iproute.set_link_attribute(interf, mtu=mtu)
             #bridge mtu must be bigger than all vnic mtu, so will not change it
             #if bridgeName is not None:
             #    shell.call("ip link set mtu %d dev %s" % (mtu, bridgeName))
