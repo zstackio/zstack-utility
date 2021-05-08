@@ -188,6 +188,7 @@ class SanlockHealthChecker(object):
         self.vg_failures = {}   # type: dict[str, int]
         self.all_vgs = {}       # type: dict[str, object]
         self.fencer_created_time = {}     # type: dict[str, float]
+        self.fencer_fire_cnt = {}         # type: dict[str, int]
 
     def inc_vg_failure_cnt(self, vg_uuid):
         count = self.vg_failures.get(vg_uuid)
@@ -195,11 +196,27 @@ class SanlockHealthChecker(object):
             self.vg_failures[vg_uuid] = 1
             return 1
 
-        vg_failures[vg_uuid] = count+1
+        self.vg_failures[vg_uuid] = count+1
         return count+1
 
     def reset_vg_failure_cnt(self, vg_uuid):
-        self.vg_failures.pop(vg_uuid, None)
+        self.vg_failures.pop(vg_uuid, 0)
+
+    def inc_fencer_fire_cnt(self, vg_uuid):
+        count = self.fencer_fire_cnt.get(vg_uuid)
+        if count is None:
+            self.fencer_fire_cnt[vg_uuid] = 1
+            return 1
+
+        self.fencer_fire_cnt[vg_uuid] = count+1
+        return count+1
+
+    def reset_fencer_fire_cnt(self, vg_uuid):
+        self.fencer_fire_cnt.pop(vg_uuid, 0)
+
+    def get_fencer_fire_cnt(self, vg_uuid):
+        cnt = self.fencer_fire_cnt.get(vg_uuid)
+        return 0 if cnt is None else cnt
 
     def addvg(self, created_time, fencer_cmd):
         vg_uuid = fencer_cmd.vgUuid
@@ -210,6 +227,7 @@ class SanlockHealthChecker(object):
         self.all_vgs.pop(vg_uuid, None)
         self.vg_failures.pop(vg_uuid, None)
         self.fencer_created_time.pop(vg_uuid, None)
+        self.fencer_fire_cnt.pop(vg_uuid, None)
 
     def get_vg_fencer_cmd(self, vg_uuid):
         return self.all_vgs.get(vg_uuid)
@@ -404,6 +422,8 @@ class HaPlugin(kvmagent.KvmAgent):
         self.run_fencer_timestamp = {}  # type: dict[str, float]
         self.fencer_fire_timestamp = {}  # type: dict[str, float]
         self.fencer_lock = threading.RLock()
+        self.sblk_health_checker = SanlockHealthChecker()
+        self.sblk_fencer_running = False
 
     @kvmagent.replyerror
     def cancel_ceph_self_fencer(self, req):
@@ -496,107 +516,108 @@ class HaPlugin(kvmagent.KvmAgent):
     def setup_sharedblock_self_fencer(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
-        @thread.AsyncThread
-        def heartbeat_on_sharedblock():
-            fire = 0
-            failure = 0
+        def _do_fencer_vg(vg, failure):
 
-            while self.run_fencer(cmd.vgUuid, created_time):
+            fire = self.sblk_health_checker.get_fencer_fire_cnt[vg]
+            if self.fencer_fire_timestamp.get(vg) is not None and \
+                    time.time() > self.fencer_fire_timestamp.get(vg) and \
+                    time.time() - self.fencer_fire_timestamp.get(vg) < (300 * (fire + 1 if fire < 10 else 10)):
+                logger.warn("last fencer fire: %s, now: %s, passed: %s seconds, within %s seconds, skip fire",
+                            self.fencer_fire_timestamp[vg], time.time(),
+                            time.time() - self.fencer_fire_timestamp.get(vg),
+                            300 * (fire + 1 if fire < 10 else 10))
+                return False
+
+            self.fencer_fire_timestamp[vg] = time.time()
+
+            logger.warn("shared block storage %s fencer fired!" % vg)
+            self.report_storage_status([vg], 'Disconnected', failure)
+            self.sblk_health_checker.inc_fencer_fire_cnt(vg)
+
+            cmd = self.sblk_health_checker.get_vg_fencer_cmd(vg)
+            if cmd.strategy == 'Permissive':
+                return False
+
+            # we will check one qcow2 per pv to determine volumes on pv should be kill
+            invalid_pv_uuids = lvm.get_invalid_pv_uuids(vg, cmd.checkIo)
+            vms = lvm.get_running_vm_root_volume_on_pv(vg, invalid_pv_uuids, True)
+            killed_vm_uuids = []
+            for vm in vms:
                 try:
-                    time.sleep(cmd.interval)
+                    linux.kill_process(vm.pid)
+                    logger.warn(
+                        'kill the vm[uuid:%s, pid:%s] because we lost connection to the storage.' % (vm.uuid, vm.pid))
+                    killed_vm_uuids.append(vm.uuid)
+                except:
+                    logger.warn(
+                        'failed to kill the vm[uuid:%s, pid:%s] %s' % (vm.uuid, vm.pid, kill.stderr))
+
+                for volume in vm.volumes:
+                    used_process = linux.linux_lsof(volume)
+                    if len(used_process) == 0:
+                        try:
+                            lvm.deactive_lv(volume, False)
+                        except Exception as e:
+                            logger.debug("deactivate volume %s for vm %s failed, %s" % (volume, vm.uuid, e.message))
+                            content = traceback.format_exc()
+                            logger.warn("traceback: %s" % content)
+                    else:
+                        logger.debug("volume %s still used: %s, skip to deactivate" % (volume, used_process))
+
+            if len(killed_vm_uuids) != 0:
+                self.report_self_fencer_triggered([vg], ','.join(killed_vm_uuids))
+                clean_network_config(killed_vm_uuids)
+
+            lvm.remove_partial_lv_dm(vg)
+
+            if lvm.check_vg_status(vg, cmd.storageCheckerTimeout, True)[0] is False:
+                lvm.drop_vg_lock(vg)
+                lvm.remove_device_map_for_vg(vg)
+
+            return True
+
+
+        @thread.AsyncThread
+        def fire_fencer(failed_vgs):
+            logger.debug("SBLK failed vgs: %s" % failed_vgs)
+
+            for vg, failure in failed_vgs.items():
+                try:
+                    if _do_fencer_vg(vg, failure):
+                        self.sblk_health_checker.delvg(vg)
+                except Exception as e:
+                    logger.warn("fencer for vg %s failed, %s" % (vg, e.message))
+
+
+        @thread.AsyncThread
+        def heartbeat_on_sharedblock(interval, storage_timeout, max_failure):
+            while True:
+                try:
+                    time.sleep(interval)
                     global last_multipath_run
                     if cmd.fail_if_no_path and time.time() - last_multipath_run > 3600:
                         last_multipath_run = time.time()
                         thread.ThreadFacade.run_in_thread(linux.set_fail_if_no_path)
 
-                    health = lvm.check_vg_status(cmd.vgUuid, cmd.storageCheckerTimeout, check_pv=False)
-                    logger.debug("sharedblock group primary storage %s fencer run result: %s" % (cmd.vgUuid, health))
-                    if health[0] is True:
-                        fire = 0
-                        failure = 0
-                        continue
-
-                    failure += 1
-                    if failure < cmd.maxAttempts:
-                        continue
-
-                    if self.fencer_fire_timestamp.get(cmd.vgUuid) is not None and \
-                            time.time() > self.fencer_fire_timestamp.get(cmd.vgUuid) and \
-                            time.time() - self.fencer_fire_timestamp.get(cmd.vgUuid) < (300 * (fire + 1 if fire < 10 else 10)):
-                        logger.warn("last fencer fire: %s, now: %s, passed: %s seconds, within %s seconds, skip fire",
-                                    self.fencer_fire_timestamp[cmd.vgUuid], time.time(),
-                                    time.time() - self.fencer_fire_timestamp.get(cmd.vgUuid),
-                                    300 * (fire + 1 if fire < 10 else 10))
-                        failure = 0
-                        continue
-
-                    self.fencer_fire_timestamp[cmd.vgUuid] = time.time()
-                    try:
-                        logger.warn("shared block storage %s fencer fired!" % cmd.vgUuid)
-                        self.report_storage_status([cmd.vgUuid], 'Disconnected', health[1])
-                        fire += 1
-
-                        if cmd.strategy == 'Permissive':
-                            continue
-
-                        # we will check one qcow2 per pv to determine volumes on pv should be kill
-                        invalid_pv_uuids = lvm.get_invalid_pv_uuids(cmd.vgUuid, cmd.checkIo)
-                        vms = lvm.get_running_vm_root_volume_on_pv(cmd.vgUuid, invalid_pv_uuids, True)
-                        killed_vm_uuids = []
-                        for vm in vms:
-                            kill = shell.ShellCmd('kill -9 %s' % vm.pid)
-                            kill(False)
-                            if kill.return_code == 0:
-                                logger.warn(
-                                    'kill the vm[uuid:%s, pid:%s] because we lost connection to the storage.'
-                                    'failed to run health check %s times' % (vm.uuid, vm.pid, cmd.maxAttempts))
-                                killed_vm_uuids.append(vm.uuid)
-                            else:
-                                logger.warn(
-                                    'failed to kill the vm[uuid:%s, pid:%s] %s' % (vm.uuid, vm.pid, kill.stderr))
-
-                            for volume in vm.volumes:
-                                used_process = linux.linux_lsof(volume)
-                                if len(used_process) == 0:
-                                    try:
-                                        lvm.deactive_lv(volume, False)
-                                    except Exception as e:
-                                        logger.debug("deactivate volume %s for vm %s failed, %s" % (volume, vm.uuid, e.message))
-                                        content = traceback.format_exc()
-                                        logger.warn("traceback: %s" % content)
-                                else:
-                                    logger.debug("volume %s still used: %s, skip to deactivate" % (volume, used_process))
-
-                        if len(killed_vm_uuids) != 0:
-                            self.report_self_fencer_triggered([cmd.vgUuid], ','.join(killed_vm_uuids))
-                            clean_network_config(killed_vm_uuids)
-
-                        lvm.remove_partial_lv_dm(cmd.vgUuid)
-
-                        if lvm.check_vg_status(cmd.vgUuid, cmd.storageCheckerTimeout, True)[0] is False:
-                            lvm.drop_vg_lock(cmd.vgUuid)
-                            lvm.remove_device_map_for_vg(cmd.vgUuid)
-
-                    except Exception as e:
-                        logger.warn("kill vm failed, %s" % e.message)
-                        content = traceback.format_exc()
-                        logger.warn("traceback: %s" % content)
-                    finally:
-                        failure = 0
+                    failed_vgs = self.sblk_health_checker.runonce(storage_timeout, max_failure)
+                    if len(failed_vgs) != 0:
+                        fire_fencer(failed_vgs)
 
                 except Exception as e:
-                    logger.debug('self-fencer on sharedblock primary storage %s stopped abnormally, try again soon...' % cmd.vgUuid)
+                    logger.debug('self-fencer on sharedblock primary storage stopped abnormally, try again soon...')
                     content = traceback.format_exc()
                     logger.warn(content)
 
-            if not self.run_fencer(cmd.vgUuid, created_time):
-                logger.debug('stop self-fencer on sharedblock primary storage %s for judger failed' % cmd.vgUuid)
-            else:
-                logger.warn('stop self-fencer on sharedblock primary storage %s' % cmd.vgUuid)
 
         created_time = time.time()
         self.setup_fencer(cmd.vgUuid, created_time)
-        heartbeat_on_sharedblock()
+
+        self.sblk_health_checker.addvg(created_time, cmd)
+        with self.fencer_lock:
+            if not self.sblk_fencer_running:
+                heartbeat_on_sharedblock(cmd.interval, cmd.storageCheckerTimeout, cmd.maxAttempts)
+                self.sblk_fencer_running = True
+
         return jsonobject.dumps(AgentRsp())
 
     @kvmagent.replyerror
@@ -1017,3 +1038,4 @@ class HaPlugin(kvmagent.KvmAgent):
             for key in self.run_fencer_timestamp.keys():
                 if ps_uuid in key:
                     self.run_fencer_timestamp.pop(ps_uuid, None)
+                    self.sblk_health_checker.delvg(vg)  # ugly ...
