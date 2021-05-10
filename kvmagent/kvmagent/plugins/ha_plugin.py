@@ -1,4 +1,5 @@
 from kvmagent import kvmagent
+from zstacklib.utils import bash
 from zstacklib.utils import jsonobject
 from zstacklib.utils import http
 from zstacklib.utils import log
@@ -261,14 +262,14 @@ class SanlockHealthChecker(object):
 
         return 0, None
 
-    def _do_get_client_status():
-        return bash.bash_o("sanlock client status -D")
-
-    def _do_get_lockspaces():
-        lines = bash.bash_o("sanlock client gets").splitlines()
-        return [ s.split()[1] for s in lines if s.startswith('s ') ]
-
     def _do_health_check(self, storage_timeout, max_failure):
+        def _do_get_client_status():
+            return bash.bash_o("sanlock client status -D")
+
+        def _do_get_lockspaces():
+            lines = bash.bash_o("sanlock client gets").splitlines()
+            return [ s.split()[1] for s in lines if s.startswith('s ') ]
+
         lockspaces = _do_get_lockspaces()
         p = SanlockClientStatusParser(_do_get_client_status())
         victims = {}  # type: dict[str, str]
@@ -276,7 +277,7 @@ class SanlockHealthChecker(object):
         for vg in self.all_vgs:
             r = p.get_lockspace_record(vg)
             try:
-                cnt, failure = self._do_health_check_vg(vg, lockspace, r)
+                cnt, failure = self._do_health_check_vg(vg, lockspaces, r)
                 if cnt == 0:
                     self.reset_vg_failure_cnt(vg)
                 elif cnt >= max_failure:
