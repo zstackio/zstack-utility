@@ -547,7 +547,7 @@ def rollback():
 
 
 def calculate_allow_batch_insert(num, origin_global_config):
-    if num * 4096 > origin_global_config:
+    if int(num) * 4096 > origin_global_config:
         print_red(u"你现在指定的单批插入次大于mysql配置的max_allowed_packet上限，容易迁移失败，"
                   u"请调整-n参数或者指定-p mysql root 密码, -h 查看帮助")
         exit(1)
@@ -782,16 +782,21 @@ def main():
     check_parser.add_argument("-p", "--mysql-password", dest="passwd", help=u"mysql root 密码")
     check_parser.add_argument("-H", "--mysql-host", dest="host", help=u"mysql host 连接地址")
 
+    def valid_start_time(s):
+        if s != "full":
+            int(s)
+        return s
+
     init_parser = sub_parser.add_parser('init', help="init migrate meta table")
-    init_parser.add_argument("-s", "--start-time", required=True, dest="start",
+    init_parser.add_argument("-s", "--start-time", required=True, type=valid_start_time, dest="start",
                              help=u"influxdb migrate data start time, eg:-s=full 全量迁移 -s=1 迁移当前时间前一天的数据")
     init_parser.add_argument("-p", "--mysql-password", dest="passwd", help=u"mysql root 密码")
     init_parser.add_argument("-H", "--mysql-host", dest="host", help=u"mysql host 连接地址")
 
     migrate_parser = sub_parser.add_parser('migrate', help="init migrate meta table and migrate influxdb data")
-    migrate_parser.add_argument("-s", "--start-time", dest="start", help="influxdb migrate data start time")
+    migrate_parser.add_argument("-s", "--start-time", dest="start", type=valid_start_time, help="influxdb migrate data start time")
     migrate_parser.add_argument("-i", "--init", dest="init", action="store_true", help="init migrate meta table")
-    migrate_parser.add_argument("-n", "--num", dest="num", help=u"迁移时批量数据大小")
+    migrate_parser.add_argument("-n", "--num", dest="num", type=int, help=u"迁移时批量数据大小")
     migrate_parser.add_argument("-p", "--mysql-password", dest="passwd", help=u"mysql root 密码")
     migrate_parser.add_argument("-H", "--mysql-host", dest="host", help=u"mysql host 连接地址")
     migrate_parser.add_argument("-d", "--dry-run", dest="dry", action="store_true", help=u"迁移测试dry run模式")
