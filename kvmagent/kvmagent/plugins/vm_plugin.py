@@ -5669,9 +5669,9 @@ class VmPlugin(kvmagent.KvmAgent):
 
             backupArgs[deviceId] = get_backup_args()
 
-        logger.info('taking backup for vm: %s' % cmd.vmUuid)
+        logger.info('{api: %s} taking backup for vm: %s' % (cmd.threadContext["api"], cmd.vmUuid))
         res = isc.backup_volumes(cmd.vmUuid, backupArgs.values(), dstdir, Report.from_spec(cmd, "VmBackup"), get_task_stage(cmd))
-        logger.info('completed backup for vm: %s' % cmd.vmUuid)
+        logger.info('{api: %s} completed backup for vm: %s' % (cmd.threadContext["api"], cmd.vmUuid))
 
         backres = jsonobject.loads(res)
         bkinfos = []
@@ -5741,7 +5741,7 @@ class VmPlugin(kvmagent.KvmAgent):
             speed = cmd.volumeWriteBandwidth
 
         mode = isc.backup_volume(cmd.vmUuid, nodename, bitmap, mode, dest, speed, Report.from_spec(cmd, "VolumeBackup"), get_task_stage(cmd))
-        logger.info('finished backup volume with mode: %s' % mode)
+        logger.info('{api: %s} finished backup volume with mode: %s' % (cmd.threadContext["api"], mode))
 
         if mode == 'incremental':
             return bitmap, cmd.lastBackup
@@ -5852,7 +5852,7 @@ class VmPlugin(kvmagent.KvmAgent):
                     target_disk.source,
                     os.path.join(storage.local_work_dir, fname))
 
-            logger.info('finished backup volume with parent: %s' % parent)
+            logger.info('{api: %s}  finished backup volume with parent: %s' % (cmd.threadContext["api"], cmd.parent))
             rsp.bitmap = bitmap
             rsp.parentInstallPath = parent
             rsp.backupFile = os.path.join(cmd.uploadDir, fname)

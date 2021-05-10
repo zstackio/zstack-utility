@@ -79,7 +79,7 @@ class Report(object):
             self.report()
         except Exception as e:
             logger.warn(linux.get_exception_stacktrace())
-            logger.warn("report progress failed: %s" % e.message)
+            logger.warn("{api: %s} report progress failed: %s" % (e.message, self.ctxMap["api"]))
 
     @thread.AsyncThread
     def report(self):
@@ -93,7 +93,7 @@ class Report(object):
         cmd.resourceUuid = self.resourceUuid
         cmd.threadContextMap = self.ctxMap
         cmd.threadContextStack = self.ctxStack
-        logger.debug("url: %s, progress: %s, header: %s", Report.url, cmd.progress, self.header)
+        logger.debug("{api: %s} url: %s, progress: %s, header: %s", cmd.threadContextMap["api"], Report.url, cmd.progress, self.header)
         http.json_dump_post(Report.url, cmd, self.header)
 
 
