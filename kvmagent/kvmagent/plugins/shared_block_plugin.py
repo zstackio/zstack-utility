@@ -512,6 +512,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             lvm.modify_sanlock_config("use_watchdog", 0)
             lvm.modify_sanlock_config("zstack_vglock_timeout", 0)
             lvm.modify_sanlock_config("use_zstack_vglock_timeout", 0)
+            lvm.modify_sanlock_config("zstack_vglock_large_delay", 8)
+            lvm.modify_sanlock_config("use_zstack_vglock_large_delay", 0)
 
             sanlock_hostname = "%s-%s-%s" % (cmd.vgUuid[:8], cmd.hostUuid[:8], bash.bash_o("hostname").strip()[:20])
             lvm.modify_sanlock_config("our_host_name", sanlock_hostname)

@@ -539,8 +539,10 @@ def start_vg_lock(vgUuid, retry_times_for_checking_vg_lockspace):
     @linux.retry(times=5, sleep_time=random.uniform(0.1, 10))
     def start_lock(vgUuid):
         modify_sanlock_config("use_zstack_vglock_timeout", 1)
+        modify_sanlock_config("use_zstack_vglock_large_delay", 1)
         r, o, e = bash.bash_roe("vgchange --lock-start %s" % vgUuid)
         modify_sanlock_config("use_zstack_vglock_timeout", 0)
+        modify_sanlock_config("use_zstack_vglock_large_delay", 0)
 
         if r != 0:
             if ("Device or resource busy" in o+e) :
