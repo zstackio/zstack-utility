@@ -10,6 +10,7 @@ from zstacklib.utils import log
 from zstacklib.utils import lock
 from zstacklib.utils import shell
 from zstacklib.utils import linux
+from zstacklib.utils import iproute
 from zstacklib.utils.bash import *
 import os
 import traceback
@@ -68,29 +69,25 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
     '''
 
     def _create_gre_device(self, tunnel, rec_device_name):
-        shell_cmd = shell.ShellCmd("ip add | grep %s" % tunnel.localIp)
-        shell_cmd(False)
-        if shell_cmd.return_code != 0:
-            add_cmd = shell.ShellCmd("ip add add %s/%d dev %s" % (tunnel.localIp, tunnel.prefix, tunnel.dev))
-            add_cmd()
-        shell_cmd = shell.ShellCmd("ip link show %s" % rec_device_name)
-        shell_cmd(False)
-        logger.debug("return_code:%d" % shell_cmd.return_code)
-        if shell_cmd.return_code != 0:
-            shell.call("ip link add %s type gretap remote %s local %s ttl 255 key %d" % (rec_device_name, tunnel.remoteIp, tunnel.localIp, tunnel.key))
-            shell.call('ip link set %s up; ip link set %s alias %s' % (rec_device_name, rec_device_name, tunnel.uuid))
+        addr_list = iproute.query_addresses_by_ip(tunnel.localIp)
+        if not addr_list:
+            iproute.add_address(tunnel.localIp, tunnel.prefix, 4, tunnel.dev)
+        device_exists = iproute.is_device_ifname_exists(rec_device_name)
+        logger.debug("Is link device %s exists: %s" % (rec_device_name, device_exists))
+        if not device_exists:
+            iproute.add_link(rec_device_name, 'gretap', remote=tunnel.remoteIp, local=tunnel.localIp, ttl=255, key=tunnel.key)
+            iproute.set_link_up(rec_device_name)
+            iproute.set_link_attribute(rec_device_name, alias=tunnel.uuid)
 
     def _delete_gre_device(self, tunnel, rec_device_name):
-        shell_cmd = shell.ShellCmd("ip link show %s" % rec_device_name)
-        shell_cmd(False)
-        if shell_cmd.return_code == 0:
-            shell.ShellCmd("ip link del %s" % rec_device_name)
+        device_index = iproute.query_index_by_ifname(rec_device_name)
+        if device_index:
+            iproute.delete_link(device_index)
 
         shell_cmd = shell.ShellCmd("ip link show|egrep -i 'send|recv'")
         shell_cmd(False)
         if shell_cmd.return_code != 0:
-            ip_cmd = shell.ShellCmd("ip add del %s/%d dev %s" % (tunnel.localIp, tunnel.prefix, tunnel.dev))
-            ip_cmd(False)
+            iproute.delete_address_no_error(tunnel.localIp, tunnel.prefix, 4, tunnel.dev)
 
     def _set_redirect_config(self, device_name, mirror_device_name):
         self._set_mirror_src_config(device_name, mirror_device_name, "Egress")
@@ -134,20 +131,15 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
             shell.call("tc qdisc del dev %s root" % device_name)
 
     def _set_mirror_dst_config(self, bridge_name, device_name, mirror_device_name=None):
-        shell_cmd = shell.ShellCmd("ip link show dev br_monitor")
-        shell_cmd(False)
-        if shell_cmd.return_code != 0:
-            add_cmd = shell.ShellCmd("ip link add br_monitor type bridge && ip link set dev br_monitor up")
-            add_cmd()
-        if mirror_device_name:
-            shell_cmd = shell.ShellCmd("ip link show dev br_monitor")
-            shell_cmd(False)
-            if shell_cmd.return_code == 0:
-                shell.call("ip link set dev %s master br_monitor" % mirror_device_name)
+        if not iproute.is_device_ifname_exists('br_monitor'):
+            iproute.add_link('br_monitor', 'bridge')
+            iproute.set_link_up('br_monitor')
+        if mirror_device_name and iproute.is_device_ifname_exists('br_monitor'):
+            iproute.set_link_attribute(mirror_device_name, master='br_monitor')
         shell.call("brctl delif %s %s" % (bridge_name, device_name), False)
 
     def _clear_mirror_dst_config(self, bridge_name, device_name,mirror_device_name):
-        shell.call("ip link set dev %s master %s" % (device_name, bridge_name))
+        iproute.set_link_attribute(device_name, master=bridge_name)
         '''
          ip link add br_monitor type bridge
         ip link set dev br_monitor up
@@ -172,7 +164,7 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
         with open(alias_path, 'r') as fd:
             alias_str = fd.read()
         if alias not in alias_str:
-            shell.ShellCmd("ip link del '%s'" % mirror_name)
+            iproute.delete_link(mirror_name)
 
     @kvmagent.replyerror
     def apply_mirror_session(self, req):

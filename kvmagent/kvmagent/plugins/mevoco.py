@@ -7,6 +7,7 @@ from zstacklib.utils import log
 from zstacklib.utils import shell
 from zstacklib.utils import linux
 from zstacklib.utils import iptables
+from zstacklib.utils import iproute
 from zstacklib.utils import ebtables
 from zstacklib.utils import lock
 from zstacklib.utils.bash import *
@@ -120,33 +121,30 @@ class UserDataEnv(object):
         INNER_DEV = "inner%s" % NAMESPACE_ID
         MAX_MTU = linux.MAX_MTU_OF_VNIC
 
-        ret = bash_r('ip netns exec {{NAMESPACE_NAME}} ip link show')
-        if ret != 0:
-            bash_errorout('ip netns add {{NAMESPACE_NAME}}')
+        if not iproute.is_namespace_exists(NAMESPACE_NAME):
+            iproute.add_namespace(NAMESPACE_NAME)
             bash_errorout('ip netns set {{NAMESPACE_NAME}} {{NAMESPACE_ID}}')
 
         # in case the namespace deleted and the orphan outer link leaves in the system,
         # deleting the orphan link and recreate it
-        ret = bash_r('ip netns exec {{NAMESPACE_NAME}} ip link show {{INNER_DEV}} > /dev/null')
-        if ret != 0:
-            bash_r('ip link del {{OUTER_DEV}} &> /dev/null')
+        if not iproute.query_index_by_ifname(INNER_DEV, NAMESPACE_NAME):
+            iproute.delete_link_no_error(OUTER_DEV)
 
         if not linux.is_network_device_existing(OUTER_DEV):
-            bash_errorout('ip link add {{OUTER_DEV}} type veth peer name {{INNER_DEV}}')
-            bash_errorout('ip link set mtu {{MAX_MTU}} dev {{INNER_DEV}}')
-            bash_errorout('ip link set mtu {{MAX_MTU}} dev {{OUTER_DEV}}')
+            iproute.add_link(OUTER_DEV, 'veth', peer=INNER_DEV)
+            iproute.set_link_attribute(INNER_DEV, mtu=MAX_MTU)
+            iproute.set_link_attribute(OUTER_DEV, mtu=MAX_MTU)
 
-        bash_errorout('ip link set {{OUTER_DEV}} up')
+        iproute.set_link_up(OUTER_DEV)
 
         ret = bash_r('brctl show {{BR_NAME}} | grep -w {{OUTER_DEV}} > /dev/null')
         if ret != 0:
             bash_errorout('brctl addif {{BR_NAME}} {{OUTER_DEV}}')
 
-        ret = bash_r('ip netns exec {{NAMESPACE_NAME}} ip link show {{INNER_DEV}} > /dev/null')
-        if ret != 0:
-            bash_errorout('ip link set {{INNER_DEV}} netns {{NAMESPACE_NAME}}')
+        if not iproute.query_index_by_ifname(INNER_DEV, NAMESPACE_NAME):
+            iproute.set_link_attribute(INNER_DEV, netns=NAMESPACE_NAME)
 
-        bash_errorout('ip netns exec {{NAMESPACE_NAME}} ip link set {{INNER_DEV}} up')
+        iproute.set_link_up(INNER_DEV, NAMESPACE_NAME)
         self.inner_dev = INNER_DEV
         self.outer_dev = OUTER_DEV
 
@@ -302,52 +300,49 @@ class DhcpEnv(object):
 
         MAX_MTU = linux.MAX_MTU_OF_VNIC
 
-        ret = bash_r('ip netns exec {{NAMESPACE_NAME}} ip link show')
-        if ret != 0:
-            bash_errorout('ip netns add {{NAMESPACE_NAME}}')
+        if not iproute.is_namespace_exists(NAMESPACE_NAME):
+            iproute.add_namespace(NAMESPACE_NAME)
             bash_errorout('ip netns set {{NAMESPACE_NAME}} {{NAMESPACE_ID}}')
 
         # in case the namespace deleted and the orphan outer link leaves in the system,
         # deleting the orphan link and recreate it
-        ret = bash_r('ip netns exec {{NAMESPACE_NAME}} ip link show {{INNER_DEV}} > /dev/null')
-        if ret != 0:
-            bash_r('ip link del {{OUTER_DEV}} &> /dev/null')
+        if not iproute.is_device_ifname_exists(INNER_DEV, NAMESPACE_NAME):
+            iproute.delete_link_no_error(OUTER_DEV)
 
         if not linux.is_network_device_existing(OUTER_DEV):
-            bash_errorout('ip link add {{OUTER_DEV}} type veth peer name {{INNER_DEV}}')
-            bash_errorout('ip link set mtu {{MAX_MTU}} dev {{INNER_DEV}}')
-            bash_errorout('ip link set mtu {{MAX_MTU}} dev {{OUTER_DEV}}')
+            iproute.add_link(OUTER_DEV, 'veth', peer=INNER_DEV)
+            iproute.set_link_attribute(INNER_DEV, mtu=MAX_MTU)
+            iproute.set_link_attribute(OUTER_DEV, mtu=MAX_MTU)
 
-        bash_errorout('ip link set {{OUTER_DEV}} up')
+        iproute.set_link_up(OUTER_DEV)
 
         ret = bash_r('brctl show {{BR_NAME}} | grep -w {{OUTER_DEV}} > /dev/null')
         if ret != 0:
             bash_errorout('brctl addif {{BR_NAME}} {{OUTER_DEV}}')
 
-        ret = bash_r('ip netns exec {{NAMESPACE_NAME}} ip link show {{INNER_DEV}} > /dev/null')
-        if ret != 0:
-            bash_errorout('ip link set {{INNER_DEV}} netns {{NAMESPACE_NAME}}')
+        if not iproute.query_index_by_ifname(INNER_DEV, NAMESPACE_NAME):
+            iproute.set_link_attribute(INNER_DEV, netns=NAMESPACE_NAME)
 
         #dhcp namespace should not add ipv6 address based on router advertisement
         bash_errorout("ip netns exec {{NAMESPACE_NAME}} sysctl -w net.ipv6.conf.all.accept_ra=0")
         bash_errorout("ip netns exec {{NAMESPACE_NAME}} sysctl -w net.ipv6.conf.{{INNER_DEV}}.accept_ra=0")
-        ret = bash_r('ip netns exec {{NAMESPACE_NAME}} ip addr show {{INNER_DEV}} | grep -w {{DHCP_IP}} > /dev/null')
-        ret6 = bash_r('ip netns exec {{NAMESPACE_NAME}} ip addr show {{INNER_DEV}} | grep -w {{DHCP6_IP}} > /dev/null')
+        ret = iproute.query_addresses(namespace=NAMESPACE_NAME, address=DHCP_IP, ip_version=4, ifname=INNER_DEV)
+        ret6 = iproute.query_addresses(namespace=NAMESPACE_NAME, address=DHCP6_IP, ip_version=6, ifname=INNER_DEV)
         if (ret != 0 and PREFIX_LEN is not None) or (ret6 != 0 and PREFIX6_LEN is not None):
-            bash_errorout('ip netns exec {{NAMESPACE_NAME}} ip addr flush dev {{INNER_DEV}}')
+            iproute.flush_address(INNER_DEV, namespace=NAMESPACE_NAME)
             if DHCP_IP is not None:
-                bash_errorout('ip netns exec {{NAMESPACE_NAME}} ip addr add {{DHCP_IP}}/{{PREFIX_LEN}} dev {{INNER_DEV}}')
+                iproute.add_address(DHCP_IP, PREFIX_LEN, 4, INNER_DEV, namespace=NAMESPACE_NAME)
             if DHCP6_IP is not None:
-                bash_errorout('ip netns exec {{NAMESPACE_NAME}} ip addr add {{DHCP6_IP}}/{{PREFIX6_LEN}} dev {{INNER_DEV}}')
+                iproute.add_address(DHCP6_IP, PREFIX6_LEN, 6, INNER_DEV, namespace=NAMESPACE_NAME)
 
         if DHCP6_IP is not None:
-            mac = bash_o("ip netns exec {{NAMESPACE_NAME}} ip link show {{INNER_DEV}} | grep -w 'link/ether' | awk '{print $2}'")
+            mac = iproute.query_link(INNER_DEV, NAMESPACE_NAME).mac
             link_local = ip.get_link_local_address(mac)
-            ret = bash_r('ip netns exec {{NAMESPACE_NAME}} ip add | grep -w {{link_local}} > /dev/null')
-            if ret != 0:
-                bash_errorout('ip netns exec {{NAMESPACE_NAME}} ip addr add {{link_local}}/64 dev {{INNER_DEV}}')
+            ret = iproute.query_addresses(namespace=NAMESPACE_NAME, address=link_local, ip_version=6)
+            if not ret:
+                iproute.add_address(link_local, 64, 6, INNER_DEV, namespace=NAMESPACE_NAME)
 
-        bash_errorout('ip netns exec {{NAMESPACE_NAME}} ip link set {{INNER_DEV}} up')
+        iproute.set_link_up(INNER_DEV, NAMESPACE_NAME)
 
         if (DHCP_IP is None and DHCP6_IP is None) or (PREFIX_LEN is None and PREFIX6_LEN is None):
             logger.debug("no dhcp ip[{{DHCP_IP}}] or netmask[{{DHCP_NETMASK}}] for {{INNER_DEV}} in {{NAMESPACE_NAME}}, skip ebtables/iptables config")
@@ -363,11 +358,11 @@ class DhcpEnv(object):
             PHY_DEV = PHY_DEV.strip(' \t\n\r')
 
             # get mac address of inner dev
-            r, INNER_MAC, e = bash_roe("ip netns exec {{NAMESPACE_NAME}} ip link show {{INNER_DEV}} | grep -w ether | awk '{print $2}'")
-            if r != 0:
+            try:
+                INNER_MAC = iproute.query_link(INNER_DEV, NAMESPACE_NAME).mac
+            except:
                 logger.error("cannot get mac address of " + INNER_DEV)
                 return
-            INNER_MAC = INNER_MAC.strip(' \t\n\r')
 
             # add bridge fdb entry for inner dev
             if not linux.bridge_fdb_has_self_rule(INNER_MAC, PHY_DEV):
@@ -529,8 +524,8 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
     @in_bash
     def _delete_dhcp4(self, namspace):
-        dhcp_ip = bash_o("ip netns exec {{namspace}} ip add | grep inet | awk '{print $2}' | awk -F '/' '{print $1}' | head -1")
-        dhcp_ip = dhcp_ip.strip(" \t\n\r")
+        addrs = iproute.query_addresses(namespace=namspace, ip_version=4)
+        dhcp_ip = addrs[0].address if addrs else ""
 
         if dhcp_ip:
             CHAIN_NAME = "ZSTACK-%s" % dhcp_ip
@@ -796,19 +791,17 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
         def prepare_br_connect_ns(ns, ns_inner_dev, ns_outer_dev):
             bridge_name = self.CONNECT_ALL_NETNS_BR_NAME
-            bridge_ip = "%s/%s" % (self.CONNECT_ALL_NETNS_BR_OUTER_IP, self.IP_MASK_BIT)
 
             if not linux.is_network_device_existing(bridge_name):
                 shell.call("brctl addbr %s" % bridge_name)
                 shell.call("brctl setfd %s 0" % bridge_name)
                 shell.call("brctl stp %s off" % bridge_name)
-                shell.call('ip addr add %s dev %s' % (bridge_ip, bridge_name))
-                shell.call("ip link set %s up" % bridge_name)
+                iproute.add_address(self.CONNECT_ALL_NETNS_BR_OUTER_IP, self.IP_MASK_BIT, 4, bridge_name)
+                iproute.set_link_up(bridge_name)
 
-            ret = bash_r('ip addr show %s | grep -w %s > /dev/null' %
-                         (bridge_name, bridge_ip))
-            if ret != 0:
-                bash_errorout('ip addr add %s dev %s' % (bridge_ip, bridge_name))
+            addrs = iproute.query_addresses(ifname=bridge_name, address=self.CONNECT_ALL_NETNS_BR_OUTER_IP, prefixlen=self.IP_MASK_BIT)
+            if not addrs:
+                iproute.add_address(self.CONNECT_ALL_NETNS_BR_OUTER_IP, self.IP_MASK_BIT, 4, bridge_name)
 
             #"ip link add %s type veth peer name %s", max length of second parameter is 15 characters
             userdata_br_outer_dev = "ud_" + ns_outer_dev
@@ -816,19 +809,18 @@ tag:{{TAG}},option:dns-server,{{DNS}}
             MAX_MTU = linux.MAX_MTU_OF_VNIC
 
             if not linux.is_network_device_existing(userdata_br_outer_dev):
-                bash_errorout('ip link add %s type veth peer name %s' % (userdata_br_outer_dev, userdata_br_inner_dev))
-                bash_errorout('ip link set mtu %d dev %s' % (MAX_MTU, userdata_br_outer_dev))
-                bash_errorout('ip link set mtu %d dev %s' % (MAX_MTU, userdata_br_inner_dev))
+                iproute.add_link(userdata_br_outer_dev, 'veth', peer=userdata_br_inner_dev)
+                iproute.set_link_attribute(userdata_br_outer_dev, mtu=MAX_MTU)
+                iproute.set_link_attribute(userdata_br_inner_dev, mtu=MAX_MTU)
 
-            bash_errorout('ip link set %s up' % userdata_br_outer_dev)
+            iproute.set_link_up(userdata_br_outer_dev)
 
             ret = bash_r('brctl show %s | grep -w %s > /dev/null' % (bridge_name, userdata_br_outer_dev))
             if ret != 0:
                 bash_errorout('brctl addif %s %s' % (bridge_name, userdata_br_outer_dev))
 
-            ret = bash_r('ip netns exec %s ip link show %s > /dev/null' % (ns, userdata_br_inner_dev))
-            if ret != 0:
-                bash_errorout('ip link set %s netns %s' % (userdata_br_inner_dev, ns))
+            if not iproute.is_device_ifname_exists(userdata_br_inner_dev, ns):
+                iproute.set_link_attribute(userdata_br_inner_dev, netns=ns)
 
             ns_id = ns_inner_dev[5:]
             if int(ns_id) > 16381:
@@ -837,12 +829,10 @@ tag:{{TAG}},option:dns-server,{{DNS}}
                 raise Exception('add ip addr fail, namespace id exceeds limit')
             ip2int = struct.unpack('!L', socket.inet_aton(self.CONNECT_ALL_NETNS_BR_INNER_IP))[0]
             userdata_br_inner_dev_ip = socket.inet_ntoa(struct.pack('!L', ip2int + int(ns_id)))
-            ret = bash_r('ip netns exec %s ip addr show %s | grep -w %s > /dev/null' %
-                         (ns, userdata_br_inner_dev, userdata_br_inner_dev_ip))
-            if ret != 0:
-                bash_errorout('ip netns exec %s ip addr add %s/%s dev %s' % (
-                    ns, userdata_br_inner_dev_ip, self.IP_MASK_BIT, userdata_br_inner_dev))
-            bash_errorout('ip netns exec %s ip link set %s up' % (ns, userdata_br_inner_dev))
+            addrs = iproute.query_addresses(ifname=userdata_br_inner_dev, namespace=ns, address=userdata_br_inner_dev_ip)
+            if not addrs:
+                iproute.add_address(userdata_br_inner_dev_ip, self.IP_MASK_BIT, 4, userdata_br_inner_dev, namespace=ns)
+            iproute.set_link_up(userdata_br_inner_dev, ns)
 
         p = UserDataEnv(to.bridgeName, to.namespaceName)
         INNER_DEV = None
@@ -854,8 +844,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
             INNER_DEV = p.inner_dev
         else:
             DHCP_IP = to.dhcpServerIp
-            INNER_DEV = bash_errorout(
-                "ip netns exec {{NS_NAME}} ip addr | grep -w {{DHCP_IP}} | awk '{print $NF}'").strip(' \t\r\n')
+            INNER_DEV = iproute.query_addresses_by_ip(DHCP_IP, None, NS_NAME)[0].ifname
         if not INNER_DEV:
             p.prepare()
             INNER_DEV = p.inner_dev
@@ -865,9 +854,9 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         outer_dev = p.outer_dev if(p.outer_dev != None) else ("outer" + INNER_DEV[5:])
         prepare_br_connect_ns(NS_NAME, INNER_DEV, outer_dev)
 
-        ret = bash_r('ip netns exec {{NS_NAME}} ip addr | grep 169.254.169.254 > /dev/null')
-        if (ret != 0 and INNER_DEV != None):
-            bash_errorout('ip netns exec {{NS_NAME}} ip addr add 169.254.169.254 dev {{INNER_DEV}}')
+        addrs = iproute.query_addresses(address='169.254.169.254', namespace=NS_NAME)
+        if not addrs and INNER_DEV != None:
+            iproute.add_address('169.254.169.254', 32, 4, INNER_DEV, namespace=NS_NAME)
 
         r, o = bash_ro('ip netns exec {{NS_NAME}} ip r | wc -l')
         if not to.hasattr("dhcpServerIp") and int(o) == 0:
@@ -877,7 +866,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         BR_NAME = to.bridgeName
         ETH_NAME = get_phy_dev_from_bridge_name(BR_NAME)
 
-        MAC = bash_errorout("ip netns exec {{NS_NAME}} ip link show {{INNER_DEV}} | grep -w ether | awk '{print $2}'").strip(' \t\r\n')
+        MAC = iproute.query_link(INNER_DEV, NS_NAME).mac
         CHAIN_NAME="USERDATA-%s" % BR_NAME
         # max length of ebtables chain name is 31
         if (len(BR_NAME) <= 12):
@@ -1242,7 +1231,6 @@ mimetype.assign = (
                 os.fsync(f.fileno())
             os.chmod(self.DNSMASQ_LOG_LOGROTATE_PATH, 0o644)
 
-    @in_bash
     def _get_dhcp_server_ip_from_namespace(self, namespace_name):
         '''
         :param namespace_name:
@@ -1259,18 +1247,16 @@ mimetype.assign = (
         inet6 fe80::fc34:72ff:fe29:3564/64 scope link
         valid_lft forever preferred_lft forever
         '''
-        r, dhcp_ip = bash_ro("ip netns exec {{namespace_name}} ip -4 add | grep -w inet | grep -v 169.254 | awk '{print $2}' | awk -F '/' '{print $1}' | head -1")
-        if r != 0:
+        if not iproute.is_namespace_exists(namespace_name):
             return ""
-        return dhcp_ip.strip(" \t\r\n")
+        addrs = filter(lambda x: not x.address.startswith('169.254'), iproute.query_addresses(namespace=namespace_name, ip_version=4))
+        return addrs[0].address if addrs else ""
 
-    @in_bash
     def _get_dhcp6_server_ip_from_namespace(self, namespace_name):
-        r, dhcp_ip = bash_ro(
-            "ip netns exec {{namespace_name}} ip -6 add | grep -w inet6 | grep -v fe80:: | awk '{print $2}' | awk -F '/' '{print $1}' | head -1")
-        if r != 0:
+        if not iproute.is_namespace_exists(namespace_name):
             return ""
-        return dhcp_ip.strip(" \t\r\n")
+        addrs = filter(lambda x: not x.address.startswith('fe80::'), iproute.query_addresses(namespace=namespace_name, ip_version=6))
+        return addrs[0].address if addrs else ""
 
     @lock.lock('prepare_dhcp')
     @kvmagent.replyerror

@@ -3,6 +3,7 @@ from jinja2 import Template
 from kvmagent import kvmagent
 from zstacklib.utils import http
 from zstacklib.utils import ip
+from zstacklib.utils import iproute
 from zstacklib.utils import iptables
 from zstacklib.utils import jsonobject
 from zstacklib.utils import lock
@@ -76,11 +77,10 @@ class Eip(object):
         else:
             ns_name_suffix = ipaddr
 
-        o = bash_o('ip netns')
-        for l in o.split('\n'):
-            if ('%s ' % ns_name_suffix) in l:
-                # l is like 'br_eth0_172_20_51_136 (id: 3)'
-                return l.split()[0]
+        arr = iproute.query_all_namespaces()
+        for ns in arr:
+            if (ns_name_suffix == ns):
+                return ns
 
         return None
 
@@ -99,13 +99,12 @@ class Eip(object):
 
         @bash.in_bash
         def delete_namespace():
-            if bash_r('ip netns | grep -w {{NS_NAME}} > /dev/null') == 0:
-                bash_errorout('ip netns delete {{NS_NAME}}')
+            iproute.delete_namespace_if_exists(NS_NAME)
 
         @bash.in_bash
         def delete_outer_dev():
             if linux.is_network_device_existing(PUB_ODEV):
-                bash_r('ip link del {{PUB_ODEV}}')
+                iproute.delete_link_no_error(PUB_ODEV)
 
         @bash.in_bash
         def delete_arp_rules():
@@ -203,22 +202,19 @@ class Eip(object):
 
         # in case the namespace deleted and the orphan outer link leaves in the system,
         # deleting the orphan link and recreate it
-        @bash.in_bash
         def delete_orphan_outer_dev(inner_dev, outer_dev):
-            if bash_r('ip netns exec {{NS_NAME}} ip link show {{inner_dev}} > /dev/null') != 0:
-                # ignore error
-                bash_r('ip link del {{outer_dev}} &> /dev/null')
+            if not iproute.is_device_ifname_exists(inner_dev, NS_NAME):
+                iproute.delete_link_no_error(outer_dev)
 
-        @bash.in_bash
         def create_dev_if_needed(outer_dev, outer_dev_desc, inner_dev, inner_dev_desc):
             if not linux.is_network_device_existing(outer_dev):
-                bash_errorout('ip link add {{outer_dev}} type veth peer name {{inner_dev}}')
-                bash_errorout('ip link set {{outer_dev}} alias {{outer_dev_desc}}')
-                bash_errorout('ip link set {{inner_dev}} alias {{inner_dev_desc}}')
-                bash_errorout('ip link set mtu %d dev %s' % (linux.MAX_MTU_OF_VNIC, outer_dev))
-                bash_errorout('ip link set mtu %d dev %s' % (linux.MAX_MTU_OF_VNIC, inner_dev))
+                iproute.add_link(outer_dev, 'veth', peer=inner_dev)
+                iproute.set_link_attribute(outer_dev, alias=outer_dev_desc)
+                iproute.set_link_attribute(inner_dev, alias=inner_dev_desc)
+                iproute.set_link_attribute(outer_dev, mtu=linux.MAX_MTU_OF_VNIC)
+                iproute.set_link_attribute(inner_dev, mtu=linux.MAX_MTU_OF_VNIC)
 
-            bash_errorout('ip link set {{outer_dev}} up')
+            iproute.set_link_up(outer_dev)
 
         @bash.in_bash
         def add_dev_to_br_if_needed(bridge, device):
@@ -226,8 +222,8 @@ class Eip(object):
                 bash_errorout('brctl addif {{bridge}} {{device}}')
 
         def add_dev_namespace_if_needed(device, namespace):
-            if bash_r('eval {{NS}} ip link show {{device}} > /dev/null') != 0:
-                bash_errorout('ip link set {{device}} netns {{namespace}}')
+            if not iproute.is_device_ifname_exists(device, NS_NAME):
+                iproute.set_link_attribute(device, None, netns=namespace)
 
         @bash.in_bash
         def set_ip_to_idev_if_needed(device, ipCmd, ip, prefix):
@@ -236,7 +232,7 @@ class Eip(object):
                 bash_errorout('eval {{NS}} {{ipCmd}} addr flush dev {{device}}')
                 bash_errorout('eval {{NS}} {{ipCmd}} addr add {{ip}}/{{prefix}} dev {{device}}')
 
-            bash_errorout('eval {{NS}} ip link set {{device}} up')
+            iproute.set_link_up(device, NS_NAME)
 
         @bash.in_bash
         def create_iptable_rule_if_needed(iptableCmd, table, rule, at_head=False):
@@ -432,9 +428,9 @@ class Eip(object):
             create_ebtable_rule_if_needed('nat', PRI_ODEV_CHAIN, "-p ARP --arp-op Request -j DROP")
 
         newCreated = False
-        if bash_r('eval {{NS}} ip link show > /dev/null') != 0:
+        if not iproute.is_namespace_exists(NS_NAME):
             newCreated = True
-            bash_errorout('ip netns add {{NS_NAME}}')
+            iproute.add_namespace(NS_NAME)
 
         # To be compatibled with old version
         for i in range(len(OLD_PUB_IDEVS)):
@@ -454,7 +450,7 @@ class Eip(object):
         add_dev_namespace_if_needed(PRI_IDEV, NS_NAME)
 
         if int(eip.ipVersion) == 4:
-            bash_r('eval {{NS}} ip link set {{PUB_IDEV}} up')
+            iproute.set_link_up_no_error(PUB_IDEV, NS_NAME)
             if newCreated and not eip.skipArpCheck:
                 r, o = bash.bash_ro('eval {{NS}} arping -D -w 1 -c 3 -I {{PUB_IDEV}} {{VIP}}')
                 if r != 0 and "Unicast reply from" in o:

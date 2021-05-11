@@ -33,6 +33,7 @@ from utils import linux, lock
 from zstacklib import *
 import log_collector
 import jinja2
+import pyroute2
 import socket
 import struct
 import fcntl
