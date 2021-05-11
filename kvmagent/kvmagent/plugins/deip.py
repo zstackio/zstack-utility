@@ -111,7 +111,7 @@ class Eip(object):
         def delete_arp_rules():
             if bash_r(EBTABLES_CMD + ' -t nat -L {{CHAIN_NAME}} >/dev/null 2>&1') == 0:
                 RULE = "-i {{NIC_NAME}} -j {{CHAIN_NAME}}"
-                if bash_r(EBTABLES_CMD + ' -t nat -L PREROUTING | grep -- "{{RULE}}" > /dev/null') == 0:
+                if bash_r(EBTABLES_CMD + " -t nat -L PREROUTING | grep -- '{{RULE}}' > /dev/null") == 0:
                     bash_errorout(EBTABLES_CMD + ' -t nat -D PREROUTING {{RULE}}')
 
                 bash_errorout(EBTABLES_CMD + ' -t nat -F {{CHAIN_NAME}}')
@@ -120,7 +120,7 @@ class Eip(object):
             PRI_ODEV_CHAIN = "{{PRI_ODEV}}-gw"
             if bash_r(EBTABLES_CMD + ' -t nat -L {{PRI_ODEV_CHAIN}} >/dev/null 2>&1') == 0:
                 RULE = "-i {{PRI_ODEV}} -j {{PRI_ODEV_CHAIN}}"
-                if bash_r(EBTABLES_CMD + ' -t nat -L PREROUTING | grep -- "{{RULE}}" > /dev/null') == 0:
+                if bash_r(EBTABLES_CMD + " -t nat -L PREROUTING | grep -- '{{RULE}}' > /dev/null") == 0:
                     bash_errorout(EBTABLES_CMD + ' -t nat -D PREROUTING {{RULE}}')
 
                 bash_errorout(EBTABLES_CMD + ' -t nat -F {{PRI_ODEV_CHAIN}}')
@@ -131,7 +131,7 @@ class Eip(object):
 
                 if bash_r(EBTABLES_CMD + ' -t nat -L {{BLOCK_CHAIN_NAME}} > /dev/null 2>&1') == 0:
                     RULE = '-p ARP -o {{BLOCK_DEV}} -j {{BLOCK_CHAIN_NAME}}'
-                    if bash_r(EBTABLES_CMD + ' -t nat -L POSTROUTING | grep -- "{{RULE}}" > /dev/null') == 0:
+                    if bash_r(EBTABLES_CMD + " -t nat -L POSTROUTING | grep -- '{{RULE}}' > /dev/null") == 0:
                         bash_errorout(EBTABLES_CMD + ' -t nat -D POSTROUTING {{RULE}}')
 
                     bash_errorout(EBTABLES_CMD + ' -t nat -F {{BLOCK_CHAIN_NAME}}')
@@ -141,7 +141,7 @@ class Eip(object):
         def delete_ipv6_rules():
             if bash_r(EBTABLES_CMD + ' -t nat -L {{CHAIN_NAME}} >/dev/null 2>&1') == 0:
                 RULE = "-i {{NIC_NAME}} -j {{CHAIN_NAME}}"
-                if bash_r(EBTABLES_CMD + ' -t nat -L PREROUTING | grep -- "{{RULE}}" > /dev/null') == 0:
+                if bash_r(EBTABLES_CMD + " -t nat -L PREROUTING | grep -- '{{RULE}}' > /dev/null") == 0:
                     bash_errorout(EBTABLES_CMD + ' -t nat -D PREROUTING {{RULE}}')
 
                 bash_errorout(EBTABLES_CMD + ' -t nat -F {{CHAIN_NAME}}')
@@ -240,7 +240,7 @@ class Eip(object):
 
         @bash.in_bash
         def create_iptable_rule_if_needed(iptableCmd, table, rule, at_head=False):
-            if bash_r('eval {{NS}} {{iptableCmd}}-save | grep -- "{{rule}}" > /dev/null') != 0:
+            if bash_r("eval {{NS}} {{iptableCmd}}-save | grep -- '{{rule}}' > /dev/null") != 0:
                 if at_head:
                     bash_errorout('eval {{NS}} {{iptableCmd}} -w {{table}} -I {{rule}}')
                 else:
@@ -248,7 +248,7 @@ class Eip(object):
 
         @bash.in_bash
         def create_ebtable_rule_if_needed(table, chain, rule, at_head=False):
-            if bash_r(EBTABLES_CMD + ' -t {{table}} -L {{chain}} | grep -- "{{rule}}" > /dev/null') != 0:
+            if bash_r(EBTABLES_CMD + " -t {{table}} -L {{chain}} | grep -- '{{rule}}' > /dev/null") != 0:
                 if at_head:
                     bash_errorout(EBTABLES_CMD + ' -t {{table}} -I {{chain}} {{rule}}')
                 else:
