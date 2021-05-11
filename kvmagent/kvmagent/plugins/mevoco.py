@@ -131,7 +131,7 @@ class UserDataEnv(object):
             iproute.delete_link_no_error(OUTER_DEV)
 
         if not linux.is_network_device_existing(OUTER_DEV):
-            iproute.add_link(OUTER_DEV, veth, None, peer=INNER_DEV)
+            iproute.add_link(OUTER_DEV, 'veth', peer=INNER_DEV)
             iproute.set_link_attribute(INNER_DEV, mtu=MAX_MTU)
             iproute.set_link_attribute(OUTER_DEV, mtu=MAX_MTU)
 
@@ -787,7 +787,6 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
         def prepare_br_connect_ns(ns, ns_inner_dev, ns_outer_dev):
             bridge_name = self.CONNECT_ALL_NETNS_BR_NAME
-            bridge_ip = "%s/%s" % (self.CONNECT_ALL_NETNS_BR_OUTER_IP, self.IP_MASK_BIT)
 
             if not linux.is_network_device_existing(bridge_name):
                 shell.call("brctl addbr %s" % bridge_name)
