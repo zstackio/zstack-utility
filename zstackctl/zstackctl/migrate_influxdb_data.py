@@ -294,6 +294,9 @@ class AuditsVO:
             data['createTime'] = parse_utc_str_to_timestamp(data.get('time'))
         return data
 
+    def process_mysql_data(self, mysql_columns):
+        return
+
 
 class EventRecordsVO:
 
@@ -304,8 +307,9 @@ class EventRecordsVO:
                        'namespace', 'readStatus', 'resourceId', 'resourceName', 'subscriptionUuid']
         self.sql_tmpl_safe = """insert into zstack.EventRecordsVO (`createTime`, `accountUuid`, 
                                 `dataUuid`, `emergencyLevel`, `name`, `error`, 
-                                `labels`, `namespace`,`readStatus`,`resourceId`,`resourceName`, `subscriptionUuid`) 
-                                values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+                                `labels`, `namespace`,`readStatus`,`resourceId`,`resourceName`, 
+                                `subscriptionUuid`, `hour`) 
+                                values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
 
     def process_influxdb_data(self, data):
         label_map = {i: data[i] for i in data if ':::' in i and data[i] != None}
@@ -317,6 +321,12 @@ class EventRecordsVO:
         if data.has_key("time"):
             data['createTime'] = parse_utc_str_to_timestamp(data.get('time'))
         return data
+
+    def process_mysql_data(self, mysql_columns):
+        for columns in mysql_columns:
+            create_time = columns[0]
+            hour = create_time / 3600000 * 3600
+            columns.append(hour)
 
 
 class AlarmRecordsVO:
@@ -330,8 +340,8 @@ class AlarmRecordsVO:
         self.sql_tmpl_safe = """insert into zstack.AlarmRecordsVO (`createTime`, `accountUuid`, `alarmName`, 
                              `alarmStatus`, `alarmUuid`, `comparisonOperator`, `context`, `dataUuid`, 
                              `emergencyLevel`,`labels`,`metricName`, `metricValue`, `namespace`, `period`, 
-                             `readStatus`, `resourceType`, `resourceUuid`, `threshold`) 
-                             values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+                             `readStatus`, `resourceType`, `resourceUuid`, `threshold`, `hour`) 
+                             values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
 
     def process_influxdb_data(self, data):
         if data.has_key("requestDump"):
@@ -349,6 +359,12 @@ class AlarmRecordsVO:
         if data.has_key("time"):
             data['createTime'] = parse_utc_str_to_timestamp(data.get('time'))
         return data
+
+    def process_mysql_data(self, mysql_columns):
+        for columns in mysql_columns:
+            create_time = columns[0]
+            hour = create_time / 3600000 * 3600
+            columns.append(hour)
 
 
 class MigrateAction(Thread):
@@ -413,7 +429,8 @@ class MigrateAction(Thread):
                         self.finish = "done"
             else:
                 last_success_record = self.queue[len(self.queue) - 1]
-                many_args = ([i.get(j) for j in self.mysql_obj.column] for i in self.queue)
+                many_args = list(([i.get(j) for j in self.mysql_obj.column] for i in self.queue))
+                self.mysql_obj.process_mysql_data(many_args)
                 if self.dry_run:
                     print "%s %s" % (self.mysql_obj.sql_tmpl_safe, many_args)
                 else:
