@@ -3956,8 +3956,10 @@ class Vm(object):
             brMode = cmd.addons['brMode'] if cmd.addons else None
             for index, nic in enumerate(cmd.nics):
                 if nic.type == "vDPA":
-                    vhostSrcPath = ovs.get_vDPA(cmd.priorityConfigStruct.vmUuid, nic)
-                interface = Vm._build_interface_xml(nic, devices, vhostSrcPath, 'Attach', brMode, index)
+                    vDPAPath = ovs.get_vDPA(cmd.priorityConfigStruct.vmUuid, nic)
+                    interface = Vm._build_interface_xml(nic, devices, vDPAPath, 'Attach', brMode, index)
+                else:
+                    interface = Vm._build_interface_xml(nic, devices, vhostSrcPath, 'Attach', brMode, index)
                 addon(interface)
 
         def make_meta():
