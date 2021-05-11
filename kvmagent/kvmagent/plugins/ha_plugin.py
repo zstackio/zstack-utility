@@ -280,15 +280,21 @@ class SanlockHealthChecker(object):
                 cnt, failure = self._do_health_check_vg(vg, lockspaces, r)
                 if cnt == 0:
                     self.reset_vg_failure_cnt(vg)
-                elif cnt >= max_failure:
-                    victims[vg] = failure
+                else:
+                    logger.info("vg %s failure count: %d" % (vg, cnt))
+                    if cnt >= max_failure:
+                        victims[vg] = failure
             except Exception as e:
                 logger.warn("_do_health_check_vg(%s) failed, %s" % (vg, e.message))
 
         return victims
 
     def runonce(self, storage_timeout, max_failure):
-        return {} if len(self.all_vgs) == 0 else self._do_health_check(storage_timeout, max_failure)
+        if len(self.all_vgs) == 0:
+            return {}
+
+        logger.debug('running sblk health checker')
+        return self._do_health_check(storage_timeout, max_failure)
 
 
 last_multipath_run = time.time()
