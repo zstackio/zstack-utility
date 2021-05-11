@@ -425,6 +425,9 @@ class MigrateAction(Thread):
                         break
                 self.queue = []
 
+                if self.dry_run:
+                    break
+
                 print "#" * 20
                 if self.errorInfo:
                     print self.errorInfo
