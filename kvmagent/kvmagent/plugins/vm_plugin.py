@@ -3415,9 +3415,9 @@ class Vm(object):
             for f in ['apic', 'pae']:
                 e(features, f)
 
-            @linux.with_arch(todo_list=['x86_64'])
             def make_acpi():
-                e(features, 'acpi')
+                if cmd.acpi or HOST_ARCH == "x86_64":
+                    e(features, 'acpi')
 
             make_acpi()
             if cmd.kvmHiddenState is True:
@@ -3449,10 +3449,9 @@ class Vm(object):
             root = elements['root']
             qcmd = e(root, 'qemu:commandline')
             vendor_id, model_name = linux.get_cpu_model()
-            if "hygon" in model_name.lower():
-                if isinstance(cmd.imagePlatform, str) and cmd.imagePlatform.lower() not in ["other", "paravirtualization"]:
-                    e(qcmd, "qemu:arg", attrib={"value": "-cpu"})
-                    e(qcmd, "qemu:arg", attrib={"value": "EPYC,vendor=AuthenticAMD,model_id={} Processor,+svm".format(" ".join(model_name.split(" ")[0:3]))})
+            if "hygon" in model_name.lower() and cmd.hygonCpu:
+                e(qcmd, "qemu:arg", attrib={"value": "-cpu"})
+                e(qcmd, "qemu:arg", attrib={"value": "EPYC,vendor=AuthenticAMD,model_id={} Processor,+svm".format(" ".join(model_name.split(" ")[0:3]))})
             else:
                 e(qcmd, "qemu:arg", attrib={"value": "-qmp"})
                 e(qcmd, "qemu:arg", attrib={"value": "unix:{}/{}.sock,server,nowait".format(QMP_SOCKET_PATH, cmd.vmInstanceUuid)})
