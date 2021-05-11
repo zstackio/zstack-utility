@@ -1,4 +1,6 @@
 import os.path
+import pyudev       # installed by ansible
+import re
 import threading
 
 import typing
@@ -284,6 +286,27 @@ collect_node_disk_wwid_last_time = None
 collect_node_disk_wwid_last_result = None
 
 def collect_node_disk_wwid():
+
+    def get_physical_devices(pvpath, is_mpath):
+        if is_mpath:
+            dm_name = os.path.basename(os.path.realpath(pvpath))
+            disks = os.listdir("/sys/block/%s/slaves/" % dm_name)
+        else:
+            disks = [ os.path.basename(pvpath) ]
+
+        return ["/dev/%s" % re.sub('[0-9]$', '', s) for s in disks]
+
+    def get_device_from_path(ctx, devpath):
+        return pyudev.Device.from_device_file(ctx, devpath)
+
+    def get_disk_wwids(b):
+        links = b.get('DEVLINKS')
+        if not links:
+            return []
+
+        return [ os.path.basename(str(p)) for p in links.split() if "disk/by-id" in p and "lvm-pv" not in p ]
+
+
     global collect_node_disk_wwid_last_time
     global collect_node_disk_wwid_last_result
 
@@ -299,17 +322,16 @@ def collect_node_disk_wwid():
     }
 
     pvs = bash_o("pvs --nolocking --noheading -o pv_name").strip().splitlines()
-    mpaths = bash_o("dmsetup table --target multipath | awk -F: '{print $1}'").strip().splitlines()
+    context = pyudev.Context()
 
     for pv in pvs:
         pv = pv.strip()
-        multipath_wwid = None
-        if os.path.basename(pv) in mpaths:
-            multipath_wwid = bash_o("udevadm info -n %s | grep -E '^S: disk/by-id/dm-uuid' | awk -F '-' '{print $NF}'" % pv).strip()
-        disks = linux.get_physical_disk(pv, False)
-        for disk in disks:
-            disk_name = disk.split("/")[-1].strip()
-            wwids = bash_o("udevadm info -n %s | grep -E '^S: disk/by-id' | awk -F '/' '{print $NF}' | grep -v '^lvm-pv' | sort" % disk).strip().splitlines()
+        dm_uuid = get_device_from_path(context, pv).get("DM_UUID", "")
+        multipath_wwid = dm_uuid[6:] if dm_uuid.startswith("mpath-") else None
+
+        for disk in get_physical_devices(pv, multipath_wwid):
+            disk_name = os.path.basename(disk)
+            wwids = get_disk_wwids(get_device_from_path(context, disk))
             if multipath_wwid is not None:
                 wwids.append(multipath_wwid)
             if len(wwids) > 0:
