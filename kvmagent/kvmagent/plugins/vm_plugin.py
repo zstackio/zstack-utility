@@ -4435,15 +4435,15 @@ class Vm(object):
                 if bash.bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} > /dev/null 2>&1') != 0:
                     bash.bash_r(EBTABLES_CMD + ' -N {{CHAIN_NAME}}')
 
-                if bash.bash_r(EBTABLES_CMD + ' -L FORWARD | grep -- "-j {{CHAIN_NAME}}" > /dev/null') != 0:
+                if bash.bash_r(EBTABLES_CMD + " -L FORWARD | grep -- '-j {{CHAIN_NAME}}' > /dev/null") != 0:
                     bash.bash_r(EBTABLES_CMD + ' -I FORWARD -j {{CHAIN_NAME}}')
 
-                if bash.bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} --Lmac2 | grep -- "-p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT" > /dev/null') != 0:
+                if bash.bash_r(EBTABLES_CMD + " -L {{CHAIN_NAME}} --Lmac2 | grep -- '-p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT' > /dev/null") != 0:
                     bash.bash_r(EBTABLES_CMD + ' -I {{CHAIN_NAME}} -p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
 
             elif action == 'Detach':
                 # FIXME: when vm is destroyed, no vnic detaching function will be called and left some garbage rules
-                if bash.bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} --Lmac2 | grep -- "-p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT" > /dev/null') == 0:
+                if bash.bash_r(EBTABLES_CMD + " -L {{CHAIN_NAME}} --Lmac2 | grep -- '-p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT' > /dev/null") == 0:
                     bash.bash_r(EBTABLES_CMD + ' -D {{CHAIN_NAME}} -p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
 
         @in_bash
