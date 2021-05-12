@@ -60,7 +60,9 @@ from distutils.version import LooseVersion
 logger = log.get_logger(__name__)
 
 HOST_ARCH = platform.machine()
-DIST_NAME = platform.dist()[0]
+DIST = platform.dist()
+DIST_NAME = DIST[0]
+DIST_NAME_VERSION = "%s%s" % (DIST[0], DIST[1])
 
 ZS_XML_NAMESPACE = 'http://zstack.org'
 
@@ -69,6 +71,7 @@ etree.register_namespace('zs', ZS_XML_NAMESPACE)
 GUEST_TOOLS_ISO_PATH = "/var/lib/zstack/guesttools/GuestTools.iso"
 QMP_SOCKET_PATH = "/var/lib/libvirt/qemu/zstack"
 PCI_ROM_PATH = "/var/lib/zstack/pcirom"
+MAX_MEMORY = 34359738368 if (HOST_ARCH != "aarch64") else linux.get_max_vm_ipa_size()/1024/16
 
 class RetryException(Exception):
     pass
@@ -3285,7 +3288,8 @@ class Vm(object):
                     e(numa, 'cell', attrib={'id': '0', 'cpus': '0-127', 'memory': str(mem), 'unit': 'KiB'})
 
                 def on_aarch64():
-                    cpu = e(root, 'cpu', attrib={'mode': 'custom'})
+                    e(root, 'vcpu', '128', {'placement': 'static', 'current': str(cmd.cpuNum)})
+                    cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
                     e(cpu, 'model', 'host', attrib={'fallback': 'allow'})
                     mem = cmd.memory / 1024
                     e(cpu, 'topology', attrib={'sockets': '32', 'cores': '4', 'threads': '1'})
@@ -3348,7 +3352,7 @@ class Vm(object):
             root = elements['root']
             mem = cmd.memory / 1024
             if use_numa:
-                e(root, 'maxMemory', str(34359738368), {'slots': str(16), 'unit': 'KiB'})
+                e(root, 'maxMemory', str(MAX_MEMORY), {'slots': str(16), 'unit': 'KiB'})
                 # e(root,'memory',str(mem),{'unit':'k'})
                 e(root, 'currentMemory', str(mem), {'unit': 'k'})
             else:
@@ -3418,7 +3422,7 @@ class Vm(object):
                 e(features, f)
 
             def make_acpi():
-                if cmd.acpi or HOST_ARCH == "x86_64":
+                if HOST_ARCH == "x86_64" or (cmd.acpi and DIST_NAME_VERSION in linux.ARM_ACPI_SUPPORT_OS and not is_virtual_machine()):
                     e(features, 'acpi')
 
             make_acpi()
