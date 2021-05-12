@@ -21,7 +21,7 @@ logger = log.get_logger(__name__)
 collector_dict = {}  # type: Dict[str, threading.Thread]
 latest_collect_result = {}
 collectResultLock = threading.RLock()
-QEMU_CMD = kvmagent.get_qemu_path().split("/")[-1]
+QEMU_CMD = os.path.basename(kvmagent.get_qemu_path())
 
 def read_number(fname):
     res = linux.read_file(fname)
@@ -246,7 +246,7 @@ def collect_vm_statistics():
                                      'Percentage of CPU used by vm', None, ['vmUuid'])
     }
 
-    r, pid_vm_map_str = bash_ro("ps -aux --no-headers | grep \"%s -name\" | grep -v -E \"grep.*%s -name\" | awk '{print $2,$13}'" %(QEMU_CMD, QEMU_CMD))
+    r, pid_vm_map_str = bash_ro("ps -aux --no-headers | awk '/%s [-]name/{print $2,$13}'" % QEMU_CMD)
     if r != 0 or len(pid_vm_map_str.splitlines()) == 0:
         return metrics.values()
     pid_vm_map_str = pid_vm_map_str.replace(",debug-threads=on", "").replace("guest=", "")
@@ -264,18 +264,20 @@ def collect_vm_statistics():
     def collect(vm_pid_arr):
         vm_pid_arr_str = ','.join(vm_pid_arr)
 
-        r, pid_cpu_usages_str = bash_ro("top -b -n 1 -p %s | grep qemu | awk '{print $1,$9}'" % vm_pid_arr_str)
-        if r != 0 or len(pid_cpu_usages_str.splitlines()) == 0:
+        r, pid_cpu_usages_str = bash_ro("top -b -n 1 -p %s" % vm_pid_arr_str)
+        if r != 0 or not pid_cpu_usages_str:
             return
 
         for pid_cpu_usage in pid_cpu_usages_str.splitlines():
+            if QEMU_CMD not in pid_cpu_usage:
+                continue
             arr = pid_cpu_usage.split()
             pid = arr[0]
             vm_uuid = pid_vm_map[pid]
-            cpu_usage = arr[1]
+            cpu_usage = arr[8]
             metrics['cpu_occupied_by_vm'].add_metric([vm_uuid], float(cpu_usage))
 
-    n = 10
+    n = 16  # procps/top has '#define MONPIDMAX  20'
     for i in range(0, len(pid_vm_map.keys()), n):
         collect(pid_vm_map.keys()[i:i + n])
 
