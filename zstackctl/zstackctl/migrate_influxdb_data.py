@@ -271,11 +271,11 @@ class AuditsVO:
         self.influxdb = influxdb
         self.mysqldb = "zstack.AuditsVO"
         self.sql_tmpl_safe = """insert into zstack.AuditsVO (`createTime`, `apiName`, `clientBrowser`, `clientIp`, 
-                             `duration`, `error`, `operator`, `requestDump`,`resourceType`,`resourceUuid`,
+                             `duration`, `error`, `operator`, `requestDump`,`resourceType`,`resourceUuid`,`requestUuid`,
                              `responseDump`, `success`) 
-                             values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"""
+                             values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"""
         self.column = ['createTime', 'apiName', 'clientBrowser', 'clientIp', 'duration', 'error', 'operator',
-                       'requestDump', 'resourceType', 'resourceUuid', 'responseDump', 'success']
+                       'requestDump', 'resourceType', 'resourceUuid', 'requestUuid', 'responseDump', 'success']
 
     def process_influxdb_data(self, data):
         if data.has_key("requestDump"):
