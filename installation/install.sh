@@ -551,8 +551,8 @@ udpate_tomcat_info() {
 }
 
 upgrade_tomcat_security() {
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Upgrade Tomcat Security"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
 
     enable_tomcat_linking
     disable_tomcat_methods
@@ -750,9 +750,9 @@ cs_check_zstack_data_exist(){
 
 #Do preinstallation checking for CentOS and Ubuntu and Database
 check_system(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_title "Check System"
     echo ""
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     cat /etc/*-release |egrep -i -h "centos |Red Hat Enterprise|Alibaba|NeoKylin|Kylin Linux Advanced Server release V10" >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -eq 0 ]; then
         grep -q 'CentOS release 6' /etc/system-release && OS="CENTOS6"
@@ -823,8 +823,8 @@ check_system(){
 }
 
 cs_create_repo(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Update Package Repository"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     if [[ $REDHAT_OS =~ $OS ]]; then
         create_yum_repo
     else
@@ -924,8 +924,8 @@ EOF
 }
 
 do_check_system(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Check System"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
 
     if [ ! -z $LICENSE_PATH ]; then
       if [ ! -f $LICENSE_PATH ]; then
@@ -1035,8 +1035,8 @@ ia_check_ip_hijack(){
 }
 
 ia_install_python_gcc_rh(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Install Python and GCC"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     req_pkgs='python python-devel gcc'
     [ ! -d /usr/lib64/python2.7/site-packages/pycrypto-2.6.1-py2.7.egg-info ] && req_pkgs=${req_pkgs}" python2-crypto"
     if [ ! -z $ZSTACK_YUM_REPOS ];then
@@ -1066,8 +1066,8 @@ ia_install_python_gcc_rh(){
 }
 
 ia_install_pip(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Install PIP"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     which pip >/dev/null 2>&1 && which pip2 >/dev/null && return
 
     if [ ! -z $DEBUG ]; then
@@ -1080,8 +1080,8 @@ ia_install_pip(){
 }
 
 ia_install_ansible(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Install Ansible"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     if [[ $REDHAT_OS =~ $OS ]]; then
         yum remove -y ansible >>$ZSTACK_INSTALL_LOG 2>&1
     else
@@ -1099,8 +1099,8 @@ ia_install_ansible(){
 }
 
 ia_install_python_gcc_db(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Install Python GCC."
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     if [ ! -z $DEBUG ]; then
         apt-get -y install python python-dev gcc
     else
@@ -1111,8 +1111,8 @@ ia_install_python_gcc_db(){
 }
 
 ia_update_apt(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Update Apt Source"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     dpkg --configure --force-confold -a >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -ne 0 ] && fail "execute \`dpkg --onfigure --force-confold -a\` failed."
     #Fix Ubuntu conflicted dpkg lock issue. 
@@ -1134,9 +1134,9 @@ ia_update_apt(){
 }
 
 download_zstack(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_title "Get ${PRODUCT_NAME}"
     echo ""
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     show_download iz_download_zstack
     show_spinner uz_stop_zstack_ui
     show_spinner iz_unpack_zstack
@@ -1155,24 +1155,24 @@ create_symbol_link() {
 }
 
 iu_deploy_zstack_repo() {
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Deploy yum repo for ${PRODUCT_NAME}"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
 
     [ -z "$ZSTACK_RELEASE" ] && fail "failed to get ${PRODUCT_NAME,,} releasever, please make sure ${PRODUCT_NAME,,}-release is installed."
     create_symbol_link
 }
 
 iu_deploy_zstack_apt_source() {
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Deploy apt source for ${PRODUCT_NAME}"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
 
     create_symbol_link
 }
 
 unpack_zstack_into_tomcat(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_title "Install ${PRODUCT_NAME} Package"
     echo ""
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     which unzip >/dev/null 2>&1
     if [ $? -ne 0 ];then
         show_spinner iz_install_unzip
@@ -1187,9 +1187,9 @@ unpack_zstack_into_tomcat(){
 }
 
 upgrade_zstack(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_title "Upgrade ${PRODUCT_NAME}"
     echo ""
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
 
     if pgrep -x zstack-hamon >/dev/null; then
         fail2 "You are upgrading ${PRODUCT_NAME} under HA environment.\nPlease run: 'zsha2 upgrade-mn ${PRODUCT_NAME,,}-installer.bin' instead.\n"
@@ -1341,8 +1341,8 @@ upgrade_zstack(){
 }
 
 cs_pre_check(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Pre-Checking"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
 
     if [ -f $PRODUCT_TITLE_FILE ]; then
         #check cpu number
@@ -1397,9 +1397,9 @@ sharedblock_check_qcow2_volume(){
 }
 
 install_ansible(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_title "Install Ansible"
     echo ""
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     if [[ $REDHAT_OS =~ $OS ]]; then
         show_spinner ia_disable_selinux
         show_spinner ia_install_python_gcc_rh
@@ -1413,8 +1413,8 @@ install_ansible(){
 }
 
 iz_install_unzip(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Install unzip"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     if [[ $DEBIAN_OS =~ $OS ]]; then
         apt-get -y install unzip >>$ZSTACK_INSTALL_LOG 2>&1
         [ $? -ne 0 ] && fail "Install unzip fail."
@@ -1437,8 +1437,8 @@ iz_install_unzip(){
 }
 
 is_install_general_libs_rh(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Install General Libraries (takes a couple of minutes)"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
 
     # Just install what is not installed
     deps_list="libselinux-python \
@@ -1525,8 +1525,8 @@ is_install_general_libs_rh(){
 }
 
 is_install_virtualenv(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Install Virtualenv"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     if [ ! -z $DEBUG ]; then
         pip install -i $pypi_source_pip --trusted-host localhost --ignore-installed virtualenv
     else
@@ -1537,8 +1537,8 @@ is_install_virtualenv(){
 }
 
 is_install_general_libs_deb(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Install General Libraries (takes a couple of minutes)"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
 
     if [[ $DEBIAN_OS =~ $OS ]]; then
         #install openjdk ppa for openjdk-8
@@ -1624,9 +1624,9 @@ is_install_system_libs(){
 }
 
 install_system_libs(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_title "Install System Libs"
     echo ""
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     is_install_system_libs
     #mysql will be installed by zstack-ctl later
     show_spinner ia_install_pip
@@ -1636,8 +1636,8 @@ install_system_libs(){
 }
 
 is_enable_chronyd(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Enable chronyd"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     if [[ $REDHAT_OS =~ $OS ]];then
         if [ x"$ZSTACK_OFFLINE_INSTALL" = x'n' ];then
             grep '^server 0.centos.pool.ntp.org' /etc/chrony.conf >/dev/null 2>&1
@@ -1685,8 +1685,8 @@ is_enable_chronyd(){
 }
 
 iz_download_zstack(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Download ${PRODUCT_NAME} package"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     if [ -f $ZSTACK_ALL_IN_ONE ]; then
         cp $ZSTACK_ALL_IN_ONE $zstack_tmp_file >>$ZSTACK_INSTALL_LOG 2>&1
         if [ $? -ne 0 ];then
@@ -1714,8 +1714,8 @@ iz_download_zstack(){
 }
 
 iz_unpack_zstack(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Unpack ${PRODUCT_NAME} package"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     if [ x"$UPGRADE" = x'n' ]; then
         mkdir -p $ZSTACK_INSTALL_ROOT
         all_in_one=$ZSTACK_INSTALL_ROOT/zstack_all_in_one.tgz
@@ -1751,8 +1751,8 @@ iz_unpack_zstack(){
 }
 
 uz_stop_zstack(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Stop ${PRODUCT_NAME}"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     zstack-ctl stop >>$ZSTACK_INSTALL_LOG 2>&1
     # make sure zstack is stopped
     ps axu | grep java | grep 'appName=zstack' >>$ZSTACK_INSTALL_LOG 2>&1
@@ -1763,8 +1763,8 @@ uz_stop_zstack(){
 }
 
 uz_stop_zstack_ui(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Stop ${PRODUCT_NAME} UI"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     if [ -e $ZSTACK_HOME ]
     then
         zstack-ctl stop_ui >>$ZSTACK_INSTALL_LOG 2>&1
@@ -1793,8 +1793,8 @@ uz_stop_zstack_ui(){
 }
 
 uz_upgrade_tomcat(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Upgrade apache-tomcat"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     ZSTACK_HOME=${ZSTACK_HOME:-`zstack-ctl getenv ZSTACK_HOME | awk -F '=' '{ print $2 }'`}
     ZSTACK_HOME=${ZSTACK_HOME:-"/usr/local/zstack/apache-tomcat/webapps/zstack/"}
     TOMCAT_PATH=${ZSTACK_HOME%/apache-tomcat*}
@@ -1841,8 +1841,8 @@ uz_upgrade_tomcat(){
 }
 
 uz_upgrade_zstack_ctl(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Upgrade ${PRODUCT_NAME,,}-ctl"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     cd $upgrade_folder
     unzip -d zstack zstack.war >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
@@ -1878,8 +1878,8 @@ get_mysql_conf_file(){
 }
 
 upgrade_mysql_configuration(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo "modify my.cnf" >>$ZSTACK_INSTALL_LOG 2>&1
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     get_mysql_conf_file
 
     grep 'log_bin_trust_function_creators=' $MYSQL_CONF_FILE >/dev/null 2>&1
@@ -1904,8 +1904,8 @@ upgrade_mysql_configuration(){
 }
 
 uz_upgrade_zstack(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Upgrade ${PRODUCT_NAME}"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     cd $upgrade_folder
 
     #Do not upgrade db, when using -i or -k
@@ -1986,8 +1986,8 @@ uz_upgrade_zstack(){
 }
 
 uz_upgrade_zstack_ui_db(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Upgrade ${PRODUCT_NAME} UI Database"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
 
     #Do not upgrade zstack_ui db when using -k
     if [ -z $NEED_KEEP_DB ]; then
@@ -2040,8 +2040,8 @@ uz_upgrade_zstack_ui_db(){
 }
 
 iz_unzip_tomcat(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Unpack Tomcat"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     cd $ZSTACK_INSTALL_ROOT
     unzip apache-tomcat*.zip >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
@@ -2066,8 +2066,8 @@ iz_unzip_tomcat(){
 }
 
 iz_install_zstack(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Install ${PRODUCT_NAME} into Tomcat"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     cd $ZSTACK_INSTALL_ROOT
     unzip -d $CATALINA_ZSTACK_PATH zstack.war >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
@@ -2078,8 +2078,8 @@ iz_install_zstack(){
 }
 
 iz_install_zstackcli(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Install ${PRODUCT_NAME} Command Line Tool"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     cd $ZSTACK_INSTALL_ROOT
     bash $ZSTACK_TOOLS_INSTALLER zstack-cli >>$ZSTACK_INSTALL_LOG 2>&1
 
@@ -2093,8 +2093,8 @@ iz_install_zstackcli(){
 }
 
 iz_install_zstackctl(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Install ${PRODUCT_NAME} Control Tool"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     cd $ZSTACK_INSTALL_ROOT
     bash $ZSTACK_TOOLS_INSTALLER zstack-ctl >>$ZSTACK_INSTALL_LOG 2>&1
 
@@ -2123,8 +2123,8 @@ install_zstack_network()
 } >>$ZSTACK_INSTALL_LOG 2>&1
 
 cp_third_party_tools(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Copy third-party tools to ${PRODUCT_NAME} install path"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     if [ -d "/opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/tools" ]; then
         /bin/cp -rn /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/tools/* $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS >/dev/null 2>&1
         chown -R zstack.zstack $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS/*
@@ -2134,8 +2134,8 @@ cp_third_party_tools(){
 }
 
 install_zstack(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_title "Install ${PRODUCT_NAME} Tools"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo ""
     show_spinner iz_chown_install_root
     show_spinner iz_install_zstackcli
@@ -2148,9 +2148,9 @@ install_zstack(){
 }
 
 install_db(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_title "Install Database"
     echo ""
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     #generate ssh key for install mysql by ansible remote host
     ssh_tmp_dir=`mktemp`
     /bin/rm -rf $ssh_tmp_dir
@@ -2168,17 +2168,17 @@ install_db(){
 }
 
 install_sds(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_title "Install SDS"
     echo ""
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     show_spinner is_install_sds
     show_spinner is_append_iptables
 }
 
 setup_install_param(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_title "Setup Install Parameters"
     echo ""
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     if [ x"$MINI_INSTALL" = x"y" ];then
         show_spinner sd_install_zstack_mini_ui
         DEFAULT_UI_PORT=8200
@@ -2201,15 +2201,15 @@ setup_install_param(){
 }
 
 install_license(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_title "Install License"
     echo ""
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     show_spinner il_install_license
 }
 
 il_install_license(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Install License"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     # if -L is set
     if [ ! -z $LICENSE_PATH ]; then
         if [ -f $LICENSE_PATH ]; then
@@ -2230,9 +2230,9 @@ il_install_license(){
 }
 
 config_system(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_title "Configure System"
     echo ""
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     #show_spinner cs_flush_iptables
     show_spinner cs_config_zstack_properties
     show_spinner cs_config_generate_ssh_key
@@ -2254,8 +2254,8 @@ config_system(){
 }
 
 cs_add_cronjob(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Add cronjob to clean logs"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     cat >/etc/cron.daily/zstack_archive_logs.sh <<EOF
 #!/bin/bash
 zstack_home=\`zstack-ctl status|grep ZSTACK_HOME|awk '{print \$2}'\`
@@ -2286,8 +2286,8 @@ EOF
 }
 
 cs_config_zstack_properties(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Configure global properties"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
 
     if [ -d /var/lib/zstack ];then
         chown zstack:zstack /var/lib/zstack >>$ZSTACK_INSTALL_LOG 2>&1
@@ -2314,8 +2314,8 @@ cs_config_zstack_properties(){
 }
 
 cs_config_generate_ssh_key(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Generate Local Ssh keys"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     #generate local ssh key
     rsa_key_folder=${ZSTACK_INSTALL_ROOT}/${CATALINA_ZSTACK_CLASSES}/ansible/rsaKeys
     /bin/rm -f ${rsa_key_folder}/*
@@ -2328,8 +2328,8 @@ cs_config_generate_ssh_key(){
 }
 
 iz_chown_install_root(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Change Owner in ${PRODUCT_NAME}"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     chown -R zstack:zstack $ZSTACK_INSTALL_ROOT >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
         fail "failed to chown for $ZSTACK_INSTALL_ROOT with zstack:zstack"
@@ -2338,8 +2338,8 @@ iz_chown_install_root(){
 }
 
 cs_gen_sshkey(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Generate Temp SSH Key"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     [ ! -d /root/.ssh ] && mkdir -p /root/.ssh && chmod 700 /root/.ssh
 
     rsa_key_file=$1/id_rsa
@@ -2374,8 +2374,8 @@ setup_audit_file(){
 }
 
 cs_install_mysql(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Install Mysql Server"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     rsa_key_file=$1/id_rsa
     if [ -z $ZSTACK_YUM_REPOS ];then
         if [ -z $MYSQL_ROOT_PASSWORD ]; then
@@ -2409,8 +2409,8 @@ cs_clean_ssh_tmp_key(){
 }
 
 ia_disable_selinux(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Disable SELinux"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     which setenforce >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -eq 0 ];then
         setenforce 0 >>$ZSTACK_INSTALL_LOG 2>&1
@@ -2428,8 +2428,8 @@ ia_disable_selinux(){
 }
 
 cs_flush_iptables(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Flush iptables rules"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     iptables -F
     iptables -F -t nat
     [ $? -ne 0 ] && fail "disable iptables failed"
@@ -2437,8 +2437,8 @@ cs_flush_iptables(){
 }
 
 cs_config_tomcat(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Configure Tomcat Java Option"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     cat >> $ZSTACK_INSTALL_ROOT/apache-tomcat/bin/setenv.sh <<EOF
 export CATALINA_OPTS=" -Djava.net.preferIPv4Stack=true -Dcom.sun.management.jmxremote=true -Djava.security.egd=file:/dev/./urandom"
 EOF
@@ -2446,8 +2446,8 @@ EOF
 }
 
 cs_append_iptables(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Append iptables"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     if [ "$NEED_SET_MN_IP" == "y" ]; then
         management_addr=`ip addr show |grep ${MANAGEMENT_IP}|awk '{print $2}'`
         ports=(3306)
@@ -2464,8 +2464,8 @@ cs_append_iptables(){
     pass
 }
 cs_install_zstack_service(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Install ${PRODUCT_NAME} management node"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     /bin/cp -f $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_CLASSES/install/zstack-server /etc/init.d
     chmod a+x /etc/init.d/zstack-server
     tomcat_folder_path=$ZSTACK_INSTALL_ROOT/apache-tomcat
@@ -2486,8 +2486,8 @@ disable_probe_interfaces() {
 }
 
 cs_enable_zstack_service(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Enable ${PRODUCT_NAME} bootstrap service"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     if [ -f /bin/systemctl ]; then
         cat > /etc/systemd/system/zstack.service <<EOF
 [Unit]
@@ -2524,8 +2524,8 @@ EOF
 }
 
 cs_setup_nfs(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Configure Local NFS Server"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     mkdir -p $NFS_FOLDER
     grep $NFS_FOLDER /etc/exports >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ]; then 
@@ -2567,8 +2567,8 @@ cs_setup_nfs(){
 }
 
 cs_setup_nginx(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Configure Nginx Server"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
 mkdir -p /etc/nginx/conf.d/mn_pxe/ && chmod -R 0777 /etc/nginx/conf.d/mn_pxe/
 [ -f /etc/nginx/nginx.conf ] && cp -f /etc/nginx/nginx.conf /etc/nginx/nginx.conf.bck
 cat > /etc/nginx/nginx.conf << EOF
@@ -2621,8 +2621,8 @@ systemctl disable nginx > /dev/null 2>&1
 }
 
 cs_setup_http(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Configure Local HTTP Server"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     mkdir $HTTP_FOLDER
     chmod 777 $HTTP_FOLDER
     chmod o+x $ZSTACK_INSTALL_ROOT
@@ -2671,8 +2671,8 @@ EOF
 } >> $ZSTACK_INSTALL_LOG 2>&1
 
 cs_enable_usb_storage(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Configure usb storage mod"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     lsmod | grep -q usb_storage
     if [[ $? -ne 0 ]]; then
         modprobe usb_storage 2>/dev/null || true
@@ -2688,15 +2688,15 @@ check_zstack_server(){
 }
 
 start_zstack(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_title "Start ${PRODUCT_NAME} Server"
     echo ""
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     show_spinner sz_start_zstack
 }
 
 cs_deploy_db(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Initialize Database"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     if [ -z $NEED_DROP_DB ]; then
         if [ -z $NEED_KEEP_DB ]; then
             zstack-ctl deploydb --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP >>$ZSTACKCTL_INSTALL_LOG 2>&1
@@ -2722,13 +2722,13 @@ cs_deploy_db(){
 }
 
 cs_deploy_ui_db(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Initialize ${PRODUCT_NAME} UI Database"
     echo "--------test start--------\n" >> $ZSTACKCTL_INSTALL_LOG
     echo "Initialize ${PRODUCT_NAME} UI Database\n" >> $ZSTACKCTL_INSTALL_LOG
     echo $MYSQL_PORT"\n" >> $ZSTACKCTL_INSTALL_LOG
     echo ${MYSQL_PORT}"\n" >> $ZSTACKCTL_INSTALL_LOG
     echo "--------test end--------\n" >> $ZSTACKCTL_INSTALL_LOG
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     if [ -z $NEED_DROP_DB ]; then
         if [ -z $NEED_KEEP_DB ]; then
             zstack-ctl deploy_ui_db --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-ui-password="$MYSQL_UI_USER_PASSWORD" --host=${MANAGEMENT_IP} --port=${MYSQL_PORT} >>$ZSTACKCTL_INSTALL_LOG 2>&1
@@ -2754,8 +2754,8 @@ cs_deploy_ui_db(){
 }
 
 sz_start_zstack(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Start ${PRODUCT_NAME} management node (takes a couple of minutes)"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     zstack-ctl stop_node -f >>$ZSTACK_INSTALL_LOG 2>&1
     zstack-ctl start_node --timeout=$ZSTACK_START_TIMEOUT >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -ne 0 ] && fail "failed to start ${PRODUCT_NAME,,}"
@@ -2770,9 +2770,9 @@ sz_start_zstack(){
 
 # For UI 1.x
 start_dashboard(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_title "Start ${PRODUCT_NAME} Dashboard"
     echo ""
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     #show_spinner sd_install_dashboard_libs
     #make sure current folder is existed to avoid of possible dashboard start failure. 
     cd /
@@ -2781,17 +2781,17 @@ start_dashboard(){
 
 # For UI 2.0
 start_zstack_ui(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_title "Start ${PRODUCT_NAME} Web UI"
     echo ""
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     cd /
     show_spinner sd_start_zstack_ui
 }
 
 # For UI 1.x and UI 2.0
 sd_install_zstack_ui(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Install ${PRODUCT_NAME} Web UI (takes a couple of minutes)"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     zstack-ctl install_ui --force >>$ZSTACK_INSTALL_LOG 2>&1
 
     if [ $? -ne 0 ];then
@@ -2802,8 +2802,8 @@ sd_install_zstack_ui(){
 
 # For MINI UI Server
 sd_install_zstack_mini_ui(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Install ${PRODUCT_NAME} MINI-UI (takes a couple of minutes)"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     bash /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/zstack_mini_server.bin -a >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
         fail "failed to install ${PRODUCT_NAME} MINI-UI in $MINI_INSTALL_ROOT"
@@ -2813,8 +2813,8 @@ sd_install_zstack_mini_ui(){
 
 # For UI 1.x
 sd_start_dashboard(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Start ${PRODUCT_NAME} Dashboard"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     chmod a+x /etc/init.d/zstack-dashboard
     cd /
     /etc/init.d/zstack-dashboard restart >>$ZSTACK_INSTALL_LOG 2>&1
@@ -2824,8 +2824,8 @@ sd_start_dashboard(){
 
 # For UI 2.0
 sd_start_zstack_ui(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Start ${PRODUCT_NAME} Web UI"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     zstack_home=$ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_PATH
     ui_logging_path=$zstack_home/../../logs/
     cd /
@@ -2842,8 +2842,8 @@ sd_start_zstack_ui(){
 }
 
 is_install_sds(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Install SDS"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     TMP=`mktemp -d /tmp/tmp-XXXXXX`
     trap "rm -rf $TMP* 2>/dev/null" EXIT
     tar -zxf /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/ZCE-installer-SDS.tar.gz -C $TMP
@@ -2856,15 +2856,14 @@ is_install_sds(){
 }
 
 is_append_iptables(){
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo_subtitle "Append iptables"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     iptables-save 2>&1 | grep -- "-A INPUT -p tcp -m tcp --dport $SDS_PORT -j ACCEPT" > /dev/null 2>&1 || iptables -I INPUT -p tcp -m tcp --dport $SDS_PORT -j ACCEPT >/dev/null 2>&1
     service iptables save >/dev/null 2>&1
     pass
 }
 
 get_higher_version() {
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo "$@" | tr " " "\n" | sort -V | tail -1
 }
 
@@ -3122,8 +3121,8 @@ check_hybrid_arch(){
 }
 
 create_local_source_list_files() {
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo "create $list_file" >> $ZSTACK_INSTALL_LOG
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
 
 list_file=/etc/apt/sources.list.d/zstack-local.list
 cat > $list_file << EOF
@@ -3132,8 +3131,8 @@ EOF
 }
 
 check_sync_local_repos() {
-  trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
   echo_subtitle "Check local repo version"
+  trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
   if [[ $XINCHUANG_OS =~ $ZSTACK_RELEASE ]]; then
       SKIP_SYNC='y'
   fi
@@ -3544,8 +3543,8 @@ fi
 
 echo_hints_to_upgrade_iso()
 {
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     if [ x"${PRODUCT_NAME^^}" == x"ZSTACK" ]; then
         ISO_NAME="ZStack-x86-64-DVD-${VERSION_RELEASE_NR}.iso"
         UPGRADE_WIKI="http://www.zstack.io/support/productsupport/tutorial/"
