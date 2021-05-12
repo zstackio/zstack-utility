@@ -31,6 +31,8 @@ KVM_SET_BRIDGE_ROUTER_PORT_PATH = "/host/bridge/routerport"
 KVM_DELETE_L2NOVLAN_NETWORK_PATH = "/network/l2novlan/deletebridge"
 KVM_DELETE_L2VLAN_NETWORK_PATH = "/network/l2vlan/deletebridge"
 KVM_DELETE_L2VXLAN_NETWORK_PATH = "/network/l2vxlan/deletebridge"
+VXLAN_DEFAULT_PORT = 8472
+
 
 logger = log.get_logger(__name__)
 
@@ -76,6 +78,7 @@ class CreateVxlanBridgeCmd(kvmagent.AgentCommand):
         self.vtepIp = None
         self.vni = None
         self.peers = None
+        self.dstport = None
 
 class CreateVxlanBridgesCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -424,7 +427,10 @@ class NetworkPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     def create_single_vxlan_bridge(self, cmd):
-        linux.create_vxlan_interface(cmd.vni, cmd.vtepIp)
+        if cmd.dstport == None :
+            cmd.dstport = VXLAN_DEFAULT_PORT
+        linux.create_vxlan_interface(cmd.vni, cmd.vtepIp,cmd.dstport)
+
 
         interf = "vxlan" + str(cmd.vni)
         linux.create_vxlan_bridge(interf, cmd.bridgeName, cmd.peers)
