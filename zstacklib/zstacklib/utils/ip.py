@@ -144,6 +144,17 @@ def get_link_local_address(mac):
     #step 3
     return "fe80::" + part1.lstrip("0") + part2.lstrip("0") + part3.lstrip("0") + part4.lstrip("0")
 
+def removeZeroFromMacAddress(mac):
+    '''
+    mac address in iptables will remove leading zero, for example:
+    00:01:aa:b0:02:04 --> 0:1:aa:b0:2:4
+    :param mac:
+    :return:
+    '''
+    newMac = mac.replace(":0", ":")
+    if newMac[0] == '0':
+        newMac = newMac[1:]
+    return newMac
 
 def get_nic_supported_max_speed(nic):
     r, o = bash.bash_ro("ethtool %s" % nic)  # type: (int, str)

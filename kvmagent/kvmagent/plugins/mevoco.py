@@ -97,6 +97,11 @@ def get_l3_uuid(namespace):
     items = namespace.split('_')
     return items[-1]
 
+def getDhcpEbtableChainName(dhcpIp):
+    if ":" in dhcpIp: #ipv6 address
+        return "ZSTACK-DHCP-%s" % dhcpIp[0:9]
+    else:
+        return "ZSTACK-%s" % dhcpIp
 
 class UserDataEnv(object):
     def __init__(self, bridge_name, namespace_name):
@@ -296,9 +301,9 @@ class DhcpEnv(object):
         OUTER_DEV = "outer%s" % NAMESPACE_ID
         INNER_DEV = "inner%s" % NAMESPACE_ID
         if DHCP_IP is not None:
-            CHAIN_NAME = "ZSTACK-%s" % DHCP_IP
+            CHAIN_NAME = getDhcpEbtableChainName(DHCP_IP)
         elif DHCP6_IP is not None:
-            CHAIN_NAME = "ZSTACK-DHCP-%s" % DHCP6_IP[0:9]
+            CHAIN_NAME = getDhcpEbtableChainName(DHCP6_IP)
 
         MAX_MTU = linux.MAX_MTU_OF_VNIC
 
@@ -492,7 +497,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
     def _delete_dhcp6(self, namspace):
         items = namspace.split('_')
         l3_uuid = items[-1]
-        DHCP6_CHAIN_NAME = "ZSTACK-DHCP6-%s" % l3_uuid[0:9]
+        DHCP6_CHAIN_NAME = "ZSTACK-DHCP6-%s" % l3_uuid[0:9]  #this case is for old version dhcp6 namespace
 
         o = bash_o("ebtables-save | grep {{DHCP6_CHAIN_NAME}} | grep -- -A")
         o = o.strip(" \t\r\n")
@@ -522,7 +527,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         dhcp_ip = dhcp_ip.strip(" \t\n\r")
 
         if dhcp_ip:
-            CHAIN_NAME = "ZSTACK-%s" % dhcp_ip
+            CHAIN_NAME = getDhcpEbtableChainName(dhcp_ip)
 
             o = bash_o("ebtables-save | grep {{CHAIN_NAME}} | grep -- -A")
             o = o.strip(" \t\r\n")
@@ -888,9 +893,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
         # ebtables has a bug that will eliminate 0 in MAC, for example, aa:bb:0c will become aa:bb:c
         cidr = ip.IpAddress(to.vmIp).toCidr(to.netmask)
-        macAddr = MAC.replace(":0", ":")
-        if macAddr[0] == '0':
-            macAddr = macAddr[1:]
+        macAddr = ip.removeZeroFromMacAddress(MAC)
         RULE = "-p IPv4 --ip-src %s --ip-dst 169.254.169.254 -j dnat --to-dst %s --dnat-target ACCEPT" % (cidr, macAddr)
         ret = bash_r(EBTABLES_CMD + " -t nat -L {{EBCHAIN_NAME}} | grep -- '{{RULE}}' > /dev/null")
         if ret != 0:
@@ -1339,6 +1342,21 @@ mimetype.assign = (
             lst.append(d)
 
         @in_bash
+        @lock.file_lock('/run/xtables.lock')
+        def _add_ebtable_rules_for_vfnics(dhcpInfo):
+            DHCPNAMESPACE = dhcpInfo.namespaceName
+            dhcp_ip = bash_o(
+                "ip netns exec {{DHCPNAMESPACE}} ip add | grep inet | awk '{print $2}' | awk -F '/' '{print $1}' | head -1")
+            dhcp_ip = dhcp_ip.strip(" \t\n\r")
+
+            if dhcp_ip:
+                CHAIN_NAME = getDhcpEbtableChainName(dhcp_ip)
+                VF_NIC_MAC = ip.removeZeroFromMacAddress(dhcpInfo.mac)
+
+                if bash_r(EBTABLES_CMD + " -L {{CHAIN_NAME}} --Lmac2 | grep -- '-p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT' > /dev/null") != 0:
+                    bash_r(EBTABLES_CMD + ' -I {{CHAIN_NAME}} -p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
+
+        @in_bash
         def apply(dhcp):
             bridge_name = dhcp[0].bridgeName
             namespace_name = dhcp[0].namespaceName
@@ -1415,6 +1433,9 @@ dhcp-range={{g}}
 
             info = []
             for d in dhcp:
+                if d.nicType == "VF":
+                    _add_ebtable_rules_for_vfnics(d)
+
                 dhcp_info = {'tag': d.mac.replace(':', '')}
                 dhcp_info.update(d.__dict__)
                 dhcp_info['dns'] = ','.join(d.dns)
@@ -1576,6 +1597,9 @@ dhcp-range={{range}}
 
             info = []
             for d in dhcp:
+                if d.nicType == "VF":
+                    _add_ebtable_rules_for_vfnics(d)
+
                 dhcp_info = {'tag': d.mac.replace(':', '')}
                 dhcp_info.update(d.__dict__)
                 if d.dns6 is not None:
@@ -1712,8 +1736,24 @@ sed -i '/^$/d' {{DNS}}
             lst.append(d)
 
         @in_bash
+        @lock.file_lock('/run/xtables.lock')
+        def _remove_ebtable_rules_for_vfnics(dhcpInfo):
+            DHCPNAMESPACE = dhcpInfo.namespaceName
+            dhcp_ip = bash_o(
+                "ip netns exec {{DHCPNAMESPACE}} ip add | grep inet | awk '{print $2}' | awk -F '/' '{print $1}' | head -1")
+            dhcp_ip = dhcp_ip.strip(" \t\n\r")
+
+            if dhcp_ip:
+                CHAIN_NAME = getDhcpEbtableChainName(dhcp_ip)
+                VF_NIC_MAC = dhcpInfo.mac
+                bash_r(EBTABLES_CMD + ' -D {{CHAIN_NAME}} -p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
+
+        @in_bash
         def release(dhcp):
             for d in dhcp:
+                if d.nicType == "VF":
+                    _remove_ebtable_rules_for_vfnics(d)
+
                 conf_file_path, dhcp_path, dns_path, option_path, _ = self._make_conf_path(d.namespaceName)
                 self._erase_configurations(d.mac, d.ip, dhcp_path, dns_path, option_path)
                 self._restart_dnsmasq(d.namespaceName, conf_file_path)
