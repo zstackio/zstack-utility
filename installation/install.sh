@@ -3842,7 +3842,7 @@ config_journal(){
         journal_path="/var/log/journal"
         if [ ! -d $journal_path ]; then
             mkdir -p $journal_path
-            systemd-tmpfiles --create --prefix $journal_path
+            systemd-tmpfiles --create --prefix $journal_path >>$ZSTACK_INSTALL_LOG 2>&1
             systemctl restart systemd-journald
         fi
     fi
