@@ -168,7 +168,7 @@ def _get_device_index(ifname_or_index, iproute, exception_if_wrong = True):
     '''
     if isinstance(ifname_or_index, int):
         return ifname_or_index
-    elif isinstance(ifname_or_index, str):
+    elif isinstance(ifname_or_index, (str, unicode)):
         ret = _query_index_by_ifname(ifname_or_index, iproute)
         if ret or not exception_if_wrong:
             return ret
@@ -271,9 +271,9 @@ def query_addresses(namespace=None, **kwargs):
                 kwargs['index'] = _check_index_and_ifname(kwargs['ifname'], kwargs.get('index'), ipr, True)
                 del kwargs['ifname']
             # scope should convert to int type
-            if kwargs.has_key('scope') and isinstance(kwargs['scope'], str):
+            if kwargs.has_key('scope') and isinstance(kwargs['scope'], (str, unicode)):
                 kwargs['scope'] = _get_scope_name(kwargs['scope'], True)
-            if kwargs.has_key('ip') and isinstance(kwargs['ip'], str):
+            if kwargs.has_key('ip') and isinstance(kwargs['ip'], (str, unicode)):
                 kwargs['address'] = kwargs['ip']
                 del kwargs['ip']
             if kwargs.has_key('ip_version'):
@@ -392,7 +392,7 @@ def query_links_use_namespace(namespace, *argv):
     for item in argv:
         if isinstance(item, int) and item != 0:
             indexes.add(item)
-        elif isinstance(item, str):
+        elif isinstance(item, (str, unicode)):
             ifnames.add(item)
         else:
             raise Exception('Argument %s in method query_links is invalid.' % item)
