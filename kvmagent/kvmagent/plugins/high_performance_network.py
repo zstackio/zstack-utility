@@ -105,7 +105,7 @@ class HighPerformanceNetworkPlugin(kvmagent.KvmAgent):
         self._init_mem()
 
         # create bridge
-        shell.run('ovs-vsctl --timeout=5 add-br {} -- set Bridge {} datapath_type=netdev'.format(
+        shell.run('ovs-vsctl add-br {} -- set Bridge {} datapath_type=netdev'.format(
             cmd.bridgeName, cmd.bridgeName))
 
         # check bridge creation
@@ -137,7 +137,7 @@ class HighPerformanceNetworkPlugin(kvmagent.KvmAgent):
                 cmd.physicalInterfaceName)
             return jsonobject.dumps(rsp)
 
-        ret = shell.run('ovs-vsctl --timeout=5 add-port {} {} -- set Interface {} type=dpdk options:dpdk-devargs={} options:dpdklsc-interrupt=true'.format(
+        ret = shell.run('ovs-vsctl add-port {} {} -- set Interface {} type=dpdk options:dpdk-devargs={} options:dpdklsc-interrupt=true'.format(
             cmd.bridgeName, cmd.physicalInterfaceName, cmd.physicalInterfaceName, pci_num))
 
         if ret != 0:
