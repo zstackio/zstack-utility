@@ -33,7 +33,6 @@ from utils import linux, lock
 from zstacklib import *
 import log_collector
 import jinja2
-import pyroute2
 import socket
 import struct
 import fcntl
@@ -8431,7 +8430,13 @@ class UiStatusCmd(Command):
         def write_status(status):
             info('UI status: %s' % status)
 
-        cmd = ShellCmd("runuser -l root -s /bin/bash -c 'bash %s'" % (UiStatusCmd.ZSTACK_UI_STATUS),pipe=False)
+        default_protcol='http'
+        if os.path.exists(StartUiCmd.HTTP_FILE):
+            with open(StartUiCmd.HTTP_FILE, 'r') as fd2:
+                default_protcol = fd2.readline()
+                default_protcol = default_protcol.strip(' \t\n\r')
+        cmd = ShellCmd("runuser -l root -s /bin/bash -c 'bash %s %s://%s:%s'" %
+                       (UiStatusCmd.ZSTACK_UI_STATUS, default_protcol, '127.0.0.1', port), pipe=False)
         cmd(False)
         if cmd.return_code != 0:
             write_status(cmd.stdout)
