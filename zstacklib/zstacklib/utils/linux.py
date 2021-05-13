@@ -21,6 +21,7 @@ import platform
 import pprint
 import errno
 import json
+import fcntl
 
 from zstacklib.utils import thread
 from zstacklib.utils import qemu_img
@@ -33,6 +34,7 @@ logger = log.get_logger(__name__)
 
 RPM_BASED_OS = ['redhat', 'centos', 'alibaba', 'kylin10']
 DEB_BASED_OS = ['uos', 'kylin4.0.2', 'debian', 'ubuntu', 'uniontech']
+ARM_ACPI_SUPPORT_OS = ['kylin10', 'openEuler20.03']
 SUPPORTED_ARCH = ['x86_64', 'aarch64', 'mips64el']
 DIST_WITH_RPM_DEB = ['kylin']
 HOST_ARCH = platform.machine()
@@ -47,6 +49,10 @@ RTNETLINK answers: Numerical result out of range
 [root@10-0-67-98 ~]# ip link set mtu 9600 dev eth0.100
 '''
 MAX_MTU_OF_VNIC = 65500
+KVM_DEVICE = '/dev/kvm'
+KVM_CAP_ARM_VM_IPA_SIZE = 165
+KVM_CHECK_EXTENSION = 44547
+DEFAULT_VM_IPA_SIZE = 40
 
 def ignoreerror(func):
     @functools.wraps(func)
@@ -2370,3 +2376,14 @@ def write_uuids(type, str):
     else:
         uuids += "\n%s" % str
     write_file('/etc/zstack-uuids', uuids.strip())
+
+
+def get_max_vm_ipa_size():
+    try:
+        with open(KVM_DEVICE, 'rwb') as kvm_fd:
+            ipa_max = fcntl.ioctl(kvm_fd, KVM_CHECK_EXTENSION, KVM_CAP_ARM_VM_IPA_SIZE)
+            ipa_max = ipa_max if (ipa_max > 0) else DEFAULT_VM_IPA_SIZE
+            return pow(2, ipa_max)
+    except Exception as e:
+        logger.warn("failed to get max vm ipa size, because %s", str(e))
+        return pow(2, DEFAULT_VM_IPA_SIZE)
