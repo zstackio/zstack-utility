@@ -5144,6 +5144,9 @@ class VmPlugin(kvmagent.KvmAgent):
                 vm.stop(strategy=strategy)
             else:
                 vm.stop(timeout=cmd.timeout / 2)
+
+            # free vdpa
+            ovs.free_vDPA(cmd.uuid)
         except kvmagent.KvmError as e:
             logger.debug(linux.get_exception_stacktrace())
         finally:
