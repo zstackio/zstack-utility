@@ -2715,7 +2715,7 @@ class Vm(object):
         brMode = cmd.addons['brMode'] if cmd.addons else None
         vhostSrcPath = None
 
-        if cmd.nic.type in "vDPA":
+        if cmd.nic.type == "vDPA":
             if action in "Attach":
                 vhostSrcPath = ovs.get_vDPA(cmd.vmUuid, cmd.nic)
             else:
@@ -2916,7 +2916,7 @@ class Vm(object):
                     # vf nic doesn't have internal name
                     if cmd.nic.pciDeviceAddress is not None:
                         return True
-                    if cmd.nic.type in "vDPA":
+                    if cmd.nic.type == "vDPA":
                         return True
                     else:
                         return linux.is_network_device_existing(cmd.nic.nicInternalName)
