@@ -2715,7 +2715,7 @@ class Vm(object):
         brMode = cmd.addons['brMode'] if cmd.addons else None
         vhostSrcPath = None
 
-        if cmd.nic.type in "vDPA":
+        if cmd.nic.type == "vDPA":
             if action in "Attach":
                 vhostSrcPath = ovs.get_vDPA(cmd.vmUuid, cmd.nic)
             else:
@@ -2916,7 +2916,7 @@ class Vm(object):
                     # vf nic doesn't have internal name
                     if cmd.nic.pciDeviceAddress is not None:
                         return True
-                    if cmd.nic.type in "vDPA":
+                    if cmd.nic.type == "vDPA":
                         return True
                     else:
                         return linux.is_network_device_existing(cmd.nic.nicInternalName)
@@ -5146,6 +5146,9 @@ class VmPlugin(kvmagent.KvmAgent):
                 vm.stop(strategy=strategy)
             else:
                 vm.stop(timeout=cmd.timeout / 2)
+
+            # free vdpa
+            ovs.free_vDPA(cmd.uuid)
         except kvmagent.KvmError as e:
             logger.debug(linux.get_exception_stacktrace())
         finally:
