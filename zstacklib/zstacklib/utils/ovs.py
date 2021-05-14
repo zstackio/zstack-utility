@@ -73,6 +73,15 @@ def get_bridge_ports(bridgeName):
 
     return s.stdout.strip().split('\n')
 
+def get_bridge_ifaces(bridgeName):
+    s = shell.ShellCmd(
+        "ovs-vsctl --timeout=5 list-ifaces {}".format(bridgeName), None, False)
+    s(False)
+    if s.return_code != 0:
+        raise OvsError("ovs error: {}".format(s.stderr))
+
+    return s.stdout.strip().split('\n')
+
 
 def get_bonds_interfaces(bondList):
     slaves_p = "/sys/class/net/{}/bonding/slaves"
@@ -331,7 +340,7 @@ def get_vDPA(vmUuid, nic):
     vlanId = nic.vlanId
     nicInternalName = nic.nicInternalName
 
-    interface_list = get_bridge_ports(bridgeName)
+    interface_list = get_bridge_ifaces(bridgeName)
 
     if bondName not in interface_list:
         raise OvsError("bridge:{} don't have such bond:{}".format(
@@ -345,8 +354,12 @@ def get_vDPA(vmUuid, nic):
             "ovs-vsctl get interface {} options:vdpa-socket-path".format(current_vDPA)).strip().strip('"')
         return vDPA_path
 
-    unused_vDPA_list = shell.call(
-        "ovs-vsctl --columns=name find interface external_ids={} | grep virtfn |cut -d ':' -f2").split()
+    used_vDPA_list = shell.call(
+        "ovs-vsctl --columns=name find interface external_ids!={} | grep virtfn |cut -d ':' -f2").split()
+
+    interface_list.remove(bondName)
+
+    unused_vDPA_list = [x for x in interface_list if x not in used_vDPA_list]
 
     if len(unused_vDPA_list) == 0:
         raise OvsError("vDPA resource exhausted")
@@ -382,7 +395,8 @@ def free_vDPA(vmUuid, nicInternalName=None):
         shell.run("ovs-vsctl remove interface {} external_ids vm-id".format(vDPA))
         shell.run(
             "ovs-vsctl remove interface {} external_ids iface-id".format(vDPA))
-        shell.run("ovs-vsctl --timeout=5 remove Port {} tag".format(vDPA))
+        vlan_id = shell.call("ovs-vsctl --timeout=5 get Port {} tag".format(vDPA))
+        shell.run("ovs-vsctl --timeout=5 remove Port {} tag {}".format(vDPA, vlan_id))
 
     vDPA_path = ''
     if nicInternalName != None and len(vDPA_list) != 0:
