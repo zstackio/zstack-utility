@@ -247,7 +247,8 @@ def install_kvm_pkg():
         if zstack_repo != 'false':
             common_dep_list = eval("%s_%s" % (host_arch, releasever))
             # common kvmagent deps of x86 and arm that need to update
-            common_update_list = "sanlock sysfsutils hwdata sg3_utils lvm2 lvm2-libs lvm2-lockd systemd openssh librbd1 glusterfs"
+            common_update_list = "sanlock sysfsutils hwdata sg3_utils lvm2 lvm2-libs lvm2-lockd systemd openssh glusterfs"
+            common_no_update_list = "librbd1"
             # common kvmagent deps of x86 and arm that no need to update
             common_dep_list = "%s %s" % (common_dep_list, common_update_list)
 
@@ -259,6 +260,7 @@ def install_kvm_pkg():
 
             dep_list = common_dep_list
             update_list = common_update_list
+            no_update_list = common_no_update_list
 
             command = "which virsh"
             host_post_info.post_label = "ansible.shell.install.pkg"
@@ -277,11 +279,13 @@ def install_kvm_pkg():
             # name: install/update kvm related packages on RedHat based OS from user defined repo
             # if zstack-manager is not installed, then install/upgrade zstack-host and ignore failures
             command = ("[[ -f /usr/bin/zstack-ctl ]] && zstack-ctl status | grep 'MN status' | grep 'Running' >/dev/null 2>&1; \
-                [[ $? -eq 0 ]] || yum --disablerepo=* --enablerepo=%s install -y zstack-host >/dev/null; \
-                    echo %s >/var/lib/zstack/dependencies && yum --enablerepo=%s clean metadata >/dev/null && \
-                    pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'`' %s' && \
-                    for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg >/dev/null || exit 1; done; \
-                    ") % (zstack_repo, dep_list, zstack_repo, dep_list, update_list, dep_list if update_packages == 'true' else '$pkg_list', zstack_repo)
+                    [[ $? -eq 0 ]] || yum --disablerepo=* --enablerepo={0} install -y zstack-host >/dev/null; \
+                    echo {1} >/var/lib/zstack/dependencies && yum --disablerepo=* --enablerepo={0} clean metadata >/dev/null && \
+                    pkg_list=`rpm -q {1} | grep \"not installed\" | awk '{{ print $2 }}'` ' {2}' && \
+                    for pkg in {4}; do yum --disablerepo=* --enablerepo={1} install -y $pkg >/dev/null || exit 1; done; \
+                    pkg_list=`rpm -q {3} | grep \"not installed\" | awk '{{ print $2 }}'` && \
+                    for pkg in $pkg_list; do yum --disablerepo=* --enablerepo={0} install -y $pkg >/dev/null || exit 1; done; \
+                    ").format(zstack_repo, dep_list, update_list, no_update_list, dep_list if update_packages == 'true' else '$pkg_list')
             host_post_info.post_label = "ansible.shell.install.pkg"
             host_post_info.post_label_param = dep_list
             run_remote_command(command, host_post_info)
