@@ -323,8 +323,13 @@ class EventRecordsVO:
         return data
 
     def process_mysql_data(self, mysql_columns):
+        for columns in mysql_columns[:]:
+            subscription_uuid = columns[self.column.index('subscriptionUuid')]
+            if not subscription_uuid:
+                mysql_columns.remove(columns)
+
         for columns in mysql_columns:
-            create_time = columns[0]
+            create_time = columns[self.column.index('createTime')]
             hour = create_time / 3600000 * 3600
             columns.append(hour)
 
