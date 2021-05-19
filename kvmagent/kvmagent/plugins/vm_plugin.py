@@ -3611,14 +3611,24 @@ class Vm(object):
                     e(qcmd, "qemu:arg", attrib={"value": 'socket,id=red-secondary-%s,host=%s,port=%s'
                                                          % (count, cmd.addons['primaryVmHostIp'], config.secondaryInPort)})
                     e(qcmd, "qemu:arg", attrib={"value": '-object'})
-                    e(qcmd, "qemu:arg", attrib={"value": 'filter-redirector,id=fr-mirror-%s,netdev=hostnet%s,queue=tx,'
-                                                         'indev=red-mirror-%s' % (count, count, count)})
-                    e(qcmd, "qemu:arg", attrib={"value": '-object'})
-                    e(qcmd, "qemu:arg", attrib={"value": 'filter-redirector,id=fr-secondary-%s,netdev=hostnet%s,'
-                                                         'queue=rx,outdev=red-secondary-%s' % (count, count, count)})
-                    e(qcmd, "qemu:arg", attrib={"value": '-object'})
-                    e(qcmd, "qemu:arg", attrib={"value": 'filter-rewriter,id=rew-%s,netdev=hostnet%s,queue=all'
-                                                         % (count, count)})
+                    if config.driverType == 'virtio':
+                        e(qcmd, "qemu:arg", attrib={"value": 'filter-redirector,id=fr-mirror-%s,netdev=hostnet%s,queue=tx,'
+                                                             'indev=red-mirror-%s,vnet_hdr_support' % (count, count, count)})
+                        e(qcmd, "qemu:arg", attrib={"value": '-object'})
+                        e(qcmd, "qemu:arg", attrib={"value": 'filter-redirector,id=fr-secondary-%s,netdev=hostnet%s,'
+                                                             'queue=rx,outdev=red-secondary-%s,vnet_hdr_support' % (count, count, count)})
+                        e(qcmd, "qemu:arg", attrib={"value": '-object'})
+                        e(qcmd, "qemu:arg", attrib={"value": 'filter-rewriter,id=rew-%s,netdev=hostnet%s,queue=all,vnet_hdr_support'
+                                                             % (count, count)})
+                    else:
+                        e(qcmd, "qemu:arg", attrib={"value": 'filter-redirector,id=fr-mirror-%s,netdev=hostnet%s,queue=tx,'
+                                                             'indev=red-mirror-%s' % (count, count, count)})
+                        e(qcmd, "qemu:arg", attrib={"value": '-object'})
+                        e(qcmd, "qemu:arg", attrib={"value": 'filter-redirector,id=fr-secondary-%s,netdev=hostnet%s,'
+                                                             'queue=rx,outdev=red-secondary-%s' % (count, count, count)})
+                        e(qcmd, "qemu:arg", attrib={"value": '-object'})
+                        e(qcmd, "qemu:arg", attrib={"value": 'filter-rewriter,id=rew-%s,netdev=hostnet%s,queue=all'
+                                                             % (count, count)})
                     count += 1
 
                 block_replication_port = cmd.addons['blockReplicationPort']
@@ -7043,11 +7053,35 @@ host side snapshot files chian:
 
         domain_xml = vm.domain.XMLDesc(0)
         is_origin_secondary = 'filter-rewriter' in domain_xml
-        for count in xrange(0, cmd.nicNumber):
-            if not is_origin_secondary:
+        for count in xrange(0, len(cmd.nics)):
+            if cmd.nics[count].driverType == 'virtio':
+                execute_qmp_command(cmd.vmInstanceUuid,
+                                    '{"execute": "object-add", "arguments":{ "qom-type": "colo-compare", "id": "comp-%s",'
+                                    ' "props": { "primary_in": "primary-in-c-%s", "secondary_in": "secondary-in-s-%s",'
+                                    ' "outdev":"primary-out-c-%s", "iothread": "iothread%s", "vnet_hdr_support": true } } }'
+                                    % (count, count, count, count, int(count) + 1))
                 execute_qmp_command(cmd.vmInstanceUuid,
                                     '{"execute": "object-add", "arguments":{ "qom-type": "filter-mirror", "id": "fm-%s",'
-                                    ' "props": { "netdev": "hostnet%s", "queue": "tx", "outdev": "zs-mirror-%s" } } }'
+                                    ' "props": { "netdev": "hostnet%s", "queue": "tx", "outdev": "zs-mirror-%s",'
+                                    ' "vnet_hdr_support": true} } }'
+                                    % (count, count, count))
+                execute_qmp_command(cmd.vmInstanceUuid,
+                                    '{"execute": "object-add", "arguments":{ "qom-type": "filter-redirector",'
+                                    ' "id": "primary-out-redirect-%s", "props": { "netdev": "hostnet%s", "queue": "rx",'
+                                    ' "indev": "primary-out-s-%s", "vnet_hdr_support": true}}}' % (count, count, count))
+                execute_qmp_command(cmd.vmInstanceUuid,
+                                    '{"execute": "object-add", "arguments":{ "qom-type": "filter-redirector", "id":'
+                                    ' "primary-in-redirect-%s", "props": { "netdev": "hostnet%s", "queue": "rx",'
+                                    ' "outdev": "primary-in-s-%s", "vnet_hdr_support": true}}}' % (count, count, count))
+            else:
+                execute_qmp_command(cmd.vmInstanceUuid,
+                                    '{"execute": "object-add", "arguments":{ "qom-type": "colo-compare", "id": "comp-%s",'
+                                    ' "props": { "primary_in": "primary-in-c-%s", "secondary_in": "secondary-in-s-%s",'
+                                    ' "outdev":"primary-out-c-%s", "iothread": "iothread%s"} } }'
+                                    % (count, count, count, count, int(count) + 1))
+                execute_qmp_command(cmd.vmInstanceUuid,
+                                    '{"execute": "object-add", "arguments":{ "qom-type": "filter-mirror", "id": "fm-%s",'
+                                    ' "props": { "netdev": "hostnet%s", "queue": "tx", "outdev": "zs-mirror-%s"} } }'
                                     % (count, count, count))
                 execute_qmp_command(cmd.vmInstanceUuid,
                                     '{"execute": "object-add", "arguments":{ "qom-type": "filter-redirector",'
@@ -7057,29 +7091,7 @@ host side snapshot files chian:
                                     '{"execute": "object-add", "arguments":{ "qom-type": "filter-redirector", "id":'
                                     ' "primary-in-redirect-%s", "props": { "netdev": "hostnet%s", "queue": "rx",'
                                     ' "outdev": "primary-in-s-%s"}}}' % (count, count, count))
-            else:
-                execute_qmp_command(cmd.vmInstanceUuid,
-                                    '{"execute": "object-add", "arguments":{ "qom-type": "filter-mirror",'
-                                    ' "id": "fm-%s", "props": { "insert": "before", "position": "id=rew-%s", '
-                                    ' "netdev": "hostnet%s", "queue": "tx", "outdev": "zs-mirror-%s" } } }'
-                                    % (count, count, count, count))
-                execute_qmp_command(cmd.vmInstanceUuid,
-                                    '{"execute": "object-add", "arguments":{ "qom-type": "filter-redirector",'
-                                    ' "id": "primary-out-redirect-%s", "props":'
-                                    ' { "insert": "before", "position": "id=rew-%s",'
-                                    ' "netdev": "hostnet%s", "queue": "rx",'
-                                    ' "indev": "primary-out-s-%s"}}}' % (count, count, count, count))
-                execute_qmp_command(cmd.vmInstanceUuid,
-                                    '{"execute": "object-add", "arguments":{ "qom-type": "filter-redirector", "id":'
-                                    ' "primary-in-redirect-%s", "props": { "insert": "before", "position": "id=rew-%s",'
-                                    ' "netdev": "hostnet%s", "queue": "rx",'
-                                    ' "outdev": "primary-in-s-%s"}}}' % (count, count, count, count))
 
-            execute_qmp_command(cmd.vmInstanceUuid,
-                                '{"execute": "object-add", "arguments":{ "qom-type": "colo-compare", "id": "comp-%s",'
-                                ' "props": { "primary_in": "primary-in-c-%s", "secondary_in": "secondary-in-s-%s",'
-                                ' "outdev":"primary-out-c-%s", "iothread": "iothread%s" } } }'
-                                % (count, count, count, count, int(count) + 1))
             count += 1
 
         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate-set-capabilities","arguments":'
