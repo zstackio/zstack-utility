@@ -288,8 +288,14 @@ class AuditsVO:
             if res_data.has_key("headers"):
                 res_data.pop("headers")
             data['responseDump'] = safe_str(json.dumps(res_data))
+        if not data.get("clientBrowser"):
+            data['clientBrowser'] = ""
+        if not data.get("clientIp"):
+            data['clientIp'] = ""
         if data.has_key("success"):
             data['success'] = int(data.get("success") == "success")
+        if not data.get("success"):
+            data['success'] = 1
         if data.has_key("time"):
             data['createTime'] = parse_utc_str_to_timestamp(data.get('time'))
         return data
@@ -546,7 +552,7 @@ def init_influxdb_info():
                 MigrateIns.pop(table)
                 continue
         except InfluxDBClientError as e:
-            print_red(str(e))
+            # print_red(str(e))
             MigrateIns.pop(table)
             continue
 
