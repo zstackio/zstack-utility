@@ -525,7 +525,7 @@ class HaPlugin(kvmagent.KvmAgent):
 
         def _do_fencer_vg(vg, failure):
 
-            fire = self.sblk_health_checker.get_fencer_fire_cnt[vg]
+            fire = self.sblk_health_checker.get_fencer_fire_cnt(vg)
             if self.fencer_fire_timestamp.get(vg) is not None and \
                     time.time() > self.fencer_fire_timestamp.get(vg) and \
                     time.time() - self.fencer_fire_timestamp.get(vg) < (300 * (fire + 1 if fire < 10 else 10)):
