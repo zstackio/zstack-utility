@@ -268,7 +268,10 @@ def query_addresses(namespace=None, **kwargs):
         if kwargs is not None:
             # ifname is not supported in pyroute2.IPRoute, unless use index
             if kwargs.has_key('ifname'):
-                kwargs['index'] = _check_index_and_ifname(kwargs['ifname'], kwargs.get('index'), ipr, True)
+                device_index = _check_index_and_ifname(kwargs['ifname'], kwargs.get('index'), ipr, False)
+                if device_index == 0:
+                    return []
+                kwargs['index'] = device_index
                 del kwargs['ifname']
             # scope should convert to int type
             if kwargs.has_key('scope') and isinstance(kwargs['scope'], (str, unicode)):
@@ -280,6 +283,13 @@ def query_addresses(namespace=None, **kwargs):
                 kwargs['family'] = _check_ip_version(kwargs['ip_version'])
                 del kwargs['ip_version']
         return [IpAddr(chunk, ipr) for chunk in ipr.get_addr(**kwargs)]
+    
+def is_addresses_exists(namespace=None, **kwargs):
+    '''
+        :kwargs condition   see function query_addresses()
+        :return bool   any addressed matched
+    '''
+    return len(query_addresses(namespace, **kwargs)) > 0
 
 def query_addresses_by_ifname(ifname, namespace=None):
     '''
@@ -477,6 +487,9 @@ def set_link_attribute(ifname_or_index, namespace=None, **attributes):
             if attributes.has_key('netns'): # ip link set ${dev} netns ${namespace}
                 attributes['net_ns_fd'] = attributes['netns']
                 del attributes['netns']
+            if attributes.has_key('alias'):
+                attributes['IFLA_IFALIAS'] = attributes['alias']
+                del attributes['alias']
         ipr.link('set', index=index, **attributes)
 
 @_no_error_do
