@@ -1272,8 +1272,9 @@ def delete_novlan_bridge(bridge_name, interface, move_route=True):
         
         #mv ip on bridge to interface
         shell.call("ip link set %s up" % interface)
-        ip = out.strip().split()[1]
-        shell.call('ip addr add %s dev %s' % (ip, interface))
+        if len(out.strip()) != 0:
+            ip = out.strip().split()[1]
+            shell.call('ip addr add %s dev %s' % (ip, interface))
 
         #restore routes on bridge
         if move_route:
