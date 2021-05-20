@@ -328,7 +328,7 @@ def generate_all_vDPA(bridgeName, bondName):
         for vf in vfs_dict:
             vDPA = sub_path + '/' + i + vf
             shell.run(
-                'ovs-vsctl add-port {} {} -- set Interface {} type=dpdkvdpa options:vdpa-socket-path={} options:vdpa-accelerator-devargs={} options:dpdk-devargs={},representor=pf{}vf{} options:vdpa-max-queues=8'.format(
+                'ovs-vsctl add-port {} {} -- set Interface {} type=dpdkvdpa options:vdpa-socket-path={} options:vdpa-accelerator-devargs={} options:dpdk-devargs={},representor=pf{}vf{} options:vdpa-max-queues=4'.format(
                     bridgeName, i+vf, i+vf, vDPA, vfs_dict[vf], get_interface_pcinum(if_list[0]), i[-1], vf[6:]))
 
 
