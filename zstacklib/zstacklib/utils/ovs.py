@@ -55,7 +55,7 @@ def check_mlnx_ofed():
     return True
 
 
-def get_bridges():
+def list_br():
     s = shell.ShellCmd("ovs-vsctl --timeout=5 list-br", None, False)
     s(False)
     if s.return_code != 0:
@@ -72,6 +72,7 @@ def get_bridge_ports(bridgeName):
         raise OvsError("ovs error: {}".format(s.stderr))
 
     return s.stdout.strip().split('\n')
+
 
 def get_bridge_ifaces(bridgeName):
     s = shell.ShellCmd(
@@ -206,7 +207,6 @@ def set_interface_devlink_mode(interfaceName):
         interfaceName)
     totalvfs = '/sys/class/net/{}/device/sriov_totalvfs'.format(interfaceName)
     numvfs = '/sys/class/net/{}/device/sriov_numvfs'.format(interfaceName)
-    driver_path = '/sys/class/net/{}/device/driver'.format(interfaceName)
     unbind_path = '/sys/class/net/{}/device/driver/unbind'.format(
         interfaceName)
 
@@ -215,30 +215,29 @@ def set_interface_devlink_mode(interfaceName):
 
     # split vfs
     write_sysfs(numvfs, "0")
-
-    default_list = os.listdir(driver_path)
-
     vfs_num = read_sysfs(totalvfs)
     write_sysfs(numvfs, vfs_num)
+    # wait split vfs complete
+    time.sleep(int(vfs_num) * 0.5)
 
-    current_list = os.listdir(driver_path)
-
-    pci_list = list(set(current_list).difference(set(default_list)))
-
-    for pci in pci_list:
-        write_sysfs(unbind_path, pci)
+    # unbind vfs
+    pci_list = get_vfs_dict(interfaceName)
+    for i in pci_list:
+        write_sysfs(unbind_path, pci_list[i])
 
     # wait unbind finished, It may take some time to unbind VFS
     for i in range(0, 5):
         if i == 5:
             raise OvsError()
-        if len(os.listdir(driver_path)) != len(default_list):
+        if len(get_vfs_dict(interfaceName)) != 0:
             time.sleep(10)
 
+    # change devlink mode to switchdev
     confirm_write_sysfs(devlink_mode, 'switchdev', 10, 5)
 
 
-def set_vflag(bondName):
+@lock.lock("prepare_vflag")
+def prepare_vflag(bondName):
 
     slaves_p = "/sys/class/net/{}/bonding/slaves"
 
@@ -283,10 +282,10 @@ def set_dpdk_white_list(interfaceNames):
             continue
         else:
             if get_ofed_version() >= 5.2:
-                dpdk_extra = dpdk_extra + "-a {},representor=[0-127],dv_flow_en=1,dv_esw_en=1,dv_xmeta_en=1 ".format(
+                dpdk_extra = dpdk_extra + "-a {},representor=[0-127],dv_flow_en=1,dv_esw_en=1 ".format(
                     pci)
             else:
-                dpdk_extra = dpdk_extra + "-w {},representor=[0-127],dv_flow_en=1,dv_esw_en=1,dv_xmeta_en=1 ".format(
+                dpdk_extra = dpdk_extra + "-w {},representor=[0-127],dv_flow_en=1,dv_esw_en=1 ".format(
                     pci)
 
     ret = shell.run(
@@ -329,8 +328,8 @@ def generate_all_vDPA(bridgeName, bondName):
         for vf in vfs_dict:
             vDPA = sub_path + '/' + i + vf
             shell.run(
-                'ovs-vsctl --timeout=5 add-port {} {} -- set Interface {} type=dpdkvdpa options:vdpa-socket-path={} options:vdpa-accelerator-devargs={} options:dpdk-devargs={},representor=[{}] options:vdpa-max-queues=8'.format(
-                    bridgeName, i+vf, i+vf, vDPA, vfs_dict[vf], get_interface_pcinum(i), vf[6:]))
+                'ovs-vsctl add-port {} {} -- set Interface {} type=dpdkvdpa options:vdpa-socket-path={} options:vdpa-accelerator-devargs={} options:dpdk-devargs={},representor=pf{}vf{} options:vdpa-max-queues=8'.format(
+                    bridgeName, i+vf, i+vf, vDPA, vfs_dict[vf], get_interface_pcinum(if_list[0]), i[-1], vf[6:]))
 
 
 @lock.lock("get_vDPA")
@@ -395,8 +394,10 @@ def free_vDPA(vmUuid, nicInternalName=None):
         shell.run("ovs-vsctl remove interface {} external_ids vm-id".format(vDPA))
         shell.run(
             "ovs-vsctl remove interface {} external_ids iface-id".format(vDPA))
-        vlan_id = shell.call("ovs-vsctl --timeout=5 get Port {} tag".format(vDPA))
-        shell.run("ovs-vsctl --timeout=5 remove Port {} tag {}".format(vDPA, vlan_id))
+        vlan_id = shell.call(
+            "ovs-vsctl --timeout=5 get Port {} tag".format(vDPA))
+        shell.run(
+            "ovs-vsctl --timeout=5 remove Port {} tag {}".format(vDPA, vlan_id))
 
     vDPA_path = ''
     if nicInternalName != None and len(vDPA_list) != 0:
@@ -465,14 +466,14 @@ def stop_ovs():
 
 
 def restart_ovs():
-    shell.run("/usr/share/openvswitch/scripts/ovs-ctl restart")
+    shell.run("/usr/share/openvswitch/scripts/ovs-ctl restart --no-force-corefiles")
 
 
 def clear_ovsdb():
     devlink_mode = '/sys/class/net/{}/compat/devlink/mode'
-    shell.run("systemctl restart ovsdb-server.service")
+    shell.run("usr/share/openvswitch/scripts/ovs-ctl start --no-ovs-vswitchd")
 
-    br_list = get_bridges()
+    br_list = list_br()
 
     for b in br_list:
         if b == '':
@@ -485,4 +486,4 @@ def clear_ovsdb():
 
     # shell.run("systemctl restart openibd.service")
 
-    shell.run("systemctl stop ovsdb-server.service")
+    shell.run("usr/share/openvswitch/scripts/ovs-ctl stop --no-ovs-vswitchd")

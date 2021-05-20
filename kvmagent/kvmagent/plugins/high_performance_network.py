@@ -79,7 +79,7 @@ class HighPerformanceNetworkPlugin(kvmagent.KvmAgent):
     @run_once
     def _init_mem(self):
         #TODO: caculater the memory
-        return shell.run("ovs-vsctl --no-wait set Open_vSwitch . other_config:dpdk-socket-mem=4096")
+        return shell.run("ovs-vsctl --no-wait set Open_vSwitch . other_config:dpdk-socket-mem=8192")
 
     @kvmagent.replyerror
     def create_ovs_bridge(self, req):
@@ -87,8 +87,8 @@ class HighPerformanceNetworkPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CreateBridgeResponse()
 
-        # set interface to vflag
-        if not ovs.set_vflag(cmd.physicalInterfaceName):
+        # prepare vf lag
+        if not ovs.prepare_vflag(cmd.physicalInterfaceName):
             rsp.success = False
             rsp.error = "interface:{} is not supported to create an vflag.".format(
                 cmd.physicalInterfaceName)
@@ -97,7 +97,7 @@ class HighPerformanceNetworkPlugin(kvmagent.KvmAgent):
         ovs.check_ovs_status()
 
         # bridge already exsit
-        if cmd.bridgeName in ovs.get_bridges():
+        if cmd.bridgeName in ovs.list_br():
             return jsonobject.dumps(rsp)
 
         self._init_dpdk()
@@ -109,7 +109,7 @@ class HighPerformanceNetworkPlugin(kvmagent.KvmAgent):
             cmd.bridgeName, cmd.bridgeName))
 
         # check bridge creation
-        if cmd.bridgeName not in ovs.get_bridges():
+        if cmd.bridgeName not in ovs.list_br():
             rsp.success = False
             rsp.error = "create bridge:{} failed".format(cmd.bridgeName)
             return jsonobject.dumps(rsp)
@@ -158,7 +158,7 @@ class HighPerformanceNetworkPlugin(kvmagent.KvmAgent):
         ovs.generate_all_vDPA(cmd.bridgeName, cmd.physicalInterfaceName)
 
         logger.debug(http.path_msg(OVS_DPDK_NET_CREATE_BRIDGE,
-                                   'crate bridge:{}'.format(cmd.bridgeName)))
+                                   'create bridge:{}'.format(cmd.bridgeName)))
 
         return jsonobject.dumps(rsp)
 
@@ -170,7 +170,7 @@ class HighPerformanceNetworkPlugin(kvmagent.KvmAgent):
 
         ovs.check_ovs_status()
 
-        if cmd.bridgeName not in ovs.get_bridges():
+        if cmd.bridgeName not in ovs.list_br():
             rsp.success = False
             rsp.error = "can not find bridge:{}".format(cmd.bridgeName)
             return jsonobject.dumps(rsp)
@@ -221,8 +221,6 @@ class HighPerformanceNetworkPlugin(kvmagent.KvmAgent):
             OVS_DPDK_NET_GENERATE_VDPA, self.generate_vdpa)
         http_server.register_async_uri(
             OVS_DPDK_NET_DELETE_VDPA, self.delete_vdpa)
-        # clear ovsdb
-        ovs.clear_ovsdb()
 
     def stop(self):
         pass
