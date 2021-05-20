@@ -132,7 +132,7 @@ class UserDataEnv(object):
 
         # in case the namespace deleted and the orphan outer link leaves in the system,
         # deleting the orphan link and recreate it
-        if not iproute.query_index_by_ifname(INNER_DEV, NAMESPACE_NAME):
+        if not iproute.is_device_ifname_exists(INNER_DEV, NAMESPACE_NAME):
             iproute.delete_link_no_error(OUTER_DEV)
 
         if not linux.is_network_device_existing(OUTER_DEV):
@@ -146,7 +146,7 @@ class UserDataEnv(object):
         if ret != 0:
             bash_errorout('brctl addif {{BR_NAME}} {{OUTER_DEV}}')
 
-        if not iproute.query_index_by_ifname(INNER_DEV, NAMESPACE_NAME):
+        if not iproute.is_device_ifname_exists(INNER_DEV, NAMESPACE_NAME):
             iproute.set_link_attribute(INNER_DEV, netns=NAMESPACE_NAME)
 
         iproute.set_link_up(INNER_DEV, NAMESPACE_NAME)
@@ -325,26 +325,28 @@ class DhcpEnv(object):
         if ret != 0:
             bash_errorout('brctl addif {{BR_NAME}} {{OUTER_DEV}}')
 
-        if not iproute.query_index_by_ifname(INNER_DEV, NAMESPACE_NAME):
+        if not iproute.is_device_ifname_exists(INNER_DEV, NAMESPACE_NAME):
             iproute.set_link_attribute(INNER_DEV, netns=NAMESPACE_NAME)
 
         #dhcp namespace should not add ipv6 address based on router advertisement
         bash_errorout("ip netns exec {{NAMESPACE_NAME}} sysctl -w net.ipv6.conf.all.accept_ra=0")
         bash_errorout("ip netns exec {{NAMESPACE_NAME}} sysctl -w net.ipv6.conf.{{INNER_DEV}}.accept_ra=0")
-        ret = iproute.query_addresses(namespace=NAMESPACE_NAME, address=DHCP_IP, ip_version=4, ifname=INNER_DEV)
-        ret6 = iproute.query_addresses(namespace=NAMESPACE_NAME, address=DHCP6_IP, ip_version=6, ifname=INNER_DEV)
-        if (ret != 0 and PREFIX_LEN is not None) or (ret6 != 0 and PREFIX6_LEN is not None):
-            iproute.flush_address(INNER_DEV, namespace=NAMESPACE_NAME)
-            if DHCP_IP is not None:
+
+        if DHCP_IP is not None:
+            ipv4_exists = iproute.is_addresses_exists(namespace=NAMESPACE_NAME, address=DHCP_IP, ip_version=4, ifname=INNER_DEV)
+            if ipv4_exists and PREFIX_LEN is not None:
+                iproute.flush_address(INNER_DEV, namespace=NAMESPACE_NAME)
                 iproute.add_address(DHCP_IP, PREFIX_LEN, 4, INNER_DEV, namespace=NAMESPACE_NAME)
-            if DHCP6_IP is not None:
-                iproute.add_address(DHCP6_IP, PREFIX6_LEN, 6, INNER_DEV, namespace=NAMESPACE_NAME)
 
         if DHCP6_IP is not None:
+            ipv6_exists = iproute.is_addresses_exists(namespace=NAMESPACE_NAME, address=DHCP6_IP, ip_version=6, ifname=INNER_DEV)
+            if ipv6_exists and PREFIX6_LEN is not None:
+                iproute.flush_address(INNER_DEV, namespace=NAMESPACE_NAME)
+                iproute.add_address(DHCP6_IP, PREFIX6_LEN, 6, INNER_DEV, namespace=NAMESPACE_NAME)
             mac = iproute.query_link(INNER_DEV, NAMESPACE_NAME).mac
             link_local = ip.get_link_local_address(mac)
-            ret = iproute.query_addresses(namespace=NAMESPACE_NAME, address=link_local, ip_version=6)
-            if not ret:
+            ipv6_exists = iproute.is_addresses_exists(namespace=NAMESPACE_NAME, address=link_local, ip_version=6)
+            if not ipv6_exists:
                 iproute.add_address(link_local, 64, 6, INNER_DEV, namespace=NAMESPACE_NAME)
 
         iproute.set_link_up(INNER_DEV, NAMESPACE_NAME)
@@ -849,7 +851,9 @@ tag:{{TAG}},option:dns-server,{{DNS}}
             INNER_DEV = p.inner_dev
         else:
             DHCP_IP = to.dhcpServerIp
-            INNER_DEV = iproute.query_addresses_by_ip(DHCP_IP, None, NS_NAME)[0].ifname
+            addrs = iproute.query_addresses_by_ip(DHCP_IP, None, NS_NAME)
+            if addrs:
+                INNER_DEV = addrs[0].ifname
         if not INNER_DEV:
             p.prepare()
             INNER_DEV = p.inner_dev
