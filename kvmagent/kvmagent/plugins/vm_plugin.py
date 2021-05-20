@@ -2417,6 +2417,8 @@ class Vm(object):
             src = i.getElementsByTagName('source')[0]
             target = i.getElementsByTagName('target')[0]
             srcPath = src.getAttribute("path")
+            if srcPath == "":
+                continue
             for v in vdpaPaths:
                 if srcPath.split('/')[-2] == v.split('/')[-2]:
                     src.setAttribute("path", v)
