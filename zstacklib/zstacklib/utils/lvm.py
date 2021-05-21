@@ -1739,7 +1739,7 @@ def check_lv_on_pv_valid(vgUuid, pvUuid, lv_path=None):
         "-Sactive=active %s | grep %s | grep %s | awk '{print $1}' | head -n1" % (vgUuid, pv_name, VOLUME_TAG)).strip()
     if one_active_lv == "":
         return True
-    r = bash.bash_r("%s %s" % (qemu_img.subcmd('info'), one_active_lv))
+    r = bash.bash_r("blockdev --flushbufs %s" % one_active_lv) # fcntl.ioctl(fd, BLKFLSBUF)
     if r != 0:
         return False
     return True
@@ -1846,7 +1846,7 @@ def get_running_vm_root_volume_on_pv(vgUuid, pvUuids, checkIo=True):
             logger.warn("found strange vm[pid: %s, cmdline: %s], can not find boot volume" % (vm.pid, vm.cmdline))
             continue
 
-        r = bash.bash_r("%s --backing-chain %s" % (qemu_img.subcmd('info'), vm.root_volume))
+        r = bash.bash_r("blockdev --flushbufs %s" % vm.root_volume)
         if is_bad_vm_root_volume(vm.root_volume) is True:
             bad_vm_root_volume_condition = True
         elif checkIo is True and r == 0:
