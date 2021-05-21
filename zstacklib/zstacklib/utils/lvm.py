@@ -196,7 +196,7 @@ def get_disk_block_devices(slave_devices, scsi_info):
 
 def get_lsscsi_info():
     scsi_info = {}
-    o = filter(lambda s: "/dev/" in s, bash.bash_o("lsscsi -i").splitlines())
+    o = filter(lambda s: "/dev/" in s, run_lsscsi_i())
     for info in o:
         dev_and_wwid = info.split("/dev/")[1].split(" ")
         dev_name = dev_and_wwid[0]
@@ -205,6 +205,14 @@ def get_lsscsi_info():
             continue
         scsi_info[dev_name] = wwid
     return scsi_info
+
+
+def run_lsscsi_i():
+    if os.path.exists("/usr/lib/udev/scsi_id"):
+        return bash.bash_o("""lsscsi | awk '{printf $0"  "; system("/usr/lib/udev/scsi_id -g -u -d "$NF" || echo '-'");}'""").splitlines()
+    else:
+        return bash.bash_o("lsscsi -i").splitlines()
+
 
 def is_multipath_running():
     r = bash.bash_r("multipath -t > /dev/null")
