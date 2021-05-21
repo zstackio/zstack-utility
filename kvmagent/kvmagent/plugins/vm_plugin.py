@@ -51,6 +51,7 @@ from zstacklib.utils import ebtables
 from zstacklib.utils import vm_operator
 from zstacklib.utils import pci
 from zstacklib.utils import iproute
+from zstacklib.utils import ovs
 from zstacklib.utils.report import *
 from zstacklib.utils.vm_plugin_queue_singleton import VmPluginQueueSingleton
 from zstacklib.utils.libvirt_event_manager_singleton import LibvirtEventManager
@@ -2417,6 +2418,28 @@ class Vm(object):
     def _is_ft_vm(self):
         return any(disk.type_ == "quorum" for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'))
 
+    def _replace_vdpa(self, vdpaPaths):
+        srcXml = self.domain.XMLDesc(libvirt.VIR_DOMAIN_XML_MIGRATABLE)
+
+        xmlobj = minidom.parseString(srcXml)
+        ifs = xmlobj.getElementsByTagName('interface')
+
+        for i in ifs:
+            src = i.getElementsByTagName('source')[0]
+            target = i.getElementsByTagName('target')[0]
+            srcPath = src.getAttribute("path")
+            if srcPath == "":
+                continue
+            for v in vdpaPaths:
+                if srcPath.split('/')[-2] == v.split('/')[-2]:
+                    src.setAttribute("path", v)
+                    target.setAttribute("dev", v.split('/')[-1])
+                    vdpaPaths.remove(v)
+
+        logger.debug("destXml:{}".format(xmlobj.toxml()))
+
+        return xmlobj.toxml()
+
     def resize_volume(self, volume, size):
         device_id = volume.deviceId
         target_disk, disk_name = self._get_target_disk(volume)
@@ -2645,6 +2668,10 @@ class Vm(object):
         if cmd.useNuma:
             flag |= libvirt.VIR_MIGRATE_PERSIST_DEST
 
+        destXml = None
+        if cmd.vdpaPaths != None:
+            destXml = self._replace_vdpa(cmd.vdpaPaths)
+
         stage = get_task_stage(cmd)
         timeout = 1800 if cmd.timeout is None else cmd.timeout
 
@@ -2681,7 +2708,7 @@ class Vm(object):
 
         with MigrateDaemon(self.domain):
             logger.debug('migrating vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
-            self.domain.migrateToURI2(destUrl, tcpUri, None, flag, None, 0)
+            self.domain.migrateToURI2(destUrl, tcpUri, destXml, flag, None, 0)
 
         try:
             logger.debug('migrating vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
@@ -2699,6 +2726,14 @@ class Vm(object):
     def _interface_cmd_to_xml(self, cmd, action=None):
         vhostSrcPath = cmd.addons['vhostSrcPath'] if cmd.addons else None
         brMode = cmd.addons['brMode'] if cmd.addons else None
+        vhostSrcPath = None
+
+        if cmd.nic.type == "vDPA":
+            if action in "Attach":
+                vhostSrcPath = ovs.get_vDPA(cmd.vmUuid, cmd.nic)
+            else:
+                vhostSrcPath = ovs.free_vDPA(cmd.vmUuid, cmd.nic.nicInternalName)
+
         interface = Vm._build_interface_xml(cmd.nic, None, vhostSrcPath, action, brMode)
 
         def addon():
@@ -2893,6 +2928,8 @@ class Vm(object):
                 if iface.mac.address_ == cmd.nic.mac:
                     # vf nic doesn't have internal name
                     if cmd.nic.pciDeviceAddress is not None:
+                        return True
+                    if cmd.nic.type == "vDPA":
                         return True
                     else:
                         return linux.is_network_device_existing(cmd.nic.nicInternalName)
@@ -3259,9 +3296,13 @@ class Vm(object):
         def make_memory_backing():
             root = elements['root']
             backing = e(root, 'memoryBacking')
-            e(backing, "hugepages")
-            e(backing, "nosharepages")
-            e(backing, "allocation", attrib={'mode': 'immediate'})
+            if cmd.useHugePage:
+                e(backing, "hugepages")
+                e(backing, "nosharepages")
+                e(backing, "allocation", attrib={'mode': 'immediate'})
+            if cmd.MemAccess in "shared":
+                # <access mode="shared|private"/>
+                e(backing, "access", attrib={'mode': 'shared'})
 
         def make_cpu():
             if use_numa:
@@ -3927,7 +3968,11 @@ class Vm(object):
             vhostSrcPath = cmd.addons['vhostSrcPath'] if cmd.addons else None
             brMode = cmd.addons['brMode'] if cmd.addons else None
             for index, nic in enumerate(cmd.nics):
-                interface = Vm._build_interface_xml(nic, devices, vhostSrcPath, 'Attach', brMode, index)
+                if nic.type == "vDPA":
+                    vDPAPath = ovs.get_vDPA(cmd.priorityConfigStruct.vmUuid, nic)
+                    interface = Vm._build_interface_xml(nic, devices, vDPAPath, 'Attach', brMode, index)
+                else:
+                    interface = Vm._build_interface_xml(nic, devices, vhostSrcPath, 'Attach', brMode, index)
                 addon(interface)
 
         def make_meta():
@@ -4323,7 +4368,7 @@ class Vm(object):
         if cmd.additionalQmp:
             make_qemu_commandline()
 
-        if cmd.useHugePage:
+        if cmd.useHugePage or cmd.MemAccess in "shared":
             make_memory_backing()
 
         root = elements['root']
@@ -4364,7 +4409,7 @@ class Vm(object):
         e(interface, 'mac', None, attrib={'address': nic.mac})
         e(interface, 'alias', None, {'name': 'net%s' % nic.nicInternalName.split('.')[1]})
 
-        if iftype != 'hostdev':
+        if iftype != 'hostdev' and nic.type != 'vDPA':
             e(interface, 'mtu', None, attrib={'size': '%d' % nic.mtu})
 
         if iftype == 'hostdev':
@@ -4376,9 +4421,12 @@ class Vm(object):
                 vlan = e(interface, 'vlan')
                 e(vlan, 'tag', None, attrib={'id': nic.vlanId})
         elif iftype == 'vhostuser':
-            if brMode != 'mocbr':
-                e(interface, 'source', None, attrib={'type': 'unix', 'path': vhostSrcPath, 'mode': 'client'})
+            if brMode != 'mocbr' and nic.type != 'vDPA':
+                e(interface, 'source', None, attrib={'type': 'unix', 'path': vhostSrcPath, 'mode': 'server'})
                 e(interface, 'driver', None, attrib={'queues': '16', 'vhostforce': 'on'})
+            elif nic.type == 'vDPA':
+                e(interface, 'source', None, attrib={'type': 'unix', 'path': vhostSrcPath, 'mode': 'server'})
+                e(interface, 'driver', None, attrib={'queues': '16'})
             else:
                 e(interface, 'source', None, attrib={'type': 'unix', 'path': '/var/run/phynic{}'.format(index+1), 'mode':'server'})
                 e(interface, 'driver', None, attrib={'queues': '8'})
@@ -4449,7 +4497,7 @@ class Vm(object):
                     bash.bash_r("bridge fdb add %s dev %s" % (nic.mac, _phy_dev_name))
 
         # to allow vnic/vf communication in same host
-        if nic.pciDeviceAddress is None and nic.physicalInterface is not None and brMode != 'mocbr':
+        if nic.pciDeviceAddress is None and nic.physicalInterface is not None and brMode != 'mocbr' and nic.type != 'vDPA':
             _add_bridge_fdb_entry_for_vnic()
 
         return interface
@@ -5098,6 +5146,9 @@ class VmPlugin(kvmagent.KvmAgent):
                 vm.stop(strategy=strategy)
             else:
                 vm.stop(timeout=cmd.timeout / 2)
+
+            # free vdpa
+            ovs.free_vDPA(cmd.uuid)
         except kvmagent.KvmError as e:
             logger.debug(linux.get_exception_stacktrace())
         finally:
@@ -5186,6 +5237,7 @@ class VmPlugin(kvmagent.KvmAgent):
 
             vm = get_vm_by_uuid(cmd.uuid, False)
             if vm:
+                ovs.free_vDPA(cmd.uuid)
                 vm.destroy()
                 logger.debug('successfully destroyed vm[uuid:%s]' % cmd.uuid)
         except kvmagent.KvmError as e:

@@ -351,6 +351,8 @@ def get_yum_repo_from_property():
         yum_repo = yum_repo.replace("zstack-mn","zstack-local")
     if 'qemu-kvm-ev-mn' in yum_repo:
         yum_repo = yum_repo.replace("qemu-kvm-ev-mn","qemu-kvm-ev")
+    if 'mlnx-ofed-mn' in yum_repo:
+        yum_repo = yum_repo.replace("mlnx-ofed-mn","mlnx-ofed")
     return yum_repo
 
 
@@ -6882,6 +6884,14 @@ cat > /etc/yum.repos.d/zstack-online-qemu-kvm-ev.repo << EOF
 [zstack-online-qemu-kvm-ev]
 name=zstack-online-qemu-kvm-ev
 baseurl=${BASEURL}/qemu-kvm-ev
+gpgcheck=0
+enabled=0
+EOF
+
+cat > /etc/yum.repos.d/zstack-online-mlnx-ofed.repo << EOF
+[zstack-online-mlnx-ofed]
+name=zstack-online-mlnx-ofed
+baseurl=${BASEURL}/mlnx-ofed
 gpgcheck=0
 enabled=0
 EOF

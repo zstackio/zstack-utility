@@ -30,6 +30,7 @@ from zstacklib.utils import sizeunit
 from zstacklib.utils import thread
 from zstacklib.utils import traceable_shell
 from zstacklib.utils import xmlobject
+from zstacklib.utils import ovs
 from zstacklib.utils.bash import *
 from zstacklib.utils.ip import get_nic_supported_max_speed
 from zstacklib.utils.report import Report
@@ -216,6 +217,8 @@ class HostNetworkInterfaceInventory(object):
 
     def init(self, name):
         super(HostNetworkInterfaceInventory, self).__init__()
+        # TODO： compelete this map
+        self.nic_info = ovs.get_interface_offloadstatus
         self.interfaceName = name
         self.speed = None
         self.slaveActive = None
@@ -225,6 +228,7 @@ class HostNetworkInterfaceInventory(object):
         self.interfaceType = None
         self.master = None
         self.pciDeviceAddress = None
+        self.offloadStatus = None
         self._init_from_name()
 
     @classmethod
@@ -272,6 +276,8 @@ class HostNetworkInterfaceInventory(object):
             self.interfaceType = "bridgeSlave"
 
         self.pciDeviceAddress = os.readlink("/sys/class/net/%s/device" % self.interfaceName).strip().split('/')[-1]
+
+        self.offloadStatus = ovs.get_interface_offloadstatus(self.interfaceName)
 
     def _to_dict(self):
         to_dict = self.__dict__
@@ -1047,7 +1053,7 @@ if __name__ == "__main__":
         exclude = "--exclude=" + cmd.excludePackages if cmd.excludePackages else ""
         updates = cmd.updatePackages if cmd.updatePackages else ""
         releasever = cmd.releaseVersion if cmd.releaseVersion else kvmagent.get_host_yum_release()
-        yum_cmd = "export YUM0={};yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{} {} update {} -y"
+        yum_cmd = "export YUM0={};yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn,mlnx-ofed-mn{} {} update {} -y"
         yum_cmd = yum_cmd.format(releasever, ',zstack-experimental-mn' if cmd.enableExpRepo else '', exclude, updates)
         rsp = UpdateHostOSRsp()
         if shell.run("which yum") != 0:
@@ -1061,7 +1067,7 @@ if __name__ == "__main__":
             rsp.error = "no qemu-kvm-ev-mn repo found, cannot update host os"
         elif shell.run(yum_cmd) != 0:
             rsp.success = False
-            rsp.error = "failed to update host os using zstack-mn,qemu-kvm-ev-mn repo"
+            rsp.error = "failed to update host os using zstack-mn,qemu-kvm-ev-mn,mlnx-ofed-mn repo"
         else:
             logger.debug("successfully run: %s" % yum_cmd)
         return jsonobject.dumps(rsp)
@@ -1087,7 +1093,7 @@ if __name__ == "__main__":
         if self.IS_YUM:
             releasever = kvmagent.get_host_yum_release()
             shell.run("yum remove -y qemu-kvm-tools-ev")
-            yum_cmd = "export YUM0={};yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install `cat /var/lib/zstack/dependencies` -y".format(releasever)
+            yum_cmd = "export YUM0={};yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn,mlnx-ofed install `cat /var/lib/zstack/dependencies` -y".format(releasever)
             if shell.run("export YUM0={};yum --disablerepo=* --enablerepo=zstack-mn repoinfo".format(releasever)) != 0:
                 rsp.success = False
                 rsp.error = "no zstack-mn repo found, cannot update kvmagent dependencies"
@@ -1096,7 +1102,7 @@ if __name__ == "__main__":
                 rsp.error = "no qemu-kvm-ev-mn repo found, cannot update kvmagent dependencies"
             elif shell.run(yum_cmd) != 0:
                 rsp.success = False
-                rsp.error = "failed to update kvmagent dependencies using zstack-mn,qemu-kvm-ev-mn repo"
+                rsp.error = "failed to update kvmagent dependencies using zstack-mn,qemu-kvm-ev-mn,mlnx-ofed repo"
             else :
                 logger.debug("successfully run: {}".format(yum_cmd))
         elif self.IS_APT:

@@ -202,6 +202,12 @@ run_remote_command("rm -rf {}/*; mkdir -p /usr/local/zstack/ || true".format(kvm
 
 def install_kvm_pkg():
     def rpm_based_install():
+        mlnx_ofed = " python3 unbound libnl3-devel lsof \
+                        libibverbs ibacm librdmacm mlnx-ethtool libibumad ofed-scripts mlnx-dpdk infiniband-diags \
+                        mlnx-dpdk-tools rdma-core mlnx-ofa_kernel kmod-mlnx-ofa_kernel kmod-iser mlnx-ofa_kernel-devel \
+                        rdma-core-devel mstflint kmod-isert mlnx-iproute2 mlnx-dpdk-doc libibverbs-utils librdmacm-utils \
+                        mlnx-dpdk-devel openvswitch kmod-srp mlnx-ofed-dpdk-upstream-libs"
+
         x86_64_c74 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                       usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
                       net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
@@ -420,7 +426,7 @@ def copy_tools():
 
 def copy_kvm_files():
     """copy kvmagent files and packages"""
-    global qemu_conf_status, copy_zstacklib_status, copy_kvmagent_status
+    global qemu_conf_status, copy_zstacklib_status, copy_kvmagent_status, copy_smart_nics_status
 
     # copy agent files
     file_list = ["vm-tools.sh", "agent_version", "kvmagent-iptables"]
@@ -438,6 +444,13 @@ def copy_kvm_files():
     zslib_src = os.path.join("files/zstacklib", pkg_zstacklib)
     zslib_dst = os.path.join(kvm_root, pkg_zstacklib)
     copy_zstacklib_status = copy_to_remote(zslib_src, zslib_dst, None, host_post_info)
+
+    # copy smart-nics file
+    command = 'mkdir -p /usr/local/etc/zstack/'
+    run_remote_command(command, host_post_info)
+    smart_nics_src = os.path.join(file_root, "smart-nics.yaml")
+    smart_nics_dst = "/usr/local/etc/zstack/smart-nics.yaml"
+    copy_smart_nics_status = copy_to_remote(smart_nics_src, smart_nics_dst, None, host_post_info)
 
     # copy kvmagent pkg
     kvmagt_src = os.path.join(file_root, pkg_kvmagent)
@@ -682,7 +695,7 @@ def start_kvmagent():
     if chroot_env != 'false':
         return
 
-    if any(status != "changed:False" for status in [libvirtd_status, libvirtd_conf_status, qemu_conf_status]):
+    if any(status != "changed:False" for status in [libvirtd_status, libvirtd_conf_status, qemu_conf_status, copy_smart_nics_status]):
         # name: restart libvirtd if status is stop or cfg changed
         service_status("libvirtd", "state=restarted enabled=yes", host_post_info)
     # name: restart kvmagent, do not use ansible systemctl due to kvmagent can start by itself, so systemctl will not know
