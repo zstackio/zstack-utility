@@ -334,13 +334,13 @@ class DhcpEnv(object):
 
         if DHCP_IP is not None:
             ipv4_exists = iproute.is_addresses_exists(namespace=NAMESPACE_NAME, address=DHCP_IP, ip_version=4, ifname=INNER_DEV)
-            if ipv4_exists and PREFIX_LEN is not None:
+            if not ipv4_exists and PREFIX_LEN is not None:
                 iproute.flush_address(INNER_DEV, namespace=NAMESPACE_NAME)
                 iproute.add_address(DHCP_IP, PREFIX_LEN, 4, INNER_DEV, namespace=NAMESPACE_NAME)
 
         if DHCP6_IP is not None:
             ipv6_exists = iproute.is_addresses_exists(namespace=NAMESPACE_NAME, address=DHCP6_IP, ip_version=6, ifname=INNER_DEV)
-            if ipv6_exists and PREFIX6_LEN is not None:
+            if not ipv6_exists and PREFIX6_LEN is not None:
                 iproute.flush_address(INNER_DEV, namespace=NAMESPACE_NAME)
                 iproute.add_address(DHCP6_IP, PREFIX6_LEN, 6, INNER_DEV, namespace=NAMESPACE_NAME)
             mac = iproute.query_link(INNER_DEV, NAMESPACE_NAME).mac
