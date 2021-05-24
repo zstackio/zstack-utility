@@ -79,7 +79,7 @@ class Eip(object):
 
         arr = iproute.query_all_namespaces()
         for ns in arr:
-            if (ns_name_suffix == ns):
+            if (ns.endswith(ns_name_suffix)): # ns is like 'br_eth0_172_20_51_136'
                 return ns
 
         return None
