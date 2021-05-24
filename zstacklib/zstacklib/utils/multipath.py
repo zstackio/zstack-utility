@@ -31,7 +31,9 @@ def write_multipath_conf(path):
     device = {'device': [{'features': '0'}, {'no_path_retry': 'fail'}, {'product': '*'}, {'vendor': '*'}]}
     devices = {
         'devices': [{'device': [{'vendor': '*'}, {'product': '*'}, {'features': '0'}, {'no_path_retry': 'fail'}]}]}
+    feature = 'queue_if_no_path'
     skipWrite = False
+    deleteFeature = False
     with open(path, 'r+') as fd:
         config = parse_multipath_conf(fd)
         isAddDevices = True
@@ -39,11 +41,15 @@ def write_multipath_conf(path):
             if 'devices' in item:
                 for devices_k, devices_v in item.items():
                     for device_dict in devices_v:
+                        for device_k, device_v in device_dict.items():
+                            for device_feature in device_v:
+                                if feature in str(device_feature):
+                                    device_v.remove(device_feature)
+                                    deleteFeature = True
+                                    print config
+
                         if cmp(device, device_dict) == 0:
                             skipWrite = True
-                            break
-                    if skipWrite is True:
-                        break
 
                 isAddDevices = False
 
@@ -53,7 +59,7 @@ def write_multipath_conf(path):
         if isAddDevices is True:
             config.append(devices)
         logger.info(config)
-        if skipWrite is False:
+        if skipWrite is False or deleteFeature is True:
             fd.seek(0)
             fd.truncate()
 
@@ -75,7 +81,7 @@ def write_multipath_conf(path):
                                 fd.write("\n")
 
                         fd.write("\n}\n")
-    if skipWrite is False:
+    if skipWrite is False or deleteFeature is True:
         bash.bash_roe("sed -i -e 's/\"//g' -e 's/\\\//g' %s" % path)
 
     return skipWrite
