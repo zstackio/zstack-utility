@@ -272,8 +272,8 @@ def install_kvm_pkg():
             command = ("[[ -f /usr/bin/zstack-ctl ]] && zstack-ctl status | grep 'MN status' | grep 'Running' >/dev/null 2>&1; \
                     [[ $? -eq 0 ]] || yum --disablerepo=* --enablerepo={0} install -y zstack-host >/dev/null; \
                     echo {1} >/var/lib/zstack/dependencies && yum --disablerepo=* --enablerepo={0} clean metadata >/dev/null && \
-                    pkg_list=`rpm -q {1} | grep \"not installed\" | awk '{{ print $2 }}'` ' {2}' && \
-                    for pkg in {4}; do yum --disablerepo=* --enablerepo={1} install -y $pkg >/dev/null || exit 1; done; \
+                    pkg_list=`rpm -q {1} | grep \"not installed\" | awk '{{ print $2 }}'`' {2}' && \
+                    for pkg in {4}; do yum --disablerepo=* --enablerepo={0} install -y $pkg >/dev/null || exit 1; done; \
                     pkg_list=`rpm -q {3} | grep \"not installed\" | awk '{{ print $2 }}'` && \
                     for pkg in $pkg_list; do yum --disablerepo=* --enablerepo={0} install -y $pkg >/dev/null || exit 1; done; \
                     ").format(zstack_repo, dep_list, update_list, no_update_list, dep_list if update_packages == 'true' else '$pkg_list')
