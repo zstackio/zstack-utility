@@ -794,7 +794,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             logger.debug("not find any fc targets")
             return []
 
-        o = bash.bash_o("lsscsi -i | grep '\/dev\/'").strip().splitlines()
+        o = filter(lambda s: "/dev/" in s, lvm.run_lsscsi_i())
         if len(o) == 0 or (len(o) == 1 and o[0] == ""):
             logger.debug("not find any usable fc disks")
             return []
