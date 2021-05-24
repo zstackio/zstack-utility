@@ -210,6 +210,22 @@ if [ x"$MINI_INSTALL" = x"y" ] | [ x"$ui_mode" = x"mini" ];then
     upgrade_persist_params_array+=('4.0.0,Search.autoRegister=false')
 fi
 
+#upgrade mini zwatch webhook
+upgrade_mini_zwatch_webhook(){
+  ui_mode=$(zstack-ctl get_configuration ui_mode)
+  if [ x"$MINI_INSTALL" != x"y" ] & [ x"$ui_mode" != x"mini" ]; then
+      return
+  fi
+  webhook=$(zstack-ctl get_configuration sns.systemTopic.endpoints.http.url | grep '/zwatch/webhook')
+  
+  if [ "$webhook" = "" ]; then
+      return
+  fi
+
+  webhook=$(echo "$webhook" | sed 's/zwatch\/webhook/webhook\/zwatch/g')
+  zstack-ctl configure configuration sns.systemTopic.endpoints.http.url="$webhook" > /dev/null 2>&1
+}
+
 # version compare
 # eg. 1 = 1.0
 # eg. 4.08 < 4.08.01
@@ -3960,6 +3976,9 @@ fi
 # configure chrony.serverIp if not exists
 zstack-ctl show_configuration | grep '^[[:space:]]*chrony.serverIp.' >/dev/null 2>&1
 [ $? -ne 0 ] && zstack-ctl configure chrony.serverIp.0="${MANAGEMENT_IP}"
+
+# upgrade mini zwatch webhook url
+upgrade_mini_zwatch_webhook
 
 #Install license
 install_license
