@@ -332,21 +332,19 @@ class DhcpEnv(object):
         bash_errorout("ip netns exec {{NAMESPACE_NAME}} sysctl -w net.ipv6.conf.all.accept_ra=0")
         bash_errorout("ip netns exec {{NAMESPACE_NAME}} sysctl -w net.ipv6.conf.{{INNER_DEV}}.accept_ra=0")
 
-        if DHCP_IP is not None:
-            ipv4_exists = iproute.is_addresses_exists(namespace=NAMESPACE_NAME, address=DHCP_IP, ip_version=4, ifname=INNER_DEV)
-            if not ipv4_exists and PREFIX_LEN is not None:
-                iproute.flush_address(INNER_DEV, namespace=NAMESPACE_NAME)
+        ipv4_exists = iproute.is_addresses_exists(namespace=NAMESPACE_NAME, address=DHCP_IP, ip_version=4, ifname=INNER_DEV)
+        ipv6_exists = iproute.is_addresses_exists(namespace=NAMESPACE_NAME, address=DHCP6_IP, ip_version=6, ifname=INNER_DEV)
+        if (not ipv4_exists and PREFIX_LEN is not None) or (not ipv6_exists and PREFIX6_LEN is not None):
+            iproute.flush_address(INNER_DEV, namespace=NAMESPACE_NAME)
+            if DHCP_IP is not None:
                 iproute.add_address(DHCP_IP, PREFIX_LEN, 4, INNER_DEV, namespace=NAMESPACE_NAME)
+            if DHCP6_IP is not None:
+                iproute.add_address(DHCP6_IP, PREFIX6_LEN, 6, INNER_DEV, namespace=NAMESPACE_NAME)
 
         if DHCP6_IP is not None:
-            ipv6_exists = iproute.is_addresses_exists(namespace=NAMESPACE_NAME, address=DHCP6_IP, ip_version=6, ifname=INNER_DEV)
-            if not ipv6_exists and PREFIX6_LEN is not None:
-                iproute.flush_address(INNER_DEV, namespace=NAMESPACE_NAME)
-                iproute.add_address(DHCP6_IP, PREFIX6_LEN, 6, INNER_DEV, namespace=NAMESPACE_NAME)
             mac = iproute.query_link(INNER_DEV, NAMESPACE_NAME).mac
             link_local = ip.get_link_local_address(mac)
-            ipv6_exists = iproute.is_addresses_exists(namespace=NAMESPACE_NAME, address=link_local, ip_version=6)
-            if not ipv6_exists:
+            if not iproute.is_addresses_exists(namespace=NAMESPACE_NAME, address=link_local, ip_version=6):
                 iproute.add_address(link_local, 64, 6, INNER_DEV, namespace=NAMESPACE_NAME)
 
         iproute.set_link_up(INNER_DEV, NAMESPACE_NAME)
