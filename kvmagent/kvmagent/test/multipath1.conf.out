@@ -7,7 +7,6 @@ device {
     detect_path_checker yes
     detect_prio yes
     failback immediate
-    features 1 queue_if_no_path
     hardware_handler 1 emc
     no_path_retry 60
     path_checker emc_clariion

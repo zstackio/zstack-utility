@@ -1,0 +1,18 @@
+blacklist {
+
+}
+defaults {
+    user_friendly_names yes
+}
+devices {
+device {
+    vendor *
+}
+device {
+    features 0 
+    no_path_retry fail 
+    product * 
+    vendor *
+}
+
+}
