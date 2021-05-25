@@ -7,15 +7,15 @@ sys.path.append("/usr/lib/python2.7/site-packages/")
 sys.path.append("/usr/lib64/python2.7/site-packages/")
 
 import os
-import threading
 import socket
 import json
 import MySQLdb
 import time
 import datetime
 import base64
+import traceback
 from commands import getstatusoutput
-from zstacklib.utils import log
+import logging
 from threading import Thread
 from Crypto.Cipher import AES
 from Crypto.Util.py3compat import *
@@ -37,8 +37,16 @@ except ImportError:
         from influxdb import InfluxDBClient
 from influxdb.exceptions import InfluxDBClientError
 
-log.configure_log("/var/log/zstack/migrate_influxdb.log", log_to_console=False)
-logger = log.get_logger(__name__)
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+log_name = "/var/log/zstack/migrate_influxdb.log"
+logfile = log_name
+fh = logging.FileHandler(logfile, mode='a')
+fh.setLevel(logging.DEBUG)
+formatter = logging.Formatter("%(asctime)s - %(filename)s[line:%(lineno)d] - %(levelname)s: %(message)s")
+fh.setFormatter(formatter)
+logger.addHandler(fh)
 
 client = InfluxDBClient(host='localhost', port=8086, database='zstack', timeout=60)
 
@@ -107,7 +115,7 @@ class DBUtil:
                 ctl.locate_zstack_home()
                 self.host, self.port, self.user, self.password = ctl.get_live_mysql_portal()
             else:
-                elf.host, self.port, self.user, self.password = self.get_db_info_by_properties()
+                self.host, self.port, self.user, self.password = self.get_db_info_by_properties()
 
     @staticmethod
     def _get_db_info_by_properties():
@@ -399,6 +407,8 @@ class MigrateAction(Thread):
         return "MigrateAction-Thread-%s" % self.mysql_obj.__class__.__name__
 
     def calculate_process(self, last_time):
+        if self.rangeTime == 0:
+            return float("%.4f" % 100)
         return float("%.4f" % (float((parse_utc_str_to_timestamp(last_time) - self.baseTime)) / self.rangeTime)) * 100
 
     def run(self):
@@ -421,6 +431,8 @@ class MigrateAction(Thread):
                 prepare_migrate_influxdb_data = client.query(latest_influxdb_sql)
             except InfluxDBClientError as e:
                 print "query influxdb %s error : %s" % (self.mysql_obj.influxdb, str(e))
+                exc_type, exc_value, exc_obj = sys.exc_info()
+                logger.error(traceback.print_tb(exc_obj))
                 self.errorInfo = str(e)
                 self.finish = "error"
                 break
@@ -449,6 +461,8 @@ class MigrateAction(Thread):
                         mysql_client.do_batch_insert(conn, cursor, self.mysql_obj.sql_tmpl_safe, many_args)
                     except MySQLdb.Error as e:
                         print_red("insert %s data error: %s" % (self.mysql_obj.__class__.__name__, str(e)))
+                        exc_type, exc_value, exc_obj = sys.exc_info()
+                        logger.error(traceback.print_tb(exc_obj))
                         self.errorInfo = str(e)
                         break
                 self.queue = []
@@ -484,6 +498,7 @@ class MigrateAction(Thread):
 
 
 def init(args):
+    logger.info("start init migrate task info!")
     def create_mysql_meta_table():
         create_table_sql = '''
                     CREATE TABLE IF NOT EXISTS `zstack`.`MigrateInfluxDB` (
@@ -558,6 +573,7 @@ def init_influxdb_info():
 
 
 def rollback():
+    logger.info("start rollback migrated mysql data!")
     result = mysql_client.do_select_fetchone(
         "SELECT table_name FROM information_schema.TABLES WHERE table_name ='MigrateInfluxDB'")
     if result is None:
@@ -585,6 +601,7 @@ def calculate_allow_batch_insert(num, origin_global_config):
 
 
 def migrate(args):
+    logger.info("start migrate influx history data to mysql!")
     mysql_client.ping()
     # size: B
     origin_global_config = mysql_client.get_max_allowed_packet()
@@ -646,7 +663,7 @@ def get_migrate_time(size):
     if len(count_list) > 0:
         max_table_count = max(count_list)
         print_green(u"本次迁移任务最大记录: %d " % max_table_count)
-        print_green(u"指定单次迁移 %d 条，预估迁移时间: %d 秒" % (size, max_table_count / size))
+        print_green(u"指定单次迁移 %d 条，预估迁移时间: %d 秒" % (size, 1 if (max_table_count / size) < 10 else (max_table_count / size)))
 
 
 def check_db_status():
@@ -659,6 +676,7 @@ def check_db_status():
 def check():
     code, influxdb_data_size = getstatusoutput("du -sh -k /var/lib/zstack/influxdb/data/zstack | awk '{print $1}'")
     can_calculate = True
+    logger.info("start check migrate influxdb data")
     try:
         print_green(u"influx db数据总量: %d kb" % int(influxdb_data_size))
     except ValueError:
@@ -686,7 +704,8 @@ def check():
                     count_list.append(max([i for i in count._get_series()[0]['values'][0] if type(i) == int]))
         except InfluxDBClientError as e:
             print str(e)
-            print_red("获取influxdb count 数出错！")
+            if not str(e).startswith("retention policy not found"):
+                print_red("获取influxdb count 数出错！%s" % str(e))
         except Exception as e:
             print e.message
         if len(count_list) > 0:
@@ -726,6 +745,8 @@ def check():
 def calculate_process(start, end, last_time):
     base = parse_utc_str_to_timestamp(start)
     time_range = parse_utc_str_to_timestamp(end) - parse_utc_str_to_timestamp(start)
+    if start == end and time_range == 0:
+        return float("%.4f" % 100)
     return float("%.4f" % (float((parse_utc_str_to_timestamp(last_time) - base)) / time_range)) * 100
 
 
