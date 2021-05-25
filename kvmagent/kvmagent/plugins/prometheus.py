@@ -81,6 +81,8 @@ def collect_host_network_statistics():
 
     return metrics.values()
 
+collect_node_disk_capacity_last_time = None
+collect_node_disk_capacity_last_result = None
 
 def collect_host_capacity_statistics():
     default_zstack_path = '/usr/local/zstack/apache-tomcat/webapps/zstack'
@@ -97,6 +99,14 @@ def collect_host_capacity_statistics():
                                                            'ZStack used capacity in bytes')
     }
 
+    global collect_node_disk_capacity_last_time
+    global collect_node_disk_capacity_last_result
+
+    if collect_node_disk_capacity_last_time is None:
+        collect_node_disk_capacity_last_time = time.time()
+    elif time.time() - collect_node_disk_capacity_last_time < 60 and collect_node_disk_capacity_last_result is not None:
+        return collect_node_disk_capacity_last_result
+
     zstack_used_capacity = 0
     for d in zstack_dir:
         if not os.path.exists(d):
@@ -105,7 +115,8 @@ def collect_host_capacity_statistics():
         zstack_used_capacity += int(res.split()[0])
 
     metrics['zstack_used_capacity_in_bytes'].add_metric([], float(zstack_used_capacity))
-    return metrics.values()
+    collect_node_disk_capacity_last_result = metrics.values()
+    return collect_node_disk_capacity_last_result
 
 
 def collect_lvm_capacity_statistics():
@@ -315,7 +326,7 @@ def collect_node_disk_wwid():
     # NOTE(weiw): some storage can not afford frequent TUR. ref: ZSTAC-23416
     if collect_node_disk_wwid_last_time is None:
         collect_node_disk_wwid_last_time = time.time()
-    elif time.time() - collect_node_disk_wwid_last_time < 60 and collect_node_disk_wwid_last_result is not None:
+    elif time.time() - collect_node_disk_wwid_last_time < 300 and collect_node_disk_wwid_last_result is not None:
         return collect_node_disk_wwid_last_result
 
     metrics = {
@@ -340,7 +351,7 @@ def collect_node_disk_wwid():
                 metrics['node_disk_wwid'].add_metric([disk_name, ";".join([w.strip() for w in wwids])], 1)
 
     collect_node_disk_wwid_last_result = metrics.values()
-    return metrics.values()
+    return collect_node_disk_wwid_last_result
 
 def collect_host_conntrack_statistics():
     metrics = {
