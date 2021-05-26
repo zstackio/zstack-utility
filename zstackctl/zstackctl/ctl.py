@@ -5490,8 +5490,8 @@ class ZBoxBackupRestoreCmd(Command):
                             default=None)
 
     def run(self, args):
-        pswd_arg = "--mysql-root-password '%s'" % args.mysql_root_password if args.mysql_root_password else ""
-        ui_pswd_arg = "'--ui-mysql-root-password '%s'" % args.ui_mysql_root_password if args.ui_mysql_root_password else ""
+        pswd_arg = "--mysql-root-password %s" % args.mysql_root_password if args.mysql_root_password else ""
+        ui_pswd_arg = "--ui-mysql-root-password %s" % args.ui_mysql_root_password if args.ui_mysql_root_password else ""
 
         info("Restoring database...")
         ctl.internal_run('restore_mysql', "-f %s %s %s" % (args.from_file, pswd_arg, ui_pswd_arg))
