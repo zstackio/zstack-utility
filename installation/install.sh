@@ -1355,6 +1355,9 @@ upgrade_zstack(){
     zstack-ctl show_configuration | grep 'sns.systemTopic.endpoints.http.url' >/dev/null 2>&1
     [ $? -ne 0 ] && zstack-ctl configure sns.systemTopic.endpoints.http.url=http://localhost:5000/zwatch/webhook
 
+    # upgrade legacy mini zwatch webhook
+    upgrade_mini_zwatch_webhook
+
     # update consoleProxyCertFile if necessary
     certfile=`zstack-ctl show_configuration | grep consoleProxyCertFile | grep /usr/local/zstack/zstack-ui/ | awk -F '=' '{ print $NF }'`
     [ x"$certfile" != x"" ] && zstack-ctl configure consoleProxyCertFile=`echo $certfile | sed "s~/usr/local/zstack/~$ZSTACK_INSTALL_ROOT/~g"`
@@ -3976,9 +3979,6 @@ fi
 # configure chrony.serverIp if not exists
 zstack-ctl show_configuration | grep '^[[:space:]]*chrony.serverIp.' >/dev/null 2>&1
 [ $? -ne 0 ] && zstack-ctl configure chrony.serverIp.0="${MANAGEMENT_IP}"
-
-# upgrade mini zwatch webhook url
-upgrade_mini_zwatch_webhook
 
 #Install license
 install_license
