@@ -12,7 +12,6 @@ from zstacklib.utils import bash
 from zstacklib.utils import lock
 from zstacklib.utils import log
 from zstacklib.utils import linux
-from zstacklib.utils import qemu_img
 from zstacklib.utils import thread
 from distutils.version import LooseVersion
 
@@ -295,7 +294,7 @@ def get_dm_wwid(dm):
         return None
 
 def get_device_info(dev_name, scsi_info):
-    # type: (str) -> SharedBlockCandidateStruct
+    # type: (str, dict[str, str]) -> SharedBlockCandidateStruct
     s = SharedBlockCandidateStruct()
     dev_name = dev_name.strip()
 
@@ -339,7 +338,7 @@ def get_device_info(dev_name, scsi_info):
             s.type = get_data(entry)
 
     wwid = get_wwid(dev_name)
-    if wwid == "" or wwid == "-" or wwid is None:
+    if not wwid or wwid == "-":
         return None
     s.wwid = wwid
     s.path = get_path(dev_name)
@@ -592,7 +591,7 @@ def start_vg_lock(vgUuid, retry_times_for_checking_vg_lockspace):
         modify_sanlock_config("use_zstack_vglock_large_delay", 0)
 
         if r != 0:
-            if ("Device or resource busy" in o+e) :
+            if "Device or resource busy" in o+e:
                 bash.bash_roe("dmsetup remove %s-lvmlock" % vgUuid)
             raise Exception("vgchange --lock-start failed: return code: %s, stdout: %s, stderr: %s" %
                             (r, o, e))
@@ -638,7 +637,7 @@ def clean_lvm_archive_files(vgUuid):
     if not os.path.exists(LVM_CONFIG_ARCHIVE_PATH):
         logger.warn("can not find lvm archive path %s" % LVM_CONFIG_ARCHIVE_PATH)
         return
-    archive_files = len([ f for f in os.listdir(LVM_CONFIG_ARCHIVE_PATH) if vgUuid in f ])
+    archive_files = len([f for f in os.listdir(LVM_CONFIG_ARCHIVE_PATH) if vgUuid in f])
     if archive_files > 10:
         bash.bash_r("ls -rt %s | grep %s | head -n %s | xargs -i rm -rf %s/{}" % (LVM_CONFIG_ARCHIVE_PATH, vgUuid, archive_files-10, LVM_CONFIG_ARCHIVE_PATH))
 
@@ -776,7 +775,8 @@ def get_vg_size(vgUuid, raise_exception=True):
 
 
 def get_all_vg_size():
-    d = {} # type: (str) -> tuple[int, int]
+    # type: () -> dict[str, tuple[int, int]]
+    d = {}
 
     o = bash.bash_o("vgs --nolocking %s --noheadings --separator : --units b -o name,vg_size,vg_free,vg_lock_type")
     if not o:
@@ -854,7 +854,7 @@ def delete_image(path, tag, deactive=True):
         return backing
 
     fpath = path
-    backing = activate_and_remove(fpath, deactive)
+    activate_and_remove(fpath, deactive)
     activate_and_remove(get_meta_lv_path(fpath), deactive)
 
 
@@ -1119,7 +1119,7 @@ def lv_exists(path):
 
 @bash.in_bash
 def vg_exists(vgUuid):
-    cmd = shell.ShellCmd("vgs --nolocking %s" % (vgUuid))
+    cmd = shell.ShellCmd("vgs --nolocking %s" % vgUuid)
     cmd(is_exception=False)
     return cmd.return_code == 0
 
@@ -1215,7 +1215,7 @@ def do_active_lv(absolutePath, lockType, recursive):
 # FIXME(weiw): drbd_path is a hack
 @bash.in_bash
 def create_lvm_snapshot(absolutePath, remove_oldest=True, snapName=None, size_percent=0.1, drbd_path=None):
-    # type: (str, bool, str, float) -> str
+    # type: (str, bool, str, float, str) -> str
     if snapName is None:
         snapName = get_new_snapshot_name(absolutePath, remove_oldest)
     if is_thin_lv(absolutePath):
@@ -1309,9 +1309,9 @@ def qcow2_lv_recursive_operate(abs_path, shared=False):
     return wrap
 
 
-#TODO(weiw): This is typically mini usage
+# TODO(weiw): This is typically mini usage
 def qcow2_lv_recursive_active(abs_path, lock_type):
-    # type: (str, int) -> object
+    # type: (str, int) -> None
     backing = linux.qcow2_get_backing_file(abs_path)
     active_lv(abs_path, lock_type == LvmlockdLockType.SHARE)
 
@@ -1392,7 +1392,6 @@ class LvLockOperator(object):
 
 class OperateLv(object):
     def __init__(self, abs_path, shared=False, delete_when_exception=False):
-        global lv_lock_ref_cnt
         self.abs_path = abs_path
         self.lock_ref_cnt = LvLockOperator.get_lock_cnt(abs_path)
         self.target_lock = LvmlockdLockType.EXCLUSIVE if shared is False else LvmlockdLockType.SHARE
@@ -1524,7 +1523,7 @@ def fix_global_lock():
 
 
 def check_pv_status(vgUuid, timeout):
-    r, o , e = bash.bash_roe("timeout -s SIGKILL %s pvs --noheading --nolocking -Svg_name=%s -oname,missing" % (timeout, vgUuid))
+    r, o, e = bash.bash_roe("timeout -s SIGKILL %s pvs --noheading --nolocking -Svg_name=%s -oname,missing" % (timeout, vgUuid))
     if len(o) == 0 or r != 0:
         s = "can not find shared block in shared block group %s, detail: [return_code: %s, stdout: %s, stderr: %s]" % (vgUuid, r, o, e)
         logger.warn(s)
@@ -1546,19 +1545,19 @@ def check_pv_status(vgUuid, timeout):
     health = bash.bash_o('timeout -s SIGKILL %s vgs -oattr --nolocking --noheadings --shared %s ' % (10 if timeout < 10 else timeout, vgUuid)).strip()
     if health == "":
         logger.warn("can not get proper attr of vg, return false")
-        return False, "primary storage %s attr get error, expect 'wz--ns' got %s" % (vgUuid, health)
+        return False, "primary storage %s attr get error, expect 'wz--ns' got '%s'" % (vgUuid, health)
 
     if health[0] != "w":
-        return False, "primary storage %s permission error, expect 'w' but now is %s, deatils: %s" % (vgUuid, health.stdout.strip()[0], health)
+        return False, "primary storage %s permission error, expect 'w', got '%s'" % (vgUuid, health)
 
     if health[1] != "z":
-        return False, "primary storage %s resizeable error, expect 'z' but now is %s, deatils: %s" % (vgUuid, health.stdout.strip()[1], health)
+        return False, "primary storage %s resizeable error, expect 'z', got '%s'" % (vgUuid, health)
 
     if health[3] != "-":
-        return False, "primary storage %s partial error, expect '-' but now is %s, deatils: %s" % (vgUuid, health.stdout.strip()[3], health)
+        return False, "primary storage %s partial error, expect '-', got '%s'" % (vgUuid, health)
 
     if health[5] != "s":
-        return False, "primary storage %s shared mode error, expect 's' but now is %s, deatils: %s" % (vgUuid, health.stdout.strip()[5], health)
+        return False, "primary storage %s shared mode error, expect 's', got '%s'" % (vgUuid, health)
 
     return True, ""
 
@@ -1611,7 +1610,7 @@ def lvm_check_operation(vgUuid):
 
 
 def check_vg_status(vgUuid, check_timeout, check_pv=True):
-    # type: (str) -> tuple[bool, str]
+    # type: (str, int, bool) -> tuple[bool, str]
     # 1. examine sanlock lock
     # 2. check the consistency of volume group
     # 3. check ps missing
@@ -1693,7 +1692,7 @@ def check_sanlock_status(lockspace):
     def _check_sanlock_status(lockspace):
         r, o, e = bash.bash_roe("sanlock client status -D | grep %s -A 18" % lockspace)
         if r != 0:
-             raise RetryException("sanlock can not get lockspace %s status" % lockspace)
+            raise RetryException("sanlock can not get lockspace %s status" % lockspace)
         return r, o, e
     try:
         r, o, e = _check_sanlock_status(lockspace)
@@ -1739,7 +1738,7 @@ def check_lv_on_pv_valid(vgUuid, pvUuid, lv_path=None):
         "-Sactive=active %s | grep %s | grep %s | awk '{print $1}' | head -n1" % (vgUuid, pv_name, VOLUME_TAG)).strip()
     if one_active_lv == "":
         return True
-    r = bash.bash_r("blockdev --flushbufs %s" % one_active_lv) # fcntl.ioctl(fd, BLKFLSBUF)
+    r = bash.bash_r("blockdev --flushbufs %s" % one_active_lv)  # fcntl.ioctl(fd, BLKFLSBUF)
     if r != 0:
         return False
     return True
@@ -1749,7 +1748,7 @@ def check_lv_on_pv_valid(vgUuid, pvUuid, lv_path=None):
 def get_invalid_pv_uuids(vgUuid, checkIo = False):
     invalid_pv_uuids = []
     pvs_outs = bash.bash_o(
-        "timeout -s SIGKILL 10 pvs --noheading --nolocking -Svg_name=%s -ouuid,name,missing" % vgUuid).strip().split("\n")
+        "timeout -s SIGKILL 10 pvs --noheading --nolocking -Svg_name=%s -ouuid,name,missing" % vgUuid).strip().splitlines()
     if len(pvs_outs) == 0:
         return
     for pvs_out in pvs_outs:
@@ -1810,7 +1809,7 @@ explain:
 def is_bad_vm_root_volume(vm_root_volume):
     cmd = "lsblk -P " + vm_root_volume + " -s -o NAME,TYPE,STATE"
     lsblk_out = bash.bash_o(cmd).strip().splitlines()
-    if len(lsblk_out) < 2: # valid_cmd_out = one_block_info + at_least_one_denpendency_disk_info
+    if len(lsblk_out) < 2:  # valid_cmd_out = one_block_info + at_least_one_dependency_disk_info
         return False
     for line in lsblk_out:
         line_list = re.split(' ', line)
@@ -1855,8 +1854,8 @@ def get_running_vm_root_volume_on_pv(vgUuid, pvUuids, checkIo=True):
 
         out = bash.bash_o("virsh dumpxml %s | grep \"source file='/dev/\"" % vm.uuid).strip().splitlines()
         if len(out) != 0:
-            for file in out:
-                vm.volumes.append(file.strip().split("'")[1])
+            for f in out:
+                vm.volumes.append(f.strip().split("'")[1])
 
         if is_volume_on_pvs(vm.root_volume, pvUuids, True) or bad_vm_root_volume_condition is True:
             vms.append(vm)
