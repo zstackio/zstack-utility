@@ -223,7 +223,7 @@ upgrade_mini_zwatch_webhook(){
   fi
 
   webhook=$(echo "$webhook" | sed 's/zwatch\/webhook/webhook\/zwatch/g')
-  zstack-ctl configure configuration sns.systemTopic.endpoints.http.url="$webhook" > /dev/null 2>&1
+  zstack-ctl configure sns.systemTopic.endpoints.http.url="$webhook" > /dev/null 2>&1
 }
 
 # version compare
