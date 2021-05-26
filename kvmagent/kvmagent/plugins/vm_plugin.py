@@ -4928,6 +4928,15 @@ class VmPlugin(kvmagent.KvmAgent):
             elif rsp.states[uuid] == Vm.VM_STATE_PAUSED:
                 retry_for_paused.append(uuid)
 
+        time.sleep(0.5)
+        if len(retry_for_paused) > 0:
+            states, in_shutdown = get_all_vm_sync_states()
+            for uuid in states:
+                if states[uuid] == Vm.VM_STATE_SHUTDOWN:
+                    rsp.states[uuid] = Vm.VM_STATE_RUNNING
+                elif states[uuid] != Vm.VM_STATE_PAUSED:
+                    rsp.states[uuid] = states[uuid]
+
         # Occasionally, virsh might not be able to list all VM instances with
         # uri=qemu://system.  To prevend this situation, we double check the
         # 'rsp.states' agaist QEMU process lists.
@@ -4940,14 +4949,10 @@ class VmPlugin(kvmagent.KvmAgent):
             logger.warn('guest [%s] not found in virsh list' % guest)
             rsp.states[guest] = Vm.VM_STATE_RUNNING
 
-        time.sleep(0.5)
-        if len(retry_for_paused) > 0:
-            states, in_shutdown = get_all_vm_sync_states()
-            for uuid in states:
-                if states[uuid] == Vm.VM_STATE_SHUTDOWN:
-                    rsp.states[uuid] = Vm.VM_STATE_RUNNING
-                elif states[uuid] != Vm.VM_STATE_PAUSED:
-                    rsp.states[uuid] = states[uuid]
+        libvirt_running_vms = rsp.states.keys()
+        no_qemu_process_running_vms = list(set(libvirt_running_vms).difference(set(output)))
+        for vm in no_qemu_process_running_vms:
+            rsp.states[vm] = Vm.VM_STATE_SHUTDOWN
 
         return jsonobject.dumps(rsp)
 
