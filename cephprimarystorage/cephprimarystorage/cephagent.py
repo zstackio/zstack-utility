@@ -94,6 +94,13 @@ class DownloadRsp(AgentResponse):
         self.size = None
 
 
+class CloneRsp(AgentResponse):
+    def __init__(self):
+        super(CloneRsp, self).__init__()
+        self.size = None
+        self.actualSize = None
+
+
 class CpRsp(AgentResponse):
     def __init__(self):
         super(CpRsp, self).__init__()
@@ -681,7 +688,8 @@ class CephAgent(plugin.TaskManager):
 
         shell.call('rbd clone %s %s' % (src_path, dst_path))
 
-        rsp = AgentResponse()
+        rsp = CloneRsp()
+        rsp.size = self._get_file_size(src_path)
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
