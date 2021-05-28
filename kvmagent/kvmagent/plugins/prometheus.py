@@ -1,4 +1,6 @@
 import os.path
+import pyudev       # installed by ansible
+import re
 import threading
 
 import typing
@@ -19,7 +21,7 @@ logger = log.get_logger(__name__)
 collector_dict = {}  # type: Dict[str, threading.Thread]
 latest_collect_result = {}
 collectResultLock = threading.RLock()
-QEMU_CMD = kvmagent.get_qemu_path().split("/")[-1]
+QEMU_CMD = os.path.basename(kvmagent.get_qemu_path())
 
 def read_number(fname):
     res = linux.read_file(fname)
@@ -79,6 +81,8 @@ def collect_host_network_statistics():
 
     return metrics.values()
 
+collect_node_disk_capacity_last_time = None
+collect_node_disk_capacity_last_result = None
 
 def collect_host_capacity_statistics():
     default_zstack_path = '/usr/local/zstack/apache-tomcat/webapps/zstack'
@@ -95,6 +99,14 @@ def collect_host_capacity_statistics():
                                                            'ZStack used capacity in bytes')
     }
 
+    global collect_node_disk_capacity_last_time
+    global collect_node_disk_capacity_last_result
+
+    if collect_node_disk_capacity_last_time is None:
+        collect_node_disk_capacity_last_time = time.time()
+    elif time.time() - collect_node_disk_capacity_last_time < 60 and collect_node_disk_capacity_last_result is not None:
+        return collect_node_disk_capacity_last_result
+
     zstack_used_capacity = 0
     for d in zstack_dir:
         if not os.path.exists(d):
@@ -103,7 +115,8 @@ def collect_host_capacity_statistics():
         zstack_used_capacity += int(res.split()[0])
 
     metrics['zstack_used_capacity_in_bytes'].add_metric([], float(zstack_used_capacity))
-    return metrics.values()
+    collect_node_disk_capacity_last_result = metrics.values()
+    return collect_node_disk_capacity_last_result
 
 
 def collect_lvm_capacity_statistics():
@@ -244,7 +257,7 @@ def collect_vm_statistics():
                                      'Percentage of CPU used by vm', None, ['vmUuid'])
     }
 
-    r, pid_vm_map_str = bash_ro("ps -aux --no-headers | grep \"%s -name\" | grep -v -E \"grep.*%s -name\" | awk '{print $2,$13}'" %(QEMU_CMD, QEMU_CMD))
+    r, pid_vm_map_str = bash_ro("ps -aux --no-headers | awk '/%s [-]name/{print $2,$13}'" % QEMU_CMD)
     if r != 0 or len(pid_vm_map_str.splitlines()) == 0:
         return metrics.values()
     pid_vm_map_str = pid_vm_map_str.replace(",debug-threads=on", "").replace("guest=", "")
@@ -262,18 +275,20 @@ def collect_vm_statistics():
     def collect(vm_pid_arr):
         vm_pid_arr_str = ','.join(vm_pid_arr)
 
-        r, pid_cpu_usages_str = bash_ro("top -b -n 1 -p %s | grep qemu | awk '{print $1,$9}'" % vm_pid_arr_str)
-        if r != 0 or len(pid_cpu_usages_str.splitlines()) == 0:
+        r, pid_cpu_usages_str = bash_ro("top -b -n 1 -p %s" % vm_pid_arr_str)
+        if r != 0 or not pid_cpu_usages_str:
             return
 
         for pid_cpu_usage in pid_cpu_usages_str.splitlines():
+            if QEMU_CMD not in pid_cpu_usage:
+                continue
             arr = pid_cpu_usage.split()
             pid = arr[0]
             vm_uuid = pid_vm_map[pid]
-            cpu_usage = arr[1]
+            cpu_usage = arr[8]
             metrics['cpu_occupied_by_vm'].add_metric([vm_uuid], float(cpu_usage))
 
-    n = 10
+    n = 16  # procps/top has '#define MONPIDMAX  20'
     for i in range(0, len(pid_vm_map.keys()), n):
         collect(pid_vm_map.keys()[i:i + n])
 
@@ -284,13 +299,34 @@ collect_node_disk_wwid_last_time = None
 collect_node_disk_wwid_last_result = None
 
 def collect_node_disk_wwid():
+
+    def get_physical_devices(pvpath, is_mpath):
+        if is_mpath:
+            dm_name = os.path.basename(os.path.realpath(pvpath))
+            disks = os.listdir("/sys/block/%s/slaves/" % dm_name)
+        else:
+            disks = [ os.path.basename(pvpath) ]
+
+        return ["/dev/%s" % re.sub('[0-9]$', '', s) for s in disks]
+
+    def get_device_from_path(ctx, devpath):
+        return pyudev.Device.from_device_file(ctx, devpath)
+
+    def get_disk_wwids(b):
+        links = b.get('DEVLINKS')
+        if not links:
+            return []
+
+        return [ os.path.basename(str(p)) for p in links.split() if "disk/by-id" in p and "lvm-pv" not in p ]
+
+
     global collect_node_disk_wwid_last_time
     global collect_node_disk_wwid_last_result
 
     # NOTE(weiw): some storage can not afford frequent TUR. ref: ZSTAC-23416
     if collect_node_disk_wwid_last_time is None:
         collect_node_disk_wwid_last_time = time.time()
-    elif time.time() - collect_node_disk_wwid_last_time < 60 and collect_node_disk_wwid_last_result is not None:
+    elif time.time() - collect_node_disk_wwid_last_time < 300 and collect_node_disk_wwid_last_result is not None:
         return collect_node_disk_wwid_last_result
 
     metrics = {
@@ -299,24 +335,23 @@ def collect_node_disk_wwid():
     }
 
     pvs = bash_o("pvs --nolocking --noheading -o pv_name").strip().splitlines()
-    mpaths = bash_o("dmsetup table --target multipath | awk -F: '{print $1}'").strip().splitlines()
+    context = pyudev.Context()
 
     for pv in pvs:
         pv = pv.strip()
-        multipath_wwid = None
-        if os.path.basename(pv) in mpaths:
-            multipath_wwid = bash_o("udevadm info -n %s | grep -E '^S: disk/by-id/dm-uuid' | awk -F '-' '{print $NF}'" % pv).strip()
-        disks = linux.get_physical_disk(pv, False)
-        for disk in disks:
-            disk_name = disk.split("/")[-1].strip()
-            wwids = bash_o("udevadm info -n %s | grep -E '^S: disk/by-id' | awk -F '/' '{print $NF}' | grep -v '^lvm-pv' | sort" % disk).strip().splitlines()
+        dm_uuid = get_device_from_path(context, pv).get("DM_UUID", "")
+        multipath_wwid = dm_uuid[6:] if dm_uuid.startswith("mpath-") else None
+
+        for disk in get_physical_devices(pv, multipath_wwid):
+            disk_name = os.path.basename(disk)
+            wwids = get_disk_wwids(get_device_from_path(context, disk))
             if multipath_wwid is not None:
                 wwids.append(multipath_wwid)
             if len(wwids) > 0:
                 metrics['node_disk_wwid'].add_metric([disk_name, ";".join([w.strip() for w in wwids])], 1)
 
     collect_node_disk_wwid_last_result = metrics.values()
-    return metrics.values()
+    return collect_node_disk_wwid_last_result
 
 def collect_host_conntrack_statistics():
     metrics = {

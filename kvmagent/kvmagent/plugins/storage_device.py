@@ -1,11 +1,12 @@
+import json
 import random
 import time
 import string
 import os.path
-
+from future.backports import ChainMap
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
-
+from zstacklib.utils import multipath
 from zstacklib.utils import lock
 from zstacklib.utils import jsonobject
 from zstacklib.utils import http
@@ -835,6 +836,9 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         r = bash.bash_r("grep '^[[:space:]]*alias' /etc/multipath.conf")
         if r == 0:
             bash.bash_roe("sed -i 's/^[[:space:]]*alias/#alias/g' /etc/multipath.conf")
+            bash.bash_roe("systemctl reload multipathd")
+
+        if multipath.write_multipath_conf("/etc/multipath.conf") is False:
             bash.bash_roe("systemctl reload multipathd")
 
         linux.set_fail_if_no_path()

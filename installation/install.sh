@@ -2878,7 +2878,7 @@ check_version(){
     fi
     HIGHER=`get_higher_version $CURRENT_VERSION $UPGRADE_VERSION`
     if [ x"$HIGHER" != x"$UPGRADE_VERSION" ];then
-        fail2 "Upgrade version is lower than the current version, please download and use the higher one."
+            fail2 "Upgrade version ($UPGRADE_VERSION) is lower than the current version ($CURRENT_VERSION), please download and use the higher one."
     fi
 }
 

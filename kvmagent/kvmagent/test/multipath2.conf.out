@@ -1,0 +1,25 @@
+defaults {
+    find_multipaths yes
+    user_friendly_names yes
+}
+multipaths {
+multipath {
+    wwid 36005076400828328d800000000000010
+}
+multipath {
+    wwid 36005076400828328d800000000000011
+}
+
+}
+blacklist {
+
+}
+devices {
+device {
+    features 0
+    no_path_retry fail
+    product *
+    vendor *
+}
+
+}
