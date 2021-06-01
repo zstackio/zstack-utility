@@ -432,7 +432,7 @@ class MigrateAction(Thread):
             except InfluxDBClientError as e:
                 print "query influxdb %s error : %s" % (self.mysql_obj.influxdb, str(e))
                 exc_type, exc_value, exc_obj = sys.exc_info()
-                logger.error(traceback.print_tb(exc_obj))
+                logger.error(str(traceback.format_exc(exc_obj)))
                 self.errorInfo = str(e)
                 self.finish = "error"
                 break
@@ -658,6 +658,8 @@ def get_migrate_time(size):
                 count_list.append(max([i for i in count._get_series()[0]['values'][0] if type(i) == int]))
     except InfluxDBClientError as e:
         print str(e)
+        exc_type, exc_value, exc_obj = sys.exc_info()
+        logger.error(str(traceback.format_exc(exc_obj)))
     except Exception as e:
         print e.message
     if len(count_list) > 0:
@@ -704,6 +706,8 @@ def check():
                     count_list.append(max([i for i in count._get_series()[0]['values'][0] if type(i) == int]))
         except InfluxDBClientError as e:
             print str(e)
+            exc_type, exc_value, exc_obj = sys.exc_info()
+            logger.error(str(traceback.format_exc(exc_obj)))
             if not str(e).startswith("retention policy not found"):
                 print_red("获取influxdb count 数出错！%s" % str(e))
         except Exception as e:
