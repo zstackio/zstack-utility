@@ -4529,8 +4529,8 @@ class Vm(object):
                     bash.bash_r("bridge fdb add %s dev %s" % (nic.mac, _phy_dev_name))
 
         # to allow vnic/vf communication in same host
-        if nic.pciDeviceAddress is None and nic.physicalInterface is not None and brMode != 'mocbr' and nic.type != 'vDPA':
-            _add_bridge_fdb_entry_for_vnic()
+        # if nic.pciDeviceAddress is None and nic.physicalInterface is not None:
+        #    _add_bridge_fdb_entry_for_vnic()
 
         return interface
 
