@@ -893,6 +893,10 @@ do_enable_sudo(){
     fi
 }
 
+do_config_networkmanager(){
+    sed -i "s/^.*no-auto-default.*$/no-auto-default=*/g" /etc/NetworkManager/NetworkManager.conf > /dev/null 2>&1
+}
+
 do_config_limits(){
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     if [ "$OS" == "KYLIN10" ]; then
@@ -2253,6 +2257,7 @@ config_system(){
         show_spinner cs_setup_http
     fi
     do_enable_sudo
+    do_config_networkmanager
 }
 
 cs_add_cronjob(){
