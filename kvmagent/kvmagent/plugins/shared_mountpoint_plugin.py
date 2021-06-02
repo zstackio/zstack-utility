@@ -77,11 +77,18 @@ class DownloadBitsFromKvmHostRsp(AgentRsp):
         super(DownloadBitsFromKvmHostRsp, self).__init__()
         self.format = None
 
+class CreateVolumeWithBackingRsp(AgentRsp):
+    def __init__(self):
+        super(CreateVolumeWithBackingRsp, self).__init__()
+        self.size = None
+        self.actualSize = None
+
 
 class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
 
     CONNECT_PATH = "/sharedmountpointprimarystorage/connect"
     CREATE_VOLUME_FROM_CACHE_PATH = "/sharedmountpointprimarystorage/createrootvolume"
+    CREATE_DATA_VOLUME_WITH_BACKING_PATH = "/sharedmountpointprimarystorage/createvolumewithbacking"
     DELETE_BITS_PATH = "/sharedmountpointprimarystorage/bits/delete"
     CREATE_TEMPLATE_FROM_VOLUME_PATH = "/sharedmountpointprimarystorage/createtemplatefromvolume"
     UPLOAD_BITS_TO_SFTP_BACKUPSTORAGE_PATH = "/sharedmountpointprimarystorage/sftp/upload"
@@ -106,6 +113,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server = kvmagent.get_http_server()
         http_server.register_async_uri(self.CONNECT_PATH, self.connect)
         http_server.register_async_uri(self.CREATE_VOLUME_FROM_CACHE_PATH, self.create_root_volume)
+        http_server.register_async_uri(self.CREATE_DATA_VOLUME_WITH_BACKING_PATH, self.create_volume_with_backing)
         http_server.register_async_uri(self.DELETE_BITS_PATH, self.delete_bits)
         http_server.register_async_uri(self.CREATE_TEMPLATE_FROM_VOLUME_PATH, self.create_template_from_volume)
         http_server.register_async_uri(self.UPLOAD_BITS_TO_SFTP_BACKUPSTORAGE_PATH, self.upload_to_sftp)
@@ -207,6 +215,16 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def create_volume_with_backing(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CreateVolumeWithBackingRsp()
+        self.do_create_volume_with_backing(cmd.templatePathInCache, cmd.installPath, cmd)
+        rsp.size = linux.qcow2_get_virtual_size(cmd.installPath)
+        rsp.actualSize = os.path.getsize(cmd.installPath)
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     def create_root_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
@@ -216,13 +234,17 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
             rsp.success = False
             return jsonobject.dumps(rsp)
 
-        dirname = os.path.dirname(cmd.installPath)
+        self.do_create_volume_with_backing(cmd.templatePathInCache, cmd.installPath, cmd)
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
+        return jsonobject.dumps(rsp)
+
+    @staticmethod
+    def do_create_volume_with_backing(backing_path, vol_path, cmd):
+        dirname = os.path.dirname(vol_path)
         if not os.path.exists(dirname):
             os.makedirs(dirname, 0775)
 
-        linux.qcow2_clone_with_cmd(cmd.templatePathInCache, cmd.installPath, cmd)
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
-        return jsonobject.dumps(rsp)
+        linux.qcow2_clone_with_cmd(backing_path, vol_path, cmd)
 
     @kvmagent.replyerror
     def delete_bits(self, req):
