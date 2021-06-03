@@ -434,10 +434,47 @@ def add_link(ifname, device_type, namespace=None, **kwargs):
 
     '''
     with get_iproute(namespace) as ipr:
-        params = {}
-        for item in kwargs:
-            params["%s_%s" % (device_type, item)] = kwargs[item]
-        ipr.link("add", ifname=ifname, kind=device_type, **kwargs)
+        ipr.link("add", ifname=ifname, kind=device_type, **_warp_link_param(device_type, ipr, kwargs))
+
+def _warp_link_param(device_type, ipr, kwargs):
+    prefix = {
+        'vlan': 'vlan_',
+        'veth': 'veth_',
+        'macvlan': 'macvlan_',
+        'macvtap': 'macvtap_',
+        'dummy': '',
+        'bridge': '',
+        'bond': '',
+        'ipoib': '',
+        'ip6tnl': 'ip6tnl_',
+        'ipip': 'ipip_',
+        'sit': 'sit_',
+        'vxlan': 'vxlan_',
+        'gre': 'gre_',
+        'gretap': 'gre_',
+        'ip6gre': 'ip6gre_',
+        'ip6gretap': 'ip6gre_',
+        'geneve': 'geneve_',
+        'vrf': 'vrf_'
+    }.get(device_type, device_type + '_')
+    if prefix == 'gre_':
+        return _warp_gre_link_param(kwargs)
+    params = {}
+    for item in kwargs:
+        params["%s%s" % (prefix, item)] = kwargs[item]
+    return params
+
+def _warp_gre_link_param(kwargs):
+    params = {}
+    params["gre_local"] = kwargs.get('local')
+    params["gre_remote"] = kwargs.get('remote')
+    params["gre_ttl"] = kwargs.get('ttl')
+    params["gre_ikey"] = kwargs.get('ikey', kwargs.get('key', 0))
+    params["gre_okey"] = kwargs.get('okey', kwargs.get('key', 0))
+    # flags default : 0x2000 - NOCACHE
+    params["gre_iflags"] = kwargs.get('iflags', kwargs.get('flags', 0x2000))
+    params["gre_oflags"] = kwargs.get('oflags', kwargs.get('flags', 0x2000))
+    return params
 
 @_no_error_do
 def add_link_no_error(*args, **kwargs):
