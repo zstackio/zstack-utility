@@ -869,12 +869,11 @@ def main():
 
     check_db_status()
     mysql_client.init_mysql_info(args.passwd, args.host)
+    init_influxdb_info()
 
     if args.action == "check":
         check()
         return
-
-    init_influxdb_info()
 
     if args.action == "init":
         init(args)
