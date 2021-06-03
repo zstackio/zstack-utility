@@ -408,7 +408,7 @@ class Mevoco(kvmagent.KvmAgent):
     CONNECT_ALL_NETNS_BR_INNER_IP = "169.254.64.2"
     IP_MASK_BIT = 18
 
-    KVM_HOST_AGENT_PORT = "7070"
+    KVM_HOST_AGENT_PORT = "7700"
     KVM_HOST_PUSHGATEWAY_PORT = "9092"
 
     def __init__(self):
