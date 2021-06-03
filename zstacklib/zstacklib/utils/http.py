@@ -172,7 +172,7 @@ class HttpServer(object):
     classdocs
     '''
 
-    def __init__(self, port=7070, async_callback_uri = None):
+    def __init__(self, port=7700, async_callback_uri = None):
         '''
         Constructor
         '''
