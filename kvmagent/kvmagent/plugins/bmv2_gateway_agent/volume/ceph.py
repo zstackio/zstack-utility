@@ -32,6 +32,8 @@ class CephVolume(base.BaseVolume):
         return self.volume_obj.path.replace('ceph://', '')
 
     def attach(self):
+        shell.call("systemctl start target && systemctl enable target")
+
         helper.RbdImageOperator(self).connect()
         helper.IscsiOperator(self).setup()
 

@@ -29,7 +29,9 @@ Python support library for zstack""",
           'Jinja2',
           'pyroute2',
           "beeprint",
-          "pyyaml"
+          "pyyaml",
+          "func_timeout",
+          "certifi"
       ],
       entry_points="""
       # -*- Entry points: -*-

@@ -37,3 +37,5 @@ prometheus_client==0.1.1
 typing==3.7.4
 beeprint==2.4.7
 future=0.18.2
+func_timeout=4.3.5
+certifi=2021.5.30
