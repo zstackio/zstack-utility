@@ -140,7 +140,7 @@ class AgentCommand(object):
         pass
 
 def _build_url_for_test(paths):
-    builder = http.UriBuilder('http://localhost:7700')
+    builder = http.UriBuilder('http://localhost:7070')
     for p in paths:
         builder.add_path(p)
     return builder.build()
