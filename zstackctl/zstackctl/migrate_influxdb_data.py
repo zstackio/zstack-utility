@@ -331,8 +331,12 @@ class EventRecordsVO:
         if len(label_map) > 0:
             label_map = {i.split(':::')[-1]: label_map[i] for i in label_map}
             data['label'] = safe_str(json.dumps(label_map))
+
         if data.has_key("readStatus"):
             data['readStatus'] = int(data.get("readStatus") == "Read")
+        else:
+            data['readStatus'] = ""
+
         if data.has_key("time"):
             data['createTime'] = parse_utc_str_to_timestamp(data.get('time'))
         return data
@@ -374,10 +378,15 @@ class AlarmRecordsVO:
             if res_data.has_key("headers"):
                 res_data.pop("headers")
             data['responseDump'] = safe_str(json.dumps(res_data))
+
         if data.has_key("readStatus"):
             data['readStatus'] = int(data.get("readStatus") == "Read")
+        else:
+            data['readStatus'] = ""
+
         if data.has_key("time"):
             data['createTime'] = parse_utc_str_to_timestamp(data.get('time'))
+
         return data
 
     def process_mysql_data(self, mysql_columns):
