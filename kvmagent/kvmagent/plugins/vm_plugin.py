@@ -691,7 +691,7 @@ class VncPortIptableRule(object):
         current_ip = linux.get_host_by_name(self.host_ip)
 
         # get ipv4 subnet
-        current_ip_addr_list = filter(lambda addr: addr.scope == 'global', iproute.query_addresses_by_ip(current_ip, 4))
+        current_ip_addr_list = filter(lambda addr: addr.scope == 'universe', iproute.query_addresses_by_ip(current_ip, 4))
         if not current_ip_addr_list:
             err = 'cannot get host ip with netmask for %s' % self.host_ip
             logger.warn(err)

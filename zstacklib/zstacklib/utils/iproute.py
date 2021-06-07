@@ -50,15 +50,21 @@ _IP_VERSION_FAMILY_MAP = {4: socket.AF_INET, 6: socket.AF_INET6}
 
 def _get_scope_name(scope, exception_if_wrong = False):
     '''
-        Metheds from openstack/neutron
-        Return the name of the scope (given as a number), or the scope number
-        if the name is unknown. 'universe' is equals to 'global'.
+        Return the name of the scope (given as a number), or the scope number (given as a string):
+        - input scope=0,           return 'universe'
+        - input scope='universe',  return 0
 
-        :param scope  str or int:  'universe'('global'), 'site', 'link', 'host', 'nowhere'
-        :return       int or str
+        There is scope mapping:
+        0             'universe' (equals to 'global')
+        200           'site'
+        253           'link'
+        254           'host'
+        255           'nowhere'
+
+        :param scope  str or int:  'universe', 'site', 'link', 'host', 'nowhere'
+        :return       int or str, or None if scope is invalid and exception_if_wrong is False
         :raise        InvalidScope: if param scope is invalid
     '''
-    scope = 'universe' if scope == 'global' else scope
     ret = pyroute2.netlink.rtnl.rt_scope.get(scope)
     if ret is None and exception_if_wrong:
         raise InvalidScope(scope)
@@ -258,7 +264,7 @@ def query_addresses(namespace=None, **kwargs):
     '''
         :kwargs condition. If empty, return all IpAddrs.
                     ifname: device name.
-                    scope: 'host', 'global', and so on
+                    scope: 'host', 'universe' (for global scope), and so on
                     ip: ip address
                     ip_version: 4 or 6, or None for all
                     index: device index. It is recommended to choose between ifname and index, not both
@@ -299,7 +305,7 @@ def query_addresses_by_ifname(ifname, namespace=None):
 
 def query_addresses_by_scope(scope, namespace=None):
     '''
-        :param scope str or int, ex: 'host', 'global'
+        :param scope str or int, ex: 'host', 'universe' (for global scope)
         :see _get_scope_name()
         :return IpAddr[]
     '''
@@ -555,7 +561,7 @@ def _make_pyroute2_route_args(namespace, ip_version, ip, ifname, via, table,
     '''
     args = {'family': _check_ip_version(ip_version)}
     if not scope:
-        scope = 'global' if via else 'link'
+        scope = 'universe' if via else 'link'
     scope = _get_scope_name(scope)
     if scope:
         args['scope'] = scope
