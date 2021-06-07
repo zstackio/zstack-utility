@@ -214,6 +214,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     GET_VOLUME_BASE_IMAGE_PATH = "/nfsprimarystorage/getvolumebaseimage"
     UPDATE_MOUNT_POINT_PATH = "/nfsprimarystorage/updatemountpoint"
     RESIZE_VOLUME_PATH = "/nfsprimarystorage/volume/resize"
+    HARD_LINK_VOLUME = "/nfsprimarystorage/volume/hardlink"
     NFS_TO_NFS_MIGRATE_BITS_PATH = "/nfsprimarystorage/migratebits"
     NFS_REBASE_VOLUME_BACKING_FILE_PATH = "/nfsprimarystorage/rebasevolumebackingfile"
     DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/nfsprimarystorage/kvmhost/download"
@@ -251,11 +252,13 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.GET_VOLUME_BASE_IMAGE_PATH, self.get_volume_base_image_path)
         http_server.register_async_uri(self.UPDATE_MOUNT_POINT_PATH, self.update_mount_point)
         http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
+        http_server.register_async_uri(self.HARD_LINK_VOLUME, self.hardlink_volume)
         http_server.register_async_uri(self.NFS_TO_NFS_MIGRATE_BITS_PATH, self.migrate_bits)
         http_server.register_async_uri(self.NFS_REBASE_VOLUME_BACKING_FILE_PATH, self.rebase_volume_backing_file)
         http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.download_from_kvmhost)
         http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
         http_server.register_async_uri(self.GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH, self.get_download_bits_from_kvmhost_progress)
+
         self.mount_path = {}
         self.image_cache = None
         self.imagestore_client = ImageStoreClient()
@@ -390,6 +393,12 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         ret = linux.qcow2_virtualsize(install_path)
         rsp.size = ret
         return jsonobject.dumps(rsp)
+
+    def _get_mount_path(self, uuid):
+        path = self.mount_path.get(uuid)
+        if not path:
+            raise Exception('cannot find mount path of primary storage[uuid: %s]' % uuid)
+        return path
 
     def _get_disk_capacity(self, uuid):
         path = self.mount_path.get(uuid)
@@ -867,3 +876,27 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         rsp = GetDownloadBitsFromKvmHostProgressRsp()
         rsp.totalSize = linux.get_total_file_size(cmd.volumePaths)
         return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def hardlink_volume(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        self.hardlink_and_rebase(cmd.srcDir, cmd.dstDir, self._get_mount_path(cmd.uuid))
+
+        rsp = NfsResponse()
+        self._set_capacity_to_response(cmd.uuid, rsp)
+        return jsonobject.dumps(rsp)
+
+    def hardlink_and_rebase(self, src_dir, dst_dir, storage_dir):
+        src_dst_dict = {}
+        for f in linux.list_all_file(src_dir):
+            src_dst_dict[f] = os.path.realpath(f.replace(src_dir, dst_dir))
+
+        for f in linux.list_all_file(storage_dir):
+            backing_file = os.path.realpath(linux.qcow2_get_backing_file(f))
+            if backing_file in src_dst_dict:
+                dst_file = src_dst_dict[backing_file]
+                linux.link(backing_file, dst_file)
+                linux.qcow2_rebase_no_check(dst_file, f, "qcow2")
+
+        for src_file, dst_file in src_dst_dict.iteritems():
+            linux.link(src_file, dst_file)
