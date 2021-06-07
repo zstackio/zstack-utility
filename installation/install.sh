@@ -173,6 +173,7 @@ declare -a upgrade_persist_params_array=(
     '3.9.0,InfluxDB.enable.message.retention=false'
 )
 
+
 # version compare
 # eg. 1 = 1.0
 # eg. 4.08 < 4.08.01
@@ -1410,6 +1411,7 @@ is_install_general_libs_rh(){
             python-devel \
             gcc \
             grafana \
+            gnutls-utils \
             autoconf \
             chrony \
             iptables \

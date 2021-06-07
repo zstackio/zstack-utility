@@ -21,6 +21,8 @@ import re
 import platform
 import pprint
 import errno
+import mmap
+import hashlib
 import json
 
 from zstacklib.utils import thread
@@ -28,6 +30,7 @@ from zstacklib.utils import qemu_img
 from zstacklib.utils import lock
 from zstacklib.utils import shell
 from zstacklib.utils import log
+from zstacklib.utils import secret
 
 
 logger = log.get_logger(__name__)
@@ -601,6 +604,11 @@ def mkdir(path, mode=0o755):
 
     return False
 
+def write_to_file(fpath, content):
+    with open(fpath, 'w') as f:
+        f.write(content)
+        f.flush()
+        os.fsync(f)
 
 def write_to_temp_file(content):
     (tmp_fd, tmp_path) = tempfile.mkstemp()
@@ -833,7 +841,10 @@ def qcow2_clone(src, dst):
 
 def qcow2_clone_with_cmd(src, dst, cmd=None):
     if cmd is None or cmd.kvmHostAddons is None or cmd.kvmHostAddons.qcow2Options is None:
-        qcow2_clone(src, dst)
+        if secret.is_img_encrypted(src):
+            qcow2_clone_with_option(src, dst)
+        else:
+            qcow2_clone(src, dst)
     else:
         qcow2_clone_with_option(src, dst, cmd.kvmHostAddons.qcow2Options)
 
@@ -843,12 +854,26 @@ def qcow2_clone_with_option(src, dst, opt=""):
     opt = re.sub(pattern, " ", opt)
 
     fmt = get_img_fmt(src)
+
+    if secret.is_img_encrypted(src):
+        opt += secret.get_qemu_encrypt_options()
+        src = secret.get_img_path_with_secret_objects(src)
+
     shell.check_run('/usr/bin/qemu-img create -F %s %s -b %s -f qcow2 %s' % (fmt, opt, src, dst))
     os.chmod(dst, 0o660)
 
 def raw_clone(src, dst):
     shell.check_run('/usr/bin/qemu-img create -b %s -f raw %s' % (src, dst))
     os.chmod(dst, 0o660)
+
+def encrypted_qcow2_create_with_cmd(dst, size, cmd=None):
+    if cmd is None or cmd.kvmHostAddons is None or cmd.kvmHostAddons.qcow2Options is None:
+        opt = secret.get_qemu_encrypt_options()
+    else:
+        opt = cmd.kvmHostAddons.qcow2Options
+        opt += secret.get_qemu_encrypt_options()
+    shell.check_run('/usr/bin/qemu-img create -f qcow2 %s %s %s' % (opt, dst, size))
+    os.chmod(dst, 0666)
 
 def qcow2_create(dst, size):
     shell.check_run('/usr/bin/qemu-img create -f qcow2 %s %s' % (dst, size))
@@ -878,6 +903,10 @@ def qcow2_create_with_backing_file_and_cmd(backing_file, dst, cmd=None):
 def qcow2_create_with_backing_file_and_option(backing_file, dst, opt=""):
     fmt = get_img_fmt(backing_file)
 
+    if secret.is_img_encrypted(backing_file):
+        opt += secret.get_qemu_encrypt_options()
+        backing_file = secret.get_img_path_with_secret_objects(backing_file)
+
     # NOTE(weiw): qcow2 doesn't support specify backing file and preallocation at same time
     pattern = re.compile("\-o\ preallocation\=\w+ ")
     opt = re.sub(pattern, " ", opt)
@@ -897,19 +926,37 @@ def create_template(src, dst, compress=False, shell=shell):
         return qcow2_create_template(src, dst, compress, shell=shell)
     raise Exception('unknown format[%s] of the image file[%s]' % (fmt, src))
 
+def _generate_qcow2_src_with_secrets(src):
+    src_with_secret = ' --object secret,id={0},file={1},format=base64 '\
+            ' --image-opts driver=qcow2,encrypt.key-secret={0},file.filename={2} '\
+            ' -o encrypt.format=luks,encrypt.key-secret={0} '\
+            .format(secret.ZSTACK_SECRET_OBJECT_ID, secret.ZSTACK_ENCRYPT_B64_PATH, src)
+
+    # FIXME: hardcode disk secret name from virtio-disk0-luks-secret0 to virtio-disk9-luks-secret9
+    for i in range(10):
+        for j in range(10):
+           src_with_secret += ' --object secret,id=virtio-disk{0}-luks-secret{1},file={2},format=base64 '\
+                   ' -o encrypt.format=luks,encrypt.key-secret=virtio-disk{0}-luks-secret{1} '\
+                   .format(i, j, secret.ZSTACK_ENCRYPT_B64_PATH)
+    return src_with_secret
+
 def qcow2_create_template(src, dst, compress, shell=shell):
+    src = _generate_qcow2_src_with_secrets(src)
     if compress:
-        shell.call('%s -c -f qcow2 -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
+        shell.call('%s -c -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
     else:
-        shell.call('%s -f qcow2 -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
+        shell.call('%s -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
 
 def raw_create_template(src, dst, shell=shell):
+    src = _generate_qcow2_src_with_secrets(src)
     shell.call('%s -f raw -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
 
 def qcow2_convert_to_raw(src, dst):
+    src = _generate_qcow2_src_with_secrets(src)
     shell.call('%s -f qcow2 -O raw %s %s' % (qemu_img.subcmd('convert'), src, dst))
 
 def qcow2_rebase(backing_file, target):
+    src = _generate_qcow2_src_with_secrets(src)
     fmt = get_img_fmt(backing_file)
     shell.call('%s -F %s -f qcow2 -b %s %s' % (qemu_img.subcmd('rebase'), fmt, backing_file, target))
 
@@ -948,7 +995,14 @@ def qcow2_get_backing_file(path):
 
         backing_file_size = struct.unpack('>L', backing_file_info[8:])[0]
         resp.seek(backing_file_offset)
-        return resp.read(backing_file_size)
+        backing_file = resp.read(backing_file_size).strip()
+
+        # if the backing file is encrypted, the output of `qemu-img info` will be like:
+        # backing file: json:{"encrypt.key-secret": "sec_0", "driver": "qcow2", "file": {"driver": "file", "filename":"PATH_TO_BACKING_FILE"}}
+        if 'encrypt.key-secret' in backing_file:
+            return json.loads(backing_file.split(':', 1)[-1])['file']['filename'].strip()
+        else:
+            return backing_file
 
 def qcow2_get_virtual_size(path):
     # type: (str) -> int
@@ -984,9 +1038,12 @@ def qcow2_direct_get_backing_file(path):
 
 # Get derived file and all its backing files
 def qcow2_get_file_chain(path):
-    out = shell.call("%s --backing-chain %s | grep 'image:' | awk '{print $2}'" %
+    out = shell.call("%s --backing-chain %s | grep 'image:' | awk '{$1=\"\"; print $0}'" %
             (qemu_img.subcmd('info'), path))
-    return out.splitlines()
+
+    return map(lambda text: 
+            json.loads(text.split(':', 1)[-1])['file']['filename'].strip() if text.strip().startswith('json:') else text.strip(),
+            out.strip().splitlines())
 
 def get_qcow2_file_chain_size(path):
     chain = qcow2_get_file_chain(path)

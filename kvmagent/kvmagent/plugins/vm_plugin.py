@@ -20,6 +20,8 @@ import socket
 from signal import SIGKILL
 import syslog
 import threading
+import base64
+import shutil
 
 import libvirt
 import xml.dom.minidom as minidom
@@ -49,6 +51,7 @@ from zstacklib.utils import qemu_img
 from zstacklib.utils import ebtables
 from zstacklib.utils import vm_operator
 from zstacklib.utils import pci
+from zstacklib.utils import secret
 from zstacklib.utils.report import *
 from zstacklib.utils.vm_plugin_queue_singleton import VmPluginQueueSingleton
 
@@ -1748,7 +1751,14 @@ class Vm(object):
     def restore(self, path):
         @LibvirtAutoReconnect
         def restore_from_file(conn):
-            return conn.restoreFlags(path, self.domain_xml)
+            # base64 decode memory snapshot
+            dec_path = path + '.dec'
+            with open(path, 'r') as _input:
+                with open(dec_path, 'w') as _output:
+                    base64.decode(_input, _output)
+            logger.debug('restoring vm:\n%s' % self.domain_xml)
+            conn.restoreFlags(dec_path, self.domain_xml)
+            os.remove(dec_path)
 
         restore_from_file()
 
@@ -2027,7 +2037,9 @@ class Vm(object):
         def filebased_volume():
             disk = etree.Element('disk', attrib={'type': 'file', 'device': 'disk'})
             e(disk, 'driver', None, {'name': 'qemu', 'type': linux.get_img_fmt(volume.installPath), 'cache': volume.cacheMode})
-            e(disk, 'source', None, {'file': volume.installPath})
+            source = e(disk, 'source', None, {'file': volume.installPath})
+            encryption = e(source, 'encryption', None, {'format': 'luks'})
+            e(encryption, 'secret', None, {'type':'passphrase', 'uuid': secret.ZSTACK_ENCRYPT_KEY_UUID})
 
             if volume.shareable:
                 e(disk, 'shareable')
@@ -2560,6 +2572,14 @@ class Vm(object):
                     memory_snapshot_struct.installPath,
                     get_size(memory_snapshot_struct.installPath)))
 
+                # base64 encode memory snapshot
+                input_file = memory_snapshot_struct.installPath
+                output_file = input_file + '.b64'
+                with open(input_file, 'r') as _input:
+                    with open(output_file, 'w') as _output:
+                        base64.encode(_input, _output)
+                shutil.move(output_file, input_file)
+
             return return_structs
         except libvirt.libvirtError as ex:
             logger.warn(linux.get_exception_stacktrace())
@@ -2669,11 +2689,15 @@ class Vm(object):
             shell.call('hostname %s.zstack.org' % hostname)
 
         destHostIp = cmd.destHostIp
-        destUrl = "qemu+tcp://{0}/system".format(destHostIp)
+        proto = "tls" if cmd.useTls else "tcp"
+        destUrl = "qemu+{1}://{0}/system".format(destHostIp, proto)
         tcpUri = "tcp://{0}".format(destHostIp)
         flag = (libvirt.VIR_MIGRATE_LIVE |
                 libvirt.VIR_MIGRATE_PEER2PEER |
                 libvirt.VIR_MIGRATE_UNDEFINE_SOURCE)
+
+        if proto == 'tls':
+            flag |= libvirt.VIR_MIGRATE_TLS
 
         if cmd.autoConverge:
             flag |= libvirt.VIR_MIGRATE_AUTO_CONVERGE
@@ -3439,6 +3463,8 @@ class Vm(object):
             else:
                 e(qcmd, "qemu:arg", attrib={"value": "-qmp"})
                 e(qcmd, "qemu:arg", attrib={"value": "unix:{}/{}.sock,server,nowait".format(QMP_SOCKET_PATH, cmd.vmInstanceUuid)})
+                e(qcmd, "qemu:arg", attrib={"value": "-object"})
+                e(qcmd, "qemu:arg", attrib={"value": "secret,id={},file={},format=base64".format(secret.ZSTACK_SECRET_OBJECT_ID, secret.ZSTACK_ENCRYPT_B64_PATH)})
 
             args = cmd.addons['qemuCommandLine']
             if args is not None:
@@ -3684,7 +3710,19 @@ class Vm(object):
                     e(disk, 'driver', None, {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': _v.cacheMode, 'queues':'1', 'dataplane': 'on'})
                 else:
                     e(disk, 'driver', None, {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': _v.cacheMode})
-                e(disk, 'source', None, {'file': _v.installPath})
+
+                source = e(disk, 'source', None, {'file': _v.installPath})
+
+                # SM ONLY
+                if secret.is_img_encrypted(_v.installPath):
+                    encryption = e(source, 'encryption', None, {'format': 'luks'})
+                    e(encryption, 'secret', None, {'type':'passphrase', 'uuid': secret.ZSTACK_ENCRYPT_KEY_UUID})
+                else:
+                    disk_id = ord(_dev_letter) - ord('a')
+                    root = elements['root']
+                    qcmd = e(root, 'qemu:commandline')
+                    e(qcmd, "qemu:arg", attrib={"value": "-object"})
+                    e(qcmd, "qemu:arg", attrib={"value": "secret,id=virtio-disk{}-luks-secret0,file={},format=base64".format(disk_id, secret.ZSTACK_ENCRYPT_B64_PATH)})
 
                 if _v.shareable:
                     e(disk, 'shareable')
@@ -5235,7 +5273,9 @@ class VmPlugin(kvmagent.KvmAgent):
         def filebased_volume(_v):
             disk = etree.Element('disk', {'type': 'file', 'device': 'disk', 'snapshot': 'external'})
             e(disk, 'driver', None, {'name': 'qemu', 'type': 'qcow2', 'cache': _v.cacheMode})
-            e(disk, 'source', None, {'file': _v.installPath})
+            source = e(disk, 'source', None, {'file': _v.installPath})
+            encryption = e(source, 'encryption', None, {'format': 'luks'})
+            e(encryption, 'secret', None, {'type':'passphrase', 'uuid': secret.ZSTACK_ENCRYPT_KEY_UUID})
             return disk
 
         def ceph_volume(_v):
