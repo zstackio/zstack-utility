@@ -219,8 +219,8 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CreateVolumeWithBackingRsp()
         self.do_create_volume_with_backing(cmd.templatePathInCache, cmd.installPath, cmd)
-        rsp.size = linux.qcow2_get_virtual_size(cmd.installUrl)
-        rsp.actualSize = os.path.getsize(cmd.installUrl)
+        rsp.size = linux.qcow2_get_virtual_size(cmd.installPath)
+        rsp.actualSize = os.path.getsize(cmd.installPath)
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
         return jsonobject.dumps(rsp)
 
