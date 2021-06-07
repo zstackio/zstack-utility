@@ -108,6 +108,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
     DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/sharedmountpointprimarystorage/kvmhost/download"
     CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/sharedmountpointprimarystorage/kvmhost/download/cancel"
     GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH = "/sharedmountpointprimarystorage/kvmhost/download/progress"
+    LINK_VOLUME_NEW_DIR = "/sharedmountpointprimarystorage/volume/linknewdir"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -133,6 +134,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.download_from_kvmhost)
         http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
         http_server.register_async_uri(self.GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH, self.get_download_bits_from_kvmhost_progress)
+        http_server.register_async_uri(self.LINK_VOLUME_NEW_DIR, self.link_volume)
 
         self.imagestore_client = ImageStoreClient()
         self.id_files = {}
@@ -454,3 +456,27 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         rsp = GetDownloadBitsFromKvmHostProgressRsp()
         rsp.totalSize = linux.get_total_file_size(cmd.volumePaths)
         return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def link_volume(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        self.link_new_dir(cmd.srcDir, cmd.dstDir, cmd.mountPoint)
+
+        rsp = AgentRsp()
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
+        return jsonobject.dumps(rsp)
+
+    def link_new_dir(self, src_dir, dst_dir, storage_dir):
+        src_dst_dict = {}
+        for f in linux.list_all_file(src_dir):
+            src_dst_dict[f] = os.path.realpath(f.replace(src_dir, dst_dir))
+
+        for f in linux.list_all_file(storage_dir):
+            backing_file = os.path.realpath(linux.qcow2_get_backing_file(f))
+            if backing_file in src_dst_dict:
+                dst_file = src_dst_dict[backing_file]
+                linux.link(backing_file, dst_file)
+                linux.qcow2_rebase_no_check(dst_file, f, "qcow2")
+
+        for src_file, dst_file in src_dst_dict.iteritems():
+            linux.link(src_file, dst_file)
