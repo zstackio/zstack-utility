@@ -439,7 +439,7 @@ def add_link(ifname, device_type, namespace=None, **kwargs):
 def _warp_link_param(device_type, ipr, kwargs):
     prefix = {
         'vlan': 'vlan_',
-        'veth': 'veth_',
+        'veth': '',
         'macvlan': 'macvlan_',
         'macvtap': 'macvtap_',
         'dummy': '',
