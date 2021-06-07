@@ -104,11 +104,11 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
     CHECK_BITS_PATH = "/sharedmountpointprimarystorage/bits/check"
     GET_VOLUME_SIZE_PATH = "/sharedmountpointprimarystorage/volume/getsize"
     RESIZE_VOLUME_PATH = "/sharedmountpointprimarystorage/volume/resize"
+    HARD_LINK_VOLUME = "/sharedmountpointprimarystorage/volume/hardlink"
     REINIT_IMAGE_PATH = "/sharedmountpointprimarystorage/volume/reinitimage"
     DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/sharedmountpointprimarystorage/kvmhost/download"
     CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/sharedmountpointprimarystorage/kvmhost/download/cancel"
     GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH = "/sharedmountpointprimarystorage/kvmhost/download/progress"
-    LINK_VOLUME_NEW_DIR = "/sharedmountpointprimarystorage/volume/linknewdir"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -130,11 +130,11 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CHECK_BITS_PATH, self.check_bits)
         http_server.register_async_uri(self.GET_VOLUME_SIZE_PATH, self.get_volume_size)
         http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
+        http_server.register_async_uri(self.HARD_LINK_VOLUME, self.hardlink_volume)
         http_server.register_async_uri(self.REINIT_IMAGE_PATH, self.reinit_image)
         http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.download_from_kvmhost)
         http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
         http_server.register_async_uri(self.GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH, self.get_download_bits_from_kvmhost_progress)
-        http_server.register_async_uri(self.LINK_VOLUME_NEW_DIR, self.link_volume)
 
         self.imagestore_client = ImageStoreClient()
         self.id_files = {}
@@ -458,15 +458,15 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
-    def link_volume(self, req):
+    def hardlink_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        self.link_new_dir(cmd.srcDir, cmd.dstDir, cmd.mountPoint)
+        self.hardlink_and_rebase(cmd.srcDir, cmd.dstDir, cmd.mountPoint)
 
         rsp = AgentRsp()
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
         return jsonobject.dumps(rsp)
 
-    def link_new_dir(self, src_dir, dst_dir, storage_dir):
+    def hardlink_and_rebase(self, src_dir, dst_dir, storage_dir):
         src_dst_dict = {}
         for f in linux.list_all_file(src_dir):
             src_dst_dict[f] = os.path.realpath(f.replace(src_dir, dst_dir))

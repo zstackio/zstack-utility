@@ -173,13 +173,13 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     GET_QCOW2_REFERENCE = "/localstorage/getqcow2reference"
     CONVERT_QCOW2_TO_RAW = "/localstorage/imagestore/convert/raw"
     RESIZE_VOLUME_PATH = "/localstorage/volume/resize"
+    HARD_LINK_VOLUME = "/localstorage/volume/hardlink"
     REINIT_IMAGE_PATH = "/localstorage/reinit/image"
     CHECK_INITIALIZED_FILE = "/localstorage/check/initializedfile"
     CREATE_INITIALIZED_FILE = "/localstorage/create/initializedfile"
     DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/localstorage/kvmhost/download"
     CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/localstorage/kvmhost/download/cancel"
     GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH = "/localstorage/kvmhost/download/progress"
-    LINK_VOLUME_NEW_DIR = "/localstorage/volume/linknewdir"
 
     LOCAL_NOT_ROOT_USER_MIGRATE_TMP_PATH = "primary_storage_tmp_dir"
 
@@ -217,12 +217,12 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.GET_QCOW2_REFERENCE, self.get_qcow2_reference)
         http_server.register_async_uri(self.CONVERT_QCOW2_TO_RAW, self.convert_qcow2_to_raw)
         http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
+        http_server.register_async_uri(self.HARD_LINK_VOLUME, self.hardlink_volume)
         http_server.register_async_uri(self.CHECK_INITIALIZED_FILE, self.check_initialized_file)
         http_server.register_async_uri(self.CREATE_INITIALIZED_FILE, self.create_initialized_file)
         http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.download_from_kvmhost)
         http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
         http_server.register_async_uri(self.GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH, self.get_download_bits_from_kvmhost_progress)
-        http_server.register_async_uri(self.LINK_VOLUME_NEW_DIR, self.link_volume)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -879,15 +879,15 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
-    def link_volume(self, req):
+    def hardlink_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        self.link_new_dir(cmd.srcDir, cmd.dstDir, cmd.storagePath)
+        self.hardlink_and_rebase(cmd.srcDir, cmd.dstDir, cmd.storagePath)
 
         rsp = AgentResponse()
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
         return jsonobject.dumps(rsp)
 
-    def link_new_dir(self, src_dir, dst_dir, storage_dir):
+    def hardlink_and_rebase(self, src_dir, dst_dir, storage_dir):
         src_dst_dict = {}
         for f in linux.list_all_file(src_dir):
             src_dst_dict[f] = os.path.realpath(f.replace(src_dir, dst_dir))
