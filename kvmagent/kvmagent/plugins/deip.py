@@ -99,7 +99,10 @@ class Eip(object):
 
         @bash.in_bash
         def delete_namespace():
-            if bash_r('ip netns | grep -w {{NS_NAME}} > /dev/null') == 0:
+            if bash_r('ip netns exec {{NS_NAME}} ip a') == 0:
+                VETHS = bash_o("ip netns exec {{NS_NAME}} ip route | awk '/kernel scope link/{print $3}'").split()
+                for VETH in VETHS:
+                    bash_errorout("ip netns exec {{NS_NAME}} ip link set {{VETH}} netns 1")
                 bash_errorout('ip netns delete {{NS_NAME}}')
 
         @bash.in_bash
