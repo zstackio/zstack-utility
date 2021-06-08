@@ -284,6 +284,7 @@ def get_host_releasever(ansible_distribution):
         "centos core 7.4.1708": "c74",
         "centos core 7.2.1511": "c72",
         "openeuler lts-sp1 20.03": "euler20",
+        "uos fou 20": "uos20",
     }
     _key = " ".join(ansible_distribution).lower()
     return supported_release_info.get(_key)
