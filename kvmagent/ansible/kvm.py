@@ -396,7 +396,7 @@ def install_kvm_pkg():
                             'libguestfs-tools', 'sed', 'nfs-common', 'open-iscsi','ebtables', 'pv', 'usbutils', 
                             'pciutils', 'expect', 'lighttpd', 'sshpass', 'rsync', 'iputils-arping', 'nmap', 'collectd', 
                             'iptables', 'python-pip', 'dmidecode', 'ovmf', 'dnsmasq', 'auditd', 'ipset',
-                            'multipath-tools', 'uuid-runtime', 'lvm2', 'lvm2-lockd', 'udev', 'sanlock', 'usbredirserver']
+                            'multipath-tools', 'uuid-runtime', 'lvm2', 'lvm2-lockd', 'udev', 'sanlock', 'usbredirserver', 'python-pyudev']
         apt_install_packages(install_pkg_list, host_post_info)
         if zstack_repo == 'false':
             command_deb_list = "echo %s >/var/lib/zstack/dependencies".format(' '.join(install_pkg_list))
