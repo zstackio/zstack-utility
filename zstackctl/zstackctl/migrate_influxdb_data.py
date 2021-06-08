@@ -302,6 +302,8 @@ class AuditsVO:
             data['clientBrowser'] = ""
         if not data.get("clientIp"):
             data['clientIp'] = ""
+        if not data.get("resourceType"):
+            data['resourceType'] = ""
         if data.has_key("success"):
             data['success'] = int(data.get("success") == "success")
         if not data.get("success"):
