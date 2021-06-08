@@ -716,14 +716,14 @@ check_system(){
     echo ""
     cat /etc/*-release |egrep -i -h "centos |Red Hat Enterprise|Alibaba|NeoKylin|Kylin Linux Advanced Server release V10|openEuler" >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -eq 0 ]; then
-        grep -q 'CentOS release 6' /etc/system-release && OS="CENTOS6"
-        grep -q 'CentOS Linux release 7' /etc/system-release && OS="CENTOS7"
-        grep -q 'Red Hat Enterprise Linux Server release 7' /etc/system-release && OS="RHEL7"
-        grep -q 'Alibaba Group Enterprise Linux' /etc/system-release && OS="ALIOS7"
-        grep -q 'iSoft Linux release 4' /etc/system-release && OS="ISOFT4"
-        grep -q 'NeoKylin Linux' /etc/system-release && OS="RHEL7"
-        grep -q 'Kylin Linux Advanced Server release V10' /etc/system-release && OS="KYLIN10"
-        grep -q 'openEuler release 20.03 (LTS-SP1)' /etc/system-release && OS="EULER20"
+        grep -qi 'CentOS release 6' /etc/system-release && OS="CENTOS6"
+        grep -qi 'CentOS Linux release 7' /etc/system-release && OS="CENTOS7"
+        grep -qi 'Red Hat Enterprise Linux Server release 7' /etc/system-release && OS="RHEL7"
+        grep -qi 'Alibaba Group Enterprise Linux' /etc/system-release && OS="ALIOS7"
+        grep -qi 'iSoft Linux release 4' /etc/system-release && OS="ISOFT4"
+        grep -qi 'NeoKylin Linux' /etc/system-release && OS="RHEL7"
+        grep -qi 'Kylin Linux Advanced Server release V10' /etc/system-release && OS="KYLIN10"
+        grep -qi 'openEuler release 20.03 (LTS-SP1)' /etc/system-release && OS="EULER20"
         if [[ -z "$OS" ]];then
             fail2 "Host OS checking failure: your system is: `cat /etc/redhat-release`, $PRODUCT_NAME management node only supports $SUPPORTED_OS currently"
         elif [[ $OS == "CENTOS7" ]];then
@@ -731,14 +731,14 @@ check_system(){
               You need to use \`yum upgrade\` to upgrade your system to latest CentOS7."
         fi
     else
-        grep -q 'Debian GNU/Linux 9' /etc/issue && OS="DEBIAN9"
-        grep -q 'Ubuntu' /etc/issue && IS_UBUNTU='y' 
-        grep -q 'Kylin 4.0.2' /etc/issue && OS="KYLIN4.0.2"
-        grep -q 'uos GNU/Linux 20' /etc/issue && OS="UOS20"
-        grep -q 'Uniontech OS Server 20' /etc/issue && OS="UOS20"
+        grep -qi 'Debian GNU/Linux 9' /etc/issue && OS="DEBIAN9"
+        grep -qi 'Ubuntu' /etc/issue && IS_UBUNTU='y'
+        grep -qi 'Kylin 4.0.2' /etc/issue && OS="KYLIN4.0.2"
+        grep -qi 'uos GNU/Linux 20' /etc/issue && OS="UOS20"
+        grep -qi 'Uniontech OS Server 20' /etc/issue && OS="UOS20"
         if [ "$IS_UBUNTU" = "y" ]; then
-            grep -q '16.04' /etc/issue && OS="UBUNTU16.04"
-            grep -q '14.04' /etc/issue && OS="UBUNTU14.04"                                                                                                       
+            grep -qi '16.04' /etc/issue && OS="UBUNTU16.04"
+            grep -qi '14.04' /etc/issue && OS="UBUNTU14.04"
             [ "$OS" != "UBUNTU16.04" -a "$OS" != "UBUNTU14.04" ] && fail2 "Host OS checking failure: your system is: $OS, $PRODUCT_NAME management node only support $SUPPORTED_OS currently"
             . /etc/lsb-release
         fi
