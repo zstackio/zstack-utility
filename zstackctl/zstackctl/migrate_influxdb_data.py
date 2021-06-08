@@ -14,6 +14,7 @@ import time
 import datetime
 import base64
 import traceback
+import uuid
 from commands import getstatusoutput
 import logging
 from threading import Thread
@@ -383,6 +384,9 @@ class AlarmRecordsVO:
             data['readStatus'] = int(data.get("readStatus") == "Read")
         else:
             data['readStatus'] = ""
+
+        if not data.has_key("dataUuid"):
+            data['dataUuid'] = str(uuid.uuid4()).replace('-', '')
 
         if data.has_key("time"):
             data['createTime'] = parse_utc_str_to_timestamp(data.get('time'))
