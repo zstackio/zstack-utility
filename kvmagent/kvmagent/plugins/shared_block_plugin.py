@@ -211,7 +211,6 @@ class CheckDisk(object):
     @bash.in_bash
     def rescan(self, disk_name=None):
         """
-
         :type disk_name: str
         """
         if disk_name is None:
@@ -263,11 +262,9 @@ class CheckDisk(object):
                 return rp
 
     def check_disk_by_absolute_path(self):
-        try:
-            os.open(self.identifier, os.O_RDONLY | os.O_NONBLOCK)
-        except Exception as e:
-            return None
-        return self.identifier
+        if os.path.exists(self.identifier):
+            return self.identifier
+        return None
 
 
 class SharedBlockPlugin(kvmagent.KvmAgent):
