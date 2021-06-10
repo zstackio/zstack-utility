@@ -903,13 +903,14 @@ def parse_pci_device_address(addr):
     function = addr.split(".")[-1]
     return domain, bus, slot, function
 
-def is_q35_supported():
-    return HOST_ARCH in ['x86_64', 'aarch64']
-
 def get_machineType(machine_type):
     if HOST_ARCH == "aarch64":
         return "virt"
     return machine_type if machine_type else "pc"
+
+def get_sgio_value():
+    device_name = [x for x in os.listdir("/sys/block") if not x.startswith("loop")][0]
+    return "unfiltered" if os.path.isfile("/sys/block/{}/queue/unpriv_sgio".format(device_name)) else "filtered"
 
 class LibvirtEventManager(object):
     EVENT_DEFINED = "Defined"
@@ -2059,31 +2060,13 @@ class Vm(object):
             return disk
 
         def scsilun_volume():
-            def on_aarch64():
-                # default value of sgio is 'filtered'
-                disk = etree.Element('disk', attrib={'type': 'block', 'device': 'lun'})
-                e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw'})
-                e(disk, 'source', None, {'dev': volume.installPath})
-                e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
-                return disk
-
-            def on_mips64el():
-                # default value of sgio is 'filtered'
-                disk = etree.Element('disk', attrib={'type': 'block', 'device': 'lun'})
-                e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw'})
-                e(disk, 'source', None, {'dev': volume.installPath})
-                e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
-                return disk
-
-            def on_x86_64():
-                disk = etree.Element('disk', attrib={'type': 'block', 'device': 'lun', 'sgio': 'unfiltered'})
-                e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw'})
-                e(disk, 'source', None, {'dev': volume.installPath})
-                e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
-                return disk
-
+            # default value of sgio is 'filtered'
             #NOTE(weiw): scsi lun not support aio or qos
-            return eval("on_{}".format(HOST_ARCH))()
+            disk = etree.Element('disk', attrib={'type': 'block', 'device': 'lun', 'sgio': get_sgio_value()})
+            e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw'})
+            e(disk, 'source', None, {'dev': volume.installPath})
+            e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
+            return disk
 
         def iscsibased_volume():
             # type: () -> etree.Element
@@ -3249,6 +3232,8 @@ class Vm(object):
         machine_type = get_machineType(cmd.machineType)
         if HOST_ARCH == "aarch64" and cmd.bootMode == 'Legacy':
             raise kvmagent.KvmError("Aarch64 does not support legacy, please change boot mode to UEFI instead of Legacy on your VM or Image.")
+        if cmd.architecture and cmd.architecture != HOST_ARCH:
+            raise kvmagent.KvmError("Image architecture[{}] not matched host architecture[{}].".format(cmd.architecture, HOST_ARCH))
         default_bus_type = ('ide', 'sata', 'scsi')[max(machine_type == 'q35', (HOST_ARCH in ['aarch64', 'mips64el']) * 2)]
         elements = {}
 
@@ -3380,12 +3365,12 @@ class Vm(object):
             def on_aarch64():
 
                 def on_redhat():
-                    e(os, 'type', 'hvm', attrib={'arch': 'aarch64', 'machine': 'virt'})
+                    e(os, 'type', 'hvm', attrib={'arch': 'aarch64', 'machine': machine_type})
                     e(os, 'loader', '/usr/share/edk2/aarch64/QEMU_EFI-pflash.raw', attrib={'readonly': 'yes', 'type': 'pflash'})
                     e(os, 'nvram', '/var/lib/libvirt/qemu/nvram/%s.fd' % cmd.vmInstanceUuid, attrib={'template': '/usr/share/edk2/aarch64/vars-template-pflash.raw'})
 
                 def on_debian():
-                    e(os, 'type', 'hvm', attrib={'arch': 'aarch64', 'machine': 'virt'})
+                    e(os, 'type', 'hvm', attrib={'arch': 'aarch64', 'machine': machine_type})
                     e(os, 'loader', '/usr/share/OVMF/QEMU_EFI-pflash.raw', attrib={'readonly': 'yes', 'type': 'rom'})
                     e(os, 'nvram', '/var/lib/libvirt/qemu/nvram/%s.fd' % cmd.vmInstanceUuid, attrib={'template': '/usr/share/OVMF/vars-template-pflash.raw'})
                     
@@ -3459,7 +3444,7 @@ class Vm(object):
             if "hygon" in model_name.lower():
                 if isinstance(cmd.imagePlatform, str) and cmd.imagePlatform.lower() not in ["other", "paravirtualization"]:
                     e(qcmd, "qemu:arg", attrib={"value": "-cpu"})
-                    e(qcmd, "qemu:arg", attrib={"value": "EPYC,vendor=AuthenticAMD,model_id={} Processor".format(" ".join(model_name.split(" ")[0:3]))})
+                    e(qcmd, "qemu:arg", attrib={"value": "EPYC,vendor=AuthenticAMD,model_id={} Processor,+svm".format(" ".join(model_name.split(" ")[0:3]))})
             else:
                 e(qcmd, "qemu:arg", attrib={"value": "-qmp"})
                 e(qcmd, "qemu:arg", attrib={"value": "unix:{}/{}.sock,server,nowait".format(QMP_SOCKET_PATH, cmd.vmInstanceUuid)})
@@ -3547,21 +3532,24 @@ class Vm(object):
                     e(devices, 'emulator', kvmagent.get_colo_qemu_path())
                 else:
                     e(devices, 'emulator', kvmagent.get_qemu_path())
-            # no default usb controller and tablet device for appliance vm
-            if cmd.isApplianceVm:
-                e(devices, 'controller', None, {'type': 'usb', 'model': 'none'})
-                elements['devices'] = devices
-                return
-
-            tablet = e(devices, 'input', None, {'type': 'tablet', 'bus': 'usb'})
-            e(tablet, 'address', None, {'type':'usb', 'bus':'0', 'port':'1'})
 
             @linux.with_arch(todo_list=['aarch64', 'mips64el'])
             def set_keyboard():
                 keyboard = e(devices, 'input', None, {'type': 'keyboard', 'bus': 'usb'})
                 e(keyboard, 'address', None, {'type': 'usb', 'bus': '0', 'port': '2'})
 
-            set_keyboard()
+            def set_tablet():
+                tablet = e(devices, 'input', None, {'type': 'tablet', 'bus': 'usb'})
+                e(tablet, 'address', None, {'type':'usb', 'bus':'0', 'port':'1'})
+
+            # no default usb controller and tablet device for appliance vm
+            if cmd.isApplianceVm:
+                e(devices, 'controller', None, {'type': 'usb', 'model': 'ehci'})
+                set_keyboard()
+            else:
+                set_keyboard()
+                set_tablet()
+
             elements['devices'] = devices
 
         def make_cdrom():
@@ -4126,10 +4114,7 @@ class Vm(object):
             devices = elements['devices']
             for volume in storageDevices:
                 if match_storage_device(volume.installPath):
-                    if HOST_ARCH in ['aarch64', 'mips64el']:
-                        disk = e(devices, 'disk', None, attrib={'type': 'block', 'device': 'lun'})
-                    else:
-                        disk = e(devices, 'disk', None, attrib={'type': 'block', 'device': 'lun', 'sgio': 'unfiltered'})
+                    disk = e(devices, 'disk', None, attrib={'type': 'block', 'device': 'lun', 'sgio': get_sgio_value()})
                     e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw'})
                     e(disk, 'source', None, {'dev': volume.installPath})
                     e(disk, 'target', None, {'dev': 'sd%s' % Vm.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
@@ -4275,7 +4260,7 @@ class Vm(object):
             devices = elements['devices']
             e(devices, 'controller', None, {'type': 'scsi', 'model': 'virtio-scsi'})
 
-            if (machine_type == "q35" or machine_type == "virt") and is_q35_supported():
+            if machine_type in ['q35', 'virt']:
                 controller = e(devices, 'controller', None, {'type': 'sata', 'index': '0'})
                 e(controller, 'alias', None, {'name': 'sata'})
                 e(controller, 'address', None, {'type': 'pci', 'domain': '0', 'bus': '0', 'slot': '0x1f', 'function': '2'})
@@ -4386,10 +4371,11 @@ class Vm(object):
         else:
             e(interface, 'source', None, attrib={'bridge': nic.bridgeName})
             e(interface, 'target', None, attrib={'dev': nic.nicInternalName})
-            e(interface, 'alias', None, {'name': 'net%s' % nic.nicInternalName.split('.')[1]})
 
         if nic.pci is not None and (iftype == 'bridge' or iftype == 'vhostuser'):
             e(interface, 'address', None, attrib={'type': nic.pci.type, 'domain': nic.pci.domain, 'bus': nic.pci.bus, 'slot': nic.pci.slot, "function": nic.pci.function})
+        else:
+            e(interface, 'address', None, attrib={'type': "pci"})
 
         if nic.ips and iftype == 'bridge':
             ip4Addr = None

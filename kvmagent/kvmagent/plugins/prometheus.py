@@ -252,7 +252,7 @@ def collect_vm_statistics():
                                      'Percentage of CPU used by vm', None, ['vmUuid'])
     }
 
-    r, pid_vm_map_str = bash_ro("ps --no-headers u -C \"%s -name\" | awk '{print $2,$13}'" % QEMU_CMD)
+    r, pid_vm_map_str = bash_ro("ps -aux --no-headers | grep \"%s -name\" | grep -v -E \"grep.*%s -name\" | awk '{print $2,$13}'" %(QEMU_CMD, QEMU_CMD))
     if r != 0 or len(pid_vm_map_str.splitlines()) == 0:
         return metrics.values()
     pid_vm_map_str = pid_vm_map_str.replace(",debug-threads=on", "").replace("guest=", "")
@@ -345,6 +345,7 @@ class PrometheusPlugin(kvmagent.KvmAgent):
         @in_bash
         def start_collectd(cmd):
             conf_path = os.path.join(os.path.dirname(cmd.binaryPath), 'collectd.conf')
+            ingore_block_device = "/:sd[c-e]/" if kvmagent.os_arch in ["mips64el", "aarch64"] else "//"
 
             conf = '''Interval {{INTERVAL}}
 # version {{VERSION}}
@@ -410,6 +411,7 @@ LoadPlugin virt
 	HostnameFormat name
     PluginInstanceFormat name
     BlockDevice "/:hd[a-z]/"
+    BlockDevice "{{IGNORE}}"
     IgnoreSelected true
     ExtraStats "vcpu memory"
 </Plugin>
@@ -425,6 +427,7 @@ LoadPlugin virt
                 'INTERVAL': cmd.interval,
                 'INTERFACES': interfaces,
                 'VERSION': cmd.version,
+                'IGNORE': ingore_block_device
             })
 
             need_restart_collectd = False

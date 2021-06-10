@@ -211,7 +211,7 @@ class HostNetworkBondingInventory(object):
                     "ip -o a list | grep '^%s: ' | awk '/inet /{print $4}'" % master.strip()).splitlines()]
         self.miimon = linux.read_file("/sys/class/net/%s/bonding/miimon" % self.bondingName).strip()
         self.allSlavesActive = linux.read_file("/sys/class/net/%s/bonding/all_slaves_active" % self.bondingName).strip() == "0"
-        slave_names = linux.read_file("/sys/class/net/%s/bonding/slaves" % self.bondingName).strip().split(" ")
+        slave_names = linux.read_file("/sys/class/net/%s/bonding/slaves" % self.bondingName).strip().split()
         if len(slave_names) == 0:
             return
 
@@ -302,6 +302,7 @@ class GetPciDevicesCmd(kvmagent.AgentCommand):
         super(GetPciDevicesCmd, self).__init__()
         self.filterString = None
         self.enableIommu = True
+        self.skipGrubConfig = False
 
 class GetPciDevicesResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -768,7 +769,8 @@ class HostPlugin(kvmagent.KvmAgent):
                     cpu_model = os.uname()[-1]
 
             rsp.cpuModelName = cpu_model
-            rsp.hostCpuModelName = "aarch64"
+            host_cpu_model_name = shell.call("lscpu | awk -F':' '/Model name/{print $2}'")
+            rsp.hostCpuModelName = host_cpu_model_name.strip() if host_cpu_model_name  else "aarch64"
 
             cpuMHz = shell.call("lscpu | awk '/max MHz/{ print $NF }'")
             # in case lscpu doesn't show cpu max mhz
@@ -1040,11 +1042,12 @@ class HostPlugin(kvmagent.KvmAgent):
                 elif line[0] == 'iSerial':
                     info.iSerial = ' '.join(line[2:]) if len(line) > 2 else ""
 
-            if info.busNum == '' or info.devNum == '' or info.idVendor == '' \
-                    or info.idProduct == '' or '(error)' in info.iManufacturer or '(error)' in info.iProduct:
-                rsp.success = False
-                rsp.error = "cannot get enough info of usb device"
-                return jsonobject.dumps(rsp)
+            if info.busNum == '' or info.devNum == '' or info.idVendor == '' or info.idProduct == '':
+                logger.debug("cannot get busNum/devNum/idVendor/idProduct info in usbDevice %s" % devId)
+                continue
+            elif '(error)' in info.iManufacturer or '(error)' in info.iProduct:
+                logger.debug("cannot get iManufacturer or iProduct info in usbDevice %s" % devId)
+                usbDevicesInfo += info.toString()
             else:
                 usbDevicesInfo += info.toString()
         rsp.usbDevicesInfo = usbDevicesInfo
@@ -1563,6 +1566,11 @@ done
     def get_pci_info(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetPciDevicesResponse()
+
+        if cmd.skipGrubConfig:
+            rsp.hostIommuStatus = True
+            self._collect_format_pci_device_info(rsp)
+            return jsonobject.dumps(rsp)
 
         # update grub to enable/disable iommu in host
         updateConfigration = UpdateConfigration()

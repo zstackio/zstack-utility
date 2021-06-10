@@ -20,6 +20,7 @@ export TERM=xterm
 OS=''
 REDHAT_OS="CENTOS6 CENTOS7 RHEL7 ALIOS7 ISOFT4 KYLIN10"
 DEBIAN_OS="UBUNTU14.04 UBUNTU16.04 UBUNTU KYLIN4.0.2 DEBIAN9 UOS20"
+XINCHUANG_OS="ns10 uos20"
 SUPPORTED_OS="$REDHAT_OS $DEBIAN_OS"
 REDHAT_WITHOUT_CENTOS6=`echo $REDHAT_OS |sed s/CENTOS6//`
 
@@ -122,6 +123,7 @@ DEFAULT_MN_PORT='8080'
 MN_PORT="$DEFAULT_MN_PORT"
 
 DEFAULT_UI_PORT='5000'
+RESOLV_CONF='/etc/resolv.conf'
 
 BASEARCH=`uname -m`
 ZSTACK_RELEASE=''
@@ -140,6 +142,13 @@ stop_zstack_tui() {
   sed -i 's/Restart=always/Restart=no/g' $ZSTACK_TUI_SERVICE 2>/dev/null
   systemctl daemon-reload
   pkill -9 zstack_tui
+}
+
+disable_zstack_tui() {
+  sed -i '/agetty -n/s/ -n -l \/usr\/local\/zstack_tui\/zstack_tui//g' $ZSTACK_TUI_SERVICE 2>/dev/null
+  systemctl daemon-reload
+  pkill -9 zstack_tui
+  systemctl restart getty@tty1.service
 }
 
 # stop zstack_tui to prevent zstack auto installation
@@ -855,6 +864,11 @@ zstack  hard  nproc  $nr_open
 EOF
 }
 
+do_check_resolv_conf(){
+    [ ! -f $RESOLV_CONF ] && touch $RESOLV_CONF
+    chmod a+r $RESOLV_CONF
+}
+
 do_config_ansible(){
     mkdir -p /etc/ansible
     mkdir -p /var/log/ansible
@@ -949,6 +963,7 @@ You can also add '-q' to installer, then Installer will help you to remove it.
     fi
     do_enable_sudo
     do_config_limits
+    do_check_resolv_conf
     pass
 }
 
@@ -2772,7 +2787,7 @@ create_apt_source(){
 deb file:///opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/ Packages/
 EOF
     mkdir -p /etc/apt/sources.list.d/tmp_bak
-    mv /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/tmp_bak 2>/dev/null
+    mv /etc/apt/sources.list.d/!\(zstack-local.list\) /etc/apt/sources.list.d/tmp_bak/ 2>/dev/null
     #Fix Ubuntu conflicted dpkg lock issue.
     if [ -f /etc/init.d/unattended-upgrades ]; then
         /etc/init.d/unattended-upgrades stop  >>$ZSTACK_INSTALL_LOG 2>&1
@@ -3007,6 +3022,9 @@ EOF
 
 check_sync_local_repos() {
   echo_subtitle "Check local repo version"
+  if [[ $XINCHUANG_OS =~ $ZSTACK_RELEASE ]]; then
+      SKIP_SYNC='y'
+  fi
   [ -f ".repo_version" ] || fail2 "Cannot found current repo_version file, please make sure you have correct zstack-installer package."
   if [ -d /opt/zstack-dvd/$BASEARCH ];then
     for release in `ls /opt/zstack-dvd/$BASEARCH`;do
@@ -3691,7 +3709,7 @@ if [ x"$UPGRADE" = x'y' ]; then
     echo " Your old zstack was saved in $zstack_home/upgrade/`ls $zstack_home/upgrade/ -rt|tail -1`"
     echo_custom_pcidevice_xml_warning_if_need
     echo_star_line
-    start_zstack_tui
+    [ "$BASEARCH" == "x86_64" ] && start_zstack_tui || disable_zstack_tui
     post_scripts_to_restore_iptables_rules
     if [[ $DEBIAN_OS =~ $OS ]];then
         post_restore_source_on_debian
@@ -3891,6 +3909,6 @@ fi
 echo_chrony_server_warning_if_need
 check_ha_need_upgrade
 echo_star_line
-start_zstack_tui
+[ "$BASEARCH" == "x86_64" ] && start_zstack_tui || disable_zstack_tui
 post_scripts_to_restore_iptables_rules
 

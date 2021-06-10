@@ -1,5 +1,5 @@
 # Use network installation
-url --url=ftp://PXESERVER_DHCP_NIC_IP/zstack-dvd
+url --url=ftp://PXESERVER_DHCP_NIC_IP/zstack-dvd/ARCH
 repo --name=qemu-kvm-ev --baseurl=ftp://PXESERVER_DHCP_NIC_IP/zstack-dvd/Extra/qemu-kvm-ev
 
 # Text mode
@@ -29,7 +29,7 @@ def get_ip_address(mac):
 
 # ipmi address
 cmd0 = r'''modprobe ipmi_watchdog; modprobe ipmi_poweroff; modprobe ipmi_devintf; modprobe ipmi_si; modprobe ipmi_msghandler'''
-cmd1 = r'''for i in {1..15}; do ipmitool lan print $i && break; done | grep "IP Address\s*:"'''
+cmd1 = r'''for i in {1..15}; do ipmitool lan print $i 2>/dev/null && break; done | grep "IP Address\s*:"'''
 cmd2 = r'''ipmitool sol info 1 2>/dev/null | grep "Payload Port\s*:"'''
 status0, output0 = commands.getstatusoutput(cmd0)
 status1, output1 = commands.getstatusoutput(cmd1)
