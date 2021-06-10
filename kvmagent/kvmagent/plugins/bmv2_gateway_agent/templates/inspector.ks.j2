@@ -28,7 +28,9 @@ def get_ipmi_info():
         stdout = commands.getoutput(cmd)
         for line in stdout.split('\n'):
             if 'IP Address' in line and 'Source' not in line:
-                addr = line.split(':')[-1].strip()
+                temp_addr = line.split(':')[-1].strip()
+                if temp_addr != '0.0.0.0':
+                    addr = temp_addr
                 break
 
     cmd = 'ipmitool sol info 1'
