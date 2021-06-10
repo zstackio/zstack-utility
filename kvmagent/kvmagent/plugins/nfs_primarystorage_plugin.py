@@ -389,6 +389,12 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         rsp.size = ret
         return jsonobject.dumps(rsp)
 
+    def _get_mount_path(self, uuid):
+        path = self.mount_path.get(uuid)
+        if not path:
+            raise Exception('cannot find mount path of primary storage[uuid: %s]' % uuid)
+        return path
+
     def _get_disk_capacity(self, uuid):
         path = self.mount_path.get(uuid)
         if not path:
@@ -864,3 +870,27 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         rsp = GetDownloadBitsFromKvmHostProgressRsp()
         rsp.totalSize = linux.get_total_file_size(cmd.volumePaths)
         return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def link_volume(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        self.link_new_dir(cmd.srcDir, cmd.dstDir, self._get_mount_path(cmd.uuid))
+
+        rsp = NfsResponse()
+        self._set_capacity_to_response(cmd.uuid, rsp)
+        return jsonobject.dumps(rsp)
+
+    def link_new_dir(self, src_dir, dst_dir, storage_dir):
+        src_dst_dict = {}
+        for f in linux.list_all_file(src_dir):
+            src_dst_dict[f] = os.path.realpath(f.replace(src_dir, dst_dir))
+
+        for f in linux.list_all_file(storage_dir):
+            backing_file = os.path.realpath(linux.qcow2_get_backing_file(f))
+            if backing_file in src_dst_dict:
+                dst_file = src_dst_dict[backing_file]
+                linux.link(backing_file, dst_file)
+                linux.qcow2_rebase_no_check(dst_file, f, "qcow2")
+
+        for src_file, dst_file in src_dst_dict.iteritems():
+            linux.link(src_file, dst_file)
