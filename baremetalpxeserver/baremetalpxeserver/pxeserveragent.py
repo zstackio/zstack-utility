@@ -367,7 +367,10 @@ http {
         # DETECT ROGUE DHCP SERVER
         cmd = json_object.loads(req[http.REQUEST_BODY])
         if platform.machine() == "x86_64":
-            ret, output = bash_ro("nmap -sU -p67 --script broadcast-dhcp-discover -e %s | grep 'Server Identifier'" % cmd.dhcpInterface)
+            mac = self._get_mac_address(cmd.dhcpInterface)
+            ret, output = bash_ro(
+                "nmap -sU -p67 --script broadcast-dhcp-discover --script-args broadcast-dhcp-discover.mac=%s -e %s | grep 'Server Identifier'" % (
+                mac, cmd.dhcpInterface))
             if ret == 0:
                 raise PxeServerError("rogue dhcp server[IP:%s] detected" % output.strip().split(' ')[-1])
 
