@@ -110,6 +110,7 @@ class Daemon(object):
 
         locale.setlocale(locale.LC_ALL, 'C')
         os.environ["LC_ALL"]="C"
+        os.environ["COLUMNS"]="4096"
 
         # Get the pid from the pidfile
         try:
