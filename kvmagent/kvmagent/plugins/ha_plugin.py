@@ -317,8 +317,8 @@ def kill_vm(maxAttempts, mountPaths=None, isFileSystem=None):
 
     # kill vm's qemu process
     vm_pids_dict = {}
-    for vm_uuid in vm_in_process_uuid_list.split('\n'):
-        vm_uuid = vm_uuid.strip(' \t\n\r')
+    for vm_uuid in vm_in_process_uuid_list.splitlines():
+        vm_uuid = vm_uuid.strip()
         if not vm_uuid:
             continue
 
@@ -326,8 +326,11 @@ def kill_vm(maxAttempts, mountPaths=None, isFileSystem=None):
                 and not need_kill(vm_uuid, mountPaths, isFileSystem):
             continue
 
-        vm_pid = shell.call("ps aux | grep qemu-kvm | grep -v grep | awk '/%s/{print $2}'" % vm_uuid)
-        vm_pid = vm_pid.strip(' \t\n\r')
+        vm_pid = linux.find_vm_pid_by_uuid(vm_uuid)
+        if not vm_pid:
+            logger.warn('vm %s pid not found' % vm_uuid)
+            continue
+
         vm_pids_dict[vm_uuid] = vm_pid
 
     for vm_uuid, vm_pid in vm_pids_dict.items():
