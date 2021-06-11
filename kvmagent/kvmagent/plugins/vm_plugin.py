@@ -589,6 +589,10 @@ class BlockStreamResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(BlockStreamResponse, self).__init__()
 
+class CheckGuestToolsIsoExistsRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(CheckGuestToolsIsoExistsRsp, self).__init__()
+
 class AttachGuestToolsIsoToVmCmd(kvmagent.AgentCommand):
     def __init__(self):
         super(AttachGuestToolsIsoToVmCmd, self).__init__()
@@ -4572,6 +4576,7 @@ class VmPlugin(kvmagent.KvmAgent):
     CHECK_MOUNT_DOMAIN_PATH = "/check/mount/domain"
     KVM_RESIZE_VOLUME_PATH = "/volume/resize"
     VM_PRIORITY_PATH = "/vm/priority"
+    CHECK_GUEST_TOOLS_ISO_EXISTS_PATH = "/vm/guesttools/checkiso"
     ATTACH_GUEST_TOOLS_ISO_TO_VM_PATH = "/vm/guesttools/attachiso"
     DETACH_GUEST_TOOLS_ISO_FROM_VM_PATH = "/vm/guesttools/detachiso"
     GET_VM_GUEST_TOOLS_INFO_PATH = "/vm/guesttools/getinfo"
@@ -6385,6 +6390,15 @@ class VmPlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     @in_bash
+    def check_guest_tools_iso_exists(self, req):
+        rsp = CheckGuestToolsIsoExistsRsp()
+        if not os.path.exists(GUEST_TOOLS_ISO_PATH):
+            rsp.success = False
+            rsp.error = "check guestToolsIso:%s not exists" % GUEST_TOOLS_ISO_PATH
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
     def attach_guest_tools_iso_to_vm(self, req):
         rsp = AttachGuestToolsIsoToVmRsp()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -7046,6 +7060,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CHECK_MOUNT_DOMAIN_PATH, self.check_mount_domain)
         http_server.register_async_uri(self.KVM_RESIZE_VOLUME_PATH, self.kvm_resize_volume)
         http_server.register_async_uri(self.VM_PRIORITY_PATH, self.vm_priority)
+        http_server.register_async_uri(self.CHECK_GUEST_TOOLS_ISO_EXISTS_PATH, self.check_guest_tools_iso_exists)
         http_server.register_async_uri(self.ATTACH_GUEST_TOOLS_ISO_TO_VM_PATH, self.attach_guest_tools_iso_to_vm)
         http_server.register_async_uri(self.DETACH_GUEST_TOOLS_ISO_FROM_VM_PATH, self.detach_guest_tools_iso_from_vm)
         http_server.register_async_uri(self.GET_VM_GUEST_TOOLS_INFO_PATH, self.get_vm_guest_tools_info)
