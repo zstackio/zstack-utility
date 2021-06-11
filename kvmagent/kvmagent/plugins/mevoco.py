@@ -329,8 +329,8 @@ class DhcpEnv(object):
             iproute.set_link_attribute(INNER_DEV, netns=NAMESPACE_NAME)
 
         #dhcp namespace should not add ipv6 address based on router advertisement
-        bash_errorout("ip netns exec {{NAMESPACE_NAME}} sysctl -w net.ipv6.conf.all.accept_ra=0")
-        bash_errorout("ip netns exec {{NAMESPACE_NAME}} sysctl -w net.ipv6.conf.{{INNER_DEV}}.accept_ra=0")
+        bash_roe("ip netns exec {{NAMESPACE_NAME}} sysctl -w net.ipv6.conf.all.accept_ra=0")
+        bash_roe("ip netns exec {{NAMESPACE_NAME}} sysctl -w net.ipv6.conf.{{INNER_DEV}}.accept_ra=0")
 
         ipv4_exists = iproute.is_addresses_exists(namespace=NAMESPACE_NAME, address=DHCP_IP, ip_version=4, ifname=INNER_DEV)
         ipv6_exists = iproute.is_addresses_exists(namespace=NAMESPACE_NAME, address=DHCP6_IP, ip_version=6, ifname=INNER_DEV)
