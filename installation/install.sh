@@ -433,7 +433,7 @@ fail(){
     #echo "-------------"
     echo "$*  \n\nThe detailed installation log could be found in $ZSTACK_INSTALL_LOG " > $INSTALLATION_FAILURE
     #echo "-------------"
-    start_zstack_tui
+    disable_zstack_tui
     exit 1
 }
 
@@ -447,7 +447,7 @@ fail2(){
     echo "-------------"
     echo "$*  \n\nThe detailed installation log could be found in $ZSTACK_INSTALL_LOG " > $INSTALLATION_FAILURE
     echo "-------------"
-    start_zstack_tui
+    disable_zstack_tui
     exit 1
 }
 
@@ -3808,7 +3808,7 @@ if [ x"$UPGRADE" = x'y' ]; then
         echo -e "$(tput setaf 2)${PRODUCT_NAME,,}-ctl has been upgraded to version: ${VERSION}$(tput sgr0)"
         echo ""
         echo_star_line
-        start_zstack_tui
+        disable_zstack_tui
         exit 0
     fi
 
@@ -3853,7 +3853,7 @@ if [ x"$UPGRADE" = x'y' ]; then
     #echo " Your old zstack was saved in $zstack_home/upgrade/`ls $zstack_home/upgrade/ -rt|tail -1`"
     echo_custom_pcidevice_xml_warning_if_need
     echo_star_line
-    [ "$BASEARCH" == "x86_64" ] && start_zstack_tui || disable_zstack_tui
+    disable_zstack_tui
     post_scripts_to_restore_iptables_rules
     if [[ $DEBIAN_OS =~ $OS ]];then
         post_restore_source_on_debian
@@ -3880,7 +3880,7 @@ if [ ! -z $ONLY_INSTALL_LIBS ];then
     echo "${PRODUCT_NAME} management node and Tomcat are not installed."
     echo "P.S.: selinux is disabled!"
     echo_star_line
-    start_zstack_tui
+    disable_zstack_tui
     exit 0
 fi
 
@@ -3907,7 +3907,7 @@ if [ ! -z $ONLY_INSTALL_ZSTACK ]; then
     echo_chrony_server_warning_if_need
     check_ha_need_upgrade
     echo_star_line
-    start_zstack_tui
+    disable_zstack_tui
     exit 0
 fi
 
@@ -4052,6 +4052,6 @@ fi
 echo_chrony_server_warning_if_need
 check_ha_need_upgrade
 echo_star_line
-[ "$BASEARCH" == "x86_64" ] && start_zstack_tui || disable_zstack_tui
+disable_zstack_tui
 post_scripts_to_restore_iptables_rules
 
