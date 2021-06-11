@@ -1561,12 +1561,17 @@ class Vm(object):
     timeout_detached_vol = set()
 
     @staticmethod
-    def get_device_unit(device_id):
-        # type: (int) -> int
+    def check_device_exceed_limit(device_id):
+        # type: (int) -> None
         if device_id >= len(Vm.DEVICE_LETTERS):
             err = "exceeds max disk limit, device id[%s], but only 0 ~ %d are allowed" % (device_id, len(Vm.DEVICE_LETTERS) - 1)
             logger.warn(err)
             raise kvmagent.KvmError(err)
+
+    @staticmethod
+    def get_device_unit(device_id):
+        # type: (int) -> int
+        Vm.check_device_exceed_limit(device_id)
 
         # e.g. sda -> unit 0    sdf -> unit 5, same as libvirt
         return ord(Vm.DEVICE_LETTERS[device_id]) - ord(Vm.DEVICE_LETTERS[0])
@@ -1984,10 +1989,7 @@ class Vm(object):
             e(volume_xml_obj, 'serial', vol_uuid)
 
     def _attach_data_volume(self, volume, addons):
-        if volume.deviceId >= len(self.DEVICE_LETTERS):
-            err = "vm[uuid:%s] exceeds max disk limit, device id[%s], but only 0 ~ %d are allowed" % (self.uuid, volume.deviceId, len(self.DEVICE_LETTERS) - 1)
-            logger.warn(err)
-            raise kvmagent.KvmError(err)
+        Vm.check_device_exceed_limit(volume.deviceId)
 
         def volume_native_aio(volume_xml_obj):
             if not addons:
@@ -3909,24 +3911,15 @@ class Vm(object):
                 volume_ide_config = volume_ide_configs.pop(0)
                 e(_disk, 'address', None, {'type': 'drive', 'bus': volume_ide_config.bus, 'unit': volume_ide_config.unit})
 
-            if default_bus_type == "ide" and cmd.imagePlatform.lower() == "other":
-                Vm.DEVICE_LETTERS=Vm.DEVICE_LETTERS.replace('de','')
+            all_ide = default_bus_type == "ide" and cmd.imagePlatform.lower() == "other"
+            DEVICE_LETTERS = Vm.DEVICE_LETTERS if not all_ide else Vm.DEVICE_LETTERS.replace(Vm.ISO_DEVICE_LETTERS, "")
+
             volumes.sort(key=lambda d: d.deviceId)
+            Vm.check_device_exceed_limit(volumes[-1].deviceId)
             scsi_device_ids = [v.deviceId for v in volumes if v.useVirtioSCSI]
             for v in volumes:
-                if v.deviceId >= len(Vm.DEVICE_LETTERS):
-                    err = "exceeds max disk limit, device id[%s], but only 0 ~ %d are allowed" % (v.deviceId, len(Vm.DEVICE_LETTERS) - 1)
-                    logger.warn(err)
-                    raise kvmagent.KvmError(err)
-
-                dev_letter = Vm.DEVICE_LETTERS[v.deviceId]
-                if v.useVirtioSCSI:
-                    scsi_device_id = scsi_device_ids.pop()
-                    if scsi_device_id >= len(Vm.DEVICE_LETTERS):
-                        err = "exceeds max disk limit, device id[%s], but only 0 ~ %d are allowed" % (scsi_device_id, len(Vm.DEVICE_LETTERS) - 1)
-                        logger.warn(err)
-                        raise kvmagent.KvmError(err)
-                    dev_letter = Vm.DEVICE_LETTERS[scsi_device_id]
+                dev_letter_index = v.deviceId if not v.useVirtioSCSI else scsi_device_ids.pop()
+                dev_letter = DEVICE_LETTERS[dev_letter_index]
 
                 if v.deviceType == 'quorum':
                     vol = quorumbased_volume(dev_letter, v)
