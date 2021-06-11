@@ -1612,7 +1612,7 @@ def set_vm_priority(pid, priorityConfig):
         logger.warn("set vm %s oomScoreAdj failed" % priorityConfig.vmUuid)
 
 def find_vm_pid_by_uuid(uuid):
-    return shell.call("""ps aux | egrep "qemu[-]kvm|qemu[-]system" | awk '/%s/{print $2}'""" % uuid).strip()
+    return shell.call("""ps x | awk '/qemu[-].*%s/{print $1; exit}'""" % uuid).strip()
 
 def find_vm_process_by_uuid(uuid):
     return shell.call("""ps aux | egrep "qemu[-]kvm|qemu[-]system" | awk '/%s/'""" % uuid).strip()
