@@ -235,6 +235,8 @@ def is_multipath(dev_name):
         return True
     return False
 
+def get_scsi_id(dev_path):
+    return bash.bash_o("/usr/lib/udev/scsi_id -g -u -d %s" % dev_path).strip()
 
 def get_multipath_dmname(dev_name):
     # if is multipath dev, return;
