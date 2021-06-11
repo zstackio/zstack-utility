@@ -1,3 +1,5 @@
+import platform
+
 from jinja2 import Template
 
 import time
@@ -81,6 +83,8 @@ class SecurityInspection(kvmagent.KvmAgent):
     def start_security_inspection(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
+        if platform.machine() != "x86_64":
+            return jsonobject.dumps(rsp)
 
         # self.action = cmd.action
         # self.start_time = time.time()

@@ -680,6 +680,85 @@ def start_kvmagent():
     host_post_info.post_label_param = "zstack-kvmagent"
     run_remote_command(command, host_post_info)
 
+def install_suricata():
+    # install suricata
+    command = "mkdir -p /etc/suricata/; mkdir -p /var/log/suricata/; mkdir -p /var/lib/suricata/rules/"
+    run_remote_command(command, host_post_info)
+
+    copy_arg = CopyArg()
+    copy_arg.src = "{0}/suricata.yaml".format(suricata_src_dir)
+    copy_arg.dest = "/etc/suricata/suricata.yaml"
+    copy_arg.args = "mode=777"
+    copy(copy_arg, host_post_info)
+
+    copy_arg = CopyArg()
+    copy_arg.src = "{0}/classification.config".format(suricata_src_dir)
+    copy_arg.dest = "/etc/suricata/classification.config"
+    copy_arg.args = "mode=777"
+    copy(copy_arg, host_post_info)
+
+    copy_arg = CopyArg()
+    copy_arg.src = "{0}/reference.config".format(suricata_src_dir)
+    copy_arg.dest = "/etc/suricata/reference.config"
+    copy_arg.args = "mode=777"
+    copy(copy_arg, host_post_info)
+
+    copy_arg = CopyArg()
+    copy_arg.src = "{0}/threshold.config".format(suricata_src_dir)
+    copy_arg.dest = "/etc/suricata/threshold.config"
+    copy_arg.args = "mode=777"
+    copy(copy_arg, host_post_info)
+
+    copy_arg = CopyArg()
+    copy_arg.src = "{0}/zstack.rules".format(suricata_src_dir)
+    copy_arg.dest = "/var/lib/suricata/rules/zstack.rules"
+    copy_arg.args = "mode=777"
+    copy(copy_arg, host_post_info)
+
+    copy_arg = CopyArg()
+    copy_arg.src = "{0}/suricata".format(suricata_src_dir)
+    copy_arg.dest = "/usr/local/bin/suricata"
+    copy_arg.args = "mode=777"
+    copy(copy_arg, host_post_info)
+
+    copy_arg = CopyArg()
+    copy_arg.src = "{0}/libhtp.so.2.0.0".format(suricata_src_dir)
+    copy_arg.dest = "/usr/local/lib/"
+    copy_arg.args = "mode=777"
+    copy(copy_arg, host_post_info)
+
+    copy_arg = CopyArg()
+    copy_arg.src = "{0}/libyaml-0.so.2.0.4".format(suricata_src_dir)
+    copy_arg.dest = "/usr/lib64/"
+    copy_arg.args = "mode=777"
+    copy(copy_arg, host_post_info)
+
+    command = "mkdir -p /var/lib/zstack/io-control"
+    run_remote_command(command, host_post_info)
+
+    copy_arg = CopyArg()
+    copy_arg.src = "{0}/ioControl".format(io_control_dir)
+    copy_arg.dest = "/var/lib/zstack/io-control/ioControl"
+    copy_arg.args = "mode=777"
+    copy(copy_arg, host_post_info)
+
+    copy_arg = CopyArg()
+    copy_arg.src = "{0}/inetv.tpl".format(io_control_dir)
+    copy_arg.dest = "/var/lib/zstack/io-control/inetv.tpl"
+    copy_arg.args = "mode=777"
+    copy(copy_arg, host_post_info)
+
+    copy_arg = CopyArg()
+    copy_arg.src = "{0}/netHelper.tpl".format(io_control_dir)
+    copy_arg.dest = "/var/lib/zstack/io-control/netHelper.tpl"
+    copy_arg.args = "mode=777"
+    copy(copy_arg, host_post_info)
+
+    command = "cd /usr/local/lib/;if [ ! -f libhtp.so.2 ]; then ln -s libhtp.so.2.0.0 libhtp.so.2; fi; if [ ! -f libhtp.so ]; then ln -s libhtp.so.2.0.0 libhtp.so; fi"
+    run_remote_command(command, host_post_info)
+
+    command = "cd /usr/lib64/;if [ ! -f libyaml-0.so.2 ]; then ln -s libyaml-0.so.2.0.4 libyaml-0.so.2; fi"
+    run_remote_command(command, host_post_info)
 
 check_nested_kvm(host_post_info)
 install_kvm_pkg()
@@ -697,6 +776,7 @@ install_virtualenv()
 set_legacy_iptables_ebtables()
 install_agent_pkg()
 do_auditd_config()
+install_suricata()
 start_kvmagent()
 
 host_post_info.start_time = start_time
