@@ -274,6 +274,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     CREATE_VOLUME_FROM_CACHE_PATH = "/sharedblock/createrootvolume"
     DELETE_BITS_PATH = "/sharedblock/bits/delete"
     CREATE_TEMPLATE_FROM_VOLUME_PATH = "/sharedblock/createtemplatefromvolume"
+    CREATE_IMAGE_CACHE_FROM_VOLUME_PATH = "/sharedblock/createimagecachefromvolume"
     UPLOAD_BITS_TO_SFTP_BACKUPSTORAGE_PATH = "/sharedblock/sftp/upload"
     DOWNLOAD_BITS_FROM_SFTP_BACKUPSTORAGE_PATH = "/sharedblock/sftp/download"
     UPLOAD_BITS_TO_IMAGESTORE_PATH = "/sharedblock/imagestore/upload"
@@ -308,6 +309,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CREATE_VOLUME_FROM_CACHE_PATH, self.create_root_volume)
         http_server.register_async_uri(self.DELETE_BITS_PATH, self.delete_bits)
         http_server.register_async_uri(self.CREATE_TEMPLATE_FROM_VOLUME_PATH, self.create_template_from_volume)
+        http_server.register_async_uri(self.CREATE_IMAGE_CACHE_FROM_VOLUME_PATH, self.create_image_cache_from_volume)
         http_server.register_async_uri(self.UPLOAD_BITS_TO_SFTP_BACKUPSTORAGE_PATH, self.upload_to_sftp)
         http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_SFTP_BACKUPSTORAGE_PATH, self.download_from_sftp)
         http_server.register_async_uri(self.UPLOAD_BITS_TO_IMAGESTORE_PATH, self.upload_to_imagestore)
@@ -760,6 +762,28 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             logger.info('deleting lv volume: ' + install_abs_path)
             lvm.delete_lv(install_abs_path)
 
+    @staticmethod
+    def get_total_required_size(abs_path):
+        virtual_size = linux.qcow2_virtualsize(abs_path)
+        total_size = -1
+        if linux.get_img_fmt(abs_path) == "qcow2":
+            try:
+                total_size = linux.qcow2_measure_required_size(abs_path)
+            except Exception as e:
+                logger.warn("can not get qcow2 measure size: %s" % e)
+
+        if total_size > virtual_size or total_size == -1:
+            total_size = virtual_size
+
+        return total_size
+
+    @staticmethod
+    @bash.in_bash
+    def compare_qcow2(src, dst):
+        logger.debug("comparing qcow2 between %s and %s")
+        bash.bash_errorout("time %s %s %s" % (qemu_img.subcmd('compare'), src, dst))
+        logger.debug("confirmed qcow2 %s and %s are identical" % (src, dst))
+
     @kvmagent.replyerror
     def create_template_from_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -771,16 +795,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             lvm.do_active_lv(volume_abs_path, lvm.LvmlockdLockType.SHARE, True)
 
         with lvm.RecursiveOperateLv(volume_abs_path, shared=cmd.sharedVolume, skip_deactivate_tags=[IMAGE_TAG]):
-            virtual_size = linux.qcow2_virtualsize(volume_abs_path)
-            if linux.get_img_fmt(volume_abs_path) == "qcow2":
-                total_size = linux.qcow2_measure_required_size(volume_abs_path)
-            else:
-                total_size = virtual_size
-
-            if total_size > virtual_size:
-                total_size = virtual_size
-
             if not lvm.lv_exists(install_abs_path):
+                total_size = self.get_total_required_size(volume_abs_path)
                 lvm.create_lv_from_absolute_path(install_abs_path, total_size,
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
             with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
@@ -788,19 +804,37 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 linux.create_template(volume_abs_path, install_abs_path, shell=t_shell)
                 logger.debug('successfully created template[%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
 
+                if cmd.compareQcow2:
+                    self.compare_qcow2(volume_abs_path, install_abs_path)
+
                 rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(install_abs_path)
-                if cmd.compareQcow2 is True:
-                    logger.debug("comparing qcow2 between %s and %s")
-                    bash.bash_errorout("time %s %s %s" % (qemu_img.subcmd('compare'), volume_abs_path, install_abs_path))
-                    logger.debug("confirmed qcow2 %s and %s are identical" % (volume_abs_path, install_abs_path))
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
 
-    @staticmethod
-    @bash.in_bash
-    def compare(src, dst):
-        return bash.bash_r("%s %s %s" % (qemu_img.subcmd('compare'), src, dst)) == 0
+    @kvmagent.replyerror
+    def create_image_cache_from_volume(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CreateTemplateFromVolumeRsp()
+        volume_abs_path = translate_absolute_path_from_install_path(cmd.volumePath)
+        install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
+
+        with lvm.RecursiveOperateLv(volume_abs_path, shared=True, skip_deactivate_tags=[IMAGE_TAG]):
+            if not lvm.lv_exists(install_abs_path):
+                total_size = self.get_total_required_size(volume_abs_path)
+                lvm.create_lv_from_absolute_path(install_abs_path, total_size, IMAGE_TAG)
+            with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
+                t_shell = traceable_shell.get_shell(cmd)
+                linux.create_template(volume_abs_path, install_abs_path, shell=t_shell)
+                logger.debug('successfully created template cache [%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
+
+                if cmd.compareQcow2:
+                    self.compare_qcow2(volume_abs_path, install_abs_path)
+
+                rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(install_abs_path)
+
+        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def upload_to_sftp(self, req):
@@ -1186,10 +1220,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                     target_backing_file = current_backing_file.replace(previous_ps_uuid, target_ps_uuid)
 
                     if struct.compareQcow2:
-                        logger.debug("comparing qcow2 between %s and %s" % (current_abs_path, target_abs_path))
-                        if not self.compare(current_abs_path, target_abs_path):
-                            raise Exception("qcow2 %s and %s are not identical" % (current_abs_path, target_abs_path))
-                        logger.debug("confirmed qcow2 %s and %s are identical" % (current_abs_path, target_abs_path))
+                        self.compare_qcow2(current_abs_path, target_abs_path)
                     if current_backing_file is not None and current_backing_file != "":
                         lvm.active_lv(target_backing_file, lvm.LvmlockdLockType.SHARE)
                         logger.debug("rebase %s to %s" % (target_abs_path, target_backing_file))
