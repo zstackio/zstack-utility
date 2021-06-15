@@ -1677,6 +1677,17 @@ def listPath(path):
         return [ os.path.join(path, p) for p in os.listdir(path) ]
     return [ os.path.realpath(os.path.join(path, p)) for p in os.listdir(path) ]
 
+
+def list_all_file(path):
+    for fi in os.listdir(path):
+        fi_d = os.path.join(path, fi)
+        if os.path.isdir(fi_d):
+            for f in list_all_file(fi_d):
+                yield f
+        else:
+            yield fi_d
+
+
 def find_file(file_name, current_path, parent_path_depth=2, sub_folder_first=False):
     ''' find_file will return a file path, when finding a file in given path.
         The default search parent path depth is 2. It means loader will only
@@ -2117,6 +2128,16 @@ def write_file_lines(path, contents, create_if_not_exist=False):
             pass
     return path
 
+
+def link(source, link_name):
+    if os.path.exists(link_name) and os.stat(link_name).st_ino == os.stat(source).st_ino:
+        return
+
+    if not os.path.exists(os.path.dirname(link_name)):
+        os.makedirs(os.path.dirname(link_name), 0755)
+
+    os.link(source, link_name)
+    logger.debug("link %s to %s" % (source, link_name))
 
 def tail_1(path):
     if not os.path.exists(path):
