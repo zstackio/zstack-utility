@@ -1097,7 +1097,7 @@ if __name__ == "__main__":
         if self.IS_YUM:
             releasever = kvmagent.get_host_yum_release()
             shell.run("yum remove -y qemu-kvm-tools-ev")
-            yum_cmd = "export YUM0={};yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn,mlnx-ofed{} install `cat /var/lib/zstack/dependencies` -y".format(releasever, ',zstack-experimental-mn' if cmd.enableExpRepo else '')
+            yum_cmd = "export YUM0={};yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn,mlnx-ofed install `cat /var/lib/zstack/dependencies` -y".format(releasever)
             if shell.run("export YUM0={};yum --disablerepo=* --enablerepo=zstack-mn repoinfo".format(releasever)) != 0:
                 rsp.success = False
                 rsp.error = "no zstack-mn repo found, cannot update kvmagent dependencies"
@@ -1109,6 +1109,20 @@ if __name__ == "__main__":
                 rsp.error = "failed to update kvmagent dependencies using zstack-mn,qemu-kvm-ev-mn,mlnx-ofed repo"
             else :
                 logger.debug("successfully run: {}".format(yum_cmd))
+
+            if cmd.enableExpRepo:
+                exclude = "--exclude=" + cmd.excludePackages if cmd.excludePackages else ""
+                updates = cmd.updatePackages if cmd.updatePackages else ""
+                yum_cmd = "export YUM0={};yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn,mlnx-ofed-mn,zstack-experimental-mn {} update {} -y"
+                yum_cmd = yum_cmd.format(releasever, exclude, updates)
+                if shell.run("export YUM0={};yum --disablerepo=* --enablerepo=zstack-experimental-mn repoinfo".format(releasever)) != 0:
+                    rsp.success = False
+                    rsp.error = "no zstack-experimental-mn repo found, cannot update host dependency"
+                elif shell.run(yum_cmd) != 0:
+                    rsp.success = False
+                    rsp.error = "failed to update host dependency using zstack-experimental-mn repo"
+                else:
+                    logger.debug("successfully run: %s" % yum_cmd)
         elif self.IS_APT:
             apt_cmd = "apt-get clean && apt-get -y --allow-unauthenticated install `cat /var/lib/zstack/dependencies`"
             if shell.run(apt_cmd) != 0:
