@@ -66,7 +66,7 @@ apply_resource_settings() {
 
 # enable coredump for existing qemu-kvm processes
 enable_qemukvm_coredump() {
-	for pid in `ps -x -ocomm,pid | awk '$1 == "qemu-kvm" {print $2}'`; do
+	for pid in `ps -x -ocomm,pid | awk '$1 == "qemu-kvm"||$1 ~ "^qemu-system" {print $2}'`; do
 		prlimit --core=$((4*1024*1024)) --pid $pid || true
 	done
 }
