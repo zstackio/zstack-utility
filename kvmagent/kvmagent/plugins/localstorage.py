@@ -140,6 +140,12 @@ class CreateTemplateFromVolumeRsp(AgentResponse):
         self.encryptUuid = None
         self.hashValue = None
 
+class CreateEmptyVolumeRsp(AgentResponse):
+    def __init__(self):
+        super(CreateEmptyVolumeRsp, self).__init__()
+        self.encryptUuid = None
+        self.hashValue = None
+
 class DownloadFromImageStoreRsp(AgentResponse):
     def __init__(self):
         super(DownloadFromImageStoreRsp, self).__init__()
@@ -765,7 +771,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def create_empty_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AgentResponse()
+        rsp = CreateEmptyVolumeRsp()
         try:
             self.do_create_empty_volume(cmd)
         except Exception as e:
@@ -773,6 +779,14 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             rsp.error = 'unable to create empty volume[uuid:%s, name:%s], %s' % (cmd.volumeUuid, cmd.name, str(e))
             rsp.success = False
             return jsonobject.dumps(rsp)
+        
+        img_path = cmd.installUrl
+        fmt = linux.get_img_fmt(img_path)
+        if fmt == 'qcow2':
+            secret.encrypt_img(img_path)
+            enc_uuid, enc_hash = secret.get_image_encrypt_uuid_and_hash(img_path)
+            rsp.encryptUuid = enc_uuid
+            rsp.hashValue = enc_hash
 
         logger.debug('successfully create empty volume[uuid:%s, size:%s] at %s' % (cmd.volumeUuid, cmd.size, cmd.installUrl))
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
