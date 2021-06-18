@@ -108,7 +108,6 @@ elif distro in DEB_BASED_OS:
 
 else:
     error("ERROR: Unsupported distribution")
-kvmagent/kvmagent/plugins/host_plugin.py
 run_remote_command(add_true_in_command("rm -rf %s/*" % zsn_root), host_post_info)
 command = 'mkdir -p %s ' % (zsn_root)
 run_remote_command(add_true_in_command(command), host_post_info)
