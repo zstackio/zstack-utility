@@ -2028,7 +2028,7 @@ def get_qemu_version():
 
 def get_unmanaged_vms(include_not_zstack_but_in_virsh = False):
     libvirt_uuid_pattern = "'[0-9a-z]{8}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{12}'"
-    cmd = shell.ShellCmd("pgrep -a qemu-kvm | grep -E -o '\-uuid %s' | awk '{print $2}'" % libvirt_uuid_pattern)
+    cmd = shell.ShellCmd("pgrep -a 'qemu-kvm|qemu-system' | grep -E -o '\-uuid %s' | awk '{print $2}'" % libvirt_uuid_pattern)
     cmd(is_exception=False)
     vms_by_ps = cmd.stdout.strip().split() # type: list
 
