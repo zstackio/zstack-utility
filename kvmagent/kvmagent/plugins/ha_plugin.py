@@ -142,7 +142,7 @@ def kill_vm(maxAttempts, mountPaths=None, isFileSystem=None):
                 and not need_kill(vm_uuid, mountPaths, isFileSystem):
             continue
 
-        vm_pid = shell.call("ps aux | grep qemu-kvm | grep -v grep | awk '/%s/{print $2}'" % vm_uuid)
+        vm_pid = shell.call("ps aux | grep 'qemu-kvm\|qemu-system' | grep -v grep | awk '/%s/{print $2}'" % vm_uuid)
         vm_pid = vm_pid.strip(' \t\n\r')
         vm_pids_dict[vm_uuid] = vm_pid
 
