@@ -39,6 +39,8 @@ class LibvirtEventManager():
     EVENT_RESUMED = "Resumed"
     EVENT_STOPPED = "Stopped"
     EVENT_SHUTDOWN = "Shutdown"
+    EVENT_PMSUSPENDED = "PMSuspended"
+    EVENT_CRASHED = "Crashed"
 
     event_strings = (
         EVENT_DEFINED,
@@ -47,7 +49,9 @@ class LibvirtEventManager():
         EVENT_SUSPENDED,
         EVENT_RESUMED,
         EVENT_STOPPED,
-        EVENT_SHUTDOWN
+        EVENT_SHUTDOWN,
+        EVENT_PMSUSPENDED,
+        EVENT_CRASHED
     )
 
     suspend_events = {}

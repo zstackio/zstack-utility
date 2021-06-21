@@ -1128,6 +1128,11 @@ mimetype.assign = (
             windows_meta_data_password = os.path.join(root, 'password')
             with open(windows_meta_data_password, 'w') as fd:
                 fd.write('')
+        
+        if to.agentConfig:
+            pvpanic_file_path = os.path.join(meta_root, 'pvpanic')
+            with open(pvpanic_file_path, 'w') as fd:
+                fd.write(to.agentConfig.pvpanic if to.agentConfig.pvpanic else 'disable')
 
     @in_bash
     def _apply_userdata_restart_httpd(self, to):
