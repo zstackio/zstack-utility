@@ -31,6 +31,7 @@ Python support library for zstack""",
           "beeprint",
           "pyyaml",
           "func_timeout",
+          "six",
           "certifi"
       ],
       entry_points="""
