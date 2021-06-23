@@ -1833,11 +1833,7 @@ def get_running_vm_root_volume_on_pv(vgUuid, pvUuids, checkIo=True):
     # 2. get "-boot order=dc ... -drive id=drive-virtio-disk"
     # 3. make sure io has error
     # 4. filter for pv
-<<<<<<< HEAD
-    out = bash.bash_o("pgrep -a qemu-kvm | grep %s" % vgUuid).strip().splitlines()
-=======
     out = bash.bash_o("pgrep -a 'qemu-kvm|qemu-system' | grep %s" % vgUuid).strip().split("\n")
->>>>>>> 8d9aa59... [BugFix: ZSTACK-41110] add filter qemu-system for get vm by shell command
     if len(out) == 0:
         return []
 
