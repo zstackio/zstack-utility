@@ -17,6 +17,9 @@ fi
 
 DEPLOY_SERVER=$1
 
+LABLE=''
+ARCH=`uname -m`
+
 case `uname -s` in
   Linux)
     AGENT_OS="linux"
@@ -27,39 +30,37 @@ case `uname -s` in
     ;;
 esac
 
-if [ `uname -m` = "x86_64" ]; then
-    ARCH="amd64"
-else
-    ARCH="386"
+if [ x"$ARCH" != x"x86_64" ]; then
+    LABLE="_$ARCH"
 fi
 
-BIN_NAME=zwatch-vm-agent.${AGENT_OS}-${ARCH}.bin
+BIN_NAME="zwatch-vm-agent${LABLE}"
 
 NAME=zwatch-vm-agent.${AGENT_OS}-${ARCH}
 
 echo "curl -s ftp://$DEPLOY_SERVER/agent_version"
 AGENT_VERSION=`curl -s ftp://$DEPLOY_SERVER/agent_version`
-if [[ ! ${AGENT_VERSION} =~ $NAME ]]; then
+if [[ ! ${AGENT_VERSION} =~ ${BIN_NAME} ]]; then
     echo "can't get the ${BIN_NAME} latest version"
     exit 1
 fi
 
-echo "downloading ${BIN_NAME}: ftp://$DEPLOY_SERVER/${BIN_NAME}"
-curl ftp://$DEPLOY_SERVER/${BIN_NAME} --silent -O
+echo "downloading zwatch-vm-agent"
+curl ftp://$DEPLOY_SERVER/zwatch-vm-agent --silent -O
 
-BIN_MD5=`md5sum ${BIN_NAME} | awk '{print $1}'`
-if [[ ! ${AGENT_VERSION} =~ "md5-$NAME=${BIN_MD5}" ]]; then
-    echo "there was an error downloading the ${BIN_NAME}, check md5sum fail"
+BIN_MD5=`md5sum zwatch-vm-agent | awk '{print $1}'`
+if [[ ! ${AGENT_VERSION} =~ "md5-${BIN_NAME}=${BIN_MD5}" ]]; then
+    echo "there was an error downloading the zwatch-vm-agent, check md5sum fail"
     exit 1
 fi
 
 
-echo "install ${BIN_NAME}"
-chmod +x ${BIN_NAME}
-./${BIN_NAME} -i
+echo "install zwatch-vm-agent"
+chmod +x zwatch-vm-agent
+./zwatch-vm-agent -i
 if [ $? != 0 ]; then
-     echo "install ${BIN_NAME} fail"
-     exit 1
+    echo "install zwatch-vm-agent fail"
+    exit 1
 fi
 
 printf "\n" >> /usr/local/zstack/zwatch-vm-agent/conf.yaml

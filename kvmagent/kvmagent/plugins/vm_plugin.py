@@ -903,9 +903,6 @@ def parse_pci_device_address(addr):
     function = addr.split(".")[-1]
     return domain, bus, slot, function
 
-def is_q35_supported():
-    return HOST_ARCH in ['x86_64', 'aarch64']
-
 def get_machineType(machine_type):
     if HOST_ARCH == "aarch64":
         return "virt"
@@ -3185,6 +3182,8 @@ class Vm(object):
         machine_type = get_machineType(cmd.machineType)
         if HOST_ARCH == "aarch64" and cmd.bootMode == 'Legacy':
             raise kvmagent.KvmError("Aarch64 does not support legacy, please change boot mode to UEFI instead of Legacy on your VM or Image.")
+        if cmd.architecture and cmd.architecture != HOST_ARCH:
+            raise kvmagent.KvmError("Image architecture[{}] not matched host architecture[{}].".format(cmd.architecture, HOST_ARCH))
         default_bus_type = ('ide', 'sata', 'scsi')[max(machine_type == 'q35', (HOST_ARCH in ['aarch64', 'mips64el']) * 2)]
         elements = {}
 
@@ -3227,7 +3226,12 @@ class Vm(object):
 
                 def on_aarch64():
                     e(root, 'vcpu', '128', {'placement': 'static', 'current': str(cmd.cpuNum)})
-                    cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
+                    if is_virtual_machine():
+                        cpu = e(root, 'cpu')
+                        e(cpu, 'model', 'cortex-a57')
+                    else:
+                        cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
+                        e(cpu, 'model', attrib={'fallback': 'allow'})
                     mem = cmd.memory / 1024
                     e(cpu, 'topology', attrib={'sockets': '32', 'cores': '4', 'threads': '1'})
                     numa = e(cpu, 'numa')
@@ -3316,12 +3320,12 @@ class Vm(object):
             def on_aarch64():
 
                 def on_redhat():
-                    e(os, 'type', 'hvm', attrib={'arch': 'aarch64', 'machine': 'virt'})
+                    e(os, 'type', 'hvm', attrib={'arch': 'aarch64', 'machine': machine_type})
                     e(os, 'loader', '/usr/share/edk2/aarch64/QEMU_EFI-pflash.raw', attrib={'readonly': 'yes', 'type': 'pflash'})
                     e(os, 'nvram', '/var/lib/libvirt/qemu/nvram/%s.fd' % cmd.vmInstanceUuid, attrib={'template': '/usr/share/edk2/aarch64/vars-template-pflash.raw'})
 
                 def on_debian():
-                    e(os, 'type', 'hvm', attrib={'arch': 'aarch64', 'machine': 'virt'})
+                    e(os, 'type', 'hvm', attrib={'arch': 'aarch64', 'machine': machine_type})
                     e(os, 'loader', '/usr/share/OVMF/QEMU_EFI-pflash.raw', attrib={'readonly': 'yes', 'type': 'rom'})
                     e(os, 'nvram', '/var/lib/libvirt/qemu/nvram/%s.fd' % cmd.vmInstanceUuid, attrib={'template': '/usr/share/OVMF/vars-template-pflash.raw'})
                     
@@ -3395,7 +3399,7 @@ class Vm(object):
             if "hygon" in model_name.lower():
                 if isinstance(cmd.imagePlatform, str) and cmd.imagePlatform.lower() not in ["other", "paravirtualization"]:
                     e(qcmd, "qemu:arg", attrib={"value": "-cpu"})
-                    e(qcmd, "qemu:arg", attrib={"value": "EPYC,vendor=AuthenticAMD,model_id={} Processor".format(" ".join(model_name.split(" ")[0:3]))})
+                    e(qcmd, "qemu:arg", attrib={"value": "EPYC,vendor=AuthenticAMD,model_id={} Processor,+svm".format(" ".join(model_name.split(" ")[0:3]))})
             else:
                 e(qcmd, "qemu:arg", attrib={"value": "-qmp"})
                 e(qcmd, "qemu:arg", attrib={"value": "unix:{}/{}.sock,server,nowait".format(QMP_SOCKET_PATH, cmd.vmInstanceUuid)})
@@ -3481,21 +3485,24 @@ class Vm(object):
                     e(devices, 'emulator', kvmagent.get_colo_qemu_path())
                 else:
                     e(devices, 'emulator', kvmagent.get_qemu_path())
-            # no default usb controller and tablet device for appliance vm
-            if cmd.isApplianceVm:
-                e(devices, 'controller', None, {'type': 'usb', 'model': 'none'})
-                elements['devices'] = devices
-                return
-
-            tablet = e(devices, 'input', None, {'type': 'tablet', 'bus': 'usb'})
-            e(tablet, 'address', None, {'type':'usb', 'bus':'0', 'port':'1'})
 
             @linux.with_arch(todo_list=['aarch64', 'mips64el'])
             def set_keyboard():
                 keyboard = e(devices, 'input', None, {'type': 'keyboard', 'bus': 'usb'})
                 e(keyboard, 'address', None, {'type': 'usb', 'bus': '0', 'port': '2'})
 
-            set_keyboard()
+            def set_tablet():
+                tablet = e(devices, 'input', None, {'type': 'tablet', 'bus': 'usb'})
+                e(tablet, 'address', None, {'type':'usb', 'bus':'0', 'port':'1'})
+
+            # no default usb controller and tablet device for appliance vm
+            if cmd.isApplianceVm:
+                e(devices, 'controller', None, {'type': 'usb', 'model': 'ehci'})
+                set_keyboard()
+            else:
+                set_keyboard()
+                set_tablet()
+
             elements['devices'] = devices
 
         def make_cdrom():
@@ -4185,7 +4192,7 @@ class Vm(object):
             devices = elements['devices']
             e(devices, 'controller', None, {'type': 'scsi', 'model': 'virtio-scsi'})
 
-            if (machine_type == "q35" or machine_type == "virt") and is_q35_supported():
+            if machine_type in ['q35', 'virt']:
                 controller = e(devices, 'controller', None, {'type': 'sata', 'index': '0'})
                 e(controller, 'alias', None, {'name': 'sata'})
                 e(controller, 'address', None, {'type': 'pci', 'domain': '0', 'bus': '0', 'slot': '0x1f', 'function': '2'})
@@ -4296,10 +4303,11 @@ class Vm(object):
         else:
             e(interface, 'source', None, attrib={'bridge': nic.bridgeName})
             e(interface, 'target', None, attrib={'dev': nic.nicInternalName})
-            e(interface, 'alias', None, {'name': 'net%s' % nic.nicInternalName.split('.')[1]})
 
         if nic.pci is not None and (iftype == 'bridge' or iftype == 'vhostuser'):
             e(interface, 'address', None, attrib={'type': nic.pci.type, 'domain': nic.pci.domain, 'bus': nic.pci.bus, 'slot': nic.pci.slot, "function": nic.pci.function})
+        else:
+            e(interface, 'address', None, attrib={'type': "pci"})
 
         if nic.ips and iftype == 'bridge':
             ip4Addr = None
@@ -4385,8 +4393,8 @@ class Vm(object):
             _config_ebtable_rules_for_vfnics()
 
         # to allow vnic/vf communication in same host
-        if nic.pciDeviceAddress is None and nic.physicalInterface is not None:
-            _add_bridge_fdb_entry_for_vnic()
+        # if nic.pciDeviceAddress is None and nic.physicalInterface is not None:
+        #    _add_bridge_fdb_entry_for_vnic()
 
         return interface
     
@@ -4885,18 +4893,6 @@ class VmPlugin(kvmagent.KvmAgent):
             elif rsp.states[uuid] == Vm.VM_STATE_PAUSED:
                 retry_for_paused.append(uuid)
 
-        # Occasionally, virsh might not be able to list all VM instances with
-        # uri=qemu://system.  To prevend this situation, we double check the
-        # 'rsp.states' agaist QEMU process lists.
-        output = bash.bash_o("ps x | grep -P -o 'qemu-kvm.*?-name\s+(guest=)?\K.*?,' | sed 's/.$//'").splitlines()
-        for guest in output:
-            if guest in rsp.states \
-                    or guest.lower() == "ZStack Management Node VM".lower()\
-                    or guest.startswith("guestfs-"):
-                continue
-            logger.warn('guest [%s] not found in virsh list' % guest)
-            rsp.states[guest] = Vm.VM_STATE_RUNNING
-
         time.sleep(0.5)
         if len(retry_for_paused) > 0:
             states, in_shutdown = get_all_vm_sync_states()
@@ -4905,6 +4901,23 @@ class VmPlugin(kvmagent.KvmAgent):
                     rsp.states[uuid] = Vm.VM_STATE_RUNNING
                 elif states[uuid] != Vm.VM_STATE_PAUSED:
                     rsp.states[uuid] = states[uuid]
+
+        # Occasionally, virsh might not be able to list all VM instances with
+        # uri=qemu://system.  To prevend this situation, we double check the
+        # 'rsp.states' agaist QEMU process lists.
+        output = bash.bash_o("ps x | grep -P -o '(qemu-kvm|qemu-system).*?-name\s+(guest=)?\K.*?,' | sed 's/.$//'").splitlines()
+        for guest in output:
+            if guest in rsp.states \
+                    or guest.lower() == "ZStack Management Node VM".lower()\
+                    or guest.startswith("guestfs-"):
+                continue
+            logger.warn('guest [%s] not found in virsh list' % guest)
+            rsp.states[guest] = Vm.VM_STATE_RUNNING
+
+        libvirt_running_vms = rsp.states.keys()
+        no_qemu_process_running_vms = list(set(libvirt_running_vms).difference(set(output)))
+        for vm in no_qemu_process_running_vms:
+            rsp.states[vm] = Vm.VM_STATE_SHUTDOWN
 
         return jsonobject.dumps(rsp)
 
@@ -5026,7 +5039,7 @@ class VmPlugin(kvmagent.KvmAgent):
             self.kill_vm(cmd.uuid)
 
     def kill_vm(self, vm_uuid):
-        output = bash.bash_o("ps x | grep -P -o 'qemu-kvm.*?-name\s+(guest=)?\K%s,' | sed 's/.$//'" % vm_uuid)
+        output = bash.bash_o("ps x | grep -P -o '(qemu-kvm|qemu-system).*?-name\s+(guest=)?\K%s,' | sed 's/.$//'" % vm_uuid)
 
         if vm_uuid not in output:
             return

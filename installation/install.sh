@@ -18,8 +18,9 @@ LEGACY_MINI_INSTALL_ROOT="/usr/local/zstack-mini/"
 export TERM=xterm
 
 OS=''
-REDHAT_OS="CENTOS6 CENTOS7 RHEL7 ALIOS7 ISOFT4 KYLIN10"
+REDHAT_OS="CENTOS6 CENTOS7 RHEL7 ALIOS7 ISOFT4 KYLIN10 EULER20"
 DEBIAN_OS="UBUNTU14.04 UBUNTU16.04 UBUNTU KYLIN4.0.2 DEBIAN9 UOS20"
+XINCHUANG_OS="ns10 uos20"
 SUPPORTED_OS="$REDHAT_OS $DEBIAN_OS"
 REDHAT_WITHOUT_CENTOS6=`echo $REDHAT_OS |sed s/CENTOS6//`
 
@@ -122,6 +123,7 @@ DEFAULT_MN_PORT='8080'
 MN_PORT="$DEFAULT_MN_PORT"
 
 DEFAULT_UI_PORT='5000'
+RESOLV_CONF='/etc/resolv.conf'
 
 BASEARCH=`uname -m`
 ZSTACK_RELEASE=''
@@ -140,6 +142,13 @@ stop_zstack_tui() {
   sed -i 's/Restart=always/Restart=no/g' $ZSTACK_TUI_SERVICE 2>/dev/null
   systemctl daemon-reload
   pkill -9 zstack_tui
+}
+
+disable_zstack_tui() {
+  sed -i '/agetty -n/s/ -n -l \/usr\/local\/zstack_tui\/zstack_tui//g' $ZSTACK_TUI_SERVICE 2>/dev/null
+  systemctl daemon-reload
+  pkill -9 zstack_tui
+  systemctl restart getty@tty1.service
 }
 
 # stop zstack_tui to prevent zstack auto installation
@@ -705,15 +714,16 @@ cs_check_zstack_data_exist(){
 check_system(){
     echo_title "Check System"
     echo ""
-    cat /etc/*-release |egrep -i -h "centos |Red Hat Enterprise|Alibaba|NeoKylin|Kylin Linux Advanced Server release V10" >>$ZSTACK_INSTALL_LOG 2>&1
+    cat /etc/*-release |egrep -i -h "centos |Red Hat Enterprise|Alibaba|NeoKylin|Kylin Linux Advanced Server release V10|openEuler" >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -eq 0 ]; then
-        grep -q 'CentOS release 6' /etc/system-release && OS="CENTOS6"
-        grep -q 'CentOS Linux release 7' /etc/system-release && OS="CENTOS7"
-        grep -q 'Red Hat Enterprise Linux Server release 7' /etc/system-release && OS="RHEL7"
-        grep -q 'Alibaba Group Enterprise Linux' /etc/system-release && OS="ALIOS7"
-        grep -q 'iSoft Linux release 4' /etc/system-release && OS="ISOFT4"
-        grep -q 'NeoKylin Linux' /etc/system-release && OS="RHEL7"
-        grep -q 'Kylin Linux Advanced Server release V10' /etc/system-release && OS="KYLIN10"
+        grep -qi 'CentOS release 6' /etc/system-release && OS="CENTOS6"
+        grep -qi 'CentOS Linux release 7' /etc/system-release && OS="CENTOS7"
+        grep -qi 'Red Hat Enterprise Linux Server release 7' /etc/system-release && OS="RHEL7"
+        grep -qi 'Alibaba Group Enterprise Linux' /etc/system-release && OS="ALIOS7"
+        grep -qi 'iSoft Linux release 4' /etc/system-release && OS="ISOFT4"
+        grep -qi 'NeoKylin Linux' /etc/system-release && OS="RHEL7"
+        grep -qi 'Kylin Linux Advanced Server release V10' /etc/system-release && OS="KYLIN10"
+        grep -qi 'openEuler release 20.03 (LTS-SP1)' /etc/system-release && OS="EULER20"
         if [[ -z "$OS" ]];then
             fail2 "Host OS checking failure: your system is: `cat /etc/redhat-release`, $PRODUCT_NAME management node only supports $SUPPORTED_OS currently"
         elif [[ $OS == "CENTOS7" ]];then
@@ -721,14 +731,14 @@ check_system(){
               You need to use \`yum upgrade\` to upgrade your system to latest CentOS7."
         fi
     else
-        grep -q 'Debian GNU/Linux 9' /etc/issue && OS="DEBIAN9"
-        grep -q 'Ubuntu' /etc/issue && IS_UBUNTU='y' 
-        grep -q 'Kylin 4.0.2' /etc/issue && OS="KYLIN4.0.2"
-        grep -q 'uos GNU/Linux 20' /etc/issue && OS="UOS20"
-        grep -q 'Uniontech OS Server 20' /etc/issue && OS="UOS20"
+        grep -qi 'Debian GNU/Linux 9' /etc/issue && OS="DEBIAN9"
+        grep -qi 'Ubuntu' /etc/issue && IS_UBUNTU='y'
+        grep -qi 'Kylin 4.0.2' /etc/issue && OS="KYLIN4.0.2"
+        grep -qi 'uos GNU/Linux 20' /etc/issue && OS="UOS20"
+        grep -qi 'Uniontech OS Server 20' /etc/issue && OS="UOS20"
         if [ "$IS_UBUNTU" = "y" ]; then
-            grep -q '16.04' /etc/issue && OS="UBUNTU16.04"
-            grep -q '14.04' /etc/issue && OS="UBUNTU14.04"                                                                                                       
+            grep -qi '16.04' /etc/issue && OS="UBUNTU16.04"
+            grep -qi '14.04' /etc/issue && OS="UBUNTU14.04"
             [ "$OS" != "UBUNTU16.04" -a "$OS" != "UBUNTU14.04" ] && fail2 "Host OS checking failure: your system is: $OS, $PRODUCT_NAME management node only support $SUPPORTED_OS currently"
             . /etc/lsb-release
         fi
@@ -840,6 +850,10 @@ do_enable_sudo(){
     fi
 }
 
+do_config_networkmanager(){
+    sed -i "s/^.*no-auto-default.*$/no-auto-default=*/g" /etc/NetworkManager/NetworkManager.conf > /dev/null 2>&1
+}
+
 do_config_limits(){
     if [ "$OS" == "KYLIN10" ]; then
       nr_open=1048576
@@ -852,6 +866,11 @@ zstack  hard  nofile  $nr_open
 zstack  soft  nproc  $nr_open
 zstack  hard  nproc  $nr_open
 EOF
+}
+
+do_check_resolv_conf(){
+    [ ! -f $RESOLV_CONF ] && touch $RESOLV_CONF
+    chmod a+r $RESOLV_CONF
 }
 
 do_config_ansible(){
@@ -948,6 +967,7 @@ You can also add '-q' to installer, then Installer will help you to remove it.
     fi
     do_enable_sudo
     do_config_limits
+    do_check_resolv_conf
     pass
 }
 
@@ -2164,6 +2184,7 @@ config_system(){
         show_spinner cs_setup_http
     fi
     do_enable_sudo
+    do_config_networkmanager
 }
 
 cs_add_cronjob(){
@@ -2770,7 +2791,7 @@ create_apt_source(){
 deb file:///opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/ Packages/
 EOF
     mkdir -p /etc/apt/sources.list.d/tmp_bak
-    mv /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/tmp_bak 2>/dev/null
+    mv /etc/apt/sources.list.d/!\(zstack-local.list\) /etc/apt/sources.list.d/tmp_bak/ 2>/dev/null
     #Fix Ubuntu conflicted dpkg lock issue.
     if [ -f /etc/init.d/unattended-upgrades ]; then
         /etc/init.d/unattended-upgrades stop  >>$ZSTACK_INSTALL_LOG 2>&1
@@ -3005,6 +3026,9 @@ EOF
 
 check_sync_local_repos() {
   echo_subtitle "Check local repo version"
+  if [[ $XINCHUANG_OS =~ $ZSTACK_RELEASE ]]; then
+      SKIP_SYNC='y'
+  fi
   [ -f ".repo_version" ] || fail2 "Cannot found current repo_version file, please make sure you have correct zstack-installer package."
   if [ -d /opt/zstack-dvd/$BASEARCH ];then
     for release in `ls /opt/zstack-dvd/$BASEARCH`;do
@@ -3689,7 +3713,7 @@ if [ x"$UPGRADE" = x'y' ]; then
     echo " Your old zstack was saved in $zstack_home/upgrade/`ls $zstack_home/upgrade/ -rt|tail -1`"
     echo_custom_pcidevice_xml_warning_if_need
     echo_star_line
-    start_zstack_tui
+    [ "$BASEARCH" == "x86_64" ] && start_zstack_tui || disable_zstack_tui
     post_scripts_to_restore_iptables_rules
     if [[ $DEBIAN_OS =~ $OS ]];then
         post_restore_source_on_debian
@@ -3823,7 +3847,7 @@ config_journal(){
         journal_path="/var/log/journal"
         if [ ! -d $journal_path ]; then
             mkdir -p $journal_path
-            systemd-tmpfiles --create --prefix $journal_path
+            systemd-tmpfiles --create --prefix $journal_path >>$ZSTACK_INSTALL_LOG 2>&1
             systemctl restart systemd-journald
         fi
     fi
@@ -3889,6 +3913,6 @@ fi
 echo_chrony_server_warning_if_need
 check_ha_need_upgrade
 echo_star_line
-start_zstack_tui
+[ "$BASEARCH" == "x86_64" ] && start_zstack_tui || disable_zstack_tui
 post_scripts_to_restore_iptables_rules
 

@@ -40,15 +40,16 @@ class VolumeInfo(object):
 
 class VmInfo(object):
     def __init__(self):
-        self.name = None        # type: str
-        self.description = None # type: str
-        self.uuid = None        # type: str
-        self.cpuNum = -1        # type: int
-        self.memorySize = -1    # type: long
-        self.macAddresses = []  # type: list[str]
-        self.volumes = []       # type: list[VolumeInfo]
-        self.v2vCaps = {}       # type: dict[str, bool]
-        self.cdromNum = 0       # type: int
+        self.name = None         # type: str
+        self.description = None  # type: str
+        self.uuid = None         # type: str
+        self.cpuNum = -1         # type: int
+        self.memorySize = -1     # type: long
+        self.macAddresses = []   # type: list[str]
+        self.volumes = []        # type: list[VolumeInfo]
+        self.v2vCaps = {}        # type: dict[str, bool]
+        self.cdromNum = 0        # type: int
+        self.architecture = None # type: str
 
 
 class ListVmCmd(object):
@@ -305,6 +306,7 @@ def listVirtualMachines(url, sasluser, saslpass, keystr):
             else:
                 info.macAddresses = []
 
+            info.architecture = dxml.os.type.arch_
             info.volumes = getVolumes(dom, dxml)
             cap = getV2vCap(qemuVersion, libvirtVersion, info)
             v2vCaps[info.uuid] = cap
@@ -359,6 +361,8 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
             spath = getRealStoragePath(cmd.storagePath)
             linux.mkdir(spath)
 
+            if not os.path.isdir("/etc/exports.d"):
+                linux.mkdir("/etc/exports.d")
             with open('/etc/exports.d/zs-v2v.exports', 'w') as f:
                 f.write("{} *(rw,sync,no_root_squash)\n".format(spath))
 
@@ -366,7 +370,7 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
 
         if spath is not None:
             fstype = shell.call("""stat -f -c '%T' {}""".format(spath)).strip()
-            if fstype not in [ "xfs", "ext2", "ext3", "ext4", "jfs", "btrfs" ]:
+            if fstype not in [ "xfs", "ext2", "ext3", "ext4", "jfs", "btrfs", "ext2/ext3" ]:
                 raise Exception("unexpected fstype '{}' on '{}'".format(fstype, cmd.storagePath))
 
         return jsonobject.dumps(rsp)
