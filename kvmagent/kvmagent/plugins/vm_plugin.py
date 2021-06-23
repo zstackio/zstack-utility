@@ -363,6 +363,14 @@ class TakeVolumeBackupCommand(kvmagent.AgentCommand):
         self.storageInfo = None
 
 
+class TakeVolumeMirrorResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(TakeVolumeMirrorResponse, self).__init__()
+
+class CancelVolumeMirrorResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(CancelVolumeMirrorResponse, self).__init__()
+
 class TakeVolumeBackupResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(TakeVolumeBackupResponse, self).__init__()
@@ -3223,7 +3231,7 @@ class Vm(object):
         args = {}
         for volume in volumes:
             target_disk, _ = self._get_target_disk(volume)
-            args[str(volume.deviceId)] = VmPlugin.get_backup_device_name(target_disk), 0
+            args[str(volume.deviceId)] = VmPlugin.get_disk_device_name(target_disk), 0
 
         dst_workspace = os.path.join(os.path.dirname(dst_backup_paths['0']), 'workspace')
         linux.mkdir(dst_workspace)
@@ -4575,6 +4583,8 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_VM_CHECK_VOLUME_PATH = "/vm/volume/check"
     KVM_TAKE_VOLUME_SNAPSHOT_PATH = "/vm/volume/takesnapshot"
     KVM_TAKE_VOLUME_BACKUP_PATH = "/vm/volume/takebackup"
+    KVM_TAKE_VOLUME_MIRROR_PATH = "/vm/volume/takemirror"
+    KVM_CANCEL_VOLUME_MIRROR_PATH = "/vm/volume/cancelmirror"
     KVM_BLOCK_STREAM_VOLUME_PATH = "/vm/volume/blockstream"
     KVM_TAKE_VOLUMES_SNAPSHOT_PATH = "/vm/volumes/takesnapshot"
     KVM_TAKE_VOLUMES_BACKUP_PATH = "/vm/volumes/takebackup"
@@ -5707,7 +5717,7 @@ class VmPlugin(kvmagent.KvmAgent):
         for deviceId in device_ids:
             target_disk = target_disks[deviceId]
             drivertype = target_disk.driver.type_
-            nodename = self.get_backup_device_name(target_disk)
+            nodename = self.get_disk_device_name(target_disk)
             source = target_disk.source
             bitmap = bitmaps[deviceId]
 
@@ -5814,7 +5824,7 @@ class VmPlugin(kvmagent.KvmAgent):
         return bitmap, parent
 
     @staticmethod
-    def get_backup_device_name(disk):
+    def get_disk_device_name(disk):
         return ('' if disk.type_ == 'quorum' else 'drive-') + disk.alias.name_
 
     def getLastBackup(self, deviceId, backupInfos):
@@ -5893,6 +5903,61 @@ class VmPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def cancel_volume_mirror(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CancelVolumeMirrorResponse()
+
+        vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
+        if not vm:
+            raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % cmd.vmUuid)
+
+        try:
+            target_disk, _ = vm._get_target_disk(cmd.volume)
+            device_name = self.get_disk_device_name(target_disk)
+            isc = ImageStoreClient()
+            isc.stop_mirror(cmd.vmUuid, device_name)
+        except Exception as e:
+            content = traceback.format_exc()
+            logger.warn("stop volume mirror failed: " + str(e) + '\n' + content)
+            rsp.error = str(e)
+            rsp.success = False
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def take_volume_mirror(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = TakeVolumeMirrorResponse()
+
+        vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
+        if not vm:
+            raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % cmd.vmUuid)
+
+        try:
+            target_disk, _ = vm._get_target_disk(cmd.volume)
+            device_name = self.get_disk_device_name(target_disk)
+
+            isc = ImageStoreClient()
+            installPath = cmd.volume.installPath
+            lastVolume, currVolume, volumeType = "", "", "raw"
+
+            if not installPath.startswith("ceph://"):
+                lastVolume = cmd.lastMirrorVolume
+                currVolume = installPath.split(":/")[-1]
+                volumeType = "qcow2"
+
+            isc.mirror_volume(cmd.vmUuid, device_name, cmd.mirrorTarget, lastVolume, currVolume, volumeType, cmd.speed)
+            logger.info('finished mirroring volume[%s]: %s' % (device_name, cmd.volume))
+
+        except Exception as e:
+            content = traceback.format_exc()
+            logger.warn("take volume mirror failed: " + str(e) + '\n' + content)
+            rsp.error = str(e)
+            rsp.success = False
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     def take_volume_backup(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = TakeVolumeBackupResponse()
@@ -5908,7 +5973,7 @@ class VmPlugin(kvmagent.KvmAgent):
             target_disk, _ = vm._get_target_disk(cmd.volume)
             bitmap, parent = self.do_take_volume_backup(cmd,
                     target_disk.driver.type_, # 'qcow2' etc.
-                    self.get_backup_device_name(target_disk),  # 'virtio-disk0' etc.
+                    self.get_disk_device_name(target_disk),  # 'virtio-disk0' etc.
                     target_disk.source,
                     os.path.join(storage.local_work_dir, fname))
 
@@ -7078,6 +7143,8 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_VM_CHECK_VOLUME_PATH, self.check_volume)
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_SNAPSHOT_PATH, self.take_volume_snapshot)
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_BACKUP_PATH, self.take_volume_backup, cmd=TakeVolumeBackupCommand())
+        http_server.register_async_uri(self.KVM_TAKE_VOLUME_MIRROR_PATH, self.take_volume_mirror)
+        http_server.register_async_uri(self.KVM_CANCEL_VOLUME_MIRROR_PATH, self.cancel_volume_mirror)
         http_server.register_async_uri(self.KVM_TAKE_VOLUMES_SNAPSHOT_PATH, self.take_volumes_snapshots)
         http_server.register_async_uri(self.KVM_TAKE_VOLUMES_BACKUP_PATH, self.take_volumes_backups, cmd=TakeVolumesBackupsCommand())
         http_server.register_async_uri(self.KVM_CANCEL_VOLUME_BACKUP_JOBS_PATH, self.cancel_backup_jobs)

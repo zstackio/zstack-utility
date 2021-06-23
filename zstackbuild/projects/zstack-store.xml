@@ -13,7 +13,7 @@
         <delete dir="${imagestore.source}/target/package/zstore" />
 
         <exec executable="make" dir="${imagestore.source}" failonerror="true">
-            <arg value="cleanStore" />
+            <arg value="clean" />
         </exec>
 
         <exec executable="make" dir="${imagestore.source}" failonerror="true">
