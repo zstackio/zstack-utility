@@ -1117,9 +1117,14 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         with bm_utils.rollback(self._destroy_instance, req):
             # Full prepare the instance which assign on the gateway,
             # otherwise delete the dnsmasq conf only.
+            pre_volume_obj = list(o for o in volume_objs)
+            logger.debug("aaaaa pre_volume_obj is %s: " % pre_volume_obj[0])
+            pre_volume_driver = volume.get_driver(instance_obj, pre_volume_obj[0])
+            pre_volume_driver.prepare_instance_resource()
+
             if instance_obj.gateway_ip == \
                     self.provision_network_conf.provision_nic_ip:
-                for volume_obj in volume_objs:
+                for volume_obj in pre_volume_obj:
                     volume_driver = volume.get_driver(instance_obj, volume_obj)
                     volume_driver.attach()
                     volume_drivers.append(volume_driver)
@@ -1143,9 +1148,14 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         # otherwise delete the dnsmasq conf only.
         if instance_obj.gateway_ip == \
                 self.provision_network_conf.provision_nic_ip:
-            for volume_obj in volume_objs:
+            del_volume_obj = list(o for o in volume_objs)
+            for volume_obj in del_volume_obj:
                 volume_driver = volume.get_driver(instance_obj, volume_obj)
                 volume_driver.detach()
+
+            logger.debug("aaaaa volume_objs is : %s" % del_volume_obj[0])
+            del_volume_driver = volume.get_driver(instance_obj, del_volume_obj[0])
+            del_volume_driver.destory_instance_resource()
 
             if instance_obj.architecture == 'aarch64':
                 self._delete_grub_configuration(instance_obj)

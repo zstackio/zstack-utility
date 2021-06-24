@@ -793,6 +793,7 @@ class CephAgent(plugin.TaskManager):
         rsp = CreateEmptyVolumeRsp()
         array = path.split("/")
         pool_uuid = array[0]
+        image_uuid = array[1]
 
         call_string = None
         if ceph.is_xsky():
@@ -800,7 +801,7 @@ class CephAgent(plugin.TaskManager):
             if RbdDeviceOperator().is_third_party_ceph(cmd):
                 timeout = cmd.tpTimeout
                 created_volume_uuid = RbdDeviceOperator().create_empty_volume(cmd.token,
-                                                pool_uuid, cmd.size, timeout)
+                                                pool_uuid, image_uuid, cmd.size, timeout)
                 rsp.installPath = created_volume_uuid
                 rsp.size = cmd.size
             else:
@@ -947,8 +948,7 @@ class CephAgent(plugin.TaskManager):
     def delete(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         path = self._normalize_install_path(cmd.installPath)
-        logger.debug("ccccc self is : %s " % self)
-        logger.debug("ccccc cmd is : %s " % cmd)
+
         rsp = AgentResponse()
         try:
             o = shell.call('rbd snap ls --format json %s' % path)
@@ -966,7 +966,6 @@ class CephAgent(plugin.TaskManager):
         def do_deletion():
             if RbdDeviceOperator().is_third_party_ceph(cmd):
                 RbdDeviceOperator().delete_empty_volume(cmd.token, cmd.installPath, cmd.tpTimeout)
-                logger.debug("ccccc delete")
             else:
                 shell.call('rbd rm %s' % path)
 
