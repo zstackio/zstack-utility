@@ -3,7 +3,8 @@ BM_INSTANCE_BASE_SCHEMA = {
     'properties': {
         'uuid': {'type': 'string'},
         'provision_ip': {'type': 'string'},
-        'provision_mac': {'type': 'string'}
+        'provision_mac': {'type': 'string'},
+        'custom_iqn': {'type': 'string'}
     },
     'required': ['uuid', 'provision_ip', 'provision_mac']
 }

@@ -79,8 +79,14 @@ class LinuxDriver(base.SystemDriverBase):
         sid = None
         cmd = ['iscsiadm', '-m', 'session']
         stdout, _ = processutils.execute(*cmd)
+        iqn = None
+        if instance_obj.custom_iqn:
+            iqn = instance_obj.custom_iqn
+        else:
+            iqn = instance_obj.uuid
+
         for line in stdout.split('\n'):
-            if instance_obj.uuid in line:
+            if iqn in line:
                 sid = line.split()[1][1]
         if not sid:
             raise exception.IscsiSessionIdNotFound(
