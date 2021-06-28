@@ -38,39 +38,29 @@ class ThirdPartyCephVolume(base.BaseVolume):
         return self.volume_obj.path.replace('ceph://', '')
 
     def attach(self):
+        thirdparty_ceph.RbdDeviceOperator().connect(self.instance_obj, self.volume_obj)
+
+    def detach(self):
+        thirdparty_ceph.RbdDeviceOperator().disconnect(self.instance_obj, self.volume_obj)
+
+    def prepare_instance_resource(self):
         instance_gateway_ip = self.instance_obj.gateway_ip
         host_ip = RbdDeviceOperator()._get_mon_ip_token(self.volume_obj.token)[0]
         shell.run("iptables -t nat -A PREROUTING -d %s -p tcp --dport 3260 -j DNAT --to-destination %s:3260" % (
             instance_gateway_ip, host_ip))
         shell.call("systemctl stop target && systemctl disable target")
 
-        created_iqn = self.sdk_attach(self.volume_obj, self.instance_obj)
+        created_iqn = thirdparty_ceph.RbdDeviceOperator().prepare(self.instance_obj, self.volume_obj)
         self.instance_obj.customIqn = created_iqn
 
-    def detach(self):
-        self.sdk_detach(self.volume_obj, self.instance_obj)
-
+    def destory_instance_resource(self):
         instance_gateway_ip = self.instance_obj.gateway_ip
         host_ip = RbdDeviceOperator()._get_mon_ip_token(self.volume_obj.token)[0]
+
+        thirdparty_ceph.RbdDeviceOperator().destory(self.instance_obj, self.volume_obj)
+
         shell.run("iptables -t nat -D PREROUTING -d %s -p tcp --dport 3260 -j DNAT --to-destination %s:3260" % (
             instance_gateway_ip, host_ip))
-
-    @staticmethod
-    def sdk_attach(volume_obj, instance_obj):
-        token = volume_obj.token
-        volume_name = volume_obj.uuid
-        func_timeout = volume_obj.tpTimeout
-
-        iqn = thirdparty_ceph.RbdDeviceOperator().connect(token, instance_obj, volume_name, func_timeout)
-        return iqn
-
-    @staticmethod
-    def sdk_detach(volume_obj, instance_obj):
-        token = volume_obj.token
-        target_iqn = instance_obj.customIqn
-        func_timeout = volume_obj.tpTimeout
-
-        thirdparty_ceph.RbdDeviceOperator().disconnect(token, target_iqn, func_timeout)
 
     def pre_take_volume_snapshot(self):
         pass

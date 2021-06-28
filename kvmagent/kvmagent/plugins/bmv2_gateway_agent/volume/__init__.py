@@ -4,11 +4,10 @@ from kvmagent.plugins.bmv2_gateway_agent.volume import ceph
 from kvmagent.plugins.bmv2_gateway_agent.volume import sharedblock
 from kvmagent.plugins.bmv2_gateway_agent.volume import thirdparty_ceph
 
-
 mapping = {
     'ceph': ceph.CephVolume,
     'sharedblock': sharedblock.SharedBlockVolume,
-    'thirdpartyCeph':thirdparty_ceph.ThirdPartyCephVolume
+    'thirdpartyCeph': thirdparty_ceph.ThirdPartyCephVolume
 }
 
 
@@ -21,10 +20,6 @@ def get_driver(instance_obj, volume_obj):
             primary_storage_type=ps_type)
     return mapping.get(ps_type)(instance_obj, volume_obj)
 
-def is_third_party_ceph(token_object):
-    if hasattr(token_object, "token"):
-        return token_object.token and is_xdc_config_exist()
-    return False
 
-def is_xdc_config_exist():
-    return not shell.call("awk -F '=' '/^xdc_proxy_feature/{print $2;exit}' /etc/xdc/xdc.conf").strip() == "true"
+def is_third_party_ceph(token_object):
+    return hasattr(token_object, "token") and token_object.token

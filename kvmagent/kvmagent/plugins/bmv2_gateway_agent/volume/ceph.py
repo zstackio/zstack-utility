@@ -41,6 +41,12 @@ class CephVolume(base.BaseVolume):
         helper.IscsiOperator(self).revoke()
         helper.RbdImageOperator(self).disconnect()
 
+    def prepare_instance_resource(self):
+        pass
+
+    def destory_instance_resource(self):
+        pass
+
     def pre_take_volume_snapshot(self):
         pass
 
