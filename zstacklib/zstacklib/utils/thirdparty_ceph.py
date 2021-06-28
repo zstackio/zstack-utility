@@ -436,7 +436,7 @@ class RbdDeviceOperator(object):
                             created_block_snapshot_id = i.id
                             block_snapshot_exist = True
                 if created_block_snapshot_id is None:
-                    created_block_snapshot_id = _create_block_snapshot(image_uuid, volume_name)
+                    created_block_snapshot_id = _create_block_snapshot(image_uuid)
                     self.print_logger(host_ip, "create block snapshot", image_uuid)
 
                 created_block_volume = _create_block_volume(created_block_snapshot_id, pool_id, volume_name)
@@ -458,9 +458,9 @@ class RbdDeviceOperator(object):
 
             return created_volume_name
 
-        def _create_block_snapshot(image_uuid, v_name):
+        def _create_block_snapshot(image_uuid):
             hosting_block_volume_id = block_volumes_api.list_block_volumes(
-                q=v_name).block_volumes[0].id
+                q=image_uuid).block_volumes[0].id
 
             api_body = {"block_snapshot": {"block_volume_id": hosting_block_volume_id,
                                            "name": image_uuid + "-" + token}}
