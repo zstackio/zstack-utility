@@ -7,6 +7,10 @@ import traceback
 import urllib2
 import urlparse
 import tempfile
+import threading
+import rados
+import rbd
+from cherrypy.lib.static import _serve_fileobj
 
 import zstacklib.utils.daemon as daemon
 import zstacklib.utils.http as http
@@ -347,6 +351,27 @@ def stream_body(task, fpath, entity, boundary):
 
     task.success()
 
+
+class ImageFileObject(object):
+    def __init__(self, image):
+        # type: (rbd.Image, callable) -> None
+        self.offset = 0
+        self.image = image
+        self.size = image.size()
+
+    def seek(self, offset):
+        self.offset = min(offset, self.size)
+
+    def read(self, n):
+        length = min(self.size - self.offset, n)
+        content = self.image.read(self.offset, length)
+        self.offset += length
+        return content
+
+    def close(self):
+        self.image.close()
+        logger.debug("%s closed" % str(self.image))
+
 # ------------------------------------------------------------------ #
 
 class CephAgent(object):
@@ -354,6 +379,7 @@ class CephAgent(object):
     DOWNLOAD_IMAGE_PATH = "/ceph/backupstorage/image/download"
     JOB_CANCEL = "/job/cancel"
     UPLOAD_IMAGE_PATH = "/ceph/backupstorage/image/upload"
+    EXPORT_IMAGE_PATH = "/ceph/export/:pool/:image"
     UPLOAD_PROGRESS_PATH = "/ceph/backupstorage/image/progress"
     DELETE_IMAGE_PATH = "/ceph/backupstorage/image/delete"
     PING_PATH = "/ceph/backupstorage/ping"
@@ -371,6 +397,7 @@ class CephAgent(object):
     CEPH_METADATA_FILE = "bs_ceph_info.json"
     UPLOAD_PROTO = "upload://"
     LENGTH_OF_UUID = 32
+    CEPH_CONF_PATH = "/etc/ceph/ceph.conf"
 
     http_server = http.HttpServer(port=7761)
     http_server.logfile_path = log.get_logfile_path()
@@ -380,6 +407,7 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.INIT_PATH, self.init)
         self.http_server.register_async_uri(self.DOWNLOAD_IMAGE_PATH, self.download)
         self.http_server.register_raw_uri(self.UPLOAD_IMAGE_PATH, self.upload)
+        self.http_server.register_raw_stream_uri(self.EXPORT_IMAGE_PATH, self.export)
         self.http_server.register_async_uri(self.UPLOAD_PROGRESS_PATH, self.get_upload_progress)
         self.http_server.register_async_uri(self.DELETE_IMAGE_PATH, self.delete)
         self.http_server.register_async_uri(self.JOB_CANCEL, self.cancel)
@@ -394,6 +422,24 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.CHECK_POOL_PATH, self.check_pool)
         self.http_server.register_async_uri(self.GET_LOCAL_FILE_SIZE, self.get_local_file_size)
         self.http_server.register_async_uri(self.MIGRATE_IMAGE_PATH, self.migrate_image, cmd=CephToCephMigrateImageCmd())
+
+        self.cluster = None
+        self.ioctx = {}
+        self.op_lock = threading.Lock()
+
+    def get_ioctx(self, pool_name):
+        if pool_name in self.ioctx:
+            return self.ioctx[pool_name]
+
+        with self.op_lock:
+            if not self.cluster:
+                self.cluster = rados.Rados(conffile=self.CEPH_CONF_PATH)
+                self.cluster.connect()
+
+            self.ioctx[pool_name] = self.cluster.open_ioctx(pool_name)
+
+        return self.ioctx[pool_name]
+
 
     def _get_capacity(self):
         o = shell.call('ceph df -f json')
@@ -926,6 +972,26 @@ class CephAgent(object):
 
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
+
+    def export(self, req, rsp, **kwargs):
+        pool_name = kwargs['pool']
+        image_name = kwargs['image']
+
+        ioctx = self.get_ioctx(pool_name)
+        image_file_obj = ImageFileObject(rbd.Image(ioctx, image_name, read_only=True))
+
+        rsp.headers['Content-Type'] = 'application/x-download'
+        rsp.headers['Content-Disposition'] = 'attachment; filename="zs-%s"' % image_name
+
+        req_close = req.close
+
+        # cherrypy cannot ensure file obj closed every time. so hack it in request close.
+        def all_close():
+            req_close()
+            image_file_obj.close()
+
+        req.close = all_close
+        return _serve_fileobj(image_file_obj, 'application/x-download', image_file_obj.size)
 
     @replyerror
     def ping(self, req):

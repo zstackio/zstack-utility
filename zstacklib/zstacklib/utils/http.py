@@ -104,6 +104,25 @@ class RawUriHandler(object):
             cherrypy.response.status = 500
             return str(e)
 
+class RawUriStreamHandler(object):
+    def __init__(self, uri_obj):
+        self.uri_obj = uri_obj
+
+    @cherrypy.config(**{'response.timeout': 7200}) # default is 300s
+    @cherrypy.expose
+    def index(self, **kwargs):
+        logger.debug('raw http handler: %s' % self.uri_obj.uri)
+        try:
+            return self.uri_obj.func(cherrypy.request, cherrypy.response, **kwargs)
+        except Exception as e:
+            content = traceback.format_exc()
+            logger.warn('[WARN]: %s]' % content)
+            cherrypy.response.status = 500
+            return str(e)
+
+    index._cp_config = {'response.stream': True}
+
+
 class AsyncUirHandler(SyncUriHandler):
     HANDLER_COUNTER = thread.AtomicInteger(0)
     STOP_WORLD = False
@@ -213,6 +232,13 @@ class HttpServer(object):
         raw_uri.func = func
         raw_uri.uri = uri
         raw_uri.controller = RawUriHandler(raw_uri)
+        self.raw_uri_handlers[uri] = raw_uri
+
+    def register_raw_stream_uri(self, uri, func):
+        raw_uri = RawUri()
+        raw_uri.func = func
+        raw_uri.uri = uri
+        raw_uri.controller = RawUriStreamHandler(raw_uri)
         self.raw_uri_handlers[uri] = raw_uri
 
     def unregister_uri(self, uri):
