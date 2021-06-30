@@ -7,6 +7,11 @@ from zstacklib.utils import singleton
 logger = log.get_logger(__name__)
 
 @singleton.singleton
+class LibvirtSingleton(object):
+    conn = libvirt.open('qemu:///system')
+    libvirt_event_callbacks = {}
+
+@singleton.singleton
 class LibvirtEventManagerSingleton(object):
     def __init__(self):
         libvirt.virEventRegisterDefaultImpl()
