@@ -123,3 +123,9 @@ class BaseVolume(object):
 
     def detach(self):
         raise NotImplementedError()
+
+    def prepare_instance_resource(self):
+        raise NotImplementedError()
+
+    def destory_instance_resource(self):
+        raise NotImplementedError()
