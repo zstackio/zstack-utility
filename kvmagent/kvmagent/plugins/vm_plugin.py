@@ -57,7 +57,6 @@ from zstacklib.utils.vm_plugin_queue_singleton import VmPluginQueueSingleton
 from zstacklib.utils.libvirt_singleton import LibvirtEventManager
 from zstacklib.utils.libvirt_singleton import LibvirtEventManagerSingleton
 from zstacklib.utils.libvirt_singleton import LibvirtSingleton
-from distutils.version import LooseVersion
 
 logger = log.get_logger(__name__)
 
@@ -6495,10 +6494,10 @@ class VmPlugin(kvmagent.KvmAgent):
 
         # get guest tools info by reading VERSION file inside vm
         vm_uuid = cmd.vmInstanceUuid
-        if cmd.platform == 'windows':
+        if cmd.platform.lower() == 'windows':
             self.get_vm_guest_tools_info_for_windows_guest(vm_uuid, rsp)
         self.pvpanic_vm_guest_tools_info(vm_uuid, cmd, rsp)
-        
+
         return jsonobject.dumps(rsp)
 
     @in_bash
@@ -6535,12 +6534,13 @@ class VmPlugin(kvmagent.KvmAgent):
         _close_version_file()
 
     def pvpanic_vm_guest_tools_info(self, vm_uuid, cmd, rsp):
-        if cmd.platform == 'windows':
-            # windows guest tools, version >= 1.3.0, pvpanic is enable. otherwise None.
-            version_array = map(lambda x: int(x), version.split('.'))
-            rsp.features['pvpanic_guest_tools_enable'] = 'enable' if version_array[0] >= 1 and version_array[1] >= 3 else 'not supported'
+        if cmd.platform.lower() == 'windows':
             rsp.features['pvpanic_guest_kernel_supported'] = 'unknown'
-            rsp.features['enable'] = rsp.features['pvpanic_guest_kernel_supported'] # TODO
+            if rsp.version:
+                # windows guest tools, version >= 1.3.0, pvpanic is enable. otherwise not support.
+                rsp.features['pvpanic_guest_tools_enable'] = 'enable' if LooseVersion(rsp.version) >= LooseVersion('1.3.0') else 'not supported'
+            else:
+                rsp.features['pvpanic_guest_tools_enable'] = 'not supported'
         vm = get_vm_by_uuid(vm_uuid, False)
         if vm is None:
             rsp.features['pvpanic_host_enable'] = 'unknown'
