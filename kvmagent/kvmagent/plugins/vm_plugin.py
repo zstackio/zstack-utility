@@ -54,8 +54,9 @@ from zstacklib.utils import iproute
 from zstacklib.utils import ovs
 from zstacklib.utils.report import *
 from zstacklib.utils.vm_plugin_queue_singleton import VmPluginQueueSingleton
-from zstacklib.utils.libvirt_event_manager_singleton import LibvirtEventManager
-from zstacklib.utils.libvirt_event_manager_singleton import LibvirtEventManagerSingleton
+from zstacklib.utils.libvirt_singleton import LibvirtEventManager
+from zstacklib.utils.libvirt_singleton import LibvirtEventManagerSingleton
+from zstacklib.utils.libvirt_singleton import LibvirtSingleton
 from distutils.version import LooseVersion
 
 logger = log.get_logger(__name__)
@@ -930,14 +931,15 @@ def get_sgio_value():
     return "unfiltered" if os.path.isfile("/sys/block/{}/queue/unpriv_sgio".format(device_name)) else "filtered"
 
 class LibvirtAutoReconnect(object):
-    conn = libvirt.open('qemu:///system')
+    libvirt_singleton = LibvirtSingleton()
+    conn = libvirt_singleton.conn
 
     if not conn:
         raise Exception('unable to get libvirt connection')
 
     evtMgr = LibvirtEventManagerSingleton()
 
-    libvirt_event_callbacks = {}
+    libvirt_event_callbacks = libvirt_singleton.libvirt_event_callbacks
 
     def __init__(self, func):
         self.func = func
