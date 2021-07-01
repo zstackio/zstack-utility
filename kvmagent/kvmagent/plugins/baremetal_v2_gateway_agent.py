@@ -1117,13 +1117,12 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         with bm_utils.rollback(self._destroy_instance, req):
             # Full prepare the instance which assign on the gateway,
             # otherwise delete the dnsmasq conf only.
-            pre_volume_obj = list(o for o in volume_objs)
-            logger.debug("aaaaa pre_volume_obj is %s: " % pre_volume_obj[0])
-            pre_volume_driver = volume.get_driver(instance_obj, pre_volume_obj[0])
-            pre_volume_driver.prepare_instance_resource()
-
             if instance_obj.gateway_ip == \
                     self.provision_network_conf.provision_nic_ip:
+                pre_volume_obj = list(o for o in volume_objs)
+                pre_volume_driver = volume.get_driver(instance_obj, pre_volume_obj[0])
+                pre_volume_driver.prepare_instance_resource()
+
                 for volume_obj in pre_volume_obj:
                     volume_driver = volume.get_driver(instance_obj, volume_obj)
                     volume_driver.attach()
@@ -1136,7 +1135,6 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                 self._create_nginx_agent_proxy_configuration(instance_obj)
             self._create_dnsmasq_host(instance_obj)
 
-        logger.debug("aaaaa instance_obj.customIqn is %s" % instance_obj.customIqn)
         rsp = kvmagent.AgentResponse()
         rsp.bmInstance = instance_obj
         return jsonobject.dumps(rsp)
@@ -1153,7 +1151,6 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                 volume_driver = volume.get_driver(instance_obj, volume_obj)
                 volume_driver.detach()
 
-            logger.debug("aaaaa volume_objs is : %s" % del_volume_obj[0])
             del_volume_driver = volume.get_driver(instance_obj, del_volume_obj[0])
             del_volume_driver.destory_instance_resource()
 
