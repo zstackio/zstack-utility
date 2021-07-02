@@ -359,7 +359,7 @@ class RbdDeviceOperator(object):
             if not access_path_id:
                 return False
 
-            access_path = access_paths_api.get_access_path(access_path_id)
+            access_path = access_paths_api.get_access_path(access_path_id).access_path
             return access_path.block_volume_num == 0 and access_path.client_group_num == 0
 
         def _destory():
