@@ -70,7 +70,6 @@ class RbdDeviceOperator(object):
 
             try:
                 created_client_group_id = _create_client_group()
-                self.print_logger(host_ip, "create client_group ", volume_uuid)
 
                 if instance_obj.customIqn:
                     logger.debug("x2 custom iqn : %s " % instance_obj.customIqn)
@@ -107,8 +106,7 @@ class RbdDeviceOperator(object):
                     self.delete_access_path(token, created_access_path_id, host_ip)
                     self.print_logger(host_ip, "rollback create access path", volume_uuid)
 
-                if created_client_group_id and client_group_api.get_client_group(
-                        created_client_group_id).client_group.access_path_num == 0:
+                if _check_client_group_need_rollback(created_client_group_id):
                     self.delete_client_group(token, created_client_group_id, host_ip)
                     self.print_logger(host_ip, "rollback create client group", volume_uuid)
 
@@ -124,48 +122,35 @@ class RbdDeviceOperator(object):
             self._retry_until(_is_created_mapping_group_status_active, created_mapping_group_id)
             return created_mapping_group_id
 
-        def _is_created_mapping_group_status_active(mapping_group_id):
-            return mapping_groups_api.get_mapping_group(
-                mapping_group_id).mapping_group.status == "active"
-
         def _create_client_group():
             """
             prepare client group, access path, target for volumes
             """
 
-            client_name = "client_group-" + instance_obj.uuid
+            client_name = "client_group-" + snat_ip
             client_groups = client_group_api.list_client_groups().client_groups
             created_client_group_id = None
-            exist_clients = None
+
             for client_group in client_groups:
-                if any(snat_ip == client.code for client in client_group.clients):
+                if client_group.name == client_name and any(snat_ip == client.code for client in client_group.clients):
+                    logger.debug(
+                        "ccccccc client_group.id is %s, client_group.name is %s" % (client_group.id, client_group.name))
                     return client_group.id
 
-                if client_group.name == client_name:
-                    created_client_group_id = client_group.id
-                    exist_clients = client_group.clients
-                # if gateway_ip in codes and provision_ip in codes:
-                #    return client_group.id
-                # elif gateway_ip in codes:
-                #    update_client_group(client_group.id, client_group.clients, provision_ip)
-                # elif provision_ip in codes:
-                #    update_client_group(client_group.id, client_group.clients, gateway_ip)
+            api_body = {"client_group": {"name": "client_group-" + snat_ip,
+                                         "clients": [{"code": snat_ip}],
+                                         "type": "iSCSI"}}
+            created_client_group_id = client_group_api.create_client_group(api_body).client_group.id
+            self._retry_until(_is_client_group_status_active, created_client_group_id)
+            self.print_logger(host_ip, "create client_group ", volume_uuid)
+            return created_client_group_id
 
-            if created_client_group_id:
-                return update_client_group(created_client_group_id, exist_clients, snat_ip)
-            else:
-                api_body = {"client_group": {"name": "client_group-" + instance_obj.uuid,
-                                             "clients": [{"code": snat_ip}],
-                                             "type": "iSCSI"}}
-                created_client_group_id = client_group_api.create_client_group(api_body).client_group.id
-                self._retry_until(_is_client_group_status_active, created_client_group_id)
-                return created_client_group_id
+        def _check_client_group_need_rollback(client_group_id):
+            if not client_group_id:
+                return False
 
-        def update_client_group(client_group_id, clients, client_code):
-            api_body = {"client_group": {"clients": clients + [{"code": client_code}]}}
-            client_group_api.update_client_group(client_group_id, api_body)
-            self._retry_until(_is_client_group_status_active, client_group_id)
-            return client_group_id
+            client_group = client_group_api.get_client_group(client_group_id).client_group
+            return client_group.name == "client_group-" + snat_ip and client_group.access_path_num == 0
 
         def _create_access_path():
             check_name = "access_path-" + instance_obj.uuid
@@ -188,6 +173,10 @@ class RbdDeviceOperator(object):
             self._retry_until(_is_created_target_active, host_id, created_access_path_id)
             return created_target
 
+        def _is_created_mapping_group_status_active(mapping_group_id):
+            return mapping_groups_api.get_mapping_group(
+                mapping_group_id).mapping_group.status == "active"
+
         def _is_client_group_status_active(client_group_id):
             return client_group_api.get_client_group(
                 client_group_id).client_group.status == "active"
@@ -209,9 +198,6 @@ class RbdDeviceOperator(object):
         """
         create mapping group to establish a connection
         """
-        if volume_obj.type == 'Root':
-            return
-
         token_list = volume_obj.token
         volume_uuid = volume_obj.uuid
         timeout = volume_obj.tpTimeout
@@ -239,15 +225,32 @@ class RbdDeviceOperator(object):
             created_access_path_id = None
             created_mapping_group_root_id = None
             created_mapping_group_data_id = None
-            client_group_id = None
+            exist_client_group_id = None
+            created_client_group_id = None
+            updated = False
 
             try:
                 client_groups = client_group_api.list_client_groups().client_groups
                 for client_group in client_groups:
-                    if any(snat_ip == client.code for client in client_group.clients):
-                        client_group_id = client_group.id
-                    # if host_ip in codes and provision_ip in codes:
-                    #    client_group_id = client_group.id
+                    if not client_group.name == "client_group-" + snat_ip:
+                        continue
+                    codes = set(client.code for client in client_group.clients)
+                    if snat_ip in codes and provision_ip in codes:
+                        logger.debug("ccccc snat_ip in codes and provision_ip in codes")
+                        exist_client_group_id = client_group.id
+                        created_client_group_id = client_group.id
+                    elif provision_ip in codes:
+                        logger.debug("ccccc elif provision_ip in codes")
+                        _update_client_group_delete_code(created_client_group_id, provision_ip)
+                    elif snat_ip in codes:
+                        logger.debug("ccccc elif snat_ip in codes")
+                        _update_client_group_add_code(client_group.id, client_group.clients, provision_ip)
+                        created_client_group_id = client_group.id
+                        updated = True
+                        logger.debug("cccccc 1")
+
+                if volume_obj.type == 'Root':
+                    return
 
                 check_name = "access_path-" + instance_obj.uuid
                 if len(access_paths_api.list_access_paths(q=check_name).access_paths) != 0:
@@ -262,18 +265,36 @@ class RbdDeviceOperator(object):
                         return
 
                 mapping_groups = mapping_groups_api.list_mapping_groups(access_path_id=created_access_path_id,
-                                                                        client_group_id=client_group_id).mapping_groups
+                                                                        client_group_id=created_client_group_id).mapping_groups
                 created_mapping_group_data_id = _mapping_group_add_volumes(mapping_groups)
+                logger.debug("cccccc connect _mapping_group_add_volumes")
 
             except ApiException as e:
-                if created_mapping_group_root_id:
+                if updated:
+                    _update_client_group_delete_code(created_client_group_id, provision_ip)
+                if created_mapping_group_root_id and not exist_client_group_id:
                     self.delete_mapping_group(token, created_mapping_group_root_id, host_ip)
                     self.print_logger(host_ip, "rollback create mapping group ", volume_uuid)
                 if created_mapping_group_data_id:
-                    self.print_logger(host_ip, "rollback create data mapping group ", volume_uuid)
                     self.mapping_group_delete_volumes(token, created_mapping_group_data_id, volume_name, host_ip, created_access_path_id)
+                    self.print_logger(host_ip, "rollback create data mapping group ", volume_uuid)
                 logger.debug(e)
                 raise e
+
+        def _update_client_group_add_code(client_group_id, clients, client_code):
+            api_body = {"client_group": {"clients": clients + [{"code": client_code}]}}
+            client_group_api.update_client_group(client_group_id, api_body)
+            self._retry_until(_is_client_group_status_active, client_group_id)
+            return client_group_id
+
+        def _update_client_group_delete_code(client_group_id, provision_ip):
+            clients = client_group_api.get_client_group(client_group_id).client_group.clients
+            new_clients = [client for client in clients if client.code != provision_ip]
+
+            api_body = {"client_group": {"clients": new_clients}}
+            client_group_api.update_client_group(client_group_id, api_body)
+            self._retry_until(_is_client_group_status_active, client_group_id)
+            return client_group_id
 
         def _mapping_group_add_volumes(mapping_groups):
             block_volume_id = block_volumes_api.list_block_volumes(q=volume_name).block_volumes[0].id
@@ -284,6 +305,10 @@ class RbdDeviceOperator(object):
                                                                            api_body).mapping_group.id
             self._retry_until(_is_created_mapping_group_status_active, created_mapping_group_data_id)
             return created_mapping_group_data_id
+
+        def _is_client_group_status_active(client_group_id):
+            return client_group_api.get_client_group(
+                client_group_id).client_group.status == "active"
 
         def _is_created_mapping_group_status_active(mapping_group_id):
             return mapping_groups_api.get_mapping_group(
@@ -315,6 +340,7 @@ class RbdDeviceOperator(object):
         def _disconnect():
             deleted_access_path_id = None
             deleted_mapping_group_id = None
+            update_client_group = None
             client_group_id = None
 
             targets = targets_api.list_targets(q=host_ip).targets
@@ -325,13 +351,34 @@ class RbdDeviceOperator(object):
             client_groups = client_group_api.list_client_groups().client_groups
             for client_group in client_groups:
                 if any(snat_ip == client.code for client in client_group.clients):
+                    update_client_group = client_group
                     client_group_id = client_group.id
 
-            if deleted_access_path_id is not None and client_group_id is not None:
+            if not client_group_id:
+                return
+
+            if deleted_access_path_id:
                 mapping_groups = mapping_groups_api.list_mapping_groups(access_path_id=deleted_access_path_id,
                                                                         client_group_id=client_group_id).mapping_groups
                 deleted_mapping_group_id = mapping_groups[0].id
                 self.mapping_group_delete_volumes(token, deleted_mapping_group_id, volume_name, host_ip, deleted_access_path_id)
+                logger.debug("cccccc disconnect mapping_group_delete_volumes")
+
+            if any(provision_ip == client.code for client in update_client_group.clients):
+                _update_client_group_delete_code(client_group_id, provision_ip)
+
+        def _update_client_group_delete_code(client_group_id, provision_ip):
+            clients = client_group_api.get_client_group(client_group_id).client_group.clients
+            new_clients = [client for client in clients if client.code != provision_ip]
+
+            api_body = {"client_group": {"clients": new_clients}}
+            client_group_api.update_client_group(client_group_id, api_body)
+            self._retry_until(_is_client_group_status_active, client_group_id)
+            return client_group_id
+
+        def _is_client_group_status_active(client_group_id):
+            return client_group_api.get_client_group(
+                client_group_id).client_group.status == "active"
 
         _disconnect()
 
@@ -355,13 +402,6 @@ class RbdDeviceOperator(object):
         client_group_api = ClientGroupsApi(conf)
         mapping_groups_api = MappingGroupsApi(conf)
 
-        def _check_access_path_related_resources(access_path_id):
-            if not access_path_id:
-                return False
-
-            access_path = access_paths_api.get_access_path(access_path_id).access_path
-            return access_path.block_volume_num == 0 and access_path.client_group_num == 0
-
         def _destory():
             """
             delete target, access path， client group
@@ -370,6 +410,7 @@ class RbdDeviceOperator(object):
             deleted_access_path_id = None
             deleted_target_id = None
             deleted_client_group_id = None
+            update_client_group = None
 
             client_groups = client_group_api.list_client_groups().client_groups
             for client_group in client_groups:
@@ -383,14 +424,14 @@ class RbdDeviceOperator(object):
                     deleted_target_id = tar.id
                     deleted_host_id = tar.host.id
 
-            if deleted_access_path_id is not None and deleted_client_group_id is not None:
+            if deleted_access_path_id and deleted_client_group_id:
                 mapping_groups = mapping_groups_api.list_mapping_groups(access_path_id=deleted_access_path_id,
                                                                         client_group_id=deleted_client_group_id).mapping_groups
                 deleted_mapping_group_id = mapping_groups[0].id
                 self.delete_mapping_group(token, deleted_mapping_group_id, host_ip)
                 self.print_logger(host_ip, "delete mapping group", iqn)
 
-            if deleted_target_id is not None:
+            if deleted_target_id:
                 self.delete_target(token, deleted_target_id, deleted_host_id, deleted_access_path_id, host_ip)
                 self.print_logger(host_ip, "delete target", iqn)
 
@@ -399,10 +440,23 @@ class RbdDeviceOperator(object):
                 self.delete_access_path(token, deleted_access_path_id, host_ip)
                 self.print_logger(host_ip, "delete access path", iqn)
 
-            if deleted_client_group_id is not None and client_group_api.get_client_group(
-                    deleted_client_group_id).client_group.access_path_num == 0:
+            if _check_client_group_related_resources(deleted_client_group_id):
                 self.delete_client_group(token, deleted_client_group_id, host_ip)
                 self.print_logger(host_ip, "delete client group", iqn)
+
+        def _check_client_group_related_resources(client_group_id):
+            if not client_group_id:
+                return False
+
+            client_group = client_group_api.get_client_group(client_group_id).client_group
+            return client_group.access_path_num == 0 and len(client_group.clients) <= 1
+
+        def _check_access_path_related_resources(access_path_id):
+            if not access_path_id:
+                return False
+
+            access_path = access_paths_api.get_access_path(access_path_id).access_path
+            return access_path.block_volume_num == 0 and access_path.client_group_num == 0
 
         _destory()
 
