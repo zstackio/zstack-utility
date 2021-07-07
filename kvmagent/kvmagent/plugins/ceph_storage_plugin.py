@@ -63,9 +63,16 @@ class CephStoragePlugin(kvmagent.KvmAgent):
 
             logger.warn('cannot create heartbeat image: %s: %s' % (cmd.heartbeatImagePath, create.stderr))
             return False
+
+        def delete_heartbeat_file(pool_name):
+            shell.run("timeout 5 rbd rm --id zstack %s -m %s" %
+                    (get_heartbeat_volume(pool_name, cmd.uuid, cmd.hostUuid), mon_url))
         
         def get_heartbeat_volume(pool_name, ps_uuid, host_uuid):
             return '%s/ceph-ps-%s-host-hb-%s' % (pool_name, ps_uuid, host_uuid)
+
+        def get_fencer_key(ps_uuid, pool_name):
+            return '%s-%s' % (ps_uuid, pool_name)
 
         if len(cmd.poolNames) == 0:
             return jsonobject.dumps(rsp)

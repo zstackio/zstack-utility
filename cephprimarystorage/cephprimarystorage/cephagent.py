@@ -87,7 +87,6 @@ class InitRsp(AgentResponse):
         super(InitRsp, self).__init__()
         self.fsid = None
         self.userKey = None
-        self.manufacturer = None
 
 class DownloadRsp(AgentResponse):
     def __init__(self):
@@ -769,8 +768,6 @@ class CephAgent(plugin.TaskManager):
 
         rsp.fsid = fsid
         self._set_capacity_to_response(rsp)
-
-        rsp.manufacturer = ceph.get_ceph_manufacturer()
 
         return jsonobject.dumps(rsp)
 
