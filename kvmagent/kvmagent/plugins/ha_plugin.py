@@ -8,16 +8,12 @@ from zstacklib.utils import linux
 from zstacklib.utils import lvm
 from zstacklib.utils import thread
 from zstacklib.utils import qemu_img
-from zstacklib.utils import ceph
 import os.path
 import re
 from string import whitespace
 import time
 import traceback
 import threading
-import rados
-import rbd
-from datetime import datetime, timedelta
 
 logger = log.get_logger(__name__)
 
@@ -28,13 +24,6 @@ class AgentRsp(object):
     def __init__(self):
         self.success = True
         self.error = None
-
-
-class CephHostHeartbeatCheckRsp(AgentRsp):
-    def __init__(self):
-        super(CephHostHeartbeatCheckRsp, self).__init__()
-        self.result = None
-
 
 class ScanRsp(AgentRsp):
     def __init__(self):
@@ -425,7 +414,6 @@ def need_kill(vm_uuid, storage_paths, is_file_system):
 class HaPlugin(kvmagent.KvmAgent):
     SCAN_HOST_PATH = "/ha/scanhost"
     SANLOCK_SCAN_HOST_PATH = "/sanlock/scanhost"
-    CEPH_HOST_HEARTBEAT_CHECK_PATH = "/ceph/host/heartbeat/check"
     SETUP_SELF_FENCER_PATH = "/ha/selffencer/setup"
     CANCEL_SELF_FENCER_PATH = "/ha/selffencer/cancel"
     CEPH_SELF_FENCER = "/ha/ceph/setupselffencer"
@@ -652,8 +640,8 @@ class HaPlugin(kvmagent.KvmAgent):
 
         def get_ceph_rbd_args(pool_name):
             if cmd.userKey is None:
-                return 'rbd:%s:mon_host=%s' % (ceph.get_heartbeat_volume(pool_name, cmd.uuid, cmd.hostUuid), mon_url)
-            return 'rbd:%s:id=zstack:key=%s:auth_supported=cephx\;none:mon_host=%s' % (ceph.get_heartbeat_volume(pool_name, cmd.uuid, cmd.hostUuid), cmd.userKey, mon_url)
+                return 'rbd:%s:mon_host=%s' % (get_heartbeat_volume(pool_name, cmd.uuid, cmd.hostUuid), mon_url)
+            return 'rbd:%s:id=zstack:key=%s:auth_supported=cephx\;none:mon_host=%s' % (get_heartbeat_volume(pool_name, cmd.uuid, cmd.hostUuid), cmd.userKey, mon_url)
 
         def ceph_in_error_stat():
             # HEALTH_OK,HEALTH_WARN,HEALTH_ERR and others(may be empty)...
@@ -688,114 +676,82 @@ class HaPlugin(kvmagent.KvmAgent):
             logger.warn('cannot create heartbeat image: %s: %s' % (cmd.heartbeatImagePath, create.stderr))
             return False
 
+        def delete_heartbeat_file(pool_name):
+            shell.run("timeout %s rbd rm --id zstack %s -m %s" %
+                    (cmd.storageCheckerTimeout, get_heartbeat_volume(pool_name, cmd.uuid, cmd.hostUuid), mon_url))
+        
+        def get_heartbeat_volume(pool_name, ps_uuid, host_uuid):
+            return '%s/ceph-ps-%s-host-hb-%s' % (pool_name, ps_uuid, host_uuid)
+
         def get_fencer_key(ps_uuid, pool_name):
             return '%s-%s' % (ps_uuid, pool_name)
 
-        def update_heartbeat_timestamp(ioctx, heartbeat_object_name, heartbeat_count, write_timeout=5):
-            def update_heartbeat_timestamp_callback(*ignores):
-                pass
-
-            completion = ioctx.aio_write(heartbeat_object_name, str(heartbeat_count), 0, update_heartbeat_timestamp_callback)
-
-            failure = 0
-            while not completion.is_complete():
-                time.sleep(1)
-                failure += 1
-                if failure == write_timeout:
-                    logger.debug("write operation not finished util timeout, report update failure")
-                    return False
-
-            return True
-
-
         @thread.AsyncThread
         def heartbeat_on_ceph(ps_uuid, pool_name):
+            logger.debug("start run fencer with key %s" % get_fencer_key(ps_uuid, pool_name))
             self.setup_fencer(get_fencer_key(ps_uuid, pool_name), created_time)
-
             try:
                 failure = 0
                 storage_failure = False
                 report_storage_status = False
 
-                heartbeat_success = heartbeat_file_exists(pool_name) or create_heartbeat_file(pool_name)
-                if heartbeat_success:
+                if heartbeat_file_exists(pool_name) or create_heartbeat_file(pool_name):
                     self.report_storage_status([cmd.uuid], 'Connected')
 
-                conf_path, keyring_path, username = ceph.update_ceph_client_access_conf(ps_uuid, cmd.monUrls, cmd.userKey, cmd.manufacturer)
-                logger.debug("config file: %s, pool name: %s" % (conf_path, pool_name))
-                heartbeat_counter = 0
-                additional_conf_dict = {}
-                if keyring_path:
-                    additional_conf_dict['keyring'] = keyring_path
+                while self.run_fencer(get_fencer_key(ps_uuid, pool_name), created_time):
+                    time.sleep(cmd.interval)
 
-                with rados.Rados(conffile=conf_path, conf=additional_conf_dict, name=username) as cluster:
-                    with cluster.open_ioctx(pool_name) as ioctx:
-                        image = None
-                        heartbeat_object_name = None
-                        while self.run_fencer(get_fencer_key(ps_uuid, pool_name), created_time):
-                            time.sleep(cmd.interval)
+                    heartbeat_success = heartbeat_file_exists(pool_name) or create_heartbeat_file(pool_name)
 
-                            if not heartbeat_object_name:
-                                heartbeat_object_name = ceph.get_heartbeat_object_name(ioctx, cmd.uuid, cmd.hostUuid)
+                    if heartbeat_success and storage_failure and not report_storage_status:
+                        # if heartbeat recovered and storage failure has occured before 
+                        # set report_storage_status to False to report fencer recoverd to management node
+                        report_storage_status = True
+                        storage_failure = False
 
-                            heartbeat_success = False
-                            if heartbeat_object_name is None:
-                                logger.debug("missing heartbeat object name")
-                            else:
-                                heartbeat_success = update_heartbeat_timestamp(ioctx, heartbeat_object_name, heartbeat_counter, cmd.storageCheckerTimeout)
-
-                            if heartbeat_counter > 100000:
-                                heartbeat_counter = 0
-                            else:
-                                heartbeat_counter += 1
-                            if heartbeat_success and storage_failure and not report_storage_status:
-                                # if heartbeat recovered and storage failure has occured before 
-                                # set report_storage_status to False to report fencer recoverd to management node
-                                report_storage_status = True
-                                storage_failure = False
-
-                            if report_storage_status: 
-                                if storage_failure:
-                                    self.report_storage_status([cmd.uuid], 'Disconnected')
-                                else:
-                                    self.report_storage_status([cmd.uuid], 'Connected')
-                                
-                                report_storage_status = False
-                            
-                            # after fencer state reported, set fencer_state_reported to False
-                            if heartbeat_success:
+                    if report_storage_status: 
+                        if storage_failure:
+                            self.report_storage_status([cmd.uuid], 'Disconnected')
+                        else:
+                            self.report_storage_status([cmd.uuid], 'Connected')
+                        
+                        report_storage_status = False
+                    
+                    # after fencer state reported, set fencer_state_reported to False
+                    if heartbeat_success:
+                        continue
+                        
+                    failure += 1
+                    if failure == cmd.maxAttempts:
+                        # c.f. We discovered that, Ceph could behave the following:
+                        #  1. Create heart-beat file, failed with 'File exists'
+                        #  2. Query the hb file in step 1, and failed again with 'No such file or directory'
+                        if ceph_in_error_stat():
+                            if cmd.strategy == 'Permissive':
                                 continue
 
-                            failure += 1
-                            if failure == cmd.maxAttempts:
-                                # c.f. We discovered that, Ceph could behave the following:
-                                #  1. Create heart-beat file, failed with 'File exists'
-                                #  2. Query the hb file in step 1, and failed again with 'No such file or directory'
-                                if ceph_in_error_stat():
-                                    if cmd.strategy == 'Permissive':
-                                        continue
+                            # for example, pool name is aaa
+                            # add slash to confirm kill_vm matches vm with volume aaa/volume_path
+                            # but not aaa_suffix/volume_path
+                            vm_uuids = kill_vm(cmd.maxAttempts, ['%s/' % pool_name], False).keys()
 
-                                    # for example, pool name is aaa
-                                    # add slash to confirm kill_vm matches vm with volume aaa/volume_path
-                                    # but not aaa_suffix/volume_path
-                                    vm_uuids = kill_vm(cmd.maxAttempts, ['%s/' % pool_name], False).keys()
+                            if vm_uuids:
+                                self.report_self_fencer_triggered([cmd.uuid], ','.join(vm_uuids))
+                                clean_network_config(vm_uuids)
+                            
+                            storage_failure = True
+                            report_storage_status = True
+                        else:
+                            delete_heartbeat_file(pool_name)
 
-                                    if vm_uuids:
-                                        self.report_self_fencer_triggered([cmd.uuid], ','.join(vm_uuids))
-                                        clean_network_config(vm_uuids)
-                                    
-                                    storage_failure = True
-                                    report_storage_status = True
-                                else:
-                                    # reset the failure count
-                                    failure = 0
+                        # reset the failure count
+                        failure = 0
 
                 logger.debug('stop self-fencer on pool %s of ceph primary storage' % pool_name)
             except:
                 logger.debug('self-fencer on pool %s ceph primary storage stopped abnormally' % pool_name)
                 content = traceback.format_exc()
                 logger.warn(content)
-                self.report_storage_status([cmd.uuid], 'Disconnected')
 
         for pool_name in cmd.poolNames:
             heartbeat_on_ceph(cmd.uuid, pool_name)
@@ -857,7 +813,7 @@ class HaPlugin(kvmagent.KvmAgent):
                 heartbeat_dir = os.path.join(mount_path, "zs-heartbeat")
                 if not mounted_by_zstack or linux.is_mounted(mount_path):
                     if not os.path.exists(heartbeat_dir):
-                        os.makedirs(heartbeat_dir, 0o755)
+                        os.makedirs(heartbeat_dir, 0755)
                 else:
                     if os.path.exists(heartbeat_dir):
                         linux.rm_dir_force(heartbeat_dir)
@@ -954,79 +910,6 @@ class HaPlugin(kvmagent.KvmAgent):
 
 
     @kvmagent.replyerror
-    def ceph_host_heartbeat_check(self, req):
-        rsp = CephHostHeartbeatCheckRsp()
-        result = {}
-
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        ceph_conf, username = ceph.get_ceph_client_conf(cmd.primaryStorageUuid, cmd.manufacturer)
-
-        if not os.path.exists(ceph_conf):
-            rsp.success = False
-            return jsonobject.dumps(rsp)
-
-        heartbeat_success = False
-        for pool_name in cmd.poolNames:
-            image = None
-            with rados.Rados(conffile=ceph_conf, name=username) as cluster:
-                with cluster.open_ioctx(pool_name) as ioctx:
-                    heartbeat_object_name = ceph.get_heartbeat_object_name(ioctx, cmd.primaryStorageUuid, cmd.targetHostUuid)
-                    if not heartbeat_object_name:
-                        logger.debug("Failed to get heartbeat file info of pool %s" % pool_name)
-                        continue
-
-                    lastest_heartbeat_count = [None]
-                    current_heartbeat_count = [None]
-                    def get_current_completion(_, content):
-                        current_heartbeat_count[0] = int(str(content).strip())
-                        logger.debug("host last heartbeat is %s, host current heartbeat count is %s" % (lastest_heartbeat_count[0], current_heartbeat_count[0]))
-
-                    logger.debug("check if %s is still alive" % cmd.targetHostUuid)
-                    wait_heartbeat_count_failure = 0
-                    remain_timeout = cmd.storageCheckerTimeout
-                    while wait_heartbeat_count_failure < cmd.times + 1:
-                        if lastest_heartbeat_count[0]:
-                            time.sleep(cmd.interval + remain_timeout)
-                        remain_timeout = cmd.storageCheckerTimeout
-
-                        completion = ioctx.aio_read(heartbeat_object_name, 10, 0, get_current_completion)
-                        #print str(content).strip()
-                        failure_count = 0
-                        while not completion.is_complete():
-                            if failure_count == cmd.storageCheckerTimeout:
-                                break
-
-                            time.sleep(1)
-                            failure_count = failure_count + 1
-                        
-                        remain_timeout = remain_timeout - failure_count
- 
-                        completion.wait_for_complete_and_cb()
-
-                        if current_heartbeat_count[0] is None:
-                            wait_heartbeat_count_failure += 1
-                            continue
-
-                        if lastest_heartbeat_count[0] is None:
-                            lastest_heartbeat_count[0] = current_heartbeat_count[0]
-                            continue
-
-                        heartbeat_success = current_heartbeat_count[0] != lastest_heartbeat_count[0]
-                        if heartbeat_success and lastest_heartbeat_count[0] is not None:
-                            logger.debug("host[uuid:%s]'s heartbeat updated, it is still alive" % cmd.targetHostUuid)
-                            break
-                        else:
-                            wait_heartbeat_count_failure += 1
-
-                    result[pool_name] = heartbeat_success
-                    if not heartbeat_success:
-                        break
-        
-        rsp.result = result
-        return jsonobject.dumps(rsp)
-
-
-    @kvmagent.replyerror
     def sanlock_scan_host(self, req):
         def parseLockspaceHostIdPair(s):
             xs = s.split(':', 3)
@@ -1075,7 +958,6 @@ class HaPlugin(kvmagent.KvmAgent):
         http_server = kvmagent.get_http_server()
         http_server.register_async_uri(self.SCAN_HOST_PATH, self.scan_host)
         http_server.register_async_uri(self.SANLOCK_SCAN_HOST_PATH, self.sanlock_scan_host)
-        http_server.register_async_uri(self.CEPH_HOST_HEARTBEAT_CHECK_PATH, self.ceph_host_heartbeat_check)
         http_server.register_async_uri(self.SETUP_SELF_FENCER_PATH, self.setup_self_fencer)
         http_server.register_async_uri(self.CEPH_SELF_FENCER, self.setup_ceph_self_fencer)
         http_server.register_async_uri(self.CANCEL_SELF_FENCER_PATH, self.cancel_filesystem_self_fencer)
