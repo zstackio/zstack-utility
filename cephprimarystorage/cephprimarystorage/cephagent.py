@@ -371,6 +371,7 @@ class CephAgent(plugin.TaskManager):
 
         bash_errorout('rbd snap unprotect {{SP_PATH}}')
         bash_errorout('rbd snap rm {{SP_PATH}}')
+        bash_roe('rbd snap purge {{IMAGE_PATH}}')
         bash_errorout('rbd rm {{IMAGE_PATH}}')
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
@@ -554,6 +555,7 @@ class CephAgent(plugin.TaskManager):
         if os.path.exists(PFILE):
             os.remove(PFILE)
 
+        shell.run('rbd snap purge %s' % dst_path)
         if err:
             shell.run('rbd rm %s' % dst_path)
             raise err
