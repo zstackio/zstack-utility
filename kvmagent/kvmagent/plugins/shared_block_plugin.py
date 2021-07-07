@@ -350,6 +350,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             linux.set_fail_if_no_path()
 
         if cmd.rescan_scsi:
+            shell.run("timeout 30 iscsiadm -m session -R")
             shell.run("timeout 120 /usr/bin/rescan-scsi-bus.sh")
 
         try:
