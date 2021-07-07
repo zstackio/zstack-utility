@@ -804,6 +804,18 @@ def find_domain_cdrom_address(domain_xml, target_dev):
         return d.get_child_node('address')
     return None
 
+def check_domain_xml_pvpanic_enable(domain_xml):
+    domain_xmlobject = xmlobject.loads(domain_xml)
+    hyperv_check = False
+    isa_check = False
+    for panic in domain_xmlobject.devices.get_child_node_as_list('panic'):
+        if panic.model_ == 'hyperv':
+            hyperv_check = True
+        elif panic.model_ == 'isa':
+            for address in panic.get_child_node_as_list('address'):
+                if address.type_ == 'isa' and address.iobase_ == '0x505':
+                    isa_check = True
+    return hyperv_check and isa_check
 
 def find_domain_first_boot_device(domain_xml):
     domain_xmlobject = xmlobject.loads(domain_xml)
@@ -3990,10 +4002,7 @@ class Vm(object):
             e(root, 'description', cmd.vmName)
             e(root, 'on_poweroff', 'destroy')
             e(root, 'on_reboot', 'restart')
-            on_crash = cmd.addons['onCrash']
-            if on_crash is None:
-                on_crash = 'restart'
-            e(root, 'on_crash', on_crash)
+            e(root, 'on_crash', 'preserve' if cmd.addons['onCrash'] is None else cmd.addons['onCrash'])
             meta = e(root, 'metadata')
             zs = e(meta, 'zstack', usenamesapce=True)
             e(zs, 'internalId', str(cmd.vmInternalId))
@@ -4156,10 +4165,8 @@ class Vm(object):
             usbDevices = cmd.addons['usbDevice']
             if usbDevices:
                 make_usb_device(usbDevices)
-            
-            pvpanic = cmd.addons['pvpanic']
-            if pvpanic:
-                make_pvpanic()
+
+            make_pvpanic()
 
         # FIXME: manage scsi device in one place.
         def make_storage_device(storageDevices):
@@ -4277,7 +4284,6 @@ class Vm(object):
 
         def make_pvpanic():
             devices = elements['devices']
-            # def e(parent, tag, value=None, attrib={}, usenamesapce = False):
             e(devices, 'panic', None, {'model' : 'hyperv'})
             isa_panic = e(devices, 'panic', None, {'model' : 'isa'})
             e(isa_panic, 'address', None, {'type' : 'isa', 'iobase' : '0x505'})
@@ -6545,16 +6551,7 @@ class VmPlugin(kvmagent.KvmAgent):
         if vm is None:
             rsp.features['pvpanic_host_enable'] = 'unknown'
             return
-        hyperv_check = False
-        isa_check = False
-        for panic in vm.domain_xmlobject.devices.get_child_node_as_list('panic'):
-            if panic.model_ == 'hyperv':
-                hyperv_check = True
-            elif panic.model_ == 'isa':
-                for address in panic.get_child_node_as_list('address'):
-                    if address.type_ == 'isa' and address.iobase_ == '0x505':
-                        isa_check = True
-        rsp.features['pvpanic_host_enable'] = 'enable' if hyperv_check and isa_check else 'disable'
+        rsp.features['pvpanic_host_enable'] = 'enable' if check_domain_xml_pvpanic_enable(vm.domain_xml) else 'disable'
 
     @kvmagent.replyerror
     @in_bash
@@ -7362,17 +7359,29 @@ class VmPlugin(kvmagent.KvmAgent):
             self._record_operation(vm_uuid, VmPlugin.VM_OP_REBOOT)
 
             is_cdrom = self._check_boot_from_cdrom(domain_xml)
-            if not is_cdrom:
-                logger.debug(
-                    "the vm[uuid:%s]'s boot device is not cdrom, nothing to do, skip this reboot event" % (vm_uuid))
+            if is_cdrom:
+                logger.debug("the vm[uuid:%s]'s boot device is cdrom, for the policy[bootFromHardDisk], need to update root volume boot order" % (vm_uuid))
+            pvpanic_enable = check_domain_xml_pvpanic_enable(domain_xml)
+            if not pvpanic_enable:
+                logger.debug("the vm[uuid:%s]'s pvpanic is disable, need to enable domain host panic listener" % (vm_uuid))
+            if not is_cdrom and pvpanic_enable:
                 return
-            logger.debug(
-                'the vm[uuid:%s] is set to boot from the cdrom, for the policy[bootFromHardDisk], the reboot will boot from hdd' % vm_uuid)
+            logger.debug('for the above reason, the vm[uuid:%s] will boot from hdd' % vm_uuid)
+
             try:
                 dom.destroy()
             except:
                 pass
 
+            # pvpanic
+            domain_xmlobject = xmlobject.loads(domain_xml)
+            domain_xmlobject.on_crash.text_ = 'preserve'
+            domain_xmlobject.devices.panic = [
+                xmlobject.loads("<panic model='hyperv'/>"),
+                xmlobject.loads("<panic model='isa'><address type='isa' iobase='0x505'/></panic>")
+            ]
+            domain_xml = domain_xmlobject.dump()
+            # cdrom
             xml = self.update_root_volume_boot_order(domain_xml)
             xml = re.sub(r"""\stray\s*=\s*'open'""", """ tray='closed'""", xml)
             domain = conn.defineXML(xml)
