@@ -248,6 +248,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         linux.flush_device_ip(network_obj.dhcp_interface)
 
     def _prepare_tftp(self):
+        self._destroy_tftp()
 
         if not os.path.exists(self.MAPFILE_PATH):
             template_map_file = self._load_template('tftp_map_file')
@@ -449,6 +450,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         :param network_obj: The network obj
         :type network_obj: NetworkObj
         """
+        self._destroy_nginx()
         self._prepare_nginx_basic(network_obj)
         template = self._load_template('nginx_proxy_to_mn')
         mn_callback_uri = 'http://{ip}:{port}'.format(
@@ -816,6 +818,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         :param network_obj: The network obj
         :type network_obj: NetworkObj
         """
+        self._destroy_ipxe()
         inspect_kernel_uri = 'x86_64/vmlinuz'
         inspect_initrd_uri = 'x86_64/initrd.img'
         inspect_ks_cfg_uri = 'http://{ip}:{port}/bmv2httpboot/ks/inspector_ks_x86_64.cfg'.format(
