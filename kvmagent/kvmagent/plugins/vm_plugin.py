@@ -2434,14 +2434,14 @@ class Vm(object):
 
         for i in ifs:
             src = i.getElementsByTagName('source')[0]
-            target = i.getElementsByTagName('target')[0]
+            #target = i.getElementsByTagName('target')[0]
             srcPath = src.getAttribute("path")
             if srcPath == "":
                 continue
             for v in vdpaPaths:
                 if srcPath.split('/')[-2] == v.split('/')[-2]:
                     src.setAttribute("path", v)
-                    target.setAttribute("dev", v.split('/')[-1])
+                    #target.setAttribute("dev", v.split('/')[-1])
                     vdpaPaths.remove(v)
 
         logger.debug("destXml:{}".format(xmlobj.toxml()))
@@ -2737,10 +2737,7 @@ class Vm(object):
         vhostSrcPath = None
 
         if cmd.nic.type == "vDPA":
-            if action in "Attach":
-                vhostSrcPath = ovs.get_vDPA(cmd.vmUuid, cmd.nic)
-            else:
-                vhostSrcPath = ovs.free_vDPA(cmd.vmUuid, cmd.nic.nicInternalName)
+                vhostSrcPath = ovs.OvsCtl().getVdpa(cmd.vmUuid, cmd.nic)
 
         interface = Vm._build_interface_xml(cmd.nic, None, vhostSrcPath, action, brMode)
 
@@ -3003,6 +3000,8 @@ class Vm(object):
                 self.domain.detachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
             else:
                 self.domain.detachDevice(xml)
+
+            ovs.OvsCtl().freeVdpa(cmd.vmUuid, cmd.nic.nicInternalName)
 
             if not linux.wait_callback_success(check_device, interval=0.5, timeout=10):
                 raise Exception('NIC device is still attached after 10 seconds. Please check virtio driver or stop VM and detach again.')
@@ -3968,7 +3967,7 @@ class Vm(object):
             brMode = cmd.addons['brMode'] if cmd.addons else None
             for index, nic in enumerate(cmd.nics):
                 if nic.type == "vDPA":
-                    vDPAPath = ovs.get_vDPA(cmd.priorityConfigStruct.vmUuid, nic)
+                    vDPAPath = ovs.OvsCtl().getVdpa(cmd.priorityConfigStruct.vmUuid, nic)
                     interface = Vm._build_interface_xml(nic, devices, vDPAPath, 'Attach', brMode, index)
                 else:
                     interface = Vm._build_interface_xml(nic, devices, vhostSrcPath, 'Attach', brMode, index)
@@ -5148,7 +5147,7 @@ class VmPlugin(kvmagent.KvmAgent):
                 vm.stop(timeout=cmd.timeout / 2)
 
             # free vdpa
-            ovs.free_vDPA(cmd.uuid)
+            ovs.OvsCtl().freeVdpa(cmd.uuid)
         except kvmagent.KvmError as e:
             logger.debug(linux.get_exception_stacktrace())
         finally:
@@ -5237,8 +5236,8 @@ class VmPlugin(kvmagent.KvmAgent):
 
             vm = get_vm_by_uuid(cmd.uuid, False)
             if vm:
-                ovs.free_vDPA(cmd.uuid)
                 vm.destroy()
+                ovs.OvsCtl().freeVdpa(cmd.uuid)
                 logger.debug('successfully destroyed vm[uuid:%s]' % cmd.uuid)
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())

@@ -218,8 +218,6 @@ class HostNetworkInterfaceInventory(object):
 
     def init(self, name):
         super(HostNetworkInterfaceInventory, self).__init__()
-        # TODO： compelete this map
-        self.nic_info = ovs.get_interface_offloadstatus
         self.interfaceName = name
         self.speed = None
         self.slaveActive = None
@@ -278,7 +276,7 @@ class HostNetworkInterfaceInventory(object):
 
         self.pciDeviceAddress = os.readlink("/sys/class/net/%s/device" % self.interfaceName).strip().split('/')[-1]
 
-        self.offloadStatus = ovs.get_interface_offloadstatus(self.interfaceName)
+        self.offloadStatus = ovs.OvsCtl().ifOffloadStatus(self.interfaceName)
 
     def _to_dict(self):
         to_dict = self.__dict__

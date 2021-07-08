@@ -1,9 +1,13 @@
 import os
+import shutil
 import time
 import yaml
+import glob
+import uuid
 
-from zstacklib.utils import shell
 from zstacklib.utils import log
+from zstacklib.utils import shell
+from zstacklib.utils import iproute
 from zstacklib.utils import lock
 
 logger = log.get_logger(__name__)
@@ -13,17 +17,17 @@ class OvsError(Exception):
     '''ovs error'''
 
 
-def write_sysfs(path, value, supressRaise=False):
+def writeSysfs(path, value, supressRaise=False):
     try:
         with open(path, 'w') as f:
-            f.write(value)
+            f.write(str(value))
     except Exception as e:
         logger.warn(str(e))
         if not supressRaise:
             raise OvsError(str(e))
 
 
-def read_sysfs(path, supressRaise=False):
+def readSysfs(path, supressRaise=False):
     ret = None
     try:
         with open(path, 'r') as f:
@@ -36,454 +40,886 @@ def read_sysfs(path, supressRaise=False):
     return ret
 
 
-def confirm_write_sysfs(path, value, times=3, sleep_time=3):
+def confirmWriteSysfs(path, value, times=3, sleepTime=3):
     for _ in range(0, times):
-        write_sysfs(path, value, True)
-        time.sleep(sleep_time)
-        if read_sysfs(path, True) == value:
+        writeSysfs(path, value, True)
+        time.sleep(sleepTime)
+        if readSysfs(path, True) == value:
             return
 
     raise OvsError("write sysfs timeout")
 
 
-def check_mlnx_ofed():
-    # maybe we should check ofed version
-    if shell.run("ofed_info -n") != 0:
-        return False
-    if not os.path.exists("/usr/share/openvswitch/scripts/ovs-ctl"):
-        return False
-    return True
-
-
-def list_br():
-    s = shell.ShellCmd("ovs-vsctl --timeout=5 list-br", None, False)
-    s(False)
-    if s.return_code != 0:
-        raise OvsError("ovs error: {}".format(s.stderr))
-
-    return s.stdout.strip().split('\n')
-
-
-def get_bridge_ports(bridgeName):
-    s = shell.ShellCmd(
-        "ovs-vsctl --timeout=5 list-ports {}".format(bridgeName), None, False)
-    s(False)
-    if s.return_code != 0:
-        raise OvsError("ovs error: {}".format(s.stderr))
-
-    return s.stdout.strip().split('\n')
-
-
-def get_bridge_ifaces(bridgeName):
-    s = shell.ShellCmd(
-        "ovs-vsctl --timeout=5 list-ifaces {}".format(bridgeName), None, False)
-    s(False)
-    if s.return_code != 0:
-        raise OvsError("ovs error: {}".format(s.stderr))
-
-    return s.stdout.strip().split('\n')
-
-
-def get_bonds_interfaces(bondList):
-    slaves_p = "/sys/class/net/{}/bonding/slaves"
-    interface_list = []
-    for b in bondList:
-        tmp = slaves_p.format(b)
-        tmp_list = []
-        if os.path.exists(tmp):
-            tmp_list = read_sysfs(tmp).split()
-        interface_list.extend(tmp_list)
-    return interface_list
-
-
-def get_interface_pcinum(interface):
-    pci = None
-    try:
-        pci_path = '/sys/class/net/{}/device'
-        pci = os.path.realpath(pci_path.format(interface)).split("/")[-1]
-    except Exception as e:
-        logger.warn(str(e))
-    finally:
-        return pci
-
-
-def get_used_pci(vDPA_list):
-    pci_used_list = []
-
-    if vDPA_list == None:
-        return pci_used_list
-
-    for i in vDPA_list:
-        s = shell.ShellCmd(
-            "ovs-vsctl get Interface {} options:vdpa-accelerator-devargs".format(i), None, False)
-        s(False)
-        if s.return_code != 0:
-            raise OvsError("ovs error: {}".format(s.stderr))
-
-        pci_used_list.append(s.stdout.strip().strip('"'))
-
-    return pci_used_list
-
-
-def get_vfs_dict(interfaceName):
-    """
-    vfs_dict{'vf_representor', 'vf_pci'}
+class OvsVenv(object):
+    """ ovs workspace and env
+        including:
+        1. mlnx ofed driver
+        2. hugepages
+        3. offloadStatus of smart-nics
     """
 
-    device_p = "/sys/class/net/{}/device/"
-    vfs_dict = {}
-    tmp_list = os.listdir(device_p.format(interfaceName))
-    for vf in tmp_list:
-        if vf.startswith("virtfn"):
-            pci = os.path.realpath(device_p.format(
-                interfaceName) + vf).split("/")[-1]
-            vfs_dict[vf] = pci
+    VENV_PATH = "/var/run/openvswitch/"
+    DEFAULT_HUGEPAGE_SIZE = 2048
+    DEFAULT_NR_HUGEPAGES = 1024 * 2
+    ZSTACK_CONF_PATH = "/usr/local/etc/zstack-ovs/"
+    ZSTACK_VDPA_PATH = "/var/run/zstack/vdpa/"
+    ZSTACK_LOG_PATH = "/var/log/zstack/openvswitch/"
 
-    return vfs_dict
+    def __init__(self, venv=VENV_PATH, hugepage_size=DEFAULT_HUGEPAGE_SIZE, nr_hugepages=DEFAULT_NR_HUGEPAGES, confPath=ZSTACK_CONF_PATH, logPath=ZSTACK_LOG_PATH):
+        # check mlnx ofed driver firstly
+        self.venv = venv
+        if not os.path.isdir(self.venv):
+            os.mkdir(self.venv, 0755)
 
+        self.logPath = logPath
+        if not os.path.isdir(self.logPath):
+            os.mkdir(self.logPath, 0755)
 
-def get_free_pci(if_list, used_pci):
+        self.ofedVer = "unknow"
+        self.vSwitchVer = "unknow"
+        self.dpdkVer = "unknow"
+        self.ovsDBVer = "unknow"
+        self.checkMlnxOfed()
 
-    # TODO: low performance
-    def __calculate_free_pci(pci_dict, used_pci):
-        count = 0
-        for i in pci_dict:
-            if pci_dict[i] not in used_pci:
-                count += 1
-        return count
+        self.hugepage_size = hugepage_size
+        self.nr_hugepages = nr_hugepages
 
-    free_list_count = 0
-    choosen_pci_dict = {}
-    choosen_if = None
-    for i in if_list:
-        pci_dict = get_vfs_dict(i)
-        tmp = __calculate_free_pci(pci_dict, used_pci)
-        if tmp > free_list_count:
-            free_list_count = tmp
-            choosen_pci_dict = pci_dict
-            choosen_if = i
+        self.confPath = confPath
+        self.offloadStatus = {}
+        self.checkOffloadStatus()
 
-    if free_list_count == 0:
-        return None, None, None
+        if not os.path.exists(self.ZSTACK_VDPA_PATH):
+            os.mkdir(self.ZSTACK_VDPA_PATH, 0755)
+        self.vdpaPath = self.ZSTACK_VDPA_PATH
 
-    for i in choosen_pci_dict:
-        if choosen_pci_dict[i] not in used_pci:
-            return choosen_if, i, choosen_pci_dict[i]
-    return None, None, None
+        self.ovsdir = "/usr/share/openvswitch/"
 
+        self.CONF_DB = os.path.join(self.confPath, "conf.db")
+        self.DB_SOCK = os.path.join(self.venv, "db.sock")
+        self.DBLogPath = os.path.join(self.logPath, "ovsdb-server.log")
 
-def get_interface_offloadstatus(interface):
-    smartnic_info_path = "/usr/local/etc/zstack/smart-nics.yaml"
+        self.DBPidPath = os.path.join(self.venv, "ovsdb-server.pid")
+        self.switchPidPath = os.path.join(self.venv, "ovs-vswitchd.pid")
+        self.ctlFilePath = os.path.join(self.venv, "ovsdb-server.ctl")
+        self.switchLogPath = os.path.join(self.logPath, "ovs-vswitchd.log")
 
-    offload_status = {}
+        self.ctlBin = "ovs-vsctl --db=unix:{} ".format(self.DB_SOCK)
 
-    with open(smartnic_info_path, 'r') as f:
-        data = yaml.safe_load(f)
+    def checkMlnxOfed(self):
+        """ check mlnx ofed driver,
+            get ovs and dpdk version,
+            the EAL options between different dpdk version maybe changed
+            and old configurations may cause error
+        """
+        if not os.path.exists("/usr/share/openvswitch/scripts/ovs-ctl"):
+            raise OvsError("can not find ovs-ctl")
 
-    for i in data:
-        offload_status[i['nic']['vendor_device']] = "|".join(
-            str(x) for x in i['nic']['offloadstatus'])
+        self.ofedVer = shell.call("ofed_info -n").strip()
 
-    vendor_device = get_interface_vendor_device(interface)
+        verList = shell.call(
+            "ovs-vswitchd --version | grep -E 'DPDK|vSwitch'").split("\n")
 
-    if vendor_device in offload_status.keys():
-        return offload_status[vendor_device]
+        self.vSwitchVer = verList[0].split()[-1]
+        if len(verList) > 1:
+            self.dpdkVer = verList[1].split()[-1]
 
-    return None
+        self.ovsDBVer = shell.call(
+            "ovsdb-server --version | awk 'NR==1{print $NF}'").strip()
 
+    def checkHugepage(self):
+        """
+        prepare Hugepages for DPDK
+        """
+        hugepagesPath = {2048: "/sys/kernel/mm/hugepages/hugepages-2048kB/",
+                         1048576: "/sys/kernel/mm/hugepages/hugepages-1048576kB/"}
 
-def get_interface_vendor_device(interfaceName):
-    vendor_path = '/sys/class/net/{}/device/vendor'.format(interfaceName)
-    device_path = '/sys/class/net/{}/device/device'.format(interfaceName)
+        # get numa nodes
+        numaNodes = glob.glob("/sys/devices/system/node/node*/")
+        numaNodeSz = len(numaNodes)
 
-    vendor_id = read_sysfs(vendor_path)[2:6]
-    device_id = read_sysfs(device_path)[2:6]
+        # get current memory status
+        curFreeMemsz = int(shell.call(
+            "cat /proc/meminfo | grep MemFree").split()[1])
 
-    return vendor_id + device_id
+        # get default free hugepage size
+        freeHugepages = int(readSysfs(
+            hugepagesPath[self.hugepage_size] + "free_hugepages"))
 
-
-def set_interface_devlink_mode(interfaceName):
-    devlink_mode = '/sys/class/net/{}/compat/devlink/mode'.format(
-        interfaceName)
-    totalvfs = '/sys/class/net/{}/device/sriov_totalvfs'.format(interfaceName)
-    numvfs = '/sys/class/net/{}/device/sriov_numvfs'.format(interfaceName)
-    unbind_path = '/sys/class/net/{}/device/driver/unbind'.format(
-        interfaceName)
-
-    if read_sysfs(devlink_mode, True) == "switchdev":
-        return
-
-    # split vfs
-    write_sysfs(numvfs, "0")
-    vfs_num = read_sysfs(totalvfs)
-    write_sysfs(numvfs, vfs_num)
-    # wait split vfs complete
-    time.sleep(int(vfs_num) * 0.5)
-
-    # unbind vfs
-    pci_list = get_vfs_dict(interfaceName)
-    for i in pci_list:
-        write_sysfs(unbind_path, pci_list[i])
-
-    # wait unbind finished, It may take some time to unbind VFS
-    for i in range(0, 5):
-        if i == 5:
-            raise OvsError()
-        if len(get_vfs_dict(interfaceName)) != 0:
-            time.sleep(10)
-
-    # change devlink mode to switchdev
-    confirm_write_sysfs(devlink_mode, 'switchdev', 10, 5)
-
-
-@lock.lock("prepare_vflag")
-def prepare_vflag(bondName):
-
-    slaves_p = "/sys/class/net/{}/bonding/slaves"
-
-    if not os.path.exists(slaves_p.format(bondName)):
-        return False
-
-    interfaces = get_bonds_interfaces([bondName])
-    if_pci_bdf = set()
-    if_vendor = set()
-
-    for i in interfaces:
-        if_pci_bdf.add(get_interface_pcinum(i).split(".")[0])
-        if_vendor.add(get_interface_vendor_device(i))
-
-    # the pfs under vflag should come from the same nic.
-    if len(if_vendor) != 1 or len(if_pci_bdf) != 1:
-        return False
-
-    # check vendor_device number
-    if get_interface_offloadstatus(interfaces[0]) == None:
-        return False
-
-    for i in interfaces:
-        # set devlink mode to switchdev
-        set_interface_devlink_mode(i)
-
-    return True
-
-
-def set_dpdk_white_list(interfaceNames):
-    dpdk_extra = ""
-
-    s = shell.ShellCmd(
-        "ovs-vsctl get Open_vSwitch . other_config:dpdk-extra", None, False)
-    s(False)
-    if s.return_code == 0:
-        dpdk_extra = s.stdout.strip().strip('\n').strip('"')
-
-    for i in interfaceNames:
-        pci = get_interface_pcinum(i)
-        if pci in dpdk_extra:
-            continue
-        else:
-            if get_ofed_version() >= 5.2:
-                dpdk_extra = dpdk_extra + "-a {},representor=[0-127],dv_flow_en=1,dv_esw_en=1 ".format(
-                    pci)
+        if freeHugepages < self.nr_hugepages:
+            if curFreeMemsz > (self.nr_hugepages - freeHugepages) * self.hugepage_size:
+                writeSysfs(hugepagesPath[self.hugepage_size] +
+                           "nr_hugepages", str
+                           (self.nr_hugepages * numaNodeSz - freeHugepages))
             else:
-                dpdk_extra = dpdk_extra + "-w {},representor=[0-127],dv_flow_en=1,dv_esw_en=1 ".format(
-                    pci)
+                raise OvsError("can not malloc enough hugepage for ovs.")
 
-    ret = shell.run(
-        'ovs-vsctl --timeout=5 --no-wait set Open_vSwitch . other_config:dpdk-extra="{}"'.format(dpdk_extra))
+    def checkOffloadStatus(self):
+        nicInfoPath = os.path.join(self.confPath, "smart-nics.yaml")
 
-    if ret is not 0:
-        logger.info(
-            "set dpdk wihite list for {} failed".format(interfaceNames))
-        return False
-    return True
+        if not os.path.exists(nicInfoPath):
+            raise OvsError("no such file:{}".format(nicInfoPath))
+
+        with open(nicInfoPath, 'r') as f:
+            data = yaml.safe_load(f)
+
+        for i in data:
+            self.offloadStatus[i['nic']['vendor_device']] = "|".join(
+                str(x) for x in i['nic']['offloadstatus'])
 
 
-def generate_all_vDPA(bridgeName, bondName):
+class Ovs(OvsVenv):
+    """ control the lifecycle of ovsdb and vswitch
+    """
 
-    # default vdpa source path
-    vDPA_path = "/var/run/zstack-vdpa"
+    def __init__(self, idl=None):
+        super(Ovs, self).__init__()
+        # TODO: use ovs idl control ovsdb
+        self.idl = idl
 
-    interface_list = get_bridge_ports(bridgeName)
+    def start(self, restart=False):
+        self.startDB(restart)
+        self.startSwitch(restart)
 
-    if bondName not in interface_list:
-        raise OvsError("bridge:{} don't have such bond:{}".format(
-            bridgeName, bondName))
+    def stop(self):
+        self.stopDB()
+        self.stopSwitch()
 
-    try:
-        if not os.path.exists(vDPA_path):
-            os.mkdir(vDPA_path, 0755)
-        sub_path = vDPA_path + '/' + bridgeName
-        if not os.path.exists(sub_path):
-            os.mkdir(sub_path, 0755)
-        # we only need to provide a vDPA file path here,
-        # and QEMU will create the actually file
-    except Exception as e:
-        logger.warn(str(e))
+    def status(self):
+        self.statusDB()
+        self.statusSwitch()
 
-    if_list = get_bonds_interfaces([bondName])
+    @lock.lock('startDB')
+    def startDB(self, restart=False):
+        """ start ovsdb """
 
-    for i in if_list:
-        vfs_dict = get_vfs_dict(i)
+        if not restart and self.statusDB() > 0:
+            return
 
-        for vf in vfs_dict:
-            vDPA = sub_path + '/' + i + vf
+        self.stopDB()
+        self.upgradeDB()
+
+        cmd = "ovsdb-server {}".format(self.CONF_DB)
+        cmd = cmd + " -vconsole:emer -vsyslog:err -vfile:info"
+        cmd = cmd + " --remote=punix:{}".format(self.DB_SOCK)
+        cmd = cmd + " --private-key=db:Open_vSwitch,SSL,private_key"
+        cmd = cmd + " --certificate=db:Open_vSwitch,SSL,certificate"
+        cmd = cmd + " --bootstrap-ca-cert=db:Open_vSwitch,SSL,ca_cert"
+        cmd = cmd + \
+            " --no-chdir --log-file={} --pidfile={} --unixctl={}".format(
+                self.DBLogPath, self.DBPidPath, self.ctlFilePath)
+        cmd = cmd + " --detach --monitor"
+        shell.call(cmd)
+
+        # Initialize database settings.
+        shell.run(self.ctlBin +
+                  "--no-wait -- init -- set Open_vSwitch . db-version={}".format(self.ovsDBVer))
+
+        time.sleep(1)
+        sysInfo = shell.call(
+            ". '/etc/os-release' && echo $ID && echo $VERSION_ID").split()
+        systemType = sysInfo[0]
+        systemVersion = sysInfo[1]
+        cmd = self.ctlBin + "--no-wait set Open_vSwitch . ovs-version={}".format(
+            self.vSwitchVer)
+        cmd = cmd + " external-ids:system-id={}".format(uuid.uuid4())
+        cmd = cmd + " external-ids:rundir={}".format(self.venv)
+        cmd = cmd + " system-type={}".format(systemType)
+        cmd = cmd + " system-version={}".format(systemVersion)
+        shell.run(cmd)
+
+        logger.debug("ovsdb: [{}] start success".format(self.pids[0]))
+
+    def stopDB(self):
+        self.stopProcess("ovsdb-server", self.pids[0], self.ovsDBVer)
+
+    def statusDB(self):
+        return self.pids[0]
+
+    def upgradeDB(self):
+        """
+        create ovsDB if not exist
+        upgrade ovsDB if needs conversion
+        """
+        if not os.path.isfile(self.CONF_DB):
             shell.run(
-                'ovs-vsctl add-port {} {} -- set Interface {} type=dpdkvdpa options:vdpa-socket-path={} options:vdpa-accelerator-devargs={} options:dpdk-devargs={},representor=pf{}vf{} options:vdpa-max-queues=4'.format(
-                    bridgeName, i+vf, i+vf, vDPA, vfs_dict[vf], get_interface_pcinum(if_list[0]), i[-1], vf[6:]))
+                'ovsdb-tool -v create {} {}'.format(self.CONF_DB, self.ovs_schema))
+            return
+
+        needsConv = shell.run(
+            "ovsdb-tool needs-conversion {} {}".format(self.CONF_DB, self.ovs_schema))
+        if needsConv == "yes":
+            # backup conf.db
+            version = shell.run(
+                "ovsdb-tool db-version {}".format(self.CONF_DB))
+            cksum = shell.run(
+                "ovsdb-tool db-cksum {} | awk '{print $1}'".format(self.CONF_DB))
+            backup = self.CONF_DB + ".backup" + version + "-" + cksum
+            shutil.copy2(self.CONF_DB, backup)
+
+            # Compact database.  This is important if the old schema did not enable
+            # garbage collection (i.e. if it did not have any tables with "isRoot":
+            # true) but the new schema does.  In that situation the old database
+            # may contain a transaction that creates a record followed by a
+            # transaction that creates the first use of the record.  Replaying that
+            # series of transactions against the new database schema (as "convert"
+            # does) would cause the record to be dropped by the first transaction,
+            # then the second transaction would cause a referential integrity
+            # failure (for a strong reference).
+            #
+            # Errors might occur on an Open vSwitch downgrade if ovsdb-tool doesn't
+            # understand some feature of the schema used in the OVSDB version that
+            # we're downgrading from, so we don't give up on error.
+            shell.run("ovsdb-tool compact {}".format(self.CONF_DB))
+            ret = shell.run(
+                "ovsdb-tool convert {} {}".format(self.CONF_DB, self.ovs_schema))
+
+            if ret != 0:
+                logger.warn(
+                    "Schema conversion failed, using empty database instead")
+                os.remove(self.CONF_DB)
+                shell.run(
+                    'ovsdb-tool -v create {} {}'.format(self.CONF_DB, self.ovs_schema))
+
+    @lock.lock('startSwitch')
+    def startSwitch(self, restart=False):
+        """ start vswitchd """
+
+        if not restart and self.statusSwitch() > 0:
+            return
+
+        self.stopSwitch()
+
+        if self.dpdkVer != "unknow":
+            self.checkHugepage()
+
+        cmd = "ovs-vswitchd unix:{}".format(self.DB_SOCK)
+        cmd = cmd + " -vconsole:emer -vsyslog:err -vfile:info"
+        cmd = cmd + " --mlockall --no-chdir"
+        cmd = cmd + \
+            " --log-file={} --pidfile={} --unixctl={}".format(
+                self.switchLogPath, self.switchPidPath, self.ctlFilePath)
+        cmd = cmd + " --detach --monitor"
+        shell.call(cmd)
+
+        logger.debug("ovs-vswitch: [{}] start success".format(self.pids[1]))
+
+    def stopSwitch(self):
+        self.stopProcess("ovs-vswitchd", self.pids[1], self.vSwitchVer)
+
+    def statusSwitch(self):
+        return self.pids[1]
+
+    @property
+    def ovs_schema(self):
+        path = os.path.join(self.ovsdir, 'vswitchd', 'vswitch.ovsschema')
+        if os.path.isfile(path):
+            return path
+        return os.path.join(self.ovsdir, 'vswitch.ovsschema')
+
+    @property
+    def pids(self):
+        """ return [ovsdb_pid, ovs-vswitch_pid] """
+
+        ovsdb_pidf = os.path.join(self.venv, "ovsdb-server.pid")
+        vswitch_pidf = os.path.join(self.venv, "ovs-vswitchd.pid")
+        result = [-1, -1]
+        if os.path.exists(ovsdb_pidf):
+            with open(ovsdb_pidf, 'r') as f:
+                result[0] = int(f.read().strip())
+        if os.path.exists(vswitch_pidf):
+            with open(vswitch_pidf, 'r') as f:
+                result[1] = int(f.read().strip())
+        return result
+
+    def process_exists(self, pid):
+        if os.path.isdir(os.path.join("/proc", str(pid))):
+            return True
+        return False
+
+    def stopProcess(self, name, pid, ver):
+        """
+        stop ovsdb or vswitch by ovs-appctl,
+        if not work, kill it.
+        """
+        if pid < 0:
+            return
+
+        pidPath = os.path.join(self.venv, "{}.pid".format(name))
+
+        if not self.process_exists(pid):
+            try:
+                os.remove(pidPath)
+                os.remove(self.ctlFilePath)
+            except OSError:
+                pass
+            return True
+
+        graceful = "EXIT 0.1 0.25 0.65 1"
+        actions = "TERM 0.1 0.25 0.65 1 1 1 1 KILL 1 1 1 2 10 15 30 FAIL"
+        # Use `ovs-appctl exit` only if the running daemon version
+        # is >= 2.5.90.  This script might be used during upgrade to
+        # stop older versions of daemons which do not behave correctly
+        # with `ovs-appctl exit` (e.g. ovs-vswitchd <= 2.5.0 deletes
+        # internal ports).
+        if self.version_geq(ver, "2.5.90"):
+            actions = graceful + ' ' + actions
+
+        forceStop = False
+        for action in actions.split():
+
+            if not self.process_exists(pid):
+                if forceStop:
+                    return True
+                else:
+                    # check one more time
+                    if not os.path.exists(pidPath) and not self.process_exists(pid):
+                        return True
+
+            if action == 'EXIT':
+                shell.run(
+                    "ovs-appctl -T 1 -t {} exit ".format(self.ctlFilePath))
+            elif action == 'TERM':
+                shell.run("kill {}".format(pid))
+                forceStop = True
+            elif action == 'KILL':
+                shell.run("kill -9 {}".format(pid))
+                forceStop = True
+            elif action == 'FAIL':
+                logger.error("Killing {} {} failed".format(name, pid))
+                return False
+            else:
+                time.sleep(float(action))
+
+        return False
+
+    def version_geq(self, v1, v2):
+        """
+        Compare (dot separated) version numbers. return true if 
+        v1 is greater or equal v2, otherwise false.
+        """
+        v1 = v1.split(".")
+        v2 = v2.split(".")
+
+        vLen = len(v1) if len(v1) < len(v2) else len(v2)
+
+        for i in range(0, vLen):
+            if int(v1[i]) < int(v2[i]):
+                return False
+            elif int(v1[i]) > int(v2[i]):
+                return True
+
+        return True
 
 
-@lock.lock("get_vDPA")
-def get_vDPA(vmUuid, nic):
-    bridgeName = nic.bridgeName
-    bondName = nic.physicalInterface
-    vlanId = nic.vlanId
-    nicInternalName = nic.nicInternalName
+class OvsCtl(Ovs):
+    def __init__(self):
+        super(OvsCtl, self).__init__()
+        self.startDB(False)
+        self.vdpaSup = True
+        if self.dpdkVer == "unknow":
+            logger.debug("current ovs do not support dpdk.")
+            self.vdpaSup = False
 
-    interface_list = get_bridge_ifaces(bridgeName)
+    def initVdpaSupport(self):
+        """
+        config ovs dpdk, open hardware offload, init dpdk  and so on.
+        """
+        if not self.vdpaSup:
+            return False
 
-    if bondName not in interface_list:
-        raise OvsError("bridge:{} don't have such bond:{}".format(
-            bridgeName, bondName))
+        shell.run(self.ctlBin +
+                  "--no-wait set Open_vSwitch . other_config:hw-offload=true")
+        shell.run(self.ctlBin +
+                  "--no-wait set Open_vSwitch . other_config:dpdk-init=true")
+        # TODO: caculater the memory
+        shell.run(self.ctlBin +
+                  "--no-wait set Open_vSwitch . other_config:dpdk-socket-mem={}".format(self.nr_hugepages))
 
-    # already exsit
-    current_vDPA = shell.call(
-        "ovs-vsctl --columns=name find interface external_ids:vm-id={} external_ids:iface-id={} | grep virtfn |cut -d ':' -f2".format(vmUuid, nicInternalName)).strip()
-    if current_vDPA != '':
-        vDPA_path = shell.call(
-            "ovs-vsctl get interface {} options:vdpa-socket-path".format(current_vDPA)).strip().strip('"')
+        return True
+
+    # ---------------------------- ovsctl ----------------------------------------
+
+    def listBrs(self, *args):
+        return shell.call(self.ctlBin + "list-br").strip().split('\n')
+
+    def createBr(self, brName, *args):
+
+        brs = self.listBrs()
+        if brName in brs:
+            logger.debug("bridge {} already created".format(brName))
+            return 0
+
+        # create bridge
+        ret = shell.run(self.ctlBin + 'add-br {} -- set Bridge {} datapath_type=netdev'.format(
+            brName, brName, "netdev"))
+
+        return ret
+
+    def deleteBr(self, *args):
+        brs = self.listBrs()
+        for arg in args:
+            if arg in brs:
+                shell.call(self.ctlBin +
+                           "--timeout=5 del-br {}".format(arg))
+
+    def deleteBrs(self):
+        brs = self.listBrs()
+        for br in brs:
+            if br != '':
+                shell.call(self.ctlBin +
+                           "--timeout=5 del-br {}".format(br))
+
+    def listIfaces(self, brName, *args):
+        return shell.call(self.ctlBin +
+                          "--timeout=5 list-ifaces {}".format(brName)).strip().split('\n')
+
+    def listPorts(self, brName, *args):
+        return shell.call(self.ctlBin +
+                          "--timeout=5 list-ports {}".format(brName)).strip().split('\n')
+
+    def addPort(self, brName, phyIfName, type, *args):
+        # add port
+        cmd = self.ctlBin + \
+            'add-port {} {} -- set Interface {} type={} '.format(
+                brName, phyIfName, phyIfName, type)
+
+        for arg in args:
+            cmd = cmd + "options:{} ".format(arg)
+
+        shell.call(cmd)
+
+    def delPort(self, brName, phyIfName, *args):
+        shell.call(self.ctlBin +
+                   'del-port {} {}'.format(brName, phyIfName))
+
+    def setPort(self, portName, tag):
+        shell.call(self.ctlBin +
+                   'set Port {} tag={} '.format(
+                       portName, tag))
+
+    def setIfaces(self, ifName, *args):
+        # set options
+        cmd = self.ctlBin + 'set Interface {} '.format(ifName)
+
+        for arg in args:
+            cmd = cmd + "{} ".format(arg)
+
+        shell.call(cmd)
+
+    # ---------------------------- external ---------------------------------------
+
+    def prepareBridge(self, bridgeName, interface):
+        # check whether interface is a bond
+        infacPath = '/sys/class/net/{}'.format(interface)
+        bondList = readSysfs('/sys/class/net/bonding_masters').strip().split()
+
+        # kernel bond
+        if interface in bondList:
+            self._init_kernel_bond(bridgeName, interface)
+            return True
+
+        # normal interface
+        if os.path.exists(infacPath):
+            self._init_interface(bridgeName, interface)
+            return True
+
+        # dpdk bond, dpdk bond configurations are store in file 'dpdk-bond.xml'
+        dpdkBond = self.getDPDKBond(interface)
+        if dpdkBond is not None:
+            self._init_dpdk_bond(bridgeName, dpdkBond)
+            return True
+
+        raise OvsError("interface:{} do not exists.".format(interface))
+
+    def getVdpa(self, vmUuid, nic):
+        bridgeName = nic.bridgeName
+        bondName = nic.physicalInterface
+        vlanId = nic.vlanId
+        nicInternalName = nic.nicInternalName
+
+        # check vdpa support
+        if not self.vdpaSup:
+            raise OvsError(
+                "ovs does not support vdpa feature. Please check dpdk settings")
+
+        # check br
+        if bridgeName not in self.listBrs():
+            raise OvsError("bridge:{} does not exists.".format(bridgeName))
+
+        curPorts = self.listPorts(bridgeName)
+        # check bond
+        if bondName not in curPorts:
+            raise OvsError(
+                "bond:{} does not exists. Please create it firstly".format(bondName))
+
+        # check if already attached
+        if nicInternalName in curPorts:
+            vdpaSockPath = shell.call(
+                self.ctlBin + "get Interface {} options:vdpa-socket-path".format(nicInternalName))
+            return vdpaSockPath.strip()[1:-1]
+
+        vdpaBrPath = os.path.join(self.vdpaPath, bridgeName)
+        if not os.path.exists(vdpaBrPath):
+            os.mkdir(vdpaBrPath, 0755)
+
+        vdpaSockPath = os.path.join(vdpaBrPath, nicInternalName+".sock")
+
+        vf, pci, ifaceName = self._get_free_vf(bridgeName, bondName)
+        if pci == None:
+            raise OvsError("vDPA resource exhausted.")
+
+        self.addPort(bridgeName, nicInternalName, "dpdkvdpa",
+                     "vdpa-socket-path={}".format(vdpaSockPath),
+                     "vdpa-accelerator-devargs={}".format(pci),
+                     "dpdk-devargs={},representor=pf{}vf{}".format(
+                         self._get_if_pcinum(ifaceName), ifaceName[-1], vf[6:]),
+                     "vdpa-max-queues=8")
+
+        if vlanId is not None:
+            self.setPort(nicInternalName, vlanId)
+
+        self.setIfaces(nicInternalName, "external_ids:vm-id={}".format(vmUuid))
+
+        return vdpaSockPath
+
+    def listVdpas(self, vmUuid):
+        if not self.vdpaSup:
+            return
+
+        return shell.call(self.ctlBin +
+                          "--columns=name find interface external_ids:vm-id={} | grep name |cut -d ':' -f2".format(vmUuid)).strip().split()
+
+    def freeVdpa(self, vmUuid, specificNic=None):
+        vDPA_list = []
+
+        if not self.vdpaSup:
+            return
+
+        vDPA_path = ''
+        if specificNic != None:
+            vDPA_list.append(specificNic)
+            vDPA_path = shell.call(self.ctlBin +
+                                   "get interface {} options:vdpa-socket-path".format(specificNic)).strip().strip('"')
+        else:
+            # get all vdpa nic belongs to vm
+            vDPA_list = self.listVdpas(vmUuid)
+
+        for br in self.listBrs():
+            tmpList = []
+            for vDPA in vDPA_list:
+                if vDPA in self.listIfaces(br):
+                    self.delPort(br, vDPA)
+                    tmpList.append(vDPA)
+            vDPA_list = list(set(vDPA_list).difference(set(tmpList)))
+
         return vDPA_path
 
-    used_vDPA_list = shell.call(
-        "ovs-vsctl --columns=name find interface external_ids!={} | grep virtfn |cut -d ':' -f2").split()
+    def ifOffloadStatus(self, ifName):
 
-    interface_list.remove(bondName)
+        vd = self._get_if_vd(ifName)
 
-    unused_vDPA_list = [x for x in interface_list if x not in used_vDPA_list]
+        if vd in self.offloadStatus.keys():
+            return self.offloadStatus[vd]
 
-    if len(unused_vDPA_list) == 0:
-        raise OvsError("vDPA resource exhausted")
+        return None
 
-    chosed_vDPA = unused_vDPA_list[0].strip()
+    def getDPDKBond(self, bondName):
+        bondFile = os.path.join(self.confPath, "dpdk-bond.yaml")
+        if not os.path.exists(bondFile):
+            return None
 
-    vDPA_path = shell.call(
-        "ovs-vsctl get interface {} options:vdpa-socket-path".format(chosed_vDPA)).strip().strip('"')
+        dpdkBond = Bond()
+        with open(bondFile, "r") as f:
+            data = yaml.safe_load(f)
 
-    # set vmUuid
-    shell.call("ovs-vsctl --timeout=2 set interface {} external_ids:vm-id={} external_ids:iface-id={}".format(
-        chosed_vDPA, vmUuid, nicInternalName))
+        for d in data:
+            if d['bond']['name'] == bondName:
+                dpdkBond.name = d['bond']['name']
+                dpdkBond.mode = d['bond']['mode']
+                dpdkBond.policy = d['bond']['policy']
+                dpdkBond.id = d['bond']['id']
+                for i in d['bond']['slaves']:
+                    dpdkBond.slaves.append(str(i))
 
-    if vlanId is not None:
-        shell.run(
-            'ovs-vsctl --timeout=5 set Port {} tag={}'.format(chosed_vDPA, vlanId))
+                return dpdkBond
 
-    return vDPA_path
+        return None
 
+    # ---------------------------- utils ------------------------------------------
 
-def free_vDPA(vmUuid, nicInternalName=None):
+    def _init_kernel_bond(self, bridgeName, bondName):
+        """
+        attach kernel bond to ovs.
+        """
 
-    vDPA_list = []
+        slaves_p = "/sys/class/net/{}/bonding/slaves"
 
-    if nicInternalName != None:
-        vDPA_list = shell.call(
-            "ovs-vsctl --columns=name find interface external_ids:vm-id={} external_ids:iface-id={} | grep virtfn |cut -d ':' -f2".format(vmUuid, nicInternalName)).strip().split()
-    else:
-        vDPA_list = shell.call(
-            "ovs-vsctl --columns=name find interface external_ids:vm-id={} | grep virtfn |cut -d ':' -f2".format(vmUuid)).strip().split()
+        if not os.path.exists(slaves_p.format(bondName)):
+            return False
 
-    for vDPA in vDPA_list:
-        shell.run("ovs-vsctl remove interface {} external_ids vm-id".format(vDPA))
-        shell.run(
-            "ovs-vsctl remove interface {} external_ids iface-id".format(vDPA))
-        vlan_id = shell.call(
-            "ovs-vsctl --timeout=5 get Port {} tag".format(vDPA))
-        shell.run(
-            "ovs-vsctl --timeout=5 remove Port {} tag {}".format(vDPA, vlan_id))
+        interfaces = self._get_bond_slaves(bondName)
+        if_pci_bdf = set()
+        if_vendor = set()
 
-    vDPA_path = ''
-    if nicInternalName != None and len(vDPA_list) != 0:
-        vDPA_path = shell.call(
-            "ovs-vsctl get interface {} options:vdpa-socket-path".format(vDPA_list[0])).strip().strip('"')
-    return vDPA_path
-
-
-def get_ofed_version():
-    ofed_version = shell.call("ofed_info -n")
-
-    return float(ofed_version.split('-')[0])
-
-
-def check_hugepage_status():
-    # we need 4G Hugepage for ovs, kB
-    HUGEPAGE_SIZE_FOR_OVS = 1024 * 4
-    hugepages_path = {2048: "/sys/kernel/mm/hugepages/hugepages-2048kB/",
-                      1048576: "/sys/kernel/mm/hugepages/hugepages-1048576kB/"}
-
-    numa_nodes = shell.call("lscpu | grep 'NUMA node(s):'").split()[2]
-    numa_nodes = int(numa_nodes)
-
-    # kB
-    def_hugepagesz = shell.call(
-        "cat /proc/meminfo | grep Hugepagesize").split()[1]
-    def_hugepagesz = int(def_hugepagesz)
-
-    free_hugepages = read_sysfs(
-        hugepages_path[def_hugepagesz] + "free_hugepages")
-    free_hugepages = int(free_hugepages)
-    free_hugepagesz = free_hugepages * def_hugepagesz
-    # kB
-    cur_free_memsz = shell.call("cat /proc/meminfo | grep MemFree").split()[1]
-    cur_free_memsz = int(cur_free_memsz)
-
-    if free_hugepagesz < HUGEPAGE_SIZE_FOR_OVS:
-        if cur_free_memsz > HUGEPAGE_SIZE_FOR_OVS - free_hugepagesz:
-            write_sysfs(hugepages_path[def_hugepagesz] +
-                        "nr_hugepages", str
-                        (HUGEPAGE_SIZE_FOR_OVS * numa_nodes - free_hugepagesz))
-        else:
-            raise OvsError("can not malloc enough hugepage for ovs.")
-
-
-def check_ovs_status():
-
-    check_hugepage_status()
-
-    for _ in range(0, 5):
-        if shell.run("/usr/share/openvswitch/scripts/ovs-ctl status") == 0:
-            return
-        else:
-            start_ovs()
-            time.sleep(3)
-
-    raise OvsError("cannot start ovs.")
-
-
-def start_ovs():
-    shell.run("/usr/share/openvswitch/scripts/ovs-ctl start --no-force-corefiles")
-
-
-def stop_ovs():
-    shell.run("/usr/share/openvswitch/scripts/ovs-ctl stop")
-
-
-def restart_ovs():
-    shell.run("/usr/share/openvswitch/scripts/ovs-ctl restart --no-force-corefiles")
-
-
-def clear_ovsdb():
-    devlink_mode = '/sys/class/net/{}/compat/devlink/mode'
-    shell.run("usr/share/openvswitch/scripts/ovs-ctl start --no-ovs-vswitchd")
-
-    br_list = list_br()
-
-    for b in br_list:
-        if b == '':
-            continue
-        interfaces = get_bonds_interfaces([b[3:]])
         for i in interfaces:
-            if read_sysfs(devlink_mode.format(i), True) != "switchdev":
-                shell.run("ovs-vsctl del-br {}".format(b))
-                break
+            if_pci_bdf.add(self._get_if_pcinum(i).split(".")[0])
+            if_vendor.add(self._get_if_vd(i))
 
-    # shell.run("systemctl restart openibd.service")
+        # the pfs under vflag should come from the same nic.
+        if len(if_vendor) != 1 or len(if_pci_bdf) != 1:
+            return False
 
-    shell.run("usr/share/openvswitch/scripts/ovs-ctl stop --no-ovs-vswitchd")
+        # check vendor_device number
+        if self.ifOffloadStatus(interfaces[0]) == None:
+            return False
+
+        for i in interfaces:
+            iproute.set_link_down_no_error(i)
+            # set devlink mode to switchdev and unbind vfs
+            self._set_if_devlink_mode(i)
+            self._set_dpdk_white_list(i)
+
+        if bridgeName not in self.listBrs():
+            # create bridge
+            self.createBr(bridgeName)
+
+        if bondName not in self.listPorts(bridgeName):
+            # To work with VF-LAG with OVS-DPDK, add the bond master (PF) to the bridge. Note that the first
+            # PF on which you run "ip link set <PF> master bond0" becomes the bond master.
+            if self.addPort(bridgeName, bondName, "dpdk",
+                            "dpdk-devargs={}".format(
+                                self._get_if_pcinum(interfaces[0])),
+                            "dpdklsc-interrupt=true") != 0:
+                return False
+
+        return True
+
+    def _init_dpdk_bond(self, bridgeName, bond):
+        """
+        attach dpdk-bond to bridge
+        """
+
+        for i in bond.slaves:
+            # check vendor_device number
+            if self.ifOffloadStatus(i) == None:
+                return False
+            iproute.set_link_down_no_error(i)
+            # set devlink mode to switchdev and unbind vfs
+            self._set_if_devlink_mode(i)
+            self._set_dpdk_white_list(i)
+
+        if bridgeName not in self.listBrs():
+            # create bridge
+            self.createBr(bridgeName)
+
+        if bond.name not in self.listPorts(bridgeName):
+            # ovs-ctl add-port br_test bondtest -- \
+            # set Interface bondtest type=dpdk dpdk-devargs="eth_bond0,mode=2,\
+            # slave=0000:81:00.1,slave=0000:82:00.1,xmit_policy=l34"
+            dpdk_devargs = "eth_bond{},".format(bond.id)
+            dpdk_devargs = dpdk_devargs + "mode={},".format(bond.mode)
+            for s in bond.slaves:
+                dpdk_devargs = dpdk_devargs + \
+                    "slave={},".format(self._get_if_pcinum(s))
+            dpdk_devargs = dpdk_devargs + "xmit_policy={}".format(bond.policy)
+            dpdk_devargs = "dpdk-devargs={}".format(dpdk_devargs)
+
+            if self.addPort(bridgeName, bond.name, "dpdk",
+                            dpdk_devargs) != 0:
+                return False
+
+        return True
+
+    def _init_interface(self, bridgeName, interface):
+        """
+        attach normal interface to ovs.
+        """
+        iproute.set_link_down_no_error(interface)
+        self._set_if_devlink_mode(interface)
+        self._set_dpdk_white_list(interface)
+        if bridgeName not in self.listBrs():
+            # create bridge
+            self.createBr(bridgeName)
+        if interface not in self.listPorts(bridgeName):
+            self.addPort(bridgeName, interface, "dpdk",
+                         "dpdk-devargs={}".format(
+                             self._get_if_pcinum(interface)))
+
+    def _set_dpdk_white_list(self, ifName):
+        ret = 0
+        dpdk_extra = ""
+
+        s = shell.ShellCmd(self.ctlBin +
+                           "get Open_vSwitch . other_config:dpdk-extra", None, False)
+        s(False)
+        if s.return_code == 0:
+            dpdk_extra = s.stdout.strip().strip('\n').strip('"')
+
+        pci = self._get_if_pcinum(ifName)
+
+        if pci in dpdk_extra:
+            return ret
+
+        if self.version_geq(self.dpdkVer, "20.11"):
+            dpdk_extra = dpdk_extra + "-a {},representor=[0-127],dv_flow_en=1,dv_esw_en=1 ".format(
+                pci)
+        else:
+            dpdk_extra = dpdk_extra + "-w {},representor=[0-127],dv_flow_en=1,dv_esw_en=1 ".format(
+                pci)
+
+        ret = shell.run(self.ctlBin +
+                        '--no-wait set Open_vSwitch . other_config:dpdk-extra="{}"'.format(dpdk_extra))
+
+        if ret != 0:
+            logger.info(
+                "set dpdk wihite list for {} failed".format(ifName))
+            return ret
+
+        self.startSwitch(True)
+
+        return ret
+
+    def _get_if_pcinum(self, ifName):
+        pci = None
+        try:
+            pci_path = '/sys/class/net/{}/device'
+            pci = os.path.realpath(pci_path.format(ifName)).split("/")[-1]
+        except Exception as e:
+            logger.warn(str(e))
+        finally:
+            return pci
+
+    def _get_if_vd(self, ifName):
+        vendor_path = '/sys/class/net/{}/device/vendor'.format(ifName)
+        device_path = '/sys/class/net/{}/device/device'.format(ifName)
+
+        vendorId = readSysfs(vendor_path)[2:6]
+        deviceId = readSysfs(device_path)[2:6]
+
+        return vendorId + deviceId
+
+    def _get_bond_slaves(self, bond):
+        slaves_p = "/sys/class/net/{}/bonding/slaves".format(bond)
+        ifList = []
+        # kernel bond
+        if os.path.exists(slaves_p):
+            ifList = readSysfs(slaves_p).split()
+            return ifList
+
+        # dpdk bond
+        dpdkBond = self.getDPDKBond(bond)
+        if dpdkBond is not None:
+            ifList = dpdkBond.slaves
+
+        return ifList
+
+    def _get_vfs_dict(self, ifName):
+        """
+        vfs_dict{'virtfnx', '0000:65:00.1'}
+        """
+
+        device_p = "/sys/class/net/{}/device/"
+        vfs_dict = {}
+        tmp_list = os.listdir(device_p.format(ifName))
+        for vf in tmp_list:
+            if vf.startswith("virtfn"):
+                pci = os.path.realpath(device_p.format(
+                    ifName) + vf).split("/")[-1]
+                vfs_dict[vf] = pci
+
+        return vfs_dict
+
+    def _set_if_devlink_mode(self, ifName, mode="switchdev"):
+        devlink_mode = '/sys/class/net/{}/compat/devlink/mode'.format(
+            ifName)
+        totalvfs = '/sys/class/net/{}/device/sriov_totalvfs'.format(ifName)
+        numvfs = '/sys/class/net/{}/device/sriov_numvfs'.format(ifName)
+
+        # split vfs
+        writeSysfs(numvfs, "0")
+        vfs_num = readSysfs(totalvfs)
+
+        if readSysfs(devlink_mode, True) == "switchdev" and vfs_num == readSysfs(numvfs):
+            return
+
+        writeSysfs(numvfs, vfs_num)
+        # wait split vfs complete
+        time.sleep(int(vfs_num) * 0.2)
+
+        self._unbind_vfs(ifName)
+
+        # change devlink mode to switchdev
+        confirmWriteSysfs(devlink_mode, mode, 10, 5)
+        logger.debug("set switchdev for {} success.".format(ifName))
+
+        self._bind_vfs(ifName)
+
+    def _unbind_vfs(self, ifName):
+        # unbind vfs
+        dev_path = '/sys/class/net/{}/device/'.format(ifName)
+        unbind_path = '/sys/class/net/{}/device/driver/unbind'.format(ifName)
+
+        pci_list = self._get_vfs_dict(ifName)
+        for i in pci_list:
+            writeSysfs(unbind_path, pci_list[i])
+            # wait unbind finished, It may take some time to unbind VFS
+            for _ in range(0, 5):
+                if os.path.exists(os.path.join(dev_path, i, "driver")):
+                    time.sleep(0.5)
+
+    def _bind_vfs(self, ifName):
+        # bind vfs
+        dev_path = '/sys/class/net/{}/device/'.format(ifName)
+        bind_path = '/sys/class/net/{}/device/driver/bind'.format(ifName)
+
+        pci_list = self._get_vfs_dict(ifName)
+        for i in pci_list:
+            if not os.path.exists(os.path.join(dev_path, i, "driver")):
+                writeSysfs(bind_path, pci_list[i], True)
+            # wait bind finished, It will take some time
+            for _ in range(0, 5):
+                if not os.path.exists(os.path.join(dev_path, i, "driver")):
+                    time.sleep(0.5)
+
+    def _get_free_vf(self, bridgeName, bondName):
+
+        # get all vfs under bond
+        slaves = self._get_bond_slaves(bondName)
+
+        # get used vfs under bond
+        usedPciList = self._get_used_pci(bridgeName)
+
+        for s in slaves:
+            vfsDict = self._get_vfs_dict(s)
+            for v in vfsDict:
+                if vfsDict[v] not in usedPciList:
+                    return v, vfsDict[v], s
+
+        return None
+
+    def _get_used_pci(self, bridgeName):
+        usedPciList = []
+
+        ifList = self.listIfaces(bridgeName)
+        if ifList == None:
+            return usedPciList
+
+        for i in ifList:
+            s = shell.ShellCmd(self.ctlBin +
+                               "get Interface {} options:vdpa-accelerator-devargs".format(i), None, False)
+            s(False)
+            if s.return_code != 0:
+                continue
+
+            usedPciList.append(s.stdout.strip()[1:-1])
+
+        return usedPciList
+
+
+class Bond:
+    def __init__(self):
+        self.name = "default"
+        self.policy = "l34"
+        self.mode = 1
+        self.slaves = []
+        self.id = 0
