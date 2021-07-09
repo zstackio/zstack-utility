@@ -37,3 +37,4 @@ prometheus_client==0.1.1
 typing==3.7.4
 beeprint==2.4.7
 future=0.18.2
+python-cephlibs=0.94.5
