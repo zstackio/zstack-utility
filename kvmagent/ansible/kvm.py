@@ -241,8 +241,7 @@ def install_kvm_pkg():
         if zstack_repo != 'false':
             common_dep_list = eval("%s_%s" % (host_arch, releasever))
             # common kvmagent deps of x86 and arm that need to update
-            common_update_list = "sanlock sysfsutils hwdata sg3_utils lvm2 lvm2-libs lvm2-lockd systemd openssh librbd1 glusterfs python-rados \
-                                  python-rbd"
+            common_update_list = "sanlock sysfsutils hwdata sg3_utils lvm2 lvm2-libs lvm2-lockd systemd openssh librbd1 glusterfs"
             # common kvmagent deps of x86 and arm that no need to update
             common_dep_list = "%s %s" % (common_dep_list, common_update_list)
 
@@ -650,6 +649,13 @@ def install_virtualenv():
     host_post_info.post_label_param = None
     run_remote_command(command, host_post_info)
 
+def install_python_pkg():
+    extra_args = "\"--trusted-host %s -i %s \"" % (trusted_host, pip_url)
+    pip_install_arg = PipInstallArg()
+    pip_install_arg.extra_args = extra_args
+    pip_install_arg.name = "python-cephlibs"
+    pip_install_package(pip_install_arg, host_post_info)
+
 def install_agent_pkg():
     """install zstacklib and kvmagent on host"""
 
@@ -737,6 +743,7 @@ do_network_config()
 do_xdc_config()
 copy_spice_certificates_to_host()
 install_virtualenv()
+install_python_pkg()
 set_legacy_iptables_ebtables()
 install_agent_pkg()
 do_auditd_config()
