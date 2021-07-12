@@ -10,6 +10,7 @@ from zstacklib.utils import http
 
 OVS_DPDK_NET_CHECK_BRIDGE = '/network/ovsdpdk/checkbridge'
 OVS_DPDK_NET_CREATE_BRIDGE = '/network/ovsdpdk/createbridge'
+OVS_DPDK_NET_DELETE_BRIDGE = '/network/ovsdpdk/deletebridge'
 OVS_DPDK_NET_GENERATE_VDPA = '/network/ovsdpdk/generatevdpa'
 OVS_DPDK_NET_DELETE_VDPA = '/network/ovsdpdk/deletevdpa'
 
@@ -45,6 +46,18 @@ class CreateBridgeCmd(kvmagent.AgentCommand):
 class CreateBridgeResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(CreateBridgeResponse, self).__init__()
+
+
+class DeleteBridgeCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(DeleteBridgeCmd, self).__init__()
+        self.physicalInterfaceName = None
+        self.bridgeName = None
+
+
+class DeleteBridgeResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(DeleteBridgeResponse, self).__init__()
 
 
 class GenerateVdpaResponse(kvmagent.AgentResponse):
@@ -98,6 +111,24 @@ class HighPerformanceNetworkPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def delete_ovs_bridge(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CreateBridgeResponse()
+
+        if cmd.bridgeName not in ovsctl.listBrs():
+            rsp.success = False
+            rsp.error = "no such bridge named:{}.".format(
+                cmd.bridgeName)
+            return jsonobject.dumps(rsp)
+
+        ovsctl.deleteBr(cmd.bridgeName)
+
+        logger.debug(http.path_msg(OVS_DPDK_NET_CREATE_BRIDGE,
+                                   'delete bridge:{} success'.format(cmd.bridgeName)))
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     def generate_vdpa(self, req):
 
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -133,6 +164,8 @@ class HighPerformanceNetworkPlugin(kvmagent.KvmAgent):
             OVS_DPDK_NET_CHECK_BRIDGE, self.check_ovs_bridge)
         http_server.register_async_uri(
             OVS_DPDK_NET_CREATE_BRIDGE, self.create_ovs_bridge)
+        http_server.register_async_uri(
+            OVS_DPDK_NET_DELETE_BRIDGE, self.delete_ovs_bridge)
         http_server.register_async_uri(
             OVS_DPDK_NET_GENERATE_VDPA, self.generate_vdpa)
         http_server.register_async_uri(
