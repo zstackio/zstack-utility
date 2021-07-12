@@ -125,7 +125,6 @@ class HighPerformanceNetworkPlugin(kvmagent.KvmAgent):
         if not ovsctl.initVdpaSupport():
             logger.debug("ovs can not support dpdk.")
             return
-        ovsctl.deleteBrs()
         ovsctl.start(True)
 
         http_server = kvmagent.get_http_server()

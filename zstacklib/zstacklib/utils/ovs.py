@@ -847,23 +847,28 @@ class OvsCtl(Ovs):
             ifName)
         totalvfs = '/sys/class/net/{}/device/sriov_totalvfs'.format(ifName)
         numvfs = '/sys/class/net/{}/device/sriov_numvfs'.format(ifName)
+        totalvfs = readSysfs(totalvfs)
+
+        if readSysfs(devlink_mode, True) == mode and totalvfs == readSysfs(numvfs):
+            return
 
         # split vfs
         writeSysfs(numvfs, "0")
-        vfs_num = readSysfs(totalvfs)
-
-        if readSysfs(devlink_mode, True) == "switchdev" and vfs_num == readSysfs(numvfs):
-            return
-
-        writeSysfs(numvfs, vfs_num)
+        # wait until
+        for _ in range(0, 5):
+            if int(readSysfs(numvfs)) != 0:
+                time.sleep(0.2)
+        writeSysfs(numvfs, totalvfs)
         # wait split vfs complete
-        time.sleep(int(vfs_num) * 0.2)
+        for _ in range(0, 5):
+            if int(readSysfs(numvfs)) != totalvfs:
+                time.sleep(0.2)
 
         self._unbind_vfs(ifName)
 
-        # change devlink mode to switchdev
+        # change devlink mode
         confirmWriteSysfs(devlink_mode, mode, 10, 5)
-        logger.debug("set switchdev for {} success.".format(ifName))
+        logger.debug("set {} for {} success.".format(mode, ifName))
 
         self._bind_vfs(ifName)
 
