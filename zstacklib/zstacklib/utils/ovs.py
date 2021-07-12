@@ -100,7 +100,6 @@ class OvsVenv(object):
 
         self.DBPidPath = os.path.join(self.venv, "ovsdb-server.pid")
         self.switchPidPath = os.path.join(self.venv, "ovs-vswitchd.pid")
-        self.ctlFilePath = os.path.join(self.venv, "ovsdb-server.ctl")
         self.switchLogPath = os.path.join(self.logPath, "ovs-vswitchd.log")
 
         self.ctlBin = "ovs-vsctl --db=unix:{} ".format(self.DB_SOCK)
@@ -206,7 +205,7 @@ class Ovs(OvsVenv):
         cmd = cmd + " --bootstrap-ca-cert=db:Open_vSwitch,SSL,ca_cert"
         cmd = cmd + \
             " --no-chdir --log-file={} --pidfile={} --unixctl={}".format(
-                self.DBLogPath, self.DBPidPath, self.ctlFilePath)
+                self.DBLogPath, self.DBPidPath, self.DBCtlFilePath)
         cmd = cmd + " --detach --monitor"
         shell.call(cmd)
 
@@ -230,7 +229,7 @@ class Ovs(OvsVenv):
         logger.debug("ovsdb: [{}] start success".format(self.pids[0]))
 
     def stopDB(self):
-        self.stopProcess("ovsdb-server", self.pids[0], self.ovsDBVer)
+        self.stopProcess("ovsdb-server")
 
     def statusDB(self):
         return self.pids[0]
@@ -297,14 +296,14 @@ class Ovs(OvsVenv):
         cmd = cmd + " --mlockall --no-chdir"
         cmd = cmd + \
             " --log-file={} --pidfile={} --unixctl={}".format(
-                self.switchLogPath, self.switchPidPath, self.ctlFilePath)
+                self.switchLogPath, self.switchPidPath, self.switchCtlFilePath)
         cmd = cmd + " --detach --monitor"
         shell.call(cmd)
 
         logger.debug("ovs-vswitch: [{}] start success".format(self.pids[1]))
 
     def stopSwitch(self):
-        self.stopProcess("ovs-vswitchd", self.pids[1], self.vSwitchVer)
+        self.stopProcess("ovs-vswitchd")
 
     def statusSwitch(self):
         return self.pids[1]
@@ -331,16 +330,30 @@ class Ovs(OvsVenv):
                 result[1] = int(f.read().strip())
         return result
 
+    @property
+    def DBCtlFilePath(self):
+        return os.path.join(self.venv, "ovsdb-server.zs.ctl")
+    @property
+    def switchCtlFilePath(self):
+        return os.path.join(self.venv, "ovs-vswitchd.zs.ctl")
+
     def process_exists(self, pid):
         if os.path.isdir(os.path.join("/proc", str(pid))):
             return True
         return False
 
-    def stopProcess(self, name, pid, ver):
+    def stopProcess(self, name):
         """
         stop ovsdb or vswitch by ovs-appctl,
         if not work, kill it.
         """
+        dict = {"ovsdb-server": {"pid": self.pids[0], "ver": self.ovsDBVer, "ctl": self.DBCtlFilePath},
+                "ovs-vswitchd": {"pid": self.pids[1], "ver": self.vSwitchVer, "ctl": self.switchCtlFilePath}}
+
+        pid = dict[name]["pid"]
+        ver = dict[name]["ver"]
+        ctl = dict[name]["ctl"]
+
         if pid < 0:
             return
 
@@ -349,7 +362,7 @@ class Ovs(OvsVenv):
         if not self.process_exists(pid):
             try:
                 os.remove(pidPath)
-                os.remove(self.ctlFilePath)
+                os.remove(ctl)
             except OSError:
                 pass
             return True
@@ -377,7 +390,7 @@ class Ovs(OvsVenv):
 
             if action == 'EXIT':
                 shell.run(
-                    "ovs-appctl -T 1 -t {} exit ".format(self.ctlFilePath))
+                    "ovs-appctl -T 1 -t {} exit ".format(ctl))
             elif action == 'TERM':
                 shell.run("kill {}".format(pid))
                 forceStop = True
@@ -458,7 +471,7 @@ class OvsCtl(Ovs):
     def deleteBr(self, *args):
         brs = self.listBrs()
         for arg in args:
-            if arg in brs:
+            if arg in brs and arg != '':
                 shell.call(self.ctlBin +
                            "--timeout=5 del-br {}".format(arg))
 
