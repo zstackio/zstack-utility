@@ -690,7 +690,7 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp = PingResponse()
         rsp.hostUuid = self.host_uuid
         rsp.sendCommandUrl = self.config.get(kvmagent.SEND_COMMAND_URL)
-        rsp.version = self.config[kvmagent.VERSION]
+        rsp.version = self.config.get(kvmagent.VERSION)
         if os.path.exists(HOST_TAKEOVER_FLAG_PATH):
             linux.touch_file(HOST_TAKEOVER_FLAG_PATH)
         return jsonobject.dumps(rsp)
