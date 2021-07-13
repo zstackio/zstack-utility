@@ -2,6 +2,7 @@
 
 @author: haibiao.xiao
 '''
+import os
 from kvmagent import kvmagent
 from zstacklib.utils import jsonobject
 from zstacklib.utils import log
@@ -156,6 +157,14 @@ class HighPerformanceNetworkPlugin(kvmagent.KvmAgent):
         if not ovsctl.initVdpaSupport():
             logger.debug("ovs can not support dpdk.")
             return
+        # reconfig smart nics
+        brs = ovsctl.listBrs()
+        for b in brs:
+            # prepare bridge floader
+            vdpaBrPath = os.path.join(ovsctl.vdpaPath, b)
+            if not os.path.exists(vdpaBrPath):
+                os.mkdir(vdpaBrPath, 0755)
+            ovsctl.prepareBridge(b, b[3:])
         ovsctl.start(True)
 
         http_server = kvmagent.get_http_server()
