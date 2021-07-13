@@ -255,9 +255,10 @@ class HostNetworkInterfaceInventory(object):
             return
         self.speed = get_nic_supported_max_speed(self.interfaceName)
         # cannot read carrier of vf nic
-        carrier = linux.read_file("/sys/class/net/%s/carrier" % self.interfaceName)
-        if carrier:
-            self.carrierActive = carrier.strip() == "1"
+        if not os.path.exists("/sys/class/net/%s/device/physfn" % self.interfaceName):
+            carrier = linux.read_file("/sys/class/net/%s/carrier" % self.interfaceName)
+            if carrier:
+                self.carrierActive = carrier.strip() == "1"
         self.mac = linux.read_file("/sys/class/net/%s/address" % self.interfaceName).strip()
         self.ipAddresses = linux.get_interface_ip_addresses(self.interfaceName)
 
