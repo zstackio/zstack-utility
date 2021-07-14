@@ -786,9 +786,9 @@ class HaPlugin(kvmagent.KvmAgent):
                                     
                                     storage_failure = True
                                     report_storage_status = True
-                                else:
-                                    # reset the failure count
-                                    failure = 0
+                                
+                                # reset the failure count
+                                failure = 0
 
                 logger.debug('stop self-fencer on pool %s of ceph primary storage' % pool_name)
             except:
