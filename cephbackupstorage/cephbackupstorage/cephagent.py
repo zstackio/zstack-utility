@@ -313,8 +313,6 @@ def stream_body(task, fpath, entity, boundary):
         shell.run('rbd rm %s' % task.tmpPath)
         return
 
-    file_format = None
-
     try:
         file_format = linux.get_img_fmt('rbd:'+task.tmpPath)
     except Exception as e:
@@ -708,6 +706,7 @@ class CephAgent(object):
         if task.expectedSize == 0:
             rsp.progress = 0
         elif task.completed:
+            rsp.size = self._get_file_size(task.dstPath)
             rsp.progress = 100
         else:
             rsp.progress = task.downloadedSize * 90 / task.expectedSize
