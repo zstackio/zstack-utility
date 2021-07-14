@@ -1,4 +1,11 @@
 zwatch-vm-agent=4.2.0
-md5-zwatch-vm-agent=aa312059fb7d61a4df8e9cdf4a5b5c09
-md5-zwatch-vm-agent_aarch64=e5e459dceb8e87e8ecb9d058ad9ab44d
-md5-zwatch-vm-agent_mips64el=e580f8982e140ceb76a915771178f522
+
+# The comments below are due to compatibility (version <= 4.2). Please DO NOT DELETE or MODIFY them!
+# See ZSTAC-41487
+# compatible-version-of-zwatch-vm-agent.linux-amd64=4.2.0
+# compatible-version-of-zwatch-vm-agent.linux-aarch64=4.2.0
+# compatible-version-of-zwatch-vm-agent.linux-mips64el=4.2.0
+
+md5-zwatch-vm-agent.linux-amd64=f5eb854f6249ed612887b61c60ffe41c
+md5-zwatch-vm-agent.linux-aarch64=e5e459dceb8e87e8ecb9d058ad9ab44d
+md5-zwatch-vm-agent.linux-mips64el=e580f8982e140ceb76a915771178f522
