@@ -72,6 +72,14 @@ class CreateEmptyVolumeResponse(NfsResponse):
     def __init__(self):
         super(CreateEmptyVolumeResponse, self).__init__()
 
+
+class CreateVolumeWithBackingRsp(NfsResponse):
+    def __init__(self):
+        super(CreateVolumeWithBackingRsp, self).__init__()
+        self.size = None
+        self.actualSize = None
+
+
 class DownloadBitsFromSftpBackupStorageResponse(NfsResponse):
     def __init__(self):
         super(DownloadBitsFromSftpBackupStorageResponse, self).__init__()
@@ -182,6 +190,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     MOUNT_PATH = '/nfsprimarystorage/mount'
     UNMOUNT_PATH = '/nfsprimarystorage/unmount'
     CREATE_VOLUME_FROM_TEMPLATE_PATH = "/nfsprimarystorage/sftp/createvolumefromtemplate"
+    CREATE_DATA_VOLUME_WITH_BACKING_PATH = "/nfsprimarystorage/createvolumewithbacking"
     CREATE_EMPTY_VOLUME_PATH = "/nfsprimarystorage/createemptyvolume"
     CREATE_FOLDER_PATH = "/nfsprimarystorage/createfolder"
     GET_CAPACITY_PATH = "/nfsprimarystorage/getcapacity"
@@ -205,6 +214,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     GET_VOLUME_BASE_IMAGE_PATH = "/nfsprimarystorage/getvolumebaseimage"
     UPDATE_MOUNT_POINT_PATH = "/nfsprimarystorage/updatemountpoint"
     RESIZE_VOLUME_PATH = "/nfsprimarystorage/volume/resize"
+    HARD_LINK_VOLUME = "/nfsprimarystorage/volume/hardlink"
     NFS_TO_NFS_MIGRATE_BITS_PATH = "/nfsprimarystorage/migratebits"
     NFS_REBASE_VOLUME_BACKING_FILE_PATH = "/nfsprimarystorage/rebasevolumebackingfile"
     DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/nfsprimarystorage/kvmhost/download"
@@ -219,6 +229,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_sync_uri(self.UNMOUNT_PATH, self.umount)
         http_server.register_async_uri(self.CREATE_VOLUME_FROM_TEMPLATE_PATH, self.create_root_volume_from_template)
         http_server.register_async_uri(self.CREATE_EMPTY_VOLUME_PATH, self.create_empty_volume)
+        http_server.register_async_uri(self.CREATE_DATA_VOLUME_WITH_BACKING_PATH, self.create_volume_with_backing)
         http_server.register_async_uri(self.CREATE_FOLDER_PATH, self.create_folder)
         http_server.register_async_uri(self.DOWNLOAD_FROM_SFTP_PATH, self.download_from_sftp)
         http_server.register_async_uri(self.GET_CAPACITY_PATH, self.get_capacity)
@@ -241,11 +252,13 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.GET_VOLUME_BASE_IMAGE_PATH, self.get_volume_base_image_path)
         http_server.register_async_uri(self.UPDATE_MOUNT_POINT_PATH, self.update_mount_point)
         http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
+        http_server.register_async_uri(self.HARD_LINK_VOLUME, self.hardlink_volume)
         http_server.register_async_uri(self.NFS_TO_NFS_MIGRATE_BITS_PATH, self.migrate_bits)
         http_server.register_async_uri(self.NFS_REBASE_VOLUME_BACKING_FILE_PATH, self.rebase_volume_backing_file)
         http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.download_from_kvmhost)
         http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
         http_server.register_async_uri(self.GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH, self.get_download_bits_from_kvmhost_progress)
+
         self.mount_path = {}
         self.image_cache = None
         self.imagestore_client = ImageStoreClient()
@@ -380,6 +393,12 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         ret = linux.qcow2_virtualsize(install_path)
         rsp.size = ret
         return jsonobject.dumps(rsp)
+
+    def _get_mount_path(self, uuid):
+        path = self.mount_path.get(uuid)
+        if not path:
+            raise Exception('cannot find mount path of primary storage[uuid: %s]' % uuid)
+        return path
 
     def _get_disk_capacity(self, uuid):
         path = self.mount_path.get(uuid)
@@ -716,16 +735,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             rsp.success = False
             return jsonobject.dumps(rsp)
 
-        meta = VolumeMeta()
-        meta.account_uuid = cmd.accountUuid
-        meta.hypervisor_type = cmd.hypervisorType
-        meta.name = cmd.name
-        meta.uuid = cmd.volumeUuid
-        meta.size = cmd.size
-        meta_path = self._json_meta_file_name(cmd.installUrl)
-        with open(meta_path, 'w') as fd:
-            fd.write(jsonobject.dumps(meta, pretty=True))
-
+        self.create_meta_file(cmd)
         self._set_capacity_to_response(cmd.uuid, rsp)
         logger.debug('successfully create empty volume[uuid:%s, name:%s, size:%s] at %s' % (cmd.uuid, cmd.name, cmd.size, cmd.installUrl))
         return jsonobject.dumps(rsp)
@@ -776,6 +786,18 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def create_volume_with_backing(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CreateVolumeWithBackingRsp()
+
+        self.do_create_volume_with_backing(cmd.templatePathInCache, cmd.installUrl, cmd)
+        self.create_meta_file(cmd, size=os.path.getsize(cmd.templatePathInCache))
+        rsp.size = linux.qcow2_get_virtual_size(cmd.installUrl)
+        rsp.actualSize = os.path.getsize(cmd.installUrl)
+        self._set_capacity_to_response(cmd.uuid, rsp)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     def create_root_volume_from_template(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CreateRootVolumeFromTemplateResponse()
@@ -785,21 +807,9 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             return jsonobject.dumps(rsp)
 
         try:
-            dirname = os.path.dirname(cmd.installUrl)
-            if not os.path.exists(dirname):
-                os.makedirs(dirname, 0775)
-
-            linux.qcow2_clone_with_cmd(cmd.templatePathInCache, cmd.installUrl, cmd)
+            self.do_create_volume_with_backing(cmd.templatePathInCache, cmd.installUrl, cmd)
             logger.debug('successfully create root volume[%s] from template in cache[%s]' % (cmd.installUrl, cmd.templatePathInCache))
-            meta = VolumeMeta()
-            meta.account_uuid = cmd.accountUuid
-            meta.hypervisor_type = cmd.hypervisorType
-            meta.name = cmd.name
-            meta.uuid = cmd.volumeUuid
-            meta.size = os.path.getsize(cmd.templatePathInCache)
-            meta_path = self._json_meta_file_name(cmd.installUrl)
-            with open(meta_path, 'w') as fd:
-                fd.write(jsonobject.dumps(meta, pretty=True))
+            self.create_meta_file(cmd, size=os.path.getsize(cmd.templatePathInCache))
             self._set_capacity_to_response(cmd.uuid, rsp)
             logger.debug('successfully create root volume[%s] from template in cache[%s]' % (cmd.installUrl, cmd.templatePathInCache))
         except Exception as e:
@@ -811,6 +821,26 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
 
 
         return jsonobject.dumps(rsp)
+
+    @staticmethod
+    def do_create_volume_with_backing(backing_path, vol_path, cmd):
+        dirname = os.path.dirname(vol_path)
+        if not os.path.exists(dirname):
+            os.makedirs(dirname, 0775)
+
+        linux.qcow2_clone_with_cmd(backing_path, vol_path, cmd)
+
+    def create_meta_file(self, cmd, **kwargs):
+        meta = VolumeMeta()
+        meta.account_uuid = cmd.accountUuid
+        meta.hypervisor_type = cmd.hypervisorType
+        meta.name = cmd.name
+        meta.uuid = cmd.volumeUuid
+        meta.size = cmd.size
+        meta.__dict__.update(kwargs)
+        meta_path = self._json_meta_file_name(cmd.installUrl)
+        with open(meta_path, 'w') as fd:
+            fd.write(jsonobject.dumps(meta, pretty=True))
 
     @kvmagent.replyerror
     @completetask
@@ -846,3 +876,27 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         rsp = GetDownloadBitsFromKvmHostProgressRsp()
         rsp.totalSize = linux.get_total_file_size(cmd.volumePaths)
         return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def hardlink_volume(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        self.hardlink_and_rebase(cmd.srcDir, cmd.dstDir, self._get_mount_path(cmd.uuid))
+
+        rsp = NfsResponse()
+        self._set_capacity_to_response(cmd.uuid, rsp)
+        return jsonobject.dumps(rsp)
+
+    def hardlink_and_rebase(self, src_dir, dst_dir, storage_dir):
+        src_dst_dict = {}
+        for f in linux.list_all_file(src_dir):
+            src_dst_dict[f] = os.path.realpath(f.replace(src_dir, dst_dir))
+
+        for f in linux.list_all_file(storage_dir):
+            backing_file = os.path.realpath(linux.qcow2_get_backing_file(f))
+            if backing_file in src_dst_dict:
+                dst_file = src_dst_dict[backing_file]
+                linux.link(backing_file, dst_file)
+                linux.qcow2_rebase_no_check(dst_file, f, "qcow2")
+
+        for src_file, dst_file in src_dst_dict.iteritems():
+            linux.link(src_file, dst_file)

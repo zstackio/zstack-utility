@@ -72,6 +72,11 @@ class MergeSnapshotRsp(AgentRsp):
         self.size = None
         self.actualSize = None
 
+class CreateDataVolumeWithBackingRsp(AgentRsp):
+    def __init__(self):
+        super(CreateDataVolumeWithBackingRsp, self).__init__()
+        self.size = None
+        self.actualSize = None
 
 class CheckBitsRsp(AgentRsp):
     def __init__(self):
@@ -284,6 +289,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     MERGE_SNAPSHOT_PATH = "/sharedblock/snapshot/merge"
     OFFLINE_MERGE_SNAPSHOT_PATH = "/sharedblock/snapshot/offlinemerge"
     CREATE_EMPTY_VOLUME_PATH = "/sharedblock/volume/createempty"
+    CREATE_DATA_VOLUME_WITH_BACKING_PATH = "/sharedblock/volume/createwithbacking"
     CHECK_BITS_PATH = "/sharedblock/bits/check"
     RESIZE_VOLUME_PATH = "/sharedblock/volume/resize"
     CONVERT_IMAGE_TO_VOLUME = "/sharedblock/image/tovolume"
@@ -307,6 +313,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CONNECT_PATH, self.connect)
         http_server.register_async_uri(self.DISCONNECT_PATH, self.disconnect)
         http_server.register_async_uri(self.CREATE_VOLUME_FROM_CACHE_PATH, self.create_root_volume)
+        http_server.register_async_uri(self.CREATE_DATA_VOLUME_WITH_BACKING_PATH, self.create_data_volume_with_backing)
         http_server.register_async_uri(self.DELETE_BITS_PATH, self.delete_bits)
         http_server.register_async_uri(self.CREATE_TEMPLATE_FROM_VOLUME_PATH, self.create_template_from_volume)
         http_server.register_async_uri(self.CREATE_IMAGE_CACHE_FROM_VOLUME_PATH, self.create_image_cache_from_volume)
@@ -754,6 +761,19 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     def create_root_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
+        self.create_volume_with_backing(cmd)
+        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid, False)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def create_data_volume_with_backing(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CreateDataVolumeWithBackingRsp()
+        rsp.size, rsp.actualSize = self.create_volume_with_backing(cmd)
+        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid, False)
+        return jsonobject.dumps(rsp)
+
+    def create_volume_with_backing(self, cmd):
         template_abs_path_cache = translate_absolute_path_from_install_path(cmd.templatePathInCache)
         install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
         qcow2_options = self.calc_qcow2_option(self, cmd.kvmHostAddons, True, cmd.provisioning)
@@ -765,9 +785,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             linux.qcow2_clone_with_option(template_abs_path_cache, install_abs_path, qcow2_options)
 
         lvm.deactive_lv(install_abs_path)
-
-        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid, False)
-        return jsonobject.dumps(rsp)
+        return virtual_size, lvm.get_lv_size(install_abs_path)
 
     @kvmagent.replyerror
     def delete_bits(self, req):

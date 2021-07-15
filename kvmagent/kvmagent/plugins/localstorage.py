@@ -140,12 +140,20 @@ class DownloadBitsFromKvmHostRsp(AgentResponse):
         self.format = None
 
 
+class CreateVolumeWithBackingRsp(AgentResponse):
+    def __init__(self):
+        super(CreateVolumeWithBackingRsp, self).__init__()
+        self.size = None
+        self.actualSize = None
+
+
 class LocalStoragePlugin(kvmagent.KvmAgent):
     INIT_PATH = "/localstorage/init"
     GET_PHYSICAL_CAPACITY_PATH = "/localstorage/getphysicalcapacity"
     CREATE_EMPTY_VOLUME_PATH = "/localstorage/volume/createempty"
     CREATE_FOLDER_PATH = "/localstorage/volume/createfolder"
     CREATE_VOLUME_FROM_CACHE_PATH = "/localstorage/volume/createvolumefromcache"
+    CREATE_DATA_VOLUME_WITH_BACKING_PATH = "/localstorage/volume/createwithbacking"
     DELETE_BITS_PATH = "/localstorage/delete"
     DELETE_DIR_PATH = "/localstorage/deletedir"
     UPLOAD_BIT_PATH = "/localstorage/sftp/upload"
@@ -171,6 +179,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     GET_QCOW2_REFERENCE = "/localstorage/getqcow2reference"
     CONVERT_QCOW2_TO_RAW = "/localstorage/imagestore/convert/raw"
     RESIZE_VOLUME_PATH = "/localstorage/volume/resize"
+    HARD_LINK_VOLUME = "/localstorage/volume/hardlink"
     REINIT_IMAGE_PATH = "/localstorage/reinit/image"
     CHECK_INITIALIZED_FILE = "/localstorage/check/initializedfile"
     CREATE_INITIALIZED_FILE = "/localstorage/create/initializedfile"
@@ -187,6 +196,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CREATE_EMPTY_VOLUME_PATH, self.create_empty_volume)
         http_server.register_async_uri(self.CREATE_FOLDER_PATH, self.create_folder)
         http_server.register_async_uri(self.CREATE_VOLUME_FROM_CACHE_PATH, self.create_root_volume_from_template)
+        http_server.register_async_uri(self.CREATE_DATA_VOLUME_WITH_BACKING_PATH, self.create_volume_with_backing)
         http_server.register_async_uri(self.DELETE_BITS_PATH, self.delete)
         http_server.register_async_uri(self.DELETE_DIR_PATH, self.deletedir)
         http_server.register_async_uri(self.DOWNLOAD_BIT_PATH, self.download_from_sftp)
@@ -213,6 +223,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.GET_QCOW2_REFERENCE, self.get_qcow2_reference)
         http_server.register_async_uri(self.CONVERT_QCOW2_TO_RAW, self.convert_qcow2_to_raw)
         http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
+        http_server.register_async_uri(self.HARD_LINK_VOLUME, self.hardlink_volume)
         http_server.register_async_uri(self.CHECK_INITIALIZED_FILE, self.check_initialized_file)
         http_server.register_async_uri(self.CREATE_INITIALIZED_FILE, self.create_initialized_file)
         http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.download_from_kvmhost)
@@ -762,6 +773,17 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             linux.qcow2_create_with_cmd(cmd.installUrl, cmd.size, cmd)
 
     @kvmagent.replyerror
+    def create_volume_with_backing(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CreateVolumeWithBackingRsp()
+
+        self.do_create_volume_with_backing(cmd.templatePathInCache, cmd.installPath, cmd)
+        rsp.size = linux.qcow2_get_virtual_size(cmd.installPath)
+        rsp.actualSize = os.path.getsize(cmd.installPath)
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     def create_root_volume_from_template(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentResponse()
@@ -772,13 +794,17 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             logger.debug('error: %s: %s' % (rsp.error, cmd.templatePathInCache))
             return jsonobject.dumps(rsp)
 
-        dirname = os.path.dirname(cmd.installUrl)
+        self.do_create_volume_with_backing(cmd.templatePathInCache, cmd.installUrl, cmd)
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
+        return jsonobject.dumps(rsp)
+
+    @staticmethod
+    def do_create_volume_with_backing(backing_path, vol_path, cmd):
+        dirname = os.path.dirname(vol_path)
         if not os.path.exists(dirname):
             os.makedirs(dirname, 0775)
 
-        linux.qcow2_clone_with_cmd(cmd.templatePathInCache, cmd.installUrl, cmd)
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
-        return jsonobject.dumps(rsp)
+        linux.qcow2_clone_with_cmd(backing_path, vol_path, cmd)
 
     @kvmagent.replyerror
     def delete(self, req):
@@ -861,3 +887,34 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         rsp = AgentResponse()
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
         return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def hardlink_volume(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        self.hardlink_and_rebase(cmd.srcDir, cmd.dstDir, cmd.storagePath)
+
+        rsp = AgentResponse()
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
+        return jsonobject.dumps(rsp)
+
+    def hardlink_and_rebase(self, src_dir, dst_dir, storage_dir):
+        src_dst_dict = {}
+        for f in linux.list_all_file(src_dir):
+            src_dst_dict[f] = os.path.realpath(f.replace(src_dir, dst_dir))
+
+        for f in linux.list_all_file(storage_dir):
+            backing_file = os.path.realpath(linux.qcow2_get_backing_file(f))
+            if backing_file in src_dst_dict:
+                dst_file = src_dst_dict[backing_file]
+                linux.link(backing_file, dst_file)
+                linux.qcow2_rebase_no_check(dst_file, f, "qcow2")
+
+        for src_file, dst_file in src_dst_dict.iteritems():
+            linux.link(src_file, dst_file)
+
+
+
+
+
+
+
