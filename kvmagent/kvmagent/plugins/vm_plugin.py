@@ -3507,7 +3507,7 @@ class Vm(object):
                 e(hyperv, 'vapic', attrib={'state': 'on'})
                 if is_hv_freq_supported(): e(hyperv, 'frequencies', attrib={'state': 'on'})
                 e(hyperv, 'spinlocks', attrib={'state': 'on', 'retries': '4096'})
-                e(hyperv, 'vendor_id', attrib={'state': 'on', 'value': 'ZStack_Org'})
+                e(hyperv, 'vendor_id', attrib={'state': 'on', 'value': cmd.vendorId})
             # always set ioapic driver to kvm after libvirt 3.4.0
             if is_ioapic_supported():
                 e(features, "ioapic", attrib={'driver': 'kvm'})
