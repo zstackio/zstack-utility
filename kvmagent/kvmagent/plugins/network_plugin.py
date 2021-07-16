@@ -12,6 +12,7 @@ from zstacklib.utils import shell
 from zstacklib.utils import linux
 from zstacklib.utils import iproute
 from zstacklib.utils.bash import *
+from zstacklib.utils import ovs
 import os
 import traceback
 import netaddr
@@ -231,13 +232,14 @@ class NetworkPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CheckPhysicalNetworkInterfaceResponse()
         for i in cmd.interfaceNames:
-            if not linux.is_network_device_existing(i):
+            if not linux.is_network_device_existing(i) and ovs.OvsCtl().getDPDKBond(i) is None:
                 rsp.failedInterfaceNames = [i]
                 rsp.success = False
                 return jsonobject.dumps(rsp)
 
         for i in cmd.interfaceNames:
-            self._ifup_device_if_down(i)
+            if ovs.OvsCtl().getDPDKBond(i) is None:
+                self._ifup_device_if_down(i)
 
         logger.debug(http.path_msg(CHECK_PHYSICAL_NETWORK_INTERFACE_PATH, 'checked physical interfaces: %s' % cmd.interfaceNames))
         return jsonobject.dumps(rsp)

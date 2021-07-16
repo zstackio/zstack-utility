@@ -446,10 +446,10 @@ def copy_kvm_files():
     copy_zstacklib_status = copy_to_remote(zslib_src, zslib_dst, None, host_post_info)
 
     # copy smart-nics file
-    command = 'mkdir -p /usr/local/etc/zstack/'
+    command = 'mkdir -p /usr/local/etc/zstack-ovs/'
     run_remote_command(command, host_post_info)
     smart_nics_src = os.path.join(file_root, "smart-nics.yaml")
-    smart_nics_dst = "/usr/local/etc/zstack/smart-nics.yaml"
+    smart_nics_dst = "/usr/local/etc/zstack-ovs/smart-nics.yaml"
     copy_smart_nics_status = copy_to_remote(smart_nics_src, smart_nics_dst, None, host_post_info)
 
     # copy kvmagent pkg

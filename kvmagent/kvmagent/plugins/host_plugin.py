@@ -218,8 +218,6 @@ class HostNetworkInterfaceInventory(object):
 
     def init(self, name):
         super(HostNetworkInterfaceInventory, self).__init__()
-        # TODO： compelete this map
-        self.nic_info = ovs.get_interface_offloadstatus
         self.interfaceName = name
         self.speed = None
         self.slaveActive = None
@@ -257,9 +255,10 @@ class HostNetworkInterfaceInventory(object):
             return
         self.speed = get_nic_supported_max_speed(self.interfaceName)
         # cannot read carrier of vf nic
-        carrier = linux.read_file("/sys/class/net/%s/carrier" % self.interfaceName)
-        if carrier:
-            self.carrierActive = carrier.strip() == "1"
+        if not os.path.exists("/sys/class/net/%s/device/physfn" % self.interfaceName):
+            carrier = linux.read_file("/sys/class/net/%s/carrier" % self.interfaceName)
+            if carrier:
+                self.carrierActive = carrier.strip() == "1"
         self.mac = linux.read_file("/sys/class/net/%s/address" % self.interfaceName).strip()
         self.ipAddresses = linux.get_interface_ip_addresses(self.interfaceName)
 
@@ -278,7 +277,7 @@ class HostNetworkInterfaceInventory(object):
 
         self.pciDeviceAddress = os.readlink("/sys/class/net/%s/device" % self.interfaceName).strip().split('/')[-1]
 
-        self.offloadStatus = ovs.get_interface_offloadstatus(self.interfaceName)
+        self.offloadStatus = ovs.OvsCtl().ifOffloadStatus(self.interfaceName)
 
     def _to_dict(self):
         to_dict = self.__dict__
