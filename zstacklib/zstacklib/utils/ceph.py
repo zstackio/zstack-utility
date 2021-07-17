@@ -6,9 +6,12 @@ import os
 import zstacklib.utils.jsonobject as jsonobject
 from zstacklib.utils import shell
 from zstacklib.utils import log
+from zstacklib.utils import linux
+import rbd
 
 logger = log.get_logger(__name__)
 
+CEPH_CONF_ROOT = "/var/lib/zstack/ceph"
 
 def is_xsky():
     return os.path.exists("/usr/bin/xms-cli")
@@ -26,6 +29,65 @@ def get_ceph_manufacturer():
     else:
         return "open-source"
 
+
+def get_ceph_client_conf(ps_uuid, manufacturer=None):
+    ceph_client_config_dir = os.path.join(CEPH_CONF_ROOT, ps_uuid)
+
+    username = None
+    if manufacturer != "xsky":
+        username = "client.zstack"
+
+    return os.path.join(ceph_client_config_dir, "ceph.conf"), username
+
+def update_ceph_client_access_conf(ps_uuid, mon_urls, user_key, manufacturer):
+    conf_folder = os.path.join(CEPH_CONF_ROOT, ps_uuid)
+    if not os.path.exists(conf_folder):
+        linux.mkdir(conf_folder)
+
+    conf_content = '[global]\nmon_host=%s\n' % (','.join(mon_urls))
+
+    # key used for ceph client keyring configuration
+    keyring_path = None
+    username = None
+    if user_key:
+        keyring_content = None
+        if manufacturer == "xsky":
+            keyring_content = user_key
+        else:
+            username = "client.zstack"
+            keyring_content = """[client.zstack]
+    key = %s
+""" % user_key
+        keyring_path = os.path.join(conf_folder, "client.zstack.keyring")
+        with open(keyring_path, 'w') as fd:
+            fd.write(keyring_content)
+
+        conf_content = conf_content + "keyring=%s" % keyring_path
+
+    conf_path = os.path.join(conf_folder, "ceph.conf")
+    with open(conf_path, 'w') as fd:
+        fd.write(conf_content)
+            
+    return conf_path, keyring_path, username
+
+
+def get_heartbeat_object_name(ioctx, primary_storage_uuid, host_uuid):
+    image = None
+    try:
+        image = rbd.Image(ioctx, get_heartbeat_file_name(primary_storage_uuid, host_uuid))
+        return image.stat()['block_name_prefix']
+    except Exception as e:
+        logger.debug("failed to open image, %s", e)
+    finally:
+        if image:
+            image.close()
+
+
+def get_heartbeat_volume(pool_name, ps_uuid, host_uuid):
+    return '%s/ceph-ps-%s-host-hb-%s' % (pool_name, ps_uuid, host_uuid)
+
+def get_heartbeat_file_name(ps_uuid, host_uuid):
+    return 'ceph-ps-%s-host-hb-%s' % (ps_uuid, host_uuid)
 
 def getCephPoolsCapacity():
     result = []
