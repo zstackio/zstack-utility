@@ -152,6 +152,9 @@ class HighPerformanceNetworkPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     def start(self):
+        if not ovs.OvsVenv().checkMlnxOfed():
+            return
+
         global ovsctl
         ovsctl = ovs.OvsCtl()
         if not ovsctl.initVdpaSupport():
