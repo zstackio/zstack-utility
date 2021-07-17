@@ -16,6 +16,14 @@ logger = log.get_logger(__name__)
 class OvsError(Exception):
     '''ovs error'''
 
+def checkOvs(func):
+    def wrapper(*args, **kw):
+        if shell.call("rpm -qa openvswitch") != '':
+            return func(*args, **kw)
+
+        #logger.debug("can not find openvswitch")
+        return None
+    return wrapper
 
 def writeSysfs(path, value, supressRaise=False):
     try:
@@ -104,6 +112,7 @@ class OvsVenv(object):
 
         self.ctlBin = "ovs-vsctl --db=unix:{} ".format(self.DB_SOCK)
 
+    @checkOvs
     def checkMlnxOfed(self):
         """ check mlnx ofed driver,
             get ovs and dpdk version,
@@ -111,8 +120,7 @@ class OvsVenv(object):
             and old configurations may cause error
         """
         if not os.path.exists("/usr/share/openvswitch/scripts/ovs-ctl"):
-            logger.debug("can not find ovs-ctl")
-            return False
+            raise OvsError("can not find ovs-ctl")
 
         self.ofedVer = shell.call("ofed_info -n").strip()
 
@@ -125,8 +133,6 @@ class OvsVenv(object):
 
         self.ovsDBVer = shell.call(
             "ovsdb-server --version | awk 'NR==1{print $NF}'").strip()
-        
-        return True
 
     def checkHugepage(self):
         """
@@ -155,6 +161,7 @@ class OvsVenv(object):
             else:
                 raise OvsError("can not malloc enough hugepage for ovs.")
 
+    @checkOvs
     def checkOffloadStatus(self):
         nicInfoPath = os.path.join(self.confPath, "smart-nics.yaml")
 
@@ -190,6 +197,7 @@ class Ovs(OvsVenv):
         self.statusDB()
         self.statusSwitch()
 
+    @checkOvs
     @lock.lock('startDB')
     def startDB(self, restart=False):
         """ start ovsdb """
@@ -547,6 +555,7 @@ class OvsCtl(Ovs):
 
         raise OvsError("interface:{} do not exists.".format(interface))
 
+    @checkOvs
     def getVdpa(self, vmUuid, nic):
         bridgeName = nic.bridgeName
         bondName = nic.physicalInterface
@@ -605,6 +614,7 @@ class OvsCtl(Ovs):
         return shell.call(self.ctlBin +
                           "--columns=name find interface external_ids:vm-id={} | grep name |cut -d ':' -f2".format(vmUuid)).strip().split()
 
+    @checkOvs
     def freeVdpa(self, vmUuid, specificNic=None):
         vDPA_list = []
 
@@ -630,6 +640,7 @@ class OvsCtl(Ovs):
 
         return vDPA_path
 
+    @checkOvs
     def ifOffloadStatus(self, ifName):
 
         vd = self._get_if_vd(ifName)
@@ -639,6 +650,7 @@ class OvsCtl(Ovs):
 
         return None
 
+    @checkOvs
     def getDPDKBond(self, bondName):
         bondFile = os.path.join(self.confPath, "dpdk-bond.yaml")
         if not os.path.exists(bondFile):
@@ -729,7 +741,7 @@ class OvsCtl(Ovs):
             self.createBr(bridgeName)
 
         if bond.name not in self.listPorts(bridgeName):
-            # ovs-ctl add-port br_test bondtest -- \
+            # ovs-vsctl add-port br_test bondtest -- \
             # set Interface bondtest type=dpdk dpdk-devargs="eth_bond0,mode=2,\
             # slave=0000:81:00.1,slave=0000:82:00.1,xmit_policy=l34"
             dpdk_devargs = "eth_bond{},".format(bond.id)
