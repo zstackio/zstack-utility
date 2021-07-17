@@ -8,6 +8,7 @@ from zstacklib.utils import jsonobject
 from zstacklib.utils import log
 from zstacklib.utils import ovs
 from zstacklib.utils import http
+from zstacklib.utils import shell
 
 OVS_DPDK_NET_CHECK_BRIDGE = '/network/ovsdpdk/checkbridge'
 OVS_DPDK_NET_CREATE_BRIDGE = '/network/ovsdpdk/createbridge'
@@ -78,6 +79,11 @@ class HighPerformanceNetworkPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CreateBridgeResponse()
 
+        if ovsctl == None:
+            rsp.success = False
+            rsp.error = "host can not support ovs"
+            return jsonobject.dumps(rsp)
+
         # prepare vf lag
         if not ovsctl.prepareBridge(cmd.bridgeName, cmd.physicalInterfaceName):
             rsp.success = False
@@ -98,6 +104,11 @@ class HighPerformanceNetworkPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CheckBridgeResponse()
 
+        if ovsctl == None:
+            rsp.success = False
+            rsp.error = "host can not support ovs"
+            return jsonobject.dumps(rsp)
+
         if cmd.bridgeName not in ovsctl.listBrs():
             rsp.success = False
             rsp.error = "can not find bridge:{}".format(cmd.bridgeName)
@@ -115,6 +126,11 @@ class HighPerformanceNetworkPlugin(kvmagent.KvmAgent):
     def delete_ovs_bridge(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CreateBridgeResponse()
+
+        if ovsctl == None:
+            rsp.success = False
+            rsp.error = "host can not support ovs"
+            return jsonobject.dumps(rsp)
 
         if cmd.bridgeName not in ovsctl.listBrs():
             rsp.success = False
@@ -135,6 +151,11 @@ class HighPerformanceNetworkPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GenerateVdpaResponse()
 
+        if ovsctl == None:
+            rsp.success = False
+            rsp.error = "host can not support ovs"
+            return jsonobject.dumps(rsp)
+
         rsp.vdpaPaths = []
         for nic in cmd.nics:
             rsp.vdpaPaths.append(ovsctl.getVdpa(cmd.vmUuid, nic))
@@ -147,12 +168,17 @@ class HighPerformanceNetworkPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
 
+        if ovsctl == None:
+            rsp.success = False
+            rsp.error = "host can not support ovs"
+            return jsonobject.dumps(rsp)
+
         ovsctl.freeVdpa(cmd.vmUuid)
 
         return jsonobject.dumps(rsp)
 
-    def start(self):
-        if not ovs.OvsVenv().checkMlnxOfed():
+    def reconfigOvs(self):
+        if shell.call("rpm -qa openvswitch") == '':
             return
 
         global ovsctl
@@ -169,6 +195,10 @@ class HighPerformanceNetworkPlugin(kvmagent.KvmAgent):
                 os.mkdir(vdpaBrPath, 0755)
             ovsctl.prepareBridge(b, b[3:])
         ovsctl.start(True)
+
+    def start(self):
+
+        self.reconfigOvs()
 
         http_server = kvmagent.get_http_server()
 
