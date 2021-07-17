@@ -111,7 +111,8 @@ class OvsVenv(object):
             and old configurations may cause error
         """
         if not os.path.exists("/usr/share/openvswitch/scripts/ovs-ctl"):
-            raise OvsError("can not find ovs-ctl")
+            logger.debug("can not find ovs-ctl")
+            return False
 
         self.ofedVer = shell.call("ofed_info -n").strip()
 
@@ -124,6 +125,8 @@ class OvsVenv(object):
 
         self.ovsDBVer = shell.call(
             "ovsdb-server --version | awk 'NR==1{print $NF}'").strip()
+        
+        return True
 
     def checkHugepage(self):
         """
