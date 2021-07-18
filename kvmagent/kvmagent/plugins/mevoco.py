@@ -968,6 +968,10 @@ $HTTP["remoteip"] =~ "^(.*)$" {
 {% for ip in userdata_vm_ips -%}
     } else $HTTP["remoteip"] == "{{ip}}" {
         url.rewrite-once = (
+            "^/zwatch-vm-agent.linux-amd64.bin$" => "/zwatch-vm-agent",
+            "^/zwatch-vm-agent.linux-aarch64.bin$" => "/zwatch-vm-agent_aarch64",
+            "^/zwatch-vm-agent.linux-mips64el.bin$" => "/collectd_exporter_mips64el",
+            "^/agent-tools-update.sh$" => "/vm-tools.sh",
             "^/.*/meta-data/(.+)$" => "/{{ip}}/meta-data/$1",
             "^/.*/meta-data$" => "/{{ip}}/meta-data",
             "^/.*/meta-data/$" => "/{{ip}}/meta-data/",
@@ -981,6 +985,10 @@ $HTTP["remoteip"] =~ "^(.*)$" {
 {% endfor -%}
     } else $HTTP["remoteip"] =~ "^(.*)$" {
         url.rewrite-once = (
+            "^/zwatch-vm-agent.linux-amd64.bin$" => "/zwatch-vm-agent",
+            "^/zwatch-vm-agent.linux-aarch64.bin$" => "/zwatch-vm-agent_aarch64",
+            "^/zwatch-vm-agent.linux-mips64el.bin$" => "/collectd_exporter_mips64el",
+            "^/agent-tools-update.sh$" => "/vm-tools.sh",
             "^/.*/meta-data/(.+)$" => "../zstack-default/meta-data/$1",
             "^/.*/meta-data$" => "../zstack-default/meta-data",
             "^/.*/meta-data/$" => "../zstack-default/meta-data/",
@@ -1128,6 +1136,11 @@ mimetype.assign = (
             windows_meta_data_password = os.path.join(root, 'password')
             with open(windows_meta_data_password, 'w') as fd:
                 fd.write('')
+        
+        if to.agentConfig:
+            pvpanic_file_path = os.path.join(meta_root, 'pvpanic')
+            with open(pvpanic_file_path, 'w') as fd:
+                fd.write(to.agentConfig.pvpanic if to.agentConfig.pvpanic else 'disable')
 
     @in_bash
     def _apply_userdata_restart_httpd(self, to):
