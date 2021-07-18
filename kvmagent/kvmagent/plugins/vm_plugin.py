@@ -57,7 +57,6 @@ from zstacklib.utils.vm_plugin_queue_singleton import VmPluginQueueSingleton
 from zstacklib.utils.libvirt_singleton import LibvirtEventManager
 from zstacklib.utils.libvirt_singleton import LibvirtEventManagerSingleton
 from zstacklib.utils.libvirt_singleton import LibvirtSingleton
-from distutils.version import LooseVersion
 
 logger = log.get_logger(__name__)
 
@@ -473,6 +472,10 @@ class ReportVmRebootEventCmd(object):
     def __init__(self):
         self.vmUuid = None
 
+class ReportVmCrashEventCmd(object):
+    def __init__(self):
+        self.vmUuid = None
+
 class CheckVmStateRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(CheckVmStateRsp, self).__init__()
@@ -636,12 +639,14 @@ class GetVmGuestToolsInfoCmd(kvmagent.AgentCommand):
     def __init__(self):
         super(GetVmGuestToolsInfoCmd, self).__init__()
         self.vmInstanceUuid = None
+        self.platform = None
 
 class GetVmGuestToolsInfoRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(GetVmGuestToolsInfoRsp, self).__init__()
         self.version = None
         self.status = None
+        self.features = {}
 
 class GetVmFirstBootDeviceCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -799,6 +804,18 @@ def find_domain_cdrom_address(domain_xml, target_dev):
         return d.get_child_node('address')
     return None
 
+def check_domain_xml_pvpanic_enable(domain_xml):
+    domain_xmlobject = xmlobject.loads(domain_xml)
+    hyperv_check = False
+    isa_check = False
+    for panic in domain_xmlobject.devices.get_child_node_as_list('panic'):
+        if panic.model_ == 'hyperv':
+            hyperv_check = True
+        elif panic.model_ == 'isa':
+            for address in panic.get_child_node_as_list('address'):
+                if address.type_ == 'isa' and address.iobase_ == '0x505':
+                    isa_check = True
+    return hyperv_check and isa_check
 
 def find_domain_first_boot_device(domain_xml):
     domain_xmlobject = xmlobject.loads(domain_xml)
@@ -3985,10 +4002,7 @@ class Vm(object):
             e(root, 'description', cmd.vmName)
             e(root, 'on_poweroff', 'destroy')
             e(root, 'on_reboot', 'restart')
-            on_crash = cmd.addons['onCrash']
-            if on_crash is None:
-                on_crash = 'restart'
-            e(root, 'on_crash', on_crash)
+            e(root, 'on_crash', 'preserve' if cmd.addons['onCrash'] is None else cmd.addons['onCrash'])
             meta = e(root, 'metadata')
             zs = e(meta, 'zstack', usenamesapce=True)
             e(zs, 'internalId', str(cmd.vmInternalId))
@@ -4152,6 +4166,8 @@ class Vm(object):
             if usbDevices:
                 make_usb_device(usbDevices)
 
+            make_pvpanic()
+
         # FIXME: manage scsi device in one place.
         def make_storage_device(storageDevices):
             lvm.unpriv_sgio()
@@ -4265,6 +4281,12 @@ class Vm(object):
                             raise kvmagent.KvmError('unknown usb controller %s', bus)
                 else:
                     raise kvmagent.KvmError('cannot find usb device %s', usb)
+
+        def make_pvpanic():
+            devices = elements['devices']
+            e(devices, 'panic', None, {'model' : 'hyperv'})
+            isa_panic = e(devices, 'panic', None, {'model' : 'isa'})
+            e(isa_panic, 'address', None, {'type' : 'isa', 'iobase' : '0x505'})
 
         #TODO(weiw) validate here
         def match_storage_device(install_path):
@@ -6472,15 +6494,20 @@ class VmPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
-    @in_bash
     def get_vm_guest_tools_info(self, req):
         rsp = GetVmGuestToolsInfoRsp()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
         # get guest tools info by reading VERSION file inside vm
         vm_uuid = cmd.vmInstanceUuid
+        if cmd.platform.lower() == 'windows':
+            self.get_vm_guest_tools_info_for_windows_guest(vm_uuid, rsp)
+        self.pvpanic_vm_guest_tools_info(vm_uuid, cmd, rsp)
 
+        return jsonobject.dumps(rsp)
 
+    @in_bash
+    def get_vm_guest_tools_info_for_windows_guest(self, vm_uuid, rsp):
         r, o, e = bash.bash_roe('virsh qemu-agent-command %s --cmd \'{"execute":"guest-file-open", \
                 "arguments":{"path":"C:\\\Program Files\\\Common Files\\\GuestTools\\\VERSION", "mode":"r"}}\'' % vm_uuid)
         if r != 0:
@@ -6489,11 +6516,11 @@ class VmPlugin(kvmagent.KvmAgent):
                 info = simplejson.loads(_o)['return']
                 for k in info.keys():
                     setattr(rsp, k, info[k])
-                return jsonobject.dumps(rsp)
+                return
             else:
                 rsp.success = False
                 rsp.error = "%s, %s" % (o, e)
-                return jsonobject.dumps(rsp)
+                return
 
         fd = simplejson.loads(o)['return']
 
@@ -6505,14 +6532,26 @@ class VmPlugin(kvmagent.KvmAgent):
             _close_version_file()
             rsp.success = False
             rsp.error = "%s, %s" % (o, e)
-            return jsonobject.dumps(rsp)
+            return
 
         version = base64.b64decode(simplejson.loads(o)['return']['buf-b64']).strip()
         rsp.version = version
         rsp.status = 'Running'
         _close_version_file()
-        return jsonobject.dumps(rsp)
 
+    def pvpanic_vm_guest_tools_info(self, vm_uuid, cmd, rsp):
+        if cmd.platform.lower() == 'windows':
+            rsp.features['pvpanic_guest_kernel_supported'] = 'unknown'
+            if rsp.version:
+                # windows guest tools, version >= 1.3.0, pvpanic is enable. otherwise not support.
+                rsp.features['pvpanic_guest_tools_enable'] = 'enable' if LooseVersion(rsp.version) >= LooseVersion('1.3.0') else 'not supported'
+            else:
+                rsp.features['pvpanic_guest_tools_enable'] = 'not supported'
+        vm = get_vm_by_uuid(vm_uuid, False)
+        if vm is None:
+            rsp.features['pvpanic_host_enable'] = 'unknown'
+            return
+        rsp.features['pvpanic_host_enable'] = 'enable' if check_domain_xml_pvpanic_enable(vm.domain_xml) else 'disable'
 
     @kvmagent.replyerror
     @in_bash
@@ -7320,17 +7359,29 @@ class VmPlugin(kvmagent.KvmAgent):
             self._record_operation(vm_uuid, VmPlugin.VM_OP_REBOOT)
 
             is_cdrom = self._check_boot_from_cdrom(domain_xml)
-            if not is_cdrom:
-                logger.debug(
-                    "the vm[uuid:%s]'s boot device is not cdrom, nothing to do, skip this reboot event" % (vm_uuid))
+            if is_cdrom:
+                logger.debug("the vm[uuid:%s]'s boot device is cdrom, for the policy[bootFromHardDisk], need to update root volume boot order" % (vm_uuid))
+            pvpanic_enable = check_domain_xml_pvpanic_enable(domain_xml)
+            if not pvpanic_enable:
+                logger.debug("the vm[uuid:%s]'s pvpanic is disable, need to enable domain host panic listener" % (vm_uuid))
+            if not is_cdrom and pvpanic_enable:
                 return
-            logger.debug(
-                'the vm[uuid:%s] is set to boot from the cdrom, for the policy[bootFromHardDisk], the reboot will boot from hdd' % vm_uuid)
+            logger.debug('for the above reason, the vm[uuid:%s] will boot from hdd' % vm_uuid)
+
             try:
                 dom.destroy()
             except:
                 pass
 
+            # pvpanic
+            domain_xmlobject = xmlobject.loads(domain_xml)
+            domain_xmlobject.on_crash.text_ = 'preserve'
+            domain_xmlobject.devices.panic = [
+                xmlobject.loads("<panic model='hyperv'/>"),
+                xmlobject.loads("<panic model='isa'><address type='isa' iobase='0x505'/></panic>")
+            ]
+            domain_xml = domain_xmlobject.dump()
+            # cdrom
             xml = self.update_root_volume_boot_order(domain_xml)
             xml = re.sub(r"""\stray\s*=\s*'open'""", """ tray='closed'""", xml)
             domain = conn.defineXML(xml)
@@ -7585,6 +7636,35 @@ class VmPlugin(kvmagent.KvmAgent):
             content = traceback.format_exc()
             logger.warn("traceback: %s" % content)
 
+    def _vm_crashed_event(self, conn, dom, event, detail, opaque):
+        try:
+            event = LibvirtEventManager.event_to_string(event)
+            if event not in (LibvirtEventManager.EVENT_CRASHED,):
+                return
+
+            vm_uuid = dom.name()
+
+            # this is an operation outside zstack, report it
+            url = self.config.get(kvmagent.SEND_COMMAND_URL)
+            if not url:
+                logger.warn('cannot find SEND_COMMAND_URL, unable to report crash event of vm[uuid:%s]' % vm_uuid)
+                return
+
+            logger.info('crashed event recieved from vm[uuid:%s]' % vm_uuid)
+            logger.info('detail is %s, opaque is %s' % (detail, opaque))
+
+            @thread.AsyncThread
+            def report_to_management_node():
+                cmd = ReportVmCrashEventCmd()
+                cmd.vmUuid = vm_uuid
+                syslog.syslog('report crash event for vm ' + vm_uuid)
+                http.json_dump_post(url, cmd, {'commandpath': '/kvm/reportvmcrash'})
+
+            report_to_management_node()
+        except:
+            content = traceback.format_exc()
+            logger.warn("traceback: %s" % content)
+
     def _set_vnc_port_iptable_rule(self, conn, dom, event, detail, opaque):
         try:
             event = LibvirtEventManager.event_to_string(event)
@@ -7672,6 +7752,7 @@ class VmPlugin(kvmagent.KvmAgent):
                                                   self._set_vnc_port_iptable_rule)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_REBOOT, self._vm_reboot_event)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._vm_shutdown_event)
+        LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._vm_crashed_event)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._release_sharedblocks)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._clean_colo_heartbeat)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._extend_sharedblock)
