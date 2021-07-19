@@ -717,7 +717,7 @@ class CephAgent(plugin.TaskManager):
 
         pool_names = existing_pools.split("\n")
 
-        realname = eval('u"' + cmd.poolName + '"').encode('utf-8')
+        realname = cmd.poolName
         if not cmd.isCreate and realname not in pool_names:
             raise Exception('cannot find the pool[%s] in the ceph cluster, you must create it manually' % realname)
 
