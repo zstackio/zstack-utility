@@ -972,21 +972,6 @@ class LibvirtAutoReconnect(object):
 
     @staticmethod
     def register_libvirt_callbacks():
-        def reboot_callback(conn, dom, opaque):
-            cbs = LibvirtAutoReconnect.libvirt_event_callbacks.get(libvirt.VIR_DOMAIN_EVENT_ID_REBOOT)
-            if not cbs:
-                return
-
-            for cb in cbs:
-                try:
-                    cb(conn, dom, opaque)
-                except:
-                    content = traceback.format_exc()
-                    logger.warn(content)
-
-        LibvirtAutoReconnect.conn.domainEventRegisterAny(None, libvirt.VIR_DOMAIN_EVENT_ID_REBOOT, reboot_callback,
-                                                         None)
-
         def lifecycle_callback(conn, dom, event, detail, opaque):
             cbs = LibvirtAutoReconnect.libvirt_event_callbacks.get(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE)
             if not cbs:
@@ -1001,6 +986,26 @@ class LibvirtAutoReconnect(object):
 
         LibvirtAutoReconnect.conn.domainEventRegisterAny(None, libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE,
                                                          lifecycle_callback, None)
+
+        def record_block_job_event(conn, dom, disk, type, status, opaque):
+            logger.debug("record block job: vm %s on disk %s type %s status %s. %s" % (dom.name(), disk,
+             LibvirtEventManager.block_job_type_to_string(type),
+             LibvirtEventManager.block_job_status_to_string(status), opaque))
+
+        def reboot_callback(conn, dom, opaque):
+            cbs = LibvirtAutoReconnect.libvirt_event_callbacks.get(libvirt.VIR_DOMAIN_EVENT_ID_REBOOT)
+            if not cbs:
+                return
+
+            for cb in cbs:
+                try:
+                    cb(conn, dom, opaque)
+                except:
+                    content = traceback.format_exc()
+                    logger.warn(content)
+
+        LibvirtAutoReconnect.conn.domainEventRegisterAny(None, libvirt.VIR_DOMAIN_EVENT_ID_BLOCK_JOB, record_block_job_event, None)
+        LibvirtAutoReconnect.conn.domainEventRegisterAny(None, libvirt.VIR_DOMAIN_EVENT_ID_REBOOT, reboot_callback, None)
 
         def libvirtClosedCallback(conn, reason, opaque):
             reasonStrings = (
