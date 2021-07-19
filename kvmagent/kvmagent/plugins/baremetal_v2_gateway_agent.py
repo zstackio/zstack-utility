@@ -248,7 +248,6 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         linux.flush_device_ip(network_obj.dhcp_interface)
 
     def _prepare_tftp(self):
-        self._destroy_tftp()
 
         if not os.path.exists(self.MAPFILE_PATH):
             template_map_file = self._load_template('tftp_map_file')
@@ -450,7 +449,6 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         :param network_obj: The network obj
         :type network_obj: NetworkObj
         """
-        self._destroy_nginx()
         self._prepare_nginx_basic(network_obj)
         template = self._load_template('nginx_proxy_to_mn')
         mn_callback_uri = 'http://{ip}:{port}'.format(
@@ -812,13 +810,12 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         linux.rm_file_force(grub_file_path)
 
 
-    def _prepare_ipxe_default_configuration(self, network_obj):
+    def _prepare_ipxe_default_configuration(self, network_obj, instance_objs):
         """ Prepare ipxe default configuration
 
         :param network_obj: The network obj
         :type network_obj: NetworkObj
         """
-        self._destroy_ipxe()
         inspect_kernel_uri = 'x86_64/vmlinuz'
         inspect_initrd_uri = 'x86_64/initrd.img'
         inspect_ks_cfg_uri = 'http://{ip}:{port}/bmv2httpboot/ks/inspector_ks_x86_64.cfg'.format(
@@ -837,6 +834,19 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             inspect_ks_cfg_uri=inspect_ks_cfg_uri)
         with open(self.DEFAULT_PXE_PATH, 'w') as f:
             f.write(pxe_conf)
+
+        # clean invalid pxe configs
+        ipxe_file_paths = [self.DEFAULT_PXE_PATH]
+        for instance_obj in instance_objs:
+            ipxe_file_name = instance_obj.provision_mac.replace(':', '-')
+            ipxe_file_path = os.path.join(self.PXELINUX_CFG_DIR, ipxe_file_name)
+            ipxe_file_paths.append(ipxe_file_path)
+
+        for name in os.listdir(self.PXELINUX_CFG_DIR):
+            path = os.path.join(self.PXELINUX_CFG_DIR, name)
+            if path not in ipxe_file_paths:
+                logger.info("delete invalid ipxe config: %s", path)
+                linux.rm_file_force(path)
 
     def _create_ipxe_configuration(self, instance_obj, volume_drivers):
         """ Generate ipxe cfg for a bm instance
@@ -1016,7 +1026,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             self._prepare_provision_network(network_obj)
             self._prepare_nginx(network_obj, bm_instance_objs)
             self._prepare_grub_default_configuration(network_obj)
-            self._prepare_ipxe_default_configuration(network_obj)
+            self._prepare_ipxe_default_configuration(network_obj, bm_instance_objs)
             self._prepare_ks_configuration(network_obj)
 
             # Destroy dnsmasq conf to avoid hosts out of sync
