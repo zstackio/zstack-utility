@@ -2180,6 +2180,12 @@ setup_install_param(){
     echo_title "Setup Install Parameters"
     echo ""
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+    show_spinner sp_setup_install_param
+}
+
+sp_setup_install_param(){
+    echo_subtitle "Setup Install Parameters"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     if [ x"$MINI_INSTALL" = x"y" ];then
         show_spinner sd_install_zstack_mini_ui
         DEFAULT_UI_PORT=8200
