@@ -959,16 +959,22 @@ class HaPlugin(kvmagent.KvmAgent):
         result = {}
 
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        ceph_conf, username = ceph.get_ceph_client_conf(cmd.primaryStorageUuid, cmd.manufacturer)
+        ceph_conf, keyring_path, username = ceph.get_ceph_client_conf(cmd.primaryStorageUuid, cmd.manufacturer)
 
         if not os.path.exists(ceph_conf):
             rsp.success = False
             return jsonobject.dumps(rsp)
 
+        additional_conf_dict = {}
+        if keyring_path:
+            # use additional_conf_dict to make keyring file a config of Rados connection
+            # and resolve compatibility issue of open-source and other types of ceph storage.
+            additional_conf_dict['keyring'] = keyring_path
+
         heartbeat_success = False
         for pool_name in cmd.poolNames:
             image = None
-            with rados.Rados(conffile=ceph_conf, name=username) as cluster:
+            with rados.Rados(conffile=ceph_conf, conf=additional_conf_dict, name=username) as cluster:
                 with cluster.open_ioctx(pool_name) as ioctx:
                     heartbeat_object_name = ceph.get_heartbeat_object_name(ioctx, cmd.primaryStorageUuid, cmd.targetHostUuid)
                     if not heartbeat_object_name:

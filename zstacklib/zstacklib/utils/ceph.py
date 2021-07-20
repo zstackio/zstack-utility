@@ -12,6 +12,7 @@ import rbd
 logger = log.get_logger(__name__)
 
 CEPH_CONF_ROOT = "/var/lib/zstack/ceph"
+CEPH_KEYRING_CONFIG_NAME = 'client.zstack.keyring'
 
 def is_xsky():
     return os.path.exists("/usr/bin/xms-cli")
@@ -33,11 +34,18 @@ def get_ceph_manufacturer():
 def get_ceph_client_conf(ps_uuid, manufacturer=None):
     ceph_client_config_dir = os.path.join(CEPH_CONF_ROOT, ps_uuid)
 
+    # xsky use admin to access mon node
+    # other ceph storages for example open-source uses client.zstack to access mon node
     username = None
     if manufacturer != "xsky":
         username = "client.zstack"
 
-    return os.path.join(ceph_client_config_dir, "ceph.conf"), username
+    key_path = os.path.join(ceph_client_config_dir, CEPH_KEYRING_CONFIG_NAME)
+    # set key_path to None if no keyring config file exists
+    if not os.path.exists(key_path):
+        key_path = None
+
+    return os.path.join(ceph_client_config_dir, "ceph.conf"), key_path, username
 
 def update_ceph_client_access_conf(ps_uuid, mon_urls, user_key, manufacturer):
     conf_folder = os.path.join(CEPH_CONF_ROOT, ps_uuid)
@@ -51,6 +59,11 @@ def update_ceph_client_access_conf(ps_uuid, mon_urls, user_key, manufacturer):
     username = None
     if user_key:
         keyring_content = None
+        # xsky keyring file just contains the keyring string
+        # but other ceph storages used keyring file is format
+        # as following:
+        # [client.zstack]
+        #     key = your user key for client.zstack
         if manufacturer == "xsky":
             keyring_content = user_key
         else:
@@ -58,7 +71,7 @@ def update_ceph_client_access_conf(ps_uuid, mon_urls, user_key, manufacturer):
             keyring_content = """[client.zstack]
     key = %s
 """ % user_key
-        keyring_path = os.path.join(conf_folder, "client.zstack.keyring")
+        keyring_path = os.path.join(conf_folder, CEPH_KEYRING_CONFIG_NAME)
         with open(keyring_path, 'w') as fd:
             fd.write(keyring_content)
 
