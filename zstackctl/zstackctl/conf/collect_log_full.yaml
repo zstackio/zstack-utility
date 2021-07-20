@@ -40,7 +40,7 @@ mn:
       - {name: iptables-logs, exec: 'iptables-save'}
       - {name: ebtables-logs, exec: 'ebtables-save'}
       - {name: journalctl-info, exec: 'journalctl -x'}
-      - {name: host-info, exec: 'uptime && last reboot && free -h && cat /proc/cpuinfo && ip add && df -h'}
+      - {name: host-info, exec: 'uptime && last reboot && free -h && cat /proc/cpuinfo && ip add && df -h && file_paths=$(ls /sys/devices/system/node|grep node);for file_path in $file_paths; do cat /sys/devices/system/node/$file_path/meminfo; done'}
       - {name: pkg-list, exec: 'rpm -qa | sort'}
       - {name: git-commit, dir: $ZSTACK_HOME/../../webapps/zstack/, file: '*git-commit', mode: "All"}
       - {name: zstack-logs, dir: /var/log/zstack/, file: zstack.log*}
