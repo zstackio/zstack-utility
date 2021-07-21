@@ -2698,8 +2698,8 @@ class InstallDbCmd(Command):
       shell: "yum clean metadata; yum --nogpgcheck install -y mysql mysql-server "
       register: install_result
 
-    - name: install MySQL for RedHat 7/Kylin10 from local
-      when: (ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repo != 'false') or (ansible_os_family == 'Kylin' and ansible_distribution_version == '10' and yum_repo != 'false')
+    - name: install MySQL for RedHat 7/Kylin10/openEuler from local
+      when: (ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repo != 'false') or ansible_os_family == 'Kylin' or ansible_os_family == 'Openeuler'
       shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y  mariadb mariadb-server iptables-services
       register: install_result
 
