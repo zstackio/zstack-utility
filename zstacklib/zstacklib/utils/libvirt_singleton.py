@@ -85,8 +85,8 @@ class LibvirtEventManager():
 
     @staticmethod
     def block_job_type_to_string(index):
-        return LibvirtEventManager.block_job_types[index]
+        return LibvirtEventManager.block_job_types.get(index)
 
     @staticmethod
     def block_job_status_to_string(index):
-        return LibvirtEventManager.block_job_status[index]
+        return LibvirtEventManager.block_job_status.get(index)
