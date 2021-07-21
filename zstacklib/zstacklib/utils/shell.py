@@ -33,7 +33,8 @@ class ShellCmd(object):
     '''
     classdocs
     '''
-    
+    stdout = None  # type: str
+
     def __init__(self, cmd, workdir=None, pipe=True):
         '''
         Constructor
