@@ -18,10 +18,8 @@ class OvsError(Exception):
 
 def checkOvs(func):
     def wrapper(*args, **kw):
-        cmd = shell.ShellCmd("rpm -qa openvswitch")
-        if cmd(False, logcmd=False) != '':
+        if os.path.exists("/usr/share/openvswitch/scripts/ovs-ctl"):
             return func(*args, **kw)
-
         #logger.debug("can not find openvswitch")
         return None
     return wrapper
