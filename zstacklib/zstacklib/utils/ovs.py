@@ -18,7 +18,8 @@ class OvsError(Exception):
 
 def checkOvs(func):
     def wrapper(*args, **kw):
-        if shell.call("rpm -qa openvswitch") != '':
+        cmd = shell.ShellCmd("rpm -qa openvswitch")
+        if cmd(False, logcmd=False) != '':
             return func(*args, **kw)
 
         #logger.debug("can not find openvswitch")
@@ -672,6 +673,9 @@ class OvsCtl(Ovs):
                 return dpdkBond
 
         return None
+
+    def modprobeBonding(self):
+        shell.call("modprobe bonding")
 
     # ---------------------------- utils ------------------------------------------
 

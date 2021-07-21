@@ -183,12 +183,16 @@ class HighPerformanceNetworkPlugin(kvmagent.KvmAgent):
 
         global ovsctl
         ovsctl = ovs.OvsCtl()
+        ovsctl.modprobeBonding()
+
         if not ovsctl.initVdpaSupport():
             logger.debug("ovs can not support dpdk.")
             return
         # reconfig smart nics
         brs = ovsctl.listBrs()
         for b in brs:
+            if b == '':
+                continue
             # prepare bridge floader
             vdpaBrPath = os.path.join(ovsctl.vdpaPath, b)
             if not os.path.exists(vdpaBrPath):
