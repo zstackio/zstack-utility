@@ -2357,6 +2357,8 @@ class Vm(object):
         try:
             cur = status.get('cur', 0)
             end = status.get('end', 0)
+            job_type = LibvirtEventManager.block_job_type_to_string(status.get('type'))
+            logger.debug("block job[type:%s] of disk:%s current progress cur:%s end:%s" % (job_type, disk_path, cur, end))
         except Exception as e:
             logger.warn(linux.get_exception_stacktrace())
             return False
@@ -3164,8 +3166,9 @@ class Vm(object):
             logger.debug('start block rebase [active: %s, new backing: %s]' % (top, base))
 
             # Double check (c.f. issue #1323)
+            logger.debug('merge snapshot is checking previous block job of disk:%s' % disk_name)
+
             def wait_previous_job(_):
-                logger.debug('merge snapshot is checking previous block job')
                 return not self._wait_for_block_job(disk_name, abort_on_error=True)
 
             if not linux.wait_callback_success(wait_previous_job, timeout=21600, ignore_exception_in_callback=True):
@@ -3173,15 +3176,17 @@ class Vm(object):
 
             self.domain.blockRebase(disk_name, base, 0)
 
+            logger.debug('merging snapshot chain is waiting for blockRebase job of %s completion' % disk_name)
             def wait_job(_):
-                logger.debug('merging snapshot chain is waiting for blockRebase job completion')
                 return not self._wait_for_block_job(disk_name, abort_on_error=True)
 
             if not linux.wait_callback_success(wait_job, timeout=21600):
                 raise kvmagent.KvmError('live merging snapshot chain failed, timeout after 6 hours')
 
             # Double check (c.f. issue #757)
-            if self._get_back_file(top) != base:
+            current_backing = self._get_back_file(top)
+            if current_backing != base:
+                logger.debug("live merge snapshot filed. Expected backing %s, actuall backing %s" % (base, current_backing))
                 raise kvmagent.KvmError('[libvirt bug] live merge snapshot failed')
 
             logger.debug('end block rebase [active: %s, new backing: %s]' % (top, base))
