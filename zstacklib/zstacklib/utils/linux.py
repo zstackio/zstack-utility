@@ -2214,8 +2214,25 @@ def updateGrubFile(grepCmd, sedCmd, files):
     return True, None
 
 def set_fail_if_no_path():
-    cmd = shell.ShellCmd('ms=`dmsetup ls --target multipath | awk \'{print $1}\'`; for m in $ms; do dmsetup message $m 0 "fail_if_no_path"; done')
-    cmd(is_exception=False, logcmd=False)
+    s = shell.ShellCmd("dmsetup table | grep 'multipath' | grep 'queue_if_no_path' | awk '{print $1}' | tr -d ':'")
+    s(is_exception=False, logcmd=False)
+    o = s.stdout.strip()
+
+    if len(o) == 0:
+        return
+
+    logger.debug("find mpath config with queue_if_no_path: %s" % o.splitlines())
+    queued_mpaths = o.splitlines()
+    for mpath in queued_mpaths:
+        mpath = mpath.strip()
+        s = shell.ShellCmd('pgrep -af "dmsetup message %s 0"' % mpath)
+        s(is_exception=False, logcmd=True)
+        if s.return_code == 0:
+            logger.debug("there is other process messaging %s [%s], skip" % (mpath, s))
+
+        s = shell.ShellCmd('dmsetup message %s 0 "fail_if_no_path"' % mpath)
+        s(is_exception=False, logcmd=True)
+
 
 def get_physical_disk(disk=None, logCommand=True):
     # type: () -> list[str]
