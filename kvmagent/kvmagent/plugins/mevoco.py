@@ -12,6 +12,7 @@ from zstacklib.utils import ebtables
 from zstacklib.utils import lock
 from zstacklib.utils.bash import *
 from zstacklib.utils import ip
+from zstacklib.utils import thread
 import os.path
 import re
 import email
@@ -432,6 +433,7 @@ class Mevoco(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CLEANUP_USER_DATA, self.cleanup_userdata)
         http_server.register_async_uri(self.SET_DNS_FORWARD_PATH, self.setup_dns_forward)
         http_server.register_async_uri(self.REMOVE_DNS_FORWARD_PATH, self.remove_dns_forward)
+        self.register_dnsmasq_logRotate()
 
     def stop(self):
         pass
@@ -1817,3 +1819,12 @@ sed -i '/^$/d' {{DNS}}
 
         rsp = ReleaseDhcpRsp()
         return jsonobject.dumps(rsp)
+
+    def register_dnsmasq_logRotate(self):
+        def dnsmasq_logRotate():
+            logger.debug('ruanshixin start log rotate')
+            ret = bash_r("logrotate -vf /etc/logrotate.d/dnsmasq")
+
+            thread.timer(24*3600, dnsmasq_logRotate).start()
+
+        thread.timer(60, dnsmasq_logRotate).start()
