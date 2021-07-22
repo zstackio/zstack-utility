@@ -421,15 +421,14 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                 linux.mkdir(_dir)
             return exists
 
-        def do_ssh_mount(cmd, local_mount_point, vm_v2v_dir, real_storage_path):
+        def do_ssh_mount(cmd, local_mount_point, real_storage_path):
             mount_cmd = get_mount_command(cmd)
             mount_paths = "{}:{} {}".format(cmd.managementIp, real_storage_path, local_mount_point)
             alternative_mount = mount_cmd + " -o vers=3"
 
             with lock.NamedLock(local_mount_point):
-                cmdstr = "mkdir -p {0} && ls {1} 2>/dev/null || {2} {3} || {4} {3}".format(
+                cmdstr = "mkdir -p {0} && mountpoint {0}|| {1} {2} || {3} {2}".format(
                             local_mount_point,
-                            vm_v2v_dir,
                             mount_cmd,
                             mount_paths,
                             alternative_mount)
@@ -480,7 +479,7 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
         libvirtHost = getHostname(cmd.libvirtURI)
 
         try:
-            do_ssh_mount(cmd, local_mount_point, vm_v2v_dir, real_storage_path)
+            do_ssh_mount(cmd, local_mount_point, real_storage_path)
         except shell.ShellError as ex:
             logger.info(str(ex))
             raise Exception('host {} cannot access NFS on {}'.format(libvirtHost, cmd.managementIp))
