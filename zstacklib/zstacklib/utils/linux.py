@@ -28,6 +28,7 @@ from zstacklib.utils import qemu_img
 from zstacklib.utils import lock
 from zstacklib.utils import shell
 from zstacklib.utils import log
+from zstacklib.utils import iproute
 
 
 logger = log.get_logger(__name__)
@@ -2067,16 +2068,14 @@ def delete_vxlan_bridge(bridge_name, vxlan_interface):
         delete_bridge(bridge_name)
 
 
-def populate_vxlan_fdb(interf, ips):
-    cmds = []
-    for ip in ips:
-        cmd = "bridge fdb append to 00:00:00:00:00:00 dev %s dst %s" % (interf, ip)
-        cmds.append(cmd)
+def populate_vxlan_fdbs(interf, ips):
+    try:
+        iproute.batch_populate_vxlan_fdbs(interf, "00:00:00:00:00:00", ips)
+    except Exception as e:
+        logger.debug(e)
+        return False
 
-    cmd = shell.ShellCmd(";".join(cmds))
-    cmd(is_exception=False)
-
-    return cmd.return_code == 0
+    return True
 
 
 def bridge_fdb_has_self_rule(mac, dev):
