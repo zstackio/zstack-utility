@@ -2345,8 +2345,9 @@ def sync_file(fpath):
     finally:
         os.close(fd)
 
+
 def set_fail_if_no_path():
-    s = shell.ShellCmd("dmsetup table | grep 'multipath' | grep 'queue_if_no_path' | awk '{print $1}' | tr -d ':'")
+    s = shell.ShellCmd("dmsetup table --target multipath | grep 'queue_if_no_path' | awk '{print $1}' | tr -d ':'")
     s(is_exception=False, logcmd=False)
     o = s.stdout.strip()
 
@@ -2360,7 +2361,8 @@ def set_fail_if_no_path():
         s = shell.ShellCmd('pgrep -af "dmsetup message %s 0"' % mpath)
         s(is_exception=False, logcmd=True)
         if s.return_code == 0:
-            logger.debug("there is other process messaging %s [%s], skip" % (mpath, s))
+            logger.debug("there is other process messaging %s [%s], skip" % (mpath, s.stdout))
+            continue
 
         s = shell.ShellCmd('dmsetup message %s 0 "fail_if_no_path"' % mpath)
         s(is_exception=False, logcmd=True)
