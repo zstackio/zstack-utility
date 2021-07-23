@@ -354,7 +354,7 @@ def stream_body(task, fpath, entity, boundary):
 
 class ImageFileObject(object):
     def __init__(self, image):
-        # type: (rbd.Image, callable) -> None
+        # type: (rbd.Image) -> None
         self.offset = 0
         self.image = image
         self.size = image.size()
@@ -385,6 +385,8 @@ class CephAgent(object):
     PING_PATH = "/ceph/backupstorage/ping"
     ECHO_PATH = "/ceph/backupstorage/echo"
     GET_IMAGE_SIZE_PATH = "/ceph/backupstorage/image/getsize"
+    ADD_EXPORT_TOKEN_PATH = "/ceph/backupstorage/image/export/addtoken"
+    REMOVE_EXPORT_TOKEN_PATH = "/ceph/backupstorage/image/export/removetoken"
     GET_FACTS = "/ceph/backupstorage/facts"
     GET_IMAGES_METADATA = "/ceph/backupstorage/getimagesmetadata"
     DELETE_IMAGES_METADATA = "/ceph/backupstorage/deleteimagesmetadata"
@@ -408,6 +410,8 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.DOWNLOAD_IMAGE_PATH, self.download)
         self.http_server.register_raw_uri(self.UPLOAD_IMAGE_PATH, self.upload)
         self.http_server.register_raw_stream_uri(self.EXPORT_IMAGE_PATH, self.export)
+        self.http_server.register_async_uri(self.ADD_EXPORT_TOKEN_PATH, self.add_export_token)
+        self.http_server.register_async_uri(self.REMOVE_EXPORT_TOKEN_PATH, self.remove_export_token)
         self.http_server.register_async_uri(self.UPLOAD_PROGRESS_PATH, self.get_upload_progress)
         self.http_server.register_async_uri(self.DELETE_IMAGE_PATH, self.delete)
         self.http_server.register_async_uri(self.JOB_CANCEL, self.cancel)
@@ -428,6 +432,8 @@ class CephAgent(object):
         self.op_lock = threading.Lock()
 
     def get_ioctx(self, pool_name):
+        # type: (str) -> rados.Ioctx
+
         if pool_name in self.ioctx:
             return self.ioctx[pool_name]
 
@@ -978,6 +984,15 @@ class CephAgent(object):
         image_name = kwargs['image']
 
         ioctx = self.get_ioctx(pool_name)
+        try:
+            token = ioctx.read(image_name + "-export")
+            if 'token' not in kwargs or token != kwargs['token']:
+                rsp.status = 403
+                return "Forbidden"
+        except rados.ObjectNotFound:
+            rsp.status = 404
+            return "Image not found."
+
         image_file_obj = ImageFileObject(rbd.Image(ioctx, image_name, read_only=True))
 
         rsp.headers['Content-Type'] = 'application/x-download'
@@ -992,6 +1007,31 @@ class CephAgent(object):
 
         req.close = all_close
         return _serve_fileobj(image_file_obj, 'application/x-download', image_file_obj.size)
+
+    @replyerror
+    def add_export_token(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        pool, image_name = self._parse_install_path(cmd.installPath)
+        ioctx = self.get_ioctx(pool)
+        ioctx.write_full(image_name + "-export", cmd.token)
+
+        rsp = AgentResponse()
+        self._set_capacity_to_response(rsp)
+        return jsonobject.dumps(rsp)
+
+    @replyerror
+    def remove_export_token(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        pool, image_name = self._parse_install_path(cmd.installPath)
+        ioctx = self.get_ioctx(pool)
+        try:
+            ioctx.remove_object(image_name + "-export")
+        except rados.ObjectNotFound:
+            pass
+
+        rsp = AgentResponse()
+        self._set_capacity_to_response(rsp)
+        return jsonobject.dumps(rsp)
 
     @replyerror
     def ping(self, req):
@@ -1045,6 +1085,13 @@ class CephAgent(object):
         # This means the image is still open or the client using it crashed. Try again after
         # closing/unmapping it or waiting 30s for the crashed client to timeout.
         linux.wait_callback_success(delete_image, interval=5, timeout=30, ignore_exception_in_callback=True)
+
+        pool, image_name = self._parse_install_path(cmd.installPath)
+        ioctx = self.get_ioctx(pool)
+        try:
+            ioctx.remove_object(image_name + "-export")
+        except rados.ObjectNotFound:
+            pass
 
         rsp = AgentResponse()
         self._set_capacity_to_response(rsp)
