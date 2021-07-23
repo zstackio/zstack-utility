@@ -1181,6 +1181,9 @@ def is_ip_existing(ip):
 def is_network_device_existing(dev):
     return os.path.exists("/sys/class/net/%s" % dev)
 
+def is_network_ip_using(interface):
+    return len(get_interface_ip_addresses(interface)) != 0
+
 def is_bridge(dev):
     path = "/sys/class/net/%s/bridge" % dev
     return os.path.exists(path)
@@ -1256,7 +1259,11 @@ def delete_novlan_bridge(bridge_name, interface, move_route=True):
     if not is_network_device_existing(bridge_name):
         logger.debug("can not find bridge %s" % bridge_name)
         return
-    
+
+    if is_network_ip_using(bridge_name):
+        logger.debug("can not delete bridge %s, this interface ip was using" % bridge_name)
+        return
+
     if is_vif_on_bridge(bridge_name, interface):
         #recode bridge ip
         out = shell.call('ip addr show dev %s | grep "inet "' % bridge_name, exception=False)
@@ -1579,6 +1586,10 @@ def create_vlan_eth(ethname, vlan, ip=None, netmask=None):
 def delete_vlan_bridge(bridge_name, vlan_interface):
     if not is_network_device_existing(bridge_name):
         logger.debug("can not find bridge %s" % bridge_name)
+        return
+
+    if is_network_ip_using(bridge_name):
+        logger.debug("can not delete bridge %s, this interface ip was using" % bridge_name)
         return
 
     if is_vif_on_bridge(bridge_name, vlan_interface):
@@ -2056,6 +2067,10 @@ def create_vxlan_bridge(interf, bridgeName, ips):
 def delete_vxlan_bridge(bridge_name, vxlan_interface):
     if not is_network_device_existing(bridge_name):
         logger.debug("can not find bridge %s" % bridge_name)
+        return
+
+    if is_network_ip_using(bridge_name):
+        logger.debug("can not delete bridge %s, this interface ip was using" % bridge_name)
         return
 
     if is_vif_on_bridge(bridge_name, vxlan_interface):
