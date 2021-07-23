@@ -87,8 +87,11 @@ def update_ceph_client_access_conf(ps_uuid, mon_urls, user_key, manufacturer):
 def get_heartbeat_object_name(ioctx, primary_storage_uuid, host_uuid):
     image = None
     try:
+        logger.debug("try to get image block name prefix of host:%s" % host_uuid)
         image = rbd.Image(ioctx, get_heartbeat_file_name(primary_storage_uuid, host_uuid))
-        return image.stat()['block_name_prefix']
+        block_name = image.stat()['block_name_prefix']
+        logger.debug("get image block name prefix:%s of host:%s" % (block_name, host_uuid))
+        return block_name
     except Exception as e:
         logger.debug("failed to open image, %s", e)
     finally:

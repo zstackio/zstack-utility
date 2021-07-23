@@ -447,6 +447,68 @@ class HaPlugin(kvmagent.KvmAgent):
         self.sblk_health_checker = SanlockHealthChecker()
         self.sblk_fencer_running = False
 
+    class CephHeartbeatController(object):
+        def __init__(self):
+            self.failure = 0
+            self.storage_failure = False
+            self.report_storage_status = False
+            self.max_attempts = None
+            self.host_uuid = None
+            self.pool_name = None
+            self.primary_storage_uuid = None
+            self.strategy = None
+            self.storage_check_timeout = None
+            self.fencer_triggered_callback = None
+
+        def ceph_in_error_stat(self):
+            # HEALTH_OK,HEALTH_WARN,HEALTH_ERR and others(may be empty)...
+            health = shell.ShellCmd('timeout %s ceph health' % self.storage_check_timeout)
+            health(False)
+            # If the command times out, then exit with status 124
+            if health.return_code == 124:
+                return True
+
+            health_status = health.stdout
+            return not (health_status.startswith('HEALTH_OK') or health_status.startswith('HEALTH_WARN'))
+
+        def handle_heartbeat_failure(self):
+            self.failure += 1
+            logger.debug("heartbeat of host:%s on ceph storage:%s pool:%s failure(%d/%d)" %
+                        (self.host_uuid, self.primary_storage_uuid, self.pool_name, self.failure, self.max_attempts))
+
+            if self.failure >= self.max_attempts:
+                # c.f. We discovered that, Ceph could behave the following:
+                #  1. Create heart-beat file, failed with 'File exists'
+                #  2. Query the hb file in step 1, and failed again with 'No such file or directory'
+                if self.ceph_in_error_stat():
+                    if self.strategy == 'Permissive':
+                        logger.debug("ceph fencer detect ha strategy is %s skip fence vms" % self.strategy)
+                        self.reset_failure_count()
+                        return
+
+                    # for example, pool name is aaa
+                    # add slash to confirm kill_vm matches vm with volume aaa/volume_path
+                    # but not aaa_suffix/volume_path
+                    vm_uuids = kill_vm(self.max_attempts, ['%s/' % self.pool_name], False).keys()
+
+                    if vm_uuids:
+                        try:
+                            self.fencer_triggered_callback([self.primary_storage_uuid], ','.join(vm_uuids))
+                        except Exception as e:
+                            logger.debug('failed to report fencer triggered result to management node')
+                            content = traceback.format_exc()
+                            logger.warn(content)
+                        clean_network_config(vm_uuids)
+
+                    self.storage_failure = True
+                    self.report_storage_status = True
+
+                # reset the failure count
+                self.reset_failure_count()
+
+        def reset_failure_count(self):
+            self.failure = 0
+
     @kvmagent.replyerror
     def cancel_ceph_self_fencer(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -702,24 +764,40 @@ class HaPlugin(kvmagent.KvmAgent):
                 time.sleep(1)
                 failure += 1
                 if failure == write_timeout:
-                    logger.debug("write operation not finished util timeout, report update failure")
+                    logger.debug("write operation to %s not finished util timeout, report update failure" % heartbeat_object_name)
                     return False
 
             return True
-
 
         @thread.AsyncThread
         def heartbeat_on_ceph(ps_uuid, pool_name):
             self.setup_fencer(get_fencer_key(ps_uuid, pool_name), created_time)
 
-            try:
-                failure = 0
-                storage_failure = False
-                report_storage_status = False
+            ceph_controller = self.CephHeartbeatController()
+            ceph_controller.pool_name = pool_name
+            ceph_controller.primary_storage_uuid = ps_uuid
+            ceph_controller.max_attempts = cmd.maxAttempts
+            ceph_controller.report_storage_status = False
+            ceph_controller.storage_failure = False
+            ceph_controller.failure = 0
+            ceph_controller.strategy = cmd.strategy
+            ceph_controller.storage_check_timeout = cmd.storageCheckerTimeout
+            ceph_controller.host_uuid = cmd.hostUuid
+            ceph_controller.fencer_triggered_callback = self.report_self_fencer_triggered
 
-                heartbeat_success = heartbeat_file_exists(pool_name) or create_heartbeat_file(pool_name)
-                if heartbeat_success:
-                    self.report_storage_status([cmd.uuid], 'Connected')
+            try:
+                while self.run_fencer(get_fencer_key(ps_uuid, pool_name), created_time):
+                    heartbeat_success = heartbeat_file_exists(pool_name) or create_heartbeat_file(pool_name)
+                    if heartbeat_success:
+                        ceph_controller.reset_failure_count()
+                        self.report_storage_status([cmd.uuid], 'Connected')
+                        logger.debug("heartbeat file exists or created, start to write heartbeat")
+                        break
+                    else:
+                        # failed to query or create heartbeat file
+                        ceph_controller.handle_heartbeat_failure()
+                    
+                    time.sleep(cmd.interval)
 
                 conf_path, keyring_path, username = ceph.update_ceph_client_access_conf(ps_uuid, cmd.monUrls, cmd.userKey, cmd.manufacturer)
                 logger.debug("config file: %s, pool name: %s" % (conf_path, pool_name))
@@ -730,7 +808,6 @@ class HaPlugin(kvmagent.KvmAgent):
 
                 with rados.Rados(conffile=conf_path, conf=additional_conf_dict, name=username) as cluster:
                     with cluster.open_ioctx(pool_name) as ioctx:
-                        image = None
                         heartbeat_object_name = None
                         while self.run_fencer(get_fencer_key(ps_uuid, pool_name), created_time):
                             time.sleep(cmd.interval)
@@ -748,47 +825,26 @@ class HaPlugin(kvmagent.KvmAgent):
                                 heartbeat_counter = 0
                             else:
                                 heartbeat_counter += 1
-                            if heartbeat_success and storage_failure and not report_storage_status:
+                            if heartbeat_success and ceph_controller.storage_failure and not ceph_controller.report_storage_status:
                                 # if heartbeat recovered and storage failure has occured before 
                                 # set report_storage_status to False to report fencer recoverd to management node
-                                report_storage_status = True
-                                storage_failure = False
+                                ceph_controller.report_storage_status = True
+                                ceph_controller.storage_failure = False
 
-                            if report_storage_status: 
-                                if storage_failure:
+                            if ceph_controller.report_storage_status:
+                                if ceph_controller.storage_failure:
                                     self.report_storage_status([cmd.uuid], 'Disconnected')
                                 else:
                                     self.report_storage_status([cmd.uuid], 'Connected')
                                 
-                                report_storage_status = False
+                                ceph_controller.report_storage_status = False
                             
                             # after fencer state reported, set fencer_state_reported to False
                             if heartbeat_success:
+                                logger.debug("heartbeat of host:%s on ceph storage:%s pool:%s success" % (cmd.hostUuid, cmd.uuid, pool_name))
                                 continue
 
-                            failure += 1
-                            if failure == cmd.maxAttempts:
-                                # c.f. We discovered that, Ceph could behave the following:
-                                #  1. Create heart-beat file, failed with 'File exists'
-                                #  2. Query the hb file in step 1, and failed again with 'No such file or directory'
-                                if ceph_in_error_stat():
-                                    if cmd.strategy == 'Permissive':
-                                        continue
-
-                                    # for example, pool name is aaa
-                                    # add slash to confirm kill_vm matches vm with volume aaa/volume_path
-                                    # but not aaa_suffix/volume_path
-                                    vm_uuids = kill_vm(cmd.maxAttempts, ['%s/' % pool_name], False).keys()
-
-                                    if vm_uuids:
-                                        self.report_self_fencer_triggered([cmd.uuid], ','.join(vm_uuids))
-                                        clean_network_config(vm_uuids)
-                                    
-                                    storage_failure = True
-                                    report_storage_status = True
-                                
-                                # reset the failure count
-                                failure = 0
+                            ceph_controller.handle_heartbeat_failure()
 
                 logger.debug('stop self-fencer on pool %s of ceph primary storage' % pool_name)
             except:
