@@ -926,6 +926,14 @@ class OvsCtl(Ovs):
         # get all vfs under bond
         slaves = self._get_bond_slaves(bondName)
 
+        # maybe it is not a bond
+        if len(slaves) == 0 and os.path.exists("/sys/class/net/{}".format(bondName)) and \
+            not os.path.exists("/sys/class/net/{}/bonding_slave".format(bondName)):
+            slaves.append(bondName)
+        
+        if len(slaves) == 0:
+            return None
+
         # get used vfs under bond
         usedPciList = self._get_used_pci(bridgeName)
 
