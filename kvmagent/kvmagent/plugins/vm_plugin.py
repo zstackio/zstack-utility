@@ -7383,13 +7383,10 @@ class VmPlugin(kvmagent.KvmAgent):
                 pass
 
             # pvpanic
-            domain_xmlobject = xmlobject.loads(domain_xml)
-            domain_xmlobject.on_crash.text_ = 'preserve'
-            domain_xmlobject.devices.panic = [
-                xmlobject.loads("<panic model='hyperv'/>"),
-                xmlobject.loads("<panic model='isa'><address type='isa' iobase='0x505'/></panic>")
-            ]
-            domain_xml = domain_xmlobject.dump()
+            try:
+                domain_xml = self.update_domain_xml_with_pvpanic(domain_xml)
+            except Exception as e:
+                logger.warn("update domain xml with pvpanic fail, because %s" % (str(e)))
             # cdrom
             xml = self.update_root_volume_boot_order(domain_xml)
             xml = re.sub(r"""\stray\s*=\s*'open'""", """ tray='closed'""", xml)
@@ -7398,6 +7395,24 @@ class VmPlugin(kvmagent.KvmAgent):
         except:
             content = traceback.format_exc()
             logger.warn(content)
+
+    def update_domain_xml_with_pvpanic(self, domain_xml):
+        xml = minidom.parseString(domain_xml)
+        xml.getElementsByTagName('on_crash')[0].childNodes[0].replaceWholeText('preserve')
+        panic_array = xml.getElementsByTagName('devices')[0].getElementsByTagName('panic')
+        if not panic_array:
+            devices_xml = xml.getElementsByTagName('devices')[0]
+            panic_node = xml.createElement('panic')
+            panic_node.setAttribute('model', 'hyperv')
+            devices_xml.appendChild(panic_node)
+            panic_node = xml.createElement('panic')
+            panic_node.setAttribute('model', 'isa')
+            address_node = xml.createElement('address')
+            address_node.setAttribute('type', 'isa')
+            address_node.setAttribute('iobase', '0x505')
+            panic_node.appendChild(address_node)
+            devices_xml.appendChild(panic_node)
+        return xml.toxml()
 
     # update the boot order of the root volume to 1, rely on the make_volumes() function
     def update_root_volume_boot_order(self, domain_xml):
