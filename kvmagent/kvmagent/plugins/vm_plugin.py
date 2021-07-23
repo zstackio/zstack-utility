@@ -3996,9 +3996,10 @@ class Vm(object):
             devices = elements['devices']
             vhostSrcPath = cmd.addons['vhostSrcPath'] if cmd.addons else None
             brMode = cmd.addons['brMode'] if cmd.addons else None
+            ovsctl = ovs.OvsCtl()
             for index, nic in enumerate(cmd.nics):
                 if nic.type == "vDPA":
-                    vDPAPath = ovs.OvsCtl().getVdpa(cmd.priorityConfigStruct.vmUuid, nic)
+                    vDPAPath = ovsctl.getVdpa(cmd.priorityConfigStruct.vmUuid, nic)
                     interface = Vm._build_interface_xml(nic, devices, vDPAPath, 'Attach', brMode, index)
                 else:
                     interface = Vm._build_interface_xml(nic, devices, vhostSrcPath, 'Attach', brMode, index)
