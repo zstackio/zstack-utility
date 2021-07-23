@@ -84,10 +84,15 @@ class HighPerformanceNetworkPlugin(kvmagent.KvmAgent):
             rsp.error = "host can not support ovs"
             return jsonobject.dumps(rsp)
 
-        # prepare vf lag
+        if ovsctl.isKernelBond(cmd.physicalInterfaceName):
+            rsp.success = False
+            rsp.error = "OvsDpdk do not support kernel bond. Please use dpdk bond instead"
+            return jsonobject.dumps(rsp)
+
+        # prepare bridge
         if not ovsctl.prepareBridge(cmd.bridgeName, cmd.physicalInterfaceName):
             rsp.success = False
-            rsp.error = "interface:{} is not supported to create an vflag.".format(
+            rsp.error = "create Bridge for interface:{} failed.".format(
                 cmd.physicalInterfaceName)
             return jsonobject.dumps(rsp)
 

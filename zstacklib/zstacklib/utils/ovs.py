@@ -538,8 +538,9 @@ class OvsCtl(Ovs):
 
         # kernel bond
         if interface in bondList:
-            self._init_kernel_bond(bridgeName, interface)
-            return True
+            #self._init_kernel_bond(bridgeName, interface)
+            logger.debug("do not support kernel bond since v4.2.1.")
+            return False
 
         # normal interface
         if os.path.exists(infacPath):
@@ -674,6 +675,11 @@ class OvsCtl(Ovs):
 
     def modprobeBonding(self):
         shell.call("modprobe bonding")
+
+    def isKernelBond(self, interface):
+        # check whether interface is a bond
+        bondList = readSysfs('/sys/class/net/bonding_masters').strip().split()
+        return interface in bondList
 
     # ---------------------------- utils ------------------------------------------
 
