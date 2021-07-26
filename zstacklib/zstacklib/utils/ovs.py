@@ -577,11 +577,10 @@ class OvsCtl(Ovs):
 
         # dpdk bond, dpdk bond configurations are store in file 'dpdk-bond.xml'
         dpdkBond = self.getDPDKBond(interface)
-        if dpdkBond is not None:
-            self._init_dpdk_bond(bridgeName, dpdkBond)
-            return True
-
-        raise OvsError("interface:{} do not exists.".format(interface))
+        if dpdkBond is None:
+            return False
+        
+        return self._init_dpdk_bond(bridgeName, dpdkBond)
 
     @checkOvs
     @lock.lock('getVdpa')
@@ -780,6 +779,10 @@ class OvsCtl(Ovs):
         """
         attach dpdk-bond to bridge
         """
+
+        if len(bond.slaves) < 2:
+            logger.debug("Number of slaves in dpdk bond:{} < 2".format(bond.name))
+            return False
 
         for i in bond.slaves:
             # check vendor_device number
