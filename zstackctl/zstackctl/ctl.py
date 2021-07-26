@@ -8662,18 +8662,25 @@ class InstallLicenseCmd(Command):
                 shell('''mkdir -p %s''' % packaged_license_folder)
                 shell('''tar zxf %s -C %s''' % (lpath, packaged_license_folder))
                 shell('''chown -R zstack:zstack %s''' % packaged_license_folder)
+                save_records(license_folder, packaged_license_folder)
                 info("successfully installed the license files to %s" % packaged_license_folder)
             else:
                 license_file_name = "license_" + uuid.uuid4().hex
-
-                shell('''yes | cp %s %s/%s''' % (lpath, license_folder, license_file_name))
-                shell('''chown zstack:zstack %s/%s''' % (license_folder, license_file_name))
-                info("successfully installed the license file to %s/%s" % (license_folder, license_file_name))
+                license_path = '%s/%s' % (license_folder, license_file_name)
+                shell('''yes | cp %s %s''' % (lpath, license_path))
+                shell('''chown zstack:zstack %s''' % license_path)
+                save_records(license_folder, license_path)
+                info("successfully installed the license file to %s" % license_path)
 
             if ppath:
                 shell('''yes | cp %s %s/pri.key''' % (ppath, license_folder))
                 shell('''chown zstack:zstack %s/pri.key''' % license_folder)
                 info("successfully installed the private key file to %s/pri.key" % license_folder)
+
+        # `license_path` may be a folder path
+        def save_records(license_folder, license_path):
+            with open('%s/install_license_records.txt' % license_folder, 'a') as fd:
+                fd.write('%d %s\n' % (int(round(time.time() * 1000)), license_path))
 
         if args.license is not None:
             install_zstack_license(args)
