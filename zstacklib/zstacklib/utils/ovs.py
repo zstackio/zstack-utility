@@ -573,6 +573,7 @@ class OvsCtl(Ovs):
         raise OvsError("interface:{} do not exists.".format(interface))
 
     @checkOvs
+    @lock.lock('getVdpa')
     def getVdpa(self, vmUuid, nic):
         bridgeName = nic.bridgeName
         bondName = nic.physicalInterface
@@ -613,8 +614,8 @@ class OvsCtl(Ovs):
         self.addPort(bridgeName, nicInternalName, "dpdkvdpa",
                      "vdpa-socket-path={}".format(vdpaSockPath),
                      "vdpa-accelerator-devargs={}".format(pci),
-                     "dpdk-devargs={},representor=pf{}vf{}".format(
-                         self._get_if_pcinum(ifaceName), ifaceName[-1], vf[6:]),
+                     "dpdk-devargs={},representor=[{}]".format(
+                         self._get_if_pcinum(ifaceName), vf[6:]),
                      "vdpa-max-queues=8")
 
         if vlanId is not None:
@@ -638,6 +639,7 @@ class OvsCtl(Ovs):
         return []
 
     @checkOvs
+    @lock.lock('freeVdpa')
     def freeVdpa(self, vmUuid, specificNic=None):
         vDPA_list = []
 
