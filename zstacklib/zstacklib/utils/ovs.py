@@ -9,6 +9,7 @@ from zstacklib.utils import log
 from zstacklib.utils import shell
 from zstacklib.utils import iproute
 from zstacklib.utils import lock
+from zstacklib.utils import linux
 
 logger = log.get_logger(__name__)
 
@@ -460,6 +461,7 @@ class OvsCtl(Ovs):
             return None
         return wrapper
 
+    @linux.retry(times=5, sleep_time=2)
     def initVdpaSupport(self):
         """
         config ovs dpdk, open hardware offload, init dpdk  and so on.
@@ -474,6 +476,14 @@ class OvsCtl(Ovs):
         # TODO: caculater the memory
         shell.run(self.ctlBin +
                   "--no-wait set Open_vSwitch . other_config:dpdk-socket-mem={}".format(self.venv.nr_hugepages))
+
+        # check Open_vSwitch table
+        ret = shell.call(self.ctlBin + "get Open_vSwitch . other_config")
+
+        if "hw-offload" not in ret or \
+           "dpdk-init" not in ret or \
+           "dpdk-socket-mem" not in ret:
+            raise OvsError("init vdpa support failed.")
 
         return True
 
