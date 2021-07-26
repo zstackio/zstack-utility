@@ -714,6 +714,8 @@ class OvsCtl(Ovs):
         if not self.initVdpaSupport():
             raise OvsError("ovs can not support dpdk.")
 
+        self._updateOvsConfig()
+
         # reconfig smart nics
         brs = self.listBrs()
         for b in brs:
@@ -863,6 +865,28 @@ class OvsCtl(Ovs):
         self.startSwitch(True)
 
         return ret
+
+    def _updateOvsConfig(self):
+        """
+        reconfig Open_vSwitch if ovs version changed
+        """
+
+        dpdk_extra = ""
+
+        s = shell.ShellCmd(self.ctlBin +
+                           "get Open_vSwitch . other_config:dpdk-extra", None, False)
+        s(False)
+        if s.return_code == 0:
+            dpdk_extra = s.stdout.strip().strip('\n').strip('"')
+
+        if self.version_geq(self.venv.dpdkVer, "20.11"):
+            dpdk_extra = dpdk_extra.replace("-w", "-a")
+            dpdk_extra = dpdk_extra.replace("dv_xmeta_en=1", "")
+        else:
+            dpdk_extra = dpdk_extra.replace("-a", "-w")
+
+        shell.run(self.ctlBin +
+                    '--no-wait set Open_vSwitch . other_config:dpdk-extra="{}"'.format(dpdk_extra))
 
     def _get_if_pcinum(self, ifName):
         pci = None
