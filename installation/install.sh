@@ -1545,6 +1545,7 @@ is_install_virtualenv(){
 is_install_general_libs_deb(){
     echo_subtitle "Install General Libraries (takes a couple of minutes)"
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+    id -u nginx >/dev/null 2>&1 || useradd nginx >/dev/null 2>&1
 
     if [[ $DEBIAN_OS =~ $OS ]]; then
         #install openjdk ppa for openjdk-8
