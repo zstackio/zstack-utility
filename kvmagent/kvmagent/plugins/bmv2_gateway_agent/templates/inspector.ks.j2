@@ -5,12 +5,19 @@ url --url={{ network_inst_uri }}
 text
 
 # Hardware inspector
+%pre --interpreter /bin/bash
+if [ ! -f /usr/bin/python ];then
+   [ -f /usr/bin/python2 ] && ln -s /usr/bin/python2 /usr/bin/python
+   [ -f /usr/bin/python3 ] && ln -s /usr/bin/python3 /usr/bin/python
+fi
+%end
+
 %pre --interpreter /usr/bin/python
-# TODO(ya.wang) Replace commands, because it's not supported in python3+
-import commands
+import subprocess
 import json
 import multiprocessing
 import os
+import sys
 
 
 units_mapping = {
@@ -19,13 +26,29 @@ units_mapping = {
     'gb': 1024 * 1024 * 1024
 }
 
+def shell_cmd(cmd, exception=True, workdir=None):
+    process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stdin=subprocess.PIPE,
+                                stderr=subprocess.PIPE, close_fds=True, executable='/bin/bash', cwd=workdir)
+
+    (stdout, stderr) = process.communicate()
+    return_code = process.returncode
+    if exception and return_code != 0:
+        raise Exception("Failed to exec: [{}]".format(cmd))
+
+    # the type of results is bytes in python3
+    if sys.version_info.major == 3:
+        stdout = stdout.decode()
+        stderr = stderr.decode()
+
+    return return_code, stdout.strip(), stderr.strip()
+
 
 def get_ipmi_info():
     addr = None
     port = None
     for channel in range(0, 15):
         cmd = 'ipmitool lan print %s' % channel
-        stdout = commands.getoutput(cmd)
+        _, stdout, _ = shell_cmd(cmd, False)
         for line in stdout.split('\n'):
             if 'IP Address' in line and 'Source' not in line:
                 temp_addr = line.split(':')[-1].strip()
@@ -34,7 +57,7 @@ def get_ipmi_info():
                 break
 
     cmd = 'ipmitool sol info 1'
-    stdout = commands.getoutput(cmd)
+    _, stdout, _ = shell_cmd(cmd)
     for line in stdout.split('\n'):
         if 'Payload Port' in line:
             port = int(line.split(':')[-1].strip())
@@ -64,7 +87,7 @@ def get_basic_info():
 
     # Get memory total
     memory_bytes = 0
-    stdout = commands.getoutput('dmidecode --type memory')
+    _, stdout, _ = shell_cmd('dmidecode --type memory')
     for line in stdout.split('\n'):
         line = line.lower().strip()
         if line.startswith('size') and 'no module' not in line:
@@ -97,11 +120,9 @@ def get_nic_info():
                 pxe_iface_mac = param.split('=')[-1].replace('-', ':')
 
     if not pxe_iface_mac:
-        pxe_iface_name = commands.getoutput(
-                "ip route | awk '/default/ { print $5 }' | head -n 1")
+        _, pxe_iface_name, _ = shell_cmd("ip route | awk '/default/ { print $5 }' | head -n 1")
         if not pxe_iface_name:
-            pxe_iface_name = commands.getoutput(
-                    "ip route | awk '{ print $3 }' | head -n 1")
+            _, pxe_iface_name, _ = shell_cmd("ip route | awk '{ print $3 }' | head -n 1")
         with open("/sys/class/net/%s/address" % pxe_iface_name, 'r') as f:
             pxe_iface_mac = f.read().strip()
 
@@ -135,8 +156,8 @@ def get_disk_info():
     block_devs = []
 
     cmd = 'lsblk --nodeps --byte --output size,rota,type'
-    # stdout = commands.getoutput(cmd)
-    for line in commands.getoutput(cmd).split('\n')[1:]:
+    _, stdout, _ = shell_cmd(cmd)
+    for line in stdout.split('\n')[1:]:
         size, rotation, type = line.split()
 
         if type.lower() != 'disk':
@@ -204,9 +225,9 @@ def main():
     cmd = ('curl -X POST -H "Content-Type:application/json" -d \'{data}\' '
            '--retry 5 {{ send_hardware_infos_uri }} ').format(
                data=json.dumps({"params": result}))
-    commands.getoutput(cmd)
+    shell_cmd(cmd)
 
-    commands.getstatusoutput("poweroff")
+    shell_cmd("poweroff")
 
 
 main()
