@@ -20,6 +20,7 @@ LV_RESERVED_SIZE = 1024*1024*4
 LVM_CONFIG_PATH = "/etc/lvm"
 LVM_CONFIG_FILE = '/etc/lvm/lvm.conf'
 SANLOCK_CONFIG_FILE_PATH = "/etc/sanlock/sanlock.conf"
+DEB_SANLOCK_CONFIG_FILE_PATH = "/etc/default/sanlock"
 SANLOCK_IO_TIMEOUT = 40
 LVMLOCKD_LOG_FILE_PATH = "/var/log/lvmlockd/lvmlockd.log"
 LVMLOCKD_LOG_RSYSLOG_PATH = "/etc/rsyslog.d/lvmlockd.conf"
@@ -446,6 +447,9 @@ def config_lvm_filter(files, no_drbd=False, preserve_disks=None):
 
 
 def modify_sanlock_config(key, value):
+    if not os.path.exists(SANLOCK_CONFIG_FILE_PATH) and os.path.exists(DEB_SANLOCK_CONFIG_FILE_PATH):
+        global SANLOCK_CONFIG_FILE_PATH
+        SANLOCK_CONFIG_FILE_PATH = DEB_SANLOCK_CONFIG_FILE_PATH
     if not os.path.exists(os.path.dirname(SANLOCK_CONFIG_FILE_PATH)):
         linux.mkdir(os.path.dirname(SANLOCK_CONFIG_FILE_PATH))
     if not os.path.exists(SANLOCK_CONFIG_FILE_PATH):
