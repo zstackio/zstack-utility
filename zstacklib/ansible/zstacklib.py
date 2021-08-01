@@ -29,7 +29,7 @@ trusted_host = ""
 ansible.constants.HOST_KEY_CHECKING = False
 supported_arch_list = ["x86_64", "aarch64", "mips64el"]
 
-RPM_BASED_OS = ["centos", "redhat", "alibaba", "kylin10"]
+RPM_BASED_OS = ["centos", "redhat", "alibaba", "kylin10", "openeuler"]
 DEB_BASED_OS = ["ubuntu", "uos", "kylin4.0.2", "debian", "uniontech"]
 DISTRO_WITH_RPM_DEB = ["kylin"]
 
@@ -284,6 +284,8 @@ def get_host_releasever(ansible_distribution):
         "centos core 7.4.1708": "c74",
         "centos core 7.2.1511": "c74", # c74 for old releases
         "centos core 7.1.1503": "c74",
+        "openeuler lts-sp1 20.03": "euler20",
+        "uos fou 20": "uos20",
     }
     _key = " ".join(ansible_distribution).lower()
     _releasever = supported_release_info.get(_key)

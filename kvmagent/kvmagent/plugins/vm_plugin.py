@@ -3364,8 +3364,12 @@ class Vm(object):
 
                 def on_aarch64():
                     e(root, 'vcpu', '128', {'placement': 'static', 'current': str(cmd.cpuNum)})
-                    cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
-                    e(cpu, 'model', 'host', attrib={'fallback': 'allow'})
+                    if is_virtual_machine():
+                        cpu = e(root, 'cpu')
+                        e(cpu, 'model', 'cortex-a57')
+                    else:
+                        cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
+                        e(cpu, 'model', attrib={'fallback': 'allow'})
                     mem = cmd.memory / 1024
                     e(cpu, 'topology', attrib={'sockets': '32', 'cores': '4', 'threads': '1'})
                     numa = e(cpu, 'numa')
@@ -5043,10 +5047,19 @@ class VmPlugin(kvmagent.KvmAgent):
             elif rsp.states[uuid] == Vm.VM_STATE_PAUSED:
                 retry_for_paused.append(uuid)
 
+        time.sleep(0.5)
+        if len(retry_for_paused) > 0:
+            states, in_shutdown = get_all_vm_sync_states()
+            for uuid in states:
+                if states[uuid] == Vm.VM_STATE_SHUTDOWN:
+                    rsp.states[uuid] = Vm.VM_STATE_RUNNING
+                elif states[uuid] != Vm.VM_STATE_PAUSED:
+                    rsp.states[uuid] = states[uuid]
+
         # Occasionally, virsh might not be able to list all VM instances with
         # uri=qemu://system.  To prevend this situation, we double check the
         # 'rsp.states' agaist QEMU process lists.
-        output = bash.bash_o("ps x | grep -P -o 'qemu-kvm.*?-name\s+(guest=)?\K.*?,' | sed 's/.$//'").splitlines()
+        output = bash.bash_o("ps x | grep -P -o '(qemu-kvm|qemu-system).*?-name\s+(guest=)?\K.*?,' | sed 's/.$//'").splitlines()
         for guest in output:
             if guest in rsp.states \
                     or guest.lower() == "ZStack Management Node VM".lower()\
@@ -5055,14 +5068,10 @@ class VmPlugin(kvmagent.KvmAgent):
             logger.warn('guest [%s] not found in virsh list' % guest)
             rsp.states[guest] = Vm.VM_STATE_RUNNING
 
-        if len(retry_for_paused) > 0:
-            time.sleep(0.5)
-            states, in_shutdown = get_all_vm_sync_states()
-            for uuid in states:
-                if states[uuid] == Vm.VM_STATE_SHUTDOWN:
-                    rsp.states[uuid] = Vm.VM_STATE_RUNNING
-                elif states[uuid] != Vm.VM_STATE_PAUSED:
-                    rsp.states[uuid] = states[uuid]
+        libvirt_running_vms = rsp.states.keys()
+        no_qemu_process_running_vms = list(set(libvirt_running_vms).difference(set(output)))
+        for vm in no_qemu_process_running_vms:
+            rsp.states[vm] = Vm.VM_STATE_SHUTDOWN
 
         return jsonobject.dumps(rsp)
 
@@ -5187,7 +5196,7 @@ class VmPlugin(kvmagent.KvmAgent):
             self.kill_vm(cmd.uuid)
 
     def kill_vm(self, vm_uuid):
-        output = bash.bash_o("ps x | grep -P -o 'qemu-kvm.*?-name\s+(guest=)?\K%s,' | sed 's/.$//'" % vm_uuid)
+        output = bash.bash_o("ps x | grep -P -o '(qemu-kvm|qemu-system).*?-name\s+(guest=)?\K%s,' | sed 's/.$//'" % vm_uuid)
 
         if vm_uuid not in output:
             return
