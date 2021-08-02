@@ -105,7 +105,7 @@ class OvsVenv(object):
         self.ofedVer = shell.call("ofed_info -n").strip()
 
         verList = shell.call(
-            "ovs-vswitchd --version | grep -E 'DPDK|vSwitch'").split("\n")
+            "ovs-vswitchd --version | grep -E 'DPDK|vSwitch'").splitlines()
 
         if len(verList) > 0 and verList[0] != '':
             self.vSwitchVer = verList[0].split()[-1]
