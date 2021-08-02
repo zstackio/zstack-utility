@@ -4458,11 +4458,11 @@ class Vm(object):
                 e(vlan, 'tag', None, attrib={'id': nic.vlanId})
         elif iftype == 'vhostuser':
             if brMode != 'mocbr' and nic.type != 'vDPA':
-                e(interface, 'source', None, attrib={'type': 'unix', 'path': vhostSrcPath, 'mode': 'server'})
+                e(interface, 'source', None, attrib={'type': 'unix', 'path': vhostSrcPath, 'mode': 'client'})
                 e(interface, 'driver', None, attrib={'queues': '16', 'vhostforce': 'on'})
             elif nic.type == 'vDPA':
                 e(interface, 'source', None, attrib={'type': 'unix', 'path': vhostSrcPath, 'mode': 'server'})
-                e(interface, 'driver', None, attrib={'queues': '16'})
+                e(interface, 'driver', None, attrib={'queues': '8', 'txmode': 'iothread', 'ioeventfd': 'on', 'event_idx': 'off', 'rx_queue_size': '512', 'tx_queue_size': '512'})
             else:
                 e(interface, 'source', None, attrib={'type': 'unix', 'path': '/var/run/phynic{}'.format(index+1), 'mode':'server'})
                 e(interface, 'driver', None, attrib={'queues': '8'})
