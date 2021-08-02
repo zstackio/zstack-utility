@@ -318,8 +318,8 @@ def install_kvm_pkg():
             host_post_info.post_label = "ansible.shell.disable.service"
             host_post_info.post_label_param = "firewalld"
             run_remote_command(command, host_post_info)
-            if host_arch in ["aarch64", "x86_64"] and releasever == "ns10":
-                # name: enable NetworkManager in arm and x86 ns10
+            if releasever in enable_networkmanager_list:
+                # name: enable NetworkManager in euler20, arm and x86 ns10
                 service_status("NetworkManager", "state=started enabled=yes", host_post_info, ignore_error=True)
             else:
                 # name: disable NetworkManager in RHEL7 and Centos7
