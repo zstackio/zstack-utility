@@ -536,7 +536,7 @@ class OvsCtl(Ovs):
         for arg in args:
             cmd = cmd + "options:{} ".format(arg)
 
-        shell.call(cmd)
+        return shell.run(cmd)
 
     def delPort(self, brName, phyIfName, *args):
         shell.call(self.ctlBin +
