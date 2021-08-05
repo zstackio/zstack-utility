@@ -9200,7 +9200,7 @@ class StartUiCmd(Command):
             return "Running" in output
 
         if not check_ui_status():
-            info('fail to start UI server on the localhost. Use zstack-ctl start_ui to restart it. zstack UI log could be found in %s/zstack-ui-server.log' % os.path.join(ctl.read_ui_property('log'),'zstack-ui-server.log'))
+            info('fail to start UI server on the localhost. Use zstack-ctl start_ui to restart it. zstack UI log could be found in %s' % os.path.join(ctl.read_ui_property('log'),'zstack-ui-server.log'))
             shell('zstack-ctl stop_ui')
             linux.rm_dir_force("/var/run/zstack/zstack-ui.port")
             return False
