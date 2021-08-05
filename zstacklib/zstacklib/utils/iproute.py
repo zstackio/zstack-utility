@@ -727,3 +727,22 @@ def is_namespace_exists(namespace):
         if name == namespace:
             return True
     return False
+
+@_log_iproute_call("populate vxlan fdbs")
+def batch_populate_vxlan_fdbs(ifnames, lladdr, dsts):
+    with get_iproute(None) as ipr:
+        ifNameIndexMap = {}
+        for ifname in ifnames:
+            ifindex = query_index_by_ifname(ifname.strip())
+            if ifindex is None:
+                continue
+            ifNameIndexMap[ifname] = ifindex
+
+        ipb = pyroute2.IPBatch()
+        for dst in dsts:
+            for ifname in ifnames:
+                ipb.fdb('append', ifindex=ifNameIndexMap[ifname], lladdr=lladdr, dst=dst)
+            data = ipb.batch
+            ipb.reset()
+            ipr.sendto(data, (0, 0))
+        ipb.close()

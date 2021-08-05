@@ -499,7 +499,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         rsp = PopulateVxlanFdbResponse
 
         interf = "vxlan" + str(cmd.vni)
-        rsp.success = linux.populate_vxlan_fdb(interf, cmd.peers)
+        rsp.success = linux.populate_vxlan_fdbs([interf], cmd.peers)
 
         if rsp.success != True:
             rsp.error = "error on populate fdb"
@@ -516,13 +516,11 @@ class NetworkPlugin(kvmagent.KvmAgent):
             rsp.success = True
             return jsonobject.dumps(rsp)
 
-        for interf in interfs:
-            if interf == "":
-                continue
-            if (linux.populate_vxlan_fdb(interf, cmd.peers) == False):
-                rsp.success = False
-                rsp.error = "error on populate fdb"
-                return jsonobject.dumps(rsp)
+
+        if linux.populate_vxlan_fdbs(interfs, cmd.peers) == False:
+            rsp.success = False
+            rsp.error = "error on populate fdb"
+            return jsonobject.dumps(rsp)
 
         rsp.success = True
         return jsonobject.dumps(rsp)
