@@ -156,6 +156,26 @@ class DisableHugePageRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(DisableHugePageRsp, self).__init__()
 
+
+class HostPhysicalMemoryStruct(object):
+    def __init__(self):
+        self.size = ""
+        self.locator = ""
+        self.speed = ""
+        self.manufacturer = ""
+        self.serialNumber = ""
+        self.rank = ""
+        self.voltage = ""
+
+
+class GetHostPhysicalMemoryFactsResponse(kvmagent.AgentResponse):
+    physicalMemoryFacts = None  # type: list[HostPhysicalMemoryStruct]
+    
+    def __init__(self):
+        super(GetHostPhysicalMemoryFactsResponse, self).__init__()
+        self.physicalMemoryFacts = []
+
+
 class GetHostNetworkBongdingResponse(kvmagent.AgentResponse):
     bondings = None  # type: list[HostNetworkBondingInventory]
     nics = None  # type: list[HostNetworkInterfaceInventory]
@@ -562,6 +582,8 @@ class HostPlugin(kvmagent.KvmAgent):
     HOST_STOP_USB_REDIRECT_PATH = "/host/usbredirect/stop"
     CHECK_USB_REDIRECT_PORT = "/host/usbredirect/check"
     IDENTIFY_HOST = "/host/identify"
+    LOCATE_HOST_NETWORK_INTERFACE = "/host/locate/networkinterface";
+    GET_HOST_PHYSICAL_MEMORY_FACTS = "/host/physicalmemoryfacts";
     CHANGE_PASSWORD = "/host/changepassword"
     GET_HOST_NETWORK_FACTS = "/host/networkfacts"
     HOST_XFS_SCRAPE_PATH = "/host/xfs/scrape"
@@ -1335,6 +1357,56 @@ done
         sc(True)
         return jsonobject.dumps(rsp)
 
+    def locate_host_network_interface(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+        sc = shell.ShellCmd("ethtool --identify %s %s" % (cmd.networkInterface, cmd.interval))
+        sc(False)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def get_host_physical_memory_facts(self, req):
+        rsp = GetHostPhysicalMemoryFactsResponse()
+        r, o, e = bash_roe("dmidecode -q -t memory")
+        if r != 0:
+            rsp.success = False
+            rsp.error = e
+            return jsonobject.dumps(rsp)
+
+        results = []
+        for line in o.splitlines():
+            if line.strip() == "" or ":" not in line:
+                continue
+            k = line.split(":")[0].lower().strip()
+            v = ":".join(line.split(":")[1:]).strip()
+            if "size" == k:
+                size = v
+            elif "locator" == k:
+                locator = v
+            elif "speed" == k:
+                speed = v
+            elif "manufacturer" == k:
+                manufacturer = v
+            elif "serial number" == k:
+                serialnumber = v
+            elif "rank" == k:
+                rank = v
+            elif "configured voltage" == k:
+                voltage = v
+                if serialnumber.lower() != "no dimm" and serialnumber != "":
+                    m = HostPhysicalMemoryStruct()
+                    m.size = size
+                    m.speed = speed
+                    m.locator = locator
+                    m.manufacturer = manufacturer
+                    m.serialNumber = serialnumber
+                    m.rank = rank
+                    m.voltage = voltage
+                    results.append(m)
+        rsp.physicalMemoryFacts = results
+        return jsonobject.dumps(rsp)
+        
+        
     @kvmagent.replyerror
     def get_host_network_facts(self, req):
         rsp = GetHostNetworkBongdingResponse()
@@ -2140,6 +2212,8 @@ done
         http_server.register_async_uri(self.HOST_STOP_USB_REDIRECT_PATH, self.stop_usb_redirect_server)
         http_server.register_async_uri(self.CHECK_USB_REDIRECT_PORT, self.check_usb_server_port)
         http_server.register_async_uri(self.IDENTIFY_HOST, self.identify_host)
+        http_server.register_async_uri(self.LOCATE_HOST_NETWORK_INTERFACE,self.locate_host_network_interface)
+        http_server.register_async_uri(self.GET_HOST_PHYSICAL_MEMORY_FACTS,self.get_host_physical_memory_facts)
         http_server.register_async_uri(self.CHANGE_PASSWORD, self.change_password, cmd=ChangeHostPasswordCmd())
         http_server.register_async_uri(self.GET_HOST_NETWORK_FACTS, self.get_host_network_facts)
         http_server.register_async_uri(self.HOST_XFS_SCRAPE_PATH, self.get_xfs_frag_data)
