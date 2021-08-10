@@ -47,6 +47,14 @@ COLO_QEMU_KVM_VERSION = '/var/lib/zstack/colo/qemu_kvm_version'
 COLO_LIB_PATH = '/var/lib/zstack/colo/'
 HOST_TAKEOVER_FLAG_PATH = 'var/run/zstack/takeOver'
 
+BOND_MODE_ACTIVE_0 = "balance-rr"
+BOND_MODE_ACTIVE_1 = "active-backup"
+BOND_MODE_ACTIVE_2 = "balance-xor"
+BOND_MODE_ACTIVE_3 = "broadcast"
+BOND_MODE_ACTIVE_4 = "802.3ad"
+BOND_MODE_ACTIVE_5 = "balance-tlb"
+BOND_MODE_ACTIVE_6 = "balance-alb"
+
 class ConnectResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(ConnectResponse, self).__init__()
@@ -237,6 +245,7 @@ class HostNetworkInterfaceInventory(object):
         if c is None:
             return None
         if (time.time() - c[0]) < 60:
+            c[1]._updateActiveState()
             return c[1]
         return None
 
@@ -248,6 +257,11 @@ class HostNetworkInterfaceInventory(object):
         o.init(name)
         cls.__cache__[name] = [int(time.time()), o]
         return o
+
+    def _updateActiveState(self):
+        if self.interfaceType == "bondingSlave":
+            activeSlave = linux.read_file("/sys/class/net/%s/bonding/active_slave" % self.master)
+            self.slaveActive = self.interfaceName in activeSlave if activeSlave is not None else None
 
     @in_bash
     def _init_from_name(self):
@@ -262,7 +276,7 @@ class HostNetworkInterfaceInventory(object):
         self.mac = linux.read_file("/sys/class/net/%s/address" % self.interfaceName).strip()
         self.ipAddresses = linux.get_interface_ip_addresses(self.interfaceName)
 
-        self.master = linux.get_interface_master_device(self.interfaceName)
+        self.master = linux.get_interface_master_device(self.interfaceName).strip()
         if len(self.ipAddresses) == 0:
             if self.master:
                 self.ipAddresses = linux.get_interface_ip_addresses(self.master)
