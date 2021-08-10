@@ -1248,7 +1248,7 @@ def get_interface_master_device(interface):
         return None
 
     for line in lines:
-        if line.startswith('INTERFACE='): return line.split('=')[1]
+        if line.startswith('INTERFACE='): return line.split('=')[1].strip()
     return None
 
 
