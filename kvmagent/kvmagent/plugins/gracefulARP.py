@@ -1,13 +1,13 @@
 from jinja2 import Template
 
 from kvmagent import kvmagent
-import kvmagent.plugin.host_plugin
+from kvmagent.plugins import host_plugin
 from zstacklib.utils import http
 from zstacklib.utils import jsonobject
 from zstacklib.utils import lock
 from zstacklib.utils import log
 from zstacklib.utils import thread
-from zstacklib.utils.bash import *
+from zstacklib.utils import bash
 
 logger = log.get_logger(__name__)
 
@@ -33,7 +33,7 @@ class GracefulARP(kvmagent.KvmAgent):
 
     def __init__(self):
         self.bridge_vmNics = {}
-        self.bonds = host_plugin.get_host_networking_bonds()
+        self.bonds = host_plugin.HostPlugin.get_host_networking_bonds()
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -106,7 +106,7 @@ class GracefulARP(kvmagent.KvmAgent):
         for b in self.bonds:
             oldBonds[b.bondingName] = b
 
-        self.bonds = host_plugin.get_host_networking_bonds()
+        self.bonds = host_plugin.HostPlugin.get_host_networking_bonds()
         for b in self.bonds:
             if b.bondingName not in oldBonds:
                 continue
