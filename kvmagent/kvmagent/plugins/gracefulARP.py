@@ -17,7 +17,7 @@ class AgentRsp(object):
         self.error = None
 
 class VmNic():
-    def __init__(self, vmUuid, ip, mac):
+    def __init__(self, ip, mac):
         self.Ip = ip
         self.Mac = mac
 
