@@ -887,6 +887,10 @@ class CollectFromYml(object):
             else:
                 warn("dump thread get host_list fail: %s" % output)
 
+            # When the HostVO table is empty, host_list.split('\n') will make host_list have an empty item
+            if len(host_list) == 1 and not host_list[0]:
+                return
+
             for host_ip in host_list:
                 info_verbose("dump kvm-agent thread for host: %s ..." % host_ip)
                 stack_command = "pkill -USR2 -P 1 -ef 'kvmagent import kdaemon'"
