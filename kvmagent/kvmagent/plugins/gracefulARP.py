@@ -40,6 +40,7 @@ class GracefulARP(kvmagent.KvmAgent):
 
         http_server.register_async_uri(self.APPLY_GRACEFUL_ARP_PATH, self.apply_graceful_arp)
         http_server.register_async_uri(self.RELEASE_GRACEFUL_ARP_PATH, self.release_graceful_arp)
+        thread.timer(5, self.monitor_bonding_master_change).start()
 
     def stop(self):
         pass
@@ -74,32 +75,35 @@ class GracefulARP(kvmagent.KvmAgent):
     def _add_info(self, info):
         nic = VmNic(info.ip, info.mac)
 
-        bondName = info.bridgeName.split("_")[1].strip()
-        if bondName not in self.bridge_vmNics:
-            bridge = BridgeVmNic(bondName)
+        if info.bridgeName not in self.bridge_vmNics:
+            bridge = BridgeVmNic(info.bridgeName)
             bridge.VmNics.append(nic)
-            self.bridge_vmNics[bondName] = bridge
+            self.bridge_vmNics[info.bridgeName] = bridge
         else:
-            ##
-            found = False
-            for vNic in self.bridge_vmNics[bondName].VmNics:
-                if vNic.Mac == info.mac :
-                    found = True
-                    break
-            if not found:
-                self.bridge_vmNics[bondName].VmNics.append(nic)
+            if self.bridge_vmNics[info.bridgeName].VmNics is None:
+                self.bridge_vmNics[info.bridgeName].VmNics = [nic]
+            else:
+                found = False
+                for vNic in self.bridge_vmNics[info.bridgeName].VmNics:
+                    if vNic.Mac == info.mac :
+                        found = True
+                        break
+                if not found:
+                    self.bridge_vmNics[info.bridgeName].VmNics.append(nic)
 
     def _remove_info(self, info):
-        bondName = info.bridgeName.split("_")[1].strip()
-
-        if bondName not in self.bridge_vmNics:
+        if info.bridgeName not in self.bridge_vmNics:
             return
         else:
-            index = 0
-            for vNic in self.bridge_vmNics[bondName].VmNics:
-                if vNic.Mac == info.mac:
-                    del(self.bridge_vmNics[bondName].VmNics, index)
-                    return
+            if self.bridge_vmNics[info.bridgeName].VmNics is not None:
+                for vNic in self.bridge_vmNics[info.bridgeName].VmNics:
+                    if vNic.Mac == info.mac:
+                        self.bridge_vmNics[info.bridgeName].VmNics.remove(vNic)
+                        break
+
+        if self.bridge_vmNics[info.bridgeName].VmNics is None or len(self.bridge_vmNics[info.bridgeName].VmNics) == 0:
+            del self.bridge_vmNics[info.bridgeName]
+
 
     def monitor_bonding_master_change(self):
         oldBonds = {}
@@ -133,7 +137,7 @@ class GracefulARP(kvmagent.KvmAgent):
             if oldActiveNics != currentActiveNics:
                 # active nic changed
                 logger.debug("bonding interface %s active nic has been changed from %s to %s"
-                             % (b.name, oldActiveNics, currentActiveNics))
+                             % (b.bondingName, oldActiveNics, currentActiveNics))
                 self.sendGarp(b.bondingName)
             else:
                 logger.debug("bonding interface %s active nic did not change: %s"
@@ -144,17 +148,17 @@ class GracefulARP(kvmagent.KvmAgent):
     @bash.in_bash
     @lock.lock('gracefulArp')
     def sendGarp(self, bondName):
-        for b in self.Bridges.__dict__:
-            bridge = self.Bridges[b]
-            name = bridge.Name.split("_")[1].strip()
+        for bridgeNme in self.bridge_vmNics:
+            bridge = self.bridge_vmNics[bridgeNme]
+            name = bridgeNme.split("_")[1].strip()
             if bondName != name:
                 continue
 
-            cmds = ["ip add add 169.254.169.253 dev %s" % bridge.Name]
+            cmds = ["ip add add 169.254.169.253 dev %s" % bridgeNme]
             for vmNic in bridge.VmNics:
                 cmds.append(
                     "(nping --arp --arp-type ARP-request --arp-sender-mac {MAC} --arp-sender-ip {IP} --arp-target-ip {IP}  --arp-target-mac {MAC}  --source-mac {MAC} --dest-mac ff:ff:ff:ff:ff:ff --ether-type ARP -e {BRIDGE}  --dest-ip {IP} -q &)".format(
-                        MAC=vmNic.Mac, IP=vmNic.Ip, BRIDGE=bridge.Name))
+                        MAC=vmNic.Mac, IP=vmNic.Ip, BRIDGE=bridgeNme))
 
             cmd = ";".join(cmds)
             bash.bash_r(cmd)
