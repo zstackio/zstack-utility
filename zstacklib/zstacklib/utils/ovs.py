@@ -97,20 +97,32 @@ class OvsVenv(object):
             self.ready = False
             return
 
+        # get ofed_info version
         if not os.path.exists("/usr/bin/ofed_info"):
-            logger.debug("can not fine ofed_info")
+            logger.debug("can not find ofed_info")
             self.ready = False
             return
 
         self.ofedVer = shell.call("ofed_info -n").strip()
 
+        # get ovs-vswitch and dpdk version
+        if not os.path.exists("/usr/sbin/ovs-vswitchd"):
+            logger.debug("can not find ovs-vswitchd")
+            self.ready = False
+            return
+
         verList = shell.call(
             "ovs-vswitchd --version | grep -E 'DPDK|vSwitch'").splitlines()
-
         if len(verList) > 0 and verList[0] != '':
             self.vSwitchVer = verList[0].split()[-1]
         if len(verList) > 1 and verList[1] != '':
             self.dpdkVer = verList[1].split()[-1]
+
+        # get ovsdb-server version
+        if not os.path.exists("/usr/sbin/ovsdb-server"):
+            logger.debug("can not find ovsdb-server")
+            self.ready = False
+            return
 
         self.ovsDBVer = shell.call(
             "ovsdb-server --version | awk 'NR==1{print $NF}'").strip()
@@ -126,9 +138,15 @@ class OvsVenv(object):
         numaNodes = glob.glob("/sys/devices/system/node/node*/")
         numaNodeSz = len(numaNodes)
 
+        meminfo = {}
         # get current memory status
-        curFreeMemsz = int(shell.call(
-            "cat /proc/meminfo | grep MemFree").split()[1])
+        with open("/proc/meminfo", "r") as f:
+            lines = f.readlines()
+            for l in lines:
+                lsplit = l.split(":")
+                meminfo[lsplit[0].strip()] = lsplit[1].strip()
+
+        curFreeMemsz = int(meminfo['MemFree'].split()[0])
 
         # get default free hugepage size
         freeHugepages = int(readSysfs(
@@ -219,7 +237,7 @@ class Ovs(object):
         """ start ovsdb """
 
         if not restart and self.statusDB() > 0:
-            return
+            return 0
 
         self.stopDB()
         self.upgradeDB()
@@ -234,29 +252,50 @@ class Ovs(object):
             " --no-chdir --log-file={} --pidfile={} --unixctl={}".format(
                 self.DBLogPath, self.DBPidPath, self.DBCtlFilePath)
         cmd = cmd + " --detach --monitor"
-        shell.call(cmd)
+        ret = shell.run(cmd)
+        if ret != 0:
+            logger.error("start ovsdb-server failed.")
+            return ret
 
         # Initialize database settings.
-        shell.run(self.ctlBin +
-                  "--no-wait -- init -- set Open_vSwitch . db-version={}".format(self.venv.ovsDBVer))
+        ret = shell.run(self.ctlBin +
+                        "--no-wait -- init -- set Open_vSwitch . db-version={}".format(self.venv.ovsDBVer))
+        if ret != 0:
+            logger.debug("init openvswitch database settings failed.")
 
         time.sleep(1)
-        sysInfo = shell.call(
-            ". '/etc/os-release' && echo $ID && echo $VERSION_ID").split()
-        systemType = sysInfo[0]
-        systemVersion = sysInfo[1]
+        # get os release info
+        osRelease = {}
+        with open('/etc/os-release', 'r') as f:
+            lines = f.readlines()
+            for l in lines:
+                l = l.strip()
+                if l == '':
+                    continue
+                lsplit = l.split("=")
+                osRelease[lsplit[0].strip()] = lsplit[1].strip('"')
+
+        systemType = osRelease['ID']
+        systemVersion = osRelease['VERSION_ID']
+
         cmd = self.ctlBin + "--no-wait set Open_vSwitch . ovs-version={}".format(
             self.venv.vSwitchVer)
         cmd = cmd + " external-ids:system-id={}".format(uuid.uuid4())
         cmd = cmd + " external-ids:rundir={}".format(self.ovsPath)
         cmd = cmd + " system-type={}".format(systemType)
         cmd = cmd + " system-version={}".format(systemVersion)
-        shell.run(cmd)
+
+        ret = shell.run(cmd)
+
+        if ret != 0:
+            logger.error("set system infos for ovsdb failed.")
+            return ret
 
         logger.debug("ovsdb: [{}] start success".format(self.pids[0]))
+        return 0
 
     def stopDB(self):
-        self.stopProcess("ovsdb-server")
+        return self.stopProcess("ovsdb-server")
 
     def statusDB(self):
         return self.pids[0]
@@ -267,19 +306,43 @@ class Ovs(object):
         create ovsDB if not exist
         upgrade ovsDB if needs conversion
         """
-        if not os.path.isfile(self.CONF_DB):
-            shell.run(
+        def createDB():
+            ret = shell.run(
                 'ovsdb-tool -v create {} {}'.format(self.CONF_DB, self.ovs_schema))
-            return
+            if ret != 0:
+                logger.debug("create ovsdb file failed.")
+            return ret
 
-        needsConv = shell.run(
-            "ovsdb-tool needs-conversion {} {}".format(self.CONF_DB, self.ovs_schema))
-        if needsConv == "yes":
+        if not os.path.isfile(self.CONF_DB):
+            return createDB()
+
+        s = shell.ShellCmd(
+            "ovsdb-tool needs-conversion {} {}".format(self.CONF_DB, self.ovs_schema), None, False)
+        s(False)
+        if s.return_code != 0:
+            logger.debug("upgrade ovsdb failed.")
+            return s.return_code
+        elif s.stdout != "yes":
+            logger.debug("current ovsdb do not need conversion.")
+            return 0
+        else:
             # backup conf.db
-            version = shell.run(
+            s1 = shell.ShellCmd(
                 "ovsdb-tool db-version {}".format(self.CONF_DB))
-            cksum = shell.run(
+            s1(False)
+            if s1.return_code == 0:
+                version = s1.stdout
+            else:
+                version = 'old'
+
+            s2 = shell.ShellCmd(
                 "ovsdb-tool db-cksum {} | awk '{print $1}'".format(self.CONF_DB))
+            s2(False)
+            if s2.return_code == 0:
+                cksum = s2.stdout
+            else:
+                cksum = 'unknow'
+
             backup = self.CONF_DB + ".backup" + version + "-" + cksum
             shutil.copy2(self.CONF_DB, backup)
 
@@ -296,16 +359,15 @@ class Ovs(object):
             # Errors might occur on an Open vSwitch downgrade if ovsdb-tool doesn't
             # understand some feature of the schema used in the OVSDB version that
             # we're downgrading from, so we don't give up on error.
-            shell.run("ovsdb-tool compact {}".format(self.CONF_DB))
+            ret = shell.run("ovsdb-tool compact {}".format(self.CONF_DB))
             ret = shell.run(
-                "ovsdb-tool convert {} {}".format(self.CONF_DB, self.ovs_schema))
+                "ovsdb-tool convert {} {}".format(self.CONF_DB, self.ovs_schema)) + ret
 
             if ret != 0:
                 logger.warn(
                     "Schema conversion failed, using empty database instead")
                 os.remove(self.CONF_DB)
-                shell.run(
-                    'ovsdb-tool -v create {} {}'.format(self.CONF_DB, self.ovs_schema))
+                return createDB()
 
     @checkOvs
     @lock.lock('startSwitch')
@@ -313,7 +375,7 @@ class Ovs(object):
         """ start vswitchd """
 
         if not restart and self.statusSwitch() > 0:
-            return
+            return 0
 
         self.stopSwitch()
 
@@ -327,12 +389,16 @@ class Ovs(object):
             " --log-file={} --pidfile={} --unixctl={}".format(
                 self.SwitchLogPath, self.SwitchPidPath, self.SwitchCtlFilePath)
         cmd = cmd + " --detach --monitor"
-        shell.run(cmd)
+        ret = shell.run(cmd)
+        if ret != 0:
+            logger.error("start ovs-vswitch failed.")
+            return ret
 
         logger.debug("ovs-vswitch: [{}] start success".format(self.pids[1]))
+        return 0
 
     def stopSwitch(self):
-        self.stopProcess("ovs-vswitchd")
+        return self.stopProcess("ovs-vswitchd")
 
     def statusSwitch(self):
         return self.pids[1]
@@ -378,7 +444,7 @@ class Ovs(object):
         ctl = dict[name]["ctl"]
 
         if pid < 0:
-            return
+            return True
 
         pidPath = os.path.join(self.ovsPath, "{}.pid".format(name))
 
@@ -491,7 +557,14 @@ class OvsCtl(Ovs):
     # ---------------------------- ovsctl ----------------------------------------
 
     def listBrs(self, *args):
-        return shell.call(self.ctlBin + "list-br").strip().split('\n')
+        s = shell.ShellCmd(self.ctlBin + "list-br", None, False)
+        s(False)
+
+        if s.return_code != 0:
+            logger.debug("list ovs bridges failed.")
+            return []
+        else:
+            return s.stdout.strip().splitlines()
 
     def createBr(self, brName, *args):
 
@@ -509,24 +582,41 @@ class OvsCtl(Ovs):
     def deleteBr(self, *args):
         brs = self.listBrs()
         for arg in args:
-            if arg in brs and arg != '':
-                shell.call(self.ctlBin +
-                           "--timeout=5 del-br {}".format(arg))
+            if arg in brs:
+                s = shell.ShellCmd(self.ctlBin +
+                                   "--timeout=5 del-br {}".format(arg), None, False)
+                s(False)
+                if s.return_code != 0:
+                    logger.debug("delete bridge {} failed.".format(arg))
+                    return s.return_code
+        return 0
 
     def deleteBrs(self):
         brs = self.listBrs()
         for br in brs:
-            if br != '':
-                shell.call(self.ctlBin +
-                           "--timeout=5 del-br {}".format(br))
+            s = shell.run(self.ctlBin +
+                          "--timeout=5 del-br {}".format(br))
+            s(False)
+            if s.return_code != 0:
+                logger.debug("delete bridge {} failed.".format(br))
 
     def listIfaces(self, brName, *args):
-        return shell.call(self.ctlBin +
-                          "--timeout=5 list-ifaces {}".format(brName)).strip().split('\n')
+        s = shell.ShellCmd(self.ctlBin +
+                           "--timeout=5 list-ifaces {}".format(brName), None, False)
+        s(False)
+        if s.return_code != 0:
+            return []
+        else:
+            return s.stdout.strip().splitlines()
 
     def listPorts(self, brName, *args):
-        return shell.call(self.ctlBin +
-                          "--timeout=5 list-ports {}".format(brName)).strip().split('\n')
+        s = shell.ShellCmd(self.ctlBin +
+                           "--timeout=5 list-ports {}".format(brName), None, False)
+        s(False)
+        if s.return_code != 0:
+            return []
+        else:
+            return s.stdout.strip().splitlines()
 
     def addPort(self, brName, phyIfName, type, *args):
         # add port
@@ -540,13 +630,12 @@ class OvsCtl(Ovs):
         return shell.run(cmd)
 
     def delPort(self, brName, phyIfName, *args):
-        shell.call(self.ctlBin +
-                   'del-port {} {}'.format(brName, phyIfName))
+        return shell.run(self.ctlBin +
+                         'del-port {} {}'.format(brName, phyIfName))
 
     def setPort(self, portName, tag):
-        shell.call(self.ctlBin +
-                   'set Port {} tag={} '.format(
-                       portName, tag))
+        return shell.run(self.ctlBin +
+                         'set Port {} tag={} '.format(portName, tag))
 
     def setIfaces(self, ifName, *args):
         # set options
@@ -555,7 +644,7 @@ class OvsCtl(Ovs):
         for arg in args:
             cmd = cmd + "{} ".format(arg)
 
-        shell.call(cmd)
+        return shell.run(cmd)
 
     # ---------------------------- external ---------------------------------------
 
@@ -579,7 +668,7 @@ class OvsCtl(Ovs):
         dpdkBond = self.getDPDKBond(interface)
         if dpdkBond is None:
             return False
-        
+
         return self._init_dpdk_bond(bridgeName, dpdkBond)
 
     @checkOvs
@@ -607,9 +696,14 @@ class OvsCtl(Ovs):
 
         # check if already attached
         if nicInternalName in curPorts:
-            vdpaSockPath = shell.call(
+            s = shell.ShellCmd(
                 self.ctlBin + "get Interface {} options:vdpa-socket-path".format(nicInternalName))
-            return vdpaSockPath.strip()[1:-1]
+            s(False)
+            if s.return_code != 0:
+                logger.debug(
+                    "nic interface {} maybe not a vdpa type".format(nicInternalName))
+                return None
+            return s.stdout.strip()[1:-1]
 
         vdpaBrPath = os.path.join(self.vdpaPath, bridgeName)
         if not os.path.exists(vdpaBrPath):
@@ -640,13 +734,13 @@ class OvsCtl(Ovs):
         if not self.vdpaSup:
             return
 
-        s = shell.ShellCmd(self.ctlBin + 
-                    "--columns=name find interface external_ids:vm-id={} | grep name |cut -d ':' -f2".format(vmUuid), None, False)
+        s = shell.ShellCmd(self.ctlBin +
+                           "--columns=name find interface external_ids:vm-id={} | grep name |cut -d ':' -f2".format(vmUuid), None, False)
         s(False)
-        if s.return_code == 0:
+        if s.return_code != 0:
+            return []
+        else:
             return s.stdout.strip().splitlines()
-        
-        return []
 
     @checkOvs
     @lock.lock('freeVdpa')
@@ -659,9 +753,18 @@ class OvsCtl(Ovs):
         vDPA_path = ''
         if specificNic != None:
             vDPA_list.append(specificNic)
-            vDPA_path = shell.call(self.ctlBin +
-                                   "get interface {} options:vdpa-socket-path".format(specificNic)).strip().strip('"')
+            s = shell.ShellCmd(self.ctlBin +
+                               "get interface {} options:vdpa-socket-path".format(specificNic), None, False)
+            s(False)
+            if s.return_code != 0:
+                logger.debug(
+                    "nic interface {} maybe not a vdpa type".format(specificNic))
+                vDPA_path = None
+            else:
+                vDPA_path = s.stdout.strip().strip('"')
+
         else:
+            # free all vdpa nic belongs to vm
             # get all vdpa nic belongs to vm
             vDPA_list = self.listVdpas(vmUuid)
 
@@ -714,7 +817,9 @@ class OvsCtl(Ovs):
         return interface in bondList
 
     def reconfigOvs(self):
-        shell.call("modprobe bonding")
+        ret = shell.run("modprobe bonding")
+        if ret != 0:
+            raise OvsError("can not find bonding module.")
 
         if not self.initVdpaSupport():
             raise OvsError("ovs can not support dpdk.")
@@ -788,7 +893,8 @@ class OvsCtl(Ovs):
         """
 
         if len(bond.slaves) < 2:
-            logger.debug("Number of slaves in dpdk bond:{} < 2".format(bond.name))
+            logger.debug(
+                "Number of slaves in dpdk bond:{} < 2".format(bond.name))
             return False
 
         for i in bond.slaves:
@@ -802,7 +908,9 @@ class OvsCtl(Ovs):
 
         if bridgeName not in self.listBrs():
             # create bridge
-            self.createBr(bridgeName)
+            if self.createBr(bridgeName) != 0:
+                logger.debug("create bridge {} failed.".format(bridgeName))
+                return False
 
         if bond.name not in self.listPorts(bridgeName):
             # ovs-vsctl add-port br_test bondtest -- \
@@ -831,7 +939,9 @@ class OvsCtl(Ovs):
         self._set_dpdk_white_list(interface)
         if bridgeName not in self.listBrs():
             # create bridge
-            self.createBr(bridgeName)
+            if self.createBr(bridgeName) != 0:
+                logger.debug("create bridge {} failed.".format(bridgeName))
+                return False
         if interface not in self.listPorts(bridgeName):
             self.addPort(bridgeName, interface, "dpdk",
                          "dpdk-devargs={}".format(
@@ -846,6 +956,9 @@ class OvsCtl(Ovs):
         s(False)
         if s.return_code == 0:
             dpdk_extra = s.stdout.strip().strip('\n').strip('"')
+        else:
+            logger.debug("get dpdk-extra config failed.")
+            return s.return_code
 
         pci = self._get_if_pcinum(ifName)
 
@@ -890,8 +1003,11 @@ class OvsCtl(Ovs):
         else:
             dpdk_extra = dpdk_extra.replace("-a", "-w")
 
-        shell.run(self.ctlBin +
-                    '--no-wait set Open_vSwitch . other_config:dpdk-extra="{}"'.format(dpdk_extra))
+        ret = shell.run(self.ctlBin +
+                        '--no-wait set Open_vSwitch . other_config:dpdk-extra="{}"'.format(dpdk_extra))
+
+        if ret != 0:
+            logger.debug("update ovs configuration failed.")
 
     def _get_if_pcinum(self, ifName):
         pci = None
@@ -1011,7 +1127,7 @@ class OvsCtl(Ovs):
             slaves.append(bondName)
 
         if len(slaves) == 0:
-            return None,None,None
+            return None, None, None
 
         # get used vfs under bond
         usedPciList = self._get_used_pci(bridgeName)
@@ -1022,7 +1138,7 @@ class OvsCtl(Ovs):
                 if vfsDict[v] not in usedPciList:
                     return v, vfsDict[v], s
 
-        return None,None,None
+        return None, None, None
 
     def _get_used_pci(self, bridgeName):
         usedPciList = []
