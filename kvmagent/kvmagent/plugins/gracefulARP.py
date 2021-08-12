@@ -17,9 +17,10 @@ class AgentRsp(object):
         self.error = None
 
 class VmNic():
-    def __init__(self, ip, mac):
+    def __init__(self, ip, mac, namespace):
         self.Ip = ip
         self.Mac = mac
+        self.NameSpace = namespace
 
 class BridgeVmNic():
     def __init__(self, name):
@@ -30,10 +31,11 @@ class GracefulARP(kvmagent.KvmAgent):
     APPLY_GRACEFUL_ARP_PATH = "/flatnetworkprovider/garp/apply"
     RELEASE_GRACEFUL_ARP_PATH = "/flatnetworkprovider/garp/release"
     bridge_vmNics = {}
+    activeNics = {}
 
     def __init__(self):
         self.bridge_vmNics = {}
-        self.bonds = host_plugin.HostPlugin.get_host_networking_bonds()
+        self.activeNics = self._get_bond_activeNics()
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -73,7 +75,7 @@ class GracefulARP(kvmagent.KvmAgent):
             self._add_info(eip)
 
     def _add_info(self, info):
-        nic = VmNic(info.ip, info.mac)
+        nic = VmNic(info.ip, info.mac, info.namespace)
 
         if info.bridgeName not in self.bridge_vmNics:
             bridge = BridgeVmNic(info.bridgeName)
@@ -104,17 +106,10 @@ class GracefulARP(kvmagent.KvmAgent):
         if self.bridge_vmNics[info.bridgeName].VmNics is None or len(self.bridge_vmNics[info.bridgeName].VmNics) == 0:
             del self.bridge_vmNics[info.bridgeName]
 
-
-    def monitor_bonding_master_change(self):
-        oldBonds = {}
-        for b in self.bonds:
-            oldBonds[b.bondingName] = b
-
-        self.bonds = host_plugin.HostPlugin.get_host_networking_bonds()
-        for b in self.bonds:
-            if b.bondingName not in oldBonds:
-                continue
-
+    def _get_bond_activeNics(self):
+        activeNics = {}
+        bonds = host_plugin.HostPlugin.get_host_networking_bonds()
+        for b in bonds:
             currentActiveNics = []
             for phyNic in b.slaves:
                 if phyNic.master != b.bondingName:
@@ -124,41 +119,55 @@ class GracefulARP(kvmagent.KvmAgent):
                 if phyNic.slaveActive:
                     currentActiveNics.append(phyNic.interfaceName)
 
-            oldBond = oldBonds[b.bondingName]
-            oldActiveNics = []
-            for phyNic in oldBond.slaves:
-                if phyNic.master != oldBond.bondingName:
-                    logger.debug("master interface in old bond of physical %s is %s, not bonding interface %s"
-                                 % (phyNic.interfaceName, phyNic.master, oldBond.bondingName))
-                    continue
-                if phyNic.slaveActive:
-                    oldActiveNics.append(phyNic.interfaceName)
+            activeNics[b.bondingName] = currentActiveNics
+        return activeNics
 
-            if oldActiveNics != currentActiveNics:
+    def monitor_bonding_master_change(self):
+        oldActiveNics = self.activeNics
+
+        #get current active nics
+        currentActiveNics = self._get_bond_activeNics()
+        self.activeNics = currentActiveNics
+
+        # there is no bonding interface
+        if self.activeNics is None or len(self.activeNics) == 0:
+            return
+
+        for bondingName in currentActiveNics:
+            if bondingName not in oldActiveNics:
+                continue
+
+            curNics = currentActiveNics[bondingName]
+            oldNics = oldActiveNics[bondingName]
+
+            if curNics != oldNics:
                 # active nic changed
                 logger.debug("bonding interface %s active nic has been changed from %s to %s"
-                             % (b.bondingName, oldActiveNics, currentActiveNics))
-                self.sendGarp(b.bondingName)
+                             % (bondingName, oldNics, curNics))
+                self.sendGarp(bondingName)
             else:
                 logger.debug("bonding interface %s active nic did not change: %s"
-                             % (b.bondingName, currentActiveNics))
+                             % (bondingName, curNics))
 
         thread.timer(5, self.monitor_bonding_master_change).start()
 
     @bash.in_bash
     @lock.lock('gracefulArp')
     def sendGarp(self, bondName):
+        logger.debug("ruanshixin %s" % jsonobject.dumps(self.bridge_vmNics))
         for bridgeNme in self.bridge_vmNics:
             bridge = self.bridge_vmNics[bridgeNme]
             name = bridgeNme.split("_")[1].strip()
+            logger.debug("ruanshixin bondName %s, name %s" % (bondName, name))
             if bondName != name:
                 continue
 
-            cmds = ["ip add add 169.254.169.253 dev %s" % bridgeNme]
+            #cmds = ["ip add add 169.254.169.253 dev %s" % bridgeNme]
+            cmds = []
             for vmNic in bridge.VmNics:
                 cmds.append(
-                    "(nping --arp --arp-type ARP-request --arp-sender-mac {MAC} --arp-sender-ip {IP} --arp-target-ip {IP}  --arp-target-mac {MAC}  --source-mac {MAC} --dest-mac ff:ff:ff:ff:ff:ff --ether-type ARP -e {BRIDGE}  --dest-ip {IP} -q &)".format(
-                        MAC=vmNic.Mac, IP=vmNic.Ip, BRIDGE=bridgeNme))
+                    "(ip netns exec {NS} nping --arp --arp-type ARP-request --arp-sender-mac {MAC} --arp-sender-ip {IP} --arp-target-ip {IP}  --arp-target-mac {MAC}  --source-mac {MAC} --dest-mac ff:ff:ff:ff:ff:ff --ether-type ARP  --dest-ip {IP} -q &)".format(
+                        NS=vmNic.NameSpace, MAC=vmNic.Mac, IP=vmNic.Ip))
 
             cmd = ";".join(cmds)
             bash.bash_r(cmd)
