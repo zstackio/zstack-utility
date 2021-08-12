@@ -1,6 +1,7 @@
 __author__ = 'frank'
 
 from kvmagent import kvmagent
+from kvmagent.plugins import network_plugin
 from zstacklib.utils import jsonobject
 from zstacklib.utils import http
 from zstacklib.utils import log
@@ -320,6 +321,7 @@ class DhcpEnv(object):
             iproute.set_link_attribute(INNER_DEV, mtu=MAX_MTU)
             iproute.set_link_attribute(OUTER_DEV, mtu=MAX_MTU)
 
+        network_plugin._configure_bridge_learning(BR_NAME, OUTER_DEV, learning="off")
         iproute.set_link_up(OUTER_DEV)
 
         ret = bash_r('brctl show {{BR_NAME}} | grep -w {{OUTER_DEV}} > /dev/null')
