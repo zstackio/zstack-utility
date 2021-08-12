@@ -74,6 +74,20 @@ class GracefulARP(kvmagent.KvmAgent):
         for eip in infos:
             self._add_info(eip)
 
+        if rebuild:
+            # get current active nics
+            currentActiveNics = self._get_bond_activeNics()
+            self.activeNics = currentActiveNics
+
+            # there is no bonding interface
+            if self.activeNics is None or len(self.activeNics) == 0:
+                return
+
+            for bondingName in currentActiveNics:
+                logger.debug("KVMHost Connected, bonding interface %s active nic will send garp"
+                             % bondingName)
+                self.sendGarp(bondingName)
+
     def _add_info(self, info):
         nic = VmNic(info.ip, info.mac, info.namespace)
 
@@ -154,11 +168,9 @@ class GracefulARP(kvmagent.KvmAgent):
     @bash.in_bash
     @lock.lock('gracefulArp')
     def sendGarp(self, bondName):
-        logger.debug("ruanshixin %s" % jsonobject.dumps(self.bridge_vmNics))
         for bridgeNme in self.bridge_vmNics:
             bridge = self.bridge_vmNics[bridgeNme]
             name = bridgeNme.split("_")[1].strip()
-            logger.debug("ruanshixin bondName %s, name %s" % (bondName, name))
             if bondName != name:
                 continue
 
