@@ -321,12 +321,13 @@ class DhcpEnv(object):
             iproute.set_link_attribute(INNER_DEV, mtu=MAX_MTU)
             iproute.set_link_attribute(OUTER_DEV, mtu=MAX_MTU)
 
-        network_plugin._configure_bridge_learning(BR_NAME, OUTER_DEV, learning="off")
         iproute.set_link_up(OUTER_DEV)
 
         ret = bash_r('brctl show {{BR_NAME}} | grep -w {{OUTER_DEV}} > /dev/null')
         if ret != 0:
             bash_errorout('brctl addif {{BR_NAME}} {{OUTER_DEV}}')
+
+        bash_errorout("bridge link set dev {{OUTER_DEV}} learning off")
 
         if not iproute.is_device_ifname_exists(INNER_DEV, NAMESPACE_NAME):
             iproute.set_link_attribute(INNER_DEV, netns=NAMESPACE_NAME)
