@@ -1,5 +1,4 @@
 from zstacklib.utils import shell
-from zstacklib.utils import thirdparty_ceph
 from zstacklib.utils import linux
 
 from kvmagent.plugins.bmv2_gateway_agent.volume import base
@@ -38,37 +37,40 @@ class ThirdPartyCephVolume(base.BaseVolume):
         return self.volume_obj.path.replace('ceph://', '')
 
     def attach(self):
-        thirdparty_ceph.RbdDeviceOperator().connect(self.instance_obj, self.volume_obj)
+        RbdDeviceOperator(self.volume_obj.monIp, self.volume_obj.token, self.volume_obj.tpTimeout).connect(
+            self.instance_obj, self.volume_obj)
 
     def detach(self):
-        thirdparty_ceph.RbdDeviceOperator().disconnect(self.instance_obj, self.volume_obj)
+        RbdDeviceOperator(self.volume_obj.monIp, self.volume_obj.token, self.volume_obj.tpTimeout).disconnect(
+            self.instance_obj, self.volume_obj)
 
     def prepare_instance_resource(self):
         instance_gateway_ip = self.instance_obj.gateway_ip
-        host_ip = RbdDeviceOperator()._get_mon_ip_token(self.volume_obj.token)[0]
-        dev_name = linux.find_route_interface_by_destination_ip(host_ip)
-        snat_ip = linux.find_route_interface_ip_by_destination_ip(host_ip)
+        mon_ip = self.volume_obj.monIp
+        dev_name = linux.find_route_interface_by_destination_ip(mon_ip)
+        snat_ip = linux.find_route_interface_ip_by_destination_ip(mon_ip)
 
         shell.run("iptables -t nat -A PREROUTING -s %s -d %s -p tcp --dport 3260 -j DNAT --to-destination %s:3260" %
-                  (self.instance_obj.provision_ip, instance_gateway_ip, host_ip))
-        if snat_ip != host_ip:
+                  (self.instance_obj.provision_ip, instance_gateway_ip, mon_ip))
+        if snat_ip != mon_ip:
             shell.run("iptables -t nat -A POSTROUTING -s %s -o %s -j SNAT --to-source %s" % (
             self.instance_obj.provision_ip, dev_name, snat_ip))
 
-        created_iqn = thirdparty_ceph.RbdDeviceOperator().prepare(self.instance_obj, self.volume_obj, snat_ip)
+        created_iqn = RbdDeviceOperator(mon_ip, self.volume_obj.token, self.volume_obj.tpTimeout).prepare(
+            self.instance_obj, self.volume_obj, snat_ip)
         self.instance_obj.customIqn = created_iqn
 
     def destory_instance_resource(self):
         instance_gateway_ip = self.instance_obj.gateway_ip
-        host_ip = RbdDeviceOperator()._get_mon_ip_token(self.volume_obj.token)[0]
-        dev_name = linux.find_route_interface_by_destination_ip(host_ip)
-        snat_ip = linux.find_route_interface_ip_by_destination_ip(host_ip)
+        mon_ip = self.volume_obj.monIp
+        dev_name = linux.find_route_interface_by_destination_ip(mon_ip)
+        snat_ip = linux.find_route_interface_ip_by_destination_ip(mon_ip)
 
-        thirdparty_ceph.RbdDeviceOperator().destory(self.instance_obj, self.volume_obj)
+        RbdDeviceOperator(mon_ip, self.volume_obj.token, self.volume_obj.tpTimeout).destory(self.instance_obj)
 
         shell.run("iptables -t nat -D PREROUTING -s %s -d %s -p tcp --dport 3260 -j DNAT --to-destination %s:3260" %
-                  (self.instance_obj.provision_ip, instance_gateway_ip, host_ip))
-        if snat_ip != host_ip:
+                  (self.instance_obj.provision_ip, instance_gateway_ip, mon_ip))
+        if snat_ip != mon_ip:
             shell.run("iptables -t nat -D POSTROUTING -s %s -o %s -j SNAT --to-source %s" % (self.instance_obj.provision_ip, dev_name, snat_ip))
 
     def pre_take_volume_snapshot(self):
