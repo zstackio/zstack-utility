@@ -191,6 +191,9 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             build_script = f.read()
         shell.call(build_script)
 
+        # open ip forward
+        shell.call("sysctl -w net.ipv4.ip_forward=1")
+
     def _load_template(self, template):
         """" Load jinja template
         """
