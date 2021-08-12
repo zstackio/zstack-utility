@@ -2062,7 +2062,7 @@ def create_vxlan_bridge(interf, bridgeName, ips):
         cmd(is_exception=False)
 
     if ips is not None:
-        populate_vxlan_fdb(interf, ips)
+        populate_vxlan_fdbs([interf], ips)
 
 
 def delete_vxlan_bridge(bridge_name, vxlan_interface):
