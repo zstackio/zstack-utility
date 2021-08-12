@@ -3996,9 +3996,10 @@ class Vm(object):
             devices = elements['devices']
             vhostSrcPath = cmd.addons['vhostSrcPath'] if cmd.addons else None
             brMode = cmd.addons['brMode'] if cmd.addons else None
+            ovsctl = ovs.OvsCtl()
             for index, nic in enumerate(cmd.nics):
                 if nic.type == "vDPA":
-                    vDPAPath = ovs.OvsCtl().getVdpa(cmd.priorityConfigStruct.vmUuid, nic)
+                    vDPAPath = ovsctl.getVdpa(cmd.priorityConfigStruct.vmUuid, nic)
                     interface = Vm._build_interface_xml(nic, devices, vDPAPath, 'Attach', brMode, index)
                 else:
                     interface = Vm._build_interface_xml(nic, devices, vhostSrcPath, 'Attach', brMode, index)
@@ -4457,11 +4458,11 @@ class Vm(object):
                 e(vlan, 'tag', None, attrib={'id': nic.vlanId})
         elif iftype == 'vhostuser':
             if brMode != 'mocbr' and nic.type != 'vDPA':
-                e(interface, 'source', None, attrib={'type': 'unix', 'path': vhostSrcPath, 'mode': 'server'})
+                e(interface, 'source', None, attrib={'type': 'unix', 'path': vhostSrcPath, 'mode': 'client'})
                 e(interface, 'driver', None, attrib={'queues': '16', 'vhostforce': 'on'})
             elif nic.type == 'vDPA':
                 e(interface, 'source', None, attrib={'type': 'unix', 'path': vhostSrcPath, 'mode': 'server'})
-                e(interface, 'driver', None, attrib={'queues': '16'})
+                e(interface, 'driver', None, attrib={'queues': '8', 'txmode': 'iothread', 'ioeventfd': 'on', 'event_idx': 'off', 'rx_queue_size': '512', 'tx_queue_size': '512'})
             else:
                 e(interface, 'source', None, attrib={'type': 'unix', 'path': '/var/run/phynic{}'.format(index+1), 'mode':'server'})
                 e(interface, 'driver', None, attrib={'queues': '8'})
