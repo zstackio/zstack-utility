@@ -787,6 +787,7 @@ class Ctl(object):
         self.zstack_home = None
         self.properties_file_path = None
         self.ui_properties_file_path = None
+        self.tomcat_xml_file_path = None
         self.verbose = False
         self.extra_arguments = None
 
@@ -814,6 +815,7 @@ class Ctl(object):
 
         os.environ['ZSTACK_HOME'] = self.zstack_home
         self.properties_file_path = os.path.join(self.zstack_home, 'WEB-INF/classes/zstack.properties')
+        self.tomcat_xml_file_path = os.path.join(self.USER_ZSTACK_HOME_DIR, 'apache-tomcat/conf/server.xml')
         self.ui_properties_file_path = os.path.join(Ctl.ZSTACK_UI_HOME, 'zstack.ui.properties')
         self.ssh_private_key = os.path.join(self.zstack_home, 'WEB-INF/classes/ansible/rsaKeys/id_rsa')
         self.ssh_public_key = os.path.join(self.zstack_home, 'WEB-INF/classes/ansible/rsaKeys/id_rsa.pub')
@@ -7037,8 +7039,35 @@ class GetConfiguration(Command):
             info(value)
         else :
             raise CtlError('{} is not configured.'.format(ctl.extra_arguments[0]))
-             
 
+class MNServerPortChange(Command):
+    def __init__(self):
+        super(MNServerPortChange, self).__init__()
+        self.name = "change_server_ports"
+        self.description = "Modify the port related to mn service. Restart mn after modification to take effect"
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--update_value', help='Modified port value', required=True)
+
+    def run(self, args):
+        if not os.path.exists(ctl.properties_file_path):
+            raise CtlError('cannot find properties file(%s)' % ctl.properties_file_path)
+        if not os.path.exists(ctl.ui_properties_file_path):
+            raise CtlError('cannot find properties file(%s)' % ctl.properties_file_path)
+        if not os.path.exists(ctl.tomcat_xml_file_path):
+            raise CtlError('cannot find properties file(%s)' % ctl.properties_file_path)
+        ctl.write_property('RESTFacade.port', args.update_value)
+        ctl.write_ui_property("mn_port", args.update_value)
+        original_port = shell(
+            '''awk -F \\" '/Connector port=.*protocol=\"HTTP\/1.1\"/{ print $2 }' %s''' % ctl.tomcat_xml_file_path).strip(
+            '\t\n\r')
+        shell(
+            "sed -i 's/<Connector port=\"%s\" protocol=\"HTTP\/1.1\"/<Connector port=\"%s\" protocol=\"HTTP\/1.1\"/g' %s" % (
+                original_port, args.update_value, ctl.tomcat_xml_file_path))
+        linux.sync_file(ctl.tomcat_xml_file_path)
+        info('Successfully modify the port from %s to %s, please restart mn to take effect' % (
+            original_port, args.update_value))
 
 class SetEnvironmentVariableCmd(Command):
     PATH = os.path.join(ctl.USER_ZSTACK_HOME_DIR, "zstack-ctl/ctl-env")
@@ -9927,6 +9956,7 @@ def main():
     ClearLicenseCmd()
     ShowConfiguration()
     GetConfiguration()
+    MNServerPortChange()
     SetEnvironmentVariableCmd()
     SetDeploymentCmd()
     PullDatabaseBackupCmd()
