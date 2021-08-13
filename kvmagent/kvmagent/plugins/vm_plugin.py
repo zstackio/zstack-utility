@@ -333,6 +333,14 @@ class MigrateVmResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(MigrateVmResponse, self).__init__()
 
+class GetCpuXmlResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(GetCpuXmlResponse, self).__init__()
+        self.cpuXml = None
+
+class CompareCpuFunctionResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(CompareCpuFunctionResponse, self).__init__()
 
 class TakeSnapshotResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -4578,6 +4586,8 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_ATTACH_VOLUME = "/vm/attachdatavolume"
     KVM_DETACH_VOLUME = "/vm/detachdatavolume"
     KVM_MIGRATE_VM_PATH = "/vm/migrate"
+    KVM_Get_CPU_XML_PATH = "/vm/get/cpu/xml"
+    KVM_COMPARE_CPU_FUNCTION_PATH = "/vm/compare/cpu/function"
     KVM_BLOCK_LIVE_MIGRATION_PATH = "/vm/blklivemigration"
     KVM_VM_CHECK_VOLUME_PATH = "/vm/volume/check"
     KVM_TAKE_VOLUME_SNAPSHOT_PATH = "/vm/volume/takesnapshot"
@@ -5348,6 +5358,37 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.error = str(e)
             rsp.success = False
 
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def get_cpu_xml(self, req):
+        rsp = GetCpuXmlResponse()
+        sh_cmd = shell.ShellCmd('virsh capabilities | virsh cpu-baseline /dev/stdin')
+        sh_cmd(False)
+        logger.info("get cpu xml: " + sh_cmd.stdout)
+        if sh_cmd.return_code != 0:
+            rsp.error = sh_cmd.stderr
+            rsp.success = False
+        else:
+            if sh_cmd.stdout.strip():
+                rsp.cpuXml = sh_cmd.stdout.strip()
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def compare_cpu_function(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CompareCpuFunctionResponse()
+        fd, fpath = tempfile.mkstemp()
+        with os.fdopen(fd, 'w') as tmpf:
+            tmpf.write(cmd.cpuXml.strip())
+        compare_cmd = shell.ShellCmd('virsh cpu-compare --error %s' % fpath)
+        compare_cmd(False)
+        logger.info("compare cpu function result: " + compare_cmd.stdout)
+        if compare_cmd.return_code != 0:
+            rsp.error = compare_cmd.stderr
+            logger.info("compare cpu function error: " + compare_cmd.stderr)
+            rsp.success = False
+        linux.rm_file_force(fpath)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -7086,6 +7127,8 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_ATTACH_ISO_PATH, self.attach_iso)
         http_server.register_async_uri(self.KVM_DETACH_ISO_PATH, self.detach_iso)
         http_server.register_async_uri(self.KVM_MIGRATE_VM_PATH, self.migrate_vm)
+        http_server.register_async_uri(self.KVM_Get_CPU_XML_PATH, self.get_cpu_xml)
+        http_server.register_async_uri(self.KVM_COMPARE_CPU_FUNCTION_PATH, self.compare_cpu_function)
         http_server.register_async_uri(self.KVM_BLOCK_LIVE_MIGRATION_PATH, self.block_migrate_vm)
         http_server.register_async_uri(self.KVM_VM_CHECK_VOLUME_PATH, self.check_volume)
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_SNAPSHOT_PATH, self.take_volume_snapshot)
