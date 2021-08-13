@@ -224,18 +224,41 @@ def collect_equipment_state():
         'physical_network_interface': GaugeMetricFamily('physical_network_interface',
                                                         'physical network interface', None,
                                                         ['interface_name', 'speed']),
+        "fan_speed_rpm": GaugeMetricFamily('fan_speed_rpm', 'fan speed rpm', None, ['fan_speed_name']),
+        "fan_speed_state": GaugeMetricFamily('fan_speed_state', 'fan speed state', None, ['fan_speed_name']),
+        "cpu_temperature": GaugeMetricFamily('cpu_temperature', 'cpu temperature', None, ['cpu']),
     }
 
-    r, ps_info = bash_ro("ipmitool sdr type 'power supply'")  # type: (int, str)
+    r, ps_info = bash_ro("ipmitool sdr type 'power supply' | grep -E -i '^PS\w*(\ |_)Status'")  # type: (int, str)
     if r == 0:
         for info in ps_info.splitlines():
             info = info.strip()
-            ps_id = info.split("|")[0].strip().split(" ")[0]
-            health = 10 if "fail" in info.lower() or "lost" in info.lower() else 0
+            ps_id = info.split("|")[0].strip().split(" ")[0].split("_")[0]
+            ps_state = info.split("|")[4].strip().lower()
+            health = 0 if "presence detected" == ps_state else 10
             metrics['power_supply'].add_metric([ps_id], health)
 
     metrics['ipmi_status'].add_metric([], bash_r("ipmitool mc info"))
 
+    r, fan_info = bash_ro("ipmitool sdr type 'fan' | grep -E -i -v 'Present|FAN_M'")  # type: (int, str)
+    if r == 0:
+        for info in fan_info.splitlines():
+            info = info.strip()
+            fan_id = info.split("|")[0].strip()
+            fan_state = 0 if info.split("|")[2].strip().lower() == "ok" else 10
+            fan_rpm = 0 if fan_state != 0 else info.split("|")[4].strip().split(" ")[0]
+            metrics['fan_speed_state'].add_metric([fan_id], fan_state)
+            metrics['fan_speed_rpm'].add_metric([fan_id], fan_rpm)
+    
+    r, cpu_temp_info = bash_ro("ipmitool sdr type 'Temperature' | grep -E -i '^CPU[0-9]*(\ |_)Temp'")  # type: (int, str)
+    if r == 0:
+        for info in cpu_temp_info.splitlines():
+            info = info.strip()
+            cpu_id = info.split("|")[0].strip().split(" ")[0].split("_")[0]
+            cpu_state = 0 if info.split("|")[2].strip().lower() == "ok" else 10
+            cpu_temp = 0 if cpu_state != 0 else info.split("|")[4].strip().split(" ")[0]
+            metrics['cpu_temperature'].add_metric([cpu_id], cpu_temp)
+    
     nics = bash_o("find /sys/class/net -type l -not -lname '*virtual*' -printf '%f\\n'").splitlines()
     if len(nics) != 0:
         for nic in nics:
@@ -376,7 +399,7 @@ kvmagent.register_prometheus_collector(collect_vm_statistics)
 kvmagent.register_prometheus_collector(collect_node_disk_wwid)
 kvmagent.register_prometheus_collector(collect_host_conntrack_statistics)
 
-if misc.isMiniHost():
+if misc.isMiniHost() or misc.isHyperConvergedHost():
     kvmagent.register_prometheus_collector(collect_lvm_capacity_statistics)
     kvmagent.register_prometheus_collector(collect_raid_state)
     kvmagent.register_prometheus_collector(collect_equipment_state)

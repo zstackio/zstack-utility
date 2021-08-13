@@ -7,6 +7,7 @@ import functools
 import pprint
 import traceback
 import hashlib
+import os
 
 from zstacklib.utils import bash
 from zstacklib.utils import log
@@ -44,3 +45,11 @@ def isMiniHost():
         "b525fe1f8611ce4583d07b0a2ffa8435",
         "d625b1b46d517889d49616b0b35831af",
         ]
+
+
+def isHyperConvergedHost():
+    hyper_converged_dir = "/usr/local/hyperconverged"
+    if os.path.exists(hyper_converged_dir):
+        return True
+    else:
+        return False
