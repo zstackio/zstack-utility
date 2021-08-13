@@ -1822,7 +1822,6 @@ sed -i '/^$/d' {{DNS}}
 
     def register_dnsmasq_logRotate(self):
         def dnsmasq_logRotate():
-            logger.debug('ruanshixin start log rotate')
             ret = bash_r("logrotate -vf /etc/logrotate.d/dnsmasq")
 
             thread.timer(24*3600, dnsmasq_logRotate).start()
