@@ -32,6 +32,7 @@ class GracefulARP(kvmagent.KvmAgent):
     RELEASE_GRACEFUL_ARP_PATH = "/flatnetworkprovider/garp/release"
     bridge_vmNics = {}
     activeNics = {}
+    interval = 5
 
     def __init__(self):
         self.bridge_vmNics = {}
@@ -42,7 +43,7 @@ class GracefulARP(kvmagent.KvmAgent):
 
         http_server.register_async_uri(self.APPLY_GRACEFUL_ARP_PATH, self.apply_graceful_arp)
         http_server.register_async_uri(self.RELEASE_GRACEFUL_ARP_PATH, self.release_graceful_arp)
-        thread.timer(5, self.monitor_bonding_master_change).start()
+        thread.timer(self.interval, self.monitor_bonding_master_change).start()
 
     def stop(self):
         pass
@@ -50,6 +51,8 @@ class GracefulARP(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def apply_graceful_arp(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        if self.interval != cmd.interval:
+            self.interval = cmd.interval
         self._apply_graceful_arp(cmd.rebuild, cmd.infos)
         logger.debug("graceful arp info: %s", jsonobject.dumps(self.bridge_vmNics))
         return jsonobject.dumps(AgentRsp())
@@ -123,6 +126,8 @@ class GracefulARP(kvmagent.KvmAgent):
     def _get_bond_activeNics(self):
         activeNics = {}
         bonds = host_plugin.HostPlugin.get_host_networking_bonds()
+        if not bonds:
+            return activeNics
         for b in bonds:
             currentActiveNics = []
             for phyNic in b.slaves:
@@ -163,7 +168,7 @@ class GracefulARP(kvmagent.KvmAgent):
                 logger.debug("bonding interface %s active nic did not change: %s"
                              % (bondingName, curNics))
 
-        thread.timer(5, self.monitor_bonding_master_change).start()
+        thread.timer(self.interval, self.monitor_bonding_master_change).start()
 
     @bash.in_bash
     @lock.lock('gracefulArp')
