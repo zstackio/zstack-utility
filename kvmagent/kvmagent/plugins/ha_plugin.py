@@ -764,8 +764,8 @@ class HaPlugin(kvmagent.KvmAgent):
                         write_heartbeat_used_time = None
                         while self.run_fencer(get_fencer_key(ps_uuid, pool_name), created_time):
                             if write_heartbeat_used_time:
-                                # aio write used wait time should be substract from interval
-                                time.sleep(cmd.interval - write_heartbeat_used_time)
+                                # wait an interval before next heartbeat
+                                time.sleep(cmd.interval)
 
                             # reset variables
                             write_heartbeat_used_time = 0
