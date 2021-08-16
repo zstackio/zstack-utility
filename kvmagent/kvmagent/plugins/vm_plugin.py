@@ -7422,24 +7422,15 @@ class VmPlugin(kvmagent.KvmAgent):
 
             is_cdrom = self._check_boot_from_cdrom(domain_xml)
             if is_cdrom:
-                logger.debug("the vm[uuid:%s]'s boot device is cdrom, for the policy[bootFromHardDisk], need to update root volume boot order" % (vm_uuid))
-            pvpanic_enable = check_domain_xml_pvpanic_enable(domain_xml)
-            if not pvpanic_enable:
-                logger.debug("the vm[uuid:%s]'s pvpanic is disable, need to enable domain host panic listener" % (vm_uuid))
-            if not is_cdrom and pvpanic_enable:
+                logger.debug("the vm[uuid:%s]'s boot device is cdrom, for the policy[bootFromHardDisk], and it will boot from hdd" % (vm_uuid))
+            else:
                 return
-            logger.debug('for the above reason, the vm[uuid:%s] will boot from hdd' % vm_uuid)
 
             try:
                 dom.destroy()
             except:
                 pass
 
-            # pvpanic
-            try:
-                domain_xml = self.update_domain_xml_with_pvpanic(domain_xml)
-            except Exception as e:
-                logger.warn("update domain xml with pvpanic fail, because %s" % (str(e)))
             # cdrom
             xml = self.update_root_volume_boot_order(domain_xml)
             xml = re.sub(r"""\stray\s*=\s*'open'""", """ tray='closed'""", xml)
@@ -7448,24 +7439,6 @@ class VmPlugin(kvmagent.KvmAgent):
         except:
             content = traceback.format_exc()
             logger.warn(content)
-
-    def update_domain_xml_with_pvpanic(self, domain_xml):
-        xml = minidom.parseString(domain_xml)
-        xml.getElementsByTagName('on_crash')[0].childNodes[0].replaceWholeText('preserve')
-        panic_array = xml.getElementsByTagName('devices')[0].getElementsByTagName('panic')
-        if not panic_array:
-            devices_xml = xml.getElementsByTagName('devices')[0]
-            panic_node = xml.createElement('panic')
-            panic_node.setAttribute('model', 'hyperv')
-            devices_xml.appendChild(panic_node)
-            panic_node = xml.createElement('panic')
-            panic_node.setAttribute('model', 'isa')
-            address_node = xml.createElement('address')
-            address_node.setAttribute('type', 'isa')
-            address_node.setAttribute('iobase', '0x505')
-            panic_node.appendChild(address_node)
-            devices_xml.appendChild(panic_node)
-        return xml.toxml()
 
     # update the boot order of the root volume to 1, rely on the make_volumes() function
     def update_root_volume_boot_order(self, domain_xml):
