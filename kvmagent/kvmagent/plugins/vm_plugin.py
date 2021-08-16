@@ -814,16 +814,12 @@ def find_domain_cdrom_address(domain_xml, target_dev):
 
 def check_domain_xml_pvpanic_enable(domain_xml):
     domain_xmlobject = xmlobject.loads(domain_xml)
-    hyperv_check = False
-    isa_check = False
     for panic in domain_xmlobject.devices.get_child_node_as_list('panic'):
-        if panic.model_ == 'hyperv':
-            hyperv_check = True
-        elif panic.model_ == 'isa':
+        if panic.model_ == 'isa':
             for address in panic.get_child_node_as_list('address'):
                 if address.type_ == 'isa' and address.iobase_ == '0x505':
-                    isa_check = True
-    return hyperv_check and isa_check
+                    return True
+    return False
 
 def find_domain_first_boot_device(domain_xml):
     domain_xmlobject = xmlobject.loads(domain_xml)
@@ -4187,7 +4183,7 @@ class Vm(object):
             if usbDevices:
                 make_usb_device(usbDevices)
 
-            make_pvpanic()
+            make_pvpanic(cmd.addons['panicIsa'], cmd.addons['panicHyperv'])
 
         # FIXME: manage scsi device in one place.
         def make_storage_device(storageDevices):
@@ -4304,11 +4300,13 @@ class Vm(object):
                     raise kvmagent.KvmError('cannot find usb device %s', usb)
 
         @linux.with_arch(['x86_64'])
-        def make_pvpanic():
+        def make_pvpanic(panic_isa, panic_hyperv):
             devices = elements['devices']
-            e(devices, 'panic', None, {'model' : 'hyperv'})
-            isa_panic = e(devices, 'panic', None, {'model' : 'isa'})
-            e(isa_panic, 'address', None, {'type' : 'isa', 'iobase' : '0x505'})
+            if panic_hyperv: # maybe None
+                e(devices, 'panic', None, {'model' : 'hyperv'})
+            if panic_isa: # maybe None
+                isa_panic = e(devices, 'panic', None, {'model' : 'isa'})
+                e(isa_panic, 'address', None, {'type' : 'isa', 'iobase' : '0x505'})
 
         #TODO(weiw) validate here
         def match_storage_device(install_path):
