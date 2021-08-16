@@ -248,7 +248,7 @@ def collect_equipment_state():
             fan_state = 0 if info.split("|")[2].strip().lower() == "ok" else 10
             fan_rpm = 0 if fan_state != 0 else info.split("|")[4].strip().split(" ")[0]
             metrics['fan_speed_state'].add_metric([fan_id], fan_state)
-            metrics['fan_speed_rpm'].add_metric([fan_id], fan_rpm)
+            metrics['fan_speed_rpm'].add_metric([fan_id], float(fan_rpm))
     
     r, cpu_temp_info = bash_ro("ipmitool sdr type 'Temperature' | grep -E -i '^CPU[0-9]*(\ |_)Temp'")  # type: (int, str)
     if r == 0:
@@ -257,7 +257,7 @@ def collect_equipment_state():
             cpu_id = info.split("|")[0].strip().split(" ")[0].split("_")[0]
             cpu_state = 0 if info.split("|")[2].strip().lower() == "ok" else 10
             cpu_temp = 0 if cpu_state != 0 else info.split("|")[4].strip().split(" ")[0]
-            metrics['cpu_temperature'].add_metric([cpu_id], cpu_temp)
+            metrics['cpu_temperature'].add_metric([cpu_id], float(cpu_temp))
     
     nics = bash_o("find /sys/class/net -type l -not -lname '*virtual*' -printf '%f\\n'").splitlines()
     if len(nics) != 0:
