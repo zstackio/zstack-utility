@@ -2,13 +2,11 @@
 
 @author: haibiao.xiao
 '''
-import os
 from kvmagent import kvmagent
 from zstacklib.utils import jsonobject
 from zstacklib.utils import log
 from zstacklib.utils import ovs
 from zstacklib.utils import http
-from zstacklib.utils import thread
 
 OVS_DPDK_NET_CHECK_BRIDGE = '/network/ovsdpdk/checkbridge'
 OVS_DPDK_NET_CREATE_BRIDGE = '/network/ovsdpdk/createbridge'
@@ -202,13 +200,7 @@ class OvsDpdkNetworkPlugin(kvmagent.KvmAgent):
 
     def start(self):
 
-        @thread.AsyncThread
-        def prepareOvs():
-            venv = ovs.OvsVenv()
-            if venv.ready:
-                ovs.OvsCtl(venv).reconfigOvs()
-
-        prepareOvs()
+        ovs.OvsCtl().reconfigOvs()
 
         http_server = kvmagent.get_http_server()
 
