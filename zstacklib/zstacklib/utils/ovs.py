@@ -816,6 +816,7 @@ class OvsCtl(Ovs):
         bondList = readSysfs('/sys/class/net/bonding_masters').strip().split()
         return interface in bondList
 
+    @checkOvs
     def reconfigOvs(self):
         ret = shell.run("modprobe bonding")
         if ret != 0:
