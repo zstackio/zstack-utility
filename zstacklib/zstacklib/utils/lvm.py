@@ -1753,12 +1753,13 @@ def check_lv_on_pv_valid(vgUuid, pvUuid, lv_path=None):
 
 
 @bash.in_bash
-def get_invalid_pv_uuids(vgUuid, checkIo = False):
+def get_invalid_pv_uuids(vgUuid, checkIo=False):
+    # type: (str, bool) -> list[str]
     invalid_pv_uuids = []
     pvs_outs = bash.bash_o(
         "timeout -s SIGKILL 10 pvs --noheading --nolocking -Svg_name=%s -ouuid,name,missing" % vgUuid).strip().splitlines()
     if len(pvs_outs) == 0:
-        return
+        return invalid_pv_uuids
     for pvs_out in pvs_outs:
         pv_uuid = pvs_out.strip().split(" ")[0]
         if "unknown" in pvs_out:
@@ -1773,8 +1774,13 @@ def get_invalid_pv_uuids(vgUuid, checkIo = False):
 
 @bash.in_bash
 def is_volume_on_pvs(volume_path, pvUuids, includingMissing=True):
+    # type: (str, list[str], bool) -> bool
+    if pvUuids is None:
+        logger.warn("pvUuid is None! volume_path:%s" % volume_path)
+        return False
+
     files = linux.qcow2_get_file_chain(volume_path)
-    if len(files) == 0:
+    if len(files) == 0 or files is None:
         # could not read qcow2
         logger.debug("can not read volume %s, return true" % volume_path)
         return True
@@ -1794,7 +1800,7 @@ def is_volume_on_pvs(volume_path, pvUuids, includingMissing=True):
             logger.debug("lv %s on pv %s(%s), return true" % (volume_path, pvUuids, pv_names))
             return True
         if o == "" and includingMissing:
-            logger.debug("pv of lv %s is missing, return true")
+            logger.debug("pv of lv %s is missing, return true" % volume_path)
             return True
     return False
 
@@ -1829,6 +1835,7 @@ def is_bad_vm_root_volume(vm_root_volume):
 
 @bash.in_bash
 def get_running_vm_root_volume_on_pv(vgUuid, pvUuids, checkIo=True):
+    # type: (str, list[str], bool) -> list[str]
     # 1. get "-drive ... -device ... bootindex=1,
     # 2. get "-boot order=dc ... -drive id=drive-virtio-disk"
     # 3. make sure io has error
@@ -1865,7 +1872,7 @@ def get_running_vm_root_volume_on_pv(vgUuid, pvUuids, checkIo=True):
             for f in out:
                 vm.volumes.append(f.strip().split("'")[1])
 
-        if is_volume_on_pvs(vm.root_volume, pvUuids, True) or bad_vm_root_volume_condition is True:
+        if bad_vm_root_volume_condition is True or is_volume_on_pvs(vm.root_volume, pvUuids, True):
             vms.append(vm)
 
     return vms
