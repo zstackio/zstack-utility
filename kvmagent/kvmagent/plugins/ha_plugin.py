@@ -623,8 +623,9 @@ class HaPlugin(kvmagent.KvmAgent):
             if cmd.strategy == 'Permissive':
                 return False
 
-            # we will check one qcow2 per pv to determine volumes on pv should be kill
+            # we will check one io to determine volumes on pv should be kill
             invalid_pv_uuids = lvm.get_invalid_pv_uuids(vg, cmd.checkIo)
+            logger.debug("got invalid pv uuids: %s" % invalid_pv_uuids)
             vms = lvm.get_running_vm_root_volume_on_pv(vg, invalid_pv_uuids, True)
             killed_vm_uuids = []
             for vm in vms:
@@ -671,7 +672,7 @@ class HaPlugin(kvmagent.KvmAgent):
                     if _do_fencer_vg(vg, failure):
                         self.sblk_health_checker.delvg(vg)
                 except Exception as e:
-                    logger.warn("fencer for vg %s failed, %s" % (vg, e.message))
+                    logger.warn("fencer for vg %s failed, %s\n%s" % (vg, e.message, traceback.format_exc()))
 
 
         @thread.AsyncThread
