@@ -3136,7 +3136,7 @@ class Vm(object):
             raise kvmagent.KvmError("vm is not running, cannot connect to qemu-ga")
 
     def merge_snapshot(self, cmd):
-        target_disk, disk_name = self._get_target_disk(cmd.volume)
+        _, disk_name = self._get_target_disk(cmd.volume)
 
         @linux.retry(times=3, sleep_time=3)
         def do_pull(base, top):
@@ -3168,10 +3168,23 @@ class Vm(object):
 
             logger.debug('end block rebase [active: %s, new backing: %s]' % (top, base))
 
-        if cmd.fullRebase:
-            do_pull(None, cmd.destPath)
-        else:
-            do_pull(cmd.srcPath, cmd.destPath)
+        class MergeSnapshotDaemon(plugin.TaskDaemon):
+            def __init__(self, domain, disk_name):
+                # use 21600 * 3 to match do_pull max retry time
+                super(MergeSnapshotDaemon, self).__init__(cmd, 'mergeSnapshot', 21600 * 3 + 10)
+                self.domain = domain
+                self.disk_name = disk_name
+
+            def _cancel(self):
+                logger.debug('cancelling vm[uuid:%s] merge snapshost' % cmd.vmUuid)
+                # cancel block job async
+                self.domain.blockJobAbort(self.disk_name, 0)
+
+        with MergeSnapshotDaemon(self.domain, disk_name):
+            if cmd.fullRebase:
+                do_pull(None, cmd.destPath)
+            else:
+                do_pull(cmd.srcPath, cmd.destPath)
 
     def take_volumes_shallow_backup(self, task_spec, volumes, dst_backup_paths):
         # type: (Vm, jsonobject.JsonObject, list[xmlobject.XmlObject], dict[str, str]) -> None
