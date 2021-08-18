@@ -2767,6 +2767,8 @@ class Vm(object):
 
         if cmd.nic.type == "vDPA":
                 vhostSrcPath = ovs.OvsCtl().getVdpa(cmd.vmUuid, cmd.nic)
+                if vhostSrcPath is None:
+                    raise Exception("vDPA resource exhausted.")
 
         interface = Vm._build_interface_xml(cmd.nic, None, vhostSrcPath, action, brMode)
 
@@ -4018,11 +4020,20 @@ class Vm(object):
             devices = elements['devices']
             vhostSrcPath = cmd.addons['vhostSrcPath'] if cmd.addons else None
             brMode = cmd.addons['brMode'] if cmd.addons else None
+
             ovsctl = ovs.OvsCtl()
-            for index, nic in enumerate(cmd.nics):
+            vdpaNics = []
+            for _, nic in enumerate(cmd.nics):
                 if nic.type == "vDPA":
-                    vDPAPath = ovsctl.getVdpa(cmd.priorityConfigStruct.vmUuid, nic)
-                    interface = Vm._build_interface_xml(nic, devices, vDPAPath, 'Attach', brMode, index)
+                    vdpaNics.append(nic)
+            # get all vdpa resource at once, avoid race condition.
+            vDPAPaths = ovsctl.getVdpaS(cmd.priorityConfigStruct.vmUuid, vdpaNics)
+            if vDPAPaths is None:
+                    raise Exception("vDPA resource exhausted.")
+
+            for index, nic in enumerate(cmd.nics):
+                if nic.type == "vDPA" and vDPAPaths.has_key(nic.nicInternalName):
+                    interface = Vm._build_interface_xml(nic, devices, vDPAPaths[nic.nicInternalName], 'Attach', brMode, index)
                 else:
                     interface = Vm._build_interface_xml(nic, devices, vhostSrcPath, 'Attach', brMode, index)
                 addon(interface)

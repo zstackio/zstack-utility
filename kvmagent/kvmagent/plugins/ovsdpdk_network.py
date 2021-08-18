@@ -175,8 +175,16 @@ class OvsDpdkNetworkPlugin(kvmagent.KvmAgent):
         ovsctl = ovs.OvsCtl(venv)
 
         rsp.vdpaPaths = []
+        vdpaPaths = ovsctl.getVdpaS(cmd.vmUuid, cmd.nics)
+
+        if vdpaPaths is None:
+            rsp.success = False
+            rsp.error = "vDPA resource exhausted."
+            return jsonobject.dumps(rsp)
+
         for nic in cmd.nics:
-            rsp.vdpaPaths.append(ovsctl.getVdpa(cmd.vmUuid, nic))
+            if vdpaPaths.has_key(nic.nicInternalName):
+                rsp.vdpaPaths.append(vdpaPaths[nic.nicInternalName])
 
         return jsonobject.dumps(rsp)
 
