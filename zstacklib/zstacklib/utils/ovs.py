@@ -847,6 +847,12 @@ class OvsCtl(Ovs):
 
         # reconfig smart nics
         brs = self.listBrs()
+
+        # do not start ovs-vswitchd while
+        # there is no bridges.
+        if len(brs) == 0:
+            return
+
         for b in brs:
             if b == '':
                 continue
@@ -855,7 +861,8 @@ class OvsCtl(Ovs):
             if not os.path.exists(vdpaBrPath):
                 os.mkdir(vdpaBrPath, 0755)
             self.prepareBridge(b, b[3:])
-        self.start(True)
+        # do not force restart openvswitch.
+        self.start()
 
     # ---------------------------- utils ------------------------------------------
 
