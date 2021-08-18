@@ -802,7 +802,8 @@ class OvsCtl(Ovs):
             if d['bond']['name'] == bondName:
                 dpdkBond.name = d['bond']['name']
                 dpdkBond.mode = d['bond']['mode']
-                dpdkBond.policy = d['bond']['policy']
+                if d['bond'].has_key('policy'):
+                    dpdkBond.policy = d['bond']['policy']
                 dpdkBond.id = d['bond']['id']
                 for i in d['bond']['slaves']:
                     dpdkBond.slaves.append(str(i))
@@ -918,11 +919,14 @@ class OvsCtl(Ovs):
             # set Interface bondtest type=dpdk dpdk-devargs="eth_bond0,mode=2,\
             # slave=0000:81:00.1,slave=0000:82:00.1,xmit_policy=l34"
             dpdk_devargs = "eth_bond{},".format(bond.id)
-            dpdk_devargs = dpdk_devargs + "mode={},".format(bond.mode)
+            dpdk_devargs = dpdk_devargs + "mode={}".format(bond.mode)
             for s in bond.slaves:
                 dpdk_devargs = dpdk_devargs + \
-                    "slave={},".format(self._get_if_pcinum(s))
-            dpdk_devargs = dpdk_devargs + "xmit_policy={}".format(bond.policy)
+                    ",slave={}".format(self._get_if_pcinum(s))
+            # There are 3 supported transmission policies for bonded device
+            # running in Balance XOR mode.
+            if bond.mode == 2 and bond.policy is not None:
+                dpdk_devargs = dpdk_devargs + ",xmit_policy={}".format(bond.policy)
             dpdk_devargs = "dpdk-devargs={}".format(dpdk_devargs)
 
             if self.addPort(bridgeName, bond.name, "dpdk",
@@ -1163,7 +1167,7 @@ class OvsCtl(Ovs):
 class Bond:
     def __init__(self):
         self.name = "default"
-        self.policy = "l34"
+        self.policy = None
         self.mode = 1
         self.slaves = []
         self.id = 0
