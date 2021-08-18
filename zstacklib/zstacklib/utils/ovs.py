@@ -668,9 +668,29 @@ class OvsCtl(Ovs):
 
         return self._init_dpdk_bond(bridgeName, dpdkBond)
 
-    @checkOvs
+    @lock.lock('getVdpa')
+    def getVdpaS(self, vmUuid, nics):
+        ret = {}
+        for nic in nics:
+            vdpaPath = self._getVdpa(vmUuid, nic)
+            if vdpaPath is not None:
+                ret[nic.nicInternalName] = vdpaPath
+            else:
+                # if vDPA resource is not enough then 
+                # realse all vDPAs.
+                for k in ret:
+                    self.freeVdpa(vmUuid, k)
+                return None
+
+        return ret
+
+
     @lock.lock('getVdpa')
     def getVdpa(self, vmUuid, nic):
+        return self._getVdpa(vmUuid, nic)
+
+    @checkOvs
+    def _getVdpa(self, vmUuid, nic):
         bridgeName = nic.bridgeName
         bondName = nic.physicalInterface
         vlanId = nic.vlanId
@@ -710,7 +730,7 @@ class OvsCtl(Ovs):
 
         vf, pci, ifaceName = self._get_free_vf(bridgeName, bondName)
         if pci == None:
-            raise OvsError("vDPA resource exhausted.")
+            return None
 
         self.addPort(bridgeName, nicInternalName, "dpdkvdpa",
                      "vdpa-socket-path={}".format(vdpaSockPath),
