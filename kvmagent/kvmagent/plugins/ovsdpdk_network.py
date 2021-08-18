@@ -97,7 +97,9 @@ class OvsDpdkNetworkPlugin(kvmagent.KvmAgent):
                 cmd.physicalInterfaceName)
             return jsonobject.dumps(rsp)
 
-        ovsctl.startSwitch(True)
+        # It will take a long time for ovs-vswitchd to restart,
+        # while there has many vDPA configured. never force restart ovs-vswitchd
+        ovsctl.startSwitch()
 
         logger.debug(http.path_msg(OVS_DPDK_NET_CREATE_BRIDGE,
                                    'create bridge:{} success'.format(cmd.bridgeName)))
