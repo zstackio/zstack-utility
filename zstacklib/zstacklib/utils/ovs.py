@@ -254,8 +254,7 @@ class Ovs(object):
         cmd = cmd + " --detach --monitor"
         ret = shell.run(cmd)
         if ret != 0:
-            logger.error("start ovsdb-server failed.")
-            return ret
+            raise OvsError("start ovsdb-server failed.")
 
         # Initialize database settings.
         ret = shell.run(self.ctlBin +
@@ -288,8 +287,7 @@ class Ovs(object):
         ret = shell.run(cmd)
 
         if ret != 0:
-            logger.error("set system infos for ovsdb failed.")
-            return ret
+            raise OvsError("set system infos for ovsdb failed.")
 
         logger.debug("ovsdb: [{}] start success".format(self.pids[0]))
         return 0
@@ -391,8 +389,7 @@ class Ovs(object):
         cmd = cmd + " --detach --monitor"
         ret = shell.run(cmd)
         if ret != 0:
-            logger.error("start ovs-vswitch failed.")
-            return ret
+            raise OvsError("start ovs-vswitch failed.")
 
         logger.debug("ovs-vswitch: [{}] start success".format(self.pids[1]))
         return 0
@@ -963,7 +960,6 @@ class OvsCtl(Ovs):
             dpdk_extra = s.stdout.strip().strip('\n').strip('"')
         else:
             logger.debug("get dpdk-extra config failed.")
-            return s.return_code
 
         pci = self._get_if_pcinum(ifName)
 
