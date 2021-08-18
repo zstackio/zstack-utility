@@ -106,6 +106,7 @@ if distro in RPM_BASED_OS:
         releasever = get_mn_yum_release()
     x86_64_c74 = "dnsmasq nginx syslinux vsftpd nmap"
     x86_64_c76 = "dnsmasq nginx syslinux vsftpd nmap"
+    x86_64_ns10 = "dnsmasq nginx vsftpd nmap net-tools"
     aarch64_ns10 = "dnsmasq nginx vsftpd nmap net-tools"
     aarch64_euler20 = "dnsmasq nginx vsftpd nmap net-tools"
     mips64el_ns10 = "dnsmasq nginx vsftpd nmap net-tools"
