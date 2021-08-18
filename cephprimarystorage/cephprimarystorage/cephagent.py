@@ -1138,18 +1138,19 @@ class CephAgent(plugin.TaskManager):
 
         thread.ThreadFacade.run_in_thread(self._push_data_to_pipe_from_nbd, [client, fifo_name, rsp])
 
+    @in_bash
     def _import_volume_from_pipe(self, fifo_name, volume_install_path, rsp):
+        shell.check_run('rbd rm %s' % volume_install_path)
         r, _, e = bash.bash_roe("cat %s | rbd import --image-format 2 - %s" % (fifo_name, volume_install_path))
         if r != 0:
             rsp.success = False
             rsp.error = "rbd import error: %s" % e
 
-    def _nbd2rbd(self, hostname, port, export_name, rbdtarget, bandwidth):
+    def _nbd2rbd(self, hostname, port, export_name, rbdtarget, bandwidth, rsp):
         try:
             fifo_name = os.path.join(tempfile.gettempdir(), os.path.basename(rbdtarget) + "_" + export_name)
             os.mkfifo(fifo_name)
             self._write_nbd_to_file(hostname, port, export_name, fifo_name, rsp)
-            shell.run('rbd rm %s' % rbdtarget)
             self._import_volume_from_pipe(fifo_name, rbdtarget, rsp)
         finally:
             linux.rm_file_force(fifo_name)
@@ -1167,7 +1168,7 @@ class CephAgent(plugin.TaskManager):
             rsp.error = 'unexpected protocol: %s' % nbdexpurl
             return jsonobject.dumps(rsp)
 
-        self._nbd2rbd(u.hostname, u.port, os.path.basename(u.path), self._normalize_install_path(rbdtarget), bandwidth)
+        self._nbd2rbd(u.hostname, u.port, os.path.basename(u.path), self._normalize_install_path(rbdtarget), bandwidth, rsp)
 
         return jsonobject.dumps(rsp)
 
