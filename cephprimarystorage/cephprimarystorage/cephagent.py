@@ -5,6 +5,8 @@ __author__ = 'frank'
 import pprint
 import traceback
 import urlparse
+import rados
+import rbd
 
 import zstacklib.utils.daemon as daemon
 import zstacklib.utils.jsonobject as jsonobject
@@ -194,6 +196,40 @@ def replyerror(func):
             return jsonobject.dumps(rsp)
 
     return wrap
+
+
+class RbdImageWriter(object):
+    def __init__(self, poolname, imagename, conffile='/etc/ceph/ceph.conf'):
+        self.cluster = rados.Rados(conffile=conffile)
+        self.poolname = poolname
+        self.imagename = imagename
+        self.ioctx = None
+        self.image = None
+
+    def __enter__(self):
+        self.cluster.connect()
+        self.ioctx = self.cluster.open_ioctx(self.poolname)
+        self.image = rbd.Image(self.ioctx, self.imagename)
+        return self.image
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        try:
+            if self.image:
+                self.image.close()
+        except:
+            pass
+
+        try:
+            if self.ioctx:
+                self.ioctx.close()
+        except:
+            pass
+
+        try:
+            if self.cluster:
+                self.cluster.shutdown()
+        except:
+            pass
 
 
 class CephAgent(plugin.TaskManager):
@@ -1105,55 +1141,29 @@ class CephAgent(plugin.TaskManager):
         rsp.totalSize = totalSize
         return jsonobject.dumps(rsp)
 
-    def _push_data_to_pipe_from_nbd(self, client, fifo_name, rsp):
-        io_length = 1024 * 1024
-        io_size = client.get_block_size()
-        io_count = io_size/io_length
-        io_remainder = io_size % io_length
+
+    def _nbd2rbd(self, hostname, port, export_name, rbdtarget, bandwidth):
+        poolname, imagename = rbdtarget.split('/')
+        client = nbd_client.NBDClient()
+        client.connect(hostname, port, None, export_name)
 
         try:
-            with open(fifo_name, 'w') as fd:
-                for i in range(0, io_count):
-                    io_offset = i * io_length
-                    io_buffer = client.read(io_offset, io_length)
-                    fd.write(io_buffer)
-                if io_remainder > 0:
-                    io_buffer = client.read(io_offset, io_remainder)
-                    fd.write(io_buffer)
+            bytes_written, io_batch_size = 0, 1024 * 1024
+            leftover, src_size = "", client.get_block_size()
+            with RbdImageWriter(poolname, imagename) as image:
+                if image.size() != src_size:
+                    raise Exception('src volume size %d and destination size %d mismatch' % (src_size, image.size()))
 
-                fd.flush()
-        except Exception as e:
-            rsp.error = str(e)
+                while bytes_written < src_size:
+                    buf = leftover + client.read(io_batch_size)
+                    n = image.write(bytes_written, buf)
+                    bytes_written += n
+                    leftover = buf[n:]
         finally:
-            client.close()
+            logger.info("bytes written: "+str(bytes_written))
 
-    def _write_nbd_to_file(self, nbd_ip_address, nbd_port, nbd_export_name, fifo_name, rsp):
-        try:
-            client = nbd_client.NBDClient()
-            client.connect(nbd_ip_address, nbd_port, None, nbd_export_name)
-        except Exception as e:
-            rsp.success = False
-            rsp.error = 'connect nbd://%s:%d/%s, %s' % (nbd_ip_address, nbd_port, nbd_export_name, str(e))
-            raise Exception(rsp.error)
-
-        thread.ThreadFacade.run_in_thread(self._push_data_to_pipe_from_nbd, [client, fifo_name, rsp])
-
-    @in_bash
-    def _import_volume_from_pipe(self, fifo_name, volume_install_path, rsp):
-        shell.check_run('rbd rm %s' % volume_install_path)
-        r, _, e = bash.bash_roe("cat %s | rbd import --image-format 2 - %s" % (fifo_name, volume_install_path))
-        if r != 0:
-            rsp.success = False
-            rsp.error = "rbd import error: %s" % e
-
-    def _nbd2rbd(self, hostname, port, export_name, rbdtarget, bandwidth, rsp):
-        try:
-            fifo_name = os.path.join(tempfile.gettempdir(), os.path.basename(rbdtarget) + "_" + export_name)
-            os.mkfifo(fifo_name)
-            self._write_nbd_to_file(hostname, port, export_name, fifo_name, rsp)
-            self._import_volume_from_pipe(fifo_name, rbdtarget, rsp)
-        finally:
-            linux.rm_file_force(fifo_name)
+            try: client.close()
+            except: pass
 
     @replyerror
     def download_from_nbd(self, req):
@@ -1168,7 +1178,7 @@ class CephAgent(plugin.TaskManager):
             rsp.error = 'unexpected protocol: %s' % nbdexpurl
             return jsonobject.dumps(rsp)
 
-        self._nbd2rbd(u.hostname, u.port, os.path.basename(u.path), self._normalize_install_path(rbdtarget), bandwidth, rsp)
+        self._nbd2rbd(u.hostname, u.port, os.path.basename(u.path), self._normalize_install_path(rbdtarget), bandwidth)
 
         return jsonobject.dumps(rsp)
 
