@@ -735,7 +735,7 @@ class OvsCtl(Ovs):
             return
 
         s = shell.ShellCmd(self.ctlBin +
-                           "--columns=name find interface external_ids:vm-id={} | grep name |cut -d ':' -f2".format(vmUuid), None, False)
+                           "--columns=name find interface external_ids:vm-id={} | grep name |cut -d ':' -f2 | tr -d ' '".format(vmUuid), None, False)
         s(False)
         if s.return_code != 0:
             return []
