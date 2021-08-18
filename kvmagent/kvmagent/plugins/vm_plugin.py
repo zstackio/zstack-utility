@@ -5189,8 +5189,9 @@ class VmPlugin(kvmagent.KvmAgent):
             else:
                 vm.stop(timeout=cmd.timeout / 2)
 
-            # free vdpa
-            ovs.OvsCtl().freeVdpa(cmd.uuid)
+            # http://jira.zstack.io/browse/ZSTAC-42191 
+            # keep vdpa while stop vm.
+            # ovs.OvsCtl().freeVdpa(cmd.uuid)
         except kvmagent.KvmError as e:
             logger.debug(linux.get_exception_stacktrace())
         finally:
