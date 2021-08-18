@@ -254,8 +254,7 @@ class Ovs(object):
         cmd = cmd + " --detach --monitor"
         ret = shell.run(cmd)
         if ret != 0:
-            logger.error("start ovsdb-server failed.")
-            return ret
+            raise OvsError("start ovsdb-server failed.")
 
         # Initialize database settings.
         ret = shell.run(self.ctlBin +
@@ -288,8 +287,7 @@ class Ovs(object):
         ret = shell.run(cmd)
 
         if ret != 0:
-            logger.error("set system infos for ovsdb failed.")
-            return ret
+            raise OvsError("set system infos for ovsdb failed.")
 
         logger.debug("ovsdb: [{}] start success".format(self.pids[0]))
         return 0
@@ -391,8 +389,7 @@ class Ovs(object):
         cmd = cmd + " --detach --monitor"
         ret = shell.run(cmd)
         if ret != 0:
-            logger.error("start ovs-vswitch failed.")
-            return ret
+            raise OvsError("start ovs-vswitch failed.")
 
         logger.debug("ovs-vswitch: [{}] start success".format(self.pids[1]))
         return 0
@@ -735,7 +732,7 @@ class OvsCtl(Ovs):
             return
 
         s = shell.ShellCmd(self.ctlBin +
-                           "--columns=name find interface external_ids:vm-id={} | grep name |cut -d ':' -f2".format(vmUuid), None, False)
+                           "--columns=name find interface external_ids:vm-id={} | grep name |cut -d ':' -f2 | tr -d ' '".format(vmUuid), None, False)
         s(False)
         if s.return_code != 0:
             return []
@@ -802,7 +799,8 @@ class OvsCtl(Ovs):
             if d['bond']['name'] == bondName:
                 dpdkBond.name = d['bond']['name']
                 dpdkBond.mode = d['bond']['mode']
-                dpdkBond.policy = d['bond']['policy']
+                if d['bond'].has_key('policy'):
+                    dpdkBond.policy = d['bond']['policy']
                 dpdkBond.id = d['bond']['id']
                 for i in d['bond']['slaves']:
                     dpdkBond.slaves.append(str(i))
@@ -918,11 +916,14 @@ class OvsCtl(Ovs):
             # set Interface bondtest type=dpdk dpdk-devargs="eth_bond0,mode=2,\
             # slave=0000:81:00.1,slave=0000:82:00.1,xmit_policy=l34"
             dpdk_devargs = "eth_bond{},".format(bond.id)
-            dpdk_devargs = dpdk_devargs + "mode={},".format(bond.mode)
+            dpdk_devargs = dpdk_devargs + "mode={}".format(bond.mode)
             for s in bond.slaves:
                 dpdk_devargs = dpdk_devargs + \
-                    "slave={},".format(self._get_if_pcinum(s))
-            dpdk_devargs = dpdk_devargs + "xmit_policy={}".format(bond.policy)
+                    ",slave={}".format(self._get_if_pcinum(s))
+            # There are 3 supported transmission policies for bonded device
+            # running in Balance XOR mode.
+            if bond.mode == 2 and bond.policy is not None:
+                dpdk_devargs = dpdk_devargs + ",xmit_policy={}".format(bond.policy)
             dpdk_devargs = "dpdk-devargs={}".format(dpdk_devargs)
 
             if self.addPort(bridgeName, bond.name, "dpdk",
@@ -959,7 +960,6 @@ class OvsCtl(Ovs):
             dpdk_extra = s.stdout.strip().strip('\n').strip('"')
         else:
             logger.debug("get dpdk-extra config failed.")
-            return s.return_code
 
         pci = self._get_if_pcinum(ifName)
 
@@ -1163,7 +1163,7 @@ class OvsCtl(Ovs):
 class Bond:
     def __init__(self):
         self.name = "default"
-        self.policy = "l34"
+        self.policy = None
         self.mode = 1
         self.slaves = []
         self.id = 0
