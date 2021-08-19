@@ -90,6 +90,9 @@ class NbdDeviceOperator(object):
             # Get the source file/dev/rbd path
             with open(pid_path, 'r') as f:
                 pid = f.read().strip('\n')
+
+            if not os.path.exists('/proc/{}'.format(pid)):
+                continue
             with open('/proc/{}/cmdline'.format(pid), 'r') as f:
                 cmdline = f.read().strip('\n')
             nbd_backend = cmdline.split('\x00')[-2]
