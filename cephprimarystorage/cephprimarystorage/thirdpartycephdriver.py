@@ -24,9 +24,10 @@ class ThirdpartyCephDriver(cephagent.CephAgent):
         image_uuid = array[1]
 
         rsp.size = cmd.size
-        skip_cmd = ("rbd info %s" % path) if cmd.skipIfExisting else ""
-        if shell.run(skip_cmd) == 0:
+        if cmd.skipIfExisting and shell.run("rbd info %s" % path) == 0:
+            rsp.installPath = RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).search_volume_name(image_uuid)
             return rsp
+
         volume_name = RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).create_empty_volume(pool_uuid, image_uuid,
                                                                                                  cmd.size)
         rsp.installPath = volume_name
@@ -52,3 +53,7 @@ class ThirdpartyCephDriver(cephagent.CephAgent):
         spath = self._normalize_install_path(cmd.snapshotPath)
         snap_name = spath.split("@")[1]
         RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).delete_snapshot(snap_name)
+
+    def validate_token(self, cmd):
+        RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).validate_token()
+

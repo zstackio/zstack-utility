@@ -13,6 +13,7 @@ from zstacklib.utils.xms_client.api import PoolsApi
 from zstacklib.utils.xms_client.api import HostsApi
 from zstacklib.utils.xms_client.api import ClientGroupsApi
 from zstacklib.utils.xms_client.rest import ApiException
+from zstacklib.utils.xms_client.api import AccessTokensApi
 
 from zstacklib.utils import log
 from zstacklib.utils import linux
@@ -33,6 +34,7 @@ class RbdDeviceOperator(object):
         self.conf = self.prepare_token(self.token, self.monIp)
         self.hosts_api = HostsApi(self.conf)
         self.pools_api = PoolsApi(self.conf)
+        self.access_token_api = AccessTokensApi(self.conf)
         self.targets_api = TargetsApi(self.conf)
         self.access_paths_api = AccessPathsApi(self.conf)
         self.client_group_api = ClientGroupsApi(self.conf)
@@ -434,6 +436,17 @@ class RbdDeviceOperator(object):
             return access_path.block_volume_num == 0 and access_path.client_group_num == 0
 
         _destory()
+
+    def validate_token(self):
+        try:
+            self.access_token_api.validate_access_token(self.token)
+        except ApiException:
+            raise Exception("Invalid access token [%s]. Please rewrite the access token." % self.token)
+
+    def search_volume_name(self, image_uuid):
+        block_volume = self.block_volumes_api.list_block_volumes(q=image_uuid).block_volumes
+        block_volume_name = block_volume[0].volume_name
+        return block_volume_name
 
     def create_empty_volume(self, pool_uuid, image_uuid, size):
         global TIME_OUT

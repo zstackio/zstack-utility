@@ -60,3 +60,5 @@ class CephDriver(cephagent.CephAgent):
         spath = self._normalize_install_path(cmd.snapshotPath)
         shell.call('rbd snap rm %s' % spath)
 
+    def validate_token(self, cmd):
+        pass

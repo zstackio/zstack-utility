@@ -738,6 +738,7 @@ class CephAgent(plugin.TaskManager):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
         driver = cephprimarystorage.get_driver(cmd)
+        driver.validate_token(cmd)
         o = shell.call('ceph mon_status')
         mon_status = jsonobject.loads(o)
         fsid = mon_status.monmap.fsid_
@@ -777,7 +778,6 @@ class CephAgent(plugin.TaskManager):
     def create(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CreateEmptyVolumeRsp()
-
         rsp = driver.create_volume(cmd, rsp)
 
         self._set_capacity_to_response(rsp)
