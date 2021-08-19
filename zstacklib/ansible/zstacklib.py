@@ -1814,6 +1814,7 @@ class ZstackLib(object):
         # enforce history
         enforce_history(trusted_host, host_post_info)
         check_umask(host_post_info)
+        configure_hosts(host_post_info)
 
         if distro in RPM_BASED_OS:
             epel_repo_exist = file_dir_exist("path=/etc/yum.repos.d/epel.repo", host_post_info)
@@ -2100,6 +2101,12 @@ deb http://{{ apt_server }}/zstack/static/zstack-repo/$basearch/{{ zstack_releas
                 enable_chrony(trusted_host, host_post_info, distro)
         else:
             error("ERROR: Unsupported distribution")
+
+
+def configure_hosts(host_post_info):
+    configure_hosts_cmd = 'grep `hostname` /etc/hosts >/dev/null || echo "127.0.0.1 `hostname` # added by ZStack" >> /etc/hosts'
+    run_remote_command(configure_hosts_cmd, host_post_info)
+
 
 def main():
     # Reserve for test api
