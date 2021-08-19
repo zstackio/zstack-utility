@@ -47,6 +47,14 @@ COLO_QEMU_KVM_VERSION = '/var/lib/zstack/colo/qemu_kvm_version'
 COLO_LIB_PATH = '/var/lib/zstack/colo/'
 HOST_TAKEOVER_FLAG_PATH = 'var/run/zstack/takeOver'
 
+BOND_MODE_ACTIVE_0 = "balance-rr"
+BOND_MODE_ACTIVE_1 = "active-backup"
+BOND_MODE_ACTIVE_2 = "balance-xor"
+BOND_MODE_ACTIVE_3 = "broadcast"
+BOND_MODE_ACTIVE_4 = "802.3ad"
+BOND_MODE_ACTIVE_5 = "balance-tlb"
+BOND_MODE_ACTIVE_6 = "balance-alb"
+
 class ConnectResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(ConnectResponse, self).__init__()
