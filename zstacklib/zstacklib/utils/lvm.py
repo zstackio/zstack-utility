@@ -1835,7 +1835,7 @@ def is_bad_vm_root_volume(vm_root_volume):
 
 @bash.in_bash
 def get_running_vm_root_volume_on_pv(vgUuid, pvUuids, checkIo=True):
-    # type: (str, list[str], bool) -> list[str]
+    # type: (str, list[str], bool) -> list[VmStruct]
     # 1. get "-drive ... -device ... bootindex=1,
     # 2. get "-boot order=dc ... -drive id=drive-virtio-disk"
     # 3. make sure io has error
