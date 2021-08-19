@@ -113,14 +113,17 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         """ Check the env whether ready
         """
 
-        required_pkgs = ['nginx', 'dnsmasq', 'ipxe-bootimgs', 'socat', 'gc',
-                         'xmlto', 'asciidoc', 'hmaccalc', 'newt-devel',
-                         'perl-ExtUtils-Embed', 'pesign',
-                         'elfutils-libelf-devel', 'elfutils-devel',
-                         'zlib-devel', 'binutils-devel', 'bison',
-                         'audit-libs-devel', 'java-devel', 'numactl-devel',
-                         'pciutils-devel', 'ncurses-devel', 'python-docutils',
-                         'flex', 'targetcli', 'syslinux', 'tftp-server']
+        pkgs = ['nginx', 'dnsmasq', 'ipxe-bootimgs', 'socat', 'gc','xmlto',
+                 'asciidoc', 'hmaccalc', 'newt-devel', 'perl-ExtUtils-Embed',
+                 'pesign', 'elfutils-libelf-devel', 'elfutils-devel', 'bison',
+                 'zlib-devel', 'binutils-devel', 'audit-libs-devel', 'flex',
+                 'java-devel', 'numactl-devel', 'pciutils-devel', 'targetcli',
+                 'ncurses-devel', 'tftp-server']
+
+        extra_x86_64  = ['syslinux', 'python-docutils']
+        extra_aarch64 = ['python2-docutils']
+
+        pkgs.extend(eval("extra_{}".format(kvmagent.host_arch)))
         yum_release = kvmagent.get_host_yum_release()
         cmd = ('export YUM0={yum_release}; yum --disablerepo=* '
                '--enablerepo=zstack-mn clean all; '
@@ -129,7 +132,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                '--disablerepo=* --enablerepo=zstack-mn install -y '
                '$pkg > /dev/null || exit 1; done;').format(
                    yum_release=yum_release,
-                   pkg_list=' '.join(required_pkgs))
+                   pkg_list=' '.join(pkgs))
         shell.call(cmd)
 
         # Create directories
@@ -154,7 +157,8 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         # Prepare tftpboot, copy ipxe/pxelinux.0 rom
         shutil.copy('/usr/share/ipxe/ipxe.efi', self.TFTPBOOT_DIR)
         shutil.copy('/usr/share/ipxe/undionly.kpxe', self.TFTPBOOT_DIR)
-        shutil.copy('/usr/share/syslinux/pxelinux.0', self.TFTPBOOT_DIR)
+        if kvmagent.host_arch == "x86_64":
+            shutil.copy('/usr/share/syslinux/pxelinux.0', self.TFTPBOOT_DIR)
 
         # Copy grubaa64.efi
         shutil.copy('/tmp/grubaa64.efi', self.TFTPBOOT_DIR)

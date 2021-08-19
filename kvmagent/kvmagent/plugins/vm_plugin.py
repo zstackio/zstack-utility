@@ -3470,7 +3470,7 @@ class Vm(object):
         def make_os():
             root = elements['root']
             os = e(root, 'os')
-            host_arch = kvmagent.os_arch
+            host_arch = kvmagent.host_arch
 
             def on_x86_64():
                 e(os, 'type', 'hvm', attrib={'machine': machine_type})
