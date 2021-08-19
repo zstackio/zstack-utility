@@ -129,8 +129,15 @@ class GracefulARP(kvmagent.KvmAgent):
         if not bonds:
             return activeNics
         for b in bonds:
+            if b.slaves is None:
+                activeNics[b.bondingName] = []
+                continue
+
             currentActiveNics = []
             for phyNic in b.slaves:
+                if phyNic is None:
+                    continue
+
                 if phyNic.master != b.bondingName:
                     logger.debug("master interface of physical %s is %s, not bonding interface %s"
                                  % (phyNic.interfaceName, phyNic.master, b.bondingName))
@@ -188,4 +195,3 @@ class GracefulARP(kvmagent.KvmAgent):
 
             cmd = ";".join(cmds)
             bash.bash_r(cmd)
-    
