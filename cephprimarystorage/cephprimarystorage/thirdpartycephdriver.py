@@ -1,0 +1,54 @@
+__author__ = 'yingzhe.hu'
+
+from zstacklib.utils.bash import *
+
+log.configure_log('/var/log/zstack/ceph-primarystorage.log')
+logger = log.get_logger(__name__)
+from cephprimarystorage import cephagent
+from zstacklib.utils.thirdparty_ceph import RbdDeviceOperator
+
+
+class ThirdpartyCephDriver(cephagent.CephAgent):
+    def __init__(self, *args, **kwargs):
+        super(ThirdpartyCephDriver, self).__init__()
+
+    def clone_volume(self, cmd, rsp):
+        volume_name = RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).copy_volume(cmd.srcPath, cmd.dstPath)
+        rsp.installPath = volume_name
+        return rsp
+
+    def create_volume(self, cmd, rsp):
+        path = self._normalize_install_path(cmd.installPath)
+        array = path.split("/")
+        pool_uuid = array[0]
+        image_uuid = array[1]
+
+        rsp.size = cmd.size
+        skip_cmd = ("rbd info %s" % path) if cmd.skipIfExisting else ""
+        if shell.run(skip_cmd) == 0:
+            return rsp
+        volume_name = RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).create_empty_volume(pool_uuid, image_uuid,
+                                                                                                 cmd.size)
+        rsp.installPath = volume_name
+        return rsp
+
+    @linux.retry(times=30, sleep_time=5)
+    def do_deletion(self, cmd):
+        RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).delete_empty_volume(cmd.installPath)
+
+    def create_snapshot(self, cmd, rsp):
+        spath = self._normalize_install_path(cmd.snapshotPath)
+        path_name = spath.split("/")[1]
+        volume_name = path_name.split("@")[0]
+        snap_name = path_name.split("@")[1]
+
+        snapshop_name = RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).create_snapshot(volume_name, snap_name)
+        dpath = spath.split("@")[0] + '@' + snapshop_name
+        rsp.size = self._get_file_size(dpath)
+        rsp.installPath = "ceph://" + dpath
+        return rsp
+
+    def delete_snapshot(self, cmd):
+        spath = self._normalize_install_path(cmd.snapshotPath)
+        snap_name = spath.split("@")[1]
+        RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).delete_snapshot(snap_name)

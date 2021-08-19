@@ -4,6 +4,7 @@ __author__ = 'frank'
 
 import pprint
 import traceback
+import cephprimarystorage
 
 import zstacklib.utils.daemon as daemon
 import zstacklib.utils.jsonobject as jsonobject
@@ -25,7 +26,10 @@ from zstacklib.utils.thirdparty_ceph import RbdDeviceOperator
 from imagestore import ImageStoreClient
 from zstacklib.utils.linux import remote_shell_quote
 
+log.configure_log('/var/log/zstack/ceph-primarystorage.log')
 logger = log.get_logger(__name__)
+
+driver = None
 
 
 class CephPoolCapacity(object):
@@ -107,6 +111,7 @@ class CreateSnapshotRsp(AgentResponse):
         super(CreateSnapshotRsp, self).__init__()
         self.size = None
         self.actualSize = None
+        self.installPath = None
 
 class RollbackSnapshotRsp(AgentResponse):
     def __init__(self):
@@ -594,6 +599,7 @@ class CephAgent(plugin.TaskManager):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         spath = self._normalize_install_path(cmd.snapshotPath)
 
+        rsp = CreateSnapshotRsp()
         do_create = True
         if cmd.skipOnExisting:
             image_name, sp_name = spath.split('@')
@@ -604,25 +610,15 @@ class CephAgent(plugin.TaskManager):
                     do_create = False
 
         if do_create:
-            o = shell.ShellCmd('rbd snap create %s' % spath)
-            o(False)
-            if o.return_code != 0:
-                shell.run("rbd snap rm %s" % spath)
-                o.raise_error()
+            rsp = driver.create_snapshot(cmd, rsp)
 
-
-        rsp = CreateSnapshotRsp()
-        rsp.size = self._get_file_size(spath)
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
     @replyerror
     def delete_snapshot(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-
-        spath = self._normalize_install_path(cmd.snapshotPath)
-
-        shell.call('rbd snap rm %s' % spath)
+        driver.delete_snapshot(cmd)
 
         rsp = AgentResponse()
         self._set_capacity_to_response(rsp)
@@ -676,20 +672,10 @@ class CephAgent(plugin.TaskManager):
     @replyerror
     def clone(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        src_path = self._normalize_install_path(cmd.srcPath)
-        dst_path = self._normalize_install_path(cmd.dstPath)
-
-        if RbdDeviceOperator().is_third_party_ceph(cmd):
-            volume_name = RbdDeviceOperator().copy_volume(cmd.token, cmd.srcPath, cmd.dstPath, cmd.tpTimeout)
-
-            rsp = AgentResponse()
-            rsp.installPath = volume_name
-            self._set_capacity_to_response(rsp)
-            return jsonobject.dumps(rsp)
-
-        shell.call('rbd clone %s %s' % (src_path, dst_path))
-
         rsp = AgentResponse()
+
+        rsp = driver.clone_volume(cmd, rsp)
+
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
@@ -748,8 +734,10 @@ class CephAgent(plugin.TaskManager):
 
     @replyerror
     def init(self, req):
+        global driver
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
+        driver = cephprimarystorage.get_driver(cmd)
         o = shell.call('ceph mon_status')
         mon_status = jsonobject.loads(o)
         fsid = mon_status.monmap.fsid_
@@ -788,39 +776,9 @@ class CephAgent(plugin.TaskManager):
     @replyerror
     def create(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-
-        path = self._normalize_install_path(cmd.installPath)
         rsp = CreateEmptyVolumeRsp()
-        array = path.split("/")
-        pool_uuid = array[0]
-        image_uuid = array[1]
 
-        call_string = None
-        if ceph.is_xsky():
-            # do NOT round to MB
-            if RbdDeviceOperator().is_third_party_ceph(cmd):
-                timeout = cmd.tpTimeout
-                created_volume_uuid = RbdDeviceOperator().create_empty_volume(cmd.token,
-                                                pool_uuid, image_uuid, cmd.size, timeout)
-                rsp.installPath = created_volume_uuid
-                rsp.size = cmd.size
-            else:
-                call_string = 'rbd create --size %dB --image-format 2 %s' % (cmd.size, path)
-                rsp.size = cmd.size
-        else:
-            size_M = sizeunit.Byte.toMegaByte(cmd.size) + 1
-            call_string = 'rbd create --size %s --image-format 2 %s' % (size_M, path)
-            rsp.size = cmd.size + sizeunit.MegaByte.toByte(1)
-
-
-        call_string = self._wrap_shareable_cmd(cmd, call_string)
-
-        skip_cmd = ("rbd info %s ||" % path) if cmd.skipIfExisting else ""
-
-        if call_string:
-            shell.call(skip_cmd + call_string)
-        else:
-            shell.call(skip_cmd)
+        rsp = driver.create_volume(cmd, rsp)
 
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
@@ -962,14 +920,7 @@ class CephAgent(plugin.TaskManager):
         if len(o) > 0:
             raise Exception('unable to delete %s; the volume still has snapshots' % cmd.installPath)
 
-        @linux.retry(times=30, sleep_time=5)
-        def do_deletion():
-            if RbdDeviceOperator().is_third_party_ceph(cmd):
-                RbdDeviceOperator().delete_empty_volume(cmd.token, cmd.installPath, cmd.tpTimeout)
-            else:
-                shell.call('rbd rm %s' % path)
-
-        do_deletion()
+        driver.do_deletion(cmd)
 
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
