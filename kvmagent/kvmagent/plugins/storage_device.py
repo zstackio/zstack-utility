@@ -574,7 +574,6 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         # /dev/bus/0 -d megaraid,0 # /dev/bus/0 [megaraid_disk_00], SCSI device
         return int(megaraid_info.split(" ")[0][-1])
             
-
     @kvmagent.replyerror
     @bash.in_bash
     def drive_self_test(self, req):
@@ -645,9 +644,20 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         # 2. get each device info
         rsp = RaidScanRsp()
         r, o, e = bash.bash_roe("smartctl --scan | grep megaraid")
-        if r != 0 or o.strip() == "":
+        if r == 0 and o.strip() != "":
+            rsp.raidPhysicalDriveStructs = self.get_megaraid_devices(o)
             return jsonobject.dumps(rsp)
-        rsp.raidPhysicalDriveStructs = self.get_megaraid_devices(o)
+
+        r, o, e = bash.bash_roe("arcconf list | grep -A 8 'Controller ID' | awk '{print $2}'")
+        if r == 0 and o.strip() != "":
+            rsp.raidPhysicalDriveStructs = self.get_arcconf_device(o)
+            return jsonobject.dumps(rsp)
+
+        r, o, e = bash.bash_roe("sas3ircu list | grep -A 8 'Index' | awk '{print $1}'")
+        if r == 0 and o.strip() != "":
+            rsp.raidPhysicalDriveStructs = self.get_sas_device(o)
+            return jsonobject.dumps(rsp)
+        
         return jsonobject.dumps(rsp)
 
     @bash.in_bash
@@ -931,3 +941,249 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             s.type = "mpath"
         s.storageWwnn = get_storage_wwnn(s.hctl)
         return s
+
+    @bash.in_bash
+    def get_arcconf_device(self, adapter_info):
+        result = []
+        for adapter in adapter_info.splitlines():
+            if adapter.strip() == "":
+                continue
+        
+            adapter = adapter.split(":")[0].strip()
+            if not adapter.isdigit():
+                continue
+        
+            r, serial_numbers = bash.bash_ro("arcconf getconfig %s PD | grep 'Serial number'" % adapter)
+            if r != 0 or serial_numbers.strip() == "":
+                continue
+        
+            r, device_info = bash.bash_ro("arcconf getconfig %s PD" % adapter)
+            if r != 0 or device_info.strip() == "":
+                continue
+        
+            productName, sasAddress = self.get_arcconf_raid_controller_info(adapter)
+            raidLevelMap = self.get_arcconf_raid_level_info(adapter)
+        
+            for line in serial_numbers.splitlines():
+                serial_number = line.split(":")[1].strip()
+                if serial_number == "":
+                    continue
+                d = self.get_arcconf_raid_device_info(serial_number, device_info)
+                if d.wwn is not None and d.deviceModel is not None and d.slotNumber is not None:
+                    d.raidLevel = raidLevelMap.get("%s:%s" % (d.enclosureDeviceId, d.slotNumber))
+                    d.raidControllerNumber = adapter
+                    d.raidControllerProductName = productName
+                    d.raidControllerSasAddreess = sasAddress
+                    result.append(d)
+    
+        return result
+
+    @bash.in_bash
+    def get_arcconf_raid_device_info(self, serial_number, device_info):
+        d = RaidPhysicalDriveStruct()
+    
+        in_correct_pd = False
+        media_type = drive_type = enclosure_device_id = slot_number = drive_state = device_id = device_model = wwn = size = rotation_rate = None
+        for l in device_info.splitlines():
+            if l.strip() == "":
+                continue
+            k = l.split(":")[0].strip().lower()
+            v = ":".join(l.split(":")[1:]).strip()
+            if "device #" in l.lower():
+                device_id = int(l.lower().split("device #")[1].strip())
+                continue
+            elif "state" in k:
+                drive_state = v.split(" ")[0].strip()
+                continue
+            elif "transfer speed" in k:
+                drive_type = v.split(" ")[0].strip()
+            elif "reported location" in k and "Enclosure" in v and "Slot" in v:
+                enclosure_device_id = int(v.split(",")[0].split(" ")[1].strip())
+                slot_number = int(v.split("Slot ")[1].split("(")[0].strip())
+                continue
+            elif "model" == k:
+                device_model = v
+                continue
+            elif "serial number" in k and v.strip() == serial_number:
+                in_correct_pd = True
+                continue
+            elif "world-wide name" in k:
+                wwn = v
+                continue
+            elif "total size" in k:
+                if "mb" in v.lower():
+                    size = int(v.split(" ")[0].strip()) * 1024 * 1024
+                elif "gb" in v.lower():
+                    size = int(v.split(" ")[0].strip()) * 1024 * 1024 * 1024
+                elif "kb" in v.lower():
+                    size = int(v.split(" ")[0].strip()) * 1024
+                elif "byte" in v.lower():
+                    size = int(v.split(" ")[0].strip())
+            elif "ssd" == k:
+                media_type = "SSD" if "yes" in v.lower() else "HDD"
+            elif "rotational speed" in k:
+                rotation_rate = 0 if "solid state device" in v.strip().lower() else int(
+                    v.lower().split(" rpm")[0].strip())
+        
+            if in_correct_pd is True and "last failure reason" in k:
+                d.deviceId = device_id
+                d.driveState = drive_state
+                d.driveType = drive_type
+                d.enclosureDeviceId = enclosure_device_id
+                d.slotNumber = slot_number
+                d.deviceModel = device_model
+                d.wwn = wwn
+                d.size = size
+                d.mediaType = media_type
+                d.rotationRate = rotation_rate
+                d.serialNumber = serial_number
+                return d
+            if in_correct_pd is False:
+                continue
+        return d
+
+    @staticmethod
+    @bash.in_bash
+    def get_arcconf_raid_controller_info(adapter_number):
+        # type: (str) -> (str, str)
+        r, o = bash.bash_ro(
+            "arcconf getconfig %s AD | grep -E 'Controller Model|SAS Address'" % adapter_number)
+        if r != 0:
+            return None, None
+        return o.splitlines()[0].split(":")[1].strip(), o.splitlines()[1].split(":")[1].strip()
+
+    @staticmethod
+    @bash.in_bash
+    def get_arcconf_raid_level_info(adapter_number):
+        r, o = bash.bash_ro(
+            "arcconf getconfig %s LD | grep -E 'RAID level|Slot:[0-9]*'" % adapter_number)
+        if r != 0 or o.strip() == "":
+            return {}
+    
+        result = {}
+        level = None
+        for line in o.splitlines():
+            k = line.split(":")[0].strip().lower()
+            v = ":".join(line.split(":")[1:]).strip()
+            if "raid level" in k:
+                level = "RAID%s" % v.strip()
+            elif "Slot:" in v:
+                enclosure_id = v.split("Enclosure:")[1].split(",")[0].strip()
+                slot_id = v.split("Slot:")[1].split(")")[0].strip()
+                locate = "%s:%s" % (enclosure_id, slot_id)
+                result[locate] = level
+        return result
+
+    @bash.in_bash
+    def get_sas_device(self, adapter_info):
+        result = []
+        for adapter in adapter_info.splitlines():
+            if not adapter.strip().isdigit():
+                continue
+        
+            r, device_info = bash.bash_ro("sas3ircu %s display | grep -A 14 'Device is a Hard disk'" % adapter.strip())
+            if r != 0 or device_info.strip() == "":
+                continue
+        
+            r, disks = bash.bash_ro("lsscsi -g | grep 'disk' | awk '{print $NF}'")
+            if r != 0 or disks.strip() == "":
+                continue
+        
+            productName, sasAddress = self.get_sas_raid_controller_info(adapter.strip())
+            raidLevelMap = self.get_sas_raid_level_info(adapter.strip())
+        
+            for line in disks.splitlines():
+                if line.strip() == "":
+                    continue
+                d = self.get_sas_raid_device_info(line, device_info)
+                if d.wwn is not None and d.deviceModel is not None and d.slotNumber is not None:
+                    d.raidLevel = raidLevelMap.get("%s:%s" % (d.enclosureDeviceId, d.slotNumber))
+                    d.raidControllerNumber = adapter.strip()
+                    d.raidControllerProductName = productName
+                    d.raidControllerSasAddreess = sasAddress
+                    result.append(d)
+    
+        return result
+
+    @bash.in_bash
+    def get_sas_raid_device_info(self, line, device_info):
+        d = RaidPhysicalDriveStruct()
+        r, o = bash.bash_ro("smartctl -i %s" % line.strip())
+        if r != 0 or "Device Model" not in o:
+            logger.warn("can not get device %s info" % line)
+            return d
+    
+        for l in o.splitlines():  # type: str
+            k = l.split(":")[0].lower()
+            v = ":".join(l.split(":")[1:]).strip()
+            if "device model" in k:
+                d.deviceModel = v
+            elif "serial number" in k:
+                d.serialNumber = v
+            elif "lu wwn device id" in k:
+                d.wwn = v.replace(" ", "")
+            elif "user capacity" in k:
+                d.size = int(v.split(" bytes")[0].strip().replace(",", ""))
+            elif "rotation rate" in k:
+                d.rotationRate = 0 if "solid state device" in v.strip().lower() else int(
+                    v.split(" rpm")[0].strip())
+    
+        in_correct_pd = False
+        drive_type = enclosure_device_id = slot_number = drive_state = None
+        for l in device_info.splitlines():
+            k = l.split(":")[0].lower()
+            v = ":".join(l.split(":")[1:]).strip()
+            if "enclosure" in k:
+                enclosure_device_id = int(v)
+                continue
+            elif "slot" in k:
+                slot_number = int(v)
+                continue
+            elif "state" in k:
+                drive_state = v.split(" ")[0].strip()
+                continue
+            elif "serial no" in k and v.lower() == d.serialNumber.lower():
+                in_correct_pd = True
+                continue
+            elif "protocol" in k:
+                drive_type = v.strip()
+        
+            if in_correct_pd is True and "drive type" in k:
+                d.enclosureDeviceId = enclosure_device_id
+                d.slotNumber = slot_number
+                d.driveState = drive_state
+                d.driveType = drive_type
+                d.mediaType = "SSD" if "sata_ssd" in v.strip().lower() else "HDD"
+                return d
+            if in_correct_pd is False:
+                continue
+        return d
+
+    @staticmethod
+    @bash.in_bash
+    def get_sas_raid_controller_info(adapter_number):
+        # type: (str) -> (str, str)
+        r, o = bash.bash_ro(
+            "/opt/MegaRAID/storcli/storcli64 /c%s show | grep -E 'Product Name|SAS Address'" % adapter_number)
+        if r != 0:
+            return None, None
+        return o.splitlines()[0].split("=")[1].strip(), o.splitlines()[1].split("=")[1].strip()
+
+    @staticmethod
+    @bash.in_bash
+    def get_sas_raid_level_info(adapter_number):
+        r, o = bash.bash_ro(
+            "sas3ircu %s display  | grep -E 'RAID level|Enclosure#/Slot#'" % adapter_number)
+        if r != 0 or o.strip() == "":
+            return {}
+    
+        result = {}
+        level = None
+        for line in o.splitlines():
+            k = line.split(":")[0].strip().lower()
+            v = ":".join(line.split(":")[1:]).strip()
+            if "raid level" in k:
+                level = v
+            elif "enclosure#/slot#" in k:
+                result[v] = level
+        return result

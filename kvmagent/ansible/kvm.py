@@ -212,13 +212,13 @@ def install_kvm_pkg():
                       usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
                       net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
                       smartmontools sshpass usbutils vconfig wget audit dnsmasq \
-                      qemu-kvm-ev collectd-virt OVMF edk2-ovmf mcelog MegaCli python-pyudev"
+                      qemu-kvm-ev collectd-virt OVMF edk2-ovmf mcelog MegaCli storcli Arcconf python-pyudev"
 
         x86_64_c76 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                       usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python libvirt-admin lighttpd lsof \
                       net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
                       smartmontools sshpass usbutils vconfig wget audit dnsmasq \
-                      qemu-kvm-ev collectd-virt OVMF edk2-ovmf mcelog MegaCli python-pyudev seabios-bin nping"
+                      qemu-kvm-ev collectd-virt OVMF edk2-ovmf mcelog MegaCli storcli Arcconf python-pyudev seabios-bin nping"
 
         aarch64_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                         usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
@@ -431,12 +431,17 @@ def install_kvm_pkg():
 
 def copy_tools():
     """copy binary tools"""
-    tool_list = ['collectd_exporter', 'node_exporter', 'dnsmasq', 'zwatch-vm-agent', 'pushgateway']
+    tool_list = ['collectd_exporter', 'node_exporter', 'dnsmasq', 'zwatch-vm-agent', 'pushgateway', 'sas3ircu']
     for tool in tool_list:
         arch_lable = '' if host_arch == 'x86_64' else '_' + host_arch
         real_name = tool + arch_lable
         pkg_path = os.path.join(file_root, real_name)
-        pkg_dest_path = "/usr/local/zstack/dnsmasq" if tool == "dnsmasq" else os.path.join(workplace, tool)
+        if tool == "dnsmasq":
+            pkg_dest_path = "/usr/local/zstack/dnsmasq"
+        elif tool == "sas3ircu":
+            pkg_dest_path = "/usr/bin/sas3ircu"
+        else:
+            pkg_dest_path = os.path.join(workplace, tool)
         if os.path.exists(pkg_path):
             copy_to_remote(pkg_path, pkg_dest_path, "mode=755", host_post_info)
 
