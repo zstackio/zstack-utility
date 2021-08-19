@@ -1148,15 +1148,17 @@ class CephAgent(plugin.TaskManager):
         client.connect(hostname, port, None, export_name)
 
         try:
-            bytes_written, io_batch_size = 0, 1024 * 1024
-            leftover, src_size = "", client.get_block_size()
+            bytes_read, bytes_written, io_batch_size = 0, 0, 1024 * 1024
+            leftover, src_size = b'', client.get_block_size()
             with RbdImageWriter(poolname, imagename) as image:
                 if image.size() != src_size:
                     raise Exception('src volume size %d and destination size %d mismatch' % (src_size, image.size()))
 
                 while bytes_written < src_size:
-                    buf = leftover + client.read(io_batch_size)
-                    n = image.write(bytes_written, buf)
+                    buf = leftover + client.read(bytes_read, io_batch_size)
+                    bytes_read += len(buf) - len(leftover)
+
+                    n = image.write(buf, bytes_written)
                     bytes_written += n
                     leftover = buf[n:]
         finally:

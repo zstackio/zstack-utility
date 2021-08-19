@@ -287,7 +287,7 @@ class NBDClient(object):
         while len(got) < length:
             more = self.sock.recv(length - len(got))
             if more == "":
-                raise Exception(length)
+                raise Exception('connection to %s closed, require %d, received %d' % (self._host, length, len(got)))
             got += more
         return got
 
