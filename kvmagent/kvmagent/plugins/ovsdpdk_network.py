@@ -97,7 +97,9 @@ class OvsDpdkNetworkPlugin(kvmagent.KvmAgent):
                 cmd.physicalInterfaceName)
             return jsonobject.dumps(rsp)
 
-        ovsctl.startSwitch(True)
+        # It will take a long time for ovs-vswitchd to restart,
+        # while there has many vDPA configured. never force restart ovs-vswitchd
+        ovsctl.startSwitch()
 
         logger.debug(http.path_msg(OVS_DPDK_NET_CREATE_BRIDGE,
                                    'create bridge:{} success'.format(cmd.bridgeName)))
@@ -175,8 +177,16 @@ class OvsDpdkNetworkPlugin(kvmagent.KvmAgent):
         ovsctl = ovs.OvsCtl(venv)
 
         rsp.vdpaPaths = []
+        vdpaPaths = ovsctl.getVdpaS(cmd.vmUuid, cmd.nics)
+
+        if vdpaPaths is None:
+            rsp.success = False
+            rsp.error = "vDPA resource exhausted."
+            return jsonobject.dumps(rsp)
+
         for nic in cmd.nics:
-            rsp.vdpaPaths.append(ovsctl.getVdpa(cmd.vmUuid, nic))
+            if vdpaPaths.has_key(nic.nicInternalName):
+                rsp.vdpaPaths.append(vdpaPaths[nic.nicInternalName])
 
         return jsonobject.dumps(rsp)
 
