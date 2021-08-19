@@ -717,7 +717,7 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.systemProductName = 'unknown'
         rsp.systemSerialNumber = 'unknown'
         is_dmidecode = shell.run("dmidecode")
-        if str(is_dmidecode) == '0' and kvmagent.os_arch == "x86_64":
+        if str(is_dmidecode) == '0' and kvmagent.host_arch == "x86_64":
             system_product_name = shell.call('dmidecode -s system-product-name').strip()
             baseboard_product_name = shell.call('dmidecode -s baseboard-product-name').strip()
             system_serial_number = shell.call('dmidecode -s system-serial-number').strip()

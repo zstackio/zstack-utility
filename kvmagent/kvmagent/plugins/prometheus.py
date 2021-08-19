@@ -392,7 +392,7 @@ class PrometheusPlugin(kvmagent.KvmAgent):
         @in_bash
         def start_collectd(cmd):
             conf_path = os.path.join(os.path.dirname(cmd.binaryPath), 'collectd.conf')
-            ingore_block_device = "/:sd[c-e]/" if kvmagent.os_arch in ["mips64el", "aarch64"] else "//"
+            ingore_block_device = "/:sd[c-e]/" if kvmagent.host_arch in ["mips64el", "aarch64"] else "//"
 
             conf = '''Interval {{INTERVAL}}
 # version {{VERSION}}
