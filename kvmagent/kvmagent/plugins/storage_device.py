@@ -547,10 +547,45 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
 
-        r, raid_info, e = bash.bash_roe("/opt/MegaRAID/MegaCli/MegaCli64 -LdPdInfo -aALL")
-        if r != 0:
-            raise Exception("can not execute MegaCli: returnCode: %s, stdout: %s, stderr: %s" % (r, raid_info, e))
-        
+        r, o, e = bash.bash_roe("/opt/MegaRAID/MegaCli/MegaCli64 -LdPdInfo -aALL")
+        if r == 0 and "Adapter #" in o:
+            self.mega_raid_locate(cmd, o)
+            return jsonobject.dumps(rsp)
+
+        r, o, e = bash.bash_roe("arcconf list")
+        if r == 0 and "Controller ID" in o:
+            self.arcconf_raid_locate(cmd)
+            return jsonobject.dumps(rsp)
+
+        r, o, e = bash.bash_roe("sas3ircu list")
+        if r == 0 and "Index" in o:
+            self.sas_raid_locate(cmd)
+            return jsonobject.dumps(rsp)
+    
+        raise Exception("Failed to locate device[wwn: %s, enclosureDeviceID: %s, slotNumber: %s]" % (
+            cmd.wwn, cmd.enclosureDeviceID, cmd.slotNumber,))
+
+    @bash.in_bash
+    def sas_raid_locate(self, cmd):
+        command = "on" if cmd.locate is True else "off"
+        bash.bash_errorout("sas3ircu %s locate %s:%s %s" % (
+            cmd.raidControllerNumber, cmd.enclosureDeviceID, cmd.slotNumber, command))
+
+    @bash.in_bash
+    def arcconf_raid_locate(self, cmd):
+        r, o = bash.bash_ro("arcconf getconfig %s PD | grep -B 1 'Enclosure %s, Slot %s' | grep 'Reported Channel'" % (
+            cmd.raidControllerNumber, cmd.enclosureDeviceID, cmd.slotNumber))
+        if r != 0 or o.strip == "":
+            raise Exception("Failed to locate device[wwn: %s, enclosureDeviceID: %s, slotNumber: %s]" % (
+                cmd.wwn, cmd.enclosureDeviceID, cmd.slotNumber,))
+    
+        channel = o.splitlines()[0].split(":")[2].split(",")[0].strip()
+        command = "start" if cmd.locate is True else "stop"
+        bash.bash_errorout("arcconf identify %s device %s %s %s" % (
+            cmd.raidControllerNumber, channel, cmd.deviceNumber, command))
+
+    @bash.in_bash
+    def mega_raid_locate(self, cmd, raid_info):
         bus_number = self.get_bus_number()
         drive = self.get_raid_device_info("/dev/bus/%d -d megaraid,%d" % (bus_number, cmd.deviceNumber), raid_info)
         if drive.wwn != cmd.wwn:
@@ -561,8 +596,8 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         
         # -a specific a adaptor id but not bus number
         # TODO: fix hardcode because mini only have one adaptor
-        bash.bash_errorout("/opt/MegaRAID/MegaCli/MegaCli64 -PdLocate -%s -physdrv[%d:%d] -a0" % (command, cmd.enclosureDeviceID, cmd.slotNumber))
-        return jsonobject.dumps(rsp)
+        bash.bash_errorout("/opt/MegaRAID/MegaCli/MegaCli64 -PdLocate -%s -physdrv[%d:%d] -a0" % (
+            command, cmd.enclosureDeviceID, cmd.slotNumber))
 
     @bash.in_bash
     def get_bus_number(self):
