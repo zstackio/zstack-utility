@@ -2450,27 +2450,6 @@ class Vm(object):
     def _is_ft_vm(self):
         return any(disk.type_ == "quorum" for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'))
 
-    def _replace_vdpa(self, vdpaPaths):
-        srcXml = self.domain.XMLDesc(libvirt.VIR_DOMAIN_XML_MIGRATABLE)
-
-        xmlobj = minidom.parseString(srcXml)
-        ifs = xmlobj.getElementsByTagName('interface')
-
-        for i in ifs:
-            src = i.getElementsByTagName('source')[0]
-            #target = i.getElementsByTagName('target')[0]
-            srcPath = src.getAttribute("path")
-            if srcPath == "":
-                continue
-            for v in vdpaPaths:
-                if srcPath.split('/')[-2] == v.split('/')[-2]:
-                    src.setAttribute("path", v)
-                    #target.setAttribute("dev", v.split('/')[-1])
-                    vdpaPaths.remove(v)
-
-        logger.debug("destXml:{}".format(xmlobj.toxml()))
-
-        return xmlobj.toxml()
 
     def resize_volume(self, volume, size):
         device_id = volume.deviceId
@@ -2701,8 +2680,6 @@ class Vm(object):
             flag |= libvirt.VIR_MIGRATE_PERSIST_DEST
 
         destXml = None
-        if cmd.vdpaPaths != None:
-            destXml = self._replace_vdpa(cmd.vdpaPaths)
 
         stage = get_task_stage(cmd)
         timeout = 1800 if cmd.timeout is None else cmd.timeout
