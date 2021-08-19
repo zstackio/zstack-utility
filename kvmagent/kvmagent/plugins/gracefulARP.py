@@ -129,6 +129,10 @@ class GracefulARP(kvmagent.KvmAgent):
         if not bonds:
             return activeNics
         for b in bonds:
+            # only active backup bond need this feature
+            if host_plugin.HostPlugin.BOND_MODE_ACTIVE_BACKUP not in b.mode:
+                continue
+
             if b.slaves is None:
                 activeNics[b.bondingName] = []
                 continue
@@ -146,6 +150,7 @@ class GracefulARP(kvmagent.KvmAgent):
                     currentActiveNics.append(phyNic.interfaceName)
 
             activeNics[b.bondingName] = currentActiveNics
+
         return activeNics
 
     def monitor_bonding_master_change(self):
