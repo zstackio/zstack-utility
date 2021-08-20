@@ -725,7 +725,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
 
         rsp = InitRsp()
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.path)
-        rsp.localStorageUsedCapacity = linux.get_used_disk_apparent_size(cmd.path, 0, 1)
+        rsp.localStorageUsedCapacity = linux.get_directory_used_physical_size(cmd.path, 0, 1)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
