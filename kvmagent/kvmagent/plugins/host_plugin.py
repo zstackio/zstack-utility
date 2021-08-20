@@ -2019,6 +2019,8 @@ done
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp.totalSize = linux.get_total_disk_size(cmd.dirPath)
         rsp.availableSize = linux.get_free_disk_size(cmd.dirPath)
+        # a task may preoccupy some space by a sparse file and fill this file as the task goes on.
+        # so we must check the apparent size of the cache directory here.
         rsp.dirSize = linux.get_used_disk_apparent_size(cmd.dirPath, 4, 1)
 
         return jsonobject.dumps(rsp)
