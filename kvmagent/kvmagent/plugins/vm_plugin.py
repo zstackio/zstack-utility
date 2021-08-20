@@ -138,8 +138,8 @@ class SshfsRemoteStorage(RemoteStorage):
         self.local_work_dir = self.mount_point
 
     def mount(self):
-        if 0 != linux.sshfs_mount_with_vm_uuid(self.vm_uuid, self.username, self.hostname, self.port,
-                                               self.password, self.dst_dir, self.mount_point, self.bandwidth):
+        if 0 != linux.sshfs_mount_with_vm_xml(get_vm_by_uuid(self.vm_uuid).domain_xmlobject, self.username, self.hostname, self.port,
+                                              self.password, self.dst_dir, self.mount_point, self.bandwidth):
             raise kvmagent.KvmError("failed to prepare backup space for [vm:%s]" % self.vm_uuid)
 
     def umount(self):
