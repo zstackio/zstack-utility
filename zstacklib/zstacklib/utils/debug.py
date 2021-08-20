@@ -18,18 +18,22 @@ from zstacklib.utils import thread
 
 logger = log.get_logger(__name__)
 
+
 def dump(sig, frame):
     message = "Signal received : dump Traceback:\n"
     message += ''.join(traceback.format_stack(frame))
     print message
 
+
 def install_runtime_tracedumper():
     signal.signal(signal.SIGUSR2, dump_debug_info)
+
 
 def dump_stack():
     message = "Stack Traceback:\n"
     message += ''.join(traceback.format_stack())
     return message
+
 
 def dump_debug_info(signum, fram, *argv):
     try:
@@ -37,6 +41,7 @@ def dump_debug_info(signum, fram, *argv):
         thread.ThreadFacade.run_in_thread(dump_objects)
     except Exception as e:
         logger.warn("get error when dump debug info %s" % e.message)
+
 
 def dump_threads():
     logger.debug('dumping threads')
@@ -57,12 +62,14 @@ def dump_threads():
     logger.debug(output)
     return
 
+
 def dump_objects():
     logger.debug('dumping objects')
     stats = sorted(
         typestats().items(), key=operator.itemgetter(1), reverse=True)
     logger.debug(stats)
     return
+
 
 def typestats(objects=None, shortnames=False, filter=None):
     if objects is None:
@@ -82,6 +89,7 @@ def typestats(objects=None, shortnames=False, filter=None):
     finally:
         del objects  # clear cyclic references to frame
 
+
 def _short_typename(obj):
     return _get_obj_type(obj).__name__
 
@@ -94,6 +102,7 @@ def _long_typename(obj):
         return '%s.%s' % (module, name)
     else:
         return name
+
 
 def _get_obj_type(obj):
     objtype = type(obj)
