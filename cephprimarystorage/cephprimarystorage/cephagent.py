@@ -1147,22 +1147,40 @@ class CephAgent(plugin.TaskManager):
         client = nbd_client.NBDClient()
         client.connect(hostname, port, None, export_name)
 
+        def write_full(wr, data, offset, nbytes):
+            n = 0
+            while n < nbytes:
+                n += wr.write(data[n:], offset+n)
+
+        def nbd_copy_to_rbd_image(nbdclient, rbdimage, offset, n, zero_chunk):
+            data  = nbdclient.read(offset, n) # client has 'read all' semantic
+            if data != zero_chunk: write_full(rbdimage, data, offset, n)
+            else: rbdimage.discard(offset, n)
+
         try:
-            bytes_read, bytes_written, io_batch_size = 0, 0, 1024 * 1024
-            leftover, src_size = b'', client.get_block_size()
+            offset, disk_size = 0, client.get_block_size()
+
             with RbdImageWriter(poolname, imagename) as image:
-                if image.size() != src_size:
-                    raise Exception('src volume size %d and destination size %d mismatch' % (src_size, image.size()))
+                if image.size() != disk_size:  # TODO: image.resize()
+                    raise Exception('src volume size %d and destination size %d mismatch' % (disk_size, image.size()))
 
-                while bytes_written < src_size:
-                    buf = leftover + client.read(bytes_read, io_batch_size)
-                    bytes_read += len(buf) - len(leftover)
+                chunk_size = image.stat().get('obj_size')
+                if not chunk_size:
+                    chunk_size = 4194304
 
-                    n = image.write(buf, bytes_written)
-                    bytes_written += n
-                    leftover = buf[n:]
+                zero_chunk = '\x00' * chunk_size
+                remainder_size = disk_size % chunk_size
+
+                while offset + chunk_size <= disk_size:
+                    nbd_copy_to_rbd_image(client, image, offset, chunk_size, zero_chunk)
+                    offset += chunk_size
+
+                if remainder_size > 0:
+                    nbd_copy_to_rbd_image(client, image, offset, remainder_size, '\x00' * remainder_size)
+                    offset += remainder_size
+
         finally:
-            logger.info("bytes written: "+str(bytes_written))
+            logger.info("bytes written: "+str(offset))
 
             try: client.close()
             except: pass
