@@ -130,7 +130,7 @@ class GracefulARP(kvmagent.KvmAgent):
             return activeNics
         for b in bonds:
             # only active backup bond need this feature
-            if host_plugin.HostPlugin.BOND_MODE_ACTIVE_BACKUP not in b.mode:
+            if host_plugin.BOND_MODE_ACTIVE_1 not in b.mode:
                 continue
 
             if b.slaves is None:
