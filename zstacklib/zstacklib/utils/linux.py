@@ -301,6 +301,10 @@ def get_used_disk_apparent_size(dir_path, max_depth = 1, block_size = 1):
     output = shell.call('du --apparent-size --block-size=%s --max-depth=%s %s | tail -1' % (block_size, max_depth, dir_path))
     return long(output.split()[0])
 
+def get_directory_used_physical_size(dir_path, max_depth = 1, block_size = 1):
+    output = shell.call('du --block-size=%s --max-depth=%s %s | tail -1' % (block_size, max_depth, dir_path))
+    return long(output.split()[0])
+
 def get_total_file_size(paths):
     total = 0
     for path in paths:
