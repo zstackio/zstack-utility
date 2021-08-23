@@ -144,9 +144,9 @@ def convert_raid_state_to_int(state):
     :type state: str
     """
     state = state.lower()
-    if state == "optimal":
+    if "optimal" in state:
         return 0
-    elif state == "degraded":
+    elif "degraded" in state or "interim recovery" in state or "ready for recovery" in state or "rebuilding" in state:
         return 5
     else:
         return 100
@@ -158,7 +158,7 @@ def convert_disk_state_to_int(state):
     :type state: str
     """
     state = state.lower()
-    if "online" in state or "jobd" in state:
+    if "online" in state or "jobd" in state or "ready" in state or "optimal" in state:
         return 0
     elif "rebuild" in state:
         return 5
@@ -170,7 +170,93 @@ def convert_disk_state_to_int(state):
         return 100
 
 
-def collect_raid_state():
+def collect_arcconf_raid_state():
+    metrics = {
+        'raid_state': GaugeMetricFamily('raid_state',
+                                        'raid state', None, ['target_id']),
+        'physical_disk_state': GaugeMetricFamily('physical_disk_state',
+                                                 'physical disk state', None,
+                                                 ['slot_number', 'disk_group']),
+    }
+    
+    r, o = bash_ro("arcconf list | grep -A 8 'Controller ID' | awk '{print $2}'")
+    if r != 0 or o.strip() == "":
+        return
+    
+    for line in o.splitlines():
+        if line.strip() == "":
+            continue
+        adapter = line.split(":")[0].strip()
+        if not adapter.isdigit():
+            continue
+        
+        raid_info = bash_o(
+            "arcconf getconfig %s ld | grep -E 'Logical Device number|Status of Logical Device'" % adapter)
+        target_id = "unknown"
+        for info in raid_info.splitlines():
+            if "Logical Device number" in info:
+                target_id = info.strip().split(" ")[-1]
+            else:
+                state = info.strip().split(":")[-1].strip()
+                metrics['raid_state'].add_metric([target_id], convert_raid_state_to_int(state))
+        
+        disk_info = bash_o("arcconf getconfig %s pd | grep -E 'State|Reported Location'" % adapter)
+        state = "unknown"
+        for info in disk_info.splitlines():
+            k = info.split(":")[0].strip().lower()
+            v = ":".join(info.split(":")[1:]).strip()
+            if "state" == k:
+                state = v
+            elif "reported location" in k and "Enclosure" in v and "Slot" in v:
+                enclosure_device_id = v.split(",")[0].split(" ")[1].strip()
+                slot_number = v.split("Slot ")[1].split("(")[0].strip()
+                metrics['physical_disk_state'].add_metric([slot_number, enclosure_device_id], convert_disk_state_to_int(state))
+
+    return metrics.values()
+
+
+def collect_sas_raid_state():
+    metrics = {
+        'raid_state': GaugeMetricFamily('raid_state',
+                                        'raid state', None, ['target_id']),
+        'physical_disk_state': GaugeMetricFamily('physical_disk_state',
+                                                 'physical disk state', None,
+                                                 ['slot_number', 'disk_group']),
+    }
+    
+    r, o = bash_ro("sas3ircu list | grep -A 8 'Index' | awk '{print $1}'")
+    if r != 0 or o.strip() == "":
+        return
+    
+    for line in o.splitlines():
+        if not line.strip().isdigit():
+            continue
+        raid_info = bash_o("sas3ircu %s status | grep -E 'Volume ID|Volume state'" % line.strip())
+        target_id = "unknown"
+        for info in raid_info.splitlines():
+            if "Volume ID" in info:
+                target_id = info.strip().split(":")[-1].strip()
+            else:
+                state = info.strip().split(":")[-1].strip()
+                metrics['raid_state'].add_metric([target_id], convert_raid_state_to_int(state))
+        
+        disk_info = bash_o("sas3ircu %s display | grep -E 'Enclosure #|Slot #|State'" % line.strip())
+        enclosure_device_id = slot_number = "unknown"
+        for info in disk_info.splitlines():
+            k = info.split(":")[0].strip()
+            v = info.split(":")[1].strip()
+            if "Enclosure #" == k:
+                enclosure_device_id = v
+            elif "Slot #" == k:
+                slot_number = v
+            elif "State" == k:
+                state = v.split(" ")[0].strip()
+                metrics['physical_disk_state'].add_metric([slot_number, enclosure_device_id], convert_disk_state_to_int(state))
+
+    return metrics.values()
+
+
+def collect_mega_raid_state():
     metrics = {
         'raid_state': GaugeMetricFamily('raid_state',
                                         'raid state', None, ['target_id']),
@@ -401,7 +487,9 @@ kvmagent.register_prometheus_collector(collect_host_conntrack_statistics)
 
 if misc.isMiniHost() or misc.isHyperConvergedHost():
     kvmagent.register_prometheus_collector(collect_lvm_capacity_statistics)
-    kvmagent.register_prometheus_collector(collect_raid_state)
+    kvmagent.register_prometheus_collector(collect_mega_raid_state)
+    kvmagent.register_prometheus_collector(collect_arcconf_raid_state)
+    kvmagent.register_prometheus_collector(collect_sas_raid_state)
     kvmagent.register_prometheus_collector(collect_equipment_state)
 
 
