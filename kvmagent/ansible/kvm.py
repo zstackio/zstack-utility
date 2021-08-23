@@ -489,6 +489,10 @@ def copy_gpudriver():
     _dst = "/var/lib/zstack/mxgpu_driver.tar.gz"
     copy_to_remote(_src, _dst, None, host_post_info)
 
+def create_virtio_driver_directory():
+    _dst_path = "/var/lib/zstack/virtio-drivers/"
+    run_remote_command("mkdir -p %s" % _dst_path, host_post_info)
+
 @on_debian_based(distro)
 def copy_ovmf_tools():
     _src = "/opt/zstack-dvd/{}/{}/ovmf_tools/".format(host_arch, releasever)
@@ -745,6 +749,7 @@ copy_ovmf_tools()
 copy_lsusb_scripts()
 copy_zs_scripts()
 copy_grubaa64_efi()
+create_virtio_driver_directory()
 set_max_performance()
 do_libvirt_qemu_config()
 do_network_config()

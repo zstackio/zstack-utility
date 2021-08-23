@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="transmission builder" basedir="../">
+    <property name="transmission.ansible.dir" location="${ansible.dir}/transmission/" />
+    <target name="assemble-transmission" if="build_war_flag">
+        <makeDir dir="${transmission.ansible.dir}" />
+
+        <copy todir="${transmission.ansible.dir}">
+            <fileset dir="${transmissionansibleplaybook.source}/ansible">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+    </target>
+</project>

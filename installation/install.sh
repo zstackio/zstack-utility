@@ -2162,6 +2162,21 @@ install_zstack_network()
     systemctl restart zstack-network-agent.service
 } >>$ZSTACK_INSTALL_LOG 2>&1
 
+cp_virtio_drivers(){
+    if [ ! -e $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS/virtio-drivers ]; then
+        mkdir $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS/virtio-drivers
+    fi
+    if [ "$BASEARCH" == 'aarch64' -o "$BASEARCH" == 'mips64el' ]; then
+        return
+    fi
+    if [ -e "/opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/virtio-win_x86.vfd" ]; then
+        /bin/cp /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/virtio-win_x86.vfd $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS/virtio-drivers/
+    fi
+    if [ -e "/opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/virtio-win_amd64.vfd" ]; then
+        /bin/cp /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/virtio-win_amd64.vfd $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS/virtio-drivers/
+    fi
+}
+
 cp_third_party_tools(){
     echo_subtitle "Copy third-party tools to ${PRODUCT_NAME} install path"
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
@@ -2169,6 +2184,7 @@ cp_third_party_tools(){
         /bin/cp -rn /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/tools/* $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS >/dev/null 2>&1
         chown -R zstack.zstack $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS/*
     fi
+    cp_virtio_drivers
     install_zstack_network
     pass
 }
