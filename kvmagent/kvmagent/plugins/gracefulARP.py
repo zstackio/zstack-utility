@@ -30,6 +30,7 @@ class BridgeVmNic():
 class GracefulARP(kvmagent.KvmAgent):
     APPLY_GRACEFUL_ARP_PATH = "/flatnetworkprovider/garp/apply"
     RELEASE_GRACEFUL_ARP_PATH = "/flatnetworkprovider/garp/release"
+    UPDATE_GRACEFUL_ARP_SETTINGS = "/flatnetworkprovider/garp/settings"
     bridge_vmNics = {}
     activeNics = {}
     interval = 5
@@ -43,10 +44,19 @@ class GracefulARP(kvmagent.KvmAgent):
 
         http_server.register_async_uri(self.APPLY_GRACEFUL_ARP_PATH, self.apply_graceful_arp)
         http_server.register_async_uri(self.RELEASE_GRACEFUL_ARP_PATH, self.release_graceful_arp)
+        http_server.register_async_uri(self.UPDATE_GRACEFUL_ARP_SETTINGS, self.update_graceful_arp_settings)
         thread.timer(self.interval, self.monitor_bonding_master_change).start()
 
     def stop(self):
         pass
+
+    @kvmagent.replyerror
+    def update_graceful_arp_settings(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        if self.interval != cmd.interval:
+            self.interval = cmd.interval
+        logger.debug("graceful arp settings :interval change to %s", jsonobject.dumps(self.interval))
+        return jsonobject.dumps(AgentRsp())
 
     @kvmagent.replyerror
     def apply_graceful_arp(self, req):
