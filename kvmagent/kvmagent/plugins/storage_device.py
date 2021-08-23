@@ -997,8 +997,8 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 continue
         
             productName, sasAddress = self.get_arcconf_raid_controller_info(adapter)
-            raidLevelMap = self.get_arcconf_raid_level_info(adapter)
-        
+            raidLevelMap, diskGroupMap = self.get_arcconf_raid_level_info(adapter)
+
             for line in serial_numbers.splitlines():
                 serial_number = line.split(":")[1].strip()
                 if serial_number == "":
@@ -1006,6 +1006,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 d = self.get_arcconf_raid_device_info(serial_number, device_info)
                 if d.wwn is not None and d.deviceModel is not None and d.slotNumber is not None:
                     d.raidLevel = raidLevelMap.get("%s:%s" % (d.enclosureDeviceId, d.slotNumber))
+                    d.diskGroup = diskGroupMap.get("%s:%s" % (d.enclosureDeviceId, d.slotNumber))
                     d.raidControllerNumber = adapter
                     d.raidControllerProductName = productName
                     d.raidControllerSasAddreess = sasAddress
@@ -1091,23 +1092,27 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     @bash.in_bash
     def get_arcconf_raid_level_info(adapter_number):
         r, o = bash.bash_ro(
-            "arcconf getconfig %s LD | grep -E 'RAID level|Slot:[0-9]*'" % adapter_number)
+            "arcconf getconfig %s ld | grep -E 'Logical Device number|RAID level|Slot:[0-9]*'" % adapter_number)
         if r != 0 or o.strip() == "":
             return {}
     
-        result = {}
-        level = None
+        raid_levels = {}
+        disk_groups = {}
         for line in o.splitlines():
             k = line.split(":")[0].strip().lower()
             v = ":".join(line.split(":")[1:]).strip()
-            if "raid level" in k:
+            if "Logical Device number" in line:
+                group = line.strip().split(" ")[-1]
+            elif "raid level" in k:
                 level = "RAID%s" % v.strip()
             elif "Slot:" in v:
                 enclosure_id = v.split("Enclosure:")[1].split(",")[0].strip()
                 slot_id = v.split("Slot:")[1].split(")")[0].strip()
                 locate = "%s:%s" % (enclosure_id, slot_id)
-                result[locate] = level
-        return result
+                raid_levels[locate] = level
+                disk_groups[locate] = group
+        
+        return raid_levels, disk_groups
 
     @bash.in_bash
     def get_sas_device(self, adapter_info):
@@ -1125,7 +1130,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 continue
         
             productName, sasAddress = self.get_sas_raid_controller_info(adapter.strip())
-            raidLevelMap = self.get_sas_raid_level_info(adapter.strip())
+            raidLevelMap, diskGroupMap = self.get_sas_raid_level_info(adapter.strip())
         
             for line in disks.splitlines():
                 if line.strip() == "":
@@ -1133,6 +1138,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 d = self.get_sas_raid_device_info(line, device_info)
                 if d.wwn is not None and d.deviceModel is not None and d.slotNumber is not None:
                     d.raidLevel = raidLevelMap.get("%s:%s" % (d.enclosureDeviceId, d.slotNumber))
+                    d.diskGroup = diskGroupMap.get("%s:%s" % (d.enclosureDeviceId, d.slotNumber))
                     d.raidControllerNumber = adapter.strip()
                     d.raidControllerProductName = productName
                     d.raidControllerSasAddreess = sasAddress
@@ -1208,17 +1214,21 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     @bash.in_bash
     def get_sas_raid_level_info(adapter_number):
         r, o = bash.bash_ro(
-            "sas3ircu %s display  | grep -E 'RAID level|Enclosure#/Slot#'" % adapter_number)
+            "sas3ircu %s display  | grep -E 'Volume ID|RAID level|Enclosure#/Slot#'" % adapter_number)
         if r != 0 or o.strip() == "":
-            return {}
+            return {}, {}
     
-        result = {}
-        level = None
+        raid_levels = {}
+        disk_groups = {}
         for line in o.splitlines():
             k = line.split(":")[0].strip().lower()
             v = ":".join(line.split(":")[1:]).strip()
-            if "raid level" in k:
+            if "volume id" in k:
+                group = v
+            elif "raid level" in k:
                 level = v
             elif "enclosure#/slot#" in k:
-                result[v] = level
-        return result
+                disk_groups[v] = group
+                raid_levels[v] = level
+                
+        return raid_levels, disk_groups
