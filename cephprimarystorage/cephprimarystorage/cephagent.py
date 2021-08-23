@@ -7,6 +7,7 @@ import traceback
 import urlparse
 import rados
 import rbd
+import Queue
 
 import zstacklib.utils.daemon as daemon
 import zstacklib.utils.jsonobject as jsonobject
@@ -1142,20 +1143,42 @@ class CephAgent(plugin.TaskManager):
         return jsonobject.dumps(rsp)
 
 
-    def _nbd2rbd(self, hostname, port, export_name, rbdtarget, bandwidth):
+    def _nbd2rbd(self, hostname, port, export_name, rbdtarget, bandwidth, rsp):
+
+        def consume_completion(cq, disk_size, rsp):
+            logger.info("xxx: consumer starts with disk size = %d" % disk_size)
+            while not rsp.error:
+                try:
+                    comp, offset = cq.get(True, 0.1)
+
+                    if comp.is_complete():
+                        if comp.get_return_value() == 0:
+                            if offset != disk_size:
+                                continue
+                        else:
+                            rsp.error = 'rbd::aio_write() failed at offset: '+str(offset)
+                        break
+
+                    for i in range(20):
+                        time.sleep(0.05)
+                        if comp.is_complete():
+                            break
+
+                    if not comp.is_complete():  # 1 MB/s is rather slow ...
+                        rsp.error = 'rbd::aio_write() write timed out at offset: '+str(offset)
+                        break
+
+                    if comp.get_return_value() != 0:
+                        rsp.error = 'rbd::aio_write() slow I/O failed at offset: '+str(offset)
+                        break
+
+                except Queue.Empty:
+                    continue
+
+
         poolname, imagename = rbdtarget.split('/')
         client = nbd_client.NBDClient()
         client.connect(hostname, port, None, export_name)
-
-        def write_full(wr, data, offset, nbytes):
-            n = 0
-            while n < nbytes:
-                n += wr.write(data[n:], offset+n)
-
-        def nbd_copy_to_rbd_image(nbdclient, rbdimage, offset, n, zero_chunk):
-            data  = nbdclient.read(offset, n) # client has 'read all' semantic
-            if data != zero_chunk: write_full(rbdimage, data, offset, n)
-            else: rbdimage.discard(offset, n)
 
         try:
             offset, disk_size = 0, client.get_block_size()
@@ -1164,21 +1187,29 @@ class CephAgent(plugin.TaskManager):
                 if image.size() != disk_size:  # TODO: image.resize()
                     raise Exception('src volume size %d and destination size %d mismatch' % (disk_size, image.size()))
 
-                chunk_size = image.stat().get('obj_size')
-                if not chunk_size:
-                    chunk_size = 4194304
-
+                chunk_size = 1048576
                 zero_chunk = '\x00' * chunk_size
                 remainder_size = disk_size % chunk_size
 
-                while offset + chunk_size <= disk_size:
-                    nbd_copy_to_rbd_image(client, image, offset, chunk_size, zero_chunk)
+                cqueue = Queue.Queue(100)
+                thread.ThreadFacade.run_in_thread(consume_completion, [cqueue, disk_size, rsp])
+
+                while offset < disk_size:
+                    if offset + chunk_size > disk_size:
+                        chunk_size, zero_chunk = remainder_size, '\x00' * remainder_size
+
+                    data  = client.read(offset, chunk_size) # client has 'read all' semantic
+                    if data != zero_chunk:
+                        comp = image.aio_write(data, offset, None)
+                    else:
+                        comp = image.aio_discard(offset, chunk_size, None)
+
                     offset += chunk_size
+                    cqueue.put((comp, offset))
 
-                if remainder_size > 0:
-                    nbd_copy_to_rbd_image(client, image, offset, remainder_size, '\x00' * remainder_size)
-                    offset += remainder_size
-
+                logger.info("xxx: all aio requests submitted, size = %d" % offset)
+                while not rsp.error and not cqueue.empty():
+                    time.sleep(0.1)
         finally:
             logger.info("bytes written: "+str(offset))
 
@@ -1198,7 +1229,7 @@ class CephAgent(plugin.TaskManager):
             rsp.error = 'unexpected protocol: %s' % nbdexpurl
             return jsonobject.dumps(rsp)
 
-        self._nbd2rbd(u.hostname, u.port, os.path.basename(u.path), self._normalize_install_path(rbdtarget), bandwidth)
+        self._nbd2rbd(u.hostname, u.port, os.path.basename(u.path), self._normalize_install_path(rbdtarget), bandwidth, rsp)
 
         return jsonobject.dumps(rsp)
 
