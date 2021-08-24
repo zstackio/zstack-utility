@@ -4898,8 +4898,6 @@ class MysqlRestrictConnection(Command):
         root_password_ = ''.join(map(check_special_root, args.root_password))
         self.check_root_password(root_password_)
 
-        mn_ip = self.get_mn_ip()
-
         db_host, db_port, db_user, db_password = self.get_db_portal()
         ui_db_host, ui_db_port, ui_db_user, ui_db_password = self.get_ui_db_portal()
 
@@ -4913,10 +4911,8 @@ class MysqlRestrictConnection(Command):
             restrict_ips.append(zsha2_utils.config['nodeip'])
             restrict_ips.append(zsha2_utils.config['peerip'])
         else:
-            restrict_ips.append(mn_ip)
-            if db_host != mn_ip:
-                restrict_ips.append(db_host)
-            if ui_db_host != mn_ip and ui_db_host != db_host:
+            restrict_ips.append(db_host)
+            if ui_db_host != db_host:
                 restrict_ips.append(ui_db_host)
 
         if args.restrict:
