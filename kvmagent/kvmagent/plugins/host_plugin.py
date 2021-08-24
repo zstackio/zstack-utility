@@ -162,6 +162,7 @@ class HostPhysicalMemoryStruct(object):
         self.size = ""
         self.locator = ""
         self.speed = ""
+        self.clockSpeed = ""
         self.manufacturer = ""
         self.serialNumber = ""
         self.rank = ""
@@ -1380,7 +1381,10 @@ done
             k = line.split(":")[0].lower().strip()
             v = ":".join(line.split(":")[1:]).strip()
             if "size" == k:
-                size = v
+                if "mb" in v.lower():
+                    size = str(int(v.split(" ")[0])/1024) + " GB"
+                else:
+                    size = v
             elif "locator" == k:
                 locator = v
             elif "speed" == k:
@@ -1391,12 +1395,15 @@ done
                 serialnumber = v
             elif "rank" == k:
                 rank = v
+            elif "configured clock speed" == k:
+                clockSpeed =  v
             elif "configured voltage" == k:
                 voltage = v
                 if serialnumber.lower() != "no dimm" and serialnumber != "":
                     m = HostPhysicalMemoryStruct()
                     m.size = size
                     m.speed = speed
+                    m.clockSpeed = clockSpeed
                     m.locator = locator
                     m.manufacturer = manufacturer
                     m.serialNumber = serialnumber
