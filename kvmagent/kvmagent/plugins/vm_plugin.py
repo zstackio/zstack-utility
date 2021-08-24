@@ -3198,7 +3198,7 @@ class Vm(object):
         class MergeSnapshotDaemon(plugin.TaskDaemon):
             def __init__(self, domain, disk_name):
                 # use 21600 * 3 to match do_pull max retry time
-                super(MergeSnapshotDaemon, self).__init__(cmd, 'mergeSnapshot', 21600 * 3 + 10)
+                super(MergeSnapshotDaemon, self).__init__(cmd, 'mergeSnapshot', 21600 * 3 + 10, report_progress=False)
                 self.domain = domain
                 self.disk_name = disk_name
 
@@ -3206,6 +3206,10 @@ class Vm(object):
                 logger.debug('cancelling vm[uuid:%s] merge snapshost' % cmd.vmUuid)
                 # cancel block job async
                 self.domain.blockJobAbort(self.disk_name, 0)
+
+            def _get_percent(self):
+                # type: () -> int
+                pass
 
         with MergeSnapshotDaemon(self.domain, disk_name):
             if cmd.fullRebase:
