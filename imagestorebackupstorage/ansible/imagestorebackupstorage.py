@@ -1,10 +1,8 @@
 #!/usr/bin/env python
 # encoding: utf-8
-import re
 import argparse
-import os.path
+import re
 from zstacklib import *
-from datetime import datetime
 
 # create log
 logger_dir = "/var/log/zstack/"
@@ -15,6 +13,7 @@ start_time = datetime.now()
 file_root = "files/imagestorebackupstorage"
 kvm_file_root = "files/kvm"
 pip_url = "https=//pypi.python.org/simple/"
+tools_root = "~zstack/apache-tomcat/webapps/zstack/WEB-INF/classes/tools"
 proxy = ""
 sproxy = ""
 chroot_env = 'false'
@@ -31,6 +30,7 @@ remote_port = None
 host_uuid = None
 require_python_env = "false"
 skip_packages = ""
+dust_tool = "dust"
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy image backupstorage to host')
@@ -153,6 +153,11 @@ copy_arg = CopyArg()
 dest_pkg = "%s/%s" % (imagestore_root, dst_pkg_imagestorebackupstorage)
 copy_arg.src = "%s/%s" % (file_root, src_pkg_imagestorebackupstorage)
 copy_arg.dest = dest_pkg
+copy(copy_arg, host_post_info)
+
+# name: copy dust tool
+copy_arg.dest = "/usr/bin/"
+copy_arg.src = "%s/%s" % (tools_root, dust_tool)
 copy(copy_arg, host_post_info)
 
 # name: copy exporter binary
