@@ -4914,9 +4914,10 @@ class MysqlRestrictConnection(Command):
             restrict_ips.append(zsha2_utils.config['peerip'])
         else:
             restrict_ips.append(mn_ip)
-
-        if db_host not in restrict_ips or ui_db_host not in restrict_ips:
-            error("mysql is not deployed under the management node")
+            if db_host != mn_ip:
+                restrict_ips.append(db_host)
+            if ui_db_host != mn_ip and ui_db_host != db_host:
+                restrict_ips.append(ui_db_host)
 
         if args.restrict:
             grant_access_cmd = "USE mysql;" + self.delete_privilege("%", args.include_root)
