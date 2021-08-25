@@ -183,7 +183,7 @@ class NbdDeviceOperator(object):
             if src_type == 'qemu':
                 # Log the lsof output, to record which process is using the blk.
                 logger.info(shell.call('lsof %s' % self.volume.nbd_backend, exception=False))
-                cmd = ('qemu-nbd --format {format} --connect /dev/nbd{nbd_id} '
+                cmd = ('qemu-nbd --format {format} --fork --connect /dev/nbd{nbd_id} '
                        '--socket {socket_path} {nbd_backend}').format(
                             format=self.volume.volume_format,
                             nbd_id=self.volume.nbd_id,
@@ -195,7 +195,7 @@ class NbdDeviceOperator(object):
                        '{nbd_backend}').format(
                             nbd_id=self.volume.nbd_id,
                             nbd_backend=self.volume.nbd_backend)
-            shell.call(cmd)
+            shell.check_run(cmd)
 
         def _check_connected():
             if self._check_nbd_dev_empty(self.volume.nbd_id):
