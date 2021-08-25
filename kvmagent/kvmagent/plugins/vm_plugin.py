@@ -2,6 +2,7 @@
 @author: Frank
 '''
 import contextlib
+import difflib
 import os.path
 import tempfile
 import time
@@ -3171,7 +3172,7 @@ class Vm(object):
         class MergeSnapshotDaemon(plugin.TaskDaemon):
             def __init__(self, domain, disk_name):
                 # use 21600 * 3 to match do_pull max retry time
-                super(MergeSnapshotDaemon, self).__init__(cmd, 'mergeSnapshot', 21600 * 3 + 10)
+                super(MergeSnapshotDaemon, self).__init__(cmd, 'mergeSnapshot', 21600 * 3 + 10, report_progress=False)
                 self.domain = domain
                 self.disk_name = disk_name
 
@@ -3179,6 +3180,10 @@ class Vm(object):
                 logger.debug('cancelling vm[uuid:%s] merge snapshost' % cmd.vmUuid)
                 # cancel block job async
                 self.domain.blockJobAbort(self.disk_name, 0)
+
+            def _get_percent(self):
+                # type: () -> int
+                pass
 
         with MergeSnapshotDaemon(self.domain, disk_name):
             if cmd.fullRebase:
@@ -4477,6 +4482,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_MIGRATE_VM_PATH = "/vm/migrate"
     KVM_BLOCK_LIVE_MIGRATION_PATH = "/vm/blklivemigration"
     KVM_TAKE_VOLUME_SNAPSHOT_PATH = "/vm/volume/takesnapshot"
+    KVM_CHECK_VOLUME_SNAPSHOT_PATH = "/vm/volume/checksnapshot"
     KVM_TAKE_VOLUME_BACKUP_PATH = "/vm/volume/takebackup"
     KVM_BLOCK_STREAM_VOLUME_PATH = "/vm/volume/blockstream"
     KVM_TAKE_VOLUMES_SNAPSHOT_PATH = "/vm/volumes/takesnapshot"
@@ -5442,6 +5448,65 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.success = False
 
         touchQmpSocketWhenExists(cmd.snapshotJobs[0].vmInstanceUuid)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def check_volume_snapshot(self, req):
+        """ Take snapshot for a volume
+
+        :param req: The request obj, exmaple of req.body::
+            {
+                'vmUuid': '0dc62031678d404095e464fb217a2669',
+                'volumeUuid': '2e9fd964ba334214aaadc6e16b9ae72b',
+                'volumeChainToCheck': {"path1":1, "path2":0, "path3":2}
+            }
+        """
+        rsp = kvmagent.AgentResponse()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
+        if vm and vm.state != vm.VM_STATE_RUNNING and vm.state != vm.VM_STATE_SHUTDOWN and vm.state != vm.VM_STATE_PAUSED:
+            raise kvmagent.KvmError(
+                'unable to take snapshot on vm[uuid:{0}] volume[id:{1}], because vm is not Running, Stopped or Paused, current state is {2}'.format(
+                vm.uuid, cmd.volume.deviceId, vm.state))
+
+        sorted_volume_chain = map(lambda x: x[0], sorted(cmd.volumeChainToCheck.items(), key=lambda item: item[1], reverse=True))
+
+        # check if any inconsistent issue happened on top layer
+        disk, disk_name = vm._get_target_disk_by_path(sorted_volume_chain[0], is_exception=False)
+        if disk_name is None and disk is None:
+            rsp.success = False
+            rsp.error = "cannot found volume[uuid:%s] with install path %s. Please check volume's top layer" % (
+                cmd.volumeUuid, sorted_volume_chain[0])
+            return jsonobject.dumps(rsp)
+
+        back_file_chain = vm._get_backfile_chain(cmd.currentInstallPath)
+        # get backing files and insert currentInstallPath at first for compare
+        back_file_chain.insert(0, cmd.currentInstallPath)
+
+        # image cache should be excluded from host side
+        if cmd.excludeInstallPaths and len(cmd.excludeInstallPaths) > 0:
+            logger.debug("those paths %s should be exlcuded in back_file_chain" % cmd.excludeInstallPaths)
+            back_file_chain = filter(lambda a: a not in cmd.excludeInstallPaths, back_file_chain)
+
+        if back_file_chain == sorted_volume_chain:
+            logger.debug('volume[uuid:%s] chain matched, return success' % cmd.volumeUuid)
+            return jsonobject.dumps(rsp)
+
+        logger.debug("""
+CHECK VOLUME SNAPSHOT CHAIN
+vm instance uuid: {0}
+volume uuid: {1}
+management node side snapshot files chain:
+{2}
+host side snapshot files chian:
+{3}""".format(cmd.vmUuid, cmd.volumeUuid, '\n'.join(sorted_volume_chain), '\n'.join(back_file_chain)))
+
+        result = list(difflib.context_diff(sorted_volume_chain, back_file_chain, 'Management Node Side', 'HostSide', lineterm=''))
+        if len(result) > 0:
+            rsp.success = False
+            rsp.error = "%s%s%s" % ('\n', '\n'.join(result), '\n')
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -6889,6 +6954,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_MIGRATE_VM_PATH, self.migrate_vm)
         http_server.register_async_uri(self.KVM_BLOCK_LIVE_MIGRATION_PATH, self.block_migrate_vm)
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_SNAPSHOT_PATH, self.take_volume_snapshot)
+        http_server.register_async_uri(self.KVM_CHECK_VOLUME_SNAPSHOT_PATH, self.check_volume_snapshot)
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_BACKUP_PATH, self.take_volume_backup, cmd=TakeVolumeBackupCommand())
         http_server.register_async_uri(self.KVM_TAKE_VOLUMES_SNAPSHOT_PATH, self.take_volumes_snapshots)
         http_server.register_async_uri(self.KVM_TAKE_VOLUMES_BACKUP_PATH, self.take_volumes_backups, cmd=TakeVolumesBackupsCommand())
