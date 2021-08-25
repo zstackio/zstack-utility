@@ -181,7 +181,7 @@ def collect_arcconf_raid_state():
     
     r, o = bash_ro("arcconf list | grep -A 8 'Controller ID' | awk '{print $2}'")
     if r != 0 or o.strip() == "":
-        return
+        return metrics.values()
     
     for line in o.splitlines():
         if line.strip() == "":
@@ -226,7 +226,7 @@ def collect_sas_raid_state():
     
     r, o = bash_ro("sas3ircu list | grep -A 8 'Index' | awk '{print $1}'")
     if r != 0 or o.strip() == "":
-        return
+        return metrics.values()
     
     for line in o.splitlines():
         if not line.strip().isdigit():
@@ -301,6 +301,27 @@ def collect_mega_raid_state():
 
     return metrics.values()
 
+
+def collect_ssd_lift_state():
+    metrics = {
+        'ssd_life_left': GaugeMetricFamily('ssd_life_left', 'ssd life left', None, ['disk', 'serial_number']),
+    }
+    
+    r, o = bash_ro("lsblk -d -o name,serial,type,rota | grep -w disk | awk '$4 == 0 {print $1,$2}'")  # type: (int, str)
+    if r != 0 or o.strip() == "":
+        return metrics.values()
+    
+    for line in o.splitlines():
+        disk_name = line.split(" ")[0].strip()
+        serial_number = " ".join(line.split(" ")[1:]).strip()
+        
+        r, o = bash_ro("smartctl -A /dev/%s | grep 'Media_Wearout_Indicator' | awk '{print $4}'" % disk_name)
+        if r != 0 or o.strip() == "":
+            continue
+        if o.strip().isdigit():
+            metrics['ssd_life_left'].add_metric([disk_name, serial_number], float(o.strip()))
+    
+    return metrics.values()
 
 def collect_equipment_state():
     metrics = {
@@ -491,6 +512,7 @@ if misc.isMiniHost() or misc.isHyperConvergedHost():
     kvmagent.register_prometheus_collector(collect_arcconf_raid_state)
     kvmagent.register_prometheus_collector(collect_sas_raid_state)
     kvmagent.register_prometheus_collector(collect_equipment_state)
+    kvmagent.register_prometheus_collector(collect_ssd_lift_state)
 
 
 class PrometheusPlugin(kvmagent.KvmAgent):
