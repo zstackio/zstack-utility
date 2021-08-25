@@ -59,7 +59,7 @@ def register_prometheus_collector(collector):
 
 _rest_service = None
 _qemu_path = None
-os_arch = linux.HOST_ARCH
+host_arch = linux.HOST_ARCH
 
 def new_rest_service(config={}):
     global _rest_service
@@ -84,16 +84,16 @@ def get_colo_qemu_path():
     return '/var/lib/zstack/colo/qemu-system-x86_64'
 
 def get_qemu_path():
-    global _qemu_path, os_arch
+    global _qemu_path, host_arch
     if not _qemu_path:
         if os.path.exists('/usr/libexec/qemu-kvm'):
             _qemu_path = '/usr/libexec/qemu-kvm'
         elif os.path.exists('/bin/qemu-kvm'):
             _qemu_path = '/bin/qemu-kvm'
-        elif os.path.exists('/usr/bin/qemu-system-{}'.format(os_arch)):
-            _qemu_path = '/usr/bin/qemu-system-{}'.format(os_arch)
+        elif os.path.exists('/usr/bin/qemu-system-{}'.format(host_arch)):
+            _qemu_path = '/usr/bin/qemu-system-{}'.format(host_arch)
         else:
-            raise KvmError('Could not find qemu-kvm in /bin/qemu-kvm or /usr/libexec/qemu-kvm or /usr/bin/qemu-system-{}'.format(os_arch))
+            raise KvmError('Could not find qemu-kvm in /bin/qemu-kvm or /usr/libexec/qemu-kvm or /usr/bin/qemu-system-{}'.format(host_arch))
 
     return _qemu_path
         
