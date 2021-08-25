@@ -309,10 +309,10 @@ class CephAgent(plugin.TaskManager):
 
     @in_bash
     def _get_file_actual_size(self, path):
-        ret = bash.bash_r("rbd info %s | grep -q fast-diff" % path)
+        fast_diff_enabled = shell.run("rbd --format json info %s | grep fast-diff | grep -qv 'fast diff invalid'" % path) == 0
 
         # if no fast-diff supported and not xsky ceph skip actual size check
-        if ret != 0 and not ceph.is_xsky():
+        if not fast_diff_enabled and not ceph.is_xsky():
             return None
 
         # use json format result first
