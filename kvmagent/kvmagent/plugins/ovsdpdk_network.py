@@ -59,10 +59,24 @@ class DeleteBridgeResponse(kvmagent.AgentResponse):
         super(DeleteBridgeResponse, self).__init__()
 
 
+class GenerateVdpaCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(GenerateVdpaCmd, self).__init__()
+        self.vmUuid = None
+        self.nics = None
+
+
 class GenerateVdpaResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(GenerateVdpaResponse, self).__init__()
         self.vdpaPaths = None
+
+
+class DeleteVdpaCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(DeleteVdpaCmd, self).__init__()
+        self.vmUuid = None
+        self.nicInternalName = None
 
 
 class OvsDpdkNetworkPlugin(kvmagent.KvmAgent):
@@ -204,7 +218,10 @@ class OvsDpdkNetworkPlugin(kvmagent.KvmAgent):
             return jsonobject.dumps(rsp)
 
         ovsctl = ovs.OvsCtl(venv)
-        ovsctl.freeVdpa(cmd.vmUuid)
+        if hasattr(cmd, "nicInternalName"):
+            ovsctl.freeVdpa(cmd.vmUuid, cmd.nicInternalName)
+        else:
+            ovsctl.freeVdpa(cmd.vmUuid)
 
         return jsonobject.dumps(rsp)
 
