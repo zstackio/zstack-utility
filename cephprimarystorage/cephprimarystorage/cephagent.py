@@ -170,7 +170,6 @@ class DownloadBitsFromKvmHostRsp(AgentResponse):
         super(DownloadBitsFromKvmHostRsp, self).__init__()
         self.format = None
 
-
 def replyerror(func):
     @functools.wraps(func)
     def wrap(*args, **kwargs):
@@ -210,6 +209,7 @@ class CephAgent(plugin.TaskManager):
     GET_VOLUME_SIZE_PATH = "/ceph/primarystorage/getvolumesize"
     GET_VOLUME_WATCHES_PATH = "/ceph/primarystorage/getvolumewatchers"
     GET_VOLUME_SNAPSHOT_SIZE_PATH = "/ceph/primarystorage/getvolumesnapshotsize"
+
     PING_PATH = "/ceph/primarystorage/ping"
     GET_FACTS = "/ceph/primarystorage/facts"
     DELETE_IMAGE_CACHE = "/ceph/primarystorage/deleteimagecache"
@@ -267,7 +267,6 @@ class CephAgent(plugin.TaskManager):
         self.http_server.register_async_uri(self.GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH, self.get_download_bits_from_kvmhost_progress)
 
         self.imagestore_client = ImageStoreClient()
-        self.driver = None
 
     def _set_capacity_to_response(self, rsp):
         o = shell.call('ceph df -f json')
@@ -608,7 +607,8 @@ class CephAgent(plugin.TaskManager):
                     do_create = False
 
         if do_create:
-            rsp = self.driver.create_snapshot(cmd, rsp)
+            driver = cephprimarystorage.get_driver(cmd)
+            rsp = driver.create_snapshot(cmd, rsp)
 
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
@@ -616,7 +616,8 @@ class CephAgent(plugin.TaskManager):
     @replyerror
     def delete_snapshot(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        self.driver.delete_snapshot(cmd)
+        driver = cephprimarystorage.get_driver(cmd)
+        driver.delete_snapshot(cmd)
 
         rsp = AgentResponse()
         self._set_capacity_to_response(rsp)
@@ -672,7 +673,8 @@ class CephAgent(plugin.TaskManager):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentResponse()
 
-        rsp = self.driver.clone_volume(cmd, rsp)
+        driver = cephprimarystorage.get_driver(cmd)
+        rsp = driver.clone_volume(cmd, rsp)
 
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
@@ -734,8 +736,8 @@ class CephAgent(plugin.TaskManager):
     def init(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
-        self.driver = cephprimarystorage.get_driver(cmd)
-        self.driver.validate_token(cmd)
+        driver = cephprimarystorage.get_driver(cmd)
+        driver.validate_token(cmd)
         o = shell.call('ceph mon_status')
         mon_status = jsonobject.loads(o)
         fsid = mon_status.monmap.fsid_
@@ -775,7 +777,8 @@ class CephAgent(plugin.TaskManager):
     def create(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CreateEmptyVolumeRsp()
-        rsp = self.driver.create_volume(cmd, rsp)
+        driver = cephprimarystorage.get_driver(cmd)
+        rsp = driver.create_volume(cmd, rsp)
 
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
@@ -917,7 +920,8 @@ class CephAgent(plugin.TaskManager):
         if len(o) > 0:
             raise Exception('unable to delete %s; the volume still has snapshots' % cmd.installPath)
 
-        self.driver.do_deletion(cmd)
+        driver = cephprimarystorage.get_driver(cmd)
+        driver.do_deletion(cmd)
 
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)

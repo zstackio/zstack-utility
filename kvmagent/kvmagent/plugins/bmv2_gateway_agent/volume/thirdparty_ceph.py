@@ -44,6 +44,10 @@ class ThirdPartyCephVolume(base.BaseVolume):
         RbdDeviceOperator(self.volume_obj.monIp, self.volume_obj.token, self.volume_obj.tpTimeout).disconnect(
             self.instance_obj, self.volume_obj)
 
+    def detach_volume(self):
+        RbdDeviceOperator(self.volume_obj.monIp, self.volume_obj.token, self.volume_obj.tpTimeout).detach_volume(
+            self.instance_obj, self.volume_obj)
+
     def prepare_instance_resource(self):
         instance_gateway_ip = self.instance_obj.gateway_ip
         mon_ip = self.volume_obj.monIp
@@ -84,3 +88,7 @@ class ThirdPartyCephVolume(base.BaseVolume):
 
     def rollback_volume_snapshot(self, src_vol):
         pass
+
+    def get_lun_id(self):
+        lun_id = RbdDeviceOperator(self.volume_obj.monIp, self.volume_obj.token, self.volume_obj.tpTimeout).get_lun_id(self.volume_obj)
+        return lun_id

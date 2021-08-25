@@ -41,6 +41,9 @@ class CephVolume(base.BaseVolume):
         helper.IscsiOperator(self).revoke()
         helper.RbdImageOperator(self).disconnect()
 
+    def detach_volume(self):
+        self.detach()
+
     def prepare_instance_resource(self):
         pass
 
@@ -57,4 +60,7 @@ class CephVolume(base.BaseVolume):
         pass
 
     def rollback_volume_snapshot(self, src_vol):
+        pass
+
+    def get_lun_id(self):
         pass

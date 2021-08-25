@@ -46,6 +46,8 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         '/baremetal_gateway_agent/v2/instance/volume/destroy'
     BM_CONSOLE_PATH = \
         '/baremetal_gateway_agent/v2/instance/console'
+    BM_GET_VOLUME_LUN_ID_PATH = \
+        '/baremetal_gateway_agent/v2/instance/volume/lunId'
 
     BAREMETAL_LIB_DIR = '/var/lib/zstack/baremetalv2/'
     BAREMETAL_LOG_DIR = '/var/log/zstack/baremetalv2/'
@@ -1122,11 +1124,13 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             # otherwise delete the dnsmasq conf only.
             if instance_obj.gateway_ip == \
                     self.provision_network_conf.provision_nic_ip:
-                pre_volume_obj = list(o for o in volume_objs)
-                pre_volume_driver = volume.get_driver(instance_obj, pre_volume_obj[0])
-                pre_volume_driver.prepare_instance_resource()
+                pre_volume_objs = list(o for o in volume_objs)
+                for volume_obj in pre_volume_objs:
+                    if volume_obj.type == 'Root':
+                        pre_volume_driver = volume.get_driver(instance_obj, volume_obj)
+                        pre_volume_driver.prepare_instance_resource()
 
-                for volume_obj in pre_volume_obj:
+                for volume_obj in pre_volume_objs:
                     volume_driver = volume.get_driver(instance_obj, volume_obj)
                     volume_driver.attach()
                     volume_drivers.append(volume_driver)
@@ -1255,7 +1259,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         instance_obj = BmInstanceObj.from_json(req)
         volume_obj = VolumeObj.from_json(req)
         volume_driver = volume.get_driver(instance_obj, volume_obj)
-        volume_driver.detach()
+        volume_driver.detach_volume()
         # The data lun's info is not in ipxe conf file now.
         # self._remove_conf_from_ipxe_configuration(instance_obj, volume_driver)
 
@@ -1334,6 +1338,18 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         ipt.remove_rule(rule)
         ipt.iptable_restore()
 
+    @kvmagent.replyerror
+    def get_lun_id(self, req):
+        instance_obj = BmInstanceObj.from_json(req)
+        volume_obj = VolumeObj.from_json(req)
+        volume_driver = volume.get_driver(instance_obj, volume_obj)
+        lun_id = volume_driver.get_lun_id()
+
+        rsp = kvmagent.AgentResponse()
+        rsp.lunId = lun_id
+        return jsonobject.dumps(rsp)
+
+
     def start(self):
         self.host_uuid = None
 
@@ -1352,6 +1368,8 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                                        self.detach_volume)
         http_server.register_async_uri(self.BM_CONSOLE_PATH,
                                        self.console)
+        http_server.register_async_uri(self.BM_GET_VOLUME_LUN_ID_PATH,
+                                       self.get_lun_id)
 
     def stop(self):
         pass
