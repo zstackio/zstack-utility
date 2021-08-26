@@ -2999,12 +2999,11 @@ class Vm(object):
         try:
             xml = self._interface_cmd_to_xml(cmd, action='Detach')
             logger.debug('detaching nic:\n%s' % xml)
+            ovs.OvsCtl().freeVdpa(cmd.vmUuid, cmd.nic.nicInternalName)
             if self.state == self.VM_STATE_RUNNING or self.state == self.VM_STATE_PAUSED:
                 self.domain.detachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
             else:
                 self.domain.detachDevice(xml)
-
-            ovs.OvsCtl().freeVdpa(cmd.vmUuid, cmd.nic.nicInternalName)
 
             if not linux.wait_callback_success(check_device, interval=0.5, timeout=10):
                 raise Exception('NIC device is still attached after 10 seconds. Please check virtio driver or stop VM and detach again.')
