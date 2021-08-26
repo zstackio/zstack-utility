@@ -96,7 +96,11 @@ def collect_host_capacity_statistics():
 
     metrics = {
         'zstack_used_capacity_in_bytes': GaugeMetricFamily('zstack_used_capacity_in_bytes',
-                                                           'ZStack used capacity in bytes')
+                                                           'ZStack used capacity in bytes'),
+        'block_device_used_capacity_in_bytes': GaugeMetricFamily('block_device_used_capacity_in_bytes',
+                                                                 'block device used capacity in bytes', None, ['disk']),
+        'block_device_used_capacity_in_percent': GaugeMetricFamily('block_device_used_capacity_in_percent',
+                                                                 'block device used capacity in percent', None, ['disk'])
     }
 
     global collect_node_disk_capacity_last_time
@@ -115,6 +119,32 @@ def collect_host_capacity_statistics():
         zstack_used_capacity += int(res.split()[0])
 
     metrics['zstack_used_capacity_in_bytes'].add_metric([], float(zstack_used_capacity))
+
+    r1, dfInfo = bash_ro("df | awk '{print $3,$6}' | tail -n +2")
+    r2, lbkInfo = bash_ro("lsblk -db -oname,size | tail -n +2")
+    if r1 != 0 or r2 != 0:
+        collect_node_disk_capacity_last_result = metrics.values()
+        return collect_node_disk_capacity_last_result
+
+    df_map = {}
+    for df in dfInfo.splitlines():
+        df_size = long(df.split()[0].strip())
+        df_name = df.split()[-1].strip()
+        df_map[df_name] = df_size
+    
+    for lbk in lbkInfo.splitlines():
+        lbk_name = lbk.split()[0].strip()
+        lbk_size = long(lbk.split()[-1].strip())
+        
+        lbk_used_size = 0L
+        ds = bash_o("lsblk -lb /dev/%s -omountpoint |awk '{if(length($1)>0) print $1}' | tail -n +2" % lbk_name)
+        for d in ds.splitlines():
+            if df_map.get(d.strip(), None) != None:
+                lbk_used_size += df_map.get(d.strip())
+
+        metrics['block_device_used_capacity_in_bytes'].add_metric([lbk_name], float(lbk_used_size))
+        metrics['block_device_used_capacity_in_percent'].add_metric([lbk_name], float(lbk_used_size * 100) / lbk_size)
+        
     collect_node_disk_capacity_last_result = metrics.values()
     return collect_node_disk_capacity_last_result
 
@@ -146,8 +176,10 @@ def convert_raid_state_to_int(state):
     state = state.lower()
     if "optimal" in state:
         return 0
-    elif "degraded" in state or "interim recovery" in state or "ready for recovery" in state or "rebuilding" in state:
+    elif "degraded" in state or "interim recovery" in state:
         return 5
+    elif "ready for recovery" in state or "rebuilding" in state:
+        return 10
     else:
         return 100
 
