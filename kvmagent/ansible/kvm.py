@@ -77,6 +77,8 @@ if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
 
 (distro, major_version, distro_release, distro_version) = get_remote_host_info(host_post_info)
+releasever = get_host_releasever([distro, distro_release, distro_version])
+host_post_info.releasever = releasever
 
 # get remote host arch
 host_arch = get_remote_host_arch(host_post_info)
@@ -145,7 +147,7 @@ def install_release_on_host(is_rpm):
     # copy and install zstack-release
     if is_rpm:
         src_pkg = '/opt/zstack-dvd/{0}/{1}/Packages/zstack-release-{1}-1.el7.zstack.noarch.rpm'.format(host_arch, releasever)
-        install_cmd = "rpm -q zstack-release || yum --disablerepo=* install -y /opt/zstack-release-{}-1.el7.zstack.noarch.rpm".format(releasever)
+        install_cmd = "rpm -q zstack-release || rpm -i /opt/zstack-release-{}-1.el7.zstack.noarch.rpm".format(releasever)
     else:
         src_pkg = '/opt/zstack-dvd/{0}/{1}/Packages/zstack-release_{1}_all.deb'.format(host_arch, releasever)
         install_cmd = "dpkg -l zstack-release || dpkg -i /opt/zstack-release_{}_all.deb".format(releasever)
@@ -175,7 +177,6 @@ def load_zstacklib():
         zstacklib_args.yum_server = yum_server
     zstacklib = ZstackLib(zstacklib_args)
 
-releasever = get_host_releasever([distro, distro_release, distro_version])
 if distro in RPM_BASED_OS:
     install_release_on_host(True)
 elif distro in DEB_BASED_OS:
