@@ -855,6 +855,8 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             t.join()
 
         luns = sum(filter(None, luns), [])
+        # make sure that all hosts can return the totally same luns info, so that MN can be easier to handle it.
+        luns.sort(key=lambda l: l.path)
         luns_info = {}
         for lun in luns:  # type: FiberChannelLunStruct
             if lun.storageWwnn not in luns_info or len(luns_info[lun.storageWwnn]) == 0:
