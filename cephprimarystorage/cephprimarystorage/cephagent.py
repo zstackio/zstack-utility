@@ -1145,43 +1145,37 @@ class CephAgent(plugin.TaskManager):
 
     def _nbd2rbd(self, hostname, port, export_name, rbdtarget, bandwidth, rsp):
 
-        def consume_completion(cq, disk_size, rsp):
-            logger.info("xxx: consumer starts with disk size = %d" % disk_size)
+        def write_full(wr, data, offset, nbytes):
+            n = 0
+            while n < nbytes:
+                n += wr.write(data[n:], offset+n)
+
+        def queue_consumer(cq, w, rsp):
+            logger.info("xxx: queue consumer started")
+
             while not rsp.error:
+                data, offset, nbytes, is_zero = cq.get(True, 10)
+                if offset < 0: # signal end
+                    break
+
                 try:
-                    comp, offset = cq.get(True, 0.1)
-
-                    if comp.is_complete():
-                        if comp.get_return_value() == 0:
-                            if offset != disk_size:
-                                continue
-                        else:
-                            rsp.error = 'rbd::aio_write() failed at offset: '+str(offset)
-                        break
-
-                    for i in range(20):
-                        time.sleep(0.05)
-                        if comp.is_complete():
-                            break
-
-                    if not comp.is_complete():  # 1 MB/s is rather slow ...
-                        rsp.error = 'rbd::aio_write() write timed out at offset: '+str(offset)
-                        break
-
-                    if comp.get_return_value() != 0:
-                        rsp.error = 'rbd::aio_write() slow I/O failed at offset: '+str(offset)
-                        break
-
-                except Queue.Empty:
-                    continue
+                    if is_zero:
+                        w.discard(offset, nbytes)
+                    else:
+                        write_full(w, data, offset, nbytes)
+                except Exception as e:
+                    rsp.error = "write error at offset = %d, len = %d" % (offset, nbytes)
+                    logger.warn("xxx: write error: %s" % str(e))
+                    break
 
 
         poolname, imagename = rbdtarget.split('/')
         client = nbd_client.NBDClient()
         client.connect(hostname, port, None, export_name)
+	cqueue = Queue.Queue(8)
+        offset, disk_size = 0, client.get_block_size()
 
         try:
-            offset, disk_size = 0, client.get_block_size()
 
             with RbdImageWriter(poolname, imagename) as image:
                 if image.size() != disk_size:  # TODO: image.resize()
@@ -1191,27 +1185,30 @@ class CephAgent(plugin.TaskManager):
                 zero_chunk = '\x00' * chunk_size
                 remainder_size = disk_size % chunk_size
 
-                cqueue = Queue.Queue(100)
-                thread.ThreadFacade.run_in_thread(consume_completion, [cqueue, disk_size, rsp])
+                thread.ThreadFacade.run_in_thread(queue_consumer, [cqueue, image, rsp])
 
                 while offset < disk_size:
                     if offset + chunk_size > disk_size:
                         chunk_size, zero_chunk = remainder_size, '\x00' * remainder_size
 
                     data  = client.read(offset, chunk_size) # client has 'read all' semantic
-                    if data != zero_chunk:
-                        comp = image.aio_write(data, offset, None)
-                    else:
-                        comp = image.aio_discard(offset, chunk_size, None)
+                    if len(data) != chunk_size:
+                        logger.warn("expected chunk size %d, got %d" % (chunk_size, len(data)))
 
+                    cqueue.put((data, offset, chunk_size, data == zero_chunk), True, 10)
                     offset += chunk_size
-                    cqueue.put((comp, offset))
+
+                # signal end
+                cqueue.put((b'', -1, 0, False), True, 10)
 
                 logger.info("xxx: all aio requests submitted, size = %d" % offset)
                 while not rsp.error and not cqueue.empty():
                     time.sleep(0.1)
+                image.flush()
+        except Queue.Full:
+            rsp.srror = 'rbd write timed out at offset: %d' % offsets
         finally:
-            logger.info("bytes written: "+str(offset))
+            logger.info("xxx: bytes written: "+str(offset))
 
             try: client.close()
             except: pass
