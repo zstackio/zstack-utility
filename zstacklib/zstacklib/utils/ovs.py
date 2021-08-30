@@ -737,7 +737,8 @@ class OvsCtl(Ovs):
                      "vdpa-accelerator-devargs={}".format(pci),
                      "dpdk-devargs={},representor=[{}]".format(
                          self._get_if_pcinum(ifaceName), vf[6:]),
-                     "vdpa-max-queues=8")
+                     "vdpa-max-queues=8",
+                     "vdpa-sw=true")
 
         if vlanId is not None:
             self.setPort(nicInternalName, vlanId)
@@ -897,6 +898,7 @@ class OvsCtl(Ovs):
             # set devlink mode to switchdev and unbind vfs
             self._set_if_devlink_mode(i)
             self._set_dpdk_white_list(i)
+            iproute.set_link_up_no_error(i)
 
         if bridgeName not in self.listBrs():
             # create bridge
@@ -931,6 +933,7 @@ class OvsCtl(Ovs):
             # set devlink mode to switchdev and unbind vfs
             self._set_if_devlink_mode(i)
             self._set_dpdk_white_list(i)
+            iproute.set_link_up_no_error(i)
 
         if bridgeName not in self.listBrs():
             # create bridge
@@ -966,6 +969,7 @@ class OvsCtl(Ovs):
         iproute.set_link_down_no_error(interface)
         self._set_if_devlink_mode(interface)
         self._set_dpdk_white_list(interface)
+        iproute.set_link_up_no_error(interface)
         if bridgeName not in self.listBrs():
             # create bridge
             if self.createBr(bridgeName) != 0:
