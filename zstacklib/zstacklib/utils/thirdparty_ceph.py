@@ -11,6 +11,7 @@ from zstacklib.utils.xms_client.api import MappingGroupsApi
 from zstacklib.utils.xms_client.api import BlockSnapshotsApi
 from zstacklib.utils.xms_client.api import PoolsApi
 from zstacklib.utils.xms_client.api import HostsApi
+from zstacklib.utils.xms_client.api import LunsApi
 from zstacklib.utils.xms_client.api import ClientGroupsApi
 from zstacklib.utils.xms_client.rest import ApiException
 from zstacklib.utils.xms_client.api import AccessTokensApi
@@ -24,7 +25,8 @@ TIME_OUT = 1800
 
 
 class RbdDeviceOperator(object):
-    """ A tool class to operate rbd device for xsky
+    """
+    A tool class to operate rbd device for xsky
     """
 
     def __init__(self, monIp, token, timeout):
@@ -32,6 +34,7 @@ class RbdDeviceOperator(object):
         self.token = token
         self.timeout = timeout * 60
         self.conf = self.prepare_token(self.token, self.monIp)
+        self.luns_api = LunsApi(self.conf)
         self.hosts_api = HostsApi(self.conf)
         self.pools_api = PoolsApi(self.conf)
         self.access_token_api = AccessTokensApi(self.conf)
@@ -44,14 +47,20 @@ class RbdDeviceOperator(object):
 
     def prepare(self, instance_obj, volume_obj, snat_ip):
         """
-        prepare client group, access path, target for volumes
+        NOTE:
+        1.prepare client group, access path, target for volumes
+        2.only root volume need to prepare
+        3.client group name is binding with gateway ip not mon ip
+        4.access path is binding with gateway ip not mon ip
+        5.the example for return iqn :
+        [iqn.2021-08.zstack:cluster-ea1a1963.iscsi.27.12b5a39c854b1647]
         """
+        logger.debug("Start preparing resource for instance through mon[ip : %s]" % self.monIp)
+
         global TIME_OUT
         TIME_OUT = self.timeout
-
         dst_path = self._normalize_install_path(volume_obj.path)
         volume_name = dst_path.split("/")[1]
-        logger.debug("########## host_ip is %s:  token is : %s" % (self.monIp, self.token))
 
         if volume_obj.type != 'Root':
             raise Exception("instance %s cannot find root volume" % instance_obj.uuid)
@@ -61,31 +70,28 @@ class RbdDeviceOperator(object):
             created_access_path_id = None
             created_client_group_id = None
 
-            gateway_host = self.hosts_api.list_hosts(q=self.monIp).hosts[0]
+            gateway_host = self.hosts_api.list_hosts(q=snat_ip).hosts[0]
             if not gateway_host:
-                raise Exception("host %s cannot be find " % self.monIp)
+                raise Exception("host %s cannot be find " % snat_ip)
             gateway_host_id = gateway_host.id
 
             try:
                 created_client_group_id = _create_client_group()
 
                 if instance_obj.customIqn:
-                    logger.debug("x2 custom iqn : %s " % instance_obj.customIqn)
                     created_target_iqn = instance_obj.customIqn
 
-                    targets = self.targets_api.list_targets(q=self.monIp).targets
+                    targets = self.targets_api.list_targets().targets
                     for tar in targets:
                         if tar.iqn == instance_obj.customIqn and tar.access_path.id:
                             created_access_path_id = tar.access_path.id
                             return created_target_iqn
 
-                logger.debug("############### 4 no target ")
                 created_access_path_id = _create_access_path()
                 created_target = _create_target(gateway_host_id, created_access_path_id)
                 created_target_id = created_target.id
                 created_target_iqn = created_target.iqn
 
-                # create mapping group
                 mapping_groups = self.mapping_groups_api.list_mapping_groups(access_path_id=created_access_path_id,
                                                                         client_group_id=created_client_group_id).mapping_groups
                 if len(mapping_groups) == 0:
@@ -94,7 +100,7 @@ class RbdDeviceOperator(object):
                 return created_target_iqn
 
             except ApiException as e:
-                logger.debug("start rollback prepare resource")
+                logger.debug("Start rollback prepare resource")
                 if created_access_path_id and created_target_id and self.access_paths_api.get_access_path(
                         created_access_path_id).access_path.block_volume_num == 0:
                     self.delete_target(created_target_id, gateway_host_id, created_access_path_id)
@@ -109,7 +115,7 @@ class RbdDeviceOperator(object):
         def _create_mapping_group(created_client_group_id, created_access_path_id):
             block_volume = self.block_volumes_api.list_block_volumes(q=volume_name).block_volumes[0]
             if not block_volume:
-                raise Exception("block volume %s cannot be find by list api" % volume_name)
+                raise Exception("Block volume %s cannot be find by list api" % volume_name)
             block_volume_id = block_volume.id
 
             api_body = {"mapping_group": {"access_path_id": created_access_path_id,
@@ -117,7 +123,7 @@ class RbdDeviceOperator(object):
                                           "client_group_id": created_client_group_id}}
             created_mapping_group_id = self.mapping_groups_api.create_mapping_group(api_body).mapping_group.id
             self._retry_until(_is_created_mapping_group_status_active, created_mapping_group_id)
-            logger.debug("successfully create mapping group from access path[id : %s] and block volume[name : %s]" % (
+            logger.debug("Successfully create mapping group from access path[id : %s] and block volume[name : %s]" % (
                 created_access_path_id, block_volume.name))
             return created_mapping_group_id
 
@@ -130,8 +136,6 @@ class RbdDeviceOperator(object):
 
             for client_group in client_groups:
                 if client_group.name == client_name and any(snat_ip == client.code for client in client_group.clients):
-                    logger.debug(
-                        "ccccccc client_group.id is %s, client_group.name is %s" % (client_group.id, client_group.name))
                     return client_group.id
 
             api_body = {"client_group": {"name": "client_group-" + snat_ip,
@@ -139,7 +143,7 @@ class RbdDeviceOperator(object):
                                          "type": "iSCSI"}}
             created_client_group_id = self.client_group_api.create_client_group(api_body).client_group.id
             self._retry_until(_is_client_group_status_active, created_client_group_id)
-            logger.debug("successfully create client group[name : client_group-%s ]" % snat_ip)
+            logger.debug("Successfully create client group[name : client_group-%s ]" % snat_ip)
             return created_client_group_id
 
         def _check_client_group_need_rollback(client_group_id):
@@ -159,7 +163,7 @@ class RbdDeviceOperator(object):
                                         "type": "iSCSI"}}
             created_access_path_id = self.access_paths_api.create_access_path(api_body).access_path.id
             self._retry_until(_is_access_path_status_active, created_access_path_id)
-            logger.debug("successfully create access path [access_path-%s]" % instance_obj.uuid)
+            logger.debug("Successfully create access path [access_path-%s]" % instance_obj.uuid)
 
             return created_access_path_id
 
@@ -168,7 +172,7 @@ class RbdDeviceOperator(object):
                                    "host_id": host_id}}
             created_target = self.targets_api.create_target(api_body).target
             self._retry_until(_is_created_target_active, host_id, created_access_path_id)
-            logger.debug("successfully create target from host[id : %s] and access path[id : %s]" % (
+            logger.debug("Successfully create target from host[id : %s] and access path[id : %s]" % (
                 host_id, created_access_path_id))
             return created_target
 
@@ -190,13 +194,18 @@ class RbdDeviceOperator(object):
                                             ).targets[0].status == "active"
 
         created_iqn = _prepare()
-        logger.debug("######## return iqn is %s" % created_iqn)
+        logger.debug("Successfully preparing resource for instance through mon[ip : %s], the iqn is [%s]"
+                     % (self.monIp, created_iqn))
         return created_iqn
 
     def connect(self, instance_obj, volume_obj):
         """
-        create mapping group to establish a connection
+        NOTE:
+        1.update mapping group to establish a connection
+        2.only data volumes need to update mapping group
         """
+        logger.debug("Start to do connection  for instance through mon[ip : %s]" % self.monIp)
+
         global TIME_OUT
         TIME_OUT = self.timeout
         provision_ip = instance_obj.provision_ip
@@ -219,20 +228,17 @@ class RbdDeviceOperator(object):
                         continue
                     codes = set(client.code for client in client_group.clients)
                     if snat_ip in codes and provision_ip in codes:
-                        logger.debug("ccccc snat_ip in codes and provision_ip in codes")
                         exist_client_group_id = client_group.id
                         created_client_group_id = client_group.id
                     elif provision_ip in codes:
-                        logger.debug("ccccc elif provision_ip in codes")
                         _update_client_group_delete_code(created_client_group_id, provision_ip)
                     elif snat_ip in codes:
-                        logger.debug("ccccc elif snat_ip in codes")
                         _update_client_group_add_code(client_group.id, client_group.clients, provision_ip)
                         created_client_group_id = client_group.id
                         updated = True
-                        logger.debug("cccccc 1")
 
                 if volume_obj.type == 'Root':
+                    logger.debug("End connect because the volume is not root.")
                     return
 
                 check_name = "name.raw:access_path-" + instance_obj.uuid
@@ -241,7 +247,6 @@ class RbdDeviceOperator(object):
                     created_access_path_id = access_paths[0].id
 
                 block_volume = self.block_volumes_api.list_block_volumes(q=volume_name).block_volumes[0]
-                logger.debug("#### %s" % block_volume)
                 if block_volume.access_path:
                     if block_volume.access_path.id == created_access_path_id:
                         return
@@ -249,14 +254,13 @@ class RbdDeviceOperator(object):
                 mapping_groups = self.mapping_groups_api.list_mapping_groups(access_path_id=created_access_path_id,
                                                                         client_group_id=created_client_group_id).mapping_groups
                 if len(mapping_groups) < 1:
-                    raise Exception("mapping group cannot be find by access path[id : %s] and client group[id : %s]" % (
+                    raise Exception("Mapping group cannot be find by access path[id : %s] and client group[id : %s]" % (
                         created_access_path_id, created_client_group_id))
 
                 created_mapping_group_data_id = _mapping_group_add_volumes(mapping_groups)
-                logger.debug("cccccc connect _mapping_group_add_volumes")
 
             except ApiException as e:
-                logger.debug("start rollback connect volume")
+                logger.debug("Start rollback connect volume")
                 if updated:
                     _update_client_group_delete_code(created_client_group_id, provision_ip)
                 if created_mapping_group_root_id and not exist_client_group_id:
@@ -272,7 +276,7 @@ class RbdDeviceOperator(object):
             self.client_group_api.update_client_group(client_group_id, api_body)
             self._retry_until(_is_client_group_status_active, client_group_id)
             logger.debug(
-                "successfully update client group[id :%s] to add code[code : %s]" % (client_group_id, client_code))
+                "Successfully update client group[id :%s] to add code[code : %s]" % (client_group_id, client_code))
             return client_group_id
 
         def _update_client_group_delete_code(client_group_id, provision_ip):
@@ -283,22 +287,21 @@ class RbdDeviceOperator(object):
             self.client_group_api.update_client_group(client_group_id, api_body)
             self._retry_until(_is_client_group_status_active, client_group_id)
             logger.debug(
-                "successfully update client group[id :%s] to delete code[code : %s]" % (client_group_id, provision_ip))
+                "Successfully update client group[id :%s] to delete code[code : %s]" % (client_group_id, provision_ip))
             return client_group_id
 
         def _mapping_group_add_volumes(mapping_groups):
             block_volume = self.block_volumes_api.list_block_volumes(q=volume_name).block_volumes[0]
             if not block_volume:
-                raise Exception("block volume[name : %s] cannot be find " % volume_name)
+                raise Exception("Block volume[name : %s] cannot be find " % volume_name)
             block_volume_id = block_volume.id
 
             created_mapping_group_data_id = mapping_groups[0].id
             api_body = {"block_volume_ids": [block_volume_id]}
-            logger.debug("#### %s" % block_volume_id)
             created_mapping_group_data_id = self.mapping_groups_api.add_volumes(created_mapping_group_data_id,
                                                                            api_body).mapping_group.id
             self._retry_until(_is_created_mapping_group_status_active, created_mapping_group_data_id)
-            logger.debug("successfully update mapping group[id :%s] to add volume[name : %s]" % (
+            logger.debug("Successfully update mapping group[id :%s] to add volume[name : %s]" % (
                 created_mapping_group_data_id, block_volume.name))
             return created_mapping_group_data_id
 
@@ -310,15 +313,21 @@ class RbdDeviceOperator(object):
             return self.mapping_groups_api.get_mapping_group(
                 mapping_group_id).mapping_group.status == "active"
 
+        logger.debug("Successfully do connection for instance.")
         _connect()
 
     def disconnect(self, instance_obj, volume_obj):
-        iqn = instance_obj.customIqn
-        provision_ip = instance_obj.provision_ip
+        """
+        NOTE:
+        1.update mapping group to disconnect the connection
+        2.update client group to delete code(ip)
+        """
+        logger.debug("Start to od disconnection for instance through mon[ip : %s]" % self.monIp)
 
         global TIME_OUT
         TIME_OUT = self.timeout
-
+        iqn = instance_obj.customIqn
+        provision_ip = instance_obj.provision_ip
         dst_path = self._normalize_install_path(volume_obj.path)
         volume_name = dst_path.split("/")[1]
         snat_ip = linux.find_route_interface_ip_by_destination_ip(self.monIp)
@@ -328,7 +337,7 @@ class RbdDeviceOperator(object):
             update_client_group = None
             client_group_id = None
 
-            targets = self.targets_api.list_targets(q=self.monIp).targets
+            targets = self.targets_api.list_targets().targets
             for tar in targets:
                 if tar.iqn == iqn:
                     deleted_access_path_id = tar.access_path.id
@@ -340,17 +349,17 @@ class RbdDeviceOperator(object):
                     client_group_id = client_group.id
 
             if not client_group_id:
+                logger.debug("End disconnect because cannot find the client group with ip[%s]." % snat_ip)
                 return
 
             if deleted_access_path_id:
                 mapping_groups = self.mapping_groups_api.list_mapping_groups(access_path_id=deleted_access_path_id,
                                                                         client_group_id=client_group_id).mapping_groups
                 if len(mapping_groups) < 1:
-                    raise Exception("mapping group cannot be find by access path[id : %s] and client group[id : %s]" % (
+                    raise Exception("Mapping group cannot be find by access path[id : %s] and client group[id : %s]" % (
                         deleted_access_path_id, client_group_id))
 
                 deleted_mapping_group_id = mapping_groups[0].id
-                logger.debug("cccccc disconnect mapping_group_delete_volumes")
                 self.mapping_group_delete_volumes(deleted_mapping_group_id, volume_name, deleted_access_path_id)
 
             if any(provision_ip == client.code for client in update_client_group.clients):
@@ -364,26 +373,71 @@ class RbdDeviceOperator(object):
             self.client_group_api.update_client_group(client_group_id, api_body)
             self._retry_until(_is_client_group_status_active, client_group_id)
             logger.debug(
-                "successfully update client group[id :%s] to delete code[code : %s]" % (client_group_id, provision_ip))
+                "Successfully update client group[id :%s] to delete code[code : %s]" % (client_group_id, provision_ip))
             return client_group_id
 
         def _is_client_group_status_active(client_group_id):
             return self.client_group_api.get_client_group(
                 client_group_id).client_group.status == "active"
 
+        logger.debug("Successfully do disconnection for instance.")
         _disconnect()
 
-    def destory(self, instance_obj):
+    def detach_volume(self, instance_obj, volume_obj):
+        """
+        NOTE:
+        update mapping group to deatch volume
+        """
         global TIME_OUT
         TIME_OUT = self.timeout
+        dst_path = self._normalize_install_path(volume_obj.path)
+        volume_name = dst_path.split("/")[1]
+        logger.debug("Start to detach volume[name : %s] for instance through mon[ip : %s]." % (volume_name, self.monIp))
 
+        def _detach_volume():
+            deleted_access_path_id = None
+            client_group_id = None
+            snat_ip = linux.find_route_interface_ip_by_destination_ip(self.monIp)
+
+            targets = self.targets_api.list_targets().targets
+            for tar in targets:
+                if tar.iqn == instance_obj.customIqn:
+                    deleted_access_path_id = tar.access_path.id
+
+            client_groups = self.client_group_api.list_client_groups().client_groups
+            for client_group in client_groups:
+                if any(snat_ip == client.code for client in client_group.clients):
+                    client_group_id = client_group.id
+
+            if not client_group_id:
+                raise Exception("Cannot find client group with ip[ip : %s]" % snat_ip)
+
+            if deleted_access_path_id:
+                mapping_groups = self.mapping_groups_api.list_mapping_groups(access_path_id=deleted_access_path_id,
+                                                                        client_group_id=client_group_id).mapping_groups
+                if len(mapping_groups) < 1:
+                    raise Exception("Mapping group cannot be find by access path[id : %s] and client group[id : %s]" % (
+                        deleted_access_path_id, client_group_id))
+
+                deleted_mapping_group_id = mapping_groups[0].id
+                self.mapping_group_delete_volumes(deleted_mapping_group_id, volume_name, deleted_access_path_id)
+
+        logger.debug("Successfully detach volume[name : %s] for instance." % volume_name)
+        _detach_volume()
+
+    def destory(self, instance_obj):
+        """
+        NOTE:
+        destory client group, access path, target for volumes
+        """
+        logger.debug("Start to destory resource for instance through mon[ip : %s]." %  self.monIp)
+
+        global TIME_OUT
+        TIME_OUT = self.timeout
         iqn = instance_obj.customIqn
         snat_ip = linux.find_route_interface_ip_by_destination_ip(self.monIp)
 
         def _destory():
-            """
-            delete target, access path， client group
-            """
             deleted_host_id = None
             deleted_access_path_id = None
             deleted_target_id = None
@@ -394,7 +448,7 @@ class RbdDeviceOperator(object):
                 if any(snat_ip == client.code for client in client_group.clients):
                     deleted_client_group_id = client_group.id
 
-            targets = self.targets_api.list_targets(q=self.monIp).targets
+            targets = self.targets_api.list_targets().targets
             for tar in targets:
                 if tar.iqn == iqn:
                     deleted_access_path_id = tar.access_path.id
@@ -405,7 +459,7 @@ class RbdDeviceOperator(object):
                 mapping_groups = self.mapping_groups_api.list_mapping_groups(access_path_id=deleted_access_path_id,
                                                                         client_group_id=deleted_client_group_id).mapping_groups
                 if len(mapping_groups) < 1:
-                    raise Exception("mapping group cannot be find by access path[id : %s] and client group[id : %s]" % (
+                    raise Exception("Mapping group cannot be find by access path[id : %s] and client group[id : %s]" % (
                         deleted_access_path_id, deleted_client_group_id))
 
                 deleted_mapping_group_id = mapping_groups[0].id
@@ -435,7 +489,41 @@ class RbdDeviceOperator(object):
             access_path = self.access_paths_api.get_access_path(access_path_id).access_path
             return access_path.block_volume_num == 0 and access_path.client_group_num == 0
 
+        logger.debug("Successfully destory resource for instance.")
         _destory()
+
+    def get_lun_id(self, volume_obj):
+        dst_path = self._normalize_install_path(volume_obj.path)
+        volume_name = dst_path.split("/")[1]
+        snat_ip = linux.find_route_interface_ip_by_destination_ip(self.monIp)
+        client_group_id = None
+
+        block_volume = self.block_volumes_api.list_block_volumes(q=volume_name).block_volumes[0]
+        if not block_volume:
+            raise Exception("Block volume[name : %s] cannot be find " % volume_name)
+        block_volume_id = block_volume.id
+        if block_volume.access_path is None:
+            logger.warn("Cannot find the access path for the volume %s." % volume_name)
+            return
+        access_path_id = block_volume.access_path.id
+
+        client_groups = self.client_group_api.list_client_groups().client_groups
+        for client_group in client_groups:
+            if any(snat_ip == client.code for client in client_group.clients):
+                client_group_id = client_group.id
+
+        if not client_group_id:
+            raise Exception("Gateway ip[ip : %s] cannot be find in client groups" % snat_ip)
+
+        mapping_groups = self.mapping_groups_api.list_mapping_groups(access_path_id=access_path_id,
+                                                                     client_group_id=client_group_id).mapping_groups
+        if len(mapping_groups) < 1:
+            raise Exception("Mapping group cannot be find by access path[id : %s] and client group[id : %s]" % (
+                access_path_id, client_group_id))
+
+        luns = self.luns_api.list_luns(mapping_group_id=mapping_groups[0].id).luns
+        target_luns = filter(lambda l: l.volume.id == block_volume_id, luns)
+        return target_luns[0].lun_id if target_luns else None
 
     def validate_token(self):
         try:
@@ -452,11 +540,9 @@ class RbdDeviceOperator(object):
         global TIME_OUT
         TIME_OUT = self.timeout
 
-        logger.debug("x2 token: %s, host_ip: %s" % (self.token, self.monIp))
-
         pool = self.pools_api.list_pools(q=pool_uuid).pools[0]
         if not pool:
-            raise Exception("pool[name : %s] cannot be find " % pool_uuid)
+            raise Exception("Pool[name : %s] cannot be find " % pool_uuid)
         pool_id = pool.id
 
         api_body = {
@@ -469,9 +555,15 @@ class RbdDeviceOperator(object):
         created_block_volume_id = created_block_volume.id
         created_block_volume_name = created_block_volume.volume_name
         self._retry_until(self.is_block_volume_status_active, created_block_volume_id)
+        logger.debug("Successfully create block volume[name : %s] from snapshot" % image_uuid)
         return created_block_volume_name
 
     def copy_volume(self, srcPath, dstPath):
+        """
+        NOTE:
+        step 1: do block snapshot
+        step 2: create block volume from snapshot
+        """
         global TIME_OUT
         TIME_OUT = self.timeout
 
@@ -481,7 +573,6 @@ class RbdDeviceOperator(object):
         array = src_path.split("/")
         pool_name = array[0]
         image_uuid = array[1].split('@')[0]
-        logger.debug("x2 token: %s, host_ip: %s   v_name is %s" % (self.token, self.monIp, volume_name))
 
         def _copy():
             created_volume_name = None
@@ -491,7 +582,7 @@ class RbdDeviceOperator(object):
 
             pool = self.pools_api.list_pools(q=pool_name).pools[0]
             if not pool:
-                raise Exception("pool[name : %s] cannot be find " % pool_name)
+                raise Exception("Pool[name : %s] cannot be find " % pool_name)
             pool_id = pool.id
 
             try:
@@ -514,7 +605,7 @@ class RbdDeviceOperator(object):
                     created_volume_name = created_block_volume.volume_name
 
             except ApiException as e:
-                logger.debug("start rollback copy volume")
+                logger.debug("Start rollback copy volume")
                 if created_block_volume_id:
                     self.delete_block_volume(created_block_volume_id)
                 if created_block_snapshot_id and block_snapshot_exist == False:
@@ -540,6 +631,7 @@ class RbdDeviceOperator(object):
             created_block_volume = self.block_volumes_api.create_block_volume(api_body).block_volume
             created_block_volume_id = created_block_volume.id
             self._retry_until(_is_block_volume_status_active, created_block_volume_id)
+            logger.debug("Successfully create block volume[name : %s] from snapshot" % volume_name)
 
             return created_block_volume
 
@@ -558,7 +650,7 @@ class RbdDeviceOperator(object):
         array = path.split("/")
         volume_name = array[1]
 
-        logger.debug("delete volume_uuid: %s" % volume_name)
+        logger.debug("Delete volume_uuid: %s" % volume_name)
         block_volume = self.block_volumes_api.list_block_volumes(q=volume_name).block_volumes
 
         if len(block_volume) > 0:
@@ -573,7 +665,7 @@ class RbdDeviceOperator(object):
         try:
             block_snapshot = self.create_block_snapshot(image_uuid, snap_name)
         except ApiException as e:
-            logger.debug("start rollback create snapshot [name : %s]" % image_uuid)
+            logger.debug("Start rollback create snapshot [name : %s]" % image_uuid)
             if block_snapshot:
                 self.delete_block_snapshot(block_snapshot.id)
             logger.error(e)
@@ -593,7 +685,7 @@ class RbdDeviceOperator(object):
                     block_snapshot_id = i.id
 
         if block_snapshot_id is None:
-            raise Exception("hosting block snapshot[name : %s] cannot be find " % image_uuid)
+            raise Exception("Hosting block snapshot[name : %s] cannot be find " % image_uuid)
 
         self.delete_block_snapshot(block_snapshot_id)
 
@@ -602,26 +694,26 @@ class RbdDeviceOperator(object):
             q=image_uuid).block_volumes[0]
 
         if not hosting_block_volume:
-            raise Exception("hosting block volume[name : %s] cannot be find " % image_uuid)
+            raise Exception("Hosting block volume[name : %s] cannot be find " % image_uuid)
 
         api_body = {"block_snapshot": {"block_volume_id": hosting_block_volume.id,
                                        "name": snap_name}}
         block_snapshot = self.block_snapshots_api.create_block_snapshot(api_body).block_snapshot
         block_snapshot_id = block_snapshot.id
         self._retry_until(self.is_block_snapshot_status_active, block_snapshot_id)
-        logger.debug("successfully create block snapshot : %s" % block_snapshot.name)
+        logger.debug("Successfully create block snapshot : %s" % block_snapshot.name)
 
         return block_snapshot
 
     def delete_target(self, target_id, host_id, access_path_id):
         self.targets_api.delete_target(target_id, force=True)
         self._retry_until(self.is_block_target_status_deleted, host_id, access_path_id)
-        logger.debug("successfully delete target from host %s" % self.monIp)
+        logger.debug("Successfully delete target from host %s" % self.monIp)
 
     def delete_mapping_group(self, mapping_group_id):
         self.mapping_groups_api.delete_mapping_group(mapping_group_id, force=True)
         self._retry_until(self.is_mapping_group_status_deleted, mapping_group_id)
-        logger.debug("successfully delete mapping group from host %s" % self.monIp)
+        logger.debug("Successfully delete mapping group from host %s" % self.monIp)
 
     def mapping_group_delete_volumes(self, mapping_group_id, volume_name, access_path_id):
         deleted = True
@@ -630,7 +722,6 @@ class RbdDeviceOperator(object):
 
         block_volume = self.block_volumes_api.list_block_volumes(q=volume_name).block_volumes[0]
         if block_volume.access_path:
-            logger.debug('####%s' % block_volume.access_path)
             if block_volume.access_path.id == access_path_id:
                 deleted = False
 
@@ -641,29 +732,29 @@ class RbdDeviceOperator(object):
         created_mapping_group_data_id = self.mapping_groups_api.remove_volumes(mapping_group_id,
                                                                           api_body, force=True).mapping_group.id
         self._retry_until(self.is_created_mapping_group_status_active, created_mapping_group_data_id)
-        logger.debug("successfully delete block volume[name : %s] from mapping group[id : %s]" % (
+        logger.debug("Successfully delete block volume[name : %s] from mapping group[id : %s]" % (
             block_volume.name, mapping_group_id))
         return created_mapping_group_data_id
 
     def delete_access_path(self, access_path_id):
         self.access_paths_api.delete_access_path(access_path_id)
         self._retry_until(self.is_access_path_status_deleted, access_path_id)
-        logger.debug("successfully delete access path from host[ip : %s]" % self.monIp)
+        logger.debug("Successfully delete access path from host[ip : %s]" % self.monIp)
 
     def delete_client_group(self, client_group_id):
         self.client_group_api.delete_client_group(client_group_id)
         self._retry_until(self.is_client_group_status_deleted, client_group_id)
-        logger.debug("successfully delete client group from host[ip : %s]" % self.monIp)
+        logger.debug("Successfully delete client group from host[ip : %s]" % self.monIp)
 
     def delete_block_snapshot(self, block_snapshot_id):
         self.block_snapshots_api.delete_block_snapshot(block_snapshot_id)
         self._retry_until(self.is_block_snapshot_status_deleted, block_snapshot_id)
-        logger.debug("successfully delete block snapshot from host[ip : %s]" % self.monIp)
+        logger.debug("Successfully delete block snapshot from host[ip : %s]" % self.monIp)
 
     def delete_block_volume(self, block_volume_id):
         self.block_volumes_api.delete_block_volume(block_volume_id, bypass_trash=True)
         self._retry_until(self.is_block_volume_status_deleted, block_volume_id)
-        logger.debug("successfully delete block volume from host[ip : %s]" % self.monIp)
+        logger.debug("Successfully delete block volume from host[ip : %s]" % self.monIp)
 
     def is_created_mapping_group_status_active(self, mapping_group_id):
         return self.mapping_groups_api.get_mapping_group(
@@ -732,6 +823,7 @@ class RbdDeviceOperator(object):
     @func_set_timeout(timeout=TIME_OUT)
     def _retry_until(self, func, *args, **kwargs):
         """
+        NOTE:
         check api status
         """
         while True:
