@@ -2280,7 +2280,7 @@ class StartCmd(Command):
             else:
                 beanXml = "zstack.xml"
 
-            shell('sudo -u zstack sed -i "s#<value>.*</value>#<value>%s</value>#" %s' % (beanXml, os.path.join(ctl.zstack_home, self.BEAN_CONTEXT_REF_XML)))
+            commands.getstatusoutput("zstack-ctl configure beanConf=%s" % beanXml)
 
         def checkSimulator():
             if is_simulator_on():
