@@ -998,23 +998,20 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             if not adapter.isdigit():
                 continue
         
-            r, serial_numbers = bash.bash_ro("arcconf getconfig %s PD | grep 'Serial number'" % adapter)
-            if r != 0 or serial_numbers.strip() == "":
-                continue
-        
-            r, device_info = bash.bash_ro("arcconf getconfig %s PD" % adapter)
+            r, device_info = bash.bash_ro("arcconf getconfig %s AL" % adapter)
             if r != 0 or device_info.strip() == "":
                 continue
-        
-            productName, sasAddress = self.get_arcconf_raid_controller_info(adapter)
-            raidLevelMap, diskGroupMap = self.get_arcconf_raid_level_info(adapter)
+            
+            # Contain at least raid controller into and a hardDisk info
+            device_arr = device_info.split("Device #")
+            if len(device_arr) < 3:
+                continue
+            
+            productName, sasAddress , raidLevelMap, diskGroupMap = self.get_arcconf_raid_info(device_arr[0])
 
-            for line in serial_numbers.splitlines():
-                serial_number = line.split(":")[1].strip()
-                if serial_number == "":
-                    continue
-                d = self.get_arcconf_raid_device_info(serial_number, device_info)
-                if d.wwn is not None and d.deviceModel is not None and d.slotNumber is not None:
+            for infos in device_arr[1:]:
+                d = self.get_arcconf_device_info(infos)
+                if d.serialNumber is not None and d.deviceModel is not None and d.enclosureDeviceId is not None and d.slotNumber is not None:
                     d.raidLevel = raidLevelMap.get("%s:%s" % (d.enclosureDeviceId, d.slotNumber))
                     d.diskGroup = diskGroupMap.get("%s:%s" % (d.enclosureDeviceId, d.slotNumber))
                     d.raidControllerNumber = adapter
@@ -1025,37 +1022,32 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         return result
 
     @bash.in_bash
-    def get_arcconf_raid_device_info(self, serial_number, device_info):
+    def get_arcconf_device_info(self, infos):
         d = RaidPhysicalDriveStruct()
-    
-        in_correct_pd = False
-        media_type = drive_type = enclosure_device_id = slot_number = drive_state = device_id = device_model = wwn = size = rotation_rate = None
-        for l in device_info.splitlines():
+        
+        if not infos.splitlines()[0].strip().isdigit():
+            return d
+        device_id = int(infos.splitlines()[0].strip())
+
+        serial_number = media_type = drive_type = enclosure_device_id = slot_number = drive_state = device_model = wwn = size = rotation_rate = None
+        for l in infos.splitlines()[1:]:
             if l.strip() == "":
                 continue
             k = l.split(":")[0].strip().lower()
             v = ":".join(l.split(":")[1:]).strip()
-            if "device #" in l.lower():
-                device_id = int(l.lower().split("device #")[1].strip())
-                continue
-            elif "state" in k:
+            if "state" in k:
                 drive_state = v.split(" ")[0].strip()
-                continue
             elif "transfer speed" in k:
                 drive_type = v.split(" ")[0].strip()
             elif "reported location" in k and "Enclosure" in v and "Slot" in v:
                 enclosure_device_id = int(v.split(",")[0].split(" ")[1].strip())
                 slot_number = int(v.split("Slot ")[1].split("(")[0].strip())
-                continue
             elif "model" == k:
                 device_model = v
-                continue
-            elif "serial number" in k and v.strip() == serial_number:
-                in_correct_pd = True
-                continue
+            elif "serial number" in k:
+                serial_number = v
             elif "world-wide name" in k:
                 wwn = v
-                continue
             elif "total size" in k:
                 if "mb" in v.lower():
                     size = int(v.split(" ")[0].strip()) * 1024 * 1024
@@ -1071,7 +1063,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 rotation_rate = 0 if "solid state device" in v.strip().lower() else int(
                     v.lower().split(" rpm")[0].strip())
         
-            if in_correct_pd is True and "last failure reason" in k:
+            if "last failure reason" in k:
                 d.deviceId = device_id
                 d.driveState = drive_state
                 d.driveType = drive_type
@@ -1084,45 +1076,37 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 d.rotationRate = rotation_rate
                 d.serialNumber = serial_number
                 return d
-            if in_correct_pd is False:
-                continue
+        
         return d
 
     @staticmethod
     @bash.in_bash
-    def get_arcconf_raid_controller_info(adapter_number):
-        # type: (str) -> (str, str)
-        r, o = bash.bash_ro(
-            "arcconf getconfig %s AD | grep -E 'Controller Model|SAS Address'" % adapter_number)
-        if r != 0:
-            return None, None
-        return o.splitlines()[0].split(":")[1].strip(), o.splitlines()[1].split(":")[1].strip()
+    def get_arcconf_raid_info(raid_info):
+        produce_name = sas_address = None
+        raid_levels = disk_groups = {}
 
-    @staticmethod
-    @bash.in_bash
-    def get_arcconf_raid_level_info(adapter_number):
-        r, o = bash.bash_ro(
-            "arcconf getconfig %s ld | grep -E 'Logical Device number|RAID level|Slot:[0-9]*'" % adapter_number)
-        if r != 0 or o.strip() == "":
-            return {}
-    
-        raid_levels = {}
-        disk_groups = {}
-        for line in o.splitlines():
-            k = line.split(":")[0].strip().lower()
-            v = ":".join(line.split(":")[1:]).strip()
-            if "Logical Device number" in line:
-                group = line.strip().split(" ")[-1]
-            elif "raid level" in k:
-                level = "RAID%s" % v.strip()
-            elif "Slot:" in v:
+        disk_group = level = None
+        for l in raid_info.splitlines():
+            if l.strip() == "":
+                continue
+            k = l.split(":")[0].strip().lower()
+            v = ":".join(l.split(":")[1:]).strip()
+            if "controller model" == k and produce_name is None:
+                produce_name = v
+            elif "sas address" == k and sas_address is None:
+                sas_address = v
+            elif "Logical Device number" in l:
+                disk_group = l.strip().split(" ")[-1]
+            elif "raid level" == k:
+                level = "RAID%s" % v
+            elif "Enclosure" in v and "Slot" in v:
                 enclosure_id = v.split("Enclosure:")[1].split(",")[0].strip()
                 slot_id = v.split("Slot:")[1].split(")")[0].strip()
                 locate = "%s:%s" % (enclosure_id, slot_id)
                 raid_levels[locate] = level
-                disk_groups[locate] = group
-        
-        return raid_levels, disk_groups
+                disk_groups[locate] = disk_group
+    
+        return produce_name, sas_address, raid_levels, disk_groups
 
     @bash.in_bash
     def get_sas_device(self, adapter_info):
@@ -1131,22 +1115,20 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             if not adapter.strip().isdigit():
                 continue
         
-            r, device_info = bash.bash_ro("sas3ircu %s display | grep -A 14 'Device is a Hard disk'" % adapter.strip())
+            r, device_info = bash.bash_ro("sas3ircu %s display" % adapter.strip())
             if r != 0 or device_info.strip() == "":
                 continue
-        
-            r, disks = bash.bash_ro("lsscsi -g | grep 'disk' | awk '{print $NF}'")
-            if r != 0 or disks.strip() == "":
+
+            # Contain at least raid controller into and a hardDisk info
+            device_arr = device_info.split("Device is a Hard disk")
+            if len(device_arr) < 3:
                 continue
-        
-            productName, sasAddress = self.get_sas_raid_controller_info(adapter.strip())
-            raidLevelMap, diskGroupMap = self.get_sas_raid_level_info(adapter.strip())
-        
-            for line in disks.splitlines():
-                if line.strip() == "":
-                    continue
-                d = self.get_sas_raid_device_info(line, device_info)
-                if d.wwn is not None and d.deviceModel is not None and d.slotNumber is not None:
+            
+            productName, sasAddress, raidLevelMap, diskGroupMap = self.get_sas_raid_info(device_arr[0], adapter.strip())
+
+            for infos in device_arr[1:]:
+                d = self.get_sas_device_info(infos)
+                if d.serialNumber is not None and d.deviceModel is not None and d.enclosureDeviceId is not None and d.slotNumber is not None:
                     d.raidLevel = raidLevelMap.get("%s:%s" % (d.enclosureDeviceId, d.slotNumber))
                     d.diskGroup = diskGroupMap.get("%s:%s" % (d.enclosureDeviceId, d.slotNumber))
                     d.raidControllerNumber = adapter.strip()
@@ -1157,88 +1139,78 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         return result
 
     @bash.in_bash
-    def get_sas_raid_device_info(self, line, device_info):
+    def get_sas_device_info(self, infos):
         d = RaidPhysicalDriveStruct()
-        r, o = bash.bash_ro("smartctl -i %s" % line.strip())
-        if r != 0 or "Device Model" not in o:
-            logger.warn("can not get device %s info" % line)
-            return d
     
-        for l in o.splitlines():  # type: str
-            k = l.split(":")[0].lower()
-            v = ":".join(l.split(":")[1:]).strip()
-            if "device model" in k:
-                d.deviceModel = v
-            elif "serial number" in k:
-                d.serialNumber = v
-            elif "lu wwn device id" in k:
-                d.wwn = v.replace(" ", "")
-            elif "user capacity" in k:
-                d.size = int(v.split(" bytes")[0].strip().replace(",", ""))
-            elif "rotation rate" in k:
-                d.rotationRate = 0 if "solid state device" in v.strip().lower() else int(
-                    v.split(" rpm")[0].strip())
-    
-        in_correct_pd = False
-        drive_type = enclosure_device_id = slot_number = drive_state = None
-        for l in device_info.splitlines():
-            k = l.split(":")[0].lower()
+        wwn = serial_number = model_number = size = drive_type = enclosure_device_id = slot_number = drive_state = None
+        for l in infos.splitlines():
+            if l.strip() == "":
+                continue
+            k = l.split(":")[0].strip().lower()
             v = ":".join(l.split(":")[1:]).strip()
             if "enclosure" in k:
                 enclosure_device_id = int(v)
-                continue
             elif "slot" in k:
                 slot_number = int(v)
-                continue
-            elif "state" in k:
+            elif "state" == k:
                 drive_state = v.split(" ")[0].strip()
-                continue
-            elif "serial no" in k and v.lower() == d.serialNumber.lower():
-                in_correct_pd = True
-                continue
-            elif "protocol" in k:
+            elif "size" in k:
+                if "mb" in k:
+                    size = int(v.split("/")[0].strip()) * 1024 * 1024
+                elif "gb" in v.lower():
+                    size = int(v.split("/")[0].strip()) * 1024 * 1024 * 1024
+                elif "kb" in v.lower():
+                    size = int(v.split("/")[0].strip()) * 1024
+                elif "byte" in v.lower():
+                    size = int(v.split("/")[0].strip())
+            elif "model number" == k:
+                model_number = v
+            elif "serial no" == k:
+                serial_number = v
+            elif "guid" == k:
+                wwn = v
+            elif "protocol" == k:
                 drive_type = v.strip()
-        
-            if in_correct_pd is True and "drive type" in k:
+            elif "drive type" == k:
                 d.enclosureDeviceId = enclosure_device_id
                 d.slotNumber = slot_number
                 d.driveState = drive_state
+                d.size = size
+                d.deviceModel = model_number
+                d.serialNumber = serial_number
+                d.wwn = wwn
                 d.driveType = drive_type
                 d.mediaType = "SSD" if "sata_ssd" in v.strip().lower() else "HDD"
                 return d
-            if in_correct_pd is False:
-                continue
+    
         return d
 
     @staticmethod
     @bash.in_bash
-    def get_sas_raid_controller_info(adapter_number):
-        # type: (str) -> (str, str)
+    def get_sas_raid_info(infos, adapter_number):
+        produce_name = sas_address = None
+        raid_levels = disk_groups = {}
+    
         r, o = bash.bash_ro(
             "/opt/MegaRAID/storcli/storcli64 /c%s show | grep -E 'Product Name|SAS Address'" % adapter_number)
         if r != 0:
-            return None, None
-        return o.splitlines()[0].split("=")[1].strip(), o.splitlines()[1].split("=")[1].strip()
-
-    @staticmethod
-    @bash.in_bash
-    def get_sas_raid_level_info(adapter_number):
-        r, o = bash.bash_ro(
-            "sas3ircu %s display  | grep -E 'Volume ID|RAID level|Enclosure#/Slot#'" % adapter_number)
-        if r != 0 or o.strip() == "":
-            return {}, {}
+            return produce_name, sas_address, raid_levels, disk_groups
     
-        raid_levels = {}
-        disk_groups = {}
-        for line in o.splitlines():
-            k = line.split(":")[0].strip().lower()
-            v = ":".join(line.split(":")[1:]).strip()
+        produce_name = o.splitlines()[0].split("=")[1].strip()
+        sas_address = o.splitlines()[1].split("=")[1].strip()
+    
+        disk_group = level = None
+        for l in infos.splitlines():
+            if l.strip() == "":
+                continue
+            k = l.split(":")[0].strip().lower()
+            v = ":".join(l.split(":")[1:]).strip()
             if "volume id" in k:
-                group = v
+                disk_group = v
             elif "raid level" in k:
                 level = v
             elif "enclosure#/slot#" in k:
-                disk_groups[v] = group
+                disk_groups[v] = disk_group
                 raid_levels[v] = level
-                
-        return raid_levels, disk_groups
+    
+        return produce_name, sas_address, raid_levels, disk_groups
