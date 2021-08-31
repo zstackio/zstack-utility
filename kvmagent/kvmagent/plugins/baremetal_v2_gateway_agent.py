@@ -853,7 +853,6 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                     gw_ip=self.provision_network_conf.provision_nic_ip,
                     lun_id=volume_driver.iscsi_lun,
                     target=volume_driver.iscsi_target)
-                logger.debug("aaaaaa uri is :%s :" % uri)
                 drive_id = '0x%x' % (128 + volume_driver.iscsi_lun)
                 volumes[uri] = drive_id
 
@@ -862,9 +861,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             iscsi_initiator_iqn=volume_drivers[0].iscsi_acl,
             volumes=volumes)
         ipxe_file_name = instance_obj.provision_mac.replace(':', '-')
-        logger.debug("aaaaaa ipxe_file_name is : %s" % ipxe_file_name)
         ipxe_file_path = os.path.join(self.PXELINUX_CFG_DIR, ipxe_file_name)
-        logger.debug("aaaaaa conf is %s :" % conf)
         with open(ipxe_file_path, 'w') as f:
             f.write(conf)
 
@@ -873,7 +870,6 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         """
         ipxe_file_name = instance_obj.provision_mac.replace(':', '-')
         ipxe_file_path = os.path.join(self.PXELINUX_CFG_DIR, ipxe_file_name)
-        logger.debug("aaaaaa _delete_ipxe_configuration ")
         if not os.path.exists(ipxe_file_path):
             msg = ('The ipxe configuration file: {ipxe_file_path} was '
                    'deleted before the operate').format(
@@ -1251,7 +1247,6 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             #                                         volume_driver)
 
         rsp = kvmagent.AgentResponse()
-        logger.debug("aaaaaa11 return created_iqn is: %s" % instance_obj.customIqn)
         rsp.bmInstance = instance_obj
         return jsonobject.dumps(rsp)
 
