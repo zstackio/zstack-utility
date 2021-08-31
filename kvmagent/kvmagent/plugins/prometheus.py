@@ -106,9 +106,9 @@ def collect_host_capacity_statistics():
     global collect_node_disk_capacity_last_time
     global collect_node_disk_capacity_last_result
 
-    if collect_node_disk_capacity_last_time is None:
+    if collect_node_disk_capacity_last_time is None or (time.time() - collect_node_disk_capacity_last_time) >= 60:
         collect_node_disk_capacity_last_time = time.time()
-    elif time.time() - collect_node_disk_capacity_last_time < 60 and collect_node_disk_capacity_last_result is not None:
+    elif (time.time() - collect_node_disk_capacity_last_time) < 60 and collect_node_disk_capacity_last_result is not None:
         return collect_node_disk_capacity_last_result
 
     zstack_used_capacity = 0
@@ -201,66 +201,95 @@ def convert_disk_state_to_int(state):
     else:
         return 100
 
+collect_raid_state_last_time = None
+collect_raid_state_last_result = None
 
-def collect_arcconf_raid_state():
+def collect_raid_state():
     metrics = {
         'raid_state': GaugeMetricFamily('raid_state',
                                         'raid state', None, ['target_id']),
         'physical_disk_state': GaugeMetricFamily('physical_disk_state',
                                                  'physical disk state', None,
                                                  ['slot_number', 'disk_group']),
+        'physical_disk_temperature': GaugeMetricFamily('physical_disk_temperature',
+                                                       'physical disk temperature', None,
+                                                       ['slot_number', 'disk_group']),
     }
     
+    global collect_raid_state_last_time
+    global collect_raid_state_last_result
+
+    if collect_raid_state_last_time is None or (time.time() - collect_raid_state_last_time) >= 40:
+        collect_raid_state_last_time = time.time()
+    elif (time.time() - collect_raid_state_last_time) < 40 and collect_raid_state_last_result is not None:
+        return collect_raid_state_last_result
+
+    r, o = bash_ro("/opt/MegaRAID/MegaCli/MegaCli64 -LDInfo -LALL -aAll | grep -E 'Target Id|State'")
+    if r == 0 and o.strip() != "":
+        collect_raid_state_last_result = collect_mega_raid_state(metrics, o)
+        return collect_raid_state_last_result
+
+    r, o = bash_ro("sas3ircu list | grep -A 8 'Index' | awk '{print $1}'")
+    if r == 0 and o.strip() != "":
+        collect_raid_state_last_result = collect_sas_raid_state(metrics, o)
+        return collect_raid_state_last_result
+
     r, o = bash_ro("arcconf list | grep -A 8 'Controller ID' | awk '{print $2}'")
-    if r != 0 or o.strip() == "":
-        return metrics.values()
+    if r == 0 and o.strip() != "":
+        collect_raid_state_last_result = collect_arcconf_raid_state(metrics, o)
+        return collect_raid_state_last_result
     
-    for line in o.splitlines():
+    collect_raid_state_last_result = metrics.values()
+    return collect_raid_state_last_result
+
+
+def collect_arcconf_raid_state(metrics, infos):
+    for line in infos.splitlines():
         if line.strip() == "":
             continue
         adapter = line.split(":")[0].strip()
         if not adapter.isdigit():
             continue
         
-        raid_info = bash_o(
-            "arcconf getconfig %s ld | grep -E 'Logical Device number|Status of Logical Device'" % adapter)
+        r, device_info = bash_ro("arcconf getconfig %s AL" % adapter)
+        if r != 0 or device_info.strip() == "":
+            continue
+        
+        # Contain at least raid controller into and a hardDisk info
+        device_arr = device_info.split("Device #")
+        if len(device_arr) < 3:
+            continue
+        
         target_id = "unknown"
-        for info in raid_info.splitlines():
-            if "Logical Device number" in info:
-                target_id = info.strip().split(" ")[-1]
-            else:
-                state = info.strip().split(":")[-1].strip()
+        for l in device_arr[0].splitlines():
+            if l.strip() == "":
+                continue
+            if "Logical Device number" in l:
+                target_id = l.strip().split(" ")[-1]
+            elif "Status of Logical Device" in l and target_id != "unknown":
+                state = l.strip().split(":")[-1].strip()
                 metrics['raid_state'].add_metric([target_id], convert_raid_state_to_int(state))
         
-        disk_info = bash_o("arcconf getconfig %s pd | grep -E 'State|Reported Location'" % adapter)
-        state = "unknown"
-        for info in disk_info.splitlines():
-            k = info.split(":")[0].strip().lower()
-            v = ":".join(info.split(":")[1:]).strip()
-            if "state" == k:
-                state = v
-            elif "reported location" in k and "Enclosure" in v and "Slot" in v:
-                enclosure_device_id = v.split(",")[0].split(" ")[1].strip()
-                slot_number = v.split("Slot ")[1].split("(")[0].strip()
-                metrics['physical_disk_state'].add_metric([slot_number, enclosure_device_id], convert_disk_state_to_int(state))
-
+        for infos in device_arr[1:]:
+            drive_state = "unknown"
+            for l in infos.splitlines():
+                if l.strip() == "":
+                    continue
+                k = l.split(":")[0].strip().lower()
+                v = ":".join(l.split(":")[1:]).strip()
+                if "state" == k:
+                    drive_state = v.split(" ")[0].strip()
+                elif "reported location" in k and "Enclosure" in v and "Slot" in v and drive_state != "unknown":
+                    enclosure_device_id = v.split(",")[0].split(" ")[1].strip()
+                    slot_number = v.split("Slot ")[1].split("(")[0].strip()
+                    metrics['physical_disk_state'].add_metric([slot_number, enclosure_device_id],
+                                                              convert_disk_state_to_int(drive_state))
+                    
     return metrics.values()
 
 
-def collect_sas_raid_state():
-    metrics = {
-        'raid_state': GaugeMetricFamily('raid_state',
-                                        'raid state', None, ['target_id']),
-        'physical_disk_state': GaugeMetricFamily('physical_disk_state',
-                                                 'physical disk state', None,
-                                                 ['slot_number', 'disk_group']),
-    }
-    
-    r, o = bash_ro("sas3ircu list | grep -A 8 'Index' | awk '{print $1}'")
-    if r != 0 or o.strip() == "":
-        return metrics.values()
-    
-    for line in o.splitlines():
+def collect_sas_raid_state(metrics, infos):
+    for line in infos.splitlines():
         if not line.strip().isdigit():
             continue
         raid_info = bash_o("sas3ircu %s status | grep -E 'Volume ID|Volume state'" % line.strip())
@@ -283,26 +312,14 @@ def collect_sas_raid_state():
                 slot_number = v
             elif "State" == k:
                 state = v.split(" ")[0].strip()
-                metrics['physical_disk_state'].add_metric([slot_number, enclosure_device_id], convert_disk_state_to_int(state))
-
+                metrics['physical_disk_state'].add_metric([slot_number, enclosure_device_id],
+                                                          convert_disk_state_to_int(state))
+    
     return metrics.values()
 
 
-def collect_mega_raid_state():
-    metrics = {
-        'raid_state': GaugeMetricFamily('raid_state',
-                                        'raid state', None, ['target_id']),
-        'physical_disk_state': GaugeMetricFamily('physical_disk_state',
-                                                 'physical disk state', None,
-                                                 ['slot_number', 'disk_group']),
-        'physical_disk_temperature': GaugeMetricFamily('physical_disk_temperature',
-                                                       'physical disk temperature', None,
-                                                       ['slot_number', 'disk_group']),
-    }
-    if bash_r("/opt/MegaRAID/MegaCli/MegaCli64 -LDInfo -LALL -aAll") != 0:
-        return metrics.values()
-
-    raid_info = bash_o("/opt/MegaRAID/MegaCli/MegaCli64 -LDInfo -LALL -aAll | grep -E 'Target Id|State'").strip().splitlines()
+def collect_mega_raid_state(metrics, infos):
+    raid_info = infos.strip().splitlines()
     target_id = state = "unknown"
     for info in raid_info:
         if "Target Id" in info:
@@ -339,13 +356,16 @@ def collect_ssd_lift_state():
         'ssd_life_left': GaugeMetricFamily('ssd_life_left', 'ssd life left', None, ['disk', 'serial_number']),
     }
     
-    r, o = bash_ro("lsblk -d -o name,serial,type,rota | grep -w disk | awk '$4 == 0 {print $1,$2}'")  # type: (int, str)
+    r, o = bash_ro("lsblk -d -o name,type,rota | grep -w disk | awk '$3 == 0 {print $1}'")  # type: (int, str)
     if r != 0 or o.strip() == "":
         return metrics.values()
     
     for line in o.splitlines():
-        disk_name = line.split(" ")[0].strip()
-        serial_number = " ".join(line.split(" ")[1:]).strip()
+        disk_name = line.strip()
+        r, o = bash_ro("smartctl -i /dev/%s | grep 'Serial Number' | awk '{print $3}'" % disk_name)
+        if r != 0 or o.strip() == "":
+            continue
+        serial_number = o.strip()
         
         r, o = bash_ro("smartctl -A /dev/%s | grep 'Media_Wearout_Indicator' | awk '{print $4}'" % disk_name)
         if r != 0 or o.strip() == "":
@@ -355,18 +375,27 @@ def collect_ssd_lift_state():
     
     return metrics.values()
 
+
+collect_equipment_state_last_time = None
+collect_equipment_state_last_result = None
+
 def collect_equipment_state():
     metrics = {
         'power_supply': GaugeMetricFamily('power_supply',
                                           'power supply', None, ['ps_id']),
         'ipmi_status': GaugeMetricFamily('ipmi_status', 'ipmi status', None, []),
-        'physical_network_interface': GaugeMetricFamily('physical_network_interface',
-                                                        'physical network interface', None,
-                                                        ['interface_name', 'speed']),
         "fan_speed_rpm": GaugeMetricFamily('fan_speed_rpm', 'fan speed rpm', None, ['fan_speed_name']),
         "fan_speed_state": GaugeMetricFamily('fan_speed_state', 'fan speed state', None, ['fan_speed_name']),
         "cpu_temperature": GaugeMetricFamily('cpu_temperature', 'cpu temperature', None, ['cpu']),
     }
+
+    global collect_equipment_state_last_time
+    global collect_equipment_state_last_result
+
+    if collect_equipment_state_last_time is None or (time.time() - collect_equipment_state_last_time) >= 30:
+        collect_equipment_state_last_time = time.time()
+    elif (time.time() - collect_equipment_state_last_time) < 30 and collect_equipment_state_last_result is not None:
+        return collect_equipment_state_last_result
 
     r, ps_info = bash_ro("ipmitool sdr type 'power supply' | grep -E -i '^PS\w*(\ |_)Status'")  # type: (int, str)
     if r == 0:
@@ -398,19 +427,8 @@ def collect_equipment_state():
             cpu_temp = 0 if cpu_state != 0 else info.split("|")[4].strip().split(" ")[0]
             metrics['cpu_temperature'].add_metric([cpu_id], float(cpu_temp))
     
-    nics = bash_o("find /sys/class/net -type l -not -lname '*virtual*' -printf '%f\\n'").splitlines()
-    if len(nics) != 0:
-        for nic in nics:
-            nic = nic.strip()
-            try:
-                # NOTE(weiw): sriov nic contains carrier file but can not read
-                status = linux.read_file("/sys/class/net/%s/carrier" % nic) == 1
-            except Exception as e:
-                status = True
-            speed = str(get_nic_supported_max_speed(nic))
-            metrics['physical_network_interface'].add_metric([nic, speed], status)
-
-    return metrics.values()
+    collect_equipment_state_last_result = metrics.values()
+    return collect_equipment_state_last_result
 
 
 def collect_vm_statistics():
@@ -486,15 +504,17 @@ def collect_node_disk_wwid():
     global collect_node_disk_wwid_last_result
 
     # NOTE(weiw): some storage can not afford frequent TUR. ref: ZSTAC-23416
-    if collect_node_disk_wwid_last_time is None:
+    if collect_node_disk_wwid_last_time is None or (time.time() - collect_node_disk_wwid_last_time) >= 300:
         collect_node_disk_wwid_last_time = time.time()
-    elif time.time() - collect_node_disk_wwid_last_time < 300 and collect_node_disk_wwid_last_result is not None:
+    elif (time.time() - collect_node_disk_wwid_last_time) < 300 and collect_node_disk_wwid_last_result is not None:
         return collect_node_disk_wwid_last_result
-
+    
     metrics = {
         'node_disk_wwid': GaugeMetricFamily('node_disk_wwid',
                                            'node disk wwid', None, ["disk", "wwid"])
     }
+
+    collect_node_disk_wwid_last_result = metrics.values()
 
     pvs = bash_o("pvs --nolocking --noheading -o pv_name").strip().splitlines()
     context = pyudev.Context()
@@ -514,6 +534,29 @@ def collect_node_disk_wwid():
 
     collect_node_disk_wwid_last_result = metrics.values()
     return collect_node_disk_wwid_last_result
+
+
+def collect_physical_network_interface_state():
+    metrics = {
+        'physical_network_interface': GaugeMetricFamily('physical_network_interface',
+                                                        'physical network interface', None,
+                                                        ['interface_name', 'speed']),
+    }
+    
+    nics = bash_o("find /sys/class/net -type l -not -lname '*virtual*' -printf '%f\\n'").splitlines()
+    if len(nics) != 0:
+        for nic in nics:
+            nic = nic.strip()
+            try:
+                # NOTE(weiw): sriov nic contains carrier file but can not read
+                status = linux.read_file("/sys/class/net/%s/carrier" % nic) == 1
+            except Exception as e:
+                status = True
+            speed = str(get_nic_supported_max_speed(nic))
+            metrics['physical_network_interface'].add_metric([nic, speed], status)
+    
+    return metrics.values()
+    
 
 def collect_host_conntrack_statistics():
     metrics = {
@@ -537,12 +580,11 @@ kvmagent.register_prometheus_collector(collect_host_capacity_statistics)
 kvmagent.register_prometheus_collector(collect_vm_statistics)
 kvmagent.register_prometheus_collector(collect_node_disk_wwid)
 kvmagent.register_prometheus_collector(collect_host_conntrack_statistics)
+kvmagent.register_prometheus_collector(collect_physical_network_interface_state)
 
 if misc.isMiniHost() or misc.isHyperConvergedHost():
     kvmagent.register_prometheus_collector(collect_lvm_capacity_statistics)
-    kvmagent.register_prometheus_collector(collect_mega_raid_state)
-    kvmagent.register_prometheus_collector(collect_arcconf_raid_state)
-    kvmagent.register_prometheus_collector(collect_sas_raid_state)
+    kvmagent.register_prometheus_collector(collect_raid_state)
     kvmagent.register_prometheus_collector(collect_equipment_state)
     kvmagent.register_prometheus_collector(collect_ssd_lift_state)
 
