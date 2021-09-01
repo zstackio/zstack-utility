@@ -597,6 +597,8 @@ class CephAgent(plugin.TaskManager):
         spath = self._normalize_install_path(cmd.snapshotPath)
 
         rsp = CreateSnapshotRsp()
+        rsp.installPath = cmd.snapshotPath
+
         do_create = True
         if cmd.skipOnExisting:
             image_name, sp_name = spath.split('@')
