@@ -960,10 +960,10 @@ class OvsCtl(Ovs):
                             dpdk_devargs) != 0:
                 return False
 
-        # every time you create a new dpdkbond,
-        # you have to restart ovs-vswitchd to 
-        # make the dpdkbond work.
-        self.startSwitch(True)
+            # every time you create a new dpdkbond,
+            # you have to restart ovs-vswitchd to 
+            # make the dpdkbond work.
+            self.startSwitch(True)
 
         return True
 
