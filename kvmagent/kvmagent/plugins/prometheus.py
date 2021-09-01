@@ -128,7 +128,7 @@ def collect_host_capacity_statistics():
 
     df_map = {}
     for df in dfInfo.splitlines():
-        df_size = long(df.split()[0].strip())
+        df_size = long(df.split()[0].strip()) * 1024
         df_name = df.split()[-1].strip()
         df_map[df_name] = df_size
     

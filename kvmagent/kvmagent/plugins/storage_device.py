@@ -1073,7 +1073,8 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     @bash.in_bash
     def get_arcconf_raid_info(raid_info):
         produce_name = sas_address = None
-        raid_levels = disk_groups = {}
+        raid_levels = {}
+        disk_groups = {}
 
         disk_group = level = None
         for l in raid_info.splitlines():
@@ -1179,7 +1180,8 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     @bash.in_bash
     def get_sas_raid_info(infos, adapter_number):
         produce_name = sas_address = None
-        raid_levels = disk_groups = {}
+        raid_levels = {}
+        disk_groups = {}
     
         r, o = bash.bash_ro(
             "/opt/MegaRAID/storcli/storcli64 /c%s show | grep -E 'Product Name|SAS Address'" % adapter_number)
