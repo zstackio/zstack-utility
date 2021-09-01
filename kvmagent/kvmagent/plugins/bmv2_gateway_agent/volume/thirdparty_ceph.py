@@ -67,15 +67,24 @@ class ThirdPartyCephVolume(base.BaseVolume):
     def destory_instance_resource(self):
         instance_gateway_ip = self.instance_obj.gateway_ip
         mon_ip = self.volume_obj.monIp
-        dev_name = linux.find_route_interface_by_destination_ip(mon_ip)
         snat_ip = linux.find_route_interface_ip_by_destination_ip(mon_ip)
 
         RbdDeviceOperator(mon_ip, self.volume_obj.token, self.volume_obj.tpTimeout).destory(self.instance_obj)
 
-        shell.run("iptables -t nat -D PREROUTING -s %s -d %s -p tcp --dport 3260 -j DNAT --to-destination %s:3260" %
-                  (self.instance_obj.provision_ip, instance_gateway_ip, mon_ip))
-        if snat_ip != mon_ip:
-            shell.run("iptables -t nat -D POSTROUTING -s %s -o %s -j SNAT --to-source %s" % (self.instance_obj.provision_ip, dev_name, snat_ip))
+        # Random monIp will delete the incorrect ip rule, find the mon ip used for creation
+        # Example of iptables rule:
+        # -A PREROUTING -s 10.90.0.4/32 -d 10.90.0.3/32 -p tcp -m tcp --dport 3260 -j DNAT --to-destination 172.25.13.96:3260
+        ips = shell.call(
+            '''iptables-save|awk '{if($2=="PREROUTING"&&$4 =="%s/32"&&$15 =="--to-destination") print $16}' ''' % self.instance_obj.provision_ip).splitlines()
+
+        for ip in ips:
+            old_mon_ip = ip.strip().split(":")[0]
+            shell.run("iptables -t nat -D PREROUTING -s %s -d %s -p tcp --dport 3260 -j DNAT --to-destination %s:3260" %
+                      (self.instance_obj.provision_ip, instance_gateway_ip, old_mon_ip))
+            if snat_ip != old_mon_ip:
+                dev_name = linux.find_route_interface_by_destination_ip(old_mon_ip)
+                shell.run("iptables -t nat -D POSTROUTING -s %s -o %s -j SNAT --to-source %s" % (
+                    self.instance_obj.provision_ip, dev_name, snat_ip))
 
     def pre_take_volume_snapshot(self):
         pass
