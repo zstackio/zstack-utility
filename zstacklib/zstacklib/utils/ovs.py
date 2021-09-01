@@ -894,11 +894,9 @@ class OvsCtl(Ovs):
             return False
 
         for i in interfaces:
-            iproute.set_link_down_no_error(i)
             # set devlink mode to switchdev and unbind vfs
             self._set_if_devlink_mode(i)
             self._set_dpdk_white_list(i)
-            iproute.set_link_up_no_error(i)
 
         if bridgeName not in self.listBrs():
             # create bridge
@@ -929,11 +927,9 @@ class OvsCtl(Ovs):
             # check vendor_device number
             if self.ifOffloadStatus(i) == None:
                 return False
-            iproute.set_link_down_no_error(i)
             # set devlink mode to switchdev and unbind vfs
             self._set_if_devlink_mode(i)
             self._set_dpdk_white_list(i)
-            iproute.set_link_up_no_error(i)
 
         if bridgeName not in self.listBrs():
             # create bridge
@@ -971,10 +967,8 @@ class OvsCtl(Ovs):
         """
         attach normal interface to ovs.
         """
-        iproute.set_link_down_no_error(interface)
         self._set_if_devlink_mode(interface)
         self._set_dpdk_white_list(interface)
-        iproute.set_link_up_no_error(interface)
         if bridgeName not in self.listBrs():
             # create bridge
             if self.createBr(bridgeName) != 0:
@@ -1106,6 +1100,7 @@ class OvsCtl(Ovs):
         if readSysfs(devlink_mode, True) == mode and totalvfs == readSysfs(numvfs):
             return
 
+        iproute.set_link_down_no_error(ifName)
         # split vfs
         writeSysfs(numvfs, "0")
         # wait until
@@ -1125,6 +1120,7 @@ class OvsCtl(Ovs):
         logger.debug("set {} for {} success.".format(mode, ifName))
 
         self._bind_vfs(ifName)
+        iproute.set_link_up_no_error(ifName)
 
     def _unbind_vfs(self, ifName):
         # unbind vfs
