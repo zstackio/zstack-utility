@@ -1358,41 +1358,46 @@ done
             return jsonobject.dumps(rsp)
 
         results = []
-        for line in o.splitlines():
-            if line.strip() == "" or ":" not in line:
-                continue
-            k = line.split(":")[0].lower().strip()
-            v = ":".join(line.split(":")[1:]).strip()
-            if "size" == k:
-                if "mb" in v.lower():
-                    size = str(int(v.split(" ")[0])/1024) + " GB"
-                else:
-                    size = v
-            elif "locator" == k:
-                locator = v
-            elif "speed" == k:
-                speed = v
-            elif "manufacturer" == k:
-                manufacturer = v
-            elif "serial number" == k:
-                serialnumber = v
-            elif "rank" == k:
-                rank = v
-            elif "configured clock speed" == k:
-                clockSpeed =  v
-            elif "configured voltage" == k:
-                voltage = v
-                if serialnumber.lower() != "no dimm" and serialnumber != "":
-                    m = HostPhysicalMemoryStruct()
-                    m.size = size
-                    m.speed = speed
-                    m.clockSpeed = clockSpeed
-                    m.locator = locator
-                    m.manufacturer = manufacturer
-                    m.serialNumber = serialnumber
-                    m.rank = rank
-                    m.voltage = voltage
-                    results.append(m)
+        memory_arr = o.split("Memory Device")
+        for infos in memory_arr[1:]:
+            size = locator = speed = manufacturer = serialnumber = rank = clockSpeed = None
+            for line in infos.splitlines():
+                if line.strip() == "" or ":" not in line:
+                    continue
+                k = line.split(":")[0].lower().strip()
+                v = ":".join(line.split(":")[1:]).strip()
+
+                if "size" == k:
+                    if "mb" in v.lower():
+                        size = str(int(v.split(" ")[0]) / 1024) + " GB"
+                    elif "no module installed" in v.lower():
+                        size = None
+                    else:
+                        size = v
+                elif "locator" == k:
+                    locator = v
+                elif "speed" == k:
+                    speed = v
+                elif "manufacturer" == k:
+                    manufacturer = v
+                elif "serial number" == k:
+                    serialnumber = v
+                elif "rank" == k:
+                    rank = v
+                elif "configured clock speed" == k:
+                    clockSpeed =  v
+                elif "configured voltage" == k:
+                    if serialnumber.lower() != "no dimm" and serialnumber is not None:
+                        m = HostPhysicalMemoryStruct()
+                        m.size = size
+                        m.speed = speed
+                        m.clockSpeed = clockSpeed
+                        m.locator = locator
+                        m.manufacturer = manufacturer
+                        m.serialNumber = serialnumber
+                        m.rank = rank
+                        m.voltage = v
+                        results.append(m)
         rsp.physicalMemoryFacts = results
         return jsonobject.dumps(rsp)
         
