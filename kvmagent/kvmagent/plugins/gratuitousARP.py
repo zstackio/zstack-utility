@@ -27,10 +27,10 @@ class BridgeVmNic():
         self.Name = name
         self.VmNics = []
         
-class GracefulARP(kvmagent.KvmAgent):
-    APPLY_GRACEFUL_ARP_PATH = "/flatnetworkprovider/garp/apply"
-    RELEASE_GRACEFUL_ARP_PATH = "/flatnetworkprovider/garp/release"
-    UPDATE_GRACEFUL_ARP_SETTINGS = "/flatnetworkprovider/garp/settings"
+class GratuitousARP(kvmagent.KvmAgent):
+    APPLY_GRATUITOUS_ARP_PATH = "/flatnetworkprovider/garp/apply"
+    RELEASE_GRATUITOUS_ARP_PATH = "/flatnetworkprovider/garp/release"
+    UPDATE_GRATUITOUS_ARP_SETTINGS = "/flatnetworkprovider/garp/settings"
     bridge_vmNics = {}
     activeNics = {}
     interval = 5
@@ -42,45 +42,45 @@ class GracefulARP(kvmagent.KvmAgent):
     def start(self):
         http_server = kvmagent.get_http_server()
 
-        http_server.register_async_uri(self.APPLY_GRACEFUL_ARP_PATH, self.apply_graceful_arp)
-        http_server.register_async_uri(self.RELEASE_GRACEFUL_ARP_PATH, self.release_graceful_arp)
-        http_server.register_async_uri(self.UPDATE_GRACEFUL_ARP_SETTINGS, self.update_graceful_arp_settings)
+        http_server.register_async_uri(self.APPLY_GRATUITOUS_ARP_PATH, self.apply_gratuitous_arp)
+        http_server.register_async_uri(self.RELEASE_GRATUITOUS_ARP_PATH, self.release_gratuitous_arp)
+        http_server.register_async_uri(self.UPDATE_GRATUITOUS_ARP_SETTINGS, self.update_gratuitous_arp_settings)
         thread.timer(self.interval, self.monitor_bonding_master_change).start()
 
     def stop(self):
         pass
 
     @kvmagent.replyerror
-    def update_graceful_arp_settings(self, req):
+    def update_gratuitous_arp_settings(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         if self.interval != cmd.interval:
             self.interval = cmd.interval
-        logger.debug("graceful arp settings :interval change to %s", jsonobject.dumps(self.interval))
+        logger.debug("gratuitous arp settings :interval change to %s", jsonobject.dumps(self.interval))
         return jsonobject.dumps(AgentRsp())
 
     @kvmagent.replyerror
-    def apply_graceful_arp(self, req):
+    def apply_gratuitous_arp(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         if self.interval != cmd.interval:
             self.interval = cmd.interval
-        self._apply_graceful_arp(cmd.rebuild, cmd.infos)
-        logger.debug("graceful arp info: %s", jsonobject.dumps(self.bridge_vmNics))
+        self._apply_gratuitous_arp(cmd.rebuild, cmd.infos)
+        logger.debug("gratuitous arp info: %s", jsonobject.dumps(self.bridge_vmNics))
         return jsonobject.dumps(AgentRsp())
 
     @kvmagent.replyerror
-    def release_graceful_arp(self, req):
+    def release_gratuitous_arp(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        self._release_graceful_arp(cmd.infos)
-        logger.debug("graceful arp info: %s", jsonobject.dumps(self.bridge_vmNics))
+        self._release_gratuitous_arp(cmd.infos)
+        logger.debug("gratuitous arp info: %s", jsonobject.dumps(self.bridge_vmNics))
         return jsonobject.dumps(AgentRsp())
 
-    @lock.lock('gracefulArp')
-    def _release_graceful_arp(self, infos):
+    @lock.lock('gratuitousArp')
+    def _release_gratuitous_arp(self, infos):
         for info in infos:
             self._remove_info(info)
 
-    @lock.lock('gracefulArp')
-    def _apply_graceful_arp(self, rebuild, infos):
+    @lock.lock('gratuitousArp')
+    def _apply_gratuitous_arp(self, rebuild, infos):
         if rebuild:
             self.bridge_vmNics = {}
 
@@ -193,7 +193,7 @@ class GracefulARP(kvmagent.KvmAgent):
         thread.timer(self.interval, self.monitor_bonding_master_change).start()
 
     @bash.in_bash
-    @lock.lock('gracefulArp')
+    @lock.lock('gratuitousArp')
     def sendGarp(self, bondName):
         for bridgeNme in self.bridge_vmNics:
             bridge = self.bridge_vmNics[bridgeNme]
