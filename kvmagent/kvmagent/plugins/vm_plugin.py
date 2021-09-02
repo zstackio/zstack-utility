@@ -5947,6 +5947,8 @@ class VmPlugin(kvmagent.KvmAgent):
                 volumeType = "qcow2"
 
             isc.mirror_volume(cmd.vmUuid, device_name, cmd.mirrorTarget, lastVolume, currVolume, volumeType, cmd.speed)
+            execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate-set-capabilities","arguments":'
+                                                    '{"capabilities":[ {"capability": "dirty-bitmaps", "state":true}]}}')
             logger.info('finished mirroring volume[%s]: %s' % (device_name, cmd.volume))
 
         except Exception as e:
