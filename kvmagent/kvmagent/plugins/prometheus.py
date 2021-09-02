@@ -301,8 +301,8 @@ def collect_sas_raid_state(metrics, infos):
                 state = info.strip().split(":")[-1].strip()
                 metrics['raid_state'].add_metric([target_id], convert_raid_state_to_int(state))
         
-        disk_info = bash_o("sas3ircu %s display | grep -E 'Enclosure #|Slot #|State'" % line.strip())
-        enclosure_device_id = slot_number = "unknown"
+        disk_info = bash_o("sas3ircu %s display | grep -E 'Enclosure #|Slot #|State|Drive Type'" % line.strip())
+        enclosure_device_id = slot_number = state = "unknown"
         for info in disk_info.splitlines():
             k = info.split(":")[0].strip()
             v = info.split(":")[1].strip()
@@ -312,6 +312,7 @@ def collect_sas_raid_state(metrics, infos):
                 slot_number = v
             elif "State" == k:
                 state = v.split(" ")[0].strip()
+            elif "Drive Type" == k:
                 metrics['physical_disk_state'].add_metric([slot_number, enclosure_device_id],
                                                           convert_disk_state_to_int(state))
     
