@@ -5915,7 +5915,7 @@ class VmPlugin(kvmagent.KvmAgent):
             target_disk, _ = vm._get_target_disk(cmd.volume)
             device_name = self.get_disk_device_name(target_disk)
             isc = ImageStoreClient()
-            isc.stop_mirror(cmd.vmUuid, device_name)
+            isc.stop_mirror(cmd.vmUuid, cmd.complete, device_name)
         except Exception as e:
             content = traceback.format_exc()
             logger.warn("stop volume mirror failed: " + str(e) + '\n' + content)
@@ -5946,7 +5946,7 @@ class VmPlugin(kvmagent.KvmAgent):
                 currVolume = installPath.split(":/")[-1]
                 volumeType = "qcow2"
 
-            isc.mirror_volume(cmd.vmUuid, device_name, cmd.mirrorTarget, lastVolume, currVolume, volumeType, cmd.speed)
+            isc.mirror_volume(cmd.vmUuid, device_name, cmd.mirrorTarget, lastVolume, currVolume, volumeType, cmd.mode, cmd.speed)
             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate-set-capabilities","arguments":'
                                                     '{"capabilities":[ {"capability": "dirty-bitmaps", "state":true}]}}')
             logger.info('finished mirroring volume[%s]: %s' % (device_name, cmd.volume))
