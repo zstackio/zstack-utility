@@ -961,6 +961,10 @@ $HTTP["remoteip"] =~ "^(.*)$" {
 {% for ip in userdata_vm_ips -%}
     } else $HTTP["remoteip"] == "{{ip}}" {
         url.rewrite-once = (
+            "^/zwatch-vm-agent.linux-amd64.bin$" => "/zwatch-vm-agent",
+            "^/zwatch-vm-agent.linux-aarch64.bin$" => "/zwatch-vm-agent",
+            "^/zwatch-vm-agent.linux-mips64el.bin$" => "/zwatch-vm-agent",
+            "^/agent-tools-update.sh$" => "/vm-tools.sh",
             "^/.*/meta-data/(.+)$" => "/{{ip}}/meta-data/$1",
             "^/.*/meta-data$" => "/{{ip}}/meta-data",
             "^/.*/meta-data/$" => "/{{ip}}/meta-data/",
@@ -974,6 +978,10 @@ $HTTP["remoteip"] =~ "^(.*)$" {
 {% endfor -%}
     } else $HTTP["remoteip"] =~ "^(.*)$" {
         url.rewrite-once = (
+            "^/zwatch-vm-agent.linux-amd64.bin$" => "/zwatch-vm-agent",
+            "^/zwatch-vm-agent.linux-aarch64.bin$" => "/zwatch-vm-agent",
+            "^/zwatch-vm-agent.linux-mips64el.bin$" => "/zwatch-vm-agent",
+            "^/agent-tools-update.sh$" => "/vm-tools.sh",
             "^/.*/meta-data/(.+)$" => "../zstack-default/meta-data/$1",
             "^/.*/meta-data$" => "../zstack-default/meta-data",
             "^/.*/meta-data/$" => "../zstack-default/meta-data/",
