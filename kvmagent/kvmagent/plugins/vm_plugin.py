@@ -2455,27 +2455,6 @@ class Vm(object):
     def _is_ft_vm(self):
         return any(disk.type_ == "quorum" for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'))
 
-    def _replace_vdpa(self, vdpaPaths):
-        srcXml = self.domain.XMLDesc(libvirt.VIR_DOMAIN_XML_MIGRATABLE)
-
-        xmlobj = minidom.parseString(srcXml)
-        ifs = xmlobj.getElementsByTagName('interface')
-
-        for i in ifs:
-            src = i.getElementsByTagName('source')[0]
-            #target = i.getElementsByTagName('target')[0]
-            srcPath = src.getAttribute("path")
-            if srcPath == "":
-                continue
-            for v in vdpaPaths:
-                if srcPath.split('/')[-2] == v.split('/')[-2]:
-                    src.setAttribute("path", v)
-                    #target.setAttribute("dev", v.split('/')[-1])
-                    vdpaPaths.remove(v)
-
-        logger.debug("destXml:{}".format(xmlobj.toxml()))
-
-        return xmlobj.toxml()
 
     def resize_volume(self, volume, size):
         device_id = volume.deviceId
@@ -2706,8 +2685,6 @@ class Vm(object):
             flag |= libvirt.VIR_MIGRATE_PERSIST_DEST
 
         destXml = None
-        if cmd.vdpaPaths != None:
-            destXml = self._replace_vdpa(cmd.vdpaPaths)
 
         stage = get_task_stage(cmd)
         timeout = 1800 if cmd.timeout is None else cmd.timeout
@@ -2767,6 +2744,8 @@ class Vm(object):
 
         if cmd.nic.type == "vDPA":
                 vhostSrcPath = ovs.OvsCtl().getVdpa(cmd.vmUuid, cmd.nic)
+                if vhostSrcPath is None:
+                    raise Exception("vDPA resource exhausted.")
 
         interface = Vm._build_interface_xml(cmd.nic, None, vhostSrcPath, action, brMode)
 
@@ -3025,12 +3004,11 @@ class Vm(object):
         try:
             xml = self._interface_cmd_to_xml(cmd, action='Detach')
             logger.debug('detaching nic:\n%s' % xml)
+            ovs.OvsCtl().freeVdpa(cmd.vmUuid, cmd.nic.nicInternalName)
             if self.state == self.VM_STATE_RUNNING or self.state == self.VM_STATE_PAUSED:
                 self.domain.detachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
             else:
                 self.domain.detachDevice(xml)
-
-            ovs.OvsCtl().freeVdpa(cmd.vmUuid, cmd.nic.nicInternalName)
 
             if not linux.wait_callback_success(check_device, interval=0.5, timeout=10):
                 raise Exception('NIC device is still attached after 10 seconds. Please check virtio driver or stop VM and detach again.')
@@ -4018,10 +3996,20 @@ class Vm(object):
             devices = elements['devices']
             vhostSrcPath = cmd.addons['vhostSrcPath'] if cmd.addons else None
             brMode = cmd.addons['brMode'] if cmd.addons else None
-            for index, nic in enumerate(cmd.nics):
+
+            ovsctl = ovs.OvsCtl()
+            vdpaNics = []
+            for _, nic in enumerate(cmd.nics):
                 if nic.type == "vDPA":
-                    vDPAPath = ovs.OvsCtl().getVdpa(cmd.priorityConfigStruct.vmUuid, nic)
-                    interface = Vm._build_interface_xml(nic, devices, vDPAPath, 'Attach', brMode, index)
+                    vdpaNics.append(nic)
+            # get all vdpa resource at once, avoid race condition.
+            vDPAPaths = ovsctl.getVdpaS(cmd.priorityConfigStruct.vmUuid, vdpaNics)
+            if vDPAPaths is None:
+                    raise Exception("vDPA resource exhausted.")
+
+            for index, nic in enumerate(cmd.nics):
+                if nic.type == "vDPA" and vDPAPaths.has_key(nic.nicInternalName):
+                    interface = Vm._build_interface_xml(nic, devices, vDPAPaths[nic.nicInternalName], 'Attach', brMode, index)
                 else:
                     interface = Vm._build_interface_xml(nic, devices, vhostSrcPath, 'Attach', brMode, index)
                 addon(interface)
@@ -4481,11 +4469,11 @@ class Vm(object):
                 e(vlan, 'tag', None, attrib={'id': nic.vlanId})
         elif iftype == 'vhostuser':
             if brMode != 'mocbr' and nic.type != 'vDPA':
-                e(interface, 'source', None, attrib={'type': 'unix', 'path': vhostSrcPath, 'mode': 'server'})
+                e(interface, 'source', None, attrib={'type': 'unix', 'path': vhostSrcPath, 'mode': 'client'})
                 e(interface, 'driver', None, attrib={'queues': '16', 'vhostforce': 'on'})
             elif nic.type == 'vDPA':
                 e(interface, 'source', None, attrib={'type': 'unix', 'path': vhostSrcPath, 'mode': 'server'})
-                e(interface, 'driver', None, attrib={'queues': '16'})
+                e(interface, 'driver', None, attrib={'queues': '8', 'txmode': 'iothread', 'ioeventfd': 'on', 'event_idx': 'off', 'rx_queue_size': '512', 'tx_queue_size': '512'})
             else:
                 e(interface, 'source', None, attrib={'type': 'unix', 'path': '/var/run/phynic{}'.format(index+1), 'mode':'server'})
                 e(interface, 'driver', None, attrib={'queues': '8'})
@@ -5215,8 +5203,9 @@ class VmPlugin(kvmagent.KvmAgent):
             else:
                 vm.stop(timeout=cmd.timeout / 2)
 
-            # free vdpa
-            ovs.OvsCtl().freeVdpa(cmd.uuid)
+            # http://jira.zstack.io/browse/ZSTAC-42191 
+            # keep vdpa while stop vm.
+            # ovs.OvsCtl().freeVdpa(cmd.uuid)
         except kvmagent.KvmError as e:
             logger.debug(linux.get_exception_stacktrace())
         finally:
