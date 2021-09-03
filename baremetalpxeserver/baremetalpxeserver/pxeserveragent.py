@@ -281,13 +281,13 @@ xferlog_file={VSFTPD_LOG_PATH}
         with open(self.VSFTPD_CONF_PATH, 'w') as f:
             f.write(vsftpd_conf)
 
-        # init pxelinux.cfg
+        # init pxelinux.cfg for x86_64
         pxelinux_cfg = """default zstack_baremetal
 prompt 0
 label zstack_baremetal
 kernel zstack/x86_64/vmlinuz
 ipappend 2
-append initrd=zstack/x86_64/initrd.img devfs=nomount ksdevice=bootif ks=ftp://{PXESERVER_DHCP_NIC_IP}/ks/inspector_ks.cfg vnc
+append initrd=zstack/x86_64/initrd.img devfs=nomount ksdevice=bootif ks=ftp://{PXESERVER_DHCP_NIC_IP}/ks/inspector_ks_x86_64.cfg vnc
 """.format(PXESERVER_DHCP_NIC_IP=pxeserver_dhcp_nic_ip)
         with open(self.PXELINUX_DEFAULT_CFG, 'w') as f:
             f.write(pxelinux_cfg)
@@ -571,6 +571,7 @@ poweroff
     def _create_post_scripts(self, cmd, pxeserver_dhcp_nic_ip, more_script = ""):
         post_script = more_script
         post_script += """
+host_arch=`uname -m`
 bm_log='/tmp/zstack_bm.log'
 curr_time=`date +"%Y-%m-%d %H:%M:%S"`
 echo -e "Current time: \t$curr_time" >> $bm_log
@@ -589,7 +590,7 @@ wget -O- --header="Content-Type:application/json" \
 http://{PXESERVER_DHCP_NIC_IP}:7771/zstack/asyncrest/sendcommand >>$bm_log 2>&1
 
 # install shellinaboxd
-wget -P /usr/bin ftp://{PXESERVER_DHCP_NIC_IP}/shellinaboxd || curl -o /usr/bin/shellinaboxd ftp://{PXESERVER_DHCP_NIC_IP}/shellinaboxd
+wget -O /usr/bin/shellinaboxd ftp://{PXESERVER_DHCP_NIC_IP}/shellinaboxd_$host_arch || curl -o /usr/bin/shellinaboxd ftp://{PXESERVER_DHCP_NIC_IP}/shellinaboxd_$host_arch
 chmod a+x /usr/bin/shellinaboxd
 
 # install zstack zwatch-vm-agent

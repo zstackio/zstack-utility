@@ -28,6 +28,7 @@ baremetalpxeserver_pushgateway_root="/var/lib/zstack/baremetal/"
 baremetalpxeserver_pushgateway_persistence="/var/lib/zstack/baremetal/persistence.data"
 baremetalpxeserver_pushgateway_port=9093
 update_packages = 'false'
+supported_arch = ['x86_64', 'aarch64']
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy baremetal pxeserver agent to host')
@@ -201,13 +202,14 @@ copy_arg.args = "mode=755"
 copy(copy_arg, host_post_info)
 
 # name: copy shellinaboxd
-shellinaboxd_name = "shellinaboxd_{}".format(host_arch)
-VSFTPD_ROOT_PATH = "/var/lib/zstack/baremetal/ftp"
-copy_arg = CopyArg()
-copy_arg.args = "force=yes"
-copy_arg.src = "%s/%s" % (file_root, shellinaboxd_name)
-copy_arg.dest = os.path.join(VSFTPD_ROOT_PATH, "shellinaboxd")
-copy(copy_arg, host_post_info)
+for arch in supported_arch:
+    shellinaboxd_name = "shellinaboxd_{}".format(arch)
+    VSFTPD_ROOT_PATH = "/var/lib/zstack/baremetal/ftp"
+    copy_arg = CopyArg()
+    copy_arg.args = "force=yes"
+    copy_arg.src = "%s/%s" % (file_root, shellinaboxd_name)
+    copy_arg.dest = os.path.join(VSFTPD_ROOT_PATH, shellinaboxd_name)
+    copy(copy_arg, host_post_info)
 
 # name: copy noVNC.tar.gz
 copy_arg = CopyArg()
