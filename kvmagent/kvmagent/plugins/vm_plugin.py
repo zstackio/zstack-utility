@@ -2742,7 +2742,7 @@ class Vm(object):
                     raise kvmagent.KvmError(
                         'unable to migrate vm[uuid:%s] to %s, %s' % (cmd.vmUuid, destUrl, str(exc_val)))
 
-        check_mirror_jobs(cmd.vmUuid)
+        check_mirror_jobs(cmd.vmUuid, False)
 
         with MigrateDaemon(self.domain):
             logger.debug('migrating vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
@@ -4579,12 +4579,18 @@ def get_vm_migration_caps(domain_id, cap_key):
     return None
 
 
-def check_mirror_jobs(domain_id):
-    if get_vm_migration_caps(domain_id, "dirty-bitmaps"):
-        isc = ImageStoreClient()
-        volumes = isc.query_mirror_volumes(domain_id)
-        for v in volumes:
-            isc.stop_mirror(domain_id, False, v)
+def check_mirror_jobs(domain_id, disable_migrate_bm):
+    if not get_vm_migration_caps(domain_id, "dirty-bitmaps"):
+        return
+
+    isc = ImageStoreClient()
+    volumes = isc.query_mirror_volumes(domain_id)
+    for v in volumes:
+        isc.stop_mirror(domain_id, False, v)
+
+    if disable_migrate_bm:
+        execute_qmp_command(domain_id, '{"execute": "migrate-set-capabilities","arguments":'
+                                       '{"capabilities":[ {"capability": "dirty-bitmaps", "state":false}]}}')
 
 
 class VmPlugin(kvmagent.KvmAgent):
@@ -5479,7 +5485,7 @@ class VmPlugin(kvmagent.KvmAgent):
             if any(s.startswith('/dev/') for s in vm.list_blk_sources()):
                 flags += " --unsafe"
 
-        check_mirror_jobs(vmUuid)
+        check_mirror_jobs(vmUuid, True)
         cmd = "virsh migrate {} --migrate-disks {} --xml {} {} {} {}".format(flags, diskstr, fpath, vmUuid, dst, migurl)
 
         try:
