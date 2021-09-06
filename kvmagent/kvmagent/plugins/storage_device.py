@@ -218,22 +218,18 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         vm.attach_data_volume(cmd.volume, cmd.addons)
         return jsonobject.dumps(rsp)
 
-    @bash.in_bash
     def get_slave_path(self, multipath_path):
         def get_wwids(dev_name):
-            result = []
-            wwids = shell.call(
-                "udevadm info -n %s | grep 'by-id' | grep -v DEVLINKS | awk -F 'by-id/' '{print $2}'" % dev_name).strip().split()
+            symlinks = shell.call("udevadm info -q symlink -n %s" % dev_name).strip().split()
+            wwids = map(lambda p: os.path.basename(p), filter(lambda s: 'by-id' in s, symlinks))
             wwids.sort()
-            for wwid in wwids:
-                if "lvm-pv" not in wwid:
-                    result.append(wwid)
-            if len(result) == 0:
-                return wwids
+
+            stable_wwids = filter(lambda w: "lvm-pv" not in w, wwids)
+            return stable_wwids if stable_wwids else wwids
 
         dm = os.path.basename(os.path.realpath(multipath_path))
         slaves = linux.listdir("/sys/class/block/%s/slaves/" % dm)
-        if slaves is None or len(slaves) == 0:
+        if not slaves:
             raise "can not find any slave from multpath device: %s" % multipath_path
         return "/dev/disk/by-id/%s" % get_wwids(slaves[0])[0]
 
