@@ -201,8 +201,6 @@ def convert_disk_state_to_int(state):
     else:
         return 100
 
-collect_raid_state_last_time = None
-collect_raid_state_last_result = None
 
 def collect_raid_state():
     metrics = {
@@ -216,31 +214,19 @@ def collect_raid_state():
                                                        ['slot_number', 'disk_group']),
     }
     
-    global collect_raid_state_last_time
-    global collect_raid_state_last_result
-
-    if collect_raid_state_last_time is None or (time.time() - collect_raid_state_last_time) >= 40:
-        collect_raid_state_last_time = time.time()
-    elif (time.time() - collect_raid_state_last_time) < 40 and collect_raid_state_last_result is not None:
-        return collect_raid_state_last_result
-
     r, o = bash_ro("/opt/MegaRAID/MegaCli/MegaCli64 -LDInfo -LALL -aAll | grep -E 'Target Id|State'")
     if r == 0 and o.strip() != "":
-        collect_raid_state_last_result = collect_mega_raid_state(metrics, o)
-        return collect_raid_state_last_result
+        return collect_mega_raid_state(metrics, o)
 
     r, o = bash_ro("sas3ircu list | grep -A 8 'Index' | awk '{print $1}'")
     if r == 0 and o.strip() != "":
-        collect_raid_state_last_result = collect_sas_raid_state(metrics, o)
-        return collect_raid_state_last_result
+        return collect_sas_raid_state(metrics, o)
 
     r, o = bash_ro("arcconf list | grep -A 8 'Controller ID' | awk '{print $2}'")
     if r == 0 and o.strip() != "":
-        collect_raid_state_last_result = collect_arcconf_raid_state(metrics, o)
-        return collect_raid_state_last_result
+        return collect_arcconf_raid_state(metrics, o)
     
-    collect_raid_state_last_result = metrics.values()
-    return collect_raid_state_last_result
+    return metrics.values()
 
 
 def collect_arcconf_raid_state(metrics, infos):
@@ -393,9 +379,9 @@ def collect_equipment_state():
     global collect_equipment_state_last_time
     global collect_equipment_state_last_result
 
-    if collect_equipment_state_last_time is None or (time.time() - collect_equipment_state_last_time) >= 30:
+    if collect_equipment_state_last_time is None or (time.time() - collect_equipment_state_last_time) >= 25:
         collect_equipment_state_last_time = time.time()
-    elif (time.time() - collect_equipment_state_last_time) < 30 and collect_equipment_state_last_result is not None:
+    elif (time.time() - collect_equipment_state_last_time) < 25 and collect_equipment_state_last_result is not None:
         return collect_equipment_state_last_result
 
     r, ps_info = bash_ro("ipmitool sdr type 'power supply' | grep -E -i '^PS\w*(\ |_)Status'")  # type: (int, str)
@@ -552,7 +538,7 @@ def collect_physical_network_interface_state():
                 # NOTE(weiw): sriov nic contains carrier file but can not read
                 status = linux.read_file("/sys/class/net/%s/carrier" % nic).strip() == "1"
             except Exception as e:
-                status = True
+                status = False
             speed = str(get_nic_supported_max_speed(nic))
             metrics['physical_network_interface'].add_metric([nic, speed], status)
     
@@ -869,7 +855,7 @@ WantedBy=multi-user.target
                     for t in collector_dict.values():
                         if t.is_alive():
                             time.sleep(0.5)
-                            continue
+                            break
 
                 for k in collector_dict.iterkeys():
                     if collector_dict[k].is_alive():
