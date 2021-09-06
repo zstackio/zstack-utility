@@ -20,6 +20,7 @@ LV_RESERVED_SIZE = 1024*1024*4
 LVM_CONFIG_PATH = "/etc/lvm"
 LVM_CONFIG_FILE = '/etc/lvm/lvm.conf'
 SANLOCK_CONFIG_FILE_PATH = "/etc/sanlock/sanlock.conf"
+DEB_SANLOCK_CONFIG_FILE_PATH = "/etc/default/sanlock"
 SANLOCK_IO_TIMEOUT = 40
 LVMLOCKD_LOG_FILE_PATH = "/var/log/lvmlockd/lvmlockd.log"
 LVMLOCKD_LOG_RSYSLOG_PATH = "/etc/rsyslog.d/lvmlockd.conf"
@@ -446,6 +447,9 @@ def config_lvm_filter(files, no_drbd=False, preserve_disks=None):
 
 
 def modify_sanlock_config(key, value):
+    if not os.path.exists(SANLOCK_CONFIG_FILE_PATH) and os.path.exists(DEB_SANLOCK_CONFIG_FILE_PATH):
+        global SANLOCK_CONFIG_FILE_PATH
+        SANLOCK_CONFIG_FILE_PATH = DEB_SANLOCK_CONFIG_FILE_PATH
     if not os.path.exists(os.path.dirname(SANLOCK_CONFIG_FILE_PATH)):
         linux.mkdir(os.path.dirname(SANLOCK_CONFIG_FILE_PATH))
     if not os.path.exists(SANLOCK_CONFIG_FILE_PATH):
@@ -1840,7 +1844,7 @@ def get_running_vm_root_volume_on_pv(vgUuid, pvUuids, checkIo=True):
     # 2. get "-boot order=dc ... -drive id=drive-virtio-disk"
     # 3. make sure io has error
     # 4. filter for pv
-    out = bash.bash_o("pgrep -a qemu-kvm | grep %s" % vgUuid).strip().splitlines()
+    out = bash.bash_o("pgrep -a 'qemu-kvm|qemu-system' | grep %s" % vgUuid).strip().split("\n")
     if len(out) == 0:
         return []
 
@@ -1920,5 +1924,5 @@ class QemuStruct(object):
 def find_qemu_for_lv_in_use(lv_path):
     # type: (str) -> list[QemuStruct]
     dm_path = os.path.realpath(lv_path)
-    pids = [x.strip() for x in bash.bash_o("lsof -b -c qemu-kvm | grep -w %s | awk '{print $2}'" % dm_path).splitlines()]
+    pids = [x.strip() for x in bash.bash_o("lsof -b -c qemu-kvm -c qemu-system| grep -w %s | awk '{print $2}'" % dm_path).splitlines()]
     return [QemuStruct(pid) for pid in pids]

@@ -3360,8 +3360,12 @@ class Vm(object):
 
                 def on_aarch64():
                     e(root, 'vcpu', '128', {'placement': 'static', 'current': str(cmd.cpuNum)})
-                    cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
-                    e(cpu, 'model', 'host', attrib={'fallback': 'allow'})
+                    if is_virtual_machine():
+                        cpu = e(root, 'cpu')
+                        e(cpu, 'model', 'cortex-a57')
+                    else:
+                        cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
+                        e(cpu, 'model', attrib={'fallback': 'allow'})
                     mem = cmd.memory / 1024
                     e(cpu, 'topology', attrib={'sockets': '32', 'cores': '4', 'threads': '1'})
                     numa = e(cpu, 'numa')
@@ -3433,7 +3437,7 @@ class Vm(object):
         def make_os():
             root = elements['root']
             os = e(root, 'os')
-            host_arch = kvmagent.os_arch
+            host_arch = kvmagent.host_arch
 
             def on_x86_64():
                 e(os, 'type', 'hvm', attrib={'machine': machine_type})
@@ -3462,7 +3466,7 @@ class Vm(object):
                 eval("on_{}".format(kvmagent.get_host_os_type()))()
 
             def on_mips64el():
-                e(os, 'type', 'hvm', attrib={'arch': 'mips64el', 'machine': 'loongson3a'})
+                e(os, 'type', 'hvm', attrib={'arch': 'mips64el', 'machine': 'loongson7a'})
                 e(os, 'loader', '/usr/share/qemu/ls3a_bios.bin', attrib={'readonly': 'yes', 'type': 'rom'})
 
             eval("on_{}".format(host_arch))()
@@ -4287,7 +4291,8 @@ class Vm(object):
                 else:
                     raise kvmagent.KvmError('cannot find usb device %s', usb)
 
-        def make_pvpanic(panic_isa, panic_hyperv):
+        @linux.with_arch(['x86_64'])
+        def make_pvpanic():
             devices = elements['devices']
             if panic_hyperv: # maybe None
                 e(devices, 'panic', None, {'model' : 'hyperv'})
@@ -4358,7 +4363,7 @@ class Vm(object):
                 for i in pci_idx_generator:
                     e(devices, 'controller', None, {'type': 'pci', 'model': 'pcie-root-port', 'index': str(i)})
             else:
-                if not cmd.predefinedPciBridgeNum or HOST_ARCH == 'mips64el':
+                if not cmd.predefinedPciBridgeNum:
                     return
 
                 for i in xrange(cmd.predefinedPciBridgeNum):
@@ -4525,8 +4530,8 @@ class Vm(object):
                     bash.bash_r("bridge fdb add %s dev %s" % (nic.mac, _phy_dev_name))
 
         # to allow vnic/vf communication in same host
-        if nic.pciDeviceAddress is None and nic.physicalInterface is not None and brMode != 'mocbr' and nic.type != 'vDPA':
-            _add_bridge_fdb_entry_for_vnic()
+        # if nic.pciDeviceAddress is None and nic.physicalInterface is not None:
+        #    _add_bridge_fdb_entry_for_vnic()
 
         return interface
 
@@ -5041,10 +5046,19 @@ class VmPlugin(kvmagent.KvmAgent):
             elif rsp.states[uuid] == Vm.VM_STATE_PAUSED:
                 retry_for_paused.append(uuid)
 
+        time.sleep(0.5)
+        if len(retry_for_paused) > 0:
+            states, in_shutdown = get_all_vm_sync_states()
+            for uuid in states:
+                if states[uuid] == Vm.VM_STATE_SHUTDOWN:
+                    rsp.states[uuid] = Vm.VM_STATE_RUNNING
+                elif states[uuid] != Vm.VM_STATE_PAUSED:
+                    rsp.states[uuid] = states[uuid]
+
         # Occasionally, virsh might not be able to list all VM instances with
         # uri=qemu://system.  To prevend this situation, we double check the
         # 'rsp.states' agaist QEMU process lists.
-        output = bash.bash_o("ps x | grep -P -o 'qemu-kvm.*?-name\s+(guest=)?\K.*?,' | sed 's/.$//'").splitlines()
+        output = bash.bash_o("ps x | grep -P -o '(qemu-kvm|qemu-system).*?-name\s+(guest=)?\K.*?,' | sed 's/.$//'").splitlines()
         for guest in output:
             if guest in rsp.states \
                     or guest.lower() == "ZStack Management Node VM".lower()\
@@ -5053,14 +5067,10 @@ class VmPlugin(kvmagent.KvmAgent):
             logger.warn('guest [%s] not found in virsh list' % guest)
             rsp.states[guest] = Vm.VM_STATE_RUNNING
 
-        if len(retry_for_paused) > 0:
-            time.sleep(0.5)
-            states, in_shutdown = get_all_vm_sync_states()
-            for uuid in states:
-                if states[uuid] == Vm.VM_STATE_SHUTDOWN:
-                    rsp.states[uuid] = Vm.VM_STATE_RUNNING
-                elif states[uuid] != Vm.VM_STATE_PAUSED:
-                    rsp.states[uuid] = states[uuid]
+        libvirt_running_vms = rsp.states.keys()
+        no_qemu_process_running_vms = list(set(libvirt_running_vms).difference(set(output)))
+        for vm in no_qemu_process_running_vms:
+            rsp.states[vm] = Vm.VM_STATE_SHUTDOWN
 
         return jsonobject.dumps(rsp)
 
@@ -5185,7 +5195,7 @@ class VmPlugin(kvmagent.KvmAgent):
             self.kill_vm(cmd.uuid)
 
     def kill_vm(self, vm_uuid):
-        output = bash.bash_o("ps x | grep -P -o 'qemu-kvm.*?-name\s+(guest=)?\K%s,' | sed 's/.$//'" % vm_uuid)
+        output = bash.bash_o("ps x | grep -P -o '(qemu-kvm|qemu-system).*?-name\s+(guest=)?\K%s,' | sed 's/.$//'" % vm_uuid)
 
         if vm_uuid not in output:
             return

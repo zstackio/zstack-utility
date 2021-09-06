@@ -47,6 +47,14 @@ COLO_QEMU_KVM_VERSION = '/var/lib/zstack/colo/qemu_kvm_version'
 COLO_LIB_PATH = '/var/lib/zstack/colo/'
 HOST_TAKEOVER_FLAG_PATH = 'var/run/zstack/takeOver'
 
+BOND_MODE_ACTIVE_0 = "balance-rr"
+BOND_MODE_ACTIVE_1 = "active-backup"
+BOND_MODE_ACTIVE_2 = "balance-xor"
+BOND_MODE_ACTIVE_3 = "broadcast"
+BOND_MODE_ACTIVE_4 = "802.3ad"
+BOND_MODE_ACTIVE_5 = "balance-tlb"
+BOND_MODE_ACTIVE_6 = "balance-alb"
+
 class ConnectResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(ConnectResponse, self).__init__()
@@ -237,6 +245,7 @@ class HostNetworkInterfaceInventory(object):
         if c is None:
             return None
         if (time.time() - c[0]) < 60:
+            c[1]._updateActiveState()
             return c[1]
         return None
 
@@ -248,6 +257,11 @@ class HostNetworkInterfaceInventory(object):
         o.init(name)
         cls.__cache__[name] = [int(time.time()), o]
         return o
+
+    def _updateActiveState(self):
+        if self.interfaceType == "bondingSlave":
+            activeSlave = linux.read_file("/sys/class/net/%s/bonding/active_slave" % self.master)
+            self.slaveActive = self.interfaceName in activeSlave if activeSlave is not None else None
 
     @in_bash
     def _init_from_name(self):
@@ -262,7 +276,7 @@ class HostNetworkInterfaceInventory(object):
         self.mac = linux.read_file("/sys/class/net/%s/address" % self.interfaceName).strip()
         self.ipAddresses = linux.get_interface_ip_addresses(self.interfaceName)
 
-        self.master = linux.get_interface_master_device(self.interfaceName)
+        self.master = linux.get_interface_master_device(self.interfaceName).strip()
         if len(self.ipAddresses) == 0:
             if self.master:
                 self.ipAddresses = linux.get_interface_ip_addresses(self.master)
@@ -717,7 +731,7 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.systemProductName = 'unknown'
         rsp.systemSerialNumber = 'unknown'
         is_dmidecode = shell.run("dmidecode")
-        if str(is_dmidecode) == '0' and kvmagent.os_arch == "x86_64":
+        if str(is_dmidecode) == '0' and kvmagent.host_arch == "x86_64":
             system_product_name = shell.call('dmidecode -s system-product-name').strip()
             baseboard_product_name = shell.call('dmidecode -s baseboard-product-name').strip()
             system_serial_number = shell.call('dmidecode -s system-serial-number').strip()
@@ -1096,7 +1110,8 @@ if __name__ == "__main__":
         if self.IS_YUM:
             releasever = kvmagent.get_host_yum_release()
             shell.run("yum remove -y qemu-kvm-tools-ev")
-            yum_cmd = "export YUM0={};yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn,mlnx-ofed install `cat /var/lib/zstack/dependencies` -y".format(releasever)
+            yum_cmd = "export YUM0={};yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo={} install `cat /var/lib/zstack/dependencies` -y"\
+                .format(releasever, cmd.zstackRepo)
             if shell.run("export YUM0={};yum --disablerepo=* --enablerepo=zstack-mn repoinfo".format(releasever)) != 0:
                 rsp.success = False
                 rsp.error = "no zstack-mn repo found, cannot update kvmagent dependencies"
@@ -1105,15 +1120,15 @@ if __name__ == "__main__":
                 rsp.error = "no qemu-kvm-ev-mn repo found, cannot update kvmagent dependencies"
             elif shell.run(yum_cmd) != 0:
                 rsp.success = False
-                rsp.error = "failed to update kvmagent dependencies using zstack-mn,qemu-kvm-ev-mn,mlnx-ofed repo"
+                rsp.error = "failed to update kvmagent dependencies using %s repo" % cmd.zstackRepo
             else :
                 logger.debug("successfully run: {}".format(yum_cmd))
 
             if cmd.enableExpRepo:
                 exclude = "--exclude=" + cmd.excludePackages if cmd.excludePackages else ""
                 updates = cmd.updatePackages if cmd.updatePackages else ""
-                yum_cmd = "export YUM0={};yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn,mlnx-ofed-mn,zstack-experimental-mn {} update {} -y"
-                yum_cmd = yum_cmd.format(releasever, exclude, updates)
+                yum_cmd = "export YUM0={};yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo={},zstack-experimental-mn {} update {} -y"
+                yum_cmd = yum_cmd.format(releasever, cmd.zstackRepo, exclude, updates)
                 if shell.run("export YUM0={};yum --disablerepo=* --enablerepo=zstack-experimental-mn repoinfo".format(releasever)) != 0:
                     rsp.success = False
                     rsp.error = "no zstack-experimental-mn repo found, cannot update host dependency"
