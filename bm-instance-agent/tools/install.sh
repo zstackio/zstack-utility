@@ -18,18 +18,18 @@ tar -zxf bm-instance-agent.tar.gz
 mkdir -p /var/lib/zstack/baremetalv2/bm-instance-agent/
 mkdir -p /var/log/zstack/baremetalv2/
 yes | cp ${temp}/bm-instance-agent.pex /var/lib/zstack/baremetalv2/bm-instance-agent/
-yes | cp ${temp}/shellinaboxd-`uname -i` /var/lib/zstack/baremetalv2/bm-instance-agent/
-yes | cp ${temp}/shellinaboxd-`uname -i` /usr/bin/shellinaboxd
+yes | cp ${temp}/shellinaboxd-`uname -m` /var/lib/zstack/baremetalv2/bm-instance-agent/
+yes | cp ${temp}/shellinaboxd-`uname -m` /usr/bin/shellinaboxd
 if [ -f /etc/kylin-release ]; then
-  yes | cp ${temp}/shellinaboxd-`uname -i`-kylin /var/lib/zstack/baremetalv2/bm-instance-agent/shellinaboxd-`uname -i`
-  yes | cp ${temp}/shellinaboxd-`uname -i`-kylin /usr/bin/shellinaboxd
+  yes | cp ${temp}/shellinaboxd-`uname -m`-kylin /var/lib/zstack/baremetalv2/bm-instance-agent/shellinaboxd-`uname -m`
+  yes | cp ${temp}/shellinaboxd-`uname -m`-kylin /usr/bin/shellinaboxd
 fi
-yes | cp ${temp}/zwatch-vm-agent-`uname -i` /var/lib/zstack/baremetalv2/bm-instance-agent/
+yes | cp ${temp}/zwatch-vm-agent-`uname -m` /var/lib/zstack/baremetalv2/bm-instance-agent/
 
 popd
 
-sed -i '/SELINUX=/s/enforcing/permissive/g' /etc/selinux/config || true
-setenforce 0 || true
+sed -i '/SELINUX=/s/enforcing/permissive/g' /etc/selinux/config >/dev/null 2>&1 || true
+setenforce 0 >/dev/null 2>&1 || true
 
 mkdir -p /usr/lib/systemd/system/
 cat << EOF > /usr/lib/systemd/system/zstack-baremetal-instance-agent.service
@@ -57,8 +57,8 @@ systemctl daemon-reload \
     && systemctl enable zstack-baremetal-instance-agent \
     && systemctl restart zstack-baremetal-instance-agent
 
-chmod +x /var/lib/zstack/baremetalv2/bm-instance-agent/zwatch-vm-agent-`uname -i`
-/var/lib/zstack/baremetalv2/bm-instance-agent/zwatch-vm-agent-`uname -i` -i
+chmod +x /var/lib/zstack/baremetalv2/bm-instance-agent/zwatch-vm-agent-`uname -m`
+/var/lib/zstack/baremetalv2/bm-instance-agent/zwatch-vm-agent-`uname -m` -i
 if [ $? != 0 ]; then
      echo "install zwatch-vm-agent fail"
 fi
