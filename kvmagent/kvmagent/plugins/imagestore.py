@@ -81,6 +81,13 @@ class ImageStoreClient(object):
                      (self.ZSTORE_CLI_PATH, vm, complete, node)
             shell.run(cmdstr)
 
+    def query_mirror_volumes(self, vm):
+        with linux.ShowLibvirtErrorOnException(vm):
+            cmdstr = '%s querymirr -domain %s' % \
+                     (self.ZSTORE_CLI_PATH, vm)
+            jobj = jsonobject.loads(shell.call(cmdstr))
+            return jobj.mirrorVolumes
+
     def mirror_volume(self, vm, node, dest, lastvolume, currvolume, volumetype, mode, speed):
         with linux.ShowLibvirtErrorOnException(vm):
             cmdstr = '%s mirror -dest %s -domain %s -drive %s -lastMirrorVolume "%s" -mirrorVolume "%s" -volumeType %s -mode "%s" -speed %d' % \

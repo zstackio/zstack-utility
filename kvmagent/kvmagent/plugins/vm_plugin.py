@@ -2742,6 +2742,8 @@ class Vm(object):
                     raise kvmagent.KvmError(
                         'unable to migrate vm[uuid:%s] to %s, %s' % (cmd.vmUuid, destUrl, str(exc_val)))
 
+        check_mirror_jobs(cmd.vmUuid)
+
         with MigrateDaemon(self.domain):
             logger.debug('migrating vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
             self.domain.migrateToURI2(destUrl, tcpUri, destXml, flag, None, 0)
@@ -4563,6 +4565,27 @@ def _stop_world():
 def execute_qmp_command(domain_id, command):
     return bash.bash_roe("virsh qemu-monitor-command %s '%s' --pretty" % (domain_id, command))
 
+def get_vm_migration_caps(domain_id, cap_key):
+    _, o, e = execute_qmp_command(domain_id, '{"execute": "query-migrate-capabilities"}')
+    if not o:
+        logger.warn("query-migrate-capabilities: %s: %s" % (domain_id, e))
+        return None
+
+    jobj = jsonobject.loads(o)
+    caps = getattr(jobj, 'return')
+    for cap in caps:
+        if cap.capability == cap_key:
+            return cap.state
+    return None
+
+
+def check_mirror_jobs(domain_id):
+    if get_vm_migration_caps(domain_id, "dirty-bitmaps"):
+        isc = ImageStoreClient()
+        volumes = isc.query_mirror_volumes(domain_id)
+        for v in volumes:
+            isc.stop_mirror(domain_id, False, v)
+
 
 class VmPlugin(kvmagent.KvmAgent):
     KVM_START_VM_PATH = "/vm/start"
@@ -5456,6 +5479,7 @@ class VmPlugin(kvmagent.KvmAgent):
             if any(s.startswith('/dev/') for s in vm.list_blk_sources()):
                 flags += " --unsafe"
 
+        check_mirror_jobs(vmUuid)
         cmd = "virsh migrate {} --migrate-disks {} --xml {} {} {} {}".format(flags, diskstr, fpath, vmUuid, dst, migurl)
 
         try:
