@@ -573,6 +573,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
     @bash.in_bash
     def arcconf_raid_locate(self, cmd):
+        rsp = AgentRsp()
         r, o = bash.bash_ro("arcconf getconfig %s PD | grep -B 1 'Enclosure %s, Slot %s' | grep 'Reported Channel'" % (
             cmd.raidControllerNumber, cmd.enclosureDeviceID, cmd.slotNumber))
         if r != 0 or o.strip == "":
@@ -581,8 +582,13 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     
         channel = o.splitlines()[0].split(":")[2].split(",")[0].strip()
         command = "start" if cmd.locate is True else "stop"
-        bash.bash_errorout("arcconf identify %s device %s %s %s" % (
-            cmd.raidControllerNumber, channel, cmd.deviceNumber, command))
+
+        r, o, e = bash.bash_roe(
+            "arcconf identify %s device %s %s %s" % (cmd.raidControllerNumber, channel, cmd.deviceNumber, command))
+        if r != 0 and "No devices are blinking" not in e:
+            raise Exception(
+                "Failed to locate disk drive[%s:%s], stderr: %s" % (cmd.enclosureDeviceID, cmd.slotNumber, e))
+        return jsonobject.dumps(rsp)
 
     @bash.in_bash
     def mega_raid_locate(self, cmd, raid_info):
