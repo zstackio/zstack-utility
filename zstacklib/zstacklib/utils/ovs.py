@@ -159,7 +159,8 @@ class OvsVenv(object):
                            (self.nr_hugepages * numaNodeSz - freeHugepages))
             else:
                 self.ready = False
-                logger.debug("can not malloc enough hugepage for ovs.")
+                raise OvsError("chould not malloc enough hugepage for openvswitch, {} expected but {} left.".format(
+                    self.hugepage_size * self.nr_hugepages, curFreeMemsz))
 
     def checkOffloadStatus(self):
         nicInfoPath = os.path.join(
@@ -676,14 +677,13 @@ class OvsCtl(Ovs):
             if vdpaPath is not None:
                 ret[nic.nicInternalName] = vdpaPath
             else:
-                # if vDPA resource is not enough then 
+                # if vDPA resource is not enough then
                 # realse all vDPAs.
                 for k in ret:
                     self.freeVdpa(vmUuid, k)
                 return None
 
         return ret
-
 
     @lock.lock('getVdpa')
     def getVdpa(self, vmUuid, nic):
@@ -949,7 +949,8 @@ class OvsCtl(Ovs):
             # There are 3 supported transmission policies for bonded device
             # running in Balance XOR mode.
             if bond.mode == 2 and bond.policy is not None:
-                dpdk_devargs = dpdk_devargs + ",xmit_policy={}".format(bond.policy)
+                dpdk_devargs = dpdk_devargs + \
+                    ",xmit_policy={}".format(bond.policy)
             dpdk_devargs = "dpdk-devargs={}".format(dpdk_devargs)
 
             if self.addPort(bridgeName, bond.name, "dpdk",
@@ -957,7 +958,7 @@ class OvsCtl(Ovs):
                 return False
 
             # every time you create a new dpdkbond,
-            # you have to restart ovs-vswitchd to 
+            # you have to restart ovs-vswitchd to
             # make the dpdkbond work.
             self.startSwitch(True)
 
