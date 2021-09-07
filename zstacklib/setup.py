@@ -29,12 +29,7 @@ Python support library for zstack""",
           'Jinja2',
           'pyroute2',
           "beeprint",
-          "pyyaml",
-          "func_timeout",
-          "six",
-          "certifi",
-          "xms-client",
-          "python-dateutil"
+          "pyyaml"
       ],
       entry_points="""
       # -*- Entry points: -*-

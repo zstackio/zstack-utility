@@ -79,14 +79,8 @@ class LinuxDriver(base.SystemDriverBase):
         sid = None
         cmd = ['iscsiadm', '-m', 'session']
         stdout, _ = processutils.execute(*cmd)
-        iqn = None
-        if instance_obj.custom_iqn:
-            iqn = instance_obj.custom_iqn
-        else:
-            iqn = instance_obj.uuid
-
         for line in stdout.split('\n'):
-            if iqn in line:
+            if instance_obj.uuid in line:
                 sid = line.split()[1][1]
         if not sid:
             raise exception.IscsiSessionIdNotFound(
@@ -121,10 +115,8 @@ class LinuxDriver(base.SystemDriverBase):
                 break
 
         if not device_name or not device_scsi:
-            msg = 'failed to find iscsi device, {volume_uuid}: {device_id}, skip detach device'.format(
+            raise exception.IscsiDeviceNotFound(
                 volume_uuid=volume_obj.uuid, device_id=volume_obj.device_id)
-            LOG.warning(msg)
-            return
 
         # Make sure the device_name and device_scsi are same device
         block_path = ('/sys/class/scsi_device/{device_scsi}/'

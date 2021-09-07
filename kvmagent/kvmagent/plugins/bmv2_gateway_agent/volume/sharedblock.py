@@ -85,12 +85,6 @@ class SharedBlockVolume(base.BaseVolume):
         # helper.DmDeviceOperator(self).remove()
         lvm.deactive_lv(self.real_path)
 
-    def prepare_instance_resource(self):
-        pass
-
-    def destory_instance_resource(self):
-        pass
-
     def pre_take_volume_snapshot(self):
         # NOTE: self is src_vol
         nbd_operator = helper.NbdDeviceOperator(self)

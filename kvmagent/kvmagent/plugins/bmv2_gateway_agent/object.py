@@ -65,8 +65,7 @@ class BmInstanceObj(Base):
         'provisionMac': 'provision_mac',
         'imageUuid': 'image_uuid',
         'gatewayIp': 'gateway_ip',
-        'architecture': 'architecture',
-        'customIqn': 'customIqn'
+        'architecture': 'architecture'
     }
 
     @classmethod
@@ -147,10 +146,7 @@ class VolumeObj(Base):
         'type': 'type',
         'path': 'path',
         'format': 'format',
-        'deviceId': 'device_id',
-        'token': 'token',
-        'tpTimeout': 'tpTimeout',
-        'monIp': 'monIp'
+        'deviceId': 'device_id'
     }
 
     @classmethod
