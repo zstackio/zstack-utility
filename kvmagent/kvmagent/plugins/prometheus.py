@@ -285,6 +285,8 @@ def collect_sas_raid_state(metrics, infos):
                 target_id = info.strip().split(":")[-1].strip()
             else:
                 state = info.strip().split(":")[-1].strip()
+                if "Inactive" in state:
+                    continue
                 metrics['raid_state'].add_metric([target_id], convert_raid_state_to_int(state))
         
         disk_info = bash_o("sas3ircu %s display | grep -E 'Enclosure #|Slot #|State|Drive Type'" % line.strip())
