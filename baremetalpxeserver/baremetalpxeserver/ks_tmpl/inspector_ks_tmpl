@@ -96,8 +96,8 @@ commands.getstatusoutput(cmd)
 disk_json = '{"ipmiAddress":"%s", "ipmiPort":%d, "type":"disk", "content":"[' % (ipmiAddress, ipmiPort)
 cmd = r'''lsblk -P -o NAME,TYPE,SIZE | grep TYPE=\"disk\" | awk '{ print $1 " " $3 }' '''
 status, output = commands.getstatusoutput(cmd)
-if not status:
-    for line in output.split('\n'):
+if not status and output.strip(' \t\n\r') != '':
+    for line in output.splitlines():
         name, size = re.findall('"([^"]*)"', line)
         disk_json += '{\\"name\\":\\"%s\\", \\"size\\":\\"%s\\"},' % (name, size)
     disk_json = disk_json[:-1]
