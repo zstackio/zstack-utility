@@ -5,6 +5,10 @@ __author__ = 'frank'
 import pprint
 import traceback
 import cephprimarystorage
+import urlparse
+import rados
+import rbd
+import Queue
 
 import zstacklib.utils.daemon as daemon
 import zstacklib.utils.jsonobject as jsonobject
@@ -22,6 +26,8 @@ from zstacklib.utils import ceph
 from zstacklib.utils import bash
 from zstacklib.utils import qemu_img
 from zstacklib.utils import traceable_shell
+from zstacklib.utils import nbd_client
+from zstacklib.utils import thread
 from imagestore import ImageStoreClient
 from zstacklib.utils.linux import remote_shell_quote
 
@@ -195,6 +201,40 @@ def replyerror(func):
     return wrap
 
 
+class RbdImageWriter(object):
+    def __init__(self, poolname, imagename, conffile='/etc/ceph/ceph.conf'):
+        self.cluster = rados.Rados(conffile=conffile)
+        self.poolname = poolname
+        self.imagename = imagename
+        self.ioctx = None
+        self.image = None
+
+    def __enter__(self):
+        self.cluster.connect()
+        self.ioctx = self.cluster.open_ioctx(self.poolname)
+        self.image = rbd.Image(self.ioctx, self.imagename)
+        return self.image
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        try:
+            if self.image:
+                self.image.close()
+        except:
+            pass
+
+        try:
+            if self.ioctx:
+                self.ioctx.close()
+        except:
+            pass
+
+        try:
+            if self.cluster:
+                self.cluster.shutdown()
+        except:
+            pass
+
+
 class CephAgent(plugin.TaskManager):
     INIT_PATH = "/ceph/primarystorage/init"
     CREATE_VOLUME_PATH = "/ceph/primarystorage/volume/createempty"
@@ -229,6 +269,7 @@ class CephAgent(plugin.TaskManager):
     UPLOAD_IMAGESTORE_PATH = "/ceph/primarystorage/imagestore/backupstorage/commit"
     DOWNLOAD_IMAGESTORE_PATH = "/ceph/primarystorage/imagestore/backupstorage/download"
     DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/ceph/primarystorage/kvmhost/download"
+    DOWNLOAD_BITS_FROM_NBD_EXPT_PATH = "/ceph/primarystorage/nbd/download"
     CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/ceph/primarystorage/kvmhost/download/cancel"
     GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH = "/ceph/primarystorage/kvmhost/download/progress"
     JOB_CANCEL = "/job/cancel"
@@ -273,6 +314,7 @@ class CephAgent(plugin.TaskManager):
         self.http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
         self.http_server.register_async_uri(self.JOB_CANCEL, self.cancel)
         self.http_server.register_async_uri(self.GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH, self.get_download_bits_from_kvmhost_progress)
+        self.http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_NBD_EXPT_PATH, self.download_from_nbd)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -1080,6 +1122,94 @@ class CephAgent(plugin.TaskManager):
                 totalSize += long(size)
 
         rsp.totalSize = totalSize
+        return jsonobject.dumps(rsp)
+
+
+    def _nbd2rbd(self, hostname, port, export_name, rbdtarget, bandwidth, rsp):
+
+        def write_full(wr, data, offset, nbytes):
+            n = 0
+            while n < nbytes:
+                n += wr.write(data[n:], offset+n)
+
+        def queue_consumer(cq, w, rsp):
+            logger.info("xxx: queue consumer started")
+
+            while not rsp.error:
+                data, offset, nbytes, is_zero = cq.get(True, 10)
+                if offset < 0: # signal end
+                    break
+
+                try:
+                    if is_zero:
+                        w.discard(offset, nbytes)
+                    else:
+                        write_full(w, data, offset, nbytes)
+                except Exception as e:
+                    rsp.error = "write error at offset = %d, len = %d" % (offset, nbytes)
+                    logger.warn("xxx: write error: %s" % str(e))
+                    break
+
+
+        poolname, imagename = rbdtarget.split('/')
+        client = nbd_client.NBDClient()
+        client.connect(hostname, port, None, export_name)
+	cqueue = Queue.Queue(8)
+        offset, disk_size = 0, client.get_block_size()
+
+        try:
+
+            with RbdImageWriter(poolname, imagename) as image:
+                if image.size() != disk_size:  # TODO: image.resize()
+                    raise Exception('src volume size %d and destination size %d mismatch' % (disk_size, image.size()))
+
+                chunk_size = 1048576
+                zero_chunk = '\x00' * chunk_size
+                remainder_size = disk_size % chunk_size
+
+                thread.ThreadFacade.run_in_thread(queue_consumer, [cqueue, image, rsp])
+
+                while offset < disk_size:
+                    if offset + chunk_size > disk_size:
+                        chunk_size, zero_chunk = remainder_size, '\x00' * remainder_size
+
+                    data  = client.read(offset, chunk_size) # client has 'read all' semantic
+                    if len(data) != chunk_size:
+                        logger.warn("expected chunk size %d, got %d" % (chunk_size, len(data)))
+
+                    cqueue.put((data, offset, chunk_size, data == zero_chunk), True, 10)
+                    offset += chunk_size
+
+                # signal end
+                cqueue.put((b'', -1, 0, False), True, 10)
+
+                logger.info("xxx: all aio requests submitted, size = %d" % offset)
+                while not rsp.error and not cqueue.empty():
+                    time.sleep(0.1)
+                image.flush()
+        except Queue.Full:
+            rsp.srror = 'rbd write timed out at offset: %d' % offsets
+        finally:
+            logger.info("xxx: bytes written: "+str(offset))
+
+            try: client.close()
+            except: pass
+
+    @replyerror
+    def download_from_nbd(self, req):
+        rsp = AgentResponse()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        bandwidth = cmd.bandwidth
+        nbdexpurl = cmd.nbdExportUrl
+        rbdtarget = cmd.primaryStorageInstallPath
+
+        u = urlparse.urlparse(nbdexpurl)
+        if u.scheme != 'nbd':
+            rsp.error = 'unexpected protocol: %s' % nbdexpurl
+            return jsonobject.dumps(rsp)
+
+        self._nbd2rbd(u.hostname, u.port, os.path.basename(u.path), self._normalize_install_path(rbdtarget), bandwidth, rsp)
+
         return jsonobject.dumps(rsp)
 
 class CephDaemon(daemon.Daemon):
