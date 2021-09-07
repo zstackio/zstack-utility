@@ -183,5 +183,5 @@ class CephCommandsNotExist(BmV2GwAgentException):
 class RbdImageNotExist(BmV2GwAgentException):
 
     def __init__(self, **kwargs):
-        msg = ('RBD image {path} can not be found in the gateway').format(**kwargs)
+        msg = ('RBD image {path} can be found in the gateway').format(**kwargs)
         super(RbdImageNotExist, self).__init__(msg)

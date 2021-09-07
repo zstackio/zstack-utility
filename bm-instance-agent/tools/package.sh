@@ -18,8 +18,8 @@ pex . -v \
     --console-script bm-instance-agent \
     --output-file ${temp}/bm-instance-agent.pex
 
-cp ./tools/shellinaboxd-x86_64 ./tools/shellinaboxd-aarch64 ./tools/shellinaboxd-aarch64-kylin ./tools/shellinaboxd-x86_64-kylin ./tools/zwatch-vm-agent-x86_64 ./tools/zwatch-vm-agent-aarch64 ${temp}
-tar -C ${temp} -czf ${temp}/${bin_name} ./shellinaboxd-x86_64 ./shellinaboxd-aarch64 ./shellinaboxd-aarch64-kylin ./shellinaboxd-x86_64-kylin ./bm-instance-agent.pex ./zwatch-vm-agent-x86_64 ./zwatch-vm-agent-aarch64
+cp ./tools/shellinaboxd-x86_64 ./tools/shellinaboxd-aarch64 ./tools/shellinaboxd-aarch64-kylin ./tools/zwatch-vm-agent-x86_64 ./tools/zwatch-vm-agent-aarch64 ${temp}
+tar -C ${temp} -czf ${temp}/${bin_name} ./shellinaboxd-x86_64 ./shellinaboxd-aarch64 ./shellinaboxd-aarch64-kylin ./bm-instance-agent.pex ./zwatch-vm-agent-x86_64 ./zwatch-vm-agent-aarch64
 
 pushd ${temp}
 md5=`md5sum ${bin_name}`

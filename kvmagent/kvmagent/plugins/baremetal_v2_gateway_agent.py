@@ -16,7 +16,6 @@ from zstacklib.utils import iproute
 from zstacklib.utils import lock
 from zstacklib.utils import log
 from zstacklib.utils import shell
-from zstacklib.utils.thirdparty_ceph import RbdDeviceOperator
 
 from kvmagent import kvmagent
 from kvmagent.plugins.bmv2_gateway_agent import exception
@@ -46,8 +45,6 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         '/baremetal_gateway_agent/v2/instance/volume/destroy'
     BM_CONSOLE_PATH = \
         '/baremetal_gateway_agent/v2/instance/console'
-    BM_GET_VOLUME_LUN_ID_PATH = \
-        '/baremetal_gateway_agent/v2/instance/volume/lunId'
 
     BAREMETAL_LIB_DIR = '/var/lib/zstack/baremetalv2/'
     BAREMETAL_LOG_DIR = '/var/log/zstack/baremetalv2/'
@@ -186,15 +183,16 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                 os.path.join(self.ZSTACK_DVD_AARCH64_LINKED_DIR, 'images', 'pxeboot'),
                 self.AARCH64_BOOTIMG_DIR)
 
+        # Start and enable target service
+        cmd = 'systemctl start target && systemctl enable target'
+        shell.call(cmd)
+
         # Build nbd module and setup modprobe params
         build_script = ''
         with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                   'bmv2_gateway_agent/scripts/build_nbd.sh'), 'r') as f:
             build_script = f.read()
         shell.call(build_script)
-
-        # open ip forward
-        shell.call("sysctl -w net.ipv4.ip_forward=1")
 
     def _load_template(self, template):
         """" Load jinja template
@@ -1133,13 +1131,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             # otherwise delete the dnsmasq conf only.
             if instance_obj.gateway_ip == \
                     self.provision_network_conf.provision_nic_ip:
-                pre_volume_objs = list(o for o in volume_objs)
-                for volume_obj in pre_volume_objs:
-                    if volume_obj.type == 'Root':
-                        pre_volume_driver = volume.get_driver(instance_obj, volume_obj)
-                        pre_volume_driver.prepare_instance_resource()
-
-                for volume_obj in pre_volume_objs:
+                for volume_obj in volume_objs:
                     volume_driver = volume.get_driver(instance_obj, volume_obj)
                     volume_driver.attach()
                     volume_drivers.append(volume_driver)
@@ -1150,10 +1142,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                     self._create_ipxe_configuration(instance_obj, volume_drivers)
                 self._create_nginx_agent_proxy_configuration(instance_obj)
             self._create_dnsmasq_host(instance_obj)
-
-        rsp = kvmagent.AgentResponse()
-        rsp.bmInstance = instance_obj
-        return jsonobject.dumps(rsp)
+        return jsonobject.dumps(kvmagent.AgentResponse())
 
     def _destroy_instance(self, req):
         instance_obj = BmInstanceObj.from_json(req)
@@ -1162,13 +1151,9 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         # otherwise delete the dnsmasq conf only.
         if instance_obj.gateway_ip == \
                 self.provision_network_conf.provision_nic_ip:
-            del_volume_obj = list(o for o in volume_objs)
-            for volume_obj in del_volume_obj:
+            for volume_obj in volume_objs:
                 volume_driver = volume.get_driver(instance_obj, volume_obj)
                 volume_driver.detach()
-
-            del_volume_driver = volume.get_driver(instance_obj, del_volume_obj[0])
-            del_volume_driver.destory_instance_resource()
 
             if instance_obj.architecture == 'aarch64':
                 self._delete_grub_configuration(instance_obj)
@@ -1254,20 +1239,19 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         with bm_utils.rollback(self._detach_volume, req):
             volume_driver = volume.get_driver(instance_obj, volume_obj)
             volume_driver.attach()
+
             # Due to the limit of iBFT, there is no need to add new lun
             # info into ipxe conf file
             # self._append_conf_to_ipxe_configuration(instance_obj,
             #                                         volume_driver)
 
-        rsp = kvmagent.AgentResponse()
-        rsp.bmInstance = instance_obj
-        return jsonobject.dumps(rsp)
+        return jsonobject.dumps(kvmagent.AgentResponse())
 
     def _detach_volume(self, req):
         instance_obj = BmInstanceObj.from_json(req)
         volume_obj = VolumeObj.from_json(req)
         volume_driver = volume.get_driver(instance_obj, volume_obj)
-        volume_driver.detach_volume()
+        volume_driver.detach()
         # The data lun's info is not in ipxe conf file now.
         # self._remove_conf_from_ipxe_configuration(instance_obj, volume_driver)
 
@@ -1346,18 +1330,6 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         ipt.remove_rule(rule)
         ipt.iptable_restore()
 
-    @kvmagent.replyerror
-    def get_lun_id(self, req):
-        instance_obj = BmInstanceObj.from_json(req)
-        volume_obj = VolumeObj.from_json(req)
-        volume_driver = volume.get_driver(instance_obj, volume_obj)
-        lun_id = volume_driver.get_lun_id()
-
-        rsp = kvmagent.AgentResponse()
-        rsp.lunId = lun_id
-        return jsonobject.dumps(rsp)
-
-
     def start(self):
         self.host_uuid = None
 
@@ -1376,8 +1348,6 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                                        self.detach_volume)
         http_server.register_async_uri(self.BM_CONSOLE_PATH,
                                        self.console)
-        http_server.register_async_uri(self.BM_GET_VOLUME_LUN_ID_PATH,
-                                       self.get_lun_id)
 
     def stop(self):
         pass

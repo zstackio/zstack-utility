@@ -150,8 +150,8 @@ def get_distro():
 
     if distro_id == 'kylin':
         version = distro.version()
-        if version == 'V10' and arch == 'arm':
-            return 'kylin_v10_arm'
+        if version == 'V10':
+            return 'kylin_v10_%s' % arch
         return 'kylin'
 
     return 'linux'

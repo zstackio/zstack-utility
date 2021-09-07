@@ -38,7 +38,3 @@ typing==3.7.4
 beeprint==2.4.7
 future==0.18.2
 python-cephlibs==0.94.5
-func_timeout==4.3.5
-certifi==2021.5.30
-xms-client
-python-dateutil

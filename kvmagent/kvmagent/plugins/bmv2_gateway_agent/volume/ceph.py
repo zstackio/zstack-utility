@@ -32,23 +32,12 @@ class CephVolume(base.BaseVolume):
         return self.volume_obj.path.replace('ceph://', '')
 
     def attach(self):
-        shell.call("systemctl start target && systemctl enable target")
-
         helper.RbdImageOperator(self).connect()
         helper.IscsiOperator(self).setup()
 
     def detach(self):
         helper.IscsiOperator(self).revoke()
         helper.RbdImageOperator(self).disconnect()
-
-    def detach_volume(self):
-        self.detach()
-
-    def prepare_instance_resource(self):
-        pass
-
-    def destory_instance_resource(self):
-        pass
 
     def pre_take_volume_snapshot(self):
         pass
@@ -60,7 +49,4 @@ class CephVolume(base.BaseVolume):
         pass
 
     def rollback_volume_snapshot(self, src_vol):
-        pass
-
-    def get_lun_id(self):
         pass
