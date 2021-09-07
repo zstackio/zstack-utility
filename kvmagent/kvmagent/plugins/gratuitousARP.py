@@ -26,7 +26,7 @@ class BridgeVmNic():
     def __init__(self, name):
         self.Name = name
         self.VmNics = []
-        
+
 class GratuitousARP(kvmagent.KvmAgent):
     APPLY_GRATUITOUS_ARP_PATH = "/flatnetworkprovider/garp/apply"
     RELEASE_GRATUITOUS_ARP_PATH = "/flatnetworkprovider/garp/release"
@@ -34,6 +34,7 @@ class GratuitousARP(kvmagent.KvmAgent):
     bridge_vmNics = {}
     activeNics = {}
     interval = 5
+    state = False
 
     def __init__(self):
         self.bridge_vmNics = {}
@@ -45,7 +46,7 @@ class GratuitousARP(kvmagent.KvmAgent):
         http_server.register_async_uri(self.APPLY_GRATUITOUS_ARP_PATH, self.apply_gratuitous_arp)
         http_server.register_async_uri(self.RELEASE_GRATUITOUS_ARP_PATH, self.release_gratuitous_arp)
         http_server.register_async_uri(self.UPDATE_GRATUITOUS_ARP_SETTINGS, self.update_gratuitous_arp_settings)
-        thread.timer(self.interval, self.monitor_bonding_master_change).start()
+        thread.timer(self.interval, self.monitor_state_change).start()
 
     def stop(self):
         pass
@@ -55,7 +56,10 @@ class GratuitousARP(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         if self.interval != cmd.interval:
             self.interval = cmd.interval
-        logger.debug("gratuitous arp settings :interval change to %s", jsonobject.dumps(self.interval))
+            logger.debug("gratuitous arp settings :interval change to %s", jsonobject.dumps(self.interval))
+        if self.state != cmd.state:
+            self.state = cmd.state
+            logger.debug("gratuitous arp settings :state change to %s", jsonobject.dumps(self.state))
         return jsonobject.dumps(AgentRsp())
 
     @kvmagent.replyerror
@@ -63,6 +67,10 @@ class GratuitousARP(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         if self.interval != cmd.interval:
             self.interval = cmd.interval
+            logger.debug("gratuitous arp settings :interval change to %s", jsonobject.dumps(self.interval))
+        if self.state != cmd.state:
+            self.state = cmd.state
+            logger.debug("gratuitous arp settings :state change to %s", jsonobject.dumps(self.state))
         self._apply_gratuitous_arp(cmd.rebuild, cmd.infos)
         logger.debug("gratuitous arp info: %s", jsonobject.dumps(self.bridge_vmNics))
         return jsonobject.dumps(AgentRsp())
@@ -190,7 +198,10 @@ class GratuitousARP(kvmagent.KvmAgent):
                 logger.debug("bonding interface %s active nic did not change: %s"
                              % (bondingName, curNics))
 
-        thread.timer(self.interval, self.monitor_bonding_master_change).start()
+    def monitor_state_change(self):
+        if self.state:
+            self.monitor_bonding_master_change()
+        thread.timer(self.interval, self.monitor_state_change).start()
 
     @bash.in_bash
     @lock.lock('gratuitousArp')
