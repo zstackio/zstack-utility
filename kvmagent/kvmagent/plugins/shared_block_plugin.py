@@ -951,31 +951,30 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         src_abs_path = translate_absolute_path_from_install_path(cmd.srcPath)
         dst_abs_path = translate_absolute_path_from_install_path(cmd.destPath)
 
-        with lvm.RecursiveOperateLv(src_abs_path, shared=True):
-            virtual_size = linux.qcow2_virtualsize(src_abs_path)
-            if not lvm.lv_exists(dst_abs_path):
-                raise Exception("can not find dest volume path: %s" % dst_abs_path)
-            with lvm.RecursiveOperateLv(dst_abs_path, shared=False):
-                try:
-                    measure_size = linux.qcow2_measure_required_size(dst_abs_path)
-                except Exception as e:
-                    logger.warn("can not get qcow2 measure size: %s" % e)
-                    measure_size = virtual_size
+        with lvm.RecursiveOperateLv(dst_abs_path, shared=False):
+            try:
+                measure_size = linux.qcow2_measure_required_size(dst_abs_path)
+            except Exception as e:
+                logger.warn("can not get qcow2 measure size: %s" % e)
+                measure_size = linux.qcow2_virtualsize(dst_abs_path)
 
-                if not cmd.fullRebase:
-                    current_size = int(lvm.get_lv_size(dst_abs_path))
-                    if current_size < measure_size:
-                        lvm.resize_lv_from_cmd(dst_abs_path, measure_size, cmd, extend_thin_by_specified_size=True)
+            current_size = int(lvm.get_lv_size(dst_abs_path))
+            if not cmd.fullRebase:
+                if current_size < measure_size:
+                    lvm.resize_lv_from_cmd(dst_abs_path, measure_size, cmd, extend_thin_by_specified_size=True)
+
+                with lvm.RecursiveOperateLv(src_abs_path, shared=True):
                     linux.qcow2_rebase(src_abs_path, dst_abs_path)
-                else:
-                    tmp_lv = 'tmp_%s' % uuidhelper.uuid()
-                    tmp_abs_path = os.path.join(os.path.dirname(dst_abs_path), tmp_lv)
-                    logger.debug("creating temp lv %s" % tmp_abs_path)
-                    lvm.create_lv_from_absolute_path(tmp_abs_path, measure_size,
-                                                     "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
-                    with lvm.OperateLv(tmp_abs_path, shared=False, delete_when_exception=True):
-                        linux.create_template(dst_abs_path, tmp_abs_path)
-                        lvm.lv_rename(tmp_abs_path, dst_abs_path, overwrite=True)
+            else:
+                tmp_lv = 'tmp_%s' % uuidhelper.uuid()
+                tmp_abs_path = os.path.join(os.path.dirname(dst_abs_path), tmp_lv)
+                logger.debug("creating temp lv %s" % tmp_abs_path)
+                lv_size = max(measure_size, current_size)
+                lvm.create_lv_from_absolute_path(tmp_abs_path, lv_size,
+                                                 "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
+                with lvm.OperateLv(tmp_abs_path, shared=False, delete_when_exception=True):
+                    linux.create_template(dst_abs_path, tmp_abs_path)
+                    lvm.lv_rename(tmp_abs_path, dst_abs_path, overwrite=True)
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
