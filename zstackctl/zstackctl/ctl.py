@@ -8299,8 +8299,8 @@ class StopUiCmd(Command):
                 port = port.strip(' \t\n\r')
         else:
             port = '5000' 
-        (_, pids) = commands.getstatusoutput("netstat -pantu| awk '$4 ~ /\:%s$/{print}'|sed -n 's/^.* \\+\\([0-9]\\+\\)\\/.*$/\\1/p'" % port)
-        if _ == 0 and pids.strip() != '':
+        pids = linux.get_pids_by_listened_port(port)
+        if pids:
             info("find pids %s at ui port: %s, kill it" % (pids,port))
             logger.debug("find pids %s at ui port: %s, kill it" % (pids,port))
             commands.getstatusoutput("echo '%s' | xargs kill -9" % pids)
