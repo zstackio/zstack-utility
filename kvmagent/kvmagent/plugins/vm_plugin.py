@@ -4292,7 +4292,7 @@ class Vm(object):
                     raise kvmagent.KvmError('cannot find usb device %s', usb)
 
         @linux.with_arch(['x86_64'])
-        def make_pvpanic():
+        def make_pvpanic(panic_isa, panic_hyperv):
             devices = elements['devices']
             if panic_hyperv: # maybe None
                 e(devices, 'panic', None, {'model' : 'hyperv'})
