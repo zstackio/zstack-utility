@@ -237,7 +237,7 @@ def install_kvm_pkg():
         mips64el_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                          usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof mcelog \
                          net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils python2-pyudev pv rsync sed \
-                         qemu smartmontools sshpass usbutils vconfig wget audit dnsmasq tuned collectd-virt"
+                         qemu smartmontools sshpass usbutils vconfig wget audit dnsmasq tuned collectd-virt collectd-disk"
 
         x86_64_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                         usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
