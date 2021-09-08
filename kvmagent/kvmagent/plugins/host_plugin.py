@@ -276,7 +276,10 @@ class HostNetworkInterfaceInventory(object):
         self.mac = linux.read_file("/sys/class/net/%s/address" % self.interfaceName).strip()
         self.ipAddresses = linux.get_interface_ip_addresses(self.interfaceName)
 
-        self.master = linux.get_interface_master_device(self.interfaceName).strip()
+        self.master = linux.get_interface_master_device(self.interfaceName)
+        if self.master is not None:
+            self.master = self.master.strip()
+
         if len(self.ipAddresses) == 0:
             if self.master:
                 self.ipAddresses = linux.get_interface_ip_addresses(self.master)
