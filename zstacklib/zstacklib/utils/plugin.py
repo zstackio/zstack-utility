@@ -93,6 +93,8 @@ class TaskDaemon(object):
         if self.progress_reporter:
             self.progress_reporter.start()
 
+        logger.debug("[task=%s] (name=%s) task started. timeout %d" % (self.api_id, self.task_name, self.timeout))
+
     def close(self):
         if self.closed:
             return
@@ -109,7 +111,7 @@ class TaskDaemon(object):
         self.closed = True
 
     def _timeout_cancel(self):
-        logger.debug('timeout after %d seconds, cancelling %s.' % (self.timeout, self.task_name))
+        logger.debug('[task=%s] (name=%s) timeout after %d seconds, cancelling %s.' % (self.api_id, self.task_name, self.timeout, self.task_name))
         self._cancel()
 
     def cancel(self):
