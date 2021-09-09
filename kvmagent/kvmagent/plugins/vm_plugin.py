@@ -380,6 +380,12 @@ class CancelVolumeMirrorResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(CancelVolumeMirrorResponse, self).__init__()
 
+class QueryVolumeMirrorResponse(kvmagent.AgentResponse):
+    def __init_(self):
+        super(QueryVolumeMirrorResponse.self).__init__()
+        self.mirrorVolumes = [] # type:list[str]
+        self.extraMirrorVolumes = [] # type:list[str]
+
 class TakeVolumeBackupResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(TakeVolumeBackupResponse, self).__init__()
@@ -4636,6 +4642,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_TAKE_VOLUME_BACKUP_PATH = "/vm/volume/takebackup"
     KVM_TAKE_VOLUME_MIRROR_PATH = "/vm/volume/takemirror"
     KVM_CANCEL_VOLUME_MIRROR_PATH = "/vm/volume/cancelmirror"
+    KVM_QUERY_VOLUME_MIRROR_PATH = "/vm/volume/querymirror"
     KVM_BLOCK_STREAM_VOLUME_PATH = "/vm/volume/blockstream"
     KVM_TAKE_VOLUMES_SNAPSHOT_PATH = "/vm/volumes/takesnapshot"
     KVM_TAKE_VOLUMES_BACKUP_PATH = "/vm/volumes/takebackup"
@@ -6073,6 +6080,33 @@ host side snapshot files chian:
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def query_volume_mirror(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = QueryVolumeMirrorResponse()
+
+        vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
+        if not vm:
+            raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % cmd.vmUuid)
+
+        voldict = {} # type: dict[str, str]
+        for v in cmd.volumes:
+            target_disk, _ = vm._get_target_disk(v)
+            device_name = self.get_disk_device_name(target_disk)
+            voldict[device_name] = v.volumeUuid;
+
+        isc = ImageStoreClient()
+        volumes = isc.query_mirror_volumes(cmd.vmUuid)
+        for device_name in volumes:
+            try:
+                rsp.mirrorVolumes.append(voldict[device_name])
+            except KeyError:
+                rsp.extraMirrorVolumes.append(device_name)
+                if cmd.stopExtra:
+                    isc.stop_mirror(cmd.vmUuid, False, device_name)
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     def take_volume_mirror(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = TakeVolumeMirrorResponse()
@@ -7298,6 +7332,7 @@ host side snapshot files chian:
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_BACKUP_PATH, self.take_volume_backup, cmd=TakeVolumeBackupCommand())
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_MIRROR_PATH, self.take_volume_mirror)
         http_server.register_async_uri(self.KVM_CANCEL_VOLUME_MIRROR_PATH, self.cancel_volume_mirror)
+        http_server.register_async_uri(self.KVM_QUERY_VOLUME_MIRROR_PATH, self.query_volume_mirror)
         http_server.register_async_uri(self.KVM_TAKE_VOLUMES_SNAPSHOT_PATH, self.take_volumes_snapshots)
         http_server.register_async_uri(self.KVM_TAKE_VOLUMES_BACKUP_PATH, self.take_volumes_backups, cmd=TakeVolumesBackupsCommand())
         http_server.register_async_uri(self.KVM_CANCEL_VOLUME_BACKUP_JOBS_PATH, self.cancel_backup_jobs)
