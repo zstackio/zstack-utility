@@ -1288,6 +1288,21 @@ class VirtioIscsi(object):
         secret.setValue(self.chap_password)
         return secret.UUIDString()
 
+class MergeSnapshotDaemon(plugin.TaskDaemon):
+    def __init__(self, task_spec, domain, disk_name, timeout=None):
+        super(MergeSnapshotDaemon, self).__init__(task_spec, 'mergeSnapshot', timeout, report_progress=False)
+        self.domain = domain
+        self.disk_name = disk_name
+
+    def _cancel(self):
+        logger.debug('cancelling vm[uuid:%s] merge snapshost' % self.domain.name())
+        # cancel block job async
+        self.domain.blockJobAbort(self.disk_name, 0)
+
+    def _get_percent(self):
+        # type: () -> int
+        pass
+
 
 @linux.retry(times=3, sleep_time=1)
 def get_connect(src_host_ip):
@@ -2554,7 +2569,7 @@ class Vm(object):
                              % (struct.installPath, "" if existing else " not"))
 
 
-    def take_volume_snapshot(self, volume, install_path, full_snapshot=False):
+    def take_volume_snapshot(self, task_spec, volume, install_path, full_snapshot=False):
         device_id = volume.deviceId
         target_disk, disk_name = self._get_target_disk(volume)
         snapshot_dir = os.path.dirname(install_path)
@@ -2602,7 +2617,7 @@ class Vm(object):
                              % (install_path, "" if existing else " not"))
 
         def take_full_snapshot():
-            self.block_stream_disk(volume)
+            self.block_stream_disk(task_spec, volume)
             return take_delta_snapshot()
 
         if first_snapshot:
@@ -2615,8 +2630,7 @@ class Vm(object):
         else:
             return take_delta_snapshot()
 
-    def block_stream_disk(self, volume):
-        target_disk, disk_name = self._get_target_disk(volume)
+    def _do_block_stream_disk(self, task_spec, target_disk, disk_name):
         install_path = target_disk.source.file_
         logger.debug('start block stream for disk %s' % disk_name)
         self.domain.blockRebase(disk_name, None, 0, 0)
@@ -2627,7 +2641,7 @@ class Vm(object):
             logger.debug('block stream is waiting for %s blockRebase job completion' % disk_name)
             return not self._wait_for_block_job(disk_name, abort_on_error=True)
 
-        if not linux.wait_callback_success(wait_job, timeout=21600, ignore_exception_in_callback=True):
+        if not linux.wait_callback_success(wait_job, timeout=task_spec.timeout, ignore_exception_in_callback=True):
             raise kvmagent.KvmError('block stream failed')
 
         def wait_backing_file_cleared(_):
@@ -2635,6 +2649,11 @@ class Vm(object):
 
         if not linux.wait_callback_success(wait_backing_file_cleared, timeout=60, ignore_exception_in_callback=True):
             raise kvmagent.KvmError('block stream succeeded, but backing file is not cleared')
+
+    def block_stream_disk(self, task_spec, volume):
+        target_disk, disk_name = self._get_target_disk(volume)
+        with MergeSnapshotDaemon(task_spec, self.domain, disk_name, task_spec.timeout - 10):
+            self._do_block_stream_disk(task_spec, target_disk, disk_name)
 
     def list_blk_sources(self):
         """list domain blocks (aka. domblklist) -- but with sources only"""
@@ -3139,17 +3158,26 @@ class Vm(object):
     def merge_snapshot(self, cmd):
         _, disk_name = self._get_target_disk(cmd.volume)
 
-        @linux.retry(times=3, sleep_time=3)
         def do_pull(base, top):
             logger.debug('start block rebase [active: %s, new backing: %s]' % (top, base))
 
             # Double check (c.f. issue #1323)
             logger.debug('merge snapshot is checking previous block job of disk:%s' % disk_name)
 
+            start_timeout = time.time()
+            end_time = start_timeout + cmd.timeout
+
+            def get_timeout_seconds(exception_if_timeout=True):
+                current_timeout = time.time()
+                if current_timeout >= end_time and exception_if_timeout:
+                    raise kvmagent.KvmError('live merging snapshot chain failed, timeout after %d seconds' % current_timeout - start_timeout)
+
+                return end_time - current_timeout
+
             def wait_previous_job(_):
                 return not self._wait_for_block_job(disk_name, abort_on_error=True)
 
-            if not linux.wait_callback_success(wait_previous_job, timeout=21600, ignore_exception_in_callback=True):
+            if not linux.wait_callback_success(wait_previous_job, timeout=get_timeout_seconds(), ignore_exception_in_callback=True):
                 raise kvmagent.KvmError('merge snapshot failed - pending previous block job')
 
             self.domain.blockRebase(disk_name, base, 0)
@@ -3158,8 +3186,8 @@ class Vm(object):
             def wait_job(_):
                 return not self._wait_for_block_job(disk_name, abort_on_error=True)
 
-            if not linux.wait_callback_success(wait_job, timeout=21600):
-                raise kvmagent.KvmError('live merging snapshot chain failed, timeout after 6 hours')
+            if not linux.wait_callback_success(wait_job, timeout=get_timeout_seconds()):
+                raise kvmagent.KvmError('live merging snapshot chain failed, block job not finished')
 
             # Double check (c.f. issue #757)
             current_backing = self._get_back_file(top)
@@ -3169,23 +3197,8 @@ class Vm(object):
 
             logger.debug('end block rebase [active: %s, new backing: %s]' % (top, base))
 
-        class MergeSnapshotDaemon(plugin.TaskDaemon):
-            def __init__(self, domain, disk_name):
-                # use 21600 * 3 to match do_pull max retry time
-                super(MergeSnapshotDaemon, self).__init__(cmd, 'mergeSnapshot', 21600 * 3 + 10, report_progress=False)
-                self.domain = domain
-                self.disk_name = disk_name
-
-            def _cancel(self):
-                logger.debug('cancelling vm[uuid:%s] merge snapshost' % cmd.vmUuid)
-                # cancel block job async
-                self.domain.blockJobAbort(self.disk_name, 0)
-
-            def _get_percent(self):
-                # type: () -> int
-                pass
-
-        with MergeSnapshotDaemon(self.domain, disk_name):
+        # confirm MergeSnapshotDaemon's cancel will be invoked before block job wait
+        with MergeSnapshotDaemon(cmd, self.domain, disk_name, cmd.timeout - 10):
             if cmd.fullRebase:
                 do_pull(None, cmd.destPath)
             else:
@@ -5552,7 +5565,8 @@ host side snapshot files chian:
                             vm.uuid, cmd.volume.deviceId, vm.state))
 
                 if vm and (vm.state == vm.VM_STATE_RUNNING or vm.state == vm.VM_STATE_PAUSED):
-                    rsp.snapshotInstallPath, rsp.newVolumeInstallPath = vm.take_volume_snapshot(cmd.volume,
+                    rsp.snapshotInstallPath, rsp.newVolumeInstallPath = vm.take_volume_snapshot(cmd,
+                                                                                                cmd.volume,
                                                                                                 cmd.installPath,
                                                                                                 cmd.fullSnapshot)
                 else:
@@ -5846,7 +5860,7 @@ host side snapshot files chian:
             rsp.success = True
             return jsonobject.dumps(rsp)
 
-        vm.block_stream_disk(cmd.volume)
+        vm.block_stream_disk(cmd, cmd.volume)
         rsp.success = True
         return jsonobject.dumps(rsp)
 
