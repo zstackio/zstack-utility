@@ -1467,6 +1467,13 @@ def get_pids_by_process_name(name):
 def get_pids_by_process_fullname(name):
     return kill_process_by_fullname(name, 0)
 
+def get_pids_by_listened_port(port):
+    cmd = shell.ShellCmd("netstat -lnp | grep ':%s' |  awk '{sub(/\/.*/,""); print $NF}' " % port)
+    output = cmd(False)
+    if cmd.return_code != 0:
+        return None
+    return output.splitlines()
+
 def kill_process_by_fullname(name, sig):
     #type: (str, int) -> list[str]
     cmd = shell.ShellCmd("pkill -%d -e -f '%s'" % (sig, name))
