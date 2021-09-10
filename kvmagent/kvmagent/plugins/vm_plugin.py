@@ -4604,7 +4604,7 @@ def get_vm_migration_caps(domain_id, cap_key):
     return None
 
 
-def check_mirror_jobs(domain_id, disable_migrate_bm):
+def check_mirror_jobs(domain_id, migrate_without_bitmaps):
     if not get_vm_migration_caps(domain_id, "dirty-bitmaps"):
         return
 
@@ -4613,7 +4613,7 @@ def check_mirror_jobs(domain_id, disable_migrate_bm):
     for v in volumes:
         isc.stop_mirror(domain_id, False, v)
 
-    if disable_migrate_bm:
+    if migrate_without_bitmaps:
         execute_qmp_command(domain_id, '{"execute": "migrate-set-capabilities","arguments":'
                                        '{"capabilities":[ {"capability": "dirty-bitmaps", "state":false}]}}')
 
@@ -5551,7 +5551,7 @@ class VmPlugin(kvmagent.KvmAgent):
             if any(s.startswith('/dev/') for s in vm.list_blk_sources()):
                 flags += " --unsafe"
 
-        check_mirror_jobs(vmUuid, True)
+        check_mirror_jobs(vmUuid, bool(os.getenv("MIGRATE_WITHOUT_DIRTY_BITMAPS")))
         cmd = "virsh migrate {} --migrate-disks {} --xml {} {} {} {}".format(flags, diskstr, fpath, vmUuid, dst, migurl)
 
         try:
