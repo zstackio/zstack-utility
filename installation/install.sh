@@ -572,8 +572,7 @@ set_tomcat_config() {
 
     sed -i 's/port="8080"/executor="tomcatThreadPool"  port="8080"/g' $tomcat_config_path/server.xml
     sed -i 's/connectionTimeout=".*"/connectionTimeout="'"$new_timeout"'"/' $tomcat_config_path/server.xml
-    sed -i 's/redirectPort="8443" \/>/redirectPort="8443" maxHttpHeaderSize="65536" URIEncoding="UTF-8" useBodyEncodingForURI="UTF-8" \/>\n  \ \ \ \  <Executor name="tomcatThreadPool" namePrefix="catalina-exec-"
-        maxThreads="'"$new_max_thread_num"'" minSpareThreads="'"$new_min_spare_threads"'" prestartminSpareThreads="true" maxQueueSize="'"$new_max_queue_size"'"\/>/g' $tomcat_config_path/server.xml
+    sed -i 's/redirectPort="8443" \/>/redirectPort="8443" maxHttpHeaderSize="65536" URIEncoding="UTF-8" useBodyEncodingForURI="UTF-8" \/>\n  \ \ \ \  <Executor name="tomcatThreadPool" namePrefix="catalina-exec-" maxThreads="'"$new_max_thread_num"'" minSpareThreads="'"$new_min_spare_threads"'" prestartminSpareThreads="true" maxQueueSize="'"$new_max_queue_size"'"\/>/g' $tomcat_config_path/server.xml
     sed -i 's/maxThreads=".*"/maxThreads="'"$new_max_thread_num"'"/' $tomcat_config_path/server.xml
     # Fix ZSTAC-13580
     sed -i -e '/allowLinking/d' -e  '/autoDeploy/a \ \ \ \ \ \ \ \ <Context path="/zstack" reloadable="false" crossContext="true" allowLinking="true"/>' $tomcat_config_path/server.xml
