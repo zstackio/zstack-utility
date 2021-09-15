@@ -1160,8 +1160,10 @@ class CephAgent(plugin.TaskManager):
         try:
 
             with RbdImageWriter(poolname, imagename) as image:
-                if image.size() != disk_size:  # TODO: image.resize()
-                    raise Exception('src volume size %d and destination size %d mismatch' % (disk_size, image.size()))
+                if image.size() != disk_size:
+                    logger.info('backup volume size %d and current volume size %d mismatch, resizing...' % (disk_size, image.size()))
+                    image.resize(disk_size)
+                    logger.info('volume resized to %d' % disk_size)
 
                 chunk_size = 1048576
                 zero_chunk = '\x00' * chunk_size
