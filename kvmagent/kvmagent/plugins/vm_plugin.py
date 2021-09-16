@@ -381,8 +381,8 @@ class CancelVolumeMirrorResponse(kvmagent.AgentResponse):
         super(CancelVolumeMirrorResponse, self).__init__()
 
 class QueryVolumeMirrorResponse(kvmagent.AgentResponse):
-    def __init_(self):
-        super(QueryVolumeMirrorResponse.self).__init__()
+    def __init__(self):
+        super(QueryVolumeMirrorResponse, self).__init__()
         self.mirrorVolumes = [] # type:list[str]
         self.extraMirrorVolumes = [] # type:list[str]
 
