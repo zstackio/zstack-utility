@@ -368,7 +368,7 @@ def collect_ssd_lift_state():
 collect_equipment_state_last_time = None
 collect_equipment_state_last_result = None
 
-def collect_equipment_state():
+def collect_ipmi_state():
     metrics = {
         'power_supply': GaugeMetricFamily('power_supply',
                                           'power supply', None, ['ps_id']),
@@ -418,6 +418,25 @@ def collect_equipment_state():
     
     collect_equipment_state_last_result = metrics.values()
     return collect_equipment_state_last_result
+
+
+def collect_equipment_state():
+    metrics = {
+        'power_supply': GaugeMetricFamily('power_supply',
+                                          'power supply', None, ['ps_id']),
+        'ipmi_status': GaugeMetricFamily('ipmi_status', 'ipmi status', None, []),
+    }
+
+    r, ps_info = bash_ro("ipmitool sdr type 'power supply'")  # type: (int, str)
+    if r == 0:
+        for info in ps_info.splitlines():
+            info = info.strip()
+            ps_id = info.split("|")[0].strip().split(" ")[0]
+            health = 10 if "fail" in info.lower() or "lost" in info.lower() else 0
+            metrics['power_supply'].add_metric([ps_id], health)
+
+    metrics['ipmi_status'].add_metric([], bash_r("ipmitool mc info"))
+    return metrics.values()
 
 
 def collect_vm_statistics():
@@ -571,10 +590,14 @@ kvmagent.register_prometheus_collector(collect_node_disk_wwid)
 kvmagent.register_prometheus_collector(collect_host_conntrack_statistics)
 kvmagent.register_prometheus_collector(collect_physical_network_interface_state)
 
-if misc.isMiniHost() or misc.isHyperConvergedHost():
+if misc.isMiniHost():
     kvmagent.register_prometheus_collector(collect_lvm_capacity_statistics)
     kvmagent.register_prometheus_collector(collect_raid_state)
     kvmagent.register_prometheus_collector(collect_equipment_state)
+    
+if misc.isHyperConvergedHost():
+    kvmagent.register_prometheus_collector(collect_raid_state)
+    kvmagent.register_prometheus_collector(collect_ipmi_state)
     kvmagent.register_prometheus_collector(collect_ssd_lift_state)
 
 
