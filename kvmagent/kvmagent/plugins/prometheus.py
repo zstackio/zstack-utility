@@ -190,11 +190,11 @@ def convert_disk_state_to_int(state):
     :type state: str
     """
     state = state.lower()
-    if "online" in state or "jobd" in state or "ready" in state or "optimal" in state:
+    if "online" in state or "jobd" in state or "ready" in state or "optimal" in state or "hot-spare" in state or "hot spare" in state:
         return 0
     elif "rebuild" in state:
         return 5
-    elif "failed" in state:
+    elif "failed" in state or "offline" in state:
         return 10
     elif "unconfigured" in state:
         return 15
