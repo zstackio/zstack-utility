@@ -2046,7 +2046,7 @@ class StartCmd(Command):
 
     def install_argparse_arguments(self, parser):
         parser.add_argument('--host', help='SSH URL, for example, root@192.168.0.10, to start the management node on a remote machine')
-        parser.add_argument('--timeout', help='Wait for ZStack Server startup timeout, default is 300 seconds.', default=300)
+        parser.add_argument('--timeout', help='Wait for ZStack Server startup timeout, default is 1000 seconds.', default=1000)
         parser.add_argument('--daemon', help='Start ZStack in daemon mode. Only used with systemd.', action='store_true', default=False)
         parser.add_argument('--simulator', help='Start Zstack in simulator mode.', action='store_true', default=False)
         parser.add_argument('--mysql_process_list', help='Check mysql wait timeout connection', action='store_true', default=False)
