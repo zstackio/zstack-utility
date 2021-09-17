@@ -82,10 +82,12 @@ def update_ceph_client_access_conf(ps_uuid, mon_urls, user_key, manufacturer):
             
     return conf_path, keyring_path, username
 
+
 def get_heartbeat_object_name(primary_storage_uuid, host_uuid):
     return 'ceph-ps-%s-host-hb-%s' % (primary_storage_uuid, host_uuid)
 
-def getCephPoolsCapacity():
+
+def get_pools_capacity():
     result = []
 
     o = shell.call('ceph osd dump -f json')
@@ -94,14 +96,10 @@ def getCephPoolsCapacity():
         return result
 
     for pool in df.pools:
-        crush_rule = None
-        if pool.crush_ruleset is None:
-            crush_rule = pool.crush_rule
-        else:
-            crush_rule = pool.crush_ruleset
+        crush_rule = pool.crush_ruleset if pool.crush_ruleset else pool.crush_rule
 
         if pool.type == 1:
-            poolCapacity = CephPoolCapacity(pool.pool_name, pool.size, crush_rule)
+            pool_capacity = CephPoolCapacity(pool.pool_name, pool.size, crush_rule, "Copy", 1.0 / pool.size)
         elif pool.type == 3:
             prof = shell.call('ceph osd erasure-code-profile get %s -f json' % pool.erasure_code_profile)
             jprof = jsonobject.loads(prof)
@@ -109,32 +107,30 @@ def getCephPoolsCapacity():
                 raise Exception('unexpected erasure-code-profile for pool: %s' % pool.pool_name)
             k = int(jprof.k)
             m = int(jprof.m)
-            r = float(k+m)/k
-            poolCapacity = CephPoolCapacity(pool.pool_name, pool.size, crush_rule, r)
+            utilization = float(k)/(k + m)
+            pool_capacity = CephPoolCapacity(pool.pool_name, pool.size, crush_rule, "ErasureCode", utilization)
         else:
             raise Exception("unexpected pool type: %s:%d" % (pool.pool_name, pool.type))
 
-        result.append(poolCapacity)
+        result.append(pool_capacity)
 
-    # fill crushRuleItemName
+    # fill crush_rule_item_name
     o = shell.call('ceph osd crush rule dump -f json')
-    crushRules = jsonobject.loads(o)
-    if not crushRules:
+    crush_rules = jsonobject.loads(o)
+    if not crush_rules:
         return result
-    for poolCapacity in result:
-        if poolCapacity.crushRuleSet is None:
+    for pool_capacity in result:
+        if not pool_capacity.crush_rule_set:
             continue
 
-        def setCrushRuleName(crushRule):
-            if not crushRule:
-                return
-            for step in crushRule.steps:
-                if step.op == "take":
-                    poolCapacity.crushRuleItemName = step.item_name
+        for crush_rule in crush_rules:
+            if crush_rule.rule_id == pool_capacity.crush_rule_set:
+                # set crush rule name
+                for step in crush_rule.steps:
+                    if step.op == "take":
+                        pool_capacity.crush_rule_item_name = step.item_name
 
-        [setCrushRuleName(crushRule) for crushRule in crushRules if crushRule.rule_id == poolCapacity.crushRuleSet]
-
-    # fill crushItemOsds
+    # fill crush_item_osds
     o = shell.call('ceph osd tree -f json')
     # In the open source Ceph 10 version, the value returned by executing 'ceph osd tree -f json' might have '-nan', causing json parsing to fail.
     o = o.replace("-nan", "\"\"")
@@ -142,87 +138,89 @@ def getCephPoolsCapacity():
     if not tree.nodes:
         return result
 
-    def findNodeById(id):
+    def find_node_by_id(id):
         for node in tree.nodes:
             if node.id == id:
                 return node
 
-    def findAllChilds(node):
+    def find_all_childs(node):
         childs = []
 
         if not node.children:
             return childs
 
-        for childId in node.children:
-            child = findNodeById(childId)
+        for child_id in node.children:
+            child = find_node_by_id(child_id)
             if not child:
                 continue
             childs.append(child)
             if child.children:
-                grandson_childs = findAllChilds(child)
+                grandson_childs = find_all_childs(child)
                 childs.extend(grandson_childs)
         return childs
 
-    for poolCapacity in result:
-        if not poolCapacity.crushRuleItemName:
+    for pool_capacity in result:
+        if not pool_capacity.crush_rule_item_name:
             continue
         for node in tree.nodes:
-            if node.name != poolCapacity.crushRuleItemName:
+            if node.name != pool_capacity.crush_rule_item_name:
                 continue
             if not node.children:
                 continue
 
-            osdNodes = []
-            nodes = findAllChilds(node)
+            osd_nodes = []
+            nodes = find_all_childs(node)
             for node in nodes:
                 if node.type != "osd":
                     continue
-                if node.name in osdNodes:
+                if node.name in osd_nodes:
                     continue
-                osdNodes.append(node.name)
-            poolCapacity.crushItemOsds = osdNodes
+                osd_nodes.append(node.name)
+            pool_capacity.crush_item_osds = osd_nodes
 
-    # fill crushItemOsdsTotalSize, poolTotalSize
+    # fill crush_item_osds_total_size, poolTotalSize
     o = shell.call('ceph osd df -f json')
     # In the open source Ceph 10 version, the value returned by executing 'ceph osd df -f json' might have '-nan', causing json parsing to fail.
     o = o.replace("-nan", "\"\"")
     osds = jsonobject.loads(o)
     if not osds.nodes:
         return result
-    for poolCapacity in result:
-        if not poolCapacity.crushItemOsds:
+    for pool_capacity in result:
+        if not pool_capacity.crush_item_osds:
             continue
-        for osdName in poolCapacity.crushItemOsds:
+        for osd_name in pool_capacity.crush_item_osds:
             for osd in osds.nodes:
-                if osd.name != osdName:
+                if osd.name != osd_name:
                     continue
-                poolCapacity.crushItemOsdsTotalSize = poolCapacity.crushItemOsdsTotalSize + osd.kb * 1024
-                poolCapacity.availableCapacity = poolCapacity.availableCapacity + osd.kb_avail * 1024
-                poolCapacity.usedCapacity = poolCapacity.usedCapacity + osd.kb_used * 1024
+                pool_capacity.crush_item_osds_total_size = pool_capacity.crush_item_osds_total_size + osd.kb * 1024
+                pool_capacity.available_capacity = pool_capacity.available_capacity + osd.kb_avail * 1024
+                pool_capacity.used_capacity = pool_capacity.used_capacity + osd.kb_used * 1024
 
-        r = poolCapacity.ecRedundancy if poolCapacity.ecRedundancy else poolCapacity.replicatedSize
+        if not pool_capacity.disk_utilization:
+            continue
 
-        if poolCapacity.crushItemOsdsTotalSize != 0 and poolCapacity.replicatedSize != 0:
-            poolCapacity.poolTotalSize = int(poolCapacity.crushItemOsdsTotalSize / r)
-        if poolCapacity.availableCapacity != 0 and poolCapacity.replicatedSize != 0:
-            poolCapacity.availableCapacity = int(poolCapacity.availableCapacity / r)
-        if poolCapacity.usedCapacity != 0 and poolCapacity.replicatedSize != 0:
-            poolCapacity.usedCapacity = int(poolCapacity.usedCapacity / r)
+        if pool_capacity.crush_item_osds_total_size:
+            pool_capacity.pool_total_size = int(pool_capacity.crush_item_osds_total_size * pool_capacity.disk_utilization)
+        if pool_capacity.available_capacity:
+            pool_capacity.available_capacity = int(pool_capacity.available_capacity * pool_capacity.disk_utilization)
+        if pool_capacity.used_capacity:
+            pool_capacity.used_capacity = int(pool_capacity.used_capacity * pool_capacity.disk_utilization)
 
     return result
 
 
 class CephPoolCapacity:
-
-    def __init__(self, poolName, replicatedSize, crushRuleSet, ecRedundancy=None):
-        self.poolName = poolName
-        self.replicatedSize = replicatedSize
-        self.ecRedundancy = ecRedundancy
-        self.crushRuleSet = crushRuleSet
-        self.availableCapacity = 0
-        self.usedCapacity = 0
-        self.crushRuleItemName = None
-        self.crushItemOsds = []
-        self.crushItemOsdsTotalSize = 0
-        self.poolTotalSize = 0
+    def __init__(self, pool_name, replicated_size, crush_rule_set, security_policy, disk_utilization):
+        # type: (str, int, str, str, float) -> None
+        self.pool_name = pool_name
+        self.replicated_size = replicated_size
+        self.disk_utilization = disk_utilization
+        self.security_policy = security_policy
+        self.crush_rule_set = crush_rule_set
+        self.available_capacity = 0
+        self.used_capacity = 0
+        self.crush_rule_item_name = None
+        self.crush_item_osds = []
+        self.crush_item_osds_total_size = 0
+        self.pool_total_size = 0
 
