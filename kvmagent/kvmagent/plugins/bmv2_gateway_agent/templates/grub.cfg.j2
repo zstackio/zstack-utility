@@ -23,6 +23,7 @@ insmod ext2
 insmod xfs
 
 menuentry 'ZStack Get Bare Metal Chassis Hardware Info' --class fedora --class gnu-linux --class gnu --class os {
+        set root=(tftp,{{ inspect_ks_cfg_nic_ip }})
         linux (tftp)aarch64/vmlinuz devfs=nomount ksdevice=bootif inst.ks={{ inspect_ks_cfg_uri }} vnc rhgb quiet
         initrd (tftp)aarch64/initrd.img
 }
