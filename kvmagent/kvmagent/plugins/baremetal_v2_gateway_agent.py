@@ -738,7 +738,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                 port=network_obj.baremetal_instance_proxy_port)
 
         grub_template = self._load_template('grub.cfg')
-        grub_conf = grub_template.render(inspect_ks_cfg_uri=inspect_ks_cfg_uri)
+        grub_conf = grub_template.render(inspect_ks_cfg_uri=inspect_ks_cfg_uri, inspect_ks_cfg_nic_ip=network_obj.provision_nic_ip)
         with open(self.GRUB_CFG_PATH, 'w') as f:
             f.write(grub_conf)
 
