@@ -209,9 +209,9 @@ def get_lsscsi_info():
 
 def run_lsscsi_i():
     if os.path.exists("/usr/lib/udev/scsi_id"):
-        return bash.bash_o("""lsscsi | awk '{printf $0"  "; system("/usr/lib/udev/scsi_id -g -u -d "$NF" || echo '-'");}'""").splitlines()
+        return bash.bash_o("""lsscsi | awk '{printf $0"  "; system("/usr/lib/udev/scsi_id -g -u -d "$NF" || echo '-'");}'""").strip().splitlines()
     else:
-        return bash.bash_o("lsscsi -i").splitlines()
+        return bash.bash_o("lsscsi -i").strip().splitlines()
 
 
 def is_multipath_running():
