@@ -10,6 +10,8 @@ import tempfile
 import threading
 import rados
 import rbd
+import cherrypy
+import hashlib
 from cherrypy.lib.static import _serve_fileobj
 
 import zstacklib.utils.daemon as daemon
@@ -27,6 +29,7 @@ from zstacklib.utils import traceable_shell
 from zstacklib.utils.rollback import rollback, rollbackable
 
 logger = log.get_logger(__name__)
+BUFFER_SIZE = 16 * 1024 ** 2
 
 class CephPoolCapacity(object):
     def __init__(self, name, availableCapacity, replicatedSize, used, totalCapacity):
@@ -85,6 +88,8 @@ class UploadProgressRsp(AgentResponse):
         self.size = 0
         self.actualSize = 0
         self.installPath = None
+        self.lastOpTime = 0
+        self.downloadSize = 0
 
 class GetImageSizeRsp(AgentResponse):
     def __init__(self):
@@ -156,7 +161,7 @@ class UploadTask(object):
         self.dstPath = dstPath # without 'ceph://'
         self.tmpPath = tmpPath # where image firstly imported to
         self.expectedSize = 0
-        self.downloadedSize = 0
+        self.downloadSize = 0
         self.progress = 0
         self.lastError = None
         self.lastOpTime = linux.get_current_timestamp()
@@ -178,6 +183,9 @@ class UploadTask(object):
 
     def is_running(self):
         return not(self.completed or self.is_started())
+
+    def renew(self):
+        self.lastOpTime = linux.get_current_timestamp()
 
 class UploadTasks(object):
     MAX_RECORDS = 80
@@ -210,37 +218,6 @@ class UploadTasks(object):
         return self.tasks.get(imageUuid)
 
 # ------------------------------------------------------------------ #
-
-class ProgressedFileWriter(object):
-    def __init__(self, wfd, pfunc):
-        self.wfd = wfd
-        self.pfunc = pfunc
-        self.bytesWritten = 0
-
-    def write(self, s):
-        self.wfd.write(s)
-        self.bytesWritten += len(s)
-        self.pfunc(self.bytesWritten)
-
-    def seek(self, offset, whence=None):
-        pass
-
-import cherrypy
-class CustomPart(cherrypy._cpreqbody.Part):
-    """A customized multipart"""
-    maxrambytes = 0
-
-    def __init__(self, fp, headers, boundary, fifopath, pfunc):
-        cherrypy._cpreqbody.Part.__init__(self, fp, headers, boundary)
-        self.wfd = None
-        self.file = None
-        self.value = None
-        self.fifopath = fifopath
-        self.pfunc = pfunc
-
-    def make_file(self):
-        self.wfd = open(self.fifopath, 'w')
-        return ProgressedFileWriter(self.wfd, self.pfunc)
 
 def get_boundary(entity):
     ib = ""
@@ -285,42 +262,58 @@ def get_image_format_from_buf(qhdr):
         return 'iso'
     return "raw"
 
-
-def stream_body(task, fpath, entity, boundary):
-    def _progress_consumer(total):
-        task.downloadedSize = total
-
-    @thread.AsyncThread
-    def _do_import(task, fpath):
-        shell.check_run("cat %s | rbd import --image-format 2 - %s" % (fpath, task.tmpPath))
+def stream_body(self, task, entity, boundary, up):
+    pool, image_name = task.tmpPath.split('/')
+    ioctx = self.get_ioctx(pool)
+    if up['offset'] == 0:
+        rbd_inst = rbd.RBD()
+        rbd_inst.create(ioctx, image_name, task.expectedSize)
+    image_obj = ImageFileObject(rbd.Image(ioctx, image_name))
+    image_obj.seek(up['offset'])
 
     while True:
         headers = cherrypy._cpreqbody.Part.read_headers(entity.fp)
-        p = CustomPart(entity.fp, headers, boundary, fpath, _progress_consumer)
+        p = cherrypy._cpreqbody.Part(entity.fp, headers, boundary)
         if not p.filename:
             continue
 
-        # start consumer
-        _do_import(task, fpath)
         try:
-            p.process()
-        except Exception as e:
-            logger.warn('process image %s failed: %s' % (task.imageUuid, str(e)))
-            pass
+            reader = cherrypy._cpreqbody.SizedReader(p.fp, None, up['size'])
+            remaining = up['size']
+            bytes_read = 0
+            md5 = hashlib.md5()
+            chunks = []
+            chunk_size = 32 * 1024
+            while remaining > 0:
+                tmp = reader.read(min(chunk_size, remaining))
+                datalen = len(tmp)
+                task.renew()
+                chunks.append(tmp)
+                md5.update(tmp)
+
+                remaining -= datalen
+                bytes_read += datalen
+                if bytes_read >= BUFFER_SIZE or remaining <= 0:
+                    image_obj.write(b''.join(chunks))
+                    task.downloadSize += bytes_read
+                    chunks = []
+                    bytes_read = 0
         finally:
-            if p.wfd is not None:
-                p.wfd.close()
+            image_obj.close()
         break
 
-    if task.downloadedSize != task.expectedSize:
-        task.fail('incomplete upload, got %d, expect %d' % (task.downloadedSize, task.expectedSize))
-        shell.run('rbd rm %s' % task.tmpPath)
+    if up['md5'] and up['md5'] != md5.hexdigest():
+        task.downloadSize -= up['size']
+        raise cherrypy.HTTPError(406, "content md5 not match, expected: %s, actual: %s" % (up['md5'], md5.hexdigest()))
+
+    if task.downloadSize != task.expectedSize:
         return
 
     try:
         file_format = linux.get_img_fmt('rbd:'+task.tmpPath)
     except Exception as e:
         task.fail('upload image %s failed: %s' % (task.imageUuid, str(e)))
+        shell.run('rbd rm %s' % task.tmpPath)
         return
 
     if file_format == 'qcow2':
@@ -351,7 +344,6 @@ def stream_body(task, fpath, entity, boundary):
 
     task.success()
 
-
 class ImageFileObject(object):
     def __init__(self, image):
         # type: (rbd.Image) -> None
@@ -367,6 +359,10 @@ class ImageFileObject(object):
         content = self.image.read(self.offset, length)
         self.offset += length
         return content
+
+    def write(self, content):
+        self.image.write(content, self.offset)
+        self.offset = min(self.offset + len(content), self.size)
 
     def close(self):
         self.image.close()
@@ -690,26 +686,45 @@ class CephAgent(object):
         task.fail(reason)
         raise Exception(reason)
 
-    def _get_fifopath(self, uu):
-        import tempfile
-        d = tempfile.gettempdir()
-        return os.path.join(d, uu)
-
     # handler for multipart upload, requires:
     # - header X-IMAGE-UUID
     # - header X-IMAGE-SIZE
     def upload(self, req):
-        imageUuid = req.headers['X-IMAGE-UUID']
-        imageSize = req.headers['X-IMAGE-SIZE']
+        image_uuid = req.headers['X-IMAGE-UUID']
+        image_size = req.headers['X-IMAGE-SIZE']
+        slice_offset = req.headers.get('X-SLICE-OFFSET')
+        slice_size = req.headers.get('X-SLICE-SIZE')
+        expected_md5 = req.headers.get('X-SLICE-MD5')
 
-        task = self.upload_tasks.get_task(imageUuid)
+        if not slice_offset:
+            slice_offset = '0'
+
+        if not slice_size:
+            slice_size = image_size
+        task = self.upload_tasks.get_task(image_uuid)
         if task is None:
-            raise Exception('image not found %s' % imageUuid)
+            raise Exception('image not found %s' % image_uuid)
 
-        task.expectedSize = long(imageSize)
+        if task.completed:
+            raise Exception('image[uuid: %s] upload has completed' % image_uuid)
+
+        try:
+            image_size = long(image_size)
+            slice_offset = long(slice_offset)
+            slice_size = long(slice_size)
+        except ValueError:
+            raise Exception('invalid header "X-IMAGE-SIZE", "X-SLICE-OFFSET" or "X-SLICE-SIZE"')
+
+        if image_size <= 0:
+            raise Exception('invalid image size header: %s' % image_size)
+
+        if slice_offset > task.downloadSize or slice_offset >= image_size or slice_offset < 0:
+            raise Exception('invalid slice offset header: %s, download size: %d' % slice_offset, task.downloadSize)
+
+        task.expectedSize = image_size
         total, avail, poolCapacities = self._get_capacity()
         if avail <= task.expectedSize:
-            self._fail_task(task, 'capacity not enough for size: ' + imageSize)
+            self._fail_task(task, 'capacity not enough for size: ' + image_size)
 
         entity = req.body
         boundary = get_boundary(entity)
@@ -717,15 +732,19 @@ class CephAgent(object):
             self._fail_task(task, 'unexpected post form')
 
         try:
-            # prepare the fifo to save image upload
-            fpath = self._get_fifopath(imageUuid)
-            linux.rm_file_force(fpath)
-            os.mkfifo(fpath)
-            stream_body(task, fpath, entity, boundary)
+            upload_param = {'offset' : slice_offset, 'size' : slice_size, 'md5': expected_md5}
+            stream_body(self, task, entity, boundary, upload_param)
+            if slice_offset + slice_size != task.downloadSize:
+                raise Exception("incomplete image %s, offset %d, completed %d, expected %d" % (image_uuid, slice_offset, \
+                                task.downloadSize, image_size))
+        except cherrypy.HTTPError as e:
+            raise cherrypy.HTTPError(e.status, e._message)
         except Exception as e:
-            self._fail_task(task, str(e))
-        finally:
-            linux.rm_file_force(fpath)
+            if str(e).lstrip() != 'timed out':
+                shell.run('rbd rm %s' % task.tmpPath)
+                self._fail_task(task, str(e))
+            if slice_offset == 0:
+                shell.run('rbd rm %s' % task.tmpPath)
 
     def _prepare_upload(self, cmd):
         start = len(self.UPLOAD_PROTO)
@@ -755,13 +774,15 @@ class CephAgent(object):
         rsp.installPath = task.installPath
         rsp.size = task.expectedSize
         rsp.actualSize = task.expectedSize
+        rsp.downloadSize = task.downloadSize
+        rsp.lastOpTime = long(task.lastOpTime) * 1000
         if task.expectedSize == 0:
             rsp.progress = 0
         elif task.completed:
             rsp.size = self._get_file_size(task.dstPath)
             rsp.progress = 100
         else:
-            rsp.progress = task.downloadedSize * 90 / task.expectedSize
+            rsp.progress = task.downloadSize * 90 / task.expectedSize
 
         if task.lastError is not None:
             rsp.success = False
@@ -982,6 +1003,11 @@ class CephAgent(object):
     def export(self, req, rsp, **kwargs):
         pool_name = kwargs['pool']
         image_name = kwargs['image']
+
+        if isinstance(pool_name, unicode):
+            pool_name = pool_name.encode('unicode-escape').decode('string_escape')
+        if isinstance(image_name, unicode):
+            image_name = image_name.encode('unicode-escape').decode('string_escape')
 
         ioctx = self.get_ioctx(pool_name)
         try:

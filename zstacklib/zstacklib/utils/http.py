@@ -101,8 +101,12 @@ class RawUriHandler(object):
         except Exception as e:
             content = traceback.format_exc()
             logger.warn('[WARN]: %s]' % content)
-            cherrypy.response.status = 500
-            return str(e)
+            if isinstance(e, cherrypy.HTTPError):
+                cherrypy.response.status = e.status
+                return e._message
+            else:
+                cherrypy.response.status = 500
+                return str(e)
 
 class RawUriStreamHandler(object):
     def __init__(self, uri_obj):
