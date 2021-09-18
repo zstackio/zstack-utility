@@ -832,43 +832,31 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     def get_fc_luns(self, rescan):
         o = bash.bash_o("ls -1c /sys/bus/scsi/devices/target*/fc_transport | awk -F 'target' '/^target/{print $2}'")
         fc_targets = o.strip().splitlines()
-        if len(fc_targets) == 0 or (len(fc_targets) == 1 and fc_targets[0] == ""):
+        if not fc_targets:
             logger.debug("not find any fc targets")
             return []
 
-        o = filter(lambda s: "/dev/" in s, lvm.run_lsscsi_i())
-        if len(o) == 0 or (len(o) == 1 and o[0] == ""):
+        fc_targets.sort()
+        scsi_infos = filter(lambda s: "/dev/" in s, lvm.run_lsscsi_i())
+        if not scsi_infos:
             logger.debug("not find any usable fc disks")
             return []
 
-        luns = [None] * len(fc_targets)
+        luns = [[] for _ in enumerate(fc_targets)]
 
-        def get_lun_info(fc_target, i):
-            t = filter(lambda x: "[%s" % fc_target in x, o)
-            mapped_t = map(lambda x: self.get_device_info(x, rescan), t)
-            luns[i] = filter(lambda x: x is not None, mapped_t)
+        def fill_lun_info(fc_target, i):
+            for target_scsi_info in filter(lambda x: '[' + fc_target in x, scsi_infos):
+                device_info = self.get_device_info(target_scsi_info, rescan)
+                if device_info:
+                    luns[i].append(device_info)
 
         threads = []
         for idx, fc_target in enumerate(fc_targets, start=0):
-            threads.append(thread.ThreadFacade.run_in_thread(get_lun_info, [fc_target, idx]))
+            threads.append(thread.ThreadFacade.run_in_thread(fill_lun_info, [fc_target, idx]))
         for t in threads:
             t.join()
 
-        luns = sum(filter(None, luns), [])
-        # make sure that all hosts can return the totally same luns info, so that MN can be easier to handle it.
-        luns.sort(key=lambda l: l.path)
-        luns_info = {}
-        for lun in luns:  # type: FiberChannelLunStruct
-            if lun.storageWwnn not in luns_info or len(luns_info[lun.storageWwnn]) == 0:
-                luns_info[lun.storageWwnn] = []
-                luns_info[lun.storageWwnn].append(lun)
-            elif lun.wwids[0] not in map(lambda x: x.wwids[0], luns_info[lun.storageWwnn]):
-                luns_info[lun.storageWwnn].append(lun)
-
-        result = []
-        for i in luns_info.values():
-            result.extend(i)
-        return result
+        return sum(filter(None, luns), [])
 
     @kvmagent.replyerror
     @bash.in_bash
@@ -891,9 +879,9 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         # type: (str) -> FiberChannelLunStruct
         s = FiberChannelLunStruct()
 
-        dev_name = scsi_info.split("/dev/")[1].split(" ")[0].strip()
-        wwid = scsi_info.split("/dev/")[1].split(" ")[-1].strip()
-        if wwid == "" or wwid == "-" or wwid is None:
+        dev_name = os.path.basename(scsi_info.split()[-2])
+        wwid = scsi_info.split()[-1]
+        if not wwid  or wwid == "-":
             return None
 
         # rescan disk size
