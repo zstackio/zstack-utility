@@ -38,8 +38,8 @@ from zstacklib.utils.report import Report
 host_arch = platform.machine()
 IS_AARCH64 = host_arch == 'aarch64'
 IS_MIPS64EL = host_arch == 'mips64el'
-GRUB_FILES = ["/boot/grub2/grub.cfg", "/boot/grub/grub.cfg", "/etc/grub2-efi.cfg",
-              "/etc/grub-efi.cfg", "/boot/efi/EFI/centos/grub.cfg", "/boot/efi/EFI/kylin/grub.cfg"]
+GRUB_FILES = ["/boot/grub2/grub.cfg", "/boot/grub/grub.cfg", "/etc/grub2-efi.cfg", "/etc/grub-efi.cfg"] \
+                + ["/boot/efi/EFI/{}/grub.cfg".format(platform.dist()[0])]
 IPTABLES_CMD = iptables.get_iptables_cmd()
 EBTABLES_CMD = ebtables.get_ebtables_cmd()
 
@@ -1237,7 +1237,7 @@ if __name__ == "__main__":
 
     def _close_hugepage(self):
         disable_hugepage_script = '''#!/bin/sh
-grubs=("/boot/grub2/grub.cfg" "/boot/grub/grub.cfg" "/etc/grub2-efi.cfg" "/etc/grub-efi.cfg" "/boot/efi/EFI/centos/grub.cfg" "/boot/efi/EFI/kylin/grub.cfg")
+grubs="%s"
 
 # config nr_hugepages
 sysctl -w vm.nr_hugepages=0
@@ -1257,7 +1257,7 @@ if [ ! -n "$result" ]; then
 fi
 
 #clean boot grub config
-for var in ${grubs[@]} 
+for var in $grubs 
 do 
    if [ -f $var ]; then
        sed -i '/^[[:space:]]*linux/s/[[:blank:]]*default_[[:graph:]]*//g' $var
@@ -1266,7 +1266,7 @@ do
        sed -i '/^[[:space:]]*linux/s/[[:blank:]]*transparent_hugepage[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g' $var
    fi    
 done
-'''
+''' % (' '.join(GRUB_FILES))
         fd, disable_hugepage_script_path = tempfile.mkstemp()
         with open(disable_hugepage_script_path, 'w') as f:
             f.write(disable_hugepage_script)
@@ -1293,7 +1293,7 @@ done
         pageSize = cmd.pageSize
         reserveSize = cmd.reserveSize
         enable_hugepage_script = '''#!/bin/sh
-grubs=("/boot/grub2/grub.cfg" "/boot/grub/grub.cfg" "/etc/grub2-efi.cfg" "/etc/grub-efi.cfg" "/boot/efi/EFI/centos/grub.cfg" "/boot/efi/EFI/kylin/grub.cfg")
+grubs="%s"
 
 # byte to mib
 let "reserveSize=%s/1024/1024"
@@ -1315,13 +1315,13 @@ echo always > /sys/kernel/mm/transparent_hugepage/enabled
 sed -i '/GRUB_CMDLINE_LINUX=/s/\"$/ transparent_hugepage=always default_hugepagesz=\'\"$pageSize\"\'M hugepagesz=\'\"$pageSize\"\'M hugepages=\'\"$pageNum\"\'\"/g' /etc/default/grub
 
 #config boot grub
-for var in ${grubs[@]} 
+for var in $grubs
 do 
    if [ -f $var ]; then
        sed -i '/^[[:space:]]*linux/s/$/ transparent_hugepage=always default_hugepagesz=\'\"$pageSize\"\'M hugepagesz=\'\"$pageSize\"\'M hugepages=\'\"$pageNum\"\'/g' $var
    fi    
 done
-''' % (reserveSize, pageSize)
+''' % (' '.join(GRUB_FILES), reserveSize, pageSize)
 
         fd, enable_hugepage_script_path = tempfile.mkstemp()
         with open(enable_hugepage_script_path, 'w') as f:
