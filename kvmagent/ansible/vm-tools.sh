@@ -8,6 +8,8 @@ LOGPATH=/var/log/zstack
 LOGFLLE=zwatch-update.log
 LOGPATH_EXISTS=""
 
+TEMP_PATH="/tmp/zstack/"
+
 while :
 do
   [ -z "$1" ] && break;
@@ -66,11 +68,15 @@ check_version_file() {
 }
 
 download_agent_tools() {
+  if [ ! -z $TEMP_PATH ]; then
+    mkdir $TEMP_PATH
+  fi
+  cd $TEMP_PATH
   curl http://169.254.169.254/zwatch-vm-agent --silent -o zwatch-vm-agent.download
 }
 
 clean_download_file() {
-  rm -f zwatch-vm-agent.download
+  rm -rf $TEMP_PATH
 }
 
 check_md5() {
@@ -90,11 +96,8 @@ query_agent_info() {
   version=`echo $AGENT_VERSION | grep "zwatch-vm-agent=" | awk -F '=' '{print $2}'`
 }
 
-stop_agent_tools() {
-  service zwatch-vm-agent stop
-}
-
 install_agent_tools() {
+  cd $TEMP_PATH
   chmod +x zwatch-vm-agent.download
   ./zwatch-vm-agent.download -i
   clean_download_file
@@ -106,7 +109,8 @@ install_agent_tools() {
 }
 
 start_agent_tools() {
-  service zwatch-vm-agent start
+  service zwatch-vm-agent restart
+
   if [ $? != 0 ]; then
     send_install_result "InstallFailed"
     log_info "service zwatch-vm-agent start fail"
@@ -125,9 +129,6 @@ log_info "downloading zwatch-vm-agent"
 download_agent_tools
 check_md5
 query_agent_info
-
-log_info "stopping zwatch-vm-agent"
-stop_agent_tools
 
 log_info "install zwatch-vm-agent"
 install_agent_tools
