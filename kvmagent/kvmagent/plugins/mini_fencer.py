@@ -19,6 +19,7 @@ PEER_MGMT_ADDR = ""
 
 FENCE_GW_RESULT = None
 OUTDATE_PEER_RESULT = None
+FENCE_GW_EXISTS = True
 
 OVERALL_TIMEOUT = 50
 
@@ -93,6 +94,7 @@ def do_test_fencer(vg_name):
     r, fencer_ip = getstatusoutput("timeout 3 vgs %s -otags --nolocking --noheading | tr ',' '\\n' | grep %s" % (vg_name, FENCER_TAG))
     if r == 0 and fencer_ip and fencer_ip != "" and is_ip_address(fencer_ip):
         fencer_ip = fencer_ip.strip().split("::")[-1]
+        FENCE_GW_EXISTS = True
         return test_ip_address(fencer_ip)
 
     has_zsha2, o = getstatusoutput("/usr/local/bin/zsha2 show-config")
@@ -100,15 +102,15 @@ def do_test_fencer(vg_name):
         r, fencer_ip = getstatusoutput("/usr/local/bin/zsha2 show-config | grep -w 'gw' | awk '{print $NF}'")
         fencer_ip = fencer_ip.strip().strip("\",") if fencer_ip is not None else fencer_ip
         if r == 0 and is_ip_address(fencer_ip):
+            FENCE_GW_EXISTS = True
             return test_ip_address(fencer_ip)
 
-    try:
-        default_gateway = iproute.get_routes_by_ip('8.8.8.8')[0].via_ip
-        if default_gateway and is_ip_address(default_gateway):
-            return test_ip_address(default_gateway)
-    except:
-        logger.warn("can not get default gateway")
+    r, default_gateway = getstatusoutput("ip r get 8.8.8.8 | head -n1 | grep -o 'via.*dev' | awk '{print $2}'")
+    if r == 0 and default_gateway and default_gateway != "" and is_ip_address(default_gateway):
+        FENCE_GW_EXISTS = True
+        return test_ip_address(default_gateway)
 
+    FENCE_GW_EXISTS = False
     mgmt_ip = getoutput("timeout 3 vgs %s -otags --nolocking --noheading | tr ',' '\\n' | grep %s" % (vg_name, MANAGEMENT_TAG))
     mgmt_ip = mgmt_ip.strip().split("::")[-1]
     if not is_ip_address(mgmt_ip):
@@ -206,7 +208,7 @@ def main():
             if FENCE_GW_RESULT is None or OUTDATE_PEER_RESULT is None:
                 time.sleep(0.5)
                 continue
-            elif FENCE_GW_RESULT is False and OUTDATE_PEER_RESULT is False:
+            elif FENCE_GW_EXISTS and FENCE_GW_RESULT is False and OUTDATE_PEER_RESULT is False:
                 logger.info("resource %s fence result: fence self" % resource_name)
                 fence_self(resource_name, drbd_path)
                 exit(5)
