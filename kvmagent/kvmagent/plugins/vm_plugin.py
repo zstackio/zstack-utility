@@ -54,6 +54,7 @@ from zstacklib.utils import vm_operator
 from zstacklib.utils import pci
 from zstacklib.utils import iproute
 from zstacklib.utils import ovs
+from zstacklib.utils import drbd
 from zstacklib.utils.report import *
 from zstacklib.utils.vm_plugin_queue_singleton import VmPluginQueueSingleton
 from zstacklib.utils.libvirt_singleton import LibvirtEventManager
@@ -7769,6 +7770,42 @@ host side snapshot files chian:
             logger.debug("clean vm[uuid:%s] heartbeat, due to evnet %s" % (dom.name(), LibvirtEventManager.event_to_string(event)))
             heartbeat_thread.do_heart_beat = False
             heartbeat_thread.join()
+    
+    @bash.in_bash
+    def _deactivate_drbd(self, conn, dom, event, detail, opaque):
+        logger.debug("got event from libvirt, %s %s" % (dom.name(), LibvirtEventManager.event_to_string(event)))
+
+        @thread.AsyncThread
+        @bash.in_bash
+        def deactivate_volume(event_str, file, vm_uuid):
+            # type: (str, str, str) -> object
+            minor = file.strip().split("'")[1].split('drbd')[-1]
+            syslog.syslog("deactivating volume %s for vm %s" % (file, vm_uuid))
+            configPath = bash.bash_o("grep 'minor %s;' /etc/drbd.d/*.res -l | awk -F '.res' '{print $1}'" % minor).strip()
+            drbdResource = drbd.DrbdResource(configPath.split("/")[-1])
+            try:
+                drbdResource.demote()
+                syslog.syslog(
+                    "deactivated volume %s for event %s happend on vm %s success" % (file, event_str, vm_uuid))
+            except Exception as e:
+                syslog.syslog("deactivate volume %s for event %s happend on vm %s failed, %s" % (
+                    file, event_str, vm_uuid, str(e)))
+
+        try:
+            event_str = LibvirtEventManager.event_to_string(event)
+            if event_str not in (LibvirtEventManager.EVENT_SHUTDOWN, LibvirtEventManager.EVENT_STOPPED):
+                return
+
+            vm_uuid = dom.name()
+            out = bash.bash_o("virsh dumpxml %s | grep \"source file='/dev/drbd\"" % vm_uuid).strip().splitlines()
+            if len(out) != 0:
+                for file in out:
+                    deactivate_volume(event_str, file, vm_uuid)
+            else:
+                logger.debug("can not find drbd related volume for vm %s, skip to release" % vm_uuid)
+        except:
+            content = traceback.format_exc()
+            logger.warn("traceback: %s" % content)
 
     @bash.in_bash
     def _release_sharedblocks(self, conn, dom, event, detail, opaque):
@@ -8006,6 +8043,7 @@ host side snapshot files chian:
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._vm_shutdown_event)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._vm_crashed_event)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._release_sharedblocks)
+        LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._deactivate_drbd)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._clean_colo_heartbeat)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._extend_sharedblock)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._delete_pushgateway_metric)
