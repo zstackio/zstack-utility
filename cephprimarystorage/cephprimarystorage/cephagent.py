@@ -184,6 +184,11 @@ class DownloadBitsFromKvmHostRsp(AgentResponse):
         super(DownloadBitsFromKvmHostRsp, self).__init__()
         self.format = None
 
+class DownloadBitsFromNbdRsp(AgentResponse):
+    def __init__(self):
+        super(DownloadBitsFromNbdRsp, self).__init__()
+        self.diskSize = None
+
 def replyerror(func):
     @functools.wraps(func)
     def wrap(*args, **kwargs):
@@ -1154,7 +1159,7 @@ class CephAgent(plugin.TaskManager):
         poolname, imagename = rbdtarget.split('/')
         client = nbd_client.NBDClient()
         client.connect(hostname, port, None, export_name)
-	cqueue = Queue.Queue(8)
+        cqueue = Queue.Queue(8)
         offset, disk_size = 0, client.get_block_size()
 
         try:
@@ -1197,9 +1202,11 @@ class CephAgent(plugin.TaskManager):
             try: client.close()
             except: pass
 
+        return disk_size
+
     @replyerror
     def download_from_nbd(self, req):
-        rsp = AgentResponse()
+        rsp = DownloadBitsFromNbdRsp()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         bandwidth = cmd.bandwidth
         nbdexpurl = cmd.nbdExportUrl
@@ -1210,7 +1217,7 @@ class CephAgent(plugin.TaskManager):
             rsp.error = 'unexpected protocol: %s' % nbdexpurl
             return jsonobject.dumps(rsp)
 
-        self._nbd2rbd(u.hostname, u.port, os.path.basename(u.path), self._normalize_install_path(rbdtarget), bandwidth, rsp)
+        rsp.diskSize = self._nbd2rbd(u.hostname, u.port, os.path.basename(u.path), self._normalize_install_path(rbdtarget), bandwidth, rsp)
 
         return jsonobject.dumps(rsp)
 
