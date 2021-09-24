@@ -8465,14 +8465,41 @@ class UiStatusCmd(Command):
 
         def write_status(status):
             info('UI status: %s' % status)
+        if ui_mode == "mini":
+            pid = get_ui_pid(ui_mode)
+            check_pid_cmd = ShellCmd('ps %s' % pid)
+            output = check_pid_cmd(is_exception=False)
+            cmd = create_check_ui_status_command(ui_port=ui_port, if_https='--ssl.enabled=true' in output)
 
-        default_protcol='http'
-        if os.path.exists(StartUiCmd.HTTP_FILE):
-            with open(StartUiCmd.HTTP_FILE, 'r') as fd2:
-                default_protcol = fd2.readline()
-                default_protcol = default_protcol.strip(' \t\n\r')
-        cmd = ShellCmd("runuser -l root -s /bin/bash -c 'bash %s %s://%s:%s'" %
-                       (UiStatusCmd.ZSTACK_UI_STATUS, default_protcol, '127.0.0.1', port), pipe=False)
+            if not cmd:
+                write_status('cannot detect status, no wget and curl installed')
+                return
+
+            cmd(False)
+
+            if cmd.return_code != 0:
+                if cmd.stdout or 'Failed' in cmd.stdout and pid:
+                    write_status('Starting, should be ready in a few seconds')
+                elif pid:
+                    write_status(
+                        '%s, the ui seems to become zombie as it stops responding APIs but the '
+                        'process(PID: %s) is still running. Please stop the node using zstack-ctl stop_ui' %
+                        (colored('Zombie', 'yellow'), pid))
+                else:
+                    write_status(colored('Stopped', 'red'))
+                return False
+            elif 'UP' in cmd.stdout:
+                default_ip = get_ui_address()
+
+                if not default_ip:
+                    info('UI status: %s [PID:%s]' % (colored('Running', 'green'), pid))
+                else:
+                    http = 'https' if '--ssl.enabled=true' in output else 'http'
+                    info('UI status: %s [PID:%s] %s://%s:%s' % (
+                        colored('Running', 'green'), pid, http, default_ip, port))
+            else:
+                write_status(colored('Unknown', 'yellow'))
+        cmd = ShellCmd("runuser -l root -s /bin/bash -c 'bash %s'" % (UiStatusCmd.ZSTACK_UI_STATUS),pipe=False)
         cmd(False)
         if cmd.return_code != 0:
             write_status(cmd.stdout)
