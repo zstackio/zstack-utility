@@ -3893,7 +3893,11 @@ if [ x"$UPGRADE" = x'y' ]; then
     #echo " Your old zstack was saved in $zstack_home/upgrade/`ls $zstack_home/upgrade/ -rt|tail -1`"
     echo_custom_pcidevice_xml_warning_if_need
     echo_star_line
-    disable_zstack_tui
+    if [ "$BASEARCH" == "x86_64" ]; then
+        start_zstack_tui
+    else
+        disable_zstack_tui
+    fi
     post_scripts_to_restore_iptables_rules
     if [[ $DEBIAN_OS =~ $OS ]];then
         post_restore_source_on_debian
@@ -4092,6 +4096,10 @@ fi
 echo_chrony_server_warning_if_need
 check_ha_need_upgrade
 echo_star_line
-disable_zstack_tui
+if [ "$BASEARCH" == "x86_64" ]; then
+    start_zstack_tui
+else
+    disable_zstack_tui
+fi
 post_scripts_to_restore_iptables_rules
 
