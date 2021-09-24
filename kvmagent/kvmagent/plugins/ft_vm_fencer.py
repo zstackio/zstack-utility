@@ -38,6 +38,15 @@ class FaultToleranceFecnerPlugin(kvmagent.KvmAgent):
         http_server = kvmagent.get_http_server()
         http_server.register_async_uri(self.SETUP_SELF_FENCER_PATH, self.setup_ft_self_fencer)
 
+        def start_raid_heartbeat():
+            pid = linux.find_process_by_cmdline(['zs-raid-heartbeat'])
+            if pid:
+                return
+            
+            shell.call('/var/lib/zstack/kvm/zs-raid-heartbeat')
+
+        start_raid_heartbeat()
+
     @kvmagent.replyerror
     def setup_ft_self_fencer(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
