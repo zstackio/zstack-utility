@@ -36,12 +36,14 @@ logger = log.get_logger(__name__)
 
 
 class CephPoolCapacity(object):
-    def __init__(self, name, availableCapacity, replicatedSize, used, totalCapacity):
+    def __init__(self, name, available, used, total, replicated_size, security_policy, disk_utilization):
         self.name = name
-        self.availableCapacity = availableCapacity
-        self.replicatedSize = replicatedSize
+        self.availableCapacity = available
         self.usedCapacity = used
-        self.totalCapacity = totalCapacity
+        self.totalCapacity = total
+        self.replicatedSize = replicated_size
+        self.securityPolicy = security_policy
+        self.diskUtilization = round(disk_utilization, 3)
 
 
 class AgentCommand(object):
@@ -348,14 +350,16 @@ class CephAgent(plugin.TaskManager):
         if not df.pools:
             return
 
-        pools = ceph.getCephPoolsCapacity()
+        pools = ceph.get_pools_capacity()
         if not pools:
             return
 
         rsp.poolCapacities = []
         for pool in pools:
-            poolCapacity = CephPoolCapacity(pool.poolName, pool.availableCapacity, pool.replicatedSize, pool.usedCapacity, pool.poolTotalSize)
-            rsp.poolCapacities.append(poolCapacity)
+            pool_capacity = CephPoolCapacity(pool.pool_name,
+                                             pool.available_capacity, pool.used_capacity, pool.pool_total_size,
+                                             pool.replicated_size, pool.security_policy, pool.disk_utilization)
+            rsp.poolCapacities.append(pool_capacity)
 
     @in_bash
     def _get_file_actual_size(self, path):
