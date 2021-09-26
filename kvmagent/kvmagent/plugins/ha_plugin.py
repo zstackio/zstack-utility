@@ -799,7 +799,7 @@ class HaPlugin(kvmagent.KvmAgent):
             ceph_controller.fencer_triggered_callback = self.report_self_fencer_triggered
 
             try:
-                conf_path, keyring_path, username = ceph.update_ceph_client_access_conf(ps_uuid, cmd.monUrls, cmd.userKey, cmd.manufacturer)
+                conf_path, keyring_path, username = ceph.update_ceph_client_access_conf(ps_uuid, cmd.monUrls, cmd.userKey, cmd.manufacturer, cmd.fsId)
                 logger.debug("config file: %s, pool name: %s" % (conf_path, pool_name))
                 heartbeat_counter = 0
                 additional_conf_dict = {}

@@ -46,12 +46,12 @@ def get_ceph_client_conf(ps_uuid, manufacturer=None):
 
     return os.path.join(ceph_client_config_dir, "ceph.conf"), key_path, username
 
-def update_ceph_client_access_conf(ps_uuid, mon_urls, user_key, manufacturer):
+def update_ceph_client_access_conf(ps_uuid, mon_urls, user_key, manufacturer, fsid):
     conf_folder = os.path.join(CEPH_CONF_ROOT, ps_uuid)
     if not os.path.exists(conf_folder):
         linux.mkdir(conf_folder)
 
-    conf_content = '[global]\nmon_host=%s\n' % (','.join(mon_urls))
+    conf_content = '[global]\nfsid = %s\nmon_host=%s\n' % (fsid, ','.join(mon_urls))
 
     # key used for ceph client keyring configuration
     keyring_path = None
