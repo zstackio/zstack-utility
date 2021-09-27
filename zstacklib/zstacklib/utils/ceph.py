@@ -27,7 +27,7 @@ def get_pools_capacity():
         return result
 
     for pool in df.pools:
-        crush_rule = pool.crush_ruleset if pool.crush_ruleset else pool.crush_rule
+        crush_rule = pool.crush_ruleset if pool.crush_ruleset is not None else pool.crush_rule
 
         if pool.type == 1:
             pool_capacity = CephPoolCapacity(pool.pool_name, pool.size, crush_rule, "Copy", 1.0 / pool.size)
@@ -51,7 +51,7 @@ def get_pools_capacity():
     if not crush_rules:
         return result
     for pool_capacity in result:
-        if not pool_capacity.crush_rule_set:
+        if pool_capacity.crush_rule_set is None:
             continue
 
         for crush_rule in crush_rules:
