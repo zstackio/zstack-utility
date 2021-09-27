@@ -44,6 +44,7 @@ def isMiniHost():
         "39e7b016e11cc67bbdf885c4a1293546",
         "b525fe1f8611ce4583d07b0a2ffa8435",
         "d625b1b46d517889d49616b0b35831af",
+        "c9142f6b3d8d911b83eed1eb239e773e",
         ]
 
 

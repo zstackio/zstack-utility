@@ -42,6 +42,7 @@ from zstacklib.utils import bash, plugin
 from zstacklib.utils.bash import in_bash
 from zstacklib.utils import jsonobject
 from zstacklib.utils import lvm
+from zstacklib.utils import ft
 from zstacklib.utils import shell
 from zstacklib.utils import uuidhelper
 from zstacklib.utils import xmlobject
@@ -53,6 +54,7 @@ from zstacklib.utils import vm_operator
 from zstacklib.utils import pci
 from zstacklib.utils import iproute
 from zstacklib.utils import ovs
+from zstacklib.utils import drbd
 from zstacklib.utils.report import *
 from zstacklib.utils.vm_plugin_queue_singleton import VmPluginQueueSingleton
 from zstacklib.utils.libvirt_singleton import LibvirtEventManager
@@ -3132,7 +3134,7 @@ class Vm(object):
         finish_time = time.time() + (timeout / 1000)
         while time.time() < finish_time:
             state = get_all_vm_states().get(uuid)
-            if state != Vm.VM_STATE_RUNNING:
+            if state != Vm.VM_STATE_RUNNING and state != Vm.VM_STATE_PAUSED:
                 raise kvmagent.KvmError("vm's state is %s, not running" % state)
             r, o, e = bash.bash_roe("virsh qemu-agent-command %s --cmd '{\"execute\":\"guest-info\"}'" % self.uuid)
             if r != 0:
@@ -3597,13 +3599,13 @@ class Vm(object):
                     e(qcmd, "qemu:arg", attrib={"value": 'socket,id=secondary-in-s-%s,host=%s,port=%s,server,nowait'
                                                           % (count, primary_host_ip, config.secondaryInPort)})
                     e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
-                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-in-c-%s,host=%s,port=%s,nowait'
+                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-in-c-%s,host=%s,port=%s,reconnect=1,nowait'
                                                           % (count, primary_host_ip, config.primaryInPort)})
                     e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
                     e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-out-s-%s,host=%s,port=%s,server,nowait'
                                                           % (count, primary_host_ip, config.primaryOutPort)})
                     e(qcmd, "qemu:arg", attrib={"value": '-chardev'})
-                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-out-c-%s,host=%s,port=%s,nowait'
+                    e(qcmd, "qemu:arg", attrib={"value": 'socket,id=primary-out-c-%s,host=%s,port=%s,reconnect=1,nowait'
                                                           % (count, primary_host_ip, config.primaryOutPort)})
 
                     count += 1
@@ -3622,14 +3624,24 @@ class Vm(object):
                     e(qcmd, "qemu:arg", attrib={"value": 'socket,id=red-secondary-%s,host=%s,port=%s'
                                                          % (count, cmd.addons['primaryVmHostIp'], config.secondaryInPort)})
                     e(qcmd, "qemu:arg", attrib={"value": '-object'})
-                    e(qcmd, "qemu:arg", attrib={"value": 'filter-redirector,id=fr-mirror-%s,netdev=hostnet%s,queue=tx,'
-                                                         'indev=red-mirror-%s' % (count, count, count)})
-                    e(qcmd, "qemu:arg", attrib={"value": '-object'})
-                    e(qcmd, "qemu:arg", attrib={"value": 'filter-redirector,id=fr-secondary-%s,netdev=hostnet%s,'
-                                                         'queue=rx,outdev=red-secondary-%s' % (count, count, count)})
-                    e(qcmd, "qemu:arg", attrib={"value": '-object'})
-                    e(qcmd, "qemu:arg", attrib={"value": 'filter-rewriter,id=rew-%s,netdev=hostnet%s,queue=all'
-                                                         % (count, count)})
+                    if config.driverType == 'virtio':
+                        e(qcmd, "qemu:arg", attrib={"value": 'filter-redirector,id=fr-mirror-%s,netdev=hostnet%s,queue=tx,'
+                                                             'indev=red-mirror-%s,vnet_hdr_support' % (count, count, count)})
+                        e(qcmd, "qemu:arg", attrib={"value": '-object'})
+                        e(qcmd, "qemu:arg", attrib={"value": 'filter-redirector,id=fr-secondary-%s,netdev=hostnet%s,'
+                                                             'queue=rx,outdev=red-secondary-%s,vnet_hdr_support' % (count, count, count)})
+                        e(qcmd, "qemu:arg", attrib={"value": '-object'})
+                        e(qcmd, "qemu:arg", attrib={"value": 'filter-rewriter,id=rew-%s,netdev=hostnet%s,queue=all,vnet_hdr_support'
+                                                             % (count, count)})
+                    else:
+                        e(qcmd, "qemu:arg", attrib={"value": 'filter-redirector,id=fr-mirror-%s,netdev=hostnet%s,queue=tx,'
+                                                             'indev=red-mirror-%s' % (count, count, count)})
+                        e(qcmd, "qemu:arg", attrib={"value": '-object'})
+                        e(qcmd, "qemu:arg", attrib={"value": 'filter-redirector,id=fr-secondary-%s,netdev=hostnet%s,'
+                                                             'queue=rx,outdev=red-secondary-%s' % (count, count, count)})
+                        e(qcmd, "qemu:arg", attrib={"value": '-object'})
+                        e(qcmd, "qemu:arg", attrib={"value": 'filter-rewriter,id=rew-%s,netdev=hostnet%s,queue=all'
+                                                             % (count, count)})
                     count += 1
 
                 block_replication_port = cmd.addons['blockReplicationPort']
@@ -6830,7 +6842,7 @@ host side snapshot files chian:
         rsp = kvmagent.AgentResponse()
 
         r, _, e = linux.sshpass_run(cmd.targetHostIp, cmd.targetHostPassword, "pkill -f 'qemu-system-x86_64 -name guest=%s'" % cmd.vmInstanceUuid, "root", cmd.targetHostPort)
-        if r != 0:
+        if r != 0 and r != 1:
             rsp.success = False
             rsp.error = 'failed to kill vm %s on host %s, cause: %s' % (cmd.vmInstanceUuid, cmd.targetHostIp, e)
 
@@ -7055,11 +7067,35 @@ host side snapshot files chian:
 
         domain_xml = vm.domain.XMLDesc(0)
         is_origin_secondary = 'filter-rewriter' in domain_xml
-        for count in xrange(0, cmd.nicNumber):
-            if not is_origin_secondary:
+        for count in xrange(0, len(cmd.nics)):
+            if cmd.nics[count].driverType == 'virtio':
+                execute_qmp_command(cmd.vmInstanceUuid,
+                                    '{"execute": "object-add", "arguments":{ "qom-type": "colo-compare", "id": "comp-%s",'
+                                    ' "props": { "primary_in": "primary-in-c-%s", "secondary_in": "secondary-in-s-%s",'
+                                    ' "outdev":"primary-out-c-%s", "iothread": "iothread%s", "vnet_hdr_support": true } } }'
+                                    % (count, count, count, count, int(count) + 1))
                 execute_qmp_command(cmd.vmInstanceUuid,
                                     '{"execute": "object-add", "arguments":{ "qom-type": "filter-mirror", "id": "fm-%s",'
-                                    ' "props": { "netdev": "hostnet%s", "queue": "tx", "outdev": "zs-mirror-%s" } } }'
+                                    ' "props": { "netdev": "hostnet%s", "queue": "tx", "outdev": "zs-mirror-%s",'
+                                    ' "vnet_hdr_support": true} } }'
+                                    % (count, count, count))
+                execute_qmp_command(cmd.vmInstanceUuid,
+                                    '{"execute": "object-add", "arguments":{ "qom-type": "filter-redirector",'
+                                    ' "id": "primary-out-redirect-%s", "props": { "netdev": "hostnet%s", "queue": "rx",'
+                                    ' "indev": "primary-out-s-%s", "vnet_hdr_support": true}}}' % (count, count, count))
+                execute_qmp_command(cmd.vmInstanceUuid,
+                                    '{"execute": "object-add", "arguments":{ "qom-type": "filter-redirector", "id":'
+                                    ' "primary-in-redirect-%s", "props": { "netdev": "hostnet%s", "queue": "rx",'
+                                    ' "outdev": "primary-in-s-%s", "vnet_hdr_support": true}}}' % (count, count, count))
+            else:
+                execute_qmp_command(cmd.vmInstanceUuid,
+                                    '{"execute": "object-add", "arguments":{ "qom-type": "colo-compare", "id": "comp-%s",'
+                                    ' "props": { "primary_in": "primary-in-c-%s", "secondary_in": "secondary-in-s-%s",'
+                                    ' "outdev":"primary-out-c-%s", "iothread": "iothread%s"} } }'
+                                    % (count, count, count, count, int(count) + 1))
+                execute_qmp_command(cmd.vmInstanceUuid,
+                                    '{"execute": "object-add", "arguments":{ "qom-type": "filter-mirror", "id": "fm-%s",'
+                                    ' "props": { "netdev": "hostnet%s", "queue": "tx", "outdev": "zs-mirror-%s"} } }'
                                     % (count, count, count))
                 execute_qmp_command(cmd.vmInstanceUuid,
                                     '{"execute": "object-add", "arguments":{ "qom-type": "filter-redirector",'
@@ -7069,29 +7105,7 @@ host side snapshot files chian:
                                     '{"execute": "object-add", "arguments":{ "qom-type": "filter-redirector", "id":'
                                     ' "primary-in-redirect-%s", "props": { "netdev": "hostnet%s", "queue": "rx",'
                                     ' "outdev": "primary-in-s-%s"}}}' % (count, count, count))
-            else:
-                execute_qmp_command(cmd.vmInstanceUuid,
-                                    '{"execute": "object-add", "arguments":{ "qom-type": "filter-mirror",'
-                                    ' "id": "fm-%s", "props": { "insert": "before", "position": "id=rew-%s", '
-                                    ' "netdev": "hostnet%s", "queue": "tx", "outdev": "zs-mirror-%s" } } }'
-                                    % (count, count, count, count))
-                execute_qmp_command(cmd.vmInstanceUuid,
-                                    '{"execute": "object-add", "arguments":{ "qom-type": "filter-redirector",'
-                                    ' "id": "primary-out-redirect-%s", "props":'
-                                    ' { "insert": "before", "position": "id=rew-%s",'
-                                    ' "netdev": "hostnet%s", "queue": "rx",'
-                                    ' "indev": "primary-out-s-%s"}}}' % (count, count, count, count))
-                execute_qmp_command(cmd.vmInstanceUuid,
-                                    '{"execute": "object-add", "arguments":{ "qom-type": "filter-redirector", "id":'
-                                    ' "primary-in-redirect-%s", "props": { "insert": "before", "position": "id=rew-%s",'
-                                    ' "netdev": "hostnet%s", "queue": "rx",'
-                                    ' "outdev": "primary-in-s-%s"}}}' % (count, count, count, count))
 
-            execute_qmp_command(cmd.vmInstanceUuid,
-                                '{"execute": "object-add", "arguments":{ "qom-type": "colo-compare", "id": "comp-%s",'
-                                ' "props": { "primary_in": "primary-in-c-%s", "secondary_in": "secondary-in-s-%s",'
-                                ' "outdev":"primary-out-c-%s", "iothread": "iothread%s" } } }'
-                                % (count, count, count, count, int(count) + 1))
             count += 1
 
         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "migrate-set-capabilities","arguments":'
@@ -7190,6 +7204,7 @@ host side snapshot files chian:
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "qmp_capabilities"}')
 
+        ft.cleanup_vm_before_setup_colo_primary_vm(cmd.vmInstanceUuid)
         r, o, err = execute_qmp_command(cmd.vmInstanceUuid, '{"execute":"query-chardev"}')
         if err:
             rsp.success = False
@@ -7243,7 +7258,7 @@ host side snapshot files chian:
             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "chardev-add", "arguments":{ "id": "primary-in-c-%s",'
                                                     ' "backend": {"type": "socket", "data": {"addr": { "type":'
                                                     ' "inet", "data": { "host": "%s", "port": "%s" } },'
-                                                    ' "server": false } } } }' % (count, cmd.hostIp, config.primaryInPort))
+                                                    ' "server": false, "reconnect": 1 } } } }' % (count, cmd.hostIp, config.primaryInPort))
             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "chardev-add", "arguments":{ "id": "primary-out-s-%s",'
                                                     ' "backend": {"type": "socket", "data": {"addr": { "type":'
                                                     ' "inet", "data": { "host": "%s", "port": "%s" } },'
@@ -7251,7 +7266,7 @@ host side snapshot files chian:
             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "chardev-add", "arguments":{ "id": "primary-out-c-%s",'
                                                     ' "backend": {"type": "socket", "data": {"addr": { "type":'
                                                     ' "inet", "data": { "host": "%s", "port": "%s" } },'
-                                                    ' "server": false } } } }' % (count, cmd.hostIp, config.primaryOutPort))
+                                                    ' "server": false, "reconnect": 1 } } } }' % (count, cmd.hostIp, config.primaryOutPort))
             count += 1
         return jsonobject.dumps(rsp)
 
@@ -7781,6 +7796,42 @@ host side snapshot files chian:
             logger.debug("clean vm[uuid:%s] heartbeat, due to evnet %s" % (dom.name(), LibvirtEventManager.event_to_string(event)))
             heartbeat_thread.do_heart_beat = False
             heartbeat_thread.join()
+    
+    @bash.in_bash
+    def _deactivate_drbd(self, conn, dom, event, detail, opaque):
+        logger.debug("got event from libvirt, %s %s" % (dom.name(), LibvirtEventManager.event_to_string(event)))
+
+        @thread.AsyncThread
+        @bash.in_bash
+        def deactivate_volume(event_str, file, vm_uuid):
+            # type: (str, str, str) -> object
+            minor = file.strip().split("'")[1].split('drbd')[-1]
+            syslog.syslog("deactivating volume %s for vm %s" % (file, vm_uuid))
+            configPath = bash.bash_o("grep 'minor %s;' /etc/drbd.d/*.res -l | awk -F '.res' '{print $1}'" % minor).strip()
+            drbdResource = drbd.DrbdResource(configPath.split("/")[-1])
+            try:
+                drbdResource.demote()
+                syslog.syslog(
+                    "deactivated volume %s for event %s happend on vm %s success" % (file, event_str, vm_uuid))
+            except Exception as e:
+                syslog.syslog("deactivate volume %s for event %s happend on vm %s failed, %s" % (
+                    file, event_str, vm_uuid, str(e)))
+
+        try:
+            event_str = LibvirtEventManager.event_to_string(event)
+            if event_str not in (LibvirtEventManager.EVENT_SHUTDOWN, LibvirtEventManager.EVENT_STOPPED):
+                return
+
+            vm_uuid = dom.name()
+            out = bash.bash_o("virsh dumpxml %s | grep \"source file='/dev/drbd\"" % vm_uuid).strip().splitlines()
+            if len(out) != 0:
+                for file in out:
+                    deactivate_volume(event_str, file, vm_uuid)
+            else:
+                logger.debug("can not find drbd related volume for vm %s, skip to release" % vm_uuid)
+        except:
+            content = traceback.format_exc()
+            logger.warn("traceback: %s" % content)
 
     @bash.in_bash
     def _release_sharedblocks(self, conn, dom, event, detail, opaque):
@@ -8018,6 +8069,7 @@ host side snapshot files chian:
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._vm_shutdown_event)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._vm_crashed_event)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._release_sharedblocks)
+        LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._deactivate_drbd)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._clean_colo_heartbeat)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._extend_sharedblock)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._delete_pushgateway_metric)

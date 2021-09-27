@@ -1,6 +1,7 @@
 import os
 import platform
 
+import time
 from zstacklib.utils import linux
 from zstacklib.utils import bash
 from zstacklib.utils import lvm
@@ -128,7 +129,7 @@ class DrbdResource(object):
         raise Exception("demote resource %s failed: %s, %s, %s" % (self.name, r, o, e))
 
     @bash.in_bash
-    def promote(self, force=False, retry=90, sleep=3):
+    def promote(self, force=False, retry=90, sleep=3, single=False):
         @bash.in_bash
         @linux.retry(times=retry, sleep_time=sleep)
         def do_promote():
@@ -138,9 +139,11 @@ class DrbdResource(object):
                 raise RetryException("promote failed, return: %s, %s, %s. resource %s still not in role %s" % (
                     r, o, e, self.name, DrbdRole.Primary))
 
-        if not force:
+        if not force and not single:
             do_promote()
         else:
+            if not single and self.get_dstate() != "UpToDate":
+                bash.bash_r("drbdadm fence-peer %s" % self.name)
             bash.bash_errorout("drbdadm primary %s --force" % self.name)
 
     @bash.in_bash
@@ -151,6 +154,22 @@ class DrbdResource(object):
             bash.bash_errorout("drbdadm secondary %s" % self.name)
 
         do_demote()
+
+    @bash.in_bash
+    def discard(self):
+        self.demote()
+        self.force_disconnect()
+        self.force_connect(discard=True)
+
+    @bash.in_bash
+    def force_disconnect(self):
+        bash.bash_r("drbdadm disconnect %s" % self.name)
+
+    @bash.in_bash
+    def force_connect(self, discard=False):
+        if self.get_cstate() not in ('Connecting', 'Connected', 'WFConnection'):
+            discard_cmd = "-- --discard-my-data" if discard else ""
+            bash.bash_errorout("drbdadm %s connect %s" % (discard_cmd, self.name))
 
     @bash.in_bash
     def get_cstate(self):
@@ -179,6 +198,18 @@ class DrbdResource(object):
         assert self.config.local_host.minor is not None
         return "/dev/drbd%s" % self.config.local_host.minor
 
+    def wait_remote_dstate(self, dstate, times=3, sleep_times=1):
+        first_dstate = self.get_remote_dstate()
+        if first_dstate == dstate:
+            return True
+        elif first_dstate == 'DUnknown':
+            for i in range(times):
+                time.sleep(sleep_times)
+                if self.get_remote_dstate() == dstate:
+                    return True
+
+        return False
+
     @bash.in_bash
     @linux.retry(times=90, sleep_time=3)
     def clear_bits(self):
@@ -200,15 +231,15 @@ class DrbdResource(object):
         self.up()
         if skip_clear_bits:
             return
-        if not primary:
-            self.clear_bits()
-        else:
-            self.promote()
+        if primary:
+            self.promote(single=cmd.single)
             if backing:
                 linux.qcow2_create_with_backing_file_and_cmd(backing, self.get_dev_path(), cmd)
             else:
                 linux.qcow2_create_with_cmd(self.get_dev_path(), cmd.size, cmd)
             self.demote()
+        elif not self.wait_remote_dstate('UpToDate'):
+            self.clear_bits()
 
     @bash.in_bash
     def initialize_with_file(self, primary, src_path, backing=None, backing_fmt=None, skip_clear_bits=False):
@@ -216,14 +247,14 @@ class DrbdResource(object):
         self.up()
         if skip_clear_bits:
             return
-        if not primary:
-            self.clear_bits()
-        else:
+        if primary:
             self.promote()
             bash.bash_errorout('dd if=%s of=%s bs=1M oflag=direct' % (src_path, self.get_dev_path()))
             if backing:
                 linux.qcow2_rebase_no_check(backing, self.get_dev_path(), backing_fmt=backing_fmt)
             self.demote()
+        elif not self.wait_remote_dstate('UpToDate'):
+            self.clear_bits()
 
     @bash.in_bash
     def is_defined(self):

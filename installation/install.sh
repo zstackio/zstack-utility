@@ -204,6 +204,28 @@ declare -a upgrade_persist_params_array=(
     '3.9.0,InfluxDB.enable.message.retention=false'
 )
 
+#persist more when install/upgrade mini
+ui_mode=`zstack-ctl show_configuration |awk '/ui_mode/{print $3}'` >/dev/null 2>&1
+if [ x"$MINI_INSTALL" = x"y" ] | [ x"$ui_mode" = x"mini" ];then
+    upgrade_persist_params_array+=('4.0.0,Search.autoRegister=false')
+fi
+
+#upgrade mini zwatch webhook
+upgrade_mini_zwatch_webhook(){
+  ui_mode=$(zstack-ctl get_configuration ui_mode)
+  if [ x"$MINI_INSTALL" != x"y" ] & [ x"$ui_mode" != x"mini" ]; then
+      return
+  fi
+  webhook=$(zstack-ctl get_configuration sns.systemTopic.endpoints.http.url | grep '/zwatch/webhook')
+  
+  if [ "$webhook" = "" ]; then
+      return
+  fi
+
+  webhook=$(echo "$webhook" | sed 's/zwatch\/webhook/webhook\/zwatch/g')
+  zstack-ctl configure sns.systemTopic.endpoints.http.url="$webhook" > /dev/null 2>&1
+}
+
 # version compare
 # eg. 1 = 1.0
 # eg. 4.08 < 4.08.01
@@ -1332,6 +1354,9 @@ upgrade_zstack(){
     # set sns.systemTopic.endpoints.http.url if not exists
     zstack-ctl show_configuration | grep 'sns.systemTopic.endpoints.http.url' >/dev/null 2>&1
     [ $? -ne 0 ] && zstack-ctl configure sns.systemTopic.endpoints.http.url=http://localhost:5000/zwatch/webhook
+
+    # upgrade legacy mini zwatch webhook
+    upgrade_mini_zwatch_webhook
 
     # update consoleProxyCertFile if necessary
     certfile=`zstack-ctl show_configuration | grep consoleProxyCertFile | grep /usr/local/zstack/zstack-ui/ | awk -F '=' '{ print $NF }'`
@@ -3868,7 +3893,11 @@ if [ x"$UPGRADE" = x'y' ]; then
     #echo " Your old zstack was saved in $zstack_home/upgrade/`ls $zstack_home/upgrade/ -rt|tail -1`"
     echo_custom_pcidevice_xml_warning_if_need
     echo_star_line
-    disable_zstack_tui
+    if [ "$BASEARCH" == "x86_64" ]; then
+        start_zstack_tui
+    else
+        disable_zstack_tui
+    fi
     post_scripts_to_restore_iptables_rules
     if [[ $DEBIAN_OS =~ $OS ]];then
         post_restore_source_on_debian
@@ -4067,6 +4096,10 @@ fi
 echo_chrony_server_warning_if_need
 check_ha_need_upgrade
 echo_star_line
-disable_zstack_tui
+if [ "$BASEARCH" == "x86_64" ]; then
+    start_zstack_tui
+else
+    disable_zstack_tui
+fi
 post_scripts_to_restore_iptables_rules
 
