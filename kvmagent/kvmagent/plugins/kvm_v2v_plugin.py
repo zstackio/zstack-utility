@@ -70,6 +70,10 @@ class ListVmRsp(AgentRsp):
         self.libvirtVersion = None # type: str
         self.vms = []              # type: list[VmInfo]
 
+class UmountPathRsp(AgentRsp):
+    def __init__(self):
+        super(UmountPathRsp, self).__init__()
+
 class CheckBitsRsp(AgentRsp):
     def __init__(self):
         super(CheckBitsRsp, self).__init__()
@@ -330,6 +334,7 @@ DEF_SSH_OPTS = "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 class KVMV2VPlugin(kvmagent.KvmAgent):
     INIT_PATH = "/kvmv2v/conversionhost/init"
     LIST_VM_PATH = "/kvmv2v/conversionhost/listvm"
+    UMOUNT_PATH = "/kvmv2v/conversionhost/umount"
     CONVERT_PATH = "/kvmv2v/conversionhost/convert"
     CLEAN_PATH = "/kvmv2v/conversionhost/clean"
     CHECK_BITS = "/kvmv2v/conversionhost/checkbits"
@@ -342,6 +347,7 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
         http_server = kvmagent.get_http_server()
         http_server.register_async_uri(self.INIT_PATH, self.init)
         http_server.register_async_uri(self.LIST_VM_PATH, self.listvm, cmd=ListVmCmd())
+        http_server.register_async_uri(self.UMOUNT_PATH, self.umount_path)
         http_server.register_async_uri(self.CONVERT_PATH, self.convert)
         http_server.register_async_uri(self.CLEAN_PATH, self.clean)
         http_server.register_async_uri(self.CANCEL_CONVERT_PATH, self.cancel_and_clean_convert)
@@ -401,6 +407,22 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                 cmd.saslUser,
                 cmd.saslPass,
                 cmd.sshPrivKey)
+        return jsonobject.dumps(rsp)
+
+    @in_bash
+    @kvmagent.replyerror
+    def umount_path(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = UmountPathRsp()
+
+        local_mount_point = os.path.join("/tmp/zs-v2v/", cmd.managementIp)
+        with lock.NamedLock(local_mount_point):
+            cmdstr = "umount -f {0}".format(local_mount_point)
+            try:
+                runSshCmd(cmd.libvirtURI, cmd.sshPrivKey, cmdstr)
+            except shell.ShellError as ex:
+                rsp.error = 'unable to umount path %s, because %s' % (local_mount_point, str(ex))
+                rsp.success = False
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
