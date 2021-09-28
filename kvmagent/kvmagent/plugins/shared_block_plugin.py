@@ -967,7 +967,13 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def download_from_imagestore(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        self.imagestore_client.download_from_imagestore(None, cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
+        install_abs_path = translate_absolute_path_from_install_path(cmd.primaryStorageInstallPath)
+
+        def clean():
+            lvm.delete_lv(install_abs_path)
+
+        self.imagestore_client.download_from_imagestore(None, cmd.hostname, cmd.backupStorageInstallPath,
+                                                            cmd.primaryStorageInstallPath, failure_action=clean)
         self.do_active_lv(cmd.primaryStorageInstallPath, cmd.lockType, True)
         rsp = AgentRsp()
         return jsonobject.dumps(rsp)
