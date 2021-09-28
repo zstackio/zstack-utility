@@ -59,6 +59,9 @@ if remote_pass is not None and remote_user != 'root':
 host_arch = get_remote_host_arch(host_post_info)
 # include zstacklib.py
 (distro, major_version, distro_release, distro_version) = get_remote_host_info(host_post_info)
+releasever = get_host_releasever([distro, distro_release, distro_version])
+host_post_info.releasever = releasever
+
 zstacklib_args = ZstackLibArgs()
 zstacklib_args.distro = distro
 zstacklib_args.distro_release = distro_release
@@ -68,7 +71,7 @@ zstacklib_args.zstack_root = zstack_root
 zstacklib_args.host_post_info = host_post_info
 zstacklib_args.pip_url = pip_url
 zstacklib_args.trusted_host = trusted_host
-zstacklib_args.zstack_releasever = get_host_releasever([distro, distro_release, distro_version])
+zstacklib_args.zstack_releasever = releasever
 if distro in DEB_BASED_OS:
     zstacklib_args.apt_server = yum_server
     zstacklib_args.zstack_apt_source = zstack_repo
@@ -98,14 +101,9 @@ run_remote_command(command, host_post_info)
 
 # name: install dependencies
 if distro in RPM_BASED_OS:
-    status, output = run_remote_command("rpm -q zstack-release >/dev/null && echo `awk '{print $3}' /etc/zstack-release`", host_post_info, True, True)
-    if status:
-        # c72 is no longer supported, force set c74
-        releasever = 'c74' if output.strip() == 'c72' else output.strip()
-    else:
-        releasever = get_mn_yum_release()
     x86_64_c74 = "dnsmasq nginx syslinux vsftpd nmap"
     x86_64_c76 = "dnsmasq nginx syslinux vsftpd nmap"
+    x86_64_ns10 = "dnsmasq nginx vsftpd nmap net-tools"
     aarch64_ns10 = "dnsmasq nginx vsftpd nmap net-tools"
     aarch64_euler20 = "dnsmasq nginx vsftpd nmap net-tools"
     mips64el_ns10 = "dnsmasq nginx vsftpd nmap net-tools"
@@ -130,7 +128,7 @@ else:
 
 # name: check and mount /opt/zstack-dvd
 command = """
-archRelease='x86_64/c72 x86_64/c74 x86_64/c76 aarch64/ns10 mips64el/ns10' 
+archRelease='x86_64/c72 x86_64/c74 x86_64/c76 x86_64/ns10 aarch64/ns10 mips64el/ns10' 
 mkdir -p /var/lib/zstack/baremetal/{dnsmasq,ftp/{ks,zstack-dvd/{x86_64,aarch64,mips64el},scripts},tftpboot/{zstack/{x86_64,aarch64,mips64el},pxelinux.cfg,EFI/BOOT},vsftpd} /var/log/zstack/baremetal/;
 rm -rf /var/lib/zstack/baremetal/tftpboot/{grubaa64.efi,grub.cfg-01-*};
 is_repo_exist='false'

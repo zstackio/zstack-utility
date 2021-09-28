@@ -225,6 +225,31 @@ class OvsDpdkNetworkPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
+    def reconfigOvs(self):
+        if kvmagent.get_host_os_type() == 'debian' and shell.run("dpkg -l openvswitch") != 0:
+            return
+        elif kvmagent.get_host_os_type() == 'redhat' and shell.call("rpm -qa openvswitch") == '':
+            return
+
+        global ovsctl
+        ovsctl = ovs.OvsCtl()
+        ovsctl.modprobeBonding()
+
+        if not ovsctl.initVdpaSupport():
+            logger.debug("ovs can not support dpdk.")
+            return
+        # reconfig smart nics
+        brs = ovsctl.listBrs()
+        for b in brs:
+            if b == '':
+                continue
+            # prepare bridge floader
+            vdpaBrPath = os.path.join(ovsctl.vdpaPath, b)
+            if not os.path.exists(vdpaBrPath):
+                os.mkdir(vdpaBrPath, 0755)
+            ovsctl.prepareBridge(b, b[3:])
+        ovsctl.start(True)
+
     def start(self):
 
         ovs.OvsCtl().reconfigOvs()

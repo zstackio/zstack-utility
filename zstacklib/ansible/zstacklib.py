@@ -27,6 +27,7 @@ yum_server = ""
 apt_server = ""
 trusted_host = ""
 ansible.constants.HOST_KEY_CHECKING = False
+enable_networkmanager_list = ["ns10", "euler20"]
 supported_arch_list = ["x86_64", "aarch64", "mips64el"]
 
 RPM_BASED_OS = ["centos", "redhat", "alibaba", "kylin10", "openeuler"]
@@ -103,6 +104,7 @@ class HostPostInfo(object):
         self.mysql_password = None
         self.mysql_userpassword = None
         self.transport = 'smart'
+        self.releasever = None
 
 
 class PipInstallArg(object):
@@ -971,7 +973,9 @@ def check_host_reachable(host_post_info, warning=False):
 def run_remote_command(command, host_post_info, return_status=False, return_output=False):
     '''return status all the time except return_status is False, return output is set to True'''
     if 'yum' in command:
-        set_yum0 = "rpm -q zstack-release >/dev/null && releasever=`awk '{print $3}' /etc/zstack-release` || releasever=%s;export YUM0=$releasever; grep $releasever /etc/yum/vars/YUM0 || echo $releasever > /etc/yum/vars/YUM0;" % (get_mn_yum_release())
+        set_yum0 = '''rpm -q zstack-release >/dev/null && releasever=`awk '{print $3}' /etc/zstack-release` || releasever=%s;\
+                    export YUM0=$releasever; grep $releasever /etc/yum/vars/YUM0 || echo $releasever > /etc/yum/vars/YUM0;\
+                    [[ "$releasever" = "ns10" ]] && rpm -e libselinux-utils --nodeps > /dev/null 2>&1;''' % (host_post_info.releasever)
         command = set_yum0 + command
     start_time = datetime.now()
     host_post_info.start_time = start_time
@@ -1813,6 +1817,7 @@ class ZstackLib(object):
         # enforce history
         enforce_history(trusted_host, host_post_info)
         check_umask(host_post_info)
+        configure_hosts(host_post_info)
 
         if distro in RPM_BASED_OS:
             epel_repo_exist = file_dir_exist("path=/etc/yum.repos.d/epel.repo", host_post_info)
@@ -2099,6 +2104,12 @@ deb http://{{ apt_server }}/zstack/static/zstack-repo/$basearch/{{ zstack_releas
                 enable_chrony(trusted_host, host_post_info, distro)
         else:
             error("ERROR: Unsupported distribution")
+
+
+def configure_hosts(host_post_info):
+    configure_hosts_cmd = 'grep `hostname` /etc/hosts >/dev/null || echo "127.0.0.1 `hostname` # added by ZStack" >> /etc/hosts'
+    run_remote_command(configure_hosts_cmd, host_post_info)
+
 
 def main():
     # Reserve for test api

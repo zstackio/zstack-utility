@@ -38,8 +38,8 @@ from zstacklib.utils.report import Report
 host_arch = platform.machine()
 IS_AARCH64 = host_arch == 'aarch64'
 IS_MIPS64EL = host_arch == 'mips64el'
-GRUB_FILES = ["/boot/grub2/grub.cfg", "/boot/grub/grub.cfg", "/etc/grub2-efi.cfg",
-              "/etc/grub-efi.cfg", "/boot/efi/EFI/centos/grub.cfg", "/boot/efi/EFI/kylin/grub.cfg"]
+GRUB_FILES = ["/boot/grub2/grub.cfg", "/boot/grub/grub.cfg", "/etc/grub2-efi.cfg", "/etc/grub-efi.cfg"] \
+                + ["/boot/efi/EFI/{}/grub.cfg".format(platform.dist()[0])]
 IPTABLES_CMD = iptables.get_iptables_cmd()
 EBTABLES_CMD = ebtables.get_ebtables_cmd()
 
@@ -757,7 +757,7 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.systemProductName = 'unknown'
         rsp.systemSerialNumber = 'unknown'
         is_dmidecode = shell.run("dmidecode")
-        if str(is_dmidecode) == '0' and kvmagent.os_arch == "x86_64":
+        if str(is_dmidecode) == '0' and kvmagent.host_arch == "x86_64":
             system_product_name = shell.call('dmidecode -s system-product-name').strip()
             baseboard_product_name = shell.call('dmidecode -s baseboard-product-name').strip()
             system_serial_number = shell.call('dmidecode -s system-serial-number').strip()
@@ -1136,7 +1136,8 @@ if __name__ == "__main__":
         if self.IS_YUM:
             releasever = kvmagent.get_host_yum_release()
             shell.run("yum remove -y qemu-kvm-tools-ev")
-            yum_cmd = "export YUM0={};yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn,mlnx-ofed install `cat /var/lib/zstack/dependencies` -y".format(releasever)
+            yum_cmd = "export YUM0={};yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo={} install `cat /var/lib/zstack/dependencies` -y"\
+                .format(releasever, cmd.zstackRepo)
             if shell.run("export YUM0={};yum --disablerepo=* --enablerepo=zstack-mn repoinfo".format(releasever)) != 0:
                 rsp.success = False
                 rsp.error = "no zstack-mn repo found, cannot update kvmagent dependencies"
@@ -1145,15 +1146,15 @@ if __name__ == "__main__":
                 rsp.error = "no qemu-kvm-ev-mn repo found, cannot update kvmagent dependencies"
             elif shell.run(yum_cmd) != 0:
                 rsp.success = False
-                rsp.error = "failed to update kvmagent dependencies using zstack-mn,qemu-kvm-ev-mn,mlnx-ofed repo"
+                rsp.error = "failed to update kvmagent dependencies using %s repo" % cmd.zstackRepo
             else :
                 logger.debug("successfully run: {}".format(yum_cmd))
 
             if cmd.enableExpRepo:
                 exclude = "--exclude=" + cmd.excludePackages if cmd.excludePackages else ""
                 updates = cmd.updatePackages if cmd.updatePackages else ""
-                yum_cmd = "export YUM0={};yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn,mlnx-ofed-mn,zstack-experimental-mn {} update {} -y"
-                yum_cmd = yum_cmd.format(releasever, exclude, updates)
+                yum_cmd = "export YUM0={};yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo={},zstack-experimental-mn {} update {} -y"
+                yum_cmd = yum_cmd.format(releasever, cmd.zstackRepo, exclude, updates)
                 if shell.run("export YUM0={};yum --disablerepo=* --enablerepo=zstack-experimental-mn repoinfo".format(releasever)) != 0:
                     rsp.success = False
                     rsp.error = "no zstack-experimental-mn repo found, cannot update host dependency"
@@ -1236,7 +1237,7 @@ if __name__ == "__main__":
 
     def _close_hugepage(self):
         disable_hugepage_script = '''#!/bin/sh
-grubs=("/boot/grub2/grub.cfg" "/boot/grub/grub.cfg" "/etc/grub2-efi.cfg" "/etc/grub-efi.cfg" "/boot/efi/EFI/centos/grub.cfg" "/boot/efi/EFI/kylin/grub.cfg")
+grubs="%s"
 
 # config nr_hugepages
 sysctl -w vm.nr_hugepages=0
@@ -1256,7 +1257,7 @@ if [ ! -n "$result" ]; then
 fi
 
 #clean boot grub config
-for var in ${grubs[@]} 
+for var in $grubs 
 do 
    if [ -f $var ]; then
        sed -i '/^[[:space:]]*linux/s/[[:blank:]]*default_[[:graph:]]*//g' $var
@@ -1265,7 +1266,7 @@ do
        sed -i '/^[[:space:]]*linux/s/[[:blank:]]*transparent_hugepage[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g' $var
    fi    
 done
-'''
+''' % (' '.join(GRUB_FILES))
         fd, disable_hugepage_script_path = tempfile.mkstemp()
         with open(disable_hugepage_script_path, 'w') as f:
             f.write(disable_hugepage_script)
@@ -1292,7 +1293,7 @@ done
         pageSize = cmd.pageSize
         reserveSize = cmd.reserveSize
         enable_hugepage_script = '''#!/bin/sh
-grubs=("/boot/grub2/grub.cfg" "/boot/grub/grub.cfg" "/etc/grub2-efi.cfg" "/etc/grub-efi.cfg" "/boot/efi/EFI/centos/grub.cfg" "/boot/efi/EFI/kylin/grub.cfg")
+grubs="%s"
 
 # byte to mib
 let "reserveSize=%s/1024/1024"
@@ -1314,13 +1315,13 @@ echo always > /sys/kernel/mm/transparent_hugepage/enabled
 sed -i '/GRUB_CMDLINE_LINUX=/s/\"$/ transparent_hugepage=always default_hugepagesz=\'\"$pageSize\"\'M hugepagesz=\'\"$pageSize\"\'M hugepages=\'\"$pageNum\"\'\"/g' /etc/default/grub
 
 #config boot grub
-for var in ${grubs[@]} 
+for var in $grubs
 do 
    if [ -f $var ]; then
        sed -i '/^[[:space:]]*linux/s/$/ transparent_hugepage=always default_hugepagesz=\'\"$pageSize\"\'M hugepagesz=\'\"$pageSize\"\'M hugepages=\'\"$pageNum\"\'/g' $var
    fi    
 done
-''' % (reserveSize, pageSize)
+''' % (' '.join(GRUB_FILES), reserveSize, pageSize)
 
         fd, enable_hugepage_script_path = tempfile.mkstemp()
         with open(enable_hugepage_script_path, 'w') as f:

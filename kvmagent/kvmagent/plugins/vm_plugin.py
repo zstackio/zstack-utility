@@ -3472,7 +3472,7 @@ class Vm(object):
         def make_os():
             root = elements['root']
             os = e(root, 'os')
-            host_arch = kvmagent.os_arch
+            host_arch = kvmagent.host_arch
 
             def on_x86_64():
                 e(os, 'type', 'hvm', attrib={'machine': machine_type})
@@ -3501,7 +3501,7 @@ class Vm(object):
                 eval("on_{}".format(kvmagent.get_host_os_type()))()
 
             def on_mips64el():
-                e(os, 'type', 'hvm', attrib={'arch': 'mips64el', 'machine': 'loongson3a'})
+                e(os, 'type', 'hvm', attrib={'arch': 'mips64el', 'machine': 'loongson7a'})
                 e(os, 'loader', '/usr/share/qemu/ls3a_bios.bin', attrib={'readonly': 'yes', 'type': 'rom'})
 
             eval("on_{}".format(host_arch))()
@@ -4418,7 +4418,7 @@ class Vm(object):
                 for i in pci_idx_generator:
                     e(devices, 'controller', None, {'type': 'pci', 'model': 'pcie-root-port', 'index': str(i)})
             else:
-                if not cmd.predefinedPciBridgeNum or HOST_ARCH == 'mips64el':
+                if not cmd.predefinedPciBridgeNum:
                     return
 
                 for i in xrange(cmd.predefinedPciBridgeNum):

@@ -77,6 +77,8 @@ if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
 
 (distro, major_version, distro_release, distro_version) = get_remote_host_info(host_post_info)
+releasever = get_host_releasever([distro, distro_release, distro_version])
+host_post_info.releasever = releasever
 
 # get remote host arch
 host_arch = get_remote_host_arch(host_post_info)
@@ -146,7 +148,7 @@ def install_release_on_host(is_rpm):
     # copy and install zstack-release
     if is_rpm:
         src_pkg = '/opt/zstack-dvd/{0}/{1}/Packages/zstack-release-{1}-1.el7.zstack.noarch.rpm'.format(host_arch, releasever)
-        install_cmd = "rpm -q zstack-release || yum --disablerepo=* install -y /opt/zstack-release-{}-1.el7.zstack.noarch.rpm".format(releasever)
+        install_cmd = "rpm -q zstack-release || rpm -i /opt/zstack-release-{}-1.el7.zstack.noarch.rpm".format(releasever)
     else:
         src_pkg = '/opt/zstack-dvd/{0}/{1}/Packages/zstack-release_{1}_all.deb'.format(host_arch, releasever)
         install_cmd = "dpkg -l zstack-release || dpkg -i /opt/zstack-release_{}_all.deb".format(releasever)
@@ -176,7 +178,6 @@ def load_zstacklib():
         zstacklib_args.yum_server = yum_server
     zstacklib = ZstackLib(zstacklib_args)
 
-releasever = get_host_releasever([distro, distro_release, distro_version])
 if distro in RPM_BASED_OS:
     install_release_on_host(True)
 elif distro in DEB_BASED_OS:
@@ -235,8 +236,8 @@ def install_kvm_pkg():
 
         mips64el_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                          usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof mcelog \
-                         net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils python-pyudev pv rsync sed \
-                         qemu-kvm-ev smartmontools sshpass usbutils vconfig wget audit dnsmasq tuned collectd-virt"
+                         net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils python2-pyudev pv rsync sed \
+                         qemu smartmontools sshpass usbutils vconfig wget audit dnsmasq tuned collectd-virt collectd-disk"
 
         x86_64_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                         usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
@@ -278,10 +279,7 @@ def install_kvm_pkg():
             dep_list = ' '.join(_dep_list)
 
             # name: install/update kvm related packages on RedHat based OS from user defined repo
-            # if zstack-manager is not installed, then install/upgrade zstack-host and ignore failures
-            command = ("[[ -f /usr/bin/zstack-ctl ]] && zstack-ctl status | grep 'MN status' | grep 'Running' >/dev/null 2>&1; \
-                    [[ $? -eq 0 ]] || yum --disablerepo=* --enablerepo={0} install -y zstack-host >/dev/null; \
-                    echo {1} >/var/lib/zstack/dependencies && yum --disablerepo=* --enablerepo={0} clean metadata >/dev/null && \
+            command = ("echo {1} >/var/lib/zstack/dependencies && yum --disablerepo=* --enablerepo={0} clean metadata >/dev/null && \
                     pkg_list=`rpm -q {1} | grep \"not installed\" | awk '{{ print $2 }}'`' {2}' && \
                     for pkg in {4}; do yum --disablerepo=* --enablerepo={0} install -y $pkg >/dev/null || exit 1; done; \
                     pkg_list=`rpm -q {3} | grep \"not installed\" | awk '{{ print $2 }}'` && \
@@ -328,8 +326,8 @@ def install_kvm_pkg():
             host_post_info.post_label = "ansible.shell.disable.service"
             host_post_info.post_label_param = "firewalld"
             run_remote_command(command, host_post_info)
-            if host_arch in ["aarch64", "x86_64"] and releasever == "ns10":
-                # name: enable NetworkManager in arm and x86 ns10
+            if releasever in enable_networkmanager_list:
+                # name: enable NetworkManager in euler20, arm and x86 ns10
                 service_status("NetworkManager", "state=started enabled=yes", host_post_info, ignore_error=True)
             else:
                 # name: disable NetworkManager in RHEL7 and Centos7

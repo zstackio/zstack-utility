@@ -83,6 +83,9 @@ dst_pkg_exporter = "collectd_exporter"
 
 # include zstacklib.py
 (distro, major_version, distro_release, distro_version) = get_remote_host_info(host_post_info)
+releasever = get_host_releasever([distro, distro_release, distro_version])
+host_post_info.releasever = releasever
+
 zstacklib_args = ZstackLibArgs()
 zstacklib_args.distro = distro
 zstacklib_args.distro_release = distro_release
@@ -93,7 +96,7 @@ zstacklib_args.host_post_info = host_post_info
 zstacklib_args.pip_url = pip_url
 zstacklib_args.trusted_host = trusted_host
 zstacklib_args.require_python_env = require_python_env
-zstacklib_args.zstack_releasever = get_host_releasever([distro, distro_release, distro_version])
+zstacklib_args.zstack_releasever = releasever
 if distro in DEB_BASED_OS:
     zstacklib_args.apt_server = yum_server
     zstacklib_args.zstack_apt_source = zstack_repo
@@ -102,17 +105,11 @@ else :
 zstacklib = ZstackLib(zstacklib_args)
 
 if distro in RPM_BASED_OS:
-    (status, output) = run_remote_command("rpm -q zstack-release >/dev/null && echo `awk '{print $3}' /etc/zstack-release`", host_post_info, True, True)
-    if status:
-        # c72 is no longer supported, force set c74
-        releasever = 'c74' if output.strip() == 'c72' else output.strip()
-    else:
-        releasever = get_mn_yum_release()
     x86_64_c74 = "qemu-img-ev fuse-sshfs nmap collectd"
     x86_64_c76 = "qemu-img-ev fuse-sshfs nmap collectd"
     aarch64_ns10 = "qemu-img fuse-sshfs nmap collectd"
     aarch64_euler20 = "qemu-img fuse-sshfs nmap collectd"
-    mips64el_ns10 = "qemu-img-ev fuse-sshfs nmap collectd"
+    mips64el_ns10 = "qemu-img fuse-sshfs nmap collectd"
     x86_64_ns10 = "qemu-img fuse-sshfs nmap collectd"
 
     qemu_pkg = eval("%s_%s" % (host_arch, releasever))
