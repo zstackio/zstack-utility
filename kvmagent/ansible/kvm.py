@@ -430,12 +430,16 @@ def install_kvm_pkg():
 
 def copy_tools():
     """copy binary tools"""
-    tool_list = ['collectd_exporter', 'node_exporter', 'dnsmasq', 'zwatch-vm-agent', 'pushgateway', 'sas3ircu', 'zs-raid-heartbeat']
+    tool_list = ['collectd_exporter', 'node_exporter', 'dnsmasq', 'zwatch-vm-agent', 'zwatch-vm-agent-freebsd', 'pushgateway', 'sas3ircu', 'zs-raid-heartbeat']
     for tool in tool_list:
         arch_lable = '' if host_arch == 'x86_64' else '_' + host_arch
         real_name = tool + arch_lable
         pkg_path = os.path.join(file_root, real_name)
-        if tool == "dnsmasq":
+        ## 'zwatch-vm-agent-freebsd' is used for x86 freebsd vm, 'zwatch-vm-agent' is used for x86 linux vm
+        if tool == "zwatch-vm-agent-freebsd":
+            if host_arch != 'x86_64':
+                continue
+        elif tool == "dnsmasq":
             pkg_dest_path = "/usr/local/zstack/dnsmasq"
         elif tool == "sas3ircu":
             pkg_dest_path = "/usr/bin/sas3ircu"

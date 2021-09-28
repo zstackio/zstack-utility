@@ -974,6 +974,7 @@ $HTTP["remoteip"] =~ "^(.*)$" {
     } else $HTTP["remoteip"] == "{{ip}}" {
         url.rewrite-once = (
             "^/zwatch-vm-agent.linux-amd64.bin$" => "/zwatch-vm-agent",
+            "^/zwatch-vm-agent.freebsd-amd64.bin$" => "/zwatch-vm-agent-freebsd",
             "^/zwatch-vm-agent.linux-aarch64.bin$" => "/zwatch-vm-agent_aarch64",
             "^/zwatch-vm-agent.linux-mips64el.bin$" => "/collectd_exporter_mips64el",
             "^/agent-tools-update.sh$" => "/vm-tools.sh",
@@ -991,6 +992,7 @@ $HTTP["remoteip"] =~ "^(.*)$" {
     } else $HTTP["remoteip"] =~ "^(.*)$" {
         url.rewrite-once = (
             "^/zwatch-vm-agent.linux-amd64.bin$" => "/zwatch-vm-agent",
+            "^/zwatch-vm-agent.freebsd-amd64.bin$" => "/zwatch-vm-agent-freebsd",
             "^/zwatch-vm-agent.linux-aarch64.bin$" => "/zwatch-vm-agent_aarch64",
             "^/zwatch-vm-agent.linux-mips64el.bin$" => "/collectd_exporter_mips64el",
             "^/agent-tools-update.sh$" => "/vm-tools.sh",
@@ -1043,8 +1045,13 @@ mimetype.assign = (
 
     def apply_zwatch_vm_agent(self, http_root):
         agent_file_source_path = "/var/lib/zstack/kvm/zwatch-vm-agent"
+        freebsd_agent_file_source_path = "/var/lib/zstack/kvm/zwatch-vm-agent-freebsd"
         if not os.path.exists(agent_file_source_path):
             logger.error("Can't find file %s" % agent_file_source_path)
+            return
+
+        if not os.path.exists(freebsd_agent_file_source_path):
+            logger.error("Can't find file %s" % freebsd_agent_file_source_path)
             return
 
         agent_file_target_path = os.path.join(http_root, "zwatch-vm-agent")
@@ -1053,6 +1060,13 @@ mimetype.assign = (
         elif not os.path.islink(agent_file_target_path):
             linux.rm_file_force(agent_file_target_path)
             bash_r("ln -s %s %s" % (agent_file_source_path, agent_file_target_path))
+
+        freebsd_agent_file_target_path = os.path.join(http_root, "zwatch-vm-agent-freebsd")
+        if not os.path.exists(freebsd_agent_file_target_path):
+            bash_r("ln -s %s %s" % (freebsd_agent_file_source_path, freebsd_agent_file_target_path))
+        elif not os.path.islink(freebsd_agent_file_target_path):
+            linux.rm_file_force(freebsd_agent_file_target_path)
+            bash_r("ln -s %s %s" % (freebsd_agent_file_source_path, freebsd_agent_file_target_path))
 
         tool_sh_file_path = "/var/lib/zstack/kvm/vm-tools.sh"
         if not os.path.exists(tool_sh_file_path):
