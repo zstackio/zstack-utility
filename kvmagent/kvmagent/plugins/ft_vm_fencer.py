@@ -39,6 +39,14 @@ class FaultToleranceFecnerPlugin(kvmagent.KvmAgent):
         http_server = kvmagent.get_http_server()
         http_server.register_async_uri(self.SETUP_SELF_FENCER_PATH, self.setup_ft_self_fencer)
 
+    @kvmagent.replyerror
+    def setup_ft_self_fencer(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        peer_host_management_network_ip = cmd.peerHostManagementNetworkIp
+        current_host_management_network_ip = cmd.hostManagementIp
+        peer_host_storage_network_ip = cmd.peerHostStorageNetworkIp
+        host_uuid = cmd.hostUuid
+
         def start_raid_heartbeat():
             pid = linux.find_process_by_cmdline(['zs-raid-heartbeat'])
             if pid:
@@ -47,14 +55,6 @@ class FaultToleranceFecnerPlugin(kvmagent.KvmAgent):
             shell.call('/var/lib/zstack/kvm/zs-raid-heartbeat')
 
         start_raid_heartbeat()
-
-    @kvmagent.replyerror
-    def setup_ft_self_fencer(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        peer_host_management_network_ip = cmd.peerHostManagementNetworkIp
-        current_host_management_network_ip = cmd.hostManagementIp
-        peer_host_storage_network_ip = cmd.peerHostStorageNetworkIp
-        host_uuid = cmd.hostUuid
 
         def getstatusoutput(c):
             # type: (str) -> (int, str)
