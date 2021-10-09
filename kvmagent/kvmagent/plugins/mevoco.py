@@ -327,7 +327,7 @@ class DhcpEnv(object):
         if ret != 0:
             bash_errorout('brctl addif {{BR_NAME}} {{OUTER_DEV}}')
 
-        bash_errorout("bridge link set dev {{OUTER_DEV}} learning off")
+        bash_errorout("bridge link set dev {{OUTER_DEV}} learning on")
 
         if not iproute.is_device_ifname_exists(INNER_DEV, NAMESPACE_NAME):
             iproute.set_link_attribute(INNER_DEV, netns=NAMESPACE_NAME)
