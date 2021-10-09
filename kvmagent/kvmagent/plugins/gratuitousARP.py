@@ -213,12 +213,11 @@ class GratuitousARP(kvmagent.KvmAgent):
             if bondName != name:
                 continue
 
-            #cmds = ["ip add add 169.254.169.253 dev %s" % bridgeNme]
-            cmds = []
+            cmds = ["ip add add 169.254.169.253 dev %s" % bridgeNme]
             for vmNic in bridge.VmNics:
                 cmds.append(
-                    "(ip netns exec {NS} nping --arp --arp-type ARP-request --arp-sender-mac {MAC} --arp-sender-ip {IP} --arp-target-ip {IP}  --arp-target-mac {MAC}  --source-mac {MAC} --dest-mac ff:ff:ff:ff:ff:ff --ether-type ARP  --dest-ip {IP} -q &)".format(
-                        NS=vmNic.NameSpace, MAC=vmNic.Mac, IP=vmNic.Ip))
+                    "(nping --arp --arp-type ARP-request --arp-sender-mac {MAC} --arp-sender-ip {IP} --arp-target-ip {IP}  --arp-target-mac {MAC}  --source-mac {MAC} --dest-mac ff:ff:ff:ff:ff:ff --ether-type ARP -e {BRIDGE} --dest-ip {IP} -q &)".format(
+                        MAC=vmNic.Mac, IP=vmNic.Ip, BRIDGE=bridgeNme))
 
             cmd = ";".join(cmds)
             bash.bash_r(cmd)
