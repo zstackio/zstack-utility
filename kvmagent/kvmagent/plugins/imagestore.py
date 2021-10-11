@@ -88,11 +88,24 @@ class ImageStoreClient(object):
             jobj = jsonobject.loads(shell.call(cmdstr))
             return jobj.mirrorVolumes
 
-    def mirror_volume(self, vm, node, dest, lastvolume, currvolume, volumetype, mode, speed):
+    def mirror_volume(self, vm, node, dest, lastvolume, currvolume, volumetype, mode, speed, reporter):
+        _, PFILE = tempfile.mkstemp()
+
+        def _get_progress(synced):
+            last = linux.tail_1(PFILE).strip()
+            if not last or not last.isdigit():
+                return synced
+
+            reporter.progress_report(get_exact_percent(last, reporter.taskStage), "report")
+            return synced
+
         with linux.ShowLibvirtErrorOnException(vm):
-            cmdstr = '%s mirror -dest %s -domain %s -drive %s -lastMirrorVolume "%s" -mirrorVolume "%s" -volumeType %s -mode "%s" -speed %d' % \
-                     (self.ZSTORE_CLI_PATH, dest, vm, node, lastvolume, currvolume, volumetype, mode, speed)
-            shell.check_run(cmdstr)
+            cmdstr = '%s -progress %s mirror -dest %s -domain %s -drive %s -lastMirrorVolume "%s" -mirrorVolume "%s" -volumeType %s -mode "%s" -speed %d' % \
+                     (self.ZSTORE_CLI_PATH, PFILE, dest, vm, node, lastvolume, currvolume, volumetype, mode, speed)
+            _, mode, err = bash_progress_1(cmdstr, _get_progress)
+            linux.rm_file_force(PFILE)
+            if err:
+                raise Exception('fail to mirror volume %s, because %s' % (vm, str(err)))
 
     def backup_volume(self, vm, node, bitmap, mode, dest, speed, reporter, stage):
         self.check_capacity(os.path.dirname(dest))
