@@ -23,6 +23,9 @@ case `uname -s` in
   Linux)
     AGENT_OS="linux"
     ;;
+  FreeBSD)
+    AGENT_OS="freebsd"
+    ;;
   *)
     echo "Unsupported OS: $(uname -s)"
     exit 1
@@ -72,7 +75,11 @@ download_agent_tools() {
     mkdir $TEMP_PATH
   fi
   cd $TEMP_PATH
-  curl http://169.254.169.254/zwatch-vm-agent --silent -o zwatch-vm-agent.download
+  if [ x"$AGENT_OS" == x"freebsd" ]; then
+    curl http://169.254.169.254/zwatch-vm-agent-freebsd --silent -o zwatch-vm-agent.download
+  else
+    curl http://169.254.169.254/zwatch-vm-agent --silent -o zwatch-vm-agent.download
+  fi
 }
 
 clean_download_file() {
@@ -84,7 +91,11 @@ check_md5() {
     return
   fi
 
-  BIN_MD5=`md5sum zwatch-vm-agent.download | awk '{print $1}'`
+  if [ x"$AGENT_OS" == x"freebsd" ]; then
+    BIN_MD5=`md5 zwatch-vm-agent.download | awk '{print $4}'`
+  else
+    BIN_MD5=`md5sum zwatch-vm-agent.download | awk '{print $1}'`
+  fi
   if [[ ! ${AGENT_VERSION} =~ "md5-${BIN_NAME}=${BIN_MD5}" ]]; then
     log_info "there was an error downloading the zwatch-vm-agent, check md5sum fail"
     exit 1
@@ -99,7 +110,7 @@ query_agent_info() {
 install_agent_tools() {
   cd $TEMP_PATH
   chmod +x zwatch-vm-agent.download
-  ./zwatch-vm-agent.download -i
+  bash -x ./zwatch-vm-agent.download
   clean_download_file
   if [ $? != 0 ]; then
     send_install_result "InstallFailed"
