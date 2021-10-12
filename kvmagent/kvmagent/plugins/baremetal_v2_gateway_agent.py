@@ -155,7 +155,14 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         shell.call(cmd)
 
         # Prepare tftpboot, copy ipxe/pxelinux.0 rom
-        shutil.copy('/usr/share/ipxe/ipxe.efi', self.TFTPBOOT_DIR)
+        ipxe_efi_x86_path = '/usr/share/ipxe/ipxe-x86_64.efi'
+        ipxe_efi_path = '/usr/share/ipxe/ipxe.efi'
+
+        if os.path.exists(ipxe_efi_x86_path):
+            ipxe_efi_path = ipxe_efi_x86_path
+        tftp_ipxe_path = os.path.join(self.TFTPBOOT_DIR, "ipxe.efi")
+
+        shutil.copy(ipxe_efi_path, tftp_ipxe_path)
         shutil.copy('/usr/share/ipxe/undionly.kpxe', self.TFTPBOOT_DIR)
         if kvmagent.host_arch == "x86_64":
             shutil.copy('/usr/share/syslinux/pxelinux.0', self.TFTPBOOT_DIR)
