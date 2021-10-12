@@ -695,6 +695,10 @@ class OvsCtl(Ovs):
         bondName = nic.physicalInterface
         vlanId = nic.vlanId
         nicInternalName = nic.nicInternalName
+        vdpaSockPath = nic.srcPath
+        vfpci = nic.pciDeviceAddress
+
+        pfSysinfo = "/sys/bus/pci/devices/{}/physfn".format(vfpci)
 
         # check vdpa support
         if not self.vdpaSup:
@@ -722,21 +726,25 @@ class OvsCtl(Ovs):
                 return None
             return s.stdout.strip()[1:-1]
 
-        vdpaBrPath = os.path.join(self.vdpaPath, bridgeName)
-        if not os.path.exists(vdpaBrPath):
-            os.mkdir(vdpaBrPath, 0755)
+        vdpaDirPath = os.path.join(self.vdpaPath, vmUuid)
+        if not os.path.exists(vdpaDirPath):
+            os.mkdir(vdpaDirPath, 0755)
 
-        vdpaSockPath = os.path.join(vdpaBrPath, nicInternalName+".sock")
+        pfpci = os.path.realpath(pfSysinfo).split("/")[-1]
 
-        vf, pci, ifaceName = self._get_free_vf(bridgeName, bondName)
-        if pci == None:
-            return None
+        representor = None
+        tmp_list = os.listdir(pfSysinfo)
+        for vf in tmp_list:
+            if vf.startswith("virtfn") and vfpci == os.path.realpath(pfSysinfo + "/" + vf).split("/")[-1]:
+                representor = vf[6:]
+
+        if representor is None:
+            OvsError("vf:{} is not the virtual function of pf:{}".format(vfpci, pfpci))
 
         self.addPort(bridgeName, nicInternalName, "dpdkvdpa",
                      "vdpa-socket-path={}".format(vdpaSockPath),
-                     "vdpa-accelerator-devargs={}".format(pci),
-                     "dpdk-devargs={},representor=[{}]".format(
-                         self._get_if_pcinum(ifaceName), vf[6:]),
+                     "vdpa-accelerator-devargs={}".format(vfpci),
+                     "dpdk-devargs={},representor=[{}]".format(pfpci, representor),
                      "vdpa-max-queues=8",
                      "vdpa-sw=true")
 
@@ -1149,49 +1157,6 @@ class OvsCtl(Ovs):
             for _ in range(0, 5):
                 if not os.path.exists(os.path.join(dev_path, i, "driver")):
                     time.sleep(0.5)
-
-    def _get_free_vf(self, bridgeName, bondName):
-
-        # get all vfs under bond
-        slaves = self._get_bond_slaves(bondName)
-
-        # maybe it is not a bond
-        if len(slaves) == 0 and os.path.exists("/sys/class/net/{}".format(bondName)) and \
-                not os.path.exists("/sys/class/net/{}/bonding_slave".format(bondName)):
-            slaves.append(bondName)
-
-        if len(slaves) == 0:
-            return None, None, None
-
-        # get used vfs under bond
-        usedPciList = self._get_used_pci(bridgeName)
-
-        for s in slaves:
-            vfsDict = self._get_vfs_dict(s)
-            for v in vfsDict:
-                if vfsDict[v] not in usedPciList:
-                    return v, vfsDict[v], s
-
-        return None, None, None
-
-    def _get_used_pci(self, bridgeName):
-        usedPciList = []
-
-        ifList = self.listIfaces(bridgeName)
-        if ifList == None:
-            return usedPciList
-
-        for i in ifList:
-            s = shell.ShellCmd(self.ctlBin +
-                               "get Interface {} options:vdpa-accelerator-devargs".format(i), None, False)
-            s(False)
-            if s.return_code != 0:
-                continue
-
-            usedPciList.append(s.stdout.strip()[1:-1])
-
-        return usedPciList
-
 
 class Bond:
     def __init__(self):
