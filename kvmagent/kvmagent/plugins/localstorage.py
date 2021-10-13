@@ -544,7 +544,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             DIR = os.path.dirname(path)
             _, _, err = bash_progress_1(
                 # Fixes ZSTAC-13430: handle extremely complex password like ~ ` !@#$%^&*()_+-=[]{}|?<>;:'"/ .
-                'rsync -av --progress --relative {{PATH}} --rsh="/usr/bin/sshpass -f{{PASSWORD_FILE}} ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p {{PORT}} -l {{USER}}" {{IP}}:/ 1>{{PFILE}}', _get_progress, False)
+                'rsync -avK --progress --relative {{PATH}} --rsh="/usr/bin/sshpass -f{{PASSWORD_FILE}} ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p {{PORT}} -l {{USER}}" {{IP}}:/ 1>{{PFILE}}', _get_progress, False)
             if err:
                 linux.rm_file_force(PASSWORD_FILE)
                 linux.rm_file_force(PFILE)
