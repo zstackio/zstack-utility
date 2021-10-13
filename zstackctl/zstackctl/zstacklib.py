@@ -230,10 +230,9 @@ def create_log(logger_dir, logger_file):
     handler.setFormatter(fmt)
     logger.addHandler(handler)
 
-def get_mn_yum_release():
-    return commands.getoutput("rpm -q zstack-release |awk -F'-' '{print $3}'").strip()
-
-def get_mn_apt_release():
+def get_mn_release():
+    # file /etc/zstack-release from zstack-release.rpm
+    # file content like: ZStack release c76
     return commands.getoutput("awk '{print $3}' /etc/zstack-release").strip()
 
 def get_host_releasever(ansible_distribution):
@@ -248,7 +247,7 @@ def get_host_releasever(ansible_distribution):
     }
     _key = " ".join(ansible_distribution).lower()
     _releasever = supported_release_info.get(_key)
-    return _releasever if _releasever else get_mn_yum_release()
+    return _releasever if _releasever else get_mn_release()
 
 def post_msg(msg, post_url):
     logger.info(msg.data.details)
@@ -862,7 +861,7 @@ def run_remote_command(command, host_post_info, return_status=False, return_outp
     if 'yum' in command:
         set_yum0 = '''rpm -q zstack-release >/dev/null && releasever=`awk '{print $3}' /etc/zstack-release` || releasever=%s;\
                     export YUM0=$releasever; grep $releasever /etc/yum/vars/YUM0 || echo $releasever > /etc/yum/vars/YUM0;\
-                    [[ "$releasever" = "ns10"  ]] && rpm -e libselinux-utils --nodeps > /dev/null 2>&1;''' % (host_post_info.releasever)
+                    [[ "$releasever" = "ns10"  ]] && rpm -e libselinux-utils --nodeps > /dev/null 2>&1;''' % (get_mn_release())
         command = set_yum0 + command
     start_time = datetime.now()
     host_post_info.start_time = start_time
@@ -1467,7 +1466,7 @@ enabled=0" >  /etc/yum.repos.d/mlnx-ofed-mn.repo
                     })
                     run_remote_command(generate_mlnx_repo_command, host_post_info)
                     run_remote_command("sync", host_post_info)
-                    
+
                 # generate zstack experimental repo anyway
                 generate_exp_repo_raw_command = """
 echo -e "[zstack-experimental-mn]
