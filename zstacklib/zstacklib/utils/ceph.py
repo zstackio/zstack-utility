@@ -14,6 +14,13 @@ logger = log.get_logger(__name__)
 CEPH_CONF_ROOT = "/var/lib/zstack/ceph"
 CEPH_KEYRING_CONFIG_NAME = 'client.zstack.keyring'
 
+
+def get_fsid(conffile='/etc/ceph/ceph.conf'):
+    import rados
+    with rados.Rados(conffile=conffile) as cluster:
+        return cluster.get_fsid()
+
+
 def is_xsky():
     return os.path.exists("/usr/bin/xms-cli")
 
