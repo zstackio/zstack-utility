@@ -101,6 +101,13 @@ if virtual_env_status is False:
 command = "[ -f %s/bin/python ] || virtualenv --system-site-packages %s " % (virtenv_path, virtenv_path)
 run_remote_command(command, host_post_info)
 
+# name: install python pkg
+extra_args = "\"--trusted-host %s -i %s \"" % (trusted_host, pip_url)
+pip_install_arg = PipInstallArg()
+pip_install_arg.extra_args = extra_args
+pip_install_arg.name = "python-cephlibs"
+pip_install_package(pip_install_arg, host_post_info)
+
 if distro in RPM_BASED_OS:
     if zstack_repo != 'false':
         command = ("pkg_list=`rpm -q wget qemu-img nmap | grep \"not installed\" | awk '{ print $2 }'` && for pkg"
