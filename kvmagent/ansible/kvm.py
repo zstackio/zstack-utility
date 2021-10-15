@@ -224,8 +224,8 @@ def install_kvm_pkg():
 
         aarch64_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                         usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
-                        net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
-                        smartmontools sshpass usbutils vconfig wget audit dnsmasq \
+                        net-tools nfs-utils nmap openssh-clients OpenIPMI pciutils pv rsync sed \
+                        smartmontools sshpass usbutils vconfig wget audit dnsmasq tar \
                         qemu collectd-virt storcli edk2-aarch64 python2-pyudev collectd-disk"
 
         aarch64_euler20 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
@@ -242,7 +242,7 @@ def install_kvm_pkg():
         x86_64_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                         usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
                         net-tools nfs-utils nmap openssh-clients OpenIPMI pciutils pv rsync sed \
-                        smartmontools sshpass usbutils vconfig wget audit dnsmasq \
+                        smartmontools sshpass usbutils vconfig wget audit dnsmasq tar \
                         qemu collectd-virt storcli edk2.git-ovmf-x64 python2-pyudev collectd-disk"
 
         # handle zstack_repo
