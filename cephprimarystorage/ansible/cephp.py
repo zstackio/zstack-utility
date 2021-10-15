@@ -92,7 +92,7 @@ else:
 if distro in RPM_BASED_OS:
     if zstack_repo != 'false':
         command = ("pkg_list=`rpm -q wget qemu-kvm-ev nmap| grep \"not installed\" | awk '{ print $2 }'` && for pkg"
-                   " in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (zstack_repo)
+                   " in $pkg_list; do yum --disablerepo=* --enablerepo=%s --skip-broken install -y $pkg; done;") % (zstack_repo)
         run_remote_command(command, host_post_info)
         if distro_version >= 7:
             command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
