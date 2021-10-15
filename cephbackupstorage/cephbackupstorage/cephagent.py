@@ -637,15 +637,10 @@ class CephAgent(object):
     @in_bash
     def get_facts(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        o = bash_o('ceph mon_status')
-        mon_status = jsonobject.loads(o)
-        fsid = mon_status.monmap.fsid_
-
         rsp = GetFactsRsp()
 
-        facts = bash_o('ceph -s -f json')
-        mon_facts = jsonobject.loads(facts)
-        for mon in mon_facts.monmap.mons:
+        monmap = bash_o('ceph mon dump -f json')
+        for mon in jsonobject.loads(monmap).mons:
             ADDR = mon.addr.split(':')[0]
             if bash_r('ip route | grep -w {{ADDR}} > /dev/null') == 0:
                 rsp.monAddr = ADDR
@@ -654,16 +649,12 @@ class CephAgent(object):
         if not rsp.monAddr:
             raise Exception('cannot find mon address of the mon server[%s]' % cmd.monUuid)
 
-        rsp.fsid = fsid
+        rsp.fsid = ceph.get_fsid()
         return jsonobject.dumps(rsp)
 
     @replyerror
     def init(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-
-        o = shell.call('ceph mon_status')
-        mon_status = jsonobject.loads(o)
-        fsid = mon_status.monmap.fsid_
 
         existing_pools = shell.call('ceph osd lspools')
         for pool in cmd.pools:
@@ -679,7 +670,7 @@ class CephAgent(object):
             shell.call('ceph osd pool create %s 128' % pool.name)
 
         rsp = InitRsp()
-        rsp.fsid = fsid
+        rsp.fsid = ceph.get_fsid()
         self._set_capacity_to_response(rsp)
 
         return jsonobject.dumps(rsp)
@@ -1069,10 +1060,9 @@ class CephAgent(object):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = PingRsp()
 
-        facts = bash_o('ceph -s -f json')
-        mon_facts = jsonobject.loads(facts)
+        monmap = bash_o('ceph mon dump -f json')
         found = False
-        for mon in mon_facts.monmap.mons:
+        for mon in jsonobject.loads(monmap).mons:
             if cmd.monAddr in mon.addr:
                 found = True
                 break
