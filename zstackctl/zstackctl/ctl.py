@@ -5047,6 +5047,9 @@ class DumpMysqlCmd(Command):
         parser.add_argument('--append-sql-file',
                             help="specify a append sql to operate zstack database",
                             required=False)
+        parser.add_argument('--remote-keep-amount', type=int,
+                            help="The amount of files you want to keep on remote host, older files will be deleted, default number is 60",
+                            required=False)
 
     def sync_local_backup_db_to_remote_host(self, args, user, private_key, remote_host_ip, remote_host_port):
         (status, output, stderr) = shell_return_stdout_stderr("mkdir -p %s" % self.ui_backup_dir)
@@ -5057,15 +5060,23 @@ class DumpMysqlCmd(Command):
         (status, output, stderr) = shell_return_stdout_stderr(command)
         if status != 0:
             error(stderr)
-        if args.delete_expired_file is True:
-            sync_command = "rsync -lr --delete -e 'ssh -i %s -p %s'  %s %s %s@%s:%s" % (private_key, remote_host_port, self.mysql_backup_dir,
-                                                                               self.ui_backup_dir, user, remote_host_ip, self.remote_backup_dir)
-        else:
-            sync_command = "rsync -lr -e 'ssh -i %s -p %s'  %s %s %s@%s:%s" % (private_key, remote_host_port, self.mysql_backup_dir,
-                                                                               self.ui_backup_dir, user, remote_host_ip, self.remote_backup_dir)
+        sync_command = "rsync -lr -e 'ssh -i %s -p %s'  %s %s %s@%s:%s" % (private_key, remote_host_port,
+                                                                           self.mysql_backup_dir, self.ui_backup_dir,
+                                                                           user, remote_host_ip, self.remote_backup_dir)
         (status, output, stderr) = shell_return_stdout_stderr(sync_command)
         if status != 0:
             error(stderr)
+        if args.delete_expired_file is True:
+            amount = args.remote_keep_amount if args.remote_keep_amount else args.keep_amount
+            (status, output, stderr) = shell_return_stdout_stderr('ssh -p %s -i %s %s@%s "ls -rt %s"' % (
+                remote_host_port, private_key, user, remote_host_ip, self.remote_backup_dir))
+            if status != 0:
+                error(stderr)
+            file_list = output.split("\n")[:-1]
+            new_file_list = [os.path.join(self.remote_backup_dir, x) for x in file_list[:len(file_list)-amount]]
+            need_delete_file_path = " ".join(new_file_list)
+            shell_return_stdout_stderr('ssh -p %s -i %s %s@%s "rm -f %s"' % (remote_host_port, private_key, user,
+                                                                             remote_host_ip, need_delete_file_path))
 
     def run(self, args):
         (db_hostname, db_port, db_user, db_password) = ctl.get_live_mysql_portal()
@@ -5073,14 +5084,13 @@ class DumpMysqlCmd(Command):
         file_name = args.file_name
         keep_amount = args.keep_amount
         backup_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        db_backup_dir = "/var/lib/zstack/mysql-backup/"
-        if os.path.exists(db_backup_dir) is False:
-            os.mkdir(db_backup_dir)
+        if os.path.exists(self.mysql_backup_dir) is False:
+            os.mkdir(self.mysql_backup_dir)
 
         if args.file_path:
             db_backupf_file_path = args.file_path
         else:
-            db_backupf_file_path = db_backup_dir + file_name + "-" + backup_timestamp + ".gz"
+            db_backupf_file_path = self.mysql_backup_dir + file_name + "-" + backup_timestamp + ".gz"
         if args.delete_expired_file is not False and args.host_info is None:
             error("Please specify remote host info with '--host' before you want to delete remote host expired files")
 
@@ -5113,12 +5123,12 @@ class DumpMysqlCmd(Command):
         info("Successfully backed up database. You can check the file at %s" % db_backupf_file_path)
 
         # remove old file
-        if len(os.listdir(db_backup_dir)) > keep_amount:
-            backup_files_list = [s for s in os.listdir(db_backup_dir) if os.path.isfile(os.path.join(db_backup_dir, s))]
-            backup_files_list.sort(key=lambda s: os.path.getmtime(os.path.join(db_backup_dir, s)))
+        if len(os.listdir(self.mysql_backup_dir)) > keep_amount:
+            backup_files_list = [s for s in os.listdir(self.mysql_backup_dir) if os.path.isfile(os.path.join(self.mysql_backup_dir, s))]
+            backup_files_list.sort(key=lambda s: os.path.getmtime(os.path.join(self.mysql_backup_dir, s)))
             for expired_file in backup_files_list:
                 if expired_file not in backup_files_list[-keep_amount:]:
-                    os.remove(db_backup_dir + expired_file)
+                    os.remove(self.mysql_backup_dir + expired_file)
         #remote backup
         if args.host_info is not None:
             host_info = args.host_info
