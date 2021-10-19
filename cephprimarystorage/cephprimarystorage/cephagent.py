@@ -1124,8 +1124,7 @@ class CephAgent(plugin.TaskManager):
         rsp.totalSize = totalSize
         return jsonobject.dumps(rsp)
 
-
-    def _nbd2rbd(self, hostname, port, export_name, rbdtarget, bandwidth, rsp):
+    def _nbd2rbd(self, hostname, port, export_name, rbdtarget, bandwidth, report, rsp):
 
         def write_full(wr, data, offset, nbytes):
             n = 0
@@ -1154,7 +1153,7 @@ class CephAgent(plugin.TaskManager):
         poolname, imagename = rbdtarget.split('/')
         client = nbd_client.NBDClient()
         client.connect(hostname, port, None, export_name)
-	cqueue = Queue.Queue(8)
+        cqueue = Queue.Queue(8)
         offset, disk_size = 0, client.get_block_size()
 
         try:
@@ -1182,9 +1181,11 @@ class CephAgent(plugin.TaskManager):
                     cqueue.put((data, offset, chunk_size, data == zero_chunk), True, 10)
                     offset += chunk_size
 
+                    percent = int(round(float(offset) / float(disk_size) * 100))
+                    report.progress_report(get_exact_percent(percent, report.taskStage), "report")
+
                 # signal end
                 cqueue.put((b'', -1, 0, False), True, 10)
-
                 logger.info("xxx: all aio requests submitted, size = %d" % offset)
                 while not rsp.error and not cqueue.empty():
                     time.sleep(0.1)
@@ -1210,8 +1211,8 @@ class CephAgent(plugin.TaskManager):
             rsp.error = 'unexpected protocol: %s' % nbdexpurl
             return jsonobject.dumps(rsp)
 
-        self._nbd2rbd(u.hostname, u.port, os.path.basename(u.path), self._normalize_install_path(rbdtarget), bandwidth, rsp)
-
+        self._nbd2rbd(u.hostname, u.port, os.path.basename(u.path), self._normalize_install_path(rbdtarget), bandwidth,
+                      Report.from_spec(cmd, "DownFromNbd"), rsp)
         return jsonobject.dumps(rsp)
 
 class CephDaemon(daemon.Daemon):
@@ -1221,4 +1222,3 @@ class CephDaemon(daemon.Daemon):
     def run(self):
         self.agent = CephAgent()
         self.agent.http_server.start()
-

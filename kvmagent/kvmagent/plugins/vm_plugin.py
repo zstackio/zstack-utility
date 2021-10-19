@@ -6128,7 +6128,8 @@ host side snapshot files chian:
                 currVolume = installPath.split(":/")[-1]
                 volumeType = "qcow2"
 
-            isc.mirror_volume(cmd.vmUuid, device_name, cmd.mirrorTarget, lastVolume, currVolume, volumeType, cmd.mode, cmd.speed)
+            isc.mirror_volume(cmd.vmUuid, device_name, cmd.mirrorTarget, lastVolume, currVolume, volumeType, cmd.mode, cmd.speed, Report.from_spec(cmd, "TakeMirror"))
+
             execute_qmp_command(cmd.vmUuid, '{"execute": "migrate-set-capabilities","arguments":'
                                             '{"capabilities":[ {"capability": "dirty-bitmaps", "state":true}]}}')
             logger.info('finished mirroring volume[%s]: %s' % (device_name, cmd.volume))
