@@ -1476,13 +1476,12 @@ done
     def get_host_networking_bonds():
         bonds = []
         bond_names = linux.read_file("/sys/class/net/bonding_masters")
-        if not bond_names:
-            return bonds
-        bond_names = bond_names.strip().split(" ")
-        if len(bond_names) == 0:
-            return bonds
-        for bond in bond_names:
-            bonds.append(HostNetworkBondingInventory(bond, "kernalBond"))
+        if bond_names is not None:
+            bond_names = bond_names.strip().split(" ")
+            if len(bond_names) == 0:
+                return bonds
+            for bond in bond_names:
+                bonds.append(HostNetworkBondingInventory(bond, "kernalBond"))
 
         # get dpdk bond info
         dpdkBondFile = "/usr/local/etc/zstack-ovs/dpdk-bond.yaml"
