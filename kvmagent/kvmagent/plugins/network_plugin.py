@@ -216,6 +216,14 @@ class NetworkPlugin(kvmagent.KvmAgent):
         linux.write_file('/proc/sys/net/ipv4/conf/default/forwarding', '1')
         linux.write_file('/proc/sys/net/ipv6/conf/default/forwarding', '1')
 
+    def _get_interface_mtu(self, interf):
+        try:
+            link = iproute.query_link(interf)
+            return link.mtu
+        except Exception as e:
+            logger.debug("get mtu of link: %s failed: %s", interf, str(e))
+            return 0
+
     @in_bash
     def _configure_bridge_mtu(self, bridgeName, interf, mtu=None):
         if mtu is not None:
@@ -266,10 +274,15 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
         self._ifup_device_if_down(cmd.physicalInterfaceName)
 
+        oldMtu = self._get_interface_mtu(cmd.physicalInterfaceName)
+        mtu = cmd.mtu
+        if oldMtu > cmd.mtu:
+            mtu = oldMtu
+
         if linux.is_vif_on_bridge(cmd.bridgeName, cmd.physicalInterfaceName):
             logger.debug('%s is a bridge device. Interface %s is attached to bridge. No need to create bridge or attach device interface' % (cmd.bridgeName, cmd.physicalInterfaceName))
             self._configure_bridge(cmd.disableIptables)
-            self._configure_bridge_mtu(cmd.bridgeName, cmd.physicalInterfaceName, cmd.mtu)
+            self._configure_bridge_mtu(cmd.bridgeName, cmd.physicalInterfaceName, mtu)
             self._configure_bridge_learning(cmd.bridgeName, cmd.physicalInterfaceName)
             linux.set_bridge_alias_using_phy_nic_name(cmd.bridgeName, cmd.physicalInterfaceName)
             linux.set_device_uuid_alias(cmd.physicalInterfaceName, cmd.l2NetworkUuid)
@@ -280,7 +293,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
             linux.create_bridge(cmd.bridgeName, cmd.physicalInterfaceName)
             linux.set_device_uuid_alias(cmd.physicalInterfaceName, cmd.l2NetworkUuid)
             self._configure_bridge(cmd.disableIptables)
-            self._configure_bridge_mtu(cmd.bridgeName, cmd.physicalInterfaceName, cmd.mtu)
+            self._configure_bridge_mtu(cmd.bridgeName, cmd.physicalInterfaceName, mtu)
             self._configure_bridge_learning(cmd.bridgeName, cmd.physicalInterfaceName)
             linux.set_bridge_alias_using_phy_nic_name(cmd.bridgeName, cmd.physicalInterfaceName)
             logger.debug('successfully realize bridge[%s] from device[%s]' % (cmd.bridgeName, cmd.physicalInterfaceName))
@@ -298,6 +311,11 @@ class NetworkPlugin(kvmagent.KvmAgent):
         rsp = CreateVlanBridgeResponse()
         vlanInterfName = '%s.%s' % (cmd.physicalInterfaceName, cmd.vlan)
 
+        oldMtu = self._get_interface_mtu(vlanInterfName)
+        mtu = cmd.mtu
+        if oldMtu > cmd.mtu:
+            mtu = oldMtu
+
         if linux.is_bridge(cmd.bridgeName):
             logger.debug('%s is a bridge device, no need to create bridge' % cmd.bridgeName)
             try:
@@ -305,7 +323,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
             except DeviceNotExistedError:
                 linux.create_vlan_eth(cmd.physicalInterfaceName, cmd.vlan)
             self._configure_bridge(cmd.disableIptables)
-            self._configure_bridge_mtu(cmd.bridgeName, vlanInterfName, cmd.mtu)
+            self._configure_bridge_mtu(cmd.bridgeName, vlanInterfName, mtu)
             self._configure_bridge_learning(cmd.bridgeName, vlanInterfName)
             linux.set_bridge_alias_using_phy_nic_name(cmd.bridgeName, cmd.physicalInterfaceName)
             linux.set_device_uuid_alias('%s.%s' % (cmd.physicalInterfaceName, cmd.vlan), cmd.l2NetworkUuid)
@@ -315,7 +333,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         try:
             linux.create_vlan_bridge(cmd.bridgeName, cmd.physicalInterfaceName, cmd.vlan)
             self._configure_bridge(cmd.disableIptables)
-            self._configure_bridge_mtu(cmd.bridgeName, vlanInterfName, cmd.mtu)
+            self._configure_bridge_mtu(cmd.bridgeName, vlanInterfName, mtu)
             self._configure_bridge_learning(cmd.bridgeName, vlanInterfName)
             linux.set_bridge_alias_using_phy_nic_name(cmd.bridgeName, cmd.physicalInterfaceName)
             linux.set_device_uuid_alias('%s.%s' % (cmd.physicalInterfaceName, cmd.vlan), cmd.l2NetworkUuid)
@@ -430,15 +448,19 @@ class NetworkPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     def create_single_vxlan_bridge(self, cmd):
+        interf = "vxlan" + str(cmd.vni)
+        oldMtu = self._get_interface_mtu(interf)
+        mtu = cmd.mtu
+        if oldMtu > cmd.mtu:
+            mtu = oldMtu
+
         if cmd.dstport == None :
             cmd.dstport = VXLAN_DEFAULT_PORT
         linux.create_vxlan_interface(cmd.vni, cmd.vtepIp,cmd.dstport)
 
-
-        interf = "vxlan" + str(cmd.vni)
         linux.create_vxlan_bridge(interf, cmd.bridgeName, cmd.peers)
         linux.set_device_uuid_alias(interf, cmd.l2NetworkUuid)
-        self._configure_bridge_mtu(cmd.bridgeName, interf, cmd.mtu)
+        self._configure_bridge_mtu(cmd.bridgeName, interf, mtu)
 
     @lock.lock('bridge')
     @kvmagent.replyerror
