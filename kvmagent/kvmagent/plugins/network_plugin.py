@@ -219,6 +219,11 @@ class NetworkPlugin(kvmagent.KvmAgent):
     @in_bash
     def _configure_bridge_mtu(self, bridgeName, interf, mtu=None):
         if mtu is not None:
+            link = iproute.query_link(interf)
+            if link.mtu > mtu:
+                logger.debug("current link mtu:%d is bigger than new mtu: %d", link.mtu, mtu)
+                return
+
             iproute.set_link_attribute(interf, mtu=mtu)
             #bridge mtu must be bigger than all vnic mtu, so will not change it
             #if bridgeName is not None:
