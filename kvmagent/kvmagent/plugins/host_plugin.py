@@ -363,7 +363,6 @@ class HostNetworkInterfaceInventory(object):
 
     @in_bash
     def _init_dpdk_bond(self):
-        logger.error("hahahahahha")
         if self.interfaceName is None:
             return
         self.speed = get_nic_supported_max_speed(self.interfaceName)
