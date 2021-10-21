@@ -243,7 +243,7 @@ def install_kvm_pkg():
                         usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
                         net-tools nfs-utils nmap openssh-clients OpenIPMI pciutils pv rsync sed \
                         smartmontools sshpass usbutils vconfig wget audit dnsmasq tar \
-                        qemu collectd-virt storcli edk2.git-ovmf-x64 python2-pyudev collectd-disk"
+                        qemu collectd-virt storcli edk2-ovmf python2-pyudev collectd-disk"
 
         # handle zstack_repo
         if zstack_repo != 'false':
