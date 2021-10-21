@@ -4381,12 +4381,12 @@ class Vm(object):
                 logfilename = '%s-vm-kernel.log' % cmd.vmInstanceUuid
                 logpath = os.path.join(tempfile.gettempdir(), logfilename)
 
-                serial = e(devices, 'serial', None, {'type': 'file'})
+                serial = e(devices, 'serial', None, {'type': 'pty'})
                 e(serial, 'target', None, {'port': '0'})
-                e(serial, 'source', None, {'path': logpath})
-                console = e(devices, 'console', None, {'type': 'file'})
+                e(serial, 'log', None, {'file': logpath})
+                console = e(devices, 'console', None, {'type': 'pty'})
                 e(console, 'target', None, {'type': 'serial', 'port': '0'})
-                e(console, 'source', None, {'path': logpath})
+                e(console, 'log', None, {'file': logpath})
             else:
                 serial = e(devices, 'serial', None, {'type': 'pty'})
                 e(serial, 'target', None, {'port': '0'})
