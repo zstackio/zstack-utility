@@ -207,7 +207,7 @@ class ImageStoreClient(object):
 
         return jsonobject.dumps(rsp)
 
-    def download_from_imagestore(self, cachedir, host, backupStorageInstallPath, primaryStorageInstallPath):
+    def download_from_imagestore(self, cachedir, host, backupStorageInstallPath, primaryStorageInstallPath, failure_action=None):
         self._check_zstore_cli()
 
         name, imageid = self._parse_image_reference(backupStorageInstallPath)
@@ -221,6 +221,8 @@ class ImageStoreClient(object):
         try:
             shell.call(cmdstr)
         except Exception as ex:
+            if failure_action:
+                failure_action()
             err = str(ex)
             if 'Please check whether ImageStore directory is correctly mounted' in err:
                 raise Exception("Target image not found, please check whether ImageStore directory is correctly mounted.")
