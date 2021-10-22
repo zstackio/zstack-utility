@@ -4447,7 +4447,8 @@ class Vm(object):
         # appliance vm doesn't need any cdrom or usb controller
         if not cmd.isApplianceVm:
             make_cdrom()
-            if not cmd.coloPrimary and not cmd.coloSecondary and not cmd.useColoBinary and not cmd.usbRedirect:
+            not_colo_vm = not cmd.coloPrimary and not cmd.coloSecondary and not cmd.useColoBinary
+            if cmd.usbRedirect and not_colo_vm:
                 make_usb_redirect()
 
         if cmd.additionalQmp:
