@@ -4063,7 +4063,7 @@ echo -e "${PRODUCT_NAME} All In One ${VERSION} Installation Completed:
       Use $(tput setaf 3)${PRODUCT_NAME,,}-ctl [stop|start]$(tput sgr0) to stop/start it
 
  - ${PRODUCT_NAME} command line tool is installed: ${PRODUCT_NAME,,}-cli
- - ${PRODUCT_NAME} control tool is installed: ${PRUDUCT_NAME,,}-ctl
+ - ${PRODUCT_NAME} control tool is installed: ${PRODUCT_NAME,,}-ctl
 
  - For system security, change the mysql default password for 'root' user using \`mysqladmin -u root --password=OLD_PASSWORD password NEW_PASSWORD\`" | tee -a $README
 
