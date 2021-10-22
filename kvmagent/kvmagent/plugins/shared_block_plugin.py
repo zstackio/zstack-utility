@@ -261,7 +261,7 @@ class CheckDisk(object):
                 return pattern.findall(cmd.stdout)[0]
 
     def check_disk_by_wwid(self):
-        for cond in ['dm-uuid-mpath-', "", 'scsi-']:
+        for cond in ['dm-uuid-mpath-', "", 'scsi-', "nvme-"]:
             rp = os.path.realpath("/dev/disk/by-id/%s%s" % (cond, self.identifier))
             if os.path.exists(rp):
                 return rp
