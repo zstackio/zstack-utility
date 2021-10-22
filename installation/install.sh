@@ -32,7 +32,7 @@ LEGACY_MINI_INSTALL_ROOT="/usr/local/zstack-mini/"
 export TERM=xterm
 
 OS=''
-REDHAT_OS="CENTOS6 CENTOS7 RHEL7 ALIOS7 ISOFT4 KYLIN10"
+REDHAT_OS="CENTOS6 CENTOS7 RHEL7 ALIOS7 ISOFT4 KYLIN10 EULER20"
 DEBIAN_OS="UBUNTU14.04 UBUNTU16.04 UBUNTU KYLIN4.0.2 DEBIAN9 UOS20"
 XINCHUANG_OS="ns10 uos20"
 SUPPORTED_OS="$REDHAT_OS $DEBIAN_OS"
@@ -111,7 +111,7 @@ PKG_MIRROR_ALIYUN='aliyun'
 #used for all in one installer and upgrader. 
 ZSTACK_YUM_REPOS=''
 ZSTACK_LOCAL_YUM_REPOS='zstack-local'
-ZSTACK_MN_REPOS='zstack-mn,qemu-kvm-ev-mn,mlnx-ofed-mn'
+ZSTACK_MN_REPOS='zstack-mn,qemu-kvm-ev-mn'
 ZSTACK_MN_UPGRADE_REPOS='zstack-mn'
 MIRROR_163_YUM_REPOS='163base,163updates,163extras,ustcepel,163-qemu-ev'
 MIRROR_163_YUM_WEBSITE='mirrors.163.com'
@@ -754,15 +754,16 @@ check_system(){
     echo_title "Check System"
     echo ""
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
-    cat /etc/*-release |egrep -i -h "centos |Red Hat Enterprise|Alibaba|NeoKylin|Kylin Linux Advanced Server release V10" >>$ZSTACK_INSTALL_LOG 2>&1
+    cat /etc/*-release |egrep -i -h "centos |Red Hat Enterprise|Alibaba|NeoKylin|Kylin Linux Advanced Server release V10|openEuler" >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -eq 0 ]; then
-        grep -q 'CentOS release 6' /etc/system-release && OS="CENTOS6"
-        grep -q 'CentOS Linux release 7' /etc/system-release && OS="CENTOS7"
-        grep -q 'Red Hat Enterprise Linux Server release 7' /etc/system-release && OS="RHEL7"
-        grep -q 'Alibaba Group Enterprise Linux' /etc/system-release && OS="ALIOS7"
-        grep -q 'iSoft Linux release 4' /etc/system-release && OS="ISOFT4"
-        grep -q 'NeoKylin Linux' /etc/system-release && OS="RHEL7"
-        grep -q 'Kylin Linux Advanced Server release V10' /etc/system-release && OS="KYLIN10"
+        grep -qi 'CentOS release 6' /etc/system-release && OS="CENTOS6"
+        grep -qi 'CentOS Linux release 7' /etc/system-release && OS="CENTOS7"
+        grep -qi 'Red Hat Enterprise Linux Server release 7' /etc/system-release && OS="RHEL7"
+        grep -qi 'Alibaba Group Enterprise Linux' /etc/system-release && OS="ALIOS7"
+        grep -qi 'iSoft Linux release 4' /etc/system-release && OS="ISOFT4"
+        grep -qi 'NeoKylin Linux' /etc/system-release && OS="RHEL7"
+        grep -qi 'Kylin Linux Advanced Server release V10' /etc/system-release && OS="KYLIN10"
+        grep -qi 'openEuler release 20.03 (LTS-SP1)' /etc/system-release && OS="EULER20"
         if [[ -z "$OS" ]];then
             fail2 "Host OS checking failure: your system is: `cat /etc/redhat-release`, $PRODUCT_NAME management node only supports $SUPPORTED_OS currently"
         elif [[ $OS == "CENTOS7" ]];then
@@ -770,14 +771,14 @@ check_system(){
               You need to use \`yum upgrade\` to upgrade your system to latest CentOS7."
         fi
     else
-        grep -q 'Debian GNU/Linux 9' /etc/issue && OS="DEBIAN9"
-        grep -q 'Ubuntu' /etc/issue && IS_UBUNTU='y' 
-        grep -q 'Kylin 4.0.2' /etc/issue && OS="KYLIN4.0.2"
-        grep -q 'uos GNU/Linux 20' /etc/issue && OS="UOS20"
-        grep -q 'Uniontech OS Server 20' /etc/issue && OS="UOS20"
+        grep -qi 'Debian GNU/Linux 9' /etc/issue && OS="DEBIAN9"
+        grep -qi 'Ubuntu' /etc/issue && IS_UBUNTU='y'
+        grep -qi 'Kylin 4.0.2' /etc/issue && OS="KYLIN4.0.2"
+        grep -qi 'uos GNU/Linux 20' /etc/issue && OS="UOS20"
+        grep -qi 'Uniontech OS Server 20' /etc/issue && OS="UOS20"
         if [ "$IS_UBUNTU" = "y" ]; then
-            grep -q '16.04' /etc/issue && OS="UBUNTU16.04"
-            grep -q '14.04' /etc/issue && OS="UBUNTU14.04"                                                                                                       
+            grep -qi '16.04' /etc/issue && OS="UBUNTU16.04"
+            grep -qi '14.04' /etc/issue && OS="UBUNTU14.04"
             [ "$OS" != "UBUNTU16.04" -a "$OS" != "UBUNTU14.04" ] && fail2 "Host OS checking failure: your system is: $OS, $PRODUCT_NAME management node only support $SUPPORTED_OS currently"
             . /etc/lsb-release
         fi
@@ -890,6 +891,10 @@ do_enable_sudo(){
         grep '^root' /etc/sudoers &>/dev/null || echo 'root ALL=(ALL)       NOPASSWD: ALL' >> /etc/sudoers
         sed -i '/requiretty$/d' /etc/sudoers
     fi
+}
+
+do_config_networkmanager(){
+    sed -i "s/^.*no-auto-default.*$/no-auto-default=*/g" /etc/NetworkManager/NetworkManager.conf > /dev/null 2>&1
 }
 
 do_config_limits(){
@@ -1540,6 +1545,7 @@ is_install_virtualenv(){
 is_install_general_libs_deb(){
     echo_subtitle "Install General Libraries (takes a couple of minutes)"
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+    id -u nginx >/dev/null 2>&1 || useradd nginx >/dev/null 2>&1
 
     if [[ $DEBIAN_OS =~ $OS ]]; then
         #install openjdk ppa for openjdk-8
@@ -2258,6 +2264,7 @@ config_system(){
         show_spinner cs_setup_http
     fi
     do_enable_sudo
+    do_config_networkmanager
 }
 
 cs_add_cronjob(){
@@ -3053,7 +3060,7 @@ get_zstack_repo(){
 install_sync_repo_dependences() {
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     pkg_list="createrepo curl rsync"
-    if [ x"$OS" != x"KYLIN10" ]; then
+    if [ x"$OS" != x"KYLIN10" -a x"$OS" != x"EULER20" ]; then
         pkg_list="$pkg_list yum-utils"
     fi
     missing_list=`LANG=en_US.UTF-8 && rpm -q $pkg_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
@@ -3994,7 +4001,7 @@ trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
         journal_path="/var/log/journal"
         if [ ! -d $journal_path ]; then
             mkdir -p $journal_path
-            systemd-tmpfiles --create --prefix $journal_path
+            systemd-tmpfiles --create --prefix $journal_path >>$ZSTACK_INSTALL_LOG 2>&1
             systemctl restart systemd-journald
         fi
     fi
