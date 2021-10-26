@@ -9936,6 +9936,40 @@ class SharedBlockQcow2SharedVolumeFixCmd(Command):
         sql = "update VolumeSnapshotTreeEO set VolumeSnapshotTreeEO.deleted=NOW() where VolumeSnapshotTreeEO.volumeUuid='%s'" % volumeUuid
         self._run_sql(sql)
 
+
+class DecryptLogCmd(Command):
+    def __init__(self):
+        super(DecryptLogCmd, self).__init__()
+        self.name = "decrypt_log"
+        self.description = 'decrypt log'
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--install-path', help='install path of log', required=True)
+        parser.add_argument('--key', help='key of encryption', required=True)
+
+    def run(self, args):
+        source = args.install_path
+        target = source + '.raw'
+
+        rsa = AESCipher(args.key)
+
+        with open(target, 'w') as target:
+            with open(source, 'r') as fd:
+                for line in fd:
+                    last_s = line.rfind(' ')
+                    head = '' if last_s == -1 else line[:last_s]
+                    tail = line[last_s + 1:]
+                    is_enc = rsa.is_encrypted(tail)
+                    raw_tail = rsa.decrypt(tail) if is_enc else tail
+
+                    try:
+                        t_line = head + ' ' + (raw_tail.encode('utf-8') if is_enc else tail)
+                        target.write(t_line if t_line.endswith('\n') else t_line + '\n')
+                    except Exception as e:
+                        warn('decrypt failed: %s, because: %s' % (head, e.message))
+
+
 def main():
     AddManagementNodeCmd()
     BootstrapCmd()
@@ -9998,6 +10032,7 @@ def main():
     RefreshAuditCmd()
     MysqlProcessList()
     MysqlRestrictConnection()
+    DecryptLogCmd()
 
     # If tools/zstack-ui.war exists, then install zstack-ui
     # else, install zstack-dashboard

@@ -2762,9 +2762,9 @@ class Vm(object):
         interface = Vm._build_interface_xml(cmd.nic, None, vhostSrcPath, action, brMode)
 
         def addon():
-            if cmd.addons and cmd.addons['NicQos']:
-                qos = cmd.addons['NicQos']
-                Vm._add_qos_to_interface(interface, qos)
+            if cmd.addons and cmd.addons['NicQos'] and cmd.addons['NicQos'][cmd.nic.uuid]:
+                qos = cmd.addons['NicQos'][cmd.nic.uuid]
+                Vm._add_qos_to_interface(self.domain_xml, cmd.nic, interface, qos, action)
 
         addon()
 
@@ -3081,7 +3081,7 @@ class Vm(object):
         def addon(nic_xml_object, nic):
             if cmd.addons and cmd.addons['NicQos'] and cmd.addons['NicQos'][nic.uuid]:
                 qos = cmd.addons['NicQos'][nic.uuid]
-                Vm._add_qos_to_interface(nic_xml_object, qos)
+                Vm._add_qos_to_interface(self.domain_xml, nic, nic_xml_object, qos, 'Update')
 
             iface = get_interface(nic)
             mtu_addon(nic_xml_object, iface)
@@ -3984,8 +3984,8 @@ class Vm(object):
             def addon(nic_xml_object):
                 if cmd.addons and cmd.addons['NicQos'] and cmd.addons['NicQos'][nic.uuid]:
                     qos = cmd.addons['NicQos'][nic.uuid]
-                    Vm._add_qos_to_interface(nic_xml_object, qos)
-
+                    vm_xml = etree.tostring(elements['root'])
+                    Vm._add_qos_to_interface(vm_xml, nic, nic_xml_object, qos, 'Attach')
                 if cmd.coloPrimary or cmd.coloSecondary:
                     Vm._ignore_colo_vm_nic_rom_file_on_interface(nic_xml_object)
 
@@ -4541,8 +4541,8 @@ class Vm(object):
         e(interface, 'rom', None, attrib={'file': ''})
 
     @staticmethod
-    def _add_qos_to_interface(interface, qos):
-        if not qos.outboundBandwidth and not qos.inboundBandwidth:
+    def _add_qos_to_interface(vm_xml, nic, interface, qos, action):
+        if not qos.outboundBandwidth and not qos.inboundBandwidth and not qos.dscp:
             return
 
         bandwidth = e(interface, 'bandwidth')
@@ -4550,6 +4550,11 @@ class Vm(object):
             e(bandwidth, 'outbound', None, {'average': str(qos.outboundBandwidth / 1024 / 8)})
         if qos.inboundBandwidth:
             e(bandwidth, 'inbound', None, {'average': str(qos.inboundBandwidth / 1024 / 8)})
+        if qos.dscp >= 0:
+            id_node = find_zstack_metadata_node(etree.fromstring(vm_xml), 'internalId')
+            if id_node is not None:
+                VmPlugin._set_nic_qos(id_node.text, nic.nicInternalName, nic.usedIps, 0 if action == 'Detach' else qos.dscp)
+
 
 def _stop_world():
     http.AsyncUirHandler.STOP_WORLD = True
@@ -4969,6 +4974,9 @@ class VmPlugin(kvmagent.KvmAgent):
                 shell.call('virsh domiftune %s %s --inbound %s' % (cmd.vmUuid, cmd.internalName, cmd.inboundBandwidth/1024/8))
             if cmd.outboundBandwidth != -1:
                 shell.call('virsh domiftune %s %s --outbound %s' % (cmd.vmUuid, cmd.internalName, cmd.outboundBandwidth/1024/8))
+            if cmd.dscp != -1:
+                self._set_nic_qos(cmd.vmInternalId, cmd.internalName, cmd.ips, cmd.dscp)
+
         except Exception as e:
             e_str = linux.get_exception_stacktrace()
             logger.warn(e_str)
@@ -4978,6 +4986,22 @@ class VmPlugin(kvmagent.KvmAgent):
                 rsp.error = e_str
             rsp.success = False
         return jsonobject.dumps(rsp)
+
+    @staticmethod
+    def _set_nic_qos(vm_internal_id, nic_name, ips, dscp):
+        comment = "vm-%s-nic-%s" % (vm_internal_id, nic_name)
+        shell.run("iptables-save | sed -r '/PREROUTING.*comment.*%s/s/-A/iptables -t mangle -D/e'" % comment)
+        if dscp == 0:
+            return
+
+        def build_shell():
+            return "iptables -t mangle -A PREROUTING -m comment --comment '%s' -s %s -j DSCP --set-dscp %s; " \
+                   % (comment, ip, dscp)
+
+        cmd = ""
+        for ip in ips:
+            cmd += build_shell()
+        shell.call(cmd)
 
     @kvmagent.replyerror
     def get_nic_qos(self, req):
@@ -7730,6 +7754,46 @@ class VmPlugin(kvmagent.KvmAgent):
             content = traceback.format_exc()
             logger.warn(content)
 
+    def _remove_nic_qos(self, conn, dom, event, detail, opaque):
+        try:
+            event = LibvirtEventManager.event_to_string(event)
+            if event != LibvirtEventManager.EVENT_STOPPED:
+                return
+
+            vm_uuid = dom.name()
+            if vm_uuid.startswith("guestfs-"):
+                logger.debug("[set_nic_qos]ignore the temp vm[%s] while using guestfish" % vm_uuid)
+                return
+
+            domain_xml = dom.XMLDesc(0)
+            if is_namespace_used():
+                internal_id_node = find_zstack_metadata_node(etree.fromstring(domain_xml), 'internalId')
+                vm_id = internal_id_node.text if internal_id_node is not None else None
+            else:
+                domain_xmlobject = xmlobject.loads(domain_xml)
+                vm_id = domain_xmlobject.metadata.internalId.text_ if xmlobject.has_element(domain_xmlobject,
+                                                                                            'metadata.internalId') else None
+
+            if not vm_id:
+                logger.debug('vm[uuid:%s] is not managed by zstack,  do not remove nic qos rule' % vm_uuid)
+                return
+
+            if LibvirtEventManager.EVENT_STOPPED == event:
+                # it means remove all rule of nic qos
+                logger.debug('remove vm[uuid:%s] dscp rules' % vm_uuid)
+                VmPlugin._set_nic_qos(vm_id, '', [], 0)
+
+        except:
+            # if vm do live migrate the dom may not be found or the vm has been undefined
+            vm = get_vm_by_uuid(dom.name(), False)
+            if not vm:
+                logger.debug("can not get domain xml of vm[uuid:%s], "
+                             "the vm may be just migrated here or it has already been undefined" % dom.name())
+                return
+
+            content = traceback.format_exc()
+            logger.warn(content)
+
     def _delete_pushgateway_metric(self, conn, dom, event, detail, opaque):
         try:
             event = LibvirtEventManager.event_to_string(event)
@@ -7755,6 +7819,7 @@ class VmPlugin(kvmagent.KvmAgent):
         #LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._vm_lifecycle_event)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE,
                                                   self._set_vnc_port_iptable_rule)
+        LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._remove_nic_qos)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_REBOOT, self._vm_reboot_event)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._vm_shutdown_event)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._vm_crashed_event)
