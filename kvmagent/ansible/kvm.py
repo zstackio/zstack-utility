@@ -253,7 +253,7 @@ def install_kvm_pkg():
                 dep_list = common_dep_list + " AAVMF edk2.git-aarch64"
                 update_list = common_update_list
             else:
-                dep_list = common_dep_list + " OVMF edk2.git-ovmf-x64"
+                dep_list = common_dep_list + " edk2-ovmf"
                 update_list = common_update_list
 
             command = "which virsh"
