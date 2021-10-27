@@ -57,6 +57,7 @@ class Report(object):
         self.processType = None
         self.ctxMap = ctxMap
         self.ctxStack = ctxStack
+        self.taskStage = None
 
     @staticmethod
     def from_spec(cmd, progress_type):
@@ -65,6 +66,7 @@ class Report(object):
 
         report = Report(cmd.threadContext, cmd.threadContextStack)
         report.processType = progress_type
+        report.taskStage = get_task_stage(cmd)
         return report
 
     def progress_report(self, percent, flag="report"):
