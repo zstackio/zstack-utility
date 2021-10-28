@@ -768,7 +768,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             os.makedirs(dirname)
 
         if cmd.backingFile:
-            linux.qcow2_create_with_backing_file_and_cmd(cmd.backingFile, cmd.installUrl, cmd)
+            linux.qcow2_create_with_backing_file_and_cmd(cmd.backingFile, cmd.installUrl, cmd, cmd.size)
         else:
             linux.qcow2_create_with_cmd(cmd.installUrl, cmd.size, cmd)
 
