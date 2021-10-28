@@ -1155,6 +1155,7 @@ class CephAgent(plugin.TaskManager):
         client.connect(hostname, port, None, export_name)
         cqueue = Queue.Queue(8)
         offset, disk_size = 0, client.get_block_size()
+        last_report_time = time.time()
 
         try:
 
@@ -1181,8 +1182,10 @@ class CephAgent(plugin.TaskManager):
                     cqueue.put((data, offset, chunk_size, data == zero_chunk), True, 10)
                     offset += chunk_size
 
-                    percent = int(round(float(offset) / float(disk_size) * 100))
-                    report.progress_report(get_exact_percent(percent, report.taskStage), "report")
+                    if time.time() > last_report_time + 1:
+                        percent = int(round(float(offset) / float(disk_size) * 100))
+                        report.progress_report(get_exact_percent(percent, report.taskStage), "report")
+                        last_report_time = time.time()
 
                 # signal end
                 cqueue.put((b'', -1, 0, False), True, 10)
