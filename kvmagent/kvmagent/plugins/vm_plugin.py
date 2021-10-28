@@ -4613,8 +4613,8 @@ def execute_qmp_command(domain_id, command):
     return bash.bash_roe("virsh qemu-monitor-command %s '%s' --pretty" % (domain_id, command))
 
 def get_vm_migration_caps(domain_id, cap_key):
-    _, o, e = execute_qmp_command(domain_id, '{"execute": "query-migrate-capabilities"}')
-    if not o:
+    r, o, e = execute_qmp_command(domain_id, '{"execute": "query-migrate-capabilities"}')
+    if r != 0:
         logger.warn("query-migrate-capabilities: %s: %s" % (domain_id, e))
         return None
 
