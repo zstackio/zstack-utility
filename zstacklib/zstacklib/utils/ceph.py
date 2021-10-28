@@ -81,7 +81,8 @@ def update_ceph_client_access_conf(ps_uuid, mon_urls, user_key, manufacturer, fs
         with open(keyring_path, 'w') as fd:
             fd.write(keyring_content)
 
-        conf_content = conf_content + "keyring=%s" % keyring_path
+        #add \n because of ZSTAC-43092
+        conf_content = conf_content + "keyring=%s\n" % keyring_path
 
     conf_path = os.path.join(conf_folder, "ceph.conf")
     with open(conf_path, 'w') as fd:
