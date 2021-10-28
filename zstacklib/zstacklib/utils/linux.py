@@ -907,25 +907,25 @@ def qcow2_create_with_option(dst, size, opt=""):
     shell.check_run('/usr/bin/qemu-img create -f qcow2 %s %s %s' % (opt, dst, size))
     os.chmod(dst, 0o660)
 
-def qcow2_create_with_backing_file(backing_file, dst):
+def qcow2_create_with_backing_file(backing_file, dst, size=""):
     fmt = get_img_fmt(backing_file)
-    shell.call('/usr/bin/qemu-img create -F %s -f qcow2 -b %s %s' % (fmt, backing_file, dst))
+    shell.call('/usr/bin/qemu-img create -F %s -f qcow2 -b %s %s %s' % (fmt, backing_file, dst, size))
     os.chmod(dst, 0o660)
 
-def qcow2_create_with_backing_file_and_cmd(backing_file, dst, cmd=None):
+def qcow2_create_with_backing_file_and_cmd(backing_file, dst, cmd=None, size=""):
     if cmd is None or cmd.kvmHostAddons is None or cmd.kvmHostAddons.qcow2Options is None:
-        qcow2_create_with_backing_file(backing_file, dst)
+        qcow2_create_with_backing_file(backing_file, dst, size)
     else:
-        qcow2_create_with_backing_file_and_option(backing_file, dst, cmd.kvmHostAddons.qcow2Options)
+        qcow2_create_with_backing_file_and_option(backing_file, dst, cmd.kvmHostAddons.qcow2Options, size)
 
-def qcow2_create_with_backing_file_and_option(backing_file, dst, opt=""):
+def qcow2_create_with_backing_file_and_option(backing_file, dst, opt="", size=""):
     fmt = get_img_fmt(backing_file)
 
     # NOTE(weiw): qcow2 doesn't support specify backing file and preallocation at same time
     pattern = re.compile("\-o\ preallocation\=\w+ ")
     opt = re.sub(pattern, " ", opt)
 
-    shell.call('/usr/bin/qemu-img create -F %s -f qcow2 %s -b %s %s' % (fmt, opt, backing_file, dst))
+    shell.call('/usr/bin/qemu-img create -F %s -f qcow2 %s -b %s %s %s' % (fmt, opt, backing_file, dst, size))
     os.chmod(dst, 0o660)
 
 def raw_create(dst, size):
