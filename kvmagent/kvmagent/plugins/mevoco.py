@@ -1464,6 +1464,9 @@ mimetype.assign = (
                 if bash_r(EBTABLES_CMD + " -L {{CHAIN_NAME}} --Lmac2 | grep -- '-p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT' > /dev/null") != 0:
                     bash_r(EBTABLES_CMD + ' -I {{CHAIN_NAME}} -p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
 
+                if bash_r(EBTABLES_CMD + " -L {{CHAIN_NAME}} --Lmac2 | grep -- '-p IPv4 -d {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT' > /dev/null") != 0:
+                    bash_r(EBTABLES_CMD + ' -I {{CHAIN_NAME}} -p IPv4 -d {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
+
         @in_bash
         def apply(dhcp):
             bridge_name = dhcp[0].bridgeName
