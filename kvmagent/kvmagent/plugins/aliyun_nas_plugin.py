@@ -334,7 +334,7 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
             os.makedirs(dirname)
 
         if cmd.backingFile:
-            linux.qcow2_create_with_backing_file_and_cmd(cmd.backingFile, cmd.installPath, cmd)
+            linux.qcow2_create_with_backing_file_and_cmd(cmd.backingFile, cmd.installPath, cmd, cmd.size)
         else:
             linux.qcow2_create_with_cmd(cmd.installPath, cmd.size, cmd)
 
