@@ -71,9 +71,6 @@ class Eip(object):
     def generate_namespace_name(self, bridge, vip):
         return "%s_%s" % (bridge, vip.replace(".", "_"))
 
-    def getPhysicalNicNameFromBridgeName(self, bridgeName):
-        return bridgeName.replace('br_', '', 1).split("_")[0]
-
     def find_namespace_name_by_ip(self, ipaddr, version):
         if version == 4:
             ns_name_suffix = ipaddr.replace('.', '_')
@@ -159,23 +156,6 @@ class Eip(object):
     @bash.in_bash
     def delete_eip(self, eip):
         ns = self.generate_namespace_name(eip.publicBridgeName, eip.vip)
-
-        def del_bridge_fdb_entry_for_pri_idev():
-            EIP_UUID = eip.eipUuid[-9:]
-            PRI_IDEV = "%s_i" % (EIP_UUID)
-            PRI_BR_PHY_DEV = self.getPhysicalNicNameFromBridgeName(eip.vmBridgeName)
-
-            # get mac address of inner dev
-            try:
-                INNER_MAC = iproute.query_link(PRI_IDEV, ns).mac
-            except:
-                logger.error("cannot get mac address of " + PRI_IDEV)
-                return
-
-            # del bridge fdb entry for PRI_IDEV
-            iproute.del_fdb_entry(PRI_BR_PHY_DEV, INNER_MAC)
-
-        del_bridge_fdb_entry_for_pri_idev()
         self.delete_eip_with_ns(ns, eip.eipUuid, eip.ipVersion, eip.nicName)
 
     @bash.in_bash
@@ -209,6 +189,7 @@ class Eip(object):
         NS_NAME = "%s_%s" % (eip.publicBridgeName, eip.vip.replace(".", "_"))
 
         EBTABLE_CHAIN_NAME= eip.vmBridgeName
+        PRI_BR_PHY_DEV= eip.vmBridgeName.replace('br_', '', 1)
 
         if int(eip.ipVersion) == 4:
             EIP_DESC = "eip:%s,eip_addr:%s,vnic:%s,vnic_ip:%s,vm:%s,vip:%s" % (eip.eipUuid, VIP, eip.nicName, NIC_IP, eip.vmUuid, eip.vipUuid)
@@ -218,18 +199,6 @@ class Eip(object):
             EIP_DESC = "eip:%s,eip_addr:%s,vnic:%s,vnic_ip:%s,vm:%s,vip:%s" % (eip.eipUuid, vip_tag, eip.nicName, nic_tag, eip.vmUuid, eip.vipUuid)
 
         NS = "ip netns exec {{NS_NAME}}"
-
-        def add_bridge_fdb_entry_for_pri_idev():
-            PRI_BR_PHY_DEV = self.getPhysicalNicNameFromBridgeName(eip.vmBridgeName)
-            # get mac address of inner dev
-            try:
-                INNER_MAC = iproute.query_link(PRI_IDEV, NS_NAME).mac
-            except:
-                logger.error("cannot get mac address of " + PRI_IDEV)
-                return
-
-            # add bridge fdb entry for PRI_IDEV
-            iproute.add_fdb_entry(PRI_BR_PHY_DEV, INNER_MAC)
 
         # in case the namespace deleted and the orphan outer link leaves in the system,
         # deleting the orphan link and recreate it
@@ -479,8 +448,6 @@ class Eip(object):
 
         add_dev_namespace_if_needed(PUB_IDEV, NS_NAME)
         add_dev_namespace_if_needed(PRI_IDEV, NS_NAME)
-
-        add_bridge_fdb_entry_for_pri_idev()
 
         if int(eip.ipVersion) == 4:
             iproute.set_link_up_no_error(PUB_IDEV, NS_NAME)
