@@ -206,10 +206,12 @@ declare -a upgrade_persist_params_array=(
 )
 
 #persist more when install/upgrade mini
-ui_mode=`zstack-ctl show_configuration |awk '/ui_mode/{print $3}'` >/dev/null 2>&1
-if [ x"$MINI_INSTALL" = x"y" ] | [ x"$ui_mode" = x"mini" ];then
+upgrade_mini_persist_params(){
+  ui_mode=`zstack-ctl show_configuration |awk '/ui_mode/{print $3}'` >/dev/null 2>&1
+  if [ x"$MINI_INSTALL" = x"y" ] | [ x"$ui_mode" = x"mini" ];then
     upgrade_persist_params_array+=('4.0.0,Search.autoRegister=false')
-fi
+  fi
+}
 
 #upgrade mini zwatch webhook
 upgrade_mini_zwatch_webhook(){
@@ -1313,6 +1315,8 @@ upgrade_zstack(){
             fi
         fi
     fi
+
+    upgrade_mini_persist_params
 
     #set zstack upgrade params 
     upgrade_params=''
