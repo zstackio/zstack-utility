@@ -15,6 +15,7 @@ import hashlib
 from cherrypy.lib.static import _serve_fileobj
 
 import zstacklib.utils.daemon as daemon
+import zstacklib.utils.plugin as plugin
 import zstacklib.utils.http as http
 import zstacklib.utils.jsonobject as jsonobject
 from zstacklib.utils import lock
@@ -169,17 +170,22 @@ class UploadTask(object):
         self.lastError = None
         self.lastOpTime = linux.get_current_timestamp()
         self.image_format = "raw"
+        self.close = None
 
     def fail(self, reason):
         self.completed = True
         self.lastError = reason
         self.lastOpTime = linux.get_current_timestamp()
+        if self.close:
+            self.close()
         logger.info('task failed for %s: %s' % (self.imageUuid, reason))
 
     def success(self):
         self.completed = True
         self.progress = 100
         self.lastOpTime = linux.get_current_timestamp()
+        if self.close:
+            self.close()
 
     def is_started(self):
         return self.progress > 0
@@ -288,6 +294,8 @@ def stream_body(self, task, entity, boundary, up):
             chunks = []
             chunk_size = 32 * 1024
             while remaining > 0:
+                if task.lastError:
+                    raise Exception(task.lastError)
                 tmp = reader.read(min(chunk_size, remaining))
                 datalen = len(tmp)
                 task.renew()
@@ -345,6 +353,8 @@ def stream_body(self, task, entity, boundary, up):
     else:
         shell.check_run('rbd mv %s %s' % (task.tmpPath, task.dstPath))
 
+    if task.lastError:
+        raise Exception(task.lastError)
     task.success()
 
 class ImageFileObject(object):
@@ -701,6 +711,9 @@ class CephAgent(object):
         if task is None:
             raise Exception('image not found %s' % image_uuid)
 
+        if task.lastError:
+            self._fail_task(task, task.lastError)
+
         if task.completed:
             raise Exception('image[uuid: %s] upload has completed' % image_uuid)
 
@@ -743,6 +756,21 @@ class CephAgent(object):
                 shell.run('rbd rm %s' % task.tmpPath)
 
     def _prepare_upload(self, cmd):
+        class ImageUploadDaemon(plugin.TaskDaemon):
+            def __init__(self, task):
+                super(ImageUploadDaemon, self).__init__(cmd, 'imageUpload', report_progress=False)
+                self.task = task
+                self.task.close = self.close
+
+            def _cancel(self):
+                if self.task.completed:
+                    return
+                self.task.lastError = "image [uuid: %s] upload canceled" % cmd.imageUuid
+                shell.run('rbd rm %s' % task.tmpPath)
+
+            def _get_percent(self):
+                pass
+
         start = len(self.UPLOAD_PROTO)
         imageUuid = cmd.url[start:start+self.LENGTH_OF_UUID]
         dstPath = self._normalize_install_path(cmd.installPath)
@@ -753,6 +781,7 @@ class CephAgent(object):
 
         task = UploadTask(imageUuid, cmd.installPath, dstPath, tmpPath)
         self.upload_tasks.add_task(task)
+        ImageUploadDaemon(task).start()
 
     def _get_upload_path(self, req):
         host = req[http.REQUEST_HEADER]['Host']
@@ -1169,10 +1198,7 @@ class CephAgent(object):
     def cancel(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentResponse()
-        if not traceable_shell.cancel_job(cmd):
-            rsp.success = False
-            rsp.error = "no matched job to cancel"
-        return jsonobject.dumps(rsp)
+        return jsonobject.dumps(plugin.cancel_job(cmd, rsp))
 
 class CephDaemon(daemon.Daemon):
     def __init__(self, pidfile, py_process_name):

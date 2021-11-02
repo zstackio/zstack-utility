@@ -34,6 +34,7 @@ from zstacklib.utils import ovs
 from zstacklib.utils.bash import *
 from zstacklib.utils.ip import get_nic_supported_max_speed
 from zstacklib.utils.report import Report
+import zstacklib.utils.plugin as plugin
 
 host_arch = platform.machine()
 IS_AARCH64 = host_arch == 'aarch64'
@@ -1975,14 +1976,7 @@ done
     def cancel(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
-
-        process_canceled = traceable_shell.cancel_job(cmd)
-        canceled_task_count = self.cancel_task(cmd.cancellationApiId)
-        if not process_canceled and not canceled_task_count:
-            rsp.success = False
-            rsp.error = "no matched job to cancel"
-
-        return jsonobject.dumps(rsp)
+        return jsonobject.dumps(plugin.cancel_job(cmd, rsp))
 
     @kvmagent.replyerror
     def transmit_vm_operation_to_vm(self, req):
