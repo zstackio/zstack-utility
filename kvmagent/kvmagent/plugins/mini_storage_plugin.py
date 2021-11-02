@@ -221,7 +221,7 @@ class CheckDisk(object):
 
     def get_path(self):
         if os.path.exists(self.identifier):
-            return o
+            return self.identifier
 
         raise Exception("can not find disk with %s as wwid, uuid or wwn, "
                         "or multiple disks qualify but no mpath device found" % self.identifier)
