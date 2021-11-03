@@ -190,7 +190,7 @@ def convert_disk_state_to_int(state):
     :type state: str
     """
     state = state.lower()
-    if "online" in state or "jobd" in state or "ready" in state or "optimal" in state or "hot-spare" in state or "hot spare" in state:
+    if "online" in state or "jbod" in state or "ready" in state or "optimal" in state or "hot-spare" in state or "hot spare" in state:
         return 0
     elif "rebuild" in state:
         return 5
@@ -209,22 +209,19 @@ def collect_raid_state():
         'physical_disk_state': GaugeMetricFamily('physical_disk_state',
                                                  'physical disk state', None,
                                                  ['slot_number', 'disk_group']),
-        'physical_disk_temperature': GaugeMetricFamily('physical_disk_temperature',
-                                                       'physical disk temperature', None,
-                                                       ['slot_number', 'disk_group']),
     }
     
-    r, o = bash_ro("/opt/MegaRAID/MegaCli/MegaCli64 -LDInfo -LALL -aAll | grep -E 'Target Id|State'")
+    r, o = bash_ro("arcconf list | grep -A 8 'Controller ID' | awk '{print $2}'")
     if r == 0 and o.strip() != "":
-        return collect_mega_raid_state(metrics, o)
+        return collect_arcconf_raid_state(metrics, o)
 
     r, o = bash_ro("sas3ircu list | grep -A 8 'Index' | awk '{print $1}'")
     if r == 0 and o.strip() != "":
         return collect_sas_raid_state(metrics, o)
 
-    r, o = bash_ro("arcconf list | grep -A 8 'Controller ID' | awk '{print $2}'")
+    r, o = bash_ro("/opt/MegaRAID/MegaCli/MegaCli64 -LDInfo -LALL -aAll | grep -E 'Target Id|State'")
     if r == 0 and o.strip() != "":
-        return collect_arcconf_raid_state(metrics, o)
+        return collect_mega_raid_state(metrics, o)
     
     return metrics.values()
 
@@ -309,6 +306,49 @@ def collect_sas_raid_state(metrics, infos):
 
 def collect_mega_raid_state(metrics, infos):
     raid_info = infos.strip().splitlines()
+    target_id = state = "unknown"
+    for info in raid_info:
+        if "Target Id" in info:
+            target_id = info.strip().strip(")").split(" ")[-1]
+        else:
+            state = info.strip().split(" ")[-1]
+            metrics['raid_state'].add_metric([target_id], convert_raid_state_to_int(state))
+    
+    disk_info = bash_o(
+        "/opt/MegaRAID/MegaCli/MegaCli64 -PDList -aAll | grep -E 'Enclosure Device ID|Slot Number|Firmware state|Drive has flagged'").strip().splitlines()
+    enclosure_device_id = slot_number = state = "unknown"
+    for info in disk_info:
+        k = info.split(":")[0].strip()
+        v = info.split(":")[1].strip()
+        if "Enclosure Device ID" in k:
+            enclosure_device_id = v
+        elif "Slot Number" in k:
+            slot_number = v
+        elif "Firmware state" in k:
+            state = v
+        elif "Drive has flagged" in k:
+            metrics['physical_disk_state'].add_metric([slot_number, enclosure_device_id],
+                                                      convert_disk_state_to_int(state))
+    
+    return metrics.values()
+
+
+def collect_mini_raid_state():
+    metrics = {
+        'raid_state': GaugeMetricFamily('raid_state',
+                                        'raid state', None, ['target_id']),
+        'physical_disk_state': GaugeMetricFamily('physical_disk_state',
+                                                 'physical disk state', None,
+                                                 ['slot_number', 'disk_group']),
+        'physical_disk_temperature': GaugeMetricFamily('physical_disk_temperature',
+                                                       'physical disk temperature', None,
+                                                       ['slot_number', 'disk_group']),
+    }
+    if bash_r("/opt/MegaRAID/MegaCli/MegaCli64 -LDInfo -LALL -aAll") != 0:
+        return metrics.values()
+    
+    raid_info = bash_o(
+        "/opt/MegaRAID/MegaCli/MegaCli64 -LDInfo -LALL -aAll | grep -E 'Target Id|State'").strip().splitlines()
     target_id = state = "unknown"
     for info in raid_info:
         if "Target Id" in info:
@@ -592,7 +632,7 @@ kvmagent.register_prometheus_collector(collect_physical_network_interface_state)
 
 if misc.isMiniHost():
     kvmagent.register_prometheus_collector(collect_lvm_capacity_statistics)
-    kvmagent.register_prometheus_collector(collect_raid_state)
+    kvmagent.register_prometheus_collector(collect_mini_raid_state)
     kvmagent.register_prometheus_collector(collect_equipment_state)
     
 if misc.isHyperConvergedHost():
