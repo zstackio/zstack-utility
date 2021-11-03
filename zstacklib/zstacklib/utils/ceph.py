@@ -15,7 +15,16 @@ def is_xsky():
 
 
 def is_sandstone():
-    return os.path.exists("/opt/sandstone/bin/sds")
+    return os.path.exists("/opt/sandstone/bin/sds") or os.path.exists("/var/lib/ceph/bin/ceph")
+
+
+def get_ceph_manufacturer():
+    if is_xsky():
+        return "xsky"
+    elif is_sandstone():
+        return "sandstone"
+    else:
+        return "open-source"
 
 
 def get_pools_capacity():
