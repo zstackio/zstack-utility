@@ -103,9 +103,11 @@ class PxeServerAgent(object):
     VSFTPD_LOG_PATH = BAREMETAL_LOG_PATH + "vsftpd.log"
     PXELINUX_CFG_PATH = TFTPBOOT_PATH + "pxelinux.cfg/"
     PXELINUX_DEFAULT_CFG = PXELINUX_CFG_PATH + "default"
+    UEFI_GRUB_CFG_PATH = TFTPBOOT_PATH + "EFI/BOOT/"
+    UEFI_DEFAULT_GRUB_CFG = UEFI_GRUB_CFG_PATH + "grub.cfg"
     # we use `KS_CFG_PATH` to hold kickstart/preseed/autoyast preconfiguration files
     KS_CFG_PATH = VSFTPD_ROOT_PATH + "ks/"
-    INSPECTOR_KS_CFG = KS_CFG_PATH + "inspector_ks.cfg"
+    INSPECTOR_KS_CFG = KS_CFG_PATH + "inspector_ks_ARCH.cfg"
     ZSTACK_SCRIPTS_PATH = VSFTPD_ROOT_PATH + "scripts/"
     NGINX_MN_PROXY_CONF_PATH = "/etc/nginx/conf.d/pxe_mn/"
     NGINX_TERMINAL_PROXY_CONF_PATH = "/etc/nginx/conf.d/terminal/"
@@ -223,8 +225,14 @@ class PxeServerAgent(object):
         dhcp_conf = """interface={DHCP_INTERFACE}
 port=0
 bind-interfaces
-dhcp-boot=pxelinux.0
 enable-tftp
+dhcp-match=set:bios,option:client-arch,0
+dhcp-match=set:efi-x86_64,option:client-arch,7
+dhcp-match=set:efi-x86_64,option:client-arch,9
+dhcp-match=set:efi-aarch64,option:client-arch,11
+dhcp-boot=tag:bios,pxelinux.0
+dhcp-boot=tag:efi-x86_64,EFI/BOOT/grubx64.efi
+dhcp-boot=tag:efi-aarch64,EFI/BOOT/grubaa64.efi
 tftp-root={TFTPBOOT_PATH}
 log-facility={DNSMASQ_LOG_PATH}
 dhcp-range={DHCP_RANGE}
@@ -265,7 +273,6 @@ listen=NO
 listen_ipv6=YES
 pam_service_name=vsftpd
 userlist_enable=YES
-tcp_wrappers=YES
 xferlog_enable=YES
 xferlog_std_format=YES
 xferlog_file={VSFTPD_LOG_PATH}
@@ -274,24 +281,48 @@ xferlog_file={VSFTPD_LOG_PATH}
         with open(self.VSFTPD_CONF_PATH, 'w') as f:
             f.write(vsftpd_conf)
 
-        # init pxelinux.cfg
+        # init pxelinux.cfg for x86_64
         pxelinux_cfg = """default zstack_baremetal
 prompt 0
 label zstack_baremetal
-kernel zstack/vmlinuz
+kernel zstack/x86_64/vmlinuz
 ipappend 2
-append initrd=zstack/initrd.img devfs=nomount ksdevice=bootif ks=ftp://{PXESERVER_DHCP_NIC_IP}/ks/inspector_ks.cfg vnc
+append initrd=zstack/x86_64/initrd.img devfs=nomount ksdevice=bootif ks=ftp://{PXESERVER_DHCP_NIC_IP}/ks/inspector_ks_x86_64.cfg vnc
 """.format(PXESERVER_DHCP_NIC_IP=pxeserver_dhcp_nic_ip)
         with open(self.PXELINUX_DEFAULT_CFG, 'w') as f:
             f.write(pxelinux_cfg)
 
+        # init default uefi grub.cfg for x86_64 and aarch64
+        grub_cfg = """set timeout=1
+set arch='x86_64'
+set linux='linuxefi'
+set initrd='initrdefi'
+
+if [ "$grub_cpu" == "arm64" ]; then
+  set arch='aarch64'
+  set linux='linux'
+  set initrd='initrd'
+fi
+
+menuentry 'ZStack Get Bare Metal Chassis Hardware Info' --class fedora --class gnu-linux --class gnu --class os {
+        set root=(tftp,%s)
+        $linux (tftp)zstack/$arch/vmlinuz devfs=nomount ksdevice=bootif inst.ks=ftp://%s/ks/inspector_ks_$arch.cfg vnc
+        $initrd (tftp)zstack/$arch/initrd.img
+}
+""" % (pxeserver_dhcp_nic_ip, pxeserver_dhcp_nic_ip)
+        with open(self.UEFI_DEFAULT_GRUB_CFG, 'w') as f:
+            f.write(grub_cfg)
+
         # init inspector_ks.cfg
         ks_tmpl_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'ks_tmpl')
         with open("%s/inspector_ks_tmpl" % ks_tmpl_path, 'r') as fr:
-            inspector_ks_cfg = fr.read() \
-                .replace("PXESERVERUUID", cmd.uuid) \
-                .replace("PXESERVER_DHCP_NIC_IP", pxeserver_dhcp_nic_ip)
-            with open(self.INSPECTOR_KS_CFG, 'w') as fw:
+            inspector_ks_cfg_tmp = fr.read()
+        archs = {"x86_64", "aarch64", "mips64el"}
+        for arch in archs:
+            inspector_ks_cfg = inspector_ks_cfg_tmp.replace("PXESERVERUUID", cmd.uuid) \
+                                                   .replace("PXESERVER_DHCP_NIC_IP", pxeserver_dhcp_nic_ip) \
+                                                   .replace("ARCH", arch)
+            with open(self.INSPECTOR_KS_CFG.replace("ARCH", arch), 'w') as fw:
                 fw.write(inspector_ks_cfg)
 
         # config nginx
@@ -366,13 +397,10 @@ http {
 
         # DETECT ROGUE DHCP SERVER
         cmd = json_object.loads(req[http.REQUEST_BODY])
-        if platform.machine() == "x86_64":
-            mac = self._get_mac_address(cmd.dhcpInterface)
-            ret, output = bash_ro(
-                "nmap -sU -p67 --script broadcast-dhcp-discover --script-args broadcast-dhcp-discover.mac=%s -e %s | grep 'Server Identifier'" % (
-                mac, cmd.dhcpInterface))
-            if ret == 0:
-                raise PxeServerError("rogue dhcp server[IP:%s] detected" % output.strip().split(' ')[-1])
+        mac = self._get_mac_address(cmd.dhcpInterface)
+        ret, output = bash_ro("nmap -sU -p67 --script broadcast-dhcp-discover --script-args broadcast-dhcp-discover.mac=%s -e %s | grep 'Server Identifier'" % (mac, cmd.dhcpInterface))
+        if ret == 0:
+            raise PxeServerError("rogue dhcp server[IP:%s] detected" % output.strip().split(' ')[-1])
 
         # make sure pxeserver is running if it's Enabled
         if cmd.enabled:
@@ -442,6 +470,7 @@ http {
         return json_object.dumps(rsp)
 
     def _create_pxelinux_cfg(self, cmd):
+        # create pxelinux.cfg/01-MAC for legacy x86_64
         ks_cfg_name = cmd.pxeNicMac
         pxe_cfg_file = os.path.join(self.PXELINUX_CFG_PATH, "01-" + ks_cfg_name)
         pxeserver_dhcp_nic_ip = self._get_ip_address(cmd.dhcpInterface).strip()
@@ -470,6 +499,26 @@ http {
 
         with open(pxe_cfg_file, 'w') as f:
             f.write(pxelinux_cfg)
+
+        # create uefi grub.cfg-01-MAC for x86_64/aarch64 with rhel os
+        grub_cfg_file = os.path.join(self.UEFI_GRUB_CFG_PATH, "grub.cfg-01-" + ks_cfg_name)
+        grub_cfg = """set timeout=1
+set linux='linuxefi'
+set initrd='initrdefi'
+
+if [ "$grub_cpu" == "arm64" ]; then
+  set linux='linux'
+  set initrd='initrd'
+fi
+
+menuentry 'Install OS on Bare Metal Instance' --class fedora --class gnu-linux --class gnu --class os {{
+        $linux (tftp){IMAGEUUID}/vmlinuz devfs=nomount ksdevice=bootif inst.ks=ftp://{PXESERVER_DHCP_NIC_IP}/ks/{KS_CFG_NAME} vnc
+        $initrd (tftp){IMAGEUUID}/initrd.img
+}}""".format(IMAGEUUID=cmd.imageUuid,
+                   PXESERVER_DHCP_NIC_IP=pxeserver_dhcp_nic_ip,
+                   KS_CFG_NAME=ks_cfg_name)
+        with open(grub_cfg_file, 'w') as f:
+            f.write(grub_cfg)
 
     def _create_preconfiguration_file(self, cmd):
         # in case user didn't seleted a preconfiguration template etc.
@@ -523,6 +572,7 @@ poweroff
     def _create_post_scripts(self, cmd, pxeserver_dhcp_nic_ip, more_script = ""):
         post_script = more_script
         post_script += """
+host_arch=`uname -m`
 bm_log='/tmp/zstack_bm.log'
 curr_time=`date +"%Y-%m-%d %H:%M:%S"`
 echo -e "Current time: \t$curr_time" >> $bm_log
@@ -541,7 +591,7 @@ wget -O- --header="Content-Type:application/json" \
 http://{PXESERVER_DHCP_NIC_IP}:7771/zstack/asyncrest/sendcommand >>$bm_log 2>&1
 
 # install shellinaboxd
-wget -P /usr/bin ftp://{PXESERVER_DHCP_NIC_IP}/shellinaboxd || curl -o /usr/bin/shellinaboxd ftp://{PXESERVER_DHCP_NIC_IP}/shellinaboxd
+wget -O /usr/bin/shellinaboxd ftp://{PXESERVER_DHCP_NIC_IP}/shellinaboxd_$host_arch || curl -o /usr/bin/shellinaboxd ftp://{PXESERVER_DHCP_NIC_IP}/shellinaboxd_$host_arch
 chmod a+x /usr/bin/shellinaboxd
 
 # install zstack zwatch-vm-agent
@@ -964,6 +1014,8 @@ echo "STARTMODE='auto'" >> $IFCFGFILE
         if cmd.pxeNicMac == "*":
             if os.path.exists(self.PXELINUX_CFG_PATH):
                 bash_r("rm -f %s/*" % self.PXELINUX_CFG_PATH)
+            if os.path.exists(self.UEFI_GRUB_CFG_PATH):
+                bash_r("rm -f %s/*" % self.UEFI_GRUB_CFG_PATH)
             if os.path.exists(self.KS_CFG_PATH):
                 bash_r("rm -f %s/*" % self.KS_CFG_PATH)
             if os.path.exists(self.NGINX_MN_PROXY_CONF_PATH):
@@ -977,6 +1029,10 @@ echo "STARTMODE='auto'" >> $IFCFGFILE
             pxe_cfg_file = os.path.join(self.PXELINUX_CFG_PATH, "01-" + mac_as_name)
             if os.path.exists(pxe_cfg_file):
                 os.remove(pxe_cfg_file)
+
+            uefi_grub_cfg_file = os.path.join(self.UEFI_GRUB_CFG_PATH, "grub.cfg-01-" + mac_as_name)
+            if os.path.exists(uefi_grub_cfg_file):
+                os.remove(uefi_grub_cfg_file)
 
             ks_cfg_file = os.path.join(self.KS_CFG_PATH, mac_as_name)
             if os.path.exists(ks_cfg_file):
@@ -1093,15 +1149,20 @@ echo "STARTMODE='auto'" >> $IFCFGFILE
         if not os.path.exists(vmlinuz_path):
             os.makedirs(vmlinuz_path)
         # RHEL
-        ret1 = bash_r("cp %s %s" % (os.path.join(mount_path, "isolinux/vmlinuz*"), os.path.join(vmlinuz_path, "vmlinuz")))
-        ret2 = bash_r("cp %s %s" % (os.path.join(mount_path, "isolinux/initrd*.img"), os.path.join(vmlinuz_path, "initrd.img")))
+        vmlinuz_file_path = os.path.join(vmlinuz_path, "vmlinuz")
+        initrd_file_path = os.path.join(vmlinuz_path, "initrd.img")
+        ret1 = bash_r("cp %s %s && chmod 777 %s" % (os.path.join(mount_path, "isolinux/vmlinuz*"), vmlinuz_file_path, vmlinuz_file_path))
+        ret2 = bash_r("cp %s %s && chmod 777 %s" % (os.path.join(mount_path, "isolinux/initrd*.img"), initrd_file_path, initrd_file_path))
         # DEBIAN SERVER
-        ret3 = bash_r("cp %s %s" % (os.path.join(mount_path, "install/netboot/*-installer/amd64/linux"), os.path.join(vmlinuz_path, "vmlinuz")))
-        ret4 = bash_r("cp %s %s" % (os.path.join(mount_path, "install/netboot/*-installer/amd64/initrd.gz"), os.path.join(vmlinuz_path, "initrd.img")))
+        ret3 = bash_r("cp %s %s && chmod 777 %s" % (os.path.join(mount_path, "install/netboot/*-installer/amd64/linux"), vmlinuz_file_path, vmlinuz_file_path))
+        ret4 = bash_r("cp %s %s && chmod 777 %s" % (os.path.join(mount_path, "install/netboot/*-installer/amd64/initrd.gz"), initrd_file_path, initrd_file_path))
         # SUSE
-        ret5 = bash_r("cp %s %s" % (os.path.join(mount_path, "boot/*/loader/linux"), os.path.join(vmlinuz_path, "vmlinuz")))
-        ret6 = bash_r("cp %s %s" % (os.path.join(mount_path, "boot/*/loader/initrd"), os.path.join(vmlinuz_path, "initrd.img")))
-        if (ret1 != 0 or ret2 != 0) and (ret3 != 0 or ret4 != 0) and (ret5 != 0 or ret6 != 0):
+        ret5 = bash_r("cp %s %s && chmod 777 %s" % (os.path.join(mount_path, "boot/*/loader/linux"), vmlinuz_file_path, vmlinuz_file_path))
+        ret6 = bash_r("cp %s %s && chmod 777 %s" % (os.path.join(mount_path, "boot/*/loader/initrd"), initrd_file_path, initrd_file_path))
+        # ns10
+        ret7 = bash_r("cp %s %s && chmod 777 %s" % (os.path.join(mount_path, "images/pxeboot/vmlinuz"), vmlinuz_file_path, vmlinuz_file_path))
+        ret8 = bash_r("cp %s %s && chmod 777 %s" % (os.path.join(mount_path, "images/pxeboot/initrd.img"), initrd_file_path, initrd_file_path))
+        if (ret1 != 0 or ret2 != 0) and (ret3 != 0 or ret4 != 0) and (ret5 != 0 or ret6 != 0) and (ret7 != 0 or ret8 != 0):
             raise PxeServerError("failed to copy vmlinuz and initrd.img from image[uuid:%s] to baremetal tftp server" % cmd.imageUuid)
 
         logger.info("successfully downloaded image[uuid:%s] and mounted it" % cmd.imageUuid)
