@@ -3175,6 +3175,11 @@ check_sync_local_repos() {
       echo_hints_to_upgrade_iso
   else
       echo " ... $(tput setaf 3)NOT MATCH$(tput sgr0)" | tee -a $ZSTAC_INSTALL_LOG
+
+      LOCAL_ZSTAC_VERSION=$(awk '{print $NF}' ~zstack/VERSION)
+      if [[ $LOCAL_ZSTAC_VERSION == $VERSION_RELEASE_NR* ]]; then
+          echo_upgrade_local_repo_use_iso
+      fi
   fi
 
 echo_subtitle "Sync from repo.zstack.io (takes a couple of minutes)"
@@ -3595,6 +3600,16 @@ echo_hints_to_upgrade_iso()
         "# wget http://cdn.zstack.io/product_downloads/scripts/${PRODUCT_NAME,,}-upgrade\n" \
         "# bash ${PRODUCT_NAME,,}-upgrade ${ISO_NAME}\n" \
         "For more information, see ${UPGRADE_WIKI}"
+}
+
+echo_upgrade_local_repo_use_iso() {
+    echo
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+
+    fail "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n"\
+        "Please download ISO from the following links and update you local repo\n" \
+        "ISO and bin http://storage.zstack.io/mirror/\n" \
+        "only update repo use: bash ${PRODUCT_NAME,,}-upgrade -r PATH_TO_LATEST_ZSTACK_ISO\n"
 }
 
 echo_custom_pcidevice_xml_warning_if_need() {
