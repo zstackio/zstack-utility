@@ -3424,13 +3424,13 @@ class Vm(object):
                     e(tune, 'vcpupin', attrib={'vcpu': str(rule.vCpu), 'cpuset': rule.pCpuSet})
 
             if cmd.period and cmd.period >= 1000 and cmd.period <= 1000000:
-                e(tune, 'period', cmd.period)
+                e(tune, 'period', str(cmd.period))
 
             if cmd.quota and ((cmd.quota >= 1000 and cmd.quota <= 17592186044415) or cmd.quota <= 0):
-                e(tune, 'quota', cmd.quota)
+                e(tune, 'quota', str(cmd.quota))
 
             if cmd.shares and cmd.shares >= 2 and cmd.shares <= 262144:
-                e(tune, 'shares', cmd.shares)
+                e(tune, 'shares', str(cmd.shares))
 
         def make_memory():
             root = elements['root']
