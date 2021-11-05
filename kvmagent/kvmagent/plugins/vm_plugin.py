@@ -4906,6 +4906,44 @@ class VmPlugin(kvmagent.KvmAgent):
         elif mode == "write":
             return shell.call('%s | grep -w write_bytes_sec | awk \'{print $2}\'' % cmd_base).strip()
 
+    def _get_volume_iops_value(self, vm_uuid, device_id, mode):
+        cmd_base = "virsh blkdeviotune %s %s" % (vm_uuid, device_id)
+        if mode == "total":
+            return shell.call('%s | grep -w total_iops_sec | awk \'{print $3}\'' % cmd_base).strip()
+        elif mode == "read":
+            return shell.call('%s | grep -w read_iops_sec | awk \'{print $3}\'' % cmd_base).strip()
+        elif mode == "write":
+            return shell.call('%s | grep -w write_iops_sec | awk \'{print $3}\'' % cmd_base).strip()
+
+    def _do_set_volume_bandwidth(self, cmd, device_id):
+        # clear iops limits
+        cmd_base = "virsh blkdeviotune %s %s --total_iops_sec 0" % (cmd.vmUuid, device_id)
+        if (cmd.mode == "total") or (cmd.mode is None):  # to set total(read/write reset)
+            shell.call('%s --total_bytes_sec %s' % (cmd_base, cmd.totalBandwidth))
+        elif cmd.mode == "all":   # set read and write (total reset)
+            shell.call(
+                '%s --read_bytes_sec %s --write_bytes_sec %s' % (cmd_base, cmd.readBandwidth, cmd.writeBandwidth))
+        elif cmd.mode == "read":  # to set read(write reserved, total reset)
+            write_bytes_sec = self._get_volume_bandwidth_value(cmd.vmUuid, device_id, "write")
+            shell.call('%s --read_bytes_sec %s --write_bytes_sec %s' % (cmd_base, cmd.readBandwidth, write_bytes_sec))
+        elif cmd.mode == "write":  # to set write(read reserved, total reset)
+            read_bytes_sec = self._get_volume_bandwidth_value(cmd.vmUuid, device_id, "read")
+            shell.call('%s --read_bytes_sec %s --write_bytes_sec %s' % (cmd_base, read_bytes_sec, cmd.writeBandwidth))
+
+    def _do_set_volume_iops(self, cmd, device_id):
+        # clear bytes limits
+        cmd_base = "virsh blkdeviotune %s %s --total_bytes_sec 0" % (cmd.vmUuid, device_id)
+        if cmd.mode == "total":
+            shell.call('%s --total_iops_sec %s' % (cmd_base, cmd.totalIOPS))
+        elif cmd.mode == "all":
+            shell.call('%s --read_iops_sec %s --write_iops_sec %s' % (cmd_base, cmd.readIOPS, cmd.writeIOPS))
+        elif cmd.mode == "read":
+            write_iops_sec = self._get_volume_iops_value(cmd.vmUuid, device_id, "write")
+            shell.call('%s --read_iops_sec %s --write_iops_sec %s' % (cmd_base, cmd.readIOPS, write_iops_sec))
+        elif cmd.mode == "wirte":
+            read_iops_sec = self._get_volume_iops_value(cmd.vmUuid, device_id, "read")
+            shell.call('%s --read_iops_sec %s --write_iops_sec %s' % (cmd_base, read_iops_sec, cmd.writeIOPS))
+
     @kvmagent.replyerror
     def set_volume_bandwidth(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -4915,29 +4953,17 @@ class VmPlugin(kvmagent.KvmAgent):
 
         ## total and read/write of bytes_sec cannot be set at the same time
         ## http://confluence.zstack.io/pages/viewpage.action?pageId=42599772#comment-42600879
-        cmd_base = "virsh blkdeviotune %s %s" % (cmd.vmUuid, device_id)
-        if (cmd.mode == "total") or (cmd.mode is None):  # to set total(read/write reset)
-            shell.call('%s --total_bytes_sec %s' % (cmd_base, cmd.totalBandwidth))
-        elif cmd.mode == "all":
-            shell.call('%s --read_bytes_sec %s --write_bytes_sec %s' % (cmd_base, cmd.readBandwidth, cmd.writeBandwidth))
-        elif cmd.mode == "read":  # to set read(write reserved, total reset)
-            write_bytes_sec = self._get_volume_bandwidth_value(cmd.vmUuid, device_id, "write")
-            shell.call('%s --read_bytes_sec %s --write_bytes_sec %s' % (cmd_base, cmd.readBandwidth, write_bytes_sec))
-        elif cmd.mode == "write":  # to set write(read reserved, total reset)
-            read_bytes_sec = self._get_volume_bandwidth_value(cmd.vmUuid, device_id, "read")
-            shell.call('%s --read_bytes_sec %s --write_bytes_sec %s' % (cmd_base, read_bytes_sec, cmd.writeBandwidth))
+        if cmd.limitType == "bandwidth":
+            self._do_set_volume_bandwidth(cmd, device_id)
+        elif cmd.limitType == "iops":
+            self._do_set_volume_iops(cmd, device_id)
+        else:
+            rsp.success = False
+            rsp.error = "Unknown qos limit type."
 
         return jsonobject.dumps(rsp)
 
-    @kvmagent.replyerror
-    def delete_volume_bandwidth(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = kvmagent.AgentResponse()
-        vm = get_vm_by_uuid(cmd.vmUuid)
-        _, device_id = vm._get_target_disk(cmd.volume)
-
-        ## total and read/write of bytes_sec cannot be set at the same time
-        ## http://confluence.zstack.io/pages/viewpage.action?pageId=42599772#comment-42600879
+    def _do_delete_volume_bandwidth(self, cmd, device_id):
         cmd_base = "virsh blkdeviotune %s %s" % (cmd.vmUuid, device_id)
         is_total_mode = self._get_volume_bandwidth_value(cmd.vmUuid, device_id, "total") != "0"
         if cmd.mode == "all":  # to delete all(read/write reset)
@@ -4954,6 +4980,35 @@ class VmPlugin(kvmagent.KvmAgent):
                 read_bytes_sec = self._get_volume_bandwidth_value(cmd.vmUuid, device_id, "read")
                 shell.call('%s --read_bytes_sec %s --write_bytes_sec 0' % (cmd_base, read_bytes_sec))
 
+    def _do_delete_volume_iops(self, cmd, device_id):
+        cmd_base = "virsh blkdeviotune %s %s" % (cmd.vmUuid, device_id)
+        is_total_mode = self._get_volume_iops_value(cmd.vmUuid, device_id, "total") != "0"
+        if cmd.mode == "all":
+            shell.call('%s --total_iops_sec 0' % cmd_base)
+        elif cmd.mode == "total":
+            if is_total_mode:
+                shell.call('%s --total_bytes_sec 0' % cmd_base)
+        elif cmd.mode == "read":
+            if not is_total_mode:
+                write_iops_sec = self._get_volume_iops_value(cmd.vmUuid, device_id, "write")
+                shell.call('%s --read_iops_sec 0 --write_iops_sec %s' % (cmd_base, write_iops_sec))
+        elif cmd.mode == "write":
+            if not is_total_mode:
+                read_iops_sec = self._get_volume_iops_value(cmd.vmUuid, device_id, "read")
+                shell.call('%s --read_iops_sec %s --write_iops_sec 0' % (cmd_base, read_iops_sec))
+
+    @kvmagent.replyerror
+    def delete_volume_bandwidth(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+        vm = get_vm_by_uuid(cmd.vmUuid)
+        _, device_id = vm._get_target_disk(cmd.volume)
+
+        ## total and read/write of bytes_sec cannot be set at the same time
+        ## http://confluence.zstack.io/pages/viewpage.action?pageId=42599772#comment-42600879
+        self._do_delete_volume_bandwidth(cmd, device_id)
+        self._do_delete_volume_iops(cmd, device_id)
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -4963,14 +5018,28 @@ class VmPlugin(kvmagent.KvmAgent):
         vm = get_vm_by_uuid(cmd.vmUuid)
         _, device_id = vm._get_target_disk(cmd.volume)
 
-        cmd_base = "virsh blkdeviotune %s %s" % (cmd.vmUuid, device_id)
-        bandWidth = shell.call('%s | grep -w total_bytes_sec | awk \'{print $2}\'' % cmd_base).strip()
-        bandWidthRead = shell.call('%s | grep -w read_bytes_sec | awk \'{print $3}\'' % cmd_base).strip()
-        bandWidthWrite = shell.call('%s | grep -w write_bytes_sec | awk \'{print $2}\'' % cmd_base).strip()
-
-        rsp.bandWidth = bandWidth if long(bandWidth) > 0 else -1
-        rsp.bandWidthWrite = bandWidthWrite if long(bandWidthWrite) > 0 else -1
-        rsp.bandWidthRead = bandWidthRead if long(bandWidthRead) > 0 else -1
+        io_tune_info = shell.call('virsh blkdeviotune %s %s' % (cmd.vmUuid, device_id))
+        for io_tune in io_tune_info.splitlines():
+            info = io_tune.split(':')
+            k = info[0]
+            if k.startswith("total_bytes_sec"):
+                v = info[1].strip()
+                rsp.bandWidth = v if long(v) > 0 else -1
+            elif k.startswith("read_bytes_sec"):
+                v = info[1].strip()
+                rsp.bandWidthRead = v if long(v) > 0 else -1
+            elif k.startswith("write_bytes_sec"):
+                v = info[1].strip()
+                rsp.bandWidthWrite = v if long(v) > 0 else -1
+            elif k.startswith("total_iops_sec"):
+                v = info[1].strip()
+                rsp.iopsTotal = v if long(v) > 0 else -1
+            elif k.startswith("read_iops_sec"):
+                v = info[1].strip()
+                rsp.iopsRead = v if long(v) > 0 else -1
+            elif k.startswith("write_iops_sec"):
+                v = info[1].strip()
+                rsp.iopsWrite = v if long(v) > 0 else -1
 
         return jsonobject.dumps(rsp)
 
