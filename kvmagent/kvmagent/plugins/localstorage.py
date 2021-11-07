@@ -15,6 +15,7 @@ from zstacklib.utils import rollback
 from zstacklib.utils.bash import *
 from zstacklib.utils.report import *
 from zstacklib.utils.plugin import completetask
+from zstacklib.utils import secret
 
 logger = log.get_logger(__name__)
 
@@ -147,6 +148,12 @@ class CreateVolumeWithBackingRsp(AgentResponse):
         self.actualSize = None
 
 
+class GetQcow2HashValueRsp(AgentResponse):
+    def __init__(self):
+        super(GetQcow2HashValueRsp, self).__init__()
+        self.hashValue = None
+
+
 class LocalStoragePlugin(kvmagent.KvmAgent):
     INIT_PATH = "/localstorage/init"
     GET_PHYSICAL_CAPACITY_PATH = "/localstorage/getphysicalcapacity"
@@ -186,6 +193,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/localstorage/kvmhost/download"
     CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/localstorage/kvmhost/download/cancel"
     GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH = "/localstorage/kvmhost/download/progress"
+    GET_QCOW2_HASH_VALUE_PATH = "/localstorage/getqcow2hash"
 
     LOCAL_NOT_ROOT_USER_MIGRATE_TMP_PATH = "primary_storage_tmp_dir"
 
@@ -229,6 +237,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.download_from_kvmhost)
         http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
         http_server.register_async_uri(self.GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH, self.get_download_bits_from_kvmhost_progress)
+        http_server.register_async_uri(self.GET_QCOW2_HASH_VALUE_PATH, self.get_qcow2_hashvalue)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -912,8 +921,13 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         for src_file, dst_file in src_dst_dict.iteritems():
             linux.link(src_file, dst_file)
 
+    @kvmagent.replyerror
+    def get_qcow2_hashvalue(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetQcow2HashValueRsp()
 
-
+        rsp.hashValue = secret.get_image_hash(cmd.installPath)
+        return jsonobject.dumps(rsp)
 
 
 

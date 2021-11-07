@@ -22,6 +22,7 @@ from zstacklib.utils import traceable_shell
 from zstacklib.utils.report import *
 from zstacklib.utils.plugin import completetask
 import zstacklib.utils.uuidhelper as uuidhelper
+from zstacklib.utils import secret
 
 logger = log.get_logger(__name__)
 LOCK_FILE = "/var/run/zstack/sharedblock.lock"
@@ -172,6 +173,12 @@ class ShrinkSnapShotRsp(AgentRsp):
         self.size = None
 
 
+class GetQcow2HashValueRsp(AgentRsp):
+    def __init__(self):
+        super(GetQcow2HashValueRsp, self).__init__()
+        self.hashValue = None
+
+
 def translate_absolute_path_from_install_path(path):
     if path is None:
         raise Exception("install path can not be null")
@@ -307,6 +314,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     CONFIG_FILTER_PATH = "/sharedblock/disks/filter"
     CONVERT_VOLUME_FORMAT_PATH = "/sharedblock/volume/convertformat"
     SHRINK_SNAPSHOT_PATH = "/sharedblock/snapshot/shrink"
+    GET_QCOW2_HASH_VALUE_PATH = "/sharedblock/getqcow2hash"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -343,6 +351,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CONVERT_VOLUME_FORMAT_PATH, self.convert_volume_format)
         http_server.register_async_uri(self.GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH, self.get_download_bits_from_kvmhost_progress)
         http_server.register_async_uri(self.SHRINK_SNAPSHOT_PATH, self.shrink_snapshot)
+        http_server.register_async_uri(self.GET_QCOW2_HASH_VALUE_PATH, self.get_qcow2_hashvalue)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -1426,4 +1435,13 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp.oldSize = old_size
         rsp.size = size
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def get_qcow2_hashvalue(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetQcow2HashValueRsp()
+        abs_path = translate_absolute_path_from_install_path(cmd.installPath)
+
+        rsp.hashValue = secret.get_image_hash(abs_path)
         return jsonobject.dumps(rsp)
