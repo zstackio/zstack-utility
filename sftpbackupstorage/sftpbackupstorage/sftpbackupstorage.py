@@ -9,6 +9,7 @@ from zstacklib.utils import jsonobject
 from zstacklib.utils import shell
 from zstacklib.utils import daemon
 from zstacklib.utils.bash import *
+from zstacklib.utils import secret
 import functools
 import urlparse
 import traceback
@@ -163,6 +164,12 @@ class GetLocalFileSizeRsp(AgentResponse):
         self.size = None
 
 
+class GetImageHashRsp(AgentResponse):
+    def __init__(self):
+        super(GetImageHashRsp, self).__init__()
+        self.hash = None
+
+
 def replyerror(func):
     @functools.wraps(func)
     def wrap(*args, **kwargs):
@@ -199,6 +206,7 @@ class SftpBackupStorageAgent(object):
     GET_IMAGES_METADATA = "/sftpbackupstorage/getimagesmetadata"
     GET_IMAGE_SIZE = "/sftpbackupstorage/getimagesize"
     GET_LOCAL_FILE_SIZE = "/sftpbackupstorage/getlocalfilesize"
+    GET_IMAGE_HASH = "/sftpbackupstorage/gethash"
     JOB_CANCEL = "/job/cancel"
 
     IMAGE_TEMPLATE = 'template'
@@ -541,6 +549,14 @@ class SftpBackupStorageAgent(object):
         rsp = AgentResponse()
         return jsonobject.dumps(plugin.cancel_job(cmd, rsp))
 
+    @replyerror
+    def get_image_hash(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetImageHashRsp()
+
+        rsp.hash = secret.get_image_hash(cmd.path)
+        return jsonobject.dumps(rsp)
+
     def __init__(self):
         '''
         Constructor
@@ -561,6 +577,7 @@ class SftpBackupStorageAgent(object):
         self.http_server.register_async_uri(self.GET_IMAGE_SIZE, self.get_image_size)
         self.http_server.register_async_uri(self.GET_LOCAL_FILE_SIZE, self.get_local_file_size)
         self.http_server.register_async_uri(self.JOB_CANCEL, self.cancel)
+        self.http_server.register_async_uri(self.GET_IMAGE_HASH, self.get_image_hash)
         self.storage_path = None
         self.uuid = None
 
