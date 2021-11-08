@@ -14,6 +14,7 @@ from zstacklib.utils import lvm
 from zstacklib.utils import bash
 from zstacklib.utils import linux
 from zstacklib.utils import thread
+from zstacklib.utils import misc
 
 logger = log.get_logger(__name__)
 
@@ -607,13 +608,13 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
     @bash.in_bash
     def get_bus_number(self):
-        r, megaraid_info, e = bash.bash_roe("smartctl --scan | grep 'megaraid_disk_00\], SCSI device'")
+        r, megaraid_info, e = bash.bash_roe("smartctl --scan | grep -E 'megaraid_disk_[0-9]+\], SCSI device'")
         if r != 0:
             raise Exception("failed to get bus info")
         
         # get megaraid_info like following 
         # /dev/bus/0 -d megaraid,0 # /dev/bus/0 [megaraid_disk_00], SCSI device
-        return int(megaraid_info.split(" ")[0][-1])
+        return int(megaraid_info.split("\n")[0].split(" ")[0][-1])
             
     @kvmagent.replyerror
     @bash.in_bash
@@ -705,16 +706,21 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     def get_megaraid_devices(self, smart_scan_result):
         # type: (str) -> list[RaidPhysicalDriveStruct]
         result = []
-        r, raid_info = bash.bash_ro("/opt/MegaRAID/MegaCli/MegaCli64 -LdPdInfo -aALL")
-        if r != 0:
+        r1, raid_info = bash.bash_ro("/opt/MegaRAID/MegaCli/MegaCli64 -LdPdInfo -aALL")
+        r2, device_info = bash.bash_ro("/opt/MegaRA ID/MegaCli/MegaCli64 -PDList -aAll")
+        if r1 != 0 or r2 != 0:
             return result
         for line in smart_scan_result.splitlines():
             if line.strip() == "":
                 continue
             d = self.get_raid_device_info(line, raid_info)
+            if d.wwn is None or d.raidControllerSasAddreess is None:
+                d = self.get_raid_device_info(line, device_info)
             if d.wwn is not None and d.raidControllerSasAddreess is not None:
                 result.append(d)
-        result.extend(self.get_missing(result))
+        
+        if misc.isMiniHost():
+            result.extend(self.get_missing(result))
         return result
 
     @bash.in_bash
@@ -778,7 +784,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         line = line.split(" #")[0]
         d = RaidPhysicalDriveStruct()
         r, o = bash.bash_ro("smartctl -i %s " % line)
-        if r != 0:
+        if r != 0 and misc.isMiniHost():
             logger.warn("can not get device %s info" % line)
             return d
         d.deviceId = int(line.split("megaraid,")[-1].strip())
@@ -794,11 +800,11 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 d.wwn = v.replace(" ", "")
             elif "user capacity" in k:
                 d.size = int(v.split(" bytes")[0].strip().replace(",", ""))
-            elif "rotation rate" in k:
+            elif "rotation rate" in k and "solid state device" not in v.strip().lower():
                 d.rotationRate = int(v.split(" rpm")[0].strip())
 
         in_correct_pd = False
-        adapter = raid_level = enclosure_device_id = slot_number = disk_group = None
+        adapter = raid_level = enclosure_device_id = slot_number = disk_group = wwn = size = None
         for l in raid_info.splitlines():
             k = l.split(":")[0].lower()
             v = ":".join(l.split(":")[1:]).strip()
@@ -817,8 +823,19 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             elif "drive's position" in k:
                 disk_group = int(v.lower().split("diskgroup: ")[1].split(",")[0])
                 continue
-            elif "wwn" in k and v.lower() == d.wwn.lower():
+            elif "device id" in k and int(v) == d.deviceId:
                 in_correct_pd = True
+                continue
+            elif "wwn" in k and d.wwn is None:
+                wwn = v.lower()
+                continue
+            elif "raw size" in k and d.size == 0:
+                if "TB" in v:
+                    size = int(float(v.split(" TB")[0].strip()) * 1024 * 1024 * 1024 * 1024)
+                elif "GB" in v:
+                    size = int(float(v.split(" GB")[0].strip()) * 1024 * 1024 * 1024)
+                elif "MB" in v:
+                    size = int(float(v.split(" MB")[0].strip()) * 1024 * 1024)
                 continue
 
             if in_correct_pd is True and "drive has flagged" in k:
@@ -827,9 +844,15 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 d.slotNumber = slot_number
                 d.diskGroup = disk_group
                 d.raidControllerNumber = adapter
+                d.wwn = wwn if d.wwn is None else d.wwn
+                d.size = size if d.size == 0 else d.size
 
                 d.raidControllerProductName, d.raidControllerSasAddreess = self.get_raid_controller_info(adapter)
                 return d
+            elif in_correct_pd is False and "drive has flagged" in k:
+                disk_group = None
+                continue
+
             if in_correct_pd is False:
                 continue
 
