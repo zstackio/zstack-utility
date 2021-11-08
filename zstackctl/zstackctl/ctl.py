@@ -505,7 +505,7 @@ def check_host_password(password, ip):
               "disabled UseDNS in '/etc/ssh/sshd_config' on %s" % (ip, password, ip))
 
 def check_host_connection_with_key(ip, user="root", private_key="", remote_host_port='22'):
-    command ='timeout 5 sshpass ssh -p %s %s@%s echo ""' % (remote_host_port, user, ip)
+    command ='timeout 5 sshpass ssh -o StrictHostKeyChecking=no -p %s %s@%s echo ""' % (remote_host_port, user, ip)
     (status, stdout, stderr) = shell_return_stdout_stderr(command)
     if status != 0:
         error("Connect to host: '%s' with private key: '%s' failed, please transfer your public key "
