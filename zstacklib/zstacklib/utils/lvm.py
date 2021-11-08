@@ -782,7 +782,7 @@ def get_all_vg_size():
     # type: () -> dict[str, tuple[int, int]]
     d = {}
 
-    o = bash.bash_o("vgs --nolocking %s --noheadings --separator : --units b -o name,vg_size,vg_free,vg_lock_type")
+    o = bash.bash_o("vgs --nolocking --noheadings --separator : --units b -o name,vg_size,vg_free,vg_lock_type")
     if not o:
         return d
 

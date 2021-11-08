@@ -607,12 +607,13 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
     @bash.in_bash
     def get_bus_number(self):
-        r, megaraid_info, e = bash.bash_roe("smartctl --scan | grep 'megaraid_disk_00\], SCSI device'")
+        r, megaraid_info, e = bash.bash_roe("smartctl --scan | grep 'megaraid_disk_..\], SCSI device'")
         if r != 0:
             raise Exception("failed to get bus info")
         
         # get megaraid_info like following 
         # /dev/bus/0 -d megaraid,0 # /dev/bus/0 [megaraid_disk_00], SCSI device
+        # output is might be multiple lines, use the number from the first line.
         return int(megaraid_info.split(" ")[0][-1])
             
     @kvmagent.replyerror
