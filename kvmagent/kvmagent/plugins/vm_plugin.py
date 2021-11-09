@@ -4940,7 +4940,7 @@ class VmPlugin(kvmagent.KvmAgent):
         elif cmd.mode == "read":
             write_iops_sec = self._get_volume_iops_value(cmd.vmUuid, device_id, "write")
             shell.call('%s --read_iops_sec %s --write_iops_sec %s' % (cmd_base, cmd.readIOPS, write_iops_sec))
-        elif cmd.mode == "wirte":
+        elif cmd.mode == "write":
             read_iops_sec = self._get_volume_iops_value(cmd.vmUuid, device_id, "read")
             shell.call('%s --read_iops_sec %s --write_iops_sec %s' % (cmd_base, read_iops_sec, cmd.writeIOPS))
 
@@ -5021,24 +5021,21 @@ class VmPlugin(kvmagent.KvmAgent):
         io_tune_info = shell.call('virsh blkdeviotune %s %s' % (cmd.vmUuid, device_id))
         for io_tune in io_tune_info.splitlines():
             info = io_tune.split(':')
-            k = info[0]
-            if k.startswith("total_bytes_sec"):
-                v = info[1].strip()
+            if len(info) != 2:
+                continue
+            k = info[0].strip()
+            v = info[1].strip()
+            if k == "total_bytes_sec":
                 rsp.bandWidth = v if long(v) > 0 else -1
-            elif k.startswith("read_bytes_sec"):
-                v = info[1].strip()
+            elif k == "read_bytes_sec":
                 rsp.bandWidthRead = v if long(v) > 0 else -1
-            elif k.startswith("write_bytes_sec"):
-                v = info[1].strip()
+            elif k == "write_bytes_sec":
                 rsp.bandWidthWrite = v if long(v) > 0 else -1
-            elif k.startswith("total_iops_sec"):
-                v = info[1].strip()
+            elif k == "total_iops_sec":
                 rsp.iopsTotal = v if long(v) > 0 else -1
-            elif k.startswith("read_iops_sec"):
-                v = info[1].strip()
+            elif k == "read_iops_sec":
                 rsp.iopsRead = v if long(v) > 0 else -1
-            elif k.startswith("write_iops_sec"):
-                v = info[1].strip()
+            elif k == "write_iops_sec":
                 rsp.iopsWrite = v if long(v) > 0 else -1
 
         return jsonobject.dumps(rsp)
