@@ -843,6 +843,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         with lvm.RecursiveOperateLv(volume_abs_path, shared=cmd.sharedVolume, skip_deactivate_tags=[IMAGE_TAG]):
             if not lvm.lv_exists(install_abs_path):
                 total_size = self.get_total_required_size(volume_abs_path)
+                lvm.update_pv_allocate_strategy(cmd)
                 lvm.create_lv_from_absolute_path(install_abs_path, total_size,
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
             with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
@@ -868,6 +869,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         with lvm.RecursiveOperateLv(volume_abs_path, shared=True, skip_deactivate_tags=[IMAGE_TAG]):
             if not lvm.lv_exists(install_abs_path):
                 total_size = self.get_total_required_size(volume_abs_path)
+                lvm.update_pv_allocate_strategy(cmd)
                 lvm.create_lv_from_absolute_path(install_abs_path, total_size, IMAGE_TAG)
             with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
                 t_shell = traceable_shell.get_shell(cmd)
@@ -913,6 +915,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     def do_download_from_sftp(self, cmd, install_abs_path):
         if not lvm.lv_exists(install_abs_path):
             size = linux.sftp_get(cmd.hostname, cmd.sshKey, cmd.backupStorageInstallPath, install_abs_path, cmd.username, cmd.sshPort, True)
+            lvm.update_pv_allocate_strategy(cmd)
             lvm.create_lv_from_absolute_path(install_abs_path, size,
                                              "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
 
@@ -992,9 +995,9 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         with lvm.RecursiveOperateLv(snapshot_abs_path, shared=True):
             size = linux.qcow2_virtualsize(snapshot_abs_path)
-
+            pe_ranges = lvm.get_lv_affinity_sorted_pvs(snapshot_abs_path, cmd)
             lvm.create_lv_from_cmd(new_volume_path, size, cmd,
-                                             "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
+                                             "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()), pe_ranges=pe_ranges)
             with lvm.OperateLv(new_volume_path, shared=False, delete_when_exception=True):
                 linux.qcow2_clone_with_option(snapshot_abs_path, new_volume_path, qcow2_options)
                 size = linux.qcow2_virtualsize(new_volume_path)
@@ -1010,11 +1013,14 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         snapshot_abs_path = translate_absolute_path_from_install_path(cmd.snapshotInstallPath)
         workspace_abs_path = translate_absolute_path_from_install_path(cmd.workspaceInstallPath)
 
+        lvm.update_pv_allocate_strategy(cmd)
         with lvm.RecursiveOperateLv(snapshot_abs_path, shared=True):
             virtual_size = linux.qcow2_virtualsize(snapshot_abs_path)
             if not lvm.lv_exists(workspace_abs_path):
+                pe_ranges = lvm.get_lv_affinity_sorted_pvs(snapshot_abs_path, cmd)
                 lvm.create_lv_from_absolute_path(workspace_abs_path, virtual_size,
-                                                 "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
+                                                 "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()),
+                                                 pe_range=pe_ranges)
             with lvm.OperateLv(workspace_abs_path, shared=False, delete_when_exception=True):
                 linux.create_template(snapshot_abs_path, workspace_abs_path)
                 rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(workspace_abs_path)
@@ -1045,12 +1051,13 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 with lvm.RecursiveOperateLv(src_abs_path, shared=True):
                     linux.qcow2_rebase(src_abs_path, dst_abs_path)
             else:
-                tmp_lv = 'tmp_%s' % uuidhelper.uuid()
-                tmp_abs_path = os.path.join(os.path.dirname(dst_abs_path), tmp_lv)
+                tmp_abs_path = os.path.join(os.path.dirname(dst_abs_path), 'tmp_%s' % uuidhelper.uuid())
                 logger.debug("creating temp lv %s" % tmp_abs_path)
                 lv_size = max(measure_size, current_size)
+                pe_ranges = lvm.get_lv_affinity_sorted_pvs(dst_abs_path, cmd)
                 lvm.create_lv_from_absolute_path(tmp_abs_path, lv_size,
-                                                 "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
+                                                 "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()),
+                                                 pe_ranges=pe_ranges)
                 with lvm.OperateLv(tmp_abs_path, shared=False, delete_when_exception=True):
                     linux.create_template(dst_abs_path, tmp_abs_path)
                     lvm.lv_rename(tmp_abs_path, dst_abs_path, overwrite=True)
@@ -1132,6 +1139,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 if lvm.lv_exists(temp_path):
                     lvm.delete_lv(temp_path)
 
+                lvm.update_pv_allocate_strategy(cmd)
                 lvm.create_lv_from_absolute_path(temp_path, lv_size)
                 with lvm.OperateLv(temp_path, shared=False, delete_when_exception=True):
                     shell.call('%s -f %s -O %s %s %s' % (qemu_img.subcmd('convert'),
@@ -1211,6 +1219,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         total_size = 0
         migrated_size = 0
 
+        lvm.update_pv_allocate_strategy(cmd)
         for struct in cmd.migrateVolumeStructs:
             target_abs_path = translate_absolute_path_from_install_path(struct.targetInstallPath)
             current_abs_path = translate_absolute_path_from_install_path(struct.currentInstallPath)
