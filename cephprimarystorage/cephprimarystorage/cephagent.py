@@ -1102,10 +1102,7 @@ class CephAgent(plugin.TaskManager):
     def cancel(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentResponse()
-        if not traceable_shell.cancel_job(cmd):
-            rsp.success = False
-            rsp.error = "no matched job to cancel"
-        return jsonobject.dumps(rsp)
+        return jsonobject.dumps(plugin.cancel_job(cmd, rsp))
 
     @replyerror
     def get_download_bits_from_kvmhost_progress(self, req):
