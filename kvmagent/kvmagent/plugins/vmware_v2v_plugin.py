@@ -373,14 +373,20 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
                 for k, v in cmd.extraParams.__dict__.items():
                     extra_params = ' '.join((extra_params, ("--%s" % k), v))
 
+            # if source virtual machine is dual-boot or multi boot
+            # need to set --root to specific one root filesystem for convertion
+            # if no rootFileSystem set, use 'ask' which is default argument
+            # for --root
             if cmd.vddkVersion == '6.5':
                 return 'export PATH={6}:$PATH; \
                         VIRTIO_WIN=/var/lib/zstack/v2v/zstack-windows-virtio-driver.iso \
                         virt-v2v -ic vpx://{0}?no_verify=1 {1} -it vddk \
                         --vddk-libdir=/var/lib/zstack/v2v/vmware-vix-disklib-distrib \
                         --vddk-thumbprint={3} -o local -os {2} --password-file {2}/passwd {5} \
+                        --root {7} \
                         -of {4} > {2}/virt_v2v_log 2>&1'.format(cmd.srcVmUri, shellquote(cmd.srcVmName), storage_dir,
-                                                                cmd.thumbprint, cmd.format, extra_params, self._get_nbdkit_dir_path())
+                                                                cmd.thumbprint, cmd.format, extra_params, self._get_nbdkit_dir_path(),
+                                                                cmd.rootFileSystem if cmd.rootFileSystem else 'ask')
             if cmd.vddkVersion == '5.5':
                 if not self._ndbkit_is_work():
                     rsp.success = False
