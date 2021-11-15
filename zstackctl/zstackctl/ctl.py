@@ -8707,6 +8707,18 @@ class InstallLicenseCmd(Command):
             scmd = ShellCmd("ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s \"%s\"" % (args.monitor, cmd))
             scmd(True)
 
+        def install_zstack_ukey_license(lpath):
+            ctl.locate_zstack_home()
+            toolsDir = os.path.join(ctl.zstack_home, "WEB-INF", "classes", "tools")
+            utilPath = os.path.join(toolsDir, "zskey-util")
+            machine = platform.machine()
+            if machine == 'aarch64':
+                utilPath = os.path.join(toolsDir, "zskey-util-aarch64")
+            elif machine != 'x86_64':
+                return False
+
+            _, out, _ = shell_return_stdout_stderr("%s verify-and-update %s %d %s" % (utilPath, lpath, 1, "E40744673E5AA53"))
+            return '"status": "ok",' in out
 
         def install_zstack_license(args):
             lpath = expand_path(args.license)
@@ -8734,13 +8746,18 @@ class InstallLicenseCmd(Command):
                 shell('''chown -R zstack:zstack %s''' % packaged_license_folder)
                 save_records(license_folder, packaged_license_folder)
                 info("successfully installed the license files to %s" % packaged_license_folder)
-            else:
+            elif shell_return('grep -q "MIME-Version:" %s' % lpath) == 0:
                 license_file_name = "license_" + uuid.uuid4().hex
                 license_path = '%s/%s' % (license_folder, license_file_name)
                 shell('''yes | cp %s %s''' % (lpath, license_path))
                 shell('''chown zstack:zstack %s''' % license_path)
                 save_records(license_folder, license_path)
                 info("successfully installed the license file to %s" % license_path)
+            else: # might be USB-key license
+                if install_zstack_ukey_license(lpath):
+                    info("successfully updated the USB-key license")
+                else:
+                    info("unexpected license file")
 
             if ppath:
                 shell('''yes | cp %s %s/pri.key''' % (ppath, license_folder))
