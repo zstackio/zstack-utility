@@ -3638,9 +3638,7 @@ echo_upgrade_local_repo_use_iso() {
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
 
     fail "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n"\
-        "Please download ISO from the following links and update you local repo\n" \
-        "ISO and bin http://storage.zstack.io/mirror/\n" \
-        "only update repo use: bash ${PRODUCT_NAME,,}-upgrade -r PATH_TO_LATEST_ZSTACK_ISO\n"
+        "Please download ISO and update you local repo\n"
 }
 
 echo_custom_pcidevice_xml_warning_if_need() {
