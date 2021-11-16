@@ -231,10 +231,8 @@ def is_slave_of_multipath(dev_path):
     if is_multipath_running() is False:
         return False
 
-    r = bash.bash_r("multipath %s -l | grep policy" % dev_path)
-    if r == 0:
-        return True
-    return False
+    r = bash.bash_r("multipath -c %s" % dev_path)
+    return r == 0
 
 
 def is_slave_of_multipath_list(dev_path, slave_multipath, is_multipath_running_sign):
