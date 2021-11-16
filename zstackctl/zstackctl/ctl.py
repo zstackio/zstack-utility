@@ -8718,7 +8718,11 @@ class InstallLicenseCmd(Command):
                 return False
 
             _, out, _ = shell_return_stdout_stderr("%s verify-and-update %s %d %s" % (utilPath, lpath, 1, "E40744673E5AA53"))
-            return '"status": "ok",' in out
+            if '"status": "ok",' not in out:
+                return False
+
+            jobj = simplejson.loads(out)
+            return bool(jobj.get("license"))
 
         def install_zstack_license(args):
             lpath = expand_path(args.license)
