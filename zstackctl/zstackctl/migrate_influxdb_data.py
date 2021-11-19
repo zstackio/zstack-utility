@@ -259,11 +259,13 @@ class DBUtil:
 mysql_client = DBUtil()
 
 
-def parse_utc_str_to_timestamp(utc_str):
+def parse_utc_str_to_timestamp(utc_str, time_zone=datetime.timedelta(0, 0)):
     try:
         datetime_obj = datetime.datetime.strptime(utc_str, "%Y-%m-%dT%H:%M:%S.%fZ")
+        datetime_obj = datetime_obj + time_zone
     except ValueError:
         datetime_obj = datetime.datetime.strptime(utc_str, "%Y-%m-%dT%H:%M:%SZ")
+        datetime_obj = datetime_obj + time_zone
     return long(time.mktime(datetime_obj.timetuple()) * 1000.0 + datetime_obj.microsecond / 1000.0)
 
 
@@ -286,6 +288,7 @@ class AuditsVO:
         self.column = ['createTime', 'apiName', 'clientBrowser', 'clientIp', 'duration', 'error', 'operator',
                        'requestDump', 'resourceType', 'resourceUuid', 'requestUuid',
                        'operatorAccountUuid', 'responseDump', 'success']
+        self.time_zone = get_mysql_timezone()
 
     def process_influxdb_data(self, data):
         if data.has_key("requestDump"):
@@ -309,7 +312,7 @@ class AuditsVO:
         if not data.get("success"):
             data['success'] = 1
         if data.has_key("time"):
-            data['createTime'] = parse_utc_str_to_timestamp(data.get('time'))
+            data['createTime'] = parse_utc_str_to_timestamp(data.get('time'), self.time_zone)
         return data
 
     def process_mysql_data(self, mysql_columns):
@@ -328,6 +331,7 @@ class EventRecordsVO:
                                 `labels`, `namespace`,`readStatus`,`resourceId`,`resourceName`, 
                                 `subscriptionUuid`, `hour`) 
                                 values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+        self.time_zone = get_mysql_timezone()
 
     def process_influxdb_data(self, data):
         label_map = {i: data[i] for i in data if ':::' in i and data[i] != None}
@@ -341,7 +345,7 @@ class EventRecordsVO:
             data['readStatus'] = ""
 
         if data.has_key("time"):
-            data['createTime'] = parse_utc_str_to_timestamp(data.get('time'))
+            data['createTime'] = parse_utc_str_to_timestamp(data.get('time'), self.time_zone)
         return data
 
     def process_mysql_data(self, mysql_columns):
@@ -369,6 +373,7 @@ class AlarmRecordsVO:
                              `emergencyLevel`,`labels`,`metricName`, `metricValue`, `namespace`, `period`, 
                              `readStatus`, `resourceType`, `resourceUuid`, `threshold`, `hour`) 
                              values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+        self.time_zone = get_mysql_timezone()
 
     def process_influxdb_data(self, data):
         if data.has_key("requestDump"):
@@ -391,7 +396,7 @@ class AlarmRecordsVO:
             data['dataUuid'] = str(uuid.uuid4()).replace('-', '')
 
         if data.has_key("time"):
-            data['createTime'] = parse_utc_str_to_timestamp(data.get('time'))
+            data['createTime'] = parse_utc_str_to_timestamp(data.get('time'), self.time_zone)
 
         return data
 
@@ -513,6 +518,11 @@ class MigrateAction(Thread):
         print "total time: %d" % (end_time - start_time)
 
 
+def get_mysql_timezone():
+    sql = "select timediff(now(),convert_tz(now(),@@session.time_zone,'+00:00'));"
+    return mysql_client.do_select_fetchone(sql)
+
+
 def init(args):
     logger.info("start init migrate task info!")
     def create_mysql_meta_table():
@@ -599,7 +609,7 @@ def rollback():
         influx_last_time = mysql_client.do_select_fetchone(
             "select maxCreateTime from zstack.MigrateInfluxDB where tableName='%s'" % influx_table)
         assert influx_last_time != "", print_red(u"获取influxdb迁移历史数据最近时间失败")
-        last_time_stamp = parse_utc_str_to_timestamp(influx_last_time)
+        last_time_stamp = parse_utc_str_to_timestamp(influx_last_time, time_zone=get_mysql_timezone())
         mysql_client.do_execute("DELETE FROM zstack.%s where createTime <= %d " % (mysql_table, last_time_stamp))
         print_green(u"删除 %s 表中迁移过来的历史数据" % mysql_table)
         count = mysql_client.do_select_fetchone(
