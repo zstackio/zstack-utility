@@ -1,0 +1,175 @@
+#!/bin/sh
+
+SCRIPT_NAME=$0
+
+zprint(){
+    if test x`uname` = x"Darwin"; then
+        echo $@
+    else
+        echo -e $@
+    fi
+}
+
+vercomp(){
+    # returns: $1 > $2: return 0
+    #          $2 < $1: return 1
+    #          $1 = $2: return 2
+    echo -e 'test' | grep -- '-e' > /dev/null
+    not_suuport_e=$?
+    if [[ $not_support_e = 0 ]]; then
+        echo "$1\n$2" | sort --version-sort | head -n1 | grep $2 > /dev/null
+        first_larger=$?
+        echo "$1\n$2" | sort --version-sort | head -n1 | grep $1 > /dev/null
+        second_larger=$?
+    else
+        echo -e "$1\n$2" | sort --version-sort | head -n1 | grep $2 > /dev/null
+        first_larger=$?
+        echo -e "$1\n$2" | sort --version-sort | head -n1 | grep $1 > /dev/null
+        second_larger=$?
+    fi
+    if [[ $first_larger = 0 ]]; then
+        if [[ $second_larger = 0 ]]; then
+            return 2
+        else
+            return 0
+        fi
+    fi
+    return 1
+}
+
+gitconfig(){
+    bold=$(tput bold)
+    normal=$(tput sgr0)
+    if test x$2 = x; then
+        zprint "\033[33mplease specify sub-command: init|clear|search\n\033[0m"
+
+        zprint "search which branches have commits related to ZSTACK-43023: "
+        zprint "\033[34m./$SCRIPT_NAME.sh git search ZSTACK-43023 \033[0m"
+        zprint "\nwill fetch remote by default, you can add --no-update to avoid update, like: "
+        zprint "\033[34m./$SCRIPT_NAME.sh git search ZSTACK-43023 --no-update \033[0m"
+        zprint "\ninit git config(commit msg template and hook): just type:"
+        zprint "\033[34m./$SCRIPT_NAME.sh git init \033[0m"
+        zprint "\nclear git config(commit msg template and hook): just type:"
+        zprint "\033[34m./$SCRIPT_NAME.sh git clear \033[0m"
+        exit 1
+
+    elif test x$2 = x'search'; then
+        update="y"
+        if test x$3 = x; then
+            zprint "\033[33mplease input commit message you want to search\n\033[0m"
+            zprint "search which branches have commits related to ZSTACK-43023: "
+            zprint "\033[34m./runMavenProfile git search ZSTACK-43023 \033[0m"
+            zprint "\nwill fetch remote by default, you can add --no-update to avoid update, like: "
+            zprint "\033[34m./runMavenProfile git search ZSTACK-43023 --no-update \033[0m"
+            exit 1
+        fi
+
+        if test x$4 = x"--no-update"; then
+            update="n"
+        fi
+
+        zprint "============================"
+        if test x$update = x'y'; then
+            zprint "updating repo zstack-utility ..."
+            timeout 20 git fetch --all > /dev/null 2>&1
+        fi
+
+        zprint "searching in repo zstack-utility ..."
+        zprint "============================"
+        sha1s=`git log --oneline --all --grep "$3" | cut -d" " -f1 | tr '\n' ' '`
+        if test x`echo $sha1s|tr -d ' '` = x''; then
+            zprint "\033[33mcan not find any related commits in repo zstack-utility\033[0m"
+        else
+            zprint "\n\033[32mfind commits \033[34m$sha1s\033[0mrelated to \033[34m$3\033[0m \033[0m"
+            for sha1 in $sha1s; do
+                br=`git branch --remote --contains $sha1 | grep -Eo '/[1-5]\.[0-9]+\.[0-9]+.*' | grep -Eo '[1-5].[0-9]+.[0-9]+.*' | grep -v '/'`
+                zprint "\n\033[32mrelase branches with commit \033[34m$sha1\033[0m:\033[0m \n${bold}$br ${normal}"
+            done
+        fi
+
+    elif test x$2 = x'init'; then
+        init_git_config
+    
+    elif test x$2 = x'clear'; then
+        clear_git_config
+
+    else
+        zprint "\033[31mnot support ${bold}\"$2\"${normal} \033[31myet\033[0m"
+    fi
+}
+
+init_git_config() {
+    git config --global commit.verbose true
+
+    message_path=$(git rev-parse --show-toplevel)/.gitconfig/gitmessage
+    hook_dir=$(git rev-parse --show-toplevel)/.gitconfig/hooks
+
+    if [ ! -f $message_path ]; then
+        zprint "\033[33mERROR: can not find git message template at $message_path \033[0m"
+    fi
+
+    if [ ! -d $hook_dir ]; then
+        zprint "\033[33mERROR: can not find git hook at $hook_dir \033[0m"
+    fi
+
+    curr_git_ver=`git version | awk '{print $3}'`
+    vercomp $curr_git_ver 2.9
+    support_config_hook=$?
+
+    if [ $support_config_hook -eq 1 ]; then
+        zprint "\033[33mgit version older than 2.9, would replace git hook in .git rather than config hook path\033[0m"
+        mv $(git rev-parse --show-toplevel)/.git/hooks/prepare-commit-msg $(git rev-parse --show-toplevel)/.git/hooks/prepare-commit-msg.bak.`date +%s` 2>/dev/null
+        mv $(git rev-parse --show-toplevel)/.git/hooks/commit-msg $(git rev-parse --show-toplevel)/.git/hooks/commit-msg.bak.`date +%s` 2>/dev/null
+
+        cp $(git rev-parse --show-toplevel)/.gitconfig/hooks/* $(git rev-parse --show-toplevel)/.git/hooks/
+    else
+        zprint "\033[33mgit version newer than 2.9, would config hook path\033[0m"
+        git config core.hooksPath $(git rev-parse --show-toplevel)/.gitconfig/hooks
+    fi
+
+    git config commit.template $(git rev-parse --show-toplevel)/.gitconfig/gitmessage
+
+    zprint "\033[32mconfig git commit msg template and hook success!\033[0m"
+}
+
+clear_git_config() {
+    curr_git_ver=`git version | awk '{print $3}'`
+    vercomp $curr_git_ver 2.9
+    support_config_hook=$?
+
+    if [ $support_config_hook -eq 1 ]; then
+        rm $(git rev-parse --show-toplevel)/.git/hooks/prepare-commit-msg 2> /dev/null
+        rm $(git rev-parse --show-toplevel)/.git/hooks/commit-msg 2> /dev/null
+    else
+        git config --unset core.hooksPath
+    fi
+    git config --unset commit.template
+
+    zprint "\033[32mclear git commit msg template and hook success!\033[0m"
+}
+
+run_profile() {
+    if test x$1 = x'git'; then
+        gitconfig $@
+    else
+        usage
+    fi
+}
+
+usage() {
+    zprint "\033[33mplease specify sub-command, only support git for now\033[0m\n"
+    zprint "for example: "
+    zprint "\033[34m$0 git\033[0m"
+}
+
+if [ "$#" -eq 0 ]; then
+    zprint "\033[33mno sub-command specified, init git config automatically...\033[0m\n"
+    run_profile git init
+    exit
+fi
+
+if test x$1 = x'help'; then
+    usage
+fi
+
+run_profile $@
