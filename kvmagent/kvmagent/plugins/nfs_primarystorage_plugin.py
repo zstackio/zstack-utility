@@ -23,6 +23,7 @@ from zstacklib.utils import traceable_shell
 from zstacklib.utils.bash import *
 from zstacklib.utils.report import *
 from zstacklib.utils.plugin import completetask
+from zstacklib.utils import secret
 
 logger = log.get_logger(__name__)
 
@@ -182,6 +183,13 @@ class DownloadBitsFromKvmHostRsp(NfsResponse):
         super(DownloadBitsFromKvmHostRsp, self).__init__()
         self.format = None
 
+
+class GetQcow2HashValueRsp(NfsResponse):
+    def __init__(self):
+        super(GetQcow2HashValueRsp, self).__init__()
+        self.hash = None
+
+
 class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     '''
     classdocs
@@ -220,6 +228,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/nfsprimarystorage/kvmhost/download"
     CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/nfsprimarystorage/kvmhost/download/cancel"
     GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH = "/nfsprimarystorage/kvmhost/download/progress"
+    GET_QCOW2_HASH_VALUE_PATH = "/nfsprimarystorage/getqcow2hash"
 
     ERR_UNABLE_TO_FIND_IMAGE_IN_CACHE = "unable to find image in cache"
 
@@ -258,6 +267,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.download_from_kvmhost)
         http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
         http_server.register_async_uri(self.GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH, self.get_download_bits_from_kvmhost_progress)
+        http_server.register_async_uri(self.GET_QCOW2_HASH_VALUE_PATH, self.get_qcow2_hashvalue)
 
         self.mount_path = {}
         self.image_cache = None
@@ -900,3 +910,11 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
 
         for src_file, dst_file in src_dst_dict.iteritems():
             linux.link(src_file, dst_file)
+
+    @kvmagent.replyerror
+    def get_qcow2_hashvalue(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetQcow2HashValueRsp()
+
+        rsp.hash = secret.get_image_hash(cmd.installPath)
+        return jsonobject.dumps(rsp)
