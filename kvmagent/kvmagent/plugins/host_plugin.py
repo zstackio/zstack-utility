@@ -22,6 +22,7 @@ from kvmagent.plugins.imagestore import ImageStoreClient
 from zstacklib.utils import http
 from zstacklib.utils import linux
 from zstacklib.utils import iptables
+from zstacklib.utils import ebtables
 from zstacklib.utils import jsonobject
 from zstacklib.utils import lock
 from zstacklib.utils import sizeunit
@@ -38,6 +39,7 @@ IS_MIPS64EL = host_arch == 'mips64el'
 GRUB_FILES = ["/boot/grub2/grub.cfg", "/boot/grub/grub.cfg", "/etc/grub2-efi.cfg",
               "/etc/grub-efi.cfg", "/boot/efi/EFI/centos/grub.cfg", "/boot/efi/EFI/kylin/grub.cfg"]
 IPTABLES_CMD = iptables.get_iptables_cmd()
+EBTABLES_CMD = ebtables.get_ebtables_cmd()
 
 COLO_QEMU_KVM_VERSION = '/var/lib/zstack/colo/qemu_kvm_version'
 COLO_LIB_PATH = '/var/lib/zstack/colo/'
@@ -648,6 +650,10 @@ class HostPlugin(kvmagent.KvmAgent):
             self.host_socket = None
 
         self.start_write_to_server()
+
+        # remove old rules for vf nic
+        bash_r(EBTABLES_CMD + ' -D FORWARD -j ZSTACK-VF-NICS')
+        bash_r(EBTABLES_CMD + ' -X ZSTACK-VF-NICS')
 
         return jsonobject.dumps(rsp)
 
