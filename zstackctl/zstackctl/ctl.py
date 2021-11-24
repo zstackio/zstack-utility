@@ -835,6 +835,9 @@ class Ctl(object):
         if os.path.getsize(self.properties_file_path) == 0:
             warn('%s: file empty' % self.properties_file_path)
 
+    def is_ctl_env_exists(self):
+        return os.path.exists(SetEnvironmentVariableCmd.PATH)
+
     def get_env(self, name):
         env = PropertyFile(SetEnvironmentVariableCmd.PATH)
         return env.read_property(name)
@@ -1899,7 +1902,7 @@ EOF
 
         properties = [l.split('=', 1) for l in ctl.extra_arguments]
         ctl.write_properties(properties)
-        if ctl.is_encrypt_on():
+        if ctl.is_ctl_env_exists() and ctl.is_encrypt_on():
             ctl.set_encrypt_properties()
 
 def get_management_node_pid():
@@ -2313,9 +2316,12 @@ class StartCmd(Command):
             return ctl.get_env(self.SIMULATOR) == 'True'
 
         def check_encrypt_properties():
-            if ctl.is_encrypt_on():
-                if ctl.get_encrypt_properties() != ctl.encrypt_properties():
-                    raise CtlError('zstack.properties is Integrity error')
+            if not ctl.is_ctl_env_exists() or not ctl.is_encrypt_on():
+                return
+
+            if ctl.get_encrypt_properties() != ctl.encrypt_properties():
+                raise CtlError('zstack.properties is Integrity error')
+                
 
         def encrypt_properties_if_need():
             cipher = AESCipher()
