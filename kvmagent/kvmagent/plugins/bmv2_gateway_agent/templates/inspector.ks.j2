@@ -155,10 +155,12 @@ def get_nic_info():
 def get_disk_info():
     block_devs = []
 
-    cmd = 'lsblk --nodeps --byte --output size,rota,type'
+    cmd = 'lsblk --nodeps --byte --output size,rota,type,wwn'
     _, stdout, _ = shell_cmd(cmd)
     for line in stdout.split('\n')[1:]:
-        size, rotation, type = line.split()
+        if len(line.split()) != 4:
+            continue
+        size, rotation, type, wwn = line.split()
 
         if type.lower() != 'disk':
             continue
@@ -167,7 +169,8 @@ def get_disk_info():
 
         block_devs.append({
             'diskType': disk_type,
-            'diskSize': size
+            'diskSize': size,
+            'wwn': wwn
         })
 
     return block_devs

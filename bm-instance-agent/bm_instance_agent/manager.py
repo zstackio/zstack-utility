@@ -70,6 +70,7 @@ class AgentManager(object):
             BM_INSTANCE_UUID = instance_obj.uuid
         self._check_uuid_corrent(instance_obj.uuid)
         self.driver.ping(instance_obj)
+        self.driver.discovery_target(instance_obj)
         self._check_gateway_ip(instance_obj)
         return {'ping': {'bmInstanceUuid': BM_INSTANCE_UUID}}
 
