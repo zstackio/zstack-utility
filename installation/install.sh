@@ -3206,11 +3206,6 @@ check_sync_local_repos() {
       echo_hints_to_upgrade_iso
   else
       echo " ... $(tput setaf 3)NOT MATCH$(tput sgr0)" | tee -a $ZSTAC_INSTALL_LOG
-
-      LOCAL_ZSTAC_VERSION=$(awk '{print $NF}' ~zstack/VERSION)
-      if [[ $LOCAL_ZSTAC_VERSION == $VERSION_RELEASE_NR* ]]; then
-          echo_upgrade_local_repo_use_iso
-      fi
   fi
 
 echo_subtitle "Sync from repo.zstack.io (takes a couple of minutes)"
@@ -3223,10 +3218,21 @@ if [ x"$UPGRADE" = x'y' ]; then
 fi
 if [ x"$ZSTACK_RELEASE" = x"c72" -o x"$ZSTACK_RELEASE" = x"c74" -o x"$ZSTACK_RELEASE" = x"c76" ];then
     BASEURL=rsync://rsync.repo.zstack.io/${VERSION_RELEASE_NR}/$BASEARCH/
+    REMOTE_REPO_VERSION_URL=repo.zstack.io/${VERSION_RELEASE_NR}/$BASEARCH/
 else
     BASEURL=rsync://rsync.repo.zstack.io/${VERSION_RELEASE_NR}/
+    REMOTE_REPO_VERSION_URL=repo.zstack.io/${VERSION_RELEASE_NR}/
 fi
 
+LOCAL_ZSTAC_VERSION=$(awk '{print $NF}' $ZSTACK_HOME/VERSION)
+if [[ $LOCAL_ZSTAC_VERSION == $VERSION_RELEASE_NR* ]]; then
+    wget -q -O .remote_repo_version "${REMOTE_REPO_VERSION_URL}${ZSTACK_RELEASE}/.repo_version"
+    if [ -s .remote_repo_version ]; then
+        cmp -s .repo_version .remote_repo_version || echo_upgrade_local_repo_use_iso
+    else
+        fail2 "failed to update repo, can not find remote repo version, please download iso manually to upgrade your repo."
+    fi
+fi
 # it takes about 2 min to compare md5sum of 1800+ files in iso
 for os_release in $cluster_os_type;do
     [ ! -d /opt/zstack-dvd/$BASEARCH/$os_release ] && fail2 "$os_release cluster exists but no local repo matched, please download $os_release iso manually to upgrade your repo."
@@ -3638,6 +3644,7 @@ echo_upgrade_local_repo_use_iso() {
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
 
     fail "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n"\
+        "required repo version($(cat .repo_version)) do not match remote repo version($(cat .remote_repo_version)).\n"\
         "Please download ISO and update you local repo\n"
 }
 
