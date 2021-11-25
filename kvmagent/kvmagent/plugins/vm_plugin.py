@@ -3146,7 +3146,7 @@ class Vm(object):
         raise kvmagent.KvmError("qemu-agent service is not ready in vm...")
 
     def _escape_char_password(self, password):
-        escape_str = "\*\#\(\)\<\>\|\"\'\/\\\$\`\&\{\}"
+        escape_str = "\*\#\(\)\<\>\|\"\'\/\\\$\`\&\{\}\;"
         des = ""
         for c in list(password):
             if c in escape_str:
