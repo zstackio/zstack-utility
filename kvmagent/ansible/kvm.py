@@ -529,7 +529,7 @@ def do_libvirt_qemu_config():
     """special configration"""
 
     # remove libvirt default bridge
-    command = '(ifconfig virbr0 &> /dev/null && virsh net-destroy default > ' \
+    command = '(ip addr show dev virbr0 &> /dev/null && virsh net-destroy default > ' \
               '/dev/null && virsh net-undefine default > /dev/null) || true'
     host_post_info.post_label = "ansible.shell.virsh.destroy.bridge"
     host_post_info.post_label_param = None

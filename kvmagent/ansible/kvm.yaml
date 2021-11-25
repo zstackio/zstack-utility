@@ -93,7 +93,7 @@
       when: chroot_env == 'false' and ansible_os_family == 'RedHat' and is_init == 'true'
 
     - name: remove libvirt default bridge
-      shell: "(ifconfig virbr0 &> /dev/null && virsh net-destroy default > /dev/null && virsh net-undefine default > /dev/null) || true"
+      shell: "(ip addr show dev virbr0 &> /dev/null && virsh net-destroy default > /dev/null && virsh net-undefine default > /dev/null) || true"
 
     - name: disable selinux on RedHat based OS
       when: ansible_os_family == 'RedHat'

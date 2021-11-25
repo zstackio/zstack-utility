@@ -197,6 +197,13 @@ def rm_dir_checked(dpath):
 def process_exists(pid):
     return os.path.exists("/proc/" + str(pid))
 
+def netmask_to_broadcast(ip, netmask):
+    ip = ip.split('.')
+    netmask = netmask.split('.')
+    ip = [int(bin(int(octet)), 2) for octet in ip]
+    netmask = [int(bin(int(octet)), 2) for octet in netmask]
+    broadcast = [(ioctet | ~moctet) & 0xff for ioctet, moctet in zip(ip, netmask)]
+    return ".".join('%s' % n for n in broadcast)
 
 def cidr_to_netmask(cidr):
     cidr = int(cidr)
@@ -1167,7 +1174,7 @@ def set_device_ip(dev, ip, netmask):
         raise LinuxError('cannot find ethernet device %s' % dev)
 
     if not get_device_ip(dev) == ip:
-        shell.call("ifconfig %s %s netmask %s" % (dev, ip, netmask))
+        iproute.add_address(ip, netmask_to_cidr(netmask), 4, dev, broadcast = netmask_to_broadcast(ip, netmask))
 
 def get_device_ip(dev):
     cmd = shell.ShellCmd("ip addr show dev %s|grep inet|grep -v inet6|awk -F'inet' '{print $2}'|awk '{print $1}'|awk -F'/24' '{print $1}'" % dev)
@@ -1582,15 +1589,15 @@ def create_vlan_eth(ethname, vlan, ip=None, netmask=None):
     if not is_network_device_existing(vlan_dev_name):
         shell.call('vconfig add %s %s' % (ethname, vlan))
         if ip:
-            shell.call('ifconfig %s %s netmask %s' % (vlan_dev_name, ip, netmask))
+            iproute.add_address(ip, netmask_to_cidr(netmask), 4, vlan_dev_name, broadcast=netmask_to_broadcast(ip, netmask))
     else:
         if ip is not None and ip.strip() != "" and get_device_ip(vlan_dev_name) != ip:
             # recreate device and configure ip
             delete_vlan_eth(vlan_dev_name)
             shell.call('vconfig add %s %s' % (ethname, vlan))
-            shell.call('ifconfig %s %s netmask %s' % (vlan_dev_name, ip, netmask))
+            iproute.add_address(ip, netmask_to_cidr(netmask), 4, vlan_dev_name, broadcast=netmask_to_broadcast(ip, netmask))
 
-    shell.call('ifconfig %s up' % vlan_dev_name)
+    iproute.set_link_up(vlan_dev_name)
     return vlan_dev_name
 
 
@@ -1704,9 +1711,8 @@ def get_command_by_pid(pid):
     return open(os.path.join('/proc', str(pid), 'cmdline'), 'r').read()
 
 def get_netmask_of_nic(nic_name):
-    netmask = shell.call("ifconfig %s | grep Mask | sed s/^.*Mask://" % nic_name)
-    if not netmask:
-        netmask = shell.call("ifconfig %s | grep netmask|awk -F'netmask' '{print $2}'|awk '{print $1}'" % nic_name)
+    nic_addrs = iproute.query_addresses_by_ifname(nic_name)
+    netmask = cidr_to_netmask(nic_addrs[0].prefixlen)
 
     netmask = netmask.strip()
     if netmask == '':
@@ -1764,20 +1770,20 @@ def create_vip(nic_mac, ip, netmask):
 
     (base_name, dev_id) = find_next_device_id()
     dev_name =  '%s:%s' % (base_name, dev_id)
-    shell.call('ifconfig %s %s netmask %s' % (dev_name, ip, netmask))
-    shell.call('ifconfig %s up' % dev_name)
+    iproute.add_address(ip, netmask_to_cidr(netmask), 4, dev_name, broadcast=netmask_to_broadcast(ip, netmask))
+    iproute.set_link_up(dev_name)
     #arping(dev_name, ip)
 
 def delete_vip_by_ip_if_exists(vip):
     nic_name = get_nic_name_by_ip(vip)
     if nic_name:
-        shell.call('ifconfig %s down' % nic_name)
+        iproute.set_link_down(nic_name)
 
 def delete_vip_by_ip(vip):
     nic_name = get_nic_name_by_ip(vip)
     if not nic_name:
         raise LinuxError('cannot find nic having ip[%s]' % vip)
-    shell.call('ifconfig %s down' % nic_name)
+    iproute.set_link_down(nic_name)
 
 def listPath(path):
     if os.path.isabs(path):

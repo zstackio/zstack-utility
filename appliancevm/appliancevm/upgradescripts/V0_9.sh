@@ -4,7 +4,7 @@
 # now it only binds to the management nic eth0
 
 set -o pipefail
-ipaddr=`/sbin/ifconfig eth0 | grep 'inet addr:' | cut -d: -f2 | awk '{ print $1}'`
+ipaddr=`ip addr show dev eth0 |grep inet|grep -v inet6|awk -F'inet' '{print $2}'|awk '{print $1}'|awk -F'/' '{print $1}'`
 set +o pipefail
 
 grep "^ListenAddress" /etc/ssh/sshd_config >/dev/null
