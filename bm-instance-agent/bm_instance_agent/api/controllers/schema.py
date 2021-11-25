@@ -4,9 +4,10 @@ BM_INSTANCE_BASE_SCHEMA = {
         'uuid': {'type': 'string'},
         'provision_ip': {'type': 'string'},
         'provision_mac': {'type': 'string'},
-        'custom_iqn': {'type': 'string'}
+        'custom_iqn': {'type': 'string'},
+        'provision_type': {'type': 'string'}
     },
-    'required': ['uuid', 'provision_ip', 'provision_mac']
+    'required': ['uuid', 'provision_ip', 'provision_mac', 'provision_type']
 }
 
 

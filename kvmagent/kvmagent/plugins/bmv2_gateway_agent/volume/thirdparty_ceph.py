@@ -64,7 +64,7 @@ class ThirdPartyCephVolume(base.BaseVolume):
             self.instance_obj, self.volume_obj, snat_ip)
         self.instance_obj.customIqn = created_iqn
 
-    def destory_instance_resource(self):
+    def destroy_instance_resource(self):
         instance_gateway_ip = self.instance_obj.gateway_ip
         mon_ip = self.volume_obj.monIp
         snat_ip = linux.find_route_interface_ip_by_destination_ip(mon_ip)

@@ -11,6 +11,9 @@ class SystemDriverBase(object):
     def stop(self, *args, **kwargs):
         raise NotImplementedError()
 
+    def discovery_target(self, *args, **kwargs):
+        raise NotImplementedError()
+
     def attach_volume(self, *args, **kwargs):
         raise NotImplementedError()
 
