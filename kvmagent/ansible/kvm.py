@@ -505,6 +505,11 @@ def copy_lsusb_scripts():
     _dst = "/usr/local/bin/"
     copy_to_remote(_src, _dst, "mode=755", host_post_info)
 
+def copy_ctypes_util():
+    _src = os.path.join(file_root, "ctypes-util.py")
+    _dst = "/usr/lib64/python2.7/ctypes/util.py"
+    copy_to_remote(_src, _dst, None, host_post_info)
+
 @on_redhat_based(distro)
 def copy_zs_scripts():
     """copy zs-xxx from mn_node to host_node"""
@@ -747,6 +752,8 @@ copy_kvm_files()
 copy_gpudriver()
 copy_ovmf_tools()
 copy_lsusb_scripts()
+if LooseVersion(sys.version.split()[0]) >= LooseVersion('2.7.16'):
+    copy_ctypes_util()
 copy_zs_scripts()
 copy_grubaa64_efi()
 create_virtio_driver_directory()
