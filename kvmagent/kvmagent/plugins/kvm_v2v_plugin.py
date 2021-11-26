@@ -464,6 +464,8 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                                 mount_paths,
                                 alternative_mount)
                         runSshCmd(cmd.libvirtURI, cmd.sshPrivKey, cmdstr)
+                    else:
+                        raise ex
 
         def do_blockcopy(cmd, dom, volumes, storage_dir, flags):
             for v in volumes:
