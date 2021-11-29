@@ -943,11 +943,11 @@ class Ctl(object):
             prop.write_property(key, value)
 
     def set_encrypt_env(self):
-        self.put_envs([self.ENCRYPT, 'True'])
+        self.put_envs([(self.ENCRYPT, 'True')])
 
     def set_encrypt_properties(self):
         encrypt = self.encrypt_properties()
-        self.put_envs([self.ENCRYPTPROPERTIES, encrypt])
+        self.put_envs([(self.ENCRYPTPROPERTIES, encrypt)])
 
     def get_encrypt_properties(self):
         return self.get_env(self.ENCRYPTPROPERTIES)
@@ -2053,7 +2053,7 @@ class AESCipher:
 
 class SetEncryptPropertiesCmd(Command):
     def __init__(self):
-        super(StartCmd, self).__init__()
+        super(SetEncryptPropertiesCmd, self).__init__()
         self.name = 'set_properties_encrypt'
         self.description = 'set encrypt zstack.propertites '
         ctl.register_command(self)
@@ -10087,6 +10087,7 @@ def main():
     UiStatusCmd()
     ConfigUiCmd()
     ShowUiCfgCmd()
+    SetEncryptPropertiesCmd()
 
     try:
         ctl.run()
