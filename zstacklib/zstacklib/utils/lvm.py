@@ -1936,11 +1936,13 @@ pv_allocate_strategy = {}  # type:dict
 
 def update_pv_allocate_strategy(cmd):
     global pv_allocate_strategy
+    new_strategy = {}
     if cmd.addons and cmd.addons.allocateStrategy:
         new_strategy = cmd.addons.allocateStrategy.__dict__
-        if cmd.vgUuid not in new_strategy:
-            new_strategy[cmd.vgUuid] = "none"
-        pv_allocate_strategy.update(new_strategy)
+
+    if cmd.vgUuid not in new_strategy:
+        new_strategy[cmd.vgUuid] = "none"
+    pv_allocate_strategy.update(new_strategy)
 
 
 def get_allocated_pvs(vg_name):
