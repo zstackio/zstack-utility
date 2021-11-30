@@ -169,6 +169,7 @@ def deleteImage(path):
         for f in imfFiles:
             filePath = path.replace(".qcow2", f)
             linux.rm_file_force(filePath)
+     linux.rm_file_force('%s.json' % path)
      pdir = os.path.dirname(path)
      linux.rmdir_if_empty(pdir)
 
