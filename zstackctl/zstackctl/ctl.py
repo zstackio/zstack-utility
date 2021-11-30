@@ -278,6 +278,14 @@ def info(*msg):
         out = ''.join(msg)
     sys.stdout.write(out)
 
+def info_and_debug(*msg):
+    if len(msg) == 1:
+        out = '%s\n' % ''.join(msg)
+    else:
+        out = ''.join(msg)
+    sys.stdout.write(out)
+    logger.debug(out)
+
 def get_detail_version():
     detailed_version_file = os.path.join(ctl.zstack_home, "VERSION")
     if os.path.exists(detailed_version_file):
@@ -1485,7 +1493,7 @@ class ShowStatusCmd(Command):
                              % (datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), log_path))
 
             def write_status(status):
-                info('MN status: %s' % status)
+                info_and_debug('MN status: %s' % status)
 
             if not cmd:
                 write_status('cannot detect status, no wget and curl installed')
@@ -1750,7 +1758,7 @@ class DeployUIDBCmd(Command):
         if args.drop:
             drop_mini_db_cmd = ShellCmd(drop_mini_db)
             drop_mini_db_cmd(True)
-        info('Successfully deployed zstack_ui database')
+        info_and_debug('Successfully deployed zstack_ui database')
 
 class TailLogCmd(Command):
     WS_NAME = 'websocketd_aarch64' if Ctl.IS_AARCH64 else 'websocketd'
@@ -1933,16 +1941,16 @@ class StopAllCmd(Command):
 
     def run(self, args):
         def stop_mgmt_node():
-            info(colored('Stopping ZStack management node, it may take a few minutes...', 'blue'))
+            info_and_debug(colored('Stopping ZStack management node, it may take a few minutes...', 'blue'))
             ctl.internal_run('stop_node')
 
         def stop_ui():
             virtualenv = '/var/lib/zstack/virtualenv/zstack-dashboard'
             if not os.path.exists(virtualenv) and not os.path.exists(ctl.ZSTACK_UI_HOME) and not os.path.exists(ctl.MINI_DIR):
-                info('skip stopping web UI, it is not installed')
+                info_and_debug('skip stopping web UI, it is not installed')
                 return
 
-            info(colored('Stopping ZStack web UI, it may take a few minutes...', 'blue'))
+            info_and_debug(colored('Stopping ZStack web UI, it may take a few minutes...', 'blue'))
             ctl.internal_run('stop_ui')
 
         stop_ui()
@@ -1962,7 +1970,7 @@ class StartAllCmd(Command):
 
     def run(self, args):
         def start_mgmt_node():
-            info(colored('Starting ZStack management node, it may take a few minutes...', 'blue'))
+            info_and_debug(colored('Starting ZStack management node, it may take a few minutes...', 'blue'))
             if args.daemon:
                 ctl.internal_run('start_node', '--daemon')
             else:
@@ -2229,7 +2237,7 @@ class StartCmd(Command):
             log_path = os.path.join(ctl.zstack_home, "../../logs/management-server.log")
             shell('chown zstack:zstack %s || true; sudo -u zstack sh %s -DappName=zstack' % (log_path, os.path.join(ctl.zstack_home, self.START_SCRIPT)))
 
-            info("successfully started Tomcat container; now it's waiting for the management node ready for serving APIs, which may take a few seconds")
+            info_and_debug("successfully started Tomcat container; now it's waiting for the management node ready for serving APIs, which may take a few seconds")
 
         def wait_mgmt_node_start():
             log_path = os.path.join(ctl.zstack_home, "../../logs/management-server.log")
@@ -2278,7 +2286,7 @@ class StartCmd(Command):
         def prepareBeanRefContextXml():
             if is_simulator_on():
                 beanXml = "simulator/zstack-simulator2.xml"
-                info("--simulator is set, ZStack will start in simulator mode")
+                info_and_debug("--simulator is set, ZStack will start in simulator mode")
             else:
                 beanXml = "zstack.xml"
 
@@ -2318,7 +2326,7 @@ class StartCmd(Command):
             wait_mgmt_node_start()
         except CtlError as e:
             try:
-                info("the management node failed to start, stop it now ...")
+                info_and_debug("the management node failed to start, stop it now ...")
                 ctl.internal_run('stop_node')
             except:
                 pass
@@ -2327,7 +2335,7 @@ class StartCmd(Command):
 
         if not args.daemon:
             shell('which systemctl >/dev/null 2>&1; [ $? -eq 0 ] && systemctl start zstack', is_exception = False)
-        info('successfully started management node')
+        info_and_debug('successfully started management node')
 
         ctl.delete_env('ZSTACK_UPGRADE_PARAMS')
 
@@ -2376,13 +2384,13 @@ class StopCmd(Command):
 
             shell('bash %s' % os.path.join(ctl.zstack_home, self.STOP_SCRIPT))
             if wait_stop():
-                info('successfully stopped management node')
+                info_and_debug('successfully stopped management node')
                 return
 
         pid = get_management_node_pid()
         if pid:
             if not args.force:
-                info('unable to stop management node within %s seconds, kill it' % timeout)
+                info_and_debug('unable to stop management node within %s seconds, kill it' % timeout)
             with on_error('unable to kill -9 %s' % pid):
                 logger.info('graceful shutdown failed, try to kill management node process:%s' % pid)
                 kill_process(pid, signal.SIGTERM)
