@@ -875,7 +875,7 @@ def is_namespace_used():
     return compare_version(LIBVIRT_VERSION, '1.3.3') >= 0
 
 def is_hv_freq_supported():
-    return compare_version(QEMU_VERSION, '2.12.0') >= 0
+    return compare_version(QEMU_VERSION, '2.12.0') >= 0 and LooseVersion(platform.release()) >= LooseVersion('3.10.0-957')
 
 @linux.with_arch(todo_list=['x86_64'])
 def is_ioapic_supported():
