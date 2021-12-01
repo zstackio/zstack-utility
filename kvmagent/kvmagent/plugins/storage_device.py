@@ -707,7 +707,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         # type: (str) -> list[RaidPhysicalDriveStruct]
         result = []
         r1, raid_info = bash.bash_ro("/opt/MegaRAID/MegaCli/MegaCli64 -LdPdInfo -aALL")
-        r2, device_info = bash.bash_ro("/opt/MegaRA ID/MegaCli/MegaCli64 -PDList -aAll")
+        r2, device_info = bash.bash_ro("/opt/MegaRAID/MegaCli/MegaCli64 -PDList -aAll")
         if r1 != 0 or r2 != 0:
             return result
         for line in smart_scan_result.splitlines():
