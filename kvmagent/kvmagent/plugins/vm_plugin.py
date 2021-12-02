@@ -4543,6 +4543,8 @@ class VmPlugin(kvmagent.KvmAgent):
     FAIL_COLO_PVM_PATH = "/fail/colo/pvm"
     GET_VM_DEVICE_ADDRESS_PATH = "/vm/getdeviceaddress"
 
+    VM_CONSOLE_LOGROTATE_PATH = "/etc/logrotate.d/vm-console-log"
+
     VM_OP_START = "start"
     VM_OP_STOP = "stop"
     VM_OP_REBOOT = "reboot"
@@ -7018,6 +7020,7 @@ host side snapshot files chian:
         self.clean_old_sshfs_mount_points()
         self.register_libvirt_event()
         self.register_qemu_log_cleaner()
+        self.register_vm_console_logrotate_conf()
 
         self.enable_auto_extend = True
         self.auto_extend_size = 1073741824 * 2
@@ -7657,6 +7660,28 @@ host side snapshot files chian:
         
         # first time
         thread.timer(60, qemu_log_cleaner).start()
+
+    def register_vm_console_logrotate_conf(self):
+        if not os.path.exists(self.VM_CONSOLE_LOGROTATE_PATH):
+            content = """/tmp/*-vm-kernel.log {
+        rotate 10
+        missingok
+        copytruncate
+        size 30M
+        compress
+}"""
+            with open(self.VM_CONSOLE_LOGROTATE_PATH, 'w') as f:
+                f.write(content)
+                f.flush()
+                os.fsync(f.fileno())
+            os.chmod(self.VM_CONSOLE_LOGROTATE_PATH, 0o644)
+
+        def vm_console_logRotate():
+            ret = bash.bash_r("logrotate -vf %s" % self.VM_CONSOLE_LOGROTATE_PATH)
+
+            thread.timer(24 * 3600, vm_console_logRotate).start()
+
+        thread.timer(60, vm_console_logRotate).start()
 
     def clean_old_sshfs_mount_points(self):
         mpts = shell.call("mount -t fuse.sshfs | awk '{print $3}'").splitlines()
