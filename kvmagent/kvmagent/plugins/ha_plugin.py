@@ -826,6 +826,12 @@ class HaPlugin(kvmagent.KvmAgent):
                                 heartbeat_counter = 0
                             else:
                                 heartbeat_counter += 1
+
+                            logger.debug('flags: [heartbeat_success: %s, storage_failure: %s, report_storage: %s]'
+                                         % (heartbeat_success,
+                                            ceph_controller.storage_failure,
+                                            ceph_controller.report_storage_status))
+
                             if heartbeat_success and ceph_controller.storage_failure and not ceph_controller.report_storage_status:
                                 # if heartbeat recovered and storage failure has occured before 
                                 # set report_storage_status to False to report fencer recoverd to management node
@@ -837,17 +843,16 @@ class HaPlugin(kvmagent.KvmAgent):
                                     self.report_storage_status([cmd.uuid], 'Disconnected')
                                 else:
                                     self.report_storage_status([cmd.uuid], 'Connected')
-
+                                # after fencer state reported, set fencer_state_reported to False
                                 ceph_controller.report_storage_status = False
 
-                            # after fencer state reported, set fencer_state_reported to False
                             if heartbeat_success:
                                 logger.debug("heartbeat of host:%s on ceph storage:%s pool:%s success" % (cmd.hostUuid, cmd.uuid, pool_name))
                                 # reset failure count after heartbeat succeed
                                 ceph_controller.reset_failure_count()
-                                continue
-
-                            ceph_controller.handle_heartbeat_failure()
+                                # continue
+                            else:
+                                ceph_controller.handle_heartbeat_failure()
 
                 logger.debug('stop self-fencer on pool %s of ceph primary storage' % pool_name)
             except:
@@ -1216,7 +1221,12 @@ class HaPlugin(kvmagent.KvmAgent):
 
     def run_fencer(self, ps_uuid, created_time):
         with self.fencer_lock:
-            if ps_uuid not in self.run_fencer_timestamp or self.run_fencer_timestamp[ps_uuid] > created_time:
+            if ps_uuid not in self.run_fencer_timestamp:
+                logger.debug('ps not in run fencer dict')
+                return False
+            exists_time = self.run_fencer_timestamp[ps_uuid]
+            if exists_time > created_time:
+                logger.debug('exists fencer create time: %d, got create time: %d' % (exists_time, created_time))
                 return False
 
             self.run_fencer_timestamp[ps_uuid] = created_time
@@ -1224,6 +1234,7 @@ class HaPlugin(kvmagent.KvmAgent):
 
     def setup_fencer(self, ps_uuid, created_time):
         with self.fencer_lock:
+            logger.debug('setup fencer for ps: %s, create time: %d' % (ps_uuid, created_time))
             self.run_fencer_timestamp[ps_uuid] = created_time
 
     def cancel_fencer(self, ps_uuid):
