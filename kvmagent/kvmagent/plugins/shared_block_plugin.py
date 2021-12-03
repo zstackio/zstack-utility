@@ -1020,7 +1020,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 pe_ranges = lvm.get_lv_affinity_sorted_pvs(snapshot_abs_path, cmd)
                 lvm.create_lv_from_absolute_path(workspace_abs_path, virtual_size,
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()),
-                                                 pe_range=pe_ranges)
+                                                 pe_ranges=pe_ranges)
             with lvm.OperateLv(workspace_abs_path, shared=False, delete_when_exception=True):
                 linux.create_template(snapshot_abs_path, workspace_abs_path)
                 rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(workspace_abs_path)
