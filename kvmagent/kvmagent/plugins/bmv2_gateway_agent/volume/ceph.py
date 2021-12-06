@@ -48,7 +48,7 @@ class CephVolume(base.BaseVolume):
     def prepare_instance_resource(self):
         pass
 
-    def destory_instance_resource(self):
+    def destroy_instance_resource(self):
         pass
 
     def pre_take_volume_snapshot(self):

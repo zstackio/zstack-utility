@@ -55,7 +55,7 @@ class BmInstanceObj(Base):
     }
     """
 
-    allowed_keys = ['uuid', 'provision_ip', 'provision_mac', 'gateway_ip', 'custom_iqn']
+    allowed_keys = ['uuid', 'provision_ip', 'provision_mac', 'gateway_ip', 'custom_iqn', 'provision_type']
 
     @classmethod
     def from_json(cls, bm_instance):

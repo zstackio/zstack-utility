@@ -66,7 +66,8 @@ class BmInstanceObj(Base):
         'imageUuid': 'image_uuid',
         'gatewayIp': 'gateway_ip',
         'architecture': 'architecture',
-        'customIqn': 'customIqn'
+        'customIqn': 'customIqn',
+        'provisionType': 'provisionType'
     }
 
     @classmethod
