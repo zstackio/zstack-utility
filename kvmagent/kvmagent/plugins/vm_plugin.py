@@ -3344,6 +3344,7 @@ class Vm(object):
     @staticmethod
     def from_StartVmCmd(cmd):
         use_numa = cmd.useNuma
+        numa_nodes = cmd.addons.numaNodes
         machine_type = get_machineType(cmd.machineType)
         if HOST_ARCH == "aarch64" and cmd.bootMode == 'Legacy':
             raise kvmagent.KvmError("Aarch64 does not support legacy, please change boot mode to UEFI instead of Legacy on your VM or Image.")
@@ -3453,10 +3454,20 @@ class Vm(object):
 
                 cpu = eval("on_{}".format(HOST_ARCH))()
                 e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
+                if numa_nodes:
+                    numa = e(cpu, 'numa')
+                    for _, numa_node in enumerate(numa_nodes):
+                        e(numa,'cell', attrib={'id': str(numa_node.nodeID), 'cpus': str(numa_node.cpus), 'memory': str(numa_node.memorySize), 'unit': 'KiB'})
+                        distances = e(numa, 'distances')
+                        for node_index, distance in enumerate(numa_node.distance):
+                            e(distances,'sibling',attrib={'id': str(node_index), 'value':str(distance)})
 
             if cmd.addons.cpuPinning:
                 for rule in cmd.addons.cpuPinning:
                     e(tune, 'vcpupin', attrib={'vcpu': str(rule.vCpu), 'cpuset': rule.pCpuSet})
+
+            if cmd.addons.emulatorPinning:
+                e(tune, 'emulatorpin', attrib={'cpuset': str(cmd.addons.emulatorPinning)})
 
         def make_memory():
             root = elements['root']
@@ -4712,6 +4723,7 @@ class VmPlugin(kvmagent.KvmAgent):
     ROLLBACK_QUORUM_CONFIG_PATH = "/rollback/quorum/config"
     FAIL_COLO_PVM_PATH = "/fail/colo/pvm"
     GET_VM_DEVICE_ADDRESS_PATH = "/vm/getdeviceaddress"
+    SET_EMULATOR_PINNING_PATH = "/vm/emulatorpinning"
 
     VM_OP_START = "start"
     VM_OP_STOP = "stop"
@@ -7298,6 +7310,18 @@ host side snapshot files chian:
 
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    def set_emulator_pinning(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+
+        cmd_base = "virsh emulatorpin %s " % (cmd.uuid)
+        if (cmd.emulatorPinning == "-1") or (cmd.emulatorPinning == "") or (cmd.emulatorPinning is None):
+            shell.call('%s %s' % ("cat /sys/devices/system/cpu/online|xargs", cmd_base))
+        else:
+            shell.call('%s %s' % (cmd_base, cmd.emulatorPinning))
+        return jsonobject.dumps(rsp)
+
     @staticmethod
     def _find_volume_device_address(vm, volumes):
         #  type:(Vm, list[jsonobject.JsonObject]) -> list[VmDeviceAddress]
@@ -7405,6 +7429,7 @@ host side snapshot files chian:
         http_server.register_async_uri(self.ROLLBACK_QUORUM_CONFIG_PATH, self.rollback_quorum_config)
         http_server.register_async_uri(self.FAIL_COLO_PVM_PATH, self.fail_colo_pvm, cmd=FailColoPrimaryVmCmd())
         http_server.register_async_uri(self.GET_VM_DEVICE_ADDRESS_PATH, self.get_vm_device_address)
+        http_server.register_async_uri(self.SET_EMULATOR_PINNING_PATH, self.set_emulator_pinning)
 
         self.clean_old_sshfs_mount_points()
         self.register_libvirt_event()
