@@ -2940,6 +2940,10 @@ class Vm(object):
 
     def hotplug_mem(self, memory_size):
         mem_size = (memory_size - self.get_memory()) / 1024
+        if mem_size == 0:
+            logger.warning('cannot online increase memory with size 0 KB, skip this operate.')
+            return
+
         xml = "<memory model='dimm'><target><size unit='KiB'>%d</size><node>0</node></target></memory>" % mem_size
         logger.debug('hot plug memory: %d KiB' % mem_size)
         try:
