@@ -495,7 +495,9 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             if ret:
                 rsp.error = ret.strip("\n") + ". This may be a bug in vCenter 5.5, please detach ISO in vSphere client and try again"
             else:
-                rsp.error = "failed to run virt-v2v command, log in conversion host: %s" % v2v_log_file
+                err_fmt = linux.filter_file_lines_by_regex(v2v_log_file, '^virt-v2v: error:')[0][16:].strip()
+                rsp.error = "failed to run virt-v2v command, because %s... for more details, please see log in conversion host: %s" % (
+                err_fmt, v2v_log_file)
 
             return jsonobject.dumps(rsp)
 
