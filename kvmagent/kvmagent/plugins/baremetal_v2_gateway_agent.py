@@ -873,7 +873,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                 logger.info("delete invalid ipxe config: %s", path)
                 linux.rm_file_force(path)
 
-    def _create_import_data_config(self, instance_obj, volume_driver, cmd):
+    def _create_import_data_config(self, instance_obj, cmd):
         ks_file_name = instance_obj.provision_mac.replace(':', '-')
         ks_config_path = os.path.join(self.KS_CFG_DIR, ks_file_name)
         template = self._load_template('import-data.ks')
@@ -889,19 +889,13 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         conf = template.render(
             network_inst_uri=network_inst_uri,
             dest_disk_wwn=cmd.destDiskWwn,
-            send_hardware_infos_uri=send_hardware_infos_uri
+            send_hardware_infos_uri=send_hardware_infos_uri,
+            gateway_ip=instance_obj.gateway_ip,
+            instance_uuid=instance_obj.uuid
         )
 
         with open(ks_config_path, 'w') as f:
             f.write(conf)
-
-        volumes = {}
-        uri = 'iscsi:{gw_ip}:::{lun_id}:{target}'.format(
-            gw_ip=self.provision_network_conf.provision_nic_ip,
-            lun_id=volume_driver.iscsi_lun,
-            target=volume_driver.iscsi_target)
-        drive_id = '0x%x' % (128 + volume_driver.iscsi_lun)
-        volumes[uri] = drive_id
 
         inspect_kernel_uri = '../x86_64/vmlinuz'
         inspect_initrd_uri = '../x86_64/initrd.img'
@@ -910,8 +904,6 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
 
         template = self._load_template('local-config.ipxe')
         conf = template.render(
-            iscsi_initiator_iqn=volume_driver.iscsi_acl,
-            volumes=volumes,
             inspect_kernel_uri=inspect_kernel_uri,
             inspect_initrd_uri=inspect_initrd_uri,
             import_data_ks_cfg_uri=import_data_ks_cfg_uri)
@@ -1225,7 +1217,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                 if instance_obj.architecture == 'aarch64':
                     return
                 else:
-                    self._create_import_data_config(instance_obj, volume_driver, cmd)
+                    self._create_import_data_config(instance_obj, cmd)
                 self._create_nginx_agent_proxy_configuration(instance_obj)
             self._create_dnsmasq_host(instance_obj)
 
@@ -1552,12 +1544,12 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                                        self.destroy_network)
         http_server.register_async_uri(self.BM_PREPARE_INSTANCE_PATH,
                                        self.prepare_instance)
-        http_server.register_async_uri(self.BM_PREPARE_CONVERT_VOLUME_PATH,
-                                       self.prepare_convert_volume)
-        http_server.register_async_uri(self.BM_DESTROY_INSTANCE_PATH,
-                                       self.destroy_convert_volume)
         http_server.register_async_uri(self.BM_DESTROY_INSTANCE_PATH,
                                        self.destroy_instance)
+        http_server.register_async_uri(self.BM_PREPARE_CONVERT_VOLUME_PATH,
+                                       self.prepare_convert_volume)
+        http_server.register_async_uri(self.BM_DESTROY_CONVERT_VOLUME_PATH,
+                                       self.destroy_convert_volume)
         http_server.register_async_uri(self.BM_ATTACH_VOLUME_PATH,
                                        self.attach_volume)
         http_server.register_async_uri(self.BM_DETACH_VOLUME_PATH,
