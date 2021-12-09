@@ -5078,10 +5078,9 @@ class DumpMysqlCmd(Command):
             if status != 0:
                 error(stderr)
             file_list = output.split("\n")[:-1]
-            if len(file_list) > amount:
-                new_file_list = [os.path.join(self.remote_backup_dir, x) for x in file_list[:len(file_list)-amount]]
-                need_delete_file_path = " ".join(new_file_list)
-                shell_return_stdout_stderr('ssh -p %s -i %s %s@%s "rm -f %s"' % (remote_host_port, private_key, user,
+            new_file_list = [os.path.join(self.remote_backup_dir, x) for x in file_list[:len(file_list)-amount]]
+            need_delete_file_path = " ".join(new_file_list)
+            shell_return_stdout_stderr('ssh -p %s -i %s %s@%s "rm -f %s"' % (remote_host_port, private_key, user,
                                                                              remote_host_ip, need_delete_file_path))
 
     def run(self, args):
