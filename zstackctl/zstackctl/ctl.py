@@ -2002,7 +2002,9 @@ class StartCmd(Command):
                 '-XX:-OmitStackTraceInFastThrow',
                 '-XX:MaxMetaspaceSize=512m',
                 '-XX:+HeapDumpOnOutOfMemoryError',
-                '-XX:HeapDumpPath=%s' % self.HEAP_DUMP_DIR
+                '-XX:HeapDumpPath=%s' % os.path.join(ctl.zstack_home, self.HEAP_DUMP_DIR),
+                '-XX:+UseAltSigs',
+                '-Dlog4j2.formatMsgNoLookups=true'
             ]
 
             if ctl.extra_arguments:
