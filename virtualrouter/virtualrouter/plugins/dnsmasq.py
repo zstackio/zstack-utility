@@ -297,7 +297,8 @@ class Dnsmasq(virtualrouter.VRAgent):
         rsp = RemoveDhcpEntryRsp()
         try:
             for e in cmd.dhcpEntries:
-                net_dev = shell.call("ifconfig|grep -i %s|awk '{print $1}'" % e.vrNicMac)
+                net_dev = shell.call("ip addr |grep -B 1 -i %s| head -n 1 | awk '{print $2}'" % e.vrNicMac)
+                net_dev = net_dev.replace(':', '')
                 net_dev = net_dev.strip('\t\r\n ')
                 mac2 = e.mac.replace(':', '')
 

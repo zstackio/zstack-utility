@@ -414,7 +414,7 @@ EOF
 device_id="0 1 2 3 4 5 6 7 8 9"
 available_devices=''
 for i in $device_id;do
-    ifconfig eth$i >/dev/null 2>&1
+    ip addr show dev eth$i >/dev/null 2>&1
     if [ $? -eq 0 ];then
         available_devices="$available_devices eth$i"
     fi
@@ -525,7 +525,7 @@ EOF
 device_id="0 1 2 3 4 5 6 7 8 9"
 available_devices=''
 for i in $device_id;do
-    ifconfig eth$i >/dev/null 2>&1
+    ip addr show dev eth$i >/dev/null 2>&1
     if [ $? -eq 0 ];then
         available_devices="$available_devices eth$i"
     fi
