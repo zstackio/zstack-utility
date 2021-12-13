@@ -1761,7 +1761,7 @@ class DeployUIDBCmd(Command):
         info_and_debug('Successfully deployed zstack_ui database')
 
 class TailLogCmd(Command):
-    WS_NAME = 'websocketd_aarch64' if Ctl.IS_AARCH64 else 'websocketd'
+    WS_NAME = 'websocketd' if platform.machine() == 'x86_64' else 'websocketd_%s' % platform.machine()
     WS_PATH = os.path.join(Ctl.ZSTACK_TOOLS_DIR, WS_NAME)
 
     def __init__(self):
