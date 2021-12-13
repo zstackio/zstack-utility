@@ -2276,9 +2276,9 @@ done
                     if temp == "0":
                         continue
                     if "MemTotal" in mem:
-                        size = int(temp)
+                        size = int(temp)*1024
                     if "MemFree:" in mem:
-                        free = int(temp)
+                        free = int(temp)*1024
                 return size, free
 
             @staticmethod
