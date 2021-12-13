@@ -2264,7 +2264,7 @@ def filter_file_lines_by_regex(path, regex):
         lines = []
         with open(path, 'r') as f:
             for line in f:
-                if re.match(regex, line):
+                if re.search(regex, line):
                     lines.append(line)
             return lines
     except IOError as e:
