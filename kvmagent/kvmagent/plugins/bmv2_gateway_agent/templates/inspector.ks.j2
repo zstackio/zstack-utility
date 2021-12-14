@@ -19,6 +19,7 @@ import multiprocessing
 import os
 import sys
 
+PROVISION_NET = "{{ provision_net }}"
 
 units_mapping = {
     'kb': 1024,
@@ -119,19 +120,12 @@ def get_nic_info():
             if 'BOOTIF' in param:
                 pxe_iface_mac = param.split('=')[-1].replace('-', ':')
 
-    if not pxe_iface_mac:
-        _, pxe_iface_name, _ = shell_cmd("ip route | awk '/default/ { print $5 }' | head -n 1")
-        if not pxe_iface_name:
-            _, pxe_iface_name, _ = shell_cmd("ip route | awk '{ print $3 }' | head -n 1")
-        with open("/sys/class/net/%s/address" % pxe_iface_name, 'r') as f:
-            pxe_iface_mac = f.read().strip()
-
     net_devs = []
     for net_dev in os.listdir('/sys/class/net'):
         abspath = os.path.join('/sys/class/net', net_dev)
 
         realpath = os.path.realpath(abspath)
-        if 'virtual' in realpath:
+        if 'virtual' in realpath or (net_dev == 'lo'):
             continue
 
         try:
@@ -141,6 +135,11 @@ def get_nic_info():
             speed = 'UNKNOWN'
         with open(os.path.join(abspath, 'address'), 'r') as f:
             mac_address = f.read().strip()
+
+        rc, _, _ = shell_cmd("""arping -c 5 -I {} {}""".format(net_dev, PROVISION_NET), False)
+        if rc == 0 and not pxe_iface_mac:
+            is_provision_nic = True
+            pxe_iface_mac = mac_address
 
         is_provision_nic = True if mac_address in pxe_iface_mac else False
 
