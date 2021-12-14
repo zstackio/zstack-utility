@@ -16,7 +16,10 @@ host:
      - {name: ebtables-logs, exec: 'ebtables-save'}
      - {name: journalctl-info, exec: 'journalctl -x'}
      - {name: pkg-list, exec: 'rpm -qa | sort'}
-     - {name: host-info, exec: 'uptime && last reboot && free -h && cat /proc/cpuinfo && ip add && df -h'}
+      - {name: host-info, exec: 'uptime && last reboot && free -h && cat /proc/cpuinfo && ip add && df -h &&
+       file_paths=$(ls /sys/devices/system/node|grep node);
+       for file_path in $file_paths; do cat /sys/devices/system/node/$file_path/meminfo; done &&
+       ps ax -eTo ppid,pid,pcpu,pmem,maj_flt,min_flt,tid,vsz,rss,pgid,sid,tty,tgid,stat,uid,lstart,etime,time,command --sort ppid'}
      - {name: qemu-log, dir: /var/log/libvirt/, file: }
      - {name: sar-log, dir: /var/log/sa/, file: 'sa[0-9]*'}
 mn:
@@ -40,7 +43,10 @@ mn:
       - {name: iptables-logs, exec: 'iptables-save'}
       - {name: ebtables-logs, exec: 'ebtables-save'}
       - {name: journalctl-info, exec: 'journalctl -x'}
-      - {name: host-info, exec: 'uptime && last reboot && free -h && cat /proc/cpuinfo && ip add && df -h && file_paths=$(ls /sys/devices/system/node|grep node);for file_path in $file_paths; do cat /sys/devices/system/node/$file_path/meminfo; done'}
+      - {name: host-info, exec: 'uptime && last reboot && free -h && cat /proc/cpuinfo && ip add && df -h &&
+       file_paths=$(ls /sys/devices/system/node|grep node);
+       for file_path in $file_paths; do cat /sys/devices/system/node/$file_path/meminfo; done &&
+       ps ax -eTo ppid,pid,pcpu,pmem,maj_flt,min_flt,tid,vsz,rss,pgid,sid,tty,tgid,stat,uid,lstart,etime,time,command --sort ppid'}
       - {name: pkg-list, exec: 'rpm -qa | sort'}
       - {name: git-commit, dir: $ZSTACK_HOME/../../webapps/zstack/, file: '*git-commit', mode: "All"}
       - {name: zstack-logs, dir: /var/log/zstack/, file: zstack.log*}
@@ -58,6 +64,7 @@ vrouter:
       - {name: vrouter-log, dir: /home/vyos/zvr/, file: }
       - {name: iptables-logs, exec: 'iptables-save'}
       - {name: host-info, exec: 'uptime && last reboot && free && cat /proc/cpuinfo && ip add && ip route && df -h'}
+      - {name: ps-info, exec: 'ps ax -eTo ppid,pid,pcpu,pmem,maj_flt,min_flt,tid,vsz,rss,pgid,sid,tty,stat,uid,lstart,etime,time,command --sort ppid' }
       - {name: haproxy-log, dir: /var/log/, file: 'haproxy.log'}
 ceph-bs:
     description: ceph backstorage
@@ -71,7 +78,10 @@ ceph-bs:
       - {name: iptables-logs, exec: 'iptables-save'}
       - {name: ebtables-logs, exec: 'ebtables-save'}
       - {name: journalctl-info, exec: 'journalctl -x'}
-      - {name: host-info, exec: 'uptime && last reboot && free -h && cat /proc/cpuinfo && ip add && df -h'}
+      - {name: host-info, exec: 'uptime && last reboot && free -h && cat /proc/cpuinfo && ip add && df -h &&
+       file_paths=$(ls /sys/devices/system/node|grep node);
+       for file_path in $file_paths; do cat /sys/devices/system/node/$file_path/meminfo; done &&
+       ps ax -eTo ppid,pid,pcpu,pmem,maj_flt,min_flt,tid,vsz,rss,pgid,sid,tty,tgid,stat,uid,lstart,etime,time,command --sort ppid'}
       - {name: pkg-list, exec: 'rpm -qa | sort'}
       - {name: zstack-logs, dir: /var/log/zstack/, file: zstack.log*}
 sftp-bs:
@@ -101,7 +111,10 @@ imageStore-bs:
       - {name: iptables-logs, exec: 'iptables-save'}
       - {name: ebtables-logs, exec: 'ebtables-save'}
       - {name: journalctl-info, exec: 'journalctl -x'}
-      - {name: host-info, exec: 'uptime && last reboot && free -h && cat /proc/cpuinfo && ip add && df -h'}
+      - {name: host-info, exec: 'uptime && last reboot && free -h && cat /proc/cpuinfo && ip add && df -h &&
+       file_paths=$(ls /sys/devices/system/node|grep node);
+       for file_path in $file_paths; do cat /sys/devices/system/node/$file_path/meminfo; done &&
+       ps ax -eTo ppid,pid,pcpu,pmem,maj_flt,min_flt,tid,vsz,rss,pgid,sid,tty,tgid,stat,uid,lstart,etime,time,command --sort ppid'}
       - {name: pkg-list, exec: 'rpm -qa | sort'}
       - {name: zstack-logs, dir: /var/log/zstack/, file: zstack.log*}
 ceph-ps:
@@ -116,7 +129,10 @@ ceph-ps:
       - {name: iptables-logs, exec: 'iptables-save'}
       - {name: ebtables-logs, exec: 'ebtables-save'}
       - {name: journalctl-info, exec: 'journalctl -x'}
-      - {name: host-info, exec: 'uptime && last reboot && free -h && cat /proc/cpuinfo && ip add && df -h'}
+      - {name: host-info, exec: 'uptime && last reboot && free -h && cat /proc/cpuinfo && ip add && df -h &&
+       file_paths=$(ls /sys/devices/system/node|grep node);
+       for file_path in $file_paths; do cat /sys/devices/system/node/$file_path/meminfo; done &&
+       ps ax -eTo ppid,pid,pcpu,pmem,maj_flt,min_flt,tid,vsz,rss,pgid,sid,tty,tgid,stat,uid,lstart,etime,time,command --sort ppid'}
       - {name: pkg-list, exec: 'rpm -qa | sort'}
       - {name: zstack-logs, dir: /var/log/zstack/, file: zstack.log*}
 sharedblock:
