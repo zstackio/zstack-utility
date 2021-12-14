@@ -79,6 +79,12 @@ def get_dest_dev(dest_wwn):
     raise Exception("Failed to find dest disk[%s]" % dest_wwn)
 
 def get_src_dev():
+    cmd = "iscsiadm -m discovery -t sendtargets -p {{gateway_ip}}:3260"
+    shell_cmd(cmd)
+    cmd = "iscsiadm --mode node --targetname iqn.2015-01.io.zstack:target.instance.{{instance_uuid}} -p {{gateway_ip}}:3260 --login"
+    shell_cmd(cmd)
+    cmd = "systemctl daemon-reload && systemctl restart iscsid"
+    shell_cmd(cmd)
     _, stdout, _ = shell_cmd('iscsiadm -m session --sid 1 -P 3')
     for line in stdout.split('\n'):
         if 'Attached scsi disk' in line:
@@ -123,7 +129,7 @@ def main():
 try:
     main()
 except Exception as e:
-    print e
-
+    shell_cmd("touch /root/ks_error_log")
+    shell_cmd("echo %s >> /root/ks_error_log" % str(e))
 
 %end

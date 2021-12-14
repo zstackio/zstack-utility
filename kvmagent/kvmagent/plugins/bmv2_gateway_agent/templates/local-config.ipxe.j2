@@ -5,12 +5,6 @@ goto boot_iscsi
 :boot_iscsi
 imgfree
 
-set initiator-iqn {{ iscsi_initiator_iqn }}
-
-{% for volume, drive_id in volumes.items() %}
-sanhook --drive {{ drive_id }} {{ volume }} || goto fail_iscsi_retry
-{% endfor %}
-
 goto retry_boot
 
 :retry_boot
@@ -19,10 +13,4 @@ initrd {{ inspect_initrd_uri }} --timeout 30000 || goto retry_boot
 
 boot
 
-:fail_iscsi_retry
-echo Failed to attach iSCSI volume(s), retrying in 10 seconds.
-sleep 10
-{% for drive_id in volumes.values() %}
-sanunhook --drive {{ drive_id }}
-{% endfor %}
 goto boot_iscsi
