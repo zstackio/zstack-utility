@@ -243,6 +243,16 @@ class ImageStoreClient(object):
         
         logger.debug('%s:%s pulled to local cache' % (name, imageid))
 
+    def image_info(self, host, install_path):
+        self._check_zstore_cli()
+        name, imageid = self._parse_image_reference(install_path)
+        cmd = "%s -url %s:%s -json info %s:%s" % (self.ZSTORE_CLI_PATH, host, self.ZSTORE_DEF_PORT, name, imageid)
+        s = shell.ShellCmd(cmd)
+        s(False)
+        if s.return_code == 0:
+            return jsonobject.loads(s.stdout)
+
+
     @in_bash
     def clean_imagestore_cache(self, cachedir):
         if not cachedir or not os.path.exists(cachedir):
