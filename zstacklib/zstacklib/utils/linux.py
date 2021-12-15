@@ -2251,22 +2251,7 @@ def read_file_lines(path):
         return None
 
 
-def filter_file_lines_by_regex(path, regex):
-    if not os.path.exists(path):
-        return None
-    try:
-        lines = []
-        with open(path, 'r') as f:
-            for line in f:
-                if re.match(regex, line):
-                    lines.append(line)
-            return lines
-    except IOError as e:
-        logger.error(e)
-        return None
-
-
-def write_file(path, content, create_if_not_exist=False):
+def write_file(path, content, create_if_not_exist = False):
     if not os.path.exists(path) and not create_if_not_exist:
         logger.warn("write file failed because the path %s was not found", path)
         return None
