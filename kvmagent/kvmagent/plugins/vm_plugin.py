@@ -2108,36 +2108,36 @@ class Vm(object):
         self.timeout_object.put('attach-volume-%s' % self.uuid, timeout=10)
 
     @staticmethod
-    def set_volume_qos(addons, volumeUuid, volume_xml_obj):
+    def set_volume_qos(addons, volume_uuid, volume_xml_obj):
         if not addons:
             return
 
-        for key in ["VolumeQos", "VolumeReadQos", "VolumeWriteQos"]:
-            vol_qos = addons[key]
-            if not vol_qos:
-                continue
+        vol_qos = addons["VolumeQos"]
+        if not vol_qos:
+            return
+        qos = vol_qos[volume_uuid]
+        if not qos:
+            return
 
-            qos = vol_qos[volumeUuid]
-            if not qos:
-                continue
-            if not qos.totalBandwidth and not qos.totalIops:
-                continue
+        io_tune = e(volume_xml_obj, 'iotune')
+        if qos.readBandwidth and qos.readBandwidth != -1:
+            e(io_tune, 'read_bytes_sec', str(qos.readBandwidth))
 
-            mode = None
-            if key == 'VolumeQos':
-                mode = "total"
-            elif key == 'VolumeReadQos':
-                mode = "read"
-            elif key == 'VolumeWriteQos':
-                mode = "write"
+        if qos.writeBandwidth and qos.writeBandwidth != -1:
+            e(io_tune, 'write_bytes_sec', str(qos.writeBandwidth))
 
-            iotune = e(volume_xml_obj, 'iotune')
-            if qos.totalBandwidth:
-                virsh_key = "%s_bytes_sec" % mode
-                e(iotune, virsh_key, str(qos.totalBandwidth))
-            if qos.totalIops:
-                virsh_key = "%s_iops_sec" % mode
-                e(iotune, virsh_key, str(qos.totalIops))
+        if qos.totalBandwidth and qos.totalBandwidth != -1:
+            e(io_tune, 'total_bytes_sec', str(qos.totalBandwidth))
+
+        if qos.readIOPS and qos.readIOPS != -1:
+            e(io_tune, 'read_iops_sec', str(qos.readIOPS))
+
+        if qos.writeIOPS and qos.writeIOPS != -1:
+            e(io_tune, 'write_iops_sec', str(qos.writeIOPS))
+
+        if qos.totalIOPS and qos.totalIOPS != -1:
+            e(io_tune, 'total_iops_sec', str(qos.totalIOPS))
+
     @staticmethod
     def set_volume_serial_id(vol_uuid, volume_xml_obj):
         if volume_xml_obj.get('type') != 'block' or volume_xml_obj.get('device') != 'lun':
@@ -5197,10 +5197,16 @@ class VmPlugin(kvmagent.KvmAgent):
         ## total and read/write of bytes_sec cannot be set at the same time
         ## http://confluence.zstack.io/pages/viewpage.action?pageId=42599772#comment-42600879
         cmd_base = "virsh blkdeviotune %s %s" % (cmd.vmUuid, device_id)
-        if (cmd.mode == "total") or (cmd.mode is None):  # to set total(read/write reset)
+        if cmd.mode == "overwrite":
+            shell.call(
+                '%s --total_bytes_sec %s --read_bytes_sec %s --write_bytes_sec %s --total_iops_sec %s --read_iops_sec '
+                '%s --write_iops_sec %s' % (cmd_base, cmd.totalBandwidth, cmd.readBandwidth, cmd.writeBandwidth,
+                                            cmd.totalIOPS, cmd.readIOPS, cmd.writeIOPS))
+        elif (cmd.mode == "total") or (cmd.mode is None):  # to set total(read/write reset)
             shell.call('%s --total_bytes_sec %s' % (cmd_base, cmd.totalBandwidth))
         elif cmd.mode == "all":
-            shell.call('%s --read_bytes_sec %s --write_bytes_sec %s' % (cmd_base, cmd.readBandwidth, cmd.writeBandwidth))
+            shell.call(
+                '%s --read_bytes_sec %s --write_bytes_sec %s' % (cmd_base, cmd.readBandwidth, cmd.writeBandwidth))
         elif cmd.mode == "read":  # to set read(write reserved, total reset)
             write_bytes_sec = self._get_volume_bandwidth_value(cmd.vmUuid, device_id, "write")
             shell.call('%s --read_bytes_sec %s --write_bytes_sec %s' % (cmd_base, cmd.readBandwidth, write_bytes_sec))
@@ -5221,7 +5227,12 @@ class VmPlugin(kvmagent.KvmAgent):
         ## http://confluence.zstack.io/pages/viewpage.action?pageId=42599772#comment-42600879
         cmd_base = "virsh blkdeviotune %s %s" % (cmd.vmUuid, device_id)
         is_total_mode = self._get_volume_bandwidth_value(cmd.vmUuid, device_id, "total") != "0"
-        if cmd.mode == "all":  # to delete all(read/write reset)
+        if cmd.mode == "overwrite":
+            shell.call(
+                '%s --total_bytes_sec 0 --read_bytes_sec 0 --write_bytes_sec 0 --total_iops_sec 0 --read_iops_sec 0 '
+                '--write_iops_sec 0' % cmd_base
+            )
+        elif cmd.mode == "all":  # to delete all(read/write reset)
             shell.call('%s --total_bytes_sec 0' % (cmd_base))
         elif (cmd.mode == "total") or (cmd.mode is None):  # to delete total
             if is_total_mode:
@@ -5244,14 +5255,30 @@ class VmPlugin(kvmagent.KvmAgent):
         vm = get_vm_by_uuid(cmd.vmUuid)
         _, device_id = vm._get_target_disk(cmd.volume)
 
-        cmd_base = "virsh blkdeviotune %s %s" % (cmd.vmUuid, device_id)
-        bandWidth = shell.call('%s | grep -w total_bytes_sec | awk \'{print $2}\'' % cmd_base).strip()
-        bandWidthRead = shell.call('%s | grep -w read_bytes_sec | awk \'{print $3}\'' % cmd_base).strip()
-        bandWidthWrite = shell.call('%s | grep -w write_bytes_sec | awk \'{print $2}\'' % cmd_base).strip()
-
-        rsp.bandWidth = bandWidth if long(bandWidth) > 0 else -1
-        rsp.bandWidthWrite = bandWidthWrite if long(bandWidthWrite) > 0 else -1
-        rsp.bandWidthRead = bandWidthRead if long(bandWidthRead) > 0 else -1
+        io_tune_info = shell.call('virsh blkdeviotune %s %s' % (cmd.vmUuid, device_id))
+        for io_tune in io_tune_info.splitlines():
+            info = io_tune.split(':')
+            if len(info) != 2:
+                continue
+            k = info[0].strip()
+            if k == "total_bytes_sec":
+                v = info[1].strip()
+                rsp.bandWidth = v if long(v) > 0 else -1
+            elif k == "read_bytes_sec":
+                v = info[1].strip()
+                rsp.bandWidthRead = v if long(v) > 0 else -1
+            elif k == "write_bytes_sec":
+                v = info[1].strip()
+                rsp.bandWidthWrite = v if long(v) > 0 else -1
+            elif k == "total_iops_sec":
+                v = info[1].strip()
+                rsp.iopsTotal = v if long(v) > 0 else -1
+            elif k == "read_iops_sec":
+                v = info[1].strip()
+                rsp.iopsRead = v if long(v) > 0 else -1
+            elif k == "write_iops_sec":
+                v = info[1].strip()
+                rsp.iopsWrite = v if long(v) > 0 else -1
 
         return jsonobject.dumps(rsp)
 
