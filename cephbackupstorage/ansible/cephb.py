@@ -108,6 +108,7 @@ extra_args = "\"--trusted-host %s -i %s \"" % (trusted_host, pip_url)
 pip_install_arg = PipInstallArg()
 pip_install_arg.extra_args = extra_args
 pip_install_arg.name = "python-cephlibs"
+pip_install_arg.virtualenv = virtenv_path
 pip_install_package(pip_install_arg, host_post_info)
 
 if distro in RPM_BASED_OS:
