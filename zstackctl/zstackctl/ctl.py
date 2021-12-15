@@ -5184,6 +5184,11 @@ class RestoreMysqlPreCheckCmd(Command):
                                           % (shell_quote(password), self.port, self.hostname, sql))
 
     def run(self, args):
+        mn_cmd = create_check_mgmt_node_command()
+        mn_cmd(False)
+        if mn_cmd.return_code == 0:
+            error('The management node is running, force restore mysql may cause vm brain splitting.')
+
         (self.hostname, self.port, _, _) = ctl.get_live_mysql_portal()
         r, o, e = self.execute_sql(args.mysql_root_password, "show databases like 'zstack'")
         if r != 0:
@@ -5255,7 +5260,7 @@ class RestoreMysqlCmd(Command):
                             action="store_true",
                             default=False)
         parser.add_argument('--skip-check',
-                            help="Skip security checks. NOT recommended",
+                            help="Skip security checks. This may cause vm brain splitting, NOT recommended",
                             action="store_true",
                             default=False)
 
