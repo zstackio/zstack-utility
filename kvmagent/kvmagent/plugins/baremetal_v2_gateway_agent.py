@@ -974,7 +974,8 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
 
         conf = template.render(
             network_inst_uri=network_inst_uri,
-            send_hardware_infos_uri=send_hardware_infos_uri
+            send_hardware_infos_uri=send_hardware_infos_uri,
+            provision_net=network_obj.provision_nic_ip
         )
 
         with open(self.INSPECTOR_KS_X86_64_CFG, 'w') as f:
@@ -986,7 +987,8 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
 
         conf = template.render(
             network_inst_uri=network_inst_uri,
-            send_hardware_infos_uri=send_hardware_infos_uri
+            send_hardware_infos_uri=send_hardware_infos_uri,
+            provision_net=network_obj.provision_nic_ip
         )
 
         with open(self.INSPECTOR_KS_AARCH64_CFG, 'w') as f:
