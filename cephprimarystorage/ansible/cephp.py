@@ -172,12 +172,6 @@ if cephpagent_copy != "changed:False":
     agent_install_arg.pkg_name = pkg_cephpagent
     agent_install(agent_install_arg, host_post_info)
 
-pip_install_arg = PipInstallArg()
-pip_install_arg.extra_args = "\"--trusted-host %s -i %s \"" % (trusted_host, pip_url)
-pip_install_arg.name = "python-cephlibs"
-pip_install_arg.virtualenv = virtenv_path
-pip_install_package(pip_install_arg, host_post_info)
-
 # name: copy service file
 # only support centos redhat debian and ubuntu
 copy_arg = CopyArg()
