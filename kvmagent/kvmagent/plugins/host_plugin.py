@@ -99,6 +99,11 @@ class PingResponse(kvmagent.AgentResponse):
         super(PingResponse, self).__init__()
         self.hostUuid = None
 
+class CheckFileOnHostResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(CheckFileOnHostResponse, self).__init__()
+        self.existPaths = {}
+
 class GetUsbDevicesRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(GetUsbDevicesRsp, self).__init__()
@@ -572,6 +577,7 @@ class HostPlugin(kvmagent.KvmAgent):
     ECHO_PATH = '/host/echo'
     FACT_PATH = '/host/fact'
     PING_PATH = "/host/ping"
+    CHECK_FILE_ON_HOST_PATH = '/host/checkfile'
     GET_USB_DEVICES_PATH = "/host/usbdevice/get"
     SETUP_MOUNTABLE_PRIMARY_STORAGE_HEARTBEAT = "/host/mountableprimarystorageheartbeat"
     UPDATE_OS_PATH = "/host/updateos"
@@ -733,6 +739,24 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.version = self.config.get(kvmagent.VERSION)
         if os.path.exists(HOST_TAKEOVER_FLAG_PATH):
             linux.touch_file(HOST_TAKEOVER_FLAG_PATH)
+        return jsonobject.dumps(rsp)
+    
+    @kvmagent.replyerror
+    def check_file_on_host(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CheckFileOnHostResponse()
+        for file_path in cmd.paths:
+            if not os.path.exists(file_path):
+                continue
+            rsp.existPaths[file_path] = ""
+            if not cmd.md5Return:
+                continue
+            with open(file_path, 'rb') as data:
+                try:
+                    rsp.existPaths[file_path] = hashlib.md5(data.read()).hexdigest()
+                except IOError as err:
+                    logger.debug('can not open file %s because IOError: %s' % (file_path, str(err)))
+                    pass
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -2210,6 +2234,7 @@ done
         http_server = kvmagent.get_http_server()
         http_server.register_sync_uri(self.CONNECT_PATH, self.connect)
         http_server.register_async_uri(self.PING_PATH, self.ping)
+        http_server.register_async_uri(self.CHECK_FILE_ON_HOST_PATH, self.check_file_on_host)
         http_server.register_async_uri(self.CAPACITY_PATH, self.capacity)
         http_server.register_sync_uri(self.ECHO_PATH, self.echo)
         http_server.register_async_uri(self.SETUP_MOUNTABLE_PRIMARY_STORAGE_HEARTBEAT, self.setup_heartbeat_file)

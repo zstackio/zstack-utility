@@ -73,6 +73,10 @@ ZS_XML_NAMESPACE = 'http://zstack.org'
 etree.register_namespace('zs', ZS_XML_NAMESPACE)
 
 GUEST_TOOLS_ISO_PATH = "/var/lib/zstack/guesttools/GuestTools.iso"
+SYSTEM_VIRTIO_DRIVER_PATHS = {
+    'VFD_X86' : '/var/lib/zstack/virtio-drivers/virtio-win_x86.vfd',
+    'VFD_AMD64' : '/var/lib/zstack/virtio-drivers/virtio-win_amd64.vfd'
+}
 QMP_SOCKET_PATH = "/var/lib/libvirt/qemu/zstack"
 PCI_ROM_PATH = "/var/lib/zstack/pcirom"
 MAX_MEMORY = 34359738368 if (HOST_ARCH != "aarch64") else linux.get_max_vm_ipa_size()/1024/16
@@ -617,10 +621,6 @@ class UpdateVmPriorityRsp(kvmagent.AgentResponse):
 class BlockStreamResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(BlockStreamResponse, self).__init__()
-
-class CheckGuestToolsIsoExistsRsp(kvmagent.AgentResponse):
-    def __init__(self):
-        super(CheckGuestToolsIsoExistsRsp, self).__init__()
 
 class AttachGuestToolsIsoToVmCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -3740,12 +3740,34 @@ class Vm(object):
                     e(cdrom, 'boot', None, {'order': str(bootOrder)})
                 return cdrom
 
+            @linux.with_arch(['x86_64'])
+            def make_floppy(file_path_list):
+                if len(file_path_list) > 2:
+                    raise Exception("up to 2 floppy devices can be attached")
+                target_dev_index = 0
+                for file_path in file_path_list:
+                    if not os.path.exists(file_path):
+                        continue
+                    floppy = e(devices, 'disk', None, {'type': 'file', 'device': 'floppy'})
+                    e(floppy, 'driver', None, {'name': 'qemu', 'type': 'raw'})
+                    e(floppy, 'source', None, {'file': file_path})
+                    e(floppy, 'readonly', None)
+                    e(floppy, 'target', None, {'dev': generate_floppy_device_id(target_dev_index), 'type': 'fdc'})
+                    target_dev_index = target_dev_index + 1
+
+            def generate_floppy_device_id(index):
+                return 'fd' + Vm.DEVICE_LETTERS[index]
+
             """
             if not cmd.bootIso:
                 for config in empty_cdrom_configs:
                     makeEmptyCdrom(config.targetDev, config.bus, config.unit)
                 return
             """
+            virtio_driver_type = cmd.addons['systemVirtioDriverDeviceType'] if cmd.addons is not None else None
+            if virtio_driver_type == 'vfd':
+                make_floppy([SYSTEM_VIRTIO_DRIVER_PATHS['VFD_X86'], SYSTEM_VIRTIO_DRIVER_PATHS['VFD_AMD64']])
+
             if not cmd.cdRoms:
                 return
 
@@ -3763,7 +3785,6 @@ class Vm(object):
                 else:
                     cdrom = make_empty_cdrom(cdrom_config.targetDev, cdrom_config.bus , cdrom_config.unit, iso.bootOrder)
                     e(cdrom, 'source', None, {'file': iso.path})
-
 
         def make_volumes():
             devices = elements['devices']
@@ -4702,7 +4723,6 @@ class VmPlugin(kvmagent.KvmAgent):
     CHECK_MOUNT_DOMAIN_PATH = "/check/mount/domain"
     KVM_RESIZE_VOLUME_PATH = "/volume/resize"
     VM_PRIORITY_PATH = "/vm/priority"
-    CHECK_GUEST_TOOLS_ISO_EXISTS_PATH = "/vm/guesttools/checkiso"
     ATTACH_GUEST_TOOLS_ISO_TO_VM_PATH = "/vm/guesttools/attachiso"
     DETACH_GUEST_TOOLS_ISO_FROM_VM_PATH = "/vm/guesttools/detachiso"
     GET_VM_GUEST_TOOLS_INFO_PATH = "/vm/guesttools/getinfo"
@@ -6698,16 +6718,6 @@ host side snapshot files chian:
 """ % temp_disk
         return linux.write_to_temp_file(content)
 
-
-    @kvmagent.replyerror
-    @in_bash
-    def check_guest_tools_iso_exists(self, req):
-        rsp = CheckGuestToolsIsoExistsRsp()
-        if not os.path.exists(GUEST_TOOLS_ISO_PATH):
-            rsp.success = False
-            rsp.error = "check guestToolsIso:%s not exists" % GUEST_TOOLS_ISO_PATH
-        return jsonobject.dumps(rsp)
-
     @kvmagent.replyerror
     @in_bash
     def attach_guest_tools_iso_to_vm(self, req):
@@ -7397,7 +7407,6 @@ host side snapshot files chian:
         http_server.register_async_uri(self.CHECK_MOUNT_DOMAIN_PATH, self.check_mount_domain)
         http_server.register_async_uri(self.KVM_RESIZE_VOLUME_PATH, self.kvm_resize_volume)
         http_server.register_async_uri(self.VM_PRIORITY_PATH, self.vm_priority)
-        http_server.register_async_uri(self.CHECK_GUEST_TOOLS_ISO_EXISTS_PATH, self.check_guest_tools_iso_exists)
         http_server.register_async_uri(self.ATTACH_GUEST_TOOLS_ISO_TO_VM_PATH, self.attach_guest_tools_iso_to_vm)
         http_server.register_async_uri(self.DETACH_GUEST_TOOLS_ISO_FROM_VM_PATH, self.detach_guest_tools_iso_from_vm)
         http_server.register_async_uri(self.GET_VM_GUEST_TOOLS_INFO_PATH, self.get_vm_guest_tools_info)
