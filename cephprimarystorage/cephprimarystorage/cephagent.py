@@ -286,7 +286,6 @@ class CephAgent(plugin.TaskManager):
 
     def __init__(self):
         super(CephAgent, self).__init__()
-        self._init_third_party_ceph()
         self.http_server.register_async_uri(self.INIT_PATH, self.init)
         self.http_server.register_async_uri(self.ADD_POOL_PATH, self.add_pool)
         self.http_server.register_async_uri(self.CHECK_POOL_PATH, self.check_pool)
@@ -325,22 +324,6 @@ class CephAgent(plugin.TaskManager):
         self.http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_NBD_EXPT_PATH, self.download_from_nbd)
 
         self.imagestore_client = ImageStoreClient()
-
-    def _init_third_party_ceph(self):
-        if not ceph.is_xsky():
-            return
-
-        # if xdc_proxy_feature = true already exist, pass this step
-        regex = '^xdc_proxy_feature\s*=\s*true$'
-        cfg_path = '/etc/xdc/xdc.conf'
-        if len(linux.filter_file_lines_by_regex(cfg_path, regex)) != 0:
-            return
-
-        cfg = '\nxdc_proxy_feature = true\n'
-        with open(cfg_path, 'a') as f:
-            f.write(cfg)
-        command = "systemctl start xdc"
-        shell.call(command)
 
     def _set_capacity_to_response(self, rsp):
         o = shell.call('ceph df -f json')
