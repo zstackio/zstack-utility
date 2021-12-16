@@ -978,7 +978,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         image_info = self.imagestore_client.image_info(cmd.hostname, cmd.backupStorageInstallPath)
         if image_info:
             lvm.update_pv_allocate_strategy(cmd)
-            lvm.create_lv_from_absolute_path(install_abs_path, image_info.size, tag=IMAGE_TAG, exact_size=True)
+            lvm.create_lv_from_absolute_path(install_abs_path, image_info.size, tag=IMAGE_TAG)
 
         self.imagestore_client.download_from_imagestore(None, cmd.hostname, cmd.backupStorageInstallPath,
                                                             cmd.primaryStorageInstallPath, failure_action=clean)
