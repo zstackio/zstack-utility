@@ -883,6 +883,7 @@ def create_lv_from_absolute_path(path, size, tag="zs::sharedblock::volume", lock
     lvName = path.split("/")[3]
     pe_range = ' '.join(get_allocated_pvs(vgName) if pe_ranges is None else pe_ranges)
 
+    exact_size |= tag == IMAGE_TAG
     size = round_to(size, 512) if exact_size else round_to(calcLvReservedSize(size), 512)
     r, o, e = bash.bash_roe("lvcreate -ay --addtag %s --size %sb --name %s %s %s" %
                          (tag, size, lvName, vgName, pe_range))
