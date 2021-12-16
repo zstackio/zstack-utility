@@ -65,7 +65,11 @@ vrouter:
       - {name: iptables-logs, exec: 'iptables-save'}
       - {name: host-info, exec: 'uptime && last reboot && free && cat /proc/cpuinfo && ip add && ip route && df -h'}
       - {name: ps-info, exec: 'ps ax -eTo ppid,pid,pcpu,pmem,maj_flt,min_flt,tid,vsz,rss,pgid,sid,tty,stat,uid,lstart,etime,time,command --sort ppid' }
-      - {name: haproxy-log, dir: /var/log/, file: 'haproxy.log'}
+      - {name: haproxy-log, dir: /var/log/, file: 'haproxy.log*'}
+      - {name: keeplived-log, dir: /var/log/, file: 'keepalived.log*'}
+      - {name: messages-log, dir: /var/log/, file: 'messages*'}
+      - {name: history-log-vyos, exec: 'echo history | bash -i'}
+      - {name: history-log-root,  exec: 'echo history | sudo bash -i'}
 ceph-bs:
     description: ceph backstorage
     type: target
