@@ -5342,10 +5342,11 @@ class RestoreMysqlCmd(Command):
             # to: (###,'enable','enable HA or not','ha','true','false')
             command = "gunzip < %s | sed -e '/DROP DATABASE IF EXISTS/d' -e '/CREATE DATABASE .* IF NOT EXISTS/d' " \
                       "| sed 's/DEFINER=`[^\*\/]*`@`[^\*\/]*`/DEFINER=`root`@`%s`/' " \
-                      "| sed \"s/,'enable','enable HA or not','ha','true','true')/,'enable','enable HA or not'," \
-                      "'ha','true','false')/g\" " \ 
+                      "| sed \"s/,'enable','enable HA or not','ha','true','true')/" \
+                      ",'enable','enable HA or not','ha','true','false')/g\" " \
                       "| mysql -uroot --password=%s %s -P %s --one-database %s" \
-                  % (db_backup_name, db_hostname_origin_cp, shell_quote(db_password), db_hostname, db_port, database)
+                      % (db_backup_name, db_hostname_origin_cp, shell_quote(db_password),
+                         db_hostname, db_port, database)
             shell_no_pipe(command)
 
         restorer.restore_other_node(args)
