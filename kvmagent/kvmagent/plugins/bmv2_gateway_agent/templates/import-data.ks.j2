@@ -131,5 +131,14 @@ try:
 except Exception as e:
     shell_cmd("touch /root/ks_error_log")
     shell_cmd("echo %s >> /root/ks_error_log" % str(e))
+    convert_info = {}
+    convert_info['status'] = 'ConvertFailed'
+    convert_info['progress'] = 0
+    result = {}
+    result.update(get_ipmi_info())
+    result['convertInfo'] = json.dumps(convert_info)
+    result['hardwareInfo'] = ''
+
+    send_info(result)
 
 %end

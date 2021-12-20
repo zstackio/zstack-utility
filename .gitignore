@@ -47,3 +47,5 @@ apibinding/apibinding/inventory.py
 .pydevproject
 .project
 /bm-instance-agent/.idea/
+*/.DS_Store
+.DS_Store
