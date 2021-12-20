@@ -3765,7 +3765,7 @@ class Vm(object):
                 return
             """
             virtio_driver_type = cmd.addons['systemVirtioDriverDeviceType'] if cmd.addons is not None else None
-            if virtio_driver_type == 'vfd':
+            if virtio_driver_type == 'VFD':
                 make_floppy([SYSTEM_VIRTIO_DRIVER_PATHS['VFD_X86'], SYSTEM_VIRTIO_DRIVER_PATHS['VFD_AMD64']])
 
             if not cmd.cdRoms:
