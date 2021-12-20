@@ -1978,7 +1978,7 @@ def get_lv_affinity_sorted_pvs(lv_path, cmd=None):
     vg_name, lv_name = lv_path.split(os.sep)[-2::]
     locations = get_lv_location(os.path.join("/dev", vg_name, lv_name))
     total_pvs = get_allocated_pvs(vg_name)
-    for pv in total_pvs:
+    for pv in locations:
         total_pvs.remove(pv)
     return locations + total_pvs
 
