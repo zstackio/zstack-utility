@@ -875,16 +875,18 @@ def round_to(n, r):
 
 @bash.in_bash
 @linux.retry(times=15, sleep_time=random.uniform(0.1, 3))
-def create_lv_from_absolute_path(path, size, tag="zs::sharedblock::volume", lock=True, exact_size=False):
+def create_lv_from_absolute_path(path, size, tag="zs::sharedblock::volume", lock=True, exact_size=False, pe_ranges=None):
     if lv_exists(path):
         return
 
     vgName = path.split("/")[2]
     lvName = path.split("/")[3]
+    pe_range = ' '.join(get_allocated_pvs(vgName) if pe_ranges is None else pe_ranges)
 
+    exact_size |= tag == IMAGE_TAG
     size = round_to(size, 512) if exact_size else round_to(calcLvReservedSize(size), 512)
-    r, o, e = bash.bash_roe("lvcreate -ay --addtag %s --size %sb --name %s %s" %
-                         (tag, size, lvName, vgName))
+    r, o, e = bash.bash_roe("lvcreate -ay --addtag %s --size %sb --name %s %s %s" %
+                         (tag, size, lvName, vgName, pe_range))
 
     if not lv_exists(path):
         raise Exception("can not find lv %s after create, lvcreate return: %s, %s, %s" % (path, r, o, e))
@@ -896,14 +898,16 @@ def create_lv_from_absolute_path(path, size, tag="zs::sharedblock::volume", lock
         dd_zero(path)
 
 
-def create_lv_from_cmd(path, size, cmd, tag="zs::sharedblock::volume", lvmlock=True):
+def create_lv_from_cmd(path, size, cmd, tag="zs::sharedblock::volume", lvmlock=True, pe_ranges=None):
+    update_pv_allocate_strategy(cmd)
+
     # TODO(weiw): fix it
     if "ministorage" in tag and cmd.provisioning == VolumeProvisioningStrategy.ThinProvisioning:
         create_thin_lv_from_absolute_path(path, size, tag, lvmlock)
     elif cmd.provisioning == VolumeProvisioningStrategy.ThinProvisioning and size > cmd.addons[thinProvisioningInitializeSize]:
-        create_lv_from_absolute_path(path, cmd.addons[thinProvisioningInitializeSize], tag, lvmlock)
+        create_lv_from_absolute_path(path, cmd.addons[thinProvisioningInitializeSize], tag, lvmlock, pe_ranges=pe_ranges)
     else:
-        create_lv_from_absolute_path(path, size, tag, lvmlock, cmd.volumeFormat == 'raw')
+        create_lv_from_absolute_path(path, size, tag, lvmlock, cmd.volumeFormat == 'raw', pe_ranges=pe_ranges)
 
 
 @bash.in_bash
@@ -1924,3 +1928,79 @@ def find_qemu_for_lv_in_use(lv_path):
     dm_path = os.path.realpath(lv_path)
     pids = [x.strip() for x in bash.bash_o("lsof -b -c qemu-kvm -c qemu-system| grep -w %s | awk '{print $2}'" % dm_path).splitlines()]
     return [QemuStruct(pid) for pid in pids]
+
+
+pv_allocate_strategy = {}  # type:dict
+
+
+def update_pv_allocate_strategy(cmd):
+    global pv_allocate_strategy
+    new_strategy = {}
+    if cmd.addons and cmd.addons.allocateStrategy:
+        new_strategy = cmd.addons.allocateStrategy.__dict__
+
+    if cmd.vgUuid not in new_strategy:
+        new_strategy[cmd.vgUuid] = "none"
+    pv_allocate_strategy.update(new_strategy)
+
+
+def get_allocated_pvs(vg_name):
+    global pv_allocate_strategy
+    try:
+        strategy = pv_allocate_strategy[vg_name]
+    except KeyError:
+        strategy = "none"
+
+    if strategy == "none":
+        return []
+    elif strategy == "minLvCounts":
+        return get_volume_lv_sorted_pvs(vg_name)
+    elif strategy == "maxFreeSize":
+        return get_free_sorted_pvs(vg_name)
+    else:
+        return []
+
+
+@bash.in_bash
+def get_lv_location(lv_path):
+    r, o = bash.bash_ro('''lvs --nolocking --noheadings -o devices %s | awk -F '(' '!pv[$1]++{printf " "$1}' ''' % lv_path)
+    if r == 0:
+        return o.strip().split()
+    return []
+
+
+def get_lv_affinity_sorted_pvs(lv_path, cmd=None):
+    if cmd:
+        update_pv_allocate_strategy(cmd)
+
+    vg_name, lv_name = lv_path.split(os.sep)[-2::]
+    locations = get_lv_location(os.path.join("/dev", vg_name, lv_name))
+    total_pvs = get_allocated_pvs(vg_name)
+    for pv in locations:
+        total_pvs.remove(pv)
+    return locations + total_pvs
+
+
+@bash.in_bash
+def get_volume_lv_sorted_pvs(vg_name):
+    cmd = '''pvs --segments --noheadings --nolocking \
+-S 'vg_name=%s,seg_type!=free,lv_tags!=%s,lv_tags!=""' \
+-o pv_name,lv_name -O pv_name,lv_name | uniq | awk '{count[$1]++;} END {for(pv in count) {print pv" "count[pv]}}' \
+''' % (vg_name, IMAGE_TAG)
+
+    r, o = bash.bash_ro(cmd)
+    all_pvs = list_pvs(vg_name)
+    lv_counts = dict(zip(all_pvs, [0] * len(all_pvs)))
+    for l in o.strip().splitlines():
+        pv_name, lv_count = l.split()
+        lv_counts[pv_name] = int(lv_count)
+
+    return sorted(lv_counts.keys(), key=lambda lv: lv_counts[lv] + random.random())
+
+
+@bash.in_bash
+def get_free_sorted_pvs(vg_name):
+    r, o = bash.bash_ro("pvs --nolocking --noheadings -S 'vg_name=%s' -o pv_name -O-pv_free --rows" % vg_name)
+    if r == 0:
+        return o.strip().split()
+    return []
