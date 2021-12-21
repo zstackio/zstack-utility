@@ -49,7 +49,7 @@ class Request(object):
         self.body = None
         self.method = None
         self.query_string = None
-    
+
     @staticmethod
     def from_cherrypy_request(creq):
         req = Request()
@@ -58,16 +58,16 @@ class Request(object):
         req.method = copy.copy(creq.method)
         req.query_string = copy.copy(creq.query_string) if creq.query_string else None
         return req
-        
+
 class SyncUriHandler(object):
     def _check_response(self, rsp):
         if rsp is not None and not isinstance(rsp, types.StringType):
             raise Exception('Response body must be string')
-        
+
     def __init__(self, uri_obj):
         # type:(SyncUri) -> None
         self.uri_obj = uri_obj
-    
+
     def _do_index(self, req):
         task_uuid = cherrypy.request.headers.get(TASK_UUID)
         if task_uuid:
@@ -77,8 +77,8 @@ class SyncUriHandler(object):
 
         entity = {REQUEST_HEADER : req.headers}
         entity[REQUEST_BODY] = req.body if req.body else None
-        return self.uri_obj.func(entity)     
-    
+        return self.uri_obj.func(entity)
+
     @cherrypy.expose
     def index(self):
         req = Request.from_cherrypy_request(cherrypy.request)
@@ -134,7 +134,7 @@ class AsyncUirHandler(SyncUriHandler):
     def __init__(self, uri_obj):
         # type:(AsyncUri) -> None
         super(AsyncUirHandler, self).__init__(uri_obj)
-    
+
     @thread.AsyncThread
     def _run_index(self, task_uuid, request):
         self.HANDLER_COUNTER.inc()
@@ -153,19 +153,19 @@ class AsyncUirHandler(SyncUriHandler):
             logger.debug("async http reply[task uuid: %s] to %s: %s" % (task_uuid, callback_uri, content))
         finally:
             self.HANDLER_COUNTER.dec()
-        
+
     def _get_callback_uri(self, req):
         callback_uri = None
         if req.headers.has_key(CALLBACK_URI):
             callback_uri = req.headers[CALLBACK_URI]
         else:
             callback_uri = self.uri_obj.callback_uri
-            
+
         if not callback_uri:
             raise Exception('Unable to find callback uri either in headers of request or in registered uri object')
-        
+
         return callback_uri
-        
+
     @cherrypy.expose
     def index(self):
         if self.STOP_WORLD:
@@ -208,7 +208,7 @@ class HttpServer(object):
         self.logfile_path = log.get_logfile_path()
         self.port = port
         self.mapper = None
-    
+
     def register_async_uri(self, uri, func, callback_uri=None, cmd=None):
         # type:(str, function, str, object) -> None
         async_uri_obj = AsyncUri()
@@ -219,9 +219,9 @@ class HttpServer(object):
         async_uri_obj.func = func
         async_uri_obj.cmd = cmd
         async_uri_obj.controller = AsyncUirHandler(async_uri_obj)
-        
+
         self.async_uri_handlers[uri] = async_uri_obj
-    
+
     def register_sync_uri(self, uri, func, cmd=None):
         # type:(str, function, object) -> None
         sync_uri = SyncUri()
@@ -230,7 +230,7 @@ class HttpServer(object):
         sync_uri.cmd = cmd
         sync_uri.controller = SyncUriHandler(sync_uri)
         self.sync_uri_handlers[uri] = sync_uri
-        
+
     def register_raw_uri(self, uri, func):
         raw_uri = RawUri()
         raw_uri.func = func
@@ -247,7 +247,7 @@ class HttpServer(object):
 
     def unregister_uri(self, uri):
         del self.async_callback_uri[uri]
-    
+
     def _add_mapping(self, uri_obj):
         if not self.mapper: self.mapper = cherrypy.dispatch.RoutesDispatcher()
         self.mapper.connect(name=uri_obj.uri, route=uri_obj.uri, controller=uri_obj.controller, action="index")
@@ -259,7 +259,7 @@ class HttpServer(object):
             nuri = uri_obj.uri.rstrip('/')
             self.mapper.connect(name=nuri, route=nuri, controller=uri_obj.controller, action="index")
             logger.debug('function[%s] registered uri: %s' % (uri_obj.func.__name__, nuri))
-        
+
     def _build(self):
         for akey in self.async_uri_handlers.keys():
             aval = self.async_uri_handlers[akey]
@@ -270,7 +270,7 @@ class HttpServer(object):
         for skey in self.raw_uri_handlers.keys():
             sval = self.raw_uri_handlers[skey]
             self._add_mapping(sval)
-        
+
         self.server_conf = {'request.dispatch': self.mapper}
 
         cherrypy.engine.autoreload.unsubscribe()
@@ -309,11 +309,11 @@ class HttpServer(object):
     def start(self):
         self._build()
         cherrypy.quickstart(self.server)
-        
+
     @thread.AsyncThread
     def start_in_thread(self):
         self.start()
-    
+
     @staticmethod
     def query_string_to_object(query_string):
         params = {}
@@ -322,7 +322,7 @@ class HttpServer(object):
             (k, v) = p.split('=')
             params[k] = v
         return params
-    
+
     def stop(self):
         cherrypy.engine.exit()
 
@@ -414,21 +414,21 @@ cherrypy._cpreqbody.SizedReader = LimitedSizedReader
 class UriBuilder(object):
     def _invalid_uri(self, uri):
         raise Exception('invalid uri[%s]' % uri)
-        
+
     def _parse(self, uri):
         scheme = uri[0:4]
         if scheme not in ['http', 'https']:
             raise Exception('uri[%s] is not started with scheme[http, https]' % uri)
         self.scheme = scheme
-        
+
         rest = uri.lstrip(scheme)
         if not rest.startswith('://'):
             self._invalid_uri(uri)
-            
+
         rest = rest.lstrip('://')
         colon = rest.find(':')
         if colon != -1:
-            self.host = rest[0:colon] 
+            self.host = rest[0:colon]
             rest = rest.lstrip(self.host).lstrip(':%s' % self.port)
         else:
             self.port = 80
@@ -438,12 +438,12 @@ class UriBuilder(object):
                 return
             else:
                 self.host = rest[0:slash]
-                
+
         self.paths = [p.strip('/') for p in rest.split('/')]
         if '' in self.paths: self.paths.remove('')
         self.paths = [] if not self.paths else self.paths
-            
-            
+
+
     def __init__(self, uri=None):
         self.scheme = 'http'
         self.host = None
@@ -451,21 +451,21 @@ class UriBuilder(object):
         self.paths = []
         if uri:
             self._parse(uri)
-        
-    
+
+
     def add_path(self, p):
         self.paths.append(p)
-    
+
     def build(self):
         if not self.host:
             raise Exception('host cannot be None')
-        
+
         self.paths = [p.strip('/') for p in self.paths]
         path = '/'.join(self.paths)
         ret = '%s://%s:%s/%s' % (self.scheme, self.host, self.port, path)
         return ret + '/' if not ret.endswith('/') else ret
-        
-        
+
+
 def build_url(args):
     builder = UriBuilder()
     builder.scheme = args[0]
