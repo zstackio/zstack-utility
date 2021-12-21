@@ -249,7 +249,7 @@ class CheckDisk(object):
             command = "pvresize /dev/%s || pvresize /dev/%s" % (disk_name, multipath_dev)
         r, o, e = bash.bash_roe(command, errorout=False)
 
-        if e is not None:
+        if r != 0 and e and re.search(r'VG(.*)lock failed', e):
             lvm.check_stuck_vglk()
             r, o, e = bash.bash_roe(command, errorout=True)
         logger.debug("resized pv %s (wwid: %s), return code: %s, stdout %s, stderr: %s" %
