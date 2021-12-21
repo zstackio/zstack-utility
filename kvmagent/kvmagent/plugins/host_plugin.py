@@ -47,6 +47,7 @@ EBTABLES_CMD = ebtables.get_ebtables_cmd()
 COLO_QEMU_KVM_VERSION = '/var/lib/zstack/colo/qemu_kvm_version'
 COLO_LIB_PATH = '/var/lib/zstack/colo/'
 HOST_TAKEOVER_FLAG_PATH = 'var/run/zstack/takeOver'
+NODE_INFO_PATH = '/sys/devices/system/node/'
 
 BOND_MODE_ACTIVE_0 = "balance-rr"
 BOND_MODE_ACTIVE_1 = "active-backup"
@@ -326,6 +327,11 @@ class HostNetworkInterfaceInventory(object):
     def _to_dict(self):
         to_dict = self.__dict__
         return to_dict
+
+class GetNumaTopologyResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(GetNumaTopologyResponse, self).__init__()
+        self.topology = None
 
 class GetPciDevicesCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -612,6 +618,7 @@ class HostPlugin(kvmagent.KvmAgent):
     ADD_BRIDGE_FDB_ENTRY_PATH = "/bridgefdb/add"
     DEPLOY_COLO_QEMU_PATH = "/deploy/colo/qemu"
     UPDATE_CONFIGURATION_PATH = "/host/update/configuration"
+    GET_NUMA_TOPOLOGY_PATH = "/numa/topology"
 
     host_network_facts_cache = {}  # type: dict[float, list[list, list]]
     cpu_sockets = 0
@@ -2226,6 +2233,92 @@ done
 
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    def get_numa_topology(self, req):
+        class NumaTopology:
+            def __init__(self):
+                self.nodes = {}
+                self.get_topology()
+
+            def __call__(self, *args, **kwargs):
+                return self.nodes
+
+            def get_topology(self):
+                node_id = 0
+                while True:
+                    node_path = os.path.join(NODE_INFO_PATH, "node{}".format(node_id))
+                    if not os.path.isdir(node_path):
+                        break
+
+                    cpulist_path = os.path.join(node_path, "cpulist")
+                    meminfo_path = os.path.join(node_path, "meminfo")
+                    distance_path = os.path.join(node_path, "distance")
+
+                    size, free = self.get_meminfo(meminfo_path)
+                    self.nodes[str(node_id)] = {
+                        "cpus": self.get_cpu_list(cpulist_path),
+                        "free": free,
+                        "size": size,
+                        "distance": self.get_distance(distance_path)
+                    }
+
+                    node_id += 1
+
+            @staticmethod
+            def get_cpu_list(info_path):
+                data = None
+                with open(info_path, "r") as f:
+                    data = f.read()
+
+                if data is None or (not data):
+                    return
+
+                data = data.strip()
+                cpu_list = []
+                info = data.split(",")
+                for i in info:
+                    if "-" in i:
+                        temp = i.split("-")
+                        cpu_list.extend([str(cpu_id) for cpu_id in range(int(temp[0]), int(temp[1]) + 1)])
+                    elif "^" in i:
+                        cpu_list.remove(i[1:])
+                    else:
+                        cpu_list.append(i)
+                return cpu_list
+
+            @staticmethod
+            def get_meminfo(info_path):
+                data = None
+                with open(info_path, "r") as f:
+                    data = f.readlines()
+                if data is None or (not data):
+                    return
+
+                free, size = 0, 0
+                for mem in data:
+                    temp = filter(lambda i: i, mem.strip().split(" "))[-2]
+                    if temp == "0":
+                        continue
+                    if "MemTotal" in mem:
+                        size = int(temp)*1024
+                    if "MemFree:" in mem:
+                        free = int(temp)*1024
+                return size, free
+
+            @staticmethod
+            def get_distance(info_path):
+                data = None
+                with open(info_path, "r") as f:
+                    data = f.read()
+                if data is None or (not data):
+                    return
+                data = data.strip()
+                return filter(lambda i: i, data.split(" "))
+
+        rsp = GetNumaTopologyResponse()
+        rsp.topology = NumaTopology()()
+        return jsonobject.dumps(rsp)
+
 
     def start(self):
         self.host_uuid = None
@@ -2273,6 +2366,7 @@ done
         http_server.register_async_uri(self.ADD_BRIDGE_FDB_ENTRY_PATH, self.add_bridge_fdb_entry)
         http_server.register_async_uri(self.DEPLOY_COLO_QEMU_PATH, self.deploy_colo_qemu)
         http_server.register_async_uri(self.UPDATE_CONFIGURATION_PATH, self.update_host_configuration)
+        http_server.register_async_uri(self.GET_NUMA_TOPOLOGY_PATH, self.get_numa_topology)
 
         self.heartbeat_timer = {}
         self.libvirt_version = linux.get_libvirt_version()
