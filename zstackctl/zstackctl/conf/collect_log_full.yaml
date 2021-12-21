@@ -72,7 +72,7 @@ vrouter:
       - {name: haproxy-log, dir: /var/log/, file: 'haproxy.log*'}
       - {name: keeplived-log, dir: /var/log/, file: 'keepalived.log*'}
       - {name: messages-log, dir: /var/log/, file: 'messages*'}
-      - {name: history-log-vyos, exec: 'echo history | bash -i'}
+      - {name: history-log-vyos, exec: 'echo history | su - vyos -c ''bash -i'''}
       - {name: history-log-root,  exec: 'echo history | sudo bash -i'}
 ceph-bs:
     description: ceph backstorage
