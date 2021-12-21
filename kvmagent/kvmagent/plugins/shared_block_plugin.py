@@ -247,7 +247,11 @@ class CheckDisk(object):
         command = "pvresize /dev/%s" % disk_name
         if multipath_dev is not None and multipath_dev != disk_name:
             command = "pvresize /dev/%s || pvresize /dev/%s" % (disk_name, multipath_dev)
-        r, o, e = bash.bash_roe(command, errorout=True)
+        r, o, e = bash.bash_roe(command, errorout=False)
+
+        if e is not None:
+            lvm.check_stuck_vglk()
+            r, o, e = bash.bash_roe(command, errorout=True)
         logger.debug("resized pv %s (wwid: %s), return code: %s, stdout %s, stderr: %s" %
                      (disk_name, self.identifier, r, o, e))
 
