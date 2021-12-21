@@ -8,6 +8,7 @@ import types
 
 import cherrypy
 import thread
+import threading
 
 import os
 import urllib3
@@ -128,7 +129,8 @@ class RawUriStreamHandler(object):
 
 
 class AsyncUirHandler(SyncUriHandler):
-    HANDLER_COUNTER = thread.AtomicInteger(0)
+    HANDLER_DICT = {}
+    HANDLER_DICT_LOCK = threading.Lock()
     STOP_WORLD = False
 
     def __init__(self, uri_obj):
@@ -137,8 +139,13 @@ class AsyncUirHandler(SyncUriHandler):
 
     @thread.AsyncThread
     def _run_index(self, task_uuid, request):
-        self.HANDLER_COUNTER.inc()
         callback_uri = self._get_callback_uri(request)
+        with self.HANDLER_DICT_LOCK:
+            if task_uuid in self.HANDLER_DICT:
+                logger.info("ignored duplicated task: {}".format(task_uuid))
+                return
+            self.HANDLER_DICT[task_uuid] = callback_uri
+
         headers = {TASK_UUID : task_uuid}
         try:
             content = super(AsyncUirHandler, self)._do_index(request)
@@ -152,7 +159,8 @@ class AsyncUirHandler(SyncUriHandler):
             json_post(callback_uri, content, headers)
             logger.debug("async http reply[task uuid: %s] to %s: %s" % (task_uuid, callback_uri, content))
         finally:
-            self.HANDLER_COUNTER.dec()
+            with self.HANDLER_DICT_LOCK:
+                self.HANDLER_DICT.pop(task_uuid, None)
 
     def _get_callback_uri(self, req):
         callback_uri = None
