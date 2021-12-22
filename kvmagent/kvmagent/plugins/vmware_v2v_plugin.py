@@ -176,9 +176,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             if os.path.exists(NBDKIT_BUILD_LIB_PATH):
                 linux.rm_dir_force(NBDKIT_BUILD_LIB_PATH)
 
-            f, wget_path_file = tempfile.mkstemp()
-            with open(wget_path_file, 'w') as wpd:
-                wpd.write("%s\n%s" % (cmd.adaptedVddkLibUrl, cmd.nbdkitUrl))
+            wget_path_file = linux.write_to_temp_file("%s\n%s" % (cmd.adaptedVddkLibUrl, cmd.nbdkitUrl))
 
             # wget ndbkit and old vddk
             linux.mkdir(NBDKIT_BUILD_LIB_PATH)

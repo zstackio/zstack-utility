@@ -652,6 +652,12 @@ def mkdir(path, mode=0o755):
     return False
 
 
+def create_temp_file():
+    tmp_fd, tmp_path = tempfile.mkstemp()
+    os.close(tmp_fd)
+    return tmp_path
+
+
 def write_to_temp_file(content):
     (tmp_fd, tmp_path) = tempfile.mkstemp()
     tmp_fd = os.fdopen(tmp_fd, 'w')

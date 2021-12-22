@@ -5491,9 +5491,7 @@ class VmPlugin(kvmagent.KvmAgent):
     def compare_cpu_function(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CompareCpuFunctionResponse()
-        fd, fpath = tempfile.mkstemp()
-        with os.fdopen(fd, 'w') as tmpf:
-            tmpf.write(cmd.cpuXml.strip())
+        fpath = linux.write_to_temp_file(cmd.cpuXml.strip())
         compare_cmd = shell.ShellCmd('virsh cpu-compare --error %s' % fpath)
         compare_cmd(False)
         logger.info("compare cpu function result: " + compare_cmd.stdout)
@@ -5582,9 +5580,7 @@ class VmPlugin(kvmagent.KvmAgent):
             _, disk_name = vm._get_target_disk_by_path(oldpath)
             migrate_disks[disk_name] = volume
 
-        fd, fpath = tempfile.mkstemp()
-        with os.fdopen(fd, 'w') as tmpf:
-            tmpf.write(vm.domain_xml)
+        fpath = linux.write_to_temp_file(vm.domain_xml)
 
         tree = etree.parse(fpath)
         devices = tree.getroot().find('devices')

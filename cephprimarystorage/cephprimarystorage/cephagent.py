@@ -587,7 +587,7 @@ class CephAgent(plugin.TaskManager):
 
         report = Report(cmd.threadContext, cmd.threadContextStack)
         report.processType = "CephCpVolume"
-        _, PFILE = tempfile.mkstemp()
+        PFILE = linux.create_temp_file()
         stage = (cmd.threadContext['task-stage'], "10-90")[cmd.threadContext['task-stage'] is None]
 
         def _get_progress(synced):

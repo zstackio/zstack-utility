@@ -89,7 +89,7 @@ class ImageStoreClient(object):
             return jobj.mirrorVolumes
 
     def mirror_volume(self, vm, node, dest, lastvolume, currvolume, volumetype, mode, speed, reporter):
-        _, PFILE = tempfile.mkstemp()
+        PFILE = linux.create_temp_file()
 
         def _get_progress(synced):
             last = linux.tail_1(PFILE).strip()
@@ -110,7 +110,7 @@ class ImageStoreClient(object):
     def backup_volume(self, vm, node, bitmap, mode, dest, speed, reporter, stage):
         self.check_capacity(os.path.dirname(dest))
 
-        _, PFILE = tempfile.mkstemp()
+        PFILE = linux.create_temp_file()
 
         def _get_progress(synced):
             last = linux.tail_1(PFILE).strip()
@@ -135,7 +135,7 @@ class ImageStoreClient(object):
     #  'drive-virtio-disk1': { "backupFile": "bar", "mode":"top" }}
     def backup_volumes(self, vm, args, dstdir, reporter, stage):
         self.check_capacity(dstdir)
-        _, PFILE = tempfile.mkstemp()
+        PFILE = linux.create_temp_file()
 
         def _get_progress(synced):
             last = linux.tail_1(PFILE).strip()

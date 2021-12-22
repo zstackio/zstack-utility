@@ -1254,7 +1254,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 lvm.active_lv(target_abs_path, lvm.LvmlockdLockType.SHARE)
                 total_size += lv_size
 
-        fd, PFILE = tempfile.mkstemp()
+        PFILE = linux.create_temp_file()
         try:
             report = Report.from_spec(cmd, 'MigrateVolumes')
             parent_stage = get_task_stage(cmd, "10-90")
