@@ -5615,10 +5615,16 @@ class VmPlugin(kvmagent.KvmAgent):
         check_mirror_jobs(vmUuid, bool(os.getenv("MIGRATE_WITHOUT_DIRTY_BITMAPS")))
         cmd = "virsh migrate {} --migrate-disks {} --xml {} {} {} {}".format(flags, diskstr, fpath, vmUuid, dst, migurl)
 
-        try:
-            shell.check_run(cmd)
-        finally:
-            os.remove(fpath)
+        shell_cmd = shell.ShellCmd(cmd)
+        shell_cmd(False)
+        os.remove(fpath)
+        if shell_cmd.return_code == 0:
+            return
+        
+        if shell_cmd.stderr and "Need a root block node" in shell_cmd.stderr:
+            shell_cmd.stderr = "failed to block migrate %s, please check if volume backup job is in progress" % vmUuid
+
+        shell_cmd.raise_error()
 
     @kvmagent.replyerror
     def block_migrate_vm(self, req):
