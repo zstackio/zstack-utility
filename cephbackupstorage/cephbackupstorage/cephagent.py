@@ -831,6 +831,7 @@ class CephAgent(object):
                 clean_cmd = "pkill -f %s" % pipe_path
                 shell.run('%s & %s && %s' % (scp_to_pipe_cmd, get_header_from_pipe_cmd, clean_cmd))
                 qhdr = os.read(fd, qcow2_length)
+                os.close(fd)
                 if os.path.exists(tmp_file):
                     os.remove(tmp_file)
             else:
@@ -898,7 +899,7 @@ class CephAgent(object):
             # roll back tmp ceph file after import it
             _1()
 
-            _, PFILE = tempfile.mkstemp()
+            PFILE = linux.create_temp_file()
             content_length = shell.call("""curl -sLI %s|awk '/[cC]ontent-[lL]ength/{print $NF}'""" % cmd.url).splitlines()[-1]
             total = _getRealSize(content_length)
 
@@ -928,7 +929,7 @@ class CephAgent(object):
 
         elif url.scheme == 'sftp':
             port = (url.port, 22)[url.port is None]
-            _, PFILE = tempfile.mkstemp()
+            PFILE = linux.create_temp_file()
             ssh_pswd_file = None
             pipe_path = PFILE + "fifo"
             scp_to_pipe_cmd = "scp -P %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s@%s:%s %s" % (port, url.username, url.hostname, url.path, pipe_path)

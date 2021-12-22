@@ -1299,7 +1299,7 @@ do
    fi    
 done
 ''' % (' '.join(GRUB_FILES))
-        fd, disable_hugepage_script_path = tempfile.mkstemp()
+        disable_hugepage_script_path = linux.create_temp_file()
         with open(disable_hugepage_script_path, 'w') as f:
             f.write(disable_hugepage_script)
         logger.info('close_hugepage_script_path is: %s' % disable_hugepage_script_path)
@@ -1355,7 +1355,7 @@ do
 done
 ''' % (' '.join(GRUB_FILES), reserveSize, pageSize)
 
-        fd, enable_hugepage_script_path = tempfile.mkstemp()
+        enable_hugepage_script_path = linux.create_temp_file()
         with open(enable_hugepage_script_path, 'w') as f:
             f.write(enable_hugepage_script)
         logger.info('enable_hugepage_script_path is: %s' % enable_hugepage_script_path)

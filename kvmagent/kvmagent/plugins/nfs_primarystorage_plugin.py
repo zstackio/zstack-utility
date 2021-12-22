@@ -274,8 +274,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         mount_path = cmd.mountPath
         dst_folder_path = cmd.dstFolderPath
         temp_dir = None
-        fd, PFILE = tempfile.mkstemp()
-        os.close(fd)
+        PFILE = linux.create_temp_file()
         f = open(PFILE, 'r')
 
         try:
