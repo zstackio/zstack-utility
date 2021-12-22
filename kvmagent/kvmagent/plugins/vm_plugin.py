@@ -7465,7 +7465,7 @@ host side snapshot files chian:
                 try:
                     self.queue_singleton.queue.get(True)
 
-                    while http.AsyncUirHandler.HANDLER_COUNTER.get() != 0:
+                    while bool(http.AsyncUirHandler.HANDLER_DICT):
                         time.sleep(0.1)
 
                     # the libvirt has been stopped or restarted
