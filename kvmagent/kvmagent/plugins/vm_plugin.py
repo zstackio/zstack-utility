@@ -3461,8 +3461,8 @@ class Vm(object):
                 if numa_nodes:
                     numa = e(cpu, 'numa')
                     for _, numa_node in enumerate(numa_nodes):
-                        e(numa,'cell', attrib={'id': str(numa_node.nodeID), 'cpus': str(numa_node.cpus), 'memory': str(int(numa_node.memorySize)/1024), 'unit': 'KiB'})
-                        distances = e(numa, 'distances')
+                        cell = e(numa,'cell', attrib={'id': str(numa_node.nodeID), 'cpus': str(numa_node.cpus), 'memory': str(int(numa_node.memorySize)/1024), 'unit': 'KiB'})
+                        distances = e(cell, 'distances')
                         for node_index, distance in enumerate(numa_node.distance):
                             e(distances,'sibling',attrib={'id': str(node_index), 'value':str(distance)})
 
