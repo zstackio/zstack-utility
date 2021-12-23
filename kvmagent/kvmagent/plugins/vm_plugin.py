@@ -3451,10 +3451,11 @@ class Vm(object):
                     # e(root,'vcpu',str(cmd.cpuNum),{'placement':'static'})
                     cpu = e(root, 'cpu', attrib={'mode': 'custom', 'match': 'exact', 'check': 'partial'})
                     e(cpu, 'model', 'Loongson-3A4000-COMP', attrib={'fallback': 'allow'})
-                    mem = cmd.memory / 1024
+                    mem = cmd.memory / 1024 / 2
                     e(cpu, 'topology', attrib={'sockets': '2', 'cores': '4', 'threads': '1'})
                     numa = e(cpu, 'numa')
-                    e(numa, 'cell', attrib={'id': '0', 'cpus': '0-7', 'memory': str(mem), 'unit': 'KiB'})
+                    e(numa, 'cell', attrib={'id': '0', 'cpus': '0-3', 'memory': str(mem), 'unit': 'KiB'})
+                    e(numa, 'cell', attrib={'id': '1', 'cpus': '4-7', 'memory': str(mem), 'unit': 'KiB'})
 
                 eval("on_{}".format(HOST_ARCH))()
             else:
