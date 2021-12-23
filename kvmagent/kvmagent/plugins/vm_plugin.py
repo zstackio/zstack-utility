@@ -1378,7 +1378,7 @@ def get_vm_by_uuid(uuid, exception_if_not_existing=True, conn=None):
                 return conn.lookupByName(uuid)
 
         vm = Vm.from_virt_domain(retry_call_libvirt())
-        logger.debug("find xm xml: %s" % vm.domain_xml)
+        logger.debug("find vm xml: %s" % vm.domain_xml)
         return vm
     except libvirt.libvirtError as e:
         error_code = e.get_error_code()
@@ -2406,6 +2406,12 @@ class Vm(object):
 
         return not job_ended
 
+    def _check_target_disk_existing_by_path(self, install_path, refresh=True):
+        if refresh:
+            self.refresh()
+        d, n = self._get_target_disk_by_path(install_path, is_exception=False)
+        return d and n
+
     def _get_target_disk_by_path(self, installPath, is_exception=True):
         if installPath.startswith('sharedblock'):
             installPath = shared_block_to_file(installPath)
@@ -2584,8 +2590,28 @@ class Vm(object):
             return return_structs
         except libvirt.libvirtError as ex:
             logger.warn(linux.get_exception_stacktrace())
+            ret = []
+            for i in xrange(5):
+                self.refresh()
+                ret = filter(lambda s: self._check_target_disk_existing_by_path(s.installPath, refresh=False), return_structs)
+                if len(ret) == len(return_structs):
+                    break
+                time.sleep(1)
+
+            for r in ret:
+                logger.warn("libvirt return snapshot[path:%s] failure, but it succeed actually!" % r.installPath)
+
+            if ret:
+                return ret
             raise kvmagent.KvmError(
                 'unable to take live snapshot of vm[uuid:{0}] volumes[id:{1}], {2}'.format(self.uuid, disk_names, str(ex)))
+
+        finally:
+            for struct in return_structs:
+                existing = self._check_target_disk_existing_by_path(struct.installPath)
+                logger.debug("after create snapshot by libvirt, expected volume[install path: %s] does%s exist."
+                             % (struct.installPath, "" if existing else " not"))
+
 
     def take_volume_snapshot(self, task_spec, volume, install_path, full_snapshot=False):
         device_id = volume.deviceId
@@ -2622,8 +2648,17 @@ class Vm(object):
                 return previous_install_path, install_path
             except libvirt.libvirtError as ex:
                 logger.warn(linux.get_exception_stacktrace())
+                if previous_install_path != install_path and \
+                        linux.wait_callback_success(self._check_target_disk_existing_by_path, install_path, timeout=5):
+                    logger.warn("libvirt return snapshot[path:%s] failure, but it succeed actually!" % install_path)
+                    return previous_install_path, install_path
+
                 raise kvmagent.KvmError(
                     'unable to take snapshot of vm[uuid:{0}] volume[id:{1}], {2}'.format(self.uuid, device_id, str(ex)))
+            finally:
+                existing = self._check_target_disk_existing_by_path(install_path)
+                logger.debug("after create snapshot by libvirt, expected volume[install path: %s] does%s exist."
+                             % (install_path, "" if existing else " not"))
 
         def take_full_snapshot():
             self.block_stream_disk(task_spec, volume)
