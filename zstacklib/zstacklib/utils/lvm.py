@@ -4,8 +4,10 @@ import os
 import os.path
 import threading
 import time
+import traceback
 import weakref
 import re
+import simplejson
 
 from zstacklib.utils import shell
 from zstacklib.utils import bash
@@ -107,8 +109,37 @@ def get_block_devices():
     block_devices, slave_devices = get_mpath_block_devices(scsi_info)
     # 2. get information of other devices
     block_devices.extend(get_disk_block_devices(slave_devices, scsi_info))
+    # 3. get nvme block devices
+    block_devices.extend(get_nvme_block_devices())
 
     return block_devices
+
+
+def get_nvme_block_devices():
+    if not os.path.exists('/usr/sbin/nvme') and not os.path.exists('/sbin/nvme'):
+        return []
+
+    s = shell.ShellCmd("nvme list -o json")
+    s(False)
+    if s.return_code != 0:
+        return []
+
+    try:
+        devices = []
+        ret = simplejson.loads(s.stdout)
+        for d in ret.get("Devices", []):
+            dev = os.path.basename(d.get("DevicePath", ""))
+            if not dev or not os.path.exists("/sys/block/%s/wwid" % dev):
+                continue
+
+            wwid = linux.read_file("/sys/block/%s/wwid" % dev)
+            if wwid:
+                devices.append(get_device_info(dev, {dev: wwid.strip()}))
+        return devices
+    except Exception as e:
+        logger.error(traceback.format_exc())
+        return []
+
 
 @bash.in_bash
 def get_mpath_block_devices(scsi_info):
