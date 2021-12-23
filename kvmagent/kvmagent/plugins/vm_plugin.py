@@ -3460,11 +3460,13 @@ class Vm(object):
                 e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
                 if numa_nodes:
                     numa = e(cpu, 'numa')
+                    numatune = e(root, 'numatune')
                     for _, numa_node in enumerate(numa_nodes):
-                        cell = e(numa,'cell', attrib={'id': str(numa_node.nodeID), 'cpus': str(numa_node.cpus), 'memory': str(int(numa_node.memorySize)/1024), 'unit': 'KiB'})
+                        e(numatune, 'memnode', attrib={'cellid': str(numa_node.nodeID), 'mode':'preferred', 'nodeset': str(numa_node.hostNodeID)})
+                        cell = e(numa, 'cell', attrib={'id': str(numa_node.nodeID), 'cpus': str(numa_node.cpus), 'memory': str(int(numa_node.memorySize)/1024), 'unit': 'KiB'})
                         distances = e(cell, 'distances')
                         for node_index, distance in enumerate(numa_node.distance):
-                            e(distances,'sibling',attrib={'id': str(node_index), 'value':str(distance)})
+                            e(distances, 'sibling', attrib={'id': str(node_index), 'value': str(distance)})
 
             if cmd.addons.cpuPinning:
                 for rule in cmd.addons.cpuPinning:
