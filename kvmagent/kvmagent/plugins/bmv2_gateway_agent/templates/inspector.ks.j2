@@ -56,17 +56,17 @@ def get_ipmi_info():
                     addr = temp_addr
                 break
 
-    cmd = 'ipmitool sol info 1'
-    _, stdout, _ = shell_cmd(cmd)
-    for line in stdout.split('\n'):
-        if 'Payload Port' in line:
-            port = int(line.split(':')[-1].strip())
+    #cmd = 'ipmitool sol info 1'
+    #_, stdout, _ = shell_cmd(cmd)
+    #for line in stdout.split('\n'):
+    #    if 'Payload Port' in line:
+    #        port = int(line.split(':')[-1].strip())
 
     if not addr:
         raise Exception('Failed to find ipmi address')
 
-    if not port:
-        port = 623
+    #if not port:
+    port = 623
 
     return {
         'ipmiAddress': addr,

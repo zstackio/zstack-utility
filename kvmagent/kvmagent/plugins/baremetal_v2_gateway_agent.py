@@ -850,7 +850,9 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         ipxe_conf = ipxe_template.render(
             inspect_kernel_uri=inspect_kernel_uri,
             inspect_initrd_uri=inspect_initrd_uri,
-            inspect_ks_cfg_uri=inspect_ks_cfg_uri)
+            inspect_ks_cfg_uri=inspect_ks_cfg_uri,
+            extra_boot_params=network_obj.extra_boot_params
+            )
         with open(self.BOOT_IPXE_PATH, 'w') as f:
             f.write(ipxe_conf)
 
@@ -891,7 +893,10 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             dest_disk_wwn=cmd.destDiskWwn,
             send_hardware_infos_uri=send_hardware_infos_uri,
             gateway_ip=instance_obj.gateway_ip,
-            instance_uuid=instance_obj.uuid
+            instance_uuid=instance_obj.uuid,
+            chassis_address=cmd.chassisInfo.address,
+            chassis_port=cmd.chassisInfo.port,
+            extra_boot_params=cmd.extra_boot_params
         )
 
         with open(ks_config_path, 'w') as f:
