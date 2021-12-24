@@ -130,7 +130,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         pkgs.extend(eval("extra_{}".format(kvmagent.host_arch)))
         yum_release = kvmagent.get_host_yum_release()
         cmd = ('export YUM0={yum_release}; [[ "$YUM0" = "ns10" ]] && rpm -e libselinux-utils --nodeps > /dev/null 2>&1; '
-               'yum --disablerepo=*--enablerepo=zstack-mn,qemu-kvm-ev-mn clean all; '
+               'yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn clean all; '
                'pkg_list=`rpm -q {pkg_list} | grep "not installed" | awk '
                '\'{{ print $2 }}\'`; for pkg in $pkg_list; do yum '
                '--disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install -y '
@@ -847,6 +847,9 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                 ip=network_obj.provision_nic_ip, port=network_obj.baremetal_instance_proxy_port)
 
         ipxe_template = self._load_template('boot.ipxe')
+        if network_obj.extra_boot_params is None:
+            network_obj.extra_boot_params = ""
+
         ipxe_conf = ipxe_template.render(
             inspect_kernel_uri=inspect_kernel_uri,
             inspect_initrd_uri=inspect_initrd_uri,
@@ -888,6 +891,9 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             'http://{ip}:{port}/baremetal_instance_agent/v2/hardwareinfos'
         ).format(ip=instance_obj.gateway_ip, port=cmd.port)
 
+        if cmd.extraBootParams is None:
+            cmd.extraBootParams = ""
+
         conf = template.render(
             network_inst_uri=network_inst_uri,
             dest_disk_wwn=cmd.destDiskWwn,
@@ -896,7 +902,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             instance_uuid=instance_obj.uuid,
             chassis_address=cmd.chassisInfo.address,
             chassis_port=cmd.chassisInfo.port,
-            extra_boot_params=cmd.extra_boot_params
+            extra_boot_params=cmd.extraBootParams
         )
 
         with open(ks_config_path, 'w') as f:
