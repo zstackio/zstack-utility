@@ -9,6 +9,7 @@ import urlparse
 import rados
 import rbd
 import Queue
+import threading
 
 import zstacklib.utils.daemon as daemon
 import zstacklib.utils.jsonobject as jsonobject
@@ -281,6 +282,8 @@ class CephAgent(plugin.TaskManager):
     GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH = "/ceph/primarystorage/kvmhost/download/progress"
     JOB_CANCEL = "/job/cancel"
 
+    CEPH_CONF_PATH = "/etc/ceph/ceph.conf"
+
     http_server = http.HttpServer(port=7762)
     http_server.logfile_path = log.get_logfile_path()
 
@@ -324,6 +327,25 @@ class CephAgent(plugin.TaskManager):
         self.http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_NBD_EXPT_PATH, self.download_from_nbd)
 
         self.imagestore_client = ImageStoreClient()
+
+        self.cluster = None
+        self.ioctx = {}
+        self.op_lock = threading.Lock()
+
+    def get_ioctx(self, pool_name):
+        # type: (str) -> rados.Ioctx
+
+        if pool_name in self.ioctx:
+            return self.ioctx[pool_name]
+
+        with self.op_lock:
+            if not self.cluster:
+                self.cluster = rados.Rados(conffile=self.CEPH_CONF_PATH)
+                self.cluster.connect()
+
+            self.ioctx[pool_name] = self.cluster.open_ioctx(pool_name)
+
+        return self.ioctx[pool_name]
 
     def _set_capacity_to_response(self, rsp):
         o = shell.call('ceph df -f json')
@@ -836,7 +858,7 @@ class CephAgent(plugin.TaskManager):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CreateEmptyVolumeRsp()
         driver = cephprimarystorage.get_driver(cmd)
-        rsp = driver.create_volume(cmd, rsp)
+        rsp = driver.create_volume(cmd, rsp, agent=self)
 
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)

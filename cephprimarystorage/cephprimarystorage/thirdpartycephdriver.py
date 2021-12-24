@@ -15,7 +15,7 @@ class ThirdpartyCephDriver(cephagent.CephAgent):
         rsp.installPath = volume_name
         return rsp
 
-    def create_volume(self, cmd, rsp):
+    def create_volume(self, cmd, rsp, agent=None):
         path = self._normalize_install_path(cmd.installPath)
         array = path.split("/")
         pool_uuid = array[0]
