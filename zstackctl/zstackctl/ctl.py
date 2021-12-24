@@ -5380,7 +5380,8 @@ class RestoreMysqlCmd(Command):
             shell_no_pipe(command)
 
         info("Successfully restored database. You can start node by running zstack-ctl start.")
-        warn('HA is disabled while restore database, enable it after management node is running if needed.')
+        warn('The VM HA in the global setting (config) is disabled while restore database, '
+             'enable it after management node is running if needed.')
 
 class RestorerFactory(object):
     @staticmethod
