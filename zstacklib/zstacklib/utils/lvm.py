@@ -2005,11 +2005,13 @@ def get_lv_affinity_sorted_pvs(lv_path, cmd=None):
         update_pv_allocate_strategy(cmd)
 
     vg_name, lv_name = lv_path.split(os.sep)[-2::]
-    locations = get_lv_location(os.path.join("/dev", vg_name, lv_name))
     total_pvs = get_allocated_pvs(vg_name)
-    for pv in locations:
-        total_pvs.remove(pv)
-    return locations + total_pvs
+    if not total_pvs:
+        return None
+
+    locations = get_lv_location(os.path.join("/dev", vg_name, lv_name))
+    rest_pvs = filter(lambda p: p not in locations, total_pvs)
+    return locations + rest_pvs
 
 
 @bash.in_bash
