@@ -1,6 +1,8 @@
-import os
+from zstacklib.utils import log
 
-from zstacklib.utils import shell
+log.configure_log('/var/log/zstack/ceph-primarystorage.log')
+logger = log.get_logger(__name__)
+
 from cephprimarystorage import cephdriver
 from cephprimarystorage import thirdpartycephdriver
 
