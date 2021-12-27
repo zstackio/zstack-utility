@@ -1321,7 +1321,6 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 target_abs_path = translate_absolute_path_from_install_path(struct.targetInstallPath)
                 lvm.deactive_lv(target_abs_path)
 
-            os.close(fd)
             linux.rm_file_force(PFILE)
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
