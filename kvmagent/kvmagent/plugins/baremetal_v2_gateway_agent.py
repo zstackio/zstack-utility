@@ -125,8 +125,8 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
 
         pkgs.extend(eval("extra_{}".format(kvmagent.host_arch)))
         yum_release = kvmagent.get_host_yum_release()
-        cmd = ('export YUM0={yum_release}; [[ "$YUM0" = "ns10" ]] && rpm -e libselinux-utils --nodeps > /dev/null 2>&1; '
-               'yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn clean all; '
+        cmd = ('export YUM0={yum_release}; yum --disablerepo=* '
+               '--enablerepo=zstack-mn,qemu-kvm-ev-mn clean all; '
                'pkg_list=`rpm -q {pkg_list} | grep "not installed" | awk '
                '\'{{ print $2 }}\'`; for pkg in $pkg_list; do yum '
                '--disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install -y '
