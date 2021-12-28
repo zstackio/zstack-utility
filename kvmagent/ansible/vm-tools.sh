@@ -41,7 +41,7 @@ fi
 BIN_NAME="zwatch-vm-agent${LABLE}"
 
 if [ -d $LOGPATH ]; then
-  LOGPATH_EXISTS = "y"
+  LOGPATH_EXISTS="y"
 fi
 version=""
 
@@ -80,6 +80,7 @@ download_agent_tools() {
   else
     curl http://169.254.169.254/zwatch-vm-agent --silent -o zwatch-vm-agent.download
   fi
+  cd - &> /dev/null
 }
 
 clean_download_file() {
@@ -92,9 +93,9 @@ check_md5() {
   fi
 
   if [ x"$AGENT_OS" == x"freebsd" ]; then
-    BIN_MD5=`md5 zwatch-vm-agent.download | awk '{print $4}'`
+    BIN_MD5=`md5 $TEMP_PATH/zwatch-vm-agent.download | awk '{print $4}'`
   else
-    BIN_MD5=`md5sum zwatch-vm-agent.download | awk '{print $1}'`
+    BIN_MD5=`md5sum $TEMP_PATH/zwatch-vm-agent.download | awk '{print $1}'`
   fi
   if [[ ! ${AGENT_VERSION} =~ "md5-${BIN_NAME}=${BIN_MD5}" ]]; then
     log_info "there was an error downloading the zwatch-vm-agent, check md5sum fail"
@@ -103,7 +104,7 @@ check_md5() {
 }
 
 query_agent_info() {
-  vmInstanceUuid=`curl http://169.254.169.254/2009-04-04/meta-data/instance-id`
+  vmInstanceUuid=`curl --silent http://169.254.169.254/2009-04-04/meta-data/instance-id`
   version=`echo $AGENT_VERSION | grep "zwatch-vm-agent=" | awk -F '=' '{print $2}'`
 }
 
@@ -111,6 +112,7 @@ install_agent_tools() {
   cd $TEMP_PATH
   chmod +x zwatch-vm-agent.download
   bash -x ./zwatch-vm-agent.download
+  cd - &> /dev/null
   clean_download_file
   if [ $? != 0 ]; then
     send_install_result "InstallFailed"
