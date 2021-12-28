@@ -1050,7 +1050,7 @@ mimetype.assign = (
             logger.error("Can't find file %s" % agent_file_source_path)
             return
 
-        if not os.path.exists(freebsd_agent_file_source_path):
+        if HOST_ARCH == 'x86_64' and not os.path.exists(freebsd_agent_file_source_path):
             logger.error("Can't find file %s" % freebsd_agent_file_source_path)
             return
 
