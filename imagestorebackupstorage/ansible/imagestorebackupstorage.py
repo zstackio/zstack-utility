@@ -194,6 +194,10 @@ else:
     command = "bash " + dest_pkg
 run_remote_command(command, host_post_info)
 
+# add nbd.conf
+command = ("echo 'nbd' > /etc/modules-load.d/nbd.conf; echo 'options nbd nbds_max=128 max_part=16' > /etc/modprobe.d/nbd.conf")
+run_remote_command(command, host_post_info)
+
 # if user is not root , Change the owner of the directory to ordinary user
 if fs_rootpath != '' and remote_user != 'root':
     run_remote_command("sudo chown -R -H --dereference %s: %s" % (remote_user, fs_rootpath), host_post_info)
