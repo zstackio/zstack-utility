@@ -252,8 +252,8 @@ class NbdDeviceOperator(object):
             cursor.execute(_disconnect)
 
         # Check the nbd dev disconnected
-        with bm_utils.transcantion(retries=5, sleep_time=1) as cursor:
-            cursor.execute(_check_disconnected)
+        # with bm_utils.transcantion(retries=5, sleep_time=1) as cursor:
+        #     cursor.execute(_check_disconnected)
 
 
 class DmDeviceOperator(object):
