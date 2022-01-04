@@ -96,8 +96,11 @@ shell_cmd(cmd)
 
 # nic
 nic_json = '{"ipmiAddress":"%s", "ipmiPort":%d, "type":"nic", "content":"[' % (ipmiAddress, ipmiPort)
-cmd = r'''ip route | awk '/default/ { print $5 }' | head -n 1'''
-status, pxedev, _ = shell_cmd(cmd)
+pxe_iface_mac = ''
+with open('/proc/cmdline', 'r') as f:
+    for param in f.read().strip().split():
+        if 'BOOTIF' in param:
+            pxe_iface_mac = param.split('=')[-1].replace('-', ':')
 cmd = r'''ip -family inet -oneline link show scope global | awk '{ printf "%s %s\n", $2, $(NF-2) }' | egrep -v "^lo:"'''
 status, output, _ = shell_cmd(cmd)
 if not status:
@@ -108,9 +111,12 @@ if not status:
         status, speed, _ = shell_cmd(cmd)
         if status: speed = "UNKNOWN"
         # whether pxe boot nic
-        pxe = "true" if pxedev == devname else "false"
+        rc, _, _ = shell_cmd("""arping -c 5 -I {} {}""".format(devname, "PXESERVER_DHCP_NIC_IP"), False)
+        if rc == 0 and not pxe_iface_mac:
+            pxe_iface_mac = mac
+        pxe = "true" if mac in pxe_iface_mac else "false"
         # get ip address if pxe boot nic
-        ip = get_ip_address(mac) if pxedev == devname else ""
+        ip = get_ip_address(mac) if pxe == "true" else ""
         nic_json += '{\\"devname\\":\\"%s\\", \\"mac\\":\\"%s\\", \\"speed\\":\\"%s\\", \\"pxe\\":\\"%s\\", \\"ip\\":\\"%s\\"},' % (devname, mac, speed, pxe, ip)
     nic_json = nic_json[:-1]
 nic_json += ']"}'
