@@ -91,14 +91,14 @@ else:
 
 if distro in RPM_BASED_OS:
     if zstack_repo != 'false':
-        command = ("pkg_list=`rpm -q wget qemu-img nmap| grep \"not installed\" | awk '{ print $2 }'` && for pkg"
+        command = ("pkg_list=`rpm -q wget qemu-kvm-ev nmap| grep \"not installed\" | awk '{ print $2 }'` && for pkg"
                    " in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (zstack_repo)
         run_remote_command(command, host_post_info)
         if distro_version >= 7:
             command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
             run_remote_command(command, host_post_info)
     else:
-        for pkg in ["wget", "qemu-img", "nmap"]:
+        for pkg in ["wget",  "nmap", "qemu-kvm-ev"]:
             yum_install_package(pkg, host_post_info)
         if distro_version >= 7:
             command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
@@ -170,11 +170,6 @@ if cephpagent_copy != "changed:False":
     agent_install_arg.agent_root = cephp_root
     agent_install_arg.pkg_name = pkg_cephpagent
     agent_install(agent_install_arg, host_post_info)
-
-pip_install_arg = PipInstallArg()
-pip_install_arg.extra_args = "\"--trusted-host %s -i %s \"" % (trusted_host, pip_url)
-pip_install_arg.name = "python-cephlibs"
-pip_install_package(pip_install_arg, host_post_info)
 
 # name: copy service file
 # only support centos redhat debian and ubuntu

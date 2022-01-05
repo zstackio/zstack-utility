@@ -104,7 +104,7 @@ YUM_ONLINE_REPO='y'
 INSTALL_MONITOR=''
 UPGRADE_MONITOR=''
 ONLY_UPGRADE_CTL=''
-ZSTACK_START_TIMEOUT=300
+ZSTACK_START_TIMEOUT=1000
 ZSTACK_PKG_MIRROR=''
 PKG_MIRROR_163='163'
 PKG_MIRROR_ALIYUN='aliyun'
@@ -2162,6 +2162,21 @@ install_zstack_network()
     systemctl restart zstack-network-agent.service
 } >>$ZSTACK_INSTALL_LOG 2>&1
 
+cp_virtio_drivers(){
+    if [ ! -e $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS/virtio-drivers ]; then
+        mkdir $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS/virtio-drivers
+    fi
+    if [ "$BASEARCH" == 'aarch64' -o "$BASEARCH" == 'mips64el' ]; then
+        return
+    fi
+    if [ -e "/opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/virtio-win_x86.vfd" ]; then
+        /bin/cp /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/virtio-win_x86.vfd $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS/virtio-drivers/
+    fi
+    if [ -e "/opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/virtio-win_amd64.vfd" ]; then
+        /bin/cp /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/virtio-win_amd64.vfd $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS/virtio-drivers/
+    fi
+}
+
 cp_third_party_tools(){
     echo_subtitle "Copy third-party tools to ${PRODUCT_NAME} install path"
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
@@ -2169,6 +2184,7 @@ cp_third_party_tools(){
         /bin/cp -rn /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/tools/* $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS >/dev/null 2>&1
         chown -R zstack.zstack $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS/*
     fi
+    cp_virtio_drivers
     install_zstack_network
     pass
 }
@@ -3218,10 +3234,21 @@ if [ x"$UPGRADE" = x'y' ]; then
 fi
 if [ x"$ZSTACK_RELEASE" = x"c72" -o x"$ZSTACK_RELEASE" = x"c74" -o x"$ZSTACK_RELEASE" = x"c76" ];then
     BASEURL=rsync://rsync.repo.zstack.io/${VERSION_RELEASE_NR}/$BASEARCH/
+    REMOTE_REPO_VERSION_URL=repo.zstack.io/${VERSION_RELEASE_NR}/$BASEARCH/
 else
     BASEURL=rsync://rsync.repo.zstack.io/${VERSION_RELEASE_NR}/
+    REMOTE_REPO_VERSION_URL=repo.zstack.io/${VERSION_RELEASE_NR}/
 fi
 
+LOCAL_ZSTAC_VERSION=$(awk '{print $NF}' $ZSTACK_HOME/VERSION)
+if [[ $LOCAL_ZSTAC_VERSION == $VERSION_RELEASE_NR* ]]; then
+    wget -q -O .remote_repo_version "${REMOTE_REPO_VERSION_URL}${ZSTACK_RELEASE}/.repo_version"
+    if [ -s .remote_repo_version ]; then
+        cmp -s .repo_version .remote_repo_version || echo_upgrade_local_repo_use_iso
+    else
+        fail2 "failed to update repo, can not find remote repo version, please download iso manually to upgrade your repo."
+    fi
+fi
 # it takes about 2 min to compare md5sum of 1800+ files in iso
 for os_release in $cluster_os_type;do
     [ ! -d /opt/zstack-dvd/$BASEARCH/$os_release ] && fail2 "$os_release cluster exists but no local repo matched, please download $os_release iso manually to upgrade your repo."
@@ -3626,6 +3653,15 @@ echo_hints_to_upgrade_iso()
         "# wget http://cdn.zstack.io/product_downloads/scripts/${PRODUCT_NAME,,}-upgrade\n" \
         "# bash ${PRODUCT_NAME,,}-upgrade ${ISO_NAME}\n" \
         "For more information, see ${UPGRADE_WIKI}"
+}
+
+echo_upgrade_local_repo_use_iso() {
+    echo
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+
+    fail "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n"\
+        "required repo version($(cat .repo_version)) do not match remote repo version($(cat .remote_repo_version)).\n"\
+        "Please download ISO and update you local repo\n"
 }
 
 echo_custom_pcidevice_xml_warning_if_need() {

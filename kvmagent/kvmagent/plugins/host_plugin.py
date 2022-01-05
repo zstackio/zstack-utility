@@ -34,6 +34,7 @@ from zstacklib.utils import ovs
 from zstacklib.utils.bash import *
 from zstacklib.utils.ip import get_nic_supported_max_speed
 from zstacklib.utils.report import Report
+import zstacklib.utils.plugin as plugin
 
 host_arch = platform.machine()
 IS_AARCH64 = host_arch == 'aarch64'
@@ -46,6 +47,7 @@ EBTABLES_CMD = ebtables.get_ebtables_cmd()
 COLO_QEMU_KVM_VERSION = '/var/lib/zstack/colo/qemu_kvm_version'
 COLO_LIB_PATH = '/var/lib/zstack/colo/'
 HOST_TAKEOVER_FLAG_PATH = 'var/run/zstack/takeOver'
+NODE_INFO_PATH = '/sys/devices/system/node/'
 
 BOND_MODE_ACTIVE_0 = "balance-rr"
 BOND_MODE_ACTIVE_1 = "active-backup"
@@ -97,6 +99,11 @@ class PingResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(PingResponse, self).__init__()
         self.hostUuid = None
+
+class CheckFileOnHostResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(CheckFileOnHostResponse, self).__init__()
+        self.existPaths = {}
 
 class GetUsbDevicesRsp(kvmagent.AgentResponse):
     def __init__(self):
@@ -320,6 +327,11 @@ class HostNetworkInterfaceInventory(object):
     def _to_dict(self):
         to_dict = self.__dict__
         return to_dict
+
+class GetNumaTopologyResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(GetNumaTopologyResponse, self).__init__()
+        self.topology = None
 
 class GetPciDevicesCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -571,6 +583,7 @@ class HostPlugin(kvmagent.KvmAgent):
     ECHO_PATH = '/host/echo'
     FACT_PATH = '/host/fact'
     PING_PATH = "/host/ping"
+    CHECK_FILE_ON_HOST_PATH = '/host/checkfile'
     GET_USB_DEVICES_PATH = "/host/usbdevice/get"
     SETUP_MOUNTABLE_PRIMARY_STORAGE_HEARTBEAT = "/host/mountableprimarystorageheartbeat"
     UPDATE_OS_PATH = "/host/updateos"
@@ -605,6 +618,7 @@ class HostPlugin(kvmagent.KvmAgent):
     ADD_BRIDGE_FDB_ENTRY_PATH = "/bridgefdb/add"
     DEPLOY_COLO_QEMU_PATH = "/deploy/colo/qemu"
     UPDATE_CONFIGURATION_PATH = "/host/update/configuration"
+    GET_NUMA_TOPOLOGY_PATH = "/numa/topology"
 
     host_network_facts_cache = {}  # type: dict[float, list[list, list]]
     cpu_sockets = 0
@@ -732,6 +746,24 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.version = self.config.get(kvmagent.VERSION)
         if os.path.exists(HOST_TAKEOVER_FLAG_PATH):
             linux.touch_file(HOST_TAKEOVER_FLAG_PATH)
+        return jsonobject.dumps(rsp)
+    
+    @kvmagent.replyerror
+    def check_file_on_host(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CheckFileOnHostResponse()
+        for file_path in cmd.paths:
+            if not os.path.exists(file_path):
+                continue
+            rsp.existPaths[file_path] = ""
+            if not cmd.md5Return:
+                continue
+            with open(file_path, 'rb') as data:
+                try:
+                    rsp.existPaths[file_path] = hashlib.md5(data.read()).hexdigest()
+                except IOError as err:
+                    logger.debug('can not open file %s because IOError: %s' % (file_path, str(err)))
+                    pass
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -1267,7 +1299,7 @@ do
    fi    
 done
 ''' % (' '.join(GRUB_FILES))
-        fd, disable_hugepage_script_path = tempfile.mkstemp()
+        disable_hugepage_script_path = linux.create_temp_file()
         with open(disable_hugepage_script_path, 'w') as f:
             f.write(disable_hugepage_script)
         logger.info('close_hugepage_script_path is: %s' % disable_hugepage_script_path)
@@ -1323,7 +1355,7 @@ do
 done
 ''' % (' '.join(GRUB_FILES), reserveSize, pageSize)
 
-        fd, enable_hugepage_script_path = tempfile.mkstemp()
+        enable_hugepage_script_path = linux.create_temp_file()
         with open(enable_hugepage_script_path, 'w') as f:
             f.write(enable_hugepage_script)
         logger.info('enable_hugepage_script_path is: %s' % enable_hugepage_script_path)
@@ -1974,14 +2006,7 @@ done
     def cancel(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
-
-        process_canceled = traceable_shell.cancel_job(cmd)
-        canceled_task_count = self.cancel_task(cmd.cancellationApiId)
-        if not process_canceled and not canceled_task_count:
-            rsp.success = False
-            rsp.error = "no matched job to cancel"
-
-        return jsonobject.dumps(rsp)
+        return jsonobject.dumps(plugin.cancel_job(cmd, rsp))
 
     @kvmagent.replyerror
     def transmit_vm_operation_to_vm(self, req):
@@ -2208,6 +2233,92 @@ done
 
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    def get_numa_topology(self, req):
+        class NumaTopology:
+            def __init__(self):
+                self.nodes = {}
+                self.get_topology()
+
+            def __call__(self, *args, **kwargs):
+                return self.nodes
+
+            def get_topology(self):
+                node_id = 0
+                while True:
+                    node_path = os.path.join(NODE_INFO_PATH, "node{}".format(node_id))
+                    if not os.path.isdir(node_path):
+                        break
+
+                    cpulist_path = os.path.join(node_path, "cpulist")
+                    meminfo_path = os.path.join(node_path, "meminfo")
+                    distance_path = os.path.join(node_path, "distance")
+
+                    size, free = self.get_meminfo(meminfo_path)
+                    self.nodes[str(node_id)] = {
+                        "cpus": self.get_cpu_list(cpulist_path),
+                        "free": free,
+                        "size": size,
+                        "distance": self.get_distance(distance_path)
+                    }
+
+                    node_id += 1
+
+            @staticmethod
+            def get_cpu_list(info_path):
+                data = None
+                with open(info_path, "r") as f:
+                    data = f.read()
+
+                if data is None or (not data):
+                    return
+
+                data = data.strip()
+                cpu_list = []
+                info = data.split(",")
+                for i in info:
+                    if "-" in i:
+                        temp = i.split("-")
+                        cpu_list.extend([str(cpu_id) for cpu_id in range(int(temp[0]), int(temp[1]) + 1)])
+                    elif "^" in i:
+                        cpu_list.remove(i[1:])
+                    else:
+                        cpu_list.append(i)
+                return cpu_list
+
+            @staticmethod
+            def get_meminfo(info_path):
+                data = None
+                with open(info_path, "r") as f:
+                    data = f.readlines()
+                if data is None or (not data):
+                    return
+
+                free, size = 0, 0
+                for mem in data:
+                    temp = filter(lambda i: i, mem.strip().split(" "))[-2]
+                    if temp == "0":
+                        continue
+                    if "MemTotal" in mem:
+                        size = int(temp)*1024
+                    if "MemFree:" in mem:
+                        free = int(temp)*1024
+                return size, free
+
+            @staticmethod
+            def get_distance(info_path):
+                data = None
+                with open(info_path, "r") as f:
+                    data = f.read()
+                if data is None or (not data):
+                    return
+                data = data.strip()
+                return filter(lambda i: i, data.split(" "))
+
+        rsp = GetNumaTopologyResponse()
+        rsp.topology = NumaTopology()()
+        return jsonobject.dumps(rsp)
+
 
     def start(self):
         self.host_uuid = None
@@ -2216,6 +2327,7 @@ done
         http_server = kvmagent.get_http_server()
         http_server.register_sync_uri(self.CONNECT_PATH, self.connect)
         http_server.register_async_uri(self.PING_PATH, self.ping)
+        http_server.register_async_uri(self.CHECK_FILE_ON_HOST_PATH, self.check_file_on_host)
         http_server.register_async_uri(self.CAPACITY_PATH, self.capacity)
         http_server.register_sync_uri(self.ECHO_PATH, self.echo)
         http_server.register_async_uri(self.SETUP_MOUNTABLE_PRIMARY_STORAGE_HEARTBEAT, self.setup_heartbeat_file)
@@ -2254,6 +2366,7 @@ done
         http_server.register_async_uri(self.ADD_BRIDGE_FDB_ENTRY_PATH, self.add_bridge_fdb_entry)
         http_server.register_async_uri(self.DEPLOY_COLO_QEMU_PATH, self.deploy_colo_qemu)
         http_server.register_async_uri(self.UPDATE_CONFIGURATION_PATH, self.update_host_configuration)
+        http_server.register_async_uri(self.GET_NUMA_TOPOLOGY_PATH, self.get_numa_topology)
 
         self.heartbeat_timer = {}
         self.libvirt_version = linux.get_libvirt_version()

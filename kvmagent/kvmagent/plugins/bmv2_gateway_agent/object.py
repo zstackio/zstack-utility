@@ -66,7 +66,8 @@ class BmInstanceObj(Base):
         'imageUuid': 'image_uuid',
         'gatewayIp': 'gateway_ip',
         'architecture': 'architecture',
-        'customIqn': 'customIqn'
+        'customIqn': 'customIqn',
+        'provisionType': 'provisionType'
     }
 
     @classmethod
@@ -107,7 +108,8 @@ class NetworkObj(Base):
         'managementIp': 'management_ip',
         'callBackIp': 'callback_ip',
         'callBackPort': 'callback_port',
-        'baremetal2InstanceProxyPort': 'baremetal_instance_proxy_port'
+        'baremetal2InstanceProxyPort': 'baremetal_instance_proxy_port',
+        'extraBootParams': 'extra_boot_params'
     }
 
     @classmethod

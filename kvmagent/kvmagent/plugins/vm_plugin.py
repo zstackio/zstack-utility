@@ -73,6 +73,10 @@ ZS_XML_NAMESPACE = 'http://zstack.org'
 etree.register_namespace('zs', ZS_XML_NAMESPACE)
 
 GUEST_TOOLS_ISO_PATH = "/var/lib/zstack/guesttools/GuestTools.iso"
+SYSTEM_VIRTIO_DRIVER_PATHS = {
+    'VFD_X86' : '/var/lib/zstack/virtio-drivers/virtio-win_x86.vfd',
+    'VFD_AMD64' : '/var/lib/zstack/virtio-drivers/virtio-win_amd64.vfd'
+}
 QMP_SOCKET_PATH = "/var/lib/libvirt/qemu/zstack"
 PCI_ROM_PATH = "/var/lib/zstack/pcirom"
 MAX_MEMORY = 34359738368 if (HOST_ARCH != "aarch64") else linux.get_max_vm_ipa_size()/1024/16
@@ -618,10 +622,6 @@ class BlockStreamResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(BlockStreamResponse, self).__init__()
 
-class CheckGuestToolsIsoExistsRsp(kvmagent.AgentResponse):
-    def __init__(self):
-        super(CheckGuestToolsIsoExistsRsp, self).__init__()
-
 class AttachGuestToolsIsoToVmCmd(kvmagent.AgentCommand):
     def __init__(self):
         super(AttachGuestToolsIsoToVmCmd, self).__init__()
@@ -875,7 +875,7 @@ def is_namespace_used():
     return compare_version(LIBVIRT_VERSION, '1.3.3') >= 0
 
 def is_hv_freq_supported():
-    return compare_version(QEMU_VERSION, '2.12.0') >= 0
+    return compare_version(QEMU_VERSION, '2.12.0') >= 0 and LooseVersion(platform.release()) >= LooseVersion('3.10.0-957')
 
 @linux.with_arch(todo_list=['x86_64'])
 def is_ioapic_supported():
@@ -1378,7 +1378,7 @@ def get_vm_by_uuid(uuid, exception_if_not_existing=True, conn=None):
                 return conn.lookupByName(uuid)
 
         vm = Vm.from_virt_domain(retry_call_libvirt())
-        logger.debug("find xm xml: %s" % vm.domain_xml)
+        logger.debug("find vm xml: %s" % vm.domain_xml)
         return vm
     except libvirt.libvirtError as e:
         error_code = e.get_error_code()
@@ -2406,6 +2406,12 @@ class Vm(object):
 
         return not job_ended
 
+    def _check_target_disk_existing_by_path(self, install_path, refresh=True):
+        if refresh:
+            self.refresh()
+        d, n = self._get_target_disk_by_path(install_path, is_exception=False)
+        return d and n
+
     def _get_target_disk_by_path(self, installPath, is_exception=True):
         if installPath.startswith('sharedblock'):
             installPath = shared_block_to_file(installPath)
@@ -2584,8 +2590,28 @@ class Vm(object):
             return return_structs
         except libvirt.libvirtError as ex:
             logger.warn(linux.get_exception_stacktrace())
+            ret = []
+            for i in xrange(5):
+                self.refresh()
+                ret = filter(lambda s: self._check_target_disk_existing_by_path(s.installPath, refresh=False), return_structs)
+                if len(ret) == len(return_structs):
+                    break
+                time.sleep(1)
+
+            for r in ret:
+                logger.warn("libvirt return snapshot[path:%s] failure, but it succeed actually!" % r.installPath)
+
+            if ret:
+                return ret
             raise kvmagent.KvmError(
                 'unable to take live snapshot of vm[uuid:{0}] volumes[id:{1}], {2}'.format(self.uuid, disk_names, str(ex)))
+
+        finally:
+            for struct in return_structs:
+                existing = self._check_target_disk_existing_by_path(struct.installPath)
+                logger.debug("after create snapshot by libvirt, expected volume[install path: %s] does%s exist."
+                             % (struct.installPath, "" if existing else " not"))
+
 
     def take_volume_snapshot(self, task_spec, volume, install_path, full_snapshot=False):
         device_id = volume.deviceId
@@ -2622,8 +2648,17 @@ class Vm(object):
                 return previous_install_path, install_path
             except libvirt.libvirtError as ex:
                 logger.warn(linux.get_exception_stacktrace())
+                if previous_install_path != install_path and \
+                        linux.wait_callback_success(self._check_target_disk_existing_by_path, install_path, timeout=5):
+                    logger.warn("libvirt return snapshot[path:%s] failure, but it succeed actually!" % install_path)
+                    return previous_install_path, install_path
+
                 raise kvmagent.KvmError(
                     'unable to take snapshot of vm[uuid:{0}] volume[id:{1}], {2}'.format(self.uuid, device_id, str(ex)))
+            finally:
+                existing = self._check_target_disk_existing_by_path(install_path)
+                logger.debug("after create snapshot by libvirt, expected volume[install path: %s] does%s exist."
+                             % (install_path, "" if existing else " not"))
 
         def take_full_snapshot():
             self.block_stream_disk(task_spec, volume)
@@ -2940,6 +2975,10 @@ class Vm(object):
 
     def hotplug_mem(self, memory_size):
         mem_size = (memory_size - self.get_memory()) / 1024
+        if mem_size == 0:
+            logger.warning('cannot online increase memory with size 0 KB, skip this operate.')
+            return
+
         xml = "<memory model='dimm'><target><size unit='KiB'>%d</size><node>0</node></target></memory>" % mem_size
         logger.debug('hot plug memory: %d KiB' % mem_size)
         try:
@@ -3146,7 +3185,7 @@ class Vm(object):
         raise kvmagent.KvmError("qemu-agent service is not ready in vm...")
 
     def _escape_char_password(self, password):
-        escape_str = "\*\#\(\)\<\>\|\"\'\/\\\$\`\&\{\}"
+        escape_str = "\*\#\(\)\<\>\|\"\'\/\\\$\`\&\{\}\;"
         des = ""
         for c in list(password):
             if c in escape_str:
@@ -3344,6 +3383,7 @@ class Vm(object):
     @staticmethod
     def from_StartVmCmd(cmd):
         use_numa = cmd.useNuma
+        numa_nodes = cmd.addons.numaNodes
         machine_type = get_machineType(cmd.machineType)
         if HOST_ARCH == "aarch64" and cmd.bootMode == 'Legacy':
             raise kvmagent.KvmError("Aarch64 does not support legacy, please change boot mode to UEFI instead of Legacy on your VM or Image.")
@@ -3453,10 +3493,22 @@ class Vm(object):
 
                 cpu = eval("on_{}".format(HOST_ARCH))()
                 e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
+                if numa_nodes:
+                    numa = e(cpu, 'numa')
+                    numatune = e(root, 'numatune')
+                    for _, numa_node in enumerate(numa_nodes):
+                        e(numatune, 'memnode', attrib={'cellid': str(numa_node.nodeID), 'mode':'preferred', 'nodeset': str(numa_node.hostNodeID)})
+                        cell = e(numa, 'cell', attrib={'id': str(numa_node.nodeID), 'cpus': str(numa_node.cpus), 'memory': str(int(numa_node.memorySize)/1024), 'unit': 'KiB'})
+                        distances = e(cell, 'distances')
+                        for node_index, distance in enumerate(numa_node.distance):
+                            e(distances, 'sibling', attrib={'id': str(node_index), 'value': str(distance)})
 
             if cmd.addons.cpuPinning:
                 for rule in cmd.addons.cpuPinning:
                     e(tune, 'vcpupin', attrib={'vcpu': str(rule.vCpu), 'cpuset': rule.pCpuSet})
+
+            if cmd.addons.emulatorPinning:
+                e(tune, 'emulatorpin', attrib={'cpuset': str(cmd.addons.emulatorPinning)})
 
         def make_memory():
             root = elements['root']
@@ -3736,12 +3788,34 @@ class Vm(object):
                     e(cdrom, 'boot', None, {'order': str(bootOrder)})
                 return cdrom
 
+            @linux.with_arch(['x86_64'])
+            def make_floppy(file_path_list):
+                if len(file_path_list) > 2:
+                    raise Exception("up to 2 floppy devices can be attached")
+                target_dev_index = 0
+                for file_path in file_path_list:
+                    if not os.path.exists(file_path):
+                        continue
+                    floppy = e(devices, 'disk', None, {'type': 'file', 'device': 'floppy'})
+                    e(floppy, 'driver', None, {'name': 'qemu', 'type': 'raw'})
+                    e(floppy, 'source', None, {'file': file_path})
+                    e(floppy, 'readonly', None)
+                    e(floppy, 'target', None, {'dev': generate_floppy_device_id(target_dev_index), 'type': 'fdc'})
+                    target_dev_index = target_dev_index + 1
+
+            def generate_floppy_device_id(index):
+                return 'fd' + Vm.DEVICE_LETTERS[index]
+
             """
             if not cmd.bootIso:
                 for config in empty_cdrom_configs:
                     makeEmptyCdrom(config.targetDev, config.bus, config.unit)
                 return
             """
+            virtio_driver_type = cmd.addons['systemVirtioDriverDeviceType'] if cmd.addons is not None else None
+            if virtio_driver_type == 'VFD':
+                make_floppy([SYSTEM_VIRTIO_DRIVER_PATHS['VFD_X86'], SYSTEM_VIRTIO_DRIVER_PATHS['VFD_AMD64']])
+
             if not cmd.cdRoms:
                 return
 
@@ -3759,7 +3833,6 @@ class Vm(object):
                 else:
                     cdrom = make_empty_cdrom(cdrom_config.targetDev, cdrom_config.bus , cdrom_config.unit, iso.bootOrder)
                     e(cdrom, 'source', None, {'file': iso.path})
-
 
         def make_volumes():
             devices = elements['devices']
@@ -4154,7 +4227,9 @@ class Vm(object):
             if set_default():
                 return
             set_usb2_3()
-            set_redirdev()
+            not_colo_vm = not cmd.coloPrimary and not cmd.coloSecondary and not cmd.useColoBinary
+            if cmd.usbRedirect and not_colo_vm:
+                set_redirdev()
 
         def make_video():
             devices = elements['devices']
@@ -4447,9 +4522,7 @@ class Vm(object):
         # appliance vm doesn't need any cdrom or usb controller
         if not cmd.isApplianceVm:
             make_cdrom()
-            not_colo_vm = not cmd.coloPrimary and not cmd.coloSecondary and not cmd.useColoBinary
-            if cmd.usbRedirect and not_colo_vm:
-                make_usb_redirect()
+            make_usb_redirect()
 
         if cmd.additionalQmp:
             make_qemu_commandline()
@@ -4698,7 +4771,6 @@ class VmPlugin(kvmagent.KvmAgent):
     CHECK_MOUNT_DOMAIN_PATH = "/check/mount/domain"
     KVM_RESIZE_VOLUME_PATH = "/volume/resize"
     VM_PRIORITY_PATH = "/vm/priority"
-    CHECK_GUEST_TOOLS_ISO_EXISTS_PATH = "/vm/guesttools/checkiso"
     ATTACH_GUEST_TOOLS_ISO_TO_VM_PATH = "/vm/guesttools/attachiso"
     DETACH_GUEST_TOOLS_ISO_FROM_VM_PATH = "/vm/guesttools/detachiso"
     GET_VM_GUEST_TOOLS_INFO_PATH = "/vm/guesttools/getinfo"
@@ -4712,6 +4784,9 @@ class VmPlugin(kvmagent.KvmAgent):
     ROLLBACK_QUORUM_CONFIG_PATH = "/rollback/quorum/config"
     FAIL_COLO_PVM_PATH = "/fail/colo/pvm"
     GET_VM_DEVICE_ADDRESS_PATH = "/vm/getdeviceaddress"
+    SET_EMULATOR_PINNING_PATH = "/vm/emulatorpinning"
+
+    VM_CONSOLE_LOGROTATE_PATH = "/etc/logrotate.d/vm-console-log"
 
     VM_OP_START = "start"
     VM_OP_STOP = "stop"
@@ -5453,9 +5528,7 @@ class VmPlugin(kvmagent.KvmAgent):
     def compare_cpu_function(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CompareCpuFunctionResponse()
-        fd, fpath = tempfile.mkstemp()
-        with os.fdopen(fd, 'w') as tmpf:
-            tmpf.write(cmd.cpuXml.strip())
+        fpath = linux.write_to_temp_file(cmd.cpuXml.strip())
         compare_cmd = shell.ShellCmd('virsh cpu-compare --error %s' % fpath)
         compare_cmd(False)
         logger.info("compare cpu function result: " + compare_cmd.stdout)
@@ -5544,9 +5617,7 @@ class VmPlugin(kvmagent.KvmAgent):
             _, disk_name = vm._get_target_disk_by_path(oldpath)
             migrate_disks[disk_name] = volume
 
-        fd, fpath = tempfile.mkstemp()
-        with os.fdopen(fd, 'w') as tmpf:
-            tmpf.write(vm.domain_xml)
+        fpath = linux.write_to_temp_file(vm.domain_xml)
 
         tree = etree.parse(fpath)
         devices = tree.getroot().find('devices')
@@ -5577,10 +5648,16 @@ class VmPlugin(kvmagent.KvmAgent):
         check_mirror_jobs(vmUuid, bool(os.getenv("MIGRATE_WITHOUT_DIRTY_BITMAPS")))
         cmd = "virsh migrate {} --migrate-disks {} --xml {} {} {} {}".format(flags, diskstr, fpath, vmUuid, dst, migurl)
 
-        try:
-            shell.check_run(cmd)
-        finally:
-            os.remove(fpath)
+        shell_cmd = shell.ShellCmd(cmd)
+        shell_cmd(False)
+        os.remove(fpath)
+        if shell_cmd.return_code == 0:
+            return
+        
+        if shell_cmd.stderr and "Need a root block node" in shell_cmd.stderr:
+            shell_cmd.stderr = "failed to block migrate %s, please check if volume backup job is in progress" % vmUuid
+
+        shell_cmd.raise_error()
 
     @kvmagent.replyerror
     def block_migrate_vm(self, req):
@@ -6692,16 +6769,6 @@ host side snapshot files chian:
 """ % temp_disk
         return linux.write_to_temp_file(content)
 
-
-    @kvmagent.replyerror
-    @in_bash
-    def check_guest_tools_iso_exists(self, req):
-        rsp = CheckGuestToolsIsoExistsRsp()
-        if not os.path.exists(GUEST_TOOLS_ISO_PATH):
-            rsp.success = False
-            rsp.error = "check guestToolsIso:%s not exists" % GUEST_TOOLS_ISO_PATH
-        return jsonobject.dumps(rsp)
-
     @kvmagent.replyerror
     @in_bash
     def attach_guest_tools_iso_to_vm(self, req):
@@ -7298,6 +7365,18 @@ host side snapshot files chian:
 
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    def set_emulator_pinning(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+
+        cmd_base = "virsh emulatorpin %s " % (cmd.uuid)
+        if (cmd.emulatorPinning == "-1") or (cmd.emulatorPinning == "") or (cmd.emulatorPinning is None):
+            shell.call('%s %s' % ("cat /sys/devices/system/cpu/online|xargs", cmd_base))
+        else:
+            shell.call('%s %s' % (cmd_base, cmd.emulatorPinning))
+        return jsonobject.dumps(rsp)
+
     @staticmethod
     def _find_volume_device_address(vm, volumes):
         #  type:(Vm, list[jsonobject.JsonObject]) -> list[VmDeviceAddress]
@@ -7391,7 +7470,6 @@ host side snapshot files chian:
         http_server.register_async_uri(self.CHECK_MOUNT_DOMAIN_PATH, self.check_mount_domain)
         http_server.register_async_uri(self.KVM_RESIZE_VOLUME_PATH, self.kvm_resize_volume)
         http_server.register_async_uri(self.VM_PRIORITY_PATH, self.vm_priority)
-        http_server.register_async_uri(self.CHECK_GUEST_TOOLS_ISO_EXISTS_PATH, self.check_guest_tools_iso_exists)
         http_server.register_async_uri(self.ATTACH_GUEST_TOOLS_ISO_TO_VM_PATH, self.attach_guest_tools_iso_to_vm)
         http_server.register_async_uri(self.DETACH_GUEST_TOOLS_ISO_FROM_VM_PATH, self.detach_guest_tools_iso_from_vm)
         http_server.register_async_uri(self.GET_VM_GUEST_TOOLS_INFO_PATH, self.get_vm_guest_tools_info)
@@ -7405,10 +7483,12 @@ host side snapshot files chian:
         http_server.register_async_uri(self.ROLLBACK_QUORUM_CONFIG_PATH, self.rollback_quorum_config)
         http_server.register_async_uri(self.FAIL_COLO_PVM_PATH, self.fail_colo_pvm, cmd=FailColoPrimaryVmCmd())
         http_server.register_async_uri(self.GET_VM_DEVICE_ADDRESS_PATH, self.get_vm_device_address)
+        http_server.register_async_uri(self.SET_EMULATOR_PINNING_PATH, self.set_emulator_pinning)
 
         self.clean_old_sshfs_mount_points()
         self.register_libvirt_event()
         self.register_qemu_log_cleaner()
+        self.register_vm_console_logrotate_conf()
 
         self.enable_auto_extend = True
         self.auto_extend_size = 1073741824 * 2
@@ -7424,7 +7504,7 @@ host side snapshot files chian:
                 try:
                     self.queue_singleton.queue.get(True)
 
-                    while http.AsyncUirHandler.HANDLER_COUNTER.get() != 0:
+                    while bool(http.AsyncUirHandler.HANDLER_DICT):
                         time.sleep(0.1)
 
                     # the libvirt has been stopped or restarted
@@ -8115,6 +8195,28 @@ host side snapshot files chian:
 
         # first time
         thread.timer(60, qemu_log_cleaner).start()
+
+    def register_vm_console_logrotate_conf(self):
+        if not os.path.exists(self.VM_CONSOLE_LOGROTATE_PATH):
+            content = """/tmp/*-vm-kernel.log {
+        rotate 10
+        missingok
+        copytruncate
+        size 30M
+        compress
+}"""
+            with open(self.VM_CONSOLE_LOGROTATE_PATH, 'w') as f:
+                f.write(content)
+                f.flush()
+                os.fsync(f.fileno())
+            os.chmod(self.VM_CONSOLE_LOGROTATE_PATH, 0o644)
+
+        def vm_console_logRotate():
+            ret = bash.bash_r("logrotate -vf %s" % self.VM_CONSOLE_LOGROTATE_PATH)
+
+            thread.timer(24 * 3600, vm_console_logRotate).start()
+
+        thread.timer(60, vm_console_logRotate).start()
 
     def clean_old_sshfs_mount_points(self):
         mpts = shell.call("mount -t fuse.sshfs | awk '{print $3}'").splitlines()

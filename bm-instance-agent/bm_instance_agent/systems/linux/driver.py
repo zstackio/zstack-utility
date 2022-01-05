@@ -36,12 +36,58 @@ class LinuxDriver(base.SystemDriverBase):
             if 'shutdown -h now' not in e:
                 raise e
 
+    def discovery_target(self, instance_obj):
+        target_name = ('iqn.2015-01.io.zstack:target'
+                       '.instance.{uuid}').format(uuid=instance_obj.uuid)
+
+        try:
+            cmd = 'iscsiadm -m session | grep %s' % target_name
+            LOG.info(cmd)
+            stdout, stderr = processutils.execute(cmd, shell=True)
+            if stdout:
+                LOG.info("iscsi target:%s logined" % target_name)
+                return
+        except processutils.ProcessExecutionError as e:
+            LOG.warning(e.stderr)
+
+        LOG.info("login iscsi target: %s" % target_name)
+        conf_path = '/etc/iscsi/initiatorname.iscsi'
+        initiator = ('InitiatorName=iqn.2015-01.io.zstack:initiator.'
+                     'instance.{uuid}').format(uuid=instance_obj.uuid)
+        with open(conf_path, 'w') as f:
+            f.write(initiator)
+
+        cmd = 'systemctl daemon-reload && systemctl restart iscsid'
+        processutils.execute(cmd, shell=True)
+
+        discovery_cmd = ('iscsiadm -m discovery -t sendtargets -p {address}:{port}').format(
+                                    address=instance_obj.gateway_ip,
+                                    port=3260)
+        LOG.info(discovery_cmd)
+        try:
+            processutils.execute(discovery_cmd, shell=True)
+        except processutils.ProcessExecutionError as e:
+            LOG.warning(e.stderr)
+
+        target_login_cmd = ('iscsiadm --mode node --targetname {target_name} '
+                            '-p {address}:{port} --login').format(
+                                    target_name=target_name,
+                                    address=instance_obj.gateway_ip,
+                                    port=3260)
+        LOG.info(target_login_cmd)
+        try:
+            processutils.execute(target_login_cmd, shell=True)
+        except processutils.ProcessExecutionError as e:
+            LOG.warning(e.stderr)
+
     def attach_volume(self, instance_obj, volume_obj):
         """ Attach a given iSCSI lun
 
         First check the /etc/iscsi/initiatorname.iscsi whether corrent, if
         not, corrent the configuration, then rescan the iscsi session.
         """
+        self.discovery_target(instance_obj)
+
         conf_path = '/etc/iscsi/initiatorname.iscsi'
         initiator = ('InitiatorName=iqn.2015-01.io.zstack:initiator.'
                      'instance.{uuid}').format(uuid=instance_obj.uuid)

@@ -89,7 +89,7 @@ class ImageStoreClient(object):
             return jobj.mirrorVolumes
 
     def mirror_volume(self, vm, node, dest, lastvolume, currvolume, volumetype, mode, speed, reporter):
-        _, PFILE = tempfile.mkstemp()
+        PFILE = linux.create_temp_file()
 
         def _get_progress(synced):
             last = linux.tail_1(PFILE).strip()
@@ -110,7 +110,7 @@ class ImageStoreClient(object):
     def backup_volume(self, vm, node, bitmap, mode, dest, speed, reporter, stage):
         self.check_capacity(os.path.dirname(dest))
 
-        _, PFILE = tempfile.mkstemp()
+        PFILE = linux.create_temp_file()
 
         def _get_progress(synced):
             last = linux.tail_1(PFILE).strip()
@@ -135,7 +135,7 @@ class ImageStoreClient(object):
     #  'drive-virtio-disk1': { "backupFile": "bar", "mode":"top" }}
     def backup_volumes(self, vm, args, dstdir, reporter, stage):
         self.check_capacity(dstdir)
-        _, PFILE = tempfile.mkstemp()
+        PFILE = linux.create_temp_file()
 
         def _get_progress(synced):
             last = linux.tail_1(PFILE).strip()
@@ -242,6 +242,16 @@ class ImageStoreClient(object):
             raise ex
         
         logger.debug('%s:%s pulled to local cache' % (name, imageid))
+
+    def image_info(self, host, install_path):
+        self._check_zstore_cli()
+        name, imageid = self._parse_image_reference(install_path)
+        cmd = "%s -url %s:%s -json info %s:%s" % (self.ZSTORE_CLI_PATH, host, self.ZSTORE_DEF_PORT, name, imageid)
+        s = shell.ShellCmd(cmd)
+        s(False)
+        if s.return_code == 0:
+            return jsonobject.loads(s.stdout)
+
 
     @in_bash
     def clean_imagestore_cache(self, cachedir):

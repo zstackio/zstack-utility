@@ -19,6 +19,7 @@ import time
 
 from zstacklib.utils import jsonobject, http
 from zstacklib.utils.report import get_api_id, AutoReporter
+from zstacklib.utils import traceable_shell
 
 PLUGIN_CONFIG_SECTION_NAME = 'plugins'
 
@@ -131,6 +132,13 @@ class TaskDaemon(object):
 task_daemons = {}  # type: dict[str, list[TaskDaemon]]
 task_operator_lock = threading.RLock()
 
+def cancel_job(cmd, rsp):
+    process_canceled = traceable_shell.cancel_job(cmd)
+    canceled_task_count = TaskManager.cancel_task(cmd.cancellationApiId)
+    if not process_canceled and not canceled_task_count:
+        rsp.success = False
+        rsp.error = "no matched job to cancel"
+    return rsp
 
 class TaskManager(object):
     CANCEL_JOB = "/job/cancel"

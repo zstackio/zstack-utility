@@ -29,8 +29,8 @@ cols = ("", "", "", "", "")
 
 def readattr(path, name):
 	"Read attribute from sysfs and return as string"
-	f = open(prefix + path + "/" + name);
-	return f.readline().rstrip("\n");
+	with open(prefix + path + "/" + name) as f:
+		return f.readline().rstrip("\n")
 
 def readlink(path, name):
 	"Read symlink and return basename"

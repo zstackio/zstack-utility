@@ -1,0 +1,126 @@
+# Use network installation
+url --url={{ network_inst_uri }}
+
+# Text mode
+text
+
+# Hardware inspector
+%pre --interpreter /bin/bash
+if [ ! -f /usr/bin/python ];then
+   [ -f /usr/bin/python2 ] && ln -s /usr/bin/python2 /usr/bin/python
+   [ -f /usr/bin/python3 ] && ln -s /usr/bin/python3 /usr/bin/python
+fi
+%end
+
+%pre --interpreter /usr/bin/python
+import subprocess
+import json
+import multiprocessing
+import os
+import sys
+import time
+
+def shell_cmd(cmd, exception=True, workdir=None):
+    process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stdin=subprocess.PIPE,
+                                stderr=subprocess.PIPE, close_fds=True, executable='/bin/bash', cwd=workdir)
+
+    (stdout, stderr) = process.communicate()
+    return_code = process.returncode
+    if exception and return_code != 0:
+        raise Exception("Failed to exec: [{}]".format(cmd))
+
+    # the type of results is bytes in python3
+    if sys.version_info.major == 3:
+        stdout = stdout.decode()
+        stderr = stderr.decode()
+
+    return return_code, stdout.strip(), stderr.strip()
+
+def get_ipmi_info():
+    addr = '{{chassis_address}}'
+    port = '{{chassis_port}}'
+    return {
+        'ipmiAddress': addr,
+        'ipmiPort': port
+    }
+
+def get_dest_dev(dest_wwn):
+    cmd = 'lsblk --nodeps --byte --output size,name,wwn'
+    _, stdout, _ = shell_cmd(cmd)
+    for line in stdout.split('\n')[1:]:
+        if len(line.split()) != 3:
+            continue
+        size, name, wwn = line.split()
+
+        if wwn == dest_wwn:
+            return "/dev/%s" % name
+
+    raise Exception("Failed to find dest disk[%s]" % dest_wwn)
+
+def get_src_dev():
+    cmd = "iscsiadm -m discovery -t sendtargets -p {{gateway_ip}}:3260"
+    shell_cmd(cmd)
+    time.sleep(1)
+    cmd = "iscsiadm --mode node --targetname iqn.2015-01.io.zstack:target.instance.{{instance_uuid}} -p {{gateway_ip}}:3260 --login"
+    shell_cmd(cmd)
+    time.sleep(1)
+    cmd = "systemctl daemon-reload && systemctl restart iscsid"
+    shell_cmd(cmd)
+    time.sleep(1)
+    _, stdout, _ = shell_cmd('iscsiadm -m session --sid 1 -P 3')
+    for line in stdout.split('\n'):
+        if 'Attached scsi disk' in line:
+            dev_name = line.split()[3]
+            return "/dev/%s" % dev_name
+
+
+def convert_data(src, dest):
+    cmd = 'dd if=%s of=%s conv=sparse bs=1M' % (src, dest)
+    _, stdout, _ = shell_cmd(cmd)
+
+def send_info(result):
+    cmd = ('curl -X POST -H "Content-Type:application/json" -d \'{data}\' '
+           '--retry 5 {{ send_hardware_infos_uri }} ').format(
+               data=json.dumps({"params": result}))
+    shell_cmd(cmd)
+
+def main():
+    dest_wwn = '{{ dest_disk_wwn }}'
+    src_dev = get_src_dev()
+    dest_dev = get_dest_dev(dest_wwn)
+    result = {}
+    result.update(get_ipmi_info())
+
+    convert_info = {}
+    convert_info['status'] = 'Converting'
+    convert_info['progress'] = 0
+    result['convertInfo'] = json.dumps(convert_info)
+    result['hardwareInfo'] = ''
+
+    send_info(result)
+
+    convert_data(src_dev, dest_dev)
+
+    convert_info['status'] = 'Converted'
+    result['convertInfo'] = json.dumps(convert_info)
+
+    send_info(result)
+
+    shell_cmd("poweroff")
+
+try:
+    main()
+except Exception as e:
+    shell_cmd("touch /root/ks_error_log")
+    shell_cmd("echo %s >> /root/ks_error_log" % str(e))
+    convert_info = {}
+    convert_info['status'] = 'ConvertFailed'
+    convert_info['progress'] = 0
+    result = {}
+    result.update(get_ipmi_info())
+    result['convertInfo'] = json.dumps(convert_info)
+    result['hardwareInfo'] = ''
+
+    send_info(result)
+
+%end

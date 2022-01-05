@@ -759,10 +759,10 @@ tag:{{TAG}},option:dns-server,{{DNS}}
                     raise Exception('same namespace [%s] but has different dhcpServerIp: %s, %s ' % (
                         u.namespaceName, namespaces[u.namespaceName].dhcpServerIp, u.dhcpServerIp))
                 if namespaces[u.namespaceName].bridgeName != u.bridgeName:
-                    raise Exception('same namespace [%s] but has different dhcpServerIp: %s, %s ' % (
+                    raise Exception('same namespace [%s] but has different bridgeName: %s, %s ' % (
                     u.namespaceName, namespaces[u.namespaceName].bridgeName, u.bridgeName))
                 if namespaces[u.namespaceName].port != u.port:
-                    raise Exception('same namespace [%s] but has different dhcpServerIp: %s, %s ' % (
+                    raise Exception('same namespace [%s] but has different port: %s, %s ' % (
                     u.namespaceName, namespaces[u.namespaceName].port, u.port))
 
         for n in namespaces.values():

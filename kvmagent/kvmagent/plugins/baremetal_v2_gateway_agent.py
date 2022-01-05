@@ -38,6 +38,10 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         '/baremetal_gateway_agent/v2/provision_network/destroy'
     BM_PREPARE_INSTANCE_PATH = \
         '/baremetal_gateway_agent/v2/instance/configurations/create'
+    BM_PREPARE_CONVERT_VOLUME_PATH = \
+        '/baremetal_gateway_agent/v2/instance/volume/convert/prepare'
+    BM_DESTROY_CONVERT_VOLUME_PATH = \
+        '/baremetal_gateway_agent/v2/instance/volume/convert/destroy'
     BM_DESTROY_INSTANCE_PATH = \
         '/baremetal_gateway_agent/v2/instance/configurations/delete'
     BM_ATTACH_VOLUME_PATH = \
@@ -126,7 +130,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         pkgs.extend(eval("extra_{}".format(kvmagent.host_arch)))
         yum_release = kvmagent.get_host_yum_release()
         cmd = ('export YUM0={yum_release}; [[ "$YUM0" = "ns10" ]] && rpm -e libselinux-utils --nodeps > /dev/null 2>&1; '
-               'yum --disablerepo=*--enablerepo=zstack-mn,qemu-kvm-ev-mn clean all; '
+               'yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn clean all; '
                'pkg_list=`rpm -q {pkg_list} | grep "not installed" | awk '
                '\'{{ print $2 }}\'`; for pkg in $pkg_list; do yum '
                '--disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install -y '
@@ -220,6 +224,8 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             os.path.dirname(os.path.abspath(__file__)),
             'bmv2_gateway_agent/templates')
         k_v_mapping = {
+            'import-data.ks': os.path.join(template_dir, 'import-data.ks.j2'),
+            'local-config.ipxe': os.path.join(template_dir, 'local-config.ipxe.j2'),
             'boot.ipxe': os.path.join(template_dir, 'boot.ipxe.j2'),
             'config.ipxe': os.path.join(template_dir, 'config.ipxe.j2'),
             'default.pxe': os.path.join(template_dir, 'default.pxe.j2'),
@@ -841,10 +847,15 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                 ip=network_obj.provision_nic_ip, port=network_obj.baremetal_instance_proxy_port)
 
         ipxe_template = self._load_template('boot.ipxe')
+        if network_obj.extra_boot_params is None:
+            network_obj.extra_boot_params = ""
+
         ipxe_conf = ipxe_template.render(
             inspect_kernel_uri=inspect_kernel_uri,
             inspect_initrd_uri=inspect_initrd_uri,
-            inspect_ks_cfg_uri=inspect_ks_cfg_uri)
+            inspect_ks_cfg_uri=inspect_ks_cfg_uri,
+            extra_boot_params=network_obj.extra_boot_params
+            )
         with open(self.BOOT_IPXE_PATH, 'w') as f:
             f.write(ipxe_conf)
 
@@ -867,9 +878,57 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                 logger.info("delete invalid ipxe config: %s", path)
                 linux.rm_file_force(path)
 
+    def _create_import_data_config(self, instance_obj, cmd):
+        ks_file_name = instance_obj.provision_mac.replace(':', '-')
+        ks_config_path = os.path.join(self.KS_CFG_DIR, ks_file_name)
+        template = self._load_template('import-data.ks')
+
+        # create inspector_ks_x86_64.cfg
+        network_inst_uri = "http://{ip}:{port}/bmv2httpboot/bmimgs/x86_64/".format(
+            ip=instance_obj.gateway_ip, port=cmd.port)
+
+        send_hardware_infos_uri = (
+            'http://{ip}:{port}/baremetal_instance_agent/v2/hardwareinfos'
+        ).format(ip=instance_obj.gateway_ip, port=cmd.port)
+
+        if cmd.extraBootParams is None:
+            cmd.extraBootParams = ""
+
+        conf = template.render(
+            network_inst_uri=network_inst_uri,
+            dest_disk_wwn=cmd.destDiskWwn,
+            send_hardware_infos_uri=send_hardware_infos_uri,
+            gateway_ip=instance_obj.gateway_ip,
+            instance_uuid=instance_obj.uuid,
+            chassis_address=cmd.chassisInfo.address,
+            chassis_port=cmd.chassisInfo.port
+        )
+
+        with open(ks_config_path, 'w') as f:
+            f.write(conf)
+
+        inspect_kernel_uri = '../x86_64/vmlinuz'
+        inspect_initrd_uri = '../x86_64/initrd.img'
+        import_data_ks_cfg_uri = 'http://{ip}:{port}/bmv2httpboot/ks/{import_data_ks}'.format(
+            ip=instance_obj.gateway_ip, port=cmd.port, import_data_ks=ks_file_name)
+
+        template = self._load_template('local-config.ipxe')
+        conf = template.render(
+            inspect_kernel_uri=inspect_kernel_uri,
+            inspect_initrd_uri=inspect_initrd_uri,
+            import_data_ks_cfg_uri=import_data_ks_cfg_uri,
+            extra_boot_params=cmd.extraBootParams)
+        ipxe_file_name = instance_obj.provision_mac.replace(':', '-')
+        ipxe_file_path = os.path.join(self.PXELINUX_CFG_DIR, ipxe_file_name)
+        with open(ipxe_file_path, 'w') as f:
+            f.write(conf)
+
     def _create_ipxe_configuration(self, instance_obj, volume_drivers):
         """ Generate ipxe cfg for a bm instance
         """
+        if instance_obj.provisionType != 'Remote':
+            return
+
         # Ensure pxelinux.cfg dir exist
         if not os.path.exists(self.PXELINUX_CFG_DIR):
             cmd = 'mkdir -m 0755 -p {dir}'.format(dir=self.PXELINUX_CFG_DIR)
@@ -894,6 +953,27 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         ipxe_file_path = os.path.join(self.PXELINUX_CFG_DIR, ipxe_file_name)
         with open(ipxe_file_path, 'w') as f:
             f.write(conf)
+
+    def _delete_import_data_configuration(self, instance_obj):
+        """ Delete a ipxe cfg for a bm instance
+        """
+        bm_file_name = instance_obj.provision_mac.replace(':', '-')
+        ipxe_file_path = os.path.join(self.PXELINUX_CFG_DIR, bm_file_name)
+        ks_file_path = ks_config_path = os.path.join(self.KS_CFG_DIR, bm_file_name)
+        if not os.path.exists(ipxe_file_path):
+            msg = ('The ipxe configuration file: {ipxe_file_path} was '
+                   'deleted before the operate').format(
+                       ipxe_file_path=bm_file_name)
+            logger.warning(msg)
+            return
+        linux.rm_file_force(ipxe_file_path)
+        if not os.path.exists(ks_file_path):
+            msg = ('The ks configuration file: {ks_file_path} was '
+                   'deleted before the operate').format(
+                       ks_file_path=bm_file_name)
+            logger.warning(msg)
+            return
+        linux.rm_file_force(ks_file_path)
 
     def _delete_ipxe_configuration(self, instance_obj):
         """ Delete a ipxe cfg for a bm instance
@@ -974,7 +1054,8 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
 
         conf = template.render(
             network_inst_uri=network_inst_uri,
-            send_hardware_infos_uri=send_hardware_infos_uri
+            send_hardware_infos_uri=send_hardware_infos_uri,
+            provision_net=network_obj.provision_nic_ip
         )
 
         with open(self.INSPECTOR_KS_X86_64_CFG, 'w') as f:
@@ -986,7 +1067,8 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
 
         conf = template.render(
             network_inst_uri=network_inst_uri,
-            send_hardware_infos_uri=send_hardware_infos_uri
+            send_hardware_infos_uri=send_hardware_infos_uri,
+            provision_net=network_obj.provision_nic_ip
         )
 
         with open(self.INSPECTOR_KS_AARCH64_CFG, 'w') as f:
@@ -1099,6 +1181,65 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
 
     @bm_utils.lock(name='baremetal_v2_volume_operator')
     @kvmagent.replyerror
+    def prepare_convert_volume(self, req):
+        """ Convert instance
+
+        Configure dnsmasq/ipxe.cfg/nginx and attach volumes
+
+        req.body::
+        {
+            'volumes': {
+                "uuid": "uuid1",
+                "primaryStorageType": "NFS",
+                "type": "Root",
+                "path": "path/to/file",
+                "format": "qcow2",
+                "deviceId": 0
+            },
+            'bmInstance': {
+                'uuid': 'uuid1',
+                'architecture': 'x86_64',  # or 'aarch64'
+                'rootUuid': 'b0011211-ca57-413d-bd80-d3422350ca0f',
+                'provisionIp': '192.168.101.10',
+                'provisionMac': 'aa:bb:cc:dd:ee:ff'
+            },
+            'destDiskWwn': '0x5000c500c6089687'
+        }
+        """
+        instance_obj = BmInstanceObj.from_json(req)
+        volume_obj = VolumeObj.from_json(req)
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        volume_drivers = []
+
+        with bm_utils.rollback(self._destroy_convert_volume, req):
+            # Full prepare the instance which assign on the gateway,
+            # otherwise delete the dnsmasq conf only.
+            if instance_obj.gateway_ip == \
+                    self.provision_network_conf.provision_nic_ip:
+                #pre_volume_objs = list(o for o in volume_objs)
+                #for volume_obj in pre_volume_objs:
+                #    if volume_obj.type == 'Root':
+                #        pre_volume_driver = volume.get_driver(instance_obj, volume_obj)
+                #        pre_volume_driver.prepare_instance_resource()
+
+                #for volume_obj in pre_volume_objs:
+                volume_driver = volume.get_driver(instance_obj, volume_obj)
+                volume_driver.attach()
+                volume_drivers.append(volume_driver)
+
+                if instance_obj.architecture == 'aarch64':
+                    return
+                else:
+                    self._create_import_data_config(instance_obj, cmd)
+                self._create_nginx_agent_proxy_configuration(instance_obj)
+            self._create_dnsmasq_host(instance_obj)
+
+        rsp = kvmagent.AgentResponse()
+        rsp.bmInstance = instance_obj
+        return jsonobject.dumps(rsp)
+
+    @bm_utils.lock(name='baremetal_v2_volume_operator')
+    @kvmagent.replyerror
     def prepare_instance(self, req):
         """ Prepare instance
 
@@ -1152,11 +1293,13 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                     self.provision_network_conf.provision_nic_ip:
                 pre_volume_objs = list(o for o in volume_objs)
                 for volume_obj in pre_volume_objs:
-                    if volume_obj.type == 'Root':
+                    if volume_obj.type == 'Root' and instance_obj.provisionType == 'Remote':
                         pre_volume_driver = volume.get_driver(instance_obj, volume_obj)
                         pre_volume_driver.prepare_instance_resource()
 
                 for volume_obj in pre_volume_objs:
+                    if instance_obj.provisionType != 'Remote' and volume_obj.type == 'Root':
+                        continue
                     volume_driver = volume.get_driver(instance_obj, volume_obj)
                     volume_driver.attach()
                     volume_drivers.append(volume_driver)
@@ -1181,17 +1324,46 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                 self.provision_network_conf.provision_nic_ip:
             del_volume_obj = list(o for o in volume_objs)
             for volume_obj in del_volume_obj:
+                if volume_obj.type == 'Root' and instance_obj.provisionType != 'Remote':
+                    continue
                 volume_driver = volume.get_driver(instance_obj, volume_obj)
                 volume_driver.detach()
 
-            del_volume_driver = volume.get_driver(instance_obj, del_volume_obj[0])
-            del_volume_driver.destory_instance_resource()
+            if instance_obj.provisionType == 'Remote':
+                del_volume_driver = volume.get_driver(instance_obj, del_volume_obj[0])
+                del_volume_driver.destroy_instance_resource()
 
             if instance_obj.architecture == 'aarch64':
                 self._delete_grub_configuration(instance_obj)
             else:
                 self._delete_ipxe_configuration(instance_obj)
             self._delete_nginx_agent_proxy_configuration(instance_obj)
+
+        self._delete_dnsmasq_host(instance_obj)
+
+    @bm_utils.lock(name='baremetal_v2_volume_operator')
+    @kvmagent.replyerror
+    def destroy_convert_volume(self, req):
+        self._destroy_convert_volume(req)
+        return jsonobject.dumps(kvmagent.AgentResponse())
+
+    def _destroy_convert_volume(self, req):
+        instance_obj = BmInstanceObj.from_json(req)
+        volume_obj = VolumeObj.from_json(req)
+        # Full destroy the instance which assign on the gateway,
+        # otherwise delete the dnsmasq conf only.
+
+        volume_driver = volume.get_driver(instance_obj, volume_obj)
+        volume_driver.detach()
+
+        del_volume_driver = volume.get_driver(instance_obj, volume_obj)
+        del_volume_driver.destroy_instance_resource()
+
+        if instance_obj.architecture == 'aarch64':
+            return
+        else:
+            self._delete_import_data_configuration(instance_obj)
+        self._delete_nginx_agent_proxy_configuration(instance_obj)
 
         self._delete_dnsmasq_host(instance_obj)
 
@@ -1387,6 +1559,10 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                                        self.prepare_instance)
         http_server.register_async_uri(self.BM_DESTROY_INSTANCE_PATH,
                                        self.destroy_instance)
+        http_server.register_async_uri(self.BM_PREPARE_CONVERT_VOLUME_PATH,
+                                       self.prepare_convert_volume)
+        http_server.register_async_uri(self.BM_DESTROY_CONVERT_VOLUME_PATH,
+                                       self.destroy_convert_volume)
         http_server.register_async_uri(self.BM_ATTACH_VOLUME_PATH,
                                        self.attach_volume)
         http_server.register_async_uri(self.BM_DETACH_VOLUME_PATH,

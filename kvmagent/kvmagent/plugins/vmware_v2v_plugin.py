@@ -176,9 +176,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             if os.path.exists(NBDKIT_BUILD_LIB_PATH):
                 linux.rm_dir_force(NBDKIT_BUILD_LIB_PATH)
 
-            f, wget_path_file = tempfile.mkstemp()
-            with open(wget_path_file, 'w') as wpd:
-                wpd.write("%s\n%s" % (cmd.adaptedVddkLibUrl, cmd.nbdkitUrl))
+            wget_path_file = linux.write_to_temp_file("%s\n%s" % (cmd.adaptedVddkLibUrl, cmd.nbdkitUrl))
 
             # wget ndbkit and old vddk
             linux.mkdir(NBDKIT_BUILD_LIB_PATH)
@@ -373,14 +371,20 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
                 for k, v in cmd.extraParams.__dict__.items():
                     extra_params = ' '.join((extra_params, ("--%s" % k), v))
 
+            # if source virtual machine is dual-boot or multi boot
+            # need to set --root to specific one root filesystem for convertion
+            # if no rootFileSystem set, use 'ask' which is default argument
+            # for --root
             if cmd.vddkVersion == '6.5':
                 return 'export PATH={6}:$PATH; \
                         VIRTIO_WIN=/var/lib/zstack/v2v/zstack-windows-virtio-driver.iso \
                         virt-v2v -ic vpx://{0}?no_verify=1 {1} -it vddk \
                         --vddk-libdir=/var/lib/zstack/v2v/vmware-vix-disklib-distrib \
                         --vddk-thumbprint={3} -o local -os {2} --password-file {2}/passwd {5} \
+                        --root {7} \
                         -of {4} > {2}/virt_v2v_log 2>&1'.format(cmd.srcVmUri, shellquote(cmd.srcVmName), storage_dir,
-                                                                cmd.thumbprint, cmd.format, extra_params, self._get_nbdkit_dir_path())
+                                                                cmd.thumbprint, cmd.format, extra_params, self._get_nbdkit_dir_path(),
+                                                                cmd.rootFileSystem if cmd.rootFileSystem else 'ask')
             if cmd.vddkVersion == '5.5':
                 if not self._ndbkit_is_work():
                     rsp.success = False
@@ -489,7 +493,9 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             if ret:
                 rsp.error = ret.strip("\n") + ". This may be a bug in vCenter 5.5, please detach ISO in vSphere client and try again"
             else:
-                rsp.error = "failed to run virt-v2v command, log in conversion host: %s" % v2v_log_file
+                err_fmt = linux.filter_file_lines_by_regex(v2v_log_file, '^virt-v2v: error:')[0][16:].strip()
+                rsp.error = "failed to run virt-v2v command, because %s... for more details, please see log in conversion host: %s" % (
+                err_fmt, v2v_log_file)
 
             return jsonobject.dumps(rsp)
 
