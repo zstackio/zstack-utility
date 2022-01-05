@@ -1127,7 +1127,7 @@ if __name__ == "__main__":
         exclude = "--exclude=" + cmd.excludePackages if cmd.excludePackages else ""
         updates = cmd.updatePackages if cmd.updatePackages else ""
         releasever = cmd.releaseVersion if cmd.releaseVersion else kvmagent.get_host_yum_release()
-        yum_cmd = "export YUM0={};yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn,mlnx-ofed-mn{} {} update {} -y"
+        yum_cmd = "export YUM0={};yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn {} update {} -y"
         yum_cmd = yum_cmd.format(releasever, ',zstack-experimental-mn' if cmd.enableExpRepo else '', exclude, updates)
         rsp = UpdateHostOSRsp()
         if shell.run("which yum") != 0:
@@ -1141,7 +1141,7 @@ if __name__ == "__main__":
             rsp.error = "no qemu-kvm-ev-mn repo found, cannot update host os"
         elif shell.run(yum_cmd) != 0:
             rsp.success = False
-            rsp.error = "failed to update host os using zstack-mn,qemu-kvm-ev-mn,mlnx-ofed-mn repo"
+            rsp.error = "failed to update host os using zstack-mn,qemu-kvm-ev-mn repo"
         else:
             logger.debug("successfully run: %s" % yum_cmd)
         return jsonobject.dumps(rsp)
