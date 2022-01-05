@@ -1238,7 +1238,11 @@ upgrade_zstack(){
 
     # configure chrony.serverIp if not exists
     zstack-ctl show_configuration | grep '^[[:space:]]*chrony.serverIp.' >/dev/null 2>&1
-    [ $? -ne 0 ] && zstack-ctl configure chrony.serverIp.0="${MANAGEMENT_IP}"
+    if [ $? -ne 0 ] && [ -n "$CHRONY_SERVER_IP" ]; then
+        zstack-ctl configure chrony.serverIp.0="${CHRONY_SERVER_IP}"
+    else
+        zstack-ctl configure chrony.serverIp.0="${MANAGEMENT_IP}"
+    fi
 
     if [ ! -z $ONLY_UPGRADE_CTL ]; then
         return
@@ -3436,7 +3440,7 @@ check_myarg() {
 }
 
 OPTIND=1
-TEMP=`getopt -o f:H:I:n:p:P:r:R:t:y:acC:L:T:dDEFhiklmMNoOqsuz --long mini,SY,sds -- "$@"`
+TEMP=`getopt -o f:H:I:n:p:P:r:R:t:y:acC:L:T:dDEFhiklmMNoOqsuz --long chrony-server-ip:,mini,SY,sds -- "$@"`
 if [ $? != 0 ]; then
     usage
 fi
@@ -3491,6 +3495,7 @@ do
         -u ) UPGRADE='y';shift;;
         -y ) check_myarg $1 $2;HTTP_PROXY=$2;shift 2;;
         -z ) NOT_START_ZSTACK='y';shift;;
+        --chrony-server-ip ) check_myarg $1 $2;CHRONY_SERVER_IP=$2;shift 2;;
         --mini) MINI_INSTALL='y';shift;;
         --SY) SANYUAN_INSTALL='y';shift;;
         --sds) SDS_INSTALL='y';shift;;
@@ -4038,7 +4043,11 @@ fi
 
 # configure chrony.serverIp if not exists
 zstack-ctl show_configuration | grep '^[[:space:]]*chrony.serverIp.' >/dev/null 2>&1
-[ $? -ne 0 ] && zstack-ctl configure chrony.serverIp.0="${MANAGEMENT_IP}"
+if [ $? -ne 0 ] && [ -n "$CHRONY_SERVER_IP" ]; then
+    zstack-ctl configure chrony.serverIp.0="${CHRONY_SERVER_IP}"
+else
+    zstack-ctl configure chrony.serverIp.0="${MANAGEMENT_IP}"
+fi
 
 #Install license
 install_license
