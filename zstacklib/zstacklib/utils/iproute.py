@@ -746,3 +746,29 @@ def batch_populate_vxlan_fdbs(ifnames, lladdr, dsts):
             ipb.reset()
             ipr.sendto(data, (0, 0))
         ipb.close()
+
+def add_fdb_entry(ifname, lladdr):
+    with get_iproute(None) as ipr:
+        ifindex = query_index_by_ifname(ifname.strip())
+        if ifindex is None:
+            logger.debug("can not get ifIndex of %s" % ifname)
+            return
+
+        try:
+            ipr.fdb('add', ifindex=ifindex, lladdr=lladdr)
+            logger.debug("add fdb mac: %s interface: %s" % (lladdr, ifname))
+        except Exception as e:
+            logger.debug("add fdb mac: %s interface: %s, failed: %s" % (lladdr, ifname, e))
+
+def del_fdb_entry(ifname, lladdr):
+    with get_iproute(None) as ipr:
+        ifindex = query_index_by_ifname(ifname.strip())
+        if ifindex is None:
+            logger.debug("can not get ifIndex of %s" % ifname)
+            return
+
+        try:
+            ipr.fdb('del', ifindex=ifindex, lladdr=lladdr)
+            logger.debug("del fdb mac: %s interface: %s" % (lladdr, ifname))
+        except Exception as e:
+            logger.debug("del fdb mac: %s interface: %s, failed: %s" % (lladdr, ifname, e))
