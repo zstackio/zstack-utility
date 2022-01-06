@@ -420,18 +420,12 @@ class CephAgent(object):
 
         poolCapacities = []
 
-        xsky = True
-        try:
-            shell.call('which xms-cli')
-        except:
-            xsky = False
-
         if not df.pools:
-            return total, avail, poolCapacities, xsky
+            return total, avail, poolCapacities
 
         pools = ceph.get_pools_capacity()
         if not pools:
-            return total, avail, poolCapacities, xsky
+            return total, avail, poolCapacities
 
         for pool in pools:
             pool_capacity = CephPoolCapacity(pool.pool_name,
@@ -439,16 +433,15 @@ class CephAgent(object):
                                              pool.replicated_size, pool.security_policy, pool.disk_utilization)
             poolCapacities.append(pool_capacity)
 
-        return total, avail, poolCapacities, xsky
+        return total, avail, poolCapacities
 
     def _set_capacity_to_response(self, rsp):
-        total, avail, poolCapacities, xsky = self._get_capacity()
+        total, avail, poolCapacities = self._get_capacity()
 
         rsp.totalCapacity = total
         rsp.availableCapacity = avail
         rsp.poolCapacities = poolCapacities
-        if xsky:
-            rsp.type = "xsky"
+        rsp.type = ceph.get_ceph_manufacturer()
 
     @replyerror
     def echo(self, req):
@@ -669,7 +662,7 @@ class CephAgent(object):
             raise Exception('image not found %s' % imageUuid)
 
         task.expectedSize = long(imageSize)
-        total, avail, poolCapacities, xsky = self._get_capacity()
+        total, avail, poolCapacities = self._get_capacity()
         if avail <= task.expectedSize:
             self._fail_task(task, 'capacity not enough for size: ' + imageSize)
 

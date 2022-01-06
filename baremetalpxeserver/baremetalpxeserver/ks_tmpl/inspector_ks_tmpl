@@ -1,22 +1,47 @@
 # Use network installation
-url --url=ftp://PXESERVER_DHCP_NIC_IP/zstack-dvd
+url --url=ftp://PXESERVER_DHCP_NIC_IP/zstack-dvd/ARCH
 repo --name=qemu-kvm-ev --baseurl=ftp://PXESERVER_DHCP_NIC_IP/zstack-dvd/Extra/qemu-kvm-ev
 
 # Text mode
 text
 
 # Hardware inspector
+%pre --interpreter /bin/bash
+if [ ! -f /usr/bin/python ];then
+   [ -f /usr/bin/python2 ] && ln -s /usr/bin/python2 /usr/bin/python
+   [ -f /usr/bin/python3 ] && ln -s /usr/bin/python3 /usr/bin/python
+fi
+%end
+
 %pre --interpreter /usr/bin/python
 import re
 import sys
 import fcntl
 import struct
 import socket
-import commands
+import subprocess
+
+
+def shell_cmd(cmd, exception=False, workdir=None):
+    process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stdin=subprocess.PIPE,
+                                stderr=subprocess.PIPE, close_fds=True, executable='/bin/bash', cwd=workdir)
+
+    (stdout, stderr) = process.communicate()
+    return_code = process.returncode
+    if exception and return_code != 0:
+        raise Exception("Failed to exec: [{}]".format(cmd))
+
+    # the type of results is bytes in python3
+    if sys.version_info.major == 3:
+        stdout = stdout.decode()
+        stderr = stderr.decode()
+
+    return return_code, stdout.strip(), stderr.strip()
+
 
 def get_ip_address(mac):
     cmd = "ip -family inet -oneline link show scope global | grep %s | head -n 1 | awk -F ':' '{ printf $2 }'" % mac
-    status, output = commands.getstatusoutput(cmd)
+    status, output, _ = shell_cmd(cmd)
     if status:
         return None
     ifname = output.strip()
@@ -24,16 +49,16 @@ def get_ip_address(mac):
     return socket.inet_ntoa(fcntl.ioctl(
         s.fileno(),
         0x8915,  # SIOCGIFADDR
-        struct.pack('256s', ifname[:15])
+        struct.pack('256s', bytes(str(ifname[:15]).encode('utf-8')))
     )[20:24])
 
 # ipmi address
 cmd0 = r'''modprobe ipmi_watchdog; modprobe ipmi_poweroff; modprobe ipmi_devintf; modprobe ipmi_si; modprobe ipmi_msghandler'''
 cmd1 = r'''for i in {1..15}; do ipmitool lan print $i 2>/dev/null && break; done | grep "IP Address\s*:"'''
 cmd2 = r'''ipmitool sol info 1 2>/dev/null | grep "Payload Port\s*:"'''
-status0, output0 = commands.getstatusoutput(cmd0)
-status1, output1 = commands.getstatusoutput(cmd1)
-status2, output2 = commands.getstatusoutput(cmd2)
+status0, output0, _ = shell_cmd(cmd0)
+status1, output1, _ = shell_cmd(cmd1)
+status2, output2, _ = shell_cmd(cmd2)
 if status1:
     exit
 
@@ -47,19 +72,19 @@ else:
 basic_json = '{"ipmiAddress":"%s", "ipmiPort":%d, "type":"basic", "content":"{' % (ipmiAddress, ipmiPort)
 # basic -> cpu_model
 cmd = 'cat /proc/cpuinfo | egrep "^model name" | awk -F ":[ ]*" \'{ print $2 }\' | uniq | head -n 1'
-status, output = commands.getstatusoutput(cmd)
+status, output, _ = shell_cmd(cmd)
 if not status:
     basic_json += '\\"cpu_model\\":\\"%s\\",' % output
 
 # basic -> cpu_core
 cmd = 'cat /proc/cpuinfo | egrep "^processor" | wc -l'
-status, output = commands.getstatusoutput(cmd)
+status, output, _ = shell_cmd(cmd)
 if not status:
     basic_json += '\\"cpu_core\\":\\"%s\\",' % output
 
 # basic -> memory
 cmd = 'cat /proc/meminfo | grep MemTotal: | awk -F ":[ ]*" \'{ print $2 }\' | uniq | head -n 1'
-status, output = commands.getstatusoutput(cmd)
+status, output, _ = shell_cmd(cmd)
 if not status:
     basic_json += '\\"memory\\":\\"%s\\",' % output
 
@@ -67,20 +92,20 @@ if basic_json.endswith(','):
     basic_json = basic_json[:-1]
 basic_json += '}"}'
 cmd = 'curl -X POST -H "Content-Type:application/json" -H "commandpath:/baremetal/chassis/sendhardwareinfo" -d \'%s\' --retry 5 http://PXESERVER_DHCP_NIC_IP:7771/zstack/asyncrest/sendcommand' % basic_json
-commands.getstatusoutput(cmd)
+shell_cmd(cmd)
 
 # nic
 nic_json = '{"ipmiAddress":"%s", "ipmiPort":%d, "type":"nic", "content":"[' % (ipmiAddress, ipmiPort)
 cmd = r'''ip route | awk '/default/ { print $5 }' | head -n 1'''
-status, pxedev = commands.getstatusoutput(cmd)
+status, pxedev, _ = shell_cmd(cmd)
 cmd = r'''ip -family inet -oneline link show scope global | awk '{ printf "%s %s\n", $2, $(NF-2) }' | egrep -v "^lo:"'''
-status, output = commands.getstatusoutput(cmd)
+status, output, _ = shell_cmd(cmd)
 if not status:
     for line in output.split('\n'):
         devname, mac = line.split(": ")
         # get speed of nic
         cmd = r'''ethtool %s | grep 'Speed:' | awk '{ print $NF }' ''' % devname
-        status, speed = commands.getstatusoutput(cmd)
+        status, speed, _ = shell_cmd(cmd)
         if status: speed = "UNKNOWN"
         # whether pxe boot nic
         pxe = "true" if pxedev == devname else "false"
@@ -90,12 +115,12 @@ if not status:
     nic_json = nic_json[:-1]
 nic_json += ']"}'
 cmd = 'curl -X POST -H "Content-Type:application/json" -H "commandpath:/baremetal/chassis/sendhardwareinfo" -d \'%s\' --retry 5 http://PXESERVER_DHCP_NIC_IP:7771/zstack/asyncrest/sendcommand' % nic_json
-commands.getstatusoutput(cmd)
+shell_cmd(cmd)
 
 # disk
 disk_json = '{"ipmiAddress":"%s", "ipmiPort":%d, "type":"disk", "content":"[' % (ipmiAddress, ipmiPort)
 cmd = r'''lsblk -P -o NAME,TYPE,SIZE | grep TYPE=\"disk\" | awk '{ print $1 " " $3 }' '''
-status, output = commands.getstatusoutput(cmd)
+status, output, _ = shell_cmd(cmd)
 if not status:
     for line in output.split('\n'):
         name, size = re.findall('"([^"]*)"', line)
@@ -103,14 +128,14 @@ if not status:
     disk_json = disk_json[:-1]
 disk_json += ']"}'
 cmd = 'curl -X POST -H "Content-Type:application/json" -H "commandpath:/baremetal/chassis/sendhardwareinfo" -d \'%s\' --retry 5 http://PXESERVER_DHCP_NIC_IP:7771/zstack/asyncrest/sendcommand' % disk_json
-commands.getstatusoutput(cmd)
+shell_cmd(cmd)
 
 # pxeserver
 pxe_json = '{"ipmiAddress":"%s", "ipmiPort":%d, "type":"pxeserver", "content":"PXESERVERUUID"}' %  (ipmiAddress, ipmiPort)
 cmd = 'curl -X POST -H "Content-Type:application/json" -H "commandpath:/baremetal/chassis/sendhardwareinfo" -d \'%s\' --retry 5 http://PXESERVER_DHCP_NIC_IP:7771/zstack/asyncrest/sendcommand' % pxe_json
-commands.getstatusoutput(cmd)
+shell_cmd(cmd)
 
 # poweroff after sending hardware info back to management node
-commands.getstatusoutput("poweroff")
+shell_cmd("poweroff")
 
 %end

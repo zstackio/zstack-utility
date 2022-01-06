@@ -638,7 +638,7 @@ class UseUserZstack(object):
     def __enter__(self):
         self.root_uid = os.getuid()
         self.root_gid = os.getgid()
-        self.root_home = os.environ['HOME']
+        self.root_home = os.environ.get('HOME') if os.environ.get('HOME') else "/root"
 
         os.setegid(grp.getgrnam('zstack').gr_gid)
         os.seteuid(pwd.getpwnam('zstack').pw_uid)
@@ -2657,8 +2657,8 @@ class InstallDbCmd(Command):
       shell: "yum clean metadata; yum --nogpgcheck install -y mysql mysql-server "
       register: install_result
 
-    - name: install MySQL for RedHat 7/Kylin10 from local
-      when: (ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repo != 'false') or (ansible_os_family == 'Kylin' and ansible_distribution_version == '10' and yum_repo != 'false')
+    - name: install MySQL for RedHat 7/Kylin10/openEuler from local
+      when: (ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repo != 'false') or ansible_os_family == 'Kylin' or ansible_os_family == 'Openeuler'
       shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y  mariadb mariadb-server iptables-services
       register: install_result
 
@@ -2702,8 +2702,8 @@ class InstallDbCmd(Command):
       when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7'
       service: name=mysqld state=restarted enabled=yes
 
-    - name: enable MySQL daemon on RedHat 7/Kyliin10
-      when: (ansible_os_family == 'RedHat' and ansible_distribution_version >= '7') or (ansible_os_family == 'Kylin' and ansible_distribution_version == '10')
+    - name: enable MySQL daemon on RedHat 7/Kyliin10/openEuler
+      when: (ansible_os_family == 'RedHat' and ansible_distribution_version >= '7') or ansible_os_family == 'Kylin' or ansible_os_family == 'Openeuler'
       service: name=mariadb state=restarted enabled=yes
 
     - name: enable MySQL daemon on AliOS 7

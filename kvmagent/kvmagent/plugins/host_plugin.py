@@ -35,8 +35,8 @@ from zstacklib.utils.report import Report
 host_arch = platform.machine()
 IS_AARCH64 = host_arch == 'aarch64'
 IS_MIPS64EL = host_arch == 'mips64el'
-GRUB_FILES = ["/boot/grub2/grub.cfg", "/boot/grub/grub.cfg", "/etc/grub2-efi.cfg",
-              "/etc/grub-efi.cfg", "/boot/efi/EFI/centos/grub.cfg", "/boot/efi/EFI/kylin/grub.cfg"]
+GRUB_FILES = ["/boot/grub2/grub.cfg", "/boot/grub/grub.cfg", "/etc/grub2-efi.cfg", "/etc/grub-efi.cfg"] \
+                + ["/boot/efi/EFI/{}/grub.cfg".format(platform.dist()[0])]
 IPTABLES_CMD = iptables.get_iptables_cmd()
 
 COLO_QEMU_KVM_VERSION = '/var/lib/zstack/colo/qemu_kvm_version'
@@ -189,7 +189,7 @@ class HostNetworkBondingInventory(object):
                     "ip -o a list | grep '^%s: ' | awk '/inet /{print $4}'" % master.strip()).splitlines()]
         self.miimon = linux.read_file("/sys/class/net/%s/bonding/miimon" % self.bondingName).strip()
         self.allSlavesActive = linux.read_file("/sys/class/net/%s/bonding/all_slaves_active" % self.bondingName).strip() == "0"
-        slave_names = linux.read_file("/sys/class/net/%s/bonding/slaves" % self.bondingName).strip().split(" ")
+        slave_names = linux.read_file("/sys/class/net/%s/bonding/slaves" % self.bondingName).strip().split()
         if len(slave_names) == 0:
             return
 
@@ -280,6 +280,7 @@ class GetPciDevicesCmd(kvmagent.AgentCommand):
         super(GetPciDevicesCmd, self).__init__()
         self.filterString = None
         self.enableIommu = True
+        self.skipGrubConfig = False
 
 class GetPciDevicesResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -722,7 +723,8 @@ class HostPlugin(kvmagent.KvmAgent):
                     cpu_model = os.uname()[-1]
 
             rsp.cpuModelName = cpu_model
-            rsp.hostCpuModelName = "aarch64"
+            host_cpu_model_name = shell.call("lscpu | awk -F':' '/Model name/{print $2}'")
+            rsp.hostCpuModelName = host_cpu_model_name.strip() if host_cpu_model_name  else "aarch64"
 
             cpuMHz = shell.call("lscpu | awk '/max MHz/{ print $NF }'")
             # in case lscpu doesn't show cpu max mhz
@@ -989,11 +991,12 @@ class HostPlugin(kvmagent.KvmAgent):
                 elif line[0] == 'iSerial':
                     info.iSerial = ' '.join(line[2:]) if len(line) > 2 else ""
 
-            if info.busNum == '' or info.devNum == '' or info.idVendor == '' \
-                    or info.idProduct == '' or '(error)' in info.iManufacturer or '(error)' in info.iProduct:
-                rsp.success = False
-                rsp.error = "cannot get enough info of usb device"
-                return jsonobject.dumps(rsp)
+            if info.busNum == '' or info.devNum == '' or info.idVendor == '' or info.idProduct == '':
+                logger.debug("cannot get busNum/devNum/idVendor/idProduct info in usbDevice %s" % devId)
+                continue
+            elif '(error)' in info.iManufacturer or '(error)' in info.iProduct:
+                logger.debug("cannot get iManufacturer or iProduct info in usbDevice %s" % devId)
+                usbDevicesInfo += info.toString()
             else:
                 usbDevicesInfo += info.toString()
         rsp.usbDevicesInfo = usbDevicesInfo
@@ -1158,7 +1161,7 @@ if __name__ == "__main__":
 
     def _close_hugepage(self):
         disable_hugepage_script = '''#!/bin/sh
-grubs=("/boot/grub2/grub.cfg" "/boot/grub/grub.cfg" "/etc/grub2-efi.cfg" "/etc/grub-efi.cfg" "/boot/efi/EFI/centos/grub.cfg" "/boot/efi/EFI/kylin/grub.cfg")
+grubs="%s"
 
 # config nr_hugepages
 sysctl -w vm.nr_hugepages=0
@@ -1177,7 +1180,7 @@ if [ ! -n "$result" ]; then
 fi
 
 #clean boot grub config
-for var in ${grubs[@]} 
+for var in $grubs 
 do 
    if [ -f $var ]; then
        sed -i '/^[[:space:]]*linux/s/[[:blank:]]*hugepagesz[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g' $var
@@ -1185,7 +1188,7 @@ do
        sed -i '/^[[:space:]]*linux/s/[[:blank:]]*transparent_hugepage[[:blank:]]*=[[:blank:]]*[[:graph:]]*//g' $var
    fi    
 done
-'''
+''' % (' '.join(GRUB_FILES))
         fd, disable_hugepage_script_path = tempfile.mkstemp()
         with open(disable_hugepage_script_path, 'w') as f:
             f.write(disable_hugepage_script)
@@ -1212,7 +1215,7 @@ done
         pageSize = cmd.pageSize
         reserveSize = cmd.reserveSize
         enable_hugepage_script = '''#!/bin/sh
-grubs=("/boot/grub2/grub.cfg" "/boot/grub/grub.cfg" "/etc/grub2-efi.cfg" "/etc/grub-efi.cfg" "/boot/efi/EFI/centos/grub.cfg" "/boot/efi/EFI/kylin/grub.cfg")
+grubs="%s"
 
 # byte to mib
 let "reserveSize=%s/1024/1024"
@@ -1234,13 +1237,13 @@ echo always > /sys/kernel/mm/transparent_hugepage/enabled
 sed -i '/GRUB_CMDLINE_LINUX=/s/\"$/ transparent_hugepage=always default_hugepagesz=\'\"$pageSize\"\'M hugepagesz=\'\"$pageSize\"\'M hugepages=\'\"$pageNum\"\'\"/g' /etc/default/grub
 
 #config boot grub
-for var in ${grubs[@]} 
+for var in $grubs
 do 
    if [ -f $var ]; then
        sed -i '/^[[:space:]]*linux/s/$/ transparent_hugepage=always default_hugepagesz=\'\"$pageSize\"\'M hugepagesz=\'\"$pageSize\"\'M hugepages=\'\"$pageNum\"\'/g' $var
    fi    
 done
-''' % (reserveSize, pageSize)
+''' % (' '.join(GRUB_FILES), reserveSize, pageSize)
 
         fd, enable_hugepage_script_path = tempfile.mkstemp()
         with open(enable_hugepage_script_path, 'w') as f:
@@ -1512,6 +1515,11 @@ done
     def get_pci_info(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetPciDevicesResponse()
+
+        if cmd.skipGrubConfig:
+            rsp.hostIommuStatus = True
+            self._collect_format_pci_device_info(rsp)
+            return jsonobject.dumps(rsp)
 
         # update grub to enable/disable iommu in host
         updateConfigration = UpdateConfigration()

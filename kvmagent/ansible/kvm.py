@@ -87,7 +87,7 @@ if not os.path.isdir(repo_dir):
 
 
 
-def update_libvritd_config(host_post_info):
+def update_libvirtd_config(host_post_info):
     # name: copy libvirtd conf to keep environment consistent,only update host_uuid
     copy_arg = CopyArg()
     copy_arg.src = "%s/libvirtd.conf" % file_root
@@ -139,36 +139,11 @@ def check_nested_kvm(host_post_info):
     modprobe_arg.state = 'present'
     modprobe(modprobe_arg, host_post_info)
 
-
-def get_host_release_info():
-    get_releasever_script = '''
-    cat << 'EOF' > /opt/get_releasever
-    rpm -q zstack-release > /dev/null 2>&1
-    [ $? -eq 0 ] && echo `rpm -q zstack-release |awk -F"-" '{print $3}'` && exit 0
-    rpm -q centos-release > /dev/null 2>&1
-    [ $? -eq 0 ] && echo `rpm -q centos-release|awk -F"." '{print $1}'|awk -F"-" '{print "c"$3$4}'` && exit 0
-    rpm -q alios-release-server > /dev/null 2>&1
-    [ $? -eq 0 ] && echo `rpm -q alios-release-server |awk -F"." '{print $3}'` && exit 0
-    rpm -q redhat-release-server > /dev/null 2>&1
-    [ $? -eq 0 ] && echo `rpm -q redhat-release-server |awk -F"-" '{print "c"$4}'|tr -d '.'` && exit 0
-    rpm -q neokylin-release-server > /dev/null 2>&1
-    [ $? -eq 0] && echo `rpm -q neokylin-release-server |awk -F"." '{print $3}'|awk -F"_" '{print $1}'` && exit 0
-    exit 1'''
-    run_remote_command(get_releasever_script, host_post_info)
-    (status, output) = run_remote_command("bash /opt/get_releasever", host_post_info, True, True)
-    if status:
-        # c72 is no longer supported, force set c74
-        releasever = 'c74' if output.strip() == 'c72' else output.strip()
-    else:
-        releasever = sorted(os.listdir("/opt/zstack-dvd/{}".format(host_arch)))[-1]
-
-    return releasever
-
 def install_release_on_host(is_rpm):
     # copy and install zstack-release
     if is_rpm:
         src_pkg = '/opt/zstack-dvd/{0}/{1}/Packages/zstack-release-{1}-1.el7.zstack.noarch.rpm'.format(host_arch, releasever)
-        install_cmd = "rpm -q zstack-release || yum install -y /opt/zstack-release-{}-1.el7.zstack.noarch.rpm".format(releasever)
+        install_cmd = "rpm -q zstack-release || yum --disablerepo=* install -y /opt/zstack-release-{}-1.el7.zstack.noarch.rpm".format(releasever)
     else:
         src_pkg = '/opt/zstack-dvd/{0}/{1}/Packages/zstack-release_{1}_all.deb'.format(host_arch, releasever)
         install_cmd = "dpkg -l zstack-release || dpkg -i /opt/zstack-release_{}_all.deb".format(releasever)
@@ -198,11 +173,10 @@ def load_zstacklib():
         zstacklib_args.yum_server = yum_server
     zstacklib = ZstackLib(zstacklib_args)
 
+releasever = get_host_releasever([distro, distro_release, distro_version])
 if distro in RPM_BASED_OS:
-    releasever = get_host_release_info()
     install_release_on_host(True)
 elif distro in DEB_BASED_OS:
-    releasever = get_mn_apt_release()
     install_release_on_host(False)
 else:
     error("Unsupported OS: {}".format(distro))
@@ -244,16 +218,29 @@ def install_kvm_pkg():
                         smartmontools sshpass usbutils vconfig wget audit dnsmasq \
                         qemu collectd-virt storcli edk2-aarch64 python2-pyudev collectd-disk"
 
+        aarch64_euler20 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
+                        usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
+                        net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
+                        smartmontools sshpass usbutils vconfig wget audit dnsmasq \
+                        qemu collectd-virt storcli edk2-aarch64 python2-pyudev collectd-disk"
+
         mips64el_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                          usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof mcelog \
-                         net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils python-pyudev pv rsync sed \
-                         qemu-kvm-ev smartmontools sshpass usbutils vconfig wget audit dnsmasq tuned collectd-virt"
+                         net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils python2-pyudev pv rsync sed \
+                         qemu smartmontools sshpass usbutils vconfig wget audit dnsmasq tuned collectd-virt collectd-disk"
+
+        x86_64_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
+                        usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
+                        net-tools nfs-utils nmap openssh-clients OpenIPMI pciutils pv rsync sed \
+                        smartmontools sshpass usbutils vconfig wget audit dnsmasq \
+                        qemu collectd-virt storcli edk2.git-ovmf-x64 python2-pyudev collectd-disk"
 
         # handle zstack_repo
         if zstack_repo != 'false':
             common_dep_list = eval("%s_%s" % (host_arch, releasever))
             # common kvmagent deps of x86 and arm that need to update
-            common_update_list = "sanlock sysfsutils hwdata sg3_utils lvm2 lvm2-libs lvm2-lockd systemd openssh librbd1"
+            common_update_list = "sanlock sysfsutils hwdata sg3_utils lvm2 lvm2-libs lvm2-lockd systemd openssh"
+            common_no_update_list = "librbd1"
             # common kvmagent deps of x86 and arm that no need to update
             common_dep_list = "%s %s" % (common_dep_list, common_update_list)
 
@@ -264,6 +251,7 @@ def install_kvm_pkg():
 
             dep_list = common_dep_list
             update_list = common_update_list
+            no_update_list = common_no_update_list
 
             command = "which virsh"
             host_post_info.post_label = "ansible.shell.install.pkg"
@@ -280,13 +268,12 @@ def install_kvm_pkg():
             dep_list = ' '.join(_dep_list)
 
             # name: install/update kvm related packages on RedHat based OS from user defined repo
-            # if zstack-manager is not installed, then install/upgrade zstack-host and ignore failures
-            command = ("[[ -f /usr/bin/zstack-ctl ]] && zstack-ctl status | grep 'MN status' | grep 'Running' >/dev/null 2>&1; \
-                [[ $? -eq 0 ]] || yum --disablerepo=* --enablerepo=%s install -y zstack-host >/dev/null; \
-                    echo %s >/var/lib/zstack/dependencies && yum --enablerepo=%s clean metadata >/dev/null && \
-                    pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'`' %s' && \
-                    for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg >/dev/null || exit 1; done; \
-                    ") % (zstack_repo, dep_list, zstack_repo, dep_list, update_list, dep_list if update_packages == 'true' else '$pkg_list', zstack_repo)
+            command = ("echo {1} >/var/lib/zstack/dependencies && yum --disablerepo=* --enablerepo={0} clean metadata >/dev/null && \
+                    pkg_list=`rpm -q {1} | grep \"not installed\" | awk '{{ print $2 }}'`' {2}' && \
+                    for pkg in {4}; do yum --disablerepo=* --enablerepo={0} install -y $pkg >/dev/null || exit 1; done; \
+                    pkg_list=`rpm -q {3} | grep \"not installed\" | awk '{{ print $2 }}'` && \
+                    for pkg in $pkg_list; do yum --disablerepo=* --enablerepo={0} install -y $pkg >/dev/null || exit 1; done; \
+                    ").format(zstack_repo, dep_list, update_list, no_update_list, dep_list if update_packages == 'true' else '$pkg_list')
             host_post_info.post_label = "ansible.shell.install.pkg"
             host_post_info.post_label_param = dep_list
             run_remote_command(command, host_post_info)
@@ -328,9 +315,8 @@ def install_kvm_pkg():
             host_post_info.post_label = "ansible.shell.disable.service"
             host_post_info.post_label_param = "firewalld"
             run_remote_command(command, host_post_info)
-
-            if host_arch == "aarch64" and releasever == "ns10":
-                # name: enable NetworkManager in arm ns10
+            if releasever in enable_networkmanager_list:
+                # name: enable NetworkManager in euler20, arm and x86 ns10
                 service_status("NetworkManager", "state=started enabled=yes", host_post_info, ignore_error=True)
             else:
                 # name: disable NetworkManager in RHEL7 and Centos7
@@ -350,7 +336,13 @@ def install_kvm_pkg():
                 service_status("iptables", "state=restarted enabled=yes", host_post_info)
 
         #we should check libvirtd config file status before restart the service
-        libvirtd_conf_status = update_libvritd_config(host_post_info)
+        libvirtd_conf_status = update_libvirtd_config(host_post_info)
+        # in the libvirtd 5.6.0 and later, the libvirtd daemon now prefers to uses systemd socket activation
+        command = "libvirtd --version | grep 'libvirtd (libvirt) ' | cut -d ' ' -f 3 | cut -d '(' -f 1"
+        (status, libvirtd_version) = run_remote_command(command, host_post_info, False, True)
+        if LooseVersion(libvirtd_version) >= LooseVersion('5.6.0'):
+            command = 'systemctl mask libvirtd.socket libvirtd-ro.socket libvirtd-admin.socket libvirtd-tls.socket libvirtd-tcp.socket'
+            run_remote_command(command, host_post_info)
         if chroot_env == 'false':
             # name: enable libvirt daemon on RedHat based OS
             service_status("libvirtd", "state=started enabled=yes", host_post_info)
@@ -391,7 +383,7 @@ def install_kvm_pkg():
                             'libguestfs-tools', 'sed', 'nfs-common', 'open-iscsi','ebtables', 'pv', 'usbutils', 
                             'pciutils', 'expect', 'lighttpd', 'sshpass', 'rsync', 'iputils-arping', 'nmap', 'collectd', 
                             'iptables', 'python-pip', 'dmidecode', 'ovmf', 'dnsmasq', 'auditd', 'ipset',
-                            'multipath-tools', 'uuid-runtime', 'lvm2', 'lvm2-lockd', 'udev', 'sanlock', 'usbredirserver']
+                            'multipath-tools', 'uuid-runtime', 'lvm2', 'lvm2-lockd', 'udev', 'sanlock', 'usbredirserver', 'python-pyudev']
         apt_install_packages(install_pkg_list, host_post_info)
         if zstack_repo == 'false':
             command_deb_list = "echo %s >/var/lib/zstack/dependencies".format(' '.join(install_pkg_list))
@@ -408,7 +400,7 @@ def install_kvm_pkg():
         run_remote_command(command, host_post_info)
         update_pkg_list = ['ebtables', 'python-libvirt', 'qemu-system-arm']
         apt_update_packages(update_pkg_list, host_post_info)
-        libvirtd_conf_status = update_libvritd_config(host_post_info)
+        libvirtd_conf_status = update_libvirtd_config(host_post_info)
         if chroot_env == 'false':
             # name: enable libvirt daemon on RedHat based OS
             service_status("libvirtd", "state=started enabled=yes", host_post_info)
@@ -521,6 +513,10 @@ def do_libvirt_qemu_config():
 
 
 def do_network_config():
+    """config NetworkManager(fix 40371)"""
+    NETWORKMANAGER_CONF_FILE = '/etc/NetworkManager/NetworkManager.conf'
+    replace_content(NETWORKMANAGER_CONF_FILE, "regexp='.*no-auto-default=.*' replace='no-auto-default=*'", host_post_info)
+
     # name: enable bridge forward
     if bridgeDisableIptables == "true":
         command = " [ `sysctl -n net.bridge.bridge-nf-call-iptables` -eq 1 ] && sysctl -w net.bridge.bridge-nf-call-iptables=0 >> /etc/sysctl.conf ; echo 1 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged ; echo 1 > /proc/sys/net/ipv4/conf/default/forwarding"
@@ -546,7 +542,7 @@ def do_network_config():
         elif distro in DEB_BASED_OS:
             copy_arg = CopyArg()
             copy_arg.src = "%s/ip6tables" % file_root
-            copy_arg.dest = "/sbin/ip6tables"
+            copy_arg.dest = "/etc/iptables/rules.v6"
             copy(copy_arg, host_post_info)
             command = "ip6tables-save"
             run_remote_command(command, host_post_info)
