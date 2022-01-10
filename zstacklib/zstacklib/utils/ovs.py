@@ -51,9 +51,38 @@ def confirmWriteSysfs(path, value, times=3, sleepTime=3):
     raise OvsError("write sysfs timeout")
 
 
+def getOSReleaseInfo():
+    osRelease = {}
+    with open('/etc/os-release', 'r') as f:
+        lines = f.readlines()
+        for l in lines:
+            l = l.strip()
+            if l == '':
+                continue
+            lsplit = l.split("=")
+            osRelease[lsplit[0].strip()] = lsplit[1].strip('"')
+
+    return osRelease
+
+def version_geq(v1, v2):
+    """
+    Compare (dot separated) version numbers. return true if 
+    v1 is greater or equal v2, otherwise false.
+    """
+    v1 = v1.split(".")
+    v2 = v2.split(".")
+    vLen = len(v1) if len(v1) < len(v2) else len(v2)
+    for i in range(0, vLen):
+        if int(v1[i]) < int(v2[i]):
+            return False
+        elif int(v1[i]) > int(v2[i]):
+            return True
+    return True
+
 class OvsVenv(object):
     """ prepare ovs workspace and env
         including:
+        0. modprobe bonding
         1. mlnx ofed driver
         2. hugepages(created in vswitchd starting process)
         3. offloadStatus of smart-nics
@@ -78,6 +107,7 @@ class OvsVenv(object):
         self.dpdkVer = "unknow"
         self.ovsDBVer = "unknow"
         self.ready = True
+        self.modprobeBonding()
         self.checkMlnxOfed()
 
         self.hugepage_size = hugepage_size
@@ -86,6 +116,12 @@ class OvsVenv(object):
 
         self.offloadStatus = {}
         self.checkOffloadStatus()
+
+    def modprobeBonding(self):
+        ret = shell.run("modprobe bonding")
+        if ret != 0:
+            self.ready = False
+            raise OvsError("can not find bonding module.")
 
     def checkMlnxOfed(self):
         """ check mlnx ofed driver,
@@ -285,16 +321,7 @@ class Ovs(object):
 
         time.sleep(1)
         # get os release info
-        osRelease = {}
-        with open('/etc/os-release', 'r') as f:
-            lines = f.readlines()
-            for l in lines:
-                l = l.strip()
-                if l == '':
-                    continue
-                lsplit = l.split("=")
-                osRelease[lsplit[0].strip()] = lsplit[1].strip('"')
-
+        osRelease = getOSReleaseInfo()
         systemType = osRelease['ID']
         systemVersion = osRelease['VERSION_ID']
 
@@ -481,7 +508,7 @@ class Ovs(object):
         # stop older versions of daemons which do not behave correctly
         # with `ovs-appctl exit` (e.g. ovs-vswitchd <= 2.5.0 deletes
         # internal ports).
-        if self.version_geq(ver, "2.5.90") and self.venv.ready:
+        if version_geq(ver, "2.5.90") and self.venv.ready:
             actions = graceful + ' ' + actions
 
         forceStop = False
@@ -512,23 +539,9 @@ class Ovs(object):
 
         return False
 
-    def version_geq(self, v1, v2):
-        """
-        Compare (dot separated) version numbers. return true if 
-        v1 is greater or equal v2, otherwise false.
-        """
-        v1 = v1.split(".")
-        v2 = v2.split(".")
-
-        vLen = len(v1) if len(v1) < len(v2) else len(v2)
-
-        for i in range(0, vLen):
-            if int(v1[i]) < int(v2[i]):
-                return False
-            elif int(v1[i]) > int(v2[i]):
-                return True
-
-        return True
+    @staticmethod
+    def create():
+        return Ovs(OvsVenv())
 
 
 class OvsCtl(Ovs):
@@ -874,9 +887,6 @@ class OvsCtl(Ovs):
 
     @checkOvs
     def reconfigOvs(self):
-        ret = shell.run("modprobe bonding")
-        if ret != 0:
-            raise OvsError("can not find bonding module.")
 
         if not self.initVdpaSupport():
             raise OvsError("ovs can not support dpdk.")
@@ -1034,7 +1044,7 @@ class OvsCtl(Ovs):
         if pci in dpdk_extra:
             return ret
 
-        if self.version_geq(self.venv.dpdkVer, "20.11"):
+        if version_geq(self.venv.dpdkVer, "20.11"):
             dpdk_extra = dpdk_extra + "-a {},representor=[0-127],dv_flow_en=1,dv_esw_en=1 ".format(
                 pci)
         else:
@@ -1066,7 +1076,7 @@ class OvsCtl(Ovs):
         if s.return_code == 0:
             dpdk_extra = s.stdout.strip().strip('\n').strip('"')
 
-        if self.version_geq(self.venv.dpdkVer, "20.11"):
+        if version_geq(self.venv.dpdkVer, "20.11"):
             dpdk_extra = dpdk_extra.replace("-w", "-a")
             dpdk_extra = dpdk_extra.replace("dv_xmeta_en=1", "")
         else:
