@@ -13,6 +13,19 @@ from zstacklib.utils import linux
 
 logger = log.get_logger(__name__)
 
+OvsPath = "/var/run/openvswitch/"
+LogPath = "/var/log/zstack/openvswitch/"
+VdpaPath = "/var/run/zstack/vdpa/"
+ConfPath = "/usr/local/etc/zstack-ovs/"
+CONF_DB = "/usr/local/etc/zstack-ovs/conf.db"
+DB_SOCK = "/var/run/openvswitch/db.sock"
+DBPidPath = "/var/run/openvswitch/ovsdb-server.pid"
+SwitchPidPath = "/var/run/openvswitch/ovs-vswitchd.pid"
+DBLogPath = "/var/log/zstack/openvswitch/ovsdb-server.log"
+SwitchLogPath = "/var/log/zstack/openvswitch/ovs-vswitchd.log"
+DBCtlFilePath = "/var/run/openvswitch/ovsdb-server.zs.ctl"
+SwitchCtlFilePath = "/var/run/openvswitch/ovs-vswitchd.zs.ctl"
+CtlBin = "ovs-vsctl --db=unix:{} ".format(DB_SOCK)
 
 class OvsError(Exception):
     '''ovs error'''
@@ -86,6 +99,7 @@ class OvsVenv(object):
         1. mlnx ofed driver
         2. hugepages(created in vswitchd starting process)
         3. offloadStatus of smart-nics
+        4. some conf/log/sock directory
     """
     __cache__ = []  # list[int, OvsVenv]
 
@@ -116,6 +130,7 @@ class OvsVenv(object):
 
         self.offloadStatus = {}
         self.checkOffloadStatus()
+        self.preparePaths()
 
     def modprobeBonding(self):
         ret = shell.run("modprobe bonding")
@@ -129,8 +144,8 @@ class OvsVenv(object):
             the EAL options between different dpdk version maybe changed
             and old configurations may cause error
         """
-        if not os.path.exists("/usr/share/openvswitch/scripts/ovs-ctl"):
-            logger.debug("can not find ovs-ctl")
+        if not os.path.exists("/usr/bin/ovs-vsctl"):
+            logger.debug("can not find ovs-vsctl")
             self.ready = False
             return
 
@@ -219,8 +234,7 @@ class OvsVenv(object):
         return len(numaNodePaths)
 
     def checkOffloadStatus(self):
-        nicInfoPath = os.path.join(
-            "/usr/local/etc/zstack-ovs/", "smart-nics.yaml")
+        nicInfoPath = os.path.join(ConfPath, "smart-nics.yaml")
 
         if not os.path.exists(nicInfoPath):
             logger.debug("no such file:{}".format(nicInfoPath))
@@ -234,40 +248,26 @@ class OvsVenv(object):
             self.offloadStatus[i['nic']['vendor_device']] = "|".join(
                 str(x) for x in i['nic']['offloadstatus'])
 
+    def preparePaths(self):
+        if not os.path.isdir(OvsPath):
+            os.mkdir(OvsPath, 0755)
+
+        if not os.path.isdir(LogPath):
+            os.mkdir(LogPath, 0755)
+
+        if not os.path.exists(VdpaPath):
+            os.mkdir(VdpaPath, 0755)
+
+        if not os.path.exists(ConfPath):
+            os.mkdir(ConfPath, 0755)
 
 class Ovs(object):
-    """ control the lifecycle of ovsdb and vswitch
+    """ control the lifecycle of ovsdb and vswitchd.
+        make sure OvsVenv is ready before start ovsdb/vswitchd.
     """
-
-    ovsPath = "/var/run/openvswitch/"
-    logPath = "/var/log/zstack/openvswitch/"
-    vdpaPath = "/var/run/zstack/vdpa/"
-    confPath = "/usr/local/etc/zstack-ovs/"
-
-    CONF_DB = "/usr/local/etc/zstack-ovs/conf.db"
-    DB_SOCK = "/var/run/openvswitch/db.sock"
-    DBPidPath = "/var/run/openvswitch/ovsdb-server.pid"
-    SwitchPidPath = "/var/run/openvswitch/ovs-vswitchd.pid"
-    DBLogPath = "/var/log/zstack/openvswitch/ovsdb-server.log"
-    SwitchLogPath = "/var/log/zstack/openvswitch/ovs-vswitchd.log"
-    DBCtlFilePath = "/var/run/openvswitch/ovsdb-server.zs.ctl"
-    SwitchCtlFilePath = "/var/run/openvswitch/ovs-vswitchd.zs.ctl"
-    ctlBin = "ovs-vsctl --db=unix:{} ".format(DB_SOCK)
 
     def __init__(self, venv):
         self.venv = venv
-
-        if not os.path.isdir(self.ovsPath):
-            os.mkdir(self.ovsPath, 0755)
-
-        if not os.path.isdir(self.logPath):
-            os.mkdir(self.logPath, 0755)
-
-        if not os.path.exists(self.vdpaPath):
-            os.mkdir(self.vdpaPath, 0755)
-
-        if not os.path.exists(self.confPath):
-            os.mkdir(self.confPath, 0755)
 
     def checkOvs(func):
         def wrapper(self, *args, **kw):
@@ -299,22 +299,22 @@ class Ovs(object):
         self.stopDB()
         self.upgradeDB()
 
-        cmd = "ovsdb-server {}".format(self.CONF_DB)
+        cmd = "ovsdb-server {}".format(CONF_DB)
         cmd = cmd + " -vconsole:emer -vsyslog:err -vfile:info"
-        cmd = cmd + " --remote=punix:{}".format(self.DB_SOCK)
+        cmd = cmd + " --remote=punix:{}".format(DB_SOCK)
         cmd = cmd + " --private-key=db:Open_vSwitch,SSL,private_key"
         cmd = cmd + " --certificate=db:Open_vSwitch,SSL,certificate"
         cmd = cmd + " --bootstrap-ca-cert=db:Open_vSwitch,SSL,ca_cert"
         cmd = cmd + \
             " --no-chdir --log-file={} --pidfile={} --unixctl={}".format(
-                self.DBLogPath, self.DBPidPath, self.DBCtlFilePath)
+                DBLogPath, DBPidPath, DBCtlFilePath)
         cmd = cmd + " --detach --monitor"
         ret = shell.run(cmd)
         if ret != 0:
             raise OvsError("start ovsdb-server failed.")
 
         # Initialize database settings.
-        ret = shell.run(self.ctlBin +
+        ret = shell.run(CtlBin +
                         "--no-wait -- init -- set Open_vSwitch . db-version={}".format(self.venv.ovsDBVer))
         if ret != 0:
             logger.debug("init openvswitch database settings failed.")
@@ -325,15 +325,14 @@ class Ovs(object):
         systemType = osRelease['ID']
         systemVersion = osRelease['VERSION_ID']
 
-        cmd = self.ctlBin + "--no-wait set Open_vSwitch . ovs-version={}".format(
+        cmd = CtlBin + "--no-wait set Open_vSwitch . ovs-version={}".format(
             self.venv.vSwitchVer)
         cmd = cmd + " external-ids:system-id={}".format(uuid.uuid4())
-        cmd = cmd + " external-ids:rundir={}".format(self.ovsPath)
+        cmd = cmd + " external-ids:rundir={}".format(OvsPath)
         cmd = cmd + " system-type={}".format(systemType)
         cmd = cmd + " system-version={}".format(systemVersion)
 
         ret = shell.run(cmd)
-
         if ret != 0:
             raise OvsError("set system infos for ovsdb failed.")
 
@@ -354,16 +353,16 @@ class Ovs(object):
         """
         def createDB():
             ret = shell.run(
-                'ovsdb-tool -v create {} {}'.format(self.CONF_DB, self.ovs_schema))
+                'ovsdb-tool -v create {} {}'.format(CONF_DB, self.ovs_schema))
             if ret != 0:
                 logger.debug("create ovsdb file failed.")
             return ret
 
-        if not os.path.isfile(self.CONF_DB):
+        if not os.path.isfile(CONF_DB):
             return createDB()
 
         s = shell.ShellCmd(
-            "ovsdb-tool needs-conversion {} {}".format(self.CONF_DB, self.ovs_schema), None, False)
+            "ovsdb-tool needs-conversion {} {}".format(CONF_DB, self.ovs_schema), None, False)
         s(False)
         if s.return_code != 0:
             logger.debug("upgrade ovsdb failed.")
@@ -374,7 +373,7 @@ class Ovs(object):
         else:
             # backup conf.db
             s1 = shell.ShellCmd(
-                "ovsdb-tool db-version {}".format(self.CONF_DB))
+                "ovsdb-tool db-version {}".format(CONF_DB))
             s1(False)
             if s1.return_code == 0:
                 version = s1.stdout
@@ -382,15 +381,15 @@ class Ovs(object):
                 version = 'old'
 
             s2 = shell.ShellCmd(
-                "ovsdb-tool db-cksum {} | awk '{print $1}'".format(self.CONF_DB))
+                "ovsdb-tool db-cksum {} | awk '{print $1}'".format(CONF_DB))
             s2(False)
             if s2.return_code == 0:
                 cksum = s2.stdout
             else:
                 cksum = 'unknow'
 
-            backup = self.CONF_DB + ".backup" + version + "-" + cksum
-            shutil.copy2(self.CONF_DB, backup)
+            backup = CONF_DB + ".backup" + version + "-" + cksum
+            shutil.copy2(CONF_DB, backup)
 
             # Compact database.  This is important if the old schema did not enable
             # garbage collection (i.e. if it did not have any tables with "isRoot":
@@ -405,14 +404,14 @@ class Ovs(object):
             # Errors might occur on an Open vSwitch downgrade if ovsdb-tool doesn't
             # understand some feature of the schema used in the OVSDB version that
             # we're downgrading from, so we don't give up on error.
-            ret = shell.run("ovsdb-tool compact {}".format(self.CONF_DB))
+            ret = shell.run("ovsdb-tool compact {}".format(CONF_DB))
             ret = shell.run(
-                "ovsdb-tool convert {} {}".format(self.CONF_DB, self.ovs_schema)) + ret
+                "ovsdb-tool convert {} {}".format(CONF_DB, self.ovs_schema)) + ret
 
             if ret != 0:
                 logger.warn(
                     "Schema conversion failed, using empty database instead")
-                os.remove(self.CONF_DB)
+                os.remove(CONF_DB)
                 return createDB()
 
     @checkOvs
@@ -428,12 +427,12 @@ class Ovs(object):
         if self.venv.dpdkVer != "unknow":
             self.venv.checkHugepage()
 
-        cmd = "ovs-vswitchd unix:{}".format(self.DB_SOCK)
+        cmd = "ovs-vswitchd unix:{}".format(DB_SOCK)
         cmd = cmd + " -vconsole:emer -vsyslog:err -vfile:info"
         cmd = cmd + " --mlockall --no-chdir"
         cmd = cmd + \
             " --log-file={} --pidfile={} --unixctl={}".format(
-                self.SwitchLogPath, self.SwitchPidPath, self.SwitchCtlFilePath)
+                SwitchLogPath, SwitchPidPath, SwitchCtlFilePath)
         cmd = cmd + " --detach --monitor"
         ret = shell.run(cmd)
         if ret != 0:
@@ -460,8 +459,8 @@ class Ovs(object):
     def pids(self):
         """ return [ovsdb_pid, ovs-vswitch_pid] """
 
-        ovsdb_pidf = os.path.join(self.ovsPath, "ovsdb-server.pid")
-        vswitch_pidf = os.path.join(self.ovsPath, "ovs-vswitchd.pid")
+        ovsdb_pidf = os.path.join(OvsPath, "ovsdb-server.pid")
+        vswitch_pidf = os.path.join(OvsPath, "ovs-vswitchd.pid")
         result = [-1, -1]
         if os.path.exists(ovsdb_pidf):
             with open(ovsdb_pidf, 'r') as f:
@@ -481,8 +480,8 @@ class Ovs(object):
         stop ovsdb or vswitch by ovs-appctl,
         if not work, kill it.
         """
-        dict = {"ovsdb-server": {"pid": self.pids[0], "ver": self.venv.ovsDBVer, "ctl": self.DBCtlFilePath},
-                "ovs-vswitchd": {"pid": self.pids[1], "ver": self.venv.vSwitchVer, "ctl": self.SwitchCtlFilePath}}
+        dict = {"ovsdb-server": {"pid": self.pids[0], "ver": self.venv.ovsDBVer, "ctl": DBCtlFilePath},
+                "ovs-vswitchd": {"pid": self.pids[1], "ver": self.venv.vSwitchVer, "ctl": SwitchCtlFilePath}}
 
         pid = dict[name]["pid"]
         ver = dict[name]["ver"]
@@ -491,7 +490,7 @@ class Ovs(object):
         if pid < 0:
             return True
 
-        pidPath = os.path.join(self.ovsPath, "{}.pid".format(name))
+        pidPath = os.path.join(OvsPath, "{}.pid".format(name))
 
         if not self.process_exists(pid):
             try:
@@ -555,7 +554,7 @@ class OvsCtl(Ovs):
     def checkOvs(func):
         def wrapper(self, *args, **kw):
             if self.venv.ready:
-                return func(self, *args, **kw)
+                return func(self, *args, **kw))
             return None
         return wrapper
 
@@ -567,9 +566,9 @@ class OvsCtl(Ovs):
         if not self.vdpaSup:
             return False
 
-        shell.run(self.ctlBin +
+        shell.run(CtlBin +
                   "--no-wait set Open_vSwitch . other_config:hw-offload=true")
-        shell.run(self.ctlBin +
+        shell.run(CtlBin +
                   "--no-wait set Open_vSwitch . other_config:dpdk-init=true")
 
         # allocate hugepages in all numa nodes.
@@ -580,10 +579,10 @@ class OvsCtl(Ovs):
         for _ in range(1, self.venv.numaNodes):
             cmd = cmd + ",{}".format(memSize)
             
-        shell.run(self.ctlBin + cmd)
+        shell.run(CtlBin + cmd)
 
         # check Open_vSwitch table
-        ret = shell.call(self.ctlBin + "get Open_vSwitch . other_config")
+        ret = shell.call(CtlBin + "get Open_vSwitch . other_config")
 
         if "hw-offload" not in ret or \
            "dpdk-init" not in ret or \
@@ -595,7 +594,7 @@ class OvsCtl(Ovs):
     # ---------------------------- ovsctl ----------------------------------------
 
     def listBrs(self, *args):
-        s = shell.ShellCmd(self.ctlBin + "list-br", None, False)
+        s = shell.ShellCmd(CtlBin + "list-br", None, False)
         s(False)
 
         if s.return_code != 0:
@@ -612,7 +611,7 @@ class OvsCtl(Ovs):
             return 0
 
         # create bridge
-        ret = shell.run(self.ctlBin + 'add-br {} -- set Bridge {} datapath_type=netdev'.format(
+        ret = shell.run(CtlBin + 'add-br {} -- set Bridge {} datapath_type=netdev'.format(
             brName, brName, "netdev"))
 
         return ret
@@ -621,7 +620,7 @@ class OvsCtl(Ovs):
         brs = self.listBrs()
         for arg in args:
             if arg in brs:
-                s = shell.ShellCmd(self.ctlBin +
+                s = shell.ShellCmd(CtlBin +
                                    "--timeout=5 del-br {}".format(arg), None, False)
                 s(False)
                 if s.return_code != 0:
@@ -632,14 +631,14 @@ class OvsCtl(Ovs):
     def deleteBrs(self):
         brs = self.listBrs()
         for br in brs:
-            s = shell.run(self.ctlBin +
+            s = shell.run(CtlBin +
                           "--timeout=5 del-br {}".format(br))
             s(False)
             if s.return_code != 0:
                 logger.debug("delete bridge {} failed.".format(br))
 
     def listIfaces(self, brName, *args):
-        s = shell.ShellCmd(self.ctlBin +
+        s = shell.ShellCmd(CtlBin +
                            "--timeout=5 list-ifaces {}".format(brName), None, False)
         s(False)
         if s.return_code != 0:
@@ -648,7 +647,7 @@ class OvsCtl(Ovs):
             return s.stdout.strip().splitlines()
 
     def listPorts(self, brName, *args):
-        s = shell.ShellCmd(self.ctlBin +
+        s = shell.ShellCmd(CtlBin +
                            "--timeout=5 list-ports {}".format(brName), None, False)
         s(False)
         if s.return_code != 0:
@@ -658,7 +657,7 @@ class OvsCtl(Ovs):
 
     def addPort(self, brName, phyIfName, type, *args):
         # add port
-        cmd = self.ctlBin + \
+        cmd = CtlBin + \
             'add-port {} {} -- set Interface {} type={} '.format(
                 brName, phyIfName, phyIfName, type)
 
@@ -668,16 +667,16 @@ class OvsCtl(Ovs):
         return shell.run(cmd)
 
     def delPort(self, brName, phyIfName, *args):
-        return shell.run(self.ctlBin +
+        return shell.run(CtlBin +
                          'del-port {} {}'.format(brName, phyIfName))
 
     def setPort(self, portName, tag):
-        return shell.run(self.ctlBin +
+        return shell.run(CtlBin +
                          'set Port {} tag={} '.format(portName, tag))
 
     def setIfaces(self, ifName, *args):
         # set options
-        cmd = self.ctlBin + 'set Interface {} '.format(ifName)
+        cmd = CtlBin + 'set Interface {} '.format(ifName)
 
         for arg in args:
             cmd = cmd + "{} ".format(arg)
@@ -713,9 +712,9 @@ class OvsCtl(Ovs):
     def getVdpaS(self, vmUuid, nics):
         ret = {}
         for nic in nics:
-            vdpaPath = self._getVdpa(vmUuid, nic)
-            if vdpaPath is not None:
-                ret[nic.nicInternalName] = vdpaPath
+            VdpaPath = self._getVdpa(vmUuid, nic)
+            if VdpaPath is not None:
+                ret[nic.nicInternalName] = VdpaPath
             else:
                 # if vDPA resource is not enough then
                 # realse all vDPAs.
@@ -758,7 +757,7 @@ class OvsCtl(Ovs):
         # check if already attached
         if nicInternalName in curPorts:
             s = shell.ShellCmd(
-                self.ctlBin + "get Interface {} options:vdpa-socket-path".format(nicInternalName))
+                CtlBin + "get Interface {} options:vdpa-socket-path".format(nicInternalName))
             s(False)
             if s.return_code != 0:
                 logger.debug(
@@ -766,7 +765,7 @@ class OvsCtl(Ovs):
                 return None
             return s.stdout.strip()[1:-1]
 
-        vdpaDirPath = os.path.join(self.vdpaPath, vmUuid)
+        vdpaDirPath = os.path.join(VdpaPath, vmUuid)
         if not os.path.exists(vdpaDirPath):
             os.mkdir(vdpaDirPath, 0755)
 
@@ -802,7 +801,7 @@ class OvsCtl(Ovs):
         if not self.vdpaSup:
             return
 
-        s = shell.ShellCmd(self.ctlBin +
+        s = shell.ShellCmd(CtlBin +
                            "--columns=name find interface external_ids:vm-id={} | grep name |cut -d ':' -f2 | tr -d ' '".format(vmUuid), None, False)
         s(False)
         if s.return_code != 0:
@@ -821,7 +820,7 @@ class OvsCtl(Ovs):
         vDPA_path = ''
         if specificNic != None:
             vDPA_list.append(specificNic)
-            s = shell.ShellCmd(self.ctlBin +
+            s = shell.ShellCmd(CtlBin +
                                "get interface {} options:vdpa-socket-path".format(specificNic), None, False)
             s(False)
             if s.return_code != 0:
@@ -858,7 +857,7 @@ class OvsCtl(Ovs):
 
     @checkOvs
     def getDPDKBond(self, bondName):
-        bondFile = os.path.join(self.confPath, "dpdk-bond.yaml")
+        bondFile = os.path.join(ConfPath, "dpdk-bond.yaml")
         if not os.path.exists(bondFile):
             return None
 
@@ -905,7 +904,7 @@ class OvsCtl(Ovs):
             if b == '':
                 continue
             # prepare bridge floader
-            vdpaBrPath = os.path.join(self.vdpaPath, b)
+            vdpaBrPath = os.path.join(VdpaPath, b)
             if not os.path.exists(vdpaBrPath):
                 os.mkdir(vdpaBrPath, 0755)
             self.prepareBridge(b, b[3:])
@@ -1031,7 +1030,7 @@ class OvsCtl(Ovs):
         ret = 0
         dpdk_extra = ""
 
-        s = shell.ShellCmd(self.ctlBin +
+        s = shell.ShellCmd(CtlBin +
                            "get Open_vSwitch . other_config:dpdk-extra", None, False)
         s(False)
         if s.return_code == 0:
@@ -1051,7 +1050,7 @@ class OvsCtl(Ovs):
             dpdk_extra = dpdk_extra + "-w {},representor=[0-127],dv_flow_en=1,dv_esw_en=1 ".format(
                 pci)
 
-        ret = shell.run(self.ctlBin +
+        ret = shell.run(CtlBin +
                         '--no-wait set Open_vSwitch . other_config:dpdk-extra="{}"'.format(dpdk_extra))
 
         if ret != 0:
@@ -1070,7 +1069,7 @@ class OvsCtl(Ovs):
 
         dpdk_extra = ""
 
-        s = shell.ShellCmd(self.ctlBin +
+        s = shell.ShellCmd(CtlBin +
                            "get Open_vSwitch . other_config:dpdk-extra", None, False)
         s(False)
         if s.return_code == 0:
@@ -1082,7 +1081,7 @@ class OvsCtl(Ovs):
         else:
             dpdk_extra = dpdk_extra.replace("-a", "-w")
 
-        ret = shell.run(self.ctlBin +
+        ret = shell.run(CtlBin +
                         '--no-wait set Open_vSwitch . other_config:dpdk-extra="{}"'.format(dpdk_extra))
 
         if ret != 0:
