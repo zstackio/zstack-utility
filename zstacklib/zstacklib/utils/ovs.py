@@ -55,13 +55,13 @@ class OvsVenv(object):
     """ prepare ovs workspace and env
         including:
         1. mlnx ofed driver
-        2. hugepages
+        2. hugepages(created in vswitchd starting process)
         3. offloadStatus of smart-nics
     """
     __cache__ = []  # list[int, OvsVenv]
 
     DEFAULT_HUGEPAGE_SIZE = 2048
-    DEFAULT_NR_HUGEPAGES = 1024 * 2
+    DEFAULT_NR_HUGEPAGES = 1024
 
     def __new__(cls):
         if len(cls.__cache__) == 2 and (time.time() - cls.__cache__[0]) <= 60:
@@ -82,6 +82,7 @@ class OvsVenv(object):
 
         self.hugepage_size = hugepage_size
         self.nr_hugepages = nr_hugepages
+        self.numaNodes = self._getNumaNodeSz()
 
         self.offloadStatus = {}
         self.checkOffloadStatus()
@@ -129,38 +130,57 @@ class OvsVenv(object):
 
     def checkHugepage(self):
         """
-        prepare Hugepages for DPDK
+        prepare Hugepages for DPDK.
+        since we can not tell in which numa node the dpdk device is located,
+        we have to init hugepages in all numa nodes. 
+        1G is enough for Shared memory mode.
+        http://confluence.zstack.io/pages/viewpage.action?pageId=96493877
         """
-        hugepagesPath = {2048: "/sys/kernel/mm/hugepages/hugepages-2048kB/",
-                         1048576: "/sys/kernel/mm/hugepages/hugepages-1048576kB/"}
+        hugepagesPaths = {2048: "hugepages/hugepages-2048kB/",
+                         1048576: "hugepages/hugepages-1048576kB/"}
 
         # get numa nodes
-        numaNodes = glob.glob("/sys/devices/system/node/node*/")
-        numaNodeSz = len(numaNodes)
+        numaNodePaths = glob.glob("/sys/devices/system/node/node*/")
+        self.numaNodes = len(numaNodePaths)
+        if self.numaNodes < 1:
+            raise OvsError("can not find numa node.")
 
-        meminfo = {}
-        # get current memory status
-        with open("/proc/meminfo", "r") as f:
-            lines = f.readlines()
-            for l in lines:
-                lsplit = l.split(":")
-                meminfo[lsplit[0].strip()] = lsplit[1].strip()
+        for numaNodePath in numaNodePaths:
+            hugepagesPath = os.path.join(numaNodePath, hugepagesPaths[self.hugepage_size])
+            # get current free hugepage size
+            freeHugepages = int(readSysfs(os.path.join(hugepagesPath, "free_hugepages")))
+            nrHugepages = int(readSysfs(os.path.join(hugepagesPath, "nr_hugepages")))
 
-        curFreeMemsz = int(meminfo['MemFree'].split()[0])
+            meminfo = {}
+            # get current memory status and memFree
+            with open(os.path.join(numaNodePath, "meminfo"), "r") as f:
+                lines = f.readlines()
+                for l in lines:
+                    lsplit = l.split(":")
+                    meminfo[lsplit[0].split()[-1].strip()] = lsplit[1].strip()
 
-        # get default free hugepage size
-        freeHugepages = int(readSysfs(
-            hugepagesPath[self.hugepage_size] + "free_hugepages"))
+            memFree = int(meminfo['MemFree'].split()[0])
 
-        if freeHugepages < self.nr_hugepages:
-            if curFreeMemsz > (self.nr_hugepages - freeHugepages) * self.hugepage_size:
-                writeSysfs(hugepagesPath[self.hugepage_size] +
-                           "nr_hugepages", str
-                           (self.nr_hugepages * numaNodeSz - freeHugepages))
-            else:
+            # freeHugepages is enough for dpdk.
+            if freeHugepages >= self.nr_hugepages:
+                continue
+
+            pagesNeedAllocate = self.nr_hugepages + (nrHugepages - freeHugepages)
+
+            # current free mem is not enough for the reset of hugepages needed by dpdk.
+            if memFree < pagesNeedAllocate * self.hugepage_size:
                 self.ready = False
-                raise OvsError("chould not malloc enough hugepage for openvswitch, {} expected but {} left.".format(
-                    self.hugepage_size * self.nr_hugepages, curFreeMemsz))
+                raise OvsError("chould not malloc enough hugepage for ovs dpdk, {} expected but {} left.".format(
+                    pagesNeedAllocate * self.hugepage_size, memFree))
+
+            writeSysfs(os.path.join(hugepagesPath, "nr_hugepages"), str(pagesNeedAllocate))
+
+    def _getNumaNodeSz(self):
+        numaNodePaths = glob.glob("/sys/devices/system/node/node*/")
+        if len(numaNodePaths) < 1:
+            raise OvsError("can not find numa node.")
+
+        return len(numaNodePaths)
 
     def checkOffloadStatus(self):
         nicInfoPath = os.path.join(
@@ -538,9 +558,16 @@ class OvsCtl(Ovs):
                   "--no-wait set Open_vSwitch . other_config:hw-offload=true")
         shell.run(self.ctlBin +
                   "--no-wait set Open_vSwitch . other_config:dpdk-init=true")
-        # TODO: caculater the memory
-        shell.run(self.ctlBin +
-                  "--no-wait set Open_vSwitch . other_config:dpdk-socket-mem={}".format(self.venv.nr_hugepages))
+
+        # allocate hugepages in all numa nodes.
+        # TODO: allocate hugepages to the numa nodes whitch attached dpdk device.
+        # TODO: allocate hugepages depends on MTU size.
+        memSize = self.venv.nr_hugepages * self.venv.hugepage_size / 1024 #MB
+        cmd = "--no-wait set Open_vSwitch . other_config:dpdk-socket-mem={}".format(memSize)
+        for _ in range(1, self.venv.numaNodes):
+            cmd = cmd + ",{}".format(memSize)
+            
+        shell.run(self.ctlBin + cmd)
 
         # check Open_vSwitch table
         ret = shell.call(self.ctlBin + "get Open_vSwitch . other_config")
@@ -739,12 +766,14 @@ class OvsCtl(Ovs):
                 representor = vf[6:]
 
         if representor is None:
-            OvsError("vf:{} is not the virtual function of pf:{}".format(vfpci, pfpci))
+            OvsError(
+                "vf:{} is not the virtual function of pf:{}".format(vfpci, pfpci))
 
         self.addPort(bridgeName, nicInternalName, "dpdkvdpa",
                      "vdpa-socket-path={}".format(vdpaSockPath),
                      "vdpa-accelerator-devargs={}".format(vfpci),
-                     "dpdk-devargs={},representor=[{}]".format(pfpci, representor),
+                     "dpdk-devargs={},representor=[{}]".format(
+                         pfpci, representor),
                      "vdpa-max-queues=8",
                      "vdpa-sw=true")
 
@@ -1157,6 +1186,7 @@ class OvsCtl(Ovs):
             for _ in range(0, 5):
                 if not os.path.exists(os.path.join(dev_path, i, "driver")):
                     time.sleep(0.5)
+
 
 class Bond:
     def __init__(self):
