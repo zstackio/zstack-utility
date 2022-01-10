@@ -245,7 +245,7 @@ class OvsVenv(object):
             data = yaml.safe_load(f)
 
         for i in data:
-            self.offloadStatus[i['nic']['vendor_device']] = "|".join(
+            self.offloadStatus[str(i['nic']['vendor_device'])] = "|".join(
                 str(x) for x in i['nic']['offloadstatus'])
 
     def preparePaths(self):
@@ -269,11 +269,11 @@ class Ovs(object):
     def __init__(self, venv):
         self.venv = venv
 
-    def checkOvs(func):
+    def checkVenv(func):
         def wrapper(self, *args, **kw):
             if self.venv.ready:
                 return func(self, *args, **kw)
-            return None
+            raise OvsError("ovs runtime enviroment not ready, please check the ovs dependence.")
         return wrapper
 
     def start(self, restart=False):
@@ -285,15 +285,23 @@ class Ovs(object):
         self.stopSwitch()
 
     def status(self):
-        self.statusDB()
-        self.statusSwitch()
+        '''
+        check ovsdb and vswitchd status
+        '''
+        for pid in self.pids:
+            if pid <= 0:
+                return False
+            if not self.process_exists(pid):
+                return False
+                
+        return True
 
-    @checkOvs
+    @checkVenv
     @lock.lock('startDB')
     def startDB(self, restart=False):
         """ start ovsdb """
 
-        if not restart and self.statusDB() > 0:
+        if not restart and self.pids[0] > 0:
             return 0
 
         self.stopDB()
@@ -309,9 +317,10 @@ class Ovs(object):
             " --no-chdir --log-file={} --pidfile={} --unixctl={}".format(
                 DBLogPath, DBPidPath, DBCtlFilePath)
         cmd = cmd + " --detach --monitor"
-        ret = shell.run(cmd)
-        if ret != 0:
-            raise OvsError("start ovsdb-server failed.")
+        start_db = shell.ShellCmd(cmd)
+        start_db(False)
+        if start_db.return_code != 0:
+            raise OvsError("start ovsdb failed: {} {}".format(start_db.stderr, start_db.stdout))
 
         # Initialize database settings.
         ret = shell.run(CtlBin +
@@ -342,10 +351,7 @@ class Ovs(object):
     def stopDB(self):
         return self.stopProcess("ovsdb-server")
 
-    def statusDB(self):
-        return self.pids[0]
-
-    @checkOvs
+    @checkVenv
     def upgradeDB(self):
         """
         create ovsDB if not exist
@@ -365,7 +371,7 @@ class Ovs(object):
             "ovsdb-tool needs-conversion {} {}".format(CONF_DB, self.ovs_schema), None, False)
         s(False)
         if s.return_code != 0:
-            logger.debug("upgrade ovsdb failed.")
+            logger.debug("upgrade ovsdb failed: {} {}".format(s.stderr, s.stdout))
             return s.return_code
         elif s.stdout != "yes":
             logger.debug("current ovsdb do not need conversion.")
@@ -414,12 +420,12 @@ class Ovs(object):
                 os.remove(CONF_DB)
                 return createDB()
 
-    @checkOvs
+    @checkVenv
     @lock.lock('startSwitch')
     def startSwitch(self, restart=False):
         """ start vswitchd """
 
-        if not restart and self.statusSwitch() > 0:
+        if not restart and self.pids[1] > 0:
             return 0
 
         self.stopSwitch()
@@ -434,18 +440,16 @@ class Ovs(object):
             " --log-file={} --pidfile={} --unixctl={}".format(
                 SwitchLogPath, SwitchPidPath, SwitchCtlFilePath)
         cmd = cmd + " --detach --monitor"
-        ret = shell.run(cmd)
-        if ret != 0:
-            raise OvsError("start ovs-vswitch failed.")
+        start_switch = shell.ShellCmd(cmd)
+        start_switch(False)
+        if start_switch.return_code != 0:
+            raise OvsError("start ovs-vswitch failed: {} {}".format(start_switch.stderr, start_switch.stdout))
 
         logger.debug("ovs-vswitch: [{}] start success".format(self.pids[1]))
         return 0
 
     def stopSwitch(self):
         return self.stopProcess("ovs-vswitchd")
-
-    def statusSwitch(self):
-        return self.pids[1]
 
     @property
     def ovs_schema(self):
@@ -553,9 +557,10 @@ class OvsCtl(Ovs):
 
     def checkOvs(func):
         def wrapper(self, *args, **kw):
-            if self.venv.ready:
-                return func(self, *args, **kw))
-            return None
+            if not self.status():
+                # if ovsdb/vswitchd state abnormality, try to restart it.
+                self.start(True)
+            return func(self, *args, **kw)
         return wrapper
 
     @linux.retry(times=5, sleep_time=2)
@@ -708,28 +713,8 @@ class OvsCtl(Ovs):
 
         return self._init_dpdk_bond(bridgeName, dpdkBond)
 
-    @lock.lock('getVdpa')
-    def getVdpaS(self, vmUuid, nics):
-        ret = {}
-        for nic in nics:
-            VdpaPath = self._getVdpa(vmUuid, nic)
-            if VdpaPath is not None:
-                ret[nic.nicInternalName] = VdpaPath
-            else:
-                # if vDPA resource is not enough then
-                # realse all vDPAs.
-                for k in ret:
-                    self.freeVdpa(vmUuid, k)
-                return None
-
-        return ret
-
-    @lock.lock('getVdpa')
-    def getVdpa(self, vmUuid, nic):
-        return self._getVdpa(vmUuid, nic)
-
     @checkOvs
-    def _getVdpa(self, vmUuid, nic):
+    def getVdpa(self, vmUuid, nic):
         bridgeName = nic.bridgeName
         bondName = nic.physicalInterface
         vlanId = nic.vlanId
@@ -763,7 +748,11 @@ class OvsCtl(Ovs):
                 logger.debug(
                     "nic interface {} maybe not a vdpa type".format(nicInternalName))
                 return None
-            return s.stdout.strip()[1:-1]
+
+            if vdpaSockPath != s.stdout.strip()[1:-1]:
+                raise OvsError("same vnic in different vm.")
+
+            return
 
         vdpaDirPath = os.path.join(VdpaPath, vmUuid)
         if not os.path.exists(vdpaDirPath):
@@ -780,6 +769,14 @@ class OvsCtl(Ovs):
         if representor is None:
             OvsError(
                 "vf:{} is not the virtual function of pf:{}".format(vfpci, pfpci))
+
+        # check if vf has been used
+        s = shell.ShellCmd(CtlBin + "--columns=name find interface options:vdpa-accelerator-devargs='{}'".format(vfpci.replace(":", "\:")), None, False)
+        s(False)
+        if s.return_code == 0:
+            if 'name' in s.stdout:
+                raise OvsError(
+                    "vf:{} was already used by vnic:{}".format(vfpci, s.stdout.strip().strip('"')))
 
         self.addPort(bridgeName, nicInternalName, "dpdkvdpa",
                      "vdpa-socket-path={}".format(vdpaSockPath),
@@ -810,7 +807,6 @@ class OvsCtl(Ovs):
             return s.stdout.strip().splitlines()
 
     @checkOvs
-    @lock.lock('freeVdpa')
     def freeVdpa(self, vmUuid, specificNic=None):
         vDPA_list = []
 
@@ -819,15 +815,15 @@ class OvsCtl(Ovs):
 
         vDPA_path = ''
         if specificNic != None:
-            vDPA_list.append(specificNic)
             s = shell.ShellCmd(CtlBin +
                                "get interface {} options:vdpa-socket-path".format(specificNic), None, False)
             s(False)
             if s.return_code != 0:
                 logger.debug(
                     "nic interface {} maybe not a vdpa type".format(specificNic))
-                vDPA_path = None
+                return None
             else:
+                vDPA_list.append(specificNic)
                 vDPA_path = s.stdout.strip().strip('"')
 
         else:
@@ -855,7 +851,6 @@ class OvsCtl(Ovs):
 
         return None
 
-    @checkOvs
     def getDPDKBond(self, bondName):
         bondFile = os.path.join(ConfPath, "dpdk-bond.yaml")
         if not os.path.exists(bondFile):
@@ -884,8 +879,10 @@ class OvsCtl(Ovs):
         bondList = readSysfs('/sys/class/net/bonding_masters').strip().split()
         return interface in bondList
 
-    @checkOvs
+    @lock.lock('reconfigOvs')
     def reconfigOvs(self):
+        if not self.status():
+            self.startDB()
 
         if not self.initVdpaSupport():
             raise OvsError("ovs can not support dpdk.")
@@ -899,15 +896,6 @@ class OvsCtl(Ovs):
         # there is no bridges.
         if len(brs) == 0:
             return
-
-        for b in brs:
-            if b == '':
-                continue
-            # prepare bridge floader
-            vdpaBrPath = os.path.join(VdpaPath, b)
-            if not os.path.exists(vdpaBrPath):
-                os.mkdir(vdpaBrPath, 0755)
-            self.prepareBridge(b, b[3:])
         # do not force restart openvswitch.
         self.start()
 

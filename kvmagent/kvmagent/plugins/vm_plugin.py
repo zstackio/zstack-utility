@@ -2812,10 +2812,9 @@ class Vm(object):
     def _interface_cmd_to_xml(self, cmd, action=None):
         vhostSrcPath = cmd.addons['vhostSrcPath'] if cmd.addons else None
         brMode = cmd.addons['brMode'] if cmd.addons else None
-        vhostSrcPath = None
 
         if cmd.nic.type == "vDPA":
-            vhostSrcPath = ovs.OvsCtl().getVdpa(cmd.vmUuid, cmd.nic)
+            vhostSrcPath = cmd.nic.srcPath
 
         interface = Vm._build_interface_xml(cmd.nic, None, vhostSrcPath, action, brMode)
 
@@ -3029,6 +3028,11 @@ class Vm(object):
 
             xml = self._interface_cmd_to_xml(cmd, action='Attach')
             logger.debug('attaching nic:\n%s' % xml)
+
+            # if nic type is vDPA, create vDPA backends in thread.
+            if cmd.nic.type == "vDPA":
+                ovs.OvsCtl().getVdpa(cmd.vmUuid, cmd.nic)
+
             if self.state == self.VM_STATE_RUNNING or self.state == self.VM_STATE_PAUSED:
                 self.domain.attachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
             else:
@@ -3078,7 +3082,11 @@ class Vm(object):
         try:
             xml = self._interface_cmd_to_xml(cmd, action='Detach')
             logger.debug('detaching nic:\n%s' % xml)
-            ovs.OvsCtl().freeVdpa(cmd.vmUuid, cmd.nic.nicInternalName)
+
+            # if nic type is vDPA, release it before detach.
+            if cmd.nic.type == "vDPA":
+                ovs.OvsCtl().freeVdpa(cmd.vmUuid, cmd.nic.nicInternalName)
+
             if self.state == self.VM_STATE_RUNNING or self.state == self.VM_STATE_PAUSED:
                 self.domain.detachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
             else:
@@ -4102,24 +4110,15 @@ class Vm(object):
                 if cmd.coloPrimary or cmd.coloSecondary:
                     Vm._ignore_colo_vm_nic_rom_file_on_interface(nic_xml_object)
 
+            ovsctl = ovs.OvsCtl()
             devices = elements['devices']
             vhostSrcPath = cmd.addons['vhostSrcPath'] if cmd.addons else None
             brMode = cmd.addons['brMode'] if cmd.addons else None
 
-            # generate vdpa backends
-            ovsctl = ovs.OvsCtl()
-            vdpaNics = []
-            for _, nic in enumerate(cmd.nics):
-                if nic.type == "vDPA":
-                    vdpaNics.append(nic)
-            # get all vdpa resource at once, avoid race condition.
-            vDPAPaths = ovsctl.getVdpaS(cmd.priorityConfigStruct.vmUuid, vdpaNics)
-            if vDPAPaths is None:
-                    raise Exception("vDPA resource exhausted.")
-
             for index, nic in enumerate(cmd.nics):
-                if nic.type == "vDPA" and vDPAPaths.has_key(nic.nicInternalName):
-                    interface = Vm._build_interface_xml(nic, devices, vDPAPaths[nic.nicInternalName], 'Attach', brMode, index)
+                if nic.type == "vDPA":
+                    ovsctl.getVdpa(cmd.priorityConfigStruct.vmUuid, nic)
+                    interface = Vm._build_interface_xml(nic, devices, nic.srcPath, 'Attach', brMode, index)
                 else:
                     interface = Vm._build_interface_xml(nic, devices, vhostSrcPath, 'Attach', brMode, index)
                 addon(interface)

@@ -135,6 +135,8 @@ class OvsDpdkNetworkPlugin(kvmagent.KvmAgent):
 
         ovsctl = ovs.OvsCtl(venv)
 
+        ovsctl.reconfigOvs()
+
         if cmd.bridgeName not in ovsctl.listBrs():
             rsp.success = False
             rsp.error = "can not find bridge:{}".format(cmd.bridgeName)
@@ -191,16 +193,14 @@ class OvsDpdkNetworkPlugin(kvmagent.KvmAgent):
         ovsctl = ovs.OvsCtl(venv)
 
         rsp.vdpaPaths = []
-        vdpaPaths = ovsctl.getVdpaS(cmd.vmUuid, cmd.nics)
+        for nic in cmd.nics:
+            if nic.type == 'vDPA':
+                rsp.vdpaPaths.extend(ovsctl.getVdpa(cmd.vmUuid, nic))
 
-        if vdpaPaths is None:
+        if rsp.vdpaPaths is None:
             rsp.success = False
             rsp.error = "vDPA resource exhausted."
             return jsonobject.dumps(rsp)
-
-        for nic in cmd.nics:
-            if vdpaPaths.has_key(nic.nicInternalName):
-                rsp.vdpaPaths.append(vdpaPaths[nic.nicInternalName])
 
         return jsonobject.dumps(rsp)
 
@@ -224,31 +224,6 @@ class OvsDpdkNetworkPlugin(kvmagent.KvmAgent):
             ovsctl.freeVdpa(cmd.vmUuid)
 
         return jsonobject.dumps(rsp)
-
-    def reconfigOvs(self):
-        if kvmagent.get_host_os_type() == 'debian' and shell.run("dpkg -l openvswitch") != 0:
-            return
-        elif kvmagent.get_host_os_type() == 'redhat' and shell.call("rpm -qa openvswitch") == '':
-            return
-
-        global ovsctl
-        ovsctl = ovs.OvsCtl()
-        ovsctl.modprobeBonding()
-
-        if not ovsctl.initVdpaSupport():
-            logger.debug("ovs can not support dpdk.")
-            return
-        # reconfig smart nics
-        brs = ovsctl.listBrs()
-        for b in brs:
-            if b == '':
-                continue
-            # prepare bridge floader
-            vdpaBrPath = os.path.join(ovsctl.vdpaPath, b)
-            if not os.path.exists(vdpaBrPath):
-                os.mkdir(vdpaBrPath, 0755)
-            ovsctl.prepareBridge(b, b[3:])
-        ovsctl.start(True)
 
     def start(self):
 
