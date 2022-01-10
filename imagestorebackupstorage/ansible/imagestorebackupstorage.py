@@ -107,10 +107,10 @@ zstacklib = ZstackLib(zstacklib_args)
 if distro in RPM_BASED_OS:
     x86_64_c74 = "qemu-img-ev fuse-sshfs nmap collectd"
     x86_64_c76 = "qemu-img-ev fuse-sshfs nmap collectd"
-    aarch64_ns10 = "qemu-img fuse-sshfs nmap collectd"
+    aarch64_ns10 = "qemu-img fuse-sshfs nmap collectd tar"
     aarch64_euler20 = "qemu-img fuse-sshfs nmap collectd"
     mips64el_ns10 = "qemu-img fuse-sshfs nmap collectd"
-    x86_64_ns10 = "qemu-img fuse-sshfs nmap collectd"
+    x86_64_ns10 = "qemu-img fuse-sshfs nmap collectd tar"
 
     qemu_pkg = eval("%s_%s" % (host_arch, releasever))
     # skip these packages
@@ -118,6 +118,8 @@ if distro in RPM_BASED_OS:
     _qemu_pkg = [ pkg for pkg in qemu_pkg.split() if pkg not in _skip_list ]
     qemu_pkg = ' '.join(_qemu_pkg)
     svr_pkgs = 'ntfs-3g exfat-utils fuse-exfat btrfs-progs'
+    # common imagestorebackupstorage deps of x86 and arm that need to update
+    common_update_list = "nettle"
 
     if client == "true" :
         if distro_version < 7:
@@ -133,8 +135,8 @@ if distro in RPM_BASED_OS:
         if zstack_repo == 'false':
             yum_install_package(qemu_pkg, host_post_info)
         else:
-            command = ("pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
-                       "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % (qemu_pkg, zstack_repo)
+            command = ("pkg_list=`rpm -q {0} | grep \"not installed\" | awk '{{ print $2 }}'`' {2}' && for pkg in $pkg_list; do yum "
+                       "--disablerepo=* --enablerepo={1} install -y $pkg; done;").format(qemu_pkg, zstack_repo, common_update_list)
             run_remote_command(command, host_post_info)
             if releasever not in ['c72', 'c74']:
                 command = ("pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
