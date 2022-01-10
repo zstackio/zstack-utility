@@ -2815,9 +2815,7 @@ class Vm(object):
         vhostSrcPath = None
 
         if cmd.nic.type == "vDPA":
-                vhostSrcPath = ovs.OvsCtl().getVdpa(cmd.vmUuid, cmd.nic)
-                if vhostSrcPath is None:
-                    raise Exception("vDPA resource exhausted.")
+            vhostSrcPath = ovs.OvsCtl().getVdpa(cmd.vmUuid, cmd.nic)
 
         interface = Vm._build_interface_xml(cmd.nic, None, vhostSrcPath, action, brMode)
 
@@ -4108,6 +4106,7 @@ class Vm(object):
             vhostSrcPath = cmd.addons['vhostSrcPath'] if cmd.addons else None
             brMode = cmd.addons['brMode'] if cmd.addons else None
 
+            # generate vdpa backends
             ovsctl = ovs.OvsCtl()
             vdpaNics = []
             for _, nic in enumerate(cmd.nics):
@@ -4550,7 +4549,7 @@ class Vm(object):
 
     @staticmethod
     def _build_interface_xml(nic, devices=None, vhostSrcPath=None, action=None, brMode=None, index=0):
-        if nic.pciDeviceAddress is not None:
+        if nic.pciDeviceAddress is not None and nic.srcPath is None:
             iftype = 'hostdev'
             device_attr = {'type': iftype, 'managed': 'yes'}
         elif vhostSrcPath is not None:
@@ -5347,9 +5346,8 @@ class VmPlugin(kvmagent.KvmAgent):
             else:
                 vm.stop(timeout=cmd.timeout / 2)
 
-            # http://jira.zstack.io/browse/ZSTAC-42191 
-            # keep vdpa while stop vm.
-            # ovs.OvsCtl().freeVdpa(cmd.uuid)
+            # release vdpa backends
+            ovs.OvsCtl().freeVdpa(cmd.uuid)
         except kvmagent.KvmError as e:
             logger.debug(linux.get_exception_stacktrace())
         finally:
@@ -5439,6 +5437,7 @@ class VmPlugin(kvmagent.KvmAgent):
             vm = get_vm_by_uuid(cmd.uuid, False)
             if vm:
                 vm.destroy()
+                # release vdpa backends
                 ovs.OvsCtl().freeVdpa(cmd.uuid)
                 logger.debug('successfully destroyed vm[uuid:%s]' % cmd.uuid)
         except kvmagent.KvmError as e:
