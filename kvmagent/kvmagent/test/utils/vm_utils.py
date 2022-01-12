@@ -347,6 +347,20 @@ def online_increase_mem(vm_uuid, mem_size):
     }))
 
 
+def get_cpu_xml():
+    # type: () -> None
+
+    return VM_PLUGIN.get_cpu_xml(misc.make_a_request({}))
+
+
+def compare_cpu_function(cpuXml):
+    # type: (String) -> None
+
+    return VM_PLUGIN.compare_cpu_function(misc.make_a_request({
+        'cpuXml': cpuXml
+    }))
+
+
 @misc.return_jsonobject()
 def get_vnc_port(vm_uuid):
     # type: (str) -> jsonobject
