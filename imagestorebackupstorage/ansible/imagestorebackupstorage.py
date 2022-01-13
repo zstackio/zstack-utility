@@ -117,7 +117,7 @@ if distro in RPM_BASED_OS:
     _skip_list = re.split(r'[|;,\s]\s*', skip_packages)
     _qemu_pkg = [ pkg for pkg in qemu_pkg.split() if pkg not in _skip_list ]
     qemu_pkg = ' '.join(_qemu_pkg)
-    svr_pkgs = 'ntfs-3g exfat-utils fuse-exfat btrfs-progs'
+    svr_pkgs = 'ntfs-3g exfat-utils fuse-exfat btrfs-progs qemu-storage-daemon'
 
     if client == "true" :
         if distro_version < 7:
@@ -192,6 +192,10 @@ if client == "false":
     command = "bash %s %s %s" % (dest_pkg, fs_rootpath, max_capacity)
 else:
     command = "bash " + dest_pkg
+run_remote_command(command, host_post_info)
+
+# add nbd.conf
+command = ("echo 'nbd' > /etc/modules-load.d/nbd.conf; echo 'options nbd nbds_max=128 max_part=16' > /etc/modprobe.d/nbd.conf")
 run_remote_command(command, host_post_info)
 
 # if user is not root , Change the owner of the directory to ordinary user
