@@ -54,15 +54,19 @@ class ThirdPartyCephVolume(base.BaseVolume):
         dev_name = linux.find_route_interface_by_destination_ip(mon_ip)
         snat_ip = linux.find_route_interface_ip_by_destination_ip(mon_ip)
 
+        created_iqn = RbdDeviceOperator(mon_ip, self.volume_obj.token, self.volume_obj.tpTimeout).prepare(
+            self.instance_obj, self.volume_obj, snat_ip)
+
+        if self.instance_obj.customIqn and self.instance_obj.customIqn == created_iqn:
+            return
+
+        self.instance_obj.customIqn = created_iqn
         shell.run("iptables -t nat -A PREROUTING -s %s -d %s -p tcp --dport 3260 -j DNAT --to-destination %s:3260" %
                   (self.instance_obj.provision_ip, instance_gateway_ip, mon_ip))
         if snat_ip != mon_ip:
             shell.run("iptables -t nat -A POSTROUTING -s %s -o %s -j SNAT --to-source %s" % (
             self.instance_obj.provision_ip, dev_name, snat_ip))
 
-        created_iqn = RbdDeviceOperator(mon_ip, self.volume_obj.token, self.volume_obj.tpTimeout).prepare(
-            self.instance_obj, self.volume_obj, snat_ip)
-        self.instance_obj.customIqn = created_iqn
 
     def destroy_instance_resource(self):
         instance_gateway_ip = self.instance_obj.gateway_ip
