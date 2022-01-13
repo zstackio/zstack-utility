@@ -14,6 +14,7 @@ from zstacklib.utils import rollback
 from zstacklib.utils import linux
 import zstacklib.utils.uuidhelper as uuidhelper
 from zstacklib.utils.plugin import completetask
+from zstacklib.utils import secret
 
 logger = log.get_logger(__name__)
 
@@ -90,6 +91,13 @@ class CreateVolumeWithBackingRsp(AgentRsp):
         self.actualSize = None
 
 
+class GetQcow2HashValueRsp(AgentRsp):
+    def __init__(self):
+        super(GetQcow2HashValueRsp, self).__init__()
+        self.hash = None
+
+
+
 class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
 
     CONNECT_PATH = "/sharedmountpointprimarystorage/connect"
@@ -115,6 +123,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
     DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/sharedmountpointprimarystorage/kvmhost/download"
     CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/sharedmountpointprimarystorage/kvmhost/download/cancel"
     GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH = "/sharedmountpointprimarystorage/kvmhost/download/progress"
+    GET_QCOW2_HASH_VALUE_PATH = "/sharedmountpointprimarystorage/getqcow2hash"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -141,6 +150,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.download_from_kvmhost)
         http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
         http_server.register_async_uri(self.GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH, self.get_download_bits_from_kvmhost_progress)
+        http_server.register_async_uri(self.GET_QCOW2_HASH_VALUE_PATH, self.get_qcow2_hashvalue)
 
         self.imagestore_client = ImageStoreClient()
         self.id_files = {}
@@ -488,3 +498,11 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
 
         for src_file, dst_file in src_dst_dict.iteritems():
             linux.link(src_file, dst_file)
+
+    @kvmagent.replyerror
+    def get_qcow2_hashvalue(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetQcow2HashValueRsp()
+
+        rsp.hashValue = secret.get_image_hash(cmd.installPath)
+        return jsonobject.dumps(rsp)
