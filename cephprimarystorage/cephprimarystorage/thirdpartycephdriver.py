@@ -1,12 +1,11 @@
-from cephprimarystorage import cephagent
 from zstacklib.utils.bash import *
 from zstacklib.utils.thirdparty_ceph import RbdDeviceOperator
+import cephdriver
 
-log.configure_log('/var/log/zstack/ceph-primarystorage.log')
 logger = log.get_logger(__name__)
 
 
-class ThirdpartyCephDriver(cephagent.CephAgent):
+class ThirdpartyCephDriver(cephdriver.CephDriver):
     def __init__(self, *args, **kwargs):
         super(ThirdpartyCephDriver, self).__init__()
 
