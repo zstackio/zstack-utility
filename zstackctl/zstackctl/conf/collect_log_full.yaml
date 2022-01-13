@@ -62,7 +62,11 @@ vrouter:
     logs:
       - {name: config-boot, dir: /config/, file: 'config.boot*'}
       - {name: zstack-log, dir: /var/log/zstack/, file: }
-      - {name: vrouter-log, dir: /home/vyos/zvr/, file: }
+      - {name: vrouter-zvr-log, dir: /home/vyos/zvr/, file: 'zvr.log*' }
+      - {name: vrouter-zvrboot-log, dir: /home/vyos/zvr/, file: 'zvrboot.log' }
+      - {name: vrouter-zvrMonitor-log, dir: /home/vyos/zvr/, file: 'zvrMonitor.log' }
+      - {name: vrouter-zvrReboot-log, dir: /home/vyos/zvr/, file: 'zvrReboot.log' }
+      - {name: vrouter-zvrstartup-log, dir: /home/vyos/zvr/, file: 'zvrstartup.log' }
       - {name: iptables-logs, exec: 'iptables-save'}
       - {name: host-info, exec: 'uptime && last reboot && free && cat /proc/cpuinfo && ip add && ip route && df -h'}
       - {name: ps-info, exec: 'ps ax -eTo ppid,pid,pcpu,pmem,maj_flt,min_flt,tid,vsz,rss,pgid,sid,tty,stat,uid,lstart,etime,time,command --sort ppid' }
