@@ -5761,6 +5761,7 @@ class CollectLogCmd(Command):
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
+        parser.add_argument('--force', help='Force use this deprecated command', action="store_true", default=False)
         parser.add_argument('--db', help='collect database for diagnose ', action="store_true", default=False)
         parser.add_argument('--mn-only', help='only collect management log', action="store_true", default=False)
         parser.add_argument('--full', help='collect full management logs and host logs', action="store_true", default=False)
@@ -6174,6 +6175,13 @@ class CollectLogCmd(Command):
 
 
     def run(self, args):
+        if not args.force:
+            warn("collect_log is deprecated, please use `zstack-ctl configured_collect_log` instead, "
+                 "if you have a clear reason not to use `zstack-ctl configured_collect_log`, "
+                 "you can use `zstack-ctl collect_log --force`")
+            return
+        warn("although you force use this deprecated command, we also suggest you use `zstack-ctl "
+             "configured_collect_log` instead.")
         # dump mn status
         mn_pid = get_management_node_pid()
         if mn_pid:
