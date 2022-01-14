@@ -62,9 +62,6 @@ class RbdDeviceOperator(object):
         dst_path = self._normalize_install_path(volume_obj.path)
         volume_name = dst_path.split("/")[1]
 
-        if volume_obj.type != 'Root':
-            raise Exception("instance %s cannot find root volume" % instance_obj.uuid)
-
         def _prepare():
             created_target_id = None
             created_access_path_id = None

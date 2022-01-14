@@ -1,17 +1,29 @@
 import zstacklib.utils.sizeunit as sizeunit
 
 from zstacklib.utils import ceph
+import zstacklib.utils.jsonobject as jsonobject
 from zstacklib.utils.bash import *
-from cephprimarystorage import cephagent
 import rbd
 
-log.configure_log('/var/log/zstack/ceph-primarystorage.log')
 logger = log.get_logger(__name__)
 
 
-class CephDriver(cephagent.CephAgent):
+class CephDriver(object):
     def __init__(self, *args, **kwargs):
         super(CephDriver, self).__init__()
+
+    def _wrap_shareable_cmd(self, cmd, cmd_string):
+        if cmd.shareable:
+            return cmd_string + " --image-shared"
+        return cmd_string
+
+    def _normalize_install_path(self, path):
+        return path.replace('ceph://', '')
+
+    def _get_file_size(self, path):
+        o = shell.call('rbd --format json info %s' % path)
+        o = jsonobject.loads(o)
+        return long(o.size_)
 
     def clone_volume(self, cmd, rsp):
         src_path = self._normalize_install_path(cmd.srcPath)
