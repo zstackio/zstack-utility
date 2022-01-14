@@ -2,7 +2,7 @@
 import os
 import socket
 import pyroute2
-from zstacklib.utils import log
+from zstacklib.utils import log,lock
 
 logger = log.get_logger(__name__)
 
@@ -31,6 +31,7 @@ def _no_error_do(func):
             return False
     return aim_to_do
 
+@lock.lock("subprocess.popen")
 def get_iproute(namespace=None):
     '''
         :raise NoSuchNamespace   if namespace is not None and not exists
