@@ -878,7 +878,8 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                 logger.info("delete invalid ipxe config: %s", path)
                 linux.rm_file_force(path)
 
-    def _create_import_data_config(self, instance_obj, cmd):
+    def _create_import_data_config(self, volume_driver, cmd):
+        instance_obj = volume_driver.instance_obj
         ks_file_name = instance_obj.provision_mac.replace(':', '-')
         ks_config_path = os.path.join(self.KS_CFG_DIR, ks_file_name)
         template = self._load_template('import-data.ks')
@@ -889,7 +890,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
 
         send_hardware_infos_uri = (
             'http://{ip}:{port}/baremetal_instance_agent/v2/hardwareinfos'
-        ).format(ip=instance_obj.gateway_ip, port=cmd.port)
+        ).format(ip=volume_driver.instance_obj.gateway_ip, port=cmd.port)
 
         if cmd.extraBootParams is None:
             cmd.extraBootParams = ""
@@ -899,7 +900,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             dest_disk_wwn=cmd.destDiskWwn,
             send_hardware_infos_uri=send_hardware_infos_uri,
             gateway_ip=instance_obj.gateway_ip,
-            instance_uuid=instance_obj.uuid,
+            iqn_name=volume_driver.iscsi_target,
             chassis_address=cmd.chassisInfo.address,
             chassis_port=cmd.chassisInfo.port
         )
@@ -1209,28 +1210,20 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         instance_obj = BmInstanceObj.from_json(req)
         volume_obj = VolumeObj.from_json(req)
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        volume_drivers = []
 
         with bm_utils.rollback(self._destroy_convert_volume, req):
             # Full prepare the instance which assign on the gateway,
             # otherwise delete the dnsmasq conf only.
             if instance_obj.gateway_ip == \
                     self.provision_network_conf.provision_nic_ip:
-                #pre_volume_objs = list(o for o in volume_objs)
-                #for volume_obj in pre_volume_objs:
-                #    if volume_obj.type == 'Root':
-                #        pre_volume_driver = volume.get_driver(instance_obj, volume_obj)
-                #        pre_volume_driver.prepare_instance_resource()
-
-                #for volume_obj in pre_volume_objs:
                 volume_driver = volume.get_driver(instance_obj, volume_obj)
+                volume_driver.prepare_instance_resource()
                 volume_driver.attach()
-                volume_drivers.append(volume_driver)
 
                 if instance_obj.architecture == 'aarch64':
                     return
                 else:
-                    self._create_import_data_config(instance_obj, cmd)
+                    self._create_import_data_config(volume_driver, cmd)
                 self._create_nginx_agent_proxy_configuration(instance_obj)
             self._create_dnsmasq_host(instance_obj)
 
@@ -1293,9 +1286,10 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                     self.provision_network_conf.provision_nic_ip:
                 pre_volume_objs = list(o for o in volume_objs)
                 for volume_obj in pre_volume_objs:
-                    if volume_obj.type == 'Root' and instance_obj.provisionType == 'Remote':
-                        pre_volume_driver = volume.get_driver(instance_obj, volume_obj)
-                        pre_volume_driver.prepare_instance_resource()
+                    if volume_obj.type == 'Root' and instance_obj.provisionType != 'Remote':
+                        continue
+                    pre_volume_driver = volume.get_driver(instance_obj, volume_obj)
+                    pre_volume_driver.prepare_instance_resource()
 
                 for volume_obj in pre_volume_objs:
                     if instance_obj.provisionType != 'Remote' and volume_obj.type == 'Root':
@@ -1352,18 +1346,17 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         volume_obj = VolumeObj.from_json(req)
         # Full destroy the instance which assign on the gateway,
         # otherwise delete the dnsmasq conf only.
+        if instance_obj.gateway_ip == \
+                self.provision_network_conf.provision_nic_ip:
+            volume_driver = volume.get_driver(instance_obj, volume_obj)
+            volume_driver.detach()
+            volume_driver.destroy_instance_resource()
 
-        volume_driver = volume.get_driver(instance_obj, volume_obj)
-        volume_driver.detach()
-
-        del_volume_driver = volume.get_driver(instance_obj, volume_obj)
-        del_volume_driver.destroy_instance_resource()
-
-        if instance_obj.architecture == 'aarch64':
-            return
-        else:
-            self._delete_import_data_configuration(instance_obj)
-        self._delete_nginx_agent_proxy_configuration(instance_obj)
+            if instance_obj.architecture == 'aarch64':
+                return
+            else:
+                self._delete_import_data_configuration(instance_obj)
+            self._delete_nginx_agent_proxy_configuration(instance_obj)
 
         self._delete_dnsmasq_host(instance_obj)
 

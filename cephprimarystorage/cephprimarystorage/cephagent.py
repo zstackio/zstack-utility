@@ -31,6 +31,8 @@ from zstacklib.utils import nbd_client
 from zstacklib.utils import thread
 from imagestore import ImageStoreClient
 from zstacklib.utils.linux import remote_shell_quote
+from cephdriver import CephDriver
+from thirdpartycephdriver import ThirdpartyCephDriver
 
 log.configure_log('/var/log/zstack/ceph-primarystorage.log')
 logger = log.get_logger(__name__)
@@ -286,6 +288,22 @@ class CephAgent(plugin.TaskManager):
 
     http_server = http.HttpServer(port=7762)
     http_server.logfile_path = log.get_logfile_path()
+
+    mapping = {
+        'ceph': CephDriver,
+        'thirdpartyCeph': ThirdpartyCephDriver
+    }
+
+    def get_driver(self, cmd):
+        if self.is_third_party_ceph(cmd):
+            ps_type = 'thirdpartyCeph'
+        else:
+            ps_type = 'ceph'
+
+        return self.mapping.get(ps_type)(cmd)
+
+    def is_third_party_ceph(self, token_object):
+        return hasattr(token_object, "token") and token_object.token
 
     def __init__(self):
         super(CephAgent, self).__init__()
@@ -686,7 +704,7 @@ class CephAgent(plugin.TaskManager):
                     do_create = False
 
         if do_create:
-            driver = cephprimarystorage.get_driver(cmd)
+            driver = self.get_driver(cmd)
             rsp = driver.create_snapshot(cmd, rsp)
 
         self._set_capacity_to_response(rsp)
@@ -695,7 +713,7 @@ class CephAgent(plugin.TaskManager):
     @replyerror
     def delete_snapshot(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        driver = cephprimarystorage.get_driver(cmd)
+        driver = self.get_driver(cmd)
         driver.delete_snapshot(cmd)
 
         rsp = AgentResponse()
@@ -753,7 +771,7 @@ class CephAgent(plugin.TaskManager):
         rsp = CloneRsp()
         src_path = self._normalize_install_path(cmd.srcPath)
 
-        driver = cephprimarystorage.get_driver(cmd)
+        driver = self.get_driver(cmd)
         rsp = driver.clone_volume(cmd, rsp)
 
         rsp.size = self._get_file_size(src_path)
@@ -817,7 +835,7 @@ class CephAgent(plugin.TaskManager):
     def init(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
-        driver = cephprimarystorage.get_driver(cmd)
+        driver = self.get_driver(cmd)
         driver.validate_token(cmd)
 
         existing_pools = shell.call('ceph osd lspools')
@@ -857,7 +875,7 @@ class CephAgent(plugin.TaskManager):
     def create(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CreateEmptyVolumeRsp()
-        driver = cephprimarystorage.get_driver(cmd)
+        driver = self.get_driver(cmd)
         rsp = driver.create_volume(cmd, rsp, agent=self)
 
         self._set_capacity_to_response(rsp)
@@ -1000,7 +1018,7 @@ class CephAgent(plugin.TaskManager):
         if len(o) > 0:
             raise Exception('unable to delete %s; the volume still has snapshots' % cmd.installPath)
 
-        driver = cephprimarystorage.get_driver(cmd)
+        driver = self.get_driver(cmd)
         driver.do_deletion(cmd)
 
         self._set_capacity_to_response(rsp)

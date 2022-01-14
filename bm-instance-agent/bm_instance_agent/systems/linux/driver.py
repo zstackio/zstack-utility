@@ -40,6 +40,9 @@ class LinuxDriver(base.SystemDriverBase):
         target_name = ('iqn.2015-01.io.zstack:target'
                        '.instance.{uuid}').format(uuid=instance_obj.uuid)
 
+        if instance_obj.custom_iqn:
+            target_name = instance_obj.custom_iqn
+
         try:
             cmd = 'iscsiadm -m session | grep %s' % target_name
             LOG.info(cmd)
