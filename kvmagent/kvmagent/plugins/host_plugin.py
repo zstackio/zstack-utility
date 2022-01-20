@@ -616,6 +616,7 @@ class HostPlugin(kvmagent.KvmAgent):
     DISABLE_ZEROCOPY = "/host/disable/zerocopy"
     GET_DEV_CAPACITY = "/host/dev/capacity"
     ADD_BRIDGE_FDB_ENTRY_PATH = "/bridgefdb/add"
+    DEL_BRIDGE_FDB_ENTRY_PATH = "/bridgefdb/delete"
     DEPLOY_COLO_QEMU_PATH = "/deploy/colo/qemu"
     UPDATE_CONFIGURATION_PATH = "/host/update/configuration"
     GET_NUMA_TOPOLOGY_PATH = "/numa/topology"
@@ -2163,69 +2164,26 @@ done
     def add_bridge_fdb_entry(self, req):
         rsp = AddBridgeFdbEntryRsp()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-
         errors = []
-
-        def _add_bridge_fdb_entry_for_inner_devs():
-            r, netns_ids, e = bash_roe("ip netns list-id")
-            if not netns_ids.strip():
-                return
-
-            if r != 0:
-                errors.append('failed to get ip netns list')
-                return
-
-            for netns_id in netns_ids.strip().split('\n'):
-                NAMESPACE_ID = netns_id.split()[1].strip()
-                NAMESPACE_NAME = netns_id.split()[-1].strip(')')
-                INNER_DEV = 'inner' + NAMESPACE_ID
-                OUTER_DEV = 'outer' + NAMESPACE_ID
-
-                # get bridge name of outer dev
-                BR_NAME = linux.get_interface_master_device(OUTER_DEV)
-                if not BR_NAME:
-                    logger.error("cannot get bridge name of " + OUTER_DEV)
-                    return
-                BR_NAME = BR_NAME.strip(' \t\n\r')
-
-                # get pf name for inner dev
-                r, PHY_DEV, e = bash_roe("brctl show {{BR_NAME}} | grep -w {{BR_NAME}} | head -n 1 | awk '{ print $NF }' | { read name; echo ${name%%.*}; }")
-                if r != 0:
-                    logger.error("cannot get physical interface name from bridge " + BR_NAME)
-                    return
-                PHY_DEV = PHY_DEV.strip(' \t\n\r')
-
-                # if PHY_DEV is bond, then find the first splited pf name out of its slaves
-                _phy_dev_folder = os.path.join('/sys/class/net', PHY_DEV)
-                for fname in os.listdir(_phy_dev_folder):
-                    if fname.startswith('slave_'):
-                        _slave_numvfs = os.path.join(_phy_dev_folder, fname, 'device/sriov_numvfs')
-                        if os.path.isfile(_slave_numvfs):
-                            with open(_slave_numvfs, 'r') as f:
-                                if int(f.read().strip()) != 0:
-                                    PHY_DEV = fname.replace('slave_', '').strip(' \t\n\r')
-                                    break
-
-                # get mac address of inner dev
-                try:
-                    INNER_MAC = iproute.query_link(INNER_DEV, NAMESPACE_NAME).mac
-                except Exception:
-                    logger.error("cannot get mac address of " + INNER_DEV)
-                    return
-
-                # add bridge fdb entry for inner dev
-                if not linux.bridge_fdb_has_self_rule(INNER_MAC, PHY_DEV):
-                    bash_r('bridge fdb add {{INNER_MAC}} dev {{PHY_DEV}}')
-
         if cmd.macs:
             for mac in cmd.macs:
-                _cmd = "bridge fdb add %s dev %s" % (mac, cmd.physicalInterface)
-                r, o, e = bash_roe(_cmd)
-                if r != 0 and 'File exists' not in e:
-                    errors.append("failed to run %s because %s" % (_cmd, e))
-        else:
-            # empty cmd.macs means add bridge fdb entrys for all inner devs in the host
-            _add_bridge_fdb_entry_for_inner_devs()
+                iproute.add_fdb_entry(cmd.physicalInterface, mac)
+
+        if errors:
+            rsp.success = False
+            rsp.error = ';'.join(errors)
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
+    def del_bridge_fdb_entry(self, req):
+        rsp = AddBridgeFdbEntryRsp()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        errors = []
+        if cmd.macs:
+            for mac in cmd.macs:
+                iproute.del_fdb_entry(cmd.physicalInterface, mac)
 
         if errors:
             rsp.success = False
@@ -2319,7 +2277,6 @@ done
         rsp.topology = NumaTopology()()
         return jsonobject.dumps(rsp)
 
-
     def start(self):
         self.host_uuid = None
         self.host_socket = None
@@ -2364,6 +2321,7 @@ done
         http_server.register_async_uri(self.DISABLE_ZEROCOPY, self.disable_zerocopy)
         http_server.register_async_uri(self.GET_DEV_CAPACITY, self.get_dev_capacity)
         http_server.register_async_uri(self.ADD_BRIDGE_FDB_ENTRY_PATH, self.add_bridge_fdb_entry)
+        http_server.register_async_uri(self.DEL_BRIDGE_FDB_ENTRY_PATH, self.del_bridge_fdb_entry)
         http_server.register_async_uri(self.DEPLOY_COLO_QEMU_PATH, self.deploy_colo_qemu)
         http_server.register_async_uri(self.UPDATE_CONFIGURATION_PATH, self.update_host_configuration)
         http_server.register_async_uri(self.GET_NUMA_TOPOLOGY_PATH, self.get_numa_topology)
