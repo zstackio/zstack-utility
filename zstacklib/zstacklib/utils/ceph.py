@@ -193,11 +193,12 @@ def getCephPoolsCapacity():
     for poolCapacity in result:
         if not poolCapacity.crushRuleItemNames:
             continue
+
+        osdNodes = []
         for node in tree.nodes:
             if node.name not in poolCapacity.crushRuleItemNames:
                 continue
 
-            osdNodes = []
             if not node.children:
                 continue
 
