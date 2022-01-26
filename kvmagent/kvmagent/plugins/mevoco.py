@@ -178,8 +178,6 @@ class DhcpEnv(object):
             if ret != 0:
                 bash_errorout(EBTABLES_CMD + ' -N {{CHAIN_NAME}}')
 
-            ret = bash_r(EBTABLES_CMD + ' -F {{CHAIN_NAME}} > /dev/null 2>&1')
-
             ret = bash_r(EBTABLES_CMD + " -L FORWARD | grep -- '-j {{CHAIN_NAME}}' > /dev/null")
             if ret != 0:
                 bash_errorout(EBTABLES_CMD + ' -A FORWARD -j {{CHAIN_NAME}}')
@@ -1855,6 +1853,7 @@ sed -i '/^$/d' {{DNS}}
                 CHAIN_NAME = getDhcpEbtableChainName(dhcp_ip)
                 VF_NIC_MAC = dhcpInfo.mac
                 bash_r(EBTABLES_CMD + ' -D {{CHAIN_NAME}} -p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
+                bash_r(EBTABLES_CMD + ' -D {{CHAIN_NAME}} -p IPv4 -d {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
 
         @in_bash
         def release(dhcp):
