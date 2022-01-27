@@ -5414,6 +5414,7 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.error = str(error)
             rsp.success = False
 
+        touchQmpSocketWhenExists(cmd.snapshotJobs[0].vmInstanceUuid)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
