@@ -163,7 +163,10 @@ class Eip(object):
         def del_bridge_fdb_entry_for_pri_idev():
             EIP_UUID = eip.eipUuid[-9:]
             PRI_IDEV = "%s_i" % (EIP_UUID)
-            PRI_BR_PHY_DEV = self.getPhysicalNicNameFromBridgeName(eip.vmBridgeName)
+
+            # private nic is not vf nic, no need to add fdb
+            if not eip.addfdb:
+                return
 
             # get mac address of inner dev
             try:
@@ -172,8 +175,16 @@ class Eip(object):
                 logger.error("cannot get mac address of " + PRI_IDEV)
                 return
 
+            r, PHY_DEV, e = bash_roe(
+                "bridge fdb show |grep %s | grep self | awk '{print $3}'" % INNER_MAC)
+            if r != 0:
+                logger.error("cannot get physical interface name for mac %s ")
+                return
+
+            PHY_DEV = PHY_DEV.strip(' \t\n\r').split("\n")[0]
+
             # del bridge fdb entry for PRI_IDEV
-            iproute.del_fdb_entry(PRI_BR_PHY_DEV, INNER_MAC)
+            iproute.del_fdb_entry(PHY_DEV, INNER_MAC)
 
         del_bridge_fdb_entry_for_pri_idev()
         self.delete_eip_with_ns(ns, eip.eipUuid, eip.ipVersion, eip.nicName)
@@ -207,6 +218,8 @@ class Eip(object):
         NIC_IP= eip.nicIp
         NIC_MAC= eip.nicMac
         NS_NAME = "%s_%s" % (eip.publicBridgeName, eip.vip.replace(".", "_"))
+        ADDFDB = eip.addfdb
+        PRINIC = eip.physicalNic
 
         EBTABLE_CHAIN_NAME= eip.vmBridgeName
 
@@ -220,7 +233,9 @@ class Eip(object):
         NS = "ip netns exec {{NS_NAME}}"
 
         def add_bridge_fdb_entry_for_pri_idev():
-            PRI_BR_PHY_DEV = self.getPhysicalNicNameFromBridgeName(eip.vmBridgeName)
+            if not ADDFDB or not PRINIC:
+                return
+
             # get mac address of inner dev
             try:
                 INNER_MAC = iproute.query_link(PRI_IDEV, NS_NAME).mac
@@ -229,7 +244,7 @@ class Eip(object):
                 return
 
             # add bridge fdb entry for PRI_IDEV
-            iproute.add_fdb_entry(PRI_BR_PHY_DEV, INNER_MAC)
+            iproute.add_fdb_entry(PRINIC, INNER_MAC)
 
         # in case the namespace deleted and the orphan outer link leaves in the system,
         # deleting the orphan link and recreate it
