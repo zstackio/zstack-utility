@@ -3,6 +3,10 @@ mn:
     type: target
     list: {exec: "AutoCollect"}
     logs:
+      - {name: ui3-cfg, dir: /var/lib/zstack/ui/product-info/, file: 'data.json', mode: "All"}
+      - {name: ui4-cfg, dir: $ZSTACK_HOME/../../../zstack-ui/public/theme/, file: , mode: "Hierarchy"}
+      - {name: lic-app-code, dir: /var/lib/zstack/license/, file: 'lic-application-code.txt', mode: "All"}
+      - {name: customer-identifier, exec: 'AutoCollect'}
       - {name: mn-logs, dir: $ZSTACK_HOME/../../logs/, file: 'management-server*'}
       - {name: ui-logs, dir: $ZSTACK_HOME/../../../zstack-ui/logs/, file: 'zstack-ui*'}
       - {name: sar-log, dir: /var/log/sa/, file: 'sa[0-9]*'}
