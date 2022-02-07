@@ -25,7 +25,7 @@ def info_verbose(*msg):
     else:
         out = ''.join(msg)
     now = datetime.now()
-    out = "%s " % str(now) + out
+    out = "%s " % now.strftime('%Y-%m-%d %H:%M:%S') + out
     sys.stdout.write(out)
     logger.info(out)
 
@@ -36,7 +36,7 @@ def collect_fail_verbose(*msg):
     else:
         out = ''.join(msg)
     now = datetime.now()
-    out = "%s " % str(now) + out
+    out = "%s " % now.strftime('%Y-%m-%d %H:%M:%S') + out
     return out
 
 
@@ -205,12 +205,8 @@ class Summary(object):
         if "bannerText" in ui3cfg or "title" in ui3cfg:
             value_json = Summary.loads_str(ui3cfg.strip())
             if value_json.get("bannerText") != "":
-                print(7)
-                print(value_json.get("bannerText"))
                 return value_json.get("bannerText")
             elif value_json.get("title") != "":
-                print(8)
-                print(value_json.get("bannerText"))
                 return value_json.get("title")
 
         return "Unknown"
