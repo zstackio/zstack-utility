@@ -1,0 +1,51 @@
+= 控制与运维 ZStack Cloud：zstack-ctl
+:icons: font
+:source-highlighter: rouge
+
+`zstack-ctl` 提供了控制和运维 ZStack Cloud 的基本工具，可以通过 `zstack-ctl --help` 查看 `zstack-ctl` 完整的功能：
+
+[source,bash,options="wrap"]
+----
+[root@zstack-dev ~]# zstack-ctl --help
+usage: zstack-ctl [-h] [-v]
+
+                  {add_multi_management,bootstrap,change_ip,configure,configured_collect_log,dump_mysql,change_mysql_password,deploydb,deploy_ui_db,getenv,install_ha,install_db,install_rabbitmq,install_management_node,install_license,clear_license,show_configuration,get_configuration,change_server_ports,setenv,set_deployment,pull_database_backup,rollback_management_node,rollback_db,reset_password,reset_rabbitmq,restore_config,restart_node,scan_zbox_backup,recover_ha,scan_database_backup,status,start_node,stop_node,save_config,start,stop,taillog,unsetenv,upgrade_management_node,upgrade_multi_management_node,upgrade_db,upgrade_ui_db,upgrade_ctl,upgrade_ha,start_vdi,stop_vdi,vdi_status,show_session_list,drop_account_session,clean_ansible_cache,get_version,fix_sharedvolume,reset_mini_host,refresh_audit,mysql_process_list,mysql_restrict_connection,install_ui,start_ui,stop_ui,ui_status,config_ui,show_ui_config}
+                  ...
+
+ZStack management tool
+
+positional arguments:
+
+     ... <1>
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -v                    verbose, print execution details
+----
+<1> 因为内容太多，因此这里省略掉了
+
+[NOTE]
+====
+注意上面的输出是一个实例，随着产品不断演化可能会有增加或减少
+====
+
+其中最常用的功能包括：
+
+zstack-ctl start/start_node/start_ui::
+ZStack Cloud 启动命令，具体分别是：
+* 启动 ZStack Cloud 的管理节点和 UI
+* 启动 ZStack Cloud 的管理节点
+* 启动 ZStack Cloud 的 UI
+zstack-ctl stop/stop_node/ui::
+ZStack Cloud 停止命令，具体分别是：
+* 停止 ZStack Cloud 的管理节点和 UI
+* 停止 ZStack Cloud 的管理节点
+* 停止 ZStack Cloud 的 UI
+zstack-ctl status::
+查看 ZStack Cloud 的管理节点、UI 状态和一些环境变量与配置、版本信息，详细内容可以参考 xref:status.adoc[]。
+zstack-ctl configured_collect_log::
+收集 ZStack Cloud 的日志，提供了很多细节参数来控制收集的粒度、收集的时间范围、收集的服务器范围等等，详细内容参考 xref:configured_collect_log.adoc[]。
+
+更多更细节的内容请参考详细的子命令介绍页面：
+
+include::../nav.adoc[lines=2..]

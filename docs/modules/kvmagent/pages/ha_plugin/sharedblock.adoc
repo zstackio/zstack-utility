@@ -1,0 +1,5 @@
+= ha_plugin 中 sharedblock 主存储的实现
+
+SharedBlock 本身依赖 sanlock 来做存储状态的检查，这点和其他存储实现较为不同。
+
+（待补充）

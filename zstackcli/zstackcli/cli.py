@@ -1008,7 +1008,7 @@ Parse command parameters error:
 
         self.read_more(num)
 
-    def show_help(self):
+    def show_help(self, all_params):
         help_string = text_doc.bold('Usage:')
         help_string += '''
 -------------------------------------------------------------------------------

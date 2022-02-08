@@ -1,0 +1,87 @@
+= 如何开发 kvmagent
+:icons: font
+:source-highlighter: rouge
+:docinfo: shared
+:max-include-depth: 16
+
+`kvmagent` 几乎是 `zstack-utility` 仓库中改动最频繁的目录，代码调用关系和逻辑也相对也比较复杂。本页描述了基本的通用开发指南，具体不同 pulgin 需要参考 plugin 自身的开发指南。
+
+[IMPORTANT]
+.请先阅读 zstack-utility 的开发指南！
+====
+对于 xref:zstack-utility:ROOT:contribute.adoc[] 所包含的内容本文将不再赘述。
+====
+
+== 如何调试
+
+=== 找到 kvmagent 的安装位置
+
+[source,bash]
+----
+[root@zstack-dev ~]# ps aux | grep kvmagent #<1>
+root       3894  1.7  0.2 2348860 28960 ?       Sl    2021 3182:12 python -c from kvmagent import kdaemon; kdaemon.main() start
+[root@zstack-dev ~]# systemctl status | grep -i 'kvmagent'  #<2>
+             ├─zstack-kvmagent.service
+             │ └─3894 python -c from kvmagent import kdaemon; kdaemon.main() start
+[root@zstack-dev ~]# systemctl status zstack-kvmagent #<3>
+● zstack-kvmagent.service - SYSV: This is a daemon instructed by zstack management server to perform kvm related operations See http://zstack.org
+   Loaded: loaded (/etc/rc.d/init.d/zstack-kvmagent; bad; vendor preset: disabled) #<4>
+   Active: active (running) since Thu 2021-10-07 20:08:23 CST; 4 months 3 days ago
+     Docs: man:systemd-sysv-generator(8)
+ Main PID: 3894 (python)
+   CGroup: /system.slice/zstack-kvmagent.service
+           └─3894 python -c from kvmagent import kdaemon; kdaemon.main() start #<5>
+
+Warning: Journal has been rotated since unit was started. Log output is incomplete or unavailable.
+[root@zstack-dev ~]# cat /etc/rc.d/init.d/zstack-kvmagent #<6>
+#!/bin/sh
+
+# the following is chkconfig init header
+#
+# zstack-kvmagent:   zstack kvm agent daemon
+#
+# chkconfig: 345 97 03
+# description:  This is a daemon instructed by zstack management server \
+#               to perform kvm related operations\
+#               See http://zstack.org
+#
+# processname: kvmagent
+# pidfile: /var/run/zstack/kvmagent.pid
+...
+if [ "$@" = "status" ]; then
+	check_status
+else
+	apply_resource_settings
+	rm_ebtables_dangling_lock
+
+	. /var/lib/zstack/virtualenv/kvm/bin/activate && python -c "from kvmagent import kdaemon; kdaemon.main()" $@ #<7>
+fi
+----
+<1> 可以尝试在计算节点上通过 `ps` 命令看 `kvmagent` 是如何被启动的，但从进程名看不出明显的线索
+<2> 可以试下用 `systemctl status` 来查询 `kvmagent` 是不是一个服务
+<3> 发现确实是一个服务，那么可以用 `systemctl status zstack-kvmagent` 来查看细节
+<4> 这里是服务的定义文件
+<5> 可以看到服务的进程与前面 `ps` 看到的进程是一致的
+<6> 查看服务定义文件
+<7> 可以看到原来 `kvmagent` 被安装到了 `/var/lib/zstack/virtualenv/kvm/` 目录下
+
+进到该目录下可以看到 kvmagent 的代码就在里面。
+
+[source,bash]
+----
+[root@zstack-dev ~]# cd /var/lib/zstack/virtualenv/kvm
+You have mail in /var/spool/mail/root
+[root@zstack-dev kvm]# ls
+bin  include  lib  lib64  pip-selfcheck.json
+[root@zstack-dev kvm]# cd lib/python2.7/site-packages/kvmagent
+[root@zstack-dev kvmagent]# ls
+__init__.py  __init__.pyc  kdaemon.py  kdaemon.pyc  kvmagent.py  kvmagent.pyc  plugins  test
+----
+
+=== 管理节点重连物理机的时候会覆盖修改的代码么
+
+=== 修改完代码能否直接重启 kvmagent
+
+== kvmagent 如何被安装
+
+== 新增一个 plugin

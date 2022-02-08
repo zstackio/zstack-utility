@@ -1,0 +1,172 @@
+= 如何开发 zstack-utility
+:icons: font
+:source-highlighter: rouge
+:docinfo: shared
+:max-include-depth: 16
+
+zstack-utility 中的各个目录内容相互关系比较松散，除了个别目录之间关系可能很深（例如 `zstacklib` 和 `kvmagent`、`cephprimarystorage` 等一些 agent 之间），很多目录之间相互甚至没有太大关系，只是放在同一个仓库方便开发人员查找和构建方便而已。
+
+因此 zstack-utility 没有很通用的开发指南，只有一些基本的约定俗成：
+
+使用 `autoconf` 配置 git commit msg 模板::
+详见 <<_autoconf>>
+
+顶级目录使用纯英文，不包含连字符、下划线等::
+约定俗成
+
+确保本地测试好再提交::
+目前 zstack-utility 的代码缺乏自动化的单元测试，比较依赖 BAT、nightly 和手工测试，反馈周期比较长，对于可以做本地测试的代码，应当编写相应的本地测试方法，并将代码放置到模块里放置测试的目录，例如 `kvmagent/kvmagent/test`。
+
+更详细各个组件的的开发文档参考：
+
+ * xref:zstackctl:contribute.adoc[]
+ * xref:zstackcli:contribute.adoc[]
+ * xref:kvmagent:contribute.adoc[]
+
+== autoconf
+
+clone 本仓库后，应当先执行 `./autoconf`，autoconf 会自动初始化 commit msg 模板，并且在 commit 时自动猜测修改的模块范围、commit 类型、涉及的 tag、涉及的 Jira 号，以及自动生成 change-id，效果如下图 <<autoconf_example>> 所示 。
+
+[#autoconf_example]
+.autoconf 使用示例
+image::image-2022-02-10-10-34-52-729.png[]
+
+此外，还可以通过 `autoconf` 搜索哪些 branch 包含特定的 change-id 或者 commit msg，参考 <<autoconf_example2>>。
+
+[#autoconf_example2]
+.autoconf 搜索示例
+image::image-2022-02-11-09-40-35-671.png[]
+
+//todo(weiw): autoconf 原理链接到 ZStack 仓库的说明
+autoconf 的原理和如何开发请参考 ZStack 的 runMavenProfile 的介绍（待补充链接）
+
+== 如何增加一个 PyPi 依赖包
+
+（待补充）
+
+== 如何贡献文档
+
+关于 asciidoc 和 antora 的更多内容，可以参考（待补充链接）
+
+=== 文档结构
+
+zstack-utility 当前的文档结构为：
+
+[source, bash]
+----
+zstack-utility/
+└── docs/  <1>
+    ├── antora.yml  <2>
+    └── modules/  <3>
+        ├── ROOT/  <4>
+        │   ├── nav.adoc  <5>
+        │   ├── pages/  <6>
+        │   │   ├── index.adoc  <7>
+        │   │   └── contribute.adoc  <8>
+        │   └── images  <9>
+        │       └── image1.jpg  <10>
+        ├── module1/  <11>
+        │   ├── nav.adoc  <12>
+        │   ├── pages/  <13>
+        │   │   ├── index.adoc <14>
+        │   │   └── contribute.adoc <15>
+        │   │   └── function1.adoc  <16>
+        │   │   └── function2.adoc
+        │   │   └── function3/  <17>
+        │   │       └── subfunction1.adoc
+        │   │       └── subfunction2.adoc
+        │   ├── examples/  <18>
+        │   │   └── soft_link to code folder  <19>
+        │   │   └── example1.ext
+        │   └── images/
+        │       └── image1.jpg
+        └── module2
+----
+<1> 文档的顶级目录，专门创建目录将文档和代码做区分，结构更加清晰一些
+<2> `antora.yml` 用来定义整个文档的主要架构和属性
+<3> `modules` 为 antora 定义的目录名，不可更改
+<4> `ROOT` 为 antora 定义的特殊目录名，可以理解为整个文档库的最顶层只用来放与整个 zstack-utility 通用的内容
+<5> `ROOT/nav.adoc` 定义了 `ROOT` 目录下文件的层级关系，最终被应用到生成网站的外层目录结构上
+<6> `pages` 为 antora 一般约定俗成的目录名，放置具体的文档
+<7> `index.adoc` 为 antora 一般约定俗成的“介绍页”，在本项目中用来介绍 `zstack-utility` 的整体架构和通用内容
+<8> `contribute.adoc` 为 ZStack 一般约定俗成的“开发指南”，因为在 `ROOT` 目录下，因此这里只介绍对整个 zstack-utility 都通用的开发指南，因此不包含各个非常的具体的业务
+<9> `images` 为 antora 约定俗成的放置图片附件的目录，图片放在这里可以很方便的引用
+<10> `image1.jpg` 为存放的图片附件，可以在文档正文中引用
+<11> `module1` 代指正式的一些业务模块，例如 `doc/modules/zstackctl`、`doc/modules/zstackcli`、`doc/modules/kvmagent` 等
+<12> `module1/nav.adoc` 定义了 `module1` 目录下文件的层级关系，最终被应用到生成网站的外层目录结构上
+<13> `module1/pages` 放置和 `module1` 相关的具体文档
+<14> `module1/index.adoc` 应当描述 `module1` 整体的设计、功能和架构，例如 xref:zstackctl:index.adoc[]
+<15> `module1/contribute.adoc` 应当描述 `module1` 整体的开发指南，例如 xref:zstackctl:contribute.adoc[]
+<16> `function1.adoc` 放置一个功能的描述，或者一个代码文件的描述，例如 xref:zstackctl:set_deployment.adoc[]
+<17> 对于复杂的功能，例如 `kvmagent/ha_plugin.py` 可以再创建一个目录，将功能做拆分进行描述，因此有了 xref:kvmagent:ha_plugin/index.adoc[]、xref:kvmagent:ha_plugin/sharedblock.adoc[]、xref:kvmagent:ha_plugin/ceph.adoc[] 三篇文档共同描述 ha_plugin
+<18> `examples` 为 antora 约定俗成的放置例子的目录，一些代码片段或者可以完整运行的代码可以放在这里方便引用和读者直接下载运行。
+<19> 可以通过软链接将代码目录软链接过来，方便从真实代码中进行引用，例如 `docs/modules/zstackctl/examples/zstack-ctl` 指向了 `../../../../zstackctl`，见 <<examples_softlink>>
+
+[source#examples_softlink,bash]
+.examples 中的软链接指向到代码目录
+----
+(venv) ➜  examples git:(feature/introduce-asciidoc-antora) ✗ pwd
+/Users/weiwang/ZStack/zstack-utility/docs/modules/zstackctl/examples
+(venv) ➜  examples git:(feature/introduce-asciidoc-antora) ✗ ls -lh
+total 16
+-rw-r--r--  1 weiwang  staff   148B Feb  8 15:38 collect_log_host_test.yaml
+-rw-r--r--  1 weiwang  staff   162B Feb  8 15:40 collect_log_two_host.yaml
+lrwxr-xr-x  1 weiwang  staff    21B Feb  9 01:09 zstack-ctl -> ../../../../zstackctl
+(venv) ➜  examples git:(feature/introduce-asciidoc-antora) ✗
+----
+
+综上，整个 doc 目录的层级关系和依赖关系可以总结为 <<zstack-utility_doc>>
+
+[plantuml#zstack-utility_doc]
+.doc 的层级结构和依赖关系
+....
+skinparam monochrome true
+skinparam ranksep 20
+skinparam dpi 150
+skinparam arrowThickness 0.7
+skinparam packageTitleAlignment left
+skinparam usecaseBorderThickness 0.4
+skinparam defaultFontSize 12
+skinparam rectangleBorderThickness 1
+
+  folder zstack-utility/docs {
+    (antora.yml)
+      folder modules/ROOT {
+        (nav.adoc)
+        folder pages {
+          (index.adoc)
+          (contribute.adoc)
+        }
+      }
+      folder modules/module1 {
+        (nav1) as "nav.adoc"
+        folder pages1 as "pages" {
+          (index1) as "index.adoc"
+          (contri1) as "contribute.adoc"
+          (func1) as "func1.adoc"
+          folder func2 {
+            (subfunc1)
+            (subfunc2)
+          }
+        }
+    }
+  }
+
+rectangle "repo: doc_site" {
+  (antora-playbook.yml)
+}
+
+(antora-playbook.yml) --> (antora.yml)
+(antora.yml) --> (nav.adoc)
+(antora.yml) --> (nav1)
+
+(nav.adoc) ..> (index.adoc)
+(nav.adoc) ..> (contribute.adoc)
+
+(nav1) ..> (index1)
+(nav1) ..> (contri1)
+(nav1) ..> (func1)
+(nav1) ..> (subfunc1)
+(nav1) ..> (subfunc2)
+....
+

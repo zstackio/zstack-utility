@@ -1,0 +1,35 @@
+= 围绕 ZStack 的 agent 与工具链：zstack-utility
+:icons: font
+
+`zstack-utility` 项目的功能正如同这个项目名一样：utility——有多种用途的，`zstack-utility` 正是一个“有多种用途的”围绕 `zstack` 项目的工具集合，他提供了下面的功能：
+
+在被使用的目录（项目）::
+  agent:::
+    * link:../../../../baremetalpxeserver/[baremetalpxeserver]：用于老裸金属的 PXE 服务器
+    * link:../../../../bm-instance-agent/[bm-instance-agent]：用于新裸金属实例的 agent
+    * link:../../../../cephbackupstorage/[cephbackupstorage]：用于 ceph 的镜像服务 agent
+    * link:../../../../cephprimarystorage/[cephprimarystorage]：用于 ceph 的主存储服务 agent
+    * link:../../../../consoleproxy/[consoleproxy]：用于 vnc 转发的 agent
+    * xref:kvmagent:index.adoc[kvmagent]：用于管理计算节点、执行管理节点下发的命令的 agent
+    * link:../../../../sftpbackupstorage/[sftpbackupstorage]：用于 sftp 镜像服务的 agent
+  安装与部署:::
+    * link:../../../../imagestorebackupstorage/[imagestorebackupstorage]：用于将  `imagestore` 镜像服务的二进制文件分发的 ansible 脚本
+    * link:../../../../guesttools/[guesttools]：用于将 guesttool ISO 分发到各个计算节点的 ansible 脚本
+    * link:../../../../installation/[installation]：ZStack 项目的安装脚本
+    * link:../../../../transmission/[transmission]：用于传输 Windows Virtio 驱动的 ansible 脚本
+    * link:../../../../zstackbuild/[zstackbuild]：用于 zstack 构建的一些脚本以及计算节点的自定义 pypi 源
+    * link:../../../../zstacknetwork/[zstacknetwork]：部署 `zstack-network-agent` 的 ansible 脚本
+    * link:../../../../zstacksharedblock/[zstacksharedblock]：部署 `zstack-sharedblock-agent` 的 ansible 脚本
+  工具:::
+    * xref:zstackcli:index.adoc[zstackcli]：zstack-cli 命令行，用于调用 ZStack API
+    * xref:zstackctl:index.adoc[zstackctl]：zstack-ctl 命令行，用于控制 zstack 以及执行日志收集、状态查看、License 管理等运维功能，此外还有一些个别业务的控制或运维功能（例如 zstack mini 的重置等）
+  其他:::
+    * link:../../../../zstacklib/[zstacklib]：用于 kvmagent、cephprimarystorage 等仓库的 library，注意部分项目可能会有自己的同名的 library 但可能不是同一个（例如 zstackctl 目录下也有一个 `zstacklib.py`）
+    * link:../../../../appbuildsystem/[appbuildsystem]：用于构建应用中心的应用
+
+[NOTE]
+.其他的目录
+====
+其他目录部分或许可以使用，但因为使用人数较少，维护质量无法得到保证，例如 `agentcli`、`apibinding`
+或者一部分目录因为产品策略的变化已经弃用，例如 `puppets`、`iscsifilesystemagent`、`virtualrouter`，但是对于构建 ZStack 早期版本可能是可用的
+====

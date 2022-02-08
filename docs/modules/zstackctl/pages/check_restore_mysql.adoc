@@ -1,0 +1,47 @@
+= 检查要恢复的数据库备份：check_restore_mysql
+:icons: font
+:source-highlighter: rouge
+:docinfo: shared
+:max-include-depth: 16
+
+== 描述
+
+`zstack-ctl check_restore_mysql` 用于在恢复 ZStack Cloud 管理节点数据库备份前做一些检查。
+
+[NOTE]
+.注意
+====
+执行 `zstack-ctl restore_mysql` 时会自动先执行这一命令。
+====
+
+== 参数说明
+
+[cols="e,a,m"]
+.参数说明
+|===
+|参数|介绍|示例
+
+|--from-file FROM_FILE
+|指定要恢复的备份文件所在的位置，备份文件应该是通过 `zstack-ctl dump_mysql` 生成的备份文件
+|zstack-ctl check_restore_mysql -f backup.gz
+
+|--mysql-root-password MYSQL_ROOT_PASSWORD
+|管理节点的 mysql 数据库的 root 密码，如果不填的话默认为空
+|zstack-ctl check_restore_mysql --mysql-root-password password
+
+|===
+
+== 进阶使用
+
+本质上讲，这个命令会先将备份的数据库中的 `VolumeEO` 表插入到一个 `TempVolumeEO` 表中，然后执行下面的 SQL 语句，看是否有输出，如果有输出则说明有 Volume 的 InstallPath 发生了变化。
+
+[source, bash]
+----
+include::../examples/zstack-ctl/zstackctl/ctl.py[tag=check_restore_mysql, indent=0]
+----
+
+[CAUTION]
+.注意
+====
+根据 SQL 语句可以看出，如果增加或减少了 Volume 是不会报错的！
+====

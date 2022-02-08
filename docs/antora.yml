@@ -1,0 +1,13 @@
+name: zstack-utility
+title: zstack-utility
+version: master
+#start_page: ROOT:inline-text-formatting.adoc
+#asciidoc:
+#  attributes:
+#    source-language: asciidoc@
+#    table-caption: false
+nav:
+- modules/ROOT/nav.adoc
+- modules/zstackctl/nav.adoc
+- modules/zstackcli/nav.adoc
+- modules/kvmagent/nav.adoc
