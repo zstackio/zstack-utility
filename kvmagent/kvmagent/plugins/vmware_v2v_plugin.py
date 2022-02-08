@@ -386,11 +386,6 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
                                                                 cmd.thumbprint, cmd.format, extra_params, self._get_nbdkit_dir_path(),
                                                                 cmd.rootFileSystem if cmd.rootFileSystem else 'ask')
             if cmd.vddkVersion == '5.5':
-                if not self._ndbkit_is_work():
-                    rsp.success = False
-                    rsp.error = "nbdkit with vddk 5.5 is not work, try to reconnect conversion host"
-                    return jsonobject.dumps(rsp)
-
                 return 'export PATH={5}:$PATH; \
                         VIRTIO_WIN=/var/lib/zstack/v2v/zstack-windows-virtio-driver.iso \
                         virt-v2v -ic vpx://{0}?no_verify=1 {1} -it vddk \
@@ -400,13 +395,29 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
                                                                 storage_dir,
                                                                 cmd.thumbprint, cmd.format, self._get_nbdkit_dir_path(), extra_params)
 
+        if cmd.vddkVersion == '5.5' and not self._ndbkit_is_work():
+            rsp.success = False
+            rsp.error = "nbdkit with vddk 5.5 is not work, try to reconnect conversion host"
+            return jsonobject.dumps(rsp)
+
+        def detect_v2v_connection():
+            # print information about the source guest and stop.
+            # no convertion
+            connection_test_cmd = "%s --print-source" % get_v2v_cmd(cmd, rsp)
+            s = shell.ShellCmd(connection_test_cmd)
+            s(False)
+            if s.return_code == 0:
+                return
+
+            raise Exception('Failed to connect to host by conversion network address %s,' \
+                ' check conversion network setttings. Details %s' % (cmd.srcHostIp, s.stderr))
+
         def dnat_to_convert_interface(ip, dnat_ip, dnat_interface):
             if shell.run("route -n |grep %s |grep %s" % (ip, dnat_interface)) != 0:
                 shell.run("route add -host %s dev %s" % (ip, dnat_interface))
 
             if shell.run("iptables -t nat -nL --line-number | grep DNAT |grep %s | grep %s" % (ip, dnat_ip)) != 0:
                 shell.run("iptables -t nat -A OUTPUT -d %s -j DNAT --to-destination %s" % (ip, dnat_ip))
-
 
         virt_v2v_cmd = get_v2v_cmd(cmd, rsp)
         src_vm_uri = cmd.srcVmUri
@@ -422,11 +433,17 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
         v2v_pid_path, virt_v2v_cmd, v2v_cmd_ret_path)
 
         vmware_host_ip = linux.get_host_by_name(host_name)
-        interface = linux.find_route_interface_by_destination_ip(vmware_host_ip)
         convertInterface = linux.find_route_interface_by_destination_ip(cmd.srcHostIp)
 
         if vmware_host_ip != cmd.srcHostIp:
+            # vmware_host_ip is management address of vcenter resources
+            # cmd.srcHostIp is extra address matches conversion network 
+            # IMPORTANT: configure a route interface and DNAT rule to route all converion traffic
+            # from vmware_host_ip to srcHostIp
             dnat_to_convert_interface(vmware_host_ip, cmd.srcHostIp, convertInterface)
+
+            # test connection to avoid conversion network misconfiguration
+            detect_v2v_connection()
 
         if convertInterface:
             cmdstr = "tc filter replace dev %s protocol ip parent 1: prio 1 u32 match ip src %s/32 flowid 1:1" \
@@ -569,19 +586,22 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
         _, output = commands.getstatusoutput(cmd)
         return long(json.loads(output)['actual-size']), long(json.loads(output)['virtual-size'])
 
+    def clean_dnat(host_name, convert_ip):
+        vmware_host_ip = linux.get_host_by_name(host_name)
+        dnat_interface = linux.find_route_interface_by_destination_ip(convert_ip)
+        if vmware_host_ip == convert_ip:
+            return
+
+        if shell.run("route -n |grep %s |grep %s" % (vmware_host_ip, dnat_interface)) == 0:
+            shell.run("route del -host %s dev %s" % (vmware_host_ip, dnat_interface))
+
+        if shell.run("iptables -t nat -nL --line-number | grep DNAT |grep %s | grep %s" % (vmware_host_ip, convert_ip)) == 0:
+            nat_number = shell.call("iptables -t nat -nL --line-number | grep DNAT |grep %s | grep %s" % (vmware_host_ip, convert_ip)).split(" ")[0]
+            shell.run("iptables -D OUTPUT %s -t nat" % nat_number)
+
     @in_bash
     @kvmagent.replyerror
     def clean(self, req):
-        def clean_dnat(dnatInfo):
-            vmware_host_ip = linux.get_host_by_name(dnatInfo.hostName)
-            dnat_interface = linux.find_route_interface_by_destination_ip(dnatInfo.convertIp)
-            if vmware_host_ip != dnatInfo.convertIp:
-                if shell.run("route -n |grep %s |grep %s" % (vmware_host_ip, dnat_interface)) == 0:
-                    shell.run("route del -host %s dev %s" % (vmware_host_ip, dnat_interface))
-
-                if shell.run("iptables -t nat -nL --line-number | grep DNAT |grep %s | grep %s" % (vmware_host_ip, dnatInfo.convertIp)) == 0:
-                    nat_number = shell.call("iptables -t nat -nL --line-number | grep DNAT |grep %s | grep %s" % (vmware_host_ip, dnatInfo.convertIp)).split(" ")[0]
-                    shell.run("iptables -D OUTPUT %s -t nat" % nat_number)
 
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
@@ -591,7 +611,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             cleanUpPath = os.path.join(cmd.storagePath, cmd.srcVmUuid)
             shell.run("pkill -9 -f '%s'" % cleanUpPath)
         if cmd.needCleanDnat:
-            clean_dnat(cmd.dnatInfo)
+            self.clean_dnat(cmd.dnatInfo.hostName, cmd.dnatInfo.convertIp)
         linux.rm_dir_force(cleanUpPath)
         return jsonobject.dumps(rsp)
 
