@@ -163,8 +163,6 @@ stop_zstack_tui() {
 disable_zstack_tui() {
   sed -i '/agetty -n/s/ -n -l \/usr\/local\/zstack_tui\/zstack_tui//g' $ZSTACK_TUI_SERVICE 2>/dev/null
   systemctl daemon-reload
-  pkill -9 zstack_tui
-  systemctl restart getty@tty1.service
 }
 
 # stop zstack_tui to prevent zstack auto installation
