@@ -18,6 +18,7 @@ import json
 import multiprocessing
 import os
 import sys
+import platform
 
 PROVISION_NET = "{{ provision_net }}"
 
@@ -85,15 +86,23 @@ def get_basic_info():
     arch = os.uname()[-1]
     cpu_model_name = ''
     cpu_num = multiprocessing.cpu_count()
+    memory_bytes = 0
 
     # Get memory total
-    memory_bytes = 0
-    _, stdout, _ = shell_cmd('dmidecode --type memory')
-    for line in stdout.split('\n'):
-        line = line.lower().strip()
-        if line.startswith('size') and 'no module' not in line:
-            _, size, unit = line.split()
-            memory_bytes += int(size) * units_mapping[unit]
+    if platform.machine() == 'aarch64':
+        with open('/proc/meminfo', 'r') as f:
+            for line in f.readlines():
+                if 'MemTotal' in line:
+                    _, size, unit = line.lower().split()
+                    memory_bytes = int(size) * units_mapping[unit]
+                    break
+    else:
+        _, stdout, _ = shell_cmd('dmidecode --type memory')
+        for line in stdout.split('\n'):
+            line = line.lower().strip()
+            if line.startswith('size') and 'no module' not in line:
+                _, size, unit = line.split()
+                memory_bytes += int(size) * units_mapping[unit]
 
     with open('/proc/cpuinfo', 'r') as f:
         for line in f.readlines():
