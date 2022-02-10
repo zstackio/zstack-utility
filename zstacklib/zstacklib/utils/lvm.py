@@ -708,6 +708,7 @@ def clean_lvm_archive_files(vgUuid):
 @bash.in_bash
 def quitLockServices():
     bash.bash_roe("sanlock client shutdown")
+    bash.bash_roe("timeout 30 systemctl stop sanlock.service")
     bash.bash_roe("lvmlockctl -q")
 
 
