@@ -84,6 +84,7 @@
     <import file="${basedir}/projects/zstack-network.xml" optional="false" />
     <import file="${basedir}/projects/zstack-sharedblock.xml" optional="false" />
     <import file="${basedir}/projects/zstack-distro.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-zsha2.xml" optional="false" />
     <import file="${basedir}/projects/zstack-promtail.xml" optional="false" />
     <import file="${basedir}/projects/guest-tools.xml" optional="false" />
     <import file="${basedir}/projects/transmission.xml" optional="false" />
@@ -299,6 +300,9 @@
                 <antcall target="build-zstack-sharedblock"/>
             </sequential>
             <sequential>
+                <antcall target="build-zstack-zsha2"/>
+            </sequential>
+            <sequential>
                 <antcall target="check-zstack-distro"/>
             </sequential>
         </parallel>
@@ -388,6 +392,9 @@
             </sequential>
             <sequential>
                 <antcall target="assemble-zstack-sharedblock"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-zstack-zsha2"/>
             </sequential>
             <sequential>
                 <antcall target="assemble-zstack-promtail"/>

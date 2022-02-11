@@ -3690,17 +3690,16 @@ check_ha_need_upgrade()
     [ x"$BASEARCH" != x"x86_64" ] && return
     [ x`systemctl is-enabled zstack-ha 2>/dev/null` != x"enabled" ] && return
 
-    local newha="$ZSTACK_HOME/WEB-INF/classes/tools/zsha2"
-    chmod u+x "$newha" 2>/dev/null
-    [ -x "$newha" ] || return
+    local newhaversionfile="$ZSTACK_HOME/WEB-INF/classes/tools/zsha2"
+    [ -f "$newhaversionfile" ] || return
 
     local curver=`zsha2 version 2>/dev/null | awk -F"[ ,]" '{print $2}'`
-    local newver=`"$newha" version 2>/dev/null | awk -F"[ ,]" '{print $2}'`
+    local newver=`cat "$newhaversionfile"`
     [ x"$curver" = x"$newver" ] && return
 
     local higher=`get_higher_version "$curver" "$newver"`
     if [ x"$higher" = x"$newver" ]; then
-        echo  -e "$(tput setaf 3) - a newer version of zsha2 is available at $newha. $(tput sgr0)"
+        echo  -e "$(tput setaf 3) - a newer version of zsha2 is available. $(tput sgr0)"
         echo
     fi
 }
