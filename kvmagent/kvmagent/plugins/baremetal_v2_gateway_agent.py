@@ -1,7 +1,6 @@
 import ast
 import json
 import os
-import pwd
 import shutil
 import commands
 import tempfile
@@ -16,7 +15,6 @@ from zstacklib.utils import iproute
 from zstacklib.utils import lock
 from zstacklib.utils import log
 from zstacklib.utils import shell
-from zstacklib.utils.thirdparty_ceph import RbdDeviceOperator
 
 from kvmagent import kvmagent
 from kvmagent.plugins.bmv2_gateway_agent import exception
@@ -334,9 +332,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             cmd = 'systemctl daemon-reload'
             shell.call(cmd)
 
-        cmd = ('systemctl start zstack-baremetal-dnsmasq && '
-               'systemctl restart zstack-baremetal-dnsmasq')
-        shell.call(cmd)
+        self._reload_dnsmasq()
 
     def _destroy_dnsmasq(self):
         """ Destroy dnsmasq configuration
@@ -386,14 +382,26 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                     lease_path=self.DNSMASQ_LEASE_PATH)
                 shell.call(cmd)
 
+    @linux.retry(times=3, sleep_time=5)
+    def _reload_nginx(self):
+        cmd = shell.ShellCmd('systemctl is-active zstack-baremetal-nginx')
+        cmd(False)
+        if cmd.return_code == 0:
+            logger.info("zstack-baremetal-nginx is working, reload config instead of restarting it")
+            shell.call('systemctl reload zstack-baremetal-nginx')
+        else:
+            shell.call('systemctl start zstack-baremetal-nginx && systemctl reload zstack-baremetal-nginx')
+
+    @linux.retry(times=3, sleep_time=6)
+    def _reload_dnsmasq(self):
+        shell.call('systemctl restart zstack-baremetal-dnsmasq')
+
+    @lock.lock('bm2-dnsmasq')
     def _create_dnsmasq_host(self, instance_obj):
         """ Create dnsmasq configuration
         """
         self._append_dnsmasq_configuration(instance_obj)
-
-        cmd = ('systemctl start zstack-baremetal-dnsmasq && '
-               'systemctl restart zstack-baremetal-dnsmasq')
-        shell.call(cmd)
+        self._reload_dnsmasq()
 
     def _create_dnsmasq_hosts(self, instance_objs):
         """ Create dnsmasq configurations
@@ -401,10 +409,9 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         for instance_obj in instance_objs:
             self._append_dnsmasq_configuration(instance_obj)
 
-        cmd = ('systemctl start zstack-baremetal-dnsmasq && '
-               'systemctl restart zstack-baremetal-dnsmasq')
-        shell.call(cmd)
+        self._reload_dnsmasq()
 
+    @lock.lock('bm2-dnsmasq')
     def _delete_dnsmasq_host(self, instance_obj):
         """ Delete dnsmasq configuration
         """
@@ -424,9 +431,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                 lease_path=self.DNSMASQ_LEASE_PATH)
             shell.call(cmd)
 
-        cmd = ('systemctl start zstack-baremetal-dnsmasq && '
-               'systemctl restart zstack-baremetal-dnsmasq')
-        shell.call(cmd)
+        self._reload_dnsmasq()
 
     def _prepare_nginx_basic(self, network_obj):
         """ prepare nginx base configuration
@@ -491,9 +496,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             if instance_obj.gateway_ip == network_obj.provision_nic_ip:
                 self._configure_nginx_agent_proxy(instance_obj, network_obj)
 
-        cmd = ('systemctl start zstack-baremetal-nginx && '
-               'systemctl reload zstack-baremetal-nginx')
-        shell.call(cmd)
+        self._reload_nginx()
 
     def _destroy_nginx(self):
         """ Destroy nginx configration
@@ -502,9 +505,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         web server, mn proxy.
         """
         bm_utils.flush_dir(self.NGINX_BM_AGENT_PROXY_CONF_DIR)
-        cmd = ('systemctl start zstack-baremetal-nginx && '
-               'systemctl reload zstack-baremetal-nginx')
-        shell.call(cmd)
+        self._reload_nginx()
 
     def _configure_nginx_agent_proxy(self, instance_obj, network_obj=None):
         """
@@ -546,9 +547,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         """
         self._configure_nginx_agent_proxy(instance_obj)
 
-        cmd = ('systemctl start zstack-baremetal-nginx && '
-               'systemctl reload zstack-baremetal-nginx')
-        shell.call(cmd)
+        self._reload_nginx()
 
     def _delete_nginx_agent_proxy_configuration(self, instance_obj):
         """ Delete one nginx configration
@@ -579,9 +578,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                 self._remove_iptables_rule('tcp', local_port)
             linux.rm_file_force(file_path)
 
-        cmd = ('systemctl start zstack-baremetal-nginx && '
-               'systemctl reload zstack-baremetal-nginx')
-        shell.call(cmd)
+        self._reload_nginx()
 
     @staticmethod
     def pre_take_volume_snapshot(cmd):
@@ -739,9 +736,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         with open(file_path, 'w') as f:
             f.write(conf)
 
-        cmd = ('systemctl start zstack-baremetal-nginx && '
-               'systemctl reload zstack-baremetal-nginx')
-        shell.call(cmd)
+        self._reload_nginx()
 
         # Configure the iptables
         self._add_iptables_rule('tcp', gw_port)

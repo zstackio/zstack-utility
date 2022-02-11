@@ -19,7 +19,6 @@ from xms_client.api import AccessTokensApi
 from zstacklib.utils import log
 from zstacklib.utils import linux
 
-log.configure_log('/var/log/zstack/ceph-primarystorage.log')
 logger = log.get_logger(__name__)
 TIME_OUT = 1800
 
