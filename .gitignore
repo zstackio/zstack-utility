@@ -49,3 +49,5 @@ apibinding/apibinding/inventory.py
 /bm-instance-agent/.idea/
 */.DS_Store
 .DS_Store
+
+docs/modules/zstackctl/examples/zstack-ctl
