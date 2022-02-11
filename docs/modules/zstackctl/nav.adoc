@@ -1,0 +1,8 @@
+* xref:index.adoc[]
+** xref:contribute.adoc[]
+** xref:configured_collect_log.adoc[]
+** xref:status.adoc[]
+** xref:set_deployment.adoc[]
+** xref:restore_mysql.adoc[]
+** xref:check_restore_mysql.adoc[]
+** xref:upgrade_ctl.adoc[]

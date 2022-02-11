@@ -1,0 +1,181 @@
+= 灵活的日志收集：configured_collect_log
+:icons: font
+:source-highlighter: rouge
+:max-include-depth: 12
+:subcommand: configured_collect_log
+
+== 描述
+
+收集诊断命令。是 `zstack-ctl collect_log` 的升级版本，支持预览日志大小、自定义收集等功能。
+用户可根据需求，选择不同参数自定义收集某时间段日志、单独收集管理节点/数据库/计算节点日志、全部日志等。
+
+[NOTE]
+.提示
+====
+`zstack-ctl collect-log` 已经被弃用并不在更新
+====
+
+== 参数说明
+
+[cols="e,a,m"]
+.参数说明
+|===
+|参数|介绍|示例
+
+|-p
+|自定义收集日志的yaml配置文件路径
+|zstack-ctl subcommand -p /var/lib/zstack/
+
+|--check
+|仅查询并展示收集日志大小，不进行日志收集操作
+|zstack-ctl configured_collect_log --check
+
+|--full
+|默认模式，收集除数据库以外的所有日志，包括：管理节点日志、计算节点日志、镜像服务器日志、主存储日志、路由器日志
+|zstack-ctl configured_collect_log --full
+
+|--full-db
+|收集包括数据库在内的所有日志（包含 --full 的所有内容）
+|zstack-ctl configured_collect_log --full-db
+
+|--mn-db
+|收集管理节点日志（包含数据库）
+|zstack-ctl configured_collect_log --mn-db
+
+|--mn-only
+|仅收集管理节点日志（不包括数据库）
+|zstack-ctl configured_collect_log --mn-only
+
+|--mn-host
+|收集管理节点和计算节点日志（不包括数据库）
+|zstack-ctl configured_collect_log --mn-host
+
+|--since SINCE
+|收集N天内（Nd）或者N小时内（Nh）的日志，命令默认收集最近一天的日志
+|zstack-ctl configured_collect_log --since 2d
+
+|--from-date FROM_DATE
+| * 日志收集起始时间，支持格式：
+ ** yyyy-MM-dd：仅设置年月日，时分秒默认为0，例如：2018-11-22，代表2018-11-22 00:00:00
+ ** yyyy-MM-dd_hh:mm:ss：设置具体时间，精确到秒，例如：2018-11-22_09:30:00
+ * 若仅设置FROM_DATE，收集FROM_DATE到当前时间的日志
+ * 若FROM_DATE设置为-1，将收集截止时间前的所有日志
+
+|zstack-ctl configured_collect_log --from-date 2018-11-22
+
+|--to-date TO_DATE
+|日志收集截止时间，格式同上
+若仅设置TO_DATE，默认FROM_DATE为当前时间前24小时
+|zstack-ctl configured_collect_log --to-date 2018-11-23
+
+|--thread THREAD
+|指定日志收集的线程数量，默认为 20
+|zstack-ctl configured_collect_log --mn-only --thread 30
+
+|--hosts HOSTS
+| * 指定收集日志的节点，可以指定一个或多个节点 IP 地址，如果是多个节点可以通过 `,` 进行分割.
+ * 注意这个 IP 地址必须是 ZStack Cloud 内使用的计算节点地址
+ * 注意这个命令仅缩小了日志收集的计算节点范围，其他信息（管理节点、VPC路由器）依然会正常收集
+|zstack-ctl configured_collect_log --hosts 10.10.10.100
+
+|--timeout TIMEOUT
+|指定日志收集线程的超时时间，单位为秒。
+
+注意这里的 `TIMEOUT` 并不代表收集日志的完整时间，默认的超时时间是 300 秒。
+|zstack-ctl configured_collect_log --timeout 100
+
+|--dumptime DUMPTIME
+|指定打印线程信息的超时时间，单位为秒，默认为 10 秒
+|zstack-ctl configured_collect_log --dumptime 5
+
+|===
+
+[WARNING]
+.注意事项
+====
+* 执行 `{subcommand}` 的过程中会先向所有计算节点 `kvmagent` 发送信号以打印线程信息，在计算节点 `kvmagent` 压力较大时可能会造成段时间的失联，这一问题后面会继续优化
+* 执行 `{subcommand}` 命令后会在执行命令时所在的目录形成 _collect-log-XXX_ 目录和 _collect-log-XXX.tar.gz_。如果不需要 _collect-log-XXX_ 目录的话可以直接删除
+====
+
+== 进阶使用
+
+`{subcommand}` 有强大的灵活收集功能，这个灵活不仅体现在丰富的参数支持上，还体现在 `{subcommand}` 可以通过自定义 YAML 来构造自定义的收集内容。下面是 `{subcommand}` 所支持的一个 YAML 实例（对于一个 ZStack 实例，YAML 文件都保存于 `/var/lib/zstack/virtualenv/zstackctl/lib/python2.7/site-packages/zstackctl/conf/`）。
+
+=== 简单的例子
+
+首先可以来看一个简单的例子
+
+[source#example1,yaml]
+.一个简单的从一个指定 Host 获取指定命令的结果的例子
+----
+include::../examples/collect_log_host_test.yaml[]
+----
+
+这个例子是真实可以运行的，把它保存为 `collect_log_host_test.yaml` 或者直接从 link:../example/collect_log_host_test.yaml[] 拷贝到 ZStack 环境。
+
+执行
+[source,bash]
+----
+zstack-ctl configured_collect_log -p collect_log_host_test.yaml
+----
+可以看到结果只包含 `route-logs` 和 `history`
+----
+[root@zstack-dev collect-log-ZStack-Cloud_4.3.12.4663-2022-02-08_16-02]# tree
+.
+├── host-10.0.54.172
+│   ├── history
+│   │   └── history
+│   └── route-logs
+│       └── route-logs
+└── summary
+----
+
+我们也可以从多个 host 获取信息，例如下面是从两个 host 获取 `route -n` 的执行结果的例子
+
+[source#example2,yaml]
+.一个简单的从两个指定 Host 获取指定命令的结果的例子
+----
+include::../examples/collect_log_two_host.yaml[]
+----
+
+==== 真实的例子
+
+上面的 <<example1>> 和 <<example2>> 显然都比较简单，主要目的是给大家一个基本的印象。
+
+因为我们在实际收集日志的时候不可能再特意去查询用户 host 和管理节点的 IP 地址，为此 `{subcommand}` 提供了自动获取（针对管理节点）和从数据库获取的方式（针对非管理节点的计算节点和各类 agent）。
+
+我们可以直接看一个真实的例子：
+
+.来自代码的真实例子：collect_log_mn_only.yaml
+[source#example3,yaml]
+----
+mn: <1>
+    description: management node <2>
+    type: target <3>
+    list: {exec: "AutoCollect"} <4>
+    logs:
+      - {name: ui3-cfg, dir: /var/lib/zstack/ui/product-info/, file: 'data.json', mode: "All"} <5>
+      - {name: ui4-cfg, dir: $ZSTACK_HOME/../../../zstack-ui/public/theme/, file: , mode: "Hierarchy"} <6>
+      - {name: lic-app-code, dir: /var/lib/zstack/license/, file: 'lic-application-code.txt', mode: "All"}
+      - {name: customer-identifier, exec: 'AutoCollect'} <7>
+      - {name: mn-logs, dir: $ZSTACK_HOME/../../logs/, file: 'management-server*'} <8>
+      - {name: route-logs, exec: 'route -n'} <9>
+      - {name: zsha2-log, exec: 'which zsha2 && zsha2 collect-log', exec_type: "CdAndRun"} <10>
+----
+<1> 获取日志的对象类型，支持 _mn、host、sharedblock、ceph-ps、ceph-bs、sftp-bs、imageStore-bs、vrouter、pxeserver、barementalv2gateway_，根据类型，`{subcommand}` 会自动从 ZStack Cloud 数据库中查找到对应的对象的地址和登录方式
+<2> 简单的描述
+<3> 目前只支持 `target`
+<4> 获取日志的对象的列表来源，可以指定一个 SQL 语句。例如需要获取弹性裸金属的网关节点则可以指定 `{exec: "select hostname from BaremetalPxeServerVO"}`，如果是管理节点，可以指定为 `{exec: "AutoCollect}`。如果只是指定的某个 IP 地址的话，可以指定为 `10.10.10.100`，如果指定多个 IP 的话，可以指定为 `[10.0.54.172, 10.0.64.74]`
+<5> 获取 `/var/lib/zstack/ui/product-info/` 目录下的 `data.json` 文件，注意这里的 `mode` 指定为了 `All` 意味着这个文件的收集不受 `since` 或者 `--from-date`、`--to-date` 的影响
+<6> 获取 `$ZSTACK_HOME/../../../zstack-ui/public/theme/` 目录下的所有文件，注意这里使用了 `$ZSTACK_HOME` 以避免 `$ZSTACK_HOME` 非默认目录的问题。此外这里的 `mode` 使用了 `Hierarchy` 表示完整拷贝整个目录结构
+<7> 这里的执行命令没有像我们之前用 `route -n` 这样指定命令，而是用了 `AutoCollect` magic，表示实际收集的命令由 link:../../../../zstackctl/zstackctl/log_collector.py[] 的代码逻辑指定
+<8> 可以看到 file 中可以指定通配符
+<9> 执行一个命令，和 <<example1>> 相同
+<10> 可以看到这里 exec_type 为 `CdAndRun` 表示先 cd 到收集日志的对应目录在执行命令，一般用于执行命令后自动在当前目录生成文件的命令
+
+[NOTE]
+====
+注意通过 `$ZSTACK_HOME` 等环境变量来替代绝对目录 magic，因为在很多环境这个目录都可能并非默认目录
+====
+
+

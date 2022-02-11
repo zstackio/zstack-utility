@@ -1,0 +1,73 @@
+= 单独升级 zstack-ctl：upgrade_ctl
+:icons: font
+:source-highlighter: rouge
+:docinfo: shared
+:max-include-depth: 16
+
+== 描述
+
+`zstack-ctl upgrade_ctl` 用于单独升级 zstack-ctl。
+
+== 参数说明
+
+[cols="e,a,m"]
+.参数说明
+|===
+|参数|介绍|示例
+
+|--package PACKAGE
+|指定 zstack-ctl 安装包路径
+|zstack-ctl upgrade_ctl --package ./apache-tomcat-7.0.35/webapps/zstack/WEB-INF/classes/tools/zstackctl-1.8.tar.gz
+
+|===
+
+== 进阶使用
+
+因为较新版本的 zstack-ctl 往往提供了更多或更完善的功能，因此可以考虑将 zstack-ctl 做单独的升级来使用。
+
+获取 zstack-ctl 安装包::
+
+方法一：从一个新版本环境拷贝:::
+在一个新版本的环境里将 `$ZSTACK_HOME/WEB-INF/classes/tools/zstackctl-*.tar.gz` 拷贝出来
+
+方法二：从 zstack 安装包中获取:::
+假设当前目录有一个 zstack 安装包名为 `ZStack-Cloud-installer.bin`，执行下面的脚本：
+
+[source,bash]
+----
+head -n 8 ZStack-Cloud-installer.bin | sed 's/$0/$1/g' | sed '$aecho $tmpdir' > zstack-dump.sh
+tmpdir=`bash dump.sh ZStack-Cloud-installer.bin`
+cd $tmpdir
+tar zxvf zstack-all-in-one*.tgz
+unzip zstack.war > /dev/null
+ls ./WEB-INF/classes/tools/zstackctl-*.tar.gz
+----
+
+执行示例：
+
+[source,bash]
+----
+[root@zstack-dev ~]# head -n 8 ZStack-Cloud-installer.bin | sed 's/$0/$1/g' | sed '$aecho $tmpdir' > zstack-dump.sh
+[root@zstack-dev ~]# tmpdir=`bash dump.sh ZStack-Cloud-installer.bin`
+[root@zstack-dev ~]# cd $tmpdir
+[root@zstack-dev tmp.1AQmcUK2Po]# tar zxvf zstack-all-in-one*.tgz
+libs/
+apache-tomcat-8.5.57.zip
+libs/tomcat_root_app.zip
+zstack.war
+[root@zstack-dev tmp.1AQmcUK2Po]# unzip zstack.war > /dev/null
+[root@zstack-dev tmp.1AQmcUK2Po]# ls ./WEB-INF/classes/tools/zstackctl-*.tar.gz
+./WEB-INF/classes/tools/zstackctl-4.3.0.tar.gz
+----
+
+升级示例：
+
+[source,bash]
+----
+[root@zstack-dev tmp.1AQmcUK2Po]# zstack-ctl upgrade_ctl --package ./WEB-INF/classes/tools/zstackctl-4.3.0.tar.gz
+
+
+successfully upgraded zstack-ctl to ./WEB-INF/classes/tools/zstackctl-4.3.0.tar.gz
+You have mail in /var/spool/mail/root
+[root@zstack-dev tmp.1AQmcUK2Po]#
+----

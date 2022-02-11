@@ -1,0 +1,155 @@
+= 如何开发 zstack-ctl
+:icons: font
+:source-highlighter: rouge
+:docinfo: shared
+:max-include-depth: 16
+
+zstack-ctl 增加一个子命令是比较简单的， 几乎所有内容都保存在仓库的  `zstackctl/zstackctl/ctl.py` 文件里，这并不是一个好的设计模式，后面可能会考虑进行一些分拆。
+
+[IMPORTANT]
+.请先阅读 zstack-utility 的开发指南！
+====
+对于 xref:zstack-utility:ROOT:contribute.adoc[] 所包含的内容本文将不再赘述。
+====
+
+[NOTE]
+.小心引用 zstacklib
+====
+`ctl.py` 里 import 的 `zstacklib` 是 `zstackctl/zstackctl/zstacklib.py` 而不是 `zstacklib/zstacklib`，小心不要混淆。
+====
+
+== 如何调试
+
+[source,bash]
+----
+[root@zstack-dev ~]# head `which zstack-ctl`
+#!/bin/sh
+VIRTUAL_ENV=/var/lib/zstack/virtualenv/zstackctl <1>
+if [ ! -d $VIRTUAL_ENV ]; then
+    echo "Need to install zstackctl before using it"
+    exit 1
+fi
+
+# set utf-8
+LANG=en_US.UTF-8
+LC_ALL=en_US.utf8
+----
+<1> 可以看到 zstactl 被安装到了 `/var/lib/zstack/virtualenv/zstackctl`
+
+进到该目录下可以看到 zstack-ctl 的代码就在里面，可以直接修改 ctl.py 或其他文件来做实验和调试。
+
+[source,bash]
+----
+[root@zstack-dev ~]# cd /var/lib/zstack/virtualenv/zstackctl
+[root@zstack-dev zstackctl]# ls -lh
+total 8.0K
+drwxr-xr-x 2 root root 4.0K Feb  9 20:53 bin
+drwxr-xr-x 2 root root   23 Feb  9 20:52 include
+drwxr-xr-x 3 root root   23 Feb  9 20:52 lib
+lrwxrwxrwx 1 root root    3 Feb  9 20:52 lib64 -> lib
+-rw-r--r-- 1 root root   61 Feb  9 20:52 pip-selfcheck.json
+[root@zstack-dev zstackctl]# cd lib/python2.7/site-packages/zstackctl
+[root@zstack-dev zstackctl]# ls
+conf                                    log_collector.py
+ctl.py                                  log_collector.pyc
+ctl.pyc                                 migrate_influxdb_data.py
+fix_shared_volume.py                    migrate_influxdb_data.pyc
+fix_shared_volume.pyc                   reset_mini.py
+generate_zstackctl_bash_completion.py   reset_mini.pyc
+generate_zstackctl_bash_completion.pyc  utils
+__init__.py                             zstacklib.py
+__init__.pyc                            zstacklib.pyc
+----
+
+== zstack-ctl 如何被安装
+
+[plantuml#zstackctl_install]
+.zstackctl 安装过程
+....
+skinparam monochrome true
+skinparam ranksep 20
+skinparam dpi 150
+skinparam arrowThickness 0.7
+skinparam packageTitleAlignment left
+skinparam usecaseBorderThickness 0.4
+skinparam defaultFontSize 12
+skinparam rectangleBorderThickness 1
+
+rectangle "repo: zstack-utility" {
+  folder installation {
+    file install.sh {
+      (iz_install_zstackctl)
+      (uz_upgrade_zstack_ctl)
+    }
+  }
+  folder zstackctl {
+    (instal.sh)
+    (generate_zstackctl_bash_completion.py)
+  }
+}
+
+rectangle "repo: zstack" {
+  (conf/install/install.sh)
+}
+
+(iz_install_zstackctl) ..> (conf/install/install.sh)
+(uz_upgrade_zstack_ctl) ..> (conf/install/install.sh)
+(conf/install/install.sh) --> (instal.sh)
+(conf/install/install.sh) --> (generate_zstackctl_bash_completion.py)
+....
+
+如上图 <<zstack-ctl 如何被安装>> 所示，安装和升级 ZStack 会调用 `installation/install.sh`，最终调用到 `iz_install_zstackctl` 和 `uz_upgrade_zstack_ctl` 来处理 zstackctl 相关的逻辑。
+
+处理时会调用 zstack 仓库的 `conf/install/install.sh` 脚本，这个脚本会最终调用到 `zstack/instal.sh`，创建 virtualenv 环境并安装包、生成 bash_completion。
+
+== 如何增加一个 subcommand
+
+zstackctl 基于 `argparse` 实现，同时 `ctl.py` 提供了大量的工具类和工具方法，增加一个 subcommand 非常简单，可以参考下面的例子（为了更全面的展示，下面的例子并非 `ctl.py#GetZStackVersion` 的原始版本）：
+
+[source,bash]
+----
+class GetZStackVersion(Command):  #<1>
+    def __init__(self):
+        super(GetZStackVersion, self).__init__()
+        self.name = "get_version"  #<2>
+        self.description = "get zstack version from database, eg. 2.4.0"  #<3>
+        self.sensitive_args = ['--password']  #<4>
+        self.hide = False  #<5>
+        self.quiet = False  #<6>
+        ctl.register_command(self)  #<7>
+
+    def install_argparse_arguments(self, parser): #<8>
+        parser.add_argument('--password', required=True,
+help="Current mysql root password") #<9>
+        parser.add_argument('--force', help='Force use this deprecated command', action="store_true", default=False) #<10>
+
+    def run(self, args):  #<11>
+        hostname, port, user, password = ctl.get_live_mysql_portal()  #<12>
+        version = get_zstack_version(hostname, port, user, password)
+        info("this is just for demo")  #<13>
+----
+<1> subcommand 都需要集成 `Command` 类
+<2> `self.name` 定义了 subcommand 的名字，也就是如何被调用的名字
+<3> `self.description` 定义了描述，可以在执行 `zstack-ctl --help` 时被看到
+<4> `self.sensitive_args` 定义了敏感的参数，因为 `zstack-ctl` 的执行过程默认会打印日志到 _/var/log/zstack/zstack-ctl.log_ 如果需要避免一些参数被明文打印到日志，可以通过 `self.sensitive_args` 来实现
+<5> `self.hide` 定义了是否为隐藏 subcommand，对于暂时不需要暴露到 `zstack-ctl --help` 的命令，可以通过 self.hide` 来实现，但如果显式的直接执行 `zstack-ctl some_hidden_subcommand` 的话还是可以执行的，例如 `zstack-ctl collect_log` 就是这样的，在 help 里不存在，也不会被自动补全，但是可以直接执行
+<6> `self.quiet` 可以避免 subcommand 被记录到日志 _/var/log/zstack/zstack-ctl.log_
+<7> 直接照抄即可
+<8> 声明需要的参数，可以直接参考现有的各种参数的声明
+<9> 可以指定是否必要参数，提供说明文档（建议多写一些）
+<10> 对于诸如 `--debug`、`--force` 这类参数，可以使用 `action="store_true"`
+<11> 直接照抄即可
+<12> `ctl.py` 提供了很多有用的工具方法，“造轮子”前不妨在代码里多搜索
+<13> `ctl.py` 提供了 `info`、`info_and_debug`、`info_verbose`、`warn`、`error`、`error_not_exit` 等打印信息的函数，具体可以参考函数定义
+
+[NOTE]
+.如何废弃 subcommand？
+====
+对于一些计划废弃的命令，不建议直接删除，而是最好先标记为 `hide` 一段时间，避免大面积破坏用户的脚本
+====
+
+== 如何生成 bash completion
+
+正确实现 subcommand 后 `zstack-ctl` 在安装时会调用 `generate_zstackctl_bash_completion.py`，从而生成自动补全。
+
+具体可以参考 <<zstackctl_install>>。

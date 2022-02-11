@@ -1,0 +1,73 @@
+= 根据环境规模定制 ZStack Cloud 配置：set_deployment
+:icons: font
+:source-highlighter: rouge
+:docinfo: shared
+:max-include-depth: 16
+
+== 描述
+
+`zstack-ctl set-deployment` 用于根据环境规模设置 ZStack Cloud 集群的一些配置参数。
+
+
+== 参数说明
+
+[cols="e,a,m"]
+.参数说明
+|===
+|参数|介绍|示例
+
+|--size
+|指定ZStack Cloud集群部署资源的规模，包括：small、large、medium、default。
+|zstack-ctl set_deployment --size small
+
+|===
+
+
+不同资源数量的推荐规模如下：
+
+ * default：默认环境，物理机数量 50 台以内时（无需设置）；
+ * small：小型环境，物理机数量 100 以内，或云主机数量 1000 以内推荐使用该设置；
+ * medium：中型环境，物理机数量 400 以内，或云主机数量 4000 以内推荐使用该设置；
+ * large：大型环境，物理机数量 1000 以内，或云主机数量 10000 以内推荐使用该设置。
+
+== 进阶使用
+
+[CAUTION]
+.注意
+====
+以下内容只作为原理了解，不建议随意直接改变生产环境的下面参数！很多参数直接调大可能会适得其反！
+
+以下参数的权威解释应当参考 ZStack 仓库的文档。
+====
+
+`set-deployment` 目前支持配置四个参数：
+
+JVM heap 大小::
+影响 JVM 运行性能，例如在 xref:status.adoc#_检查管理节点进程和_jvm_状态[检查管理节点进程和_jvm_状态] 中发现 FGC 较高切勿其他异常，可能需要调整这个值。
+
+数据库的线程池大小::
+影响 ZStack Cloud 管理节点的数据库连接性能，例如在 xref:status.adoc#_检查_mysql_状态[检查 mysql 状态] 中发现数据库 CPU 使用不高，但是连接较多，可能需要调整这个值。
+
+[WARNING]
+.不要随意调整这个值！
+====
+直接将这个值调大可能只会“空耗”管理节点的线程资源，或者直接将数据库“打挂”，如果定位到瓶颈在数据库，应当首先检查是否存在大量无效访问、管理节点的数据库查询有死锁、慢查询等问题，而不是一味调整线程池！
+====
+
+计算节点任务线程并发数::
+影响管理节点中用于执行计算节点任务的线程数量，会自动在这个数值和管理节点总线程数的五分之一中取最大值（因此一味调大是没有意义的）。
+
+监控数据拉取间隔::
+影响 ZStack Cloud 的监控数据拉取间隔，单位为秒。数字越大，拉取间隔越长，监控精度也就越低，但用于存储和计算监控数据所需要的资源越少；数字越大，拉去间隔越短，监控精度越高，但用于存储和计算监控数据所需要的资源就越多。
+
+=== 配置原理
+
+所有配置都是通过 `zstack-ctl` 来配置的，具体 JVM 参数通过环境变量来配置，其他则通过配置文件来配置：
+
+[source,python]
+.以下来自 `zstack-utility` 的真实代码
+----
+include::../examples/zstack-ctl/zstackctl/ctl.py[tag=setdeploymentconfig,indent=0]
+# 下面的每一个 set 中的数字分别对应上面从上到下的 JVM heap、maxPoolSize、maxThreads.ratio 和 scrapeInterval
+include::../examples/zstack-ctl/zstackctl/ctl.py[tag=deploymentProfiles,indent=0]
+----

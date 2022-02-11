@@ -1,0 +1,268 @@
+= 获取 ZStack Cloud 当前状态：status
+:icons: font
+:source-highlighter: rouge
+:docinfo: shared
+:max-include-depth: 16
+
+== 描述
+
+`zstack-ctl status` 用于显示指定节点上 ZStack Cloud 的状态和信息
+
+== 参数说明
+
+[cols="e,a,m"]
+.参数说明
+|===
+|参数|介绍|示例
+|none
+|显示当前节点的状态和信息
+|zstack-ctl status
+|--host HOST
+|显示指定节点的状态和信息
+|zstack-ctl status --host 192.168.0.10
+|===
+
+== 进阶使用
+
+下面是一个典型的 `status` 运行结果：
+[source,bash]
+----
+[root@zstack-dev ~]# zstack-ctl status --host 127.0.0.1
+Warning: Permanently added '127.0.0.1' (ED25519) to the list of known hosts.
+ZSTACK_HOME: /usr/local/zstack/apache-tomcat/webapps/zstack <1>
+zstack.properties: /usr/local/zstack/apache-tomcat/webapps/zstack/WEB-INF/classes/zstack.properties <2>
+log4j2.xml: /usr/local/zstack/apache-tomcat/webapps/zstack/WEB-INF/classes/log4j2.xml
+PID file: /usr/local/zstack/management-server.pid
+log file: /usr/local/zstack/apache-tomcat/logs/management-server.log
+version: 4.3.12 (ZStack-Cloud 4.3.12.4663)
+MN status: Running [PID:24108] <3>
+UI status: Running [PID:35833] http://10.0.57.94:5000 <4>
+----
+<1> ZSTACK_HOME 目录位置
+<2> 管理节点配置文件位置
+<3> 管理节点运行状态
+<4> UI 运行状态
+
+=== 管理节点运行状态
+
+管理节点的运行状态是通过向管理节点发送 API 消息 `APIIsReadyToGoMsg` 来得到的。获取方法类似于
+
+[source,bash]
+----
+include::../examples/zstack-ctl/zstackctl/ctl.py[tag=get_zstack_status,indent=0]
+----
+
+可以看到原理是 10s 内尝试 10 次，每次超时时间为 1s（实际感受可能会比这个时间长？）。
+
+如果 10 次都没有得到结果则根据 _pid_ 来进行判断，如果 _pid_ 对应的进程存在则认为管理节点此时处于 `Unknown` 状态。否则若 pid 不存在则认为管理节点处于 `Stopped` 状态。
+
+如果 API 消息 `APIIsReadyToGoMsg` 在 10 次内有返回，则根据返回结果再次判断，如果有返回 state 则会认为管理节点处于 `Running` 状态，否则处于 `Unknown` 状态。
+
+[NOTE]
+.提示
+====
+相比 `Unknown`，更合适的状态名称可能是 `Busy`，因为此时管理节点并非是没有在运行，而是“没空”响应 `APIIsReadyToGoMsg` 消息。
+====
+
+[source,bash]
+.典型的 `APIIsReadyToGoMsg` 返回结果
+----
+[root@zstack-dev ~]# curl --noproxy --connect-timeout=1 --retry 10 --retry-delay 0 --retry-max-time 10 --max-time 10 -H "Content-Type: application/json" -d '{"org.zstack.header.apimediator.APIIsReadyToGoMsg": {}}' http://127.0.0.1:8080/zstack/api | jq
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100   294  100   239  100    55  17258   3971 --:--:-- --:--:-- --:--:-- 18384
+{
+  "state": "Done",
+  "createdDate": "Feb 8, 2022 4:49:44 PM",
+  "finishedDate": "Feb 8, 2022 4:49:44 PM",
+  "result": "{\"org.zstack.header.apimediator.APIIsReadyToGoReply\":{\"managementNodeId\":\"0f2ccca4aea83ff08dd11f090df36080\",\"success\":true}}"
+}
+----
+
+=== 管理节点 Unknown 的处理方法
+
+当管理节点汇报为 unknown 后，系统会自动生成一个 catalina 日志，方便用于后续的分析。该日志的路径：`$ZSTACK_HOME/../../logs/catalina.out` （一般来说也就是 `/usr/local/zstack/apache-tomcat/logs/catalina.out`）
+
+==== 注意事项
+
+* 双节点情况下，所有物理机都达到 Connected 状态比单节点慢。因为第二个节点起来后，会有物理机在两个节点之间重新分配的过程，会导致一半物理机重连，因此管理节点可能要“更加忙碌”；
+* 双节点情况下，做 `zsha2 demote` 之类的操作会导致 vip 切换，因而导致数据库连接的切换 不要随意 demote!；
+* `zsha2 start_node` 会等待数据库同步完成再启动  MN。
+
+[quote,Dr. Christopher C. Kraft Jr.]
+If you don't know what to do, don't do anything.
+
+==== 出现 unknown 怎么办？
+
+===== 检查 zsha2 状态
+双节点情况下，首先需要检查的是 `zsha2 status`，确保数据库同步。如果数据库未同步，而管理节点被停掉，zstack-ha 服务会等待同步完成之后再启动 MN。
+
+[source,bash]
+journalctl -u zstack-ha --since yesterday | grep zstack-hamon
+
+==== 检查管理节点日志
+
+运行 `zstack-ctl taillog` 如果一直不断的刷日志，且并非一直打印异常信息，就说明管理节点忙于处理工作，线程忙碌。
+
+[source,bash]
+grep 'slow future' /usr/local/zstack/apache-tomcat/logs/management-server.log
+
+如果能得到结果，说明有大量的同步线程将线程池占满了。
+
+下图 <<slow_future_example>> 是一个 slow future 的例子，通过 slow future 判断可能是 IAM2 相关导致的。
+
+[#slow_future_example]
+.IAM2 导致的 Slow Future
+image::slow_future.png[]
+
+[TIP]
+.比较常见的 _Unknown_ 情况
+====
+slow future 一般是最常见的造成管理节点 `Unknown` 的情况！
+
+另一种常见的情况是 `Never Stop` 的 VM 非常多，在启动管理节点的时候有可能出现 `Unknown`，此时建议多等一些时间或者将全局高可用关闭再启动管理节点。
+====
+
+==== 查看 catalina 日志
+
+可以通过下面的命令查看 catalina 日志是否有 thread dump，以及 thread dump 时间
+[source,bash]
+grep -B 1 'Full thread dump' $ZSTACK_HOME/../../logs/catalina.out
+
+通过下面的命令找到最“共性”的线程
+
+[source,bash]
+----
+keyword=`grep 'Full thread dump' -B 1 $ZSTACK_HOME/../../logs/catalina.out | tail -n 2 | head -n 1`
+sed -n "/$keyword/,/class space/p" $ZSTACK_HOME/../../logs/catalina.out | grep zstack | sort | uniq -c | sort
+----
+
+下面的 <<normal_catalina>> 是正常的结果，可以看到没有明显的“共性”的线程。
+
+[source#normal_catalina,bash]
+.正常的 catalina 结果
+----
+      1 "Hibernate Search sync consumer thread for index org.zstack.vpcfirewall.entity.VpcFirewallRuleTemplateVO" #183 daemon prio=5 os_prio=0 tid=0x00007f6962a17800 nid=0x63bb runnable [0x00007f68cabea000]
+      1 "Hibernate Search sync consumer thread for index org.zstack.vpcfirewall.entity.VpcFirewallVO" #159 daemon prio=5 os_prio=0 tid=0x00007f69629b1800 nid=0x639c runnable [0x00007f68caceb000]
+      1 "Hibernate Search sync consumer thread for index org.zstack.vrouterRoute.VRouterRouteTableVO" #103 daemon prio=5 os_prio=0 tid=0x00007f69626ac000 nid=0x6356 waiting on condition [0x00007f68cbaf9000]
+      1 	- locked <0x00000004fb6bf8a0> (a org.zstack.portal.managementnode.ManagementNodeManagerImpl)
+      1 	- locked <0x0000000764abf920> (a org.zstack.header.core.FutureReturnValueCompletion)
+      2 	at org.zstack.core.aspect.ThreadAspect.ajc$around$org_zstack_core_aspect_ThreadAspect$4$de40e327proceed(ThreadAspect.aj:141)
+      2 	at org.zstack.core.aspect.ThreadAspect$ThreadAspect$4$AjcClosure1.run(ThreadAspect.aj:1)
+      2 	at org.zstack.core.aspect.ThreadAspect$ThreadAspect$4.call_aroundBody0(ThreadAspect.aj:145)
+      2 	at org.zstack.core.aspect.ThreadAspect$ThreadAspect$4.call(ThreadAspect.aj:1)
+      2 	at org.zstack.core.aspect.ThreadAspect$ThreadAspect$4.call(ThreadAspect.aj:144)
+      4 	at org.zstack.core.aspect.LogSafeAspect.ajc$around$org_zstack_core_aspect_LogSafeAspect$2$2cb68277(LogSafeAspect.aj:36)
+      4 	at org.zstack.core.aspect.LogSafeAspect.ajc$around$org_zstack_core_aspect_LogSafeAspect$2$2cb68277proceed(LogSafeAspect.aj:34)
+      4 	at org.zstack.core.thread.ThreadFacadeImpl$Worker.call(ThreadFacadeImpl.java:111)
+----
+
+下面的图 <<abnormal_catalina_1>> 可以看到大量的 `VmInstanceManagerImpl.java` 和 `LogsafeAspect.aj`由此定位到和这部分相关（详见内网 Jira：ZSTAC-41911）。
+
+[#abnormal_catalina_1]
+.异常的 catalina 例子 1
+image::abnormal_catalina.png[]
+
+下面的图 <<abnormal_catalina_2>> 可以看到大量的 IAM2 相关线程，由此定位到和 IAM2 相关。
+
+[#abnormal_catalina_2]
+.异常的 catalina 例子 2
+image::abnormal_catalina_2.png[]
+
+==== 检查 MN 线程数、JVM 配置
+
+[source,bash]
+----
+top -p 1234 -H -b -n 1 | grep -c  zs-thread-
+----
+
+线程数可以通过 zstack.properties 文件的 ThreadFacade.maxThreadNum 配置，默认 150  - 这个值不能太大，也不能太小。
+
+太大：每个线程都需要消耗内存（512kb ~ 1 mb），而且有线程调度开销；
+太小：线程不够用，MN unknown，不建议低于 64 也轻易别超过 512。
+
+管理节点的 JVM heap 大小 默认配置为 12 GB，对于规模较大的系统，可能会偏小。
+
+[source,bash]
+----
+ps aux | grep appName[=]zstack | grep -Eo 'Xmx[[:alnum:]]+' <1>
+zstack-ctl getenv <2>
+zstack-ctl setenv CATALINA_OPTS='-Xmx8192m' <3>
+----
+<1> 查看 MN 的 jvm heap 大小
+<2> 看当前的 ZStack 环境变量配置
+<3> 可以改成更高例如 12 GB，注意如果 'getenv' 里有 CATALINA_OPS，那就保持原来的配置，并加上 -Xmx12288m，不要覆盖用户的设置。
+
+[IMPORTANT]
+.一定要通过 `set_deployment` 配置线程和 JVM！
+====
+建议通过 `zstack-ctl set_deployment` 来配置，对于较大的环境（物理机数量多或 VM 数量多）可以通过 `zstack-ctl set_deployment large` 来配置线程池等。
+
+详细参考 xref:set_deployment.adoc[]
+====
+
+==== 检查 MySQL 状态
+
+MN 数据库连接池大小通过 zstack.properties 文件中的 DbFacadeDataSource.maxPoolSize 配置，默认 100。
+
+在 vip 所在管理节点上，查看一下数据库连接是否忙碌：
+
+[source,bash]
+----
+mysql -uzstack -p -se "show processlist" <1>
+mysql -uzstack -p -se "show engine innodb status \G" <2>
+journalctl -u mariadb --since yesterday  <3>
+----
+<1> 看活跃连接
+<2> 查看关键字 "DEADLOCK"
+<3> 数据库相关日志
+
+如果活跃连接数并不高，也没有 DEADLOCK 记录，那么瓶颈不在数据库。
+
+==== 检查管理节点进程和 JVM 状态
+
+通过运行 `top` 和 `jstat` 检查进程和 JVM 状态。
+
+[source,bash]
+----
+top -p `cat ~zstack/management-server.pid` -H -b -n 1    <1>
+jstat -gcutil `cat ~zstack/management-server.pid` 2s   <2>
+----
+<1> 观察 MN 的状况，看看线程是否忙碌
+<2> 每 2 秒打印一次 GC 占用率，FGC 是否正常。FGC 正常状态保持为一个很小的数目。
+
+[source#topexample,bash,highlight=9..]
+.top 的执行结果
+----
+[root@zstack-dev ~]# top -p `cat ~zstack/management-server.pid` -H -b -n 1
+top - 17:09:01 up 123 days, 21:03,  5 users,  load average: 0.08, 0.16, 0.15
+Threads: 1328 total,   0 running, 1328 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  1.4 us,  1.4 sy,  0.0 ni, 97.2 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+KiB Mem : 12123404 total,  1875864 free,  8157416 used,  2090124 buff/cache
+KiB Swap:  8257532 total,  8028860 free,   228672 used.  3001848 avail Mem
+
+   PID USER      PR  NI    VIRT    RES    SHR S %CPU  %MEM     TIME+ COMMAND
+ 25554 zstack    20   0 19.498g 6.482g   6708 S  4.5  56.1   4:24.04 Hibernate Searc
+ 30285 zstack    20   0 19.498g 6.482g   6708 S  4.5  56.1  74:23.04 pool-5-thread-1
+ 24108 zstack    20   0 19.498g 6.482g   6708 S  0.0  56.1   0:00.01 java
+ 24109 zstack    20   0 19.498g 6.482g   6708 S  0.0  56.1   0:02.38 java
+ 24110 zstack    20   0 19.498g 6.482g   6708 S  0.0  56.1   5:19.90 java
+ 24111 zstack    20   0 19.498g 6.482g   6708 S  0.0  56.1   5:21.23 java
+----
+
+可以从 <<topexample>> 看到这里的 CPU 不高，属于正常状态。
+
+[source#jstatexample,bash]
+.jstat 的执行结果
+----
+[root@zstack-dev ~]# jstat -gcutil `cat ~zstack/management-server.pid` 2s
+  S0     S1     E      O      M     CCS    YGC     YGCT    FGC    FGCT     GCT
+  0.00  61.31  68.59  64.02  87.51  71.02   9021  964.055     9   14.183  978.238
+  0.00  61.31  68.60  64.02  87.51  71.02   9021  964.055     9   14.183  978.238
+  0.00  61.31  68.61  64.02  87.51  71.02   9021  964.055     9   14.183  978.238
+  0.00  61.31  68.61  64.02  87.51  71.02   9021  964.055     9   14.183  978.238
+  0.00  61.31  68.86  64.02  87.51  71.02   9021  964.055     9   14.183  978.238
+----
+
+可以从 <<jstatexample>> 看到这里的 FGC 不高而且没有增长，属于正常状态。
+

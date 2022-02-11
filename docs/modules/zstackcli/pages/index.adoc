@@ -1,0 +1,168 @@
+= ZStack Cloud 命令行：zstack-cli
+:icons: font
+:source-highlighter: rouge
+
+`zstack-cli` 提供了向 ZStack Cloud 发送 API 请求的 CLI 命令行，可以通过 `zstack-cli --help` 查看 `zstack-cli` 的通用参数，
+
+[source,bash]
+----
+[root@zstack-dev ~]# zstack-cli --help
+Usage: -c [options]
+
+Options:
+  -h, --help            show this help message and exit
+  -H HOST, --host=HOST  [Optional] IP address or DNS name of a ZStack
+                        management node. Default value: localhost
+  -p PORT, --port=PORT  [Optional] Port that the ZStack management node is
+                        listening on. Default value: 8080
+  -d DEPLOY_CONFIG_FILE, --deploy=DEPLOY_CONFIG_FILE
+                        [Optional] deploy a cloud from a XML file.
+  -t DEPLOY_CONFIG_TEMPLATE_FILE, --template=DEPLOY_CONFIG_TEMPLATE_FILE
+                        [Optional] variable template file for XML file
+                        specified in option '-d'
+  -D ZSTACK_CONFIG_DUMP_FILE, --dump=ZSTACK_CONFIG_DUMP_FILE
+                        [Optional] dump a cloud to a XML file
+  -P ADMIN_PASSWORD, --password=ADMIN_PASSWORD
+                        [Optional] admin account password for dumping and
+                        recovering cloud environment. It can only be used when
+                        set -D or -d option. Default is 'password'.
+  -s, --no-secure       [Optional] if setting -s, will save password
+                        information in command history.
+----
+
+此外，直接进入 `zstack-cli` 后输入 `help` 还会有更多的用法介绍以及 API 列表：
+
+[source,bash]
+----
+[root@zstack-dev ~]# zstack-cli
+
+  ZStack command line tool
+  Type "help" for more information
+  Type Tab key for auto-completion
+  Type "quit" or "exit" or Ctrl-d to exit
+
+admin >>>help
+Usage:
+-------------------------------------------------------------------------------
+  help          show help
+
+  more [No.]    show a single or multiple command history. If a command NUM is provided, only
+                history of that command will show.
+
+                >>> more
+
+                >>> more 1
+
+
+  save [No.] [TARGET_FILE_NAME|TARGET_FOLDER]
+                save a single or multiple command history to a file or a directory.
+
+                >>> save 1
+                save history command 1 result to ./COMMAND-NAME-1.json
+
+                >>> save 1,2,3,4
+                save command history 1,2,3,4 to ./COMMAND-1.json, ./COMMAND-2.json,
+                ./COMMAND-3.json, and ./COMMAND-4.json
+
+                >>> save 1 /tmp
+                save command history 1 to /tmp/COMMAND-1.json
+
+                >>> save 1 /tmp/1.json
+                save command history 1 to /tmp/1.json
+
+  ZSTACK_API [API_PARAMS]
+                execute a API command like LogInByAccount, QueryHost.
+
+                >>> LogInByAccount accountName=admin password=password
+
+                >>> QueryHost
+
+                If API PARAMS is a list type, use ',' to split contents.
+
+                >>> AddVmNicToSecurityGroup \
+                        securityGroupUuid=561f792761124a9a8fa9198684eaf5f2 \
+                        vmNicUuids=f994b93fe9354fd89061ea549642c6a4,\
+                                aee96364351e470abe1cfd919ce630b8,\
+                                e0c8016595a548628523d97b70e984e8
+
+                the parameter 'rules' of AddSecurityGroupRule is a list containing items of
+                map, you need to use a JSON object in this case.
+
+                >>> AddSecurityGroupRule \
+                        securityGroupUuid=561f792761124a9a8fa9198684eaf5f2 \
+                        rules='[{"type":"Ingress","protocol":"TCP",\
+                                "startPort":100,"endPort":1000},\
+                                {"type":"Ingress","protocol":"UDP",\
+                                "startPort":100,"endPort":1000}]'
+
+  Query* [conditions] [Query_API_PARAMS]
+                query resources with query APIs; find details at http://zdoc.readthedocs.org/en/latest/userManual/query.html.
+
+                conditions are arranged in format of:
+
+                    CONDITION_NAME(no space)OPERATOR(no space)VALUE
+
+                [CONDITION_NAME] is a field name of a resource, for example, uuid, name.
+
+                [OPERATOR] is one of: '='. '!=', '>', '<', '>=', '<=',
+                '?=', '!?=', '~=', '!~='
+
+                most operators are straightforward except follows:
+
+                '?=": check whether a value is within a set of values; values are split by ','; this
+                      operator is equal to 'in' operator in SQL.
+
+                      >>> QueryVmInstance name?=VM1,VM2
+
+                '!?=': check whether a value is NOT within a set of values; values are split by ',';
+                       this operator is equal to 'not in' operator in SQL.
+
+                      >>> QueryVmInstance vmNics.ip!?=192.168.0.1,192.168.0.2
+
+                '~=': simple pattern matching; use % to match any number of characters, even zero characters; use _
+                      to match exactly one character; this operator is equal to 'like' operator in SQL.
+
+                      >>> QueryHost name~=IntelCore%
+
+                      >>> QueryHost name~=IntelCore_7
+
+                '!~=': negation of simple pattern matching; use % to match any number of characters, even zero
+                       characters; use _ to matches exactly one character; this operator is equal to 'not like' in SQL.
+
+                      >>> QueryHost name!~=IntelCore%
+
+                      >>> QueryHost name!~=IntelCore_7
+
+                '=null': NULL value test
+
+                      >>> QueryVolume vmInstanceUuid=null
+
+                '!=null': NOT NULL value test
+
+                      >>> QueryVolume vmInstanceUuid!=null
+
+                [VALUE] is a string containing value as query a condition; ',' is used to split value into a string list.
+                        strings are compared as case insensitive.
+ZStack API
+-------------------------------------------------------------------------------
+  AckAlarmData
+
+  AckEventData
+
+  AddAccessControlListEntry
+
+  AddAccessControlListRedirectRule
+
+  AddAccessControlListToLoadBalancer
+
+  AddAccessControlRule
+
+  AddActionToAlarm
+
+  AddActionToEventSubscription
+
+  AddAliyunEbsBackupStorage
+
+  ... <1>
+----
+<1> 因为 API 太多因此将后面内容省去了

@@ -1,0 +1,6 @@
+* xref:index.adoc[]
+** xref:contribute.adoc[]
+** xref:sharedblock.adoc[]
+** xref:ha_plugin/index.adoc[]
+*** xref:ha_plugin/sharedblock.adoc[]
+*** xref:ha_plugin/ceph.adoc[]

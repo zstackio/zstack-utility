@@ -1378,10 +1378,12 @@ def create_check_mgmt_node_command(timeout=10, mn_node='127.0.0.1'):
     check_hosts()
     what_tool = use_tool()
     mn_port = get_mn_port()
+    # tag::get_zstack_status[]
     if what_tool == USE_CURL:
         return ShellCmd('''curl --noproxy --connect-timeout=1 --retry %s --retry-delay 0 --retry-max-time %s --max-time %s -H "Content-Type: application/json" -d '{"org.zstack.header.apimediator.APIIsReadyToGoMsg": {}}' http://%s:%s/zstack/api''' % (timeout, timeout, timeout, mn_node, mn_port))
     elif what_tool == USE_WGET:
         return ShellCmd('''wget --no-proxy -O- --tries=%s --timeout=1  --header=Content-Type:application/json --post-data='{"org.zstack.header.apimediator.APIIsReadyToGoMsg": {}}' http://%s:%s/zstack/api''' % (timeout, mn_node, mn_port))
+        # end::get_zstack_status[]
     else:
         return None
 
@@ -5213,7 +5215,7 @@ class RestoreMysqlPreCheckCmd(Command):
         self.description = (
             "check before restore mysql data from backup file"
         )
-        self.hide = True
+        self.hide = False # expose check command since it's no harm and useful
         self.sensitive_args = ['--mysql-root-password']
         self.hostname = None
         self.port = None
@@ -5262,13 +5264,16 @@ class RestoreMysqlPreCheckCmd(Command):
         except CtlError as err:
             self.check_fail_list.append(err.message)
 
+        # tag::check_restore_mysql[]
         create_tmp_table = "drop table if exists `TempVolumeEO`; " \
                            "create table `TempVolumeEO` like .`VolumeEO`;"
 
         check_sql = "select tv.uuid,`name`,installPath from `TempVolumeEO` tv where tv.uuid in " \
         "(select uuid from `VolumeEO`)" \
         " and tv.installPath != (select installPath from `VolumeEO` where uuid = tv.uuid);"
+
         drop_table = "drop table if exists `TempVolumeEO`;"
+        # end::check_restore_mysql[]
 
         fd, fname = tempfile.mkstemp()
         os.write(fd, create_tmp_table + "\n")
@@ -5297,13 +5302,13 @@ class RestoreMysqlCmd(Command):
         self.description = (
             "Restore mysql data from backup file"
         )
-        self.hide = True
+        self.hide = False # should expose restore_mysql rather than rollback_db
         self.sensitive_args = ['--mysql-root-password', '--ui-mysql-root-password']
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
         parser.add_argument('--from-file', '-f',
-                            help="The backup filename under /var/lib/zstack/mysql-backup/ ",
+                            help="The backup file full path",
                             required=True)
         parser.add_argument('--mysql-root-password',
                             help="mysql root password of zstack database",
@@ -8273,6 +8278,7 @@ class RollbackDatabaseCmd(Command):
         self.name = 'rollback_db'
         self.description = "rollback the database to the previous version if the upgrade fails"
         self.sensitive_args = ['--root-password']
+        self.hide = True # should use restore_mysql rather than rollback_db!
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
@@ -8870,12 +8876,14 @@ class InstallLicenseCmd(Command):
         if args.xsky is not None:
             install_xsky_license(args)
 
+# tag::deploymentProfiles[]
 deploymentProfiles = {
         'small':  ( 4,  64, 0.6, 15),
         'medium': ( 8, 128, 0.5, 30),
         'large':  (16, 128, 0.4, 60),
         'default':( 12, 100, 0.6, 15),
 }
+# end::deploymentProfiles[]
 
 class SetDeploymentCmd(Command):
     def __init__(self):
@@ -8912,10 +8920,12 @@ class SetDeploymentCmd(Command):
             raise CtlError('unexpected size: %s' % args.size)
 
         heap, psize, ratio, sint = deploymentProfiles[s]
+        # tag::setdeploymentconfig[]
         commands.getstatusoutput("zstack-ctl setenv CATALINA_OPTS='%s'" % self.build_catalina_opts(heap))
         commands.getstatusoutput("zstack-ctl configure DbFacadeDataSource.maxPoolSize=%s" % psize)
         commands.getstatusoutput("zstack-ctl configure KvmHost.maxThreads.ratio=%s" % ratio)
         commands.getstatusoutput("zstack-ctl configure Prometheus.scrapeInterval=%s" % sint)
+        # end::setdeploymentconfig[]
 
 class ClearLicenseCmd(Command):
     def __init__(self):

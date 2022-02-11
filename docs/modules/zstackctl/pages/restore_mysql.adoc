@@ -1,0 +1,81 @@
+= 恢复数据库备份：restore_mysql
+:icons: font
+:source-highlighter: rouge
+:docinfo: shared
+:max-include-depth: 16
+
+== 描述
+
+`zstack-ctl restore_mysql` 用于恢复 ZStack Cloud 管理节点和 UI 的数据库备份。
+
+[CAUTION]
+.注意
+====
+`zstack-ctl restore_mysql` 命令是 `zstack-ctl rollback_db` 命令的更新版本，提供了更多的安全检查和更完善的恢复手段。
+
+`zstack-ctl rollback_db` 已经被弃用且不再更新，请不要再使用 `zstack-ctl rollback_db`，误用可能会导致数据库不一致、管理节点异常甚至业务异常！
+====
+
+== 参数说明
+
+[cols="e,a,m"]
+.参数说明
+|===
+|参数|介绍|示例
+
+|--from-file FROM_FILE
+|指定要恢复的备份文件所在的位置，备份文件应该是通过 `zstack-ctl dump_mysql` 生成的备份文件
+|zstack-ctl restore_mysql -f backup.gz
+
+|--mysql-root-password MYSQL_ROOT_PASSWORD
+|管理节点的 mysql 数据库的 root 密码，如果不填的话默认为空
+|zstack-ctl restore_mysql --mysql-root-password password
+
+|--ui-mysql-root-password UI_MYSQL_ROOT_PASSWORD
+|UI 的 mysql 数据库的 root 密码，如果不填的话默认与 _--mysql-root-password_ 指定的密码一致
+|zstack-ctl restore_mysql --ui-mysql-root-password password
+
+|--skip-ui
+|跳过 UI 数据库恢复
+|zstack-ctl restore_mysql --skip-ui
+
+|--only-restore-self
+|双管理节点环境需只恢复自身数据库而不恢复对端节点，#请不要手动设置这个，可能会导致意想不到的问题#！
+|zstack-ctl restore_mysql --only-restore-self
+
+|--skip-check
+|跳过恢复数据库前的自动的安全检查，#请不要手动设置这个，可能会导致意想不到的问题#！
+|zstack-ctl restore_mysql --skip-check
+
+|===
+
+[IMPORTANT]
+.执行这个命令务必要小心谨慎！
+====
+尽管 `restore_mysql` 尽可能的做了各种安全检查，但仍然无法保证绝对的可靠性，执行数据库恢复请务必小心谨慎！
+
+ * 如果要恢复的数据库与当前时间相差很远则不建议执行
+ * #如果要恢复的数据库与当前状态有过创建快照、创建虚拟机等数据面操作则不可以执行，否则可能会出现业务数据异常#（执行命令时会自动检查云盘的 InstallPath 是否有变化）
+ * 如果已经出现了双管理节点数据库不一致则不建议执行
+ * 不要在管理节点运行状态下运行（执行该命令时会自动检查）！
+====
+
+[NOTE]
+====
+执行 `zstack-ctl restore_mysql` 时，出于业务安全考虑，会自动关闭全局设置中的云主机高可用，请在确认一切正常后手动打开。
+
+执行 `zstack-ctl restore_mysql` 时，出于业务安全考虑，会自动生成一份数据库备份。
+====
+
+== 进阶使用
+
+`restore_mysql` 会在执行前按顺序做以下的安全检查和动作：
+
+1. 检查备份文件是否存在
+2. 检查备份文件的 gzip 格式是否正常
+3. 通过 xref:check_restore_mysql.adoc[] 检查当前数据库和待恢复数据库的 `VolumeEO` 表的 `uuid` 和 `installPath` 是否全部一致，如果不一致则报错（不检查 Volume 数量是否完全一致）
+4. 关闭管理节点（包括双管理节点）
+5. 备份数据库（在当前管理节点）
+6. 在当前管理节点恢复数据库，恢复前会将数据库备份文件中的云主机高可用全局配置关闭掉
+7. 如果是双管理节点的话，将数据库备份文件拷贝到另一管理节点进行恢复，恢复前一样会关闭云主机高可用
+8. 恢复 UI 数据库（如果选项里没有跳过 UI 数据库的话）

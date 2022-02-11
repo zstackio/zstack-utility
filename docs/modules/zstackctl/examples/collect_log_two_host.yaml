@@ -1,0 +1,7 @@
+host:
+    description: get something we intrested in
+    type: target
+    list: [10.0.54.172, 10.0.64.74]
+    logs:
+      - {name: route-logs, exec: 'route -n'}
+

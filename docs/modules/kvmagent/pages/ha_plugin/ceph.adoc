@@ -1,0 +1,5 @@
+= ha_plugin 中 ceph 主存储的实现
+
+ceph 的存储心跳发展过数个版本，目前最新版本是在 ZStack Cloud 4.3 进入主线的存储心跳实现，function spec 见 http://confluence.zstack.io/pages/viewpage.action?pageId=96491914
+
+（待补充）

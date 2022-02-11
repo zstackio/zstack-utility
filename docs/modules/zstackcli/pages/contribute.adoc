@@ -1,0 +1,46 @@
+= 如何开发 zstack-cli
+:icons: font
+:source-highlighter: rouge
+:docinfo: shared
+:max-include-depth: 16
+
+`zstack-cli` 被设计根据 `apibinding` 自动完成 API 的调用、自动补全、参数生成，因此大部分时间都不需要特意“开发” `zstack-cli`。
+
+[IMPORTANT]
+.请先阅读 zstack-utility 的开发指南！
+====
+对于 xref:zstack-utility:ROOT:contribute.adoc[] 所包含的内容本文将不再赘述。
+====
+
+== 如何调试
+
+[source,bash]
+----
+[root@zstack-dev ~]# head `which zstack-cli`
+#!/bin/sh
+VIRTUAL_ENV=/var/lib/zstack/virtualenv/zstackcli <1>
+if [ ! -d ${VIRTUAL_ENV} ]; then
+    echo "Need to install zstackcli before using it"
+    exit 1
+fi
+
+# set utf-8
+LANG=en_US.UTF-8
+LC_ALL=en_US.utf8
+----
+<1> 可以看到 zstacli 被安装到了 `/var/lib/zstack/virtualenv/zstackcli`
+
+进到该目录下可以看到 zstack-cli 的代码就在里面，可以直接修改 cli.py 或其他文件来做实验和调试。
+
+[source,bash]
+----
+[root@zstack-dev ~]# cd /var/lib/zstack/virtualenv/zstackcli/
+[root@zstack-dev zstackcli]# ls
+bin  include  lib  lib64  pip-selfcheck.json
+[root@zstack-dev zstackcli]# cd lib/python2.7/site-packages/zstackcli
+[root@zstack-dev zstackcli]# ls
+account_operations.py   cli.py   deploy_config.py   __init__.py   parse_config.py   read_config.py   resource_operations.py   test.py
+account_operations.pyc  cli.pyc  deploy_config.pyc  __init__.pyc  parse_config.pyc  read_config.pyc  resource_operations.pyc  test.pyc
+----
+
+== zstack-cli 如何被安装
