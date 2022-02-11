@@ -47,7 +47,7 @@ UI status: Running [PID:35833] http://10.0.57.94:5000 <4>
 
 管理节点的运行状态是通过向管理节点发送 API 消息 `APIIsReadyToGoMsg` 来得到的。获取方法类似于
 
-[source,bash]
+[source,python]
 ----
 include::../examples/zstack-ctl/zstackctl/ctl.py[tag=get_zstack_status,indent=0]
 ----

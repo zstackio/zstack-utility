@@ -17,6 +17,9 @@ zstack-utility 中的各个目录内容相互关系比较松散，除了个别�
 确保本地测试好再提交::
 目前 zstack-utility 的代码缺乏自动化的单元测试，比较依赖 BAT、nightly 和手工测试，反馈周期比较长，对于可以做本地测试的代码，应当编写相应的本地测试方法，并将代码放置到模块里放置测试的目录，例如 `kvmagent/kvmagent/test`。
 
+修改、增加对外暴露的使用方法或复杂的逻辑时要一并提交文档::
+zstack-utility 已经支持了基于 antora 一整套文档工具链，并可以在 https://zstack.dev/zstack-utility 实时查看，对于对外暴露的使用方法（例如 xref:zstackctl:status.adoc），请在提交代码时同时提交文档；对于复杂的逻辑（例如 xref:kvmagent:ha_plugin/index.adoc），也请在提交代码时同时提交文档。此外，编写文档的一个原则是“谁主张，谁举证”，例如 `zstack-ctl status` 暴露了 `unknown` 的状态，那么应当在文档中一并说明其原理和处理方法。
+
 更详细各个组件的的开发文档参考：
 
  * xref:zstackctl:contribute.adoc[]
