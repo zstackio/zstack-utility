@@ -1,79 +1,49 @@
-= 如何开发 zstack-utility
-:icons: font
-:source-highlighter: rouge
-:docinfo: shared
-:max-include-depth: 16
-:tip-caption: TIP 💡
+= 如何贡献文档
+:imagesdir: ../images/
+
+本节将介绍：
+
+ * `zstack-utility` 的文档架构
+ * 通过 `PyCharm` 编写文档的技巧
+ * 通过 `Visual Studio Code` 编写文档的技巧
+ * 通过 `PyCharm` 编写文档的技巧
+
+本节不会介绍：
+
+ * AsciiDoc 的语法
+ * PlantUML、Graphviz、Ditaa 等图形语言的语法
+
+//[frame=none]
+//[grid=none]
+//[%noheader]
+//[cols="10,~a"]
+//|===
+//|✅| `zstack-utility` 的文档架构
+//|✅| 通过 `PyCharm` 编写文档的技巧
+//|✅| 通过 `Visual Studio Code` 编写文档的技巧
+//|❎| 通过 `PyCharm` 编写文档的技巧
+//|===
+//
+//本节不会介绍：
+//
+//[frame=none]
+//[grid=none]
+//[%noheader]
+//[cols="10,~a"]
+//|===
+//|❎| AsciiDoc 的语法
+//|❎| PlantUML、Graphviz、Ditaa 等图形语言的语法
+//|===
 
 
-zstack-utility 中的各个目录内容相互关系比较松散，除了个别目录之间关系可能很深（例如 `zstacklib` 和 `kvmagent`、`cephprimarystorage` 等一些 agent 之间），很多目录之间相互甚至没有太大关系，只是放在同一个仓库方便开发人员查找和构建方便而已。
+_关于 asciidoc 和 antora 的更多内容，可以参考 asciidoc 和 antora 的官方文档，以及 ZStack 开发者手册，_
 
-因此 zstack-utility 没有很通用的开发指南，只有一些基本的约定俗成：
-
-使用 `autoconf` 配置 git commit msg 模板::
-详见 <<_autoconf>>
-
-顶级目录使用纯英文，不包含连字符、下划线等::
-约定俗成
-
-确保本地测试好再提交::
-目前 zstack-utility 的代码缺乏自动化的单元测试，比较依赖 BAT、nightly 和手工测试，反馈周期比较长，对于可以做本地测试的代码，应当编写相应的本地测试方法，并将代码放置到模块里放置测试的目录，例如 `kvmagent/kvmagent/test`。
-
-修改、增加对外暴露的使用方法或复杂的逻辑时要一并提交文档::
-zstack-utility 已经支持了基于 antora 一整套文档工具链，并可以在 https://zstack.dev/zstack-utility 实时查看（社区开发者也可以通过 antora 构建），对于对外暴露的使用方法（例如 xref:zstackctl:status.adoc[]），请在提交代码时同时提交文档；对于复杂的逻辑（例如 xref:kvmagent:ha_plugin/index.adoc[]），也请在提交代码时同时提交文档。此外，编写文档的一个原则是“谁主张，谁举证”，例如 `zstack-ctl status` 暴露了 `unknown` 的状态，那么应当在文档中一并说明其原理和处理方法。
-
-更详细各个组件的的开发文档参考：
-
- * xref:zstackctl:contribute.adoc[]
- * xref:zstackcli:contribute.adoc[]
- * xref:kvmagent:contribute.adoc[]
-
-== IDE 与编辑器
-
-`zstack-utility` 对编辑器没有很高的要求，你可以选择 PyCharm/VS Code/Sublime 等任一你喜欢的 IDE 或者编辑器。
-
-=== 使用 PyCharm 的一些建议
-
-==== 插件
-
-针对文档编写，建议安装以下插件: <<pycharm_document_plugin>>。
-
-[#pycharm_document_plugin]
-.文档写作插件
-image::image-2022-02-11-16-13-42-872.png[]
-
-
-== autoconf
-
-clone 本仓库后，应当先执行 `./autoconf`，autoconf 会自动初始化 commit msg 模板，并且在 commit 时自动猜测修改的模块范围、commit 类型、涉及的 tag、涉及的 Jira 号，以及自动生成 change-id，效果如下图 <<autoconf_example>> 所示 。
-
-[#autoconf_example]
-.autoconf 使用示例
-image::image-2022-02-10-10-34-52-729.png[]
-
-此外，还可以通过 `autoconf` 搜索哪些 branch 包含特定的 change-id 或者 commit msg，参考 <<autoconf_example2>>。
-
-[#autoconf_example2]
-.autoconf 搜索示例
-image::image-2022-02-11-09-40-35-671.png[]
-
-//todo(weiw): autoconf 原理链接到 ZStack 仓库的说明
-autoconf 的原理和如何开发请参考 ZStack 的 runMavenProfile 的介绍（待补充链接）
-
-== 如何增加一个 PyPi 依赖包
-
-（待补充）
-
-== 如何贡献文档
-
-关于 asciidoc 和 antora 的更多内容，可以参考 asciidoc 和 antora 的官方文档，asciidoc、asciidoctor、antora 和仓库之间的关系可以简单理解为下图所示：
-
-
-=== 文档结构
+== 文档结构
 
 zstack-utility 当前的文档结构为：
 
-[source, bash]
+[source#zstack_utility_tree, bash]
+.zstack-utlity 的文档目录结构
 ----
 zstack-utility/
 └── docs/  <1>
@@ -191,13 +161,13 @@ rectangle "repo: doc_site" {
 (nav1) ..> (subfunc2)
 ....
 
-=== 在 PyCharm 下编写文档
+== 在 PyCharm 下编写文档
 
-在 <<_ide_与编辑器>> 里推荐了两个 PyCharm 插件 <<pycharm_document_plugin>> 分别是 `AsciiDoc` 和 `Diagrams.net Integration`。
+在 xref:contribute/editor_and_ide.adoc#use_pycharm[] 里推荐了两个 PyCharm 插件，分别是 `AsciiDoc` 和 `Diagrams.net Integration`。
 
 假设没有这些插件，你也一样可以编写文档，然而有了这两个插件之后，效率会更高，因此强烈推荐使用。
 
-==== AsciiDoc 插件
+=== AsciiDoc 插件
 
 PyCharm 下的 `AsciiDoc` 插件与 IDEA 的 `AsciiDoc` 是完全一致的（Thanks to Jetbrains），主要作用是：
 
@@ -206,6 +176,7 @@ PyCharm 下的 `AsciiDoc` 插件与 IDEA 的 `AsciiDoc` 是完全一致的（Tha
  * 实时预览文档和检查语法错误、提供语法提示
  * 方便粘贴图片
  * 方便粘贴表格
+ * 强大的自动补全和提示
 
 为了方便预览通过 `include` 引用的内容，推荐将 `Safe mode` 设置为 `Unsafe` （这也是插件的默认行为）
 
@@ -220,9 +191,9 @@ image::image-2022-02-11-16-46-54-376.png[]
 除了 <<extension_function>> 提到的主要功能，这个插件还有很多特色功能：
 
 1. 编辑窗口和预览窗口可以实时相互定位
-2. 可以实时预览图片、表格、“渲染文本生成的图形”（例如绘制的 UML 图形等）
+2. 可以实时预览图片、表格、“渲染文本生成的图形”（例如 PlantUML、Graphviz、Ditaa 图形等）
 3. 可以在预览窗口实时跳转到引用的链接、include 的代码等
-4. 支持 antora 特定的链接方式（VS Code 尚不支持）
+4. 支持 antora 特定的链接方式（这个功能 VS Code 尚不支持，详见 <<在 Visual Studio Code）
 5. 可以将当前文档立刻用浏览器打开，或者输出为 HTML 文档或 PDF 文档
 
 另外，如果你的 PyCharm 环境可以方便的访问国外网站，可以打开 kroki 渲染，这样可以支持渲染更多的图形类型，例如下面的 <<network1>> 和 <<network2>> 如果不打开 kroki 渲染的话是无法在 PyCharm 预览的，但不影响最终在 https://zstack.dev 展示。
@@ -239,7 +210,7 @@ image::image-2022-02-11-17-40-42-929.png[]
 2. 编辑器具有创建表格和粘贴表格的功能，不放试一试
 ====
 
-==== Diagrams.net Integration
+=== Diagrams.net Integration 插件
 
 得益于 Ascii 的强大语法支持，我们可以在文档里直接画出各种图形，zstack.dev 在构建网站时使用了 `asciidoctor-kroki` 插件，因此 kroki 的所有图形都可以支持，甚至包括感觉很复杂的图形（以下的 <<network1>> 和 <<network2>> 在 PyCharm 中预览均需要打开 kroki 渲染）：
 
@@ -381,7 +352,7 @@ skinparam monochrome true
 .添加 Diagrams.net 图形
 image::image-2022-02-11-17-58-05-689.png[]
 
-在弹出的窗口中输入文件名，最后以 `.diagrams` 结尾，方便分辨出这个 SVG 文件是可编辑的，类型选择 SVG 类型（默认选择）。
+在弹出的窗口中输入文件名，最后以 `.drawio` 结尾，方便分辨出这个 SVG 文件是可编辑的（之所以用 drawio 结尾而不是 diagrams 结尾与 VS Code 的默认行为有关，见 <<_draw_io_integration_插件>>），类型选择 SVG 类型（默认选择）。
 
 .注意文件名和类型
 image::image-2022-02-11-18-01-40-518.png[]
@@ -400,7 +371,7 @@ images::test1.diagrams.svg[]
 
 [#svg_render]
 .Diagrams.net 图形渲染的效果
-image::test1.diagrams.svg[]
+image::test1.drawio.svg[]
 
 [TIP]
 ====
@@ -412,3 +383,85 @@ image::image-2022-02-11-22-07-50-736.png[]
 
 image::image-2022-02-11-22-11-10-974.png[]
 ====
+
+== 在 Visual Studio Code 下编写文档
+
+在 xref:contribute/editor_and_ide.adoc#use_vscode[] 里推荐了两个 VS Code 插件，分别是 `AsciiDoc` 和 `Draw.io Integration`。
+
+假设没有这些插件，你也一样可以编写文档，然而有了这两个插件之后，效率会更高，因此强烈推荐使用。
+
+=== AsciiDoc 插件
+
+VS Code 下的 `AsciiDoc` 插件与 PyCharm 的 `AsciiDoc` 类似，主要作用是：
+
+[#vscode_extension_function]
+.VS Code AsciiDoc Plugin 的主要功能
+ * 实时预览文档和检查语法错误、提供语法提示
+ * 基本的的自动补全和提示
+
+为了能够实时预览 PlantUML、Graphviz 等图形编程语言编写的图形，建议打开 kroki 渲染（需要能够访问外部网络）：
+
+.VS Code 插件配置
+image::image-2022-02-12-15-37-37-832.png[]
+
+[source,json]
+.settings.json
+----
+{
+    "asciidoc.use_kroki": true,
+    "asciidoc.preview.refreshInterval": 1000
+}
+----
+
+因为 VS Code 的 AsciiDoc 插件不能自动识别出 Antora 目录结构，因此需要在文档开头增加 `:imagesdir:` 的属性，即：
+
+[source,asciidoc]
+----
+= 文档标题
+:imagesdir: ../images
+----
+
+[CAUTION]
+.一定要记得 `:imagesdir:`
+====
+不要使用下面的方式引用图片：
+
+[sourcemasciidoc]
+----
+image::../images/xxx.png
+----
+
+这种方式固然可以正确的在编辑器里预览，但 antora 在构建网站时会报错！
+
+另外定义 `:imagesdir:` 还有一个好处，就是在 Gitlab 上也可以正确的预览了！
+====
+
+=== Draw.io Integration 插件
+
+和 PyCharm 下的 <<_diagrams_net_integration_插件>> 一样，VS Code 也提供了对应的插件，安装后即可在 VS Code 下绘图并在文档中引用：
+
+image::image-2022-02-12-15-48-37-853.png[]
+
+Draw.io Integration 除了 <<_diagrams_net_integration_插件>> 描述过的基础功能外，还有一些神奇的高级功能，例如：
+
+* 多人实时协作编辑
+* Code Link
+* 同步显示 XML
+
+Code Link 可以让图形和代码之间产生链接关系，支持点击跳转：
+
+image::https://github.com/hediet/vscode-drawio/raw/HEAD/docs/demo-code-link.gif[]
+
+另外，可以通过修改配置的方法将 `.svg` 关联到 `Draw.io Integration` 插件上，参考 <<vscode_setting_draw>> 和 https://marketplace.visualstudio.com/items?itemName=hediet.vscode-drawio
+
+[source#vscode_setting_draw,json]
+.VS Code .settings.json
+----
+"workbench.editorAssociations": {
+    "*.svg": "hediet.vscode-drawio-text",
+}
+----
+
+=== Ascii Tree Generator 插件
+
+如果想生成 Ascii Tree，类似于 <<zstack_utility_tree>> 的效果，在 Visual Studio Code 上可以使用这个插件，详见 https://marketplace.visualstudio.com/items?itemName=aprilandjan.ascii-tree-generator

@@ -1,4 +1,4 @@
-= 如何开发 zstack-ctl
+= zstack-ctl 开发指南
 :icons: font
 :source-highlighter: rouge
 :docinfo: shared
@@ -9,7 +9,7 @@ zstack-ctl 增加一个子命令是比较简单的， 几乎所有内容都保�
 [IMPORTANT]
 .请先阅读 zstack-utility 的开发指南！
 ====
-对于 xref:zstack-utility:ROOT:contribute.adoc[] 所包含的内容本文将不再赘述。
+对于 xref:ROOT:contribute/index.adoc[] 所包含的内容本文将不再赘述。
 ====
 
 [NOTE]

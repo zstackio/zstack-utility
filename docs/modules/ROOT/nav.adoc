@@ -1,2 +1,6 @@
 * xref:index.adoc[]
-* xref:contribute.adoc[]
+* xref:contribute/index.adoc[]
+ ** xref:contribute/autoconf.adoc[]
+ ** xref:contribute/editor_and_ide.adoc[]
+ ** xref:contribute/contribute_to_doc.adoc[]
+ ** xref:contribute/add_pypi_dependency.adoc[]

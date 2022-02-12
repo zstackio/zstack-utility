@@ -1,7 +1,10 @@
 = 围绕 ZStack 的 agent 与工具链：zstack-utility
 :icons: font
 
+== 架构
+
 `zstack-utility` 项目的功能正如同这个项目名一样：utility——有多种用途的，`zstack-utility` 正是一个“有多种用途的”围绕 `zstack` 项目的工具集合，他提供了下面的功能：
+
 
 在被使用的目录（项目）::
   agent:::
@@ -33,3 +36,11 @@
 其他目录部分或许可以使用，但因为使用人数较少，维护质量无法得到保证，例如 `agentcli`、`apibinding`
 或者一部分目录因为产品策略的变化已经弃用，例如 `puppets`、`iscsifilesystemagent`、`virtualrouter`，但是对于构建 ZStack 早期版本可能是可用的
 ====
+
+== 如何贡献
+
+参考 xref:contribute/index.adoc[]
+
+== 如何贡献文档
+
+参考 xref:contribute/contribute_to_doc.adoc[]

@@ -1,0 +1,64 @@
+= Git Commit Msg 模板
+:source-highlighter: highlightjs
+:imagesdir: ../images
+
+== 通过 autoconf 配置 Commit Msg 模板
+
+clone 本仓库后，应当先执行 `./autoconf`，autoconf 会自动初始化 git  commit msg 模板，并且在 commit 时自动猜测修改的模块范围、commit 类型、涉及的 tag、涉及的 Jira 号，以及自动生成 change-id，效果如下图 <<autoconf_example>> 所示 。
+
+[#autoconf_example]
+.autoconf 使用示例
+image::image-2022-02-10-10-34-52-729.png[]
+
+此外，还可以通过 `autoconf` 搜索哪些 branch 包含特定的 change-id 或者 commit msg，参考 <<autoconf_example2>>。
+
+[#autoconf_example2]
+.autoconf 搜索示例
+image::image-2022-02-11-09-40-35-671.png[]
+
+== Commit Msg 示例
+
+下面是 `zstack-utility` 仓库的一个 commit 示例
+
+[source, python]
+.zstack-utility commit msg 示例
+----
+<fix>[zstackctl]: add option '--force' for deprecated command `zstack-ctl collect_log` <1>
+
+add option '--force' for deprecated command `zstack-ctl collect_log`,  <2>
+the command executed only when '--force' is specified.
+And add the warning log to remind the user to use
+`zstack-ctl configured_collect_log` instead.
+
+Resolves: ZSTAC-44867  <3>
+
+Change-Id: I6161787663797678777a72627364797577616f61  <4>
+----
+<1> 标题，格式为 <type>[scope]: commit title
+<2> commit msg 内容
+<3> 关联的 Jira
+<4> change-id，由 autoconf 自动生成，或者也可以通过 <<gen_change_id>> 手动生成 change-id
+
+== 进阶使用
+
+当直接在 Gitlab 网页上提交时，没有 autoconf 来自动生成 chang-id，此时可以执行脚本手动生成
+
+[source#gen_change_id,bash]
+.手动生成 change-id
+----
+python -c "import binascii,string,random;letters = string.ascii_lowercase;data = ''.join(random.choice(letters) for i in range(20)).encode();print('I{}'.format(binascii.hexlify(data).decode('iso8859-1')))"
+----
+
+zstack-utility 的 `autoconf` 根据下面的规则判断 `type`：
+
+1. 如果修改的文件都是 `docs/` 目录，或修改的文件后缀都是 `.md` 或 `.adoc`，type 推断为 `doc`
+2. 如果新建的文件比修改的文件更多，type 推断为 `feature`
+3. 以上都不满足，type 推断为 `fix`
+
+zstack-utility 的 `autoconf` 根据下面的规则推断 `scope`：
+
+1. 如果修改的最多的目录是 `kvmagent`，且修改的文件为 `kvmagent/plugins/foo_plugin`，module 推断为 `foo`
+2. 如果修改的最多的目录是 `kvmagent`，且修改的文件为 `kvmagent/plugins/foo/bar.py`，module 推断为 `foo`
+3. 如果修改的路径中包含 `ansible`，module 推断为 `ansible`
+4. 其他情况 module 推断为 `zstack-utility` 目录下的顶级目录
+5. 最后根据收集的 module 中出现最多的 module 推断为 `scope`
