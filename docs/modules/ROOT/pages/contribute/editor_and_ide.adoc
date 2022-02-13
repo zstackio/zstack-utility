@@ -1,0 +1,108 @@
+= IDE 与编辑器
+:imagesdir: ../images
+
+`zstack-utility` 对编辑器没有很高的要求，你可以选择 PyCharm/Visual Studio Code/Sublime/Vim/Emacs 等任一你喜欢的 IDE 或者编辑器。不过本文目前只包含了 PyCharm 和 VS Code 的建议。对于 Vim/Emacs 的建议可以参考 link:https://asciidoc-py.github.io/index.html#_editor_support[AsciiDoc#Editor Support]。
+
+因为目前 PyCharm 的 AsciiDoc 插件更强大一些，因此在编写文档方面 PyCharm 体验可能会更好一点。
+
+[cols="10,~e,~,~a"]
+.编辑器/IDE对比
+|===
+|类别|比较项|PyCharm/IDEA|Visual Studio Code
+
+|文档
+|支持 AsciiDoc 文档预览，可以同步滚动和选择
+|✅
+|✅
+
+但默认的刷新时间比较长，复杂页面偶尔有定位不准的问题
+|文档
+|粘贴图片
+|✅
+|❌
+
+|文档
+|粘贴表格
+|✅
+
+复杂表格的粘贴（例如多行文本、合并单元格）有一些问题
+|❌
+
+|文档
+|基本语法的自动补全
+|✅
+|✅
+
+|文档
+|根据上下文识别的自动补全
+|✅
+|❌
+
+|文档
+|支持预览 PlantUML, Graphviz 等图形
+|✅
+|✅
+
+|文档
+|语法错误提示
+|✅
+|✅
+
+|文档
+|识别 antora 目录架构
+|✅
+|✅
+
+|文档
+|支持内嵌 Draw.io/Diagrams.net
+|✅
+|✅
+
+|文档
+|内嵌 Draw.io/Diagrams.net 的支持代码链接跳转
+|❌
+|✅
+
+见 xref:contribute/contribute_to_doc.adoc#_draw_io_integration_插件[]
+|通用
+|占用资源
+|相对较多
+|相对较少
+
+|===
+
+
+[#use_pycharm]
+== 使用 PyCharm 的一些建议
+
+PyCharm 是 Python 开发者常用的一款 IDE，其基础功能不再赘述。
+
+=== PyCharm 插件
+
+针对文档编写，建议安装以下插件: <<pycharm_document_plugin>>。
+
+[#pycharm_document_plugin]
+.文档写作插件
+image::image-2022-02-11-16-13-42-872.png[]
+
+== 使用 Visual Studio Code 的一些建议
+
+Visual Studio Code 是一款开发者常用的编辑器/IDE，其基础功能不再赘述。
+
+Visual Studio Code 的 AsciiDoc 插件的自动补全功能相对来说弱一些，此外不能自动识别 Antora 的目录架构，因此在编写文档体验会比 PyCharm 差一些。
+
+[#use_vscode]
+=== Visual Studio Code 插件
+
+针对文档编写建议安装以下插件：<<vscode_plugins>>
+
+[source#vscode_plugins,json]
+.zstack-utility/.vsocde/extensions.json
+----
+{
+    "recommendations": [
+        "asciidoctor.asciidoctor-vscode",
+        "hediet.vscode-drawio"
+    ]
+}
+----

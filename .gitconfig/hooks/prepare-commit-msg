@@ -200,7 +200,7 @@ def get_type(changed_folders, changed_paths):
             new_file += 1
         else:
             modified += 1
-        if "Doc_zh_cn" in p or p.endswith(".md") or p.startswith("doc/"):
+        if "Doc_zh_cn" in p or p.endswith(".md") or p.endswith(".adoc") or p.startswith("doc/"):
             doc += 1
 
     if doc == len(changed_paths):
