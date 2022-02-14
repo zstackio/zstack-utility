@@ -1238,7 +1238,11 @@ upgrade_zstack(){
 
     # configure chrony.serverIp if not exists
     zstack-ctl show_configuration | grep '^[[:space:]]*chrony.serverIp.' >/dev/null 2>&1
-    [ $? -ne 0 ] && zstack-ctl configure chrony.serverIp.0="${MANAGEMENT_IP}"
+    if [ $? -ne 0 ] && [ -n "$CHRONY_SERVER_IP" ]; then
+        zstack-ctl configure chrony.serverIp.0="${CHRONY_SERVER_IP}"
+    else
+        zstack-ctl configure chrony.serverIp.0="${MANAGEMENT_IP}"
+    fi
 
     if [ ! -z $ONLY_UPGRADE_CTL ]; then
         return
@@ -2303,6 +2307,7 @@ config_system(){
     show_spinner cs_install_zstack_service
     show_spinner cs_enable_zstack_service
     show_spinner cs_add_cronjob
+    show_spinner add_zops_init_cronjob
     show_spinner cs_append_iptables
     show_spinner cs_setup_nginx
     show_spinner cs_enable_usb_storage
@@ -3435,7 +3440,7 @@ check_myarg() {
 }
 
 OPTIND=1
-TEMP=`getopt -o f:H:I:n:p:P:r:R:t:y:acC:L:T:dDEFhiklmMNoOqsuz --long mini,SY,sds -- "$@"`
+TEMP=`getopt -o f:H:I:n:p:P:r:R:t:y:acC:L:T:dDEFhiklmMNoOqsuz --long chrony-server-ip:,mini,SY,sds -- "$@"`
 if [ $? != 0 ]; then
     usage
 fi
@@ -3490,6 +3495,7 @@ do
         -u ) UPGRADE='y';shift;;
         -y ) check_myarg $1 $2;HTTP_PROXY=$2;shift 2;;
         -z ) NOT_START_ZSTACK='y';shift;;
+        --chrony-server-ip ) check_myarg $1 $2;CHRONY_SERVER_IP=$2;shift 2;;
         --mini) MINI_INSTALL='y';shift;;
         --SY) SANYUAN_INSTALL='y';shift;;
         --sds) SDS_INSTALL='y';shift;;
@@ -3702,6 +3708,23 @@ check_ha_need_upgrade()
         echo  -e "$(tput setaf 3) - a newer version of zsha2 is available. $(tput sgr0)"
         echo
     fi
+}
+
+add_zops_init_cronjob() {
+  if [ -d /usr/local/hyperconverged/ ];then
+    if [ ! -f /tmp/zops_init.sock ];then
+      touch /tmp/zops_init.sock
+    fi
+    ZOPS_SERVER_INIT="python /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/zops/zops_init.py"
+    COUNT=`crontab -l |grep "$ZOPS_SERVER_INIT" | grep -v "grep" |wc -l`
+    if [ "$COUNT" -eq 1 ];then
+      echo "zops init script cron job has configured!"
+    fi
+    if [ "$COUNT" -lt 1 ];then
+      echo "*/2 * * * * flock -xn /tmp/zops_init.sock $ZOPS_SERVER_INIT >> /tmp/zops_cron.log 2>&1" >> /var/spool/cron/root
+      crond
+    fi
+  fi
 }
 
 enforce_history() {
@@ -4019,7 +4042,11 @@ fi
 
 # configure chrony.serverIp if not exists
 zstack-ctl show_configuration | grep '^[[:space:]]*chrony.serverIp.' >/dev/null 2>&1
-[ $? -ne 0 ] && zstack-ctl configure chrony.serverIp.0="${MANAGEMENT_IP}"
+if [ $? -ne 0 ] && [ -n "$CHRONY_SERVER_IP" ]; then
+    zstack-ctl configure chrony.serverIp.0="${CHRONY_SERVER_IP}"
+else
+    zstack-ctl configure chrony.serverIp.0="${MANAGEMENT_IP}"
+fi
 
 #Install license
 install_license
