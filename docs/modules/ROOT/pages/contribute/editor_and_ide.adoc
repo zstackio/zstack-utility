@@ -1,5 +1,5 @@
 = IDE 与编辑器
-:imagesdir: ../images
+:imagesdir: ../../images
 
 `zstack-utility` 对编辑器没有很高的要求，你可以选择 PyCharm/Visual Studio Code/Sublime/Vim/Emacs 等任一你喜欢的 IDE 或者编辑器。不过本文目前只包含了 PyCharm 和 VS Code 的建议。对于 Vim/Emacs 的建议可以参考 link:https://asciidoc-py.github.io/index.html#_editor_support[AsciiDoc#Editor Support]。
 
