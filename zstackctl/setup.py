@@ -25,7 +25,6 @@ zstack management tool""",
           'configobj',
           'pyyaml',
           'ansible',
-          'pyroute2==0.5.14',
           'pyOpenSSL',
           # -*- Extra requirements: -*-
       ],

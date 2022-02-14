@@ -2,6 +2,7 @@ import re
 import tempfile
 import os
 import os.path
+import platform
 
 from kvmagent import kvmagent
 from zstacklib.utils import jsonobject
@@ -11,12 +12,18 @@ from zstacklib.utils.bash import bash_progress_1, in_bash, bash_r, bash_roe
 from zstacklib.utils.report import *
 
 logger = log.get_logger(__name__)
+HOST_ARCH = platform.machine()
 
 class ImageStoreClient(object):
 
+    GODEBUGignoreCN = "GODEBUG=x509ignoreCN=0 "
+
     ZSTORE_PROTOSTR = "zstore://"
     ZSTORE_CLI_BIN = "/usr/local/zstack/imagestore/bin/zstcli"
-    ZSTORE_CLI_PATH = ZSTORE_CLI_BIN + " -rootca /var/lib/zstack/imagestorebackupstorage/package/certs/ca.pem"
+    if HOST_ARCH == 'loongarch64':
+        ZSTORE_CLI_PATH = GODEBUGignoreCN + ZSTORE_CLI_BIN + " -rootca /var/lib/zstack/imagestorebackupstorage/package/certs/ca.pem"
+    else:
+        ZSTORE_CLI_PATH = ZSTORE_CLI_BIN + " -rootca /var/lib/zstack/imagestorebackupstorage/package/certs/ca.pem"
     ZSTORE_DEF_PORT = 8000
 
     UPLOAD_BIT_PATH = "/imagestore/upload"
