@@ -41,7 +41,7 @@ class TestGuestToolsAgentVersion(unittest.TestCase):
         self.assertNotEqual(zwatch_latest_version, None)
         self.assertNotEqual(zwatch_latest_version, "")
 
-    # Test whether GuestTools (v1.1.0 ~ 4.1, x86_64 / aarch64 / mips64el) can parse agent version file 
+    # Test whether GuestTools (v1.1.0 ~ 4.1, x86_64 / aarch64 / mips64el / loongarch64) can parse agent version file
     def testParseVersionFileForGuestTools1_1_0(self):
         def checkParseByBash(pkg_name):
             r_bash, o_bash, _ = bash.bash_roe("grep -w '%s' %s | awk -F '=' '{print $2}'" % (pkg_name, self.agent_version_path))
@@ -56,6 +56,7 @@ class TestGuestToolsAgentVersion(unittest.TestCase):
         checkParseByBash('zwatch-vm-agent.linux-amd64')
         checkParseByBash('zwatch-vm-agent.linux-aarch64')
         checkParseByBash('zwatch-vm-agent.linux-mips64el')
+        checkParseByBash('zwatch-vm-agent.linux-loongarch64')
 
     # Whether md5sum of file is equals to agent_version
     def testCheckGuestToolsMd5(self):
@@ -83,6 +84,7 @@ class TestGuestToolsAgentVersion(unittest.TestCase):
         checkMd5('zwatch-vm-agent.linux-amd64', os.path.join(self.agent_version_directory, 'zwatch-vm-agent'))
         checkMd5('zwatch-vm-agent.linux-aarch64', os.path.join(self.agent_version_directory, 'zwatch-vm-agent_aarch64'))
         checkMd5('zwatch-vm-agent.linux-mips64el', os.path.join(self.agent_version_directory, 'zwatch-vm-agent_mips64el'))
+        checkMd5('zwatch-vm-agent.linux-loongarch64', os.path.join(self.agent_version_directory, 'zwatch-vm-agent_loongarch64'))
 
         # Test when md5 check fail
         temp_directory = tempfile.mkdtemp()

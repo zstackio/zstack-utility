@@ -90,12 +90,10 @@ zstacklib = ZstackLib(zstacklib_args)
 
 # get remote host arch
 HOST_ARCH = get_remote_host_arch(host_post_info)
-if HOST_ARCH == 'aarch64':
-    src_pkg_zsnagent = "zsn-agent.aarch64.bin"
-elif HOST_ARCH == 'mips64el':
-    src_pkg_zsnagent = "zsn-agent.mips64el.bin"
-else:
+if HOST_ARCH == 'x86_64':
     src_pkg_zsnagent = "zsn-agent.bin"
+else:
+    src_pkg_zsnagent = "zsn-agent.{}.bin".format(HOST_ARCH)
 dst_pkg_zsnagent = "zsn-agent.bin"
 
 if distro in RPM_BASED_OS:
@@ -118,12 +116,10 @@ run_remote_command(add_true_in_command(command), host_post_info)
 
 # name: copy zsn binary
 HOST_ARCH = get_remote_host_arch(host_post_info)
-if HOST_ARCH == 'aarch64':
-    src_pkg_zsn = 'zsn-agent.aarch64.bin'
-elif HOST_ARCH == 'mips64el':
-    src_pkg_zsn = 'zsn-agent.mips64el.bin'
+if HOST_ARCH == 'x86_64':
+    src_pkg_zsn = "zsn-agent.bin"
 else:
-    src_pkg_zsn = 'zsn-agent.bin'
+    src_pkg_zsn = "zsn-agent.{}.bin".format(HOST_ARCH)
 
 copy_arg = CopyArg()
 dest_pkg = "%s/%s" % (zsn_root, dst_pkg_zsnagent)

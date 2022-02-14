@@ -317,7 +317,7 @@ menuentry 'ZStack Get Bare Metal Chassis Hardware Info' --class fedora --class g
         ks_tmpl_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'ks_tmpl')
         with open("%s/inspector_ks_tmpl" % ks_tmpl_path, 'r') as fr:
             inspector_ks_cfg_tmp = fr.read()
-        archs = {"x86_64", "aarch64", "mips64el"}
+        archs = {"x86_64", "aarch64", "mips64el", "loongarch64"}
         for arch in archs:
             inspector_ks_cfg = inspector_ks_cfg_tmp.replace("PXESERVERUUID", cmd.uuid) \
                                                    .replace("PXESERVER_DHCP_NIC_IP", pxeserver_dhcp_nic_ip) \
