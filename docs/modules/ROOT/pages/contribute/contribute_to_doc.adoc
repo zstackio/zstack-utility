@@ -1,5 +1,5 @@
 = 如何贡献文档
-:imagesdir: ../images/
+:imagesdir: ../../images/
 
 本节将介绍：
 
@@ -413,9 +413,10 @@ image::image-2022-02-12-15-37-37-832.png[]
 }
 ----
 
-因为 VS Code 的 AsciiDoc 插件不能自动识别出 Antora 目录结构，因此需要在文档开头增加 `:imagesdir:` 的属性，即：
+因为 VS Code 的 AsciiDoc 插件不能自动识别出 Antora 目录结构，因此需要在文档开头增加 `:imagesdir:` 的属性，类似于 <<images_dir>>，具体目录需要根据实际情况配置：
 
-[source,asciidoc]
+[source#images_dir,asciidoc]
+.imagesdir 配置
 ----
 = 文档标题
 :imagesdir: ../images

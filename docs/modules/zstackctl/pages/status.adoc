@@ -3,6 +3,7 @@
 :source-highlighter: rouge
 :docinfo: shared
 :max-include-depth: 16
+:imagesdir: ../images
 
 == 描述
 
