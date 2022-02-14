@@ -83,13 +83,12 @@ host_post_info.releasever = releasever
 # get remote host arch
 host_arch = get_remote_host_arch(host_post_info)
 IS_AARCH64 = host_arch == 'aarch64'
-IS_MIPS64 = host_arch == 'mips64el'
+IS_MIPS64EL = host_arch == 'mips64el'
+IS_LOONGARCH64 = host_arch == 'loongarch64'
 
 repo_dir = "/opt/zstack-dvd/{}".format(host_arch)
 if not os.path.isdir(repo_dir):
     error("Missing directory '{}', please try 'zstack-upgrade -a {}_iso'".format(repo_dir, host_arch))
-
-
 
 def update_libvirtd_config(host_post_info):
     # name: copy libvirtd conf to keep environment consistent,only update host_uuid
@@ -213,36 +212,41 @@ def install_kvm_pkg():
         x86_64_c74 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                       usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
                       net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
-                      smartmontools sshpass usbutils vconfig wget audit dnsmasq \
+                      smartmontools sshpass usbutils vconfig wget audit dnsmasq python2-numpy python2-pyroute2 \
                       qemu-kvm-ev collectd-virt OVMF edk2-ovmf mcelog MegaCli storcli Arcconf python-pyudev i40e auxiliary kernel-devel"
 
         x86_64_c76 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                       usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python libvirt-admin lighttpd lsof \
                       net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
-                      smartmontools sshpass usbutils vconfig wget audit dnsmasq \
+                      smartmontools sshpass usbutils vconfig wget audit dnsmasq python2-numpy python2-pyroute2 \
                       qemu-kvm-ev collectd-virt OVMF edk2-ovmf mcelog MegaCli storcli Arcconf python-pyudev seabios-bin nping i40e auxiliary kernel-devel"
 
         aarch64_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                         usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
                         net-tools nfs-utils nmap openssh-clients OpenIPMI pciutils pv rsync sed nettle libselinux-devel \
-                        smartmontools sshpass usbutils vconfig wget audit dnsmasq tar \
+                        smartmontools sshpass usbutils vconfig wget audit dnsmasq tar python2-numpy python2-pyroute2 \
                         qemu collectd-virt storcli edk2-aarch64 python2-pyudev collectd-disk"
 
         aarch64_euler20 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                         usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
                         net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
-                        smartmontools sshpass usbutils vconfig wget audit dnsmasq \
+                        smartmontools sshpass usbutils vconfig wget audit dnsmasq python2-numpy python2-pyroute2 \
                         qemu collectd-virt storcli edk2-aarch64 python2-pyudev collectd-disk"
 
         mips64el_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                          usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof mcelog \
-                         net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils python2-pyudev pv rsync sed \
+                         net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils python2-pyudev pv rsync sed python2-numpy python2-pyroute2 \
                          qemu smartmontools sshpass usbutils vconfig wget audit dnsmasq tuned collectd-virt collectd-disk"
+
+        loongarch64_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
+                         usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof mcelog \
+                         net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils python2-pyudev python2-numpy python2-pyroute2 \
+                         pv rsync sed qemu-kvm smartmontools sshpass usbutils vconfig wget audit dnsmasq tuned collectd-virt collectd-disk"
 
         x86_64_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                         usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
                         net-tools nfs-utils nmap openssh-clients OpenIPMI pciutils pv rsync sed nettle libselinux-devel \
-                        smartmontools sshpass usbutils vconfig wget audit dnsmasq tar \
+                        smartmontools sshpass usbutils vconfig wget audit dnsmasq tar python2-numpy python2-pyroute2 \
                         qemu collectd-virt storcli edk2-ovmf python2-pyudev collectd-disk"
 
         # handle zstack_repo

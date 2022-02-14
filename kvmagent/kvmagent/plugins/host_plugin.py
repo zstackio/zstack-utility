@@ -40,6 +40,7 @@ import zstacklib.utils.plugin as plugin
 host_arch = platform.machine()
 IS_AARCH64 = host_arch == 'aarch64'
 IS_MIPS64EL = host_arch == 'mips64el'
+IS_LOONGARCH64 = host_arch == 'loongarch64'
 GRUB_FILES = ["/boot/grub2/grub.cfg", "/boot/grub/grub.cfg", "/etc/grub2-efi.cfg", "/etc/grub-efi.cfg"] \
                 + ["/boot/efi/EFI/{}/grub.cfg".format(platform.dist()[0])]
 IPTABLES_CMD = iptables.get_iptables_cmd()
@@ -835,7 +836,7 @@ class HostPlugin(kvmagent.KvmAgent):
             # in case lscpu doesn't show cpu max mhz
             cpuMHz = "2500.0000" if cpuMHz.strip() == '' else cpuMHz
             rsp.cpuGHz = '%.2f' % (float(cpuMHz) / 1000)
-        elif IS_MIPS64EL:
+        elif IS_MIPS64EL or IS_LOONGARCH64:
             rsp.hvmCpuFlag = 'vt'
             rsp.cpuModelName = self._get_host_cpu_model()
 
