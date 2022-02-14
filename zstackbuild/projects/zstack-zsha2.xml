@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project name="zstack-zsha2 builder" basedir="../">
+    <property name="zsha2.bdir" location="${build.dir}/zsha2/"/>
+    <target name="build-zstack-zsha2">
+        <makeDir dir="${zsha2.bdir}"/>
+        <exec executable="/bin/bash" dir="${zstack.source}" failonerror="true">
+            <arg value="${build.zsha2.script}"/>
+            <arg value="${zsha2.bdir}"/>
+            <arg value="${zsha2.version}"/>
+        </exec>
+    </target>
+    <target name="assemble-zstack-zsha2">
+        <copy todir="${tools.dir}">
+            <fileset dir="${zsha2.bdir}">
+                <include name="**/*"/>
+            </fileset>
+        </copy>
+    </target>
+</project>
+
