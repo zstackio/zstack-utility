@@ -907,8 +907,9 @@ def round_to(n, r):
 @bash.in_bash
 @linux.retry(times=15, sleep_time=random.uniform(0.1, 3))
 def create_lv_from_absolute_path(path, size, tag="zs::sharedblock::volume", lock=True, exact_size=False, pe_ranges=None):
+    ## if LV exists, false will be returned, otherwise it will create LV and return true
     if lv_exists(path):
-        return
+        return False
 
     vgName = path.split("/")[2]
     lvName = path.split("/")[3]
@@ -928,6 +929,7 @@ def create_lv_from_absolute_path(path, size, tag="zs::sharedblock::volume", lock
     else:
         dd_zero(path)
 
+    return True
 
 def create_lv_from_cmd(path, size, cmd, tag="zs::sharedblock::volume", lvmlock=True, pe_ranges=None):
     update_pv_allocate_strategy(cmd)
