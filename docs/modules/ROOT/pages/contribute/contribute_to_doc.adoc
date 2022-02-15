@@ -45,33 +45,33 @@ zstack-utility 当前的文档结构为：
 [source#zstack_utility_tree, bash]
 .zstack-utlity 的文档目录结构
 ----
-zstack-utility/
-└── docs/  <1>
-    ├── antora.yml  <2>
-    └── modules/  <3>
-        ├── ROOT/  <4>
-        │   ├── nav.adoc  <5>
-        │   ├── pages/  <6>
-        │   │   ├── index.adoc  <7>
-        │   │   └── contribute.adoc  <8>
-        │   └── images  <9>
-        │       └── image1.jpg  <10>
-        ├── module1/  <11>
-        │   ├── nav.adoc  <12>
-        │   ├── pages/  <13>
-        │   │   ├── index.adoc <14>
-        │   │   └── contribute.adoc <15>
-        │   │   └── function1.adoc  <16>
-        │   │   └── function2.adoc
-        │   │   └── function3/  <17>
-        │   │       └── subfunction1.adoc
-        │   │       └── subfunction2.adoc
-        │   ├── examples/  <18>
-        │   │   └── soft_link to code folder  <19>
-        │   │   └── example1.ext
-        │   └── images/
-        │       └── image1.jpg
-        └── module2
+📒 zstack-utility/
+└──📂 docs/  <1>
+    ├──📄 antora.yml  <2>
+    └──📂 modules/  <3>
+        ├──📂 ROOT/  <4>
+        │   ├──📄 nav.adoc  <5>
+        │   ├──📂 pages/  <6>
+        │   │   ├──📄 index.adoc  <7>
+        │   │   └──📄 contribute.adoc  <8>
+        │   └─📂 images  <9>
+        │       └──📄 image1.jpg  <10>
+        ├──📂 module1/  <11>
+        │   ├──📄 nav.adoc  <12>
+        │   ├──📂 pages/  <13>
+        │   │   ├──📄 index.adoc <14>
+        │   │   └──📄 contribute.adoc <15>
+        │   │   └──📄 function1.adoc  <16>
+        │   │   └──📄 function2.adoc
+        │   │   └──📂 function3/  <17>
+        │   │       └──📄 subfunction1.adoc
+        │   │       └──📄 subfunction2.adoc
+        │   ├──📂 examples/  <18>
+        │   │   └──🔗 soft_link to code folder  <19>
+        │   │   └──📄 example1.ext
+        │   └──📂 images/
+        │       └──📄 image1.jpg
+        └──📂 module2
 ----
 <1> 文档的顶级目录，专门创建目录将文档和代码做区分，结构更加清晰一些
 <2> `antora.yml` 用来定义整个文档的主要架构和属性
