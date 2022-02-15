@@ -27,12 +27,12 @@ yum_server = ""
 apt_server = ""
 trusted_host = ""
 ansible.constants.HOST_KEY_CHECKING = False
-enable_networkmanager_list = ["ns10", "euler20"]
+enable_networkmanager_list = ["ns10", "euler20", "uos1021a"]
 supported_arch_list = ["x86_64", "aarch64", "mips64el", "loongarch64"]
 
-RPM_BASED_OS = ["centos", "redhat", "alibaba", "kylin10", "openeuler"]
-DEB_BASED_OS = ["ubuntu", "uos", "kylin4.0.2", "debian", "uniontech"]
-DISTRO_WITH_RPM_DEB = ["kylin"]
+RPM_BASED_OS = ["kylin_tercel", "kylin_sword", "alibaba", "centos", "openeuler", "uniontech_kongzi"]
+DEB_BASED_OS = ["ubuntu", "uos", "kylin4.0.2", "debian", "uniontech_fou"]
+DISTRO_WITH_RPM_DEB = ["kylin", "uniontech"]
 
 qemu_alias = {
     "ns10": "qemu qemu-img",
@@ -41,6 +41,7 @@ qemu_alias = {
     "euler20": "qemu",
     "uos1021a": "qemu-kvm"
 }
+
 
 class AgentInstallArg(object):
     def __init__(self, trusted_host, pip_url, virtenv_path, init_install):
@@ -286,7 +287,8 @@ def get_mn_release():
 
 def get_host_releasever(ansible_distribution):
     supported_release_info = {
-        "kylin10 tercel 10": "ns10",
+        "kylin_tercel tercel 10": "ns10",
+        "kylin_sword sword 10": "ns10",
         "uniontech fou 20": "uos20",
         "redhat maipo 7.4": "ns10", # old kylinV10, oem 7.4 incompletely
         "centos core 7.6.1810": "c76",
@@ -295,6 +297,7 @@ def get_host_releasever(ansible_distribution):
         "centos core 7.1.1503": "c74",
         "openeuler lts-sp1 20.03": "euler20",
         "uos fou 20": "uos20",
+        "uniontech_kongzi kongzi 20": "uos1021a",
     }
     _key = " ".join(ansible_distribution).lower()
     _releasever = supported_release_info.get(_key)
@@ -751,6 +754,8 @@ def pip_install_package(pip_install_arg, host_post_info):
     host_post_info.post_label = "ansible.pip.install.pkg"
     host_post_info.post_label_param = name
     handle_ansible_info("INFO: pip installing package %s ..." % name, host_post_info, "INFO")
+    command = "which pip || ln -s /usr/bin/pip2 /usr/bin/pip"
+    run_remote_command(command, host_post_info)
     param_dict = {}
     param_dict_raw = dict(version=version, extra_args=extra_args, virtualenv=virtualenv,
                           virtualenv_site_packages=virtualenv_site_packages)
@@ -774,7 +779,7 @@ def pip_install_package(pip_install_arg, host_post_info):
         handle_ansible_start(ansible_start)
     else:
         if 'failed' in result['contacted'][host]:
-            command = "pip uninstall -y %s" % name
+            command = "pip2 uninstall -y %s" % name
             run_remote_command(command, host_post_info)
             description = "ERROR: pip install package %s failed" % name
             host_post_info.post_label = "ansible.pip.install.pkg.fail"
@@ -1208,7 +1213,7 @@ def _get_remote_host_info_from_result(result, host_post_info):
             host_post_info.post_label = "ansible.get.host.info.succ"
             handle_ansible_info("SUCC: Get remote host %s info successful" % host, host_post_info, "INFO")
             if distro in DISTRO_WITH_RPM_DEB:
-                distro = "%s%s" % (distro, major_version)
+                distro = "%s_%s" % (distro, release)
             return (distro, major_version, release, distro_version)
         else:
             host_post_info.post_label = "ansible.get.host.info.fail"
@@ -1897,12 +1902,12 @@ gpgcheck=0
                     yum_enable_repo("epel-release", "epel-release-source", host_post_info)
                 set_ini_file("/etc/yum.repos.d/epel.repo", 'epel', "enabled", "1", host_post_info)
                 if require_python_env == "true":
-                    for pkg in ["python-devel", "python-setuptools", "python2-pip", "gcc", "autoconf"]:
+                    for pkg in ["python2-devel", "python2-setuptools", "python2-pip", "gcc", "autoconf"]:
                         yum_install_package(pkg, host_post_info)
                     if distro_version >=7:
                         # to avoid install some pkgs on virtual router which release is Centos 6.x
                         yum_install_package("chrony", host_post_info)
-                        yum_install_package("python-backports-ssl_match_hostname", host_post_info)
+                        yum_install_package("python2-backports-ssl_match_hostname", host_post_info)
                         yum_install_package("iptables-services", host_post_info)
             else:
                 # user defined zstack_repo, will generate repo defined in zstack_repo
@@ -2013,19 +2018,19 @@ enabled=0" >  /etc/yum.repos.d/zstack-experimental-mn.repo
                 # install libselinux-python and other command system libs from user defined repos
                 host_post_info.post_label = "ansible.shell.install.pkg"
                 python_pip_pkg = "python2-pip" if distro_version >= 7 else "python-pip"
-                host_post_info.post_label_param = "libselinux-python,python-devel,python-setuptools,gcc,vim-minimal" \
-                                                  "autoconf,chrony,python-backports-ssl_match_hostname,iptables-services, %s" % python_pip_pkg
+                host_post_info.post_label_param = "libselinux-python,python2-devel,python2-setuptools,gcc,vim-minimal" \
+                                                  "autoconf,chrony,python2-backports-ssl_match_hostname,iptables-services, %s" % python_pip_pkg
                 if require_python_env == "true":
                     command = (
-                              "yum clean --enablerepo=%s metadata &&  pkg_list=`rpm -q libselinux-python python-devel "
-                              "python-setuptools gcc vim-minimal autoconf %s | grep \"not installed\" | awk"
+                              "yum clean --enablerepo=%s metadata &&  pkg_list=`rpm -q libselinux-python python2-devel "
+                              "python2-setuptools gcc vim-minimal autoconf %s | grep \"not installed\" | awk"
                               " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
                               "-y $pkg; done;") % (zstack_repo, python_pip_pkg, zstack_repo)
                     run_remote_command(command, host_post_info)
                     if distro_version >= 7:
                         # to avoid install some pkgs on virtual router which release is Centos 6.x
                         command = (
-                                  "yum clean --enablerepo=%s metadata &&  pkg_list=`rpm -q python-backports-ssl_match_hostname chrony iptables-services| "
+                                  "yum clean --enablerepo=%s metadata &&  pkg_list=`rpm -q python2-backports-ssl_match_hostname chrony iptables-services| "
                                   "grep \"not installed\" | awk"
                                   " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
                                   "-y $pkg; done;") % (zstack_repo, zstack_repo)
