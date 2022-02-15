@@ -1,4 +1,4 @@
-zwatch-vm-agent=3.10.16
+zwatch-vm-agent=3.10.27
 
 # The comments below are due to compatibility. Please DO NOT DELETE or MODIFY them!
 # See ZSTAC-41487 / ZSTAC-42247
@@ -6,5 +6,5 @@ zwatch-vm-agent=3.10.16
 # compatible-version-of-zwatch-vm-agent.linux-aarch64=3.10.16
 
 md5-zwatch-vm-agent.linux-amd64=b6d638f4bba5cbe32f5f7063c6422c80
-md5-zwatch-vm-agent.linux-aarch64=7adad6af99193a48d0de18da20fe87ba
+md5-zwatch-vm-agent.linux-aarch64=b21c9d6784f9a9eac135fec7a6ebfa20
 md5-zwatch-vm-agent_mips64el=e580f8982e140ceb76a915771178f522
