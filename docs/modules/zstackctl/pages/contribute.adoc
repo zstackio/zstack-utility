@@ -106,7 +106,7 @@ rectangle "repo: zstack" {
 
 zstackctl 基于 `argparse` 实现，同时 `ctl.py` 提供了大量的工具类和工具方法，增加一个 subcommand 非常简单，可以参考下面的例子（为了更全面的展示，下面的例子并非 `ctl.py#GetZStackVersion` 的原始版本）：
 
-[source,bash]
+[source,python]
 ----
 class GetZStackVersion(Command):  #<1>
     def __init__(self):

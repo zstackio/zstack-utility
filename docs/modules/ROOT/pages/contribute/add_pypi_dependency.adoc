@@ -1,3 +1,59 @@
 = 如何增加一个 PyPi 依赖包
+:source-highlighter: highlightjs
+:imagesdir: ../../images
 
-（待补充）
+ZStack Cloud 在 Bin 包中维护了一个 PIP 本地源，用于满足 `zstack-ctl` 等组件的依赖。
+
+== 手动操作增加依赖
+
+以添加新依赖 `influxdb==2.6.0` 为例（具体可参考 `zstack-utility` 库的 commit: 993a40c42965bb48978f4bb879bd8927dcd55d75）：
+
+* 修改 `zstack-utility/zstackbuild/pypi_source/requirements.txt`，插入一行内容：`influxdb==2.6.0`
+
+* 修改 `zstack-utility/zstackbuild/pypi_source/pypi/simple/index.html`，插入一行内容：`<a href='influxdb/'>influxdb</a><br />`
+
+* 创建子目录 influxdb，创建 `influxdb/index.html`，内容为 `<a href='influxdb-2.6.0.tar.gz'>influxdb-2.6.0.tar.gz</a><br />`
+
+ * 下载 `influxdb-2.6.0.tar.gz` 到目录 `zstack-utility/zstackbuild/pypi_source/pypi/` 下。
+
+
+[WARNING]
+====
+上述步骤是在依据 PEP 503 规范对 PIP 本地源做纯手工维护，繁琐且容易出错。
+
+实际上就像 RPM 包可以通过 createrepo 自动创建本地源一样，PIP 包也可以通过 piprepo 自动实现上述步骤。
+
+建议使用下面 <<通过 piprepo>> 介绍的方法
+====
+
+== 通过 piprepo 增加依赖
+
+
+[source, java]
+----
+[root]# virtualenv -p /usr/bin/python2 pip <.>
+[root]# source pip/bin/activate
+
+[root]# pip install piprepo <.>
+
+[root]# pip download -d packages influxdb==2.6.0   <.>
+[root]# pip download --no-binary :all: -d packages influxdb==2.6.0 <.>
+
+[root]# piprepo build packages  <.>
+
+[root]# pip install --index-url file://`pwd`/packages/simple influxdb==2.6.0 <.>
+...
+Building wheels for collected packages: influxdb
+  Building wheel for influxdb (setup.py) ... done
+  Created wheel for influxdb: filename=influxdb-2.6.0-py2.py3-none-any.whl size=27337 sha256=a51560fb12741c962e38391ece225e07c3c3b91cd8bfb165c05e21f9a471adaa
+  Stored in directory: /root/.cache/pip/wheels/9a/f0/34/b60924d6d819b7d9a8fe64ffdbb920e5bbf0c5b87d5fb16d74
+Successfully built influxdb
+Installing collected packages: influxdb
+Successfully installed influxdb-2.6.0
+----
+<.> 创建纯净的 Python2.7 虚拟环境并进入
+<.> 安装 piprepo
+<.> 下载已编译好的 .whl 包，无需考虑编译依赖，推荐。
+<.> 下载源码包.tar.gz，需要先编译再安装，容易遇到编译依赖问题，且耗时较长
+<.> 创建符合 PEP 503 的 Index URL，可以看到 packages 目录下自动产生了 simple 子目录
+<.> 本地源自测
