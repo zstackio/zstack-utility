@@ -23,9 +23,10 @@ ZStack Cloud 在 Bin 包中维护了一个 PIP 本地源，用于满足 `zstack-
 
 实际上就像 RPM 包可以通过 createrepo 自动创建本地源一样，PIP 包也可以通过 piprepo 自动实现上述步骤。
 
-建议使用下面 <<通过 piprepo>> 介绍的方法
+建议使用下面 <<via_piprepo>> 介绍的方法
 ====
 
+[#via_piprepo]
 == 通过 piprepo 增加依赖
 
 

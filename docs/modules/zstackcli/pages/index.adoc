@@ -2,6 +2,8 @@
 :icons: font
 :source-highlighter: rouge
 
+== 介绍
+
 `zstack-cli` 提供了向 ZStack Cloud 发送 API 请求的 CLI 命令行，可以通过 `zstack-cli --help` 查看 `zstack-cli` 的通用参数，
 
 [source,bash]
@@ -28,7 +30,52 @@ Options:
                         set -D or -d option. Default is 'password'.
   -s, --no-secure       [Optional] if setting -s, will save password
                         information in command history.
+  -c, --curl-example    [Optional] if setting -c, will print curl example to
+                        on terminal.
 ----
+
+== 参数说明
+
+=== --curl-example 介绍：
+
+启动 `zstack-cli` 时，加上 -c 或者 --curl-example 之后会以 curl 命令的形式打印请求的方法与参数，例如：
+
+[source,bash]
+----
+admin >>>AttachNetworkServiceToL3Network l3NetworkUuid=e6fa7d7b49834ab2a67bb4f5be873381 networkServices="{'3ac7627766f54d3e885614e16859b37b':['DHCP','SNAT']}"
+
+Copy as cURL: curl http://localhost:8080/zstack/api/ -X POST -H 'Connection:close' -H 'Content-Type:application/json' -H 'Content-Length:262'  -d '{"org.zstack.header.network.service.APIAttachNetworkServiceToL3NetworkMsg": {"session": {"uuid": "bedcf8e7dd3c40559695e98ad6283fe1"}, "networkServices": {"3ac7627766f54d3e885614e16859b37b": ["DHCP", "SNAT"]}, "l3NetworkUuid": "e6fa7d7b49834ab2a67bb4f5be873381"}}' <.>
+
+
+Copy as cURL: curl http://localhost:8080/zstack/api/result/e6b54057a63746a3bea68b353d96f986 -X GET -H 'Connection:close' -H 'Content-Type:application/json' -H 'Content-Length:0' <.>
+
+API call[org.zstack.header.message.APIEvent] failed because [code: SYS.1003, description: A resource can not be found, details: invalid field[l3NetworkUuid], resource[uuid:e6fa7d7b49834ab2a67bb4f5be873381, type:L3NetworkVO] not found]
+
+admin >>>AttachNetworkServiceToL3Network l3NetworkUuid=fd68d026278b4169a5353477d69df545 networkServices="{'3ac7627766f54d3e885614e16859b37b':['DHCP','SNAT']}"
+
+Copy as cURL: curl http://localhost:8080/zstack/api/ -X POST -H 'Connection:close' -H 'Content-Type:application/json' -H 'Content-Length:262'  -d '{"org.zstack.header.network.service.APIAttachNetworkServiceToL3NetworkMsg": {"session": {"uuid": "bedcf8e7dd3c40559695e98ad6283fe1"}, "networkServices": {"3ac7627766f54d3e885614e16859b37b": ["DHCP", "SNAT"]}, "l3NetworkUuid": "fd68d026278b4169a5353477d69df545"}}'
+
+
+Copy as cURL: curl http://localhost:8080/zstack/api/result/2bb498ba1bbe4d9c8a5a0bd457a70014 -X GET -H 'Connection:close' -H 'Content-Type:application/json' -H 'Content-Length:0'
+
+API call[org.zstack.header.message.APIEvent] failed because [code: SYS.1007, description: One or more API argument is invalid, details: cannot find network service provider[uuid:3ac7627766f54d3e885614e16859b37b] or it provides no services]
+admin >>>GetMetricData namespace=ZStack/VM metricName=DiskAllReadBytes functions=sort(by=\"value\"\\,direction=\"desc\")
+
+Copy as cURL: curl http://localhost:8080/zstack/api/ -X POST -H 'Connection:close' -H 'Content-Type:application/json' -H 'Content-Length:220'  -d '{"org.zstack.zwatch.api.APIGetMetricDataMsg": {"functions": ["sort(by=\"value\",direction=\"desc\")"], "session": {"uuid": "bedcf8e7dd3c40559695e98ad6283fe1"}, "namespace": "ZStack/VM", "metricName": "DiskAllReadBytes"}}'
+
+{
+    "data": [
+        {
+            "labels": {
+                "VMUuid": "147cc3297a1e406fa921e2029ed32261"
+            },
+            "time": 1645076542,
+            "value": 0.0
+        },
+...
+----
+<.> 打印出的 curl 命令
+<.> 打印出的跟踪异步请求的结果的 curl 命令
 
 此外，直接进入 `zstack-cli` 后输入 `help` 还会有更多的用法介绍以及 API 列表：
 

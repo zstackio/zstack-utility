@@ -47,7 +47,7 @@ ls ./WEB-INF/classes/tools/zstackctl-*.tar.gz
 
 [source,bash]
 ----
-[root@zstack-dev ~]# head -n 8 ZStack-Cloud-installer.bin | sed 's/$0/$1/g' | sed '$aecho $tmpdir' > zstack-dump.sh
+[root@zstack-dev ~]# head -n 8 ZStack-Cloud-installer.bin | sed 's/$0/$1/g' | sed '$aecho $tmpdir' > dump.sh
 [root@zstack-dev ~]# tmpdir=`bash dump.sh ZStack-Cloud-installer.bin`
 [root@zstack-dev ~]# cd $tmpdir
 [root@zstack-dev tmp.1AQmcUK2Po]# tar zxvf zstack-all-in-one*.tgz

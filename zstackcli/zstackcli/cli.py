@@ -957,7 +957,7 @@ Parse command parameters error:
             print "Saved command: %s result to file: %s" % (str(num), file_name)
 
         if not all_params:
-            self.show_help()
+            self.show_help(None)
             return
 
         nums = all_params[0].split(',')
@@ -1183,7 +1183,8 @@ Parse command parameters error:
         self.hostname = options.host
         self.port = options.port
         self.no_secure = options.no_secure
-        self.api = api.Api(host=self.hostname, port=self.port)
+        self.curl = options.curl
+        self.api = api.Api(host=self.hostname, port=self.port, curl=self.curl)
 
 
 def main():
@@ -1244,6 +1245,14 @@ def main():
         default=False,
         action='store_true',
         help="[Optional] if setting -s, will save password information in command history. ")
+
+    parser.add_option(
+        "-c",
+        "--curl-example",
+        dest="curl",
+        default=False,
+        action='store_true',
+        help="[Optional] if setting -c, will print curl example on terminal. ")
 
     (options, args) = parser.parse_args()
 
