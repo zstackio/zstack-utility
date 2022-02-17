@@ -86,9 +86,9 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             '/usr/lib/systemd/system/zstack-baremetal-nginx.service'
 
     HTTPBOOT_DIR = os.path.join(BAREMETAL_LIB_DIR, 'bmv2httpboot//')
-    ZSTACK_DVD_LINKED_DIR = os.path.join(HTTPBOOT_DIR, 'zstack-dvd')
-    ZSTACK_DVD_X86_64_LINKED_DIR = os.path.join(ZSTACK_DVD_LINKED_DIR, 'x86_64')
-    ZSTACK_DVD_AARCH64_LINKED_DIR = os.path.join(ZSTACK_DVD_LINKED_DIR, 'aarch64')
+    BM_IMGS_DIR = os.path.join(HTTPBOOT_DIR, 'bmimgs')
+    BM_IMGS_X86_64_DIR = os.path.join(BM_IMGS_DIR, 'x86_64')
+    BM_IMGS_AARCH64_DIR = os.path.join(BM_IMGS_DIR, 'aarch64')
 
     KS_CFG_DIR = os.path.join(HTTPBOOT_DIR, 'ks')
     INSPECTOR_KS_X86_64_CFG = os.path.join(KS_CFG_DIR, 'inspector_ks_x86_64.cfg')
@@ -106,27 +106,30 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                 {'body': {'provisionNetwork': raw_conf}})
         return conf
 
-    def _ensure_env(self):
+    def _ensure_env(self, network_obj):
         """ Check the env whether ready
         """
 
-        required_pkgs = ['nginx', 'dnsmasq', 'ipxe-bootimgs', 'socat', 'gc',
-                         'xmlto', 'asciidoc', 'hmaccalc', 'newt-devel',
-                         'perl-ExtUtils-Embed', 'pesign',
-                         'elfutils-libelf-devel', 'elfutils-devel',
-                         'zlib-devel', 'binutils-devel', 'bison',
-                         'audit-libs-devel', 'java-devel', 'numactl-devel',
-                         'pciutils-devel', 'ncurses-devel', 'python-docutils',
-                         'flex', 'targetcli', 'syslinux', 'tftp-server']
+        pkgs = ['nginx', 'dnsmasq', 'ipxe-bootimgs', 'socat', 'gc','xmlto',
+                 'asciidoc', 'hmaccalc', 'newt-devel', 'perl-ExtUtils-Embed',
+                 'pesign', 'elfutils-libelf-devel', 'elfutils-devel', 'bison',
+                 'zlib-devel', 'binutils-devel', 'audit-libs-devel', 'flex',
+                 'java-devel', 'numactl-devel', 'pciutils-devel', 'targetcli',
+                 'ncurses-devel', 'tftp-server', 'libguestfs']
+
+        extra_x86_64  = ['syslinux', 'python-docutils']
+        extra_aarch64 = ['python2-docutils']
+
+        pkgs.extend(eval("extra_{}".format(kvmagent.host_arch)))
         yum_release = kvmagent.get_host_yum_release()
-        cmd = ('export YUM0={yum_release}; yum --disablerepo=* '
-               '--enablerepo=zstack-mn clean all; '
+        cmd = ('export YUM0={yum_release}; [[ "$YUM0" = "ns10" ]] && rpm -e libselinux-utils --nodeps > /dev/null 2>&1; '
+               'yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn clean all; '
                'pkg_list=`rpm -q {pkg_list} | grep "not installed" | awk '
                '\'{{ print $2 }}\'`; for pkg in $pkg_list; do yum '
-               '--disablerepo=* --enablerepo=zstack-mn install -y '
+               '--disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install -y '
                '$pkg > /dev/null || exit 1; done;').format(
                    yum_release=yum_release,
-                   pkg_list=' '.join(required_pkgs))
+                   pkg_list=' '.join(pkgs))
         shell.call(cmd)
 
         # Create directories
@@ -151,36 +154,43 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         # Prepare tftpboot, copy ipxe/pxelinux.0 rom
         shutil.copy('/usr/share/ipxe/ipxe.efi', self.TFTPBOOT_DIR)
         shutil.copy('/usr/share/ipxe/undionly.kpxe', self.TFTPBOOT_DIR)
-        shutil.copy('/usr/share/syslinux/pxelinux.0', self.TFTPBOOT_DIR)
+        if kvmagent.host_arch == "x86_64":
+            shutil.copy('/usr/share/syslinux/pxelinux.0', self.TFTPBOOT_DIR)
 
         # Copy grubaa64.efi
         shutil.copy('/tmp/grubaa64.efi', self.TFTPBOOT_DIR)
 
-        # Prepare httpboot, link zstack-dvd, copy kernel&initramfs
-        if os.path.islink(self.ZSTACK_DVD_LINKED_DIR):
-            os.unlink(self.ZSTACK_DVD_LINKED_DIR)
+        # Prepare httpboot, copy kernel&initramfs
+        if os.path.islink(self.BM_IMGS_DIR):
+            os.unlink(self.BM_IMGS_DIR)
 
-        if not os.path.exists(self.ZSTACK_DVD_LINKED_DIR):
-            linux.mkdir(self.ZSTACK_DVD_LINKED_DIR)
+        if not os.path.exists(self.BM_IMGS_DIR):
+            linux.mkdir(self.BM_IMGS_DIR)
 
-        if os.path.islink(self.ZSTACK_DVD_X86_64_LINKED_DIR):
-            os.unlink(self.ZSTACK_DVD_X86_64_LINKED_DIR)
-        os.symlink('/opt/zstack-dvd/x86_64/%s' % yum_release,
-                   self.ZSTACK_DVD_X86_64_LINKED_DIR)
+        # download pxe images from management node
+        # static repo url like: http://10.10.0.1:8080/zstack/static/zstack-repo/x86_64/c76
+        bmtempdir = tempfile.mkdtemp()
+        mn_repo_url = 'http://{ip}:{port}/zstack/static/zstack-repo'.format(
+            ip=network_obj.callback_ip, port=network_obj.callback_port)
 
-        if os.path.isdir(self.ZSTACK_DVD_X86_64_LINKED_DIR):
+        for arch in ['x86_64', 'aarch64']:
+            linux.mkdir(os.path.join(self.BM_IMGS_DIR, arch))
+            bm2_ims_url = '{}/{}/{}/bm2-images.tar.gz'.format(mn_repo_url, arch, yum_release)
+            tmpfile = '{}/{}-bm-images.tar.gz'.format(bmtempdir, arch)
+            if shell.call("curl -I {}".format(bm2_ims_url)).splitlines()[0].split()[1] != '404':
+                shell.call("curl -c -O {url} -o {tmpfile}; tar zxf {tmpfile} -C {bmimgs_dir}".format(
+                    url=bm2_ims_url, tmpfile=tmpfile, bmimgs_dir=os.path.join(self.BM_IMGS_DIR, arch)))
+
+        shutil.rmtree(bmtempdir)
+
+        if os.listdir(self.BM_IMGS_X86_64_DIR):
             bm_utils.copy_dir_files_to_another_dir(
-                os.path.join(self.ZSTACK_DVD_X86_64_LINKED_DIR, 'images', 'pxeboot'),
+                os.path.join(self.BM_IMGS_X86_64_DIR, 'images', 'pxeboot'),
                 self.X86_64_BOOTIMG_DIR)
 
-        if os.path.islink(self.ZSTACK_DVD_AARCH64_LINKED_DIR):
-            os.unlink(self.ZSTACK_DVD_AARCH64_LINKED_DIR)
-        os.symlink('/opt/zstack-dvd/aarch64/ns10',
-                   self.ZSTACK_DVD_AARCH64_LINKED_DIR)
-
-        if os.path.isdir(self.ZSTACK_DVD_AARCH64_LINKED_DIR):
+        if os.listdir(self.BM_IMGS_AARCH64_DIR):
             bm_utils.copy_dir_files_to_another_dir(
-                os.path.join(self.ZSTACK_DVD_AARCH64_LINKED_DIR, 'images', 'pxeboot'),
+                os.path.join(self.BM_IMGS_AARCH64_DIR, 'images', 'pxeboot'),
                 self.AARCH64_BOOTIMG_DIR)
 
         # Start and enable target service
@@ -734,7 +744,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                 port=network_obj.baremetal_instance_proxy_port)
 
         grub_template = self._load_template('grub.cfg')
-        grub_conf = grub_template.render(inspect_ks_cfg_uri=inspect_ks_cfg_uri)
+        grub_conf = grub_template.render(inspect_ks_cfg_uri=inspect_ks_cfg_uri, inspect_ks_cfg_nic_ip=network_obj.provision_nic_ip)
         with open(self.GRUB_CFG_PATH, 'w') as f:
             f.write(grub_conf)
 
@@ -950,24 +960,26 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         template = self._load_template('inspector.ks')
 
         # create inspector_ks_x86_64.cfg
-        network_inst_uri = "http://{ip}:{port}/bmv2httpboot/zstack-dvd/x86_64/".format(
+        network_inst_uri = "http://{ip}:{port}/bmv2httpboot/bmimgs/x86_64/".format(
                 ip=network_obj.provision_nic_ip, port=port)
 
         conf = template.render(
             network_inst_uri=network_inst_uri,
-            send_hardware_infos_uri=send_hardware_infos_uri
+            send_hardware_infos_uri=send_hardware_infos_uri,
+            provision_net=network_obj.provision_nic_ip
         )
 
         with open(self.INSPECTOR_KS_X86_64_CFG, 'w') as f:
             f.write(conf)
 
         # create inspector_ks_aarch64.cfg
-        network_inst_uri = "http://{ip}:{port}/bmv2httpboot/zstack-dvd/aarch64/".format(
+        network_inst_uri = "http://{ip}:{port}/bmv2httpboot/bmimgs/aarch64/".format(
                 ip=network_obj.provision_nic_ip, port=port)
 
         conf = template.render(
             network_inst_uri=network_inst_uri,
-            send_hardware_infos_uri=send_hardware_infos_uri
+            send_hardware_infos_uri=send_hardware_infos_uri,
+            provision_net=network_obj.provision_nic_ip
         )
 
         with open(self.INSPECTOR_KS_AARCH64_CFG, 'w') as f:
@@ -1018,7 +1030,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         """
         network_obj, bm_instance_objs = NetworkObj.from_json(req)
         self._check_management_provision_network_mixed(network_obj)
-        self._ensure_env()
+        self._ensure_env(network_obj)
         with bm_utils.rollback(self.destroy_network, req):
             # Do not destroy previous configuration
             # self.destroy_network(req)

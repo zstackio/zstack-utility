@@ -659,7 +659,7 @@ class UseUserZstack(object):
     def __enter__(self):
         self.root_uid = os.getuid()
         self.root_gid = os.getgid()
-        self.root_home = os.environ['HOME']
+        self.root_home = os.environ.get('HOME') if os.environ.get('HOME') else "/root"
 
         os.setegid(grp.getgrnam('zstack').gr_gid)
         os.seteuid(pwd.getpwnam('zstack').pw_uid)
@@ -1753,7 +1753,7 @@ class DeployUIDBCmd(Command):
         info('Successfully deployed zstack_ui database')
 
 class TailLogCmd(Command):
-    WS_NAME = 'websocketd_aarch64' if Ctl.IS_AARCH64 else 'websocketd'
+    WS_NAME = 'websocketd' if platform.machine() == 'x86_64' else 'websocketd_%s' % platform.machine()
     WS_PATH = os.path.join(Ctl.ZSTACK_TOOLS_DIR, WS_NAME)
 
     def __init__(self):
@@ -2046,7 +2046,7 @@ class StartCmd(Command):
 
     def install_argparse_arguments(self, parser):
         parser.add_argument('--host', help='SSH URL, for example, root@192.168.0.10, to start the management node on a remote machine')
-        parser.add_argument('--timeout', help='Wait for ZStack Server startup timeout, default is 300 seconds.', default=300)
+        parser.add_argument('--timeout', help='Wait for ZStack Server startup timeout, default is 1000 seconds.', default=1000)
         parser.add_argument('--daemon', help='Start ZStack in daemon mode. Only used with systemd.', action='store_true', default=False)
         parser.add_argument('--simulator', help='Start Zstack in simulator mode.', action='store_true', default=False)
         parser.add_argument('--mysql_process_list', help='Check mysql wait timeout connection', action='store_true', default=False)
@@ -2701,8 +2701,8 @@ class InstallDbCmd(Command):
       shell: "yum clean metadata; yum --nogpgcheck install -y mysql mysql-server "
       register: install_result
 
-    - name: install MySQL for RedHat 7/Kylin10 from local
-      when: (ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repo != 'false') or (ansible_os_family == 'Kylin' and ansible_distribution_version == '10' and yum_repo != 'false')
+    - name: install MySQL for RedHat 7/Kylin10/openEuler from local
+      when: (ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repo != 'false') or ansible_os_family == 'Kylin' or ansible_os_family == 'Openeuler'
       shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y  mariadb mariadb-server iptables-services
       register: install_result
 
@@ -2746,8 +2746,8 @@ class InstallDbCmd(Command):
       when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7'
       service: name=mysqld state=restarted enabled=yes
 
-    - name: enable MySQL daemon on RedHat 7/Kyliin10
-      when: (ansible_os_family == 'RedHat' and ansible_distribution_version >= '7') or (ansible_os_family == 'Kylin' and ansible_distribution_version == '10')
+    - name: enable MySQL daemon on RedHat 7/Kyliin10/openEuler
+      when: (ansible_os_family == 'RedHat' and ansible_distribution_version >= '7') or ansible_os_family == 'Kylin' or ansible_os_family == 'Openeuler'
       service: name=mariadb state=restarted enabled=yes
 
     - name: enable MySQL daemon on AliOS 7
@@ -8299,7 +8299,7 @@ class StopUiCmd(Command):
                 port = port.strip(' \t\n\r')
         else:
             port = '5000' 
-        (_, pids) = commands.getstatusoutput("netstat -pantu| awk '$4 ~ /\:%s$/{print}'|sed -n 's/^.* \\+\\([0-9]\\+\\)\\/.*$/\\1/p'" % port)
+        (_, pids) = commands.getstatusoutput("netstat -lnp | grep ':%s' |  awk '{sub(/\/.*/,""); print $NF}'" % port)
         if _ == 0 and pids.strip() != '':
             info("find pids %s at ui port: %s, kill it" % (pids,port))
             logger.debug("find pids %s at ui port: %s, kill it" % (pids,port))

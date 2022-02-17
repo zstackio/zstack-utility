@@ -6,7 +6,7 @@ set -e
 # exit if the mod load
 lsmod | grep nbd && exit 0
 # if not load, check the mod exist and try to load it.
-if [[ `find /lib/modules/$(uname -r) -type f -name 'nbd.ko' | wc -l ` -gt 0 ]]; then
+if [[ `find /lib/modules/$(uname -r) -type f -name 'nbd.ko*' | wc -l ` -gt 0 ]]; then
     modprobe nbd && exit 0
     # failed to load, remove the mod and build it again
     # rm -rf `find /usr/modules$(uname -r) -type f -name 'nbd.ko'`

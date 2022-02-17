@@ -305,10 +305,11 @@ if [ "$grub_cpu" == "arm64" ]; then
 fi
 
 menuentry 'ZStack Get Bare Metal Chassis Hardware Info' --class fedora --class gnu-linux --class gnu --class os {
+        set root=(tftp,%s)
         $linux (tftp)zstack/$arch/vmlinuz devfs=nomount ksdevice=bootif inst.ks=ftp://%s/ks/inspector_ks_$arch.cfg vnc
         $initrd (tftp)zstack/$arch/initrd.img
 }
-""" % (pxeserver_dhcp_nic_ip)
+""" % (pxeserver_dhcp_nic_ip, pxeserver_dhcp_nic_ip)
         with open(self.UEFI_DEFAULT_GRUB_CFG, 'w') as f:
             f.write(grub_cfg)
 
@@ -571,6 +572,7 @@ poweroff
     def _create_post_scripts(self, cmd, pxeserver_dhcp_nic_ip, more_script = ""):
         post_script = more_script
         post_script += """
+host_arch=`uname -m`
 bm_log='/tmp/zstack_bm.log'
 curr_time=`date +"%Y-%m-%d %H:%M:%S"`
 echo -e "Current time: \t$curr_time" >> $bm_log
@@ -589,7 +591,7 @@ wget -O- --header="Content-Type:application/json" \
 http://{PXESERVER_DHCP_NIC_IP}:7771/zstack/asyncrest/sendcommand >>$bm_log 2>&1
 
 # install shellinaboxd
-wget -P /usr/bin ftp://{PXESERVER_DHCP_NIC_IP}/shellinaboxd || curl -o /usr/bin/shellinaboxd ftp://{PXESERVER_DHCP_NIC_IP}/shellinaboxd
+wget -O /usr/bin/shellinaboxd ftp://{PXESERVER_DHCP_NIC_IP}/shellinaboxd_$host_arch || curl -o /usr/bin/shellinaboxd ftp://{PXESERVER_DHCP_NIC_IP}/shellinaboxd_$host_arch
 chmod a+x /usr/bin/shellinaboxd
 
 # install zstack zwatch-vm-agent
@@ -1147,17 +1149,19 @@ echo "STARTMODE='auto'" >> $IFCFGFILE
         if not os.path.exists(vmlinuz_path):
             os.makedirs(vmlinuz_path)
         # RHEL
-        ret1 = bash_r("cp %s %s" % (os.path.join(mount_path, "isolinux/vmlinuz*"), os.path.join(vmlinuz_path, "vmlinuz")))
-        ret2 = bash_r("cp %s %s" % (os.path.join(mount_path, "isolinux/initrd*.img"), os.path.join(vmlinuz_path, "initrd.img")))
+        vmlinuz_file_path = os.path.join(vmlinuz_path, "vmlinuz")
+        initrd_file_path = os.path.join(vmlinuz_path, "initrd.img")
+        ret1 = bash_r("cp %s %s && chmod 777 %s" % (os.path.join(mount_path, "isolinux/vmlinuz*"), vmlinuz_file_path, vmlinuz_file_path))
+        ret2 = bash_r("cp %s %s && chmod 777 %s" % (os.path.join(mount_path, "isolinux/initrd*.img"), initrd_file_path, initrd_file_path))
         # DEBIAN SERVER
-        ret3 = bash_r("cp %s %s" % (os.path.join(mount_path, "install/netboot/*-installer/amd64/linux"), os.path.join(vmlinuz_path, "vmlinuz")))
-        ret4 = bash_r("cp %s %s" % (os.path.join(mount_path, "install/netboot/*-installer/amd64/initrd.gz"), os.path.join(vmlinuz_path, "initrd.img")))
+        ret3 = bash_r("cp %s %s && chmod 777 %s" % (os.path.join(mount_path, "install/netboot/*-installer/amd64/linux"), vmlinuz_file_path, vmlinuz_file_path))
+        ret4 = bash_r("cp %s %s && chmod 777 %s" % (os.path.join(mount_path, "install/netboot/*-installer/amd64/initrd.gz"), initrd_file_path, initrd_file_path))
         # SUSE
-        ret5 = bash_r("cp %s %s" % (os.path.join(mount_path, "boot/*/loader/linux"), os.path.join(vmlinuz_path, "vmlinuz")))
-        ret6 = bash_r("cp %s %s" % (os.path.join(mount_path, "boot/*/loader/initrd"), os.path.join(vmlinuz_path, "initrd.img")))
+        ret5 = bash_r("cp %s %s && chmod 777 %s" % (os.path.join(mount_path, "boot/*/loader/linux"), vmlinuz_file_path, vmlinuz_file_path))
+        ret6 = bash_r("cp %s %s && chmod 777 %s" % (os.path.join(mount_path, "boot/*/loader/initrd"), initrd_file_path, initrd_file_path))
         # ns10
-        ret7 = bash_r("cp %s %s" % (os.path.join(mount_path, "images/pxeboot/vmlinuz"), os.path.join(vmlinuz_path, "vmlinuz")))
-        ret8 = bash_r("cp %s %s" % (os.path.join(mount_path, "images/pxeboot/initrd.img"), os.path.join(vmlinuz_path, "initrd.img")))
+        ret7 = bash_r("cp %s %s && chmod 777 %s" % (os.path.join(mount_path, "images/pxeboot/vmlinuz"), vmlinuz_file_path, vmlinuz_file_path))
+        ret8 = bash_r("cp %s %s && chmod 777 %s" % (os.path.join(mount_path, "images/pxeboot/initrd.img"), initrd_file_path, initrd_file_path))
         if (ret1 != 0 or ret2 != 0) and (ret3 != 0 or ret4 != 0) and (ret5 != 0 or ret6 != 0) and (ret7 != 0 or ret8 != 0):
             raise PxeServerError("failed to copy vmlinuz and initrd.img from image[uuid:%s] to baremetal tftp server" % cmd.imageUuid)
 

@@ -178,7 +178,9 @@ class HighPerformanceNetworkPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     def reconfigOvs(self):
-        if shell.call("rpm -qa openvswitch") == '':
+        if kvmagent.get_host_os_type() == 'debian' and shell.run("dpkg -l openvswitch") != 0:
+            return
+        elif kvmagent.get_host_os_type() == 'redhat' and shell.call("rpm -qa openvswitch") == '':
             return
 
         global ovsctl
