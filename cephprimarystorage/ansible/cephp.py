@@ -23,6 +23,7 @@ remote_user = "root"
 remote_pass = None
 remote_port = None
 host_uuid = None
+ceph_file_path = "/bin/ceph"
 
 
 # get parameter from shell
@@ -138,11 +139,13 @@ if virtual_env_status is False:
 command = "[ -f %s/bin/python ] || virtualenv --system-site-packages %s " % (virtenv_path, virtenv_path)
 run_remote_command(command, host_post_info)
 
-# name: install python pkg
+# name: install python pkg and replace ceph python path
+replace_content(ceph_file_path, "regexp='/usr/bin/env python' replace='/usr/bin/python2.7'", host_post_info)
 extra_args = "\"--trusted-host %s -i %s \"" % (trusted_host, pip_url)
 pip_install_arg = PipInstallArg()
 pip_install_arg.extra_args = extra_args
 pip_install_arg.name = "python-cephlibs"
+pip_install_arg.virtualenv = virtenv_path
 pip_install_package(pip_install_arg, host_post_info)
 
 # name: copy zstacklib and install
