@@ -1,13 +1,10 @@
 #!/usr/bin/env python
 # encoding: utf-8
 
-import json
-import re
 import io
 import threading
-import time
 import xml.etree.ElementTree as etree
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import yaml
 from termcolor import colored
@@ -60,21 +57,25 @@ def get_default_ip():
     cmd(False)
     return cmd.stdout.strip()
 
+
 class CollectTime(object):
     def __init__(self, start_time, end_time, total_collect_time):
         self.start_time = start_time.strftime("%Y-%m-%d %H:%M:%S")
         self.end_time = end_time.strftime("%Y-%m-%d %H:%M:%S")
         self.total_collect_time = total_collect_time
 
+
 class FailDetail(object):
     def __init__(self, fail_log_name, fail_cause):
         self.fail_log_name = fail_log_name
         self.fail_cause = fail_cause
 
+
 class CustomerIdentifier(object):
     lic_app_code_md5 = None
     username = None
     cloud_title = None
+
 
 class Summary(object):
     def __init__(self):
@@ -243,11 +244,13 @@ class Summary(object):
                                 "collect_time_list": self.collect_time_list}, default=lambda o: o.__dict__,
                                 indent=4, ensure_ascii=False, encoding='utf-8'))
 
+
 class db_info(object):
     hostname = None
     port = None
     user = None
     password = None
+
 
 class CollectFromYml(object):
     failed_flag = False
@@ -1061,7 +1064,10 @@ class CollectFromYml(object):
         if args.timeout and not str(args.timeout).isdigit():
             error_verbose("timeout must be a positive integer")
 
-    def dump_agent_threads(self,args):
+    def dump_agent_threads(self, args):
+        if not args.dump_thread_info:
+            return
+
         exec_cmd = self.get_host_sql(
             "select h.managementIp from HostVO h where h.hypervisorType = \"KVM\"") + ' | awk \'NR>1\''
         try:
