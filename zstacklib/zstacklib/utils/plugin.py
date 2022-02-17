@@ -18,7 +18,7 @@ import ConfigParser
 import time
 
 from zstacklib.utils import jsonobject, http
-from zstacklib.utils.report import get_api_id, AutoReporter
+from zstacklib.utils.report import get_api_id, AutoReporter, get_timeout
 from zstacklib.utils import traceable_shell
 
 PLUGIN_CONFIG_SECTION_NAME = 'plugins'
@@ -69,9 +69,9 @@ class TaskDaemon(object):
     def __init__(self, task_spec, task_name, timeout=0, report_progress=True):
         self.api_id = get_api_id(task_spec)
         self.task_name = task_name
-        self.timeout = timeout
+        self.timeout = get_timeout(task_spec) if timeout == 0 else timeout
         self.progress_reporter = AutoReporter.from_spec(task_spec, task_name, self._get_percent) if report_progress else None
-        self.cancel_thread = threading.Timer(timeout, self._timeout_cancel) if timeout > 0 else None
+        self.cancel_thread = threading.Timer(self.timeout, self._timeout_cancel) if self.timeout > 0 else None
         self.closed = False
 
     def __enter__(self):
