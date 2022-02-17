@@ -29,7 +29,7 @@ class Api(object):
         apicmd.session = session
         return apicmd
 
-    def __init__(self, host='localhost', port=8080, api_path='/zstack/api', result_path='/zstack/api/result'):
+    def __init__(self, host='localhost', port=8080, api_path='/zstack/api', result_path='/zstack/api/result', curl=False):
         '''
         Constructor
         '''
@@ -41,10 +41,11 @@ class Api(object):
 
         self.api_url = http.build_url(('http', host, port, api_path))
         self.api_result_url = http.build_url(('http', host, port, result_path))
+        self.curl = curl
 
     def _get_response(self, ret_uuid):
         url = '%s%s' % (self.api_result_url, ret_uuid)
-        jstr = http.json_dump_get(url)
+        jstr = http.json_dump_get(url, print_curl=self.curl)
         rsp = jsonobject.loads(jstr)
         return rsp
 
@@ -112,7 +113,7 @@ class Api(object):
         cmd = {apicmd.FULL_NAME: apicmd}
         log_cmd = '{"%s": "%s"}' % (apicmd.FULL_NAME, log.mask_sensitive_field(apicmd, jsonobject.dumps(apicmd)))
         logger.debug("async call[url: %s, request: %s]" % (self.api_url, log_cmd))
-        jstr = http.json_dump_post(self.api_url, cmd, fail_soon=fail_soon)
+        jstr = http.json_dump_post(self.api_url, cmd, fail_soon=fail_soon, print_curl=self.curl)
         rsp = jsonobject.loads(jstr)
         if rsp.state == 'Done':
             logger.debug("async call[url: %s, response: %s]" % (self.api_url, mask_result(rsp.result)))
@@ -144,7 +145,7 @@ class Api(object):
         self._check_not_none_field(apicmd)
         cmd = {apicmd.FULL_NAME: apicmd}
         logger.debug("sync_call[url: %s, request: %s]" % (self.api_url, jsonobject.dumps(cmd)))
-        jstr = http.json_dump_post(self.api_url, cmd, fail_soon=fail_soon)
+        jstr = http.json_dump_post(self.api_url, cmd, fail_soon=fail_soon, print_curl=self.curl)
         logger.debug("sync_call[url: %s, response: %s]" % (self.api_url, jstr))
         rsp = jsonobject.loads(jstr)
         reply = jsonobject.loads(rsp.result)

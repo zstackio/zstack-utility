@@ -2,6 +2,8 @@
 :icons: font
 :source-highlighter: rouge
 
+== 介绍
+
 `zstack-ctl` 提供了控制和运维 ZStack Cloud 的基本工具，可以通过 `zstack-ctl --help` 查看 `zstack-ctl` 完整的功能：
 
 [source,bash,options="wrap"]
@@ -48,4 +50,6 @@ zstack-ctl configured_collect_log::
 
 更多更细节的内容请参考详细的子命令介绍页面：
 
-include::../nav.adoc[lines=2..]
+include::../nav.adoc[lines=3..]
+
+开发细节内容参考 xref:contribute.adoc[]

@@ -334,7 +334,16 @@ class HttpServer(object):
     def stop(self):
         cherrypy.engine.exit()
 
-def json_post(uri, body=None, headers={}, method='POST', fail_soon=False):
+def print_curl_command(uri, methmod, headers, body):
+    hstr = ""
+    for k in headers:
+        hstr += "-H '%s:%s' " % (k, headers[k])
+    mstr = "-X %s" % methmod
+    bstr = "-d '%s'" % body if body != None and body.strip() != "" else ""
+    cstr = " ".join(["curl %s" % uri, mstr, hstr, bstr])
+    print("\n\033[34mCopy as cURL: %s \033[0m\n" % cstr)
+
+def json_post(uri, body=None, headers={}, method='POST', fail_soon=False, print_curl=False):
     ret = []
     def post(_):
         try:
@@ -347,11 +356,13 @@ def json_post(uri, body=None, headers={}, method='POST', fail_soon=False):
             if body is not None:
                 assert isinstance(body, types.StringType)
                 header['Content-Length'] = str(len(body))
+                if print_curl: print_curl_command(uri, method, header, body)
                 resp = pool.urlopen(method, uri, headers=header, body=str(body))
                 content = resp.data
                 resp.close()
             else:
                 header['Content-Length'] = '0'
+                if print_curl: print_curl_command(uri, method, header, body)
                 resp = pool.urlopen(method, uri, headers=header)
                 content = resp.data
                 resp.close()
@@ -375,17 +386,17 @@ def json_post(uri, body=None, headers={}, method='POST', fail_soon=False):
     return ret[0]
 
 
-def json_dump_post(uri, body=None, headers={}, fail_soon=False):
+def json_dump_post(uri, body=None, headers={}, fail_soon=False, print_curl=False):
     content = None
     if body is not None:
         content = jsonobject.dumps(body)
-    return json_post(uri, content, headers, fail_soon=fail_soon)
+    return json_post(uri, content, headers, fail_soon=fail_soon, print_curl=print_curl)
 
-def json_dump_get(uri, body=None, headers={}, fail_soon=False):
+def json_dump_get(uri, body=None, headers={}, fail_soon=False, print_curl=False):
     content = None
     if body is not None:
         content = jsonobject.dumps(body)
-    return json_post(uri, content, headers, 'GET', fail_soon=fail_soon)
+    return json_post(uri, content, headers, 'GET', fail_soon=fail_soon, print_curl=print_curl)
 
 class LimitedSizedReader(cherrypy._cpreqbody.SizedReader):
     maxlinesize = 16 << 20 # 16 MB

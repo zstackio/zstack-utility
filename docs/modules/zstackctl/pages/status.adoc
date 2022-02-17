@@ -15,12 +15,15 @@
 .参数说明
 |===
 |参数|介绍|示例
+
 |none
 |显示当前节点的状态和信息
 |zstack-ctl status
+
 |--host HOST
 |显示指定节点的状态和信息
 |zstack-ctl status --host 192.168.0.10
+
 |===
 
 == 进阶使用
