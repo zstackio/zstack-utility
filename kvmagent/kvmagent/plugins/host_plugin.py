@@ -1634,7 +1634,11 @@ done
         addr = cmd.pciDeviceAddress
 
         # ramdisk file in /dev/shm to mark host rebooting
-        ramdisk = "/dev/shm/pci_sriov_gim"
+        if cmd.pciDeviceType == 'Ethernet_Controller':
+            ramdisk = "/dev/shm/pci_sriov_gim_" + addr
+        else:
+            ramdisk = "/dev/shm/pci_sriov_gim"
+
         if cmd.reSplite and os.path.exists(ramdisk):
             logger.debug("no need to re-splite pci device[addr:%s] into sriov pci devices" % addr)
             return jsonobject.dumps(rsp)
