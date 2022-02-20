@@ -285,6 +285,7 @@ class CheckDisk(object):
 
 class SharedBlockPlugin(kvmagent.KvmAgent):
 
+    PING_PATH = "/sharedblock/ping"
     CONNECT_PATH = "/sharedblock/connect"
     DISCONNECT_PATH = "/sharedblock/disconnect"
     CREATE_VOLUME_FROM_CACHE_PATH = "/sharedblock/createrootvolume"
@@ -320,8 +321,12 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     SHRINK_SNAPSHOT_PATH = "/sharedblock/snapshot/shrink"
     GET_QCOW2_HASH_VALUE_PATH = "/sharedblock/getqcow2hash"
 
+    vgs_in_progress = set()
+    vg_size = {}
+
     def start(self):
         http_server = kvmagent.get_http_server()
+        http_server.register_async_uri(self.PING_PATH, self.ping)
         http_server.register_async_uri(self.CONNECT_PATH, self.connect)
         http_server.register_async_uri(self.DISCONNECT_PATH, self.disconnect)
         http_server.register_async_uri(self.CREATE_VOLUME_FROM_CACHE_PATH, self.create_root_volume)
@@ -447,6 +452,27 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             raise e
 
         return False
+
+    @kvmagent.replyerror
+    def ping(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentRsp()
+        size_cache = self.vg_size.get(cmd.vgUuid)
+        if size_cache != None and linux.get_current_timestamp() - size_cache['currentTimestamp'] < 60:
+            rsp.totalCapacity = size_cache['totalCapacity']
+            rsp.availableCapacity = size_cache['availableCapacity']
+        elif cmd.vgUuid not in self.vgs_in_progress:
+            try:
+                self.vgs_in_progress.add(cmd.vgUuid)
+                rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+                self.vg_size[cmd.vgUuid] = {}
+                self.vg_size[cmd.vgUuid]['totalCapacity'] = rsp.totalCapacity
+                self.vg_size[cmd.vgUuid]['availableCapacity'] = rsp.availableCapacity
+                self.vg_size[cmd.vgUuid]['currentTimestamp'] = long(linux.get_current_timestamp())
+            finally:
+                self.vgs_in_progress.remove(cmd.vgUuid)
+
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def connect(self, req):
