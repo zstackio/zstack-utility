@@ -110,6 +110,7 @@ class Daemon(object):
 
         locale.setlocale(locale.LC_ALL, 'C')
         os.environ["LC_ALL"]="C"
+        os.environ["COLUMNS"] = str(os.sysconf('SC_ARG_MAX'))
 
         # Get the pid from the pidfile
         try:
