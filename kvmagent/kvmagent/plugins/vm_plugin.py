@@ -1363,7 +1363,7 @@ def get_connect(src_host_ip):
     return conn
 
 
-def get_vm_by_uuid(uuid, exception_if_not_existing=True, conn=None):
+def get_vm_by_uuid(uuid, exception_if_not_existing=True, conn=None, log_vm_xml=False):
     try:
         # libvirt may not be able to find a VM when under a heavy workload, we re-try here
         @LibvirtAutoReconnect
@@ -1378,7 +1378,8 @@ def get_vm_by_uuid(uuid, exception_if_not_existing=True, conn=None):
                 return conn.lookupByName(uuid)
 
         vm = Vm.from_virt_domain(retry_call_libvirt())
-        logger.debug("find vm xml: %s" % vm.domain_xml)
+        if log_vm_xml:
+            logger.debug("find vm xml: %s" % vm.domain_xml)
         return vm
     except libvirt.libvirtError as e:
         error_code = e.get_error_code()
