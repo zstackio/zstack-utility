@@ -159,7 +159,7 @@ def removeZeroFromMacAddress(mac):
 def get_nic_supported_max_speed(nic):
     r, o = bash.bash_ro("ethtool %s" % nic)  # type: (int, str)
     if r != 0:
-        return -1
+        return 0
 
     in_speed = False
     speed = 0
