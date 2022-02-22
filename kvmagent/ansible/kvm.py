@@ -528,6 +528,12 @@ def set_max_performance():
     host_post_info.post_label_param = "set profile as virtual-host"
     run_remote_command(command, host_post_info)
 
+@on_redhat_based(distro)
+def copy_bond_conf():
+    """copy bond.conf from mn_node to host_node"""
+    _src = os.path.join(file_root, "bond.conf")
+    _dst = "/etc/modprobe.d/"
+    copy_to_remote(_src, _dst, "mode=644", host_post_info)
 
 def do_libvirt_qemu_config():
     """special configration"""
@@ -750,6 +756,7 @@ copy_ovmf_tools()
 copy_lsusb_scripts()
 copy_zs_scripts()
 copy_grubaa64_efi()
+copy_bond_conf()
 create_virtio_driver_directory()
 set_max_performance()
 do_libvirt_qemu_config()
