@@ -214,13 +214,13 @@ def install_kvm_pkg():
                       usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
                       net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
                       smartmontools sshpass usbutils vconfig wget audit dnsmasq \
-                      qemu-kvm-ev collectd-virt OVMF edk2-ovmf mcelog MegaCli storcli Arcconf python-pyudev"
+                      qemu-kvm-ev collectd-virt OVMF edk2-ovmf mcelog MegaCli storcli Arcconf python-pyudev i40e auxiliary"
 
         x86_64_c76 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                       usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python libvirt-admin lighttpd lsof \
                       net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
                       smartmontools sshpass usbutils vconfig wget audit dnsmasq \
-                      qemu-kvm-ev collectd-virt OVMF edk2-ovmf mcelog MegaCli storcli Arcconf python-pyudev seabios-bin nping"
+                      qemu-kvm-ev collectd-virt OVMF edk2-ovmf mcelog MegaCli storcli Arcconf python-pyudev seabios-bin nping i40e auxiliary"
 
         aarch64_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                         usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
