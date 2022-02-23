@@ -1,6 +1,6 @@
 = ZStack Python SDK
 :icons: font
-:source-highlighter: rouge
+:source-highlighter: highlightjs
 :docinfo: shared
 :max-include-depth: 16
 
@@ -9,6 +9,7 @@ ZStack 绝大部分的 API 都是异步 API, 为了方便用户同步编程的�
 本文是一篇 SDK 使用手册，旨在引导用户以正确的方式调用 ZStack 的 Python SDK。此外，我们还提供了一篇调用示例，用户可以参考本示例来调用 ZStack Python SDK API 来编写自己的 ZStack 程序。本示例中所有标记为 "#Must keep" 的函数建议都全部保留。
 
 == 环境准备
+
 <1> 安装 ZStack 企业版 或者拷贝已有企业版环境的目录 `/var/lib/zstack/virtualenv/zstackcli` 到目标主机，可以新建一个虚拟临时环境目录（例如 `/var/lib/virtualenv` ）进行存放；拷贝方式可通过 scp 等方式进行。
 <2> 执行命令 `source /var/lib/zstack/virtualenv/zstackcli/bin/activate`
 <3> 执行示例前 , 请先指定 ZStack 管理节点的 IP 地址 : `export ZS_SERVER_IP=ZStack_ 管理节点 _IP`
@@ -21,29 +22,37 @@ ZStack 绝大部分的 API 都是异步 API, 为了方便用户同步编程的�
 
 * 第三步中若是本机为管理节点则 IP 为 127.0.0.1，若为拷贝目录操作则是管理节点的 IP；需要注意，本机与管理节点需要网络通畅
 ====
+
 == 修改示例代码
+
  vim zs_api_sdk.py #设置 ZStack 管理节点 admin 用户的密码 : user_password 并指定物理机的 uuid: host_uuid
 
 == 执行示例
  python ./zs_api_sdk.py #这个示例会统计给定物理机上所有 VM 的磁盘消耗 , 并按照倒序打印出来
 
 == 部分 API 讲解
+
 ZStack API 的执行都依赖已经登陆过的 session（登录除外），也就是用户在调用任何 ZStack API 之前都需要确保获取一个登陆 session 的 uuid。同样的 , 在 session 使用完毕后 , 需要调用对应的 logout API 退出 session。
-[IMPORTANT]
-.如果在短时间内大量调用登陆 API，而不退出登陆的话 , 一旦已经登陆的 session 数量达到系统预先设定的阈值 , 会导致无法登陆新的 session。
-====
-====
-* 登陆 API:
-[source,python]
-----
-include::../examples/zs_api_sdk.py[tag=login_by_account]
-----
 
 [IMPORTANT]
-.需要注意的是登陆 API 使用的秘钥是一个经过 sha512 加密过的密文
 ====
+如果在短时间内大量调用登陆 API，而不退出登陆的话 , 一旦已经登陆的 session 数量达到系统预先设定的阈值 , 会导致无法登陆新的 session。
 ====
+
+* 登陆 API:
+
+[source,python]
+....
+include::../examples/zs_api_sdk.py[tag=login_by_account]
+....
+
+[IMPORTANT]
+====
+需要注意的是登陆 API 使用的秘钥是一个经过 sha512 加密过的密文.
+====
+
 * 登出 API:
+
 [source, python]
 ----
 include::../examples/zs_api_sdk.py[tag=logout]
@@ -52,6 +61,7 @@ include::../examples/zs_api_sdk.py[tag=logout]
 
 如果用户需要查询 ZStack 的某个资源 , 就需要使用 Query API. 例如下面这个例子可以
 返回系统中所有存在的 zone
+
 [source, python]
 ----
 include::../examples/zs_api_sdk.py[tag=query_zone]
@@ -64,23 +74,29 @@ include::../examples/zs_api_sdk.py[tag=query_zone]
 * 所有的 Query API 都需要给定一个条件 action.conditions. 该条件是一个数组结构如果用户想获取全部的资源 , 可以把条件设置为一个空的数组 . 当然用户也可以指定特别条件 , 例如 : `action.conditions = ["name=TestZone","state=Enabled"]` 查询 API 的条件包含很多种 , 还可以设定查询的范围 , 具体的使用方式请参考 : https://www.zstack.io/help/dev_manual/dev_guide/v4/1.html#chapter-1-9-%E6%9F%A5%E8%AF%A2API[<ZStack 开发者手册 > 中的 " 查询 API" 章节].
 * 每个 API 都有一个返回值代表 API 执行结果 , 例如 Query API 返回的是一个数组类型 : evt.inventories , 用户可以使用 count 来获取该数组的大小 , 并使用 python 数组的使用方式完成数据调用 . 对于大部分非 Query 类型的 API, ZStack 返回的是一个确定的数据类型 , 例如创建云主机 (CreateVmInstanceAction), 它返回的就是 : evt.inventory. 具体的 API 参数和返回值定义可以参考 https://www.zstack.io/help/dev_manual/dev_guide/v4[<ZStack 开发者手册 >].
 ====
+
 == Summarize
+
 通过使用 ZStack SDK 我们可以非常方便的完成 ZStack 的操作，例如我们可以停止一个云主机 , 并给他挂上一个云磁盘 :
 
 * 停止一个云主机
 [source, python]
+----
 action = api_action.StopVmInstanceAction()
 action.timeout = 30000
 action.uuid = 云主机的 UUID
 evt = execute_action_with_session(action, session_uuid)
+----
 
 * 挂载云盘
 [source, python]
+----
 action = api_action.AttachDataVolumeToVmAction()
 action.timeout = 30000
 action.vmInstanceUuid = 云主机的 UUID
 action.volumeUuid = 云磁盘的 UUID
 evt = execute_action_with_session(action, session_uuid)
+----
 
 对于 ZStack API 里的各种参数 , 可使用 zstack-cli 来快速获取参数名 . cli使用教程具体可参考 https://www.zstack.io/help/product_manuals/cli_manual/v4/2.html[官网]或者 https://gitee.com/zstackio/zstack-utility/blob/master/docs/modules/zstackcli/pages/index.adoc[ Gitee ]. 进入 zstack-cli 输入对应的命令 , 并按两次 <TAB> 按键 , 就会出现所有参数的提示，例如 :
 [source, java]
