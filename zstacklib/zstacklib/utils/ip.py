@@ -3,6 +3,7 @@
 @author: yyk
 '''
 import re
+import os.path
 
 import linux
 import bash
@@ -187,3 +188,16 @@ def get_namespace_id(namespace_name):
             return 0
         return int(out) + 1
     return int(out)
+
+def get_host_physicl_nics():
+    nic_names = bash.bash_o("find /sys/class/net -type l -not -lname '*virtual*' -printf '%f\\n'").splitlines()
+    if nic_names is None or len(nic_names) == 0:
+        return []
+
+    nics = []
+    for nic in nic_names:
+        #exclude sriov vf nics
+        if not os.path.exists("/sys/class/net/%s/device/physfn/" % nic):
+            nics.append(nic)
+
+    return nics

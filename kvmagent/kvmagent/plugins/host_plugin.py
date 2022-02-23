@@ -34,6 +34,7 @@ from zstacklib.utils import ovs
 from zstacklib.utils.bash import *
 from zstacklib.utils.ip import get_nic_supported_max_speed
 from zstacklib.utils.report import Report
+import zstacklib.utils.ip as ip
 import zstacklib.utils.plugin as plugin
 
 host_arch = platform.machine()
@@ -1499,7 +1500,7 @@ done
             nics[i] = o
 
         threads = []
-        nic_names = bash_o("find /sys/class/net -type l -not -lname '*virtual*' -printf '%f\\n'").splitlines()
+        nic_names = ip.get_host_physicl_nics()
         if len(nic_names) == 0:
             return nics
 
