@@ -275,7 +275,7 @@ def collect_vm_statistics():
     def collect(vm_pid_arr):
         vm_pid_arr_str = ','.join(vm_pid_arr)
 
-        r, pid_cpu_usages_str = bash_ro("top -b -n 1 -p %s" % vm_pid_arr_str)
+        r, pid_cpu_usages_str = bash_ro("top -b -n 1 -p %s -w 4096" % vm_pid_arr_str)
         if r != 0 or not pid_cpu_usages_str:
             return
 
