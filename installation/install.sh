@@ -1520,7 +1520,7 @@ is_install_general_libs_rh(){
             gnutls-utils \
             avahi-tools \
             audit \
-            redis5 \
+            redis \
             nodejs"
     if [ "$BASEARCH" == "x86_64" ]; then
       deps_list="${deps_list} mcelog"
