@@ -1,15 +1,23 @@
 #!/usr/bin/env python
 # encoding: utf-8
 
-import yaml
+import json
+import re
+import io
 import threading
-from zstacklib import *
+import time
+import xml.etree.ElementTree as etree
+from datetime import datetime, timedelta
+
+import yaml
+from termcolor import colored
+
+import zstackctl.ctl
 from utils import linux
 from utils import shell
 from utils.sql_query import MySqlCommandLineQuery
-from termcolor import colored
-from datetime import datetime, timedelta
-import time
+from zstacklib import *
+
 
 def info_verbose(*msg):
     if len(msg) == 1:
@@ -17,7 +25,7 @@ def info_verbose(*msg):
     else:
         out = ''.join(msg)
     now = datetime.now()
-    out = "%s " % str(now) + out
+    out = "%s " % now.strftime('%Y-%m-%d %H:%M:%S') + out
     sys.stdout.write(out)
     logger.info(out)
 
@@ -28,7 +36,7 @@ def collect_fail_verbose(*msg):
     else:
         out = ''.join(msg)
     now = datetime.now()
-    out = "%s " % str(now) + out
+    out = "%s " % now.strftime('%Y-%m-%d %H:%M:%S') + out
     return out
 
 
@@ -63,6 +71,11 @@ class FailDetail(object):
         self.fail_log_name = fail_log_name
         self.fail_cause = fail_cause
 
+class CustomerIdentifier(object):
+    lic_app_code_md5 = None
+    username = None
+    cloud_title = None
+
 class Summary(object):
     def __init__(self):
         self.fail_count = 0
@@ -96,14 +109,145 @@ class Summary(object):
 
         time_list.append(collect_time)
 
+    def check_connectivity(self):
+        status, _ = commands.getstatusoutput("ping 119.29.29.29 -c 1 -W 3")
+        return True if status == 0 else False
+
+    def get_identifier(self, collect_dir):
+        _, lic_md5 = commands.getstatusoutput(
+            'find %s -iname "lic-application-code.txt" | sort | head -n 1 | xargs md5sum | awk \'{print $1}\'' % collect_dir)
+
+        _, username = commands.getstatusoutput(
+            "find %s -iname \"customer-identifier\" -exec cat {} \; 2>/dev/null | grep 'INSERT INTO `LicenseHistoryVO' | grep -Eo '[a-zA-Z0-9_-.]+@[a-zA-Z0-9_-]+(\.[a-zA-Z0-9_-]+)+' | tail -n1" % collect_dir)
+
+        if username == "":
+            _, username = commands.getstatusoutput(
+                '''timeout -s 9 3 zstack-cli GetLicenseInfo | grep '"user"' | awk '{print $2}' | tr -d ","''')
+            username = username.strip('"')
+
+        _, o = commands.getstatusoutput(
+            "find %s -iname \"customer-identifier\" -exec cat {} \; 2>/dev/null | grep 'start ui_customeize' -A 200 | grep -E '^[[:space:]]*<'" % collect_dir)
+
+        _, ui3 = commands.getstatusoutput(
+            "find %s/*/ui3-cfg/* -iname 'data.json' | head -1 | xargs cat" % collect_dir)
+
+        cloud_title = self.get_cloud_title(o, ui3)
+
+        if isinstance(lic_md5, str):
+            lic_md5 = lic_md5.decode('utf-8')
+
+        if isinstance(cloud_title, str):
+            cloud_title = cloud_title.decode('utf-8')
+
+        if isinstance(username, str):
+            username = username.decode('utf-8')
+
+        return lic_md5, username, cloud_title
+
+    @staticmethod
+    def get_cloud_title(xml_text, ui3cfg):
+        """get cloud title, it should be the project name of this cloud
+
+        1. try zh-CN bannerTitle in ui4 database
+        2. try zh-CN browserTitle in ui4 database
+        3. try en-US bannerTitle in ui4 database
+        4. try en-US browserTitle in ui4 database
+        5. try "generic" bannerTitle/browserTitle in ui4 database (ui 4.0.0 uses `theme.config` rather than `theme.config.zh-CN`)
+
+        @param xml_text: something like
+<database name="zstack_ui">
+	<table_structure name="zs_kv">
+		...
+	</table_structure>
+	<table_data name="zs_kv">
+	<row>
+		<field name="id">3</field>
+		<field name="key">theme.config.zh-CN</field>
+		<field name="value">{&quot;__typename&quot;:&quot;ThemeConfig&quot;,&quot;loginTitle&quot;:&quot;欢迎使用 W Cloud 云平台&quot;,&quot;browserTitle&quot;:&quot;WW Cloud |\dsad\/dasdas&quot;,&quot;themeMode&quot;:&quot;light&quot;,&quot;themeColor&quot;:&quot;blue&quot;,&quot;bannerTitle&quot;:&quot;Wei's ZStack云平台&quot;,&quot;bannerFontSize&quot;:&quot;14px&quot;,&quot;overviewMode&quot;:&quot;classicalBlue&quot;,&quot;overviewTitle&quot;:&quot;ZStack实时监控&quot;,&quot;overviewMonitorType&quot;:&quot;externalMonitor&quot;,&quot;oem&quot;:null,&quot;versonName&quot;:null,&quot;versonNumber&quot;:null,&quot;email&quot;:null,&quot;copyRight&quot;:null,&quot;favicon&quot;:&quot;/public/theme/default/zh-CN/favicon.ico&quot;,&quot;loginLogo&quot;:&quot;/public/theme/default/zh-CN/logo.svg&quot;,&quot;bannerLogo&quot;:&quot;/public/theme/default/zh-CN/logo-bar.svg&quot;}</field>
+	</row>
+	<row>
+		<field name="id">4</field>
+		<field name="key">theme.config.en-US</field>
+		<field name="value">{&quot;themeMode&quot;:&quot;light&quot;,&quot;themeColor&quot;:&quot;blue&quot;,&quot;browserTitle&quot;:&quot;WW Cloud&quot;,&quot;loginTitle&quot;:&quot;Welcome to W Cloud Cloud&quot;,&quot;bannerTitle&quot;:&quot;W Cloud&quot;,&quot;bannerFontSize&quot;:&quot;14px&quot;,&quot;overviewTitle&quot;:&quot;Real-Time Monitor&quot;,&quot;overviewMode&quot;:&quot;classicalBlue&quot;,&quot;overviewMonitorType&quot;:&quot;externalMonitor&quot;,&quot;oem&quot;:null,&quot;versonName&quot;:null,&quot;versonNumber&quot;:null,&quot;email&quot;:null,&quot;copyRight&quot;:null,&quot;__typename&quot;:&quot;ThemeConfig&quot;,&quot;favicon&quot;:&quot;/public/theme/default/zh-CN/favicon.ico&quot;,&quot;loginLogo&quot;:&quot;/public/theme/default/zh-CN/logo.svg&quot;,&quot;bannerLogo&quot;:&quot;/public/theme/default/zh-CN/logo-bar.svg&quot;}</field>
+	</row>
+	</table_data>
+</database>
+        @param ui3cfg: str
+        """
+        if "theme.config" in xml_text:
+            tree = etree.XML(xml_text)
+            rows = tree.findall('./database/table_data/row')
+            zh_title = None
+            en_title = None
+            for row in rows:
+                value_txt = row.findall('.//field[@name="value"]')[0].text
+                value_json = Summary.loads_str(value_txt)
+                if "theme.config.zh-CN" in etree.tostring(row):
+                    if value_json.get('bannerTitle') != "" and value_json.get('bannerTitle') != u"ZStack云平台":
+                        zh_title = value_json.get('bannerTitle')
+                    elif value_json.get('browserTitle') != "" and value_json.get('browserTitle') != "ZStack":
+                        zh_title = value_json.get('browserTitle')
+                elif "theme.config.en-US" in etree.tostring(row):
+                    if value_json.get('bannerTitle') != "" and value_json.get('bannerTitle') != "ZStack Cloud":
+                        en_title = value_json.get('bannerTitle')
+                    elif value_json.get('browserTitle') != "" and value_json.get('browserTitle') != "ZStack":
+                        en_title = value_json.get('browserTitle')
+                elif "theme.config" in etree.tostring(row):
+                    if value_json.get('bannerTitle') != "" and value_json.get('bannerTitle') != "ZStack Cloud":
+                        zh_title = value_json.get('bannerTitle')
+                    elif value_json['browserTitle'] != "" and value_json.get('browserTitle') != "ZStack":
+                        en_title = value_json.get('browserTitle')
+            if zh_title is not None:
+                return zh_title
+            elif en_title is not None:
+                return en_title
+
+        if "bannerText" in ui3cfg or "title" in ui3cfg:
+            value_json = Summary.loads_str(ui3cfg.strip())
+            if value_json.get("bannerText") != "":
+                return value_json.get("bannerText")
+            elif value_json.get("title") != "":
+                return value_json.get("title")
+
+        return "Unknown"
+
+    @staticmethod
+    def loads_str(data_str):
+        """
+
+        @param data_str: str
+        @return: dict
+        """
+        try:
+            result = json.loads(data_str)
+            return result
+        except Exception as e:
+            error_index = re.findall(r"char (\d+)\)", str(e))
+            if error_index:
+                error_str = data_str[int(error_index[0])]
+                data_str = data_str.replace(error_str, "<?>")
+                return Summary.loads_str(data_str)
+
     def persist(self, collect_dir):
         summary_file = collect_dir + 'summary'
-        with open(summary_file, 'a+') as f:
-            f.write(json.dumps({"fail_count": self.fail_count,
+        lic_md5, username, cloud_title = self.get_identifier(collect_dir)
+        with io.open(summary_file, 'a+', encoding='utf-8') as f:
+            f.write(json.dumps({"lic_md5": lic_md5,
+                                "username": username,
+                                u"cloud_name": cloud_title,
+                                "connectivity": self.check_connectivity(),
+                                "version": zstackctl.ctl.get_detail_version(),
+                                "fail_count": self.fail_count,
                                 "success_count": self.success_count,
                                 "fail_list": self.fail_list,
                                 "collect_time_list": self.collect_time_list}, default=lambda o: o.__dict__,
-                               indent=4))
+                                indent=4, ensure_ascii=False, encoding='utf-8'))
+
+class db_info(object):
+    hostname = None
+    port = None
+    user = None
+    password = None
 
 class CollectFromYml(object):
     failed_flag = False
@@ -140,6 +284,41 @@ class CollectFromYml(object):
                 db_hostname, db_port, db_user, db_password, suffix_sql)
         else:
             cmd = "mysql --host %s --port %s -u%s zstack -e \'%s\'" % (db_hostname, db_port, db_user, suffix_sql)
+        return cmd
+
+    def get_customer_identifier(self):
+        i = db_info()
+        i.hostname, i.port, i.user, i.password = self.ctl.get_live_mysql_portal()
+        zstack_license_record = self.get_license_record(i)
+
+        i.hostname, i.port, i.user, i.password = self.ctl.get_live_mysql_portal(ui=True)
+        ui_customeize = self.get_ui_customize(i)
+
+        return "echo -e '%s'; " % ("="*6 + "start zstack_licnese_record" + "="*6 + "\n") + \
+               zstack_license_record + \
+               "; echo -e '%s'; " % ("\n" + "=" * 6 + "end zstack_licnese_record" + "=" * 6 + "\n") + \
+               "echo -e '%s'; " % ("=" * 6 + "start ui_customeize" + "=" * 6 + "\n") + \
+                ui_customeize + \
+               "; echo -e '%s'; " % ("\n" + "=" * 6 + "end ui_customeize" + "=" * 6 + "\n")
+
+    def get_ui_customize(self, i):
+        # type: (db_info) -> str
+        if i.password:
+            cmd = "mysqldump --xml -u%s -p%s -P %s --single-transaction --quick zstack_ui zs_kv " \
+                  "-w '`key` like \"%%theme.config%%\"' | grep -Ev '^\/\*'" % (i.user, i.password, i.port)
+        else:
+            cmd = "mysqldump --xml -u%s -P %s --single-transaction --quick zstack_ui zs_kv " \
+                  "-w '`key` like \"%%theme.config%%\"' | grep -Ev '^\/\*'" % (i.user, i.port)
+        return cmd
+
+    def get_license_record(self, i):
+        # type: (db_info) -> str
+        if i.password:
+            cmd = "mysqldump -u%s -p%s -P %s --single-transaction --quick zstack LicenseHistoryVO | grep -Ev '^\/\*'" % (
+                i.user, i.password, i.port)
+        else:
+            cmd = "mysqldump -u%s -P %s --single-transaction --quick zstack LicenseHistoryVO | grep -Ev '^\/\*'" % (
+                i.user, i.port)
         return cmd
 
     def get_dump_sql(self):
@@ -248,6 +427,8 @@ class CollectFromYml(object):
                         break
                     if name_value == 'mysql-database' and exec_value == 'AutoCollect':
                         log['exec'] = self.get_dump_sql()
+                    if name_value == "customer-identifier" and exec_value == 'AutoCollect':
+                        log['exec'] = self.get_customer_identifier()
                     if exec_type_value is None:
                         log['exec_type'] = 'RunAndRedirect'
                 else:
@@ -295,6 +476,9 @@ class CollectFromYml(object):
                    {size = size + $2/1024/1024;}  END{size=sprintf("%.1f", size); print size\"M\";}\''
         else:
             cmd = cmd + ' | awk -F \'|\' \'{print $1}\'| xargs -I {} /bin/cp -rpf {} %s' % collect_dir
+
+        if mode_value == "Hierarchy":
+            cmd = '/bin/cp -rpf %s %s' % (dir_value, collect_dir)
         return cmd
 
     def build_collect_cmd_old(self, dir_value, file_value, collect_dir):
