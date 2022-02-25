@@ -649,13 +649,17 @@ class HostPlugin(kvmagent.KvmAgent):
         if len(rules) != 0 and rules is not None:
             for item in rules:
                 rule = self.get_clean_rule(item)
-                clean_rule = ' '.join(rule.split(' ')[1:])
-                ret = bash_r("iptables -C %s " % clean_rule)
+                if ' '.join(rule.split(' ')[:1]) == '-N':
+                    clean_rule = ' '.join(rule.split(' ')[1:])
+                    ret = bash_r("iptables -w -S %s " % clean_rule)
+                else:
+                    clean_rule = ' '.join(rule.split(' ')[1:])
+                    ret = bash_r("iptables -w -C %s " % clean_rule)
                 if ret == 0:
                     continue
                 elif ret == 1:
                     # didn't find this rule
-                    set_rules_ret = bash_r("iptables %s" % rule)
+                    set_rules_ret = bash_r("iptables -w %s" % rule)
                     if set_rules_ret != 0:
                         raise Exception('cannot set iptables rule: %s' % rule)
                 else:
