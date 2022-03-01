@@ -798,7 +798,8 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
 
         r = drbd.DrbdResource(volume_abs_path.split("/")[-1])
         with drbd.OperateDrbd(r):
-            lvm.create_lvm_snapshot(volume_abs_path, snapName=snap_name, drbd_path=r.get_dev_path())
+            volume_snap_abs_path = lvm.create_lvm_snapshot(volume_abs_path, snapName=snap_name, drbd_path=r.get_dev_path())
+            rsp.actualSize = lvm.get_lv_size(volume_snap_abs_path)
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
