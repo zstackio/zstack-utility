@@ -254,12 +254,16 @@ def get_boundary(entity):
 
     return ib
 
+
 def get_image_format_from_buf(qhdr):
     if qhdr[:4] == 'QFI\xfb':
         if qhdr[16:20] == '\x00\x00\x00\00':
             return "qcow2"
         else:
             return "derivedQcow2"
+
+    if qhdr[:5] == 'KDMV\x03':
+        return 'vmdk'
 
     if qhdr[0x8001:0x8006] == 'CD001':
         return 'iso'
@@ -270,6 +274,7 @@ def get_image_format_from_buf(qhdr):
     if qhdr[0x9001:0x9006] == 'CD001':
         return 'iso'
     return "raw"
+
 
 def stream_body(self, task, entity, boundary, up):
     pool, image_name = task.tmpPath.split('/')
@@ -327,12 +332,12 @@ def stream_body(self, task, entity, boundary, up):
         shell.run('rbd rm %s' % task.tmpPath)
         return
 
-    if file_format == 'qcow2':
-        if linux.qcow2_get_backing_file('rbd:'+task.tmpPath):
-            task.fail('Qcow2 image %s has backing file' % task.imageUuid)
-            shell.run('rbd rm %s' % task.tmpPath)
-            return
+    if file_format == 'qcow2' and linux.qcow2_get_backing_file('rbd:'+task.tmpPath):
+        task.fail('Qcow2 image %s has backing file' % task.imageUuid)
+        shell.run('rbd rm %s' % task.tmpPath)
+        return
 
+    if file_format in ['qcow2', 'vmdk']:
         conf_path = None
         try:
             with open('/etc/ceph/ceph.conf', 'r') as fd:
@@ -340,10 +345,10 @@ def stream_body(self, task, entity, boundary, up):
                 conf = '%s\n%s\n' % (conf, 'rbd default format = 2')
                 conf_path = linux.write_to_temp_file(conf)
 
-            shell.check_run('%s -f qcow2 -O rbd rbd:%s rbd:%s:conf=%s' % 
-                    (qemu_img.subcmd('convert'), task.tmpPath, task.dstPath, conf_path))
+            shell.check_run('%s -f %s -O rbd rbd:%s rbd:%s:conf=%s' % (qemu_img.subcmd('convert'), file_format,
+                                                                       task.tmpPath, task.dstPath, conf_path))
         except Exception as e:
-            task.fail('cannot convert Qcow2 image %s to rbd' % task.imageUuid)
+            task.fail('cannot convert %s image %s to rbd' % (file_format, task.imageUuid))
             logger.warn('convert image %s failed: %s', (task.imageUuid, str(e)))
             return
         finally:
@@ -356,6 +361,7 @@ def stream_body(self, task, entity, boundary, up):
     if task.lastError:
         raise Exception(task.lastError)
     task.success()
+
 
 class ImageFileObject(object):
     def __init__(self, image):
@@ -741,7 +747,7 @@ class CephAgent(object):
             self._fail_task(task, 'unexpected post form')
 
         try:
-            upload_param = {'offset' : slice_offset, 'size' : slice_size, 'md5': expected_md5}
+            upload_param = {'offset': slice_offset, 'size': slice_size, 'md5': expected_md5}
             stream_body(self, task, entity, boundary, upload_param)
             if slice_offset + slice_size != task.downloadSize:
                 raise Exception("incomplete image %s, offset %d, completed %d, expected %d" % (image_uuid, slice_offset, \
@@ -918,8 +924,9 @@ class CephAgent(object):
 
             logger.debug("content-length is: %s" % total)
 
-            _, _, err = shell.bash_progress_1('set -o pipefail;wget --no-check-certificate -O - %s 2>%s| rbd import --image-format 2 - %s/%s'
-                       % (cmd.url, PFILE, pool, tmp_image_name), _getProgress)
+            _, _, err = shell.bash_progress_1('set -o pipefail;wget --no-check-certificate -O - %s 2>%s| rbd import '
+                                              '--image-format 2 - %s/%s ' % (cmd.url, PFILE, pool, tmp_image_name)
+                                              , _getProgress)
             if err:
                 raise err
             actual_size = linux.get_file_size_by_http_head(cmd.url)
@@ -983,13 +990,13 @@ class CephAgent(object):
         else:
             raise Exception('unknown url[%s]' % cmd.url)
 
-        file_format = shell.call("set -o pipefail; %s rbd:%s/%s | grep 'file format' | cut -d ':' -f 2" %
-                (qemu_img.subcmd('info'), pool, tmp_image_name))
+        file_format = shell.call("set -o pipefail; %s rbd:%s/%s | grep 'file format' | cut -d ':' -f 2" % (
+            qemu_img.subcmd('info'), pool, tmp_image_name))
         file_format = file_format.strip()
-        if file_format not in ['qcow2', 'raw']:
+        if file_format not in ['qcow2', 'raw', 'vmdk']:
             raise Exception('unknown image format: %s' % file_format)
 
-        if file_format == 'qcow2':
+        if file_format in ['qcow2', 'vmdk']:
             conf_path = None
             try:
                 with open('/etc/ceph/ceph.conf', 'r') as fd:
@@ -997,8 +1004,9 @@ class CephAgent(object):
                     conf = '%s\n%s\n' % (conf, 'rbd default format = 2')
                     conf_path = linux.write_to_temp_file(conf)
 
-                shell.check_run('%s -f qcow2 -O rbd rbd:%s/%s rbd:%s/%s:conf=%s' % 
-                        (qemu_img.subcmd('convert'), pool, tmp_image_name, pool, image_name, conf_path))
+                shell.check_run('%s -f %s -O rbd rbd:%s/%s rbd:%s/%s:conf=%s' % (qemu_img.subcmd('convert'),
+                                                                                 file_format, pool, tmp_image_name,
+                                                                                 pool, image_name, conf_path))
                 shell.check_run('rbd rm %s/%s' % (pool, tmp_image_name))
             finally:
                 if conf_path:
@@ -1012,13 +1020,12 @@ class CephAgent(object):
             shell.check_run('rbd rm %s/%s' % (pool, image_name))
         _2()
 
-
         o = shell.call('rbd --format json info %s/%s' % (pool, image_name))
         image_stats = jsonobject.loads(o)
 
         rsp.size = long(image_stats.size_)
         rsp.actualSize = actual_size
-        if image_format == "qcow2":
+        if image_format in ['qcow2', 'vmdk']:
             rsp.format = "raw"
         else:
             rsp.format = image_format
