@@ -1503,6 +1503,31 @@ def kill_process_by_fullname(name, sig):
     logger.debug("killed -%d process details: %s" % (sig, output))
     return pids
 
+def get_ipv4_addr_by_bond(bond):
+    ip = ['%s/%d' % (x.address, x.prefixlen) for x in
+          iproute.query_addresses(ifname=bond, ip_version=4)]
+    if len(ip) == 0:
+        master = read_file("/sys/class/net/%s/master/ifindex" % bond)
+        if master:
+            ip = ['%s/%d' % (x.address, x.prefixlen) for x in
+                  iproute.query_addresses(index=int(master.strip()), ip_version=4)]
+    return ip
+
+def get_ipv4_addr_by_nic(nic):
+    ip = ['%s/%d' % (x.address, x.prefixlen) for x in
+          iproute.query_addresses(ifname=nic, ip_version=4)]
+    return ip
+
+def get_bond_info_by_nic(nic):
+    bonds = read_file("/sys/class/net/bonding_masters")
+    if bonds:
+        for bond in bonds.strip().split(" "):
+            slaves = read_file("/sys/class/net/%s/bonding/slaves" % bond)
+            if slaves:
+                for slave in slaves.strip().split(" "):
+                    if slave == nic:
+                        return bond
+
 def get_nic_name_by_mac(mac):
     names = get_nic_names_by_mac(mac)
     if len(names) > 1:
