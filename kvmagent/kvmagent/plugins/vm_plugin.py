@@ -1400,7 +1400,7 @@ class VmVolumesRecoveryTask(plugin.TaskDaemon):
             return None
 
         # bps -> MiB/s (limit: 10 GiB/s)
-        return { libvirt.VIR_DOMAIN_BLOCK_COPY_BANDWIDTH: min(10240, max(1, self.bandwidth  >> 23)) }
+        return { libvirt.VIR_DOMAIN_BLOCK_COPY_BANDWIDTH: max(1<<20, self.bandwidth) }
 
     def recover_vm_volumes(self):
         flags = libvirt.VIR_DOMAIN_BLOCK_COPY_TRANSIENT_JOB | libvirt.VIR_DOMAIN_BLOCK_COPY_REUSE_EXT
