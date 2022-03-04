@@ -1215,6 +1215,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid, raise_exception=False)
 
         try:
+            cmd.installPath = cmd.installPath.split('?', 1)[0]
             self.do_active_lv(cmd.installPath, cmd.lockType, cmd.recursive, cmd.killProcess,
                           raise_exception=True)
         except Exception as e:
