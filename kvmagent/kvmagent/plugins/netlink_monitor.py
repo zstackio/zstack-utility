@@ -158,9 +158,10 @@ class NetlinkMonitor(kvmagent.KvmAgent):
                     self.nic_info[nic] = status
                     self.send_alarm(nic, status)
             else:
-                logger.info("netlink active detect, IfName[%s]---State[%s]" % (nic, status))
-                self.nic_info[nic] = status
-                self.send_alarm(nic, status)
+                if nic not in get_host_physicl_nics() or self.nic_info[nic] != 'down':
+                    logger.info("netlink active detect, IfName[%s]---State[%s]" % (nic, status))
+                    self.nic_info[nic] = status
+                    self.send_alarm(nic, status)
 
     @lock.lock('netlink_monitor')
     def netlink_monitor(self):
