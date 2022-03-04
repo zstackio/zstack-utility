@@ -62,7 +62,7 @@ class NetlinkMonitor(kvmagent.KvmAgent):
 
     def initial_data(self, nics):
         for nic in nics:
-            self.nic_info[nic] = nic.carrierActive
+            self.nic_info[nic.interfaceName] = (lambda x: 'up' if x is True else 'down')(nic.carrierActive)
 
     @lock.lock('netlink_monitor_send_to_mn')
     def send_to_mn(self, netlink_alarm):
@@ -132,9 +132,10 @@ class NetlinkMonitor(kvmagent.KvmAgent):
     def update_netlink_monitor(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         if cmd.nics:
-            self.state = True
-            logger.debug("netlink monitor settings :state change to %s", jsonobject.dumps(self.state))
+            self.state = False  # close last thread if exist
             self.initial_data(cmd.nics)
+            self.state = True  # start thread
+            logger.debug("netlink monitor settings :state change to %s", jsonobject.dumps(self.state))
             thread.timer(1, self.netlink_monitor).start()
         return jsonobject.dumps(AgentRsp())
 
