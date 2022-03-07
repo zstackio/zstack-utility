@@ -44,6 +44,7 @@ class NetlinkMonitor(kvmagent.KvmAgent):
     bond_info = {}
     ip_info = {}
     nic_info ={}
+    history_nics = []
     state = None
 
     def __init__(self):
@@ -63,6 +64,7 @@ class NetlinkMonitor(kvmagent.KvmAgent):
     def initial_data(self, nics):
         for nic in nics:
             self.nic_info[nic.interfaceName] = (lambda x: 'up' if x is True else 'down')(nic.carrierActive)
+            self.history_nics.append(nic.interfaceName)
 
     @lock.lock('netlink_monitor_send_to_mn')
     def send_to_mn(self, netlink_alarm):
@@ -104,8 +106,7 @@ class NetlinkMonitor(kvmagent.KvmAgent):
         return netlink_alarm
 
     def send_alarm(self, nic, status):
-        interface_all = get_host_physicl_nics()
-        if nic not in interface_all:
+        if nic not in self.history_nics:
             return
         self.send_to_mn(self.get_nic_info(nic, status))
 
@@ -152,14 +153,20 @@ class NetlinkMonitor(kvmagent.KvmAgent):
             if not nic or not status:
                 return
             logger.info("netlink active detect, IfName[%s]---State[%s]" % (nic, status))
+            # update nic record
+            for new_nic in get_host_physicl_nics():
+                if new_nic not in self.history_nics:
+                    self.history_nics.append(new_nic)
+            # old nic alarm
             if nic in self.nic_info:
                 if self.nic_info[nic] != status:
-                    logger.info("netlink active detect, IfName[%s]---State[%s]" % (nic, status))
+                    logger.info("old netlink active detect, IfName[%s]---State[%s]" % (nic, status))
                     self.nic_info[nic] = status
                     self.send_alarm(nic, status)
+            # new nic alarm
             else:
-                if status != 'down':
-                    logger.info("netlink active detect, IfName[%s]---State[%s]" % (nic, status))
+                if status != 'down' and nic in self.history_nics:
+                    logger.info("new netlink active detect, IfName[%s]---State[%s]" % (nic, status))
                     self.nic_info[nic] = status
                     self.send_alarm(nic, status)
 
