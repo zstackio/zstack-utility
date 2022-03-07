@@ -163,18 +163,18 @@ def get_nic_info():
 def get_disk_info():
     block_devs = []
 
-    cmd = 'lsblk --nodeps --byte --output size,rota,type,wwn'
+    cmd = 'lsblk --nodeps --byte --output name,size,rota,type'
     _, stdout, _ = shell_cmd(cmd)
     for line in stdout.split('\n')[1:]:
         if len(line.split()) != 4:
             continue
-        size, rotation, type, wwn = line.split()
+        name, size, rotation, blk_type  = line.split()
 
-        if type.lower() != 'disk':
+        if blk_type.lower() != 'disk':
             continue
 
         disk_type = 'SSD' if rotation == '0' else 'HDD'
-
+        _, wwn, _ = shell_cmd("smartctl -i /dev/%s | awk '/Logical Unit id/{print $4}'" % name)
         block_devs.append({
             'diskType': disk_type,
             'diskSize': size,

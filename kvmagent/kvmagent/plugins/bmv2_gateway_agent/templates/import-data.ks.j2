@@ -45,15 +45,16 @@ def get_ipmi_info():
     }
 
 def get_dest_dev(dest_wwn):
-    cmd = 'lsblk --nodeps --byte --output size,name,wwn'
+    cmd = 'lsblk --nodeps --byte --output size,name'
     _, stdout, _ = shell_cmd(cmd)
     for line in stdout.split('\n')[1:]:
-        if len(line.split()) != 3:
+        if len(line.split()) != 2:
             continue
-        size, name, wwn = line.split()
-
+        size, name = line.split()
+        blk_dev = "/dev/{}".format(name)
+        _, wwn, _ = shell_cmd("smartctl -i %s | awk '/Logical Unit id/{print $4}'" % blk_dev)
         if wwn == dest_wwn:
-            return "/dev/%s" % name
+            return blk_dev
 
     raise Exception("Failed to find dest disk[%s]" % dest_wwn)
 
