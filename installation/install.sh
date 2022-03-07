@@ -1477,6 +1477,17 @@ is_install_general_libs_rh(){
     echo_subtitle "Install General Libraries (takes a couple of minutes)"
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
 
+    # Fix upgrade dependency conflicts
+    if [ "$ZSTACK_RELEASE" == "ns10" ]; then
+      conflicts_list="redis5"
+      nodejs_version=`node -v | sed 's/v//g'`
+      vercomp "14.16.0" ${nodejs_version}; cmp1=$?
+      if [ ${cmp1} -eq 1 ]; then
+          conflicts_list="${conflicts_list} nodejs"
+      fi
+      yum remove -y $conflicts_list >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+
     # Just install what is not installed
     deps_list="libselinux-python \
             java-1.8.0-openjdk \
