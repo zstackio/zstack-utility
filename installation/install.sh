@@ -1484,13 +1484,9 @@ is_install_general_libs_rh(){
 
     # Fix upgrade dependency conflicts
     if [ "$ZSTACK_RELEASE" == "ns10" ]; then
-      conflicts_list="redis5"
-      nodejs_version=`node -v | sed 's/v//g'`
-      vercomp "14.16.0" ${nodejs_version}; cmp1=$?
-      if [ ${cmp1} -eq 1 ]; then
-          conflicts_list="${conflicts_list} nodejs"
-      fi
-      yum remove -y $conflicts_list >>$ZSTACK_INSTALL_LOG 2>&1
+      vercomp "14.16.0" `rpm -q nodejs | awk -F '-' '{print $2}'`
+      [ $? -eq 1 ] && removeable="nodejs" || removeable=""
+      yum remove -y redis5 $removeable >>$ZSTACK_INSTALL_LOG 2>&1
     fi
 
     # Just install what is not installed
