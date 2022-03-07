@@ -105,7 +105,7 @@ class NetlinkMonitor(kvmagent.KvmAgent):
 
     def send_alarm(self, nic, status):
         interface_all = get_host_physicl_nics()
-        if nic not in interface_all and status == 'up':
+        if nic not in interface_all:
             return
         self.send_to_mn(self.get_nic_info(nic, status))
 
@@ -158,7 +158,7 @@ class NetlinkMonitor(kvmagent.KvmAgent):
                     self.nic_info[nic] = status
                     self.send_alarm(nic, status)
             else:
-                if nic not in get_host_physicl_nics() or self.nic_info[nic] != 'down':
+                if status != 'down':
                     logger.info("netlink active detect, IfName[%s]---State[%s]" % (nic, status))
                     self.nic_info[nic] = status
                     self.send_alarm(nic, status)
