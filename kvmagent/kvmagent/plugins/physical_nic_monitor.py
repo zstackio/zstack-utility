@@ -151,7 +151,7 @@ class PhysicalNicMonitor(kvmagent.KvmAgent):
             return
         if msg['event'] == 'RTM_NEWLINK':
             nic = msg.get_attr('IFLA_IFNAME')
-            status = msg['state']
+            status = msg.get_attr('IFLA_OPERSTATE').lower()
             if not nic or not status:
                 return
             logger.info("physical_nic active detect, IfName[%s]---State[%s]" % (nic, status))
