@@ -1,4 +1,5 @@
 import os.path
+import time
 
 from kvmagent import kvmagent
 from zstacklib.utils import http
@@ -46,6 +47,7 @@ class PhysicalNicMonitor(kvmagent.KvmAgent):
     nic_info ={}
     history_nics = []
     state = None
+    time_lock = 0
 
     def __init__(self):
         self.state = False
@@ -133,7 +135,7 @@ class PhysicalNicMonitor(kvmagent.KvmAgent):
     def update_physical_nic_monitor(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         if cmd.nics:
-            self.state = False  # close last thread if exist
+            self.time_lock += 1
             self.initial_data(cmd.nics)
             self.state = True  # start thread
             logger.debug("physical_nic monitor settings :state change to %s", jsonobject.dumps(self.state))
@@ -172,11 +174,12 @@ class PhysicalNicMonitor(kvmagent.KvmAgent):
 
     @lock.lock('physical_nic_monitor')
     def physical_nic_monitor(self):
+        time_lock_now = self.time_lock
         if self.state:
             ip = iproute.get_iproute()
             ip.bind()
             while True:
-                if not self.state:
+                if time_lock_now != self.time_lock:
                     break
                 self.physical_nic_monitor_get(ip)
 
