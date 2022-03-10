@@ -1443,7 +1443,7 @@ done
                 elif "configured clock speed" == k:
                     clockSpeed =  v
                 elif "configured voltage" == k:
-                    if serialnumber.lower() != "no dimm" and serialnumber is not None:
+                    if serialnumber.lower() != "no dimm" and serialnumber.lower() != "unknown" and serialnumber is not None:
                         m = HostPhysicalMemoryStruct()
                         m.size = size
                         m.speed = speed
