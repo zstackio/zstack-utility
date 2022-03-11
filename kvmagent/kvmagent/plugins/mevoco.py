@@ -178,8 +178,6 @@ class DhcpEnv(object):
             if ret != 0:
                 bash_errorout(EBTABLES_CMD + ' -N {{CHAIN_NAME}}')
 
-            ret = bash_r(EBTABLES_CMD + ' -F {{CHAIN_NAME}} > /dev/null 2>&1')
-
             ret = bash_r(EBTABLES_CMD + " -L FORWARD | grep -- '-j {{CHAIN_NAME}}' > /dev/null")
             if ret != 0:
                 bash_errorout(EBTABLES_CMD + ' -A FORWARD -j {{CHAIN_NAME}}')
@@ -374,8 +372,7 @@ class DhcpEnv(object):
                 return
 
             # add bridge fdb entry for inner dev
-            if not linux.bridge_fdb_has_self_rule(INNER_MAC, PHY_DEV):
-                bash_r('bridge fdb add {{INNER_MAC}} dev {{PHY_DEV}}')
+            iproute.add_fdb_entry(PHY_DEV, INNER_MAC)
 
         if DHCP_IP is not None:
             _prepare_dhcp4_iptables()
@@ -561,7 +558,40 @@ tag:{{TAG}},option:dns-server,{{DNS}}
     @kvmagent.replyerror
     @in_bash
     def delete_dhcp_namespace(self, req):
+        def _del_bridge_fdb_entry_for_inner_dev():
+            BR_NAME = cmd.bridgeName
+            NAMESPACE_NAME = cmd.namespaceName
+            # example
+            #ip netns | grep br_eth0_a26a74c18e39426abb6855188baa15e3  | awk '{print $3}'
+            #5)
+            r, namespaceId, e = bash_roe(
+                "ip netns | grep {{NAMESPACE_NAME}}  | awk '{print $3}'")
+            if r != 0:
+                logger.error("cannot get namespace id for " + BR_NAME)
+                return
+
+            # remove last byte ')'
+            INNER_DEV = "inner" + namespaceId[:len(namespaceId)-2]
+
+            # get pf name for inner dev
+            r, PHY_DEV, e = bash_roe(
+                "brctl show {{BR_NAME}} | grep -w {{BR_NAME}} | head -n 1 | awk '{ print $NF }' | { read name; echo ${name%%.*}; }")
+            if r != 0:
+                logger.error("cannot get physical interface name from bridge " + BR_NAME)
+                return
+            PHY_DEV = PHY_DEV.strip(' \t\n\r')
+
+            # get mac address of inner dev
+            try:
+                INNER_MAC = iproute.query_link(INNER_DEV, NAMESPACE_NAME).mac
+            except:
+                logger.error("cannot get mac address of %s in namespace %s:%s " %(INNER_DEV, NAMESPACE_NAME, namespaceId))
+                return
+
+            iproute.del_fdb_entry(PHY_DEV, INNER_MAC)
+
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        _del_bridge_fdb_entry_for_inner_dev()
         self._delete_dhcp(cmd.namespaceName)
 
         return jsonobject.dumps(DeleteNamespaceRsp())
@@ -1429,10 +1459,10 @@ mimetype.assign = (
                 CHAIN_NAME = getDhcpEbtableChainName(dhcp_ip)
                 VF_NIC_MAC = ip.removeZeroFromMacAddress(dhcpInfo.mac)
 
-                if bash_r(EBTABLES_CMD + " -L {{CHAIN_NAME}} --Lmac2 | grep -- '-p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT' > /dev/null") != 0:
+                if bash_r(EBTABLES_CMD + " -L {{CHAIN_NAME}} | grep -- '-p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT' > /dev/null") != 0:
                     bash_r(EBTABLES_CMD + ' -I {{CHAIN_NAME}} -p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
 
-                if bash_r(EBTABLES_CMD + " -L {{CHAIN_NAME}} --Lmac2 | grep -- '-p IPv4 -d {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT' > /dev/null") != 0:
+                if bash_r(EBTABLES_CMD + " -L {{CHAIN_NAME}} | grep -- '-p IPv4 -d {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT' > /dev/null") != 0:
                     bash_r(EBTABLES_CMD + ' -I {{CHAIN_NAME}} -p IPv4 -d {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
 
         @in_bash
@@ -1823,6 +1853,7 @@ sed -i '/^$/d' {{DNS}}
                 CHAIN_NAME = getDhcpEbtableChainName(dhcp_ip)
                 VF_NIC_MAC = dhcpInfo.mac
                 bash_r(EBTABLES_CMD + ' -D {{CHAIN_NAME}} -p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
+                bash_r(EBTABLES_CMD + ' -D {{CHAIN_NAME}} -p IPv4 -d {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
 
         @in_bash
         def release(dhcp):
