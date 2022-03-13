@@ -26,6 +26,8 @@ remote_port = None
 host_uuid = None
 ceph_file_path = "/bin/ceph"
 
+# common cephbackupstorage deps of ns10 that need to update
+ns10_update_list = "nettle"
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy ceph backup strorage to host')
@@ -117,6 +119,12 @@ if distro in RPM_BASED_OS:
                 """ in $pkg_list; do yum --disablerepo=* --enablerepo={} install -y $pkg; done;"""\
                 .format(qemu_alias.get(releasever, "qemu-kvm-ev"), zstack_repo)
         run_remote_command(command, host_post_info)
+
+        if releasever in ['ns10']:
+            command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (
+            ns10_update_list, zstack_repo)
+            run_remote_command(command, host_post_info)
+
         if distro_version >= 7:
             command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
             run_remote_command(command, host_post_info)
