@@ -412,10 +412,12 @@ def collect_ipmi_state():
     metrics = {
         'power_supply': GaugeMetricFamily('power_supply',
                                           'power supply', None, ['ps_id']),
+        "power_supply_current_output_power": GaugeMetricFamily('power_supply_current_output_power', 'power supply current output power', None, ['ps_id']),
         'ipmi_status': GaugeMetricFamily('ipmi_status', 'ipmi status', None, []),
         "fan_speed_rpm": GaugeMetricFamily('fan_speed_rpm', 'fan speed rpm', None, ['fan_speed_name']),
         "fan_speed_state": GaugeMetricFamily('fan_speed_state', 'fan speed state', None, ['fan_speed_name']),
         "cpu_temperature": GaugeMetricFamily('cpu_temperature', 'cpu temperature', None, ['cpu']),
+        "cpu_status": GaugeMetricFamily('cpu_status', 'cpu status', None, ['cpu']),
     }
 
     global collect_equipment_state_last_time
@@ -425,15 +427,21 @@ def collect_ipmi_state():
         collect_equipment_state_last_time = time.time()
     elif (time.time() - collect_equipment_state_last_time) < 25 and collect_equipment_state_last_result is not None:
         return collect_equipment_state_last_result
-
-    r, ps_info = bash_ro("ipmitool sdr type 'power supply' | grep -E -i '^PS\w*(\ |_)Status'")  # type: (int, str)
+    
+    r, power_supply_info = bash_ro("ipmitool sdr type 'power supply' | grep -E '^PS\w*(\ |_)Status|^PS\w*(\ |_)POUT'")
     if r == 0:
-        for info in ps_info.splitlines():
+        for info in power_supply_info.splitlines():
             info = info.strip()
             ps_id = info.split("|")[0].strip().split(" ")[0].split("_")[0]
-            ps_state = info.split("|")[4].strip().lower()
-            health = 0 if "presence detected" == ps_state else 10
-            metrics['power_supply'].add_metric([ps_id], health)
+            ps_str = info.split("|")[0].strip().split(" ")[0].split("_")[1]
+            if ps_str == 'POUT':
+                ps_out_power = info.split("|")[4].strip().lower()
+                ps_power_value = filter(str.isdigit, ps_out_power)
+                metrics['power_supply_current_output_power'].add_metric([ps_id], float(ps_power_value))
+            elif ps_str == 'Status':
+                ps_state = info.split("|")[4].strip().lower()
+                health = 0 if "presence detected" == ps_state else 10
+                metrics['power_supply'].add_metric([ps_id], health)
 
     metrics['ipmi_status'].add_metric([], bash_r("ipmitool mc info"))
 
@@ -455,6 +463,16 @@ def collect_ipmi_state():
             cpu_state = 0 if info.split("|")[2].strip().lower() == "ok" else 10
             cpu_temp = 0 if cpu_state != 0 else info.split("|")[4].strip().split(" ")[0]
             metrics['cpu_temperature'].add_metric([cpu_id], float(cpu_temp))
+    
+    r, cpu_status_info = bash_ro("ipmitool sdr type 'Processor' | grep '^CPU[0-9]*_Status'") # type: (int, str)
+    if r == 0:
+        for info in cpu_status_info.splitlines():
+            info = info.strip()
+            cpu_id = info.split("|")[0].strip().split(" ")[0].split("_")[0]
+            cpu_status = info.split("|")[2].strip().lower()
+            cpu_status_str = info.split("|")[4].strip().lower()
+            status = 0 if "ok" == cpu_status and "presence detected" == cpu_status_str else 10
+            metrics['cpu_status'].add_metric([cpu_id], float(status))
     
     collect_equipment_state_last_result = metrics.values()
     return collect_equipment_state_last_result
