@@ -5605,6 +5605,12 @@ class VmPlugin(kvmagent.KvmAgent):
             if vm.state != Vm.VM_STATE_RUNNING and vm.state != Vm.VM_STATE_PAUSED:
                 raise kvmagent.KvmError(
                     'unable to detach volume[%s] to vm[uuid:%s], vm must be running or paused' % (volume.installPath, vm.uuid))
+
+            target_disk, _ = vm._get_target_disk(volume)
+            device_name = self.get_disk_device_name(target_disk)
+            isc = ImageStoreClient()
+            isc.stop_mirror(cmd.vmInstanceUuid, True, device_name)
+
             vm.detach_data_volume(volume)
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
@@ -6378,7 +6384,7 @@ host side snapshot files chian:
 
             execute_qmp_command(cmd.vmUuid, '{"execute": "migrate-set-capabilities","arguments":'
                                             '{"capabilities":[ {"capability": "dirty-bitmaps", "state":true}]}}')
-            logger.info('finished mirroring volume[%s]: %s' % (device_name, cmd.volume))
+            logger.info('finished mirroring volume[%s]: %s' % (device_name, jsonobject.dumps(cmd.volume)))
 
         except Exception as e:
             content = traceback.format_exc()
