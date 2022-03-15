@@ -5242,12 +5242,6 @@ class RestoreMysqlPreCheckCmd(Command):
             info("Check pass")
 
     def run(self, args):
-        mn_cmd = create_check_mgmt_node_command()
-        mn_cmd(False)
-        if mn_cmd.return_code == 0:
-            self.check_fail_list.append('The management node is running, force restore mysql may cause ha vm brain '
-                                        'splitting.')
-
         (self.hostname, self.port, _, _) = ctl.get_live_mysql_portal()
         r, o, e = self.execute_sql(args.mysql_root_password, "show databases like 'zstack'")
         if r != 0:
