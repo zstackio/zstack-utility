@@ -1182,6 +1182,7 @@ create_symbol_link() {
         ln -s /opt/zstack-dvd/x86_64 ${ZSTACK_HOME}/static/zstack-repo/x86_64 >/dev/null 2>&1
         ln -s /opt/zstack-dvd/aarch64 ${ZSTACK_HOME}/static/zstack-repo/aarch64 >/dev/null 2>&1
         ln -s /opt/zstack-dvd/mips64el ${ZSTACK_HOME}/static/zstack-repo/mips64el >/dev/null 2>&1
+        ln -s /opt/zstack-dvd/loongarch64 ${ZSTACK_HOME}/static/zstack-repo/loongarch64 >/dev/null 2>&1
     fi
     chown -R zstack:zstack ${ZSTACK_HOME}/static/zstack-repo
 }
@@ -2152,12 +2153,10 @@ iz_install_zstackctl(){
 install_zstack_network()
 {
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
-    if [ "$BASEARCH" == 'aarch64' ]; then
-        zsn_agent='zsn-agent.aarch64.bin'
-    elif [ "$BASEARCH" == 'mips64el' ]; then
-        zsn_agent='zsn-agent.mips64el.bin'
-    else
+    if [ "$BASEARCH" == 'x86_64' ]; then
         zsn_agent='zsn-agent.bin'
+    else
+        zsn_agent="zsn-agent.$BASEARCH.bin"
     fi
     bash $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_CLASSES/ansible/zsnagentansible/${zsn_agent}
     /bin/cp -f /usr/local/zstack/zsn-agent/bin/zstack-network-agent.service /usr/lib/systemd/system/
@@ -2171,7 +2170,7 @@ cp_virtio_drivers(){
     if [ ! -e $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS/virtio-drivers ]; then
         mkdir $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS/virtio-drivers
     fi
-    if [ "$BASEARCH" == 'aarch64' -o "$BASEARCH" == 'mips64el' ]; then
+    if [ "$BASEARCH" == 'aarch64' -o "$BASEARCH" == 'mips64el' -o "$BASEARCH" == 'loongarch64' ]; then
         return
     fi
     if [ -e "/opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/virtio-win_x86.vfd" ]; then
@@ -3270,7 +3269,7 @@ rpm -qa | grep zstack-manager >/dev/null 2>&1 && yum --disablerepo=* --enablerep
 rpm -qa | grep zstack-release >/dev/null 2>&1 || yum --disablerepo=* --enablerepo=zstack-local -y install zstack-release >/dev/null 2>&1 && true
 
 cd /opt/zstack-dvd
-rm -rf `ls -a|egrep -v "(x86_64|aarch64|mips64el)"`  > /dev/null 2>&1
+rm -rf `ls -a|egrep -v "(x86_64|aarch64|mips64el|loongarch64)"`  > /dev/null 2>&1
 cd - > /dev/null
 if [ ! -f /opt/zstack-dvd/zstack-image-1.4.qcow2 ];then
     cp -rf /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/zstack-image-1.4.qcow2 /opt/zstack-dvd/

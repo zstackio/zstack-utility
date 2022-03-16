@@ -28,7 +28,7 @@ apt_server = ""
 trusted_host = ""
 ansible.constants.HOST_KEY_CHECKING = False
 enable_networkmanager_list = ["ns10", "euler20"]
-supported_arch_list = ["x86_64", "aarch64", "mips64el"]
+supported_arch_list = ["x86_64", "aarch64", "mips64el", "loongarch64"]
 
 RPM_BASED_OS = ["centos", "redhat", "alibaba", "kylin10", "openeuler"]
 DEB_BASED_OS = ["ubuntu", "uos", "kylin4.0.2", "debian", "uniontech"]
