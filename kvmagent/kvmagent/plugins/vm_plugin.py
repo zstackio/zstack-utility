@@ -865,6 +865,11 @@ def compare_version(version1, version2):
         return [int(x) for x in re.sub(r'(\.0+)*$','', v).split(".")]
     return cmp(normalize(version1), normalize(version2))
 
+def get_path_by_device(device_name, vm):
+    for dev in vm.domain_xmlobject.devices.disk:
+        if dev.get_child_node("target").dev_ == device_name:
+            return dev.get_child_node("source").file_
+
 
 LIBVIRT_VERSION = linux.get_libvirt_version()
 LIBVIRT_MAJOR_VERSION = LIBVIRT_VERSION.split('.')[0]
@@ -4734,6 +4739,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_Get_CPU_XML_PATH = "/vm/get/cpu/xml"
     KVM_COMPARE_CPU_FUNCTION_PATH = "/vm/compare/cpu/function"
     KVM_BLOCK_LIVE_MIGRATION_PATH = "/vm/blklivemigration"
+    KVM_LIVE_MIGRATION_WITH_STORAGE_PATH  = "/vm/livemigrationwithstorage"
     KVM_VM_CHECK_VOLUME_PATH = "/vm/volume/check"
     KVM_TAKE_VOLUME_SNAPSHOT_PATH = "/vm/volume/takesnapshot"
     KVM_CHECK_VOLUME_SNAPSHOT_PATH = "/vm/volume/checksnapshot"
@@ -5634,7 +5640,51 @@ class VmPlugin(kvmagent.KvmAgent):
         tree.write(fpath)
         return migrate_disks.keys(), fpath
 
-    def _do_block_migration(self, vmUuid, dstHostIp, volumeDicts):
+    def _build_dest_disk_xml(self, vm, oldVolumePath, newVolume):
+        _, disk_name = vm._get_target_disk_by_path(oldVolumePath)
+
+        fpath = linux.write_to_temp_file(vm.domain_xml)
+        tree = etree.parse(fpath)
+        os.remove(fpath)
+
+        for disk in tree.iterfind('devices/disk'):
+            dev = disk.find('target').attrib['dev']
+            if dev == disk_name:
+                new_disk = self._get_new_disk(disk, newVolume)
+                return dev, linux.write_to_temp_file(etree.tostring(new_disk))
+
+    def _do_block_copy(self, vmUuid, disk_name, disk_xml, task_spec):
+        class BlockCopyDaemon(plugin.TaskDaemon):
+            def __init__(self, task_spec, domain, disk_name):
+                super(BlockCopyDaemon, self).__init__(task_spec, 'blockCopy', report_progress=False)
+                self.domain = domain
+                self.disk_name = disk_name
+
+            def _cancel(self):
+                logger.debug('cancelling vm[uuid:%s] blockCopy disk[%s]' % (vmUuid, self.disk_name))
+                # cancel block job async
+                self.domain.blockJobAbort(self.disk_name)
+
+            def _get_percent(self):
+                # type: () -> int
+                pass
+
+        def check_volume():
+            return task_spec.newVolume.installPath == get_path_by_device(disk_name, get_vm_by_uuid(vmUuid))
+
+        logger.info("start copying %s:%s to %s ..." % (vmUuid, disk_name, task_spec.newVolume.installPath))
+        with BlockCopyDaemon(task_spec, get_vm_by_uuid(vmUuid).domain, disk_name):
+            cmd = 'virsh blockcopy --domain {} {} --xml {} --pivot --wait --transient-job --reuse-external'.format(vmUuid, disk_name, disk_xml)
+            shell_cmd = shell.ShellCmd(cmd)
+            shell_cmd(False)
+            if shell_cmd.return_code != 0 or not check_volume():
+                logger.debug("block copy failed from %s:%s to %s: %s" % (vmUuid, disk_name, task_spec.newVolume.installPath, shell_cmd.stderr))
+                return False, shell_cmd.stderr
+
+        logger.info("completed copying %s:%s to %s ..." % (vmUuid, disk_name, task_spec.newVolume.installPath))
+        return True, None
+
+    def _migrate_vm_with_block(self, vmUuid, dstHostIp, volumeDicts):
         vm = get_vm_by_uuid(vmUuid)
         disks, fpath = self._build_domain_new_xml(vm, volumeDicts)
 
@@ -5662,12 +5712,26 @@ class VmPlugin(kvmagent.KvmAgent):
         shell_cmd.raise_error()
 
     @kvmagent.replyerror
-    def block_migrate_vm(self, req):
+    def block_migrate(self, req):
         rsp = kvmagent.AgentResponse()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
         self._record_operation(cmd.vmUuid, self.VM_OP_MIGRATE)
-        self._do_block_migration(cmd.vmUuid, cmd.destHostIp, cmd.disks.__dict__)
+        vm = get_vm_by_uuid(cmd.vmUuid)
+        disk_name, disk_xml = self._build_dest_disk_xml(vm, cmd.oldVolumePath, cmd.newVolume)
+
+        rsp.success, rsp.error = self._do_block_copy(vm.uuid, disk_name, disk_xml, cmd)
+        os.remove(disk_xml)
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def migrate_vm_with_block(self, req):
+        rsp = kvmagent.AgentResponse()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        self._record_operation(cmd.vmUuid, self.VM_OP_MIGRATE)
+        self._migrate_vm_with_block(cmd.vmUuid, cmd.destHostIp, cmd.disks.__dict__)
 
         return jsonobject.dumps(rsp)
 
@@ -7435,7 +7499,8 @@ host side snapshot files chian:
         http_server.register_async_uri(self.KVM_MIGRATE_VM_PATH, self.migrate_vm)
         http_server.register_async_uri(self.KVM_Get_CPU_XML_PATH, self.get_cpu_xml)
         http_server.register_async_uri(self.KVM_COMPARE_CPU_FUNCTION_PATH, self.compare_cpu_function)
-        http_server.register_async_uri(self.KVM_BLOCK_LIVE_MIGRATION_PATH, self.block_migrate_vm)
+        http_server.register_async_uri(self.KVM_BLOCK_LIVE_MIGRATION_PATH, self.block_migrate)
+        http_server.register_async_uri(self.KVM_LIVE_MIGRATION_WITH_STORAGE_PATH, self.migrate_vm_with_block)
         http_server.register_async_uri(self.KVM_VM_CHECK_VOLUME_PATH, self.check_volume)
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_SNAPSHOT_PATH, self.take_volume_snapshot)
         http_server.register_async_uri(self.KVM_CHECK_VOLUME_SNAPSHOT_PATH, self.check_volume_snapshot)
@@ -7822,11 +7887,6 @@ host side snapshot files chian:
                     logger.warn("extend lv[%s] to size[%s] with operate failed" % (path, extend_size))
             else:
                 logger.debug("lv %s extend to %s sucess" % (path, extend_size))
-
-        def get_path_by_device(device_name, vm):
-            for dev in vm.domain_xmlobject.devices.disk:
-                if dev.get_child_node("target").dev_ == device_name:
-                    return dev.get_child_node("source").file_
 
         @thread.AsyncThread
         @lock.lock("sharedblock-extend-vm-%s" % dom.name())
