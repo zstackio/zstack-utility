@@ -1385,7 +1385,7 @@ class VmVolumesRecoveryTask(plugin.TaskDaemon):
             if not info:
                 logger.info("blockjob not found: %s:%s" % (self.vmUuid, bdev))
                 self.cancelled = True
-                break
+                return "copy failed: vm %s: disk %s" % (self.vmUuid, bdev)
 
             if info['cur'] != 0 and info['end'] == info['cur']:
                 self.domain.blockJobAbort(bdev, libvirt.VIR_DOMAIN_BLOCK_JOB_ABORT_PIVOT)
@@ -1394,6 +1394,7 @@ class VmVolumesRecoveryTask(plugin.TaskDaemon):
             base = (self.idx - 1) * 100 / self.total
             curr = info['cur'] * 100 / info['end'] / self.total
             self.percent = base + curr
+        return None
 
     def get_job_params(self):
         if self.bandwidth <= 0:
@@ -1409,7 +1410,9 @@ class VmVolumesRecoveryTask(plugin.TaskDaemon):
             diskxml = etree.tostring(disk_ele)
             logger.info("[%d/%d] will recover %s with: %s" % (self.idx, self.total, target_dev, diskxml))
             self.domain.blockCopy(target_dev, diskxml, params, flags)
-            self.wait_and_pivot(target_dev)
+            msg = self.wait_and_pivot(target_dev)
+            if msg is not None:
+                raise kvmagent.KvmError(msg)
             if self.cancelled:
                 raise kvmagent.KvmError('Recovery cancelled for VM: %s' % self.vmUuid)
             self.idx += 1
@@ -5699,6 +5702,7 @@ class VmPlugin(kvmagent.KvmAgent):
         with VmVolumesRecoveryTask(cmd, rvols) as t:
             t.recover_vm_volumes()
 
+        logger.info("recovery completed. VM: " + cmd.vmUuid)
         return jsonobject.dumps(rsp)
 
     def _get_new_disk(self, oldDisk, volume):
