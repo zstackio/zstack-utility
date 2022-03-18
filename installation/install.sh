@@ -1501,6 +1501,8 @@ is_install_general_libs_rh(){
             vconfig \
             vim-minimal \
             python-devel \
+            python2-pyroute2 \
+            python2-numpy \
             gcc \
             grafana \
             autoconf \
