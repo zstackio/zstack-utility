@@ -88,6 +88,31 @@ else:
     command = 'mkdir -p %s %s' % (baremetalpxeserver_root, virtenv_path)
     run_remote_command(command, host_post_info)
 
+# name: install dependencies
+if distro in RPM_BASED_OS:
+    dep_pkg = "dnsmasq nginx vsftpd nmap python2-pyroute2"
+    if releasever in ['c74', 'c76']:
+        dep_pkg = "{} syslinux".format(dep_pkg)
+    else:
+        dep_pkg = "{} net-tools".format(dep_pkg)
+    if zstack_repo != 'false':
+        command = ("pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % \
+                  (dep_pkg, dep_pkg if update_packages == 'true' else '$pkg_list', zstack_repo)
+        run_remote_command(command, host_post_info)
+    else:
+        for pkg in ["dnsmasq", "nginx", "vsftpd", "syslinux", "nmap", "python2-pyroute2"]:
+            yum_install_package(pkg, host_post_info)
+    command = "(which firewalld && systemctl stop firewalld && systemctl enable firewalld) || true"
+    run_remote_command(command, host_post_info)
+    set_selinux("state=disabled", host_post_info)
+
+elif distro in DEB_BASED_OS:
+    install_pkg_list = ["dnsmasq", "vsftpd", "syslinux", "nginx", "nmap", "python2-pyroute2"]
+    apt_install_packages(install_pkg_list, host_post_info)
+    command = "(chmod 0644 /boot/vmlinuz*) || true"
+else:
+    error("unsupported OS!")
+
 # name: install virtualenv
 virtual_env_status = check_and_install_virtual_env(virtualenv_version, trusted_host, pip_url, host_post_info)
 if virtual_env_status is False:
@@ -98,31 +123,6 @@ if virtual_env_status is False:
 # name: make sure virtualenv has been setup
 command = "[ -f %s/bin/python ] || virtualenv --system-site-packages %s " % (virtenv_path, virtenv_path)
 run_remote_command(command, host_post_info)
-
-# name: install dependencies
-if distro in RPM_BASED_OS:
-    dep_pkg = "dnsmasq nginx vsftpd nmap"
-    if releasever in ['c74', 'c76']:
-        dep_pkg = "{} syslinux".format(dep_pkg)
-    else:
-        dep_pkg = "{} net-tools".format(dep_pkg)
-    if zstack_repo != 'false':
-        command = ("pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % \
-                  (dep_pkg, dep_pkg if update_packages == 'true' else '$pkg_list', zstack_repo)
-        run_remote_command(command, host_post_info)
-    else:
-        for pkg in ["dnsmasq", "nginx", "vsftpd", "syslinux", "nmap"]:
-            yum_install_package(pkg, host_post_info)
-    command = "(which firewalld && systemctl stop firewalld && systemctl enable firewalld) || true"
-    run_remote_command(command, host_post_info)
-    set_selinux("state=disabled", host_post_info)
-
-elif distro in DEB_BASED_OS:
-    install_pkg_list = ["dnsmasq", "vsftpd", "syslinux", "nginx", "nmap"]
-    apt_install_packages(install_pkg_list, host_post_info)
-    command = "(chmod 0644 /boot/vmlinuz*) || true"
-else:
-    error("unsupported OS!")
 
 # name: check and mount /opt/zstack-dvd
 command = """
