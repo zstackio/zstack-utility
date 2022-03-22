@@ -586,7 +586,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
         _, output = commands.getstatusoutput(cmd)
         return long(json.loads(output)['actual-size']), long(json.loads(output)['virtual-size'])
 
-    def clean_dnat(host_name, convert_ip):
+    def clean_dnat(self, host_name, convert_ip):
         vmware_host_ip = linux.get_host_by_name(host_name)
         dnat_interface = linux.find_route_interface_by_destination_ip(convert_ip)
         if vmware_host_ip == convert_ip:
