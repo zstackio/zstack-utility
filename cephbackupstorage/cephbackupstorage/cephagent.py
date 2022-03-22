@@ -974,6 +974,11 @@ class CephAgent(object):
         pool_name = kwargs['pool']
         image_name = kwargs['image']
 
+        if isinstance(pool_name, unicode):
+            pool_name = pool_name.encode('unicode-escape').decode('string_escape')
+        if isinstance(image_name, unicode):
+            image_name = image_name.encode('unicode-escape').decode('string_escape')
+
         ioctx = self.get_ioctx(pool_name)
         try:
             token = ioctx.read(image_name + "-export")
