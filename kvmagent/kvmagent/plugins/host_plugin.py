@@ -850,7 +850,7 @@ class HostPlugin(kvmagent.KvmAgent):
             cpu_l1d_cache = shell.call("lscpu | grep 'L1i cache' | awk -F ':' '{print $2}'") 
             cpu_l1i_cache = shell.call("lscpu | grep 'L1d cache' | awk -F ':' '{print $2}'")
             if cpu_l1d_cache != '' and cpu_l1i_cache != '':
-                cpu_l1_cache_value = float(cpu_l1d_cache.strip().split(" ")[0]) + float(cpu_l1d_cache.strip().split(" ")[0])
+                cpu_l1_cache_value = float(cpu_l1d_cache.strip().split(" ")[0]) + float(cpu_l1i_cache.strip().split(" ")[0])
                 cpu_l1_cache = '{0}{1}'.format(cpu_l1_cache_value, cpu_l1d_cache.strip().split(" ")[1])
 
             cpu_l2_cache = shell.call("lscpu | grep 'L2 cache' | awk -F ':' '{print $2}'")
@@ -897,8 +897,8 @@ class HostPlugin(kvmagent.KvmAgent):
             cpu_l1d_cache = shell.call("lscpu | grep 'L1i cache' | awk -F ':' '{print $2}'") 
             cpu_l1i_cache = shell.call("lscpu | grep 'L1d cache' | awk -F ':' '{print $2}'")
             if cpu_l1d_cache != '' and cpu_l1i_cache != '':
-                cpu_l1_cache_value = float(cpu_l1d_cache.strip().split(" ")[0]) + float(cpu_l1d_cache.strip().split(" ")[0])
-                cpu_l1_cache = '{0}{1}'.format(cpu_l1_cache_value, cpu_l1d_cache.strip().split(" ")[1])
+                cpu_l1_cache_value = float(cpu_l1d_cache.strip()[:-1]) + float(cpu_l1i_cache.strip()[:-1])
+                cpu_l1_cache = '{0}{1}'.format(cpu_l1_cache_value, cpu_l1d_cache.strip()[-1])
 
             cpu_l2_cache = shell.call("lscpu | grep 'L2 cache' | awk -F ':' '{print $2}'")
             cpu_l3_cache = shell.call("lscpu | grep 'L3 cache' | awk -F ':' '{print $2}'")
