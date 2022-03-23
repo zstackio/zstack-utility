@@ -769,6 +769,10 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
     def _create_grub_configuration(self, instance_obj, volume_drivers):
         """ Generate grub cfg for aarch64 bm instance
         """
+        # only configure while Remote deploy
+        if instance_obj.provisionType != "Remote":
+            return
+
         # guestmount image and copy vmlinuz/initrd.img out
         image_dir = os.path.join(self.AARCH64_BOOTIMG_DIR, instance_obj.image_uuid)
         if not os.path.exists(image_dir) or not os.listdir(image_dir):
