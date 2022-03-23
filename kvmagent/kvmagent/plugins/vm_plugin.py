@@ -2053,7 +2053,7 @@ class Vm(object):
             # default value of sgio is 'filtered'
             #NOTE(weiw): scsi lun not support aio or qos
             disk = etree.Element('disk', attrib={'type': 'block', 'device': 'lun', 'sgio': get_sgio_value()})
-            e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw'})
+            e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none'})
             e(disk, 'source', None, {'dev': volume.installPath})
             e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
             return disk
