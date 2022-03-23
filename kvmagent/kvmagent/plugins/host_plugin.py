@@ -800,7 +800,8 @@ class HostPlugin(kvmagent.KvmAgent):
             power_supply_model_name = shell.call("dmidecode -t 39 | grep -m1 'Name' | awk -F ':' '{print $2}'")
             rsp.powerSupplyModelName = power_supply_model_name.strip()
             power_supply_max_power_capacity = shell.call("dmidecode -t 39 | grep -m1 'Max Power Capacity' | awk -F ':' '{print $2}'")
-            rsp.powerSupplyMaxPowerCapacity = filter(str.isdigit, power_supply_max_power_capacity.strip())
+            if bool(re.search(r'\d', power_supply_max_power_capacity)):
+                rsp.powerSupplyMaxPowerCapacity = filter(str.isdigit, power_supply_max_power_capacity.strip())
 
         rsp.qemuImgVersion = qemu_img_version
         rsp.libvirtVersion = self.libvirt_version
@@ -831,7 +832,8 @@ class HostPlugin(kvmagent.KvmAgent):
 
             cpu_l1d_cache = shell.call("lscpu | grep 'L1i cache' | awk -F ':' '{print $2}'") 
             cpu_l1i_cache = shell.call("lscpu | grep 'L1d cache' | awk -F ':' '{print $2}'")
-            if cpu_l1d_cache != '' and cpu_l1i_cache != '':
+            cpu_l1_cache = ''
+            if bool(re.search(r'\d', cpu_l1d_cache)) and bool(re.search(r'\d', cpu_l1i_cache)):
                 cpu_l1_cache_value = float(cpu_l1d_cache.strip().split(" ")[0]) + float(cpu_l1i_cache.strip().split(" ")[0])
                 cpu_l1_cache = '{0}{1}'.format(cpu_l1_cache_value, cpu_l1d_cache.strip().split(" ")[1])
 
@@ -878,7 +880,8 @@ class HostPlugin(kvmagent.KvmAgent):
 
             cpu_l1d_cache = shell.call("lscpu | grep 'L1i cache' | awk -F ':' '{print $2}'") 
             cpu_l1i_cache = shell.call("lscpu | grep 'L1d cache' | awk -F ':' '{print $2}'")
-            if cpu_l1d_cache != '' and cpu_l1i_cache != '':
+            cpu_l1_cache = ''
+            if bool(re.search(r'\d', cpu_l1d_cache)) and bool(re.search(r'\d', cpu_l1i_cache)):
                 cpu_l1_cache_value = float(cpu_l1d_cache.strip()[:-1]) + float(cpu_l1i_cache.strip()[:-1])
                 cpu_l1_cache = '{0}{1}'.format(cpu_l1_cache_value, cpu_l1d_cache.strip()[-1])
 
