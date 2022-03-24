@@ -10,7 +10,7 @@ from zstacklib.utils import thread
 from zstacklib.utils import bash
 from zstacklib.utils import iproute
 from zstacklib.utils import linux
-import zstacklib.utils.ip as ip
+import zstacklib.utils.ip as ipUtils
 
 log.configure_log('/var/log/zstack/zstack-kvmagent.log')
 logger = log.get_logger(__name__)
@@ -157,7 +157,7 @@ class PhysicalNicMonitor(kvmagent.KvmAgent):
                 return
             logger.info("physical_nic active detect, IfName[%s]---State[%s]" % (nic, status))
             # update nic record
-            for new_nic in ip.get_host_physicl_nics():
+            for new_nic in ipUtils.get_host_physicl_nics():
                 if new_nic not in self.history_nics:
                     self.history_nics.append(new_nic)
             # old nic alarm
