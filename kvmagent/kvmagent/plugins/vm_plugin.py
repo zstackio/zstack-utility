@@ -4313,7 +4313,7 @@ class Vm(object):
             for volume in storageDevices:
                 if match_storage_device(volume.installPath):
                     disk = e(devices, 'disk', None, attrib={'type': 'block', 'device': 'lun', 'sgio': get_sgio_value()})
-                    e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw'})
+                    e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none'})
                     e(disk, 'source', None, {'dev': volume.installPath})
                     e(disk, 'target', None, {'dev': 'sd%s' % Vm.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
                     Vm.set_device_address(disk, volume)
