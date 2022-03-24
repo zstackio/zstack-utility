@@ -6484,9 +6484,6 @@ class VmPlugin(kvmagent.KvmAgent):
             spath = self._create_xml_for_guesttools_temp_disk(vm_uuid)
             r, o, e = bash.bash_roe("virsh attach-device %s %s" % (vm_uuid, spath))
 
-            # temp_disk will be truly deleted after it's closed by qemu-kvm
-            linux.rm_file_force(temp_disk)
-
             if r != 0:
                 rsp.success = False
                 rsp.error = "%s, %s" % (o, e)
@@ -6522,7 +6519,11 @@ class VmPlugin(kvmagent.KvmAgent):
 
         # detach temp_disk from vm
         spath = self._create_xml_for_guesttools_temp_disk(vm_uuid)
-        bash.bash_roe("virsh detach-device %s %s" % (vm_uuid, spath))
+        r, _, _ = bash.bash_roe("virsh detach-device %s %s" % (vm_uuid, spath))
+        if r == 0:
+            # delete temp disk after device detached refer: http://jira.zstack.io/browse/ZSTAC-45490
+            temp_disk = "/var/lib/zstack/guesttools/temp_disk_%s.qcow2" % vm_uuid
+            linux.rm_file_force(temp_disk)
 
         # detach guesttools iso from vm
         r, _, _ = bash.bash_roe("virsh dumpxml %s | grep %s" % (vm_uuid, GUEST_TOOLS_ISO_PATH))
