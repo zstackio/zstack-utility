@@ -550,10 +550,17 @@ class CephAgent(plugin.TaskManager):
         def _get_cp_cmd():
             return "deep cp" if shell.run("rbd help deep cp > /dev/null") == 0 else "cp"
 
+        cp_cmd = _get_cp_cmd()
         t_shell = traceable_shell.get_shell(cmd)
         _, _, err = t_shell.bash_progress_1(
-            self._wrap_shareable_cmd(cmd, 'rbd %s %s %s 2> %s' % (_get_cp_cmd(), src_path, dst_path, PFILE)),
+            self._wrap_shareable_cmd(cmd, 'rbd %s %s %s 2> %s' % (cp_cmd, src_path, dst_path, PFILE)),
             _get_progress)
+
+        # retry rbd cp because different ceph versions use different commands
+        if err and cp_cmd == "deep cp" and linux.filter_file_lines_by_regex(PFILE, 'Invalid argument'):
+            shell.run('rbd rm %s' % dst_path)
+            _, _, err = t_shell.bash_progress_1(
+                self._wrap_shareable_cmd(cmd, 'rbd cp %s %s 2> %s' % (src_path, dst_path, PFILE)), _get_progress)
 
         if os.path.exists(PFILE):
             os.remove(PFILE)

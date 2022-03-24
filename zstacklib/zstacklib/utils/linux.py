@@ -2441,3 +2441,18 @@ def get_max_vm_ipa_size():
     except Exception as e:
         logger.warn("failed to get max vm ipa size, because %s", str(e))
         return pow(2, DEFAULT_VM_IPA_SIZE)
+
+
+def filter_file_lines_by_regex(path, regex):
+    if not os.path.exists(path):
+        return None
+    try:
+        lines = []
+        with open(path, 'r') as f:
+            for line in f:
+                if re.search(regex, line):
+                    lines.append(line)
+            return lines
+    except IOError as e:
+        logger.error(e)
+        return None
