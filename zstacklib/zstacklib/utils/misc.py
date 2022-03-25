@@ -39,7 +39,7 @@ def isMiniHost():
     r, o = bash.bash_ro("dmidecode -s system-product-name")
     if r != 0:
         return False
-    return hashlib.md5(o.strip().encode()).hexdigest() in [
+    return hashlib.md5(o.decode("utf-8").strip().encode("utf-8")).hexdigest() in [
         "5fc8d2a363cdadac26f779074aab1a17",
         "39e7b016e11cc67bbdf885c4a1293546",
         "b525fe1f8611ce4583d07b0a2ffa8435",
