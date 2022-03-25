@@ -1404,11 +1404,22 @@ class VmVolumesRecoveryTask(plugin.TaskDaemon):
         return { libvirt.VIR_DOMAIN_BLOCK_COPY_BANDWIDTH: max(1<<20, self.bandwidth) }
 
     def recover_vm_volumes(self):
+        def get_source_file(d):
+            try:
+                return d.find('source').attrib['file']
+            except (AttributeError, KeyError):
+                return None
+
         flags = libvirt.VIR_DOMAIN_BLOCK_COPY_TRANSIENT_JOB | libvirt.VIR_DOMAIN_BLOCK_COPY_REUSE_EXT
         params = self.get_job_params()
         for target_dev, disk_ele in self.rvols.items():
             diskxml = etree.tostring(disk_ele)
             logger.info("[%d/%d] will recover %s with: %s" % (self.idx, self.total, target_dev, diskxml))
+
+            # zsblk-agent might auto-deactivate idle LV
+            fpath = get_source_file(disk_ele)
+            if fpath and fpath.startswith('/dev/') and not os.path.exists(fpath):
+                lvm.active_lv(fpath, False)
             self.domain.blockCopy(target_dev, diskxml, params, flags)
             msg = self.wait_and_pivot(target_dev)
             if msg is not None:
