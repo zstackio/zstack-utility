@@ -1393,8 +1393,12 @@ class VmVolumesRecoveryTask(plugin.TaskDaemon):
                 return "copy failed: vm %s: disk %s" % (self.vmUuid, bdev)
 
             if info['cur'] != 0 and info['end'] == info['cur']:
-                self.domain.blockJobAbort(bdev, libvirt.VIR_DOMAIN_BLOCK_JOB_ABORT_PIVOT)
-                break
+                try:
+                    self.domain.blockJobAbort(bdev, libvirt.VIR_DOMAIN_BLOCK_JOB_ABORT_PIVOT)
+                    break
+                except libvirt.libvirtError as e:
+                    if e.get_error_code() == libvirt.VIR_ERR_BLOCK_COPY_ACTIVE:
+                        continue
 
             base = (self.idx - 1) * 100 / self.total
             curr = info['cur'] * 100 / info['end'] / self.total
