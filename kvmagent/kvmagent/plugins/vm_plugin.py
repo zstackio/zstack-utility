@@ -17,6 +17,7 @@ import shutil
 import simplejson
 import base64
 import uuid
+import urlparse
 import json
 import socket
 from signal import SIGKILL
@@ -1244,6 +1245,7 @@ class BlkCeph(object):
 
     def to_xmlobject(self):
         disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
+        e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none'})
         source = e(disk, 'source', None,
                    {'name': self.volume.installPath.lstrip('ceph:').lstrip('//'), 'protocol': 'rbd'})
         if self.volume.secretUuid:
@@ -1266,6 +1268,7 @@ class VirtioCeph(object):
 
     def to_xmlobject(self):
         disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
+        e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none'})
         source = e(disk, 'source', None,
                    {'name': self.volume.installPath.lstrip('ceph:').lstrip('//'), 'protocol': 'rbd'})
         if self.volume.secretUuid:
@@ -1286,6 +1289,7 @@ class VirtioSCSICeph(object):
 
     def to_xmlobject(self):
         disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
+        e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none'})
         source = e(disk, 'source', None,
                    {'name': self.volume.installPath.lstrip('ceph:').lstrip('//'), 'protocol': 'rbd'})
         if self.volume.secretUuid:
@@ -1296,7 +1300,6 @@ class VirtioSCSICeph(object):
         e(disk, 'target', None, {'dev': 'sd%s' % self.dev_letter, 'bus': 'scsi'})
         e(disk, 'wwn', self.volume.wwn)
         if self.volume.shareable:
-            e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none'})
             e(disk, 'shareable')
         if self.volume.physicalBlockSize:
             e(disk, 'blockio', None, {'physical_block_size': str(self.volume.physicalBlockSize)})
@@ -1357,6 +1360,81 @@ class MergeSnapshotDaemon(plugin.TaskDaemon):
     def _get_percent(self):
         # type: () -> int
         pass
+
+
+class VmVolumesRecoveryTask(plugin.TaskDaemon):
+    def __init__(self, cmd, rvols):
+        super(VmVolumesRecoveryTask, self).__init__(cmd, 'recoverVM')
+        self.vmUuid = cmd.vmUuid
+        self.bandwidth = cmd.recoverBandwidth
+        self.rvols = rvols
+        self.idx = 1
+        self.total = len(rvols)
+        self.cancelled = False
+        self.percent = 0
+        self.domain = get_vm_by_uuid(cmd.vmUuid).domain
+
+    def _cancel(self):
+        logger.warn("cancelling vm recovery: %s" % self.vmUuid)
+        self.cancelled = True
+
+    def wait_and_pivot(self, bdev):
+        while True:
+            time.sleep(2)
+            if self.cancelled:
+                self.domain.blockJobAbort(bdev, libvirt.VIR_DOMAIN_BLOCK_JOB_ABORT_ASYNC)
+                logger.info("blockjob cancelled: %s:%s" % (self.vmUuid, bdev))
+                break
+
+            info = self.domain.blockJobInfo(bdev, 0)
+            if not info:
+                logger.info("blockjob not found: %s:%s" % (self.vmUuid, bdev))
+                self.cancelled = True
+                return "copy failed: vm %s: disk %s" % (self.vmUuid, bdev)
+
+            if info['cur'] != 0 and info['end'] == info['cur']:
+                self.domain.blockJobAbort(bdev, libvirt.VIR_DOMAIN_BLOCK_JOB_ABORT_PIVOT)
+                break
+
+            base = (self.idx - 1) * 100 / self.total
+            curr = info['cur'] * 100 / info['end'] / self.total
+            self.percent = base + curr
+        return None
+
+    def get_job_params(self):
+        if self.bandwidth <= 0:
+            return None
+
+        # bps -> MiB/s (limit: 10 GiB/s)
+        return { libvirt.VIR_DOMAIN_BLOCK_COPY_BANDWIDTH: max(1<<20, self.bandwidth) }
+
+    def recover_vm_volumes(self):
+        def get_source_file(d):
+            try:
+                return d.find('source').attrib['file']
+            except (AttributeError, KeyError):
+                return None
+
+        flags = libvirt.VIR_DOMAIN_BLOCK_COPY_TRANSIENT_JOB | libvirt.VIR_DOMAIN_BLOCK_COPY_REUSE_EXT
+        params = self.get_job_params()
+        for target_dev, disk_ele in self.rvols.items():
+            diskxml = etree.tostring(disk_ele)
+            logger.info("[%d/%d] will recover %s with: %s" % (self.idx, self.total, target_dev, diskxml))
+
+            # zsblk-agent might auto-deactivate idle LV
+            fpath = get_source_file(disk_ele)
+            if fpath and fpath.startswith('/dev/') and not os.path.exists(fpath):
+                lvm.active_lv(fpath, False)
+            self.domain.blockCopy(target_dev, diskxml, params, flags)
+            msg = self.wait_and_pivot(target_dev)
+            if msg is not None:
+                raise kvmagent.KvmError(msg)
+            if self.cancelled:
+                raise kvmagent.KvmError('Recovery cancelled for VM: %s' % self.vmUuid)
+            self.idx += 1
+
+    def _get_percent(self):
+        return self.percent
 
 
 @linux.retry(times=3, sleep_time=1)
@@ -1583,6 +1661,8 @@ def get_dom_error(uuid):
     if 'No errors found' in domblkerror:
         return None
     return domblkerror.replace('\n', '')
+
+VM_RECOVER_DICT = {}
 
 class Vm(object):
     VIR_DOMAIN_NOSTATE = 0
@@ -3953,6 +4033,38 @@ class Vm(object):
                 else:
                     return blk_iscsi()
 
+            def nbd_volume(_dev_letter, _v, _r = None):
+                if _v.shareable:
+                    raise Exception('cannot recover shared volume: %s' % _v.installPath)
+
+                r = _r if _r else get_recover_path(_v)
+                if not r:
+                    raise Exception('no recover path found: %s' % _v.installPath)
+
+                if not r.startswith("nbd://"):
+                    raise Exception('unexpected recover path: %s' % _v.installPath)
+
+                disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
+                e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none'})
+
+                u = urlparse.urlparse(r)
+                src = e(disk, 'source', None, {'protocol': 'nbd', 'name': os.path.basename(u.path)})
+                e(src, 'host', None, {'name':u.hostname, 'port': str(u.port)})
+
+                if _v.useVirtioSCSI:
+                    e(disk, 'target', None, {'dev': 'sd%s' % _dev_letter, 'bus': 'scsi'})
+                    e(disk, 'wwn', _v.wwn)
+                    return disk
+
+                if _v.useVirtio:
+                    e(disk, 'target', None, {'dev': 'vd%s' % _dev_letter, 'bus': 'virtio'})
+                else:
+                    dev_format = Vm._get_disk_target_dev_format(default_bus_type)
+                    e(disk, 'target', None, {'dev': dev_format % _dev_letter, 'bus': default_bus_type})
+                    if default_bus_type == "ide" and cmd.imagePlatform.lower() == "other":
+                        allocat_ide_config(disk)
+                return disk
+
             def ceph_volume(_dev_letter, _v):
                 def ceph_virtio():
                     vc = VirtioCeph()
@@ -4057,6 +4169,11 @@ class Vm(object):
 
                 drivers[0].set("io", "native")
 
+            def get_recover_path(v):
+                u = urlparse.urlparse(v.installPath)
+                qs = dict(urlparse.parse_qsl(u.query))
+                return qs.get("r")
+
             def allocat_ide_config(_disk):
                 if len(volume_ide_configs) == 0:
                     err = "insufficient IDE address."
@@ -4065,17 +4182,10 @@ class Vm(object):
                 volume_ide_config = volume_ide_configs.pop(0)
                 e(_disk, 'address', None, {'type': 'drive', 'bus': volume_ide_config.bus, 'unit': volume_ide_config.unit})
 
-            all_ide = default_bus_type == "ide" and cmd.imagePlatform.lower() == "other"
-            DEVICE_LETTERS = Vm.DEVICE_LETTERS if not all_ide else Vm.DEVICE_LETTERS.replace(Vm.ISO_DEVICE_LETTERS, "")
-
-            volumes.sort(key=lambda d: d.deviceId)
-            Vm.check_device_exceed_limit(volumes[-1].deviceId)
-            scsi_device_ids = [v.deviceId for v in volumes if v.useVirtioSCSI]
-            for v in volumes:
-                dev_letter_index = v.deviceId if not v.useVirtioSCSI else scsi_device_ids.pop()
-                dev_letter = DEVICE_LETTERS[dev_letter_index]
-
-                if v.deviceType == 'quorum':
+            def make_volume(dev_letter, v, r, dataSourceOnly=False):
+                if r:
+                    vol = nbd_volume(dev_letter, v, r)
+                elif v.deviceType == 'quorum':
                     vol = quorumbased_volume(dev_letter, v)
                 elif v.deviceType == 'file':
                     vol = filebased_volume(dev_letter, v)
@@ -4091,13 +4201,45 @@ class Vm(object):
                     raise Exception('unknown volume deviceType: %s' % v.deviceType)
 
                 assert vol is not None, 'vol cannot be None'
+                if dataSourceOnly:
+                    return vol
+
                 Vm.set_device_address(vol, v)
                 if v.bootOrder is not None and v.bootOrder > 0 and v.deviceId == 0:
                     e(vol, 'boot', None, {'order': str(v.bootOrder)})
                 Vm.set_volume_qos(cmd.addons, v.volumeUuid, vol)
                 Vm.set_volume_serial_id(v.volumeUuid, vol)
                 volume_native_aio(vol)
+                return vol
+
+            all_ide = default_bus_type == "ide" and cmd.imagePlatform.lower() == "other"
+            DEVICE_LETTERS = Vm.DEVICE_LETTERS if not all_ide else Vm.DEVICE_LETTERS.replace(Vm.ISO_DEVICE_LETTERS, "")
+
+            volumes.sort(key=lambda d: d.deviceId)
+            Vm.check_device_exceed_limit(volumes[-1].deviceId)
+            scsi_device_ids = [v.deviceId for v in volumes if v.useVirtioSCSI]
+            # {
+            #     'vm-uuid': { 'target-dev': etree.Element-object, ...},
+            # }
+            rvols = {}
+            for v in volumes:
+                dev_letter_index = v.deviceId if not v.useVirtioSCSI else scsi_device_ids.pop()
+                dev_letter = DEVICE_LETTERS[dev_letter_index]
+
+                r = get_recover_path(v)
+                vol = make_volume(dev_letter, v, r)
+                if r:
+                    v.bootOrder = None
+                    v.installPath = v.installPath.split('?', 1)[0]
+                    target_dev = vol.find("./target").attrib['dev']
+                    rvols[target_dev] = make_volume(dev_letter, v, None, True)
+
                 devices.append(vol)
+
+            if len(rvols) > 0:
+                logger.info("vm[%s] is recovering with disks: %s" % (cmd.vmInstanceUuid, rvols.keys()))
+                global VM_RECOVER_DICT
+                VM_RECOVER_DICT[cmd.vmInstanceUuid] = rvols
 
         def make_nics():
             if not cmd.nics:
@@ -4738,6 +4880,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_CREATE_SECRET = "/vm/createcephsecret"
     KVM_ATTACH_ISO_PATH = "/vm/iso/attach"
     KVM_DETACH_ISO_PATH = "/vm/iso/detach"
+    KVM_VM_RECOVER_VOLUMES_PATH = "/vm/recover/volumes"
     KVM_VM_CHECK_STATE = "/vm/checkstate"
     KVM_VM_CHANGE_PASSWORD_PATH = "/vm/changepasswd"
     KVM_SET_VOLUME_BANDWIDTH = "/set/volume/bandwidth"
@@ -5463,6 +5606,12 @@ class VmPlugin(kvmagent.KvmAgent):
             if vm.state != Vm.VM_STATE_RUNNING and vm.state != Vm.VM_STATE_PAUSED:
                 raise kvmagent.KvmError(
                     'unable to detach volume[%s] to vm[uuid:%s], vm must be running or paused' % (volume.installPath, vm.uuid))
+
+            target_disk, _ = vm._get_target_disk(volume)
+            device_name = self.get_disk_device_name(target_disk)
+            isc = ImageStoreClient()
+            isc.stop_mirror(cmd.vmInstanceUuid, True, device_name)
+
             vm.detach_data_volume(volume)
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
@@ -5534,6 +5683,24 @@ class VmPlugin(kvmagent.KvmAgent):
         for volume in cmd.volumes:
             vm._get_target_disk(volume)
 
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def recover_volumes(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+
+        logger.info("recovering VM: " + cmd.vmUuid)
+        rvols = VM_RECOVER_DICT.pop(cmd.vmUuid, None)
+        if rvols is None:
+            rsp.error = "No recovery context found for VM: %s" % cmd.vmUuid
+            rsp.success = False
+            return jsonobject.dumps(rsp)
+
+        with VmVolumesRecoveryTask(cmd, rvols) as t:
+            t.recover_vm_volumes()
+
+        logger.info("recovery completed. VM: " + cmd.vmUuid)
         return jsonobject.dumps(rsp)
 
     def _get_new_disk(self, oldDisk, volume):
@@ -6278,7 +6445,7 @@ host side snapshot files chian:
 
             execute_qmp_command(cmd.vmUuid, '{"execute": "migrate-set-capabilities","arguments":'
                                             '{"capabilities":[ {"capability": "dirty-bitmaps", "state":true}]}}')
-            logger.info('finished mirroring volume[%s]: %s' % (device_name, cmd.volume))
+            logger.info('finished mirroring volume[%s]: %s' % (device_name, jsonobject.dumps(cmd.volume)))
 
         except Exception as e:
             content = traceback.format_exc()
@@ -7480,6 +7647,7 @@ host side snapshot files chian:
         http_server.register_async_uri(self.KVM_BLOCK_LIVE_MIGRATION_PATH, self.block_migrate)
         http_server.register_async_uri(self.KVM_LIVE_MIGRATION_WITH_STORAGE_PATH, self.migrate_vm_with_block)
         http_server.register_async_uri(self.KVM_VM_CHECK_VOLUME_PATH, self.check_volume)
+        http_server.register_async_uri(self.KVM_VM_RECOVER_VOLUMES_PATH, self.recover_volumes)
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_SNAPSHOT_PATH, self.take_volume_snapshot)
         http_server.register_async_uri(self.KVM_CHECK_VOLUME_SNAPSHOT_PATH, self.check_volume_snapshot)
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_BACKUP_PATH, self.take_volume_backup, cmd=TakeVolumeBackupCommand())
