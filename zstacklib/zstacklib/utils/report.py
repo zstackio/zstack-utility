@@ -46,11 +46,12 @@ def get_api_id(spec):
         return None
 
 def get_timeout(spec):
-    extra_time = 60 * 1000
-    if spec.threadContext and spec.threadContext.taskContext and spec.threadContext.taskContext.__messagetimeout__ and spec.threadContext.taskContext.__messagedeadline__:
-        timeout = min(spec.threadContext.taskContext.__messagetimeout__ , spec.threadContext.taskContext.__messagedeadline__ - long(linux.get_current_timestamp()) * 1000) - extra_time
+    extra_time = 60
+    if spec.taskContext and spec.taskContext.__messagetimeout__ and spec.taskContext.__messagedeadline__:
+        timeout = min(long(spec.taskContext.__messagetimeout__) / 1000, long(spec.taskContext.__messagedeadline__) / 1000 - linux.get_current_timestamp()) - extra_time
         if timeout <= 0:
             raise Exception("timeout[%d] is too short" % spec.threadContext.taskContext.__messagetimeout__)
+        return int(timeout)
     else:
         return 0
 
