@@ -1399,6 +1399,7 @@ class VmVolumesRecoveryTask(plugin.TaskDaemon):
                 except libvirt.libvirtError as e:
                     if e.get_error_code() == libvirt.VIR_ERR_BLOCK_COPY_ACTIVE:
                         continue
+                    raise e
 
             base = (self.idx - 1) * 100 / self.total
             curr = info['cur'] * 100 / info['end'] / self.total
