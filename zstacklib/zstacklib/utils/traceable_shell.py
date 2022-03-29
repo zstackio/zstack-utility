@@ -2,13 +2,14 @@ import bash
 import shell
 from zstacklib.utils import linux
 from zstacklib.utils import log
-from zstacklib.utils.report import get_api_id
+from zstacklib.utils.report import get_api_id, get_timeout
 
 logger = log.get_logger(__name__)
 
 class TraceableShell(object):
-    def __init__(self, id):
+    def __init__(self, id, timeout):
         self.id = id
+        self.timeout = timeout
 
     def call(self, cmd, exception=True, workdir=None):
         # type: (str, bool, bool) -> str
@@ -40,7 +41,11 @@ class TraceableShell(object):
         return o
 
     def wrap_cmd(self, cmd):
-        return _build_id_cmd(self.id) + "; " + cmd if self.id else cmd
+        if self.timeout:
+            cmd = "timeout " + str(self.timeout) + "s " + cmd
+        if self.id:
+            cmd = _build_id_cmd(self.id) + "; " + cmd
+        return cmd
 
     def wrap_bash_cmd(self, cmd):
         return "bash -c '%s'" % self.wrap_cmd(cmd) if self.id else cmd
@@ -51,7 +56,7 @@ def _build_id_cmd(id):
 
 
 def get_shell(cmd):
-    return TraceableShell(get_api_id(cmd))
+    return TraceableShell(get_api_id(cmd), get_timeout(cmd))
 
 
 def cancel_job(cmd):

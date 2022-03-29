@@ -382,7 +382,8 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         if not os.path.exists(workspace_dir):
             os.makedirs(workspace_dir)
 
-        linux.create_template(cmd.snapshotInstallPath, cmd.workspaceInstallPath)
+        t_shell = traceable_shell.get_shell(cmd)
+        linux.create_template(cmd.snapshotInstallPath, cmd.workspaceInstallPath, shell=t_shell)
         rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.workspaceInstallPath)
 
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
