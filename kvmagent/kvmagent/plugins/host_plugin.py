@@ -85,6 +85,7 @@ class HostFactResponse(kvmagent.AgentResponse):
         self.cpuModelName = None
         self.systemSerialNumber = None
         self.eptFlag = None
+        self.libvirtCapabilities = []
 
 class SetupMountablePrimaryStorageHeartbeatCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -807,6 +808,14 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.ipAddresses = ipV4Addrs
         rsp.cpuArchitecture = platform.machine()
 
+        libvirtCapabilitiesList = []
+        features = self._get_features_in_libvirt()
+        if features and features.hasattr("incrementaldrivemirror"):
+            libvirtCapabilitiesList.append("incrementaldrivemirror")
+        if features and features.hasattr("blockcopynetworktarget"):
+            libvirtCapabilitiesList.append("blockcopynetworktarget")
+        rsp.libvirtCapabilities = libvirtCapabilitiesList
+
         if IS_AARCH64:
             # FIXME how to check vt of aarch64?
             rsp.hvmCpuFlag = 'vt'
@@ -859,6 +868,16 @@ class HostPlugin(kvmagent.KvmAgent):
             rsp.cpuGHz = static_cpuGHz_re.group(0)[:-3] if static_cpuGHz_re else transient_cpuGHz
 
         return jsonobject.dumps(rsp)
+
+    @vm_plugin.LibvirtAutoReconnect
+    def _get_features_in_libvirt(conn):
+        try:
+            xml_object = xmlobject.loads(conn.getCapabilities())
+            if len(xml_object.guest) > 0:
+                return xml_object.guest[0].features
+            return None
+        except (AttributeError, KeyError):
+            return None
 
     @vm_plugin.LibvirtAutoReconnect
     def _get_host_cpu_model(conn):
