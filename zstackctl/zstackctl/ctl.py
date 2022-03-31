@@ -2364,9 +2364,11 @@ class StartCmd(Command):
         open_iptables_port('udp',['123'])
         encrypt_properties_if_need()
         checkSimulator()
+        # prepareBeanRefContextXml call zstack-ctl configure xxx modify encrypt properties,
+        # execute check_encrypt_properties before prepareBeanRefContextXml
+        check_encrypt_properties()
         prepareBeanRefContextXml()
 
-        check_encrypt_properties()
         linux.sync_file(ctl.properties_file_path)
         start_mgmt_node()
         #sleep a while, since zstack won't start up so quickly
