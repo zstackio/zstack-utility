@@ -2323,7 +2323,7 @@ class StartCmd(Command):
 
             if ctl.get_encrypt_properties() != ctl.encrypt_properties():
                 raise CtlError('zstack.properties is Integrity error')
-                
+
 
         def encrypt_properties_if_need():
             cipher = AESCipher()
@@ -5710,8 +5710,11 @@ class ScanDatabaseBackupCmd(Command):
 
     def install_argparse_arguments(self, parser):
         parser.add_argument('--backup-storage-url',
-                            help="The backup storage install url, must include username, password, hostnamem, ssh port,"
-                                 " install path. e.g. ssh://username:password@hostname:port/bspath",
+                            help="The backup storage install url, must include username, password, hostname, ssh port,"
+                                 " install path. e.g. ssh://username:password@hostname:port/bspath."
+                                 " If password has special characters, you need to URL encode it."
+                                 " For example, '@' -> '%%40'  '#' -> '%%23'"
+                                 " '?' -> '%%3F'  ':' -> '%%3A'  '%%' -> '%%25'",
                             required=True)
         parser.add_argument('--json', '-j',
                             help="output via json",
@@ -5761,9 +5764,13 @@ def runImageStoreCliCmd(raw_bs_url, registry_port, command, is_exception=True):
         shell("%s 'ps -e | grep zstore || %s'" % (ssh_cmd, start_cmd))
 
     url = urlparse.urlparse(raw_bs_url)
-    username = url.username
-    password = url.password
-    hostname = url.hostname
+    if not url.username or not url.password or not url.hostname:
+        error("wrong url, get guide from help.")
+
+    username = urllib2.unquote(url.username)
+    password = urllib2.unquote(url.password)
+    hostname = urllib2.unquote(url.hostname)
+
     port = (url.port, 22)[url.port is None]
     registry_port = (ZSTORE_DEF_PORT, registry_port)[registry_port is not None]
 
