@@ -17,7 +17,7 @@ class Test(unittest.TestCase):
         def mock_shell_output(path):
             with open(path,'r') as r:
                 lines=r.read()
-            bash.bash_o = mock.Mock(return_value = lines)
+            bash.bash_o = mock.Mock(return_value=lines)
         
         def test_function_works_or_not(expect_is_bad_volume):
             is_bad_volume = lvm.is_bad_vm_root_volume("/dev/0af3ac2a9388489d8dcb0f3bf89f1af1/84c16257085b40de9823dc79d8de18f7")
