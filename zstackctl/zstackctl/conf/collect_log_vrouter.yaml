@@ -1,0 +1,16 @@
+vrouter:
+    description: vrouter
+    type: target
+    list: {exec: "select ip from VmNicVO where deviceId = 0 and vmInstanceUuid in (select uuid from VirtualRouterVmVO)"}
+    logs:
+      - {name: config-boot, dir: /config/, file: 'config.boot*'}
+      - {name: zstack-log, dir: /var/log/zstack/, file: }
+      - {name: vrouter-log, dir: /home/vyos/zvr/, file: }
+      - {name: iptables-logs, exec: 'iptables-save'}
+      - {name: host-info, exec: 'uptime && last reboot && free && cat /proc/cpuinfo && ip add && ip route && df -h'}
+      - {name: ps-info, exec: 'ps ax -eTo ppid,pid,pcpu,pmem,maj_flt,min_flt,tid,vsz,rss,pgid,sid,tty,stat,uid,lstart,etime,time,command --sort ppid' }
+      - {name: haproxy-log, dir: /var/log/, file: 'haproxy.log*'}
+      - {name: keeplived-log, dir: /var/log/, file: 'keepalived.log*'}
+      - {name: messages-log, dir: /var/log/, file: 'messages*'}
+      - {name: history-log-vyos, exec: 'echo history | su - vyos -c ''bash -i'''}
+      - {name: history-log-root,  exec: 'echo history | sudo bash -i'}
