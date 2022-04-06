@@ -1,0 +1,32 @@
+mn:
+    description: management node
+    type: target
+    list: {exec: "AutoCollect"}
+    logs:
+      - {name: mn-logs, dir: $ZSTACK_HOME/../../logs/, file: 'management-server*'}
+      - {name: ui-logs, dir: $ZSTACK_HOME/../../../zstack-ui/logs/, file: 'zstack-ui*'}
+      - {name: sar-log, dir: /var/log/sa/, file: 'sa[0-9]*'}
+      - {name: api-logs, dir: $ZSTACK_HOME/../../logs/, file: 'zstack-api*'}
+      - {name: catalina-logs, dir: $ZSTACK_HOME/../../logs/, file: 'catalina*'}
+      - {name: deploy-logs, dir: /var/log/zstack/, file: 'deploy.log*'}
+      - {name: ctl-logs, dir: /var/log/zstack/, file: 'zstack-ctl*'}
+      - {name: cli-logs, dir: /var/log/zstack/, file: 'zstack-cli*'}
+      - {name: dashboard-logs, dir: /var/log/zstack/, file: 'zstack-dashboard.log*'}
+      - {name: zstack-console-logs, dir: /var/log/zstack/, file: 'zstack-console-proxy*'}
+      - {name: dmesg-logs, dir: /var/log/, file: 'dmesg*'}
+      - {name: message-logs, dir: /var/log/, file: messages*}
+      - {name: route-logs, exec: 'route -n'}
+      - {name: iptables-logs, exec: 'iptables-save'}
+      - {name: ebtables-logs, exec: 'ebtables-save'}
+      - {name: journalctl-info, exec: 'journalctl -x'}
+      - {name: host-info, exec: 'uptime && last reboot && free -h && cat /proc/cpuinfo && ip add && df -h &&
+       file_paths=$(ls /sys/devices/system/node|grep node);
+       for file_path in $file_paths; do cat /sys/devices/system/node/$file_path/meminfo; done &&
+       ps ax -eTo ppid,pid,pcpu,pmem,maj_flt,min_flt,tid,vsz,rss,pgid,sid,tty,tgid,stat,uid,lstart,etime,time,command --sort ppid'}
+      - {name: pkg-list, exec: 'rpm -qa | sort'}
+      - {name: git-commit, dir: $ZSTACK_HOME/../../webapps/zstack/, file: '*git-commit', mode: "All"}
+      - {name: zstack-logs, dir: /var/log/zstack/, file: zstack.log*}
+      - {name: zstack-installation-logs, dir: /tmp/, file: zstack_installation.log*}
+      - {name: audit-log, dir: /var/log/audit/, file: 'audit.log*'}
+      - {name: mariadb-log, dir: /var/log/mariadb/, file: 'mariadb.log*'}
+      - {name: zsha2-log, exec: 'which zsha2 && zsha2 collect-log', exec_type: "CdAndRun"}

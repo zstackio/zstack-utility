@@ -6352,6 +6352,7 @@ class ConfiguredCollectLogCmd(Command):
     logger_dir = '/var/log/zstack/'
     logger_file = 'zstack-ctl.log'
     zstack_log_dir = "/var/log/zstack/"
+    ui_log_download_dir = os.path.join(ctl.ZSTACK_UI_HOME, "public/logs/")
 
     def __init__(self):
         super(ConfiguredCollectLogCmd, self).__init__()
@@ -6386,14 +6387,28 @@ class ConfiguredCollectLogCmd(Command):
         parser.add_argument('--timeout', help='wait for log thread collect timeout, default is 300 seconds', default=300)
         parser.add_argument('--dump-thread-info', help='dump threads info', default=False)
         parser.add_argument('--dumptime', help='wait for dumping threads time, default is 10 seconds', type=int, default=10)
+        parser.add_argument('--destination', help='collect logs to the specified directory', default=None)
+        parser.add_argument('--combination', help='collect logs in a combined way, including mn/mn_db/host/bs/ps/vroute/pxeserver/baremetalv2gateway, such as \'mn,host,ps\'',
+                            default=None)
+        parser.add_argument('--clear-log', help='clear log collected through UI', default=None)
+
+    def clear_log_file(self, log_name):
+        log_path = os.path.join(self.ui_log_download_dir, log_name)
+        if not os.path.isfile(log_path):
+            error("clear failed, log file[%s] does not exist" % log_path)
+        shell('rm -f %s' % log_path)
+        info("clear log file[%s] successfully!" % log_path)
 
     def run(self, args):
+        if args.clear_log:
+            self.clear_log_file(args.clear_log)
+            return
+        
         # dump mn status
         mn_pid = get_management_node_pid()
         if mn_pid:
             kill_process(mn_pid, signal.SIGQUIT)
             kill_process(mn_pid, signal.SIGUSR2)
-        run_command_dir = os.getcwd()
         time_stamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
         # create log
         create_log(self.logger_dir, self.logger_file)
@@ -6402,9 +6417,11 @@ class ConfiguredCollectLogCmd(Command):
         else:
             hostname, port, user, password = ctl.get_live_mysql_portal()
             detail_version = get_zstack_version(hostname, port, user, password)
-        # collect_dir used to store the collect-log
-        collect_dir = run_command_dir + '/collect-log-%s-%s/' % (detail_version, time_stamp)
-        log_collector.CollectFromYml(ctl, collect_dir, detail_version, time_stamp, args)
+
+        run_command_dir = os.getcwd()
+        if args.destination:
+            run_command_dir = args.destination
+        log_collector.CollectFromYml(ctl, run_command_dir, detail_version, time_stamp, args)
 
 
 class ChangeIpCmd(Command):
