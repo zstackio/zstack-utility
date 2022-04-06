@@ -5136,6 +5136,21 @@ class DumpMysqlCmd(Command):
                 shell_return_stdout_stderr('ssh -p %s -i %s %s@%s "rm -f %s"' % (remote_host_port, private_key, user,
                                                                                  remote_host_ip, need_delete_file_path))
 
+    def get_db_local_hostname_from_zsha2(self):
+        if not os.path.exists("/usr/local/bin/zsha2"):
+            return None
+
+        r, o, _ = shell_return_stdout_stderr("sudo -i /usr/local/bin/zsha2 status -json")
+        if r == 0:
+            zshas_status_info = simplejson.loads(o)
+            r, o, _ = shell_return_stdout_stderr("/usr/local/bin/zsha2 show-config")
+            if r == 0:
+                zsha2_config_info = simplejson.loads(o)
+                if zshas_status_info['ownsVip']:
+                    return zsha2_config_info['nodeip']
+                else:
+                    return zsha2_config_info['peerip']
+
     def run(self, args):
         (db_hostname, db_port, db_user, db_password) = ctl.get_live_mysql_portal()
         (ui_db_hostname, ui_db_port, ui_db_user, ui_db_password) = ctl.get_live_mysql_portal(ui=True)
@@ -5145,10 +5160,14 @@ class DumpMysqlCmd(Command):
         if os.path.exists(self.mysql_backup_dir) is False:
             os.mkdir(self.mysql_backup_dir)
 
+        db_local_hostname = self.get_db_local_hostname_from_zsha2()
+        if not db_local_hostname:
+            db_local_hostname = db_hostname
+
         if args.file_path:
             db_backupf_file_path = args.file_path
         else:
-            db_backupf_file_path = self.mysql_backup_dir + file_name + "-" + backup_timestamp + ".gz"
+            db_backupf_file_path = self.mysql_backup_dir + db_local_hostname + "-" + file_name + "-" + backup_timestamp + ".gz"
         if args.delete_expired_file is not False and args.host_info is None:
             error("Please specify remote host info with '--host' before you want to delete remote host expired files")
 
