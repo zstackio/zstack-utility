@@ -110,6 +110,8 @@ class CollectFromYml(object):
     f_date = None
     t_date = None
     since = None
+    combination = None
+    delete_source_file = False
     logger_dir = '/var/log/zstack/'
     logger_file = 'zstack-ctl.log'
     vrouter_tmp_log_path = '/home'
@@ -129,9 +131,9 @@ class CollectFromYml(object):
     HA_KEEPALIVED_CONF = "/etc/keepalived/keepalived.conf"
     summary = Summary()
 
-    def __init__(self, ctl, collect_dir, detail_version, time_stamp, args):
+    def __init__(self, ctl, run_command_dir, detail_version, time_stamp, args):
         self.ctl = ctl
-        self.run(collect_dir, detail_version, time_stamp, args)
+        self.run(run_command_dir, detail_version, time_stamp, args)
 
     def get_host_sql(self, suffix_sql):
         db_hostname, db_port, db_user, db_password = self.ctl.get_live_mysql_portal()
@@ -164,116 +166,154 @@ class CollectFromYml(object):
         default_yml_full = 'collect_log_full.yaml'
         default_yml_full_db = 'collect_log_full_db.yaml'
         default_yml_mn_host = "collect_log_mn_host.yaml"
-        yml_conf_dir = None
+        yml_conf_dirs = set()
         name_array = []
 
         if args.mn_only:
-            yml_conf_dir = base_conf_path + default_yml_mn_only
+            yml_conf_dirs.add(base_conf_path + default_yml_mn_only)
         elif args.mn_db:
-            yml_conf_dir = base_conf_path + default_yml_mn_db
+            yml_conf_dirs.add(base_conf_path + default_yml_mn_db)
         elif args.full:
-            yml_conf_dir = base_conf_path + default_yml_full
+            yml_conf_dirs.add(base_conf_path + default_yml_full)
         elif args.full_db:
-            yml_conf_dir = base_conf_path + default_yml_full_db
+            yml_conf_dirs.add(base_conf_path + default_yml_full_db)
         elif args.mn_host:
-            yml_conf_dir = base_conf_path + default_yml_mn_host
+            yml_conf_dirs.add(base_conf_path + default_yml_mn_host)
+        elif args.combination:
+            yml_conf_dirs = self.generate_combination_yml_conf_dir(base_conf_path, args.combination)
         else:
             if args.p is None:
-                yml_conf_dir = base_conf_path + default_yml_full
+                yml_conf_dirs.add(base_conf_path + default_yml_full)
             else:
-                yml_conf_dir = args.p
+                yml_conf_dirs.add(args.p)
 
         decode_result = {}
         decode_error = None
-        if not os.path.exists(yml_conf_dir):
-            decode_error = 'do not find conf path %s' % yml_conf_dir
-            decode_result['decode_error'] = decode_error
-            return decode_result
-        f = open(yml_conf_dir)
-        try:
-            conf_dict = yaml.load(f)
-        except:
-            decode_error = 'decode yml error,please check the yml'
-            decode_result['decode_error'] = decode_error
-            return decode_result
+        for yml_conf_dir in yml_conf_dirs:
+            if not os.path.exists(yml_conf_dir):
+                decode_error = 'do not find conf path %s' % yml_conf_dir
+                decode_result['decode_error'] = decode_error
+                return decode_result
+            
+            f = open(yml_conf_dir)
+            try:
+                conf_dict = yaml.load(f)
+            except:
+                decode_error = 'decode yml error,please check the yml'
+                decode_result['decode_error'] = decode_error
+                return decode_result
 
-        for conf_key, conf_value in conf_dict.items():
-            collect_type = conf_key
-            list_value = conf_value.get('list')
-            logs = conf_value.get('logs')
-            if list_value is None or logs is None:
-                decode_error = 'host or log can not be empty in %s' % log
-                break
-
-            if 'exec' not in list_value:
-                if '\n' in list_value:
-                    temp_array = list_value.split('\n')
-                    conf_value['list'] = temp_array
-                elif ',' in list_value:
-                    temp_array = list_value.split(',')
-                    conf_value['list'] = temp_array
-                else:
-                    if ' ' in list_value:
-                        temp_array = list_value.split()
-                        conf_value['list'] = temp_array
-
-            if collect_type == 'host' or collect_type == 'sharedblock':
-                if args.hosts is not None:
-                    conf_value['list'] = args.hosts.split(',')
-
-            history_configured = False
-
-            for log in logs:
-                name_value = log.get('name')
-                dir_value = log.get('dir')
-                file_value = log.get('file')
-                exec_value = log.get('exec')
-                mode_value = log.get('mode')
-                exec_type_value = log.get('exec_type')
-                if name_value is None:
-                    decode_error = 'log name can not be None in %s' % log
+            for conf_key, conf_value in conf_dict.items():
+                collect_type = conf_key
+                list_value = conf_value.get('list')
+                logs = conf_value.get('logs')
+                if list_value is None or logs is None:
+                    decode_error = 'host or log can not be empty in %s' % log
                     break
-                else:
-                    if name_value in name_array:
-                        decode_error = 'duplicate name key :%s' % name_value
+    
+                if 'exec' not in list_value:
+                    if '\n' in list_value:
+                        temp_array = list_value.split('\n')
+                        conf_value['list'] = temp_array
+                    elif ',' in list_value:
+                        temp_array = list_value.split(',')
+                        conf_value['list'] = temp_array
+                    else:
+                        if ' ' in list_value:
+                            temp_array = list_value.split()
+                            conf_value['list'] = temp_array
+    
+                if collect_type == 'host' or collect_type == 'sharedblock':
+                    if args.hosts is not None:
+                        conf_value['list'] = args.hosts.split(',')
+    
+                history_configured = False
+    
+                for log in logs:
+                    name_value = log.get('name')
+                    dir_value = log.get('dir')
+                    file_value = log.get('file')
+                    exec_value = log.get('exec')
+                    mode_value = log.get('mode')
+                    exec_type_value = log.get('exec_type')
+                    if name_value is None:
+                        decode_error = 'log name can not be None in %s' % log
                         break
                     else:
-                        name_array.append(name_value)
-
-                    if name_value == 'history':
-                        history_configured = True
-                if dir_value is None:
-                    if exec_value is None:
-                        decode_error = 'dir, exec cannot be empty at the same time in  %s' % log
-                        break
-                    if name_value == 'mysql-database' and exec_value == 'AutoCollect':
-                        log['exec'] = self.get_dump_sql()
-                    if exec_type_value is None:
-                        log['exec_type'] = 'RunAndRedirect'
-                else:
-                    if str(dir_value).startswith('$ZSTACK_HOME'):
-                        dir_value = str(dir_value).replace('$ZSTACK_HOME', self.DEFAULT_ZSTACK_HOME)
-                        log['dir'] = dir_value
-                    if str(dir_value).startswith('/') is not True:
-                        decode_error = 'dir must be an absolute path in %s' % log
-                        break
-                    if file_value is not None and file_value.startswith('/'):
-                        decode_error = 'file value can not be an absolute path in %s' % log
-                        break
-                if mode_value is None:
-                    log['mode'] = "Normal"
-
-            # collect `history` by default
-            if not history_configured:
-                logs.append({'name': 'history', 'mode': 'Normal', 'dir': '/var/log/history.d/', 'file': 'history'})
-
-            decode_result[collect_type] = dict(
-                (key, value) for key, value in conf_value.items() if key == 'list' or key == 'logs')
-            name_array = []
+                        if name_value in name_array:
+                            decode_error = 'duplicate name key :%s' % name_value
+                            break
+                        else:
+                            name_array.append(name_value)
+    
+                        if name_value == 'history':
+                            history_configured = True
+                    if dir_value is None:
+                        if exec_value is None:
+                            decode_error = 'dir, exec cannot be empty at the same time in  %s' % log
+                            break
+                        if name_value == 'mysql-database' and exec_value == 'AutoCollect':
+                            log['exec'] = self.get_dump_sql()
+                        if exec_type_value is None:
+                            log['exec_type'] = 'RunAndRedirect'
+                    else:
+                        if str(dir_value).startswith('$ZSTACK_HOME'):
+                            dir_value = str(dir_value).replace('$ZSTACK_HOME', self.DEFAULT_ZSTACK_HOME)
+                            log['dir'] = dir_value
+                        if str(dir_value).startswith('/') is not True:
+                            decode_error = 'dir must be an absolute path in %s' % log
+                            break
+                        if file_value is not None and file_value.startswith('/'):
+                            decode_error = 'file value can not be an absolute path in %s' % log
+                            break
+                    if mode_value is None:
+                        log['mode'] = "Normal"
+    
+                # collect `history` by default
+                if not history_configured:
+                    logs.append({'name': 'history', 'mode': 'Normal', 'dir': '/var/log/history.d/', 'file': 'history'})
+    
+                decode_result[collect_type] = dict(
+                    (key, value) for key, value in conf_value.items() if key == 'list' or key == 'logs')
+                name_array = []
 
         decode_result['decode_error'] = decode_error
+        logger.info(decode_result)
         return decode_result
 
+    def generate_combination_yml_conf_dir(self, base_conf_path, combination):
+        yml_mn = 'collect_log_mn.yaml'
+        yml_mn_db = 'collect_log_mn_db.yaml'
+        yml_host = 'collect_log_host.yaml'
+        yml_ps = 'collect_log_ps.yaml'
+        yml_bs = 'collect_log_bs.yaml'
+        yml_vrouter = 'collect_log_vrouter.yaml'
+        yml_pxeserver = 'collect_log_pxeserver.yaml'
+        yml_baremetalv2gateway = 'collect_log_baremetalv2gateway.yaml'
+    
+        yml_conf_dirs = set()
+        logs = combination.strip().split(",")
+        for log in logs:
+            if "mn" == log.strip():
+                yml_conf_dirs.add(base_conf_path + yml_mn)
+            elif "mn_db" == log.strip():
+                yml_conf_dirs.add(base_conf_path + yml_mn_db)
+            elif "host" == log.strip():
+                yml_conf_dirs.add(base_conf_path + yml_host)
+            elif "ps" == log.strip():
+                yml_conf_dirs.add(base_conf_path + yml_ps)
+            elif "bs" == log.strip():
+                yml_conf_dirs.add(base_conf_path + yml_bs)
+            elif "vrouter" == log.strip():
+                yml_conf_dirs.add(base_conf_path + yml_vrouter)
+            elif "pxeserver" == log.strip():
+                yml_conf_dirs.add(base_conf_path + yml_pxeserver)
+            elif "baremetalv2gateway" == log.strip():
+                yml_conf_dirs.add(base_conf_path + yml_baremetalv2gateway)
+
+        self.delete_source_file = True
+        return yml_conf_dirs
+    
     def build_collect_cmd(self, log, collect_dir):
         dir_value = log['dir']
         file_value = log['file']
@@ -419,9 +459,13 @@ class CollectFromYml(object):
 
     def generate_tar_ball(self, run_command_dir, detail_version, time_stamp):
         info_verbose("Compressing log files ...")
-        (status, output) = commands.getstatusoutput("cd %s && tar zcf collect-log-%s-%s.tar.gz collect-log-%s-%s"
-                                                    % (run_command_dir, detail_version, time_stamp, detail_version,
-                                                       time_stamp))
+        
+        command = "cd %s && tar zcf collect-log-%s-%s.tar.gz collect-log-%s-%s" % (
+            run_command_dir, detail_version, time_stamp, detail_version, time_stamp)
+        if self.delete_source_file is True:
+            command = command + " --remove-files"
+            
+        (status, output) = commands.getstatusoutput(command)
         if status != 0:
             error("Generate tarball failed: %s " % output)
 
@@ -908,12 +952,12 @@ class CollectFromYml(object):
 
         time.sleep(args.dumptime)
 
-    def run(self, collect_dir, detail_version, time_stamp, args):
+    def run(self, run_command_dir, detail_version, time_stamp, args):
         zstack_path = os.environ.get('ZSTACK_HOME', None)
         if zstack_path and zstack_path != self.DEFAULT_ZSTACK_HOME:
             self.DEFAULT_ZSTACK_HOME = zstack_path
 
-        run_command_dir = os.getcwd()
+        collect_dir = run_command_dir + '/collect-log-%s-%s/' % (detail_version, time_stamp)
         if not os.path.exists(collect_dir) and args.check is not True:
             os.makedirs(collect_dir)
 
