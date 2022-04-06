@@ -190,7 +190,7 @@ def convert_disk_state_to_int(state):
     :type state: str
     """
     state = state.lower()
-    if "online" in state or "jobd" in state or "ready" in state or "optimal" in state or "hot-spare" in state or "hot spare" in state:
+    if "online" in state or "jbod" in state or "ready" in state or "optimal" in state or "hot-spare" in state or "hot spare" in state:
         return 0
     elif "rebuild" in state:
         return 5
@@ -209,22 +209,19 @@ def collect_raid_state():
         'physical_disk_state': GaugeMetricFamily('physical_disk_state',
                                                  'physical disk state', None,
                                                  ['slot_number', 'disk_group']),
-        'physical_disk_temperature': GaugeMetricFamily('physical_disk_temperature',
-                                                       'physical disk temperature', None,
-                                                       ['slot_number', 'disk_group']),
     }
     
-    r, o = bash_ro("/opt/MegaRAID/MegaCli/MegaCli64 -LDInfo -LALL -aAll | grep -E 'Target Id|State'")
+    r, o = bash_ro("arcconf list | grep -A 8 'Controller ID' | awk '{print $2}'")
     if r == 0 and o.strip() != "":
-        return collect_mega_raid_state(metrics, o)
+        return collect_arcconf_raid_state(metrics, o)
 
     r, o = bash_ro("sas3ircu list | grep -A 8 'Index' | awk '{print $1}'")
     if r == 0 and o.strip() != "":
         return collect_sas_raid_state(metrics, o)
 
-    r, o = bash_ro("arcconf list | grep -A 8 'Controller ID' | awk '{print $2}'")
+    r, o = bash_ro("/opt/MegaRAID/MegaCli/MegaCli64 -LDInfo -LALL -aAll | grep -E 'Target Id|State'")
     if r == 0 and o.strip() != "":
-        return collect_arcconf_raid_state(metrics, o)
+        return collect_mega_raid_state(metrics, o)
     
     return metrics.values()
 
@@ -316,6 +313,49 @@ def collect_mega_raid_state(metrics, infos):
         else:
             state = info.strip().split(" ")[-1]
             metrics['raid_state'].add_metric([target_id], convert_raid_state_to_int(state))
+    
+    disk_info = bash_o(
+        "/opt/MegaRAID/MegaCli/MegaCli64 -PDList -aAll | grep -E 'Enclosure Device ID|Slot Number|Firmware state|Drive has flagged'").strip().splitlines()
+    enclosure_device_id = slot_number = state = "unknown"
+    for info in disk_info:
+        k = info.split(":")[0].strip()
+        v = info.split(":")[1].strip()
+        if "Enclosure Device ID" in k:
+            enclosure_device_id = v
+        elif "Slot Number" in k:
+            slot_number = v
+        elif "Firmware state" in k:
+            state = v
+        elif "Drive has flagged" in k:
+            metrics['physical_disk_state'].add_metric([slot_number, enclosure_device_id],
+                                                      convert_disk_state_to_int(state))
+    
+    return metrics.values()
+
+
+def collect_mini_raid_state():
+    metrics = {
+        'raid_state': GaugeMetricFamily('raid_state',
+                                        'raid state', None, ['target_id']),
+        'physical_disk_state': GaugeMetricFamily('physical_disk_state',
+                                                 'physical disk state', None,
+                                                 ['slot_number', 'disk_group']),
+        'physical_disk_temperature': GaugeMetricFamily('physical_disk_temperature',
+                                                       'physical disk temperature', None,
+                                                       ['slot_number', 'disk_group']),
+    }
+    if bash_r("/opt/MegaRAID/MegaCli/MegaCli64 -LDInfo -LALL -aAll") != 0:
+        return metrics.values()
+    
+    raid_info = bash_o(
+        "/opt/MegaRAID/MegaCli/MegaCli64 -LDInfo -LALL -aAll | grep -E 'Target Id|State'").strip().splitlines()
+    target_id = state = "unknown"
+    for info in raid_info:
+        if "Target Id" in info:
+            target_id = info.strip().strip(")").split(" ")[-1]
+        else:
+            state = info.strip().split(" ")[-1]
+            metrics['raid_state'].add_metric([target_id], convert_raid_state_to_int(state))
 
     disk_info = bash_o(
         "/opt/MegaRAID/MegaCli/MegaCli64 -PDList -aAll | grep -E 'Slot Number|DiskGroup|Firmware state|Drive Temperature'").strip().splitlines()
@@ -372,10 +412,12 @@ def collect_ipmi_state():
     metrics = {
         'power_supply': GaugeMetricFamily('power_supply',
                                           'power supply', None, ['ps_id']),
+        "power_supply_current_output_power": GaugeMetricFamily('power_supply_current_output_power', 'power supply current output power', None, ['ps_id']),
         'ipmi_status': GaugeMetricFamily('ipmi_status', 'ipmi status', None, []),
         "fan_speed_rpm": GaugeMetricFamily('fan_speed_rpm', 'fan speed rpm', None, ['fan_speed_name']),
         "fan_speed_state": GaugeMetricFamily('fan_speed_state', 'fan speed state', None, ['fan_speed_name']),
         "cpu_temperature": GaugeMetricFamily('cpu_temperature', 'cpu temperature', None, ['cpu']),
+        "cpu_status": GaugeMetricFamily('cpu_status', 'cpu status', None, ['cpu']),
     }
 
     global collect_equipment_state_last_time
@@ -385,15 +427,21 @@ def collect_ipmi_state():
         collect_equipment_state_last_time = time.time()
     elif (time.time() - collect_equipment_state_last_time) < 25 and collect_equipment_state_last_result is not None:
         return collect_equipment_state_last_result
-
-    r, ps_info = bash_ro("ipmitool sdr type 'power supply' | grep -E -i '^PS\w*(\ |_)Status'")  # type: (int, str)
+    
+    r, power_supply_info = bash_ro("ipmitool sdr type 'power supply' | grep -E '^PS\w*(\ |_)Status|^PS\w*(\ |_)POUT'")
     if r == 0:
-        for info in ps_info.splitlines():
+        for info in power_supply_info.splitlines():
             info = info.strip()
             ps_id = info.split("|")[0].strip().split(" ")[0].split("_")[0]
-            ps_state = info.split("|")[4].strip().lower()
-            health = 0 if "presence detected" == ps_state else 10
-            metrics['power_supply'].add_metric([ps_id], health)
+            ps_str = info.split("|")[0].strip().split(" ")[0].split("_")[1]
+            if ps_str == 'POUT':
+                ps_out_power = info.split("|")[4].strip().lower()
+                ps_out_power = float(filter(str.isdigit, ps_out_power)) if bool(re.search(r'\d', ps_out_power)) else info.split("|")[4].strip().lower()
+                metrics['power_supply_current_output_power'].add_metric([ps_id], ps_out_power)
+            elif ps_str == 'Status':
+                ps_state = info.split("|")[4].strip().lower()
+                health = 0 if "presence detected" == ps_state else 10
+                metrics['power_supply'].add_metric([ps_id], health)
 
     metrics['ipmi_status'].add_metric([], bash_r("ipmitool mc info"))
 
@@ -415,6 +463,16 @@ def collect_ipmi_state():
             cpu_state = 0 if info.split("|")[2].strip().lower() == "ok" else 10
             cpu_temp = 0 if cpu_state != 0 else info.split("|")[4].strip().split(" ")[0]
             metrics['cpu_temperature'].add_metric([cpu_id], float(cpu_temp))
+    
+    r, cpu_status_info = bash_ro("ipmitool sdr type 'Processor' | grep '^CPU[0-9]*_Status'") # type: (int, str)
+    if r == 0:
+        for info in cpu_status_info.splitlines():
+            info = info.strip()
+            cpu_id = info.split("|")[0].strip().split(" ")[0].split("_")[0]
+            cpu_status = info.split("|")[2].strip().lower()
+            cpu_status_str = info.split("|")[4].strip().lower()
+            status = 0 if "ok" == cpu_status and "presence detected" == cpu_status_str else 10
+            metrics['cpu_status'].add_metric([cpu_id], float(status))
     
     collect_equipment_state_last_result = metrics.values()
     return collect_equipment_state_last_result
@@ -463,7 +521,7 @@ def collect_vm_statistics():
     def collect(vm_pid_arr):
         vm_pid_arr_str = ','.join(vm_pid_arr)
 
-        r, pid_cpu_usages_str = bash_ro("top -b -n 1 -p %s" % vm_pid_arr_str)
+        r, pid_cpu_usages_str = bash_ro("top -b -n 1 -p %s -w 4096" % vm_pid_arr_str)
         if r != 0 or not pid_cpu_usages_str:
             return
 
@@ -592,7 +650,7 @@ kvmagent.register_prometheus_collector(collect_physical_network_interface_state)
 
 if misc.isMiniHost():
     kvmagent.register_prometheus_collector(collect_lvm_capacity_statistics)
-    kvmagent.register_prometheus_collector(collect_raid_state)
+    kvmagent.register_prometheus_collector(collect_mini_raid_state)
     kvmagent.register_prometheus_collector(collect_equipment_state)
     
 if misc.isHyperConvergedHost():

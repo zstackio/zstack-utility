@@ -775,6 +775,19 @@ class HostPlugin(kvmagent.KvmAgent):
             time.sleep(3)
             loop += 1
         return ''
+    
+    def cache_units_convert(str):
+
+        unit = str.strip().split(" ")[1]
+        value = '%.2f' % float(str.strip().split(" ")[0])
+        if unit == 'KiB':
+            value = value * 1.024
+        elif unit == 'MiB':
+            value == value * 1.024 * 1024
+        elif unit == 'GiB':
+            value == value * 1.024 * 1024 * 1024
+        
+        return value
 
     @kvmagent.replyerror
     def fact(self, req):
@@ -795,6 +808,13 @@ class HostPlugin(kvmagent.KvmAgent):
             system_serial_number = shell.call('dmidecode -s system-serial-number').strip()
             rsp.systemSerialNumber = system_serial_number if system_serial_number else 'unknown'
             rsp.systemProductName = system_product_name if system_product_name else baseboard_product_name
+            power_supply_manufacturer = shell.call("dmidecode -t 39 | grep -m1 'Manufacturer' | awk -F ':' '{print $2}'")
+            rsp.powerSupplyManufacturer = power_supply_manufacturer.strip()
+            power_supply_model_name = shell.call("dmidecode -t 39 | grep -m1 'Name' | awk -F ':' '{print $2}'")
+            rsp.powerSupplyModelName = power_supply_model_name.strip()
+            power_supply_max_power_capacity = shell.call("dmidecode -t 39 | grep -m1 'Max Power Capacity' | awk -F ':' '{print $2}'")
+            if bool(re.search(r'\d', power_supply_max_power_capacity)):
+                rsp.powerSupplyMaxPowerCapacity = filter(str.isdigit, power_supply_max_power_capacity.strip())
 
         rsp.qemuImgVersion = qemu_img_version
         rsp.libvirtVersion = self.libvirt_version
@@ -820,6 +840,27 @@ class HostPlugin(kvmagent.KvmAgent):
             # in case lscpu doesn't show cpu max mhz
             cpuMHz = "2500.0000" if cpuMHz.strip() == '' else cpuMHz
             rsp.cpuGHz = '%.2f' % (float(cpuMHz) / 1000)
+            cpu_processor_num = shell.call("lscpu | grep -m1 'CPU(s)' | awk -F ':' '{print $2}'")                    
+            rsp.cpuProcessorNum = int(cpu_processor_num.strip())                                                         
+
+            cpu_l1d_cache = shell.call("lscpu | grep 'L1i cache' | awk -F ':' '{print $2}'") 
+            cpu_l1i_cache = shell.call("lscpu | grep 'L1d cache' | awk -F ':' '{print $2}'")
+            cpu_l1_cache = ''
+            if bool(re.search(r'\d', cpu_l1d_cache)) and bool(re.search(r'\d', cpu_l1i_cache)):
+                cpu_l1_cache = self.cache_units_convert(cpu_l1d_cache) + self.cache_units_convert(cpu_l1i_cache)
+
+            cpu_l2_cache = shell.call("lscpu | grep 'L2 cache' | awk -F ':' '{print $2}'")
+            if bool(re.search(r'\d', cpu_l2_cache)):
+                cpu_l2_cache = self.cache_units_convert(cpu_l2_cache)
+
+            cpu_l3_cache = shell.call("lscpu | grep 'L3 cache' | awk -F ':' '{print $2}'")
+            if bool(re.search(r'\d', cpu_l3_cache)):
+                cpu_l3_cache = self.cache_units_convert(cpu_l3_cache)
+
+            if cpu_l1_cache != '' and cpu_l2_cache != '' and cpu_l3_cache != '':
+                cpuCache = [cpu_l1_cache, cpu_l2_cache, cpu_l3_cache]
+                rsp.cpuCache = ",".join(cpuCache)
+
         elif IS_MIPS64EL:
             rsp.hvmCpuFlag = 'vt'
             rsp.cpuModelName = self._get_host_cpu_model()
@@ -852,6 +893,29 @@ class HostPlugin(kvmagent.KvmAgent):
             static_cpuGHz_re = re.search('[0-9.]*GHz', host_cpu_model_name)
             rsp.cpuGHz = static_cpuGHz_re.group(0)[:-3] if static_cpuGHz_re else transient_cpuGHz
 
+            cpu_processor_num = shell.call("grep -c processor /proc/cpuinfo")
+            rsp.cpuProcessorNum = cpu_processor_num.strip()         
+
+            cpu_l1d_cache = shell.call("lscpu | grep 'L1i cache' | awk -F ':' '{print $2}'") 
+            cpu_l1i_cache = shell.call("lscpu | grep 'L1d cache' | awk -F ':' '{print $2}'")
+            cpu_l1_cache = ''
+            if bool(re.search(r'\d', cpu_l1d_cache)) and bool(re.search(r'\d', cpu_l1i_cache)):
+                cpu_l1_cache_value = float(cpu_l1d_cache.strip()[:-1]) + float(cpu_l1i_cache.strip()[:-1])
+                if cpu_l1d_cache.strip()[-1] == 'K' and cpu_l1i_cache.strip()[-1] == 'K':
+                    cpu_l1_cache = '%.2f' % (cpu_l1_cache_value)
+
+            cpu_l2_cache = shell.call("lscpu | grep 'L2 cache' | awk -F ':' '{print $2}'")
+            if cpu_l2_cache.strip()[-1] == 'K':
+                cpu_l2_cache = '%.2f' % float(cpu_l2_cache.strip()[:-1])
+
+            cpu_l3_cache = shell.call("lscpu | grep 'L3 cache' | awk -F ':' '{print $2}'")
+            if cpu_l3_cache.strip()[-1] == 'K':
+                cpu_l3_cache = '%.2f' % float(cpu_l3_cache.strip()[:-1])
+
+            if cpu_l1_cache != '' and cpu_l2_cache != '' and cpu_l3_cache != '':
+                cpuCache = [cpu_l1_cache, cpu_l2_cache.strip(), cpu_l3_cache.strip()]
+                rsp.cpuCache = ",".join(cpuCache)
+            
         return jsonobject.dumps(rsp)
 
     @vm_plugin.LibvirtAutoReconnect
@@ -1443,7 +1507,7 @@ done
                 elif "configured clock speed" == k:
                     clockSpeed =  v
                 elif "configured voltage" == k:
-                    if serialnumber.lower() != "no dimm" and serialnumber is not None:
+                    if serialnumber.lower() != "no dimm" and serialnumber.lower() != "unknown" and serialnumber is not None:
                         m = HostPhysicalMemoryStruct()
                         m.size = size
                         m.speed = speed
