@@ -196,20 +196,18 @@ command = "rm -rf %s && virtualenv --system-site-packages %s " % (virtenv_path, 
 run_remote_command(command, host_post_info)
 
 # name: install zstacklib
-if copy_zstacklib != "changed:False":
-    agent_install_arg = AgentInstallArg(trusted_host, pip_url, virtenv_path, init_install)
-    agent_install_arg.agent_name = "zstacklib"
-    agent_install_arg.agent_root = consoleproxy_root
-    agent_install_arg.pkg_name = pkg_zstacklib
-    agent_install(agent_install_arg, host_post_info)
+agent_install_arg = AgentInstallArg(trusted_host, pip_url, virtenv_path, init_install)
+agent_install_arg.agent_name = "zstacklib"
+agent_install_arg.agent_root = consoleproxy_root
+agent_install_arg.pkg_name = pkg_zstacklib
+agent_install(agent_install_arg, host_post_info)
 
 # name: install consoleproxy
-if copy_consoleproxy != "changed:False":
-    agent_install_arg = AgentInstallArg(trusted_host, pip_url, virtenv_path, init_install)
-    agent_install_arg.agent_name = "consoleproxy"
-    agent_install_arg.agent_root = consoleproxy_root
-    agent_install_arg.pkg_name = pkg_consoleproxy
-    agent_install(agent_install_arg, host_post_info)
+agent_install_arg = AgentInstallArg(trusted_host, pip_url, virtenv_path, init_install)
+agent_install_arg.agent_name = "consoleproxy"
+agent_install_arg.agent_root = consoleproxy_root
+agent_install_arg.pkg_name = pkg_consoleproxy
+agent_install(agent_install_arg, host_post_info)
 
 # name: restart consoleproxy
 if chroot_env == 'false':
