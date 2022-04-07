@@ -5874,7 +5874,7 @@ class VmPlugin(kvmagent.KvmAgent):
             if any(s.startswith('/dev/') for s in vm.list_blk_sources()):
                 flags += " --unsafe"
 
-        check_mirror_jobs(vmUuid, bool(os.getenv("MIGRATE_WITHOUT_DIRTY_BITMAPS")))
+        check_mirror_jobs(vmUuid, True)
         cmd = "virsh migrate {} --migrate-disks {} --xml {} {} {} {}".format(flags, diskstr, fpath, vmUuid, dst, migurl)
 
         shell_cmd = shell.ShellCmd(cmd)
