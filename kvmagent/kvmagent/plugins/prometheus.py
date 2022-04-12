@@ -436,7 +436,7 @@ def collect_ipmi_state():
             ps_str = info.split("|")[0].strip().split(" ")[0].split("_")[1]
             if ps_str == 'POUT':
                 ps_out_power = info.split("|")[4].strip().lower()
-                ps_out_power = float(filter(str.isdigit, ps_out_power)) if bool(re.search(r'\d', ps_out_power)) else info.split("|")[4].strip().lower()
+                ps_out_power = float(filter(str.isdigit, ps_out_power)) if bool(re.search(r'\d', ps_out_power)) else float(0)
                 metrics['power_supply_current_output_power'].add_metric([ps_id], ps_out_power)
             elif ps_str == 'Status':
                 ps_state = info.split("|")[4].strip().lower()
