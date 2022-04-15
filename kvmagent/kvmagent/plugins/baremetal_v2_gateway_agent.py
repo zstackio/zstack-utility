@@ -129,8 +129,8 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
 
         pkgs.extend(eval("extra_{}".format(kvmagent.host_arch)))
         yum_release = kvmagent.get_host_yum_release()
-        cmd = ('export YUM0={yum_release}; [[ "$YUM0" = "ns10" ]] && rpm -e libselinux-utils --nodeps > /dev/null 2>&1; '
-               'yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn clean all; '
+        cmd = ('export YUM0={yum_release}; yum --disablerepo=* '
+               '--enablerepo=zstack-mn,qemu-kvm-ev-mn clean all; '
                'pkg_list=`rpm -q {pkg_list} | grep "not installed" | awk '
                '\'{{ print $2 }}\'`; for pkg in $pkg_list; do yum '
                '--disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install -y '
@@ -758,8 +758,10 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                 ip=network_obj.provision_nic_ip,
                 port=network_obj.baremetal_instance_proxy_port)
 
+        title = "ZStack Get Bare Metal Chassis Hardware Info"
         grub_template = self._load_template('grub.cfg')
-        grub_conf = grub_template.render(inspect_ks_cfg_uri=inspect_ks_cfg_uri, inspect_ks_cfg_nic_ip=network_obj.provision_nic_ip)
+        grub_conf = grub_template.render(title=title, inspect_ks_cfg_uri=inspect_ks_cfg_uri, 
+                                    inspect_ks_cfg_nic_ip=network_obj.provision_nic_ip)
         with open(self.GRUB_CFG_PATH, 'w') as f:
             f.write(grub_conf)
 
@@ -767,6 +769,10 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
     def _create_grub_configuration(self, instance_obj, volume_drivers):
         """ Generate grub cfg for aarch64 bm instance
         """
+        # only configure while Remote deploy
+        if instance_obj.provisionType != "Remote":
+            return
+
         # guestmount image and copy vmlinuz/initrd.img out
         image_dir = os.path.join(self.AARCH64_BOOTIMG_DIR, instance_obj.image_uuid)
         if not os.path.exists(image_dir) or not os.listdir(image_dir):
@@ -883,10 +889,11 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         ks_file_name = instance_obj.provision_mac.replace(':', '-')
         ks_config_path = os.path.join(self.KS_CFG_DIR, ks_file_name)
         template = self._load_template('import-data.ks')
+        architecture = instance_obj.architecture
 
-        # create inspector_ks_x86_64.cfg
-        network_inst_uri = "http://{ip}:{port}/bmv2httpboot/bmimgs/x86_64/".format(
-            ip=instance_obj.gateway_ip, port=cmd.port)
+        # create import-data-ks.cfg
+        network_inst_uri = "http://{ip}:{port}/bmv2httpboot/bmimgs/{architecture}/".format(
+            ip=instance_obj.gateway_ip, port=cmd.port, architecture=architecture)
 
         send_hardware_infos_uri = (
             'http://{ip}:{port}/baremetal_instance_agent/v2/hardwareinfos'
@@ -908,21 +915,35 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         with open(ks_config_path, 'w') as f:
             f.write(conf)
 
-        inspect_kernel_uri = '../x86_64/vmlinuz'
-        inspect_initrd_uri = '../x86_64/initrd.img'
+        inspect_kernel_uri = '../{}/vmlinuz'.format(architecture)
+        inspect_initrd_uri = '../{}/initrd.img'.format(architecture)
         import_data_ks_cfg_uri = 'http://{ip}:{port}/bmv2httpboot/ks/{import_data_ks}'.format(
             ip=instance_obj.gateway_ip, port=cmd.port, import_data_ks=ks_file_name)
 
-        template = self._load_template('local-config.ipxe')
-        conf = template.render(
-            inspect_kernel_uri=inspect_kernel_uri,
-            inspect_initrd_uri=inspect_initrd_uri,
-            import_data_ks_cfg_uri=import_data_ks_cfg_uri,
-            extra_boot_params=cmd.extraBootParams)
-        ipxe_file_name = instance_obj.provision_mac.replace(':', '-')
-        ipxe_file_path = os.path.join(self.PXELINUX_CFG_DIR, ipxe_file_name)
-        with open(ipxe_file_path, 'w') as f:
-            f.write(conf)
+        # configure ipxe if x86_64 else configure grub
+        if architecture == "x86_64":
+            template = self._load_template('local-config.ipxe')
+            conf = template.render(
+                inspect_kernel_uri=inspect_kernel_uri,
+                inspect_initrd_uri=inspect_initrd_uri,
+                import_data_ks_cfg_uri=import_data_ks_cfg_uri,
+                extra_boot_params=cmd.extraBootParams)
+            ipxe_file_name = instance_obj.provision_mac.replace(':', '-')
+            ipxe_file_path = os.path.join(self.PXELINUX_CFG_DIR, ipxe_file_name)
+            with open(ipxe_file_path, 'w') as f:
+                f.write(conf)
+        elif architecture == "aarch64":
+            title = "ZStack Deploy Bare Metal OS On Local Disk"
+
+            grub_template = self._load_template('grub.cfg')
+            grub_conf = grub_template.render(title=title, inspect_ks_cfg_uri=import_data_ks_cfg_uri, 
+                                        inspect_ks_cfg_nic_ip=instance_obj.gateway_ip)
+            grub_file_name = "grub.cfg-01-" + instance_obj.provision_mac.replace(':', '-')
+            grub_file_path = os.path.join(self.GRUB_CFG_DIR, grub_file_name)
+            with open(grub_file_path, 'w') as f:
+                f.write(grub_conf)
+        else:
+            return
 
     def _create_ipxe_configuration(self, instance_obj, volume_drivers):
         """ Generate ipxe cfg for a bm instance
@@ -1220,10 +1241,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                 volume_driver.prepare_instance_resource()
                 volume_driver.attach()
 
-                if instance_obj.architecture == 'aarch64':
-                    return
-                else:
-                    self._create_import_data_config(volume_driver, cmd)
+                self._create_import_data_config(volume_driver, cmd)
                 self._create_nginx_agent_proxy_configuration(instance_obj)
             self._create_dnsmasq_host(instance_obj)
 

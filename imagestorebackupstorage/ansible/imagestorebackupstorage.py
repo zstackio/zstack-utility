@@ -64,16 +64,14 @@ if remote_pass is not None and remote_user != 'root':
 host_arch = get_remote_host_arch(host_post_info)
 IS_AARCH64 = host_arch == 'aarch64'
 IS_MIPS64EL = host_arch == 'mips64el'
+IS_LOONGARCH64 = host_arch == 'loongarch64'
 
-if IS_AARCH64:
-    src_pkg_imagestorebackupstorage = "zstack-store.aarch64.bin"
-    src_pkg_exporter = "collectd_exporter_aarch64"
-elif IS_MIPS64EL:
-    src_pkg_imagestorebackupstorage = "zstack-store.mips64el.bin"
-    src_pkg_exporter = "collectd_exporter_mips64el"
-else:
+if host_arch == 'x86_64':
     src_pkg_imagestorebackupstorage = "zstack-store.bin"
     src_pkg_exporter = "collectd_exporter"
+else:
+    src_pkg_imagestorebackupstorage = "zstack-store.{}.bin".format(host_arch)
+    src_pkg_exporter = "collectd_exporter_{}".format(host_arch)
 
 if client != "true":
     dst_pkg_imagestorebackupstorage = "zstack-store.bin"
@@ -105,19 +103,18 @@ else :
 zstacklib = ZstackLib(zstacklib_args)
 
 if distro in RPM_BASED_OS:
-    x86_64_c74 = "qemu-img-ev fuse-sshfs nmap collectd"
-    x86_64_c76 = "qemu-img-ev fuse-sshfs nmap collectd"
-    aarch64_ns10 = "qemu-img fuse-sshfs nmap collectd"
-    aarch64_euler20 = "qemu-img fuse-sshfs nmap collectd"
-    mips64el_ns10 = "qemu-img fuse-sshfs nmap collectd"
-    x86_64_ns10 = "qemu-img fuse-sshfs nmap collectd"
-
-    qemu_pkg = eval("%s_%s" % (host_arch, releasever))
+    qemu_pkg = "fuse-sshfs nmap collectd tar"
+    if releasever in ['c74', 'c76']:
+        qemu_pkg = "qemu-img-ev {}".format(qemu_pkg)
+    else:
+        qemu_pkg = "qemu-img {}".format(qemu_pkg)
     # skip these packages
     _skip_list = re.split(r'[|;,\s]\s*', skip_packages)
     _qemu_pkg = [ pkg for pkg in qemu_pkg.split() if pkg not in _skip_list ]
     qemu_pkg = ' '.join(_qemu_pkg)
     svr_pkgs = 'ntfs-3g exfat-utils fuse-exfat btrfs-progs qemu-storage-daemon'
+    # common imagestorebackupstorage deps of ns10 that need to update
+    ns10_update_list = "nettle"
 
     if client == "true" :
         if distro_version < 7:
@@ -133,9 +130,15 @@ if distro in RPM_BASED_OS:
         if zstack_repo == 'false':
             yum_install_package(qemu_pkg, host_post_info)
         else:
-            command = ("pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
-                       "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % (qemu_pkg, zstack_repo)
+            command = ("pkg_list=`rpm -q {0} | grep \"not installed\" | awk '{{ print $2 }}'` && for pkg in $pkg_list; do yum "
+                       "--disablerepo=* --enablerepo={1} install -y $pkg; done;").format(qemu_pkg, zstack_repo)
             run_remote_command(command, host_post_info)
+
+            if releasever in ['ns10']:
+                command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (
+                ns10_update_list, zstack_repo)
+                run_remote_command(command, host_post_info)
+
             if releasever not in ['c72', 'c74']:
                 command = ("pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
                            "--disablerepo=* --enablerepo=%s install -y $pkg || true; done;") % (svr_pkgs, zstack_repo)

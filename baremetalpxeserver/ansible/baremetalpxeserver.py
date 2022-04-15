@@ -88,6 +88,31 @@ else:
     command = 'mkdir -p %s %s' % (baremetalpxeserver_root, virtenv_path)
     run_remote_command(command, host_post_info)
 
+# name: install dependencies
+if distro in RPM_BASED_OS:
+    dep_pkg = "dnsmasq nginx vsftpd nmap python2-pyroute2"
+    if releasever in ['c74', 'c76']:
+        dep_pkg = "{} syslinux".format(dep_pkg)
+    else:
+        dep_pkg = "{} net-tools".format(dep_pkg)
+    if zstack_repo != 'false':
+        command = ("pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % \
+                  (dep_pkg, dep_pkg if update_packages == 'true' else '$pkg_list', zstack_repo)
+        run_remote_command(command, host_post_info)
+    else:
+        for pkg in ["dnsmasq", "nginx", "vsftpd", "syslinux", "nmap", "python2-pyroute2"]:
+            yum_install_package(pkg, host_post_info)
+    command = "(which firewalld && systemctl stop firewalld && systemctl enable firewalld) || true"
+    run_remote_command(command, host_post_info)
+    set_selinux("state=disabled", host_post_info)
+
+elif distro in DEB_BASED_OS:
+    install_pkg_list = ["dnsmasq", "vsftpd", "syslinux", "nginx", "nmap", "python2-pyroute2"]
+    apt_install_packages(install_pkg_list, host_post_info)
+    command = "(chmod 0644 /boot/vmlinuz*) || true"
+else:
+    error("unsupported OS!")
+
 # name: install virtualenv
 virtual_env_status = check_and_install_virtual_env(virtualenv_version, trusted_host, pip_url, host_post_info)
 if virtual_env_status is False:
@@ -99,37 +124,10 @@ if virtual_env_status is False:
 command = "[ -f %s/bin/python ] || virtualenv --system-site-packages %s " % (virtenv_path, virtenv_path)
 run_remote_command(command, host_post_info)
 
-# name: install dependencies
-if distro in RPM_BASED_OS:
-    x86_64_c74 = "dnsmasq nginx syslinux vsftpd nmap"
-    x86_64_c76 = "dnsmasq nginx syslinux vsftpd nmap"
-    x86_64_ns10 = "dnsmasq nginx vsftpd nmap net-tools"
-    aarch64_ns10 = "dnsmasq nginx vsftpd nmap net-tools"
-    aarch64_euler20 = "dnsmasq nginx vsftpd nmap net-tools"
-    mips64el_ns10 = "dnsmasq nginx vsftpd nmap net-tools"
-    dep_pkg = eval("%s_%s" % (host_arch, releasever))
-    if zstack_repo != 'false':
-        command = ("pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % \
-                  (dep_pkg, dep_pkg if update_packages == 'true' else '$pkg_list', zstack_repo)
-        run_remote_command(command, host_post_info)
-    else:
-        for pkg in ["dnsmasq", "nginx", "vsftpd", "syslinux", "nmap"]:
-            yum_install_package(pkg, host_post_info)
-    command = "(which firewalld && systemctl stop firewalld && systemctl enable firewalld) || true"
-    run_remote_command(command, host_post_info)
-    set_selinux("state=disabled", host_post_info)
-
-elif distro in DEB_BASED_OS:
-    install_pkg_list = ["dnsmasq", "vsftpd", "syslinux", "nginx", "nmap"]
-    apt_install_packages(install_pkg_list, host_post_info)
-    command = "(chmod 0644 /boot/vmlinuz*) || true"
-else:
-    error("unsupported OS!")
-
 # name: check and mount /opt/zstack-dvd
 command = """
-archRelease='x86_64/c72 x86_64/c74 x86_64/c76 x86_64/ns10 aarch64/ns10 mips64el/ns10' 
-mkdir -p /var/lib/zstack/baremetal/{dnsmasq,ftp/{ks,zstack-dvd/{x86_64,aarch64,mips64el},scripts},tftpboot/{zstack/{x86_64,aarch64,mips64el},pxelinux.cfg,EFI/BOOT},vsftpd} /var/log/zstack/baremetal/;
+archRelease='x86_64/c72 x86_64/c74 x86_64/c76 x86_64/ns10 aarch64/ns10 mips64el/ns10 loongarch64/ns10' 
+mkdir -p /var/lib/zstack/baremetal/{dnsmasq,ftp/{ks,zstack-dvd/{x86_64,aarch64,mips64el,loongarch64},scripts},tftpboot/{zstack/{x86_64,aarch64,mips64el,loongarch64},pxelinux.cfg,EFI/BOOT},vsftpd} /var/log/zstack/baremetal/;
 rm -rf /var/lib/zstack/baremetal/tftpboot/{grubaa64.efi,grub.cfg-01-*};
 is_repo_exist='false'
 for AR in $archRelease;do

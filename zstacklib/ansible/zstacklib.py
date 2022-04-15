@@ -28,11 +28,19 @@ apt_server = ""
 trusted_host = ""
 ansible.constants.HOST_KEY_CHECKING = False
 enable_networkmanager_list = ["ns10", "euler20"]
-supported_arch_list = ["x86_64", "aarch64", "mips64el"]
+supported_arch_list = ["x86_64", "aarch64", "mips64el", "loongarch64"]
 
 RPM_BASED_OS = ["centos", "redhat", "alibaba", "kylin10", "openeuler"]
 DEB_BASED_OS = ["ubuntu", "uos", "kylin4.0.2", "debian", "uniontech"]
 DISTRO_WITH_RPM_DEB = ["kylin"]
+
+qemu_alias = {
+    "ns10": "qemu qemu-img",
+    "uos20": "qemu-system",
+    "c76": "qemu-kvm-ev",
+    "euler20": "qemu",
+    "uos1021a": "qemu-kvm"
+}
 
 class AgentInstallArg(object):
     def __init__(self, trusted_host, pip_url, virtenv_path, init_install):
@@ -973,8 +981,7 @@ def run_remote_command(command, host_post_info, return_status=False, return_outp
     '''return status all the time except return_status is False, return output is set to True'''
     if 'yum' in command:
         set_yum0 = '''rpm -q zstack-release >/dev/null && releasever=`awk '{print $3}' /etc/zstack-release` || releasever=%s;\
-                    export YUM0=$releasever; grep $releasever /etc/yum/vars/YUM0 || echo $releasever > /etc/yum/vars/YUM0;\
-                    [[ "$releasever" = "ns10" ]] && rpm -e libselinux-utils --nodeps > /dev/null 2>&1;''' % (get_mn_release())
+                    export YUM0=$releasever; grep $releasever /etc/yum/vars/YUM0 || echo $releasever > /etc/yum/vars/YUM0;''' % (get_mn_release())
         command = set_yum0 + command
     start_time = datetime.now()
     host_post_info.start_time = start_time

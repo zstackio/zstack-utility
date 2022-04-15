@@ -18,6 +18,7 @@ import json
 import multiprocessing
 import os
 import sys
+import platform
 
 PROVISION_NET = "{{ provision_net }}"
 
@@ -85,15 +86,23 @@ def get_basic_info():
     arch = os.uname()[-1]
     cpu_model_name = ''
     cpu_num = multiprocessing.cpu_count()
+    memory_bytes = 0
 
     # Get memory total
-    memory_bytes = 0
-    _, stdout, _ = shell_cmd('dmidecode --type memory')
-    for line in stdout.split('\n'):
-        line = line.lower().strip()
-        if line.startswith('size') and 'no module' not in line:
-            _, size, unit = line.split()
-            memory_bytes += int(size) * units_mapping[unit]
+    if platform.machine() == 'aarch64':
+        with open('/proc/meminfo', 'r') as f:
+            for line in f.readlines():
+                if 'MemTotal' in line:
+                    _, size, unit = line.lower().split()
+                    memory_bytes = int(size) * units_mapping[unit]
+                    break
+    else:
+        _, stdout, _ = shell_cmd('dmidecode --type memory')
+        for line in stdout.split('\n'):
+            line = line.lower().strip()
+            if line.startswith('size') and 'no module' not in line:
+                _, size, unit = line.split()
+                memory_bytes += int(size) * units_mapping[unit]
 
     with open('/proc/cpuinfo', 'r') as f:
         for line in f.readlines():
@@ -154,18 +163,18 @@ def get_nic_info():
 def get_disk_info():
     block_devs = []
 
-    cmd = 'lsblk --nodeps --byte --output size,rota,type,wwn'
+    cmd = 'lsblk --nodeps --byte --output name,size,rota,type'
     _, stdout, _ = shell_cmd(cmd)
     for line in stdout.split('\n')[1:]:
         if len(line.split()) != 4:
             continue
-        size, rotation, type, wwn = line.split()
+        name, size, rotation, blk_type  = line.split()
 
-        if type.lower() != 'disk':
+        if blk_type.lower() != 'disk':
             continue
 
         disk_type = 'SSD' if rotation == '0' else 'HDD'
-
+        _, wwn, _ = shell_cmd("smartctl -i /dev/%s | awk '/Logical Unit id/{print $4}'" % name)
         block_devs.append({
             'diskType': disk_type,
             'diskSize': size,

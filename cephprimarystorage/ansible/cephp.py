@@ -24,6 +24,8 @@ remote_pass = None
 remote_port = None
 host_uuid = None
 
+# common cephprimarystorage deps of ns10 that need to update
+ns10_update_list = "nettle"
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy ceph primary strorage to host')
@@ -91,14 +93,21 @@ else:
 
 if distro in RPM_BASED_OS:
     if zstack_repo != 'false':
-        command = ("pkg_list=`rpm -q wget qemu-kvm-ev nmap| grep \"not installed\" | awk '{ print $2 }'` && for pkg"
-                   " in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (zstack_repo)
+        command = """pkg_list=`rpm -q wget {} nmap python2-pyroute2 | grep "not installed" | awk '{{ print $2 }}'` && for pkg"""\
+                """ in $pkg_list; do yum --disablerepo=* --enablerepo={} install -y $pkg; done;"""\
+                .format(qemu_alias.get(releasever, "qemu-kvm-ev"), zstack_repo)
         run_remote_command(command, host_post_info)
+
+        if releasever in ['ns10']:
+            command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (
+            ns10_update_list, zstack_repo)
+            run_remote_command(command, host_post_info)
+
         if distro_version >= 7:
             command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
             run_remote_command(command, host_post_info)
     else:
-        for pkg in ["wget",  "nmap", "qemu-kvm-ev"]:
+        for pkg in ["wget", "nmap", "python2-pyroute2", qemu_alias.get(releasever, "qemu-kvm-ev")]:
             yum_install_package(pkg, host_post_info)
         if distro_version >= 7:
             command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
@@ -120,7 +129,7 @@ if distro in RPM_BASED_OS:
         run_remote_command(command, host_post_info)
 
 elif distro in DEB_BASED_OS:
-    install_pkg_list = ["wget", "qemu-utils","libvirt-bin", "libguestfs-tools"]
+    install_pkg_list = ["wget", "python2-pyroute2", "qemu-utils", "libvirt-bin", "libguestfs-tools"]
     apt_install_packages(install_pkg_list, host_post_info)
     command = "(chmod 0644 /boot/vmlinuz*) || true"
     run_remote_command(command, host_post_info)

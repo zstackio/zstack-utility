@@ -977,6 +977,7 @@ $HTTP["remoteip"] =~ "^(.*)$" {
             "^/zwatch-vm-agent.freebsd-amd64.bin$" => "/zwatch-vm-agent-freebsd",
             "^/zwatch-vm-agent.linux-aarch64.bin$" => "/zwatch-vm-agent_aarch64",
             "^/zwatch-vm-agent.linux-mips64el.bin$" => "/collectd_exporter_mips64el",
+            "^/zwatch-vm-agent.linux-loongarch64.bin$" => "/collectd_exporter_loongarch64",
             "^/agent-tools-update.sh$" => "/vm-tools.sh",
             "^/.*/meta-data/(.+)$" => "/{{ip}}/meta-data/$1",
             "^/.*/meta-data$" => "/{{ip}}/meta-data",
@@ -995,6 +996,7 @@ $HTTP["remoteip"] =~ "^(.*)$" {
             "^/zwatch-vm-agent.freebsd-amd64.bin$" => "/zwatch-vm-agent-freebsd",
             "^/zwatch-vm-agent.linux-aarch64.bin$" => "/zwatch-vm-agent_aarch64",
             "^/zwatch-vm-agent.linux-mips64el.bin$" => "/collectd_exporter_mips64el",
+            "^/zwatch-vm-agent.linux-loongarch64.bin$" => "/collectd_exporter_loongarch64",
             "^/agent-tools-update.sh$" => "/vm-tools.sh",
             "^/.*/meta-data/(.+)$" => "../zstack-default/meta-data/$1",
             "^/.*/meta-data$" => "../zstack-default/meta-data",
@@ -1050,7 +1052,7 @@ mimetype.assign = (
             logger.error("Can't find file %s" % agent_file_source_path)
             return
 
-        if not os.path.exists(freebsd_agent_file_source_path):
+        if HOST_ARCH == 'x86_64' and not os.path.exists(freebsd_agent_file_source_path):
             logger.error("Can't find file %s" % freebsd_agent_file_source_path)
             return
 

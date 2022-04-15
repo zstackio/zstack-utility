@@ -2321,7 +2321,7 @@ class StartCmd(Command):
 
             if ctl.get_encrypt_properties() != ctl.encrypt_properties():
                 raise CtlError('zstack.properties is Integrity error')
-                
+
 
         def encrypt_properties_if_need():
             cipher = AESCipher()
@@ -5711,8 +5711,11 @@ class ScanDatabaseBackupCmd(Command):
 
     def install_argparse_arguments(self, parser):
         parser.add_argument('--backup-storage-url',
-                            help="The backup storage install url, must include username, password, hostnamem, ssh port,"
-                                 " install path. e.g. ssh://username:password@hostname:port/bspath",
+                            help="The backup storage install url, must include username, password, hostname, ssh port,"
+                                 " install path. e.g. ssh://username:password@hostname:port/bspath."
+                                 " If password has special characters, you need to URL encode it."
+                                 " For example, '@' -> '%%40'  '#' -> '%%23'"
+                                 " '?' -> '%%3F'  ':' -> '%%3A'  '%%' -> '%%25'",
                             required=True)
         parser.add_argument('--json', '-j',
                             help="output via json",
@@ -5744,6 +5747,7 @@ class ScanDatabaseBackupCmd(Command):
 
 def runImageStoreCliCmd(raw_bs_url, registry_port, command, is_exception=True):
     ZSTORE_CLI_PATH = "/usr/local/zstack/imagestore/bin/zstcli"
+    ZSTORE_CLI_PATH = "GODEBUG=x509ignoreCN=0 " + ZSTORE_CLI_PATH if platform.machine() == 'loongarch64' else ZSTORE_CLI_PATH
     ZSTORE_CLI_CA = "/var/lib/zstack/imagestorebackupstorage/package/certs/ca.pem"
     ZSTORE_DEF_PORT = 8000
 
@@ -5762,9 +5766,13 @@ def runImageStoreCliCmd(raw_bs_url, registry_port, command, is_exception=True):
         shell("%s 'ps -e | grep zstore || %s'" % (ssh_cmd, start_cmd))
 
     url = urlparse.urlparse(raw_bs_url)
-    username = url.username
-    password = url.password
-    hostname = url.hostname
+    if not url.username or not url.password or not url.hostname:
+        error("wrong url, get guide from help.")
+
+    username = urllib2.unquote(url.username)
+    password = urllib2.unquote(url.password)
+    hostname = urllib2.unquote(url.hostname)
+
     port = (url.port, 22)[url.port is None]
     registry_port = (ZSTORE_DEF_PORT, registry_port)[registry_port is not None]
 
@@ -7548,7 +7556,7 @@ class UpgradeManagementNodeCmd(Command):
                 ShellCmd('unzip %s -d zstack' % os.path.basename(new_war.path), workdir=webapp_dir)()
                 #create local repo folder for possible zstack local yum repo
                 zstack_dvd_repo = '{}/zstack/static/zstack-repo'.format(webapp_dir)
-                shell('rm -f {0}; mkdir -p {0};ln -s /opt/zstack-dvd/x86_64 {0}/x86_64; ln -s /opt/zstack-dvd/aarch64 {0}/aarch64; ln -s /opt/zstack-dvd/mips64el {0}/mips64el; chown -R zstack:zstack {0}'.format(zstack_dvd_repo))
+                shell('rm -f {0}; mkdir -p {0};ln -s /opt/zstack-dvd/x86_64 {0}/x86_64; ln -s /opt/zstack-dvd/aarch64 {0}/aarch64; ln -s /opt/zstack-dvd/mips64el {0}/mips64el; ln -s /opt/zstack-dvd/loongarch64 {0}/loongarch64; chown -R zstack:zstack {0}'.format(zstack_dvd_repo))
 
             def restore_config():
                 info('restoring the zstack.properties ...')

@@ -81,6 +81,9 @@ QMP_SOCKET_PATH = "/var/lib/libvirt/qemu/zstack"
 PCI_ROM_PATH = "/var/lib/zstack/pcirom"
 MAX_MEMORY = 34359738368 if (HOST_ARCH != "aarch64") else linux.get_max_vm_ipa_size()/1024/16
 
+MIPS64EL_CPU_MODEL = "Loongson-3A4000-COMP"
+LOONGARCH64_CPU_MODEL = "Loongson-3A5000"
+
 class RetryException(Exception):
     pass
 
@@ -1617,6 +1620,7 @@ class Vm(object):
     device_letter_config = {
         'aarch64': 'abfghijklmnopqrstuvwxyz',
         'mips64el': 'abfghijklmnopqrstuvwxyz',
+        'loongarch64': 'abfghijklmnopqrstuvwxyz',
         'x86_64': 'abdefghijklmnopqrstuvwxyz'
     }
     DEVICE_LETTERS = device_letter_config[HOST_ARCH]
@@ -2963,11 +2967,11 @@ class Vm(object):
 
     def _get_controller_type(self):
         is_q35 = 'q35' in self.domain_xmlobject.os.type.machine_
-        return ('ide', 'sata', 'scsi')[max(is_q35, (HOST_ARCH in ['aarch64', 'mips64el']) * 2)]
+        return ('ide', 'sata', 'scsi')[max(is_q35, (HOST_ARCH in ['aarch64', 'mips64el', 'loongarch64']) * 2)]
 
     @staticmethod
     def _get_iso_target_dev(device_letter):
-        return "sd%s" % device_letter if (HOST_ARCH in ['aarch64', 'mips64el']) else 'hd%s' % device_letter
+        return "sd%s" % device_letter if (HOST_ARCH in ['aarch64', 'mips64el', 'loongarch64']) else 'hd%s' % device_letter
 
     @staticmethod
     def _get_disk_target_dev_format(bus_type):
@@ -3389,7 +3393,7 @@ class Vm(object):
             raise kvmagent.KvmError("Aarch64 does not support legacy, please change boot mode to UEFI instead of Legacy on your VM or Image.")
         if cmd.architecture and cmd.architecture != HOST_ARCH:
             raise kvmagent.KvmError("Image architecture[{}] not matched host architecture[{}].".format(cmd.architecture, HOST_ARCH))
-        default_bus_type = ('ide', 'sata', 'scsi')[max(machine_type == 'q35', (HOST_ARCH in ['aarch64', 'mips64el']) * 2)]
+        default_bus_type = ('ide', 'sata', 'scsi')[max(machine_type == 'q35', (HOST_ARCH in ['aarch64', 'mips64el', 'loongarch64']) * 2)]
         elements = {}
 
         def make_root():
@@ -3450,11 +3454,23 @@ class Vm(object):
                     e(root, 'vcpu', '8', {'placement': 'static', 'current': str(cmd.cpuNum)})
                     # e(root,'vcpu',str(cmd.cpuNum),{'placement':'static'})
                     cpu = e(root, 'cpu', attrib={'mode': 'custom', 'match': 'exact', 'check': 'partial'})
-                    e(cpu, 'model', 'Loongson-3A4000-COMP', attrib={'fallback': 'allow'})
-                    mem = cmd.memory / 1024
+                    e(cpu, 'model', str(MIPS64EL_CPU_MODEL), attrib={'fallback': 'allow'})
+                    mem = cmd.memory / 1024 / 2
                     e(cpu, 'topology', attrib={'sockets': '2', 'cores': '4', 'threads': '1'})
                     numa = e(cpu, 'numa')
-                    e(numa, 'cell', attrib={'id': '0', 'cpus': '0-7', 'memory': str(mem), 'unit': 'KiB'})
+                    e(numa, 'cell', attrib={'id': '0', 'cpus': '0-3', 'memory': str(mem), 'unit': 'KiB'})
+                    e(numa, 'cell', attrib={'id': '1', 'cpus': '4-7', 'memory': str(mem), 'unit': 'KiB'})
+
+                def on_loongarch64():
+                    e(root, 'vcpu', '8', {'placement': 'static', 'current': str(cmd.cpuNum)})
+                    # e(root,'vcpu',str(cmd.cpuNum),{'placement':'static'})
+                    cpu = e(root, 'cpu', attrib={'mode': 'custom', 'match': 'exact', 'check': 'partial'})
+                    e(cpu, 'model', str(LOONGARCH64_CPU_MODEL), attrib={'fallback': 'allow'})
+                    mem = cmd.memory / 1024 / 2
+                    e(cpu, 'topology', attrib={'sockets': '2', 'cores': '4', 'threads': '1'})
+                    numa = e(cpu, 'numa')
+                    e(numa, 'cell', attrib={'id': '0', 'cpus': '0-3', 'memory': str(mem), 'unit': 'KiB'})
+                    e(numa, 'cell', attrib={'id': '1', 'cpus': '4-7', 'memory': str(mem), 'unit': 'KiB'})
 
                 eval("on_{}".format(HOST_ARCH))()
             else:
@@ -3488,7 +3504,12 @@ class Vm(object):
 
                 def on_mips64el():
                     cpu = e(root, 'cpu', attrib={'mode': 'custom', 'match': 'exact', 'check': 'partial'})
-                    e(cpu, 'model', 'Loongson-3A4000-COMP', attrib={'fallback': 'allow'})
+                    e(cpu, 'model', str(MIPS64EL_CPU_MODEL), attrib={'fallback': 'allow'})
+                    return cpu
+
+                def on_loongarch64():
+                    cpu = e(root, 'cpu', attrib={'mode': 'custom', 'match': 'exact', 'check': 'partial'})
+                    e(cpu, 'model', str(LOONGARCH64_CPU_MODEL), attrib={'fallback': 'allow'})
                     return cpu
 
                 cpu = eval("on_{}".format(HOST_ARCH))()
@@ -3552,6 +3573,10 @@ class Vm(object):
             def on_mips64el():
                 e(os, 'type', 'hvm', attrib={'arch': 'mips64el', 'machine': 'loongson7a'})
                 e(os, 'loader', '/usr/share/qemu/ls3a_bios.bin', attrib={'readonly': 'yes', 'type': 'rom'})
+
+            def on_loongarch64():
+                e(os, 'type', 'hvm', attrib={'arch': 'loongarch64', 'machine': 'loongson7a'})
+                e(os, 'loader', '/usr/share/qemu-kvm/loongarch_bios.bin', attrib={'readonly': 'yes', 'type': 'rom'})
 
             eval("on_{}".format(host_arch))()
 
@@ -3617,9 +3642,9 @@ class Vm(object):
             if "hygon" in model_name.lower() and cmd.hygonCpu:
                 e(qcmd, "qemu:arg", attrib={"value": "-cpu"})
                 e(qcmd, "qemu:arg", attrib={"value": "EPYC,vendor=AuthenticAMD,model_id={} Processor,+svm".format(" ".join(model_name.split(" ")[0:3]))})
-            else:
-                e(qcmd, "qemu:arg", attrib={"value": "-qmp"})
-                e(qcmd, "qemu:arg", attrib={"value": "unix:{}/{}.sock,server,nowait".format(QMP_SOCKET_PATH, cmd.vmInstanceUuid)})
+
+            e(qcmd, "qemu:arg", attrib={"value": "-qmp"})
+            e(qcmd, "qemu:arg", attrib={"value": "unix:{}/{}.sock,server,nowait".format(QMP_SOCKET_PATH, cmd.vmInstanceUuid)})
 
             args = cmd.addons['qemuCommandLine']
             if args is not None:
@@ -3713,7 +3738,7 @@ class Vm(object):
                 else:
                     e(devices, 'emulator', kvmagent.get_qemu_path())
 
-            @linux.with_arch(todo_list=['aarch64', 'mips64el'])
+            @linux.with_arch(todo_list=['aarch64', 'mips64el', 'loongarch64'])
             def set_keyboard():
                 keyboard = e(devices, 'input', None, {'type': 'keyboard', 'bus': 'usb'})
                 e(keyboard, 'address', None, {'type': 'usb', 'bus': '0', 'port': '2'})
@@ -3738,7 +3763,7 @@ class Vm(object):
             max_cdrom_num = len(Vm.ISO_DEVICE_LETTERS)
             empty_cdrom_configs = None
 
-            if HOST_ARCH in ['aarch64', 'mips64el']:
+            if HOST_ARCH in ['aarch64', 'mips64el', 'loongarch64']:
                 # SCSI controller only supports 1 bus
                 empty_cdrom_configs = [
                     EmptyCdromConfig('sd%s' % Vm.ISO_DEVICE_LETTERS[0], '0', Vm.get_iso_device_unit(0)),
@@ -4203,11 +4228,17 @@ class Vm(object):
 
 
             def set_usb2_3():
-                e(devices, 'controller', None, {'type': 'usb', 'index': '1', 'model': 'ehci'})
+                if HOST_ARCH == 'loongarch64':
+                    e(devices, 'controller', None, {'type': 'usb', 'index': '1', 'model': 'nec-xhci'})
+                else:
+                    e(devices, 'controller', None, {'type': 'usb', 'index': '1', 'model': 'ehci'})
                 e(devices, 'controller', None, {'type': 'usb', 'index': '2', 'model': 'nec-xhci'})
 
                 # USB2.0 Controller for redirect
-                e(devices, 'controller', None, {'type': 'usb', 'index': '3', 'model': 'ehci'})
+                if HOST_ARCH == 'loongarch64':
+                    e(devices, 'controller', None, {'type': 'usb', 'index': '3', 'model': 'nec-xhci'})
+                else:
+                    e(devices, 'controller', None, {'type': 'usb', 'index': '3', 'model': 'ehci'})
                 e(devices, 'controller', None, {'type': 'usb', 'index': '4', 'model': 'nec-xhci'})
 
             def set_redirdev():
@@ -4353,7 +4384,7 @@ class Vm(object):
                 e(source, "address", None, { "uuid": uuidhelper.to_full_uuid(mdevUuid) })
 
         def make_usb_device(usbDevices):
-            if HOST_ARCH in ['aarch64', 'mips64el']:
+            if HOST_ARCH in ['aarch64', 'mips64el', 'loongarch64']:
                 next_uhci_port = 3
             else:
                 next_uhci_port = 2
@@ -4477,9 +4508,10 @@ class Vm(object):
             e(devices, 'controller', None, {'type': 'scsi', 'model': 'virtio-scsi'})
 
             if machine_type in ['q35', 'virt']:
-                controller = e(devices, 'controller', None, {'type': 'sata', 'index': '0'})
-                e(controller, 'alias', None, {'name': 'sata'})
-                e(controller, 'address', None, {'type': 'pci', 'domain': '0', 'bus': '0', 'slot': '0x1f', 'function': '2'})
+                if HOST_ARCH != 'loongarch64':
+                    controller = e(devices, 'controller', None, {'type': 'sata', 'index': '0'})
+                    e(controller, 'alias', None, {'name': 'sata'})
+                    e(controller, 'address', None, {'type': 'pci', 'domain': '0', 'bus': '0', 'slot': '0x1f', 'function': '2'})
                 pci_idx_generator = range(cmd.pciePortNums + 3).__iter__()
                 e(devices, 'controller', None, {'type': 'pci', 'model': 'pcie-root', 'index': str(pci_idx_generator.next())})
                 e(devices, 'controller', None, {'type': 'pci', 'model': 'dmi-to-pci-bridge', 'index': str(pci_idx_generator.next())})
@@ -6565,7 +6597,7 @@ host side snapshot files chian:
         domain_xmlobject = xmlobject.loads(domain_xml)
         # if arm or mips uhci, port 0, 1, 2 are hard-coded reserved
         # else uhci, port 0, 1 are hard-coded reserved
-        if bus == 0 and HOST_ARCH in ['aarch64', 'mips64el']:
+        if bus == 0 and HOST_ARCH in ['aarch64', 'mips64el', 'loongarch64']:
             usb_ports = [0, 1, 2]
         elif bus == 0:
             usb_ports = [0, 1]
