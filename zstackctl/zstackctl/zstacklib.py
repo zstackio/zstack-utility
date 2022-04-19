@@ -30,7 +30,7 @@ yum_server = ""
 trusted_host = ""
 ansible.constants.HOST_KEY_CHECKING = False
 
-RPM_BASED_OS = ["centos", "redhat", "alibaba", "kylin10"]
+RPM_BASED_OS = ["centos", "redhat", "alibaba", "kylin10", "uos1021a"]
 DEB_BASED_OS = ["ubuntu", "kylin4.0.2", "uos", "debian", "uniontech"]
 DISTRO_WITH_RPM_DEB = ["kylin"]
 
@@ -244,6 +244,7 @@ def get_host_releasever(ansible_distribution):
         "centos core 7.4.1708": "c74",
         "centos core 7.2.1511": "c74", # c74 for old releases
         "centos core 7.1.1503": "c74",
+        "uniontech kongzi 20": "uos1021a",
     }
     _key = " ".join(ansible_distribution).lower()
     _releasever = supported_release_info.get(_key)
@@ -674,7 +675,7 @@ def pip_install_package(pip_install_arg, host_post_info):
         handle_ansible_start(ansible_start)
     else:
         if 'failed' in result['contacted'][host]:
-            command = "pip uninstall -y %s" % name
+            command = "pip2 uninstall -y %s" % name
             run_remote_command(command, host_post_info)
             description = "ERROR: pip install package %s failed!" % name
             handle_ansible_failed(description, result, host_post_info)
