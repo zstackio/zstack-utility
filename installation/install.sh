@@ -1121,9 +1121,9 @@ ia_install_ansible(){
     fi
 
     if [ ! -z $DEBUG ]; then
-        pip install -i $pypi_source_pip --trusted-host localhost --ignore-installed ansible 
+        pip install -i $pypi_source_pip --trusted-host localhost ansible
     else
-        pip install -i $pypi_source_pip --trusted-host localhost --ignore-installed ansible >>$ZSTACK_INSTALL_LOG 2>&1
+        pip install -i $pypi_source_pip --trusted-host localhost ansible >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     [ $? -ne 0 ] && fail "install Ansible failed"
     do_config_ansible
@@ -1438,7 +1438,8 @@ install_ansible(){
     echo ""
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     if [[ $REDHAT_OS =~ $OS ]]; then
-        show_spinner ia_disable_selinux
+        #for zyj
+        #show_spinner ia_disable_selinux
         show_spinner ia_install_python_gcc_rh
     elif [[ $DEBIAN_OS =~ $OS ]]; then
         #if [ -z $ZSTACK_PKG_MIRROR ]; then
@@ -1519,9 +1520,9 @@ is_install_general_libs_rh(){
             avahi \
             gnutls-utils \
             avahi-tools \
-            audit \
             redis \
-            nodejs"
+            nodejs \
+            audit"
     if [ "$BASEARCH" == "x86_64" ]; then
       deps_list="${deps_list} mcelog"
     fi

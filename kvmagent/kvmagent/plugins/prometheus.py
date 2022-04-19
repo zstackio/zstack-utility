@@ -777,13 +777,27 @@ WantedBy=multi-user.target
 
         @in_bash
         def start_exporter(cmd):
+            def reload_and_restart_service(EXPORTER_PATH):
+                def get_systemd_name(path):
+                    if "collectd_exporter" in path:
+                        return "collectd_exporter"
+                    elif "node_exporter" in path:
+                        return "node_exporter"
+                    elif "pushgateway" in path:
+                        return "pushgateway"
+
+                bash_errorout("systemctl daemon-reload && systemctl restart %s.service" % get_systemd_name(EXPORTER_PATH))
+
             EXPORTER_PATH = cmd.binaryPath
+            reload_and_restart_service(EXPORTER_PATH)
+            '''
             LOG_FILE = os.path.join(os.path.dirname(EXPORTER_PATH), cmd.binaryPath + '.log')
             ARGUMENTS = cmd.startupArguments
             if not ARGUMENTS:
                 ARGUMENTS = ""
             os.chmod(EXPORTER_PATH, 0o755)
             run_in_systemd(EXPORTER_PATH, ARGUMENTS, LOG_FILE)
+            '''
 
         para = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()

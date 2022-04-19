@@ -76,28 +76,40 @@ host_post_info.remote_port = remote_port
 if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
 
-(distro, major_version, distro_release, distro_version) = get_remote_host_info(host_post_info)
-releasever = get_host_releasever([distro, distro_release, distro_version])
+#(distro, major_version, distro_release, distro_version) = get_remote_host_info(host_post_info)
+#releasever = get_host_releasever([distro, distro_release, distro_version])
+releasever = 'ns10'
 host_post_info.releasever = releasever
+distro = 'kylin10'
+major_version = 10
 
 # get remote host arch
-host_arch = get_remote_host_arch(host_post_info)
+host_arch = "aarch64"
 IS_AARCH64 = host_arch == 'aarch64'
 IS_MIPS64 = host_arch == 'mips64el'
 
-repo_dir = "/opt/zstack-dvd/{}".format(host_arch)
-if not os.path.isdir(repo_dir):
-    error("Missing directory '{}', please try 'zstack-upgrade -a {}_iso'".format(repo_dir, host_arch))
+'''
+#repo_dir = "/opt/zstack-dvd/{}".format(host_arch)
+#if not os.path.isdir(repo_dir):
+#    error("Missing directory '{}', please try 'zstack-upgrade -a {}_iso'".format(repo_dir, host_arch))
 
 
 
 def update_libvirtd_config(host_post_info):
     # name: copy libvirtd conf to keep environment consistent,only update host_uuid
+    command = "grep -i ^host_uuid %s" % libvirtd_conf_file
+    status, output = run_remote_command(command, host_post_info, True, True)
+    # name: copy libvirtd conf
     copy_arg = CopyArg()
     copy_arg.src = "%s/libvirtd.conf" % file_root
     copy_arg.dest =  libvirtd_conf_file
     file_changed_flag = copy(copy_arg, host_post_info)
-    replace_content(libvirtd_conf_file, "regexp='#host_uuid.*' replace='host_uuid=\"%s\"'" % uuid4(), host_post_info)
+    #if status is True:
+    #    replace_content(libvirtd_conf_file, "regexp='#host_uuid.*' replace='%s'" % output, host_post_info)
+    #else:
+    #    command = "uuidgen"
+    #    status, output = run_remote_command(command, host_post_info, True, True)
+    #    replace_content(libvirtd_conf_file, "regexp='#host_uuid.*' replace='host_uuid=\"%s\"'" % output , host_post_info)
 
     return file_changed_flag
 
@@ -179,14 +191,16 @@ def load_zstacklib():
     zstacklib = ZstackLib(zstacklib_args)
 
 if distro in RPM_BASED_OS:
-    install_release_on_host(True)
+    releasever = get_mn_yum_release()
+    #releasever = get_host_release_info()
+    #install_release_on_host(True)
 elif distro in DEB_BASED_OS:
     install_release_on_host(False)
 else:
     error("Unsupported OS: {}".format(distro))
 
-load_zstacklib()
 
+#load_zstacklib()
 
 # name: judge this process is init install or upgrade
 if file_dir_exist("path=" + kvm_root, host_post_info):
@@ -200,7 +214,6 @@ else:
     run_remote_command(command, host_post_info)
 
 run_remote_command("rm -rf {}/*; mkdir -p /usr/local/zstack/ || true".format(kvm_root), host_post_info)
-
 
 def install_kvm_pkg():
     def rpm_based_install():
@@ -232,7 +245,7 @@ def install_kvm_pkg():
                         usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
                         net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
                         smartmontools sshpass usbutils vconfig wget audit dnsmasq \
-                        qemu collectd-virt storcli edk2-aarch64 python2-pyudev collectd-disk"
+                        qemu collectd-virt storcli edk2-aarch64 python2-pyudev collectd-disk python2-crypto"
 
         mips64el_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                          usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof mcelog \
@@ -344,7 +357,7 @@ def install_kvm_pkg():
                 # name: workaround RHEL7 iptables service issue
                 command = 'mkdir -p /var/lock/subsys/'
                 run_remote_command(command, host_post_info)
-                service_status("iptables", "state=restarted enabled=yes", host_post_info)
+                #service_status("iptables", "state=restarted enabled=yes", host_post_info)
 
         #we should check libvirtd config file status before restart the service
         libvirtd_conf_status = update_libvirtd_config(host_post_info)
@@ -365,7 +378,7 @@ def install_kvm_pkg():
         #run_remote_command(command, host_post_info)
         # name: disable selinux on RedHat based OS
         set_selinux("state=disabled", host_post_info)
-        run_remote_command("setenforce 0 || true", host_post_info)
+        #run_remote_command("setenforce 0 || true", host_post_info)
         # name: copy sysconfig libvirtd conf in RedHat
         copy_arg = CopyArg()
         copy_arg.src = "%s/libvirtd" % file_root
@@ -408,6 +421,18 @@ def install_kvm_pkg():
         command = "modprobe br_netfilter"
         host_post_info.post_label = "ansible.shell.enable.module"
         host_post_info.post_label_param = "br_netfilter"
+
+def start_kvmagent():
+    if chroot_env != 'false':
+        return
+    run_remote_command("systemctl restart libvirtd;systemctl enable libvirtd", host_post_info)
+    # name: restart kvmagent, do not use ansible systemctl due to kvmagent can start by itself, so systemctl will not know
+    # the kvm agent status when we want to restart it to use the latest kvm agent code
+    if distro in RPM_BASED_OS and major_version >= 7:
+        # NOTE(weiw): dump threads and wait 1 second for dumping
+        command = "pkill -USR2 -P 1 -ef 'kvmagent import kdaemon' || true && sleep 1"
+        host_post_info.post_label = "ansible.shell.dump.service"
+        host_post_info.post_label_param = "zstack-kvmagent"
         run_remote_command(command, host_post_info)
         update_pkg_list = ['ebtables', 'python-libvirt', 'qemu-system-arm']
         apt_update_packages(update_pkg_list, host_post_info)
@@ -524,6 +549,11 @@ def copy_grubaa64_efi():
     _dst = "/tmp/"
     copy_to_remote(_src, _dst, "mode=755", host_post_info)
 
+def copy_sscard_lib():
+    "copy getdestsocid.so"
+    _src = '/opt/zstack-dvd/{}/{}/getdestsocid.so'.format(host_arch, releasever)
+    _dst = '/opt/VMSupport/'
+    copy_to_remote(_src, _dst, "mode=755", host_post_info)
 
 @on_redhat_based(distro, exclude=['alibaba'])
 def set_max_performance():
@@ -576,8 +606,9 @@ def do_network_config():
             copy_arg.src = "%s/ip6tables" % file_root
             copy_arg.dest = "/etc/sysconfig/ip6tables"
             copy(copy_arg, host_post_info)
-            replace_content(IP6TABLE_SERVICE_FILE, "regexp='syslog.target,iptables.service' replace='syslog.target iptables.service'", host_post_info)
-            service_status("ip6tables", "state=restarted enabled=yes", host_post_info)
+            command = "sed -i 's/syslog.target,iptables.service/syslog.target iptables.service/' %s || true;" % IP6TABLE_SERVICE_FILE
+            run_remote_command(command, host_post_info)
+            #service_status("ip6tables", "state=restarted enabled=yes", host_post_info)
         elif distro in DEB_BASED_OS:
             copy_arg = CopyArg()
             copy_arg.src = "%s/ip6tables" % file_root
@@ -722,6 +753,11 @@ def start_kvmagent():
     if any(status != "changed:False" for status in [libvirtd_status, libvirtd_conf_status, qemu_conf_status, copy_smart_nics_status]):
         # name: restart libvirtd if status is stop or cfg changed
         service_status("libvirtd", "state=restarted enabled=yes", host_post_info)
+'''
+def start_kvmagent():
+    if chroot_env != 'false':
+        return
+    run_remote_command("systemctl restart libvirtd;systemctl enable libvirtd", host_post_info)
     # name: restart kvmagent, do not use ansible systemctl due to kvmagent can start by itself, so systemctl will not know
     # the kvm agent status when we want to restart it to use the latest kvm agent code
     if distro in RPM_BASED_OS and major_version >= 7:
@@ -730,9 +766,11 @@ def start_kvmagent():
         host_post_info.post_label = "ansible.shell.dump.service"
         host_post_info.post_label_param = "zstack-kvmagent"
         run_remote_command(command, host_post_info)
-        command = "service zstack-kvmagent stop && service zstack-kvmagent start && chkconfig zstack-kvmagent on"
+        command = "status=`getenforce`; if [ ! $status = 'Enforcing' ]; then service zstack-kvmagent stop && service zstack-kvmagent start &&  chkconfig zstack-kvmagent on;" \
+                  " else service zstack-kvmagent.service stop && service zstack-kvmagent.service start && chkconfig zstack-kvmagent on; fi"
     elif distro in RPM_BASED_OS:
-        command = "service zstack-kvmagent stop && service zstack-kvmagent start && chkconfig zstack-kvmagent on"
+        command = "status=`getenforce`; if [ ! $status = 'Enforcing' ]; then service zstack-kvmagent stop && service zstack-kvmagent start &&  chkconfig zstack-kvmagent on;" \
+                  " else service zstack-kvmagent.service stop && service zstack-kvmagent.service start && chkconfig zstack-kvmagent on; fi"
     elif distro in DEB_BASED_OS:
         command = "update-rc.d zstack-kvmagent start 97 3 4 5 . stop 3 0 1 2 6 . && service zstack-kvmagent stop && service zstack-kvmagent start"
     host_post_info.post_label = "ansible.shell.restart.service"
@@ -745,6 +783,7 @@ def modprobe_usb_module():
     host_post_info.post_label_param = None
     run_remote_command(command, host_post_info)
 
+'''
 check_nested_kvm(host_post_info)
 install_kvm_pkg()
 copy_tools()
@@ -757,7 +796,8 @@ if LooseVersion(sys.version.split()[0]) >= LooseVersion('2.7.16'):
 copy_zs_scripts()
 copy_grubaa64_efi()
 create_virtio_driver_directory()
-set_max_performance()
+copy_sscard_lib()
+#set_max_performance()
 do_libvirt_qemu_config()
 do_network_config()
 copy_spice_certificates_to_host()
@@ -767,6 +807,26 @@ set_legacy_iptables_ebtables()
 install_agent_pkg()
 do_auditd_config()
 modprobe_usb_module()
+'''
+
+#check_nested_kvm(host_post_info)
+#install_kvm_pkg()
+#copy_tools()
+#copy_kvm_files()
+#copy_gpudriver()
+#copy_ovmf_tools()
+#copy_lsusb_scripts()
+#copy_zs_scripts()
+#copy_sscard_lib()
+#set_max_performance()
+#do_libvirt_qemu_config()
+#do_network_config()
+#copy_spice_certificates_to_host()
+#install_virtualenv()
+#set_legacy_iptables_ebtables()
+#install_agent_pkg()
+#do_auditd_config()
+#install_suricata()
 start_kvmagent()
 
 host_post_info.start_time = start_time

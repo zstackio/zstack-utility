@@ -1,3 +1,4 @@
+# coding=utf-8
 '''
 @author: Frank
 '''
@@ -22,6 +23,9 @@ import socket
 from signal import SIGKILL
 import syslog
 import threading
+import base64
+import shutil
+import ctypes
 
 import libvirt
 import xml.dom.minidom as minidom
@@ -32,6 +36,7 @@ import zstacklib.utils.ip as ip
 import zstacklib.utils.ebtables as ebtables
 import zstacklib.utils.iptables as iptables
 import zstacklib.utils.lock as lock
+from zstacklib.utils import qemu_img
 
 from kvmagent import kvmagent
 from kvmagent.plugins.baremetal_v2_gateway_agent import \
@@ -80,6 +85,7 @@ SYSTEM_VIRTIO_DRIVER_PATHS = {
 QMP_SOCKET_PATH = "/var/lib/libvirt/qemu/zstack"
 PCI_ROM_PATH = "/var/lib/zstack/pcirom"
 MAX_MEMORY = 34359738368 if (HOST_ARCH != "aarch64") else linux.get_max_vm_ipa_size()/1024/16
+ZYJ_LIB_PATH = "/opt/VMSecurity/bin/libvsoc_interface.so"
 
 class RetryException(Exception):
     pass
@@ -183,6 +189,7 @@ class StartVmCmd(kvmagent.AgentCommand):
         self.systemSerialNumber = None
         self.bootMode = None
         self.consolePassword = None
+        self.platformId = None
 
 class StartVmResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -705,6 +712,13 @@ class VmDeviceAddress(object):
         self.addressType = address_type
         self.address = address
 
+class CreateVmVsocRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(CreateVmVsocRsp, self).__init__()
+
+class DeleteVmVsocRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(DeleteVmVsocRsp, self).__init__()
 
 class VncPortIptableRule(object):
     def __init__(self):
@@ -892,8 +906,11 @@ def is_spiceport_driver_supported():
     return shell.run("%s -h | grep 'chardev spiceport'" % kvmagent.get_qemu_path()) == 0
 
 def is_virtual_machine():
-    product_name = shell.call("dmidecode -s system-product-name").strip()
-    return product_name == "KVM Virtual Machine" or product_name == "KVM"
+    return bash.bash_r("getenforce | grep -i dis") == 0
+    #tmpChange
+    #/dev/mem: Operation not permitted on wang'an os && sm no nested virtualzation
+    #product_name = shell.call("getenforce | grep -i enforcing || dmidecode -s system-product-name").strip()
+    #return product_name == "KVM Virtual Machine" or product_name == "KVM"
 
 def get_domain_type():
     return "qemu" if HOST_ARCH == "aarch64" and is_virtual_machine() else "kvm"
@@ -1733,6 +1750,9 @@ class Vm(object):
 
     def get_name(self):
         return self.domain_xmlobject.description.text_
+
+    def get_uuid(self):
+        return uuidhelper.to_simplify_uuid(self.domain_xmlobject.uuid.text_)
 
     def refresh(self):
         (state, _, _, _, _) = self.domain.info()
@@ -2630,6 +2650,11 @@ class Vm(object):
             disks = e(snapshot, 'disks')
             d = e(disks, 'disk', None, attrib={'name': disk_name, 'snapshot': 'external', 'type': 'file'})
             e(d, 'source', None, attrib={'file': install_path})
+            '''
+            encryption = e(d, 'source', None, attrib={'file': install_path})
+            secretion = e(encryption, 'encryption', None, attrib={'format': 'luks'})
+            e(secretion, 'secret', None, attrib={'type': 'passphrase', 'uuid': secret.ZSTACK_ENCRYPT_KEY_UUID})
+            '''
             e(d, 'driver', None, attrib={'type': 'qcow2'})
 
             # QEMU 2.3 default create snapshots on all devices
@@ -3539,9 +3564,14 @@ class Vm(object):
             def on_aarch64():
 
                 def on_redhat():
-                    e(os, 'type', 'hvm', attrib={'arch': 'aarch64', 'machine': machine_type})
-                    e(os, 'loader', '/usr/share/edk2/aarch64/QEMU_EFI-pflash.raw', attrib={'readonly': 'yes', 'type': 'pflash'})
-                    e(os, 'nvram', '/var/lib/libvirt/qemu/nvram/%s.fd' % cmd.vmInstanceUuid, attrib={'template': '/usr/share/edk2/aarch64/vars-template-pflash.raw'})
+                    if cmd.imagePlatform == "Paravirtualization":
+                        e(os, 'type', 'hvm', attrib={'arch': 'aarch64', 'machine': machine_type})
+                        e(os, 'loader', '/usr/share/edk2/aarch64/QEMU_EFI_D.fd', attrib={'readonly': 'yes', 'type': 'pflash'})
+                        e(os, 'nvram', '/var/lib/libvirt/qemu/nvram/%s.fd' % cmd.vmInstanceUuid, attrib={'template': '/usr/share/edk2/aarch64/QEMU_EFI_D_VARS.fd'})
+                    else:
+                        e(os, 'type', 'hvm', attrib={'arch': 'aarch64', 'machine': machine_type})
+                        e(os, 'loader', '/usr/share/edk2/aarch64/QEMU_EFI-pflash.raw', attrib={'readonly': 'yes', 'type': 'pflash'})
+                        e(os, 'nvram', '/var/lib/libvirt/qemu/nvram/%s.fd' % cmd.vmInstanceUuid, attrib={'template': '/usr/share/edk2/aarch64/vars-template-pflash.raw'})
 
                 def on_debian():
                     e(os, 'type', 'hvm', attrib={'arch': 'aarch64', 'machine': machine_type})
@@ -3615,6 +3645,11 @@ class Vm(object):
             root = elements['root']
             qcmd = e(root, 'qemu:commandline')
             vendor_id, model_name = linux.get_cpu_model()
+            if bash.bash_r('getenforce | grep -i dis') != 0:
+                e(qcmd, "qemu:arg", attrib={"value": "--device"})
+                e(qcmd, "qemu:arg", attrib={"value": "lkmc_pci,addr=05.0"})
+                e(qcmd, "qemu:arg", attrib={"value": "--device"})
+                e(qcmd, "qemu:arg", attrib={"value": "vboot,addr=04.0"})
             if "hygon" in model_name.lower() and cmd.hygonCpu:
                 e(qcmd, "qemu:arg", attrib={"value": "-cpu"})
                 e(qcmd, "qemu:arg", attrib={"value": "EPYC,vendor=AuthenticAMD,model_id={} Processor,+svm".format(" ".join(model_name.split(" ")[0:3]))})
@@ -4128,12 +4163,8 @@ class Vm(object):
 
         def make_meta():
             root = elements['root']
-
             e(root, 'name', cmd.vmInstanceUuid)
-
-            if cmd.coloPrimary or cmd.coloSecondary:
-                e(root, 'iothreads', str(len(cmd.nics)))
-            e(root, 'uuid', uuidhelper.to_full_uuid(cmd.vmInstanceUuid))
+            e(root, 'uuid', uuidhelper.get_vm_uuid())
             e(root, 'description', cmd.vmName)
             e(root, 'on_poweroff', 'destroy')
             e(root, 'on_reboot', 'restart')
@@ -4228,9 +4259,13 @@ class Vm(object):
             if set_default():
                 return
             set_usb2_3()
+            '''
             not_colo_vm = not cmd.coloPrimary and not cmd.coloSecondary and not cmd.useColoBinary
             if cmd.usbRedirect and not_colo_vm:
                 set_redirdev()
+            '''
+            #set_redirdev()
+            set_redirdev()
 
         def make_video():
             devices = elements['devices']
@@ -4786,8 +4821,20 @@ class VmPlugin(kvmagent.KvmAgent):
     FAIL_COLO_PVM_PATH = "/fail/colo/pvm"
     GET_VM_DEVICE_ADDRESS_PATH = "/vm/getdeviceaddress"
     SET_EMULATOR_PINNING_PATH = "/vm/emulatorpinning"
-
     VM_CONSOLE_LOGROTATE_PATH = "/etc/logrotate.d/vm-console-log"
+    KVM_CREATE_VM_VSOC = "/vm/vsoccreate"
+    KVM_DELETE_VM_VSOC = "/vm/vsocdelete"
+    KVM_BOOT_FROM_NEW_NODE = "/vm/vsocbootfromnewnode"
+    KVM_VSOC_MIGRATE = "/vm/vsocmigrate"
+    KVM_VSOC_CREATE_SNAPSHOT_PATH = "/vm/vsoccreatesnapshot"
+    KVM_VSOC_DELETE_SNAPSHOT_PATH = "/vm/vsocdeletesnapshot"
+    KVM_VSOC_USE_SNAPSHOT_PATH = "/vm/vsocusesnapshot"
+    KVM_CLONE_VSOC = "/vm/vsocclone"
+    KVM_VSOC_CREATE_BACKUP = "/vm/vsoccreatebackup"
+    KVM_VSOC_DELETE_BACKUP = "/vm/vsocdeletebackup"
+    KVM_VSOC_CREATE_FROM_BACKUP = "/vm/vsoccreatefrombackup"
+    KVM_VSOC_USE_BACKUP = "/vm/vsocusebackup"
+    KVM_VSOC_CREATE_FROM_SNAPSHOT_PATH = "/vm/vsoccreatefromsnapshot"
 
     VM_OP_START = "start"
     VM_OP_STOP = "stop"
@@ -4973,7 +5020,7 @@ class VmPlugin(kvmagent.KvmAgent):
             self._start_vm(cmd)
             logger.debug('successfully started vm[uuid:%s, name:%s]' % (cmd.vmInstanceUuid, cmd.vmName))
             try:
-                vm_pid = linux.find_vm_pid_by_uuid(cmd.vmInstanceUuid)
+                vm_pid = linux.find_vm_pid_by_uuid(cmd.vmInstanceUuid[0:6])
                 linux.enable_process_coredump(vm_pid)
                 linux.set_vm_priority(vm_pid, cmd.priorityConfigStruct)
             except Exception as e:
@@ -5220,6 +5267,9 @@ class VmPlugin(kvmagent.KvmAgent):
         # Occasionally, virsh might not be able to list all VM instances with
         # uri=qemu://system.  To prevend this situation, we double check the
         # 'rsp.states' agaist QEMU process lists.
+
+        # tmpChange
+        '''
         output = bash.bash_o("ps x | grep -P -o '(qemu-kvm|qemu-system).*?-name\s+(guest=)?\K.*?,' | sed 's/.$//'").splitlines()
         for guest in output:
             if guest in rsp.states \
@@ -5228,11 +5278,20 @@ class VmPlugin(kvmagent.KvmAgent):
                 continue
             logger.warn('guest [%s] not found in virsh list' % guest)
             rsp.states[guest] = Vm.VM_STATE_RUNNING
+        
+
+        output = bash.bash_o("ps x | grep -P -o 'qemu-kvm.*?-name\s+(guest=)?\K.*?,' | sed 's/.$//'").splitlines()
+        for guest in output:
+            if guest in rsp.states or guest.lower() == "ZStack Management Node VM".lower():
+                continue
+            logger.warn('guest [%s] not found in virsh list' % guest)
+            rsp.states[guest] = Vm.VM_STATE_RUNNING
 
         libvirt_running_vms = rsp.states.keys()
         no_qemu_process_running_vms = list(set(libvirt_running_vms).difference(set(output)))
         for vm in no_qemu_process_running_vms:
             rsp.states[vm] = Vm.VM_STATE_SHUTDOWN
+        '''
 
         return jsonobject.dumps(rsp)
 
@@ -5491,6 +5550,11 @@ class VmPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = MigrateVmResponse()
         try:
+            if not os.path.isdir("/var/lib/zstack/migrate"):
+                os.mkdir("/var/lib/zstack/migrate")
+            sscardIdFile = "/var/lib/zstack/migrate/%s" % cmd.vmUuid
+            with open(sscardIdFile, "w") as fd:
+                fd.write("%s" % cmd.sscardId)
             self._record_operation(cmd.vmUuid, self.VM_OP_MIGRATE)
 
             if cmd.migrateFromDestination:
@@ -5509,6 +5573,8 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.error = str(e)
             rsp.success = False
 
+        if os.path.isfile(sscardIdFile):
+            os.remove(sscardIdFile)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -5646,7 +5712,6 @@ class VmPlugin(kvmagent.KvmAgent):
             if any(s.startswith('/dev/') for s in vm.list_blk_sources()):
                 flags += " --unsafe"
 
-        check_mirror_jobs(vmUuid, bool(os.getenv("MIGRATE_WITHOUT_DIRTY_BITMAPS")))
         cmd = "virsh migrate {} --migrate-disks {} --xml {} {} {} {}".format(flags, diskstr, fpath, vmUuid, dst, migurl)
 
         shell_cmd = shell.ShellCmd(cmd)
@@ -7412,6 +7477,265 @@ host side snapshot files chian:
 
         return None
 
+    @kvmagent.replyerror
+    @in_bash
+    def create_vm_vsoc_file(self, req):
+        rsp = CreateVmVsocRsp()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        vsocInterfaceInfo = VsocInterfaceInfo(cmd)
+
+        so = ctypes.cdll.LoadLibrary(ZYJ_LIB_PATH)
+        ret = so.vsoc_create(vsocInterfaceInfo.vmName)
+        if ret != 0:
+            logger.debug("failed to create vsoc file for vm %s ret:%s" % (vsocInterfaceInfo.vmName, ret))
+            rsp.error = "failed to create vsoc file for vm %s ret:%s" % (vsocInterfaceInfo.vmName, ret)
+            rsp.success = False
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
+    def delete_vm_vsoc_file(self, req):
+        rsp = DeleteVmVsocRsp()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        vsocInterfaceInfo = VsocInterfaceInfo(cmd)
+
+        so = ctypes.cdll.LoadLibrary(ZYJ_LIB_PATH)
+        ret = so.del_vsoc_files(vsocInterfaceInfo.vmName)
+        if ret == 0:
+            logger.debug("successfully to delete vsoc file for vm %s" % (vsocInterfaceInfo.vmName))
+        elif ret == -1:
+            logger.debug("failed to delete vsoc file for vm %s 其他未知错误" % (vsocInterfaceInfo.vmName))
+            rsp.error = "failed to delete vsoc file for vm %s 其他未知错误" % (vsocInterfaceInfo.vmName)
+            rsp.success = False
+        elif ret == -2:
+            logger.debug("failed to delete vsoc file for vm %s 无效参数" % (vsocInterfaceInfo.vmName))
+            rsp.error = "failed to delete vsoc file for vm %s 无效参数" % (vsocInterfaceInfo.vmName)
+            rsp.success = False
+        elif ret == -3:
+            logger.debug("failed to delete vsoc file for vm %s 打开设备节点失败" % (vsocInterfaceInfo.vmName))
+            rsp.error = "failed to delete vsoc file for vm %s 打开设备节点失败" % (vsocInterfaceInfo.vmName)
+            rsp.success = False
+        elif ret == 1:
+            logger.debug("failed to delete vsoc file for vm %s 目标虚拟机不存在" % (vsocInterfaceInfo.vmName))
+        else:
+            logger.debug("failed to delete vsoc file for vm %s 未处理的返回值 %s" % (vsocInterfaceInfo.vmName, ret))
+            rsp.error = "failed to delete vsoc file for vm %s 未处理的返回值 %s" % (vsocInterfaceInfo.vmName, ret)
+            rsp.success = False
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def boot_from_new_node(self, req):
+        rsp = kvmagent.AgentResponse()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        vsocInterfaceInfo = VsocInterfaceInfo(cmd)
+
+        so = ctypes.cdll.LoadLibrary(ZYJ_LIB_PATH)
+        ret = so.boot_from_new_node(vsocInterfaceInfo.vmName, cmd.prvSocId)
+        if ret != 0:
+            logger.debug("fail:call boot_from_new_node, vmName:%s, prvSocId:%s, ret:%s" % (vsocInterfaceInfo.vmName, cmd.prvSocId, ret))
+            rsp.error = "fail:call boot_from_new_node, vmName:%s, prvSocId:%s, ret:%s" % (vsocInterfaceInfo.vmName, cmd.prvSocId, ret)
+            rsp.success = False
+        else:
+            logger.debug("success:call boot_from_new_node, vmName:%s, prvSocId:%s, ret:%s" % (vsocInterfaceInfo.vmName, cmd.prvSocId, ret))
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def vsoc_migrate(self, req):
+        rsp = kvmagent.AgentResponse()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        vsocInterfaceInfo = VsocInterfaceInfo(cmd)
+
+        so = ctypes.cdll.LoadLibrary(ZYJ_LIB_PATH)
+        ret = so.vsoc_migrate(vsocInterfaceInfo.vmName, vsocInterfaceInfo.socId, vsocInterfaceInfo.migrateType)
+        if ret != 0:
+            logger.debug("fail:call vsoc_migrate, vmName:%s, socId:%s, type:%s, ret:%s" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.socId, vsocInterfaceInfo.migrateType, ret))
+            rsp.error = "fail:call vsoc_migrate, vmName:%s, socId:%s, type:%s, ret:%s" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.socId, vsocInterfaceInfo.migrateType, ret)
+            rsp.success = False
+        else:
+            logger.debug("success:call vsoc_migrate, vmName:%s, socId:%s,type:%s ret:%s" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.socId, vsocInterfaceInfo.migrateType, ret))
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def vsoc_create_snapshot(self, req):
+        rsp = kvmagent.AgentResponse()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        vsocInterfaceInfo = VsocInterfaceInfo(cmd)
+
+        so = ctypes.cdll.LoadLibrary(ZYJ_LIB_PATH)
+        ret = so.create_snapshot(vsocInterfaceInfo.vmName, vsocInterfaceInfo.ssId)
+        if ret != 0:
+            logger.debug("fail:call create_snapshot, vmName:%s, ssId:%s, ret:%s" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.ssId, ret))
+            rsp.error = "fail:call create_snapshot, vmName:%s, ssId:%s, ret:%s" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.ssId, ret)
+            rsp.success = False
+        else:
+            logger.debug("success:call create_snapshot, vmName:%s, ssId:%s, ret:%s" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.ssId, ret))
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def vsoc_delete_snapshot(self, req):
+        rsp = kvmagent.AgentResponse()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        vsocInterfaceInfo = VsocInterfaceInfo(cmd)
+
+        so = ctypes.cdll.LoadLibrary(ZYJ_LIB_PATH)
+        ret = so.del_snapshot(vsocInterfaceInfo.vmName, vsocInterfaceInfo.delSsFlag, vsocInterfaceInfo.ssId)
+        if ret == 0:
+            logger.debug("success:call delete_snapshot, vmName:%s, delSsFlag:%s, ssId:%s" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.delSsFlag, vsocInterfaceInfo.ssId))
+        elif ret == -1:
+            logger.debug("failed to call delete_snapshot, vmName:%s, delSsFlag:%s, ssId:%s 其他未知错误" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.delSsFlag, vsocInterfaceInfo.ssId))
+            rsp.error = "failed to call delete_snapshot, vmName:%s, delSsFlag:%s, ssId:%s 其他未知错误" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.delSsFlag, vsocInterfaceInfo.ssId)
+            rsp.success = False
+        elif ret == -2:
+            logger.debug("failed to call delete_snapshot, vmName:%s, delSsFlag:%s, ssId:%s 无效参数" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.delSsFlag, vsocInterfaceInfo.ssId))
+            rsp.error = "failed to call delete_snapshot, vmName:%s, delSsFlag:%s, ssId:%s 无效参数" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.delSsFlag, vsocInterfaceInfo.ssId)
+            rsp.success = False
+        elif ret == -3:
+            logger.debug("failed to call delete_snapshot, vmName:%s, delSsFlag:%s, ssId:%s 打开设备节点失败" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.delSsFlag, vsocInterfaceInfo.ssId))
+            rsp.error = "failed to call delete_snapshot, vmName:%s, delSsFlag:%s, ssId:%s 打开设备节点失败" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.delSsFlag, vsocInterfaceInfo.ssId)
+            rsp.success = False
+        elif ret == 1:
+            logger.debug("failed to call delete_snapshot, vmName:%s, delSsFlag:%s, ssId:%s 欲删除的快照不存在" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.delSsFlag, vsocInterfaceInfo.ssId))
+        else:
+            logger.debug("failed to call delete_snapshot, vmName:%s, delSsFlag:%s, ssId:%s 未处理的返回值 %s" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.delSsFlag, vsocInterfaceInfo.ssId, ret))
+            rsp.error = "failed to call delete_snapshot, vmName:%s, delSsFlag:%s, ssId:%s 未处理的返回值 %s" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.delSsFlag, vsocInterfaceInfo.ssId, ret)
+            rsp.success = False
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def vsoc_use_snapshot(self, req):
+        rsp = kvmagent.AgentResponse()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        vsocInterfaceInfo = VsocInterfaceInfo(cmd)
+
+        so = ctypes.cdll.LoadLibrary(ZYJ_LIB_PATH)
+        ret = so.use_snapshot(vsocInterfaceInfo.vmName, vsocInterfaceInfo.ssId)
+        if ret != 0:
+            logger.debug("fail:call use_snapshot, vmName:%s, ssId:%s, ret:%s" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.ssId, ret))
+            rsp.error = "fail:call use_snapshot, vmName:%s, ssId:%s, ret:%s" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.ssId, ret)
+            rsp.success = False
+        else:
+            logger.debug("success:call use_snapshot, vmName:%s, ssId:%s, ret:%s" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.ssId, ret))
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def vsoc_clone(self, req):
+        rsp = kvmagent.AgentResponse()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        vsocInterfaceInfo = VsocInterfaceInfo(cmd)
+
+        so = ctypes.cdll.LoadLibrary(ZYJ_LIB_PATH)
+        ret = None
+        if vsocInterfaceInfo.destSocId is None or vsocInterfaceInfo.destSocId == 'None':
+            ret = so.vsoc_clone(vsocInterfaceInfo.srcVmName, vsocInterfaceInfo.destVmName, None,
+                                vsocInterfaceInfo.cloneResource, vsocInterfaceInfo.cloneType)
+        else:
+            ret = so.vsoc_clone(vsocInterfaceInfo.srcVmName, vsocInterfaceInfo.destVmName, vsocInterfaceInfo.destSocId,
+                                vsocInterfaceInfo.cloneResource, vsocInterfaceInfo.cloneType)
+        if ret != 0:
+            logger.debug("fail:call vsoc_clone, srcVmName:%s, destVmName:%s, destSocId:%s, resource:%s, type:%s, ret:%s"
+                         % (vsocInterfaceInfo.srcVmName, vsocInterfaceInfo.destVmName, vsocInterfaceInfo.destSocId, vsocInterfaceInfo.cloneResource, vsocInterfaceInfo.cloneType, ret))
+            rsp.error = "fail:call vsoc_clone, srcVmName:%s, destVmName:%s, destSocId:%s, resource:%s, type:%s, ret:%s" % \
+                        (vsocInterfaceInfo.srcVmName, vsocInterfaceInfo.destVmName, vsocInterfaceInfo.destSocId, vsocInterfaceInfo.cloneResource, vsocInterfaceInfo.cloneType, ret)
+            rsp.success = False
+        else:
+            logger.debug("sucess:call vsoc_clone, srcVmName:%s, destVmName:%s, destSocId:%s, resource;%s, type:%s, ret:%s" %
+                         (vsocInterfaceInfo.srcVmName, vsocInterfaceInfo.destVmName, vsocInterfaceInfo.destSocId, vsocInterfaceInfo.cloneResource, vsocInterfaceInfo.cloneType, ret))
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def vsoc_create_backup(self, req):
+        rsp = kvmagent.AgentResponse()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        vsocInterfaceInfo = VsocInterfaceInfo(cmd)
+
+        so = ctypes.cdll.LoadLibrary(ZYJ_LIB_PATH)
+        ret = so.create_backup(vsocInterfaceInfo.vmName, vsocInterfaceInfo.backupUuid)
+        if ret != 0:
+            logger.debug("fail:call create_backup, vmName:%s, backupUuid:%s ret:%s" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.backupUuid, ret))
+            rsp.error = "fail:call create_backup, vmName:%s, backupUuid:%s ret:%s" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.backupUuid, ret)
+            rsp.success = False
+        else:
+            logger.debug("Success:call create_backup, vmName:%s, backupUuid:%s ret:%s" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.backupUuid, ret))
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def vsoc_delete_backup(self, req):
+        rsp = kvmagent.AgentResponse()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        vsocInterfaceInfo = VsocInterfaceInfo(cmd)
+
+        so = ctypes.cdll.LoadLibrary(ZYJ_LIB_PATH)
+        ret = so.del_backup(vsocInterfaceInfo.vmName, vsocInterfaceInfo.backupUuid)
+        if ret == 0:
+            logger.debug("success: call deleete_backup, vmName:%s, backupUuid:%s" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.backupUuid))
+        elif ret == -1:
+            logger.debug("failed to call deleete_backup, vmName:%s, backupUuid:%s, 其他未知错误" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.backupUuid))
+            rsp.error = "failed to call deleete_backup, vmName:%s, backupUuid:%s, 其他未知错误" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.backupUuid)
+            rsp.success = False
+        elif ret == -2:
+            logger.debug("failed to call deleete_backup, vmName:%s, backupUuid:%s, 无效参数" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.backupUuid))
+            rsp.error = "failed to call deleete_backup, vmName:%s, backupUuid:%s, 无效参数" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.backupUuid)
+            rsp.success = False
+        elif ret == -3:
+            logger.debug("failed to call deleete_backup, vmName:%s, backupUuid:%s, 打开设备节点失败" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.backupUuid))
+            rsp.error = "failed to call deleete_backup, vmName:%s, backupUuid:%s, 打开设备节点失败" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.backupUuid)
+            rsp.success = False
+        elif ret == 1:
+            logger.debug("failed to call deleete_backup, vmName:%s, backupUuid:%s, 欲删除的备份不存在" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.backupUuid))
+        else:
+            logger.debug("failed to call deleete_backup, vmName:%s, backupUuid:%s, 未处理的返回值 %s" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.backupUuid, ret))
+            rsp.error = "failed to call deleete_backup, vmName:%s, backupUuid:%s, 未处理的返回值 %s" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.backupUuid, ret)
+            rsp.success = False
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def vsoc_create_vm_from_backup(self, req):
+        rsp = kvmagent.AgentResponse()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        vsocInterfaceInfo = VsocInterfaceInfo(cmd)
+
+        so = ctypes.cdll.LoadLibrary(ZYJ_LIB_PATH)
+        ret = so.vsoc_create_from_backup(vsocInterfaceInfo.destVmName, vsocInterfaceInfo.srcVmName, vsocInterfaceInfo.backupUuid)
+        if ret != 0:
+            logger.debug("fail:call vsoc_create_from_backup, vmName:%s, srcVmName:%s, backupUuid:%s ret:%s" % (vsocInterfaceInfo.destVmName, vsocInterfaceInfo.srcVmName, vsocInterfaceInfo.backupUuid, ret))
+            rsp.error = "fail:call vsoc_create_from_backup, vmName:%s, srcVmName:%s, backupUuid:%s ret:%s" % (vsocInterfaceInfo.destVmName, vsocInterfaceInfo.srcVmName, vsocInterfaceInfo.backupUuid, ret)
+            rsp.success = False
+        else:
+            logger.debug("Success:call vsoc_create_from_backup, vmName:%s, srcVmName:%s, backupUuid:%s ret:%s" % (vsocInterfaceInfo.destVmName, vsocInterfaceInfo.srcVmName, vsocInterfaceInfo.backupUuid, ret))
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def vsoc_use_backup(self, req):
+        rsp = kvmagent.AgentResponse()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        vsocInterfaceInfo = VsocInterfaceInfo(cmd)
+
+        so = ctypes.cdll.LoadLibrary(ZYJ_LIB_PATH)
+        ret = so.use_backup(vsocInterfaceInfo.vmName, vsocInterfaceInfo.backupUuid)
+        if ret != 0:
+            logger.debug("fail:call vsoc_use_backup, vmName:%s, backupUuid:%s ret:%s" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.backupUuid, ret))
+            rsp.error = "fail:call vsoc_use_backup, vmName:%s, backupUuid:%s ret:%s" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.backupUuid, ret)
+            rsp.success = False
+        else:
+            logger.debug("Success:call vsoc_use_backup, vmName:%s, backupUuid:%s ret:%s" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.backupUuid, ret))
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def vsoc_create_from_snapshot(self, req):
+        rsp = kvmagent.AgentResponse()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        vsocInterfaceInfo = VsocInterfaceInfo(cmd)
+
+        so = ctypes.cdll.LoadLibrary(ZYJ_LIB_PATH)
+        ret = so.vsoc_create_from_snapshot(vsocInterfaceInfo.vmName, vsocInterfaceInfo.srcVmName, vsocInterfaceInfo.ssId)
+        if ret != 0:
+            logger.debug("fail:call vsoc_create_from_snapshot, vmName:%s, srcVmName:%s, snapshotUuid:%s ret:%s" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.srcVmName, vsocInterfaceInfo.ssId, ret))
+            rsp.error = ("fail:call vsoc_create_from_snapshot, vmName:%s, srcVmName:%s, snapshotUuid:%s ret:%s" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.srcVmName, vsocInterfaceInfo.ssId, ret))
+            rsp.success = False
+        else:
+            logger.debug("Sucess:call vsoc_create_from_snapshot, vmName:%s, srcVmName:%s, snapshotUuid:%s ret:%s" % (vsocInterfaceInfo.vmName, vsocInterfaceInfo.srcVmName, vsocInterfaceInfo.ssId, ret))
+        return jsonobject.dumps(rsp)
+
     def start(self):
         http_server = kvmagent.get_http_server()
 
@@ -7485,6 +7809,19 @@ host side snapshot files chian:
         http_server.register_async_uri(self.FAIL_COLO_PVM_PATH, self.fail_colo_pvm, cmd=FailColoPrimaryVmCmd())
         http_server.register_async_uri(self.GET_VM_DEVICE_ADDRESS_PATH, self.get_vm_device_address)
         http_server.register_async_uri(self.SET_EMULATOR_PINNING_PATH, self.set_emulator_pinning)
+        http_server.register_async_uri(self.KVM_CREATE_VM_VSOC, self.create_vm_vsoc_file)
+        http_server.register_async_uri(self.KVM_DELETE_VM_VSOC, self.delete_vm_vsoc_file)
+        http_server.register_async_uri(self.KVM_BOOT_FROM_NEW_NODE, self.boot_from_new_node)
+        http_server.register_async_uri(self.KVM_VSOC_MIGRATE, self.vsoc_migrate)
+        http_server.register_async_uri(self.KVM_VSOC_CREATE_SNAPSHOT_PATH, self.vsoc_create_snapshot)
+        http_server.register_async_uri(self.KVM_VSOC_DELETE_SNAPSHOT_PATH, self.vsoc_delete_snapshot)
+        http_server.register_async_uri(self.KVM_VSOC_USE_SNAPSHOT_PATH, self.vsoc_use_snapshot)
+        http_server.register_async_uri(self.KVM_CLONE_VSOC, self.vsoc_clone)
+        http_server.register_async_uri(self.KVM_VSOC_CREATE_BACKUP, self.vsoc_create_backup)
+        http_server.register_async_uri(self.KVM_VSOC_DELETE_BACKUP, self.vsoc_delete_backup)
+        http_server.register_async_uri(self.KVM_VSOC_CREATE_FROM_BACKUP, self.vsoc_create_vm_from_backup)
+        http_server.register_async_uri(self.KVM_VSOC_USE_BACKUP, self.vsoc_use_backup)
+        http_server.register_async_uri(self.KVM_VSOC_CREATE_FROM_SNAPSHOT_PATH, self.vsoc_create_from_snapshot)
 
         self.clean_old_sshfs_mount_points()
         self.register_libvirt_event()
@@ -8291,3 +8628,54 @@ def touchQmpSocketWhenExists(vmUuid):
     path = "%s/%s.sock" % (QMP_SOCKET_PATH, vmUuid)
     if os.path.exists(path):
         bash.bash_roe("touch %s" % path)
+
+
+def getVmName(platformId, vmUuid):
+    vmId = filter(str.isdigit, str(vmUuid))[0:6]
+    vmName = str(platformId + vmId)
+    return vmName
+
+
+def getSsId(uuid):
+    ssId = filter(str.isdigit, str(uuid))
+    return int(ssId[0:8])
+
+
+class VsocInterfaceInfo(object):
+    '''
+    def __init__(self):
+        self.func = None
+        self.vmName = None
+        self.prvSocId = None  # boot_from_new_node
+        self.socId = None  # vsoc_migrate
+        self.migrateType = None  # vsoc_migrate
+        self.ssId = None  # create_snapshot
+        self.delSsType = None  # del_snapshot
+        self.srcVmName = None  # vsoc_clone
+        self.destVmName = None  # vsoc_clone
+        self.destSocId = None  # clone_vsoc
+        self.cloneResource = None  # vsoc_clone
+        self.cloneType = None  # vsoc_clone
+        self.backupUuid = None  # use_backup
+    '''
+
+    def __str__(self):
+        return "vmName:%s, prvSocId:%s,socId:%s, migrateType:%s, ssId:%s, delSsFlag:%s, srcVmName:%s, destVmName:%s, destSocId:%s, cloneResource:%s, cloneType:%s, backupUuid:%s"\
+                % (self.vmName, self.prvSocId, self.socId, self.migrateType, self.ssId, self.delSsFlag, self.srcVmName, self.destVmName, self.destSocId, self.cloneResource,
+                self.cloneType, self.backupUuid)
+
+    def __init__(self, vsocCommand):
+        self.vmName = str(vsocCommand.vmName)
+        self.prvSocId = str(vsocCommand.prvSocId)
+        self.socId = str(vsocCommand.socId)
+        self.migrateType = ctypes.c_ubyte(vsocCommand.migrateType)
+        self.ssId = int(getSsId(vsocCommand.ssId))
+        self.delSsFlag = ctypes.c_ubyte(vsocCommand.delSsFlag)
+        self.srcVmName = str(vsocCommand.srcVmName)
+        self.destVmName = str(vsocCommand.destVmName)
+        self.destSocId = str(vsocCommand.destSocId)
+        self.cloneResource = ctypes.c_ubyte(vsocCommand.cloneResource)
+        self.cloneType = ctypes.c_ubyte(vsocCommand.cloneType)
+        self.backupUuid = int(getSsId(vsocCommand.backupUuid))
+        self.platformId = int(vsocCommand.platformId)
+        logger.debug("VsocInterfaceInfo: %s", self.__str__())

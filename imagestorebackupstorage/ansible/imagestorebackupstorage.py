@@ -46,6 +46,7 @@ argument_dict = eval(args.e)
 locals().update(argument_dict)
 imagestore_root = "%s/imagestorebackupstorage/package" % zstack_root
 utils_root = "%s/imagestorebackupstorage" % zstack_root
+imagestore_bin_path = "/usr/local/zstack/imagestore/bin/"
 
 host_post_info = HostPostInfo()
 host_post_info.host_inventory = args.i
@@ -61,10 +62,11 @@ if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
 
 # get remote host arch
-host_arch = get_remote_host_arch(host_post_info)
+host_arch = 'aarch64'
 IS_AARCH64 = host_arch == 'aarch64'
 IS_MIPS64EL = host_arch == 'mips64el'
 
+'''
 if IS_AARCH64:
     src_pkg_imagestorebackupstorage = "zstack-store.aarch64.bin"
     src_pkg_exporter = "collectd_exporter_aarch64"
@@ -85,7 +87,9 @@ dst_pkg_exporter = "collectd_exporter"
 (distro, major_version, distro_release, distro_version) = get_remote_host_info(host_post_info)
 releasever = get_host_releasever([distro, distro_release, distro_version])
 host_post_info.releasever = releasever
+'''
 
+'''
 zstacklib_args = ZstackLibArgs()
 zstacklib_args.distro = distro
 zstacklib_args.distro_release = distro_release
@@ -195,6 +199,17 @@ if client == "false":
 else:
     command = "bash " + dest_pkg
 run_remote_command(command, host_post_info)
+'''
+
+distro = 'kylin10'
+major_version = 10
+
+if client != "true":
+    command = '''sed -i 's/.*rootdirectory:.*/        rootdirectory: %s/' %s/zstore.yaml''' % (fs_rootpath.replace("/", "\/"), imagestore_bin_path)
+    run_remote_command(command, host_post_info)
+
+    command = '''sed -i 's/.*quota:.*/        quota: %s/' %s/zstore.yaml''' % (max_capacity, imagestore_bin_path)
+    run_remote_command(command, host_post_info)
 
 # add nbd.conf
 command = ("echo 'nbd' > /etc/modules-load.d/nbd.conf; echo 'options nbd nbds_max=128 max_part=16' > /etc/modprobe.d/nbd.conf")
@@ -207,7 +222,7 @@ if fs_rootpath != '' and remote_user != 'root':
 # name: restart image store server
 if client != "true":
     # integrate zstack-store with init.d
-    run_remote_command("/bin/cp -f /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage /etc/init.d/", host_post_info)
+    #run_remote_command("/bin/cp -f /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage /etc/init.d/", host_post_info)
     if distro in RPM_BASED_OS:
         command = "/usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage stop && /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage start && chkconfig zstack-imagestorebackupstorage on"
     elif distro in DEB_BASED_OS:

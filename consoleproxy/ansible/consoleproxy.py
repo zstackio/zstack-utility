@@ -42,16 +42,20 @@ host_post_info = HostPostInfo()
 host_post_info.host = host
 host_post_info.host_uuid = host_uuid
 host_post_info.host_inventory = args.i
+host_post_info.private_key = args.private_key
+host_post_info.remote_port = remote_port
 
 host_post_info.post_url = post_url
 host_post_info.chrony_servers = chrony_servers
 host_post_info.transport = 'local'
 
 # include zstacklib.py
-(distro, major_version, distro_release, distro_version) = get_remote_host_info(host_post_info)
-releasever = get_host_releasever([distro, distro_release, distro_version])
+#(distro, major_version, distro_release, distro_version) = get_remote_host_info(host_post_info)
+#releasever = get_host_releasever([distro, distro_release, distro_version])
+releasever = 'ns10'
 host_post_info.releasever = releasever
 
+'''
 zstacklib_args = ZstackLibArgs()
 zstacklib_args.distro = distro
 zstacklib_args.distro_release = distro_release
@@ -192,7 +196,7 @@ if virtual_env_status is False:
     sys.exit(1)
 
 # name: make sure virtualenv has been setup
-command = "[ -f %s/bin/python ] || virtualenv %s " % (virtenv_path, virtenv_path)
+command = "[ -f %s/bin/python ] || virtualenv --system-site-packages %s " % (virtenv_path, virtenv_path)
 run_remote_command(command, host_post_info)
 
 # name: install zstacklib
@@ -210,14 +214,19 @@ if copy_consoleproxy != "changed:False":
     agent_install_arg.agent_root = consoleproxy_root
     agent_install_arg.pkg_name = pkg_consoleproxy
     agent_install(agent_install_arg, host_post_info)
+'''
+
+distro = 'kylin10'
+major_version = 10
 
 # name: restart consoleproxy
 if chroot_env == 'false':
     if distro in RPM_BASED_OS:
-        command = "service zstack-consoleproxy stop && service zstack-consoleproxy start && chkconfig zstack-consoleproxy on"
+        command = "status=`getenforce`; if [ ! $status = 'Enforcing' ]; then service zstack-consoleproxy stop && service zstack-consoleproxy start &&  chkconfig zstack-consoleproxy on;" \
+                  " else service zstack-consoleproxy.service stop && service zstack-consoleproxy.service start && chkconfig zstack-consoleproxy on; fi"
     elif distro in DEB_BASED_OS:
         command = "update-rc.d zstack-consoleproxy start 97 3 4 5 . stop 3 0 1 2 6 . && service zstack-consoleproxy stop && service zstack-consoleproxy start"
-    run_remote_command(command, host_post_info)
+    run_remote_command(command, host_post_info, False, False, True, True)
 
 host_post_info.start_time = start_time
 handle_ansible_info("SUCC: Deploy consoleproxy agent successful", host_post_info, "INFO")
