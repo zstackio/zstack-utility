@@ -1903,10 +1903,8 @@ uz_upgrade_zstack_ctl(){
     fi
 
     if [ ! -z $DEBUG ]; then
-        bash zstack/WEB-INF/classes/tools/install.sh zstack-cli -f
-        bash zstack/WEB-INF/classes/tools/install.sh zstack-ctl
+        bash zstack/WEB-INF/classes/tools/install.sh zstack-ctl 
     else
-        bash zstack/WEB-INF/classes/tools/install.sh zstack-cli -f >>$ZSTACK_INSTALL_LOG 2>&1
         bash zstack/WEB-INF/classes/tools/install.sh zstack-ctl >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     if [ $? -ne 0 ];then
