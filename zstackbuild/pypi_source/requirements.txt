@@ -14,12 +14,14 @@ kombu==3.0.35
 librabbitmq==1.6.1
 MarkupSafe==0.23
 netaddr==0.7.14
+numpy==1.9.2
 ordereddict==1.1
 paramiko==1.15.2
 pickleDB==0.3
 pip==7.0.3
 pycrypto==2.6.1
 pyparsing==1.5.7
+pyroute2==0.5.14
 repoze.lru==0.6
 Routes==2.1
 simplejson==3.7.3
