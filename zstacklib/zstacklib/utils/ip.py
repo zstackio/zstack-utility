@@ -190,14 +190,27 @@ def get_namespace_id(namespace_name):
     return int(out)
 
 def get_host_physicl_nics():
-    nic_names = bash.bash_o("find /sys/class/net -type l -not -lname '*virtual*' -printf '%f\\n'").splitlines()
-    if nic_names is None or len(nic_names) == 0:
+    nic_all_physical = bash.bash_o("find /sys/class/net -type l -not -lname '*virtual*' -printf '%f\\n'").splitlines()
+    if nic_all_physical is None or len(nic_all_physical) == 0:
         return []
 
-    nics = []
-    for nic in nic_names:
-        #exclude sriov vf nics
+    nic_without_sriov = []
+    for nic in nic_all_physical:
+        # exclude sriov vf nics
         if not os.path.exists("/sys/class/net/%s/device/physfn/" % nic):
-            nics.append(nic)
+            nic_without_sriov.append(nic)
 
-    return nics
+    nic_without_virtual = []
+    for nic in nic_without_sriov:
+        flag = True
+        # exclude virtual nic
+        if 'vnic' in nic:
+            flag = False
+        if 'outer' in nic:
+            flag = False
+        if 'br_' in nic:
+            flag = False
+        if flag:
+            nic_without_virtual.append(nic)
+
+    return nic_without_virtual

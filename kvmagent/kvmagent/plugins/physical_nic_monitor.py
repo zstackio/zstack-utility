@@ -155,7 +155,6 @@ class PhysicalNicMonitor(kvmagent.KvmAgent):
             status = msg.get_attr('IFLA_OPERSTATE').lower()
             if not nic or not status:
                 return
-            logger.info("physical_nic active detect, IfName[%s]---State[%s]" % (nic, status))
             # update nic record
             for new_nic in ipUtils.get_host_physicl_nics():
                 if new_nic not in self.history_nics:
