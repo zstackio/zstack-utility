@@ -30,7 +30,7 @@ ansible.constants.HOST_KEY_CHECKING = False
 enable_networkmanager_list = ["ns10", "euler20", "uos1021a"]
 supported_arch_list = ["x86_64", "aarch64", "mips64el", "loongarch64"]
 
-RPM_BASED_OS = ["kylin_tercel", "kylin_sword", "alibaba", "centos", "openeuler", "uniontech_kongzi"]
+RPM_BASED_OS = ["kylin_zstack", "kylin_tercel", "kylin_sword", "alibaba", "centos", "openeuler", "uniontech_kongzi"]
 DEB_BASED_OS = ["ubuntu", "uos", "kylin4.0.2", "debian", "uniontech_fou"]
 DISTRO_WITH_RPM_DEB = ["kylin", "uniontech"]
 
@@ -1214,6 +1214,7 @@ def _get_remote_host_info_from_result(result, host_post_info):
             handle_ansible_info("SUCC: Get remote host %s info successful" % host, host_post_info, "INFO")
             if distro in DISTRO_WITH_RPM_DEB:
                 distro = "%s_%s" % (distro, release)
+                distro = distro.lower()
             return (distro, major_version, release, distro_version)
         else:
             host_post_info.post_label = "ansible.get.host.info.fail"
