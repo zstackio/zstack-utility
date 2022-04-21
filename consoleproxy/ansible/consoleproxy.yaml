@@ -29,7 +29,7 @@
       when: virtualenv_ret.rc != 0
 
     - name: create virtualenv
-      shell: "rm -rf {{virtenv_path}} && rm -f {{consoleproxy_root}}/{{pkg_zstacklib}} && rm -f {{consoleproxy_root}}/{{pkg_consoleproxy}} && virtualenv --system-site-packages {{virtenv_path}}"
+      shell: "rm -rf {{virtenv_path}} && rm -f {{consoleproxy_root}}/{{pkg_zstacklib}} && rm -f {{consoleproxy_root}}/{{pkg_consoleproxy}} && virtualenv {{virtenv_path}}"
 
     - name: copy zstacklib
       copy: src="files/zstacklib/{{pkg_zstacklib}}" dest="{{consoleproxy_root}}/{{pkg_zstacklib}}"
