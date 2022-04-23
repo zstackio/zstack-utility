@@ -699,6 +699,12 @@ class GetVmDeviceAddressRsp(kvmagent.AgentResponse):
         self.addresses = {}  # type:map[str, list[VmDeviceAddress]]
 
 
+class CheckVmRecoveryResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(CheckVmRecoveryResponse, self).__init__()
+        self.status = ""  # type:str
+
+
 class VmDeviceAddress(object):
     def __init__(self, uuid, device_type, address_type, address):
         self.uuid = uuid
@@ -860,6 +866,12 @@ def find_domain_first_boot_device(domain_xml):
     if devs and devs[0].dev_ == 'cdrom':
         return "CdRom"
     return "HardDisk"
+
+
+def is_nbd_disk(disk_xml):
+    if disk_xml.type_ != 'network': return False
+    return hasattr(disk_xml, 'source') and disk_xml.source.protocol_ == 'nbd'
+
 
 def compare_version(version1, version2):
     def normalize(v):
@@ -1367,16 +1379,24 @@ class VmVolumesRecoveryTask(plugin.TaskDaemon):
         super(VmVolumesRecoveryTask, self).__init__(cmd, 'recoverVM')
         self.vmUuid = cmd.vmUuid
         self.bandwidth = cmd.recoverBandwidth
+        self.volumes = cmd.volumes
         self.rvols = rvols
-        self.idx = 1
-        self.total = len(rvols)
+        self.idx = 0
+        self.total = len(cmd.volumes)
         self.cancelled = False
         self.percent = 0
-        self.domain = get_vm_by_uuid(cmd.vmUuid).domain
+        vm = get_vm_by_uuid(cmd.vmUuid)
+        self.domain = vm.domain
+        self.domain_xmlobject = vm.domain_xmlobject
 
     def _cancel(self):
         logger.warn("cancelling vm recovery: %s" % self.vmUuid)
         self.cancelled = True
+
+    def update_progress(self, cur, end):
+        base = self.idx * 100 / self.total
+        curr = cur * 100 / end / self.total if end > 0 else 0
+        self.percent = base + curr
 
     def wait_and_pivot(self, bdev):
         while True:
@@ -1401,9 +1421,7 @@ class VmVolumesRecoveryTask(plugin.TaskDaemon):
                         continue
                     raise e
 
-            base = (self.idx - 1) * 100 / self.total
-            curr = info['cur'] * 100 / info['end'] / self.total
-            self.percent = base + curr
+            self.update_progress(info['cur'], info['end'])
         return None
 
     def get_job_params(self):
@@ -1413,30 +1431,77 @@ class VmVolumesRecoveryTask(plugin.TaskDaemon):
         # bps -> MiB/s (limit: 10 GiB/s)
         return { libvirt.VIR_DOMAIN_BLOCK_COPY_BANDWIDTH: max(1<<20, self.bandwidth) }
 
-    def recover_vm_volumes(self):
-        def get_source_file(d):
-            try:
-                return d.find('source').attrib['file']
-            except (AttributeError, KeyError):
-                return None
+    def get_source_file(self, d):
+        try:
+            return d.find('source').attrib['file']
+        except (AttributeError, KeyError):
+            return None
 
-        flags = libvirt.VIR_DOMAIN_BLOCK_COPY_TRANSIENT_JOB | libvirt.VIR_DOMAIN_BLOCK_COPY_REUSE_EXT
-        params = self.get_job_params()
+    def do_copy_and_wait(self, target_dev, diskxml, disk_ele, params, flags):
+        # zsblk-agent might auto-deactivate idle LV
+        fpath = self.get_source_file(disk_ele)
+        if fpath and fpath.startswith('/dev/') and not os.path.exists(fpath):
+            lvm.active_lv(fpath, False)
+        self.domain.blockCopy(target_dev, diskxml, params, flags)
+        msg = self.wait_and_pivot(target_dev)
+        if msg is not None:
+            raise kvmagent.KvmError(msg)
+        if self.cancelled:
+            raise kvmagent.KvmError('Recovery cancelled for VM: %s' % self.vmUuid)
+
+    def do_recover_with_rvols(self, params, flags):
         for target_dev, disk_ele in self.rvols.items():
             diskxml = etree.tostring(disk_ele)
-            logger.info("[%d/%d] will recover %s with: %s" % (self.idx, self.total, target_dev, diskxml))
-
-            # zsblk-agent might auto-deactivate idle LV
-            fpath = get_source_file(disk_ele)
-            if fpath and fpath.startswith('/dev/') and not os.path.exists(fpath):
-                lvm.active_lv(fpath, False)
-            self.domain.blockCopy(target_dev, diskxml, params, flags)
-            msg = self.wait_and_pivot(target_dev)
-            if msg is not None:
-                raise kvmagent.KvmError(msg)
-            if self.cancelled:
-                raise kvmagent.KvmError('Recovery cancelled for VM: %s' % self.vmUuid)
+            logger.info("[%d/%d] will recover %s with: %s" % (self.idx+1, self.total, target_dev, diskxml))
+            self.do_copy_and_wait(target_dev, diskxml, disk_ele, params, flags)
             self.idx += 1
+
+    def retrieve_diskele(self, nbddisk):
+        for v in self.volumes:
+            dstpath, rpath = v.installPath.split('?')
+            if rpath.endswith(nbddisk.source.name_):
+                saved = v.installPath
+                v.installPath = dstpath
+                ele = VmPlugin._get_new_disk(etree.fromstring(nbddisk.dump()), v)
+                v.installPath = saved
+                return ele
+        raise kvmagent.KvmError("VM: %s: recover volume not found: %s" % (self.vmUuid, v.installPath))
+
+    # list all disk nodes:
+    #  - check and wait existing blockjob;
+    #  - initiate blockjob for disks with missed blockjob.
+    def do_recover_with_volumes(self, params, flags):
+        for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
+            if disk.device_ == 'cdrom':
+                continue
+
+            try:
+                target_dev = disk.target.dev_
+                if not is_nbd_disk(disk):
+                    logger.info("[%d/%d] skipped recover %s for VM: %s" % (self.idx+1, self.total, target_dev, self.vmUuid))
+                    continue
+
+                info = self.domain.blockJobInfo(target_dev, 0)
+                if info:
+                    logger.info("[%d/%d] picked recover %s for VM: %s" % (self.idx+1, self.total, target_dev, self.vmUuid))
+                    self.wait_and_pivot(target_dev)
+                    continue
+
+                disk_ele = self.retrieve_diskele(disk)
+                diskxml = etree.tostring(disk_ele)
+                logger.info("[%d/%d] pickup recover %s with: %s" % (self.idx+1, self.total, target_dev, diskxml))
+                self.do_copy_and_wait(target_dev, diskxml, disk_ele, params, flags)
+            finally:
+                self.idx += 1
+                self.update_progress(0, 0)
+
+    def recover_vm_volumes(self):
+        flags = libvirt.VIR_DOMAIN_BLOCK_COPY_TRANSIENT_JOB | libvirt.VIR_DOMAIN_BLOCK_COPY_REUSE_EXT
+        params = self.get_job_params()
+        if self.rvols != None:
+            self.do_recover_with_rvols(params, flags)
+        else:
+            self.do_recover_with_volumes(params, flags)
 
     def _get_percent(self):
         return self.percent
@@ -1668,6 +1733,7 @@ def get_dom_error(uuid):
     return domblkerror.replace('\n', '')
 
 VM_RECOVER_DICT = {}
+VM_RECOVER_TASKS = {}
 
 class Vm(object):
     VIR_DOMAIN_NOSTATE = 0
@@ -4886,6 +4952,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_ATTACH_ISO_PATH = "/vm/iso/attach"
     KVM_DETACH_ISO_PATH = "/vm/iso/detach"
     KVM_VM_RECOVER_VOLUMES_PATH = "/vm/recover/volumes"
+    KVM_VM_CHECK_RECOVER_PATH = "/vm/recover/check"
     KVM_VM_CHECK_STATE = "/vm/checkstate"
     KVM_VM_CHANGE_PASSWORD_PATH = "/vm/changepasswd"
     KVM_SET_VOLUME_BANDWIDTH = "/set/volume/bandwidth"
@@ -5718,24 +5785,61 @@ class VmPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def check_recover(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CheckVmRecoveryResponse()
+
+        if cmd.vmUuid in VM_RECOVER_TASKS:
+            rsp.status = 'running'
+        else:
+            vm = get_vm_by_uuid(cmd.vmUuid)
+            disks = vm.domain_xmlobject.devices.get_child_node_as_list('disk')
+            rsp.status = 'interrupted' if any(is_nbd_disk(d) for d in disks) else 'done'
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     def recover_volumes(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
 
+        def get_recover_task(cmd, rvols):
+            if rvols != None:
+                return True, VmVolumesRecoveryTask(cmd, rvols)
+
+            t = VM_RECOVER_TASKS.get(cmd.vmUuid)
+            if t != None:
+                return False, t
+
+            logger.info("reconstructing recovery task for VM: " + cmd.vmUuid)
+            return True, VmVolumesRecoveryTask(cmd, rvols)
+
+
         logger.info("recovering VM: " + cmd.vmUuid)
         rvols = VM_RECOVER_DICT.pop(cmd.vmUuid, None)
-        if rvols is None:
-            rsp.error = "No recovery context found for VM: %s" % cmd.vmUuid
-            rsp.success = False
-            return jsonobject.dumps(rsp)
+        isnew, t = get_recover_task(cmd, rvols)
 
-        with VmVolumesRecoveryTask(cmd, rvols) as t:
-            t.recover_vm_volumes()
+        if isnew:
+            try:
+                with t:
+                    VM_RECOVER_TASKS[cmd.vmUuid] = t
+                    t.recover_vm_volumes()
 
-        logger.info("recovery completed. VM: " + cmd.vmUuid)
+                logger.info("recovery completed. VM: " + cmd.vmUuid)
+            finally:
+                VM_RECOVER_TASKS.pop(cmd.vmUuid, None)
+        else:
+            while not t.cancelled and t.percent < 100:
+                time.sleep(2)
+            if t.cancelled:
+                rsp.error = "recovery cancelled for VM: %s" % cmd.vmUuid
+                rsp.success = False
+
         return jsonobject.dumps(rsp)
 
-    def _get_new_disk(self, oldDisk, volume):
+
+    @staticmethod
+    def _get_new_disk(oldDisk, volume):
         def filebased_volume(_v):
             disk = etree.Element('disk', {'type': 'file', 'device': 'disk', 'snapshot': 'external'})
             e(disk, 'driver', None, {'name': 'qemu', 'type': 'qcow2', 'cache': _v.cacheMode})
@@ -5809,7 +5913,7 @@ class VmPlugin(kvmagent.KvmAgent):
         for disk in tree.iterfind('devices/disk'):
             dev = disk.find('target').attrib['dev']
             if dev in migrate_disks:
-                new_disk = self._get_new_disk(disk, migrate_disks[dev])
+                new_disk = VmPlugin._get_new_disk(disk, migrate_disks[dev])
                 parent_index = list(devices).index(disk)
                 devices.remove(disk)
                 devices.insert(parent_index, new_disk)
@@ -5820,14 +5924,12 @@ class VmPlugin(kvmagent.KvmAgent):
     def _build_dest_disk_xml(self, vm, oldVolumePath, newVolume):
         _, disk_name = vm._get_target_disk_by_path(oldVolumePath)
 
-        fpath = linux.write_to_temp_file(vm.domain_xml)
-        tree = etree.parse(fpath)
-        os.remove(fpath)
+        tree = etree.fromstring(vm.domain_xml)
 
         for disk in tree.iterfind('devices/disk'):
             dev = disk.find('target').attrib['dev']
             if dev == disk_name:
-                new_disk = self._get_new_disk(disk, newVolume)
+                new_disk = VmPlugin._get_new_disk(disk, newVolume)
                 return dev, linux.write_to_temp_file(etree.tostring(new_disk))
 
     def _do_block_copy(self, vmUuid, disk_name, disk_xml, task_spec):
@@ -7680,6 +7782,7 @@ host side snapshot files chian:
         http_server.register_async_uri(self.KVM_LIVE_MIGRATION_WITH_STORAGE_PATH, self.migrate_vm_with_block)
         http_server.register_async_uri(self.KVM_VM_CHECK_VOLUME_PATH, self.check_volume)
         http_server.register_async_uri(self.KVM_VM_RECOVER_VOLUMES_PATH, self.recover_volumes)
+        http_server.register_sync_uri(self.KVM_VM_CHECK_RECOVER_PATH, self.check_recover)
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_SNAPSHOT_PATH, self.take_volume_snapshot)
         http_server.register_async_uri(self.KVM_CHECK_VOLUME_SNAPSHOT_PATH, self.check_volume_snapshot)
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_BACKUP_PATH, self.take_volume_backup, cmd=TakeVolumeBackupCommand())
