@@ -449,6 +449,8 @@ def collect_ipmi_state():
     if r == 0:
         for info in fan_info.splitlines():
             info = info.strip()
+            if info.split("|")[4].strip() == "":
+                continue
             fan_id = info.split("|")[0].strip()
             fan_state = 0 if info.split("|")[2].strip().lower() == "ok" else 10
             fan_rpm = 0 if fan_state != 0 else info.split("|")[4].strip().split(" ")[0]
