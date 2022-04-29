@@ -297,20 +297,11 @@ example: %sLogInByAccount accountName=admin password=your_super_secure_admin_pas
 Parse command parameters error:
   eval '%s' error for: '%s'
   the right format is like: "[{'KEY':'VALUE'}, {'KEY':['VALUE1', 'VALUE2']}]"
-                          """ % (value_string, key)
-                    if key == "vmNics" or key == "servers":
-                        err_msg2 = """
-  'KEY' is 'uuid'
-  'VALUE' is the uuid of vmNics or servers
-  Example: vmNics="[{'uuid':['$vmNics1_UUID','$vmNics2_UUID']}]"
-                          """
-                    else:
-                        err_msg2 = """
   'KEY' is the uuid of network service provider
   'VALUE' is the service name, like 'SNAT','DHCP' and so on
   Example: networkServices="{'$NetworkServiceProvider_UUID':['SNAT','DHCP']}"
-                          """
-                    self.print_error(err_msg + err_msg2)
+                          """ % (value_string, key)
+                    self.print_error(err_msg)
                     raise e
 
             pairs = args
