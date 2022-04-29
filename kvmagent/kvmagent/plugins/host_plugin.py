@@ -40,6 +40,7 @@ import zstacklib.utils.plugin as plugin
 host_arch = platform.machine()
 IS_AARCH64 = host_arch == 'aarch64'
 IS_MIPS64EL = host_arch == 'mips64el'
+IS_LOONGARCH64 = host_arch == 'loongarch64'
 GRUB_FILES = ["/boot/grub2/grub.cfg", "/boot/grub/grub.cfg", "/etc/grub2-efi.cfg", "/etc/grub-efi.cfg"] \
                 + ["/boot/efi/EFI/{}/grub.cfg".format(platform.dist()[0])]
 IPTABLES_CMD = iptables.get_iptables_cmd()
@@ -788,6 +789,8 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp = HostFactResponse()
         rsp.osDistribution, rsp.osVersion, rsp.osRelease = platform.dist()
         rsp.osRelease = rsp.osRelease if rsp.osRelease else "Core"
+        # compatible with Kylin SP2 HostOS ISO and standardized ISO
+        rsp.osRelease = "Sword" if rsp.osDistribution == "kylin" and host_arch in ["x86_64", "aarch64"] else rsp.osRelease
         # to be compatible with both `2.6.0` and `2.9.0(qemu-kvm-ev-2.9.0-16.el7_4.8.1)`
         qemu_img_version = shell.call("qemu-img --version | grep 'qemu-img version' | cut -d ' ' -f 3 | cut -d '(' -f 1")
         qemu_img_version = qemu_img_version.strip('\t\r\n ,')
@@ -835,7 +838,7 @@ class HostPlugin(kvmagent.KvmAgent):
             # in case lscpu doesn't show cpu max mhz
             cpuMHz = "2500.0000" if cpuMHz.strip() == '' else cpuMHz
             rsp.cpuGHz = '%.2f' % (float(cpuMHz) / 1000)
-        elif IS_MIPS64EL:
+        elif IS_MIPS64EL or IS_LOONGARCH64:
             rsp.hvmCpuFlag = 'vt'
             rsp.cpuModelName = self._get_host_cpu_model()
 

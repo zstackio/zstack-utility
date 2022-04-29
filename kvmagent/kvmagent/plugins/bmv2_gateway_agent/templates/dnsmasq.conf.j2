@@ -38,15 +38,17 @@ dhcp-option=tag:aarch64_efi,option:bootfile-name,grubaa64.efi
 
 # Client is already running iPXE; move to next stage of chainloading
 dhcp-option=tag:ipxe,option:bootfile-name,boot.ipxe
+
 # Client is PXE booting over EFI without iPXE ROM,
 # send EFI version of iPXE chainloader
 dhcp-option=tag:efi,tag:!ipxe,option:bootfile-name,ipxe.efi
 
 # Client is a baremetal instance and boot mode is legacy, send undionly.kpxe
 dhcp-option=tag:instance,tag:!efi,tag:!ipxe,option:bootfile-name,undionly.kpxe
+
 # Client is not instance and boot mode is legacy, assume it's inspect action,
 # send pxelinux.0 for compatibility
-dhcp-option=tag:!instance,tag:!efi,option:bootfile-name,pxelinux.0
+dhcp-option=tag:!instance,tag:bios,option:bootfile-name,pxelinux.0
 
 dhcp-option=tag:!instance,option:tftp-server,{{ bm_gateway_provision_ip }}
 dhcp-option=tag:!instance,option:server-ip-address,{{ bm_gateway_provision_ip }}

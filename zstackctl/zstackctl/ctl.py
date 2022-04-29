@@ -5767,6 +5767,7 @@ class ScanDatabaseBackupCmd(Command):
 
 def runImageStoreCliCmd(raw_bs_url, registry_port, command, is_exception=True):
     ZSTORE_CLI_PATH = "/usr/local/zstack/imagestore/bin/zstcli"
+    ZSTORE_CLI_PATH = "GODEBUG=x509ignoreCN=0 " + ZSTORE_CLI_PATH if platform.machine() == 'loongarch64' else ZSTORE_CLI_PATH
     ZSTORE_CLI_CA = "/var/lib/zstack/imagestorebackupstorage/package/certs/ca.pem"
     ZSTORE_DEF_PORT = 8000
 
@@ -7584,7 +7585,7 @@ class UpgradeManagementNodeCmd(Command):
                 ShellCmd('unzip %s -d zstack' % os.path.basename(new_war.path), workdir=webapp_dir)()
                 #create local repo folder for possible zstack local yum repo
                 zstack_dvd_repo = '{}/zstack/static/zstack-repo'.format(webapp_dir)
-                shell('rm -f {0}; mkdir -p {0};ln -s /opt/zstack-dvd/x86_64 {0}/x86_64; ln -s /opt/zstack-dvd/aarch64 {0}/aarch64; ln -s /opt/zstack-dvd/mips64el {0}/mips64el; chown -R zstack:zstack {0}'.format(zstack_dvd_repo))
+                shell('rm -f {0}; mkdir -p {0};ln -s /opt/zstack-dvd/x86_64 {0}/x86_64; ln -s /opt/zstack-dvd/aarch64 {0}/aarch64; ln -s /opt/zstack-dvd/mips64el {0}/mips64el; ln -s /opt/zstack-dvd/loongarch64 {0}/loongarch64; chown -R zstack:zstack {0}'.format(zstack_dvd_repo))
 
             def restore_config():
                 info('restoring the zstack.properties ...')
