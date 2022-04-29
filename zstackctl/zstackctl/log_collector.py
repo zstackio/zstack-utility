@@ -284,7 +284,7 @@ class CollectFromYml(object):
         db_hostname, db_port, db_user, db_password = self.ctl.get_live_mysql_portal()
         if db_password:
             cmd = "mysql --host %s --port %s -u%s -p%s zstack -e \'%s\'" % (
-                db_hostname, db_port, db_user, db_password, suffix_sql)
+                db_hostname, db_port, db_user, zstackctl.ctl.shell_quote(db_password), suffix_sql)
         else:
             cmd = "mysql --host %s --port %s -u%s zstack -e \'%s\'" % (db_hostname, db_port, db_user, suffix_sql)
         return cmd
@@ -333,7 +333,7 @@ class CollectFromYml(object):
         db_hostname, db_port, db_user, db_password = self.ctl.get_live_mysql_portal()
         if db_password:
             cmd = "mysqldump --database -u%s -p%s -P %s --single-transaction --quick zstack zstack_rest information_schema performance_schema %s" % (
-                db_user, db_password, db_port, mysqldump_skip_tables)
+                db_user, zstackctl.ctl.shell_quote(db_password), db_port, mysqldump_skip_tables)
         else:
             cmd = "mysqldump --database -u%s -P %s --single-transaction --quick zstack zstack_rest information_schema performance_schema %s" % (
                 db_user, db_port, mysqldump_skip_tables)
@@ -540,7 +540,7 @@ class CollectFromYml(object):
         query.host = db_hostname
         query.port = db_port
         query.user = db_user
-        query.password = db_password
+        query.password = zstackctl.ctl.shell_quote(db_password)
         query.table = 'zstack'
         if type == 'host' or type == 'sharedblock':
             query.sql = "select * from HostVO where managementIp='%s'" % host_ip
