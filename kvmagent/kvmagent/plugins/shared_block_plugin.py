@@ -42,6 +42,7 @@ class AgentRsp(object):
         self.error = None
         self.totalCapacity = None
         self.availableCapacity = None
+        self.lunCapacities = None
 
 
 class ConnectRsp(AgentRsp):
@@ -329,6 +330,10 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
     vgs_in_progress = set()
     vg_size = {}
+    pvs_in_progress = set()
+    lun_capacities = {}
+
+    vgs_path_and_wwid = {}
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -399,6 +404,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         if cmd.vgUuid is not None and lvm.vg_exists(cmd.vgUuid):
             rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid, False)
+            rsp.lunCapacities = lvm.get_lun_capacities_from_vg(cmd.vgUuid, self.vgs_path_and_wwid)
 
         return jsonobject.dumps(rsp)
 
@@ -479,6 +485,19 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             finally:
                 self.vgs_in_progress.remove(cmd.vgUuid)
 
+        lun_capacities_cache = self.lun_capacities.get(cmd.vgUuid)
+        if lun_capacities_cache is not None and linux.get_current_timestamp() - lun_capacities_cache['currentTimestamp'] < 60:
+            rsp.lunCapacities = lun_capacities_cache['lun_capacities']
+        elif cmd.vgUuid not in self.pvs_in_progress:
+            try:
+                self.pvs_in_progress.add(cmd.vgUuid)
+                rsp.lunCapacities = lvm.get_lun_capacities_from_vg(cmd.vgUuid, self.vgs_path_and_wwid)
+                self.lun_capacities[cmd.vgUuid] = {}
+                self.lun_capacities[cmd.vgUuid]['lun_capacities'] = rsp.lunCapacities
+                self.lun_capacities[cmd.vgUuid]['currentTimestamp'] = long(linux.get_current_timestamp())
+            finally:
+                self.pvs_in_progress.remove(cmd.vgUuid)
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -529,6 +548,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         allDiskPaths = set()
         allDisks = set()
 
+        self.vgs_path_and_wwid[cmd.vgUuid] = {}
         for diskUuid in cmd.sharedBlockUuids:
             disk = CheckDisk(diskUuid)
             disks.add(disk)
@@ -540,6 +560,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             if p is not None:
                 allDiskPaths.add(p)
                 allDisks.add(disk)
+                if diskUuid in cmd.sharedBlockUuids:
+                    self.vgs_path_and_wwid[cmd.vgUuid][p] = diskUuid
 
         allDiskPaths = allDiskPaths.union(diskPaths)
         allDisks = allDisks.union(disks)
@@ -639,6 +661,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp.hostId = lvm.get_running_host_id(cmd.vgUuid)
         rsp.vgLvmUuid = lvm.get_vg_lvm_uuid(cmd.vgUuid)
         rsp.hostUuid = cmd.hostUuid
+        rsp.lunCapacities = lvm.get_lun_capacities_from_vg(cmd.vgUuid, self.vgs_path_and_wwid)
         return jsonobject.dumps(rsp)
 
     @staticmethod
@@ -672,6 +695,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     def disconnect(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
+        self.vgs_path_and_wwid.pop(cmd.vgUuid)
 
         @linux.retry(times=3, sleep_time=random.uniform(0.1, 3))
         def find_vg(vgUuid):
@@ -756,6 +780,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             if p is not None:
                 allDiskPaths.add(p)
                 allDisks.add(_disk)
+                if diskUuid == cmd.diskUuid:
+                    self.vgs_path_and_wwid[cmd.vgUuid][p] = diskUuid
         allDiskPaths.add(disk.get_path())
         allDisks.add(disk)
         try:
@@ -785,6 +811,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         rsp = AgentRsp
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+        rsp.lunCapacities = lvm.get_lun_capacities_from_vg(cmd.vgUuid, self.vgs_path_and_wwid)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -809,6 +836,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp = AgentRsp()
         self.create_volume_with_backing(cmd)
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid, False)
+        rsp.lunCapacities = lvm.get_lun_capacities_from_vg(cmd.vgUuid, self.vgs_path_and_wwid)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -843,6 +871,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         self.do_delete_bits(cmd.path)
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+        rsp.lunCapacities = lvm.get_lun_capacities_from_vg(cmd.vgUuid, self.vgs_path_and_wwid)
         return jsonobject.dumps(rsp)
 
     def do_delete_bits(self, path):
@@ -1163,6 +1192,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         logger.debug('successfully create empty volume[uuid:%s, size:%s] at %s' % (cmd.volumeUuid, cmd.size, cmd.installPath))
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+        rsp.lunCapacities = lvm.get_lun_capacities_from_vg(cmd.vgUuid, self.vgs_path_and_wwid)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
