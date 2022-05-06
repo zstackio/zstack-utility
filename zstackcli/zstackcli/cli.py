@@ -297,11 +297,20 @@ example: %sLogInByAccount accountName=admin password=your_super_secure_admin_pas
 Parse command parameters error:
   eval '%s' error for: '%s'
   the right format is like: "[{'KEY':'VALUE'}, {'KEY':['VALUE1', 'VALUE2']}]"
+                    """ % (value_string, key)
+                    if key == "vmNics" or key == "servers":
+                        err_msg2 = """
+  'KEY' is 'uuid' or 'ipAddress'
+  'VALUE' is the vm nics' uuid or ip address 
+  Example: vmNics="[{'uuid':'$vmNics1_UUID'},{'uuid':'$vmNics2_UUID'}]" or servers="[{'ipAddress':'$ipAddress1'},{'ipAddress':'$ipAddress2'}]"
+                    """
+                    else:
+                        err_msg2 = """
   'KEY' is the uuid of network service provider
   'VALUE' is the service name, like 'SNAT','DHCP' and so on
   Example: networkServices="{'$NetworkServiceProvider_UUID':['SNAT','DHCP']}"
-                          """ % (value_string, key)
-                    self.print_error(err_msg)
+                    """
+                    self.print_error(err_msg + err_msg2)
                     raise e
 
             pairs = args
@@ -361,7 +370,7 @@ Parse command parameters error:
                 elif apiname == 'APIUpdateSchedulerJobGroupMsg' and params[0] == 'parameters':
                     all_params[params[0]] = eval_string(params[0], params[1])
                 elif apiname == 'APIAddBackendServerToServerGroupMsg' and params[0] in ['vmNics','servers']:
-                    all_params[params[0]] = eval(params[1])
+                    all_params[params[0]] = eval_string(params[0], params[1])
 	        elif apiname == 'APIChangeLoadBalancerBackendServerMsg' and params[0] in ['vmNics','servers']:
                     all_params[params[0]] = eval(params[1])
                 elif apiname == 'APIUpdateSchedulerJobMsg' and params[0] == 'parameters':
