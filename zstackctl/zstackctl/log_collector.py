@@ -127,7 +127,7 @@ class Summary(object):
             username = username.strip('"')
 
         _, o = commands.getstatusoutput(
-            "find %s -iname \"customer-identifier\" -exec cat {} \; 2>/dev/null | grep 'start ui_customeize' -A 200 | grep -E '^[[:space:]]*<'" % collect_dir)
+            "find %s -type f -iname \"customer-identifier\" | head -1 |xargs cat | grep 'start ui_customeize' -A 200 | grep -E '^[[:space:]]*<'" % collect_dir)
 
         _, ui3 = commands.getstatusoutput(
             "find %s/*/ui3-cfg/* -iname 'data.json' | head -1 | xargs cat" % collect_dir)
