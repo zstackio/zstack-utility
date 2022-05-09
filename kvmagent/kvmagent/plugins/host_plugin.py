@@ -998,9 +998,19 @@ class HostPlugin(kvmagent.KvmAgent):
             logger.info("usb %s-%s start successed on port %s" % (busNum, devNum, port))
             return True, None
 
+        def _check_usb_device_exist(busNum, devNum):
+            ret, output = bash_ro("lsusb -s %s:%s" % (busNum, devNum))
+            if ret == 0:
+                return True
+
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = StartUsbRedirectServerRsp()
         port = cmd.port if cmd.port is not None else self._get_next_available_port()
+        if not _check_usb_device_exist(cmd.busNum, cmd.devNum):
+            rsp.success = False
+            rsp.error = "usb device[busNum: ${LICENSE_PATH}, deviceNum: ${LICENSE_PATH}] does not exists."
+            return jsonobject.dumps(rsp)
+
         ret, output = _start_usb_server(int(port), cmd.busNum, cmd.devNum)
         if ret:
             rsp.port = int(port)
