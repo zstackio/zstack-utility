@@ -1008,7 +1008,7 @@ class HostPlugin(kvmagent.KvmAgent):
         port = cmd.port if cmd.port is not None else self._get_next_available_port()
         if not _check_usb_device_exist(cmd.busNum, cmd.devNum):
             rsp.success = False
-            rsp.error = "usb device[busNum: ${LICENSE_PATH}, deviceNum: ${LICENSE_PATH}] does not exists."
+            rsp.error = "usb device[busNum: %s, deviceNum: %s does not exists." % (cmd.busNum, cmd.devNum)
             return jsonobject.dumps(rsp)
 
         ret, output = _start_usb_server(int(port), cmd.busNum, cmd.devNum)
