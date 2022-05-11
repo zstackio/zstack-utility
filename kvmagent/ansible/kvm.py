@@ -213,13 +213,13 @@ def install_kvm_pkg():
                       usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
                       net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
                       smartmontools sshpass usbutils vconfig wget audit dnsmasq \
-                      qemu-kvm-ev collectd-virt OVMF edk2-ovmf mcelog MegaCli storcli Arcconf python-pyudev i40e auxiliary kernel-devel"
+                      qemu-kvm-ev collectd-virt OVMF edk2-ovmf mcelog MegaCli storcli Arcconf python-pyudev kernel-devel"
 
         x86_64_c76 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                       usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python libvirt-admin lighttpd lsof \
                       net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
                       smartmontools sshpass usbutils vconfig wget audit dnsmasq \
-                      qemu-kvm-ev collectd-virt OVMF edk2-ovmf mcelog MegaCli storcli Arcconf python-pyudev seabios-bin nping i40e auxiliary kernel-devel"
+                      qemu-kvm-ev collectd-virt OVMF edk2-ovmf mcelog MegaCli storcli Arcconf python-pyudev seabios-bin nping kernel-devel"
 
         aarch64_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                         usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
@@ -698,6 +698,15 @@ def install_agent_pkg():
         agent_install_arg.virtualenv_site_packages = "yes"
         agent_install(agent_install_arg, host_post_info)
 
+def copy_i40e_driver():
+    """copy intel i40e ethernet dirver"""
+
+    IS_X86_64 = get_remote_host_arch(host_post_info) == 'x86_64'
+    if IS_X86_64:
+        _src = os.path.join(file_root, "i40e_driver.tar.gz")
+        _dst = "/var/lib/zstack/i40e_driver.tar.gz"
+        copy_to_remote(_src, _dst, None, host_post_info)
+
 @on_debian_based(distro, exclude=['Kylin'])
 def set_legacy_iptables_ebtables():
     """set legacy mode if needed"""
@@ -761,6 +770,7 @@ copy_lsusb_scripts()
 copy_zs_scripts()
 copy_grubaa64_efi()
 copy_bond_conf()
+copy_i40e_driver()
 create_virtio_driver_directory()
 set_max_performance()
 do_libvirt_qemu_config()
