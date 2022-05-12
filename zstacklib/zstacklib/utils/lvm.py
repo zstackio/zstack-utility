@@ -11,6 +11,7 @@ import xml.etree.ElementTree as etree
 
 import simplejson
 
+from zstacklib.utils import form
 from zstacklib.utils import shell
 from zstacklib.utils import bash
 from zstacklib.utils import lock
@@ -1891,17 +1892,15 @@ explain:
 
 @bash.in_bash
 def is_bad_vm_root_volume(vm_root_volume):
-    cmd = "lsblk -P " + vm_root_volume + " -s -o NAME,TYPE,STATE"
-    lsblk_out = bash.bash_o(cmd).strip().splitlines()
-    if len(lsblk_out) < 2:  # valid_cmd_out = one_block_info + at_least_one_dependency_disk_info
-        return False
-    for line in lsblk_out:
-        line_list = re.split(' ', line)
-        block_type = line_list[1].strip().replace('"', '').replace('TYPE=', '')
-        block_state = line_list[2].strip().replace('"', '').replace('STATE=', '')
-        if block_type == "disk" and block_state != "running":
-            return True
-    return False
+    cmd = "lsblk -sr " + vm_root_volume + "-o NAME,TYPE,STATE"
+    r, o = bash.bash_ro(cmd)
+    if r != 0:
+        return True
+
+    dep_devices = form.load(o)
+    has_running_disk = any(dep_dev["TYPE"] == "disk" and dep_dev["STATE"] == "running" for dep_dev in dep_devices)
+    has_not_running_disk = any(dep_dev["TYPE"] == "disk" and dep_dev["STATE"] != "running" for dep_dev in dep_devices)
+    return has_not_running_disk or not has_running_disk
 
 def get_vm_pid(uuid):
     pid = linux.read_file(os.path.join(LIVE_LIBVIRT_XML_DIR, uuid + ".pid"))
