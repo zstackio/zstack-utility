@@ -91,6 +91,24 @@ config_journal(){
     fi
 }
 
+# install intel i40e driver
+install_i40e_driver() {
+	i40e_tar_file="/var/lib/zstack/i40e_driver.tar.gz"
+	if [[ "$(uname -m)" != "x86_64" ]] || [[ ! -f "${i40e_tar_file}" ]]; then
+		return
+	fi
+
+	kernel_version=`uname -r`
+	tar xvf ${i40e_tar_file} -C /tmp > /dev/null 2>&1
+	if [ -d "/tmp/i40e_driver/${kernel_version}" ]; then
+		if ! modinfo auxiliary >/dev/null 2>&1; then
+			rpm -Uvh /tmp/i40e_driver/${kernel_version}/*.rpm
+		fi
+	fi
+
+	rm -rf /tmp/i40e_driver
+}
+
 if [ "$@" = "status" ]; then
 	check_status
 else
@@ -100,6 +118,7 @@ else
 		rm_ebtables_dangling_lock '/var/lib/ebtables/lock' #C72
 		rm_ebtables_dangling_lock '/run/ebtables.lock'   #C74
 		config_journal
+		install_i40e_driver
 	fi
 
 	. /var/lib/zstack/virtualenv/kvm/bin/activate && python -c "from kvmagent import kdaemon; kdaemon.main()" "$@"
