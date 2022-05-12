@@ -113,6 +113,21 @@ def retry(times=3, sleep_time=3):
         return inner
     return wrap
 
+def retry_with_check(handler=None):
+    def wrap(f):
+        @functools.wraps(f)
+        def inner(*args, **kwargs):
+            try:
+                return f(*args, **kwargs)
+            except Exception as e:
+                if handler is not None and handler(args, e):
+                    return f(*args, **kwargs)
+                else:
+                    raise e
+
+        return inner
+    return wrap
+
 def with_arch(todo_list=SUPPORTED_ARCH, host_arch=HOST_ARCH):
     def wrap(f):
         @functools.wraps(f)
