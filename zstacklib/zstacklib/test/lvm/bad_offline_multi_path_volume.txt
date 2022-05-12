@@ -1,4 +1,0 @@
-NAME="0af3ac2a9388489d8dcb0f3bf89f1af1-84c16257085b40de9823dc79d8de18f7" TYPE="lvm" STATE="running"
-NAME="mpatha" TYPE="mpath" STATE="running"
-NAME="sdc" TYPE="disk" STATE="transport-offline"
-NAME="sdd" TYPE="disk" STATE="transport-offline"
