@@ -24,7 +24,7 @@ class ImageStoreClient(object):
     COMMIT_BIT_PATH = "/imagestore/commit"
     CONVERT_TO_RAW = "/imagestore/convert/raw"
 
-    RESERVE_CAPACITY = 1024 * 1024 * 1024
+    RESERVE_CAPACITY = 10 * 1024 * 1024 * 1024
 
     def _check_zstore_cli(self):
         if not os.path.exists(self.ZSTORE_CLI_BIN):
