@@ -873,11 +873,12 @@ def get_img_file_fmt(src):
             fmt = "iso"
     return fmt
 
+
 def get_img_fmt(src):
-    fmt = shell.call("set -o pipefail; %s %s | grep -w '^file format' | awk '{print $3}'" %
-            (qemu_img.subcmd('info'), src))
+    fmt = shell.call(
+        "set -o pipefail; %s %s | grep -w '^file format' | awk '{print $3}'" % (qemu_img.subcmd('info'), src))
     fmt = fmt.strip(' \t\r\n')
-    if fmt != 'raw' and fmt != 'qcow2':
+    if fmt not in ['raw', 'qcow2', 'vmdk']:
         logger.debug("/usr/bin/qemu-img info %s" % src)
         raise Exception('unknown format[%s] of the image file[%s]' % (fmt, src))
     return fmt
