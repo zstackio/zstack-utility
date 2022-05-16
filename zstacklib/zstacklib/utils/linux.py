@@ -118,7 +118,7 @@ def with_arch(todo_list=SUPPORTED_ARCH, host_arch=HOST_ARCH):
         @functools.wraps(f)
         def inner(*args, **kwargs):
             if set(todo_list) - set(SUPPORTED_ARCH):
-                error("Unknown arch in {}".format(todo_list))
+                raise Exception("Unknown arch in {}".format(todo_list))
             if host_arch in todo_list:
                 return f(*args, **kwargs)
             else :
@@ -131,7 +131,7 @@ def on_redhat_based(distro=None, exclude=[]):
         @functools.wraps(f)
         def innner(*args, **kwargs):
             if not distro:
-                error("Distro info is needed.")
+                raise Exception("Distro info is needed.")
             if distro in list(set(RPM_BASED_OS) - set(exclude)):
                 return f(*args, **kwargs)
         return innner
@@ -142,7 +142,7 @@ def on_debian_based(distro=None, exclude=[]):
         @functools.wraps(f)
         def innner(*args, **kwargs):
             if not distro:
-                error("Distro info is needed.")
+                raise Exception("Distro info is needed.")
             if distro in list(set(DEB_BASED_OS) - set(exclude)):
                 return f(*args, **kwargs)
         return innner
