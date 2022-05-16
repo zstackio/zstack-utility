@@ -49,8 +49,7 @@ def isMiniHost():
 
 
 def isHyperConvergedHost():
-    hyper_converged_dir = "/usr/local/hyperconverged"
-    if os.path.exists(hyper_converged_dir):
-        return True
-    else:
+    r, o = bash.bash_ro("bootstrap is_deployed")
+    if r != 0 or o.strip() != "true":
         return False
+    return True
