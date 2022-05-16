@@ -98,6 +98,11 @@ class ResizeVolumeRsp(AgentRsp):
         self.size = None
 
 
+class ExtendMergeTargetRsp(AgentRsp):
+    def __init__(self):
+        super(ExtendMergeTargetRsp, self).__init__()
+
+
 class OfflineMergeSnapshotRsp(AgentRsp):
     def __init__(self):
         super(OfflineMergeSnapshotRsp, self).__init__()
@@ -299,6 +304,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     DOWNLOAD_BITS_FROM_IMAGESTORE_PATH = "/sharedblock/imagestore/download"
     REVERT_VOLUME_FROM_SNAPSHOT_PATH = "/sharedblock/volume/revertfromsnapshot"
     MERGE_SNAPSHOT_PATH = "/sharedblock/snapshot/merge"
+    EXTEND_MERGE_TARGET_PATH = "/sharedblock/snapshot/extendmergetarget";
     OFFLINE_MERGE_SNAPSHOT_PATH = "/sharedblock/snapshot/offlinemerge"
     CREATE_EMPTY_VOLUME_PATH = "/sharedblock/volume/createempty"
     CREATE_DATA_VOLUME_WITH_BACKING_PATH = "/sharedblock/volume/createwithbacking"
@@ -341,6 +347,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_IMAGESTORE_PATH, self.download_from_imagestore)
         http_server.register_async_uri(self.REVERT_VOLUME_FROM_SNAPSHOT_PATH, self.revert_volume_from_snapshot)
         http_server.register_async_uri(self.MERGE_SNAPSHOT_PATH, self.merge_snapshot)
+        http_server.register_async_uri(self.EXTEND_MERGE_TARGET_PATH, self.extend_merge_target)
         http_server.register_async_uri(self.OFFLINE_MERGE_SNAPSHOT_PATH, self.offline_merge_snapshots)
         http_server.register_async_uri(self.CREATE_EMPTY_VOLUME_PATH, self.create_empty_volume)
         http_server.register_async_uri(self.CONVERT_IMAGE_TO_VOLUME, self.convert_image_to_volume)
@@ -1073,6 +1080,21 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         rsp.actualSize = rsp.size
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def extend_merge_target(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = ExtendMergeTargetRsp()
+        dst_abs_path = translate_absolute_path_from_install_path(cmd.destPath)
+
+        with lvm.RecursiveOperateLv(dst_abs_path, shared=False):
+            measure_size = linux.qcow2_measure_required_size(dst_abs_path)
+            current_size = int(lvm.get_lv_size(dst_abs_path))
+            if current_size < measure_size:
+                lvm.resize_lv_from_cmd(dst_abs_path, measure_size, cmd, extend_thin_by_specified_size=True)
+
+        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
