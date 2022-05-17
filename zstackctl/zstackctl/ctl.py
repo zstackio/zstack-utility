@@ -6312,6 +6312,23 @@ class CollectLogCmd(Command):
             info_verbose("The collect log generate at: %s/collect-log-%s-%s.tar.gz" % (run_command_dir, detail_version, time_stamp))
 
 
+def is_hyper_converged_host():
+    r, o= commands.getstatusoutput("bootstrap is_deployed")
+    if r != 0 or o.strip() != "true":
+        return False
+    return True
+
+
+def get_hci_detail_version():
+    detailed_version_file = "/usr/local/hyperconverged/conf/VERSION"
+    if os.path.exists(detailed_version_file):
+        with open(detailed_version_file, 'r') as fd:
+            detailed_version = fd.read().strip()
+            return detailed_version.rsplit("-", 2)[0]
+    else:
+        return None
+
+
 class ConfiguredCollectLogCmd(Command):
     logger_dir = '/var/log/zstack/'
     logger_file = 'zstack-ctl.log'
@@ -6382,9 +6399,14 @@ class ConfiguredCollectLogCmd(Command):
         time_stamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
         # create log
         create_log(self.logger_dir, self.logger_file)
-        if get_detail_version() is not None:
+
+        detail_version = None
+        if is_hyper_converged_host():
+            detail_version = get_hci_detail_version()
+        elif get_detail_version() is not None:
             detail_version = get_detail_version().replace(' ', '_')
-        else:
+
+        if detail_version is None:
             hostname, port, user, password = ctl.get_live_mysql_portal()
             detail_version = get_zstack_version(hostname, port, user, password)
 
