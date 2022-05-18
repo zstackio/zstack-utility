@@ -1105,7 +1105,7 @@ def resize_lv_from_cmd(path, size, cmd, extend_thin_by_specified_size=False):
     if int(size) - current_size > cmd.addons[thinProvisioningInitializeSize]:
         resize_lv(path, current_size + cmd.addons[thinProvisioningInitializeSize])
     else:
-        resize_lv(path, size)
+        resize_lv(path, size, cmd.force)
 
 
 def active_lv(path, shared=False):
