@@ -911,6 +911,11 @@ def qcow2_create(dst, size):
     shell.check_run('/usr/bin/qemu-img create -f qcow2 %s %s' % (dst, size))
     os.chmod(dst, 0o660)
 
+def qemu_img_resize(target, size, fmt='qcow2', force=False):
+    fmt_option = '-f %s' % fmt
+    force_option = '--shrink' if force else ''
+    shell.check_run('/usr/bin/qemu-img resize %s %s %s %s' % (fmt_option, force_option, target, size))
+
 def qcow2_create_with_cmd(dst, size, cmd=None):
     if cmd is None or cmd.kvmHostAddons is None or cmd.kvmHostAddons.qcow2Options is None:
         qcow2_create(dst, size)
