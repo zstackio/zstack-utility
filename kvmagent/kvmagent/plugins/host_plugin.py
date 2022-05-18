@@ -178,7 +178,7 @@ class HostPhysicalMemoryStruct(object):
 
 class GetHostPhysicalMemoryFactsResponse(kvmagent.AgentResponse):
     physicalMemoryFacts = None  # type: list[HostPhysicalMemoryStruct]
-    
+
     def __init__(self):
         super(GetHostPhysicalMemoryFactsResponse, self).__init__()
         self.physicalMemoryFacts = []
@@ -699,12 +699,12 @@ class HostPlugin(kvmagent.KvmAgent):
 
         if self.host_socket is not None:
             self.host_socket.close()
-        
+
         try:
             self.host_socket = socket.socket()
         except socket.error as e:
             self.host_socket = None
-            
+
         ip_address = cmd.sendCommandUrl.split('/')[2].split(':')[0]
         try:
             self.host_socket.connect((ip_address, cmd.tcpServerPort))
@@ -747,7 +747,7 @@ class HostPlugin(kvmagent.KvmAgent):
         if os.path.exists(HOST_TAKEOVER_FLAG_PATH):
             linux.touch_file(HOST_TAKEOVER_FLAG_PATH)
         return jsonobject.dumps(rsp)
-    
+
     @kvmagent.replyerror
     def check_file_on_host(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -775,7 +775,7 @@ class HostPlugin(kvmagent.KvmAgent):
             time.sleep(3)
             loop += 1
         return ''
-    
+
     def cache_units_convert(str):
 
         unit = str.strip().split(" ")[1]
@@ -786,7 +786,7 @@ class HostPlugin(kvmagent.KvmAgent):
             value == value * 1.024 * 1024
         elif unit == 'GiB':
             value == value * 1.024 * 1024 * 1024
-        
+
         return value
 
     @kvmagent.replyerror
@@ -840,10 +840,10 @@ class HostPlugin(kvmagent.KvmAgent):
             # in case lscpu doesn't show cpu max mhz
             cpuMHz = "2500.0000" if cpuMHz.strip() == '' else cpuMHz
             rsp.cpuGHz = '%.2f' % (float(cpuMHz) / 1000)
-            cpu_processor_num = shell.call("lscpu | grep -m1 'CPU(s)' | awk -F ':' '{print $2}'")                    
-            rsp.cpuProcessorNum = int(cpu_processor_num.strip())                                                         
+            cpu_processor_num = shell.call("lscpu | grep -m1 'CPU(s)' | awk -F ':' '{print $2}'")
+            rsp.cpuProcessorNum = int(cpu_processor_num.strip())
 
-            cpu_l1d_cache = shell.call("lscpu | grep 'L1i cache' | awk -F ':' '{print $2}'") 
+            cpu_l1d_cache = shell.call("lscpu | grep 'L1i cache' | awk -F ':' '{print $2}'")
             cpu_l1i_cache = shell.call("lscpu | grep 'L1d cache' | awk -F ':' '{print $2}'")
             cpu_l1_cache = ''
             if bool(re.search(r'\d', cpu_l1d_cache)) and bool(re.search(r'\d', cpu_l1i_cache)):
@@ -894,9 +894,9 @@ class HostPlugin(kvmagent.KvmAgent):
             rsp.cpuGHz = static_cpuGHz_re.group(0)[:-3] if static_cpuGHz_re else transient_cpuGHz
 
             cpu_processor_num = shell.call("grep -c processor /proc/cpuinfo")
-            rsp.cpuProcessorNum = cpu_processor_num.strip()         
+            rsp.cpuProcessorNum = cpu_processor_num.strip()
 
-            cpu_l1d_cache = shell.call("lscpu | grep 'L1i cache' | awk -F ':' '{print $2}'") 
+            cpu_l1d_cache = shell.call("lscpu | grep 'L1i cache' | awk -F ':' '{print $2}'")
             cpu_l1i_cache = shell.call("lscpu | grep 'L1d cache' | awk -F ':' '{print $2}'")
             cpu_l1_cache = ''
             if bool(re.search(r'\d', cpu_l1d_cache)) and bool(re.search(r'\d', cpu_l1i_cache)):
@@ -915,7 +915,7 @@ class HostPlugin(kvmagent.KvmAgent):
             if cpu_l1_cache != '' and cpu_l2_cache != '' and cpu_l3_cache != '':
                 cpuCache = [cpu_l1_cache, cpu_l2_cache.strip(), cpu_l3_cache.strip()]
                 rsp.cpuCache = ",".join(cpuCache)
-            
+
         return jsonobject.dumps(rsp)
 
     @vm_plugin.LibvirtAutoReconnect
@@ -1520,8 +1520,8 @@ done
                         results.append(m)
         rsp.physicalMemoryFacts = results
         return jsonobject.dumps(rsp)
-        
-        
+
+
     @kvmagent.replyerror
     def get_host_network_facts(self, req):
         rsp = GetHostNetworkBongdingResponse()
@@ -1610,7 +1610,16 @@ done
             if os.path.exists(numvfs):
                 with open(numvfs, 'r') as f:
                     to.maxPartNum = f.read().strip()
-            to.virtStatus = "SRIOV_VIRTUAL"
+
+            # for NVIDIA A-Series, after driver successfully installed, virtfn files will be created
+            # set deviceId and vendorId null
+            virtfn = os.path.join(dev, os.readlink(physfn), 'virtfn0')
+            if os.path.exists(virtfn):
+                to.deviceId = ""
+                to.vendorId = ""
+            else:
+                to.virtStatus = "SRIOV_VIRTUAL"
+
             to.parentAddress = os.readlink(physfn).split('/')[-1]
             if os.path.exists(gpuvf):
                 with open(gpuvf, 'r') as f:
@@ -1631,9 +1640,14 @@ done
             return False
 
         check_mdev_folder = '/sys/bus/pci/devices/%s/mdev_supported_types' % addr
-        if not os.path.isdir(check_mdev_folder):
+        legacy_mdev_dir_exists = os.path.isdir(check_mdev_folder)
+        check_virtfn_folder = '/sys/bus/pci/devices/%s/virtfn0/mdev_supported_types' % addr
+        virt_function_dir_exits = os.path.isdir(check_virtfn_folder)
+
+        if not legacy_mdev_dir_exists and not virt_function_dir_exits:
             return False
 
+        # check if nvidia vgpu is supported by current device
         r, o, e = bash_roe("nvidia-smi vgpu -i %s -v -s" % addr)
         if r != 0:
             return False
@@ -1649,14 +1663,53 @@ done
             else:
                 to.mdevSpecifications[-1][title] = content
 
+        if legacy_mdev_dir_exists:
+            self._legacy_mdev(to)
+        elif virt_function_dir_exits:
+            self._virt_function(to)
+
+        return True
+
+    def _legacy_mdev(self, to):
         # if supported specs != creatable specs, means it's aleady virtualized
-        _, support, _ = bash_roe("nvidia-smi vgpu -i %s -s | grep -v %s" % (addr, addr))
-        _, creatable, _ = bash_roe("nvidia-smi vgpu -i %s -c | grep -v %s" % (addr, addr))
+        _, support, _ = bash_roe("nvidia-smi vgpu -i %s -s | grep -v %s" % (to.pciDeviceAddress, to.pciDeviceAddress))
+        _, creatable, _ = bash_roe("nvidia-smi vgpu -i %s -c | grep -v %s" % (to.pciDeviceAddress, to.pciDeviceAddress))
         if support != creatable:
             to.virtStatus = "VFIO_MDEV_VIRTUALIZED"
         else:
             to.virtStatus = "VFIO_MDEV_VIRTUALIZABLE"
-        return True
+
+    def _virt_function(self, to):
+        addr = to.pciDeviceAddress
+        r, o, e = bash_roe("ls /sys/bus/pci/devices/%s/ | grep virtfn" % addr)
+        if r != 0:
+            return False
+
+        mdev_r, mdev_o, _ = bash_roe("ls /sys/bus/mdev/devices/")
+
+        virtualizable = False
+        mdev_devices_exists = False
+        for virtfn in o.splitlines():
+            virtfn_dir = "/sys/bus/pci/devices/%s/%s/" % (addr, virtfn)
+            for mdev in mdev_o.splitlines():
+                if os.path.exists(os.path.join(virtfn_dir, mdev)):
+                    mdev_devices_exists = True
+                    break
+
+            for virf in os.listdir(os.path.join(virtfn_dir, 'mdev_supported_types')):
+                if "nvidia-" in virf:
+                    with open(os.path.join(virtfn_dir, 'mdev_supported_types', virf, "available_instances"), 'r') as af:
+                        max_instances = af.read().strip()
+
+                    if max_instances == '1':
+                        virtualizable = True
+                        break
+            if virtualizable or mdev_devices_exists:
+                break
+        if virtualizable is True and mdev_devices_exists is False:
+            to.virtStatus = "VFIO_MDEV_VIRTUALIZABLE"
+        elif virtualizable is False and mdev_devices_exists is True:
+            to.virtStatus = "VFIO_MDEV_VIRTUALIZED"
 
     def _simplify_pci_device_name(self, name):
         if 'Intel Corporation' in name:
@@ -1982,28 +2035,70 @@ done
             logger.debug("no need to re-splite pci device[addr:%s] into mdev devices" % addr)
             return jsonobject.dumps(rsp)
 
+        # virtualization needs to be enabled when restarting the host to sync vgpu mdev
+        if os.path.exists('/usr/lib/nvidia/sriov-manage'):
+            bash_roe("/usr/lib/nvidia/sriov-manage -e ALL")
+
         # support nvidia gpu only
         type = int(cmd.mdevSpecTypeId, 0)
         spec_path = os.path.join("/sys/bus/pci/devices/", addr, "mdev_supported_types", "nvidia-%d" % type)
-        if not os.path.exists(spec_path):
+        legacy_spec_exists = os.path.exists(spec_path)
+        virtfn_path = os.path.join("/sys/bus/pci/devices/", addr, "virtfn0", "mdev_supported_types", "nvidia-%d" % type)
+        virt_function_spec_exits = os.path.exists(virtfn_path)
+
+        if not legacy_spec_exists and not virt_function_spec_exits:
             rsp.success = False
             rsp.error = "cannot generate vfio mdev devices from pci device[addr:%s]" % addr
             return jsonobject.dumps(rsp)
 
-        if cmd.mdevUuids and len(cmd.mdevUuids) != 0:
-            for _uuid in cmd.mdevUuids:
-                with open(os.path.join(spec_path, "create"), 'w') as f:
-                    f.write(str(uuid.UUID(_uuid)))
-                    logger.debug("re-generate mdev device[uuid:%s] from pci device[addr:%s]" % (_uuid, addr))
-        else:
-            with open(os.path.join(spec_path, "available_instances"), 'r') as f:
-                max_instances = f.read().strip()
-            for i in range(int(max_instances)):
-                _uuid = str(uuid.uuid4())
-                rsp.mdevUuids.append(_uuid)
-                with open(os.path.join(spec_path, "create"), 'w') as f:
-                    f.write(_uuid)
-                    logger.debug("generate mdev device[uuid:%s] from pci device[addr:%s]" % (_uuid, addr))
+        if legacy_spec_exists:
+            if cmd.mdevUuids and len(cmd.mdevUuids) != 0:
+                for _uuid in cmd.mdevUuids:
+                    with open(os.path.join(spec_path, "create"), 'w') as f:
+                        f.write(str(uuid.UUID(_uuid)))
+                        logger.debug("re-generate mdev device[uuid:%s] from pci device[addr:%s]" % (_uuid, addr))
+            else:
+                with open(os.path.join(spec_path, "available_instances"), 'r') as af:
+                    max_instances = af.read().strip()
+                for i in range(int(max_instances)):
+                    _uuid = str(uuid.uuid4())
+                    rsp.mdevUuids.append(_uuid)
+                    with open(os.path.join(spec_path, "create"), 'w') as cf:
+                        cf.write(_uuid)
+                        logger.debug("generate mdev device[uuid:%s] from pci device[addr:%s]" % (_uuid, addr))
+        elif virt_function_spec_exits:
+            r, o, e = bash_roe("ls /sys/bus/pci/devices/%s/ | grep virtfn" % addr)
+            if r != 0:
+                rsp.success = False
+                rsp.error = e
+                return jsonobject.dumps(rsp)
+
+            if cmd.mdevUuids and len(cmd.mdevUuids) != 0:
+                for _uuid, virtfn in zip(cmd.mdevUuids, o.splitlines()):
+                    virtfn_dir = "/sys/bus/pci/devices/%s/%s/mdev_supported_types/nvidia-%d" % (addr, virtfn, type)
+                    with open(os.path.join(virtfn_dir, "create"), 'w') as f:
+                        f.write(str(uuid.UUID(_uuid)))
+                        logger.debug("re-generate mdev device[uuid:%s] from pci device[addr:%s]" % (_uuid, addr))
+            else:
+                is_generate = False
+                for virtfn in o.splitlines():
+                    virtfn_dir =  "/sys/bus/pci/devices/%s/%s/mdev_supported_types/nvidia-%d" % (addr, virtfn, type)
+                    with open(os.path.join(virtfn_dir, "available_instances"), 'r') as af:
+                        max_instances = af.read().strip()
+                        if int(max_instances) > 0:
+                            is_generate = True
+                    for i in range(int(max_instances)):
+                        _uuid = str(uuid.uuid4())
+                        rsp.mdevUuids.append(_uuid)
+                        with open(os.path.join(virtfn_dir, "create"), 'w') as cf:
+                            cf.write(_uuid)
+                            logger.debug("generate mdev device[uuid:%s] from pci device[addr:%s]" % (_uuid, addr))
+
+                if not is_generate:
+                    with open(os.path.join(virtfn_path, "name"), 'r') as f:
+                        name = f.read().strip()
+                    rsp.success = False
+                    rsp.error = "generate mdev device[name:%s] from pci device[addr:%s] is fail " % (name, addr)
 
         # create ramdisk file after pci device virtualization
         open(ramdisk, 'a').close()
@@ -2019,22 +2114,41 @@ done
         addr = cmd.pciDeviceAddress
         type = int(cmd.mdevSpecTypeId, 0)
         device_path = os.path.join("/sys/bus/pci/devices/", addr, "mdev_supported_types", "nvidia-%d" % type, "devices")
-        if not os.path.exists(device_path):
+        legacy_spec_exists = os.path.exists(device_path)
+        virtfn_path = os.path.join("/sys/bus/pci/devices/", addr, "virtfn0", "mdev_supported_types", "nvidia-%d" % type, "devices")
+        virt_function_dir_exits = os.path.exists(virtfn_path)
+
+
+        if not legacy_spec_exists and not virt_function_dir_exits:
             rsp.success = False
             rsp.error = "no vfio mdev devices to ungenerate from pci device[addr:%s]" % addr
             return jsonobject.dumps(rsp)
 
-        # remove
-        for _uuid in os.listdir(device_path):
-            with open(os.path.join(device_path, _uuid, "remove"), 'w') as f:
-                f.write("1")
+        # remove legacy device
+        if legacy_spec_exists:
+            for _uuid in os.listdir(device_path):
+                with open(os.path.join(device_path, _uuid, "remove"), 'w') as f:
+                    f.write("1")
 
-        # check
-        _, support, _ = bash_roe("nvidia-smi vgpu -i %s -s | grep -v %s" % (addr, addr))
-        _, creatable, _ = bash_roe("nvidia-smi vgpu -i %s -c | grep -v %s" % (addr, addr))
-        if support != creatable:
-            rsp.success = False
-            rsp.error = "failed to ungenerate vfio mdev devices from pci device[addr:%s]" % addr
+            # check
+            _, support, _ = bash_roe("nvidia-smi vgpu -i %s -s | grep -v %s" % (addr, addr))
+            _, creatable, _ = bash_roe("nvidia-smi vgpu -i %s -c | grep -v %s" % (addr, addr))
+            if support != creatable:
+                rsp.success = False
+                rsp.error = "failed to ungenerate vfio mdev devices from pci device[addr:%s]" % addr
+        elif virt_function_dir_exits:
+            r, o, e = bash_roe("ls /sys/bus/pci/devices/%s/ | grep virtfn" % addr)
+            if r != 0:
+                rsp.success = False
+                rsp.error = e
+                return jsonobject.dumps(rsp)
+
+            for virtfn in o.splitlines():
+                virtfn_dir =  os.path.join("/sys/bus/pci/devices/", addr, virtfn, "mdev_supported_types", "nvidia-%d" % type, "devices")
+                for _uuid in os.listdir(virtfn_dir):
+                    with open(os.path.join(virtfn_dir, _uuid, "remove"), "w") as f:
+                        f.write("1")
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
