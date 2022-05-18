@@ -215,6 +215,9 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         if not cmd.multipath and "mpath" in cmd.volume.installPath:
             cmd.volume.installPath = self.get_slave_path(cmd.volume.installPath)
 
+        if not os.path.exists(cmd.volume.installPath):
+            shell.run("timeout 30 iscsiadm -m session -R")
+
         vm = vm_plugin.get_vm_by_uuid(cmd.vmInstanceUuid)
         vm.attach_data_volume(cmd.volume, cmd.addons)
         return jsonobject.dumps(rsp)
