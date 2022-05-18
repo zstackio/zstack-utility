@@ -1579,9 +1579,23 @@ class ShowStatusCmd(Command):
                 info('version: %s (%s)' % (version, detailed_version))
             else:
                 info('version: %s' % version)
+        def show_hci_version():
+            hci_path = '/usr/local/hyperconverged/conf/VERSION'
+            if not os.path.exists(hci_path):
+                return
+            with open(hci_path, 'r') as fd:
+                version = fd.readline().strip(' \t\n\r')
+                if version is not None: 
+                    if version[0].isdigit(): 
+                        info('Cube version: %s (Cube %s)' % (version.split('-')[0], version))
+                    else:
+                        list = version.split('-')   
+                        info(list[0] + ' version: %s (%s)' % (list[1], version))
 
         info('\n'.join(info_list))
         show_version()
+        if is_hyper_converged_host():
+            show_hci_version()
 
         s = check_zstack_status()
         if s is not None and not s:
@@ -6349,7 +6363,7 @@ class CollectLogCmd(Command):
 
 
 def is_hyper_converged_host():
-    r, o= commands.getstatusoutput("bootstrap is_deployed")
+    r, o = commands.getstatusoutput("bootstrap is_deployed")
     if r != 0 or o.strip() != "true":
         return False
     return True
