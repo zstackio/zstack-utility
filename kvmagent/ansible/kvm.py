@@ -233,6 +233,12 @@ def install_kvm_pkg():
                         smartmontools sshpass usbutils vconfig wget audit dnsmasq tar \
                         qemu-kvm collectd-virt storcli edk2-aarch64 python-pyudev collectd-disk"
 
+        x86_64_uos1021a = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
+                        usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
+                        net-tools nfs-utils nmap openssh-clients OpenIPMI pciutils pv rsync sed nettle \
+                        smartmontools sshpass usbutils vconfig wget audit dnsmasq tar \
+                        qemu-kvm collectd-virt edk2-ovmf python-pyudev collectd-disk"
+
         aarch64_euler20 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                         usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
                         net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
