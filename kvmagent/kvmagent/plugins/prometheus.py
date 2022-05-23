@@ -428,12 +428,25 @@ def collect_ipmi_state():
     elif (time.time() - collect_equipment_state_last_time) < 25 and collect_equipment_state_last_result is not None:
         return collect_equipment_state_last_result
     
+    '''
+        Inspur
+        PSU0_Status      | 5Dh | ok  | 10.0 | Presence detected, AC lost or out-of-range 
+        PSU1_Status      | 5Eh | ok  | 10.1 | Presence detected
+
+        PowerLeader
+        PS1 Status      | C4h | ok  | 10.91 | Presence detected
+        PS2 Status      | C5h | ok  | 10.92 | Presence detected, Failure detected, Power Supply AC lost
+    '''
     r, power_supply_info = bash_ro("ipmitool sdr type 'power supply' | grep -E '^PS\w*(\ |_)Status|^PS\w*(\ |_)POUT'")
     if r == 0:
         for info in power_supply_info.splitlines():
             info = info.strip()
             ps_id = info.split("|")[0].strip().split(" ")[0].split("_")[0]
             ps_str = info.split("|")[0].strip().split(" ")[0].split("_")[1]
+            # the cut string has the same length as the original string which means cut symbol is not we want
+            if len(ps_id) == len(info.split("|")[0].strip().split(" ")[0]):
+                ps_id = info.split("|")[0].strip().split(" ")[0].split(" ")[0]
+                ps_str = info.split("|")[0].strip().split(" ")[1].split(" ")[1]
             if ps_str == 'POUT':
                 ps_out_power = info.split("|")[4].strip().lower()
                 ps_out_power = float(filter(str.isdigit, ps_out_power)) if bool(re.search(r'\d', ps_out_power)) else float(0)
@@ -457,24 +470,22 @@ def collect_ipmi_state():
             metrics['fan_speed_state'].add_metric([fan_id], fan_state)
             metrics['fan_speed_rpm'].add_metric([fan_id], float(fan_rpm))
     
+    '''
+        PowerLeader
+        CPU1 Temp      | 01h | ok  | 3.1 | 66 degrees C
+    '''
     r, cpu_temp_info = bash_ro("ipmitool sdr type 'Temperature' | grep -E -i '^CPU[0-9]*(\ |_)Temp'")  # type: (int, str)
     if r == 0:
         for info in cpu_temp_info.splitlines():
             info = info.strip()
             cpu_id = info.split("|")[0].strip().split(" ")[0].split("_")[0]
+            # the cut string has the same length as the original string which means cut symbol is not we want
+            if len(cpu_id) == len(info.split("|")[0].strip().split(" ")[0]):
+                cpu_id = info.split("|")[0].strip().split(" ")[0].split(" ")[0]
             cpu_state = 0 if info.split("|")[2].strip().lower() == "ok" else 10
             cpu_temp = 0 if cpu_state != 0 else info.split("|")[4].strip().split(" ")[0]
             metrics['cpu_temperature'].add_metric([cpu_id], float(cpu_temp))
-    
-    r, cpu_status_info = bash_ro("ipmitool sdr type 'Processor' | grep '^CPU[0-9]*_Status'") # type: (int, str)
-    if r == 0:
-        for info in cpu_status_info.splitlines():
-            info = info.strip()
-            cpu_id = info.split("|")[0].strip().split(" ")[0].split("_")[0]
-            cpu_status = info.split("|")[2].strip().lower()
-            cpu_status_str = info.split("|")[4].strip().lower()
-            status = 0 if "ok" == cpu_status and "presence detected" == cpu_status_str else 10
-            metrics['cpu_status'].add_metric([cpu_id], float(status))
+            metrics['cpu_status'].add_metric([cpu_id], float(cpu_state))
     
     collect_equipment_state_last_result = metrics.values()
     return collect_equipment_state_last_result
