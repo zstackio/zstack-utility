@@ -4935,7 +4935,7 @@ def check_mirror_jobs(domain_id, migrate_without_bitmaps):
 
     isc = ImageStoreClient()
     volumes = isc.query_mirror_volumes(domain_id)
-    for v in volumes:
+    for v in volumes.keys():
         isc.stop_mirror(domain_id, False, v)
 
     if migrate_without_bitmaps:
@@ -6574,7 +6574,7 @@ host side snapshot files chian:
 
         isc = ImageStoreClient()
         volumes = isc.query_mirror_volumes(cmd.vmUuid)
-        for device_name in volumes:
+        for device_name in volumes.keys():
             try:
                 rsp.mirrorVolumes.append(voldict[device_name])
             except KeyError:
@@ -6605,6 +6605,14 @@ host side snapshot files chian:
                 lastVolume = cmd.lastMirrorVolume
                 currVolume = installPath.split(":/")[-1]
                 volumeType = "qcow2"
+
+            try:
+                volumes = isc.query_mirror_volumes(cmd.vmUuid)
+                target = volumes[device_name]
+                if target != cmd.mirrorTarget:
+                    isc.stop_mirror(cmd.vmUuid, False, device_name)
+            except KeyError:
+                pass
 
             isc.mirror_volume(cmd.vmUuid, device_name, cmd.mirrorTarget, lastVolume, currVolume, volumeType, cmd.mode, cmd.speed, Report.from_spec(cmd, "TakeMirror"))
 
