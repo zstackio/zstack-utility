@@ -3564,7 +3564,8 @@ class Vm(object):
         args = {}
         for volume in volumes:
             target_disk, _ = self._get_target_disk(volume)
-            args[str(volume.deviceId)] = VmPlugin.get_disk_device_name(target_disk), 0
+            # type: (node_name<str>, backupSpeed<int>)
+            args[str(volume.deviceId)] = get_block_node_name_by_disk_name(target_disk), 0
 
         dst_workspace = os.path.join(os.path.dirname(dst_backup_paths['0']), 'workspace')
         linux.mkdir(dst_workspace)
@@ -3574,8 +3575,8 @@ class Vm(object):
 
         job_res = jsonobject.loads(res)
         for device_id, dst_path in dst_backup_paths.items():
-            device_name = args[device_id][0]
-            back_path = os.path.join(dst_workspace, job_res[device_name].backupFile)
+            node_name = args[device_id][0]
+            back_path = os.path.join(dst_workspace, job_res[node_name].backupFile)
             linux.mkdir(os.path.dirname(dst_path))
             shutil.move(back_path, dst_path)
 
@@ -5029,10 +5030,36 @@ def _stop_world():
     http.AsyncUirHandler.STOP_WORLD = True
     VmPlugin.queue_singleton.queue.put("exit")
 
+def qmp_subcmd(s_cmd):
+    # object-add option props (removed in 6.0).
+    # Specify the properties for the object as top-level arguments instead.
+    if LooseVersion(QEMU_VERSION) >= LooseVersion("6.0.0") and re.match(r'.*object-add.*arguments.*props.*', s_cmd):
+            j_cmd = json.loads(s_cmd)
+            props = j_cmd.get("arguments").get("props")
+            j_cmd.get("arguments").pop("props")
+            j_cmd.get("arguments").update(props)
+            s_cmd = json.dumps(j_cmd)
+    return s_cmd
 
 @in_bash
 def execute_qmp_command(domain_id, command):
-    return bash.bash_roe("virsh qemu-monitor-command %s '%s' --pretty" % (domain_id, command))
+    return bash.bash_roe("virsh qemu-monitor-command %s '%s' --pretty" % (domain_id, qmp_subcmd(command)))
+
+def get_vm_blocks(domain_id):
+    r, o, e = execute_qmp_command(domain_id, '{ "execute": "query-block" }')
+    if r != 0:
+        raise kvmagent.KvmError("Failed to query blocks on vm[uuid:{}], libvirt error:{}".format(domain_id, e))
+
+    blocks = json.loads(o)["return"]
+    if not blocks:
+        raise kvmagent.KvmError("No blocks found on vm[uuid:{}]".format(domain_id))
+
+    return blocks
+
+def get_block_node_name_by_disk_name(domain_id, disk_name):
+    all_blocks = get_vm_blocks(domain_id)
+    block = filter(lambda b: disk_name in b['qdev'], all_blocks)[0]
+    return block["inserted"]['node-name']
 
 def get_vm_migration_caps(domain_id, cap_key):
     r, o, e = execute_qmp_command(domain_id, '{"execute": "query-migrate-capabilities"}')
@@ -6556,7 +6583,7 @@ host side snapshot files chian:
         for deviceId in device_ids:
             target_disk = target_disks[deviceId]
             drivertype = target_disk.driver.type_
-            nodename = self.get_disk_device_name(target_disk)
+            nodename = get_block_node_name_by_disk_name(cmd.vmUuid, target_disk.alias.name_)
             source = target_disk.source
             bitmap = bitmaps[deviceId]
 
@@ -6664,6 +6691,7 @@ host side snapshot files chian:
 
     @staticmethod
     def get_disk_device_name(disk):
+        # The disk type on FT-backup_vm is quorom
         return ('' if disk.type_ == 'quorum' else 'drive-') + disk.alias.name_
 
     def getLastBackup(self, deviceId, backupInfos):
@@ -6752,9 +6780,9 @@ host side snapshot files chian:
 
         try:
             target_disk, _ = vm._get_target_disk(cmd.volume)
-            device_name = self.get_disk_device_name(target_disk)
+            node_name = get_block_node_name_by_disk_name(cmd.vmUuid, target_disk.alias.name_)
             isc = ImageStoreClient()
-            isc.stop_mirror(cmd.vmUuid, cmd.complete, device_name)
+            isc.stop_mirror(cmd.vmUuid, cmd.complete, node_name)
         except Exception as e:
             content = traceback.format_exc()
             logger.warn("stop volume mirror failed: " + str(e) + '\n' + content)
@@ -6775,21 +6803,21 @@ host side snapshot files chian:
         voldict = {} # type: dict[str, str]
         for v in cmd.volumes:
             target_disk, _ = vm._get_target_disk(v)
-            device_name = self.get_disk_device_name(target_disk)
-            voldict[device_name] = v.volumeUuid
+            node_name = get_block_node_name_by_disk_name(cmd.vmUuid, target_disk.alias.name_)
+            voldict[node_name] = v.volumeUuid
 
         isc = ImageStoreClient()
         volumes = isc.query_mirror_volumes(cmd.vmUuid)
         if volumes is None:
             return jsonobject.dumps(rsp)
 
-        for device_name in volumes.keys():
+        for node_name in volumes:
             try:
-                rsp.mirrorVolumes.append(voldict[device_name])
+                rsp.mirrorVolumes.append(voldict[node_name])
             except KeyError:
-                rsp.extraMirrorVolumes.append(device_name)
+                rsp.extraMirrorVolumes.append(node_name)
                 if cmd.stopExtra:
-                    isc.stop_mirror(cmd.vmUuid, False, device_name)
+                    isc.stop_mirror(cmd.vmUuid, False, node_name)
 
         return jsonobject.dumps(rsp)
 
@@ -6804,7 +6832,7 @@ host side snapshot files chian:
 
         try:
             target_disk, _ = vm._get_target_disk(cmd.volume)
-            device_name = self.get_disk_device_name(target_disk)
+            node_name = get_block_node_name_by_disk_name(cmd.vmUuid, target_disk.alias.name_)
 
             isc = ImageStoreClient()
             installPath = cmd.volume.installPath
@@ -6825,11 +6853,11 @@ host side snapshot files chian:
             except KeyError:
                 pass
 
-            isc.mirror_volume(cmd.vmUuid, device_name, cmd.mirrorTarget, lastVolume, currVolume, volumeType, cmd.mode, cmd.speed, Report.from_spec(cmd, "TakeMirror"))
+            isc.mirror_volume(cmd.vmUuid, node_name, cmd.mirrorTarget, lastVolume, currVolume, volumeType, cmd.mode, cmd.speed, Report.from_spec(cmd, "TakeMirror"))
 
             execute_qmp_command(cmd.vmUuid, '{"execute": "migrate-set-capabilities","arguments":'
                                             '{"capabilities":[ {"capability": "dirty-bitmaps", "state":true}]}}')
-            logger.info('finished mirroring volume[%s]: %s' % (device_name, jsonobject.dumps(cmd.volume)))
+            logger.info('finished mirroring volume[%s]: %s' % (node_name, cmd.volume))
 
         except Exception as e:
             content = traceback.format_exc()
@@ -6885,7 +6913,7 @@ host side snapshot files chian:
             target_disk, _ = vm._get_target_disk(cmd.volume)
             bitmap, parent = self.do_take_volume_backup(cmd,
                     target_disk.driver.type_, # 'qcow2' etc.
-                    self.get_disk_device_name(target_disk),  # 'virtio-disk0' etc.
+                    get_block_node_name_by_disk_name(cmd.vmUuid, target_disk.alias.name_), # 'libvirt-2-format', '#block138' etc.
                     target_disk.source,
                     os.path.join(storage.local_work_dir, fname))
 
