@@ -386,9 +386,11 @@ class TakeVolumeMirrorResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(TakeVolumeMirrorResponse, self).__init__()
 
+
 class CancelVolumeMirrorResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(CancelVolumeMirrorResponse, self).__init__()
+
 
 class QueryVolumeMirrorResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -396,12 +398,20 @@ class QueryVolumeMirrorResponse(kvmagent.AgentResponse):
         self.mirrorVolumes = [] # type:list[str]
         self.extraMirrorVolumes = [] # type:list[str]
 
+
 class TakeVolumeBackupResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(TakeVolumeBackupResponse, self).__init__()
         self.backupFile = None
         self.parentInstallPath = None
         self.bitmap = None
+
+
+class QueryVolumeMirrorLatenciesResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(QueryVolumeMirrorLatenciesResponse, self).__init__()
+        self.mirrorLatencies = []  # type:list[list[VolumeLatencyInfo]]
+
 
 class VolumeBackupInfo(object):
     def __init__(self, deviceId, bitmap, backupFile, parentInstallPath):
@@ -4969,6 +4979,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_TAKE_VOLUME_MIRROR_PATH = "/vm/volume/takemirror"
     KVM_CANCEL_VOLUME_MIRROR_PATH = "/vm/volume/cancelmirror"
     KVM_QUERY_VOLUME_MIRROR_PATH = "/vm/volume/querymirror"
+    KVM_QUERY_MIRROR_LATENCIES_PATH = "/vm/volume/querylatency"
     KVM_BLOCK_STREAM_VOLUME_PATH = "/vm/volume/blockstream"
     KVM_TAKE_VOLUMES_SNAPSHOT_PATH = "/vm/volumes/takesnapshot"
     KVM_TAKE_VOLUMES_BACKUP_PATH = "/vm/volumes/takebackup"
@@ -6621,6 +6632,20 @@ host side snapshot files chian:
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def query_mirror_latencies(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = QueryVolumeMirrorLatenciesResponse()
+
+        try:
+            isc = ImageStoreClient()
+            rsp.mirrorLatencies = isc.query_mirror_latencies(cmd.vmUuid)
+        except Exception as e:
+            rsp.error = str(e)
+            rsp.success = False
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     def take_volume_backup(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = TakeVolumeBackupResponse()
@@ -7820,6 +7845,7 @@ host side snapshot files chian:
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_MIRROR_PATH, self.take_volume_mirror)
         http_server.register_async_uri(self.KVM_CANCEL_VOLUME_MIRROR_PATH, self.cancel_volume_mirror)
         http_server.register_async_uri(self.KVM_QUERY_VOLUME_MIRROR_PATH, self.query_volume_mirror)
+        http_server.register_async_uri(self.KVM_QUERY_MIRROR_LATENCIES_PATH, self.query_mirror_latencies)
         http_server.register_async_uri(self.KVM_TAKE_VOLUMES_SNAPSHOT_PATH, self.take_volumes_snapshots)
         http_server.register_async_uri(self.KVM_TAKE_VOLUMES_BACKUP_PATH, self.take_volumes_backups, cmd=TakeVolumesBackupsCommand())
         http_server.register_async_uri(self.KVM_CANCEL_VOLUME_BACKUP_JOBS_PATH, self.cancel_backup_jobs)
