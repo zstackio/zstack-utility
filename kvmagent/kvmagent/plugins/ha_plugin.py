@@ -475,10 +475,15 @@ class HaPlugin(kvmagent.KvmAgent):
             health(False)
             # If the command times out, then exit with status 124
             if health.return_code == 124:
+                logger.debug('ceph health command timeout, ceph is in error stat')
                 return True
 
             health_status = health.stdout
-            return not (health_status.startswith('HEALTH_OK') or health_status.startswith('HEALTH_WARN'))
+            ceph_in_error_state = not (health_status.startswith('HEALTH_OK') or health_status.startswith('HEALTH_WARN'))
+            if ceph_in_error_state:
+                logger.debug("current ceph stat: %s, error detected" % health_status)
+
+            return ceph_in_error_state
 
         def handle_heartbeat_failure(self):
             self.failure += 1
@@ -486,10 +491,13 @@ class HaPlugin(kvmagent.KvmAgent):
                         (self.host_uuid, self.primary_storage_uuid, self.pool_name, self.failure, self.max_attempts))
 
             if self.failure >= self.max_attempts:
+                logger.debug("heartbeat failure reached max attempts %s, check storage state" % self.max_attempts)
                 # c.f. We discovered that, Ceph could behave the following:
                 #  1. Create heart-beat file, failed with 'File exists'
                 #  2. Query the hb file in step 1, and failed again with 'No such file or directory'
                 if self.ceph_in_error_stat():
+                    logger.debug('ceph is in error state, check ha strategy next')
+
                     if self.strategy == 'Permissive':
                         logger.debug("ceph fencer detect ha strategy is %s skip fence vms" % self.strategy)
                         self.reset_failure_count()
