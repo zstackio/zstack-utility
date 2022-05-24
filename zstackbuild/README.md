@@ -38,7 +38,7 @@ yum install -y --setopt=tsflags=nodocs \
 
 **Version Note :** 
 
-MySQL version is: Ver 15.1 Distrib 5.5.65-MariaDB, for Linux (x86_64) using readline 5.1
+MySQL version is: Ver 15.1 Distrib 5.5.68-MariaDB, for Linux (x86_64) using readline 5.1
 
 
 
@@ -62,7 +62,7 @@ Now we can start building the package:
 ```
 cd /your/path/to/zstack-repos;
 
-wget -c https://archive.apache.org/dist/tomcat/tomcat-8/v8.5.57/bin/apache-tomcat-8.5.57.zip
+wget -c https://archive.apache.org/dist/tomcat/tomcat-8/v8.5.78/bin/apache-tomcat-8.5.78.zip
 ```
 
 
