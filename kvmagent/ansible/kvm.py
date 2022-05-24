@@ -650,6 +650,15 @@ def install_agent_pkg():
         agent_install_arg.virtualenv_site_packages = "yes"
         agent_install(agent_install_arg, host_post_info)
 
+def copy_i40e_driver():
+    """copy intel i40e ethernet dirver"""
+
+    IS_X86_64 = get_remote_host_arch(host_post_info) == 'x86_64'
+    if IS_X86_64:
+        _src = os.path.join(file_root, "i40e_driver.tar.gz")
+        _dst = "/var/lib/zstack/i40e_driver.tar.gz"
+        copy_to_remote(_src, _dst, None, host_post_info)
+
 @on_debian_based(distro, exclude=['Kylin'])
 def set_legacy_iptables_ebtables():
     """set legacy mode if needed"""
@@ -706,6 +715,7 @@ copy_gpudriver()
 copy_ovmf_tools()
 copy_lsusb_scripts()
 copy_zs_scripts()
+copy_i40e_driver()
 set_max_performance()
 do_libvirt_qemu_config()
 do_network_config()
