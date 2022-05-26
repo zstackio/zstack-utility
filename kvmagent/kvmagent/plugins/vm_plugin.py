@@ -3213,7 +3213,10 @@ class Vm(object):
         def check(_):
             me = get_vm_by_uuid(self.uuid)
             for disk in me.domain_xmlobject.devices.get_child_node_as_list('disk'):
-                if disk.device_ == "cdrom" and xmlobject.has_element(disk, 'source') == False:
+                if disk.device_ != "cdrom":
+                    continue
+                source_ = disk.get_child_node('source')
+                if not source_ or not source_.hasattr("file"):
                     if disk.target.dev__ and disk.target.dev_ == dev:
                         return True
             return False
