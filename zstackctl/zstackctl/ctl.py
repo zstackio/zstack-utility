@@ -793,7 +793,7 @@ class Ctl(object):
                 self.uiPrimaryVersion = self.uiVersion[0]
         self.commands = {}
         self.command_list = []
-        self.main_parser = CtlParser(prog='zstack-ctl', description="ZStack management tool", formatter_class=argparse.RawTextHelpFormatter)
+        self.main_parser = CtlParser(prog='astack-ctl', description="AStack management tool", formatter_class=argparse.RawTextHelpFormatter)
         self.main_parser.add_argument('-v', help="verbose, print execution details", dest="verbose", action="store_true", default=False)
         self.zstack_home = None
         self.properties_file_path = None
@@ -1482,7 +1482,7 @@ class ShowStatusCmd(Command):
     def __init__(self):
         super(ShowStatusCmd, self).__init__()
         self.name = 'status'
-        self.description = 'show ZStack status and information.'
+        self.description = 'show AStack status and information.'
         ctl.register_command(self)
     def install_argparse_arguments(self, parser):
         parser.add_argument('--host', help='SSH URL, for example, root@192.168.0.10, to show the management node status on a remote machine')
@@ -1613,9 +1613,9 @@ class DeployDBCmd(Command):
         super(DeployDBCmd, self).__init__()
         self.name = "deploydb"
         self.description = (
-            "deploy a new ZStack database, create a user 'zstack' with password specified in '--zstack-password',\n"
-            "and update zstack.properties if --no-update is not set.\n"
-            "\nDANGER: this will erase the existing ZStack database.\n"
+            "deploy a new AStack database, create a user 'zstack' with password specified in '--zstack-password',\n"
+            "and update astack.properties if --no-update is not set.\n"
+            "\nDANGER: this will erase the existing AStack database.\n"
             "NOTE: If the database is running on a remote host, please make sure you have granted privileges to the root user by:\n"
             "\n\tGRANT ALL PRIVILEGES ON *.* TO 'root'@'%%' IDENTIFIED BY 'your_root_password' WITH GRANT OPTION;\n"
             "\tFLUSH PRIVILEGES;\n"
@@ -1637,7 +1637,7 @@ class DeployDBCmd(Command):
         parser.add_argument('--zstack-password', help='password of user "zstack". [DEFAULT] empty password')
         parser.add_argument('--host', help='IP or DNS name of MySQL host; default is localhost', default='localhost')
         parser.add_argument('--port', help='port of MySQL host; default is 3306', type=int, default=3306)
-        parser.add_argument('--no-update', help='do NOT update database information to zstack.properties; if you do not know what this means, do not use it', action='store_true', default=False)
+        parser.add_argument('--no-update', help='do NOT update database information to astack.properties; if you do not know what this means, do not use it', action='store_true', default=False)
         parser.add_argument('--drop', help='drop existing zstack database', action='store_true', default=False)
         parser.add_argument('--keep-db', help='keep existing zstack database and not raise error.', action='store_true', default=False)
 
@@ -1705,8 +1705,8 @@ class DeployUIDBCmd(Command):
         super(DeployUIDBCmd, self).__init__()
         self.name = "deploy_ui_db"
         self.description = (
-            "Deploy a new zstack_ui database.\n"
-            "\nDANGER: this will erase the existing zstack_ui database.\n"
+            "Deploy a new astack_ui database.\n"
+            "\nDANGER: this will erase the existing astack_ui database.\n"
             "NOTE: If the database is running on a remote host, please make sure you have granted privileges to the root user by:\n"
             "\n\tGRANT ALL PRIVILEGES ON *.* TO 'root'@'%%' IDENTIFIED BY 'your_root_password' WITH GRANT OPTION;\n"
             "\tFLUSH PRIVILEGES;\n"
@@ -1844,13 +1844,13 @@ class ConfigureCmd(Command):
     def __init__(self):
         super(ConfigureCmd, self).__init__()
         self.name = 'configure'
-        self.description = "configure zstack.properties"
+        self.description = "configure astack.properties"
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--host', help='SSH URL, for example, root@192.168.0.10, to set properties in zstack.properties on the remote machine')
-        parser.add_argument('--duplicate-to-remote', help='SSH URL, for example, root@192.168.0.10, to copy zstack.properties on this machine to the remote machine')
-        parser.add_argument('--use-file', help='path to a file that will be used to as zstack.properties')
+        parser.add_argument('--host', help='SSH URL, for example, root@192.168.0.10, to set properties in astack.properties on the remote machine')
+        parser.add_argument('--duplicate-to-remote', help='SSH URL, for example, root@192.168.0.10, to copy astack.properties on this machine to the remote machine')
+        parser.add_argument('--use-file', help='path to a file that will be used to as astack.properties')
 
     def _configure_remote_node(self, args):
         shell_no_pipe('ssh %s "/usr/bin/zstack-ctl configure %s"' % (args.host, ' '.join(ctl.extra_arguments)))
@@ -1963,7 +1963,7 @@ class StopAllCmd(Command):
     def __init__(self):
         super(StopAllCmd, self).__init__()
         self.name = 'stop'
-        self.description = 'stop all ZStack related services including zstack management node, web UI' \
+        self.description = 'stop all AStack related services including astack management node, web UI' \
                            ' if those services are installed'
         ctl.register_command(self)
 
@@ -1989,7 +1989,7 @@ class StartAllCmd(Command):
     def __init__(self):
         super(StartAllCmd, self).__init__()
         self.name = 'start'
-        self.description = 'start all ZStack related services including zstack management node, web UI' \
+        self.description = 'start all AStack related services including astack management node, web UI' \
                            ' if those services are installed'
         ctl.register_command(self)
 
@@ -2068,7 +2068,7 @@ class SetEncryptPropertiesCmd(Command):
     def __init__(self):
         super(SetEncryptPropertiesCmd, self).__init__()
         self.name = 'set_properties_encrypt'
-        self.description = 'set encrypt zstack.propertites '
+        self.description = 'set encrypt astack.propertites '
         ctl.register_command(self)
     def run(self, args):
         ctl.set_encrypt_env()
@@ -2089,7 +2089,7 @@ class StartCmd(Command):
     def __init__(self):
         super(StartCmd, self).__init__()
         self.name = 'start_node'
-        self.description = 'start the ZStack management node on this machine'
+        self.description = 'start the AStack management node on this machine'
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
@@ -2397,7 +2397,7 @@ class StopCmd(Command):
     def __init__(self):
         super(StopCmd, self).__init__()
         self.name = 'stop_node'
-        self.description = 'stop the ZStack management node on this machine'
+        self.description = 'stop the AStack management node on this machine'
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
@@ -2655,7 +2655,7 @@ class SaveConfigCmd(Command):
     def __init__(self):
         super(SaveConfigCmd, self).__init__()
         self.name = 'save_config'
-        self.description = 'save ZStack configuration from ZSTACK_HOME to specified folder'
+        self.description = 'save AStack configuration from ASTACK_HOME to specified folder'
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
@@ -2685,11 +2685,11 @@ class RestoreConfigCmd(Command):
     def __init__(self):
         super(RestoreConfigCmd, self).__init__()
         self.name = "restore_config"
-        self.description = 'restore ZStack configuration from specified folder to ZSTACK_HOME'
+        self.description = 'restore AStack configuration from specified folder to ASTACK_HOME'
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--restore-from', help='the folder where ZStack configurations should be found')
+        parser.add_argument('--restore-from', help='the folder where AStack configurations should be found')
 
     def run(self, args):
         path = args.restore_from
@@ -2985,7 +2985,7 @@ class UpgradeHACmd(Command):
     def __init__(self):
         super(UpgradeHACmd, self).__init__()
         self.name = "upgrade_ha"
-        self.description =  "upgrade high availability environment for ZStack-Enterprise."
+        self.description =  "upgrade high availability environment for AStack-Enterprise."
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
@@ -4833,7 +4833,7 @@ class ResetRabbitCmd(Command):
     def __init__(self):
         super(ResetRabbitCmd, self).__init__()
         self.name = "reset_rabbitmq"
-        self.description = "Reset RabbitMQ message broker on local machine based on current configuration in zstack.properties."
+        self.description = "Reset RabbitMQ message broker on local machine based on current configuration in astack.properties."
         ctl.register_command(self)
     def run(self, args):
         info("zstack no longer depend on rabbitmq, exit")
@@ -5515,7 +5515,7 @@ class ZBoxBackupScanCmd(Command):
         super(ZBoxBackupScanCmd, self).__init__()
         self.name = "scan_zbox_backup"
         self.description = (
-            "get ZStack backup details from zbox."
+            "get AStack backup details from zbox."
         )
         ctl.register_command(self)
 
@@ -6392,7 +6392,7 @@ class ChangeIpCmd(Command):
         super(ChangeIpCmd, self).__init__()
         self.name = "change_ip"
         self.description = (
-            "update new management ip address to zstack property file"
+            "update new management ip address to astack property file"
         )
         ctl.register_command(self)
 
@@ -6611,18 +6611,18 @@ class InstallManagementNodeCmd(Command):
         super(InstallManagementNodeCmd, self).__init__()
         self.name = "install_management_node"
         self.description = (
-            "install ZStack management node from current machine to a remote machine with zstack.properties."
+            "install AStack management node from current machine to a remote machine with astack.properties."
             "\nNOTE: please configure current node before installing node on other machines"
         )
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--host', help='target host IP user and password, for example, root:password@192.168.0.212, to install ZStack management node to a remote machine', required=True)
+        parser.add_argument('--host', help='target host IP user and password, for example, root:password@192.168.0.212, to install AStack management node to a remote machine', required=True)
         parser.add_argument('--install-path', help='the path on remote machine where Apache Tomcat will be installed, which must be an absolute path; [DEFAULT]: /usr/local/zstack', default='/usr/local/zstack')
         parser.add_argument('--source-dir', help='the source folder containing Apache Tomcat package and zstack.war, if omitted, it will default to a path related to $ZSTACK_HOME')
         parser.add_argument('--debug', help="open Ansible debug option", action="store_true", default=False)
-        parser.add_argument('--force-reinstall', help="delete existing Apache Tomcat and resinstall ZStack", action="store_true", default=False)
-        parser.add_argument('--yum', help="Use ZStack predefined yum repositories. The valid options include: alibase,aliepel,163base,ustcepel,zstack-local. NOTE: only use it when you know exactly what it does.", default=None)
+        parser.add_argument('--force-reinstall', help="delete existing Apache Tomcat and resinstall AStack", action="store_true", default=False)
+        parser.add_argument('--yum', help="Use AStack predefined yum repositories. The valid options include: alibase,aliepel,163base,ustcepel,zstack-local. NOTE: only use it when you know exactly what it does.", default=None)
         parser.add_argument('--ssh-key', help="the path of private key for SSH login $host; if provided, Ansible will use the specified key as private key to SSH login the $host", default=None)
 
     def add_public_key_to_host(self, key_path, host_info):
@@ -7108,7 +7108,7 @@ class ShowConfiguration(Command):
     def __init__(self):
         super(ShowConfiguration, self).__init__()
         self.name = "show_configuration"
-        self.description = "a shortcut that prints contents of zstack.properties to screen"
+        self.description = "a shortcut that prints contents of astack.properties to screen"
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
@@ -7183,7 +7183,7 @@ class SetEnvironmentVariableCmd(Command):
     def __init__(self):
         super(SetEnvironmentVariableCmd, self).__init__()
         self.name = "setenv"
-        self.description = "set variables to zstack-ctl variable file at %s\nExample:\n\tzstack-ctl setenv CATALINA_OPTS='-Xmx8192M'" % self.PATH
+        self.description = "set variables to astack-ctl variable file at %s\nExample:\n\tastack-ctl setenv CATALINA_OPTS='-Xmx8192M'" % self.PATH
         ctl.register_command(self)
 
     def need_zstack_home(self):
@@ -7266,13 +7266,13 @@ class InstallDashboardCmd(Command):
     def __init__(self):
         super(InstallDashboardCmd, self).__init__()
         self.name = "install_ui"
-        self.description = "install ZStack Web UI"
+        self.description = "install AStack Web UI"
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--host', help='target host IP, for example, 192.168.0.212, to install ZStack web UI; if omitted, it will be installed on local machine')
+        parser.add_argument('--host', help='target host IP, for example, 192.168.0.212, to install AStack web UI; if omitted, it will be installed on local machine')
         parser.add_argument('--ssh-key', help="the path of private key for SSH login $host; if provided, Ansible will use the specified key as private key to SSH login the $host", default=None)
-        parser.add_argument('--yum', help="Use ZStack predefined yum repositories. The valid options include: alibase,aliepel,163base,ustcepel,zstack-local. NOTE: only use it when you know exactly what it does.", default=None)
+        parser.add_argument('--yum', help="Use AStack predefined yum repositories. The valid options include: alibase,aliepel,163base,ustcepel,zstack-local. NOTE: only use it when you know exactly what it does.", default=None)
         parser.add_argument('--force', help="delete existing virtualenv and resinstall zstack ui and all dependencies", action="store_true", default=False)
 
     def _install_to_local(self, args):
@@ -7487,9 +7487,9 @@ class BootstrapCmd(Command):
         super(BootstrapCmd, self).__init__()
         self.name = 'bootstrap'
         self.description = (
-            'create user and group of "zstack" and add "zstack" to sudoers;'
+            'create user and group of "astack" and add "astack" to sudoers;'
             '\nthis command is only needed by installation script'
-            ' and users that install ZStack manually'
+            ' and users that install AStack manually'
         )
         ctl.register_command(self)
 
@@ -7974,7 +7974,7 @@ class UpgradeUIDbCmd(Command):
         super(UpgradeUIDbCmd, self).__init__()
         self.name = 'upgrade_ui_db'
         self.description = (
-            'upgrade the zstack_ui database from current version to a new version'
+            'upgrade the astack_ui database from current version to a new version'
         )
         ctl.register_command(self)
 
@@ -8068,7 +8068,7 @@ class UpgradeCtlCmd(Command):
         super(UpgradeCtlCmd, self).__init__()
         self.name = 'upgrade_ctl'
         self.description = (
-            'upgrade the zstack-ctl to a new version'
+            'upgrade the astack-ctl to a new version'
         )
         ctl.register_command(self)
 
@@ -8778,7 +8778,7 @@ class InstallLicenseCmd(Command):
     def __init__(self):
         super(InstallLicenseCmd, self).__init__()
         self.name = "install_license"
-        self.description = "install zstack license"
+        self.description = "install astack license"
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
@@ -8935,7 +8935,7 @@ class ClearLicenseCmd(Command):
     def __init__(self):
         super(ClearLicenseCmd, self).__init__()
         self.name = "clear_license"
-        self.description = "clear and backup zstack license files"
+        self.description = "clear and backup astack license files"
         ctl.register_command(self)
 
     def run(self, args):
@@ -9433,7 +9433,7 @@ class ConfigUiCmd(Command):
     def __init__(self):
         super(ConfigUiCmd, self).__init__()
         self.name = "config_ui"
-        self.description = "configure zstack.ui.properties"
+        self.description = "configure astack.ui.properties"
         self.sensitive_args = ['--ssl-keystore-password', '--db-password']
         ctl.register_command(self)
 
@@ -9616,7 +9616,7 @@ class ShowUiCfgCmd(Command):
     def __init__(self):
         super(ShowUiCfgCmd, self).__init__()
         self.name = "show_ui_config"
-        self.description = "a shortcut that prints contents of zstack.ui.properties to screen"
+        self.description = "a shortcut that prints contents of astack.ui.properties to screen"
         ctl.register_command(self)
 
     def run(self, args):
@@ -9729,7 +9729,7 @@ class GetZStackVersion(Command):
     def __init__(self):
         super(GetZStackVersion, self).__init__()
         self.name = "get_version"
-        self.description = "get zstack version from database, eg. 2.4.0"
+        self.description = "get astack version from database, eg. 4.4.0"
         ctl.register_command(self)
 
     def run(self, args):
@@ -9743,7 +9743,7 @@ class ResetAdminPasswordCmd(Command):
     def __init__(self):
         super(ResetAdminPasswordCmd, self).__init__()
         self.name = "reset_password"
-        self.description = "reset ZStack admin account password, if not set, default is 'password'"
+        self.description = "reset AStack admin account password, if not set, default is 'password'"
         self.sensitive_args = ['--password']
         ctl.register_command(self)
 
