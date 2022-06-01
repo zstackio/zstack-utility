@@ -1,0 +1,51 @@
+ceph-bs:
+    description: ceph backstorage
+    type: target
+    list: {exec: "select hostname from CephBackupStorageMonVO"}
+    logs:
+      - {name: cephbs-log, dir: /var/log/zstack/, file: ceph-backupstorage*}
+      - {name: dmesg-logs, dir: /var/log/, file: 'dmesg*'}
+      - {name: message-logs, dir: /var/log/, file: messages*}
+      - {name: route-logs, exec: 'route -n'}
+      - {name: iptables-logs, exec: 'iptables-save'}
+      - {name: ebtables-logs, exec: 'ebtables-save'}
+      - {name: journalctl-info, exec: 'journalctl -x'}
+      - {name: host-info, exec: 'uptime && last reboot && free -h && cat /proc/cpuinfo && ip add && df -h &&
+       file_paths=$(ls /sys/devices/system/node|grep node);
+       for file_path in $file_paths; do cat /sys/devices/system/node/$file_path/meminfo; done &&
+       ps ax -eTo ppid,pid,pcpu,pmem,maj_flt,min_flt,tid,vsz,rss,pgid,sid,tty,tgid,stat,uid,lstart,etime,time,command --sort ppid'}
+      - {name: pkg-list, exec: 'rpm -qa | sort'}
+      - {name: zstack-logs, dir: /var/log/zstack/, file: zstack.log*}
+sftp-bs:
+    description: sftp backstorage
+    type: target
+    list: {exec: "select hostname from SftpBackupStorageVO"}
+    logs:
+      - {name: sftpbs-log, dir: /var/log/zstack/, file: zstack-sftpbackupstorage*}
+      - {name: dmesg-logs, dir: /var/log/, file: 'dmesg*'}
+      - {name: message-logs, dir: /var/log/, file: messages*}
+      - {name: route-logs, exec: 'route -n'}
+      - {name: iptables-logs, exec: 'iptables-save'}
+      - {name: ebtables-logs, exec: 'ebtables-save'}
+      - {name: journalctl-info, exec: 'journalctl -x'}
+      - {name: host-info, exec: 'uptime && last reboot && free -h && cat /proc/cpuinfo && ip add && df -h'}
+      - {name: pkg-list, exec: 'rpm -qa | sort'}
+      - {name: zstack-logs, dir: /var/log/zstack/, file: zstack.log*}
+imageStore-bs:
+    description: imagestore backstorage
+    type: target
+    list: {exec: "select hostname from ImageStoreBackupStorageVO"}
+    logs:
+      - {name: zstore-log, dir: /var/log/zstack/zstack-store/, file: zstore*}
+      - {name: dmesg-logs, dir: /var/log/, file: 'dmesg*'}
+      - {name: message-logs, dir: /var/log/, file: messages*}
+      - {name: route-logs, exec: 'route -n'}
+      - {name: iptables-logs, exec: 'iptables-save'}
+      - {name: ebtables-logs, exec: 'ebtables-save'}
+      - {name: journalctl-info, exec: 'journalctl -x'}
+      - {name: host-info, exec: 'uptime && last reboot && free -h && cat /proc/cpuinfo && ip add && df -h &&
+       file_paths=$(ls /sys/devices/system/node|grep node);
+       for file_path in $file_paths; do cat /sys/devices/system/node/$file_path/meminfo; done &&
+       ps ax -eTo ppid,pid,pcpu,pmem,maj_flt,min_flt,tid,vsz,rss,pgid,sid,tty,tgid,stat,uid,lstart,etime,time,command --sort ppid'}
+      - {name: pkg-list, exec: 'rpm -qa | sort'}
+      - {name: zstack-logs, dir: /var/log/zstack/, file: zstack.log*}
