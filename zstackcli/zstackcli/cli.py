@@ -126,7 +126,7 @@ class Cli(object):
 
     def usage(self):
         print '''
-  ZStack command line tool
+  AStack command line tool
   Type "help" for more information
   Type Tab key for auto-completion
   Type "quit" or "exit" or Ctrl-d to exit
@@ -1047,7 +1047,7 @@ Parse command parameters error:
                 >>> save 1 /tmp/1.json
                 save command history 1 to /tmp/1.json
 
-  ZSTACK_API [API_PARAMS]
+  ASTACK_API [API_PARAMS]
                 execute a API command like LogInByAccount, QueryHost.
 
                 >>> LogInByAccount accountName=admin password=password
@@ -1122,7 +1122,7 @@ Parse command parameters error:
                         strings are compared as case insensitive.
 '''
 
-        help_string += text_doc.bold('ZStack API')
+        help_string += text_doc.bold('AStack API')
         help_string += '''
 -------------------------------------------------------------------------------
 '''
@@ -1205,7 +1205,7 @@ def main():
         dest="host",
         default='localhost',
         action='store',
-        help="[Optional] IP address or DNS name of a ZStack management node. Default value: localhost")
+        help="[Optional] IP address or DNS name of a AStack management node. Default value: localhost")
 
     parser.add_option(
         "-p",
@@ -1213,7 +1213,7 @@ def main():
         dest="port",
         default='8080',
         action='store',
-        help="[Optional] Port that the ZStack management node is listening on. Default value: 8080")
+        help="[Optional] Port that the AStack management node is listening on. Default value: 8080")
 
     parser.add_option(
         "-d",
@@ -1234,7 +1234,7 @@ def main():
     parser.add_option(
         "-D",
         "--dump",
-        dest="zstack_config_dump_file",
+        dest="astack_config_dump_file",
         default=None,
         action='store',
         help="[Optional] dump a cloud to a XML file")

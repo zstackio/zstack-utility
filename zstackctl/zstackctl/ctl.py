@@ -7297,7 +7297,7 @@ class InstallDashboardCmd(Command):
         parser.add_argument('--host', help='target host IP, for example, 192.168.0.212, to install AStack web UI; if omitted, it will be installed on local machine')
         parser.add_argument('--ssh-key', help="the path of private key for SSH login $host; if provided, Ansible will use the specified key as private key to SSH login the $host", default=None)
         parser.add_argument('--yum', help="Use AStack predefined yum repositories. The valid options include: alibase,aliepel,163base,ustcepel,zstack-local. NOTE: only use it when you know exactly what it does.", default=None)
-        parser.add_argument('--force', help="delete existing virtualenv and resinstall zstack ui and all dependencies", action="store_true", default=False)
+        parser.add_argument('--force', help="delete existing virtualenv and resinstall astack ui and all dependencies", action="store_true", default=False)
 
     def _install_to_local(self, args):
         install_script = os.path.join(ctl.zstack_home, "WEB-INF/classes/tools/install.sh")
@@ -7444,11 +7444,11 @@ class InstallZstackUiCmd(Command):
     def __init__(self):
         super(InstallZstackUiCmd, self).__init__()
         self.name = "install_ui"
-        self.description = "install ZStack web UI"
+        self.description = "install AStack web UI"
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--host', help='target host IP, for example, 192.168.0.212, to install ZStack web UI; if omitted, it will be installed on local machine')
+        parser.add_argument('--host', help='target host IP, for example, 192.168.0.212, to install AStack web UI; if omitted, it will be installed on local machine')
         parser.add_argument('--ssh-key', help="the path of private key for SSH login $host; If provided, Ansible will use the specified key as private key to SSH login the $host", default=None)
     def _install_to_local(self, args):
         ui_install_log = os.path.join(ctl.ZSTACK_UI_HOME, "logs")
