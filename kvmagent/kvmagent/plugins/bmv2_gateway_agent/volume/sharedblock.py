@@ -83,7 +83,8 @@ class SharedBlockVolume(base.BaseVolume):
         helper.NbdDeviceOperator(self).disconnect()
         # Do not remove the dm device, because it was created by kernel
         # helper.DmDeviceOperator(self).remove()
-        lvm.deactive_lv(self.real_path)
+        if not self.volume_obj.is_shareable:
+            lvm.deactive_lv(self.real_path)
 
     def detach_volume(self):
         self.detach()

@@ -149,6 +149,7 @@ class VolumeObj(Base):
         'type': 'type',
         'path': 'path',
         'format': 'format',
+        'isShareable': 'is_shareable',
         'deviceId': 'device_id',
         'token': 'token',
         'tpTimeout': 'tpTimeout',
