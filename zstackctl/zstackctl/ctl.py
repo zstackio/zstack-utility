@@ -2189,7 +2189,7 @@ class StartCmd(Command):
 
         def check_ha():
             _, output, _ = shell_return_stdout_stderr("systemctl is-enabled zstack-ha")
-            status, _, _ = shell_return_stdout_stderr("pgrep -x zstack-hamon")
+            status, _, _ = shell_return_stdout_stderr("pgrep -x cloud-hamon")
             if output and output.strip() == "enabled" and status != 0:
                 error("please use 'zsha2 start-node'")
 
