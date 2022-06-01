@@ -1225,7 +1225,7 @@ def main():
     parser.add_option(
         "-D",
         "--dump",
-        dest="astack_config_dump_file",
+        dest="zstack_config_dump_file",
         default=None,
         action='store',
         help="[Optional] dump a cloud to a XML file")
