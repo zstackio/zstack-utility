@@ -1579,9 +1579,23 @@ class ShowStatusCmd(Command):
                 info('version: %s (%s)' % (version, detailed_version))
             else:
                 info('version: %s' % version)
+        def show_hci_version():
+            hci_path = '/usr/local/hyperconverged/conf/VERSION'
+            if not os.path.exists(hci_path):
+                return
+            with open(hci_path, 'r') as fd:
+                version = fd.readline().strip(' \t\n\r')
+                if version is not None: 
+                    if version[0].isdigit(): 
+                        info('Cube version: %s (Cube %s)' % (version.split('-')[0], version))
+                    else:
+                        list = version.split('-')   
+                        info(list[0] + ' version: %s (%s)' % (list[1], version))
 
         info('\n'.join(info_list))
         show_version()
+        if is_hyper_converged_host():
+            show_hci_version()
 
         s = check_zstack_status()
         if s is not None and not s:
@@ -6348,10 +6362,28 @@ class CollectLogCmd(Command):
             info_verbose("The collect log generate at: %s/collect-log-%s-%s.tar.gz" % (run_command_dir, detail_version, time_stamp))
 
 
+def is_hyper_converged_host():
+    r, o = commands.getstatusoutput("bootstrap is_deployed")
+    if r != 0 or o.strip() != "true":
+        return False
+    return True
+
+
+def get_hci_detail_version():
+    detailed_version_file = "/usr/local/hyperconverged/conf/VERSION"
+    if os.path.exists(detailed_version_file):
+        with open(detailed_version_file, 'r') as fd:
+            detailed_version = fd.read().strip()
+            return detailed_version.rsplit("-", 2)[0]
+    else:
+        return None
+
+
 class ConfiguredCollectLogCmd(Command):
     logger_dir = '/var/log/zstack/'
     logger_file = 'zstack-ctl.log'
     zstack_log_dir = "/var/log/zstack/"
+    ui_log_download_dir = os.path.join(ctl.ZSTACK_UI_HOME, "public/logs/")
 
     def __init__(self):
         super(ConfiguredCollectLogCmd, self).__init__()
@@ -6386,25 +6418,53 @@ class ConfiguredCollectLogCmd(Command):
         parser.add_argument('--timeout', help='wait for log thread collect timeout, default is 300 seconds', default=300)
         parser.add_argument('--dump-thread-info', help='dump threads info', default=False)
         parser.add_argument('--dumptime', help='wait for dumping threads time, default is 10 seconds', type=int, default=10)
+        parser.add_argument('--destination', help='collect logs to the specified directory', default=None)
+        parser.add_argument('--combination', help='collect logs in a combined way, including mn/mn_db/host/bs/ps/vroute/pxeserver/baremetalv2gateway, such as \'mn,host,ps\'',
+                            default=None)
+        parser.add_argument('--clear-log', help='clear log collected through UI', default=None)
+
+    def clear_log_file(self, log_name):
+        if "/" in log_name:
+            error("clear log failed, value[%s] is invalid" % log_name)
+        
+        log_path = self.ui_log_download_dir + ("collect-log-%s" % log_name)
+        if os.path.isfile(log_path):
+            shell('rm -f %s' % log_path)
+            info("clear log file[%s] successfully!" % log_path)
+        elif os.path.isdir(log_path):
+            shell('rm -rf %s' % log_path)
+            info("clear log dir[%s] successfully!" % log_path)
+        else:
+            error("clear log failed, file [%s] does not exist" % log_path)
 
     def run(self, args):
+        if args.clear_log:
+            self.clear_log_file(args.clear_log)
+            return
+        
         # dump mn status
         mn_pid = get_management_node_pid()
         if mn_pid:
             kill_process(mn_pid, signal.SIGQUIT)
             kill_process(mn_pid, signal.SIGUSR2)
-        run_command_dir = os.getcwd()
         time_stamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
         # create log
         create_log(self.logger_dir, self.logger_file)
-        if get_detail_version() is not None:
+
+        detail_version = None
+        if is_hyper_converged_host():
+            detail_version = get_hci_detail_version()
+        elif get_detail_version() is not None:
             detail_version = get_detail_version().replace(' ', '_')
-        else:
+
+        if detail_version is None:
             hostname, port, user, password = ctl.get_live_mysql_portal()
             detail_version = get_zstack_version(hostname, port, user, password)
-        # collect_dir used to store the collect-log
-        collect_dir = run_command_dir + '/collect-log-%s-%s/' % (detail_version, time_stamp)
-        log_collector.CollectFromYml(ctl, collect_dir, detail_version, time_stamp, args)
+
+        run_command_dir = os.getcwd()
+        if args.destination:
+            run_command_dir = args.destination
+        log_collector.CollectFromYml(ctl, run_command_dir, detail_version, time_stamp, args)
 
 
 class ChangeIpCmd(Command):
