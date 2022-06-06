@@ -7,7 +7,6 @@ import zstacklib.utils.jsonobject as jsonobject
 from zstacklib.utils import shell
 from zstacklib.utils import log
 from zstacklib.utils import linux
-import rbd
 
 logger = log.get_logger(__name__)
 
@@ -90,27 +89,8 @@ def update_ceph_client_access_conf(ps_uuid, mon_urls, user_key, manufacturer, fs
             
     return conf_path, keyring_path, username
 
-
-def get_heartbeat_object_name(ioctx, primary_storage_uuid, host_uuid):
-    image = None
-    try:
-        logger.debug("try to get image block name prefix of host:%s" % host_uuid)
-        image = rbd.Image(ioctx, get_heartbeat_file_name(primary_storage_uuid, host_uuid))
-        block_name = image.stat()['block_name_prefix']
-        logger.debug("get image block name prefix:%s of host:%s" % (block_name, host_uuid))
-        return block_name
-    except Exception as e:
-        logger.debug("failed to open image, %s", e)
-    finally:
-        if image:
-            image.close()
-
-
-def get_heartbeat_volume(pool_name, ps_uuid, host_uuid):
-    return '%s/ceph-ps-%s-host-hb-%s' % (pool_name, ps_uuid, host_uuid)
-
-def get_heartbeat_file_name(ps_uuid, host_uuid):
-    return 'ceph-ps-%s-host-hb-%s' % (ps_uuid, host_uuid)
+def get_heartbeat_object_name(primary_storage_uuid, host_uuid):
+    return 'ceph-ps-%s-host-hb-%s' % (primary_storage_uuid, host_uuid)
 
 def getCephPoolsCapacity():
     result = []

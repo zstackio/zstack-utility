@@ -466,6 +466,7 @@ class HaPlugin(kvmagent.KvmAgent):
             self.primary_storage_uuid = None
             self.strategy = None
             self.storage_check_timeout = None
+            self.heartbeat_object_name = None
             self.fencer_triggered_callback = None
 
         def ceph_in_error_stat(self):
@@ -761,44 +762,6 @@ class HaPlugin(kvmagent.KvmAgent):
 
         created_time = time.time()
 
-        def get_ceph_rbd_args(pool_name):
-            if cmd.userKey is None:
-                return 'rbd:%s:mon_host=%s' % (ceph.get_heartbeat_volume(pool_name, cmd.uuid, cmd.hostUuid), mon_url)
-            return 'rbd:%s:id=zstack:key=%s:auth_supported=cephx\;none:mon_host=%s' % (ceph.get_heartbeat_volume(pool_name, cmd.uuid, cmd.hostUuid), cmd.userKey, mon_url)
-
-        def ceph_in_error_stat():
-            # HEALTH_OK,HEALTH_WARN,HEALTH_ERR and others(may be empty)...
-            health = shell.ShellCmd('timeout %s ceph health' % cmd.storageCheckerTimeout)
-            health(False)
-            # If the command times out, then exit with status 124
-            if health.return_code == 124:
-                return True
-
-            health_status = health.stdout
-            return not (health_status.startswith('HEALTH_OK') or health_status.startswith('HEALTH_WARN'))
-
-        def heartbeat_file_exists(pool_name):
-            touch = shell.ShellCmd('timeout %s %s %s' %
-                    (cmd.storageCheckerTimeout, qemu_img.subcmd('info'), get_ceph_rbd_args(pool_name)))
-            touch(False)
-
-            if touch.return_code == 0:
-                return True
-
-            logger.warn('cannot query heartbeat image: %s: %s' % (cmd.heartbeatImagePath, touch.stderr))
-            return False
-
-        def create_heartbeat_file(pool_name):
-            create = shell.ShellCmd('timeout %s qemu-img create -f raw %s 1' %
-                                        (cmd.storageCheckerTimeout, get_ceph_rbd_args(pool_name)))
-            create(False)
-
-            if create.return_code == 0 or "File exists" in create.stderr:
-                return True
-
-            logger.warn('cannot create heartbeat image: %s: %s' % (cmd.heartbeatImagePath, create.stderr))
-            return False
-
         def get_fencer_key(ps_uuid, pool_name):
             return '%s-%s' % (ps_uuid, pool_name)
 
@@ -808,15 +771,15 @@ class HaPlugin(kvmagent.KvmAgent):
 
             completion = ioctx.aio_write(heartbeat_object_name, str(heartbeat_count), 0, update_heartbeat_timestamp_callback)
 
-            failure = 0
+            waited_time = 0
             while not completion.is_complete():
                 time.sleep(1)
-                failure += 1
-                if failure == write_timeout:
+                waited_time += 1
+                if waited_time == write_timeout:
                     logger.debug("write operation to %s not finished util timeout, report update failure" % heartbeat_object_name)
-                    return False
+                    return False, waited_time
 
-            return True
+            return True, waited_time
 
         @thread.AsyncThread
         def heartbeat_on_ceph(ps_uuid, pool_name):
@@ -832,6 +795,7 @@ class HaPlugin(kvmagent.KvmAgent):
             ceph_controller.strategy = cmd.strategy
             ceph_controller.storage_check_timeout = cmd.storageCheckerTimeout
             ceph_controller.host_uuid = cmd.hostUuid
+            ceph_controller.heartbeat_object_name = ceph.get_heartbeat_object_name(cmd.uuid, cmd.hostUuid)
             ceph_controller.fencer_triggered_callback = self.report_self_fencer_triggered
 
             try:
@@ -843,19 +807,20 @@ class HaPlugin(kvmagent.KvmAgent):
                     additional_conf_dict['keyring'] = keyring_path
 
                 with rados.Rados(conffile=conf_path, conf=additional_conf_dict, name=username) as cluster:
+                    logger.debug("connected to ceph[uuid: %s] cluster" % ceph_controller.primary_storage_uuid)
                     with cluster.open_ioctx(pool_name) as ioctx:
-                        heartbeat_object_name = None
+                        logger.debug("open ceph[uuid: %s] pool: %s]" % (ceph_controller.primary_storage_uuid, ceph_controller.pool_name))
+                        write_heartbeat_used_time = None
                         while self.run_fencer(get_fencer_key(ps_uuid, pool_name), created_time):
-                            time.sleep(cmd.interval)
+                            if write_heartbeat_used_time:
+                                # aio write used wait time should be substract from interval
+                                time.sleep(cmd.interval - write_heartbeat_used_time)
 
-                            if not heartbeat_object_name:
-                                heartbeat_object_name = ceph.get_heartbeat_object_name(ioctx, cmd.uuid, cmd.hostUuid)
-
+                            # reset variables
+                            write_heartbeat_used_time = 0
                             heartbeat_success = False
-                            if heartbeat_object_name is None:
-                                logger.debug("missing heartbeat object name")
-                            else:
-                                heartbeat_success = update_heartbeat_timestamp(ioctx, heartbeat_object_name, heartbeat_counter, cmd.storageCheckerTimeout)
+                                                            
+                            heartbeat_success, write_heartbeat_used_time = update_heartbeat_timestamp(ioctx, ceph_controller.heartbeat_object_name, heartbeat_counter, cmd.storageCheckerTimeout)
 
                             if heartbeat_counter > 100000:
                                 heartbeat_counter = 0
@@ -878,6 +843,8 @@ class HaPlugin(kvmagent.KvmAgent):
                             # after fencer state reported, set fencer_state_reported to False
                             if heartbeat_success:
                                 logger.debug("heartbeat of host:%s on ceph storage:%s pool:%s success" % (cmd.hostUuid, cmd.uuid, pool_name))
+                                # reset failure count after heartbeat succeed
+                                ceph_controller.reset_failure_count()
                                 continue
 
                             ceph_controller.handle_heartbeat_failure()
@@ -1068,7 +1035,7 @@ class HaPlugin(kvmagent.KvmAgent):
             image = None
             with rados.Rados(conffile=ceph_conf, conf=additional_conf_dict, name=username) as cluster:
                 with cluster.open_ioctx(pool_name) as ioctx:
-                    heartbeat_object_name = ceph.get_heartbeat_object_name(ioctx, cmd.primaryStorageUuid, cmd.targetHostUuid)
+                    heartbeat_object_name = ceph.get_heartbeat_object_name(cmd.primaryStorageUuid, cmd.targetHostUuid)
                     if not heartbeat_object_name:
                         logger.debug("Failed to get heartbeat file info of pool %s" % pool_name)
                         continue
