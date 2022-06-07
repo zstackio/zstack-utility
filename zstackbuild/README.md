@@ -62,7 +62,7 @@ Now we can start building the package:
 ```
 cd /your/path/to/zstack-repos;
 
-wget -c https://archive.apache.org/dist/tomcat/tomcat-8/v8.5.78/bin/apache-tomcat-8.5.78.zip
+wget -c https://archive.apache.org/dist/tomcat/tomcat-8/v8.5.79/bin/apache-tomcat-8.5.79.zip
 ```
 
 
