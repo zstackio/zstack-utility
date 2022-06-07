@@ -6608,6 +6608,8 @@ host side snapshot files chian:
 
             try:
                 volumes = isc.query_mirror_volumes(cmd.vmUuid)
+                if volumes is None:
+                    volumes = {}
                 target = volumes[device_name]
                 if target != cmd.mirrorTarget:
                     isc.stop_mirror(cmd.vmUuid, False, device_name)
