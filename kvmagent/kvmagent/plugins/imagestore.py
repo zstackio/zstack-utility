@@ -122,24 +122,24 @@ class ImageStoreClient(object):
             if err:
                 raise Exception('fail to mirror volume %s, because %s' % (vm, str(err)))
 
-    def query_mirror_latencies(self, vm):
+    def query_vm_mirror_latencies(self, vm):
         with linux.ShowLibvirtErrorOnException(vm):
-            PFILE = linux.create_temp_file()
             mirrorLatencies = []
             infos = []
-            cmdstr = '%s querylat -domain %s -count 10 > %s' % (self.ZSTORE_CLI_PATH, vm, PFILE)
-            if shell.run(cmdstr) != 0:
+            PFILE = linux.create_temp_file()
+            cmdstr = '%s querylat -domain %s -count 8 > %s' % (self.ZSTORE_CLI_PATH, vm, PFILE)
+            if shell.run(cmdstr) != 0 or os.path.getsize(PFILE) == 0:
                 logger.debug("Failed to query latency for vm: [%s]", vm)
                 return mirrorLatencies
 
             with open(PFILE) as fd:
+                linux.rm_file_force(PFILE)
                 for line in fd.readlines():
-                    j = json.loads(line)
-                    for key in j:
-                        info = VolumeLatencyInfo(key, j[key])
+                    j = jsonobject.loads(line.strip())
+                    for key, val in j.__dict__.iteritems():
+                        info = VolumeLatencyInfo(key, val)
                         infos.append(info)
                     mirrorLatencies.append(infos)
-            linux.rm_file_force(PFILE)
             return mirrorLatencies
 
     def backup_volume(self, vm, node, bitmap, mode, dest, speed, reporter, stage):

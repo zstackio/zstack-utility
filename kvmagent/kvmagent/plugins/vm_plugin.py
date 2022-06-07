@@ -399,6 +399,26 @@ class QueryVolumeMirrorResponse(kvmagent.AgentResponse):
         self.extraMirrorVolumes = [] # type:list[str]
 
 
+class HostVmLatencyInfo(object):
+    def __init__(self, vmUuid, latencies):
+        self.vmUuid = vmUuid
+        self.latencies = latencies
+
+
+class QueryVmLatenciesThread(threading.Thread):
+    def __init__(self, func, args):
+        threading.Thread.__init__(self)
+        self.func = func
+        self.args = args
+        self.res = []
+
+    def run(self):
+        self.res = self.func(*self.args)
+
+    def getResult(self):
+        return self.res
+
+
 class TakeVolumeBackupResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(TakeVolumeBackupResponse, self).__init__()
@@ -410,7 +430,7 @@ class TakeVolumeBackupResponse(kvmagent.AgentResponse):
 class QueryVolumeMirrorLatenciesResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(QueryVolumeMirrorLatenciesResponse, self).__init__()
-        self.mirrorLatencies = []  # type:list[list[VolumeLatencyInfo]]
+        self.hostVmLatencyInfos = []  # type:list[HostVmLatencyInfo]
 
 
 class VolumeBackupInfo(object):
@@ -6632,17 +6652,31 @@ host side snapshot files chian:
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
-    def query_mirror_latencies(self, req):
+    def query_vm_mirror_latencies(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = QueryVolumeMirrorLatenciesResponse()
 
+        threads = []
+        hostVmLatencyInfos = []
+        isc = ImageStoreClient()
         try:
-            isc = ImageStoreClient()
-            rsp.mirrorLatencies = isc.query_mirror_latencies(cmd.vmUuid)
+            for uuid in cmd.vmUuids:
+                threads.append(QueryVmLatenciesThread(isc.query_vm_mirror_latencies, uuid))
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+                l = t.getResult()
+                if not l:
+                    logger.debug("vm[uuid: %s] have not running cdp task, skip query latency." % uuid)
+                    continue
+
+                hostVmLatencyInfo = HostVmLatencyInfo(uuid, l)
+                hostVmLatencyInfos.append(hostVmLatencyInfo)
+            rsp.hostVmLatencyInfos = hostVmLatencyInfos
         except Exception as e:
             rsp.error = str(e)
             rsp.success = False
-
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
