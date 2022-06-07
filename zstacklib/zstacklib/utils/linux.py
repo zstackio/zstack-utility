@@ -26,6 +26,7 @@ import fcntl
 from zstacklib.utils import thread
 from zstacklib.utils import qemu_img
 from zstacklib.utils import lock
+from zstacklib.utils import xmlobject
 from zstacklib.utils import shell
 from zstacklib.utils import log
 
@@ -394,12 +395,17 @@ def remount(url, path, options=None):
 def get_host_name():
     return os.uname()[1]
 
-def sshfs_mount_with_vm_uuid(vmuuid, username, hostname, port, password, url, mountpoint, writebandwidth=None):
+def native_io_disk_exists(vm_xml_obj):
+    return any(xmlobject.has_element(disk, 'driver.io_') and disk.driver.io_ == 'native'
+               for disk in vm_xml_obj.devices.get_child_node_as_list('disk'))
+
+def sshfs_mount_with_vm_xml(vm_xml_obj, username, hostname, port, password, url, mountpoint, writebandwidth=None):
+    vmuuid = vm_xml_obj.name.text_
     out = shell.call("pgrep -a 'qemu-kvm|qemu-system' | grep -w %s | grep [-]machine" % vmuuid)
     is_aio, uid = False, 0
 
     if out:
-        is_aio = "aio=native" in out
+        is_aio = native_io_disk_exists(vm_xml_obj)
         uid = int(out.split(" ", 2)[0])
     return sshfs_mount(username, hostname, port, password, url, mountpoint, writebandwidth, not is_aio, uid)
 
