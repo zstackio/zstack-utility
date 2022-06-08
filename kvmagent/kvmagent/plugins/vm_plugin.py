@@ -386,9 +386,11 @@ class TakeVolumeMirrorResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(TakeVolumeMirrorResponse, self).__init__()
 
+
 class CancelVolumeMirrorResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(CancelVolumeMirrorResponse, self).__init__()
+
 
 class QueryVolumeMirrorResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -396,12 +398,40 @@ class QueryVolumeMirrorResponse(kvmagent.AgentResponse):
         self.mirrorVolumes = [] # type:list[str]
         self.extraMirrorVolumes = [] # type:list[str]
 
+
+class HostVmLatencyInfo(object):
+    def __init__(self, vmUuid, latencies):
+        self.vmUuid = vmUuid
+        self.latencies = latencies
+
+
+class QueryVmLatenciesThread(threading.Thread):
+    def __init__(self, func, args):
+        threading.Thread.__init__(self)
+        self.func = func
+        self.args = args
+        self.res = []
+
+    def run(self):
+        self.res = self.func(*self.args)
+
+    def getResult(self):
+        return self.res
+
+
 class TakeVolumeBackupResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(TakeVolumeBackupResponse, self).__init__()
         self.backupFile = None
         self.parentInstallPath = None
         self.bitmap = None
+
+
+class QueryVolumeMirrorLatenciesResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(QueryVolumeMirrorLatenciesResponse, self).__init__()
+        self.hostVmLatencyInfos = []  # type:list[HostVmLatencyInfo]
+
 
 class VolumeBackupInfo(object):
     def __init__(self, deviceId, bitmap, backupFile, parentInstallPath):
@@ -4969,6 +4999,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_TAKE_VOLUME_MIRROR_PATH = "/vm/volume/takemirror"
     KVM_CANCEL_VOLUME_MIRROR_PATH = "/vm/volume/cancelmirror"
     KVM_QUERY_VOLUME_MIRROR_PATH = "/vm/volume/querymirror"
+    KVM_QUERY_MIRROR_LATENCIES_PATH = "/vm/volume/querylatency"
     KVM_BLOCK_STREAM_VOLUME_PATH = "/vm/volume/blockstream"
     KVM_TAKE_VOLUMES_SNAPSHOT_PATH = "/vm/volumes/takesnapshot"
     KVM_TAKE_VOLUMES_BACKUP_PATH = "/vm/volumes/takebackup"
@@ -6631,6 +6662,34 @@ host side snapshot files chian:
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def query_vm_mirror_latencies(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = QueryVolumeMirrorLatenciesResponse()
+
+        threads = []
+        hostVmLatencyInfos = []
+        isc = ImageStoreClient()
+        try:
+            for uuid in cmd.vmUuids:
+                threads.append(QueryVmLatenciesThread(isc.query_vm_mirror_latencies, uuid))
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+                l = t.getResult()
+                if not l:
+                    logger.debug("vm[uuid: %s] have not running cdp task, skip query latency." % uuid)
+                    continue
+
+                hostVmLatencyInfo = HostVmLatencyInfo(uuid, l)
+                hostVmLatencyInfos.append(hostVmLatencyInfo)
+            rsp.hostVmLatencyInfos = hostVmLatencyInfos
+        except Exception as e:
+            rsp.error = str(e)
+            rsp.success = False
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     def take_volume_backup(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = TakeVolumeBackupResponse()
@@ -7830,6 +7889,7 @@ host side snapshot files chian:
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_MIRROR_PATH, self.take_volume_mirror)
         http_server.register_async_uri(self.KVM_CANCEL_VOLUME_MIRROR_PATH, self.cancel_volume_mirror)
         http_server.register_async_uri(self.KVM_QUERY_VOLUME_MIRROR_PATH, self.query_volume_mirror)
+        http_server.register_async_uri(self.KVM_QUERY_MIRROR_LATENCIES_PATH, self.query_mirror_latencies)
         http_server.register_async_uri(self.KVM_TAKE_VOLUMES_SNAPSHOT_PATH, self.take_volumes_snapshots)
         http_server.register_async_uri(self.KVM_TAKE_VOLUMES_BACKUP_PATH, self.take_volumes_backups, cmd=TakeVolumesBackupsCommand())
         http_server.register_async_uri(self.KVM_CANCEL_VOLUME_BACKUP_JOBS_PATH, self.cancel_backup_jobs)

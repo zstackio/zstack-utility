@@ -3,6 +3,7 @@ import tempfile
 import os
 import os.path
 import platform
+import json
 
 from kvmagent import kvmagent
 from zstacklib.utils import jsonobject
@@ -13,6 +14,13 @@ from zstacklib.utils.report import *
 
 logger = log.get_logger(__name__)
 HOST_ARCH = platform.machine()
+
+
+class VolumeLatencyInfo(object):
+    def __init__(self, volume, latency):
+        self.volume = volume
+        self.latency = latency
+
 
 class ImageStoreClient(object):
 
@@ -113,6 +121,26 @@ class ImageStoreClient(object):
             linux.rm_file_force(PFILE)
             if err:
                 raise Exception('fail to mirror volume %s, because %s' % (vm, str(err)))
+
+    def query_vm_mirror_latencies(self, vm):
+        with linux.ShowLibvirtErrorOnException(vm):
+            mirrorLatencies = []
+            infos = []
+            PFILE = linux.create_temp_file()
+            cmdstr = '%s querylat -domain %s -count 8 > %s' % (self.ZSTORE_CLI_PATH, vm, PFILE)
+            if shell.run(cmdstr) != 0 or os.path.getsize(PFILE) == 0:
+                logger.debug("Failed to query latency for vm: [%s]", vm)
+                return mirrorLatencies
+
+            with open(PFILE) as fd:
+                linux.rm_file_force(PFILE)
+                for line in fd.readlines():
+                    j = jsonobject.loads(line.strip())
+                    for key, val in j.__dict__.iteritems():
+                        info = VolumeLatencyInfo(key, val)
+                        infos.append(info)
+                    mirrorLatencies.append(infos)
+            return mirrorLatencies
 
     def backup_volume(self, vm, node, bitmap, mode, dest, speed, reporter, stage):
         self.check_capacity(os.path.dirname(dest))
