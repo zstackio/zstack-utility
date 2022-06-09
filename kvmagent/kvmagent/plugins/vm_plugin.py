@@ -4622,6 +4622,11 @@ class Vm(object):
                 if ret != 0:
                     raise kvmagent.KvmError('failed to nodedev-detach %s: %s, %s' % (addr, out, err))
 
+                if os.path.exists('/usr/lib/nvidia/sriov-manage'):
+                    ret, out, err = bash.bash_roe("/usr/lib/nvidia/sriov-manage -d %s" % addr)
+                    if ret != 0:
+                        raise kvmagent.KvmError('failed to /usr/lib/nvidia/sriov-manage -d %s: %s, %s' % (addr, out, err))
+
                 if match_pci_device(addr):
                     hostdev = e(devices, "hostdev", None, {'mode': 'subsystem', 'type': 'pci', 'managed': 'no'})
                     e(hostdev, "driver", None, {'name': 'vfio'})
@@ -6995,6 +7000,14 @@ host side snapshot files chian:
         if r != 0:
             rsp.success = False
             rsp.error = "failed to nodedev-reattach %s: %s, %s" % (addr, o, e)
+            return jsonobject.dumps(rsp)
+
+        if os.path.exists('/usr/lib/nvidia/sriov-manage'):
+            ret, out, err = self._exec_sriov_manage(addr, True)
+            if ret != 0:
+                rsp.success = False
+                rsp.error = "failed to /usr/lib/nvidia/sriov-manage -e %s: %s, %s" % (addr, o, e)
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -7004,12 +7017,27 @@ host side snapshot files chian:
         rsp = DetachPciDeviceFromHostRsp()
         addr = cmd.pciDeviceAddress
 
+        if os.path.exists('/usr/lib/nvidia/sriov-manage'):
+            ret, out, err = self._exec_sriov_manage(addr, False)
+            if ret != 0:
+                rsp.success = False
+                rsp.error = "failed to /usr/lib/nvidia/sriov-manage -d %s: %s, %s" % (addr, out, err)
+                return jsonobject.dumps(rsp)
+
         r, o, e = bash.bash_roe("virsh nodedev-detach pci_%s" % addr.replace(':', '_').replace('.', '_'))
         logger.debug("nodedev-detach %s: %s, %s" % (addr, o, e))
         if r != 0:
             rsp.success = False
             rsp.error = "failed to nodedev-detach %s: %s, %s" % (addr, o, e)
+
         return jsonobject.dumps(rsp)
+
+    @linux.retry(times=30, sleep_time=5)
+    def _exec_sriov_manage(self, addr, is_enable = True):
+        if is_enable:
+            return bash.bash_roe("/usr/lib/nvidia/sriov-manage -e %s" % addr)
+        else:
+            return bash.bash_roe("/usr/lib/nvidia/sriov-manage -d %s" % addr)
 
     def _get_next_usb_port(self, dom, bus):
         domain_xml = dom.XMLDesc(0)
