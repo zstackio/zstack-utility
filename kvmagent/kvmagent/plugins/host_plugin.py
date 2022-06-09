@@ -2076,9 +2076,13 @@ done
             logger.debug("no need to re-splite pci device[addr:%s] into mdev devices" % addr)
             return jsonobject.dumps(rsp)
 
+        @linux.retry(times=30, sleep_time=5)
+        def _exec_nvidia_sriov_manage(addr):
+            bash_roe("/usr/lib/nvidia/sriov-manage -e %s" % addr)
+
         # virtualization needs to be enabled when restarting the host to sync vgpu mdev
         if os.path.exists('/usr/lib/nvidia/sriov-manage'):
-            bash_roe("/usr/lib/nvidia/sriov-manage -e ALL")
+            _exec_nvidia_sriov_manage(addr)
 
         # support nvidia gpu only
         type = int(cmd.mdevSpecTypeId, 0)
