@@ -153,6 +153,7 @@ def get_nic_info():
         is_provision_nic = True if mac_address in pxe_iface_mac else False
 
         net_devs.append({
+            'nicName': net_dev,
             'nicMac': mac_address,
             'nicSpeed': speed,
             'isProvisionNic': is_provision_nic
@@ -163,18 +164,21 @@ def get_nic_info():
 def get_disk_info():
     block_devs = []
 
-    cmd = 'lsblk --nodeps --byte --output name,size,rota,type'
+    cmd = 'lsblk --nodeps --byte --output name,size,rota,type,wwn'
     _, stdout, _ = shell_cmd(cmd)
     for line in stdout.split('\n')[1:]:
-        if len(line.split()) != 4:
+        if len(line.split()) != 5:
             continue
-        name, size, rotation, blk_type  = line.split()
+        name, size, rotation, blk_type, wwn  = line.split()
 
         if blk_type.lower() != 'disk':
             continue
 
         disk_type = 'SSD' if rotation == '0' else 'HDD'
-        _, wwn, _ = shell_cmd("smartctl -i /dev/%s | awk '/Logical Unit id/{print $4}'" % name)
+        # get longest wwn
+        _, output, _ = shell_cmd("ls -l /dev/disk/by-id | grep -e wwn -e nvme-eui | grep %s | awk 'NR==1 {print $9}'" % name)
+        if output != '':
+            wwn = output.split("-")[1]
         block_devs.append({
             'diskType': disk_type,
             'diskSize': size,

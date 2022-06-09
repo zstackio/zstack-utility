@@ -1,0 +1,15 @@
+
+# The Type could be ib or other, comment it, let sys to adjust the type.
+# TYPE=Ethernet
+{% if if_type -%}
+TYPE={{ if_type }}
+{%- endif %}
+PROXY_METHOD=none
+BROWSER_ONLY=no
+BOOTPROTO=none
+NAME={{ iface_name }}
+ONBOOT=yes
+DEVICE={{ iface_name }}
+{% if paras -%}
+{{ paras }}
+{%- endif %}

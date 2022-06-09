@@ -1,8 +1,10 @@
 import json
+from oslo_log import log as logging
 
 from bm_instance_agent.common import utils
 from bm_instance_agent import exception
 
+LOG = logging.getLogger(__name__)
 
 class Base(object):
     """ Construct obj from req body
@@ -65,7 +67,8 @@ class BmInstanceObj(Base):
         setattr(obj, 'nics', [])
         if 'nics' in bm_instance.keys():
             for port_dict in bm_instance['nics']:
-                obj.nics.append(PortObj.from_json(port_dict))
+                port_obj = PortObj.from_json(port_dict)
+                obj.nics.append(port_obj)
 
         return obj
 
@@ -96,6 +99,9 @@ class VolumeObj(Base):
 
 
 class PortObj(Base):
+    PORT_TYPE_PHY = 'physical'
+    PORT_TYPE_BOND = 'bond'
+    PORT_TYPE_VLAN = 'vlan'
     """ Construct a Port obj from req body
 
     A port example::
@@ -107,30 +113,103 @@ class PortObj(Base):
         'vlanId': '1024',
         'defaultRoute': True
     }
-
+    {
+        'type': 'bond',        // physical, bond
+        'ifaceName': 'bond0',  //
+        'paras': '',           // link parameter, json string, from 'BondTO'
+        'mac': 'aa:bb:cc:dd:ee:ff',
+        'ipAddress': '10.0.120.10',
+        'netmask': '255.255.255.0',
+        'gateway': '10.0.120.1',
+        'vlanId': '1024',
+        'defaultRoute': True
+    }
     `nextDefaultRoutePort` only used during port detach.
     """
 
-    allowed_keys = ['mac', 'ip_address', 'netmask', 'gateway',
+    allowed_keys = ['type', 'paras', 'mac', 'ip_address', 'netmask', 'gateway',
                     'default_route', 'iface_name', 'vlan_id']
 
     @classmethod
     def from_json(cls, port):
         obj = cls()
         obj.construct(port)
+        if not hasattr(obj, 'type'):
+            setattr(obj, 'type', obj.PORT_TYPE_PHY)
 
-        local_ifaces = utils.get_interfaces()
-        if obj.mac not in local_ifaces:
+        iface_name = obj.iface_name
+        spec_if_name = False
+        if iface_name and iface_name != '':
+            spec_if_name = True
+
+        local_ifaces = utils.try_get_phy_interfaces()
+        if not spec_if_name and obj.mac not in local_ifaces:
             raise exception.NewtorkInterfaceNotFound(mac=obj.mac,
                                                      vlan_id=obj.vlan_id)
         # NOTE(ya.wang) For vlan nic, the name is 'iface.vlan_id', therefore
         # try to split it.
-        iface_name = local_ifaces.get(obj.mac).split('.')[0]
+        if not spec_if_name:
+            iface_name = local_ifaces.get(obj.mac).split('.')[0]
         if obj.vlan_id:
-            iface_name = '{iface_name}.{vlan_id}'.format(
-                iface_name=iface_name, vlan_id=obj.vlan_id)
-        setattr(obj, 'iface_name', iface_name)
+            setattr(obj, 'vlan_if_name', '{iface_name}.{vlan_id}'.format(
+                                iface_name=iface_name, vlan_id=obj.vlan_id))
+        else:
+            setattr(obj, 'vlan_if_name', None)
 
+        setattr(obj, 'iface_name', iface_name)
+        LOG.info('get port object {}'.format(obj.__dict__))
+        return obj
+
+    def get_l3_interface(self):
+        return self.vlan_if_name if self.vlan_if_name else self.iface_name
+
+
+class BondPortParasObj(Base):
+    """ Construct a bond port config:
+        An example::
+        {
+            "name": "bond0",
+            "salves": "ac:1f:6b:ea:b3:d8,ac:1f:6b:ee:4a:8f",
+            "opts":"mode=1,miimon=100"
+        }
+        """
+
+    allowed_keys = ['name', 'slaves', 'opts']
+
+    @classmethod
+    def from_json(cls, paras_in):
+        paras = paras_in
+        if isinstance(paras_in, (str, unicode)):
+            paras = json.loads(paras_in)
+
+        obj = cls()
+        obj.construct(paras)
+        slave_macs = obj.slaves.split(',')
+        if len(slave_macs) == 0:
+            raise exception.NewtorkInterfaceConfigParasInvalid(exception_msg="bond salve is null")
+        bond_opts = obj.opts.split(',')
+        if bond_opts:
+            setattr(obj, 'link_paras', {})
+            for opts in bond_opts:
+                key_value = opts.split('=')
+                if len(key_value) != 2:
+                    raise exception.NewtorkInterfaceConfigParasInvalid(exception_msg="bond opts format error")
+                else:
+                    obj.link_paras[key_value[0]] = key_value[1]
+
+        setattr(obj, 'slave_list', [])
+        phy_interfaces = utils.get_phy_interfaces()
+        for slave_mac in slave_macs:
+            if slave_mac not in phy_interfaces:
+                raise exception.NewtorkInterfaceNotFound(slave_mac, vlan_id=0)
+            else:
+                obj.slave_list.append({'iface_name': phy_interfaces[slave_mac], 'master': obj.name})
+
+        if not obj.slave_list:
+            raise exception.NewtorkInterfaceConfigParasInvalid(
+                exception_msg="at least one slave is specified in the bond")
+
+        LOG.info('get bond port object {}'.format(obj.__dict__))
         return obj
 
 
@@ -184,7 +263,8 @@ class NetworkObj(Base):
 
         ports = req if isinstance(req, list) else [req]
         for port_dict in ports:
-            obj.ports.append(PortObj.from_json(port_dict))
+            port_obj = PortObj.from_json(port_dict)
+            obj.ports.append(port_obj)
 
             if port_dict.get('default_route'):
                 obj.default_gw_addr = port_dict.get('gateway')
