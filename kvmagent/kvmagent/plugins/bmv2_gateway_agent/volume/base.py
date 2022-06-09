@@ -30,6 +30,10 @@ class BaseVolume(object):
         return self.volume_obj.format
 
     @property
+    def is_shareable(self):
+        return self.volume_obj.is_shareable
+
+    @property
     def nbd_backend(self):
         raise ValueError()
 
