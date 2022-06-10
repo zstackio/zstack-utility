@@ -399,21 +399,15 @@ class QueryVolumeMirrorResponse(kvmagent.AgentResponse):
         self.extraMirrorVolumes = [] # type:list[str]
 
 
-class HostVmLatencyInfo(object):
-    def __init__(self, vmUuid, latencies):
-        self.vmUuid = vmUuid
-        self.latencies = latencies
-
-
 class QueryVmLatenciesThread(threading.Thread):
-    def __init__(self, func, args):
+    def __init__(self, func, uuids):
         threading.Thread.__init__(self)
         self.func = func
-        self.args = args
+        self.uuids = uuids
         self.res = []
 
     def run(self):
-        self.res = self.func(*self.args)
+        self.res = self.func(self.uuids)
 
     def getResult(self):
         return self.res
@@ -427,10 +421,10 @@ class TakeVolumeBackupResponse(kvmagent.AgentResponse):
         self.bitmap = None
 
 
-class QueryVolumeMirrorLatenciesResponse(kvmagent.AgentResponse):
+class QueryMirrorLatencyResponse(kvmagent.AgentResponse):
     def __init__(self):
-        super(QueryVolumeMirrorLatenciesResponse, self).__init__()
-        self.hostVmLatencyInfos = []  # type:list[HostVmLatencyInfo]
+        super(QueryMirrorLatencyResponse, self).__init__()
+        self.hostVmLatencyInfos = []  # type:list[VmCdpLatencyInfo]
 
 
 class VolumeBackupInfo(object):
@@ -6601,7 +6595,7 @@ host side snapshot files chian:
         for v in cmd.volumes:
             target_disk, _ = vm._get_target_disk(v)
             device_name = self.get_disk_device_name(target_disk)
-            voldict[device_name] = v.volumeUuid;
+            voldict[device_name] = v.volumeUuid
 
         isc = ImageStoreClient()
         volumes = isc.query_mirror_volumes(cmd.vmUuid)
@@ -6664,10 +6658,10 @@ host side snapshot files chian:
     @kvmagent.replyerror
     def query_vm_mirror_latencies(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = QueryVolumeMirrorLatenciesResponse()
+        rsp = QueryMirrorLatencyResponse()
 
         threads = []
-        hostVmLatencyInfos = []
+        vmCdpLatencyInfos = []
         isc = ImageStoreClient()
         try:
             for uuid in cmd.vmUuids:
@@ -6676,14 +6670,12 @@ host side snapshot files chian:
                 t.start()
             for t in threads:
                 t.join()
-                l = t.getResult()
-                if not l:
-                    logger.debug("vm[uuid: %s] have not running cdp task, skip query latency." % uuid)
+                vmCdpLatencyInfo = t.getResult()
+                if not vmCdpLatencyInfo:
                     continue
 
-                hostVmLatencyInfo = HostVmLatencyInfo(uuid, l)
-                hostVmLatencyInfos.append(hostVmLatencyInfo)
-            rsp.hostVmLatencyInfos = hostVmLatencyInfos
+                vmCdpLatencyInfos.append(vmCdpLatencyInfo)
+            rsp.hostVmLatencyInfos = vmCdpLatencyInfos
         except Exception as e:
             rsp.error = str(e)
             rsp.success = False
@@ -7889,7 +7881,7 @@ host side snapshot files chian:
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_MIRROR_PATH, self.take_volume_mirror)
         http_server.register_async_uri(self.KVM_CANCEL_VOLUME_MIRROR_PATH, self.cancel_volume_mirror)
         http_server.register_async_uri(self.KVM_QUERY_VOLUME_MIRROR_PATH, self.query_volume_mirror)
-        http_server.register_async_uri(self.KVM_QUERY_MIRROR_LATENCIES_PATH, self.query_mirror_latencies)
+        http_server.register_async_uri(self.KVM_QUERY_MIRROR_LATENCIES_PATH, self.query_vm_mirror_latencies)
         http_server.register_async_uri(self.KVM_TAKE_VOLUMES_SNAPSHOT_PATH, self.take_volumes_snapshots)
         http_server.register_async_uri(self.KVM_TAKE_VOLUMES_BACKUP_PATH, self.take_volumes_backups, cmd=TakeVolumesBackupsCommand())
         http_server.register_async_uri(self.KVM_CANCEL_VOLUME_BACKUP_JOBS_PATH, self.cancel_backup_jobs)

@@ -22,6 +22,11 @@ class VolumeLatencyInfo(object):
         self.latency = latency
 
 
+class VmCdpLatencyInfo(object):
+    def __init__(self, vmUuid, latencies):
+        self.vmUuid = vmUuid
+        self.latencies = latencies
+
 class ImageStoreClient(object):
 
     GODEBUGignoreCN = "GODEBUG=x509ignoreCN=0 "
@@ -140,7 +145,8 @@ class ImageStoreClient(object):
                         info = VolumeLatencyInfo(key, val)
                         infos.append(info)
                     mirrorLatencies.append(infos)
-            return mirrorLatencies
+            vmCdpLatencyInfo = VmCdpLatencyInfo(vm, mirrorLatencies)
+            return vmCdpLatencyInfo
 
     def backup_volume(self, vm, node, bitmap, mode, dest, speed, reporter, stage):
         self.check_capacity(os.path.dirname(dest))
