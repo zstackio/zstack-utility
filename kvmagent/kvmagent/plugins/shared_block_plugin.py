@@ -660,6 +660,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp.hostId = lvm.get_running_host_id(cmd.vgUuid)
         rsp.vgLvmUuid = lvm.get_vg_lvm_uuid(cmd.vgUuid)
         rsp.hostUuid = cmd.hostUuid
+        rsp.lunCapacities = lvm.get_lun_capacities_from_vg(cmd.vgUuid, self.vgs_path_and_wwid)
         return jsonobject.dumps(rsp)
 
     @staticmethod
@@ -809,6 +810,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         rsp = AgentRsp
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+        rsp.lunCapacities = lvm.get_lun_capacities_from_vg(cmd.vgUuid, self.vgs_path_and_wwid)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
