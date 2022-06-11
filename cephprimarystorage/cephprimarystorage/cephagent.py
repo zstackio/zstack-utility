@@ -307,6 +307,7 @@ class CephAgent(plugin.TaskManager):
 
     def __init__(self):
         super(CephAgent, self).__init__()
+        self._init_third_party_ceph()
         self.http_server.register_async_uri(self.INIT_PATH, self.init)
         self.http_server.register_async_uri(self.ADD_POOL_PATH, self.add_pool)
         self.http_server.register_async_uri(self.CHECK_POOL_PATH, self.check_pool)
@@ -364,6 +365,22 @@ class CephAgent(plugin.TaskManager):
             self.ioctx[pool_name] = self.cluster.open_ioctx(pool_name)
 
         return self.ioctx[pool_name]
+
+    def _init_third_party_ceph(self):
+        if not ceph.is_xsky():
+            return
+
+        regex = 'grep -v 3.10.0-'
+        cfg_path = '/etc/init.d/xdc'
+        if len(linux.filter_file_lines_by_regex(cfg_path, regex)) != 0:
+            return
+
+        command = """sed -i "s/sed '\/^xdc_proxy_feature/uname -r |grep -v 3.10.0- || &/" /etc/init.d/xdc
+        systemctl daemon-reload;
+        systemctl enable xdc;
+        systemctl start xdc
+        """
+        shell.call(command)
 
     def _set_capacity_to_response(self, rsp):
         o = shell.call('ceph df -f json')
