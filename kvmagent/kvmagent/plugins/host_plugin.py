@@ -1685,7 +1685,7 @@ done
             return False
 
         # check if nvidia vgpu is supported by current device
-        r, o, e = bash_roe("nvidia-smi vgpu -i %s -v -s" % addr)
+        r, o, e = bash_roe("nvidia-smi vgpu -i %s -v -c" % addr)
         if r != 0:
             return False
 
