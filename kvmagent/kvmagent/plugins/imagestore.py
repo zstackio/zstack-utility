@@ -107,7 +107,7 @@ class ImageStoreClient(object):
             return synced
 
         with linux.ShowLibvirtErrorOnException(vm):
-            cmdstr = '%s -progress %s mirror -dest %s -domain %s -drive %s -lastMirrorVolume "%s" -mirrorVolume "%s" -volumeType %s -mode "%s" -speed %d' % \
+            cmdstr = '%s -progress %s mirror -dest %s -domain %s -drive "%s" -lastMirrorVolume "%s" -mirrorVolume "%s" -volumeType %s -mode "%s" -speed %d' % \
                      (self.ZSTORE_CLI_PATH, PFILE, dest, vm, node, lastvolume, currvolume, volumetype, mode, speed)
             _, mode, err = bash_progress_1(cmdstr, _get_progress)
             linux.rm_file_force(PFILE)
