@@ -4321,14 +4321,15 @@ class Vm(object):
             for pci in pciDevices:
                 addr, spec_uuid = pci.split(',')
 
+                if os.path.exists('/usr/lib/nvidia/sriov-manage'):
+                    r, o, stderr = bash.bash_roe("/usr/lib/nvidia/sriov-manage -d %s" % addr)
+                    if r != 0:
+                        raise kvmagent.KvmError('failed to /usr/lib/nvidia/sriov-manage -d %s: %s, %s' % (addr, o, stderr))
+
+
                 ret, out, err = bash.bash_roe("virsh nodedev-detach pci_%s" % addr.replace(':', '_').replace('.', '_'))
                 if ret != 0:
                     raise kvmagent.KvmError('failed to nodedev-detach %s: %s, %s' % (addr, out, err))
-
-                if os.path.exists('/usr/lib/nvidia/sriov-manage'):
-                    ret, out, err = bash.bash_roe("/usr/lib/nvidia/sriov-manage -d %s" % addr)
-                    if ret != 0:
-                        raise kvmagent.KvmError('failed to /usr/lib/nvidia/sriov-manage -d %s: %s, %s' % (addr, out, err))
 
                 if match_pci_device(addr):
                     hostdev = e(devices, "hostdev", None, {'mode': 'subsystem', 'type': 'pci', 'managed': 'no'})
