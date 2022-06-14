@@ -2086,7 +2086,7 @@ class LunWwidAndCapacity(object):
 @bash.in_bash
 def get_lun_capacities_from_vg(vg_uuid, vgs_path_and_wwid):
     r, pvs_out, _ = bash.bash_roe("timeout -s SIGKILL 10 pvs --noheading --nolocking --nosuffix"
-                                  " -S 'vg_name=%s' -o 'pv_name,dev_size,pv_free' --units b" % vg_uuid)
+                                  " -S 'vg_name=%s' -o 'pv_name,pv_size,pv_free' --units b" % vg_uuid)
     if r != 0:
         return None
 
