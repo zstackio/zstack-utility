@@ -1,6 +1,9 @@
 
 # The Type could be ib or other, comment it, let sys to adjust the type.
 # TYPE=Ethernet
+{% if if_type -%}
+TYPE={{ if_type }}
+{%- endif %}
 PROXY_METHOD=none
 BROWSER_ONLY=no
 BOOTPROTO=none
@@ -16,9 +19,12 @@ ONBOOT=yes
 DEVICE={{ iface_name }}
 IPADDR={{ ip_address }}
 NETMASK={{ netmask }}
-{% if gateway %}
+{% if gateway -%}
 GATEWAY={{ gateway }}
-{% endif %}
-{% if vlan_id %}
+{%- endif %}
+{% if vlan_id -%}
 VLAN=yes
-{% endif %}
+{%- endif %}
+{% if paras -%}
+{{ paras }}
+{%- endif %}

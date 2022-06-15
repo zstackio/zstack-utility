@@ -45,16 +45,15 @@ def get_ipmi_info():
     }
 
 def get_dest_dev(dest_wwn):
-    cmd = 'lsblk --nodeps --byte --output size,name'
+    cmd = 'lsblk --nodeps --byte --output name,size'
     _, stdout, _ = shell_cmd(cmd)
     for line in stdout.split('\n')[1:]:
         if len(line.split()) != 2:
             continue
-        size, name = line.split()
-        blk_dev = "/dev/{}".format(name)
-        _, wwn, _ = shell_cmd("smartctl -i %s | awk '/Logical Unit id/{print $4}'" % blk_dev)
-        if wwn == dest_wwn:
-            return blk_dev
+        name, size = line.split()
+        _, output, _ = shell_cmd("ls -l /dev/disk/by-id | grep %s |grep %s | awk 'NR==1 {print $11}'" % (dest_wwn, name))
+        if output != '':
+            return "/dev/%s" % name
 
     raise Exception("Failed to find dest disk[%s]" % dest_wwn)
 
@@ -76,8 +75,42 @@ def get_src_dev():
 
 
 def convert_data(src, dest):
-    cmd = 'dd if=%s of=%s conv=sparse bs=1M' % (src, dest)
+    cmd = 'dd if=%s of=%s conv=sparse bs=1M status=progress 2>>/root/dd.txt &' % (src, dest)
     _, stdout, _ = shell_cmd(cmd)
+
+def report_dd_progress(src_dev):
+    start_progress = 40.0
+    end_progress = 90
+    total_size = 0
+    cmd = 'lsblk %s --nodeps --byte --output SIZE,NAME' % src_dev
+    _, stdout, _ = shell_cmd(cmd)
+    for line in stdout.split('\n')[1:]:
+        if len(line.split()) != 2:
+            continue
+        total_size = line.split()[0]
+
+    while True:
+        time.sleep(5)
+        _, stdout, _ = shell_cmd("ps -ef | grep status=progress | grep -v grep | wc -l")
+        if int(stdout) == 0:
+            break
+
+        _, current_size, _ = shell_cmd("tail -1 /root/dd.txt | awk -v RS='\r' '/copied/ {print $1}' | awk 'END {print}'")
+        if current_size is not None:
+            current_progress = int(float(start_progress) + 50 * float(current_size) / float(total_size))
+            report_progress(str(current_progress))
+
+
+def report_progress(percentage):
+    progress_struct = {}
+    progress_struct["threadContextMap"] = {"api":"{{api_id}}", "task-name":"{{task_name}}"}
+    progress_struct["progress"] = percentage
+    progress_struct["processType"] = "BM2ConvertToLocalDisk"
+
+    cmd = ('curl -X POST -H "Content-Type:application/json" -H "commandpath:/progress/report" -d \'{data}\' '
+           '--retry 5 {{ send_progress_info_uri }} ').format(
+               data=json.dumps(progress_struct))
+    shell_cmd(cmd)
 
 def send_info(result):
     cmd = ('curl -X POST -H "Content-Type:application/json" -d \'{data}\' '
@@ -101,6 +134,7 @@ def main():
     send_info(result)
 
     convert_data(src_dev, dest_dev)
+    report_dd_progress(src_dev)
 
     convert_info['status'] = 'Converted'
     result['convertInfo'] = json.dumps(convert_info)
