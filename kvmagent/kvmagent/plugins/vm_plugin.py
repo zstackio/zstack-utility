@@ -4509,6 +4509,8 @@ class VmPlugin(kvmagent.KvmAgent):
     ROLLBACK_QUORUM_CONFIG_PATH = "/rollback/quorum/config"
     FAIL_COLO_PVM_PATH = "/fail/colo/pvm"
     GET_VM_DEVICE_ADDRESS_PATH = "/vm/getdeviceaddress"
+    SYNC_VM_CLOCK_PATH = "/vm/clock/sync"
+    SET_SYNC_VM_CLOCK_TASK_PATH = "/vm/clock/sync/task"
 
     VM_OP_START = "start"
     VM_OP_STOP = "stop"
@@ -6824,6 +6826,24 @@ class VmPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
+    def sync_vm_clock_now(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+
+        vm = get_vm_by_uuid_no_retry(cmd.vmUuid, True)
+        if vm.state != Vm.VM_STATE_RUNNING:
+            rsp.success = False
+            rsp.error = 'vm[uuid:%s, name:%s] is not in running state' % (cmd.vmUuid, vm.get_name())
+            return jsonobject.dumps(rsp)
+
+        vm._wait_until_qemuga_ready(3000, cmd.vmUuid)
+        script = '''virsh qemu-agent-command %s --cmd "{\\"execute\\":\\"guest-set-time\\",\\"arguments\\":{\\"time\\":`date +%%s%%N`}}"''' % cmd.vmUuid
+        r, o, e = bash.bash_roe(script)
+        if r != 0:
+            rsp.success = False
+            rsp.error = "failed to sync time for vm[uuid:%s]: %s, %s" % (cmd.vmUuid, o, e)
+        return jsonobject.dumps(rsp)
+
     @staticmethod
     def _find_volume_device_address(vm, volumes):
         #  type:(Vm, list[jsonobject.JsonObject]) -> list[VmDeviceAddress]
@@ -6923,6 +6943,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.ROLLBACK_QUORUM_CONFIG_PATH, self.rollback_quorum_config)
         http_server.register_async_uri(self.FAIL_COLO_PVM_PATH, self.fail_colo_pvm, cmd=FailColoPrimaryVmCmd())
         http_server.register_async_uri(self.GET_VM_DEVICE_ADDRESS_PATH, self.get_vm_device_address)
+        http_server.register_async_uri(self.SYNC_VM_CLOCK_PATH, self.sync_vm_clock_now)
 
         self.clean_old_sshfs_mount_points()
         self.register_libvirt_event()
