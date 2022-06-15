@@ -192,6 +192,12 @@ class StartVmResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(StartVmResponse, self).__init__()
         self.nicInfos = []  # type:list[VmNicInfo]
+        self.virtualDeviceInfoList = []  # type:list[VirtualDeviceInfo]
+
+class VirtualDeviceInfo():
+    def __init__(self):
+        self.pciInfo = PciAddressInfo()
+        self.resourceUuid = None
 
 class VmNicInfo():
     def __init__(self):
@@ -206,10 +212,11 @@ class PciAddressInfo():
         self.slot = None
         self.function = None
 
-class AttchNicResponse(kvmagent.AgentResponse):
+class AttachNicResponse(kvmagent.AgentResponse):
     def __init__(self):
-        super(AttchNicResponse, self).__init__()
+        super(AttachNicResponse, self).__init__()
         self.pciAddress = PciAddressInfo()
+        self.virtualDeviceInfoList = []
 
 class GetVncPortCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -327,6 +334,7 @@ class AttachDataVolumeCmd(kvmagent.AgentCommand):
 class AttachDataVolumeResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(AttachDataVolumeResponse, self).__init__()
+        self.virtualDeviceInfoList = []  # type:list[VirtualDeviceInfo]
 
 
 class DetachDataVolumeCmd(kvmagent.AgentCommand):
@@ -4016,6 +4024,8 @@ class Vm(object):
                     cdrom = make_empty_cdrom(cdrom_config.targetDev, cdrom_config.bus , cdrom_config.unit, iso.bootOrder)
                     e(cdrom, 'source', None, {'file': iso.path})
 
+                e(cdrom, 'serial', iso.resourceUuid)
+
         def make_volumes():
             devices = elements['devices']
             #guarantee rootVolume is the first of the set
@@ -4298,6 +4308,10 @@ class Vm(object):
                 assert vol is not None, 'vol cannot be None'
                 if dataSourceOnly:
                     return vol
+
+                if v.pciAddress:
+                    domain, bus, slot, function = parse_pci_device_address(v.pciAddress)
+                    e(vol, 'address', None, {'type': 'pci', 'domain': '0x%s' % domain, 'bus': '0x%s' % bus, 'slot': '0x%s' % slot, 'function': '0x%s' % function})
 
                 Vm.set_device_address(vol, v)
                 if v.bootOrder is not None and v.bootOrder > 0 and v.deviceId == 0:
@@ -5156,18 +5170,22 @@ class VmPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def attach_nic(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AttchNicResponse()
+        rsp = AttachNicResponse()
 
         vm = get_vm_by_uuid(cmd.vmUuid)
         vm.attach_nic(cmd)
 
         for iface in vm.domain_xmlobject.devices.get_child_node_as_list('interface'):
-            if iface.mac.address_ == cmd.nic.mac:
-                rsp.pciAddress.bus = iface.address.bus_
-                rsp.pciAddress.function = iface.address.function_
-                rsp.pciAddress.type = iface.address.type_
-                rsp.pciAddress.domain = iface.address.domain_
-                rsp.pciAddress.slot = iface.address.slot_
+            if iface.mac.address_ != cmd.nic.mac:
+                continue
+
+            virtualDeviceInfo = VirtualDeviceInfo()
+            virtualDeviceInfo.pciInfo.bus = iface.address.bus_
+            virtualDeviceInfo.pciInfo.function = iface.address.function_
+            virtualDeviceInfo.pciInfo.type = iface.address.type_
+            virtualDeviceInfo.pciInfo.domain = iface.address.domain_
+            virtualDeviceInfo.pciInfo.slot = iface.address.slot_
+            rsp.virtualDeviceInfoList.append(virtualDeviceInfo)
 
         return jsonobject.dumps(rsp)
 
@@ -5235,6 +5253,16 @@ class VmPlugin(kvmagent.KvmAgent):
                 vmNicInfo.pciInfo.slot = iface.address.slot_
                 vmNicInfo.macAddress = iface.mac.address_
                 rsp.nicInfos.append(vmNicInfo)
+
+            for disk in vm.domain_xmlobject.devices.get_child_node_as_list('disk'):
+                virtualDeviceInfo = VirtualDeviceInfo()
+                virtualDeviceInfo.pciInfo.bus = disk.address.bus_
+                virtualDeviceInfo.pciInfo.function = disk.address.function_
+                virtualDeviceInfo.pciInfo.type = disk.address.type_
+                virtualDeviceInfo.pciInfo.domain = disk.address.domain_
+                virtualDeviceInfo.pciInfo.slot = disk.address.slot_
+                virtualDeviceInfo.resourceUuid = disk.serial
+                rsp.virtualDeviceInfoList.append(virtualDeviceInfo)
 
         return jsonobject.dumps(rsp)
 
@@ -5718,6 +5746,19 @@ class VmPlugin(kvmagent.KvmAgent):
                 raise kvmagent.KvmError(
                     'unable to attach volume[%s] to vm[uuid:%s], vm must be running or paused' % (volume.installPath, vm.uuid))
             vm.attach_data_volume(cmd.volume, cmd.addons)
+
+            vm.refresh()
+
+            disk, _ = vm._get_target_disk(volume)
+
+            virtualDeviceInfo = VirtualDeviceInfo()
+            virtualDeviceInfo.pciInfo.bus = disk.address.bus_
+            virtualDeviceInfo.pciInfo.function = disk.address.function_
+            virtualDeviceInfo.pciInfo.type = disk.address.type_
+            virtualDeviceInfo.pciInfo.domain = disk.address.domain_
+            virtualDeviceInfo.pciInfo.slot = disk.address.slot_
+            virtualDeviceInfo.resourceUuid = disk.serial
+            rsp.virtualDeviceInfoList.append(virtualDeviceInfo)
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
