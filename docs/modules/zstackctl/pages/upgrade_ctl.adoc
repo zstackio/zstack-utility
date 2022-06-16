@@ -52,7 +52,7 @@ ls ./WEB-INF/classes/tools/zstackctl-*.tar.gz
 [root@zstack-dev ~]# cd $tmpdir
 [root@zstack-dev tmp.1AQmcUK2Po]# tar zxvf zstack-all-in-one*.tgz
 libs/
-apache-tomcat-8.5.57.zip
+apache-tomcat-8.5.81.zip
 libs/tomcat_root_app.zip
 zstack.war
 [root@zstack-dev tmp.1AQmcUK2Po]# unzip zstack.war > /dev/null
