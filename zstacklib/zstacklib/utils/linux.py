@@ -1232,10 +1232,10 @@ def delete_bridge(bridge_name):
     for vif in vifs:
         if vif == '':
             continue
-        shell.check_run("brctl delif %s %s" % (bridge_name, vif))
+        shell.run("brctl delif %s %s" % (bridge_name, vif))
 
-    shell.check_run("ip link set %s down" % bridge_name)
-    shell.check_run("brctl delbr %s" % bridge_name)
+    shell.run("ip link set %s down" % bridge_name)
+    shell.run("brctl delbr %s" % bridge_name)
 
 def find_bridge_having_physical_interface(ifname):
     output = shell.call("brctl show|sed -n '2,$p'|cut -f 1,6")
