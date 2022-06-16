@@ -58,7 +58,8 @@ class NbdDeviceOperator(object):
         self.volume = volume
 
         self.used_nbd_ids = []
-        self.nbd_backend_mapping = {}
+        self.vol_nbd_backend_mapping = {}
+        self.vol_bm_instance_mapping = {}
 
         self._prepare()
 
@@ -113,11 +114,13 @@ class NbdDeviceOperator(object):
 
     def _refresh(self):
         self.used_nbd_ids = []
-        self.nbd_backend_mapping = {}
+        self.vol_nbd_backend_mapping = {}
+        self.vol_bm_instance_mapping = {}
         for ins_uuid, vol_uuid, nbd_backend, nbd_id in \
                 self._get_exist_nbd_device():
             self.used_nbd_ids.append(nbd_id)
-            self.nbd_backend_mapping[vol_uuid] = nbd_backend
+            self.vol_nbd_backend_mapping[vol_uuid] = nbd_backend
+            self.vol_bm_instance_mapping[vol_uuid] = ins_uuid
 
             if self.volume.instance_uuid == ins_uuid \
                     and self.volume.volume_uuid == vol_uuid \
@@ -170,12 +173,10 @@ class NbdDeviceOperator(object):
 
             # Check the volume whether in use
             vol_uuid = self.volume.volume_uuid
-            if vol_uuid in self.nbd_backend_mapping.keys() \
-                    and self.volume.nbd_backend == \
-                        self.nbd_backend_mapping[vol_uuid]:
-                msg = ('The volume {volume_uuid} had been connected before '
+            if self.vol_nbd_backend_mapping.get(vol_uuid) == self.volume.nbd_backend and self.vol_bm_instance_mapping.get(vol_uuid) == self.volume.instance_uuid:
+                msg = ('The volume {volume_uuid} had been connected by instance {instance_uuid} before '
                        'the operate').format(
-                           volume_uuid=self.volume.volume_uuid)
+                    volume_uuid=self.volume.volume_uuid, instance_uuid=self.volume.instance_uuid)
                 logger.info(msg)
                 return
 
@@ -186,9 +187,10 @@ class NbdDeviceOperator(object):
             if src_type == 'qemu':
                 # Log the lsof output, to record which process is using the blk.
                 logger.info(shell.call('lsof %s' % self.volume.nbd_backend, exception=False))
-                cmd = ('qemu-nbd --format {format} --fork --connect /dev/nbd{nbd_id} '
+                cmd = ('qemu-nbd --format {format} --fork {cacheMode}--connect /dev/nbd{nbd_id} '
                        '--socket {socket_path} {nbd_backend}').format(
                             format=self.volume.volume_format,
+                            cacheMode="--nocache " if self.volume.is_shareable else "",
                             nbd_id=self.volume.nbd_id,
                             socket_path=socket_path,
                             nbd_backend=self.volume.nbd_backend)

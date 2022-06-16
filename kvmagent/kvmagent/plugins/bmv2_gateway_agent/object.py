@@ -109,7 +109,8 @@ class NetworkObj(Base):
         'callBackIp': 'callback_ip',
         'callBackPort': 'callback_port',
         'baremetal2InstanceProxyPort': 'baremetal_instance_proxy_port',
-        'extraBootParams': 'extra_boot_params'
+        'extraBootParams': 'extra_boot_params',
+        'sendCommandUrl': 'send_command_url'
     }
 
     @classmethod
@@ -149,6 +150,7 @@ class VolumeObj(Base):
         'type': 'type',
         'path': 'path',
         'format': 'format',
+        'isShareable': 'is_shareable',
         'deviceId': 'device_id',
         'token': 'token',
         'tpTimeout': 'tpTimeout',
