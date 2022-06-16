@@ -2287,7 +2287,7 @@ def read_file(path):
 
 def read_nic_carrier(path):
     if not os.path.exists(path):
-        return None
+        raise IOError("file {} not found.".format(path))
     try:
         with open(path, 'r') as fd:
             return fd.read()
