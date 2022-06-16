@@ -424,7 +424,9 @@ class TakeVolumeBackupResponse(kvmagent.AgentResponse):
 class QueryMirrorLatencyResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(QueryMirrorLatencyResponse, self).__init__()
-        self.hostVmLatencyInfos = []  # type:list[VmCdpLatencyInfo]
+        self.vmCurrentMaxCdpLatencyInfos = {}
+        self.vmCurrentMinCdpLatencyInfos = {}
+
 
 
 class VolumeBackupInfo(object):
@@ -4993,7 +4995,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_TAKE_VOLUME_MIRROR_PATH = "/vm/volume/takemirror"
     KVM_CANCEL_VOLUME_MIRROR_PATH = "/vm/volume/cancelmirror"
     KVM_QUERY_VOLUME_MIRROR_PATH = "/vm/volume/querymirror"
-    KVM_QUERY_MIRROR_LATENCIES_PATH = "/vm/volume/querylatency"
+    KVM_QUERY_MIRROR_LATENCY_BOUNDARY_PATH = "/vm/volume/querylatencyboundary"
     KVM_BLOCK_STREAM_VOLUME_PATH = "/vm/volume/blockstream"
     KVM_TAKE_VOLUMES_SNAPSHOT_PATH = "/vm/volumes/takesnapshot"
     KVM_TAKE_VOLUMES_BACKUP_PATH = "/vm/volumes/takebackup"
@@ -6656,26 +6658,30 @@ host side snapshot files chian:
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
-    def query_vm_mirror_latencies(self, req):
+    def query_vm_mirror_latencies_boundary(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = QueryMirrorLatencyResponse()
 
         threads = []
-        vmCdpLatencyInfos = []
         isc = ImageStoreClient()
+        maxVmInfoMap = {}
+        minVmInfoMap = {}
+
         try:
             for uuid in cmd.vmUuids:
-                threads.append(QueryVmLatenciesThread(isc.query_vm_mirror_latencies, uuid))
+                threads.append(QueryVmLatenciesThread(isc.query_vm_mirror_latencies_boundary, uuid))
             for t in threads:
                 t.start()
             for t in threads:
                 t.join()
-                vmCdpLatencyInfo = t.getResult()
-                if not vmCdpLatencyInfo:
+                vmUuid, maxInfoMap, minInfoMap = t.getResult()
+                if not maxInfoMap and not minInfoMap:
                     continue
+                maxVmInfoMap[vmUuid] = maxInfoMap
+                minVmInfoMap[vmUuid] = minInfoMap
 
-                vmCdpLatencyInfos.append(vmCdpLatencyInfo)
-            rsp.hostVmLatencyInfos = vmCdpLatencyInfos
+            rsp.vmCurrentMaxCdpLatencyInfos = maxVmInfoMap
+            rsp.vmCurrentMinCdpLatencyInfos = minVmInfoMap
         except Exception as e:
             rsp.error = str(e)
             rsp.success = False
@@ -7881,7 +7887,7 @@ host side snapshot files chian:
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_MIRROR_PATH, self.take_volume_mirror)
         http_server.register_async_uri(self.KVM_CANCEL_VOLUME_MIRROR_PATH, self.cancel_volume_mirror)
         http_server.register_async_uri(self.KVM_QUERY_VOLUME_MIRROR_PATH, self.query_volume_mirror)
-        http_server.register_async_uri(self.KVM_QUERY_MIRROR_LATENCIES_PATH, self.query_vm_mirror_latencies)
+        http_server.register_async_uri(self.KVM_QUERY_MIRROR_LATENCY_BOUNDARY_PATH, self.query_vm_mirror_latencies_boundary)
         http_server.register_async_uri(self.KVM_TAKE_VOLUMES_SNAPSHOT_PATH, self.take_volumes_snapshots)
         http_server.register_async_uri(self.KVM_TAKE_VOLUMES_BACKUP_PATH, self.take_volumes_backups, cmd=TakeVolumesBackupsCommand())
         http_server.register_async_uri(self.KVM_CANCEL_VOLUME_BACKUP_JOBS_PATH, self.cancel_backup_jobs)

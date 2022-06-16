@@ -16,17 +16,6 @@ logger = log.get_logger(__name__)
 HOST_ARCH = platform.machine()
 
 
-class VolumeLatencyInfo(object):
-    def __init__(self, volume, latency):
-        self.volume = volume
-        self.latency = latency
-
-
-class VmCdpLatencyInfo(object):
-    def __init__(self, vmUuid, latencies):
-        self.vmUuid = vmUuid
-        self.latencies = latencies
-
 class ImageStoreClient(object):
 
     GODEBUGignoreCN = "GODEBUG=x509ignoreCN=0 "
@@ -127,26 +116,42 @@ class ImageStoreClient(object):
             if err:
                 raise Exception('fail to mirror volume %s, because %s' % (vm, str(err)))
 
-    def query_vm_mirror_latencies(self, vm):
+    def query_vm_mirror_latencies_boundary(self, vm):
         with linux.ShowLibvirtErrorOnException(vm):
-            mirrorLatencies = []
-            infos = []
+            infosMaps = []
+            maxLatencies = []
+            maxInfoMap = {}
+            minInfoMap = {}
             PFILE = linux.create_temp_file()
             cmdstr = '%s querylat -domain %s -count 8 > %s' % (self.ZSTORE_CLI_PATH, vm, PFILE)
             if shell.run(cmdstr) != 0 or os.path.getsize(PFILE) == 0:
                 logger.debug("Failed to query latency for vm: [%s]", vm)
-                return mirrorLatencies
+                return maxInfoMap, minInfoMap
 
             with open(PFILE) as fd:
                 linux.rm_file_force(PFILE)
                 for line in fd.readlines():
+                    infosMap = {}
                     j = jsonobject.loads(line.strip())
                     for key, val in j.__dict__.iteritems():
-                        info = VolumeLatencyInfo(key, val)
-                        infos.append(info)
-                    mirrorLatencies.append(infos)
-            vmCdpLatencyInfo = VmCdpLatencyInfo(vm, mirrorLatencies)
-            return vmCdpLatencyInfo
+                        infosMap[key] = val
+                    infosMaps.append(infosMap)
+                    maxLatencies.append(max(infosMap.values()))
+
+                if maxLatencies:
+                    maxLatency = max(maxLatencies)
+                    minLatency = min(maxLatencies)
+                    for infoMap in infosMaps:
+                        k = [k for k, v in infoMap.items() if v == maxLatency]
+                        if k:
+                            maxInfoMap = infoMap
+                            break
+                    for infoMap in infosMaps:
+                        k = [k for k, v in infoMap.items() if v == minLatency]
+                        if k:
+                            minInfoMap = infoMap
+                            break
+            return vm, maxInfoMap, minInfoMap
 
     def backup_volume(self, vm, node, bitmap, mode, dest, speed, reporter, stage):
         self.check_capacity(os.path.dirname(dest))
