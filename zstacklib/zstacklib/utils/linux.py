@@ -23,6 +23,8 @@ import errno
 import json
 import fcntl
 
+from inspect import stack
+
 from zstacklib.utils import thread
 from zstacklib.utils import qemu_img
 from zstacklib.utils import lock
@@ -2274,8 +2276,23 @@ def read_file(path):
         with open(path, 'r') as fd:
             return fd.read()
     except IOError as e:
-        logger.error(e)
+        stack_info = stack()
+        err_str = """{}\ncaused by reading file {}\n""".format(e, path)
+        cur_err_info = stack_info[0]
+        err_str += "\t{}, line {}, {}\n".format(cur_err_info[1], cur_err_info[2], cur_err_info[3])
+        for s in stack_info[1:4]:
+            err_str += """\t{}, line {},  {}:\n{}""".format(s[1], s[2], s[3], s[4][0])
+        logger.error(err_str)
         return None
+
+def read_nic_carrier(path):
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, 'r') as fd:
+            return fd.read()
+    except IOError as e:
+        raise e
 
 
 def read_file_lines(path):

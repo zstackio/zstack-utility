@@ -628,7 +628,7 @@ def collect_physical_network_interface_state():
             nic = nic.strip()
             try:
                 # NOTE(weiw): sriov nic contains carrier file but can not read
-                status = linux.read_file("/sys/class/net/%s/carrier" % nic).strip() == "1"
+                status = linux.read_nic_carrier("/sys/class/net/%s/carrier" % nic).strip() == "1"
             except Exception as e:
                 status = False
             speed = str(get_nic_supported_max_speed(nic))
