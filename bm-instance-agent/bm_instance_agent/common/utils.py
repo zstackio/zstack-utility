@@ -40,10 +40,8 @@ def _query_index_by_ifname(if_name, iproute):
 def _get_bond_slave_mac(if_name):
     path = '/sys/class/net/{}/bonding_slave/perm_hwaddr'.format(if_name)
     if os.path.exists(path):
-        f = open(path)
-        mac = f.read()
-        f.close()
-        return mac
+        with open(path) as f:
+            return f.read().strip()
     return None
 
 
@@ -57,7 +55,7 @@ def query_link(iface):
 
         if if_index:
             link = ipr.get_links(if_index)
-            if not link:
+            if link:
                 return IpLink(link[0])
         return None
 
@@ -80,7 +78,7 @@ def get_interfaces():
         perm_mac = _get_bond_slave_mac(iface)
         if perm_mac:
             interfaces[perm_mac] = iface
-        elif perm_mac != mac:
+        elif mac not in interfaces:
             interfaces[mac] = iface
     return interfaces
 
@@ -99,56 +97,23 @@ def get_phy_interfaces():
     iface_name_list = netifaces.interfaces()
     for iface in iface_name_list:
         link = query_link(iface)
-        if link and not link.device_type:
-            af_link = netifaces.ifaddresses(iface).get(netifaces.AF_LINK)
-            mac = af_link[0].get('addr')
-            perm_mac = _get_bond_slave_mac(iface)
-            if perm_mac:
-                interfaces[perm_mac] = iface
-            elif perm_mac != mac:
-                interfaces[mac] = iface
+        if not link or link.device_type:
+            continue
 
-    return interfaces
-
-
-def try_get_phy_interfaces():
-    """ If there are multiple interfaces with the same mac address, try to use the physical interface
-
-    :return: A iface_name, iface_mac mapping::
-    {
-        'aa:bb:cc:dd:ee:ff': 'eth0',
-        'ff:ee:dd:cc:bb:aa': 'enp37s0'
-    }
-    :rtype: dict
-    """
-    interfaces = {}
-    iface_name_list = netifaces.interfaces()
-    for iface in iface_name_list:
-        link = query_link(iface)
         af_link = netifaces.ifaddresses(iface).get(netifaces.AF_LINK)
         mac = af_link[0].get('addr')
         perm_mac = _get_bond_slave_mac(iface)
-
-        if link and not link.device_type:
-            if perm_mac:
-                interfaces[perm_mac] = iface
-            elif perm_mac != mac:
-                interfaces[mac] = iface
-        else:
-            if perm_mac and perm_mac not in interfaces.keys():
-                interfaces[perm_mac] = iface
-            elif perm_mac != mac and mac not in interfaces.keys():
-                interfaces[mac] = iface
+        if perm_mac:
+            interfaces[perm_mac] = iface
+        elif mac not in interfaces:
+            interfaces[mac] = iface
 
     return interfaces
 
 
 def is_physical_interface(if_name):
     link = query_link(if_name)
-    if not link and not link.device_type:
-        return True
-    else:
-        return False
+    return link and not link.device_type
 
 
 def get_interface_by_mac(mac):
@@ -283,9 +248,7 @@ def ip_link_del(if_name):
         cmd = ['ip', 'link', 'delete', if_name]
         processutils.execute(*cmd)
     except processutils.ProcessExecutionError as e:
-        if 'Cannot find device' in e.stderr:
-            return
-        else:
+        if 'Cannot find device' not in e.stderr:
             raise e
 
 
@@ -294,9 +257,7 @@ def ip_route_del(route_key):
         cmd = ['ip', 'route', 'delete', route_key]
         processutils.execute(*cmd)
     except processutils.ProcessExecutionError as e:
-        if 'No such process' in e.stderr:
-            return
-        else:
+        if 'No such process' not in e.stderr:
             raise e
 
 
@@ -304,9 +265,8 @@ def remove_file(file_path):
     try:
         os.remove(file_path)
     except OSError as e:
-        if 'No such file or directory' in str(e):
-            return
-        raise e
+        if 'No such file or directory' not in str(e):
+            raise e
 
 
 def nmcli_conn_delete(conn_name):
@@ -314,9 +274,7 @@ def nmcli_conn_delete(conn_name):
         cmd = ['nmcli', 'con', 'delete', conn_name]
         processutils.execute(*cmd)
     except processutils.ProcessExecutionError as e:
-        if 'unknown connection' in e.stderr:
-            return
-        else:
+        if 'unknown connection' not in e.stderr:
             raise e
 
 
@@ -324,3 +282,15 @@ def get_nmcli_system_conn(name):
     return "System " + name
 
 
+def config_to_dict(config, item_split, key_value_split):
+    """
+        Parse configuration items as dict.
+        e.g:
+            config_to_dict('a=11,b=22,c=33', ',', '='), return {'a':11, 'b':22, 'c':33}
+            config_to_dict('a:11 b:22 c:33', ' ', ':'), return {'a':11, 'b':22, 'c':33}
+    """
+    try:
+        config_dict = dict([opts.split(key_value_split) for opts in config.split(item_split)])
+    except ValueError:
+        raise exception.NewtorkInterfaceConfigParasInvalid(exception_msg="config format error")
+    return config_dict

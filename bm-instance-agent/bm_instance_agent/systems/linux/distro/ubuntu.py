@@ -38,16 +38,16 @@ class UbuntuDriver(linux_driver.LinuxDriver):
             ip_address = "{}/{}".format(nic.ip_address, prefix_size)
             l3_if = nic.get_l3_interface()
             path = '/etc/netplan/{}.yaml'.format(l3_if)
+            content = ""
             if os.path.exists(path):
+                exist_conf_files.remove('{}.yaml'.format(l3_if))
                 with open(path, 'r') as f:
                     content = f.read()
-                    if nic.iface_name not in content \
-                            or ip_address not in content \
-                            or nic.gateway not in content \
-                            or (nic.vlan_if_name and nic.vlan_if_name not in content):
-                        self._attach_port(nic)
-                exist_conf_files.remove('{}.yaml'.format(l3_if))
-            else:
+
+            keywords = [nic.iface_name, ip_address, nic.gateway]
+            if nic.vlan_if_name:
+                keywords.append(nic.vlan_if_name)
+            if any(key not in content for key in keywords):
                 self._attach_port(nic)
 
         # flush the iface and remove the conf file
