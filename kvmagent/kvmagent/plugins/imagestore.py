@@ -106,6 +106,8 @@ class ImageStoreClient(object):
             cmdstr = '%s querymirr -domain %s' % \
                      (self.ZSTORE_CLI_PATH, vm)
             jobj = jsonobject.loads(shell.call(cmdstr))
+            if jobj is None:
+                return None
             return jobj.mirrorVolumes
 
     def mirror_volume(self, vm, node, dest, lastvolume, currvolume, volumetype, mode, speed, reporter):

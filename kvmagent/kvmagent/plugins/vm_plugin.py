@@ -4959,8 +4959,9 @@ def check_mirror_jobs(domain_id, migrate_without_bitmaps):
 
     isc = ImageStoreClient()
     volumes = isc.query_mirror_volumes(domain_id)
-    for v in volumes.keys():
-        isc.stop_mirror(domain_id, False, v)
+    if volumes:
+        for v in volumes.keys():
+            isc.stop_mirror(domain_id, False, v)
 
     if migrate_without_bitmaps:
         execute_qmp_command(domain_id, '{"execute": "migrate-set-capabilities","arguments":'
@@ -6599,6 +6600,9 @@ host side snapshot files chian:
 
         isc = ImageStoreClient()
         volumes = isc.query_mirror_volumes(cmd.vmUuid)
+        if volumes is None:
+            return jsonobject.dumps(rsp)
+
         for device_name in volumes.keys():
             try:
                 rsp.mirrorVolumes.append(voldict[device_name])
