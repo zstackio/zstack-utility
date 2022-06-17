@@ -2699,19 +2699,34 @@ class Vm(object):
             return VmPlugin._get_snapshot_size(install_path)
 
         logger.debug(vs_structs)
-        need_memory_snapshot = False
+        memory_snapshot_required = False
         for vs_struct in vs_structs:
             if vs_struct.live is False or vs_struct.full is True:
                 raise kvmagent.KvmError("volume %s is not live or full snapshot specified, "
                                         "can not proceed")
 
             if vs_struct.memory:
-                e(snapshot, 'memory', None, attrib={'snapshot': 'external', 'file': vs_struct.installPath})
-                need_memory_snapshot = True
+                memory_snapshot_required = True
                 snapshot_dir = os.path.dirname(vs_struct.installPath)
                 if not os.path.exists(snapshot_dir):
                     os.makedirs(snapshot_dir)
 
+                memory_snapshot_path = None
+                if vs_struct.installPath.startswith("/dev/"):
+                    lvm.active_lv(vs_struct.installPath)
+                    shell.call("mkfs.ext4 -F %s" % vs_struct.installPath)
+                    mount_path = vs_struct.installPath.replace("/dev/", "/tmp/")
+                    if not os.path.exists(mount_path):
+                        linux.mkdir(mount_path)
+
+                    if not linux.is_mounted(mount_path):
+                        linux.mount(vs_struct.installPath, mount_path)
+
+                    memory_snapshot_path = mount_path + '/' + mount_path.rsplit('/', 1)[-1]
+                else:
+                    memory_snapshot_path = vs_struct.installPath
+
+                e(snapshot, 'memory', None, attrib={'snapshot': 'external', 'file': memory_snapshot_path})
                 memory_snapshot_struct = vs_struct
                 continue
 
@@ -2732,7 +2747,8 @@ class Vm(object):
                 vs_struct.volumeUuid,
                 target_disk.source.file_,
                 vs_struct.installPath,
-                get_size(target_disk.source.file_)))
+                get_size(target_disk.source.file_),
+                vs_struct.memory))
 
         self.refresh()
         for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
@@ -2743,7 +2759,7 @@ class Vm(object):
         logger.debug('creating live snapshot for vm[uuid:{0}] volumes[id:{1}]:\n{2}'.format(self.uuid, disk_names, xml))
 
         snap_flags = libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_NO_METADATA | libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_ATOMIC
-        if not need_memory_snapshot:
+        if not memory_snapshot_required:
             snap_flags |= libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_DISK_ONLY
 
         try:
@@ -2780,6 +2796,11 @@ class Vm(object):
                 existing = self._check_target_disk_existing_by_path(struct.installPath)
                 logger.debug("after create snapshot by libvirt, expected volume[install path: %s] does%s exist."
                              % (struct.installPath, "" if existing else " not"))
+
+                if struct.memory:
+                    mount_path = struct.installPath.replace("/dev/", "/tmp/")
+                    linux.umount(mount_path)
+                    linux.rmdir_if_empty(mount_path)
 
 
     def take_volume_snapshot(self, task_spec, volume, install_path, full_snapshot=False):
@@ -3183,6 +3204,17 @@ class Vm(object):
         def check_device(_):
             self.refresh()
             for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
+                if iface.mac.address_ != cmd.nic.mac:
+                    continue
+
+                virtualDeviceInfo = VirtualDeviceInfo()
+                virtualDeviceInfo.pciInfo.bus = iface.address.bus_
+                virtualDeviceInfo.pciInfo.function = iface.address.function_
+                virtualDeviceInfo.pciInfo.type = iface.address.type_
+                virtualDeviceInfo.pciInfo.domain = iface.address.domain_
+                virtualDeviceInfo.pciInfo.slot = iface.address.slot_
+                rsp.virtualDeviceInfoList.append(virtualDeviceInfo)
+
                 if iface.mac.address_ == cmd.nic.mac:
                     # vf nic doesn't have internal name
                     if cmd.nic.pciDeviceAddress is not None:
@@ -5105,7 +5137,24 @@ class VmPlugin(kvmagent.KvmAgent):
             vm = Vm.from_StartVmCmd(cmd)
 
             if cmd.memorySnapshotPath:
-                vm.restore(cmd.memorySnapshotPath)
+                snapshot_path = None
+                if cmd.memorySnapshotPath.startswith("/dev/"):
+                    if not os.path.exists(cmd.memorySnapshotPath):
+                        lvm.active_lv(cmd.memorySnapshotPath, False)
+
+                    mount_path = cmd.memorySnapshotPath.replace("/dev/", "/tmp/")
+                    if not linux.is_mounted(mount_path):
+                        linux.mount(cmd.memorySnapshotPath, mount_path)
+
+                    snapshot_path = mount_path + '/' + mount_path.rsplit('/', 1)[-1]
+
+                try:
+                    vm.restore(snapshot_path)
+                finally:
+                    linux.umount(mount_path)
+                    linux.rmdir_if_empty(mount_path)
+
+                    lvm.deactive_lv(cmd.memorySnapshotPath)
                 return
 
             wait_console = True if not cmd.addons or cmd.addons['noConsole'] is not True else False
@@ -5253,6 +5302,7 @@ class VmPlugin(kvmagent.KvmAgent):
                 vmNicInfo.pciInfo.slot = iface.address.slot_
                 vmNicInfo.macAddress = iface.mac.address_
                 rsp.nicInfos.append(vmNicInfo)
+
 
             for disk in vm.domain_xmlobject.devices.get_child_node_as_list('disk'):
                 virtualDeviceInfo = VirtualDeviceInfo()
@@ -8685,7 +8735,7 @@ class VolumeSnapshotJobStruct(object):
 
 
 class VolumeSnapshotResultStruct(object):
-    def __init__(self, volumeUuid, previousInstallPath, installPath, size=None):
+    def __init__(self, volumeUuid, previousInstallPath, installPath, size=None, memory=False):
         """
 
         :type volumeUuid: str
@@ -8697,6 +8747,7 @@ class VolumeSnapshotResultStruct(object):
         self.previousInstallPath = previousInstallPath
         self.installPath = installPath
         self.size = size
+        self.memory = memory
 
 
 @bash.in_bash
