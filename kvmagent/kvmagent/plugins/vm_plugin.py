@@ -7775,6 +7775,106 @@ host side snapshot files chian:
             rsp.error = "failed to sync time for vm[uuid:%s]: %s, %s" % (cmd.vmUuid, o, e)
         return jsonobject.dumps(rsp)
 
+    sync_clock_script = '''#!/bin/bash
+    interval=$1
+    if [[ ! -s /var/lib/zstack/kvm/sync-clock/interval-$interval-vms.txt ]]; then exit 0; fi
+    running_vms=`virsh list | sed -n '3,$p' | awk '{printf $2 "\\n"}'`
+    while IFS= read -r uuid
+    do
+        if [[ "$running_vms" == *"$uuid"* ]]; then
+            virsh qemu-agent-command $uuid --cmd "{\\"execute\\":\\"guest-set-time\\",\\"arguments\\":{\\"time\\":`date +%s%N`}}" &> /dev/null
+            if [ $? -ne 0 ]; then
+                echo "$(date) failed to sync clock for vm: $uuid" >> "/var/log/zstack/sync-clock/interval-$interval.log"
+            fi
+        fi
+    done < /var/lib/zstack/kvm/sync-clock/interval-$interval-vms.txt
+    '''
+
+    sync_clock_cron_exp_map = {
+        60 : '*/1 * * * *',
+        120 : '*/2 * * * *',
+        180 : '*/3 * * * *',
+        240 : '*/4 * * * *',
+        300 : '*/5 * * * *',
+        360 : '*/6 * * * *',
+        600 : '*/10 * * * *',
+        720 : '*/12 * * * *',
+        900 : '*/15 * * * *',
+        1200 : '*/20 * * * *',
+        1800 : '*/30 * * * *',
+        3600 : '0 */1 * * *',
+        7200 : '0 */2 * * *',
+        10800 : '0 */3 * * *',
+        14400 : '0 */4 * * *',
+        21600 : '0 */6 * * *',
+        28800 : '0 */8 * * *',
+        43200 : '0 */12 * * *',
+        86400 : '0 0 */1 * *'
+    }
+
+    @bash.in_bash
+    @kvmagent.replyerror
+    def set_sync_vm_clock_task(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+
+        r, o, e = bash.bash_roe('systemctl start crond')
+        if r != 0:
+            rsp.success = False
+            rsp.error = "failed to start crond service to preform sync clock task: %s %s" % (o, e)
+            return jsonobject.dumps(rsp)
+
+        script_directory = '/var/lib/zstack/kvm/sync-clock'
+        script_path = os.path.join(script_directory, 'sync-clock.sh')
+        log_directory = '/var/log/zstack/sync-clock/'
+
+        if not os.path.exists(script_directory):
+            os.mkdir(script_directory)
+        if not os.path.exists(log_directory):
+            os.mkdir(log_directory)
+        if not os.path.exists(script_path):
+            with open(script_path, "w") as fd:
+                fd.write(self.sync_clock_script)
+            os.chmod(script_path, 0o755)
+
+        # key: interval in seconds,  value: vm_uuid list
+        interval_uuid_map = {}
+        for vm_uuid in cmd.intervalMap.__dict__.keys():
+            interval = cmd.intervalMap[vm_uuid]
+            # check interval
+            if not self.sync_clock_cron_exp_map.has_key(interval):
+                rsp.success = False
+                rsp.error = "failed to start sync vm clock task: unexpect interval %d" % interval
+                return jsonobject.dumps(rsp)
+            if interval_uuid_map.has_key(interval):
+                interval_uuid_map[interval].append(vm_uuid)
+            else:
+                interval_uuid_map[interval] = [vm_uuid]
+
+        # string list
+        cron_scripts = []
+        for interval in interval_uuid_map:
+            vm_uuids = interval_uuid_map[interval]
+            sync_vm_file_path = os.path.join(script_directory, 'interval-%d-vms.txt' % interval)
+            with open(sync_vm_file_path, "w") as fd:
+                fd.write('\n'.join(vm_uuids))
+                fd.write('\n')
+            os.chmod(sync_vm_file_path, 0o666)
+            # '*/1 * * * * bash $script_path 60'
+            cron_scripts.append('%s bash %s %d' % (self.sync_clock_cron_exp_map[interval], script_path, interval))
+
+        tmp_path = tempfile.mktemp()
+        with open(tmp_path, "w") as fd:
+            fd.write('\n'.join(cron_scripts))
+            fd.write('\n')
+
+        r, o, e = bash.bash_roe('/usr/bin/crontab %s' % tmp_path)
+        os.remove(tmp_path)
+        if r != 0:
+            rsp.success = False
+            rsp.error = "failed to write crond script to preform sync clock task: %s %s" % (o, e)
+        return jsonobject.dumps(rsp)
+
     @staticmethod
     def _find_volume_device_address(vm, volumes):
         #  type:(Vm, list[jsonobject.JsonObject]) -> list[VmDeviceAddress]
@@ -7886,6 +7986,7 @@ host side snapshot files chian:
         http_server.register_async_uri(self.GET_VM_DEVICE_ADDRESS_PATH, self.get_vm_device_address)
         http_server.register_async_uri(self.SET_EMULATOR_PINNING_PATH, self.set_emulator_pinning)
         http_server.register_async_uri(self.SYNC_VM_CLOCK_PATH, self.sync_vm_clock_now)
+        http_server.register_async_uri(self.SET_SYNC_VM_CLOCK_TASK_PATH, self.set_sync_vm_clock_task)
 
         self.clean_old_sshfs_mount_points()
         self.register_libvirt_event()
