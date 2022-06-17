@@ -10191,6 +10191,42 @@ class SharedBlockQcow2SharedVolumeFixCmd(Command):
         sql = "update VolumeSnapshotTreeEO set VolumeSnapshotTreeEO.deleted=NOW() where VolumeSnapshotTreeEO.volumeUuid='%s'" % volumeUuid
         self._run_sql(sql)
 
+
+class DumpMNThreadCmd(Command):
+    thread_dump_file = "zstack-mn-thread-dump.log"
+    def __init__(self):
+        super(DumpMNThreadCmd, self).__init__()
+        self.name = "dump_mn_thread"
+        self.description = "dump Java stack traces of ZStack MN threads"
+        ctl.register_command(self)
+
+    def run(self, args):
+        mn_pid = get_management_node_pid()
+        if not mn_pid:
+            raise CtlError("ZStack MN is not running!")
+
+        shell("sudo -u zstack jstack %s > %s" % (mn_pid, self.thread_dump_file))
+        info("The Java stack traces of ZStack threads has been dumped to %s" % os.path.join(os.getcwd(), self.thread_dump_file))
+
+
+class DumpMNTaskQueueCmd(Command):
+    def __init__(self):
+        super(DumpMNTaskQueueCmd, self).__init__()
+        self.name = "dump_mn_queue"
+        self.description = "dump ZStack MN task queue"
+        ctl.register_command(self)
+
+    def run(self, args):
+        mn_pid = get_management_node_pid()
+        if not mn_pid:
+            raise CtlError("ZStack MN is not running!")
+
+        shell("kill -USR2 %s" % mn_pid)
+        mn_log_path = os.path.join(ctl.zstack_home, "../../logs/management-server.log")
+        time.sleep(1)
+        shell_no_pipe("sed -n '/BEGIN TASK QUEUE DUMP/,/END TASK QUEUE DUMP/p' %s" % mn_log_path)
+
+
 def main():
     AddManagementNodeCmd()
     BootstrapCmd()
@@ -10264,6 +10300,8 @@ def main():
     ConfigUiCmd()
     ShowUiCfgCmd()
     SetEncryptPropertiesCmd()
+    DumpMNThreadCmd()
+    DumpMNTaskQueueCmd()
 
     try:
         ctl.run()
