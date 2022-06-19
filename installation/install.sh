@@ -3717,7 +3717,6 @@ check_ha_need_upgrade()
 }
 
 add_zops_init_cronjob() {
-  if [ -d /usr/local/hyperconverged/ ];then
     if [ ! -f /tmp/zops_init.sock ];then
       touch /tmp/zops_init.sock
     fi
@@ -3730,7 +3729,6 @@ add_zops_init_cronjob() {
       echo "*/2 * * * * flock -xn /tmp/zops_init.sock $ZOPS_SERVER_INIT >> /tmp/zops_cron.log 2>&1" >> /var/spool/cron/root
       crond
     fi
-  fi
 }
 
 enforce_history() {

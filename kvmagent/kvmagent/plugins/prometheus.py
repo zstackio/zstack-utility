@@ -416,8 +416,6 @@ def collect_ipmi_state():
         'ipmi_status': GaugeMetricFamily('ipmi_status', 'ipmi status', None, []),
         "fan_speed_rpm": GaugeMetricFamily('fan_speed_rpm', 'fan speed rpm', None, ['fan_speed_name']),
         "fan_speed_state": GaugeMetricFamily('fan_speed_state', 'fan speed state', None, ['fan_speed_name']),
-        "cpu_temperature": GaugeMetricFamily('cpu_temperature', 'cpu temperature', None, ['cpu']),
-        "cpu_status": GaugeMetricFamily('cpu_status', 'cpu status', None, ['cpu']),
     }
 
     global collect_equipment_state_last_time
@@ -470,25 +468,38 @@ def collect_ipmi_state():
             metrics['fan_speed_state'].add_metric([fan_id], fan_state)
             metrics['fan_speed_rpm'].add_metric([fan_id], float(fan_rpm))
     
+    collect_equipment_state_last_result = metrics.values()
+    return collect_equipment_state_last_result
+
+
+def collect_physical_cpu_state():
+    metrics = {
+        "cpu_temperature": GaugeMetricFamily('cpu_temperature', 'cpu temperature', None, ['cpu']),
+        "cpu_status": GaugeMetricFamily('cpu_status', 'cpu status', None, ['cpu']),
+    }
+
     '''
         PowerLeader
         CPU1 Temp      | 01h | ok  | 3.1 | 66 degrees C
     '''
-    r, cpu_temp_info = bash_ro("ipmitool sdr type 'Temperature' | grep -E -i '^CPU[0-9]*(\ |_)Temp'")  # type: (int, str)
+    r, cpu_temp_info = bash_ro(
+        "ipmitool sdr type 'Temperature' | grep -E -i '^CPU[0-9]*(\ |_)Temp'")  # type: (int, str)
     if r == 0:
         for info in cpu_temp_info.splitlines():
             info = info.strip()
-            cpu_id = info.split("|")[0].strip().split(" ")[0].split("_")[0]
-            # the cut string has the same length as the original string which means cut symbol is not we want
-            if len(cpu_id) == len(info.split("|")[0].strip().split(" ")[0]):
-                cpu_id = info.split("|")[0].strip().split(" ")[0].split(" ")[0]
-            cpu_state = 0 if info.split("|")[2].strip().lower() == "ok" else 10
-            cpu_temp = 0 if cpu_state != 0 else info.split("|")[4].strip().split(" ")[0]
-            metrics['cpu_temperature'].add_metric([cpu_id], float(cpu_temp))
-            metrics['cpu_status'].add_metric([cpu_id], float(cpu_state))
-    
-    collect_equipment_state_last_result = metrics.values()
-    return collect_equipment_state_last_result
+            try:
+                cpu_id = info.split("|")[0].strip().split(" ")[0].split("_")[0]
+                # the cut string has the same length as the original string which means cut symbol is not we want
+                if len(cpu_id) == len(info.split("|")[0].strip().split(" ")[0]):
+                    cpu_id = info.split("|")[0].strip().split(" ")[0].split(" ")[0]
+                cpu_state = 0 if info.split("|")[2].strip().lower() == "ok" else 10
+                cpu_temp = 0 if cpu_state != 0 else info.split("|")[4].strip().split(" ")[0]
+                metrics['cpu_temperature'].add_metric([cpu_id], float(cpu_temp))
+                metrics['cpu_status'].add_metric([cpu_id], float(cpu_state))
+            except Exception as e:
+                pass
+
+    return metrics.values()
 
 
 def collect_equipment_state():
@@ -660,6 +671,7 @@ kvmagent.register_prometheus_collector(collect_vm_statistics)
 kvmagent.register_prometheus_collector(collect_node_disk_wwid)
 kvmagent.register_prometheus_collector(collect_host_conntrack_statistics)
 kvmagent.register_prometheus_collector(collect_physical_network_interface_state)
+kvmagent.register_prometheus_collector(collect_physical_cpu_state)
 
 if misc.isMiniHost():
     kvmagent.register_prometheus_collector(collect_lvm_capacity_statistics)
