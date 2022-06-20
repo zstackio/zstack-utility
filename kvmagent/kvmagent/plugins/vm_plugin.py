@@ -3207,14 +3207,6 @@ class Vm(object):
                 if iface.mac.address_ != cmd.nic.mac:
                     continue
 
-                virtualDeviceInfo = VirtualDeviceInfo()
-                virtualDeviceInfo.pciInfo.bus = iface.address.bus_
-                virtualDeviceInfo.pciInfo.function = iface.address.function_
-                virtualDeviceInfo.pciInfo.type = iface.address.type_
-                virtualDeviceInfo.pciInfo.domain = iface.address.domain_
-                virtualDeviceInfo.pciInfo.slot = iface.address.slot_
-                rsp.virtualDeviceInfoList.append(virtualDeviceInfo)
-
                 if iface.mac.address_ == cmd.nic.mac:
                     # vf nic doesn't have internal name
                     if cmd.nic.pciDeviceAddress is not None:
@@ -5307,11 +5299,15 @@ class VmPlugin(kvmagent.KvmAgent):
             for disk in vm.domain_xmlobject.devices.get_child_node_as_list('disk'):
                 virtualDeviceInfo = VirtualDeviceInfo()
                 virtualDeviceInfo.pciInfo.bus = disk.address.bus_
-                virtualDeviceInfo.pciInfo.function = disk.address.function_
+                if xmlobject.has_element(disk.address, 'function'):
+                    virtualDeviceInfo.pciInfo.function = disk.address.function_
                 virtualDeviceInfo.pciInfo.type = disk.address.type_
-                virtualDeviceInfo.pciInfo.domain = disk.address.domain_
-                virtualDeviceInfo.pciInfo.slot = disk.address.slot_
-                virtualDeviceInfo.resourceUuid = disk.serial
+                if xmlobject.has_element(disk.address, 'domain'):
+                    virtualDeviceInfo.pciInfo.domain = disk.address.domain_
+                if xmlobject.has_element(disk.address, 'slot'):
+                    virtualDeviceInfo.pciInfo.slot = disk.address.slot_
+                if xmlobject.has_element(disk, 'serial'):
+                    virtualDeviceInfo.resourceUuid = disk.serial.text_
                 rsp.virtualDeviceInfoList.append(virtualDeviceInfo)
 
         return jsonobject.dumps(rsp)
@@ -5803,11 +5799,15 @@ class VmPlugin(kvmagent.KvmAgent):
 
             virtualDeviceInfo = VirtualDeviceInfo()
             virtualDeviceInfo.pciInfo.bus = disk.address.bus_
-            virtualDeviceInfo.pciInfo.function = disk.address.function_
+            if xmlobject.has_element(disk.address, 'function'):
+                virtualDeviceInfo.pciInfo.function = disk.address.function_
             virtualDeviceInfo.pciInfo.type = disk.address.type_
-            virtualDeviceInfo.pciInfo.domain = disk.address.domain_
-            virtualDeviceInfo.pciInfo.slot = disk.address.slot_
-            virtualDeviceInfo.resourceUuid = disk.serial
+            if xmlobject.has_element(disk.address, 'domain'):
+                virtualDeviceInfo.pciInfo.domain = disk.address.domain_
+            if xmlobject.has_element(disk.address, 'slot'):
+                virtualDeviceInfo.pciInfo.slot = disk.address.slot_
+            if xmlobject.has_element(disk, 'serial'):
+                virtualDeviceInfo.resourceUuid = disk.serial.text_
             rsp.virtualDeviceInfoList.append(virtualDeviceInfo)
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
