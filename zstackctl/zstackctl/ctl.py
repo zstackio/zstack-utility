@@ -8793,6 +8793,40 @@ class CleanAnsibleCacheCmd(Command):
         rmtree(cache_dir)
 
 
+class RemovePrometheusDataCmd(Command):
+    def __init__(self):
+        super(RemovePrometheusDataCmd, self).__init__()
+        self.name = "remove_prometheus_data"
+        self.description = "remove prometheus corrupt data"
+        ctl.register_command(self)
+
+    def run(self, args):
+        doDelete = False
+        while True:
+            answer = input("remove promethues data? (yes or no)\n")
+            if any(answer.lower() == f for f in ["yes", 'y']):
+                doDelete = True
+                break
+            elif any(answer.lower() == f for f in ['no', 'n']):
+                break
+            else:
+                info('Please enter yes or no')
+
+        if not doDelete:
+            return
+
+        # for prometheus 2.9.2
+        data_path = "/var/lib/zstack/prometheus/data2"
+        if os.path.exists(data_path):
+            shell_return("systemctl stop prometheus2")
+            rmtree(data_path)
+
+        # for prometheus 1.8.2
+        data_path = "/var/lib/zstack/prometheus/data"
+        if os.path.exists(data_path):
+            shell_return("systemctl stop prometheus")
+            rmtree(data_path)
+
 
 class ShowSessionCmd(Command):
     def __init__(self):
@@ -10283,6 +10317,7 @@ def main():
     ShowSessionCmd()
     DropSessionCmd()
     CleanAnsibleCacheCmd()
+    RemovePrometheusDataCmd()
     GetZStackVersion()
     SharedBlockQcow2SharedVolumeFixCmd()
     MiniResetHostCmd()
