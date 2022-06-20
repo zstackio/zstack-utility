@@ -42,6 +42,7 @@ class NewtorkInterfaceNotFound(BmV2InstanceAgentException):
                'address: {mac}, vlan id: {vlan_id}').format(**kwargs)
         super(NewtorkInterfaceNotFound, self).__init__(msg)
 
+
 class NewtorkInterfaceConfigParasInvalid(BmV2InstanceAgentException):
 
     def __init__(self, **kwargs):
