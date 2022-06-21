@@ -883,24 +883,25 @@ def get_img_fmt(src):
         raise Exception('unknown format[%s] of the image file[%s]' % (fmt, src))
     return fmt
 
-def qcow2_clone(src, dst):
+def qcow2_clone(src, dst, size=""):
     fmt = get_img_fmt(src)
-    shell.check_run('/usr/bin/qemu-img create -F %s -b %s -f qcow2 %s' % (fmt, src, dst))
+    shell.check_run('/usr/bin/qemu-img create -F %s -b %s -f qcow2 %s %s' % (fmt, src, dst, size))
     os.chmod(dst, 0o660)
 
 def qcow2_clone_with_cmd(src, dst, cmd=None):
+    size = cmd.virtualSize if cmd.virtualSize else ""
     if cmd is None or cmd.kvmHostAddons is None or cmd.kvmHostAddons.qcow2Options is None:
-        qcow2_clone(src, dst)
+        qcow2_clone(src, dst, size)
     else:
-        qcow2_clone_with_option(src, dst, cmd.kvmHostAddons.qcow2Options)
+        qcow2_clone_with_option(src, dst, cmd.kvmHostAddons.qcow2Options, size)
 
-def qcow2_clone_with_option(src, dst, opt=""):
+def qcow2_clone_with_option(src, dst, opt="", size=""):
     # NOTE(weiw): qcow2 doesn't support specify backing file and preallocation at same time
     pattern = re.compile("\-o\ preallocation\=\w+ ")
     opt = re.sub(pattern, " ", opt)
 
     fmt = get_img_fmt(src)
-    shell.check_run('/usr/bin/qemu-img create -F %s %s -b %s -f qcow2 %s' % (fmt, opt, src, dst))
+    shell.check_run('/usr/bin/qemu-img create -F %s %s -b %s -f qcow2 %s %s' % (fmt, opt, src, dst, size))
     os.chmod(dst, 0o660)
 
 def raw_clone(src, dst):
