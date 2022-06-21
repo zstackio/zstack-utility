@@ -792,7 +792,10 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         qcow2_options = self.calc_qcow2_option(self, cmd.kvmHostAddons, True, cmd.provisioning)
 
         with lvm.RecursiveOperateLv(template_abs_path_cache, shared=True, skip_deactivate_tags=[IMAGE_TAG]):
-            virtual_size = linux.qcow2_virtualsize(template_abs_path_cache)
+            if cmd.virtualSize :
+                virtual_size = cmd.virtualSize
+            else:
+                virtual_size = linux.qcow2_virtualsize(template_abs_path_cache)
             lvm.create_lv_from_cmd(install_abs_path, virtual_size, cmd,
                                    "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()), lvmlock=False)
             linux.qcow2_clone_with_option(template_abs_path_cache, install_abs_path, qcow2_options)
