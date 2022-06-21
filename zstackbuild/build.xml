@@ -96,6 +96,18 @@
         <makeDir dir="${allinone.dir}" />
         <makeDir dir="${tools.dir}" />
     </target>
+    <target name="copy-pypi-source" >
+        <makeDir dir="${pypi.parent.dir}" />
+        <exec executable="cp" dir="${pypi.parent.dir}" failonerror="true">
+            <arg value="-a" />
+            <arg value="${pypi.source.folder}" />
+            <arg value="./" />
+        </exec>
+        <exec executable="bash" dir="${pypi.parent.dir}" failonerror="true">
+            <arg value="${remove.pypi.symlink}" />
+            <arg value="${pypi.parent.dir}/pypi" />
+        </exec>
+    </target>
 
     <target name="copy-centos6-repo" >
         <copydir src="${centos6.repo.dir}" dest="${pypi.parent.dir}/centos6_repo/" />
@@ -353,6 +365,9 @@
             </sequential>
             <sequential>
                 <antcall target="assemble-zstack-store"/>
+            </sequential>
+            <sequential>
+                <antcall target="copy-pypi-source"/>
             </sequential>
             <sequential>
                 <antcall target="assemble-baremetalpxeserver"/>
