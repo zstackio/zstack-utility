@@ -3311,7 +3311,7 @@ class Vm(object):
             mtu_addon(nic_xml_object, iface)
 
         for nic in cmd.nics:
-            interface = Vm._build_interface_xml(nic)
+            interface = Vm._build_interface_xml(nic, action='Update')
             addon(interface, nic)
             xml = etree.tostring(interface)
             logger.debug('updating nic:\n%s' % xml)
@@ -4817,7 +4817,8 @@ class Vm(object):
             interface = etree.Element('interface', attrib=device_attr)
 
         e(interface, 'mac', None, attrib={'address': nic.mac})
-        e(interface, 'alias', None, {'name': 'net%s' % nic.nicInternalName.split('.')[1]})
+        if action != 'Update':
+            e(interface, 'alias', None, {'name': 'net%s' % nic.nicInternalName.split('.')[1]})
 
         if iftype != 'hostdev' and nic.type != 'vDPA':
             e(interface, 'mtu', None, attrib={'size': '%d' % nic.mtu})
