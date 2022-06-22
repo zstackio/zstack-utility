@@ -18,6 +18,8 @@ from zstacklib.utils import lock
 from zstacklib.utils import log
 from zstacklib.utils import linux
 from zstacklib.utils import thread
+from zstacklib.utils import sanlock
+from cachetools import TTLCache
 from distutils.version import LooseVersion
 
 logger = log.get_logger(__name__)
@@ -40,7 +42,9 @@ VOLUME_TAG = COMMON_TAG + "::volume"
 IMAGE_TAG = COMMON_TAG + "::image"
 ENABLE_DUP_GLOBAL_CHECK = False
 thinProvisioningInitializeSize = "thinProvisioningInitializeSize"
+ONE_HOUR_IN_SEC = 60 * 60
 
+lv_offset = TTLCache(maxsize=100, ttl=ONE_HOUR_IN_SEC)
 
 class VolumeProvisioningStrategy(object):
     ThinProvisioning = "ThinProvisioning"
@@ -134,6 +138,12 @@ class SharedBlockCandidateStruct:
         self.size = None  # type: long
         self.path = None  # type: str
 
+def get_vg_uuid(path):
+    # type: (str) -> str
+    if not path or len(path.split("/")) != 4:
+        raise Exception("invalid lv path[%s]" % path)
+
+    return path.split("/")[2]
 
 def get_block_devices():
     scsi_info = get_lsscsi_info()
@@ -1105,6 +1115,63 @@ def active_lv(path, shared=False):
     else:
         _active_lv(path, shared)
 
+def _need_retry_active_lv(arg, exception):
+    path = arg[0]
+    def check_lv_lock_on_client():
+        LV_UUID = lv_uuid(path)
+        if not LV_UUID:
+            raise Exception("cannot get lv uuid of path[%s]" % path)
+
+        cmd = "sanlock client status | grep %s" % LV_UUID
+        return bash.bash_r(cmd) == 0
+
+    def get_lock_hold_by_us():
+        LV_UUID = lv_uuid(path)
+        if not LV_UUID:
+            logger.warn("cannot get lv uuid of path[%s]" % path)
+            return None
+
+        VG_UUID = get_vg_uuid(path)
+        lockspace = get_lockspace(VG_UUID)
+        if not lockspace:
+            logger.warn("cannot find lockspace of %s" % VG_UUID)
+            return None
+
+        LOCKSPACE_NAME = lockspace.split(":")[0]
+        HOST_ID = lockspace.split(":")[1]
+        LVMLOCK_PATH = lockspace.split(":")[2]
+        LV_START = lv_offset.get(path) if lv_offset.get(path) is not None else "0"
+        LV_END = "1048576" if lv_offset.get(path) is not None else get_lv_size("/dev/%s/lvmlock" % VG_UUID)
+
+        cmd = "sanlock direct dump %s:%s:%s | grep %s -m1 | awk '{print $1,$4,$5}'" % (LVMLOCK_PATH, LV_START, LV_END, LV_UUID)
+        r, o, e = bash.bash_roe(cmd)
+        if r == 0 and o is not None and o.strip() != "":
+            res = o.strip().split()
+            offset = int(res[0])
+            timestamp = int(res[1])
+            host_id = int(res[2])
+            lv_offset.update({path:str(offset)})
+            if timestamp != 0 and host_id == int(HOST_ID):
+                lock = "{}:{}:{}:{}".format(LOCKSPACE_NAME, LV_UUID, LVMLOCK_PATH, offset)
+                return lock
+            else:
+                logger.debug("lv[path:%s] lockd by other host" % path)
+
+        return None
+
+    if "LV locked by other host" not in str(exception) or check_lv_lock_on_client():
+        return False
+
+    lock = get_lock_hold_by_us()
+    if lock is not None:
+        logger.debug("find lv lock hold by us on lockspace but not on client, directly init lv[path:%s]" % path)
+        return sanlock.sanlock_direct_init_resource(lock) == 0
+
+    return False
+
+@linux.retry_with_check(handler=_need_retry_active_lv)
+def active_lv_with_check(path, shared=False):
+    active_lv(path, shared)
 
 def deactive_lv(path, raise_exception=True):
     op = LvLockOperator.get_lock_cnt_or_else_none(path)
