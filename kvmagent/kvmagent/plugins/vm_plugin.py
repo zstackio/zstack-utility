@@ -5143,6 +5143,7 @@ class VmPlugin(kvmagent.KvmAgent):
 
             if cmd.memorySnapshotPath:
                 snapshot_path = None
+                mount_path = None
                 if cmd.memorySnapshotPath.startswith("/dev/"):
                     if not os.path.exists(cmd.memorySnapshotPath):
                         lvm.active_lv(cmd.memorySnapshotPath, False)
@@ -5152,14 +5153,17 @@ class VmPlugin(kvmagent.KvmAgent):
                         linux.mount(cmd.memorySnapshotPath, mount_path)
 
                     snapshot_path = mount_path + '/' + mount_path.rsplit('/', 1)[-1]
+                else:
+                    snapshot_path = cmd.memorySnapshotPath
 
                 try:
                     vm.restore(snapshot_path)
                 finally:
-                    linux.umount(mount_path)
-                    linux.rmdir_if_empty(mount_path)
+                    if mount_path:
+                        linux.umount(mount_path)
+                        linux.rmdir_if_empty(mount_path)
 
-                    lvm.deactive_lv(cmd.memorySnapshotPath)
+                        lvm.deactive_lv(cmd.memorySnapshotPath)
                 return
 
             wait_console = True if not cmd.addons or cmd.addons['noConsole'] is not True else False
