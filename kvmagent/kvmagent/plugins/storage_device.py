@@ -714,7 +714,8 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 d = self.get_raid_device_info(line, device_info)
             if d.wwn is not None and d.raidControllerSasAddreess is not None:
                 result.append(d)
-        
+
+        result.extend(self.get_nvme_device_info(result))
         if misc.isMiniHost():
             result.extend(self.get_missing(result))
         return result
@@ -1033,7 +1034,8 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                     d.raidControllerProductName = productName
                     d.raidControllerSasAddreess = sasAddress
                     result.append(d)
-    
+
+        result.extend(self.get_nvme_device_info(result))
         return result
 
     @bash.in_bash
@@ -1151,7 +1153,8 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                     d.raidControllerProductName = productName
                     d.raidControllerSasAddreess = sasAddress
                     result.append(d)
-    
+
+        result.extend(self.get_nvme_device_info(result))
         return result
 
     @bash.in_bash
@@ -1231,3 +1234,51 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 raid_levels[v] = level
     
         return produce_name, sas_address, raid_levels, disk_groups
+
+    @bash.in_bash
+    def get_nvme_device_info(self, normal_devices):
+        result = []
+        
+        if not misc.isHyperConvergedHost():
+            return result
+    
+        r, o = bash.bash_ro("nvme list | grep '/dev/' | awk '{print $1}'")
+        if r != 0 or o.strip() == "":
+            return []
+        
+        for l in o.splitlines():
+            d = RaidPhysicalDriveStruct()
+            
+            r, wwn_info = bash.bash_ro("udevadm info --name=%s | grep -i 'id_wwn'" % l.strip())
+            if r != 0 or wwn_info.strip() == "":
+                continue
+            d.wwn = wwn_info.strip()[-16:]
+
+            r, device_info = bash.bash_ro("smartctl -i %s" % l.strip())
+            if r != 0:
+                continue
+
+            for info in device_info.splitlines():
+                if info.strip() == "":
+                    continue
+                k = info.split(":")[0].lower()
+                v = ":".join(info.split(":")[1:]).strip()
+                
+                if "model number" in k:
+                    d.deviceModel = v
+                elif "serial number" in k:
+                    d.serialNumber = v
+                elif "total nvm capacity" in k:
+                    d.size = int(v.split()[0].strip().replace(",", ""))
+            
+            if d.wwn is not None and d.deviceModel is not None and d.serialNumber is not None and d.size is not None:
+                d.enclosureDeviceId = -1
+                d.slotNumber = -1
+                d.mediaType = "SSD"
+                d.driveType = "NVMe"
+                d.raidControllerNumber = normal_devices[0].raidControllerNumber
+                d.raidControllerProductName = normal_devices[0].raidControllerProductName
+                d.raidControllerSasAddreess = normal_devices[0].raidControllerSasAddreess
+                result.append(d)
+       
+        return result
