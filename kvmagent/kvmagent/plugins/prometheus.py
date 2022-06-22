@@ -396,12 +396,19 @@ def collect_ssd_lift_state():
             continue
         serial_number = o.strip()
         
-        r, o = bash_ro("smartctl -A /dev/%s | grep 'Media_Wearout_Indicator' | awk '{print $4}'" % disk_name)
-        if r != 0 or o.strip() == "":
-            continue
-        if o.strip().isdigit():
-            metrics['ssd_life_left'].add_metric([disk_name, serial_number], float(o.strip()))
-    
+        if disk_name.startswith('nvme'):
+            r, o = bash_ro("smartctl -A /dev/%s | grep 'Percentage Used'" % disk_name)
+            if r != 0 or o.strip() == "":
+                continue
+            if o.split(":")[1].split("%")[0].strip().isdigit():
+                metrics['ssd_life_left'].add_metric([disk_name, serial_number], float(float(100) - float(o.split(":")[1].split("%")[0].strip().strip())))
+        else:
+            r, o = bash_ro("smartctl -A /dev/%s | grep 'Media_Wearout_Indicator' | awk '{print $4}'" % disk_name)
+            if r != 0 or o.strip() == "":
+                continue
+            if o.strip().isdigit():
+                metrics['ssd_life_left'].add_metric([disk_name, serial_number], float(o.strip()))
+        
     return metrics.values()
 
 
