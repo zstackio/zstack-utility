@@ -176,8 +176,13 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         rsp = AgentRsp()
         logger.debug("start to discover target:" + cmd.target)
         self.discovery_iscsi(cmd)
-        logger.debug("start to login")
-        self.iscsi_login(cmd)
+        iscsi_already_login = self.find_iscsi_session(cmd)
+        if iscsi_already_login is True:
+            logger.debug("iscsi already login, just to find lun")
+            bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -a >/dev/null")
+        else:
+            logger.debug("start to login")
+            self.iscsi_login(cmd)
         rsp.success = self.make_sure_lun_has_been_mapped(cmd)
         return jsonobject.dumps(rsp)
 
@@ -213,6 +218,7 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
     def _logout_target(self, logoutCmd):
         r, o, e = bash.bash_roe('iscsiadm --mode node --targetname "%s" -p %s:%s --logout' %
                                 (logoutCmd.target, logoutCmd.iscsiServerIp, logoutCmd.iscsiServerPort))
+        bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -r >/dev/null")
         if r != 0:
             raise Exception("fail to logout iscsi %s" % logoutCmd.target)
 
