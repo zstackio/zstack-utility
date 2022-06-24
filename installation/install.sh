@@ -1254,6 +1254,10 @@ upgrade_zstack(){
     zstack-ctl show_configuration | grep '^[[:space:]]*chrony.serverIp.' >/dev/null 2>&1
     [ $? -ne 0 ] && zstack-ctl configure chrony.serverIp.0="${MANAGEMENT_IP}"
 
+    # configure RepoVersion.Strategy if not exists
+    zstack-ctl show_configuration | grep "RepoVersion.Strategy" >/dev/null 2>&1
+    [ $? -ne 0 ] && zstack-ctl configure RepoVersion.Strategy="permissive"
+
     if [ ! -z $ONLY_UPGRADE_CTL ]; then
         return
     fi
@@ -3213,7 +3217,7 @@ invalid_virt_win_repo=/etc/yum.repos.d/virt-win.repo
 
 check_hybrid_arch(){
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
-    if [ -d /opt/zstack-dvd/x86_64 -a -d /opt/zstack-dvd/aarch64 ];then
+    if [ `ls /opt/zstack-dvd | egrep 'x86_64|aarch64|mips64el|loongarch64' | wc -l` -gt 1 ];then
         fail2 "Hybrid arch exists but repo not matched all, please contact and get correct iso to upgrade local repo first."
     fi
     REPO_MATCHED=false
@@ -3235,12 +3239,17 @@ check_sync_local_repos() {
   if [[ $XINCHUANG_OS =~ $ZSTACK_RELEASE ]]; then
       SKIP_SYNC='y'
   fi
+
   [ -f ".repo_version" ] || fail2 "Cannot found current repo_version file, please make sure you have correct ${PRODUCT_NAME,,}-installer package."
-  if [ -d /opt/zstack-dvd/$BASEARCH ];then
-    for release in `ls /opt/zstack-dvd/$BASEARCH`;do
-      cmp -s .repo_version /opt/zstack-dvd/$BASEARCH/$release/.repo_version || check_hybrid_arch
+  rls=`find /opt/zstack-dvd/ -name ".repo_version"`
+  if [ `which zstack-ctl 2>&1 >/dev/null` -a `zstack-ctl get_configuration RepoVersion.Strategy 2>/dev/null` = "enforcing" ];then
+    for release in $rls;do
+      cmp -s .repo_version $release || check_hybrid_arch
     done
+  else
+    [ `cat .repo_version` -eq `cat $rls | sort -r | head -n 1` ] || REPO_MATCHED="false"
   fi
+
   if [ x"$REPO_MATCHED" = x"true" ]; then
       return 0
   elif [ x"$SKIP_SYNC" = x'y' -o x"$BASEARCH" != x"x86_64" ]; then
@@ -4047,6 +4056,8 @@ if [ ! -z $NEED_SET_MN_IP ];then
         zstack-ctl configure consoleProxyOverriddenIp="${MANAGEMENT_IP}"
     fi
 fi
+
+zstack-ctl configure RepoVersion.Strategy="permissive"
 
 # configure chrony.serverIp if not exists
 zstack-ctl show_configuration | grep '^[[:space:]]*chrony.serverIp.' >/dev/null 2>&1
