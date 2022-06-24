@@ -3913,6 +3913,14 @@ if [ x"$UPGRADE" = x'y' ]; then
     cd /; rm -rf $upgrade_folder
     cleanup_function
 
+    # this is a temporary way to change cube product display final version
+    # real global VERSION is given by gen_setup.sh PRODUCT_VERSION, input from zstack VERSION file
+    # top banner is shown by product_title_file created when iso building ,also given by zstack VERSION file
+    CUBE_ENV_COUNT=`grep "hyper_converged" /etc/rc.local |wc -l`
+    [[ "$CUBE_ENV_COUNT" -gt 0 ]] && CUBE_ENV='y' || CUBE_ENV='n'
+    [ x"$CUBE_ENV" = x'y'  -a -f /usr/local/hyperconverged/conf/VERSION ] && -f /usr/local/hyperconverged/conf/VERSION
+
+
     if [ ! -z $ONLY_UPGRADE_CTL ]; then
         echo_star_line
         echo -e "$(tput setaf 2)${PRODUCT_NAME,,}-ctl has been upgraded to version: ${VERSION}$(tput sgr0)"
