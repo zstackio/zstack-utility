@@ -2658,12 +2658,9 @@ class Vm(object):
         device_id = volume.deviceId
         target_disk, disk_name = self._get_target_disk(volume)
 
-        alias_name = target_disk.alias.name_
+        r, o, e = bash.bash_roe("virsh blockresize {} {} --size {}B".format(self.uuid, disk_name, size))
 
-        r, o, e = bash.bash_roe("virsh qemu-monitor-command %s block_resize drive-%s %sB --hmp"
-                                % (self.uuid, alias_name, size))
-
-        logger.debug("resize volume[%s] of vm[%s]" % (alias_name, self.uuid))
+        logger.debug("resize volume[%s] of vm[%s]" % (target_disk.alias.name_, self.uuid))
         if r != 0:
             raise kvmagent.KvmError(
                 'unable to resize volume[id:{1}] of vm[uuid:{0}] because {2}'.format(device_id, self.uuid, e))
