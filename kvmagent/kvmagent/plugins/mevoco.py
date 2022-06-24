@@ -1019,7 +1019,6 @@ $HTTP["remoteip"] =~ "^(.*)$" {
             "^/.*/$" => "/{{ip}}/$1"
         )
         dir-listing.activate = "enable"
-        server.document-root = "{{http_root}}/{{ip}}"
 {% endfor -%}
     } else $HTTP["remoteip"] =~ "^(.*)$" {
         url.rewrite-once = (
