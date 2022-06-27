@@ -4369,20 +4369,9 @@ class Vm(object):
                 else:
                     ip6Addrs.append(addr)
             # ipv4 nic
-            if ip4Addr is not None and len(ip6Addrs) == 0:
+            if ip4Addr is not None:
                 filterref = e(interface, 'filterref', None, {'filter': 'clean-traffic'})
                 e(filterref, 'parameter', None, {'name': 'IP', 'value': ip4Addr})
-            elif ip4Addr is None and len(ip6Addrs) > 0:  # ipv6 nic
-                filterref = e(interface, 'filterref', None, {'filter': 'zstack-clean-traffic-ipv6'})
-                for addr6 in ip6Addrs:
-                    e(filterref, 'parameter', None, {'name': 'GLOBAL_IP', 'value': addr6})
-                e(filterref, 'parameter', None, {'name': 'LINK_LOCAL_IP', 'value': ip.get_link_local_address(nic.mac)})
-            else:  # dual stack nic
-                filterref = e(interface, 'filterref', None, {'filter': 'zstack-clean-traffic-ip46'})
-                e(filterref, 'parameter', None, {'name': 'IP', 'value': ip4Addr})
-                for addr6 in ip6Addrs:
-                    e(filterref, 'parameter', None, {'name': 'GLOBAL_IP', 'value': addr6})
-                e(filterref, 'parameter', None, {'name': 'LINK_LOCAL_IP', 'value': ip.get_link_local_address(nic.mac)})
 
         if iftype != 'hostdev':
             if nic.driverType:
