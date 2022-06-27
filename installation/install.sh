@@ -76,6 +76,7 @@ ZSTACK_TOOLS_INSTALLER=$CATALINA_ZSTACK_TOOLS/install.sh
 zstack_163_repo_file=/etc/yum.repos.d/zstack-163-yum.repo
 zstack_ali_repo_file=/etc/yum.repos.d/zstack-aliyun-yum.repo
 PRODUCT_TITLE_FILE='./product_title_file'
+CUBE_TITLE_FILE='cube_product_title_file'
 UPGRADE_LOCK=/tmp/zstack_upgrade.lock
 MYSQL_CONF_FILE=''
 AUDIT_RULE_FILE='/etc/audit/rules.d/audit.rules'
@@ -3608,7 +3609,11 @@ if [ -f $ZSTACK_TRIAL_LICENSE ]; then
 fi
 
 if [ -f $PRODUCT_TITLE_FILE ]; then
-    cat $PRODUCT_TITLE_FILE
+    if [ -f /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/$CUBE_TITLE_FILE ];then
+        cat $CUBE_TITLE_FILE
+    else
+        cat $PRODUCT_TITLE_FILE
+    fi
 else
 echo ""
 echo_star_line
