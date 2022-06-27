@@ -3680,7 +3680,7 @@ fi
 
 if [ -f $PRODUCT_TITLE_FILE ]; then
     if [ -f /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/$CUBE_TITLE_FILE ];then
-        cat $CUBE_TITLE_FILE
+        cat /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/$CUBE_TITLE_FILE
     else
         cat $PRODUCT_TITLE_FILE
     fi
