@@ -207,11 +207,3 @@ class CentOSNetworkConfig:
         cmd = 'ifdown' if down else 'ifup'
         cmd = [cmd, if_name]
         processutils.execute(*cmd)
-
-    @staticmethod
-    def nmcli_reload():
-        try:
-            cmd = ['nmcli', 'con', 'reload']
-            processutils.execute(*cmd)
-        except:
-            pass

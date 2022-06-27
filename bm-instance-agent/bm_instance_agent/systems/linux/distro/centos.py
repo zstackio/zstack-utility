@@ -55,7 +55,6 @@ class CentOSDriver(linux_driver.LinuxDriver):
                 LOG.error(
                     "Failed to flush {}, error: {}".format(iface_name, e))
             agent_utils.remove_file('/etc/sysconfig/network-scripts/{}'.format(name))
-        config.nmcli_reload()
 
     def _attach_bond_port(self, port):
         parasObj = objects.BondPortParasObj.from_json(port.paras)
@@ -108,7 +107,6 @@ class CentOSDriver(linux_driver.LinuxDriver):
         else:
             self._detach_phy_port(port)
         config.remove_network_config(port)
-        config.nmcli_reload()
 
     def detach_port(self, instance_obj, network_obj):
         for port in network_obj.ports:
