@@ -918,7 +918,7 @@ def create_lv_from_absolute_path(path, size, tag="zs::sharedblock::volume", lock
 
     exact_size |= tag == IMAGE_TAG
     size = round_to(size, 512) if exact_size else round_to(calcLvReservedSize(size), 512)
-    r, o, e = bash.bash_roe("lvcreate -ay --addtag %s --size %sb --name %s %s %s" %
+    r, o, e = bash.bash_roe("lvcreate -ay --wipesignatures y --addtag %s --size %sb --name %s %s %s" %
                          (tag, size, lvName, vgName, pe_range))
 
     if not lv_exists(path):
@@ -956,7 +956,7 @@ def create_thin_lv_from_absolute_path(path, size, tag, lock=False):
     thin_pool = get_thin_pool_from_vg(vgName)
     assert thin_pool != ""
 
-    r, o, e = bash.bash_roe("lvcreate --addtag %s -n %s -V %sb --thinpool %s %s" %
+    r, o, e = bash.bash_roe("lvcreate --wipesignatures y --addtag %s -n %s -V %sb --thinpool %s %s" %
                   (tag, lvName, round_to(calcLvReservedSize(size), 512), thin_pool, vgName))
     if not lv_exists(path):
         raise Exception("can not find lv %s after create, lvcreate return : %s, %s, %s" %
