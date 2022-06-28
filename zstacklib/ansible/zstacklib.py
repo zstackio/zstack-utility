@@ -289,6 +289,7 @@ def get_host_releasever(ansible_distribution):
     supported_release_info = {
         "kylin_tercel tercel 10": "ns10",
         "kylin_sword sword 10": "ns10",
+        "kylin_zstack zstack 10": "ns10",
         "uniontech fou 20": "uos20",
         "redhat maipo 7.4": "ns10", # old kylinV10, oem 7.4 incompletely
         "centos core 7.6.1810": "c76",
