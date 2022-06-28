@@ -5,6 +5,7 @@ import argparse
 import os.path
 from zstacklib import *
 from datetime import datetime
+from distutils.version import LooseVersion
 
 # create log
 logger_dir = "/var/log/zstack/"
@@ -190,15 +191,31 @@ copy_arg.dest = "%s/%s/" % (imagestore_root, "certs")
 copy_arg.args = "mode=400 force=yes"
 copy(copy_arg, host_post_info)
 
+def load_nbd():
+    command = "modinfo nbd"
+    status = run_remote_command(command, host_post_info, True, False)
+    if status is False:
+        return "nbd kernel module not found!"
+    if LooseVersion(get_remote_host_kernel_version(host_post_info)) > LooseVersion('4.0.0'):
+        command = "/sbin/modprobe nbd nbds_max=32 max_part=16"
+    else:
+        command = "/sbin/modprobe nbd nbds_max=128 max_part=16"
+    status = run_remote_command(command, host_post_info, True, False)
+    if status is False:
+        return "failed to load nbd kernel module"
+    command = "cat /sys/module/nbd/parameters/nbds_max"
+    is_nbds_max = '128' in run_remote_command(command, host_post_info, False, True)
+    if not is_nbds_max and not file_dir_exist("path=/etc/modprobe.d/nbd.conf", host_post_info):
+        command = "echo 'nbd' > /etc/modules-load.d/nbd.conf; echo 'options nbd nbds_max=128 max_part=16' > /etc/modprobe.d/nbd.conf; dracut -f;"
+        run_remote_command(command, host_post_info)
+
+load_nbd()
+
 # name: install zstack-store
 if client == "false":
     command = "bash %s %s %s" % (dest_pkg, fs_rootpath, max_capacity)
 else:
     command = "bash " + dest_pkg
-run_remote_command(command, host_post_info)
-
-# add nbd.conf
-command = ("echo 'nbd' > /etc/modules-load.d/nbd.conf; echo 'options nbd nbds_max=128 max_part=16' > /etc/modprobe.d/nbd.conf")
 run_remote_command(command, host_post_info)
 
 # if user is not root , Change the owner of the directory to ordinary user
