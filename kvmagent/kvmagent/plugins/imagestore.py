@@ -97,7 +97,7 @@ class ImageStoreClient(object):
             jobj = jsonobject.loads(shell.call(cmdstr))
             if jobj is None:
                 return None
-            return jobj.mirrorVolumes
+            return jobj.__dict__ if hasattr(jobj, "__dict__") else jobj.mirrorVolumes
 
     def mirror_volume(self, vm, node, dest, lastvolume, currvolume, volumetype, mode, speed, reporter):
         PFILE = linux.create_temp_file()

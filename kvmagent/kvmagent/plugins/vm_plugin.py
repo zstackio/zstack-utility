@@ -4963,6 +4963,7 @@ def check_mirror_jobs(domain_id, migrate_without_bitmaps):
     volumes = isc.query_mirror_volumes(domain_id)
     if volumes:
         for v in volumes.keys():
+            logger.info("stop mirror for %s:%s" % (domain_id, v))
             isc.stop_mirror(domain_id, False, v)
 
     if migrate_without_bitmaps:
