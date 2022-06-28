@@ -187,12 +187,14 @@ class StartVmCmd(kvmagent.AgentCommand):
         self.systemSerialNumber = None
         self.bootMode = None
         self.consolePassword = None
+        self.memBalloon = None # type:VirtualDeviceInfo
 
 class StartVmResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(StartVmResponse, self).__init__()
         self.nicInfos = []  # type:list[VmNicInfo]
         self.virtualDeviceInfoList = []  # type:list[VirtualDeviceInfo]
+        self.memBalloonInfo = None  # type:VirtualDeviceInfo
 
 class VirtualDeviceInfo():
     def __init__(self):
@@ -4743,11 +4745,13 @@ class Vm(object):
                 return False
 
         def make_balloon_memory():
-            if cmd.addons['useMemBalloon'] is False:
+            if cmd.memBalloon is None:
                 return
             devices = elements['devices']
             b = e(devices, 'memballoon', None, {'model': 'virtio'})
             e(b, 'stats', None, {'period': '10'})
+            if cmd.memBalloon.pciInfo:
+                e(b, 'address', None, {'type': 'pci', 'domain': cmd.memBalloon.pciInfo.domain, 'bus': cmd.memBalloon.pciInfo.bus, 'slot': cmd.memBalloon.pciInfo.slot, 'function': cmd.memBalloon.pciInfo.function})
             if kvmagent.get_host_os_type() == "debian":
                 e(b, 'address', None, {'type': 'pci', 'controller': '0', 'bus': '0x00', 'slot': '0x04', 'function':'0x0'})
 
@@ -5327,6 +5331,16 @@ class VmPlugin(kvmagent.KvmAgent):
                     virtualDeviceInfo.resourceUuid = disk.serial.text_
 
                 rsp.virtualDeviceInfoList.append(virtualDeviceInfo)
+
+            memBalloonPci = vm.domain_xmlobject.devices.get_child_node('memballoon')
+            if memBalloonPci is not None:
+                memBalloonInfo = VirtualDeviceInfo()
+                memBalloonInfo.pciInfo.domain = memBalloonPci.address.domain_
+                memBalloonInfo.pciInfo.bus = memBalloonPci.address.bus_
+                memBalloonInfo.pciInfo.slot = memBalloonPci.address.slot_
+                memBalloonInfo.pciInfo.function = memBalloonPci.address.function_
+                memBalloonInfo.pciInfo.type = memBalloonPci.address.type_
+                rsp.memBalloonInfo = memBalloonInfo
 
         return jsonobject.dumps(rsp)
 
@@ -6125,7 +6139,7 @@ class VmPlugin(kvmagent.KvmAgent):
         os.remove(fpath)
         if shell_cmd.return_code == 0:
             return
-        
+
         if shell_cmd.stderr and "Need a root block node" in shell_cmd.stderr:
             shell_cmd.stderr = "failed to block migrate %s, please check if volume backup job is in progress" % vmUuid
 
@@ -8361,7 +8375,7 @@ host side snapshot files chian:
             logger.debug("clean vm[uuid:%s] heartbeat, due to evnet %s" % (dom.name(), LibvirtEventManager.event_to_string(event)))
             heartbeat_thread.do_heart_beat = False
             heartbeat_thread.join()
-    
+
     @bash.in_bash
     def _deactivate_drbd(self, conn, dom, event, detail, opaque):
         logger.debug("got event from libvirt, %s %s" % (dom.name(), LibvirtEventManager.event_to_string(event)))
