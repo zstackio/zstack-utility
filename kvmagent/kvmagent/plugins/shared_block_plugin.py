@@ -1219,8 +1219,13 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             self.do_active_lv(cmd.installPath, cmd.lockType, cmd.recursive, cmd.killProcess,
                           raise_exception=True)
         except Exception as e:
-            if re.search("Logical volume %s in use" % translate_absolute_path_from_install_path(cmd.installPath).replace("/dev/", ""), str(e)):
-                rsp.inUse = True
+            lv_in_use = "Logical volume %s in use" % translate_absolute_path_from_install_path(cmd.installPath).replace("/dev/", "")
+            if not re.search(lv_in_use, str(e)):
+                raise e
+            rsp.inUse = True
+            rsp.success = False
+            rsp.error = lv_in_use
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
