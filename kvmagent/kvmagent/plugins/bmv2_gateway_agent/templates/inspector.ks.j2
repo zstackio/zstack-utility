@@ -144,7 +144,9 @@ def get_nic_info():
             speed = 'UNKNOWN'
         with open(os.path.join(abspath, 'address'), 'r') as f:
             mac_address = f.read().strip()
-
+        
+        if len(mac_address) > 32:
+            continue
         rc, _, _ = shell_cmd("""arping -c 5 -I {} {}""".format(net_dev, PROVISION_NET), False)
         if rc == 0 and not pxe_iface_mac:
             is_provision_nic = True
