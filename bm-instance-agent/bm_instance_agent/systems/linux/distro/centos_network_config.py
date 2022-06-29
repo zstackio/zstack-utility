@@ -198,3 +198,15 @@ class CentOSNetworkConfig:
         cmd = 'ifdown' if down else 'ifup'
         cmd = [cmd, if_name]
         processutils.execute(*cmd)
+        '''
+        If NetworkManager is enabled on centos,
+        we need to use nmcli to delete the configuration additionally.
+        '''
+        if down:
+            try:
+                path = '/sys/class/net/{}/bonding_slave'.format(if_name)
+                conn_name = if_name if not os.path.exists(path) else agent_utils.get_nmcli_system_conn(if_name)
+                cmd = ['nmcli', 'con', 'delete', conn_name]
+                processutils.execute(*cmd)
+            except:
+                pass
