@@ -17,22 +17,10 @@ class UbuntuDriver(linux_driver.LinuxDriver):
     driver_name = 'ubuntu'
 
     def ping(self, instance_obj):
-        iface_name = agent_utils.get_interface_by_mac(
-            instance_obj.provision_mac)
-        conf_dir = '/etc/netplan/'
-        src_file = os.path.join(conf_dir, '{}.yaml'.format(iface_name))
-        dst_file = os.path.join(conf_dir, '.{}.yaml.bck'.format(iface_name))
-        if os.path.exists(src_file):
-            os.chmod(src_file, 0o000)
-            shutil.move(src_file, dst_file)
-
         # Check the network config corrent. Remove unusable configuration
         # file, generate required configuration file if the conf not exist.
         if instance_obj.nics is None:
             return
-        exist_conf_files = filter(
-            lambda x: True if x.endswith('yaml') else False,
-            os.listdir('/etc/netplan/'))
         for nic in instance_obj.nics:
             prefix_size = agent_utils.convert_netmask(nic.netmask)
             ip_address = "{}/{}".format(nic.ip_address, prefix_size)
@@ -40,7 +28,6 @@ class UbuntuDriver(linux_driver.LinuxDriver):
             path = '/etc/netplan/{}.yaml'.format(l3_if)
             content = ""
             if os.path.exists(path):
-                exist_conf_files.remove('{}.yaml'.format(l3_if))
                 with open(path, 'r') as f:
                     content = f.read()
 
@@ -49,22 +36,6 @@ class UbuntuDriver(linux_driver.LinuxDriver):
                 keywords.append(nic.vlan_if_name)
             if any(key not in content for key in keywords):
                 self._attach_port(nic)
-
-        # flush the iface and remove the conf file
-        for name in exist_conf_files:
-            iface_name = name[:-5]
-            try:
-                if not agent_utils.is_physical_interface(iface_name):
-                    # ifdown vlan nic
-                    agent_utils.ip_link_del(iface_name)
-                else:
-                    # flush physical nic
-                    cmd = ['ip', 'address', 'flush', 'dev', iface_name]
-                    processutils.execute(*cmd)
-            except Exception as e:
-                LOG.error(
-                    "Failed to flush {}, error: {}".format(iface_name, e))
-            agent_utils.remove_file('/etc/netplan/{}'.format(name))
 
     def _load_template(self):
         template_path = os.path.join(
