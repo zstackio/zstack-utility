@@ -2803,6 +2803,7 @@ class Vm(object):
                     mount_path = struct.installPath.replace("/dev/", "/tmp/")
                     linux.umount(mount_path)
                     linux.rmdir_if_empty(mount_path)
+                    lvm.deactive_lv(struct.installPath)
 
 
     def take_volume_snapshot(self, task_spec, volume, install_path, full_snapshot=False):
