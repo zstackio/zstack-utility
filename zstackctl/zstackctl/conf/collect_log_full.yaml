@@ -14,6 +14,7 @@ host:
      - {name: route-logs, exec: 'route -n'}
      - {name: iptables-logs, exec: 'iptables-save'}
      - {name: ebtables-logs, exec: 'ebtables-save'}
+     - {name: fdb-logs, exec: 'bridge fdb show'}
      - {name: journalctl-info, exec: 'journalctl -x'}
      - {name: pkg-list, exec: 'rpm -qa | sort'}
      - {name: host-info, exec: 'uptime && last reboot && free -h && cat /proc/cpuinfo && ip add && df -h &&
