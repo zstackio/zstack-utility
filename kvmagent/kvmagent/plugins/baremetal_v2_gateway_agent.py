@@ -72,6 +72,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
     DEFAULT_PXE_PATH = os.path.join(PXELINUX_CFG_DIR, 'default')
     GRUB_CFG_DIR = os.path.join(TFTPBOOT_DIR, 'EFI/centos/')
     GRUB_CFG_PATH = os.path.join(GRUB_CFG_DIR, 'grub.cfg')
+    KS_ERR_LOG_PATH = os.path.join(TFTPBOOT_DIR, 'ks.errlogs/')
     X86_64_BOOTIMG_DIR = os.path.join(TFTPBOOT_DIR, 'x86_64')
     AARCH64_BOOTIMG_DIR = os.path.join(TFTPBOOT_DIR, 'aarch64')
 
@@ -179,6 +180,9 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         if not os.path.exists(self.BM_IMGS_DIR):
             linux.mkdir(self.BM_IMGS_DIR)
 
+        if not os.path.exists(self.KS_ERR_LOG_PATH):
+            linux.mkdir(self.KS_ERR_LOG_PATH)
+
         # download pxe images from management node
         # static repo url like: http://10.10.0.1:8080/zstack/static/zstack-repo/x86_64/c76
         bmtempdir = tempfile.mkdtemp()
@@ -283,17 +287,16 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             with open(self.MAPFILE_PATH, 'w') as f:
                 f.write(map_file)
 
-        if not os.path.exists(self.TFTPD_SYSTEMD_SERVICE_PATH):
-            template_systemd_service = self._load_template(
-                'tftp_systemd_service')
-            systemd_service = template_systemd_service.render(
-                bm_gateway_tftpd_mapfile=self.MAPFILE_PATH,
-                bm_gateway_tftpboot_dir=self.TFTPBOOT_DIR)
-            with open(self.TFTPD_SYSTEMD_SERVICE_PATH, 'w') as f:
-                f.write(systemd_service)
+        template_systemd_service = self._load_template(
+            'tftp_systemd_service')
+        systemd_service = template_systemd_service.render(
+            bm_gateway_tftpd_mapfile=self.MAPFILE_PATH,
+            bm_gateway_tftpboot_dir=self.TFTPBOOT_DIR)
+        with open(self.TFTPD_SYSTEMD_SERVICE_PATH, 'w') as f:
+            f.write(systemd_service)
 
         cmd = ('systemctl daemon-reload && '
-               'systemctl start zstack-baremetal-tftpd')
+               'systemctl restart zstack-baremetal-tftpd')
         shell.call(cmd)
 
     def _destroy_tftp(self):
@@ -916,7 +919,8 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             chassis_address=cmd.chassisInfo.address,
             chassis_port=cmd.chassisInfo.port,
             api_id=cmd.threadContext.api,
-            task_name=cmd.threadContext["task-name"]
+            task_name=cmd.threadContext["task-name"],
+            provision_mac=instance_obj.provision_mac
         )
 
         with open(ks_config_path, 'w') as f:

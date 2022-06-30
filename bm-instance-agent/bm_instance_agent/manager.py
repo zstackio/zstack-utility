@@ -3,6 +3,7 @@ from oslo_concurrency import processutils
 from oslo_log import log as logging
 from stevedore import driver
 
+from __init__ import __version__
 from bm_instance_agent.common import utils as bm_utils
 from bm_instance_agent import exception
 from bm_instance_agent.objects import BmInstanceObj
@@ -16,7 +17,6 @@ LOG = logging.getLogger(__name__)
 BM_INSTANCE_UUID = None
 DRIVER = None
 ZWATCH_AGENT_CONF_PATH = "/usr/local/zstack/zwatch-vm-agent/conf.yaml"
-VERSION = '2.0.0'
 
 
 class AgentManager(object):
@@ -73,7 +73,7 @@ class AgentManager(object):
         self.driver.ping(instance_obj)
         self.driver.discovery_target(instance_obj)
         self._check_gateway_ip(instance_obj)
-        return {'version': VERSION, 'ping': {'bmInstanceUuid': BM_INSTANCE_UUID}}
+        return {'version': __version__, 'ping': {'bmInstanceUuid': BM_INSTANCE_UUID}}
 
     def reboot(self, bm_instance):
         instance_obj = BmInstanceObj.from_json(bm_instance)
