@@ -2798,7 +2798,8 @@ class Vm(object):
                     memory_snapshot_struct.volumeUuid,
                     memory_snapshot_struct.installPath,
                     memory_snapshot_struct.installPath,
-                    get_size(memory_snapshot_struct.installPath)))
+                    get_size(memory_snapshot_struct.installPath),
+                    True))
 
             return return_structs
         except libvirt.libvirtError as ex:
