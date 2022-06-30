@@ -1,3 +1,4 @@
+from ssl import TLSVersion
 from zstacklib.utils import plugin
 from zstacklib.utils import http
 from zstacklib.utils import shell
@@ -41,6 +42,7 @@ class EstablishProxyCmd(AgentCommand):
         self.vmUuid = None
         self.scheme = None
         self.idleTimeout = None
+        self.tlsVersion = None
 
 class EstablishProxyRsp(AgentResponse):
     def __init__(self):
@@ -440,7 +442,8 @@ class ConsoleProxyAgent(object):
             PROXY_PORT = cmd.proxyPort
             TOKEN_FILE_DIR = self.TOKEN_FILE_DIR 
             TIMEOUT = timeout
-            start_cmd = '''python -c "from zstacklib.utils import log; import websockify; log.configure_log('{{LOG_FILE}}'); websockify.websocketproxy.websockify_init()" {{PROXY_HOST_NAME}}:{{PROXY_PORT}} -D --target-config={{TOKEN_FILE_DIR}} --idle-timeout={{TIMEOUT}}'''
+            TLS_VERSION = "--ssl-version=%s" % cmd.tlsVersion if cmd.tlsVersion else ""
+            start_cmd = '''python -c "from zstacklib.utils import log; import websockify; log.configure_log('{{LOG_FILE}}'); websockify.websocketproxy.websockify_init()" {{PROXY_HOST_NAME}}:{{PROXY_PORT}} -D --target-config={{TOKEN_FILE_DIR}} --idle-timeout={{TIMEOUT}} {{TLS_VERSION}}'''
             if cmd.sslCertFile:
                 start_cmd += ' --cert=%s' % cmd.sslCertFile
             ret,out,err = bash_roe(start_cmd)
