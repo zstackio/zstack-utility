@@ -1,7 +1,6 @@
 from concurrent import futures
 import json
 import sys
-import time
 
 from oslo_concurrency import processutils
 from oslo_log import log as logging
@@ -11,6 +10,7 @@ import requests
 
 from bm_instance_agent.conf import CONF
 from bm_instance_agent.objects import HeaderObj
+from bm_instance_agent.common.utils import transcantion
 
 
 THREAD_POOL = None
@@ -123,35 +123,3 @@ def format_exception():
     del exception_info
 
     return data
-
-
-class transcantion(object):
-    """ A tool class for retry
-    """
-
-    def __init__(self, retries, sleep_time=0):
-        self.retries = retries
-        self.sleep_time = sleep_time
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if exc_type is not None:
-            return False
-        return True
-
-    def execute(self, func, *args, **kwargs):
-        err = None
-        for i in range(self.retries):
-            try:
-                if i > 0:
-                    msg = 'Attempt rerun {name}: {i}'.format(
-                        name=func.__name__, i=i)
-                    LOG.warning(msg)
-                return func(*args, **kwargs)
-            except Exception as e:
-                LOG.exception(e)
-                err = e
-            time.sleep(self.sleep_time)
-        raise err
