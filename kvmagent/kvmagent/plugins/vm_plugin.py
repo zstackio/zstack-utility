@@ -4046,12 +4046,13 @@ class Vm(object):
             if len(empty_cdrom_configs) != max_cdrom_num:
                 logger.error('ISO_DEVICE_LETTERS or EMPTY_CDROM_CONFIGS config error')
 
-            def make_empty_cdrom(target_dev, bus, unit, bootOrder):
+            def make_empty_cdrom(target_dev, bus, unit, bootOrder, resourceUuid):
                 cdrom = e(devices, 'disk', None, {'type': 'file', 'device': 'cdrom'})
                 e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
                 e(cdrom, 'target', None, {'dev': target_dev, 'bus': default_bus_type})
                 e(cdrom, 'address', None, {'type': 'drive', 'bus': bus, 'unit': unit})
                 e(cdrom, 'readonly', None)
+                e(cdrom, 'serial', resourceUuid)
                 if bootOrder is not None and bootOrder > 0:
                     e(cdrom, 'boot', None, {'order': str(bootOrder)})
                 return cdrom
@@ -4091,7 +4092,7 @@ class Vm(object):
                 cdrom_config = empty_cdrom_configs[iso.deviceId]
 
                 if iso.isEmpty:
-                    make_empty_cdrom(cdrom_config.targetDev, cdrom_config.bus, cdrom_config.unit, iso.bootOrder)
+                    make_empty_cdrom(cdrom_config.targetDev, cdrom_config.bus, cdrom_config.unit, iso.bootOrder, iso.resourceUuid)
                     continue
 
                 if iso.path.startswith('ceph'):
@@ -4099,10 +4100,8 @@ class Vm(object):
                     ic.iso = iso
                     devices.append(ic.to_xmlobject(cdrom_config.targetDev, default_bus_type, cdrom_config.bus, cdrom_config.unit, iso.bootOrder))
                 else:
-                    cdrom = make_empty_cdrom(cdrom_config.targetDev, cdrom_config.bus , cdrom_config.unit, iso.bootOrder)
+                    cdrom = make_empty_cdrom(cdrom_config.targetDev, cdrom_config.bus , cdrom_config.unit, iso.bootOrder, iso.resourceUuid)
                     e(cdrom, 'source', None, {'file': iso.path})
-
-                e(cdrom, 'serial', iso.resourceUuid)
 
         def make_volumes():
             devices = elements['devices']
