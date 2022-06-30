@@ -2141,3 +2141,35 @@ def get_free_sorted_pvs(vg_name):
     if r == 0:
         return o.strip().split()
     return []
+
+
+class LunWwidAndCapacity(object):
+    def __init__(self, wwid, total_capacity, available_capacity):
+        self.wwid = wwid
+        self.totalCapacity = total_capacity
+        self.availableCapacity = available_capacity
+
+
+@bash.in_bash
+def get_lun_capacities_from_vg(vg_uuid, vgs_path_and_wwid):
+    r, pvs_out, _ = bash.bash_roe("timeout -s SIGKILL 10 pvs --noheading --nolocking --nosuffix"
+                                  " -S 'vg_name=%s' -o 'pv_name,pv_size,pv_free' --units b" % vg_uuid)
+    if r != 0:
+        return None
+
+    DEV = 0
+    SIZE = 1
+    FREE_SIZE = 2
+    lun_capacities = []
+    for lun_info in pvs_out.strip().splitlines():
+        dev_and_size = lun_info.split()
+        size = dev_and_size[SIZE]
+        free_size = dev_and_size[FREE_SIZE]
+
+        dev = dev_and_size[DEV]
+        path = os.path.realpath(dev)
+        if (vg_uuid in vgs_path_and_wwid) and (path in vgs_path_and_wwid[vg_uuid]):
+            wwid = vgs_path_and_wwid[vg_uuid][path]
+            lun_capacities.append(LunWwidAndCapacity(wwid, size, free_size))
+
+    return lun_capacities
