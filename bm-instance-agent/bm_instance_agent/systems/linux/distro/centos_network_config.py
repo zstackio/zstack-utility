@@ -155,7 +155,7 @@ class CentOSNetworkConfig:
             agent_utils.remove_file(conf_file_path)
 
     @staticmethod
-    def network_config_rectify(port, exist_conf_files):
+    def network_config_rectify(port):
         need_rectify = False
         overlay_if_name = port.iface_name
         if port.type == port.PORT_TYPE_BOND:
@@ -165,11 +165,6 @@ class CentOSNetworkConfig:
                     port.iface_name)
                 if not os.path.exists(path):
                     return True
-
-                conf_file = 'ifcfg-{}'.format(port.iface_name)
-                if conf_file in exist_conf_files:
-                    exist_conf_files.remove(conf_file)
-
                 overlay_if_name = port.vlan_if_name
 
             bondPort = objects.BondPortParasObj.from_json(port.paras)
@@ -178,9 +173,6 @@ class CentOSNetworkConfig:
                 path = '/etc/sysconfig/network-scripts/{}'.format(conf_file)
                 if not os.path.exists(path):
                     return True
-
-                if conf_file in exist_conf_files:
-                    exist_conf_files.remove(conf_file)
         else:
             if port.vlan_if_name:
                 overlay_if_name = port.vlan_if_name
@@ -188,7 +180,6 @@ class CentOSNetworkConfig:
         path = '/etc/sysconfig/network-scripts/ifcfg-{}'.format(overlay_if_name)
         content = ''
         if os.path.exists(path):
-            exist_conf_files.remove('ifcfg-{}'.format(overlay_if_name))
             with open(path, 'r') as f:
                 content = f.read()
         ''' why '+ \n' ??
@@ -207,3 +198,15 @@ class CentOSNetworkConfig:
         cmd = 'ifdown' if down else 'ifup'
         cmd = [cmd, if_name]
         processutils.execute(*cmd)
+        '''
+        If NetworkManager is enabled on centos,
+        we need to use nmcli to delete the configuration additionally.
+        '''
+        if down:
+            try:
+                path = '/sys/class/net/{}/bonding_slave'.format(if_name)
+                conn_name = if_name if not os.path.exists(path) else agent_utils.get_nmcli_system_conn(if_name)
+                cmd = ['nmcli', 'con', 'delete', conn_name]
+                processutils.execute(*cmd)
+            except:
+                pass

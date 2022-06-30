@@ -16,45 +16,15 @@ class CentOSDriver(linux_driver.LinuxDriver):
     driver_name = 'centos'
 
     def ping(self, instance_obj):
-        iface_name = agent_utils.get_interface_by_mac(
-            instance_obj.provision_mac)
-        conf_dir = '/etc/sysconfig/network-scripts'
-        src_file = os.path.join(conf_dir, 'ifcfg-{}'.format(iface_name))
-        dst_file = os.path.join(conf_dir, '.ifcfg-{}'.format(iface_name))
-        if os.path.exists(src_file):
-            os.chmod(src_file, 0o000)
-            shutil.move(src_file, dst_file)
-
         # Check the network config corrent. Remove unusable configuration
         # file, generate required configuration file if the conf not exist.
         if instance_obj.nics is None:
             return
-        exist_conf_files = filter(
-            lambda x: True if x.startswith('ifcfg-') else False,
-            os.listdir('/etc/sysconfig/network-scripts/'))
-        if 'ifcfg-lo' in exist_conf_files:
-            exist_conf_files.remove('ifcfg-lo')
         for nic in instance_obj.nics:
-            rectify = config.network_config_rectify(nic, exist_conf_files)
+            rectify = config.network_config_rectify(nic)
             if rectify:
                 LOG.info('rectify network config of port {}'.format(nic.iface_name))
                 self._attach_port(nic)
-
-        # flush the iface and remove the conf file
-        for name in exist_conf_files:
-            iface_name = name.split('-')[-1]
-            try:
-                if not agent_utils.is_physical_interface(iface_name):
-                    # ifdown vlan nic
-                    config.if_down_up(iface_name, True)
-                else:
-                    # flush physical nic
-                    cmd = ['ip', 'address', 'flush', 'dev', iface_name]
-                    processutils.execute(*cmd)
-            except Exception as e:
-                LOG.error(
-                    "Failed to flush {}, error: {}".format(iface_name, e))
-            agent_utils.remove_file('/etc/sysconfig/network-scripts/{}'.format(name))
 
     def _attach_bond_port(self, port):
         parasObj = objects.BondPortParasObj.from_json(port.paras)
@@ -139,45 +109,14 @@ class CentOS8Driver(linux_driver.LinuxDriver):
     driver_name = 'centos8'
 
     def ping(self, instance_obj):
-        iface_name = agent_utils.get_interface_by_mac(
-            instance_obj.provision_mac)
-        conf_dir = '/etc/sysconfig/network-scripts'
-        src_file = os.path.join(conf_dir, 'ifcfg-{}'.format(iface_name))
-        dst_file = os.path.join(conf_dir, '.ifcfg-{}'.format(iface_name))
-        if os.path.exists(src_file):
-            os.chmod(src_file, 0o000)
-            shutil.move(src_file, dst_file)
-
         # Check the network config corrent. Remove unusable configuration
         # file, generate required configuration file if the conf not exist.
         if instance_obj.nics is None:
             return
-        exist_conf_files = filter(
-            lambda x: True if x.startswith('ifcfg-') else False,
-            os.listdir('/etc/sysconfig/network-scripts/'))
-        if 'ifcfg-lo' in exist_conf_files:
-            exist_conf_files.remove('ifcfg-lo')
         for nic in instance_obj.nics:
-            rectify = config.network_config_rectify(nic, exist_conf_files)
+            rectify = config.network_config_rectify(nic)
             if rectify:
                 self._attach_port(nic)
-
-        # flush the iface and remove the conf file
-        for name in exist_conf_files:
-            iface_name = name.split('-')[-1]
-            try:
-                if not agent_utils.is_physical_interface(iface_name):
-                    # ifdown vlan nic
-                    cmd = ['nmcli', 'con', 'delete', iface_name]
-                    agent_utils.nmcli_conn_delete(iface_name)
-                else:
-                    # flush physical nic
-                    cmd = ['ip', 'address', 'flush', 'dev', iface_name]
-                    processutils.execute(*cmd)
-            except Exception as e:
-                LOG.error(
-                    "Failed to flush {}, error: {}".format(iface_name, e))
-            agent_utils.remove_file('/etc/sysconfig/network-scripts/{}'.format(name))
 
     def _attach_bond_port(self, port):
         cmd = ['nmcli', 'con', 'reload']
