@@ -43,6 +43,13 @@ class NewtorkInterfaceNotFound(BmV2InstanceAgentException):
         super(NewtorkInterfaceNotFound, self).__init__(msg)
 
 
+class NewtorkInterfaceConfigParasInvalid(BmV2InstanceAgentException):
+
+    def __init__(self, **kwargs):
+        msg = 'The port configuration parameter is invalid: {exception_msg}'.format(**kwargs)
+        super(NewtorkInterfaceConfigParasInvalid, self).__init__(msg)
+
+
 class IscsiSessionIdNotFound(BmV2InstanceAgentException):
 
     def __init__(self, **kwargs):

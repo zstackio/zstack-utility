@@ -1,5 +1,6 @@
 import os
 import re
+import socket
 
 import cpuinfo
 import distro
@@ -7,8 +8,56 @@ from netaddr import IPAddress
 import netifaces
 from oslo_concurrency import processutils
 import psutil
+import pyroute2
 
 from bm_instance_agent import exception
+
+
+class IpLink:
+    def __init__(self, chunk):
+        self.index = chunk['index']
+        self.ip_version = 4 if chunk['family'] == socket.AF_INET else 6
+        # self.state = chunk['state'] # 'up'
+        self.mac = chunk.get_attr('IFLA_ADDRESS')  # link/ether, mac address, type str
+        self.ifname = chunk.get_attr('IFA_LABEL') or chunk.get_attr('IFLA_IFNAME')  # type: str | None
+        self.mtu = chunk.get_attr('IFLA_MTU')  # type: int
+        self.qlen = chunk.get_attr('IFLA_TXQLEN')  # type: int
+        self.state = chunk.get_attr('IFLA_OPERSTATE')  # type: str
+        self.qdisc = chunk.get_attr('IFLA_QDISC')  # type: tuple
+        self.alias = chunk.get_attr('IFLA_IFALIAS')  # type: tuple. if no alias, self.alias = (None,)
+        self.allmulticast = bool(chunk['flags'] & pyroute2.netlink.rtnl.ifinfmsg.IFF_ALLMULTI)  # type: tuple
+        self.device_type = chunk.get_nested('IFLA_LINKINFO', 'IFLA_INFO_KIND')
+        self.broadcast = chunk.get_attr('IFLA_BROADCAST')  # type: str
+        self.group = chunk.get_attr('IFLA_GROUP')  # type: int
+        self.chunk = chunk
+
+
+def _query_index_by_ifname(if_name, iproute):
+    rets = iproute.link_lookup(ifname=if_name)
+    return rets[0] if rets else None
+
+
+def _get_bond_slave_mac(if_name):
+    path = '/sys/class/net/{}/bonding_slave/perm_hwaddr'.format(if_name)
+    if os.path.exists(path):
+        with open(path) as f:
+            return f.read().strip()
+    return None
+
+
+def query_link(iface):
+    with pyroute2.IPRoute() as ipr:
+        if_index = None
+        if isinstance(iface, int):
+            if_index = iface
+        elif isinstance(iface, (str, unicode)):
+            if_index = _query_index_by_ifname(iface, ipr)
+
+        if if_index:
+            link = ipr.get_links(if_index)
+            if link:
+                return IpLink(link[0])
+        return None
 
 
 def get_interfaces():
@@ -26,8 +75,45 @@ def get_interfaces():
     for iface in iface_name_list:
         af_link = netifaces.ifaddresses(iface).get(netifaces.AF_LINK)
         mac = af_link[0].get('addr')
-        interfaces[mac] = iface
+        perm_mac = _get_bond_slave_mac(iface)
+        if perm_mac:
+            interfaces[perm_mac] = iface
+        elif mac not in interfaces:
+            interfaces[mac] = iface
     return interfaces
+
+
+def get_phy_interfaces():
+    """ Get physical interfaces on local system
+
+    :return: A iface_name, iface_mac mapping::
+    {
+        'aa:bb:cc:dd:ee:ff': 'eth0',
+        'ff:ee:dd:cc:bb:aa': 'enp37s0'
+    }
+    :rtype: dict
+    """
+    interfaces = {}
+    iface_name_list = netifaces.interfaces()
+    for iface in iface_name_list:
+        link = query_link(iface)
+        if not link or link.device_type:
+            continue
+
+        af_link = netifaces.ifaddresses(iface).get(netifaces.AF_LINK)
+        mac = af_link[0].get('addr')
+        perm_mac = _get_bond_slave_mac(iface)
+        if perm_mac:
+            interfaces[perm_mac] = iface
+        elif mac not in interfaces:
+            interfaces[mac] = iface
+
+    return interfaces
+
+
+def is_physical_interface(if_name):
+    link = query_link(if_name)
+    return link and not link.device_type
 
 
 def get_interface_by_mac(mac):
@@ -155,3 +241,56 @@ def get_distro():
         return 'kylin'
 
     return 'linux'
+
+
+def ip_link_del(if_name):
+    try:
+        cmd = ['ip', 'link', 'delete', if_name]
+        processutils.execute(*cmd)
+    except processutils.ProcessExecutionError as e:
+        if 'Cannot find device' not in e.stderr:
+            raise e
+
+
+def ip_route_del(route_key):
+    try:
+        cmd = ['ip', 'route', 'delete', route_key]
+        processutils.execute(*cmd)
+    except processutils.ProcessExecutionError as e:
+        if 'No such process' not in e.stderr:
+            raise e
+
+
+def remove_file(file_path):
+    try:
+        os.remove(file_path)
+    except OSError as e:
+        if 'No such file or directory' not in str(e):
+            raise e
+
+
+def nmcli_conn_delete(conn_name):
+    try:
+        cmd = ['nmcli', 'con', 'delete', conn_name]
+        processutils.execute(*cmd)
+    except processutils.ProcessExecutionError as e:
+        if 'unknown connection' not in e.stderr:
+            raise e
+
+
+def get_nmcli_system_conn(name):
+    return "System " + name
+
+
+def config_to_dict(config, item_split, key_value_split):
+    """
+        Parse configuration items as dict.
+        e.g:
+            config_to_dict('a=11,b=22,c=33', ',', '='), return {'a':11, 'b':22, 'c':33}
+            config_to_dict('a:11 b:22 c:33', ' ', ':'), return {'a':11, 'b':22, 'c':33}
+    """
+    try:
+        config_dict = dict([opts.split(key_value_split) for opts in config.split(item_split)])
+    except ValueError:
+        raise exception.NewtorkInterfaceConfigParasInvalid(exception_msg="config format error")
+    return config_dict

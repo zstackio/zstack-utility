@@ -16,6 +16,7 @@ LOG = logging.getLogger(__name__)
 BM_INSTANCE_UUID = None
 DRIVER = None
 ZWATCH_AGENT_CONF_PATH = "/usr/local/zstack/zwatch-vm-agent/conf.yaml"
+VERSION = '2.0.0'
 
 
 class AgentManager(object):
@@ -72,7 +73,7 @@ class AgentManager(object):
         self.driver.ping(instance_obj)
         self.driver.discovery_target(instance_obj)
         self._check_gateway_ip(instance_obj)
-        return {'ping': {'bmInstanceUuid': BM_INSTANCE_UUID}}
+        return {'version': VERSION, 'ping': {'bmInstanceUuid': BM_INSTANCE_UUID}}
 
     def reboot(self, bm_instance):
         instance_obj = BmInstanceObj.from_json(bm_instance)
