@@ -1,3 +1,4 @@
+import math
 import tempfile
 
 __author__ = 'frank'
@@ -770,11 +771,20 @@ class CephAgent(plugin.TaskManager):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CloneRsp()
         src_path = self._normalize_install_path(cmd.srcPath)
+        dst_path = self._normalize_install_path(cmd.dstPath)
+        src_pool = src_path.split('/')[0]
+        dst_pool = dst_path.split('/')[0]
 
         driver = self.get_driver(cmd)
         rsp = driver.clone_volume(cmd, rsp)
 
         rsp.size = self._get_file_size(src_path)
+        ALIGNMENT_SIZE = 4096.0
+        if ceph.is_xsky() and src_pool != dst_pool and rsp.size % ALIGNMENT_SIZE != 0:
+            new_size = int(math.ceil(rsp.size / ALIGNMENT_SIZE) * ALIGNMENT_SIZE)
+            shell.call("qemu-img resize -f raw rbd:%s %s" % (dst_path, new_size))
+            rsp.size = new_size
+            logger.info("image size must be an integer multiple of 4KB, now resize it to %s bytes" % new_size)
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
