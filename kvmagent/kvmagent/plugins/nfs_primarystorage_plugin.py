@@ -733,12 +733,14 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     def create_empty_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CreateEmptyVolumeResponse()
-        try:
+        @linux.retry(times=3, sleep_time=1)
+        def _create_dir_and_file():
             dirname = os.path.dirname(cmd.installUrl)
             if not os.path.exists(dirname):
                 os.makedirs(dirname)
-
             linux.qcow2_create_with_cmd(cmd.installUrl, cmd.size, cmd)
+        try:
+            _create_dir_and_file()
         except Exception as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = 'unable to create empty volume[uuid:%s, name:%s], %s' % (cmd.uuid, cmd.name, str(e))
