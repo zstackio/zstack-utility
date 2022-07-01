@@ -779,6 +779,7 @@ check_system(){
     else
         cs_check_hostname_zstack
     fi
+    [ x`systemctl is-enabled cockpit.socket 2>/dev/null` = x"enabled" ] && (systemctl disable cockpit.socket > /dev/null 2>&1 && systemctl stop cockpit.socket)
     show_spinner do_check_system
     cs_check_zstack_data_exist
     show_spinner cs_create_repo
@@ -1438,9 +1439,6 @@ is_install_general_libs_rh(){
             gzip \
             unzip \
             httpd \
-            openssh \
-            openssh-clients \
-            openssh-server \
             rsync \
             sshpass \
             sudo \

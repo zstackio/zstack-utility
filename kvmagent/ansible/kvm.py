@@ -214,7 +214,7 @@ def install_kvm_pkg():
 
         aarch64_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                         usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
-                        net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
+                        net-tools nfs-utils nmap OpenIPMI-modalias pciutils pv rsync sed \
                         smartmontools sshpass usbutils vconfig wget audit dnsmasq \
                         qemu collectd-virt storcli edk2-aarch64 python2-pyudev collectd-disk"
 
@@ -235,11 +235,15 @@ def install_kvm_pkg():
                         smartmontools sshpass usbutils vconfig wget audit dnsmasq \
                         qemu collectd-virt storcli edk2.git-ovmf-x64 python2-pyudev collectd-disk"
 
+        # kylin-0309 need to remove conflicted lvm dependents
+        remove_lvm = "rpm -e lvm2-dbusd --nodeps || true"
+        run_remote_command(remove_lvm, host_post_info)
+
         # handle zstack_repo
         if zstack_repo != 'false':
             common_dep_list = eval("%s_%s" % (host_arch, releasever))
             # common kvmagent deps of x86 and arm that need to update
-            common_update_list = "sanlock sysfsutils hwdata sg3_utils lvm2 lvm2-libs lvm2-lockd systemd openssh"
+            common_update_list = "sanlock sysfsutils hwdata sg3_utils lvm2 lvm2-libs lvm2-lockd systemd"
             common_no_update_list = "librbd1"
             # common kvmagent deps of x86 and arm that no need to update
             common_dep_list = "%s %s" % (common_dep_list, common_update_list)
