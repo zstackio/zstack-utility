@@ -1,15 +1,33 @@
 network:
   version: 2
   renderer: networkd
+  {% if type == "bond" -%}
+  ethernets:
+    {% for slave in slave_list -%}
+    {{ slave.iface_name }}:
+      dhcp4: no
+    {% endfor %}
+  bonds:
+    {{ iface_name }}:
+      interfaces:
+        {% for slave in slave_list -%}
+        - {{ slave.iface_name }}
+        {% endfor %}
+      parameters:
+        {% for key,value in link_paras.items() -%}
+        {{ key }}: {{ value }}
+        {% endfor %}
+  {%- else %}
   ethernets:
     {{ iface_name }}:
       set-name: {{ iface_name }}
       match:
         macaddress: {{ mac_address }}
-      {% if not vlan_id -%}
+  {%- endif %}
+      {%- if not vlan_id %}
       dhcp4: no
       dhcp4-overrides:
-          use-routes: {{ default_route }}
+        use-routes: {{ default_route }}
       addresses: [ {{ ip_address }}/{{ prefix_size }} ]
       {% if gateway -%}
       gateway4: {{ gateway }}
@@ -17,16 +35,16 @@ network:
       nameservers:
         addresses: [ 223.5.5.5 ]
       {%- endif %}
-  {% if vlan_id -%}
+  {%- if vlan_id %}
   vlans:
     {{ iface_name }}.{{ vlan_id }}:
       id: {{ vlan_id }}
       link: {{ iface_name }}
       dhcp4: no
       dhcp4-overrides:
-          use-routes: {{ default_route }}
+        use-routes: {{ default_route }}
       addresses: [ {{ ip_address }}/{{ prefix_size }} ]
-      {% if gateway -%}
+      {%- if gateway %}
       gateway4: {{ gateway }}
       {%- endif %}
       nameservers:
