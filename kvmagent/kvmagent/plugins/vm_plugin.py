@@ -2875,6 +2875,25 @@ class Vm(object):
 
         return res
 
+    def _build_domain_new_xml(self, volumeDicts):
+        migrate_disks = {}
+
+        for oldpath, volume in volumeDicts.items():
+            _, disk_name = self._get_target_disk_by_path(oldpath)
+            migrate_disks[disk_name] = volume
+
+        tree = etree.ElementTree(etree.fromstring(self.domain_xml))
+        devices = tree.getroot().find('devices')
+        for disk in tree.iterfind('devices/disk'):
+            dev = disk.find('target').attrib['dev']
+            if dev in migrate_disks:
+                new_disk = VmPlugin._get_new_disk(disk, migrate_disks[dev])
+                parent_index = list(devices).index(disk)
+                devices.remove(disk)
+                devices.insert(parent_index, new_disk)
+
+        return etree.tostring(tree.getroot())
+
     def migrate(self, cmd):
         if self.state == Vm.VM_STATE_SHUTDOWN:
             raise kvmagent.KvmError('vm[uuid:%s] is stopped, cannot live migrate,' % cmd.vmUuid)
@@ -2888,6 +2907,10 @@ class Vm(object):
         if current_hostname == 'localhost.localdomain' or current_hostname == 'localhost':
             # set the hostname, otherwise the migration will fail
             shell.call('hostname %s.zstack.org' % hostname)
+
+        destXml = None
+        if cmd.disks:
+            destXml = self._build_domain_new_xml(cmd.disks.__dict__)
 
         destHostIp = cmd.destHostIp
         destUrl = "qemu+tcp://{0}/system".format(destHostIp)
@@ -2914,8 +2937,6 @@ class Vm(object):
 
         if cmd.useNuma:
             flag |= libvirt.VIR_MIGRATE_PERSIST_DEST
-
-        destXml = None
 
         stage = get_task_stage(cmd)
         timeout = 1800 if cmd.timeout is None else cmd.timeout
@@ -4950,7 +4971,6 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_Get_CPU_XML_PATH = "/vm/get/cpu/xml"
     KVM_COMPARE_CPU_FUNCTION_PATH = "/vm/compare/cpu/function"
     KVM_BLOCK_LIVE_MIGRATION_PATH = "/vm/blklivemigration"
-    KVM_LIVE_MIGRATION_WITH_STORAGE_PATH  = "/vm/livemigrationwithstorage"
     KVM_VM_CHECK_VOLUME_PATH = "/vm/volume/check"
     KVM_TAKE_VOLUME_SNAPSHOT_PATH = "/vm/volume/takesnapshot"
     KVM_CHECK_VOLUME_SNAPSHOT_PATH = "/vm/volume/checksnapshot"
@@ -6021,16 +6041,6 @@ class VmPlugin(kvmagent.KvmAgent):
 
         rsp.success, rsp.error = self._do_block_copy(vm.uuid, disk_name, disk_xml, cmd)
         os.remove(disk_xml)
-
-        return jsonobject.dumps(rsp)
-
-    @kvmagent.replyerror
-    def migrate_vm_with_block(self, req):
-        rsp = kvmagent.AgentResponse()
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-
-        self._record_operation(cmd.vmUuid, self.VM_OP_MIGRATE)
-        self._migrate_vm_with_block(cmd.vmUuid, cmd.destHostIp, cmd.disks.__dict__)
 
         return jsonobject.dumps(rsp)
 
@@ -7800,7 +7810,6 @@ host side snapshot files chian:
         http_server.register_async_uri(self.KVM_Get_CPU_XML_PATH, self.get_cpu_xml)
         http_server.register_async_uri(self.KVM_COMPARE_CPU_FUNCTION_PATH, self.compare_cpu_function)
         http_server.register_async_uri(self.KVM_BLOCK_LIVE_MIGRATION_PATH, self.block_migrate)
-        http_server.register_async_uri(self.KVM_LIVE_MIGRATION_WITH_STORAGE_PATH, self.migrate_vm_with_block)
         http_server.register_async_uri(self.KVM_VM_CHECK_VOLUME_PATH, self.check_volume)
         http_server.register_async_uri(self.KVM_VM_RECOVER_VOLUMES_PATH, self.recover_volumes)
         http_server.register_sync_uri(self.KVM_VM_CHECK_RECOVER_PATH, self.check_recover)
