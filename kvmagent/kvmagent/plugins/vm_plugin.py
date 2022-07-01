@@ -2826,7 +2826,7 @@ class Vm(object):
                 logger.debug("after create snapshot by libvirt, expected volume[install path: %s] does%s exist."
                              % (struct.installPath, "" if existing else " not"))
 
-                if struct.memory:
+                if struct.memory and struct.installPath.startswith("/dev/"):
                     mount_path = struct.installPath.replace("/dev/", "/tmp/")
                     linux.umount(mount_path)
                     linux.rmdir_if_empty(mount_path)
