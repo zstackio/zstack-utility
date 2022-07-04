@@ -1840,7 +1840,7 @@ class Vm(object):
             if vol.pciAddress.function:
                 attributes = {'function': '0x%s' % vol.pciAddress.function}
             attributes = {'type': vol.pciAddress.type}
-            e(vol, 'address', None, attributes)
+            e(disk_element, 'address', None, attributes)
         elif vol.pciAddress and vol.pciAddress.type == 'driver':
             e(disk_element, 'address', None, {'type': 'drive', 'controller': '0', 'unit': str(vol.pciAddress.function)})
         elif bus == 'scsi':
