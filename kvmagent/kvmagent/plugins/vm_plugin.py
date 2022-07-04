@@ -1828,7 +1828,22 @@ class Vm(object):
         target = disk_element.find('target')
         bus = target.get('bus') if target is not None else None
 
-        if bus == 'scsi':
+        if vol.pciAddress and vol.pciAddress.type == 'pci':
+            attributes = {}
+
+            if vol.pciAddress.domain:
+                attributes = {'domain': '0x%s' % vol.pciAddress.domain}
+            if vol.pciAddress.bus:
+                attributes = {'bus': '0x%s' % vol.pciAddress.bus}
+            if vol.pciAddress.slot:
+                attributes = {'slot': '0x%s' % vol.pciAddress.slot}
+            if vol.pciAddress.function:
+                attributes = {'function': '0x%s' % vol.pciAddress.function}
+            attributes = {'type': vol.pciAddress.type}
+            e(vol, 'address', None, attributes)
+        elif vol.pciAddress and vol.pciAddress.type == 'driver':
+            e(disk_element, 'address', None, {'type': 'drive', 'controller': '0', 'unit': str(vol.pciAddress.function)})
+        elif bus == 'scsi':
             occupied_units = vm_to_attach.get_occupied_disk_address_units(bus='scsi', controller=0) if vm_to_attach else []
             default_unit = Vm.get_device_unit(vol.deviceId)
             unit = default_unit if default_unit not in occupied_units else max(occupied_units) + 1
@@ -4338,20 +4353,6 @@ class Vm(object):
                 assert vol is not None, 'vol cannot be None'
                 if dataSourceOnly:
                     return vol
-
-                if v.pciAddress:
-                    attributes = {}
-
-                    if v.pciAddress.domain:
-                        attributes = {'domain': '0x%s' % v.pciAddress.domain}
-                    if v.pciAddress.bus:
-                        attributes = {'bus': '0x%s' % v.pciAddress.bus}
-                    if v.pciAddress.slot:
-                        attributes = {'slot': '0x%s' % v.pciAddress.slot}
-                    if v.pciAddress.function:
-                        attributes = {'function': '0x%s' % v.pciAddress.function}
-                    attributes = {'type': 'pci'}
-                    e(vol, 'address', None, attributes)
 
                 Vm.set_device_address(vol, v)
                 if v.bootOrder is not None and v.bootOrder > 0 and v.deviceId == 0:
