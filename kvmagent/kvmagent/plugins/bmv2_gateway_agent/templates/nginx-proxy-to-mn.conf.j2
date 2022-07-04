@@ -8,6 +8,11 @@ location /baremetal_instance_agent/v2/hardwareinfos {
     proxy_pass {{ mn_callback_uri }}/zstack/v1/baremetal2/chassis/ipmi/hardwareinfos;
 }
 
+location /baremetal_instance_agent/v2/reportProgress {
+    proxy_set_header Host $host;
+    proxy_pass {{ report_progress_uri }};
+}
+
 location /bmv2httpboot {
     autoindex on;
     autoindex_exact_size on;
