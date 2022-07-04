@@ -1,4 +1,3 @@
-from ssl import TLSVersion
 from zstacklib.utils import plugin
 from zstacklib.utils import http
 from zstacklib.utils import shell
