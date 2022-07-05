@@ -1315,6 +1315,8 @@ upgrade_zstack(){
         /bin/cp -n $ZSTACK_INSTALL_ROOT/zstack-ui/zstack_ui.bin $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_TOOLS >/dev/null 2>&1
     fi
 
+    mysql -uroot -p"$MYSQL_NEW_ROOT_PASSWORD" -h"$MANAGEMENT_IP" -e 'update mysql.user set plugin="caching_sha2_password"' >/dev/null 2>&1
+
     #check old license folder and copy old license files to new folder.
     if [ -d $ZSTACK_OLD_LICENSE_FOLDER ] && [ ! -d $LICENSE_FOLDER ]; then
         mv $ZSTACK_OLD_LICENSE_FOLDER  $LICENSE_FOLDER >>$ZSTACK_INSTALL_LOG 2>&1
@@ -2244,6 +2246,8 @@ install_db(){
     #check hostname and ip again
     ia_check_ip_hijack
     cs_clean_ssh_tmp_key $ssh_tmp_dir
+    
+    mysql -uroot -p"$MYSQL_NEW_ROOT_PASSWORD" -h"$MANAGEMENT_IP" -e 'update mysql.user set plugin="caching_sha2_password"' >/dev/null 2>&1
 }
 
 install_sds(){
