@@ -1980,6 +1980,7 @@ class Vm(object):
         def restore_from_file(conn):
             return conn.restoreFlags(path, self.domain_xml)
 
+        logger.debug('restoring vm:\n%s' % self.domain_xml)
         restore_from_file()
 
     def start(self, timeout=60, create_paused=False, wait_console=True):
@@ -5161,8 +5162,6 @@ class VmPlugin(kvmagent.KvmAgent):
                     snapshot_path = mount_path + '/' + mount_path.rsplit('/', 1)[-1]
                 else:
                     snapshot_path = cmd.memorySnapshotPath
-
-                logger.debug('restoring vm:\n%s' % self.domain_xml)
 
                 try:
                     vm.restore(snapshot_path)
