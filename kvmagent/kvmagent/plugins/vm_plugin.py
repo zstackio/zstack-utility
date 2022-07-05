@@ -1830,16 +1830,16 @@ class Vm(object):
 
         if vol.pciAddress and vol.pciAddress.type == 'pci':
             attributes = {}
-
             if vol.pciAddress.domain:
-                attributes = {'domain': '0x%s' % vol.pciAddress.domain}
+                attributes['domain'] = vol.pciAddress.domain
             if vol.pciAddress.bus:
-                attributes = {'bus': '0x%s' % vol.pciAddress.bus}
+                attributes['bus'] = vol.pciAddress.bus
             if vol.pciAddress.slot:
-                attributes = {'slot': '0x%s' % vol.pciAddress.slot}
+                attributes['slot'] = vol.pciAddress.slot
             if vol.pciAddress.function:
-                attributes = {'function': '0x%s' % vol.pciAddress.function}
-            attributes = {'type': vol.pciAddress.type}
+                attributes['function'] = vol.pciAddress.function
+
+            attributes['type'] = vol.pciAddress.type
             e(disk_element, 'address', None, attributes)
         elif vol.pciAddress and vol.pciAddress.type == 'driver':
             e(disk_element, 'address', None, {'type': 'drive', 'controller': '0', 'unit': str(vol.pciAddress.function)})
@@ -5161,6 +5161,8 @@ class VmPlugin(kvmagent.KvmAgent):
                     snapshot_path = mount_path + '/' + mount_path.rsplit('/', 1)[-1]
                 else:
                     snapshot_path = cmd.memorySnapshotPath
+
+                logger.debug('restoring vm:\n%s' % self.domain_xml)
 
                 try:
                     vm.restore(snapshot_path)
