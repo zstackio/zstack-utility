@@ -486,7 +486,8 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         conf = template.render(
             mn_callback_uri=mn_callback_uri,
             bm_gateway_httpboot=self.BAREMETAL_LIB_DIR,
-            bm_agent_proxy_conf_dir=self.NGINX_BM_AGENT_PROXY_CONF_DIR
+            bm_agent_proxy_conf_dir=self.NGINX_BM_AGENT_PROXY_CONF_DIR,
+            report_progress_uri=network_obj.send_command_url
         )
         with open(self.NGINX_CONF_PATH, 'w') as f:
             f.write(conf)
@@ -894,6 +895,10 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             'http://{ip}:{port}/baremetal_instance_agent/v2/hardwareinfos'
         ).format(ip=volume_driver.instance_obj.gateway_ip, port=cmd.port)
 
+        send_progress_info_uri = (
+            'http://{ip}:{port}/baremetal_instance_agent/v2/reportProgress'
+        ).format(ip=volume_driver.instance_obj.gateway_ip, port=cmd.port)
+
         if cmd.extraBootParams is None:
             cmd.extraBootParams = ""
 
@@ -901,10 +906,13 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             network_inst_uri=network_inst_uri,
             dest_disk_wwn=cmd.destDiskWwn,
             send_hardware_infos_uri=send_hardware_infos_uri,
+            send_progress_info_uri=send_progress_info_uri,
             gateway_ip=instance_obj.gateway_ip,
             iqn_name=volume_driver.iscsi_target,
             chassis_address=cmd.chassisInfo.address,
-            chassis_port=cmd.chassisInfo.port
+            chassis_port=cmd.chassisInfo.port,
+            api_id=cmd.threadContext.api,
+            task_name=cmd.threadContext["task-name"]
         )
 
         with open(ks_config_path, 'w') as f:
