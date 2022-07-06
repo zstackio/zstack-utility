@@ -198,26 +198,32 @@ class StartVmResponse(kvmagent.AgentResponse):
 
 class VirtualDeviceInfo():
     def __init__(self):
-        self.pciInfo = PciAddressInfo()
+        self.deviceAddress = DeviceAddress()
         self.resourceUuid = None
 
 class VmNicInfo():
     def __init__(self):
-        self.pciInfo = PciAddressInfo()
+        self.deviceAddress = DeviceAddress()
         self.macAddress = None
 
-class PciAddressInfo():
+class DeviceAddress():
     def __init__(self):
         self.type = None
-        self.domain = None
         self.bus = None
+
+        # for pci address
+        self.domain = None
         self.slot = None
         self.function = None
+
+        # for dirver address
+        self.controller = None
+        self.target = None
+        self.unit = None
 
 class AttachNicResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(AttachNicResponse, self).__init__()
-        self.pciAddress = PciAddressInfo()
         self.virtualDeviceInfoList = []
 
 class GetVncPortCmd(kvmagent.AgentCommand):
@@ -1828,21 +1834,21 @@ class Vm(object):
         target = disk_element.find('target')
         bus = target.get('bus') if target is not None else None
 
-        if vol.pciAddress and vol.pciAddress.type == 'pci':
+        if vol.deviceAddress and vol.deviceAddress.type == 'pci':
             attributes = {}
-            if vol.pciAddress.domain:
-                attributes['domain'] = vol.pciAddress.domain
-            if vol.pciAddress.bus:
-                attributes['bus'] = vol.pciAddress.bus
-            if vol.pciAddress.slot:
-                attributes['slot'] = vol.pciAddress.slot
-            if vol.pciAddress.function:
-                attributes['function'] = vol.pciAddress.function
+            if vol.deviceAddress.domain:
+                attributes['domain'] = vol.deviceAddress.domain
+            if vol.deviceAddress.bus:
+                attributes['bus'] = vol.deviceAddress.bus
+            if vol.deviceAddress.slot:
+                attributes['slot'] = vol.deviceAddress.slot
+            if vol.deviceAddress.function:
+                attributes['function'] = vol.deviceAddress.function
 
-            attributes['type'] = vol.pciAddress.type
+            attributes['type'] = vol.deviceAddress.type
             e(disk_element, 'address', None, attributes)
-        elif vol.pciAddress and vol.pciAddress.type == 'driver':
-            e(disk_element, 'address', None, {'type': 'drive', 'controller': '0', 'unit': str(vol.pciAddress.function)})
+        elif vol.deviceAddress and vol.deviceAddress.type == 'driver':
+            e(disk_element, 'address', None, {'type': 'drive', 'controller': vol.deviceAddress.controller, 'unit': str(vol.deviceAddress.unit)})
         elif bus == 'scsi':
             occupied_units = vm_to_attach.get_occupied_disk_address_units(bus='scsi', controller=0) if vm_to_attach else []
             default_unit = Vm.get_device_unit(vol.deviceId)
@@ -4019,11 +4025,9 @@ class Vm(object):
                 e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
                 e(cdrom, 'target', None, {'dev': legacy_cdrom_config.targetDev, 'bus': default_bus_type})
 
-                if iso.pciAddress:
-                    # domain:bus:slot:function
-                    # controller:bus:target:unit
-                    e(cdrom, 'address', None, {'type': 'drive', 'controller': iso.pciAddress.domain, 'bus': iso.pciAddress.bus,
-                     'target': iso.pciAddress.slot, 'unit': iso.pciAddress.function})
+                if iso.deviceAddress:
+                    e(cdrom, 'address', None, {'type': 'drive', 'controller': iso.deviceAddress.controller, 'bus': iso.deviceAddress.bus,
+                     'target': iso.deviceAddress.target, 'unit': iso.deviceAddress.unit})
                 else:
                     e(cdrom, 'address', None, {'type': 'drive', 'bus': legacy_cdrom_config.bus, 'unit': legacy_cdrom_config.unit})
                 e(cdrom, 'readonly', None)
@@ -4332,8 +4336,8 @@ class Vm(object):
                 return qs.get("r")
 
             def allocat_ide_config(_disk, _volume):
-                if _volume.pciAddress:
-                    e(_disk, 'address', None, {'type': 'drive', 'bus': _volume.pciAddress.bus, 'unit': _volume.pciAddress.function})
+                if _volume.deviceAddress:
+                    e(_disk, 'address', None, {'type': 'drive', 'bus': _volume.deviceAddress.bus, 'unit': _volume.deviceAddress.function})
                 else:
                     if len(volume_ide_configs) == 0:
                         err = "insufficient IDE address."
@@ -4762,8 +4766,9 @@ class Vm(object):
             devices = elements['devices']
             b = e(devices, 'memballoon', None, {'model': 'virtio'})
             e(b, 'stats', None, {'period': '10'})
-            if cmd.memBalloon.pciInfo:
-                e(b, 'address', None, {'type': 'pci', 'domain': cmd.memBalloon.pciInfo.domain, 'bus': cmd.memBalloon.pciInfo.bus, 'slot': cmd.memBalloon.pciInfo.slot, 'function': cmd.memBalloon.pciInfo.function})
+            if cmd.memBalloon.deviceAddress:
+                e(b, 'address', None, {'type': 'pci', 'domain': cmd.memBalloon.deviceAddress.domain, 'bus': cmd.memBalloon.deviceAddress.bus,
+                 'slot': cmd.memBalloon.deviceAddress.slot, 'function': cmd.memBalloon.deviceAddress.function})
             if kvmagent.get_host_os_type() == "debian":
                 e(b, 'address', None, {'type': 'pci', 'controller': '0', 'bus': '0x00', 'slot': '0x04', 'function':'0x0'})
 
@@ -5254,11 +5259,11 @@ class VmPlugin(kvmagent.KvmAgent):
                 continue
 
             virtualDeviceInfo = VirtualDeviceInfo()
-            virtualDeviceInfo.pciInfo.bus = iface.address.bus_
-            virtualDeviceInfo.pciInfo.function = iface.address.function_
-            virtualDeviceInfo.pciInfo.type = iface.address.type_
-            virtualDeviceInfo.pciInfo.domain = iface.address.domain_
-            virtualDeviceInfo.pciInfo.slot = iface.address.slot_
+            virtualDeviceInfo.deviceAddress.bus = iface.address.bus_
+            virtualDeviceInfo.deviceAddress.function = iface.address.function_
+            virtualDeviceInfo.deviceAddress.type = iface.address.type_
+            virtualDeviceInfo.deviceAddress.domain = iface.address.domain_
+            virtualDeviceInfo.deviceAddress.slot = iface.address.slot_
             rsp.virtualDeviceInfoList.append(virtualDeviceInfo)
 
         return jsonobject.dumps(rsp)
@@ -5320,39 +5325,21 @@ class VmPlugin(kvmagent.KvmAgent):
             vm = get_vm_by_uuid(cmd.vmInstanceUuid)
             for iface in vm.domain_xmlobject.devices.get_child_node_as_list('interface'):
                 vmNicInfo = VmNicInfo()
-                vmNicInfo.pciInfo.bus = iface.address.bus_
-                vmNicInfo.pciInfo.function = iface.address.function_
-                vmNicInfo.pciInfo.type = iface.address.type_
-                vmNicInfo.pciInfo.domain = iface.address.domain_
-                vmNicInfo.pciInfo.slot = iface.address.slot_
+                vmNicInfo.deviceAddress.bus = iface.address.bus_
+                vmNicInfo.deviceAddress.function = iface.address.function_
+                vmNicInfo.deviceAddress.type = iface.address.type_
+                vmNicInfo.deviceAddress.domain = iface.address.domain_
+                vmNicInfo.deviceAddress.slot = iface.address.slot_
                 vmNicInfo.macAddress = iface.mac.address_
                 rsp.nicInfos.append(vmNicInfo)
 
 
             for disk in vm.domain_xmlobject.devices.get_child_node_as_list('disk'):
-                virtualDeviceInfo = VirtualDeviceInfo()
-
-                # domain:bus:slot:function
-                # controller:bus:target:unit
-                virtualDeviceInfo.pciInfo.domain = disk.address.domain_ if disk.address.domain__ else disk.address.controller_
-                virtualDeviceInfo.pciInfo.bus = disk.address.bus_
-                virtualDeviceInfo.pciInfo.slot = disk.address.slot_ if disk.address.slot__ else disk.address.target_
-                virtualDeviceInfo.pciInfo.function = disk.address.function_ if disk.address.function__ else disk.address.unit_
-                virtualDeviceInfo.pciInfo.type = disk.address.type_
-                if disk.has_element('serial'):
-                    virtualDeviceInfo.resourceUuid = disk.serial.text_
-
-                rsp.virtualDeviceInfoList.append(virtualDeviceInfo)
+                rsp.virtualDeviceInfoList.append(self.get_device_address_info(disk))
 
             memBalloonPci = vm.domain_xmlobject.devices.get_child_node('memballoon')
             if memBalloonPci is not None:
-                memBalloonInfo = VirtualDeviceInfo()
-                memBalloonInfo.pciInfo.domain = memBalloonPci.address.domain_
-                memBalloonInfo.pciInfo.bus = memBalloonPci.address.bus_
-                memBalloonInfo.pciInfo.slot = memBalloonPci.address.slot_
-                memBalloonInfo.pciInfo.function = memBalloonPci.address.function_
-                memBalloonInfo.pciInfo.type = memBalloonPci.address.type_
-                rsp.memBalloonInfo = memBalloonInfo
+                rsp.memBalloonInfo = self.get_device_address_info(memBalloonPci)
 
         return jsonobject.dumps(rsp)
 
@@ -5825,6 +5812,22 @@ class VmPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
+    def get_device_address_info(self, device):
+        virtualDeviceInfo = VirtualDeviceInfo()
+        virtualDeviceInfo.deviceAddress.bus = device.address.bus_ if device.address.bus__ else None
+        virtualDeviceInfo.deviceAddress.domain = device.address.domain_ if device.address.domain__ else None
+        virtualDeviceInfo.deviceAddress.controller = device.address.controller_ if device.address.controller__ else None
+        virtualDeviceInfo.deviceAddress.slot = device.address.slot_ if device.address.slot__ else None
+        virtualDeviceInfo.deviceAddress.target = device.address.target_ if device.address.target__ else None
+        virtualDeviceInfo.deviceAddress.function = device.address.function_ if device.address.function__ else None
+        virtualDeviceInfo.deviceAddress.unit = device.address.unit_ if device.address.unit__ else None
+        virtualDeviceInfo.deviceAddress.type = device.address.type_ if device.address.type__ else None
+        
+        if device.has_element('serial'):
+            virtualDeviceInfo.resourceUuid = device.serial.text_
+
+        return virtualDeviceInfo
+
     @kvmagent.replyerror
     def attach_data_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -5840,20 +5843,7 @@ class VmPlugin(kvmagent.KvmAgent):
             vm.refresh()
 
             disk, _ = vm._get_target_disk(volume)
-
-            virtualDeviceInfo = VirtualDeviceInfo()
-            virtualDeviceInfo.pciInfo.bus = disk.address.bus_
-            # domain:bus:slot:function
-            # controller:bus:target:unit
-            virtualDeviceInfo.pciInfo.domain = disk.address.domain_ if disk.address.domain__ else disk.address.controller_
-            virtualDeviceInfo.pciInfo.bus = disk.address.bus_
-            virtualDeviceInfo.pciInfo.slot = disk.address.slot_ if disk.address.slot__ else disk.address.target_
-            virtualDeviceInfo.pciInfo.function = disk.address.function_ if disk.address.function__ else disk.address.unit_
-            virtualDeviceInfo.pciInfo.type = disk.address.type_
-            if disk.has_element('serial'):
-                virtualDeviceInfo.resourceUuid = disk.serial.text_
-
-            rsp.virtualDeviceInfoList.append(virtualDeviceInfo)
+            rsp.virtualDeviceInfoList.append(self.get_device_address_info(disk))
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
