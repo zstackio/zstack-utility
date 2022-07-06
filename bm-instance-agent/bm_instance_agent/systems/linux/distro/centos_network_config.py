@@ -12,6 +12,9 @@ LOG = logging.getLogger(__name__)
 
 class CentOSNetworkConfig:
     PORT_CONFIGTYPE_BOND = 'Bond'
+    PORT_OPT_UP = 0x1
+    PORT_OPT_DOWN = 0x2
+    PORT_OPT_DOWNUP = PORT_OPT_UP | PORT_OPT_DOWN
 
     def __init__(self):
         self.if_name = None
@@ -194,15 +197,18 @@ class CentOSNetworkConfig:
         return need_rectify
 
     @staticmethod
-    def if_down_up(if_name, down=False):
-        cmd = 'ifdown' if down else 'ifup'
-        cmd = [cmd, if_name]
-        processutils.execute(*cmd)
-        '''
-        If NetworkManager is enabled on centos,
-        we need to use nmcli to delete the configuration additionally.
-        '''
-        if down:
+    def if_down_up(if_name, opt=PORT_OPT_UP):
+        if opt & CentOSNetworkConfig.PORT_OPT_DOWN:
+            cmd = ['ifdown', if_name]
+            processutils.execute(*cmd)
+        if opt & CentOSNetworkConfig.PORT_OPT_UP:
+            cmd = ['ifup', if_name]
+            processutils.execute(*cmd)
+        else:
+            '''
+            If NetworkManager is enabled on centos,
+            we need to use nmcli to delete the configuration additionally.
+            '''
             try:
                 path = '/sys/class/net/{}/bonding_slave'.format(if_name)
                 conn_name = if_name if not os.path.exists(path) else agent_utils.get_nmcli_system_conn(if_name)

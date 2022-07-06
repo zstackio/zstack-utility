@@ -27,8 +27,7 @@ class CentOSDriver(linux_driver.LinuxDriver):
         parasObj = objects.BondPortParasObj.from_json(port.paras)
         config.if_down_up(port.iface_name)
         for slave in parasObj.slave_list:
-            config.if_down_up(slave["iface_name"], True)
-            config.if_down_up(slave["iface_name"])
+            config.if_down_up(slave["iface_name"], config.PORT_OPT_DOWNUP)
         if port.vlan_if_name:
             config.if_down_up(port.vlan_if_name)
 
@@ -36,8 +35,7 @@ class CentOSDriver(linux_driver.LinuxDriver):
         if_name = port.iface_name
         if port.vlan_if_name:
             if_name = port.vlan_if_name
-        config.if_down_up(if_name, True)
-        config.if_down_up(if_name)
+        config.if_down_up(if_name, config.PORT_OPT_DOWNUP)
 
     def _attach_port(self, port):
         config.persist_network_config(port)
@@ -51,19 +49,19 @@ class CentOSDriver(linux_driver.LinuxDriver):
             self._attach_port(port)
 
     def _detach_bond_port(self, port):
-        config.if_down_up(port.iface_name, True)
+        config.if_down_up(port.iface_name, config.PORT_OPT_DOWN)
 
         bond_port = objects.BondPortParasObj.from_json(port.paras)
         for slave in bond_port.slave_list:
-            config.if_down_up(slave["iface_name"], True)
+            config.if_down_up(slave["iface_name"], config.PORT_OPT_DOWN)
         if port.vlan_if_name:
-            config.if_down_up(port.vlan_if_name, True)
+            config.if_down_up(port.vlan_if_name, config.PORT_OPT_DOWN)
 
     def _detach_phy_port(self, port):
         if_name = port.iface_name
         if port.vlan_if_name:
             if_name = port.vlan_if_name
-        config.if_down_up(if_name, True)
+        config.if_down_up(if_name, config.PORT_OPT_DOWN)
 
     def _detach_port(self, port):
         # Ensure that the conf file exist because command ifdown
