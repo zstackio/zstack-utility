@@ -1016,7 +1016,8 @@ $HTTP["remoteip"] =~ "^(.*)$" {
             "^/.*/user_data$" => "/{{ip}}/user_data",
             "^/.*/meta_data.json$" => "/{{ip}}/meta_data.json",
             "^/.*/password$" => "/{{ip}}/password",
-            "^/.*/$" => "/{{ip}}/$1"
+            "^/.*/$" => "/{{ip}}/$1",
+            "^/$" => "{{ip}}/$1"
         )
         dir-listing.activate = "enable"
 {% endfor -%}
