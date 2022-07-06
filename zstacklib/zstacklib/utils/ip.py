@@ -177,6 +177,18 @@ def get_nic_supported_max_speed(nic):
             if max_num > speed:
                 speed = max_num
 
+    if speed == 0:
+        lines = linux.read_file("/sys/class/net/%s/speed" % nic)
+        if not lines:
+            return speed
+        speed = lines.strip()
+        try:
+            speed = int(speed)
+        except Exception:
+            speed = 0
+    if speed < 0:
+        speed = 0
+
     return speed
 
 def get_namespace_id(namespace_name):
