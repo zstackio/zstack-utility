@@ -4063,11 +4063,20 @@ class Vm(object):
             if len(empty_cdrom_configs) != max_cdrom_num:
                 logger.error('ISO_DEVICE_LETTERS or EMPTY_CDROM_CONFIGS config error')
 
-            def make_empty_cdrom(target_dev, bus, unit, bootOrder, resourceUuid):
+            # legacy_cdrom_config used for cdrom without deivce address
+            # cdrom given address record from management node side
+            def make_empty_cdrom(iso, legacy_cdrom_config, bootOrder, resourceUuid):
                 cdrom = e(devices, 'disk', None, {'type': 'file', 'device': 'cdrom'})
                 e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
-                e(cdrom, 'target', None, {'dev': target_dev, 'bus': default_bus_type})
-                e(cdrom, 'address', None, {'type': 'drive', 'bus': bus, 'unit': unit})
+                e(cdrom, 'target', None, {'dev': legacy_cdrom_config.targetDev, 'bus': default_bus_type})
+
+                if iso.pciAddress:
+                    # domain:bus:slot:function
+                    # controller:bus:target:unit
+                    e(cdrom, 'address', None, {'type': 'drive', 'controller': iso.pciAddress.domain, 'bus': iso.pciAddress.bus,
+                     'target': iso.pciAddress.slot, 'unit': iso.pciAddress.function})
+                else:
+                    e(cdrom, 'address', None, {'type': 'drive', 'bus': legacy_cdrom_config.bus, 'unit': legacy_cdrom_config.unit})
                 e(cdrom, 'readonly', None)
                 e(cdrom, 'serial', resourceUuid)
                 if bootOrder is not None and bootOrder > 0:
@@ -4109,7 +4118,7 @@ class Vm(object):
                 cdrom_config = empty_cdrom_configs[iso.deviceId]
 
                 if iso.isEmpty:
-                    make_empty_cdrom(cdrom_config.targetDev, cdrom_config.bus, cdrom_config.unit, iso.bootOrder, iso.resourceUuid)
+                    make_empty_cdrom(iso, cdrom_config, iso.bootOrder, iso.resourceUuid)
                     continue
 
                 if iso.path.startswith('ceph'):
@@ -4117,7 +4126,7 @@ class Vm(object):
                     ic.iso = iso
                     devices.append(ic.to_xmlobject(cdrom_config.targetDev, default_bus_type, cdrom_config.bus, cdrom_config.unit, iso.bootOrder))
                 else:
-                    cdrom = make_empty_cdrom(cdrom_config.targetDev, cdrom_config.bus , cdrom_config.unit, iso.bootOrder, iso.resourceUuid)
+                    cdrom = make_empty_cdrom(iso, cdrom_config, iso.bootOrder, iso.resourceUuid)
                     e(cdrom, 'source', None, {'file': iso.path})
 
         def make_volumes():
