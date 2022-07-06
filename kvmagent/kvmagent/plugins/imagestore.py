@@ -3,6 +3,7 @@ import tempfile
 import os
 import os.path
 import platform
+import json
 
 from kvmagent import kvmagent
 from zstacklib.utils import jsonobject
@@ -13,6 +14,7 @@ from zstacklib.utils.report import *
 
 logger = log.get_logger(__name__)
 HOST_ARCH = platform.machine()
+
 
 class ImageStoreClient(object):
 
@@ -93,7 +95,9 @@ class ImageStoreClient(object):
             cmdstr = '%s querymirr -domain %s' % \
                      (self.ZSTORE_CLI_PATH, vm)
             jobj = jsonobject.loads(shell.call(cmdstr))
-            return jobj.mirrorVolumes
+            if jobj is None:
+                return None
+            return jobj.__dict__ if hasattr(jobj, "__dict__") else jobj.mirrorVolumes
 
     def mirror_volume(self, vm, node, dest, lastvolume, currvolume, volumetype, mode, speed, reporter):
         PFILE = linux.create_temp_file()
@@ -113,6 +117,43 @@ class ImageStoreClient(object):
             linux.rm_file_force(PFILE)
             if err:
                 raise Exception('fail to mirror volume %s, because %s' % (vm, str(err)))
+
+    def query_vm_mirror_latencies_boundary(self, vm):
+        with linux.ShowLibvirtErrorOnException(vm):
+            infosMaps = []
+            maxLatencies = []
+            maxInfoMap = {}
+            minInfoMap = {}
+            PFILE = linux.create_temp_file()
+            cmdstr = '%s querylat -domain %s -count 8 > %s' % (self.ZSTORE_CLI_PATH, vm, PFILE)
+            if shell.run(cmdstr) != 0 or os.path.getsize(PFILE) == 0:
+                logger.debug("Failed to query latency for vm: [%s]", vm)
+                return maxInfoMap, minInfoMap
+
+            with open(PFILE) as fd:
+                linux.rm_file_force(PFILE)
+                for line in fd.readlines():
+                    infosMap = {}
+                    j = jsonobject.loads(line.strip())
+                    for key, val in j.__dict__.iteritems():
+                        infosMap[key] = val
+                    infosMaps.append(infosMap)
+                    maxLatencies.append(max(infosMap.values()))
+
+                if maxLatencies:
+                    maxLatency = max(maxLatencies)
+                    minLatency = min(maxLatencies)
+                    for infoMap in infosMaps:
+                        k = [k for k, v in infoMap.items() if v == maxLatency]
+                        if k:
+                            maxInfoMap = infoMap
+                            break
+                    for infoMap in infosMaps:
+                        k = [k for k, v in infoMap.items() if v == minLatency]
+                        if k:
+                            minInfoMap = infoMap
+                            break
+            return vm, maxInfoMap, minInfoMap
 
     def backup_volume(self, vm, node, bitmap, mode, dest, speed, reporter, stage):
         self.check_capacity(os.path.dirname(dest))

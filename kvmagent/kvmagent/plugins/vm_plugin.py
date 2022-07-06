@@ -386,9 +386,11 @@ class TakeVolumeMirrorResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(TakeVolumeMirrorResponse, self).__init__()
 
+
 class CancelVolumeMirrorResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(CancelVolumeMirrorResponse, self).__init__()
+
 
 class QueryVolumeMirrorResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -396,12 +398,36 @@ class QueryVolumeMirrorResponse(kvmagent.AgentResponse):
         self.mirrorVolumes = [] # type:list[str]
         self.extraMirrorVolumes = [] # type:list[str]
 
+
+class QueryVmLatenciesThread(threading.Thread):
+    def __init__(self, func, uuids):
+        threading.Thread.__init__(self)
+        self.func = func
+        self.uuids = uuids
+        self.res = []
+
+    def run(self):
+        self.res = self.func(self.uuids)
+
+    def getResult(self):
+        return self.res
+
+
 class TakeVolumeBackupResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(TakeVolumeBackupResponse, self).__init__()
         self.backupFile = None
         self.parentInstallPath = None
         self.bitmap = None
+
+
+class QueryMirrorLatencyResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(QueryMirrorLatencyResponse, self).__init__()
+        self.vmCurrentMaxCdpLatencyInfos = {}
+        self.vmCurrentMinCdpLatencyInfos = {}
+
+
 
 class VolumeBackupInfo(object):
     def __init__(self, deviceId, bitmap, backupFile, parentInstallPath):
@@ -4946,8 +4972,10 @@ def check_mirror_jobs(domain_id, migrate_without_bitmaps):
 
     isc = ImageStoreClient()
     volumes = isc.query_mirror_volumes(domain_id)
-    for v in volumes:
-        isc.stop_mirror(domain_id, False, v)
+    if volumes:
+        for v in volumes.keys():
+            logger.info("stop mirror for %s:%s" % (domain_id, v))
+            isc.stop_mirror(domain_id, False, v)
 
     if migrate_without_bitmaps:
         execute_qmp_command(domain_id, '{"execute": "migrate-set-capabilities","arguments":'
@@ -4979,6 +5007,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_TAKE_VOLUME_MIRROR_PATH = "/vm/volume/takemirror"
     KVM_CANCEL_VOLUME_MIRROR_PATH = "/vm/volume/cancelmirror"
     KVM_QUERY_VOLUME_MIRROR_PATH = "/vm/volume/querymirror"
+    KVM_QUERY_MIRROR_LATENCY_BOUNDARY_PATH = "/vm/volume/querylatencyboundary"
     KVM_BLOCK_STREAM_VOLUME_PATH = "/vm/volume/blockstream"
     KVM_TAKE_VOLUMES_SNAPSHOT_PATH = "/vm/volumes/takesnapshot"
     KVM_TAKE_VOLUMES_BACKUP_PATH = "/vm/volumes/takebackup"
@@ -6570,11 +6599,14 @@ host side snapshot files chian:
         for v in cmd.volumes:
             target_disk, _ = vm._get_target_disk(v)
             device_name = self.get_disk_device_name(target_disk)
-            voldict[device_name] = v.volumeUuid;
+            voldict[device_name] = v.volumeUuid
 
         isc = ImageStoreClient()
         volumes = isc.query_mirror_volumes(cmd.vmUuid)
-        for device_name in volumes:
+        if volumes is None:
+            return jsonobject.dumps(rsp)
+
+        for device_name in volumes.keys():
             try:
                 rsp.mirrorVolumes.append(voldict[device_name])
             except KeyError:
@@ -6606,6 +6638,16 @@ host side snapshot files chian:
                 currVolume = installPath.split(":/")[-1]
                 volumeType = "qcow2"
 
+            try:
+                volumes = isc.query_mirror_volumes(cmd.vmUuid)
+                if volumes is None:
+                    volumes = {}
+                target = volumes[device_name]
+                if target != cmd.mirrorTarget:
+                    isc.stop_mirror(cmd.vmUuid, False, device_name)
+            except KeyError:
+                pass
+
             isc.mirror_volume(cmd.vmUuid, device_name, cmd.mirrorTarget, lastVolume, currVolume, volumeType, cmd.mode, cmd.speed, Report.from_spec(cmd, "TakeMirror"))
 
             execute_qmp_command(cmd.vmUuid, '{"execute": "migrate-set-capabilities","arguments":'
@@ -6618,6 +6660,36 @@ host side snapshot files chian:
             rsp.error = str(e)
             rsp.success = False
 
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def query_vm_mirror_latencies_boundary(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = QueryMirrorLatencyResponse()
+
+        threads = []
+        isc = ImageStoreClient()
+        maxVmInfoMap = {}
+        minVmInfoMap = {}
+
+        try:
+            for uuid in cmd.vmUuids:
+                threads.append(QueryVmLatenciesThread(isc.query_vm_mirror_latencies_boundary, uuid))
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+                vmUuid, maxInfoMap, minInfoMap = t.getResult()
+                if not maxInfoMap and not minInfoMap:
+                    continue
+                maxVmInfoMap[vmUuid] = maxInfoMap
+                minVmInfoMap[vmUuid] = minInfoMap
+
+            rsp.vmCurrentMaxCdpLatencyInfos = maxVmInfoMap
+            rsp.vmCurrentMinCdpLatencyInfos = minVmInfoMap
+        except Exception as e:
+            rsp.error = str(e)
+            rsp.success = False
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -7820,6 +7892,7 @@ host side snapshot files chian:
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_MIRROR_PATH, self.take_volume_mirror)
         http_server.register_async_uri(self.KVM_CANCEL_VOLUME_MIRROR_PATH, self.cancel_volume_mirror)
         http_server.register_async_uri(self.KVM_QUERY_VOLUME_MIRROR_PATH, self.query_volume_mirror)
+        http_server.register_async_uri(self.KVM_QUERY_MIRROR_LATENCY_BOUNDARY_PATH, self.query_vm_mirror_latencies_boundary)
         http_server.register_async_uri(self.KVM_TAKE_VOLUMES_SNAPSHOT_PATH, self.take_volumes_snapshots)
         http_server.register_async_uri(self.KVM_TAKE_VOLUMES_BACKUP_PATH, self.take_volumes_backups, cmd=TakeVolumesBackupsCommand())
         http_server.register_async_uri(self.KVM_CANCEL_VOLUME_BACKUP_JOBS_PATH, self.cancel_backup_jobs)
