@@ -186,12 +186,16 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             ip=network_obj.callback_ip, port=network_obj.callback_port)
 
         for arch in ['x86_64', 'aarch64']:
-            linux.mkdir(os.path.join(self.BM_IMGS_DIR, arch))
+            arch_path = os.path.join(self.BM_IMGS_DIR, arch)
+            if os.path.exists(arch_path):
+                shutil.rmtree(arch_path)
+
+            linux.mkdir(arch_path)
             bm2_ims_url = '{}/{}/{}/bm2-images.tar.gz'.format(mn_repo_url, arch, yum_release)
             tmpfile = '{}/{}-bm-images.tar.gz'.format(bmtempdir, arch)
             if shell.call("curl -I {}".format(bm2_ims_url)).splitlines()[0].split()[1] != '404':
                 shell.call("curl -c -O {url} -o {tmpfile}; tar zxf {tmpfile} -C {bmimgs_dir}".format(
-                    url=bm2_ims_url, tmpfile=tmpfile, bmimgs_dir=os.path.join(self.BM_IMGS_DIR, arch)))
+                    url=bm2_ims_url, tmpfile=tmpfile, bmimgs_dir=arch_path))
 
         shutil.rmtree(bmtempdir)
 
