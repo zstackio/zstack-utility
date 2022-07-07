@@ -396,12 +396,19 @@ def collect_ssd_lift_state():
             continue
         serial_number = o.strip()
         
-        r, o = bash_ro("smartctl -A /dev/%s | grep 'Media_Wearout_Indicator' | awk '{print $4}'" % disk_name)
-        if r != 0 or o.strip() == "":
-            continue
-        if o.strip().isdigit():
-            metrics['ssd_life_left'].add_metric([disk_name, serial_number], float(o.strip()))
-    
+        if disk_name.startswith('nvme'):
+            r, o = bash_ro("smartctl -A /dev/%s | grep 'Percentage Used'" % disk_name)
+            if r != 0 or o.strip() == "":
+                continue
+            if o.split(":")[1].split("%")[0].strip().isdigit():
+                metrics['ssd_life_left'].add_metric([disk_name, serial_number], float(float(100) - float(o.split(":")[1].split("%")[0].strip().strip())))
+        else:
+            r, o = bash_ro("smartctl -A /dev/%s | grep 'Media_Wearout_Indicator' | awk '{print $4}'" % disk_name)
+            if r != 0 or o.strip() == "":
+                continue
+            if o.strip().isdigit():
+                metrics['ssd_life_left'].add_metric([disk_name, serial_number], float(o.strip()))
+        
     return metrics.values()
 
 
@@ -485,21 +492,21 @@ def collect_physical_cpu_state():
     r, cpu_temp_info = bash_ro(
         "ipmitool sdr type 'Temperature' | grep -E -i '^CPU[0-9]*(\ |_)Temp'")  # type: (int, str)
     if r == 0:
-        for info in cpu_temp_info.splitlines():
-            info = info.strip()
-            try:
-                cpu_id = info.split("|")[0].strip().split(" ")[0].split("_")[0]
-                # the cut string has the same length as the original string which means cut symbol is not we want
-                if len(cpu_id) == len(info.split("|")[0].strip().split(" ")[0]):
-                    cpu_id = info.split("|")[0].strip().split(" ")[0].split(" ")[0]
-                cpu_state = 0 if info.split("|")[2].strip().lower() == "ok" else 10
-                cpu_temp = 0 if cpu_state != 0 else info.split("|")[4].strip().split(" ")[0]
-                metrics['cpu_temperature'].add_metric([cpu_id], float(cpu_temp))
-                metrics['cpu_status'].add_metric([cpu_id], float(cpu_state))
-            except Exception as e:
-                pass
-
-    return metrics.values()
+        cpu_list = cpu_temp_info.splitlines()
+        for i in range(len(cpu_list)):
+            info = cpu_list[i].strip()
+            cpu_id = "CPU" + str(i)
+            # cpu_id = info.split("|")[0].strip().split(" ")[0].split("_")[0]
+            # # the cut string has the same length as the original string which means cut symbol is not we want
+            # if len(cpu_id) == len(info.split("|")[0].strip().split(" ")[0]):
+            #     cpu_id = info.split("|")[0].strip().split(" ")[0].split(" ")[0]
+            cpu_state = 0 if info.split("|")[2].strip().lower() == "ok" else 10
+            cpu_temp = 0 if cpu_state != 0 else info.split("|")[4].strip().split(" ")[0]
+            metrics['cpu_temperature'].add_metric([cpu_id], float(cpu_temp))
+            metrics['cpu_status'].add_metric([cpu_id], float(cpu_state))
+    
+    collect_equipment_state_last_result = metrics.values()
+    return collect_equipment_state_last_result
 
 
 def collect_equipment_state():

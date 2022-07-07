@@ -77,6 +77,7 @@ ZSTACK_TOOLS_INSTALLER=$CATALINA_ZSTACK_TOOLS/install.sh
 zstack_163_repo_file=/etc/yum.repos.d/zstack-163-yum.repo
 zstack_ali_repo_file=/etc/yum.repos.d/zstack-aliyun-yum.repo
 PRODUCT_TITLE_FILE='./product_title_file'
+CUBE_TITLE_FILE='cube_product_title_file'
 UPGRADE_LOCK=/tmp/zstack_upgrade.lock
 MYSQL_CONF_FILE=''
 AUDIT_RULE_FILE='/etc/audit/rules.d/audit.rules'
@@ -3678,7 +3679,11 @@ if [ -f $ZSTACK_TRIAL_LICENSE ]; then
 fi
 
 if [ -f $PRODUCT_TITLE_FILE ]; then
-    cat $PRODUCT_TITLE_FILE
+    if [ -f /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/$CUBE_TITLE_FILE ];then
+        cat /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/$CUBE_TITLE_FILE
+    else
+        cat $PRODUCT_TITLE_FILE
+    fi
 else
 echo ""
 echo_star_line
@@ -3980,6 +3985,14 @@ if [ x"$UPGRADE" = x'y' ]; then
 
     cd /; rm -rf $upgrade_folder
     cleanup_function
+
+    # this is a temporary way to change cube product display final version
+    # real global VERSION is given by gen_setup.sh PRODUCT_VERSION, input from zstack VERSION file
+    # top banner is shown by product_title_file created when iso building ,also given by zstack VERSION file
+    CUBE_ENV_COUNT=`grep "hyper_converged" /etc/rc.local |wc -l`
+    [[ "$CUBE_ENV_COUNT" -gt 0 ]] && CUBE_ENV='y' || CUBE_ENV='n'
+    [ x"$CUBE_ENV" = x'y' -a -f /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/release_version ] && VERSION=`cat /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/release_version | cut -d '-' -f 2`
+
 
     if [ ! -z $ONLY_UPGRADE_CTL ]; then
         echo_star_line
