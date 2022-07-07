@@ -32,6 +32,7 @@ LEGACY_MINI_INSTALL_ROOT="/usr/local/zstack-mini/"
 export TERM=xterm
 
 OS=''
+IS_UBUNTU='n'
 REDHAT_OS="CENTOS6 CENTOS7 RHEL7 ALIOS7 ISOFT4 KYLIN10 EULER20"
 DEBIAN_OS="UBUNTU14.04 UBUNTU16.04 UBUNTU KYLIN4.0.2 DEBIAN9 UOS20"
 XINCHUANG_OS="ns10 uos20"
@@ -1257,6 +1258,7 @@ upgrade_zstack(){
     do_config_ansible
     show_spinner is_enable_chronyd
     show_spinner uz_stop_zstack
+    show_spinner prepare_zops_user_and_db
     show_spinner uz_upgrade_zstack
     show_spinner upgrade_tomcat_security
     if [[ $REDHAT_OS =~ $OS ]]; then
@@ -3290,6 +3292,69 @@ fi
 pass
 }
 
+
+prepare_zops_user_and_db() {
+    echo_subtitle "prepare zops db and user"
+    #perpare zops user and database if needed
+    get_mysql_conf_file
+    db='zops'
+    MYSQL_DATA_DIR=`cat $MYSQL_CONF_FILE | grep datadir | cut -d '=' -f 2`
+    # check zops db is already, if have been created, do nothing
+    [ -f $MYSQL_DATA_DIR/$db/db.opt ] && return 0
+    mysql -u root --password=$MYSQL_NEW_ROOT_PASSWORD -e 'exit' >/dev/null 2>&1
+    # check mysql root password not changed, if not changed, do nothing
+    [ $? -eq 0 ] && return 0
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+    sed -i '/\[mysqld\]/a skip-grant-tables\' $MYSQL_CONF_FILE
+    restart_mysql
+    zops_encrypt_password='*0BE93F2F3889E0171BD51535A44113B2852B9588'
+    mysql -h 127.0.0.1 -u root -e "FLUSH PRIVILEGES;
+CREATE DATABASE IF NOT EXISTS $db;
+GRANT ALL PRIVILEGES on $db.* to $db@'localhost' IDENTIFIED BY PASSWORD '$zops_encrypt_password';
+GRANT ALL PRIVILEGES on $db.* to $db@'%' IDENTIFIED BY PASSWORD '$zops_encrypt_password';
+GRANT SUPER ON *.* to $db@'localhost' IDENTIFIED BY PASSWORD '$zops_encrypt_password';
+FLUSH PRIVILEGES;"
+    sed -i '/skip-grant-tables/d' $MYSQL_CONF_FILE
+    restart_mysql
+    grep 'skip-grant-tables' $MYSQL_CONF_FILE >/dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        # make sure when after upgrade cloud, mysql can't login by no password
+        sed -i '/skip-grant-tables/d' $MYSQL_CONF_FILE
+        restart_mysql
+    fi
+    if [ -f $MYSQL_DATA_DIR/$db/db.opt ]; then
+        echo "create zops db and user success!"
+    else
+        fail "failed to init zops db and user"
+    fi
+}
+
+
+restart_mysql() {
+    if [ "$IS_UBUNTU" = "y" ]; then
+        service mysql restart >>$ZSTACK_INSTALL_LOG 2>&1
+    else
+        systemctl restart mariadb.service >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+    count=0
+    flag=0
+    while [ $count -lt 20 ]
+    do
+        let count+=1
+        if [ "$IS_UBUNTU" = "y" ]; then
+          service mysql status >>$ZSTACK_INSTALL_LOG 2>&1
+        else
+          systemctl status mariadb.service >>$ZSTACK_INSTALL_LOG 2>&1
+        fi
+        if [ $? -eq 0 ]; then
+          flag=1
+          break
+        fi
+        sleep 1
+    done
+}
+
+
 usage (){
     echo "
 ${PRODUCT_NAME} Installer.
@@ -3722,7 +3787,6 @@ check_ha_need_upgrade()
 }
 
 add_zops_init_cronjob() {
-  if [ -d /usr/local/hyperconverged/ ];then
     if [ ! -f /tmp/zops_init.sock ];then
       touch /tmp/zops_init.sock
     fi
@@ -3735,7 +3799,6 @@ add_zops_init_cronjob() {
       echo "*/2 * * * * flock -xn /tmp/zops_init.sock $ZOPS_SERVER_INIT >> /tmp/zops_cron.log 2>&1" >> /var/spool/cron/root
       crond
     fi
-  fi
 }
 
 enforce_history() {
