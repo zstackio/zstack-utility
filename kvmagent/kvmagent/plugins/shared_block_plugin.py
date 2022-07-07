@@ -1556,5 +1556,6 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp = GetQcow2HashValueRsp()
         abs_path = translate_absolute_path_from_install_path(cmd.installPath)
 
-        rsp.hashValue = secret.get_image_hash(abs_path)
+        with lvm.RecursiveOperateLv(abs_path, shared=True):
+            rsp.hashValue = secret.get_image_hash(abs_path)
         return jsonobject.dumps(rsp)
