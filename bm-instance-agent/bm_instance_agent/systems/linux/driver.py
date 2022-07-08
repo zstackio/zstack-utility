@@ -94,14 +94,26 @@ class LinuxDriver(base.SystemDriverBase):
         conf_path = '/etc/iscsi/initiatorname.iscsi'
         initiator = ('InitiatorName=iqn.2015-01.io.zstack:initiator.'
                      'instance.{uuid}').format(uuid=instance_obj.uuid)
-        with open(conf_path, 'w') as f:
-            f.write(initiator)
 
-        cmd = 'systemctl daemon-reload && systemctl restart iscsid'
-        processutils.execute(cmd, shell=True)
+        update_conf = False
+        if os.path.exists(conf_path):
+            with open(conf_path, 'r') as f:
+                if f.read().strip() != initiator:
+                    update_conf = True
+        else:
+            update_conf = True
+
+        if update_conf:
+            with open(conf_path, 'w') as f:
+                f.write(initiator)
+
+            cmd = 'systemctl daemon-reload && systemctl restart iscsid'
+            processutils.execute(cmd, shell=True)
 
         cmd = ['iscsiadm', '-m', 'session', '--rescan']
-        processutils.execute(*cmd)
+        # parameter[delay_on_retry] of func[processutils.execute] will not verify exit_code
+        with bm_utils.transcantion(retries=5, sleep_time=10) as cursor:
+            cursor.execute(processutils.execute, *cmd)
 
     def detach_volume(self, instance_obj, volume_obj):
         """ Detach a given iSCSI lun

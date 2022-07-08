@@ -19,6 +19,9 @@ import multiprocessing
 import os
 import sys
 import time
+import traceback
+
+provision_mac = '{{provision_mac}}'
 
 def shell_cmd(cmd, exception=True, workdir=None):
     process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stdin=subprocess.PIPE,
@@ -45,16 +48,15 @@ def get_ipmi_info():
     }
 
 def get_dest_dev(dest_wwn):
-    cmd = 'lsblk --nodeps --byte --output size,name'
+    cmd = 'lsblk --nodeps --byte --output name,size'
     _, stdout, _ = shell_cmd(cmd)
     for line in stdout.split('\n')[1:]:
         if len(line.split()) != 2:
             continue
-        size, name = line.split()
-        blk_dev = "/dev/{}".format(name)
-        _, wwn, _ = shell_cmd("smartctl -i %s | awk '/Logical Unit id/{print $4}'" % blk_dev)
-        if wwn == dest_wwn:
-            return blk_dev
+        name, size = line.split()
+        _, output, _ = shell_cmd("ls -l /dev/disk/by-id | grep %s |grep %s | awk 'NR==1 {print $11}'" % (dest_wwn, name))
+        if output != '':
+            return "/dev/%s" % name
 
     raise Exception("Failed to find dest disk[%s]" % dest_wwn)
 
@@ -64,7 +66,7 @@ def get_src_dev():
     time.sleep(1)
     cmd = "iscsiadm --mode node --targetname {{iqn_name}} -p {{gateway_ip}}:3260 --login"
     shell_cmd(cmd)
-    time.sleep(1)
+    time.sleep(3)
     cmd = "systemctl daemon-reload && systemctl restart iscsid"
     shell_cmd(cmd)
     time.sleep(1)
@@ -111,9 +113,13 @@ def main():
 
 try:
     main()
-except Exception as e:
-    shell_cmd("touch /root/ks_error_log")
-    shell_cmd("echo %s >> /root/ks_error_log" % str(e))
+except:
+    # pass back the ks err to tftp server on gateway
+    err_file_name = '/root/ks.{}'.format(provision_mac.replace(':', '-'))
+    traceback.print_exc(file=open(err_file_name,'w+'))
+    shell_cmd("curl -T {} tftp://{}/ks.errlogs/".format(err_file_name, "{{gateway_ip}}"))
+
+    # report fail and update ipmi info
     convert_info = {}
     convert_info['status'] = 'ConvertFailed'
     convert_info['progress'] = 0

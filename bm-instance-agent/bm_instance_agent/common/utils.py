@@ -6,9 +6,44 @@ import distro
 from netaddr import IPAddress
 import netifaces
 from oslo_concurrency import processutils
+from oslo_log import log as logging
 import psutil
+import time
 
 from bm_instance_agent import exception
+
+LOG = logging.getLogger(__name__)
+
+class transcantion(object):
+    """ A tool class for retry
+    """
+
+    def __init__(self, retries, sleep_time=0):
+        self.retries = retries
+        self.sleep_time = sleep_time
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is not None:
+            return False
+        return True
+
+    def execute(self, func, *args, **kwargs):
+        err = None
+        for i in range(self.retries):
+            try:
+                if i > 0:
+                    msg = 'Attempt rerun {name}: {i}'.format(
+                        name=func.__name__, i=i)
+                    LOG.warning(msg)
+                return func(*args, **kwargs)
+            except Exception as e:
+                LOG.exception(e)
+                err = e
+            time.sleep(self.sleep_time)
+        raise err
 
 
 def get_interfaces():
