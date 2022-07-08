@@ -3756,7 +3756,7 @@ class Vm(object):
                 # if boot mode is UEFI
                 if cmd.bootMode == "UEFI" or cmd.bootMode == "UEFI_WITH_CSM":
                     if cmd.secureBoot:
-                        e(os, 'loader', '/usr/share/edk2/ovmf/OVMF_CODE.secboot.fd', attrib={'readonly': 'yes', 'secure': 'true', 'type': 'pflash'})
+                        e(os, 'loader', '/usr/share/edk2/ovmf/OVMF_CODE.secboot.fd', attrib={'readonly': 'yes', 'secure': 'yes', 'type': 'pflash'})
                         e(os, 'nvram', '/var/lib/libvirt/qemu/nvram/%s.fd' % cmd.vmInstanceUuid, attrib={'template': '/usr/share/edk2/ovmf/OVMF_VARS.secboot.fd'})
                     else:
                         e(os, 'loader', '/usr/share/edk2/ovmf/OVMF_CODE.cc.fd', attrib={'readonly': 'yes', 'type': 'pflash'})
