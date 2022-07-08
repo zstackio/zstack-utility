@@ -1,14 +1,14 @@
 #!/bin/bash
 
+version=`awk -F' = ' '{gsub(/"/,"",$2);print $2}' bm_instance_agent/__init__.py`
 bin_name='bm-instance-agent.tar.gz'
+agent_name=zstack-bm-agent-`uname -m`-${version}.bin
 
 # Get the shell scirpt's dir
 shell_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 pushd ${shell_dir}
 
-# Get the git repo's root dir
-project_dir=`git rev-parse --show-toplevel`/bm-instance-agent
-pushd ${project_dir}
+pushd ${shell_dir}/../
 
 temp=`mktemp -d`
 pex . -v \
@@ -28,7 +28,7 @@ popd
 popd
 popd
 
-cat ./tools/install.sh ${temp}/${bin_name} > ./install.bin
-sed -i "s/MD5_SUM/${md5}/g" ./install.bin
-chmod +x ./install.bin
+cat ./tools/install.sh ${temp}/${bin_name} > ${agent_name}
+sed -i "s/MD5_SUM/${md5}/g" ${agent_name}
+chmod +x ${agent_name}
 rm -rf ${temp}

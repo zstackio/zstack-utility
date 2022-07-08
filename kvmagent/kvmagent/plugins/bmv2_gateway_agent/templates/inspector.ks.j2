@@ -19,8 +19,10 @@ import multiprocessing
 import os
 import sys
 import platform
+import traceback
 
 PROVISION_NET = "{{ provision_net }}"
+pxe_iface_mac = ''
 
 units_mapping = {
     'kb': 1024,
@@ -123,7 +125,6 @@ def get_nic_info():
     # Get the pxe interface from /proc/cmdline
     # NOTE: Need to point that the mac addr should start with '01', because
     # the arp type of ethernet is 1.
-    pxe_iface_mac = ''
     with open('/proc/cmdline', 'r') as f:
         for param in f.read().strip().split():
             if 'BOOTIF' in param:
@@ -247,7 +248,13 @@ def main():
     shell_cmd("poweroff")
 
 
-main()
+try:
+    main()
+except:
+    # pass back the ks err to tftp server on gateway
+    err_file_name = '/root/ks.{}'.format(pxe_iface_mac.replace(':','-'))
+    traceback.print_exc(file=open(err_file_name,'w+'))
+    shell_cmd("curl -T {} tftp://{}/ks.errlogs/".format(err_file_name, PROVISION_NET))
 
 
 %end
