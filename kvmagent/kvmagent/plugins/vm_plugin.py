@@ -5197,6 +5197,21 @@ class VmPlugin(kvmagent.KvmAgent):
             bash.bash_r(EBTABLES_CMD + rule)
         bash.bash_r("ebtables-save | uniq | ebtables-restore")
 
+    def umount_snapshot_path(self, mount_path):
+        @linux.retry(times=15, sleep_time=1)
+        def wait_path_unused(path):
+            used_process = linux.linux_lsof(path)
+            if len(used_process) != 0:
+                raise RetryException("path %s still used: %s" % (path, used_process))
+
+        try:
+            wait_path_unused(mount_path)
+        finally:
+            used_process = linux.linux_lsof(mount_path)
+            if len(used_process) == 0:
+                linux.umount(mount_path)
+                linux.rm_dir_force(mount_path)
+
     def _start_vm(self, cmd):
         try:
             vm = get_vm_by_uuid_no_retry(cmd.vmInstanceUuid, False)
@@ -5232,8 +5247,7 @@ class VmPlugin(kvmagent.KvmAgent):
                     vm.restore(snapshot_path)
                 finally:
                     if mount_path:
-                        linux.umount(mount_path)
-                        linux.rmdir_if_empty(mount_path)
+                        self.umount_snapshot_path(mount_path)
 
                         lvm.deactive_lv(cmd.memorySnapshotPath)
                 return
