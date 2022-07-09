@@ -187,29 +187,44 @@ class StartVmCmd(kvmagent.AgentCommand):
         self.systemSerialNumber = None
         self.bootMode = None
         self.consolePassword = None
+        self.memBalloon = None # type:VirtualDeviceInfo
 
 class StartVmResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(StartVmResponse, self).__init__()
         self.nicInfos = []  # type:list[VmNicInfo]
+        self.virtualDeviceInfoList = []  # type:list[VirtualDeviceInfo]
+        self.memBalloonInfo = None  # type:VirtualDeviceInfo
+
+class VirtualDeviceInfo():
+    def __init__(self):
+        self.deviceAddress = DeviceAddress()
+        self.resourceUuid = None
 
 class VmNicInfo():
     def __init__(self):
-        self.pciInfo = PciAddressInfo()
+        self.deviceAddress = DeviceAddress()
         self.macAddress = None
 
-class PciAddressInfo():
+class DeviceAddress():
     def __init__(self):
         self.type = None
-        self.domain = None
         self.bus = None
+
+        # for pci address
+        self.domain = None
         self.slot = None
         self.function = None
 
-class AttchNicResponse(kvmagent.AgentResponse):
+        # for dirver address
+        self.controller = None
+        self.target = None
+        self.unit = None
+
+class AttachNicResponse(kvmagent.AgentResponse):
     def __init__(self):
-        super(AttchNicResponse, self).__init__()
-        self.pciAddress = PciAddressInfo()
+        super(AttachNicResponse, self).__init__()
+        self.virtualDeviceInfoList = []
 
 class GetVncPortCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -327,6 +342,7 @@ class AttachDataVolumeCmd(kvmagent.AgentCommand):
 class AttachDataVolumeResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(AttachDataVolumeResponse, self).__init__()
+        self.virtualDeviceInfoList = []  # type:list[VirtualDeviceInfo]
 
 
 class DetachDataVolumeCmd(kvmagent.AgentCommand):
@@ -1844,7 +1860,22 @@ class Vm(object):
         target = disk_element.find('target')
         bus = target.get('bus') if target is not None else None
 
-        if bus == 'scsi':
+        if vol.deviceAddress and vol.deviceAddress.type == 'pci':
+            attributes = {}
+            if vol.deviceAddress.domain:
+                attributes['domain'] = vol.deviceAddress.domain
+            if vol.deviceAddress.bus:
+                attributes['bus'] = vol.deviceAddress.bus
+            if vol.deviceAddress.slot:
+                attributes['slot'] = vol.deviceAddress.slot
+            if vol.deviceAddress.function:
+                attributes['function'] = vol.deviceAddress.function
+
+            attributes['type'] = vol.deviceAddress.type
+            e(disk_element, 'address', None, attributes)
+        elif vol.deviceAddress and vol.deviceAddress.type == 'driver':
+            e(disk_element, 'address', None, {'type': 'drive', 'controller': vol.deviceAddress.controller, 'unit': str(vol.deviceAddress.unit)})
+        elif bus == 'scsi':
             occupied_units = vm_to_attach.get_occupied_disk_address_units(bus='scsi', controller=0) if vm_to_attach else []
             default_unit = Vm.get_device_unit(vol.deviceId)
             unit = default_unit if default_unit not in occupied_units else max(occupied_units) + 1
@@ -1981,6 +2012,7 @@ class Vm(object):
         def restore_from_file(conn):
             return conn.restoreFlags(path, self.domain_xml)
 
+        logger.debug('restoring vm:\n%s' % self.domain_xml)
         restore_from_file()
 
     def start(self, timeout=60, create_paused=False, wait_console=True):
@@ -2717,19 +2749,34 @@ class Vm(object):
             return VmPlugin._get_snapshot_size(install_path)
 
         logger.debug(vs_structs)
-        need_memory_snapshot = False
+        memory_snapshot_required = False
         for vs_struct in vs_structs:
             if vs_struct.live is False or vs_struct.full is True:
                 raise kvmagent.KvmError("volume %s is not live or full snapshot specified, "
                                         "can not proceed")
 
             if vs_struct.memory:
-                e(snapshot, 'memory', None, attrib={'snapshot': 'external', 'file': vs_struct.installPath})
-                need_memory_snapshot = True
+                memory_snapshot_required = True
                 snapshot_dir = os.path.dirname(vs_struct.installPath)
                 if not os.path.exists(snapshot_dir):
                     os.makedirs(snapshot_dir)
 
+                memory_snapshot_path = None
+                if vs_struct.installPath.startswith("/dev/"):
+                    lvm.active_lv(vs_struct.installPath)
+                    shell.call("mkfs.ext4 -F %s" % vs_struct.installPath)
+                    mount_path = vs_struct.installPath.replace("/dev/", "/tmp/")
+                    if not os.path.exists(mount_path):
+                        linux.mkdir(mount_path)
+
+                    if not linux.is_mounted(mount_path):
+                        linux.mount(vs_struct.installPath, mount_path)
+
+                    memory_snapshot_path = mount_path + '/' + mount_path.rsplit('/', 1)[-1]
+                else:
+                    memory_snapshot_path = vs_struct.installPath
+
+                e(snapshot, 'memory', None, attrib={'snapshot': 'external', 'file': memory_snapshot_path})
                 memory_snapshot_struct = vs_struct
                 continue
 
@@ -2750,7 +2797,8 @@ class Vm(object):
                 vs_struct.volumeUuid,
                 target_disk.source.file_,
                 vs_struct.installPath,
-                get_size(target_disk.source.file_)))
+                get_size(target_disk.source.file_),
+                vs_struct.memory))
 
         self.refresh()
         for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
@@ -2761,7 +2809,7 @@ class Vm(object):
         logger.debug('creating live snapshot for vm[uuid:{0}] volumes[id:{1}]:\n{2}'.format(self.uuid, disk_names, xml))
 
         snap_flags = libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_NO_METADATA | libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_ATOMIC
-        if not need_memory_snapshot:
+        if not memory_snapshot_required:
             snap_flags |= libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_DISK_ONLY
 
         try:
@@ -2772,7 +2820,8 @@ class Vm(object):
                     memory_snapshot_struct.volumeUuid,
                     memory_snapshot_struct.installPath,
                     memory_snapshot_struct.installPath,
-                    get_size(memory_snapshot_struct.installPath)))
+                    get_size(memory_snapshot_struct.installPath),
+                    True))
 
             return return_structs
         except libvirt.libvirtError as ex:
@@ -2798,6 +2847,12 @@ class Vm(object):
                 existing = self._check_target_disk_existing_by_path(struct.installPath)
                 logger.debug("after create snapshot by libvirt, expected volume[install path: %s] does%s exist."
                              % (struct.installPath, "" if existing else " not"))
+
+                if struct.memory and struct.installPath.startswith("/dev/"):
+                    mount_path = struct.installPath.replace("/dev/", "/tmp/")
+                    linux.umount(mount_path)
+                    linux.rmdir_if_empty(mount_path)
+                    lvm.deactive_lv(struct.installPath)
 
 
     def take_volume_snapshot(self, task_spec, volume, install_path, full_snapshot=False):
@@ -3222,6 +3277,9 @@ class Vm(object):
         def check_device(_):
             self.refresh()
             for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
+                if iface.mac.address_ != cmd.nic.mac:
+                    continue
+
                 if iface.mac.address_ == cmd.nic.mac:
                     # vf nic doesn't have internal name
                     if cmd.nic.pciDeviceAddress is not None:
@@ -4011,12 +4069,20 @@ class Vm(object):
             if len(empty_cdrom_configs) != max_cdrom_num:
                 logger.error('ISO_DEVICE_LETTERS or EMPTY_CDROM_CONFIGS config error')
 
-            def make_empty_cdrom(target_dev, bus, unit, bootOrder):
+            # legacy_cdrom_config used for cdrom without deivce address
+            # cdrom given address record from management node side
+            def make_empty_cdrom(iso, legacy_cdrom_config, bootOrder, resourceUuid):
                 cdrom = e(devices, 'disk', None, {'type': 'file', 'device': 'cdrom'})
                 e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
-                e(cdrom, 'target', None, {'dev': target_dev, 'bus': default_bus_type})
-                e(cdrom, 'address', None, {'type': 'drive', 'bus': bus, 'unit': unit})
+                e(cdrom, 'target', None, {'dev': legacy_cdrom_config.targetDev, 'bus': default_bus_type})
+
+                if iso.deviceAddress:
+                    e(cdrom, 'address', None, {'type': 'drive', 'controller': iso.deviceAddress.controller, 'bus': iso.deviceAddress.bus,
+                     'target': iso.deviceAddress.target, 'unit': iso.deviceAddress.unit})
+                else:
+                    e(cdrom, 'address', None, {'type': 'drive', 'bus': legacy_cdrom_config.bus, 'unit': legacy_cdrom_config.unit})
                 e(cdrom, 'readonly', None)
+                e(cdrom, 'serial', resourceUuid)
                 if bootOrder is not None and bootOrder > 0:
                     e(cdrom, 'boot', None, {'order': str(bootOrder)})
                 return cdrom
@@ -4056,7 +4122,7 @@ class Vm(object):
                 cdrom_config = empty_cdrom_configs[iso.deviceId]
 
                 if iso.isEmpty:
-                    make_empty_cdrom(cdrom_config.targetDev, cdrom_config.bus, cdrom_config.unit, iso.bootOrder)
+                    make_empty_cdrom(iso, cdrom_config, iso.bootOrder, iso.resourceUuid)
                     continue
 
                 if iso.path.startswith('ceph'):
@@ -4064,7 +4130,7 @@ class Vm(object):
                     ic.iso = iso
                     devices.append(ic.to_xmlobject(cdrom_config.targetDev, default_bus_type, cdrom_config.bus, cdrom_config.unit, iso.bootOrder))
                 else:
-                    cdrom = make_empty_cdrom(cdrom_config.targetDev, cdrom_config.bus , cdrom_config.unit, iso.bootOrder)
+                    cdrom = make_empty_cdrom(iso, cdrom_config, iso.bootOrder, iso.resourceUuid)
                     e(cdrom, 'source', None, {'file': iso.path})
 
         def make_volumes():
@@ -4122,7 +4188,7 @@ class Vm(object):
                     dev_format = Vm._get_disk_target_dev_format(default_bus_type)
                     e(disk, 'target', None, {'dev': dev_format % _dev_letter, 'bus': default_bus_type})
                     if default_bus_type == "ide" and cmd.imagePlatform.lower() == "other":
-                        allocat_ide_config(disk)
+                        allocat_ide_config(disk, _v)
 
                 return disk
 
@@ -4148,7 +4214,7 @@ class Vm(object):
                     dev_format = Vm._get_disk_target_dev_format(default_bus_type)
                     e(disk, 'target', None, {'dev': dev_format % _dev_letter, 'bus': default_bus_type})
                     if default_bus_type == "ide" and cmd.imagePlatform.lower() == "other":
-                        allocat_ide_config(disk)
+                        allocat_ide_config(disk, _v)
                 return disk
 
             def iscsibased_volume(_dev_letter, _v):
@@ -4208,7 +4274,7 @@ class Vm(object):
                     dev_format = Vm._get_disk_target_dev_format(default_bus_type)
                     e(disk, 'target', None, {'dev': dev_format % _dev_letter, 'bus': default_bus_type})
                     if default_bus_type == "ide" and cmd.imagePlatform.lower() == "other":
-                        allocat_ide_config(disk)
+                        allocat_ide_config(disk, _v)
                 return disk
 
             def ceph_volume(_dev_letter, _v):
@@ -4243,7 +4309,7 @@ class Vm(object):
                     else:
                         disk = ceph_blk()
                         if default_bus_type == "ide" and cmd.imagePlatform.lower() == "other":
-                            allocat_ide_config(disk)
+                            allocat_ide_config(disk, _v)
                         return disk
 
                 d = build_ceph_disk()
@@ -4320,13 +4386,16 @@ class Vm(object):
                 qs = dict(urlparse.parse_qsl(u.query))
                 return qs.get("r")
 
-            def allocat_ide_config(_disk):
-                if len(volume_ide_configs) == 0:
-                    err = "insufficient IDE address."
-                    logger.warn(err)
-                    raise kvmagent.KvmError(err)
-                volume_ide_config = volume_ide_configs.pop(0)
-                e(_disk, 'address', None, {'type': 'drive', 'bus': volume_ide_config.bus, 'unit': volume_ide_config.unit})
+            def allocat_ide_config(_disk, _volume):
+                if _volume.deviceAddress:
+                    e(_disk, 'address', None, {'type': 'drive', 'bus': _volume.deviceAddress.bus, 'unit': _volume.deviceAddress.function})
+                else:
+                    if len(volume_ide_configs) == 0:
+                        err = "insufficient IDE address."
+                        logger.warn(err)
+                        raise kvmagent.KvmError(err)
+                    volume_ide_config = volume_ide_configs.pop(0)
+                    e(_disk, 'address', None, {'type': 'drive', 'bus': volume_ide_config.bus, 'unit': volume_ide_config.unit})
 
             def make_volume(dev_letter, v, r, dataSourceOnly=False):
                 if r:
@@ -4749,11 +4818,14 @@ class Vm(object):
                 return False
 
         def make_balloon_memory():
-            if cmd.addons['useMemBalloon'] is False:
+            if cmd.memBalloon is None:
                 return
             devices = elements['devices']
             b = e(devices, 'memballoon', None, {'model': 'virtio'})
             e(b, 'stats', None, {'period': '10'})
+            if cmd.memBalloon.deviceAddress:
+                e(b, 'address', None, {'type': 'pci', 'domain': cmd.memBalloon.deviceAddress.domain, 'bus': cmd.memBalloon.deviceAddress.bus,
+                 'slot': cmd.memBalloon.deviceAddress.slot, 'function': cmd.memBalloon.deviceAddress.function})
             if kvmagent.get_host_os_type() == "debian":
                 e(b, 'address', None, {'type': 'pci', 'controller': '0', 'bus': '0x00', 'slot': '0x04', 'function':'0x0'})
 
@@ -5125,6 +5197,21 @@ class VmPlugin(kvmagent.KvmAgent):
             bash.bash_r(EBTABLES_CMD + rule)
         bash.bash_r("ebtables-save | uniq | ebtables-restore")
 
+    def umount_snapshot_path(self, mount_path):
+        @linux.retry(times=15, sleep_time=1)
+        def wait_path_unused(path):
+            used_process = linux.linux_lsof(path)
+            if len(used_process) != 0:
+                raise RetryException("path %s still used: %s" % (path, used_process))
+
+        try:
+            wait_path_unused(mount_path)
+        finally:
+            used_process = linux.linux_lsof(mount_path)
+            if len(used_process) == 0:
+                linux.umount(mount_path)
+                linux.rm_dir_force(mount_path)
+
     def _start_vm(self, cmd):
         try:
             vm = get_vm_by_uuid_no_retry(cmd.vmInstanceUuid, False)
@@ -5142,7 +5229,27 @@ class VmPlugin(kvmagent.KvmAgent):
             vm = Vm.from_StartVmCmd(cmd)
 
             if cmd.memorySnapshotPath:
-                vm.restore(cmd.memorySnapshotPath)
+                snapshot_path = None
+                mount_path = None
+                if cmd.memorySnapshotPath.startswith("/dev/"):
+                    if not os.path.exists(cmd.memorySnapshotPath):
+                        lvm.active_lv(cmd.memorySnapshotPath, False)
+
+                    mount_path = cmd.memorySnapshotPath.replace("/dev/", "/tmp/")
+                    if not linux.is_mounted(mount_path):
+                        linux.mount(cmd.memorySnapshotPath, mount_path)
+
+                    snapshot_path = mount_path + '/' + mount_path.rsplit('/', 1)[-1]
+                else:
+                    snapshot_path = cmd.memorySnapshotPath
+
+                try:
+                    vm.restore(snapshot_path)
+                finally:
+                    if mount_path:
+                        self.umount_snapshot_path(mount_path)
+
+                        lvm.deactive_lv(cmd.memorySnapshotPath)
                 return
 
             wait_console = True if not cmd.addons or cmd.addons['noConsole'] is not True else False
@@ -5207,18 +5314,22 @@ class VmPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def attach_nic(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AttchNicResponse()
+        rsp = AttachNicResponse()
 
         vm = get_vm_by_uuid(cmd.vmUuid)
         vm.attach_nic(cmd)
 
         for iface in vm.domain_xmlobject.devices.get_child_node_as_list('interface'):
-            if iface.mac.address_ == cmd.nic.mac:
-                rsp.pciAddress.bus = iface.address.bus_
-                rsp.pciAddress.function = iface.address.function_
-                rsp.pciAddress.type = iface.address.type_
-                rsp.pciAddress.domain = iface.address.domain_
-                rsp.pciAddress.slot = iface.address.slot_
+            if iface.mac.address_ != cmd.nic.mac:
+                continue
+
+            virtualDeviceInfo = VirtualDeviceInfo()
+            virtualDeviceInfo.deviceAddress.bus = iface.address.bus_
+            virtualDeviceInfo.deviceAddress.function = iface.address.function_
+            virtualDeviceInfo.deviceAddress.type = iface.address.type_
+            virtualDeviceInfo.deviceAddress.domain = iface.address.domain_
+            virtualDeviceInfo.deviceAddress.slot = iface.address.slot_
+            rsp.virtualDeviceInfoList.append(virtualDeviceInfo)
 
         return jsonobject.dumps(rsp)
 
@@ -5279,13 +5390,21 @@ class VmPlugin(kvmagent.KvmAgent):
             vm = get_vm_by_uuid(cmd.vmInstanceUuid)
             for iface in vm.domain_xmlobject.devices.get_child_node_as_list('interface'):
                 vmNicInfo = VmNicInfo()
-                vmNicInfo.pciInfo.bus = iface.address.bus_
-                vmNicInfo.pciInfo.function = iface.address.function_
-                vmNicInfo.pciInfo.type = iface.address.type_
-                vmNicInfo.pciInfo.domain = iface.address.domain_
-                vmNicInfo.pciInfo.slot = iface.address.slot_
+                vmNicInfo.deviceAddress.bus = iface.address.bus_
+                vmNicInfo.deviceAddress.function = iface.address.function_
+                vmNicInfo.deviceAddress.type = iface.address.type_
+                vmNicInfo.deviceAddress.domain = iface.address.domain_
+                vmNicInfo.deviceAddress.slot = iface.address.slot_
                 vmNicInfo.macAddress = iface.mac.address_
                 rsp.nicInfos.append(vmNicInfo)
+
+
+            for disk in vm.domain_xmlobject.devices.get_child_node_as_list('disk'):
+                rsp.virtualDeviceInfoList.append(self.get_device_address_info(disk))
+
+            memBalloonPci = vm.domain_xmlobject.devices.get_child_node('memballoon')
+            if memBalloonPci is not None:
+                rsp.memBalloonInfo = self.get_device_address_info(memBalloonPci)
 
         return jsonobject.dumps(rsp)
 
@@ -5758,6 +5877,22 @@ class VmPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
+    def get_device_address_info(self, device):
+        virtualDeviceInfo = VirtualDeviceInfo()
+        virtualDeviceInfo.deviceAddress.bus = device.address.bus_ if device.address.bus__ else None
+        virtualDeviceInfo.deviceAddress.domain = device.address.domain_ if device.address.domain__ else None
+        virtualDeviceInfo.deviceAddress.controller = device.address.controller_ if device.address.controller__ else None
+        virtualDeviceInfo.deviceAddress.slot = device.address.slot_ if device.address.slot__ else None
+        virtualDeviceInfo.deviceAddress.target = device.address.target_ if device.address.target__ else None
+        virtualDeviceInfo.deviceAddress.function = device.address.function_ if device.address.function__ else None
+        virtualDeviceInfo.deviceAddress.unit = device.address.unit_ if device.address.unit__ else None
+        virtualDeviceInfo.deviceAddress.type = device.address.type_ if device.address.type__ else None
+        
+        if device.has_element('serial'):
+            virtualDeviceInfo.resourceUuid = device.serial.text_
+
+        return virtualDeviceInfo
+
     @kvmagent.replyerror
     def attach_data_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -5769,6 +5904,11 @@ class VmPlugin(kvmagent.KvmAgent):
                 raise kvmagent.KvmError(
                     'unable to attach volume[%s] to vm[uuid:%s], vm must be running or paused' % (volume.installPath, vm.uuid))
             vm.attach_data_volume(cmd.volume, cmd.addons)
+
+            vm.refresh()
+
+            disk, _ = vm._get_target_disk(volume)
+            rsp.virtualDeviceInfoList.append(self.get_device_address_info(disk))
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
@@ -6066,7 +6206,7 @@ class VmPlugin(kvmagent.KvmAgent):
         os.remove(fpath)
         if shell_cmd.return_code == 0:
             return
-        
+
         if shell_cmd.stderr and "Need a root block node" in shell_cmd.stderr:
             shell_cmd.stderr = "failed to block migrate %s, please check if volume backup job is in progress" % vmUuid
 
@@ -8478,7 +8618,7 @@ host side snapshot files chian:
             logger.debug("clean vm[uuid:%s] heartbeat, due to evnet %s" % (dom.name(), LibvirtEventManager.event_to_string(event)))
             heartbeat_thread.do_heart_beat = False
             heartbeat_thread.join()
-    
+
     @bash.in_bash
     def _deactivate_drbd(self, conn, dom, event, detail, opaque):
         logger.debug("got event from libvirt, %s %s" % (dom.name(), LibvirtEventManager.event_to_string(event)))
@@ -8871,7 +9011,7 @@ class VolumeSnapshotJobStruct(object):
 
 
 class VolumeSnapshotResultStruct(object):
-    def __init__(self, volumeUuid, previousInstallPath, installPath, size=None):
+    def __init__(self, volumeUuid, previousInstallPath, installPath, size=None, memory=False):
         """
 
         :type volumeUuid: str
@@ -8883,6 +9023,7 @@ class VolumeSnapshotResultStruct(object):
         self.previousInstallPath = previousInstallPath
         self.installPath = installPath
         self.size = size
+        self.memory = memory
 
 
 @bash.in_bash
