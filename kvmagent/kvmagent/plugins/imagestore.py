@@ -86,7 +86,7 @@ class ImageStoreClient(object):
 
     def stop_mirror(self, vm, complete, node):
         with linux.ShowLibvirtErrorOnException(vm):
-            cmdstr = '%s stopmirr -domain %s -delbitmap=%s -drive %s' % \
+            cmdstr = '%s stopmirr -domain %s -delbitmap=%s -drive "%s"' % \
                      (self.ZSTORE_CLI_PATH, vm, complete, node)
             shell.run(cmdstr)
 
@@ -169,7 +169,7 @@ class ImageStoreClient(object):
             return synced
 
         with linux.ShowLibvirtErrorOnException(vm):
-            cmdstr = '%s -progress %s backup -bitmap %s -dest %s -domain %s -drive %s -mode %s -speed %s' % \
+            cmdstr = '%s -progress %s backup -bitmap %s -dest %s -domain %s -drive "%s" -mode %s -speed %s' % \
                      (self.ZSTORE_CLI_PATH, PFILE, bitmap, dest, vm, node, mode, speed)
             _, mode, err = bash_progress_1(cmdstr, _get_progress)
             linux.rm_file_force(PFILE)
