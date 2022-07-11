@@ -1,0 +1,50 @@
+host-127.0.202.119
+  └─SBLK:ce00338f878e42e79716ca47b7e1aace
+    └─mpath:mpathd:dm-3
+      ├─paths: ['sdd', 'sdc']
+      ├─sdd
+      │ ├─{'state': 'running', 'portal': '127.0.202.195', 'hbtl': '34:0:0:0', 'sid': '30'}
+      │ ├─sdd:scsi:error(3)
+      │ │ └─[Jun 22 11:19:39 -- Jun 22 11:20:03] { kernel: sd 34:0:0:0: [sdd] Sense Key : Aborted Command [current] } * 3
+      │ └─sdd:io:error(3)
+      │   └─[Jun 22 11:19:39 -- Jun 22 11:20:03] { kernel: blk_update_request: I/O error, dev sdd, sector 0 } * 3
+      ├─dm-3
+      │ └─dm-3:io:error(3)
+      │   ├─[Jun 22 11:19:43 -- Jun 22 11:19:44] { kernel: blk_update_request: I/O error, dev dm-3, sector 4202496 } * 2
+      │   └─[Jun 22 11:19:39] kernel: blk_update_request: I/O error, dev dm-3, sector 0
+      └─sdc
+        ├─{'state': 'running', 'portal': '127.0.202.104', 'hbtl': '24:0:0:0', 'sid': '20'}
+        ├─sdc:scsi:error(1)
+        │ └─[Jun 22 11:19:39] kernel: sd 24:0:0:0: [sdc] Sense Key : Aborted Command [current]
+        ├─sdc:iscsi_connection:error(3)
+        │ ├─[Jun 22 10:35:22] kernel: connection20:0: detected conn error (1020)
+        │ └─[Jun 22 11:08:42 -- Jun 22 11:08:45] { iscsid: connect to 127.0.202.104:3260 failed (Connection refused) } * 2
+        └─sdc:io:error(1)
+          └─[Jun 22 11:19:39] kernel: blk_update_request: I/O error, dev sdc, sector 0
+
+host-127.0.202.172
+  └─SBLK:ce00338f878e42e79716ca47b7e1aace
+    └─mpath:mpathb:dm-5
+      ├─paths: ['sdd', 'sdc']
+      ├─sdd
+      │ ├─{'state': 'running', 'portal': '127.0.202.195', 'hbtl': '27:0:0:0', 'sid': '24'}
+      │ ├─sdd:scsi:error(2)
+      │ │ └─[Jun 22 11:19:43 -- Jun 22 11:19:47] { kernel: sd 27:0:0:0: [sdd] Sense Key : Aborted Command [current] } * 2
+      │ └─sdd:io:error(2)
+      │   ├─[Jun 22 11:19:43] kernel: blk_update_request: I/O error, dev sdd, sector 0
+      │   └─[Jun 22 11:19:47] kernel: blk_update_request: I/O error, dev sdd, sector 4202496
+      ├─dm-5
+      │ └─dm-5:io:error(7)
+      │   ├─[Jun 22 11:19:47 -- Jun 22 11:19:49] { kernel: blk_update_request: I/O error, dev dm-5, sector 4202496 } * 6
+      │   └─[Jun 22 11:19:43] kernel: blk_update_request: I/O error, dev dm-5, sector 0
+      └─sdc
+        ├─{'state': 'running', 'portal': '127.0.202.104', 'hbtl': '23:0:0:0', 'sid': '20'}
+        ├─sdc:scsi:error(2)
+        │ └─[Jun 22 11:19:43 -- Jun 22 11:19:47] { kernel: sd 23:0:0:0: [sdc] Sense Key : Aborted Command [current] } * 2
+        ├─sdc:iscsi_connection:error(4)
+        │ ├─[Jun 22 10:35:22] kernel: connection20:0: detected conn error (1020)
+        │ └─[Jun 22 11:08:24 -- Jun 22 11:09:03] { iscsid: connect to 127.0.202.104:3260 failed (Connection refused) } * 3
+        └─sdc:io:error(2)
+          ├─[Jun 22 11:19:43] kernel: blk_update_request: I/O error, dev sdc, sector 0
+          └─[Jun 22 11:19:47] kernel: blk_update_request: I/O error, dev sdc, sector 4202496
+

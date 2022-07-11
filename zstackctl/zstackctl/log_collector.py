@@ -348,6 +348,8 @@ class CollectFromYml(object):
         default_yml_full = 'collect_log_full.yaml'
         default_yml_full_db = 'collect_log_full_db.yaml'
         default_yml_mn_host = "collect_log_mn_host.yaml"
+        default_yml_mn_diagnose = "collect_log_mn_diagnose.yaml"
+        default_scsi_diagnose = "collect_log_scsi_diagnose.yaml"
         yml_conf_dirs = set()
         name_array = []
 
@@ -363,6 +365,10 @@ class CollectFromYml(object):
             yml_conf_dirs.add(base_conf_path + default_yml_mn_host)
         elif args.combination:
             yml_conf_dirs = self.generate_combination_yml_conf_dir(base_conf_path, args.combination)
+        elif args.scsi_diagnose:
+            yml_conf_dirs.add(base_conf_path + default_scsi_diagnose)
+        elif args.mn_diagnose:
+            yml_conf_dirs.add(base_conf_path + default_yml_mn_diagnose)
         else:
             if args.p is None:
                 yml_conf_dirs.add(base_conf_path + default_yml_full)
@@ -642,11 +648,11 @@ class CollectFromYml(object):
         else:
             warn("unknown target type: %s" % type)
 
-    def generate_tar_ball(self, run_command_dir, detail_version, time_stamp):
+    def generate_tar_ball(self, collect_dir, run_command_dir, detail_version, time_stamp):
         info_verbose("Compressing log files ...")
-        
-        command = "cd %s && tar zcf collect-log-%s-%s.tar.gz collect-log-%s-%s" % (
-            run_command_dir, detail_version, time_stamp, detail_version, time_stamp)
+
+        command = "tar zcf %s.tar.gz %s" % (collect_dir, collect_dir)
+
         if self.delete_source_file is True:
             command = command + " --remove-files"
             
@@ -1145,7 +1151,13 @@ class CollectFromYml(object):
         if zstack_path and zstack_path != self.DEFAULT_ZSTACK_HOME:
             self.DEFAULT_ZSTACK_HOME = zstack_path
 
-        collect_dir = run_command_dir + '/collect-log-%s-%s/' % (detail_version, time_stamp)
+        dest_dir = args.collect_dir_name
+
+        if not dest_dir:
+            collect_dir = run_command_dir + '/collect-log-%s-%s/' % (detail_version, time_stamp)
+        else:
+            collect_dir = run_command_dir + '/' + dest_dir + '/'
+
         if not os.path.exists(collect_dir) and args.check is not True:
             os.makedirs(collect_dir)
 
@@ -1174,12 +1186,16 @@ class CollectFromYml(object):
                 info_verbose("It seems that some collect log thread timeout, "
                              "if compress failed, please use \'cd %s && tar zcf collect-log-%s-%s.tar.gz collect-log-%s-%s\' manually"
                              % (run_command_dir, detail_version, time_stamp, detail_version, time_stamp))
-            self.generate_tar_ball(run_command_dir, detail_version, time_stamp)
+            if args.no_tarball:
+                return
+
+            collect_dir = collect_dir.rstrip('/')
+            self.generate_tar_ball(collect_dir, run_command_dir, detail_version, time_stamp)
             if self.failed_flag is True:
                 info_verbose("The collect log generate at: %s.tar.gz,success %s,fail %s" % (
                     collect_dir, self.summary.success_count, self.summary.fail_count))
                 info_verbose(colored("Please check the reason of failed task in log: %s\n" % (
                         self.logger_dir + self.logger_file), 'yellow'))
             else:
-                info_verbose("The collect log generate at: %s/collect-log-%s-%s.tar.gz,success %s,fail %s" % (
-                    run_command_dir, detail_version, time_stamp, self.summary.success_count, self.summary.fail_count))
+                info_verbose("The collect log generate at: %s.tar.gz,success %s,fail %s" % (
+                    collect_dir, self.summary.success_count, self.summary.fail_count))

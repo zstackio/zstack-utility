@@ -1,0 +1,6 @@
+mpathd (32000202104006f9a) dm-3 INTEL   ,AIO disk        
+size=20G features='0' hwhandler='0' wp=rw
+|-+- policy='service-time 0' prio=1 status=active
+| `- 24:0:0:0 sdc    8:32    active ready running
+`-+- policy='service-time 0' prio=1 status=enabled
+  `- 34:0:0:0 sdd    8:48    active ready running

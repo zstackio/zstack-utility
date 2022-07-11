@@ -9,6 +9,7 @@ import signal
 import getpass
 import urlparse
 
+import gzip
 import simplejson
 from termcolor import colored
 import ConfigParser
@@ -47,6 +48,7 @@ from Crypto.Cipher import AES
 from Crypto.Util.py3compat import *
 from hashlib import md5
 from string import Template
+from timeline import TaskTimeline, __doc__ as timeline_doc
 
 mysql_db_config_script='''
 #!/bin/bash
@@ -6422,6 +6424,10 @@ class ConfiguredCollectLogCmd(Command):
         parser.add_argument('--combination', help='collect logs in a combined way, including mn/mn_db/host/bs/ps/vroute/pxeserver/baremetalv2gateway, such as \'mn,host,ps\'',
                             default=None)
         parser.add_argument('--clear-log', help='clear log collected through UI', default=None)
+        parser.add_argument('--scsi-diagnose', help='only collect host syslog', action="store_true", default=False)
+        parser.add_argument('--mn-diagnose', help='only collect zstack management logs', action="store_true", default=False)
+        parser.add_argument('--no-tarball', help='not to compress collected logs into a tar gzip file', action="store_true", default=False)
+        parser.add_argument('--collect-dir-name', help='use given log collection dir name, other then automatically generated one', default=None)
 
     def clear_log_file(self, log_name):
         if "/" in log_name:
@@ -10261,6 +10267,120 @@ class DumpMNTaskQueueCmd(Command):
         shell_no_pipe("sed -n '/BEGIN TASK QUEUE DUMP/,/END TASK QUEUE DUMP/p' %s" % mn_log_path)
 
 
+class TimelineCmd(Command):
+    def __init__(self, stdout=sys.stdout):
+        super(TimelineCmd, self).__init__()
+        self.stdout = stdout
+        self.name = "timeline"
+        self.description = "dump execution timeline of given API or task UUID"
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--log-file', required=True, default="", help='text or gzip archive log files, seperated by "," without whitespace')
+        parser.add_argument('-k', '--key', required=True, default="", help='the API or task UUID for search. ' + timeline_doc)
+        parser.add_argument('-t', '--top', type=int, default=0, help='show top N time consumers')
+        parser.add_argument('-p', '--plot', action='store_true', help='generate a Gnuplot script')
+
+    def run(self, args, log_file_list=[], diagnose_log_file=""):
+        timeline = TaskTimeline()
+
+        log_file_list = args.log_file.split(',')
+        for log_file in log_file_list:
+            if not os.path.isfile(log_file):
+                raise CtlError("The log file %s was not found!" % args.log_file)
+            if log_file.endswith('.gz'): 
+                f = gzip.open(log_file, 'r')
+            else:
+                f = open(log_file, 'r')
+
+            timeline.build(f, args.key, diagnose_log_file)
+            f.close()
+
+        if diagnose_log_file:
+            info("\nlogs with key word '%s' has been filtered into file %s\n" % (args.key, diagnose_log_file))
+            with open(diagnose_log_file, 'w+') as f:
+                f.write(''.join(timeline.logs))
+            info("Execution Timeline:")
+        timeline.dumpflow(self.stdout, args.top)
+
+        if args.plot:
+            timeline.generate_gantt(args.key)
+
+
+class DiagnoseCmd(Command):
+    ctl_timeline = "timeline"
+    ctl_collect_log = "configured_collect_log"
+    def __init__(self):
+        super(DiagnoseCmd, self).__init__()
+        self.name = "diagnose"
+        self.description = "collect SBLK related logs and diagnose errors of given type, like scsi"
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('-t',
+                            '--type',
+                            help='collect related logs and diagnose errors of given type [scsi, api]',
+                            required=True)
+        parser.add_argument('-d',
+                            '--daytime',
+                            help='number of recent days log to be collected, default is 5',
+                            default=5)
+        parser.add_argument('-s',
+                            '--since',
+                            help='collect logs from datetime below format:\'yyyy-MM-dd\' or \'yyyy-MM-dd_hh:mm:ss\', default datetime is 24h ago',
+                            default=None)
+        parser.add_argument('-k', '--key-word', default="", help='key word for search in mn logs.')
+
+    def run(self, args):
+        from trait_parser import diagnose
+        time_stamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+        diagnose_log_file = '%s-diagnose-log-%s' % (args.type, time_stamp)
+        log_dir = '-'.join(['diagnose', args.type, time_stamp])
+        cllect_log_args_list = [self.ctl_collect_log, '--no-tarball', '--collect-dir-name', log_dir]
+
+        if args.type == 'scsi':
+            cllect_log_args_list.extend(['--scsi-diagnose'])
+
+        elif args.type == 'mn':
+            args.daytime = 1
+            cllect_log_args_list.extend([self.ctl_collect_log, '--mn-diagnose'])
+
+        else:
+            info('unknown argument %s, available types are [scsi, mn]' % args.type)
+            return
+
+        # DiagnoseCmd's '--since/daytime' mapped to ConfiguredCollectLogCmd's '--from-date/since'
+        if args.since is not None:
+            cllect_log_args_list.extend(['--from-date', args.since])
+        else:
+            cllect_log_args_list.extend(['--since', str(args.daytime) + 'd'])
+
+        ctl_collect_log_args, _ = ctl.main_parser.parse_known_args(cllect_log_args_list)
+        ctl.commands[self.ctl_collect_log](ctl_collect_log_args)
+
+        info('Analyzing...')
+        if args.type == 'mn':
+            log_file_list = []
+            for mn_log_dir in os.listdir(log_dir):
+                mn_log_dir_path = os.path.join(log_dir, mn_log_dir)
+                if os.path.isfile(mn_log_dir_path):
+                    continue
+
+                mn_logs = os.path.join(mn_log_dir_path, "mn-logs")
+                for mn_log in os.listdir(mn_logs):
+                    mn_log_path = os.path.join(mn_logs, mn_log)
+                    log_file_list.append(mn_log_path)
+
+            timeline_args, _ = ctl.main_parser.parse_known_args([
+                self.ctl_timeline ,'--key', args.key_word, '--log-file', ','.join(log_file_list)
+            ])
+
+            ctl.commands[self.ctl_timeline](timeline_args, log_file_list, diagnose_log_file)
+            return
+
+        diagnose(log_dir, diagnose_log_file, args)
+
+
 def main():
     AddManagementNodeCmd()
     BootstrapCmd()
@@ -10337,6 +10457,8 @@ def main():
     SetEncryptPropertiesCmd()
     DumpMNThreadCmd()
     DumpMNTaskQueueCmd()
+    TimelineCmd()
+    DiagnoseCmd()
 
     try:
         ctl.run()

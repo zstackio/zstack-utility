@@ -1,0 +1,20 @@
+Jun 22 10:35:22 127-0-202-172 kernel: connection20:0: detected conn error (1020)
+Jun 22 10:35:22 127-0-202-172 iscsid: Kernel reported iSCSI connection 20:0 error (1020 - ISCSI_ERR_TCP_CONN_CLOSE: TCP connection closed) state (3)
+Jun 22 11:08:24 127-0-202-172 iscsid: connect to 127.0.202.104:3260 failed (Connection refused)
+Jun 22 11:08:27 127-0-202-172 iscsid: connect to 127.0.202.104:3260 failed (Connection refused)
+Jun 22 11:09:03 127-0-202-172 iscsid: connect to 127.0.202.104:3260 failed (Connection refused)
+Jun 22 11:19:43 127-0-202-172 kernel: sd 23:0:0:0: [sdc] Sense Key : Aborted Command [current] 
+Jun 22 11:19:43 127-0-202-172 kernel: blk_update_request: I/O error, dev sdc, sector 0
+Jun 22 11:19:43 127-0-202-172 kernel: sd 27:0:0:0: [sdd] Sense Key : Aborted Command [current] 
+Jun 22 11:19:43 127-0-202-172 kernel: blk_update_request: I/O error, dev sdd, sector 0
+Jun 22 11:19:43 127-0-202-172 kernel: blk_update_request: I/O error, dev dm-5, sector 0
+Jun 22 11:19:47 127-0-202-172 kernel: sd 27:0:0:0: [sdd] Sense Key : Aborted Command [current] 
+Jun 22 11:19:47 127-0-202-172 kernel: blk_update_request: I/O error, dev sdd, sector 4202496
+Jun 22 11:19:47 127-0-202-172 kernel: sd 23:0:0:0: [sdc] Sense Key : Aborted Command [current] 
+Jun 22 11:19:47 127-0-202-172 kernel: blk_update_request: I/O error, dev sdc, sector 4202496
+Jun 22 11:19:47 127-0-202-172 kernel: blk_update_request: I/O error, dev dm-5, sector 4202496
+Jun 22 11:19:47 127-0-202-172 kernel: blk_update_request: I/O error, dev dm-5, sector 4202496
+Jun 22 11:19:48 127-0-202-172 kernel: blk_update_request: I/O error, dev dm-5, sector 4202496
+Jun 22 11:19:48 127-0-202-172 kernel: blk_update_request: I/O error, dev dm-5, sector 4202496
+Jun 22 11:19:49 127-0-202-172 kernel: blk_update_request: I/O error, dev dm-5, sector 4202496
+Jun 22 11:19:49 127-0-202-172 kernel: blk_update_request: I/O error, dev dm-5, sector 4202496

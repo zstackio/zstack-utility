@@ -1,0 +1,13 @@
+host:
+    description: host server
+    type: target
+    list: {exec: "select h.managementIp from HostVO h where h.hypervisorType = \"KVM\""}
+    logs:
+    #  - {name: dmesg-logs, dir: /var/log/, file: 'dmesg*'}
+      - {name: message-logs, dir: /var/log/, file: messages*}
+      - {name: iscsi-session, exec: 'iscsiadm -m session -P 3'}
+      - {name: multipath-info, exec: 'multipath -ll'}
+      - {name: multipath-bindings, exec: 'cat /etc/multipath/bindings  | grep -v \#'}
+      - {name: pvs-info, exec: 'pvs --nolocking | grep -v Fmt'}
+      - {name: scsi-info, exec: 'lsscsi -i'}
+      - {name: mapdevs-info, exec: 'mapdevs -H | grep fabric'}

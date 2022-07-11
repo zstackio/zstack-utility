@@ -1,0 +1,42 @@
+{
+    "io": [
+        "kernel:.* I/O error",
+        "rejecting I/O to offline device"
+    ],
+    "iscsi_connection": [
+        "iscsid: connect to .* failed",
+        "iscsid: Kernel reported iSCSI .* error",
+        "kernel: connection.* detected conn error"
+    ],
+    "scsi": [
+        "DID.*NO.*CONNECT",
+        "DID.*BUS.*BUSY",
+        "DID.*TIME.*OUT",
+        "DID.*BAD.*TARGET",
+        "DID.*ABORT",
+        "DID.*PARITY",
+        "DID.*ERROR",
+        "DID.*RESET",
+        "DID.*BAD.*INTR",
+        "DRIVER.*ERROR",
+        "DRIVER.*INVALID",
+        "DRIVER.*TIMEOUT",
+        "DRIVER.*HARD",
+        "SUGGEST.*ABORT",
+        "SUGGEST.*DIE",
+        "NOT.*READY",
+        "MEDIUM.*ERROR",
+        "HARDWARE.*ERROR",
+        "ILLEGAL.*REQUEST",
+        "UNIT.*ATTENTION",
+        "DATA.*PROTECT",
+        "BLANK.*CHECK",
+        "COPY.*ABORTED",
+        "ABORTED.*COMMAND",
+        "VOLUME.*OVERFLOW",
+        "MISCOMPARE",
+        "SCSI error"
+    ],
+    "dm": {},
+    "mpath": {}
+}
