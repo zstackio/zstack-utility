@@ -536,10 +536,9 @@ WantedBy=multi-user.target
         para = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
 
-        eths = bash_o("ls /sys/class/net").split()
+        eths = os.listdir("/sys/class/net")
         interfaces = []
         for eth in eths:
-            eth = eth.strip(' \t\n\r')
             if eth == 'lo': continue
             if eth == 'bonding_masters': continue
             elif eth.startswith('vnic'): continue

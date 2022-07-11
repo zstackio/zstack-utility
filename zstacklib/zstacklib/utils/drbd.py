@@ -91,7 +91,7 @@ class DrbdResource(object):
     def get_config_path_from_name(name):
         if bash.bash_r("drbdadm dump %s" % name) == 0:
             return bash.bash_o("drbdadm dump %s | grep 'defined at' | awk '{print $4}'" % name).split(":")[0]
-        if bash.bash_r("ls /etc/drbd.d/%s.res" % name) == 0:
+        if os.path.exists("/etc/drbd.d/%s.res" % name):
             return "/etc/drbd.d/%s.res" % name
         raise Exception("can not find drbd resource %s" % name)
 
@@ -385,7 +385,7 @@ resource {{ name }} {
             elif isinstance(v, DrbdStruct):
                 for m, n in v.__dict__.items():
                     ctx["%s_%s" % (k, m)] = n
-        ctx["local_host_hostname"] = bash.bash_o("hostname").strip()
+        ctx["local_host_hostname"] = linux.get_hostname()
         return ctx
 
 

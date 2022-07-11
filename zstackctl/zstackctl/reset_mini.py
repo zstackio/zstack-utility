@@ -138,7 +138,10 @@ def bash_r(cmd, pipe_fail=False):
 def get_disk_holders(disk_names):
     holders = []
     for disk_name in disk_names:
-        h = bash_o("ls /sys/class/block/%s/holders/" % disk_name).strip().splitlines()
+        p = "/sys/class/block/%s/holders/" % disk_name
+        if not os.path.isdir(p):
+            continue
+        h = os.listdir(p)
         if len(h) == 0:
             continue
         holders.extend(h)
