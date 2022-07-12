@@ -176,7 +176,12 @@ class Summary(object):
         @param ui3cfg: str
         """
         if "theme.config" in xml_text:
-            tree = etree.XML(xml_text)
+            try:
+                tree = etree.XML(xml_text)
+            except Exception as e:
+                logger.info("can not parse xml, error: %s " % e)
+                logger.info("malformed xml: %s " % xml_text)
+                return "Unknown"
             rows = tree.findall('./database/table_data/row')
             zh_title = None
             en_title = None
