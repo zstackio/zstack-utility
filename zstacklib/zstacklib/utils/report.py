@@ -50,7 +50,7 @@ def get_timeout(spec):
     if spec.taskContext and spec.taskContext.__messagetimeout__ and spec.taskContext.__messagedeadline__:
         timeout = min(long(spec.taskContext.__messagetimeout__) / 1000, long(spec.taskContext.__messagedeadline__) / 1000 - linux.get_current_timestamp()) - extra_time
         if timeout <= 0:
-            raise Exception("timeout[%d] is too short" % spec.threadContext.taskContext.__messagetimeout__)
+            raise Exception("timeout[%d] is too short" % spec.taskContext.__messagetimeout__)
         return int(timeout)
     else:
         return 0
