@@ -3802,7 +3802,7 @@ add_zops_init_cronjob() {
     fi
     if [ "$COUNT" -lt 1 ];then
       echo "*/2 * * * * flock -xn /tmp/zops_init.sock $ZOPS_SERVER_INIT >> /tmp/zops_cron.log 2>&1" >> /var/spool/cron/root
-      crond
+      crond >> /tmp/zops_cron.log 2>&1
     fi
 }
 
