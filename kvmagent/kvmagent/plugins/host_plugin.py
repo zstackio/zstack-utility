@@ -267,6 +267,7 @@ class HostNetworkInterfaceInventory(object):
         self.master = None
         self.pciDeviceAddress = None
         self.offloadStatus = None
+        self.driverType = None
         self._init_from_name()
 
     @classmethod
@@ -326,6 +327,7 @@ class HostNetworkInterfaceInventory(object):
         self.pciDeviceAddress = os.readlink("/sys/class/net/%s/device" % self.interfaceName).strip().split('/')[-1]
 
         self.offloadStatus = ovs.OvsCtl().ifOffloadStatus(self.interfaceName)
+        self.driverType = linux.get_nic_driver_type(self.interfaceName)
 
     def _to_dict(self):
         to_dict = self.__dict__

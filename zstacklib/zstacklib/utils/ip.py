@@ -8,10 +8,12 @@ import os.path
 import linux
 import bash
 
+
 class IpAddress(object):
     '''
     Help to save and compare IP Address. 
     '''
+
     def __init__(self, ip):
         self.ip_list = ip.split('.', 3)
         self.ips = []
@@ -82,45 +84,47 @@ class IpAddress(object):
 
         return '%s.%s.%s.%s/%s' % (cidr[0], cidr[1], cidr[2], cidr[3], maskbits)
 
+
 class Ipv6Address(object):
-        '''
+    '''
         Help to save and compare IP Address.
         '''
 
-        def __init__(self, ip):
-            # ipv6 address includes 8 strings
-            self.ips = ["", "", "", "", "", "", "", ""]
-            self.prefix = ["", "", "", "", "", "", "", ""]
-            temp = ip.split('::')
-            pos = 0
-            for item in temp[0].split(":"):
+    def __init__(self, ip):
+        # ipv6 address includes 8 strings
+        self.ips = ["", "", "", "", "", "", "", ""]
+        self.prefix = ["", "", "", "", "", "", "", ""]
+        temp = ip.split('::')
+        pos = 0
+        for item in temp[0].split(":"):
+            self.ips[pos] = item
+            self.prefix[pos] = item
+            pos = pos + 1
+
+        if len(temp) == 2:
+            addr = temp[1].split(":")
+            addr_len = len(addr)
+            pos = 8 - addr_len
+            for item in addr:
                 self.ips[pos] = item
-                self.prefix[pos] = item
                 pos = pos + 1
 
-            if len(temp) == 2:
-                addr = temp[1].split(":")
-                addr_len = len(addr)
-                pos = 8 - addr_len
-                for item in addr:
-                    self.ips[pos] = item
-                    pos = pos + 1
+    def get_solicited_node_multicast_address(self):
+        ip = "ff02::1:ff"
+        if len(self.ips[6]) >= 2:
+            ip += self.ips[6][-2:]
+        else:
+            ip += self.ips[6]
+        return ip + ":" + self.ips[7]
 
-        def get_solicited_node_multicast_address(self):
-            ip = "ff02::1:ff"
-            if len(self.ips[6]) >= 2:
-                ip += self.ips[6][-2:]
-            else:
-                ip += self.ips[6]
-            return ip + ":" + self.ips[7]
+    def get_prefix(self, prefixlen):
+        temp = []
+        for item in self.prefix:
+            if item != "":
+                temp.append(item)
 
-        def get_prefix(self, prefixlen):
-            temp = []
-            for item in self.prefix:
-                if item != "":
-                    temp.append(item)
+        return ":".join(temp) + "::/" + str(prefixlen)
 
-            return ":".join(temp) + "::/" + str(prefixlen)
 
 def get_link_local_address(mac):
     ''' get ipv6 link local address from 48bits mac address,
@@ -157,7 +161,11 @@ def removeZeroFromMacAddress(mac):
         newMac = newMac[1:]
     return newMac
 
+
 def get_nic_supported_max_speed(nic):
+    if linux.get_nic_driver_type(nic) == linux.NIC_DRIVER_VIRTIONET:
+        return 0
+
     r, o = bash.bash_ro("ethtool %s" % nic)  # type: (int, str)
     if r != 0:
         return 0
@@ -190,6 +198,7 @@ def get_nic_supported_max_speed(nic):
         speed = 0
 
     return speed
+
 
 def get_namespace_id(namespace_name):
     NAMESPACE_NAME = namespace_name

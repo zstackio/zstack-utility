@@ -22,6 +22,7 @@ import pprint
 import errno
 import json
 import fcntl
+import bash
 
 from inspect import stack
 
@@ -57,6 +58,7 @@ KVM_DEVICE = '/dev/kvm'
 KVM_CAP_ARM_VM_IPA_SIZE = 165
 KVM_CHECK_EXTENSION = 44547
 DEFAULT_VM_IPA_SIZE = 40
+NIC_DRIVER_VIRTIONET = "virtio_net"
 
 def ignoreerror(func):
     @functools.wraps(func)
@@ -2541,3 +2543,22 @@ def get_max_vm_ipa_size():
     except Exception as e:
         logger.warn("failed to get max vm ipa size, because %s", str(e))
         return pow(2, DEFAULT_VM_IPA_SIZE)
+
+
+def get_nic_driver_type(nic):
+    r, o = bash.bash_ro("ethtool -i %s" % nic)
+    if r != 0:
+        return ""
+
+    driver_info = None
+    driver = ""
+    for line in o.strip().splitlines():
+        if "driver:" in line.lower():
+            driver_info = line
+            break
+
+    if driver_info:
+        driver_info = driver_info.split(":")
+        if len(driver_info) == 2:
+            driver = driver_info[1].strip()
+    return driver
