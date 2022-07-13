@@ -929,25 +929,20 @@ class HostPlugin(kvmagent.KvmAgent):
             cpu_processor_num = shell.call("grep -c processor /proc/cpuinfo")
             rsp.cpuProcessorNum = cpu_processor_num.strip()         
 
-            cpu_l1d_cache = shell.call("lscpu | grep 'L1i cache' | awk -F ':' '{print $2}'") 
-            cpu_l1i_cache = shell.call("lscpu | grep 'L1d cache' | awk -F ':' '{print $2}'")
-            cpu_l1_cache = ''
-            if bool(re.search(r'\d', cpu_l1d_cache)) and bool(re.search(r'\d', cpu_l1i_cache)):
-                cpu_l1_cache_value = float(cpu_l1d_cache.strip()[:-1]) + float(cpu_l1i_cache.strip()[:-1])
-                if cpu_l1d_cache.strip()[-1] == 'K' and cpu_l1i_cache.strip()[-1] == 'K':
-                    cpu_l1_cache = '%.2f' % (cpu_l1_cache_value)
-
-            cpu_l2_cache = shell.call("lscpu | grep 'L2 cache' | awk -F ':' '{print $2}'")
-            if cpu_l2_cache.strip()[-1] == 'K':
-                cpu_l2_cache = '%.2f' % float(cpu_l2_cache.strip()[:-1])
-
-            cpu_l3_cache = shell.call("lscpu | grep 'L3 cache' | awk -F ':' '{print $2}'")
-            if cpu_l3_cache.strip()[-1] == 'K':
-                cpu_l3_cache = '%.2f' % float(cpu_l3_cache.strip()[:-1])
-
-            if cpu_l1_cache != '' and cpu_l2_cache != '' and cpu_l3_cache != '':
-                cpuCache = [cpu_l1_cache, cpu_l2_cache.strip(), cpu_l3_cache.strip()]
-                rsp.cpuCache = ",".join(cpuCache)
+            def convert(capacity): 
+                if capacity is None or capacity == '':
+                    return None
+                num = ''.join(re.findall('\d+',capacity))
+                unit = ''.join(re.findall('[A-Za-z]',capacity))
+                if unit != '':
+                    unit = unit[0].upper() 
+                return round(float(sizeunit.get_size(num+unit)/1024))
+            cpu_l1d_cache = convert(shell.call("lscpu | grep 'L1d cache' | awk -F ':' '{print $2}'") 
+            cpu_l1i_cache = convert(shell.call("lscpu | grep 'L1i cache' | awk -F ':' '{print $2}'")
+            cpu_l1_cache = float(cpu_l1d_cache if cpu_l1d_cache is not None else 0)+float(cpu_l1i_cache if cpu_l1i_cache is not None else 0) 
+            cpu_l2_cache = convert(shell.call("lscpu | grep 'L2 cache' | awk -F ':' '{print $2}'"))
+            cpu_l3_cache = convert(shell.call("lscpu | grep 'L3 cache' | awk -F ':' '{print $2}'"))
+            rsp.cpuCache = ','.join(map(str,[x for x in [cpu_l1_cache, cpu_l2_cache, cpu_l3_cache] if x is not None]))
             
         return jsonobject.dumps(rsp)
 
