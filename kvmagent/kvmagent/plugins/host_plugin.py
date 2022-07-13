@@ -1133,6 +1133,17 @@ class HostPlugin(kvmagent.KvmAgent):
             def toString(self):
                 return self.busNum + ':' + self.devNum + ':' + self.idVendor + ':' + self.idProduct + ':' + self.iManufacturer + ':' + self.iProduct + ':' + self.iSerial + ':' + self.usbVersion + ";"
 
+        def _add_usb_device_info(info, usb_device_infos):
+            if info.busNum == '' or info.devNum == '' or info.idVendor == '' or info.idProduct == '':
+                logger.debug("cannot get busNum/devNum/idVendor/idProduct info in usbDevice %s" % devId)
+            elif '(error)' in info.iManufacturer or '(error)' in info.iProduct:
+                logger.debug("cannot get iManufacturer or iProduct info in usbDevice %s" % devId)
+                usb_device_infos += info.toString()
+            else:
+                usb_device_infos += info.toString()
+
+            return usb_device_infos
+
         # use 'lsusb.py -U' to get device ID, like '0751:9842'
         rsp = GetUsbDevicesRsp()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -1142,30 +1153,30 @@ class HostPlugin(kvmagent.KvmAgent):
             rsp.error = "%s %s" % (e, o)
             return jsonobject.dumps(rsp)
 
-        idSet = set()
-        usbDevicesInfo = ''
+        id_set = set()
+        usb_device_infos = ''
         for line in o.split('\n'):
             line = line.split()
             if len(line) < 2:
                 continue
-            idSet.add(line[1])
+            id_set.add(line[1])
 
-        for devId in idSet:
+        for dev_id in id_set:
             # use 'lsusb -v -d ID' to get device info[s]
-            r, o, e = bash_roe("lsusb -v -d %s" % devId)
+            r, o, e = bash_roe("lsusb -v -d %s" % dev_id)
             if r != 0:
                 rsp.success = False
                 rsp.error = "%s %s" % (e, o)
                 return jsonobject.dumps(rsp)
 
-            info = UsbDeviceInfo()
             for line in o.split('\n'):
                 line = line.strip().split()
                 if len(line) < 2:
                     continue
 
                 if line[0] == 'Bus' and len(line) > 3:
-                    info.idVendor, info.idProduct = devId.split(':')
+                    info = UsbDeviceInfo()
+                    info.idVendor, info.idProduct = dev_id.split(':')
                     info.busNum = line[1]
                     info.devNum = line[3].rsplit(':')[0]
                 elif line[0] == 'idVendor':
@@ -1175,7 +1186,7 @@ class HostPlugin(kvmagent.KvmAgent):
                 elif line[0] == 'bcdUSB':
                     info.usbVersion = line[1]
                     # special case: USB2.0 with speed 1.5MBit/s or 12MBit/s should be attached to USB1.1 Controller
-                    rst = bash_r("lsusb.py | grep -v 'grep' | grep '%s' | grep -E '1.5MBit/s|12MBit/s'" % devId)
+                    rst = bash_r("lsusb.py | grep -v 'grep' | grep '%s' | grep -E '1.5MBit/s|12MBit/s'" % dev_id)
                     info.usbVersion = info.usbVersion if rst != 0 else '1.1'
                 elif line[0] == 'iManufacturer' and len(line) > 2:
                     info.iManufacturer = ' '.join(line[2:])
@@ -1183,16 +1194,9 @@ class HostPlugin(kvmagent.KvmAgent):
                     info.iProduct = ' '.join(line[2:])
                 elif line[0] == 'iSerial':
                     info.iSerial = ' '.join(line[2:]) if len(line) > 2 else ""
+                    usb_device_infos = _add_usb_device_info(info, usb_device_infos)
 
-            if info.busNum == '' or info.devNum == '' or info.idVendor == '' or info.idProduct == '':
-                logger.debug("cannot get busNum/devNum/idVendor/idProduct info in usbDevice %s" % devId)
-                continue
-            elif '(error)' in info.iManufacturer or '(error)' in info.iProduct:
-                logger.debug("cannot get iManufacturer or iProduct info in usbDevice %s" % devId)
-                usbDevicesInfo += info.toString()
-            else:
-                usbDevicesInfo += info.toString()
-        rsp.usbDevicesInfo = usbDevicesInfo
+        rsp.usbDevicesInfo = usb_device_infos
         return jsonobject.dumps(rsp)
 
     @lock.file_lock('/run/usb_rules.lock')
