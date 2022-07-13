@@ -127,7 +127,7 @@ class Summary(object):
             username = username.strip('"')
 
         _, o = commands.getstatusoutput(
-            "find %s -iname \"customer-identifier\" -exec cat {} \; 2>/dev/null | grep 'start ui_customeize' -A 200 | grep -E '^[[:space:]]*<'" % collect_dir)
+            "find %s -type f -iname \"customer-identifier\" | head -1 | xargs cat | sed -n '/<database/,/\/database/p'" % collect_dir)
 
         _, ui3 = commands.getstatusoutput(
             "find %s/*/ui3-cfg/* -iname 'data.json' | head -1 | xargs cat" % collect_dir)
@@ -182,7 +182,7 @@ class Summary(object):
                 logger.info("can not parse xml, error: %s " % e)
                 logger.info("malformed xml: %s " % xml_text)
                 return "Unknown"
-            rows = tree.findall('./database/table_data/row')
+            rows = tree.findall('./table_data/row')
             zh_title = None
             en_title = None
             for row in rows:
@@ -925,7 +925,7 @@ class CollectFromYml(object):
                             elif type != 'sharedblock':
                                 self.add_fail_count(1, type, host_post_info.host, log['name'], output)
                         else:
-                            if log['name'] == "ui-logs": 
+                            if log['name'] == "ui-logs":
                                 (ui_log_status, ui_log_output) = run_remote_command(
                                     ''' zstack-ctl show_ui_config | awk -F= '/^log/{print $2}' | awk '$1=$1' ''',
                                     host_post_info, return_status=True,
