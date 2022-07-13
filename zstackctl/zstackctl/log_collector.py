@@ -127,7 +127,7 @@ class Summary(object):
             username = username.strip('"')
 
         _, o = commands.getstatusoutput(
-            "find %s -type f -iname \"customer-identifier\" | head -1 |xargs cat | grep 'start ui_customeize' -A 200 | grep -E '^[[:space:]]*<'" % collect_dir)
+            "find %s -type f -iname \"customer-identifier\" | head -1 | xargs cat | sed -n '/<database/,/\/database/p'" % collect_dir)
 
         _, ui3 = commands.getstatusoutput(
             "find %s/*/ui3-cfg/* -iname 'data.json' | head -1 | xargs cat" % collect_dir)
@@ -176,8 +176,13 @@ class Summary(object):
         @param ui3cfg: str
         """
         if "theme.config" in xml_text:
-            tree = etree.XML(xml_text)
-            rows = tree.findall('./database/table_data/row')
+            try:
+                tree = etree.XML(xml_text)
+            except Exception as e:
+                logger.info("can not parse xml, error: %s " % e)
+                logger.info("malformed xml: %s " % xml_text)
+                return "Unknown"
+            rows = tree.findall('./table_data/row')
             zh_title = None
             en_title = None
             for row in rows:
