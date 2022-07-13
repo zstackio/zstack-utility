@@ -8098,12 +8098,9 @@ host side snapshot files chian:
 
         # string list
         cron_scripts = []
-        r, o, e = bash.bash_roe('/usr/bin/crontab -l | grep -v "bash %s"' % script_path)
-        if r != 0:
-            rsp.success = False
-            rsp.error = "failed to load crond script: %s %s" % (o, e)
-            return jsonobject.dumps(rsp)
-        cron_scripts.append(o.strip())
+        r, o, _ = bash.bash_roe('/usr/bin/crontab -l | grep -v "bash %s"' % script_path)
+        if r == 0:
+            cron_scripts.append(o.strip())
 
         for interval in interval_uuid_map:
             vm_uuids = interval_uuid_map[interval]
