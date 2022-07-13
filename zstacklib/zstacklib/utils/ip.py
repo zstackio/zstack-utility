@@ -163,7 +163,7 @@ def removeZeroFromMacAddress(mac):
 
 
 def get_nic_supported_max_speed(nic):
-    if linux.get_nic_driver_type(nic) == linux.NIC_DRIVER_VIRTIONET:
+    if get_nic_driver_type(nic) == "virtio_net":
         return 0
 
     r, o = bash.bash_ro("ethtool %s" % nic)  # type: (int, str)
@@ -198,6 +198,25 @@ def get_nic_supported_max_speed(nic):
         speed = 0
 
     return speed
+
+
+def get_nic_driver_type(nic):
+    r, o = bash.bash_ro("ethtool -i %s" % nic)
+    if r != 0:
+        return ""
+
+    driver_info = None
+    driver = ""
+    for line in o.strip().splitlines():
+        if "driver:" in line.lower():
+            driver_info = line
+            break
+
+    if driver_info:
+        driver_info = driver_info.split(":")
+        if len(driver_info) == 2:
+            driver = driver_info[1].strip()
+    return driver
 
 
 def get_namespace_id(namespace_name):

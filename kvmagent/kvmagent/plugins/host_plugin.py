@@ -33,6 +33,7 @@ from zstacklib.utils import xmlobject
 from zstacklib.utils import ovs
 from zstacklib.utils.bash import *
 from zstacklib.utils.ip import get_nic_supported_max_speed
+from zstacklib.utils.ip import get_nic_driver_type
 from zstacklib.utils.report import Report
 import zstacklib.utils.ip as ip
 import zstacklib.utils.plugin as plugin
@@ -327,7 +328,7 @@ class HostNetworkInterfaceInventory(object):
         self.pciDeviceAddress = os.readlink("/sys/class/net/%s/device" % self.interfaceName).strip().split('/')[-1]
 
         self.offloadStatus = ovs.OvsCtl().ifOffloadStatus(self.interfaceName)
-        self.driverType = linux.get_nic_driver_type(self.interfaceName)
+        self.driverType = get_nic_driver_type(self.interfaceName)
 
     def _to_dict(self):
         to_dict = self.__dict__
