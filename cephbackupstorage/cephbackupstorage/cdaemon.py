@@ -2,10 +2,11 @@
 
 @author: frank
 '''
-import sys, os, os.path
+import os
+import sys
+
 from zstacklib.utils import log
 from zstacklib.utils import linux
-import zstacklib.utils.iptables as iptables
 
 pidfile = '/var/run/zstack/ceph-backupstorage.pid'
 log.configure_log('/var/log/zstack/ceph-backupstorage.log')
