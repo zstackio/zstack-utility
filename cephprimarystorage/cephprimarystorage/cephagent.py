@@ -1079,15 +1079,16 @@ class CephAgent(plugin.TaskManager):
         linux.rm_file_force(tmp_file)
         if r != 0:
             logger.error('failed to migrate volume %s: %s' % (src_install_path, e))
-            return r
+            return r, e
 
         # compare md5sum of src/dst segments
         src_segment_md5 = self._read_file_content('/tmp/%s_src_md5' % resource_uuid)
         dst_segment_md5 = linux.sshpass_call(dst_mon_addr, dst_mon_passwd, 'cat /tmp/%s_dst_md5' % resource_uuid, dst_mon_user, dst_mon_port)
         if src_segment_md5 != dst_segment_md5:
-            logger.error('check sum mismatch after migration: %s' % src_install_path)
-            return -1
-        return 0
+            err = 'check sum mismatch after migration: %s' % src_install_path
+            logger.error(err)
+            return -1, err
+        return 0, None
 
     @replyerror
     @in_bash
@@ -1119,12 +1120,12 @@ class CephAgent(plugin.TaskManager):
                 rsp.error = "Failed to resize volume before migrate."
                 return jsonobject.dumps(rsp)
 
-        ret = self._migrate_volume_segment(cmd.parentUuid, cmd.resourceUuid, cmd.srcInstallPath,
+        ret_code, err = self._migrate_volume_segment(cmd.parentUuid, cmd.resourceUuid, cmd.srcInstallPath,
                                            cmd.dstInstallPath, cmd.dstMonHostname, cmd.dstMonSshUsername,
                                            cmd.dstMonSshPassword, cmd.dstMonSshPort, cmd)
-        if ret != 0:
+        if ret_code != 0:
             rsp.success = False
-            rsp.error = "Failed to migrate volume segment from one ceph primary storage to another."
+            rsp.error = "Failed to migrate volume segment from one ceph primary storage to another, because: %s" % err
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
