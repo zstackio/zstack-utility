@@ -54,6 +54,11 @@ class DiscoverLunCmd(CreateHeartbeatCmd):
         super(DiscoverLunCmd, self).__init__()
 
 
+class LogoutLunCmd(CreateHeartbeatCmd):
+    def __init__(self):
+        super(LogoutLunCmd, self).__init__()
+
+
 class CreateHeartbeatRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(CreateHeartbeatRsp, self).__init__()
@@ -86,7 +91,7 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CREATE_HEART_BEAT_PATH, self.create_heart_beat, cmd=CreateHeartbeatCmd())
         http_server.register_async_uri(self.DOWNLOAD_FROM_IMAGESTORE, self.download_from_imagestore)
         http_server.register_async_uri(self.DISCOVERY_LUN, self.discover_lun, cmd=DiscoverLunCmd())
-        http_server.register_async_uri(self.LOGOUT_TARGET, self.logout_target)
+        http_server.register_async_uri(self.LOGOUT_TARGET, self.logout_target, cmd=LogoutLunCmd())
         http_server.register_async_uri(self.UPLOAD_TO_IMAGESTORE, self.upload_to_imagestore)
         http_server.register_async_uri(self.COMMIT_VOLUME_AS_IMAGE, self.commit_to_imagestore)
 
@@ -140,10 +145,10 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
     def make_sure_lun_has_been_mapped(self, cmd_info):
         successfully_find_lun = False
         try:
+            bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -a >/dev/null")
             successfully_find_lun = self.check_lun_status(cmd_info)
         except Exception as e:
             pass
-
         if successfully_find_lun is True:
             return successfully_find_lun
 
@@ -155,6 +160,7 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         time.sleep(1)
         self.iscsi_login(cmd_info)
         try:
+            bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -a >/dev/null")
             successfully_find_lun = self.check_lun_status(cmd_info)
         except Exception as e:
             pass
@@ -204,21 +210,23 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         return True
 
     @kvmagent.replyerror
-    def logout_target(self, logoutCmd):
+    def logout_target(self, req):
+        logout_cmd = jsonobject.loads(req[http.REQUEST_BODY])
         try:
-            self._logout_target(logoutCmd)
+            self._logout_target(logout_cmd)
         except Exception as e:
             logger.debug(e)
         rsp = AgentRsp
         return jsonobject.dumps(rsp)
 
 
-
     @bash.in_bash
     def _logout_target(self, logoutCmd):
         r, o, e = bash.bash_roe('iscsiadm --mode node --targetname "%s" -p %s:%s --logout' %
                                 (logoutCmd.target, logoutCmd.iscsiServerIp, logoutCmd.iscsiServerPort))
-        bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -r >/dev/null")
+        if r != 0:
+            raise Exception("fail to logout iscsi %s" % logoutCmd.target)
+        r, o, e = bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -r >/dev/null")
         if r != 0:
             raise Exception("fail to logout iscsi %s" % logoutCmd.target)
 
@@ -244,7 +252,7 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         if r != 0:
             raise Exception("fail to login iscsi %s")
 
-        @linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
+        @linux.retry(times=5, sleep_time=random.uniform(1, 3))
         def retry_check_session(login_info):
             login = self.find_iscsi_session(login_info)
             if login is not True:
