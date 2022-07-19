@@ -925,9 +925,9 @@ class HostPlugin(kvmagent.KvmAgent):
                 if unit != '':
                     unit = unit[0].upper() 
                 return round(float(sizeunit.get_size(num+unit)/1024))
-            cpu_l1d_cache = convert(shell.call("lscpu | grep 'L1d cache' | awk -F ':' '{print $2}'") 
-            cpu_l1i_cache = convert(shell.call("lscpu | grep 'L1i cache' | awk -F ':' '{print $2}'")
-            cpu_l1_cache = float(cpu_l1d_cache if cpu_l1d_cache is not None else 0)+float(cpu_l1i_cache if cpu_l1i_cache is not None else 0) 
+            cpu_l1d_cache = convert(shell.call("lscpu | grep 'L1d cache' | awk -F ':' '{print $2}'")) 
+            cpu_l1i_cache = convert(shell.call("lscpu | grep 'L1i cache' | awk -F ':' '{print $2}'"))
+            cpu_l1_cache = float(cpu_l1d_cache if cpu_l1d_cache is not None else 0) + float(cpu_l1i_cache if cpu_l1i_cache is not None else 0) 
             cpu_l2_cache = convert(shell.call("lscpu | grep 'L2 cache' | awk -F ':' '{print $2}'"))
             cpu_l3_cache = convert(shell.call("lscpu | grep 'L3 cache' | awk -F ':' '{print $2}'"))
             rsp.cpuCache = ','.join(map(str,[x for x in [cpu_l1_cache, cpu_l2_cache, cpu_l3_cache] if x is not None]))
