@@ -2542,3 +2542,20 @@ def get_max_vm_ipa_size():
         logger.warn("failed to get max vm ipa size, because %s", str(e))
         return pow(2, DEFAULT_VM_IPA_SIZE)
 
+
+class RetryException(Exception):
+    pass
+
+
+@retry(3, 3)
+def check_port(ip, port):
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # set timeout to avoid socket hang on
+    s.settimeout(1)
+    try:
+        s.connect((ip, port))
+        return True, None
+    except socket.error as ex:
+        raise RetryException("Failed connect to address[%s:%s], because %s" % (ip, port, ex))
+    finally:
+        s.close()

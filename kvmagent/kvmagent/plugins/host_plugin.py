@@ -1058,10 +1058,12 @@ class HostPlugin(kvmagent.KvmAgent):
             if bash_r("systemctl list-units |grep %s" % systemd_service_name) == 0:
                 bash_r("systemctl start %s" % systemd_service_name)
             else:
-                ret, output = bash_ro("systemd-run --unit %s usbredirserver -p %s %s-%s" % (systemd_service_name, port, busNum, devNum))
-                if ret != 0:
-                    logger.info("usb %s-%s start failed on port %s" % (busNum, devNum, port))
-                    return False, output
+                bash_r("systemd-run --unit %s usbredirserver -p %s %s-%s" % (systemd_service_name, port, busNum, devNum))
+
+            ret, output = linux.check_port('127.0.0.1', port)
+            if not ret:
+                logger.info("usb %s-%s start failed on port %s" % (busNum, devNum, port))
+                return False, output
             logger.info("usb %s-%s start successed on port %s" % (busNum, devNum, port))
             return True, None
 
