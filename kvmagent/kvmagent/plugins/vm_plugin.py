@@ -6202,6 +6202,45 @@ class VmPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
+    def _check_vm_live_migate_status(self, cmd):
+        def _check_vm_on_dsthost(retry_times=1):
+            @linux.retry(times=retry_times, sleep_time=2)
+            def _check():
+                with contextlib.closing(get_connect(cmd.destHostIp)) as conn:
+                    vm = get_vm_by_uuid(cmd.vmUuid, False, conn)
+                    if vm is not None and vm.state == vm.VM_STATE_RUNNING:
+                        return True
+                    raise RetryException("")
+            try:
+                return _check()
+            except Exception:
+                return False
+
+        if _check_vm_on_dsthost():
+            return True
+
+        vm = get_vm_by_uuid(cmd.vmUuid)
+        if vm.state != vm.VM_STATE_RUNNING:
+            logger.debug("vm[uuid:%s] state is not running, unable to recover live storage migration" % cmd.vmuuid)
+            return False
+
+        def _wait_job(_):
+            vm.refresh()
+            for oldpath, volume in cmd.disks.__dict__.items():
+                _, disk_name = vm._get_target_disk_by_path(oldpath, is_exception=False)
+                if disk_name is not None and vm._wait_for_block_job(disk_name, abort_on_error=False):
+                    return False
+            return True
+
+        try:
+            logger.debug('migrate vm[%s] with block is waiting for job completion' % vm.uuid)
+            timeout = 259200 if get_timeout(cmd) <= 0 else get_timeout(cmd)
+            linux.wait_callback_success(_wait_job, timeout=timeout, interval=10)
+        except Exception as e:
+            logger.warn("caught an exception on waiting for storage migration job completion: %s" % str(e))
+        finally:
+            return _check_vm_on_dsthost(retry_times=5)
+
     @kvmagent.replyerror
     def migrate_vm(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -6217,6 +6256,11 @@ class VmPlugin(kvmagent.KvmAgent):
                         raise kvmagent.KvmError('unable to find vm %s on host %s' % (cmd.vmUuid, cmd.srcHostIp))
                     vm.migrate(cmd)
             else:
+                ## storage migration recovery
+                if cmd.reload and cmd.disks and self._check_vm_live_migate_status(cmd):
+                    logger.info("vm[%s] has been migrated to host[%s] successfully" % (cmd.vmUuid, cmd.destHostIp))
+                    return jsonobject.dumps(rsp)
+
                 vm = get_vm_by_uuid(cmd.vmUuid)
                 vm.migrate(cmd)
 
@@ -6475,13 +6519,46 @@ class VmPlugin(kvmagent.KvmAgent):
 
         shell_cmd.raise_error()
 
+    def _check_block_copy(self, vm, cmd):
+        def _check_dst_volume(retry_times=1):
+            @linux.retry(times=retry_times, sleep_time=2)
+            def _check():
+                vm.refresh()
+                vm._get_target_disk_by_path(cmd.newVolume.installPath)
+                return True
+
+            try:
+                return _check()
+            except Exception:
+                return False
+
+        if _check_dst_volume(1):
+            return True
+
+        def _wait_job(disk_name):
+            return not vm._wait_for_block_job(disk_name, abort_on_error=False)
+
+        try:
+            _, disk_name = vm._get_target_disk_by_path(cmd.oldVolumePath)
+            logger.debug('block[%s] migration of vm[%s] is waiting for job completion' % (disk_name, vm.uuid))
+            timeout = 259200 if get_timeout(cmd) <= 0 else get_timeout(cmd)
+            linux.wait_callback_success(_wait_job, callback_data=disk_name, timeout=timeout, interval=10)
+        except Exception as e:
+            logger.debug("caught an exception on waiting for block migration job completion: %s" % str(e))
+        finally:
+            return _check_dst_volume(5)
+
     @kvmagent.replyerror
     def block_migrate(self, req):
         rsp = kvmagent.AgentResponse()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
-        self._record_operation(cmd.vmUuid, self.VM_OP_MIGRATE)
         vm = get_vm_by_uuid(cmd.vmUuid)
+        if cmd.reload and self._check_block_copy(vm, cmd):
+            logger.info('block[%s] migration of vm[%s] has been completed' % (cmd.oldVolumePath, vm.uuid))
+            return jsonobject.dumps(rsp)
+
+        self._record_operation(cmd.vmUuid, self.VM_OP_MIGRATE)
         disk_name, disk_xml = self._build_dest_disk_xml(vm, cmd.oldVolumePath, cmd.newVolume)
 
         rsp.success, rsp.error = self._do_block_copy(vm.uuid, disk_name, disk_xml, cmd)
