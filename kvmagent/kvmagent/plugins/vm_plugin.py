@@ -196,6 +196,19 @@ class StartVmResponse(kvmagent.AgentResponse):
         self.virtualDeviceInfoList = []  # type:list[VirtualDeviceInfo]
         self.memBalloonInfo = None  # type:VirtualDeviceInfo
 
+class SyncVmDeviceInfoCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(SyncVmDeviceInfoCmd, self).__init__()
+        self.vmInstanceUuid = None
+
+class SyncVmDeviceInfoResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(SyncVmDeviceInfoResponse, self).__init__()
+        self.nicInfos = []  # type:list[VmNicInfo]
+        self.virtualDeviceInfoList = []  # type:list[VirtualDeviceInfo]
+        self.memBalloonInfo = None  # type:VirtualDeviceInfo
+
+
 class VirtualDeviceInfo():
     def __init__(self):
         self.deviceAddress = DeviceAddress()
@@ -5119,6 +5132,7 @@ class VmPlugin(kvmagent.KvmAgent):
     SET_EMULATOR_PINNING_PATH = "/vm/emulatorpinning"
     SYNC_VM_CLOCK_PATH = "/vm/clock/sync"
     SET_SYNC_VM_CLOCK_TASK_PATH = "/vm/clock/sync/task"
+    KVM_SYNC_VM_DEVICEINFO_PATH = "/sync/vm/deviceinfo"
 
     VM_CONSOLE_LOGROTATE_PATH = "/etc/logrotate.d/vm-console-log"
 
@@ -5366,25 +5380,38 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.success = False
 
         if rsp.success == True:
-            vm = get_vm_by_uuid(cmd.vmInstanceUuid)
-            for iface in vm.domain_xmlobject.devices.get_child_node_as_list('interface'):
-                vmNicInfo = VmNicInfo()
-                vmNicInfo.deviceAddress.bus = iface.address.bus_
-                vmNicInfo.deviceAddress.function = iface.address.function_
-                vmNicInfo.deviceAddress.type = iface.address.type_
-                vmNicInfo.deviceAddress.domain = iface.address.domain_
-                vmNicInfo.deviceAddress.slot = iface.address.slot_
-                vmNicInfo.macAddress = iface.mac.address_
-                rsp.nicInfos.append(vmNicInfo)
+            rsp.nicInfos, rsp.virtualDeviceInfoList, rsp.memBalloonInfo = self.get_vm_device_info(cmd.vmInstanceUuid)
 
+        return jsonobject.dumps(rsp)
 
-            for disk in vm.domain_xmlobject.devices.get_child_node_as_list('disk'):
-                rsp.virtualDeviceInfoList.append(self.get_device_address_info(disk))
+    def get_vm_device_info(self, uuid):
+        vm = get_vm_by_uuid(uuid)
+        nicInfos = []
+        virtualDeviceInfoList = []
+        for iface in vm.domain_xmlobject.devices.get_child_node_as_list('interface'):
+            vmNicInfo = VmNicInfo()
+            vmNicInfo.deviceAddress.bus = iface.address.bus_
+            vmNicInfo.deviceAddress.function = iface.address.function_
+            vmNicInfo.deviceAddress.type = iface.address.type_
+            vmNicInfo.deviceAddress.domain = iface.address.domain_
+            vmNicInfo.deviceAddress.slot = iface.address.slot_
+            vmNicInfo.macAddress = iface.mac.address_
+            nicInfos.append(vmNicInfo)
 
-            memBalloonPci = vm.domain_xmlobject.devices.get_child_node('memballoon')
-            if memBalloonPci is not None:
-                rsp.memBalloonInfo = self.get_device_address_info(memBalloonPci)
+        for disk in vm.domain_xmlobject.devices.get_child_node_as_list('disk'):
+            virtualDeviceInfoList.append(self.get_device_address_info(disk))
 
+        memBalloonPci = vm.domain_xmlobject.devices.get_child_node('memballoon')
+        if memBalloonPci is not None:
+            memBalloonInfo = self.get_device_address_info(memBalloonPci)
+
+        return nicInfos, virtualDeviceInfoList, memBalloonInfo
+
+    @kvmagent.replyerror
+    def sync_vm_deviceinfo(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = SyncVmDeviceInfoResponse()
+        rsp.nicInfos, rsp.virtualDeviceInfoList, rsp.memBalloonInfo = self.get_vm_device_info(cmd.vmInstanceUuid)
         return jsonobject.dumps(rsp)
 
     def get_vm_stat_with_ps(self, uuid):
@@ -8226,6 +8253,7 @@ host side snapshot files chian:
         http_server.register_async_uri(self.SET_EMULATOR_PINNING_PATH, self.set_emulator_pinning)
         http_server.register_async_uri(self.SYNC_VM_CLOCK_PATH, self.sync_vm_clock_now)
         http_server.register_async_uri(self.SET_SYNC_VM_CLOCK_TASK_PATH, self.set_sync_vm_clock_task)
+        http_server.register_async_uri(self.KVM_SYNC_VM_DEVICEINFO_PATH, self.sync_vm_deviceinfo)
 
         self.clean_old_sshfs_mount_points()
         self.register_libvirt_event()
