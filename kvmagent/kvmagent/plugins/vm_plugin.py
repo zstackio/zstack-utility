@@ -6811,9 +6811,9 @@ host side snapshot files chian:
                 volumes = isc.query_mirror_volumes(cmd.vmUuid)
                 if volumes is None:
                     volumes = {}
-                target = volumes[device_name]
+                target = volumes[node_name]
                 if target != cmd.mirrorTarget:
-                    isc.stop_mirror(cmd.vmUuid, False, device_name)
+                    isc.stop_mirror(cmd.vmUuid, False, node_name)
             except KeyError:
                 pass
 
@@ -6821,7 +6821,7 @@ host side snapshot files chian:
 
             execute_qmp_command(cmd.vmUuid, '{"execute": "migrate-set-capabilities","arguments":'
                                             '{"capabilities":[ {"capability": "dirty-bitmaps", "state":true}]}}')
-            logger.info('finished mirroring volume[%s]: %s' % (device_name, jsonobject.dumps(cmd.volume)))
+            logger.info('finished mirroring volume[%s]: %s' % (node_name, jsonobject.dumps(cmd.volume)))
 
         except Exception as e:
             content = traceback.format_exc()
