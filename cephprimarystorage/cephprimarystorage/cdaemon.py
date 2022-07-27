@@ -2,10 +2,11 @@
 
 @author: frank
 '''
-import sys, os, os.path
+import os
+import sys
+
 from zstacklib.utils import log
 from zstacklib.utils import linux
-import zstacklib.utils.iptables as iptables
 
 pidfile = '/var/run/zstack/ceph-primarystorage.pid'
 log.configure_log('/var/log/zstack/ceph-primarystorage.log')
@@ -16,7 +17,7 @@ def prepare_pid_dir(path):
     pdir = os.path.dirname(path)
     if not os.path.isdir(pdir):
         os.makedirs(pdir)
-    
+
 def main():
     usage = 'usage: python -c "from cephprimarystorage import cdaemon; cdaemon.main()" start|stop|restart'
     if len(sys.argv) != 2 or not sys.argv[1] in ['start', 'stop', 'restart']:
