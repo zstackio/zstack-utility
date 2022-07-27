@@ -2098,7 +2098,12 @@ class StartCmd(Command):
     #MINIMAL_MEM_SIZE unit is KB, here is 8GB, in linxu, 8GB is 8388608 KB
     #Save some memory for kdump etc. 7GB = 7340032KB
     MINIMAL_MEM_SIZE = 7300000
-    SIMULATOR = 'SIMULATOR'
+    SIMULATORS_ON = 'SIMULATOR'
+    # keep simulatorsOn, but --mode=simulator is recommanded
+    START_MODE = 'START_MODE'
+    SIMULATOR = 'simulator'
+    MINIMAL = 'minimal'
+    SUPPORTED_START_MODE_LIST = [MINIMAL, SIMULATOR]
 
     def __init__(self):
         super(StartCmd, self).__init__()
@@ -2111,6 +2116,7 @@ class StartCmd(Command):
         parser.add_argument('--timeout', help='Wait for ZStack Server startup timeout, default is 1000 seconds.', default=1000)
         parser.add_argument('--daemon', help='Start ZStack in daemon mode. Only used with systemd.', action='store_true', default=False)
         parser.add_argument('--simulator', help='Start Zstack in simulator mode.', action='store_true', default=False)
+        parser.add_argument('--mode', help='Start Zstack in specified mode. supported modes include %s' % self.SUPPORTED_START_MODE_LIST)
         parser.add_argument('--mysql_process_list', help='Check mysql wait timeout connection', action='store_true', default=False)
 
     def _start_remote(self, args):
@@ -2325,11 +2331,17 @@ class StartCmd(Command):
                 raise CtlError('no management-node-ready message received within %s seconds%s, please check error in log file %s' % (timeout, mgmt_ip, log_path))
 
         def prepare_env():
+            if args.mode:
+                check_start_mode(args.mode)
+                ctl.put_envs([(self.START_MODE, args.mode)])
             if args.simulator:
-                ctl.put_envs([(self.SIMULATOR, 'True')])
+                ctl.put_envs([(self.SIMULATORS_ON, 'True')])
 
         def is_simulator_on():
-            return ctl.get_env(self.SIMULATOR) == 'True'
+            return ctl.get_env(self.SIMULATORS_ON) == 'True'
+
+        def get_start_mode():
+            return ctl.get_env(self.START_MODE)
 
         def check_encrypt_properties():
             if not ctl.is_ctl_env_exists() or not ctl.is_encrypt_on():
@@ -2346,17 +2358,32 @@ class StartCmd(Command):
                 if value and not cipher.is_encrypted(value):
                     ctl.write_properties([(key, cipher.encrypt(value))])
 
-        def prepareBeanRefContextXml():
-            if is_simulator_on():
+        def prepare_bean_ref_context_xml():
+            if get_start_mode() == self.SIMULATOR:
                 beanXml = "simulator/zstack-simulator2.xml"
-                info_and_debug("--simulator is set, ZStack will start in simulator mode")
+                info_and_debug("%s=simulator is set, ZStack will start in simulator mode" % self.START_MODE)
+            elif get_start_mode() == self.MINIMAL:
+                beanXml = "zstack-minimal.xml"
+                info_and_debug("%s=minimal is set, ZStack will start in minimal mode" % self.START_MODE)
             else:
                 beanXml = "zstack.xml"
 
             commands.getstatusoutput("zstack-ctl configure beanConf=%s" % beanXml)
 
-        def checkSimulator():
+        def check_start_mode(mode):
+            if mode and mode != '':
+                if mode not in self.SUPPORTED_START_MODE_LIST:
+                    error('unsupported start mode, following modes are supported: %s' % self.SUPPORTED_START_MODE_LIST)
+                ctl.write_properties([('startMode', mode)])
+            else:
+                ctl.delete_env(self.START_MODE)
+                ctl.delete_properties(['startMode'])
+
+        def check_simulator():
+            if get_start_mode() and get_start_mode() != self.SIMULATOR and is_simulator_on():
+                error("duplicate start mode configurations, --simulator is deprecated, please use `zstack-ctl setenv %s=` to delete old configuration" % self.SIMULATORS_ON)
             if is_simulator_on():
+                info_and_debug("--simulator is set, ZStack will start in simulator mode")
                 ctl.write_properties(['simulatorsOn=true'.split('=', 1)])
             else:
                 ctl.delete_properties(['simulatorsOn'])
@@ -2377,11 +2404,12 @@ class StartCmd(Command):
         prepare_setenv()
         open_iptables_port('udp',['123'])
         encrypt_properties_if_need()
-        checkSimulator()
+        check_start_mode(get_start_mode())
+        check_simulator()
         # prepareBeanRefContextXml call zstack-ctl configure xxx modify encrypt properties,
         # execute check_encrypt_properties before prepareBeanRefContextXml
         check_encrypt_properties()
-        prepareBeanRefContextXml()
+        prepare_bean_ref_context_xml()
 
         linux.sync_file(ctl.properties_file_path)
         start_mgmt_node()
