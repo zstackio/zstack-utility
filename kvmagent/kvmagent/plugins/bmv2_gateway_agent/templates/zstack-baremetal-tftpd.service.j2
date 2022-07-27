@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=forking
-ExecStart=/usr/sbin/in.tftpd --verbose --listen --user root --address 0.0.0.0:69 --map-file {{ bm_gateway_tftpd_mapfile }} {{ bm_gateway_tftpboot_dir }}
+ExecStart=/usr/sbin/in.tftpd --verbose --listen --user root --address 0.0.0.0:69 -c --map-file {{ bm_gateway_tftpd_mapfile }} {{ bm_gateway_tftpboot_dir }}
 ExecStop=/bin/kill -15 $MAINPID
 
 [Install]

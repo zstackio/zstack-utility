@@ -19,8 +19,10 @@ import multiprocessing
 import os
 import sys
 import platform
+import traceback
 
 PROVISION_NET = "{{ provision_net }}"
+pxe_iface_mac = ''
 
 units_mapping = {
     'kb': 1024,
@@ -123,7 +125,7 @@ def get_nic_info():
     # Get the pxe interface from /proc/cmdline
     # NOTE: Need to point that the mac addr should start with '01', because
     # the arp type of ethernet is 1.
-    pxe_iface_mac = ''
+    global pxe_iface_mac
     with open('/proc/cmdline', 'r') as f:
         for param in f.read().strip().split():
             if 'BOOTIF' in param:
@@ -163,18 +165,22 @@ def get_nic_info():
 def get_disk_info():
     block_devs = []
 
-    cmd = 'lsblk --nodeps --byte --output name,size,rota,type'
+    cmd = 'lsblk --nodeps --byte --output name,size,rota,type,wwn'
     _, stdout, _ = shell_cmd(cmd)
     for line in stdout.split('\n')[1:]:
-        if len(line.split()) != 4:
+        if len(line.split()) != 5:
             continue
-        name, size, rotation, blk_type  = line.split()
+        name, size, rotation, blk_type, wwn  = line.split()
 
         if blk_type.lower() != 'disk':
             continue
 
         disk_type = 'SSD' if rotation == '0' else 'HDD'
-        _, wwn, _ = shell_cmd("smartctl -i /dev/%s | awk '/Logical Unit id/{print $4}'" % name)
+        # get longest wwn
+        _, output, _ = shell_cmd("ls -l /dev/disk/by-id | grep -e wwn -e nvme-eui | grep %s | awk 'NR==1 {print $9}'" % name)
+        if output != '':
+            wwn = output.split("-")[1]
+
         block_devs.append({
             'diskType': disk_type,
             'diskSize': size,
@@ -241,7 +247,13 @@ def main():
     shell_cmd("poweroff")
 
 
-main()
+try:
+    main()
+except:
+    # pass back the ks err to tftp server on gateway
+    err_file_name = '/root/ks.{}'.format(pxe_iface_mac.replace(':','-'))
+    traceback.print_exc(file=open(err_file_name,'w+'))
+    shell_cmd("curl -T {} tftp://{}/ks.errlogs/".format(err_file_name, PROVISION_NET))
 
 
 %end

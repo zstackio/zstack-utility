@@ -32,7 +32,7 @@ LEGACY_MINI_INSTALL_ROOT="/usr/local/zstack-mini/"
 export TERM=xterm
 
 OS=''
-REDHAT_OS="CENTOS6 CENTOS7 RHEL7 ALIOS7 ISOFT4 KYLIN10 EULER20"
+REDHAT_OS="CENTOS6 CENTOS7 RHEL7 ALIOS7 ISOFT4 KYLIN10 EULER20 UOS1020A"
 DEBIAN_OS="UBUNTU14.04 UBUNTU16.04 UBUNTU KYLIN4.0.2 DEBIAN9 UOS20"
 XINCHUANG_OS="ns10 uos20"
 SUPPORTED_OS="$REDHAT_OS $DEBIAN_OS"
@@ -119,6 +119,7 @@ MIRROR_ALI_YUM_REPOS='alibase,aliupdates,aliextras,aliepel,ali-qemu-ev'
 MIRROR_ALI_YUM_WEBSITE='mirrors.aliyun.com'
 #used for zstack.properties Ansible.var.zstack_repo
 ZSTACK_PROPERTIES_REPO=''
+ZSTACK_ANSIBLE_EXECUTABLE='python2'
 ZSTACK_OFFLINE_INSTALL='n'
 
 QUIET_INSTALLATION=''
@@ -163,6 +164,11 @@ stop_zstack_tui() {
 disable_zstack_tui() {
   sed -i '/agetty -n/s/ -n -l \/usr\/local\/zstack_tui\/zstack_tui//g' $ZSTACK_TUI_SERVICE 2>/dev/null
   systemctl daemon-reload
+}
+
+kill_zstack_tui_and_restart_tty1(){
+  pkill -9 zstack_tui
+  systemctl restart getty@tty1.service
 }
 
 # stop zstack_tui to prevent zstack auto installation
@@ -713,7 +719,7 @@ cs_check_mysql_password () {
             else
                 dpkg -l | grep mysql-community >>$ZSTACK_INSTALL_LOG 2>&1 && mysql_community='y'
             fi
-            [ "$mysql_community" = "y" ] && fail2 "Detect mysql-community installed, please uninstall it due to ${PRODUCT_NAME} will use mariadb."
+            #[ "$mysql_community" = "y" ] && fail2 "Detect mysql-community installed, please uninstall it due to ${PRODUCT_NAME} will use mariadb."
         fi
 
         if [ -z $MYSQL_ROOT_PASSWORD ] && [ -z $ONLY_INSTALL_ZSTACK ]; then
@@ -781,7 +787,7 @@ check_system(){
     echo_title "Check System"
     echo ""
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
-    cat /etc/*-release |egrep -i -h "centos |Red Hat Enterprise|Alibaba|NeoKylin|Kylin Linux Advanced Server release V10|openEuler" >>$ZSTACK_INSTALL_LOG 2>&1
+    cat /etc/*-release |egrep -i -h "centos |Red Hat Enterprise|Alibaba|NeoKylin|Kylin Linux Advanced Server release V10|openEuler|UnionTech OS Server release 20 \(kongzi\)" >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -eq 0 ]; then
         grep -qi 'CentOS release 6' /etc/system-release && OS="CENTOS6"
         grep -qi 'CentOS Linux release 7' /etc/system-release && OS="CENTOS7"
@@ -791,6 +797,7 @@ check_system(){
         grep -qi 'NeoKylin Linux' /etc/system-release && OS="RHEL7"
         grep -qi 'Kylin Linux Advanced Server release V10' /etc/system-release && OS="KYLIN10"
         grep -qi 'openEuler release 20.03 (LTS-SP1)' /etc/system-release && OS="EULER20"
+        grep -qi 'UnionTech OS Server release 20 (kongzi)' /etc/system-release && OS="UOS1020A"
         if [[ -z "$OS" ]];then
             fail2 "Host OS checking failure: your system is: `cat /etc/redhat-release`, $PRODUCT_NAME management node only supports $SUPPORTED_OS currently"
         elif [[ $OS == "CENTOS7" ]];then
@@ -849,6 +856,7 @@ check_system(){
     show_spinner do_check_system
     cs_check_zstack_data_exist
     show_spinner cs_create_repo
+    cs_check_python_installed
 }
 
 cs_create_repo(){
@@ -860,6 +868,13 @@ cs_create_repo(){
         create_apt_source
     fi
     pass
+}
+
+cs_check_python_installed(){
+    # ansible1.9.6 is depended on by python2
+    which python2 >/dev/null 2>&1
+    [ $? -ne 0 ] && yum --disablerepo=* --enablerepo=zstack-local install -y python2 >/dev/null 2>&1
+    [ ! -f /usr/bin/python -a -f /usr/bin/python2 ] && ln -s /usr/bin/python2 /usr/bin/python
 }
 
 cs_check_epel(){
@@ -1070,7 +1085,7 @@ ia_check_ip_hijack(){
 ia_install_python_gcc_rh(){
     echo_subtitle "Install Python and GCC"
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
-    req_pkgs='python python-devel gcc'
+    req_pkgs='python2 python2-devel gcc'
     [ ! -d /usr/lib64/python2.7/site-packages/pycrypto-2.6.1-py2.7.egg-info ] && req_pkgs=${req_pkgs}" python2-crypto"
     if [ ! -z $ZSTACK_YUM_REPOS ];then
         if [ -z $DEBUG ];then
@@ -1243,6 +1258,10 @@ upgrade_zstack(){
     else
         zstack-ctl configure chrony.serverIp.0="${MANAGEMENT_IP}"
     fi
+
+    # configure RepoVersion.Strategy if not exists
+    zstack-ctl show_configuration | grep "RepoVersion.Strategy" >/dev/null 2>&1
+    [ $? -ne 0 ] && zstack-ctl configure RepoVersion.Strategy="permissive"
 
     if [ ! -z $ONLY_UPGRADE_CTL ]; then
         return
@@ -1500,7 +1519,6 @@ is_install_general_libs_rh(){
             rpcbind \
             vconfig \
             vim-minimal \
-            python-devel \
             python2-devel \
             gcc \
             grafana \
@@ -1528,8 +1546,8 @@ is_install_general_libs_rh(){
             ipmitool \
             nginx \
             psmisc \
-            python-backports-ssl_match_hostname \
-            python-setuptools \
+            python2-backports-ssl_match_hostname \
+            python2-setuptools \
             avahi \
             gnutls-utils \
             avahi-tools \
@@ -2384,6 +2402,13 @@ cs_config_zstack_properties(){
         fi
     fi
 
+    if [ ! -z $ZSTACK_ANSIBLE_EXECUTABLE ];then
+        zstack-ctl configure Ansible.executable=${ZSTACK_ANSIBLE_EXECUTABLE}
+        if [ $? -ne 0 ];then
+            fail "failed to configure ansible executable to $ZSTACK_ANSIBLE_EXECUTABLE"
+        fi
+    fi
+
     pass
 }
 
@@ -3198,7 +3223,7 @@ invalid_virt_win_repo=/etc/yum.repos.d/virt-win.repo
 
 check_hybrid_arch(){
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
-    if [ -d /opt/zstack-dvd/x86_64 -a -d /opt/zstack-dvd/aarch64 ];then
+    if [ `ls /opt/zstack-dvd | egrep 'x86_64|aarch64|mips64el|loongarch64' | wc -l` -gt 1 ];then
         fail2 "Hybrid arch exists but repo not matched all, please contact and get correct iso to upgrade local repo first."
     fi
     REPO_MATCHED=false
@@ -3220,12 +3245,18 @@ check_sync_local_repos() {
   if [[ $XINCHUANG_OS =~ $ZSTACK_RELEASE ]]; then
       SKIP_SYNC='y'
   fi
+
   [ -f ".repo_version" ] || fail2 "Cannot found current repo_version file, please make sure you have correct ${PRODUCT_NAME,,}-installer package."
-  if [ -d /opt/zstack-dvd/$BASEARCH ];then
-    for release in `ls /opt/zstack-dvd/$BASEARCH`;do
-      cmp -s .repo_version /opt/zstack-dvd/$BASEARCH/$release/.repo_version || check_hybrid_arch
+  rls=`find /opt/zstack-dvd/ -name ".repo_version"`
+  which zstack-ctl > /dev/null 2>&1
+  if [ $? -eq 0 -a x`zstack-ctl get_configuration RepoVersion.Strategy 2>/dev/null` == x"enforcing" ];then
+    for release in $rls;do
+      cmp -s .repo_version $release || check_hybrid_arch
     done
+  else
+    [ `cat .repo_version` -eq `cat $rls | sort -r | head -n 1` ] || REPO_MATCHED="false"
   fi
+
   if [ x"$REPO_MATCHED" = x"true" ]; then
       return 0
   elif [ x"$SKIP_SYNC" = x'y' -o x"$BASEARCH" != x"x86_64" ]; then
@@ -3919,6 +3950,7 @@ if [ x"$UPGRADE" = x'y' ]; then
         echo ""
         echo_star_line
         disable_zstack_tui
+        kill_zstack_tui_and_restart_tty1
         exit 0
     fi
 
@@ -3964,6 +3996,7 @@ if [ x"$UPGRADE" = x'y' ]; then
     echo_custom_pcidevice_xml_warning_if_need
     echo_star_line
     disable_zstack_tui
+    kill_zstack_tui_and_restart_tty1
     post_scripts_to_restore_iptables_rules
     if [[ $DEBIAN_OS =~ $OS ]];then
         post_restore_source_on_debian
@@ -3991,6 +4024,7 @@ if [ ! -z $ONLY_INSTALL_LIBS ];then
     echo "P.S.: selinux is disabled!"
     echo_star_line
     disable_zstack_tui
+    kill_zstack_tui_and_restart_tty1
     exit 0
 fi
 
@@ -4018,6 +4052,7 @@ if [ ! -z $ONLY_INSTALL_ZSTACK ]; then
     check_ha_need_upgrade
     echo_star_line
     disable_zstack_tui
+    kill_zstack_tui_and_restart_tty1
     exit 0
 fi
 
@@ -4045,6 +4080,8 @@ if [ ! -z $NEED_SET_MN_IP ];then
         zstack-ctl configure consoleProxyOverriddenIp="${MANAGEMENT_IP}"
     fi
 fi
+
+zstack-ctl configure RepoVersion.Strategy="permissive"
 
 # configure chrony.serverIp if not exists
 zstack-ctl show_configuration | grep '^[[:space:]]*chrony.serverIp.' >/dev/null 2>&1
@@ -4108,7 +4145,13 @@ trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     fi
 }
 
+config_firewalld(){
+    systemctl stop firewalld
+    systemctl disable firewalld
+}
+
 config_journal
+config_firewalld
 
 #Install SDS
 if [ x"$SDS_INSTALL" = x"y" ];then
@@ -4167,5 +4210,6 @@ echo_chrony_server_warning_if_need
 check_ha_need_upgrade
 echo_star_line
 disable_zstack_tui
+kill_zstack_tui_and_restart_tty1
 post_scripts_to_restore_iptables_rules
 

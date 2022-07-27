@@ -11,6 +11,7 @@ import os
 
 from zstacklib.utils import bash
 from zstacklib.utils import log
+from zstacklib.utils import linux
 
 logger = log.get_logger(__name__)
 
@@ -34,7 +35,7 @@ def ignoreerror(func):
             logger.warn(err)
     return wrap
 
-
+@linux.with_arch(todo_list=['x86_64'])
 def isMiniHost():
     r, o = bash.bash_ro("dmidecode -s system-product-name")
     if r != 0:
