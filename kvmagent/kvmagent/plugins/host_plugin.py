@@ -1660,7 +1660,7 @@ done
             # for NVIDIA A-Series, after driver successfully installed, virtfn files will be created
             # set deviceId and vendorId null
             virtfn = os.path.join(dev, os.readlink(physfn), 'virtfn0')
-            if os.path.exists(virtfn):
+            if to.type in ('GPU_3D_Controller', 'GPU_Video_Controller') and os.path.exists(virtfn):
                 to.deviceId = ""
                 to.vendorId = ""
             else:
