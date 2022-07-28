@@ -161,9 +161,14 @@ def removeZeroFromMacAddress(mac):
         newMac = newMac[1:]
     return newMac
 
+def is_sriovVf_nic(nic):
+    return os.path.exists("/sys/class/net/%s/device/physfn/" % nic)
 
 def get_nic_supported_max_speed(nic):
     if get_nic_driver_type(nic) == "virtio_net":
+        return 0
+
+    if is_sriovVf_nic(nic):
         return 0
 
     r, o = bash.bash_ro("ethtool %s" % nic)  # type: (int, str)
@@ -237,7 +242,7 @@ def get_host_physicl_nics():
     nic_without_sriov = []
     for nic in nic_all_physical:
         # exclude sriov vf nics
-        if not os.path.exists("/sys/class/net/%s/device/physfn/" % nic):
+        if not is_sriovVf_nic(nic):
             nic_without_sriov.append(nic)
 
     nic_without_virtual = []
