@@ -2,6 +2,7 @@
 @author: Frank
 '''
 import contextlib
+import difflib
 import os.path
 import tempfile
 import time
@@ -942,21 +943,6 @@ class LibvirtAutoReconnect(object):
 
     @staticmethod
     def register_libvirt_callbacks():
-        def reboot_callback(conn, dom, opaque):
-            cbs = LibvirtAutoReconnect.libvirt_event_callbacks.get(libvirt.VIR_DOMAIN_EVENT_ID_REBOOT)
-            if not cbs:
-                return
-
-            for cb in cbs:
-                try:
-                    cb(conn, dom, opaque)
-                except:
-                    content = traceback.format_exc()
-                    logger.warn(content)
-
-        LibvirtAutoReconnect.conn.domainEventRegisterAny(None, libvirt.VIR_DOMAIN_EVENT_ID_REBOOT, reboot_callback,
-                                                         None)
-
         def lifecycle_callback(conn, dom, event, detail, opaque):
             cbs = LibvirtAutoReconnect.libvirt_event_callbacks.get(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE)
             if not cbs:
@@ -971,6 +957,26 @@ class LibvirtAutoReconnect(object):
 
         LibvirtAutoReconnect.conn.domainEventRegisterAny(None, libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE,
                                                          lifecycle_callback, None)
+
+        def record_block_job_event(conn, dom, disk, type, status, opaque):
+            logger.debug("record block job: vm %s on disk %s type %s status %s. %s" % (dom.name(), disk,
+             LibvirtEventManager.block_job_type_to_string(type),
+             LibvirtEventManager.block_job_status_to_string(status), opaque))
+
+        def reboot_callback(conn, dom, opaque):
+            cbs = LibvirtAutoReconnect.libvirt_event_callbacks.get(libvirt.VIR_DOMAIN_EVENT_ID_REBOOT)
+            if not cbs:
+                return
+
+            for cb in cbs:
+                try:
+                    cb(conn, dom, opaque)
+                except:
+                    content = traceback.format_exc()
+                    logger.warn(content)
+
+        LibvirtAutoReconnect.conn.domainEventRegisterAny(None, libvirt.VIR_DOMAIN_EVENT_ID_BLOCK_JOB, record_block_job_event, None)
+        LibvirtAutoReconnect.conn.domainEventRegisterAny(None, libvirt.VIR_DOMAIN_EVENT_ID_REBOOT, reboot_callback, None)
 
         def libvirtClosedCallback(conn, reason, opaque):
             reasonStrings = (
@@ -1281,6 +1287,21 @@ class VirtioIscsi(object):
         secret = call_libvirt()
         secret.setValue(self.chap_password)
         return secret.UUIDString()
+
+class MergeSnapshotDaemon(plugin.TaskDaemon):
+    def __init__(self, task_spec, domain, disk_name, timeout=None):
+        super(MergeSnapshotDaemon, self).__init__(task_spec, 'mergeSnapshot', timeout, report_progress=False)
+        self.domain = domain
+        self.disk_name = disk_name
+
+    def _cancel(self):
+        logger.debug('cancelling vm[uuid:%s] merge snapshost' % self.domain.name())
+        # cancel block job async
+        self.domain.blockJobAbort(self.disk_name, 0)
+
+    def _get_percent(self):
+        # type: () -> int
+        pass
 
 
 @linux.retry(times=3, sleep_time=1)
@@ -2333,6 +2354,8 @@ class Vm(object):
         try:
             cur = status.get('cur', 0)
             end = status.get('end', 0)
+            job_type = LibvirtEventManager.block_job_type_to_string(status.get('type'))
+            logger.debug("block job[type:%s] of disk:%s current progress cur:%s end:%s" % (job_type, disk_path, cur, end))
         except Exception as e:
             logger.warn(linux.get_exception_stacktrace())
             return False
@@ -2546,7 +2569,7 @@ class Vm(object):
                              % (struct.installPath, "" if existing else " not"))
 
 
-    def take_volume_snapshot(self, volume, install_path, full_snapshot=False):
+    def take_volume_snapshot(self, task_spec, volume, install_path, full_snapshot=False):
         device_id = volume.deviceId
         target_disk, disk_name = self._get_target_disk(volume)
         snapshot_dir = os.path.dirname(install_path)
@@ -2594,7 +2617,7 @@ class Vm(object):
                              % (install_path, "" if existing else " not"))
 
         def take_full_snapshot():
-            self.block_stream_disk(volume)
+            self.block_stream_disk(task_spec, volume)
             return take_delta_snapshot()
 
         if first_snapshot:
@@ -2607,8 +2630,7 @@ class Vm(object):
         else:
             return take_delta_snapshot()
 
-    def block_stream_disk(self, volume):
-        target_disk, disk_name = self._get_target_disk(volume)
+    def _do_block_stream_disk(self, task_spec, target_disk, disk_name):
         install_path = target_disk.source.file_
         logger.debug('start block stream for disk %s' % disk_name)
         self.domain.blockRebase(disk_name, None, 0, 0)
@@ -2619,7 +2641,7 @@ class Vm(object):
             logger.debug('block stream is waiting for %s blockRebase job completion' % disk_name)
             return not self._wait_for_block_job(disk_name, abort_on_error=True)
 
-        if not linux.wait_callback_success(wait_job, timeout=21600, ignore_exception_in_callback=True):
+        if not linux.wait_callback_success(wait_job, timeout=task_spec.timeout, ignore_exception_in_callback=True):
             raise kvmagent.KvmError('block stream failed')
 
         def wait_backing_file_cleared(_):
@@ -2627,6 +2649,11 @@ class Vm(object):
 
         if not linux.wait_callback_success(wait_backing_file_cleared, timeout=60, ignore_exception_in_callback=True):
             raise kvmagent.KvmError('block stream succeeded, but backing file is not cleared')
+
+    def block_stream_disk(self, task_spec, volume):
+        target_disk, disk_name = self._get_target_disk(volume)
+        with MergeSnapshotDaemon(task_spec, self.domain, disk_name, task_spec.timeout - 10):
+            self._do_block_stream_disk(task_spec, target_disk, disk_name)
 
     def list_blk_sources(self):
         """list domain blocks (aka. domblklist) -- but with sources only"""
@@ -3129,39 +3156,53 @@ class Vm(object):
             raise kvmagent.KvmError("vm is not running, cannot connect to qemu-ga")
 
     def merge_snapshot(self, cmd):
-        target_disk, disk_name = self._get_target_disk(cmd.volume)
+        _, disk_name = self._get_target_disk(cmd.volume)
 
-        @linux.retry(times=3, sleep_time=3)
         def do_pull(base, top):
             logger.debug('start block rebase [active: %s, new backing: %s]' % (top, base))
 
             # Double check (c.f. issue #1323)
+            logger.debug('merge snapshot is checking previous block job of disk:%s' % disk_name)
+
+            start_timeout = time.time()
+            end_time = start_timeout + cmd.timeout
+
+            def get_timeout_seconds(exception_if_timeout=True):
+                current_timeout = time.time()
+                if current_timeout >= end_time and exception_if_timeout:
+                    raise kvmagent.KvmError('live merging snapshot chain failed, timeout after %d seconds' % current_timeout - start_timeout)
+
+                return end_time - current_timeout
+
             def wait_previous_job(_):
-                logger.debug('merge snapshot is checking previous block job')
                 return not self._wait_for_block_job(disk_name, abort_on_error=True)
 
-            if not linux.wait_callback_success(wait_previous_job, timeout=21600, ignore_exception_in_callback=True):
+            if not linux.wait_callback_success(wait_previous_job, timeout=get_timeout_seconds(), ignore_exception_in_callback=True):
                 raise kvmagent.KvmError('merge snapshot failed - pending previous block job')
 
             self.domain.blockRebase(disk_name, base, 0)
 
+            logger.debug('merging snapshot chain is waiting for blockRebase job of %s completion' % disk_name)
             def wait_job(_):
-                logger.debug('merging snapshot chain is waiting for blockRebase job completion')
                 return not self._wait_for_block_job(disk_name, abort_on_error=True)
 
-            if not linux.wait_callback_success(wait_job, timeout=21600):
-                raise kvmagent.KvmError('live merging snapshot chain failed, timeout after 6 hours')
+            if not linux.wait_callback_success(wait_job, timeout=get_timeout_seconds()):
+                raise kvmagent.KvmError('live merging snapshot chain failed, block job not finished')
 
             # Double check (c.f. issue #757)
-            if self._get_back_file(top) != base:
+            current_backing = self._get_back_file(top)
+            if current_backing != base:
+                logger.debug("live merge snapshot filed. Expected backing %s, actuall backing %s" % (base, current_backing))
                 raise kvmagent.KvmError('[libvirt bug] live merge snapshot failed')
 
             logger.debug('end block rebase [active: %s, new backing: %s]' % (top, base))
 
-        if cmd.fullRebase:
-            do_pull(None, cmd.destPath)
-        else:
-            do_pull(cmd.srcPath, cmd.destPath)
+        # confirm MergeSnapshotDaemon's cancel will be invoked before block job wait
+        with MergeSnapshotDaemon(cmd, self.domain, disk_name, cmd.timeout - 10):
+            if cmd.fullRebase:
+                do_pull(None, cmd.destPath)
+            else:
+                do_pull(cmd.srcPath, cmd.destPath)
 
     def take_volumes_shallow_backup(self, task_spec, volumes, dst_backup_paths):
         # type: (Vm, jsonobject.JsonObject, list[xmlobject.XmlObject], dict[str, str]) -> None
@@ -4454,6 +4495,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_MIGRATE_VM_PATH = "/vm/migrate"
     KVM_BLOCK_LIVE_MIGRATION_PATH = "/vm/blklivemigration"
     KVM_TAKE_VOLUME_SNAPSHOT_PATH = "/vm/volume/takesnapshot"
+    KVM_CHECK_VOLUME_SNAPSHOT_PATH = "/vm/volume/checksnapshot"
     KVM_TAKE_VOLUME_BACKUP_PATH = "/vm/volume/takebackup"
     KVM_BLOCK_STREAM_VOLUME_PATH = "/vm/volume/blockstream"
     KVM_TAKE_VOLUMES_SNAPSHOT_PATH = "/vm/volumes/takesnapshot"
@@ -5422,6 +5464,65 @@ class VmPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def check_volume_snapshot(self, req):
+        """ Take snapshot for a volume
+
+        :param req: The request obj, exmaple of req.body::
+            {
+                'vmUuid': '0dc62031678d404095e464fb217a2669',
+                'volumeUuid': '2e9fd964ba334214aaadc6e16b9ae72b',
+                'volumeChainToCheck': {"path1":1, "path2":0, "path3":2}
+            }
+        """
+        rsp = kvmagent.AgentResponse()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
+        if vm and vm.state != vm.VM_STATE_RUNNING and vm.state != vm.VM_STATE_SHUTDOWN and vm.state != vm.VM_STATE_PAUSED:
+            raise kvmagent.KvmError(
+                'unable to take snapshot on vm[uuid:{0}] volume[id:{1}], because vm is not Running, Stopped or Paused, current state is {2}'.format(
+                vm.uuid, cmd.volume.deviceId, vm.state))
+
+        sorted_volume_chain = map(lambda x: x[0], sorted(cmd.volumeChainToCheck.items(), key=lambda item: item[1], reverse=True))
+
+        # check if any inconsistent issue happened on top layer
+        disk, disk_name = vm._get_target_disk_by_path(sorted_volume_chain[0], is_exception=False)
+        if disk_name is None and disk is None:
+            rsp.success = False
+            rsp.error = "cannot found volume[uuid:%s] with install path %s. Please check volume's top layer" % (
+                cmd.volumeUuid, sorted_volume_chain[0])
+            return jsonobject.dumps(rsp)
+
+        back_file_chain = vm._get_backfile_chain(cmd.currentInstallPath)
+        # get backing files and insert currentInstallPath at first for compare
+        back_file_chain.insert(0, cmd.currentInstallPath)
+
+        # image cache should be excluded from host side
+        if cmd.excludeInstallPaths and len(cmd.excludeInstallPaths) > 0:
+            logger.debug("those paths %s should be exlcuded in back_file_chain" % cmd.excludeInstallPaths)
+            back_file_chain = filter(lambda a: a not in cmd.excludeInstallPaths, back_file_chain)
+
+        if back_file_chain == sorted_volume_chain:
+            logger.debug('volume[uuid:%s] chain matched, return success' % cmd.volumeUuid)
+            return jsonobject.dumps(rsp)
+
+        logger.debug("""
+CHECK VOLUME SNAPSHOT CHAIN
+vm instance uuid: {0}
+volume uuid: {1}
+management node side snapshot files chain:
+{2}
+host side snapshot files chian:
+{3}""".format(cmd.vmUuid, cmd.volumeUuid, '\n'.join(sorted_volume_chain), '\n'.join(back_file_chain)))
+
+        result = list(difflib.context_diff(sorted_volume_chain, back_file_chain, 'Management Node Side', 'HostSide', lineterm=''))
+        if len(result) > 0:
+            rsp.success = False
+            rsp.error = "%s%s%s" % ('\n', '\n'.join(result), '\n')
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     def take_volume_snapshot(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = TakeSnapshotResponse()
@@ -5464,7 +5565,8 @@ class VmPlugin(kvmagent.KvmAgent):
                             vm.uuid, cmd.volume.deviceId, vm.state))
 
                 if vm and (vm.state == vm.VM_STATE_RUNNING or vm.state == vm.VM_STATE_PAUSED):
-                    rsp.snapshotInstallPath, rsp.newVolumeInstallPath = vm.take_volume_snapshot(cmd.volume,
+                    rsp.snapshotInstallPath, rsp.newVolumeInstallPath = vm.take_volume_snapshot(cmd,
+                                                                                                cmd.volume,
                                                                                                 cmd.installPath,
                                                                                                 cmd.fullSnapshot)
                 else:
@@ -5758,7 +5860,7 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.success = True
             return jsonobject.dumps(rsp)
 
-        vm.block_stream_disk(cmd.volume)
+        vm.block_stream_disk(cmd, cmd.volume)
         rsp.success = True
         return jsonobject.dumps(rsp)
 
@@ -6867,6 +6969,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_MIGRATE_VM_PATH, self.migrate_vm)
         http_server.register_async_uri(self.KVM_BLOCK_LIVE_MIGRATION_PATH, self.block_migrate_vm)
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_SNAPSHOT_PATH, self.take_volume_snapshot)
+        http_server.register_async_uri(self.KVM_CHECK_VOLUME_SNAPSHOT_PATH, self.check_volume_snapshot)
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_BACKUP_PATH, self.take_volume_backup, cmd=TakeVolumeBackupCommand())
         http_server.register_async_uri(self.KVM_TAKE_VOLUMES_SNAPSHOT_PATH, self.take_volumes_snapshots)
         http_server.register_async_uri(self.KVM_TAKE_VOLUMES_BACKUP_PATH, self.take_volumes_backups, cmd=TakeVolumesBackupsCommand())

@@ -61,6 +61,19 @@ class LibvirtEventManager():
     suspend_events[7] = "VIR_DOMAIN_EVENT_SUSPENDED_POSTCOPY"
     suspend_events[8] = "VIR_DOMAIN_EVENT_SUSPENDED_POSTCOPY_FAILED"
 
+    block_job_types = {}
+    block_job_types[0] = "unknown"
+    block_job_types[1] = "Pull"
+    block_job_types[2] = "Copy"
+    block_job_types[3] = "Commit"
+    block_job_types[4] = "ActiveCommit"
+
+    block_job_status = {}
+    block_job_status[0] = "Completed"
+    block_job_status[1] = "Failed"
+    block_job_status[2] = "Canceled"
+    block_job_status[3] = "Ready"
+
     @staticmethod
     def event_to_string(index):
         # type: (int) -> str
@@ -69,3 +82,11 @@ class LibvirtEventManager():
     @staticmethod
     def suspend_event_to_string(index):
         return LibvirtEventManager.suspend_events[index]
+
+    @staticmethod
+    def block_job_type_to_string(index):
+        return LibvirtEventManager.block_job_types.get(index)
+
+    @staticmethod
+    def block_job_status_to_string(index):
+        return LibvirtEventManager.block_job_status.get(index)
