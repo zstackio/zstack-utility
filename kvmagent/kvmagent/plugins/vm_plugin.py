@@ -4484,10 +4484,7 @@ class Vm(object):
 
         def make_video():
             devices = elements['devices']
-            if HOST_ARCH == 'aarch64':
-                video = e(devices, 'video')
-                e(video, 'model', None, {'type': 'virtio'})
-            elif cmd.videoType != "qxl":
+            if cmd.videoType != "qxl":
                 video = e(devices, 'video')
                 e(video, 'model', None, {'type': str(cmd.videoType)})
             else:
