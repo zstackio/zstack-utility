@@ -678,8 +678,8 @@ class HostPlugin(kvmagent.KvmAgent):
     def ping(self, req):
         rsp = PingResponse()
         rsp.hostUuid = self.host_uuid
-        rsp.sendCommandUrl = self.config[kvmagent.SEND_COMMAND_URL]
-        rsp.version = self.config[kvmagent.VERSION]
+        rsp.sendCommandUrl = self.config.get(kvmagent.SEND_COMMAND_URL)
+        rsp.version = self.config.get(kvmagent.VERSION)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
