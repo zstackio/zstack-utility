@@ -1903,6 +1903,9 @@ class Vm(object):
         self.vm_user_defined_xml_hook = False
         self.vm_xml_hook_script = None
 
+    def dump_vm_xml_to_log(self):
+        logger.debug('dump vm xml:\n%s' % self.domain_xml)
+
     def set_user_defined_xml_hook(self, xml_hook_script):
         self.vm_xml_hook_script = xml_hook_script
         self.vm_user_defined_xml_hook = True
@@ -2866,6 +2869,9 @@ class Vm(object):
                     linux.umount(mount_path)
                     linux.rmdir_if_empty(mount_path)
                     lvm.deactive_lv(struct.installPath)
+
+            if memory_snapshot_required:
+                self.dump_vm_xml_to_log()
 
 
     def take_volume_snapshot(self, task_spec, volume, install_path, full_snapshot=False):
