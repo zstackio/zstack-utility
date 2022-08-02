@@ -3244,7 +3244,7 @@ class Vm(object):
             if "cannot set up guest memory" in err:
                 raise kvmagent.KvmError("No enough physical memory for guest")
             elif "would exceed domain's maxMemory config" in err:
-                raise kvmagent.KvmError(err + "; please check if you have rebooted the VM to make NUMA take effect")
+                raise kvmagent.KvmError(err + "; please check if you have rebooted the VM to make Instance Offering Online Modification take effect")
             else:
                 raise kvmagent.KvmError(err)
         return
@@ -3259,7 +3259,7 @@ class Vm(object):
             logger.warn('unable to set cpus in vm[uuid:%s], %s' % (self.uuid, err))
 
             if "requested vcpus is greater than max" in err:
-                err += "; please check if you have rebooted the VM to make NUMA take effect"
+                err += "; please check if you have rebooted the VM to make Instance Offering Online Modification take effect"
 
             raise kvmagent.KvmError(err)
         return
