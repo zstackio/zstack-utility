@@ -1034,8 +1034,11 @@ class CephAgent(object):
         return jsonobject.dumps(rsp)
 
     def export(self, req, rsp, **kwargs):
+        def get_image_name(self, image):
+            return image[len(image) - self.LENGTH_OF_UUID:]
+
         pool_name = kwargs['pool']
-        image_name = kwargs['image']
+        image_name = get_image_name(kwargs['image'])
 
         if isinstance(pool_name, unicode):
             pool_name = pool_name.encode('unicode-escape').decode('string_escape')
@@ -1055,7 +1058,6 @@ class CephAgent(object):
         image_file_obj = ImageFileObject(rbd.Image(ioctx, image_name, read_only=True))
 
         rsp.headers['Content-Type'] = 'application/x-download'
-        rsp.headers['Content-Disposition'] = 'attachment; filename="zs-%s"' % image_name
 
         req_close = req.close
 
