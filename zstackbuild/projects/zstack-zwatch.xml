@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="zstack-zwatch builder" basedir="../">
+    <property name="zsw.bdir" location="${build.dir}/zwatch-vm-agent/" />
+    <property name="zsw.ansible.dir" location="${kvmagent.source}/ansible/" />
+
+    <target name="build-zstack-zwatch">
+        <makeDir dir="${zsw.bdir}" />
+
+        <checkProperty property="zstackzwatch.source" />
+        <checkFile file="${zstackzwatch.source}" />
+
+        <exec executable="make" dir="${zstackzwatch.source}" failonerror="true">
+            <arg value="clean" />
+        </exec>
+
+        <exec executable="make" dir="${zstackzwatch.source}" failonerror="true">
+            <arg value="package" />
+        </exec>
+
+        <copy todir="${zsw.bdir}">
+            <fileset dir="${zstackzwatch.source}/target/package/zwatch-vm-agent">
+                <include name="**" />
+            </fileset>
+        </copy>
+    </target>
+
+    <target name="assemble-zstack-zwatch">
+        <copy todir="${zsw.ansible.dir}">
+            <fileset dir="${zsw.bdir}">
+                <include name="**" />
+            </fileset>
+        </copy>
+        <exec executable="/bin/bash" dir="${zsw.ansible.dir}" failonerror="true">
+            <arg value="${checkmd5.bin.script}" />
+        </exec>
+    </target>
+</project>
