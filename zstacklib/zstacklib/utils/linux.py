@@ -1687,6 +1687,11 @@ def list_all_file(path):
         else:
             yield fi_d
 
+def listdir(d):
+    try:
+        return os.listdir(d)
+    except:
+        return []
 
 def find_file(file_name, current_path, parent_path_depth=2, sub_folder_first=False):
     ''' find_file will return a file path, when finding a file in given path.
