@@ -229,7 +229,7 @@ class CephPoolCapacity:
         self.available_capacity = 0
         self.used_capacity = 0
         self.crush_rule_item_names = []
-        self.crush_item_osds = []
+        self.crush_item_osds = set()
         self.crush_item_osds_total_size = 0
         self.pool_total_size = 0
 
