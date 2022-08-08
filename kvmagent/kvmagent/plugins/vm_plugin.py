@@ -5059,6 +5059,8 @@ def get_vm_blocks(domain_id):
 def get_block_node_name_by_disk_name(domain_id, disk_name):
     all_blocks = get_vm_blocks(domain_id)
     block = filter(lambda b: disk_name in b['qdev'], all_blocks)[0]
+    if LooseVersion(LIBVIRT_VERSION) < LooseVersion("6.0.0"):
+        return block['device']
     return block["inserted"]['node-name']
 
 def get_vm_migration_caps(domain_id, cap_key):
