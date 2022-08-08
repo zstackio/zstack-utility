@@ -787,18 +787,21 @@ class HostPlugin(kvmagent.KvmAgent):
             loop += 1
         return ''
     
-    def cache_units_convert(str):
+    def _cache_units_convert(self, str):
 
         unit = str.strip().split(" ")[1]
-        value = '%.2f' % float(str.strip().split(" ")[0])
+        # change str to float (exam: "76.8" --> 76.8 )
+        value = float(str.strip().split(" ")[0])
         if unit == 'KiB':
             value = value * 1.024
         elif unit == 'MiB':
-            value == value * 1.024 * 1024
+            value = value * 1.024 * 1024
         elif unit == 'GiB':
-            value == value * 1.024 * 1024 * 1024
+            value = value * 1.024 * 1024 * 1024
+        else:
+            value = 0
         
-        return value
+        return '%.2f' % value
 
     @kvmagent.replyerror
     def fact(self, req):
@@ -864,19 +867,28 @@ class HostPlugin(kvmagent.KvmAgent):
             cpu_processor_num = shell.call("lscpu | grep -m1 'CPU(s)' | awk -F ':' '{print $2}'")                    
             rsp.cpuProcessorNum = int(cpu_processor_num.strip())                                                         
 
+
+            '''
+            examples:         
+                    lscpu | grep 'L1i cache'
+                    L1i cache:                       768 KiB
+                    lscpu | grep 'L1d cache'
+                    L1d cache:                       768 KiB
+            '''
+
             cpu_l1d_cache = shell.call("lscpu | grep 'L1i cache' | awk -F ':' '{print $2}'") 
             cpu_l1i_cache = shell.call("lscpu | grep 'L1d cache' | awk -F ':' '{print $2}'")
             cpu_l1_cache = ''
             if bool(re.search(r'\d', cpu_l1d_cache)) and bool(re.search(r'\d', cpu_l1i_cache)):
-                cpu_l1_cache = self.cache_units_convert(cpu_l1d_cache) + self.cache_units_convert(cpu_l1i_cache)
+                cpu_l1_cache = self._cache_units_convert(cpu_l1d_cache) + self._cache_units_convert(cpu_l1i_cache)
 
             cpu_l2_cache = shell.call("lscpu | grep 'L2 cache' | awk -F ':' '{print $2}'")
             if bool(re.search(r'\d', cpu_l2_cache)):
-                cpu_l2_cache = self.cache_units_convert(cpu_l2_cache)
+                cpu_l2_cache = self._cache_units_convert(cpu_l2_cache)
 
             cpu_l3_cache = shell.call("lscpu | grep 'L3 cache' | awk -F ':' '{print $2}'")
             if bool(re.search(r'\d', cpu_l3_cache)):
-                cpu_l3_cache = self.cache_units_convert(cpu_l3_cache)
+                cpu_l3_cache = self._cache_units_convert(cpu_l3_cache)
 
             if cpu_l1_cache != '' and cpu_l2_cache != '' and cpu_l3_cache != '':
                 cpuCache = [cpu_l1_cache, cpu_l2_cache, cpu_l3_cache]
