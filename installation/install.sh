@@ -3314,6 +3314,7 @@ CREATE DATABASE IF NOT EXISTS $db;
 GRANT ALL PRIVILEGES on $db.* to $db@'localhost' IDENTIFIED BY PASSWORD '$zops_encrypt_password';
 GRANT ALL PRIVILEGES on $db.* to $db@'%' IDENTIFIED BY PASSWORD '$zops_encrypt_password';
 GRANT SUPER ON *.* to $db@'localhost' IDENTIFIED BY PASSWORD '$zops_encrypt_password';
+GRANT SUPER ON *.* to $db@'%' IDENTIFIED BY PASSWORD '$zops_encrypt_password';
 FLUSH PRIVILEGES;"
     sed -i '/skip-grant-tables/d' $MYSQL_CONF_FILE
     restart_mysql
