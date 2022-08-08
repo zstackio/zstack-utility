@@ -1300,7 +1300,6 @@ class VirtioSCSICeph(object):
         e(disk, 'target', None, {'dev': 'sd%s' % self.dev_letter, 'bus': 'scsi'})
         e(disk, 'wwn', self.volume.wwn)
         if self.volume.shareable:
-            e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none'})
             e(disk, 'shareable')
         if self.volume.physicalBlockSize:
             e(disk, 'blockio', None, {'physical_block_size': str(self.volume.physicalBlockSize)})
@@ -2904,9 +2903,12 @@ class Vm(object):
     def _interface_cmd_to_xml(self, cmd, action=None):
         vhostSrcPath = cmd.addons['vhostSrcPath'] if cmd.addons else None
         brMode = cmd.addons['brMode'] if cmd.addons else None
+        vhostSrcPath = None
 
-        if cmd.nic.type in ovs.OvsDpdkSupportVnic:
-            vhostSrcPath = cmd.nic.srcPath
+        if cmd.nic.type == "vDPA":
+                vhostSrcPath = ovs.OvsCtl().getVdpa(cmd.vmUuid, cmd.nic)
+                if vhostSrcPath is None:
+                    raise Exception("vDPA resource exhausted.")
 
         interface = Vm._build_interface_xml(cmd.nic, None, vhostSrcPath, action, brMode)
 
@@ -3107,7 +3109,7 @@ class Vm(object):
                     # vf nic doesn't have internal name
                     if cmd.nic.pciDeviceAddress is not None:
                         return True
-                    if cmd.nic.type in ovs.OvsDpdkSupportVnic:
+                    if cmd.nic.type == "vDPA":
                         return True
                     else:
                         return linux.is_network_device_existing(cmd.nic.nicInternalName)
@@ -3118,13 +3120,8 @@ class Vm(object):
             if check_device(None):
                 return
 
-            # if nic type is vDPA/dpdkvhostuser, create vDPA/dpdkvhostuser backends in thread.
-            if cmd.nic.type in ovs.OvsDpdkSupportVnic:
-                cmd.nic.srcPath = ovs.getOvsCtl(with_dpdk=True).createNicBackend(cmd.vmUuid, cmd.nic)
-
             xml = self._interface_cmd_to_xml(cmd, action='Attach')
             logger.debug('attaching nic:\n%s' % xml)
-
             if self.state == self.VM_STATE_RUNNING or self.state == self.VM_STATE_PAUSED:
                 self.domain.attachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
             else:
@@ -3172,12 +3169,9 @@ class Vm(object):
             return
 
         try:
-            # if nic type is vDPA/dpdkvhostuser, release it before detach.
-            if cmd.nic.type in ovs.OvsDpdkSupportVnic:
-                cmd.nic.srcPath = ovs.getOvsCtl(with_dpdk=True).destoryNicBackend(cmd.vmUuid, cmd.nic.nicInternalName)
-
             xml = self._interface_cmd_to_xml(cmd, action='Detach')
             logger.debug('detaching nic:\n%s' % xml)
+            ovs.OvsCtl().freeVdpa(cmd.vmUuid, cmd.nic.nicInternalName)
             if self.state == self.VM_STATE_RUNNING or self.state == self.VM_STATE_PAUSED:
                 self.domain.detachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
             else:
@@ -4267,15 +4261,23 @@ class Vm(object):
                 if cmd.coloPrimary or cmd.coloSecondary:
                     Vm._ignore_colo_vm_nic_rom_file_on_interface(nic_xml_object)
 
-            ovsctl = ovs.getOvsCtl(with_dpdk=True)
             devices = elements['devices']
             vhostSrcPath = cmd.addons['vhostSrcPath'] if cmd.addons else None
             brMode = cmd.addons['brMode'] if cmd.addons else None
 
+            ovsctl = ovs.OvsCtl()
+            vdpaNics = []
+            for _, nic in enumerate(cmd.nics):
+                if nic.type == "vDPA":
+                    vdpaNics.append(nic)
+            # get all vdpa resource at once, avoid race condition.
+            vDPAPaths = ovsctl.getVdpaS(cmd.priorityConfigStruct.vmUuid, vdpaNics)
+            if vDPAPaths is None:
+                    raise Exception("vDPA resource exhausted.")
+
             for index, nic in enumerate(cmd.nics):
-                if nic.type in ovs.OvsDpdkSupportVnic:
-                    nic.srcPath = ovsctl.createNicBackend(cmd.priorityConfigStruct.vmUuid, nic)
-                    interface = Vm._build_interface_xml(nic, devices, nic.srcPath, 'Attach', brMode, index)
+                if nic.type == "vDPA" and vDPAPaths.has_key(nic.nicInternalName):
+                    interface = Vm._build_interface_xml(nic, devices, vDPAPaths[nic.nicInternalName], 'Attach', brMode, index)
                 else:
                     interface = Vm._build_interface_xml(nic, devices, vhostSrcPath, 'Attach', brMode, index)
                 addon(interface)
@@ -4705,14 +4707,7 @@ class Vm(object):
 
     @staticmethod
     def _build_interface_xml(nic, devices=None, vhostSrcPath=None, action=None, brMode=None, index=0):
-        def do_need_set_virtio_nic_queue(nicJsonObject, nicInterfaceType):
-            if (nicInterfaceType == 'vhostuser' or
-                nicJsonObject.driverType != 'virtio' or
-                nicJsonObject.vHostAddOn.queueNum == 1):
-                return False
-            return True
-
-        if nic.pciDeviceAddress is not None and nic.srcPath is None:
+        if nic.pciDeviceAddress is not None:
             iftype = 'hostdev'
             device_attr = {'type': iftype, 'managed': 'yes'}
         elif vhostSrcPath is not None:
@@ -4730,7 +4725,7 @@ class Vm(object):
         e(interface, 'mac', None, attrib={'address': nic.mac})
         e(interface, 'alias', None, {'name': 'net%s' % nic.nicInternalName.split('.')[1]})
 
-        if iftype != 'hostdev' and nic.type not in ovs.OvsDpdkSupportVnic:
+        if iftype != 'hostdev' and nic.type != 'vDPA':
             e(interface, 'mtu', None, attrib={'size': '%d' % nic.mtu})
 
         if iftype == 'hostdev':
@@ -4742,15 +4737,12 @@ class Vm(object):
                 vlan = e(interface, 'vlan')
                 e(vlan, 'tag', None, attrib={'id': nic.vlanId})
         elif iftype == 'vhostuser':
-            if brMode != 'mocbr' and nic.type not in ovs.OvsDpdkSupportVnic:
+            if brMode != 'mocbr' and nic.type != 'vDPA':
                 e(interface, 'source', None, attrib={'type': 'unix', 'path': vhostSrcPath, 'mode': 'client'})
                 e(interface, 'driver', None, attrib={'queues': '16', 'vhostforce': 'on'})
-            elif nic.type in ovs.OvsDpdkSupportVnic:
+            elif nic.type == 'vDPA':
                 e(interface, 'source', None, attrib={'type': 'unix', 'path': vhostSrcPath, 'mode': 'server'})
-                driver = e(interface, 'driver', None, attrib={'queues': str(nic.vHostAddOn.queueNum), 'txmode': 'iothread', 'ioeventfd': 'on',
-                                                    'event_idx': 'off', 'rx_queue_size': '512', 'tx_queue_size': '512'})
-                e(driver, 'host', None, attrib={'csum': 'on', 'tso4': 'on', 'tso6': 'on'})
-                e(driver, 'guest', None, attrib={'csum': 'on'})
+                e(interface, 'driver', None, attrib={'queues': '8', 'txmode': 'iothread', 'ioeventfd': 'on', 'event_idx': 'off', 'rx_queue_size': '512', 'tx_queue_size': '512'})
             else:
                 e(interface, 'source', None, attrib={'type': 'unix', 'path': '/var/run/phynic{}'.format(index+1), 'mode':'server'})
                 e(interface, 'driver', None, attrib={'queues': '8'})
@@ -4796,33 +4788,11 @@ class Vm(object):
             else:
                 e(interface, 'model', None, attrib={'type': 'e1000'})
 
-            if do_need_set_virtio_nic_queue(nic, iftype):
+            if nic.driverType == 'virtio' and nic.vHostAddOn.queueNum != 1:
                 e(interface, 'driver ', None, attrib={'name': 'vhost', 'txmode': 'iothread', 'ioeventfd': 'on', 'event_idx': 'off', 'queues': str(nic.vHostAddOn.queueNum), 'rx_queue_size': str(nic.vHostAddOn.rxBufferSize) if nic.vHostAddOn.rxBufferSize is not None else '256', 'tx_queue_size': str(nic.vHostAddOn.txBufferSize) if nic.vHostAddOn.txBufferSize is not None else '256'})
 
         if nic.bootOrder is not None and nic.bootOrder > 0:
             e(interface, 'boot', None, attrib={'order': str(nic.bootOrder)})
-
-        @in_bash
-        def _add_bridge_fdb_entry_for_vnic():
-            if action == 'Attach':
-                # if nic.physicalInterface is bond, then find the first splited pf name out of its slaves
-                _phy_dev_name = nic.physicalInterface
-                _phy_dev_folder = os.path.join('/sys/class/net', _phy_dev_name)
-                for fname in os.listdir(_phy_dev_folder):
-                    if fname.startswith('slave_'):
-                        _slave_numvfs = os.path.join(_phy_dev_folder, fname, 'device/sriov_numvfs')
-                        if os.path.isfile(_slave_numvfs):
-                            with open(_slave_numvfs, 'r') as f:
-                                if int(f.read().strip()) != 0:
-                                    _phy_dev_name = fname.replace('slave_', '').strip(' \t\n\r')
-                                    break
-
-                if not linux.bridge_fdb_has_self_rule(nic.mac, _phy_dev_name):
-                    bash.bash_r("bridge fdb add %s dev %s" % (nic.mac, _phy_dev_name))
-
-        # to allow vnic/vf communication in same host
-        if nic.pciDeviceAddress is None and nic.physicalInterface is not None and brMode != 'mocbr' and nic.type not in ovs.OvsDpdkSupportVnic:
-            _add_bridge_fdb_entry_for_vnic()
 
         return interface
 
@@ -5541,7 +5511,9 @@ class VmPlugin(kvmagent.KvmAgent):
             else:
                 vm.stop(timeout=cmd.timeout / 2)
 
-            ovs.getOvsCtl(with_dpdk=True).destoryNicBackend(cmd.uuid)
+            # http://jira.zstack.io/browse/ZSTAC-42191 
+            # keep vdpa while stop vm.
+            # ovs.OvsCtl().freeVdpa(cmd.uuid)
         except kvmagent.KvmError as e:
             logger.debug(linux.get_exception_stacktrace())
         finally:
@@ -5631,7 +5603,7 @@ class VmPlugin(kvmagent.KvmAgent):
             vm = get_vm_by_uuid(cmd.uuid, False)
             if vm:
                 vm.destroy()
-                ovs.getOvsCtl(with_dpdk=True).destoryNicBackend(cmd.uuid)
+                ovs.OvsCtl().freeVdpa(cmd.uuid)
                 logger.debug('successfully destroyed vm[uuid:%s]' % cmd.uuid)
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
@@ -5913,7 +5885,7 @@ class VmPlugin(kvmagent.KvmAgent):
         os.remove(fpath)
         if shell_cmd.return_code == 0:
             return
-
+        
         if shell_cmd.stderr and "Need a root block node" in shell_cmd.stderr:
             shell_cmd.stderr = "failed to block migrate %s, please check if volume backup job is in progress" % vmUuid
 
