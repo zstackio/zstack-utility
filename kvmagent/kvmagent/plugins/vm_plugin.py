@@ -1236,7 +1236,7 @@ class IsoCeph(object):
 
     def to_xmlobject(self, target_dev, target_bus_type, bus=None, unit=None, bootOrder=None):
         disk = etree.Element('disk', {'type': 'network', 'device': 'cdrom'})
-        source = e(disk, 'source', None, {'name': self.iso.path.lstrip('ceph:').lstrip('//'), 'protocol': 'rbd'})
+        source = e(disk, 'source', None, {'name': self.iso.path.lstrip('ceph:').lstrip('//').split("@")[0], 'protocol': 'rbd'})
         if self.iso.secretUuid:
             auth = e(disk, 'auth', attrib={'username': 'zstack'})
             e(auth, 'secret', attrib={'type': 'ceph', 'uuid': self.iso.secretUuid})
