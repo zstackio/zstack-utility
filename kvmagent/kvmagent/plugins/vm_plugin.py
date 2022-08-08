@@ -95,17 +95,57 @@ class NicTO(object):
         self.bridgeName = None
         self.deviceId = None
 
+
 class RemoteStorageFactory(object):
     @staticmethod
     def get_remote_storage(cmd):
-        if cmd.storageInfo and cmd.storageInfo.type == 'nfs':
-            return NfsRemoteStorage(cmd)
-        else:
-            return SshfsRemoteStorage(cmd)
+        if cmd.storageInfo:
+            if cmd.storageInfo.type == 'nfs':
+                return NfsRemoteStorage(cmd)
+            elif cmd.storageInfo.type == 'sshfs':
+                return SshfsRemoteStorage(cmd)
+            elif cmd.storageInfo.type == 'nbd':
+                return NbdRemoteStorage(cmd)
+        return SshfsRemoteStorage(cmd)
 
 
 class RemoteStorage(object):
+    def __init__(self):
+        pass
+
+    def connect(self):
+        raise Exception('function connect not be implemented')
+
+    def disconnect(self):
+        raise Exception('function disconnect not be implemented')
+
+    def workspace(self):
+        raise Exception('function workspace not be implemented')
+
+    def worktarget(self, target_name):
+        raise Exception('function worktarget not be implemented')
+
+
+class NbdRemoteStorage(RemoteStorage):
     def __init__(self, cmd):
+        super(NbdRemoteStorage, self).__init__()
+        self.url = cmd.storageInfo.url
+
+    def connect(self):
+        pass
+
+    def disconnect(self):
+        pass
+
+    def workspace(self):
+        return self.url
+
+    def worktarget(self, target_name):
+        return self.url
+
+
+class RemoteFileSystem(RemoteStorage):
+    def __init__(self):
         self.mount_point = tempfile.mkdtemp(prefix="zs-backup")
 
     def mount(self):
@@ -117,10 +157,20 @@ class RemoteStorage(object):
     def clean(self):
         linux.rmdir_if_empty(self.mount_point)
 
+    def connect(self):
+        self.mount()
 
-class NfsRemoteStorage(RemoteStorage):
+    def disconnect(self):
+        self.umount()
+        self.clean()
+
+    def worktarget(self, fname):
+        return os.path.join(self.workspace(), fname)
+
+
+class NfsRemoteStorage(RemoteFileSystem):
     def __init__(self, cmd):
-        super(NfsRemoteStorage, self).__init__(cmd)
+        super(NfsRemoteStorage, self).__init__()
         self.options = cmd.storageInfo.options
         self.url = cmd.storageInfo.url
         relative_work_dir = cmd.uploadDir.replace(os.path.normpath(cmd.bsPath), '').lstrip(os.path.sep)
@@ -134,10 +184,13 @@ class NfsRemoteStorage(RemoteStorage):
         if linux.is_mounted(path=self.mount_point):
             linux.umount(self.mount_point)
 
+    def workspace(self):
+        return self.local_work_dir
 
-class SshfsRemoteStorage(RemoteStorage):
+
+class SshfsRemoteStorage(RemoteFileSystem):
     def __init__(self, cmd):
-        super(SshfsRemoteStorage, self).__init__(cmd)
+        super(SshfsRemoteStorage, self).__init__()
         self.bandwidth = cmd.networkWriteBandwidth
         self.username = cmd.username
         self.hostname = cmd.hostname
@@ -159,6 +212,9 @@ class SshfsRemoteStorage(RemoteStorage):
                 break
             else:
                 time.sleep(5)
+
+    def workspace(self):
+        return self.local_work_dir
 
 
 class StartVmCmd(kvmagent.AgentCommand):
@@ -6575,6 +6631,7 @@ host side snapshot files chian:
     def do_take_volumes_backup(self, cmd, target_disks, bitmaps, dstdir):
         isc = ImageStoreClient()
         backupArgs = {}
+        final_backup_args = []
         parents = {}
         speed = 0
 
@@ -6605,10 +6662,12 @@ host side snapshot files chian:
                 parents[deviceId] = parent
                 return bm, 'top', nodename, speed
 
-            backupArgs[deviceId] = get_backup_args()
+            args = get_backup_args()
+            backupArgs[deviceId] = args
+            final_backup_args.append(args)
 
         logger.info('{api: %s} taking backup for vm: %s' % (cmd.threadContext["api"], cmd.vmUuid))
-        res = isc.backup_volumes(cmd.vmUuid, backupArgs.values(), dstdir, Report.from_spec(cmd, "VmBackup"), get_task_stage(cmd))
+        res = isc.backup_volumes(cmd.vmUuid, final_backup_args, dstdir, Report.from_spec(cmd, "VmBackup"), get_task_stage(cmd))
         logger.info('{api: %s} completed backup for vm: %s' % (cmd.threadContext["api"], cmd.vmUuid))
 
         backres = jsonobject.loads(res)
@@ -6739,7 +6798,7 @@ host side snapshot files chian:
 
         storage = RemoteStorageFactory.get_remote_storage(cmd)
         try:
-            storage.mount()
+            storage.connect()
             target_disks = {}
             for volume in cmd.volumes:
                 target_disk, _ = vm._get_target_disk(volume)
@@ -6754,10 +6813,14 @@ host side snapshot files chian:
             res = self.do_take_volumes_backup(cmd,
                                               target_disks,
                                               bitmaps,
-                                              storage.local_work_dir)
+                                              storage.workspace())
 
-            for r in res:
-                r.backupFile = os.path.join(cmd.uploadDir, r.backupFile)
+            res.sort(key=lambda d: d.deviceId)
+            for idx, r in enumerate(res):
+                if r.backupFile:
+                    r.backupFile = os.path.join(cmd.uploadDir, r.backupFile)
+                else:
+                    r.backupFile = cmd.backupPaths[idx]
             rsp.backupInfos = res
 
         except Exception as e:
@@ -6766,8 +6829,7 @@ host side snapshot files chian:
             rsp.error = str(e)
             rsp.success = False
         finally:
-            storage.umount()
-            storage.clean()
+            storage.disconnect()
 
         return jsonobject.dumps(rsp)
 
@@ -6909,15 +6971,15 @@ host side snapshot files chian:
             raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % cmd.vmUuid)
 
         storage = RemoteStorageFactory.get_remote_storage(cmd)
-        fname = uuidhelper.uuid()+".qcow2"
+        fname = os.path.basename(cmd.backupPath) if cmd.backupPath else uuidhelper.uuid() + ".qcow2"
         try:
-            storage.mount()
+            storage.connect()
             target_disk, _ = vm._get_target_disk(cmd.volume)
             bitmap, parent = self.do_take_volume_backup(cmd,
                     target_disk.driver.type_, # 'qcow2' etc.
                     get_block_node_name_by_disk_name(cmd.vmUuid, target_disk.alias.name_), # 'libvirt-2-format', '#block138' etc.
                     target_disk.source,
-                    os.path.join(storage.local_work_dir, fname))
+                    storage.worktarget(fname))
 
             logger.info('{api: %s}  finished backup volume with parent: %s' % (cmd.threadContext["api"], cmd.parent))
             rsp.bitmap = bitmap
@@ -6931,8 +6993,7 @@ host side snapshot files chian:
             rsp.success = False
 
         finally:
-            storage.umount()
-            storage.clean()
+            storage.disconnect()
 
         return jsonobject.dumps(rsp)
 
