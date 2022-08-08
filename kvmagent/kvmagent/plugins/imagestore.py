@@ -78,6 +78,9 @@ class ImageStoreClient(object):
 
     @staticmethod
     def check_capacity(dstdir):
+        if not os.path.isdir(dstdir):
+            return
+
         avaliable = linux.get_free_disk_size(dstdir)
         if avaliable < ImageStoreClient.RESERVE_CAPACITY:
             raise Exception(
