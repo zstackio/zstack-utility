@@ -20,12 +20,14 @@
 
         <copy todir="${zsblk.bdir}/">
             <fileset dir="${zstacksharedblock.source}/target/package/zsblk-agent">
-                <include name="zsblk-agent.bin" />
+                <include name="**" />
             </fileset>
         </copy>
     </target>
 
     <target name="assemble-zstack-sharedblock">
+        <makeDir dir="${imagestorebackupstorage.ansible.dir}" />
+
         <copy todir="${zsblk.ansible.dir}">
             <fileset dir="${zsblk.bdir}">
                 <include name="**/*" />
