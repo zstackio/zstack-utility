@@ -3955,8 +3955,6 @@ class Vm(object):
             if get_gic_version(cmd.cpuNum) == 2:
                 e(features, "gic", attrib={'version': '2'})
 
-            if cmd.secureBoot:
-                e(features, 'smm', None, {'state': 'on'})
 
         def make_qemu_commandline():
             if not os.path.exists(QMP_SOCKET_PATH):
