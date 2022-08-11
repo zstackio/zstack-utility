@@ -1,0 +1,7 @@
+mn:
+    description: management node
+    type: target
+    list: {exec: "AutoCollect"}
+    logs:
+      - {name: mn-logs, dir: $ZSTACK_HOME/../../logs/, file: 'management-server*'}
+

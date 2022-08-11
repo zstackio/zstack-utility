@@ -1,0 +1,5 @@
+[0:0:1:0]    cd/dvd  QEMU     QEMU DVD-ROM     2.5+  /dev/sr0   -
+[2:0:0:0]    disk    QEMU     QEMU HARDDISK    2.5+  /dev/sda   3000fa1ee68cd39d3
+[20:0:0:0]   disk    INTEL    AIO disk         0001  /dev/sdb   32000202228006f9a
+[24:0:0:0]   disk    INTEL    AIO disk         0001  /dev/sdc   32000202104006f9a
+[34:0:0:0]   disk    INTEL    AIO disk         0001  /dev/sdd   32000202104006f9a
