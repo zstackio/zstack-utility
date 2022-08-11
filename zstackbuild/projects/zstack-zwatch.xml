@@ -16,6 +16,7 @@
 
         <exec executable="make" dir="${zstackzwatch.source}" failonerror="true">
             <arg value="package" />
+            <arg value="ARCH=amd64 arm64" />
         </exec>
 
         <copy todir="${zsw.bdir}">
