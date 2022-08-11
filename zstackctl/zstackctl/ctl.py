@@ -10329,7 +10329,7 @@ class DiagnoseCmd(Command):
                             '--since',
                             help='collect logs from datetime below format:\'yyyy-MM-dd\' or \'yyyy-MM-dd_hh:mm:ss\', default datetime is 24h ago',
                             default=None)
-        parser.add_argument('-k', '--key-word', default="", help='key word for search in mn logs.')
+        parser.add_argument('-k', '--key-word', default="", help='key word for search in mn logs, like apiid/taskid/uuid.')
 
     def run(self, args):
         from trait_parser import diagnose
@@ -10342,6 +10342,8 @@ class DiagnoseCmd(Command):
             cllect_log_args_list.extend(['--scsi-diagnose'])
 
         elif args.type == 'mn':
+            if not args.key_word:
+                raise CtlError("the '-k' paramter is required when diagnose mn, run 'zstack-ctl diagnose -h' for more help.")
             args.daytime = 1
             cllect_log_args_list.extend([self.ctl_collect_log, '--mn-diagnose'])
 
