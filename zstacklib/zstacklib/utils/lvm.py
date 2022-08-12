@@ -360,14 +360,6 @@ def get_device_info(dev_name, scsi_info):
     s = SharedBlockCandidateStruct()
     dev_name = dev_name.strip()
 
-    r, o, e = bash.bash_roe("lsblk --pair -b -p -o NAME,VENDOR,MODEL,WWN,SERIAL,HCTL,TYPE,SIZE /dev/%s" % dev_name, False)
-    if r != 0 or o.strip() == "":
-        logger.warn("can not get device information from %s" % dev_name)
-        return None
-
-    def get_data(e):
-        return e.split("=")[1].strip().strip('"')
-
     def get_wwid(dev):
         try:
             if dev in scsi_info.keys():
@@ -380,8 +372,30 @@ def get_device_info(dev_name, scsi_info):
             logger.warn(linux.get_exception_stacktrace())
             return None
 
-    def get_path(dev):
-        return shell.call("udevadm info -n %s | awk -F 'by-path/' '/^S:.*by-path/{print $2; exit}'" % dev).strip()
+    s = lsblk_info(dev_name)
+    if not s:
+        return s
+
+    wwid = get_wwid(dev_name)
+    if not wwid or wwid == "-":
+        return None
+
+    s.wwid = wwid
+    s.path = get_device_path(dev_name)
+    return s
+
+def lsblk_info(dev_name):
+    # type: (str) -> SharedBlockCandidateStruct
+    s = SharedBlockCandidateStruct()
+
+    r, o, e = bash.bash_roe("lsblk --pair -b -p -o NAME,VENDOR,MODEL,WWN,SERIAL,HCTL,TYPE,SIZE /dev/%s" % dev_name,
+                            False)
+    if r != 0 or o.strip() == "":
+        logger.warn("can not get device information from %s" % dev_name)
+        return None
+
+    def get_data(e):
+        return e.split("=")[1].strip().strip('"')
 
     for entry in o.strip().split("\n")[0].split('" '):  # type: str
         if entry.startswith("VENDOR"):
@@ -399,13 +413,12 @@ def get_device_info(dev_name, scsi_info):
         elif entry.startswith('TYPE'):
             s.type = get_data(entry)
 
-    wwid = get_wwid(dev_name)
-    if not wwid or wwid == "-":
-        return None
-    s.wwid = wwid
-    s.path = get_path(dev_name)
     return s
 
+def get_device_path(dev):
+    for symlink in shell.call("udevadm info -q symlink -n %s" % dev).strip().split():
+        if 'by-path' in symlink:
+            return os.path.basename(symlink)
 
 def calcLvReservedSize(size):
     # NOTE(weiw): Add additional 12M for every lv
