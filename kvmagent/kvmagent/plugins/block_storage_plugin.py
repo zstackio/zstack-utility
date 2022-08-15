@@ -64,10 +64,16 @@ class CreateHeartbeatRsp(kvmagent.AgentResponse):
         super(CreateHeartbeatRsp, self).__init__()
 
 
+class ResizeVolumeRsp(AgentRsp):
+    def __init__(self):
+        super(ResizeVolumeRsp, self).__init__()
+        self.size = None
+
+
 def translate_absolute_path_from_install_paht(path):
     if path is None:
         raise Exception("install path can not be null")
-    return path.replace("block:/", "/dev/disk/by-id/wwn-0x")
+    return path.replace("block://", "/dev/disk/by-id/wwn-0x")
 
 
 def translate_absolute_path_from_wwn(wwn):
@@ -84,6 +90,7 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
     COMMIT_VOLUME_AS_IMAGE = "/block/imagestore/commit"
     DISCOVERY_LUN = "/block/primarystorage/discoverlun"
     LOGOUT_TARGET = "/block/primarystorage/logouttarget"
+    RESIZE_VOLUME_PATH = "/block/primarystorage/volume/resize"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -94,8 +101,32 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.LOGOUT_TARGET, self.logout_target, cmd=LogoutLunCmd())
         http_server.register_async_uri(self.UPLOAD_TO_IMAGESTORE, self.upload_to_imagestore)
         http_server.register_async_uri(self.COMMIT_VOLUME_AS_IMAGE, self.commit_to_imagestore)
+        http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
 
         self.imagestore_client = ImageStoreClient()
+
+
+    @bash.in_bash
+    def rescan_disk(self, disk_path=None):
+        device_letter = bash.bash_o("ls -al %s | awk -F '/' '{print $NF}'" % (disk_path)).strip();
+        linux.write_file("/sys/block/%s/device/rescan" % device_letter, "1")
+
+
+    @kvmagent.replyerror
+    def resize_volume(self, req):
+        rsp = ResizeVolumeRsp()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        disk_path = translate_absolute_path_from_install_paht(cmd.installPath)
+
+        self.rescan_disk(disk_path)
+
+        shell.call("qemu-img resize -f raw %s %s" % (disk_path, cmd.size))
+
+        ret = linux.qcow2_virtualsize(disk_path)
+        rsp.size = ret
+        return jsonobject.dumps(rsp)
+
 
     @kvmagent.replyerror
     def get_initiator_name(self, req):
