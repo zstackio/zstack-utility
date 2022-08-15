@@ -4266,10 +4266,20 @@ class Vm(object):
 
         def make_console():
             devices = elements['devices']
-            serial = e(devices, 'serial', None, {'type': 'pty'})
-            e(serial, 'target', None, {'port': '0'})
-            console = e(devices, 'console', None, {'type': 'pty'})
-            e(console, 'target', None, {'type': 'serial', 'port': '0'})
+            if cmd.consoleLogToFile:
+                logfilename = '%s-vm-kernel.log' % cmd.vmInstanceUuid
+                logpath = os.path.join(tempfile.gettempdir(), logfilename)
+                serial = e(devices, 'serial', None, {'type': 'pty'})
+                e(serial, 'target', None, {'port': '0'})
+                e(serial, 'log', None, {'file': logpath})
+                console = e(devices, 'console', None, {'type': 'pty'})
+                e(console, 'target', None, {'type': 'serial', 'port': '0'})
+                e(console, 'log', None, {'file': logpath})
+            else:
+                serial = e(devices, 'serial', None, {'type': 'pty'})
+                e(serial, 'target', None, {'port': '0'})
+                console = e(devices, 'console', None, {'type': 'pty'})
+                e(console, 'target', None, {'type': 'serial', 'port': '0'})
 
         def make_sec_label():
             root = elements['root']
