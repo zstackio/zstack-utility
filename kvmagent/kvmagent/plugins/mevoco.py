@@ -10,6 +10,7 @@ from zstacklib.utils import linux
 from zstacklib.utils import iptables
 from zstacklib.utils import iproute
 from zstacklib.utils import ebtables
+from zstacklib.utils import ovs
 from zstacklib.utils import lock
 from zstacklib.utils.bash import *
 from zstacklib.utils import ip
@@ -24,6 +25,8 @@ from jinja2 import Template
 import struct
 import socket
 import platform
+
+from zstacklib.utils.ovs import OvsError
 
 logger = log.get_logger(__name__)
 EBTABLES_CMD = ebtables.get_ebtables_cmd()
@@ -321,14 +324,32 @@ class DhcpEnv(object):
 
         iproute.set_link_up(OUTER_DEV)
 
-        ret = bash_r('brctl show {{BR_NAME}} | grep -w {{OUTER_DEV}} > /dev/null')
-        if ret != 0:
-            bash_errorout('brctl addif {{BR_NAME}} {{OUTER_DEV}}')
+        dhcpForOvs = False
+        try:
+            ret = bash_r('brctl show | grep -w {{BR_NAME}} > /dev/null')
 
-        bash_errorout("bridge link set dev {{OUTER_DEV}} learning on")
+            if ret != 0:
+                logger.debug("Network use ovs attach")
+                ovsctl = ovs.getOvsCtl(with_dpdk=True)
+                if BR_NAME in ovsctl.listBrs():
+                    dhcpForOvs = True
+                    ovsctl.addOuterToBridge(BR_NAME, OUTER_DEV)
+            else:
+                logger.debug("Network use linux-bridge attach")
+                ret = bash_r('brctl show {{BR_NAME}} | grep -w {{OUTER_DEV}} > /dev/null')
+                if ret != 0:
+                    bash_errorout('brctl addif {{BR_NAME}} {{OUTER_DEV}}')
+
+                bash_errorout("bridge link set dev {{OUTER_DEV}} learning on")
+        except OvsError as err:
+            logger.error("Get ovsctl failed. {}".format(err))
 
         if not iproute.is_device_ifname_exists(INNER_DEV, NAMESPACE_NAME):
             iproute.set_link_attribute(INNER_DEV, netns=NAMESPACE_NAME)
+
+        if dhcpForOvs:
+            # close inner tx checksum
+            bash_errorout('ip netns exec {{NAMESPACE_NAME}} ethtool -K {{INNER_DEV}} tx off')
 
         #dhcp namespace should not add ipv6 address based on router advertisement
         bash_roe("ip netns exec {{NAMESPACE_NAME}} sysctl -w net.ipv6.conf.all.accept_ra=0")
@@ -372,7 +393,8 @@ class DhcpEnv(object):
                 return
 
             # add bridge fdb entry for inner dev
-            iproute.add_fdb_entry(PHY_DEV, INNER_MAC)
+            if not linux.bridge_fdb_has_self_rule(INNER_MAC, PHY_DEV):
+                bash_r('bridge fdb add {{INNER_MAC}} dev {{PHY_DEV}}')
 
         if DHCP_IP is not None:
             _prepare_dhcp4_iptables()
@@ -498,12 +520,20 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         self._restart_dnsmasq(cmd.nameSpace, conf_file_path)
 
     @in_bash
-    def _delete_dhcp(self, namespace):
+    def _delete_dhcp(self, bridge, namespace):
+        outer = "outer%s" % ip.get_namespace_id(namespace)
         self._delete_dhcp4(namespace)
         self._delete_dhcp6(namespace)
         bash_r("ps aux | grep -v grep | grep -w dnsmasq | grep -w %s | awk '{printf $2}' | xargs -r kill -9" % namespace)
         bash_r(
             "ip netns | grep -w %s | grep -v grep | awk '{print $1}' | xargs -r ip netns del %s" % (namespace, namespace))
+
+        try:
+            ovsctl = ovs.getOvsCtl(with_dpdk=True)
+            if bridge in ovsctl.listBrs():
+                ovsctl.deleteOuterFromBridge(bridge, outer)
+        except OvsError as err:
+            logger.debug(err)
 
     @in_bash
     def _delete_dhcp6(self, namspace):
@@ -592,7 +622,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         _del_bridge_fdb_entry_for_inner_dev()
-        self._delete_dhcp(cmd.namespaceName)
+        self._delete_dhcp(cmd.bridgeName, cmd.namespaceName)
 
         return jsonobject.dumps(DeleteNamespaceRsp())
 

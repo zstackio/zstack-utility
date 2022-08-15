@@ -6,6 +6,7 @@ from kvmagent import kvmagent
 from zstacklib.utils import jsonobject
 from zstacklib.utils import log
 from zstacklib.utils import ovs
+from zstacklib.utils.ovs import OvsError
 from zstacklib.utils import http
 
 OVS_DPDK_NET_CHECK_BRIDGE = '/network/ovsdpdk/checkbridge'
@@ -13,14 +14,11 @@ OVS_DPDK_NET_CREATE_BRIDGE = '/network/ovsdpdk/createbridge'
 OVS_DPDK_NET_DELETE_BRIDGE = '/network/ovsdpdk/deletebridge'
 OVS_DPDK_NET_GENERATE_VDPA = '/network/ovsdpdk/generatevdpa'
 OVS_DPDK_NET_DELETE_VDPA = '/network/ovsdpdk/deletevdpa'
-
+OVS_DPDK_NET_GENERATE_DPDKVHOSTUSERCLIENT = '/network/ovsdpdk/addvhostuserclient'
+OVS_DPDK_NET_DELETE_DPDKVHOSTUSERCLIENT = '/network/ovsdpdk/deletevhostuserclient'
 # TODO: Vxlan support
 
 logger = log.get_logger(__name__)
-
-
-class OvsError(Exception):
-    '''ovs error'''
 
 
 class CheckBridgeCmd(kvmagent.AgentCommand):
@@ -79,73 +77,66 @@ class DeleteVdpaCmd(kvmagent.AgentCommand):
         self.nicInternalName = None
 
 
+class DeleteVdpaResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(DeleteVdpaResponse, self).__init__()
+
+
+class AddDpdkVhostUserClientCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(AddDpdkVhostUserClientCmd, self).__init__()
+        self.vmUuid = None
+        self.nics = None
+
+
+class AddDpdkVhostUserClientResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(AddDpdkVhostUserClientResponse, self).__init__()
+
+
+class DeleteDpdkVhostUserClientCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(DeleteDpdkVhostUserClientCmd, self).__init__()
+        self.vmUuid = None
+        self.nicInternalName = None
+
+
+class DeleteDpdkVhostUserClientResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(DeleteDpdkVhostUserClientResponse, self).__init__()
+
+
 class OvsDpdkNetworkPlugin(kvmagent.KvmAgent):
     '''
-    High performance Network base on ovs-dpdk and vdpa.
+    High performance Network Plugin.
     '''
 
     @kvmagent.replyerror
     def create_ovs_bridge(self, req):
-
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CreateBridgeResponse()
 
-        venv = ovs.OvsVenv()
-
-        if not venv.ready:
-            rsp.success = False
-            rsp.error = "host can not support ovs"
-            return jsonobject.dumps(rsp)
-
-        ovsctl = ovs.OvsCtl(venv)
-
-        if ovsctl.isKernelBond(cmd.physicalInterfaceName):
-            rsp.success = False
-            rsp.error = "OvsDpdk do not support kernel bond. Please use dpdk bond instead"
-            return jsonobject.dumps(rsp)
-
-        # prepare bridge
-        if not ovsctl.prepareBridge(cmd.bridgeName, cmd.physicalInterfaceName):
-            rsp.success = False
-            rsp.error = "create Bridge for interface:{} failed.".format(
-                cmd.physicalInterfaceName)
-            return jsonobject.dumps(rsp)
-
-        # It will take a long time for ovs-vswitchd to restart,
-        # while there has many vDPA configured. never force restart ovs-vswitchd
-        ovsctl.startSwitch()
+        ovsctl = ovs.getOvsCtl(with_dpdk=True)
+        ovsctl.prepareBridge(cmd.physicalInterfaceName, cmd.bridgeName)
 
         logger.debug(http.path_msg(OVS_DPDK_NET_CREATE_BRIDGE,
-                                   'create bridge:{} success'.format(cmd.bridgeName)))
-
+                                   'create bridge:{} success.'.format(cmd.bridgeName)))
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def check_ovs_bridge(self, req):
-
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CheckBridgeResponse()
 
-        venv = ovs.OvsVenv()
-
-        if not venv.ready:
-            rsp.success = False
-            rsp.error = "host can not support ovs"
-            return jsonobject.dumps(rsp)
-
-        ovsctl = ovs.OvsCtl(venv)
-
+        ovsctl = ovs.getOvsCtl(with_dpdk=True)
+        ovsctl.reconfigOvs()
         if cmd.bridgeName not in ovsctl.listBrs():
-            rsp.success = False
-            rsp.error = "can not find bridge:{}".format(cmd.bridgeName)
-            return jsonobject.dumps(rsp)
-
+            raise OvsError("can not find bridge:{}".format(cmd.bridgeName))
         if cmd.physicalInterfaceName not in ovsctl.listPorts(cmd.bridgeName):
-            raise OvsError(
-                'cannot find {}'.format(cmd.physicalInterfaceName))
+            raise OvsError('cannot find interface:{}'.format(cmd.physicalInterfaceName))
 
         logger.debug(http.path_msg(OVS_DPDK_NET_CHECK_BRIDGE,
-                                   'check bridges:{}'.format(cmd.bridgeName)))
+                                   'check bridges:{} success.'.format(cmd.bridgeName)))
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -153,106 +144,80 @@ class OvsDpdkNetworkPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CreateBridgeResponse()
 
-        venv = ovs.OvsVenv()
-
-        if not venv.ready:
-            rsp.success = False
-            rsp.error = "host can not support ovs"
-            return jsonobject.dumps(rsp)
-
-        ovsctl = ovs.OvsCtl(venv)
-
+        ovsctl = ovs.getOvsCtl(with_dpdk=True)
         if cmd.bridgeName not in ovsctl.listBrs():
-            rsp.success = False
-            rsp.error = "no such bridge named:{}.".format(
-                cmd.bridgeName)
-            return jsonobject.dumps(rsp)
-
+            raise OvsError("no such bridge named:{}.".format(cmd.bridgeName))
         ovsctl.deleteBr(cmd.bridgeName)
 
-        logger.debug(http.path_msg(OVS_DPDK_NET_CREATE_BRIDGE,
+        logger.debug(http.path_msg(OVS_DPDK_NET_DELETE_BRIDGE,
                                    'delete bridge:{} success'.format(cmd.bridgeName)))
-
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def generate_vdpa(self, req):
-
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GenerateVdpaResponse()
 
-        venv = ovs.OvsVenv()
-
-        if not venv.ready:
-            rsp.success = False
-            rsp.error = "host can not support ovs"
-            return jsonobject.dumps(rsp)
-
-        ovsctl = ovs.OvsCtl(venv)
-
+        ovsctl = ovs.getOvsCtl(with_dpdk=True)
         rsp.vdpaPaths = []
-        vdpaPaths = ovsctl.getVdpaS(cmd.vmUuid, cmd.nics)
-
-        if vdpaPaths is None:
-            rsp.success = False
-            rsp.error = "vDPA resource exhausted."
-            return jsonobject.dumps(rsp)
-
         for nic in cmd.nics:
-            if vdpaPaths.has_key(nic.nicInternalName):
-                rsp.vdpaPaths.append(vdpaPaths[nic.nicInternalName])
+            if nic.type == 'vDPA':
+                rsp.vdpaPaths.extend(ovsctl.createNicBackend(cmd.vmUuid, nic))
 
+        logger.debug(http.path_msg(OVS_DPDK_NET_GENERATE_VDPA,
+                                   'generate vdpa for vm:{} success'.format(cmd.vmUuid)))
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def delete_vdpa(self, req):
-
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = kvmagent.AgentResponse()
+        rsp = DeleteVdpaResponse()
 
-        venv = ovs.OvsVenv()
-
-        if not venv.ready:
-            rsp.success = False
-            rsp.error = "host can not support ovs"
-            return jsonobject.dumps(rsp)
-
-        ovsctl = ovs.OvsCtl(venv)
+        ovsctl = ovs.getOvsCtl(with_dpdk=True)
         if hasattr(cmd, "nicInternalName"):
-            ovsctl.freeVdpa(cmd.vmUuid, cmd.nicInternalName)
+            ovsctl.destoryNicBackend(cmd.vmUuid, cmd.nicInternalName)
         else:
-            ovsctl.freeVdpa(cmd.vmUuid)
+            ovsctl.destoryNicBackend(cmd.vmUuid)
 
+        logger.debug(http.path_msg(OVS_DPDK_NET_DELETE_VDPA,
+                                   'delete vdpa of vm:{} success'.format(cmd.vmUuid)))
         return jsonobject.dumps(rsp)
 
-    def reconfigOvs(self):
-        if kvmagent.get_host_os_type() == 'debian' and shell.run("dpkg -l openvswitch") != 0:
-            return
-        elif kvmagent.get_host_os_type() == 'redhat' and shell.call("rpm -qa openvswitch") == '':
-            return
+    @kvmagent.replyerror
+    def add_dpdkvhostuserclient(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AddDpdkVhostUserClientResponse()
 
-        global ovsctl
-        ovsctl = ovs.OvsCtl()
-        ovsctl.modprobeBonding()
+        ovsctl = ovs.getOvsCtl(with_dpdk=True)
+        for nic in cmd.nics:
+            if nic.type == 'dpdkvhostuserclient':
+                ovsctl.createNicBackend(cmd.vmUuid, nic)
 
-        if not ovsctl.initVdpaSupport():
-            logger.debug("ovs can not support dpdk.")
-            return
-        # reconfig smart nics
-        brs = ovsctl.listBrs()
-        for b in brs:
-            if b == '':
-                continue
-            # prepare bridge floader
-            vdpaBrPath = os.path.join(ovsctl.vdpaPath, b)
-            if not os.path.exists(vdpaBrPath):
-                os.mkdir(vdpaBrPath, 0755)
-            ovsctl.prepareBridge(b, b[3:])
-        ovsctl.start(True)
+        logger.debug(http.path_msg(OVS_DPDK_NET_GENERATE_DPDKVHOSTUSERCLIENT,
+                                   'add dpdkvhostuserclient for vm:{} success'.format(cmd.vmUuid)))
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def delete_dpdkvhostuserclient(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = DeleteDpdkVhostUserClientResponse()
+
+        ovsctl = ovs.getOvsCtl(with_dpdk=True)
+        if hasattr(cmd, "nicInternalName"):
+            ovsctl.destoryNicBackend(cmd.vmUuid, cmd.nicInternalName)
+        else:
+            ovsctl.destoryNicBackend(cmd.vmUuid)
+
+        logger.debug(http.path_msg(OVS_DPDK_NET_DELETE_DPDKVHOSTUSERCLIENT,
+                                   'delete dpdkvhostuserclient of vm:{} success'.format(cmd.vmUuid)))
+        return jsonobject.dumps(rsp)
 
     def start(self):
 
-        ovs.OvsCtl().reconfigOvs()
+        try:
+            ovs.getOvsCtl(with_dpdk=True).reconfigOvs()
+        except Exception as err:
+            logger.warn("Reconfig ovs failed. {}".format(err))
 
         http_server = kvmagent.get_http_server()
 
@@ -266,6 +231,10 @@ class OvsDpdkNetworkPlugin(kvmagent.KvmAgent):
             OVS_DPDK_NET_GENERATE_VDPA, self.generate_vdpa)
         http_server.register_async_uri(
             OVS_DPDK_NET_DELETE_VDPA, self.delete_vdpa)
+        http_server.register_async_uri(
+            OVS_DPDK_NET_GENERATE_DPDKVHOSTUSERCLIENT, self.add_dpdkvhostuserclient)
+        http_server.register_async_uri(
+            OVS_DPDK_NET_DELETE_DPDKVHOSTUSERCLIENT, self.delete_dpdkvhostuserclient)
 
     def stop(self):
         pass
