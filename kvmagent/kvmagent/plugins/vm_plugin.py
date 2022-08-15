@@ -992,11 +992,6 @@ def compare_version(version1, version2):
         return [int(x) for x in re.sub(r'(\.0+)*$','', v).split(".")]
     return cmp(normalize(version1), normalize(version2))
 
-def get_path_by_device(device_name, vm):
-    for dev in vm.domain_xmlobject.devices.disk:
-        if dev.get_child_node("target").dev_ == device_name:
-            return dev.get_child_node("source").file_
-
 
 LIBVIRT_VERSION = linux.get_libvirt_version()
 LIBVIRT_MAJOR_VERSION = LIBVIRT_VERSION.split('.')[0]
@@ -6276,7 +6271,8 @@ class VmPlugin(kvmagent.KvmAgent):
                 pass
 
         def check_volume():
-            return task_spec.newVolume.installPath == get_path_by_device(disk_name, get_vm_by_uuid(vmUuid))
+            vm = get_vm_by_uuid(vmUuid)
+            return vm._get_target_disk_by_path(task_spec.newVolume.installPath, is_exception=False) is not None
 
         logger.info("start copying %s:%s to %s ..." % (vmUuid, disk_name, task_spec.newVolume.installPath))
         with BlockCopyDaemon(task_spec, get_vm_by_uuid(vmUuid).domain, disk_name):
@@ -8710,6 +8706,11 @@ host side snapshot files chian:
                 return
 
             fixed = False
+
+            def get_path_by_device(device_name, vm):
+                for dev in vm.domain_xmlobject.devices.disk:
+                    if dev.get_child_node("target").dev_ == device_name:
+                        return dev.get_child_node("source").file_
 
             try:
                 for device, error in disk_errors.viewitems():
