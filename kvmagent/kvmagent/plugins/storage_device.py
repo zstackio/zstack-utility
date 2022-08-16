@@ -1021,7 +1021,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         return s
 
     @bash.in_bash
-    def get_nvmze_luns(self, rescan):
+    def get_nvme_luns(self, rescan):
         # type: (bool) -> list[NvmeLunStruct]
         ret = []
 
