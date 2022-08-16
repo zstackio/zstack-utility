@@ -279,16 +279,6 @@ class NetworkPlugin(kvmagent.KvmAgent):
         if oldMtu > cmd.mtu:
             mtu = oldMtu
 
-        if linux.is_vif_on_bridge(cmd.bridgeName, cmd.physicalInterfaceName):
-            logger.debug('%s is a bridge device. Interface %s is attached to bridge. No need to create bridge or attach device interface' % (cmd.bridgeName, cmd.physicalInterfaceName))
-            self._configure_bridge(cmd.disableIptables)
-            self._configure_bridge_mtu(cmd.bridgeName, cmd.physicalInterfaceName, mtu)
-            self._configure_bridge_learning(cmd.bridgeName, cmd.physicalInterfaceName)
-            linux.set_bridge_alias_using_phy_nic_name(cmd.bridgeName, cmd.physicalInterfaceName)
-            linux.set_device_uuid_alias(cmd.physicalInterfaceName, cmd.l2NetworkUuid)
-            self._ifup_device_if_down(cmd.bridgeName)
-            return jsonobject.dumps(rsp)
-        
         try:
             linux.create_bridge(cmd.bridgeName, cmd.physicalInterfaceName)
             linux.set_device_uuid_alias(cmd.physicalInterfaceName, cmd.l2NetworkUuid)
@@ -315,21 +305,6 @@ class NetworkPlugin(kvmagent.KvmAgent):
         mtu = cmd.mtu
         if oldMtu > cmd.mtu:
             mtu = oldMtu
-
-        if linux.is_bridge(cmd.bridgeName):
-            logger.debug('%s is a bridge device, no need to create bridge' % cmd.bridgeName)
-            try:
-                self._ifup_device_if_down('%s.%s' % (cmd.physicalInterfaceName, cmd.vlan))
-            except DeviceNotExistedError:
-                linux.create_vlan_eth(cmd.physicalInterfaceName, cmd.vlan)
-            self._configure_bridge(cmd.disableIptables)
-            self._configure_bridge_mtu(cmd.bridgeName, vlanInterfName, mtu)
-            self._configure_bridge_learning(cmd.bridgeName, vlanInterfName)
-            linux.set_bridge_alias_using_phy_nic_name(cmd.bridgeName, cmd.physicalInterfaceName)
-            linux.set_device_uuid_alias('%s.%s' % (cmd.physicalInterfaceName, cmd.vlan), cmd.l2NetworkUuid)
-            self._ifup_device_if_down(cmd.bridgeName)
-            return jsonobject.dumps(rsp)
-        
         try:
             linux.create_vlan_bridge(cmd.bridgeName, cmd.physicalInterfaceName, cmd.vlan)
             self._configure_bridge(cmd.disableIptables)
