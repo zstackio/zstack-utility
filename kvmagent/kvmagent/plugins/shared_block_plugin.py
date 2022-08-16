@@ -706,7 +706,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     def disconnect(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
-        self.vgs_path_and_wwid.pop(cmd.vgUuid)
+        if cmd.vgUuid in self.vgs_path_and_wwid.keys():
+            self.vgs_path_and_wwid.pop(cmd.vgUuid)
 
         @linux.retry(times=3, sleep_time=random.uniform(0.1, 3))
         def find_vg(vgUuid):
