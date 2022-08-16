@@ -15,7 +15,6 @@ import uuid
 import string
 import socket
 import sys
-import yaml
 
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
@@ -200,10 +199,9 @@ class GetHostNetworkBongdingResponse(kvmagent.AgentResponse):
 class HostNetworkBondingInventory(object):
     slaves = None  # type: list(HostNetworkInterfaceInventory)
 
-    def __init__(self, bondingName=None, type=None):
+    def __init__(self, bondingName=None):
         super(HostNetworkBondingInventory, self).__init__()
         self.bondingName = bondingName
-        self.type = type
         self.mode = None
         self.xmitHashPolicy = None
         self.miiStatus = None
@@ -212,11 +210,7 @@ class HostNetworkBondingInventory(object):
         self.miimon = None
         self.allSlavesActive = None
         self.slaves = None
-
-        if self.type in ovs.OvsDpdkSupportBondType:
-            self._init_from_ovs()
-        else:
-            self._init_from_name()
+        self._init_from_name()
 
     def _init_from_name(self):
         def get_nic(n, i):
@@ -225,8 +219,6 @@ class HostNetworkBondingInventory(object):
 
         if self.bondingName is None:
             return
-
-        self.type = "kernelBond"
         self.mode = linux.read_file("/sys/class/net/%s/bonding/mode" % self.bondingName).strip()
         self.xmitHashPolicy = linux.read_file("/sys/class/net/%s/bonding/xmit_hash_policy" % self.bondingName).strip()
         self.miiStatus = linux.read_file("/sys/class/net/%s/bonding/mii_status" % self.bondingName).strip()
@@ -250,62 +242,6 @@ class HostNetworkBondingInventory(object):
         for t in threads:
             t.join()
 
-    def _init_from_ovs(self):
-        # dpdkBond
-        bondModeList = [
-            "balance-rr 0",
-            "active-backup 1",
-            "balance-xor 2",
-            "broadcast 3",
-            "802.3ad 4",
-            "balance-tlb 5",
-            "balance-alb 6"
-            ]
-
-        bondPolicyMap = {
-            "l2": "layer 2",
-            "l23": "layer 2+3",
-            "l34": "layer 3+4"
-        }
-
-        def get_nic(n, i, b):
-            o = HostNetworkInterfaceInventory(n, b)
-            self.slaves[i] = o
-
-        bondData = self.bondingName
-
-        if not bondData.has_key('bond'):
-            return
-
-        if bondData['bond'].has_key('name'):
-            self.bondingName = bondData['bond']['name']
-
-        if bondData['bond'].has_key('mode'):
-            if type(bondData['bond']['mode']) is int:
-                self.mode = bondModeList[bondData['bond']['mode']]
-            else:
-                self.mode = bondData['bond']['mode']
-
-        if bondData['bond'].has_key('policy'):
-            self.xmitHashPolicy = bondPolicyMap[bondData['bond']['policy']]
-
-        self.type = "dpdkBond"
-        self.miiStatus = None
-        self.mac = None
-        self.ipAddresses = None
-        self.miimon = None
-        self.allSlavesActive = None
-
-        if not bondData['bond'].has_key('slaves'):
-            return
-            
-        self.slaves = [None] * len(bondData['bond']['slaves'])
-        threads = []
-        for idx, name in  enumerate(bondData['bond']['slaves'], start=0):
-            threads.append(thread.ThreadFacade.run_in_thread(get_nic, [name.strip(), idx, self.bondingName]))
-        for t in threads:
-            t.join()
-
     def _to_dict(self):
         to_dict = self.__dict__
         for k in to_dict.keys():
@@ -318,7 +254,7 @@ class HostNetworkBondingInventory(object):
 class HostNetworkInterfaceInventory(object):
     __cache__ = dict()  # type: dict[str, list[int, HostNetworkInterfaceInventory]]
 
-    def init(self, name, master=None):
+    def init(self, name):
         super(HostNetworkInterfaceInventory, self).__init__()
         self.interfaceName = name
         self.speed = None
@@ -327,14 +263,10 @@ class HostNetworkInterfaceInventory(object):
         self.mac = None
         self.ipAddresses = None
         self.interfaceType = None
-        self.master = master
+        self.master = None
         self.pciDeviceAddress = None
         self.offloadStatus = None
-        
-        if self.master is not None:
-            self._init_from_ovs()
-        else:
-            self._init_from_name()
+        self._init_from_name()
 
     @classmethod
     def __get_cache__(cls, name):
@@ -347,12 +279,12 @@ class HostNetworkInterfaceInventory(object):
             return c[1]
         return None
 
-    def __new__(cls, name, master=None, *args, **kwargs):
+    def __new__(cls, name, *args, **kwargs):
         o = cls.__get_cache__(name)
         if o:
             return o
         o = super(HostNetworkInterfaceInventory, cls).__new__(cls)
-        o.init(name, master)
+        o.init(name)
         cls.__cache__[name] = [int(time.time()), o]
         return o
 
@@ -392,30 +324,7 @@ class HostNetworkInterfaceInventory(object):
 
         self.pciDeviceAddress = os.readlink("/sys/class/net/%s/device" % self.interfaceName).strip().split('/')[-1]
 
-        self.offloadStatus = ovs.getOffloadStatus(self.interfaceName)
-
-    @in_bash
-    def _init_from_ovs(self):
-        if self.interfaceName is None:
-            return
-
-        if ovs.isBDF(self.interfaceName):
-            return
-
-        self.speed = get_nic_supported_max_speed(self.interfaceName)
-        # cannot read carrier of vf nic
-        if not os.path.exists("/sys/class/net/%s/device/physfn" % self.interfaceName):
-            carrier = linux.read_file("/sys/class/net/%s/carrier" % self.interfaceName)
-            if carrier:
-                self.carrierActive = carrier.strip() == "1"
-        self.mac = linux.read_file("/sys/class/net/%s/address" % self.interfaceName).strip()
-        self.ipAddresses = linux.get_interface_ip_addresses(self.interfaceName)
-        self.interfaceType = "bondingSlave"
-
-        # TODO: check dpdk slave status
-        # self.slaveActive = ovs.getOvsCtl(with_dpdk=True).checkDpdkSlaveStatus(self.interfaceName)
-        self.pciDeviceAddress = os.readlink("/sys/class/net/%s/device" % self.interfaceName).strip().split('/')[-1]
-        self.offloadStatus = ovs.getOffloadStatus(self.interfaceName)
+        self.offloadStatus = ovs.OvsCtl().ifOffloadStatus(self.interfaceName)
 
     def _to_dict(self):
         to_dict = self.__dict__
@@ -1629,27 +1538,13 @@ done
     def get_host_networking_bonds():
         bonds = []
         bond_names = linux.read_file("/sys/class/net/bonding_masters")
-        if bond_names:
-            bond_names = bond_names.strip().split(" ")
-            if len(bond_names) == 0:
-                return bonds
-            for bond in bond_names:
-                bonds.append(HostNetworkBondingInventory(bond, "kernalBond"))
-
-        # get dpdk bond info
-        dpdkBondFile = "/usr/local/etc/zstack-ovs/dpdk-bond.yaml"
-        if not os.path.exists(dpdkBondFile):
-            return None
-
-        with open(dpdkBondFile, "r") as f:
-            bondData = yaml.safe_load(f)
-
-        if bondData is None:
+        if not bond_names:
             return bonds
-
-        for b in bondData:
-            bonds.append(HostNetworkBondingInventory(b, "dpdkBond"))
-
+        bond_names = bond_names.strip().split(" ")
+        if len(bond_names) == 0:
+            return bonds
+        for bond in bond_names:
+            bonds.append(HostNetworkBondingInventory(bond))
         return bonds
 
     def _get_sriov_info(self, to):
