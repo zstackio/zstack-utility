@@ -2579,3 +2579,16 @@ def check_port(ip, port):
         raise RetryException("Failed connect to address[%s:%s], because %s" % (ip, port, ex))
     finally:
         s.close()
+
+
+def get_fs_type(path):
+    if os.path.isabs(path) is False:
+        raise Exception("Make sure you path name with absolute path")
+    return shell.call("""stat -f -c '%T' {}""".format(path)).strip()
+
+
+def check_nbd():
+    cmd = shell.ShellCmd("modinfo nbd")
+    cmd(is_exception=False)
+    if cmd.return_code != 0:
+        raise Exception('nbd kernel module not found. try load nbd by `modprobe nbd`.')

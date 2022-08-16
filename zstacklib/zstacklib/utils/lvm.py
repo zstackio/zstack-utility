@@ -19,8 +19,11 @@ from zstacklib.utils import log
 from zstacklib.utils import linux
 from zstacklib.utils import thread
 from zstacklib.utils import sanlock
+from zstacklib.utils import remoteStorage
 from cachetools import TTLCache
 from distutils.version import LooseVersion
+
+from zstacklib.utils.linux import get_fs_type
 
 logger = log.get_logger(__name__)
 LV_RESERVED_SIZE = 1024*1024*4
@@ -2173,3 +2176,44 @@ def get_lun_capacities_from_vg(vg_uuid, vgs_path_and_wwid):
             lun_capacities.append(LunWwidAndCapacity(wwid, size, free_size))
 
     return lun_capacities
+
+
+class LvmRemoteStorage(remoteStorage.RemoteStorage):
+    def __init__(self, volume_install_path, mount_path, volume_mounted_device=None):
+        super(LvmRemoteStorage, self).__init__(mount_path, volume_mounted_device)
+        self.normalize_install_path = volume_install_path.replace("sharedblock:/", "/dev")
+
+    def do_mount(self, fstype=None):
+        try:
+            active_lv(self.normalize_install_path)
+            if fstype is not None:
+                shell.call("mkfs -F -t %s %s" % (fstype, self.normalize_install_path))
+            linux.mount(self.normalize_install_path, self.mount_path)
+        except Exception as e:
+            deactive_lv(self.normalize_install_path)
+            raise e
+        return self.normalize_install_path
+
+    def mount(self):
+        if self.volume_mounted_device is not None:
+            cmd = shell.ShellCmd("mountpoint %s" % self.mount_path)
+            cmd(is_exception=False)
+            if cmd.return_code == 0:
+                return self.volume_mounted_device
+            if os.path.exists(self.volume_mounted_device):
+                linux.mount(self.volume_mounted_device, self.mount_path)
+                return self.volume_mounted_device
+            else:
+                return self.do_mount()
+
+        if not os.path.isdir(self.mount_path):
+            linux.mkdir(self.mount_path)
+
+        fstype = get_fs_type(self.mount_path)
+        return self.do_mount(fstype)
+
+    def umount(self):
+        device_and_mount_path = bash.bash_o("mount | grep %s" % self.mount_path)
+        if len(device_and_mount_path) != 0:
+            shell.call('umount -f %s' % self.mount_path)
+        deactive_lv(self.normalize_install_path)

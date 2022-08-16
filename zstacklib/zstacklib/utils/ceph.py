@@ -3,16 +3,23 @@
 @author: lining
 '''
 import os
+
 import zstacklib.utils.jsonobject as jsonobject
 from zstacklib.utils import shell
 from zstacklib.utils import log
+from zstacklib.utils import bash
 from zstacklib.utils import linux
+from zstacklib.utils import remoteStorage
+from zstacklib.utils.linux import get_fs_type, check_nbd
 
 logger = log.get_logger(__name__)
 
 CEPH_CONF_ROOT = "/var/lib/zstack/ceph"
 CEPH_KEYRING_CONFIG_NAME = 'client.zstack.keyring'
 
+QEMU_NBD_SOCKET_DIR = "/var/lock/"
+QEMU_NBD_SOCKET_PREFIX = "qemu-nbd-nbd"
+NBD_DEV_PREFIX = "/dev/nbd"
 
 def get_fsid(conffile='/etc/ceph/ceph.conf'):
     import rados
@@ -87,7 +94,7 @@ def update_ceph_client_access_conf(ps_uuid, mon_urls, user_key, manufacturer, fs
     conf_path = os.path.join(conf_folder, "ceph.conf")
     with open(conf_path, 'w') as fd:
         fd.write(conf_content)
-            
+
     return conf_path, keyring_path, username
 
 
@@ -233,3 +240,94 @@ class CephPoolCapacity:
         self.crush_item_osds_total_size = 0
         self.pool_total_size = 0
 
+
+class NbdRemoteStorage(remoteStorage.RemoteStorage):
+    def __init__(self, volume_install_path, mount_path, volume_mounted_device, ps_uuid=None):
+        super(NbdRemoteStorage, self).__init__(mount_path, volume_mounted_device)
+        self.normalize_install_path = volume_install_path.replace('ceph://', '')
+        self.ps_uuid = ps_uuid
+        self.nbd_dev = None
+        self.cmd = None
+        self.POOL_NAME = 1
+        self.IMAGE = 2
+        self.DEVICE = 4
+
+    @staticmethod
+    def check_nbd_dev_empty(nbd_id):
+        with open('/sys/block/nbd{}/size'.format(nbd_id), 'r') as f:
+            size = f.read()
+        if int(size) > 0:
+            return False
+        return True
+
+    def get_available_nbd_dev(self):
+        block_devices = os.listdir('/sys/block/')
+        all_nbd_ids = []
+        for dev in block_devices:
+            if dev.startswith('nbd'):
+                all_nbd_ids.append(int(dev.split('nbd')[-1]))
+        available_nbd_ids = sorted(set(all_nbd_ids))
+        if not available_nbd_ids:
+            raise Exception('can not find available nbd device. try increase `nbds_max` param during modprobe nbd')
+        for nbd_id in available_nbd_ids:
+            if self.check_nbd_dev_empty(nbd_id):
+                return NBD_DEV_PREFIX + str(nbd_id)
+
+    def get_cmd(self):
+        self.nbd_dev = self.get_available_nbd_dev()
+        conf_path, _, username = get_ceph_client_conf(self.ps_uuid, get_ceph_manufacturer())
+        if username is not None:
+            name = username.split(".")[-1]
+            self.cmd = 'qemu-nbd -f raw -c %s rbd:%s:id=%s:conf=%s' % (
+                self.nbd_dev, self.normalize_install_path, name, conf_path)
+        else:
+            self.cmd = 'qemu-nbd -f raw -c %s rbd:%s:conf=%s' % (
+                self.nbd_dev, self.normalize_install_path, conf_path)
+
+    def qemu_nbd_socket_is_exists(self, qemu_nbd_socket):
+        for nbd_socket in os.listdir(QEMU_NBD_SOCKET_DIR):
+            if qemu_nbd_socket == nbd_socket:
+                return self.volume_mounted_device
+        return None
+
+    def build_qemu_nbd_socket_name(self):
+        nbd_id = self.volume_mounted_device.split(NBD_DEV_PREFIX)[-1]
+        return QEMU_NBD_SOCKET_PREFIX + str(nbd_id)
+
+    def do_mount(self, fstype=None):
+        try:
+            check_nbd()
+            self.get_cmd()
+            shell.call(self.cmd)
+            if fstype is not None:
+                shell.call('mkfs -F -t %s %s' % (fstype, self.nbd_dev))
+            linux.mount(self.nbd_dev, self.mount_path)
+        except Exception as e:
+            if self.nbd_dev is not None:
+                shell.call('qemu-nbd -d %s' % self.nbd_dev)
+            raise e
+        return self.nbd_dev
+
+    def mount(self):
+        if self.volume_mounted_device is not None:
+            cmd = shell.ShellCmd("mountpoint %s" % self.mount_path)
+            cmd(is_exception=False)
+            if cmd.return_code == 0:
+                return self.volume_mounted_device
+            if self.qemu_nbd_socket_is_exists(self.build_qemu_nbd_socket_name()) is not None:
+                linux.mount(self.volume_mounted_device, self.mount_path)
+                return self.volume_mounted_device
+            else:
+                return self.do_mount()
+
+        if not os.path.isdir(self.mount_path):
+            linux.mkdir(self.mount_path)
+
+        fstype = get_fs_type(self.mount_path)
+        return self.do_mount(fstype)
+
+    def umount(self):
+        device_and_mount_path = bash.bash_o("mount | grep %s" % self.mount_path)
+        if len(device_and_mount_path) != 0:
+            shell.call('umount -f %s' % self.mount_path)
+        shell.call("qemu-nbd -d %s" % self.volume_mounted_device)
