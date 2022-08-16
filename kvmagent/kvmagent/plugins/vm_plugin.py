@@ -3780,7 +3780,10 @@ class Vm(object):
                     if is_virtual_machine():
                         cpu = e(root, 'cpu')
                         e(cpu, 'model', 'cortex-a57')
-                    else:
+                    elif cmd.nestedVirtualization == 'host-model':
+                        cpu = e(root, 'cpu', attrib={'mode': 'host-model'})
+                        e(cpu, 'model', attrib={'fallback': 'allow'})
+                    elif cmd.nestedVirtualization == 'host-passthrough':
                         cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
                         e(cpu, 'model', attrib={'fallback': 'allow'})
                     mem = cmd.memory / 1024
@@ -3841,7 +3844,10 @@ class Vm(object):
                     if is_virtual_machine():
                         cpu = e(root, 'cpu')
                         e(cpu, 'model', 'cortex-a57')
-                    else :
+                    elif cmd.nestedVirtualization == 'host-model':
+                        cpu = e(root, 'cpu', attrib={'mode': 'host-model'})
+                        e(cpu, 'model', attrib={'fallback': 'allow'})
+                    elif cmd.nestedVirtualization == 'host-passthrough':
                         cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
                         e(cpu, 'model', attrib={'fallback': 'allow'})
                     return cpu
