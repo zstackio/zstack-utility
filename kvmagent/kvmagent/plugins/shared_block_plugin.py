@@ -182,6 +182,11 @@ class CheckDisk(object):
     def __init__(self, identifier):
         self.identifier = identifier
 
+    def __eq__(self, other):
+        if isinstance(other, CheckDisk):
+            return self.identifier == other.identifier
+        return False
+
     def get_path(self, raise_exception=True):
         o = self.check_disk_by_wwid()
         if o is not None:
@@ -210,16 +215,14 @@ class CheckDisk(object):
             disk_name = self.get_path().split("/")[-1]
 
         def rescan_slave(slave, raise_exception=True):
-            _cmd = shell.ShellCmd("echo 1 > /sys/block/%s/device/rescan" % slave)
-            _cmd(is_exception=raise_exception)
-            logger.debug("rescaned disk %s (wwid: %s), return code: %s, stdout %s, stderr: %s" %
-                         (slave, self.identifier, _cmd.return_code, _cmd.stdout, _cmd.stderr))
+            linux.write_file("/sys/block/%s/device/rescan" % slave, "1")
+            logger.debug("rescaned disk %s" % slave)
 
         multipath_dev = lvm.get_multipath_dmname(disk_name)
         if multipath_dev:
             t, disk_name = disk_name, multipath_dev
             # disk name is dm-xx when multi path
-            slaves = shell.call("ls /sys/class/block/%s/slaves/" % disk_name).strip().split("\n")
+            slaves = linux.listdir("/sys/class/block/%s/slaves/" % disk_name)
             if slaves is None or len(slaves) == 0 or (len(slaves) == 1 and slaves[0].strip() == ""):
                 logger.debug("can not get any slaves of multipath device %s" % disk_name)
                 rescan_slave(disk_name, False)
@@ -252,10 +255,9 @@ class CheckDisk(object):
 
     def check_disk_by_wwid(self):
         for cond in ['dm-uuid-mpath-', "", 'scsi-']:
-            cmd = shell.ShellCmd("readlink -e /dev/disk/by-id/%s%s" % (cond, self.identifier))
-            cmd(is_exception=False)
-            if cmd.return_code == 0:
-                return cmd.stdout.strip()
+            rp = os.path.realpath("/dev/disk/by-id/%s%s" % (cond, self.identifier))
+            if os.path.exists(rp):
+                return rp
 
     def check_disk_by_absolute_path(self):
         if os.path.exists(self.identifier):
@@ -384,7 +386,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         @linux.retry(times=3, sleep_time=random.uniform(0.1, 3))
         def create_vg(hostUuid, vgUuid, diskPaths, raise_excption = True):
             cmd = shell.ShellCmd("vgcreate -qq --shared --addtag '%s::%s::%s::%s' --metadatasize %s %s %s" %
-                                 (INIT_TAG, hostUuid, time.time(), bash.bash_o("hostname").strip(),
+                                 (INIT_TAG, hostUuid, time.time(), linux.get_hostname(),
                                   DEFAULT_VG_METADATA_SIZE, vgUuid, " ".join(diskPaths)))
             cmd(is_exception=False)
             logger.debug("created vg %s, ret: %s, stdout: %s, stderr: %s" %
@@ -520,7 +522,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             lvm.modify_sanlock_config("zstack_vglock_large_delay", 8)
             lvm.modify_sanlock_config("use_zstack_vglock_large_delay", 0)
 
-            sanlock_hostname = "%s-%s-%s" % (cmd.vgUuid[:8], cmd.hostUuid[:8], bash.bash_o("hostname").strip()[:20])
+            sanlock_hostname = "%s-%s-%s" % (cmd.vgUuid[:8], cmd.hostUuid[:8], linux.get_hostname()[:20])
             lvm.modify_sanlock_config("our_host_name", sanlock_hostname)
             shell.call("sed -i 's/.*rotate .*/rotate 10/g' /etc/logrotate.d/sanlock", exception=False)
             shell.call("sed -i 's/.*size .*/size 20M/g' /etc/logrotate.d/sanlock", exception=False)
@@ -571,7 +573,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             lvm.start_vg_lock(cmd.vgUuid, retry_times_for_checking_vg_lockspace)
 
         # lvm.clean_vg_exists_host_tags(cmd.vgUuid, cmd.hostUuid, HEARTBEAT_TAG)
-        # lvm.add_vg_tag(cmd.vgUuid, "%s::%s::%s::%s" % (HEARTBEAT_TAG, cmd.hostUuid, time.time(), bash.bash_o('hostname').strip()))
+        # lvm.add_vg_tag(cmd.vgUuid, "%s::%s::%s::%s" % (HEARTBEAT_TAG, cmd.hostUuid, time.time(), linux.get_hostname()))
         self.clear_stalled_qmp_socket()
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
@@ -590,7 +592,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 qmp.append(i.split("/")[-1])
             return qmp
 
-        exists_qmp_files = set(bash.bash_o("ls %s" % QMP_SOCKET_PATH).splitlines())
+        exists_qmp_files = set(linux.listdir(QMP_SOCKET_PATH))
         if len(exists_qmp_files) == 0:
             return
 
@@ -604,7 +606,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             return
 
         for f in need_delete_qmp_files:
-            bash.bash_roe("/bin/rm %s/%s" % (QMP_SOCKET_PATH, f))
+            linux.rm_file_force(os.path.join(QMP_SOCKET_PATH, f))
 
     @kvmagent.replyerror
     @lock.file_lock(LOCK_FILE)

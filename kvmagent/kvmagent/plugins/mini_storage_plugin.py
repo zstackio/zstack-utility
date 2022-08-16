@@ -218,15 +218,8 @@ class CheckDisk(object):
     def __init__(self, identifier):
         self.identifier = identifier
 
-    @bash.in_bash
-    def check_disk_by_path(self):
-        if bash.bash_r("ls %s" % self.identifier) == 0:
-            return self.identifier
-        return None
-
     def get_path(self):
-        o = self.check_disk_by_path()
-        if o is not None:
+        if os.path.exists(self.identifier):
             return o
 
         raise Exception("can not find disk with %s as wwid, uuid or wwn, "
@@ -251,7 +244,7 @@ class CheckDisk(object):
         if multipath_dev:
             t, disk_name = disk_name, multipath_dev
             # disk name is dm-xx when multi path
-            slaves = shell.call("ls /sys/class/block/%s/slaves/" % disk_name).strip().split("\n")
+            slaves = linux.listdir("/sys/class/block/%s/slaves/" % disk_name)
             if slaves is None or len(slaves) == 0 or (len(slaves) == 1 and slaves[0].strip() == ""):
                 logger.debug("can not get any slaves of multipath device %s" % disk_name)
                 rescan_slave(disk_name, False)
@@ -475,7 +468,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
                 diskPaths = newDiskPaths
 
             cmd = shell.ShellCmd("vgcreate -qq --addtag '%s::%s::%s::%s' --metadatasize %s %s %s" %
-                                 (INIT_TAG, hostUuid, time.time(), bash.bash_o("hostname").strip(),
+                                 (INIT_TAG, hostUuid, time.time(), linux.get_hostname(),
                                   DEFAULT_VG_METADATA_SIZE, vgUuid, " ".join(diskPaths)))
             cmd(is_exception=False)
             logger.debug("created vg %s, ret: %s, stdout: %s, stderr: %s" %
@@ -537,7 +530,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
             logger.warn("lvm operation test failed!")
 
         lvm.clean_vg_exists_host_tags(cmd.vgUuid, cmd.hostUuid, HEARTBEAT_TAG)
-        lvm.add_vg_tag(cmd.vgUuid, "%s::%s::%s::%s" % (HEARTBEAT_TAG, cmd.hostUuid, time.time(), bash.bash_o('hostname').strip()))
+        lvm.add_vg_tag(cmd.vgUuid, "%s::%s::%s::%s" % (HEARTBEAT_TAG, cmd.hostUuid, time.time(), linux.get_hostname()))
 
         if cmd.fencerAddress:
             lvm.clean_vg_exists_host_tags(cmd.vgUuid, '\'\'', FENCER_TAG)

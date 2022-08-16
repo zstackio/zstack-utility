@@ -387,8 +387,7 @@ class SftpBackupStorageAgent(object):
                         logger.debug("duplicate uuid %s, ignore" % image_json["uuid"])
                         continue
                     image_uuid_list.append(image_uuid)
-                    ret = bash_r("ls %s" % image_install_path)
-                    if ret == 0 :
+                    if os.path.exists(image_install_path):
                         logger.info("Check image %s install path %s successfully!" % (image_uuid, image_install_path))
                         valid_images_info = image_info + '\n' + valid_images_info
                     else:
