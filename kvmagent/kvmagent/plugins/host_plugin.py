@@ -19,7 +19,7 @@ import sys
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
 from kvmagent.plugins.imagestore import ImageStoreClient
-from zstacklib.utils import http
+from zstacklib.utils import http, lvm, ceph
 from zstacklib.utils import linux
 from zstacklib.utils import iptables
 from zstacklib.utils import iproute
@@ -466,6 +466,11 @@ class AddBridgeFdbEntryRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(AddBridgeFdbEntryRsp, self).__init__()
 
+class AttachVolumeRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(AttachVolumeRsp, self).__init__()
+        self.device = None
+
 class PciDeviceTO(object):
     def __init__(self):
         self.name = ""
@@ -626,6 +631,8 @@ class HostPlugin(kvmagent.KvmAgent):
     DEPLOY_COLO_QEMU_PATH = "/deploy/colo/qemu"
     UPDATE_CONFIGURATION_PATH = "/host/update/configuration"
     GET_NUMA_TOPOLOGY_PATH = "/numa/topology"
+    ATTACH_VOLUME_PATH = "/host/volume/attach"
+    DETACH_VOLUME_PATH = "/host/volume/detach"
 
     host_network_facts_cache = {}  # type: dict[float, list[list, list]]
     cpu_sockets = 0
@@ -2516,6 +2523,45 @@ done
         rsp.topology = NumaTopology()()
         return jsonobject.dumps(rsp)
 
+
+    @kvmagent.replyerror
+    def attach_volume_path(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AttachVolumeRsp()
+        if cmd.volumeInstallPath is None:
+            raise Exception("volume install path can not be null")
+        if cmd.mountPath is None:
+            raise Exception("mount path can not be null")
+
+        if cmd.volumeInstallPath.startswith('sharedblock'):
+            rsp.device = lvm.LvmRemoteStorage(cmd.volumeInstallPath, cmd.mountPath, cmd.device).mount()
+        elif cmd.volumeInstallPath.startswith('ceph'):
+            rsp.device = ceph.NbdRemoteStorage(cmd.volumeInstallPath, cmd.mountPath, cmd.device, cmd.volumePrimaryStorageUuid).mount()
+        else:
+            raise Exception("do not support volume type")
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def detach_volume__path(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+        if cmd.volumeInstallPath is None:
+            raise Exception("volume install path can not be null")
+        if cmd.mountPath is None:
+            raise Exception("mount path can not be null")
+        if cmd.device is None:
+            raise Exception("device can not be null")
+
+        if cmd.volumeInstallPath.startswith('sharedblock'):
+            lvm.LvmRemoteStorage(cmd.volumeInstallPath, cmd.mountPath, cmd.device).umount()
+        elif cmd.volumeInstallPath.startswith('ceph'):
+            ceph.NbdRemoteStorage(cmd.volumeInstallPath, cmd.mountPath, cmd.device).umount()
+        else:
+            raise Exception("do not support volume type")
+
+        return jsonobject.dumps(rsp)
+
     def start(self):
         self.host_uuid = None
         self.host_socket = None
@@ -2564,6 +2610,8 @@ done
         http_server.register_async_uri(self.DEPLOY_COLO_QEMU_PATH, self.deploy_colo_qemu)
         http_server.register_async_uri(self.UPDATE_CONFIGURATION_PATH, self.update_host_configuration)
         http_server.register_async_uri(self.GET_NUMA_TOPOLOGY_PATH, self.get_numa_topology)
+        http_server.register_async_uri(self.ATTACH_VOLUME_PATH, self.attach_volume_path)
+        http_server.register_async_uri(self.DETACH_VOLUME_PATH, self.detach_volume__path)
 
         self.heartbeat_timer = {}
         self.libvirt_version = linux.get_libvirt_version()

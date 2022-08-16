@@ -2542,3 +2542,15 @@ def get_max_vm_ipa_size():
         logger.warn("failed to get max vm ipa size, because %s", str(e))
         return pow(2, DEFAULT_VM_IPA_SIZE)
 
+
+def get_fs_type(path):
+    if os.path.isabs(path) is False:
+        raise Exception("Make sure you path name with absolute path")
+    return shell.call("""stat -f -c '%T' {}""".format(path)).strip()
+
+
+def check_nbd():
+    cmd = shell.ShellCmd("modinfo nbd")
+    cmd(is_exception=False)
+    if cmd.return_code != 0:
+        raise Exception('nbd kernel module not found. try load nbd by `modprobe nbd`.')
