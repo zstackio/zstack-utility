@@ -786,7 +786,7 @@ class HostPlugin(kvmagent.KvmAgent):
             time.sleep(3)
             loop += 1
         return ''
-    
+
     def _cache_units_convert(self, str):
 
         unit = str.strip().split(" ")[1]
@@ -931,19 +931,27 @@ class HostPlugin(kvmagent.KvmAgent):
 
             def convert(capacity): 
                 if capacity is None or capacity == '':
-                    return None
-                num = ''.join(re.findall('\d+',capacity))
-                unit = ''.join(re.findall('[A-Za-z]',capacity))
-                if unit != '':
-                    unit = unit[0].upper() 
-                return round(float(sizeunit.get_size(num+unit)/1024))
-            cpu_l1d_cache = convert(shell.call("lscpu | grep 'L1d cache' | awk -F ':' '{print $2}'") 
-            cpu_l1i_cache = convert(shell.call("lscpu | grep 'L1i cache' | awk -F ':' '{print $2}'")
-            cpu_l1_cache = float(cpu_l1d_cache if cpu_l1d_cache is not None else 0)+float(cpu_l1i_cache if cpu_l1i_cache is not None else 0) 
-            cpu_l2_cache = convert(shell.call("lscpu | grep 'L2 cache' | awk -F ':' '{print $2}'"))
-            cpu_l3_cache = convert(shell.call("lscpu | grep 'L3 cache' | awk -F ':' '{print $2}'"))
-            rsp.cpuCache = ','.join(map(str,[x for x in [cpu_l1_cache, cpu_l2_cache, cpu_l3_cache] if x is not None]))
-            
+                    return 0
+                return round(float(sizeunit.get_size(capacity) / 1024))
+
+            cpu_l1d_cache = 0
+            cpu_l1i_cache = 0
+            cpu_l2_cache = 0
+            cpu_l3_cache = 0
+            o = shell.call("lscpu")
+            for line in o.splitlines():
+                if re.search('L1d cache', line):
+                    cpu_l1d_cache = convert(line.split(':')[1].strip())
+                elif re.search('L1i cache', line):
+                    cpu_l1i_cache = convert(line.split(':')[1].strip())
+                elif re.search('L2 cache', line):
+                    cpu_l2_cache = convert(line.split(':')[1].strip())
+                elif re.search('L3 cache', line):
+                    cpu_l3_cache = convert(line.split(':')[1].strip())
+
+            cpu_l1_cache = float(cpu_l1d_cache) + float(cpu_l1i_cache)
+            rsp.cpuCache = ','.join(map(str, [cpu_l1_cache, float(cpu_l2_cache), float(cpu_l3_cache)]))
+
         return jsonobject.dumps(rsp)
 
     @vm_plugin.LibvirtAutoReconnect
