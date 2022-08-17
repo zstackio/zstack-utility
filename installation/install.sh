@@ -3256,10 +3256,10 @@ check_sync_local_repos() {
   which zstack-ctl > /dev/null 2>&1
   if [ $? -eq 0 -a x`zstack-ctl get_configuration RepoVersion.Strategy 2>/dev/null` == x"enforcing" ];then
     for release in $rls;do
-      cmp -s .repo_version $release || check_hybrid_arch
+      diff --ignore-all-space .repo_version $release || check_hybrid_arch
     done
   else
-    [ `cat .repo_version` -eq `cat $rls | sort -r | head -n 1` ] || REPO_MATCHED="false"
+    [ `cat .repo_version` -eq `sort -r $rls | head -n 1` ] || REPO_MATCHED="false"
   fi
 
   if [ x"$REPO_MATCHED" = x"true" ]; then
@@ -3291,7 +3291,7 @@ LOCAL_ZSTAC_VERSION=$(awk '{print $NF}' $ZSTACK_HOME/VERSION)
 if [[ $LOCAL_ZSTAC_VERSION == $VERSION_RELEASE_NR* ]]; then
     wget -q -O .remote_repo_version "${REMOTE_REPO_VERSION_URL}${ZSTACK_RELEASE}/.repo_version"
     if [ -s .remote_repo_version ]; then
-        cmp -s .repo_version .remote_repo_version || echo_upgrade_local_repo_use_iso
+        diff --ignore-all-space .repo_version .remote_repo_version || echo_upgrade_local_repo_use_iso
     else
         fail2 "failed to update repo, can not find remote repo version, please download iso manually to upgrade your repo."
     fi
