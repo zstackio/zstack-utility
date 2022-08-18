@@ -178,6 +178,7 @@ class HostPhysicalMemoryStruct(object):
         self.serialNumber = ""
         self.rank = ""
         self.voltage = ""
+        self.type = ""
 
 
 class GetHostPhysicalMemoryFactsResponse(kvmagent.AgentResponse):
@@ -1534,7 +1535,7 @@ done
         results = []
         memory_arr = o.split("Memory Device")
         for infos in memory_arr[1:]:
-            size = locator = speed = manufacturer = serialnumber = rank = clockSpeed = None
+            size = locator = speed = manufacturer = type = serial_number = rank = clock_speed = None
             for line in infos.splitlines():
                 if line.strip() == "" or ":" not in line:
                     continue
@@ -1554,21 +1555,24 @@ done
                     speed = v
                 elif "manufacturer" == k:
                     manufacturer = v
+                elif "type" == k:
+                    type = v
                 elif "serial number" == k:
-                    serialnumber = v
+                    serial_number = v
                 elif "rank" == k:
                     rank = v
                 elif "configured clock speed" == k:
-                    clockSpeed =  v
+                    clock_speed = v
                 elif "configured voltage" == k:
-                    if serialnumber.lower() != "no dimm" and serialnumber.lower() != "unknown" and serialnumber is not None:
+                    if serial_number.lower() != "no dimm" and serial_number.lower() != "unknown" and serial_number is not None:
                         m = HostPhysicalMemoryStruct()
                         m.size = size
                         m.speed = speed
-                        m.clockSpeed = clockSpeed
+                        m.clockSpeed = clock_speed
                         m.locator = locator
                         m.manufacturer = manufacturer
-                        m.serialNumber = serialnumber
+                        m.type = type
+                        m.serialNumber = serial_number
                         m.rank = rank
                         m.voltage = v
                         results.append(m)
