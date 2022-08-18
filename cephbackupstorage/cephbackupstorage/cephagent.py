@@ -1034,7 +1034,7 @@ class CephAgent(object):
         return jsonobject.dumps(rsp)
 
     def export(self, req, rsp, **kwargs):
-        def get_image_name(self, image):
+        def get_image_name(image):
             return image[len(image) - self.LENGTH_OF_UUID:]
 
         pool_name = kwargs['pool']
