@@ -38,6 +38,7 @@ qemu_alias = {
     "ns10": "qemu-kvm qemu-img",
     "uos20": "qemu-system",
     "c76": "qemu-kvm-ev",
+    "c79": "qemu-kvm-ev",
     "euler20": "qemu",
     "uos1021a": "qemu-kvm"
 }
@@ -292,6 +293,7 @@ def get_host_releasever(ansible_distribution):
         "kylin_zstack zstack 10": "ns10",
         "uniontech fou 20": "uos20",
         "redhat maipo 7.4": "ns10", # old kylinV10, oem 7.4 incompletely
+        "centos core 7.9.2009": "c79",
         "centos core 7.6.1810": "c76",
         "centos core 7.4.1708": "c74",
         "centos core 7.2.1511": "c74", # c74 for old releases
