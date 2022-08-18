@@ -213,10 +213,6 @@ def collect_raid_state():
                                                  ['slot_number', 'disk_group']),
     }
     
-    r, o = bash_ro("arcconf list | grep -A 8 'Controller ID' | awk '{print $2}'")
-    if r == 0 and o.strip() != "":
-        return collect_arcconf_raid_state(metrics, o)
-
     r, o = bash_ro("sas3ircu list | grep -A 8 'Index' | awk '{print $1}'")
     if r == 0 and o.strip() != "":
         return collect_sas_raid_state(metrics, o)
@@ -224,6 +220,10 @@ def collect_raid_state():
     r, o = bash_ro("/opt/MegaRAID/MegaCli/MegaCli64 -LDInfo -LALL -aAll | grep -E 'Target Id|State'")
     if r == 0 and o.strip() != "":
         return collect_mega_raid_state(metrics, o)
+
+    r, o = bash_ro("arcconf list | grep -A 8 'Controller ID' | awk '{print $2}'")
+    if r == 0 and o.strip() != "":
+        return collect_arcconf_raid_state(metrics, o)
     
     return metrics.values()
 
@@ -382,9 +382,10 @@ def collect_mini_raid_state():
     return metrics.values()
 
 
-def collect_ssd_lift_state():
+def collect_ssd_state():
     metrics = {
         'ssd_life_left': GaugeMetricFamily('ssd_life_left', 'ssd life left', None, ['disk', 'serial_number']),
+        'ssd_temperature': GaugeMetricFamily('ssd_temperature', 'ssd temperature', None, ['disk', 'serial_number']),
     }
     
     r, o = bash_ro("lsblk -d -o name,type,rota | grep -w disk | awk '$3 == 0 {print $1}'")  # type: (int, str)
@@ -399,17 +400,26 @@ def collect_ssd_lift_state():
         serial_number = o.strip()
         
         if disk_name.startswith('nvme'):
-            r, o = bash_ro("smartctl -A /dev/%s | grep 'Percentage Used'" % disk_name)
+            r, o = bash_ro("smartctl -A /dev/%s | grep -E '^Percentage Used:|^Temperature:'" % disk_name)
             if r != 0 or o.strip() == "":
                 continue
-            if o.split(":")[1].split("%")[0].strip().isdigit():
-                metrics['ssd_life_left'].add_metric([disk_name, serial_number], float(float(100) - float(o.split(":")[1].split("%")[0].strip().strip())))
+
+            for info in o.splitlines():
+                info = info.strip()
+                if info.startswith("Percentage Used:") and info.split(":")[1].split("%")[0].strip().isdigit():
+                    metrics['ssd_life_left'].add_metric([disk_name, serial_number], float(float(100) - float(info.split(":")[1].split("%")[0].strip())))
+                elif info.startswith("Temperature:") and info.split(":")[1].split()[0].strip().isdigit():
+                    metrics['ssd_temperature'].add_metric([disk_name, serial_number], float(info.split(":")[1].split()[0].strip()))
         else:
-            r, o = bash_ro("smartctl -A /dev/%s | grep 'Media_Wearout_Indicator' | awk '{print $4}'" % disk_name)
+            r, o = bash_ro("smartctl -A /dev/%s | grep -E 'Media_Wearout_Indicator|Temperature_Celsius'" % disk_name)
             if r != 0 or o.strip() == "":
                 continue
-            if o.strip().isdigit():
-                metrics['ssd_life_left'].add_metric([disk_name, serial_number], float(o.strip()))
+            for info in o.splitlines():
+                info = info.strip()
+                if "Media_Wearout_Indicator" in info and info.split()[4].strip().isdigit():
+                    metrics['ssd_life_left'].add_metric([disk_name, serial_number], float(info.split()[4].strip()))
+                elif "Temperature_Celsius" in info and info.split()[9].strip().isdigit():
+                    metrics['ssd_temperature'].add_metric([disk_name, serial_number], float(info.split()[9].strip()))
         
     return metrics.values()
 
@@ -434,48 +444,76 @@ def collect_ipmi_state():
         collect_equipment_state_last_time = time.time()
     elif (time.time() - collect_equipment_state_last_time) < 25 and collect_equipment_state_last_result is not None:
         return collect_equipment_state_last_result
-    
-    '''
-        Inspur
-        PSU0_Status      | 5Dh | ok  | 10.0 | Presence detected, AC lost or out-of-range 
-        PSU1_Status      | 5Eh | ok  | 10.1 | Presence detected
-
-        PowerLeader
-        PS1 Status      | C4h | ok  | 10.91 | Presence detected
-        PS2 Status      | C5h | ok  | 10.92 | Presence detected, Failure detected, Power Supply AC lost
-    '''
-    r, power_supply_info = bash_ro("ipmitool sdr type 'power supply' | grep -E '^PS\w*(\ |_)Status|^PS\w*(\ |_)POUT'")
-    if r == 0:
-        for info in power_supply_info.splitlines():
-            info = info.strip()
-            ps_id = info.split("|")[0].strip().split(" ")[0].split("_")[0]
-            ps_str = info.split("|")[0].strip().split(" ")[0].split("_")[1]
-            # the cut string has the same length as the original string which means cut symbol is not we want
-            if len(ps_id) == len(info.split("|")[0].strip().split(" ")[0]):
-                ps_id = info.split("|")[0].strip().split(" ")[0].split(" ")[0]
-                ps_str = info.split("|")[0].strip().split(" ")[1].split(" ")[1]
-            if ps_str == 'POUT':
-                ps_out_power = info.split("|")[4].strip().lower()
-                ps_out_power = float(filter(str.isdigit, ps_out_power)) if bool(re.search(r'\d', ps_out_power)) else float(0)
-                metrics['power_supply_current_output_power'].add_metric([ps_id], ps_out_power)
-            elif ps_str == 'Status':
-                ps_state = info.split("|")[4].strip().lower()
-                health = 0 if "presence detected" == ps_state else 10
-                metrics['power_supply'].add_metric([ps_id], health)
 
     metrics['ipmi_status'].add_metric([], bash_r("ipmitool mc info"))
 
-    r, fan_info = bash_ro("ipmitool sdr type 'fan' | grep -E -i -v 'Present|FAN_M'")  # type: (int, str)
+    '''
+            Inspur(old)
+            PSU0_Status      | 74h | ok  | 10.0 | Presence detected, Power Supply AC lost
+            PSU1_Status      | 75h | ok  | 10.0 | Presence detected
+            PSU0_POUT        | 2Eh | ok  | 32.0 | 0 Watts
+            PSU1_POUT        | 2Fh | ok  | 32.1 | 208 Watts
+            FAN0_F_Speed     | 50h | ok  | 29.0 | 4320 RPM
+            FAN0_R_Speed     | 51h | ok  | 29.1 | 3840 RPM
+
+            Inspur(new)
+            PSU0_Status      | 5Dh | ok  | 10.0 | Presence detected, Predictive failure, AC lost or out-of-range
+            PSU1_Status      | 5Eh | ok  | 10.1 | Presence detected
+            PSU0_PIN         | 44h | ok  | 10.0 | 0 Watts
+            PSU1_PIN         | 45h | ok  | 10.1 | 372 Watts
+            FAN0_F_Speed     | 46h | ok  | 29.0 | 4080 RPM
+            FAN0_R_Speed     | 47h | ok  | 29.1 | 3600 RPM
+
+            Hygon
+            PSU1_Status      | AEh | ok  | 10.10 | Presence detected
+            PSU2_Status      | BBh | ok  | 10.20 | Presence detected
+            PSU1_Pin         | AAh | ok  | 10.6  | 150 Watts
+            PSU2_Pin         | B7h | ok  | 10.16 | 150 Watts
+            FAN1_Speed       | 81h | ok  | 29.1 | 4700 RPM
+            FAN2_Speed       | 82h | ok  | 29.2 | 4700 RPM
+
+            PowerLeader
+            PSU1_Status      | 58h | ok  | 10.0 | Presence detected, Power Supply AC lost
+            PSU2_Status      | 59h | ok  | 10.1 | Presence detected
+            PSU1_Pin         | 32h | ok  | 10.0 | 4 Watts
+            PSU2_Pin         | 36h | ok  | 10.1 | 284 Watts
+            FAN_SPEED_1A     | 40h | ok  | 29.0 | 4640 RPM
+            FAN_SPEED_1B     | 41h | ns  | 29.0 | No Reading
+
+    '''
+    r, sdr_data = bash_ro("ipmitool sdr elist")
     if r == 0:
-        for info in fan_info.splitlines():
-            info = info.strip()
-            if info.split("|")[4].strip() == "":
-                continue
-            fan_id = info.split("|")[0].strip()
-            fan_state = 0 if info.split("|")[2].strip().lower() == "ok" else 10
-            fan_rpm = 0 if fan_state != 0 else info.split("|")[4].strip().split(" ")[0]
-            metrics['fan_speed_state'].add_metric([fan_id], fan_state)
-            metrics['fan_speed_rpm'].add_metric([fan_id], float(fan_rpm))
+        power_list = []
+        for line in sdr_data.splitlines():
+            info = line.lower().strip()
+            if re.match(r"^ps\w*(\ |_)status", info):
+                ps_id = info.split("|")[0].strip().split(" ")[0].split("_")[0]
+                ps_state = info.split("|")[4].strip()
+                if "presence detected" == ps_state:
+                    metrics['power_supply'].add_metric([ps_id], 0)
+                elif "presence detected" in ps_state and "ac lost" in ps_state:
+                    metrics['power_supply'].add_metric([ps_id], 10)
+                else:
+                    metrics['power_supply'].add_metric([ps_id], 20)
+            elif re.match(r"^ps\w*(\ |_)(pin|pout)", info):
+                ps_id = info.split("|")[0].strip().split(" ")[0].split("_")[0]
+                if "pout" in info and ps_id in power_list:
+                    continue
+                ps_out_power = info.split("|")[4].strip().lower()
+                ps_out_power = float(filter(str.isdigit, ps_out_power)) if bool(re.search(r'\d', ps_out_power)) else float(0)
+                metrics['power_supply_current_output_power'].add_metric([ps_id], ps_out_power)
+                power_list.append(ps_id)
+            elif re.match(r"^fan\w*_speed\w*", info):
+                if "m2" in info:
+                    continue
+                fan_rpm = info.split("|")[4].strip()
+                if fan_rpm == "" or fan_rpm == "no reading" or fan_rpm == "disabled":
+                    continue
+                fan_id = info.split("|")[0].strip()
+                fan_state = 0 if info.split("|")[2].strip().lower() == "ok" else 10
+                fan_rpm = float(filter(str.isdigit, fan_rpm)) if bool(re.search(r'\d', fan_rpm)) else float(0)
+                metrics['fan_speed_state'].add_metric([fan_id], fan_state)
+                metrics['fan_speed_rpm'].add_metric([fan_id], fan_rpm)
     
     collect_equipment_state_last_result = metrics.values()
     return collect_equipment_state_last_result
@@ -487,25 +525,27 @@ def collect_physical_cpu_state():
         "cpu_status": GaugeMetricFamily('cpu_status', 'cpu status', None, ['cpu']),
     }
 
-    '''
-        PowerLeader
-        CPU1 Temp      | 01h | ok  | 3.1 | 66 degrees C
-    '''
-    r, cpu_temp_info = bash_ro(
-        "ipmitool sdr type 'Temperature' | grep -E -i '^CPU[0-9]*(\ |_)Temp'")  # type: (int, str)
+    r, cpu_info = bash_ro(
+        "ipmitool sdr elist | grep -E -i '^CPU[0-9]*(\ |_)Temp|CPU[0-9]*(\ |_)Status'")  # type: (int, str)
     if r == 0:
-        cpu_list = cpu_temp_info.splitlines()
-        for i in range(len(cpu_list)):
-            info = cpu_list[i].strip()
-            cpu_id = "CPU" + str(i)
-            # cpu_id = info.split("|")[0].strip().split(" ")[0].split("_")[0]
-            # # the cut string has the same length as the original string which means cut symbol is not we want
-            # if len(cpu_id) == len(info.split("|")[0].strip().split(" ")[0]):
-            #     cpu_id = info.split("|")[0].strip().split(" ")[0].split(" ")[0]
-            cpu_state = 0 if info.split("|")[2].strip().lower() == "ok" else 10
-            cpu_temp = 0 if cpu_state != 0 else info.split("|")[4].strip().split(" ")[0]
-            metrics['cpu_temperature'].add_metric([cpu_id], float(cpu_temp))
-            metrics['cpu_status'].add_metric([cpu_id], float(cpu_state))
+        count = 0
+        for info in cpu_info.splitlines():
+            info = info.strip().lower()
+            cpu_id = "CPU" + str(count)
+            if "temp" in info:
+                cpu_temp = info.split("|")[4].strip()
+                metrics['cpu_temperature'].add_metric([cpu_id], float(filter(str.isdigit, cpu_temp)) if bool(re.search(r'\d', cpu_temp)) else float(0))
+                count = count + 1
+
+        count = 0
+        for info in cpu_info.splitlines():
+            info = info.strip().lower()
+            cpu_id = "CPU" + str(count)
+            if "status" in info:
+                cpu_status = info.split("|")[4].strip()
+                cpu_status = 0 if "presence detected" == cpu_status else 10
+                metrics['cpu_status'].add_metric([cpu_id], float(cpu_status))
+                count = count + 1
     
     collect_equipment_state_last_result = metrics.values()
     return collect_equipment_state_last_result
@@ -725,7 +765,7 @@ if misc.isMiniHost():
 if misc.isHyperConvergedHost():
     kvmagent.register_prometheus_collector(collect_raid_state)
     kvmagent.register_prometheus_collector(collect_ipmi_state)
-    kvmagent.register_prometheus_collector(collect_ssd_lift_state)
+    kvmagent.register_prometheus_collector(collect_ssd_state)
 
 
 class PrometheusPlugin(kvmagent.KvmAgent):
