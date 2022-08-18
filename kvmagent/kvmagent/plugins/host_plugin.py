@@ -786,7 +786,7 @@ class HostPlugin(kvmagent.KvmAgent):
             time.sleep(3)
             loop += 1
         return ''
-    
+
     def _cache_units_convert(self, str):
 
         unit = str.strip().split(" ")[1]
@@ -929,26 +929,29 @@ class HostPlugin(kvmagent.KvmAgent):
             cpu_processor_num = shell.call("grep -c processor /proc/cpuinfo")
             rsp.cpuProcessorNum = cpu_processor_num.strip()         
 
-            cpu_l1d_cache = shell.call("lscpu | grep 'L1i cache' | awk -F ':' '{print $2}'") 
-            cpu_l1i_cache = shell.call("lscpu | grep 'L1d cache' | awk -F ':' '{print $2}'")
-            cpu_l1_cache = ''
-            if bool(re.search(r'\d', cpu_l1d_cache)) and bool(re.search(r'\d', cpu_l1i_cache)):
-                cpu_l1_cache_value = float(cpu_l1d_cache.strip()[:-1]) + float(cpu_l1i_cache.strip()[:-1])
-                if cpu_l1d_cache.strip()[-1] == 'K' and cpu_l1i_cache.strip()[-1] == 'K':
-                    cpu_l1_cache = '%.2f' % (cpu_l1_cache_value)
+            def convert(capacity): 
+                if capacity is None or capacity == '':
+                    return 0
+                return round(float(sizeunit.get_size(capacity) / 1024))
 
-            cpu_l2_cache = shell.call("lscpu | grep 'L2 cache' | awk -F ':' '{print $2}'")
-            if cpu_l2_cache.strip()[-1] == 'K':
-                cpu_l2_cache = '%.2f' % float(cpu_l2_cache.strip()[:-1])
+            cpu_l1d_cache = 0
+            cpu_l1i_cache = 0
+            cpu_l2_cache = 0
+            cpu_l3_cache = 0
+            o = shell.call("lscpu")
+            for line in o.splitlines():
+                if re.search('L1d cache', line):
+                    cpu_l1d_cache = convert(line.split(':')[1].strip())
+                elif re.search('L1i cache', line):
+                    cpu_l1i_cache = convert(line.split(':')[1].strip())
+                elif re.search('L2 cache', line):
+                    cpu_l2_cache = convert(line.split(':')[1].strip())
+                elif re.search('L3 cache', line):
+                    cpu_l3_cache = convert(line.split(':')[1].strip())
 
-            cpu_l3_cache = shell.call("lscpu | grep 'L3 cache' | awk -F ':' '{print $2}'")
-            if cpu_l3_cache.strip()[-1] == 'K':
-                cpu_l3_cache = '%.2f' % float(cpu_l3_cache.strip()[:-1])
+            cpu_l1_cache = float(cpu_l1d_cache) + float(cpu_l1i_cache)
+            rsp.cpuCache = ','.join(map(str, [cpu_l1_cache, float(cpu_l2_cache), float(cpu_l3_cache)]))
 
-            if cpu_l1_cache != '' and cpu_l2_cache != '' and cpu_l3_cache != '':
-                cpuCache = [cpu_l1_cache, cpu_l2_cache.strip(), cpu_l3_cache.strip()]
-                rsp.cpuCache = ",".join(cpuCache)
-            
         return jsonobject.dumps(rsp)
 
     @vm_plugin.LibvirtAutoReconnect
