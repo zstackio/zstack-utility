@@ -503,15 +503,13 @@ class HaPlugin(kvmagent.KvmAgent):
         self.setup_fencer(cmd.uuid, created_time)
         mount_path = cmd.mountPath
 
-        def prepare_heartbeat_dir():
-            heartbeat_dir = os.path.join(mount_path, cmd.heartbeat)
-            if not os.path.exists(heartbeat_dir):
-                os.makedirs(heartbeat_dir, 0o755)
-            return heartbeat_dir
+        if linux.is_mounted(mount_path) is not True:
+            rsp = AgentRsp()
+            rsp.success = False
+            rsp.error = "heart path %s is not correctly mounted" % (cmd.mountPath)
+            return jsonobject.dumps(rsp)
 
-        heartbeat_file_dir = prepare_heartbeat_dir()
-
-        test_file = os.path.join(heartbeat_file_dir,
+        test_file = os.path.join(mount_path,
                                  '%s-ping-test-file-%s' % (cmd.uuid, self.config.get(kvmagent.HOST_UUID)))
 
         @thread.AsyncThread
@@ -521,18 +519,22 @@ class HaPlugin(kvmagent.KvmAgent):
             while self.run_fencer(cmd.uuid, created_time):
                 try:
                     time.sleep(cmd.interval)
+                    is_mounted = linux.is_mounted(mount_path)
 
                     logger.debug('touch test file %s' % test_file)
                     touch = shell.ShellCmd('timeout 5 touch %s' % test_file)
                     touch(False)
-                    if touch.return_code != 0:
-                        logger.debug('touch file failed, cause: %s' % touch.stderr)
+
+                    if touch.return_code != 0 or is_mounted is not True:
+                        if touch.return_code != 0:
+                            logger.debug('touch file failed, cause: %s' % touch.stderr)
+                        if is_mounted is not True:
+                            logger.debug('heartbeat path %s is not correctly mounted' % mount_path)
                         failure += 1
                     else:
                         failure = 0
                         logger.debug('remove test file %s' % test_file)
                         linux.rm_file_force(test_file)
-                        linux.sync_file(test_file)
                         continue
 
                     if failure < cmd.maxAttempts:
