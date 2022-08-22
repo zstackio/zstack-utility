@@ -614,15 +614,13 @@ class HaPlugin(kvmagent.KvmAgent):
         self.setup_fencer(cmd.uuid, created_time)
         mount_path = cmd.mountPath
 
-        def prepare_heartbeat_dir():
-            heartbeat_dir = os.path.join(mount_path, cmd.heartbeat)
-            if not os.path.exists(heartbeat_dir):
-                os.makedirs(heartbeat_dir, 0o755)
-            return heartbeat_dir
+        if linux.is_mounted(mount_path) is not True:
+            rsp = AgentRsp()
+            rsp.success = False
+            rsp.error = "heart path %s is not correctly mounted" % (cmd.mountPath)
+            return jsonobject.dumps(rsp)
 
-        heartbeat_file_dir = prepare_heartbeat_dir()
-
-        test_file = os.path.join(heartbeat_file_dir,
+        test_file = os.path.join(mount_path,
                                  '%s-ping-test-file-%s' % (cmd.uuid, self.config.get(kvmagent.HOST_UUID)))
 
         @thread.AsyncThread
