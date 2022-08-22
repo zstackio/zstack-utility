@@ -845,6 +845,22 @@ class HostPlugin(kvmagent.KvmAgent):
             libvirtCapabilitiesList.append("blockcopynetworktarget")
         rsp.libvirtCapabilities = libvirtCapabilitiesList
 
+
+        # To see which lan the BMC is listening on, try the following (1-11), https://wiki.docking.org/index.php/Configuring_IPMI
+        for channel in range(1, 12):
+            '''     
+            example:
+            except result:         IP Address              : xxx.xxx.xxx.xxx 
+            set ipmi_address "None" when got results unexpected or happened some errors   
+            '''
+            ret, out, err = bash_roe("ipmitool lan print %s | grep -w 'IP Address'| grep -v 'Source'" % channel)
+            if ret == 0 and out != "":
+                rsp.ipmiAddress = out.split(":")[1].strip()
+                break
+            else:
+                rsp.ipmiAddress = 'None'
+                logger.debug("failed to get ipmi address from BMC lan channel [%s], because %s" % (channel, err))
+
         if IS_AARCH64:
             # FIXME how to check vt of aarch64?
             rsp.hvmCpuFlag = 'vt'
