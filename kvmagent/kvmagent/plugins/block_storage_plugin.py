@@ -70,6 +70,12 @@ class ResizeVolumeRsp(AgentRsp):
         self.size = None
 
 
+class NoFailurePingRsp(AgentRsp):
+    def __init__(self):
+        super(NoFailurePingRsp, self).__init__()
+        self.disconnectedPSMountPath = []
+
+
 def translate_absolute_path_from_install_paht(path):
     if path is None:
         raise Exception("install path can not be null")
@@ -91,6 +97,7 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
     DISCOVERY_LUN = "/block/primarystorage/discoverlun"
     LOGOUT_TARGET = "/block/primarystorage/logouttarget"
     RESIZE_VOLUME_PATH = "/block/primarystorage/volume/resize"
+    NO_FAILURE_PING_PATH = "/block/primarystorage/ping"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -102,6 +109,7 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.UPLOAD_TO_IMAGESTORE, self.upload_to_imagestore)
         http_server.register_async_uri(self.COMMIT_VOLUME_AS_IMAGE, self.commit_to_imagestore)
         http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
+        http_server.register_async_uri(self.NO_FAILURE_PING_PATH, self.no_failure_ping)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -163,13 +171,29 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
             r, o, e = bash.bash_roe('file -Ls %s | grep "XFS"' % heartbeat_lun_wwn)
             if r != 0:
                 shell.call("mkfs.xfs -f %s" % heartbeat_lun_wwn)
-            logger.debug("mount heart beat path")
+            logger.debug("mount heart beat path " + heartbeat_path)
             if linux.is_mounted(heartbeat_path) is not True:
-                linux.mount(heartbeat_lun_wwn, heartbeat_path)
+                linux.mount(heartbeat_lun_wwn, heartbeat_path, "sync")
             rsp.success = True
         except Exception as e:
             rsp.success = False
             rsp.error = e.message
+
+        touch = shell.ShellCmd('timeout 5 touch %s/ready' % heartbeat_path)
+        touch(False)
+        if touch.return_code != 0:
+            # Just sleep 1s to re-mount heartbeat path
+            time.sleep(1)
+            linux.mount(heartbeat_lun_wwn, heartbeat_path, "sync,remount")
+            retouch = shell.ShellCmd('timeout 5 touch %s/ready' % heartbeat_path)
+            retouch(False)
+
+            if retouch.return_code != 0:
+                rsp.success = False
+                rsp.error = "fail to write heartbeat folder, because " + touch.stderr
+                logger.debug('touch file failed, cause: %s' % touch.stderr)
+
+        linux.rm_file_force('%s/ready' % heartbeat_path)
 
         return jsonobject.dumps(rsp)
 
@@ -321,3 +345,35 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
 
     def stop(self):
         pass
+
+
+    @linux.retry(times=3, sleep_time=random.uniform(0.1, 3))
+    def touch_ready_file(self, file_path):
+        touch = shell.ShellCmd('timeout 5 touch %s' % file_path)
+        touch(False)
+        if touch.return_code != 0:
+            return False
+        return True
+
+
+    @kvmagent.replyerror
+    def no_failure_ping(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = NoFailurePingRsp()
+        rsp.success = True
+
+        for mount_path in cmd.psMountPath:
+            file_path = mount_path + "/ready"
+            is_mounted = linux.is_mounted(mount_path)
+            if self.touch_ready_file(file_path) is False or is_mounted is not True:
+                linux.umount(mount_path)
+                rsp.success = False
+                if is_mounted is not True:
+                    logger.debug('mark %s as disconnected, mount path is not correctly mounted' % mount_path)
+                else:
+                    logger.debug('touch ready file failed, mark %s as disconnected mount path' % mount_path)
+                rsp.disconnectedPSMountPath.append(mount_path)
+                continue
+            linux.rm_file_force(file_path)
+
+        return jsonobject.dumps(rsp)
