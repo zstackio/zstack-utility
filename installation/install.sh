@@ -3821,9 +3821,17 @@ check_ha_need_upgrade()
 }
 
 add_zops_init_cronjob() {
+    echo_subtitle "Add zops cron job"
     if [ ! -f /tmp/zops_init.sock ];then
       touch /tmp/zops_init.sock
     fi
+    # remove not in current os version cron job
+    ALL_ZOPS_CRON=`crontab -l |grep zops_init.py |grep -v ${ISO_ARCH}/${ISO_VER} | cut -d " " -f10`
+    CRON_ARR=(`echo $ALL_ZOPS_CRON | tr '\n' ' '`)
+    for job in $CRON_ARR;do
+        parseJob=${job//'/'/'\/'}
+        sed -i "/${parseJob}/d" /var/spool/cron/root
+    done
     ZOPS_SERVER_INIT="python /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/zops/zops_init.py"
     COUNT=`crontab -l |grep "$ZOPS_SERVER_INIT" | grep -v "grep" |wc -l`
     if [ "$COUNT" -eq 1 ];then
