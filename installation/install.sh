@@ -42,6 +42,7 @@ REDHAT_WITHOUT_CENTOS6=`echo $REDHAT_OS |sed s/CENTOS6//`
 UPGRADE='n'
 FORCE='n'
 MINI_INSTALL='n'
+CUBE_INSTALL='n'
 SANYUAN_INSTALL='n'
 SDS_INSTALL='n'
 MANAGEMENT_INTERFACE=`ip route | grep default | head -n 1 | cut -d ' ' -f 5`
@@ -235,6 +236,18 @@ upgrade_mini_zwatch_webhook(){
 
   webhook=$(echo "$webhook" | sed 's/zwatch\/webhook/webhook\/zwatch/g')
   zstack-ctl configure sns.systemTopic.endpoints.http.url="$webhook" > /dev/null 2>&1
+}
+
+# configure deploy_mode if it is cube
+do_config_deploy_node(){
+    if [ -f "/usr/local/hyperconverged/conf/deployed_info" ]; then
+        zstack-ctl configure deploy_mode="cube" > /dev/null 2>&1
+        return
+    fi
+
+    if [ -f "/usr/local/hyperconverged/license/sds.info" ]; then
+        zstack-ctl configure deploy_mode="cube" > /dev/null 2>&1
+    fi
 }
 
 # version compare
@@ -1389,6 +1402,9 @@ upgrade_zstack(){
 
     # upgrade legacy mini zwatch webhook
     upgrade_mini_zwatch_webhook
+
+    # configure deploy_mode if it is cube
+    do_config_deploy_node
 
     # update consoleProxyCertFile if necessary
     certfile=`zstack-ctl show_configuration | grep consoleProxyCertFile | grep /usr/local/zstack/zstack-ui/ | awk -F '=' '{ print $NF }'`
@@ -3628,6 +3644,7 @@ do
         -z ) NOT_START_ZSTACK='y';shift;;
         --chrony-server-ip ) check_myarg $1 $2;CHRONY_SERVER_IP=$2;shift 2;;
         --mini) MINI_INSTALL='y';shift;;
+        --cube) CUBE_INSTALL='y';shift;;
         --SY) SANYUAN_INSTALL='y';shift;;
         --sds) SDS_INSTALL='y';shift;;
         --) shift;;
@@ -4193,6 +4210,11 @@ if [ $? -ne 0 ] && [ -n "$CHRONY_SERVER_IP" ]; then
     zstack-ctl configure chrony.serverIp.0="${CHRONY_SERVER_IP}"
 else
     zstack-ctl configure chrony.serverIp.0="${MANAGEMENT_IP}"
+fi
+
+# deploy by cube mode
+if [ x"$CUBE_INSTALL" = x"y" ];then
+    zstack-ctl configure deploy_mode="cube"
 fi
 
 #Install license
