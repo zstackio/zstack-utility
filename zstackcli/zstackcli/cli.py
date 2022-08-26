@@ -116,9 +116,10 @@ class Cli(object):
     GET_TWO_FACTOR_AUTHENTICATION_SECRET = 'APIGetTwoFactorAuthenticationSecretMsg'
     GET_TWO_FACTOR_AUTHENTICATION_STATE = 'APIGetTwoFactorAuthenticationStateMsg'
     LOGIN_BY_CAS_MESSAGE_NAME = 'APILogInByCasMsg'
+    GET_LOGIN_CAPTCHA = 'APIGetLoginCaptchaMsg'
     no_session_message = [LOGIN_MESSAGE_NAME, LOGIN_BY_USER_NAME, LOGIN_BY_LDAP_MESSAGE_NAME,
                           GET_TWO_FACTOR_AUTHENTICATION_SECRET, GET_TWO_FACTOR_AUTHENTICATION_STATE, LOGIN_BY_USER_IAM2,
-                          GET_LICENSE_INFO, LOGIN_BY_LDAP_IAM2_NAME, LOGIN_BY_CAS_MESSAGE_NAME]
+                          GET_LICENSE_INFO, LOGIN_BY_LDAP_IAM2_NAME, LOGIN_BY_CAS_MESSAGE_NAME, GET_LOGIN_CAPTCHA]
 
     @staticmethod
     def register_message_creator(apiname, func):
