@@ -2101,6 +2101,7 @@ class StartCmd(Command):
     #Save some memory for kdump etc. 7GB = 7340032KB
     MINIMAL_MEM_SIZE = 7300000
     SIMULATOR = 'SIMULATOR'
+    MINIMAL = 'MINIMAL'
 
     def __init__(self):
         super(StartCmd, self).__init__()
@@ -2113,6 +2114,7 @@ class StartCmd(Command):
         parser.add_argument('--timeout', help='Wait for ZStack Server startup timeout, default is 1000 seconds.', default=1000)
         parser.add_argument('--daemon', help='Start ZStack in daemon mode. Only used with systemd.', action='store_true', default=False)
         parser.add_argument('--simulator', help='Start Zstack in simulator mode.', action='store_true', default=False)
+        parser.add_argument('--minimal', help='Start Zstack in minimal mode.', action='store_true', default=False)
         parser.add_argument('--mysql_process_list', help='Check mysql wait timeout connection', action='store_true', default=False)
 
     def _start_remote(self, args):
@@ -2330,8 +2332,14 @@ class StartCmd(Command):
             if args.simulator:
                 ctl.put_envs([(self.SIMULATOR, 'True')])
 
+            if args.minimal:
+                ctl.put_envs([(self.MINIMAL, 'True')])
+
         def is_simulator_on():
             return ctl.get_env(self.SIMULATOR) == 'True'
+
+        def is_minimal_on():
+            return ctl.get_env(self.MINIMAL) == 'True'
 
         def check_encrypt_properties():
             if not ctl.is_ctl_env_exists() or not ctl.is_encrypt_on():
@@ -2352,6 +2360,9 @@ class StartCmd(Command):
             if is_simulator_on():
                 beanXml = "simulator/zstack-simulator2.xml"
                 info_and_debug("--simulator is set, ZStack will start in simulator mode")
+            elif is_minimal_on():
+                beanXml = "minimal/zstack-minimal.xml"
+                info_and_debug("--minimal is set, ZStack will start in minimal mode")
             else:
                 beanXml = "zstack.xml"
 
@@ -2362,6 +2373,12 @@ class StartCmd(Command):
                 ctl.write_properties(['simulatorsOn=true'.split('=', 1)])
             else:
                 ctl.delete_properties(['simulatorsOn'])
+
+        def checkMinimal():
+            if is_minimal_on():
+                ctl.write_properties(['minimalOn=true'.split('=', 1)])
+            else:
+                ctl.delete_properties(['minimalOn'])
 
         if os.getuid() != 0:
             raise CtlError('please use sudo or root user')
@@ -2380,6 +2397,7 @@ class StartCmd(Command):
         open_iptables_port('udp',['123'])
         encrypt_properties_if_need()
         checkSimulator()
+        checkMinimal()
         # prepareBeanRefContextXml call zstack-ctl configure xxx modify encrypt properties,
         # execute check_encrypt_properties before prepareBeanRefContextXml
         check_encrypt_properties()
