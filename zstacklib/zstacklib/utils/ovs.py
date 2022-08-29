@@ -895,7 +895,7 @@ class OvsBaseCtl(object):
             return ifList
 
         # dpdk bond
-        dpdkBond = getBondFromFile(bondName)
+        dpdkBond = OvsDpdkCtl.getBondFromFile(bondName)
         if dpdkBond is not None:
             ifList = dpdkBond.slaves
 
@@ -907,7 +907,7 @@ class OvsBaseCtl(object):
 
     def getBondType(self, name):
         # dpdk bond and ovs bond configurations are store in file 'dpdk-bond.xml'
-        bond = getBondFromFile(name)
+        bond = OvsDpdkCtl.getBondFromFile(name)
         if bond:
             if bond.options == "dpdkBond":
                 return BondType.DpdkBond
@@ -1327,7 +1327,7 @@ class OvsDpdkCtl(OvsBaseCtl):
         return slaves
 
     def addDpdkBondToBr(self, bondName, bridgeName):
-        bond = getBondFromFile(bondName)
+        bond = OvsDpdkCtl.getBondFromFile(bondName)
         slaves = self._convertIfToBDF(bond.slaves)
 
         if len(slaves) < 2:
@@ -1360,7 +1360,7 @@ class OvsDpdkCtl(OvsBaseCtl):
         self.addPort(bridgeName, bond.name, "dpdk", dpdk_devargs)
 
     def addOvsBondToBr(self, bondName, bridgeName):
-        bond = getBondFromFile(bondName)
+        bond = OvsDpdkCtl.getBondFromFile(bondName)
         slaves = self._convertIfToBDF(bond.slaves)
 
         if len(slaves) < 2:
@@ -1665,7 +1665,7 @@ class OvsKernelCtl(OvsBaseCtl):
             self.addAnonymousPort(bridgeName, bondName)
 
     def addOvsBondToBr(self, bondName, bridgeName):
-        bond = getBondFromFile(bondName)
+        bond = OvsDpdkCtl.getBondFromFile(bondName)
         slaves = self._getBondSlaves(bondName)
 
         if len(slaves) < 2:
