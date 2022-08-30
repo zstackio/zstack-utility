@@ -1587,6 +1587,8 @@ class ShowStatusCmd(Command):
                 version = '0.6'
             else:
                 version = get_zstack_version(db_hostname, db_port, db_user, db_password)
+                if len(version.split('.')) >= 4:
+                    version = '.'.join(version.split('.')[:3])
 
             detailed_version = get_detail_version()
             if detailed_version is not None:
