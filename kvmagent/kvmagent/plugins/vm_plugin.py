@@ -1881,7 +1881,7 @@ class Vm(object):
     # so cdroms use hd[c-e]
     # virtio and virtioSCSI volumes share (sd[a-z] - sdc)
     device_letter_config = {
-        'aarch64': 'abfghijklmnopqrstuvwxyz',
+        'aarch64': 'abdefghijklmnopqrstuvwxyz',
         'mips64el': 'abfghijklmnopqrstuvwxyz',
         'loongarch64': 'abfghijklmnopqrstuvwxyz',
         'x86_64': 'abdefghijklmnopqrstuvwxyz'
