@@ -171,9 +171,9 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
             r, o, e = bash.bash_roe('file -Ls %s | grep "XFS"' % heartbeat_lun_wwn)
             if r != 0:
                 shell.call("mkfs.xfs -f %s" % heartbeat_lun_wwn)
-            logger.debug("mount heart beat path")
+            logger.debug("mount heart beat path " + heartbeat_path)
             if linux.is_mounted(heartbeat_path) is not True:
-                linux.mount(heartbeat_lun_wwn, heartbeat_path)
+                linux.mount(heartbeat_lun_wwn, heartbeat_path, "sync")
             rsp.success = True
         except Exception as e:
             rsp.success = False
@@ -182,10 +182,9 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         touch = shell.ShellCmd('timeout 5 touch %s/ready' % heartbeat_path)
         touch(False)
         if touch.return_code != 0:
-            linux.umount(heartbeat_path)
             # Just sleep 1s to re-mount heartbeat path
             time.sleep(1)
-            linux.mount(heartbeat_lun_wwn, heartbeat_path)
+            linux.mount(heartbeat_lun_wwn, heartbeat_path, "sync,remount")
             retouch = shell.ShellCmd('timeout 5 touch %s/ready' % heartbeat_path)
             retouch(False)
 
@@ -365,10 +364,14 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
 
         for mount_path in cmd.psMountPath:
             file_path = mount_path + "/ready"
-            if self.touch_ready_file(file_path) is False:
+            is_mounted = linux.is_mounted(mount_path)
+            if self.touch_ready_file(file_path) is False or is_mounted is not True:
                 linux.umount(mount_path)
                 rsp.success = False
-                logger.debug('touch ready file failed, mark %s as disconnected mout path' % mount_path)
+                if is_mounted is not True:
+                    logger.debug('mark %s as disconnected, mount path is not correctly mounted' % mount_path)
+                else:
+                    logger.debug('touch ready file failed, mark %s as disconnected mount path' % mount_path)
                 rsp.disconnectedPSMountPath.append(mount_path)
                 continue
             linux.rm_file_force(file_path)

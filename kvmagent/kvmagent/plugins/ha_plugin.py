@@ -630,18 +630,22 @@ class HaPlugin(kvmagent.KvmAgent):
             while self.run_fencer(cmd.uuid, created_time):
                 try:
                     time.sleep(cmd.interval)
+                    is_mounted = linux.is_mounted(mount_path)
 
                     logger.debug('touch test file %s' % test_file)
                     touch = shell.ShellCmd('timeout 5 touch %s' % test_file)
                     touch(False)
-                    if touch.return_code != 0:
-                        logger.debug('touch file failed, cause: %s' % touch.stderr)
+
+                    if touch.return_code != 0 or is_mounted is not True:
+                        if touch.return_code != 0:
+                            logger.debug('touch file failed, cause: %s' % touch.stderr)
+                        if is_mounted is not True:
+                            logger.debug('heartbeat path %s is not correctly mounted' % mount_path)
                         failure += 1
                     else:
                         failure = 0
                         logger.debug('remove test file %s' % test_file)
                         linux.rm_file_force(test_file)
-                        linux.sync_file(test_file)
                         continue
 
                     if failure < cmd.maxAttempts:
