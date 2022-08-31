@@ -950,15 +950,6 @@ def find_domain_cdrom_address(domain_xml, target_dev):
         return d.get_child_node('address')
     return None
 
-def check_domain_xml_pvpanic_enable(domain_xml):
-    domain_xmlobject = xmlobject.loads(domain_xml)
-    for panic in domain_xmlobject.devices.get_child_node_as_list('panic'):
-        if panic.model_ == 'isa':
-            for address in panic.get_child_node_as_list('address'):
-                if address.type_ == 'isa' and address.iobase_ == '0x505':
-                    return True
-    return False
-
 def find_domain_first_boot_device(domain_xml):
     domain_xmlobject = xmlobject.loads(domain_xml)
     disks = domain_xmlobject.devices.get_child_node_as_list('disk')
@@ -7607,7 +7598,6 @@ host side snapshot files chian:
         vm_uuid = cmd.vmInstanceUuid
         if cmd.platform.lower() == 'windows':
             self.get_vm_guest_tools_info_for_windows_guest(vm_uuid, rsp)
-        self.pvpanic_vm_guest_tools_info(vm_uuid, cmd, rsp)
 
         return jsonobject.dumps(rsp)
 
@@ -7643,20 +7633,6 @@ host side snapshot files chian:
         rsp.version = version
         rsp.status = 'Running'
         _close_version_file()
-
-    def pvpanic_vm_guest_tools_info(self, vm_uuid, cmd, rsp):
-        if cmd.platform.lower() == 'windows':
-            rsp.features['pvpanic_guest_kernel_supported'] = 'unknown'
-            if rsp.version:
-                # windows guest tools, version >= 1.3.0, pvpanic is enable. otherwise not support.
-                rsp.features['pvpanic_guest_tools_enable'] = 'enable' if LooseVersion(rsp.version) >= LooseVersion('1.3.0') else 'not supported'
-            else:
-                rsp.features['pvpanic_guest_tools_enable'] = 'not supported'
-        vm = get_vm_by_uuid(vm_uuid, False)
-        if vm is None:
-            rsp.features['pvpanic_host_enable'] = 'unknown'
-            return
-        rsp.features['pvpanic_host_enable'] = 'enable' if check_domain_xml_pvpanic_enable(vm.domain_xml) else 'disable'
 
     @kvmagent.replyerror
     @in_bash
