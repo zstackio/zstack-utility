@@ -715,7 +715,7 @@ def wipe_fs(disks, expected_vg=None, with_lock=True):
             bash.bash_roe("multipath -f %s && systemctl reload multipathd.service && sleep 1" % disk)
 
         if exists_vg is not None:
-            bash.bash_r("grep %s /etc/drbd.d/* | awk '{print $1}' | sort | uniq | tr -d ':' | xargs rm" % exists_vg)
+            bash.bash_r("grep -l %s /etc/drbd.d/* | xargs rm" % exists_vg)
             logger.debug("found vg %s exists on this pv %s, start wipe" %
                          (exists_vg, disk))
             try:
@@ -1408,6 +1408,14 @@ def fix_global_lock():
         bash.bash_roe("lvmlockctl --gl-disable %s" % vg_name)
     bash.bash_roe("lvmlockctl --gl-enable %s" % vg_names[0])
 
+
+def list_pvs(vgUuid, timeout=10):
+    r, o = bash.bash_ro("timeout -s SIGKILL %s pvs --noheading --nolocking -Svg_name=%s -oname" % (timeout, vgUuid))
+    if r != 0:
+        return None
+
+    paths = [s.strip() for s in o.splitlines()]
+    return filter(bool, paths)
 
 def check_pv_status(vgUuid, timeout):
     r, o , e = bash.bash_roe("timeout -s SIGKILL %s pvs --noheading --nolocking -Svg_name=%s -oname,missing" % (timeout, vgUuid))

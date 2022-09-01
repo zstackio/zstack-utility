@@ -346,6 +346,11 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp = AgentRsp()
         if cmd.failIfNoPath:
             linux.set_fail_if_no_path()
+
+        if cmd.rescan_scsi:
+            shell.run("timeout 30 iscsiadm -m session -R")
+            shell.run("timeout 120 /usr/bin/rescan-scsi-bus.sh")
+
         try:
             for diskUuid in cmd.sharedBlockUuids:
                 disk = CheckDisk(diskUuid)
@@ -442,7 +447,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp = None
         try:
             get_lock(sblk_lock)
-            rsp = self.do_connect(req)
+            rsp = self.do_connect(cmd)
         except SharedBlockConnectException as e:
             r = AgentRsp()
             r.success = False
@@ -462,8 +467,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     @lock.file_lock(LOCK_FILE)
-    def do_connect(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+    def do_connect(self, cmd):
         rsp = ConnectRsp()
         diskPaths = set()
         disks = set()
@@ -649,12 +653,36 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             if len(active_lvs) != 0:
                 raise RetryException("lvs [%s] still active, retry deactive again" % active_lvs)
 
+        def _do_detach_disks(devnames):
+            for name in devnames:
+                logger.info("flushing disk: %s" % name)
+                shell.run('blockdev --flushbufs %s' % os.path.join("/dev", name))
+                linux.write_file("/sys/block/%s/device/delete" % name, "1")
+
+        # c.f.: https://access.redhat.com/solutions/3941
+        def detach_physical_disks(vgUuid):
+            pvs = lvm.list_pvs(vgUuid)
+            if pvs is None:
+                raise Exception("list PV failed for VG %s" + vgUuid)
+
+            for pv in pvs:
+                bname = os.path.basename(pv)
+                if os.path.basename(pv).startswith('mpath'):
+                    slaves = linux.listdir('/sys/class/block/%s/slaves' % os.path.basename(os.path.realpath(pv)))
+                    logger.info("flushing multipath: %s" % pv)
+                    bash.bash_r("multipath -f %s" % pv)
+                    _do_detach_disks(slaves)
+                elif pv.startswith('/dev/sd'):
+                    _do_detach_disks([bname])
+
+
         deactive_lvs_on_vg(cmd.vgUuid)
         lvm.clean_vg_exists_host_tags(cmd.vgUuid, cmd.hostUuid, HEARTBEAT_TAG)
         lvm.stop_vg_lock(cmd.vgUuid)
         if cmd.stopServices:
             lvm.quitLockServices()
         lvm.clean_lvm_archive_files(cmd.vgUuid)
+        detach_physical_disks(cmd.vgUuid)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror

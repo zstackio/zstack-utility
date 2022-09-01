@@ -182,6 +182,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     MULTIPATH_ENABLE_PATH = "/storagedevice/multipath/enable"
     ATTACH_SCSI_LUN_PATH = "/storagedevice/scsilun/attach"
     DETACH_SCSI_LUN_PATH = "/storagedevice/scsilun/detach"
+    DETACH_SCSI_DEV_PATH = "/storagedevice/scsilun/detachdev"
     RAID_SCAN_PATH = "/storagedevice/raid/scan"
     RAID_SMART_PATH = "/storagedevice/raid/smart"
     RAID_LOCATE_PATH = "/storagedevice/raid/locate"
@@ -195,6 +196,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.MULTIPATH_ENABLE_PATH, self.enable_multipath)
         http_server.register_async_uri(self.ATTACH_SCSI_LUN_PATH, self.attach_scsi_lun)
         http_server.register_async_uri(self.DETACH_SCSI_LUN_PATH, self.detach_scsi_lun)
+        http_server.register_async_uri(self.DETACH_SCSI_DEV_PATH, self.detach_scsi_dev)
         http_server.register_async_uri(self.RAID_SCAN_PATH, self.raid_scan)
         http_server.register_async_uri(self.RAID_SMART_PATH, self.raid_smart)
         http_server.register_async_uri(self.RAID_LOCATE_PATH, self.raid_locate)
@@ -212,6 +214,9 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
         if not cmd.multipath and "mpath" in cmd.volume.installPath:
             cmd.volume.installPath = self.get_slave_path(cmd.volume.installPath)
+
+        if not os.path.exists(cmd.volume.installPath):
+            shell.run("timeout 30 iscsiadm -m session -R")
 
         vm = vm_plugin.get_vm_by_uuid(cmd.vmInstanceUuid)
         vm.attach_data_volume(cmd.volume, cmd.addons)
@@ -235,6 +240,31 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         if slaves is None or len(slaves) == 0:
             raise "can not find any slave from multpath device: %s" % multipath_path
         return "/dev/disk/by-id/%s" % get_wwids(slaves[0])[0]
+
+    @kvmagent.replyerror
+    @bash.in_bash
+    def detach_scsi_dev(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentRsp()
+
+        def _do_detach_disks(devpaths):
+            for devpath in devpaths:
+                logger.info("flushing disk: %s" % devpath)
+                shell.run('blockdev --flushbufs %s' % devpath)
+                linux.write_file("/sys/block/%s/device/delete" % os.path.basename(devpath), "1")
+
+        dev_path = os.path.realpath('/dev/disk/by-id/scsi-%s' % cmd.wwid)
+        r, mpath_dev = bash.bash_ro("multipath -v1 -l %s" % dev_path)
+        if r != 0:
+            _do_detach_disks([dev_path])
+        else:
+            mpath = os.path.join("/dev/mapper", mpath_dev.strip())
+            logger.info("flushing multipath: %s" % mpath)
+            bash.bash_r("multipath -f %s" % mpath)
+            slaves = linux.listdir('/sys/class/block/%s/slaves' % os.path.basename(os.path.realpath(mpath)))
+            _do_detach_disks([os.path.join("/dev", s) for s in slaves])
+
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     @bash.in_bash
