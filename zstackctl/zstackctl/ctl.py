@@ -2361,7 +2361,7 @@ class StartCmd(Command):
                 beanXml = "simulator/zstack-simulator2.xml"
                 info_and_debug("--simulator is set, ZStack will start in simulator mode")
             elif is_minimal_on():
-                beanXml = "minimal/zstack-minimal.xml"
+                beanXml = "zstack-minimal.xml"
                 info_and_debug("--minimal is set, ZStack will start in minimal mode")
             else:
                 beanXml = "zstack.xml"
