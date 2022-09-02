@@ -3862,6 +3862,9 @@ class Vm(object):
                     elif cmd.nestedVirtualization == 'host-model':
                         cpu = e(root, 'cpu', attrib={'mode': 'host-model'})
                         e(cpu, 'model', attrib={'fallback': 'allow'})
+                    elif cmd.nestedVirtualization == 'custom':
+                        cpu = e(root, 'cpu', attrib={'mode': 'custom', 'match': 'minimum'})
+                        e(cpu, 'model', cmd.vmCpuModel, attrib={'fallback': 'allow'})
                     else:
                         cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
                         e(cpu, 'model', attrib={'fallback': 'allow'})
@@ -3929,6 +3932,9 @@ class Vm(object):
                     elif cmd.nestedVirtualization == 'host-model':
                         cpu = e(root, 'cpu', attrib={'mode': 'host-model'})
                         e(cpu, 'model', attrib={'fallback': 'allow'})
+                    elif cmd.nestedVirtualization == 'custom':
+                        cpu = e(root, 'cpu', attrib={'mode': 'custom'})
+                        e(cpu, 'model', cmd.vmCpuModel, attrib={'fallback': 'allow'})
                     else:
                         cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
                         e(cpu, 'model', attrib={'fallback': 'allow'})
