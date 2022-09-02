@@ -1378,6 +1378,14 @@ def get_active_vm_uuids_states():
         uuids_states[uuid] = state
     return uuids_states, uuids_vmInShutdown
 
+def get_dao_console_port(xml):
+    info = etree.fromstring(xml)
+    args = info.getchildren()[-1].getchildren().__iter__()
+    value = args.next().get("value")
+    if value == "-vnc":
+        return "59{}".format(args.next().get("value")[1:])
+    if value == "-serial":
+        return args.next().get("value").split("::")[1][0:4]
 
 def get_all_vm_states():
     return get_active_vm_uuids_states()[0]
@@ -1413,15 +1421,10 @@ def get_running_vm_vncports():
         if _graphics:
             ports.append(_graphics.get("port"))
         else:
-            _xml = _xml.replace("qemu:commandline", "commandlines").replace("qemu:arg", "args")
-            _args = etree.fromstring(_xml).find("./commandlines").findall("args")
-            if _args[0].get("value") == "-vnc":
-                ports.append("59" + _args[1].get("value")[1:])
-
-
+            ports.append(get_dao_console_port(_xml))
     return ports
 
-def get_vnc_port():
+def get_vnc_or_telnet_port():
     used_vnc_ports = get_running_vm_vncports()
     port_generator = range(5900, 6900).__iter__()
     while True:
@@ -1960,20 +1963,21 @@ class Vm(object):
 
     def get_vdi_connect_port(self):
         rsp = GetVncPortResponse()
-        for g in self.domain_xmlobject.devices.get_child_node_as_list('graphics'):
-            if g.type_ == 'vnc':
-                rsp.vncPort = g.port_
-                rsp.protocol = "vnc"
-            elif g.type_ == 'spice':
-                rsp.spicePort = g.port_
-                if g.hasattr('tlsPort_'):
-                    rsp.spiceTlsPort = g.tlsPort_
-                rsp.protocol = "spice"
-        _xml = self.domain_xml.replace("qemu:commandline", "commandlines").replace("qemu:arg", "args")
-        _args = etree.fromstring(_xml).find("./commandlines").findall("args")
-        if _args[0].get("value") == "-vnc":
+        _graphics = self.domain_xmlobject.devices.get_child_node_as_list('graphics')
+        if _graphics:
+            for g in _graphics:
+                if g.type_ == 'vnc':
+                    rsp.vncPort = g.port_
+                    rsp.protocol = "vnc"
+                elif g.type_ == 'spice':
+                    rsp.spicePort = g.port_
+                    if g.hasattr('tlsPort_'):
+                        rsp.spiceTlsPort = g.tlsPort_
+                    rsp.protocol = "spice"
+        else:
+            #it's a hack on multicore-dao os, because vnc is not supported,
             rsp.protocol = "vnc"
-            rsp.vncPort = "59" + _args[1].get("value")[1:]
+            rsp.vncPort = get_dao_console_port(self.domain_xml)
 
         if rsp.vncPort is not None and rsp.spicePort is not None:
             rsp.protocol = "vncAndSpice"
@@ -1985,12 +1989,8 @@ class Vm(object):
             for g in _graphics:
                 if g.type_ == 'vnc' or g.type_ == 'spice':
                     return g.port_
-        
-        
-        _xml = self.domain_xml.replace("qemu:commandline", "commandlines").replace("qemu:arg", "args")
-        _args = etree.fromstring(_xml).find("./commandlines").findall("args")
-        if _args[0].get("value") == "-vnc":
-            return "59" + _args[1].get("value")[1:]
+
+        return get_dao_console_port(self.domain_xml)
 
     def get_console_protocol(self):
         for g in self.domain_xmlobject.devices.get_child_node_as_list('graphics'):
@@ -3975,7 +3975,7 @@ class Vm(object):
 
         def make_vnc():
             devices = elements['devices']
-            _port = get_vnc_port()
+            _port = get_vnc_or_telnet_port()
             if cmd.consolePassword == None:
                 vnc = e(devices, 'graphics', None, {'type': 'vnc', 'port': _port, 'autoport': 'yes'})
             else:
@@ -3985,7 +3985,7 @@ class Vm(object):
 
         def make_spice():
             devices = elements['devices']
-            _port = get_vnc_port()
+            _port = get_vnc_or_telnet_port()
             if cmd.consolePassword == None:
                 spice = e(devices, 'graphics', None, {'type': 'spice', 'port': _port, 'autoport': 'yes'})
             else:
@@ -4301,7 +4301,7 @@ class Vm(object):
         if cmd.imagePlatform == "Embedded":
             # make_root
             root = etree.Element('domain')
-            root.set('type', 'qemu')
+            root.set('type', 'kvm')
             root.set('xmlns:qemu', 'http://libvirt.org/schemas/domain/qemu/1.0')
             elements['root'] = root
             
@@ -4310,10 +4310,12 @@ class Vm(object):
             e(root, 'uuid', uuidhelper.to_full_uuid(cmd.vmInstanceUuid))
             e(root, 'description', cmd.vmName)
             e(root, 'clock', None, {'offset': cmd.clock})
+
+            e(root, 'vcpu', str(cmd.cpuNum))
             
             # make_cpu
-            cpu = e(root, 'cpu')
-            e(cpu, 'topology', attrib={'sockets': '1', 'cores': "1", 'threads': '1'})
+            cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
+            e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
 
             # make_memory
             mem = cmd.memory / 1024
@@ -4331,9 +4333,14 @@ class Vm(object):
                 kernelCache = "{0}/imagecache/iso/{1}/{1}.iso".format(cmd.psUrl, cmd.imageUuid)
             bash.bash_roe("cp {kernelCache} {kernelUrl}".format(kernelCache=kernelCache, kernelUrl=kernelUrl))
             os = e(root, 'os')
-            e(os, 'type', 'hvm', attrib={'arch': 'aarch64', 'machine': "xilinx-zynq-a9"})
+            e(os, 'type', 'hvm', attrib={'arch': 'aarch64', 'machine': "virt"})
             e(os, 'kernel', kernelUrl)
+            e(os, 'boot', None, {'dev': 'hd'})
             #e(os, 'dtb', '/opt/dao/zynq-zc706.dtb')
+
+            # make_features
+            features = e(root, "features")
+            e(features, 'gic', None, {'version': '3'})
 
             # make_devices
             devices = e(root, 'devices')
@@ -4346,24 +4353,31 @@ class Vm(object):
             disk = e(devices, 'disk', None, attrib={'type': 'file', 'device': 'disk'})
             e(disk, 'driver', None, {'name': 'qemu', 'type': 'qcow2'})
             e(disk, 'source', None, {'file': cmd.rootVolume.installPath})
-            e(disk, 'target', None, {'dev': 'sda', 'bus': 'sd'})
+            e(disk, 'target', None, {'dev': 'sda', 'bus': 'virtio'})
             
-            interface = e(devices, 'interface', None, {'type': 'ethernet'})
+            interface = e(devices, 'interface', None, {'type': 'bridge'})
             e(interface, 'mac', None, attrib={'address': cmd.nics[0].mac})
+            e(interface, 'source', None, attrib={'bridge': cmd.nics[0].bridgeName})
             e(interface, 'target', None, attrib={'dev': cmd.nics[0].nicInternalName})
-            e(interface, 'model', None, attrib={'type': 'cadence_gem'})
+            e(interface, 'model', None, attrib={'type': 'virtio'})
+            e(interface, 'driver ', None, attrib={'name': 'vhost', 'txmode': 'iothread', 
+                'ioeventfd': 'on', 'event_idx': 'off', 'queues': '2', 'rx_queue_size': '256', 'tx_queue_size': '256'})
+            
+            #make_rng
+            rng = e(devices, 'rng', None, {'model': 'virtio'})
+            e(rng, 'backend', '/dev/urandom', {'model':'random'})
 
             # make_console
-            serial = e(devices, 'serial', None, {'type': 'null'})
-            e(serial, 'target', None, {'port': '0'})
-            serial = e(devices, 'serial', None, {'type': 'vc'})
-            e(serial, 'target', None, {'port': '1'})
+            # serial = e(devices, 'serial', None, {'type': 'null'})
+            # e(serial, 'target', None, {'port': '0'})
+            # serial = e(devices, 'serial', None, {'type': 'vc'})
+            # e(serial, 'target', None, {'port': '1'})
 
             # make_qemu_commandline
-            _port = get_vnc_port()
+            _port = get_vnc_or_telnet_port()
             qcmd = e(root, 'qemu:commandline')
-            e(qcmd, "qemu:arg", attrib={"value": "-vnc"})
-            e(qcmd, "qemu:arg", attrib={"value": ":{}".format(_port[2:])})
+            e(qcmd, "qemu:arg", attrib={"value": "-serial"})
+            e(qcmd, "qemu:arg", attrib={"value": "telnet::{},server,nowait".format(_port)})
         else :
             make_root()
             make_meta()
@@ -4375,8 +4389,6 @@ class Vm(object):
             make_devices()
             make_video()
             make_sound()
-            if cmd.guestOsType == "dao":
-                make_rng()
             make_nics()
             make_volumes()
 
