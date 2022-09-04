@@ -154,6 +154,18 @@ class GetQcow2HashValueRsp(AgentResponse):
         self.hashValue = None
 
 
+class CreateEmptyVolumeRsp(AgentResponse):
+    def __init__(self):
+        super(CreateEmptyVolumeRsp, self).__init__()
+        self.actualSize = None
+
+
+class CreateVolumeFromCacheRsp(AgentResponse):
+    def __init__(self):
+        super(CreateVolumeFromCacheRsp, self).__init__()
+        self.actualSize = None
+
+
 class LocalStoragePlugin(kvmagent.KvmAgent):
     INIT_PATH = "/localstorage/init"
     GET_PHYSICAL_CAPACITY_PATH = "/localstorage/getphysicalcapacity"
@@ -759,7 +771,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def create_empty_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AgentResponse()
+        rsp = CreateEmptyVolumeRsp()
         try:
             self.do_create_empty_volume(cmd)
         except Exception as e:
@@ -770,6 +782,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
 
         logger.debug('successfully create empty volume[uuid:%s, size:%s] at %s' % (cmd.volumeUuid, cmd.size, cmd.installUrl))
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
+        _, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installUrl)
         return jsonobject.dumps(rsp)
 
     def do_create_empty_volume(self, cmd):
@@ -796,7 +809,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def create_root_volume_from_template(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AgentResponse()
+        rsp = CreateVolumeFromCacheRsp()
 
         if not os.path.exists(cmd.templatePathInCache):
             rsp.error = "unable to find image in cache"
@@ -806,6 +819,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
 
         self.do_create_volume_with_backing(cmd.templatePathInCache, cmd.installUrl, cmd)
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
+        _, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installUrl)
         return jsonobject.dumps(rsp)
 
     @staticmethod

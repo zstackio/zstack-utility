@@ -185,6 +185,17 @@ class GetQcow2HashValueRsp(AgentRsp):
         self.hashValue = None
 
 
+class CreateEmptyVolumeRsp(AgentRsp):
+    def __init__(self):
+        super(CreateEmptyVolumeRsp, self).__init__()
+        self.actualSize = None
+
+
+class CreateVolumeFromCacheRsp(AgentRsp):
+    def __init__(self):
+        super(CreateVolumeFromCacheRsp, self).__init__()
+        self.actualSize = None
+
 def translate_absolute_path_from_install_path(path):
     if path is None:
         raise Exception("install path can not be null")
@@ -833,8 +844,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def create_root_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AgentRsp()
-        self.create_volume_with_backing(cmd)
+        rsp = CreateVolumeFromCacheRsp()
+        _, rsp.actualSize = self.create_volume_with_backing(cmd)
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid, False)
         rsp.lunCapacities = lvm.get_lun_capacities_from_vg(cmd.vgUuid, self.vgs_path_and_wwid)
         return jsonobject.dumps(rsp)
@@ -1170,7 +1181,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     @lock.file_lock(LOCK_FILE)
     def create_empty_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AgentRsp()
+        rsp = CreateEmptyVolumeRsp()
 
         install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
 
@@ -1197,6 +1208,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         logger.debug('successfully create empty volume[uuid:%s, size:%s] at %s' % (cmd.volumeUuid, cmd.size, cmd.installPath))
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         rsp.lunCapacities = lvm.get_lun_capacities_from_vg(cmd.vgUuid, self.vgs_path_and_wwid)
+        rsp.actualSize = lvm.get_lv_size(install_abs_path)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror

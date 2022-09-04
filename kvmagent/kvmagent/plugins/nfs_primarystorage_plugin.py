@@ -67,11 +67,13 @@ class NfsError(Exception):
 class CreateRootVolumeFromTemplateResponse(NfsResponse):
     def __init__(self):
         super(CreateRootVolumeFromTemplateResponse, self).__init__()
+        self.actualSize = None
 
 
 class CreateEmptyVolumeResponse(NfsResponse):
     def __init__(self):
         super(CreateEmptyVolumeResponse, self).__init__()
+        self.actualSize = None
 
 
 class CreateVolumeWithBackingRsp(NfsResponse):
@@ -756,6 +758,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
 
         self.create_meta_file(cmd)
         self._set_capacity_to_response(cmd.uuid, rsp)
+        _, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installUrl)
         logger.debug('successfully create empty volume[uuid:%s, name:%s, size:%s] at %s' % (cmd.uuid, cmd.name, cmd.size, cmd.installUrl))
         return jsonobject.dumps(rsp)
 
@@ -838,7 +841,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             rsp.error = err
             rsp.success = False
 
-
+        _, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installUrl)
         return jsonobject.dumps(rsp)
 
     @staticmethod
