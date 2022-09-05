@@ -418,7 +418,7 @@ class CephAgent(plugin.TaskManager):
             pool_capacity = CephPoolCapacity(pool.pool_name,
                                              pool.available_capacity, pool.used_capacity, pool.pool_total_size,
                                              pool.replicated_size, pool.security_policy, pool.disk_utilization,
-                                             ",".join(pool.crush_item_osds))
+                                             pool.get_related_osds())
             rsp.poolCapacities.append(pool_capacity)
 
     @in_bash
