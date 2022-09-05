@@ -233,3 +233,6 @@ class CephPoolCapacity:
         self.crush_item_osds_total_size = 0
         self.pool_total_size = 0
 
+    def get_related_osds(self):
+        return ",".join(self.crush_item_osds)
+
