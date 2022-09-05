@@ -258,7 +258,7 @@ def install_kvm_pkg():
         x86_64_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                         usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
                         net-tools nfs-utils nmap openssh-clients OpenIPMI pciutils pv rsync sed nettle libselinux-devel \
-                        smartmontools sshpass usbutils vconfig wget audit dnsmasq tar \
+                        smartmontools sshpass usbutils vconfig wget audit dnsmasq tar python2-psutil\
                         qemu-kvm collectd-virt storcli edk2-ovmf python2-pyudev collectd-disk"
 
         # handle zstack_repo
