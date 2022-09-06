@@ -1125,7 +1125,7 @@ class CephAgent(plugin.TaskManager):
                                            cmd.dstMonSshPassword, cmd.dstMonSshPort, cmd)
         if ret_code != 0:
             rsp.success = False
-            rsp.error = "Failed to migrate volume segment from one ceph primary storage to another, because: %s" % err
+            rsp.error = "Failed to migrate volume segment from %s to another, because: %s" % (ceph.get_ceph_manufacturer(), err)
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
