@@ -201,6 +201,12 @@ else:
 run_remote_command("rm -rf {}/*; mkdir -p /usr/local/zstack/ || true".format(kvm_root), host_post_info)
 
 
+#init ld.so.conf
+def do_ldconfig():
+    command = 'grep -c  "^/opt/zstack/chroot/usr/lib64$" /etc/ld.so.conf || echo /opt/zstack/chroot/usr/lib64 >> /etc/ld.so.conf; ldconfig'
+    run_remote_command(command, host_post_info)
+
+
 def install_kvm_pkg():
     def rpm_based_install():
         mlnx_ofed = " python3 unbound libnl3-devel lsof \
@@ -773,6 +779,7 @@ def modprobe_usb_module():
     run_remote_command(command, host_post_info)
 
 check_nested_kvm(host_post_info)
+do_ldconfig()
 install_kvm_pkg()
 copy_tools()
 copy_kvm_files()
