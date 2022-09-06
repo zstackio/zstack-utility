@@ -103,6 +103,10 @@ else :
     zstacklib_args.yum_server = yum_server
 zstacklib = ZstackLib(zstacklib_args)
 
+#init ld.so.conf for qemu 6.2.0
+command = 'if [ -d /opt/zstack/chroot/usr/lib64 ]; then grep -c  "^/opt/zstack/chroot/usr/lib64$" /etc/ld.so.conf || echo /opt/zstack/chroot/usr/lib64 >> /etc/ld.so.conf; ldconfig; fi'
+run_remote_command(command, host_post_info)
+
 if host_info.distro in RPM_BASED_OS:
     qemu_pkg = "fuse-sshfs nmap collectd tar pyparted net-tools"
 

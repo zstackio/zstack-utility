@@ -97,6 +97,10 @@ else:
     command = 'mkdir -p %s %s' % (cephp_root, virtenv_path)
     run_remote_command(command, host_post_info)
 
+#init ld.so.conf for qemu 6.2.0
+command = 'if [ -d /opt/zstack/chroot/usr/lib64 ]; then grep -c  "^/opt/zstack/chroot/usr/lib64$" /etc/ld.so.conf || echo /opt/zstack/chroot/usr/lib64 >> /etc/ld.so.conf; ldconfig; fi'
+run_remote_command(command, host_post_info)
+
 if host_info.distro in RPM_BASED_OS:
     install_rpm_list = "wget nmap"
 
