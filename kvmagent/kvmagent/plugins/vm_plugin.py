@@ -5972,7 +5972,7 @@ class VmPlugin(kvmagent.KvmAgent):
                 vmUseOpenvSwitch = ovs.isVmUseOpenvSwitch(cmd.uuid)
                 vm.destroy()
                 if vmUseOpenvSwitch:
-                    ovs.getOvsCtl(with_dpdk=True).destoryNicBackend(vmUuid)
+                    ovs.getOvsCtl(with_dpdk=True).destoryNicBackend(cmd.uuid)
                 logger.debug('successfully destroyed vm[uuid:%s]' % cmd.uuid)
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
