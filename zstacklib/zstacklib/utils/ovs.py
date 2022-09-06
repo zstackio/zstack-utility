@@ -1028,8 +1028,17 @@ class OvsBaseCtl(object):
         else:
             raise OvsError("Unexpected bond type.")
 
+    def isInterfaceExist(self, interface, bridgeName):
+        if bridgeName not in self.listBrs():
+            return False
+        if interface not in self.listPorts(bridgeName):
+            return False
+        return True        
+
     @checkOvs
     def prepareBridge(self, interface, bridgeName):
+        if self.isInterfaceExist(interface, bridgeName):
+            return
         try:
             self.createBr(bridgeName)
             self._addIntfaceToBridge(interface, bridgeName)
