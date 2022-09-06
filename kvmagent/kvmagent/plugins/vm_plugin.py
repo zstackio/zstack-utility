@@ -3549,6 +3549,40 @@ class Vm(object):
             raise kvmagent.KvmError('unable to execute "chpasswd" in guest[uuid:%s], check if user[%s] existing or guest system log.'
                                     % (uuid, cmd.accountPerference.userAccount))
 
+    def _check_snapshot_can_livemerge(self, base, top, fullrebase):
+        """Check live mrege/block stream can be processed
+
+        When qemu version <= 2.12.0, if take a block stream request and the
+        blk device's max sectors << 9 less that qcow2' cluster size, the VM
+        will be crashed.
+        Therefore, check qemu version whether <= 2.12.0, and check all the
+        block devices on the snapshot chain.
+        For more detail info, ref to ZSTAC-42068.
+
+        :param:base: string, The base qcow2 image path
+        :param:top: string, The top qcow2 image path
+        :param:fullrebase: bool, adjust to do full rebase, if true, the
+                           base param will be ignored.
+        """
+        if not top.startswith('/dev'):
+            return
+        if LooseVersion(linux.get_qemu_version()) > LooseVersion('2.12.0'):
+            return
+        checking_file = top
+        while checking_file:
+            max_transfer = min(
+                linux.hdev_get_max_transfer_via_ioctl(checking_file),
+                linux.hdev_get_max_transfer_via_segments(checking_file))
+            cluster_size = linux.qcow2_get_cluster_size(checking_file)
+            if max_transfer < cluster_size:
+                msg = ('Live merge snapshot precheck failed, the qcow2 image '
+                       'cluster size %s large that the block device max '
+                       'transfer  %s.') % (cluster_size, max_transfer)
+                raise kvmagent.KvmError(msg)
+            if checking_file == base and not fullrebase:
+                break
+            checking_file = self._get_back_file(checking_file)
+
     def merge_snapshot(self, cmd):
         _, disk_name = self._get_target_disk(cmd.volume)
 
@@ -3591,6 +3625,8 @@ class Vm(object):
 
             logger.debug('end block rebase [active: %s, new backing: %s]' % (top, base))
 
+        self._check_snapshot_can_livemerge(cmd.srcPath, cmd.destPath,
+                                           cmd.fullRebase)
         # confirm MergeSnapshotDaemon's cancel will be invoked before block job wait
         with MergeSnapshotDaemon(cmd, self.domain, disk_name, cmd.timeout - 10):
             if cmd.fullRebase:
