@@ -188,6 +188,12 @@ else:
 run_remote_command("rm -rf {}/*; mkdir -p /usr/local/zstack/ || true".format(kvm_root), host_post_info)
 
 
+#init ld.so.conf
+def do_ldconfig():
+    command = 'if [ -d /opt/zstack/chroot/usr/lib64 ]; then grep -c  "^/opt/zstack/chroot/usr/lib64$" /etc/ld.so.conf || echo /opt/zstack/chroot/usr/lib64 >> /etc/ld.so.conf; ldconfig; fi'
+    run_remote_command(command, host_post_info)
+
+
 def install_kvm_pkg():
     def rpm_based_install():
         mlnx_ofed = " python3 unbound libnl3-devel lsof \
@@ -376,6 +382,8 @@ def install_kvm_pkg():
         copy_arg.src = "%s/libvirtd" % file_root
         copy_arg.dest = "/etc/sysconfig/libvirtd"
         libvirtd_status = copy(copy_arg, host_post_info)
+
+        do_ldconfig()
 
         # replace qemu-img binary if qemu-img-ev before 2.12.0 is installed, to fix zstack-11004 / zstack-13594 / zstack-20983
         (status, qemu_img_version) = get_qemu_img_version(host_post_info)
