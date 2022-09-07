@@ -6,6 +6,7 @@ import abc
 import contextlib
 import os
 import os.path
+import resource
 import socket
 import datetime
 import time
@@ -1111,6 +1112,12 @@ def qcow2_fill(seek, length, path, raise_excpetion=False):
 def qcow2_measure_required_size(path):
     out = shell.call("/usr/bin/qemu-img measure -f qcow2 -O qcow2 %s | grep 'required size' | cut -d ':' -f 2" % path)
     return long(out.strip(' \t\r\n'))
+
+
+def qcow2_get_cluster_size(path):
+    out = shell.call("%s %s | grep 'cluster_size:' | cut -d ':' -f 2" %
+                     (qemu_img.subcmd('info'), path))
+    return int(out.strip())
 
 
 class AbstractFileConverter(object):
@@ -2542,3 +2549,18 @@ def get_max_vm_ipa_size():
         logger.warn("failed to get max vm ipa size, because %s", str(e))
         return pow(2, DEFAULT_VM_IPA_SIZE)
 
+
+def hdev_get_max_transfer_via_ioctl(blk_path):
+    cmd = shell.ShellCmd('blockdev --getmaxsect %s' % blk_path)
+    ret = cmd(False)
+    return int(ret.strip(' \t\r')) << 9 if cmd.return_code == 0 else 0
+
+
+def hdev_get_max_transfer_via_segments(blk_path):
+    segments_path = '/sys/block/%s/queue/max_segments' % os.path.basename(
+        os.path.realpath(blk_path))
+    if not os.path.exists(segments_path):
+        return 0
+    with open(segments_path, 'ro') as f:
+        max_segments = int(f.read())
+    return max_segments * resource.getpagesize()
