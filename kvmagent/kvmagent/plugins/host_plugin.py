@@ -333,12 +333,18 @@ class HostNetworkInterfaceInventory(object):
         self.pciDeviceAddress = None
         self.offloadStatus = None
 
+        bonds = ovs.getAllBondFromFile()
+
+        if bonds:
+            for bond in bonds:
+                if self.interfaceName in bond.slaves:
+                    self.master = bond.name
+
         if self.master is not None:
             self._init_from_ovs()
         else:
             self._init_from_name()
         self.driverType = None
-        self._init_from_name()
 
     @classmethod
     def __get_cache__(cls, name):

@@ -1725,3 +1725,33 @@ def isVmUseOpenvSwitch(vmUuid):
         return False
     except shell.ShellError as err:
         raise OvsError("Failed to check if vm {} attached with OpenvSwitch.".format(vmUuid))
+
+def getAllBondFromFile():
+    try:
+        bondFile = os.path.join(ConfPath, "dpdk-bond.yaml")
+
+        dpdkbonds = []
+
+        if not os.path.exists(bondFile):
+            return dpdkbonds
+
+        with open(bondFile, "r") as f:
+            data = yaml.safe_load(f)
+
+        for d in data:
+            dpdkBond = Bond()
+            dpdkBond.name = d['bond']['name']
+            dpdkBond.mode = d['bond']['mode']
+            if d['bond'].has_key('lacp'):
+                dpdkBond.lacp = d['bond']['lacp']
+            if d['bond'].has_key('options'):
+                dpdkBond.options = d['bond']['options']
+            if d['bond'].has_key('policy'):
+                dpdkBond.policy = d['bond']['policy']
+            dpdkBond.id = d['bond']['id']
+            for i in d['bond']['slaves']:
+                dpdkBond.slaves.append(str(i))
+            dpdkbonds.append(dpdkBond)
+        return dpdkbonds
+    except Exception as e:
+        return []
