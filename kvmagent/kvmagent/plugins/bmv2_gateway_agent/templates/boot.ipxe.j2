@@ -1,7 +1,7 @@
 #!ipxe
 
-:retry_dhcp
-dhcp || goto retry_dhcp
+# :retry_dhcp
+# dhcp || goto retry_dhcp
 
 # load the MAC-specific file or fail if it's not found
 :boot_system
