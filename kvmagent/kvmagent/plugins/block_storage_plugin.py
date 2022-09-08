@@ -200,7 +200,6 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
     def make_sure_lun_has_been_mapped(self, cmd_info):
         successfully_find_lun = False
         try:
-            bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -a >/dev/null")
             successfully_find_lun = self.check_lun_status(cmd_info)
         except Exception as e:
             pass
@@ -240,7 +239,6 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         iscsi_already_login = self.find_iscsi_session(cmd)
         if iscsi_already_login is True:
             logger.debug("iscsi already login, just to find lun")
-            bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -a >/dev/null")
         else:
             logger.debug("start to login")
             self.iscsi_login(cmd)
