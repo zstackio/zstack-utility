@@ -1743,12 +1743,8 @@ done
         nics = []
         pcis = set()
 
-        def get_nic(n, i):
-            o = HostNetworkInterfaceInventory(n)
-            # exclude vf representor
-            if o.pciDeviceAddress not in pcis:
-                nics[i] = o
-                pcis.add(o.pciDeviceAddress)
+        def get_nic_info(interfaceName, index):
+            nics[index] = HostNetworkInterfaceInventory(interfaceName)
 
         threads = []
         nic_names = ip.get_host_physicl_nics()
@@ -1756,8 +1752,13 @@ done
             return nics
 
         nics = [None] * len(nic_names)
-        for idx, nic in enumerate(nic_names, start=0):
-            threads.append(thread.ThreadFacade.run_in_thread(get_nic, [nic.strip(), idx]))
+        for index, nic in enumerate(nic_names, start=0):
+            interfaceName = nic.strip()
+            pciDeviceAddress = os.readlink("/sys/class/net/%s/device" % interfaceName).strip().split('/')[-1]
+            # exclude vf representor
+            if pciDeviceAddress not in pcis:
+                threads.append(thread.ThreadFacade.run_in_thread(get_nic_info, [interfaceName, index]))
+                pcis.add(pciDeviceAddress)
         for t in threads:
             t.join()
         return nics
