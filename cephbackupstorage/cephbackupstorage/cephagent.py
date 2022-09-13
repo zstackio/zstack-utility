@@ -898,6 +898,9 @@ class CephAgent(object):
         report.resourceUuid = cmd.imageUuid
         report.progress_report("0", "start")
 
+        if isinstance(cmd.url, unicode):
+            cmd.url = str(cmd.url)
+
         url = urlparse.urlparse(cmd.url)
         if url.scheme in ('http', 'https', 'ftp'):
             image_format = get_origin_format(cmd.url, True)
