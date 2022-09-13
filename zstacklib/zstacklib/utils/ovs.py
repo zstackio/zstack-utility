@@ -1542,6 +1542,7 @@ class OvsDpdkCtl(OvsBaseCtl):
 
         self.setIfaces(vNicName, "external_ids:vm-id={}".format(vmUuid))
 
+    @lock.lock("ovs-createNicBackend")
     def createNicBackend(self, vmUuid, nic):
         bridgeName = nic.bridgeName
         pNicName = nic.physicalInterface
@@ -1615,6 +1616,7 @@ class OvsDpdkCtl(OvsBaseCtl):
             raise OvsError(
                 "Get interface sock path by name:{} failed. {}".format(nicName, err))
 
+    @lock.lock("ovs-destoryNicBackend")
     def destoryNicBackend(self, vmUuid, specificNic=None):
         sockPath = ''
         interfaceList = []
