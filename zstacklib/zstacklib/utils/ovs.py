@@ -1175,7 +1175,8 @@ class OvsDpdkCtl(OvsBaseCtl):
 
             iproute.set_link_down_no_error(ifName)
 
-            self._resplitVfs(bdf)
+            # create l2 bridge not split vfs
+            #self._resplitVfs(bdf)
             # unbind vfs before change devlink mode
             self._unbindVfs(bdf)
             confirmWriteSysfs(devlink_mode, mode)
