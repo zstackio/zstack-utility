@@ -2436,7 +2436,7 @@ class Vm(object):
             def blk():
                 disk = etree.Element('disk', {'type': 'block', 'device': 'disk', 'snapshot': 'external'})
                 e(disk, 'driver', None,
-                  {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'io': 'native'})
+                  {'name': 'qemu', 'type': linux.get_img_fmt(volume.installPath), 'cache': 'none', 'io': 'native'})
                 e(disk, 'source', None, {'dev': volume.installPath})
 
                 if volume.useVirtioSCSI:
@@ -2463,6 +2463,8 @@ class Vm(object):
             return blk()
 
         dev_letter = self._get_device_letter(volume, addons)
+        volume = file_volume_check(volume)
+
         if volume.deviceType == 'iscsi':
             disk_element = iscsibased_volume()
         elif volume.deviceType == 'file':
@@ -2730,6 +2732,7 @@ class Vm(object):
     def _get_target_disk(self, volume, is_exception=True):
         if volume.installPath.startswith('sharedblock'):
             volume.installPath = shared_block_to_file(volume.installPath)
+        volume = file_volume_check(volume)
 
         for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
             if not xmlobject.has_element(disk, 'source') and not volume.deviceType == 'quorum':
@@ -2845,14 +2848,15 @@ class Vm(object):
                 os.makedirs(snapshot_dir)
 
             disk_names.append(disk_name)
-            d = e(disks, 'disk', None, attrib={'name': disk_name, 'snapshot': 'external', 'type': 'file'})
-            e(d, 'source', None, attrib={'file': vs_struct.installPath})
+            source = target_disk.source.file_ if target_disk.type_ == 'file' else target_disk.source.dev_
+            d = e(disks, 'disk', None, attrib={'name': disk_name, 'snapshot': 'external', 'type': target_disk.type_})
+            e(d, 'source', None, attrib={'file' if target_disk.type_ == 'file' else 'dev': vs_struct.installPath})
             e(d, 'driver', None, attrib={'type': 'qcow2'})
             return_structs.append(VolumeSnapshotResultStruct(
                 vs_struct.volumeUuid,
-                target_disk.source.file_,
+                source,
                 vs_struct.installPath,
-                get_size(target_disk.source.file_),
+                get_size(source),
                 vs_struct.memory))
 
         self.refresh()
@@ -2920,7 +2924,7 @@ class Vm(object):
         if not os.path.exists(snapshot_dir):
             os.makedirs(snapshot_dir)
 
-        previous_install_path = target_disk.source.file_
+        previous_install_path = target_disk.source.file_ if target_disk.type_ == 'file' else target_disk.source.dev_
         back_file_len = len(self._get_backfile_chain(previous_install_path))
         # for RHEL, base image's back_file_len == 1; for ubuntu back_file_len == 0
         first_snapshot = full_snapshot and (back_file_len == 1 or back_file_len == 0)
@@ -2928,8 +2932,8 @@ class Vm(object):
         def take_delta_snapshot():
             snapshot = etree.Element('domainsnapshot')
             disks = e(snapshot, 'disks')
-            d = e(disks, 'disk', None, attrib={'name': disk_name, 'snapshot': 'external', 'type': 'file'})
-            e(d, 'source', None, attrib={'file': install_path})
+            d = e(disks, 'disk', None, attrib={'name': disk_name, 'snapshot': 'external', 'type': target_disk.type_})
+            e(d, 'source', None, attrib={'file' if target_disk.type_ == 'file' else 'dev': install_path})
             e(d, 'driver', None, attrib={'type': 'qcow2'})
 
             # QEMU 2.3 default create snapshots on all devices
@@ -4443,7 +4447,7 @@ class Vm(object):
             def block_volume(_dev_letter, _v):
                 disk = etree.Element('disk', {'type': 'block', 'device': 'disk', 'snapshot': 'external'})
                 e(disk, 'driver', None,
-                  {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'io': 'native'})
+                  {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': 'none', 'io': 'native'})
                 e(disk, 'source', None, {'dev': _v.installPath})
 
                 if _v.useVirtioSCSI:
@@ -4511,6 +4515,7 @@ class Vm(object):
                     e(_disk, 'address', None, {'type': 'drive', 'bus': volume_ide_config.bus, 'unit': volume_ide_config.unit})
 
             def make_volume(dev_letter, v, r, dataSourceOnly=False):
+                v = file_volume_check(v)
                 if r:
                     vol = nbd_volume(dev_letter, v, r)
                 elif v.deviceType == 'quorum':
@@ -5149,6 +5154,16 @@ def qmp_subcmd(s_cmd):
             j_cmd.get("arguments").update(props)
             s_cmd = json.dumps(j_cmd)
     return s_cmd
+
+def file_volume_check(volume):
+    # `file` support has been removed with block/char devices since qemu-6.0.0
+    # https://github.com/qemu/qemu/commit/8d17adf34f501ded65a106572740760f0a75577c
+    if not volume.deviceType == "file":
+        return volume
+
+    if LooseVersion(QEMU_VERSION) >= LooseVersion("6.0.0") and not os.path.isfile(volume.installPath):
+        volume.deviceType = 'block'
+    return volume
 
 @in_bash
 def execute_qmp_command(domain_id, command):
@@ -6250,10 +6265,11 @@ class VmPlugin(kvmagent.KvmAgent):
         def block_volume(_v):
             disk = etree.Element('disk', {'type': 'block', 'device': 'disk', 'snapshot': 'external'})
             e(disk, 'driver', None,
-              {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'io': 'native'})
+              {'name': 'qemu', 'type': linux.get_img_fmt(_.installPath), 'cache': 'none', 'io': 'native'})
             e(disk, 'source', None, {'dev': _v.installPath})
             return disk
 
+        volume = file_volume_check(volume)
         if volume.deviceType == 'file':
             ele = filebased_volume(volume)
         elif volume.deviceType == 'ceph':
