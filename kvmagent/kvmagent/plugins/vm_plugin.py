@@ -2436,7 +2436,7 @@ class Vm(object):
             def blk():
                 disk = etree.Element('disk', {'type': 'block', 'device': 'disk', 'snapshot': 'external'})
                 e(disk, 'driver', None,
-                  {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'io': 'native'})
+                  {'name': 'qemu', 'type': linux.get_img_fmt(volume.installPath), 'cache': 'none', 'io': 'native'})
                 e(disk, 'source', None, {'dev': volume.installPath})
 
                 if volume.useVirtioSCSI:
@@ -2463,6 +2463,8 @@ class Vm(object):
             return blk()
 
         dev_letter = self._get_device_letter(volume, addons)
+        volume = file_volume_check(volume)
+
         if volume.deviceType == 'iscsi':
             disk_element = iscsibased_volume()
         elif volume.deviceType == 'file':
@@ -4443,7 +4445,7 @@ class Vm(object):
             def block_volume(_dev_letter, _v):
                 disk = etree.Element('disk', {'type': 'block', 'device': 'disk', 'snapshot': 'external'})
                 e(disk, 'driver', None,
-                  {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'io': 'native'})
+                  {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': 'none', 'io': 'native'})
                 e(disk, 'source', None, {'dev': _v.installPath})
 
                 if _v.useVirtioSCSI:
@@ -4511,6 +4513,7 @@ class Vm(object):
                     e(_disk, 'address', None, {'type': 'drive', 'bus': volume_ide_config.bus, 'unit': volume_ide_config.unit})
 
             def make_volume(dev_letter, v, r, dataSourceOnly=False):
+                v = file_volume_check(v)
                 if r:
                     vol = nbd_volume(dev_letter, v, r)
                 elif v.deviceType == 'quorum':
@@ -5149,6 +5152,16 @@ def qmp_subcmd(s_cmd):
             j_cmd.get("arguments").update(props)
             s_cmd = json.dumps(j_cmd)
     return s_cmd
+
+def file_volume_check(volume):
+    # `file` support has been removed with block/char devices since qemu-6.0.0
+    # https://github.com/qemu/qemu/commit/8d17adf34f501ded65a106572740760f0a75577c
+    if not volume.deviceType == "file":
+        return volume
+
+    if LooseVersion(QEMU_VERSION) >= LooseVersion("6.0.0") and not os.path.isfile(volume.installPath):
+        volume.deviceType = 'block'
+    return volume
 
 @in_bash
 def execute_qmp_command(domain_id, command):
@@ -6251,10 +6264,11 @@ class VmPlugin(kvmagent.KvmAgent):
         def block_volume(_v):
             disk = etree.Element('disk', {'type': 'block', 'device': 'disk', 'snapshot': 'external'})
             e(disk, 'driver', None,
-              {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'io': 'native'})
+              {'name': 'qemu', 'type': linux.get_img_fmt(_.installPath), 'cache': 'none', 'io': 'native'})
             e(disk, 'source', None, {'dev': _v.installPath})
             return disk
 
+        volume = file_volume_check(volume)
         if volume.deviceType == 'file':
             ele = filebased_volume(volume)
         elif volume.deviceType == 'ceph':
