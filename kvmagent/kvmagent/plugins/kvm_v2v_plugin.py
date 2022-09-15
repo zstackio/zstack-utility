@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+import threading
 
 import libvirt
 import os
@@ -20,6 +21,7 @@ from zstacklib.utils import iproute
 from zstacklib.utils import xmlobject
 from zstacklib.utils.bash import in_bash
 from zstacklib.utils.plugin import completetask
+from zstacklib.utils.linux import get_fs_type
 from zstacklib.utils.report import *
 
 logger = log.get_logger(__name__)
@@ -327,9 +329,21 @@ QOS_IFB = "ifb0"
 def getRealStoragePath(storagePath):
     return os.path.abspath(os.path.join(storagePath, "v2v-cache"))
 
+
+def set_v2v_exports_config(real_storage_path):
+    with open(EXPORTS_CONFIG_FILE_PATH, 'w') as f:
+        f.write(EXPORTS_CONFIG.format(real_storage_path))
+
+
+def clean_v2v_exports_config():
+    with open(EXPORTS_CONFIG_FILE_PATH, 'r+') as f:
+        f.truncate(0)
+
 V2V_PRIV_KEY = os.path.join(os.path.expanduser("~"), ".ssh", "id_rsa_v2v")
 V2V_PUB_KEY = V2V_PRIV_KEY+".pub"
 DEF_SSH_OPTS = "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+EXPORTS_CONFIG_FILE_PATH = "/etc/exports.d/zs-v2v.exports"
+EXPORTS_CONFIG = "{} *(rw,sync,no_root_squash)\n"
 
 class KVMV2VPlugin(kvmagent.KvmAgent):
     INIT_PATH = "/kvmv2v/conversionhost/init"
@@ -341,6 +355,10 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
     CONFIG_QOS_PATH = "/kvmv2v/conversionhost/qos/config"
     DELETE_QOS_PATH = "/kvmv2v/conversionhost/qos/delete"
     CANCEL_CONVERT_PATH = "/kvmv2v/conversionhost/convert/cancel"
+
+    libvirt_host_convert_job_nums = {}
+    all_convert_job_nums = 0
+    convert_job_lock = threading.Lock()
 
     def start(self):
         random.seed()
@@ -370,13 +388,12 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
 
             if not os.path.isdir("/etc/exports.d"):
                 linux.mkdir("/etc/exports.d")
-            with open('/etc/exports.d/zs-v2v.exports', 'w') as f:
-                f.write("{} *(rw,sync,no_root_squash)\n".format(spath))
+            set_v2v_exports_config(spath)
 
         shell.check_run('systemctl restart nfs-server')
 
         if spath is not None:
-            fstype = shell.call("""stat -f -c '%T' {}""".format(spath)).strip()
+            fstype = get_fs_type(cmd.storagePath)
             if fstype not in [ "xfs", "ext2", "ext3", "ext4", "jfs", "btrfs", "ext2/ext3" ]:
                 raise Exception("unexpected fstype '{}' on '{}'".format(fstype, cmd.storagePath))
 
@@ -467,6 +484,15 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                     else:
                         raise ex
 
+        def do_ssh_umount(cmd, local_mount_point):
+            with lock.NamedLock(local_mount_point):
+                cmdstr = "mountpoint {0} && umount -f {0}".format(local_mount_point)
+                try:
+                    runSshCmd(cmd.libvirtURI, cmd.sshPrivKey, cmdstr)
+                except shell.ShellError as ex:
+                    logger.warn("can not umount mount point[%s] on libvirt host[%s], because %s", local_mount_point,
+                                getHostname(cmd.libvirtURI), str(ex))
+
         def do_blockcopy(cmd, dom, volumes, storage_dir, flags):
             for v in volumes:
                 localpath = os.path.join(storage_dir, v.name)
@@ -488,6 +514,29 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                     None,
                     flags)
 
+        def before_blockcopy():
+            if str(libvirtHost) not in self.libvirt_host_convert_job_nums.keys():
+                self.libvirt_host_convert_job_nums[str(libvirtHost)] = 0
+            self.libvirt_host_convert_job_nums[str(libvirtHost)] += 1
+
+            if self.all_convert_job_nums == 0:
+                set_v2v_exports_config(real_storage_path)
+                shell.ShellCmd('exportfs -r')
+                do_ssh_umount(cmd, local_mount_point)
+            self.all_convert_job_nums += 1
+
+        def after_blockcopy():
+            if str(libvirtHost) in self.libvirt_host_convert_job_nums.keys():
+                self.libvirt_host_convert_job_nums[str(libvirtHost)] -= 1
+                if self.libvirt_host_convert_job_nums[str(libvirtHost)] <= 0:
+                    do_ssh_umount(cmd, local_mount_point)
+                    self.libvirt_host_convert_job_nums.pop(str(libvirtHost))
+
+            self.all_convert_job_nums -= 1
+            if self.all_convert_job_nums <= 0:
+                clean_v2v_exports_config()
+                shell.ShellCmd('exportfs -r')
+
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         real_storage_path = getRealStoragePath(cmd.storagePath)
         storage_dir = os.path.join(real_storage_path, cmd.srcVmUuid)
@@ -501,6 +550,9 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
         local_mount_point = os.path.join("/tmp/zs-v2v/", cmd.managementIp)
         vm_v2v_dir = os.path.join(local_mount_point, cmd.srcVmUuid)
         libvirtHost = getHostname(cmd.libvirtURI)
+
+        with self.convert_job_lock:
+            before_blockcopy()
 
         try:
             do_ssh_mount(cmd, local_mount_point, real_storage_path)
@@ -601,6 +653,9 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                     dom.resume()
                 if needDefine:
                     c.defineXML(xmlDesc)
+
+        with self.convert_job_lock:
+            after_blockcopy()
 
         # TODO
         #  - monitor progress
