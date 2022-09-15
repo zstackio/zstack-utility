@@ -76,6 +76,14 @@ class Test(unittest.TestCase):
         print("=======test4-done=========")
 
 
+    def test_5_query_smart_nic_interfaces_when_driver_not_installed(self):
+        # mock /sys/bus/pci/devices/$pci/net not exist
+        not_exist_pcis = ['0000:18:88.8', '0000:16:66.6']
+
+        nic_interfaces = ip.get_smart_nic_interfaces(not_exist_pcis)
+        self.assertEqual(len(nic_interfaces), 0)
+        print("=======test5-done=========")
+
 
 if __name__ == "__main__":
     unittest.main()
