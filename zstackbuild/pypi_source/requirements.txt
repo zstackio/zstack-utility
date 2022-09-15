@@ -43,3 +43,5 @@ certifi==2021.5.30
 xms-client
 python-dateutil
 cachetools==3.1.1
+psutil==5.0.1
+
