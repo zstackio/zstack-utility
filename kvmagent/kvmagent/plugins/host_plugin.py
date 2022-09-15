@@ -788,20 +788,9 @@ class HostPlugin(kvmagent.KvmAgent):
         return ''
     
     def _cache_units_convert(self, str):
-
-        unit = str.strip().split(" ")[1]
-        # change str to float (exam: "76.8" --> 76.8 )
-        value = float(str.strip().split(" ")[0])
-        if unit == 'KiB':
-            value = value * 1.024
-        elif unit == 'MiB':
-            value = value * 1.024 * 1024
-        elif unit == 'GiB':
-            value = value * 1.024 * 1024 * 1024
-        else:
-            value = 0
-        
-        return '%.2f' % value
+        if str is None or str == '':
+            return 0
+        return float(sizeunit.get_size(str) / 1024)
 
     @kvmagent.replyerror
     def fact(self, req):
@@ -883,7 +872,6 @@ class HostPlugin(kvmagent.KvmAgent):
             cpu_processor_num = shell.call("lscpu | grep -m1 'CPU(s)' | awk -F ':' '{print $2}'")                    
             rsp.cpuProcessorNum = int(cpu_processor_num.strip())                                                         
 
-
             '''
             examples:         
                     lscpu | grep 'L1i cache'
@@ -892,23 +880,8 @@ class HostPlugin(kvmagent.KvmAgent):
                     L1d cache:                       768 KiB
             '''
 
-            cpu_l1d_cache = shell.call("lscpu | grep 'L1i cache' | awk -F ':' '{print $2}'") 
-            cpu_l1i_cache = shell.call("lscpu | grep 'L1d cache' | awk -F ':' '{print $2}'")
-            cpu_l1_cache = ''
-            if bool(re.search(r'\d', cpu_l1d_cache)) and bool(re.search(r'\d', cpu_l1i_cache)):
-                cpu_l1_cache = self._cache_units_convert(cpu_l1d_cache) + self._cache_units_convert(cpu_l1i_cache)
-
-            cpu_l2_cache = shell.call("lscpu | grep 'L2 cache' | awk -F ':' '{print $2}'")
-            if bool(re.search(r'\d', cpu_l2_cache)):
-                cpu_l2_cache = self._cache_units_convert(cpu_l2_cache)
-
-            cpu_l3_cache = shell.call("lscpu | grep 'L3 cache' | awk -F ':' '{print $2}'")
-            if bool(re.search(r'\d', cpu_l3_cache)):
-                cpu_l3_cache = self._cache_units_convert(cpu_l3_cache)
-
-            if cpu_l1_cache != '' and cpu_l2_cache != '' and cpu_l3_cache != '':
-                cpuCache = [cpu_l1_cache, cpu_l2_cache, cpu_l3_cache]
-                rsp.cpuCache = ",".join(cpuCache)
+            cpu_cache_list = self._get_cpu_cache()
+            rsp.cpuCache = ",".join(str(cache) for cache in cpu_cache_list)
 
         elif IS_MIPS64EL:
             rsp.hvmCpuFlag = 'vt'
@@ -945,25 +918,8 @@ class HostPlugin(kvmagent.KvmAgent):
             cpu_processor_num = shell.call("grep -c processor /proc/cpuinfo")
             rsp.cpuProcessorNum = cpu_processor_num.strip()         
 
-            cpu_l1d_cache = shell.call("lscpu | grep 'L1i cache' | awk -F ':' '{print $2}'") 
-            cpu_l1i_cache = shell.call("lscpu | grep 'L1d cache' | awk -F ':' '{print $2}'")
-            cpu_l1_cache = ''
-            if bool(re.search(r'\d', cpu_l1d_cache)) and bool(re.search(r'\d', cpu_l1i_cache)):
-                cpu_l1_cache_value = float(cpu_l1d_cache.strip()[:-1]) + float(cpu_l1i_cache.strip()[:-1])
-                if cpu_l1d_cache.strip()[-1] == 'K' and cpu_l1i_cache.strip()[-1] == 'K':
-                    cpu_l1_cache = '%.2f' % (cpu_l1_cache_value)
-
-            cpu_l2_cache = shell.call("lscpu | grep 'L2 cache' | awk -F ':' '{print $2}'")
-            if cpu_l2_cache.strip()[-1] == 'K':
-                cpu_l2_cache = '%.2f' % float(cpu_l2_cache.strip()[:-1])
-
-            cpu_l3_cache = shell.call("lscpu | grep 'L3 cache' | awk -F ':' '{print $2}'")
-            if cpu_l3_cache.strip()[-1] == 'K':
-                cpu_l3_cache = '%.2f' % float(cpu_l3_cache.strip()[:-1])
-
-            if cpu_l1_cache != '' and cpu_l2_cache != '' and cpu_l3_cache != '':
-                cpuCache = [cpu_l1_cache, cpu_l2_cache.strip(), cpu_l3_cache.strip()]
-                rsp.cpuCache = ",".join(cpuCache)
+            cpu_cache_list = self._get_cpu_cache()
+            rsp.cpuCache = ",".join(str(cache) for cache in cpu_cache_list)
             
         return jsonobject.dumps(rsp)
 
@@ -985,6 +941,31 @@ class HostPlugin(kvmagent.KvmAgent):
     @vm_plugin.LibvirtAutoReconnect
     def _get_node_info(conn):
         return conn.getInfo()
+
+    @kvmagent.replyerror
+    def _get_cpu_cache(self):
+        class CpuCache(object):
+            def __init__(self):
+                self.cpuL1iCache = 0
+                self.cpuL1dCache = 0
+                self.cpuL2Cache = 0
+                self.cpuL3Cache = 0
+
+        cache = CpuCache()
+        cpu_cache_lines = shell.call("lscpu")
+        for c_line in cpu_cache_lines.splitlines():
+            if re.search('L1d cache', c_line):
+                cache.cpuL1dCache = self._cache_units_convert(c_line.split(':')[1].strip())
+            elif re.search('L1i cache', c_line):
+                cache.cpuL1iCache = self._cache_units_convert(c_line.split(':')[1].strip())
+            elif re.search('L2 cache', c_line):
+                cache.cpuL2Cache = self._cache_units_convert(c_line.split(':')[1].strip())
+            elif re.search('L3 cache', c_line):
+                cache.cpuL3Cache = self._cache_units_convert(c_line.split(':')[1].strip())
+
+        cpu_l1_cache = cache.cpuL1dCache + cache.cpuL1iCache
+        cpuCacheList = [cpu_l1_cache, cache.cpuL2Cache, cache.cpuL3Cache]
+        return cpuCacheList
 
     @kvmagent.replyerror
     @in_bash
