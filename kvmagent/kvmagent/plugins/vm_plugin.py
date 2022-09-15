@@ -4480,7 +4480,7 @@ class Vm(object):
 
             def allocat_ide_config(_disk, _volume):
                 if _volume.deviceAddress:
-                    e(_disk, 'address', None, {'type': 'drive', 'bus': _volume.deviceAddress.bus, 'unit': _volume.deviceAddress.function})
+                    e(_disk, 'address', None, {'type': 'drive', 'bus': _volume.deviceAddress.bus, 'unit': _volume.deviceAddress.unit})
                 else:
                     if len(volume_ide_configs) == 0:
                         err = "insufficient IDE address."
@@ -5530,8 +5530,9 @@ class VmPlugin(kvmagent.KvmAgent):
         memBalloonPci = vm.domain_xmlobject.devices.get_child_node('memballoon')
         if memBalloonPci is not None:
             memBalloonInfo = self.get_device_address_info(memBalloonPci)
+            return nicInfos, virtualDeviceInfoList, memBalloonInfo
 
-        return nicInfos, virtualDeviceInfoList, memBalloonInfo
+        return nicInfos, virtualDeviceInfoList, None
 
     @kvmagent.replyerror
     def sync_vm_deviceinfo(self, req):
