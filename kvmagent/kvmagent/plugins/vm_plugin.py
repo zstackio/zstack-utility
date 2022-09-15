@@ -2732,6 +2732,7 @@ class Vm(object):
     def _get_target_disk(self, volume, is_exception=True):
         if volume.installPath.startswith('sharedblock'):
             volume.installPath = shared_block_to_file(volume.installPath)
+        volume = file_volume_check(volume)
 
         for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
             if not xmlobject.has_element(disk, 'source') and not volume.deviceType == 'quorum':
@@ -2847,14 +2848,15 @@ class Vm(object):
                 os.makedirs(snapshot_dir)
 
             disk_names.append(disk_name)
-            d = e(disks, 'disk', None, attrib={'name': disk_name, 'snapshot': 'external', 'type': 'file'})
-            e(d, 'source', None, attrib={'file': vs_struct.installPath})
+            source = target_disk.source.file_ if target_disk.type_ == 'file' else target_disk.source.dev_
+            d = e(disks, 'disk', None, attrib={'name': disk_name, 'snapshot': 'external', 'type': target_disk.type_})
+            e(d, 'source', None, attrib={'file' if target_disk.type_ == 'file' else 'dev': vs_struct.installPath})
             e(d, 'driver', None, attrib={'type': 'qcow2'})
             return_structs.append(VolumeSnapshotResultStruct(
                 vs_struct.volumeUuid,
-                target_disk.source.file_,
+                source,
                 vs_struct.installPath,
-                get_size(target_disk.source.file_),
+                get_size(source),
                 vs_struct.memory))
 
         self.refresh()
@@ -2922,7 +2924,7 @@ class Vm(object):
         if not os.path.exists(snapshot_dir):
             os.makedirs(snapshot_dir)
 
-        previous_install_path = target_disk.source.file_
+        previous_install_path = target_disk.source.file_ if target_disk.type_ == 'file' else target_disk.source.dev_
         back_file_len = len(self._get_backfile_chain(previous_install_path))
         # for RHEL, base image's back_file_len == 1; for ubuntu back_file_len == 0
         first_snapshot = full_snapshot and (back_file_len == 1 or back_file_len == 0)
@@ -2930,8 +2932,8 @@ class Vm(object):
         def take_delta_snapshot():
             snapshot = etree.Element('domainsnapshot')
             disks = e(snapshot, 'disks')
-            d = e(disks, 'disk', None, attrib={'name': disk_name, 'snapshot': 'external', 'type': 'file'})
-            e(d, 'source', None, attrib={'file': install_path})
+            d = e(disks, 'disk', None, attrib={'name': disk_name, 'snapshot': 'external', 'type': target_disk.type_})
+            e(d, 'source', None, attrib={'file' if target_disk.type_ == 'file' else 'dev': install_path})
             e(d, 'driver', None, attrib={'type': 'qcow2'})
 
             # QEMU 2.3 default create snapshots on all devices
