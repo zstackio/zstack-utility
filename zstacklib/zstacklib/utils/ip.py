@@ -242,11 +242,14 @@ def get_smart_nic_pcis():
         nic_pcis.append(pci_info[0])
     return nic_pcis
 
-def get_smart_nic_interfaces():
+def get_smart_nic_interfaces(nic_pcis = None):
     nic_interfaces = []
-    nic_pcis = get_smart_nic_pcis()
+    if nic_pcis is None:
+        nic_pcis = get_smart_nic_pcis()
     for nic_pci in nic_pcis:
         interface_path = os.path.join("/sys/bus/pci/devices/%s/net" % (nic_pci))
+        if not os.path.exists(interface_path):
+            break
         interface_list = os.listdir(interface_path)
         nic_interfaces.extend(interface_list)
     return nic_interfaces
@@ -258,10 +261,13 @@ def get_smart_nic_representors():
             return False
         return True
     nic_representors = []
-    nic_interfaces = get_smart_nic_interfaces()
-    for nic_interface in nic_interfaces:
-        if is_representor(nic_interface):
-            nic_representors.append(nic_interface)
+    try:
+        nic_interfaces = get_smart_nic_interfaces()
+        for nic_interface in nic_interfaces:
+            if is_representor(nic_interface):
+                nic_representors.append(nic_interface)
+    except Exception:
+            return []
     return nic_representors
 
 def get_host_physicl_nics():
