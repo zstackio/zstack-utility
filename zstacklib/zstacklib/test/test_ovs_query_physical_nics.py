@@ -6,6 +6,7 @@ import unittest
 import zstacklib.utils.ip as ip
 from zstacklib.utils import jsonobject
 from kvmagent.plugins import host_plugin
+from kvmagent.plugins import prometheus
 
 class Test(unittest.TestCase):
 
@@ -83,6 +84,34 @@ class Test(unittest.TestCase):
         nic_interfaces = ip.get_smart_nic_interfaces(not_exist_pcis)
         self.assertEqual(len(nic_interfaces), 0)
         print("=======test5-done=========")
+
+
+    def test_6_is_prometheus_collect_nics_performance_good(self):
+        def get_number_interfaces():
+            fd = os.popen("find /sys/class/net -type l -not -lname '*virtual*' | wc -l", "r")
+            num_interfaces = int(fd.read())
+            fd.close
+            return num_interfaces
+
+        # query time cost
+        time_start = time.time()
+        prometheus.collect_physical_network_interface_state()
+        time_end = time.time()
+        time_cost = time_end - time_start
+
+        # query interface number
+        num_interfaces = get_number_interfaces()
+
+        # judge performance
+        is_performance_good = True
+        ''' prometheus can handle 1000 interfaces in 1 second '''
+        expect_time_cost = float(num_interfaces)/1000
+        print("time-cost = %s" % (str(time_cost)))
+        print("expect time-cost = %s" % (str(expect_time_cost)))
+        if time_cost > expect_time_cost:
+            is_performance_good = False
+        self.assertEqual(is_performance_good, True)
+        print("=======test6-done=========")
 
 
 if __name__ == "__main__":
