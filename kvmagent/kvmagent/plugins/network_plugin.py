@@ -227,7 +227,12 @@ class NetworkPlugin(kvmagent.KvmAgent):
     @in_bash
     def _configure_bridge_mtu(self, bridgeName, interf, mtu=None):
         if mtu is not None:
-            iproute.set_link_attribute(interf, mtu=mtu)
+            try:
+                iproute.set_link_attribute(interf, mtu=mtu)
+            except Exception as e:
+                raise Exception('failed to configure bridge mtu, '
+                                'please check if mtu exceeds the maximum value of all vnic mtus and global property, '
+                                'the details:%s', str(e))
             #bridge mtu must be bigger than all vnic mtu, so will not change it
             #if bridgeName is not None:
             #    shell.call("ip link set mtu %d dev %s" % (mtu, bridgeName))
