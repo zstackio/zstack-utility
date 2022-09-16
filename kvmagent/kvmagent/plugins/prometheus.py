@@ -15,6 +15,7 @@ from zstacklib.utils import lvm
 from zstacklib.utils import misc
 from zstacklib.utils import thread
 from zstacklib.utils.bash import *
+from zstacklib.utils.ip import get_host_physicl_nics
 from zstacklib.utils.ip import get_nic_supported_max_speed
 
 logger = log.get_logger(__name__)
@@ -640,7 +641,7 @@ def collect_physical_network_interface_state():
                                                         ['interface_name', 'speed']),
     }
     
-    nics = bash_o("find /sys/class/net -type l -not -lname '*virtual*' -printf '%f\\n'").splitlines()
+    nics = get_host_physicl_nics()
     if len(nics) != 0:
         for nic in nics:
             nic = nic.strip()
