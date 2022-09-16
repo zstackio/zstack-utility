@@ -10,6 +10,34 @@ from bm_instance_agent.common import utils as bm_utils
 LOG = logging.getLogger(__name__)
 
 
+def _check_initiator_config(instance_uuid):
+    cmd = ["systemctl", "status", "iscsid"]
+    _, stderr = processutils.trycmd(*cmd)
+    if stderr:
+        LOG.info("get iscsid status failed, try to restart iscsid service")
+        cmd = 'systemctl restart iscsid'
+        processutils.execute(cmd, shell=True)
+
+    conf_path = '/etc/iscsi/initiatorname.iscsi'
+    initiator = ('InitiatorName=iqn.2015-01.io.zstack:initiator.'
+                 'instance.{uuid}').format(uuid=instance_uuid)
+
+    update_conf = False
+    if os.path.exists(conf_path):
+        with open(conf_path, 'r') as f:
+            if f.read().strip() != initiator:
+                update_conf = True
+    else:
+        update_conf = True
+
+    if update_conf:
+        with open(conf_path, 'w') as f:
+            f.write(initiator)
+        LOG.info("initiator config changed, reload and restart iscsid")
+        cmd = 'systemctl daemon-reload && systemctl restart iscsid'
+        processutils.execute(cmd, shell=True)
+
+
 class LinuxDriver(base.SystemDriverBase):
 
     driver_name = 'linux'
@@ -37,51 +65,41 @@ class LinuxDriver(base.SystemDriverBase):
                 raise e
 
     def discovery_target(self, instance_obj):
+        _check_initiator_config(instance_obj.uuid)
         target_name = ('iqn.2015-01.io.zstack:target'
                        '.instance.{uuid}').format(uuid=instance_obj.uuid)
 
         if instance_obj.custom_iqn:
             target_name = instance_obj.custom_iqn
 
-        try:
-            cmd = 'iscsiadm -m session | grep %s' % target_name
-            LOG.info(cmd)
-            stdout, stderr = processutils.execute(cmd, shell=True)
-            if stdout:
-                LOG.info("iscsi target:%s logined" % target_name)
-                return
-        except processutils.ProcessExecutionError as e:
-            LOG.warning(e.stderr)
+        cmd = 'iscsiadm -m session | grep %s' % target_name
+        LOG.info(cmd)
+        stdout, stderr = processutils.trycmd(cmd, shell=True)
+        if not stderr:
+            LOG.info("iscsi target:%s has logged" % target_name)
+            return
 
-        LOG.info("login iscsi target: %s" % target_name)
-        conf_path = '/etc/iscsi/initiatorname.iscsi'
-        initiator = ('InitiatorName=iqn.2015-01.io.zstack:initiator.'
-                     'instance.{uuid}').format(uuid=instance_obj.uuid)
-        with open(conf_path, 'w') as f:
-            f.write(initiator)
-
-        cmd = 'systemctl daemon-reload && systemctl restart iscsid'
-        processutils.execute(cmd, shell=True)
-
-        discovery_cmd = ('iscsiadm -m discovery -t sendtargets -p {address}:{port}').format(
+        discovery_cmd = 'iscsiadm -m discovery -t sendtargets -p {address}:{port}'.format(
                                     address=instance_obj.gateway_ip,
-                                    port=3260)
+                                    port=3260,
+                                    target_name=target_name)
         LOG.info(discovery_cmd)
         try:
-            processutils.execute(discovery_cmd, shell=True)
-        except processutils.ProcessExecutionError as e:
-            LOG.warning(e.stderr)
-
-        target_login_cmd = ('iscsiadm --mode node --targetname {target_name} '
-                            '-p {address}:{port} --login').format(
-                                    target_name=target_name,
-                                    address=instance_obj.gateway_ip,
-                                    port=3260)
-        LOG.info(target_login_cmd)
-        try:
-            processutils.execute(target_login_cmd, shell=True)
-        except processutils.ProcessExecutionError as e:
-            LOG.warning(e.stderr)
+            stdout, stderr = processutils.execute(discovery_cmd, shell=True)
+            if target_name in stdout:
+                LOG.info("login iscsi target: %s" % target_name)
+                target_login_cmd = ('iscsiadm --mode node --targetname {target_name} '
+                                    '-p {address}:{port} --login').format(
+                    target_name=target_name,
+                    address=instance_obj.gateway_ip,
+                    port=3260)
+                LOG.info(target_login_cmd)
+                processutils.execute(target_login_cmd, shell=True)
+            else:
+                LOG.info("discovered targets not contains %s, skip login" % target_name)
+        except processutils.ProcessExecutionError:
+            LOG.info("no iscsi target found, skip login")
+            return
 
     def attach_volume(self, instance_obj, volume_obj):
         """ Attach a given iSCSI lun
@@ -90,25 +108,7 @@ class LinuxDriver(base.SystemDriverBase):
         not, corrent the configuration, then rescan the iscsi session.
         """
         self.discovery_target(instance_obj)
-
-        conf_path = '/etc/iscsi/initiatorname.iscsi'
-        initiator = ('InitiatorName=iqn.2015-01.io.zstack:initiator.'
-                     'instance.{uuid}').format(uuid=instance_obj.uuid)
-
-        update_conf = False
-        if os.path.exists(conf_path):
-            with open(conf_path, 'r') as f:
-                if f.read().strip() != initiator:
-                    update_conf = True
-        else:
-            update_conf = True
-
-        if update_conf:
-            with open(conf_path, 'w') as f:
-                f.write(initiator)
-
-            cmd = 'systemctl daemon-reload && systemctl restart iscsid'
-            processutils.execute(cmd, shell=True)
+        _check_initiator_config(instance_obj.uuid)
 
         cmd = ['iscsiadm', '-m', 'session', '--rescan']
         # parameter[delay_on_retry] of func[processutils.execute] will not verify exit_code
