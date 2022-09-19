@@ -3730,8 +3730,7 @@ class Vm(object):
                 root = elements['root']
                 tune = e(root, 'cputune')
                 def on_x86_64():
-                    # vcpu maximum refer to: https://access.redhat.com/articles/rhel-kvm-limits
-                    e(root, 'vcpu', '240', {'placement': 'static', 'current': str(cmd.cpuNum)})
+                    e(root, 'vcpu', '128', {'placement': 'static', 'current': str(cmd.cpuNum)})
                     # e(root,'vcpu',str(cmd.cpuNum),{'placement':'static'})
                     if cmd.nestedVirtualization == 'host-model':
                         cpu = e(root, 'cpu', attrib={'mode': 'host-model'})
