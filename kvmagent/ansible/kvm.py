@@ -207,6 +207,10 @@ def do_ldconfig():
     run_remote_command(command, host_post_info)
 
 
+def remove_conflict_rpms():
+    yum_remove_package("libvirt-daemon-driver-lxc", host_post_info)
+
+
 def install_kvm_pkg():
     def rpm_based_install():
         mlnx_ofed = " python3 unbound libnl3-devel lsof \
@@ -765,6 +769,7 @@ def modprobe_usb_module():
 
 check_nested_kvm(host_post_info)
 do_ldconfig()
+remove_conflict_rpms()
 install_kvm_pkg()
 copy_tools()
 copy_kvm_files()
