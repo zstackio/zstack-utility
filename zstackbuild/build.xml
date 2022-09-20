@@ -401,9 +401,6 @@
             <sequential>
                 <antcall target="assemble-transmission"/>
             </sequential>
-            <sequential>
-                <antcall target="assemble-zstack-zwatch"/>
-            </sequential>
         </parallel>
 
         <makeDir dir="${libs.dir}" />
