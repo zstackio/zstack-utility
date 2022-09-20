@@ -2346,6 +2346,10 @@ def read_file(path):
         logger.error(err_str)
         return None
 
+def read_file_strip(path):
+    context = read_file(path)
+    return context.strip() if context else context
+
 def read_nic_carrier(path):
     if not os.path.exists(path):
         raise IOError("file {} not found.".format(path))
