@@ -558,6 +558,7 @@ class HaPlugin(kvmagent.KvmAgent):
                         if vm_uuids:
                             self.report_self_fencer_triggered([cmd.uuid], ','.join(vm_uuids))
                             clean_network_config(vm_uuids)
+                            bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -r >/dev/null")
 
                         # reset the failure count
                         failure = 0

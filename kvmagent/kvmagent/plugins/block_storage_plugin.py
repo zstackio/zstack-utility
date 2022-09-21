@@ -18,6 +18,10 @@ logger = log.get_logger(__name__)
 INITIATOR_FILE_PATH = "/etc/iscsi/initiatorname.iscsi"
 
 
+class RetryException(Exception):
+    pass
+
+
 class AgentRsp(object):
     def __init__(self):
         self.success = True
@@ -49,6 +53,12 @@ class CreateHeartbeatCmd(AgentCmd):
         self.target = None
 
 
+class DeleteHeartbeatCmd(AgentCmd):
+    def __init__(self):
+        super(DeleteHeartbeatCmd, self).__init__()
+        self.heartbeatPath = None
+
+
 class DiscoverLunCmd(CreateHeartbeatCmd):
     def __init__(self):
         super(DiscoverLunCmd, self).__init__()
@@ -62,6 +72,11 @@ class LogoutLunCmd(CreateHeartbeatCmd):
 class CreateHeartbeatRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(CreateHeartbeatRsp, self).__init__()
+
+
+class DeleteHeartbeatRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(DeleteHeartbeatRsp, self).__init__()
 
 
 class ResizeVolumeRsp(AgentRsp):
@@ -91,6 +106,7 @@ def translate_absolute_path_from_wwn(wwn):
 class BlockStoragePlugin(kvmagent.KvmAgent):
     GET_INITIATOR_NAME_PATH = "/block/primarystorage/getinitiatorname"
     CREATE_HEART_BEAT_PATH = "/block/primarystorage/createheartbeat"
+    DELETE_HEART_BEAT_PATH = "/block/primarystorage/deleteheartbeat"
     DOWNLOAD_FROM_IMAGESTORE = "/block/imagestore/download"
     UPLOAD_TO_IMAGESTORE = "/block/imagestore/upload"
     COMMIT_VOLUME_AS_IMAGE = "/block/imagestore/commit"
@@ -102,7 +118,8 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
     def start(self):
         http_server = kvmagent.get_http_server()
         http_server.register_async_uri(self.GET_INITIATOR_NAME_PATH, self.get_initiator_name)
-        http_server.register_async_uri(self.CREATE_HEART_BEAT_PATH, self.create_heart_beat, cmd=CreateHeartbeatCmd())
+        http_server.register_async_uri(self.CREATE_HEART_BEAT_PATH, self.create_heartbeat, cmd=CreateHeartbeatCmd())
+        http_server.register_async_uri(self.DELETE_HEART_BEAT_PATH, self.delete_heartbeat, cmd=DeleteHeartbeatCmd())
         http_server.register_async_uri(self.DOWNLOAD_FROM_IMAGESTORE, self.download_from_imagestore)
         http_server.register_async_uri(self.DISCOVERY_LUN, self.discover_lun, cmd=DiscoverLunCmd())
         http_server.register_async_uri(self.LOGOUT_TARGET, self.logout_target, cmd=LogoutLunCmd())
@@ -147,9 +164,22 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def delete_heartbeat(self, req):
+        logger.debug("start to delete heartbeat")
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = DeleteHeartbeatRsp()
+        try:
+            heartbeat_path = cmd.heartbeatPath
+            linux.umount(heartbeat_path)
+        except Exception as e:
+            pass
+        rsp.success = True
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     @lock.lock('iscsiadm')
     @bash.in_bash
-    def create_heart_beat(self, req):
+    def create_heartbeat(self, req):
         logger.debug("start to create heart beat")
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CreateHeartbeatRsp()
@@ -162,17 +192,29 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         self.iscsi_login(cmd)
 
         heartbeat_lun_wwn = translate_absolute_path_from_wwn(cmd.wwn)
+        bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -u >/dev/null")
+        lun_has_been_mapped = self.make_sure_lun_has_been_mapped(cmd)
+        if lun_has_been_mapped is not True:
+            err_msg = "fail to find heartbeat lun, please make sure host is connected with ps";
+            logger.debug(err_msg)
+            rsp.success = False
+            rsp.error = err_msg
+            return jsonobject.dumps(rsp)
+
         try:
-            self.make_sure_lun_has_been_mapped(cmd)
-
             logger.debug("successfully login iscsi server let's start to init heart beat fs")
-
             # check heartbeat fs
             r, o, e = bash.bash_roe('file -Ls %s | grep "XFS"' % heartbeat_lun_wwn)
             if r != 0:
                 shell.call("mkfs.xfs -f %s" % heartbeat_lun_wwn)
             logger.debug("mount heart beat path " + heartbeat_path)
             if linux.is_mounted(heartbeat_path) is not True:
+                linux.mount(heartbeat_lun_wwn, heartbeat_path, "sync")
+            else:
+                linux.umount(heartbeat_path)
+                r, o, e = bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -r >/dev/null")
+                if r != 0:
+                    raise Exception("fail to create heartbeat mount path")
                 linux.mount(heartbeat_lun_wwn, heartbeat_path, "sync")
             rsp.success = True
         except Exception as e:
@@ -184,7 +226,10 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         if touch.return_code != 0:
             # Just sleep 1s to re-mount heartbeat path
             time.sleep(1)
-            linux.mount(heartbeat_lun_wwn, heartbeat_path, "sync,remount")
+            if linux.is_mounted(heartbeat_path) is not True:
+                linux.mount(heartbeat_lun_wwn, heartbeat_path, "sync")
+            else:
+                linux.mount(heartbeat_lun_wwn, heartbeat_path, "sync,remount")
             retouch = shell.ShellCmd('timeout 5 touch %s/ready' % heartbeat_path)
             retouch(False)
 
@@ -214,21 +259,27 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         time.sleep(1)
         self.iscsi_login(cmd_info)
         try:
-            bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -a >/dev/null")
-            successfully_find_lun = self.check_lun_status(cmd_info)
+            logger.debug("let's rescan scsi bus since can not find lun and try again")
+            bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -r >/dev/null")
+            bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -u >/dev/null")
         except Exception as e:
             pass
+        successfully_find_lun = self.check_lun_status(cmd_info)
         return successfully_find_lun
 
     @linux.retry(times=10, sleep_time=random.uniform(0.1,3))
+    def wait_lun_ready(self, abs_path):
+        if os.path.exists(abs_path) is True:
+            logger.debug("successfully find lun wwn: " + abs_path)
+            return
+
+        logger.debug("Can not find lun wwn: " + abs_path + ", let's retry")
+        raise RetryException("Can not find lun wwn: " + abs_path)
+
     def check_lun_status(self, cmd_info):
         abs_path = translate_absolute_path_from_wwn(cmd_info.wwn)
-        if os.path.exists(abs_path) is not True:
-            logger.debug("Can not find lun wwn: " + abs_path)
-            r, o, e = bash.bash_roe("ls %s" % abs_path)
-            raise Exception("Can not find lun wwn: " + abs_path)
-        logger.debug("successfully find lun wwn: " + abs_path)
-        return True
+        self.wait_lun_ready(abs_path)
+        return os.path.exists(abs_path)
 
     @kvmagent.replyerror
     def discover_lun(self, req):
@@ -243,6 +294,8 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
             logger.debug("start to login")
             self.iscsi_login(cmd)
         rsp.success = self.make_sure_lun_has_been_mapped(cmd)
+        if rsp.success is not True:
+            rsp.error = "can not find lun: " + cmd.wwn
         return jsonobject.dumps(rsp)
 
     @bash.in_bash
@@ -275,11 +328,11 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
 
     @bash.in_bash
     def _logout_target(self, logoutCmd):
-        r, o, e = bash.bash_roe('iscsiadm --mode node --targetname "%s" -p %s:%s --logout' %
-                                (logoutCmd.target, logoutCmd.iscsiServerIp, logoutCmd.iscsiServerPort))
+        r, o, e = bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -r >/dev/null")
         if r != 0:
             raise Exception("fail to logout iscsi %s" % logoutCmd.target)
-        r, o, e = bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -r >/dev/null")
+
+        r, o, e = bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -u >/dev/null")
         if r != 0:
             raise Exception("fail to logout iscsi %s" % logoutCmd.target)
 
@@ -364,13 +417,17 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
             file_path = mount_path + "/ready"
             is_mounted = linux.is_mounted(mount_path)
             if self.touch_ready_file(file_path) is False or is_mounted is not True:
-                linux.umount(mount_path)
+                try:
+                    linux.umount(mount_path)
+                except Exception as e:
+                    logger.debug("get exception when umount path: " + e.message)
                 rsp.success = False
                 if is_mounted is not True:
                     logger.debug('mark %s as disconnected, mount path is not correctly mounted' % mount_path)
                 else:
                     logger.debug('touch ready file failed, mark %s as disconnected mount path' % mount_path)
                 rsp.disconnectedPSMountPath.append(mount_path)
+                rsp.error = "mount path: " + mount_path + " is disconnected"
                 continue
             linux.rm_file_force(file_path)
 
