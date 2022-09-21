@@ -164,7 +164,7 @@ def getOffloadStatus(interfaceName):
         if pciId in venv.offloadStatus.keys():
             return venv.offloadStatus[pciId]
         return None
-    except OvsError as err:
+    except Exception as err:
         logger.debug("Get offload status failed. {}".format(err))
 
 
