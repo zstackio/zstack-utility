@@ -69,6 +69,9 @@ def ignoreerror(func):
             logger.warn(err)
     return wrap
 
+class VolumeInUseError(Exception):
+    pass
+
 class LinuxError(Exception):
     ''' some utils failed '''
 
@@ -172,12 +175,12 @@ def get_current_timestamp():
 def exception_on_opened_file(f):
     s = shell.call("timeout 10 lsof -Fc %s" % f, exception=False)
     if s:
-        raise Exception('file %s is still opened: %s' % (f, ' '.join(s.splitlines())))
+        raise VolumeInUseError('file %s is still opened: %s' % (f, ' '.join(s.splitlines())))
 
 def exception_on_opened_dir(d):
     s = shell.call("timeout 10 lsof -Fc +D %s" % d, exception=False)
     if s:
-        raise Exception('dir %s is still opened: %s' % (d, ' '.join(s.splitlines())))
+        raise VolumeInUseError('dir %s is still opened: %s' % (d, ' '.join(s.splitlines())))
 
 def rm_file_force(fpath):
     try:

@@ -653,10 +653,17 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = DeleteResponse()
 
-        if cmd.folder:
-            linux.rm_dir_checked(cmd.installPath)
-        else:
-            kvmagent.deleteImage(cmd.installPath)
+        try:
+            if cmd.folder:
+                linux.rm_dir_checked(cmd.installPath)
+            else:
+                kvmagent.deleteImage(cmd.installPath)
+        except linux.VolumeInUseError:
+            rsp.success = False
+            rsp.error = "%s %s is still in use, unable to delete" % ("dir" if cmd.folder else "file", cmd.installPath)
+            rsp.inUse = True
+            logger.debug(rsp.error)
+            return jsonobject.dumps(rsp)
         logger.debug('successfully delete %s' % cmd.installPath)
         self._set_capacity_to_response(cmd.uuid, rsp)
         return jsonobject.dumps(rsp)

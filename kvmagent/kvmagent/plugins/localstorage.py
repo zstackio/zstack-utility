@@ -821,7 +821,14 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentResponse()
         if cmd.path:
-            kvmagent.deleteImage(cmd.path)
+            try:
+                kvmagent.deleteImage(cmd.path)
+            except linux.VolumeInUseError:
+                rsp.success = False
+                rsp.error = "file %s is still in use, unable to delete" % cmd.path
+                rsp.inUse = True
+                logger.debug(rsp.error)
+                return jsonobject.dumps(rsp)
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
         return jsonobject.dumps(rsp)
 
@@ -830,7 +837,14 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentResponse()
 
-        linux.rm_dir_checked(cmd.path)
+        try:
+            linux.rm_dir_checked(cmd.path)
+        except linux.VolumeInUseError:
+            rsp.success = False
+            rsp.error = "dir %s is still in use, unable to delete" % cmd.path
+            rsp.inUse = True
+            logger.debug(rsp.error)
+            return jsonobject.dumps(rsp)
 
         logger.debug('successfully delete %s' % cmd.path)
 
