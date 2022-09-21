@@ -1532,16 +1532,40 @@ class VmVolumesRecoveryTask(plugin.TaskDaemon):
         return { libvirt.VIR_DOMAIN_BLOCK_COPY_BANDWIDTH: max(1<<20, self.bandwidth) }
 
     def get_source_file(self, d):
+        # d->type: etree.Element
         try:
-            return d.find('source').attrib['file']
+            attr_name = Vm.disk_source_attrname.get(d.attrib['type'])
+            return d.find('source').attrib[attr_name]
         except (AttributeError, KeyError):
             return None
 
-    def do_copy_and_wait(self, target_dev, diskxml, disk_ele, params, flags):
-        # zsblk-agent might auto-deactivate idle LV
+    def add_backing_chain_to_disk(self, disk_ele):
         fpath = self.get_source_file(disk_ele)
+        # zsblk-agent might auto-deactivate idle LV
         if fpath and fpath.startswith('/dev/') and not os.path.exists(fpath):
             lvm.active_lv(fpath, False)
+
+        backing_chain = Vm._get_backfile_chain(fpath)
+        disk_type = disk_ele.attrib['type']
+
+        def add_backing(ele):
+            if not backing_chain:
+                return
+
+            backing_path = backing_chain.pop(0)
+            backing_store = e(ele, 'backingStore', attrib={'type': disk_type})
+            e(backing_store, 'source', None, {Vm.disk_source_attrname.get(disk_type): backing_path})
+            e(backing_store, 'format', None, {'type':linux.get_img_fmt(backing_path)})
+            add_backing(backing_store)
+
+        add_backing(disk_ele)
+        return disk_ele
+
+    def do_copy_and_wait(self, target_dev, disk_ele, params, flags):
+        disk_ele = self.add_backing_chain_to_disk(disk_ele)
+        diskxml = etree.tostring(disk_ele)
+
+        logger.info("[%d/%d] will recover %s with: %s" % (self.idx+1, self.total, target_dev, diskxml))
         self.domain.blockCopy(target_dev, diskxml, params, flags)
         msg = self.wait_and_pivot(target_dev)
         if msg is not None:
@@ -1551,9 +1575,7 @@ class VmVolumesRecoveryTask(plugin.TaskDaemon):
 
     def do_recover_with_rvols(self, params, flags):
         for target_dev, disk_ele in self.rvols.items():
-            diskxml = etree.tostring(disk_ele)
-            logger.info("[%d/%d] will recover %s with: %s" % (self.idx+1, self.total, target_dev, diskxml))
-            self.do_copy_and_wait(target_dev, diskxml, disk_ele, params, flags)
+            self.do_copy_and_wait(target_dev, disk_ele, params, flags)
             self.idx += 1
 
     def retrieve_diskele(self, nbddisk):
@@ -1590,7 +1612,7 @@ class VmVolumesRecoveryTask(plugin.TaskDaemon):
                 disk_ele = self.retrieve_diskele(disk)
                 diskxml = etree.tostring(disk_ele)
                 logger.info("[%d/%d] pickup recover %s with: %s" % (self.idx+1, self.total, target_dev, diskxml))
-                self.do_copy_and_wait(target_dev, diskxml, disk_ele, params, flags)
+                self.do_copy_and_wait(target_dev, disk_ele, params, flags)
             finally:
                 self.idx += 1
                 self.update_progress(0, 0)
@@ -1879,6 +1901,10 @@ class Vm(object):
     }
     DEVICE_LETTERS = device_letter_config[HOST_ARCH]
     ISO_DEVICE_LETTERS = 'cde'
+    disk_source_attrname = {
+        "file": "file",
+        "block": "dev"
+    }
 
     timeout_detached_vol = set()
 
@@ -2628,15 +2654,17 @@ class Vm(object):
     def _clean_timeout_record(self, volume):
         Vm.timeout_detached_vol.remove(volume.installPath + "-" + self.uuid)
 
-    def _get_back_file(self, volume):
+    @staticmethod
+    def _get_back_file(volume):
         back = linux.qcow2_get_backing_file(volume)
         return None if not back else back
 
-    def _get_backfile_chain(self, current):
+    @staticmethod
+    def _get_backfile_chain(current):
         back_files = []
 
         def get_back_files(volume):
-            back_file = self._get_back_file(volume)
+            back_file = Vm._get_back_file(volume)
             if not back_file:
                 return
 
@@ -6006,11 +6034,9 @@ class VmPlugin(kvmagent.KvmAgent):
 
     @staticmethod
     def get_source_file_by_disk(disk):
-        attr_name_by_type = {
-            "file": "file_",
-            "block": "dev_"
-        }
-        return getattr(disk.source, attr_name_by_type.get(disk.type_))
+        # disk->type: zstacklib.utils.xmlobject.XmlObject, attr name is endwith '_'
+        attr_name = Vm.disk_source_attrname.get(disk.type_) + "_"
+        return getattr(disk.source, attr_name)
 
     @kvmagent.replyerror
     def attach_data_volume(self, req):
