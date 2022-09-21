@@ -275,10 +275,6 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
 
     @bash.in_bash
     def _logout_target(self, logoutCmd):
-        r, o, e = bash.bash_roe('iscsiadm --mode node --targetname "%s" -p %s:%s --logout' %
-                                (logoutCmd.target, logoutCmd.iscsiServerIp, logoutCmd.iscsiServerPort))
-        if r != 0:
-            raise Exception("fail to logout iscsi %s" % logoutCmd.target)
         r, o, e = bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -r >/dev/null")
         if r != 0:
             raise Exception("fail to logout iscsi %s" % logoutCmd.target)
