@@ -268,10 +268,17 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
     def delete_bits(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
-        if cmd.folder:
-            linux.rm_dir_checked(cmd.path)
-        else:
-            kvmagent.deleteImage(cmd.path)
+        try:
+            if cmd.folder:
+                linux.rm_dir_checked(cmd.path)
+            else:
+                kvmagent.deleteImage(cmd.path)
+        except linux.VolumeInUseError:
+            rsp.success = False
+            rsp.error = "%s %s is still in use, unable to delete" % ("dir" if cmd.folder else "file", cmd.path)
+            rsp.inUse = True
+            logger.debug(rsp.error)
+            return jsonobject.dumps(rsp)
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
         return jsonobject.dumps(rsp)
 
