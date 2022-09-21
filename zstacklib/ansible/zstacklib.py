@@ -35,7 +35,7 @@ DEB_BASED_OS = ["ubuntu", "uos", "kylin4.0.2", "debian", "uniontech_fou"]
 DISTRO_WITH_RPM_DEB = ["kylin", "uniontech"]
 
 qemu_alias = {
-    "ns10": "qemu qemu-img",
+    "ns10": "qemu-kvm qemu-img",
     "uos20": "qemu-system",
     "c76": "qemu-kvm-ev",
     "euler20": "qemu",
