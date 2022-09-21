@@ -778,7 +778,7 @@ class Ctl(object):
     MINI_DIR = os.path.join(USER_ZSTACK_HOME_DIR, 'zstack-mini')
     NEED_ENCRYPT_PROPERTIES = ['DB.password']
 
-    NEED_ENCRYPT_PROPERTIES_UI = ['db_password']
+    NEED_ENCRYPT_PROPERTIES_UI = ['db_password','redis_password']
     # get basharch and zstack-release
     BASEARCH = platform.machine()
     ZS_RELEASE = os.popen("awk '{print $3}' /etc/zstack-release").read().strip()
@@ -9214,7 +9214,7 @@ class StartUiCmd(Command):
         super(StartUiCmd, self).__init__()
         self.name = "start_ui"
         self.description = "start UI server on the local or remote host"
-        self.sensitive_args = ['--ssl-keystore-password', '--db-password']
+        self.sensitive_args = ['--ssl-keystore-password', '--db-password', '--redis-password']
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
@@ -9240,6 +9240,9 @@ class StartUiCmd(Command):
         parser.add_argument('--db-url', help="zstack_ui database jdbc url")
         parser.add_argument('--db-username', help="zstack_ui database username")
         parser.add_argument('--db-password', help="zstack_ui database password")
+
+        # arguments for ui_redis
+        parser.add_argument('--redis-password', help="zstack_ui redis password")
 
         # arguments for mini judgment
         parser.add_argument('--force', help="Force start_ui on mini", action='store_true', default=False)
@@ -9342,6 +9345,7 @@ class StartUiCmd(Command):
         cfg_ssl_keystore_type = ctl.read_ui_property("ssl_keystore_type")
         cfg_ssl_keystore_password = ctl.read_ui_property("ssl_keystore_password")
         cfg_catalina_opts = ctl.read_ui_property("catalina_opts")
+        cfg_redis_password = ctl.read_ui_property("redis_password")
 
         custom_props = ""
         predefined_props = ["db_url", "db_username", "db_password", "mn_host", "mn_port", "webhook_host", "webhook_port", "server_port", "log", "enable_ssl", "ssl_keyalias", "ssl_keystore", "ssl_keystore_type", "ssl_keystore_password", "catalina_opts"]
@@ -9371,6 +9375,8 @@ class StartUiCmd(Command):
             args.ssl_keystore_type = cfg_ssl_keystore_type
         if not args.ssl_keystore_password:
             args.ssl_keystore_password = cfg_ssl_keystore_password
+        if not args.redis_password:
+            args.redis_password = cfg_redis_password if cfg_redis_password else ''
         if not args.catalina_opts:
             args.catalina_opts = cfg_catalina_opts
         args.catalina_opts = ' '.join(args.catalina_opts.split(','))
@@ -9471,10 +9477,11 @@ class StartUiCmd(Command):
         if ctl.read_property('consoleProxyCertFile'):
             logger.debug('user consoleProxyCertFile as ui pem')
             realpem = ctl.read_property('consoleProxyCertFile')
-        scmd = Template("runuser -l root -s /bin/bash -c 'bash ${STOP} && sleep 2 && LOGGING_PATH=${LOGGING_PATH} bash ${START} --mn.host=${MN_HOST} --mn.port=${MN_PORT} --webhook.host=${WEBHOOK_HOST} --webhook.port=${WEBHOOK_PORT} --server.port=${SERVER_PORT} --ssl.enabled=${SSL_ENABLE} --ssl.keyalias=${SSL_KEYALIAS} --ssl.keystore=${SSL_KEYSTORE} --ssl.keystore-type=${SSL_KEYSTORE_TYPE} --ssl.keystore-password=${SSL_KETSTORE_PASSWORD} --db.url=${DB_URL} --db.username=${DB_USERNAME} --db.password=${DB_PASSWORD} ${CUSTOM_PROPS} --ssl.pem=${ZSTACK_UI_KEYSTORE_PEM}'")
+        scmd = Template("runuser -l root -s /bin/bash -c 'bash ${STOP} && sleep 2 && LOGGING_PATH=${LOGGING_PATH} bash ${START} --mn.host=${MN_HOST} --mn.port=${MN_PORT} --webhook.host=${WEBHOOK_HOST} --webhook.port=${WEBHOOK_PORT} --server.port=${SERVER_PORT} --ssl.enabled=${SSL_ENABLE} --ssl.keyalias=${SSL_KEYALIAS} --ssl.keystore=${SSL_KEYSTORE} --ssl.keystore-type=${SSL_KEYSTORE_TYPE} --ssl.keystore-password=${SSL_KETSTORE_PASSWORD} --db.url=${DB_URL} --db.username=${DB_USERNAME} --db.password=${DB_PASSWORD} --redis.password=${REDIS_PASSWORD} ${CUSTOM_PROPS} --ssl.pem=${ZSTACK_UI_KEYSTORE_PEM}'")
 
-        scmd = scmd.substitute(LOGGING_PATH=args.log,STOP=StartUiCmd.ZSTACK_UI_STOP,START=StartUiCmd.ZSTACK_UI_START,MN_HOST=args.mn_host,MN_PORT=args.mn_port,WEBHOOK_HOST=args.webhook_host,WEBHOOK_PORT=args.webhook_port,SERVER_PORT=args.server_port,SSL_ENABLE=enableSSL,SSL_KEYALIAS=args.ssl_keyalias,SSL_KEYSTORE=args.ssl_keystore,SSL_KEYSTORE_TYPE=args.ssl_keystore_type,SSL_KETSTORE_PASSWORD=args.ssl_keystore_password,DB_URL=args.db_url,DB_USERNAME=args.db_username,DB_PASSWORD=args.db_password,ZSTACK_UI_KEYSTORE_PEM=realpem,CUSTOM_PROPS=custom_props)
+        scmd = scmd.substitute(LOGGING_PATH=args.log,STOP=StartUiCmd.ZSTACK_UI_STOP,START=StartUiCmd.ZSTACK_UI_START,MN_HOST=args.mn_host,MN_PORT=args.mn_port,WEBHOOK_HOST=args.webhook_host,WEBHOOK_PORT=args.webhook_port,SERVER_PORT=args.server_port,SSL_ENABLE=enableSSL,SSL_KEYALIAS=args.ssl_keyalias,SSL_KEYSTORE=args.ssl_keystore,SSL_KEYSTORE_TYPE=args.ssl_keystore_type,SSL_KETSTORE_PASSWORD=args.ssl_keystore_password,DB_URL=args.db_url,DB_USERNAME=args.db_username,DB_PASSWORD=args.db_password,REDIS_PASSWORD=args.redis_password,ZSTACK_UI_KEYSTORE_PEM=realpem,CUSTOM_PROPS=custom_props)
 
+        shell("ps aux| grep \"bash `realpath ~zstack`/zstack-ui/scripts/start.sh\" | awk '{print $2}'|xargs kill",is_exception=False)
         script(scmd, no_pipe=True)
         os.system('mkdir -p /var/run/zstack/')
         with open(StartUiCmd.PORT_FILE, 'w') as fd:
@@ -9558,7 +9565,7 @@ class ConfigUiCmd(Command):
         super(ConfigUiCmd, self).__init__()
         self.name = "config_ui"
         self.description = "configure zstack.ui.properties"
-        self.sensitive_args = ['--ssl-keystore-password', '--db-password']
+        self.sensitive_args = ['--ssl-keystore-password', '--db-password', '--redis-password']
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
@@ -9586,6 +9593,9 @@ class ConfigUiCmd(Command):
         parser.add_argument('--db-url', help="zstack_ui database jdbc url.")
         parser.add_argument('--db-username', help="username of zstack_ui database.")
         parser.add_argument('--db-password', help="password of zstack_ui database.")
+
+        # arguments for ui_redis
+        parser.add_argument('--redis-password', help="password of zstack_ui redis")
 
     def _configure_remote_node(self, args):
         shell_no_pipe('ssh %s "/usr/bin/zstack-ctl config_ui %s"' % (args.host, ' '.join(ctl.extra_arguments)))
@@ -9646,6 +9656,8 @@ class ConfigUiCmd(Command):
                 ctl.write_ui_property("db_username", 'zstack_ui')
             if not ctl.read_ui_property("db_password"):
                 ctl.write_ui_property("db_password", 'zstack.ui.password')
+            if not ctl.read_ui_property("redis_password"):
+                ctl.write_ui_property("redis_password", 'zstack.redis.password')
             if not ctl.read_ui_property("catalina_opts"):
                 ctl.write_ui_property("catalina_opts", ctl.ZSTACK_UI_CATALINA_OPTS)
             return
@@ -9668,6 +9680,7 @@ class ConfigUiCmd(Command):
             ctl.write_ui_property("db_url", 'jdbc:mysql://127.0.0.1:3306')
             ctl.write_ui_property("db_username", 'zstack_ui')
             ctl.write_ui_property("db_password", 'zstack.ui.password')
+            ctl.write_ui_property("redis_password", 'zstack.redis.password')
             ctl.write_ui_property("catalina_opts", ctl.ZSTACK_UI_CATALINA_OPTS)
             return
 
@@ -9726,6 +9739,9 @@ class ConfigUiCmd(Command):
             ctl.write_ui_property("db_username", args.db_username.strip())
         if args.db_password or args.db_password == '':
             ctl.write_ui_property("db_password", args.db_password.strip())
+        if args.redis_password or args.redis_password == '':
+            ctl.write_ui_property("redis_password", args.redis_password.strip())
+
 
         # ui_address
         if args.ui_address:
