@@ -9,6 +9,7 @@ from kvmagent.plugins import ovsdpdk_network
 from zstacklib.utils import linux
 from zstacklib.utils import jsonobject
 from zstacklib.utils import bash
+from zstacklib.utils import thread
 import time
 import pytest
 
@@ -17,30 +18,11 @@ ofed_not_exsit = True
 
 class Test():
 
-    def __init__(self):
-        ret, o = bash.bash_ro("lspci |grep -i eth|grep -i Mellanox")
-        self.phyIf =
-
     @classmethod
     def setup_class(self):
-        ret,_ = bash.bash_ro("ofed_info -l")
-        if ret == 0:
-            ofed_not_exsit = False
-        else:
-            return
-
-        ret, _ = bash.bash_ro("lspci |grep -i eth|grep -i Mellanox")
-        if ret == 0:
-            ofed_not_exsit = False
-        else:
-            return
-
 
         self.NET_PLUGIN = network_plugin.NetworkPlugin()
-        self.NET_PLUGIN.configure()
-
         self.DPDK_PLUGIN = ovsdpdk_network.OvsDpdkNetworkPlugin()
-        self.DPDK_PLUGIN.configure()
 
     @pytest.mark.skipif(ofed_not_exsit==False, reason=None)
     def test_dpdkl2_CheckPhysicalNetworkInterface(self):
@@ -94,56 +76,72 @@ class Test():
 
         assert pid_for_test_createOvsBridge_idempotence == pid_for_test_createOvsBridge_idempotence2
 
+    @pytest.mark.skip(reason=None)
     def test_createSameOvsBridge_tentimes(self):
-        cmd = ovsdpdk_network.CreateBridgeCmd()
-        cmd.bridgeName = "br_enp101s0f0"
-        cmd.physicalInterfaceName = "enp101s0f0"
-        self.DPDK_PLUGIN.create_ovs_bridge(({"body": jsonobject.dumps(cmd)}))
+        def createSameOvsBridge(cmd):
+            self.DPDK_PLUGIN.create_ovs_bridge(({"body": jsonobject.dumps(cmd)}))
 
-        cmd.bridgeName = "br_enp101s0f0"
-        cmd.physicalInterfaceName = "enp101s0f0"
-        self.DPDK_PLUGIN.create_ovs_bridge(({"body": jsonobject.dumps(cmd)}))
+        threads = []
+        for i in range(1,10):
+            cmd = ovsdpdk_network.CreateBridgeCmd()
+            cmd.bridgeName = "br_enp101s0f0"
+            cmd.physicalInterfaceName = "enp101s0f0"
 
-        cmd.bridgeName = "br_enp101s0f0"
-        cmd.physicalInterfaceName = "enp101s0f0"
-        self.DPDK_PLUGIN.create_ovs_bridge(({"body": jsonobject.dumps(cmd)}))
+            threads.append(thread.ThreadFacade.run_in_thread(createSameOvsBridge, [cmd]))
+        for t in threads:
+            t.join()
 
-        cmd.bridgeName = "br_enp101s0f0"
-        cmd.physicalInterfaceName = "enp101s0f0"
-        self.DPDK_PLUGIN.create_ovs_bridge(({"body": jsonobject.dumps(cmd)}))
+    @pytest.mark.skip(reason=None)
+    def test_createDifferentOvsBridge_tentimes(self):
+        def createDifferentOvsBridge(cmd):
+            self.DPDK_PLUGIN.create_ovs_bridge(({"body": jsonobject.dumps(cmd)}))
 
-        cmd.bridgeName = "br_enp101s0f0"
-        cmd.physicalInterfaceName = "enp101s0f0"
-        self.DPDK_PLUGIN.create_ovs_bridge(({"body": jsonobject.dumps(cmd)}))
+        threads = []
+        for i in range(1,10):
+            cmd = ovsdpdk_network.CreateBridgeCmd()
+            cmd.bridgeName = "br_enp101s0f0"
+            cmd.physicalInterfaceName = "enp101s0f0"
+            if i == 2:
+                cmd.bridgeName = "br_enp101s0f1"
+                cmd.physicalInterfaceName = "enp101s0f1"
 
-        cmd.bridgeName = "br_enp101s0f0"
-        cmd.physicalInterfaceName = "enp101s0f0"
-        self.DPDK_PLUGIN.create_ovs_bridge(({"body": jsonobject.dumps(cmd)}))
-
-        cmd.bridgeName = "br_enp101s0f0"
-        cmd.physicalInterfaceName = "enp101s0f0"
-        self.DPDK_PLUGIN.create_ovs_bridge(({"body": jsonobject.dumps(cmd)}))
-
-        cmd.bridgeName = "br_enp101s0f0"
-        cmd.physicalInterfaceName = "enp101s0f0"
-        self.DPDK_PLUGIN.create_ovs_bridge(({"body": jsonobject.dumps(cmd)}))
-
-        cmd.bridgeName = "br_enp101s0f0"
-        cmd.physicalInterfaceName = "enp101s0f0"
-        self.DPDK_PLUGIN.create_ovs_bridge(({"body": jsonobject.dumps(cmd)}))
-
-        cmd.bridgeName = "br_enp101s0f0"
-        cmd.physicalInterfaceName = "enp101s0f0"
-        self.DPDK_PLUGIN.create_ovs_bridge(({"body": jsonobject.dumps(cmd)}))
-
-
-
+            threads.append(thread.ThreadFacade.run_in_thread(createDifferentOvsBridge, [cmd]))
+        for t in threads:
+            t.join()
 
     #@pytest.mark.skipif(condition=ofed_not_exsit, reason=None)
     @pytest.mark.skip(reason=None)
     def test_deleteOvsBridge(self):
-        cmd = ovsdpdk_network.DeleteBridgeCmd()
-        cmd.bridgeName = "br_ovsBond2"
+        def deleteDifferentOvsBridge(cmd):
+            self.DPDK_PLUGIN.delete_ovs_bridge(({"body": jsonobject.dumps(cmd)}))
 
+        threads = []
+        for i in range(1,10):
+            cmd = ovsdpdk_network.DeleteBridgeCmd()
+            cmd.bridgeName = "br_enp101s0f0"
+            if i == 2:
+                cmd.bridgeName = "br_enp101s0f1"
+            threads.append(thread.ThreadFacade.run_in_thread(deleteDifferentOvsBridge, [cmd]))
+        for t in threads:
+            t.join()
 
-        self.DPDK_PLUGIN.delete_ovs_bridge(({"body": jsonobject.dumps(cmd)}))
+    def test_createSameOvsBridge_50times(self):
+        def createSameOvsBridge(cmd):
+            self.DPDK_PLUGIN.create_ovs_bridge(({"body": jsonobject.dumps(cmd)}))
+
+        time_start = time.time()
+        threads = []
+        for i in range(1,50):
+            cmd = ovsdpdk_network.CreateBridgeCmd()
+            cmd.bridgeName = "br_enp101s0f0"
+            cmd.physicalInterfaceName = "enp101s0f0"
+
+            threads.append(thread.ThreadFacade.run_in_thread(createSameOvsBridge, [cmd]))
+        for t in threads:
+            t.join()
+        time_end = time.time()
+        time_cost = time_end - time_start
+        query_fast = True
+        if time_cost > 10:
+            query_fast = False
+        assert  query_fast == True

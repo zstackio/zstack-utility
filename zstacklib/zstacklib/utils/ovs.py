@@ -1035,10 +1035,14 @@ class OvsBaseCtl(object):
             return False
         return True        
 
-    @checkOvs
+    @lock.lock('ovs_addBridge')
     def prepareBridge(self, interface, bridgeName):
         if self.isInterfaceExist(interface, bridgeName):
             return
+        self.addBridge(interface, bridgeName)
+
+    @checkOvs
+    def addBridge(self, interface, bridgeName):
         try:
             self.createBr(bridgeName)
             self._addIntfaceToBridge(interface, bridgeName)
