@@ -221,19 +221,20 @@ class HostNetworkBondingInventory(object):
 
         if self.bondingName is None:
             return
-        self.mode = linux.read_file("/sys/class/net/%s/bonding/mode" % self.bondingName).strip()
-        self.xmitHashPolicy = linux.read_file("/sys/class/net/%s/bonding/xmit_hash_policy" % self.bondingName).strip()
-        self.miiStatus = linux.read_file("/sys/class/net/%s/bonding/mii_status" % self.bondingName).strip()
-        self.mac = linux.read_file("/sys/class/net/%s/address" % self.bondingName).strip()
+        self.mode = linux.read_file_strip("/sys/class/net/%s/bonding/mode" % self.bondingName)
+        self.xmitHashPolicy = linux.read_file_strip("/sys/class/net/%s/bonding/xmit_hash_policy" % self.bondingName)
+        self.miiStatus = linux.read_file_strip("/sys/class/net/%s/bonding/mii_status" % self.bondingName)
+        self.mac = linux.read_file_strip("/sys/class/net/%s/address" % self.bondingName)
         self.ipAddresses = ['%s/%d' % (x.address, x.prefixlen) for x in iproute.query_addresses(ifname=self.bondingName, ip_version=4)]
         if len(self.ipAddresses) == 0:
             master = linux.read_file("/sys/class/net/%s/master/ifindex" % self.bondingName)
             if master:
                 self.ipAddresses = ['%s/%d' % (x.address, x.prefixlen)
                     for x in iproute.query_addresses(index=int(master.strip()), ip_version=4)]
-        self.miimon = linux.read_file("/sys/class/net/%s/bonding/miimon" % self.bondingName).strip()
-        self.allSlavesActive = linux.read_file("/sys/class/net/%s/bonding/all_slaves_active" % self.bondingName).strip() == "0"
-        slave_names = linux.read_file("/sys/class/net/%s/bonding/slaves" % self.bondingName).strip().split()
+        self.miimon = linux.read_file_strip("/sys/class/net/%s/bonding/miimon" % self.bondingName)
+        self.allSlavesActive = linux.read_file_strip("/sys/class/net/%s/bonding/all_slaves_active" % self.bondingName) == "0"
+        slave_info = linux.read_file_strip("/sys/class/net/%s/bonding/slaves" % self.bondingName)
+        slave_names = slave_info.split() if slave_info else []
         if len(slave_names) == 0:
             return
 
@@ -306,7 +307,8 @@ class HostNetworkInterfaceInventory(object):
             carrier = linux.read_file("/sys/class/net/%s/carrier" % self.interfaceName)
             if carrier:
                 self.carrierActive = carrier.strip() == "1"
-        self.mac = linux.read_file("/sys/class/net/%s/address" % self.interfaceName).strip()
+
+        self.mac = linux.read_file_strip("/sys/class/net/%s/address" % self.interfaceName)
         self.ipAddresses = linux.get_interface_ip_addresses(self.interfaceName)
 
         self.master = linux.get_interface_master_device(self.interfaceName)
@@ -326,7 +328,6 @@ class HostNetworkInterfaceInventory(object):
             self.interfaceType = "bridgeSlave"
 
         self.pciDeviceAddress = os.readlink("/sys/class/net/%s/device" % self.interfaceName).strip().split('/')[-1]
-
         self.offloadStatus = ovs.OvsCtl().ifOffloadStatus(self.interfaceName)
         self.driverType = get_nic_driver_type(self.interfaceName)
 
