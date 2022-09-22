@@ -159,14 +159,27 @@ def getPciID(bdfOrIf):
 
 def getOffloadStatus(interfaceName):
     try:
-        venv = OvsVenv()
         pciId = getPciID(interfaceName)
-        if pciId in venv.offloadStatus.keys():
-            return venv.offloadStatus[pciId]
+        offloadStatus = getMlnxSmartNicOffloadStatus()
+        if pciId in offloadStatus.keys():
+            return offloadStatus[pciId]
         return None
     except Exception as err:
         logger.debug("Get offload status failed. {}".format(err))
 
+
+def getMlnxSmartNicOffloadStatus():
+    nicInfoPath = os.path.join(ConfPath, "smart-nics.yaml")
+    if not os.path.exists(nicInfoPath):
+        raise OvsError("no such file:{}".format(nicInfoPath))
+
+    with open(nicInfoPath, 'r') as f:
+        data = yaml.safe_load(f)
+    offloadStatus = {}
+    for i in data:
+        offloadStatus[str(i['nic']['vendor_device'])] = "|".join(
+            str(x) for x in i['nic']['offloadstatus'])
+    return offloadStatus
 
 def probeModules(moduleName):
     ret = shell.run("modprobe {}".format(moduleName))
