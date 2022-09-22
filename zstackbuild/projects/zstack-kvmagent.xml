@@ -29,7 +29,7 @@
         </copy>
     </target>
 
-    <target name="assemble-kvmagent">
+    <target name="assemble-kvmagent" depends="assemble-zstack-zwatch">
         <makeDir dir="${kvmagent.ansible.dir}" />
 
         <copy todir="${kvmagent.ansible.dir}">

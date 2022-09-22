@@ -2,8 +2,7 @@
 
 <project name="zstack-zwatch builder" basedir="../">
     <property name="zsw.bdir" location="${build.dir}/zwatch-vm-agent/" />
-    <property name="zsw.ansible.dir" location="${kvmagent.source}/ansible/" />
-
+    <property name="zsw.ansible.dir" location="${kvmagent.bdir}/ansible" />
     <target name="build-zstack-zwatch">
         <makeDir dir="${zsw.bdir}" />
 
