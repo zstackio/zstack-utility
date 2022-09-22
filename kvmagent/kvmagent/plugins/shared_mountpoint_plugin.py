@@ -24,6 +24,7 @@ class AgentRsp(object):
         self.error = None
         self.totalCapacity = None
         self.availableCapacity = None
+        self.actualSize = None
 
 class ConnectRsp(AgentRsp):
     def __init__(self):
@@ -97,6 +98,16 @@ class GetQcow2HashValueRsp(AgentRsp):
         self.hash = None
 
 
+class CreateEmptyVolumeRsp(AgentRsp):
+    def __init__(self):
+        super(CreateEmptyVolumeRsp, self).__init__()
+        self.actualSize = None
+
+
+class CreateVolumeFromCacheRsp(AgentRsp):
+    def __init__(self):
+        super(CreateVolumeFromCacheRsp, self).__init__()
+        self.actualSize = None
 
 class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
 
@@ -245,7 +256,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def create_root_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AgentRsp()
+        rsp = CreateVolumeFromCacheRsp()
 
         if not os.path.exists(cmd.templatePathInCache):
             rsp.error = "unable to find image in cache"
@@ -254,6 +265,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
 
         self.do_create_volume_with_backing(cmd.templatePathInCache, cmd.installPath, cmd)
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
+        _, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installPath)
         return jsonobject.dumps(rsp)
 
     @staticmethod
@@ -426,7 +438,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def create_empty_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AgentRsp()
+        rsp = CreateEmptyVolumeRsp()
 
         dirname = os.path.dirname(cmd.installPath)
         if not os.path.exists(dirname):
@@ -439,6 +451,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
 
         logger.debug('successfully create empty volume[uuid:%s, size:%s] at %s' % (cmd.volumeUuid, cmd.size, cmd.installPath))
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
+        _, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installPath)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror

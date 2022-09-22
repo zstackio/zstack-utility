@@ -805,6 +805,7 @@ class CephAgent(plugin.TaskManager):
             rsp.size = new_size
             logger.info("image size must be an integer multiple of 4KB, now resize it to %s bytes" % new_size)
         self._set_capacity_to_response(rsp)
+        rsp.actualSize = self._get_file_actual_size(dst_path)
         return jsonobject.dumps(rsp)
 
     @replyerror
@@ -908,6 +909,7 @@ class CephAgent(plugin.TaskManager):
         rsp = driver.create_volume(cmd, rsp, agent=self)
 
         self._set_capacity_to_response(rsp)
+        rsp.actualSize = self._get_file_actual_size(self._normalize_install_path(cmd.installPath))
         return jsonobject.dumps(rsp)
 
     @replyerror
