@@ -31,15 +31,33 @@ class AgentRsp(object):
         self.success = True
         self.error = None
 
+
+class VolumeAddress(object):
+    def __init__(self):
+        self.type = None        # type: str
+        self.bus = None         # type: int
+
+        # for driver address
+        self.controller = None  # type: int
+        self.target = None      # type: int
+        self.unit = None        # type: int
+
+        # for pci address
+        self.domain = None      # type: str
+        self.slot = None        # type: str
+        self.function = None    # type: str
+
+
 class VolumeInfo(object):
     def __init__(self):
-        self.name = None       # type: str
-        self.size = -1         # type: long
-        self.physicalSize = -1 # type: long
-        self.type = None       # type: str
-        self.bus = None        # type: str
-        self.protocol = None   # type: str
-        self.endTime = None    # type: float
+        self.name = None            # type: str
+        self.size = -1              # type: long
+        self.physicalSize = -1      # type: long
+        self.type = None            # type: str
+        self.bus = None             # type: str
+        self.protocol = None        # type: str
+        self.endTime = None         # type: float
+        self.deviceAddress = None   # type: VolumeAddress
 
 class VmInfo(object):
     def __init__(self):
@@ -223,6 +241,24 @@ def skipVolume(fdict, name):
     return f and f.skip
 
 def getVolumes(dom, dxml=None):
+    def get_volume_address(disk_xml):
+        vol_address = VolumeAddress()
+        property_map = {
+            'type_': 'type',
+            'bus_': 'bus',
+            'controller_': 'controller',
+            'target_': 'target',
+            'unit_': 'unit',
+            'domain_': 'domain',
+            'slot_': 'slot',
+            'function_': 'function',
+        }
+        if hasattr(disk_xml, 'address'):
+            for k, v in property_map.items():
+                if hasattr(disk_xml.address, k):
+                    setattr(vol_address, v, getattr(disk_xml.address, k))
+            return jsonobject.dumps(vol_address)
+
     def getVolume(dom, diskxml):
         v = VolumeInfo()
         if diskxml.device_ in [ 'cdrom', 'floppy' ]:
@@ -238,6 +274,7 @@ def getVolumes(dom, dxml=None):
         if hasattr(diskxml.source, 'protocol_'):
             v.protocol = diskxml.source.protocol_
         v.size, _, v.physicalSize = dom.blockInfo(v.name)
+        v.deviceAddress = get_volume_address(diskxml)
         return v
 
     def listVolumes(dom, disk):
@@ -667,7 +704,8 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                      "virtioScsi":  v.bus == 'scsi',
                      "deviceName":  v.name,
                      "downloadTime": int(v.endTime - startTime),
-                     "deviceId":    devId }
+                     "deviceId":    devId,
+                     "deviceAddress":     v.deviceAddress}
 
         if not rsp.success:
             return jsonobject.dumps(rsp)
