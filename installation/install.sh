@@ -208,6 +208,7 @@ declare -a upgrade_params_array=(
     '4.4.0,-Dlicense.upgradeLicenseRecords=true'
     '4.4.30,-DupgradeVpcHaL3NetworkCheck=true'
     '4.5.0,-DupgradeVipOwner=true'
+    '4.5.0,-DupgradeVpcIpsecVersionCheck=true'
 )
 #other than the upon params_array, this one could be persisted in zstack.properties
 declare -a upgrade_persist_params_array=(
