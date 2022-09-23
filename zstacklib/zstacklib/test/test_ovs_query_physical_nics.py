@@ -27,7 +27,7 @@ class Test(unittest.TestCase):
         # need split at least 1 vf to meet this requirement
         has_at_least_three_interfaces = True
 
-        nic_interfaces = ip.get_smart_nic_interfaces()
+        nic_interfaces = ip.get_smart_nics_interfaces()
         if len(nic_interfaces) < 3:
             has_at_least_three_interfaces = False
 
@@ -58,7 +58,14 @@ class Test(unittest.TestCase):
             num_vfs = int(fd.read())
             fd.close
             return num_vfs
-        self.assertEqual(get_number_vfs(), len(nic_representors))
+        
+        def get_smart_nic_representor_interfaces_number():
+            fd = os.popen("lspci -D -m | grep Mellanox | grep -v Virtual | awk {'print $1}' | xargs -I {} ls /sys/bus/pci/devices/{}/net | grep _ | wc -l", "r")
+            num_rep_ifs = int(fd.read())
+            fd.close
+            return num_rep_ifs
+
+        self.assertEqual(get_smart_nic_representor_interfaces_number(), len(nic_representors))
         print("=======test3-done=========")
 
 
@@ -78,11 +85,37 @@ class Test(unittest.TestCase):
 
 
     def test_5_query_smart_nic_interfaces_when_driver_not_installed(self):
+        def is_ofed_installed():
+            return False
+            fd = os.popen("ofed_info -n", "r")
+            ofed_version = fd.read()
+            if "." in ofed_version:
+                return True
+            return False
+
+        def has_CX5_card():
+            fd = os.popen("lspci | grep ConnectX-5 | wc -l", "r")
+            num_CX5 = int(fd.read())
+            if num_CX5 > 0:
+                return True
+            return False
+
+        def get_smart_nic_interfaces_number():
+            counter = 0
+            smart_nics_interfaces = ip.get_smart_nics_interfaces()
+            for i in smart_nics_interfaces:
+                for j in i:
+                    counter = counter + 1
+            return counter
+
         # mock /sys/bus/pci/devices/$pci/net not exist
         not_exist_pcis = ['0000:18:88.8', '0000:16:66.6']
 
-        nic_interfaces = ip.get_smart_nic_interfaces(not_exist_pcis)
+        nic_interfaces = ip.get_smart_nics_interfaces(not_exist_pcis)
         self.assertEqual(len(nic_interfaces), 0)
+
+        if not is_ofed_installed() and has_CX5_card():
+            self.assertNotEqual(get_smart_nic_interfaces_number(), len(ip.get_smart_nic_representors()))
         print("=======test5-done=========")
 
 
@@ -104,8 +137,12 @@ class Test(unittest.TestCase):
 
         # judge performance
         is_performance_good = True
-        ''' prometheus can handle 1000 interfaces in 1 second '''
-        expect_time_cost = float(num_interfaces)/1000
+        if num_interfaces < 512:
+            ''' prometheus can handle <= 512 interfaces in 0.5 second '''
+            expect_time_cost = 0.5
+        else:
+            ''' prometheus can handle 1000 interfaces in 1 second '''
+            expect_time_cost = float(num_interfaces)/1000
         print("time-cost = %s" % (str(time_cost)))
         print("expect time-cost = %s" % (str(expect_time_cost)))
         if time_cost > expect_time_cost:
