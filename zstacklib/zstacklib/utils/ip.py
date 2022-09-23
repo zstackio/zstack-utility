@@ -242,8 +242,8 @@ def get_smart_nic_pcis():
         nic_pcis.append(pci_info[0])
     return nic_pcis
 
-def get_smart_nic_interfaces(nic_pcis = None):
-    nic_interfaces = []
+def get_smart_nics_interfaces(nic_pcis = None):
+    nics_interfaces = []
     if nic_pcis is None:
         nic_pcis = get_smart_nic_pcis()
     for nic_pci in nic_pcis:
@@ -251,21 +251,31 @@ def get_smart_nic_interfaces(nic_pcis = None):
         if not os.path.exists(interface_path):
             break
         interface_list = os.listdir(interface_path)
-        nic_interfaces.extend(interface_list)
-    return nic_interfaces
+        nics_interfaces.append(interface_list)
+    return nics_interfaces
 
 def get_smart_nic_representors():
-    def is_representor(interface_name):
+    def is_representor(interface_name, interfaces_number):
+        if interfaces_number == 1:
+            ''' This is special case for Mellanox Technologies ConnectX-5.
+                If ofed not installed, and after reboot, it's pf will not
+                include "phy_stats" from the net directory. So the only way
+                to judge if its representor is check its interface number
+                under that pci device.
+            '''
+            return False
         physical_interface_path = os.path.join("/sys/class/net/%s/phy_stats" % (interface_name))
         if os.path.exists(physical_interface_path):
             return False
         return True
     nic_representors = []
     try:
-        nic_interfaces = get_smart_nic_interfaces()
-        for nic_interface in nic_interfaces:
-            if is_representor(nic_interface):
-                nic_representors.append(nic_interface)
+        nics_interfaces = get_smart_nics_interfaces()
+        for nic_interfaces in nics_interfaces:
+            nic_interfaces_number = len(nic_interfaces)
+            for nic_interface in nic_interfaces:
+                if is_representor(nic_interface, nic_interfaces_number):
+                    nic_representors.append(nic_interface)
     except Exception:
             return []
     return nic_representors
