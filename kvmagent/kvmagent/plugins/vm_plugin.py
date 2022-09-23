@@ -5191,10 +5191,10 @@ def qmp_subcmd(s_cmd):
 def file_volume_check(volume):
     # `file` support has been removed with block/char devices since qemu-6.0.0
     # https://github.com/qemu/qemu/commit/8d17adf34f501ded65a106572740760f0a75577c
-    if not volume.deviceType == "file":
+    if not volume.deviceType == "file" or not volume.installPath.startswith("/dev/"):
         return volume
 
-    if LooseVersion(QEMU_VERSION) >= LooseVersion("6.0.0") and not os.path.isfile(volume.installPath):
+    if LooseVersion(QEMU_VERSION) >= LooseVersion("6.0.0"):
         volume.deviceType = 'block'
     return volume
 
