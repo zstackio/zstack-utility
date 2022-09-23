@@ -7540,18 +7540,22 @@ host side snapshot files chian:
 
         touchQmpSocketWhenExists(cmd.vmUuid)
         return jsonobject.dumps(rsp)
-
+    
+    def _guesttools_temp_disk_file_path(self, vm_uuid):
+        return "/var/lib/zstack/guesttools/temp_disk_%s.qcow2" % vm_uuid
 
     def _create_xml_for_guesttools_temp_disk(self, vm_uuid):
-        temp_disk = "/var/lib/zstack/guesttools/temp_disk_%s.qcow2" % vm_uuid
-        content = """
+        temp_disk_name = 'vdz'
+        return """
 <disk type='file' device='disk'>
 <driver type='qcow2' cache='writeback'/>
 <source file='%s'/>
-<target dev='vdz' bus='virtio'/>
+<target dev='%s' bus='virtio'/>
 </disk>
-""" % temp_disk
-        return linux.write_to_temp_file(content)
+""" % (self._guesttools_temp_disk_file_path(vm_uuid), temp_disk_name)
+
+    def _create_xml_file_for_guesttools_temp_disk(self, vm_uuid):
+        return linux.write_to_temp_file(self._create_xml_for_guesttools_temp_disk(vm_uuid))
 
     @kvmagent.replyerror
     @in_bash
@@ -7565,13 +7569,13 @@ host side snapshot files chian:
             rsp.error = "%s not exists" % GUEST_TOOLS_ISO_PATH
             return jsonobject.dumps(rsp)
 
-        r, _, _ = bash.bash_roe("virsh dumpxml %s | grep \"dev='vdz' bus='virtio'\"" % vm_uuid)
+        r, _, _ = bash.bash_roe("virsh dumpxml %s | grep \"%s\"" % (vm_uuid, self._guesttools_temp_disk_file_path(vm_uuid)))
         if cmd.needTempDisk and r != 0:
-            temp_disk = "/var/lib/zstack/guesttools/temp_disk_%s.qcow2" % vm_uuid
+            temp_disk = self._guesttools_temp_disk_file_path(vm_uuid)
             if not os.path.exists(temp_disk):
                 linux.qcow2_create(temp_disk, 1)
 
-            spath = self._create_xml_for_guesttools_temp_disk(vm_uuid)
+            spath = self._create_xml_file_for_guesttools_temp_disk(vm_uuid)
             r, o, e = bash.bash_roe("virsh attach-device %s %s" % (vm_uuid, spath))
 
             if r != 0:
@@ -7607,18 +7611,26 @@ host side snapshot files chian:
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         vm_uuid = cmd.vmInstanceUuid
 
+        vm = get_vm_by_uuid_no_retry(vm_uuid)
+
         # detach temp_disk from vm
-        spath = self._create_xml_for_guesttools_temp_disk(vm_uuid)
-        r, _, _ = bash.bash_roe("virsh detach-device %s %s" % (vm_uuid, spath))
-        if r == 0:
-            # delete temp disk after device detached refer: http://jira.zstack.io/browse/ZSTAC-45490
-            temp_disk = "/var/lib/zstack/guesttools/temp_disk_%s.qcow2" % vm_uuid
+        @linux.retry(times=3, sleep_time=2)
+        def detach_temp_disk_and_retry(vm):
+            vm.domain.detachDevice(self._create_xml_for_guesttools_temp_disk(vm.uuid))
+            if vm._check_target_disk_existing_by_path(self._guesttools_temp_disk_file_path(vm.uuid)):
+                raise RetryException("failed to detach guest tools temp disk")
+
+        if vm._check_target_disk_existing_by_path(self._guesttools_temp_disk_file_path(vm.uuid)):
+            detach_temp_disk_and_retry(vm)
+
+        # clean temp disk file
+        # delete temp disk after device detached refer: http://jira.zstack.io/browse/ZSTAC-45490
+        temp_disk = self._guesttools_temp_disk_file_path(vm_uuid)
+        if os.path.exists(temp_disk):
             linux.rm_file_force(temp_disk)
 
         # detach guesttools iso from vm
-        r, _, _ = bash.bash_roe("virsh dumpxml %s | grep %s" % (vm_uuid, GUEST_TOOLS_ISO_PATH))
-        if r == 0:
-            vm = get_vm_by_uuid(vm_uuid, exception_if_not_existing=False)
+        if vm.domain_xml.find(GUEST_TOOLS_ISO_PATH) > 0:
             detach_cmd = DetachIsoCmd()
             detach_cmd.vmUuid = vm_uuid
             detach_cmd.deviceId = 0
