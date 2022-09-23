@@ -285,7 +285,7 @@ class DeviceAddress():
         self.slot = None
         self.function = None
 
-        # for dirver address
+        # for driver address
         self.controller = None
         self.target = None
         self.unit = None
@@ -1928,7 +1928,7 @@ class Vm(object):
 
             attributes['type'] = vol.deviceAddress.type
             e(disk_element, 'address', None, attributes)
-        elif vol.deviceAddress and vol.deviceAddress.type == 'driver':
+        elif vol.deviceAddress and vol.deviceAddress.type == 'drive':
             e(disk_element, 'address', None, {'type': 'drive', 'controller': vol.deviceAddress.controller, 'unit': str(vol.deviceAddress.unit)})
         elif bus == 'scsi':
             occupied_units = vm_to_attach.get_occupied_disk_address_units(bus='scsi', controller=0) if vm_to_attach else []
