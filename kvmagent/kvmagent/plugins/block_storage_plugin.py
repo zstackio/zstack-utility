@@ -49,6 +49,12 @@ class CreateHeartbeatCmd(AgentCmd):
         self.target = None
 
 
+class DeleteHeartbeatCmd(AgentCmd):
+    def __init__(self):
+        super(DeleteHeartbeatCmd, self).__init__()
+        self.heartbeatPath = None
+
+
 class DiscoverLunCmd(CreateHeartbeatCmd):
     def __init__(self):
         super(DiscoverLunCmd, self).__init__()
@@ -62,6 +68,11 @@ class LogoutLunCmd(CreateHeartbeatCmd):
 class CreateHeartbeatRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(CreateHeartbeatRsp, self).__init__()
+
+
+class DeleteHeartbeatRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(DeleteHeartbeatRsp, self).__init__()
 
 
 class ResizeVolumeRsp(AgentRsp):
@@ -91,6 +102,7 @@ def translate_absolute_path_from_wwn(wwn):
 class BlockStoragePlugin(kvmagent.KvmAgent):
     GET_INITIATOR_NAME_PATH = "/block/primarystorage/getinitiatorname"
     CREATE_HEART_BEAT_PATH = "/block/primarystorage/createheartbeat"
+    DELETE_HEART_BEAT_PATH = "/block/primarystorage/deleteheartbeat"
     DOWNLOAD_FROM_IMAGESTORE = "/block/imagestore/download"
     UPLOAD_TO_IMAGESTORE = "/block/imagestore/upload"
     COMMIT_VOLUME_AS_IMAGE = "/block/imagestore/commit"
@@ -102,7 +114,8 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
     def start(self):
         http_server = kvmagent.get_http_server()
         http_server.register_async_uri(self.GET_INITIATOR_NAME_PATH, self.get_initiator_name)
-        http_server.register_async_uri(self.CREATE_HEART_BEAT_PATH, self.create_heart_beat, cmd=CreateHeartbeatCmd())
+        http_server.register_async_uri(self.CREATE_HEART_BEAT_PATH, self.create_heartbeat, cmd=CreateHeartbeatCmd())
+        http_server.register_async_uri(self.DELETE_HEART_BEAT_PATH, self.delete_heartbeat, cmd=DeleteHeartbeatCmd())
         http_server.register_async_uri(self.DOWNLOAD_FROM_IMAGESTORE, self.download_from_imagestore)
         http_server.register_async_uri(self.DISCOVERY_LUN, self.discover_lun, cmd=DiscoverLunCmd())
         http_server.register_async_uri(self.LOGOUT_TARGET, self.logout_target, cmd=LogoutLunCmd())
@@ -147,9 +160,19 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def delete_heartbeat(self, req):
+        logger.debug("start to delete heartbeat")
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        heartbeat_path = cmd.heartbeatPath
+        rsp = DeleteHeartbeatRsp()
+        linux.umount(heartbeat_path)
+        rsp.success = True
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     @lock.lock('iscsiadm')
     @bash.in_bash
-    def create_heart_beat(self, req):
+    def create_heartbeat(self, req):
         logger.debug("start to create heart beat")
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CreateHeartbeatRsp()
@@ -215,9 +238,9 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         self.iscsi_login(cmd_info)
         try:
             bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -a >/dev/null")
-            successfully_find_lun = self.check_lun_status(cmd_info)
         except Exception as e:
             pass
+        successfully_find_lun = self.check_lun_status(cmd_info)
         return successfully_find_lun
 
     @linux.retry(times=10, sleep_time=random.uniform(0.1,3))
@@ -243,6 +266,8 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
             logger.debug("start to login")
             self.iscsi_login(cmd)
         rsp.success = self.make_sure_lun_has_been_mapped(cmd)
+        if rsp.success is not True:
+            rsp.error = "can not find lun: " + cmd.wwn
         return jsonobject.dumps(rsp)
 
     @bash.in_bash
