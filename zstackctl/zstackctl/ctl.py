@@ -2361,7 +2361,7 @@ class StartCmd(Command):
                     ctl.write_properties([(key, cipher.encrypt(value))])
 
         def prepare_bean_ref_context_xml():
-            if get_start_mode() == self.SIMULATOR:
+            if get_start_mode() == self.SIMULATOR or is_simulator_on():
                 beanXml = "simulator/zstack-simulator2.xml"
                 info_and_debug("%s=simulator is set, ZStack will start in simulator mode" % self.START_MODE)
             elif get_start_mode() == self.MINIMAL:
