@@ -27,10 +27,10 @@ yum_server = ""
 apt_server = ""
 trusted_host = ""
 ansible.constants.HOST_KEY_CHECKING = False
-enable_networkmanager_list = ["ns10", "euler20", "uos1021a"]
+enable_networkmanager_list = ["ns10", "euler20", "uos1021a", "nfs4"]
 supported_arch_list = ["x86_64", "aarch64", "mips64el", "loongarch64"]
 
-RPM_BASED_OS = ["kylin_zstack", "kylin_tercel", "kylin_sword", "alibaba", "centos", "openeuler", "uniontech_kongzi"]
+RPM_BASED_OS = ["kylin_zstack", "kylin_tercel", "kylin_sword", "alibaba", "centos", "openeuler", "uniontech_kongzi", "nfs"]
 DEB_BASED_OS = ["ubuntu", "uos", "kylin4.0.2", "debian", "uniontech_fou"]
 DISTRO_WITH_RPM_DEB = ["kylin", "uniontech"]
 
@@ -39,7 +39,8 @@ qemu_alias = {
     "uos20": "qemu-system",
     "c76": "qemu-kvm-ev",
     "euler20": "qemu",
-    "uos1021a": "qemu-kvm"
+    "uos1021a": "qemu-kvm",
+    "nfs4": "qemu-kvm"
 }
 
 
@@ -1972,7 +1973,7 @@ enabled=0" >  /etc/yum.repos.d/zstack-mn.repo; sync
                        'yum_server' : yum_server
                     })
                     run_remote_command(generate_mn_repo_command, host_post_info)
-                if 'qemu-kvm-ev-mn' in zstack_repo and distro_version >= 7:
+                if 'qemu-kvm-ev-mn' in zstack_repo and (distro == 'nfs' or distro_version >= 7):
                     generate_kvm_repo_raw_command = """
 echo -e "[qemu-kvm-ev-mn]
 name=qemu-kvm-ev-mn
@@ -2019,7 +2020,7 @@ enabled=0" >  /etc/yum.repos.d/zstack-experimental-mn.repo
 
                 # install libselinux-python and other command system libs from user defined repos
                 host_post_info.post_label = "ansible.shell.install.pkg"
-                python_pip_pkg = "python2-pip" if distro_version >= 7 else "python-pip"
+                python_pip_pkg = "python2-pip" if distro == 'nfs' or distro_version >= 7 else "python-pip"
                 host_post_info.post_label_param = "libselinux-python,python2-devel,python2-setuptools,gcc,vim-minimal" \
                                                   "autoconf,chrony,python2-backports-ssl_match_hostname,iptables-services, %s" % python_pip_pkg
                 if require_python_env == "true":
