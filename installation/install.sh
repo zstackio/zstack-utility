@@ -33,7 +33,7 @@ export TERM=xterm
 
 OS=''
 IS_UBUNTU='n'
-REDHAT_OS="CENTOS6 CENTOS7 RHEL7 ALIOS7 ISOFT4 KYLIN10 EULER20 UOS1020A"
+REDHAT_OS="CENTOS6 CENTOS7 RHEL7 ALIOS7 ISOFT4 KYLIN10 EULER20 UOS1020A NFS4"
 DEBIAN_OS="UBUNTU14.04 UBUNTU16.04 UBUNTU KYLIN4.0.2 DEBIAN9 UOS20"
 XINCHUANG_OS="ns10 uos20"
 SUPPORTED_OS="$REDHAT_OS $DEBIAN_OS"
@@ -792,7 +792,7 @@ check_system(){
     echo_title "Check System"
     echo ""
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
-    cat /etc/*-release |egrep -i -h "centos |Red Hat Enterprise|Alibaba|NeoKylin|Kylin Linux Advanced Server release V10|openEuler|UnionTech OS Server release 20 \(kongzi\)" >>$ZSTACK_INSTALL_LOG 2>&1
+    cat /etc/*-release |egrep -i -h "centos |Red Hat Enterprise|Alibaba|NeoKylin|Kylin Linux Advanced Server release V10|openEuler|UnionTech OS Server release 20 \(kongzi\)|NFSChina Server release 4.0.220727 \(RTM3\)" >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -eq 0 ]; then
         grep -qi 'CentOS release 6' /etc/system-release && OS="CENTOS6"
         grep -qi 'CentOS Linux release 7' /etc/system-release && OS="CENTOS7"
@@ -803,6 +803,7 @@ check_system(){
         grep -qi 'Kylin Linux Advanced Server release V10' /etc/system-release && OS="KYLIN10"
         grep -qi 'openEuler release 20.03 (LTS-SP1)' /etc/system-release && OS="EULER20"
         grep -qi 'UnionTech OS Server release 20 (kongzi)' /etc/system-release && OS="UOS1020A"
+        grep -qi 'NFSChina Server release 4.0.220727 (RTM3)' /etc/system-release && OS="NFS4"
         if [[ -z "$OS" ]];then
             fail2 "Host OS checking failure: your system is: `cat /etc/redhat-release`, $PRODUCT_NAME management node only supports $SUPPORTED_OS currently"
         elif [[ $OS == "CENTOS7" ]];then

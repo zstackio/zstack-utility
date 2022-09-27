@@ -261,6 +261,12 @@ def install_kvm_pkg():
                         smartmontools sshpass usbutils vconfig wget audit dnsmasq tar python2-psutil\
                         qemu-kvm collectd-virt storcli edk2-ovmf edk2.git-ovmf-x64 python2-pyudev collectd-disk"
 
+        x86_64_nfs4 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
+                        usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
+                        net-tools nfs-utils nmap openssh-clients OpenIPMI pciutils pv rsync sed nettle libselinux-devel \
+                        smartmontools sshpass usbutils vconfig wget audit dnsmasq tar \
+                        qemu-kvm collectd-virt storcli edk2-ovmf python2-pyudev collectd-disk"
+
         # handle zstack_repo
         if zstack_repo != 'false':
             common_dep_list = eval("%s_%s" % (host_arch, releasever))
@@ -329,7 +335,7 @@ def install_kvm_pkg():
                     yum_install_package(pkg, host_post_info)
 
         # handle distro version specific task
-        if major_version < 7:
+        if releasever != 'nfs4' and major_version < 7:
             # name: copy name space supported iproute for RHEL6
             copy_arg = CopyArg()
             copy_arg.src = iproute_pkg
