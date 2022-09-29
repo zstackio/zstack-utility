@@ -1987,11 +1987,13 @@ upgrade_mysql_configuration(){
         sed -i '/\[mysqld\]/a max_allowed_packet=2M\' $MYSQL_CONF_FILE
     fi
 
+    [ x`systemctl is-enabled zstack-ha 2>/dev/null` == x"enabled" ] && systemctl stop keepalived.service
     if [ "$IS_UBUNTU" = "y" ]; then
         service mysql restart >>$ZSTACK_INSTALL_LOG 2>&1
     else
         systemctl restart mariadb.service >>$ZSTACK_INSTALL_LOG 2>&1
     fi
+    [ x`systemctl is-enabled zstack-ha 2>/dev/null` == x"enabled" ] && systemctl start keepalived.service
 }
 
 uz_upgrade_zstack(){
