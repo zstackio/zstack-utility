@@ -87,6 +87,7 @@
     <import file="${basedir}/projects/transmission.xml" optional="false" />
     <import file="${basedir}/projects/build-pypi-source.xml" optional="false" />
     <import file="${basedir}/projects/install-all-zstack-agents-to-local-virtualenv.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-zwatch.xml" optional="false" />
 
     <target name="prepare">
         <makeDir dir="${build.dir}" />
