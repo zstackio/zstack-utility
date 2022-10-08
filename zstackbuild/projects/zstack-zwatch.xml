@@ -3,7 +3,7 @@
 <project name="zstack-zwatch builder" basedir="../">
     <property name="zsw.bdir" location="${build.dir}/zwatch-vm-agent/" />
     <property name="zsw.ansible.dir" location="${kvmagent.bdir}/ansible" />
-    <target name="build-zstack-zwatch">
+    <target name="build-zstack-zwatch" if="build_war_flag">
         <makeDir dir="${zsw.bdir}" />
 
         <checkProperty property="zstackzwatch.source" />
@@ -25,7 +25,7 @@
         </copy>
     </target>
 
-    <target name="assemble-zstack-zwatch">
+    <target name="assemble-zstack-zwatch" if="build_war_flag">
         <copy todir="${zsw.ansible.dir}">
             <fileset dir="${zsw.bdir}">
                 <include name="**" />
