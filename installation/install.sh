@@ -3254,8 +3254,8 @@ check_sync_local_repos() {
 
   [ -f ".repo_version" ] || fail2 "Cannot found current repo_version file, please make sure you have correct ${PRODUCT_NAME,,}-installer package."
   rls=`find /opt/zstack-dvd/ -name ".repo_version"`
-  which zstack-ctl > /dev/null 2>&1
-  if [ $? -eq 0 -a x`zstack-ctl get_configuration RepoVersion.Strategy 2>/dev/null` == x"enforcing" ];then
+  which zstack-ctl > /dev/null 2>&1 && zstack-ctl get_configuration RepoVersion.Strategy > /dev/null 2>&1
+  if [ $? -eq 0 ] && [ x`zstack-ctl get_configuration RepoVersion.Strategy 2>/dev/null` == x"enforcing" ];then
     for release in $rls;do
       diff --ignore-all-space .repo_version $release || check_hybrid_arch
     done
