@@ -48,8 +48,7 @@ MANAGEMENT_INTERFACE=`ip route | grep default | head -n 1 | cut -d ' ' -f 5`
 ZSTACK_INSTALL_LOG='/tmp/zstack_installation.log'
 ZSTACKCTL_INSTALL_LOG='/tmp/zstack_ctl_installation.log'
 ZSTACK_TIMESTAMP_LOG='/tmp/zstack_installation_timestamp.log'
-[ -f $ZSTACK_TIMESTAMP_LOG ] && /bin/rm -f $ZSTACK_TIMESTAMP_LOG
-[ -f $ZSTACK_INSTALL_LOG ] && /bin/rm -f $ZSTACK_INSTALL_LOG
+echo -e "Start the installation at "$(date +%Y-%m-%d' '%H:%M:%S,$((`date +10#%N`/1000000))) | tee -a $ZSTACK_INSTALL_LOG 1>/dev/null
 INSTALLATION_FAILURE=/tmp/zstack_installation_failure_exit_code
 [ -f $INSTALLATION_FAILURE ] && /bin/rm -f $INSTALLATION_FAILURE
 
