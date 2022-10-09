@@ -197,6 +197,12 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
             logger.debug("mount heart beat path " + heartbeat_path)
             if linux.is_mounted(heartbeat_path) is not True:
                 linux.mount(heartbeat_lun_wwn, heartbeat_path, "sync")
+            else:
+                linux.umount(heartbeat_path)
+                r, o, e = bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -r >/dev/null")
+                if r != 0:
+                    raise Exception("fail to create heartbeat mount path")
+                linux.mount(heartbeat_lun_wwn, heartbeat_path, "sync")
             rsp.success = True
         except Exception as e:
             rsp.success = False
