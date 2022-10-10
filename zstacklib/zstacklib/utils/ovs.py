@@ -848,6 +848,14 @@ class OvsBaseCtl(object):
                 "Delete port of bridge {} failed. {}".format(brName, err))
             raise OvsError(str(err))
 
+    def delPortNoWait(self, brName, phyIfName, *args):
+        try:
+            shell.call(CtlBin + '--no-wait del-port {} {}'.format(brName, phyIfName))
+        except Exception as err:
+            logger.error(
+                "Delete port of bridge {} failed. {}".format(brName, err))
+            raise OvsError(str(err))
+
     def setPort(self, portName, tag):
         try:
             shell.call(CtlBin +
@@ -967,8 +975,9 @@ class OvsBaseCtl(object):
         release the vdpa/dpdkvhostuserclient while associated vm is no exists.
         """
         try:
-            rawData = shell.call(
-                CtlBin + " --columns=name,external_ids find interface external_ids!={}").splitlines()
+            rawString = shell.call(
+                CtlBin + " --columns=name,external_ids find interface external_ids!={}")
+            rawData = (rawString + "\n").splitlines()
             tmp = {}
             nicAndVmUuid = {}
             for row in rawData:
@@ -988,7 +997,7 @@ class OvsBaseCtl(object):
 
             for d in nicAndVmUuid:
                 if nicAndVmUuid[d] not in runningVmList:
-                    self.destoryNicBackend(nicAndVmUuid[d])
+                    self.destoryNicBackendNoWait(nicAndVmUuid[d])
         except shell.ShellError as err:
             raise OvsError(str(err))
 
@@ -1007,8 +1016,8 @@ class OvsBaseCtl(object):
         if len(brs) == 0:
             self.ovs.stop()
         else:
-            self.ovs.start()
             self._nicBackendGC()
+            self.ovs.start()
 
     def addNormalIfToBr(self, interface, bridgeName):
         raise OvsError("Not implemented")
@@ -1097,6 +1106,10 @@ class OvsBaseCtl(object):
 
     @checkOvs
     def destoryNicBackend(self, vmUuid, specificNic=None):
+        raise OvsError("Not implemented")
+
+    @checkOvs
+    def destoryNicBackendNoWait(self, vmUuid, specificNic=None):
         raise OvsError("Not implemented")
 
 
@@ -1651,6 +1664,28 @@ class OvsDpdkCtl(OvsBaseCtl):
             for intface in interfaceList:
                 if intface in self.listIfaces(br):
                     self.delPort(br, intface)
+                    tmpList.append(intface)
+            interfaceList = list(set(interfaceList).difference(set(tmpList)))
+
+        return sockPath
+
+    @lock.lock("ovs-destoryNicBackend")
+    def destoryNicBackendNoWait(self, vmUuid, specificNic=None):
+        sockPath = ''
+        interfaceList = []
+
+        if specificNic != None:
+            sockPath = self._getInterfacesSockByName(specificNic)
+            interfaceList.append(specificNic)
+        else:
+            # free all vNics belongs to vm
+            interfaceList = self._listIfacesByVmUuid(vmUuid)
+
+        for br in self.listBrs():
+            tmpList = []
+            for intface in interfaceList:
+                if intface in self.listIfaces(br):
+                    self.delPortNoWait(br, intface)
                     tmpList.append(intface)
             interfaceList = list(set(interfaceList).difference(set(tmpList)))
 
