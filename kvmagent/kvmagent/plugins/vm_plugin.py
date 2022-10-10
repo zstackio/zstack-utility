@@ -6133,9 +6133,9 @@ class VmPlugin(kvmagent.KvmAgent):
                     'unable to detach volume[%s] to vm[uuid:%s], vm must be running or paused' % (volume.installPath, vm.uuid))
 
             target_disk, _ = vm._get_target_disk(volume)
-            device_name = self.get_disk_device_name(target_disk)
+            node_name = get_block_node_name_by_disk_name(cmd.vmInstanceUuid, target_disk.alias.name_)
             isc = ImageStoreClient()
-            isc.stop_mirror(cmd.vmInstanceUuid, True, device_name)
+            isc.stop_mirror(cmd.vmInstanceUuid, True, node_name)
 
             vm.detach_data_volume(volume)
         except kvmagent.KvmError as e:
