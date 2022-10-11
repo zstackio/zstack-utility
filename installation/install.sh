@@ -3328,7 +3328,11 @@ prepare_zops_user_and_db() {
     #perpare zops user and database if needed
     get_mysql_conf_file
     db='zops'
+    user='zops'
     MYSQL_DATA_DIR=`cat $MYSQL_CONF_FILE | grep datadir | cut -d '=' -f 2`
+    if [ x"${MYSQL_DATA_DIR}" = "x" ]; then
+	    MYSQL_DATA_DIR="/var/lib/mysql/"
+    fi
     # check zops db is already, if have been created, do nothing
     [ -f $MYSQL_DATA_DIR/$db/db.opt ] && return 0
     mysql -u root --password=$MYSQL_NEW_ROOT_PASSWORD -e 'exit' >/dev/null 2>&1
@@ -3339,11 +3343,30 @@ prepare_zops_user_and_db() {
     restart_mysql
     zops_encrypt_password='*0BE93F2F3889E0171BD51535A44113B2852B9588'
     mysql -h 127.0.0.1 -u root -e "FLUSH PRIVILEGES;
+use mysql;
+DROP PROCEDURE IF EXISTS preparezopsdb;
+DELIMITER //
+
+CREATE PROCEDURE preparezopsdb()
+BEGIN
+    DECLARE usercount INT;
+    select count(*) INTO usercount FROM user WHERE user='zops' and host='localhost';
+    if usercount < 1 then
+            CREATE USER 'zops'@'localhost' IDENTIFIED BY PASSWORD '$zops_encrypt_password';
+    end if;
+    select count(*) INTO usercount FROM user WHERE user='zops' and host='%';
+    if usercount < 1 then
+            CREATE USER 'zops'@'%' IDENTIFIED BY PASSWORD '$zops_encrypt_password';
+    end if;
+END //
+
+DELIMITER ;
+CALL preparezopsdb();
 CREATE DATABASE IF NOT EXISTS $db;
-GRANT ALL PRIVILEGES on $db.* to $db@'localhost' IDENTIFIED BY PASSWORD '$zops_encrypt_password';
-GRANT ALL PRIVILEGES on $db.* to $db@'%' IDENTIFIED BY PASSWORD '$zops_encrypt_password';
-GRANT SUPER ON *.* to $db@'localhost' IDENTIFIED BY PASSWORD '$zops_encrypt_password';
-GRANT SUPER ON *.* to $db@'%' IDENTIFIED BY PASSWORD '$zops_encrypt_password';
+GRANT ALL PRIVILEGES on $db.* to $db@'localhost';
+GRANT ALL PRIVILEGES on $db.* to $db@'%';
+GRANT SUPER ON *.* to $db@'localhost';
+GRANT SUPER ON *.* to $db@'%';
 FLUSH PRIVILEGES;"
     sed -i '/skip-grant-tables/d' $MYSQL_CONF_FILE
     restart_mysql
