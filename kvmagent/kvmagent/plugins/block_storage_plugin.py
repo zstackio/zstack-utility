@@ -18,6 +18,10 @@ logger = log.get_logger(__name__)
 INITIATOR_FILE_PATH = "/etc/iscsi/initiatorname.iscsi"
 
 
+class RetryException(Exception):
+    pass
+
+
 class AgentRsp(object):
     def __init__(self):
         self.success = True
@@ -243,21 +247,27 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         time.sleep(1)
         self.iscsi_login(cmd_info)
         try:
-            bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -a >/dev/null")
+            logger.debug("let's rescan scsi bus since can not find lun and try again")
+            bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -r >/dev/null")
+            bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -u >/dev/null")
         except Exception as e:
             pass
         successfully_find_lun = self.check_lun_status(cmd_info)
         return successfully_find_lun
 
     @linux.retry(times=10, sleep_time=random.uniform(0.1,3))
+    def wait_lun_ready(self, abs_path):
+        if os.path.exists(abs_path) is True:
+            logger.debug("successfully find lun wwn: " + abs_path)
+            return
+
+        logger.debug("Can not find lun wwn: " + abs_path + ", let's retry")
+        raise RetryException("Can not find lun wwn: " + abs_path)
+
     def check_lun_status(self, cmd_info):
         abs_path = translate_absolute_path_from_wwn(cmd_info.wwn)
-        if os.path.exists(abs_path) is not True:
-            logger.debug("Can not find lun wwn: " + abs_path)
-            r, o, e = bash.bash_roe("ls %s" % abs_path)
-            raise Exception("Can not find lun wwn: " + abs_path)
-        logger.debug("successfully find lun wwn: " + abs_path)
-        return True
+        self.wait_lun_ready(abs_path)
+        return os.path.exists(abs_path)
 
     @kvmagent.replyerror
     def discover_lun(self, req):
@@ -307,6 +317,10 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
     @bash.in_bash
     def _logout_target(self, logoutCmd):
         r, o, e = bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -r >/dev/null")
+        if r != 0:
+            raise Exception("fail to logout iscsi %s" % logoutCmd.target)
+
+        r, o, e = bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -u >/dev/null")
         if r != 0:
             raise Exception("fail to logout iscsi %s" % logoutCmd.target)
 
@@ -391,13 +405,17 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
             file_path = mount_path + "/ready"
             is_mounted = linux.is_mounted(mount_path)
             if self.touch_ready_file(file_path) is False or is_mounted is not True:
-                linux.umount(mount_path)
+                try:
+                    linux.umount(mount_path)
+                except Exception as e:
+                    logger.debug("get exception when umount path: " + e.message)
                 rsp.success = False
                 if is_mounted is not True:
                     logger.debug('mark %s as disconnected, mount path is not correctly mounted' % mount_path)
                 else:
                     logger.debug('touch ready file failed, mark %s as disconnected mount path' % mount_path)
                 rsp.disconnectedPSMountPath.append(mount_path)
+                rsp.error = "mount path: " + mount_path + " is disconnected"
                 continue
             linux.rm_file_force(file_path)
 
