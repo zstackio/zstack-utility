@@ -2,10 +2,12 @@ import os.path
 import pyudev       # installed by ansible
 import re
 import threading
+import time
 
 import typing
 from prometheus_client import start_http_server
 from prometheus_client.core import GaugeMetricFamily, REGISTRY
+import psutil
 
 from kvmagent import kvmagent
 from zstacklib.utils import http
@@ -527,6 +529,21 @@ def collect_equipment_state():
     metrics['ipmi_status'].add_metric([], bash_r("ipmitool mc info"))
     return metrics.values()
 
+def fetch_vm_qemu_processes():
+    processes = []
+    for process in psutil.process_iter():
+        if process.name() == QEMU_CMD: # /usr/libexec/qemu-kvm
+            processes.append(process)
+    return processes
+
+def find_vm_uuid_from_vm_qemu_process(process):
+    prefix = 'guest='
+    suffix = ',debug-threads=on'
+    for word in process.cmdline():
+        # word like 'guest=707e9d31751e499eb6110cce557b4168,debug-threads=on'
+        if word.startswith(prefix) and word.endswith(suffix):
+            return word[len(prefix) : len(word) - len(suffix)]
+    return None
 
 def collect_vm_statistics():
     metrics = {
@@ -534,20 +551,13 @@ def collect_vm_statistics():
                                      'Percentage of CPU used by vm', None, ['vmUuid'])
     }
 
-    r, pid_vm_map_str = bash_ro("ps -aux --no-headers | awk '/%s [-]name/{print $2,$13}'" % QEMU_CMD)
-    if r != 0 or len(pid_vm_map_str.splitlines()) == 0:
+    processes = fetch_vm_qemu_processes()
+    if len(processes) == 0:
         return metrics.values()
-    pid_vm_map_str = pid_vm_map_str.replace(",debug-threads=on", "").replace("guest=", "")
-    '''pid_vm_map_str samples:
-    38149 e8e6f27bfb2d47e08c59cbea1d0488c3
-    38232 afa02edca7eb4afcb5d2904ac1216eb1
-    '''
 
     pid_vm_map = {}
-    for pid_vm in pid_vm_map_str.splitlines():
-        arr = pid_vm.split()
-        if len(arr) == 2:
-            pid_vm_map[arr[0]] = arr[1]
+    for process in processes:
+        pid_vm_map[str(process.pid)] = find_vm_uuid_from_vm_qemu_process(process)
 
     def collect(vm_pid_arr):
         vm_pid_arr_str = ','.join(vm_pid_arr)
@@ -571,6 +581,32 @@ def collect_vm_statistics():
 
     return metrics.values()
 
+
+# since Cloud 4.5.0, Because GetVmGuestToolsAction calls are too frequent,
+# the information about whether pvpanic is configured for VM
+# will flow to the management node through the monitoring data.
+# @see ZSTAC-49036
+def collect_vm_pvpanic_enable_in_domain_xml():
+    KEY = 'pvpanic_enable_in_domain_xml'
+    metrics = {
+        KEY: GaugeMetricFamily(KEY,
+                'Whether the pvpanic attribute of the VM enabled in the domain XML', None, ['vmUuid'])
+    }
+
+    processes = fetch_vm_qemu_processes()
+    if len(processes) == 0:
+        return metrics.values()
+
+    # if pvpanic enable in domain xml (qemu process cmdline has 'pvpanic,ioport'), collect '1'
+    # if not, collect '0'
+    for process in processes:
+        vm_uuid = find_vm_uuid_from_vm_qemu_process(process)
+
+        r = filter(lambda word: word == 'pvpanic,ioport=1285', process.cmdline())
+        enable = 1 if len(r) > 0 else 0
+        metrics[KEY].add_metric([vm_uuid], enable)
+
+    return metrics.values()
 
 collect_node_disk_wwid_last_time = None
 collect_node_disk_wwid_last_result = None
@@ -675,6 +711,7 @@ def collect_host_conntrack_statistics():
 kvmagent.register_prometheus_collector(collect_host_network_statistics)
 kvmagent.register_prometheus_collector(collect_host_capacity_statistics)
 kvmagent.register_prometheus_collector(collect_vm_statistics)
+kvmagent.register_prometheus_collector(collect_vm_pvpanic_enable_in_domain_xml)
 kvmagent.register_prometheus_collector(collect_node_disk_wwid)
 kvmagent.register_prometheus_collector(collect_host_conntrack_statistics)
 kvmagent.register_prometheus_collector(collect_physical_network_interface_state)
