@@ -101,9 +101,7 @@ install_i40e_driver() {
 	kernel_version=`uname -r`
 	tar xvf ${i40e_tar_file} -C /tmp > /dev/null 2>&1
 	if [ -d "/tmp/i40e_driver/${kernel_version}" ]; then
-		if ! modinfo auxiliary >/dev/null 2>&1; then
-			rpm -Uvh /tmp/i40e_driver/${kernel_version}/*.rpm
-		fi
+		rpm -Uvh /tmp/i40e_driver/${kernel_version}/*.rpm
 	fi
 
 	rm -rf /tmp/i40e_driver
