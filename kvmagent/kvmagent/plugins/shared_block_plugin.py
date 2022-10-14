@@ -414,7 +414,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         # type: (str, set([CheckDisk]), str, set([CheckDisk]), bool) -> bool
         @linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
         def find_vg(vgUuid, raise_exception = True):
-            cmd = shell.ShellCmd("timeout 5 vgscan --ignorelockingfailure; vgs --nolocking %s -otags | grep %s" % (vgUuid, INIT_TAG))
+            cmd = shell.ShellCmd("timeout 5 vgscan --ignorelockingfailure; vgs --nolocking -t %s -otags | grep %s" % (vgUuid, INIT_TAG))
             cmd(is_exception=False)
             if cmd.return_code != 0 and raise_exception:
                 raise RetryException("can not find vg %s with tag %s" % (vgUuid, INIT_TAG))
@@ -675,13 +675,13 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         @linux.retry(times=3, sleep_time=random.uniform(0.1, 3))
         def find_vg(vgUuid):
-            cmd = shell.ShellCmd("vgs --nolocking %s -otags | grep %s" % (vgUuid, INIT_TAG))
+            cmd = shell.ShellCmd("vgs --nolocking -t %s -otags | grep %s" % (vgUuid, INIT_TAG))
             cmd(is_exception=False)
             if cmd.return_code == 0:
                 return True
 
             logger.debug("can not find vg %s with tag %s" % (vgUuid, INIT_TAG))
-            cmd = shell.ShellCmd("vgs --nolocking %s" % vgUuid)
+            cmd = shell.ShellCmd("vgs --nolocking -t %s" % vgUuid)
             cmd(is_exception=False)
             if cmd.return_code == 0:
                 logger.warn("found vg %s without tag %s" % (vgUuid, INIT_TAG))
@@ -773,7 +773,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
             return jsonobject.dumps(rsp)
 
-        command = shell.ShellCmd("vgs --nolocking %s -otags | grep %s" % (cmd.vgUuid, INIT_TAG))
+        command = shell.ShellCmd("vgs --nolocking -t %s -otags | grep %s" % (cmd.vgUuid, INIT_TAG))
         command(is_exception=False)
         if command.return_code != 0:
             self.create_vg_if_not_found(cmd.vgUuid, {disk}, cmd.hostUuid, allDisks, cmd.forceWipe)

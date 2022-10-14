@@ -8380,7 +8380,7 @@ host side snapshot files chian:
             # type: (str, str, str) -> object
             volume = file.strip().split("'")[1]
             syslog.syslog("deactivating volume %s for vm %s" % (file, vm_uuid))
-            lock_type = bash.bash_o("lvs --noheading --nolocking %s -ovg_lock_type" % volume).strip()
+            lock_type = bash.bash_o("lvs --noheading --nolocking -t %s -ovg_lock_type" % volume).strip()
             if "sanlock" not in lock_type:
                 syslog.syslog("%s has no sanlock, skip to deactive" % file)
                 return
