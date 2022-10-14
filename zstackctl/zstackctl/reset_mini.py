@@ -207,7 +207,7 @@ def wipe_fs(disks, expected_vg=None, with_lock=True):
         if r == 0:
             continue
 
-        r, o = bash_ro("pvs --nolocking --noheading -o vg_name %s" % disk)
+        r, o = bash_ro("pvs --nolocking -t --noheading -o vg_name %s" % disk)
         if r == 0 and o.strip() != "":
             exists_vg = o.strip()
 
@@ -294,8 +294,8 @@ def cleanup_storage():
             bash_r("kill -9 %s" % line.split()[1])
 
     def get_mini_pv():
-        vg_name = bash_o("vgs --nolocking -oname,tags | grep zs::ministorage | awk '{print $1}'").strip()
-        pv_names = bash_o("pvs --nolocking -oname -Svg_name=%s | grep -v PV" % vg_name).strip().splitlines()
+        vg_name = bash_o("vgs --nolocking -t -oname,tags | grep zs::ministorage | awk '{print $1}'").strip()
+        pv_names = bash_o("pvs --nolocking -t -oname -Svg_name=%s | grep -v PV" % vg_name).strip().splitlines()
         return [p.strip() for p in pv_names]
 
     bash_r("rm -rf /zstack_bs")
