@@ -2307,8 +2307,8 @@ il_install_license(){
         else
             fail "License path ${LICENSE_PATH} does not exists."
         fi
-    elif [ x"$INSTALL_ENTERPRISE" = x'y' ]; then
-      # if -E is set
+    elif [ x"$INSTALL_ENTERPRISE" = x'y' -o x"$SANYUAN_INSTALL" = x'y' ]; then
+      # if -E or --SY is set
       zstack-ctl install_license --license $ZSTACK_TRIAL_LICENSE >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     chown -R zstack:zstack /var/lib/zstack/license >>$ZSTACK_INSTALL_LOG 2>&1
