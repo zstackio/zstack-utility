@@ -1240,7 +1240,7 @@ upgrade_zstack(){
     echo ""
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
 
-    if pgrep -x zstack-hamon >/dev/null; then
+    if pgrep -x cloud-hamon >/dev/null; then
         fail2 "You are upgrading ${PRODUCT_NAME} under HA environment.\nPlease run: 'zsha2 upgrade-mn ${PRODUCT_NAME,,}-installer.bin' instead.\n"
     fi
 
