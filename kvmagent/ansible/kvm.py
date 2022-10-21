@@ -201,6 +201,16 @@ else:
 run_remote_command("rm -rf {}/*; mkdir -p /usr/local/zstack/ || true".format(kvm_root), host_post_info)
 
 
+#init ld.so.conf
+def do_ldconfig():
+    command = 'grep -c  "^/opt/zstack/chroot/usr/lib64$" /etc/ld.so.conf || echo /opt/zstack/chroot/usr/lib64 >> /etc/ld.so.conf; ldconfig'
+    run_remote_command(command, host_post_info)
+
+
+def remove_conflict_rpms():
+    yum_remove_package("libvirt-daemon-driver-lxc", host_post_info)
+
+
 def install_kvm_pkg():
     def rpm_based_install():
         mlnx_ofed = " python3 unbound libnl3-devel lsof \
@@ -216,6 +226,12 @@ def install_kvm_pkg():
                       qemu-kvm-ev collectd-virt OVMF edk2-ovmf edk2.git-ovmf-x64 mcelog MegaCli storcli Arcconf nvme-cli python-pyudev kernel-devel"
 
         x86_64_c76 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
+                      usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python libvirt-admin lighttpd lsof \
+                      net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
+                      smartmontools sshpass usbutils vconfig wget audit dnsmasq \
+                      qemu-kvm-ev collectd-virt OVMF edk2-ovmf edk2.git-ovmf-x64 mcelog MegaCli storcli Arcconf nvme-cli python-pyudev seabios-bin nping kernel-devel elfutils-libelf-devel"
+
+        x86_64_c79 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                       usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python libvirt-admin lighttpd lsof \
                       net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
                       smartmontools sshpass usbutils vconfig wget audit dnsmasq \
@@ -767,6 +783,8 @@ def modprobe_usb_module():
     run_remote_command(command, host_post_info)
 
 check_nested_kvm(host_post_info)
+do_ldconfig()
+remove_conflict_rpms()
 install_kvm_pkg()
 copy_tools()
 copy_kvm_files()

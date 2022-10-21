@@ -240,6 +240,7 @@ def get_host_releasever(ansible_distribution):
         "kylin10 tercel 10": "ns10",
         "uniontech fou 20": "uos20",
         "redhat maipo 7.4": "ns10", # old kylinV10, oem 7.4 incompletely
+        "centos core 7.9.2009": "c79",
         "centos core 7.6.1810": "c76",
         "centos core 7.4.1708": "c74",
         "centos core 7.2.1511": "c74", # c74 for old releases
