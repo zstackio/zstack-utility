@@ -309,7 +309,9 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             devpaths = [os.path.realpath(os.path.join("/dev/disk/by-path", s)) for s in disks_by_path]
             mpaths = set()
             for devpath in devpaths:
-                if devpath: mpaths.add(shell.call("multipath -l -v1 "+devpath).strip())
+                r, o = bash.bash_ro("multipath -l -v1 %s" % devpath)
+                if r == 0 and o.strip() != "":
+                    mpaths.add(o.strip())
             for mpath in mpaths:
                 if mpath: shell.run("multipathd resize map "+mpath)
 
@@ -909,6 +911,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     @bash.in_bash
     def enable_multipath(self, req):
         rsp = AgentRsp()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
         lvm.enable_multipath()
 
         r = bash.bash_r("grep '^[[:space:]]*alias' /etc/multipath.conf")
@@ -916,7 +919,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             bash.bash_roe("sed -i 's/^[[:space:]]*alias/#alias/g' /etc/multipath.conf")
             bash.bash_roe("systemctl reload multipathd")
 
-        if multipath.write_multipath_conf("/etc/multipath.conf") is False:
+        if multipath.write_multipath_conf("/etc/multipath.conf", cmd.blacklist):
             bash.bash_roe("systemctl reload multipathd")
 
         linux.set_fail_if_no_path()
