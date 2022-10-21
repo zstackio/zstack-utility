@@ -9142,7 +9142,9 @@ host side snapshot files chian:
         self.clean_old_sshfs_mount_points()
         pass
 
-    def configure(self, config):
+    def configure(self, config=None):
+        if config is None:
+            config = {}
         self.config = config
 
 

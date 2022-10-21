@@ -2626,5 +2626,5 @@ done
 
         pass
 
-    def configure(self, config):
+    def configure(self, config={}):
         self.config = config

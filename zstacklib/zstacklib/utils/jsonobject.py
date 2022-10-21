@@ -35,6 +35,12 @@ class JsonObject(object):
         else:
             return None
 
+    def __len__(self):
+        return len(self.__dict__)
+
+    def to_dict(self):
+        return self.__dict__
+
 
 # covers long as well
 def _is_int(val):
@@ -102,6 +108,8 @@ def _parse_dict(d):
         elif isinstance(val, types.DictType):
             nobj = _parse_dict(val)
             setattr(dobj, key, nobj)
+        elif val is None:
+            setattr(dobj, key, None)
         else:
             raise NoneSupportedTypeError("Cannot parse object: %s, type: %s, dict dump: %s" % (val, type(val), d))
 
@@ -201,3 +209,9 @@ def dumps(obj, pretty=False):
         return simplejson.dumps(jsonmap, ensure_ascii=True, sort_keys=True, indent=4)
     else:
         return simplejson.dumps(jsonmap, ensure_ascii=True)
+
+
+def from_dict(obj):
+    # type: (dict) -> JsonObject
+
+    return loads(dumps(obj))

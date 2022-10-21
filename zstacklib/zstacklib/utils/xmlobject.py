@@ -12,7 +12,16 @@ class XmlObjectError(Exception):
 class XmlObject(object):
     def __init__(self, tag):
         self.__tag_name__ = tag
-    
+
+    def __getitem__(self, item):
+        if not isinstance(item, int):
+            raise SyntaxError('%s is not an int' % item)
+
+        if isinstance(self, list):
+            return super(XmlObject, self).__getitem__(item)
+        else:
+            return [self][item]
+
     def get_tag(self):
         return self.__tag_name__
     

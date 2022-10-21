@@ -2,6 +2,8 @@ import functools
 import inspect
 import json
 import re
+import subprocess
+import sys
 import time
 
 from jinja2 import Template
@@ -128,3 +130,26 @@ def in_bash(func):
 
     return wrap
 
+
+def call_with_screen_output(cmd, ret_code=0, raise_error=True, work_dir=None):
+    # type: (str, typing.Union[int, list], bool, str) -> None
+
+    if work_dir is None:
+        print('[BASH]: %s' % cmd)
+    else:
+        print('[BASH (%s) ]: %s' % (work_dir, cmd))
+
+    p = subprocess.Popen(cmd, shell=True, stdout=sys.stdout,
+                         stdin=subprocess.PIPE, stderr=sys.stderr,
+                         cwd=work_dir,
+                         close_fds=True)
+    r = p.wait()
+    if raise_error:
+        is_err = False
+        if isinstance(ret_code, int) and ret_code != r:
+            is_err = True
+        elif isinstance(ret_code, list) and r not in ret_code:
+            is_err = True
+
+        if is_err:
+            raise BashError('command[%s] failed, ret_code=%s' % (cmd, ret_code))
