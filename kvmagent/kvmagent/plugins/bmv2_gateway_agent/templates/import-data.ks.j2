@@ -17,11 +17,15 @@ import subprocess
 import json
 import multiprocessing
 import os
+import re
 import sys
 import time
 import traceback
 
 provision_mac = '{{provision_mac}}'
+GPT_SIZE_SECTORS = 33
+_PARTED_TYPE_RE = re.compile(r'^.*partition\s+table\s*:\s*(gpt|msdos)',
+                                   re.IGNORECASE | re.MULTILINE)
 
 def shell_cmd(cmd, exception=True, workdir=None):
     process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stdin=subprocess.PIPE,
@@ -78,6 +82,7 @@ def get_src_dev():
 
 
 def convert_data(src, dest):
+    clean_device_metadata(dest)
     cmd = 'dd if=%s of=%s conv=sparse bs=1M status=progress 2>>/root/dd.txt &' % (src, dest)
     _, stdout, _ = shell_cmd(cmd)
 
@@ -103,6 +108,32 @@ def report_dd_progress(src_dev):
             current_progress = int(float(start_progress) + 50 * float(current_size) / float(total_size))
             report_progress(str(current_progress))
 
+def clean_device_metadata(dev_name):
+    cmd = 'dd bs=512 if=/dev/zero of=%s count=%s' % (dev_name, GPT_SIZE_SECTORS)
+    shell_cmd(cmd)
+
+def get_partition_type(dev_name):
+    _, out, _ = shell_cmd('parted --script %s -- print' % dev_name)
+    m = _PARTED_TYPE_RE.search(out)
+    if m:
+        return m.group(1)
+
+    return 'invalid'
+
+def fix_gpt_reside_error(dev_name):
+    _, output, _ = shell_cmd('sgdisk -v %s' % dev_name)
+    search_str = "it doesn't reside\nat the end of the disk"
+    if search_str in output:
+        shell_cmd('sgdisk -e %s' % dev_name)
+
+def fix_gpt_partition(dev_name):
+    try:
+        disk_is_gpt_partitioned = (get_partition_type(dev_name) == 'gpt')
+        if disk_is_gpt_partitioned:
+            fix_gpt_reside_error(dev_name)
+    except Exception as e:
+        msg = 'Failed to fix GPT partition on disk %s. Error: %s' % (dev_name, str(e))
+        raise Exception(msg)
 
 def report_progress(percentage):
     progress_struct = {}
@@ -138,6 +169,7 @@ def main():
 
     convert_data(src_dev, dest_dev)
     report_dd_progress(src_dev)
+    fix_gpt_partition(dest_dev)
 
     convert_info['status'] = 'Converted'
     result['convertInfo'] = json.dumps(convert_info)
