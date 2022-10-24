@@ -2805,9 +2805,9 @@ class InstallDbCmd(Command):
       shell: "yum clean metadata; yum --nogpgcheck install -y mysql mysql-server "
       register: install_result
 
-    - name: install MySQL for RedHat 7/Kylin10/openEuler/UnionTech kongzi from local
+    - name: install MySQL for RedHat 7/Kylin10/openEuler/UnionTech kongzi/Nfs from local
       when: (ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repo != 'false') or ansible_os_family == 'Kylin' \
-            or ansible_os_family == 'Openeuler' or (ansible_os_family == 'UnionTech' and ansible_distribution_release == 'kongzi')
+            or ansible_os_family == 'Openeuler' or ansible_os_family == 'Nfs' or (ansible_os_family == 'UnionTech' and ansible_distribution_release == 'kongzi')
       shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y  mariadb mariadb-server iptables-services
       register: install_result
 
@@ -2836,9 +2836,9 @@ class InstallDbCmd(Command):
       shell: apt-get -y install --allow-unauthenticated mariadb-server mariadb-client netfilter-persistent
       register: install_result
 
-    - name: open 3306 port on RedHat 7/Alibaba/Kyliin10/openEuler/UnionTech kongzi
+    - name: open 3306 port on RedHat 7/Alibaba/Kyliin10/openEuler/UnionTech kongzi/Nfs
       when: ansible_os_family == 'RedHat' or ansible_os_family == 'Alibaba' or (ansible_os_family == 'Kylin' and ansible_distribution_version == '10')
-            or (ansible_os_family == 'UnionTech' and ansible_distribution_release == 'kongzi')
+            or ansible_os_family == 'Nfs' or (ansible_os_family == 'UnionTech' and ansible_distribution_release == 'kongzi')
       shell: iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport 3306 -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 3306 -j ACCEPT && service iptables save)
 
     - name: open 3306 port
@@ -2852,9 +2852,9 @@ class InstallDbCmd(Command):
       when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7'
       service: name=mysqld state=restarted enabled=yes
 
-    - name: enable MySQL daemon on RedHat 7/Kyliin10/openEuler/UnionTech kongzi
+    - name: enable MySQL daemon on RedHat 7/Kyliin10/openEuler/UnionTech kongzi/Nfs
       when: (ansible_os_family == 'RedHat' and ansible_distribution_version >= '7') or ansible_os_family == 'Kylin' or ansible_os_family == 'Openeuler'
-            or (ansible_os_family == 'UnionTech' and ansible_distribution_release == 'kongzi')
+            or ansible_os_family == 'Nfs' or (ansible_os_family == 'UnionTech' and ansible_distribution_release == 'kongzi')
       service: name=mariadb state=restarted enabled=yes
 
     - name: enable MySQL daemon on AliOS 7
