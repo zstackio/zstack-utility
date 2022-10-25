@@ -2051,6 +2051,15 @@ def enable_multipath():
     if not is_multipath_running():
         raise RetryException("multipath still not running")
 
+@bash.in_bash
+@linux.retry(times=3, sleep_time=1)
+def disable_multipath():
+    bash.bash_roe("systemctl disable multipathd")
+    bash.bash_roe("systemctl stop multipathd")
+
+    if is_multipath_running():
+        raise RetryException("multipath is still running")
+
 
 class QemuStruct(object):
     def __init__(self, pid):
