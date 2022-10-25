@@ -649,7 +649,7 @@ def collect_node_disk_wwid():
 
     collect_node_disk_wwid_last_result = metrics.values()
 
-    pvs = bash_o("pvs --nolocking --noheading -o pv_name").strip().splitlines()
+    pvs = bash_o("pvs --nolocking -t --noheading -o pv_name").strip().splitlines()
     context = pyudev.Context()
 
     for pv in pvs:
