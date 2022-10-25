@@ -166,7 +166,7 @@ def parse_mpath_bindings(mpath_bindings):
 
 def parse_pvs_info(lvm_pvs_info):
     '''
-    parse output of host cmd: pvs --nolocking | grep -v Fmt
+    parse output of host cmd: pvs --nolocking -t | grep -v Fmt
     sample of return value:
     {
         "ce00338f878e42e79716ca47b7e1aace": [
