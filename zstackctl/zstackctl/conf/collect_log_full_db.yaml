@@ -164,8 +164,8 @@ sharedblock:
       - {name: lvmlock-logs, dir: /var/log/lvmlock/, file: lvmlockd.log*}
       - {name: sanlock_client_info, exec: 'sanlock client status -D'}
       - {name: sanlock_host_info, exec: 'sanlock client host_status -D'}
-      - {name: lvm_lvs_info, exec: 'lvs --nolocking -oall'}
-      - {name: lvm_vgs_info, exec: 'vgs --nolocking -oall'}
+      - {name: lvm_lvs_info, exec: 'lvs --nolocking -t -oall'}
+      - {name: lvm_vgs_info, exec: 'vgs --nolocking -t -oall'}
       - {name: lvm_config_diff_info, exec: 'lvmconfig --type diff'}
       - {name: lvm-etc, dir: /etc/lvm/, file: }
       - {name: sanlock-etc, dir: /etc/sanlock/, file: }
