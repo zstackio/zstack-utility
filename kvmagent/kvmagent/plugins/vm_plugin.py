@@ -813,6 +813,11 @@ class GetVmGuestToolsInfoRsp(kvmagent.AgentResponse):
         self.status = None
         self.features = {}
 
+class GetVmMetricsRoutingStatusRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(GetVmMetricsRoutingStatusRsp, self).__init__()
+        self.values = {}
+
 class GetVmFirstBootDeviceCmd(kvmagent.AgentCommand):
     def __init__(self):
         super(GetVmFirstBootDeviceCmd, self).__init__()
@@ -5523,6 +5528,7 @@ class VmPlugin(kvmagent.KvmAgent):
     ATTACH_GUEST_TOOLS_ISO_TO_VM_PATH = "/vm/guesttools/attachiso"
     DETACH_GUEST_TOOLS_ISO_FROM_VM_PATH = "/vm/guesttools/detachiso"
     GET_VM_GUEST_TOOLS_INFO_PATH = "/vm/guesttools/getinfo"
+    GET_VM_METRICS_ROUTING_STATUS_PATH = "/vm/guesttools/getroutingstatus"
     KVM_GET_VM_FIRST_BOOT_DEVICE_PATH = "/vm/getfirstbootdevice"
     KVM_CONFIG_PRIMARY_VM_PATH = "/primary/vm/config"
     KVM_CONFIG_SECONDARY_VM_PATH = "/secondary/vm/config"
@@ -8007,6 +8013,57 @@ host side snapshot files chian:
         _close_version_file()
 
     @kvmagent.replyerror
+    def get_vm_metrics_routing_status(self, req):
+        rsp = GetVmMetricsRoutingStatusRsp()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        if 'lighttpd' in cmd.items:
+            self.get_lighttpd_status_for_vm(cmd.vmInstanceUuid, rsp)
+        if 'pushgateway' in cmd.items:
+            self.get_push_gateway_routing_for_vm(cmd.vmInstanceUuid, rsp)
+
+        return jsonobject.dumps(rsp)
+
+    @in_bash
+    def get_lighttpd_status_for_vm(self, vm_uuid, rsp):
+        pid_list = filter(lambda pid: pid != '', linux.get_pids_by_process_name('lighttpd'))
+        rsp.values['lighttpd.pid'] = ', '.join(pid_list) if pid_list else 'None'
+
+        r, o, _ = bash.bash_roe('ebtables -L | grep "ARP --arp-ip-dst 169.254.169.254 -j USERDATA"')
+        # what is the 'o' like?
+        #   -p ARP --arp-ip-dst 169.254.169.254 -j USERDATA-br_eth0-8b073443
+        rsp.values['lighttpd.ebtables'] = o.strip() if r == 0 else 'None'
+
+    @in_bash
+    def get_push_gateway_routing_for_vm(self, vm_uuid, rsp):
+        pid_list = filter(lambda pid: pid != '', linux.get_pids_by_process_name('pushgateway'))
+        rsp.values['pushgateway.pid'] = ', '.join(pid_list) if pid_list else 'None'
+
+        r, o, _ = bash.bash_roe("netstat -nap | awk '/pushgateway/ { print $4 }'")
+        # what is the 'o' like?
+        #   :::9092
+        #   10.99.99.99:9092
+        bind_addresses = list(set(o.strip().split('\n')))
+        rsp.values['pushgateway.bind_address'] = ', '.join(bind_addresses) if r == 0 else 'None'
+
+        try:
+            if bind_addresses:
+                port = bind_addresses[0].split(':')[-1]
+                url = 'http://localhost:%s/metrics' % port
+                result = http.json_post(url, body=None, headers={'Content-Type':'text/plain'}, method='GET')
+                lines = filter(lambda line: 
+                        line.startswith('push_time_seconds') and line.find(vm_uuid) >= 0,
+                        result.split('\n'))
+                if lines:
+                    push_time_seconds = float(lines[0].split(' ')[-1])
+                    rsp.values['pushgateway.guest_tools.metrics.push_time_seconds'] = lines[0].split(' ')[-1]
+                    rsp.values['pushgateway.guest_tools.last_time_bias_in_seconds'] = str(time.time() - push_time_seconds)
+                else:
+                    rsp.values['pushgateway.guest_tools.metrics.push_time_seconds'] = 'None'
+        except Exception as ex:
+            logger.warn('failed to read metrics from pushgateway: %s', str(ex))
+
+    @kvmagent.replyerror
     @in_bash
     def fail_colo_pvm(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -8715,6 +8772,7 @@ host side snapshot files chian:
         http_server.register_async_uri(self.ATTACH_GUEST_TOOLS_ISO_TO_VM_PATH, self.attach_guest_tools_iso_to_vm)
         http_server.register_async_uri(self.DETACH_GUEST_TOOLS_ISO_FROM_VM_PATH, self.detach_guest_tools_iso_from_vm)
         http_server.register_async_uri(self.GET_VM_GUEST_TOOLS_INFO_PATH, self.get_vm_guest_tools_info)
+        http_server.register_async_uri(self.GET_VM_METRICS_ROUTING_STATUS_PATH, self.get_vm_metrics_routing_status)
         http_server.register_async_uri(self.KVM_GET_VM_FIRST_BOOT_DEVICE_PATH, self.get_vm_first_boot_device)
         http_server.register_async_uri(self.KVM_CONFIG_PRIMARY_VM_PATH, self.config_primary_vm)
         http_server.register_async_uri(self.KVM_CONFIG_SECONDARY_VM_PATH, self.config_secondary_vm)
