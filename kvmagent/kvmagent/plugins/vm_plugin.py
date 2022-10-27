@@ -2833,7 +2833,7 @@ class Vm(object):
                 vhostSrcPath = ovs.OvsCtl().getVdpa(cmd.vmUuid, cmd.nic)
                 if vhostSrcPath is None:
                     raise Exception("vDPA resource exhausted.")
-        if cmd.nic.type == "ethernet":
+        if cmd.nic.type == "TFVNIC":
             interface = Vm._build_interface_xml(cmd.nic, None, vhostSrcPath, action, brMode, cmd=cmd)
         else:
             interface = Vm._build_interface_xml(cmd.nic, None, vhostSrcPath, action, brMode)
@@ -4163,7 +4163,7 @@ class Vm(object):
             for index, nic in enumerate(cmd.nics):
                 if nic.type == "vDPA" and vDPAPaths.has_key(nic.nicInternalName):
                     interface = Vm._build_interface_xml(nic, devices, vDPAPaths[nic.nicInternalName], 'Attach', brMode, index)
-                elif nic.type == 'ethernet':
+                elif nic.type == 'TFVNIC':
                     interface = Vm._build_interface_xml(nic, devices, vhostSrcPath, 'Attach', brMode, index, cmd)
                 else:
                     interface = Vm._build_interface_xml(nic, devices, vhostSrcPath, 'Attach', brMode, index)
@@ -4607,7 +4607,7 @@ class Vm(object):
         elif vhostSrcPath is not None:
             iftype = 'vhostuser'
             device_attr = {'type': iftype}
-        elif nic.type == 'ethernet':
+        elif nic.type == 'TFVNIC':
             iftype = 'ethernet'
             device_attr = {'type': iftype}
         else:
@@ -4643,7 +4643,7 @@ class Vm(object):
             else:
                 e(interface, 'source', None, attrib={'type': 'unix', 'path': '/var/run/phynic{}'.format(index+1), 'mode':'server'})
                 e(interface, 'driver', None, attrib={'queues': '8'})
-        elif nic.type == 'ethernet':
+        elif nic.type == 'TFVNIC':
             e(interface, 'target', None, attrib={'dev': nic.nicInternalName})
         else:
             e(interface, 'source', None, attrib={'bridge': nic.bridgeName})
@@ -5046,7 +5046,7 @@ class VmPlugin(kvmagent.KvmAgent):
         rsp = kvmagent.AgentResponse()
 
         # Deal with notify vrouter when vm expunge
-        if cmd.nic.type == 'ethernet':
+        if cmd.nic.type == 'TFVNIC':
             vrouter_cmd = [
                 'vrouter-port-control',
                 '--oper=delete',
