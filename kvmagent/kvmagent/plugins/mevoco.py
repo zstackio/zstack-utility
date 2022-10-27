@@ -771,8 +771,10 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
         if cmd.rebuild:
-            # kill all lighttpd processes which will be restarted later
-            shell.call('pkill -9 lighttpd || true')
+            # kill all lighttpd processes using userdata folder
+            # which will be restarted later
+            pattern = self.USERDATA_ROOT.replace("/", "\/")
+            shell.call("pkill -9 -f 'lighttpd.*%s' || true" % pattern)
 
         namespaces = {}
         for u in cmd.userdata:
