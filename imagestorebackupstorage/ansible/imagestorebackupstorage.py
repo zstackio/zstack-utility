@@ -104,7 +104,7 @@ else :
 zstacklib = ZstackLib(zstacklib_args)
 
 #init ld.so.conf for qemu 6.2.0
-command = 'grep -c  "^/opt/zstack/chroot/usr/lib64$" /etc/ld.so.conf || echo /opt/zstack/chroot/usr/lib64 >> /etc/ld.so.conf; ldconfig'
+command = 'if [ -d /opt/zstack/chroot/usr/lib64 ]; then grep -c  "^/opt/zstack/chroot/usr/lib64$" /etc/ld.so.conf || echo /opt/zstack/chroot/usr/lib64 >> /etc/ld.so.conf; ldconfig; fi'
 run_remote_command(command, host_post_info)
 
 if distro in RPM_BASED_OS:

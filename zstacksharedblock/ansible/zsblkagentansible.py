@@ -125,6 +125,10 @@ replace_content("/usr/lib/systemd/system/zstack-sharedblock-agent.service", '''r
 command = "systemctl daemon-reload && systemctl enable zstack-sharedblock-agent.service && systemctl restart zstack-sharedblock-agent.service"
 run_remote_command(add_true_in_command(command), host_post_info)
 
+#init ld.so.conf
+command = 'if [ -d /opt/zstack/chroot/usr/lib64 ]; then grep -c  "^/opt/zstack/chroot/usr/lib64$" /etc/ld.so.conf || echo /opt/zstack/chroot/usr/lib64 >> /etc/ld.so.conf; ldconfig; fi'
+run_remote_command(command, host_post_info)
+
 host_post_info.start_time = start_time
 handle_ansible_info("SUCC: Deploy zstack sharedblock successful", host_post_info, "INFO")
 sys.exit(0)
