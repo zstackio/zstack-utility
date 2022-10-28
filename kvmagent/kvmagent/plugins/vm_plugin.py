@@ -6097,8 +6097,8 @@ class VmPlugin(kvmagent.KvmAgent):
     @staticmethod
     def get_source_file_by_disk(disk):
         # disk->type: zstacklib.utils.xmlobject.XmlObject, attr name is endwith '_'
-        attr_name = Vm.disk_source_attrname.get(disk.type_) + "_"
-        return getattr(disk.source, attr_name)
+        attr_name = Vm.disk_source_attrname.get(disk.type_)
+        return getattr(disk.source, attr_name + "_") if attr_name else None
 
     @kvmagent.replyerror
     def attach_data_volume(self, req):
