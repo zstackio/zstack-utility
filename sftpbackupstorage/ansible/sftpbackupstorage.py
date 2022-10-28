@@ -172,6 +172,10 @@ if chroot_env == 'false':
         command = "update-rc.d zstack-sftpbackupstorage start 97 3 4 5 . stop 3 0 1 2 6 . && service zstack-sftpbackupstorage stop && service zstack-sftpbackupstorage start"
     run_remote_command(command, host_post_info)
 
+#init ld.so.conf for qemu 6.2.0
+command = 'if [ -d /opt/zstack/chroot/usr/lib64 ]; then grep -c  "^/opt/zstack/chroot/usr/lib64$" /etc/ld.so.conf || echo /opt/zstack/chroot/usr/lib64 >> /etc/ld.so.conf; ldconfig; fi'
+run_remote_command(command, host_post_info)
+
 host_post_info.start_time = start_time
 handle_ansible_info("SUCC: Deploysftpbackupstorage agent successful", host_post_info, "INFO")
 sys.exit(0)

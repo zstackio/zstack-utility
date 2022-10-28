@@ -111,6 +111,10 @@ pip_install_arg.extra_args = extra_args
 pip_install_arg.name = "python-cephlibs"
 pip_install_package(pip_install_arg, host_post_info)
 
+#init ld.so.conf for qemu 6.2.0
+command = 'if [ -d /opt/zstack/chroot/usr/lib64 ]; then grep -c  "^/opt/zstack/chroot/usr/lib64$" /etc/ld.so.conf || echo /opt/zstack/chroot/usr/lib64 >> /etc/ld.so.conf; ldconfig; fi'
+run_remote_command(command, host_post_info)
+
 if distro in RPM_BASED_OS:
     if zstack_repo != 'false':
         command = """pkg_list=`rpm -q wget {} nmap| grep "not installed" | awk '{{ print $2 }}'` && for pkg"""\
