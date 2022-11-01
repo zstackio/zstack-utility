@@ -1034,7 +1034,7 @@ def get_console_without_libvirt(vmUuid):
         logger.warn("get_port_without_libvirt: no port found")
         return None, None, None, None
     # There is a port in vnc, there may be one or two porters in the spice, and two or three ports may exist in vncAndSpice.
-    output = output.sort()
+    output.sort()
     if len(output) == 1 and int(idx) == 0:
         protocol = "spice"
         return protocol, None, int(output[0]), None
