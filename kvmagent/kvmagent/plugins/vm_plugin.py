@@ -1541,8 +1541,11 @@ class VmVolumesRecoveryTask(plugin.TaskDaemon):
 
     def add_backing_chain_to_disk(self, disk_ele):
         fpath = self.get_source_file(disk_ele)
+        # no need to add backing chain on rbd img
+        if not fpath:
+            return disk_ele
         # zsblk-agent might auto-deactivate idle LV
-        if fpath and fpath.startswith('/dev/') and not os.path.exists(fpath):
+        if fpath.startswith('/dev/') and not os.path.exists(fpath):
             lvm.active_lv(fpath, False)
 
         backing_chain = Vm._get_backfile_chain(fpath)
