@@ -7,6 +7,7 @@ import zstacklib.utils.jsonobject as jsonobject
 from zstacklib.utils import shell
 from zstacklib.utils import log
 from zstacklib.utils import linux
+from zstacklib.utils.bash import bash_r
 
 logger = log.get_logger(__name__)
 
@@ -216,6 +217,20 @@ def get_pools_capacity():
             pool_capacity.used_capacity = int(pool_capacity.used_capacity * pool_capacity.disk_utilization)
 
     return result
+
+
+def get_mon_addr(monmap, route_protocol):
+    for mon in jsonobject.loads(monmap).mons:
+        ADDR = mon.addr.split(':')[0]
+        cmd = ''
+        if route_protocol is None:
+            cmd = 'ip route | grep -w {{ADDR}} > /dev/null'
+        elif route_protocol == "kernel":
+            cmd = 'ip route | grep -w "proto kernel" | grep -w {{ADDR}} > /dev/null'
+        if cmd == '':
+            return
+        if bash_r(cmd) == 0:
+            return ADDR
 
 
 class CephPoolCapacity:

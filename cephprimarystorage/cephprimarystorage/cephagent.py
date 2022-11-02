@@ -16,6 +16,7 @@ import zstacklib.utils.daemon as daemon
 import zstacklib.utils.jsonobject as jsonobject
 import zstacklib.utils.lock as lock
 import zstacklib.utils.sizeunit as sizeunit
+from zstacklib.utils.ceph import get_mon_addr
 from zstacklib.utils.report import *
 from zstacklib.utils.bash import *
 from zstacklib.utils.rollback import rollback, rollbackable
@@ -502,11 +503,9 @@ class CephAgent(plugin.TaskManager):
         rsp = GetFactsRsp()
 
         monmap = bash_o('ceph mon dump -f json')
-        for mon in jsonobject.loads(monmap).mons:
-            ADDR = mon.addr.split(':')[0]
-            if bash_r('ip route | grep -w {{ADDR}} > /dev/null') == 0:
-                rsp.monAddr = ADDR
-                break
+        rsp.monAddr = get_mon_addr(monmap, "kernel")
+        if rsp.monAddr is None:
+            rsp.monAddr = get_mon_addr(monmap)
 
         if not rsp.monAddr:
             raise Exception('cannot find mon address of the mon server[%s]' % cmd.monUuid)
