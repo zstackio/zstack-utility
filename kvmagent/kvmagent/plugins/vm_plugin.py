@@ -5073,6 +5073,8 @@ class VmPlugin(kvmagent.KvmAgent):
         # Deal with update nic request form migration
         if cmd.migration:
             for nic in cmd.nics:
+                if nic.type != 'TFVNIC':
+                    continue
                 vrouter_cmd = [
                     'vrouter-port-control',
                     '--oper=add',
