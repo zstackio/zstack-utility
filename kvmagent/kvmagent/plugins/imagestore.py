@@ -174,7 +174,7 @@ class ImageStoreClient(object):
         with linux.ShowLibvirtErrorOnException(vm):
             p_option = ""
             if point_in_time is not None:
-                p_option = "-pointInTime=%s" % str(point_in_time).lower()
+                p_option = "-point-in-time=%s" % str(point_in_time).lower()
 
             cmdstr = '%s -progress %s backup -bitmap %s -dest %s -domain %s -drive "%s" -mode %s %s -speed %s' % \
                      (self.ZSTORE_CLI_PATH, PFILE, bitmap, dest, vm, node, mode, p_option, speed)
@@ -203,7 +203,7 @@ class ImageStoreClient(object):
         with linux.ShowLibvirtErrorOnException(vm):
             p_option = ""
             if point_in_time is not None:
-                p_option = "-pointInTime=%s" % str(point_in_time).lower()
+                p_option = "-point-in-time=%s" % str(point_in_time).lower()
 
             cmdstr = '%s -progress %s batbak -domain %s -destdir %s %s -args %s' % \
                      (self.ZSTORE_CLI_PATH, PFILE, vm, dstdir, p_option, ':'.join(["%s,%s,%s,%s" % x for x in args]))
