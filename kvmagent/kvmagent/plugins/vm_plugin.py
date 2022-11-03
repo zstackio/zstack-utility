@@ -5071,7 +5071,7 @@ class VmPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
         # Deal with update nic request form migration
-        if cmd.migration:
+        if cmd.notifySugonSdn:
             for nic in cmd.nics:
                 if nic.type != 'TFVNIC':
                     continue
