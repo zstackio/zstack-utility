@@ -9284,10 +9284,7 @@ host side snapshot files chian:
         mpts = shell.call("mount -t fuse.sshfs | awk '{print $3}'").splitlines()
         for mpt in mpts:
             if mpt.startswith(tempfile.gettempdir()):
-                pids = linux.get_pids_by_process_fullname(mpt)
-                for pid in pids:
-                    linux.kill_process(pid, is_exception=False)
-
+                linux.get_pids_by_process_fullname(mpt)
                 linux.fumount(mpt, 2)
 
     def stop(self):
