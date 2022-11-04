@@ -47,7 +47,7 @@ def write_multipath_conf(path, multipath_blacklist=None):
                                     deleteFeature = True
                                     print config
 
-                        if cmp(device, device_dict) == 0:
+                        if 'device' in device_dict and cmp(sorted(device['device']), sorted(device_dict['device'])) == 0:
                             skipWrite = True
 
                 isAddDevices = False
@@ -55,13 +55,11 @@ def write_multipath_conf(path, multipath_blacklist=None):
                 if skipWrite is False:
                     item['devices'].append(device)
 
-            if 'blacklist' in item and update_blacklist:
-                if cmp(item['blacklist'], blacklist) == 0:
-                    update_blacklist = False
-                else:
-                    config.remove(item)
+            if 'blacklist' in item and update_blacklist and cmp(item['blacklist'], blacklist) == 0:
+                update_blacklist = False
 
         if update_blacklist:
+            config = filter(lambda cfg : 'blacklist' not in cfg, config)
             config.append({'blacklist' : blacklist})
 
         if isAddDevices is True:
@@ -77,12 +75,12 @@ def write_multipath_conf(path, multipath_blacklist=None):
                     fd.write("{\n")
                     for child_dict in parent_v:
                         if type(child_dict.values()[0]) == str:
-                            fd.write('    %s "%s"\n' % (child_dict.keys()[0], child_dict.values()[0].replace('"', '')))
+                            fd.write('    %s "%s"\n' % (child_dict.keys()[0].replace('"', ''), child_dict.values()[0].replace('"', '')))
                             continue
                         for child_k, child_v in child_dict.items():
                             fd.write('    %s {\n' % child_k)
                             for leaf_dict in child_v:
-                                fd.write('        %s "%s"\n' % (leaf_dict.keys()[0], leaf_dict.values()[0].replace('"', '')))
+                                fd.write('        %s "%s"\n' % (leaf_dict.keys()[0].replace('"', ''), leaf_dict.values()[0].replace('"', '')))
                             fd.write("    }\n")
 
                     fd.write("\n}\n")
