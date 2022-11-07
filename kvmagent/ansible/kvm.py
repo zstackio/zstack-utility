@@ -258,8 +258,8 @@ def install_kvm_pkg():
         x86_64_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                         usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
                         net-tools nfs-utils nmap openssh-clients OpenIPMI pciutils pv rsync sed nettle libselinux-devel \
-                        smartmontools sshpass usbutils vconfig wget audit dnsmasq tar \
-                        qemu collectd-virt storcli edk2-ovmf python2-pyudev collectd-disk"
+                        smartmontools sshpass usbutils vconfig wget audit dnsmasq tar python2-psutil\
+                        qemu-kvm collectd-virt storcli edk2-ovmf edk2.git-ovmf-x64 python2-pyudev collectd-disk"
 
         # handle zstack_repo
         if zstack_repo != 'false':
@@ -304,6 +304,15 @@ def install_kvm_pkg():
             host_post_info.post_label = "ansible.shell.install.pkg"
             host_post_info.post_label_param = dep_list
             run_remote_command(command, host_post_info)
+
+            if '%s_%s' % (host_arch, releasever) == 'x86_64_ns10':
+                # downgrade libvirt if host's libvirt version != repo's libvirt
+                # version
+                command = ("current_version=$(rpm -q --queryformat '%{{VERSION}}'  libvirt);"
+                           "repo_version=$(yum --disablerepo=* --enablerepo={0} --showduplicates info --available libvirt | grep Version | awk -F ' ' '{{print $3}}');"
+                           "if [[ ${{current_version}} != ${{repo_version}} ]]; then yum --disablerepo=* --enablerepo={0} downgrade -y libvirt; fi;").format(zstack_repo)
+                host_post_info.post_label_param = "libvirt"
+                run_remote_command(command, host_post_info)
         else:
             # name: install kvm related packages on RedHat based OS from online
             for pkg in ['zstack-release', 'openssh-clients', 'bridge-utils', 'wget', 'chrony', 'sed', 'libvirt-python', 'libvirt', 'nfs-utils', 'vconfig',
