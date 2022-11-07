@@ -115,10 +115,10 @@ class Cli(object):
     POWER_OFF_HOST = 'APIPowerOffHostMsg'
     GET_TWO_FACTOR_AUTHENTICATION_SECRET = 'APIGetTwoFactorAuthenticationSecretMsg'
     GET_TWO_FACTOR_AUTHENTICATION_STATE = 'APIGetTwoFactorAuthenticationStateMsg'
-    LOGIN_BY_CAS_MESSAGE_NAME = 'APILogInByCasMsg'
+    LOGIN_BY_THIRD_AUTH_MESSAGE_NAME = 'APILoginByThirdAuthMsg'
     no_session_message = [LOGIN_MESSAGE_NAME, LOGIN_BY_USER_NAME, LOGIN_BY_LDAP_MESSAGE_NAME,
                           GET_TWO_FACTOR_AUTHENTICATION_SECRET, GET_TWO_FACTOR_AUTHENTICATION_STATE, LOGIN_BY_USER_IAM2,
-                          GET_LICENSE_INFO, LOGIN_BY_LDAP_IAM2_NAME, LOGIN_BY_CAS_MESSAGE_NAME]
+                          GET_LICENSE_INFO, LOGIN_BY_LDAP_IAM2_NAME, LOGIN_BY_THIRD_AUTH_MESSAGE_NAME]
 
     @staticmethod
     def register_message_creator(apiname, func):
@@ -594,7 +594,7 @@ Parse command parameters error:
             end_time = time.time()
 
             if apiname in [self.LOGIN_MESSAGE_NAME, self.LOGIN_BY_USER_NAME, self.LOGIN_BY_LDAP_MESSAGE_NAME,
-                           self.LOGIN_BY_LDAP_IAM2_NAME, self.LOGIN_BY_IAM2_PROJECT_NAME, self.LOGIN_BY_USER_IAM2, self.LOGIN_BY_CAS_MESSAGE_NAME]:
+                           self.LOGIN_BY_LDAP_IAM2_NAME, self.LOGIN_BY_IAM2_PROJECT_NAME, self.LOGIN_BY_USER_IAM2, self.LOGIN_BY_THIRD_AUTH_MESSAGE_NAME]:
                 self.session_uuid = event.inventory.uuid
                 self.account_name = None
                 self.user_name = None
@@ -630,7 +630,7 @@ Parse command parameters error:
                         else:
                             self.account_name = 'admin'
                         session_file_writer.write("\n" + self.account_name)
-                    elif apiname == self.LOGIN_BY_CAS_MESSAGE_NAME:
+                    elif apiname == self.LOGIN_BY_THIRD_AUTH_MESSAGE_NAME:
                         if event.inventory.accountUuid == '2dce5dc485554d21a3796500c1db007a':
                             self.account_name = 'no project selected'
                         else:
