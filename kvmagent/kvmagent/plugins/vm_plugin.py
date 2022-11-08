@@ -1505,6 +1505,9 @@ def cleanup_stale_vnc_iptable_chains():
 def shared_block_to_file(sbkpath):
     return sbkpath.replace("sharedblock:/", "/dev")
 
+def block_to_path(blockpath):
+    return blockpath.replace("block://", "/dev/disk/by-id/wwn-0x")
+
 class VmOperationJudger(object):
     def __init__(self, op):
         self.op = op
@@ -2419,6 +2422,8 @@ class Vm(object):
     def _get_target_disk_by_path(self, installPath, is_exception=True):
         if installPath.startswith('sharedblock'):
             installPath = shared_block_to_file(installPath)
+        elif installPath.startswith('block'):
+            installPath = block_to_path(installPath)
 
         for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
             if not xmlobject.has_element(disk, 'source'):
@@ -2457,6 +2462,8 @@ class Vm(object):
     def _get_target_disk(self, volume, is_exception=True):
         if volume.installPath.startswith('sharedblock'):
             volume.installPath = shared_block_to_file(volume.installPath)
+        elif volume.installPath.startswith('block'):
+            volume.installPath = block_to_path(volume.installPath)
 
         for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
             if not xmlobject.has_element(disk, 'source') and not volume.deviceType == 'quorum':
@@ -2864,6 +2871,8 @@ class Vm(object):
         else:
             if iso.path.startswith('sharedblock'):
                 iso.path = shared_block_to_file(iso.path)
+            elif iso.path.startswith('block'):
+                iso.path = block_to_path(iso.path)
 
             cdrom = etree.Element('disk', {'type': 'file', 'device': 'cdrom'})
             e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})

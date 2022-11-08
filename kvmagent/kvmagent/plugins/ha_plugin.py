@@ -442,6 +442,8 @@ class HaPlugin(kvmagent.KvmAgent):
     CANCEL_SHAREDBLOCK_SELF_FENCER = "/ha/sharedblock/cancelselffencer"
     ALIYUN_NAS_SELF_FENCER = "/ha/aliyun/nas/setupselffencer"
     CANCEL_NAS_SELF_FENCER = "/ha/aliyun/nas/cancelselffencer"
+    BLOCK_SELF_FENCER = "/ha/block/setupselffencer"
+    CANCEL_BLOCK_SELF_FENCER = "/ha/block/cancelselffencer"
 
     RET_SUCCESS = "success"
     RET_FAILURE = "failure"
@@ -539,6 +541,12 @@ class HaPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(AgentRsp())
 
     @kvmagent.replyerror
+    def cancel_block_self_fencer(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        self.cancel_fencer(cmd.uuid)
+        return jsonobject.dumps(AgentRsp())
+
+    @kvmagent.replyerror
     def setup_aliyun_nas_self_fencer(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         created_time = time.time()
@@ -598,6 +606,83 @@ class HaPlugin(kvmagent.KvmAgent):
 
         heartbeat_on_aliyunnas()
         return jsonobject.dumps(AgentRsp())
+
+    @kvmagent.replyerror
+    def setup_block_self_fencer(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        created_time = time.time()
+        self.setup_fencer(cmd.uuid, created_time)
+        mount_path = cmd.mountPath
+
+        if linux.is_mounted(mount_path) is not True:
+            rsp = AgentRsp()
+            rsp.success = False
+            rsp.error = "heart path %s is not correctly mounted" % (cmd.mountPath)
+            return jsonobject.dumps(rsp)
+
+        test_file = os.path.join(mount_path,
+                                 '%s-ping-test-file-%s' % (cmd.uuid, self.config.get(kvmagent.HOST_UUID)))
+
+        @thread.AsyncThread
+        def heartbeat_on_block():
+            failure = 0
+
+            while self.run_fencer(cmd.uuid, created_time):
+                try:
+                    time.sleep(cmd.interval)
+                    is_mounted = linux.is_mounted(mount_path)
+
+                    logger.debug('touch test file %s' % test_file)
+                    touch = shell.ShellCmd('timeout 5 touch %s' % test_file)
+                    touch(False)
+
+                    if touch.return_code != 0 or is_mounted is not True:
+                        if touch.return_code != 0:
+                            logger.debug('touch file failed, cause: %s' % touch.stderr)
+                        if is_mounted is not True:
+                            logger.debug('heartbeat path %s is not correctly mounted' % mount_path)
+                        failure += 1
+                    else:
+                        failure = 0
+                        logger.debug('remove test file %s' % test_file)
+                        linux.rm_file_force(test_file)
+                        continue
+
+                    if failure < cmd.maxAttempts:
+                        continue
+
+                    try:
+                        logger.warn("block storage %s fencer fired!" % cmd.uuid)
+
+                        if cmd.strategy == 'Permissive':
+                            continue
+
+                        vm_uuids = kill_vm(cmd.maxAttempts).keys()
+
+                        if vm_uuids:
+                            self.report_self_fencer_triggered([cmd.uuid], ','.join(vm_uuids))
+                            clean_network_config(vm_uuids)
+                            bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -r >/dev/null")
+
+                        # reset the failure count
+                        failure = 0
+                    except Exception as e:
+                        logger.warn("kill vm failed, %s" % e.message)
+                        content = traceback.format_exc()
+                        logger.warn("traceback: %s" % content)
+                    finally:
+                        self.report_storage_status([cmd.uuid], 'Disconnected')
+
+                except Exception as e:
+                    logger.debug('self-fencer on block primary storage %s stopped abnormally' % cmd.uuid)
+                    content = traceback.format_exc()
+                    logger.warn(content)
+
+            logger.debug('stop self-fencer on block primary storage %s' % cmd.uuid)
+
+        heartbeat_on_block()
+        return jsonobject.dumps(AgentRsp())
+
 
     @kvmagent.replyerror
     def cancel_sharedblock_self_fencer(self, req):
@@ -1154,6 +1239,8 @@ class HaPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CANCEL_SHAREDBLOCK_SELF_FENCER, self.cancel_sharedblock_self_fencer)
         http_server.register_async_uri(self.ALIYUN_NAS_SELF_FENCER, self.setup_aliyun_nas_self_fencer)
         http_server.register_async_uri(self.CANCEL_NAS_SELF_FENCER, self.cancel_aliyun_nas_self_fencer)
+        http_server.register_async_uri(self.BLOCK_SELF_FENCER, self.setup_block_self_fencer)
+        http_server.register_async_uri(self.CANCEL_BLOCK_SELF_FENCER, self.cancel_block_self_fencer)
 
     def stop(self):
         pass
