@@ -138,7 +138,7 @@ grep -B 1 'Full thread dump' $ZSTACK_HOME/../../logs/catalina.out
 [source,bash]
 ----
 keyword=`grep 'Full thread dump' -B 1 $ZSTACK_HOME/../../logs/catalina.out | tail -n 2 | head -n 1`
-sed -n "/$keyword/,/class space/p" $ZSTACK_HOME/../../logs/catalina.out | grep zstack | sort | uniq -c | sort
+sed -n "/$keyword/,/class space/p" $ZSTACK_HOME/../../logs/catalina.out | grep zstack | sort | uniq -c | sort; echo $keyword
 ----
 
 下面的 <<normal_catalina>> 是正常的结果，可以看到没有明显的“共性”的线程。
