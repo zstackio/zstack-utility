@@ -1,7 +1,4 @@
 
-import json
-from future.backports import ChainMap
-from zstacklib.utils import bash
 from zstacklib.utils import log
 
 
@@ -28,7 +25,7 @@ def parse_multipath_conf(conf_lines):
 
 
 def write_multipath_conf(path, multipath_blacklist=None):
-    device = {'device': [{'features': '0'}, {'no_path_retry': 'fail'}, {'product': '*'}, {'vendor': '*'}]}
+    device = {'device': [{'features': '"0"'}, {'no_path_retry': '"fail"'}, {'product': '"*"'}, {'vendor': '"*"'}]}
     devices = {
         'devices': [{'device': [{'vendor': '*'}, {'product': '*'}, {'features': '0'}, {'no_path_retry': 'fail'}]}]}
     feature = 'queue_if_no_path'
@@ -50,7 +47,7 @@ def write_multipath_conf(path, multipath_blacklist=None):
                                     deleteFeature = True
                                     print config
 
-                        if cmp(device, device_dict) == 0:
+                        if 'device' in device_dict and cmp(sorted(device['device']), sorted(device_dict['device'])) == 0:
                             skipWrite = True
 
                 isAddDevices = False
@@ -58,13 +55,11 @@ def write_multipath_conf(path, multipath_blacklist=None):
                 if skipWrite is False:
                     item['devices'].append(device)
 
-            if 'blacklist' in item and update_blacklist:
-                if cmp(item['blacklist'], blacklist) == 0:
-                    update_blacklist = False
-                else:
-                    config.remove(item)
+            if 'blacklist' in item and update_blacklist and cmp(item['blacklist'], blacklist) == 0:
+                update_blacklist = False
 
         if update_blacklist:
+            config = filter(lambda cfg : 'blacklist' not in cfg, config)
             config.append({'blacklist' : blacklist})
 
         if isAddDevices is True:
@@ -80,20 +75,15 @@ def write_multipath_conf(path, multipath_blacklist=None):
                     fd.write("{\n")
                     for child_dict in parent_v:
                         if type(child_dict.values()[0]) == str:
-                            fd.write(
-                                json.dumps(dict(ChainMap(*[child_dict])), sort_keys=True, indent=4, separators=(' ', ' ')).replace("{\n", "").replace("}", ""))
+                            fd.write('    %s "%s"\n' % (child_dict.keys()[0].replace('"', ''), child_dict.values()[0].replace('"', '')))
                             continue
                         for child_k, child_v in child_dict.items():
-                            fd.write(child_k + " ")
-                            fd.write(
-                                json.dumps(dict(ChainMap(*child_v)), sort_keys=True, indent=4,
-                                           separators=(' ', ' ')))
-                            fd.write("\n")
+                            fd.write('    %s {\n' % child_k)
+                            for leaf_dict in child_v:
+                                fd.write('        %s "%s"\n' % (leaf_dict.keys()[0].replace('"', ''), leaf_dict.values()[0].replace('"', '')))
+                            fd.write("    }\n")
 
                     fd.write("\n}\n")
-
-    if skipWrite is False or deleteFeature is True or update_blacklist:
-        bash.bash_roe("sed -i -e 's/\"//g' -e 's/\\\//g' %s" % path)
 
     return not skipWrite or deleteFeature or update_blacklist
 
