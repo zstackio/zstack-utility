@@ -4097,7 +4097,7 @@ if [ x"$UPGRADE" = x'y' ]; then
     # top banner is shown by product_title_file created when iso building ,also given by zstack VERSION file
     CUBE_ENV_COUNT=`grep "hyper_converged" /etc/rc.local |wc -l`
     [[ "$CUBE_ENV_COUNT" -gt 0 ]] && CUBE_ENV='y' || CUBE_ENV='n'
-    [ x"$CUBE_ENV" = x'y' -a -f /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/release_version ] && VERSION=`cat /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/release_version | cut -d '-' -f 2`
+    [ x"$CUBE_ENV" = x'y' -a -f /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/release_version ] && VERSION=`cat /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/release_version | rev | cut -d '-' -f3 | rev`
 
 
     if [ ! -z $ONLY_UPGRADE_CTL ]; then
