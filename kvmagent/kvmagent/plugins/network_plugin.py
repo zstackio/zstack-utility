@@ -244,15 +244,14 @@ class NetworkPlugin(kvmagent.KvmAgent):
     def check_physical_network_interface(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CheckPhysicalNetworkInterfaceResponse()
-        ovsctl = ovs.OvsCtl()
         for i in cmd.interfaceNames:
-            if not linux.is_network_device_existing(i) and ovsctl.getDPDKBond(i) is None:
+            if not linux.is_network_device_existing(i) and ovs.OvsDpdkCtl.getBondFromFile(i) is None:
                 rsp.failedInterfaceNames = [i]
                 rsp.success = False
                 return jsonobject.dumps(rsp)
 
         for i in cmd.interfaceNames:
-            if ovsctl.getDPDKBond(i) is None:
+            if ovs.OvsDpdkCtl.getBondFromFile(i) is None:
                 self._ifup_device_if_down(i)
 
         logger.debug(http.path_msg(CHECK_PHYSICAL_NETWORK_INTERFACE_PATH, 'checked physical interfaces: %s' % cmd.interfaceNames))
