@@ -167,9 +167,12 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
     def delete_heartbeat(self, req):
         logger.debug("start to delete heartbeat")
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        heartbeat_path = cmd.heartbeatPath
         rsp = DeleteHeartbeatRsp()
-        linux.umount(heartbeat_path)
+        try:
+            heartbeat_path = cmd.heartbeatPath
+            linux.umount(heartbeat_path)
+        except Exception as e:
+            pass
         rsp.success = True
         return jsonobject.dumps(rsp)
 
@@ -189,11 +192,17 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         self.iscsi_login(cmd)
 
         heartbeat_lun_wwn = translate_absolute_path_from_wwn(cmd.wwn)
+        bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -u >/dev/null")
+        lun_has_been_mapped = self.make_sure_lun_has_been_mapped(cmd)
+        if lun_has_been_mapped is not True:
+            err_msg = "fail to find heartbeat lun, please make sure host is connected with ps";
+            logger.debug(err_msg)
+            rsp.success = False
+            rsp.error = err_msg
+            return jsonobject.dumps(rsp)
+
         try:
-            self.make_sure_lun_has_been_mapped(cmd)
-
             logger.debug("successfully login iscsi server let's start to init heart beat fs")
-
             # check heartbeat fs
             r, o, e = bash.bash_roe('file -Ls %s | grep "XFS"' % heartbeat_lun_wwn)
             if r != 0:
@@ -217,7 +226,10 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         if touch.return_code != 0:
             # Just sleep 1s to re-mount heartbeat path
             time.sleep(1)
-            linux.mount(heartbeat_lun_wwn, heartbeat_path, "sync,remount")
+            if linux.is_mounted(heartbeat_path) is not True:
+                linux.mount(heartbeat_lun_wwn, heartbeat_path, "sync")
+            else:
+                linux.mount(heartbeat_lun_wwn, heartbeat_path, "sync,remount")
             retouch = shell.ShellCmd('timeout 5 touch %s/ready' % heartbeat_path)
             retouch(False)
 
