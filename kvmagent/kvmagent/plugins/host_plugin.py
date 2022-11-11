@@ -404,7 +404,7 @@ class HostNetworkInterfaceInventory(object):
             self.interfaceType = "bridgeSlave"
 
         self.pciDeviceAddress = os.readlink("/sys/class/net/%s/device" % self.interfaceName).strip().split('/')[-1]
-        self.offloadStatus = ovs.OvsCtl().ifOffloadStatus(self.interfaceName)
+
         self.driverType = get_nic_driver_type(self.interfaceName)
         self.offloadStatus = ovs.getOffloadStatus(self.interfaceName)
 
