@@ -1338,7 +1338,7 @@ class IsoCeph(object):
 
     def to_xmlobject(self, target_dev, target_bus_type, bus=None, unit=None, bootOrder=None):
         disk = etree.Element('disk', {'type': 'network', 'device': 'cdrom'})
-        source = e(disk, 'source', None, {'name': self.iso.path.lstrip('ceph:').lstrip('//'), 'protocol': 'rbd'})
+        source = e(disk, 'source', None, {'name': self.iso.path.lstrip('ceph:').lstrip('//').split("@")[0], 'protocol': 'rbd'})
         if self.iso.secretUuid:
             auth = e(disk, 'auth', attrib={'username': 'zstack'})
             e(auth, 'secret', attrib={'type': 'ceph', 'uuid': self.iso.secretUuid})
@@ -1537,16 +1537,43 @@ class VmVolumesRecoveryTask(plugin.TaskDaemon):
         return { libvirt.VIR_DOMAIN_BLOCK_COPY_BANDWIDTH: max(1<<20, self.bandwidth) }
 
     def get_source_file(self, d):
+        # d->type: etree.Element
         try:
-            return d.find('source').attrib['file']
+            attr_name = Vm.disk_source_attrname.get(d.attrib['type'])
+            return d.find('source').attrib[attr_name]
         except (AttributeError, KeyError):
             return None
 
-    def do_copy_and_wait(self, target_dev, diskxml, disk_ele, params, flags):
-        # zsblk-agent might auto-deactivate idle LV
+    def add_backing_chain_to_disk(self, disk_ele):
         fpath = self.get_source_file(disk_ele)
-        if fpath and fpath.startswith('/dev/') and not os.path.exists(fpath):
+        # no need to add backing chain on rbd img
+        if not fpath:
+            return disk_ele
+        # zsblk-agent might auto-deactivate idle LV
+        if fpath.startswith('/dev/') and not os.path.exists(fpath):
             lvm.active_lv(fpath, False)
+
+        backing_chain = Vm._get_backfile_chain(fpath)
+        disk_type = disk_ele.attrib['type']
+
+        def add_backing(ele):
+            if not backing_chain:
+                return
+
+            backing_path = backing_chain.pop(0)
+            backing_store = e(ele, 'backingStore', attrib={'type': disk_type})
+            e(backing_store, 'source', None, {Vm.disk_source_attrname.get(disk_type): backing_path})
+            e(backing_store, 'format', None, {'type':linux.get_img_fmt(backing_path)})
+            add_backing(backing_store)
+
+        add_backing(disk_ele)
+        return disk_ele
+
+    def do_copy_and_wait(self, target_dev, disk_ele, params, flags):
+        disk_ele = self.add_backing_chain_to_disk(disk_ele)
+        diskxml = etree.tostring(disk_ele)
+
+        logger.info("[%d/%d] will recover %s with: %s" % (self.idx+1, self.total, target_dev, diskxml))
         self.domain.blockCopy(target_dev, diskxml, params, flags)
         msg = self.wait_and_pivot(target_dev)
         if msg is not None:
@@ -1556,9 +1583,7 @@ class VmVolumesRecoveryTask(plugin.TaskDaemon):
 
     def do_recover_with_rvols(self, params, flags):
         for target_dev, disk_ele in self.rvols.items():
-            diskxml = etree.tostring(disk_ele)
-            logger.info("[%d/%d] will recover %s with: %s" % (self.idx+1, self.total, target_dev, diskxml))
-            self.do_copy_and_wait(target_dev, diskxml, disk_ele, params, flags)
+            self.do_copy_and_wait(target_dev, disk_ele, params, flags)
             self.idx += 1
 
     def retrieve_diskele(self, nbddisk):
@@ -1595,7 +1620,7 @@ class VmVolumesRecoveryTask(plugin.TaskDaemon):
                 disk_ele = self.retrieve_diskele(disk)
                 diskxml = etree.tostring(disk_ele)
                 logger.info("[%d/%d] pickup recover %s with: %s" % (self.idx+1, self.total, target_dev, diskxml))
-                self.do_copy_and_wait(target_dev, diskxml, disk_ele, params, flags)
+                self.do_copy_and_wait(target_dev, disk_ele, params, flags)
             finally:
                 self.idx += 1
                 self.update_progress(0, 0)
@@ -1884,6 +1909,10 @@ class Vm(object):
     }
     DEVICE_LETTERS = device_letter_config[HOST_ARCH]
     ISO_DEVICE_LETTERS = 'cde'
+    disk_source_attrname = {
+        "file": "file",
+        "block": "dev"
+    }
 
     timeout_detached_vol = set()
 
@@ -2441,7 +2470,7 @@ class Vm(object):
             def blk():
                 disk = etree.Element('disk', {'type': 'block', 'device': 'disk', 'snapshot': 'external'})
                 e(disk, 'driver', None,
-                  {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'io': 'native'})
+                  {'name': 'qemu', 'type': linux.get_img_fmt(volume.installPath), 'cache': 'none', 'io': 'native'})
                 e(disk, 'source', None, {'dev': volume.installPath})
 
                 if volume.useVirtioSCSI:
@@ -2468,6 +2497,8 @@ class Vm(object):
             return blk()
 
         dev_letter = self._get_device_letter(volume, addons)
+        volume = file_volume_check(volume)
+
         if volume.deviceType == 'iscsi':
             disk_element = iscsibased_volume()
         elif volume.deviceType == 'file':
@@ -2631,15 +2662,17 @@ class Vm(object):
     def _clean_timeout_record(self, volume):
         Vm.timeout_detached_vol.remove(volume.installPath + "-" + self.uuid)
 
-    def _get_back_file(self, volume):
+    @staticmethod
+    def _get_back_file(volume):
         back = linux.qcow2_get_backing_file(volume)
         return None if not back else back
 
-    def _get_backfile_chain(self, current):
+    @staticmethod
+    def _get_backfile_chain(current):
         back_files = []
 
         def get_back_files(volume):
-            back_file = self._get_back_file(volume)
+            back_file = Vm._get_back_file(volume)
             if not back_file:
                 return
 
@@ -2735,6 +2768,7 @@ class Vm(object):
     def _get_target_disk(self, volume, is_exception=True):
         if volume.installPath.startswith('sharedblock'):
             volume.installPath = shared_block_to_file(volume.installPath)
+        volume = file_volume_check(volume)
 
         for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
             if not xmlobject.has_element(disk, 'source') and not volume.deviceType == 'quorum':
@@ -2850,14 +2884,15 @@ class Vm(object):
                 os.makedirs(snapshot_dir)
 
             disk_names.append(disk_name)
-            d = e(disks, 'disk', None, attrib={'name': disk_name, 'snapshot': 'external', 'type': 'file'})
-            e(d, 'source', None, attrib={'file': vs_struct.installPath})
+            source_file = VmPlugin.get_source_file_by_disk(target_disk)
+            d = e(disks, 'disk', None, attrib={'name': disk_name, 'snapshot': 'external', 'type': target_disk.type_})
+            e(d, 'source', None, attrib={'file' if target_disk.type_ == 'file' else 'dev': vs_struct.installPath})
             e(d, 'driver', None, attrib={'type': 'qcow2'})
             return_structs.append(VolumeSnapshotResultStruct(
                 vs_struct.volumeUuid,
-                target_disk.source.file_,
+                source_file,
                 vs_struct.installPath,
-                get_size(target_disk.source.file_),
+                get_size(source_file),
                 vs_struct.memory))
 
         self.refresh()
@@ -2925,7 +2960,7 @@ class Vm(object):
         if not os.path.exists(snapshot_dir):
             os.makedirs(snapshot_dir)
 
-        previous_install_path = target_disk.source.file_
+        previous_install_path = VmPlugin.get_source_file_by_disk(target_disk)
         back_file_len = len(self._get_backfile_chain(previous_install_path))
         # for RHEL, base image's back_file_len == 1; for ubuntu back_file_len == 0
         first_snapshot = full_snapshot and (back_file_len == 1 or back_file_len == 0)
@@ -2933,8 +2968,8 @@ class Vm(object):
         def take_delta_snapshot():
             snapshot = etree.Element('domainsnapshot')
             disks = e(snapshot, 'disks')
-            d = e(disks, 'disk', None, attrib={'name': disk_name, 'snapshot': 'external', 'type': 'file'})
-            e(d, 'source', None, attrib={'file': install_path})
+            d = e(disks, 'disk', None, attrib={'name': disk_name, 'snapshot': 'external', 'type': target_disk.type_})
+            e(d, 'source', None, attrib={'file' if target_disk.type_ == 'file' else 'dev': install_path})
             e(d, 'driver', None, attrib={'type': 'qcow2'})
 
             # QEMU 2.3 default create snapshots on all devices
@@ -2980,7 +3015,7 @@ class Vm(object):
             return take_delta_snapshot()
 
     def _do_block_stream_disk(self, task_spec, target_disk, disk_name):
-        install_path = target_disk.source.file_
+        install_path = VmPlugin.get_source_file_by_disk(target_disk)
         logger.debug('start block stream for disk %s' % disk_name)
         self.domain.blockRebase(disk_name, None, 0, 0)
 
@@ -4453,7 +4488,7 @@ class Vm(object):
             def block_volume(_dev_letter, _v):
                 disk = etree.Element('disk', {'type': 'block', 'device': 'disk', 'snapshot': 'external'})
                 e(disk, 'driver', None,
-                  {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'io': 'native'})
+                  {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': 'none', 'io': 'native'})
                 e(disk, 'source', None, {'dev': _v.installPath})
 
                 if _v.useVirtioSCSI:
@@ -4521,6 +4556,7 @@ class Vm(object):
                     e(_disk, 'address', None, {'type': 'drive', 'bus': volume_ide_config.bus, 'unit': volume_ide_config.unit})
 
             def make_volume(dev_letter, v, r, dataSourceOnly=False):
+                v = file_volume_check(v)
                 if r:
                     vol = nbd_volume(dev_letter, v, r)
                 elif v.deviceType == 'quorum':
@@ -5150,6 +5186,16 @@ def qmp_subcmd(s_cmd):
             j_cmd.get("arguments").update(props)
             s_cmd = json.dumps(j_cmd)
     return s_cmd
+
+def file_volume_check(volume):
+    # `file` support has been removed with block/char devices since qemu-6.0.0
+    # https://github.com/qemu/qemu/commit/8d17adf34f501ded65a106572740760f0a75577c
+    if not volume.deviceType == "file" or not volume.installPath.startswith("/dev/"):
+        return volume
+
+    if LooseVersion(QEMU_VERSION) >= LooseVersion("6.0.0"):
+        volume.deviceType = 'block'
+    return volume
 
 @in_bash
 def execute_qmp_command(domain_id, command):
@@ -6051,6 +6097,12 @@ class VmPlugin(kvmagent.KvmAgent):
 
         return virtualDeviceInfo
 
+    @staticmethod
+    def get_source_file_by_disk(disk):
+        # disk->type: zstacklib.utils.xmlobject.XmlObject, attr name is endwith '_'
+        attr_name = Vm.disk_source_attrname.get(disk.type_)
+        return getattr(disk.source, attr_name + "_") if attr_name else None
+
     @kvmagent.replyerror
     def attach_data_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -6256,10 +6308,11 @@ class VmPlugin(kvmagent.KvmAgent):
         def block_volume(_v):
             disk = etree.Element('disk', {'type': 'block', 'device': 'disk', 'snapshot': 'external'})
             e(disk, 'driver', None,
-              {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'io': 'native'})
+              {'name': 'qemu', 'type': 'qcow2', 'cache': 'none', 'io': 'native'})
             e(disk, 'source', None, {'dev': _v.installPath})
             return disk
 
+        volume = file_volume_check(volume)
         if volume.deviceType == 'file':
             ele = filebased_volume(volume)
         elif volume.deviceType == 'ceph':
@@ -6661,11 +6714,11 @@ host side snapshot files chian:
             touchQmpSocketWhenExists(cmd.vmUuid)
         return jsonobject.dumps(rsp)
 
-    def push_backing_files(self, isc, hostname, drivertype, source):
+    def push_backing_files(self, isc, hostname, drivertype, source_file):
         if drivertype != 'qcow2':
             return None
 
-        bf = linux.qcow2_get_backing_file(source.file_)
+        bf = linux.qcow2_get_backing_file(source_file)
         if bf:
             imf = isc.upload_image(hostname, bf)
             return imf
@@ -6692,7 +6745,7 @@ host side snapshot files chian:
             target_disk = target_disks[deviceId]
             drivertype = target_disk.driver.type_
             nodename = get_block_node_name_by_disk_name(cmd.vmUuid, target_disk.alias.name_)
-            source = target_disk.source
+            source_file = self.get_source_file_by_disk(target_disk)
             bitmap = bitmaps[deviceId]
 
             def get_backup_args():
@@ -6703,7 +6756,7 @@ host side snapshot files chian:
                 if cmd.mode == 'full':
                     return bm, 'full', nodename, speed
 
-                imf = self.push_backing_files(isc, cmd.hostname, drivertype, source)
+                imf = self.push_backing_files(isc, cmd.hostname, drivertype, source_file)
                 if not imf:
                     return bm, 'full', nodename, speed
 
@@ -6740,8 +6793,8 @@ host side snapshot files chian:
             if nodebak.mode == 'top' and info.parentInstallPath is None:
                 target_disk = target_disks[deviceId]
                 drivertype = target_disk.driver.type_
-                source = target_disk.source
-                imf = self.push_backing_files(isc, cmd.hostname, drivertype, source)
+                source_file = self.get_source_file_by_disk(target_disk)
+                imf = self.push_backing_files(isc, cmd.hostname, drivertype, source_file)
                 if imf:
                     parent = isc._build_install_path(imf.name, imf.id)
                     info.parentInstallPath = parent
@@ -6751,7 +6804,7 @@ host side snapshot files chian:
         return bkinfos
 
     # returns tuple: (bitmap, parent)
-    def do_take_volume_backup(self, cmd, drivertype, nodename, source, dest):
+    def do_take_volume_backup(self, cmd, drivertype, nodename, source_file, dest):
         isc = ImageStoreClient()
         bitmap = None
         parent = None
@@ -6760,7 +6813,7 @@ host side snapshot files chian:
         speed = 0
 
         if drivertype == 'qcow2':
-            topoverlay = source.file_
+            topoverlay = source_file
 
         def get_parent_bitmap_mode():
             if cmd.bitmap:
@@ -7024,10 +7077,11 @@ host side snapshot files chian:
         try:
             storage.connect()
             target_disk, _ = vm._get_target_disk(cmd.volume)
+            source_file = self.get_source_file_by_disk(target_disk)
             bitmap, parent = self.do_take_volume_backup(cmd,
                     target_disk.driver.type_, # 'qcow2' etc.
                     get_block_node_name_by_disk_name(cmd.vmUuid, target_disk.alias.name_), # 'libvirt-2-format', '#block138' etc.
-                    target_disk.source,
+                    source_file,
                     storage.worktarget(fname))
 
             logger.info('{api: %s}  finished backup volume with parent: %s' % (cmd.threadContext["api"], cmd.parent))
