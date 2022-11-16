@@ -24,6 +24,7 @@ from zstacklib.utils.bash import *
 from zstacklib.utils.report import *
 from zstacklib.utils.plugin import completetask
 from zstacklib.utils import secret
+from zstacklib.utils.misc import IgnoreError
 
 logger = log.get_logger(__name__)
 
@@ -156,6 +157,11 @@ class GetVolumeSizeRsp(NfsResponse):
         self.size = None
         self.actualSize = None
 
+class GetBatchVolumeSizeRsp(NfsResponse):
+    def __init__(self):
+        super(GetBatchVolumeSizeRsp, self).__init__()
+        self.actualSizes = {}
+
 class GetVolumeBaseImagePathRsp(NfsResponse):
     def __init__(self):
         super(GetVolumeBaseImagePathRsp, self).__init__()
@@ -220,6 +226,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     OFFLINE_SNAPSHOT_MERGE = "/nfsprimarystorage/offlinesnapshotmerge"
     REMOUNT_PATH = "/nfsprimarystorage/remount"
     GET_VOLUME_SIZE_PATH = "/nfsprimarystorage/getvolumesize"
+    BATCH_GET_VOLUME_SIZE_PATH = "/nfsprimarystorage/batchgetvolumesize"
     PING_PATH = "/nfsprimarystorage/ping"
     GET_VOLUME_BASE_IMAGE_PATH = "/nfsprimarystorage/getvolumebaseimage"
     UPDATE_MOUNT_POINT_PATH = "/nfsprimarystorage/updatemountpoint"
@@ -259,6 +266,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.OFFLINE_SNAPSHOT_MERGE, self.merge_snapshot_to_volume)
         http_server.register_async_uri(self.REMOUNT_PATH, self.remount)
         http_server.register_async_uri(self.GET_VOLUME_SIZE_PATH, self.get_volume_size)
+        http_server.register_async_uri(self.BATCH_GET_VOLUME_SIZE_PATH, self.batch_get_volume_size)
         http_server.register_async_uri(self.PING_PATH, self.ping)
         http_server.register_async_uri(self.GET_VOLUME_BASE_IMAGE_PATH, self.get_volume_base_image_path)
         http_server.register_async_uri(self.UPDATE_MOUNT_POINT_PATH, self.update_mount_point)
@@ -487,6 +495,17 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         rsp = GetVolumeSizeRsp()
 
         rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installPath)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def batch_get_volume_size(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetBatchVolumeSizeRsp()
+
+        for uuid, installPath in cmd.volumeUuidInstallPaths.__dict__.items():
+            with IgnoreError():
+                _, rsp.actualSizes[uuid] = linux.qcow2_size_and_actual_size(installPath)
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
