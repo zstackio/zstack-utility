@@ -4279,7 +4279,7 @@ class Vm(object):
                     devices.append(ic.to_xmlobject(cdrom_config.targetDev, default_bus_type, cdrom_config.bus, cdrom_config.unit, iso.bootOrder))
                 else:
                     cdrom = make_empty_cdrom(iso, cdrom_config, iso.bootOrder, iso.resourceUuid)
-                    e(cdrom, 'source', None, {'file': iso.path})
+                    e(cdrom, 'source', None, {'block' if iso.path.startswith("/dev/") else "file": iso.path})
 
         def make_volumes():
             devices = elements['devices']
