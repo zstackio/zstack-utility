@@ -146,7 +146,7 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
 
         self.rescan_disk(disk_path)
 
-        shell.call("qemu-img resize -f raw %s %s" % (disk_path, cmd.size))
+        shell.call("qemu-img resize %s %s" % (disk_path, cmd.size))
 
         ret = linux.qcow2_virtualsize(disk_path)
         rsp.size = ret
