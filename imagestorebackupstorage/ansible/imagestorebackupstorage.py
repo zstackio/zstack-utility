@@ -104,7 +104,7 @@ else :
 zstacklib = ZstackLib(zstacklib_args)
 
 if distro in RPM_BASED_OS:
-    qemu_pkg = "fuse-sshfs nmap collectd tar pyparted"
+    qemu_pkg = "fuse-sshfs nmap collectd tar pyparted net-tools"
     if releasever in ['c74', 'c76']:
         qemu_pkg = "qemu-img-ev {}".format(qemu_pkg)
     else:
