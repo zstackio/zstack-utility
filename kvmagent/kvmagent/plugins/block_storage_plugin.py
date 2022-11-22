@@ -202,11 +202,23 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
             return jsonobject.dumps(rsp)
 
         try:
+            r, o, e = bash.bash_roe('xfs_repair -n %s' % heartbeat_lun_wwn)
+            if r != 0:
+                contains_mounted_fs = "contains a mounted and writable" in e
+                if contains_mounted_fs is not True:
+                    shell.call("mkfs.xfs -f %s" % heartbeat_lun_wwn)
+                else:
+                    touch = shell.ShellCmd('timeout 5 touch %s/ready' % heartbeat_path)
+                    touch(False)
+                    if touch.return_code != 0:
+                        shell.call("xfs_repair -o force_geometry %s" % heartbeat_lun_wwn)
+
+        except Exception as e:
+            pass
+
+        try:
             logger.debug("successfully login iscsi server let's start to init heart beat fs")
             # check heartbeat fs
-            r, o, e = bash.bash_roe('file -Ls %s | grep "XFS"' % heartbeat_lun_wwn)
-            if r != 0:
-                shell.call("mkfs.xfs -f %s" % heartbeat_lun_wwn)
             logger.debug("mount heart beat path " + heartbeat_path)
             if linux.is_mounted(heartbeat_path) is not True:
                 linux.mount(heartbeat_lun_wwn, heartbeat_path, "sync")
