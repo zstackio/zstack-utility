@@ -485,7 +485,7 @@ def collect_vm_statistics():
                                      'Percentage of CPU used by vm', None, ['vmUuid'])
     }
 
-    r, pid_vm_map_str = bash_ro("ps -aux --no-headers | grep \"%s -name\" | grep -v -E \"grep.*%s -name\" | awk '{print $2,$13}'" %(QEMU_CMD, QEMU_CMD))
+    r, pid_vm_map_str = bash_ro("""ps -aux --no-headers | grep "%s -name" | grep -v -E "grep.*%s -name" | awk '{print $2,$13}'""" %(QEMU_CMD, QEMU_CMD))
     if r != 0 or len(pid_vm_map_str.splitlines()) == 0:
         return metrics.values()
     pid_vm_map_str = pid_vm_map_str.replace(",debug-threads=on", "").replace("guest=", "")
@@ -503,7 +503,7 @@ def collect_vm_statistics():
     def collect(vm_pid_arr):
         vm_pid_arr_str = ','.join(vm_pid_arr)
 
-        r, pid_cpu_usages_str = bash_ro("top -b -n 1 -p %s -w 4096" % vm_pid_arr_str)
+        r, pid_cpu_usages_str = bash_ro("top -b -n 1 -p %s -w 512" % vm_pid_arr_str)
         if r != 0 or not pid_cpu_usages_str:
             return
 
@@ -623,41 +623,6 @@ def collect_host_conntrack_statistics():
 
     return metrics.values()
 
-def collect_vm_statistics():
-    metrics = {
-        'cpu_occupied_by_vm': GaugeMetricFamily('cpu_occupied_by_vm',
-                                     'Percentage of CPU used by vm', None, ['vmUuid'])
-    }
-
-    r, pid_vm_map_str = bash_ro("ps --no-headers u -C \"qemu-kvm -name\" | awk '{print $2,$13}'")
-    if r != 0 or len(pid_vm_map_str.splitlines()) == 0:
-        return metrics.values()
-    pid_vm_map_str = pid_vm_map_str.replace(",debug-threads=on", "").replace("guest=", "")
-    '''pid_vm_map_str samples:
-    38149 e8e6f27bfb2d47e08c59cbea1d0488c3
-    38232 afa02edca7eb4afcb5d2904ac1216eb1
-    '''
-
-    pid_vm_map = {
-    }
-    for pid_vm in pid_vm_map_str.splitlines():
-        arr = pid_vm.split()
-        pid_vm_map[arr[0]] = arr[1]
-
-    vm_pid_arr_str = ','.join(pid_vm_map.keys())
-
-    r, pid_cpu_usages_str = bash_ro("top -b -n 1 -p %s | grep qemu-kvm | awk '{print $1,$9}'" % vm_pid_arr_str)
-    if r != 0 or len(pid_cpu_usages_str.splitlines()) == 0:
-        return metrics.values()
-
-    for pid_cpu_usage in pid_cpu_usages_str.splitlines():
-        arr = pid_cpu_usage.split()
-        pid = arr[0]
-        vm_uuid = pid_vm_map[pid]
-        cpu_usage = arr[1]
-        metrics['cpu_occupied_by_vm'].add_metric([vm_uuid], float(cpu_usage))
-
-    return metrics.values()
 
 kvmagent.register_prometheus_collector(collect_host_network_statistics)
 kvmagent.register_prometheus_collector(collect_host_capacity_statistics)
