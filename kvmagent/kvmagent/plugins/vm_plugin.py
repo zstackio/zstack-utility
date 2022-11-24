@@ -3489,6 +3489,41 @@ class Vm(object):
         # to work around libvirt bug
         self.timeout_object.put('%s-attach-nic' % self.uuid, timeout=10)
 
+    def check_device_exists(self, cmd):
+        self.refresh()
+        for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
+            if iface.mac.address_ == cmd.nic.mac:
+                return False
+        return not iproute.is_device_ifname_exists(cmd.nic.nicInternalName)
+
+    @linux.retry(times=3, sleep_time=5)
+    def _disable_nic(self, cmd):
+        if self.check_device_exists(cmd):
+            return
+        o = shell.call("virsh domif-setlink %s %s down" % (cmd.vmUuid, cmd.nic.nicInternalName))
+        if "successfully" not in o:
+            raise Exception('nic device update failed')
+
+    def disable_nic(self, cmd):
+        self._wait_vm_run_until_seconds(10)
+        self.timeout_object.wait_until_object_timeout('%s-disable-nic' % self.uuid)
+        self._disable_nic(cmd)
+        self.timeout_object.put('%s-disable-nic' % self.uuid, timeout=10)
+
+    @linux.retry(times=3, sleep_time=5)
+    def _enable_nic(self, cmd):
+        if self.check_device_exists(cmd):
+            return
+        o = shell.call("virsh domif-setlink %s %s up" % (cmd.vmUuid, cmd.nic.nicInternalName))
+        if "successfully" not in o:
+            raise Exception('nic device update failed')
+
+    def enable_nic(self, cmd):
+        self._wait_vm_run_until_seconds(10)
+        self.timeout_object.wait_until_object_timeout('%s-enable-nic' % self.uuid)
+        self._enable_nic(cmd)
+        self.timeout_object.put('%s-enable-nic' % self.uuid, timeout=10)
+
     def update_nic(self, cmd):
         self._wait_vm_run_until_seconds(10)
         self.timeout_object.wait_until_object_timeout('%s-update-nic' % self.uuid)
@@ -5124,6 +5159,10 @@ class Vm(object):
         if iftype != 'hostdev' and nic.type != 'vDPA':
             e(interface, 'mtu', None, attrib={'size': '%d' % nic.mtu})
 
+        # logger.warn("nic.state : [%s]" % nic.state)
+        if hasattr(nic, 'state') and nic.state == 'disable' :
+            e(interface, 'link', None, attrib={'state': 'down'})
+
         if iftype == 'hostdev':
             domain, bus, slot, function = parse_pci_device_address(nic.pciDeviceAddress)
             source = e(interface, 'source')
@@ -5319,6 +5358,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_LOGIN_ISCSI_TARGET_PATH = "/iscsi/target/login"
     KVM_ATTACH_NIC_PATH = "/vm/attachnic"
     KVM_DETACH_NIC_PATH = "/vm/detachnic"
+    KVM_CHANGE_NIC_STATE_PATH = "/vm/changenicstate"
     KVM_UPDATE_NIC_PATH = "/vm/updatenic"
     KVM_CREATE_SECRET = "/vm/createcephsecret"
     KVM_ATTACH_ISO_PATH = "/vm/iso/attach"
@@ -5567,6 +5607,19 @@ class VmPlugin(kvmagent.KvmAgent):
 
         vm.detach_nic(cmd)
 
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def change_nic_state(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+        vm = get_vm_by_uuid(cmd.vmUuid, False)
+        if not vm:
+            return jsonobject.dumps(rsp)
+        if cmd.state == "enable":
+            vm.enable_nic(cmd)
+        elif cmd.state == "disable":
+            vm.disable_nic(cmd)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -7814,7 +7867,7 @@ host side snapshot files chian:
                 port = bind_addresses[0].split(':')[-1]
                 url = 'http://localhost:%s/metrics' % port
                 result = http.json_post(url, body=None, headers={'Content-Type':'text/plain'}, method='GET')
-                lines = filter(lambda line: 
+                lines = filter(lambda line:
                         line.startswith('push_time_seconds') and line.find(vm_uuid) >= 0,
                         result.split('\n'))
                 if lines:
@@ -8510,6 +8563,7 @@ host side snapshot files chian:
         http_server.register_async_uri(self.KVM_LOGIN_ISCSI_TARGET_PATH, self.login_iscsi_target)
         http_server.register_async_uri(self.KVM_ATTACH_NIC_PATH, self.attach_nic)
         http_server.register_async_uri(self.KVM_DETACH_NIC_PATH, self.detach_nic)
+        http_server.register_async_uri(self.KVM_CHANGE_NIC_STATE_PATH, self.change_nic_state)
         http_server.register_async_uri(self.KVM_UPDATE_NIC_PATH, self.update_nic)
         http_server.register_async_uri(self.KVM_CREATE_SECRET, self.create_ceph_secret_key)
         http_server.register_async_uri(self.KVM_VM_CHECK_STATE, self.check_vm_state)
