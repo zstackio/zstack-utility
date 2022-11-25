@@ -22,6 +22,7 @@ from zstacklib.utils import lock
 from zstacklib.utils import linux
 from zstacklib.utils import thread
 from zstacklib.utils.bash import *
+from zstacklib.utils.ceph import get_mon_addr
 from zstacklib.utils.report import Report
 from zstacklib.utils import shell
 from zstacklib.utils import ceph
@@ -656,11 +657,9 @@ class CephAgent(object):
         rsp = GetFactsRsp()
 
         monmap = bash_o('ceph mon dump -f json')
-        for mon in jsonobject.loads(monmap).mons:
-            ADDR = mon.addr.split(':')[0]
-            if bash_r('ip route | grep -w {{ADDR}} > /dev/null') == 0:
-                rsp.monAddr = ADDR
-                break
+        rsp.monAddr = get_mon_addr(monmap, "kernel")
+        if rsp.monAddr is None:
+            rsp.monAddr = get_mon_addr(monmap)
 
         if not rsp.monAddr:
             raise Exception('cannot find mon address of the mon server[%s]' % cmd.monUuid)
