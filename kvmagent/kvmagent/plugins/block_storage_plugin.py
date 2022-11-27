@@ -202,17 +202,15 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
             return jsonobject.dumps(rsp)
 
         try:
-            r, o, e = bash.bash_roe('xfs_repair -n %s' % heartbeat_lun_wwn)
-            if r != 0:
-                contains_mounted_fs = "contains a mounted and writable" in e
-                if contains_mounted_fs is not True:
-                    shell.call("mkfs.xfs -f %s" % heartbeat_lun_wwn)
-                else:
-                    touch = shell.ShellCmd('timeout 5 touch %s/ready' % heartbeat_path)
-                    touch(False)
-                    if touch.return_code != 0:
-                        shell.call("xfs_repair -o force_geometry %s" % heartbeat_lun_wwn)
-
+            check_fs, o, e = bash.bash_roe('file -Ls %s | grep "XFS"' % heartbeat_lun_wwn)
+            if check_fs != 0:
+                shell.call("mkfs.xfs -f %s" % heartbeat_lun_wwn)
+            else:
+                r, o, e = bash.bash_roe('xfs_repair -n %s' % heartbeat_lun_wwn)
+                if r != 0:
+                    contains_mounted_fs = "contains a mounted and writable" in e
+                    if contains_mounted_fs is not True:
+                        shell.call("xfs_repair -o force_geometry -L %s" % heartbeat_lun_wwn)
         except Exception as e:
             pass
 
@@ -222,12 +220,6 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
             logger.debug("mount heart beat path " + heartbeat_path)
             if linux.is_mounted(heartbeat_path) is not True:
                 linux.mount(heartbeat_lun_wwn, heartbeat_path, "sync")
-            else:
-                linux.umount(heartbeat_path)
-                r, o, e = bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -r >/dev/null")
-                if r != 0:
-                    raise Exception("fail to create heartbeat mount path")
-                linux.mount(heartbeat_lun_wwn, heartbeat_path, "sync")
             rsp.success = True
         except Exception as e:
             rsp.success = False
@@ -236,12 +228,11 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         touch = shell.ShellCmd('timeout 5 touch %s/ready' % heartbeat_path)
         touch(False)
         if touch.return_code != 0:
-            # Just sleep 1s to re-mount heartbeat path
-            time.sleep(1)
-            if linux.is_mounted(heartbeat_path) is not True:
-                linux.mount(heartbeat_lun_wwn, heartbeat_path, "sync")
-            else:
-                linux.mount(heartbeat_lun_wwn, heartbeat_path, "sync,remount")
+            linux.umount(heartbeat_path)
+            r, o, e = bash.bash_roe('xfs_repair -n %s' % heartbeat_lun_wwn)
+            if r != 0:
+                shell.call("xfs_repair -o force_geometry -L %s" % heartbeat_lun_wwn)
+            linux.mount(heartbeat_lun_wwn, heartbeat_path, "sync")
             retouch = shell.ShellCmd('timeout 5 touch %s/ready' % heartbeat_path)
             retouch(False)
 
