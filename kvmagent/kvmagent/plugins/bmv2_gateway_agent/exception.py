@@ -158,6 +158,12 @@ class ManagementNetProvisionNetMixed(BmV2GwAgentException):
         super(ManagementNetProvisionNetMixed, self).__init__(msg)
 
 
+class OpenBaremetalInstanceConsolePortFailed(BmV2GwAgentException):
+    def __init__(self, **kwargs):
+        msg = 'open remote baremetal instance console port failed: {error_msg}'.format(**kwargs)
+        super(OpenBaremetalInstanceConsolePortFailed, self).__init__(msg)
+
+
 class LockNotRelease(BmV2GwAgentException):
 
     def __init__(self, **kwargs):
@@ -177,20 +183,20 @@ class PortInUse(BmV2GwAgentException):
 class CephCommandsNotExist(BmV2GwAgentException):
 
     def __init__(self, **kwargs):
-        msg = ('Not all commands of {cmds} can be found in the gateway').format(**kwargs)
+        msg = 'Not all commands of {cmds} can be found in the gateway'.format(**kwargs)
         super(CephCommandsNotExist, self).__init__(msg)
 
 
 class RbdImageNotExist(BmV2GwAgentException):
 
     def __init__(self, **kwargs):
-        msg = ('RBD image {path} can not be found in the gateway').format(**kwargs)
+        msg = 'RBD image {path} can not be found in the gateway'.format(**kwargs)
         super(RbdImageNotExist, self).__init__(msg)
 
 
 class CephPackageNotFound(BmV2GwAgentException):
 
     def __init__(self, **kwargs):
-        msg = ('Package {cmd} info can not be found in the gateway').format(**kwargs)
+        msg = 'Package {cmd} info can not be found in the gateway'.format(**kwargs)
         super(CephPackageNotFound, self).__init__(msg)
 
