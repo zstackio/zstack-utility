@@ -726,13 +726,16 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             port=self.BAREMETAL_INSTANCE_AGENT_PORT,
             uuid=instance_obj.uuid)
         ret = http.json_post(uri, method='GET')
-        # TODO(ya.wang) handle response
         ret = json.loads(ret) if isinstance(ret, str) else ret
         if not isinstance(ret, dict):
             ret = ast.literal_eval(ret)
+
+        # {"success": False, "error": "Failed to launch shellinaboxd"}
+        if not ret.get('success'):
+            raise exception.OpenBaremetalInstanceConsolePortFailed(error_msg=ret.get("error"))
+
         scheme = ret.get('scheme')
         port = ret.get('port')
-
         gw_port = linux.get_free_port()
 
         template = self._load_template('nginx_proxy_to_agent_tcp')
