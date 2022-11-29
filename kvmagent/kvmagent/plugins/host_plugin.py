@@ -20,6 +20,7 @@ from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
 from kvmagent.plugins.imagestore import ImageStoreClient
 from zstacklib.utils import http, lvm, ceph
+from zstacklib.utils import qemu
 from zstacklib.utils import linux
 from zstacklib.utils import iptables
 from zstacklib.utils import iproute
@@ -28,7 +29,6 @@ from zstacklib.utils import jsonobject
 from zstacklib.utils import lock
 from zstacklib.utils import sizeunit
 from zstacklib.utils import thread
-from zstacklib.utils import traceable_shell
 from zstacklib.utils import xmlobject
 from zstacklib.utils import ovs
 from zstacklib.utils.bash import *
@@ -2615,7 +2615,7 @@ done
 
         self.heartbeat_timer = {}
         self.libvirt_version = linux.get_libvirt_version()
-        self.qemu_version = linux.get_qemu_version()
+        self.qemu_version = qemu.get_version()
         filepath = r'/etc/libvirt/qemu/networks/autostart/default.xml'
         if os.path.exists(filepath):
             os.unlink(filepath)
