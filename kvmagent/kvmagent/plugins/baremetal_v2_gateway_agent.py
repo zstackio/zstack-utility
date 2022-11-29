@@ -121,7 +121,8 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                  'pesign', 'elfutils-libelf-devel', 'elfutils-devel', 'bison',
                  'zlib-devel', 'binutils-devel', 'audit-libs-devel', 'flex',
                  'java-devel', 'numactl-devel', 'pciutils-devel', 'targetcli',
-                 'ncurses-devel', 'tftp-server', 'libguestfs']
+                 'ncurses-devel', 'tftp-server', 'libguestfs',
+                 'nginx-all-modules']
 
         extra_x86_64  = ['syslinux', 'python-docutils']
         extra_aarch64 = ['python2-docutils']
