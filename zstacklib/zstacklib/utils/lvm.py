@@ -1048,7 +1048,7 @@ def extend_lv(path, extend_size):
         raise Exception("the expanded lv size must be larger than the original lv size")
 
     extend_size = calcLvReservedSize(extend_size)
-    ALIGNMENT_SIZE = 4096.0
+    ALIGNMENT_SIZE = 4.0*1024*1024
     if extend_size % ALIGNMENT_SIZE != 0:
         extend_size = int(math.ceil(extend_size / ALIGNMENT_SIZE) * ALIGNMENT_SIZE)
 
