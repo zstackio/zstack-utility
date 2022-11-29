@@ -282,6 +282,9 @@
             <sequential>
                 <antcall target="build-zstack-vyos"/>
             </sequential>
+            <sequential>
+                <antcall target="build-guest-tools-iso"/>
+            </sequential>
         </parallel>
     </target>
 
@@ -369,6 +372,9 @@
             </sequential>
             <sequential>
                 <antcall target="assemble-guest-tools"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-guest-tools-iso"/>
             </sequential>
             <sequential>
                 <antcall target="assemble-transmission"/>

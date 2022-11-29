@@ -2,12 +2,38 @@
 
 <project name="guest-tools builder" basedir="../">
     <property name="guest.tools.ansible.dir" location="${ansible.dir}/guesttools/" />
+    <property name="tools.guesttools.dir" location="${tools.dir}/guesttools" />
+    <property name="guesttools.bdir" location="${build.dir}/guesttools/" />
+    <property name="guesttools.general.dir" location="${tools.guesttools.dir}/general" />
+
     <target name="assemble-guest-tools" if="build_war_flag">
         <makeDir dir="${guest.tools.ansible.dir}" />
 
         <copy todir="${guest.tools.ansible.dir}">
             <fileset dir="${guesttoolsansibleplaybook.source}/ansible">
                 <include name="**/*" />
+            </fileset>
+        </copy>
+    </target>
+
+    <target name="build-guest-tools-iso">
+        <makeDir dir="${guesttools.bdir}" />
+        <exec executable="make" dir="${zstackzwatch.source}" failonerror="true">
+            <arg value="iso" />
+            <arg value="ARCH=amd64 arm64" />
+        </exec>
+        <copy todir="${guesttools.bdir}">
+            <fileset dir="${zstackzwatch.source}/target/iso">
+                <include name="*.iso" />
+            </fileset>
+        </copy>
+    </target>
+
+    <target name="assemble-guest-tools-iso">
+        <makeDir dir="${guesttools.general.dir}/KVM" />
+        <copy todir="${guesttools.general.dir}/KVM">
+            <fileset dir="${guesttools.bdir}">
+                <include name="*.iso" />
             </fileset>
         </copy>
     </target>
