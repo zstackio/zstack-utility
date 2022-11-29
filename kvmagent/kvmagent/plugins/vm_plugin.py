@@ -1584,6 +1584,22 @@ def get_dom_error(uuid):
         return None
     return domblkerror.replace('\n', '')
 
+
+def notify_vrouter(vrouter_cmd):
+    result = shell.run(' '.join(vrouter_cmd))
+    if result != 0:
+        raise Exception('Vrouter agent call failed.')
+    else:
+        logger.info('Vrouter agent call success.')
+
+
+def transform_to_tf_uuid(src):
+    if not src:
+        return None
+    tmp = [src[:8], src[8:12], src[12:16], src[16:20], src[20:]]
+    return '-'.join(tmp)
+
+
 class Vm(object):
     VIR_DOMAIN_NOSTATE = 0
     VIR_DOMAIN_RUNNING = 1
@@ -2826,8 +2842,10 @@ class Vm(object):
                 vhostSrcPath = ovs.OvsCtl().getVdpa(cmd.vmUuid, cmd.nic)
                 if vhostSrcPath is None:
                     raise Exception("vDPA resource exhausted.")
-
-        interface = Vm._build_interface_xml(cmd.nic, None, vhostSrcPath, action, brMode)
+        if cmd.nic.type == "TFVNIC":
+            interface = Vm._build_interface_xml(cmd.nic, action=action, cmd=cmd)
+        else:
+            interface = Vm._build_interface_xml(cmd.nic, None, vhostSrcPath, action, brMode)
 
         def addon():
             if cmd.addons and cmd.addons['NicQos']:
@@ -3042,6 +3060,9 @@ class Vm(object):
             if check_device(None):
                 return
 
+            # Make sure key:vmInstanceUuid exists
+            if cmd.nic.type == "TFVNIC":
+                cmd.put('vmInstanceUuid', cmd.vmUuid)
             xml = self._interface_cmd_to_xml(cmd, action='Attach')
             logger.debug('attaching nic:\n%s' % xml)
             if self.state == self.VM_STATE_RUNNING or self.state == self.VM_STATE_PAUSED:
@@ -4156,6 +4177,8 @@ class Vm(object):
             for index, nic in enumerate(cmd.nics):
                 if nic.type == "vDPA" and vDPAPaths.has_key(nic.nicInternalName):
                     interface = Vm._build_interface_xml(nic, devices, vDPAPaths[nic.nicInternalName], 'Attach', brMode, index)
+                elif nic.type == 'TFVNIC':
+                    interface = Vm._build_interface_xml(nic, devices, vhostSrcPath, 'Attach', brMode, index, cmd)
                 else:
                     interface = Vm._build_interface_xml(nic, devices, vhostSrcPath, 'Attach', brMode, index)
                 addon(interface)
@@ -4591,12 +4614,15 @@ class Vm(object):
         return vm
 
     @staticmethod
-    def _build_interface_xml(nic, devices=None, vhostSrcPath=None, action=None, brMode=None, index=0):
+    def _build_interface_xml(nic, devices=None, vhostSrcPath=None, action=None, brMode=None, index=0, cmd=None):
         if nic.pciDeviceAddress is not None:
             iftype = 'hostdev'
             device_attr = {'type': iftype, 'managed': 'yes'}
         elif vhostSrcPath is not None:
             iftype = 'vhostuser'
+            device_attr = {'type': iftype}
+        elif nic.type == 'TFVNIC':
+            iftype = 'ethernet'
             device_attr = {'type': iftype}
         else:
             iftype = 'bridge'
@@ -4631,6 +4657,8 @@ class Vm(object):
             else:
                 e(interface, 'source', None, attrib={'type': 'unix', 'path': '/var/run/phynic{}'.format(index+1), 'mode':'server'})
                 e(interface, 'driver', None, attrib={'queues': '8'})
+        elif nic.type == 'TFVNIC':
+            e(interface, 'target', None, attrib={'dev': nic.nicInternalName})
         else:
             e(interface, 'source', None, attrib={'bridge': nic.bridgeName})
             e(interface, 'target', None, attrib={'dev': nic.nicInternalName})
@@ -4700,6 +4728,25 @@ class Vm(object):
         # to allow vnic/vf communication in same host
         if nic.pciDeviceAddress is None and nic.physicalInterface is not None and brMode != 'mocbr' and nic.type != 'vDPA':
             _add_bridge_fdb_entry_for_vnic()
+
+        if iftype == 'ethernet' and action == 'Attach':
+            vrouter_cmd = [
+                'vrouter-port-control',
+                '--oper=add',
+                '--vm_project_uuid=%s' % transform_to_tf_uuid(cmd.accountUuid),
+                '--instance_uuid=%s' % transform_to_tf_uuid(cmd.vmInstanceUuid),
+                '--vm_name=',
+                '--uuid=%s' % transform_to_tf_uuid(nic.uuid),
+                '--vn_uuid=%s' % transform_to_tf_uuid(nic.l2NetworkUuid),
+                '--port_type=NovaVMPort',
+                '--tap_name=%s' % nic.nicInternalName,
+                '--mac=%s' % nic.mac,
+                '--ip_address=%s' % nic.ips[0],
+                '--ipv6_address=',
+                '--tx_vlan_id=-1',
+                '--rx_vlan_id=-1',
+            ]
+            notify_vrouter(vrouter_cmd)
 
         return interface
 
@@ -5012,6 +5059,14 @@ class VmPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
 
+        # Deal with notify vrouter when vm expunge
+        if cmd.nic.type == 'TFVNIC':
+            vrouter_cmd = [
+                'vrouter-port-control',
+                '--oper=delete',
+                '--uuid=%s' % transform_to_tf_uuid(cmd.nic.uuid)
+            ]
+            notify_vrouter(vrouter_cmd)
         vm = get_vm_by_uuid(cmd.vmUuid, False)
         if not vm:
             return jsonobject.dumps(rsp)
@@ -5024,7 +5079,29 @@ class VmPlugin(kvmagent.KvmAgent):
     def update_nic(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
-
+        # Deal with update nic request form migration
+        if cmd.notifySugonSdn:
+            for nic in cmd.nics:
+                if nic.type != 'TFVNIC':
+                    continue
+                vrouter_cmd = [
+                    'vrouter-port-control',
+                    '--oper=add',
+                    '--vm_project_uuid=%s' % transform_to_tf_uuid(cmd.accountUuid),
+                    '--instance_uuid=%s' % transform_to_tf_uuid(cmd.vmInstanceUuid),
+                    '--vm_name=',
+                    '--uuid=%s' % transform_to_tf_uuid(nic.uuid),
+                    '--vn_uuid=%s' % transform_to_tf_uuid(nic.l2NetworkUuid),
+                    '--port_type=NovaVMPort',
+                    '--tap_name=%s' % nic.nicInternalName,
+                    '--mac=%s' % nic.mac,
+                    '--ip_address=%s' % nic.ips[0],
+                    '--ipv6_address=',
+                    '--tx_vlan_id=-1',
+                    '--rx_vlan_id=-1',
+                ]
+                notify_vrouter(vrouter_cmd)
+            return jsonobject.dumps(rsp)
         vm = get_vm_by_uuid(cmd.vmInstanceUuid)
         vm.update_nic(cmd)
 
@@ -5570,6 +5647,15 @@ class VmPlugin(kvmagent.KvmAgent):
             else:
                 vm = get_vm_by_uuid(cmd.vmUuid)
                 vm.migrate(cmd)
+            # notify vrouter agent nic removed from source host
+            for nic in cmd.nics:
+                if nic.type == 'TFVNIC':
+                    vrouter_cmd = [
+                        'vrouter-port-control',
+                        '--oper=delete',
+                        '--uuid=%s' % transform_to_tf_uuid(nic.uuid)
+                    ]
+                    notify_vrouter(vrouter_cmd)
 
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
