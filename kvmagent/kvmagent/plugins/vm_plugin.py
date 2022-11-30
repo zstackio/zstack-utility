@@ -3225,9 +3225,14 @@ class Vm(object):
             if iso.path.startswith('sharedblock'):
                 iso.path = shared_block_to_file(iso.path)
 
+            source_type = 'file'
+            if iso.path.startswith('/dev/') \
+                and LooseVersion(QEMU_VERSION) >= LooseVersion('6.0.0'):
+                source_type = 'block'
+
             cdrom = etree.Element('disk', {'type': 'file', 'device': 'cdrom'})
             e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
-            e(cdrom, 'source', None, {'file': iso.path})
+            e(cdrom, 'source', None, {source_type: iso.path})
             e(cdrom, 'target', None, {'dev': dev, 'bus': bus})
             e(cdrom, 'readonly', None)
 
@@ -4284,7 +4289,11 @@ class Vm(object):
                     devices.append(ic.to_xmlobject(cdrom_config.targetDev, default_bus_type, cdrom_config.bus, cdrom_config.unit, iso.bootOrder))
                 else:
                     cdrom = make_empty_cdrom(iso, cdrom_config, iso.bootOrder, iso.resourceUuid)
-                    e(cdrom, 'source', None, {'block' if iso.path.startswith("/dev/") else "file": iso.path})
+                    source_type = 'file'
+                    if iso.path.startswith('/dev/') \
+                        and LooseVersion(QEMU_VERSION) >= LooseVersion('6.0.0'):
+                        source_type = 'block'
+                    e(cdrom, 'source', None, {source_type: iso.path})
 
         def make_volumes():
             devices = elements['devices']
