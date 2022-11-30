@@ -1243,6 +1243,10 @@ def is_bridge(dev):
     path = "/sys/class/net/%s/bridge" % dev
     return os.path.exists(path)
 
+def is_bridge_slave(dev):
+    path = "/sys/class/net/%s/brport" % dev
+    return os.path.exists(path)
+
 
 def is_vif_on_bridge(bridge_name, interface):
     vifs = get_all_bridge_interface(bridge_name)
@@ -1266,21 +1270,11 @@ def delete_bridge(bridge_name):
     shell.run("brctl delbr %s" % bridge_name)
 
 def find_bridge_having_physical_interface(ifname):
-    output = shell.call("brctl show|sed -n '2,$p'|cut -f 1,6")
-    for l in output.split('\n'):
-        l = l.strip(' \n\t\r')
-        if l == '':
-            continue
-
-        try:
-            (br_name, iface_name) = l.split()
-        except:
-            # bridge has no physical interface added
-            continue
-
-        if ifname == iface_name:
-            return br_name
-
+    if is_bridge_slave(ifname):
+        br_name = shell.call("cat /sys/class/net/%s/master/uevent | grep 'INTERFACE' | awk -F '=' '{printf $2}'" % ifname)
+        if br_name == "":
+            return None
+        return br_name
     return None
 
 def find_route_interface_by_destination_ip(ip_addr):
