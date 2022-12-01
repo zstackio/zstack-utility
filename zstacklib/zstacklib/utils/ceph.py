@@ -178,7 +178,7 @@ def get_pools_capacity():
         if not pool_capacity.crush_rule_item_names:
             continue
 
-        osd_nodes = []
+        osd_nodes = set()
         for node in tree.nodes:
             if node.name not in pool_capacity.crush_rule_item_names:
                 continue
@@ -189,15 +189,14 @@ def get_pools_capacity():
             for node in nodes:
                 if node.type != "osd":
                     continue
-                if node.name in osd_nodes:
-                    continue
-                osd_nodes.append(node.name)
-        pool_capacity.crush_item_osds = osd_nodes
+                osd_nodes.add(node.name)
+        pool_capacity.crush_item_osds = sorted(osd_nodes)
 
     # fill crush_item_osds_total_size, poolTotalSize
     o = shell.call('ceph osd df -f json')
     # In the open source Ceph 10 version, the value returned by executing 'ceph osd df -f json' might have '-nan', causing json parsing to fail.
     o = o.replace("-nan", "\"\"")
+    manufacturer = get_ceph_manufacturer()
     osds = jsonobject.loads(o)
     if not osds.nodes:
         return result
@@ -211,6 +210,8 @@ def get_pools_capacity():
                 pool_capacity.crush_item_osds_total_size = pool_capacity.crush_item_osds_total_size + osd.kb * 1024
                 pool_capacity.available_capacity = pool_capacity.available_capacity + osd.kb_avail * 1024
                 pool_capacity.used_capacity = pool_capacity.used_capacity + osd.kb_used * 1024
+                if manufacturer == "open-source":
+                    pool_capacity.related_osd_capacity.update({osd_name : CephOsdCapacity(osd.kb * 1024, osd.kb_avail * 1024, osd.kb_used * 1024)})
 
         if not pool_capacity.disk_utilization:
             continue
@@ -225,6 +226,13 @@ def get_pools_capacity():
     return result
 
 
+class CephOsdCapacity:
+    def __init__(self, crush_item_osd_size, crush_item_osd_available_capacity, crush_item_osd_used_capacity):
+        self.size = crush_item_osd_size
+        self.availableCapacity = crush_item_osd_available_capacity
+        self.usedCapacity = crush_item_osd_used_capacity
+
+
 class CephPoolCapacity:
     def __init__(self, pool_name, replicated_size, crush_rule_set, security_policy, disk_utilization):
         # type: (str, int, str, str, float) -> None
@@ -236,9 +244,10 @@ class CephPoolCapacity:
         self.available_capacity = 0
         self.used_capacity = 0
         self.crush_rule_item_names = []
-        self.crush_item_osds = set()
+        self.crush_item_osds = []
         self.crush_item_osds_total_size = 0
         self.pool_total_size = 0
+        self.related_osd_capacity = {}
 
 
     def get_related_osds(self):
