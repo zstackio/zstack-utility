@@ -1970,13 +1970,6 @@ def is_bad_vm_root_volume(vm_root_volume):
     has_not_running_disk = any(dep_dev["TYPE"] == "disk" and dep_dev["STATE"] != "running" for dep_dev in dep_devices)
     return has_not_running_disk or not has_running_disk
 
-def get_vm_pid(uuid):
-    pid = linux.read_file(os.path.join(LIVE_LIBVIRT_XML_DIR, uuid + ".pid"))
-    if pid:
-        return pid.strip()
-
-    return linux.find_vm_pid_by_uuid(uuid)
-
 @bash.in_bash
 def get_running_vm_root_volume_on_pv(vgUuid, pvUuids, checkIo=True):
     # type: (str, list[str], bool) -> list[VmStruct]
@@ -1996,7 +1989,7 @@ def get_running_vm_root_volume_on_pv(vgUuid, pvUuids, checkIo=True):
 
         vm = VmStruct()
         vm.uuid = xs[0]
-        vm.pid = get_vm_pid(vm.uuid)
+        vm.pid = linux.get_vm_pid(vm.uuid)
         vm.load_from_xml(xml)
         if not vm.root_volume:
             logger.warn("found strange vm[pid: %s, uuid: %s], can not find boot volume" % (vm.pid, vm.uuid))

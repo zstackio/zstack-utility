@@ -158,7 +158,7 @@ class ImageStoreClient(object):
                             break
             return vm, maxInfoMap, minInfoMap
 
-    def backup_volume(self, vm, node, bitmap, mode, dest, speed, reporter, stage):
+    def backup_volume(self, vm, node, bitmap, mode, dest, point_in_time, speed, reporter, stage):
         self.check_capacity(os.path.dirname(dest))
 
         PFILE = linux.create_temp_file()
@@ -172,8 +172,12 @@ class ImageStoreClient(object):
             return synced
 
         with linux.ShowLibvirtErrorOnException(vm):
-            cmdstr = '%s -progress %s backup -bitmap %s -dest %s -domain %s -drive "%s" -mode %s -speed %s' % \
-                     (self.ZSTORE_CLI_PATH, PFILE, bitmap, dest, vm, node, mode, speed)
+            p_option = ""
+            if point_in_time is not None:
+                p_option = "-point-in-time=%s" % str(point_in_time).lower()
+
+            cmdstr = '%s -progress %s backup -bitmap %s -dest %s -domain %s -drive "%s" -mode %s %s -speed %s' % \
+                     (self.ZSTORE_CLI_PATH, PFILE, bitmap, dest, vm, node, mode, p_option, speed)
             _, mode, err = bash_progress_1(cmdstr, _get_progress)
             linux.rm_file_force(PFILE)
             if err:
@@ -184,7 +188,7 @@ class ImageStoreClient(object):
     # args -> (bitmap, mode, drive)
     # {'drive-virtio-disk0': { "backupFile": "foo", "mode":"full" },
     #  'drive-virtio-disk1': { "backupFile": "bar", "mode":"top" }}
-    def backup_volumes(self, vm, args, dstdir, reporter, stage):
+    def backup_volumes(self, vm, args, dstdir, point_in_time, reporter, stage):
         self.check_capacity(dstdir)
         PFILE = linux.create_temp_file()
 
@@ -197,8 +201,12 @@ class ImageStoreClient(object):
             return synced
 
         with linux.ShowLibvirtErrorOnException(vm):
-            cmdstr = '%s -progress %s batbak -domain %s -destdir %s -args %s' % \
-                     (self.ZSTORE_CLI_PATH, PFILE, vm, dstdir, ':'.join(["%s,%s,%s,%s" % x for x in args]))
+            p_option = ""
+            if point_in_time is not None:
+                p_option = "-point-in-time=%s" % str(point_in_time).lower()
+
+            cmdstr = '%s -progress %s batbak -domain %s -destdir %s %s -args %s' % \
+                     (self.ZSTORE_CLI_PATH, PFILE, vm, dstdir, p_option, ':'.join(["%s,%s,%s,%s" % x for x in args]))
             _, mode, err = bash_progress_1(cmdstr, _get_progress)
             linux.rm_file_force(PFILE)
             if err:

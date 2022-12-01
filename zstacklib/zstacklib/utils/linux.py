@@ -58,6 +58,7 @@ KVM_DEVICE = '/dev/kvm'
 KVM_CAP_ARM_VM_IPA_SIZE = 165
 KVM_CHECK_EXTENSION = 44547
 DEFAULT_VM_IPA_SIZE = 40
+LIVE_LIBVIRT_XML_DIR = "/var/run/libvirt/qemu"
 
 def ignoreerror(func):
     @functools.wraps(func)
@@ -1699,6 +1700,15 @@ def set_vm_priority(pid, priorityConfig):
     if write_file(oom_score_adj_path, priorityConfig.oomScoreAdj) is None:
         logger.warn("set vm %s oomScoreAdj failed" % priorityConfig.vmUuid)
 
+
+def get_vm_pid(uuid):
+    pid = read_file(os.path.join(LIVE_LIBVIRT_XML_DIR, uuid + ".pid"))
+    if pid:
+        return pid.strip()
+
+    return find_vm_pid_by_uuid(uuid)
+
+
 def find_vm_pid_by_uuid(uuid):
     return shell.call("""ps x | awk '/qemu[-].*%s/{print $1; exit}'""" % uuid).strip()
 
@@ -2237,11 +2247,6 @@ class TempAccessible(object):
 
 def get_libvirt_version():
     return shell.call("libvirtd --version").split()[-1]
-
-
-def get_qemu_version():
-    return shell.call("virsh version | awk '/hypervisor.*QEMU/{print $4}'").strip()
-
 
 def get_unmanaged_vms(include_not_zstack_but_in_virsh = False):
     libvirt_uuid_pattern = "'[0-9a-z]{8}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{12}'"
