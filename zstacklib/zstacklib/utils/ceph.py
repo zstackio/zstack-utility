@@ -195,6 +195,7 @@ def get_pools_capacity():
     osds = jsonobject.loads(o)
     if not osds.nodes:
         return result
+    manufacturer = get_ceph_manufacturer()
     for pool_capacity in result:
         if not pool_capacity.crush_item_osds:
             continue
@@ -205,6 +206,8 @@ def get_pools_capacity():
                 pool_capacity.crush_item_osds_total_size = pool_capacity.crush_item_osds_total_size + osd.kb * 1024
                 pool_capacity.available_capacity = pool_capacity.available_capacity + osd.kb_avail * 1024
                 pool_capacity.used_capacity = pool_capacity.used_capacity + osd.kb_used * 1024
+                if manufacturer == "open-source":
+                    pool_capacity.related_osd_capacity.update({osd_name : CephOsdCapacity(osd.kb * 1024, osd.kb_avail * 1024, osd.kb_used * 1024)})
 
         if not pool_capacity.disk_utilization:
             continue
@@ -217,6 +220,13 @@ def get_pools_capacity():
             pool_capacity.used_capacity = int(pool_capacity.used_capacity * pool_capacity.disk_utilization)
 
     return result
+
+
+class CephOsdCapacity:
+    def __init__(self, crush_item_osd_size, crush_item_osd_available_capacity, crush_item_osd_used_capacity):
+        self.size = crush_item_osd_size
+        self.availableCapacity = crush_item_osd_available_capacity
+        self.usedCapacity = crush_item_osd_used_capacity
 
 
 def get_mon_addr(monmap, route_protocol):
@@ -247,4 +257,5 @@ class CephPoolCapacity:
         self.crush_item_osds = []
         self.crush_item_osds_total_size = 0
         self.pool_total_size = 0
+        self.related_osd_capacity = {}
 
