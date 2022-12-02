@@ -1,7 +1,12 @@
+
+import bash
 import os
-import re
+import log
+import jsonobject
 import shell
 from linux import get_vm_pid, HOST_ARCH
+
+logger = log.get_logger(__name__)
 
 def get_colo_path():
     return '/var/lib/zstack/colo/qemu-system-x86_64'
@@ -27,9 +32,22 @@ def get_running_version(vm_uuid):
     pid = get_vm_pid(vm_uuid)
     if pid:
         exe = "/proc/%s/exe" % pid
-    else:
-        exe = get_path()
-    return _parse_version(shell.call("%s --version" % exe))
+        r, o, e = bash.bash_roe("%s --version" % exe)
+        if r == 0:
+            return _parse_version(o.strip())
+        logger.debug("cannot get version from %s: %s" % (exe, e))
+
+    r, o, e = bash.bash_roe("""virsh qemu-monitor-command %s '{"execute":"query-version"}'""" % vm_uuid)
+    if r == 0:
+        ret = jsonobject.loads(o.strip())
+        if ret["return"].package:
+            return _parse_version(ret["return"].package)
+        else:
+            qv = ret["return"].qemu
+            return "%d.%d.%d" % (qv.major, qv.minor, qv.micro)
+
+    logger.debug("cannot get vm[uuid:%s] version from qmp: %s" % (vm_uuid, e))
+    return _parse_version(shell.call("%s --version" % get_path()))
 
 
 def _parse_version(version_output):
