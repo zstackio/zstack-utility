@@ -708,7 +708,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         ebtables_obj = EbtablesRules()
         fd, path = tempfile.mkstemp(".ebtables.dump")
         #ZSTAC-24684 restore the rule created by libvirt & zsn
-        patterns={"nat":["libvirt","(^z|^s)[0-9]*_"], "filter":["(^z|^s)[0-9]*_"]}
+        patterns={"nat":["libvirt","(^z|^s)[0-9]*_"], "filter":["(^z|^s)[0-9]*_|^vr"]}
         restore_data = "\n".join(ebtables_obj.get_related_rules_re(patterns)) + "\n"
         logger.debug("restore ebtables: %s" % restore_data)
         with os.fdopen(fd, 'w') as fs:
