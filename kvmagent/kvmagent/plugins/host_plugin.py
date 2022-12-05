@@ -807,13 +807,28 @@ class HostPlugin(kvmagent.KvmAgent):
             lambda x: x.address != '127.0.0.1' and not x.ifname.endswith('zs'), iproute.query_addresses(ip_version=4))]
         rsp.systemProductName = 'unknown'
         rsp.systemSerialNumber = 'unknown'
+        rsp.systemManufacturer = 'unknown'
+        rsp.systemUUID = 'unknown'
+        rsp.biosVendor = 'unknown'
+        rsp.biosVersion = 'unknown'
+        rsp.biosReleaseDate = 'unknown'
         is_dmidecode = shell.run("dmidecode")
         if str(is_dmidecode) == '0' and kvmagent.host_arch == "x86_64":
             system_product_name = shell.call('dmidecode -s system-product-name').strip()
             baseboard_product_name = shell.call('dmidecode -s baseboard-product-name').strip()
             system_serial_number = shell.call('dmidecode -s system-serial-number').strip()
+            system_manufacturer = shell.call('dmidecode -s system-manufacturer').strip()
+            system_uuid = shell.call('dmidecode -s system-uuid').strip()
+            bios_vendor = shell.call('dmidecode -s bios-vendor').strip()
+            bios_version = shell.call('dmidecode -s bios-version').strip()
+            bios_release_date = shell.call('dmidecode -s bios-release-date').strip()
             rsp.systemSerialNumber = system_serial_number if system_serial_number else 'unknown'
             rsp.systemProductName = system_product_name if system_product_name else baseboard_product_name
+            rsp.systemManufacturer = system_manufacturer if system_manufacturer else 'unknown'
+            rsp.systemUUID = system_uuid if system_uuid else 'unknown'
+            rsp.biosVendor = bios_vendor if bios_vendor else 'unknown'
+            rsp.biosVersion = bios_version if bios_version else 'unknown'
+            rsp.biosReleaseDate = bios_release_date if bios_release_date else 'unknown'
             power_supply_manufacturer = shell.call("dmidecode -t 39 | grep -m1 'Manufacturer' | awk -F ':' '{print $2}'")
             rsp.powerSupplyManufacturer = power_supply_manufacturer.strip()
             power_supply_model_name = shell.call("dmidecode -t 39 | grep -m1 'Name' | awk -F ':' '{print $2}'")
@@ -826,6 +841,7 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.libvirtVersion = self.libvirt_version
         rsp.ipAddresses = ipV4Addrs
         rsp.cpuArchitecture = platform.machine()
+        rsp.uptime = shell.call('uptime -s').strip()
 
         libvirtCapabilitiesList = []
         features = self._get_features_in_libvirt()
@@ -835,6 +851,8 @@ class HostPlugin(kvmagent.KvmAgent):
             libvirtCapabilitiesList.append("blockcopynetworktarget")
         rsp.libvirtCapabilities = libvirtCapabilitiesList
 
+        bmc_version = shell.call("ipmitool mc info | grep 'Firmware Revision' | awk -F ':' '{print $2}'").strip()
+        rsp.bmcVersion = bmc_version if bmc_version else 'unknown'
 
         # To see which lan the BMC is listening on, try the following (1-11), https://wiki.docking.org/index.php/Configuring_IPMI
         for channel in range(1, 12):
