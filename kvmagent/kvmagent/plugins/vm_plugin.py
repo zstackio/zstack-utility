@@ -3270,7 +3270,8 @@ class Vm(object):
                 raise Exception('cannot hotplug ISO to the VM[uuid:%s]. It is a libvirt bug: %s.'
                                 ' you can power-off the vm and attach again.' %
                                 (self.uuid, 'https://bugzilla.redhat.com/show_bug.cgi?id=1541702'))
-            elif 'timed out waiting for disk tray status update' in err:
+            elif 'timed out waiting for disk tray status update' in err \
+                    or 'timed out waiting to open tray' in err:
                 raise Exception(
                     'unable to attach the iso to the VM[uuid:%s]. It seems met some internal error,'
                     ' you can reboot the vm and try again' % self.uuid)
