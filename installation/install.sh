@@ -3265,9 +3265,6 @@ EOF
 check_sync_local_repos() {
   echo_subtitle "Check local repo version"
   trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
-  if [[ $XINCHUANG_OS =~ $ZSTACK_RELEASE ]]; then
-      SKIP_SYNC='y'
-  fi
 
   [ -f ".repo_version" ] || fail2 "Cannot found current repo_version file, please make sure you have correct ${PRODUCT_NAME,,}-installer package."
   rls=`find /opt/zstack-dvd/ -name ".repo_version"`
@@ -3282,61 +3279,10 @@ check_sync_local_repos() {
 
   if [ x"$REPO_MATCHED" = x"true" ]; then
       return 0
-  elif [ x"$SKIP_SYNC" = x'y' -o x"$BASEARCH" != x"x86_64" ]; then
+  else
       echo " ... $(tput setaf 1)NOT MATCH$(tput sgr0)" | tee -a $ZSTAC_INSTALL_LOG
       echo_hints_to_upgrade_iso
-  else
-      echo " ... $(tput setaf 3)NOT MATCH$(tput sgr0)" | tee -a $ZSTAC_INSTALL_LOG
   fi
-
-echo_subtitle "Sync from repo.zstack.io (takes a couple of minutes)"
-# if current local repo is based on centos7.2, then sync with eg. 2.3.1_c72
-# if current local repo is based on centos7.4, then sync with eg. 2.3.1_c74
-if [ x"$UPGRADE" = x'y' ]; then
-    cluster_os_version=`mysql -uzstack -p"$MYSQL_USER_PASSWORD" zstack -e "select distinct tag from SystemTagVO where (resourceType='HostVO' and tag like '%os::version%');"`
-    cluster_os_type=`echo -e "$cluster_os_version"|awk -F"::" '/version/{print $3}'|awk -F "." '{print "c"$1$2}'`
-    [ -z "$cluster_os_type" ] && cluster_os_type=$ZSTACK_RELEASE
-fi
-if [ x"$ZSTACK_RELEASE" = x"c72" -o x"$ZSTACK_RELEASE" = x"c74" -o x"$ZSTACK_RELEASE" = x"c76" ];then
-    BASEURL=rsync://rsync.repo.zstack.io/${VERSION_RELEASE_NR}/$BASEARCH/
-    REMOTE_REPO_VERSION_URL=repo.zstack.io/${VERSION_RELEASE_NR}/$BASEARCH/
-else
-    BASEURL=rsync://rsync.repo.zstack.io/${VERSION_RELEASE_NR}/
-    REMOTE_REPO_VERSION_URL=repo.zstack.io/${VERSION_RELEASE_NR}/
-fi
-
-LOCAL_ZSTAC_VERSION=$(awk '{print $NF}' $ZSTACK_HOME/VERSION)
-if [[ $LOCAL_ZSTAC_VERSION == $VERSION_RELEASE_NR* ]]; then
-    wget -q -O .remote_repo_version "${REMOTE_REPO_VERSION_URL}${ZSTACK_RELEASE}/.repo_version"
-    if [ -s .remote_repo_version ]; then
-        diff --ignore-all-space .repo_version .remote_repo_version || echo_upgrade_local_repo_use_iso
-    else
-        fail2 "failed to update repo, can not find remote repo version, please download iso manually to upgrade your repo."
-    fi
-fi
-# it takes about 2 min to compare md5sum of 1800+ files in iso
-for os_release in $cluster_os_type;do
-    [ ! -d /opt/zstack-dvd/$BASEARCH/$os_release ] && fail2 "$os_release cluster exists but no local repo matched, please download $os_release iso manually to upgrade your repo."
-    umount /opt/zstack-dvd/$BASEARCH/$os_release/Extra/qemu-kvm-ev >/dev/null 2>&1
-    rsync -aP --delete --exclude zstack-installer.bin --exclude .repo_version ${BASEURL}${os_release}/ /opt/zstack-dvd/$BASEARCH/$os_release/ >> $ZSTACK_INSTALL_LOG 2>&1 || echo_hints_to_upgrade_iso
-    # update .repo_version after syncing
-    cat .repo_version > /opt/zstack-dvd/$BASEARCH/$os_release/.repo_version
-done
-
-[ -f /etc/yum.repos.d/epel.repo ] && sed -i 's/enabled=1/enabled=0/g' /etc/yum.repos.d/epel.repo
-export YUM0="$ZSTACK_RELEASE"
-yum --enablerepo=* clean all >/dev/null 2>&1
-rpm -qa | grep zstack-manager >/dev/null 2>&1 && yum --disablerepo=* --enablerepo=zstack-local -y install zstack-manager >/dev/null 2>&1 || true
-rpm -qa | grep zstack-release >/dev/null 2>&1 || yum --disablerepo=* --enablerepo=zstack-local -y install zstack-release >/dev/null 2>&1 && true
-
-cd /opt/zstack-dvd
-rm -rf `ls -a|egrep -v "(x86_64|aarch64|mips64el|loongarch64)"`  > /dev/null 2>&1
-cd - > /dev/null
-if [ ! -f /opt/zstack-dvd/zstack-image-1.4.qcow2 ];then
-    cp -rf /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/zstack-image-1.4.qcow2 /opt/zstack-dvd/
-    cp -rf /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/GPL /opt/zstack-dvd/
-fi
-pass
 }
 
 
@@ -3636,7 +3582,7 @@ do
         fail2 "$PRODUCT_NAME don't support '-R' option! Please remove '-R' and try again."
         fi;shift 2;;
         # -s: skip syncing from repo.zstack.io
-        -s ) SKIP_SYNC='y';shift;;
+        # -s ) SKIP_SYNC='y';shift;;
         -t ) check_myarg $1 $2;ZSTACK_START_TIMEOUT=$2;shift 2;;
         -T ) check_myarg $1 $2;MYSQL_PORT=$2;shift 2;;
         -u ) UPGRADE='y';shift;;
