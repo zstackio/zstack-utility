@@ -762,6 +762,7 @@ class IsoTo(object):
         self.path = None
         self.imageUuid = None
         self.deviceId = None
+        self.isEmpty = False
 
 class AttachIsoCmd(object):
     def __init__(self):
