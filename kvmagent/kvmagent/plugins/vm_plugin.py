@@ -689,6 +689,26 @@ class HotUnplugPciDeviceRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(HotUnplugPciDeviceRsp, self).__init__()
 
+class HotPlugMdevDeviceCommand(kvmagent.AgentCommand):
+    def __init__(self):
+        super(HotPlugMdevDeviceCommand, self).__init__()
+        self.MdevDeviceUuid = None
+        self.vmUuid = None
+
+class HotPlugMdevDeviceRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(HotPlugMdevDeviceRsp, self).__init__()
+
+class HotUnplugMdevDeviceCommand(kvmagent.AgentCommand):
+    def __init__(self):
+        super(HotUnplugMdevDeviceCommand, self).__init__()
+        self.MdevDeviceUuid = None
+        self.vmUuid = None
+
+class HotUnplugMdevDeviceRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(HotUnplugMdevDeviceRsp, self).__init__()
+        
 class AttachPciDeviceToHostCommand(kvmagent.AgentCommand):
     def __init__(self):
         super(AttachPciDeviceToHostCommand, self).__init__()
@@ -5414,6 +5434,8 @@ class VmPlugin(kvmagent.KvmAgent):
     HOT_UNPLUG_PCI_DEVICE = "/pcidevice/hotunplug"
     ATTACH_PCI_DEVICE_TO_HOST = "/pcidevice/attachtohost"
     DETACH_PCI_DEVICE_FROM_HOST = "/pcidevice/detachfromhost"
+    HOT_PLUG_MDEV_DEVICE = "/mdevdevice/hotplug"
+    HOT_UNPLUG_MDEV_DEVICE = "/mdevdevice/hotunplug"
     KVM_ATTACH_USB_DEVICE_PATH = "/vm/usbdevice/attach"
     KVM_DETACH_USB_DEVICE_PATH = "/vm/usbdevice/detach"
     RELOAD_USB_REDIRECT_PATH = "/vm/usbdevice/reload"
@@ -7582,6 +7604,81 @@ host side snapshot files chian:
 
     @kvmagent.replyerror
     @in_bash
+    def hot_plug_mdev_device(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = HotPlugMdevDeviceRsp()
+
+        logger.debug('mdev-device:%s' % cmd)
+       
+        _uuid = str(uuid.UUID(cmd.MdevDeviceUuid))
+            
+        content = '''
+<hostdev mode='subsystem' type='mdev' managed='yes' model='vfio-pci' display='off'>
+    <source>
+        <address uuid='%s'/>
+    </source>
+</hostdev>''' % (_uuid)
+        spath = linux.write_to_temp_file(content)
+
+        r, o, e = bash.bash_roe("virsh attach-device %s %s" % (cmd.vmUuid, spath))
+        if r != 0:
+            rsp.success = False
+            rsp.error = "failed to attach-device %s to %s: %s, %s" % (_uuid, cmd.vmUuid, o, e)
+
+        logger.debug("attach-device %s to %s: %s, %s" % (spath, cmd.vmUuid, o, e))
+        return jsonobject.dumps(rsp)
+        
+    @kvmagent.replyerror
+    @in_bash
+    def hot_unplug_mdev_device(self, req):
+        @linux.retry(3, 3)
+        def find_mdev_device(vm_uuid, mdev_uuid):
+            cmd = """virsh dumpxml %s | grep -A3 -E '<hostdev.*mdev' | grep "<address uuid='%s'/>" """ % \
+                  (vm_uuid, mdev_uuid)
+            r, o, e = bash.bash_roe(cmd)
+            return o != ""
+        
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = HotUnplugMdevDeviceRsp()
+        _uuid = str(uuid.UUID(cmd.MdevDeviceUuid))
+
+        if not find_mdev_device(cmd.vmUuid, _uuid):
+            logger.debug("mdev device %s not found" % _uuid)
+            return jsonobject.dumps(rsp)
+        
+        content = '''
+<hostdev mode='subsystem' type='mdev' managed='yes' model='vfio-pci' display='off'>
+    <source>
+        <address uuid='%s'/>
+    </source>
+</hostdev>''' % (_uuid)
+        spath = linux.write_to_temp_file(content)
+
+        retry_num = 4
+        retry_interval = 5
+        logger.debug("try to virsh detach xml for %d times: %s" % (retry_num, content))
+        for i in range(1, retry_num + 1):
+            r, o, e = bash.bash_roe("virsh detach-device %s %s" % (cmd.vmUuid, spath))
+            succ = linux.wait_callback_success(lambda args: not find_mdev_device(args[0], args[1]), [cmd.vmUuid, _uuid], timeout=retry_interval)
+            if succ:
+                break
+
+            if i < retry_num:
+                continue
+
+            if r != 0:
+                rsp.success = False
+                rsp.error = "failed to detach-device %s from %s: %s, %s" % (_uuid, cmd.vmUuid, o, e)
+                return jsonobject.dumps(rsp)
+
+            if not succ:
+                rsp.success = False
+                rsp.error = "mdev device %s still exists on vm %s after %ds" % (_uuid, cmd.vmUuid, retry_num * retry_interval)
+                return jsonobject.dumps(rsp)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
     def attach_pci_device_to_host(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AttachPciDeviceToHostRsp()
@@ -8722,6 +8819,8 @@ host side snapshot files chian:
         http_server.register_async_uri(self.HOT_UNPLUG_PCI_DEVICE, self.hot_unplug_pci_device)
         http_server.register_async_uri(self.ATTACH_PCI_DEVICE_TO_HOST, self.attach_pci_device_to_host)
         http_server.register_async_uri(self.DETACH_PCI_DEVICE_FROM_HOST, self.detach_pci_device_from_host)
+        http_server.register_async_uri(self.HOT_PLUG_MDEV_DEVICE, self.hot_plug_mdev_device)
+        http_server.register_async_uri(self.HOT_UNPLUG_MDEV_DEVICE, self.hot_unplug_mdev_device)
         http_server.register_async_uri(self.KVM_ATTACH_USB_DEVICE_PATH, self.kvm_attach_usb_device)
         http_server.register_async_uri(self.KVM_DETACH_USB_DEVICE_PATH, self.kvm_detach_usb_device)
         http_server.register_async_uri(self.RELOAD_USB_REDIRECT_PATH, self.reload_redirect_usb)
