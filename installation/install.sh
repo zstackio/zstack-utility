@@ -210,6 +210,7 @@ declare -a upgrade_params_array=(
     '4.5.0,-DupgradeVipOwner=true'
     '4.5.0,-DupgradeVpcIpsecVersionCheck=true'
     '4.5.0,-DAddTagToSchedulerSnapshot=true'
+    '4.6.0,-DupgradeVipSnatNetworkServiceRefRecord=true'
 )
 #other than the upon params_array, this one could be persisted in zstack.properties
 declare -a upgrade_persist_params_array=(
