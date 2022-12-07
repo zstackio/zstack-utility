@@ -10,7 +10,6 @@ from zstacklib.utils import linux
 from zstacklib.utils import log
 from zstacklib.utils import shell
 from zstacklib.utils import bash
-from zstacklib.utils import qemu_img
 from zstacklib.utils import lock
 
 logger = log.get_logger(__name__)
@@ -19,6 +18,10 @@ INITIATOR_FILE_PATH = "/etc/iscsi/initiatorname.iscsi"
 
 
 class RetryException(Exception):
+    pass
+
+
+class IOException(Exception):
     pass
 
 
@@ -88,7 +91,7 @@ class ResizeVolumeRsp(AgentRsp):
 class NoFailurePingRsp(AgentRsp):
     def __init__(self):
         super(NoFailurePingRsp, self).__init__()
-        self.disconnectedPSMountPath = []
+        self.disconnectedPSInstallPath = []
 
 
 def translate_absolute_path_from_install_paht(path):
@@ -101,6 +104,15 @@ def translate_absolute_path_from_wwn(wwn):
     if wwn is None:
         raise Exception("wwn can not be null")
     return "/dev/disk/by-id/wwn-0x" + wwn
+
+
+def heartbeat_io_check(path):
+    heartbeat_check = shell.ShellCmd('sg_inq %s' % path)
+    heartbeat_check(False)
+    if heartbeat_check.return_code != 0:
+        return False
+
+    return True
 
 
 class BlockStoragePlugin(kvmagent.KvmAgent):
@@ -130,12 +142,10 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
 
         self.imagestore_client = ImageStoreClient()
 
-
     @bash.in_bash
     def rescan_disk(self, disk_path=None):
         device_letter = bash.bash_o("ls -al %s | awk -F '/' '{print $NF}'" % (disk_path)).strip();
         linux.write_file("/sys/block/%s/device/rescan" % device_letter, "1")
-
 
     @kvmagent.replyerror
     def resize_volume(self, req):
@@ -152,7 +162,6 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         rsp.size = ret
         return jsonobject.dumps(rsp)
 
-
     @kvmagent.replyerror
     def get_initiator_name(self, req):
         logger.debug("start to get host initiator")
@@ -166,13 +175,7 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def delete_heartbeat(self, req):
         logger.debug("start to delete heartbeat")
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = DeleteHeartbeatRsp()
-        try:
-            heartbeat_path = cmd.heartbeatPath
-            linux.umount(heartbeat_path)
-        except Exception as e:
-            pass
         rsp.success = True
         return jsonobject.dumps(rsp)
 
@@ -183,9 +186,8 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         logger.debug("start to create heart beat")
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CreateHeartbeatRsp()
+        rsp.success = True
 
-        heartbeat_path = cmd.heartbeatPath
-        target = cmd.target
         logger.debug("start to discover target:" + cmd.target)
         self.discovery_iscsi(cmd)
         logger.debug("start to login")
@@ -201,47 +203,15 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
             rsp.error = err_msg
             return jsonobject.dumps(rsp)
 
-        try:
-            check_fs, o, e = bash.bash_roe('file -Ls %s | grep "XFS"' % heartbeat_lun_wwn)
-            if check_fs != 0:
-                shell.call("mkfs.xfs -f %s" % heartbeat_lun_wwn)
-            else:
-                r, o, e = bash.bash_roe('xfs_repair -n %s' % heartbeat_lun_wwn)
-                if r != 0:
-                    contains_mounted_fs = "contains a mounted and writable" in e
-                    if contains_mounted_fs is not True:
-                        shell.call("xfs_repair -o force_geometry -L %s" % heartbeat_lun_wwn)
-        except Exception as e:
-            pass
-
-        try:
-            logger.debug("successfully login iscsi server let's start to init heart beat fs")
-            # check heartbeat fs
-            logger.debug("mount heart beat path " + heartbeat_path)
-            if linux.is_mounted(heartbeat_path) is not True:
-                linux.mount(heartbeat_lun_wwn, heartbeat_path, "sync")
-            rsp.success = True
-        except Exception as e:
-            rsp.success = False
-            rsp.error = e.message
-
-        touch = shell.ShellCmd('timeout 5 touch %s/ready' % heartbeat_path)
-        touch(False)
-        if touch.return_code != 0:
-            linux.umount(heartbeat_path)
-            r, o, e = bash.bash_roe('xfs_repair -n %s' % heartbeat_lun_wwn)
-            if r != 0:
-                shell.call("xfs_repair -o force_geometry -L %s" % heartbeat_lun_wwn)
-            linux.mount(heartbeat_lun_wwn, heartbeat_path, "sync")
-            retouch = shell.ShellCmd('timeout 5 touch %s/ready' % heartbeat_path)
-            retouch(False)
-
-            if retouch.return_code != 0:
+        successfully_create_heartbeat = heartbeat_io_check(heartbeat_lun_wwn)
+        if successfully_create_heartbeat is False:
+            bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -u >/dev/null")
+            successfully_create_heartbeat = heartbeat_io_check(heartbeat_lun_wwn)
+            if successfully_create_heartbeat is False:
                 rsp.success = False
-                rsp.error = "fail to write heartbeat folder, because " + touch.stderr
-                logger.debug('touch file failed, cause: %s' % touch.stderr)
-
-        linux.rm_file_force('%s/ready' % heartbeat_path)
+                error_msg = "fail to write heartbeat please check host connection with ps, heartbeat path: " + heartbeat_lun_wwn
+                rsp.error = error_msg
+                logger.debug('heartbeat io check failed, cause: %s' % error_msg)
 
         return jsonobject.dumps(rsp)
 
@@ -270,7 +240,7 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         successfully_find_lun = self.check_lun_status(cmd_info)
         return successfully_find_lun
 
-    @linux.retry(times=10, sleep_time=random.uniform(0.1,3))
+    @linux.retry(times=10, sleep_time=random.uniform(0.1, 3))
     def wait_lun_ready(self, abs_path):
         if os.path.exists(abs_path) is True:
             logger.debug("successfully find lun wwn: " + abs_path)
@@ -327,7 +297,6 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
             logger.debug(e)
         rsp = AgentRsp
         return jsonobject.dumps(rsp)
-
 
     @bash.in_bash
     def _logout_target(self, logoutCmd):
@@ -400,38 +369,24 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
     def stop(self):
         pass
 
-
-    @linux.retry(times=3, sleep_time=random.uniform(0.1, 3))
-    def touch_ready_file(self, file_path):
-        touch = shell.ShellCmd('timeout 5 touch %s' % file_path)
-        touch(False)
-        if touch.return_code != 0:
-            return False
-        return True
-
-
     @kvmagent.replyerror
     def no_failure_ping(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = NoFailurePingRsp()
         rsp.success = True
 
-        for mount_path in cmd.psMountPath:
-            file_path = mount_path + "/ready"
-            is_mounted = linux.is_mounted(mount_path)
-            if self.touch_ready_file(file_path) is False or is_mounted is not True:
-                try:
-                    linux.umount(mount_path)
-                except Exception as e:
-                    logger.debug("get exception when umount path: " + e.message)
-                rsp.success = False
-                if is_mounted is not True:
-                    logger.debug('mark %s as disconnected, mount path is not correctly mounted' % mount_path)
-                else:
-                    logger.debug('touch ready file failed, mark %s as disconnected mount path' % mount_path)
-                rsp.disconnectedPSMountPath.append(mount_path)
-                rsp.error = "mount path: " + mount_path + " is disconnected"
-                continue
-            linux.rm_file_force(file_path)
+        for heartbeat_install_path in cmd.psHeartbeatLunInstallPath:
+            heartbeat_lun_path = translate_absolute_path_from_install_paht(heartbeat_install_path)
+            successfully_create_heartbeat = heartbeat_io_check(heartbeat_lun_path)
+            if successfully_create_heartbeat is False:
+                bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -u >/dev/null")
+                successfully_create_heartbeat = heartbeat_io_check(heartbeat_lun_path)
+                if successfully_create_heartbeat is False:
+                    rsp.success = False
+                    rsp.disconnectedPSInstallPath.append(heartbeat_install_path)
+                    error_msg = "fail to write heartbeat for ping, please check host connection with ps, heartbeat " \
+                                "path: " + heartbeat_lun_path
+                    rsp.error = error_msg
+                    logger.debug('heartbeat io check failed, cause: %s' % error_msg)
 
         return jsonobject.dumps(rsp)
