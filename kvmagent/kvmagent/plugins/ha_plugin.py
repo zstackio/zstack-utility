@@ -22,6 +22,7 @@ from distutils.version import LooseVersion
 
 logger = log.get_logger(__name__)
 
+
 class UmountException(Exception):
     pass
 
@@ -508,16 +509,31 @@ class HaPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         created_time = time.time()
         self.setup_fencer(cmd.uuid, created_time)
-        mount_path = cmd.mountPath
+        install_path = cmd.installPath;
+        heart_beat_wwn_path = install_path.replace("block://", "/dev/disk/by-id/wwn-0x")
+        rsp = AgentRsp()
 
-        if linux.is_mounted(mount_path) is not True:
-            rsp = AgentRsp()
+        if os.path.exists(heart_beat_wwn_path) is not True:
+            try:
+                bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -u >/dev/null")
+            except Exception as e:
+                pass
+
+        # recheck wwn path
+        if os.path.exists(heart_beat_wwn_path) is not True:
+            err_msg = "fail to find heartbeat lun, please make sure host is connected with ps";
+            logger.debug(err_msg)
             rsp.success = False
-            rsp.error = "heart path %s is not correctly mounted" % (cmd.mountPath)
+            rsp.error = err_msg
             return jsonobject.dumps(rsp)
 
-        test_file = os.path.join(mount_path,
-                                 '%s-ping-test-file-%s' % (cmd.uuid, self.config.get(kvmagent.HOST_UUID)))
+        def heartbeat_io_check(path):
+            heartbeat_check = shell.ShellCmd('sg_inq %s' % path)
+            heartbeat_check(False)
+            if heartbeat_check.return_code != 0:
+                return False
+
+            return True
 
         @thread.AsyncThread
         def heartbeat_on_block():
@@ -526,22 +542,14 @@ class HaPlugin(kvmagent.KvmAgent):
             while self.run_fencer(cmd.uuid, created_time):
                 try:
                     time.sleep(cmd.interval)
-                    is_mounted = linux.is_mounted(mount_path)
 
-                    logger.debug('touch test file %s' % test_file)
-                    touch = shell.ShellCmd('timeout 5 touch %s' % test_file)
-                    touch(False)
-
-                    if touch.return_code != 0 or is_mounted is not True:
-                        if touch.return_code != 0:
-                            logger.debug('touch file failed, cause: %s' % touch.stderr)
-                        if is_mounted is not True:
-                            logger.debug('heartbeat path %s is not correctly mounted' % mount_path)
+                    successfully_check_heartbeat = heartbeat_io_check(heart_beat_wwn_path)
+                    if successfully_check_heartbeat is not True:
+                        logger.debug('heartbeat path %s is not accessible' % heart_beat_wwn_path)
                         failure += 1
                     else:
+                        logger.debug('heartbeat path %s is accessible' % heart_beat_wwn_path)
                         failure = 0
-                        logger.debug('remove test file %s' % test_file)
-                        linux.rm_file_force(test_file)
                         continue
 
                     if failure < cmd.maxAttempts:
@@ -549,7 +557,6 @@ class HaPlugin(kvmagent.KvmAgent):
 
                     try:
                         logger.warn("block storage %s fencer fired!" % cmd.uuid)
-
                         if cmd.strategy == 'Permissive':
                             continue
 
@@ -559,6 +566,7 @@ class HaPlugin(kvmagent.KvmAgent):
                             self.report_self_fencer_triggered([cmd.uuid], ','.join(vm_uuids))
                             clean_network_config(vm_uuids)
                             bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -r >/dev/null")
+                            bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -u >/dev/null")
 
                         # reset the failure count
                         failure = 0
