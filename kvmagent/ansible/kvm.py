@@ -44,6 +44,7 @@ bridgeDisableIptables = 'false'
 isMini = 'false'
 isBareMetal2Gateway='false'
 releasever = ''
+unsupported_iproute_list = ["nfs4"]
 
 
 # get parameter from shell
@@ -326,7 +327,7 @@ def install_kvm_pkg():
                     yum_install_package(pkg, host_post_info)
 
         # handle distro version specific task
-        if releasever != 'nfs4' and major_version < 7:
+        if releasever not in unsupported_iproute_list and major_version < 7:
             # name: copy name space supported iproute for RHEL6
             copy_arg = CopyArg()
             copy_arg.src = iproute_pkg
