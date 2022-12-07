@@ -17,6 +17,7 @@ import threading
 import rados
 import rbd
 from datetime import datetime, timedelta
+from distutils.version import LooseVersion
 
 logger = log.get_logger(__name__)
 
@@ -183,6 +184,7 @@ class SanlockHealthChecker(object):
 
 
 last_multipath_run = time.time()
+QEMU_VERSION = linux.get_qemu_version()
 
 
 def clean_network_config(vm_uuids):
@@ -274,6 +276,11 @@ def get_running_vm_root_volume_path(vm_uuid, is_file_system):
     cmdline = out.split(" ", 3)[-1]
     if "bootindex=1" in cmdline:
         root_volume_path = cmdline.split("bootindex=1")[0].split(" -drive file=")[-1].split(",")[0]
+        if LooseVersion(QEMU_VERSION) >= LooseVersion("6.2.0"):
+            if is_file_system:
+                root_volume_path = cmdline.split("bootindex=1")[0].split('filename')[-1].split('"')[2]
+            else:
+                root_volume_path = cmdline.split("bootindex=1")[0].split('image')[0].split('"')[-3] + '/'
     elif " -boot order=dc" in cmdline:
         # TODO: maybe support scsi volume as boot volume one day
         root_volume_path = cmdline.split("id=drive-virtio-disk0")[0].split(" -drive file=")[-1].split(",")[0]
