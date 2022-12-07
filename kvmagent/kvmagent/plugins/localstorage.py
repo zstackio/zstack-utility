@@ -917,7 +917,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             if backing_file in src_dst_dict:
                 dst_file = src_dst_dict[backing_file]
                 linux.link(backing_file, dst_file)
-                linux.qcow2_rebase_no_check(dst_file, f, "qcow2")
+                linux.qcow2_rebase_no_check(dst_file, f)
 
         for src_file, dst_file in src_dst_dict.iteritems():
             linux.link(src_file, dst_file)
