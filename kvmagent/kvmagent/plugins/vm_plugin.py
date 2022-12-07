@@ -3097,7 +3097,7 @@ class Vm(object):
         parameter_map = {}
         if storage_migration_required:
             disks, destXml = self._build_domain_new_xml(cmd.disks.__dict__)
-            parameter_map[libvirt.VIR_MIGRATE_PARAM_MIGRATE_DISKS] = ','.join(disks)
+            parameter_map[libvirt.VIR_MIGRATE_PARAM_MIGRATE_DISKS] = disks
             parameter_map[libvirt.VIR_MIGRATE_PARAM_URI] = tcpUri
             parameter_map[libvirt.VIR_MIGRATE_PARAM_DEST_XML] = destXml
 
