@@ -3,6 +3,7 @@ from kvmagent.test.utils import vm_utils, network_utils, volume_utils, pytest_ut
 from zstacklib.utils import jsonobject, xmlobject, bash, linux
 from zstacklib.test.utils import misc,env
 from kvmagent.plugins import vm_plugin
+from unittest import TestCase
 init_kvmagent()
 vm_utils.init_vm_plugin()
 

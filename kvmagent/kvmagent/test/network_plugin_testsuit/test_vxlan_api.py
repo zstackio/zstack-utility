@@ -4,6 +4,7 @@ from zstacklib.test.utils import remote
 from zstacklib.utils import linux, jsonobject, bash
 from zstacklib.test.utils import misc
 from zstacklib.utils import iproute
+from unittest import TestCase
 
 network_plugin_utils.init_network_plugin()
 

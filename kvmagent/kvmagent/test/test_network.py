@@ -2,6 +2,7 @@ from kvmagent.test.utils.stub import *
 from kvmagent.test.utils import network_utils, vm_utils
 from zstacklib.utils import linux
 from zstacklib.test.utils import misc
+from unittest import TestCase
 
 init_kvmagent()
 network_utils.init_mevoco_plugin()

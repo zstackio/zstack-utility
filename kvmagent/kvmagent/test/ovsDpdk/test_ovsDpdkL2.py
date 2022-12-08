@@ -9,6 +9,7 @@ from zstacklib.utils import log
 from zstacklib.utils import uuidhelper
 from kvmagent.plugins import ovsdpdk_network
 from zstacklib.utils import linux
+from unittest import TestCase
 from zstacklib.utils import jsonobject
 import time
 
