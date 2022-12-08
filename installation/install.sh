@@ -3747,12 +3747,10 @@ echo_hints_to_upgrade_iso()
         ISO_DOWNLOAD_LINK="http://www.zstack.io/product_downloads/"
     else
         fail "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n" \
-            "Syncing local repo with repo.zstack.io has been failed too.\n" \
             "Please download proper ISO and upgrade the local repo first."
     fi
 
     fail "The current local repo is not suitable for ${PRODUCT_NAME} installation.\n" \
-        "Syncing local repo with repo.zstack.io has been failed too.\n" \
         "Please download ${ISO_NAME} from ${ISO_DOWNLOAD_LINK} and run:\n" \
         "# wget http://cdn.zstack.io/product_downloads/scripts/${PRODUCT_NAME,,}-upgrade\n" \
         "# bash ${PRODUCT_NAME,,}-upgrade ${ISO_NAME}\n" \
