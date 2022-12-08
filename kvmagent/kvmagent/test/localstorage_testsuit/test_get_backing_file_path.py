@@ -20,7 +20,7 @@ class TestLocalStoragePlugin(TestCase):
     def setUpClass(cls):
         return
     @pytest_utils.ztest_decorater
-    def test_create_root_volume_from_template(self):
+    def test_get_backing_file_path(self):
         rsp = localstorage_utils.localstorage_init(
             "/local_ps"
         )
@@ -34,3 +34,10 @@ class TestLocalStoragePlugin(TestCase):
         )
 
         self.assertEqual(True, os.path.exists("/local_ps/test/test.qcow2"), "[check] cannot find rootvolume in host")
+
+        rsp = localstorage_utils.get_backing_file_path(
+            path="/local_ps/test/test.qcow2"
+        )
+        print rsp.backingFilePath
+        self.assertGreater(rsp.size, 0, "[check] rsp size is error")
+        self.assertEqual(rsp.backingFilePath, "/root/.zguest/min-vm.qcow2", "[check] cannot find rootvolume in host")

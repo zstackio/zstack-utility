@@ -10,6 +10,7 @@ from zstacklib.utils import linux
 from zstacklib.utils import jsonobject
 from zstacklib.utils import bash
 from zstacklib.utils import ovs
+from unittest import TestCase
 import time
 import pytest
 

@@ -3,6 +3,7 @@ import logging
 from kvmagent.test.utils import vm_utils, pytest_utils
 from kvmagent.test.utils.stub import *
 from zstacklib.utils import bash
+from unittest import TestCase
 
 __ENV_SETUP__ = {
     'self': {
