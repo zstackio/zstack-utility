@@ -30,7 +30,7 @@ ansible.constants.HOST_KEY_CHECKING = False
 enable_networkmanager_list = ["ns10", "euler20", "uos1021a"]
 supported_arch_list = ["x86_64", "aarch64", "mips64el", "loongarch64"]
 
-RPM_BASED_OS = ["kylin_zstack", "kylin_tercel", "kylin_sword", "alibaba", "centos", "openeuler", "uniontech_kongzi"]
+RPM_BASED_OS = ["kylin_zstack", "kylin_tercel", "kylin_sword", "alibaba", "centos", "openeuler", "uniontech_kongzi", "kylin_svs2.22.2 zyj aarch64"]
 DEB_BASED_OS = ["ubuntu", "uos", "kylin4.0.2", "debian", "uniontech_fou"]
 DISTRO_WITH_RPM_DEB = ["kylin", "uniontech"]
 
@@ -290,6 +290,7 @@ def get_host_releasever(ansible_distribution):
         "kylin_tercel tercel 10": "ns10",
         "kylin_sword sword 10": "ns10",
         "kylin_zstack zstack 10": "ns10",
+        "kylin_svs2.22.2 zyj aarch64 svs2.22.2 zyj aarch64 10": "ns10",
         "uniontech fou 20": "uos20",
         "redhat maipo 7.4": "ns10", # old kylinV10, oem 7.4 incompletely
         "centos core 7.6.1810": "c76",
