@@ -19,7 +19,7 @@ class TestLocalStoragePlugin(TestCase):
     def setUpClass(cls):
         return
     @pytest_utils.ztest_decorater
-    def test_create_root_volume_from_template(self):
+    def test_resize_volume(self):
         rsp = localstorage_utils.localstorage_init(
             "/local_ps"
         )
@@ -33,3 +33,11 @@ class TestLocalStoragePlugin(TestCase):
         )
 
         self.assertEqual(True, os.path.exists("/local_ps/test/test.qcow2"), "[check] cannot find rootvolume in host")
+
+        rsp = localstorage_utils.resize_volume(
+            installPath="/local_ps/test/test.qcow2",
+            size=5242880,
+            force=True
+        )
+
+        self.assertEqual(5242880, rsp.size , "[check] cannot resize_volume in host")

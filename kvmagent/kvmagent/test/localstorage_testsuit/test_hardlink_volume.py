@@ -19,7 +19,7 @@ class TestLocalStoragePlugin(TestCase):
     def setUpClass(cls):
         return
     @pytest_utils.ztest_decorater
-    def test_create_root_volume_from_template(self):
+    def test_hardlink_volume(self):
         rsp = localstorage_utils.localstorage_init(
             "/local_ps"
         )
@@ -33,3 +33,13 @@ class TestLocalStoragePlugin(TestCase):
         )
 
         self.assertEqual(True, os.path.exists("/local_ps/test/test.qcow2"), "[check] cannot find rootvolume in host")
+
+        linux.mkdir("/local_ps2")
+
+        rsp = localstorage_utils.hardlink_volume(
+            srcDir="/local_ps/test/",
+            dstDir="/local_ps2/",
+            storagePath="/local_ps"
+        )
+
+        self.assertEqual(True, os.path.exists("/local_ps2/test.qcow2"), "[check] cannot hard link volume in host")
