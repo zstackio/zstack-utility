@@ -1,12 +1,9 @@
-import os
-import signal
-
+import snapshot_utils
+import volume_utils
+from kvmagent.plugins.vm_plugin import VmPlugin
 from kvmagent.test.utils import pytest_utils
 from zstacklib.test.utils import env, misc
 from zstacklib.utils import jsonobject, xmlobject, bash, linux
-from kvmagent.plugins.vm_plugin import VmPlugin
-import volume_utils
-import snapshot_utils
 
 startVmCmdBody = {
     "vmInstanceUuid": "0b42630f37d8417480eced62ad89719f",
@@ -177,6 +174,15 @@ def get_vm_xmlobject_from_virsh_dump(vm_uuid):
     xml = bash.bash_o('virsh dumpxml %s' % vm_uuid)
     return xmlobject.loads(xml)
 
+
+def online_change_cpumem(vm_uuid, cpu_num, mem_size):
+    # type: (str, int, int) -> None
+
+    return VM_PLUGIN.online_change_cpumem(misc.make_a_request({
+        'vmUuid': vm_uuid,
+        'cpuNum': cpu_num,
+        'memorySize': mem_size
+    }))
 
 def online_increase_cpu(vm_uuid, cpu_num):
     # type: (str, int) -> None

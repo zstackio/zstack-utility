@@ -1,24 +1,24 @@
 import logging
 
-from kvmagent.test.utils import vm_utils
+from kvmagent.test.utils import vm_utils, pytest_utils
 from kvmagent.test.utils.stub import *
 from zstacklib.utils import bash
 
-init_kvmagent()
-vm_utils.init_vm_plugin()
 __ENV_SETUP__ = {
-    'current': {
+    'self': {
     }
 }
 
 
-class TestVmMigration(TestCase, vm_utils.VmPluginTestStub):
+class TestBash(TestCase, vm_utils.VmPluginTestStub):
 
     @classmethod
     def setUpClass(cls):
         pass
 
-    def test_something(self):
+    @pytest_utils.ztest_decorater
+    def test_bash(self):
         current_vm = env.get_test_environment_metadata()
         r, _ = bash.bash_ro('virsh version')
         logging.info("current_vm:", current_vm, "virsh version:", r)
+

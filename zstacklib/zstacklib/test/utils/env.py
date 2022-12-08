@@ -69,7 +69,7 @@ log_env_variables()
 def get_test_environment_metadata():
     with open(envFile, "r") as f:
         env = yaml.load(f.read(), Loader=yaml.FullLoader)
-        return dict2obj(env["current"])
+        return dict2obj(env["self"])
 
 
 def get_vm_metadata(vm_name):
