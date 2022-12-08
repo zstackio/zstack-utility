@@ -1,13 +1,10 @@
-from kvmagent.test.utils.stub import *
-from kvmagent.test.utils import vm_utils, network_utils, volume_utils, pytest_utils
-from zstacklib.utils import linux, sizeunit, bash
-from zstacklib.test.utils import misc
-from kvmagent.plugins import vm_plugin
 import pytest
+
+from kvmagent.test.utils import vm_utils, network_utils, volume_utils, pytest_utils
+from kvmagent.test.utils.stub import *
 
 init_kvmagent()
 vm_utils.init_vm_plugin()
-
 
 __ENV_SETUP__ = {
     'self': {
@@ -15,38 +12,42 @@ __ENV_SETUP__ = {
 }
 
 
-class TestVmPlugin(TestCase, vm_utils.VmPluginTestStub):
+class TestVolume(TestCase, vm_utils.VmPluginTestStub):
+    vm_uuid = ""
+    vol = None
+    vol_path = ""
+
     @classmethod
     def setUpClass(cls):
         network_utils.create_default_bridge_if_not_exist()
 
-    @misc.test_for(handlers=[
-        vm_plugin.VmPlugin.KVM_ATTACH_VOLUME,
-        vm_plugin.VmPlugin.KVM_DETACH_VOLUME,
-        vm_plugin.VmPlugin.KVM_VM_CHECK_VOLUME_PATH,
-    ])
-
-
+    @pytest.mark.run(order=1)
     @pytest_utils.ztest_decorater
-    def test_attach_check_detach_volume(self):
-        vm_uuid, vm = self._create_vm()
-
+    def test_attach_volume_to_vm(self):
+        TestVolume.vm_uuid, vm = self._create_vm()
         vol_uuid, vol_path = volume_utils.create_empty_volume()
-        _, vol = vm_utils.attach_volume_to_vm(vm_uuid, vol_uuid, vol_path)
+        _, TestVolume.vol = vm_utils.attach_volume_to_vm(TestVolume.vm_uuid, vol_uuid, vol_path)
 
-        xml = vm_utils.get_vm_xmlobject_from_virsh_dump(vm_uuid)
+        xml = vm_utils.get_vm_xmlobject_from_virsh_dump(TestVolume.vm_uuid)
         vol_xml = volume_utils.find_volume_in_vm_xml_by_path(xml, vol_path)
         self.assertIsNotNone(vol_xml)
 
-        rsp = vm_utils.check_volume(vm_uuid, [vol])
+    @pytest.mark.run(order=2)
+    @pytest_utils.ztest_decorater
+    def test_check_volume(self):
+        rsp = vm_utils.check_volume(TestVolume.vm_uuid, [TestVolume.vol])
         self.assertTrue(rsp.success)
 
-        vm_utils.detach_volume_from_vm(vm_uuid, vol)
-        xml = vm_utils.get_vm_xmlobject_from_virsh_dump(vm_uuid)
-        vol_xml = volume_utils.find_volume_in_vm_xml_by_path(xml, vol_path)
+    @pytest.mark.run(order=3)
+    @pytest_utils.ztest_decorater
+    def test_detach_volume_from_vm(self):
+        rsp = vm_utils.detach_volume_from_vm(TestVolume.vm_uuid, TestVolume.vol)
+        self.assertTrue(rsp.success)
+        xml = vm_utils.get_vm_xmlobject_from_virsh_dump(TestVolume.vm_uuid)
+        vol_xml = volume_utils.find_volume_in_vm_xml_by_path(xml, TestVolume.vol_path)
         self.assertIsNone(vol_xml)
 
-        rsp = vm_utils.check_volume(vm_uuid, [vol])
+        rsp = vm_utils.check_volume(TestVolume.vm_uuid, [TestVolume.vol])
         self.assertFalse(rsp.success)
 
-        self._destroy_vm(vm_uuid)
+        self._destroy_vm(TestVolume.vm_uuid)

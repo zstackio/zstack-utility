@@ -22,7 +22,6 @@ def migrate_vm_run():
 
 @pytest_utils.ztest_decorater
 class TestVmMigration(TestCase, vm_utils.VmPluginTestStub):
-    vm1 = None
 
     @classmethod
     def setUpClass(cls):

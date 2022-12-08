@@ -1,13 +1,11 @@
-from kvmagent.test.utils.stub import *
-from kvmagent.test.utils import vm_utils, network_utils, volume_utils, pytest_utils
-from zstacklib.utils import linux, sizeunit, bash
-from zstacklib.test.utils import misc
-from kvmagent.plugins import vm_plugin
 import pytest
+
+from kvmagent.test.utils import vm_utils, network_utils, pytest_utils
+from kvmagent.test.utils.stub import *
+from zstacklib.utils import bash
 
 init_kvmagent()
 vm_utils.init_vm_plugin()
-
 
 __ENV_SETUP__ = {
     'self': {
@@ -15,26 +13,27 @@ __ENV_SETUP__ = {
 }
 
 
-class TestVmPlugin(TestCase, vm_utils.VmPluginTestStub):
+class TestPauseVmResumeVm(TestCase, vm_utils.VmPluginTestStub):
+    vm_uuid = ''
+
     @classmethod
     def setUpClass(cls):
         network_utils.create_default_bridge_if_not_exist()
 
-
-    @misc.test_for(handlers=[
-        vm_plugin.VmPlugin.KVM_PAUSE_VM_PATH,
-    ])
-
+    @pytest.mark.run(order=1)
     @pytest_utils.ztest_decorater
-    def test_pause_resume_vm(self):
-        vm_uuid, _ = self._create_vm()
+    def test_pause_vm(self):
+        TestPauseVmResumeVm.vm_uuid, _ = self._create_vm()
 
-        vm_utils.pause_vm(vm_uuid)
-        r = bash.bash_r('virsh list --state-paused | grep %s' % vm_uuid)
-        self.assertEqual(0, r, 'vm[%s] not paused' % vm_uuid)
+        vm_utils.pause_vm(TestPauseVmResumeVm.vm_uuid)
+        r = bash.bash_r('virsh list --state-paused | grep %s' % TestPauseVmResumeVm.vm_uuid)
+        self.assertEqual(0, r, 'vm[%s] not paused' % TestPauseVmResumeVm.vm_uuid)
 
-        vm_utils.resume_vm(vm_uuid)
-        r = bash.bash_r('virsh list | grep %s' % vm_uuid)
-        self.assertEqual(0, r, 'vm[%s] not running' % vm_uuid)
+    @pytest.mark.run(order=2)
+    @pytest_utils.ztest_decorater
+    def test_resume_vm(self):
+        vm_utils.resume_vm(TestPauseVmResumeVm.vm_uuid)
+        r = bash.bash_r('virsh list | grep %s' % TestPauseVmResumeVm.vm_uuid)
+        self.assertEqual(0, r, 'vm[%s] not running' % TestPauseVmResumeVm.vm_uuid)
 
-        self._destroy_vm(vm_uuid)
+        self._destroy_vm(TestPauseVmResumeVm.vm_uuid)

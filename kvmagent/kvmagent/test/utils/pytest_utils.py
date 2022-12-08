@@ -2,6 +2,7 @@ import os
 
 Out_flag = True
 
+
 class PytestExtension(object):
 
     def setup_class(self):

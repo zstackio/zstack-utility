@@ -1,8 +1,5 @@
+from kvmagent.test.utils import vm_utils, network_utils, pytest_utils
 from kvmagent.test.utils.stub import *
-from kvmagent.test.utils import vm_utils, network_utils, volume_utils, pytest_utils
-from zstacklib.utils import linux, sizeunit, bash
-from zstacklib.test.utils import misc
-from kvmagent.plugins import vm_plugin
 
 init_kvmagent()
 vm_utils.init_vm_plugin()
@@ -13,7 +10,7 @@ __ENV_SETUP__ = {
 }
 
 
-class TestVmPlugin(TestCase, vm_utils.VmPluginTestStub):
+class TestOnlineIncreaseCpu(TestCase, vm_utils.VmPluginTestStub):
     @classmethod
     def setUpClass(cls):
         network_utils.create_default_bridge_if_not_exist()

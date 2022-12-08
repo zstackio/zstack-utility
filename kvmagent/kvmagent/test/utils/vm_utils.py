@@ -1,12 +1,9 @@
-import os
-import signal
-
+import snapshot_utils
+import volume_utils
+from kvmagent.plugins.vm_plugin import VmPlugin
 from kvmagent.test.utils import pytest_utils
 from zstacklib.test.utils import env, misc
 from zstacklib.utils import jsonobject, xmlobject, bash, linux
-from kvmagent.plugins.vm_plugin import VmPlugin
-import volume_utils
-import snapshot_utils
 
 startVmCmdBody = {
     "vmInstanceUuid": "0b42630f37d8417480eced62ad89719f",

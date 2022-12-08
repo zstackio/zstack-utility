@@ -1,8 +1,8 @@
-from zstacklib.test.utils import *  # DO NOT DELETE
-from kvmagent import kvmagent
-from zstacklib.utils import bash
-from zstacklib.test.utils import env
 import os
+
+from kvmagent import kvmagent
+from zstacklib.test.utils import env
+from zstacklib.utils import bash
 
 
 class PrepareOS(object):
