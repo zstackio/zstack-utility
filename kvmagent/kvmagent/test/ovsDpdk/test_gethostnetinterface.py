@@ -1,5 +1,6 @@
 from kvmagent.plugins import host_plugin
 from zstacklib.utils import jsonobject
+from unittest import TestCase
 
 import time
 import pytest

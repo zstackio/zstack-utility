@@ -2,6 +2,7 @@ from kvmagent.test.utils import localstorage_utils,pytest_utils
 from kvmagent.test.utils.stub import *
 from zstacklib.test.utils import remote,misc
 from zstacklib.utils import linux, jsonobject, bash
+from unittest import TestCase
 import os
 import glob
 localstorage_utils.init_localstorage_plugin()

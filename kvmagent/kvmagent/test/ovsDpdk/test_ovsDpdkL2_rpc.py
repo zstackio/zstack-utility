@@ -10,6 +10,7 @@ from zstacklib.utils import uuidhelper
 from kvmagent.plugins import ovsdpdk_network
 from zstacklib.utils import linux
 from zstacklib.utils import jsonobject
+from unittest import TestCase
 
 import time
 CALLBACK_URL = 'http://localhost:7070/testcallback'

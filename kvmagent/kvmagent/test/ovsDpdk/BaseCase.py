@@ -8,6 +8,7 @@ from kvmagent.plugins import ovsdpdk_network
 from zstacklib.utils import linux
 from zstacklib.utils import jsonobject
 from zstacklib.utils import bash
+from unittest import TestCase
 
 class BaseCase():
     @classmethod

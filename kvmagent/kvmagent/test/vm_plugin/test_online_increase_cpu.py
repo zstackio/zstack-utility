@@ -1,5 +1,6 @@
 from kvmagent.test.utils import vm_utils, network_utils, pytest_utils
 from kvmagent.test.utils.stub import *
+from unittest import TestCase
 
 init_kvmagent()
 vm_utils.init_vm_plugin()
