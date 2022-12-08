@@ -9,7 +9,7 @@ network_utils.init_mevoco_plugin()
 from kvmagent.plugins import mevoco
 
 __ENV_SETUP__ = {
-    'current': {}
+    'self': {}
 }
 
 

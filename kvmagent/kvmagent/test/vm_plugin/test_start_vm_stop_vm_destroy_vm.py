@@ -1,11 +1,18 @@
 from kvmagent.test.utils.stub import *
-from kvmagent.test.utils import vm_utils, network_utils, volume_utils
+from kvmagent.test.utils import vm_utils, network_utils, volume_utils, pytest_utils
 from zstacklib.utils import linux, sizeunit, bash
 from zstacklib.test.utils import misc
 from kvmagent.plugins import vm_plugin
+import pytest
 
 init_kvmagent()
 vm_utils.init_vm_plugin()
+
+
+__ENV_SETUP__ = {
+    'self': {
+    }
+}
 
 
 class TestVmPlugin(TestCase, vm_utils.VmPluginTestStub):
@@ -18,6 +25,7 @@ class TestVmPlugin(TestCase, vm_utils.VmPluginTestStub):
         vm_plugin.VmPlugin.KVM_STOP_VM_PATH,
         vm_plugin.VmPlugin.KVM_DESTROY_VM_PATH,
     ])
+    @pytest_utils.ztest_decorater
     def test_vm_lifecycle(self):
         vm = vm_utils.create_startvm_body_jsonobject()
         vm_utils.create_vm(vm)
@@ -44,6 +52,7 @@ class TestVmPlugin(TestCase, vm_utils.VmPluginTestStub):
         vm_plugin.VmPlugin.KVM_PAUSE_VM_PATH,
         vm_plugin.VmPlugin.KVM_RESUME_VM_PATH,
     ])
+    @pytest_utils.ztest_decorater
     def test_pause_resume_vm(self):
         vm_uuid, _ = self._create_vm()
 
@@ -61,6 +70,7 @@ class TestVmPlugin(TestCase, vm_utils.VmPluginTestStub):
         vm_plugin.VmPlugin.KVM_ONLINE_INCREASE_CPU_PATH,
         vm_plugin.VmPlugin.KVM_ONLINE_INCREASE_MEMORY_PATH,
     ])
+    @pytest_utils.ztest_decorater
     def test_change_vm_cpu_mem(self):
         vm_uuid, vm = self._create_vm()
 
@@ -82,6 +92,7 @@ class TestVmPlugin(TestCase, vm_utils.VmPluginTestStub):
     @misc.test_for(handlers=[
         vm_plugin.VmPlugin.KVM_GET_CONSOLE_PORT_PATH
     ])
+    @pytest_utils.ztest_decorater
     def test_get_vnc_port(self):
         vm_uuid, vm = self._create_vm()
 
@@ -93,6 +104,7 @@ class TestVmPlugin(TestCase, vm_utils.VmPluginTestStub):
     @misc.test_for(handlers=[
         vm_plugin.VmPlugin.KVM_VM_SYNC_PATH
     ])
+    @pytest_utils.ztest_decorater
     def test_vm_sync(self):
         vm_uuid, vm = self._create_vm()
 
@@ -113,6 +125,7 @@ class TestVmPlugin(TestCase, vm_utils.VmPluginTestStub):
         vm_plugin.VmPlugin.KVM_DETACH_VOLUME,
         vm_plugin.VmPlugin.KVM_VM_CHECK_VOLUME_PATH,
     ])
+    @pytest_utils.ztest_decorater
     def test_attach_check_detach_volume(self):
         vm_uuid, vm = self._create_vm()
 

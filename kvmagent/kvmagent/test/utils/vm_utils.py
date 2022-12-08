@@ -178,6 +178,15 @@ def get_vm_xmlobject_from_virsh_dump(vm_uuid):
     return xmlobject.loads(xml)
 
 
+def online_change_cpumem(vm_uuid, cpu_num, mem_size):
+    # type: (str, int, int) -> None
+
+    return VM_PLUGIN.online_change_cpumem(misc.make_a_request({
+        'vmUuid': vm_uuid,
+        'cpuNum': cpu_num,
+        'memorySize': mem_size
+    }))
+
 def online_increase_cpu(vm_uuid, cpu_num):
     # type: (str, int) -> None
 
