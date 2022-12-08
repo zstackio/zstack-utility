@@ -107,6 +107,25 @@ migrate_vm_cmd_body = {
     'storageMigrationPolicy': 'FullCopy'
 }
 
+attach_vm_nic_body = {
+    "vmUuid": None,
+    "nic": {
+        "mac":None,
+        "bridgeName":None,
+        "physicalInterface":None,
+        "uuid":None,
+        "nicInternalName":None,
+        "deviceId":None,
+        "metaData":32,
+        "useVirtio":True,
+        "bootOrder":0,
+        "mtu":1500,
+        "driverType":"virtio",
+        "type":"VNIC",
+        "vlanId":None
+    }
+}
+
 VM_PLUGIN = None  # type: VmPlugin
 
 
@@ -288,6 +307,18 @@ def migrate_vm(vm_uuid, src_ip, dst_ip):
     cmd.srcHostIp = src_ip
 
     return VM_PLUGIN.migrate_vm(misc.make_a_request(cmd.to_dict()))
+
+@misc.return_jsonobject()
+def attach_vm_nic(cmd=None):
+    # type: (str, str, str) -> jsonobject.JsonObject
+
+    return VM_PLUGIN.attach_nic(misc.make_a_request(cmd.to_dict()))
+@misc.return_jsonobject()
+def detach_vm_nic(cmd=None):
+    # type: (str, str, str) -> jsonobject.JsonObject
+
+    return VM_PLUGIN.attach_nic(misc.make_a_request(cmd.to_dict()))
+
 
 
 class VmPluginTestStub(pytest_utils.PytestExtension):
