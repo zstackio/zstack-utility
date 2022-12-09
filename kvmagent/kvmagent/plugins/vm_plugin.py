@@ -762,6 +762,7 @@ class IsoTo(object):
         self.path = None
         self.imageUuid = None
         self.deviceId = None
+        self.isEmpty = False
 
 class AttachIsoCmd(object):
     def __init__(self):
@@ -3225,9 +3226,10 @@ class Vm(object):
             if iso.path.startswith('sharedblock'):
                 iso.path = shared_block_to_file(iso.path)
 
-            cdrom = etree.Element('disk', {'type': 'file', 'device': 'cdrom'})
+            iso = iso_check(iso)
+            cdrom = etree.Element('disk', {'type': iso.type, 'device': 'cdrom'})
             e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
-            e(cdrom, 'source', None, {'file': iso.path})
+            e(cdrom, 'source', None, {Vm.disk_source_attrname.get(iso.type): iso.path})
             e(cdrom, 'target', None, {'dev': dev, 'bus': bus})
             e(cdrom, 'readonly', None)
 
@@ -4225,7 +4227,7 @@ class Vm(object):
             # legacy_cdrom_config used for cdrom without deivce address
             # cdrom given address record from management node side
             def make_empty_cdrom(iso, legacy_cdrom_config, bootOrder, resourceUuid):
-                cdrom = e(devices, 'disk', None, {'type': 'file', 'device': 'cdrom'})
+                cdrom = e(devices, 'disk', None, {'type': iso.type, 'device': 'cdrom'})
                 e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
                 e(cdrom, 'target', None, {'dev': legacy_cdrom_config.targetDev, 'bus': default_bus_type})
 
@@ -4272,6 +4274,7 @@ class Vm(object):
                 return
 
             for iso in cmd.cdRoms:
+                iso = iso_check(iso)
                 cdrom_config = empty_cdrom_configs[iso.deviceId]
 
                 if iso.isEmpty:
@@ -4284,7 +4287,7 @@ class Vm(object):
                     devices.append(ic.to_xmlobject(cdrom_config.targetDev, default_bus_type, cdrom_config.bus, cdrom_config.unit, iso.bootOrder))
                 else:
                     cdrom = make_empty_cdrom(iso, cdrom_config, iso.bootOrder, iso.resourceUuid)
-                    e(cdrom, 'source', None, {'block' if iso.path.startswith("/dev/") else "file": iso.path})
+                    e(cdrom, 'source', None, {Vm.disk_source_attrname.get(iso.type): iso.path})
 
         def make_volumes():
             devices = elements['devices']
@@ -5200,6 +5203,16 @@ def file_volume_check(volume):
     if LooseVersion(QEMU_VERSION) >= LooseVersion("6.0.0"):
         volume.deviceType = 'block'
     return volume
+
+def iso_check(iso):
+    iso.type = "file"
+    
+    if iso.isEmpty:
+        return iso
+    if iso.path.startswith("/dev/") and LooseVersion(QEMU_VERSION) >= LooseVersion("6.0.0"):
+        iso.type = "block"
+
+    return iso
 
 @in_bash
 def execute_qmp_command(domain_id, command):
