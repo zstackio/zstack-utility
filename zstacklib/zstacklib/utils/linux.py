@@ -23,6 +23,7 @@ import pprint
 import errno
 import json
 import fcntl
+import xxhash
 
 from inspect import stack
 
@@ -2604,3 +2605,13 @@ def check_nbd():
     cmd(is_exception=False)
     if cmd.return_code != 0:
         raise Exception('nbd kernel module not found. try load nbd by `modprobe nbd`.')
+
+def get_file_xxhash(path):
+    hasher = xxhash.xxh64()
+    blocksize = 1048576
+    with open(path, 'r') as fd:
+        buf = fd.read(blocksize)
+        while len(buf) > 0:
+            hasher.update(buf)
+            buf = fd.read(blocksize)
+    return hasher.hexdigest()
