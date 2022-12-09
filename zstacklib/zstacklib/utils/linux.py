@@ -23,6 +23,7 @@ import pprint
 import errno
 import json
 import fcntl
+import xxhash
 
 from inspect import stack
 
@@ -2571,3 +2572,13 @@ def hdev_get_max_transfer_via_segments(blk_path):
     with open(segments_path, 'ro') as f:
         max_segments = int(f.read())
     return max_segments * resource.getpagesize()
+
+def get_file_xxhash(path):
+    hasher = xxhash.xxh64()
+    blocksize = 1048576
+    with open(path, 'r') as fd:
+        buf = fd.read(blocksize)
+        while len(buf) > 0:
+            hasher.update(buf)
+            buf = fd.read(blocksize)
+    return hasher.hexdigest()
