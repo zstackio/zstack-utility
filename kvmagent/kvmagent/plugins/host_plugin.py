@@ -829,6 +829,8 @@ class HostPlugin(kvmagent.KvmAgent):
             rsp.biosVendor = bios_vendor if bios_vendor else 'unknown'
             rsp.biosVersion = bios_version if bios_version else 'unknown'
             rsp.biosReleaseDate = bios_release_date if bios_release_date else 'unknown'
+            memory_slots_maximum = shell_call('dmidecode -q -t memory | grep "Memory Device" | wc -l')
+            rsp.memorySlotsMaximum = memory_slots_maximum.strip()
             power_supply_manufacturer = shell.call("dmidecode -t 39 | grep -m1 'Manufacturer' | awk -F ':' '{print $2}'")
             rsp.powerSupplyManufacturer = power_supply_manufacturer.strip()
             power_supply_model_name = shell.call("dmidecode -t 39 | grep -m1 'Name' | awk -F ':' '{print $2}'")
@@ -888,8 +890,9 @@ class HostPlugin(kvmagent.KvmAgent):
             # in case lscpu doesn't show cpu max mhz
             cpuMHz = "2500.0000" if cpuMHz.strip() == '' else cpuMHz
             rsp.cpuGHz = '%.2f' % (float(cpuMHz) / 1000)
-            cpu_processor_num = shell.call("lscpu | grep -m1 'CPU(s)' | awk -F ':' '{print $2}'")                    
-            rsp.cpuProcessorNum = int(cpu_processor_num.strip())                                                         
+            cpu_cores_per_socket = shell.call("lscpu | awk -F':' '/per socket/{print $NF}'")
+            cpu_threads_per_core = shell.call("lscpu | awk -F':' '/per core/{print $NF}'")
+            rsp.cpuProcessorNum = int(cpu_cores_per_socket.strip()) * int(cpu_threads_per_core)
 
             '''
             examples:         
@@ -934,8 +937,9 @@ class HostPlugin(kvmagent.KvmAgent):
             static_cpuGHz_re = re.search('[0-9.]*GHz', host_cpu_model_name)
             rsp.cpuGHz = static_cpuGHz_re.group(0)[:-3] if static_cpuGHz_re else transient_cpuGHz
 
-            cpu_processor_num = shell.call("grep -c processor /proc/cpuinfo")
-            rsp.cpuProcessorNum = cpu_processor_num.strip()         
+            cpu_cores_per_socket = shell.call("lscpu | awk -F':' '/per socket/{print $NF}'")
+            cpu_threads_per_core = shell.call("lscpu | awk -F':' '/per core/{print $NF}'")
+            rsp.cpuProcessorNum = int(cpu_cores_per_socket.strip()) * int(cpu_threads_per_core)
 
             cpu_cache_list = self._get_cpu_cache()
             rsp.cpuCache = ",".join(str(cache) for cache in cpu_cache_list)

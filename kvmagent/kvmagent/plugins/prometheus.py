@@ -435,6 +435,9 @@ def collect_ipmi_state():
         'ipmi_status': GaugeMetricFamily('ipmi_status', 'ipmi status', None, []),
         "fan_speed_rpm": GaugeMetricFamily('fan_speed_rpm', 'fan speed rpm', None, ['fan_speed_name']),
         "fan_speed_state": GaugeMetricFamily('fan_speed_state', 'fan speed state', None, ['fan_speed_name']),
+        "cpu_temperature": GaugeMetricFamily('cpu_temperature', 'cpu temperature', None, ['cpu']),
+        "cpu_status": GaugeMetricFamily('cpu_status', 'cpu status', None, ['cpu']),
+        "physical_memory_status": GaugeMetricFamily('physical_memory_status', 'physical memory status', None, ['slot_number']),
     }
 
     global collect_equipment_state_last_time
@@ -445,43 +448,63 @@ def collect_ipmi_state():
     elif (time.time() - collect_equipment_state_last_time) < 25 and collect_equipment_state_last_result is not None:
         return collect_equipment_state_last_result
 
+    # get ipmi status
     metrics['ipmi_status'].add_metric([], bash_r("ipmitool mc info"))
 
-    '''
-            Inspur(old)
-            PSU0_Status      | 74h | ok  | 10.0 | Presence detected, Power Supply AC lost
-            PSU1_Status      | 75h | ok  | 10.0 | Presence detected
-            PSU0_POUT        | 2Eh | ok  | 32.0 | 0 Watts
-            PSU1_POUT        | 2Fh | ok  | 32.1 | 208 Watts
-            FAN0_F_Speed     | 50h | ok  | 29.0 | 4320 RPM
-            FAN0_R_Speed     | 51h | ok  | 29.1 | 3840 RPM
+    # get cpu info
+    r, cpu_temps = bash_ro("sensors | awk -F'+' '/Physical id/{print $2}' | grep -oP '\d*\.\d+'")
+    if r == 0:
+        count = 0
+        for temp in cpu_temps.splitlines():
+            cpu_id = "CPU" + str(count)
+            metrics['cpu_temperature'].add_metric([cpu_id], float(temp.strip()))
+            count = count + 1
 
-            Inspur(new)
-            PSU0_Status      | 5Dh | ok  | 10.0 | Presence detected, Predictive failure, AC lost or out-of-range
-            PSU1_Status      | 5Eh | ok  | 10.1 | Presence detected
-            PSU0_PIN         | 44h | ok  | 10.0 | 0 Watts
-            PSU1_PIN         | 45h | ok  | 10.1 | 372 Watts
-            FAN0_F_Speed     | 46h | ok  | 29.0 | 4080 RPM
-            FAN0_R_Speed     | 47h | ok  | 29.1 | 3600 RPM
-
-            Hygon
-            PSU1_Status      | AEh | ok  | 10.10 | Presence detected
-            PSU2_Status      | BBh | ok  | 10.20 | Presence detected
-            PSU1_Pin         | AAh | ok  | 10.6  | 150 Watts
-            PSU2_Pin         | B7h | ok  | 10.16 | 150 Watts
-            FAN1_Speed       | 81h | ok  | 29.1 | 4700 RPM
-            FAN2_Speed       | 82h | ok  | 29.2 | 4700 RPM
-
-            PowerLeader
-            PSU1_Status      | 58h | ok  | 10.0 | Presence detected, Power Supply AC lost
-            PSU2_Status      | 59h | ok  | 10.1 | Presence detected
-            PSU1_Pin         | 32h | ok  | 10.0 | 4 Watts
-            PSU2_Pin         | 36h | ok  | 10.1 | 284 Watts
-            FAN_SPEED_1A     | 40h | ok  | 29.0 | 4640 RPM
-            FAN_SPEED_1B     | 41h | ns  | 29.0 | No Reading
-
-    '''
-    r, sdr_data = bash_ro("ipmitool sdr elist")
+    r, cpu_infos = bash_ro("hd_ctl -c cpu")
+    if r == 0:
+        infos = jsonobject.loads(cpu_infos)
+        for info in infos:
+            cpu_id = "CPU" + info.Processor
+            if "Populated" in info.Status and "Enabled" in info.Status:
+                metrics['cpu_status'].add_metric([cpu_id], 0)
+            elif "" == info.Status:
+                metrics['cpu_status'].add_metric([cpu_id], 20)
+            else:
+                metrics['cpu_status'].add_metric([cpu_id], 10)
+                
+    # get physical memory info
+    r, memory_infos = bash_ro("hd_ctl -c memory")
+    if r == 0:
+        infos = jsonobject.loads(memory_infos)
+        for info in infos:
+            slot_number = info.Locator
+            if "ok" == info.State:
+                metrics['cpu_status'].add_metric([slot_number], 0)
+            elif "" == info.State:
+                metrics['cpu_status'].add_metric([slot_number], 20)
+            else:
+                metrics['cpu_status'].add_metric([slot_number], 10)
+            
+    # get fan info
+    r, fan_infos = bash_ro("hd_ctl -c fan")
+    if r == 0:
+        infos = jsonobject.loads(fan_infos)
+        for info in infos.fan_list:
+            fan_name = info.Name
+            if fan_name == "":
+                continue
+            fan_rpm = "0" if info.SpeedRPM == "" else info.SpeedRPM
+            metrics['fan_speed_rpm'].add_metric([fan_name], float(fan_rpm))
+            
+            if "ok" == info.Status:
+                metrics['fan_speed_state'].add_metric([fan_name], 0)
+            elif "" == info.Status :
+                metrics['fan_speed_state'].add_metric([fan_name], 20)
+            else:
+                metrics['fan_speed_state'].add_metric([fan_name], 10)
+                
+    # get power info
+    r, sdr_data = bash_ro("ipmitool sdr elist | grep -E -i '^ps\w*(\ |_)(pin|pout|status)'")
     if r == 0:
         power_list = []
         for line in sdr_data.splitlines():
@@ -503,17 +526,6 @@ def collect_ipmi_state():
                 ps_out_power = float(filter(str.isdigit, ps_out_power)) if bool(re.search(r'\d', ps_out_power)) else float(0)
                 metrics['power_supply_current_output_power'].add_metric([ps_id], ps_out_power)
                 power_list.append(ps_id)
-            elif re.match(r"^fan\w*_speed\w*", info):
-                if "m2" in info:
-                    continue
-                fan_rpm = info.split("|")[4].strip()
-                if fan_rpm == "" or fan_rpm == "no reading" or fan_rpm == "disabled":
-                    continue
-                fan_id = info.split("|")[0].strip()
-                fan_state = 0 if info.split("|")[2].strip().lower() == "ok" else 10
-                fan_rpm = float(filter(str.isdigit, fan_rpm)) if bool(re.search(r'\d', fan_rpm)) else float(0)
-                metrics['fan_speed_state'].add_metric([fan_id], fan_state)
-                metrics['fan_speed_rpm'].add_metric([fan_id], fan_rpm)
     
     collect_equipment_state_last_result = metrics.values()
     return collect_equipment_state_last_result
@@ -755,7 +767,6 @@ kvmagent.register_prometheus_collector(collect_vm_pvpanic_enable_in_domain_xml)
 kvmagent.register_prometheus_collector(collect_node_disk_wwid)
 kvmagent.register_prometheus_collector(collect_host_conntrack_statistics)
 kvmagent.register_prometheus_collector(collect_physical_network_interface_state)
-kvmagent.register_prometheus_collector(collect_physical_cpu_state)
 
 if misc.isMiniHost():
     kvmagent.register_prometheus_collector(collect_lvm_capacity_statistics)
@@ -766,6 +777,8 @@ if misc.isHyperConvergedHost():
     kvmagent.register_prometheus_collector(collect_raid_state)
     kvmagent.register_prometheus_collector(collect_ipmi_state)
     kvmagent.register_prometheus_collector(collect_ssd_state)
+else:
+    kvmagent.register_prometheus_collector(collect_physical_cpu_state)
 
 
 class PrometheusPlugin(kvmagent.KvmAgent):
