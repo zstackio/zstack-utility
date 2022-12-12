@@ -42,7 +42,7 @@ logger = log.get_logger(__name__)
 
 
 class CephPoolCapacity(object):
-    def __init__(self, name, available, used, total, replicated_size, security_policy, disk_utilization, related_osds):
+    def __init__(self, name, available, used, total, replicated_size, security_policy, disk_utilization, related_osds, related_osd_capacity):
         self.name = name
         self.availableCapacity = available
         self.usedCapacity = used
@@ -51,6 +51,7 @@ class CephPoolCapacity(object):
         self.securityPolicy = security_policy
         self.diskUtilization = round(disk_utilization, 3)
         self.relatedOsds = related_osds
+        self.relatedOsdCapacity = related_osd_capacity
 
 
 class AgentCommand(object):
@@ -426,7 +427,7 @@ class CephAgent(plugin.TaskManager):
             pool_capacity = CephPoolCapacity(pool.pool_name,
                                              pool.available_capacity, pool.used_capacity, pool.pool_total_size,
                                              pool.replicated_size, pool.security_policy, pool.disk_utilization,
-                                             pool.get_related_osds())
+                                             pool.get_related_osds(), pool.related_osd_capacity)
             rsp.poolCapacities.append(pool_capacity)
 
     @in_bash
