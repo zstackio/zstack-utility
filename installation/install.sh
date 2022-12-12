@@ -1551,6 +1551,7 @@ is_install_general_libs_rh(){
             MySQL-python \
             ipmitool \
             nginx \
+            nginx-all-modules \
             psmisc \
             python2-backports-ssl_match_hostname \
             python2-setuptools \
