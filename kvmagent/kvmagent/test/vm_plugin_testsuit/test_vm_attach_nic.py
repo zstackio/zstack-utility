@@ -34,7 +34,6 @@ class TestVmPlugin(TestCase, vm_utils.VmPluginTestStub):
         cmd.nic.metaData = 32
         cmd.nic.useVirtio =True
         cmd.nic.bootOrder = 0
-        cmd.nic.driverType = 1500
         cmd.nic.type = "VNIC"
         cmd.nic.vlanId = -1
 
