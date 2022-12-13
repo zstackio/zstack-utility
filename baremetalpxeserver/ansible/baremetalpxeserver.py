@@ -101,7 +101,7 @@ run_remote_command(command, host_post_info)
 
 # name: install dependencies
 if distro in RPM_BASED_OS:
-    dep_pkg = "dnsmasq nginx vsftpd nmap"
+    dep_pkg = "dnsmasq nginx nginx-all-modules vsftpd nmap"
     if releasever in ['c74', 'c76']:
         dep_pkg = "{} syslinux".format(dep_pkg)
     else:
@@ -111,7 +111,7 @@ if distro in RPM_BASED_OS:
                   (dep_pkg, dep_pkg if update_packages == 'true' else '$pkg_list', zstack_repo)
         run_remote_command(command, host_post_info)
     else:
-        for pkg in ["dnsmasq", "nginx", "vsftpd", "syslinux", "nmap"]:
+        for pkg in ["dnsmasq", "nginx", "nginx-all-modules", "vsftpd", "syslinux", "nmap"]:
             yum_install_package(pkg, host_post_info)
     command = "(which firewalld && systemctl stop firewalld && systemctl enable firewalld) || true"
     run_remote_command(command, host_post_info)
