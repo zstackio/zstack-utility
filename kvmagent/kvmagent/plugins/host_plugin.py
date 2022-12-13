@@ -829,7 +829,7 @@ class HostPlugin(kvmagent.KvmAgent):
             rsp.biosVendor = bios_vendor if bios_vendor else 'unknown'
             rsp.biosVersion = bios_version if bios_version else 'unknown'
             rsp.biosReleaseDate = bios_release_date if bios_release_date else 'unknown'
-            memory_slots_maximum = shell_call('dmidecode -q -t memory | grep "Memory Device" | wc -l')
+            memory_slots_maximum = shell.call('dmidecode -q -t memory | grep "Memory Device" | wc -l')
             rsp.memorySlotsMaximum = memory_slots_maximum.strip()
             power_supply_manufacturer = shell.call("dmidecode -t 39 | grep -m1 'Manufacturer' | awk -F ':' '{print $2}'")
             rsp.powerSupplyManufacturer = power_supply_manufacturer.strip()
