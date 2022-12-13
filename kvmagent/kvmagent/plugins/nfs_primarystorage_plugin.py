@@ -340,12 +340,17 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
 
             t_shell.bash_progress_1("rsync -aK --progress %s/ %s %s > %s" % (cmd.srcFolderPath, dst_folder_path, rsync_excludes, PFILE), _get_progress)
 
-            src_md5 = t_shell.call(
-                "find %s -name '*.qcow2' %s -exec md5sum {} \; | awk '{ print $1 }' | sort | md5sum" % (cmd.srcFolderPath, md5_excludes))
-            dst_md5 = t_shell.call("find %s -name '*.qcow2' -exec md5sum {} \; | awk '{ print $1 }' | sort | md5sum" % dst_folder_path)
-            if src_md5 != dst_md5:
-                rsp.error = "failed to copy files from %s to %s, md5sum not match" % (cmd.srcFolderPath, dst_folder_path)
-                rsp.success = False
+            srcQcow2s = t_shell.call("find %s -name '*.qcow2'" % cmd.srcFolderPath).strip().splitlines()
+            dstQcow2s = t_shell.call("find %s -name '*.qcow2'" % dst_folder_path).strip().splitlines()
+            if len(srcQcow2s) != len(dstQcow2s):
+                logger.warn("the num of target qcow2 is inconsistent with that of source qcow2, dirty data may exist, src qcow2s:%s, dst qcow2s:%s" % (srcQcow2s, dstQcow2s))
+
+            for srcFile in srcQcow2s:
+                dstFile = os.path.join(dst_folder_path, os.path.relpath(srcFile, cmd.srcFolderPath))
+                if linux.get_file_xxhash(srcFile) != linux.get_file_xxhash(dstFile):
+                    rsp.error = "failed to copy file %s to %s, the md5sum of file not match" % (srcFile, dstFile)
+                    rsp.success = False
+                    break
 
             if not cmd.isMounted:
                 linux.umount(mount_path)

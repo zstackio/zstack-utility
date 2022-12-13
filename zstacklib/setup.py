@@ -37,7 +37,8 @@ Python support library for zstack""",
           "xms-client",
           "python-dateutil",
           "enum34",
-          "cachetools"
+          "cachetools",
+          "xxhash"
       ],
       entry_points="""
       # -*- Entry points: -*-
