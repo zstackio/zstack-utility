@@ -1086,12 +1086,26 @@ def resize_lv(path, size, force=False):
 
 
 @bash.in_bash
-def resize_lv_from_cmd(path, size, cmd, extend_thin_by_specified_size=False):
+@linux.retry(times=15, sleep_time=random.uniform(0.1, 3))
+def extend_lv(path, extend_size):
+    r, o, e = bash.bash_roe("lvextend --size %sb %s" % (calcLvReservedSize(extend_size), path))
+    if r == 0:
+        logger.debug("successfully extend lv %s size to %s" % (path, extend_size))
+        return
+    elif "matches existing size" in e or "matches existing size" in o:
+        logger.debug("lv %s size already matches existing size: %s, return as successful" % (path, extend_size))
+        return
+    else:
+        raise RetryException("extend lv %s to size %s failed, return code: %s, stdout: %s, stderr: %s" %
+                             (path, extend_size, r, o, e))
+
+@bash.in_bash
+def extend_lv_from_cmd(path, size, cmd, extend_thin_by_specified_size=False):
     # type: (str, long, object, bool) -> None
     if cmd.provisioning is None or \
             cmd.addons is None or \
             cmd.provisioning != VolumeProvisioningStrategy.ThinProvisioning:
-        resize_lv(path, size, cmd.force)
+        extend_lv(path, size)
         return
 
     current_size = int(get_lv_size(path))
@@ -1102,13 +1116,13 @@ def resize_lv_from_cmd(path, size, cmd, extend_thin_by_specified_size=False):
             size = v_size
         else:
             size = size + cmd.addons[thinProvisioningInitializeSize]
-        resize_lv(path, size)
+        extend_lv(path, size)
         return
 
     if int(size) - current_size > cmd.addons[thinProvisioningInitializeSize]:
-        resize_lv(path, current_size + cmd.addons[thinProvisioningInitializeSize])
+        extend_lv(path, current_size + cmd.addons[thinProvisioningInitializeSize])
     else:
-        resize_lv(path, size, cmd.force)
+        extend_lv(path, size)
 
 
 def active_lv(path, shared=False):
