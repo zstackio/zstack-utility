@@ -463,7 +463,7 @@ def collect_ipmi_state():
         infos = jsonobject.loads(cpu_infos)
         for info in infos:
             cpu_id = "CPU" + info.Processor
-            if "Populated" in info.Status and "Enabled" in info.Status:
+            if "populated" in info.Status.lower() and "enabled" in info.Status.lower():
                 metrics['cpu_status'].add_metric([cpu_id], 0)
             elif "" == info.Status:
                 metrics['cpu_status'].add_metric([cpu_id], 20)
@@ -476,12 +476,12 @@ def collect_ipmi_state():
         infos = jsonobject.loads(memory_infos)
         for info in infos:
             slot_number = info.Locator
-            if "ok" == info.State:
-                metrics['cpu_status'].add_metric([slot_number], 0)
+            if "ok" == info.State.lower():
+                metrics['physical_memory_status'].add_metric([slot_number], 0)
             elif "" == info.State:
-                metrics['cpu_status'].add_metric([slot_number], 20)
+                metrics['physical_memory_status'].add_metric([slot_number], 20)
             else:
-                metrics['cpu_status'].add_metric([slot_number], 10)
+                metrics['physical_memory_status'].add_metric([slot_number], 10)
             
     # get fan info
     r, fan_infos = bash_ro("hd_ctl -c fan")
@@ -493,10 +493,10 @@ def collect_ipmi_state():
                 continue
             fan_rpm = "0" if info.SpeedRPM == "" else info.SpeedRPM
             metrics['fan_speed_rpm'].add_metric([fan_name], float(fan_rpm))
-            
-            if "ok" == info.Status:
+
+            if "ok" == info.Status.lower():
                 metrics['fan_speed_state'].add_metric([fan_name], 0)
-            elif "" == info.Status :
+            elif "" == info.Status:
                 metrics['fan_speed_state'].add_metric([fan_name], 20)
             else:
                 metrics['fan_speed_state'].add_metric([fan_name], 10)
