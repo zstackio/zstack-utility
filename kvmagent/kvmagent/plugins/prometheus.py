@@ -198,8 +198,6 @@ def convert_disk_state_to_int(state):
         return 5
     elif "failed" in state or "offline" in state:
         return 10
-    elif "unconfigured" in state:
-        return 15
     else:
         return 100
 
