@@ -23,6 +23,7 @@ import threading
 
 import libvirt
 import xml.dom.minidom as minidom
+from jinja2 import Template
 #from typing import List, Any, Union
 from distutils.version import LooseVersion
 
@@ -68,6 +69,7 @@ etree.register_namespace('zs', ZS_XML_NAMESPACE)
 GUEST_TOOLS_ISO_PATH = "/var/lib/zstack/guesttools/GuestTools.iso"
 QMP_SOCKET_PATH = "/var/lib/libvirt/qemu/zstack"
 PCI_ROM_PATH = "/var/lib/zstack/pcirom"
+QEMU_SCRIPT_DIR = "/etc/qemu/"
 
 class RetryException(Exception):
     pass
@@ -1434,6 +1436,22 @@ def get_vnc_or_telnet_port():
                 return str(port)
         except Exception:
             break
+
+def generate_qemu_ifup_script(bridge_name):
+    ifup_conf = '''\
+#!/bin/sh
+brctl addif {{ bridge }} $1
+ip link set $1 up
+'''
+    tmpt = Template(ifup_conf)
+    ifup_conf = tmpt.render({'bridge': bridge_name})
+    ifup_path = os.path.join(QEMU_SCRIPT_DIR, "qemu-ifup." + bridge_name)
+    with open(ifup_path, "w") as fd:
+        fd.write(ifup_conf)
+
+    os.chmod(ifup_path, 0o755)
+
+    return ifup_path
 
 def get_running_vms():
     @LibvirtAutoReconnect
@@ -3975,7 +3993,8 @@ class Vm(object):
 
         def make_vnc():
             devices = elements['devices']
-            _port = get_vnc_or_telnet_port()
+            # _port = get_vnc_or_telnet_port()
+            _port = "-1"
             if cmd.consolePassword == None:
                 vnc = e(devices, 'graphics', None, {'type': 'vnc', 'port': _port, 'autoport': 'yes'})
             else:
@@ -3985,7 +4004,8 @@ class Vm(object):
 
         def make_spice():
             devices = elements['devices']
-            _port = get_vnc_or_telnet_port()
+            # _port = get_vnc_or_telnet_port()
+            _port = "-1"
             if cmd.consolePassword == None:
                 spice = e(devices, 'graphics', None, {'type': 'spice', 'port': _port, 'autoport': 'yes'})
             else:
@@ -4350,34 +4370,53 @@ class Vm(object):
             if not cmd.addons:
                 return
 
-            disk = e(devices, 'disk', None, attrib={'type': 'file', 'device': 'disk'})
-            e(disk, 'driver', None, {'name': 'qemu', 'type': 'qcow2'})
-            e(disk, 'source', None, {'file': cmd.rootVolume.installPath})
-            e(disk, 'target', None, {'dev': 'sda', 'bus': 'virtio'})
+            # disk = e(devices, 'disk', None, attrib={'type': 'file', 'device': 'disk'})
+            # e(disk, 'driver', None, {'name': 'qemu', 'type': 'qcow2'})
+            # e(disk, 'source', None, {'file': cmd.rootVolume.installPath})
+            # e(disk, 'target', None, {'dev': 'sda', 'bus': 'virtio'})
             
-            interface = e(devices, 'interface', None, {'type': 'bridge'})
-            e(interface, 'mac', None, attrib={'address': cmd.nics[0].mac})
-            e(interface, 'source', None, attrib={'bridge': cmd.nics[0].bridgeName})
-            e(interface, 'target', None, attrib={'dev': cmd.nics[0].nicInternalName})
-            e(interface, 'model', None, attrib={'type': 'virtio'})
-            e(interface, 'driver ', None, attrib={'name': 'vhost', 'txmode': 'iothread', 
-                'ioeventfd': 'on', 'event_idx': 'off', 'queues': '2', 'rx_queue_size': '256', 'tx_queue_size': '256'})
+            # interface = e(devices, 'interface', None, {'type': 'bridge'})
+            # e(interface, 'mac', None, attrib={'address': cmd.nics[0].mac})
+            # e(interface, 'source', None, attrib={'bridge': cmd.nics[0].bridgeName})
+            # e(interface, 'target', None, attrib={'dev': cmd.nics[0].nicInternalName})
+            # e(interface, 'model', None, attrib={'type': 'virtio'})
+            # e(interface, 'driver ', None, attrib={'name': 'vhost', 'txmode': 'iothread', 
+            #     'ioeventfd': 'on', 'event_idx': 'off', 'queues': '2', 'rx_queue_size': '256', 'tx_queue_size': '256'})
             
             #make_rng
             rng = e(devices, 'rng', None, {'model': 'virtio'})
             e(rng, 'backend', '/dev/urandom', {'model':'random'})
 
-            # make_console
-            # serial = e(devices, 'serial', None, {'type': 'null'})
-            # e(serial, 'target', None, {'port': '0'})
-            # serial = e(devices, 'serial', None, {'type': 'vc'})
-            # e(serial, 'target', None, {'port': '1'})
+            make_console
+            serial = e(devices, 'serial', None, {'type': 'vc'})
+            e(serial, 'target', None, {'port': '0', 'type': 'system-serial'})
+            console = e(devices, 'console', None, {'type': 'vc'})
+            e(console, 'target', None, {'port': '0', 'type': 'serial'})
 
+            vnc = e(devices, 'graphics', None, {'type': 'vnc', 'port': "-1", 'autoport': 'yes', 'listen': '0.0.0.0'})
+            e(vnc, "listen", None, {'type': 'address', 'address': '0.0.0.0'})
+
+            # make video
+            video = e(devices, 'video')
+            e(video, "model", None, {'type': 'none'})
+            e(video, "alias", None, {'name': 'video0'})
             # make_qemu_commandline
-            _port = get_vnc_or_telnet_port()
+            # _port = get_vnc_or_telnet_port(a)
+            # qcmd = e(root, 'qemu:commandline')
+            # e(qcmd, "qemu:arg", attrib={"value": "-serial"})
+            # e(qcmd, "qemu:arg", attrib={"value": "telnet::{},server,nowait".format(_port)})
             qcmd = e(root, 'qemu:commandline')
-            e(qcmd, "qemu:arg", attrib={"value": "-serial"})
-            e(qcmd, "qemu:arg", attrib={"value": "telnet::{},server,nowait".format(_port)})
+            e(qcmd, "qemu:arg", attrib={"value": "-drive"})
+            e(qcmd, "qemu:arg", attrib={"value": "if=none,file={},id=dosFS,format=qcow2".format(cmd.rootVolume.installPath)})
+            e(qcmd, "qemu:arg", attrib={"value": "-device"})
+            e(qcmd, "qemu:arg", attrib={"value": "virtio-blk-device,drive=dosFS"})
+            e(qcmd, "qemu:arg", attrib={"value": "-netdev"})
+            e(qcmd, "qemu:arg", attrib={"value": "tap,id=hostnet0,ifname={},script={},downscript=no,br={}".format(
+                                    cmd.nics[0].nicInternalName, generate_qemu_ifup_script(cmd.nics[0].bridgeName), cmd.nics[0].bridgeName)})
+            e(qcmd, "qemu:arg", attrib={"value": "-device"})
+            e(qcmd, "qemu:arg", attrib={"value": "virtio-net-device,netdev=hostnet0,mac={}".format(cmd.nics[0].mac)})
+
+
         else :
             make_root()
             make_meta()
