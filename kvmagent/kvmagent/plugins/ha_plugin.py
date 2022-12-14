@@ -7,6 +7,7 @@ from zstacklib.utils import shell
 from zstacklib.utils import linux
 from zstacklib.utils import lvm
 from zstacklib.utils import thread
+from zstacklib.utils import qemu
 from zstacklib.utils import qemu_img
 from zstacklib.utils import ceph
 from zstacklib.utils import sanlock
@@ -185,7 +186,7 @@ class SanlockHealthChecker(object):
 
 
 last_multipath_run = time.time()
-QEMU_VERSION = linux.get_qemu_version()
+QEMU_VERSION = qemu.get_version()
 LIBVIRT_VERSION = linux.get_libvirt_version()
 
 
