@@ -3072,7 +3072,7 @@ class Vm(object):
                 devices.remove(disk)
                 devices.insert(parent_index, new_disk)
 
-        return etree.tostring(tree.getroot())
+        return migrate_disks.keys(), etree.tostring(tree.getroot())
 
     def migrate(self, cmd):
         if self.state == Vm.VM_STATE_SHUTDOWN:
@@ -3088,13 +3088,19 @@ class Vm(object):
             # set the hostname, otherwise the migration will fail
             shell.call('hostname %s.zstack.org' % hostname)
 
-        destXml = None
-        if cmd.disks:
-            destXml = self._build_domain_new_xml(cmd.disks.__dict__)
-
         destHostIp = cmd.destHostIp
         destUrl = "qemu+tcp://{0}/system".format(destHostIp)
         tcpUri = "tcp://{0}".format(destHostIp)
+
+        storage_migration_required = cmd.disks and len(cmd.disks.__dict__) != 0
+        destXml = None
+        parameter_map = {}
+        if storage_migration_required:
+            disks, destXml = self._build_domain_new_xml(cmd.disks.__dict__)
+            parameter_map[libvirt.VIR_MIGRATE_PARAM_MIGRATE_DISKS] = disks
+            parameter_map[libvirt.VIR_MIGRATE_PARAM_URI] = tcpUri
+            parameter_map[libvirt.VIR_MIGRATE_PARAM_DEST_XML] = destXml
+
         flag = (libvirt.VIR_MIGRATE_LIVE |
                 libvirt.VIR_MIGRATE_PEER2PEER |
                 libvirt.VIR_MIGRATE_UNDEFINE_SOURCE)
@@ -3115,7 +3121,7 @@ class Vm(object):
             if any(s.startswith('/dev/') for s in self.list_blk_sources()):
                 flag |= libvirt.VIR_MIGRATE_UNSAFE
 
-        if cmd.useNuma:
+        if cmd.useNuma or storage_migration_required:
             flag |= libvirt.VIR_MIGRATE_PERSIST_DEST
 
         stage = get_task_stage(cmd)
@@ -3156,7 +3162,11 @@ class Vm(object):
 
         with MigrateDaemon(self.domain):
             logger.debug('migrating vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
-            self.domain.migrateToURI2(destUrl, tcpUri, destXml, flag, None, 0)
+
+            if storage_migration_required:
+                self.domain.migrateToURI3(destUrl, parameter_map, flag)
+            else:
+                self.domain.migrateToURI2(destUrl, tcpUri, destXml, flag, None, 0)
 
         try:
             logger.debug('migrating vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
