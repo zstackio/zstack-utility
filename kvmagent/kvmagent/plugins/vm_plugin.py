@@ -49,7 +49,7 @@ from zstacklib.utils import uuidhelper
 from zstacklib.utils import xmlobject
 from zstacklib.utils import xmlhook
 from zstacklib.utils import misc
-from zstacklib.utils import qemu_img
+from zstacklib.utils import qemu_img, qemu
 from zstacklib.utils import ebtables
 from zstacklib.utils import vm_operator
 from zstacklib.utils import pci
@@ -813,6 +813,14 @@ class FailColoPrimaryVmCmd(kvmagent.AgentCommand):
         self.targetHostPort = None
         self.targetHostPassword = None
 
+
+class GetVmVirtualizerVersionRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(GetVmVirtualizerVersionRsp, self).__init__()
+        self.virtualizer = None
+        self.version = None
+
+
 class GetVmDeviceAddressRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(GetVmDeviceAddressRsp, self).__init__()
@@ -993,7 +1001,7 @@ def compare_version(version1, version2):
 LIBVIRT_VERSION = linux.get_libvirt_version()
 LIBVIRT_MAJOR_VERSION = LIBVIRT_VERSION.split('.')[0]
 
-QEMU_VERSION = linux.get_qemu_version()
+QEMU_VERSION = qemu.get_version()
 
 def is_namespace_used():
     return compare_version(LIBVIRT_VERSION, '1.3.3') >= 0
@@ -3613,7 +3621,7 @@ class Vm(object):
         """
         if not top.startswith('/dev'):
             return
-        if LooseVersion(linux.get_qemu_version()) > LooseVersion('2.12.0'):
+        if LooseVersion(qemu.get_version()) > LooseVersion('2.12.0'):
             return
         checking_file = top
         while checking_file:
@@ -4165,7 +4173,7 @@ class Vm(object):
                 e(devices, 'emulator', cmd.addons['qemuPath'])
             else:
                 if cmd.coloPrimary or cmd.coloSecondary or cmd.useColoBinary:
-                    e(devices, 'emulator', kvmagent.get_colo_qemu_path())
+                    e(devices, 'emulator', qemu.get_colo_path())
                 else:
                     e(devices, 'emulator', kvmagent.get_qemu_path())
 
@@ -5350,6 +5358,7 @@ class VmPlugin(kvmagent.KvmAgent):
     ROLLBACK_QUORUM_CONFIG_PATH = "/rollback/quorum/config"
     FAIL_COLO_PVM_PATH = "/fail/colo/pvm"
     GET_VM_DEVICE_ADDRESS_PATH = "/vm/getdeviceaddress"
+    GET_VM_VIRTUALIZER_VERSION_PATH = "/vm/getvirtualizerversion"
     SET_EMULATOR_PINNING_PATH = "/vm/emulatorpinning"
     SYNC_VM_CLOCK_PATH = "/vm/clock/sync"
     SET_SYNC_VM_CLOCK_TASK_PATH = "/vm/clock/sync/task"
@@ -6793,7 +6802,7 @@ host side snapshot files chian:
             final_backup_args.append(args)
 
         logger.info('{api: %s} taking backup for vm: %s' % (cmd.threadContext["api"], cmd.vmUuid))
-        res = isc.backup_volumes(cmd.vmUuid, final_backup_args, dstdir, Report.from_spec(cmd, "VmBackup"), get_task_stage(cmd))
+        res = isc.backup_volumes(cmd.vmUuid, final_backup_args, dstdir, cmd.pointInTime, Report.from_spec(cmd, "VmBackup"), get_task_stage(cmd))
         logger.info('{api: %s} completed backup for vm: %s' % (cmd.threadContext["api"], cmd.vmUuid))
 
         backres = jsonobject.loads(res)
@@ -6863,7 +6872,7 @@ host side snapshot files chian:
         if cmd.volumeWriteBandwidth:
             speed = cmd.volumeWriteBandwidth
 
-        mode = isc.backup_volume(cmd.vmUuid, nodename, bitmap, mode, dest, speed, Report.from_spec(cmd, "VolumeBackup"), get_task_stage(cmd))
+        mode = isc.backup_volume(cmd.vmUuid, nodename, bitmap, mode, dest, cmd.pointInTime, speed, Report.from_spec(cmd, "VolumeBackup"), get_task_stage(cmd))
         logger.info('{api: %s} finished backup volume with mode: %s' % (cmd.threadContext["api"], mode))
 
         if mode == 'incremental':
@@ -8281,6 +8290,17 @@ host side snapshot files chian:
 
         return jsonobject.dumps(rsp)
 
+
+    @kvmagent.replyerror
+    def get_vm_qemu_version(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetVmVirtualizerVersionRsp()
+
+        rsp.virtualizer = "qemu-kvm"
+        rsp.version = qemu.get_running_version(cmd.uuid)
+        return jsonobject.dumps(rsp)
+
+
     @kvmagent.replyerror
     def set_emulator_pinning(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -8525,6 +8545,7 @@ host side snapshot files chian:
         http_server.register_async_uri(self.ROLLBACK_QUORUM_CONFIG_PATH, self.rollback_quorum_config)
         http_server.register_async_uri(self.FAIL_COLO_PVM_PATH, self.fail_colo_pvm, cmd=FailColoPrimaryVmCmd())
         http_server.register_async_uri(self.GET_VM_DEVICE_ADDRESS_PATH, self.get_vm_device_address)
+        http_server.register_async_uri(self.GET_VM_VIRTUALIZER_VERSION_PATH, self.get_vm_qemu_version)
         http_server.register_async_uri(self.SET_EMULATOR_PINNING_PATH, self.set_emulator_pinning)
         http_server.register_async_uri(self.SYNC_VM_CLOCK_PATH, self.sync_vm_clock_now)
         http_server.register_async_uri(self.SET_SYNC_VM_CLOCK_TASK_PATH, self.set_sync_vm_clock_task)
@@ -9267,10 +9288,7 @@ host side snapshot files chian:
         mpts = shell.call("mount -t fuse.sshfs | awk '{print $3}'").splitlines()
         for mpt in mpts:
             if mpt.startswith(tempfile.gettempdir()):
-                pids = linux.get_pids_by_process_fullname(mpt)
-                for pid in pids:
-                    linux.kill_process(pid, is_exception=False)
-
+                linux.get_pids_by_process_fullname(mpt)
                 linux.fumount(mpt, 2)
 
     def stop(self):

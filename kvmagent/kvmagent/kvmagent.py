@@ -9,6 +9,7 @@ from zstacklib.utils import log
 from zstacklib.utils import jsonobject
 from zstacklib.utils import daemon
 from zstacklib.utils import linux
+from zstacklib.utils import qemu
 import os.path
 import traceback
 import pprint
@@ -80,20 +81,14 @@ def get_host_os_type():
     is_debian = any(map(lambda x: x in dist.lower(), linux.DEB_BASED_OS))
     return 'debian' if is_debian else 'redhat'
 
-def get_colo_qemu_path():
-    return '/var/lib/zstack/colo/qemu-system-x86_64'
 
 def get_qemu_path():
-    global _qemu_path, host_arch
+    global _qemu_path
     if not _qemu_path:
-        if os.path.exists('/usr/libexec/qemu-kvm'):
-            _qemu_path = '/usr/libexec/qemu-kvm'
-        elif os.path.exists('/bin/qemu-kvm'):
-            _qemu_path = '/bin/qemu-kvm'
-        elif os.path.exists('/usr/bin/qemu-system-{}'.format(host_arch)):
-            _qemu_path = '/usr/bin/qemu-system-{}'.format(host_arch)
-        else:
-            raise KvmError('Could not find qemu-kvm in /bin/qemu-kvm or /usr/libexec/qemu-kvm or /usr/bin/qemu-system-{}'.format(host_arch))
+        try:
+            _qemu_path = qemu.get_path()
+        except Exception as e:
+            raise KvmError(e.message)
 
     return _qemu_path
         
