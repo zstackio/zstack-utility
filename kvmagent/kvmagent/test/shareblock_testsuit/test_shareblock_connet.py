@@ -11,8 +11,6 @@ storage_device_utils.init_storagedevice_plugin()
 PKG_NAME = __name__
 
 __ENV_SETUP__ = {
-    # must create iSCSI stroage
-    #'self': {"qcow":"/"}
     'self': {
     }
 }
