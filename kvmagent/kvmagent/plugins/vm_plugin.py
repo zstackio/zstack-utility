@@ -5176,7 +5176,7 @@ class Vm(object):
             e(interface, 'mtu', None, attrib={'size': '%d' % nic.mtu})
 
         # logger.warn("nic.state : [%s]" % nic.state)
-        if hasattr(nic, 'state') and 'disable' in nic.state :
+        if hasattr(nic, 'state') and nic.state == 'disable' :
             e(interface, 'link', None, attrib={'state': 'down'})
 
         if iftype == 'hostdev':
