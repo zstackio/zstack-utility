@@ -185,7 +185,8 @@ class VipQos(kvmagent.KvmAgent):
         else:
             filter = "%s0000/ffff0000" % portstr
 
-        classId = bash_o("{{ns_cmd}} tc filter show dev {{nic}} | grep -B 1 {{filter}} | grep -m1 \"\" | awk '{print $19}' | awk -F ':' '{print $2}'")
+        classId = bash_o("{{ns_cmd}} tc filter show dev {{nic}} | grep -B 1 {{filter}} | grep -m1 \"\" "
+                         "| awk -F 'flowid ' '{ print $2 }' | awk '{ print $1 }' | awk -F ':' '{print $2}'")
         return classId
 
     @in_bash
