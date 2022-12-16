@@ -1,7 +1,8 @@
-from kvmagent.test.utils import vm_utils, network_utils
+from kvmagent.test.utils import vm_utils, network_utils, pytest_utils
 from kvmagent.test.utils.stub import *
 from zstacklib.test.utils import remote
 from zstacklib.utils import bash
+from unittest import TestCase
 
 init_kvmagent()
 vm_utils.init_vm_plugin()
@@ -11,7 +12,7 @@ PKG_NAME = __name__
 
 __ENV_SETUP__ = {
     'migrate-vm': {},
-    'current': {}
+    'self': {}
 }
 
 
@@ -20,8 +21,8 @@ def migrate_vm_run():
     network_utils.close_firewall()
 
 
+@pytest_utils.ztest_decorater
 class TestVmMigration(TestCase, vm_utils.VmPluginTestStub):
-    vm1 = None
 
     @classmethod
     def setUpClass(cls):
@@ -29,6 +30,7 @@ class TestVmMigration(TestCase, vm_utils.VmPluginTestStub):
         cls.vm1 = env.get_vm_metadata('migrate-vm')
         remote.setup_remote_machine(cls.vm1.ip, PKG_NAME, migrate_vm_run.__name__)
 
+    @pytest_utils.ztest_decorater
     def test_something(self):
         vm_uuid, _ = self._create_vm()
         current_vm = env.get_test_environment_metadata()

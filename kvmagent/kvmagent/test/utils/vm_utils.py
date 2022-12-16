@@ -1,12 +1,9 @@
-import os
-import signal
-
+import snapshot_utils
+import volume_utils
+from kvmagent.plugins.vm_plugin import VmPlugin
 from kvmagent.test.utils import pytest_utils
 from zstacklib.test.utils import env, misc
 from zstacklib.utils import jsonobject, xmlobject, bash, linux
-from kvmagent.plugins.vm_plugin import VmPlugin
-import volume_utils
-import snapshot_utils
 
 startVmCmdBody = {
     "vmInstanceUuid": "0b42630f37d8417480eced62ad89719f",
@@ -110,6 +107,25 @@ migrate_vm_cmd_body = {
     'storageMigrationPolicy': 'FullCopy'
 }
 
+attach_vm_nic_body = {
+    "vmUuid": None,
+    "nic": {
+        "mac":None,
+        "bridgeName":None,
+        "physicalInterface":None,
+        "uuid":None,
+        "nicInternalName":None,
+        "deviceId":None,
+        "metaData":32,
+        "useVirtio":True,
+        "bootOrder":0,
+        "mtu":1500,
+        "driverType":"virtio",
+        "type":"VNIC",
+        "vlanId":None
+    }
+}
+
 VM_PLUGIN = None  # type: VmPlugin
 
 
@@ -177,6 +193,15 @@ def get_vm_xmlobject_from_virsh_dump(vm_uuid):
     xml = bash.bash_o('virsh dumpxml %s' % vm_uuid)
     return xmlobject.loads(xml)
 
+
+def online_change_cpumem(vm_uuid, cpu_num, mem_size):
+    # type: (str, int, int) -> None
+
+    return VM_PLUGIN.online_change_cpumem(misc.make_a_request({
+        'vmUuid': vm_uuid,
+        'cpuNum': cpu_num,
+        'memorySize': mem_size
+    }))
 
 def online_increase_cpu(vm_uuid, cpu_num):
     # type: (str, int) -> None
@@ -282,6 +307,18 @@ def migrate_vm(vm_uuid, src_ip, dst_ip):
     cmd.srcHostIp = src_ip
 
     return VM_PLUGIN.migrate_vm(misc.make_a_request(cmd.to_dict()))
+
+@misc.return_jsonobject()
+def attach_vm_nic(cmd=None):
+    # type: (str, str, str) -> jsonobject.JsonObject
+
+    return VM_PLUGIN.attach_nic(misc.make_a_request(cmd.to_dict()))
+@misc.return_jsonobject()
+def detach_vm_nic(cmd=None):
+    # type: (str, str, str) -> jsonobject.JsonObject
+
+    return VM_PLUGIN.attach_nic(misc.make_a_request(cmd.to_dict()))
+
 
 
 class VmPluginTestStub(pytest_utils.PytestExtension):

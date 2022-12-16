@@ -11,6 +11,7 @@ from zstacklib.utils import jsonobject
 from zstacklib.utils import bash
 from zstacklib.utils import shell
 from zstacklib.utils import thread
+from unittest import TestCase
 import time
 import pytest
 

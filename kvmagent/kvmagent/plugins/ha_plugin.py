@@ -17,6 +17,7 @@ import threading
 import rados
 import rbd
 from datetime import datetime, timedelta
+from distutils.version import LooseVersion
 
 logger = log.get_logger(__name__)
 
@@ -183,6 +184,8 @@ class SanlockHealthChecker(object):
 
 
 last_multipath_run = time.time()
+QEMU_VERSION = linux.get_qemu_version()
+LIBVIRT_VERSION = linux.get_libvirt_version()
 
 
 def clean_network_config(vm_uuids):
@@ -268,18 +271,30 @@ def get_running_vm_root_volume_path(vm_uuid, is_file_system):
     # 4. filter for pv
     out = linux.find_vm_process_by_uuid(vm_uuid)
     if not out:
+        logger.warn("can not find process of vm[uuid: %s]" % vm_uuid)
         return None
 
     pid = out.split(" ")[0]
     cmdline = out.split(" ", 3)[-1]
     if "bootindex=1" in cmdline:
         root_volume_path = cmdline.split("bootindex=1")[0].split(" -drive file=")[-1].split(",")[0]
+        if LooseVersion(LIBVIRT_VERSION) >= LooseVersion("6.0.0") and LooseVersion(QEMU_VERSION) >= LooseVersion("4.2.0"):
+            if is_file_system:
+                root_volume_path = cmdline.split("bootindex=1")[0].split('filename')[-1].split('"')[2]
+            else:
+                root_volume_path = cmdline.split("bootindex=1")[0].split('image')[0].split('"')[-3] + '/'
     elif " -boot order=dc" in cmdline:
         # TODO: maybe support scsi volume as boot volume one day
         root_volume_path = cmdline.split("id=drive-virtio-disk0")[0].split(" -drive file=")[-1].split(",")[0]
     else:
         logger.warn("found strange vm[pid: %s, cmdline: %s], can not find boot volume" % (pid, cmdline))
         return None
+
+    if not root_volume_path:
+        logger.warn("failed to find vm[uuid: %s] root volume path,"
+                    " dump process info for debug, process dump:\n %s" % (vm_uuid, out))
+    else:
+        logger.debug("find vm[uuid: %s] root volume path %s" % (vm_uuid, root_volume_path))
 
     if not is_file_system:
         return root_volume_path.replace("rbd:", "")

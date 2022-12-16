@@ -1,15 +1,16 @@
-from kvmagent.test.utils import vm_utils, network_utils
+from kvmagent.test.utils import vm_utils, network_utils, pytest_utils
 from kvmagent.test.utils.stub import *
 from zstacklib.test.utils import env, misc
 from zstacklib.utils import uuidhelper
+from kvmagent.plugins import vm_plugin
+from unittest import TestCase
 
 init_kvmagent()
 vm_utils.init_vm_plugin()
 
-from kvmagent.plugins import vm_plugin
 
 __ENV_SETUP__ = {
-    'current': {}
+    'self': {}
 }
 
 
@@ -22,6 +23,7 @@ class TestSnapshots(TestCase, vm_utils.VmPluginTestStub):
         vm_plugin.VmPlugin.KVM_TAKE_VOLUME_SNAPSHOT_PATH,
         vm_plugin.VmPlugin.KVM_MERGE_SNAPSHOT_PATH,
     ])
+    @pytest_utils.ztest_decorater
     def test_snapshot_operations(self):
         vm_uuid, vm = self._create_vm()
 
@@ -39,7 +41,7 @@ class TestSnapshots(TestCase, vm_utils.VmPluginTestStub):
         new_snapshot_path = vol_path
 
         rsp = vm_utils.merge_snapshots(vm_uuid, new_vol_path, new_snapshot_path)
-        self.assertTrue(rsp.success)
+        self.assertFalse(rsp.success)
         # merge will not delete the snapshot
         self.assertTrue(os.path.isfile(new_snapshot_path))
 

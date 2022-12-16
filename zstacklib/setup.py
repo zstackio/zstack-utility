@@ -29,6 +29,7 @@ Python support library for zstack""",
           'Jinja2',
           'pyroute2==0.5.14',
           'psutil==5.0.1',
+          'ruamel.yaml==0.16.0',
           "beeprint",
           "pyyaml",
           "func_timeout",
@@ -37,7 +38,8 @@ Python support library for zstack""",
           "xms-client",
           "python-dateutil",
           "enum34",
-          "cachetools"
+          "cachetools",
+          "xxhash"
       ],
       entry_points="""
       # -*- Entry points: -*-

@@ -3079,7 +3079,7 @@ class Vm(object):
                 devices.remove(disk)
                 devices.insert(parent_index, new_disk)
 
-        return etree.tostring(tree.getroot())
+        return migrate_disks.keys(), etree.tostring(tree.getroot())
 
     def migrate(self, cmd):
         if self.state == Vm.VM_STATE_SHUTDOWN:
@@ -3095,13 +3095,19 @@ class Vm(object):
             # set the hostname, otherwise the migration will fail
             shell.call('hostname %s.zstack.org' % hostname)
 
-        destXml = None
-        if cmd.disks:
-            destXml = self._build_domain_new_xml(cmd.disks.__dict__)
-
         destHostIp = cmd.destHostIp
         destUrl = "qemu+tcp://{0}/system".format(destHostIp)
         tcpUri = "tcp://{0}".format(destHostIp)
+
+        storage_migration_required = cmd.disks and len(cmd.disks.__dict__) != 0
+        destXml = None
+        parameter_map = {}
+        if storage_migration_required:
+            disks, destXml = self._build_domain_new_xml(cmd.disks.__dict__)
+            parameter_map[libvirt.VIR_MIGRATE_PARAM_MIGRATE_DISKS] = disks
+            parameter_map[libvirt.VIR_MIGRATE_PARAM_URI] = tcpUri
+            parameter_map[libvirt.VIR_MIGRATE_PARAM_DEST_XML] = destXml
+
         flag = (libvirt.VIR_MIGRATE_LIVE |
                 libvirt.VIR_MIGRATE_PEER2PEER |
                 libvirt.VIR_MIGRATE_UNDEFINE_SOURCE)
@@ -3122,7 +3128,7 @@ class Vm(object):
             if any(s.startswith('/dev/') for s in self.list_blk_sources()):
                 flag |= libvirt.VIR_MIGRATE_UNSAFE
 
-        if cmd.useNuma:
+        if cmd.useNuma or storage_migration_required:
             flag |= libvirt.VIR_MIGRATE_PERSIST_DEST
 
         stage = get_task_stage(cmd)
@@ -3163,7 +3169,11 @@ class Vm(object):
 
         with MigrateDaemon(self.domain):
             logger.debug('migrating vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
-            self.domain.migrateToURI2(destUrl, tcpUri, destXml, flag, None, 0)
+
+            if storage_migration_required:
+                self.domain.migrateToURI3(destUrl, parameter_map, flag)
+            else:
+                self.domain.migrateToURI2(destUrl, tcpUri, destXml, flag, None, 0)
 
         try:
             logger.debug('migrating vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
@@ -3715,7 +3725,7 @@ class Vm(object):
         for volume in volumes:
             target_disk, _ = self._get_target_disk(volume)
             # type: (node_name<str>, backupSpeed<int>)
-            args[str(volume.deviceId)] = get_block_node_name_by_disk_name(target_disk), 0
+            args[str(volume.deviceId)] = VmPlugin.get_disk_device_name(target_disk), 0
 
         dst_workspace = os.path.join(os.path.dirname(dst_backup_paths['0']), 'workspace')
         linux.mkdir(dst_workspace)
@@ -3862,6 +3872,9 @@ class Vm(object):
                     elif cmd.nestedVirtualization == 'host-model':
                         cpu = e(root, 'cpu', attrib={'mode': 'host-model'})
                         e(cpu, 'model', attrib={'fallback': 'allow'})
+                    elif cmd.nestedVirtualization == 'custom':
+                        cpu = e(root, 'cpu', attrib={'mode': 'custom', 'match': 'minimum'})
+                        e(cpu, 'model', cmd.vmCpuModel, attrib={'fallback': 'allow'})
                     else:
                         cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
                         e(cpu, 'model', attrib={'fallback': 'allow'})
@@ -3929,6 +3942,9 @@ class Vm(object):
                     elif cmd.nestedVirtualization == 'host-model':
                         cpu = e(root, 'cpu', attrib={'mode': 'host-model'})
                         e(cpu, 'model', attrib={'fallback': 'allow'})
+                    elif cmd.nestedVirtualization == 'custom':
+                        cpu = e(root, 'cpu', attrib={'mode': 'custom'})
+                        e(cpu, 'model', cmd.vmCpuModel, attrib={'fallback': 'allow'})
                     else:
                         cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
                         e(cpu, 'model', attrib={'fallback': 'allow'})
@@ -5244,9 +5260,11 @@ def get_vm_blocks(domain_id):
 
     return blocks
 
+
+# Deprecation, use get_disk_device_name instead.
 def get_block_node_name_by_disk_name(domain_id, disk_name):
     all_blocks = get_vm_blocks(domain_id)
-    block = filter(lambda b: disk_name in b['qdev'], all_blocks)[0]
+    block = filter(lambda b: disk_name in b['qdev'].split("/"), all_blocks)[0]
     if LooseVersion(LIBVIRT_VERSION) < LooseVersion("6.0.0"):
         return block['device']
     return block["inserted"]['node-name']
@@ -6172,7 +6190,7 @@ class VmPlugin(kvmagent.KvmAgent):
                     'unable to detach volume[%s] to vm[uuid:%s], vm must be running or paused' % (volume.installPath, vm.uuid))
 
             target_disk, _ = vm._get_target_disk(volume)
-            node_name = get_block_node_name_by_disk_name(cmd.vmInstanceUuid, target_disk.alias.name_)
+            node_name = self.get_disk_device_name(target_disk)
             isc = ImageStoreClient()
             isc.stop_mirror(cmd.vmInstanceUuid, True, node_name)
 
@@ -6785,7 +6803,7 @@ host side snapshot files chian:
         for deviceId in device_ids:
             target_disk = target_disks[deviceId]
             drivertype = target_disk.driver.type_
-            nodename = get_block_node_name_by_disk_name(cmd.vmUuid, target_disk.alias.name_)
+            nodename = self.get_disk_device_name(target_disk)
             source_file = self.get_source_file_by_disk(target_disk)
             bitmap = bitmaps[deviceId]
 
@@ -6987,7 +7005,7 @@ host side snapshot files chian:
 
         try:
             target_disk, _ = vm._get_target_disk(cmd.volume)
-            node_name = get_block_node_name_by_disk_name(cmd.vmUuid, target_disk.alias.name_)
+            node_name = self.get_disk_device_name(target_disk)
             isc = ImageStoreClient()
             isc.stop_mirror(cmd.vmUuid, cmd.complete, node_name)
         except Exception as e:
@@ -7007,16 +7025,20 @@ host side snapshot files chian:
         if not vm:
             raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % cmd.vmUuid)
 
-        voldict = {} # type: dict[str, str]
-        for v in cmd.volumes:
-            target_disk, _ = vm._get_target_disk(v)
-            node_name = get_block_node_name_by_disk_name(cmd.vmUuid, target_disk.alias.name_)
-            voldict[node_name] = v.volumeUuid
-
         isc = ImageStoreClient()
         volumes = isc.query_mirror_volumes(cmd.vmUuid)
         if volumes is None:
             return jsonobject.dumps(rsp)
+
+        voldict = {}  # type: dict[str, str]
+        for v in cmd.volumes:
+            target_disk, _ = vm._get_target_disk(v)
+            dev_name = self.get_disk_device_name(target_disk)
+            voldict[dev_name] = v.volumeUuid
+            # for compatibility
+            if dev_name not in volumes:
+                node_name = get_block_node_name_by_disk_name(cmd.vmUuid, target_disk.alias.name_)
+                voldict[node_name] = v.volumeUuid
 
         for node_name in volumes:
             try:
@@ -7039,7 +7061,7 @@ host side snapshot files chian:
 
         try:
             target_disk, _ = vm._get_target_disk(cmd.volume)
-            node_name = get_block_node_name_by_disk_name(cmd.vmUuid, target_disk.alias.name_)
+            node_name = self.get_disk_device_name(target_disk)
 
             isc = ImageStoreClient()
             installPath = cmd.volume.installPath
@@ -7121,7 +7143,7 @@ host side snapshot files chian:
             source_file = self.get_source_file_by_disk(target_disk)
             bitmap, parent = self.do_take_volume_backup(cmd,
                     target_disk.driver.type_, # 'qcow2' etc.
-                    get_block_node_name_by_disk_name(cmd.vmUuid, target_disk.alias.name_), # 'libvirt-2-format', '#block138' etc.
+                    self.get_disk_device_name(target_disk), # 'drive-virtio-disk0', 'scsi-0-0-1' etc.
                     source_file,
                     storage.worktarget(fname))
 
