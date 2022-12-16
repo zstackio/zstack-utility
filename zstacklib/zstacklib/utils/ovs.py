@@ -70,7 +70,6 @@ def confirmWriteSysfs(path, value):
     if readSysfs(path) != value:
         raise OvsError("write sysfs failed")
 
-
 def getOSReleaseInfo():
     osRelease = {}
     with open('/etc/os-release', 'r') as f:
@@ -1191,27 +1190,38 @@ class OvsDpdkCtl(OvsBaseCtl):
                 if not os.path.exists(os.path.join(devicePath, i, "driver")):
                     time.sleep(0.5)
 
+
     def _changeDevlinkMode(self, bdf, mode="switchdev"):
         try:
-            ifName = getInterfaceOfBDF(bdf)
-            devlink_mode = '/sys/class/net/{}/compat/devlink/mode'.format(
-                ifName)
+            """
+            # devlink dev eswitch show pci/0000:17:00.1
+                pci/0000:17:00.1: mode legacy inline-mode none encap enable
+            # devlink dev eswitch set pci/0000:65:00.1 mode switchdev
+            """
+            devlink_mode = "legacy"
+            ret = shell.call("devlink dev eswitch show pci/{}".format(bdf))
+            if "switchdev" in ret:
+                devlink_mode = "switchdev"
             numvfs = '/sys/bus/pci/devices/{}/sriov_numvfs'.format(bdf)
             totalvfs = readSysfs(
                 '/sys/bus/pci/devices/{}/sriov_totalvfs'.format(bdf))
 
-            if readSysfs(devlink_mode, True) == mode and readSysfs(numvfs, True) == totalvfs:
+            if devlink_mode == mode and readSysfs(numvfs, True) == totalvfs:
                 return
 
+            ifName = getInterfaceOfBDF(bdf)
             iproute.set_link_down_no_error(ifName)
 
             # create l2 bridge not split vfs
             #self._resplitVfs(bdf)
             # unbind vfs before change devlink mode
             self._unbindVfs(bdf)
-            confirmWriteSysfs(devlink_mode, mode)
-            self._bindVfs(bdf)
+            shell.call("devlink dev eswitch set pci/{} mode {}".format(bdf, mode))
+            ret = shell.call("devlink dev eswitch show pci/{}".format(bdf))
+            if mode not in ret:
+                raise Exception("devlink dev set eswitch mode {} for {} failed.".format(mode, bdf))
 
+            self._bindVfs(bdf)
             iproute.set_link_up_no_error(ifName)
             logger.debug("set {} for {} success.".format(mode, bdf))
         except OvsError as err:
