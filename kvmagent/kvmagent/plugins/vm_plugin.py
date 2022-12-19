@@ -3494,15 +3494,9 @@ class Vm(object):
     def _disable_nic(self, cmd):
         if self.check_device_exists(cmd):
             return
-        o = shell.call("virsh domif-getlink %s %s" % (cmd.vmUuid, cmd.nic.nicInternalName)).split(" ")[-1]
-        logger.debug("virsh domif-getlink %s %s result : %s" % (cmd.vmUuid, cmd.nic.nicInternalName, o))
-        if "up" in o:
-            o = shell.call("virsh domif-setlink %s %s down" % (cmd.vmUuid, cmd.nic.nicInternalName))
-            logger.debug("virsh domif-setlink %s %s down result : %s" % (cmd.vmUuid, cmd.nic.nicInternalName, o))
-            if "successfully" not in o:
-                raise Exception('nic device update failed')
-        else :
-            raise Exception('nic device not found')
+        o = shell.call("virsh domif-setlink %s %s down" % (cmd.vmUuid, cmd.nic.nicInternalName))
+        if "successfully" not in o:
+            raise Exception('nic device update failed')
 
     def disable_nic(self, cmd):
         self._wait_vm_run_until_seconds(10)
@@ -3514,15 +3508,9 @@ class Vm(object):
     def _enable_nic(self, cmd):
         if self.check_device_exists(cmd):
             return
-        o = shell.call("virsh domif-getlink %s %s" % (cmd.vmUuid, cmd.nic.nicInternalName)).split(" ")[-1]
-        logger.debug("virsh domif-getlink %s %s result : %s" % (cmd.vmUuid, cmd.nic.nicInternalName, o))
-        if "down" in o:
-            o = shell.call("virsh domif-setlink %s %s up" % (cmd.vmUuid, cmd.nic.nicInternalName))
-            logger.debug("virsh domif-setlink %s %s up result : %s" % (cmd.vmUuid, cmd.nic.nicInternalName, o))
-            if "successfully" not in o:
-                raise Exception('nic device update failed')
-        else :
-            raise Exception('nic device not found')
+        o = shell.call("virsh domif-setlink %s %s up" % (cmd.vmUuid, cmd.nic.nicInternalName))
+        if "successfully" not in o:
+            raise Exception('nic device update failed')
 
     def enable_nic(self, cmd):
         self._wait_vm_run_until_seconds(10)
