@@ -1,3 +1,4 @@
+# coding=utf-8
 import os
 import socket
 import commands
@@ -19,7 +20,48 @@ class RbdImageOperator(object):
 
     def __init__(self, volume):
         self.volume = volume
+        self._prepare_rbd_nbd()
         self._check_required_commands()
+
+    @staticmethod
+    def _prepare_rbd_nbd():
+        """
+        1、get ceph version
+        2、try to find same version rbd-nbd rpm
+        3、check installed rbd-nbd version
+        4、install or upgrade rbd-nbd
+        """
+        def _install_or_upgrade_rpm(rpm_path):
+            shell.call('rpm -Uvh %s' % rpm_path)
+
+        def _get_package_version(pkg_name, raise_exception=False):
+            _rc, version = commands.getstatusoutput('rpm -qa %s' % pkg_name)
+            if _rc or (not version and raise_exception):
+                raise exception.CephPackageNotFound(cmd=pkg_name)
+            return version
+
+        ceph_version = _get_package_version("ceph", True)
+        current_rbd_nbd_version = _get_package_version("rbd-nbd")
+
+        dest_rbd_nbd_version = ceph_version.replace("ceph", "rbd-nbd", 1)
+        _s, path = commands.getstatusoutput('find / -xdev -name \'%s\'.rpm | head -1' % dest_rbd_nbd_version)
+
+        logger.info("current rbd-nbd version:%s , dest version: %s" % (current_rbd_nbd_version, dest_rbd_nbd_version))
+        if not current_rbd_nbd_version and not path:
+            raise exception.CephPackageNotFound(cmd=['rbd-nbd'])
+
+        if not current_rbd_nbd_version and path:
+            logger.info("found rbd-nbd %s, install it" % path)
+            _install_or_upgrade_rpm(path)
+            return
+
+        if current_rbd_nbd_version and not path:
+            return
+
+        if dest_rbd_nbd_version != current_rbd_nbd_version:
+            logger.info("Found a newer version %s, current %s, try to upgrade it" %
+                        (dest_rbd_nbd_version, current_rbd_nbd_version))
+            _install_or_upgrade_rpm(path)
 
     @staticmethod
     def _check_required_commands():
