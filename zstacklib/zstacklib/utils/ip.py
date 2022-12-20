@@ -264,10 +264,20 @@ def get_smart_nic_representors():
                 under that pci device.
             '''
             return False
+
+        phyNamePath = "/sys/class/net/%s/phys_port_name" % interface_name
+        if os.path.exists(phyNamePath):
+            lines = linux.read_file_lines(phyNamePath)
+            if "vf" in lines[0]:
+                return True
+            else:
+                return False
+
         physical_interface_path = os.path.join("/sys/class/net/%s/phy_stats" % (interface_name))
         if os.path.exists(physical_interface_path):
             return False
         return True
+
     nic_representors = []
     try:
         nics_interfaces = get_smart_nics_interfaces()
