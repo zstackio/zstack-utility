@@ -45,6 +45,7 @@ MINI_INSTALL='n'
 CUBE_INSTALL='n'
 SANYUAN_INSTALL='n'
 SDS_INSTALL='n'
+ZOPS_INSTALL='n'
 MANAGEMENT_INTERFACE=`ip route | grep default | head -n 1 | cut -d ' ' -f 5`
 ZSTACK_INSTALL_LOG='/tmp/zstack_installation.log'
 ZSTACKCTL_INSTALL_LOG='/tmp/zstack_ctl_installation.log'
@@ -2286,6 +2287,17 @@ install_sds(){
     show_spinner is_append_iptables
 }
 
+install_zops(){
+    echo_title "Install or upgrade ZOps"
+    echo ""
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+    if [ -f "/sbin/zops" ]; then
+      show_spinner is_upgrade_zops
+    else
+      show_spinner is_install_zops
+    fi
+}
+
 setup_install_param(){
     echo_title "Setup Install Parameters"
     echo ""
@@ -2358,7 +2370,6 @@ config_system(){
     show_spinner cs_install_zstack_service
     show_spinner cs_enable_zstack_service
     show_spinner cs_add_cronjob
-    show_spinner add_zops_init_cronjob
     show_spinner cs_append_iptables
     show_spinner cs_setup_nginx
     show_spinner cs_enable_usb_storage
@@ -2989,6 +3000,22 @@ is_append_iptables(){
     pass
 }
 
+is_install_zops(){
+    echo_subtitle "Install ZOps"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+    zops_installer_bin=`find /opt/zstack-dvd/x86_64/c76/zops -name "zops-installer*" | head -n 1`
+    bash $zops_installer_bin install --for_ops >/dev/null 2>&1
+    pass
+}
+
+is_upgrade_zops(){
+    echo_subtitle "Upgrade ZOps"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+    zops_installer_bin=`find /opt/zstack-dvd/x86_64/c76/zops -name "zops-installer*" | head -n 1`
+    bash $zops_installer_bin upgrade >/dev/null 2>&1
+    pass
+}
+
 get_higher_version() {
     echo "$@" | tr " " "\n" | sort -V | tail -1
 }
@@ -3548,7 +3575,7 @@ check_myarg() {
 }
 
 OPTIND=1
-TEMP=`getopt -o f:H:I:n:p:P:r:R:t:y:acC:L:T:dDEFhiklmMNoOqsuz --long chrony-server-ip:,mini,cube,SY,sds -- "$@"`
+TEMP=`getopt -o f:H:I:n:p:P:r:R:t:y:acC:L:T:dDEFhiklmMNoOqsuz --long chrony-server-ip:,mini,cube,SY,sds,zops -- "$@"`
 if [ $? != 0 ]; then
     usage
 fi
@@ -3608,6 +3635,7 @@ do
         --cube) CUBE_INSTALL='y';shift;;
         --SY) SANYUAN_INSTALL='y';shift;;
         --sds) SDS_INSTALL='y';shift;;
+        --zops) ZOPS_INSTALL='y';shift;;
         --) shift;;
         * ) usage;;
     esac
@@ -3821,29 +3849,6 @@ check_ha_need_upgrade()
     fi
 }
 
-add_zops_init_cronjob() {
-    echo_subtitle "Add zops cron job"
-    if [ ! -f /tmp/zops_init.sock ];then
-      touch /tmp/zops_init.sock
-    fi
-    # remove not in current os version cron job
-    ALL_ZOPS_CRON=`crontab -l |grep zops_init.py |grep -v ${ISO_ARCH}/${ISO_VER} | cut -d " " -f10`
-    CRON_ARR=(`echo $ALL_ZOPS_CRON | tr '\n' ' '`)
-    for job in $CRON_ARR;do
-        parseJob=${job//'/'/'\/'}
-        sed -i "/${parseJob}/d" /var/spool/cron/root
-    done
-    ZOPS_SERVER_INIT="python /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/zops/zops_init.py"
-    COUNT=`crontab -l |grep "$ZOPS_SERVER_INIT" | grep -v "grep" |wc -l`
-    if [ "$COUNT" -eq 1 ];then
-      echo "zops init script cron job has configured!"
-    fi
-    if [ "$COUNT" -lt 1 ];then
-      echo "*/2 * * * * flock -xn /tmp/zops_init.sock $ZOPS_SERVER_INIT >> /tmp/zops_cron.log 2>&1" >> /var/spool/cron/root
-      crond >> /tmp/zops_cron.log 2>&1
-    fi
-}
-
 enforce_history() {
 trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
 mkdir -p /var/log/history.d/
@@ -4017,6 +4022,11 @@ if [ x"$UPGRADE" = x'y' ]; then
 
     #only upgrade zstack
     upgrade_zstack
+
+    #Upgrade or install zops
+    if [ x"$ZOPS_INSTALL" = x"y" ]; then
+        install_zops
+    fi
 
     #Setup audit.rules
     setup_audit_file
@@ -4306,3 +4316,6 @@ disable_zstack_tui
 kill_zstack_tui_and_restart_tty1
 post_scripts_to_restore_iptables_rules
 
+if [ x"$ZOPS_INSTALL" = x"y"]; then
+    install_zops
+fi
