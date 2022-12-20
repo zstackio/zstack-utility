@@ -236,6 +236,7 @@ class StartVmCmd(kvmagent.AgentCommand):
         self.dataIsoPaths = None
         self.addons = None
         self.useBootMenu = True
+        self.bootMenuSplashTimeout = None
         self.vmCpuModel = None
         self.emulateHyperV = False
         self.additionalQmp = True
@@ -4044,7 +4045,12 @@ class Vm(object):
             eval("on_{}".format(host_arch))()
 
             if cmd.useBootMenu:
-                e(os, 'bootmenu', attrib={'enable': 'yes'})
+                boot_menu_attrib = {'enable': 'yes'}
+
+                if cmd.bootMenuSplashTimeout:
+                    boot_menu_attrib['timeout'] = str(cmd.bootMenuSplashTimeout)
+
+                e(os, 'bootmenu', attrib=boot_menu_attrib)
 
             if cmd.systemSerialNumber and HOST_ARCH != 'mips64el':
                 e(os, 'smbios', attrib={'mode': 'sysinfo'})
