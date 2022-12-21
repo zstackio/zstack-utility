@@ -502,6 +502,10 @@ class QueryVolumeMirrorResponse(kvmagent.AgentResponse):
         self.extraMirrorVolumes = [] # type:list[str]
 
 
+class QueryBlockJobStatusResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(QueryBlockJobStatusResponse, self).__init__()
+
 class QueryVmLatenciesThread(threading.Thread):
     def __init__(self, func, uuids):
         threading.Thread.__init__(self)
@@ -5447,6 +5451,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_CANCEL_VOLUME_MIRROR_PATH = "/vm/volume/cancelmirror"
     KVM_QUERY_VOLUME_MIRROR_PATH = "/vm/volume/querymirror"
     KVM_QUERY_MIRROR_LATENCY_BOUNDARY_PATH = "/vm/volume/querylatencyboundary"
+    KVM_QUERY_BLOCKJOB_STATUS = "/vm/volume/queryblockjobstatus"
     KVM_BLOCK_STREAM_VOLUME_PATH = "/vm/volume/blockstream"
     KVM_TAKE_VOLUMES_SNAPSHOT_PATH = "/vm/volumes/takesnapshot"
     KVM_TAKE_VOLUMES_BACKUP_PATH = "/vm/volumes/takebackup"
@@ -7246,6 +7251,20 @@ host side snapshot files chian:
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def query_block_job_status(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+        for i in range(0, 3):
+            r, o, err = execute_qmp_command(cmd.vmUuid, '{"execute":"query-block-jobs"}')
+            if err:
+                rsp.success = False
+                rsp.error = "Failed to query block jobs, report error"
+                return jsonobject.dumps(rsp)
+            time.sleep(1)
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     def take_volume_backup(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = TakeVolumeBackupResponse()
@@ -8599,6 +8618,7 @@ host side snapshot files chian:
         http_server.register_async_uri(self.KVM_CANCEL_VOLUME_MIRROR_PATH, self.cancel_volume_mirror)
         http_server.register_async_uri(self.KVM_QUERY_VOLUME_MIRROR_PATH, self.query_volume_mirror)
         http_server.register_async_uri(self.KVM_QUERY_MIRROR_LATENCY_BOUNDARY_PATH, self.query_vm_mirror_latencies_boundary)
+        http_server.register_async_uri(self.KVM_QUERY_BLOCKJOB_STATUS, self.query_block_job_status)
         http_server.register_async_uri(self.KVM_TAKE_VOLUMES_SNAPSHOT_PATH, self.take_volumes_snapshots)
         http_server.register_async_uri(self.KVM_TAKE_VOLUMES_BACKUP_PATH, self.take_volumes_backups, cmd=TakeVolumesBackupsCommand())
         http_server.register_async_uri(self.KVM_CANCEL_VOLUME_BACKUP_JOBS_PATH, self.cancel_backup_jobs)
