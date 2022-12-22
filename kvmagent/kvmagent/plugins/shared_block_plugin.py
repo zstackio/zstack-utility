@@ -6,7 +6,6 @@ import tempfile
 import time
 import traceback
 
-
 from kvmagent import kvmagent
 from kvmagent.plugins.imagestore import ImageStoreClient
 from zstacklib.utils import jsonobject
@@ -905,7 +904,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     @staticmethod
     @bash.in_bash
     def compare_qcow2(src, dst):
-        logger.debug("comparing qcow2 between %s and %s")
+        logger.debug("comparing qcow2 between %s and %s" % (src, dst))
         bash.bash_errorout("time %s %s %s" % (qemu_img.subcmd('compare'), src, dst))
         logger.debug("confirmed qcow2 %s and %s are identical" % (src, dst))
 
@@ -1394,7 +1393,12 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                     target_backing_file = current_backing_file.replace(previous_ps_uuid, target_ps_uuid)
 
                     if struct.compareQcow2:
-                        self.compare_qcow2(current_abs_path, target_abs_path)
+                        r, o, e = bash.bash_roe("%s %s" % (qemu_img.subcmd("check"), target_abs_path))
+                        if r != 0 and "No errors were found" not in str(o):
+                            raise Exception("target qcow2 image[%s] has been corrupted after migration, stdout: %s, stderr: %s" % (target_abs_path, o ,e))
+
+                        logger.info("start to compare hash value between %s add %s" % (current_abs_path, target_abs_path))
+                        linux.compare_segmented_xxhash(current_abs_path, target_abs_path, int(lvm.get_lv_size(target_abs_path)), raiseExpection=True, blocksize=10485760)
                     if current_backing_file is not None and current_backing_file != "":
                         lvm.active_lv(target_backing_file, lvm.LvmlockdLockType.SHARE)
                         logger.debug("rebase %s to %s" % (target_abs_path, target_backing_file))

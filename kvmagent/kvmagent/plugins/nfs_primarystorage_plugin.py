@@ -346,8 +346,16 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
 
             for srcFile in srcQcow2s:
                 dstFile = os.path.join(dst_folder_path, os.path.relpath(srcFile, cmd.srcFolderPath))
-                if linux.get_file_xxhash(srcFile) != linux.get_file_xxhash(dstFile):
-                    rsp.error = "failed to copy file %s to %s, the md5sum of file not match" % (srcFile, dstFile)
+                srcSize = os.path.getsize(srcFile)
+                dstSize = os.path.getsize(dstFile)
+                if srcSize != dstSize:
+                    rsp.error = "failed to copy file %s to %s, the size of file not match" % (srcFile, dstFile)
+                    rsp.success = False
+                    break
+                try:
+                    linux.compare_segmented_xxhash(srcFile, dstFile, dstSize, raise_expection=True)
+                except Exception as e:
+                    rsp.error = "failed to copy file %s to %s, because: %s" % (srcFile, dstFile, str(e))
                     rsp.success = False
                     break
 
