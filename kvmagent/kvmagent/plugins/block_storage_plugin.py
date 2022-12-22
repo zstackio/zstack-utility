@@ -125,6 +125,7 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
     DISCOVERY_LUN = "/block/primarystorage/discoverlun"
     LOGOUT_TARGET = "/block/primarystorage/logouttarget"
     RESIZE_VOLUME_PATH = "/block/primarystorage/volume/resize"
+    RESCAN_LUN_PATH = "/block/primarystorage/lun/rescan"
     NO_FAILURE_PING_PATH = "/block/primarystorage/ping"
 
     def start(self):
@@ -138,28 +139,38 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.UPLOAD_TO_IMAGESTORE, self.upload_to_imagestore)
         http_server.register_async_uri(self.COMMIT_VOLUME_AS_IMAGE, self.commit_to_imagestore)
         http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
+        http_server.register_async_uri(self.RESCAN_LUN_PATH, self.rescan_disk)
         http_server.register_async_uri(self.NO_FAILURE_PING_PATH, self.no_failure_ping)
 
         self.imagestore_client = ImageStoreClient()
 
     @bash.in_bash
-    def rescan_disk(self, disk_path=None):
-        device_letter = bash.bash_o("ls -al %s | awk -F '/' '{print $NF}'" % (disk_path)).strip();
+    def _rescan_disk(self, install_path):
+        disk_path = translate_absolute_path_from_install_paht(install_path)
+        device_letter = bash.bash_o("ls -al %s | awk -F '/' '{print $NF}'" % disk_path).strip();
         linux.write_file("/sys/block/%s/device/rescan" % device_letter, "1")
+
+    @kvmagent.replyerror
+    def rescan_disk(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        self._rescan_disk(cmd.installPath)
+        rsp = AgentRsp()
+        rsp.success = True
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def resize_volume(self, req):
         rsp = ResizeVolumeRsp()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
+        self._rescan_disk(cmd.installPath)
+
         disk_path = translate_absolute_path_from_install_paht(cmd.installPath)
-
-        self.rescan_disk(disk_path)
-
         shell.call("qemu-img resize %s %s" % (disk_path, cmd.size))
-
         ret = linux.qcow2_virtualsize(disk_path)
         rsp.size = ret
+        rsp.size = cmd.size
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
