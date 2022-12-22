@@ -834,13 +834,14 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.ipAddresses = ipV4Addrs
         rsp.cpuArchitecture = platform.machine()
 
-        libvirtCapabilitiesList = []
-        features = self._get_features_in_libvirt()
-        if features and features.hasattr("incrementaldrivemirror"):
-            libvirtCapabilitiesList.append("incrementaldrivemirror")
-        if features and features.hasattr("blockcopynetworktarget"):
-            libvirtCapabilitiesList.append("blockcopynetworktarget")
-        rsp.libvirtCapabilities = libvirtCapabilitiesList
+        if not IS_LOONGARCH64:
+            libvirtCapabilitiesList = []
+            features = self._get_features_in_libvirt()
+            if features and features.hasattr("incrementaldrivemirror"):
+                libvirtCapabilitiesList.append("incrementaldrivemirror")
+            if features and features.hasattr("blockcopynetworktarget"):
+                libvirtCapabilitiesList.append("blockcopynetworktarget")
+            rsp.libvirtCapabilities = libvirtCapabilitiesList
 
 
         # To see which lan the BMC is listening on, try the following (1-11), https://wiki.docking.org/index.php/Configuring_IPMI
@@ -891,7 +892,7 @@ class HostPlugin(kvmagent.KvmAgent):
             cpu_cache_list = self._get_cpu_cache()
             rsp.cpuCache = ",".join(str(cache) for cache in cpu_cache_list)
 
-        elif IS_MIPS64EL:
+        elif IS_MIPS64EL or IS_LOONGARCH64:
             rsp.hvmCpuFlag = 'vt'
             rsp.cpuModelName = self._get_host_cpu_model()
 
