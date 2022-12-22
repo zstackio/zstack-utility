@@ -1977,7 +1977,7 @@ explain:
 
 @bash.in_bash
 def is_bad_vm_root_volume(vm_root_volume):
-    cmd = "lsblk -sr " + vm_root_volume + "-o NAME,TYPE,STATE"
+    cmd = "lsblk -sr " + vm_root_volume + " -o NAME,TYPE,STATE"
     r, o = bash.bash_ro(cmd)
     if r != 0:
         return True
