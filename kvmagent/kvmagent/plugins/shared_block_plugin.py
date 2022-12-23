@@ -23,6 +23,7 @@ from zstacklib.utils.report import *
 from zstacklib.utils.plugin import completetask
 import zstacklib.utils.uuidhelper as uuidhelper
 from zstacklib.utils import secret
+from zstacklib.utils.misc import IgnoreError
 
 logger = log.get_logger(__name__)
 LOCK_FILE = "/var/run/zstack/sharedblock.lock"
@@ -92,6 +93,10 @@ class GetVolumeSizeRsp(AgentRsp):
         self.size = None
         self.actualSize = None
 
+class GetBatchVolumeSizeRsp(AgentRsp):
+    def __init__(self):
+        super(GetBatchVolumeSizeRsp, self).__init__()
+        self.actualSizes = {}
 
 class ResizeVolumeRsp(AgentRsp):
     def __init__(self):
@@ -325,6 +330,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     CONVERT_IMAGE_TO_VOLUME = "/sharedblock/image/tovolume"
     CHANGE_VOLUME_ACTIVE_PATH = "/sharedblock/volume/active"
     GET_VOLUME_SIZE_PATH = "/sharedblock/volume/getsize"
+    BATCH_GET_VOLUME_SIZE_PATH = "/sharedblock/volume/batchgetsize"
     CHECK_DISKS_PATH = "/sharedblock/disks/check"
     ADD_SHARED_BLOCK = "/sharedblock/disks/add"
     MIGRATE_DATA_PATH = "/sharedblock/volume/migrate"
@@ -371,6 +377,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
         http_server.register_async_uri(self.CHANGE_VOLUME_ACTIVE_PATH, self.active_lv)
         http_server.register_async_uri(self.GET_VOLUME_SIZE_PATH, self.get_volume_size)
+        http_server.register_async_uri(self.BATCH_GET_VOLUME_SIZE_PATH, self.batch_get_volume_size)
         http_server.register_async_uri(self.CHECK_DISKS_PATH, self.check_disks)
         http_server.register_async_uri(self.ADD_SHARED_BLOCK, self.add_disk)
         http_server.register_async_uri(self.MIGRATE_DATA_PATH, self.migrate_volumes)
@@ -1334,6 +1341,19 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         with lvm.OperateLv(install_abs_path, shared=True):
             rsp.size = linux.qcow2_virtualsize(install_abs_path)
         rsp.actualSize = lvm.get_lv_size(install_abs_path)
+        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def batch_get_volume_size(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetBatchVolumeSizeRsp()
+
+        for uuid, installPath in cmd.volumeUuidInstallPaths.__dict__.items():
+            with IgnoreError():
+                install_abs_path = translate_absolute_path_from_install_path(installPath)
+                rsp.actualSizes[uuid] = lvm.get_lv_size(install_abs_path)
+
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
 
