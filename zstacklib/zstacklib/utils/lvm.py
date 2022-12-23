@@ -44,6 +44,7 @@ COMMON_TAG = "zs::sharedblock"
 VOLUME_TAG = COMMON_TAG + "::volume"
 IMAGE_TAG = COMMON_TAG + "::image"
 ENABLE_DUP_GLOBAL_CHECK = False
+LVMLOCKD_VERSION = None
 thinProvisioningInitializeSize = "thinProvisioningInitializeSize"
 ONE_HOUR_IN_SEC = 60 * 60
 
@@ -355,10 +356,15 @@ def get_multipath_name(dev_name):
 
 def get_lvmlockd_service_name():
     service_name = 'lvm2-lvmlockd.service'
-    lvmlockd_version = shell.call("""lvmlockd --version | awk '{print $3}' | awk -F'.' '{print $1"."$2}'""").strip()
-    if LooseVersion(lvmlockd_version) > LooseVersion("2.02"):
+    if LooseVersion(get_lvmlockd_version()) > LooseVersion("2.02"):
         service_name = 'lvmlockd.service'
     return service_name
+
+def get_lvmlockd_version():
+    global LVMLOCKD_VERSION
+    if LVMLOCKD_VERSION is None:
+        LVMLOCKD_VERSION = shell.call("""lvmlockd --version | awk '{print $3}' | awk -F'.' '{print $1"."$2}'""").strip()
+    return LVMLOCKD_VERSION
 
 def get_dm_wwid(dm):
     try:
@@ -2183,6 +2189,16 @@ def get_lun_capacities_from_vg(vg_uuid, vgs_path_and_wwid):
             lun_capacities.append(LunWwidAndCapacity(wwid, size, free_size))
 
     return lun_capacities
+
+def subcmd(subcmd):
+    options = ''
+    if LooseVersion(get_lvmlockd_version()) > LooseVersion('2.02'):
+        if subcmd in ['pvresize', 'vgscan']:
+            options += '--nolocking -t'
+    elif subcmd in ['vgscan']:
+        options += '--ignorelockingfailure'
+
+    return '%s %s ' % (subcmd, options)
 
 
 class LvmRemoteStorage(remoteStorage.RemoteStorage):
