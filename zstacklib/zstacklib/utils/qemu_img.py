@@ -16,7 +16,7 @@ class CheckResult(object):
 
 def subcmd(subcmd):
     global __QEMU_IMG_VERSION
-    if __QEMU_IMG_VERSION is None:
+    if not __QEMU_IMG_VERSION:
         command = "qemu-img --version | grep 'qemu-img version' | cut -d ' ' -f 3 | cut -d '(' -f 1"
         __QEMU_IMG_VERSION = shell.call(command).strip('\t\r\n ,')
 
