@@ -64,12 +64,15 @@ NOT_QUERY_MYSQL_APIS = [
     'QueryLog'
 ]
 
+
 def escape_split(str, deli=','):
     return csv.reader(c.StringIO(str), delimiter=deli, escapechar='\\').next()
 
+
 def clean_password_in_cli_history():
     cmd_historys = None
-    with open(CLI_HISTORY, 'r') as f: cmd_historys = f.readlines()
+    with open(CLI_HISTORY, 'r') as f:
+        cmd_historys = f.readlines()
     new_cmd_historys = []
     for cmd in cmd_historys:
         if 'password=' in cmd:
@@ -83,7 +86,8 @@ def clean_password_in_cli_history():
             new_cmd_historys.append(' '.join(cmd_list))
         else:
             new_cmd_historys.append(cmd)
-    with open(CLI_HISTORY, 'w') as f: f.write('\n'.join(new_cmd_historys))
+    with open(CLI_HISTORY, 'w') as f:
+        f.write('\n'.join(new_cmd_historys))
 
 
 class CliError(Exception):
@@ -358,7 +362,8 @@ Parse command parameters error:
                     all_params[params[0]] = eval(params[1])
                 elif apiname == 'APIGetMetricDataMsg' and params[0] == 'functions':
                     all_params[params[0]] = escape_split(params[1])
-                elif apiname in ['APICreateBaremetalInstanceMsg'] and params[0] in ['nicCfgs', 'bondingCfgs', 'customConfigurations']:
+                elif apiname in ['APICreateBaremetalInstanceMsg'] and params[0] in ['nicCfgs', 'bondingCfgs',
+                                                                                    'customConfigurations']:
                     all_params[params[0]] = eval(params[1])
                 elif apiname == 'APICreateTicketMsg' and params[0] == 'accountSystemContext':
                     all_params[params[0]] = eval(params[1])
@@ -372,9 +377,9 @@ Parse command parameters error:
                     all_params[params[0]] = eval_string(params[0], params[1])
                 elif apiname == 'APIUpdateSchedulerJobGroupMsg' and params[0] == 'parameters':
                     all_params[params[0]] = eval_string(params[0], params[1])
-                elif apiname == 'APIAddBackendServerToServerGroupMsg' and params[0] in ['vmNics','servers']:
+                elif apiname == 'APIAddBackendServerToServerGroupMsg' and params[0] in ['vmNics', 'servers']:
                     all_params[params[0]] = eval_string(params[0], params[1])
-	        elif apiname == 'APIChangeLoadBalancerBackendServerMsg' and params[0] in ['vmNics','servers']:
+                elif apiname == 'APIChangeLoadBalancerBackendServerMsg' and params[0] in ['vmNics', 'servers']:
                     all_params[params[0]] = eval(params[1])
                 elif apiname == 'APIUpdateSchedulerJobMsg' and params[0] == 'parameters':
                     all_params[params[0]] = eval_string(params[0], params[1])
@@ -412,6 +417,10 @@ Parse command parameters error:
                 elif apiname == 'APICreateClusterDRSMsg' and params[0] == 'thresholds':
                     all_params[params[0]] = eval_string(params[0], params[1])
                 elif apiname == 'APIUpdateClusterDRSMsg' and params[0] == 'thresholds':
+                    all_params[params[0]] = eval_string(params[0], params[1])
+                elif apiname == 'APIAddMirrorCdpTasksToScheduleJobMsg' and params[0] == 'mirrorCdpTasks':
+                    all_params[params[0]] = eval_string(params[0], params[1])
+                elif apiname == 'APIChangeScheduleJobTasksPriorityMsg' and params[0] == 'mirrorCdpTasks':
                     all_params[params[0]] = eval_string(params[0], params[1])
                 elif is_api_param_a_list(apiname, params[0]):
                     all_params[params[0]] = escape_split(params[1])
@@ -597,7 +606,8 @@ Parse command parameters error:
             end_time = time.time()
 
             if apiname in [self.LOGIN_MESSAGE_NAME, self.LOGIN_BY_USER_NAME, self.LOGIN_BY_LDAP_MESSAGE_NAME,
-                           self.LOGIN_BY_LDAP_IAM2_NAME, self.LOGIN_BY_IAM2_PROJECT_NAME, self.LOGIN_BY_USER_IAM2, self.LOGIN_BY_CAS_MESSAGE_NAME]:
+                           self.LOGIN_BY_LDAP_IAM2_NAME, self.LOGIN_BY_IAM2_PROJECT_NAME, self.LOGIN_BY_USER_IAM2,
+                           self.LOGIN_BY_CAS_MESSAGE_NAME]:
                 self.session_uuid = event.inventory.uuid
                 self.account_name = None
                 self.user_name = None
@@ -859,7 +869,8 @@ Parse command parameters error:
             self.hd.rem(str(start_value))
 
         result_file = '%s%d' % (CLI_RESULT_FILE, start_value)
-        with open(result_file, 'w') as f: f.write(result)
+        with open(result_file, 'w') as f:
+            f.write(result)
         if not self.no_secure and 'password=' in ' '.join(cmd):
             cmds2 = []
             for cmd2 in cmd:
@@ -908,7 +919,8 @@ Parse command parameters error:
                 result = None
 
                 result_file = '%s%d' % (CLI_RESULT_FILE, key)
-                with open(result_file, 'r') as f: result = f.read()
+                with open(result_file, 'r') as f:
+                    result = f.read()
 
                 if result_list:
                     output = 'Command: \n\t%s\nResult:\n%s' % \
@@ -1149,7 +1161,6 @@ Parse command parameters error:
         readline.set_history_length(CLI_MAX_CMD_HISTORY)
 
         if not os.path.isdir(CLI_RESULT_HISTORY_FOLDER):
-
             linux.rm_dir_force(os.path.dirname(CLI_RESULT_HISTORY_FOLDER))
             os.system('mkdir -p %s' % os.path.dirname(CLI_RESULT_HISTORY_FOLDER))
 
