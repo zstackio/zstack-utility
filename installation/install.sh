@@ -4316,6 +4316,6 @@ disable_zstack_tui
 kill_zstack_tui_and_restart_tty1
 post_scripts_to_restore_iptables_rules
 
-if [ x"$ZOPS_INSTALL" = x"y"]; then
+if [ x"$ZOPS_INSTALL" = x"y" ]; then
     install_zops
 fi
