@@ -3004,16 +3004,16 @@ is_install_zops(){
     echo_subtitle "Install ZOps"
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     zops_installer_bin=`find /opt/zstack-dvd/x86_64/c76/zops -name "zops-installer*" | head -n 1`
-    bash $zops_installer_bin install --for_ops >/dev/null 2>&1
-    pass
+    bash $zops_installer_bin install --for_ops >>$ZSTACK_INSTALL_LOG
+    [ $? -eq 0 ] && pass
 }
 
 is_upgrade_zops(){
     echo_subtitle "Upgrade ZOps"
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     zops_installer_bin=`find /opt/zstack-dvd/x86_64/c76/zops -name "zops-installer*" | head -n 1`
-    bash $zops_installer_bin upgrade >/dev/null 2>&1
-    pass
+    bash $zops_installer_bin upgrade >>$ZSTACK_INSTALL_LOG
+    [ $? -eq 0 ] && pass
 }
 
 get_higher_version() {
@@ -4266,6 +4266,11 @@ if [ -z $NOT_START_ZSTACK ]; then
     [ -z $VERSION ] && VERSION=`zstack-ctl status 2>/dev/null|grep version|awk '{print $2}'`
 fi
 
+#Install/Upgrade zops
+if [ x"$ZOPS_INSTALL" = x"y" ]; then
+    install_zops
+fi
+
 echo ""
 echo_star_line
 touch $README
@@ -4315,7 +4320,3 @@ echo_star_line
 disable_zstack_tui
 kill_zstack_tui_and_restart_tty1
 post_scripts_to_restore_iptables_rules
-
-if [ x"$ZOPS_INSTALL" = x"y" ]; then
-    install_zops
-fi
