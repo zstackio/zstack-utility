@@ -1,0 +1,6 @@
+net.ipv4.neigh.default.gc_thresh1 = 128
+net.ipv4.neigh.default.gc_thresh2 = 28672
+net.ipv4.neigh.default.gc_thresh3 = 32768
+net.ipv6.neigh.default.gc_thresh1 = 128
+net.ipv6.neigh.default.gc_thresh2 = 28672
+net.ipv6.neigh.default.gc_thresh3 = 32768
