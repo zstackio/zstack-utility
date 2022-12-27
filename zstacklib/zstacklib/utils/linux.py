@@ -2611,12 +2611,46 @@ def check_nbd():
     if cmd.return_code != 0:
         raise Exception('nbd kernel module not found. try load nbd by `modprobe nbd`.')
 
-def get_file_xxhash(path):
+def get_file_xxhash(path, blocksize=1048576):
     hasher = xxhash.xxh64()
-    blocksize = 1048576
     with open(path, 'r') as fd:
         buf = fd.read(blocksize)
         while len(buf) > 0:
             hasher.update(buf)
             buf = fd.read(blocksize)
     return hasher.hexdigest()
+
+def compare_segmented_xxhash(src_path, dst_path, total_size, raise_expection=False, blocksize=1048576):
+    ## size <= 10G, compute xxhash directly
+    if total_size <= 10*1024**3:
+        src_hash = get_file_xxhash(src_path, blocksize=blocksize)
+        dst_hash = get_file_xxhash(dst_path, blocksize=blocksize)
+        if src_hash != dst_hash:
+            if raise_expection:
+                raise Exception("check hash value not match between %s with hash[%s] and %s with hash[%s]" % (src_path, src_hash, dst_path, dst_hash))
+            else:
+                return False
+        return True
+
+    seg_size = 2*1024**3 ## 2G
+    seg_offset = [total_size/5*x for x in range(0, 5)]
+    def _get_seg_xxhash(fd, offset):
+        hasher = xxhash.xxh64()
+        fd.seek(offset)
+        buf = fd.read(blocksize)
+        while len(buf) > 0 and fd.tell() <= offset+seg_size:
+            hasher.update(buf)
+            buf = fd.read(blocksize)
+        return hasher.hexdigest()
+
+    with open(src_path, 'r') as srcFile:
+        with open(dst_path, 'r') as dstFile:
+            for offset in seg_offset:
+                src_hash = _get_seg_xxhash(srcFile, offset)
+                dst_hash = _get_seg_xxhash(dstFile, offset)
+                if src_hash != dst_hash:
+                    if raise_expection:
+                        raise Exception("check hash value not match between %s with hash[%s] and %s with hash[%s] at offset %s" % (src_path, src_hash, dst_path, dst_hash, offset))
+                    else:
+                        return False
+    return True
