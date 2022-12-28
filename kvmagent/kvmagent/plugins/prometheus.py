@@ -472,7 +472,7 @@ def collect_sas_raid_state(metrics, infos):
                 metrics['raid_state'].add_metric([target_id], convert_raid_state_to_int(state))
         
         disk_info = bash_o("sas3ircu %s display | grep -E 'Enclosure #|Slot #|State|Serial No|Drive Type'" % line.strip())
-        enclosure_device_id = slot_number = state = "unknown"
+        enclosure_device_id = slot_number = state = serial_number = "unknown"
         for info in disk_info.splitlines():
             k = info.split(":")[0].strip()
             v = info.split(":")[1].strip()

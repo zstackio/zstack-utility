@@ -43,11 +43,11 @@ class PhysicalMemoryMonitor(kvmagent.KvmAgent):
 		pass
 	
 	@kvmagent.replyerror
-	def start_physical_memory_monitor(self):
+	def start_physical_memory_monitor(self, req):
 		self.time_lock += 1
 		self.state = True
 		logger.debug("start monitor physical memory!")
-		thread.timer(self.interval, self.monitor_physical_memory_ecc_error(self.time_lock)).start()
+		self.monitor_physical_memory_ecc_error(self.time_lock)
 		return jsonobject.dumps(AgentRsp())
 	
 	@lock.lock('monitor_physical_memory_ecc_error')
@@ -65,7 +65,7 @@ class PhysicalMemoryMonitor(kvmagent.KvmAgent):
 		if r == 0 and "No errors to report" not in o:
 			self.send_physical_memory_ecc_error_alarm_to_mn(o)
 		
-		thread.timer(self.interval, self.monitor_physical_memory_ecc_error(time_lock_now)).start()
+		thread.timer(self.interval, self.monitor_physical_memory_ecc_error, args=[time_lock_now]).start()
 	
 	def send_physical_memory_ecc_error_alarm_to_mn(self, detail):
 		physical_memory_ecc_error_alarm = PhysicalMemoryECCErrorAlarm()
