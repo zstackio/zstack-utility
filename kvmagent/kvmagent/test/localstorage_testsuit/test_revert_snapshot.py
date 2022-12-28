@@ -42,4 +42,5 @@ class TestLocalStoragePlugin(TestCase):
 
         files = glob.glob("/local_ps/test/*.qcow2")
         self.assertEqual(len(files), 2, "[check] cannot revert snapshot in host")
+        bash.bash_ro("rm -rf /local_ps")
 

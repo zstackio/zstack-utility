@@ -44,3 +44,5 @@ class TestLocalStoragePlugin(TestCase, vm_utils.VmPluginTestStub):
 
         self.assertEqual(True, os.path.exists("/local_ps/test/test.raw"),
                          "[check] cannot revert qcow2 to raw in host")
+
+        bash.bash_ro("rm -rf /local_ps")

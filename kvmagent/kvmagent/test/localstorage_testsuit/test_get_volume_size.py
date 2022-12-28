@@ -40,3 +40,4 @@ class TestLocalStoragePlugin(TestCase):
         )
 
         self.assertGreater(rsp.size, 0, rsp.error)
+        bash.bash_ro("rm -rf /local_ps")

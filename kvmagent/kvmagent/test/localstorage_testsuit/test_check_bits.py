@@ -41,3 +41,5 @@ class TestLocalStoragePlugin(TestCase):
         )
 
         self.assertEqual(True, rsp.existing, "[check] check bits failed")
+
+        bash.bash_ro("rm -rf /local_ps")

@@ -27,6 +27,7 @@ class TestLocalStoragePlugin(TestCase):
         self.assertGreater(rsp.totalCapacity, 0, rsp.error)
         self.assertGreater(rsp.availableCapacity, 0, rsp.error)
         self.assertGreater(rsp.localStorageUsedCapacity, 0, rsp.error)
+        bash.bash_ro("rm -rf /local_ps")
 
 
 

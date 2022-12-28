@@ -42,3 +42,5 @@ class TestLocalStoragePlugin(TestCase):
             storagePath="/local_ps"
         )
         self.assertEqual(True, os.path.exists("/local_ps/test/test/test.qcow2"), "[check] cannot find create template from volume in host")
+
+        bash.bash_ro("rm -rf /local_ps")

@@ -43,3 +43,5 @@ class TestLocalStoragePlugin(TestCase):
         )
 
         self.assertEqual(False, os.path.exists("/local_ps/test/test.qcow2"), "[check] cannot delete image in host")
+        bash.bash_ro("rm -rf /local_ps")
+        
