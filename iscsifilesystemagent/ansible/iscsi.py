@@ -84,15 +84,19 @@ else:
 run_remote_command("rm -rf %s/*" % iscsi_root, host_post_info)
 
 if distro in RPM_BASED_OS:
+    install_rpm_list = "wget scsi-target-utils"
+
+    if not remote_bin_installed(host_post_info, "qemu-img", return_status=True):
+        install_rpm_list += " " + ("qemu-img-ev" if releasever in ['c74'] else "qemu-img")
+
     if zstack_repo != 'false':
         # name: install iscsi related packages on RedHat based OS from user defined repo
-        command = "yum --disablerepo=* --enablerepo=%s --nogpgcheck install -y wget " \
-                  "qemu-img-ev scsi-target-utils"  % (zstack_repo)
+        command = "yum --disablerepo=* --enablerepo=%s --nogpgcheck install -y %s" % (zstack_repo, install_rpm_list)
         run_remote_command(command, host_post_info)
 
     else:
         # name: install isci related packages on RedHat based OS from online
-        for pkg in ['wget', 'qemu-img-ev', 'scsi-target-utils']:
+        for pkg in install_rpm_list.split():
             yum_install_package(pkg, host_post_info)
     if distro_version >= 7:
         # name: disable firewalld in RHEL7 and Centos7
