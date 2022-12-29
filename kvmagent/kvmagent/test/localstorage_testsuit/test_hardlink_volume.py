@@ -44,3 +44,4 @@ class TestLocalStoragePlugin(TestCase):
         )
 
         self.assertEqual(True, os.path.exists("/local_ps2/test.qcow2"), "[check] cannot hard link volume in host")
+        bash.bash_ro("rm -rf /local_ps")

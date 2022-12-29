@@ -42,3 +42,4 @@ class TestLocalStoragePlugin(TestCase):
         )
 
         self.assertEqual(5242880, rsp.size , "[check] cannot resize_volume in host")
+        bash.bash_ro("rm -rf /local_ps")

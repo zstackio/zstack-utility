@@ -43,4 +43,5 @@ class TestLocalStoragePlugin(TestCase):
 
         files = glob.glob("/local_ps/test/test/*.qcow2")
         self.assertEqual(len(files), 1, "[check] cannot reinit snapshot in host")
+        bash.bash_ro("rm -rf /local_ps")
 

@@ -35,3 +35,4 @@ class TestLocalStoragePlugin(TestCase):
 
         dirname = os.path.dirname("/local_ps/test/test/xxxxx.qcow2")
         self.assertEqual(True, os.path.exists(dirname), "[check] cannot find dirname in host")
+        bash.bash_ro("rm -rf /local_ps")

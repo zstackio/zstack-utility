@@ -44,3 +44,4 @@ class TestLocalStoragePlugin(TestCase):
         files = glob.glob("/local_ps/test/*.qcow2")
         self.assertEqual(len(files), 1, "[check] cannot offline merge snapshot in host")
         self.assertEqual(True, os.path.exists("/local_ps/test/test.qcow2"), "[check] cannot find rootvolume in host")
+        bash.bash_ro("rm -rf /local_ps")

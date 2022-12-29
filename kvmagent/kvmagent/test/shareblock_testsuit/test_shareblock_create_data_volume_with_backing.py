@@ -1,9 +1,9 @@
+from kvmagent.test.shareblock_testsuit.shared_block_plugin_teststub import SharedBlockPluginTestStub
 from kvmagent.test.utils import shareblock_utils,pytest_utils,storage_device_utils
-from kvmagent.test.utils.stub import *
-from zstacklib.test.utils import remote
-from zstacklib.utils import linux, jsonobject, bash
-from zstacklib.test.utils import misc,env
+from zstacklib.utils import bash
 from unittest import TestCase
+from zstacklib.test.utils import misc,env
+import pytest
 
 shareblock_utils.init_shareblock_plugin()
 storage_device_utils.init_storagedevice_plugin()
@@ -12,6 +12,8 @@ PKG_NAME = __name__
 
 __ENV_SETUP__ = {
     'self': {
+        'xml':'http://smb.zstack.io/mirror/ztest/xml/twoDiskVm.xml',
+        'init':['bash ./createiSCSIStroage.sh']
     }
 }
 
@@ -19,7 +21,7 @@ global hostUuid
 global vgUuid
 
 ## describe: case will manage by ztest
-class TestShareBlockPlugin(TestCase):
+class TestShareBlockPlugin(TestCase,SharedBlockPluginTestStub):
 
     @classmethod
     def setUpClass(cls):
@@ -85,11 +87,4 @@ class TestShareBlockPlugin(TestCase):
         r, o = bash.bash_ro("lvs --nolocking -t |grep %s" % volumeUuid)
         self.assertEqual(0, r, "create volume fail in host")
 
-        # # test disconnect shareblock
-        # self.assertEqual(True, rsp.success, rsp.error)
-        # rsp = shareblock_utils.shareblock_disconnect(
-        #     vgUuid=vgUuid,
-        #     hostUuid=hostUuid
-        # )
-        #
-        # self.assertEqual(True, rsp.success, rsp.error)
+        self.logout(vgUuid, hostUuid)

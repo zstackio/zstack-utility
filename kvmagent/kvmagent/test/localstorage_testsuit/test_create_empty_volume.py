@@ -36,3 +36,4 @@ class TestLocalStoragePlugin(TestCase):
 
         existFile =  os.path.exists("/local_ps/emptyvolume")
         self.assertEqual(True, existFile, "[check] cannot find file in host")
+        bash.bash_ro("rm -rf /local_ps")

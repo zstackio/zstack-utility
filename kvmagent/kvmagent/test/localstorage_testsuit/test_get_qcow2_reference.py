@@ -41,5 +41,6 @@ class TestLocalStoragePlugin(TestCase):
         )
 
         self.assertEqual(1, len(rsp.referencePaths), "[check] cannot find rootvolume in host")
+        bash.bash_ro("rm -rf /local_ps")
 
 

@@ -1,9 +1,9 @@
+from kvmagent.test.shareblock_testsuit.shared_block_plugin_teststub import SharedBlockPluginTestStub
 from kvmagent.test.utils import shareblock_utils,pytest_utils,storage_device_utils
-from kvmagent.test.utils.stub import *
-from zstacklib.test.utils import remote
-from zstacklib.utils import linux, jsonobject, bash
-from zstacklib.test.utils import misc,env
+from zstacklib.utils import bash
 from unittest import TestCase
+from zstacklib.test.utils import misc,env
+import pytest
 
 shareblock_utils.init_shareblock_plugin()
 storage_device_utils.init_storagedevice_plugin()
@@ -13,6 +13,8 @@ PKG_NAME = __name__
 # must create iSCSI stroage before run test
 __ENV_SETUP__ = {
     'self': {
+        'xml':'http://smb.zstack.io/mirror/ztest/xml/twoDiskVm.xml',
+        'init':['bash ./createiSCSIStroage.sh']
     }
 }
 
@@ -20,7 +22,7 @@ global hostUuid
 global vgUuid
 
 ## describe: case will manage by ztest
-class TestShareBlockPlugin(TestCase):
+class TestShareBlockPlugin(TestCase, SharedBlockPluginTestStub):
 
     @classmethod
     def setUpClass(cls):
@@ -94,6 +96,8 @@ class TestShareBlockPlugin(TestCase):
         )
 
         self.assertEqual(True, rsp.success, rsp.error)
+
+        self.logout(vgUuid, hostUuid)
 
 
 
