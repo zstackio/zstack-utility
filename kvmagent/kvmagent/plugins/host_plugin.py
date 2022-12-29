@@ -353,6 +353,15 @@ class GetPciDevicesResponse(kvmagent.AgentResponse):
         self.pciDevicesInfo = []
         self.hostIommuStatus = False
 
+class GetMttyDevicesCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(GetMttyDevicesCmd, self).__init__()
+
+class GetMttyDevicesResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(GetMttyDevicesResponse, self).__init__()
+        self.mttyDevicesInfo = None
+
 class CreatePciDeviceRomFileCommand(kvmagent.AgentCommand):
     def __init__(self):
         super(CreatePciDeviceRomFileCommand, self).__init__()
@@ -405,6 +414,36 @@ class UngenerateVfioMdevDevicesCommand(kvmagent.AgentCommand):
 class UngenerateVfioMdevDevicesRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(UngenerateVfioMdevDevicesRsp, self).__init__()
+
+class GenerateSeVfioMdevDevicesCommand(kvmagent.AgentCommand):
+    def __init__(self):
+        super(GenerateSeVfioMdevDevicesCommand, self).__init__()
+        self.mttyDeviceUuid = None
+        self.mdevUuids = None
+        self.reSplite = False
+
+class GenerateSeVfioMdevDevicesRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(GenerateSeVfioMdevDevicesRsp, self).__init__()
+        self.mdevUuids = []
+
+class UngenerateSeVfioMdevDevicesCommand(kvmagent.AgentCommand):
+    def __init__(self):
+        super(UngenerateSeVfioMdevDevicesCommand, self).__init__()
+        self.mttyDeviceUuid = None
+
+class UngenerateSeVfioMdevDevicesRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(UngenerateSeVfioMdevDevicesRsp, self).__init__()
+
+class DeleteVfioMdevDeviceCommand(kvmagent.AgentCommand):
+    def __init__(self):
+        super(DeleteVfioMdevDeviceCommand, self).__init__()
+        self.MdevDeviceUuid = None      
+
+class DeleteVfioMdevDeviceRsp(kvmagent.AgentCommand):
+    def __init__(self):
+        super(DeleteVfioMdevDeviceRsp, self).__init__()          
 
 class UpdateSpiceChannelConfigResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -488,6 +527,13 @@ class PciDeviceTO(object):
         self.maxPartNum = "0"
         self.ramSize = ""
         self.mdevSpecifications = []
+
+class MttyDeviceTO(object):
+    def __init__(self):
+        self.name = ""
+        self.description = ""
+        self.type = ""
+        self.virtStatus = ""
 
 # moved from vm_plugin to host_plugin
 class UpdateConfigration(object):
@@ -620,6 +666,10 @@ class HostPlugin(kvmagent.KvmAgent):
     UNGENERATE_SRIOV_PCI_DEVICES = "/pcidevice/ungenerate"
     GENERATE_VFIO_MDEV_DEVICES = "/mdevdevice/generate"
     UNGENERATE_VFIO_MDEV_DEVICES = "/mdevdevice/ungenerate"
+    GET_MTTY_DEVICES = "/mttydevice/get"
+    GENERATE_SE_VFIO_MDEV_DEVICES = "/semdevdevice/generate"
+    UNGENERATE_SE_VFIO_MDEV_DEVICES = "/semdevdevice/ungenerate"
+    DELETE_VFIO_MDEV_DEVICE = "/mdevdevice/delete"
     HOST_UPDATE_SPICE_CHANNEL_CONFIG_PATH = "/host/updateSpiceChannelConfig";
     TRANSMIT_VM_OPERATION_TO_MN_PATH = "/host/transmitvmoperation"
     TRANSMIT_ZWATCH_INSTALL_RESULT_TO_MN_PATH = "/host/zwatchInstallResult"
@@ -936,6 +986,9 @@ class HostPlugin(kvmagent.KvmAgent):
     def _get_features_in_libvirt(conn):
         try:
             xml_object = xmlobject.loads(conn.getCapabilities())
+            # The number of guest is one, and len will cause an error
+            if not isinstance(xml_object.guest, list):
+                return xml_object.guest
             if len(xml_object.guest) > 0:
                 return xml_object.guest[0].features
             return None
@@ -2221,6 +2274,116 @@ done
 
         return jsonobject.dumps(rsp)
 
+    def _collect_format_mtty_device_info(self, rsp):
+        if stat.S_ISCHR(os.stat("/dev/wst-se").st_mode):
+            rsp.success = False
+            rsp.error = "cannot get se physical device to split"
+            return
+        
+        check_virtfn_folder = '/sys/devices/virtual/mtty/mtty/mdev_supported_types'
+        virt_function_dir_exits = os.path.isdir(check_virtfn_folder)
+        if not virt_function_dir_exits:
+            rsp.success = False
+            rsp.error = "cannot get mtty devices to vritual se"
+            return 
+
+        # parse mtty output
+        to = MttyDeviceTO()
+        to.type = "SE_Controller"
+        to.description = to.type + ": " + "computing encryption device"
+        to.name = "SE"
+
+        se_num_record_file =  "%s/mtty-2/available_instances" % check_virtfn_folder
+        se_num_record_file_exits = os.path.isfile(se_num_record_file)
+        if not se_num_record_file_exits:
+            to.virtStatus = "UNKNOWN"
+
+        mdev_r, mdev_o, _ = bash_roe("grep -w 12 %s" % se_num_record_file)
+        if mdev_r != 0:
+            to.virtStatus = "VFIO_MDEV_VIRTUALIZED"
+        else:
+            to.virtStatus = "VFIO_MDEV_VIRTUALIZABLE"
+        rsp.mttyDevicesInfo = to
+        return
+                
+    @kvmagent.replyerror
+    def get_mtty_info(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetMttyDevicesResponse()
+
+        # get mtty device info
+        self._collect_format_mtty_device_info(rsp)
+        return jsonobject.dumps(rsp)
+        
+    @kvmagent.replyerror
+    def generate_se_vfio_mdev_devices(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GenerateSeVfioMdevDevicesRsp()
+        logger.debug("generate_se_vfio_mdev_devices: mdevUuids[%s]" % cmd.mdevUuids)
+
+        mtty_uuid = cmd.mttyDeviceUuid
+        ramdisk = os.path.join('/dev/shm', 'mtty-' + mtty_uuid)
+        if cmd.reSplite and os.path.exists(ramdisk):
+            logger.debug("no need to re-splite mtty device[uuid:%s] into mdev devices" % mtty_uuid)
+            return jsonobject.dumps(rsp)
+        
+        virt_path = "/sys/devices/virtual/mtty/mtty/mdev_supported_types/mtty-2/"
+        virt_path_exits = os.path.exists(virt_path)
+        if not virt_path_exits:
+            rsp.success = False
+            rsp.error = "cannot generate se vfio mdev devices from mtty device[uuid:%s]" % mtty_uuid
+            return jsonobject.dumps(rsp)
+
+        for _uuid in cmd.mdevUuids:
+            with open(os.path.join(virt_path, "create"), 'w') as f:
+                f.write(str(uuid.UUID(_uuid)))
+                if not cmd.reSplite:
+                    rsp.mdevUuids.append(str(uuid.UUID(_uuid)))
+                logger.debug('generate mdev device[uuid:%s] from mtty device[uuid:%s]'% (str(_uuid), mtty_uuid))
+      
+        # create ramdisk file after mtty device virtualization
+        open(ramdisk, 'a').close()
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
+    def ungenerate_se_vfio_mdev_devices(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = UngenerateSeVfioMdevDevicesRsp()
+
+        mtty_uuid = cmd.mttyDeviceUuid
+        virt_function = "/sys/devices/virtual/mtty/mtty/mdev_supported_types/mtty-2/devices"
+        virt_function_exits = os.path.exists(virt_function)
+        if not virt_function_exits:
+            rsp.success = False
+            rsp.error = "no vfio mdev device[uuid:%s] to delete" % mtty_uuid
+            return jsonobject.dumps(rsp)
+
+        for _uuid in os.listdir(virt_function):
+            with open(os.path.join("/sys/bus/mdev/devices/", _uuid, "remove"), "w") as f:
+                f.write("1")
+        
+        return jsonobject.dumps(rsp)
+    
+    @kvmagent.replyerror
+    @in_bash
+    def delete_vfio_mdev_device(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = DeleteVfioMdevDeviceRsp()
+
+        _uuid = str(uuid.UUID(cmd.MdevDeviceUuid))
+        virt_function = "/sys/devices/virtual/mtty/mtty/mdev_supported_types/mtty-2/devices"
+        virt_function_exits = os.path.exists(virt_function)
+        if not virt_function_exits:
+            rsp.success = False
+            rsp.error = "no vfio mdev devices to ungenerate from mtty device[uuid:%s]" % _uuid
+            return jsonobject.dumps(rsp)
+        
+        with open(os.path.join("/sys/bus/mdev/devices/", _uuid, "remove"), "w") as f:
+                f.write("1")
+        
+        return jsonobject.dumps(rsp)
+
     @kvmagent.replyerror
     @in_bash
     def update_spice_channel_config(self, req):
@@ -2598,6 +2761,10 @@ done
         http_server.register_async_uri(self.UNGENERATE_SRIOV_PCI_DEVICES, self.ungenerate_sriov_pci_devices)
         http_server.register_async_uri(self.GENERATE_VFIO_MDEV_DEVICES, self.generate_vfio_mdev_devices)
         http_server.register_async_uri(self.UNGENERATE_VFIO_MDEV_DEVICES, self.ungenerate_vfio_mdev_devices)
+        http_server.register_async_uri(self.GET_MTTY_DEVICES, self.get_mtty_info)
+        http_server.register_async_uri(self.GENERATE_SE_VFIO_MDEV_DEVICES, self.generate_se_vfio_mdev_devices)
+        http_server.register_async_uri(self.UNGENERATE_SE_VFIO_MDEV_DEVICES, self.ungenerate_se_vfio_mdev_devices)
+        http_server.register_async_uri(self.DELETE_VFIO_MDEV_DEVICE, self.delete_vfio_mdev_device)
         http_server.register_async_uri(self.HOST_UPDATE_SPICE_CHANNEL_CONFIG_PATH, self.update_spice_channel_config)
         http_server.register_async_uri(self.CANCEL_JOB, self.cancel)
         http_server.register_sync_uri(self.TRANSMIT_VM_OPERATION_TO_MN_PATH, self.transmit_vm_operation_to_vm)
