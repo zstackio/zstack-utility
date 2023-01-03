@@ -360,7 +360,7 @@ class GetMttyDevicesCmd(kvmagent.AgentCommand):
 class GetMttyDevicesResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(GetMttyDevicesResponse, self).__init__()
-        self.mttyDevicesInfo = None
+        self.mttyDeviceInfo = None
 
 class CreatePciDeviceRomFileCommand(kvmagent.AgentCommand):
     def __init__(self):
@@ -2275,16 +2275,13 @@ done
         return jsonobject.dumps(rsp)
 
     def _collect_format_mtty_device_info(self, rsp):
-        if stat.S_ISCHR(os.stat("/dev/wst-se").st_mode):
-            rsp.success = False
-            rsp.error = "cannot get se physical device to split"
+        r, o, e = bash_roe("ls /dev/wst-se")
+        if r != 0:
             return
         
         check_virtfn_folder = '/sys/devices/virtual/mtty/mtty/mdev_supported_types'
         virt_function_dir_exits = os.path.isdir(check_virtfn_folder)
         if not virt_function_dir_exits:
-            rsp.success = False
-            rsp.error = "cannot get mtty devices to vritual se"
             return 
 
         # parse mtty output
@@ -2303,7 +2300,7 @@ done
             to.virtStatus = "VFIO_MDEV_VIRTUALIZED"
         else:
             to.virtStatus = "VFIO_MDEV_VIRTUALIZABLE"
-        rsp.mttyDevicesInfo = to
+        rsp.mttyDeviceInfo = to
         return
                 
     @kvmagent.replyerror
