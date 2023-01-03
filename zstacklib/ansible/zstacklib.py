@@ -37,8 +37,9 @@ DISTRO_WITH_RPM_DEB = ["kylin", "uniontech"]
 qemu_alias = {
     "ns10": "qemu-kvm qemu-img",
     "uos20": "qemu-system",
-    "c76": "qemu-kvm-ev",
-    "c79": "qemu-kvm-ev",
+    "c74": "qemu-kvm-ev",
+    "c76": "qemu-kvm",
+    "c79": "qemu-kvm",
     "euler20": "qemu",
     "uos1021a": "qemu-kvm",
     "nfs4": "qemu-kvm"
@@ -2125,6 +2126,12 @@ deb http://{{ apt_server }}/zstack/static/zstack-repo/$basearch/{{ zstack_releas
 def configure_hosts(host_post_info):
     configure_hosts_cmd = 'grep `hostname` /etc/hosts >/dev/null || echo "127.0.0.1 `hostname` # added by ZStack" >> /etc/hosts'
     run_remote_command(configure_hosts_cmd, host_post_info)
+
+
+def remote_bin_installed(host_post_info, bin_name, return_status=False):
+    command = "which {}".format(bin_name)
+    status = run_remote_command(command, host_post_info, return_status)
+    return status
 
 
 def main():
