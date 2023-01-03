@@ -766,7 +766,7 @@ def modprobe_usb_module():
     host_post_info.post_label_param = None
     run_remote_command(command, host_post_info)
 
-@with_arch(todo_list=['loongarch64'])
+@with_arch(todo_list=['loongarch64'], host_arch=host_arch)
 def modprobe_mpci_module():
     command = "ls /dev/wst-se"
     (status, stdout) = run_remote_command(command, host_post_info, return_status=True, return_output=True)
@@ -787,7 +787,7 @@ def modprobe_mpci_module():
         return
         
     _src = "{}/mpci_{}_loongarch64".format(file_root, kvers)
-    _dst = "/lib/modules/{}/mpci.ko".format("`uname -r`")
+    _dst = "/lib/modules/{}/mpci.ko".format(stdout)
     copy_to_remote(_src, _dst, "mode=644", host_post_info)
 
     command = "depmod -a; modprobe vfio-mdev; modprobe mpci || true"
