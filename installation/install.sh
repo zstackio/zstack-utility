@@ -45,7 +45,7 @@ MINI_INSTALL='n'
 CUBE_INSTALL='n'
 SANYUAN_INSTALL='n'
 SDS_INSTALL='n'
-ZOPS_INSTALL='n'
+ZOPS_INSTALL='y'
 MANAGEMENT_INTERFACE=`ip route | grep default | head -n 1 | cut -d ' ' -f 5`
 ZSTACK_INSTALL_LOG='/tmp/zstack_installation.log'
 ZSTACKCTL_INSTALL_LOG='/tmp/zstack_ctl_installation.log'
@@ -3575,7 +3575,7 @@ check_myarg() {
 }
 
 OPTIND=1
-TEMP=`getopt -o f:H:I:n:p:P:r:R:t:y:acC:L:T:dDEFhiklmMNoOqsuz --long chrony-server-ip:,mini,cube,SY,sds,zops -- "$@"`
+TEMP=`getopt -o f:H:I:n:p:P:r:R:t:y:acC:L:T:dDEFhiklmMNoOqsuz --long chrony-server-ip:,mini,cube,SY,sds,no-zops -- "$@"`
 if [ $? != 0 ]; then
     usage
 fi
@@ -3635,7 +3635,7 @@ do
         --cube) CUBE_INSTALL='y';shift;;
         --SY) SANYUAN_INSTALL='y';shift;;
         --sds) SDS_INSTALL='y';shift;;
-        --zops) ZOPS_INSTALL='y';shift;;
+        --no-zops) ZOPS_INSTALL='n';shift;;
         --) shift;;
         * ) usage;;
     esac
