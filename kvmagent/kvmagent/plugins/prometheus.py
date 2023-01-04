@@ -181,6 +181,25 @@ def send_physical_disk_remove_alarm_to_mn(serial_number, slot):
     http.json_dump_post(url, physical_disk_remove_alarm, {'commandpath': '/host/physical/disk/remove/alarm'})
 
 
+def collect_memory_locator():
+    memory_locator_list = []
+    r, infos = bash_ro("dmidecode -q -t memory | grep -E 'Serial Number|Locator'")
+    if r != 0:
+        return memory_locator_list
+    locator = "unknown"
+    for line in infos.splitlines():
+        k = line.split(":")[0].strip()
+        v = ":".join(line.split(":")[1:]).strip()
+        if "Locator" == k:
+            locator = v
+        elif "Serial Number" == k:
+            if v.lower() == "no dimm" or v.lower() == "unknown" or v == "":
+                continue
+            memory_locator_list.append(locator)
+
+    return memory_locator_list
+
+
 @thread.AsyncThread
 def check_disk_insert_and_remove(disk_list):
     global disk_list_record
@@ -482,14 +501,14 @@ def collect_sas_raid_state(metrics, infos):
                 slot_number = v
             elif "State" == k:
                 state = v.split(" ")[0].strip()
-            elif "serial no" == k:
+            elif "Serial No" == k:
                 serial_number = v
             elif "Drive Type" == k:
                 drive_status = convert_disk_state_to_int(state)
                 metrics['physical_disk_state'].add_metric([slot_number, enclosure_device_id], drive_status)
                 disk_list[serial_number] = "%s-%s" % (enclosure_device_id, slot_number)
                 if drive_status != 0:
-                    send_physical_disk_status_alarm_to_mn(serial_number, slot_number, enclosure_device_id, drive_status)
+                    send_physical_disk_status_alarm_to_mn(serial_number, slot_number, enclosure_device_id, state)
 
     check_disk_insert_and_remove(disk_list)
     return metrics.values()
@@ -525,7 +544,7 @@ def collect_mega_raid_state(metrics, infos):
             metrics['physical_disk_state'].add_metric([slot_number, enclosure_device_id], drive_status)
             disk_list[serial_number] = "%s-%s" % (enclosure_device_id, slot_number)
             if drive_status != 0:
-                send_physical_disk_status_alarm_to_mn(serial_number, slot_number, enclosure_device_id, drive_status)
+                send_physical_disk_status_alarm_to_mn(serial_number, slot_number, enclosure_device_id, state)
 
     check_disk_insert_and_remove(disk_list)
     return metrics.values()
@@ -673,9 +692,12 @@ def collect_ipmi_state():
     # get physical memory info
     r, memory_infos = bash_ro("hd_ctl -c memory")
     if r == 0:
+        memory_locator_list = collect_memory_locator()
         infos = jsonobject.loads(memory_infos)
         for info in infos:
             slot_number = info.Locator
+            if slot_number in memory_locator_list:
+                memory_locator_list.remove(slot_number)
             if "ok" == info.State.lower():
                 metrics['physical_memory_status'].add_metric([slot_number], 0)
             elif "" == info.State:
@@ -683,18 +705,29 @@ def collect_ipmi_state():
             else:
                 metrics['physical_memory_status'].add_metric([slot_number], 10)
                 send_physical_memory_status_alarm_to_mn(slot_number, info.State)
-            
+        
+        if len(memory_locator_list) != 0:
+            for locator in memory_locator_list:
+                metrics['physical_memory_status'].add_metric([locator], 10)
+                send_physical_memory_status_alarm_to_mn(locator, "unknown")
+
     # get fan info
+    origin_fan_flag = False
     r, fan_infos = bash_ro("hd_ctl -c fan")
     if r == 0:
         infos = jsonobject.loads(fan_infos)
         for info in infos.fan_list:
             fan_name = info.Name
             if fan_name == "":
-                continue
+                origin_fan_flag = True
+                break
+            if info.Status == "":
+                origin_fan_flag = True
+                break
+        
             fan_rpm = "0" if info.SpeedRPM == "" else info.SpeedRPM
             metrics['fan_speed_rpm'].add_metric([fan_name], float(fan_rpm))
-
+        
             if "ok" == info.Status.lower():
                 metrics['fan_speed_state'].add_metric([fan_name], 0)
             elif "" == info.Status:
@@ -702,9 +735,11 @@ def collect_ipmi_state():
             else:
                 metrics['fan_speed_state'].add_metric([fan_name], 10)
                 send_physical_fan_status_alarm_to_mn(fan_name, info.Status)
-                
+    else:
+        origin_fan_flag = True
+    
     # get power info
-    r, sdr_data = bash_ro("ipmitool sdr elist | grep -E -i '^ps\w*(\ |_)(pin|pout|status)'")
+    r, sdr_data = bash_ro("ipmitool sdr elist")
     if r == 0:
         power_list = []
         for line in sdr_data.splitlines():
@@ -726,7 +761,22 @@ def collect_ipmi_state():
                 ps_out_power = float(filter(str.isdigit, ps_out_power)) if bool(re.search(r'\d', ps_out_power)) else float(0)
                 metrics['power_supply_current_output_power'].add_metric([ps_id], ps_out_power)
                 power_list.append(ps_id)
-    
+            elif re.match(r"^fan\w*(_|\ )speed\w*", info):
+                if not origin_fan_flag:
+                    continue
+                if "m2" in info:
+                    continue
+                fan_rpm = info.split("|")[4].strip()
+                if fan_rpm == "" or fan_rpm == "no reading" or fan_rpm == "disabled":
+                    continue
+                fan_name = info.split("|")[0].strip()
+                fan_state = 0 if info.split("|")[2].strip() == "ok" else 10
+                fan_rpm = float(filter(str.isdigit, fan_rpm)) if bool(re.search(r'\d', fan_rpm)) else float(0)
+                metrics['fan_speed_state'].add_metric([fan_name], fan_state)
+                metrics['fan_speed_rpm'].add_metric([fan_name], fan_rpm)
+                if fan_state == 10:
+                    send_physical_fan_status_alarm_to_mn(fan_name, info.split("|")[2].strip())
+
     collect_equipment_state_last_result = metrics.values()
     return collect_equipment_state_last_result
 
