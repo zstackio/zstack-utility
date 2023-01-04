@@ -3861,6 +3861,10 @@ add_zops_init_cronjob() {
     if [ ! -f /tmp/zops_init.sock ];then
       touch /tmp/zops_init.sock
     fi
+    # touch crontab root file if not exists
+    if [ ! -f /var/spool/cron/root ];then
+      touch /var/spool/cron/root && chmod 600 /var/spool/cron/root
+    fi
     # remove not in current os version cron job
     ALL_ZOPS_CRON=`crontab -l |grep zops_init.py |grep -v ${ISO_ARCH}/${ISO_VER} | cut -d " " -f10`
     CRON_ARR=(`echo $ALL_ZOPS_CRON | tr '\n' ' '`)
