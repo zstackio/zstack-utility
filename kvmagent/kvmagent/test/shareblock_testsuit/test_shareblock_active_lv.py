@@ -12,7 +12,8 @@ PKG_NAME = __name__
 __ENV_SETUP__ = {
     'self': {
         'xml':'http://smb.zstack.io/mirror/ztest/xml/twoDiskVm.xml',
-        'init':['bash ./createiSCSIStroage.sh']
+        'init':['bash ./createiSCSIStroage.sh'],
+        'timeout': 1800
     }
 }
 
