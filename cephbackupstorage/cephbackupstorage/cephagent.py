@@ -1118,14 +1118,14 @@ class CephAgent(object):
 
         pool, objname = cmd.testImagePath.split('/')
 
-        create_img = shell.ShellCmd("echo zstack | rados -p '%s' put '%s' -" % (pool, objname))
+        create_img = shell.ShellCmd("echo zstack | timeout 60 rados -p '%s' put '%s' -" % (pool, objname))
         create_img(False)
         if create_img.return_code != 0:
             rsp.success = False
             rsp.failure = 'UnableToCreateFile'
             rsp.error = "%s %s" % (create_img.stderr, create_img.stdout)
         else:
-            shell.run("rados -p '%s' rm '%s'" % (pool, objname))
+            shell.run("timeout 60 rados -p '%s' rm '%s'" % (pool, objname))
 
         linux.write_uuids("cephmonbs", "cephmonbs=%s" % cmd.monUuid)
         return jsonobject.dumps(rsp)
