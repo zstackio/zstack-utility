@@ -78,9 +78,13 @@ class ImageStoreClient(object):
             if cmd.threadContext.api:
                 taskid = cmd.threadContext.api
 
-        cmdstr = '%s -url %s:%s -callbackurl %s -taskid %s -imageUuid %s %s push %s' % (
+        push_ext_param = ""
+        if cmd.concurrency and cmd.concurrency > 1:
+            push_ext_param += " -concurrency %d" % cmd.concurrency
+
+        cmdstr = '%s -url %s:%s -callbackurl %s -taskid %s -imageUuid %s %s push %s %s' % (
             self.ZSTORE_CLI_PATH, cmd.hostname, self.ZSTORE_DEF_PORT, req[http.REQUEST_HEADER].get(http.CALLBACK_URI),
-            taskid, cmd.imageUuid, extpara, cmd.srcPath)
+            taskid, cmd.imageUuid, extpara, push_ext_param, cmd.srcPath)
         logger.debug('pushing %s to image store' % cmd.srcPath)
         shell = traceable_shell.get_shell(cmd)
         shell.call(cmdstr.encode(encoding="utf-8"))
