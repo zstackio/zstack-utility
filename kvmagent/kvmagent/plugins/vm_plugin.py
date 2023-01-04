@@ -6901,13 +6901,13 @@ host side snapshot files chian:
             touchQmpSocketWhenExists(cmd.vmUuid)
         return jsonobject.dumps(rsp)
 
-    def push_backing_files(self, isc, hostname, drivertype, source_file):
+    def push_backing_files(self, isc, hostname, drivertype, source_file, concurrency=None):
         if drivertype != 'qcow2':
             return None
 
         bf = linux.qcow2_get_backing_file(source_file)
         if bf:
-            imf = isc.upload_image(hostname, bf)
+            imf = isc.upload_image(hostname, bf, concurrency)
             return imf
 
         return None
@@ -6943,7 +6943,7 @@ host side snapshot files chian:
                 if cmd.mode == 'full':
                     return bm, 'full', nodename, speed
 
-                imf = self.push_backing_files(isc, cmd.hostname, drivertype, source_file)
+                imf = self.push_backing_files(isc, cmd.hostname, drivertype, source_file, cmd.uploadConcurrency)
                 if not imf:
                     return bm, 'full', nodename, speed
 
@@ -6981,7 +6981,7 @@ host side snapshot files chian:
                 target_disk = target_disks[deviceId]
                 drivertype = target_disk.driver.type_
                 source_file = self.get_source_file_by_disk(target_disk)
-                imf = self.push_backing_files(isc, cmd.hostname, drivertype, source_file)
+                imf = self.push_backing_files(isc, cmd.hostname, drivertype, source_file, cmd.uploadConcurrency)
                 if imf:
                     parent = isc._build_install_path(imf.name, imf.id)
                     info.parentInstallPath = parent
@@ -7017,7 +7017,7 @@ host side snapshot files chian:
             if not bf:
                 return None, bitmap, 'full'
 
-            imf = isc.upload_image(cmd.hostname, bf)
+            imf = isc.upload_image(cmd.hostname, bf, cmd.uploadConcurrency)
             parent = isc._build_install_path(imf.name, imf.id)
             return parent, bitmap, 'top'
 
@@ -7034,7 +7034,7 @@ host side snapshot files chian:
 
         if mode == 'top' and parent is None and topoverlay != None:
             bf = linux.qcow2_get_backing_file(topoverlay)
-            imf = isc.upload_image(cmd.hostname, bf)
+            imf = isc.upload_image(cmd.hostname, bf, cmd.uploadConcurrency)
             parent = isc._build_install_path(imf.name, imf.id)
 
         return bitmap, parent
