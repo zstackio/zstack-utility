@@ -10,6 +10,7 @@ from zstacklib.utils import log
 from zstacklib.utils import bash
 from zstacklib.utils import linux
 from zstacklib.utils import remoteStorage
+from zstacklib.utils.bash import bash_r
 from zstacklib.utils.linux import get_fs_type, check_nbd
 
 logger = log.get_logger(__name__)
@@ -231,6 +232,20 @@ class CephOsdCapacity:
         self.size = crush_item_osd_size
         self.availableCapacity = crush_item_osd_available_capacity
         self.usedCapacity = crush_item_osd_used_capacity
+
+
+def get_mon_addr(monmap, route_protocol):
+    for mon in jsonobject.loads(monmap).mons:
+        ADDR = mon.addr.split(':')[0]
+        cmd = ''
+        if route_protocol is None:
+            cmd = 'ip route | grep -w {{ADDR}} > /dev/null'
+        elif route_protocol == "kernel":
+            cmd = 'ip route | grep -w "proto kernel" | grep -w {{ADDR}} > /dev/null'
+        if cmd == '':
+            return
+        if bash_r(cmd) == 0:
+            return ADDR
 
 
 class CephPoolCapacity:
