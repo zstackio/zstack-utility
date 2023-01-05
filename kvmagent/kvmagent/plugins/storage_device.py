@@ -2,6 +2,9 @@ import random
 import time
 import string
 import os.path
+
+import simplejson
+
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
 from zstacklib.utils import multipath
@@ -940,7 +943,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     @bash.in_bash
     def enable_multipath(self, req):
         rsp = AgentRsp()
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        cmd_dict = simplejson.loads(req[http.REQUEST_BODY])
         lvm.enable_multipath()
 
         r = bash.bash_r("grep '^[[:space:]]*alias' /etc/multipath.conf")
@@ -948,7 +951,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             bash.bash_roe("sed -i 's/^[[:space:]]*alias/#alias/g' /etc/multipath.conf")
             bash.bash_roe("systemctl reload multipathd")
 
-        if multipath.write_multipath_conf("/etc/multipath.conf", cmd.blacklist):
+        if multipath.write_multipath_conf("/etc/multipath.conf", cmd_dict.get("blacklist", None)):
             bash.bash_roe("systemctl reload multipathd")
 
         linux.set_fail_if_no_path()
@@ -960,8 +963,9 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         lvm.disable_multipath()
         return jsonobject.dumps(rsp)
 
-    def get_device_info(self, scsi_info, rescan):
-        # type: (str) -> FiberChannelLunStruct
+    @staticmethod
+    def get_device_info(scsi_info, rescan):
+        # type: (str, bool) -> FiberChannelLunStruct
         s = FiberChannelLunStruct()
 
         dev_name = os.path.basename(scsi_info.split()[-2])

@@ -9,14 +9,19 @@ device {
 
 }
 blacklist {
+    device {
+        product "3S42"
+        vendor "IBM"
+    }
+    wwid "36001405913ad48768b84db39bbcc5cb0"
 
 }
 devices {
 device {
-    features 0
-    no_path_retry fail
-    product *
-    vendor *
+    features "0"
+    no_path_retry "fail"
+    product ".*"
+    vendor ".*"
 }
 
 }
