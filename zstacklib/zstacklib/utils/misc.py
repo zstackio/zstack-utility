@@ -35,6 +35,21 @@ def ignoreerror(func):
             logger.warn(err)
     return wrap
 
+
+class IgnoreError(object):
+    def __init__(self):
+        pass
+
+    def __enter__(self):
+        pass
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type:
+            content = traceback.format_exc()
+            err = '%s\n%s\n' % (str(exc_val), content)
+            logger.warn(err)
+
+
 @linux.with_arch(todo_list=['x86_64'])
 def isMiniHost():
     r, o = bash.bash_ro("dmidecode -s system-product-name")

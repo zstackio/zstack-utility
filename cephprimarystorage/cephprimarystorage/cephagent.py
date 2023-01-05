@@ -35,6 +35,7 @@ from imagestore import ImageStoreClient
 from zstacklib.utils.linux import remote_shell_quote
 from cephdriver import CephDriver
 from thirdpartycephdriver import ThirdpartyCephDriver
+from zstacklib.utils.misc import IgnoreError
 
 log.configure_log('/var/log/zstack/ceph-primarystorage.log')
 logger = log.get_logger(__name__)
@@ -144,6 +145,10 @@ class GetVolumeSizeRsp(AgentResponse):
         self.size = None
         self.actualSize = None
 
+class GetBatchVolumeSizeRsp(AgentResponse):
+    def __init__(self):
+        super(GetBatchVolumeSizeRsp, self).__init__()
+        self.actualSizes = {}
 
 class GetVolumeWatchersRsp(AgentResponse):
     def __init__(self):
@@ -269,6 +274,7 @@ class CephAgent(plugin.TaskManager):
     CP_PATH = "/ceph/primarystorage/volume/cp"
     DELETE_POOL_PATH = "/ceph/primarystorage/deletepool"
     GET_VOLUME_SIZE_PATH = "/ceph/primarystorage/getvolumesize"
+    BATCH_GET_VOLUME_SIZE_PATH = "/ceph/primarystorage/batchgetvolumesize"
     GET_VOLUME_WATCHES_PATH = "/ceph/primarystorage/getvolumewatchers"
     GET_VOLUME_SNAPSHOT_SIZE_PATH = "/ceph/primarystorage/getvolumesnapshotsize"
 
@@ -333,6 +339,7 @@ class CephAgent(plugin.TaskManager):
         self.http_server.register_async_uri(self.DOWNLOAD_IMAGESTORE_PATH, self.download_imagestore)
         self.http_server.register_async_uri(self.DELETE_POOL_PATH, self.delete_pool)
         self.http_server.register_async_uri(self.GET_VOLUME_SIZE_PATH, self.get_volume_size)
+        self.http_server.register_async_uri(self.BATCH_GET_VOLUME_SIZE_PATH, self.batch_get_volume_size)
         self.http_server.register_async_uri(self.GET_VOLUME_WATCHES_PATH, self.get_volume_watchers)
         self.http_server.register_async_uri(self.GET_VOLUME_SNAPSHOT_SIZE_PATH, self.get_volume_snapshot_size)
         self.http_server.register_async_uri(self.PING_PATH, self.ping)
@@ -584,6 +591,18 @@ class CephAgent(plugin.TaskManager):
         rsp = GetVolumeSizeRsp()
         rsp.size = self._get_file_size(path)
         rsp.actualSize = self._get_file_actual_size(path)
+        return jsonobject.dumps(rsp)
+
+    @replyerror
+    def batch_get_volume_size(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetBatchVolumeSizeRsp()
+
+        for uuid, installPath in cmd.volumeUuidInstallPaths.__dict__.items():
+            with IgnoreError():
+                path = self._normalize_install_path(installPath)
+                rsp.actualSizes[uuid] = self._get_file_actual_size(path)
+
         return jsonobject.dumps(rsp)
 
     @replyerror

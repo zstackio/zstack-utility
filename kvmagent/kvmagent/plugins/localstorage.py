@@ -16,6 +16,7 @@ from zstacklib.utils.bash import *
 from zstacklib.utils.report import *
 from zstacklib.utils.plugin import completetask
 from zstacklib.utils import secret
+from zstacklib.utils.misc import IgnoreError
 
 logger = log.get_logger(__name__)
 
@@ -103,6 +104,11 @@ class GetVolumeSizeRsp(AgentResponse):
         super(GetVolumeSizeRsp, self).__init__()
         self.actualSize = None
         self.size = None
+
+class GetBatchVolumeSizeRsp(AgentResponse):
+    def __init__(self):
+        super(GetBatchVolumeSizeRsp, self).__init__()
+        self.actualSizes = {}
 
 class GetVolumeBaseImagePathRsp(AgentResponse):
     def __init__(self):
@@ -194,6 +200,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     CHECK_MD5_PATH = "/localstorage/checkmd5"
     GET_BACKING_FILE_PATH = "/localstorage/volume/getbackingfile"
     GET_VOLUME_SIZE = "/localstorage/volume/getsize"
+    BATCH_GET_VOLUME_SIZE = "/localstorage/volume/batchgetsize"
     GET_BASE_IMAGE_PATH = "/localstorage/volume/getbaseimagepath"
     GET_QCOW2_REFERENCE = "/localstorage/getqcow2reference"
     CONVERT_QCOW2_TO_RAW = "/localstorage/imagestore/convert/raw"
@@ -239,6 +246,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CHECK_MD5_PATH, self.check_md5)
         http_server.register_async_uri(self.GET_BACKING_FILE_PATH, self.get_backing_file_path)
         http_server.register_async_uri(self.GET_VOLUME_SIZE, self.get_volume_size)
+        http_server.register_async_uri(self.BATCH_GET_VOLUME_SIZE, self.batch_get_volume_size)
         http_server.register_async_uri(self.GET_BASE_IMAGE_PATH, self.get_volume_base_image_path)
         http_server.register_async_uri(self.GET_QCOW2_REFERENCE, self.get_qcow2_reference)
         http_server.register_async_uri(self.CONVERT_QCOW2_TO_RAW, self.convert_qcow2_to_raw)
@@ -360,6 +368,17 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetVolumeSizeRsp()
         rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installPath)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def batch_get_volume_size(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetBatchVolumeSizeRsp()
+
+        for uuid, installPath in cmd.volumeUuidInstallPaths.__dict__.items():
+            with IgnoreError():
+                _, rsp.actualSizes[uuid] = linux.qcow2_size_and_actual_size(installPath)
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
