@@ -2294,6 +2294,8 @@ done
         se_num_record_file_exits = os.path.isfile(se_num_record_file)
         if not se_num_record_file_exits:
             to.virtStatus = "UNKNOWN"
+            rsp.mttyDeviceInfo = to
+            return
 
         mdev_r, mdev_o, _ = bash_roe("grep -w 12 %s" % se_num_record_file)
         if mdev_r != 0:
