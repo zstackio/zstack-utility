@@ -16,10 +16,10 @@ blacklist {
 }
 devices {
 device {
-    features 0
-    no_path_retry fail
-    product *
-    vendor *
+    features "0"
+    no_path_retry "fail"
+    product ".*"
+    vendor ".*"
 }
 
 }
