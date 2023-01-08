@@ -5,7 +5,7 @@ import simplejson
 from zstacklib.utils import multipath
 
 
-class TestGuestToolsAgentVersion(unittest.TestCase):
+class TestMultiPathConf(unittest.TestCase):
     def test(self):
         test_write_conf()
 

@@ -1,9 +1,8 @@
 import random
 import time
 import string
-import os.path
-
 import simplejson
+import os.path
 
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
