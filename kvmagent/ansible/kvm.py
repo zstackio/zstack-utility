@@ -787,6 +787,35 @@ def modprobe_usb_module():
     host_post_info.post_label_param = None
     run_remote_command(command, host_post_info)
 
+@with_arch(todo_list=['loongarch64'], host_arch=host_arch)
+def modprobe_mpci_module():
+    command = "ls /dev/wst-se"
+    (status, stdout) = run_remote_command(command, host_post_info, return_status=True, return_output=True)
+    if "wst-se" not in stdout:
+        handle_ansible_info("No SE device", host_post_info, "WARNING")
+        return
+
+    (status, stdout) = run_remote_command("lsmod | grep mpci", host_post_info, return_status=True, return_output=True)
+    if "mpci" in stdout:
+        return
+        
+    """copy mpci.ko"""
+    kvers_list = ['23.34', '23.37', '52.14']
+    (status, stdout) = run_remote_command("uname -r", host_post_info, return_status=True, return_output=True)
+    kvers = stdout.split("-")[1][:5]
+    if kvers not in kvers_list:
+        handle_ansible_info("There are no suitable SE drivers for this kernel", host_post_info, "WARNING")
+        return
+        
+    _src = "{}/mpci_{}_loongarch64".format(file_root, kvers)
+    _dst = "/lib/modules/{}/mpci.ko".format(stdout)
+    copy_to_remote(_src, _dst, "mode=644", host_post_info)
+
+    command = "depmod -a; modprobe vfio-mdev; modprobe mpci || true"
+    host_post_info.post_label = "ansible.shell.modprobe.mpci"
+    host_post_info.post_label_param = None
+    run_remote_command(command, host_post_info)   
+
 check_nested_kvm(host_post_info)
 install_kvm_pkg()
 copy_tools()
@@ -809,6 +838,7 @@ set_legacy_iptables_ebtables()
 install_agent_pkg()
 do_auditd_config()
 modprobe_usb_module()
+modprobe_mpci_module()
 start_kvmagent()
 
 host_post_info.start_time = start_time
