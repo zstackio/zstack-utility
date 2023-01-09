@@ -824,6 +824,7 @@ LoadPlugin virt
   Disk "/^sd[a-z]$/"
   Disk "/^hd[a-z]$/"
   Disk "/^vd[a-z]$/"
+  Disk "/^nvme[0-9][a-z][0-9]$/"
   IgnoreSelected false
 </Plugin>
 
