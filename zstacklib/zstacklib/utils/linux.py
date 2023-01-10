@@ -214,6 +214,15 @@ def rm_dir_checked(dpath):
     exception_on_opened_dir(dpath)
     shutil.rmtree(dpath)
 
+
+def unlink_file_checked(fpath):
+    if not os.path.exists(fpath):
+        return
+
+    exception_on_opened_file(fpath)
+    os.unlink(fpath)
+
+
 def process_exists(pid):
     return os.path.exists("/proc/" + str(pid))
 

@@ -104,6 +104,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
     CREATE_VOLUME_FROM_CACHE_PATH = "/sharedmountpointprimarystorage/createrootvolume"
     CREATE_DATA_VOLUME_WITH_BACKING_PATH = "/sharedmountpointprimarystorage/createvolumewithbacking"
     DELETE_BITS_PATH = "/sharedmountpointprimarystorage/bits/delete"
+    UNLINK_BITS_PATH = "/sharedmountpointprimarystorage/bits/unlink"
     CREATE_TEMPLATE_FROM_VOLUME_PATH = "/sharedmountpointprimarystorage/createtemplatefromvolume"
     UPLOAD_BITS_TO_SFTP_BACKUPSTORAGE_PATH = "/sharedmountpointprimarystorage/sftp/upload"
     DOWNLOAD_BITS_FROM_SFTP_BACKUPSTORAGE_PATH = "/sharedmountpointprimarystorage/sftp/download"
@@ -131,6 +132,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CREATE_VOLUME_FROM_CACHE_PATH, self.create_root_volume)
         http_server.register_async_uri(self.CREATE_DATA_VOLUME_WITH_BACKING_PATH, self.create_volume_with_backing)
         http_server.register_async_uri(self.DELETE_BITS_PATH, self.delete_bits)
+        http_server.register_async_uri(self.UNLINK_BITS_PATH, self.unlink)
         http_server.register_async_uri(self.CREATE_TEMPLATE_FROM_VOLUME_PATH, self.create_template_from_volume)
         http_server.register_async_uri(self.UPLOAD_BITS_TO_SFTP_BACKUPSTORAGE_PATH, self.upload_to_sftp)
         http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_SFTP_BACKUPSTORAGE_PATH, self.download_from_sftp)
@@ -272,6 +274,25 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
             linux.rm_dir_checked(cmd.path)
         else:
             kvmagent.deleteImage(cmd.path)
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def unlink(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentRsp()
+
+        if os.path.isdir(cmd.installPath):
+            for f in linux.list_all_file(cmd.installPath):
+                if os.stat(f).st_nlink > 1:
+                    linux.unlink_file_checked(f)
+                    continue
+                logger.debug("file %s only has 1 link, skip unlink." % f)
+        else:
+            if os.stat(cmd.installPath).st_nlink > 1:
+                linux.unlink_file_checked(cmd.installPath)
+            logger.debug("file %s only has 1 link, skip unlink." % cmd.installPath)
+
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
         return jsonobject.dumps(rsp)
 
