@@ -41,7 +41,7 @@ trusted_host = ""
 enable_networkmanager_list = ["ns10", "euler20", "uos1021a"]
 supported_arch_list = ["x86_64", "aarch64", "mips64el", "loongarch64"]
 
-RPM_BASED_OS = ["kylin_zstack", "kylin_tercel", "kylin_sword", "alibaba", "centos", "openeuler", "uniontech_kongzi", "redhat", "kylin_svs2.22.2 zyj aarch64"]
+RPM_BASED_OS = ["kylin_zstack", "kylin_tercel", "kylin_sword", "alibaba", "centos", "openeuler", "uniontech_kongzi", "redhat", "kylin_zyj"]
 DEB_BASED_OS = ["ubuntu", "uos", "kylin4.0.2", "debian", "uniontech_fou"]
 DISTRO_WITH_RPM_DEB = ["kylin", "uniontech"]
 
@@ -266,6 +266,7 @@ class HostPostInfo(object):
         self.mysql_userpassword = None
         self.transport = 'smart'
         self.releasever = None
+        self.distribution = None
 
 
 class PipInstallArg(object):
@@ -464,6 +465,18 @@ def with_arch(todo_list=supported_arch_list, host_arch=None):
     return wrap
 
 
+def skip_on_zyj(is_zyj):
+    def wrap(f):
+        @functools.wraps(f)
+        def inner(*args, **kwargs):
+            if is_zyj == 'true':
+                logger.info("Skip function[{}] on zyj host.".format(f.__name__))
+            else:
+                return f(*args, **kwargs)
+        return inner
+    return wrap
+
+
 def on_redhat_based(distro=None, exclude=[]):
     def wrap(f):
         @functools.wraps(f)
@@ -496,7 +509,7 @@ def get_host_releasever(host_info):
         "kylin_tercel tercel 10": "ns10",
         "kylin_sword sword 10": "ns10",
         "kylin_zstack zstack 10": "ns10",
-        "kylin_svs2.22.2 zyj aarch64 svs2.22.2 zyj aarch64 10": "ns10",
+        "kylin_zyj zyj 10": "ns10",
         "uniontech fou 20": "uos20",
         "redhat maipo 7.4": "ns10", # old kylinV10, oem 7.4 incompletely
         "centos core 7.6.1810": "c76",
