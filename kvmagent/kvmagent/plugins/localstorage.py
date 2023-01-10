@@ -181,6 +181,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     CREATE_DATA_VOLUME_WITH_BACKING_PATH = "/localstorage/volume/createwithbacking"
     DELETE_BITS_PATH = "/localstorage/delete"
     DELETE_DIR_PATH = "/localstorage/deletedir"
+    UNLINK_BITS_PATH = "/localstorage/unlink"
     UPLOAD_BIT_PATH = "/localstorage/sftp/upload"
     DOWNLOAD_BIT_PATH = "/localstorage/sftp/download"
     UPLOAD_TO_IMAGESTORE_PATH = "/localstorage/imagestore/upload"
@@ -226,6 +227,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CREATE_DATA_VOLUME_WITH_BACKING_PATH, self.create_volume_with_backing)
         http_server.register_async_uri(self.DELETE_BITS_PATH, self.delete)
         http_server.register_async_uri(self.DELETE_DIR_PATH, self.deletedir)
+        http_server.register_async_uri(self.UNLINK_BITS_PATH, self.unlink)
         http_server.register_async_uri(self.DOWNLOAD_BIT_PATH, self.download_from_sftp)
         http_server.register_async_uri(self.UPLOAD_BIT_PATH, self.upload_to_sftp)
         http_server.register_async_uri(self.UPLOAD_TO_IMAGESTORE_PATH, self.upload_to_imagestore)
@@ -880,6 +882,25 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             return jsonobject.dumps(rsp)
 
         logger.debug('successfully delete %s' % cmd.path)
+
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def unlink(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentResponse()
+
+        if os.path.isdir(cmd.installPath):
+            for f in linux.list_all_file(cmd.installPath):
+                if os.stat(f).st_nlink > 1:
+                    linux.unlink_file_checked(f)
+                    continue
+                logger.debug("file %s only has 1 link, skip unlink." % f)
+        else:
+            if os.stat(cmd.installPath).st_nlink > 1:
+                linux.unlink_file_checked(cmd.installPath)
+            logger.debug("file %s only has 1 link, skip unlink." % cmd.installPath)
 
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
         return jsonobject.dumps(rsp)
