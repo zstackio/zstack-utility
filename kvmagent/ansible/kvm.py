@@ -297,6 +297,7 @@ def install_kvm_pkg():
 
             # skip these packages when connect host
             _skip_list = re.split(r'[|;,\s]\s*', skip_packages)
+            _skip_list.extend(["open-iscsi"])
             _dep_list = [ pkg for pkg in dep_list.split() if pkg not in _skip_list ]
             dep_list = ' '.join(_dep_list)
 
