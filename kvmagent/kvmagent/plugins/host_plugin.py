@@ -1257,11 +1257,11 @@ class HostPlugin(kvmagent.KvmAgent):
             def toString(self):
                 return self.busNum + ':' + self.devNum + ':' + self.idVendor + ':' + self.idProduct + ':' + self.iManufacturer + ':' + self.iProduct + ':' + self.iSerial + ':' + self.usbVersion + ";"
 
-        def _add_usb_device_info(info, usb_device_infos):
+        def _add_usb_device_info(info, usb_device_infos, dev_id):
             if info.busNum == '' or info.devNum == '' or info.idVendor == '' or info.idProduct == '':
-                logger.debug("cannot get busNum/devNum/idVendor/idProduct info in usbDevice %s" % devId)
+                logger.debug("cannot get busNum/devNum/idVendor/idProduct info in usbDevice %s" % dev_id)
             elif '(error)' in info.iManufacturer or '(error)' in info.iProduct:
-                logger.debug("cannot get iManufacturer or iProduct info in usbDevice %s" % devId)
+                logger.debug("cannot get iManufacturer or iProduct info in usbDevice %s" % dev_id)
                 usb_device_infos += info.toString()
             else:
                 usb_device_infos += info.toString()
@@ -1318,7 +1318,7 @@ class HostPlugin(kvmagent.KvmAgent):
                     info.iProduct = ' '.join(line[2:])
                 elif line[0] == 'iSerial':
                     info.iSerial = ' '.join(line[2:]) if len(line) > 2 else ""
-                    usb_device_infos = _add_usb_device_info(info, usb_device_infos)
+                    usb_device_infos = _add_usb_device_info(info, usb_device_infos, dev_id)
 
         rsp.usbDevicesInfo = usb_device_infos
         return jsonobject.dumps(rsp)
