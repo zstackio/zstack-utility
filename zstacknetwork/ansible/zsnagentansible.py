@@ -37,6 +37,8 @@ remote_port = None
 host_uuid = None
 require_python_env = "false"
 tmout = None
+isZYJ = "false"
+zyjDistribution = ""
 
 
 # get parameter from shell
@@ -64,6 +66,9 @@ host_post_info.remote_pass = remote_pass
 host_post_info.remote_port = remote_port
 if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
+
+if isZYJ and zyjDistribution != "":
+    host_post_info.distribution = zyjDistribution
 
 # include zstacklib.py
 (distro, major_version, distro_release, distro_version) = get_remote_host_info(host_post_info)
@@ -96,19 +101,26 @@ else:
     src_pkg_zsnagent = "zsn-agent.{}.bin".format(HOST_ARCH)
 dst_pkg_zsnagent = "zsn-agent.bin"
 
-if distro in RPM_BASED_OS:
-    if zstack_repo == 'false':
-        yum_install_package("libpcap", host_post_info)
+
+@skip_on_zyj(isZYJ)
+def install_packages():
+    if distro in RPM_BASED_OS:
+        if zstack_repo == 'false':
+            yum_install_package("libpcap", host_post_info)
+        else:
+            command = (
+                          "pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
+                          "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % ("libpcap", zstack_repo)
+            run_remote_command(command, host_post_info)
+
+    elif distro in DEB_BASED_OS:
+        apt_install_packages(["libpcap-dev"], host_post_info)
+
     else:
-        command = ("pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
-                   "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % ("libpcap", zstack_repo)
-        run_remote_command(command, host_post_info)
+        error("ERROR: Unsupported distribution")
 
-elif distro in DEB_BASED_OS:
-    apt_install_packages(["libpcap-dev"], host_post_info)
 
-else:
-    error("ERROR: Unsupported distribution")
+install_packages()
 
 run_remote_command(add_true_in_command("rm -rf %s/*" % zsn_root), host_post_info)
 command = 'mkdir -p %s ' % (zsn_root)

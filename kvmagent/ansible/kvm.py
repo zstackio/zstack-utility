@@ -43,7 +43,9 @@ skipIpv6 = 'false'
 bridgeDisableIptables = 'false'
 isMini = 'false'
 isBareMetal2Gateway='false'
+isZYJ = "false"
 releasever = ''
+zyjDistribution = ""
 
 
 # get parameter from shell
@@ -75,6 +77,8 @@ host_post_info.remote_pass = remote_pass
 host_post_info.remote_port = remote_port
 if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
+if isZYJ and zyjDistribution != "":
+    host_post_info.distribution = zyjDistribution
 
 (distro, major_version, distro_release, distro_version) = get_remote_host_info(host_post_info)
 releasever = get_host_releasever([distro, distro_release, distro_version])
@@ -101,6 +105,7 @@ def update_libvirtd_config(host_post_info):
     return file_changed_flag
 
 
+@skip_on_zyj(isZYJ)
 @with_arch(todo_list=['x86_64'], host_arch=host_arch)
 def check_nested_kvm(host_post_info):
     """aarch64 does not need to modprobe kvm"""
@@ -202,6 +207,7 @@ else:
 run_remote_command("rm -rf {}/*; mkdir -p /usr/local/zstack/ || true".format(kvm_root), host_post_info)
 
 
+@skip_on_zyj(isZYJ)
 def install_kvm_pkg():
     def rpm_based_install():
         mlnx_ofed = " python3 unbound libnl3-devel lsof \
@@ -445,6 +451,7 @@ def install_kvm_pkg():
     else:
         error("unsupported OS!")
 
+
 def copy_tools():
     """copy binary tools"""
     tool_list = ['collectd_exporter', 'node_exporter', 'dnsmasq', 'zwatch-vm-agent', 'zwatch-vm-agent-freebsd', 'pushgateway', 'sas3ircu', 'zs-raid-heartbeat']
@@ -537,6 +544,7 @@ def copy_grubaa64_efi():
     copy_to_remote(_src, _dst, "mode=755", host_post_info)
 
 
+@skip_on_zyj(isZYJ)
 @on_redhat_based(distro, exclude=['alibaba'])
 def set_max_performance():
     # AliOS 7u2 does not support tuned-adm
