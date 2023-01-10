@@ -1455,7 +1455,6 @@ is_install_general_libs_rh(){
             python-backports-ssl_match_hostname \
             python-setuptools \
             avahi \
-            gnutls-utils \
             avahi-tools \
             audit"
     if [ "$BASEARCH" == "x86_64" ]; then
