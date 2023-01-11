@@ -66,6 +66,7 @@ ZSTACK_ALL_IN_ONE=${ZSTACK_ALL_IN_ONE-"http://download.zstack.org/releases/0.8/0
 WEBSITE=${WEBSITE-'zstack.org'}
 [ -z $WEBSITE ] && WEBSITE='zstack.org'
 ZSTACK_VERSION=$ZSTACK_INSTALL_ROOT/VERSION
+ZSTACK_IMAGESTOREBACKUPSTORAGE_CA_PATH=$ZSTACK_INSTALL_ROOT/imagestore/bin/certs/
 CATALINA_ZSTACK_PATH=apache-tomcat/webapps/zstack
 CATALINA_ZSTACK_CLASSES=$CATALINA_ZSTACK_PATH/WEB-INF/classes
 CATALINA_ZSTACK_LIBS=$CATALINA_ZSTACK_PATH/WEB-INF/lib
@@ -1984,6 +1985,9 @@ uz_upgrade_zstack(){
     echo_subtitle "Upgrade ${PRODUCT_NAME}"
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     cd $upgrade_folder
+
+    # Upgrade ImageStore CA cert/key
+    rm -rf $ZSTACK_IMAGESTOREBACKUPSTORAGE_CA_PATH
 
     #Do not upgrade db, when using -i or -k
     if [ -z $ONLY_INSTALL_ZSTACK ] && [ -z $NEED_KEEP_DB ]; then
