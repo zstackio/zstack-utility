@@ -86,9 +86,12 @@ else:
     run_remote_command(command, host_post_info)
 
 if distro in RPM_BASED_OS:
-    install_pkgs = 'openssh-clients qemu-img'
+    install_pkgs = 'openssh-clients'
     if releasever in ['ns10']:
         install_pkgs = "nmap {}".format(install_pkgs)
+
+    if not remote_bin_installed(host_post_info, "qemu-img", return_status=True):
+        install_pkgs += " " + ("qemu-img-ev" if releasever in ['c74'] else "qemu-img")
 
     if zstack_repo != 'false':
         # name: install sftp backup storage related packages on RedHat based OS from local
@@ -97,7 +100,7 @@ if distro in RPM_BASED_OS:
         run_remote_command(command, host_post_info)
     else:
         # name: install sftp backup storage related packages on RedHat based OS from online
-        for pkg in [ "openssh-clients", "qemu-img"]:
+        for pkg in install_pkgs.split():
             yum_install_package(pkg, host_post_info)
 
 elif distro in DEB_BASED_OS:
