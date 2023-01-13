@@ -115,8 +115,14 @@ if distro in RPM_BASED_OS:
     install_rpm_list = "wget nmap"
 
     qemu_installed = yum_check_package("qemu-kvm", host_post_info) or yum_check_package("qemu-kvm-ev", host_post_info)
-    if releasever not in ['c76'] or not qemu_installed:
-        install_rpm_list += " " + qemu_alias.get(releasever, "qemu-kvm")
+    if not qemu_installed:
+        install_rpm_list += " %s" % qemu_alias.get(releasever, 'qemu-kvm')
+        # Since 4.5.11, qemu-kvm-ev renamed to qemu-kvm in c76 and 79, however,
+        # c74 do not apply the change. Therefore, if ceph bs host is c74 and
+        # mn is c76 or c79 and qemu-kvm not installed, using qemu-kvm instead
+        # qemu-kvm-ev
+        if releasever == 'c74' and get_mn_release() in ['c76']:
+            install_rpm_list += " qemu-kvm"
 
     if zstack_repo != 'false':
         command = """pkg_list=`rpm -q {} | grep "not installed" | awk '{{ print $2 }}'` && for pkg"""\

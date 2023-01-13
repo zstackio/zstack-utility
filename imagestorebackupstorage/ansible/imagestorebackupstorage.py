@@ -107,7 +107,10 @@ if distro in RPM_BASED_OS:
     qemu_pkg = "fuse-sshfs nmap collectd tar pyparted net-tools"
 
     if not remote_bin_installed(host_post_info, "qemu-img", return_status=True):
-        qemu_pkg += " " + ("qemu-img-ev" if releasever in ['c74'] else "qemu-img")
+        pkg = 'qemu-img-ev' if releasever in ['c74'] else 'qemu-img'
+        if releasever == 'c74' and get_mn_release() in ['c76', 'c79']:
+            pkg = 'qemu-img'
+        qemu_pkg += ' %s' % pkg
 
     # skip these packages
     _skip_list = re.split(r'[|;,\s]\s*', skip_packages)
