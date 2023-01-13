@@ -3058,6 +3058,53 @@ class Vm(object):
 
         return res
 
+    def get_backing_store_source_recursively(self):
+        # type: () -> list
+        all_disks_backing_file_chain = []
+        disk_backing_file_chain = {}
+
+        '''
+        <disk type='file' device='disk'>
+          <driver name='qemu' type='qcow2'/>
+          <source file='/tmp/pull4.qcow2'/>
+          <backingStore type='file'>
+            <format type='qcow2'/>
+            <source file='/tmp/pull3.qcow2'/>
+            <backingStore type='file'>
+              <format type='qcow2'/>
+              <source file='/tmp/pull2.qcow2'/>
+              <backingStore/>
+            </backingStore>
+          </backingStore>
+          <target dev='vda' bus='virtio'/>
+          <address type='pci' domain='0x0000' bus='0x00' slot='0x0a' function='0x0'/>
+        </disk>
+        
+        An empty <backingStore/> element signals the end of the chain. 
+        '''
+
+        def get_backing_store_source(backingStore, depth):
+            if backingStore.find("source") is None:
+                return
+            depth += 1
+            disk_backing_file_chain[etree.tostring(backingStore.find('source')).split('"')[1]] = depth
+            get_backing_store_source(backingStore.find('backingStore'), depth)
+
+        tree = etree.fromstring(self.domain_xml)
+        for disk in tree.findall('devices/disk'):
+            depth = 0
+            if disk.get("device") == 'cdrom':
+                continue
+            if disk.find("source") is not None:
+                disk_backing_file_chain[etree.tostring(disk.find('source')).split('"')[1]] = depth
+            if disk.find("backingStore") is not None:
+                get_backing_store_source(disk.find('backingStore'), depth)
+
+            all_disks_backing_file_chain.append(disk_backing_file_chain)
+            disk_backing_file_chain = {}
+
+        return all_disks_backing_file_chain
+
     def _build_domain_new_xml(self, volumeDicts):
         migrate_disks = {}
 
@@ -3655,22 +3702,64 @@ class Vm(object):
             def wait_previous_job(_):
                 return not self._wait_for_block_job(disk_name, abort_on_error=True)
 
+            def check_vm_xml_backing_file_consistency(base_disk_install_path, dest_disk_install_path):
+                # type: (str,str) -> bool
+                expected = False
+                for disk_backing_file_chain in self.get_backing_store_source_recursively():
+                    chain_depth = len(disk_backing_file_chain)
+                    if dest_disk_install_path in disk_backing_file_chain.keys():
+                        dest_disk_install_path_depth = disk_backing_file_chain[dest_disk_install_path]
+                        # for fullRebase, new top layer do not depend on image cache
+                        # the depth of disk chain depth will reset
+                        if base_disk_install_path is None:
+                            expected = dest_disk_install_path_depth == chain_depth - 1
+                        # for not fullRebase, check the current_install_path depth increased 1
+                        if base_disk_install_path is not None:
+                            expected = disk_backing_file_chain[base_disk_install_path] == dest_disk_install_path_depth + 1
+                        break
+                return expected
+
             if not linux.wait_callback_success(wait_previous_job, timeout=get_timeout_seconds(), ignore_exception_in_callback=True):
                 raise kvmagent.KvmError('merge snapshot failed - pending previous block job')
 
-            self.domain.blockRebase(disk_name, base, 0)
+            try:
+                self.domain.blockRebase(disk_name, base, 0)
 
-            logger.debug('merging snapshot chain is waiting for blockRebase job of %s completion' % disk_name)
-            def wait_job(_):
-                return not self._wait_for_block_job(disk_name, abort_on_error=True)
+                logger.debug('merging snapshot chain is waiting for blockRebase job of %s completion' % disk_name)
 
-            if not linux.wait_callback_success(wait_job, timeout=get_timeout_seconds()):
-                raise kvmagent.KvmError('live merging snapshot chain failed, block job not finished')
+                def wait_job(_):
+                    return not self._wait_for_block_job(disk_name, abort_on_error=True)
+
+                if not linux.wait_callback_success(wait_job, timeout=get_timeout_seconds()):
+                    raise kvmagent.KvmError('live merging snapshot chain failed, block job not finished')
+            except Exception as ex:
+                current_backing = self._get_back_file(top)
+                if current_backing != base:
+                    logger.debug("live merge snapshot failed. expected backing %s, "
+                                 "actually backing %s" % (base, current_backing))
+                    raise ex
+
+                consistent_backing_store_by_libvirt = False
+                for i in xrange(5):
+                    self.refresh()
+                    consistent_backing_store_by_libvirt = check_vm_xml_backing_file_consistency(base, top)
+                    if consistent_backing_store_by_libvirt:
+                        break
+                    time.sleep(1)
+
+                if consistent_backing_store_by_libvirt:
+                    logger.debug("libvirt return live merge snapshot failure, but it succeed actually! "
+                                 "expected volume[install path: %s] backing file is %s. "
+                                 "check the vm xml meets expectations" % (base, current_backing))
+                else:
+                    logger.debug("live merge snapshot failed. expected backing %s, actually backing %s. "
+                                 "check the vm xml does not meet expectations" % (base, current_backing))
+                    raise ex
 
             # Double check (c.f. issue #757)
             current_backing = self._get_back_file(top)
             if current_backing != base:
-                logger.debug("live merge snapshot filed. Expected backing %s, actuall backing %s" % (base, current_backing))
+                logger.debug("live merge snapshot failed. Expected backing %s, actually backing %s" % (base, current_backing))
                 raise kvmagent.KvmError('[libvirt bug] live merge snapshot failed')
 
             logger.debug('end block rebase [active: %s, new backing: %s]' % (top, base))
