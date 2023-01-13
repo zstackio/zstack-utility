@@ -301,23 +301,32 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     def logout_target(self, req):
+        rsp = AgentRsp
+        rsp.success = True
         logout_cmd = jsonobject.loads(req[http.REQUEST_BODY])
         try:
-            self._logout_target(logout_cmd)
+            self._logout_target(logout_cmd.wwn)
         except Exception as e:
+            rsp.success = False
+            rsp.error = e.message
             logger.debug(e)
-        rsp = AgentRsp
         return jsonobject.dumps(rsp)
 
-    @bash.in_bash
-    def _logout_target(self, logoutCmd):
-        r, o, e = bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -r >/dev/null")
-        if r != 0:
-            raise Exception("fail to logout iscsi %s" % logoutCmd.target)
+    @linux.retry(times=10, sleep_time=random.uniform(0.1, 3))
+    def wait_lun_deleted(self, abs_path):
+        if os.path.exists(abs_path) is False:
+            logger.debug("lun: %s has been deleted." % abs_path)
+            return
 
-        r, o, e = bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -u >/dev/null")
-        if r != 0:
-            raise Exception("fail to logout iscsi %s" % logoutCmd.target)
+        logger.debug("lun: " + abs_path + " still exists, let's retry")
+        raise RetryException("fail to delete lun: " + abs_path)
+
+    @bash.in_bash
+    def _logout_target(self, wwn):
+        disk_path = translate_absolute_path_from_wwn(wwn)
+        device_letter = bash.bash_o("ls -al %s | awk -F '/' '{print $NF}'" % disk_path).strip();
+        linux.write_file("/sys/block/%s/device/delete" % device_letter, "1")
+        self.wait_lun_deleted(disk_path)
 
     @bash.in_bash
     def iscsi_login(self, loginCmd):
