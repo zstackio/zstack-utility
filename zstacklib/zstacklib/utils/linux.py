@@ -2629,13 +2629,13 @@ def get_file_xxhash(path, blocksize=1048576):
             buf = fd.read(blocksize)
     return hasher.hexdigest()
 
-def compare_segmented_xxhash(src_path, dst_path, total_size, raise_expection=False, blocksize=1048576):
+def compare_segmented_xxhash(src_path, dst_path, total_size, raise_exception=False, blocksize=1048576):
     ## size <= 10G, compute xxhash directly
     if total_size <= 10*1024**3:
         src_hash = get_file_xxhash(src_path, blocksize=blocksize)
         dst_hash = get_file_xxhash(dst_path, blocksize=blocksize)
         if src_hash != dst_hash:
-            if raise_expection:
+            if raise_exception:
                 raise Exception("check hash value not match between %s with hash[%s] and %s with hash[%s]" % (src_path, src_hash, dst_path, dst_hash))
             else:
                 return False
@@ -2658,7 +2658,7 @@ def compare_segmented_xxhash(src_path, dst_path, total_size, raise_expection=Fal
                 src_hash = _get_seg_xxhash(srcFile, offset)
                 dst_hash = _get_seg_xxhash(dstFile, offset)
                 if src_hash != dst_hash:
-                    if raise_expection:
+                    if raise_exception:
                         raise Exception("check hash value not match between %s with hash[%s] and %s with hash[%s] at offset %s" % (src_path, src_hash, dst_path, dst_hash, offset))
                     else:
                         return False

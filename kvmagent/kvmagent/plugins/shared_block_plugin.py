@@ -1433,7 +1433,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                             raise Exception("target qcow2 image[%s] has been corrupted after migration, stdout: %s, stderr: %s" % (target_abs_path, o ,e))
 
                         logger.info("start to compare hash value between %s add %s" % (current_abs_path, target_abs_path))
-                        linux.compare_segmented_xxhash(current_abs_path, target_abs_path, int(lvm.get_lv_size(target_abs_path)), raiseExpection=True, blocksize=10485760)
+                        linux.compare_segmented_xxhash(current_abs_path, target_abs_path, int(lvm.get_lv_size(target_abs_path)), raise_exception=True, blocksize=10485760)
                     if current_backing_file is not None and current_backing_file != "":
                         lvm.active_lv(target_backing_file, lvm.LvmlockdLockType.SHARE)
                         logger.debug("rebase %s to %s" % (target_abs_path, target_backing_file))
