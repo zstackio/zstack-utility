@@ -5861,6 +5861,8 @@ class Vm(object):
             e(interface, 'source', None, attrib={'dev': nicDev, 'mode': 'vepa'})
         elif nic.type == 'TFVNIC':
             e(interface, 'target', None, attrib={'dev': nic.nicInternalName})
+            driver = e(interface, 'driver', None, attrib={'name': 'vhost'})
+            e(driver, 'host', None, attrib={'csum': 'off'})
         else:
             e(interface, 'source', None, attrib={'bridge': nic.bridgeName})
             e(interface, 'target', None, attrib={'dev': nic.nicInternalName})
