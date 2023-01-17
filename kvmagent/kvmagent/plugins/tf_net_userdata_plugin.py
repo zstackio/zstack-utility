@@ -238,7 +238,7 @@ class TfNetProviderUserdata(kvmagent.KvmAgent):
         conf_path = os.path.join(self.TF_USERDATA_ROOT, 'lighttpd.conf')
         pid = linux.find_process_by_cmdline([conf_path])
         if pid:
-            linux.kill_process(pid)
+            linux.kill_process(pid, timeout=10)
 
         linux.mkdir('/var/log/lighttpd', 0o750)
         # restart lighttpd to load new configuration
