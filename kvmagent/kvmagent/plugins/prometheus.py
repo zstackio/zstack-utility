@@ -1,8 +1,6 @@
 import os.path
 import pyudev       # installed by ansible
-import re
 import threading
-import time
 
 import typing
 from prometheus_client import start_http_server
@@ -24,10 +22,224 @@ collector_dict = {}  # type: Dict[str, threading.Thread]
 latest_collect_result = {}
 collectResultLock = threading.RLock()
 QEMU_CMD = os.path.basename(kvmagent.get_qemu_path())
+ALARM_CONFIG = None
+disk_list_record = None
+cpu_status_abnormal_list_record = set()
+memory_status_abnormal_list_record = set()
+fan_status_abnormal_list_record = set()
+disk_status_abnormal_list_record = {}
+
 
 def read_number(fname):
     res = linux.read_file(fname)
     return 0 if not res else int(res)
+
+
+@thread.AsyncThread
+def send_cpu_status_alarm_to_mn(cpu_id, status):
+    class PhysicalCpuStatusAlarm(object):
+        def __init__(self):
+            self.status = None
+            self.cpuName = None
+            self.host = None
+    
+    if ALARM_CONFIG is None:
+        return
+    
+    url = ALARM_CONFIG.get(kvmagent.SEND_COMMAND_URL)
+    if not url:
+        logger.warn(
+            "cannot find SEND_COMMAND_URL, unable to transmit physical cpu status alarm info to management node")
+        return
+    
+    global cpu_status_abnormal_list_record
+    if cpu_id not in cpu_status_abnormal_list_record:
+        physical_cpu_status_alarm = PhysicalCpuStatusAlarm()
+        physical_cpu_status_alarm.host = ALARM_CONFIG.get(kvmagent.HOST_UUID)
+        physical_cpu_status_alarm.cpuName = cpu_id
+        physical_cpu_status_alarm.status = status
+        http.json_dump_post(url, physical_cpu_status_alarm, {'commandpath': '/host/physical/cpu/status/alarm'})
+        cpu_status_abnormal_list_record.add(cpu_id)
+
+
+@thread.AsyncThread
+def send_physical_memory_status_alarm_to_mn(locator, status):
+    class PhysicalMemoryStatusAlarm(object):
+        def __init__(self):
+            self.host = None
+            self.locator = None
+            self.status = None
+    
+    if ALARM_CONFIG is None:
+        return
+    
+    url = ALARM_CONFIG.get(kvmagent.SEND_COMMAND_URL)
+    if not url:
+        logger.warn(
+            "cannot find SEND_COMMAND_URL, unable to transmit physical memory status alarm info to management node")
+        return
+    
+    global memory_status_abnormal_list_record
+    if locator not in memory_status_abnormal_list_record:
+        physical_memory_status_alarm = PhysicalMemoryStatusAlarm()
+        physical_memory_status_alarm.host = ALARM_CONFIG.get(kvmagent.HOST_UUID)
+        physical_memory_status_alarm.locator = locator
+        physical_memory_status_alarm.status = status
+        http.json_dump_post(url, physical_memory_status_alarm, {'commandpath': '/host/physical/memory/status/alarm'})
+        memory_status_abnormal_list_record.add(locator)
+
+
+@thread.AsyncThread
+def send_physical_fan_status_alarm_to_mn(fan_name, status):
+    class PhysicalFanStatusAlarm(object):
+        def __init__(self):
+            self.host = None
+            self.fan_name = None
+            self.status = None
+    
+    if ALARM_CONFIG is None:
+        return
+    
+    url = ALARM_CONFIG.get(kvmagent.SEND_COMMAND_URL)
+    if not url:
+        logger.warn(
+            "cannot find SEND_COMMAND_URL, unable to transmit physical fan status alarm info to management node")
+        return
+
+    global fan_status_abnormal_list_record
+    if fan_name not in fan_status_abnormal_list_record:
+        physical_fan_status_alarm = PhysicalFanStatusAlarm()
+        physical_fan_status_alarm.host = ALARM_CONFIG.get(kvmagent.HOST_UUID)
+        physical_fan_status_alarm.fan_name = fan_name
+        physical_fan_status_alarm.status = status
+        http.json_dump_post(url, physical_fan_status_alarm, {'commandpath': '/host/physical/fan/status/alarm'})
+        fan_status_abnormal_list_record.add(fan_name)
+
+
+@thread.AsyncThread
+def send_physical_disk_status_alarm_to_mn(serial_number, slot_number, enclosure_device_id, drive_state):
+    class PhysicalDiskStatusAlarm(object):
+        def __init__(self):
+            self.host = None
+            self.slot_number = None
+            self.enclosure_device_id = None
+            self.drive_state = None
+            self.serial_number = None
+    
+    if ALARM_CONFIG is None:
+        return
+    
+    url = ALARM_CONFIG.get(kvmagent.SEND_COMMAND_URL)
+    if not url:
+        logger.warn(
+            "cannot find SEND_COMMAND_URL, unable to transmit physical disk status alarm info to management node")
+        return
+
+    global disk_status_abnormal_list_record
+    if (serial_number not in disk_status_abnormal_list_record.keys()) \
+            or (serial_number in disk_status_abnormal_list_record.keys()
+                and disk_status_abnormal_list_record[serial_number] != drive_state):
+        physical_disk_status_alarm = PhysicalDiskStatusAlarm()
+        physical_disk_status_alarm.host = ALARM_CONFIG.get(kvmagent.HOST_UUID)
+        physical_disk_status_alarm.slot_number = slot_number
+        physical_disk_status_alarm.enclosure_device_id = enclosure_device_id
+        physical_disk_status_alarm.drive_state = drive_state
+        physical_disk_status_alarm.serial_number = serial_number
+        http.json_dump_post(url, physical_disk_status_alarm, {'commandpath': '/host/physical/disk/status/alarm'})
+        disk_status_abnormal_list_record[serial_number] = drive_state
+
+
+def send_physical_disk_insert_alarm_to_mn(serial_number, slot):
+    class PhysicalDiskInsertAlarm(object):
+        def __init__(self):
+            self.host = None
+            self.serial_number = None
+            self.slot_number = None
+            self.enclosure_device_id = None
+            
+    if ALARM_CONFIG is None:
+        return
+   
+    url = ALARM_CONFIG.get(kvmagent.SEND_COMMAND_URL)
+    if not url:
+        logger.warn(
+            "cannot find SEND_COMMAND_URL, unable to transmit physical disk insert alarm info to management node")
+        return
+
+    physical_disk_insert_alarm = PhysicalDiskInsertAlarm()
+    physical_disk_insert_alarm.host = ALARM_CONFIG.get(kvmagent.HOST_UUID)
+    physical_disk_insert_alarm.serial_number = serial_number
+    physical_disk_insert_alarm.enclosure_device_id = slot.split("-")[0]
+    physical_disk_insert_alarm.slot_number = slot.split("-")[1]
+    http.json_dump_post(url, physical_disk_insert_alarm, {'commandpath': '/host/physical/disk/insert/alarm'})
+
+
+def send_physical_disk_remove_alarm_to_mn(serial_number, slot):
+    class PhysicalDiskRemoveAlarm(object):
+        def __init__(self):
+            self.host = None
+            self.serial_number = None
+            self.slot_number = None
+            self.enclosure_device_id = None
+    
+    if ALARM_CONFIG is None:
+        return
+    
+    url = ALARM_CONFIG.get(kvmagent.SEND_COMMAND_URL)
+    if not url:
+        logger.warn(
+            "cannot find SEND_COMMAND_URL, unable to transmit physical disk remove alarm info to management node")
+        return
+
+    physical_disk_remove_alarm = PhysicalDiskRemoveAlarm()
+    physical_disk_remove_alarm.host = ALARM_CONFIG.get(kvmagent.HOST_UUID)
+    physical_disk_remove_alarm.serial_number = serial_number
+    physical_disk_remove_alarm.enclosure_device_id = slot.split("-")[0]
+    physical_disk_remove_alarm.slot_number = slot.split("-")[1]
+    http.json_dump_post(url, physical_disk_remove_alarm, {'commandpath': '/host/physical/disk/remove/alarm'})
+
+
+def collect_memory_locator():
+    memory_locator_list = []
+    r, infos = bash_ro("dmidecode -q -t memory | grep -E 'Serial Number|Locator'")
+    if r != 0:
+        return memory_locator_list
+    locator = "unknown"
+    for line in infos.splitlines():
+        k = line.split(":")[0].strip()
+        v = ":".join(line.split(":")[1:]).strip()
+        if "Locator" == k:
+            locator = v
+        elif "Serial Number" == k:
+            if v.lower() == "no dimm" or v.lower() == "unknown" or v == "":
+                continue
+            memory_locator_list.append(locator)
+
+    return memory_locator_list
+
+
+@thread.AsyncThread
+def check_disk_insert_and_remove(disk_list):
+    global disk_list_record
+    if disk_list_record is None:
+        disk_list_record = disk_list
+        return
+    
+    if cmp(disk_list_record, disk_list) == 0:
+        return
+    
+    # check disk insert
+    for sn in disk_list.keys():
+        if sn not in disk_list_record.keys():
+            send_physical_disk_insert_alarm_to_mn(sn, disk_list[sn])
+    
+    # check disk remove
+    for sn in disk_list_record.keys():
+        if sn not in disk_list.keys():
+            send_physical_disk_remove_alarm_to_mn(sn, disk_list_record[sn])
+            
+    disk_list_record = disk_list
+
 
 def collect_host_network_statistics():
 
@@ -83,8 +295,10 @@ def collect_host_network_statistics():
 
     return metrics.values()
 
+
 collect_node_disk_capacity_last_time = None
 collect_node_disk_capacity_last_result = None
+
 
 def collect_host_capacity_statistics():
     default_zstack_path = '/usr/local/zstack/apache-tomcat/webapps/zstack'
@@ -192,14 +406,12 @@ def convert_disk_state_to_int(state):
     :type state: str
     """
     state = state.lower()
-    if "online" in state or "jbod" in state or "ready" in state or "optimal" in state or "hot-spare" in state or "hot spare" in state:
+    if "online" in state or "jbod" in state or "ready" in state or "optimal" in state or "hot-spare" in state or "hot spare" in state or "raw" in state:
         return 0
     elif "rebuild" in state:
         return 5
     elif "failed" in state or "offline" in state:
         return 10
-    elif "unconfigured" in state:
-        return 15
     else:
         return 100
 
@@ -213,10 +425,6 @@ def collect_raid_state():
                                                  ['slot_number', 'disk_group']),
     }
     
-    r, o = bash_ro("arcconf list | grep -A 8 'Controller ID' | awk '{print $2}'")
-    if r == 0 and o.strip() != "":
-        return collect_arcconf_raid_state(metrics, o)
-
     r, o = bash_ro("sas3ircu list | grep -A 8 'Index' | awk '{print $1}'")
     if r == 0 and o.strip() != "":
         return collect_sas_raid_state(metrics, o)
@@ -224,11 +432,16 @@ def collect_raid_state():
     r, o = bash_ro("/opt/MegaRAID/MegaCli/MegaCli64 -LDInfo -LALL -aAll | grep -E 'Target Id|State'")
     if r == 0 and o.strip() != "":
         return collect_mega_raid_state(metrics, o)
+
+    r, o = bash_ro("arcconf list | grep -A 8 'Controller ID' | awk '{print $2}'")
+    if r == 0 and o.strip() != "":
+        return collect_arcconf_raid_state(metrics, o)
     
     return metrics.values()
 
 
 def collect_arcconf_raid_state(metrics, infos):
+    disk_list = {}
     for line in infos.splitlines():
         if line.strip() == "":
             continue
@@ -256,7 +469,7 @@ def collect_arcconf_raid_state(metrics, infos):
                 metrics['raid_state'].add_metric([target_id], convert_raid_state_to_int(state))
         
         for infos in device_arr[1:]:
-            drive_state = "unknown"
+            drive_state = serial_number = "unknown"
             for l in infos.splitlines():
                 if l.strip() == "":
                     continue
@@ -264,16 +477,25 @@ def collect_arcconf_raid_state(metrics, infos):
                 v = ":".join(l.split(":")[1:]).strip()
                 if "state" == k:
                     drive_state = v.split(" ")[0].strip()
+                elif "serial number" in k:
+                    serial_number = v
                 elif "reported location" in k and "Enclosure" in v and "Slot" in v and drive_state != "unknown":
                     enclosure_device_id = v.split(",")[0].split(" ")[1].strip()
                     slot_number = v.split("Slot ")[1].split("(")[0].strip()
-                    metrics['physical_disk_state'].add_metric([slot_number, enclosure_device_id],
-                                                              convert_disk_state_to_int(drive_state))
-                    
+                    disk_status = convert_disk_state_to_int(drive_state)
+                    metrics['physical_disk_state'].add_metric([slot_number, enclosure_device_id], disk_status)
+                    disk_list[serial_number] = "%s-%s" % (enclosure_device_id, slot_number)
+                    if disk_status == 0 and (slot_number in disk_status_abnormal_list_record.keys()):
+                        disk_status_abnormal_list_record.pop(slot_number)
+                    elif disk_status != 0:
+                        send_physical_disk_status_alarm_to_mn(serial_number, slot_number, enclosure_device_id, drive_state)
+     
+    check_disk_insert_and_remove(disk_list)
     return metrics.values()
 
 
 def collect_sas_raid_state(metrics, infos):
+    disk_list = {}
     for line in infos.splitlines():
         if not line.strip().isdigit():
             continue
@@ -288,8 +510,8 @@ def collect_sas_raid_state(metrics, infos):
                     continue
                 metrics['raid_state'].add_metric([target_id], convert_raid_state_to_int(state))
         
-        disk_info = bash_o("sas3ircu %s display | grep -E 'Enclosure #|Slot #|State|Drive Type'" % line.strip())
-        enclosure_device_id = slot_number = state = "unknown"
+        disk_info = bash_o("sas3ircu %s display | grep -E 'Enclosure #|Slot #|State|Serial No|Drive Type'" % line.strip())
+        enclosure_device_id = slot_number = state = serial_number = "unknown"
         for info in disk_info.splitlines():
             k = info.split(":")[0].strip()
             v = info.split(":")[1].strip()
@@ -299,14 +521,24 @@ def collect_sas_raid_state(metrics, infos):
                 slot_number = v
             elif "State" == k:
                 state = v.split(" ")[0].strip()
+            elif "Serial No" == k:
+                serial_number = v
             elif "Drive Type" == k:
-                metrics['physical_disk_state'].add_metric([slot_number, enclosure_device_id],
-                                                          convert_disk_state_to_int(state))
-    
+                drive_status = convert_disk_state_to_int(state)
+                metrics['physical_disk_state'].add_metric([slot_number, enclosure_device_id], drive_status)
+                disk_list[serial_number] = "%s-%s" % (enclosure_device_id, slot_number)
+                if drive_status == 0 and (slot_number in disk_status_abnormal_list_record.keys()):
+                    disk_status_abnormal_list_record.pop(slot_number)
+                elif drive_status != 0:
+                    send_physical_disk_status_alarm_to_mn(serial_number, slot_number, enclosure_device_id, state)
+
+    check_disk_insert_and_remove(disk_list)
     return metrics.values()
 
 
 def collect_mega_raid_state(metrics, infos):
+    global disk_status_abnormal_list_record
+    disk_list = {}
     raid_info = infos.strip().splitlines()
     target_id = state = "unknown"
     for info in raid_info:
@@ -317,8 +549,8 @@ def collect_mega_raid_state(metrics, infos):
             metrics['raid_state'].add_metric([target_id], convert_raid_state_to_int(state))
     
     disk_info = bash_o(
-        "/opt/MegaRAID/MegaCli/MegaCli64 -PDList -aAll | grep -E 'Enclosure Device ID|Slot Number|Firmware state|Drive has flagged'").strip().splitlines()
-    enclosure_device_id = slot_number = state = "unknown"
+        "/opt/MegaRAID/MegaCli/MegaCli64 -PDList -aAll | grep -E 'Enclosure Device ID|Slot Number|Firmware state|Inquiry Data|Drive has flagged'").strip().splitlines()
+    enclosure_device_id = slot_number = serial_number = state = "unknown"
     for info in disk_info:
         k = info.split(":")[0].strip()
         v = info.split(":")[1].strip()
@@ -328,10 +560,18 @@ def collect_mega_raid_state(metrics, infos):
             slot_number = v
         elif "Firmware state" in k:
             state = v
+        elif "Inquiry Data" in k:
+            serial_number = v.split()[0].strip()
         elif "Drive has flagged" in k:
-            metrics['physical_disk_state'].add_metric([slot_number, enclosure_device_id],
-                                                      convert_disk_state_to_int(state))
-    
+            drive_status = convert_disk_state_to_int(state)
+            metrics['physical_disk_state'].add_metric([slot_number, enclosure_device_id], drive_status)
+            disk_list[serial_number] = "%s-%s" % (enclosure_device_id, slot_number)
+            if drive_status == 0 and (slot_number in disk_status_abnormal_list_record.keys()):
+                disk_status_abnormal_list_record.pop(slot_number)
+            elif drive_status != 0:
+                send_physical_disk_status_alarm_to_mn(serial_number, slot_number, enclosure_device_id, state)
+
+    check_disk_insert_and_remove(disk_list)
     return metrics.values()
 
 
@@ -382,9 +622,10 @@ def collect_mini_raid_state():
     return metrics.values()
 
 
-def collect_ssd_lift_state():
+def collect_ssd_state():
     metrics = {
         'ssd_life_left': GaugeMetricFamily('ssd_life_left', 'ssd life left', None, ['disk', 'serial_number']),
+        'ssd_temperature': GaugeMetricFamily('ssd_temperature', 'ssd temperature', None, ['disk', 'serial_number']),
     }
     
     r, o = bash_ro("lsblk -d -o name,type,rota | grep -w disk | awk '$3 == 0 {print $1}'")  # type: (int, str)
@@ -399,23 +640,33 @@ def collect_ssd_lift_state():
         serial_number = o.strip()
         
         if disk_name.startswith('nvme'):
-            r, o = bash_ro("smartctl -A /dev/%s | grep 'Percentage Used'" % disk_name)
+            r, o = bash_ro("smartctl -A /dev/%s | grep -E '^Percentage Used:|^Temperature:'" % disk_name)
             if r != 0 or o.strip() == "":
                 continue
-            if o.split(":")[1].split("%")[0].strip().isdigit():
-                metrics['ssd_life_left'].add_metric([disk_name, serial_number], float(float(100) - float(o.split(":")[1].split("%")[0].strip().strip())))
+
+            for info in o.splitlines():
+                info = info.strip()
+                if info.startswith("Percentage Used:") and info.split(":")[1].split("%")[0].strip().isdigit():
+                    metrics['ssd_life_left'].add_metric([disk_name, serial_number], float(float(100) - float(info.split(":")[1].split("%")[0].strip())))
+                elif info.startswith("Temperature:") and info.split(":")[1].split()[0].strip().isdigit():
+                    metrics['ssd_temperature'].add_metric([disk_name, serial_number], float(info.split(":")[1].split()[0].strip()))
         else:
-            r, o = bash_ro("smartctl -A /dev/%s | grep 'Media_Wearout_Indicator' | awk '{print $4}'" % disk_name)
+            r, o = bash_ro("smartctl -A /dev/%s | grep -E 'Media_Wearout_Indicator|Temperature_Celsius'" % disk_name)
             if r != 0 or o.strip() == "":
                 continue
-            if o.strip().isdigit():
-                metrics['ssd_life_left'].add_metric([disk_name, serial_number], float(o.strip()))
+            for info in o.splitlines():
+                info = info.strip()
+                if "Media_Wearout_Indicator" in info and info.split()[4].strip().isdigit():
+                    metrics['ssd_life_left'].add_metric([disk_name, serial_number], float(info.split()[4].strip()))
+                elif "Temperature_Celsius" in info and info.split()[9].strip().isdigit():
+                    metrics['ssd_temperature'].add_metric([disk_name, serial_number], float(info.split()[9].strip()))
         
     return metrics.values()
 
 
 collect_equipment_state_last_time = None
 collect_equipment_state_last_result = None
+
 
 def collect_ipmi_state():
     metrics = {
@@ -425,58 +676,149 @@ def collect_ipmi_state():
         'ipmi_status': GaugeMetricFamily('ipmi_status', 'ipmi status', None, []),
         "fan_speed_rpm": GaugeMetricFamily('fan_speed_rpm', 'fan speed rpm', None, ['fan_speed_name']),
         "fan_speed_state": GaugeMetricFamily('fan_speed_state', 'fan speed state', None, ['fan_speed_name']),
+        "cpu_temperature": GaugeMetricFamily('cpu_temperature', 'cpu temperature', None, ['cpu']),
+        "cpu_status": GaugeMetricFamily('cpu_status', 'cpu status', None, ['cpu']),
+        "physical_memory_status": GaugeMetricFamily('physical_memory_status', 'physical memory status', None, ['slot_number']),
     }
 
     global collect_equipment_state_last_time
     global collect_equipment_state_last_result
+    global cpu_status_abnormal_list_record
+    global memory_status_abnormal_list_record
+    global fan_status_abnormal_list_record
 
     if collect_equipment_state_last_time is None or (time.time() - collect_equipment_state_last_time) >= 25:
         collect_equipment_state_last_time = time.time()
     elif (time.time() - collect_equipment_state_last_time) < 25 and collect_equipment_state_last_result is not None:
         return collect_equipment_state_last_result
-    
-    '''
-        Inspur
-        PSU0_Status      | 5Dh | ok  | 10.0 | Presence detected, AC lost or out-of-range 
-        PSU1_Status      | 5Eh | ok  | 10.1 | Presence detected
 
-        PowerLeader
-        PS1 Status      | C4h | ok  | 10.91 | Presence detected
-        PS2 Status      | C5h | ok  | 10.92 | Presence detected, Failure detected, Power Supply AC lost
-    '''
-    r, power_supply_info = bash_ro("ipmitool sdr type 'power supply' | grep -E '^PS\w*(\ |_)Status|^PS\w*(\ |_)POUT'")
+    # get ipmi status
+    metrics['ipmi_status'].add_metric([], bash_r("ipmitool mc info"))
+
+    # get cpu info
+    r, cpu_temps = bash_ro("sensors | awk -F'+' '/Physical id/{print $2}' | grep -oP '\d*\.\d+'")
     if r == 0:
-        for info in power_supply_info.splitlines():
-            info = info.strip()
-            ps_id = info.split("|")[0].strip().split(" ")[0].split("_")[0]
-            ps_str = info.split("|")[0].strip().split(" ")[0].split("_")[1]
-            # the cut string has the same length as the original string which means cut symbol is not we want
-            if len(ps_id) == len(info.split("|")[0].strip().split(" ")[0]):
-                ps_id = info.split("|")[0].strip().split(" ")[0].split(" ")[0]
-                ps_str = info.split("|")[0].strip().split(" ")[1].split(" ")[1]
-            if ps_str == 'POUT':
+        count = 0
+        for temp in cpu_temps.splitlines():
+            cpu_id = "CPU" + str(count)
+            metrics['cpu_temperature'].add_metric([cpu_id], float(temp.strip()))
+            count = count + 1
+
+    r, cpu_infos = bash_ro("hd_ctl -c cpu")
+    if r == 0:
+        infos = jsonobject.loads(cpu_infos)
+        for info in infos:
+            cpu_id = "CPU" + info.Processor
+            if "populated" in info.Status.lower() and "enabled" in info.Status.lower():
+                metrics['cpu_status'].add_metric([cpu_id], 0)
+                if cpu_id in cpu_status_abnormal_list_record:
+                    cpu_status_abnormal_list_record.remove(cpu_id)
+            elif "" == info.Status:
+                metrics['cpu_status'].add_metric([cpu_id], 20)
+                if cpu_id in cpu_status_abnormal_list_record:
+                    cpu_status_abnormal_list_record.remove(cpu_id)
+            else:
+                metrics['cpu_status'].add_metric([cpu_id], 10)
+                send_cpu_status_alarm_to_mn(cpu_id, info.Status)
+                
+    # get physical memory info
+    r, memory_infos = bash_ro("hd_ctl -c memory")
+    if r == 0:
+        memory_locator_list = collect_memory_locator()
+        infos = jsonobject.loads(memory_infos)
+        for info in infos:
+            slot_number = info.Locator
+            if slot_number in memory_locator_list:
+                memory_locator_list.remove(slot_number)
+            if "ok" == info.State.lower():
+                metrics['physical_memory_status'].add_metric([slot_number], 0)
+                if slot_number in memory_status_abnormal_list_record:
+                    memory_status_abnormal_list_record.remove(slot_number)
+            elif "" == info.State:
+                metrics['physical_memory_status'].add_metric([slot_number], 20)
+                if slot_number in memory_status_abnormal_list_record:
+                    memory_status_abnormal_list_record.remove(slot_number)
+            else:
+                metrics['physical_memory_status'].add_metric([slot_number], 10)
+                send_physical_memory_status_alarm_to_mn(slot_number, info.State)
+        
+        if len(memory_locator_list) != 0:
+            for locator in memory_locator_list:
+                metrics['physical_memory_status'].add_metric([locator], 10)
+                send_physical_memory_status_alarm_to_mn(locator, "unknown")
+
+    # get fan info
+    origin_fan_flag = False
+    r, fan_infos = bash_ro("hd_ctl -c fan")
+    if r == 0:
+        infos = jsonobject.loads(fan_infos)
+        for info in infos.fan_list:
+            fan_name = info.Name
+            if fan_name == "":
+                origin_fan_flag = True
+                break
+            if info.Status == "":
+                origin_fan_flag = True
+                break
+            
+            fan_rpm = "0" if info.SpeedRPM == "" else info.SpeedRPM
+            metrics['fan_speed_rpm'].add_metric([fan_name], float(fan_rpm))
+            
+            if "ok" == info.Status.lower():
+                metrics['fan_speed_state'].add_metric([fan_name], 0)
+                if fan_name in fan_status_abnormal_list_record:
+                    fan_status_abnormal_list_record.remove(fan_name)
+            elif "" == info.Status:
+                metrics['fan_speed_state'].add_metric([fan_name], 20)
+                if fan_name in fan_status_abnormal_list_record:
+                    fan_status_abnormal_list_record.remove(fan_name)
+            else:
+                metrics['fan_speed_state'].add_metric([fan_name], 10)
+                send_physical_fan_status_alarm_to_mn(fan_name, info.Status)
+    else:
+        origin_fan_flag = True
+    
+    # get power info
+    r, sdr_data = bash_ro("ipmitool sdr elist")
+    if r == 0:
+        power_list = []
+        for line in sdr_data.splitlines():
+            info = line.lower().strip()
+            if re.match(r"^ps\w*(\ |_)status", info):
+                ps_id = info.split("|")[0].strip().split(" ")[0].split("_")[0]
+                ps_state = info.split("|")[4].strip()
+                if "presence detected" == ps_state:
+                    metrics['power_supply'].add_metric([ps_id], 0)
+                elif "presence detected" in ps_state and "ac lost" in ps_state:
+                    metrics['power_supply'].add_metric([ps_id], 10)
+                else:
+                    metrics['power_supply'].add_metric([ps_id], 20)
+            elif re.match(r"^ps\w*(\ |_)(pin|pout)", info):
+                ps_id = info.split("|")[0].strip().split(" ")[0].split("_")[0]
+                if "pout" in info and ps_id in power_list:
+                    continue
                 ps_out_power = info.split("|")[4].strip().lower()
                 ps_out_power = float(filter(str.isdigit, ps_out_power)) if bool(re.search(r'\d', ps_out_power)) else float(0)
                 metrics['power_supply_current_output_power'].add_metric([ps_id], ps_out_power)
-            elif ps_str == 'Status':
-                ps_state = info.split("|")[4].strip().lower()
-                health = 0 if "presence detected" == ps_state else 10
-                metrics['power_supply'].add_metric([ps_id], health)
+                power_list.append(ps_id)
+            elif re.match(r"^fan\w*(_|\ )speed\w*", info):
+                if not origin_fan_flag:
+                    continue
+                if "m2" in info:
+                    continue
+                fan_rpm = info.split("|")[4].strip()
+                if fan_rpm == "" or fan_rpm == "no reading" or fan_rpm == "disabled":
+                    continue
+                fan_name = info.split("|")[0].strip()
+                fan_state = 0 if info.split("|")[2].strip() == "ok" else 10
+                fan_rpm = float(filter(str.isdigit, fan_rpm)) if bool(re.search(r'\d', fan_rpm)) else float(0)
+                metrics['fan_speed_state'].add_metric([fan_name], fan_state)
+                metrics['fan_speed_rpm'].add_metric([fan_name], fan_rpm)
+                if fan_state == 0 and fan_name in fan_status_abnormal_list_record:
+                    fan_status_abnormal_list_record.remove(fan_name)
+                elif fan_state == 10:
+                    send_physical_fan_status_alarm_to_mn(fan_name, info.split("|")[2].strip())
 
-    metrics['ipmi_status'].add_metric([], bash_r("ipmitool mc info"))
-
-    r, fan_info = bash_ro("ipmitool sdr type 'fan' | grep -E -i -v 'Present|FAN_M'")  # type: (int, str)
-    if r == 0:
-        for info in fan_info.splitlines():
-            info = info.strip()
-            if info.split("|")[4].strip() == "":
-                continue
-            fan_id = info.split("|")[0].strip()
-            fan_state = 0 if info.split("|")[2].strip().lower() == "ok" else 10
-            fan_rpm = 0 if fan_state != 0 else info.split("|")[4].strip().split(" ")[0]
-            metrics['fan_speed_state'].add_metric([fan_id], fan_state)
-            metrics['fan_speed_rpm'].add_metric([fan_id], float(fan_rpm))
-    
     collect_equipment_state_last_result = metrics.values()
     return collect_equipment_state_last_result
 
@@ -487,25 +829,27 @@ def collect_physical_cpu_state():
         "cpu_status": GaugeMetricFamily('cpu_status', 'cpu status', None, ['cpu']),
     }
 
-    '''
-        PowerLeader
-        CPU1 Temp      | 01h | ok  | 3.1 | 66 degrees C
-    '''
-    r, cpu_temp_info = bash_ro(
-        "ipmitool sdr type 'Temperature' | grep -E -i '^CPU[0-9]*(\ |_)Temp'")  # type: (int, str)
+    r, cpu_info = bash_ro(
+        "ipmitool sdr elist | grep -E -i '^CPU[0-9]*(\ |_)Temp|CPU[0-9]*(\ |_)Status'")  # type: (int, str)
     if r == 0:
-        cpu_list = cpu_temp_info.splitlines()
-        for i in range(len(cpu_list)):
-            info = cpu_list[i].strip()
-            cpu_id = "CPU" + str(i)
-            # cpu_id = info.split("|")[0].strip().split(" ")[0].split("_")[0]
-            # # the cut string has the same length as the original string which means cut symbol is not we want
-            # if len(cpu_id) == len(info.split("|")[0].strip().split(" ")[0]):
-            #     cpu_id = info.split("|")[0].strip().split(" ")[0].split(" ")[0]
-            cpu_state = 0 if info.split("|")[2].strip().lower() == "ok" else 10
-            cpu_temp = 0 if cpu_state != 0 else info.split("|")[4].strip().split(" ")[0]
-            metrics['cpu_temperature'].add_metric([cpu_id], float(cpu_temp))
-            metrics['cpu_status'].add_metric([cpu_id], float(cpu_state))
+        count = 0
+        for info in cpu_info.splitlines():
+            info = info.strip().lower()
+            cpu_id = "CPU" + str(count)
+            if "temp" in info:
+                cpu_temp = info.split("|")[4].strip()
+                metrics['cpu_temperature'].add_metric([cpu_id], float(filter(str.isdigit, cpu_temp)) if bool(re.search(r'\d', cpu_temp)) else float(0))
+                count = count + 1
+
+        count = 0
+        for info in cpu_info.splitlines():
+            info = info.strip().lower()
+            cpu_id = "CPU" + str(count)
+            if "status" in info:
+                cpu_status = info.split("|")[4].strip()
+                cpu_status = 0 if "presence detected" == cpu_status else 10
+                metrics['cpu_status'].add_metric([cpu_id], float(cpu_status))
+                count = count + 1
     
     collect_equipment_state_last_result = metrics.values()
     return collect_equipment_state_last_result
@@ -529,12 +873,14 @@ def collect_equipment_state():
     metrics['ipmi_status'].add_metric([], bash_r("ipmitool mc info"))
     return metrics.values()
 
+
 def fetch_vm_qemu_processes():
     processes = []
     for process in psutil.process_iter():
         if process.name() == QEMU_CMD: # /usr/libexec/qemu-kvm
             processes.append(process)
     return processes
+
 
 def find_vm_uuid_from_vm_qemu_process(process):
     prefix = 'guest='
@@ -544,6 +890,7 @@ def find_vm_uuid_from_vm_qemu_process(process):
         if word.startswith(prefix) and word.endswith(suffix):
             return word[len(prefix) : len(word) - len(suffix)]
     return None
+
 
 def collect_vm_statistics():
     metrics = {
@@ -608,8 +955,10 @@ def collect_vm_pvpanic_enable_in_domain_xml():
 
     return metrics.values()
 
+
 collect_node_disk_wwid_last_time = None
 collect_node_disk_wwid_last_result = None
+
 
 def collect_node_disk_wwid():
 
@@ -708,6 +1057,7 @@ def collect_host_conntrack_statistics():
 
     return metrics.values()
 
+
 kvmagent.register_prometheus_collector(collect_host_network_statistics)
 kvmagent.register_prometheus_collector(collect_host_capacity_statistics)
 kvmagent.register_prometheus_collector(collect_vm_statistics)
@@ -715,7 +1065,6 @@ kvmagent.register_prometheus_collector(collect_vm_pvpanic_enable_in_domain_xml)
 kvmagent.register_prometheus_collector(collect_node_disk_wwid)
 kvmagent.register_prometheus_collector(collect_host_conntrack_statistics)
 kvmagent.register_prometheus_collector(collect_physical_network_interface_state)
-kvmagent.register_prometheus_collector(collect_physical_cpu_state)
 
 if misc.isMiniHost():
     kvmagent.register_prometheus_collector(collect_lvm_capacity_statistics)
@@ -725,7 +1074,9 @@ if misc.isMiniHost():
 if misc.isHyperConvergedHost():
     kvmagent.register_prometheus_collector(collect_raid_state)
     kvmagent.register_prometheus_collector(collect_ipmi_state)
-    kvmagent.register_prometheus_collector(collect_ssd_lift_state)
+    kvmagent.register_prometheus_collector(collect_ssd_state)
+else:
+    kvmagent.register_prometheus_collector(collect_physical_cpu_state)
 
 
 class PrometheusPlugin(kvmagent.KvmAgent):
@@ -1030,3 +1381,7 @@ WantedBy=multi-user.target
 
     def stop(self):
         pass
+    
+    def configure(self, config):
+        global ALARM_CONFIG
+        ALARM_CONFIG = config

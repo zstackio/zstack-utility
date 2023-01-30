@@ -1573,6 +1573,8 @@ class ShowStatusCmd(Command):
                 version = '0.6'
             else:
                 version = get_zstack_version(db_hostname, db_port, db_user, db_password)
+                if len(version.split('.')) >= 4:
+                    version = '.'.join(version.split('.')[:3])
 
             detailed_version = get_detail_version()
             if detailed_version is not None:
@@ -1589,8 +1591,10 @@ class ShowStatusCmd(Command):
                     if version[0].isdigit(): 
                         info('Cube version: %s (Cube %s)' % (version.split('-')[0], version))
                     else:
-                        list = version.split('-')   
-                        info(list[0] + ' version: %s (%s)' % (list[1], version))
+                        list = version.split('-')
+                        hci_version = list[-3]
+                        hci_name = version.split("-%s-" % hci_version)
+                        info(hci_name[0] + ' version: %s (%s)' % (hci_version, version))
 
         info('\n'.join(info_list))
         show_version()
