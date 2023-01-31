@@ -511,9 +511,28 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             if ret:
                 rsp.error = ret.strip("\n") + ". This may be a bug in vCenter 5.5, please detach ISO in vSphere client and try again"
             else:
-                err_fmt = linux.filter_file_lines_by_regex(v2v_log_file, '^virt-v2v: error:')[0][16:].strip()
-                rsp.error = "failed to run virt-v2v command, because %s... for more details, please see log in conversion host: %s" % (
-                err_fmt, v2v_log_file)
+                error_search_functions = []
+                def get_dual_or_multi_boot_details(): return shell.call("grep -i 'Dual- or multi-boot operating system detected' -A 5 %s" % v2v_log_file)
+                error_search_functions.append(get_dual_or_multi_boot_details)
+
+                def get_normal_expected_virt_v2v_error():
+                    err_fmt = linux.filter_file_lines_by_regex(v2v_log_file, '^virt-v2v: error:')
+                    if err_fmt:
+                        return err_fmt[0][16:].strip()
+
+                    return None
+
+                error_search_functions.append(get_normal_expected_virt_v2v_error)
+                error_message = None
+                for error_search_function in error_search_functions:
+                    error_message = error_search_function()
+                    if error_message:
+                        break
+
+                rsp.error = "failed to run virt-v2v command, because %s... for more details, " \
+                   "please see log in conversion host: %s" % (
+                    error_message,
+                    v2v_log_file)
 
             return jsonobject.dumps(rsp)
 
