@@ -1428,9 +1428,10 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                     target_backing_file = current_backing_file.replace(previous_ps_uuid, target_ps_uuid)
 
                     if struct.compareQcow2:
-                        r, o, e = bash.bash_roe("%s %s" % (qemu_img.subcmd("check"), target_abs_path))
-                        if r != 0 and "No errors were found" not in str(o):
-                            raise Exception("target qcow2 image[%s] has been corrupted after migration, stdout: %s, stderr: %s" % (target_abs_path, o ,e))
+                        if linux.get_img_fmt(current_abs_path) == "qcow2":
+                            r, o, e = bash.bash_roe("%s %s" % (qemu_img.subcmd("check"), target_abs_path))
+                            if r != 0 and "No errors were found" not in str(o):
+                                raise Exception("target qcow2 image[%s] has been corrupted after migration, stdout: %s, stderr: %s" % (target_abs_path, o ,e))
 
                         logger.info("start to compare hash value between %s add %s" % (current_abs_path, target_abs_path))
                         linux.compare_segmented_xxhash(current_abs_path, target_abs_path, int(lvm.get_lv_size(target_abs_path)), raise_exception=True, blocksize=10485760)
