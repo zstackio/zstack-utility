@@ -353,7 +353,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
                     rsp.success = False
                     break
                 try:
-                    linux.compare_segmented_xxhash(srcFile, dstFile, dstSize, raise_expection=True)
+                    linux.compare_segmented_xxhash(srcFile, dstFile, dstSize, raise_exception=True)
                 except Exception as e:
                     rsp.error = "failed to copy file %s to %s, because: %s" % (srcFile, dstFile, str(e))
                     rsp.success = False
