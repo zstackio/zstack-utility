@@ -30,7 +30,7 @@ termcolor==1.1.0
 urllib3==1.10.4
 virtualenv==12.1.1
 websockify==0.9.0
-Werkzeug==0.10.4
+Werkzeug==0.15.5
 flask-socketio==2.2
 versiontools==1.7
 prometheus_client==0.1.1
