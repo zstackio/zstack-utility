@@ -260,9 +260,9 @@ class CheckDisk(object):
         else:
             rescan_slave(disk_name)
 
-        command = "pvresize /dev/%s" % disk_name
+        command = "%s /dev/%s" % (lvm.subcmd("pvresize"), disk_name)
         if multipath_dev is not None and multipath_dev != disk_name:
-            command = "pvresize /dev/%s || pvresize /dev/%s" % (disk_name, multipath_dev)
+            command = "%s /dev/%s || %s /dev/%s" % (lvm.subcmd("pvresize"), disk_name, lvm.subcmd("pvresize"), multipath_dev)
         r, o, e = bash.bash_roe(command, errorout=True)
         logger.debug("resized pv %s (wwid: %s), return code: %s, stdout %s, stderr: %s" %
                      (disk_name, self.identifier, r, o, e))
@@ -446,7 +446,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
     def create_vg_if_not_found(vgUuid, disks, diskPaths, hostUuid, forceWipe=False):
         @linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
         def find_vg(vgUuid, raise_exception=True):
-            cmd = shell.ShellCmd("timeout 5 vgscan --ignorelockingfailure; vgs --nolocking -t %s -otags | grep %s" % (vgUuid, INIT_TAG))
+            cmd = shell.ShellCmd("timeout 5 %s; vgs --nolocking -t %s -otags | grep %s" % (lvm.subcmd("vgscan"), vgUuid, INIT_TAG))
             cmd(is_exception=False)
             if cmd.return_code != 0 and raise_exception:
                 raise RetryException("can not find vg %s with tag %s" % (vgUuid, INIT_TAG))

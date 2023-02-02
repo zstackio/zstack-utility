@@ -40,6 +40,7 @@ COMMON_TAG = "zs::sharedblock"
 VOLUME_TAG = COMMON_TAG + "::volume"
 IMAGE_TAG = COMMON_TAG + "::image"
 ENABLE_DUP_GLOBAL_CHECK = False
+LVMLOCKD_VERSION = None
 thinProvisioningInitializeSize = "thinProvisioningInitializeSize"
 
 
@@ -343,10 +344,25 @@ def get_multipath_name(dev_name):
 
 def get_lvmlockd_service_name():
     service_name = 'lvm2-lvmlockd.service'
-    lvmlockd_version = shell.call("""lvmlockd --version | awk '{print $3}' | awk -F'.' '{print $1"."$2}'""").strip()
-    if LooseVersion(lvmlockd_version) > LooseVersion("2.02"):
+    if LooseVersion(get_lvmlockd_version()) > LooseVersion("2.02"):
         service_name = 'lvmlockd.service'
     return service_name
+
+def get_lvmlockd_version():
+    global LVMLOCKD_VERSION
+    if LVMLOCKD_VERSION is None:
+        LVMLOCKD_VERSION = shell.call("""lvmlockd --version | awk '{print $3}' | awk -F'.' '{print $1"."$2}'""").strip()
+    return LVMLOCKD_VERSION
+
+def subcmd(subcmd):
+    options = ''
+    if LooseVersion(get_lvmlockd_version()) > LooseVersion('2.02'):
+        if subcmd in ['pvresize', 'vgscan']:
+            options += '--nolocking -t'
+    elif subcmd in ['vgscan']:
+        options += '--ignorelockingfailure'
+
+    return '%s %s ' % (subcmd, options)
 
 def get_dm_wwid(dm):
     try:
