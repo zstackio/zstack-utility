@@ -28,9 +28,11 @@ class PhysicalMemoryMonitor(kvmagent.KvmAgent):
 	state = None
 	time_lock = 0
 	interval = 60
+	trigger_flag = None
 	
 	def __init__(self):
 		self.state = False
+		self.trigger_flag = False
 	
 	def configure(self, config):
 		self.config = config
@@ -62,9 +64,12 @@ class PhysicalMemoryMonitor(kvmagent.KvmAgent):
 			non-zero error return: "csrow0: ch0: 43722040 Corrected Errors"
 		'''
 		r, o = bash.bash_ro("edac-util --report=default")
-		if r == 0 and ("No errors to report" not in o and "No memory controller data found" in o):
+		if r == 0 and not self.trigger_flag and ("No errors to report" not in o and "No memory controller data found" not in o):
 			self.send_physical_memory_ecc_error_alarm_to_mn(o)
-		
+			self.trigger_flag = True
+		else:
+			self.trigger_flag = False
+			
 		thread.timer(self.interval, self.monitor_physical_memory_ecc_error, args=[time_lock_now]).start()
 	
 	def send_physical_memory_ecc_error_alarm_to_mn(self, detail):
