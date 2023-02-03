@@ -818,6 +818,7 @@ check_system(){
         grep -qi 'openEuler release 20.03 (LTS-SP1)' /etc/system-release && OS="EULER20"
         grep -qi 'UnionTech OS Server release 20 (kongzi)' /etc/system-release && OS="UOS1020A"
         grep -qi 'NFSChina Server release 4.0.220727 (RTM3)' /etc/system-release && OS="NFS4"
+        grep -qi 'Rocky Linux release 8.5 (Green Obsidian)' /etc/system-release && OS="ROCKY8"
         if [[ -z "$OS" ]];then
             fail2 "Host OS checking failure: your system is: `cat /etc/redhat-release`, $PRODUCT_NAME management node only supports $SUPPORTED_OS currently"
         elif [[ $OS == "CENTOS7" ]];then
