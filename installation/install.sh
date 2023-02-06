@@ -1566,7 +1566,6 @@ is_install_general_libs_rh(){
             net-tools \
             bash-completion \
             dmidecode \
-            MySQL-python \
             ipmitool \
             nginx \
             nginx-all-modules \
