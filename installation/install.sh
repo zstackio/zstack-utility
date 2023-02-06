@@ -3192,6 +3192,7 @@ name=zstack-local
 baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0
 gpgcheck=0
 enabled=1
+module_hotfixes=true
 EOF
 
 repo_file=/etc/yum.repos.d/qemu-kvm-ev.repo
@@ -3202,6 +3203,7 @@ name=Qemu KVM EV
 baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0/Extra/qemu-kvm-ev
 gpgcheck=0
 enabled=0
+module_hotfixes=true
 EOF
 
 repo_file=/etc/yum.repos.d/mlnx-ofed.repo
@@ -3222,6 +3224,7 @@ name=Ceph
 baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0/Extra/ceph
 gpgcheck=0
 enabled=0
+module_hotfixes=true
 EOF
 
 repo_file=/etc/yum.repos.d/galera.repo
@@ -3232,6 +3235,7 @@ name = MariaDB
 baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0/Extra/galera
 gpgcheck=0
 enabled=0
+module_hotfixes=true
 EOF
 
 repo_file=/etc/yum.repos.d/virtio-win.repo
@@ -3242,6 +3246,7 @@ name=virtio-win
 baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0/Extra/virtio-win
 gpgcheck=0
 enabled=0
+module_hotfixes=true
 EOF
 
 # Fixes ZSTAC-18536: delete invalid repo file virt-win.repo
