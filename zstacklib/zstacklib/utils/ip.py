@@ -235,7 +235,7 @@ def get_namespace_id(namespace_name):
     return int(out)
 
 def get_host_physicl_nics():
-    nic_all_physical = bash.bash_o("find /sys/class/net -type l -not -lname '*virtual*' -printf '%f\\n'").splitlines()
+    nic_all_physical = bash.bash_o("find /sys/class/net -type l -not \( -lname '*virtual*' -or -lname '*usb*' \) -printf '%f\\n'").splitlines()
     if nic_all_physical is None or len(nic_all_physical) == 0:
         return []
 
