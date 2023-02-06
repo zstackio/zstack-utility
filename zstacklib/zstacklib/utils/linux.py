@@ -1651,7 +1651,7 @@ def delete_vlan_eth(vlan_dev_name):
     if not is_network_device_existing(vlan_dev_name):
         return
     shell.call('ip link set dev %s down' % vlan_dev_name)
-    shell.call('vconfig rem %s' % vlan_dev_name)
+    iproute.delete_link_no_error(vlan_dev_name)
 
 def create_vlan_eth(ethname, vlan, ip=None, netmask=None):
     vlan = int(vlan)
@@ -1660,14 +1660,14 @@ def create_vlan_eth(ethname, vlan, ip=None, netmask=None):
 
     vlan_dev_name = '%s.%s' % (ethname, vlan)
     if not is_network_device_existing(vlan_dev_name):
-        shell.call('vconfig add %s %s' % (ethname, vlan))
+        shell.call('ip link add link %s name %s type vlan id %s' % (ethname, vlan_dev_name, vlan))
         if ip:
             iproute.add_address(ip, netmask_to_cidr(netmask), 4, vlan_dev_name, broadcast=netmask_to_broadcast(ip, netmask))
     else:
         if ip is not None and ip.strip() != "" and get_device_ip(vlan_dev_name) != ip:
             # recreate device and configure ip
             delete_vlan_eth(vlan_dev_name)
-            shell.call('vconfig add %s %s' % (ethname, vlan))
+            shell.call('ip link add link %s name %s.%s type vlan id %s' % (ethname, ethname, vlan, vlan))
             iproute.add_address(ip, netmask_to_cidr(netmask), 4, vlan_dev_name, broadcast=netmask_to_broadcast(ip, netmask))
 
     iproute.set_link_up(vlan_dev_name)

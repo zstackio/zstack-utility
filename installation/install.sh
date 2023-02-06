@@ -1542,7 +1542,6 @@ is_install_general_libs_rh(){
             wget \
             nfs-utils \
             rpcbind \
-            vconfig \
             vim-minimal \
             python2-devel \
             gcc \
