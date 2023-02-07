@@ -802,7 +802,7 @@ def collect_ipmi_state():
                 ps_out_power = float(filter(str.isdigit, ps_out_power)) if bool(re.search(r'\d', ps_out_power)) else float(0)
                 metrics['power_supply_current_output_power'].add_metric([ps_id], ps_out_power)
                 power_list.append(ps_id)
-            elif re.match(r"^fan\w*(_|\ )speed\w*", info):
+            elif re.match(r"\w*fan(\w*(_|\ )speed|[a-z0-9]\ *\|)\w*", info):
                 if not origin_fan_flag:
                     continue
                 if "m2" in info:
