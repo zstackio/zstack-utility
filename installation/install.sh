@@ -33,7 +33,7 @@ export TERM=xterm
 
 OS=''
 IS_UBUNTU='n'
-REDHAT_OS="CENTOS6 CENTOS7 RHEL7 ALIOS7 ISOFT4 KYLIN10 EULER20 UOS1020A NFS4"
+REDHAT_OS="CENTOS6 CENTOS7 RHEL7 ALIOS7 ISOFT4 KYLIN10 EULER20 UOS1020A NFS4 ROCKY8"
 DEBIAN_OS="UBUNTU14.04 UBUNTU16.04 UBUNTU KYLIN4.0.2 DEBIAN9 UOS20"
 XINCHUANG_OS="ns10 uos20"
 SUPPORTED_OS="$REDHAT_OS $DEBIAN_OS"
@@ -806,7 +806,7 @@ check_system(){
     echo_title "Check System"
     echo ""
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
-    cat /etc/*-release |egrep -i -h "centos |Red Hat Enterprise|Alibaba|NeoKylin|Kylin Linux Advanced Server release V10|openEuler|UnionTech OS Server release 20 \(kongzi\)|NFSChina Server release 4.0.220727 \(RTM3\)" >>$ZSTACK_INSTALL_LOG 2>&1
+    cat /etc/*-release |egrep -i -h "centos |Red Hat Enterprise|Alibaba|NeoKylin|Kylin Linux Advanced Server release V10|openEuler|UnionTech OS Server release 20 \(kongzi\)|NFSChina Server release 4.0.220727 \(RTM3\)|Rocky Linux" >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -eq 0 ]; then
         grep -qi 'CentOS release 6' /etc/system-release && OS="CENTOS6"
         grep -qi 'CentOS Linux release 7' /etc/system-release && OS="CENTOS7"
@@ -1542,7 +1542,6 @@ is_install_general_libs_rh(){
             wget \
             nfs-utils \
             rpcbind \
-            vconfig \
             vim-minimal \
             python2-devel \
             gcc \
@@ -1567,7 +1566,6 @@ is_install_general_libs_rh(){
             net-tools \
             bash-completion \
             dmidecode \
-            MySQL-python \
             ipmitool \
             nginx \
             nginx-all-modules \
@@ -3192,6 +3190,7 @@ name=zstack-local
 baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0
 gpgcheck=0
 enabled=1
+module_hotfixes=true
 EOF
 
 repo_file=/etc/yum.repos.d/qemu-kvm-ev.repo
@@ -3202,6 +3201,7 @@ name=Qemu KVM EV
 baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0/Extra/qemu-kvm-ev
 gpgcheck=0
 enabled=0
+module_hotfixes=true
 EOF
 
 repo_file=/etc/yum.repos.d/mlnx-ofed.repo
@@ -3222,6 +3222,7 @@ name=Ceph
 baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0/Extra/ceph
 gpgcheck=0
 enabled=0
+module_hotfixes=true
 EOF
 
 repo_file=/etc/yum.repos.d/galera.repo
@@ -3232,6 +3233,7 @@ name = MariaDB
 baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0/Extra/galera
 gpgcheck=0
 enabled=0
+module_hotfixes=true
 EOF
 
 repo_file=/etc/yum.repos.d/virtio-win.repo
@@ -3242,6 +3244,7 @@ name=virtio-win
 baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0/Extra/virtio-win
 gpgcheck=0
 enabled=0
+module_hotfixes=true
 EOF
 
 # Fixes ZSTAC-18536: delete invalid repo file virt-win.repo
