@@ -34,6 +34,7 @@ LVMLOCKD_LOG_FILE_PATH = "/var/log/lvmlockd/lvmlockd.log"
 LVMLOCKD_LOG_RSYSLOG_PATH = "/etc/rsyslog.d/lvmlockd.conf"
 LVMLOCKD_SERVICE_PATH = "/lib/systemd/system/lvm2-lvmlockd.service"
 LVMLOCKD_LOG_LOGROTATE_PATH = "/etc/logrotate.d/lvmlockd"
+LVMLOCKD_ADOPT_FILE = "/run/lvm/lvmlockd.adopt"
 LVM_CONFIG_BACKUP_PATH = "/etc/lvm/zstack-backup"
 LVM_CONFIG_ARCHIVE_PATH = "/etc/lvm/archive"
 SUPER_BLOCK_BACKUP = "superblock.bak"
@@ -357,6 +358,21 @@ def get_lvmlockd_service_name():
         service_name = 'lvmlockd.service'
     return service_name
 
+def get_lvmlockd_version():
+    global LVMLOCKD_VERSION
+    if LVMLOCKD_VERSION is None:
+        LVMLOCKD_VERSION = shell.call("""lvmlockd --version | awk '{print $3}' | awk -F'.' '{print $1"."$2}'""").strip()
+    return LVMLOCKD_VERSION
+
+def get_running_lvmlockd_version():
+    pid = get_lvmlockd_pid()
+    if pid:
+        exe = "/proc/%s/exe" % pid
+        return shell.call("""%s --version | awk '{print $3}' | awk -F'.' '{print $1"."$2}'""" % exe).strip()
+
+def get_lvmlockd_pid():
+    return linux.find_process_by_command('lvmlockd')
+
 def get_dm_wwid(dm):
     try:
         stdout = shell.call("set -o pipefail; udevadm info -n %s | grep -o 'dm-uuid-mpath-\S*' | awk -F '-' '{print $NF; exit}'" % dm)
@@ -566,7 +582,7 @@ After=lvm2-lvmetad.service
 [Service]
 Type=simple
 NonBlocking=true
-ExecStart=/sbin/lvmlockd --daemon-debug --sanlock-timeout %s
+ExecStart=/sbin/lvmlockd --daemon-debug --sanlock-timeout %s --adopt 1
 StandardError=syslog
 StandardOutput=syslog
 SyslogIdentifier=lvmlockd
@@ -615,6 +631,10 @@ def start_lvmlockd(io_timeout=40):
         os.mkdir(os.path.dirname(LVMLOCKD_LOG_FILE_PATH))
 
     config_lvmlockd(io_timeout)
+    running_lockd_version = get_running_lvmlockd_version()
+    if running_lockd_version and LooseVersion(running_lockd_version) < LooseVersion(get_lvmlockd_version()):
+        write_lvmlockd_adopt_file()
+        stop_lvmlockd()
     for service in ["sanlock", get_lvmlockd_service_name()]:
         cmd = shell.ShellCmd("timeout 30 systemctl start %s" % service)
         cmd(is_exception=True)
@@ -636,6 +656,62 @@ def start_lvmlockd(io_timeout=40):
         os.fsync(f.fileno())
     os.chmod(LVMLOCKD_LOG_LOGROTATE_PATH, 0o644)
 
+def write_lvmlockd_adopt_file():
+    def _get_lockspace_name(line):
+        return line.split()[1].split(":")[0]
+
+    class Lock:
+        def __init__(self, line):
+            ## line format: r lvm_8c8b0ad64b0e42f4a9792db1f2bbacd8:OGDB3v-DKJ9-kdYX-XO7p-7cEp-jK22-jm1sgp:/dev/mapper/8c8b0ad64b0e42f4a9792db1f2bbacd8-lvmlock:70254592:1 p 60836
+            self.line = line
+
+        def get_lockspace(self):
+            return self.line.split()[1].split(":")[0]
+
+        def get_uuid(self):
+            return self.line.split()[1].split(":")[1]
+
+        def get_path(self):
+            return self.line.split()[1].split(":")[2]
+
+        def get_offset(self):
+            return self.line.split()[1].split(":")[3]
+
+        def get_mode(self):
+            return self.line.split()[1].split(":")[4]
+
+
+    def _build_lvmlockd_adopt_file(all_locks):
+        content = ""
+        for lockspace in all_locks:
+            VG_NAME = lockspace.replace("lvm_", "")
+            VG_UUID = get_vg_lvm_uuid(VG_NAME)
+            vg = "VG: %s %s sanlock 1.0.0:lvmlock\n" % (VG_UUID, VG_NAME)
+            content += vg
+            for resource in all_locks.get(lockspace):
+                lv = "LV: %s %s 1.0.0:%s %s 0\n" % (VG_UUID, resource.get_uuid(), resource.get_offset(), "sh "if resource.get_mode() == "SH" else "ex")
+                content += lv
+
+        if len(content) != 0:
+            logger.debug("write sanlock records to %s, content : \n%s" % (LVMLOCKD_ADOPT_FILE, content))
+            linux.write_file(LVMLOCKD_ADOPT_FILE, content, create_if_not_exist=True)
+
+    lines = bash.bash_o("sanlock client status").splitlines()
+    all_locks = {}
+    for line in lines:
+        if line.startswith("s "):
+            all_locks.update({_get_lockspace_name(line) : []})
+        elif line.startswith("r "):
+            all_locks.get(_get_lockspace_name(line)).append(Lock(line))
+
+    _build_lvmlockd_adopt_file(all_locks)
+
+
+@bash.in_bash
+def stop_lvmlockd():
+    pid = get_lvmlockd_pid()
+    if pid:
+        linux.kill_process(pid)
 
 @bash.in_bash
 def start_vg_lock(vgUuid, retry_times_for_checking_vg_lockspace):
