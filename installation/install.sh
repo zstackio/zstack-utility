@@ -3996,22 +3996,22 @@ fi
 
 ## set ln
 cloudCtlPath="/usr/bin/cloud-ctl"
-if [[ ! -f "$cloudCtlPath" ]]; then
+if [[ ! -f "$cloudCtlPath" && ! -L "$cloudCtlPath" ]]; then
   ln -s /usr/bin/zstack-ctl $cloudCtlPath
 fi
 
 cloudCliPath="/usr/bin/cloud-cli"
-if [[ ! -f "$cloudCliPath" ]]; then
+if [[ ! -f "$cloudCliPath" && ! -L "$cloudCliPath" ]]; then
   ln -s /usr/bin/zstack-cli $cloudCliPath
 fi
 
 productCtlPath="/usr/bin/${PRODUCT_NAME,,}-ctl"
-if [[ ! -f "$productCtlPath" ]]; then
+if [[ ${PRODUCT_NAME,,} != "zstack" && ! -f "$productCtlPath" ]]; then
   ln -s /usr/bin/zstack-ctl $productCtlPath
 fi
 
 productCliPath="/usr/bin/${PRODUCT_NAME,,}-cli"
-if [[ ! -f "$productCliPath" ]]; then
+if [[ ${PRODUCT_NAME,,} != 'zstack' && ! -f "$productCliPath" ]]; then
   ln -s /usr/bin/zstack-cli $productCliPath
 fi
 
