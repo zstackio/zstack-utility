@@ -67,6 +67,11 @@ elif [ -f /etc/my.cnf ]; then
     mysql_conf=/etc/my.cnf
 fi
 
+if [ -z $mysql_conf ]; then
+    echo "failed to find my.cnf" >&2
+    exit 1
+fi
+
 sed -i 's/^bind-address/#bind-address/' $mysql_conf
 sed -i 's/^skip-networking/#skip-networking/' $mysql_conf
 sed -i 's/^bind-address/#bind-address/' $mysql_conf
@@ -174,6 +179,31 @@ mysqldump_skip_tables = "--ignore-table=zstack.VmUsageHistoryVO --ignore-table=z
                         "--ignore-table=zstack.DataVolumeUsageHistoryVO " \
                         "--ignore-table=zstack.ResourceUsageVO --ignore-table=zstack.PciDeviceUsageHistoryVO " \
                         "--ignore-table=zstack.PubIpVipBandwidthUsageHistoryVO"
+
+# pre install scripts
+# prepare yum configurations
+configure_yum_repo_script = '''\n
+if [ -f /etc/redhat-release ] ; then
+os_release=`cat /etc/redhat-release`
+if [[ $os_release =~ ' 7' ]]; then
+[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
+elif [[ $os_release =~ ' 8' ]]; then
+[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=\$basearch\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
+else
+[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-6&arch=\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
+fi
+
+if [[ $os_release =~ ' 8' ]]; then
+[ -d /etc/yum.repos.d/ ] && echo -e "#aliyun base\n[alibase]\nname=Rocky-\$releasever - Base - mirrors.aliyun.com\nbaseurl=https://mirrors.aliyun.com/rockylinux/\$releasever/BaseOS/\$basearch/os/\ngpgcheck=0\nenabled=0\n \n#released updates \n[aliupdates]\nname=Rocky-\$releasever - Updates - mirrors.aliyun.com\nbaseurl=http://mirrors.aliyun.com/rockylinux/\$releasever/AppStream/\$basearch/os/\nenabled=0\ngpgcheck=0\n \n[aliextras]\nname=Rocky-\$releasever - Extras - mirrors.aliyun.com\nbaseurl=https://mirrors.aliyun.com/rockylinux/\$releasever/extras/\$basearch/os/\nenabled=0\ngpgcheck=0\n \n[aliepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nbaseurl=http://mirrors.aliyun.com/epel/\$releasever/\$basearch\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-aliyun-yum.repo
+
+[ -d /etc/yum.repos.d/ ] && echo -e "#163 base\n[163base]\nname=Rocky-\$releasever - Base - mirrors.163.com\nbaseurl=http://mirrors.163.com/rocky/\$releasever/BaseOS/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[163updates]\nname=Rocky-\$releasever - Updates - mirrors.163.com\nbaseurl=http://mirrors.163.com/rocky/\$releasever/AppStream/\$basearch/\nenabled=0\ngpgcheck=0\n \n#additional packages that may be useful\n[163extras]\nname=Rocky-\$releasever - Extras - mirrors.163.com\nbaseurl=http://mirrors.163.com/rocky/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[ustcepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearch - ustc \nbaseurl=http://centos.ustc.edu.cn/epel/\$releasever/\$basearch\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-163-yum.repo
+else
+[ -d /etc/yum.repos.d/ ] && echo -e "#aliyun base\n[alibase]\nname=CentOS-\$releasever - Base - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[aliupdates]\nname=CentOS-\$releasever - Updates - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliextras]\nname=CentOS-\$releasever - Extras - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nbaseurl=http://mirrors.aliyun.com/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-aliyun-yum.repo
+
+[ -d /etc/yum.repos.d/ ] && echo -e "#163 base\n[163base]\nname=CentOS-\$releasever - Base - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[163updates]\nname=CentOS-\$releasever - Updates - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n#additional packages that may be useful\n[163extras]\nname=CentOS-\$releasever - Extras - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[ustcepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearch - ustc \nbaseurl=http://centos.ustc.edu.cn/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-163-yum.repo
+fi
+fi
+'''
 
 def signal_handler(signal, frame):
     sys.exit(0)
@@ -2944,19 +2974,7 @@ class InstallDbCmd(Command):
 
         pre_install_script = '''
 #!/bin/bash
-if [ -f /etc/redhat-release ] ; then
-
-grep ' 7' /etc/redhat-release
-if [ $? -eq 0 ]; then
-[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
-else
-[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-6&arch=\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
-fi
-
-[ -d /etc/yum.repos.d/ ] && echo -e "#aliyun base\n[alibase]\nname=CentOS-\$releasever - Base - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[aliupdates]\nname=CentOS-\$releasever - Updates - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliextras]\nname=CentOS-\$releasever - Extras - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nbaseurl=http://mirrors.aliyun.com/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-aliyun-yum.repo
-
-[ -d /etc/yum.repos.d/ ] && echo -e "#163 base\n[163base]\nname=CentOS-\$releasever - Base - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[163updates]\nname=CentOS-\$releasever - Updates - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n#additional packages that may be useful\n[163extras]\nname=CentOS-\$releasever - Extras - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[ustcepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearch - ustc \nbaseurl=http://centos.ustc.edu.cn/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-163-yum.repo
-fi
+{0}
 
 ###################
 #Check DNS hijacking
@@ -2980,7 +2998,7 @@ echo "The hostname($hostname) of your machine is resolved to IP($ip) which is no
 It's likely your DNS server has been hijacking, please try fixing it or add \"ip_of_your_host $hostname\" to /etc/hosts.
 DNS hijacking will cause MySQL not working."
 exit 1
-'''
+'''.format(configure_yum_repo_script)
         fd, pre_install_script_path = tempfile.mkstemp()
         os.fdopen(fd, 'w').write(pre_install_script)
 
@@ -6938,40 +6956,26 @@ class InstallManagementNodeCmd(Command):
 '''
 
         pre_script = '''
-if [ -f /etc/redhat-release ] ; then
-
-grep ' 7' /etc/redhat-release
-if [ $$? -eq 0 ]; then
-[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$$releasever - \$$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=\$$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
-else
-[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$$releasever - \$$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-6&arch=\$$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
-fi
-
-[ -d /etc/yum.repos.d/ ] && echo -e "#aliyun base\n[alibase]\nname=CentOS-\$$releasever - Base - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$$releasever/os/\$$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[aliupdates]\nname=CentOS-\$$releasever - Updates - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$$releasever/updates/\$$basearch/\nenabled=0\ngpgcheck=0\n \n[aliextras]\nname=CentOS-\$$releasever - Extras - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$$releasever/extras/\$$basearch/\nenabled=0\ngpgcheck=0\n \n[aliepel]\nname=Extra Packages for Enterprise Linux \$$releasever - \$$basearce - mirrors.aliyun.com\nbaseurl=http://mirrors.aliyun.com/epel/\$$releasever/\$$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-aliyun-yum.repo
-
-[ -d /etc/yum.repos.d/ ] && echo -e "#163 base\n[163base]\nname=CentOS-\$$releasever - Base - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$$releasever/os/\$$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[163updates]\nname=CentOS-\$$releasever - Updates - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$$releasever/updates/\$$basearch/\nenabled=0\ngpgcheck=0\n \n#additional packages that may be useful\n[163extras]\nname=CentOS-\$$releasever - Extras - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$$releasever/extras/\$$basearch/\nenabled=0\ngpgcheck=0\n \n[ustcepel]\nname=Extra Packages for Enterprise Linux \$$releasever - \$$basearch - ustc \nbaseurl=http://centos.ustc.edu.cn/epel/\$$releasever/\$$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-163-yum.repo
-fi
+{0}
 
 whereis zstack-ctl
 if [ $$? -eq 0 ]; then
    zstack-ctl stop_node
 fi
 
-apache_path=$install_path/apache-tomcat
-if [[ -d $$apache_path ]] && [[ $force_resinstall -eq 0 ]]; then
+apache_path={1}/apache-tomcat
+if [[ -d $$apache_path ]] && [[ {2} -eq 0 ]]; then
    echo "found existing Apache Tomcat directory $$apache_path; please use --force-reinstall to delete it and re-install"
    exit 1
 fi
 
-rm -rf $install_path
-mkdir -p $install_path
-'''
-        t = string.Template(pre_script)
-        pre_script = t.substitute({
-            'force_resinstall': int(args.force_reinstall),
-            'install_path': args.install_path
-        })
-
+rm -rf {3}
+mkdir -p {4}
+'''.format(configure_yum_repo_script,
+           args.install_path,
+           int(args.force_reinstall),
+           args.install_path,
+           args.install_path)
         fd, pre_script_path = tempfile.mkstemp(suffix='.sh')
         os.fdopen(fd, 'w').write(pre_script)
 
@@ -7493,21 +7497,7 @@ class InstallDashboardCmd(Command):
 
 '''
 
-        pre_script = '''
-if [ -f /etc/redhat-release ] ; then
-
-grep ' 7' /etc/redhat-release
-if [ $? -eq 0 ]; then
-[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
-else
-[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-6&arch=\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
-fi
-
-[ -d /etc/yum.repos.d/ ] && echo -e "#aliyun base\n[alibase]\nname=CentOS-\$releasever - Base - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[aliupdates]\nname=CentOS-\$releasever - Updates - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliextras]\nname=CentOS-\$releasever - Extras - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nbaseurl=http://mirrors.aliyun.com/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-aliyun-yum.repo
-
-[ -d /etc/yum.repos.d/ ] && echo -e "#163 base\n[163base]\nname=CentOS-\$releasever - Base - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[163updates]\nname=CentOS-\$releasever - Updates - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n#additional packages that may be useful\n[163extras]\nname=CentOS-\$releasever - Extras - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[ustcepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearch - ustc \nbaseurl=http://centos.ustc.edu.cn/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-163-yum.repo
-fi
-'''
+        pre_script = configure_yum_repo_script
         fd, pre_script_path = tempfile.mkstemp()
         os.fdopen(fd, 'w').write(pre_script)
 
