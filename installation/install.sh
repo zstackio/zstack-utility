@@ -896,6 +896,7 @@ cs_check_python_installed(){
     which python2 >/dev/null 2>&1
     [ $? -ne 0 ] && yum --disablerepo=* --enablerepo=zstack-local install -y python2 >/dev/null 2>&1
     [ ! -f /usr/bin/python -a -f /usr/bin/python2 ] && ln -s /usr/bin/python2 /usr/bin/python
+    [ ! -f /usr/bin/easy_install -a -f /usr/bin/easy_install-2 ] && ln -s /usr/bin/easy_install-2 /usr/bin/easy_install
 }
 
 cs_check_epel(){
@@ -3995,22 +3996,22 @@ fi
 
 ## set ln
 cloudCtlPath="/usr/bin/cloud-ctl"
-if [[ ! -f "$cloudCtlPath" ]]; then
+if [[ ! -f "$cloudCtlPath" && ! -L "$cloudCtlPath" ]]; then
   ln -s /usr/bin/zstack-ctl $cloudCtlPath
 fi
 
 cloudCliPath="/usr/bin/cloud-cli"
-if [[ ! -f "$cloudCliPath" ]]; then
+if [[ ! -f "$cloudCliPath" && ! -L "$cloudCliPath" ]]; then
   ln -s /usr/bin/zstack-cli $cloudCliPath
 fi
 
 productCtlPath="/usr/bin/${PRODUCT_NAME,,}-ctl"
-if [[ ! -f "$productCtlPath" ]]; then
+if [[ ${PRODUCT_NAME,,} != "zstack" && ! -f "$productCtlPath" ]]; then
   ln -s /usr/bin/zstack-ctl $productCtlPath
 fi
 
 productCliPath="/usr/bin/${PRODUCT_NAME,,}-cli"
-if [[ ! -f "$productCliPath" ]]; then
+if [[ ${PRODUCT_NAME,,} != 'zstack' && ! -f "$productCliPath" ]]; then
   ln -s /usr/bin/zstack-cli $productCliPath
 fi
 
