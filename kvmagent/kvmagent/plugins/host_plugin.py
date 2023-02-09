@@ -862,8 +862,10 @@ class HostPlugin(kvmagent.KvmAgent):
             # in case lscpu doesn't show cpu max mhz
             cpuMHz = "2500.0000" if cpuMHz.strip() == '' else cpuMHz
             rsp.cpuGHz = '%.2f' % (float(cpuMHz) / 1000)
-            cpu_processor_num = shell.call("lscpu | grep -m1 'CPU(s)' | awk -F ':' '{print $2}'")                    
-            rsp.cpuProcessorNum = int(cpu_processor_num.strip())                                                         
+
+            cpu_cores_per_socket = shell.call("lscpu | awk -F':' '/per socket/{print $NF}'")
+            cpu_threads_per_core = shell.call("lscpu | awk -F':' '/per core/{print $NF}'")
+            rsp.cpuProcessorNum = int(cpu_cores_per_socket.strip()) * int(cpu_threads_per_core)
 
             cpu_l1d_cache = shell.call("lscpu | grep 'L1i cache' | awk -F ':' '{print $2}'") 
             cpu_l1i_cache = shell.call("lscpu | grep 'L1d cache' | awk -F ':' '{print $2}'")
@@ -915,8 +917,9 @@ class HostPlugin(kvmagent.KvmAgent):
             static_cpuGHz_re = re.search('[0-9.]*GHz', host_cpu_model_name)
             rsp.cpuGHz = static_cpuGHz_re.group(0)[:-3] if static_cpuGHz_re else transient_cpuGHz
 
-            cpu_processor_num = shell.call("grep -c processor /proc/cpuinfo")
-            rsp.cpuProcessorNum = cpu_processor_num.strip()         
+            cpu_cores_per_socket = shell.call("lscpu | awk -F':' '/per socket/{print $NF}'")
+            cpu_threads_per_core = shell.call("lscpu | awk -F':' '/per core/{print $NF}'")
+            rsp.cpuProcessorNum = int(cpu_cores_per_socket.strip()) * int(cpu_threads_per_core)
 
             cpu_l1d_cache = shell.call("lscpu | grep 'L1i cache' | awk -F ':' '{print $2}'") 
             cpu_l1i_cache = shell.call("lscpu | grep 'L1d cache' | awk -F ':' '{print $2}'")
