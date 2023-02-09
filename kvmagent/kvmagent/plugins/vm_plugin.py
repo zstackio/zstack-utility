@@ -96,6 +96,22 @@ class NicTO(object):
         self.deviceId = None
 
 
+class VolumeTO(object):
+    def __init__(self):
+        self.installPath = None
+        self.deviceType = None
+
+    @staticmethod
+    def from_xmlobject(xml_obj):
+        # type: (etree.Element) -> VolumeTO
+
+        if xml_obj.attrib['type'] == 'file' and xml_obj.find('source') is not None:
+            v = VolumeTO()
+            v.installPath = xml_obj.find('source').attrib['file']
+            v.deviceType = "file"
+            return v
+
+
 class RemoteStorageFactory(object):
     @staticmethod
     def get_remote_storage(cmd):
@@ -708,7 +724,7 @@ class HotUnplugMdevDeviceCommand(kvmagent.AgentCommand):
 class HotUnplugMdevDeviceRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(HotUnplugMdevDeviceRsp, self).__init__()
-        
+
 class AttachPciDeviceToHostCommand(kvmagent.AgentCommand):
     def __init__(self):
         super(AttachPciDeviceToHostCommand, self).__init__()
@@ -1037,6 +1053,9 @@ def is_hv_freq_supported():
 @linux.with_arch(todo_list=['x86_64'])
 def is_ioapic_supported():
     return compare_version(LIBVIRT_VERSION, '3.4.0') >= 0
+
+def user_specify_driver():
+    return LooseVersion(LIBVIRT_VERSION) >= LooseVersion("6.0.0")
 
 def is_kylin402():
     zstack_release = linux.read_file('/etc/zstack-release')
@@ -2834,6 +2853,8 @@ class Vm(object):
             elif volume.deviceType == 'block':
                 if disk.source.dev__ and disk.source.dev_ in volume.installPath:
                     return disk, disk.target.dev_
+                if disk.source.file__ and disk.source.file_ == volume.installPath:
+                    return disk, disk.target.dev_
             elif volume.deviceType == 'quorum':
                 logger.debug("quorum file path is %s" % disk.backingStore.source.file_)
                 if disk.backingStore.source.file_ and disk.backingStore.source.file_ in volume.installPath:
@@ -3149,17 +3170,22 @@ class Vm(object):
             _, disk_name = self._get_target_disk_by_path(oldpath)
             migrate_disks[disk_name] = volume
 
+        xml_changed = False
         tree = etree.ElementTree(etree.fromstring(self.domain_xml))
         devices = tree.getroot().find('devices')
         for disk in tree.iterfind('devices/disk'):
             dev = disk.find('target').attrib['dev']
-            if dev in migrate_disks:
-                new_disk = VmPlugin._get_new_disk(disk, migrate_disks[dev])
+            new_disk = VmPlugin._get_new_disk(disk, migrate_disks.get(dev, None))
+            if new_disk != disk:
                 parent_index = list(devices).index(disk)
                 devices.remove(disk)
                 devices.insert(parent_index, new_disk)
+                xml_changed = True
 
-        return migrate_disks.keys(), etree.tostring(tree.getroot())
+        if xml_changed:
+            return migrate_disks.keys(), etree.tostring(tree.getroot())
+        else:
+            return None, None
 
     def migrate(self, cmd):
         if self.state == Vm.VM_STATE_SHUTDOWN:
@@ -3179,13 +3205,15 @@ class Vm(object):
         tcpUri = "tcp://{0}".format(cmd.destHostIp)
 
         storage_migration_required = cmd.disks and len(cmd.disks.__dict__) != 0
-        destXml = None
         parameter_map = {}
         if storage_migration_required:
             disks, destXml = self._build_domain_new_xml(cmd.disks.__dict__)
             parameter_map[libvirt.VIR_MIGRATE_PARAM_MIGRATE_DISKS] = disks
             parameter_map[libvirt.VIR_MIGRATE_PARAM_URI] = tcpUri
             parameter_map[libvirt.VIR_MIGRATE_PARAM_DEST_XML] = destXml
+        else:
+            disks, destXml = self._build_domain_new_xml({})
+        logger.debug("migrate dest xml:%s" % destXml)
 
         flag = (libvirt.VIR_MIGRATE_LIVE |
                 libvirt.VIR_MIGRATE_PEER2PEER |
@@ -5393,22 +5421,25 @@ def qmp_subcmd(s_cmd):
             s_cmd = json.dumps(j_cmd)
     return s_cmd
 
+def block_volume_over_incorrect_driver(volume):
+    return volume.deviceType == "file" and volume.installPath.startswith("/dev/")
+
 def file_volume_check(volume):
     # `file` support has been removed with block/char devices since qemu-6.0.0
     # https://github.com/qemu/qemu/commit/8d17adf34f501ded65a106572740760f0a75577c
-    if not volume.deviceType == "file" or not volume.installPath.startswith("/dev/"):
-        return volume
 
-    if LooseVersion(QEMU_VERSION) >= LooseVersion("6.0.0"):
+    # libvirt 6.0 use -blockdev to define disk, driver is specified rather than inferred
+    if block_volume_over_incorrect_driver(volume) and user_specify_driver():
         volume.deviceType = 'block'
     return volume
 
+
 def iso_check(iso):
     iso.type = "file"
-    
+
     if iso.isEmpty:
         return iso
-    if iso.path.startswith("/dev/") and LooseVersion(QEMU_VERSION) >= LooseVersion("6.0.0"):
+    if iso.path.startswith("/dev/") and user_specify_driver():
         iso.type = "block"
 
     return iso
@@ -6327,7 +6358,7 @@ class VmPlugin(kvmagent.KvmAgent):
         virtualDeviceInfo.deviceAddress.function = device.address.function_ if device.address.function__ else None
         virtualDeviceInfo.deviceAddress.unit = device.address.unit_ if device.address.unit__ else None
         virtualDeviceInfo.deviceAddress.type = device.address.type_ if device.address.type__ else None
-        
+
         if device.has_element('serial'):
             virtualDeviceInfo.resourceUuid = device.serial.text_
 
@@ -6551,7 +6582,7 @@ class VmPlugin(kvmagent.KvmAgent):
 
 
     @staticmethod
-    def _get_new_disk(oldDisk, volume):
+    def _get_new_disk(old_disk, volume=None):
         def filebased_volume(_v):
             disk = etree.Element('disk', {'type': 'file', 'device': 'disk', 'snapshot': 'external'})
             e(disk, 'driver', None, {'name': 'qemu', 'type': 'qcow2', 'cache': _v.cacheMode})
@@ -6592,6 +6623,11 @@ class VmPlugin(kvmagent.KvmAgent):
             e(disk, 'source', None, {'dev': _v.installPath})
             return disk
 
+        if volume is None:
+            volume = VolumeTO.from_xmlobject(old_disk)
+            if not (volume and block_volume_over_incorrect_driver(volume) and user_specify_driver()):
+                return old_disk  # no change
+
         volume = file_volume_check(volume)
         if volume.deviceType == 'file':
             ele = filebased_volume(volume)
@@ -6602,8 +6638,9 @@ class VmPlugin(kvmagent.KvmAgent):
         else:
             raise Exception('unsupported volume deviceType[%s]' % volume.deviceType)
 
+
         tags_to_keep = [ 'target', 'boot', 'alias', 'address', 'wwn', 'serial']
-        for c in oldDisk.getchildren():
+        for c in old_disk.getchildren():
             if c.tag in tags_to_keep:
                 child = ele.find(c.tag)
                 if child is not None: ele.remove(child)
@@ -7698,9 +7735,9 @@ host side snapshot files chian:
         rsp = HotPlugMdevDeviceRsp()
 
         logger.debug('mdev-device:%s' % cmd)
-       
+
         _uuid = str(uuid.UUID(cmd.MdevDeviceUuid))
-            
+
         content = '''
 <hostdev mode='subsystem' type='mdev' managed='yes' model='vfio-pci' display='off'>
     <source>
@@ -7716,7 +7753,7 @@ host side snapshot files chian:
 
         logger.debug("attach-device %s to %s: %s, %s" % (spath, cmd.vmUuid, o, e))
         return jsonobject.dumps(rsp)
-        
+
     @kvmagent.replyerror
     @in_bash
     def hot_unplug_mdev_device(self, req):
@@ -7726,7 +7763,7 @@ host side snapshot files chian:
                   (vm_uuid, mdev_uuid)
             r, o, e = bash.bash_roe(cmd)
             return o != ""
-        
+
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = HotUnplugMdevDeviceRsp()
         _uuid = str(uuid.UUID(cmd.MdevDeviceUuid))
@@ -7734,7 +7771,7 @@ host side snapshot files chian:
         if not find_mdev_device(cmd.vmUuid, _uuid):
             logger.debug("mdev device %s not found" % _uuid)
             return jsonobject.dumps(rsp)
-        
+
         content = '''
 <hostdev mode='subsystem' type='mdev' managed='yes' model='vfio-pci' display='off'>
     <source>
@@ -8013,7 +8050,7 @@ host side snapshot files chian:
 
         touchQmpSocketWhenExists(cmd.vmUuid)
         return jsonobject.dumps(rsp)
-    
+
     def _guesttools_temp_disk_file_path(self, vm_uuid):
         return "/var/lib/zstack/guesttools/temp_disk_%s.qcow2" % vm_uuid
 
