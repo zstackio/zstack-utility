@@ -519,7 +519,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         self._restart_dnsmasq(cmd.nameSpace, conf_file_path)
 
     @in_bash
-    def _delete_dhcp(self, bridge, namespace):
+    def _delete_dhcp(self, namespace):
         outer = "outer%s" % ip.get_namespace_id(namespace)
         self._delete_dhcp4(namespace)
         self._delete_dhcp6(namespace)
@@ -527,14 +527,6 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         bash_r(
             "ip netns | grep -w %s | grep -v grep | awk '{print $1}' | xargs -r ip netns del %s" % (namespace, namespace))
 
-        ret = bash_r('brctl show | grep -w {{bridge}} > /dev/null')
-        if ret != 0:
-            try:
-                ovsctl = ovs.getOvsCtl(with_dpdk=True)
-                if bridge in ovsctl.listBrs():
-                    ovsctl.deleteOuterFromBridge(bridge, outer)
-            except OvsError as err:
-                logger.debug(err)
 
     @in_bash
     def _delete_dhcp6(self, namspace):
