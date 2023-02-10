@@ -234,7 +234,7 @@ class CephOsdCapacity:
         self.usedCapacity = crush_item_osd_used_capacity
 
 
-def get_mon_addr(monmap, route_protocol):
+def get_mon_addr(monmap, route_protocol=None):
     for mon in jsonobject.loads(monmap).mons:
         ADDR = mon.addr.split(':')[0]
         cmd = ''
