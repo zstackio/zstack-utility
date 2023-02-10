@@ -30,7 +30,7 @@ yum_server = ""
 trusted_host = ""
 ansible.constants.HOST_KEY_CHECKING = False
 
-RPM_BASED_OS = ["centos", "redhat", "alibaba", "kylin10", "uos1021a"]
+RPM_BASED_OS = ["centos", "redhat", "alibaba", "kylin10", "uos1021a", "rocky"]
 DEB_BASED_OS = ["ubuntu", "kylin4.0.2", "uos", "debian", "uniontech"]
 DISTRO_WITH_RPM_DEB = ["kylin"]
 
@@ -1329,7 +1329,7 @@ class ZstackLib(object):
         pip_version = "7.0.3"
         yum_server = args.yum_server
         current_dir =  os.path.dirname(os.path.realpath(__file__))
-        if distro in RPM_BASED_OS:
+        if distro in RPM_BASED_OS and distro != "rocky":
             epel_repo_exist = file_dir_exist("path=/etc/yum.repos.d/epel.repo", host_post_info)
             # To avoid systemd bug :https://github.com/systemd/systemd/issues/1961
             run_remote_command("rm -f /run/systemd/system/*.scope", host_post_info)
