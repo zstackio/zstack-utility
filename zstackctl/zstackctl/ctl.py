@@ -1,4 +1,5 @@
 #!/usr/bin/python
+# -*- coding: utf-8 -*-
 
 import argparse
 import hashlib
@@ -1622,6 +1623,97 @@ class ShowStatusCmd(Command):
                         info(colored(json.dumps(error_msg, indent=4), 'red'))
 
         ctl.internal_run('ui_status', args='-q')
+
+
+class ManagementNodeStatusCollector(Command):
+
+    # safety-reinforcing
+    def get_safe(self):
+        code, stdout, stderr = shell_return_stdout_stderr("ipset list")
+        if code == 0 and stdout.strip("\n") != "":
+            status = "enabled"
+        else:
+            status = "disabled"
+        return status
+
+    def get_systemd_service_status(self, service_name):
+        #systemctl status ${targetService}, example: systemctl status mariadb
+        code, status, stderr = shell_return_stdout_stderr(
+            "systemctl status %s | grep 'Active' | awk -F \"(\" 'NR==1{print $2}' | awk -F \")\" 'NR==1{print $1}' " % service_name)
+        if code == 0 and status.strip('\n') == "running":
+            return "running"
+        elif status == "dead":
+            return "stopped"
+        else:
+            return "unknown"
+
+    def get_mn_ui_status(self):
+        code, stdout, stderr = shell_return_stdout_stderr("zstack-ctl status | grep \"status\" | sed -r \"s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[m|K]//g\" | awk -F \":\" '{print $2}'| awk -F \"[\" '{print $1}'")
+        if code == 0:
+            mn_status = stdout.split('\n')[0].strip().lower()
+            ui_status = stdout.split('\n')[1].strip().lower()
+            return mn_status, ui_status
+        else:
+            return "unknown", "unknown"
+
+class ShowStatus2Cmd(Command):
+    colors = ["green", "yellow", "red"]
+    service_names = ["mysql", "prometheus2", "zops-ui", "port restriction", "MN", "MN-UI"]
+
+    def __init__(self):
+        super(ShowStatus2Cmd, self).__init__()
+        self.name = 'status2'
+        self.description = 'show ZStack main components status information.'
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--host', help='SSH URL, for example, root@192.168.0.10, to show the management node status on a remote machine')
+        parser.add_argument('--quiet', '-q', help='Do not log this action.', action='store_true', default=False)
+
+    def _stop_remote(self, args):
+        shell_no_pipe('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s "/usr/bin/zstack-ctl status"' % args.host)
+
+    def _format_str_color(self, service_name, status):
+        if status in ["running", "enabled", "disabled"]:
+            status_color = self.colors[0]
+        elif status == "stopped" or status == "False":
+            status_color = self.colors[2]
+        else:
+            status_color = self.colors[1]
+
+        index = self.service_names.index(service_name)
+        format_str = "[{}]{}[{}]".format(("%d" % (index + 1)),
+                                         service_name.ljust(50, ".").replace(".","·"), colored(status, status_color))
+        info_and_debug(format_str)
+
+    def run(self, args):
+        self.quiet = args.quiet
+        if args.host:
+            self._stop_remote(args)
+            return
+
+        collector = ManagementNodeStatusCollector()
+
+        # mariadb
+        mysql_status = collector.get_systemd_service_status("mariadb")
+        self._format_str_color("mysql", mysql_status)
+
+        # prometheus2
+        prometheus_status = collector.get_systemd_service_status("prometheus2")
+        self._format_str_color("prometheus2", prometheus_status)
+
+        # zops ui status
+        zops_ui_status = collector.get_systemd_service_status("zops-ui")
+        self._format_str_color("zops-ui", zops_ui_status)
+
+        # safety-reinforcing
+        safe_reinforcing_status = collector.get_safe()
+        self._format_str_color("port restriction", safe_reinforcing_status)
+
+        # mn, ui status
+        mn_status, ui_status = collector.get_mn_ui_status()
+        self._format_str_color("MN", ui_status)
+        self._format_str_color("MN-UI", mn_status)
 
 class DeployDBCmd(Command):
     DEPLOY_DB_SCRIPT_PATH = "WEB-INF/classes/deploydb.sh"
@@ -10468,6 +10560,7 @@ def main():
     ZBoxBackupRestoreCmd()
     RecoverHACmd()
     ScanDatabaseBackupCmd()
+    ShowStatus2Cmd()
     ShowStatusCmd()
     StartCmd()
     StopCmd()
