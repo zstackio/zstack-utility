@@ -17,7 +17,6 @@
             <arg value="package" />
             <arg value="ARCH=amd64 arm64" />
         </exec>
-
         <copy todir="${zsw.bdir}">
             <fileset dir="${zstackzwatch.source}/target/package/zwatch-vm-agent">
                 <include name="**" />

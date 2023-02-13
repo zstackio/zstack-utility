@@ -56,6 +56,7 @@ from zstacklib.utils import pci
 from zstacklib.utils import iproute
 from zstacklib.utils import ovs
 from zstacklib.utils import drbd
+from zstacklib.utils.qga import *
 from zstacklib.utils.report import *
 from zstacklib.utils.vm_plugin_queue_singleton import VmPluginQueueSingleton
 from zstacklib.utils.libvirt_singleton import LibvirtEventManager
@@ -74,6 +75,8 @@ ZS_XML_NAMESPACE = 'http://zstack.org'
 etree.register_namespace('zs', ZS_XML_NAMESPACE)
 
 GUEST_TOOLS_ISO_PATH = "/var/lib/zstack/guesttools/GuestTools.iso"
+GUEST_TOOLS_ISO_LINUX_PATH = "/var/lib/zstack/guesttools/GuestTools_linux.iso"
+
 SYSTEM_VIRTIO_DRIVER_PATHS = {
     'VFD_X86' : '/var/lib/zstack/virtio-drivers/virtio-win_x86.vfd',
     'VFD_AMD64' : '/var/lib/zstack/virtio-drivers/virtio-win_amd64.vfd'
@@ -5561,6 +5564,10 @@ class VmPlugin(kvmagent.KvmAgent):
     VM_OP_SUSPEND = "suspend"
     VM_OP_RESUME = "resume"
 
+    GUESTTOOLS_STATE_NOT_CONNECT = "Not Connected"
+    GUESTTOOLS_STATE_NOT_RUNNING = "NotRunning"
+    GUESTTOOLS_STATE_RUNNING = "Running"
+
     timeout_object = linux.TimeoutObject()
     queue_singleton = VmPluginQueueSingleton()
     secret_keys = {}
@@ -8036,10 +8043,18 @@ host side snapshot files chian:
         rsp = AttachGuestToolsIsoToVmRsp()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         vm_uuid = cmd.vmInstanceUuid
-
-        if not os.path.exists(GUEST_TOOLS_ISO_PATH):
+        if cmd.platform == "Linux":
+            iso_path = GUEST_TOOLS_ISO_LINUX_PATH
+        elif cmd.platform == "Windows":
+            iso_path = GUEST_TOOLS_ISO_PATH
+        else:
             rsp.success = False
-            rsp.error = "%s not exists" % GUEST_TOOLS_ISO_PATH
+            rsp.error = "not support platform %s" % cmd.platFrom
+            return jsonobject.dumps(rsp)
+
+        if not os.path.exists(iso_path):
+            rsp.success = False
+            rsp.error = "%s not exists" % iso_path
             return jsonobject.dumps(rsp)
 
         r, _, _ = bash.bash_roe("virsh dumpxml %s | grep \"%s\"" % (vm_uuid, self._guesttools_temp_disk_file_path(vm_uuid)))
@@ -8062,7 +8077,7 @@ host side snapshot files chian:
         vm = get_vm_by_uuid(vm_uuid, exception_if_not_existing=False)
         iso = IsoTo()
         iso.deviceId = 0
-        iso.path = GUEST_TOOLS_ISO_PATH
+        iso.path = iso_path
 
         # in case same iso already attached
         detach_cmd = DetachIsoCmd()
@@ -8102,14 +8117,38 @@ host side snapshot files chian:
         if os.path.exists(temp_disk):
             linux.rm_file_force(temp_disk)
 
+        if cmd.platform == "Linux":
+            iso_path = GUEST_TOOLS_ISO_LINUX_PATH
+        elif cmd.platform == "Windows":
+            iso_path = GUEST_TOOLS_ISO_PATH
+        else:
+            rsp.success = False
+            rsp.error = "not support platform %s" % cmd.platFrom
+            return jsonobject.dumps(rsp)
+
         # detach guesttools iso from vm
-        if vm.domain_xml.find(GUEST_TOOLS_ISO_PATH) > 0:
+        if vm.domain_xml.find(iso_path) > 0:
             detach_cmd = DetachIsoCmd()
             detach_cmd.vmUuid = vm_uuid
             detach_cmd.deviceId = 0
             vm.detach_iso(detach_cmd)
 
         return jsonobject.dumps(rsp)
+
+    def get_linux_vm_guest_tools_info(self, vmUuid):
+        @LibvirtAutoReconnect
+        def call_libvirt(conn):
+            return conn.lookupByName(vmUuid)
+
+        qga = Qga(call_libvirt())
+        if qga.state != Qga.QGA_STATE_RUNNING:
+            return VmPlugin.GUESTTOOLS_STATE_NOT_CONNECT, None
+
+        ret_data = qga.guest_exec_bash_no_exitcode("/usr/local/zstack/zwatch-vm-agent/zwatch-vm-agent -version")
+        if ret_data and ret_data.strip():
+            return VmPlugin.GUESTTOOLS_STATE_RUNNING, ret_data.strip()
+
+        return VmPlugin.GUESTTOOLS_STATE_NOT_RUNNING, None
 
     @kvmagent.replyerror
     def get_vm_guest_tools_info(self, req):
@@ -8120,7 +8159,12 @@ host side snapshot files chian:
         vm_uuid = cmd.vmInstanceUuid
         if cmd.platform.lower() == 'windows':
             self.get_vm_guest_tools_info_for_windows_guest(vm_uuid, rsp)
-
+        elif cmd.platform.lower() == 'linux':
+            try:
+                rsp.status, rsp.version = self.get_linux_vm_guest_tools_info(vm_uuid)
+            except Exception as e:
+                rsp.success = False
+                rsp.error = e.message
         return jsonobject.dumps(rsp)
 
     @in_bash
@@ -8153,7 +8197,7 @@ host side snapshot files chian:
 
         version = base64.b64decode(simplejson.loads(o)['return']['buf-b64']).strip()
         rsp.version = version
-        rsp.status = 'Running'
+        rsp.status = VmPlugin.GUESTTOOLS_STATE_RUNNING
         _close_version_file()
 
     @kvmagent.replyerror
