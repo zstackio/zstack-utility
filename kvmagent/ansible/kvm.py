@@ -151,7 +151,7 @@ def install_release_on_host(is_rpm):
     # copy and install zstack-release
     if is_rpm:
         src_pkg = '/opt/zstack-dvd/{0}/{1}/Packages/zstack-release-{1}-1.el7.zstack.noarch.rpm'.format(host_arch, releasever)
-        install_cmd = "rpm -q zstack-release || rpm -i /opt/zstack-release-{}-1.el7.zstack.noarch.rpm".format(releasever)
+        install_cmd = "yum --disablerepo=* install -y /opt/zstack-release-{}-1.el7.zstack.noarch.rpm".format(releasever)
     else:
         src_pkg = '/opt/zstack-dvd/{0}/{1}/Packages/zstack-release_{1}_all.deb'.format(host_arch, releasever)
         install_cmd = "dpkg -l zstack-release || dpkg -i /opt/zstack-release_{}_all.deb".format(releasever)
@@ -213,73 +213,33 @@ def install_kvm_pkg():
                         rdma-core-devel mstflint kmod-isert mlnx-iproute2 mlnx-dpdk-doc libibverbs-utils librdmacm-utils \
                         mlnx-dpdk-devel openvswitch kmod-srp mlnx-ofed-dpdk-upstream-libs"
 
-        x86_64_c74 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
-                      usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
-                      net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
-                      smartmontools sshpass usbutils vconfig wget audit dnsmasq \
-                      qemu-kvm-ev collectd-virt OVMF edk2-ovmf edk2.git-ovmf-x64 mcelog MegaCli storcli Arcconf nvme-cli python-pyudev kernel-devel"
+        os_base_dep = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
+                        usbredir-server iputils libvirt libvirt-client libvirt-python lighttpd lsof net-tools nfs-utils nmap openssh-clients \
+                        smartmontools sshpass usbutils vconfig wget audit dnsmasq collectd-virt storcli nvme-cli pv rsync sed pciutils tar"
 
-        x86_64_c76 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
-                      usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python libvirt-admin lighttpd lsof \
-                      net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
-                      smartmontools sshpass usbutils vconfig wget audit dnsmasq \
-                      qemu-kvm collectd-virt OVMF edk2-ovmf edk2.git-ovmf-x64 mcelog MegaCli storcli Arcconf nvme-cli python-pyudev seabios-bin nping kernel-devel elfutils-libelf-devel"
+        distro_mapping = {
+            'centos': 'iscsi-initiator-utils OpenIPMI-modalias OVMF mcelog MegaCli Arcconf python-pyudev kernel-devel',
+            'kylin': 'open-iscsi python2-pyudev collectd-disk OpenIPMI libselinux-devel nettle tuned qemu-kvm',
+            'uniontech': 'iscsi-initiator-utils OpenIPMI nettle qemu-kvm python-pyudev collectd-disk'
+        }
 
-        x86_64_c79 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
-                      usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python libvirt-admin lighttpd lsof \
-                      net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
-                      smartmontools sshpass usbutils vconfig wget audit dnsmasq \
-                      qemu-kvm collectd-virt OVMF edk2-ovmf edk2.git-ovmf-x64 mcelog MegaCli storcli Arcconf nvme-cli python-pyudev seabios-bin nping kernel-devel elfutils-libelf-devel"
+        releasever_mapping = {
+            'c74': 'qemu-kvm-ev ',
+            'c76': 'qemu-kvm libvirt-admin seabios-bin nping elfutils-libelf-devel',
+            'c79': 'qemu-kvm libvirt-admin seabios-bin nping elfutils-libelf-devel',
+            'euler20': 'open-iscsi OpenIPMI-modalias qemu python2-pyudev collectd-disk',
+            'nfs4': 'iscsi-initiator-utils OpenIPMI nettle libselinux-devel iptables iptables-services qemu-kvm python2-pyudev collectd-disk'
+        }
 
-        aarch64_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
-                        usbredir-server iputils open-iscsi libvirt libvirt-client libvirt-python lighttpd lsof \
-                        net-tools nfs-utils nmap openssh-clients OpenIPMI pciutils pv rsync sed nettle libselinux-devel \
-                        smartmontools sshpass usbutils vconfig wget audit dnsmasq tar \
-                        qemu collectd-virt storcli edk2-aarch64 python2-pyudev collectd-disk nvme-cli"
-
-        aarch64_uos1021a = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
-                        usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
-                        net-tools nfs-utils nmap openssh-clients OpenIPMI pciutils pv rsync sed nettle \
-                        smartmontools sshpass usbutils vconfig wget audit dnsmasq tar \
-                        qemu-kvm collectd-virt storcli edk2-aarch64 python-pyudev collectd-disk"
-
-        x86_64_uos1021a = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
-                        usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
-                        net-tools nfs-utils nmap openssh-clients OpenIPMI pciutils pv rsync sed nettle \
-                        smartmontools sshpass usbutils vconfig wget audit dnsmasq tar \
-                        qemu-kvm collectd-virt edk2-ovmf python-pyudev collectd-disk"
-
-        aarch64_euler20 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
-                        usbredir-server iputils open-iscsi libvirt libvirt-client libvirt-python lighttpd lsof \
-                        net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
-                        smartmontools sshpass usbutils vconfig wget audit dnsmasq \
-                        qemu collectd-virt storcli edk2-aarch64 python2-pyudev collectd-disk"
-
-        mips64el_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
-                         usbredir-server iputils open-iscsi libvirt libvirt-client libvirt-python lighttpd lsof mcelog \
-                         net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils python2-pyudev pv rsync sed \
-                         qemu smartmontools sshpass usbutils vconfig wget audit dnsmasq tuned collectd-virt collectd-disk"
-
-        loongarch64_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
-                         usbredir-server iputils open-iscsi libvirt libvirt-client libvirt-python lighttpd lsof mcelog \
-                         net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils python2-pyudev \
-                         pv rsync sed qemu-kvm smartmontools sshpass usbutils vconfig wget audit dnsmasq tuned collectd-virt collectd-disk"
-
-        x86_64_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
-                        usbredir-server iputils open-iscsi libvirt libvirt-client libvirt-python lighttpd lsof \
-                        net-tools nfs-utils nmap openssh-clients OpenIPMI pciutils pv rsync sed nettle libselinux-devel \
-                        smartmontools sshpass usbutils vconfig wget audit dnsmasq tar python2-psutil\
-                        qemu-kvm collectd-virt storcli edk2-ovmf edk2.git-ovmf-x64 python2-pyudev collectd-disk nvme-cli"
-
-        x86_64_nfs4 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
-                        usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
-                        net-tools nfs-utils nmap openssh-clients OpenIPMI pciutils pv rsync sed nettle libselinux-devel \
-                        smartmontools sshpass usbutils vconfig wget audit dnsmasq tar iptables iptables-services \
-                        qemu-kvm collectd-virt storcli edk2-ovmf python2-pyudev collectd-disk"
+        edk2_mapping = {
+            'x86_64': 'edk2-ovmf edk2.git-ovmf-x64',
+            'aarch64': 'edk2-aarch64'
+        }
 
         # handle zstack_repo
         if zstack_repo != 'false':
-            common_dep_list = eval("%s_%s" % (host_arch, releasever))
+            distro_head = distro.split("_")[0] if releasever in kylin or releasever in uos else distro
+            common_dep_list = "%s %s %s %s" % (os_base_dep, distro_mapping.get(distro_head, ''), releasever_mapping.get(releasever, ''), edk2_mapping.get(host_arch, ''))
             # common kvmagent deps of x86 and arm that need to update
             common_update_list = "sanlock sysfsutils hwdata sg3_utils lvm2 lvm2-libs lvm2-lockd systemd openssh glusterfs"
             common_no_update_list = "librbd1"
@@ -322,15 +282,15 @@ def install_kvm_pkg():
             host_post_info.post_label_param = dep_list
             run_remote_command(command, host_post_info)
 
-            if releasever == 'ns10':
-                if host_arch == 'x86_64':
-                    # downgrade libvirt if host's libvirt version != repo's libvirt
-                    # version
-                    command = ("current_version=$(rpm -q --queryformat '%{{VERSION}}'  libvirt);"
-                               "repo_version=$(yum --disablerepo=* --enablerepo={0} --showduplicates info --available libvirt | grep Version | awk -F ' ' '{{print $3}}');"
-                               "if [[ ${{current_version}} != ${{repo_version}} ]]; then yum --disablerepo=* --enablerepo={0} downgrade -y libvirt; fi;").format(zstack_repo)
-                    host_post_info.post_label_param = "libvirt"
-                    run_remote_command(command, host_post_info)
+            if host_arch == 'x86_64' and releasever in kylin:
+                # downgrade libvirt if host's libvirt version != repo's libvirt
+                # version
+                command = ("current_version=$(rpm -q --queryformat '%{{VERSION}}'  libvirt);"
+                           "repo_version=$(yum --disablerepo=* --enablerepo={0} --showduplicates info --available libvirt | grep Version | awk -F ' ' '{{print $3}}');"
+                           "if [[ ${{current_version}} != ${{repo_version}} ]]; then yum --disablerepo=* --enablerepo={0} downgrade -y libvirt; fi;").format(zstack_repo)
+                host_post_info.post_label_param = "libvirt"
+                run_remote_command(command, host_post_info)
+
                 if host_arch == 'loongarch64' and yum_check_package("qemu", host_post_info):
                     command = "yum --disablerepo=* --enablerepo={0} install -y qemu-block-rbd;".format(zstack_repo)
                     host_post_info.post_label_param = "qemu-block-rbd"
@@ -374,7 +334,7 @@ def install_kvm_pkg():
             host_post_info.post_label_param = "firewalld"
             run_remote_command(command, host_post_info)
             if releasever in enable_networkmanager_list:
-                # name: enable NetworkManager in euler20, arm and x86 ns10
+                # name: enable NetworkManager in euler20, arm and x86 ky10
                 service_status("NetworkManager", "state=started enabled=yes", host_post_info, ignore_error=True)
             else:
                 # name: disable NetworkManager in RHEL7 and Centos7

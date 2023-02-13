@@ -1158,7 +1158,7 @@ echo "STARTMODE='auto'" >> $IFCFGFILE
         # SUSE
         ret5 = bash_r("cp %s %s && chmod 777 %s" % (os.path.join(mount_path, "boot/*/loader/linux"), vmlinuz_file_path, vmlinuz_file_path))
         ret6 = bash_r("cp %s %s && chmod 777 %s" % (os.path.join(mount_path, "boot/*/loader/initrd"), initrd_file_path, initrd_file_path))
-        # ns10
+        # ky10
         ret7 = bash_r("cp %s %s && chmod 777 %s" % (os.path.join(mount_path, "images/pxeboot/vmlinuz"), vmlinuz_file_path, vmlinuz_file_path))
         ret8 = bash_r("cp %s %s && chmod 777 %s" % (os.path.join(mount_path, "images/pxeboot/initrd.img"), initrd_file_path, initrd_file_path))
         if (ret1 != 0 or ret2 != 0) and (ret3 != 0 or ret4 != 0) and (ret5 != 0 or ret6 != 0) and (ret7 != 0 or ret8 != 0):

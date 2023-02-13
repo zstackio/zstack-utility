@@ -27,7 +27,10 @@ yum_server = ""
 apt_server = ""
 trusted_host = ""
 ansible.constants.HOST_KEY_CHECKING = False
-enable_networkmanager_list = ["ns10", "euler20", "uos1021a", "nfs4"]
+uos = ['uos20', 'uos1021a']
+kylin = ["ky10sp1", "ky10sp2", "ky10sp3"]
+centos = ['c74', 'c76', 'c79']
+enable_networkmanager_list = kylin + ["euler20", "uos1021a", "nfs4"]
 supported_arch_list = ["x86_64", "aarch64", "mips64el", "loongarch64"]
 
 RPM_BASED_OS = ["kylin_zstack", "kylin_tercel", "kylin_sword", "kylin_lance", "alibaba", "centos", "openeuler", "uniontech_kongzi", "nfs", "redhat"]
@@ -35,7 +38,9 @@ DEB_BASED_OS = ["ubuntu", "uos", "kylin4.0.2", "debian", "uniontech_fou"]
 DISTRO_WITH_RPM_DEB = ["kylin", "uniontech"]
 
 qemu_alias = {
-    "ns10": "qemu-kvm qemu-img",
+    "ky10sp1": "qemu-kvm qemu-img",
+    "ky10sp2": "qemu-kvm qemu-img",
+    "ky10sp3": "qemu-kvm qemu-img",
     "uos20": "qemu-system",
     "c74": "qemu-kvm-ev",
     "c76": "qemu-kvm",
@@ -290,11 +295,12 @@ def get_mn_release():
 
 def get_host_releasever(ansible_distribution):
     supported_release_info = {
-        "kylin_tercel tercel 10": "ns10",
-        "kylin_sword sword 10": "ns10",
-        "kylin_zstack zstack 10": "ns10",
+        "kylin_tercel tercel 10": "ky10sp1",
+        "kylin_sword sword 10": "ky10sp2",
+        "kylin_zstack zstack 10": "ky10sp2",
+        "kylin_lance lance 10": "ky10sp3",
         "uniontech fou 20": "uos20",
-        "redhat maipo 7.4": "ns10", # old kylinV10, oem 7.4 incompletely
+        "redhat maipo 7.4": "ky10", # old kylinV10, oem 7.4 incompletely
         "centos core 7.9.2009": "c79",
         "centos core 7.6.1810": "c76",
         "centos core 7.4.1708": "c74",

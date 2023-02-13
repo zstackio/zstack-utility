@@ -97,7 +97,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
 
-        _, os_version, _ = platform.dist()
+        os_dist, os_version, _ = platform.dist()
         versions = os_version.split('.')
         # check if os is centos 7.2
         if len(versions) > 2 and versions[0] == '7' and versions[1] == '2':
@@ -105,13 +105,17 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             rsp.error = "v2v feature is not supported on centos 7.2"
             return jsonobject.dumps(rsp)
 
-        x86_64_c74 = "libguestfs-tools libguestfs-tools-c perl-Sys-Guestfs libguestfs-winsupport virt-v2v"
-        x86_64_c76 = "libguestfs-tools libguestfs-tools-c perl-Sys-Guestfs libguestfs-winsupport virt-v2v"
-        x86_64_c79 = "libguestfs-tools libguestfs-tools-c perl-Sys-Guestfs libguestfs-winsupport virt-v2v"
-        x86_64_ns10 = "libguestfs"
+        dist_dep_mapping = {
+            'centos': 'libguestfs-tools libguestfs-tools-c perl-Sys-Guestfs libguestfs-winsupport virt-v2v',
+            'kylin': 'libguestfs'
+        }
+        dep_list = dist_dep_mapping.get(os_dist)
+        if not dep_list:
+            rsp.success = False
+            rsp.error = "v2v feature is not supported on %s_%s" % (os_dist, os_version)
+            return jsonobject.dumps(rsp)
 
         releasever = kvmagent.get_host_yum_release()
-        dep_list = eval("%s_%s" % (HOST_ARCH, releasever))
         yum_cmd = "export YUM0={}; yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn " \
                   "install {} -y".format(releasever, dep_list)
         if shell.run(yum_cmd) != 0:
