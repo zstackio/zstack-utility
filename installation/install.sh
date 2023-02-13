@@ -35,7 +35,8 @@ OS=''
 IS_UBUNTU='n'
 REDHAT_OS="CENTOS6 CENTOS7 RHEL7 ALIOS7 ISOFT4 KYLIN10 EULER20 UOS1020A NFS4"
 DEBIAN_OS="UBUNTU14.04 UBUNTU16.04 UBUNTU KYLIN4.0.2 DEBIAN9 UOS20"
-XINCHUANG_OS="ns10 uos20"
+KYLIN_V10_OS="ky10sp1 ky10sp2 ky10sp3"
+XINCHUANG_OS="$KYLIN10_OS uos20"
 SUPPORTED_OS="$REDHAT_OS $DEBIAN_OS"
 REDHAT_WITHOUT_CENTOS6=`echo $REDHAT_OS |sed s/CENTOS6//`
 
@@ -1527,7 +1528,7 @@ is_install_general_libs_rh(){
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
 
     # Fix upgrade dependency conflicts
-    if [ "$ZSTACK_RELEASE" == "ns10" ]; then
+    if [[ "$KYLIN_V10_OS" =~ "$ZSTACK_RELEASE" ]]; then
       vercomp "14.16.0" `rpm -q nodejs | awk -F '-' '{print $2}'`
       [ $? -eq 1 ] && removeable="nodejs" || removeable=""
       yum remove -y redis5 $removeable >>$ZSTACK_INSTALL_LOG 2>&1
