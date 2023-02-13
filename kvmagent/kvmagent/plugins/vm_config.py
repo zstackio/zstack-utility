@@ -670,7 +670,7 @@ network:
                 continue
             netplan_config = yaml.load(content, Loader=yaml.RoundTripLoader)
             if 'network' not in netplan_config or \
-                    'ethernets' in netplan_config['network']:
+                    'ethernets' not in netplan_config['network']:
                 continue
 
             modify = self._erase_ports_config(netplan_config['network']['ethernets'], ports_config)
