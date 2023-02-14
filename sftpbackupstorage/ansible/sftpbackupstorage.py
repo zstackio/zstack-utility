@@ -87,7 +87,7 @@ else:
 
 if distro in RPM_BASED_OS:
     install_pkgs = 'openssh-clients'
-    if releasever in ['ns10']:
+    if releasever in kylin_v10_os:
         install_pkgs = "nmap {}".format(install_pkgs)
 
     if not remote_bin_installed(host_post_info, "qemu-img", return_status=True):

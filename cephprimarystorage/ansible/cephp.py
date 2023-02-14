@@ -25,8 +25,8 @@ remote_port = None
 host_uuid = None
 ceph_file_path = "/bin/ceph"
 
-# common cephprimarystorage deps of ns10 that need to update
-ns10_update_list = "nettle"
+# common cephprimarystorage deps of ky10 that need to update
+ky10_update_list = "nettle"
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy ceph primary strorage to host')
@@ -111,9 +111,9 @@ if distro in RPM_BASED_OS:
                 .format(install_rpm_list, zstack_repo)
         run_remote_command(command, host_post_info)
 
-        if releasever in ['ns10']:
+        if releasever in kylin_v10_os:
             command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (
-            ns10_update_list, zstack_repo)
+            ky10_update_list, zstack_repo)
             run_remote_command(command, host_post_info)
 
         if distro_version >= 7:

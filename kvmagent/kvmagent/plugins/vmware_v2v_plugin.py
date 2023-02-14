@@ -106,9 +106,10 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             return jsonobject.dumps(rsp)
 
         x86_64_c74 = "libguestfs-tools libguestfs-tools-c perl-Sys-Guestfs libguestfs-winsupport virt-v2v"
-        x86_64_c76 = "libguestfs-tools libguestfs-tools-c perl-Sys-Guestfs libguestfs-winsupport virt-v2v"
-        x86_64_c79 = "libguestfs-tools libguestfs-tools-c perl-Sys-Guestfs libguestfs-winsupport virt-v2v"
-        x86_64_ns10 = "libguestfs"
+        x86_64_c76 = x86_64_c74
+        x86_64_c79 = x86_64_c74
+        x86_64_ky10sp1 = "libguestfs"
+        x86_64_ky10sp2 = x86_64_ky10sp1
 
         releasever = kvmagent.get_host_yum_release()
         dep_list = eval("%s_%s" % (HOST_ARCH, releasever))

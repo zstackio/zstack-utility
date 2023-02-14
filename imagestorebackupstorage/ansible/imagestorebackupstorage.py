@@ -117,8 +117,8 @@ if distro in RPM_BASED_OS:
     _qemu_pkg = [ pkg for pkg in qemu_pkg.split() if pkg not in _skip_list ]
     qemu_pkg = ' '.join(_qemu_pkg)
     svr_pkgs = 'ntfs-3g exfat-utils fuse-exfat btrfs-progs qemu-storage-daemon nmap-ncat lvm2 lvm2-libs'
-    # common imagestorebackupstorage deps of ns10 that need to update
-    ns10_update_list = "nettle"
+    # common imagestorebackupstorage deps of ky10 that need to update
+    ky10_update_list = "nettle"
 
     if client == "true" :
         if distro_version < 7:
@@ -138,9 +138,9 @@ if distro in RPM_BASED_OS:
                        "--disablerepo=* --enablerepo={1} install -y $pkg; done;").format(qemu_pkg, zstack_repo)
             run_remote_command(command, host_post_info)
 
-            if releasever in ['ns10']:
+            if releasever in kylin_v10_os:
                 command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (
-                ns10_update_list, zstack_repo)
+                ky10_update_list, zstack_repo)
                 run_remote_command(command, host_post_info)
 
             if releasever not in ['c72', 'c74']:
