@@ -1485,11 +1485,20 @@ mimetype.assign = (
                 CHAIN_NAME = getDhcpEbtableChainName(dhcp_ip)
                 VF_NIC_MAC = ip.removeZeroFromMacAddress(dhcpInfo.mac)
 
-                if bash_r(EBTABLES_CMD + " -L {{CHAIN_NAME}} | grep -- '-p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT' > /dev/null") != 0:
-                    bash_r(EBTABLES_CMD + ' -I {{CHAIN_NAME}} -p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
+                if bash_r(EBTABLES_CMD + ' -L ZSTACK-VF-DHCP > /dev/null 2>&1') != 0:
+                    bash_errorout(EBTABLES_CMD + ' -N ZSTACK-VF-DHCP')
 
-                if bash_r(EBTABLES_CMD + " -L {{CHAIN_NAME}} | grep -- '-p IPv4 -d {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT' > /dev/null") != 0:
-                    bash_r(EBTABLES_CMD + ' -I {{CHAIN_NAME}} -p IPv4 -d {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
+                if bash_r(EBTABLES_CMD + " -L FORWARD | grep -- '-j ZSTACK-VF-DHCP' > /dev/null") != 0:
+                    bash_r(EBTABLES_CMD + ' -I FORWARD -j ZSTACK-VF-DHCP')
+
+                if bash_r(EBTABLES_CMD + " -L ZSTACK-VF-DHCP | grep -- '-j RETURN' > /dev/null") != 0:
+                    bash_r(EBTABLES_CMD + ' -A ZSTACK-VF-DHCP -j RETURN')
+
+                if bash_r(EBTABLES_CMD + " -L ZSTACK-VF-DHCP | grep -- '-p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT' > /dev/null") != 0:
+                    bash_r(EBTABLES_CMD + ' -I ZSTACK-VF-DHCP -p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
+
+                if bash_r(EBTABLES_CMD + " -L ZSTACK-VF-DHCP | grep -- '-p IPv4 -d {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT' > /dev/null") != 0:
+                    bash_r(EBTABLES_CMD + ' -I ZSTACK-VF-DHCP -p IPv4 -d {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
 
         @in_bash
         def apply(dhcp):
@@ -1878,8 +1887,8 @@ sed -i '/^$/d' {{DNS}}
             if dhcp_ip:
                 CHAIN_NAME = getDhcpEbtableChainName(dhcp_ip)
                 VF_NIC_MAC = dhcpInfo.mac
-                bash_r(EBTABLES_CMD + ' -D {{CHAIN_NAME}} -p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
-                bash_r(EBTABLES_CMD + ' -D {{CHAIN_NAME}} -p IPv4 -d {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
+                bash_r(EBTABLES_CMD + ' -D ZSTACK-VF-DHCP -p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
+                bash_r(EBTABLES_CMD + ' -D ZSTACK-VF-DHCP -p IPv4 -d {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
 
         @in_bash
         def release(dhcp):
