@@ -755,19 +755,19 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         if cmd.folder:
             raise Exception("not support this operation")
 
-        self.do_delete_bits(cmd.path)
+        self.do_delete_bits(cmd.path, cmd.zeroed)
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
 
-    def do_delete_bits(self, path):
+    def do_delete_bits(self, path, zeroed=False):
         install_abs_path = translate_absolute_path_from_install_path(path)
         if lvm.has_lv_tag(install_abs_path, IMAGE_TAG):
             logger.info('deleting lv image: ' + install_abs_path)
             lvm.delete_image(install_abs_path, IMAGE_TAG)
         else:
             logger.info('deleting lv volume: ' + install_abs_path)
-            lvm.delete_lv(install_abs_path)
+            lvm.delete_lv(install_abs_path, zeroed=zeroed)
 
     @kvmagent.replyerror
     def create_template_from_volume(self, req):

@@ -1022,8 +1022,14 @@ def deactive_lv(path, raise_exception=True):
 
 
 @bash.in_bash
-def delete_lv(path, raise_exception=True, deactive=True):
+def delete_lv(path, raise_exception=True, deactive=True, zeroed=False):
     logger.debug("deleting lv %s" % path)
+    if zeroed:
+        if not lv_is_active(path):
+            active_lv(path, shared=False)
+        linux.zeroed_file_dev(path)
+        deactive_lv(path, False)
+
     if deactive:
         deactive_lv(path, False)
     # remove meta-lv if any

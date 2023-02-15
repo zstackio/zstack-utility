@@ -673,6 +673,24 @@ def do_auditd_config():
     host_post_info.post_label_param = None
     run_remote_command(command, host_post_info)
 
+def modprobe_modules():
+    # command = "modprobe nbd;modprobe multipath;modprobe dm_multipath;"
+    # host_post_info.post_label = "ansible.shell.modprobe.nbd"
+    # host_post_info.post_label_param = None
+    # run_remote_command(command, host_post_info)
+    modprobe_arg = ModProbeArg()
+    modprobe_arg.name = 'nbd'
+    modprobe_arg.state = 'present'
+    modprobe(modprobe_arg, host_post_info)
+    modprobe_arg = ModProbeArg()
+    modprobe_arg.name = 'multipath'
+    modprobe_arg.state = 'present'
+    modprobe(modprobe_arg, host_post_info)
+    modprobe_arg = ModProbeArg()
+    modprobe_arg.name = 'dm_multipath'
+    modprobe_arg.state = 'present'
+    modprobe(modprobe_arg, host_post_info)
+
 def start_kvmagent():
     if chroot_env != 'false':
         return
@@ -714,6 +732,7 @@ install_virtualenv()
 set_legacy_iptables_ebtables()
 install_agent_pkg()
 do_auditd_config()
+modprobe_modules()
 start_kvmagent()
 
 host_post_info.start_time = start_time

@@ -22,6 +22,7 @@ import platform
 import pprint
 import errno
 import json
+import math
 
 from zstacklib.utils import thread
 from zstacklib.utils import qemu_img
@@ -188,6 +189,31 @@ def rm_dir_checked(dpath):
 
     exception_on_opened_dir(dpath)
     shutil.rmtree(dpath)
+
+def zero_dd(path, bs, count=None, iflag=None, oflag=None, exception=True):
+    bs = "bs={}".format(bs) if bs else ""
+    count = "count={}".format(count) if count else ""
+    iflag = "iflag={}".format(iflag) if iflag else ""
+    oflag = "oflag={}".format(oflag) if oflag else ""
+    ddcmd = "dd if=/dev/zero of={} {} {} {} {}".format(path, bs, count, iflag, oflag)
+    shell.run("sync")
+    shell.call(ddcmd, exception=exception)
+    shell.run("sync")
+
+def zeroed_file_dev(fpath):
+    # size -> unit:bytes
+    if not os.path.exists(fpath):
+        logger.debug("no such file or dev [{}], skip to zeroed it.".format(fpath))
+        return
+
+    exception_on_opened_file(fpath)
+    if os.path.isfile(fpath):
+        size = os.path.getsize(fpath)
+        count = int(math.ceil(float(size)/1024/1024))
+        zero_dd(fpath, bs="1M", count=count, oflag="direct")
+    else:
+        zero_dd(fpath, bs="1M", oflag="direct", exception=False)
+    logger.debug("successfully zeroed the file/dev[{}]".format(fpath))
 
 def process_exists(pid):
     return os.path.exists("/proc/" + str(pid))
