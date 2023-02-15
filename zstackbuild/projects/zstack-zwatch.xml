@@ -31,8 +31,10 @@
                 <include name="**" />
             </fileset>
         </copy>
-        <exec executable="/bin/bash" dir="${zsw.ansible.dir}" failonerror="true">
-            <arg value="${checkmd5.bin.script}" />
+        <exec executable="/bin/python" dir="${zsw.ansible.dir}" failonerror="true">
+            <arg value="${agent.version.generator}" />
+            <arg value="-s ${zstackzwatch.source}" />
+            <arg value="-o agent_version" />
         </exec>
     </target>
 </project>
