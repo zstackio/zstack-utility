@@ -64,7 +64,6 @@
     <import file="${basedir}/projects/zstack-iscsi.xml" optional="false" />
     <import file="${basedir}/projects/zstack-cephb.xml" optional="false" />
     <import file="${basedir}/projects/zstack-cephp.xml" optional="false" />
-    <import file="${basedir}/projects/zstack-baremetalpxeserver.xml" optional="false" />
     <import file="${basedir}/projects/zstack-appbuildsystem.xml" optional="false" />
     <import file="${basedir}/projects/zstack-console-proxy.xml" optional="false" />
     <import file="${basedir}/projects/zstack-setting.xml" optional="false" />
@@ -91,6 +90,8 @@
     <import file="${basedir}/projects/build-pypi-source.xml" optional="false" />
     <import file="${basedir}/projects/install-all-zstack-agents-to-local-virtualenv.xml" optional="false" />
     <import file="${basedir}/projects/zstack-zwatch.xml" optional="false" />
+    <!-- zstack-baremetalpxeserver need zwatch generate agent_version file -->
+    <import file="${basedir}/projects/zstack-baremetalpxeserver.xml" optional="false" />
 
 
     <target name="prepare">
