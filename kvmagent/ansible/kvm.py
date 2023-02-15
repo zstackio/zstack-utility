@@ -542,13 +542,11 @@ def copy_kvm_files():
     copy_to_remote(kvmagt_svc_src, kvmagt_svc_dst, args, host_post_info)
 
     # copy sysctl file
-    command = 'mkdir -p /var/lib/zstack/kvm/sysctl'
-    run_remote_command(command, host_post_info)
-    sysctl_src = os.path.join(file_root, "sysctl/sysctl.default")
-    sysctl__dst = "/var/lib/zstack/kvm/sysctl/"
-    args = "mode=755"
-    copy_to_remote(sysctl_src, sysctl__dst, args, host_post_info)
-    command = 'sysctl -p /var/lib/zstack/kvm/sysctl/sysctl.default'
+    sysctl_src = os.path.join(file_root, "sysctl")
+    sysctl_dst = "/var/lib/zstack/kvm"
+    args = "directory_mode=755"
+    copy_to_remote(sysctl_src, sysctl_dst, args, host_post_info)
+    command = 'sysctl -p /var/lib/zstack/kvm/sysctl/default.conf'
     run_remote_command(command, host_post_info)
 
 def copy_gpudriver():
