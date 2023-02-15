@@ -19,6 +19,9 @@
     <target name="build-guest-tools-iso">
         <makeDir dir="${guesttools.bdir}" />
         <exec executable="make" dir="${zstackzwatch.source}" failonerror="true">
+            <arg value="clean" />
+        </exec>
+        <exec executable="make" dir="${zstackzwatch.source}" failonerror="true">
             <arg value="iso" />
             <arg value="ARCH=amd64 arm64" />
         </exec>
