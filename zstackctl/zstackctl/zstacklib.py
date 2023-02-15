@@ -1419,6 +1419,9 @@ class ZstackLib(object):
         yum_server = args.yum_server
         current_dir = os.path.dirname(os.path.realpath(__file__))
         if distro in RPM_BASED_OS:
+            # always add aliyun repo
+            self.generate_aliyun_yum_repo()
+
             user_defined = zstack_repo == "false"
             if user_defined:
                 self.install_packages_with_user_defined_repo()
@@ -1428,9 +1431,6 @@ class ZstackLib(object):
                 no_supported_repo_used = all(repo not in zstack_repo for repo in supported_repo_list)
                 if no_supported_repo_used:
                     raise Exception("Unsupported repo: %s" % zstack_repo)
-
-                if 'ali' in zstack_repo:
-                    self.generate_aliyun_yum_repo()
 
                 if '163' in zstack_repo:
                     self.generate_163_yum_repo()
@@ -1487,8 +1487,6 @@ class ZstackLib(object):
             "-y $pkg; done;") % (before_install_command, zstack_repo, zstack_repo)
         run_remote_command(command, self.host_post_info)
 
-    # install requirements for virtual router
-    def install_virtual_router_required_packages(self, zstack_repo):
         if self.distro_version < 7:
             return
 
@@ -1505,6 +1503,7 @@ class ZstackLib(object):
                        self.host_post_info, ignore_error=True)
         service_status("chronyd", "state=restarted enabled=yes",
                        self.host_post_info)
+
 
     def generate_zstack_experimental_yum_repo(self):
         generate_exp_repo_raw_command = """
