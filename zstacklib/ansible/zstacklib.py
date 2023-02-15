@@ -30,7 +30,7 @@ ansible.constants.HOST_KEY_CHECKING = False
 enable_networkmanager_list = ["ns10", "euler20", "uos1021a", "nfs4"]
 supported_arch_list = ["x86_64", "aarch64", "mips64el", "loongarch64"]
 
-RPM_BASED_OS = ["kylin_zstack", "kylin_tercel", "kylin_sword", "alibaba", "centos", "openeuler", "uniontech_kongzi", "nfs", "redhat"]
+RPM_BASED_OS = ["kylin_zstack", "kylin_tercel", "kylin_sword", "alibaba", "centos", "openeuler", "uniontech_kongzi", "nfs", "redhat", "rocky"]
 DEB_BASED_OS = ["ubuntu", "uos", "kylin4.0.2", "debian", "uniontech_fou"]
 DISTRO_WITH_RPM_DEB = ["kylin", "uniontech"]
 
@@ -1836,7 +1836,7 @@ class ZstackLib(object):
         check_umask(host_post_info)
         configure_hosts(host_post_info)
 
-        if distro in RPM_BASED_OS:
+        if distro in RPM_BASED_OS and distro != "rocky":
             epel_repo_exist = file_dir_exist("path=/etc/yum.repos.d/epel.repo", host_post_info)
             # To avoid systemd bug :https://github.com/systemd/systemd/issues/1961
             host_post_info.post_label = "ansible.shell.remove.file"

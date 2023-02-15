@@ -147,8 +147,8 @@ def check_nested_kvm(host_post_info):
 def install_release_on_host(is_rpm):
     # copy and install zstack-release
     if is_rpm:
-        src_pkg = '/opt/zstack-dvd/{0}/{1}/Packages/zstack-release-{1}-1.el7.zstack.noarch.rpm'.format(host_arch, releasever)
-        install_cmd = "rpm -q zstack-release || rpm -i /opt/zstack-release-{}-1.el7.zstack.noarch.rpm".format(releasever)
+        src_pkg = '/opt/zstack-dvd/{0}/{1}/Packages/zstack-release-{1}-1.el{2}.zstack.noarch.rpm'.format(host_arch, releasever, major_version)
+        install_cmd = "rpm -q zstack-release || rpm -i /opt/zstack-release-{0}-1.el{1}.zstack.noarch.rpm".format(releasever, major_version)
     else:
         src_pkg = '/opt/zstack-dvd/{0}/{1}/Packages/zstack-release_{1}_all.deb'.format(host_arch, releasever)
         install_cmd = "dpkg -l zstack-release || dpkg -i /opt/zstack-release_{}_all.deb".format(releasever)
@@ -273,6 +273,12 @@ def install_kvm_pkg():
                         net-tools nfs-utils nmap openssh-clients OpenIPMI pciutils pv rsync sed nettle libselinux-devel \
                         smartmontools sshpass usbutils vconfig wget audit dnsmasq tar iptables iptables-services \
                         qemu-kvm collectd-virt storcli edk2-ovmf python2-pyudev collectd-disk"
+
+        x86_64_rl85 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
+                      usbredir-server iputils iscsi-initiator-utils libvirt-daemon libvirt-client libvirt-python lighttpd lsof \
+                      net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
+                      smartmontools sshpass usbutils wget audit dnsmasq \
+                      qemu-kvm collectd-virt edk2-ovmf mcelog MegaCli storcli Arcconf nvme-cli python-pyudev seabios-bin kernel-devel elfutils-libelf-devel"
 
         # handle zstack_repo
         if zstack_repo != 'false':
