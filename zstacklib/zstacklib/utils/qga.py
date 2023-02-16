@@ -36,6 +36,8 @@ VM_CONFIG_SYNC_OS_VERSION_SUPPORT = {
     VM_OS_LINUX_UOS: ("20",)
 }
 
+qga_exec_wait_default = 0.1
+qga_exec_wait_retry = 10
 
 class QgaException(Exception):
     """ The base exception class for all exceptions this agent raises."""
@@ -117,12 +119,15 @@ class Qga(object):
         return parsedRet
 
     def guest_exec_status(self, pid):
-        return self.call_qga_command("guest-exec-status", args={'pid': pid})
+        ret = self.call_qga_command("guest-exec-status", args={'pid': pid})
+        if not ret or 'exited' not in ret:
+            raise QgaException(ERROR_CODE_QGA_RETURN_VALUE_ERROR, 'guest-exec-status exception')
+        return ret
 
     def guest_exec(self, args):
         return self.call_qga_command("guest-exec", args=args)
 
-    def guest_exec_bash_no_exitcode(self, cmd, exception=True, output=True, wait=0.1):
+    def guest_exec_bash_no_exitcode(self, cmd, exception=True, output=True, wait=None):
         exitcode, ret_data = self.guest_exec_bash(cmd, output, wait)
         if exitcode != 0:
             if exception:
@@ -131,7 +136,7 @@ class Qga(object):
             return None
         return ret_data
 
-    def guest_exec_bash(self, cmd, output=True, wait=0.1):
+    def guest_exec_bash(self, cmd, output=True, wait=None):
 
         ret = self.guest_exec(
             {"path": "bash", "arg": ["-c", cmd], "capture-output": output})
@@ -144,14 +149,17 @@ class Qga(object):
         if not output:
             return 0, None
 
-        time.sleep(wait)
-        ret = self.guest_exec_status(pid)
-        if not ret or 'exited' not in ret:
-            raise QgaException(ERROR_CODE_QGA_RETURN_VALUE_ERROR,
-                               'qga exec cmd {} failed for vm {}'.format(cmd, self.vm_uuid))
+        retry = 1 if wait else qga_exec_wait_retry
+        wait = wait if wait else qga_exec_wait_default
+        ret = None
+        for i in range(retry):
+            time.sleep(wait)
+            ret = self.guest_exec_status(pid)
+            # format: {"return":{"exited":false}}
+            if ret['exited']:
+                break
 
-        # format: {"return":{"exited":false}}
-        if not ret['exited']:
+        if not ret or not ret.get('exited'):
             raise QgaException(ERROR_CODE_QGA_COMMAND_ERROR,
                                'qga exec cmd {} timeout for vm {}'.format(cmd, self.vm_uuid))
 
