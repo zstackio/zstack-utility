@@ -1,0 +1,26 @@
+#163 base
+[163base]
+name=Rocky-$releasever - Base - mirrors.163.com
+baseurl=http://mirrors.163.com/rocky/$releasever/BaseOS/$basearch/
+gpgcheck=0
+enabled=0
+
+#released updates
+[163updates]
+name=Rocky-$releasever - Updates - mirrors.163.com
+baseurl=http://mirrors.163.com/rocky/$releasever/AppStream/$basearch/
+enabled=0
+gpgcheck=0
+
+#additional packages that may be useful
+[163extras]
+name=Rocky-$releasever - Extras - mirrors.163.com
+baseurl=http://mirrors.163.com/rocky/$releasever/extras/$basearch/
+enabled=0
+gpgcheck=0
+
+[ustcepel]
+name=Extra Packages for Enterprise Linux $releasever - $basearch - ustc
+baseurl=http://centos.ustc.edu.cn/epel/$releasever/$basearch
+enabled=0
+gpgcheck=0

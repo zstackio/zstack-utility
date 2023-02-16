@@ -42,7 +42,8 @@ def ignoreerror(func):
             return func(*args, **kwargs)
         except Exception as e:
             content = traceback.format_exc()
-            err = '%s\n%s\nargs:%s' % (str(e), content, pprint.pformat([args, kwargs]))
+            err = '%s\n%s\nargs:%s' % (
+                str(e), content, pprint.pformat([args, kwargs]))
             logger.warn(err)
     return wrap
 
@@ -111,7 +112,7 @@ class HostPostInfo(object):
         self.private_key = None
         self.host_inventory = None
         self.host = None
-        self.vip= None
+        self.vip = None
         self.chrony_servers = None
         self.post_url = ""
         self.start_time = None
@@ -135,11 +136,13 @@ class CopyArg(object):
         self.dest = None
         self.args = None
 
+
 class SyncArg(object):
     def __init__(self):
         self.src = None
         self.dest = None
         self.args = None
+
 
 class FetchArg(object):
     def __init__(self):
@@ -156,7 +159,7 @@ class UnarchiveArg(object):
 
 
 class ZstackRunnerArg(object):
-    def  __init__(self):
+    def __init__(self):
         self.host_post_info = None
         self.module_name = None
         self.module_args = None
@@ -188,21 +191,24 @@ class ZstackRunner(object):
             remote_port=self.remote_port,
             remote_user=self.remote_user,
             remote_pass=self.remote_pass,
-            become = self.become,
+            become=self.become,
             become_user=self.become_user,
             become_pass=self.become_pass
         )
         result = runner.run()
-        return  result
+        return result
+
 
 def error(msg):
     logger.error(msg)
     sys.stderr.write('ERROR: %s\n' % msg)
     sys.exit(1)
 
+
 def warn(msg):
     logger.warning(msg)
     sys.stdout.write('WARNING: %s\n' % msg)
+
 
 def retry(times=3, sleep_time=3):
     def wrap(f):
@@ -230,20 +236,22 @@ def create_log(logger_dir, logger_file):
     handler.setFormatter(fmt)
     logger.addHandler(handler)
 
+
 def get_mn_release():
     # file /etc/zstack-release from zstack-release.rpm
     # file content like: ZStack release c76
     return commands.getoutput("awk '{print $3}' /etc/zstack-release").strip()
 
+
 def get_host_releasever(ansible_distribution):
     supported_release_info = {
         "kylin10 tercel 10": "ns10",
         "uniontech fou 20": "uos20",
-        "redhat maipo 7.4": "ns10", # old kylinV10, oem 7.4 incompletely
+        "redhat maipo 7.4": "ns10",  # old kylinV10, oem 7.4 incompletely
         "centos core 7.9.2009": "c79",
         "centos core 7.6.1810": "c76",
         "centos core 7.4.1708": "c74",
-        "centos core 7.2.1511": "c74", # c74 for old releases
+        "centos core 7.2.1511": "c74",  # c74 for old releases
         "centos core 7.1.1503": "c74",
         "uniontech kongzi 20": "uos1021a",
     }
@@ -251,12 +259,15 @@ def get_host_releasever(ansible_distribution):
     _releasever = supported_release_info.get(_key)
     return _releasever if _releasever else get_mn_release()
 
+
 def post_msg(msg, post_url):
     logger.info(msg.data.details)
     if msg.type == "log":
-        data = json.dumps({"level": msg.data.level, "details": msg.data.details})
+        data = json.dumps(
+            {"level": msg.data.level, "details": msg.data.details})
     elif msg.type == "error":
-        data = json.dumps({"code": msg.data.code, "description": msg.data.description, "details": msg.data.details})
+        data = json.dumps(
+            {"code": msg.data.code, "description": msg.data.description, "details": msg.data.details})
         # This output will capture by management log
         error(msg.data.description + "\nDetail: " + msg.data.details)
     else:
@@ -281,7 +292,8 @@ def handle_ansible_start(ansible_start):
     error.code = "ansible.1000"
     error.description = "ERROR: Can't start ansible process"
     error.details = "Can't start ansible process to host: %s Detail: %s, check authentication and inventory file then" \
-                    " try again  \n" % (ansible_start.host, ansible_start.result)
+                    " try again  \n" % (ansible_start.host,
+                                        ansible_start.result)
     msg.type = "error"
     msg.data = error
     post_msg(msg, ansible_start.post_url)
@@ -296,13 +308,17 @@ def handle_ansible_failed(description, result, host_post_info):
     end_time = datetime.now()
     # Fix python2.6 compatible issue: no total_seconds() attribute for timedelta
     td = end_time - start_time
-    cost_time = (td.microseconds + (td.seconds + td.days * 24 * 3600) * 10 ** 6) / 10 ** 6.0 * 1000
+    cost_time = (td.microseconds + (td.seconds + td.days *
+                 24 * 3600) * 10 ** 6) / 10 ** 6.0 * 1000
     error.code = "ansible.1001"
-    error.description = "[ HOST: %s ] " % host_post_info.host + description + " [ cost %sms to finish ]" % int(cost_time)
+    error.description = "[ HOST: %s ] " % host_post_info.host + \
+        description + " [ cost %sms to finish ]" % int(cost_time)
     if 'stderr' in result['contacted'][host]:
-        error.details = "[ HOST: %s ] " % host_post_info.host + "ERROR: \n" + result['contacted'][host]['stderr']
+        error.details = "[ HOST: %s ] " % host_post_info.host + \
+            "ERROR: \n" + result['contacted'][host]['stderr']
     elif 'msg' in result['contacted'][host]:
-        error.details = "[ HOST: %s ] " % host_post_info.host +  "ERROR: \n" + result['contacted'][host]['msg']
+        error.details = "[ HOST: %s ] " % host_post_info.host + \
+            "ERROR: \n" + result['contacted'][host]['msg']
     msg.type = "error"
     msg.data = error
     post_msg(msg, post_url)
@@ -316,10 +332,12 @@ def handle_ansible_info(details, host_post_info, level):
     end_time = datetime.now()
     # Fix python2.6 compatible issue: no total_seconds() attribute for timedelta
     td = end_time - start_time
-    cost_time = (td.microseconds + (td.seconds + td.days * 24 * 3600) * 10 ** 6) / 10 ** 6.0 * 1000
+    cost_time = (td.microseconds + (td.seconds + td.days *
+                 24 * 3600) * 10 ** 6) / 10 ** 6.0 * 1000
     log.level = level
     if "SUCC" in details:
-        log.details = "[ HOST: %s ] " % host_post_info.host + details + " [ cost %sms to finish ]" % int(cost_time)
+        log.details = "[ HOST: %s ] " % host_post_info.host + \
+            details + " [ cost %sms to finish ]" % int(cost_time)
     else:
         log.details = "[ HOST: %s ] " % host_post_info.host + details
     msg.type = "log"
@@ -328,20 +346,25 @@ def handle_ansible_info(details, host_post_info, level):
 
 
 def agent_install(install_arg, host_post_info):
-    handle_ansible_info("INFO: Start to install %s .................." % install_arg.agent_name, host_post_info, "INFO")
+    handle_ansible_info("INFO: Start to install %s .................." %
+                        install_arg.agent_name, host_post_info, "INFO")
     pip_install_arg = PipInstallArg()
-    pip_install_arg.extra_args = "\"--trusted-host %s -i %s\"" % (install_arg.trusted_host, install_arg.pip_url)
+    pip_install_arg.extra_args = "\"--trusted-host %s -i %s\"" % (
+        install_arg.trusted_host, install_arg.pip_url)
     # upgrade only
     if install_arg.init_install is False:
         handle_ansible_info("INFO: Only need to upgrade %s .................." % install_arg.agent_name, host_post_info,
                             "INFO")
-        pip_install_arg.extra_args = "\"--trusted-host %s -i %s -U \"" % (install_arg.trusted_host, install_arg.pip_url)
+        pip_install_arg.extra_args = "\"--trusted-host %s -i %s -U \"" % (
+            install_arg.trusted_host, install_arg.pip_url)
 
-    pip_install_arg.name = "%s/%s" % (install_arg.agent_root, install_arg.pkg_name)
+    pip_install_arg.name = "%s/%s" % (install_arg.agent_root,
+                                      install_arg.pkg_name)
     pip_install_arg.virtualenv = install_arg.virtenv_path
     pip_install_arg.virtualenv_site_packages = install_arg.virtualenv_site_packages
     if pip_install_package(pip_install_arg, host_post_info) is False:
-        command = "rm -rf %s && rm -rf %s" % (install_arg.virtenv_path, install_arg.agent_root)
+        command = "rm -rf %s && rm -rf %s" % (
+            install_arg.virtenv_path, install_arg.agent_root)
         run_remote_command(command, host_post_info)
         error("agent %s install failed" % install_arg.agent_name)
 
@@ -351,11 +374,13 @@ def yum_enable_repo(name, enablerepo, host_post_info):
     host_post_info.start_time = start_time
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting enable yum repo %s ... " % name, host_post_info, "INFO")
+    handle_ansible_info("INFO: Starting enable yum repo %s ... " %
+                        name, host_post_info, "INFO")
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'yum'
-    runner_args.module_args = 'name=' + name + ' enablerepo=' + enablerepo + " state=present"
+    runner_args.module_args = 'name=' + name + \
+        ' enablerepo=' + enablerepo + " state=present"
     zstack_runner = ZstackRunner(runner_args)
     result = zstack_runner.run()
     logger.debug(result)
@@ -381,7 +406,8 @@ def yum_check_package(name, host_post_info):
     host_post_info.start_time = start_time
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Searching yum package %s ... " % name, host_post_info, "INFO")
+    handle_ansible_info("INFO: Searching yum package %s ... " %
+                        name, host_post_info, "INFO")
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'shell'
@@ -397,7 +423,8 @@ def yum_check_package(name, host_post_info):
         handle_ansible_start(ansible_start)
     else:
         if 'rc' not in result['contacted'][host]:
-            logger.warning("Maybe network problem, try again now, ansible reply is below:\n %s" % result)
+            logger.warning(
+                "Maybe network problem, try again now, ansible reply is below:\n %s" % result)
             raise Exception(result)
         else:
             status = result['contacted'][host]['rc']
@@ -410,13 +437,15 @@ def yum_check_package(name, host_post_info):
                 handle_ansible_info(details, host_post_info, "INFO")
                 return False
 
+
 @retry(times=3, sleep_time=3)
 def script(file, host_post_info, script_arg=None):
     start_time = datetime.now()
     host_post_info.start_time = start_time
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Running script %s on host %s ... " % (file,host), host_post_info, "INFO")
+    handle_ansible_info("INFO: Running script %s on host %s ... " %
+                        (file, host), host_post_info, "INFO")
     if script_arg is not None:
         args = file + " " + script_arg
     else:
@@ -436,27 +465,31 @@ def script(file, host_post_info, script_arg=None):
         handle_ansible_start(ansible_start)
     else:
         if 'rc' not in result['contacted'][host]:
-            logger.warning("Network problem, try again now, ansible reply is below:\n %s" % result)
+            logger.warning(
+                "Network problem, try again now, ansible reply is below:\n %s" % result)
             raise Exception(result)
         else:
             status = result['contacted'][host]['rc']
             if status == 0:
-                details = "SUCC: The script %s on host %s finish " % (file, host)
+                details = "SUCC: The script %s on host %s finish " % (
+                    file, host)
                 handle_ansible_info(details, host_post_info, "INFO")
                 return True
             else:
-                description = "ERROR: The script %s failed on host %s" % (file, host)
+                description = "ERROR: The script %s failed on host %s" % (
+                    file, host)
                 handle_ansible_failed(description, result, host_post_info)
 
 
 @retry(times=3, sleep_time=3)
-def yum_install_package(name, host_post_info, \
-        ignore_error=False, force_install=False):
+def yum_install_package(name, host_post_info,
+                        ignore_error=False, force_install=False):
     start_time = datetime.now()
     host_post_info.start_time = start_time
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting yum install package %s ... " % name, host_post_info, "INFO")
+    handle_ansible_info(
+        "INFO: Starting yum install package %s ... " % name, host_post_info, "INFO")
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'shell'
@@ -473,7 +506,8 @@ def yum_install_package(name, host_post_info, \
         handle_ansible_start(ansible_start)
     else:
         if 'rc' not in result['contacted'][host]:
-            logger.warning("Network problem, try again now, ansible reply is below:\n %s" % result)
+            logger.warning(
+                "Network problem, try again now, ansible reply is below:\n %s" % result)
             raise Exception(result)
         else:
             status = result['contacted'][host]['rc']
@@ -508,7 +542,8 @@ def yum_remove_package(name, host_post_info):
     host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting yum remove package %s ... " % name, host_post_info, "INFO")
+    handle_ansible_info("INFO: Starting yum remove package %s ... " %
+                        name, host_post_info, "INFO")
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'shell'
@@ -523,7 +558,8 @@ def yum_remove_package(name, host_post_info):
         ansible_start.result = result
         handle_ansible_start(ansible_start)
     if 'rc' not in result['contacted'][host]:
-        logger.warning("Network problem, try again now, ansible reply is below:\n %s" % result)
+        logger.warning(
+            "Network problem, try again now, ansible reply is below:\n %s" % result)
         raise Exception(result)
     else:
         status = result['contacted'][host]['rc']
@@ -557,7 +593,8 @@ def check_pkg_status(name_list, host_post_info):
     host_inventory = host_post_info.host_inventory
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting check package %s exist in system... " % name_list, host_post_info, "INFO")
+    handle_ansible_info("INFO: Starting check package %s exist in system... " %
+                        name_list, host_post_info, "INFO")
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'shell'
@@ -574,7 +611,8 @@ def check_pkg_status(name_list, host_post_info):
             handle_ansible_start(ansible_start)
         else:
             if 'rc' not in result['contacted'][host]:
-                logger.warning("Maybe network problem, try again now, ansible reply is below:\n %s" % result)
+                logger.warning(
+                    "Maybe network problem, try again now, ansible reply is below:\n %s" % result)
                 raise Exception(result)
             else:
                 status = result['contacted'][host]['rc']
@@ -593,7 +631,8 @@ def apt_install_packages(name_list, host_post_info):
         host_post_info.start_time = start_time
         host = host_post_info.host
         post_url = host_post_info.post_url
-        handle_ansible_info("INFO: Starting apt install package %s ... " % name, host_post_info, "INFO")
+        handle_ansible_info(
+            "INFO: Starting apt install package %s ... " % name, host_post_info, "INFO")
         runner_args = ZstackRunnerArg()
         runner_args.host_post_info = host_post_info
         runner_args.module_name = 'apt'
@@ -616,25 +655,29 @@ def apt_install_packages(name_list, host_post_info):
                 handle_ansible_info(details, host_post_info, "INFO")
                 return True
             else:
-                description = "ERROR: Apt install %s meet unknown issue: %s" % (name, result)
+                description = "ERROR: Apt install %s meet unknown issue: %s" % (
+                    name, result)
                 handle_ansible_failed(description, result, host_post_info)
     all_pkg_exist = check_pkg_status(name_list, host_post_info)
     if all_pkg_exist is False:
         command = "apt-get clean && apt-get update -o Acquire::http::No-Cache=True --fix-missing"
-        apt_update_status = run_remote_command(command, host_post_info, return_status=True)
+        apt_update_status = run_remote_command(
+            command, host_post_info, return_status=True)
         if apt_update_status is False:
             error("apt-get update on host %s failed, please update the repo on the host manually and try again."
-                  % host_post_info.host )
+                  % host_post_info.host)
         for pkg in name_list:
             _apt_install_package(pkg, host_post_info)
 
+
 def apt_update_packages(name_list, host_post_info):
     pkg_list = ' '.join(name_list)
-    command = "apt-get clean && apt-get install -y --allow-unauthenticated --only-upgrade {}".format(pkg_list)
-    apt_update_status = run_remote_command(command, host_post_info, return_status=True)
+    command = "apt-get clean && apt-get install -y --allow-unauthenticated --only-upgrade {}".format(
+        pkg_list)
+    apt_update_status = run_remote_command(
+        command, host_post_info, return_status=True)
     if apt_update_status is False:
         error("apt-get update packages on host {} failed, please update the repo on the host manually and try again.".format(host_post_info.host))
-
 
 
 def pip_install_package(pip_install_arg, host_post_info):
@@ -646,21 +689,24 @@ def pip_install_package(pip_install_arg, host_post_info):
     version = pip_install_arg.version
     if pip_install_arg.extra_args is not None:
         if 'pip' not in name:
-            extra_args = '\"' + '--disable-pip-version-check ' + pip_install_arg.extra_args.split('"')[1] + '\"'
+            extra_args = '\"' + '--disable-pip-version-check ' + \
+                pip_install_arg.extra_args.split('"')[1] + '\"'
         else:
             extra_args = '\"' + pip_install_arg.extra_args.split('"')[1] + '\"'
     else:
         extra_args = None
     virtualenv = pip_install_arg.virtualenv
     virtualenv_site_packages = pip_install_arg.virtualenv_site_packages
-    handle_ansible_info("INFO: Pip installing module %s ..." % name, host_post_info, "INFO")
+    handle_ansible_info("INFO: Pip installing module %s ..." %
+                        name, host_post_info, "INFO")
     param_dict = {}
     param_dict_raw = dict(version=version, extra_args=extra_args, virtualenv=virtualenv,
                           virtualenv_site_packages=virtualenv_site_packages)
     for item in param_dict_raw:
         if param_dict_raw[item] is not None:
             param_dict[item] = param_dict_raw[item]
-    option = 'name=' + name + ' ' + ' '.join(['{0}={1}'.format(k, v) for k, v in param_dict.iteritems()])
+    option = 'name=' + name + ' ' + \
+        ' '.join(['{0}={1}'.format(k, v) for k, v in param_dict.iteritems()])
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'pip'
@@ -686,13 +732,15 @@ def pip_install_package(pip_install_arg, host_post_info):
             handle_ansible_info(details, host_post_info, "INFO")
             return True
 
+
 def cron(name, arg, host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting set cron task %s ... " % arg, host_post_info, "INFO")
-    args = 'name=%s %s' % (name,arg)
+    handle_ansible_info("INFO: Starting set cron task %s ... " %
+                        arg, host_post_info, "INFO")
+    args = 'name=%s %s' % (name, arg)
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'cron'
@@ -716,6 +764,7 @@ def cron(name, arg, host_post_info):
             # pass the copy result to outside
             return True
 
+
 def copy(copy_arg, host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
@@ -724,7 +773,8 @@ def copy(copy_arg, host_post_info):
     args = copy_arg.args
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting copy %s to %s ... " % (src, dest), host_post_info, "INFO")
+    handle_ansible_info("INFO: Starting copy %s to %s ... " %
+                        (src, dest), host_post_info, "INFO")
     if args is not None:
         copy_args = 'src=' + src + ' dest=' + dest + ' ' + args
     else:
@@ -747,11 +797,14 @@ def copy(copy_arg, host_post_info):
             description = "ERROR: copy %s to %s failed!" % (src, dest)
             handle_ansible_failed(description, result, host_post_info)
         else:
-            change_status = "changed:" + str(result['contacted'][host]['changed'])
-            details = "SUCC: copy %s to %s, the change status is %s" % (src, dest, change_status)
+            change_status = "changed:" + \
+                str(result['contacted'][host]['changed'])
+            details = "SUCC: copy %s to %s, the change status is %s" % (
+                src, dest, change_status)
             handle_ansible_info(details, host_post_info, "INFO")
             # pass the copy result to outside
             return change_status
+
 
 def sync(sync_arg, host_post_info):
     '''The copy module recursively copy facility does not scale to lots (>hundreds) of files.
@@ -763,7 +816,8 @@ def sync(sync_arg, host_post_info):
     args = sync_arg.args
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting sync %s to %s ... " % (src, dest), host_post_info, "INFO")
+    handle_ansible_info("INFO: Starting sync %s to %s ... " %
+                        (src, dest), host_post_info, "INFO")
     if args is not None:
         sync_args = 'src=' + src + ' dest=' + dest + ' ' + args
     else:
@@ -786,8 +840,10 @@ def sync(sync_arg, host_post_info):
             description = "ERROR: sync %s to %s failed!" % (src, dest)
             handle_ansible_failed(description, result, host_post_info)
         else:
-            change_status = "changed:" + str(result['contacted'][host]['changed'])
-            details = "SUCC: sync %s to %s, the change status is %s" % (src, dest, change_status)
+            change_status = "changed:" + \
+                str(result['contacted'][host]['changed'])
+            details = "SUCC: sync %s to %s, the change status is %s" % (
+                src, dest, change_status)
             handle_ansible_info(details, host_post_info, "INFO")
             return change_status
 
@@ -800,7 +856,8 @@ def fetch(fetch_arg, host_post_info):
     args = fetch_arg.args
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting fetch %s to %s ... " % (src, dest), host_post_info, "INFO")
+    handle_ansible_info("INFO: Starting fetch %s to %s ... " %
+                        (src, dest), host_post_info, "INFO")
     if args is not None:
         fetch_args = 'src=' + src + ' dest=' + dest + ' ' + args
     else:
@@ -821,21 +878,26 @@ def fetch(fetch_arg, host_post_info):
         sys.exit(1)
     else:
         if 'failed' in result['contacted'][host]:
-            description = "ERROR: fetch file from %s to %s failed!" % (src, dest)
+            description = "ERROR: fetch file from %s to %s failed!" % (
+                src, dest)
             handle_ansible_failed(description, result, host_post_info)
             sys.exit(1)
         else:
-            change_status = "changed:" + str(result['contacted'][host]['changed'])
-            details = "SUCC: fetch %s to %s, the change status is %s" % (src, dest, change_status)
+            change_status = "changed:" + \
+                str(result['contacted'][host]['changed'])
+            details = "SUCC: fetch %s to %s, the change status is %s" % (
+                src, dest, change_status)
             handle_ansible_info(details, host_post_info, "INFO")
             # pass the fetch result to outside
             return change_status
+
 
 def check_host_reachable(host_post_info, warning=False):
     start_time = datetime.now()
     host_post_info.start_time = start_time
     host = host_post_info.host
-    handle_ansible_info("INFO: Starting check host %s is reachable ..." % host, host_post_info, "INFO")
+    handle_ansible_info(
+        "INFO: Starting check host %s is reachable ..." % host, host_post_info, "INFO")
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'ping'
@@ -857,6 +919,7 @@ def check_host_reachable(host_post_info, warning=False):
             warn("Unknown error when check host %s is reachable" % host)
         return False
 
+
 @retry(times=3, sleep_time=3)
 def run_remote_command(command, host_post_info, return_status=False, return_output=False):
     '''return status all the time except return_status is False, return output is set to True'''
@@ -868,7 +931,8 @@ def run_remote_command(command, host_post_info, return_status=False, return_outp
     host_post_info.start_time = start_time
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting run command [ %s ] ..." % command, host_post_info, "INFO")
+    handle_ansible_info(
+        "INFO: Starting run command [ %s ] ..." % command, host_post_info, "INFO")
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'shell'
@@ -889,7 +953,8 @@ def run_remote_command(command, host_post_info, return_status=False, return_outp
         sys.exit(1)
     else:
         if 'rc' not in result['contacted'][host]:
-            logger.warning("Network or file system problem, try again now, ansible reply is below:\n %s" % result)
+            logger.warning(
+                "Network or file system problem, try again now, ansible reply is below:\n %s" % result)
             raise Exception(result)
         else:
             status = result['contacted'][host]['rc']
@@ -920,7 +985,8 @@ def check_pip_version(version, host_post_info):
     host_post_info.start_time = start_time
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Check pip version %s exist ..." % version, host_post_info, "INFO")
+    handle_ansible_info("INFO: Check pip version %s exist ..." %
+                        version, host_post_info, "INFO")
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'shell'
@@ -936,7 +1002,8 @@ def check_pip_version(version, host_post_info):
         handle_ansible_start(ansible_start)
     else:
         if 'rc' not in result['contacted'][host]:
-            logger.warning("Network problem, try again now, ansible reply is below:\n %s" % result)
+            logger.warning(
+                "Network problem, try again now, ansible reply is below:\n %s" % result)
             raise Exception(result)
         else:
             status = result['contacted'][host]['rc']
@@ -956,7 +1023,8 @@ def file_dir_exist(name, host_post_info):
     host_post_info.start_time = start_time
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting check file or dir exist %s ... " % name, host_post_info, "INFO")
+    handle_ansible_info(
+        "INFO: Starting check file or dir exist %s ... " % name, host_post_info, "INFO")
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'stat'
@@ -975,7 +1043,8 @@ def file_dir_exist(name, host_post_info):
             logger.warning("Check file or dir %s status failed" % name)
             sys.exit(1)
         elif 'stat' not in result['contacted'][host]:
-            logger.warning("Network problem, try again now, ansible reply is below:\n %s" % result)
+            logger.warning(
+                "Network problem, try again now, ansible reply is below:\n %s" % result)
             raise Exception(result)
         else:
             status = result['contacted'][host]['stat']['exists']
@@ -995,7 +1064,8 @@ def file_operation(file, args, host_post_info):
     host_post_info.start_time = start_time
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting change file %s ... " % file, host_post_info, "INFO")
+    handle_ansible_info("INFO: Starting change file %s ... " %
+                        file, host_post_info, "INFO")
     args = "path=%s " % file + args
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
@@ -1020,13 +1090,15 @@ def file_operation(file, args, host_post_info):
             handle_ansible_info(details, host_post_info, "INFO")
             return True
 
+
 @retry(times=3, sleep_time=3)
 def get_remote_host_info(host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting get remote host %s info ... " % host, host_post_info, "INFO")
+    handle_ansible_info(
+        "INFO: Starting get remote host %s info ... " % host, host_post_info, "INFO")
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'setup'
@@ -1043,11 +1115,14 @@ def get_remote_host_info(host_post_info):
     else:
         if 'ansible_facts' in result['contacted'][host]:
             (distro, major_version, release, distro_version) = [
-                                 result['contacted'][host]['ansible_facts']['ansible_distribution'].split()[0].lower(),
-                                 int(result['contacted'][host]['ansible_facts']['ansible_distribution_major_version']),
-                                 result['contacted'][host]['ansible_facts']['ansible_distribution_release'],
-                                 result['contacted'][host]['ansible_facts']['ansible_distribution_version']]
-            handle_ansible_info("SUCC: Get remote host %s info successful" % host, host_post_info, "INFO")
+                result['contacted'][host]['ansible_facts']['ansible_distribution'].split()[
+                    0].lower(),
+                int(result['contacted'][host]['ansible_facts']
+                    ['ansible_distribution_major_version']),
+                result['contacted'][host]['ansible_facts']['ansible_distribution_release'],
+                result['contacted'][host]['ansible_facts']['ansible_distribution_version']]
+            handle_ansible_info(
+                "SUCC: Get remote host %s info successful" % host, host_post_info, "INFO")
             if distro in DISTRO_WITH_RPM_DEB:
                 distro = "%s%s" % (distro, major_version)
             return (distro, major_version, release, distro_version)
@@ -1061,11 +1136,13 @@ def set_ini_file(file, section, option, value, host_post_info):
     host_post_info.start_time = start_time
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting update file %s section %s ... " % (file, section), host_post_info, "INFO")
+    handle_ansible_info("INFO: Starting update file %s section %s ... " % (
+        file, section), host_post_info, "INFO")
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'ini_file'
-    runner_args.module_args = 'dest=' + file + ' section=' + section + ' option=' + option + " value=" + value
+    runner_args.module_args = 'dest=' + file + ' section=' + \
+        section + ' option=' + option + " value=" + value
     zstack_runner = ZstackRunner(runner_args)
     result = zstack_runner.run()
     logger.debug(result)
@@ -1076,7 +1153,8 @@ def set_ini_file(file, section, option, value, host_post_info):
         ansible_start.result = result
         handle_ansible_start(ansible_start)
     else:
-        details = "SUCC: Update file: %s option: %s value %s" % (file, option, value)
+        details = "SUCC: Update file: %s option: %s value %s" % (
+            file, option, value)
         handle_ansible_info(details, host_post_info, "INFO")
     return True
 
@@ -1087,11 +1165,12 @@ def check_and_install_virtual_env(version, trusted_host, pip_url, host_post_info
     host_post_info.start_time = start_time
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting install virtualenv-%s ... " % version, host_post_info, "INFO")
+    handle_ansible_info("INFO: Starting install virtualenv-%s ... " %
+                        version, host_post_info, "INFO")
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'shell'
-    runner_args.module_args ='virtualenv --version | grep %s' % version
+    runner_args.module_args = 'virtualenv --version | grep %s' % version
     zstack_runner = ZstackRunner(runner_args)
     result = zstack_runner.run()
     logger.debug(result)
@@ -1103,7 +1182,8 @@ def check_and_install_virtual_env(version, trusted_host, pip_url, host_post_info
         handle_ansible_start(ansible_start)
     else:
         if 'rc' not in result['contacted'][host]:
-            logger.warning("Network problem, try again now, ansible reply is below:\n %s" % result)
+            logger.warning(
+                "Network problem, try again now, ansible reply is below:\n %s" % result)
             raise Exception(result)
         else:
             status = result['contacted'][host]['rc']
@@ -1112,7 +1192,8 @@ def check_and_install_virtual_env(version, trusted_host, pip_url, host_post_info
                 handle_ansible_info(details, host_post_info, "INFO")
                 return True
             else:
-                extra_args = "\"--trusted-host %s -i %s \"" % (trusted_host, pip_url)
+                extra_args = "\"--trusted-host %s -i %s \"" % (
+                    trusted_host, pip_url)
                 pip_install_arg = PipInstallArg()
                 pip_install_arg.extra_args = extra_args
                 pip_install_arg.version = version
@@ -1125,11 +1206,12 @@ def service_status(name, args, host_post_info, ignore_error=False):
     host_post_info.start_time = start_time
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Changing %s service status to %s " % (name, args), host_post_info, "INFO")
+    handle_ansible_info("INFO: Changing %s service status to %s " %
+                        (name, args), host_post_info, "INFO")
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'service'
-    runner_args.module_args ="name=%s " % name + args
+    runner_args.module_args = "name=%s " % name + args
     zstack_runner = ZstackRunner(runner_args)
     if ignore_error is True:
         try:
@@ -1149,7 +1231,8 @@ def service_status(name, args, host_post_info, ignore_error=False):
                     details = "SUCC: Service %s status changed" % name
                     handle_ansible_info(details, host_post_info, "INFO")
         except:
-            logger.debug("WARNING: The service %s status changed failed" % name)
+            logger.debug(
+                "WARNING: The service %s status changed failed" % name)
     else:
         result = zstack_runner.run()
         logger.debug(result)
@@ -1175,7 +1258,8 @@ def update_file(dest, args, host_post_info):
     host_post_info.start_time = start_time
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Updating file %s" % dest, host_post_info, "INFO")
+    handle_ansible_info("INFO: Updating file %s" %
+                        dest, host_post_info, "INFO")
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'lineinfile'
@@ -1204,7 +1288,8 @@ def set_selinux(args, host_post_info):
     host_post_info.start_time = start_time
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Set selinux status to %s" % args, host_post_info, "INFO")
+    handle_ansible_info("INFO: Set selinux status to %s" %
+                        args, host_post_info, "INFO")
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'selinux'
@@ -1235,7 +1320,8 @@ def authorized_key(user, key_path, host_post_info):
         error("key_path %s is not exist!" % key_path)
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Updating key %s to host %s" % (key_path, host), host_post_info, "INFO")
+    handle_ansible_info("INFO: Updating key %s to host %s" %
+                        (key_path, host), host_post_info, "INFO")
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'shell'
@@ -1255,7 +1341,7 @@ def authorized_key(user, key_path, host_post_info):
         args = "user=%s key=%s" % (user, key)
         runner_args = ZstackRunnerArg()
         runner_args.host_post_info = host_post_info
-        runner_args.module_name ='authorized_key'
+        runner_args.module_name = 'authorized_key'
         runner_args.module_args = args
         zstack_runner = ZstackRunner(runner_args)
         result = zstack_runner.run()
@@ -1268,6 +1354,7 @@ def authorized_key(user, key_path, host_post_info):
             handle_ansible_info(details, host_post_info, "INFO")
             return True
 
+
 def check_pswd_rules(pswd):
     if not len(pswd) >= 8:
         return False
@@ -1279,6 +1366,7 @@ def check_pswd_rules(pswd):
         return False
     return True
 
+
 def unarchive(unarchive_arg, host_post_info):
     start_time = datetime.now()
     host_post_info.start_time = start_time
@@ -1287,7 +1375,8 @@ def unarchive(unarchive_arg, host_post_info):
     args = unarchive_arg.args
     host = host_post_info.host
     post_url = host_post_info.post_url
-    handle_ansible_info("INFO: Starting unarchive %s to %s ... " % (src, dest), host_post_info, "INFO")
+    handle_ansible_info("INFO: Starting unarchive %s to %s ... " %
+                        (src, dest), host_post_info, "INFO")
     if args != None:
         unarchive_args = 'src=' + src + ' dest=' + dest + ' ' + args
     else:
@@ -1328,221 +1417,43 @@ class ZstackLib(object):
         pip_url = args.pip_url
         pip_version = "7.0.3"
         yum_server = args.yum_server
-        current_dir =  os.path.dirname(os.path.realpath(__file__))
-        if distro in RPM_BASED_OS and distro != "rocky":
-            epel_repo_exist = file_dir_exist("path=/etc/yum.repos.d/epel.repo", host_post_info)
-            # To avoid systemd bug :https://github.com/systemd/systemd/issues/1961
-            run_remote_command("rm -f /run/systemd/system/*.scope", host_post_info)
-            # set ALIYUN mirror yum repo firstly avoid 'yum clean --enablerepo=alibase metadata' failed
-            command = """
-echo -e "#aliyun base
-[alibase]
-name=CentOS-\$releasever - Base - mirrors.aliyun.com
-failovermethod=priority
-baseurl=http://mirrors.aliyun.com/centos/\$releasever/os/\$basearch/
-gpgcheck=0
-enabled=0
-#released updates
-[aliupdates]
-name=CentOS-\$releasever - Updates -mirrors.aliyun.com
-failovermethod=priority
-baseurl=http://mirrors.aliyun.com/centos/\$releasever/updates/\$basearch/
-enabled=0
-gpgcheck=0
-[aliextras]
-name=CentOS-\$releasever - Extras - mirrors.aliyun.com
-failovermethod=priority
-baseurl=http://mirrors.aliyun.com/centos/\$releasever/extras/\$basearch/
-enabled=0
-gpgcheck=0
-[aliepel]
-name=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com
-baseurl=http://mirrors.aliyun.com/epel/\$releasever/\$basearch
-failovermethod=priority
-enabled=0
-gpgcheck=0
-[ali-qemu-ev]
-name=CentOS-\$releasever - QEMU EV
-baseurl=http://mirrors.aliyun.com/centos/\$releasever/virt/\$basearch/kvm-common/
-gpgcheck=0
-enabled=0" > /etc/yum.repos.d/zstack-aliyun-yum.repo
-        """
-            run_remote_command(command, host_post_info)
+        current_dir = os.path.dirname(os.path.realpath(__file__))
+        if distro in RPM_BASED_OS:
+            # always add aliyun repo
+            self.generate_aliyun_yum_repo()
 
-            if zstack_repo == "false":
-                # zstack_repo defined by user
-                yum_install_package("libselinux-python", host_post_info)
-                if epel_repo_exist is False:
-                    copy_arg = CopyArg()
-                    copy_arg.src = "files/zstacklib/epel-release-source.repo"
-                    copy_arg.dest = "/etc/yum.repos.d/"
-                    copy(copy_arg, host_post_info)
-                    # install epel-release
-                    yum_enable_repo("epel-release", "epel-release-source", host_post_info)
-                    set_ini_file("/etc/yum.repos.d/epel.repo", 'epel', "enabled", "1", host_post_info)
-                for pkg in ["python-devel", "python-setuptools", "python-pip", "gcc", "autoconf"]:
-                    yum_install_package(pkg, host_post_info)
-                if distro_version >=7:
-                    # to avoid install some pkgs on virtual router which release is Centos 6.x
-                    yum_install_package("chrony", host_post_info)
-                    yum_install_package("python-backports-ssl_match_hostname", host_post_info)
+            user_defined = zstack_repo == "false"
+            if user_defined:
+                self.install_packages_with_user_defined_repo()
             else:
-                # generate repo defined in zstack_repo
+                supported_repo_list = ['163', 'ali', 'zstack-mn', 'qemu-kvm-ev-mn', 'mlnx-ofed']
+                # if no supported repo used, use zstack official repo
+                no_supported_repo_used = all(repo not in zstack_repo for repo in supported_repo_list)
+                if no_supported_repo_used:
+                    raise Exception("Unsupported repo: %s" % zstack_repo)
+
                 if '163' in zstack_repo:
-                    # set 163 mirror yum repo
-                    command = """
-echo -e "#163 base
-[163base]
-name=CentOS-\$releasever - Base - mirrors.163.com
-failovermethod=priority
-baseurl=http://mirrors.163.com/centos/\$releasever/os/\$basearch/
-gpgcheck=0
-enabled=0
-#released updates
-[163updates]
-name=CentOS-\$releasever - Updates - mirrors.163.com
-failovermethod=priority
-baseurl=http://mirrors.163.com/centos/\$releasever/updates/\$basearch/
-enabled=0
-gpgcheck=0
-#additional packages that may be useful
-[163extras]
-name=CentOS-\$releasever - Extras - mirrors.163.com
-failovermethod=priority
-baseurl=http://mirrors.163.com/centos/\$releasever/extras/\$basearch/
-enabled=0
-gpgcheck=0
-[ustcepel]
-name=Extra Packages for Enterprise Linux \$releasever - \$basearch - ustc
-baseurl=http://centos.ustc.edu.cn/epel/\$releasever/\$basearch
-failovermethod=priority
-enabled=0
-gpgcheck=0
-[163-qemu-ev]
-name=CentOS-\$releasever - QEMU EV
-baseurl=http://mirrors.163.com/centos/\$releasever/virt/\$basearch/kvm-common/
-gpgcheck=0
-enabled=0" > /etc/yum.repos.d/zstack-163-yum.repo
-        """
-                    run_remote_command(command, host_post_info)
+                    self.generate_163_yum_repo()
+
                 if 'zstack-mn' in zstack_repo:
-                    generate_mn_repo_raw_command = """
-echo -e "[zstack-mn]
-name=zstack-mn
-baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$basearch/\$YUM0/
-gpgcheck=0
-enabled=0" >  /etc/yum.repos.d/zstack-mn.repo
-               """
-                    generate_mn_repo_template = jinja2.Template(generate_mn_repo_raw_command)
-                    generate_mn_repo_command = generate_mn_repo_template.render({
-                       'yum_server' : yum_server
-                    })
-                    run_remote_command(generate_mn_repo_command, host_post_info)
-                    run_remote_command("sync", host_post_info)
+                    self.genereate_mn_yum_repo()
+
                 if 'qemu-kvm-ev-mn' in zstack_repo:
-                    generate_kvm_repo_raw_command = """
-echo -e "[qemu-kvm-ev-mn]
-name=qemu-kvm-ev-mn
-baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$basearch/\$YUM0/Extra/qemu-kvm-ev/
-gpgcheck=0
-enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
-               """
-                    generate_kvm_repo_template = jinja2.Template(generate_kvm_repo_raw_command)
-                    generate_kvm_repo_command = generate_kvm_repo_template.render({
-                        'yum_server':yum_server
-                    })
-                    run_remote_command(generate_kvm_repo_command, host_post_info)
-                    run_remote_command("sync", host_post_info)
+                    self.generate_qemu_kvm_ev_yum_repo()
+
                 if 'mlnx-ofed' in zstack_repo:
-                    generate_mlnx_repo_raw_command = """
-echo -e "[mlnx-ofed-mn]
-name=mlnx-ofed-mn
-baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$basearch/\$YUM0/Extra/mlnx-ofed/
-gpgcheck=0
-enabled=0" >  /etc/yum.repos.d/mlnx-ofed-mn.repo
-               """
-                    generate_mlnx_repo_template = jinja2.Template(generate_mlnx_repo_raw_command)
-                    generate_mlnx_repo_command = generate_mlnx_repo_template.render({
-                        'yum_server':yum_server
-                    })
-                    run_remote_command(generate_mlnx_repo_command, host_post_info)
-                    run_remote_command("sync", host_post_info)
+                    self.generate_mlnx_yum_repo()
 
                 # generate zstack experimental repo anyway
-                generate_exp_repo_raw_command = """
-echo -e "[zstack-experimental-mn]
-name=zstack-experimental-mn
-baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$basearch/\$YUM0/Extra/zstack-experimental/
-gpgcheck=0
-enabled=0" >  /etc/yum.repos.d/zstack-experimental-mn.repo
-               """
-                generate_exp_repo_template = jinja2.Template(generate_exp_repo_raw_command)
-                generate_exp_repo_command = generate_exp_repo_template.render({
-                        'yum_server':yum_server
-                })
-                run_remote_command(generate_exp_repo_command, host_post_info)
-                run_remote_command("sync", host_post_info)
+                self.generate_zstack_experimental_yum_repo()
 
-                # install libselinux-python and other command system libs from user defined repos
-                command = (
-                          "yum clean --enablerepo=%s metadata &&  pkg_list=`rpm -q libselinux-python python-devel "
-                          "python-setuptools python-pip gcc autoconf | grep \"not installed\" | awk"
-                          " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
-                          "-y $pkg; done;") % (zstack_repo, zstack_repo)
-                run_remote_command(command, host_post_info)
-                if distro_version >= 7:
-                    # to avoid install some pkgs on virtual router which release is Centos 6.x
-                    command = (
-                                  "yum clean --enablerepo=%s metadata &&  pkg_list=`rpm -q python-backports-ssl_match_hostname chrony | "
-                                  "grep \"not installed\" | awk"
-                                  " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
-                                  "-y $pkg; done;") % (zstack_repo, zstack_repo)
-                    run_remote_command(command, host_post_info)
-                    # enable chrony service and disable ntp for RedHat 7
-                    service_status("ntpd", "state=stopped enabled=no", host_post_info, ignore_error=True)
-                    service_status("chronyd", "state=restarted enabled=yes", host_post_info)
-
-
+            # install rpm packages required by zstack
+            self.install_yum_os_required_packages(zstack_repo, user_defined)
+            self.install_virtual_router_required_packages(zstack_repo)
         elif distro in DEB_BASED_OS:
-            command = '[ -f /etc/apt/sources.list ] && /bin/mv -f /etc/apt/sources.list /etc/apt/sources.list.zstack.bak || true'
-            run_remote_command(command, host_post_info)
-            update_repo_raw_command = """
-cat > /etc/apt/sources.list << EOF
-deb http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }} main restricted universe multiverse
-deb http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-security main restricted universe multiverse
-deb http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-updates main restricted universe multiverse
-deb http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-proposed main restricted universe multiverse
-deb http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-backports main restricted universe multiverse
-deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }} main restricted universe multiverse
-deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-security main restricted universe multiverse
-deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-updates main restricted universe multiverse
-deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-proposed main restricted universe multiverse
-deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-backports main restricted universe multiverse
-                """
-            if 'ali' in zstack_repo:
-                update_repo_command_template = jinja2.Template(update_repo_raw_command)
-                update_repo_command = update_repo_command_template.render({
-                    'zstack_repo' : 'aliyun',
-                    'DISTRIB_CODENAME' : distro_release
-                })
-                run_remote_command(update_repo_command, host_post_info)
-            if '163' in zstack_repo:
-                update_repo_command_template = jinja2.Template(update_repo_raw_command)
-                update_repo_command = update_repo_command_template.render({
-                    'zstack_repo' : '163',
-                    'DISTRIB_CODENAME' : distro_release
-                })
-                run_remote_command(update_repo_command, host_post_info)
-
-            # install dependency packages for Debian based OS
-            service_status('unattended-upgrades', 'state=stopped enabled=no', host_post_info, ignore_error=True)
-            #apt_update_cache(86400, host_post_info)
-            install_pkg_list =["python-dev", "python-setuptools", "python-pip", "gcc", "autoconf", "chrony"]
-            apt_install_packages(install_pkg_list, host_post_info)
-
-            # name: enable chrony service for Debian
-            run_remote_command("update-rc.d chrony defaults; service ntp stop || true; service chrony restart", host_post_info)
-
+            self.update_debian_repo(zstack_repo)
+            self.install_debian_system_requirements()
+            self.enable_debian_services()
         else:
             error("ERROR: Unsupported distribution")
 
@@ -1562,10 +1473,201 @@ deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-back
             pip_install_arg.name = "%s/pip-7.0.3.tar.gz" % zstack_root
             pip_install_package(pip_install_arg, host_post_info)
 
+    # install system packages required by cloud
+    def install_yum_os_required_packages(self, zstack_repo, skip_clean_yum_metadata=True):
+        before_install_command = ""
+        if not skip_clean_yum_metadata:
+            before_install_command += "yum clean --enablerepo=%s metadata && " % zstack_repo
+
+        # install libselinux-python and other command system libs from user defined repos
+        command = (
+            "%s pkg_list=`rpm -q libselinux-python python-devel "
+            "python-setuptools python-pip gcc autoconf | grep \"not installed\" | awk"
+            " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
+            "-y $pkg; done;") % (before_install_command, zstack_repo, zstack_repo)
+        run_remote_command(command, self.host_post_info)
+
+        if self.distro_version < 7:
+            return
+
+        # to avoid install some pkgs on virtual router which release is Centos 6.x
+        command = (
+            "yum clean --enablerepo=%s metadata &&  pkg_list=`rpm -q python-backports-ssl_match_hostname chrony | "
+            "grep \"not installed\" | awk"
+            " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
+            "-y $pkg; done;") % (zstack_repo, zstack_repo)
+        run_remote_command(command, self.host_post_info)
+
+        # enable chrony service and disable ntp for RedHat 7
+        service_status("ntpd", "state=stopped enabled=no",
+                       self.host_post_info, ignore_error=True)
+        service_status("chronyd", "state=restarted enabled=yes",
+                       self.host_post_info)
+
+
+    def generate_zstack_experimental_yum_repo(self):
+        generate_exp_repo_raw_command = """
+echo -e "[zstack-experimental-mn]
+name=zstack-experimental-mn
+baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$basearch/\$YUM0/Extra/zstack-experimental/
+gpgcheck=0
+enabled=0" >  /etc/yum.repos.d/zstack-experimental-mn.repo
+               """
+        generate_exp_repo_template = jinja2.Template(
+            generate_exp_repo_raw_command)
+        generate_exp_repo_command = generate_exp_repo_template.render({
+            'yum_server': yum_server
+        })
+        run_remote_command(generate_exp_repo_command, self.host_post_info)
+        run_remote_command("sync", self.host_post_info)
+
+    # generate mlnx yum repo
+    def generate_mlnx_yum_repo(self):
+        generate_mlnx_repo_raw_command = """
+echo -e "[mlnx-ofed-mn]
+name=mlnx-ofed-mn
+baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$basearch/\$YUM0/Extra/mlnx-ofed/
+gpgcheck=0
+enabled=0" >  /etc/yum.repos.d/mlnx-ofed-mn.repo
+               """
+        generate_mlnx_repo_template = jinja2.Template(
+            generate_mlnx_repo_raw_command)
+        generate_mlnx_repo_command = generate_mlnx_repo_template.render({
+            'yum_server': yum_server
+        })
+        run_remote_command(generate_mlnx_repo_command, self.host_post_info)
+        run_remote_command("sync", self.host_post_info)
+
+    # generate qemu-kvm-ev.repo
+    def generate_qemu_kvm_ev_yum_repo(self):
+        generate_kvm_repo_raw_command = """
+echo -e "[qemu-kvm-ev-mn]
+name=qemu-kvm-ev-mn
+baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$basearch/\$YUM0/Extra/qemu-kvm-ev/
+gpgcheck=0
+enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo
+               """
+        generate_kvm_repo_template = jinja2.Template(
+            generate_kvm_repo_raw_command)
+        generate_kvm_repo_command = generate_kvm_repo_template.render({
+            'yum_server': yum_server
+        })
+        run_remote_command(generate_kvm_repo_command, self.host_post_info)
+        run_remote_command("sync", self.host_post_info)
+
+    # generate zstack-mn.repo
+    def genereate_mn_yum_repo(self):
+        generate_mn_repo_raw_command = """
+echo -e "[zstack-mn]
+name=zstack-mn
+baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$basearch/\$YUM0/
+gpgcheck=0
+enabled=0" >  /etc/yum.repos.d/zstack-mn.repo
+               """
+        generate_mn_repo_template = jinja2.Template(
+            generate_mn_repo_raw_command)
+        generate_mn_repo_command = generate_mn_repo_template.render({
+            'yum_server': yum_server
+        })
+        run_remote_command(generate_mn_repo_command, self.host_post_info)
+        run_remote_command("sync", self.host_post_info)
+
+    def generate_yum_repo_config_from_zstack_lib(self, yum_repo_file):
+        # read yum repo content from repo_file
+        yum_repo_content = None
+        with open(yum_repo_file, 'r') as f:
+            yum_repo_content = f.read()
+
+        if not yum_repo_content:
+            raise Exception(
+                "failed to read yum repo content from %s" % yum_repo_file)
+
+        # copy module may not supported due to libselinux-python requirement
+        # manually create yum repo to /etc/yum.repos.d/
+        command = """
+echo -e "%s" > /etc/yum.repos.d/%s
+                """ % (yum_repo_content, yum_repo_file)
+        run_remote_command(command, self.host_post_info)
+
+    # copy zstack-163-yum.repo to /etc/yum.repos.d/
+    def generate_163_yum_repo(self):
+        repo_163_repo = "files/zstacklib/zstack-163-yum.repo"
+        self.generate_yum_repo_config_from_zstack_lib(repo_163_repo)
+
+    # copy zstack-aliyun-yum.repo to /etc/yum.repos.d/
+    def generate_aliyun_yum_repo(self):
+        repo_aliyun_repo = "files/zstacklib/zstack-aliyun-yum.repo"
+        self.generate_yum_repo_config_from_zstack_lib(repo_aliyun_repo)
+
+    def generate_epel_yum_repo(self):
+        epel_repo_exist = file_dir_exist(
+            "path=/etc/yum.repos.d/epel.repo", self.host_post_info)
+        if epel_repo_exist:
+            return
+
+        # read eple release source from local
+        repo_epel = "files/zstacklib/epel-release-source.repo"
+        self.generate_yum_repo_config_from_zstack_lib(repo_epel)
+
+    def install_packages_with_user_defined_repo(self, zstack_repo):
+        # To avoid systemd bug :https://github.com/systemd/systemd/issues/1961
+        run_remote_command("rm -f /run/systemd/system/*.scope", self.host_post_info)
+
+        self.generate_epel_yum_repo()
+
+        # zstack_repo defined by user
+        self.install_yum_os_required_packages()
+
+    def enable_debian_services(self):
+        # name: enable chrony service for Debian
+        run_remote_command(
+            "update-rc.d chrony defaults; service ntp stop || true; service chrony restart", self.host_post_info)
+
+    def update_debian_repo(self, zstack_repo):
+        command = '[ -f /etc/apt/sources.list ] && /bin/mv -f /etc/apt/sources.list /etc/apt/sources.list.zstack.bak || true'
+        run_remote_command(command, self.host_post_info)
+        update_repo_raw_command = """
+cat > /etc/apt/sources.list << EOF
+deb http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }} main restricted universe multiverse
+deb http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-security main restricted universe multiverse
+deb http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-updates main restricted universe multiverse
+deb http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-proposed main restricted universe multiverse
+deb http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-backports main restricted universe multiverse
+deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }} main restricted universe multiverse
+deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-security main restricted universe multiverse
+deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-updates main restricted universe multiverse
+deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-proposed main restricted universe multiverse
+deb-src http://mirrors.{{ zstack_repo }}.com/ubuntu/ {{ DISTRIB_CODENAME }}-backports main restricted universe multiverse
+                """
+        if 'ali' in zstack_repo:
+            update_repo_command_template = jinja2.Template(update_repo_raw_command)
+            update_repo_command = update_repo_command_template.render({
+                'zstack_repo': 'aliyun',
+                'DISTRIB_CODENAME': self.distro_release
+                })
+            run_remote_command(update_repo_command, self.host_post_info)
+
+        if '163' in zstack_repo:
+            update_repo_command_template = jinja2.Template(update_repo_raw_command)
+            update_repo_command = update_repo_command_template.render({
+                'zstack_repo': '163',
+                'DISTRIB_CODENAME': self.distro_release
+                })
+            run_remote_command(update_repo_command, self.host_post_info)
+
+    def install_debian_system_requirements(self):
+        # install dependency packages for Debian based OS
+        service_status('unattended-upgrades', 'state=stopped enabled=no',
+                       self.host_post_info, ignore_error=True)
+        # apt_update_cache(86400, host_post_info)
+        install_pkg_list = ["python-dev", "python-setuptools",
+                            "python-pip", "gcc", "autoconf", "chrony"]
+        apt_install_packages(install_pkg_list, self.host_post_info)
 
 def main():
     # Reserve for test api
     pass
+
 
 if __name__ == "__main__":
     main()
