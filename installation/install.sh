@@ -45,7 +45,6 @@ MINI_INSTALL='n'
 CUBE_INSTALL='n'
 SANYUAN_INSTALL='n'
 SDS_INSTALL='n'
-ZOPS_INSTALL='y'
 MANAGEMENT_INTERFACE=`ip route | grep default | head -n 1 | cut -d ' ' -f 5`
 ZSTACK_INSTALL_LOG='/tmp/zstack_installation.log'
 ZSTACKCTL_INSTALL_LOG='/tmp/zstack_ctl_installation.log'
@@ -2288,6 +2287,7 @@ install_sds(){
 }
 
 install_zops(){
+    [[ x"$SKIP_ZOPS_INSTALL" = x"y" ]] && return
     echo_title "Install or upgrade ZOps"
     echo ""
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
@@ -3635,7 +3635,7 @@ do
         --cube) CUBE_INSTALL='y';shift;;
         --SY) SANYUAN_INSTALL='y';shift;;
         --sds) SDS_INSTALL='y';shift;;
-        --no-zops) ZOPS_INSTALL='n';shift;;
+        --no-zops) SKIP_ZOPS_INSTALL='y';shift;;
         --) shift;;
         * ) usage;;
     esac
@@ -4024,9 +4024,7 @@ if [ x"$UPGRADE" = x'y' ]; then
     upgrade_zstack
 
     #Upgrade or install zops
-    if [ x"$ZOPS_INSTALL" = x"y" ]; then
-        install_zops
-    fi
+    install_zops
 
     #Setup audit.rules
     setup_audit_file
@@ -4267,9 +4265,7 @@ if [ -z $NOT_START_ZSTACK ]; then
 fi
 
 #Install/Upgrade zops
-if [ x"$ZOPS_INSTALL" = x"y" ]; then
-    install_zops
-fi
+install_zops
 
 echo ""
 echo_star_line
