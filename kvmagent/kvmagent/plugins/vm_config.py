@@ -254,7 +254,8 @@ if [[ $(ip route | grep "default via {{ gateway }} dev {{ port_name }}") == "" ]
 fi
 {%- endif %}
 {%- if mtu %}
-if [[ $(ip link ls dev {{ port_name }} | grep 'mtu {{ mtu }}') == "" ]];then
+dev_mtu=`cat /sys/class/net/{{ port_name }}/mtu`
+if [[ ${dev_mtu} -ge {{ mtu }} && $(ip link ls dev {{ port_name }} | grep 'mtu {{ mtu }}') == "" ]];then
     exit 31
 fi
 {%- endif %}
