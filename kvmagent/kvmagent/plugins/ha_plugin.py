@@ -1130,5 +1130,6 @@ class HaPlugin(kvmagent.KvmAgent):
         with self.fencer_lock:
             for key in self.run_fencer_timestamp.keys():
                 if ps_uuid in key:
-                    self.run_fencer_timestamp.pop(ps_uuid, None)
+                    logger.debug('cancel fencer for ps: %s, with fencer key: %s' % (ps_uuid, key))
+                    self.run_fencer_timestamp.pop(key, None)
                     self.sblk_health_checker.delvg(ps_uuid)  # ugly ...
