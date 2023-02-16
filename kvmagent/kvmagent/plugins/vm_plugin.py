@@ -105,11 +105,13 @@ class VolumeTO(object):
     def from_xmlobject(xml_obj):
         # type: (etree.Element) -> VolumeTO
 
-        if xml_obj.attrib['type'] == 'file' and xml_obj.find('source') is not None:
-            v = VolumeTO()
-            v.installPath = xml_obj.find('source').attrib['file']
-            v.deviceType = "file"
-            return v
+        if xml_obj.attrib['type'] == 'file':
+            source = xml_obj.find('source')
+            if source and 'file' in source.attrib:
+                v = VolumeTO()
+                v.installPath = xml_obj.find('source').attrib['file']
+                v.deviceType = "file"
+                return v
 
 
 class RemoteStorageFactory(object):
