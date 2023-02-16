@@ -199,8 +199,12 @@ class CentOSNetworkConfig:
     @staticmethod
     def if_down_up(if_name, opt=PORT_OPT_UP):
         if opt & CentOSNetworkConfig.PORT_OPT_DOWN:
-            cmd = ['ifdown', if_name]
-            processutils.execute(*cmd)
+            try:
+                cmd = ['ifdown', if_name]
+                processutils.execute(*cmd)
+            except processutils.ProcessExecutionError as e:
+                if 'not an active connection' not in e.stderr:
+                    raise e
         if opt & CentOSNetworkConfig.PORT_OPT_UP:
             cmd = ['ifup', if_name]
             processutils.execute(*cmd)
