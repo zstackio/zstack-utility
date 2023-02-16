@@ -275,7 +275,7 @@ def install_kvm_pkg():
                         qemu-kvm collectd-virt storcli edk2-ovmf python2-pyudev collectd-disk"
 
         x86_64_rl85 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
-                      usbredir-server iputils iscsi-initiator-utils libvirt-daemon libvirt-client libvirt-python lighttpd lsof \
+                      usbredir-server iputils iscsi-initiator-utils libvirt-daemon libvirt-daemon-kvm libvirt-client libvirt-python lighttpd lsof \
                       net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
                       smartmontools sshpass usbutils wget audit dnsmasq \
                       qemu-kvm collectd-virt edk2-ovmf mcelog MegaCli storcli Arcconf nvme-cli python-pyudev seabios-bin kernel-devel elfutils-libelf-devel"
