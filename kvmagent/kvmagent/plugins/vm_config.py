@@ -1005,6 +1005,7 @@ def get_guest_tools_states():
 
             _, config = qga.guest_file_read('/usr/local/zstack/guesttools')
             if not config:
+                tools_state['state'] = GUEST_TOOLS_STATE_UNKNOWN
                 return tools_state
 
             tools_state['state'] = GUEST_TOOLS_STATE_RUNNING
@@ -1053,6 +1054,7 @@ class GetGuestToolsStateResponse(kvmagent.AgentResponse):
         self.states = None
 
 
+GUEST_TOOLS_STATE_UNKNOWN = 'Unknown'
 GUEST_TOOLS_STATE_RUNNING = 'Running'
 GUEST_TOOLS_STATE_NOT_RUNNING = 'NotRunning'
 
