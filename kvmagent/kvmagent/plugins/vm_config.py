@@ -23,6 +23,10 @@ logger = log.get_logger(__name__)
 
 class VmConfigDriverBase(object):
     __metaclass__ = ABCMeta
+    NET_CONFIG_STYLE_FEDORA = "fedora"
+    NET_CONFIG_STYLE_DEBIAN = "debian"
+    NET_CONFIG_STYLE_WINDOWS = "windows"
+    NET_CONFIG_STYLE_UNKNOWN = "unknown"
 
     def __init__(self, qga):
         self.qga = qga
@@ -45,9 +49,9 @@ class VmConfigDriverBase(object):
             if not self.nm_soft_type:
                 self.nm_soft_type = self._get_nm_soft_type()
             if not self.nm_driver:
-                self.nm_driver = self.get_nm_driver()
+                self.nm_driver = self._get_nm_driver()
             if not self.config_persist_driver:
-                self.config_persist_driver = self.get_config_persist_driver()
+                self.config_persist_driver = self._get_config_persist_driver()
             logger.debug('_set_mn_driver, nm_soft_type={}, nm_driver={}, config_persist_driver={}'
                          .format(self.nm_soft_type, self.nm_driver.__class__.__name__,
                                  self.config_persist_driver.__class__.__name__))
@@ -55,25 +59,24 @@ class VmConfigDriverBase(object):
 
         return set_driver
 
-    def get_nm_driver(self):
+    def _get_nm_driver(self):
         qga = self.qga
         if qga.guest_exec_bash_no_exitcode("which netplan", exception=False) \
                 and self.nm_soft_type in (
                 LinuxVmConfigDriverBase.LINUX_NM_SOFT_TYPE_NM, LinuxVmConfigDriverBase.LINUX_NM_SOFT_TYPE_SYSTEMD):
             return LinuxNmNetplanDriver(qga)
+
         if self.nm_soft_type == LinuxVmConfigDriverBase.LINUX_NM_SOFT_TYPE_NM:
-            if self.qga.os in [VM_OS_LINUX_UBUNTU, VM_OS_LINUX_DEBIAN, VM_OS_LINUX_UOS]:
-                if self.qga.guest_exec_bash_no_exitcode(
-                        "cat /etc/NetworkManager/NetworkManager.conf | grep '^[ ]*managed[ ]*=[ ]*true'",
-                        exception=False):
-                    # return LinuxNmIfUpDownDriver(qga)
-                    return LinuxNmNmcliDriver(qga, True)
-            else:
+            if self.driver_name == "centos":
                 return LinuxNmNmcliDriver(qga, False)
+            elif self.driver_name == "ubuntu" \
+                and self.qga.guest_exec_bash_no_exitcode(
+                    "cat /etc/NetworkManager/NetworkManager.conf | grep '^[ ]*managed[ ]*=[ ]*true'", exception=False):
+                return LinuxNmNmcliDriver(qga, True)
 
         return LinuxNmIprouteDriver(qga)
 
-    def get_config_persist_driver(self):
+    def _get_config_persist_driver(self):
         if self.nm_driver.driver_type == VmNetworkManagerBase.VM_NM_DRIVER_NETPLAN:
             return NetplanPersistDriver(self.qga, self.nm_soft_type)
         elif self.driver_name == "centos":
@@ -85,6 +88,20 @@ class VmConfigDriverBase(object):
                                'not support vm_config_driver %s nm_driver %s' % (self.driver_name, self.nm_driver))
 
     @staticmethod
+    def get_net_config_style(qga):
+        style = None
+        if qga.os in VM_OS_LINUX_LIST:
+            if qga.guest_file_is_exist('/etc/sysconfig/network-scripts/'):
+                style = VmConfigDriverBase.NET_CONFIG_STYLE_FEDORA
+            elif qga.guest_file_is_exist('/etc/network/'):
+                style = VmConfigDriverBase.NET_CONFIG_STYLE_DEBIAN
+
+        if not style:
+            raise QgaException(ERROR_CODE_QGA_OS_NOT_SUPPORT, "os {} not support", qga.os)
+
+        return style
+
+    @staticmethod
     def get_driver(domain):
         qga = Qga(domain)
         if qga.state != Qga.QGA_STATE_RUNNING:
@@ -93,12 +110,23 @@ class VmConfigDriverBase(object):
                 qga.os_version not in VM_CONFIG_SYNC_OS_VERSION_SUPPORT[qga.os]:
             raise QgaException(ERROR_CODE_QGA_OS_NOT_SUPPORT, 'not support for os {} {}'.format(qga.os, qga.os_version))
 
+        vm_config_driver = None
+
         if qga.os in (VM_OS_LINUX_CENTOS, VM_OS_LINUX_KYLIN):
             vm_config_driver = CentOSVmConfigDriver(qga)
-        elif qga.os == VM_OS_LINUX_UOS and qga.os_id_like and 'fedora' in qga.os_id_like:
-            vm_config_driver = CentOSVmConfigDriver(qga)
-        elif qga.os in (VM_OS_LINUX_UBUNTU, VM_OS_LINUX_UOS):
+        elif qga.os == VM_OS_LINUX_UBUNTU:
             vm_config_driver = UbuntuVmConfigDriver(qga)
+        elif qga.os == VM_OS_LINUX_UOS:
+            style = VmConfigDriverBase.get_net_config_style(qga)
+            if style == VmConfigDriverBase.NET_CONFIG_STYLE_FEDORA:
+                vm_config_driver = CentOSVmConfigDriver(qga)
+            elif style == VmConfigDriverBase.NET_CONFIG_STYLE_DEBIAN:
+                vm_config_driver = UbuntuVmConfigDriver(qga)
+
+        if vm_config_driver is None:
+            raise QgaException(ERROR_CODE_QGA_OS_NOT_SUPPORT, 'not support for os {} {}, style {}'
+                               .format(qga.os, qga.os_version, style))
+
         return vm_config_driver
 
     @abstractmethod
