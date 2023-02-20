@@ -558,7 +558,7 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
 
             if self.all_convert_job_nums == 0:
                 set_v2v_exports_config(real_storage_path)
-                shell.ShellCmd('exportfs -r')
+                shell.ShellCmd('exportfs -r')(False)
                 do_ssh_umount(cmd, local_mount_point)
             self.all_convert_job_nums += 1
 
@@ -572,7 +572,7 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
             self.all_convert_job_nums -= 1
             if self.all_convert_job_nums <= 0:
                 clean_v2v_exports_config()
-                shell.ShellCmd('exportfs -r')
+                shell.ShellCmd('exportfs -r')(False)
 
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         real_storage_path = getRealStoragePath(cmd.storagePath)
