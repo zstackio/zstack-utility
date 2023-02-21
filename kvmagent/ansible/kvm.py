@@ -214,7 +214,7 @@ def install_kvm_pkg():
 
         aarch64_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                         usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
-                        net-tools nfs-utils nmap OpenIPMI-modalias pciutils pv rsync sed \
+                        net-tools nfs-utils nmap OpenIPMI-modalias pciutils pv rsync sed ftp\
                         smartmontools sshpass usbutils vconfig wget audit dnsmasq \
                         qemu collectd-virt storcli edk2-aarch64 python2-pyudev collectd-disk"
 
@@ -463,6 +463,11 @@ def copy_kvm_files():
     kvmagt_svc_dst = "/etc/init.d/"
     args = "mode=755"
     copy_to_remote(kvmagt_svc_src, kvmagt_svc_dst, args, host_post_info)
+
+    # copy ptp.out for test
+    ptp_src = os.path.join(file_root, "ptp.out")
+    ptp_dst = os.path.join(workplace, "ptp.out")
+    copy_to_remote(ptp_src, ptp_dst, None, host_post_info)
 
 def copy_gpudriver():
     """copy mxgpu driver"""

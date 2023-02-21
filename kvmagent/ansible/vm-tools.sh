@@ -93,13 +93,14 @@ check_md5() {
 
 query_agent_info() {
   vmInstanceUuid=`curl http://169.254.169.254/2009-04-04/meta-data/instance-id`
-  version=`echo $AGENT_VERSION | grep "zwatch-vm-agent=" | awk -F '=' '{print $2}'`
+  version=`echo $AGENT_VERSION | cut -d ' ' -f 1 | awk -F '=' '/zwatch-vm-agent=/{print $2}'`
 }
 
 install_agent_tools() {
   cd $TEMP_PATH
   chmod +x zwatch-vm-agent.download
   ./zwatch-vm-agent.download -i
+  echo -n $version > /usr/local/zstack/zwatch-vm-agent/version
   clean_download_file
   if [ $? != 0 ]; then
     send_install_result "InstallFailed"
@@ -116,8 +117,6 @@ start_agent_tools() {
     log_info "service zwatch-vm-agent start fail"
     exit 1
   fi
-
-  send_install_result $version
 }
 
 # process

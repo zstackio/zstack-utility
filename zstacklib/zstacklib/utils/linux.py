@@ -190,14 +190,15 @@ def rm_dir_checked(dpath):
     exception_on_opened_dir(dpath)
     shutil.rmtree(dpath)
 
-def zero_dd(path, bs, count=None, iflag=None, oflag=None, exception=True):
+def zero_dd(path, bs, count=None, iflag=None, oflag=None, times=1, exception=True):
     bs = "bs={}".format(bs) if bs else ""
     count = "count={}".format(count) if count else ""
     iflag = "iflag={}".format(iflag) if iflag else ""
     oflag = "oflag={}".format(oflag) if oflag else ""
-    ddcmd = "dd if=/dev/zero of={} {} {} {} {}".format(path, bs, count, iflag, oflag)
+    ddcmd = "dd if=/dev/zero of={} {} {} {} {};".format(path, bs, count, iflag, oflag)
+    ecmds = ";sync;".join([ddcmd for i in range(times)])
     shell.run("sync")
-    shell.call(ddcmd, exception=exception)
+    shell.call(ecmds, exception=exception)
     shell.run("sync")
 
 def zeroed_file_dev(fpath):
@@ -210,7 +211,15 @@ def zeroed_file_dev(fpath):
     if os.path.isfile(fpath):
         size = os.path.getsize(fpath)
         count = int(math.ceil(float(size)/1024/1024))
-        zero_dd(fpath, bs="1M", count=count, oflag="direct")
+        """
+        In case of file, one time dd does not ensure that all data is erased.
+        If you want to be really sure your data is gone you will need to write over the file 7 times.
+        This is the current Department of Defense procedure for wiping sensitive data.
+        c.f. https://www.marksanborn.net/security/securely-wipe-a-file-with-dd/
+        
+        But 7 times will take so many long times in a big file, here we repeat 3 times.
+        """
+        zero_dd(fpath, bs="1M", count=count, oflag="direct", times=3)
     else:
         zero_dd(fpath, bs="1M", oflag="direct", exception=False)
     logger.debug("successfully zeroed the file/dev[{}]".format(fpath))
