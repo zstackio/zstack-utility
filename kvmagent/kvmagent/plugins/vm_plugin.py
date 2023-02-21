@@ -966,7 +966,9 @@ class VncPortIptableRule(object):
         ipt.iptable_restore()
 
 
-def e(parent, tag, value=None, attrib={}, usenamesapce = False):
+def e(parent, tag, value=None, attrib=None, usenamesapce = False):
+    if attrib is None:
+        attrib = {}
     if usenamesapce:
         tag = '{%s}%s' % (ZS_XML_NAMESPACE, tag)
     el = etree.SubElement(parent, tag, attrib)
@@ -2005,7 +2007,7 @@ class Vm(object):
         target = disk_element.find('target')
         bus = target.get('bus') if target is not None else None
 
-        if vol.deviceAddress and vol.deviceAddress.type == 'pci':
+        if vol.deviceAddress and vol.deviceAddress.type == 'pci' and Vm._get_disk_address_type(bus) == 'pci':
             attributes = {}
             if vol.deviceAddress.domain:
                 attributes['domain'] = vol.deviceAddress.domain
@@ -2018,7 +2020,7 @@ class Vm(object):
 
             attributes['type'] = vol.deviceAddress.type
             e(disk_element, 'address', None, attributes)
-        elif vol.deviceAddress and vol.deviceAddress.type == 'drive':
+        elif vol.deviceAddress and vol.deviceAddress.type == 'drive' and Vm._get_disk_address_type(bus) == 'drive':
             e(disk_element, 'address', None, {'type': 'drive', 'controller': vol.deviceAddress.controller, 'unit': str(vol.deviceAddress.unit)})
         elif bus == 'scsi':
             occupied_units = vm_to_attach.get_occupied_disk_address_units(bus='scsi', controller=0) if vm_to_attach else []
@@ -2532,8 +2534,12 @@ class Vm(object):
                 if volume.useVirtioSCSI:
                     e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
                     e(disk, 'wwn', volume.wwn)
-                else:
+                elif volume.useVirtio:
                     e(disk, 'target', None, {'dev': 'vd%s' % dev_letter, 'bus': 'virtio'})
+                else:
+                    bus_type = self._get_controller_type()
+                    dev_format = Vm._get_disk_target_dev_format(bus_type)
+                    e(disk, 'target', None, {'dev': dev_format % dev_letter, 'bus': bus_type})
 
                 return disk
             return blk()
@@ -3462,6 +3468,10 @@ class Vm(object):
     @staticmethod
     def _get_disk_target_dev_format(bus_type):
         return {'virtio': 'vd%s', 'scsi': 'sd%s', 'sata': 'hd%s', 'ide': 'hd%s'}[bus_type]
+
+    @staticmethod
+    def _get_disk_address_type(bus_type):
+        return {'virtio': 'pci', 'scsi': 'drive', 'sata': 'drive', 'ide': 'drive'}[bus_type]
 
     def hotplug_mem(self, memory_size):
         mem_size = (memory_size - self.get_memory()) / 1024
@@ -4724,8 +4734,13 @@ class Vm(object):
                 if _v.useVirtioSCSI:
                     e(disk, 'target', None, {'dev': 'sd%s' % _dev_letter, 'bus': 'scsi'})
                     e(disk, 'wwn', _v.wwn)
-                else:
+                elif _v.useVirtio:
                     e(disk, 'target', None, {'dev': 'vd%s' % _dev_letter, 'bus': 'virtio'})
+                else:
+                    dev_format = Vm._get_disk_target_dev_format(default_bus_type)
+                    e(disk, 'target', None, {'dev': dev_format % _dev_letter, 'bus': default_bus_type})
+                    if default_bus_type == "ide" and cmd.imagePlatform.lower() == "other":
+                        allocat_ide_config(disk, _v)
 
                 return disk
 
