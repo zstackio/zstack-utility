@@ -86,7 +86,7 @@ class TestShareBlockPlugin(TestCase, SharedBlockPluginTestStub):
 
         # test delete
         rsp = shareblock_utils.shareblock_delete_bits(
-            path="sharedblock://{}/{}".format(vgUuid, imageUuid),
+            path="sharedblock://{}/{}".format(vgUuid, volumeUuid),
             vgUuid=vgUuid,
             hostUuid=hostUuid,
             primaryStorageUuid=vgUuid

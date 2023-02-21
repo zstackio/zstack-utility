@@ -61,6 +61,10 @@ class TestShareBlockPlugin(TestCase,SharedBlockPluginTestStub):
             hostId=50,
             hostUuid=hostUuid
         )
+
+        r, o = bash.bash_ro("lsblk")
+        #self.assertEqual(True, rsp.success, rsp.error + o)
+
         imageUuid=misc.uuid()
         # download image to shareblock
         print("debug")

@@ -122,8 +122,14 @@ attach_vm_nic_body = {
         "mtu":1500,
         "driverType":"virtio",
         "type":"VNIC",
-        "vlanId":None
+        "vlanId":None,
+        "vHostAddOn": {
+            "queueNum" : 1,
+            "rxBufferSize" : 256,
+            "txBufferSize" :256
+        }
     }
+
 }
 
 VM_PLUGIN = None  # type: VmPlugin

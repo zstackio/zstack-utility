@@ -1,9 +1,9 @@
 from kvmagent.test.utils import pytest_utils,storage_device_utils
-from kvmagent.test.utils.stub import *
 from zstacklib.test.utils import remote
 from zstacklib.utils import linux, jsonobject, bash
 from zstacklib.test.utils import misc,env
 from unittest import TestCase
+from kvmagent.test.storage_device_testsuit.storage_device_teststub import StorageDevicePluginTestStub
 
 storage_device_utils.init_storagedevice_plugin()
 
@@ -21,7 +21,7 @@ global vgUuid
 
 
 ## describe: case will manage by ztest
-class TestShareBlockPlugin(TestCase):
+class TestShareBlockPlugin(TestCase, StorageDevicePluginTestStub):
 
     @classmethod
     def setUpClass(cls):
@@ -47,4 +47,6 @@ class TestShareBlockPlugin(TestCase):
 
         r, o = bash.bash_ro("ls /dev/disk/by-id | grep scsi")
         self.assertEqual(r, 0, "[check] login to iscsi failed")
+
+        self.logout(interf_ip,"3260")
 
