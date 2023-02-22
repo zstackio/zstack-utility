@@ -319,14 +319,19 @@ def install_kvm_pkg():
             host_post_info.post_label_param = dep_list
             run_remote_command(command, host_post_info)
 
-            if '%s_%s' % (host_arch, releasever) == 'x86_64_ns10':
-                # downgrade libvirt if host's libvirt version != repo's libvirt
-                # version
-                command = ("current_version=$(rpm -q --queryformat '%{{VERSION}}'  libvirt);"
-                           "repo_version=$(yum --disablerepo=* --enablerepo={0} --showduplicates info --available libvirt | grep Version | awk -F ' ' '{{print $3}}');"
-                           "if [[ ${{current_version}} != ${{repo_version}} ]]; then yum --disablerepo=* --enablerepo={0} downgrade -y libvirt; fi;").format(zstack_repo)
-                host_post_info.post_label_param = "libvirt"
-                run_remote_command(command, host_post_info)
+            if releasever == 'ns10':
+                if host_arch == 'x86_64':
+                    # downgrade libvirt if host's libvirt version != repo's libvirt
+                    # version
+                    command = ("current_version=$(rpm -q --queryformat '%{{VERSION}}'  libvirt);"
+                               "repo_version=$(yum --disablerepo=* --enablerepo={0} --showduplicates info --available libvirt | grep Version | awk -F ' ' '{{print $3}}');"
+                               "if [[ ${{current_version}} != ${{repo_version}} ]]; then yum --disablerepo=* --enablerepo={0} downgrade -y libvirt; fi;").format(zstack_repo)
+                    host_post_info.post_label_param = "libvirt"
+                    run_remote_command(command, host_post_info)
+                if host_arch == 'loongarch64' and yum_check_package("qemu", host_post_info):
+                    command = "yum --disablerepo=* --enablerepo={0} install -y qemu-block-rbd;".format(zstack_repo)
+                    host_post_info.post_label_param = "qemu-block-rbd"
+                    run_remote_command(command, host_post_info)
         else:
             # name: install kvm related packages on RedHat based OS from online
             for pkg in ['zstack-release', 'openssh-clients', 'bridge-utils', 'wget', 'chrony', 'sed', 'libvirt-python', 'libvirt', 'nfs-utils', 'vconfig',

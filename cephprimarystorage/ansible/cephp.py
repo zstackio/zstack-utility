@@ -27,6 +27,7 @@ ceph_file_path = "/bin/ceph"
 
 # common cephprimarystorage deps of ns10 that need to update
 ns10_update_list = "nettle"
+ns10_update_list_loongarch64 = "qemu-block-rbd"
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy ceph primary strorage to host')
@@ -55,7 +56,11 @@ host_post_info.remote_port = remote_port
 if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
 
-IS_AARCH64 = get_remote_host_arch(host_post_info) == 'aarch64'
+# get remote host arch
+host_arch = get_remote_host_arch(host_post_info)
+IS_AARCH64 = host_arch == 'aarch64'
+IS_LOONGARCH64 = host_arch == 'loongarch64'
+
 if IS_AARCH64:
     qemu_img_pkg = "files/kvm/qemu-img-aarch64"
     qemu_img_local_pkg = "%s/qemu-img-aarch64" % cephp_root
@@ -112,6 +117,10 @@ if distro in RPM_BASED_OS:
         run_remote_command(command, host_post_info)
 
         if releasever in ['ns10']:
+            if IS_LOONGARCH64 and yum_check_package("qemu", host_post_info):
+                command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (
+                    ns10_update_list_loongarch64, zstack_repo)
+                run_remote_command(command, host_post_info)
             command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (
             ns10_update_list, zstack_repo)
             run_remote_command(command, host_post_info)
