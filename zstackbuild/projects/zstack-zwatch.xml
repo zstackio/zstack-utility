@@ -24,7 +24,7 @@
         </copy>
     </target>
 
-    <target name="assemble-zstack-zwatch">
+    <target name="assemble-zstack-zwatch" depends="build-zstack-zwatch">
         <copy todir="${zsw.ansible.dir}">
             <fileset dir="${zsw.bdir}">
                 <include name="**" />
