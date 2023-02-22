@@ -32,10 +32,9 @@ def get_running_version(vm_uuid):
     pid = get_vm_pid(vm_uuid)
     if pid:
         exe = "/proc/%s/exe" % pid
-        r, o, e = bash.bash_roe("%s --version" % exe)
-        if r == 0:
-            return _parse_version(o.strip())
-        logger.debug("cannot get version from %s: %s" % (exe, e))
+        r = get_version_from_exe_file(exe)
+        if r:
+            return r
 
     r, o, e = bash.bash_roe("""virsh qemu-monitor-command %s '{"execute":"query-version"}'""" % vm_uuid)
     if r == 0:
@@ -47,8 +46,14 @@ def get_running_version(vm_uuid):
             return "%d.%d.%d" % (qv.major, qv.minor, qv.micro)
 
     logger.debug("cannot get vm[uuid:%s] version from qmp: %s" % (vm_uuid, e))
-    return _parse_version(shell.call("%s --version" % get_path()))
+    return get_version_from_exe_file(get_path())
 
+def get_version_from_exe_file(path):
+    r, o, e = bash.bash_roe("%s --version" % path)
+    if r == 0:
+        return _parse_version(o.strip())
+    logger.debug("cannot get version from %s: %s" % (path, e))
+    return ""
 
 def _parse_version(version_output):
     lines = version_output.splitlines()
