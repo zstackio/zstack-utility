@@ -89,6 +89,7 @@ class HostFactResponse(kvmagent.AgentResponse):
         self.systemSerialNumber = None
         self.eptFlag = None
         self.libvirtCapabilities = []
+        self.virtualizerInfo = vm_plugin.VirtualizerInfoTO()
 
 class SetupMountablePrimaryStorageHeartbeatCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -1080,7 +1081,12 @@ class HostPlugin(kvmagent.KvmAgent):
 
             cpu_cache_list = self._get_cpu_cache()
             rsp.cpuCache = ",".join(str(cache) for cache in cpu_cache_list)
-            
+
+        # get virtualizer info
+        rsp.virtualizerInfo.uuid = self.config.get(kvmagent.HOST_UUID)
+        rsp.virtualizerInfo.virtualizer = "qemu-kvm"
+        rsp.virtualizerInfo.version = qemu.get_version_from_exe_file(qemu.get_path())
+
         return jsonobject.dumps(rsp)
 
     @vm_plugin.LibvirtAutoReconnect
