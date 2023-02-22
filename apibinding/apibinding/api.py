@@ -60,7 +60,6 @@ class Api(object):
             return "[code: %s, description: %s, details: %s]" % \
                    (error.code, error.description, error.details)
 
-
     def _check_not_none_field(self, apicmd):
         for k, v in apicmd.__dict__.items():
             if isinstance(v, inventory.NotNoneField):
@@ -101,8 +100,28 @@ class Api(object):
                 'Logout session[uuid:%s] failed because %s' % (session_uuid, self._error_code_to_string(reply.error)))
 
     def async_call_wait_for_complete(self, apicmd, apievent=None, exception_on_error=True, interval=500, fail_soon=False):
-        def mask_result(result):
+        # try to find event class from inventory.py for masking sensitive fields
+        def create_event(apicmd):
+            if not apicmd:
+                return None
+
+            apiname = apicmd.__class__.__name__
+            if apiname.endswith("Action"):
+                event_name = "API" + apiname[0:-6] + "Event"
+            else:
+                event_name = apiname[0:-3] + "Event"
+
+            try:
+                return eval('inventory.%s()' % event_name)
+            except:
+                return None
+
+        def mask_result(apievent, result):
             event_name, event_str = result[1:-1].split(':', 1)
+
+            if not apievent:
+                apievent = create_event(apicmd)
+
             log_event = log.mask_sensitive_field(apievent, event_str)
             return '{%s: %s}' % (event_name, log_event)
 
@@ -116,7 +135,7 @@ class Api(object):
         jstr = http.json_dump_post(self.api_url, cmd, fail_soon=fail_soon, print_curl=self.curl)
         rsp = jsonobject.loads(jstr)
         if rsp.state == 'Done':
-            logger.debug("async call[url: %s, response: %s]" % (self.api_url, mask_result(rsp.result)))
+            logger.debug("async call[url: %s, response: %s]" % (self.api_url, mask_result(apievent, rsp.result)))
             reply = jsonobject.loads(rsp.result)
             (name, event) = (reply.__dict__.items()[0])
             if exception_on_error and not event.success:
@@ -134,7 +153,7 @@ class Api(object):
         if curr >= timeout:
             raise ApiError('API call[%s] timeout after %dms' % (apicmd.FULL_NAME, curr))
 
-        logger.debug("async call[url: %s, response: %s] after %dms" % (self.api_url, mask_result(rsp.result), curr))
+        logger.debug("async call[url: %s, response: %s] after %dms" % (self.api_url, mask_result(apievent, rsp.result), curr))
         reply = jsonobject.loads(rsp.result)
         (name, event) = (reply.__dict__.items()[0])
         if exception_on_error and not event.success:
