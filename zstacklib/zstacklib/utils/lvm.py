@@ -374,7 +374,7 @@ def get_running_lvmlockd_version():
         return shell.call("""%s --version | awk '{print $3}' | awk -F'.' '{print $1"."$2}'""" % exe).strip()
 
 def get_lvmlockd_pid():
-    return linux.find_process_by_command('lvmlockd').strip()
+    return linux.find_process_by_command('lvmlockd')
 
 def get_dm_wwid(dm):
     try:
