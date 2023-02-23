@@ -227,10 +227,12 @@ def install_kvm_pkg():
         x86_64_c76 = "%s libvirt-admin seabios-bin nping elfutils-libelf-devel qemu-kvm" % x86_64_el7_pkg_list
         x86_64_c79 = x86_64_c76
         x86_64_ky10sp2 = "%s python2-psutil edk2-ovmf edk2.git-ovmf-x64 qemu-kvm" % x86_64_aarch64_ky10_pkg_list
+        x86_64_ky10sp3 = x86_64_ky10sp2
         x86_64_uos1021a = "%s edk2-ovmf" % x86_64_aarch64_uos1021a_pkg_list
         x86_64_nfs4 = "%s iscsi-initiator-utils OpenIPMI pciutils nettle libselinux-devel tar iptables iptables-services qemu-kvm storcli \
                       edk2-ovmf python2-pyudev collectd-disk" % common_pkg_list
         aarch64_ky10sp2 = "%s edk2-aarch64 qemu" % x86_64_aarch64_ky10_pkg_list
+        aarch64_ky10sp3 = aarch64_ky10sp2
         aarch64_uos1021a = "%s storcli edk2-aarch64" % x86_64_aarch64_uos1021a_pkg_list
         aarch64_euler20 = "%s open-iscsi OpenIPMI-modalias pciutils qemu storcli edk2-aarch64 python2-pyudev collectd-disk" % common_pkg_list
         mips64el_ky10sp1 = "%s qemu" % mips64el_loongarch64_ky10_pkg_list
