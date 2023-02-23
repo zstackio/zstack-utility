@@ -16,7 +16,7 @@
         </copy>
     </target>
 
-    <target name="build-guest-tools-iso">
+    <target name="build-guest-tools-iso" depends="assemble-zstack-zwatch">
         <makeDir dir="${guesttools.bdir}" />
         <exec executable="make" dir="${zstackzwatch.source}" failonerror="true">
             <arg value="clean" />
@@ -32,7 +32,7 @@
         </copy>
     </target>
 
-    <target name="assemble-guest-tools-iso">
+    <target name="assemble-guest-tools-iso" depends="build-guest-tools-iso">
         <makeDir dir="${guesttools.general.dir}/KVM" />
         <copy todir="${guesttools.general.dir}/KVM">
             <fileset dir="${guesttools.bdir}">
