@@ -90,7 +90,7 @@ class VmConfigDriverBase(object):
     @staticmethod
     def get_net_config_style(qga):
         style = None
-        if qga.os in VM_OS_LINUX_LIST:
+        if qga.os in VM_OS_LINUX_SUPPORT:
             if qga.guest_file_is_exist('/etc/sysconfig/network-scripts/'):
                 style = VmConfigDriverBase.NET_CONFIG_STYLE_FEDORA
             elif qga.guest_file_is_exist('/etc/network/'):
@@ -1028,6 +1028,10 @@ def get_guest_tools_states():
         tools_state = {'state': GUEST_TOOLS_STATE_NOT_RUNNING}
         try:
             qga = Qga(domain)
+            # skip windows
+            if qga.os == VM_OS_WINDOWS:
+                return None
+
             if qga.state != Qga.QGA_STATE_RUNNING:
                 return tools_state
 
@@ -1044,7 +1048,7 @@ def get_guest_tools_states():
                     if all((qga.os != 'Unknown', qga.os_version != 'Unknown')) else 'Unknown'
                 if qga.os == VM_OS_WINDOWS:
                     tools_state['platForm'] = 'Windows'
-                elif qga.os in VM_OS_LINUX_LIST:
+                elif qga.os in VM_OS_LINUX_SUPPORT:
                     tools_state['platForm'] = 'Linux'
                 else:
                     tools_state['platForm'] = 'Other'
@@ -1061,12 +1065,15 @@ def get_guest_tools_states():
             continue
         if uuid == "ZStack Management Node VM":
             continue
-        (state, _, _, _, _) = domain.info()
-        if state != vm_plugin.Vm.VIR_DOMAIN_RUNNING:
+        (vm_state, _, _, _, _) = domain.info()
+        if vm_state != vm_plugin.Vm.VIR_DOMAIN_RUNNING:
             tools_states[uuid] = {state: GUEST_TOOLS_STATE_NOT_RUNNING}
             continue
 
-        tools_states[uuid] = check_guest_tools_state(domain)
+        state = check_guest_tools_state(domain)
+        if state:
+            tools_states[uuid] = state
+
     return tools_states
 
 
