@@ -1255,6 +1255,46 @@ unpack_zstack_into_tomcat(){
     fi
 }
 
+uz_configure_grayscale_upgrade(){
+    mysql -u root --password=$MYSQL_NEW_ROOT_PASSWORD -e 'exit' >/dev/null 2>&1
+    # check mysql root password not changed, if not changed, do nothing
+    [ $? -eq 0 ] || fail2 "Failed to login mysql, please specify mysql root password using -P MYSQL_ROOT_PASSWORD and try again."
+    if [ -z $GRAYSCALE_UPGRADE ]; then
+      return
+    fi
+
+    if [[ x"$GRAYSCALE_UPGRADE" != x"true" ]] && [[ x"$GRAYSCALE_UPGRADE" != x"false" ]];then
+        fail2 "Please input [true/false] when configure grayscale upgrade"
+    fi
+
+    get_grayscale_upgrade_config="select value from GlobalConfigVO where name=\"grayscaleUpgrade\";"
+    grayscale_upgrade_config=$(execute_sql "$get_grayscale_upgrade_config")
+    # insert configuration if not exists
+    if [ -z "$grayscale_upgrade_config" ]; then
+        insert_grayscale_upgrade_config_sql="INSERT INTO \`zstack\`.\`GlobalConfigVO\` (\`name\`, \`description\`, \`category\`, \`defaultValue\`, \`value\`) VALUES ('grayscaleUpgrade', 'A switch to control grayscale upgrade', 'upgradeControl', 'false', '$GRAYSCALE_UPGRADE')"
+        execute_sql "$insert_grayscale_upgrade_config_sql" >/dev/null 2>&1
+        [ $? -eq 0 ] && check_update_grayscale_upgrade_success "$GRAYSCALE_UPGRADE" "$get_grayscale_upgrade_config"
+    else
+        update_grayscale_upgrade_config_sql="update GlobalConfigVO SET value='$GRAYSCALE_UPGRADE' where name=\"grayscaleUpgrade\";"
+        execute_sql "$update_grayscale_upgrade_config_sql" >/dev/null 2>&1
+        [ $? -eq 0 ] && check_update_grayscale_upgrade_success "$GRAYSCALE_UPGRADE" "$get_grayscale_upgrade_config"
+    fi
+}
+
+execute_sql(){
+    result=`mysql -u root --password=$MYSQL_NEW_ROOT_PASSWORD zstack -e "$1"`
+    echo $result
+}
+
+check_update_grayscale_upgrade_success(){
+    get_grayscale_upgrade_config=$(execute_sql "$2")
+    grayscale_upgrade_config=`echo "$get_grayscale_upgrade_config" | grep value | awk -F ' ' '{print $2}'`
+    if [ x"$1" != x"$grayscale_upgrade_config" ]; then
+       [ x"$1" == x"true" ] && fail_msg="enabled" || fail_msg="disabled"
+       fail2 "Failed to $fail_msg grayscale upgrade configuration"
+    fi
+}
+
 upgrade_zstack(){
     echo_title "Upgrade ${PRODUCT_NAME}"
     echo ""
@@ -1266,6 +1306,9 @@ upgrade_zstack(){
 
     show_spinner uz_upgrade_tomcat
     show_spinner uz_upgrade_zstack_ctl
+
+    # configure grayscale upgrade config
+    uz_configure_grayscale_upgrade
 
     # configure management.server.ip if not exists
     zstack-ctl show_configuration | grep '^[[:space:]]*management.server.ip' >/dev/null 2>&1
@@ -3548,7 +3591,7 @@ check_myarg() {
 }
 
 OPTIND=1
-TEMP=`getopt -o f:H:I:n:p:P:r:R:t:y:acC:L:T:dDEFhiklmMNoOqsuz --long chrony-server-ip:,mini,cube,SY,sds -- "$@"`
+TEMP=`getopt -o f:H:I:n:p:P:r:R:t:y:acC:L:T:dDEFhiklmMNoOqsuz --long chrony-server-ip:,grayscale:,mini,cube,SY,sds -- "$@"`
 if [ $? != 0 ]; then
     usage
 fi
@@ -3604,6 +3647,7 @@ do
         -y ) check_myarg $1 $2;HTTP_PROXY=$2;shift 2;;
         -z ) NOT_START_ZSTACK='y';shift;;
         --chrony-server-ip ) check_myarg $1 $2;CHRONY_SERVER_IP=$2;shift 2;;
+        --grayscale ) check_myarg $1 $2;GRAYSCALE_UPGRADE=$2;shift 2;;
         --mini) MINI_INSTALL='y';shift;;
         --cube) CUBE_INSTALL='y';shift;;
         --SY) SANYUAN_INSTALL='y';shift;;
