@@ -81,6 +81,9 @@ if remote_pass is not None and remote_user != 'root':
 releasever = get_host_releasever([distro, distro_release, distro_version])
 host_post_info.releasever = releasever
 
+# get remote host kernel version
+kernel_version = get_remote_host_kernel_version(host_post_info)
+
 # get remote host arch
 host_arch = get_remote_host_arch(host_post_info)
 IS_AARCH64 = host_arch == 'aarch64'
@@ -284,7 +287,7 @@ def install_kvm_pkg():
             common_dep_list = "%s %s" % (common_dep_list, common_update_list)
 
             # zstack mini needs higher version kernel etc.
-            C76_KERNEL_OR_HIGHER = '3.10.0-957' in get_remote_host_kernel_version(host_post_info)
+            C76_KERNEL_OR_HIGHER = '3.10.0-957' in kernel_version
             if isMini == 'true':
                 mini_dep_list = " drbd84-utils kmod-drbd84" if C76_KERNEL_OR_HIGHER and not IS_AARCH64 else ""
                 common_dep_list += mini_dep_list
@@ -825,15 +828,13 @@ def modprobe_mpci_module():
         return
         
     """copy mpci.ko"""
-    kvers_list = ['23.34', '23.37', '52.14']
-    (status, stdout) = run_remote_command("uname -r", host_post_info, return_status=True, return_output=True)
-    kvers = stdout.split("-")[1][:5]
-    if kvers not in kvers_list:
+    kvers_list = ['4.19.90-23.34.', '4.19.90-23.37.', '4.19.90-52.14.', '4.19.90-52.19.']
+    if not kernel_version.startswith(tuple(kvers_list)):
         handle_ansible_info("There are no suitable SE drivers for this kernel", host_post_info, "WARNING")
         return
         
-    _src = "{}/mpci_{}_loongarch64".format(file_root, kvers)
-    _dst = "/lib/modules/{}/mpci.ko".format(stdout)
+    _src = "{}/mpci_{}loongarch64".format(file_root, "".join(filter(kernel_version.startswith, kvers_list)))
+    _dst = "/lib/modules/{}/mpci.ko".format(kernel_version)
     copy_to_remote(_src, _dst, "mode=644", host_post_info)
 
     command = "depmod -a; modprobe vfio-mdev; modprobe mpci || true"
