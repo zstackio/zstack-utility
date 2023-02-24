@@ -1,3 +1,5 @@
+import copy
+
 import snapshot_utils
 import volume_utils
 from kvmagent.plugins.vm_plugin import VmPlugin
@@ -132,6 +134,24 @@ attach_vm_nic_body = {
 
 }
 
+start_vm_data_vol = {
+    "primaryStorageType": "LocalStorage",
+    "volumeUuid": None,   # must fill
+    "installPath": None,  # must fill
+    "useVirtio": True,
+    "format": "qcow2",
+    "cacheMode": "none",
+    "useVirtioSCSI": False,
+    "deviceType": "file",
+    "deviceId": 1,
+    "bootOrder": 0,
+    "physicalBlockSize": 0,
+    "shareable": False,
+    "wwn": "0x000f6c46e4c236bf",
+    "type": "Data"
+}
+
+
 VM_PLUGIN = None  # type: VmPlugin
 
 
@@ -152,6 +172,16 @@ def create_startvm_body_jsonobject():
 
     return jsonobject.loads(jsonobject.dumps(startVmCmdBody))
 
+def create_startvm_body_jsonobject_with_volume_multi_queues(vol_uuid, vol_install_path):
+    # type: () -> jsonobject.JsonObject
+    body = copy.deepcopy(startVmCmdBody)
+    data_vol = copy.deepcopy(start_vm_data_vol)
+    data_vol["volumeUuid"] = vol_uuid
+    data_vol["resourceUuid"] = vol_uuid
+    data_vol["installPath"] = vol_install_path
+    data_vol["multiQueues"] = "1"
+    body["dataVolumes"] = [data_vol]
+    return jsonobject.loads(jsonobject.dumps(body))
 
 def create_vm(startvm_body):
     return VM_PLUGIN.start_vm(misc.make_a_request(startvm_body))
@@ -252,6 +282,32 @@ def attach_volume_to_vm(vm_uuid, vol_uuid, vol_path):
     body.vmInstanceUuid = vm_uuid
     body.volume.volumeUuid = vol_uuid
 
+    return VM_PLUGIN.attach_data_volume(misc.make_a_request(body.to_dict())), body.volume
+
+
+@misc.return_jsonobject()
+def attach_multi_queues_volume_to_vm(vm_uuid, vol_uuid, vol_path):
+    # type: (str, str, str) -> (jsonobject, jsonobject)
+    body = copy.deepcopy(volume_utils.attach_volume_body)
+    body["volume"]["multiQueues"] = "1"
+    body = jsonobject.loads(jsonobject.dumps(body))
+    body.volume.installPath = vol_path
+    body.vmInstanceUuid = vm_uuid
+    body.volume.volumeUuid = vol_uuid
+
+    return VM_PLUGIN.attach_data_volume(misc.make_a_request(body.to_dict())), body.volume
+
+
+@misc.return_jsonobject()
+def attach_multi_queues_shareblock_volume_to_vm(vm_uuid, vol_uuid, vol_path):
+    # type: (str, str, str) -> (jsonobject, jsonobject)
+    body = copy.deepcopy(volume_utils.attach_shareblock_volume_body)
+    body["volume"]["multiQueues"] = "1"
+    body["vmInstanceUuid"] = vm_uuid
+    body["volume"]["resourceUuid"] = vol_uuid
+    body["volume"]["installPath"] = vol_path
+    body["volume"]["volumeUuid"] = vol_uuid
+    body = jsonobject.loads(jsonobject.dumps(body))
     return VM_PLUGIN.attach_data_volume(misc.make_a_request(body.to_dict())), body.volume
 
 

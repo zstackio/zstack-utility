@@ -13,7 +13,7 @@ attach_volume_body = {
         "deviceType": "file",
         "volumeUuid": None,  # must fill
         "useVirtio": True,
-        "useVirtioSCSI": True,
+        "useVirtioSCSI": False,
         "shareable": False,
         "cacheMode": "none",
         "wwn": "0x000f6c46e4c236bf",
@@ -29,6 +29,30 @@ attach_volume_body = {
     },
     "kvmHostAddons": {
         "qcow2Options": " -o cluster_size=2097152 "
+    }
+}
+
+
+attach_shareblock_volume_body = {
+    "volume": {
+        "installPath": None,  # must fill
+        "deviceId": 1,
+        "deviceType": "file",
+        "volumeUuid": None,  # must fill
+        "useVirtio": True,
+        "useVirtioSCSI": False,
+        "shareable": False,
+        "cacheMode": "none",
+        "wwn": "0x000f6c46e4c236bf",
+        "bootOrder": 0,
+        "physicalBlockSize": 0,
+        "type": "Data",
+        "format": "qcow2",
+        "primaryStorageType": "SharedBlock"
+    },
+    "vmInstanceUuid": None,  # must fill
+    "addons": {
+        "attachedDataVolumes": []
     }
 }
 
