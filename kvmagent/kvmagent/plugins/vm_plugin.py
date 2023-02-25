@@ -1442,7 +1442,10 @@ class VirtioCeph(object):
 
     def to_xmlobject(self):
         disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
-        e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none'})
+        driver_elements = {'name': 'qemu', 'type': 'raw', 'cache': 'none'}
+        if self.volume.hasattr("multiQueues") and self.volume.multiQueues:
+            driver_elements["queues"] = self.volume.multiQueues
+        e(disk, 'driver', None, driver_elements)
         source = e(disk, 'source', None,
                    {'name': self.volume.installPath.lstrip('ceph:').lstrip('//'), 'protocol': 'rbd'})
         if self.volume.secretUuid:
@@ -2442,7 +2445,10 @@ class Vm(object):
 
         def filebased_volume():
             disk = etree.Element('disk', attrib={'type': 'file', 'device': 'disk'})
-            e(disk, 'driver', None, {'name': 'qemu', 'type': linux.get_img_fmt(volume.installPath), 'cache': volume.cacheMode})
+            driver_elements = {'name': 'qemu', 'type': linux.get_img_fmt(volume.installPath), 'cache': volume.cacheMode}
+            if volume.useVirtio and volume.hasattr("multiQueues") and volume.multiQueues:
+                driver_elements["queues"] = volume.multiQueues
+            e(disk, 'driver', None, driver_elements)
             e(disk, 'source', None, {'file': volume.installPath})
 
             if volume.shareable:
@@ -2529,8 +2535,10 @@ class Vm(object):
             # type: () -> etree.Element
             def blk():
                 disk = etree.Element('disk', {'type': 'block', 'device': 'disk', 'snapshot': 'external'})
-                e(disk, 'driver', None,
-                  {'name': 'qemu', 'type': linux.get_img_fmt(volume.installPath), 'cache': 'none', 'io': 'native'})
+                driver_elements = {'name': 'qemu', 'type': linux.get_img_fmt(volume.installPath), 'cache': 'none', 'io': 'native'}
+                if volume.useVirtio and volume.hasattr("multiQueues") and volume.multiQueues:
+                    driver_elements["queues"] = volume.multiQueues
+                e(disk, 'driver', None, driver_elements)
                 e(disk, 'source', None, {'dev': volume.installPath})
 
                 if volume.useVirtioSCSI:
@@ -4594,10 +4602,17 @@ class Vm(object):
 
             def filebased_volume(_dev_letter, _v):
                 disk = etree.Element('disk', {'type': 'file', 'device': 'disk', 'snapshot': 'external'})
+                driver_elements = {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': _v.cacheMode}
                 if cmd.addons and cmd.addons['useDataPlane'] is True:
-                    e(disk, 'driver', None, {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': _v.cacheMode, 'queues':'1', 'dataplane': 'on'})
-                else:
-                    e(disk, 'driver', None, {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': _v.cacheMode})
+                    driver_elements['dataplane'] = 'on'
+                    driver_elements['queues'] = 1
+                if _v.useVirtio and _v.hasattr("multiQueues") and _v.multiQueues:
+                    driver_elements["queues"] = _v.multiQueues
+                e(disk, 'driver', None, driver_elements)
+                # if cmd.addons and cmd.addons['useDataPlane'] is True:
+                #     e(disk, 'driver', None, {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': _v.cacheMode, 'queues':'1', 'dataplane': 'on'})
+                # else:
+                #     e(disk, 'driver', None, {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': _v.cacheMode})
                 e(disk, 'source', None, {'file': _v.installPath})
 
                 if _v.shareable:
@@ -4657,7 +4672,10 @@ class Vm(object):
                     raise Exception('unexpected recover path: %s' % _v.installPath)
 
                 disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
-                e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none'})
+                driver_elements = {'name': 'qemu', 'type': 'raw', 'cache': 'none'}
+                if _v.useVirtio and _v.hasattr("multiQueues") and _v.multiQueues:
+                    driver_elements["queues"] = _v.multiQueues
+                e(disk, 'driver', None, driver_elements)
 
                 u = urlparse.urlparse(r)
                 src = e(disk, 'source', None, {'protocol': 'nbd', 'name': os.path.basename(u.path)})
@@ -4729,8 +4747,10 @@ class Vm(object):
 
             def block_volume(_dev_letter, _v):
                 disk = etree.Element('disk', {'type': 'block', 'device': 'disk', 'snapshot': 'external'})
-                e(disk, 'driver', None,
-                  {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': 'none', 'io': 'native'})
+                driver_elements = {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': 'none', 'io': 'native'}
+                if _v.useVirtio and _v.hasattr("multiQueues") and _v.multiQueues:
+                    driver_elements["queues"] = _v.multiQueues
+                e(disk, 'driver', None, driver_elements)
                 e(disk, 'source', None, {'dev': _v.installPath})
 
                 if _v.useVirtioSCSI:
