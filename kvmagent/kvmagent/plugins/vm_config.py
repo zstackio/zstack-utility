@@ -282,9 +282,16 @@ if [[ $(ip route | grep "default via {{ gateway }} dev {{ port_name }}") == "" ]
 fi
 {%- endif %}
 {%- if mtu %}
+ipv6_disable=1
+if [ -f "/proc/sys/net/ipv6/conf/{{ port_name }}/disable_ipv6" ]; then
+    ipv6_disable=$(cat /proc/sys/net/ipv6/conf/{{ port_name }}/disable_ipv6)
+fi
 dev_mtu=`cat /sys/class/net/{{ port_name }}/mtu`
-if [[ ${dev_mtu} -ge {{ mtu }} && $(ip link ls dev {{ port_name }} | grep 'mtu {{ mtu }}') == "" ]];then
-    exit 31
+mtu={{ mtu }}
+if [[ ${dev_mtu} -ge ${mtu} && (${ipv6_disable} == 1 || ${mtu} > 1280) ]];then
+    if [[ $(ip link ls dev {{ port_name }} | grep 'mtu {{ mtu }}') == "" ]];then
+        exit 31
+    fi
 fi
 {%- endif %}
 {%- if dns %}
@@ -1037,7 +1044,7 @@ def get_guest_tools_states():
 
             _, config = qga.guest_file_read('/usr/local/zstack/guesttools')
             if not config:
-                tools_state['state'] = GUEST_TOOLS_STATE_UNKNOWN
+                tools_state['state'] = GUEST_TOOLS_STATE_NOT_INSTALLED
                 return tools_state
 
             tools_state['state'] = GUEST_TOOLS_STATE_RUNNING
@@ -1089,7 +1096,7 @@ class GetGuestToolsStateResponse(kvmagent.AgentResponse):
         self.states = None
 
 
-GUEST_TOOLS_STATE_UNKNOWN = 'Unknown'
+GUEST_TOOLS_STATE_NOT_INSTALLED = 'NotInstalled'
 GUEST_TOOLS_STATE_RUNNING = 'Running'
 GUEST_TOOLS_STATE_NOT_RUNNING = 'NotRunning'
 
