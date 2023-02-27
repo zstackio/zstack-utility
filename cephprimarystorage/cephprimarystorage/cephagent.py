@@ -22,7 +22,7 @@ from zstacklib.utils.bash import *
 from zstacklib.utils.rollback import rollback, rollbackable
 from zstacklib.utils.plugin import completetask
 import os
-from zstacklib.utils import shell
+from zstacklib.utils import shell, iproute
 from zstacklib.utils import plugin
 from zstacklib.utils import linux
 from zstacklib.utils import ceph
@@ -166,6 +166,7 @@ class GetFactsRsp(AgentResponse):
         super(GetFactsRsp, self).__init__()
         self.fsid = None
         self.monAddr = None
+        self.ipAddresses = None
 
 class ResizeVolumeRsp(AgentResponse):
     def __init__(self):
@@ -514,6 +515,11 @@ class CephAgent(plugin.TaskManager):
 
         rsp.fsid = ceph.get_fsid()
         rsp.type = ceph.get_ceph_manufacturer()
+
+        ip_addresses = [chunk.address for chunk in filter(
+            lambda x: x.address != '127.0.0.1' and not x.ifname.endswith('zs'), iproute.query_addresses(ip_version=4))]
+        rsp.ipAddresses = ip_addresses
+
         return jsonobject.dumps(rsp)
 
     @replyerror
