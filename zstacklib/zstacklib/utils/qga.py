@@ -1,13 +1,14 @@
+import base64
+import json
 import time
+import log
+
 import libvirt
 import libvirt_qemu
-import json
-import base64
 
-# logger = log.get_logger(__name__)
+logger = log.get_logger(__name__)
 
-VM_OS_LINUX_UBUNTU = "ubuntu"
-VM_OS_LINUX_CENTOS = "centos"
+"""
 VM_OS_LINUX_DEBIAN = "debian"
 VM_OS_LINUX_KYLIN = "kylin"
 VM_OS_LINUX_UOS = "uos"
@@ -30,14 +31,16 @@ ERROR_CODE_QGA_COMMAND_ERROR = 'QGA_COMMAND_EXEC_ERROR'
 ERROR_CODE_QGA_RETURN_VALUE_ERROR = 'QGA_RETURN_VALUE_ERROR'
 
 VM_CONFIG_SYNC_OS_VERSION_SUPPORT = {
-    VM_OS_LINUX_UBUNTU: ("16", "18", "20", "21", "22"),
-    VM_OS_LINUX_CENTOS: ("6", "7", "8"),
+    # VM_OS_LINUX_UBUNTU: ("16", "18", "20", "21", "22"),
+    # VM_OS_LINUX_CENTOS: ("6", "7", "8"),
     VM_OS_LINUX_KYLIN: ("v10",),
     VM_OS_LINUX_UOS: ("20",)
 }
+"""
+# qga command wait 5 seconds
+qga_exec_wait_default = 1
+qga_exec_wait_retry = 5
 
-qga_exec_wait_default = 0.1
-qga_exec_wait_retry = 10
 
 class QgaException(Exception):
     """ The base exception class for all exceptions this agent raises."""
@@ -47,15 +50,19 @@ class QgaException(Exception):
         super(QgaException, self).__init__('QGA exception' if msg is None else msg)
 
 
-class Qga(object):
-    QGA_STATE_UNKNOWN = "Unknown"
+class VmQga(object):
     QGA_STATE_RUNNING = "Running"
     QGA_STATE_NOT_RUNNING = "NotRunning"
+
+    VM_OS_LINUX_KYLIN = "kylin"
+    VM_OS_LINUX_UOS = "uos"
+    VM_OS_LINUX_UBUNTU = "ubuntu"
+    VM_OS_LINUX_CENTOS = "centos"
 
     def __init__(self, domain):
         self.domain = domain
         self.vm_uuid = domain.name()
-        self.state = Qga.QGA_STATE_NOT_RUNNING
+        self.state = self.QGA_STATE_NOT_RUNNING
         self.version = None
         self.supported_commands = {}
         self.os = None
@@ -63,11 +70,13 @@ class Qga(object):
         self.os_id_like = None
         self.qga_init()
         # self.qga_debug()
+
     '''
     def qga_debug(self):
         logger.debug('qga info: vm_uuid: %s\n state:%s\n version:%s\n os:%s\n os_version:%s\n supported_commands:%s' \
                      % (self.vm_uuid, self.state, self.version, self.os, self.os_version, self.supported_commands))
     '''
+
     def call_qga_command(self, command, args=None, timeout=3):
         """
         Execute QEMU-GA command and return result as dict or None on error
@@ -78,11 +87,9 @@ class Qga(object):
         """
         if self.supported_commands:
             if command not in self.supported_commands:
-                raise QgaException(ERROR_CODE_QGA_VERSION_TOO_LOWER, 'qga command {} not support, qga version is {}'
-                                   .format(command, self.version))
+                raise Exception('qga command {} not support, qga version is {}'.format(command, self.version))
             if not self.supported_commands[command]:
-                raise QgaException(ERROR_CODE_QGA_COMMAND_IS_DISABLED, 'qga command {} has been disabled'
-                                   .format(command))
+                raise Exception('qga command {} has been disabled'.format(command))
 
         cmd = {'execute': command}
         if args:
@@ -90,22 +97,22 @@ class Qga(object):
                 args['buf-b64'] = base64.b64encode(args['buf-b64'])
             cmd['arguments'] = args
         cmd = json.dumps(cmd)
+        logger.debug("vm {} run qga command {}".format(self.vm_uuid, cmd))
         try:
             ret = libvirt_qemu.qemuAgentCommand(self.domain, cmd,
                                                 timeout, 0)
         except libvirt.libvirtError as e:
             message = 'exec qga command[{}] args[{}] error: {}'.format(cmd, args, e.message)
-            raise QgaException(ERROR_CODE_QGA_COMMAND_ERROR, message)
+            raise Exception(message)
 
+        logger.debug("vm {} run qga command result {}".format(self.vm_uuid, ret))
         try:
             parsed = json.loads(ret)
         except ValueError:
-            raise QgaException(ERROR_CODE_QGA_RETURN_VALUE_ERROR,
-                               'qga command return value parsing error:{}'.format(ret))
+            raise Exception('qga command return value parsing error:{}'.format(ret))
 
         if 'return' not in parsed:
-            raise QgaException(ERROR_CODE_QGA_RETURN_VALUE_ERROR,
-                               'qga command return value format error:{}'.format(ret))
+            raise Exception('qga command return value format error:{}'.format(ret))
 
         parsedRet = parsed['return']
         if isinstance(parsedRet, dict):
@@ -121,36 +128,34 @@ class Qga(object):
     def guest_exec_status(self, pid):
         ret = self.call_qga_command("guest-exec-status", args={'pid': pid})
         if not ret or 'exited' not in ret:
-            raise QgaException(ERROR_CODE_QGA_RETURN_VALUE_ERROR, 'guest-exec-status exception')
+            raise Exception('guest-exec-status exception')
         return ret
 
     def guest_exec(self, args):
         return self.call_qga_command("guest-exec", args=args)
 
-    def guest_exec_bash_no_exitcode(self, cmd, exception=True, output=True, wait=None):
-        exitcode, ret_data = self.guest_exec_bash(cmd, output, wait)
+    def guest_exec_bash_no_exitcode(self, cmd, exception=True, output=True):
+        exitcode, ret_data = self.guest_exec_bash(cmd, output)
         if exitcode != 0:
             if exception:
-                raise QgaException(ERROR_CODE_QGA_COMMAND_ERROR, 'cmd {}, exitcode {}, ret {}'
-                                   .format(cmd, exitcode, ret_data))
+                raise Exception('cmd {}, exitcode {}, ret {}'
+                                .format(cmd, exitcode, ret_data))
             return None
         return ret_data
 
-    def guest_exec_bash(self, cmd, output=True, wait=None):
+    def guest_exec_bash(self, cmd, output=True, wait=qga_exec_wait_default, retry=qga_exec_wait_retry):
 
         ret = self.guest_exec(
             {"path": "bash", "arg": ["-c", cmd], "capture-output": output})
         if ret and "pid" in ret:
             pid = ret["pid"]
         else:
-            raise QgaException(ERROR_CODE_QGA_RETURN_VALUE_ERROR,
-                               'qga exec cmd {} failed for vm {}'.format(cmd, self.vm_uuid))
+            raise Exception('qga exec cmd {} failed for vm {}'.format(cmd, self.vm_uuid))
 
         if not output:
+            logger.debug("run qga bash: {} failed, no output".format(cmd))
             return 0, None
 
-        retry = 1 if wait else qga_exec_wait_retry
-        wait = wait if wait else qga_exec_wait_default
         ret = None
         for i in range(retry):
             time.sleep(wait)
@@ -160,8 +165,7 @@ class Qga(object):
                 break
 
         if not ret or not ret.get('exited'):
-            raise QgaException(ERROR_CODE_QGA_COMMAND_ERROR,
-                               'qga exec cmd {} timeout for vm {}'.format(cmd, self.vm_uuid))
+            raise Exception('qga exec cmd {} timeout for vm {}'.format(cmd, self.vm_uuid))
 
         exit_code = ret.get('exitcode')
         ret_data = None
@@ -169,9 +173,52 @@ class Qga(object):
             ret_data = ret['out-data']
         elif 'err-data' in ret:
             ret_data = ret['err-data']
+
+        logger.debug("run qga bash: {} finished, exit code {}, output {}"
+                     .format(cmd, exit_code, ret_data))
         return exit_code, ret_data
 
     def guest_info(self):
+        """
+        {"return":{
+                "version":"2.12.0",
+                "supported_commands":[
+                    {"enabled":true,"name":"guest-get-osinfo","success-response":true},
+                    {"enabled":true,"name":"guest-get-timezone","success-response":true},
+                    {"enabled":true,"name":"guest-get-users","success-response":true},
+                    {"enabled":true,"name":"guest-get-host-name","success-response":true},
+                    {"enabled":true,"name":"guest-exec","success-response":true},
+                    {"enabled":true,"name":"guest-exec-status","success-response":true},
+                    {"enabled":true,"name":"guest-get-memory-block-info","success-response":true},
+                    {"enabled":true,"name":"guest-set-memory-blocks","success-response":true},
+                    {"enabled":true,"name":"guest-get-memory-blocks","success-response":true},
+                    {"enabled":true,"name":"guest-set-user-password","success-response":true},
+                    {"enabled":true,"name":"guest-get-fsinfo","success-response":true},
+                    {"enabled":true,"name":"guest-set-vcpus","success-response":true},
+                    {"enabled":true,"name":"guest-get-vcpus","success-response":true},
+                    {"enabled":true,"name":"guest-network-get-interfaces","success-response":true},
+                    {"enabled":true,"name":"guest-suspend-hybrid","success-response":false},
+                    {"enabled":true,"name":"guest-suspend-ram","success-response":false},
+                    {"enabled":true,"name":"guest-suspend-disk","success-response":false},
+                    {"enabled":true,"name":"guest-fstrim","success-response":true},
+                    {"enabled":true,"name":"guest-fsfreeze-thaw","success-response":true},
+                    {"enabled":true,"name":"guest-fsfreeze-freeze-list","success-response":true},
+                    {"enabled":true,"name":"guest-fsfreeze-freeze","success-response":true},
+                    {"enabled":true,"name":"guest-fsfreeze-status","success-response":true},
+                    {"enabled":true,"name":"guest-file-flush","success-response":true},
+                    {"enabled":true,"name":"guest-file-seek","success-response":true},
+                    {"enabled":true,"name":"guest-file-write","success-response":true},
+                    {"enabled":true,"name":"guest-file-read","success-response":true},
+                    {"enabled":true,"name":"guest-file-close","success-response":true},
+                    {"enabled":true,"name":"guest-file-open","success-response":true},
+                    {"enabled":true,"name":"guest-shutdown","success-response":false},
+                    {"enabled":true,"name":"guest-info","success-response":true},
+                    {"enabled":true,"name":"guest-set-time","success-response":true},
+                    {"enabled":true,"name":"guest-get-time","success-response":true},
+                    {"enabled":true,"name":"guest-ping","success-response":true},
+                    {"enabled":true,"name":"guest-sync","success-response":true},
+                    {"enabled":true,"name":"guest-sync-delimited","success-response":true}]}}
+        """
         return self.call_qga_command("guest-info")
 
     def guest_ping(self):
@@ -188,17 +235,44 @@ class Qga(object):
             return False
 
     def guest_exec_get_os_info(self):
+        """
+        {"name":"CentOS Linux",
+        "kernel-release":"3.10.0-957.el7.x86_64",
+        "version":"7 (Core)",
+        "pretty-name":"CentOS Linux 7 (Core)",
+        "version-id":"7",
+        "kernel-version":"#1 SMP Thu Nov 8 23:39:32 UTC 2018",
+        "machine":"x86_64",
+        "id":"centos" }
+        """
         ret = self.call_qga_command("guest-get-osinfo")
         if ret and "id" in ret and "version-id" in ret:
             vm_os = ret["id"].lower()
             version = ret["version-id"].lower()
-            if vm_os == VM_OS_LINUX_UBUNTU:
+            if vm_os == self.VM_OS_LINUX_UBUNTU:
                 version = version.split(".")[0]
             return vm_os, version
-        raise QgaException(ERROR_CODE_QGA_RETURN_VALUE_ERROR,
-                           'get vm %s os info failed' % self.vm_uuid)
+        raise Exception('get vm %s os info failed' % self.vm_uuid)
 
     def guest_get_os_id_like(self):
+        """
+        # cat /etc/os-release
+            NAME="CentOS Linux"
+            VERSION="7 (Core)"
+            ID="centos"
+            ID_LIKE="rhel fedora"
+            VERSION_ID="7"
+            PRETTY_NAME="CentOS Linux 7 (Core)"
+            ANSI_COLOR="0;31"
+            CPE_NAME="cpe:/o:centos:centos:7"
+            HOME_URL="https://www.centos.org/"
+            BUG_REPORT_URL="https://bugs.centos.org/"
+
+            CENTOS_MANTISBT_PROJECT="CentOS-7"
+            CENTOS_MANTISBT_PROJECT_VERSION="7"
+            REDHAT_SUPPORT_PRODUCT="centos"
+            REDHAT_SUPPORT_PRODUCT_VERSION="7"
+        """
         ret = self.guest_exec_bash_no_exitcode('cat /etc/os-release | grep ID_LIKE', exception=False)
         if ret:
             info = ret.split("=")
@@ -208,7 +282,7 @@ class Qga(object):
     def guest_get_os_info(self):
         ret = self.guest_exec_bash_no_exitcode('cat /etc/os-release')
         if not ret:
-            raise QgaException(ERROR_CODE_QGA_COMMAND_ERROR, 'get os info failed')
+            raise Exception('get os info failed')
 
         lines = [line for line in ret.split('\n') if line != ""]
         config = {}
@@ -223,18 +297,17 @@ class Qga(object):
 
         vm_os = config.get('ID')
         version = config.get('VERSION_ID')
-        if vm_os and version and vm_os == VM_OS_LINUX_UBUNTU:
+        if vm_os and version and vm_os == self.VM_OS_LINUX_UBUNTU:
             version = version.split(".")[0]
 
         return vm_os, version, config.get('ID_LIKE')
 
     def qga_init(self):
-        if not self.domain.isActive():
-            self.state = Qga.QGA_STATE_NOT_RUNNING
-            return
+        self.state = self.QGA_STATE_NOT_RUNNING
+        if self.domain.isActive() and self.guest_agent_available():
+            self.state = self.QGA_STATE_RUNNING
 
-        self.state = Qga.QGA_STATE_RUNNING if self.guest_agent_available() else Qga.QGA_STATE_NOT_RUNNING
-        if self.state != Qga.QGA_STATE_RUNNING:
+        if self.state != self.QGA_STATE_RUNNING:
             return
 
         ret = self.guest_info()
@@ -251,17 +324,16 @@ class Qga(object):
             else:
                 self.os, self.os_version, self.os_id_like = self.guest_get_os_info()
         except QgaException as e:
-            if e.error_code in (ERROR_CODE_QGA_COMMAND_IS_DISABLED, ERROR_CODE_QGA_VERSION_TOO_LOWER):
-                self.os, self.os_version, self.os_id_like = 'Unknown', 'Unknown', 'Unknown'
-            else:
-                raise e
+            raise e
 
+    """
     def guest_get_hostname(self):
         ret = self.call_qga_command("guest-get-host-name")
         if ret and 'host-name' in ret:
             return ret['host-name']
         else:
             raise QgaException(ERROR_CODE_QGA_RETURN_VALUE_ERROR, 'qga get hostname failed for vm %s' % self.vm_uuid)
+    """
 
     def guest_file_open(self, path, create=False):
         if create:
