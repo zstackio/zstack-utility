@@ -8140,7 +8140,7 @@ host side snapshot files chian:
         def call_libvirt(conn):
             return conn.lookupByName(vmUuid)
 
-        qga = Qga(call_libvirt())
+        qga = VmQga(call_libvirt())
         if qga.state != Qga.QGA_STATE_RUNNING:
             return VmPlugin.GUESTTOOLS_STATE_NOT_CONNECT, None
 
