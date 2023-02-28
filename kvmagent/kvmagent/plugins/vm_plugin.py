@@ -4196,6 +4196,9 @@ class Vm(object):
 
                     e(cpu, 'feature', attrib={'name': 'x2apic', 'policy': 'disable'})
 
+                if not cmd.cpuHypervisorFeature:
+                    e(cpu, 'feature', attrib={'name': 'hypervisor', 'policy': 'disable'})
+
             make_cpu_features()
 
         def make_memory():
