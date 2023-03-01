@@ -219,7 +219,7 @@ def install_kvm_pkg():
                       usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python libvirt-admin lighttpd lsof \
                       net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
                       smartmontools sshpass usbutils vconfig wget audit dnsmasq \
-                      qemu-kvm-ev collectd-virt OVMF edk2-ovmf edk2.git-ovmf-x64 mcelog MegaCli storcli Arcconf nvme-cli python-pyudev seabios-bin nping kernel-devel elfutils-libelf-devel"
+                      qemu-kvm collectd-virt OVMF edk2-ovmf edk2.git-ovmf-x64 mcelog MegaCli storcli Arcconf nvme-cli python-pyudev seabios-bin nping kernel-devel elfutils-libelf-devel"
 
         aarch64_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                         usbredir-server iputils open-iscsi libvirt libvirt-client libvirt-python lighttpd lsof \
@@ -323,7 +323,7 @@ def install_kvm_pkg():
                 yum_install_package(pkg, host_post_info)
             if major_version >= 7:
                 # name: RHEL7 specific packages from online
-                for pkg in ['qemu-kvm-ev', 'qemu-img-ev', 'collectd-virt']:
+                for pkg in ['qemu-kvm', 'qemu-img', 'collectd-virt']:
                     yum_install_package(pkg, host_post_info)
             else:
                 for pkg in ['qemu-kvm', 'qemu-img']:
@@ -415,10 +415,10 @@ def install_kvm_pkg():
 
     def deb_based_install():
         # name: install kvm related packages on Debian based OS
-        install_pkg_list = ['curl', 'qemu', 'qemu-system', 'bridge-utils', 'wget', 'qemu-utils', 'python-libvirt', 
-                            'libvirt-daemon-system', 'libfdt-dev', 'libvirt-dev', 'libvirt-clients', 'chrony','vlan', 
-                            'libguestfs-tools', 'sed', 'nfs-common', 'open-iscsi','ebtables', 'pv', 'usbutils', 
-                            'pciutils', 'expect', 'lighttpd', 'sshpass', 'rsync', 'iputils-arping', 'nmap', 'collectd', 
+        install_pkg_list = ['curl', 'qemu', 'qemu-system', 'bridge-utils', 'wget', 'qemu-utils', 'python-libvirt',
+                            'libvirt-daemon-system', 'libfdt-dev', 'libvirt-dev', 'libvirt-clients', 'chrony','vlan',
+                            'libguestfs-tools', 'sed', 'nfs-common', 'open-iscsi','ebtables', 'pv', 'usbutils',
+                            'pciutils', 'expect', 'lighttpd', 'sshpass', 'rsync', 'iputils-arping', 'nmap', 'collectd',
                             'iptables', 'python-pip', 'dmidecode', 'ovmf', 'dnsmasq', 'auditd', 'ipset',
                             'multipath-tools', 'uuid-runtime', 'lvm2', 'lvm2-lockd', 'udev', 'sanlock', 'usbredirserver', 'python-pyudev']
         apt_install_packages(install_pkg_list, host_post_info)
@@ -447,7 +447,21 @@ def install_kvm_pkg():
         copy_arg.dest = "/etc/default/libvirtd"
         libvirtd_status = copy(copy_arg, host_post_info)
 
+    def rpm_based_deprecated():
+        rpm_deprecated = {
+            "x86_64_c76": "",
+        }
+
+        rpm_deprecated_list = rpm_deprecated.get(host_arch + releasever, "")
+        # new-add host
+        if releasever in ['c76'] and "qemu-kvm" not in skip_packages:
+            rpm_deprecated_list += " qemu-img-ev qemu-kvm-ev qemu-kvm-common-ev"
+
+        for rpm in rpm_deprecated_list.split():
+            yum_remove_package(rpm, host_post_info)
+
     if distro in RPM_BASED_OS:
+        rpm_based_deprecated()
         rpm_based_install()
     elif distro in DEB_BASED_OS:
         deb_based_install()
@@ -723,7 +737,7 @@ def set_legacy_iptables_ebtables():
     host_post_info.post_label_param = None
     run_remote_command(command, host_post_info)
 
- 
+
 def do_auditd_config():
     """add audit rules for signals"""
     AUDIT_CONF_FILE = '/etc/audit/auditd.conf'

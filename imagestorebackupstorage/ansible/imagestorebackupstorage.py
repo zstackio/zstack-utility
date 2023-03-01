@@ -105,10 +105,13 @@ zstacklib = ZstackLib(zstacklib_args)
 
 if distro in RPM_BASED_OS:
     qemu_pkg = "fuse-sshfs nmap collectd tar pyparted net-tools"
-    if releasever in ['c74', 'c76']:
-        qemu_pkg = "qemu-img-ev {}".format(qemu_pkg)
-    else:
-        qemu_pkg = "qemu-img {}".format(qemu_pkg)
+
+    if not remote_bin_installed(host_post_info, "qemu-img", return_status=True):
+        pkg = 'qemu-img-ev' if releasever in ['c74'] else 'qemu-img'
+        if releasever == 'c74' and get_mn_release() in ['c76', 'c79']:
+            pkg = 'qemu-img'
+        qemu_pkg += ' %s' % pkg
+
     # skip these packages
     _skip_list = re.split(r'[|;,\s]\s*', skip_packages)
     _qemu_pkg = [ pkg for pkg in qemu_pkg.split() if pkg not in _skip_list ]

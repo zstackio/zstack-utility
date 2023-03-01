@@ -112,10 +112,22 @@ pip_install_arg.name = "python-cephlibs"
 pip_install_package(pip_install_arg, host_post_info)
 
 if distro in RPM_BASED_OS:
+    install_rpm_list = "wget nmap"
+
+    qemu_installed = yum_check_package("qemu-kvm", host_post_info) or yum_check_package("qemu-kvm-ev", host_post_info)
+    if not qemu_installed:
+        install_rpm_list += " %s" % qemu_alias.get(releasever, 'qemu-kvm')
+        # Since 4.5.11, qemu-kvm-ev renamed to qemu-kvm in c76 and 79, however,
+        # c74 do not apply the change. Therefore, if ceph bs host is c74 and
+        # mn is c76 or c79 and qemu-kvm not installed, using qemu-kvm instead
+        # qemu-kvm-ev
+        if releasever == 'c74' and get_mn_release() in ['c76']:
+            install_rpm_list += " qemu-kvm"
+
     if zstack_repo != 'false':
-        command = """pkg_list=`rpm -q wget {} nmap| grep "not installed" | awk '{{ print $2 }}'` && for pkg"""\
+        command = """pkg_list=`rpm -q {} | grep "not installed" | awk '{{ print $2 }}'` && for pkg"""\
                 """ in $pkg_list; do yum --disablerepo=* --enablerepo={} install -y $pkg; done;"""\
-                .format(qemu_alias.get(releasever, "qemu-kvm-ev"), zstack_repo)
+                .format(install_rpm_list, zstack_repo)
         run_remote_command(command, host_post_info)
 
         if releasever in ['ns10']:
@@ -127,7 +139,7 @@ if distro in RPM_BASED_OS:
             command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
             run_remote_command(command, host_post_info)
     else:
-        for pkg in ["wget", "nmap", qemu_alias.get(releasever, "qemu-kvm-ev")]:
+        for pkg in install_rpm_list.split():
             yum_install_package(pkg, host_post_info)
         if distro_version >= 7:
             command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
