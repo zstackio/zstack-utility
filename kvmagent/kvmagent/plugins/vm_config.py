@@ -23,6 +23,7 @@ class VmQgaStatus:
         self.platForm = ""
         self.osType = ""
 
+
 def get_virt_domain(vmUuid):
     try:
         @vm_plugin.LibvirtAutoReconnect
@@ -116,9 +117,8 @@ class VmConfigPlugin(kvmagent.KvmAgent):
     VM_CONFIG_PORTS = "/vm/configsync/ports"
     VM_GUEST_TOOLS_STATE = "/vm/guesttools/state"
 
-    VM_QGA_PARAM_FILE = "/var/log/zstack/qga.config"
-    VM_QGA_LOG_FILE = "/var/log/zstack/qga.log"
-    VM_QGA_CONFIG_LINUX_CMD = "/usr/local/zstack/zs-qga-linux.sh"
+    VM_QGA_PARAM_FILE = "/usr/local/zstack/zs-nics.json"
+    VM_QGA_CONFIG_LINUX_CMD = "/usr/local/zstack/zs-tools/config_linux.py"
 
     @lock.lock('config_vm_by_qga')
     def config_vm_by_qga(self, domain, nicParams):
@@ -130,7 +130,7 @@ class VmConfigPlugin(kvmagent.KvmAgent):
             return 1, "qga is not running for vm {}".format(vm_uuid)
 
         if qga.os == VmQga.VM_OS_LINUX_KYLIN or qga.os == VmQga.VM_OS_LINUX_UOS:
-            cmd_path = self.VM_QGA_CONFIG_LINUX_CMD
+            cmd_file = self.VM_QGA_CONFIG_LINUX_CMD
         else:
             logger.debug("not support for os {}".format(qga.os))
             return 1, "not support for os {}".format(qga.os)
@@ -141,20 +141,15 @@ class VmConfigPlugin(kvmagent.KvmAgent):
             logging.debug("config vm {}, write parameters file {} failed".format(vm_uuid, self.VM_QGA_PARAM_FILE))
             return 1, "config vm {}, write parameters file {} failed".format(vm_uuid, self.VM_QGA_PARAM_FILE)
         logger.debug(
-            "writing vm {} config {} to file".format(vm_uuid, self.VM_QGA_PARAM_FILE, jsonobject.dumps(cmd_path)))
+            "writing vm {} config {} to file".format(vm_uuid, self.VM_QGA_PARAM_FILE, jsonobject.dumps(cmd_file)))
 
         # exec qga command
-        ret, msg = qga.guest_exec_bash(cmd_path + " -f " + self.VM_QGA_PARAM_FILE)
+        ret, msg = qga.guest_exec_python(cmd_file)
         if ret != 0:
-            logger.debug("config vm {} by qga failed: %s".format(vm_uuid, msg))
-            return 1, "config vm {} by qga failed: %s".format(vm_uuid, msg)
+            logger.debug("config vm {} by qga failed: {}".format(vm_uuid, msg))
+            return 1, "config vm {} by qga failed: {}".format(vm_uuid, msg)
 
-        # get result, ret is length of file
-        ret, msg = qga.guest_file_read(self.VM_QGA_LOG_FILE)
-        if ret > 1:
-            return 0, msg
-        else:
-            return 0, ""  # ignore read log failed
+        return 0, msg
 
     @kvmagent.replyerror
     def vm_config_ports(self, req):
