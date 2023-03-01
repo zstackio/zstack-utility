@@ -252,6 +252,7 @@ class StartVmResponse(kvmagent.AgentResponse):
         self.nicInfos = []  # type:list[VmNicInfo]
         self.virtualDeviceInfoList = []  # type:list[VirtualDeviceInfo]
         self.memBalloonInfo = None  # type:VirtualDeviceInfo
+        self.virtualizerInfo = VirtualizerInfoTO()  # type:VirtualizerInfoTO
 
 class SyncVmDeviceInfoCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -264,6 +265,7 @@ class SyncVmDeviceInfoResponse(kvmagent.AgentResponse):
         self.nicInfos = []  # type:list[VmNicInfo]
         self.virtualDeviceInfoList = []  # type:list[VirtualDeviceInfo]
         self.memBalloonInfo = None  # type:VirtualDeviceInfo
+        self.virtualizerInfo = VirtualizerInfoTO()  # type:VirtualizerInfoTO
 
 
 class VirtualDeviceInfo():
@@ -377,6 +379,7 @@ class RebootVmCmd(kvmagent.AgentCommand):
 class RebootVmResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(RebootVmResponse, self).__init__()
+        self.virtualizerInfo = VirtualizerInfoTO()  # type:VirtualizerInfoTO
 
 
 class DestroyVmCmd(kvmagent.AgentCommand):
@@ -5816,6 +5819,7 @@ class VmPlugin(kvmagent.KvmAgent):
 
         if rsp.success == True:
             rsp.nicInfos, rsp.virtualDeviceInfoList, rsp.memBalloonInfo = self.get_vm_device_info(cmd.vmInstanceUuid)
+            self.collect_vm_virtualizer_info(cmd.vmInstanceUuid, rsp.virtualizerInfo)
 
         return jsonobject.dumps(rsp)
 
@@ -5848,6 +5852,7 @@ class VmPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = SyncVmDeviceInfoResponse()
         rsp.nicInfos, rsp.virtualDeviceInfoList, rsp.memBalloonInfo = self.get_vm_device_info(cmd.vmInstanceUuid)
+        self.collect_vm_virtualizer_info(cmd.vmInstanceUuid, rsp.virtualizerInfo)
         return jsonobject.dumps(rsp)
 
     def get_vm_stat_with_ps(self, uuid):
@@ -6293,6 +6298,7 @@ class VmPlugin(kvmagent.KvmAgent):
 
             vm = get_vm_by_uuid(cmd.uuid)
             vm.reboot(cmd)
+            self.collect_vm_virtualizer_info(cmd.uuid, rsp.virtualizerInfo)
             logger.debug('successfully, reboot vm[uuid:%s]' % cmd.uuid)
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
@@ -8688,12 +8694,15 @@ host side snapshot files chian:
 
         for uuid in cmd.vmUuids:
             vm_info = VirtualizerInfoTO()
-            vm_info.uuid = uuid
-            vm_info.virtualizer = "qemu-kvm"
-			vm_info.version = qemu.get_running_version(cmd.uuid)
+            self.collect_vm_virtualizer_info(uuid, vm_info)
             rsp.vmInfoList.append(vm_info)
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    def collect_vm_virtualizer_info(self, vm_uuid, vm_info):
+        vm_info.uuid = vm_uuid
+        vm_info.virtualizer = "qemu-kvm"
+        vm_info.version = qemu.get_running_version(vm_uuid)
 
     @kvmagent.replyerror
     def set_emulator_pinning(self, req):
