@@ -1,10 +1,11 @@
 import base64
 import json
 import time
-import log
 
 import libvirt
 import libvirt_qemu
+
+import log
 
 logger = log.get_logger(__name__)
 
@@ -176,6 +177,46 @@ class VmQga(object):
 
         logger.debug("run qga bash: {} finished, exit code {}, output {}"
                      .format(cmd, exit_code, ret_data))
+        return exit_code, ret_data
+
+    # not a good function, just for hurry push
+    def guest_exec_python(self, file, output=True, wait=qga_exec_wait_default, retry=qga_exec_wait_retry):
+
+        ret = self.guest_exec(
+            {"path": "python", "arg": [file], "capture-output": output})
+        if ret and "pid" in ret:
+            pid = ret["pid"]
+        else:
+            raise Exception('qga exec cmd {} failed for vm {}'.format(file, self.vm_uuid))
+
+        if not output:
+            logger.debug("run qga bash: {} failed, no output".format(file))
+            return 0, None
+
+        ret = None
+        for i in range(retry):
+            time.sleep(wait)
+            ret = self.guest_exec_status(pid)
+            # format: {"return":{"exited":false}}
+            if ret['exited']:
+                break
+
+        if not ret or not ret.get('exited'):
+            raise Exception('qga exec cmd {} timeout for vm {}'.format(file, self.vm_uuid))
+
+        exit_code = ret.get('exitcode')
+        ret_data = None
+        if 'out-data' in ret:
+            ret_data = ret['out-data']
+            res = json.loads(ret_data)
+            logger.debug("res: {}".format(res.__dict__))
+            exit_code = 0 if res.get('result') == "success" else 1
+        elif 'err-data' in ret:
+            exit_code = 1
+            ret_data = ret['err-data']
+
+        logger.debug("run qga bash: {} finished, exit code {}, output {}"
+                     .format(file, exit_code, ret_data))
         return exit_code, ret_data
 
     def guest_info(self):
