@@ -413,7 +413,7 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
     def downloadfromimagestore(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         self.imagestore_client.download_from_imagestore(cmd.cacheDir, cmd.hostname, cmd.backupStorageInstallPath,
-                                                        cmd.primaryStorageInstallPath)
+                                                        cmd.primaryStorageInstallPath, cmd.concurrency)
         rsp = AliyunNasResponse()
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.uuid)
         return jsonobject.dumps(rsp)

@@ -282,15 +282,19 @@ class ImageStoreClient(object):
 
         return jsonobject.dumps(rsp)
 
-    def download_from_imagestore(self, cachedir, host, backupStorageInstallPath, primaryStorageInstallPath, failure_action=None):
+    def download_from_imagestore(self, cachedir, host, bs_path, ps_path, concurrency=1, failure_action=None):
         self._check_zstore_cli()
 
-        name, imageid = self._parse_image_reference(backupStorageInstallPath)
+        name, imageid = self._parse_image_reference(bs_path)
+        extra_param = ""
         if cachedir:
-            cmdstr = '%s -url %s:%s -cachedir %s pull -installpath %s %s:%s' % (self.ZSTORE_CLI_PATH, host, self.ZSTORE_DEF_PORT, cachedir, primaryStorageInstallPath, name, imageid)
-        else:
-            cmdstr = '%s -url %s:%s pull -installpath %s %s:%s' % (self.ZSTORE_CLI_PATH, host, self.ZSTORE_DEF_PORT, primaryStorageInstallPath, name, imageid)
+            extra_param += " -cachedir %s" % cachedir
 
+        pull_extra_param = ""
+        if concurrency and concurrency > 1:
+            pull_extra_param += " -concurrency=%d" % concurrency
+        cmdstr = '%s -url %s:%s %s pull %s -installpath %s %s:%s' % \
+                 (self.ZSTORE_CLI_PATH, host, self.ZSTORE_DEF_PORT, extra_param, pull_extra_param, ps_path, name, imageid)
         logger.debug('pulling %s:%s from image store' % (name, imageid))
 
         try:
