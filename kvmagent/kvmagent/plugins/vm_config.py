@@ -66,8 +66,12 @@ def get_guest_tools_states():
             return qga_status
 
         qga_status.qgaRunning = True
-        _, config = qga.guest_file_read('/usr/local/zstack/guesttools')
-        if not config:
+        try:
+            _, config = qga.guest_file_read('/usr/local/zstack/guesttools')
+            if not config:
+                return qga_status
+        except Exception as e:
+            logger.debug("qga read file failed {}".format(e))
             return qga_status
 
         qga_status.zsToolsFound = True

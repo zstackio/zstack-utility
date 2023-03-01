@@ -323,8 +323,8 @@ class VmQga(object):
                 self.os_id_like = self.guest_get_os_id_like()
             else:
                 self.os, self.os_version, self.os_id_like = self.guest_get_os_info()
-        except QgaException as e:
-            raise e
+        except Exception as e:
+            logger.debug("qga init failed {}".format(e))
 
     """
     def guest_get_hostname(self):
