@@ -8141,7 +8141,7 @@ host side snapshot files chian:
             return conn.lookupByName(vmUuid)
 
         qga = VmQga(call_libvirt())
-        if qga.state != Qga.QGA_STATE_RUNNING:
+        if qga.state != VmQga.QGA_STATE_RUNNING:
             return VmPlugin.GUESTTOOLS_STATE_NOT_CONNECT, None
 
         ret_data = qga.guest_exec_bash_no_exitcode("/usr/local/zstack/zwatch-vm-agent/zwatch-vm-agent -version")
