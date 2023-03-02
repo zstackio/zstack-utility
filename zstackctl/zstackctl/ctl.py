@@ -1712,8 +1712,8 @@ class ShowStatus2Cmd(Command):
 
         # mn, ui status
         mn_status, ui_status = collector.get_mn_ui_status()
-        self._format_str_color("MN", ui_status)
-        self._format_str_color("MN-UI", mn_status)
+        self._format_str_color("MN", mn_status)
+        self._format_str_color("MN-UI", ui_status)
 
 class DeployDBCmd(Command):
     DEPLOY_DB_SCRIPT_PATH = "WEB-INF/classes/deploydb.sh"
