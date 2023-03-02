@@ -1256,6 +1256,7 @@ unpack_zstack_into_tomcat(){
 }
 
 uz_configure_grayscale_upgrade(){
+    echo "Configure the grayscale upgrade" >>$ZSTACK_INSTALL_LOG
     mysql -u root --password=$MYSQL_NEW_ROOT_PASSWORD -e 'exit' >/dev/null 2>&1
     # check mysql root password not changed, if not changed, do nothing
     [ $? -eq 0 ] || fail2 "Failed to login mysql, please specify mysql root password using -P MYSQL_ROOT_PASSWORD and try again."
@@ -1291,8 +1292,10 @@ check_update_grayscale_upgrade_success(){
     grayscale_upgrade_config=`echo "$get_grayscale_upgrade_config" | grep value | awk -F ' ' '{print $2}'`
     if [ x"$1" != x"$grayscale_upgrade_config" ]; then
        [ x"$1" == x"true" ] && fail_msg="enabled" || fail_msg="disabled"
+       echo "Failed to configure the grayscale upgrade" >>$ZSTACK_INSTALL_LOG
        fail2 "Failed to $fail_msg grayscale upgrade configuration"
     fi
+    echo "Successfully configure grayscale upgrade" >>$ZSTACK_INSTALL_LOG
 }
 
 upgrade_zstack(){
