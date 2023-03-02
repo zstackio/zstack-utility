@@ -3606,7 +3606,7 @@ Options:
   -u    Upgrade ${PRODUCT_NAME,,} management node and database. Make sure to backup your database, before executing upgrade command: mysqldump -u root -proot_password --host mysql_ip --port mysql_port zstack > path_to_db_dump.sql
 
   --grayscale
-        Upgrade ${PRODUCT_NAME,,} management node and database using grayscale. The '-u' must be added before '--grayscale'.
+        Upgrade ${PRODUCT_NAME,,} management node and database using grayscale. The '-u' must be added before '--grayscale'. for example: bash zstack-installer.bin -u --grayscale true.
 
   -z    Only install ${PRODUCT_NAME}, without start ${PRODUCT_NAME} management node.
 ------------
