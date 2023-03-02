@@ -274,7 +274,7 @@ def install_kvm_pkg():
                         smartmontools sshpass usbutils vconfig wget audit dnsmasq tar iptables iptables-services \
                         qemu-kvm collectd-virt storcli edk2-ovmf python2-pyudev collectd-disk"
 
-        x86_64_rl85 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
+        x86_64_rl84 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                       usbredir-server iputils iscsi-initiator-utils libvirt-daemon libvirt-daemon-kvm libvirt-client libvirt-python lighttpd lsof \
                       net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
                       smartmontools sshpass usbutils wget audit dnsmasq \
