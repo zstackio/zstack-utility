@@ -38,9 +38,9 @@ VM_CONFIG_SYNC_OS_VERSION_SUPPORT = {
     VM_OS_LINUX_UOS: ("20",)
 }
 """
-# qga command wait 5 seconds
-qga_exec_wait_default = 1
-qga_exec_wait_retry = 5
+# qga command wait 30 seconds
+qga_exec_wait_interval = 1
+qga_exec_wait_retry = 30
 
 
 class QgaException(Exception):
@@ -144,7 +144,7 @@ class VmQga(object):
             return None
         return ret_data
 
-    def guest_exec_bash(self, cmd, output=True, wait=qga_exec_wait_default, retry=qga_exec_wait_retry):
+    def guest_exec_bash(self, cmd, output=True, wait=qga_exec_wait_interval, retry=qga_exec_wait_retry):
 
         ret = self.guest_exec(
             {"path": "bash", "arg": ["-c", cmd], "capture-output": output})
@@ -180,7 +180,7 @@ class VmQga(object):
         return exit_code, ret_data
 
     # not a good function, just for hurry push
-    def guest_exec_python(self, file, output=True, wait=qga_exec_wait_default, retry=qga_exec_wait_retry):
+    def guest_exec_python(self, file, output=True, wait=qga_exec_wait_interval, retry=qga_exec_wait_retry):
 
         ret = self.guest_exec(
             {"path": "python", "arg": [file], "capture-output": output})
