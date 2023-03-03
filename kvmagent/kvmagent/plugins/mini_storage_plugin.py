@@ -659,7 +659,10 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         rsp = ResizeVolumeRsp()
 
         if not cmd.drbd:
-            lvm.extend_lv_from_cmd(install_abs_path, cmd.size, cmd)
+            if cmd.force:
+                lvm.resize_lv(install_abs_path, cmd.size, True)
+            else:
+                lvm.extend_lv_from_cmd(install_abs_path, cmd.size, cmd)
             if cmd.isFileSystem:
                 lvm.active_lv(install_abs_path)
                 mountPath = self.convertInstallPathToMount(cmd.installPath)

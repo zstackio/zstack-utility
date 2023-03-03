@@ -840,7 +840,10 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
 
         with lvm.RecursiveOperateLv(install_abs_path, shared=False):
-            lvm.extend_lv_from_cmd(install_abs_path, cmd.size, cmd)
+            if cmd.force:
+                lvm.resize_lv(install_abs_path, cmd.size, True)
+            else:
+                lvm.extend_lv_from_cmd(install_abs_path, cmd.size, cmd)
             fmt = linux.get_img_fmt(install_abs_path)
             if not cmd.live and fmt == 'qcow2':
                 linux.qemu_img_resize(install_abs_path, cmd.size, 'qcow2', cmd.force)
