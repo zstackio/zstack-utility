@@ -1128,7 +1128,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             measure_size = linux.qcow2_measure_required_size(dst_abs_path)
             current_size = int(lvm.get_lv_size(dst_abs_path))
             if current_size < measure_size:
-                lvm.resize_lv_from_cmd(dst_abs_path, measure_size, cmd, extend_thin_by_specified_size=True)
+                lvm.extend_lv_from_cmd(dst_abs_path, measure_size, cmd, extend_thin_by_specified_size=True)
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
@@ -1150,7 +1150,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             current_size = int(lvm.get_lv_size(dst_abs_path))
             if not cmd.fullRebase:
                 if current_size < measure_size:
-                    lvm.resize_lv_from_cmd(dst_abs_path, measure_size, cmd, extend_thin_by_specified_size=True)
+                    lvm.extend_lv_from_cmd(dst_abs_path, measure_size, cmd, extend_thin_by_specified_size=True)
 
                 with lvm.RecursiveOperateLv(src_abs_path, shared=True):
                     linux.qcow2_rebase(src_abs_path, dst_abs_path)
