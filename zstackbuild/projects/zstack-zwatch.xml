@@ -17,7 +17,6 @@
             <arg value="package" />
             <arg value="ARCH=amd64 arm64" />
         </exec>
-
         <copy todir="${zsw.bdir}">
             <fileset dir="${zstackzwatch.source}/target/package/zwatch-vm-agent">
                 <include name="**" />
@@ -25,7 +24,7 @@
         </copy>
     </target>
 
-    <target name="assemble-zstack-zwatch">
+    <target name="assemble-zstack-zwatch" depends="build-zstack-zwatch">
         <copy todir="${zsw.ansible.dir}">
             <fileset dir="${zsw.bdir}">
                 <include name="**" />
