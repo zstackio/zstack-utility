@@ -1650,9 +1650,12 @@ class ManagementNodeStatusCollector(Command):
     def get_mn_ui_status(self):
         code, stdout, stderr = shell_return_stdout_stderr("zstack-ctl status | grep \"status\" | sed -r \"s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[m|K]//g\" | awk -F \":\" '{print $2}'| awk -F \"[\" '{print $1}'")
         if code == 0:
-            mn_status = stdout.split('\n')[0].strip().lower()
-            ui_status = stdout.split('\n')[1].strip().lower()
-            return mn_status, ui_status
+            try:
+                mn_status = stdout.split('\n')[0].strip().lower()
+                ui_status = stdout.split('\n')[1].strip().lower()
+                return mn_status, ui_status
+            except:
+                return "unknown", "unknown"
         else:
             return "unknown", "unknown"
 
