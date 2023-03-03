@@ -2615,7 +2615,7 @@ cs_enable_zstack_service(){
     echo_subtitle "Enable ${PRODUCT_NAME} bootstrap service"
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     if [ -f /bin/systemctl ]; then
-        systemctl enable --now mariadb
+        systemctl enable --now mariadb 2>/dev/null
         cat > /etc/systemd/system/zstack.service <<EOF
 [Unit]
 Description=zstack Service
