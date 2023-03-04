@@ -110,7 +110,7 @@ class VolumeTO(object):
 
         if xml_obj.attrib['type'] == 'file':
             source = xml_obj.find('source')
-            if source and 'file' in source.attrib:
+            if source is not None and 'file' in source.attrib:
                 v = VolumeTO()
                 v.installPath = xml_obj.find('source').attrib['file']
                 v.deviceType = "file"
