@@ -32,6 +32,8 @@ remote_port = None
 host_uuid = None
 require_python_env = "false"
 skip_packages = ""
+isZYJ = "false"
+zyjDistribution = ""
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy image backupstorage to host')
@@ -60,6 +62,9 @@ host_post_info.remote_pass = remote_pass
 host_post_info.remote_port = remote_port
 if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
+
+if isZYJ and zyjDistribution != "":
+    host_post_info.distribution = zyjDistribution
 
 # get remote host arch
 host_arch = get_remote_host_arch(host_post_info)
@@ -103,54 +108,64 @@ else :
     zstacklib_args.yum_server = yum_server
 zstacklib = ZstackLib(zstacklib_args)
 
-if distro in RPM_BASED_OS:
-    qemu_pkg = "fuse-sshfs nmap collectd tar pyparted"
-    if releasever in ['c74', 'c76']:
-        qemu_pkg = "qemu-img-ev {}".format(qemu_pkg)
-    else:
-        qemu_pkg = "qemu-img {}".format(qemu_pkg)
-    # skip these packages
-    _skip_list = re.split(r'[|;,\s]\s*', skip_packages)
-    _qemu_pkg = [ pkg for pkg in qemu_pkg.split() if pkg not in _skip_list ]
-    qemu_pkg = ' '.join(_qemu_pkg)
-    svr_pkgs = 'ntfs-3g exfat-utils fuse-exfat btrfs-progs qemu-storage-daemon nmap-ncat'
-    # common imagestorebackupstorage deps of ns10 that need to update
-    ns10_update_list = "nettle"
 
-    if client == "true" :
-        if distro_version < 7:
-            # change error to warning due to imagestore client will install after add kvm host
-            Warning("Imagestore Client only support distribution version newer than 7.0")
-        if zstack_repo == 'false':
-            yum_install_package(qemu_pkg, host_post_info)
+@skip_on_zyj(isZYJ)
+def install_packages():
+    if distro in RPM_BASED_OS:
+        qemu_pkg = "fuse-sshfs nmap collectd tar pyparted"
+        if releasever in ['c74', 'c76']:
+            qemu_pkg = "qemu-img-ev {}".format(qemu_pkg)
         else:
-            command = ("pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
-                       "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % (qemu_pkg, zstack_repo)
-            run_remote_command(command, host_post_info)
-    else:
-        if zstack_repo == 'false':
-            yum_install_package(qemu_pkg, host_post_info)
-        else:
-            command = ("pkg_list=`rpm -q {0} | grep \"not installed\" | awk '{{ print $2 }}'` && for pkg in $pkg_list; do yum "
-                       "--disablerepo=* --enablerepo={1} install -y $pkg; done;").format(qemu_pkg, zstack_repo)
-            run_remote_command(command, host_post_info)
+            qemu_pkg = "qemu-img {}".format(qemu_pkg)
+        # skip these packages
+        _skip_list = re.split(r'[|;,\s]\s*', skip_packages)
+        _qemu_pkg = [pkg for pkg in qemu_pkg.split() if pkg not in _skip_list]
+        qemu_pkg = ' '.join(_qemu_pkg)
+        svr_pkgs = 'ntfs-3g exfat-utils fuse-exfat btrfs-progs qemu-storage-daemon nmap-ncat'
+        # common imagestorebackupstorage deps of ns10 that need to update
+        ns10_update_list = "nettle"
 
-            if releasever in ['ns10']:
-                command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (
-                ns10_update_list, zstack_repo)
+        if client == "true":
+            if distro_version < 7:
+                # change error to warning due to imagestore client will install after add kvm host
+                Warning("Imagestore Client only support distribution version newer than 7.0")
+            if zstack_repo == 'false':
+                yum_install_package(qemu_pkg, host_post_info)
+            else:
+                command = (
+                              "pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
+                              "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % (qemu_pkg, zstack_repo)
+                run_remote_command(command, host_post_info)
+        else:
+            if zstack_repo == 'false':
+                yum_install_package(qemu_pkg, host_post_info)
+            else:
+                command = (
+                    "pkg_list=`rpm -q {0} | grep \"not installed\" | awk '{{ print $2 }}'` && for pkg in $pkg_list; do yum "
+                    "--disablerepo=* --enablerepo={1} install -y $pkg; done;").format(qemu_pkg, zstack_repo)
                 run_remote_command(command, host_post_info)
 
-            if releasever not in ['c72', 'c74']:
-                command = ("pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
-                           "--disablerepo=* --enablerepo=%s install -y $pkg || true; done;") % (svr_pkgs, zstack_repo)
-                run_remote_command(command, host_post_info)
+                if releasever in ['ns10']:
+                    command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (
+                        ns10_update_list, zstack_repo)
+                    run_remote_command(command, host_post_info)
 
-elif distro in DEB_BASED_OS:
-    if client == "true" and distro_version < 16:
-        Warning("Client only support distribution version newer than 16.04")
-    apt_install_packages(["qemu-utils", "qemu-system", "sshfs", "collectd"], host_post_info)
-else:
-    error("ERROR: Unsupported distribution")
+                if releasever not in ['c72', 'c74']:
+                    command = (
+                                  "pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
+                                  "--disablerepo=* --enablerepo=%s install -y $pkg || true; done;") % (
+                                  svr_pkgs, zstack_repo)
+                    run_remote_command(command, host_post_info)
+
+    elif distro in DEB_BASED_OS:
+        if client == "true" and distro_version < 16:
+            Warning("Client only support distribution version newer than 16.04")
+        apt_install_packages(["qemu-utils", "qemu-system", "sshfs", "collectd"], host_post_info)
+    else:
+        error("ERROR: Unsupported distribution")
+
+
+install_packages()
 
 # name: copy imagestore binary
 command = 'rm -rf {};mkdir -p {}'.format(imagestore_root, imagestore_root + "/certs")

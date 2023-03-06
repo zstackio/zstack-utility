@@ -21,4 +21,8 @@ def to_concise_uuid(uuidstr):
 
 def to_full_uuid(uuidstr):
     return '%s-%s-%s-%s-%s' % (uuidstr[0:8], uuidstr[8:12], uuidstr[12:16], uuidstr[16:20], uuidstr[20:])
-        
+
+def get_full_uuid(uuidstr):
+    if len(uuidstr) < 32:
+        return str(uuid4())
+    return '%s-%s-%s-%s-%s' % (uuidstr[0:8], uuidstr[8:12], uuidstr[12:16], uuidstr[16:20], uuidstr[20:])

@@ -30,7 +30,7 @@ ansible.constants.HOST_KEY_CHECKING = False
 enable_networkmanager_list = ["ns10", "euler20", "uos1021a"]
 supported_arch_list = ["x86_64", "aarch64", "mips64el", "loongarch64"]
 
-RPM_BASED_OS = ["kylin_zstack", "kylin_tercel", "kylin_sword", "alibaba", "centos", "openeuler", "uniontech_kongzi", "kylin_svs2.22.2 zyj aarch64"]
+RPM_BASED_OS = ["kylin_zstack", "kylin_tercel", "kylin_sword", "alibaba", "centos", "openeuler", "uniontech_kongzi", "kylin_zyj"]
 DEB_BASED_OS = ["ubuntu", "uos", "kylin4.0.2", "debian", "uniontech_fou"]
 DISTRO_WITH_RPM_DEB = ["kylin", "uniontech"]
 
@@ -114,6 +114,7 @@ class HostPostInfo(object):
         self.mysql_userpassword = None
         self.transport = 'smart'
         self.releasever = None
+        self.distribution = None
 
 
 class PipInstallArg(object):
@@ -258,6 +259,18 @@ def with_arch(todo_list=supported_arch_list, host_arch=None):
     return wrap
 
 
+def skip_on_zyj(is_zyj):
+    def wrap(f):
+        @functools.wraps(f)
+        def inner(*args, **kwargs):
+            if is_zyj == 'true':
+                logger.info("Skip function[{}] on zyj host.".format(f.__name__))
+            else:
+                return f(*args, **kwargs)
+        return inner
+    return wrap
+
+
 def on_redhat_based(distro=None, exclude=[]):
     def wrap(f):
         @functools.wraps(f)
@@ -290,7 +303,7 @@ def get_host_releasever(ansible_distribution):
         "kylin_tercel tercel 10": "ns10",
         "kylin_sword sword 10": "ns10",
         "kylin_zstack zstack 10": "ns10",
-        "kylin_svs2.22.2 zyj aarch64 svs2.22.2 zyj aarch64 10": "ns10",
+        "kylin_zyj zyj 10": "ns10",
         "uniontech fou 20": "uos20",
         "redhat maipo 7.4": "ns10", # old kylinV10, oem 7.4 incompletely
         "centos core 7.6.1810": "c76",
@@ -1230,6 +1243,8 @@ def get_remote_host_info(host_post_info):
     host_post_info.post_label = "ansible.get.host.info"
     host_post_info.post_label_param = host_post_info.host
     handle_ansible_info("INFO: starting get remote host %s info ... " % host, host_post_info, "INFO")
+    if host_post_info.distribution is not None:
+        return host_post_info.distribution.split(' ')
     # we use host_uuid rather than host(ip) to identify resources,
     # because different resources might use same ip in some situations
     cache_file = _get_ansible_cache_file(host_post_info, "ansible_distribution")

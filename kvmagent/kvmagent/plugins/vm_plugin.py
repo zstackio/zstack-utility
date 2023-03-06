@@ -3797,9 +3797,6 @@ class Vm(object):
             if get_gic_version(cmd.cpuNum) == 2:
                 e(features, "gic", attrib={'version': '2'})
 
-
-
-
         def make_qemu_commandline():
             if not os.path.exists(QMP_SOCKET_PATH):
                 os.mkdir(QMP_SOCKET_PATH)
@@ -3807,6 +3804,12 @@ class Vm(object):
             root = elements['root']
             qcmd = e(root, 'qemu:commandline')
             vendor_id, model_name = linux.get_cpu_model()
+            if bash.bash_r('getenforce | grep -i dis') != 0:
+                e(qcmd, "qemu:arg", attrib={"value": "--device"})
+                e(qcmd, "qemu:arg", attrib={"value": "lkmc_pci,addr=05.0"})
+                e(qcmd, "qemu:arg", attrib={"value": "--device"})
+                e(qcmd, "qemu:arg", attrib={"value": "vboot,addr=04.0"})
+
             if "hygon" in model_name.lower() and cmd.hygonCpu:
                 e(qcmd, "qemu:arg", attrib={"value": "-cpu"})
                 e(qcmd, "qemu:arg", attrib={"value": "EPYC,vendor=AuthenticAMD,model_id={} Processor,+svm".format(" ".join(model_name.split(" ")[0:3]))})
@@ -4387,7 +4390,7 @@ class Vm(object):
 
             if cmd.coloPrimary or cmd.coloSecondary:
                 e(root, 'iothreads', str(len(cmd.nics)))
-            e(root, 'uuid', uuidhelper.to_full_uuid(cmd.vmInstanceUuid))
+            e(root, 'uuid', uuidhelper.get_full_uuid(cmd.vmInstanceUuid))
             e(root, 'description', cmd.vmName)
             e(root, 'on_poweroff', 'destroy')
             e(root, 'on_reboot', 'restart')
