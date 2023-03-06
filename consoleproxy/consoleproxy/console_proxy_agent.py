@@ -448,13 +448,10 @@ class ConsoleProxyAgent(object):
             ret,out,err = bash_roe(start_cmd)
             if ret != 0:
                 err = []
-                if port_conflict_msg is not None:
-                    err.append(port_conflict_msg)
-                else:
-                    err.append('failed to execute bash command: %s' % start_cmd)
-                    err.append('return code: %s' % ret)
-                    err.append('stdout: %s' % out)
-                    err.append('stderr: %s' % err)
+                err.append('failed to execute bash command: %s' % start_cmd)
+                err.append('return code: %s' % ret)
+                err.append('stdout: %s' % out)
+                err.append('stderr: %s' % err)
                 raise ConsoleProxyError('\n'.join(err))
 
         start_proxy()
