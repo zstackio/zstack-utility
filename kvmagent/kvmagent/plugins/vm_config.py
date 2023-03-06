@@ -67,6 +67,9 @@ def get_guest_tools_states():
             return qga_status
 
         qga_status.qgaRunning = True
+        qga_status.osType = '{} {}'.format(qga.os, qga.os_version)
+        qga_status.platForm = 'Linux'
+
         try:
             _, config = qga.guest_file_read('/usr/local/zstack/guesttools')
             if not config:
@@ -80,8 +83,6 @@ def get_guest_tools_states():
         version_config = [line for line in config.split('\n') if 'version' in line]
         if version_config:
             qga_status.version = version_config[0].split('=')[1].strip()
-            qga_status.osType = '{} {}'.format(qga.os, qga.os_version)
-            qga_status.platForm = 'Linux'
 
         return qga_status
 
