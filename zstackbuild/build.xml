@@ -299,9 +299,6 @@
                 <antcall target="build-zstack-zwatch"/>
             </sequential>
             <sequential>
-                <antcall target="build-guest-tools-iso"/>
-            </sequential>
-            <sequential>
                 <antcall target="check-zstack-distro"/>
             </sequential>
         </parallel>
@@ -400,9 +397,6 @@
             </sequential>
             <sequential>
                 <antcall target="assemble-guest-tools"/>
-            </sequential>
-            <sequential>
-                <antcall target="assemble-guest-tools-iso"/>
             </sequential>
             <sequential>
                 <antcall target="assemble-transmission"/>
