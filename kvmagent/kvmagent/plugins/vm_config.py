@@ -1,5 +1,3 @@
-import logging
-
 import libvirt
 from kvmagent.plugins import vm_plugin
 from zstacklib.utils import http
@@ -73,9 +71,10 @@ def get_guest_tools_states():
         try:
             _, config = qga.guest_file_read('/usr/local/zstack/guesttools')
             if not config:
+                logger.debug("read /usr/local/zstack/guesttools failed")
                 return qga_status
         except Exception as e:
-            logger.debug("qga read file failed {}".format(e))
+            logger.debug("read /usr/local/zstack/guesttools failed {}".format(e))
             return qga_status
 
         qga_status.zsToolsFound = True
@@ -127,22 +126,18 @@ class VmConfigPlugin(kvmagent.KvmAgent):
         vm_uuid = domain.name()
         qga = VmQga(domain)
         if qga.state != VmQga.QGA_STATE_RUNNING:
-            logger.debug("qga is not running for vm {}".format(vm_uuid))
             return 1, "qga is not running for vm {}".format(vm_uuid)
 
         if qga.os == VmQga.VM_OS_LINUX_KYLIN or qga.os == VmQga.VM_OS_LINUX_UOS:
             cmd_file = self.VM_QGA_CONFIG_LINUX_CMD
         else:
-            logger.debug("not support for os {}".format(qga.os))
             return 1, "not support for os {}".format(qga.os)
 
         # write command to a file
         ret = qga.guest_file_write(self.VM_QGA_PARAM_FILE, jsonobject.dumps(nicParams))
         if ret == 0:
-            logging.debug("config vm {}, write parameters file {} failed".format(vm_uuid, self.VM_QGA_PARAM_FILE))
+            logger.debug("config vm {}, write parameters file {} failed".format(vm_uuid, self.VM_QGA_PARAM_FILE))
             return 1, "config vm {}, write parameters file {} failed".format(vm_uuid, self.VM_QGA_PARAM_FILE)
-        logger.debug(
-            "writing vm {} config {} to file".format(vm_uuid, self.VM_QGA_PARAM_FILE, jsonobject.dumps(cmd_file)))
 
         # exec qga command
         ret, msg = qga.guest_exec_python(cmd_file)
@@ -162,8 +157,6 @@ class VmConfigPlugin(kvmagent.KvmAgent):
             rsp.success = False
             rsp.error = 'vm {} not running'.format(cmd.vmUuid)
             return jsonobject.dumps(rsp)
-
-        logger.debug("vm_config_ports for {}".format(cmd.vmUuid))
 
         ret, msg = self.config_vm_by_qga(domain, cmd.portsConfig)
         if ret != 0:
