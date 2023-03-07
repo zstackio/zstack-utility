@@ -3172,9 +3172,8 @@ class Vm(object):
             # set the hostname, otherwise the migration will fail
             shell.call('hostname %s.zstack.org' % hostname)
 
-        destHostIp = cmd.destHostIp
-        destUrl = "qemu+tcp://{0}/system".format(destHostIp)
-        tcpUri = "tcp://{0}".format(destHostIp)
+        destUrl = "qemu+tcp://{0}/system".format(cmd.destHostManagementIp)
+        tcpUri = "tcp://{0}".format(cmd.destHostIp)
 
         storage_migration_required = cmd.disks and len(cmd.disks.__dict__) != 0
         parameter_map = {}
