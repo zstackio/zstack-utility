@@ -6856,11 +6856,19 @@ host side snapshot files chian:
                                 vm.uuid, cmd.volume.deviceId, vm.state))
 
                     if vm and (vm.state == vm.VM_STATE_RUNNING or vm.state == vm.VM_STATE_PAUSED):
+                        if not cmd.online:
+                            raise kvmagent.KvmError(
+                                'unable to take snapshot on vm[uuid:{0}] volume[id:{1}], because vm is {2} on host, it does not match the expected state[{3}]'.format(
+                                    vm.uuid, cmd.volume.deviceId, vm.state, vm.VM_STATE_SHUTDOWN))
                         rsp.snapshotInstallPath, rsp.newVolumeInstallPath = vm.take_volume_snapshot(cmd,
                                                                                                     cmd.volume,
                                                                                                     cmd.installPath,
                                                                                                     cmd.fullSnapshot)
                     else:
+                        if cmd.online:
+                            raise kvmagent.KvmError(
+                                'unable to take snapshot on vm[uuid:{0}] volume[id:{1}], because vm is {2} on host, it does not match the expected state[{3} or {4}]'.format(
+                                    vm.uuid, cmd.volume.deviceId, vm.state, vm.VM_STATE_RUNNING, vm.VM_STATE_PAUSED))
                         if cmd.fullSnapshot:
                             rsp.snapshotInstallPath, rsp.newVolumeInstallPath = take_full_snapshot_by_qemu_img_convert(
                                 cmd.volumeInstallPath, cmd.installPath)
