@@ -164,7 +164,7 @@ def load_zstacklib():
     zstacklib_args = ZstackLibArgs()
     zstacklib_args.distro = distro
     zstacklib_args.distro_release = distro_release
-    zstacklib_args.distro_version = major_version
+    zstacklib_args.distro_version = distro_version
     zstacklib_args.zstack_root = zstack_root
     zstacklib_args.zstack_repo = zstack_repo
     zstacklib_args.host_post_info = host_post_info
