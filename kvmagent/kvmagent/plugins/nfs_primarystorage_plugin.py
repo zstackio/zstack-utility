@@ -305,15 +305,15 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
 
             t_shell = traceable_shell.get_shell(cmd)
             rsync_excludes = ""
-            md5_excludes = ""
+            rsync_exclude_files = set()
             if cmd.filtPaths:
                 for filtPath in cmd.filtPaths:
                     # filtPath cannot start with '/', because it must be a relative path
                     if filtPath.startswith('/'):
                         filtPath = filtPath[1:]
                     if filtPath != '':
+                        rsync_exclude_files.add(filtPath)
                         rsync_excludes = rsync_excludes + " --exclude=%s" % filtPath
-                        md5_excludes = md5_excludes + " ! -path %s/%s" % (cmd.srcFolderPath, filtPath)
 
             total_size = int(shell.call("rsync -anv %s/ %s %s | grep -o -P 'total size is \K\d*'" %
                                         (cmd.srcFolderPath, dst_folder_path, rsync_excludes)))
@@ -338,12 +338,26 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
 
             t_shell.bash_progress_1("rsync -aK --progress %s/ %s %s > %s" % (cmd.srcFolderPath, dst_folder_path, rsync_excludes, PFILE), _get_progress)
 
-            src_md5 = t_shell.call(
-                "find %s -name '*.qcow2' %s -exec md5sum {} \; | awk '{ print $1 }' | sort | md5sum" % (cmd.srcFolderPath, md5_excludes))
-            dst_md5 = t_shell.call("find %s -name '*.qcow2' -exec md5sum {} \; | awk '{ print $1 }' | sort | md5sum" % dst_folder_path)
-            if src_md5 != dst_md5:
-                rsp.error = "failed to copy files from %s to %s, md5sum not match" % (cmd.srcFolderPath, dst_folder_path)
-                rsp.success = False
+            srcQcow2s = t_shell.call("find %s -name '*.qcow2'" % cmd.srcFolderPath).strip().splitlines()
+            srcQcow2s = filter(lambda src_file: os.path.relpath(src_file, cmd.srcFolderPath) not in rsync_exclude_files, srcQcow2s)
+            dstQcow2s = t_shell.call("find %s -name '*.qcow2'" % dst_folder_path).strip().splitlines()
+            if len(srcQcow2s) != len(dstQcow2s):
+                logger.warn("the num of target qcow2 is inconsistent with that of source qcow2, dirty data may exist, src qcow2s:%s, dst qcow2s:%s" % (srcQcow2s, dstQcow2s))
+
+            for srcFile in srcQcow2s:
+                dstFile = os.path.join(dst_folder_path, os.path.relpath(srcFile, cmd.srcFolderPath))
+                srcSize = os.path.getsize(srcFile)
+                dstSize = os.path.getsize(dstFile)
+                if srcSize != dstSize:
+                    rsp.error = "failed to copy file %s to %s, the size of file not match" % (srcFile, dstFile)
+                    rsp.success = False
+                    break
+                try:
+                    linux.compare_segmented_xxhash(srcFile, dstFile, dstSize, raise_exception=True)
+                except Exception as e:
+                    rsp.error = "failed to copy file %s to %s, because: %s" % (srcFile, dstFile, str(e))
+                    rsp.success = False
+                    break
 
             if not cmd.isMounted:
                 linux.umount(mount_path)
