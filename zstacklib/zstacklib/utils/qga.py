@@ -98,7 +98,6 @@ class VmQga(object):
                 args['buf-b64'] = base64.b64encode(args['buf-b64'])
             cmd['arguments'] = args
         cmd = json.dumps(cmd)
-        logger.debug("vm {} run qga command {}".format(self.vm_uuid, cmd))
         try:
             ret = libvirt_qemu.qemuAgentCommand(self.domain, cmd,
                                                 timeout, 0)
@@ -106,8 +105,9 @@ class VmQga(object):
             message = 'exec qga command[{}] args[{}] error: {}'.format(cmd, args, e.message)
             raise Exception(message)
 
-        logger.debug("vm {} run qga command result {}".format(self.vm_uuid, ret))
         try:
+            logger.debug("vm {} run qga command {} result {}".format(self.vm_uuid, cmd, ret))
+            
             parsed = json.loads(ret)
         except ValueError:
             raise Exception('qga command return value parsing error:{}'.format(ret))
@@ -175,8 +175,6 @@ class VmQga(object):
         elif 'err-data' in ret:
             ret_data = ret['err-data']
 
-        logger.debug("run qga bash: {} finished, exit code {}, output {}"
-                     .format(cmd, exit_code, ret_data))
         return exit_code, ret_data
 
     # not a good function, just for hurry push
@@ -190,7 +188,7 @@ class VmQga(object):
             raise Exception('qga exec cmd {} failed for vm {}'.format(file, self.vm_uuid))
 
         if not output:
-            logger.debug("run qga bash: {} failed, no output".format(file))
+            logger.debug("run qga python: {} failed, no output".format(file))
             return 0, None
 
         ret = None
@@ -214,8 +212,6 @@ class VmQga(object):
             exit_code = 1
             ret_data = ret['err-data']
 
-        logger.debug("run qga bash: {} finished, exit code {}, output {}"
-                     .format(file, exit_code, ret_data))
         return exit_code, ret_data
 
     def guest_info(self):
