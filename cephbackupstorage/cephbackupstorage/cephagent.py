@@ -778,6 +778,9 @@ class CephAgent(object):
             def _get_percent(self):
                 pass
 
+            def _get_detail(self):
+                pass
+
         start = len(self.UPLOAD_PROTO)
         imageUuid = cmd.url[start:start+self.LENGTH_OF_UUID]
         dstPath = self._normalize_install_path(cmd.installPath)
