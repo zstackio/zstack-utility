@@ -1890,6 +1890,20 @@ def list_all_file(path):
         else:
             yield fi_d
 
+
+def walk(path, depth=-1):
+    if depth == 0:
+        return
+    for fi in os.listdir(path):
+        fi_d = os.path.join(path, fi)
+        if os.path.isdir(fi_d):
+            yield fi_d
+            for f in walk(fi_d, depth-1):
+                yield f
+        else:
+            yield fi_d
+
+
 def find_file(file_name, current_path, parent_path_depth=2, sub_folder_first=False):
     ''' find_file will return a file path, when finding a file in given path.
         The default search parent path depth is 2. It means loader will only
