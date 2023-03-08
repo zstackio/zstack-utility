@@ -5426,7 +5426,7 @@ class Vm(object):
                 e(interface, 'model', None, attrib={'type': 'e1000'})
 
             if nic.driverType == 'virtio' and nic.vHostAddOn.queueNum != 1:
-                e(interface, 'driver ', None, attrib={'name': 'vhost', 'txmode': 'iothread', 'ioeventfd': 'on', 'event_idx': 'off', 'queues': str(nic.vHostAddOn.queueNum), 'rx_queue_size': str(nic.vHostAddOn.rxBufferSize) if nic.vHostAddOn.rxBufferSize is not None else '1024', 'tx_queue_size': str(nic.vHostAddOn.txBufferSize) if nic.vHostAddOn.txBufferSize is not None else '1024'})
+                e(interface, 'driver ', None, attrib={'name': 'vhost', 'txmode': 'iothread', 'ioeventfd': 'on', 'event_idx': 'off', 'queues': str(nic.vHostAddOn.queueNum), 'rx_queue_size': str(nic.vHostAddOn.rxBufferSize) if nic.vHostAddOn.rxBufferSize is not None else '256', 'tx_queue_size': str(nic.vHostAddOn.txBufferSize) if nic.vHostAddOn.txBufferSize is not None else '256'})
 
         if nic.bootOrder is not None and nic.bootOrder > 0:
             e(interface, 'boot', None, attrib={'order': str(nic.bootOrder)})

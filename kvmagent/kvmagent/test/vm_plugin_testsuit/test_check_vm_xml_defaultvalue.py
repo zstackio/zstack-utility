@@ -38,6 +38,6 @@ class TestVmXmLDefaultValue(TestCase, vm_utils.VmPluginTestStub):
 
         _, o = bash.bash_ro("virsh dumpxml %s|grep vhost" % vm.vmInstanceUuid)
 
-        containCount=o.count("1024")
+        containCount=o.count("256")
         self.assertEqual(containCount, 2, "vm xml nic rx(tx)BufferSize not equal 1024")
 
