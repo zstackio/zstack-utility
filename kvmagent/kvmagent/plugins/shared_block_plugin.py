@@ -555,7 +555,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         for diskUuid in cmd.allSharedBlockUuids:
             disk = CheckDisk(diskUuid)
-            p = disk.get_path()
+            p = disk.get_path(raise_exception=False)
             if p is not None:
                 allDiskPaths.add(p)
                 allDisks.add(disk)
