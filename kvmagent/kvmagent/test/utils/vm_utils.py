@@ -367,6 +367,7 @@ def migrate_vm(vm_uuid, src_ip, dst_ip):
     cmd.vmUuid = vm_uuid
     cmd.destHostIp = dst_ip
     cmd.srcHostIp = src_ip
+    cmd.destHostManagementIp = dst_ip
 
     return VM_PLUGIN.migrate_vm(misc.make_a_request(cmd.to_dict()))
 
