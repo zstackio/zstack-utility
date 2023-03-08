@@ -555,7 +555,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         for diskUuid in cmd.allSharedBlockUuids:
             disk = CheckDisk(diskUuid)
-            p = disk.get_path()
+            p = disk.get_path(raise_exception=False)
             if p is not None:
                 allDiskPaths.add(p)
                 allDisks.add(disk)
@@ -775,7 +775,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         for diskUuid in cmd.allSharedBlockUuids:
             _disk = CheckDisk(diskUuid)
-            p = _disk.get_path()
+            p = _disk.get_path(raise_exception=False)
             if p is not None:
                 allDiskPaths.add(p)
                 allDisks.add(_disk)
@@ -1500,7 +1500,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         for diskUuid in cmd.allSharedBlockUuids:
             disk = CheckDisk(diskUuid)
-            p = disk.get_path()
+            p = disk.get_path(raise_exception=False)
             if p is not None:
                 allDiskPaths.add(p)
 
