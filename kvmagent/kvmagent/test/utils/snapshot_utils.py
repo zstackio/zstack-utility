@@ -25,6 +25,7 @@ take_snapshot_cmd_body = {
         "primaryStorageType": "LocalStorage"
     },
     "installPath": None,  # must fill
+    "online": True,
     "fullSnapshot": False,
     "volumeInstallPath": None,  # must fill
     "isBaremetal2InstanceOnlineSnapshot": False,
