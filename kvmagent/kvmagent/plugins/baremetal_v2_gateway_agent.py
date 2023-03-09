@@ -186,23 +186,26 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
 
         # download pxe images from management node
         # static repo url like: http://10.10.0.1:8080/zstack/static/zstack-repo/x86_64/c76
-        bmtempdir = tempfile.mkdtemp()
         mn_repo_url = 'http://{ip}:{port}/zstack/static/zstack-repo'.format(
             ip=network_obj.callback_ip, port=network_obj.callback_port)
 
-        for arch in ['x86_64', 'aarch64']:
-            arch_path = os.path.join(self.BM_IMGS_DIR, arch)
-            if os.path.exists(arch_path):
-                shutil.rmtree(arch_path)
+        bm_temp_dir = tempfile.mkdtemp()
+        try:
+            for arch in ['x86_64', 'aarch64']:
+                arch_path = os.path.join(self.BM_IMGS_DIR, arch)
+                if os.path.exists(arch_path):
+                    shutil.rmtree(arch_path)
 
-            linux.mkdir(arch_path)
-            bm2_ims_url = '{}/{}/{}/bm2-images.tar.gz'.format(mn_repo_url, arch, yum_release)
-            tmpfile = '{}/{}-bm-images.tar.gz'.format(bmtempdir, arch)
-            if shell.call("curl -I {}".format(bm2_ims_url)).splitlines()[0].split()[1] != '404':
-                shell.call("curl -c -O {url} -o {tmpfile}; tar zxf {tmpfile} -C {bmimgs_dir}".format(
-                    url=bm2_ims_url, tmpfile=tmpfile, bmimgs_dir=arch_path))
-
-        shutil.rmtree(bmtempdir)
+                linux.mkdir(arch_path)
+                bm2_ims_url = '{}/{}/{}/bm2-images.tar.gz'.format(mn_repo_url, arch, yum_release)
+                tmpfile = '{}/{}-bm-images.tar.gz'.format(bm_temp_dir, arch)
+                if shell.call("curl -I {}".format(bm2_ims_url)).splitlines()[0].split()[1] != '404':
+                    shell.call("curl -c -O {url} -o {tmpfile}; tar zxf {tmpfile} -C {bmimgs_dir}".format(
+                        url=bm2_ims_url, tmpfile=tmpfile, bmimgs_dir=arch_path))
+        except Exception as e:
+            raise exception.DownloadBm2ImagesFailed(error_msg=str(e))
+        finally:
+            shutil.rmtree(bm_temp_dir)
 
         if os.listdir(self.BM_IMGS_X86_64_DIR):
             bm_utils.copy_dir_files_to_another_dir(
