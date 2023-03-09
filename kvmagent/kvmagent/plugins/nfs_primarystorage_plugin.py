@@ -206,6 +206,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     REVERT_VOLUME_FROM_SNAPSHOT_PATH = "/nfsprimarystorage/revertvolumefromsnapshot"
     REINIT_IMAGE_PATH = "/nfsprimarystorage/reinitimage"
     DELETE_PATH = "/nfsprimarystorage/delete"
+    UNLINK_PATH = "/nfsprimarystorage/unlink"
     CHECK_BITS_PATH = "/nfsprimarystorage/checkbits"
     UPLOAD_TO_SFTP_PATH = "/nfsprimarystorage/uploadtosftpbackupstorage"
     DOWNLOAD_FROM_SFTP_PATH = "/nfsprimarystorage/downloadfromsftpbackupstorage"
@@ -243,6 +244,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.DOWNLOAD_FROM_SFTP_PATH, self.download_from_sftp)
         http_server.register_async_uri(self.GET_CAPACITY_PATH, self.get_capacity)
         http_server.register_async_uri(self.DELETE_PATH, self.delete)
+        http_server.register_async_uri(self.UNLINK_PATH, self.unlink)
         http_server.register_async_uri(self.CREATE_TEMPLATE_FROM_VOLUME_PATH, self.create_template_from_root_volume)
         http_server.register_async_uri(self.CHECK_BITS_PATH, self.check_bits)
         http_server.register_async_uri(self.REVERT_VOLUME_FROM_SNAPSHOT_PATH, self.revert_volume_from_snapshot)
@@ -672,6 +674,25 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         else:
             kvmagent.deleteImage(cmd.installPath)
         logger.debug('successfully delete %s' % cmd.installPath)
+        self._set_capacity_to_response(cmd.uuid, rsp)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def unlink(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = NfsResponse()
+
+        if os.path.isdir(cmd.installPath):
+            for f in linux.list_all_file(cmd.installPath):
+                if os.stat(f).st_nlink > 1:
+                    linux.unlink_file_checked(f)
+                    continue
+                logger.debug("file %s only has 1 link, skip unlink." % f)
+        else:
+            if os.stat(cmd.installPath).st_nlink > 1:
+                linux.unlink_file_checked(cmd.installPath)
+            logger.debug("file %s only has 1 link, skip unlink." % cmd.installPath)
+
         self._set_capacity_to_response(cmd.uuid, rsp)
         return jsonobject.dumps(rsp)
 
