@@ -44,6 +44,7 @@ IS_MIPS64EL = host_arch == 'mips64el'
 IS_LOONGARCH64 = host_arch == 'loongarch64'
 GRUB_FILES = ["/boot/grub2/grub.cfg", "/boot/grub/grub.cfg", "/etc/grub2-efi.cfg", "/etc/grub-efi.cfg"] \
                 + ["/boot/efi/EFI/{}/grub.cfg".format(platform.dist()[0])]
+BACKUPFILE_DIR = "/var/lib/zstack/backupfiles/"
 IPTABLES_CMD = iptables.get_iptables_cmd()
 EBTABLES_CMD = ebtables.get_ebtables_cmd()
 

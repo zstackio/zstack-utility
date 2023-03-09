@@ -22,6 +22,7 @@ import pprint
 import errno
 import json
 import fcntl
+import hashlib
 
 from zstacklib.utils import thread
 from zstacklib.utils import qemu_img
@@ -161,6 +162,24 @@ def exception_on_opened_dir(d):
     s = shell.call("timeout 10 lsof -Fc +D %s" % d, exception=False)
     if s:
         raise Exception('dir %s is still opened: %s' % (d, ' '.join(s.splitlines())))
+
+def get_file_hash(f_path, hex_type):
+    if hex_type.lower() in dir(hashlib):
+        with open(f_path,'rb') as f:
+            hashobj = hashlib.new(hex_type, f.read())
+            return hashobj.hexdigest()
+
+def copy_file(src_file, dst_file):
+    try:
+        parent_path = os.path.dirname(dst_file)
+        if not os.path.exists(parent_path):
+            os.makedirs(parent_path)
+        shutil.copy(src_file, dst_file)
+    except Exception as e:
+        logger.debug(e)
+        return False
+    return True
+
 
 def rm_file_force(fpath):
     try:
