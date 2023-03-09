@@ -1,14 +1,16 @@
 #!/usr/bin/env python
 # encoding: utf-8
 import argparse
+import datetime
+
 from zstacklib import *
-import os
+
 
 # create log
 logger_dir = "/var/log/zstack/"
 create_log(logger_dir)
 banner("Starting to deploy app build system agent")
-start_time = datetime.now()
+start_time = datetime.datetime.now()
 # set default value
 file_root = "files/appbuild"
 pip_url = "https=//pypi.python.org/simple/"

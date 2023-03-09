@@ -1,14 +1,16 @@
 #!/usr/bin/env python
 # encoding: utf-8
 import argparse
-from zstacklib import *
+import datetime
 from distutils.version import LooseVersion
+
+from zstacklib import *
 
 # create log
 logger_dir = "/var/log/zstack/"
 create_log(logger_dir)
 banner("Starting to deploy ceph primary agent")
-start_time = datetime.now()
+start_time = datetime.datetime.now()
 # set default value
 file_root = "files/cephp"
 pip_url = "https=//pypi.python.org/simple/"

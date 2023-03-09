@@ -1,15 +1,16 @@
 #!/usr/bin/env python
 # encoding: utf-8
 import argparse
+import datetime
+
 from zstacklib import *
-from datetime import datetime
 
 
 # create log
 logger_dir = "/var/log/zstack/"
 create_log(logger_dir)
 banner("Starting to deploy sftpbackup storage agent")
-start_time = datetime.now()
+start_time = datetime.datetime.now()
 # set default value
 file_root = "files/sftpbackupstorage"
 pip_url = "https=//pypi.python.org/simple/"
