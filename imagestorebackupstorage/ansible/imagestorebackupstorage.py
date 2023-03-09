@@ -1,17 +1,18 @@
 #!/usr/bin/env python
 # encoding: utf-8
-import re
 import argparse
-import os.path
-from zstacklib import *
-from datetime import datetime
+import datetime
 from distutils.version import LooseVersion
+import os.path
+import re
+
+from zstacklib import *
 
 # create log
 logger_dir = "/var/log/zstack/"
 create_log(logger_dir)
 banner("Starting to deploy image store backup storage agent")
-start_time = datetime.now()
+start_time = datetime.datetime.now()
 # set default value
 file_root = "files/imagestorebackupstorage"
 kvm_file_root = "files/kvm"

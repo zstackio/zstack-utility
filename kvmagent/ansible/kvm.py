@@ -1,18 +1,19 @@
 #!/usr/bin/env python
 # encoding=utf-8
 import argparse
-import os.path
+import datetime
+from distutils.version import LooseVersion
 import os
 import re
-from zstacklib import *
-from distutils.version import LooseVersion
 from uuid import uuid4
+
+from zstacklib import *
 
 # create log
 logger_dir = "/var/log/zstack/"
 create_log(logger_dir)
 banner("Starting to deploy kvm agent")
-start_time = datetime.now()
+start_time = datetime.datetime.now()
 # set default value
 file_root = "files/kvm"
 package_root = "/opt/zstack-dvd/Packages"

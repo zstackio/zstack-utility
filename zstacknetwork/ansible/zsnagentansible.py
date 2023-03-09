@@ -1,14 +1,16 @@
 #!/usr/bin/env python
 # encoding: utf-8
 import argparse
-import commands
-import os.path
+import datetime
+import os
+
 from zstacklib import *
+
+
 try:
     from zstacklib.ansible.zstacklib import *
 except Exception as e:
     print e.message
-from datetime import datetime
 
 def add_true_in_command(cmd):
     return "%s || true" % cmd
@@ -17,7 +19,7 @@ def add_true_in_command(cmd):
 logger_dir = "/var/log/zstack/"
 create_log(logger_dir)
 banner("Starting to deploy zstack network agent")
-start_time = datetime.now()
+start_time = datetime.datetime.now()
 # set default value
 pip_url = "https=//pypi.python.org/simple/"
 proxy = ""

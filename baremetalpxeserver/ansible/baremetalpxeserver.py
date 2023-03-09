@@ -1,14 +1,16 @@
 #!/usr/bin/env python
 # encoding: utf-8
 import argparse
-from zstacklib import *
+import datetime
 import os
+
+from zstacklib import *
 
 # create log
 logger_dir = "/var/log/zstack/"
 create_log(logger_dir)
 banner("Starting to deploy baremetal pxeserver agent")
-start_time = datetime.now()
+start_time = datetime.datetime.now()
 # set default value
 file_root = "files/baremetalpxeserver"
 kvm_file_root = "files/kvm"
