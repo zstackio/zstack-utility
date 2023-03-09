@@ -6435,7 +6435,7 @@ class ConfiguredCollectLogCmd(Command):
         if "/" in log_name:
             error("clear log failed, value[%s] is invalid" % log_name)
         
-        log_path = self.ui_log_download_dir + ("collect-log-%s" % log_name)
+        log_path = self.ui_log_download_dir + log_name
         if os.path.isfile(log_path):
             shell('rm -f %s' % log_path)
             info("clear log file[%s] successfully!" % log_path)
