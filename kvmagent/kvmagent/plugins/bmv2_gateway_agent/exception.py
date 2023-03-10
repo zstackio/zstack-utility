@@ -200,3 +200,10 @@ class CephPackageNotFound(BmV2GwAgentException):
         msg = 'Package {cmd} info can not be found in the gateway'.format(**kwargs)
         super(CephPackageNotFound, self).__init__(msg)
 
+
+class DownloadBm2ImagesFailed(BmV2GwAgentException):
+
+    def __init__(self, **kwargs):
+        msg = 'Download bm2 image failed, please check network connection, error: {error_msg}'.format(**kwargs)
+        super(DownloadBm2ImagesFailed, self).__init__(msg)
+
