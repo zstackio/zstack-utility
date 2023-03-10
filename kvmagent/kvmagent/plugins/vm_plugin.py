@@ -3259,6 +3259,9 @@ class Vm(object):
                 libvirt.VIR_MIGRATE_PEER2PEER |
                 libvirt.VIR_MIGRATE_UNDEFINE_SOURCE)
 
+        if cmd.downTime:
+            self.domain.migrateSetMaxDowntime(cmd.downTime)
+
         if cmd.autoConverge:
             flag |= libvirt.VIR_MIGRATE_AUTO_CONVERGE
 
