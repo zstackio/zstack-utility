@@ -359,7 +359,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
     def download_from_imagestore(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         cachedir = None if cmd.isData else cmd.mountPoint
-        self.imagestore_client.download_from_imagestore(cachedir, cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath)
+        self.imagestore_client.download_from_imagestore(cachedir, cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath, cmd.concurrency)
         if cmd.isData:
             self.imagestore_client.clean_meta(cmd.primaryStorageInstallPath)
         rsp = AgentRsp()

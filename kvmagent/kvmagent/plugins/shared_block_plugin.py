@@ -1051,7 +1051,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         install_abs_path = translate_absolute_path_from_install_path(cmd.primaryStorageInstallPath)
 
         def clean():
-            lvm.delete_lv(install_abs_path)
+            lvm.delete_lv(install_abs_path, raise_exception=False)
 
         image_info = self.imagestore_client.image_info(cmd.hostname, cmd.backupStorageInstallPath)
         if image_info:
@@ -1060,7 +1060,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 lvm.delete_lv_meta(install_abs_path)
 
         self.imagestore_client.download_from_imagestore(None, cmd.hostname, cmd.backupStorageInstallPath,
-                                                            cmd.primaryStorageInstallPath, failure_action=clean)
+                                                        cmd.primaryStorageInstallPath, cmd.concurrency,
+                                                        failure_action=clean)
         self.do_active_lv(cmd.primaryStorageInstallPath, cmd.lockType, True)
         rsp = AgentRsp()
         return jsonobject.dumps(rsp)

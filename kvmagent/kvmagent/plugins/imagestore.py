@@ -53,10 +53,14 @@ class ImageStoreClient(object):
     def _build_install_path(self, name, imgid):
         return "{0}{1}/{2}".format(self.ZSTORE_PROTOSTR, name, imgid)
 
-    def upload_image(self, hostname, fpath):
+    def upload_image(self, hostname, fpath, concurrency=None):
         imf = self.commit_image(fpath)
 
-        cmdstr = '%s -url %s:%s push %s' % (self.ZSTORE_CLI_PATH, hostname, self.ZSTORE_DEF_PORT, fpath)
+        extra_param = ""
+        if concurrency and concurrency > 1:
+            extra_param += "-concurrency=%d " % concurrency
+
+        cmdstr = '%s -url %s:%s push %s %s' % (self.ZSTORE_CLI_PATH, hostname, self.ZSTORE_DEF_PORT, extra_param, fpath)
         logger.debug('pushing %s to image store' % fpath)
         shell.check_run(cmdstr)
         logger.debug('%s pushed to image store' % fpath)
@@ -242,9 +246,13 @@ class ImageStoreClient(object):
             if cmd.threadContext.api:
                 taskid = cmd.threadContext.api
 
-        cmdstr = '%s -url %s:%s -callbackurl %s -taskid %s -imageUuid %s %s push %s' % (
+        push_ext_param = ""
+        if cmd.concurrency and cmd.concurrency > 1:
+            push_ext_param += " -concurrency %d" % cmd.concurrency
+
+        cmdstr = '%s -url %s:%s -callbackurl %s -taskid %s -imageUuid %s %s push %s %s' % (
             self.ZSTORE_CLI_PATH, cmd.hostname, self.ZSTORE_DEF_PORT, req[http.REQUEST_HEADER].get(http.CALLBACK_URI),
-            taskid, cmd.imageUuid, extpara, cmd.primaryStorageInstallPath)
+            taskid, cmd.imageUuid, extpara, push_ext_param, cmd.primaryStorageInstallPath)
         logger.debug('pushing %s to image store' % cmd.primaryStorageInstallPath)
         shell = traceable_shell.get_shell(cmd)
         shell.call(cmdstr)
@@ -279,15 +287,19 @@ class ImageStoreClient(object):
 
         return jsonobject.dumps(rsp)
 
-    def download_from_imagestore(self, cachedir, host, backupStorageInstallPath, primaryStorageInstallPath, failure_action=None):
+    def download_from_imagestore(self, cachedir, host, bs_path, ps_path, concurrency=1, failure_action=None):
         self._check_zstore_cli()
 
-        name, imageid = self._parse_image_reference(backupStorageInstallPath)
+        name, imageid = self._parse_image_reference(bs_path)
+        extra_param = ""
         if cachedir:
-            cmdstr = '%s -url %s:%s -cachedir %s pull -installpath %s %s:%s' % (self.ZSTORE_CLI_PATH, host, self.ZSTORE_DEF_PORT, cachedir, primaryStorageInstallPath, name, imageid)
-        else:
-            cmdstr = '%s -url %s:%s pull -installpath %s %s:%s' % (self.ZSTORE_CLI_PATH, host, self.ZSTORE_DEF_PORT, primaryStorageInstallPath, name, imageid)
+            extra_param += " -cachedir %s" % cachedir
 
+        pull_extra_param = ""
+        if concurrency and concurrency > 1:
+            pull_extra_param += " -concurrency=%d" % concurrency
+        cmdstr = '%s -url %s:%s %s pull %s -installpath %s %s:%s' % \
+                 (self.ZSTORE_CLI_PATH, host, self.ZSTORE_DEF_PORT, extra_param, pull_extra_param, ps_path, name, imageid)
         logger.debug('pulling %s:%s from image store' % (name, imageid))
 
         try:
