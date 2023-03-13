@@ -146,6 +146,7 @@ RESOLV_CONF='/etc/resolv.conf'
 
 BASEARCH=`uname -m`
 ZSTACK_RELEASE=''
+ZSTACK_INSTALL_CONF='/etc/zstack-install.conf'
 # start/stop zstack_tui
 ZSTACK_TUI_SERVICE='/usr/lib/systemd/system/getty@tty1.service'
 start_zstack_tui() {
@@ -3624,6 +3625,14 @@ check_myarg() {
     fi
 }
 
+load_install_conf() {
+  # use SSH_CLIENT is not a good choice
+  if [ -f $ZSTACK_INSTALL_CONF ] && [[ x"$ENABLE_ZSTACK_INSTALLER_CONF" = x"true"  ||  -n "$SSH_CLIENT" ]]; then
+    source $ZSTACK_INSTALL_CONF
+  fi
+}
+
+load_install_conf
 OPTIND=1
 TEMP=`getopt -o f:H:I:n:p:P:r:R:t:y:acC:L:T:dDEFhiklmMNoOqsuz --long chrony-server-ip:,grayscale:,mini,cube,SY,sds,no-zops -- "$@"`
 if [ $? != 0 ]; then
