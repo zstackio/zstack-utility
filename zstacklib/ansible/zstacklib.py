@@ -36,7 +36,7 @@ yum_server = ""
 apt_server = ""
 trusted_host = ""
 ansible_constants.HOST_KEY_CHECKING = False
-enable_networkmanager_list = ["ns10", "euler20", "uos1021a", "nfs4"]
+enable_networkmanager_list = ["ns10", "euler20", "uos1021a", "nfs4", "rl84"]
 supported_arch_list = ["x86_64", "aarch64", "mips64el", "loongarch64"]
 
 RPM_BASED_OS = ["kylin_zstack", "kylin_tercel", "kylin_sword", "alibaba",
@@ -396,6 +396,7 @@ def get_host_releasever(ansible_distribution):
         "openeuler lts-sp1 20.03": "euler20",
         "uos fou 20": "uos20",
         "uniontech_kongzi kongzi 20": "uos1021a",
+        "rocky green obsidian 8.4": "rl84",
     }
     _key = " ".join(ansible_distribution).lower()
     _releasever = supported_release_info.get(_key)
