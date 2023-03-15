@@ -1371,8 +1371,8 @@ def create_bridge(bridge_name, interface, move_route=True):
     else:
         logger.debug('%s is a bridge device, no need to create bridge' % bridge_name)
 
-    shell.call("brctl setfd %s 0" % bridge_name)
     shell.call("brctl stp %s off" % bridge_name)
+    shell.call("brctl setfd %s 0" % bridge_name)
     shell.call("ip link set %s up" % bridge_name)
 
     if br_name == bridge_name:

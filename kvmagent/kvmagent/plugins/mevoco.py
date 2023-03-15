@@ -857,8 +857,8 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
             if not linux.is_network_device_existing(bridge_name):
                 shell.call("brctl addbr %s" % bridge_name)
-                shell.call("brctl setfd %s 0" % bridge_name)
                 shell.call("brctl stp %s off" % bridge_name)
+                shell.call("brctl setfd %s 0" % bridge_name)
                 iproute.add_address(self.CONNECT_ALL_NETNS_BR_OUTER_IP, self.IP_MASK_BIT, 4, bridge_name)
                 iproute.set_link_up(bridge_name)
 
