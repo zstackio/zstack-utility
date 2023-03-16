@@ -754,6 +754,14 @@ class CtlParser(argparse.ArgumentParser):
         self.print_help()
         sys.exit(1)
 
+
+def check_ha():
+    _, output, _ = shell_return_stdout_stderr("systemctl is-enabled zstack-ha")
+    if output and output.strip() == "enabled":
+        return True
+    return False
+
+
 class Ctl(object):
     IS_AARCH64 = platform.machine() == 'aarch64'
     DEFAULT_ZSTACK_HOME = '/usr/local/zstack/apache-tomcat/webapps/zstack/'
@@ -2184,6 +2192,8 @@ class SetEncryptPropertiesCmd(Command):
         self.description = 'set encrypt zstack.propertites '
         ctl.register_command(self)
     def run(self, args):
+        if check_ha() and Zsha2Utils().master:
+            Zsha2Utils().excute_on_peer("zstack-ctl set_properties_encrypt")
         ctl.set_encrypt_env()
         ctl.set_encrypt_properties()
 
@@ -5049,12 +5059,6 @@ class MysqlRestrictConnection(Command):
 
         return mn_ip
 
-    def check_ha(self):
-        _, output, _ = shell_return_stdout_stderr("systemctl is-enabled zstack-ha")
-        if output and output.strip() == "enabled":
-            return True
-        return False
-
     def grant_restrict_privilege(self, db_password, ui_db_password, root_password_, host, include_root):
         grant_access_cmd = " GRANT USAGE ON *.* TO 'zstack'@'%s' IDENTIFIED BY '%s' WITH GRANT OPTION;" % (host, db_password)
         grant_access_cmd = grant_access_cmd + (" GRANT USAGE ON *.* TO 'zstack_ui'@'%s' IDENTIFIED BY '%s' WITH GRANT OPTION;" % (host, ui_db_password))
@@ -5107,7 +5111,7 @@ class MysqlRestrictConnection(Command):
         ui_db_host, ui_db_port, ui_db_user, ui_db_password = self.get_ui_db_portal()
 
         restrict_ips = []
-        is_ha = self.check_ha()
+        is_ha = check_ha()
         if is_ha:
             zsha2_utils = Zsha2Utils()
             self.check_root_password(root_password_, zsha2_utils.config['peerip'])
@@ -6620,12 +6624,6 @@ class ChangeIpCmd(Command):
                             help='When mysql_restrict_connection is enabled, --root-password needs to be set ',
                             required=False)
 
-    def check_ha(self):
-        _, output, _ = shell_return_stdout_stderr("systemctl is-enabled zstack-ha")
-        if output and output.strip() == "enabled":
-            return True
-        return False
-
     def isVirtualIp(self, ip):
         return shell("ip a | grep -w %s" % ip, False).strip().endswith("zs")
 
@@ -6689,7 +6687,7 @@ class ChangeIpCmd(Command):
             root_password_ = ''.join(map(check_special_root, args.root_password))
             self.check_mysql_password("root", root_password_)
 
-        if self.check_ha():
+        if check_ha():
             error("please change to single management before change ip")
 
         zstack_conf_file = ctl.properties_file_path
