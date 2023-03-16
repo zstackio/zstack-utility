@@ -119,6 +119,11 @@ class VmConfigPlugin(kvmagent.KvmAgent):
 
     VM_QGA_PARAM_FILE = "/usr/local/zstack/zs-nics.json"
     VM_QGA_CONFIG_LINUX_CMD = "/usr/local/zstack/zs-tools/config_linux.py"
+    VM_CONFIG_SYNC_OS_VERSION_SUPPORT = {
+        VmQga.VM_OS_LINUX_CENTOS: ("7", "8"),
+        VmQga.VM_OS_LINUX_KYLIN: ("v10",),
+        VmQga.VM_OS_LINUX_UOS: ("20",)
+    }
 
     @lock.lock('config_vm_by_qga')
     def config_vm_by_qga(self, domain, nicParams):
@@ -128,7 +133,8 @@ class VmConfigPlugin(kvmagent.KvmAgent):
         if qga.state != VmQga.QGA_STATE_RUNNING:
             return 1, "qga is not running for vm {}".format(vm_uuid)
 
-        if qga.os == VmQga.VM_OS_LINUX_KYLIN or qga.os == VmQga.VM_OS_LINUX_UOS:
+        if qga.os in VmConfigPlugin.VM_CONFIG_SYNC_OS_VERSION_SUPPORT.keys() and \
+                qga.os_version in VmConfigPlugin.VM_CONFIG_SYNC_OS_VERSION_SUPPORT[qga.os]:
             cmd_file = self.VM_QGA_CONFIG_LINUX_CMD
         else:
             return 1, "not support for os {}".format(qga.os)
