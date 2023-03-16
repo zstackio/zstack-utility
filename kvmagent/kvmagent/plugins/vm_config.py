@@ -37,14 +37,13 @@ def get_virt_domain(vmUuid):
         raise libvirt.libvirtError(err)
 
 
-def get_guest_tools_states():
+def get_guest_tools_states(vmUuids):
     @vm_plugin.LibvirtAutoReconnect
     def get_domains(conn):
-        dom_ids = conn.listDomainsID()
         doms = []
-        for dom_id in dom_ids:
+        for vmUuid in vmUuids:
             try:
-                domain = conn.lookupByID(dom_id)
+                domain = conn.lookupByName(vmUuid)
             except libvirt.libvirtError as ex:
                 if ex.get_error_code() == libvirt.VIR_ERR_NO_DOMAIN:
                     continue
@@ -65,8 +64,9 @@ def get_guest_tools_states():
             return qga_status
 
         qga_status.qgaRunning = True
-        qga_status.osType = '{} {}'.format(qga.os, qga.os_version)
-        qga_status.platForm = 'Linux'
+        if qga.os and qga.os_version:
+            qga_status.osType = '{} {}'.format(qga.os, qga.os_version)
+            qga_status.platForm = 'Windows' if qga.os == VmQga.VM_OS_WINDOWS else 'Linux'
 
         try:
             _, config = qga.guest_file_read('/usr/local/zstack/guesttools')
@@ -119,6 +119,11 @@ class VmConfigPlugin(kvmagent.KvmAgent):
 
     VM_QGA_PARAM_FILE = "/usr/local/zstack/zs-nics.json"
     VM_QGA_CONFIG_LINUX_CMD = "/usr/local/zstack/zs-tools/config_linux.py"
+    VM_CONFIG_SYNC_OS_VERSION_SUPPORT = {
+        VmQga.VM_OS_LINUX_CENTOS: ("7", "8"),
+        VmQga.VM_OS_LINUX_KYLIN: ("v10",),
+        VmQga.VM_OS_LINUX_UOS: ("20",)
+    }
 
     @lock.lock('config_vm_by_qga')
     def config_vm_by_qga(self, domain, nicParams):
@@ -128,7 +133,8 @@ class VmConfigPlugin(kvmagent.KvmAgent):
         if qga.state != VmQga.QGA_STATE_RUNNING:
             return 1, "qga is not running for vm {}".format(vm_uuid)
 
-        if qga.os == VmQga.VM_OS_LINUX_KYLIN or qga.os == VmQga.VM_OS_LINUX_UOS:
+        if qga.os in VmConfigPlugin.VM_CONFIG_SYNC_OS_VERSION_SUPPORT.keys() and \
+                qga.os_version in VmConfigPlugin.VM_CONFIG_SYNC_OS_VERSION_SUPPORT[qga.os]:
             cmd_file = self.VM_QGA_CONFIG_LINUX_CMD
         else:
             return 1, "not support for os {}".format(qga.os)
@@ -169,8 +175,9 @@ class VmConfigPlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     def vm_guest_tools_state(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetGuestToolsStateResponse()
-        rsp.states = get_guest_tools_states()
+        rsp.states = get_guest_tools_states(cmd.vmInstanceUuids)
         return jsonobject.dumps(rsp)
 
     def start(self):

@@ -59,6 +59,7 @@ class VmQga(object):
     VM_OS_LINUX_UOS = "uos"
     VM_OS_LINUX_UBUNTU = "ubuntu"
     VM_OS_LINUX_CENTOS = "centos"
+    VM_OS_WINDOWS = "mswindows"
 
     def __init__(self, domain):
         self.domain = domain
@@ -179,9 +180,15 @@ class VmQga(object):
 
     # not a good function, just for hurry push
     def guest_exec_python(self, file, output=True, wait=qga_exec_wait_interval, retry=qga_exec_wait_retry):
+        path = self.guest_exec_bash_no_exitcode("which python2", exception=False)
+        if not path:
+            path = self.guest_exec_bash_no_exitcode("which python3", exception=False)
+
+        if not path:
+            raise Exception('python not installed in vm {}'.format(file, self.vm_uuid))
 
         ret = self.guest_exec(
-            {"path": "python", "arg": [file], "capture-output": output})
+            {"path": path.strip(), "arg": [file], "capture-output": output})
         if ret and "pid" in ret:
             pid = ret["pid"]
         else:
