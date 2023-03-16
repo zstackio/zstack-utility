@@ -365,7 +365,6 @@ def install_kvm_pkg():
             network_manager_installed = yum_check_package("NetworkManager", host_post_info)
             if network_manager_installed is True:
                 service_status("NetworkManager", "state=stopped enabled=no", host_post_info)
-
         else:
             # name: disable firewalld in RHEL7 and Centos7
             command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"

@@ -336,6 +336,7 @@ def get_host_releasever(ansible_distribution):
         "centos core 7.2.1511": "c74",  # c74 for old releases
         "centos core 7.1.1503": "c74",
         "uniontech kongzi 20": "uos1021a",
+        "rocky green obsidian 8.4": "rl84",
     }
     _key = " ".join(ansible_distribution).lower()
     _releasever = supported_release_info.get(_key)
