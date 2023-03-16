@@ -37,10 +37,9 @@ def get_virt_domain(vmUuid):
         raise libvirt.libvirtError(err)
 
 
-def get_guest_tools_states():
+def get_guest_tools_states(dom_ids):
     @vm_plugin.LibvirtAutoReconnect
     def get_domains(conn):
-        dom_ids = conn.listDomainsID()
         doms = []
         for dom_id in dom_ids:
             try:
@@ -175,8 +174,9 @@ class VmConfigPlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     def vm_guest_tools_state(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetGuestToolsStateResponse()
-        rsp.states = get_guest_tools_states()
+        rsp.states = get_guest_tools_states(cmd.vmInstanceUuids)
         return jsonobject.dumps(rsp)
 
     def start(self):
