@@ -6703,7 +6703,7 @@ class VmPlugin(kvmagent.KvmAgent):
             else:
                 if vm and cmd.snapshotJobs[0].live is True:
                     raise kvmagent.KvmError("expected live snapshot but vm[%s] state is %s" %
-                                            vm.uuid, vm.state)
+                                            (vm.uuid, vm.state))
                 elif not vm and cmd.snapshotJobs[0].live is True:
                     raise kvmagent.KvmError("expected live snapshot but can not find vm[%s]" %
                                             cmd.snapshotJobs[0].vmInstanceUuid)
