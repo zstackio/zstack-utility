@@ -281,6 +281,10 @@ def install_kvm_pkg():
             if output and len(versions) > 2 and versions[0] == '7' and versions[1] == '2':
                 dep_list = dep_list.replace('libvirt libvirt-client libvirt-python ', '')
 
+            # handle AQB x86_64 sp3 qemu 
+            if host_arch == 'x86_64' and distro == 'kylin_lance':
+                dep_list = dep_list.replace('qemu', 'qemu-kvm')
+
             # skip these packages when connect host
             _skip_list = re.split(r'[|;,\s]\s*', skip_packages)
             _skip_list.extend(["open-iscsi"])
