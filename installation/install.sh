@@ -3004,7 +3004,7 @@ is_append_iptables(){
 is_install_zops(){
     echo_subtitle "Install ZOps"
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
-    zops_installer_bin=`find /opt/zstack-dvd/x86_64/c76/zops -name "zops-installer*" | head -n 1`
+    zops_installer_bin=`find /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/zops -name "zops-installer*" | head -n 1`
     bash $zops_installer_bin install --for_ops >>$ZSTACK_INSTALL_LOG
     [ $? -eq 0 ] && pass
 }
@@ -3012,8 +3012,8 @@ is_install_zops(){
 is_upgrade_zops(){
     echo_subtitle "Upgrade ZOps"
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
-    zops_installer_bin=`find /opt/zstack-dvd/x86_64/c76/zops -name "zops-installer*" | head -n 1`
-    bash $zops_installer_bin upgrade >>$ZSTACK_INSTALL_LOG
+    zops_installer_bin=`find /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/zops -name "zops-installer*" | head -n 1`
+    bash $zops_installer_bin upgrade >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -eq 0 ] && pass
 }
 
