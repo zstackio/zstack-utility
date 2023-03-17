@@ -1930,6 +1930,8 @@ def get_dom_error(uuid):
 
 VM_RECOVER_DICT = {}
 VM_RECOVER_TASKS = {}
+LIVE_SNAPSHOT = "liveSnapshot"
+OFFLINE_SNAPSHOT = "offlineSnapshot"
 
 class Vm(object):
     VIR_DOMAIN_NOSTATE = 0
@@ -1949,6 +1951,10 @@ class Vm(object):
     VM_STATE_SUSPENDED = 'Suspended'
 
     ALLOW_SNAPSHOT_STATE = (VM_STATE_RUNNING, VM_STATE_PAUSED, VM_STATE_SHUTDOWN)
+    SNAPSHOT_VM_STATE_DICT = {
+        LIVE_SNAPSHOT: (VM_STATE_RUNNING, VM_STATE_PAUSED),
+        OFFLINE_SNAPSHOT: (VM_STATE_SHUTDOWN)
+    }
 
     power_state = {
         VIR_DOMAIN_NOSTATE: VM_STATE_NO_STATE,
@@ -6914,22 +6920,17 @@ class VmPlugin(kvmagent.KvmAgent):
 
         vm = get_vm_by_uuid(cmd.snapshotJobs[0].vmInstanceUuid, exception_if_not_existing=False)
         try:
-            if vm and vm.state not in vm.ALLOW_SNAPSHOT_STATE:
+            vm_state = Vm.VM_STATE_SHUTDOWN if vm is None else vm.state
+            expected_snapshot_state = LIVE_SNAPSHOT if cmd.snapshotJobs[0].live else OFFLINE_SNAPSHOT
+            if vm_state not in Vm.SNAPSHOT_VM_STATE_DICT[expected_snapshot_state]:
                 raise kvmagent.KvmError(
-                    'unable to take snapshot on vm[uuid:{0}] volume[id:{1}], '
-                    'because vm is not in [{2}], current state is {3}'.format(
-                        vm.uuid, cmd.snapshotJobs[0].deviceId, vm.ALLOW_SNAPSHOT_STATE, vm.state))
+                    'unable to take snapshot on vm[uuid:{0}] volume[id:{1}], because vm is {2} on host, it does not match the expected state[{3}] '
+                    'when taking an {4}'.format(cmd.snapshotJobs[0].vmInstanceUuid, cmd.snapshotJobs[0].deviceId, vm_state,
+                    Vm.SNAPSHOT_VM_STATE_DICT[expected_snapshot_state], expected_snapshot_state))
 
             if vm and (vm.state == vm.VM_STATE_RUNNING or vm.state == vm.VM_STATE_PAUSED):
                 rsp.snapshots = vm.take_live_volumes_delta_snapshots(cmd.snapshotJobs)
             else:
-                if vm and cmd.snapshotJobs[0].live is True:
-                    raise kvmagent.KvmError("expected live snapshot but vm[%s] state is %s" %
-                                            vm.uuid, vm.state)
-                elif not vm and cmd.snapshotJobs[0].live is True:
-                    raise kvmagent.KvmError("expected live snapshot but can not find vm[%s]" %
-                                            cmd.snapshotJobs[0].vmInstanceUuid)
-
                 for snapshot_job in cmd.snapshotJobs:
                     if snapshot_job.full:
                         rsp.snapshots.append(VolumeSnapshotResultStruct(
@@ -7079,25 +7080,19 @@ host side snapshot files chian:
                 else:
                     vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
 
-                    if vm and vm.state != vm.VM_STATE_RUNNING and vm.state != vm.VM_STATE_SHUTDOWN and vm.state != vm.VM_STATE_PAUSED:
-                        raise kvmagent.KvmError(
-                            'unable to take snapshot on vm[uuid:{0}] volume[id:{1}], because vm is not Running, Stopped or Paused, current state is {2}'.format(
-                                vm.uuid, cmd.volume.deviceId, vm.state))
+                    vm_state = Vm.VM_STATE_SHUTDOWN if vm is None else vm.state
+                    expected_snapshot_state = LIVE_SNAPSHOT if cmd.online else OFFLINE_SNAPSHOT
+                    if vm_state not in Vm.SNAPSHOT_VM_STATE_DICT[expected_snapshot_state]:
+                        raise kvmagent.KvmError('unable to take snapshot on vm[uuid:{0}] volume[id:{1}], because vm is {2} on host, it does not match the expected state[{3}] '
+                            'when taking an {4}'.format(cmd.vmUuid, cmd.volume.deviceId, vm_state,
+                            Vm.SNAPSHOT_VM_STATE_DICT[expected_snapshot_state], expected_snapshot_state))
 
                     if vm and (vm.state == vm.VM_STATE_RUNNING or vm.state == vm.VM_STATE_PAUSED):
-                        if not cmd.online:
-                            raise kvmagent.KvmError(
-                                'unable to take snapshot on vm[uuid:{0}] volume[id:{1}], because vm is {2} on host, it does not match the expected state[{3}]'.format(
-                                    vm.uuid, cmd.volume.deviceId, vm.state, vm.VM_STATE_SHUTDOWN))
                         rsp.snapshotInstallPath, rsp.newVolumeInstallPath = vm.take_volume_snapshot(cmd,
                                                                                                     cmd.volume,
                                                                                                     cmd.installPath,
                                                                                                     cmd.fullSnapshot)
                     else:
-                        if cmd.online:
-                            raise kvmagent.KvmError(
-                                'unable to take snapshot on vm[uuid:{0}] volume[id:{1}], because vm is {2} on host, it does not match the expected state[{3} or {4}]'.format(
-                                    vm.uuid, cmd.volume.deviceId, vm.state, vm.VM_STATE_RUNNING, vm.VM_STATE_PAUSED))
                         if cmd.fullSnapshot:
                             rsp.snapshotInstallPath, rsp.newVolumeInstallPath = take_full_snapshot_by_qemu_img_convert(
                                 cmd.volumeInstallPath, cmd.installPath)
