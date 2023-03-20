@@ -4105,21 +4105,18 @@ class Vm(object):
                     e(numa, 'cell', attrib={'id': '1', 'cpus': '4-7', 'memory': str(mem), 'unit': 'KiB'})
 
                 def on_loongarch64():
-                    e(root, 'vcpu', '32', {'placement': 'static', 'current': str(cmd.cpuNum)})
-                    # e(root,'vcpu',str(cmd.cpuNum),{'placement':'static'})
+                    vcpu = 32
+                    e(root, 'vcpu', str(vcpu), {'placement': 'static', 'current': str(cmd.cpuNum)})
                     cpu = e(root, 'cpu', attrib={'mode': 'custom', 'match': 'exact', 'check': 'partial'})
                     e(cpu, 'model', str(LOONGARCH64_CPU_MODEL), attrib={'fallback': 'allow'})
-                    mem = cmd.memory / 1024 / 2
-                    e(cpu, 'topology', attrib={'sockets': '8', 'cores': '4', 'threads': '1'})
+                    sockets = 8
+                    mem = cmd.memory / 1024 / sockets
+                    cores = vcpu / sockets
+                    e(cpu, 'topology', attrib={'sockets': str(sockets), 'cores': str(cores), 'threads': '1'})
                     numa = e(cpu, 'numa')
-                    e(numa, 'cell', attrib={'id': '0', 'cpus': '0-3', 'memory': str(mem), 'unit': 'KiB'})
-                    e(numa, 'cell', attrib={'id': '1', 'cpus': '4-7', 'memory': str(mem), 'unit': 'KiB'})
-                    e(numa, 'cell', attrib={'id': '2', 'cpus': '8-11', 'memory': str(mem), 'unit': 'KiB'})
-                    e(numa, 'cell', attrib={'id': '3', 'cpus': '12-15', 'memory': str(mem), 'unit': 'KiB'})
-                    e(numa, 'cell', attrib={'id': '4', 'cpus': '16-19', 'memory': str(mem), 'unit': 'KiB'})
-                    e(numa, 'cell', attrib={'id': '5', 'cpus': '20-23', 'memory': str(mem), 'unit': 'KiB'})
-                    e(numa, 'cell', attrib={'id': '6', 'cpus': '24-27', 'memory': str(mem), 'unit': 'KiB'})
-                    e(numa, 'cell', attrib={'id': '7', 'cpus': '28-31', 'memory': str(mem), 'unit': 'KiB'})
+                    for i in range(sockets):
+                        cpus = "{0}-{1}".format(i * cores, i * cores + (cores - 1))
+                        e(numa, 'cell', attrib={'id': str(i), 'cpus': str(cpus), 'memory': str(mem), 'unit': 'KiB'})
 
                 eval("on_{}".format(HOST_ARCH))()
             else:
