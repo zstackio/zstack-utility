@@ -37,13 +37,13 @@ def get_virt_domain(vmUuid):
         raise libvirt.libvirtError(err)
 
 
-def get_guest_tools_states(dom_ids):
+def get_guest_tools_states(vmUuids):
     @vm_plugin.LibvirtAutoReconnect
     def get_domains(conn):
         doms = []
-        for dom_id in dom_ids:
+        for vmUuid in vmUuids:
             try:
-                domain = conn.lookupByID(dom_id)
+                domain = conn.lookupByName(vmUuid)
             except libvirt.libvirtError as ex:
                 if ex.get_error_code() == libvirt.VIR_ERR_NO_DOMAIN:
                     continue
