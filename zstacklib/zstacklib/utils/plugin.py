@@ -137,12 +137,26 @@ class TaskDaemon(object):
 task_daemons = {}  # type: dict[str, list[TaskDaemon]]
 task_operator_lock = threading.RLock()
 
+
 def cancel_job(cmd, rsp):
-    process_canceled = traceable_shell.cancel_job(cmd)
-    canceled_task_count = TaskManager.cancel_task(cmd.cancellationApiId)
-    if not process_canceled and not canceled_task_count:
-        rsp.success = False
-        rsp.error = "no matched job to cancel"
+    if cmd.times and cmd.interval:
+        return _cancel_job(cmd, rsp, cmd.times, cmd.interval)
+    else:
+        return _cancel_job(cmd, rsp)
+
+
+def _cancel_job(cmd, rsp, times=1, interval=3):
+    for i in range(times):
+        process_canceled = traceable_shell.cancel_job(cmd)
+        canceled_task_count = TaskManager.cancel_task(cmd.cancellationApiId)
+        if process_canceled or canceled_task_count:
+            return rsp
+
+        if times > i:
+            time.sleep(interval)
+
+    rsp.success = False
+    rsp.error = "no matched job to cancel"
     return rsp
 
 class TaskManager(object):
