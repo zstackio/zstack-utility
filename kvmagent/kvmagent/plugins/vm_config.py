@@ -64,8 +64,9 @@ def get_guest_tools_states(vmUuids):
             return qga_status
 
         qga_status.qgaRunning = True
-        qga_status.osType = '{} {}'.format(qga.os, qga.os_version)
-        qga_status.platForm = 'Linux'
+        if qga.os and qga.os_version:
+            qga_status.osType = '{} {}'.format(qga.os, qga.os_version)
+            qga_status.platForm = 'Windows' if qga.os == VmQga.VM_OS_WINDOWS else 'Linux'
 
         try:
             _, config = qga.guest_file_read('/usr/local/zstack/guesttools')
