@@ -4615,7 +4615,7 @@ class Vm(object):
 
             # no default usb controller and tablet device for appliance vm
             if cmd.isApplianceVm:
-                e(devices, 'controller', None, {'type': 'usb', 'model': 'ehci'})
+                e(devices, 'controller', None, {'type': 'usb', 'model': 'nec-xhci'})
                 set_keyboard()
             else:
                 set_keyboard()
