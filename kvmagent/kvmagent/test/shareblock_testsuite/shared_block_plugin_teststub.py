@@ -23,3 +23,27 @@ class SharedBlockPluginTestStub(pytest_utils.PytestExtension):
             hostUuid=hostUuid,
             forceWipe=forceWipe
         )
+
+    def logout(self, vgUuid, hostUuid):
+        rsp = sharedblock_utils.shareblock_disconnect(
+             vgUuid=vgUuid,
+             hostUuid=hostUuid
+        )
+
+    def login(self):
+        r, o = bash.bash_ro("ip -4 a| grep BROADCAST|grep -v virbr | awk -F ':' 'NR==1{print $2}' | sed 's/ //g'")
+        interF = o.strip().replace(' ', '').replace('\n', '').replace('\r', '')
+
+        r, o = bash.bash_ro(
+            "ip a show %s|grep inet|grep -v inet6|awk 'NR==1{print $2}'|awk -F '/' 'NR==1{print $1}' | sed 's/ //g'" % interF)
+        interf_ip = o.strip().replace(' ', '').replace('\n', '').replace('\r', '')
+
+        # iqn
+        r, o = bash.bash_ro("cat /etc/target/saveconfig.json|grep iqn|awk '{print $2}'")
+        iqn = o.strip().replace(' ', '').replace('\n', '').replace('\r', '')
+
+        # login
+        rsp = storage_device_utils.iscsi_login(
+            interf_ip, "3260"
+        )
+        return rsp
