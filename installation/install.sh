@@ -146,6 +146,7 @@ RESOLV_CONF='/etc/resolv.conf'
 
 BASEARCH=`uname -m`
 ZSTACK_RELEASE=''
+ZSTACK_INSTALL_CONF='/etc/zstack-install.conf'
 # start/stop zstack_tui
 ZSTACK_TUI_SERVICE='/usr/lib/systemd/system/getty@tty1.service'
 start_zstack_tui() {
@@ -2333,6 +2334,18 @@ install_sds(){
     show_spinner is_append_iptables
 }
 
+install_zops(){
+    [[ x"$SKIP_ZOPS_INSTALL" = x"y" ]] && return
+    echo_title "Install or upgrade ZOps"
+    echo ""
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+    if [ -f "/sbin/zops" ]; then
+      show_spinner is_upgrade_zops
+    else
+      show_spinner is_install_zops
+    fi
+}
+
 setup_install_param(){
     echo_title "Setup Install Parameters"
     echo ""
@@ -2405,7 +2418,6 @@ config_system(){
     show_spinner cs_install_zstack_service
     show_spinner cs_enable_zstack_service
     show_spinner cs_add_cronjob
-    show_spinner add_zops_init_cronjob
     show_spinner cs_append_iptables
     show_spinner cs_setup_nginx
     show_spinner cs_enable_usb_storage
@@ -3036,6 +3048,22 @@ is_append_iptables(){
     pass
 }
 
+is_install_zops(){
+    echo_subtitle "Install ZOps"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+    zops_installer_bin=`find /opt/zstack-dvd/x86_64/c76/zops -name "zops-installer*" | head -n 1`
+    bash $zops_installer_bin install --for_ops >>$ZSTACK_INSTALL_LOG
+    [ $? -eq 0 ] && pass
+}
+
+is_upgrade_zops(){
+    echo_subtitle "Upgrade ZOps"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+    zops_installer_bin=`find /opt/zstack-dvd/x86_64/c76/zops -name "zops-installer*" | head -n 1`
+    bash $zops_installer_bin upgrade >>$ZSTACK_INSTALL_LOG
+    [ $? -eq 0 ] && pass
+}
+
 get_higher_version() {
     echo "$@" | tr " " "\n" | sort -V | tail -1
 }
@@ -3597,8 +3625,16 @@ check_myarg() {
     fi
 }
 
+load_install_conf() {
+  # use SSH_CLIENT is not a good choice
+  if [ -f $ZSTACK_INSTALL_CONF ] && [[ x"$ENABLE_ZSTACK_INSTALLER_CONF" = x"true"  ||  -n "$SSH_CLIENT" ]]; then
+    source $ZSTACK_INSTALL_CONF
+  fi
+}
+
+load_install_conf
 OPTIND=1
-TEMP=`getopt -o f:H:I:n:p:P:r:R:t:y:acC:L:T:dDEFhiklmMNoOqsuz --long chrony-server-ip:,grayscale:,mini,cube,SY,sds -- "$@"`
+TEMP=`getopt -o f:H:I:n:p:P:r:R:t:y:acC:L:T:dDEFhiklmMNoOqsuz --long chrony-server-ip:,grayscale:,mini,cube,SY,sds,no-zops -- "$@"`
 if [ $? != 0 ]; then
     usage
 fi
@@ -3659,6 +3695,7 @@ do
         --cube) CUBE_INSTALL='y';shift;;
         --SY) SANYUAN_INSTALL='y';shift;;
         --sds) SDS_INSTALL='y';shift;;
+        --no-zops) SKIP_ZOPS_INSTALL='y';shift;;
         --) shift;;
         * ) usage;;
     esac
@@ -3872,33 +3909,6 @@ check_ha_need_upgrade()
     fi
 }
 
-add_zops_init_cronjob() {
-    echo_subtitle "Add zops cron job"
-    if [ ! -f /tmp/zops_init.sock ];then
-      touch /tmp/zops_init.sock
-    fi
-    # touch crontab root file if not exists
-    if [ ! -f /var/spool/cron/root ];then
-      touch /var/spool/cron/root && chmod 600 /var/spool/cron/root
-    fi
-    # remove not in current os version cron job
-    ALL_ZOPS_CRON=`crontab -l |grep zops_init.py |grep -v ${ISO_ARCH}/${ISO_VER} | cut -d " " -f10`
-    CRON_ARR=(`echo $ALL_ZOPS_CRON | tr '\n' ' '`)
-    for job in $CRON_ARR;do
-        parseJob=${job//'/'/'\/'}
-        sed -i "/${parseJob}/d" /var/spool/cron/root
-    done
-    ZOPS_SERVER_INIT="python /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/zops/zops_init.py"
-    COUNT=`crontab -l |grep "$ZOPS_SERVER_INIT" | grep -v "grep" |wc -l`
-    if [ "$COUNT" -eq 1 ];then
-      echo "zops init script cron job has configured!"
-    fi
-    if [ "$COUNT" -lt 1 ];then
-      echo "*/2 * * * * flock -xn /tmp/zops_init.sock $ZOPS_SERVER_INIT >> /tmp/zops_cron.log 2>&1" >> /var/spool/cron/root
-      crond >> /tmp/zops_cron.log 2>&1
-    fi
-}
-
 enforce_history() {
 trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
 mkdir -p /var/log/history.d/
@@ -4072,6 +4082,9 @@ if [ x"$UPGRADE" = x'y' ]; then
 
     #only upgrade zstack
     upgrade_zstack
+
+    #Upgrade or install zops
+    install_zops
 
     #Setup audit.rules
     setup_audit_file
@@ -4311,6 +4324,9 @@ if [ -z $NOT_START_ZSTACK ]; then
     [ -z $VERSION ] && VERSION=`zstack-ctl status 2>/dev/null|grep version|awk '{print $2}'`
 fi
 
+#Install/Upgrade zops
+install_zops
+
 echo ""
 echo_star_line
 touch $README
@@ -4360,4 +4376,3 @@ echo_star_line
 disable_zstack_tui
 kill_zstack_tui
 post_scripts_to_restore_iptables_rules
-
