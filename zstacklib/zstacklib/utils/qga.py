@@ -59,6 +59,7 @@ class VmQga(object):
     VM_OS_LINUX_UOS = "uos"
     VM_OS_LINUX_UBUNTU = "ubuntu"
     VM_OS_LINUX_CENTOS = "centos"
+    VM_OS_WINDOWS = "mswindows"
 
     def __init__(self, domain):
         self.domain = domain
