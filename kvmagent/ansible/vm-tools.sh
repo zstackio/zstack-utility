@@ -134,6 +134,10 @@ start_agent_tools() {
   os_version=`cat /etc/os-release | grep -i "^VERSION_ID=" | cut -d '=' -f 2 | cut -d '"' -f 2`
   result="version=${version},os_type=${os_type} ${os_version},platform=$(uname -s)"
   send_install_result "$result"
+  log_info "send_install_result: ${result}"
+  if [ $? != 0 ]; then
+    log_info "send_install_result fail"
+  fi
 }
 
 # process
