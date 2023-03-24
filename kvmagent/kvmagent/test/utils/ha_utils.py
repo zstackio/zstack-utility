@@ -95,3 +95,13 @@ def file_system_check_vmstate(interval, times, primaryStorageUuid, targetHostUui
         "storageCheckerTimeout": storageCheckerTimeout,
         "mountPath": mountPath
     }))
+
+@misc.return_jsonobject()
+def sharedblock_check_vmstate(host_uuid, storage_check_timeout, interval, max_attempts, ps_uuid):
+    return HA_PLUGIN.sharedblock_check_vmstate(misc.make_a_request({
+        "hostUuid": host_uuid,
+        "storageCheckerTimeout": storage_check_timeout,
+        "interval": interval,
+        "times": max_attempts,
+        "psUuid": ps_uuid
+    }))
