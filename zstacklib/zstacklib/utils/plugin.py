@@ -70,7 +70,7 @@ class TaskDaemon(object):
         self.api_id = get_api_id(task_spec)
         self.task_name = task_name
         self.timeout = get_timeout(task_spec) if timeout == 0 else timeout
-        self.progress_reporter = AutoReporter.from_spec(task_spec, task_name, self._get_percent) if report_progress else None
+        self.progress_reporter = AutoReporter.from_spec(task_spec, task_name, self._get_percent, self._get_detail) if report_progress else None
         self.cancel_thread = threading.Timer(self.timeout, self._timeout_cancel) if self.timeout > 0 else None
         self.closed = False
 
@@ -128,16 +128,34 @@ class TaskDaemon(object):
         # type: () -> int
         pass
 
+    def _get_detail(self):
+        # type: () -> jsonobject
+        pass
+
 
 task_daemons = {}  # type: dict[str, list[TaskDaemon]]
 task_operator_lock = threading.RLock()
 
+
 def cancel_job(cmd, rsp):
-    process_canceled = traceable_shell.cancel_job(cmd)
-    canceled_task_count = TaskManager.cancel_task(cmd.cancellationApiId)
-    if not process_canceled and not canceled_task_count:
-        rsp.success = False
-        rsp.error = "no matched job to cancel"
+    if cmd.times and cmd.interval:
+        return _cancel_job(cmd, rsp, cmd.times, cmd.interval)
+    else:
+        return _cancel_job(cmd, rsp)
+
+
+def _cancel_job(cmd, rsp, times=1, interval=3):
+    for i in range(times):
+        process_canceled = traceable_shell.cancel_job(cmd)
+        canceled_task_count = TaskManager.cancel_task(cmd.cancellationApiId)
+        if process_canceled or canceled_task_count:
+            return rsp
+
+        if times > i:
+            time.sleep(interval)
+
+    rsp.success = False
+    rsp.error = "no matched job to cancel"
     return rsp
 
 class TaskManager(object):
@@ -242,23 +260,23 @@ class TaskManager(object):
 
 class Plugin(TaskManager):
     __metaclass__  = abc.ABCMeta
-    
+
     def __init__(self):
         super(Plugin, self).__init__()
         self.config = None
-        
+
     def configure(self, config=None):
         if not config: config = {}
         self.config = config
-        
+
     @abc.abstractmethod
     def start(self):
         pass
-    
+
     @abc.abstractmethod
     def stop(self):
         pass
-    
+
 class PluginRegistry(object):
     '''
     classdocs
@@ -271,7 +289,7 @@ class PluginRegistry(object):
                 logger.debug('Adding plugin[%s] to PluginRegistry' % name)
                 name = member.__name__
                 self.plugins[name] = member()
-        
+
     def _load_module(self, mpath, mname=None):
         module_name = inspect.getmodulename(mpath) if not mname else mname
         search_path = [os.path.dirname(mpath)] if os.path.isfile(mpath) else [mpath]
@@ -283,37 +301,37 @@ class PluginRegistry(object):
             self._parse_plugins(mobj)
         finally:
             mfile.close()
-    
+
     def _scan_folder(self):
         for root, dirs, files in os.walk(self.plugin_folder):
             for f in files:
                 if f.endswith('.py'): self._load_module(os.path.join(root, f))
-    
+
     def _parse_config(self):
         config = ConfigParser.SafeConfigParser()
         config.read(self.plugin_config)
         for (module_name, path) in config.items(PLUGIN_CONFIG_SECTION_NAME):
             if config.has_option('DEFAULT', module_name): continue
             self._load_module(os.path.abspath(path), module_name)
-    
-    def configure_plugins(self, config={}): 
+
+    def configure_plugins(self, config={}):
         for p in self.plugins.values():
             p.configure(config)
-        
+
     def start_plugins(self):
         for p in self.plugins.values():
             p.start()
-    
-    def stop_plugins(self): 
+
+    def stop_plugins(self):
         for p in self.plugins.values():
             p.stop()
-    
+
     def get_plugin(self, name):
         return self.plugins[name]
-    
+
     def get_plugins(self):
         return self.plugins.values()
-            
+
     def __init__(self, path):
         '''
         Constructor
@@ -327,7 +345,7 @@ class PluginRegistry(object):
             self.use_config = True
         else:
             raise Exception("the constructor parameter's absolute path[%s] must be either a file or a directory" % path)
-            
+
         self.plugins = {}
         if not self.use_config:
             logger.debug('Loading plugins from folder[%s]' % self.plugin_folder)
@@ -335,4 +353,3 @@ class PluginRegistry(object):
         else:
             logger.debug('Loading plugins from configuration file[%s]' % self.plugin_config)
             self._parse_config()
-        

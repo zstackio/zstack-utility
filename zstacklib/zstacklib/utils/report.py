@@ -12,6 +12,7 @@ class ProgressReportCmd(object):
         self.processType = None
         self.resourceUuid = None
         self.serverUuid = None
+        self.detail = None
 
 def get_scale(stage=None):
     if not stage:
@@ -67,6 +68,7 @@ class Report(object):
         self.ctxMap = ctxMap
         self.ctxStack = ctxStack
         self.taskStage = None
+        self.detail = None
 
     @staticmethod
     def from_spec(cmd, progress_type):
@@ -78,9 +80,10 @@ class Report(object):
         report.taskStage = get_task_stage(cmd)
         return report
 
-    def progress_report(self, percent, flag="report"):
+    def progress_report(self, percent, flag="report", detail=None):
         try:
             self.progress = percent
+            self.detail = detail
             header = {
                 "start": "/progress/report",
                 "finish": "/progress/report",
@@ -104,22 +107,24 @@ class Report(object):
         cmd.resourceUuid = self.resourceUuid
         cmd.threadContextMap = self.ctxMap
         cmd.threadContextStack = self.ctxStack
-        logger.debug("{api: %s} url: %s, progress: %s, header: %s", cmd.threadContextMap["api"], Report.url, cmd.progress, self.header)
+        cmd.detail = self.detail
+        logger.debug("{api: %s} url: %s, progress: %s, header: %s, detail: %s", cmd.threadContextMap["api"], Report.url, cmd.progress, self.header, cmd.detail.dump())
         http.json_dump_post(Report.url, cmd, self.header)
 
 
 class AutoReporter(object):
-    def __init__(self, report, progress_getter, timeout=259200):
-        # type: (Report, callable, int) -> AutoReporter
+    def __init__(self, report, progress_getter, detail_getter, timeout=259200):
+        # type: (Report, callable, callable, int) -> AutoReporter
         self.report = report
         self.progress_getter = progress_getter
         self.over = False
         self.timeout = timeout
+        self.detail_getter = detail_getter
 
     @staticmethod
-    def from_spec(spec, progress_type, progress_getter):
+    def from_spec(spec, progress_type, progress_getter, detail_getter):
         report = Report.from_spec(spec, progress_type)
-        return AutoReporter(report, progress_getter)
+        return AutoReporter(report, progress_getter, detail_getter)
 
     @thread.AsyncThread
     def start(self):
@@ -129,7 +134,7 @@ class AutoReporter(object):
 
             percent = self.progress_getter()
             if percent and str(percent).isdigit():
-                self.report.progress_report(str(percent), "report")
+                self.report.progress_report(str(percent), "report", self.detail_getter())
 
         linux.wait_callback_success(report, callback_data=None, timeout=self.timeout)
 

@@ -57,6 +57,7 @@ from zstacklib.utils import iproute
 from zstacklib.utils import ovs
 from zstacklib.utils import drbd
 from zstacklib.utils.qga import *
+from zstacklib.utils import jsonobject
 from zstacklib.utils.report import *
 from zstacklib.utils.vm_plugin_queue_singleton import VmPluginQueueSingleton
 from zstacklib.utils.libvirt_singleton import LibvirtEventManager
@@ -1548,6 +1549,7 @@ class MergeSnapshotDaemon(plugin.TaskDaemon):
     def _get_percent(self):
         # type: () -> int
         pass
+
 
 
 class VmVolumesRecoveryTask(plugin.TaskDaemon):
@@ -3252,6 +3254,9 @@ class Vm(object):
                 libvirt.VIR_MIGRATE_PEER2PEER |
                 libvirt.VIR_MIGRATE_UNDEFINE_SOURCE)
 
+        if cmd.downTime:
+            self.domain.migrateSetMaxDowntime(cmd.downTime)
+
         if cmd.autoConverge:
             flag |= libvirt.VIR_MIGRATE_AUTO_CONVERGE
 
@@ -3290,6 +3295,33 @@ class Vm(object):
 
                         percent = min(99, 100.0 - remain * 100.0 / total)
                         return get_exact_percent(percent, stage)
+                except libvirt.libvirtError:
+                    pass
+                except:
+                    logger.debug(linux.get_exception_stacktrace())
+
+            def _get_detail(self):
+                try:
+                    stats = self.domain.jobStats()
+                    result = jsonobject.JsonObject()
+                    if libvirt.VIR_DOMAIN_JOB_DATA_REMAINING in stats and libvirt.VIR_DOMAIN_JOB_DATA_TOTAL in stats:
+                        remain = stats[libvirt.VIR_DOMAIN_JOB_DATA_REMAINING]
+                        total = stats[libvirt.VIR_DOMAIN_JOB_DATA_TOTAL]
+                        if total == 0:
+                            logger.debug('the total amount of data migrated is 0')
+                            return
+
+                        result.put("remain",remain)
+                        result.put("total", total)
+
+                        if remain == 0:
+                            return result
+                        if self.progress_reporter.report.detail and self.progress_reporter.report.detail.hasattr('remain'):
+                            speed = self.progress_reporter.report.detail.__getitem__('remain') - remain
+                            remaining_migration_time = (remain / speed) if speed != 0 else self.progress_reporter.report.detail.__getitem__('remaining_migration_time')
+                            result.put("speed", speed)
+                            result.put("remaining_migration_time", remaining_migration_time)
+                        return result
                 except libvirt.libvirtError:
                     pass
                 except:
@@ -6752,7 +6784,7 @@ class VmPlugin(kvmagent.KvmAgent):
     def _do_block_copy(self, vmUuid, disk_name, disk_xml, task_spec):
         class BlockCopyDaemon(plugin.TaskDaemon):
             def __init__(self, task_spec, domain, disk_name):
-                super(BlockCopyDaemon, self).__init__(task_spec, 'blockCopy', report_progress=False)
+                super(BlockCopyDaemon, self).__init__(task_spec, 'blockCopy', report_progress=True)
                 self.domain = domain
                 self.disk_name = disk_name
 
@@ -6763,7 +6795,42 @@ class VmPlugin(kvmagent.KvmAgent):
 
             def _get_percent(self):
                 # type: () -> int
-                pass
+                result = self._get_detail()
+                if not result:
+                    return
+
+                percent = min(99, 100.0 - result.__getitem__('remain') * 100.0 / result.__getitem__('total'))
+                return get_exact_percent(percent, get_task_stage(task_spec))
+
+            def _get_detail(self):
+                try:
+                    result = jsonobject.JsonObject()
+                    r, o, err = bash.bash_roe("virsh qemu-monitor-command %s '%s' --pretty" % (vmUuid, qmp_subcmd('{"execute":"query-block-jobs"}')))
+                    if err:
+                        return
+                    block_jobs = json.loads(o)['return']
+                    job = next((job for job in block_jobs if job['status'] == 'running'), None)
+                    if not job:
+                        logger.debug("do_block_copy job finished。detail no found！")
+                        return
+
+                    remain = job['len'] - job['offset']
+                    result.put("remain", remain)
+                    result.put("total", job['len'])
+
+                    if job['len'] == job['offset']:
+                        return result
+
+                    if self.progress_reporter.report.detail and self.progress_reporter.report.detail.hasattr('remain'):
+                        speed = self.progress_reporter.report.detail.__getitem__('remain') - remain
+                        remaining_migration_time = (remain / speed) if speed != 0 else self.progress_reporter.report.detail.__getitem__('remaining_migration_time')
+                        result.put("speed", speed)
+                        result.put("remaining_migration_time", remaining_migration_time)
+                    return result
+                except libvirt.libvirtError:
+                    pass
+                except:
+                    logger.debug(linux.get_exception_stacktrace())
 
         def check_volume():
             vm = get_vm_by_uuid(vmUuid)
