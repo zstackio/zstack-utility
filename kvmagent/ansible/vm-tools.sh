@@ -105,7 +105,7 @@ check_md5() {
 
 query_agent_info() {
   vmInstanceUuid=`curl --silent http://169.254.169.254/2009-04-04/meta-data/instance-id`
-  version=`echo $AGENT_VERSION | grep "zwatch-vm-agent=" | awk -F '=' '{print $2}'`
+  version=`echo "$AGENT_VERSION" | grep "zwatch-vm-agent=" | awk -F '=' '{print $2}'`
 }
 
 install_agent_tools() {
@@ -130,7 +130,14 @@ start_agent_tools() {
     exit 1
   fi
 
-  send_install_result $version
+  os_type=`cat /etc/os-release | grep -i "^ID=" | cut -d '=' -f 2 | cut -d '"' -f 2`
+  os_version=`cat /etc/os-release | grep -i "^VERSION_ID=" | cut -d '=' -f 2 | cut -d '"' -f 2`
+  result="version=${version},os_type=${os_type} ${os_version},platform=$(uname -s)"
+  send_install_result "$result"
+  log_info "send_install_result: ${result}"
+  if [ $? != 0 ]; then
+    log_info "send_install_result fail"
+  fi
 }
 
 # process
