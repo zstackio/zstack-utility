@@ -22,9 +22,6 @@ class TaskPlugin1(plugin.Plugin):
                 self.percent = self.percent + 1
                 print 'percent' + str(self.percent)
 
-            def _get_detail(self):
-                pass
-
             def _cancel(self):
                 print self.task_name + ' canceled'
                 # no need to call close() in real env. cancel func need to focus only on its own task,

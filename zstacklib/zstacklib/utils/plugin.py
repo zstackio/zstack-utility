@@ -128,7 +128,6 @@ class TaskDaemon(object):
         # type: () -> int
         pass
 
-    @abc.abstractmethod
     def _get_detail(self):
         # type: () -> jsonobject
         pass

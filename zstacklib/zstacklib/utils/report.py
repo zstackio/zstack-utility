@@ -114,7 +114,7 @@ class Report(object):
 
 class AutoReporter(object):
     def __init__(self, report, progress_getter, detail_getter, timeout=259200):
-        # type: (Report, callable, int, dict) -> AutoReporter
+        # type: (Report, callable, callable, int) -> AutoReporter
         self.report = report
         self.progress_getter = progress_getter
         self.over = False

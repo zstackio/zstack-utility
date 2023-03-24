@@ -1550,8 +1550,6 @@ class MergeSnapshotDaemon(plugin.TaskDaemon):
         # type: () -> int
         pass
 
-    def _get_detail(self):
-        pass
 
 
 class VmVolumesRecoveryTask(plugin.TaskDaemon):
@@ -1710,9 +1708,6 @@ class VmVolumesRecoveryTask(plugin.TaskDaemon):
 
     def _get_percent(self):
         return self.percent
-
-    def _get_detail(self):
-        pass
 
 
 @linux.retry(times=3, sleep_time=1)
@@ -3977,9 +3972,6 @@ class Vm(object):
             def _get_percent(self):
                 pass
 
-            def _get_detail(self):
-                pass
-
         tmp_workspace = os.path.join(tempfile.gettempdir(), uuidhelper.uuid())
         with DriveBackupDaemon(self.uuid):
             self._do_take_volumes_top_drive_backup(volumes, dst_backup_paths, tmp_workspace)
@@ -4023,9 +4015,6 @@ class Vm(object):
                         self.domain.blockJobAbort(v.dev_name)
 
             def _get_percent(self):
-                pass
-
-            def _get_detail(self):
                 pass
 
         volume_backup_info = {}
