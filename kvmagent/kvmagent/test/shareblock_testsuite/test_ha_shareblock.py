@@ -1,7 +1,6 @@
 import time
-from kvmagent.test.ha_testsuit.test_ha_plugin_testsub import HaPluginTestStub
-from kvmagent.test.shareblock_testsuit.shared_block_plugin_teststub import SharedBlockPluginTestStub
-from kvmagent.test.utils import shareblock_utils,pytest_utils,storage_device_utils, vm_utils, ha_utils, network_utils
+from kvmagent.test.shareblock_testsuite.shared_block_plugin_teststub import SharedBlockPluginTestStub
+from kvmagent.test.utils import sharedblock_utils,pytest_utils,storage_device_utils, vm_utils, ha_utils, network_utils
 from unittest import TestCase
 from zstacklib.test.utils import misc,env
 from zstacklib.utils import jsonobject, xmlobject, bash, linux, log
@@ -25,7 +24,7 @@ global hostUuid
 global vgUuid
 
 
-class TestHaShareBlockPlugin(TestCase, HaPluginTestStub):
+class TestHaShareBlockPlugin(TestCase, SharedBlockPluginTestStub):
     @classmethod
     def setUpClass(cls):
         network_utils.create_default_bridge_if_not_exist()
@@ -40,20 +39,12 @@ class TestHaShareBlockPlugin(TestCase, HaPluginTestStub):
 
         global vgUuid
         vgUuid = misc.uuid()
-        # get block uuid
-        r, o = bash.bash_ro("ls /dev/disk/by-id | grep scsi|awk -F '-' '{print $2}'")
-        blockUuid = o.strip().replace(' ', '').replace('\n', '').replace('\r', '')
-        print(blockUuid)
-        rsp = shareblock_utils.shareblock_connect(
-            sharedBlockUuids=[blockUuid],
-            allSharedBlockUuids=[blockUuid],
-            vgUuid=vgUuid,
-            hostId=50,
-            hostUuid=hostUuid
-        )
+
+        rsp, blockUuid = SharedBlockPluginTestStub().connect(hostUuid, vgUuid)
+        self.assertEqual(rsp.success, True, "share block connect failed")
+
         imageUuid = misc.uuid()
         # download image to shareblock
-        print("debug")
         print('lvcreate -ay --wipesignatures y --addtag zs::sharedblock::image --size 7995392b --name {} {}'.format(
             imageUuid, vgUuid))
         r, o = bash.bash_ro(
@@ -67,7 +58,7 @@ class TestHaShareBlockPlugin(TestCase, HaPluginTestStub):
         # create volume
         # test disconnect shareblock
         volumeUuid = misc.uuid()
-        rsp = shareblock_utils.shareblock_create_root_volume(
+        rsp = sharedblock_utils.shareblock_create_root_volume(
             templatePathInCache="sharedblock://{}/{}".format(vgUuid, imageUuid),
             installPath="sharedblock://{}/{}".format(vgUuid, volumeUuid),
             volumeUuid=volumeUuid,
@@ -194,19 +185,16 @@ class TestHaShareBlockPlugin(TestCase, HaPluginTestStub):
 
     @pytest.mark.flaky(reruns=3)
     def check_record_vm_uuids_exists(self, host_uuid, vg_uuid, vm_uuid):
-        #self.lv_exists("/dev/{}/host_{}".format(vg_uuid, host_uuid))
-
-        vm_uuids = ha_utils.HA_PLUGIN.sblk_health_checker.read_record_vm_uuids(vg_uuid, host_uuid)
-        assert len(vm_uuids) > 0
-        assert vm_uuid in vm_uuids
+        rsp = ha_utils.sharedblock_check_vmstate(host_uuid, 5, 5, 5, vg_uuid)
+        assert vm_uuid in rsp.vmUuids
 
     @pytest.mark.flaky(reruns=3)
     def check_record_vm_uuids_not_exists(self, host_uuid, vg_uuid):
         r, o = bash.bash_ro("lvs --nolocking -t |grep %s" % "host_{}".format(host_uuid))
         self.assertEqual(r, 0)
 
-        vm_uuids = ha_utils.HA_PLUGIN.sblk_health_checker.read_record_vm_uuids(vg_uuid, host_uuid)
-        assert len(vm_uuids) == 0
+        rsp = ha_utils.sharedblock_check_vmstate(host_uuid, 5, 5, 5, vg_uuid)
+        assert rsp.vmUuids == []
 
     @pytest.mark.flaky(reruns=3)
     def lv_exists(self, path):
