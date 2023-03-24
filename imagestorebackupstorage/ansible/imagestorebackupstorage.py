@@ -118,7 +118,7 @@ if distro in RPM_BASED_OS:
     qemu_pkg = ' '.join(_qemu_pkg)
     svr_pkgs = 'ntfs-3g exfat-utils fuse-exfat btrfs-progs qemu-storage-daemon nmap-ncat lvm2 lvm2-libs'
     # common imagestorebackupstorage deps of ns10 that need to update
-    ns10_update_list = "nettle"
+    ns10_update_list = "nettle collectd collectd-disk collectd-virt"
     ns10_update_list_loongarch64 = "qemu-block-rbd"
 
     if client == "true" :
