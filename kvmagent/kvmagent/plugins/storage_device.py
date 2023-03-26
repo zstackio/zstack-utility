@@ -1,3 +1,4 @@
+import json
 import random
 import time
 import string
@@ -125,6 +126,29 @@ class FiberChannelLunStruct(ScsiLunStruct):
         self.storageWwnn = ""
 
 
+class NvmeLunStruct(ScsiLunStruct):
+    def __init__(self):
+        super(NvmeLunStruct, self).__init__()
+        self.nqn = ""
+        self.transport = ""
+
+    @staticmethod
+    def example(i):
+        s = NvmeLunStruct()
+        s.vendor = "COMPELNT"
+        s.hctl = "15:0:2:" + i
+        s.multipathDeviceUuid = ""
+        s.nqn = "0x5000d31000e56801"
+        s.path = "fc-0x21000024ff326b55-0x5000d31000e56826-lun-" + i
+        s.model = "Compellent Vol"
+        s.wwn = "0x6000d31000e56800"
+        s.type = "mpath"
+        s.wwids = ["36000d31000e56800000000000000010" + i]
+        s.serial = "6000d31000e56800000000000000010" + i
+        s.size = "21990232555520"
+        return s
+
+
 class IscsiTargetStruct(object):
     iscsiLunStructList = None  # type: list[IscsiLunStruct]
 
@@ -144,6 +168,12 @@ class FcSanScanRsp(AgentRsp):
         super(FcSanScanRsp, self).__init__()
         self.fiberChannelLunStructs = []
         self.hbaWwnns = []
+
+
+class NvmeSanScanRsp(AgentRsp):
+    def __init__(self):
+        super(NvmeSanScanRsp, self).__init__()
+        self.nvmeLunStructs = []
 
 
 class IscsiLoginCmd(AgentCmd):
@@ -181,6 +211,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     ISCSI_LOGIN_PATH = "/storagedevice/iscsi/login"
     ISCSI_LOGOUT_PATH = "/storagedevice/iscsi/logout"
     FC_SCAN_PATH = "/storagedevice/fc/scan"
+    NVME_SCAN_PATH = "/storagedevice/nvme/scan"
     MULTIPATH_ENABLE_PATH = "/storagedevice/multipath/enable"
     MULTIPATH_DISABLE_PATH = "/storagedevice/multipath/disable"
     ATTACH_SCSI_LUN_PATH = "/storagedevice/scsilun/attach"
@@ -196,6 +227,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.ISCSI_LOGIN_PATH, self.iscsi_login, cmd=IscsiLoginCmd())
         http_server.register_async_uri(self.ISCSI_LOGOUT_PATH, self.iscsi_logout, cmd=IscsiLogoutCmd())
         http_server.register_async_uri(self.FC_SCAN_PATH, self.scan_sg_devices)
+        http_server.register_async_uri(self.NVME_SCAN_PATH, self.scan_nvme_devices)
         http_server.register_async_uri(self.MULTIPATH_ENABLE_PATH, self.enable_multipath)
         http_server.register_async_uri(self.MULTIPATH_DISABLE_PATH, self.disable_multipath)
         http_server.register_async_uri(self.ATTACH_SCSI_LUN_PATH, self.attach_scsi_lun)
@@ -358,7 +390,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                             (cmd.iscsiServerIp, cmd.iscsiServerPort, current_hostname, e.message)
                 rsp.success = False
                 return jsonobject.dumps(rsp)
-    
+
         if iqns is None or len(iqns) == 0:
             rsp.iscsiTargetStructList = []
             return jsonobject.dumps(rsp)
@@ -376,7 +408,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                             iqn, cmd.iscsiServerIp, cmd.iscsiServerPort, cmd.iscsiChapUserName))
                     bash.bash_o(
                         'iscsiadm --mode node --targetname "%s" -p %s:%s --op=update --name node.session.auth.password --value=%s' % (
-                            iqn, cmd.iscsiServerIp, cmd.iscsiServerPort, linux.shellquote(cmd.iscsiChapUserPassword)))                
+                            iqn, cmd.iscsiServerIp, cmd.iscsiServerPort, linux.shellquote(cmd.iscsiChapUserPassword)))
                 r, o, e = bash.bash_roe('iscsiadm --mode node --targetname "%s" -p %s:%s --login' %
                             (iqn, cmd.iscsiServerIp, cmd.iscsiServerPort))
                 wait_iscsi_mknode(cmd.iscsiServerIp, cmd.iscsiServerPort, iqn, e)
@@ -418,7 +450,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
     @staticmethod
     def get_disk_info_by_path(path, scsi_info):
-        # type: (str) -> IscsiLunStruct
+        # type: (str, dict[str, str]) -> IscsiLunStruct
         r = bash.bash_r("multipath -l | grep -e '/multipath.conf' | grep -e 'line'")
         if r == 0:
             current_hostname = linux.get_hostname()
@@ -436,11 +468,9 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         lun_struct.serial = candidate_struct.serial
         lun_struct.model = candidate_struct.model
         lun_struct.vendor = candidate_struct.vendor
-        lun_struct.type = candidate_struct.type
+        lun_struct.type = 'mpath' if lvm.is_slave_of_multipath(abs_path) else candidate_struct.type
         lun_struct.wwn = candidate_struct.wwn
         lun_struct.wwids = [candidate_struct.wwid]
-        if lvm.is_slave_of_multipath(abs_path):
-            lun_struct.type = "mpath"
         return lun_struct
 
     @lock.lock('iscsiadm')
@@ -480,6 +510,16 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 if os.path.exists(p):
                     shell.run('multipathd resize map '+os.path.realpath(p))
         linux.set_fail_if_no_path()
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @bash.in_bash
+    def scan_nvme_devices(self, req):
+        # 1. find nvme devices
+        # 2. distinct by device wwid and nqn
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = NvmeSanScanRsp()
+        rsp.nvmeLunStructs = self.get_nvme_luns(cmd.rescan)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -567,7 +607,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         if r == 0 and "Index" in o:
             self.sas_raid_locate(cmd)
             return jsonobject.dumps(rsp)
-    
+
         raise Exception("Failed to locate device[wwn: %s, enclosureDeviceID: %s, slotNumber: %s]" % (
             cmd.wwn, cmd.enclosureDeviceID, cmd.slotNumber,))
 
@@ -585,7 +625,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         if r != 0 or o.strip == "":
             raise Exception("Failed to locate device[wwn: %s, enclosureDeviceID: %s, slotNumber: %s]" % (
                 cmd.wwn, cmd.enclosureDeviceID, cmd.slotNumber,))
-    
+
         channel = o.splitlines()[0].split(":")[2].split(",")[0].strip()
         command = "start" if cmd.locate is True else "stop"
 
@@ -605,7 +645,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                             (bus_number, cmd.deviceNumber, cmd.slotNumber, cmd.wwn, drive.wwn))
 
         command = "start" if cmd.locate is True else "stop"
-        
+
         # -a specific a adaptor id but not bus number
         # TODO: fix hardcode because mini only have one adaptor
         bash.bash_errorout("/opt/MegaRAID/MegaCli/MegaCli64 -PdLocate -%s -physdrv[%d:%d] -a0" % (
@@ -616,11 +656,11 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         r, megaraid_info, e = bash.bash_roe("smartctl --scan | grep -E 'megaraid_disk_[0-9]+\], SCSI device'")
         if r != 0:
             raise Exception("failed to get bus info")
-        
-        # get megaraid_info like following 
+
+        # get megaraid_info like following
         # /dev/bus/0 -d megaraid,0 # /dev/bus/0 [megaraid_disk_00], SCSI device
         return int(megaraid_info.split("\n")[0].split(" ")[0][-1])
-            
+
     @kvmagent.replyerror
     @bash.in_bash
     def drive_self_test(self, req):
@@ -704,7 +744,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         if r == 0 and o.strip() != "":
             rsp.raidPhysicalDriveStructs = self.get_sas_device(o)
             return jsonobject.dumps(rsp)
-        
+
         return jsonobject.dumps(rsp)
 
     @bash.in_bash
@@ -926,7 +966,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
         def fill_lun_info(fc_target, i):
             for target_scsi_info in filter(lambda x: '[' + fc_target in x, scsi_infos):
-                device_info = self.get_device_info(target_scsi_info, rescan)
+                device_info = self.get_fc_device_info(target_scsi_info, rescan)
                 if device_info:
                     luns[i].append(device_info)
 
@@ -963,7 +1003,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @staticmethod
-    def get_device_info(scsi_info, rescan):
+    def get_fc_device_info(scsi_info, rescan):
         # type: (str, bool) -> FiberChannelLunStruct
         s = FiberChannelLunStruct()
 
@@ -977,48 +1017,68 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             linux.write_file("/sys/block/%s/device/rescan" % dev_name, "1")
             logger.debug("rescaned disk %s" % dev_name)
 
-        r, o, e = bash.bash_roe(
-            "lsblk --pair -b -p -o NAME,VENDOR,MODEL,WWN,SERIAL,HCTL,TYPE,SIZE /dev/%s" % dev_name, False)
-        if r != 0 or o.strip() == "":
-            logger.warn("can not get device information from %s" % dev_name)
-            return None
-
-        o = o.strip().splitlines()[0]
-
-        def get_data(e):
-            return e.split("=")[1].strip().strip('"')
-
-        def get_path(dev):
-            return shell.call(
-                "udevadm info -n %s | grep 'by-path' | grep -v DEVLINKS | head -n1 | awk -F 'by-path/' '{print $2}'" % dev).strip()
-
         def get_storage_wwnn(hctl):
             o = shell.call(
                 "systool -c fc_transport -A node_name | grep '\"target%s\"' -B2 | awk '/node_name/{print $NF}'" % ":".join(hctl.split(":")[0:3]))
             return o.strip().strip('"')
 
-        for entry in o.split('" '):  # type: str
-            if entry.startswith("VENDOR"):
-                s.vendor = get_data(entry)
-            elif entry.startswith("MODEL"):
-                s.model = get_data(entry)
-            elif entry.startswith("WWN"):
-                s.wwn = get_data(entry)
-            elif entry.startswith("SERIAL"):
-                s.serial = get_data(entry)
-            elif entry.startswith('HCTL'):
-                s.hctl = get_data(entry)
-            elif entry.startswith('SIZE'):
-                s.size = get_data(entry)
-            elif entry.startswith('TYPE'):
-                s.type = get_data(entry)
+        blk_info = lvm.lsblk_info(dev_name)
+        if not blk_info:
+            return None
 
+        s.vendor = blk_info.vendor
+        s.model = blk_info.model
+        s.wwn = blk_info.wwn
+        s.serial = blk_info.serial
+        s.hctl = blk_info.hctl
+        s.size = blk_info.size
+        s.type = 'mpath' if lvm.is_slave_of_multipath("/dev/%s" % dev_name) else blk_info.type
         s.wwids = [wwid]
-        s.path = get_path(dev_name)
-        if lvm.is_slave_of_multipath("/dev/%s" % dev_name):
-            s.type = "mpath"
+        s.path = lvm.get_device_path(dev_name)
         s.storageWwnn = get_storage_wwnn(s.hctl)
         return s
+
+    @bash.in_bash
+    def get_nvme_luns(self, rescan):
+        # type: (bool) -> list[NvmeLunStruct]
+        ret = []
+
+        o = bash.bash_errorout("nvme list -o json")
+        if not o:
+            return []
+
+        nvme_luns = jsonobject.loads(o).Devices
+        nvme_subsystems = os.listdir("/sys/class/nvme-subsystem/")
+
+        def get_nqn():
+            nqn = linux.read_file("/sys/class/block/%s/device/subsysnqn" % dev_name)
+            if nqn:
+                return nqn.strip()
+
+            for target in nvme_subsystems:
+                nqn = linux.read_file("/sys/class/nvme-subsystem/%s/subsysnqn" % target)
+                if nqn and any(os.path.basename(fpath) == dev_name for fpath in
+                               linux.walk("/sys/class/nvme-subsystem/%s" % target, depth=2)):
+                    return nqn.strip()
+
+        for lun in nvme_luns:
+            s = NvmeLunStruct()
+            dev_name = os.path.basename(lun.DevicePath)
+            blk_info = lvm.lsblk_info(dev_name)
+            s.vendor = blk_info.vendor
+            s.model = blk_info.model
+            s.wwn = blk_info.wwn
+            s.serial = blk_info.serial
+            s.hctl = blk_info.hctl
+            s.size = blk_info.size
+            s.type = 'mpath' if lvm.is_slave_of_multipath(lun.DevicePath) else blk_info.type
+            s.wwids = [s.wwn]
+            path = lvm.get_device_path(lun.DevicePath)
+            s.path = path if path else s.wwn
+            s.nqn = get_nqn()
+
+            ret.append(s)
+        return ret
 
     @bash.in_bash
     def get_arcconf_device(self, adapter_info):
@@ -1026,20 +1086,20 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         for adapter in adapter_info.splitlines():
             if adapter.strip() == "":
                 continue
-        
+
             adapter = adapter.split(":")[0].strip()
             if not adapter.isdigit():
                 continue
-        
+
             r, device_info = bash.bash_ro("arcconf getconfig %s AL" % adapter)
             if r != 0 or device_info.strip() == "":
                 continue
-            
+
             # Contain at least raid controller into and a hardDisk info
             device_arr = device_info.split("Device #")
             if len(device_arr) < 3:
                 continue
-            
+
             productName, sasAddress , raidLevelMap, diskGroupMap = self.get_arcconf_raid_info(device_arr[0])
 
             for infos in device_arr[1:]:
@@ -1058,7 +1118,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     @bash.in_bash
     def get_arcconf_device_info(self, infos):
         d = RaidPhysicalDriveStruct()
-        
+
         if not infos.splitlines()[0].strip().isdigit():
             return d
         device_id = int(infos.splitlines()[0].strip())
@@ -1096,7 +1156,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             elif "rotational speed" in k:
                 rotation_rate = 0 if "solid state device" in v.strip().lower() else int(
                     v.lower().split(" rpm")[0].strip())
-        
+
             if "last failure reason" in k:
                 d.deviceId = device_id
                 d.driveState = drive_state
@@ -1110,7 +1170,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 d.rotationRate = rotation_rate
                 d.serialNumber = serial_number
                 return d
-        
+
         return d
 
     @staticmethod
@@ -1140,7 +1200,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 locate = "%s:%s" % (enclosure_id, slot_id)
                 raid_levels[locate] = level
                 disk_groups[locate] = disk_group
-    
+
         return produce_name, sas_address, raid_levels, disk_groups
 
     @bash.in_bash
@@ -1149,7 +1209,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         for adapter in adapter_info.splitlines():
             if not adapter.strip().isdigit():
                 continue
-        
+
             r, device_info = bash.bash_ro("sas3ircu %s display" % adapter.strip())
             if r != 0 or device_info.strip() == "":
                 continue
@@ -1158,7 +1218,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             device_arr = device_info.split("Device is a Hard disk")
             if len(device_arr) < 3:
                 continue
-            
+
             productName, sasAddress, raidLevelMap, diskGroupMap = self.get_sas_raid_info(device_arr[0], adapter.strip())
 
             for infos in device_arr[1:]:
@@ -1177,7 +1237,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     @bash.in_bash
     def get_sas_device_info(self, infos):
         d = RaidPhysicalDriveStruct()
-    
+
         wwn = serial_number = model_number = size = drive_type = enclosure_device_id = slot_number = drive_state = None
         for l in infos.splitlines():
             if l.strip() == "":
@@ -1218,7 +1278,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 d.driveType = drive_type
                 d.mediaType = "SSD" if "sata_ssd" in v.strip().lower() else "HDD"
                 return d
-    
+
         return d
 
     @staticmethod
@@ -1227,15 +1287,15 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         produce_name = sas_address = None
         raid_levels = {}
         disk_groups = {}
-    
+
         r, o = bash.bash_ro(
             "/opt/MegaRAID/storcli/storcli64 /c%s show | grep -E 'Product Name|SAS Address'" % adapter_number)
         if r != 0:
             return produce_name, sas_address, raid_levels, disk_groups
-    
+
         produce_name = o.splitlines()[0].split("=")[1].strip()
         sas_address = o.splitlines()[1].split("=")[1].strip()
-    
+
         disk_group = level = None
         for l in infos.splitlines():
             if l.strip() == "":
@@ -1249,7 +1309,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             elif "enclosure#/slot#" in k:
                 disk_groups[v] = disk_group
                 raid_levels[v] = level
-    
+
         return produce_name, sas_address, raid_levels, disk_groups
 
     @bash.in_bash
