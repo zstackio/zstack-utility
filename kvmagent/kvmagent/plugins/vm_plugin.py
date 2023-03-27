@@ -6811,7 +6811,7 @@ class VmPlugin(kvmagent.KvmAgent):
                     block_jobs = json.loads(o)['return']
                     job = next((job for job in block_jobs if job['status'] == 'running'), None)
                     if not job:
-                        logger.debug("do_block_copy job finished。detail no found！")
+                        logger.debug("do_block_copy job finished. detail no found!")
                         return
 
                     remain = job['len'] - job['offset']
