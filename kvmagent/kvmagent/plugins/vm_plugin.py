@@ -4305,7 +4305,10 @@ class Vm(object):
                 e(hyperv, 'vendor_id', attrib={'state': 'on', 'value': cmd.vendorId})
                 # since qemu 2.6
                 e(hyperv, 'synic', attrib={'state': 'on'})
-                e(hyperv, 'stimer', attrib={'state': 'on'})
+
+                if cmd.hypervClock:
+                    e(hyperv, 'stimer', attrib={'state': 'on'})
+
                 e(hyperv, 'vpindex', attrib={'state': 'on'})
             # always set ioapic driver to kvm after libvirt 3.4.0
             if is_ioapic_supported():
