@@ -16,6 +16,7 @@ import string
 import socket
 import sys
 import yaml
+import subprocess
 
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
@@ -32,6 +33,7 @@ from zstacklib.utils import sizeunit
 from zstacklib.utils import thread
 from zstacklib.utils import xmlobject
 from zstacklib.utils import ovs
+from zstacklib.utils import shell
 from zstacklib.utils.bash import *
 from zstacklib.utils.ip import get_nic_supported_max_speed
 from zstacklib.utils.ip import get_nic_driver_type
@@ -169,6 +171,20 @@ class DisableHugePageRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(DisableHugePageRsp, self).__init__()
 
+class SetIpOnHostNetworkInterfaceCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(SetIpOnHostNetworkInterfaceCmd, self).__init__()
+        self.interfaceName = None
+        self.oldIpAddress = None
+        self.oldNetmask = None
+        self.oldGateway = None
+        self.ipAddress = None
+        self.netmask = None
+        self.gateway = None
+
+class SetIpOnHostNetworkInterfaceRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(SetIpOnHostNetworkInterfaceRsp, self).__init__()
 
 class HostPhysicalMemoryStruct(object):
     def __init__(self):
@@ -191,6 +207,12 @@ class GetHostPhysicalMemoryFactsResponse(kvmagent.AgentResponse):
         self.physicalMemoryFacts = []
 
 
+class GetHostNetworkBongdingCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(GetHostNetworkBongdingCmd, self).__init__()
+        self.managementServerIp = None
+
+
 class GetHostNetworkBongdingResponse(kvmagent.AgentResponse):
     bondings = None  # type: list[HostNetworkBondingInventory]
     nics = None  # type: list[HostNetworkInterfaceInventory]
@@ -204,9 +226,10 @@ class GetHostNetworkBongdingResponse(kvmagent.AgentResponse):
 class HostNetworkBondingInventory(object):
     slaves = None  # type: list(HostNetworkInterfaceInventory)
 
-    def __init__(self, bondingName=None, type=None):
+    def __init__(self, bondingName=None, type=None, managementServerIp=None):
         super(HostNetworkBondingInventory, self).__init__()
         self.bondingName = bondingName
+        self.speed = None
         self.type = type
         self.mode = None
         self.xmitHashPolicy = None
@@ -216,25 +239,35 @@ class HostNetworkBondingInventory(object):
         self.miimon = None
         self.allSlavesActive = None
         self.slaves = None
+        self.bondingType = None
+        self.callBackIp = None
 
         if self.type in ovs.OvsDpdkSupportBondType:
             self._init_from_ovs()
         else:
-            self._init_from_name()
+            self._init_from_name(managementServerIp)
 
-    def _init_from_name(self):
+    def _init_from_name(self, managementServerIp):
         def get_nic(n, i):
-            o = HostNetworkInterfaceInventory(n)
+            o = HostNetworkInterfaceInventory(n, None, managementServerIp)
             self.slaves[i] = o
 
         if self.bondingName is None:
             return
 
         self.type = "LinuxBonding"
+        self.speed = get_nic_supported_max_speed(self.bondingName)
         self.mode = linux.read_file("/sys/class/net/%s/bonding/mode" % self.bondingName).strip()
         self.xmitHashPolicy = linux.read_file("/sys/class/net/%s/bonding/xmit_hash_policy" % self.bondingName).strip()
         self.miiStatus = linux.read_file("/sys/class/net/%s/bonding/mii_status" % self.bondingName).strip()
         self.mac = linux.read_file("/sys/class/net/%s/address" % self.bondingName).strip()
+        if len(bash_o("ip link show type bridge_slave %s" % self.bondingName).strip()) > 0:
+            self.bondingType = "bridgeSlave"
+        else:
+            self.bondingType = "noBridge"
+        self.callBackIp = managementServerIp
+        if managementServerIp is not None:
+            self.callBackIp = self._get_src_addr(managementServerIp)
         self.ipAddresses = ['%s/%d' % (x.address, x.prefixlen) for x in iproute.query_addresses(ifname=self.bondingName, ip_version=4)]
         if len(self.ipAddresses) == 0:
             master = linux.read_file("/sys/class/net/%s/master/ifindex" % self.bondingName)
@@ -278,6 +311,7 @@ class HostNetworkBondingInventory(object):
             self.slaves[i] = o
 
         bondData = self.bondingName
+        self.speed = get_nic_supported_max_speed(self.interfaceName)
 
         if not bondData.has_key('bond'):
             return
@@ -319,11 +353,21 @@ class HostNetworkBondingInventory(object):
                 to_dict[k] = [i.__dict__ for i in v]
         return to_dict
 
+    def _get_src_addr(self, ip_addr):
+        output = subprocess.check_output(['ip', 'r', 'get', ip_addr]).decode('utf-8')
+
+        pattern = r'src ([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)'
+        match = re.search(pattern, output)
+        if match:
+            src_addr = match.group(1)
+            return src_addr
+        else:
+            return None
 
 class HostNetworkInterfaceInventory(object):
     __cache__ = dict()  # type: dict[str, list[int, HostNetworkInterfaceInventory]]
 
-    def init(self, name, master=None):
+    def init(self, name, master=None, managementServerIp=None):
         super(HostNetworkInterfaceInventory, self).__init__()
         self.interfaceName = name
         self.speed = None
@@ -335,6 +379,7 @@ class HostNetworkInterfaceInventory(object):
         self.master = master
         self.pciDeviceAddress = None
         self.offloadStatus = None
+        self.callBackIp = None
 
         bonds = ovs.getAllBondFromFile()
 
@@ -346,7 +391,7 @@ class HostNetworkInterfaceInventory(object):
         if self.master is not None:
             self._init_from_ovs()
         else:
-            self._init_from_name()
+            self._init_from_name(managementServerIp)
         self.driverType = None
 
     @classmethod
@@ -360,12 +405,12 @@ class HostNetworkInterfaceInventory(object):
             return c[1]
         return None
 
-    def __new__(cls, name, master=None, *args, **kwargs):
+    def __new__(cls, name, master=None, managementServerIp=None, *args, **kwargs):
         o = cls.__get_cache__(name)
         if o:
             return o
         o = super(HostNetworkInterfaceInventory, cls).__new__(cls)
-        o.init(name, master)
+        o.init(name, master, managementServerIp)
         cls.__cache__[name] = [int(time.time()), o]
         return o
 
@@ -375,7 +420,7 @@ class HostNetworkInterfaceInventory(object):
             self.slaveActive = self.interfaceName in activeSlave if activeSlave is not None else None
 
     @in_bash
-    def _init_from_name(self):
+    def _init_from_name(self, managementServerIp):
         if self.interfaceName is None:
             return
         self.speed = get_nic_supported_max_speed(self.interfaceName)
@@ -387,6 +432,9 @@ class HostNetworkInterfaceInventory(object):
 
         self.mac = linux.read_file_strip("/sys/class/net/%s/address" % self.interfaceName)
         self.ipAddresses = linux.get_interface_ip_addresses(self.interfaceName)
+        self.callBackIp = managementServerIp
+        if managementServerIp is not None:
+            self.callBackIp = self._get_src_addr(managementServerIp)
 
         self.master = linux.get_interface_master_device(self.interfaceName)
         if self.master is not None:
@@ -435,6 +483,17 @@ class HostNetworkInterfaceInventory(object):
     def _to_dict(self):
         to_dict = self.__dict__
         return to_dict
+
+    def _get_src_addr(self, ip_addr):
+        output = subprocess.check_output(['ip', 'r', 'get', ip_addr]).decode('utf-8')
+
+        pattern = r'src ([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)'
+        match = re.search(pattern, output)
+        if match:
+            src_addr = match.group(1)
+            return src_addr
+        else:
+            return None
 
 class GetNumaTopologyResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -760,6 +819,7 @@ class HostPlugin(kvmagent.KvmAgent):
     UPDATE_HOST_OVS_CPU_PINNING = "/host/ovs/cpu-pin/update"
     CHANGE_PASSWORD = "/host/changepassword"
     GET_HOST_NETWORK_FACTS = "/host/networkfacts"
+    SET_IP_ON_HOST_NETWORK_INTERFACE = "/host/setip/networkinterface"
     HOST_XFS_SCRAPE_PATH = "/host/xfs/scrape"
     HOST_SHUTDOWN = "/host/shutdown"
     GET_PCI_DEVICES = "/pcidevice/get"
@@ -1792,6 +1852,7 @@ done
 
     @kvmagent.replyerror
     def get_host_network_facts(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetHostNetworkBongdingResponse()
         cache = HostPlugin.__get_cache__()
         if cache is not None:
@@ -1799,10 +1860,72 @@ done
             rsp.nics = cache[1]
             return jsonobject.dumps(rsp)
 
-        rsp.bondings = self.get_host_networking_bonds()
-        rsp.nics = self.get_host_networking_interfaces()
+        rsp.bondings = self.get_host_networking_bonds(cmd.managementServerIp)
+        rsp.nics = self.get_host_networking_interfaces(cmd.managementServerIp)
 
         HostPlugin.__store_cache__(rsp.bondings, rsp.nics)
+        return jsonobject.dumps(rsp)
+
+    def _has_vlan_or_bridge(self, ifname):
+        if linux.is_bridge_slave(ifname):
+            return True
+
+        vlan_dev_name = '%s.' % ifname
+        output = subprocess.check_output(['ip', 'link', 'show', 'type', 'vlan'], universal_newlines=True)
+        for line in output.split('\n'):
+            if vlan_dev_name in line:
+                return True
+
+        return False
+
+    @kvmagent.replyerror
+    @in_bash
+    def set_ip_on_host_network_interface(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = SetIpOnHostNetworkInterfaceRsp()
+
+        try:
+            if self._has_vlan_or_bridge(cmd.interfaceName):
+                    raise Exception(cmd.interfaceName + ' has a sub-interface or a bridge port')
+        except Exception as e:
+            rsp.error = 'unable to update ip[%s], because %s' % (cmd.interfaceName, str(e))
+            rsp.success = False
+            return jsonobject.dumps(rsp)
+
+        if cmd.ipAddress is not None:
+            try:
+                # zs-network-setting -i eth0 192.168.1.10 255.255.255.0 192.168.1.1
+                if cmd.gateway is not None:
+                    shell.call('/usr/local/bin/zs-network-setting -i %s %s %s %s' % (cmd.interfaceName, cmd.ipAddress, cmd.netmask, cmd.gateway))
+                else:
+                    # zs-network-setting -d eth0
+                    shell.call('/usr/local/bin/zs-network-setting -d %s' % cmd.interfaceName)
+                    bash_o('/usr/local/bin/zs-network-setting -i %s %s %s' % (cmd.interfaceName, cmd.ipAddress, cmd.netmask))
+            except Exception as e:
+                rsp.error = 'unable to add ip on %s, because %s' % (cmd.interfaceName, str(e))
+                rsp.success = False
+
+            # After configuring the ip, check the connectivity
+            if cmd.gateway is not None and shell.run('ping -c 5 -W 1 %s > /dev/null 2>&1' % cmd.gateway) != 0:
+                shell.call('/usr/local/bin/zs-network-setting -d %s' % cmd.interfaceName)
+
+                # If it is not connected, it will fall back to the old ip address
+                if cmd.oldGateway is None:
+                    shell.call('/usr/local/bin/zs-network-setting -i %s %s %s' % (cmd.interfaceName, cmd.ipAddress,
+                               cmd.netmask))
+                else:
+                    shell.call('/usr/local/bin/zs-network-setting -i %s %s %s %s' % (cmd.interfaceName,
+                               cmd.ipAddress, cmd.netmask, cmd.gateway))
+
+        # If the parameter is empty, the ip will be deleted by default
+        else:
+            try:
+                # mv ip on interface
+                shell.call('/usr/local/bin/zs-network-setting -d %s' % cmd.interfaceName)
+            except Exception as e:
+                rsp.error = 'unable to delete ip on %s, because %s' % (cmd.interfaceName, str(e))
+                rsp.success = False
+            
         return jsonobject.dumps(rsp)
 
     @classmethod
@@ -1822,12 +1945,12 @@ done
         cls.host_network_facts_cache.update({time.time(): [bonds, nics]})
 
     @staticmethod
-    def get_host_networking_interfaces():
+    def get_host_networking_interfaces(managementServerIp):
         nics = []
         pcis = set()
 
         def get_nic_info(interfaceName, index):
-            nics[index] = HostNetworkInterfaceInventory(interfaceName)
+            nics[index] = HostNetworkInterfaceInventory(interfaceName, None, managementServerIp)
 
         threads = []
         nic_names = ip.get_host_physicl_nics()
@@ -1847,7 +1970,7 @@ done
         return nics
 
     @staticmethod
-    def get_host_networking_bonds():
+    def get_host_networking_bonds(managementServerIp):
         bonds = []
         bond_names = linux.read_file("/sys/class/net/bonding_masters")
         if bond_names:
@@ -1855,7 +1978,7 @@ done
             if len(bond_names) == 0:
                 return bonds
             for bond in bond_names:
-                bonds.append(HostNetworkBondingInventory(bond, "kernalBond"))
+                bonds.append(HostNetworkBondingInventory(bond, "kernalBond", managementServerIp))
 
         # get dpdk bond info
         dpdkBondFile = "/usr/local/etc/zstack-ovs/dpdk-bond.yaml"
@@ -2922,6 +3045,7 @@ done
         http_server.register_async_uri(self.UPDATE_HOST_OVS_CPU_PINNING, self.update_ovs_cpu_pinning)
         http_server.register_async_uri(self.CHANGE_PASSWORD, self.change_password, cmd=ChangeHostPasswordCmd())
         http_server.register_async_uri(self.GET_HOST_NETWORK_FACTS, self.get_host_network_facts)
+        http_server.register_async_uri(self.SET_IP_ON_HOST_NETWORK_INTERFACE, self.set_ip_on_host_network_interface)
         http_server.register_async_uri(self.HOST_XFS_SCRAPE_PATH, self.get_xfs_frag_data)
         http_server.register_async_uri(self.HOST_SHUTDOWN, self.shutdown_host)
         http_server.register_async_uri(self.GET_PCI_DEVICES, self.get_pci_info)

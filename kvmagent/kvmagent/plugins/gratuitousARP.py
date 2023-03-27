@@ -144,7 +144,7 @@ class GratuitousARP(kvmagent.KvmAgent):
 
     def _get_bond_activeNics(self):
         activeNics = {}
-        bonds = host_plugin.HostPlugin.get_host_networking_bonds()
+        bonds = host_plugin.HostPlugin.get_host_networking_bonds(None)
         if not bonds:
             return activeNics
         for b in bonds:
