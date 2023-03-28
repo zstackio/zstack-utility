@@ -118,7 +118,7 @@ if distro in RPM_BASED_OS:
     qemu_pkg = ' '.join(_qemu_pkg)
     svr_pkgs = 'ntfs-3g exfat-utils fuse-exfat btrfs-progs qemu-storage-daemon nmap-ncat lvm2 lvm2-libs'
     # common imagestorebackupstorage deps of ns10 that need to update
-    ns10_update_list = "nettle collectd collectd-disk collectd-virt"
+    ns10_update_list = "nettle collectd collectd-disk collectd-virt exfat-utils fuse-exfat"
     ns10_update_list_loongarch64 = "qemu-block-rbd"
 
     if client == "true" :
@@ -131,6 +131,11 @@ if distro in RPM_BASED_OS:
             command = ("pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
                        "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % (qemu_pkg, zstack_repo)
             run_remote_command(command, host_post_info)
+
+            if releasever in ['ns10']:
+                command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (
+                ns10_update_list, zstack_repo)
+                run_remote_command(command, host_post_info)
     else:
         if zstack_repo == 'false':
             yum_install_package(qemu_pkg, host_post_info)
