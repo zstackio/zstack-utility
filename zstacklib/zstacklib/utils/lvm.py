@@ -2282,16 +2282,6 @@ def get_lun_capacities_from_vg(vg_uuid, vgs_path_and_wwid):
 
     return lun_capacities
 
-def subcmd(subcmd):
-    options = ''
-    if LooseVersion(get_lvmlockd_version()) > LooseVersion('2.02'):
-        if subcmd in ['pvresize', 'vgscan']:
-            options += '--nolocking -t'
-    elif subcmd in ['vgscan']:
-        options += '--ignorelockingfailure'
-
-    return '%s %s ' % (subcmd, options)
-
 
 class LvmRemoteStorage(remoteStorage.RemoteStorage):
     def __init__(self, volume_install_path, mount_path, volume_mounted_device=None):
