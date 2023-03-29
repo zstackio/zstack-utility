@@ -190,6 +190,7 @@ class UploadTask(object):
         self.slice_size = 0
 
         self.image_created = False
+        self.image_completing = False
 
     def fail(self, reason):
         self.completed = True
@@ -235,6 +236,14 @@ class UploadTask(object):
             if not self.image_created:
                 rbd.RBD().create(ioctx, image_name, self.expectedSize)
                 self.image_created = True
+
+    def allow_image_completing(self):
+        if self.all_slice_uploaded():
+            with lock.NamedLock("upload-image-%s" % self.imageUuid):
+                if not self.image_completing:
+                    self.image_completing = True
+                    return True
+        return False
 
     def add_download_size(self, delta):
         with lock.NamedLock("upload-image-%s" % self.imageUuid):
@@ -774,7 +783,7 @@ class CephAgent(object):
         task = self.get_upload_task(upload_param)
         self.upload_slice(req.body, upload_param, task)
 
-        if task.all_slice_uploaded():
+        if task.allow_image_completing():
             complete_upload(task)
 
     @staticmethod
