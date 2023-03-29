@@ -706,14 +706,25 @@ def collect_ipmi_state():
     metrics['ipmi_status'].add_metric([], bash_r("ipmitool mc info"))
 
     # get cpu info
-    r, cpu_temps = bash_ro("sensors | awk -F'+' '/Physical id/{print $2}' | grep -oP '\d*\.\d+'")
+    r, cpu_temps = bash_ro("sensors")
     if r == 0:
         count = 0
-        for temp in cpu_temps.splitlines():
-            cpu_id = "CPU" + str(count)
-            metrics['cpu_temperature'].add_metric([cpu_id], float(temp.strip()))
-            count = count + 1
+        for info in cpu_temps.splitlines():
+            match = re.search( r'^Physical id[^+]*\+(\d*\.\d+)', info)
+            if match:
+                cpu_id = "CPU" + str(count)
+                metrics['cpu_temperature'].add_metric([cpu_id], float(match.group(1).strip()))
+                count = count + 1
 
+        if count == 0:
+            for info in cpu_temps.splitlines():
+                match = re.search(r'^temp[^+]*\+(\d*\.\d+)', info)
+                if match:
+                    cpu_id = "CPU" + str(count)
+                    metrics['cpu_temperature'].add_metric([cpu_id], float(match.group(1).strip()))
+                    count = count + 1
+
+    # get cpu status
     r, cpu_infos = bash_ro("hd_ctl -c cpu")
     if r == 0:
         infos = jsonobject.loads(cpu_infos)
