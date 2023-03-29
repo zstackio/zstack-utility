@@ -990,11 +990,12 @@ class HostPlugin(kvmagent.KvmAgent):
             rsp.biosReleaseDate = bios_release_date if bios_release_date else 'unknown'
             memory_slots_maximum = shell.call('dmidecode -q -t memory | grep "Memory Device" | wc -l')
             rsp.memorySlotsMaximum = memory_slots_maximum.strip()
-            power_supply_manufacturer = shell.call("dmidecode -t 39 | grep -m1 'Manufacturer' | awk -F ':' '{print $2}'")
-            rsp.powerSupplyManufacturer = power_supply_manufacturer.strip()
-            power_supply_model_name = shell.call("dmidecode -t 39 | grep -m1 'Name' | awk -F ':' '{print $2}'")
-            rsp.powerSupplyModelName = power_supply_model_name.strip()
-            power_supply_max_power_capacity = shell.call("dmidecode -t 39 | grep -m1 'Max Power Capacity' | awk -F ':' '{print $2}'")
+            # power not in presence cannot collect power info
+            power_supply_manufacturer = shell.call("dmidecode -t 39 | grep -vi 'not specified' | grep -m1 'Manufacturer' | awk -F ':' '{print $2}'").strip()
+            rsp.powerSupplyManufacturer = power_supply_manufacturer if power_supply_manufacturer != "" else "unknown"
+            power_supply_model_name = shell.call("dmidecode -t 39 | grep -vi 'not specified' | grep -m1 'Name' | awk -F ':' '{print $2}'").strip()
+            rsp.powerSupplyModelName = power_supply_model_name if power_supply_model_name != "" else "unknown"
+            power_supply_max_power_capacity = shell.call("dmidecode -t 39 | grep -vi 'unknown' | grep -m1 'Max Power Capacity' | awk -F ':' '{print $2}'")
             if bool(re.search(r'\d', power_supply_max_power_capacity)):
                 rsp.powerSupplyMaxPowerCapacity = filter(str.isdigit, power_supply_max_power_capacity.strip())
 
