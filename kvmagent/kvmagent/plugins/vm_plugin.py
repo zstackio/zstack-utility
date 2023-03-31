@@ -5533,6 +5533,15 @@ class VmPlugin(kvmagent.KvmAgent):
         try:
             self._record_operation(cmd.uuid, self.VM_OP_STOP)
             self._stop_vm(cmd)
+            # notify vrouter agent nic removed from source host
+            for nic in cmd.nics:
+                if nic.type == 'TFVNIC':
+                    vrouter_cmd = [
+                        'vrouter-port-control',
+                        '--oper=delete',
+                        '--uuid=%s' % transform_to_tf_uuid(nic.uuid)
+                    ]
+                    notify_vrouter(vrouter_cmd)
             logger.debug("successfully stopped vm[uuid:%s]" % cmd.uuid)
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
@@ -5599,6 +5608,15 @@ class VmPlugin(kvmagent.KvmAgent):
             if vm:
                 vm.destroy()
                 ovs.OvsCtl().freeVdpa(cmd.uuid)
+                # notify vrouter agent nic removed from source host
+                for nic in cmd.vmNics:
+                    if nic.type == 'TFVNIC':
+                        vrouter_cmd = [
+                            'vrouter-port-control',
+                            '--oper=delete',
+                            '--uuid=%s' % transform_to_tf_uuid(nic.uuid)
+                        ]
+                        notify_vrouter(vrouter_cmd)
                 logger.debug('successfully destroyed vm[uuid:%s]' % cmd.uuid)
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
