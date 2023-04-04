@@ -5534,7 +5534,7 @@ class VmPlugin(kvmagent.KvmAgent):
             self._record_operation(cmd.uuid, self.VM_OP_STOP)
             self._stop_vm(cmd)
             # notify vrouter agent nic removed from source host
-            for nic in cmd.nics:
+            for nic in cmd.vmNics:
                 if nic.type == 'TFVNIC':
                     vrouter_cmd = [
                         'vrouter-port-control',
