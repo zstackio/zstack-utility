@@ -958,7 +958,7 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.osDistribution, rsp.osVersion, rsp.osRelease = platform.dist()
         rsp.osRelease = rsp.osRelease if rsp.osRelease else "Core"
         # compatible with Kylin SP2 HostOS ISO and standardized ISO
-        rsp.osRelease = "Sword" if rsp.osDistribution == "kylin" and host_arch in ["x86_64", "aarch64"] else rsp.osRelease
+        rsp.osRelease = rsp.osRelease.replace('ZStack', 'Sword') if rsp.osDistribution == "kylin" else rsp.osRelease
         # to be compatible with both `2.6.0` and `2.9.0(qemu-kvm-ev-2.9.0-16.el7_4.8.1)`
         qemu_img_version = shell.call("qemu-img --version | grep 'qemu-img version' | cut -d ' ' -f 3 | cut -d '(' -f 1")
         qemu_img_version = qemu_img_version.strip('\t\r\n ,')
@@ -1415,13 +1415,14 @@ if __name__ == "__main__":
         exclude = "--exclude=" + cmd.excludePackages if cmd.excludePackages else ""
         updates = cmd.updatePackages if cmd.updatePackages else ""
         releasever = cmd.releaseVersion if cmd.releaseVersion else kvmagent.get_host_yum_release()
-        yum_cmd = "export YUM0={};yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{} {} update {} -y"
-        yum_cmd = yum_cmd.format(releasever, ',zstack-experimental-mn' if cmd.enableExpRepo else '', exclude, updates)
+        yum_cmd = "export YUM0={};echo {}>/etc/yum/vars/YUM0;yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{} {} update {} -y"
+        yum_cmd = yum_cmd.format(releasever, releasever, ',zstack-experimental-mn' if cmd.enableExpRepo else '', exclude, updates)
         #support update qemu-kvm and update OS
-        if releasever in ['c74', 'c76', 'c79'] and "qemu-kvm" in updates or cmd.releaseVersion is not None:
-            update_qemu_cmd = "export YUM0={};yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn  swap -y -- remove qemu-img-ev -- install qemu-img " \
+        if releasever in centos:
+            if "qemu-kvm" in updates or cmd.releaseVersion is not None:
+                update_qemu_cmd = "export YUM0={};yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn  swap -y -- remove qemu-img-ev -- install qemu-img " \
                               "&& yum remove qemu-kvm-ev qemu-kvm-common-ev -y && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install qemu-kvm qemu-kvm-common -y && "
-            yum_cmd = update_qemu_cmd.format(releasever) + yum_cmd
+                yum_cmd = update_qemu_cmd.format(releasever) + yum_cmd
 
         rsp = UpdateHostOSRsp()
         if shell.run("which yum") != 0:

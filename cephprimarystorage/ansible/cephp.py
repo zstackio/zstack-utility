@@ -24,10 +24,9 @@ remote_pass = None
 remote_port = None
 host_uuid = None
 ceph_file_path = "/bin/ceph"
-
-# common cephprimarystorage deps of ns10 that need to update
-ns10_update_list = "nettle"
-ns10_update_list_loongarch64 = "qemu-block-rbd"
+# common cephprimarystorage deps of ky10 that need to update
+ky10_update_list = "nettle"
+ky10sp3_update_list = "qemu-block-rbd"
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy ceph primary strorage to host')
@@ -116,14 +115,15 @@ if distro in RPM_BASED_OS:
                 .format(install_rpm_list, zstack_repo)
         run_remote_command(command, host_post_info)
 
-        if releasever in ['ns10']:
+        if releasever in kylin:
+            command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (
+            ky10_update_list, zstack_repo)
+            run_remote_command(command, host_post_info)
+
             if IS_LOONGARCH64 and yum_check_package("qemu", host_post_info):
                 command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (
-                    ns10_update_list_loongarch64, zstack_repo)
+                    ky10sp3_update_list, zstack_repo)
                 run_remote_command(command, host_post_info)
-            command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (
-            ns10_update_list, zstack_repo)
-            run_remote_command(command, host_post_info)
 
         if distro_version >= 7:
             command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"

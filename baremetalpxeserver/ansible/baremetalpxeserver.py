@@ -102,7 +102,7 @@ run_remote_command(command, host_post_info)
 # name: install dependencies
 if distro in RPM_BASED_OS:
     dep_pkg = "dnsmasq nginx nginx-all-modules vsftpd nmap"
-    if releasever in ['c74', 'c76', 'c79']:
+    if releasever in centos:
         dep_pkg = "{} syslinux".format(dep_pkg)
     else:
         dep_pkg = "{} net-tools".format(dep_pkg)
@@ -126,7 +126,7 @@ else:
 
 # name: check and mount /opt/zstack-dvd
 command = """
-archRelease='x86_64/c72 x86_64/c74 x86_64/c76 x86_64/c79 x86_64/ns10 aarch64/ns10 mips64el/ns10 loongarch64/ns10' 
+archRelease='x86_64/c72 x86_64/c74 x86_64/c76 x86_64/c79 x86_64/ky10sp1 x86_64/ky10sp2 aarch64/ky10sp1 aarch64/ky10sp2 mips64el/ky10sp1 loongarch64/ky10sp1 loongarch64/ky10sp3' 
 mkdir -p /var/lib/zstack/baremetal/{dnsmasq,ftp/{ks,zstack-dvd/{x86_64,aarch64,mips64el,loongarch64},scripts},tftpboot/{zstack/{x86_64,aarch64,mips64el,loongarch64},pxelinux.cfg,EFI/BOOT},vsftpd} /var/log/zstack/baremetal/;
 rm -rf /var/lib/zstack/baremetal/tftpboot/{grubaa64.efi,grub.cfg-01-*};
 is_repo_exist='false'
