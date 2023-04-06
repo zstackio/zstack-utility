@@ -552,10 +552,10 @@ def collect_mega_raid_state(metrics, infos):
             match = re.match(r"/c%s/v(\d+)" % controller_id, attr)
             if not match:
                 continue
-            vid = match.group(1)
             vd_state = data[attr][0]["State"]
+            disk_group = data[attr][0]["DG/VD"].split("/")[0]
             converted_vd_state = convert_raid_state_to_int(vd_state)
-            metrics['raid_state'].add_metric([vid], converted_vd_state)
+            metrics['raid_state'].add_metric([disk_group], converted_vd_state)
 
     # collect disk state
     o = bash_o("/opt/MegaRAID/storcli/storcli64 /call/eall/sall show all J").strip()
