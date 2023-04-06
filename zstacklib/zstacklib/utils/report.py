@@ -108,7 +108,7 @@ class Report(object):
         cmd.threadContextMap = self.ctxMap
         cmd.threadContextStack = self.ctxStack
         cmd.detail = self.detail
-        logger.debug("{api: %s} url: %s, progress: %s, header: %s, detail: %s", cmd.threadContextMap["api"], Report.url, cmd.progress, self.header, cmd.detail.dump())
+        logger.debug("{api: %s} url: %s, progress: %s, header: %s, detail: %s", cmd.threadContextMap["api"], Report.url, cmd.progress, self.header, None if cmd.detail is None else cmd.detail.dump())
         http.json_dump_post(Report.url, cmd, self.header)
 
 
