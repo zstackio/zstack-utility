@@ -1004,7 +1004,12 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.usedMemory = used_memory
 
         if HostPlugin.cpu_sockets < 1:
-            sockets = len(bash_o('grep "physical id" /proc/cpuinfo | sort -u').splitlines())
+            if IS_AARCH64:
+                # Not sure if other arm cpus have this problem.
+                o = bash_o("lscpu | grep 'Socket(s)' | awk '{print $2}'").strip()
+                sockets =  int(o) if o != '' else 0
+            else:
+                sockets = len(bash_o('grep "physical id" /proc/cpuinfo | sort -u').splitlines())
             HostPlugin.cpu_sockets = sockets if sockets > 0 else 1
 
         rsp.cpuSockets = HostPlugin.cpu_sockets
