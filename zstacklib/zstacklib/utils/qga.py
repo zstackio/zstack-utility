@@ -4,6 +4,7 @@ import time
 
 import libvirt
 import libvirt_qemu
+import xml.etree.ElementTree as ET
 
 import log
 
@@ -41,6 +42,24 @@ VM_CONFIG_SYNC_OS_VERSION_SUPPORT = {
 # qga command wait 30 seconds
 qga_exec_wait_interval = 1
 qga_exec_wait_retry = 30
+qga_channel_state_connected = 'connected'
+qga_channel_state_disconnected = 'disconnected'
+
+
+def get_qga_channel_state(vm_dom):
+    xml_tree = ET.fromstring(vm_dom.XMLDesc())
+    channel = xml_tree.find("./devices/channel/target[@name='org.qemu.guest_agent.0']")
+    if channel is not None:
+        return channel.get('state')
+    else:
+        return None
+
+
+def is_qga_connected(vm_dom):
+    try:
+        return True if get_qga_channel_state(vm_dom) == qga_channel_state_connected else False
+    except:
+        return False
 
 
 class QgaException(Exception):
@@ -347,10 +366,12 @@ class VmQga(object):
 
     def qga_init(self):
         self.state = self.QGA_STATE_NOT_RUNNING
+        if not is_qga_connected(self.domain):
+            return
+
         if self.domain.isActive() and self.guest_agent_available():
             self.state = self.QGA_STATE_RUNNING
-
-        if self.state != self.QGA_STATE_RUNNING:
+        else:
             return
 
         ret = self.guest_info()

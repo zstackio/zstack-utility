@@ -41,7 +41,6 @@ from kvmagent.plugins.bmv2_gateway_agent import utils as bm_utils
 from kvmagent.plugins.imagestore import ImageStoreClient
 from zstacklib.utils import bash, plugin
 from zstacklib.utils.bash import in_bash
-from zstacklib.utils import jsonobject
 from zstacklib.utils import lvm
 from zstacklib.utils import ft
 from zstacklib.utils import shell
@@ -3806,6 +3805,8 @@ class Vm(object):
         if state != Vm.VM_STATE_RUNNING:
             raise kvmagent.KvmError("vm is not running, cannot connect to qemu-ga")
 
+        if not is_qga_connected(self.domain):
+            raise kvmagent.KvmError("vm qga channel is not connected")
 
         # before set-user-password, we must check if os ready in the guest
         self._wait_until_qemuga_ready(timeout, uuid)
@@ -8325,6 +8326,18 @@ host side snapshot files chian:
 
     @in_bash
     def get_vm_guest_tools_info_for_windows_guest(self, vm_uuid, rsp):
+
+        vm = get_vm_by_uuid_no_retry(vm_uuid, True)
+        if vm.state != Vm.VM_STATE_RUNNING:
+            rsp.success = False
+            rsp.error = 'vm[uuid:%s] is not in running state' % vm_uuid
+            return
+
+        if not is_qga_connected(vm.domain):
+            rsp.success = False
+            rsp.error = 'vm[uuid:%s] qga channel is not connected' % vm_uuid
+            return
+
         r, o, e = bash.bash_roe('virsh qemu-agent-command %s --cmd \'{"execute":"guest-file-open", \
                 "arguments":{"path":"C:\\\Program Files\\\Common Files\\\GuestTools\\\VERSION", "mode":"r"}}\'' % vm_uuid)
         if r != 0:
@@ -8913,6 +8926,11 @@ host side snapshot files chian:
         if vm.state != Vm.VM_STATE_RUNNING:
             rsp.success = False
             rsp.error = 'vm[uuid:%s, name:%s] is not in running state' % (cmd.vmUuid, vm.get_name())
+            return jsonobject.dumps(rsp)
+
+        if not is_qga_connected(vm.domain):
+            rsp.success = False
+            rsp.error = 'vm[uuid:%s, name:%s] qga channel is not connected' % (cmd.vmUuid, vm.get_name())
             return jsonobject.dumps(rsp)
 
         vm._wait_until_qemuga_ready(3000, cmd.vmUuid)
