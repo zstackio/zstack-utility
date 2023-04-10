@@ -167,9 +167,8 @@ disable_zstack_tui() {
   systemctl daemon-reload
 }
 
-kill_zstack_tui_and_restart_tty1(){
+kill_zstack_tui(){
   pkill -9 zstack_tui
-  systemctl restart getty@tty1.service
 }
 
 # stop zstack_tui to prevent zstack auto installation
@@ -4160,7 +4159,7 @@ if [ x"$UPGRADE" = x'y' ]; then
         echo ""
         echo_star_line
         disable_zstack_tui
-        kill_zstack_tui_and_restart_tty1
+        kill_zstack_tui
         exit 0
     fi
 
@@ -4206,7 +4205,7 @@ if [ x"$UPGRADE" = x'y' ]; then
     echo_custom_pcidevice_xml_warning_if_need
     echo_star_line
     disable_zstack_tui
-    kill_zstack_tui_and_restart_tty1
+    kill_zstack_tui
     post_scripts_to_restore_iptables_rules
     if [[ $DEBIAN_OS =~ $OS ]];then
         post_restore_source_on_debian
@@ -4231,7 +4230,7 @@ if [ ! -z $ONLY_INSTALL_LIBS ];then
     echo "P.S.: selinux is disabled!"
     echo_star_line
     disable_zstack_tui
-    kill_zstack_tui_and_restart_tty1
+    kill_zstack_tui
     exit 0
 fi
 
@@ -4259,7 +4258,7 @@ if [ ! -z $ONLY_INSTALL_ZSTACK ]; then
     check_ha_need_upgrade
     echo_star_line
     disable_zstack_tui
-    kill_zstack_tui_and_restart_tty1
+    kill_zstack_tui
     exit 0
 fi
 
@@ -4417,6 +4416,6 @@ echo_chrony_server_warning_if_need
 check_ha_need_upgrade
 echo_star_line
 disable_zstack_tui
-kill_zstack_tui_and_restart_tty1
+kill_zstack_tui
 post_scripts_to_restore_iptables_rules
 
