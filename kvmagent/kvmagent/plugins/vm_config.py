@@ -64,18 +64,29 @@ def get_guest_tools_states(vmUuids):
             return qga_status
 
         qga_status.qgaRunning = True
-        if qga.os and qga.os_version:
-            qga_status.osType = '{} {}'.format(qga.os, qga.os_version)
-            qga_status.platForm = 'Windows' if qga.os == VmQga.VM_OS_WINDOWS else 'Linux'
-
-        try:
-            _, config = qga.guest_file_read('/usr/local/zstack/guesttools')
-            if not config:
-                logger.debug("read /usr/local/zstack/guesttools failed")
+        qga_status.osType = '{} {}'.format(qga.os, qga.os_version)
+        if qga.os and 'mswindows' in qga.os:
+            qga_status.platForm = 'Windows'
+            try:
+                ret = qga.guest_file_is_exist(VmQga.ZS_TOOLS_PATN_WIN)
+                if not ret:
+                    logger.debug("open {} failed".format(VmQga.ZS_TOOLS_PATN_WIN))
+                    return qga_status
+                qga_status.zsToolsFound = True
                 return qga_status
-        except Exception as e:
-            logger.debug("read /usr/local/zstack/guesttools failed {}".format(e))
-            return qga_status
+            except Exception as e:
+                logger.debug("get vm {} guest-info failed {}".format(domain, e))
+                return qga_status
+        else:
+            qga_status.platForm = 'Linux'
+            try:
+                _, config = qga.guest_file_read('/usr/local/zstack/guesttools')
+                if not config:
+                    logger.debug("read /usr/local/zstack/guesttools failed")
+                    return qga_status
+            except Exception as e:
+                logger.debug("read /usr/local/zstack/guesttools failed {}".format(e))
+                return qga_status
 
         qga_status.zsToolsFound = True
 
@@ -116,13 +127,22 @@ class GetGuestToolsStateResponse(kvmagent.AgentResponse):
 class VmConfigPlugin(kvmagent.KvmAgent):
     VM_CONFIG_PORTS = "/vm/configsync/ports"
     VM_GUEST_TOOLS_STATE = "/vm/guesttools/state"
+    VM_SET_HOSTNAME = "/vm/set/hostname"
 
     VM_QGA_PARAM_FILE = "/usr/local/zstack/zs-nics.json"
     VM_QGA_CONFIG_LINUX_CMD = "/usr/local/zstack/zs-tools/config_linux.py"
+    VM_QGA_SET_HOSTNAME = "/usr/local/zstack/zs-tools/set_hostname_linux.py"
     VM_CONFIG_SYNC_OS_VERSION_SUPPORT = {
         VmQga.VM_OS_LINUX_CENTOS: ("7", "8"),
         VmQga.VM_OS_LINUX_KYLIN: ("v10",),
-        VmQga.VM_OS_LINUX_UOS: ("20",)
+        VmQga.VM_OS_LINUX_UOS: ("20",),
+        VmQga.VM_OS_LINUX_OPEN_SUSE: ("12", "15",),
+        VmQga.VM_OS_LINUX_SUSE_S: ("12", "15",),
+        VmQga.VM_OS_LINUX_SUSE_D: ("12", "15",),
+        VmQga.VM_OS_LINUX_ORACLE: ("7",),
+        VmQga.VM_OS_LINUX_REDHAT: ("7",),
+        VmQga.VM_OS_LINUX_UBUNTU: ("18",),
+        VmQga.VM_OS_WINDOWS: ("10", "2012", "2012r2", "2016", "2019",)
     }
 
     @lock.lock('config_vm_by_qga')
@@ -139,6 +159,13 @@ class VmConfigPlugin(kvmagent.KvmAgent):
         else:
             return 1, "not support for os {}".format(qga.os)
 
+        # configure windows by zs-tools
+        if qga.os == VmQga.VM_OS_WINDOWS:
+            ret, msg = qga.guest_exec_zs_tools(operate='net', config=jsonobject.dumps(nicParams))
+            if ret != 0:
+                logger.debug("config vm {} by qga failed, detail info {}".format(vm_uuid, msg))
+            return ret, msg
+
         # write command to a file
         ret = qga.guest_file_write(self.VM_QGA_PARAM_FILE, jsonobject.dumps(nicParams))
         if ret == 0:
@@ -150,6 +177,36 @@ class VmConfigPlugin(kvmagent.KvmAgent):
         if ret != 0:
             logger.debug("config vm {} by qga failed: {}".format(vm_uuid, msg))
             return 1, "config vm {} by qga failed: {}".format(vm_uuid, msg)
+
+        return 0, msg
+
+    @lock.lock('config_vm_by_qga')
+    def set_vm_hostname_by_qga(self, domain, hostname, default_ip):
+
+        vm_uuid = domain.name()
+        qga = VmQga(domain)
+        if qga.state != VmQga.QGA_STATE_RUNNING:
+            return 1, "qga is not running for vm {}".format(vm_uuid)
+
+        if qga.os not in VmConfigPlugin.VM_CONFIG_SYNC_OS_VERSION_SUPPORT.keys() or \
+                qga.os_version not in VmConfigPlugin.VM_CONFIG_SYNC_OS_VERSION_SUPPORT[qga.os]:
+            return 1, "not support for os {} version {}".format(qga.os, qga.os_version)
+
+        if default_ip is None:
+            default_ip = ""
+
+        if qga.os == VmQga.VM_OS_WINDOWS:
+            ret, msg = qga.guest_exec_zs_tools(operate='host', config=hostname)
+            if ret != 0:
+                logger.debug("set vm {} hostname {} by zs-tools failed, detail info {}".format(vm_uuid, hostname, msg))
+            return ret, msg
+
+        # exec qga command
+        cmd_file = self.VM_QGA_SET_HOSTNAME
+        ret, msg = qga.guest_exec_python(cmd_file, [hostname, default_ip])
+        if ret != 0:
+            logger.debug("set vm hostname {} by qga failed: {}".format(vm_uuid, msg))
+            return 1, "set vm hostname {} by qga failed: {}".format(vm_uuid, msg)
 
         return 0, msg
 
@@ -169,7 +226,7 @@ class VmConfigPlugin(kvmagent.KvmAgent):
             rsp.success = False
             rsp.error = msg
         else:
-            logger.debug("config vm {} by qga successfully, detail info {}", cmd.vmUuid, msg)
+            logger.debug("config vm {} by qga successfully, detail info {}".format(cmd.vmUuid, msg))
 
         return jsonobject.dumps(rsp)
 
@@ -180,10 +237,31 @@ class VmConfigPlugin(kvmagent.KvmAgent):
         rsp.states = get_guest_tools_states(cmd.vmInstanceUuids)
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    def vm_set_hostname(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+
+        domain = get_virt_domain(cmd.vmUuid)
+        if not domain or not domain.isActive():
+            rsp.success = False
+            rsp.error = 'vm {} not running'.format(cmd.vmUuid)
+            return jsonobject.dumps(rsp)
+
+        ret, msg = self.set_vm_hostname_by_qga(domain, cmd.hostName, cmd.defaultIP)
+        if ret != 0:
+            rsp.success = False
+            rsp.error = msg
+        else:
+            logger.debug("config vm {} by qga successfully, detail info {}".format(cmd.vmUuid, msg))
+
+        return jsonobject.dumps(rsp)
+
     def start(self):
         http_server = kvmagent.get_http_server()
         http_server.register_async_uri(self.VM_CONFIG_PORTS, self.vm_config_ports)
         http_server.register_async_uri(self.VM_GUEST_TOOLS_STATE, self.vm_guest_tools_state)
+        http_server.register_async_uri(self.VM_SET_HOSTNAME, self.vm_set_hostname)
 
     def stop(self):
         pass
