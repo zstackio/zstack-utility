@@ -221,6 +221,56 @@ class VmQga(object):
 
         return exit_code, ret_data
 
+    def guest_exec_powershell(self, cmd, output=True, wait=qga_exec_wait_interval, retry=qga_exec_wait_retry):
+
+        ret = self.guest_exec(
+            {"path": "powershell.exe", "arg": ["-Command", cmd], "capture-output": output})
+        if ret and "pid" in ret:
+            pid = ret["pid"]
+        else:
+            raise Exception('qga exec cmd {} failed for vm {}'.format(cmd, self.vm_uuid))
+
+        if not output:
+            logger.debug("run qga powershell: {} failed, no output".format(cmd))
+            return 0, None
+
+        ret = None
+        for i in range(retry):
+            time.sleep(wait)
+            ret = self.guest_exec_status(pid)
+            if ret['exited']:
+                break
+
+        if not ret or not ret.get('exited'):
+            raise Exception('qga exec cmd {} timeout for vm {}'.format(cmd, self.vm_uuid))
+
+        exit_code = ret.get('exitcode')
+        ret_data = None
+        if 'out-data' in ret:
+            ret_data = ret['out-data']
+        elif 'err-data' in ret:
+            ret_data = ret['err-data']
+
+        return exit_code, ret_data
+
+    def guest_exec_powershell_no_exitcode(self, cmd, exception=True, output=True):
+        exitcode, ret_data = self.guest_exec_powershell(cmd, output)
+        if exitcode != 0:
+            if exception:
+                raise Exception('cmd {}, exitcode {}, ret {}'
+                                .format(cmd, exitcode, ret_data))
+            return None
+        return ret_data
+
+    def guest_exec_cmd_no_exitcode(self, cmd, platform="Linux", exception=True, output=True):
+        if platform == "linux":
+            return self.guest_exec_bash_no_exitcode(cmd, exception, output)
+        elif platform == "Windows":
+            return self.guest_exec_powershell_no_exitcode(cmd, exception, output)
+        else:
+            raise Exception('cmd {} not support in platform {}'
+                            .format(cmd, platform))
+
     def guest_info(self):
         """
         {"return":{
@@ -399,11 +449,19 @@ class VmQga(object):
                 return 0, None
             raise e
 
+        data_b64 = ''
+        total_count = 0
+
         try:
-            ret = self.call_qga_command("guest-file-read", args={"handle": handle})
+            while True:
+                ret = self.call_qga_command("guest-file-read", args={"handle": handle})
+                data_b64 += ret.get('buf-b64')
+                total_count += ret.get('count')
+                if ret.get('count') == 0:
+                    break
         finally:
             self.guest_file_close(handle)
-        return ret.get('count'), ret.get('buf-b64')
+        return total_count, data_b64
 
     def guest_file_is_exist(self, path):
         try:
