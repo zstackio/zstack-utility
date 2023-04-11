@@ -151,6 +151,12 @@ start_vm_data_vol = {
     "type": "Data"
 }
 
+volume_iothread_pin_body = {
+    "vmUuid": None,
+    "ioThreadId": None,
+    "pin": None
+}
+
 
 VM_PLUGIN = None  # type: VmPlugin
 
@@ -182,6 +188,91 @@ def create_startvm_body_jsonobject_with_volume_multi_queues(vol_uuid, vol_instal
     data_vol["multiQueues"] = "1"
     body["dataVolumes"] = [data_vol]
     return jsonobject.loads(jsonobject.dumps(body))
+
+
+def create_startvm_body_jsonobject_with_volume_iothread(vol_uuid, vol_install_path, iothread_id, pin):
+    body = copy.deepcopy(startVmCmdBody)
+    data_vol = copy.deepcopy(start_vm_data_vol)
+    data_vol["volumeUuid"] = vol_uuid
+    data_vol["resourceUuid"] = vol_uuid
+    data_vol["installPath"] = vol_install_path
+    data_vol["ioThreadId"] = iothread_id
+    body["addons"]["ioThreadNum"] = 1
+    body["addons"]["ioThreadPins"] = [{"ioThreadId": iothread_id, "pin": pin, "volumeUuid": vol_uuid}]
+    body["dataVolumes"] = [data_vol]
+    return jsonobject.loads(jsonobject.dumps(body))
+
+
+def build_virtio_scsi_vol_body_with_iothreadpin(vol_uuid, vol_path, iothread_id, pin, controller_index):
+    data_vol = copy.deepcopy(start_vm_data_vol)
+    data_vol["volumeUuid"] = vol_uuid
+    data_vol["resourceUuid"] = vol_uuid
+    data_vol["installPath"] = vol_path
+    data_vol["ioThreadId"] = iothread_id
+    data_vol["controllerIndex"] = controller_index
+    data_vol["ioThreadPin"] = pin
+    data_vol["useVirtio"] = False
+    data_vol["useVirtioSCSI"] = True
+    return data_vol, {"ioThreadId": iothread_id, "pin": pin, "volumeUuid": vol_uuid}
+
+
+def build_shared_block_vol_body_with_iothread(vol_uuid, vol_path, iothread_id, pin):
+    body = copy.deepcopy(volume_utils.start_vm_sharedblock_data_vol)
+    body["ioThreadId"] = iothread_id
+    body["ioThreadPin"] = pin
+    body["resourceUuid"] = vol_uuid
+    body["installPath"] = vol_path
+    body["volumeUuid"] = vol_uuid
+    return body, {"ioThreadId": iothread_id, "pin": pin, "volumeUuid": vol_uuid}
+
+
+
+def build_virtio_scsi_shared_block_vol_body_with_iothread(vol_uuid, vol_path, iothread_id, pin, controller_index):
+    body = copy.deepcopy(volume_utils.start_vm_sharedblock_data_vol)
+    body["ioThreadId"] = iothread_id
+    body["ioThreadPin"] = pin
+    body["resourceUuid"] = vol_uuid
+    body["installPath"] = vol_path
+    body["volumeUuid"] = vol_uuid
+    body["useVirtio"] = False
+    body["useVirtioSCSI"] = True
+    body["controllerIndex"] = controller_index
+    return body, {"ioThreadId": iothread_id, "pin": pin, "volumeUuid": vol_uuid}
+
+
+def build_virtio_vol_with_iothreadpin(vol_uuid, vol_path, iothread_id, pin):
+    data_vol = copy.deepcopy(start_vm_data_vol)
+    data_vol["volumeUuid"] = vol_uuid
+    data_vol["resourceUuid"] = vol_uuid
+    data_vol["installPath"] = vol_path
+    data_vol["ioThreadId"] = iothread_id
+    data_vol["ioThreadPin"] = pin
+    return data_vol, {"ioThreadId": iothread_id, "pin": pin, "volumeUuid": vol_uuid}
+
+
+def create_vm_with_vols(vols_body, iothread_pin_structs):
+    body = copy.deepcopy(startVmCmdBody)
+    body["addons"]["ioThreadNum"] = len(iothread_pin_structs)
+    body["addons"]["ioThreadPins"] = iothread_pin_structs
+    body["dataVolumes"] = vols_body
+    return jsonobject.loads(jsonobject.dumps(body))
+
+
+def create_startvm_body_jsonobject_with_virtio_scsi_volume_iothread(vol_uuid, vol_install_path, iothread_id, pin, controller_index):
+    body = copy.deepcopy(startVmCmdBody)
+    data_vol = copy.deepcopy(start_vm_data_vol)
+    data_vol["volumeUuid"] = vol_uuid
+    data_vol["resourceUuid"] = vol_uuid
+    data_vol["installPath"] = vol_install_path
+    data_vol["ioThreadId"] = iothread_id
+    data_vol["controllerIndex"] = controller_index
+    data_vol["useVirtio"] = False
+    data_vol["useVirtioSCSI"] = True
+    body["addons"]["ioThreadNum"] = 1
+    body["addons"]["ioThreadPins"] = [{"ioThreadId": iothread_id, "pin": pin, "volumeUuid": vol_uuid}]
+    body["dataVolumes"] = [data_vol]
+    return jsonobject.loads(jsonobject.dumps(body))
+
 
 def create_vm(startvm_body):
     return VM_PLUGIN.start_vm(misc.make_a_request(startvm_body))
@@ -299,6 +390,70 @@ def attach_multi_queues_volume_to_vm(vm_uuid, vol_uuid, vol_path):
 
 
 @misc.return_jsonobject()
+def attach_iothreadpin_volume_to_vm(vm_uuid, vol_uuid, vol_path, iothread, pin):
+    # type: (str, str, str) -> (jsonobject, jsonobject)
+    body = copy.deepcopy(volume_utils.attach_volume_body)
+    body["volume"]["ioThreadId"] = iothread
+    body["volume"]["ioThreadPin"] = pin
+
+    body = jsonobject.loads(jsonobject.dumps(body))
+    body.volume.installPath = vol_path
+    body.vmInstanceUuid = vm_uuid
+    body.volume.volumeUuid = vol_uuid
+
+    return VM_PLUGIN.attach_data_volume(misc.make_a_request(body.to_dict())), body.volume
+
+
+@misc.return_jsonobject()
+def attach_virtio_scsi_iothread_volume_to_vm(vm_uuid, vol_uuid, vol_path, iothread, pin):
+    # type: (str, str, str) -> (jsonobject, jsonobject)
+    body = copy.deepcopy(volume_utils.attach_volume_body)
+    body["volume"]["ioThreadId"] = iothread
+    body["volume"]["ioThreadPin"] = pin
+    body["volume"]["useVirtio"] = False
+    body["volume"]["useVirtioSCSI"] = True
+    body["volume"]["controllerIndex"] = None
+    body = jsonobject.loads(jsonobject.dumps(body))
+    body.volume.installPath = vol_path
+    body.vmInstanceUuid = vm_uuid
+    body.volume.volumeUuid = vol_uuid
+
+
+    return VM_PLUGIN.attach_data_volume(misc.make_a_request(body.to_dict())), body.volume
+
+
+@misc.return_jsonobject()
+def attach_virtio_scsi_iothread_shareblock_volume_to_vm(vm_uuid, vol_uuid, vol_path, iothread, pin):
+    # type: (str, str, str) -> (jsonobject, jsonobject)
+    body = copy.deepcopy(volume_utils.attach_shareblock_volume_body)
+    body["volume"]["ioThreadId"] = iothread
+    body["volume"]["ioThreadPin"] = pin
+    body["volume"]["useVirtio"] = False
+    body["volume"]["useVirtioSCSI"] = True
+    body["volume"]["controllerIndex"] = None
+    body["vmInstanceUuid"] = vm_uuid
+    body["volume"]["resourceUuid"] = vol_uuid
+    body["volume"]["installPath"] = vol_path
+    body["volume"]["volumeUuid"] = vol_uuid
+    body = jsonobject.loads(jsonobject.dumps(body))
+    return VM_PLUGIN.attach_data_volume(misc.make_a_request(body.to_dict())), body.volume
+
+
+@misc.return_jsonobject()
+def attach_iothread_shareblock_volume_to_vm(vm_uuid, vol_uuid, vol_path, iothread, pin):
+    # type: (str, str, str) -> (jsonobject, jsonobject)
+    body = copy.deepcopy(volume_utils.attach_shareblock_volume_body)
+    body["volume"]["ioThreadId"] = iothread
+    body["volume"]["ioThreadPin"] = pin
+    body["vmInstanceUuid"] = vm_uuid
+    body["volume"]["resourceUuid"] = vol_uuid
+    body["volume"]["installPath"] = vol_path
+    body["volume"]["volumeUuid"] = vol_uuid
+    body = jsonobject.loads(jsonobject.dumps(body))
+    return VM_PLUGIN.attach_data_volume(misc.make_a_request(body.to_dict())), body.volume
+
+
+@misc.return_jsonobject()
 def attach_multi_queues_shareblock_volume_to_vm(vm_uuid, vol_uuid, vol_path):
     # type: (str, str, str) -> (jsonobject, jsonobject)
     body = copy.deepcopy(volume_utils.attach_shareblock_volume_body)
@@ -382,6 +537,60 @@ def detach_vm_nic(cmd=None):
 
     return VM_PLUGIN.attach_nic(misc.make_a_request(cmd.to_dict()))
 
+
+@misc.return_jsonobject()
+def set_iothread_pin(vm_uuid, iothread, pin):
+    # type: (str, int, str) -> jsonobject.JsonObject
+
+    body = copy.deepcopy(volume_iothread_pin_body)
+    body["vmUuid"] = vm_uuid
+    body["ioThreadId"] = iothread
+    body["pin"] = pin
+    cmd = jsonobject.from_dict(body)
+    return VM_PLUGIN.set_iothread_pin(misc.make_a_request(cmd.to_dict()))
+
+
+@misc.return_jsonobject()
+def del_iothread_pin(vm_uuid, iothread):
+    # type: (str, int, str) -> jsonobject.JsonObject
+
+    body = copy.deepcopy(volume_iothread_pin_body)
+    body["vmUuid"] = vm_uuid
+    body["ioThreadId"] = iothread
+    cmd = jsonobject.from_dict(body)
+    return VM_PLUGIN.del_iothread_pin(misc.make_a_request(cmd.to_dict()))
+
+
+@misc.return_jsonobject()
+def get_iothread_pin(vm_uuid, iothread, pin):
+    # type: (str, int, str) -> jsonobject.JsonObject
+
+    body = copy.deepcopy(volume_iothread_pin_body)
+    body["vmUuid"] = vm_uuid
+    cmd = jsonobject.from_dict(body)
+    return VM_PLUGIN.get_iothread_pin(misc.make_a_request(cmd.to_dict()))
+
+
+@misc.return_jsonobject()
+def set_vm_scsi_controller(vm_uuid, iothread):
+    # type: (str, int, str) -> jsonobject.JsonObject
+
+    body = copy.deepcopy(volume_iothread_pin_body)
+    body["vmUuid"] = vm_uuid
+    body["ioThreadId"] = iothread
+    cmd = jsonobject.from_dict(body)
+    return VM_PLUGIN.set_scsi_controller(misc.make_a_request(cmd.to_dict()))
+
+
+@misc.return_jsonobject()
+def del_vm_scsi_controller(vm_uuid, iothread):
+    # type: (str, int, str) -> jsonobject.JsonObject
+
+    body = copy.deepcopy(volume_iothread_pin_body)
+    body["vmUuid"] = vm_uuid
+    body["ioThreadId"] = iothread
+    cmd = jsonobject.from_dict(body)
+    return VM_PLUGIN.del_scsi_controller(misc.make_a_request(cmd.to_dict()))
 
 
 class VmPluginTestStub(pytest_utils.PytestExtension):

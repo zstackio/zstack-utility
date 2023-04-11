@@ -56,6 +56,23 @@ attach_shareblock_volume_body = {
     }
 }
 
+start_vm_sharedblock_data_vol = {
+        "installPath": None,  # must fill
+        "deviceId": 1,
+        "deviceType": "file",
+        "volumeUuid": None,  # must fill
+        "useVirtio": True,
+        "useVirtioSCSI": False,
+        "shareable": False,
+        "cacheMode": "none",
+        "wwn": "0x000f6c46e4c236bf",
+        "bootOrder": 0,
+        "physicalBlockSize": 0,
+        "type": "Data",
+        "format": "qcow2",
+        "primaryStorageType": "SharedBlock"
+    }
+
 
 def create_empty_volume(size=134217728):  # 128M
     # type: (long) -> (str, str)
@@ -78,4 +95,10 @@ def find_volume_in_vm_xml_by_path(vm_xmlobject, vol_path):
         if vol.source.file_ == vol_path:
             return vol
 
+    return None
+
+def find_volume_controller_by_vol(vm_xml, controller_index):
+    for controller in vm_xml.devices.get_child_node_as_list("controller"):
+        if controller_index == controller.index_:
+            return controller
     return None

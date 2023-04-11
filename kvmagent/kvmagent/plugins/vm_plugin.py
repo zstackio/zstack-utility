@@ -888,6 +888,74 @@ class CheckVmRecoveryResponse(kvmagent.AgentResponse):
         self.status = ""  # type:str
 
 
+class SetVmIoThreadPinCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(SetVmIoThreadPinCmd, self).__init__()
+        self.vmUuid = None
+        self.ioThreadId = None
+        self.pin = None
+
+
+class SetVmIoThreadPinRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(SetVmIoThreadPinRsp, self).__init__()
+        self.ioThreadId = None
+
+
+class DelVmIoThreadPinCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(DelVmIoThreadPinCmd, self).__init__()
+        self.vmUuid = None
+        self.ioThreadId = None
+
+
+class DelVmIoThreadPinRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(DelVmIoThreadPinRsp, self).__init__()
+        self.ioThreadId = None
+
+
+class GetVmIoThreadPinCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(GetVmIoThreadPinCmd, self).__init__()
+        self.vmUuid = None
+
+
+class GetVmIoThreadPinRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(GetVmIoThreadPinRsp, self).__init__()
+        self.ioThreadInfo = None
+
+
+class SetVmScsiControllerCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(SetVmScsiControllerCmd, self).__init__()
+        self.vmUuid = None
+        self.ioThreadId = None
+
+
+class SetVmScsiControllerRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(SetVmScsiControllerRsp, self).__init__()
+        self.vmUuid = None
+        self.ioThreadId = None
+        self.controllerIndex = None
+
+
+class DelVmScsiControllerCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(DelVmScsiControllerCmd, self).__init__()
+        self.vmUuid = None
+        self.ioThreadId = None
+
+
+class DelVmScsiControllerRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(DelVmScsiControllerRsp, self).__init__()
+        self.vmUuid = None
+        self.ioThreadId = None
+
+
 class VmDeviceAddress(object):
     def __init__(self, uuid, device_type, address_type, address):
         self.uuid = uuid
@@ -1457,6 +1525,9 @@ class VirtioCeph(object):
         driver_elements = {'name': 'qemu', 'type': 'raw', 'cache': 'none'}
         if self.volume.hasattr("multiQueues") and self.volume.multiQueues:
             driver_elements["queues"] = self.volume.multiQueues
+        if self.volume.hasattr("ioThreadId") and self.volume.ioThreadId:
+            driver_elements["iothread"] = str(self.volume.ioThreadId)
+
         e(disk, 'driver', None, driver_elements)
         source = e(disk, 'source', None,
                    {'name': self.volume.installPath.lstrip('ceph:').lstrip('//'), 'protocol': 'rbd'})
@@ -2050,7 +2121,10 @@ class Vm(object):
             occupied_units = vm_to_attach.get_occupied_disk_address_units(bus='scsi', controller=0) if vm_to_attach else []
             default_unit = Vm.get_device_unit(vol.deviceId)
             unit = default_unit if default_unit not in occupied_units else max(occupied_units) + 1
-            e(disk_element, 'address', None, {'type': 'drive', 'controller': '0', 'unit': str(unit)})
+            controller = '0'
+            if vol.hasattr("controllerIndex") and vol.controllerIndex:
+               controller = str(vol.controllerIndex)
+            e(disk_element, 'address', None, {'type': 'drive', 'controller': controller, 'unit': str(unit)})
 
     def __init__(self):
         self.uuid = None
@@ -2467,6 +2541,9 @@ class Vm(object):
             driver_elements = {'name': 'qemu', 'type': linux.get_img_fmt(volume.installPath), 'cache': volume.cacheMode}
             if volume.useVirtio and volume.hasattr("multiQueues") and volume.multiQueues:
                 driver_elements["queues"] = volume.multiQueues
+            if volume.useVirtio and volume.hasattr("ioThreadId") and volume.ioThreadId:
+                driver_elements["iothread"] = str(volume.ioThreadId)
+            e(disk, 'driver', None, driver_elements)
             e(disk, 'driver', None, driver_elements)
             e(disk, 'source', None, {'file': volume.installPath})
 
@@ -2557,6 +2634,8 @@ class Vm(object):
                 driver_elements = {'name': 'qemu', 'type': linux.get_img_fmt(volume.installPath), 'cache': 'none', 'io': 'native'}
                 if volume.useVirtio and volume.hasattr("multiQueues") and volume.multiQueues:
                     driver_elements["queues"] = volume.multiQueues
+                if volume.useVirtio and volume.hasattr("ioThreadId") and volume.ioThreadId:
+                    driver_elements["iothread"] = str(volume.ioThreadId)
                 e(disk, 'driver', None, driver_elements)
                 e(disk, 'source', None, {'dev': volume.installPath})
 
@@ -2589,6 +2668,13 @@ class Vm(object):
 
         dev_letter = self._get_device_letter(volume, addons)
         volume = file_volume_check(volume)
+
+        if volume.hasattr("ioThreadId") and volume.ioThreadId:
+            err_info = self.create_iothread(self.uuid, volume.ioThreadId, volume.ioThreadPin)
+            if err_info:
+                raise kvmagent.KvmError("set iothread[{}:{}] on volume[uuid:{}] err: {}".format(volume.ioThreadId, volume.ioThreadPin, volume.volumeUuid, err_info))
+        if volume.useVirtioSCSI and volume.hasattr("ioThreadId") and volume.ioThreadId:
+            volume.controllerIndex = self.create_scsi_controller(self.uuid, volume.ioThreadId)
 
         if volume.deviceType == 'iscsi':
             disk_element = iscsibased_volume()
@@ -2676,6 +2762,27 @@ class Vm(object):
             # letter has been occupied, so return reversed letter
             logger.debug("reversed disk name: %s" % reversed_disks)
             return Vm.DEVICE_LETTERS[reversed_disks[default_letter]]
+
+
+    def create_iothread(self, vm_uuid, iothread_id, iothread_pin):
+        iothread_info = VmPlugin.get_iothread_info(vm_uuid)
+        iothread_ids = [i[0] for i in iothread_info]
+
+        err_info = None
+        if str(iothread_id) not in iothread_ids:
+            err_info = VmPlugin.add_io_thread(vm_uuid, iothread_id)
+        if err_info:
+            logger.error("add iothread[{}] on vm[{}] failed: {}".format(iothread_id, vm_uuid, err_info))
+
+        err_info = VmPlugin.pin_io_thread(vm_uuid, iothread_id, iothread_pin)
+        if err_info:
+            logger.error("pin iothread[{}] on vm[{}] failed: {}".format(iothread_id, vm_uuid, err_info))
+        return err_info
+
+
+    def create_scsi_controller(self, vm_uuid, iothread_id):
+        return VmPlugin.add_scsi_controller(vm_uuid, iothread_id)
+
 
     def detach_data_volume(self, volume):
         self._wait_vm_run_until_seconds(10)
@@ -4052,6 +4159,16 @@ class Vm(object):
             for v in volume_backup_info.values():
                 dom.blockJobAbort(v.dev_name)
 
+    def find_scsi_controller_by_iothread(self, io_thread_id):
+        controller_index = "0"
+        vm_xml_obj = get_vm_by_uuid(self.uuid)
+        for controller in vm_xml_obj.domain_xmlobject.devices.get_child_node_as_list('controller'):
+            if controller.type_ == "scsi" and hasattr(controller, "driver") and controller.driver.iothread_ == str(io_thread_id):
+                controller_index = controller.index_
+                break
+        return controller_index
+
+
     @staticmethod
     def from_virt_domain(domain):
         vm = Vm()
@@ -4097,6 +4214,11 @@ class Vm(object):
             if use_numa:
                 root = elements['root']
                 tune = e(root, 'cputune')
+
+                if cmd.addons and cmd.addons.hasattr("ioThreadPins") and cmd.addons.ioThreadPins:
+                    for pin in cmd.addons.ioThreadPins:
+                        e(tune, "iothreadpin", attrib={"iothread": str(pin["ioThreadId"]), "cpuset": pin["pin"]})
+
                 def on_x86_64():
                     e(root, 'vcpu', '128', {'placement': 'static', 'current': str(cmd.cpuNum)})
                     # e(root,'vcpu',str(cmd.cpuNum),{'placement':'static'})
@@ -4170,6 +4292,11 @@ class Vm(object):
                 # e(root, 'vcpu', '128', {'placement': 'static', 'current': str(cmd.cpuNum)})
                 e(root, 'vcpu', str(cmd.cpuNum), {'placement': 'static'})
                 tune = e(root, 'cputune')
+
+                if cmd.addons and cmd.addons.hasattr("ioThreadPins") and cmd.addons.ioThreadPins:
+                    for pin in cmd.addons.ioThreadPins:
+                        e(tune, "iothreadpin", attrib={"iothread": str(pin["ioThreadId"]), "cpuset": pin["pin"]})
+
                 # enable nested virtualization
                 def on_x86_64():
                     if cmd.nestedVirtualization == 'host-model':
@@ -4664,6 +4791,9 @@ class Vm(object):
                     driver_elements['queues'] = 1
                 if _v.useVirtio and _v.hasattr("multiQueues") and _v.multiQueues:
                     driver_elements["queues"] = _v.multiQueues
+                if _v.useVirtio and _v.hasattr("ioThreadId") and _v.ioThreadId:
+                    driver_elements["iothread"] = str(_v.ioThreadId)
+
                 e(disk, 'driver', None, driver_elements)
                 # if cmd.addons and cmd.addons['useDataPlane'] is True:
                 #     e(disk, 'driver', None, {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': _v.cacheMode, 'queues':'1', 'dataplane': 'on'})
@@ -4806,6 +4936,8 @@ class Vm(object):
                 driver_elements = {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': 'none', 'io': 'native'}
                 if _v.useVirtio and _v.hasattr("multiQueues") and _v.multiQueues:
                     driver_elements["queues"] = _v.multiQueues
+                if _v.useVirtio and _v.hasattr("ioThreadId") and _v.ioThreadId:
+                    driver_elements["iothread"] = str(_v.ioThreadId)
                 e(disk, 'driver', None, driver_elements)
                 e(disk, 'source', None, {'dev': _v.installPath})
 
@@ -4968,8 +5100,17 @@ class Vm(object):
 
             e(root, 'name', cmd.vmInstanceUuid)
 
+            io_thread_num = 0
             if cmd.coloPrimary or cmd.coloSecondary:
-                e(root, 'iothreads', str(len(cmd.nics)))
+                io_thread_num += len(cmd.nics)
+            if cmd.addons and cmd.addons.hasattr("ioThreadNum") and cmd.addons.ioThreadNum:
+                io_thread_num += int(cmd.addons.ioThreadNum)
+                io_thread_ids = e(root, "iothreadids")
+                for pin in cmd.addons.ioThreadPins:
+                    e(io_thread_ids, "iothread", None, {"id": str(pin["ioThreadId"])})
+            if io_thread_num != 0:
+                e(root, 'iothreads', str(io_thread_num))
+
             e(root, 'uuid', uuidhelper.to_full_uuid(cmd.vmInstanceUuid))
             e(root, 'description', cmd.vmName)
             e(root, 'on_poweroff', 'destroy')
@@ -5328,6 +5469,15 @@ class Vm(object):
             devices = elements['devices']
             e(devices, 'controller', None, {'type': 'scsi', 'model': 'virtio-scsi'})
 
+            for vol in cmd.dataVolumes:
+                if not vol.useVirtioSCSI:
+                    continue
+                if vol.hasattr("ioThreadId") and vol.ioThreadId:
+                    controller_xml = e(devices, 'controller', None, {'type': 'scsi', 'model': 'virtio-scsi', 'index': str(vol.controllerIndex)})
+                    e(controller_xml, 'address', None, {'type': 'pci'})
+                    e(controller_xml, 'driver', None, {'iothread': str(vol.ioThreadId)})
+                    e(controller_xml, 'alias', None, {'name': 'scsi{0}'.format(vol.ioThreadId)})
+
             if machine_type in ['q35', 'virt']:
                 if HOST_ARCH != 'loongarch64':
                     controller = e(devices, 'controller', None, {'type': 'sata', 'index': '0'})
@@ -5678,6 +5828,12 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_SYNC_VM_DEVICEINFO_PATH = "/sync/vm/deviceinfo"
 
     VM_CONSOLE_LOGROTATE_PATH = "/etc/logrotate.d/vm-console-log"
+
+    SET_VM_IOTHREADPIN_PATH = "/vm/setiothreadpin"
+    DEL_VM_IOTHREADPIN_PATH = "/vm/deliothreadpin"
+    GET_VM_IOTHREADPIN_PATH = '/vm/getiothreadpin'
+    SET_VM_SCSI_CONTROLLER = '/vm/setscsicontroller'
+    DEL_VM_SCSI_CONTROLLER = '/vm/delscsicontroller'
 
     VM_OP_START = "start"
     VM_OP_STOP = "stop"
@@ -9146,6 +9302,11 @@ host side snapshot files chian:
         http_server.register_async_uri(self.SYNC_VM_CLOCK_PATH, self.sync_vm_clock_now)
         http_server.register_async_uri(self.SET_SYNC_VM_CLOCK_TASK_PATH, self.set_sync_vm_clock_task)
         http_server.register_async_uri(self.KVM_SYNC_VM_DEVICEINFO_PATH, self.sync_vm_deviceinfo)
+        http_server.register_async_uri(self.SET_VM_IOTHREADPIN_PATH, self.set_iothread_pin)
+        http_server.register_async_uri(self.DEL_VM_IOTHREADPIN_PATH, self.del_iothread_pin)
+        http_server.register_async_uri(self.GET_VM_IOTHREADPIN_PATH, self.get_iothread_pin)
+        http_server.register_async_uri(self.SET_VM_SCSI_CONTROLLER, self.set_scsi_controller)
+        http_server.register_async_uri(self.DEL_VM_SCSI_CONTROLLER, self.del_scsi_controller)
 
         self.clean_old_sshfs_mount_points()
         self.register_libvirt_event()
@@ -9895,6 +10056,178 @@ host side snapshot files chian:
         if config is None:
             config = {}
         self.config = config
+
+
+    @staticmethod
+    def get_iothread_info(vm_uuid):
+        exec_cmd = "virsh iothreadinfo {}".format(vm_uuid)
+        cmd_res = shell.call(exec_cmd)
+        result = []
+        if not cmd_res:
+            return result
+        if cmd_res.startswith("No IOThreads found for the domain"):
+            return result
+        if "IOThread ID" in cmd_res and "CPU Affinity" in cmd_res:
+            temp = cmd_res.split("\n")
+            temp = temp[2:]
+            for t in temp:
+                i = filter(lambda i: i, t.strip().split(" "))
+                if not i:
+                    continue
+                if i[0].isdigit():
+                    result.append([str(i[0]), str(i[1])])
+        return result
+
+
+    @kvmagent.replyerror
+    def set_iothread_pin(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = SetVmIoThreadPinRsp()
+
+        iothread_info = self.get_iothread_info(cmd.vmUuid)
+        iothread_ids = [i[0] for i in iothread_info]
+
+        err_info = None
+        if str(cmd.ioThreadId) not in iothread_ids:
+            err_info = self.add_io_thread(cmd.vmUuid, cmd.ioThreadId)
+        if err_info:
+            rsp.error = err_info
+            logger.error("add iothread[{}] failed: {}".format(cmd.ioThreadId, err_info))
+            return jsonobject.dumps(rsp)
+
+        err_info = self.pin_io_thread(cmd.vmUuid, cmd.ioThreadId, cmd.pin)
+        if err_info:
+            rsp.error = err_info
+            logger.error("pin iothread[{}] failed: {}".format(cmd.ioThreadId, err_info))
+            return jsonobject.dumps(rsp)
+        logger.info("set iothread[{}] pin[{}] on vm[{}] successfully.".format(cmd.ioThreadId, cmd.pin, cmd.vmUuid))
+        rsp.ioThreadId = cmd.ioThreadId
+        return jsonobject.dumps(rsp)
+
+
+    @kvmagent.replyerror
+    def del_iothread_pin(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = DelVmIoThreadPinRsp()
+
+        iothread_info = self.get_iothread_info(cmd.vmUuid)
+        iothread_ids = [i[0] for i in iothread_info]
+
+        err_info = None
+        if str(cmd.ioThreadId) in iothread_ids:
+            err_info = self.del_io_thread(cmd.vmUuid, cmd.ioThreadId)
+
+        if err_info:
+            rsp.error = err_info
+            logger.error("del iothread[{}] failed: {}".format(cmd.ioThreadId, err_info))
+        else:
+            rsp.ioThreadId = cmd.ioThreadId
+            logger.info("del iothread[{}] on vm[{}] successfully.".format(cmd.ioThreadId, cmd.vmUuid))
+        return jsonobject.dumps(rsp)
+
+
+    @kvmagent.replyerror
+    def get_iothread_pin(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetVmIoThreadPinRsp()
+
+        iothread_info = self.get_iothread_info(cmd.vmUuid)
+        res = [{"ioThreadId": i[0], "ioThreadPin": i[1]} for i in iothread_info]
+
+        rsp.ioThreadInfo = res
+        return jsonobject.dumps(rsp)
+
+
+    @kvmagent.replyerror
+    def set_scsi_controller(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = SetVmScsiControllerRsp()
+
+        scsi_controller_index = self.add_scsi_controller(cmd.vmUuid, cmd.ioThreadId)
+
+        rsp.vmUuid = cmd.vmUuid
+        rsp.ioThreadId = cmd.ioThreadId
+        rsp.controllerIndex = str(scsi_controller_index)
+        return jsonobject.dumps(rsp)
+
+
+    @kvmagent.replyerror
+    def del_scsi_controller(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = DelVmScsiControllerRsp()
+
+        vm = get_vm_by_uuid(cmd.vmUuid)
+        for controller in vm.domain_xmlobject.devices.get_child_node_as_list('controller'):
+            if controller.type_ == 'scsi' and hasattr(controller, 'driver') and hasattr(controller.driver, 'iothread_') \
+                    and str(controller.driver.iothread_) == str(cmd.ioThreadId):
+                self.detach_controller_by_alias(cmd.vmUuid, controller.alias.name_)
+                break
+
+        rsp.vmUuid = cmd.vmUuid
+        rsp.ioThreadId = cmd.ioThreadId
+        return jsonobject.dumps(rsp)
+
+    @staticmethod
+    def add_scsi_controller(vm_uuid, io_thread_id):
+        vm_xml_obj = get_vm_by_uuid(vm_uuid)
+        index = vm_xml_obj.find_scsi_controller_by_iothread(io_thread_id)
+        if not index or index == "0":
+            index = VmPlugin.get_next_scsi_controller_index(vm_xml_obj)
+            controller_xml = etree.Element('controller',
+                                           attrib={'type': 'scsi', 'model': 'virtio-scsi', 'index': str(index)})
+            e(controller_xml, 'address', None, {'type': 'pci'})
+            e(controller_xml, 'driver', None, {'iothread': str(io_thread_id)})
+            e(controller_xml, 'alias', None, {'name': 'scsi{0}'.format(io_thread_id)})
+            vm_xml_obj.domain.attachDeviceFlags(etree.tostring(controller_xml), libvirt.VIR_DOMAIN_AFFECT_LIVE)
+        return index
+
+    @staticmethod
+    def get_next_scsi_controller_index(vm_xml_obj):
+        old_index_list = []
+        for controller in vm_xml_obj.domain_xmlobject.devices.get_child_node_as_list('controller'):
+            if controller.type_ == "scsi":
+                old_index_list.append(int(controller.index_))
+        new_index_list = [i for i in range(0, len(old_index_list) + 1)]
+        return set(new_index_list).difference(set(old_index_list)).pop()
+
+
+    @linux.retry(times=3, sleep_time=1)
+    def detach_controller_by_alias(self, vm_uuid, controller_alias):
+        exec_cmd = "virsh detach-device-alias %s %s --current" % (vm_uuid, controller_alias)
+        cmd_res = shell.call(exec_cmd)
+        res = None
+        if cmd_res and cmd_res.startswith("error:"):
+            res = cmd_res
+        return res
+
+    @staticmethod
+    def add_io_thread(vm_uuid, io_thread_id):
+        exec_cmd = "virsh iothreadadd {} {} --current".format(vm_uuid, io_thread_id)
+        cmd_res = shell.call(exec_cmd)
+        res = None
+        if cmd_res and cmd_res.startswith("error:"):
+            res = cmd_res
+        return res
+
+
+    @staticmethod
+    def pin_io_thread(vm_uuid, io_thread_id, cpus):
+        exec_cmd = "virsh iothreadpin {} {} {} --current".format(vm_uuid, io_thread_id, cpus)
+        cmd_res = shell.call(exec_cmd)
+        res = None
+        if cmd_res and  cmd_res.startswith("error:"):
+            res = cmd_res
+        return res
+
+    @staticmethod
+    @linux.retry(times=3, sleep_time=1)
+    def del_io_thread(vm_uuid, io_thread_id):
+        exec_cmd = "virsh iothreaddel {} {} --current".format(vm_uuid, io_thread_id)
+        cmd_res = shell.call(exec_cmd)
+        res = None
+        if cmd_res and cmd_res.startswith("error:"):
+            res = cmd_res
+        return res
 
 
 class EmptyCdromConfig():
