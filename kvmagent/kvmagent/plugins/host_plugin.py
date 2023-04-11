@@ -1541,14 +1541,9 @@ done
     def locate_host_network_interface(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
-        # Fibre port not support command: ethtool --identify ethxx
-        r = bash_r("ethtool %s | grep 'Supported ports' | grep 'FIBRE'" % cmd.networkInterface)
-        if r == 0:
-            sc = shell.ShellCmd("ethtool --test %s" % cmd.networkInterface)
-            sc(False)
-        else:
-            sc = shell.ShellCmd("ethtool --identify %s %s" % (cmd.networkInterface, cmd.interval))
-            sc(False)
+        # Intel 82599ES not support identify.
+        sc = shell.ShellCmd("ethtool --identify %s %s" % (cmd.networkInterface, cmd.interval))
+        sc(False)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
