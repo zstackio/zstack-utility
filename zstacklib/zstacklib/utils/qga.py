@@ -262,14 +262,11 @@ class VmQga(object):
             return None
         return ret_data
 
-    def guest_exec_cmd_no_exitcode(self, cmd, platform="Linux", exception=True, output=True):
-        if platform == "linux":
-            return self.guest_exec_bash_no_exitcode(cmd, exception, output)
-        elif platform == "Windows":
+    def guest_exec_cmd_no_exitcode(self, cmd, exception=True, output=True):
+        if "mswindows" in self.os:
             return self.guest_exec_powershell_no_exitcode(cmd, exception, output)
         else:
-            raise Exception('cmd {} not support in platform {}'
-                            .format(cmd, platform))
+            return self.guest_exec_bash_no_exitcode(cmd, exception, output)
 
     def guest_info(self):
         """

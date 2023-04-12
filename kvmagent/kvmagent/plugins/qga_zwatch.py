@@ -77,49 +77,50 @@ class ZWatchMetricMonitor(kvmagent.KvmAgent):
                 for vmUuid in new_vm_list:
                     # new vm found
                     qga = vm_dict.get(vmUuid)
-                    qga and self.zwatch_qga_monitor_vm(vmUuid, qga, tools_states.get(vmUuid).platForm)
+                    qga and self.zwatch_qga_monitor_vm(vmUuid, qga)
                 time.sleep(self.sleep_time)
 
     @thread.AsyncThread
-    def zwatch_qga_monitor_vm(self, uuid, qga, platform):
+    def zwatch_qga_monitor_vm(self, uuid, qga):
         while True:
-            if uuid not in self.running_vm_list:
-                logger.debug('vm[%s] has been stop running' % uuid)
-                break
-            # load config by platform
-            if platform == "Linux":
-                zwatch_vm_info_path = self.ZWATCH_VM_INFO_PATH
-                zwatch_vm_metric_path = self.ZWATCH_VM_METRIC_PATH
-                zwatch_restart_cmd = self.ZWATCH_RESTART_CMD
-            elif platform == "Windows":
-                zwatch_vm_info_path = self.WIN_ZWATCH_VM_INFO_PATH
-                zwatch_vm_metric_path = self.WIN_ZWATCH_VM_METRIC_PATH
-                zwatch_restart_cmd = self.WIN_ZWATCH_RESTART_CMD
-            else:
-                logger.debug('vm[%s] is not linux or windows' % uuid)
-                break
-
-            dhcpStatus, qgaZWatch = qga.guest_file_read(zwatch_vm_info_path)
-            # skip when dhcp enable
-            if dhcpStatus == 0:
-                self.running_vm_list.remove(uuid)
-                break
-            logger.debug('vm[%s] start monitor with qga' % uuid)
-            # set vmUuid by qga at first
-            if qgaZWatch != uuid:
-                logger.debug('vm[%s] init zwatch qga vm.info first...' % uuid)
-                ret = qga.guest_file_write(zwatch_vm_info_path, uuid)
-                if ret == 0:
-                    logger.debug('config vm[%s], write qga zwatch qga vm.info failed' % uuid)
+            try:
+                if uuid not in self.running_vm_list:
+                    logger.debug('vm[%s] has been stop running' % uuid)
+                    break
+                if "mswindows" in qga.os:
+                    zwatch_vm_info_path = self.WIN_ZWATCH_VM_INFO_PATH
+                    zwatch_vm_metric_path = self.WIN_ZWATCH_VM_METRIC_PATH
+                    zwatch_restart_cmd = self.WIN_ZWATCH_RESTART_CMD
+                else:
+                    zwatch_vm_info_path = self.ZWATCH_VM_INFO_PATH
+                    zwatch_vm_metric_path = self.ZWATCH_VM_METRIC_PATH
+                    zwatch_restart_cmd = self.ZWATCH_RESTART_CMD
+                dhcpStatus = not qga.guest_file_is_exist(zwatch_vm_info_path)
+                _, qgaZWatch = qga.guest_file_read(zwatch_vm_info_path)
+                # skip when dhcp enable
+                if dhcpStatus:
                     self.running_vm_list.remove(uuid)
                     break
-                # switch zwatch mode to qga
-                qga.guest_exec_cmd_no_exitcode(zwatch_restart_cmd, platform)
-            # fetch zwatch metrics
-            _, vmMetrics = qga.guest_file_read(zwatch_vm_metric_path)
-            if vmMetrics:
-                push_metrics_to_gateway(self.PROMETHEUS_PUSHGATEWAY_URL, uuid, vmMetrics)
-            time.sleep(self.sleep_time)
+                logger.debug('vm[%s] start monitor with qga' % uuid)
+                # set vmUuid by qga at first
+                if qgaZWatch != uuid:
+                    logger.debug('vm[%s] init zwatch qga vm.info first...' % uuid)
+                    ret = qga.guest_file_write(zwatch_vm_info_path, uuid)
+                    if ret == 0:
+                        logger.debug('config vm[%s], write qga zwatch qga vm.info failed' % uuid)
+                        self.running_vm_list.remove(uuid)
+                        break
+                    # switch zwatch mode to qga
+                    qga.guest_exec_cmd_no_exitcode(zwatch_restart_cmd)
+                # fetch zwatch metrics
+                _, vmMetrics = qga.guest_file_read(zwatch_vm_metric_path)
+                if vmMetrics:
+                    push_metrics_to_gateway(self.PROMETHEUS_PUSHGATEWAY_URL, uuid, vmMetrics)
+                time.sleep(self.sleep_time)
+            except Exception as e:
+                logger.debug('vm[%s] end monitor with qga due to [%s]' % (uuid, str(e)))
+                self.running_vm_list.remove(uuid)
+                break
 
     @kvmagent.replyerror
     def config_zwatch_qga_monitor(self, req):
