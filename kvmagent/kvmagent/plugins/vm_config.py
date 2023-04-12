@@ -122,7 +122,12 @@ class VmConfigPlugin(kvmagent.KvmAgent):
     VM_CONFIG_SYNC_OS_VERSION_SUPPORT = {
         VmQga.VM_OS_LINUX_CENTOS: ("7", "8"),
         VmQga.VM_OS_LINUX_KYLIN: ("v10",),
-        VmQga.VM_OS_LINUX_UOS: ("20",)
+        VmQga.VM_OS_LINUX_UOS: ("20",),
+        VmQga.VM_OS_LINUX_OPEN_SUSE: ("12", "15",),
+        VmQga.VM_OS_LINUX_SUSE: ("12", "15",),
+        VmQga.VM_OS_LINUX_ORACLE: ("7",),
+        VmQga.VM_OS_LINUX_REDHAT: ("7",),
+        VmQga.VM_OS_LINUX_UBUNTU: ("18",)
     }
 
     @lock.lock('config_vm_by_qga')
