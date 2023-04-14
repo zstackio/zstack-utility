@@ -2,6 +2,7 @@
 # encoding: utf-8
 
 import io
+import os
 import threading
 import xml.etree.ElementTree as etree
 from datetime import timedelta
@@ -1030,8 +1031,9 @@ class CollectFromYml(object):
             self.add_fail_count(len(log_list), type, host_post_info.host, 'unreachable',
                                 ("%s %s is unreachable!" % (type, host_post_info.host)))
 
-    def get_total_size(self):
+    def get_total_size(self, run_command_dir):
         values = self.check_result.values()
+        stat = os.statvfs(run_command_dir)
         total_size = 0
         for num in values:
             if num is None:
@@ -1043,7 +1045,9 @@ class CollectFromYml(object):
             elif num.endswith('G'):
                 total_size += float(num[:-1]) * 1024 * 1024
         total_size = str(round((total_size / 1024 / 1024), 2)) + 'G'
+        free_size = str(round((stat.f_frsize * stat.f_bavail) // (2**30), 2)) + 'G'
         print '%-50s%-50s' % ('TotalSize(exclude exec statements)', colored(total_size, 'green'))
+        print '%-50s%-50s' % ('AvailableDiskCapacity', colored(free_size, 'green'))
         for key in sorted(self.check_result.keys()):
             print '%-50s%-50s' % (key, colored(self.check_result[key], 'green'))
 
@@ -1184,7 +1188,7 @@ class CollectFromYml(object):
                 self.collect_configure_log(value['list'], value['logs'], collect_dir, key)
         self.thread_run(int(args.timeout))
         if self.check:
-            self.get_total_size()
+            self.get_total_size(run_command_dir)
         else:
             self.summary.persist(collect_dir)
             if len(threading.enumerate()) > 1:
