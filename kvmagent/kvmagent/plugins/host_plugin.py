@@ -185,19 +185,6 @@ class SetIpOnHostNetworkInterfaceRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(SetIpOnHostNetworkInterfaceRsp, self).__init__()
 
-class SetVlanOnHostNetworkInterfaceCmd(kvmagent.AgentCommand):
-    def __init__(self):
-        super(SetVlanOnHostNetworkInterfaceCmd, self).__init__()
-        self.interfaceName = None
-        self.vlanId = None
-        self.ipAddress = None
-        self.netmask = None
-        self.gateway = None
-
-class SetVlanOnHostNetworkInterfaceRsp(kvmagent.AgentResponse):
-    def __init__(self):
-        super(SetVlanOnHostNetworkInterfaceRsp, self).__init__()
-
 class HostPhysicalMemoryStruct(object):
     def __init__(self):
         self.size = ""
@@ -792,7 +779,6 @@ class HostPlugin(kvmagent.KvmAgent):
     CHANGE_PASSWORD = "/host/changepassword"
     GET_HOST_NETWORK_FACTS = "/host/networkfacts"
     SET_IP_ON_HOST_NETWORK_INTERFACE = "/host/setip/networkinterface"
-    SET_VLAN_ON_HOST_NETWORK_INTERFACE = "/host/setvlan/networkinterface"
     HOST_XFS_SCRAPE_PATH = "/host/xfs/scrape"
     HOST_SHUTDOWN = "/host/shutdown"
     GET_PCI_DEVICES = "/pcidevice/get"
@@ -1861,28 +1847,6 @@ done
             ip_addresses = shell.call("ip addr show dev %s | grep 'inet' | awk '{print $2}'", cmd.interfaceName)
             for ip_addr in ip_addresses:
                 shell.call("ip addr del %s dev %s", ip_addr, cmd.interfaceName)
-
-        return jsonobject.dumps(rsp)
-
-    @kvmagent.replyerror
-    @in_bash
-    def set_valn_on_network_interface(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = SetVlanOnHostNetworkInterfaceRsp()
-
-        if cmd.vlanId is not None:
-            try:
-                # zs-vlan -c eth0 10
-                shell.call("/usr/local/bin/zs-vlan -c %s %s", cmd.interfaceName, cmd.vlanId)
-            except Exception as e:
-                logger.warning(traceback.format_exc())
-                rsp.error = "unable to create vlan on %s, because %s" % (cmd.interfaceName, str(e))
-                rsp.success = False
-        else:
-            # mv vlan on interface
-            vlan_ifaces = shell.call("ip link show %s | grep -oP '(?<=@)\S+(?=:)' | sort -ru", cmd.interfaceName)
-            for vlan_iface in vlan_ifaces:
-                shell.call("ip link delete %s", vlan_iface)
 
         return jsonobject.dumps(rsp)
 
@@ -3004,7 +2968,6 @@ done
         http_server.register_async_uri(self.CHANGE_PASSWORD, self.change_password, cmd=ChangeHostPasswordCmd())
         http_server.register_async_uri(self.GET_HOST_NETWORK_FACTS, self.get_host_network_facts)
         http_server.register_async_uri(self.SET_IP_ON_HOST_NETWORK_INTERFACE, self.set_ip_on_host_network_interface)
-        http_server.register_async_uri(self.SET_VLAN_ON_HOST_NETWORK_INTERFACE, self.set_valn_on_network_interface)
         http_server.register_async_uri(self.HOST_XFS_SCRAPE_PATH, self.get_xfs_frag_data)
         http_server.register_async_uri(self.HOST_SHUTDOWN, self.shutdown_host)
         http_server.register_async_uri(self.GET_PCI_DEVICES, self.get_pci_info)
