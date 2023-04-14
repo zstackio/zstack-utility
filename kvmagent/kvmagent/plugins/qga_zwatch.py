@@ -41,6 +41,7 @@ class ZWatchMetricMonitor(kvmagent.KvmAgent):
     state = None
     time_lock = 0
     sleep_time = 10
+    scan_time = 30
 
     def __init__(self):
         self.state = False
@@ -66,8 +67,7 @@ class ZWatchMetricMonitor(kvmagent.KvmAgent):
                     break
                 logger.debug('update vm list')
                 domains = get_domains()
-                tools_states = self.get_guest_tools_states(domains)
-                vm_dict = {dom.name(): VmQga(dom) if dom else None for dom in domains}
+                tools_states, vm_dict = get_guest_tools_states(domains)
                 # remove stopped vm which in running_vm_list
                 logger.debug('debug: vm list: %s' % self.running_vm_list)
                 last_monitor_vm_list = self.running_vm_list
@@ -78,7 +78,7 @@ class ZWatchMetricMonitor(kvmagent.KvmAgent):
                     # new vm found
                     qga = vm_dict.get(vmUuid)
                     qga and self.zwatch_qga_monitor_vm(vmUuid, qga)
-                time.sleep(self.sleep_time)
+                time.sleep(self.scan_time)
 
     @thread.AsyncThread
     def zwatch_qga_monitor_vm(self, uuid, qga):
@@ -133,49 +133,6 @@ class ZWatchMetricMonitor(kvmagent.KvmAgent):
         self.zwatch_qga_monitor()
         return jsonobject.dumps(AgentRsp())
 
-    def get_guest_tools_states(self, domains):
-        def check_guest_tools_state(domain):
-            qga_status = VmQgaStatus()
-
-            vm_state, _, _, _, _ = domain.info()
-            if vm_state != vm_plugin.Vm.VIR_DOMAIN_RUNNING:
-                return qga_status
-
-            qga = VmQga(domain)
-            if qga.state != VmQga.QGA_STATE_RUNNING:
-                return qga_status
-
-            qga_status.qgaRunning = True
-            qga_status.osType = '{} {}'.format(qga.os, qga.os_version)
-            if 'mswindows' in qga_status.osType:
-                qga_status.platForm = 'Windows'
-            else:
-                qga_status.platForm = 'Linux'
-
-            try:
-                _, config = qga.guest_file_read('/usr/local/zstack/guesttools')
-                if not config:
-                    logger.debug("read /usr/local/zstack/guesttools failed")
-                    return qga_status
-            except Exception as e:
-                logger.debug("read /usr/local/zstack/guesttools failed {}".format(e))
-                return qga_status
-
-            qga_status.zsToolsFound = True
-
-            version_config = [line for line in config.split('\n') if 'version' in line]
-            if version_config:
-                qga_status.version = version_config[0].split('=')[1].strip()
-
-            return qga_status
-
-        tools_states = {}
-        for dom in domains:
-            state = check_guest_tools_state(dom)
-            if state:
-                tools_states[dom.name()] = state
-        return tools_states
-
 
 class VmQgaStatus:
     def __init__(self):
@@ -204,6 +161,28 @@ def get_domains(conn):
             continue
         doms.append(domain)
     return doms
+
+
+def get_guest_tools_states(domains):
+    def get_state(domain):
+        qga_status = VmQgaStatus()
+        vm_state, _, _, _, _ = domain.info()
+        if vm_state != vm_plugin.Vm.VIR_DOMAIN_RUNNING:
+            return qga_status
+        qga = VmQga(domain)
+        if qga.state != VmQga.QGA_STATE_RUNNING:
+            return qga_status
+        qga_status.qgaRunning = True
+        qga_status.osType = '{} {}'.format(qga.os, qga.os_version)
+        if 'mswindows' in qga.os:
+            qga_status.platForm = 'Windows'
+        else:
+            qga_status.platForm = 'Linux'
+        return qga_status
+
+    tools_states = {dom.name(): get_state(dom) for dom in domains}
+    vm_dict = {dom.name(): VmQga(dom) if dom else None for dom in domains}
+    return tools_states, vm_dict
 
 
 def push_metrics_to_gateway(url, uuid, metrics):
