@@ -17,8 +17,6 @@ import socket
 import sys
 import yaml
 import traceback
-import netifaces
-import ipaddress
 
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
@@ -182,7 +180,6 @@ class SetIpOnHostNetworkInterfaceCmd(kvmagent.AgentCommand):
         self.ipAddress = None
         self.netmask = None
         self.gateway = None
-        self.isDefaultRoute = None
 
 class SetIpOnHostNetworkInterfaceRsp(kvmagent.AgentResponse):
     def __init__(self):
@@ -1825,18 +1822,6 @@ done
             else:
                 return False
 
-    def _is_default_gateway(gw):
-        for iface in netifaces.interfaces():
-            addrs = netifaces.ifaddresses(iface)
-            if netifaces.AF_INET in addrs:
-                for addr in addrs[netifaces.AF_INET]:
-                    if 'broadcast' in addr and 'netmask' in addr:
-                        network = ipaddress.ip_network('{}/{}'.format(
-                            addr['addr'], addr['netmask']), strict=False)
-                        if gw in network:
-                            return True
-        return False
-
     @kvmagent.replyerror
     @in_bash
     def set_ip_on_host_network_interface(self, req):
@@ -1847,10 +1832,7 @@ done
             try:
                 # zs-network-setting -i eth0 192.168.1.10 255.255.255.0 192.168.1.1
                 if cmd.gateway is not None:
-                    if cmd.isDefaultRoute is True:
-                        shell.call("/usr/local/bin/zs-network-setting -i %s %s %s %s route", cmd.interfaceName, cmd.ipAddress, cmd.netmask, cmd.gateway)
-                    else:
-                        shell.call("/usr/local/bin/zs-network-setting -i %s %s %s %s", cmd.interfaceName, cmd.ipAddress, cmd.netmask, cmd.gateway)
+                    shell.call("/usr/local/bin/zs-network-setting -i %s %s %s %s", cmd.interfaceName, cmd.ipAddress, cmd.netmask, cmd.gateway)
                 else:
                     shell.call("/usr/local/bin/zs-network-setting -i %s %s %s", cmd.interfaceName, cmd.ipAddress, cmd.netmask)
             except Exception as e:
@@ -1870,9 +1852,6 @@ done
                 if cmd.oldGateway is None:
                     shell.call("/usr/local/bin/zs-network-setting -i %s %s %s %s", cmd.interfaceName, cmd.ipAddress,
                                cmd.netmask)
-                elif self._is_default_gateway(ipaddress.IPv4Address(cmd.oldGateway)):
-                    shell.call("/usr/local/bin/zs-network-setting -i %s %s %s %s route", cmd.interfaceName, cmd.ipAddress,
-                               cmd.netmask, cmd.gateway)
                 else:
                     shell.call("/usr/local/bin/zs-network-setting -i %s %s %s %s", cmd.interfaceName,
                                cmd.ipAddress, cmd.netmask, cmd.gateway)
