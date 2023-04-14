@@ -21,7 +21,7 @@ def get_path():
     else:
         raise Exception(
             'Could not find qemu-kvm in /bin/qemu-kvm or /usr/libexec/qemu-kvm or /usr/bin/qemu-system-{}'
-            % HOST_ARCH)
+            .format(HOST_ARCH))
 
 
 def get_bin_dir():
