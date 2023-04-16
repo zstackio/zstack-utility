@@ -15,6 +15,7 @@ from zstacklib.utils.bash import *
 from zstacklib.utils import ovs
 import os
 import traceback
+import netifaces
 import netaddr
 
 CHECK_PHYSICAL_NETWORK_INTERFACE_PATH = '/network/checkphysicalnetworkinterface'
@@ -166,7 +167,7 @@ class CreateBondingCmd(kvmagent.AgentCommand):
     def __init__(self):
         super(CreateBondingCmd, self).__init__()
         self.bondName = None
-        self.slaves = []
+        self.slaves = None  # type: list[HostNetworkInterfaceStruct]
         self.type = None
         self.mode = None
         self.xmitHashPolicy = None
@@ -179,7 +180,7 @@ class UpdateBondingCmd(kvmagent.AgentCommand):
     def __init__(self):
         super(UpdateBondingCmd, self).__init__()
         self.bondName = None
-        self.slaves = []
+        self.slaves = None # type: list[HostNetworkInterfaceStruct]
         self.mode = None
         self.xmitHashPolicy = None
 
@@ -196,6 +197,18 @@ class DeleteBondingResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(DeleteBondingResponse, self).__init__()
 
+class HostNetworkInterfaceStruct(object):
+    def __init__(self):
+        self.interfaceName = None
+        self.speed = None
+        self.slaveActive = None
+        self.carrierActive = None
+        self.mac = None
+        self.ipAddresses = None
+        self.interfaceType = None
+        self.master = None
+        self.pciDeviceAddress = None
+        self.offloadStatus = None
 
 class NetworkPlugin(kvmagent.KvmAgent):
     '''
@@ -308,6 +321,21 @@ class NetworkPlugin(kvmagent.KvmAgent):
         shell.check_run("brctl addif %s %s" % (cmd.bridgeName, cmd.physicalInterfaceName))
         return jsonobject.dumps(rsp)
 
+    def _has_bridge_or_subinterface(self, ifname):
+        addrs = netifaces.ifaddresses(ifname)
+
+        # Check for subinterfaces
+        if netifaces.AF_PACKET in addrs:
+            for addr in addrs[netifaces.AF_PACKET]:
+                if addr.get('addr').startswith(ifname + '.'):
+                    return True
+
+        # Check if there is a bridge port
+        if netifaces.AF_BRIDGE in addrs:
+            return True
+
+        return False
+
     @lock.lock('bonding')
     @kvmagent.replyerror
     @in_bash
@@ -316,14 +344,19 @@ class NetworkPlugin(kvmagent.KvmAgent):
         rsp = CreateBondingResponse()
 
         try:
+            for slave in cmd.slaves:
+                if self._has_bridge_or_subinterface(self, slave.interfaceName) == 0:
+                    raise Exception(
+                        'failed to update bonding %s, please check whether the slave has a sub-interface or a '
+                        'bridge port.', cmd.bondName)
             # zs-bond -c bond1 mode 4
             shell.call("/usr/local/bin/zs-bond -c %s mode %s xmit_hash_policy", cmd.bondName, cmd.bondMode, cmd.xmitHashPolicy)
 
             # zs-nic-to-bond -a bond2 nic3
             for slave in cmd.slaves:
-                ret = shell.call("/usr/local/bin/zs-change-nic -a %s %s", cmd.bondName, slave)
+                ret = shell.call("/usr/local/bin/zs-change-nic -a %s %s", cmd.bondName, slave.interfaceName)
                 if ret != 0:
-                    shell.call("/usr/local/bin/zs-bond -d %s", cmd.bondName
+                    shell.call("/usr/local/bin/zs-bond -d %s", cmd.bondName)
         except Exception as e:
             logger.warning(traceback.format_exc())
             rsp.error = 'unable to create bonding[%s], because %s' % (cmd.bondName, str(e))
@@ -344,9 +377,15 @@ class NetworkPlugin(kvmagent.KvmAgent):
         reduce_items = list(set(bondSlaves) - set(newBondSlaves))
 
         try:
+            for interface in add_items:
+                if self._has_bridge_or_subinterface(self, interface.interfaceName) == 0:
+                    raise Exception(
+                        'failed to update bonding %s, please check whether the slave has a sub-interface or a '
+                        'bridge port.', cmd.bondName)
+
             if cmd.mode is not None or cmd.xmitHashPolicy is not None:
                 # zs-bond -u bond1 mode 4
-                if cmd.xmitHashPolicy is not None:
+                if cmd.xmitHashPolicy is None:
                     shell.call("/usr/local/bin/zs-bond -u %s mode %s", cmd.bondName, cmd.mode)
                 else:
                     shell.call("/usr/local/bin/zs-bond -u %s mode %s xmitHashPolicy %s", cmd.bondName, cmd.bondMode, cmd.xmitHashPolicy)
@@ -354,10 +393,10 @@ class NetworkPlugin(kvmagent.KvmAgent):
             if bondSlaves != newBondSlaves:
                 # zs-nic-to-bond -a bond2 nic3
                 for interface in add_items:
-                    shell.call("/usr/local/bin/zs-nic-to-bond -a %s %s", cmd.bondName, interface)
+                    shell.call("/usr/local/bin/zs-nic-to-bond -a %s %s", cmd.bondName, interface.interfaceName)
                 # zs-nic-to-bond -d bond2 nic 4
                 for interface in reduce_items:
-                    shell.call("/usr/local/bin/zs-nic-to-bond -d %s %s", cmd.bondName, interface)
+                    shell.call("/usr/local/bin/zs-nic-to-bond -d %s %s", cmd.bondName, interface.interfaceName)
         except Exception as e:
             logger.warning(traceback.format_exc())
             rsp.error = 'unable to create bonding[%s], because %s' % (cmd.bondName, str(e))
@@ -373,8 +412,13 @@ class NetworkPlugin(kvmagent.KvmAgent):
         rsp = DeleteBondingResponse()
 
         try:
-            # zs-bond -d bond2
-            shell.call("/usr/local/bin/zs-bond -d %s", cmd.bondName)
+            if self._has_bridge_or_subinterface(self, cmd.bondName) != 0:
+              # zs-bond -d bond2
+              shell.call("/usr/local/bin/zs-bond -d %s", cmd.bondName)
+            else:
+                raise Exception('failed to delete bonding %s, please check whether the bond has a sub-interface or a '
+                                'bridge port.', cmd.bondName)
+
         except Exception as e:
             logger.warning(traceback.format_exc())
             rsp.error = 'unable to delete bonding[%s], because %s' % (

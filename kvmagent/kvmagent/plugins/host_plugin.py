@@ -16,7 +16,6 @@ import string
 import socket
 import sys
 import yaml
-import traceback
 
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
@@ -1796,18 +1795,6 @@ done
         HostPlugin.__store_cache__(rsp.bondings, rsp.nics)
         return jsonobject.dumps(rsp)
 
-    def _check_ip(self, ip, gw):
-        response = os.system("ping -c 1 -W 2 {} > /dev/null 2>&1".format(ip))
-        if response == 0:
-            return True
-        else:
-            # If you can't ping, try to communicate through the gateway
-            response = os.system("ping -c 5 -W 1 {} > /dev/null 2>&1".format(gw))
-            if response == 0:
-                return True
-            else:
-                return False
-
     @kvmagent.replyerror
     @in_bash
     def set_ip_on_host_network_interface(self, req):
@@ -1822,15 +1809,13 @@ done
                 else:
                     shell.call("/usr/local/bin/zs-network-setting -i %s %s %s", cmd.interfaceName, cmd.ipAddress, cmd.netmask)
             except Exception as e:
-                logger.warning(traceback.format_exc())
                 rsp.error = 'unable to add ip on %s, because %s' % (cmd.interfaceName, str(e))
                 rsp.success = False
 
             # After configuring the ip, check the connectivity
-            ret = self._check_ip(cmd.ipAddress, cmd.gateway)
-            if ret != 0:
-                # mv ip on interface
-                ip_addresses = shell.call("ip addr show dev %s | grep 'inet' | awk '{print $2}'", cmd.interfaceName)
+            if shell.run("ping -c 5 -W 1 {} > /dev/null 2>&1", cmd.gateway) != 0:
+                # mv ipv4 on interface
+                ip_addresses = shell.call("ip addr show -4 dev %s | grep 'inet' | awk '{print $2}'", cmd.interfaceName)
                 for ip_addr in ip_addresses:
                     shell.call("ip addr del %s dev %s", ip_addr, cmd.interfaceName)
 
@@ -1843,11 +1828,11 @@ done
                                cmd.ipAddress, cmd.netmask, cmd.gateway)
         # If the front-end parameter is empty, the ip will be deleted by default
         else:
-            # mv ip on interface
-            ip_addresses = shell.call("ip addr show dev %s | grep 'inet' | awk '{print $2}'", cmd.interfaceName)
+            # mv ipv4 on interface
+            ip_addresses = shell.call("ip addr show -4 dev %s | grep 'inet' | awk '{print $2}'", cmd.interfaceName)
             for ip_addr in ip_addresses:
                 shell.call("ip addr del %s dev %s", ip_addr, cmd.interfaceName)
-
+            
         return jsonobject.dumps(rsp)
 
     @classmethod
