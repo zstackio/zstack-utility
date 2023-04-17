@@ -39,6 +39,8 @@ Python support library for zstack""",
           "enum34==1.1.6",
           "cachetools==3.1.1",
           "xxhash==2.0.2"
+          "mock",
+          "futures"
       ],
       entry_points="""
       # -*- Entry points: -*-

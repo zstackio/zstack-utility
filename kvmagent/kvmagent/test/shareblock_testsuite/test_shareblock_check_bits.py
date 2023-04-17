@@ -1,11 +1,11 @@
 from kvmagent.test.shareblock_testsuite.shared_block_plugin_teststub import SharedBlockPluginTestStub
-from kvmagent.test.utils import shareblock_utils,pytest_utils,storage_device_utils
+from kvmagent.test.utils import sharedblock_utils,pytest_utils,storage_device_utils
 from zstacklib.utils import bash
 from unittest import TestCase
 from zstacklib.test.utils import misc,env
 import pytest
 
-shareblock_utils.init_shareblock_plugin()
+
 storage_device_utils.init_storagedevice_plugin()
 
 PKG_NAME = __name__
@@ -17,11 +17,12 @@ __ENV_SETUP__ = {
     }
 }
 
-global hostUuid
-global vgUuid
+hostUuid = "8b12f74e6a834c5fa90304b8ea54b1dd"
+hostId = 24
+vgUuid = "36b02490bb944233b0b01990a450ba83"
 
 ## describe: case will manage by ztest
-class TestShareBlockPlugin(TestCase, SharedBlockPluginTestStub):
+class TestSharedBlockPlugin(TestCase, SharedBlockPluginTestStub):
 
     @classmethod
     def setUpClass(cls):
@@ -45,16 +46,9 @@ class TestShareBlockPlugin(TestCase, SharedBlockPluginTestStub):
         )
         self.assertEqual(rsp.success, True, "iscsiadm login failed")
 
-        global hostUuid
-        hostUuid = misc.uuid()
-
-        global vgUuid
-        vgUuid = misc.uuid()
-        # get block uuid
         r, o = bash.bash_ro("ls /dev/disk/by-id | grep scsi|awk -F '-' '{print $2}'")
         blockUuid = o.strip().replace(' ', '').replace('\n', '').replace('\r', '')
-        print(blockUuid)
-        rsp = shareblock_utils.shareblock_connect(
+        rsp = sharedblock_utils.shareblock_connect(
             sharedBlockUuids=[blockUuid],
             allSharedBlockUuids=[blockUuid],
             vgUuid=vgUuid,
@@ -73,7 +67,7 @@ class TestShareBlockPlugin(TestCase, SharedBlockPluginTestStub):
 
         # create empty volume
         volumeUuid = misc.uuid()
-        rsp = shareblock_utils.shareblock_create_empty_volume(
+        rsp = sharedblock_utils.shareblock_create_empty_volume(
             installPath="sharedblock://{}/{}".format(vgUuid,volumeUuid),
             volumeUuid=volumeUuid,
             size=1048576,
@@ -86,13 +80,16 @@ class TestShareBlockPlugin(TestCase, SharedBlockPluginTestStub):
         self.assertEqual(0, r, "create empty volume fail in host")
 
         # test get bits
-        volumeUuid = misc.uuid()
-        rsp = shareblock_utils.shareblock_check_bits(
+        rsp = sharedblock_utils.sharedblock_check_bits(
             path="sharedblock://{}/{}".format(vgUuid, volumeUuid),
             vgUuid=vgUuid
         )
-        self.assertEqual(True, rsp.success, rsp.error)
+        self.assertEqual(True, rsp.existing, rsp.error)
         self.assertGreater(rsp.totalCapacity, 0, "[check] vg has no size")
         self.assertGreater(rsp.availableCapacity, 0, "[check] vg has no size")
 
-        self.logout(vgUuid, hostUuid)
+        rsp = sharedblock_utils.sharedblock_check_bits(
+            path="sharedblock://{}/{}".format(vgUuid, misc.uuid()),
+            vgUuid=vgUuid
+        )
+        self.assertEqual(False, rsp.existing, rsp.error)

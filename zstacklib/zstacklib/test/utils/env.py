@@ -72,6 +72,11 @@ def get_test_environment_metadata():
         env = yaml.load(f.read(), Loader=yaml.FullLoader)
         return dict2obj(env["self"])
 
+def get_private_key():
+    with open(envFile, "r") as f:
+        env = yaml.load(f.read(), Loader=yaml.FullLoader)
+        return env["privateKey"]
+
 
 def get_vm_metadata(vm_name):
     with open(envFile, "r") as f:

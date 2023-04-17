@@ -1,11 +1,11 @@
 from kvmagent.test.shareblock_testsuite.shared_block_plugin_teststub import SharedBlockPluginTestStub
-from kvmagent.test.utils import shareblock_utils,pytest_utils,storage_device_utils
+from kvmagent.test.utils import sharedblock_utils,pytest_utils,storage_device_utils
 from zstacklib.utils import bash
 from unittest import TestCase
 from zstacklib.test.utils import misc,env
 import pytest
 
-shareblock_utils.init_shareblock_plugin()
+
 storage_device_utils.init_storagedevice_plugin()
 
 PKG_NAME = __name__
@@ -21,7 +21,7 @@ global hostUuid
 global vgUuid
 
 ## describe: case will manage by ztest
-class TestShareBlockPlugin(TestCase,SharedBlockPluginTestStub):
+class TestSharedBlockPlugin(TestCase,SharedBlockPluginTestStub):
 
     @classmethod
     def setUpClass(cls):
@@ -54,7 +54,7 @@ class TestShareBlockPlugin(TestCase,SharedBlockPluginTestStub):
         r, o = bash.bash_ro("ls /dev/disk/by-id | grep scsi|awk -F '-' '{print $2}'")
         blockUuid = o.strip().replace(' ', '').replace('\n', '').replace('\r', '')
         print(blockUuid)
-        rsp = shareblock_utils.shareblock_connect(
+        rsp = sharedblock_utils.shareblock_connect(
             sharedBlockUuids=[blockUuid],
             allSharedBlockUuids=[blockUuid],
             vgUuid=vgUuid,
@@ -74,7 +74,7 @@ class TestShareBlockPlugin(TestCase,SharedBlockPluginTestStub):
         # create volume
         # test disconnect shareblock
         volumeUuid = misc.uuid()
-        rsp = shareblock_utils.shareblock_create_data_volume_with_backing(
+        rsp = sharedblock_utils.shareblock_create_data_volume_with_backing(
             templatePathInCache="sharedblock://{}/{}".format(vgUuid,imageUuid),
             installPath="sharedblock://{}/{}".format(vgUuid,volumeUuid),
             volumeUuid=volumeUuid,
@@ -87,4 +87,7 @@ class TestShareBlockPlugin(TestCase,SharedBlockPluginTestStub):
         r, o = bash.bash_ro("lvs --nolocking -t |grep %s" % volumeUuid)
         self.assertEqual(0, r, "create volume fail in host")
 
-        self.logout(vgUuid, hostUuid)
+        r, o = bash.bash_ro("ls /dev/{}/{}".format(vgUuid ,volumeUuid))
+        self.assertEqual(1, r, "deactivate volume fail in host")
+
+        self.disconnect(vgUuid, hostUuid)

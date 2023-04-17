@@ -993,10 +993,10 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         install_abs_path = translate_absolute_path_from_install_path(cmd.primaryStorageInstallPath)
 
         def upload():
-            if not os.path.exists(cmd.primaryStorageInstallPath):
-                raise kvmagent.KvmError('cannot find %s' % cmd.primaryStorageInstallPath)
+            if not os.path.exists(install_abs_path):
+                raise kvmagent.KvmError('cannot find %s' % install_abs_path)
 
-            linux.scp_upload(cmd.hostname, cmd.sshKey, cmd.primaryStorageInstallPath, cmd.backupStorageInstallPath, cmd.username, cmd.sshPort)
+            linux.scp_upload(cmd.hostname, cmd.sshKey, install_abs_path, cmd.backupStorageInstallPath, cmd.username, cmd.sshPort)
 
         with lvm.OperateLv(install_abs_path, shared=True):
             upload()
@@ -1016,7 +1016,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
     def do_download_from_sftp(self, cmd, install_abs_path):
         if not lvm.lv_exists(install_abs_path):
-            size = linux.sftp_get(cmd.hostname, cmd.sshKey, cmd.backupStorageInstallPath, install_abs_path, cmd.username, cmd.sshPort, True)
+            size = linux.sftp_get(cmd.hostname, cmd.sshKey, cmd.backupStorageInstallPath, install_abs_path, sshPort=cmd.sshPort, get_size=True)
             lvm.update_pv_allocate_strategy(cmd)
             lvm.create_lv_from_absolute_path(install_abs_path, size,
                                              "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
@@ -1289,17 +1289,16 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 try:
                     lvm.deactive_lv(fpath)
                 except Exception as e:
-                    if raise_exception:
+                    if killProcess:
+                        qemus = lvm.find_qemu_for_lv_in_use(fpath)
+                        if len(qemus) == 0:
+                            return
+                        for qemu in qemus:
+                            if qemu.state != "running":
+                                linux.kill_process(qemu.pid)
+                        lvm.deactive_lv(fpath)
+                    elif raise_exception:
                         raise e
-                    if not killProcess:
-                        return
-                    qemus = lvm.find_qemu_for_lv_in_use(fpath)
-                    if len(qemus) == 0:
-                        return
-                    for qemu in qemus:
-                        if qemu.state != "running":
-                            linux.kill_process(qemu.pid)
-                    lvm.deactive_lv(fpath)
 
         install_abs_path = translate_absolute_path_from_install_path(installPath)
         handle_lv(lockType, install_abs_path)
