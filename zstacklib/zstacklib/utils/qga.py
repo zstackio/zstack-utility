@@ -59,6 +59,10 @@ class VmQga(object):
     VM_OS_LINUX_UOS = "uos"
     VM_OS_LINUX_UBUNTU = "ubuntu"
     VM_OS_LINUX_CENTOS = "centos"
+    VM_OS_LINUX_OPEN_SUSE = "opensuse-leap"
+    VM_OS_LINUX_SUSE = "sles"
+    VM_OS_LINUX_ORACLE = "ol"
+    VM_OS_LINUX_REDHAT = "rhel"
     VM_OS_WINDOWS = "mswindows"
 
     def __init__(self, domain):
@@ -291,9 +295,7 @@ class VmQga(object):
         ret = self.call_qga_command("guest-get-osinfo")
         if ret and "id" in ret and "version-id" in ret:
             vm_os = ret["id"].lower()
-            version = ret["version-id"].lower()
-            if vm_os == self.VM_OS_LINUX_UBUNTU:
-                version = version.split(".")[0]
+            version = ret["version-id"].lower().split(".")[0]
             return vm_os, version
         raise Exception('get vm %s os info failed' % self.vm_uuid)
 
