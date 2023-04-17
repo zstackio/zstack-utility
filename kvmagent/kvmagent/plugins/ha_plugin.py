@@ -24,6 +24,8 @@ import abc
 import functools
 import pprint
 import inspect
+from zstacklib.utils import iproute
+import zstacklib.utils.ip as ipUtils
 
 logger = log.get_logger(__name__)
 
@@ -56,6 +58,13 @@ class CheckShareBlockVmStateRsp(AgentRsp):
         self.result = None
         self.vmUuids = []
 
+class AddVpcHaToHostRsp(AgentRsp):
+    def __init__(self):
+        super(AddVpcHaToHostRsp, self).__init__()
+
+class DelVpcHaFromHostRsp(AgentRsp):
+    def __init__(self):
+        super(DelVpcHaFromHostRsp, self).__init__()
 
 class ScanRsp(AgentRsp):
     def __init__(self):
@@ -135,10 +144,40 @@ class PhysicalNicFencer(AbstractHaFencer):
         self.name = self.get_ha_fencer_name()
 
     def exec_fencer(self):
-        pass
+        self.find_falut_business_nic()
 
     def get_ha_fencer_name(self):
         return "hostBusinessNic"
+
+    def find_vm_use_falut_nic(self):
+        falut_nic = self.find_falut_business_nic()
+
+        vm_use_falut_nic_pids_dict = {}
+        zstack_uuid_pattern = "'[0-9a-f]{8}[0-9a-f]{4}[1-5][0-9a-f]{3}[89ab][0-9a-f]{3}[0-9a-f]{12}'"
+        vm_in_process_uuid_list = shell.call("virsh list | egrep -o " + zstack_uuid_pattern + " | sort | uniq")
+        logger.debug('vm_in_process_uuid_list:\n' + vm_in_process_uuid_list)
+        for vm_uuid in vm_in_process_uuid_list.splitlines():
+            bridge_nic = shell.call("virsh domiflist %s | awk 'NR==3 {print $3}'" % vm_uuid)
+            nic = bridge_nic.split('_')[1]
+            if nic.strip() in falut_nic:
+                vm_pid = linux.find_vm_pid_by_uuid(vm_uuid)
+                if not vm_pid:
+                    logger.warn('vm %s pid not found' % vm_uuid)
+                    continue
+                vm_use_falut_nic_pids_dict[vm_uuid] = vm_pid
+
+        return vm_use_falut_nic_pids_dict
+
+    def find_falut_business_nic(self):
+        falut_nic = []
+        nics = ipUtils.get_host_physicl_nics()
+
+        for new_nic in nics:
+            ip = iproute.query_links(new_nic)
+            if ip[0].state == 'DOWN':
+                falut_nic.append(new_nic.strip())
+        return falut_nic
+
 
 class AbstractStorageFencer(AbstractHaFencer):
     def __init__(self, interval, max_attempts, ps_uuid, ha_fencer_failure_count):
@@ -483,10 +522,10 @@ class FileSystemHeartbeatController(AbstractStorageFencer):
         if self.write_fencer_heartbeat() is False:
             self.fencer_triggered_callback([self.ps_uuid], 'Disconnected')
 
-            if self.strategy == 'Permissive':
-                return
+            # if self.strategy == 'Permissive':
+            #     return
 
-            killed_vms = kill_vm(self.max_attempts, [self.mount_path], True)
+            killed_vms = kill_vm(self.max_attempts, self.strategy, [self.mount_path], True)
 
             if len(killed_vms) != 0:
                 self.fencer_triggered_callback([self.ps_uuid], ','.join(killed_vms.keys()))
@@ -564,15 +603,15 @@ class CephHeartbeatController(AbstractStorageFencer):
             if self.ceph_in_error_stat():
                 logger.debug('ceph is in error state, check ha strategy next')
 
-                if self.strategy == 'Permissive':
-                    logger.debug("ceph fencer detect ha strategy is %s skip fence vms" % self.strategy)
-                    self.reset_failure_count()
-                    return
+                # if self.strategy == 'Permissive':
+                #     logger.debug("ceph fencer detect ha strategy is %s skip fence vms" % self.strategy)
+                #     self.reset_failure_count()
+                #     return
 
                 # for example, pool name is aaa
                 # add slash to confirm kill_vm matches vm with volume aaa/volume_path
                 # but not aaa_suffix/volume_path
-                vm_uuids = kill_vm(self.max_attempts, ['%s/' % self.pool_name], False).keys()
+                vm_uuids = kill_vm(self.max_attempts, self.strategy, ['%s/' % self.pool_name], False).keys()
 
                 if vm_uuids:
                     try:
@@ -676,7 +715,29 @@ class CephHeartbeatController(AbstractStorageFencer):
 last_multipath_run = time.time()
 QEMU_VERSION = qemu.get_version()
 LIBVIRT_VERSION = linux.get_libvirt_version()
+global_vpc_uuids = []
+vpc_lock = threading.Lock()
 
+def add_vpc_uuids(add_vpc_vm_uuids, lock):
+    with lock:
+        if add_vpc_vm_uuids is not None and len(add_vpc_vm_uuids) > 0:
+            global_vpc_uuids.extend(set(add_vpc_vm_uuids) - set(global_vpc_uuids))
+            logger.debug("add vpc uuids[%s], current vpc_uuids[%s]" %(add_vpc_vm_uuids, global_vpc_uuids))
+
+
+def del_vpc_uuid(del_vpc_vm_uuid, lock):
+    with lock:
+        if del_vpc_vm_uuid is not None and len(del_vpc_vm_uuid) > 0:
+            global_vpc_uuids.remove(del_vpc_vm_uuid)
+            logger.debug("del vpc uuid[%s], current vpc_uuids[%s]" % (del_vpc_vm_uuid, global_vpc_uuids))
+
+def find_vpc_uuid(vm_uuids, lock):
+    with lock:
+        return  [uuid for uuid in global_vpc_uuids if uuid.strip() in vm_uuids]
+
+def is_vpc(vm_uuid, lock):
+    with lock:
+        return vm_uuid not in global_vpc_uuids
 
 def clean_network_config(vm_uuids):
     for c in kvmagent.ha_cleanup_handlers:
@@ -696,8 +757,11 @@ def find_ps_running_vm(store_uuid):
     logger.debug('vm_in_ps_%s_uuid_list:' % store_uuid + str(vm_in_ps_uuid_list))
     return vm_in_ps_uuid_list
 
+def is_strategy_permissive_and_not_vpc(strategy, vm_uuid):
+    return strategy == 'Permissive' and is_vpc(vm_uuid)
 
-def kill_vm(maxAttempts, mountPaths=None, isFileSystem=None):
+
+def kill_vm(maxAttempts, strategy, mountPaths=None, isFileSystem=None):
     zstack_uuid_pattern = "'[0-9a-f]{8}[0-9a-f]{4}[1-5][0-9a-f]{3}[89ab][0-9a-f]{3}[0-9a-f]{12}'"
 
     virsh_list = shell.call("virsh list --all")
@@ -714,7 +778,8 @@ def kill_vm(maxAttempts, mountPaths=None, isFileSystem=None):
             continue
 
         if mountPaths and isFileSystem is not None \
-                and not need_kill(vm_uuid, mountPaths, isFileSystem):
+                and not need_kill(vm_uuid, mountPaths, isFileSystem) and is_strategy_permissive_and_not_vpc(vm_uuid):
+            logger.debug("fencer detect ha strategy is %s skip fence vm[uuid:%s]" % (strategy, vm_uuid))
             continue
 
         vm_pid = linux.find_vm_pid_by_uuid(vm_uuid)
@@ -832,6 +897,8 @@ class HaPlugin(kvmagent.KvmAgent):
     CANCEL_BLOCK_SELF_FENCER = "/ha/block/cancelselffencer"
     FILESYSTEM_CHECK_VMSTATE_PATH = "/filesystem/check/vmstate"
     SHAREDBLOCK_CHECK_VMSTATE_PATH = "/sharedblock/check/vmstate"
+    ADD_VPC_HA_TO_HOST = "/add/vpc/ha/to/host"
+    DEL_VPC_HA_FROM_HOST = "/del/vpc/ha/form/host"
 
     RET_SUCCESS = "success"
     RET_FAILURE = "failure"
@@ -845,6 +912,8 @@ class HaPlugin(kvmagent.KvmAgent):
         self.fencer_lock = threading.RLock()
         self.sblk_health_checker = SanlockHealthChecker()
         self.sblk_fencer_running = False
+        self.vpc_uuids = []
+        self.vpc_lock = threading.RLock()
 
 
     # def register_storage_ha(self, storage_ha):
@@ -921,10 +990,10 @@ class HaPlugin(kvmagent.KvmAgent):
                     try:
                         logger.warn("aliyun nas storage %s fencer fired!" % cmd.uuid)
 
-                        if cmd.strategy == 'Permissive':
-                            continue
+                        # if cmd.strategy == 'Permissive':
+                        #     continue
 
-                        vm_uuids = kill_vm(cmd.maxAttempts).keys()
+                        vm_uuids = kill_vm(cmd.maxAttempts, cmd.strategy).keys()
 
                         if vm_uuids:
                             self.report_self_fencer_triggered([cmd.uuid], ','.join(vm_uuids))
@@ -1002,10 +1071,10 @@ class HaPlugin(kvmagent.KvmAgent):
 
                     try:
                         logger.warn("block storage %s fencer fired!" % cmd.uuid)
-                        if cmd.strategy == 'Permissive':
-                            continue
+                        # if cmd.strategy == 'Permissive':
+                        #     continue
 
-                        vm_uuids = kill_vm(cmd.maxAttempts).keys()
+                        vm_uuids = kill_vm(cmd.maxAttempts, cmd.strategy).keys()
 
                         if vm_uuids:
                             self.report_self_fencer_triggered([cmd.uuid], ','.join(vm_uuids))
@@ -1059,8 +1128,8 @@ class HaPlugin(kvmagent.KvmAgent):
             self.sblk_health_checker.inc_fencer_fire_cnt(vg)
 
             cmd = self.sblk_health_checker.get_vg_fencer_cmd(vg)
-            if cmd.strategy == 'Permissive':
-                return False
+            # if cmd.strategy == 'Permissive':
+            #     return False
 
             # we will check one io to determine volumes on pv should be kill
             invalid_pv_uuids = lvm.get_invalid_pv_uuids(vg, cmd.checkIo)
@@ -1069,10 +1138,11 @@ class HaPlugin(kvmagent.KvmAgent):
             killed_vm_uuids = []
             for vm in vms:
                 try:
-                    linux.kill_process(vm.pid)
-                    logger.warn(
-                        'kill the vm[uuid:%s, pid:%s] because we lost connection to the storage.' % (vm.uuid, vm.pid))
-                    killed_vm_uuids.append(vm.uuid)
+                    if is_strategy_permissive_and_not_vpc(cmd.strategy, vm.uuid):
+                        linux.kill_process(vm.pid)
+                        logger.warn(
+                            'kill the vm[uuid:%s, pid:%s] because we lost connection to the storage.' % (vm.uuid, vm.pid))
+                        killed_vm_uuids.append(vm.uuid)
                 except Exception as e:
                     logger.warn(
                         'failed to kill the vm[uuid:%s, pid:%s] %s\n%s' % (vm.uuid, vm.pid, e.message, traceback.format_exc()))
@@ -1574,6 +1644,22 @@ class HaPlugin(kvmagent.KvmAgent):
         rsp.vmUuids = vm_uuids
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    def add_vpc_ha_to_host(self, req):
+        rsp = AddVpcHaToHostRsp()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        add_vpc_uuids(cmd.vmUuids, vpc_lock)
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def del_vpc_ha_from_host(self, req):
+        rsp = DelVpcHaFromHostRsp()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        add_vpc_uuids(cmd.vmUuid, vpc_lock)
+
+        return jsonobject.dumps(rsp)
+
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -1591,7 +1677,9 @@ class HaPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.BLOCK_SELF_FENCER, self.setup_block_self_fencer)
         http_server.register_async_uri(self.CANCEL_BLOCK_SELF_FENCER, self.cancel_block_self_fencer)
         http_server.register_async_uri(self.FILESYSTEM_CHECK_VMSTATE_PATH, self.file_system_check_vmstate)
-        http_server.register_async_uri(self.SHAREDBLOCK_CHECK_VMSTATE_PATH, self.sharedblock_check_vmstate )
+        http_server.register_async_uri(self.SHAREDBLOCK_CHECK_VMSTATE_PATH, self.sharedblock_check_vmstate)
+        http_server.register_async_uri(self.ADD_VPC_HA_TO_HOST, self.add_vpc_ha_to_host)
+        http_server.register_async_uri(self.DEL_VPC_HA_FROM_HOST, self.del_vpc_ha_from_host)
 
     def stop(self):
         pass
