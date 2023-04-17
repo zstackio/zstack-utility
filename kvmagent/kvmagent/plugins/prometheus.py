@@ -415,6 +415,8 @@ def convert_disk_state_to_int(state):
         return 5
     elif "failed" in state or "offline" in state or "offln" == state:
         return 10
+    elif "missing" in state:
+        return 20
     else:
         return 100
 
@@ -472,9 +474,13 @@ def collect_arcconf_raid_state(metrics, infos):
                 metrics['raid_state'].add_metric([target_id], convert_raid_state_to_int(state))
         
         for infos in device_arr[1:]:
-            drive_state = serial_number = "unknown"
+            drive_state = serial_number = slot_number = enclosure_device_id = "unknown"
+            is_hard_drive = False
             for l in infos.splitlines():
                 if l.strip() == "":
+                    continue
+                if l.strip().lower() == "device is a hard drive":
+                    is_hard_drive = True
                     continue
                 k = l.split(":")[0].strip().lower()
                 v = ":".join(l.split(":")[1:]).strip()
@@ -482,17 +488,20 @@ def collect_arcconf_raid_state(metrics, infos):
                     drive_state = v.split(" ")[0].strip()
                 elif "serial number" in k:
                     serial_number = v
-                elif "reported location" in k and "Enclosure" in v and "Slot" in v and drive_state != "unknown":
+                elif "reported location" in k and "Enclosure" in v and "Slot" in v:
                     enclosure_device_id = v.split(",")[0].split(" ")[1].strip()
                     slot_number = v.split("Slot ")[1].split("(")[0].strip()
-                    disk_status = convert_disk_state_to_int(drive_state)
-                    metrics['physical_disk_state'].add_metric([slot_number, enclosure_device_id], disk_status)
-                    disk_list[serial_number] = "%s-%s" % (enclosure_device_id, slot_number)
-                    if disk_status == 0 and (serial_number in disk_status_abnormal_list_record.keys()):
-                        disk_status_abnormal_list_record.pop(serial_number)
-                    elif disk_status != 0:
-                        send_physical_disk_status_alarm_to_mn(serial_number, slot_number, enclosure_device_id, drive_state)
-     
+
+            if not is_hard_drive or serial_number.lower() == "unknown" or enclosure_device_id == "unknown" or slot_number == "unknown" or drive_state == "unknown":
+                continue
+            disk_status = convert_disk_state_to_int(drive_state)
+            metrics['physical_disk_state'].add_metric([slot_number, enclosure_device_id], disk_status)
+            disk_list[serial_number] = "%s-%s" % (enclosure_device_id, slot_number)
+            if disk_status == 0 and (serial_number in disk_status_abnormal_list_record.keys()):
+                disk_status_abnormal_list_record.pop(serial_number)
+            elif disk_status != 0:
+                send_physical_disk_status_alarm_to_mn(serial_number, slot_number, enclosure_device_id, drive_state)
+
     check_disk_insert_and_remove(disk_list)
     return metrics.values()
 
@@ -529,7 +538,8 @@ def collect_sas_raid_state(metrics, infos):
             elif "Drive Type" == k:
                 drive_status = convert_disk_state_to_int(state)
                 metrics['physical_disk_state'].add_metric([slot_number, enclosure_device_id], drive_status)
-                disk_list[serial_number] = "%s-%s" % (enclosure_device_id, slot_number)
+                if drive_status != 20:
+                    disk_list[serial_number] = "%s-%s" % (enclosure_device_id, slot_number)
                 if drive_status == 0 and (serial_number in disk_status_abnormal_list_record.keys()):
                     disk_status_abnormal_list_record.pop(serial_number)
                 elif drive_status != 0:
