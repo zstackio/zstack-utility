@@ -14,15 +14,6 @@ import sys
 import time
 import traceback
 
-from ansible import constants as ansible_constants
-from ansible import context as ansible_context
-from ansible.executor import task_queue_manager as ansible_tqm
-from ansible.module_utils.common import collections as ansible_collections
-from ansible.inventory import manager as ansible_im
-from ansible.parsing import dataloader as ansible_dataloader
-from ansible.playbook import play as ansible_play
-from ansible.plugins import callback as ansible_callback
-from ansible.vars import manager as ansible_vm
 import jinja2
 import urllib2
 
@@ -35,7 +26,6 @@ host = ""
 pkg_zstacklib = ""
 yum_server = ""
 trusted_host = ""
-ansible_constants.HOST_KEY_CHECKING = False
 
 RPM_BASED_OS = ["centos", "redhat", "alibaba", "kylin10", "uos1021a"]
 DEB_BASED_OS = ["ubuntu", "kylin4.0.2", "uos", "debian", "uniontech"]
