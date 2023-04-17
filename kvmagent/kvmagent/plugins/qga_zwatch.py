@@ -24,8 +24,8 @@ class AgentRsp(object):
 
 class ZWatchMetricMonitor(kvmagent.KvmAgent):
     TEST_ZWATCH_METRIC_MONITOR = "/host/zwatchMetricMonitor/test"
-    START_ZWATCH_METRIC_MONITOR = "/host/zwatchMetricMonitor/start"
-    STOP_ZWATCH_METRIC_MONITOR = "/host/zwatchMetricMonitor/stop"
+    INIT_ZWATCH_METRIC_MONITOR = "/host/zwatchMetricMonitor/init"
+    CONFIG_ZWATCH_METRIC_MONITOR = "/host/zwatchMetricMonitor/config"
 
     ZWATCH_RESTART_CMD = "/bin/systemctl restart zwatch-vm-agent.service"
     ZWATCH_VM_INFO_PATH = "/var/log/zstack/vm.info"
@@ -39,9 +39,8 @@ class ZWatchMetricMonitor(kvmagent.KvmAgent):
     PROMETHEUS_PUSHGATEWAY_URL = "http://127.0.0.1:9092/metrics/job/zwatch_vm_agent/vmUuid/"
 
     state = None
-    time_lock = 0
-    sleep_time = 10
-    scan_time = 30
+    push_interval_time = 10
+    scan_interval_time = 30
 
     def __init__(self):
         self.state = False
@@ -53,8 +52,8 @@ class ZWatchMetricMonitor(kvmagent.KvmAgent):
 
     def start(self):
         http_server = kvmagent.get_http_server()
-        http_server.register_async_uri(self.START_ZWATCH_METRIC_MONITOR, self.init_zwatch_qga_monitor)
-        http_server.register_async_uri(self.STOP_ZWATCH_METRIC_MONITOR, self.config_zwatch_qga_monitor)
+        http_server.register_async_uri(self.INIT_ZWATCH_METRIC_MONITOR, self.init_zwatch_qga_monitor)
+        http_server.register_async_uri(self.CONFIG_ZWATCH_METRIC_MONITOR, self.config_zwatch_qga_monitor)
 
     def stop(self):
         pass
@@ -78,7 +77,7 @@ class ZWatchMetricMonitor(kvmagent.KvmAgent):
                     # new vm found
                     qga = vm_dict.get(vmUuid)
                     qga and self.zwatch_qga_monitor_vm(vmUuid, qga)
-                time.sleep(self.scan_time)
+                time.sleep(self.scan_interval_time)
 
     @thread.AsyncThread
     def zwatch_qga_monitor_vm(self, uuid, qga):
@@ -116,7 +115,7 @@ class ZWatchMetricMonitor(kvmagent.KvmAgent):
                 _, vmMetrics = qga.guest_file_read(zwatch_vm_metric_path)
                 if vmMetrics:
                     push_metrics_to_gateway(self.PROMETHEUS_PUSHGATEWAY_URL, uuid, vmMetrics)
-                time.sleep(self.sleep_time)
+                time.sleep(self.push_interval_time)
             except Exception as e:
                 logger.debug('vm[%s] end monitor with qga due to [%s]' % (uuid, str(e)))
                 self.running_vm_list.remove(uuid)
