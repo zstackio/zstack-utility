@@ -637,7 +637,8 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
     @bash.in_bash
     def mega_raid_locate_storcli(self, cmd, raid_info):
-        pd_info = bash.bash_errorout("/opt/MegaRAID/storcli/storcli64 /call/eall/sall show all J")
+        # when disk status is abnormal, this command will return no 0.
+        pd_info = bash.bash_o("/opt/MegaRAID/storcli/storcli64 /call/eall/sall show all J")
         bus_number = self.get_bus_number()
         drive = self.get_megaraid_device_info_storcli("/dev/bus/%d -d megaraid,%d" % (bus_number, cmd.deviceNumber),
                                                       raid_info, pd_info)
