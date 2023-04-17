@@ -62,18 +62,21 @@ host_post_info.remote_port = remote_port
 if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
 
-# get remote host arch
-host_arch = get_remote_host_arch(host_post_info)
-IS_AARCH64 = host_arch == 'aarch64'
-IS_MIPS64EL = host_arch == 'mips64el'
-IS_LOONGARCH64 = host_arch == 'loongarch64'
+# include zstacklib.py
+host_info = get_remote_host_info_obj(host_post_info)
+releasever = get_host_releasever(host_info)
+host_post_info.releasever = releasever
 
-if host_arch == 'x86_64':
+IS_AARCH64 = host_info.host_arch == 'aarch64'
+IS_MIPS64EL = host_info.host_arch == 'mips64el'
+IS_LOONGARCH64 = host_info.host_arch == 'loongarch64'
+
+if host_info.host_arch == 'x86_64':
     src_pkg_imagestorebackupstorage = "zstack-store.bin"
     src_pkg_exporter = "collectd_exporter"
 else:
-    src_pkg_imagestorebackupstorage = "zstack-store.{}.bin".format(host_arch)
-    src_pkg_exporter = "collectd_exporter_{}".format(host_arch)
+    src_pkg_imagestorebackupstorage = "zstack-store.{}.bin".format(host_info.host_arch)
+    src_pkg_exporter = "collectd_exporter_{}".format(host_info.host_arch)
 
 if client != "true":
     dst_pkg_imagestorebackupstorage = "zstack-store.bin"
@@ -81,15 +84,10 @@ else:
     dst_pkg_imagestorebackupstorage = "zstack-store-client.bin"
 dst_pkg_exporter = "collectd_exporter"
 
-# include zstacklib.py
-(distro, major_version, distro_release, distro_version) = get_remote_host_info(host_post_info)
-releasever = get_host_releasever([distro, distro_release, distro_version])
-host_post_info.releasever = releasever
-
 zstacklib_args = ZstackLibArgs()
-zstacklib_args.distro = distro
-zstacklib_args.distro_release = distro_release
-zstacklib_args.distro_version = distro_version
+zstacklib_args.distro = host_info.distro
+zstacklib_args.distro_release = host_info.distro_release
+zstacklib_args.distro_version = host_info.major_version
 zstacklib_args.zstack_repo = zstack_repo
 zstacklib_args.zstack_root = zstack_root
 zstacklib_args.host_post_info = host_post_info
@@ -97,14 +95,14 @@ zstacklib_args.pip_url = pip_url
 zstacklib_args.trusted_host = trusted_host
 zstacklib_args.require_python_env = require_python_env
 zstacklib_args.zstack_releasever = releasever
-if distro in DEB_BASED_OS:
+if host_info.distro in DEB_BASED_OS:
     zstacklib_args.apt_server = yum_server
     zstacklib_args.zstack_apt_source = zstack_repo
 else :
     zstacklib_args.yum_server = yum_server
 zstacklib = ZstackLib(zstacklib_args)
 
-if distro in RPM_BASED_OS:
+if host_info.distro in RPM_BASED_OS:
     qemu_pkg = "fuse-sshfs nmap collectd tar pyparted net-tools"
 
     if not remote_bin_installed(host_post_info, "qemu-img", return_status=True):
@@ -122,7 +120,7 @@ if distro in RPM_BASED_OS:
     ns10_update_list = "nettle"
 
     if client == "true" :
-        if distro_version < 7:
+        if host_info.major_version < 7:
             # change error to warning due to imagestore client will install after add kvm host
             Warning("Imagestore Client only support distribution version newer than 7.0")
         if zstack_repo == 'false':
@@ -149,8 +147,8 @@ if distro in RPM_BASED_OS:
                            "--disablerepo=* --enablerepo=%s install -y $pkg || true; done;") % (svr_pkgs, zstack_repo)
                 run_remote_command(command, host_post_info)
 
-elif distro in DEB_BASED_OS:
-    if client == "true" and distro_version < 16:
+elif host_info.distro in DEB_BASED_OS:
+    if client == "true" and host_info.major_version < 16:
         Warning("Client only support distribution version newer than 16.04")
     apt_install_packages(["qemu-utils", "qemu-system", "sshfs", "collectd"], host_post_info)
 else:
@@ -200,7 +198,7 @@ def load_nbd():
     status = run_remote_command(command, host_post_info, True, False)
     if status is False:
         return "nbd kernel module not found!"
-    if LooseVersion(get_remote_host_kernel_version(host_post_info)) > LooseVersion('4.0.0'):
+    if LooseVersion(host_info.kernel_version) > LooseVersion('4.0.0'):
         command = "/sbin/modprobe nbd nbds_max=32 max_part=16"
     else:
         command = "/sbin/modprobe nbd nbds_max=128 max_part=16"
@@ -230,9 +228,9 @@ if fs_rootpath != '' and remote_user != 'root':
 if client != "true":
     # integrate zstack-store with init.d
     run_remote_command("/bin/cp -f /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage /etc/init.d/", host_post_info)
-    if distro in RPM_BASED_OS:
+    if host_info.distro in RPM_BASED_OS:
         command = "/usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage stop && /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage start && chkconfig zstack-imagestorebackupstorage on"
-    elif distro in DEB_BASED_OS:
+    elif host_info.distro in DEB_BASED_OS:
         command = "update-rc.d zstack-imagestorebackupstorage start 97 3 4 5 . stop 3 0 1 2 6 . && /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage stop && /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage start"
     run_remote_command(command, host_post_info)
 

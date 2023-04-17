@@ -16,6 +16,8 @@ from ansible.module_utils.common import collections as ansible_collections
 from ansible.inventory import manager as ansible_im
 from ansible.parsing import dataloader as ansible_dataloader
 from ansible.playbook import play as ansible_play
+from ansible.plugins import cache
+from ansible.plugins.cache import memory
 from ansible.plugins import callback as ansible_callback
 from ansible.vars import manager as ansible_vm
 import jinja2
@@ -35,7 +37,6 @@ pkg_zstacklib = ""
 yum_server = ""
 apt_server = ""
 trusted_host = ""
-ansible_constants.HOST_KEY_CHECKING = False
 enable_networkmanager_list = ["ns10", "euler20", "uos1021a", "nfs4", "rl84"]
 supported_arch_list = ["x86_64", "aarch64", "mips64el", "loongarch64"]
 
@@ -55,6 +56,48 @@ qemu_alias = {
     "uos1021a": "qemu-kvm",
     "nfs4": "qemu-kvm"
 }
+
+ansible_constants.set_constant('HOST_KEY_CHECKING', False)
+ansible_constants.set_constant('CACHE_PLUGIN', 'memory')
+ansible_constants.set_constant('DEFAULT_GATHERING', 'smart')
+
+_ansible_cache = {}
+
+
+class MemCache(cache.BaseCacheModule):
+    def __init__(self, *args, **kwargs):
+        global _ansible_cache
+        self._cache = _ansible_cache
+
+    def get(self, key):
+        return self._cache.get(key)
+
+    def set(self, key, value):
+        self._cache[key] = value
+
+    def keys(self):
+        return self._cache.keys()
+
+    def contains(self, key):
+        return key in self._cache
+
+    def delete(self, key):
+        del self._cache[key]
+
+    def flush(self):
+        self._cache = {}
+
+    def copy(self):
+        return self._cache.copy()
+
+    def __getstate__(self):
+        return self.copy()
+
+    def __setstate__(self, data):
+        self._cache = data
+
+
+memory.CacheModule = MemCache
 
 
 class AgentInstallArg(object):
@@ -232,7 +275,8 @@ class ZstackRunner(object):
             become=self.become,
             become_user=self.become_user,
             private_key_file=self.private_key,
-            become_method='sudo'
+            become_method='sudo',
+            ssh_extra_args='-C -o ControlMaster=auto -o ControlPersist=1800s',
         )
         self.loader = ansible_dataloader.DataLoader()
         self.result_callback = ResultsCollectorJSONCallback()
@@ -267,7 +311,8 @@ class ZstackRunner(object):
                     'environment': self.environment,
                     }],
             vars={'ansible_user': self.remote_user,
-                  'ansible_port': self.remote_port}
+                  'ansible_port': self.remote_port,
+                  'ansible_pipelining': True}
         )
         play = ansible_play.Play().load(
             play_source,
@@ -381,7 +426,7 @@ def get_mn_release():
     return commands.getoutput("awk '{print $3}' /etc/zstack-release").strip()
 
 
-def get_host_releasever(ansible_distribution):
+def get_host_releasever(host_info):
     supported_release_info = {
         "kylin_tercel tercel 10": "ns10",
         "kylin_sword sword 10": "ns10",
@@ -398,8 +443,8 @@ def get_host_releasever(ansible_distribution):
         "uniontech_kongzi kongzi 20": "uos1021a",
         "rocky green obsidian 8.4": "rl84",
     }
-    _key = " ".join(ansible_distribution).lower()
-    _releasever = supported_release_info.get(_key)
+    # _key = " ".join(ansible_distribution).lower()
+    _releasever = supported_release_info.get(host_info.ansible_distribution)
     return _releasever if _releasever else get_mn_release()
 
 
@@ -1373,230 +1418,83 @@ def file_operation(file, args, host_post_info):
             return True
 
 
-def _write_remote_host_result(path, content):
-    parent_dir = os.path.dirname(path)
-    if not os.path.exists(parent_dir):
-        os.makedirs(parent_dir)
+class HostInfo(object):
+    def __init__(self):
+        self.distro = ''
+        self.major_version_str = ''
+        self.distro_release = ''
+        self.distro_version = ''
+        self.host_arch = ''
+        self.cpu_info = ''
+        self.kernel_version = ''
 
-    fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_TRUNC)
-    os.write(fd, str(content))
-    os.close(fd)
+    @property
+    def ansible_distribution(self):
+        return  '{distro} {release} {version}'.format(
+            distro=self.distro,
+            release=self.distro_release,
+            version=self.distro_version).lower()
 
-
-def _read_remote_host_result(path):
-    if not os.path.exists(path):
-        return ""
-    fd = open(path, 'r')
-    result = fd.read()
-    fd.close()
-    return result
-
-
-def _get_ansible_cache_file(host_post_info, ansible_filter):
-    return os.path.join(
-        "/var/lib/zstack",
-        ".ansible.cache",
-        "%s-%s" % (host_post_info.host, host_post_info.host_uuid),
-        ansible_filter)
-
-
-def _get_remote_host_info(host_post_info, cache_file, ansible_filter, func):
-    runner_args = ZstackRunnerArg()
-    runner_args.host_post_info = host_post_info
-    runner_args.module_name = 'setup'
-    runner_args.module_args = 'filter=%s' % ansible_filter
-    zstack_runner = ZstackRunner(runner_args)
-    result = zstack_runner.run()
-    logger.debug(result)
-    if not not host_post_info.host_uuid:
-        _write_remote_host_result(cache_file, result)
-    return func(result, host_post_info)
-
-
-def _get_remote_host_info_from_result(result, host_post_info):
-    host = host_post_info.host
-    if result['contacted'] == {}:
-        ansible_start = AnsibleStartResult()
-        ansible_start.host = host
-        ansible_start.post_url = host_post_info.post_url
-        ansible_start.result = result
-        handle_ansible_start(ansible_start)
-    else:
-        if 'ansible_facts' in result['contacted'][host]:
-            facts = result['contacted'][host]['ansible_facts']
-            (distro, major_version, release, distro_version) = [
-                facts['ansible_distribution'].split()[0].lower(),
-                int(facts['ansible_distribution_major_version']),
-                facts['ansible_distribution_release'],
-                facts['ansible_distribution_version']]
-            host_post_info.post_label = "ansible.get.host.info.succ"
-            handle_ansible_info(
-                "SUCC: Get remote host %s info successful" % host,
-                host_post_info,
-                "INFO")
-            if distro in DISTRO_WITH_RPM_DEB:
-                distro = "%s_%s" % (distro, release)
-                distro = distro.lower()
-            return (distro, major_version, release, distro_version)
-        else:
-            host_post_info.post_label = "ansible.get.host.info.fail"
-            logger.warning("get_remote_host_info on host %s failed!" % host)
-            raise Exception(result)
+    @property
+    def major_version(self):
+        return int(self.major_version_str)
 
 
 @retry(times=3, sleep_time=3)
-def get_remote_host_info(host_post_info):
+def get_remote_host_info_obj(host_post_info):
     start_time = datetime.datetime.now()
+    host_info = HostInfo()
+    host = host_post_info.host
     host_post_info.start_time = start_time
     host_post_info.post_label = "ansible.get.host.info"
-    host_post_info.post_label_param = host_post_info.host
+    host_post_info.post_label_param = host
     handle_ansible_info(
         "INFO: starting get remote host %s info ... " % host,
         host_post_info,
         "INFO")
-    # we use host_uuid rather than host(ip) to identify resources,
-    # because different resources might use same ip in some situations
-    cache_file = _get_ansible_cache_file(
-        host_post_info, "ansible_distribution")
-    result = _read_remote_host_result(cache_file)
-    if not not host_post_info.host_uuid and result != "":
-        return _get_remote_host_info_from_result(eval(result), host_post_info)
-    else:
-        return _get_remote_host_info(host_post_info,
-                                     cache_file,
-                                     "ansible_distribution*",
-                                     func=_get_remote_host_info_from_result)
 
-
-def _get_remote_host_cpu_from_result(result, host_post_info):
-    host = host_post_info.host
+    runner_args = ZstackRunnerArg()
+    runner_args.host_post_info = host_post_info
+    runner_args.module_name = 'setup'
+    runner_args.module_args = 'filter=ansible*'
+    zstack_runner = ZstackRunner(runner_args)
+    result = zstack_runner.run()
+    logger.debug(result)
     if result['contacted'] == {}:
         ansible_start = AnsibleStartResult()
-        ansible_start.host = host
+        ansible_start.host = host_post_info.host
         ansible_start.post_url = host_post_info.post_url
         ansible_start.result = result
         handle_ansible_start(ansible_start)
-    else:
-        ret = result['contacted'][host]
-        if 'ansible_facts' in ret:
-            cpu_list = ret['ansible_facts']['ansible_processor']
-            host_post_info.post_label = "ansible.get.host.cpu.succ"
-            handle_ansible_info(
-                "SUCC: Get remote host %s cpu successful" % host,
-                host_post_info,
-                "INFO")
-            return ' '.join(str(e) for e in cpu_list)
-        else:
-            host_post_info.post_label = "ansible.get.host.cpu.false"
+        # return
 
+    ret = result['contacted'][host]
+    if 'ansible_facts' in ret:
+        facts = ret['ansible_facts']
+        host_info.distro = facts['ansible_distribution'].split()[0].lower()
+        host_info.major_version_str = \
+            facts['ansible_distribution_major_version']
+        host_info.distro_release = facts['ansible_distribution_release']
+        host_info.distro_version = facts['ansible_distribution_version']
+        host_info.cpu_info = ' '.join(str(p) for p in
+                                      facts['ansible_processor']).lower()
+        host_info.host_arch = facts['ansible_machine']
+        host_info.kernel_version = facts['ansible_kernel']
 
-@retry(times=3, sleep_time=3)
-def get_remote_host_cpu(host_post_info):
-    start_time = datetime.datetime.now()
-    host_post_info.start_time = start_time
-    host_post_info.post_label = "ansible.get.host.info"
-    host_post_info.post_label_param = host_post_info.host
-    handle_ansible_info("INFO: starting get remote host %s cpu info ... " %
-                        host_post_info.host, host_post_info, "INFO")
-
-    cache_file = _get_ansible_cache_file(host_post_info, "ansible_processor")
-    result = _read_remote_host_result(cache_file)
-    if not not host_post_info.host_uuid and result != "":
-        return _get_remote_host_cpu_from_result(eval(result), host_post_info)
-    else:
-        return _get_remote_host_info(host_post_info,
-                                     cache_file,
-                                     "ansible_processor",
-                                     _get_remote_host_cpu_from_result)
-
-
-def _get_remote_host_arch_from_result(result, host_post_info):
-    host = host_post_info.host
-    if result['contacted'] == {}:
-        ansible_start = AnsibleStartResult()
-        ansible_start.host = host
-        ansible_start.post_url = host_post_info.post_url
-        ansible_start.result = result
-        handle_ansible_start(ansible_start)
-    else:
-        ret = result['contacted'][host]
-        if 'ansible_facts' in ret:
-            host_arch = ret['ansible_facts']['ansible_machine']
-            host_post_info.post_label = "ansible.get.host.arch.succ"
-            handle_ansible_info(
-                "SUCC: Get remote host %s arch successful" % host,
-                host_post_info,
-                "INFO")
-            return host_arch
-        else:
-            host_post_info.post_label = "ansible.get.host.arch.false"
-
-
-@retry(times=3, sleep_time=3)
-def get_remote_host_arch(host_post_info):
-    start_time = datetime.datetime.now()
-    host_post_info.start_time = start_time
-    host_post_info.post_label = "ansible.get.host.info"
-    host_post_info.post_label_param = host_post_info.host
-    handle_ansible_info("INFO: starting get remote host %s arch ... " %
-                        host_post_info.host, host_post_info, "INFO")
-
-    cache_file = _get_ansible_cache_file(host_post_info, "ansible_machine")
-    result = _read_remote_host_result(cache_file)
-    logger.debug(host_post_info.host)
-    if not not host_post_info.host_uuid and result != "":
-        return _get_remote_host_arch_from_result(eval(result), host_post_info)
-    else:
-        return _get_remote_host_info(host_post_info,
-                                     cache_file,
-                                     "ansible_machine",
-                                     _get_remote_host_arch_from_result)
-
-
-def _get_remote_host_kernel_version_from_result(result, host_post_info):
-    host = host_post_info.host
-    if result['contacted'] == {}:
-        ansible_start = AnsibleStartResult()
-        ansible_start.host = host
-        ansible_start.post_url = host_post_info.post_url
-        ansible_start.result = result
-        handle_ansible_start(ansible_start)
-    else:
-        ret = result['contacted'][host]
-        if 'ansible_facts' in ret:
-            host_kernel_version = ret['ansible_facts']['ansible_kernel']
-            host_post_info.post_label = "ansible.get.host.kernel.version.succ"
-            handle_ansible_info(
-                "SUCC: Get remote host %s kernel version successfully" % host,
-                host_post_info,
-                "INFO")
-            return host_kernel_version
-        else:
-            host_post_info.post_label = "ansible.get.host.kernel.version.false"
-
-
-@retry(times=3, sleep_time=3)
-def get_remote_host_kernel_version(host_post_info):
-    start_time = datetime.datetime.now()
-    host_post_info.start_time = start_time
-    host_post_info.post_label = "ansible.get.host.kernel.version"
-    host_post_info.post_label_param = host_post_info.host
-    handle_ansible_info(("INFO: starting get remote host %s kernel "
-                         "version ... ") % host_post_info.host,
-                        host_post_info,
-                        "INFO")
-
-    cache_file = _get_ansible_cache_file(host_post_info, "ansible_kernel")
-    result = _read_remote_host_result(cache_file)
-    if not not host_post_info.host_uuid and result != "":
-        return _get_remote_host_kernel_version_from_result(eval(result),
-                                                           host_post_info)
-    else:
-        return _get_remote_host_info(
+        host_post_info.post_label = "ansible.get.host.info.succ"
+        handle_ansible_info(
+            "SUCC: Get remote host %s info successful" % host,
             host_post_info,
-            cache_file,
-            "ansible_kernel",
-            _get_remote_host_kernel_version_from_result)
+            "INFO")
+
+        if host_info.distro in DISTRO_WITH_RPM_DEB:
+            host_info.distro = ('%s_%s' % (host_info.distro,
+                                           host_info.distro_release)).lower()
+    else:
+        host_post_info.post_label = "ansible.get.host.info.fail"
+        logger.warning("get_remote_host_info on host %s failed!" % host)
+        raise Exception(result)
+    return host_info
 
 
 def set_ini_file(file, section, option, value, host_post_info):
