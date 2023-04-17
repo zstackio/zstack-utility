@@ -16,6 +16,8 @@ from ansible.module_utils.common import collections as ansible_collections
 from ansible.inventory import manager as ansible_im
 from ansible.parsing import dataloader as ansible_dataloader
 from ansible.playbook import play as ansible_play
+from ansible.plugins import cache
+from ansible.plugins.cache import memory
 from ansible.plugins import callback as ansible_callback
 from ansible.vars import manager as ansible_vm
 import jinja2
@@ -35,7 +37,6 @@ pkg_zstacklib = ""
 yum_server = ""
 apt_server = ""
 trusted_host = ""
-ansible_constants.HOST_KEY_CHECKING = False
 enable_networkmanager_list = ["ns10", "euler20", "uos1021a"]
 supported_arch_list = ["x86_64", "aarch64", "mips64el", "loongarch64"]
 
@@ -51,6 +52,48 @@ qemu_alias = {
     "euler20": "qemu",
     "uos1021a": "qemu-kvm"
 }
+
+ansible_constants.set_constant('HOST_KEY_CHECKING', False)
+ansible_constants.set_constant('CACHE_PLUGIN', 'memory')
+ansible_constants.set_constant('DEFAULT_GATHERING', 'smart')
+
+_ansible_cache = {}
+
+
+class MemCache(cache.BaseCacheModule):
+    def __init__(self, *args, **kwargs):
+        global _ansible_cache
+        self._cache = _ansible_cache
+
+    def get(self, key):
+        return self._cache.get(key)
+
+    def set(self, key, value):
+        self._cache[key] = value
+
+    def keys(self):
+        return self._cache.keys()
+
+    def contains(self, key):
+        return key in self._cache
+
+    def delete(self, key):
+        del self._cache[key]
+
+    def flush(self):
+        self._cache = {}
+
+    def copy(self):
+        return self._cache.copy()
+
+    def __getstate__(self):
+        return self.copy()
+
+    def __setstate__(self, data):
+        self._cache = data
+
+
+memory.CacheModule = MemCache
 
 
 class AgentInstallArg(object):
@@ -226,7 +269,8 @@ class ZstackRunner(object):
             become=self.become,
             become_user=self.become_user,
             private_key_file=self.private_key,
-            become_method='sudo'
+            become_method='sudo',
+            ssh_extra_args='-C -o ControlMaster=auto -o ControlPersist=1800s',
         )
         self.loader = ansible_dataloader.DataLoader()
         self.result_callback = ResultsCollectorJSONCallback()
@@ -261,7 +305,8 @@ class ZstackRunner(object):
                     'environment': self.environment,
                     }],
             vars={'ansible_user': self.remote_user,
-                  'ansible_port': self.remote_port}
+                  'ansible_port': self.remote_port,
+                  'ansible_pipelining': True}
         )
         play = ansible_play.Play().load(
             play_source,
@@ -365,7 +410,7 @@ def get_mn_release():
     # file content like: ZStack release c76
     return commands.getoutput("awk '{print $3}' /etc/zstack-release").strip()
 
-def get_host_releasever(ansible_distribution):
+def get_host_releasever(host_info):
     supported_release_info = {
         "kylin_tercel tercel 10": "ns10",
         "kylin_sword sword 10": "ns10",
@@ -380,8 +425,8 @@ def get_host_releasever(ansible_distribution):
         "uos fou 20": "uos20",
         "uniontech_kongzi kongzi 20": "uos1021a",
     }
-    _key = " ".join(ansible_distribution).lower()
-    _releasever = supported_release_info.get(_key)
+    # _key = " ".join(ansible_distribution).lower()
+    _releasever = supported_release_info.get(host_info.ansible_distribution)
     return _releasever if _releasever else get_mn_release()
 
 def post_msg(msg, post_url):
@@ -1266,8 +1311,6 @@ def file_operation(file, args, host_post_info):
             handle_ansible_info(details, host_post_info, "INFO")
             return True
 
-
-ANSIBLE_CACHE = {}
 
 class HostInfo(object):
     def __init__(self):
