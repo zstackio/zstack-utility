@@ -64,18 +64,20 @@ def get_guest_tools_states(vmUuids):
             return qga_status
 
         qga_status.qgaRunning = True
-        if qga.os and qga.os_version:
-            qga_status.osType = '{} {}'.format(qga.os, qga.os_version)
-            qga_status.platForm = 'Windows' if qga.os == VmQga.VM_OS_WINDOWS else 'Linux'
-
-        try:
-            _, config = qga.guest_file_read('/usr/local/zstack/guesttools')
-            if not config:
-                logger.debug("read /usr/local/zstack/guesttools failed")
-                return qga_status
-        except Exception as e:
-            logger.debug("read /usr/local/zstack/guesttools failed {}".format(e))
+        qga_status.osType = '{} {}'.format(qga.os, qga.os_version)
+        if 'mswindows' in qga.os:
+            qga_status.platForm = 'Windows'
             return qga_status
+        else:
+            qga_status.platForm = 'Linux'
+            try:
+                _, config = qga.guest_file_read('/usr/local/zstack/guesttools')
+                if not config:
+                    logger.debug("read /usr/local/zstack/guesttools failed")
+                    return qga_status
+            except Exception as e:
+                logger.debug("read /usr/local/zstack/guesttools failed {}".format(e))
+                return qga_status
 
         qga_status.zsToolsFound = True
 
