@@ -1129,10 +1129,11 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     def get_megaraid_devices_storcli(self, smart_scan_result):
         result = []
         r1, vd_info = bash.bash_ro("/opt/MegaRAID/storcli/storcli64 /call/vall show all J")
-        r2, pd_info = bash.bash_ro("/opt/MegaRAID/storcli/storcli64 /call/eall/sall show all J")
-
-        if r1 != 0 or r2 != 0:
+        if r1 != 0:
             return result
+
+        # If a RAID-built disk is pulled out, this cmd will return 45.
+        pd_info = bash.bash_o("/opt/MegaRAID/storcli/storcli64 /call/eall/sall show all J")
         for line in smart_scan_result.splitlines():
             if line.strip() == "":
                 continue
