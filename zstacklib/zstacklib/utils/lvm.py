@@ -355,16 +355,6 @@ def get_lvmlockd_version():
         LVMLOCKD_VERSION = shell.call("""lvmlockd --version | awk '{print $3}' | awk -F'.' '{print $1"."$2}'""").strip()
     return LVMLOCKD_VERSION
 
-def subcmd(subcmd):
-    options = ''
-    if LooseVersion(get_lvmlockd_version()) > LooseVersion('2.02'):
-        if subcmd in ['pvresize', 'vgscan']:
-            options += '--nolocking -t'
-    elif subcmd in ['vgscan']:
-        options += '--ignorelockingfailure'
-
-    return '%s %s ' % (subcmd, options)
-
 def get_running_lvmlockd_version():
     pid = get_lvmlockd_pid()
     if pid:
