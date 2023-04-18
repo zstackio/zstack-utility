@@ -213,19 +213,22 @@ def install_kvm_pkg():
                       usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
                       net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
                       smartmontools sshpass usbutils vconfig wget audit dnsmasq \
-                      qemu-kvm-ev collectd-virt OVMF edk2-ovmf edk2.git-ovmf-x64 mcelog MegaCli storcli Arcconf nvme-cli python-pyudev kernel-devel"
+                      qemu-kvm-ev collectd-virt OVMF edk2-ovmf edk2.git-ovmf-x64 mcelog MegaCli storcli Arcconf nvme-cli \
+                      python-pyudev kernel-devel lm_sensors-libs lm_sensors edac-utils"
 
         x86_64_c76 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                       usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python libvirt-admin lighttpd lsof \
                       net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
                       smartmontools sshpass usbutils vconfig wget audit dnsmasq \
-                      qemu-kvm collectd-virt OVMF edk2-ovmf edk2.git-ovmf-x64 mcelog MegaCli storcli Arcconf nvme-cli python-pyudev seabios-bin nping kernel-devel elfutils-libelf-devel"
+                      qemu-kvm-ev collectd-virt OVMF edk2-ovmf edk2.git-ovmf-x64 mcelog MegaCli storcli Arcconf nvme-cli \
+                      python-pyudev seabios-bin nping kernel-devel elfutils-libelf-devel lm_sensors-libs lm_sensors \
+                      edac-utils"
 
         aarch64_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                         usbredir-server iputils open-iscsi libvirt libvirt-client libvirt-python lighttpd lsof \
                         net-tools nfs-utils nmap openssh-clients OpenIPMI pciutils pv rsync sed nettle libselinux-devel \
                         smartmontools sshpass usbutils vconfig wget audit dnsmasq tar \
-                        qemu collectd-virt storcli edk2-aarch64 python2-pyudev collectd-disk"
+                        qemu collectd-virt storcli nvme-cli edk2-aarch64 python2-pyudev collectd-disk lm_sensors edac-utils"
 
         aarch64_uos1021a = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                         usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
@@ -259,7 +262,8 @@ def install_kvm_pkg():
                         usbredir-server iputils open-iscsi libvirt libvirt-client libvirt-python lighttpd lsof \
                         net-tools nfs-utils nmap openssh-clients OpenIPMI pciutils pv rsync sed nettle libselinux-devel \
                         smartmontools sshpass usbutils vconfig wget audit dnsmasq tar python2-psutil\
-                        qemu-kvm collectd-virt storcli edk2-ovmf edk2.git-ovmf-x64 python2-pyudev collectd-disk"
+                        qemu-kvm collectd-virt MegaCli storcli Arcconf nvme-cli edk2-ovmf edk2.git-ovmf-x64 python2-pyudev \
+                        collectd-disk lm_sensors edac-utils"
 
         # handle zstack_repo
         if zstack_repo != 'false':
@@ -575,6 +579,18 @@ def copy_bond_conf():
     _dst = "/etc/modprobe.d/"
     copy_to_remote(_src, _dst, "mode=644", host_post_info)
 
+
+def copy_cube_tools():
+    """copy cube required tools from mn_node to host_node"""
+    cube_root_dst = "/usr/local/hyperconverged/"
+    _src = os.path.join(cube_root_dst, "tools/hd_ctl")
+    if os.path.exists(_src):
+        _dst = os.path.join(cube_root_dst, "tools")
+        copy_to_remote(_src, _dst, "mode=755", host_post_info)
+        command = "ln -sf /usr/local/hyperconverged/tools/hd_ctl/hd_ctl /bin/"
+        run_remote_command(command, host_post_info)
+
+
 def do_libvirt_qemu_config():
     """special configration"""
 
@@ -792,6 +808,7 @@ copy_zs_scripts()
 copy_grubaa64_efi()
 copy_bond_conf()
 copy_i40e_driver()
+copy_cube_tools()
 create_virtio_driver_directory()
 set_max_performance()
 do_libvirt_qemu_config()
