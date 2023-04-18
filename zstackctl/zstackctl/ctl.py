@@ -791,9 +791,6 @@ class Ctl(object):
     # get basharch and zstack-release
     BASEARCH = platform.machine()
     ZS_RELEASE = os.popen("awk '{print $3}' /etc/zstack-release").read().strip()
-    ENCRYPT = 'ENCRYPT'
-    ENCRYPTPROPERTIES = 'ENCRYPTPROPERTIES'
-    ENCRYPT_KEY = "zstack.pwd"
 
     def __init__(self):
         versionFile = os.path.join(self.ZSTACK_UI_HOME,'VERSION')
@@ -845,9 +842,6 @@ class Ctl(object):
             warn('cannot find %s, your ZStack installation may have crashed' % self.properties_file_path)
         if os.path.getsize(self.properties_file_path) == 0:
             warn('%s: file empty' % self.properties_file_path)
-
-    def is_ctl_env_exists(self):
-        return os.path.exists(SetEnvironmentVariableCmd.PATH)
 
     def get_env(self, name):
         env = PropertyFile(SetEnvironmentVariableCmd.PATH)
@@ -963,24 +957,6 @@ class Ctl(object):
         prop = PropertyFile(self.properties_file_path)
         with on_error('property must be in format of "key=value", no space before and after "="'):
             prop.write_property(key, value)
-
-    def set_encrypt_env(self):
-        self.put_envs([(self.ENCRYPT, 'True')])
-
-    def set_encrypt_properties(self):
-        encrypt = self.encrypt_properties()
-        self.put_envs([(self.ENCRYPTPROPERTIES, encrypt)])
-
-    def get_encrypt_properties(self):
-        return self.get_env(self.ENCRYPTPROPERTIES)
-
-    def is_encrypt_on(self):
-        return self.get_env(self.ENCRYPT) == 'True'
-
-    def encrypt_properties(self):
-        _, encrypt = commands.getstatusoutput(
-            "md5sum %s | cut -d ' ' -f 1" % self.properties_file_path)
-        return encrypt
 
     # for zstack ui properties
     def read_all_ui_properties(self):
@@ -2027,8 +2003,6 @@ EOF
 
         properties = [l.split('=', 1) for l in ctl.extra_arguments]
         ctl.write_properties(properties)
-        if ctl.is_ctl_env_exists() and ctl.is_encrypt_on():
-            ctl.set_encrypt_properties()
 
 def get_management_node_pid():
     DEFAULT_PID_FILE_PATH = os.path.join(os.path.expanduser('~zstack'), "management-server.pid")
@@ -2185,20 +2159,6 @@ class AESCipher:
             return raw != enc
         except:
             return False
-
-
-class SetEncryptPropertiesCmd(Command):
-    def __init__(self):
-        super(SetEncryptPropertiesCmd, self).__init__()
-        self.name = 'set_properties_encrypt'
-        self.description = 'set encrypt zstack.propertites '
-        ctl.register_command(self)
-    def run(self, args):
-        if check_ha() and Zsha2Utils().master:
-            Zsha2Utils().excute_on_peer("zstack-ctl set_properties_encrypt")
-        ctl.set_encrypt_env()
-        ctl.set_encrypt_properties()
-
 
 class StartCmd(Command):
     START_SCRIPT = '../../bin/startup.sh'
@@ -2454,14 +2414,6 @@ class StartCmd(Command):
         def get_start_mode():
             return ctl.get_env(self.START_MODE)
 
-        def check_encrypt_properties():
-            if not ctl.is_ctl_env_exists() or not ctl.is_encrypt_on():
-                return
-
-            if ctl.get_encrypt_properties() != ctl.encrypt_properties():
-                raise CtlError('zstack.properties is Integrity error')
-
-
         def encrypt_properties_if_need():
             cipher = AESCipher()
             for key in Ctl.NEED_ENCRYPT_PROPERTIES:
@@ -2517,9 +2469,6 @@ class StartCmd(Command):
         encrypt_properties_if_need()
         check_start_mode(get_start_mode())
         check_simulator()
-        # prepareBeanRefContextXml call zstack-ctl configure xxx modify encrypt properties,
-        # execute check_encrypt_properties before prepareBeanRefContextXml
-        check_encrypt_properties()
         prepare_bean_ref_context_xml()
 
         linux.sync_file(ctl.properties_file_path)
@@ -10604,7 +10553,6 @@ def main():
     UiStatusCmd()
     ConfigUiCmd()
     ShowUiCfgCmd()
-    SetEncryptPropertiesCmd()
     DumpMNThreadCmd()
     DumpMNTaskQueueCmd()
     TimelineCmd()
