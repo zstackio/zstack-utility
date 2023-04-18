@@ -143,6 +143,7 @@ class VmQga(object):
     def guest_exec_bash_no_exitcode(self, cmd, exception=True, output=True):
         exitcode, ret_data = self.guest_exec_bash(cmd, output)
         if exitcode != 0:
+            logger.debug("qga exec command: {}, exitcode {}, ret {}".format(cmd, exitcode, ret_data))
             if exception:
                 raise Exception('cmd {}, exitcode {}, ret {}'
                                 .format(cmd, exitcode, ret_data))
@@ -183,7 +184,7 @@ class VmQga(object):
         return exit_code, ret_data
 
     # not a good function, just for hurry push
-    def guest_exec_python(self, file, output=True, wait=qga_exec_wait_interval, retry=qga_exec_wait_retry):
+    def guest_exec_python(self, file, params=None, output=True, wait=qga_exec_wait_interval, retry=qga_exec_wait_retry):
         path = self.guest_exec_bash_no_exitcode("which python2", exception=False)
         if not path:
             path = self.guest_exec_bash_no_exitcode("which python3", exception=False)
@@ -191,8 +192,13 @@ class VmQga(object):
         if not path:
             raise Exception('python not installed in vm {}'.format(file, self.vm_uuid))
 
+        args = [file]
+        if params is not None:
+            for d in params:
+                args.append(d)
+
         ret = self.guest_exec(
-            {"path": path.strip(), "arg": [file], "capture-output": output})
+            {"path": path.strip(), "arg": args, "capture-output": output})
         if ret and "pid" in ret:
             pid = ret["pid"]
         else:
