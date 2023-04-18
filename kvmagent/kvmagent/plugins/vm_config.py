@@ -116,9 +116,11 @@ class GetGuestToolsStateResponse(kvmagent.AgentResponse):
 class VmConfigPlugin(kvmagent.KvmAgent):
     VM_CONFIG_PORTS = "/vm/configsync/ports"
     VM_GUEST_TOOLS_STATE = "/vm/guesttools/state"
+    VM_SET_HOSTNAME = "/vm/set/hostname"
 
     VM_QGA_PARAM_FILE = "/usr/local/zstack/zs-nics.json"
     VM_QGA_CONFIG_LINUX_CMD = "/usr/local/zstack/zs-tools/config_linux.py"
+    VM_QGA_SET_HOSTNAME = "/usr/local/zstack/zs-tools/set_hostname_linux.py"
     VM_CONFIG_SYNC_OS_VERSION_SUPPORT = {
         VmQga.VM_OS_LINUX_CENTOS: ("7", "8"),
         VmQga.VM_OS_LINUX_KYLIN: ("v10",),
@@ -153,6 +155,28 @@ class VmConfigPlugin(kvmagent.KvmAgent):
 
         return 0, msg
 
+    @lock.lock('config_vm_by_qga')
+    def set_vm_hostname_by_qga(self, domain, hostname, default_ip):
+
+        vm_uuid = domain.name()
+        qga = VmQga(domain)
+        if qga.state != VmQga.QGA_STATE_RUNNING:
+            return 1, "qga is not running for vm {}".format(vm_uuid)
+
+        if qga.os in VmConfigPlugin.VM_CONFIG_SYNC_OS_VERSION_SUPPORT.keys() and \
+                qga.os_version in VmConfigPlugin.VM_CONFIG_SYNC_OS_VERSION_SUPPORT[qga.os]:
+            cmd_file = self.VM_QGA_SET_HOSTNAME
+        else:
+            return 1, "not support for os {}".format(qga.os)
+
+        # exec qga command
+        ret, msg = qga.guest_exec_python(cmd_file, [hostname, default_ip])
+        if ret != 0:
+            logger.debug("set vm hostname {} by qga failed: {}".format(vm_uuid, msg))
+            return 1, "set vm hostname {} by qga failed: {}".format(vm_uuid, msg)
+
+        return 0, msg
+
     @kvmagent.replyerror
     def vm_config_ports(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -180,10 +204,31 @@ class VmConfigPlugin(kvmagent.KvmAgent):
         rsp.states = get_guest_tools_states(cmd.vmInstanceUuids)
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    def vm_set_hostname(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+
+        domain = get_virt_domain(cmd.vmUuid)
+        if not domain or not domain.isActive():
+            rsp.success = False
+            rsp.error = 'vm {} not running'.format(cmd.vmUuid)
+            return jsonobject.dumps(rsp)
+
+        ret, msg = self.set_vm_hostname_by_qga(domain, cmd.portsConfig)
+        if ret != 0:
+            rsp.success = False
+            rsp.error = msg
+        else:
+            logger.debug("config vm {} by qga successfully, detail info {}", cmd.vmUuid, msg)
+
+        return jsonobject.dumps(rsp)
+
     def start(self):
         http_server = kvmagent.get_http_server()
         http_server.register_async_uri(self.VM_CONFIG_PORTS, self.vm_config_ports)
         http_server.register_async_uri(self.VM_GUEST_TOOLS_STATE, self.vm_guest_tools_state)
+        http_server.register_async_uri(self.VM_SET_HOSTNAME, self.vm_config_ports)
 
     def stop(self):
         pass
