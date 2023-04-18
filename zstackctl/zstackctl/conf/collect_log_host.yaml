@@ -24,3 +24,4 @@ host:
      - {name: qemu-log, dir: /var/log/libvirt/, file: }
      - {name: sar-log, dir: /var/log/sa/, file: 'sa[0-9]*'}
      - {name: vrouter-console-log, dir: /tmp/, file: '*-vm-kernel.log'}
+     - {name: cli-logs, dir: /var/log/zstack/, file: zstack-cli*}
