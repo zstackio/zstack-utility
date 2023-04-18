@@ -381,6 +381,11 @@ class CephAgent(plugin.TaskManager):
         if not ceph.is_xsky():
             return
 
+        o = shell.call('xms-cli --version')
+        xms_version = o.split("\n")[0].split("xms-cli Version:")[1].split("_")[1].strip()
+        if xms_version and xms_version >= "5.2.106.2.230330":
+            return
+
         regex = 'grep -v 3.10.0-'
         cfg_path = '/etc/init.d/xdc'
         if len(linux.filter_file_lines_by_regex(cfg_path, regex)) != 0:
