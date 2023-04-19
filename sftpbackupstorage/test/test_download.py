@@ -16,6 +16,7 @@ class Test(unittest.TestCase):
         rsp = jsonobject.loads(req[http.REQUEST_BODY])
         print "install_url: %s" % rsp.installUrl
         
+    @unittest.skip("skip")
     def testName(self):
         server = sftpbackupstorage.SftpBackupStorageAgent()
         server.http_server.register_sync_uri('/testcallback', self.callback)

@@ -5,8 +5,8 @@
 import unittest
 import time
 import threading
-from ..utils.thread import ThreadFacade
-from ..utils.thread import AsyncThread
+from zstacklib.utils.thread import ThreadFacade
+from zstacklib.utils.thread import AsyncThread
 
 
 class TestThreadFacade(unittest.TestCase):
