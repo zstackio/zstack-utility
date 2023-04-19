@@ -15,7 +15,7 @@ from zstacklib.utils.bash import *
 from zstacklib.utils import ovs
 import os
 import traceback
-import netifaces
+import pyroute2
 import netaddr
 
 CHECK_PHYSICAL_NETWORK_INTERFACE_PATH = '/network/checkphysicalnetworkinterface'
@@ -321,20 +321,24 @@ class NetworkPlugin(kvmagent.KvmAgent):
         shell.check_run("brctl addif %s %s" % (cmd.bridgeName, cmd.physicalInterfaceName))
         return jsonobject.dumps(rsp)
 
-    def _has_bridge_or_subinterface(self, ifname):
-        addrs = netifaces.ifaddresses(ifname)
-
-        # Check for subinterfaces
-        if netifaces.AF_PACKET in addrs:
-            for addr in addrs[netifaces.AF_PACKET]:
-                if addr.get('addr').startswith(ifname + '.'):
+    def _has_vlan_or_bridge(self, ifname):
+        with pyroute2.IPRoute() as ipr:
+            links = ipr.get_links()
+            for link in links:
+                # Check for vlan interface
+                if link.get_attr('IFLA_LINKINFO') and \
+                        link.get_attr('IFLA_LINKINFO').get_attr('IFLA_INFO_KIND') == 'vlan' and \
+                        link.get_attr('IFLA_IFNAME').startswith(ifname + '.'):
                     return True
 
-        # Check if there is a bridge port
-        if netifaces.AF_BRIDGE in addrs:
-            return True
+                # Check for bridge port
+                if link.get_attr('IFLA_LINKINFO') and \
+                        link.get_attr('IFLA_LINKINFO').get_attr('IFLA_INFO_KIND') == 'bridge' and \
+                        link.get_attr('IFLA_MASTER') and \
+                        link.get_attr('IFLA_MASTER') == ipr.link_lookup(ifname)[0]:
+                    return True
 
-        return False
+            return False
 
     @lock.lock('bonding')
     @kvmagent.replyerror
@@ -345,7 +349,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
         try:
             for slave in cmd.slaves:
-                if self._has_bridge_or_subinterface(self, slave.interfaceName) == 0:
+                if self._has_vlan_or_bridge(self, slave.interfaceName) == 0:
                     raise Exception(
                         'failed to update bonding %s, please check whether the slave has a sub-interface or a '
                         'bridge port.', cmd.bondName)
@@ -378,7 +382,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
         try:
             for interface in add_items:
-                if self._has_bridge_or_subinterface(self, interface.interfaceName) == 0:
+                if self._has_vlan_or_bridge(self, interface.interfaceName) == 0:
                     raise Exception(
                         'failed to update bonding %s, please check whether the slave has a sub-interface or a '
                         'bridge port.', cmd.bondName)
@@ -412,7 +416,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         rsp = DeleteBondingResponse()
 
         try:
-            if self._has_bridge_or_subinterface(self, cmd.bondName) != 0:
+            if self._has_vlan_or_bridge(self, cmd.bondName) != 0:
               # zs-bond -d bond2
               shell.call("/usr/local/bin/zs-bond -d %s", cmd.bondName)
             else:
