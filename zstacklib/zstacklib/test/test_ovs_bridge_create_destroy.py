@@ -16,6 +16,10 @@ class Test(unittest.TestCase):
     def test_1_create_ovs_bridge(self):
         def get_vswitch_pid():
             fd = os.popen("pgrep ovs-vswitchd", "r")
+            if len(fd.read()) == 0:
+                print('no vswitchd process found')
+                return None
+
             vswitch_pid = int(fd.read())
             fd.close
             return vswitch_pid
@@ -27,6 +31,10 @@ class Test(unittest.TestCase):
             return create_ovs_bridge_command
         # init plugin()
         vswitch_pid_before = get_vswitch_pid()
+        if not vswitch_pid_before:
+            print("vswitchd not running, skip test")
+            return
+
         plugin = ovsdpdk_network.OvsDpdkNetworkPlugin()
         # prepare json command
         command = get_create_ovs_bridge_command()
@@ -45,6 +53,9 @@ class Test(unittest.TestCase):
     def test_2_create_duplicate_ovs_bridge(self):
         def get_vswitch_pid():
             fd = os.popen("pgrep ovs-vswitchd", "r")
+            if len(fd.read()) == 0:
+                print('no vswitchd process found')
+                return None
             vswitch_pid = int(fd.read())
             fd.close
             return vswitch_pid
@@ -56,6 +67,10 @@ class Test(unittest.TestCase):
             return create_ovs_bridge_command
         # init plugin()
         vswitch_pid_before = get_vswitch_pid()
+        if not vswitch_pid_before:
+            print("vswitchd not running, skip test")
+            return
+
         plugin = ovsdpdk_network.OvsDpdkNetworkPlugin()
         # prepare json command
         command = get_create_ovs_bridge_command()
@@ -72,11 +87,26 @@ class Test(unittest.TestCase):
 
 
     def test_3_delete_ovs_bridge(self):
+        def get_vswitch_pid():
+            fd = os.popen("pgrep ovs-vswitchd", "r")
+            if len(fd.read()) == 0:
+                print('no vswitchd process found')
+                return None
+            vswitch_pid = int(fd.read())
+            fd.close
+            return vswitch_pid
+
         def get_delete_ovs_bridge_command():
             delete_ovs_bridge_command = OvsCommand()
             delete_ovs_bridge_command.bridgeName = "br_enp23s0f0"
             delete_ovs_bridge_command.physicalInterfaceName = "enp23s0f0"
             return delete_ovs_bridge_command
+
+        vswitch_pid_before = get_vswitch_pid()
+        if not vswitch_pid_before:
+            print("vswitchd not running, skip test")
+            return
+
         # init plugin()
         plugin = ovsdpdk_network.OvsDpdkNetworkPlugin()
         # prepare json command

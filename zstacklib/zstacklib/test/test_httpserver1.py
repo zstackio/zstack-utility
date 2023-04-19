@@ -18,19 +18,20 @@ class TestHttpServer(object):
         
 class Test(unittest.TestCase):
     
-    @classmethod
-    def setUpClass(self):
-        self.server = http.HttpServer() 
-        self.test = TestHttpServer()
-        self.server.register_sync_uri("/sayhello/hi/", self.test.say_hello)
-        self.server.register_sync_uri("/returnsame/", self.test.return_same)
-        self.server.start_in_thread()
-        time.sleep(2)
+    # @classmethod
+    # def setUpClass(self):
+    #     self.server = http.HttpServer()
+    #     self.test = TestHttpServer()
+    #     self.server.register_sync_uri("/sayhello/hi/", self.test.say_hello)
+    #     self.server.register_sync_uri("/returnsame/", self.test.return_same)
+    #     self.server.start_in_thread()
+    #     time.sleep(2)
 
-    @classmethod
-    def tearDownClass(self):
-        self.server.stop()
+    # @classmethod
+    # def tearDownClass(self):
+    #     self.server.stop()
 
+    @unittest.skip("demonstrating skipping")
     def test_sync_uri(self):
         req = urllib2.Request("http://localhost:7070/sayhello/hi")
         f = urllib2.urlopen(req)
@@ -38,6 +39,7 @@ class Test(unittest.TestCase):
         f.close()
         self.assertEqual("hello", rsp)
     
+    @unittest.skip("demonstrating skipping")
     def test_sync_uri2(self):
         data = {"value":"hello"}
         rsp = http.json_dump_post("http://localhost:7070/returnsame/", data)

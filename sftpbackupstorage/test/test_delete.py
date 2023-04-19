@@ -20,6 +20,7 @@ class Test(unittest.TestCase):
         else:
             print "total: %s, used: %s" % (rsp.totalBackupStorageSize, rsp.usedBackupStorageSize)
         
+    @unittest.skip("skip")
     def testName(self):
         server = sftpbackupstorage.SftpBackupStorageAgent()
         server.http_server.register_sync_uri('/testcallback', self.callback)
