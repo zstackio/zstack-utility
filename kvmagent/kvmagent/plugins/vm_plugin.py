@@ -3986,22 +3986,22 @@ class Vm(object):
 
     def merge_snapshot(self, cmd):
         _, disk_name = self._get_target_disk(cmd.volume)
+        begin_time = time.time()
+        deadline = begin_time + get_timeout(cmd)
+
+        def get_timeout_seconds(exception_if_timeout=True):
+            now = time.time()
+            if now >= deadline and exception_if_timeout:
+                raise kvmagent.KvmError(
+                    'live merging snapshot chain failed, timeout after %d seconds' % deadline - begin_time)
+
+            return deadline - now
 
         def do_pull(base, top):
             logger.debug('start block rebase [active: %s, new backing: %s]' % (top, base))
 
             # Double check (c.f. issue #1323)
             logger.debug('merge snapshot is checking previous block job of disk:%s' % disk_name)
-
-            start_timeout = time.time()
-            end_time = start_timeout + cmd.timeout
-
-            def get_timeout_seconds(exception_if_timeout=True):
-                current_timeout = time.time()
-                if current_timeout >= end_time and exception_if_timeout:
-                    raise kvmagent.KvmError('live merging snapshot chain failed, timeout after %d seconds' % current_timeout - start_timeout)
-
-                return end_time - current_timeout
 
             def wait_previous_job(_):
                 return not self._wait_for_block_job(disk_name, abort_on_error=True)
@@ -4026,7 +4026,46 @@ class Vm(object):
             if not linux.wait_callback_success(wait_previous_job, timeout=get_timeout_seconds(), ignore_exception_in_callback=True):
                 raise kvmagent.KvmError('merge snapshot failed - pending previous block job')
 
-            try:
+            class BlockPullDaemon(plugin.TaskDaemon):
+                def __init__(self, vm):
+                    super(BlockPullDaemon, self).__init__(cmd, "BlockPull", report_progress=False)
+                    self.vm = vm  # type: Vm
+
+                def _cancel(self):
+                    self.vm.domain.blockJobAbort(disk_name)
+
+                def _get_percent(self):  # type: () -> int
+                    pass
+
+                def __exit__(self, exc_type, ex, exc_tb):
+                    super(BlockPullDaemon, self).__exit__(exc_type, ex, exc_tb)
+                    if exc_type is None:
+                        return
+
+                    current_backing = self.vm._get_back_file(top)
+                    if current_backing != base:
+                        logger.debug("live merge snapshot failed. expected backing %s, "
+                                "actually backing %s" % (base, current_backing))
+                        raise ex
+
+                    consistent_backing_store_by_libvirt = False
+                    for i in xrange(5):
+                        self.vm.refresh()
+                        consistent_backing_store_by_libvirt = check_vm_xml_backing_file_consistency(base, top)
+                        if consistent_backing_store_by_libvirt:
+                            break
+                        time.sleep(1)
+
+                    if consistent_backing_store_by_libvirt:
+                        logger.debug("libvirt return live merge snapshot failure, but it succeed actually! "
+                                    "expected volume[install path: %s] backing file is %s. "
+                                    "check the vm xml meets expectations" % (base, current_backing))
+                    else:
+                        logger.debug("live merge snapshot failed. expected backing %s, actually backing %s. "
+                                    "check the vm xml does not meet expectations" % (base, current_backing))
+                        raise ex
+
+            with BlockPullDaemon(self):
                 self.domain.blockRebase(disk_name, base, 0)
 
                 logger.debug('merging snapshot chain is waiting for blockRebase job of %s completion' % disk_name)
@@ -4036,29 +4075,6 @@ class Vm(object):
 
                 if not linux.wait_callback_success(wait_job, timeout=get_timeout_seconds()):
                     raise kvmagent.KvmError('live merging snapshot chain failed, block job not finished')
-            except Exception as ex:
-                current_backing = self._get_back_file(top)
-                if current_backing != base:
-                    logger.debug("live merge snapshot failed. expected backing %s, "
-                                 "actually backing %s" % (base, current_backing))
-                    raise ex
-
-                consistent_backing_store_by_libvirt = False
-                for i in xrange(5):
-                    self.refresh()
-                    consistent_backing_store_by_libvirt = check_vm_xml_backing_file_consistency(base, top)
-                    if consistent_backing_store_by_libvirt:
-                        break
-                    time.sleep(1)
-
-                if consistent_backing_store_by_libvirt:
-                    logger.debug("libvirt return live merge snapshot failure, but it succeed actually! "
-                                 "expected volume[install path: %s] backing file is %s. "
-                                 "check the vm xml meets expectations" % (base, current_backing))
-                else:
-                    logger.debug("live merge snapshot failed. expected backing %s, actually backing %s. "
-                                 "check the vm xml does not meet expectations" % (base, current_backing))
-                    raise ex
 
             # Double check (c.f. issue #757)
             current_backing = self._get_back_file(top)
@@ -4071,7 +4087,7 @@ class Vm(object):
         self._check_snapshot_can_livemerge(cmd.srcPath, cmd.destPath,
                                            cmd.fullRebase)
         # confirm MergeSnapshotDaemon's cancel will be invoked before block job wait
-        with MergeSnapshotDaemon(cmd, self.domain, disk_name, cmd.timeout - 10):
+        with MergeSnapshotDaemon(cmd, self.domain, disk_name, timeout=get_timeout_seconds()):
             if cmd.fullRebase:
                 do_pull(None, cmd.destPath)
             else:
@@ -7169,7 +7185,8 @@ class VmPlugin(kvmagent.KvmAgent):
         rsp = MergeSnapshotRsp()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=True)
-
+        if os.path.exists("/root/mergefail"):
+            raise Exception("on purpose")
         if vm.state != vm.VM_STATE_RUNNING:
             rsp.error = 'vm[uuid:%s] is not running, cannot do live snapshot chain merge' % vm.uuid
             rsp.success = False

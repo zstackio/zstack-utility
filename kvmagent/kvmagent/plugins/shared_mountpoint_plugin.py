@@ -109,6 +109,12 @@ class CreateVolumeFromCacheRsp(AgentRsp):
         super(CreateVolumeFromCacheRsp, self).__init__()
         self.actualSize = None
 
+class GetBackingChainRsp(AgentRsp):
+    def __init__(self):
+        super(GetBackingChainRsp, self).__init__()
+        self.totalSize = 0
+        self.backingChain = []
+
 class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
 
     CONNECT_PATH = "/sharedmountpointprimarystorage/connect"
@@ -136,6 +142,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
     CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/sharedmountpointprimarystorage/kvmhost/download/cancel"
     GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH = "/sharedmountpointprimarystorage/kvmhost/download/progress"
     GET_QCOW2_HASH_VALUE_PATH = "/sharedmountpointprimarystorage/getqcow2hash"
+    GET_BACKING_CHAIN_PATH = "/sharedmountpointprimarystorage/volume/getbackingchain"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -164,6 +171,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
         http_server.register_async_uri(self.GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH, self.get_download_bits_from_kvmhost_progress)
         http_server.register_async_uri(self.GET_QCOW2_HASH_VALUE_PATH, self.get_qcow2_hashvalue)
+        http_server.register_async_uri(self.GET_BACKING_CHAIN_PATH, self.get_backing_chain)
 
         self.imagestore_client = ImageStoreClient()
         self.id_files = {}
@@ -433,11 +441,18 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
     def offline_merge_snapshots(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
+
+        src_path = cmd.srcPath if not cmd.fullRebase else ""
+        if linux.qcow2_get_backing_file(cmd.destPath) == src_path:
+            rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
+            return jsonobject.dumps(rsp)
+
         if not cmd.fullRebase:
             linux.qcow2_rebase(cmd.srcPath, cmd.destPath)
         else:
             tmp = os.path.join(os.path.dirname(cmd.destPath), '%s.qcow2' % uuidhelper.uuid())
-            linux.create_template(cmd.destPath, tmp)
+            t_shell = traceable_shell.get_shell(cmd)
+            linux.create_template(cmd.destPath, tmp, shell=t_shell)
             shell.call("mv %s %s" % (tmp, cmd.destPath))
 
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
@@ -547,4 +562,14 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         rsp = GetQcow2HashValueRsp()
 
         rsp.hashValue = secret.get_image_hash(cmd.installPath)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def get_backing_chain(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetBackingChainRsp()
+
+        rsp.backingChain = linux.qcow2_get_backing_chain(cmd.installPath)
+        rsp.totalSize = linux.get_total_file_size(rsp.backingChain)
+
         return jsonobject.dumps(rsp)

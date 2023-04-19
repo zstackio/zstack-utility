@@ -168,6 +168,12 @@ class GetVolumeBaseImagePathRsp(NfsResponse):
         self.path = None
         self.size = None
 
+class GetBackingChainRsp(NfsResponse):
+    def __init__(self):
+        super(GetBackingChainRsp, self).__init__()
+        self.totalSize = 0
+        self.backingChain = []
+
 class ResizeVolumeRsp(NfsResponse):
     def __init__(self):
         super(ResizeVolumeRsp, self).__init__()
@@ -230,6 +236,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     BATCH_GET_VOLUME_SIZE_PATH = "/nfsprimarystorage/batchgetvolumesize"
     PING_PATH = "/nfsprimarystorage/ping"
     GET_VOLUME_BASE_IMAGE_PATH = "/nfsprimarystorage/getvolumebaseimage"
+    GET_BACKING_CHAIN_PATH = "/nfsprimarystorage/volume/getbackingchain"
     UPDATE_MOUNT_POINT_PATH = "/nfsprimarystorage/updatemountpoint"
     RESIZE_VOLUME_PATH = "/nfsprimarystorage/volume/resize"
     HARD_LINK_VOLUME = "/nfsprimarystorage/volume/hardlink"
@@ -271,6 +278,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.BATCH_GET_VOLUME_SIZE_PATH, self.batch_get_volume_size)
         http_server.register_async_uri(self.PING_PATH, self.ping)
         http_server.register_async_uri(self.GET_VOLUME_BASE_IMAGE_PATH, self.get_volume_base_image_path)
+        http_server.register_async_uri(self.GET_BACKING_CHAIN_PATH, self.get_backing_chain)
         http_server.register_async_uri(self.UPDATE_MOUNT_POINT_PATH, self.update_mount_point)
         http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
         http_server.register_async_uri(self.HARD_LINK_VOLUME, self.hardlink_volume)
@@ -370,6 +378,10 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
                     rsp.error = "failed to copy file %s to %s, because: %s" % (srcFile, dstFile, str(e))
                     rsp.success = False
                     break
+
+            if cmd.independentPath:
+                dst_path = os.path.join(dst_folder_path, os.path.relpath(cmd.independentPath, cmd.srcFolderPath))
+                linux.qcow2_rebase("", dst_path)
 
             if not cmd.isMounted:
                 linux.umount(mount_path)
@@ -482,6 +494,16 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def get_backing_chain(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetBackingChainRsp()
+
+        rsp.backingChain = linux.qcow2_get_backing_chain(cmd.installPath)
+        rsp.totalSize = linux.get_total_file_size(rsp.backingChain)
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     @in_bash
     def ping(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -528,11 +550,18 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     def merge_snapshot_to_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = OfflineMergeSnapshotRsp()
+
+        src_path = cmd.srcPath if not cmd.fullRebase else ""
+        if linux.qcow2_get_backing_file(cmd.destPath) == src_path:
+            self._set_capacity_to_response(cmd.uuid, rsp)
+            return jsonobject.dumps(rsp)
+
         if not cmd.fullRebase:
             linux.qcow2_rebase(cmd.srcPath, cmd.destPath)
         else:
             tmp = os.path.join(os.path.dirname(cmd.destPath), '%s.qcow2' % uuidhelper.uuid())
-            linux.create_template(cmd.destPath, tmp)
+            t_shell = traceable_shell.get_shell(cmd)
+            linux.create_template(cmd.destPath, tmp, shell=t_shell)
             shell.call("mv %s %s" % (tmp, cmd.destPath))
 
         self._set_capacity_to_response(cmd.uuid, rsp)
@@ -594,8 +623,11 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             os.makedirs(workspace_dir)
 
         try:
-            t_shell = traceable_shell.get_shell(cmd)
-            linux.create_template(cmd.snapshotInstallPath, cmd.workspaceInstallPath, shell=t_shell)
+            if cmd.incremental:
+                return linux.qcow2_create_with_backing_file_and_option(cmd.snapshotInstallPath, cmd.workspaceInstallPath)
+            else:
+                t_shell = traceable_shell.get_shell(cmd)
+                linux.create_template(cmd.snapshotInstallPath, cmd.workspaceInstallPath, shell=t_shell)
             rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.workspaceInstallPath)
             self._set_capacity_to_response(cmd.uuid, rsp)
         except linux.LinuxError as e:
