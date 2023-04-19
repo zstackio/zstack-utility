@@ -32,6 +32,7 @@ from zstacklib.utils import sizeunit
 from zstacklib.utils import thread
 from zstacklib.utils import xmlobject
 from zstacklib.utils import ovs
+from zstacklib.utils import shell
 from zstacklib.utils.bash import *
 from zstacklib.utils.ip import get_nic_supported_max_speed
 from zstacklib.utils.ip import get_nic_driver_type
@@ -169,6 +170,20 @@ class DisableHugePageRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(DisableHugePageRsp, self).__init__()
 
+class SetIpOnHostNetworkInterfaceCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(SetIpOnHostNetworkInterfaceCmd, self).__init__()
+        self.interfaceName = None
+        self.oldIpAddress = None
+        self.oldNetmask = None
+        self.oldGateway = None
+        self.ipAddress = None
+        self.netmask = None
+        self.gateway = None
+
+class SetIpOnHostNetworkInterfaceRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(SetIpOnHostNetworkInterfaceRsp, self).__init__()
 
 class HostPhysicalMemoryStruct(object):
     def __init__(self):
@@ -207,6 +222,7 @@ class HostNetworkBondingInventory(object):
     def __init__(self, bondingName=None, type=None):
         super(HostNetworkBondingInventory, self).__init__()
         self.bondingName = bondingName
+        self.speed = None
         self.type = type
         self.mode = None
         self.xmitHashPolicy = None
@@ -231,6 +247,7 @@ class HostNetworkBondingInventory(object):
             return
 
         self.type = "LinuxBonding"
+        self.speed = get_nic_supported_max_speed(self.bondingName)
         self.mode = linux.read_file("/sys/class/net/%s/bonding/mode" % self.bondingName).strip()
         self.xmitHashPolicy = linux.read_file("/sys/class/net/%s/bonding/xmit_hash_policy" % self.bondingName).strip()
         self.miiStatus = linux.read_file("/sys/class/net/%s/bonding/mii_status" % self.bondingName).strip()
@@ -278,6 +295,7 @@ class HostNetworkBondingInventory(object):
             self.slaves[i] = o
 
         bondData = self.bondingName
+        self.speed = get_nic_supported_max_speed(self.interfaceName)
 
         if not bondData.has_key('bond'):
             return
@@ -760,6 +778,7 @@ class HostPlugin(kvmagent.KvmAgent):
     UPDATE_HOST_OVS_CPU_PINNING = "/host/ovs/cpu-pin/update"
     CHANGE_PASSWORD = "/host/changepassword"
     GET_HOST_NETWORK_FACTS = "/host/networkfacts"
+    SET_IP_ON_HOST_NETWORK_INTERFACE = "/host/setip/networkinterface"
     HOST_XFS_SCRAPE_PATH = "/host/xfs/scrape"
     HOST_SHUTDOWN = "/host/shutdown"
     GET_PCI_DEVICES = "/pcidevice/get"
@@ -1779,6 +1798,46 @@ done
         rsp.nics = self.get_host_networking_interfaces()
 
         HostPlugin.__store_cache__(rsp.bondings, rsp.nics)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
+    def set_ip_on_host_network_interface(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = SetIpOnHostNetworkInterfaceRsp()
+
+        if cmd.ipAddress is not None:
+            try:
+                # zs-network-setting -i eth0 192.168.1.10 255.255.255.0 192.168.1.1
+                if cmd.gateway is not None:
+                    shell.call("/usr/local/bin/zs-network-setting -i %s %s %s %s", cmd.interfaceName, cmd.ipAddress, cmd.netmask, cmd.gateway)
+                else:
+                    shell.call("/usr/local/bin/zs-network-setting -i %s %s %s", cmd.interfaceName, cmd.ipAddress, cmd.netmask)
+            except Exception as e:
+                rsp.error = 'unable to add ip on %s, because %s' % (cmd.interfaceName, str(e))
+                rsp.success = False
+
+            # After configuring the ip, check the connectivity
+            if shell.run("ping -c 5 -W 1 {} > /dev/null 2>&1", cmd.gateway) != 0:
+                # mv ipv4 on interface
+                ip_addresses = shell.call("ip addr show -4 dev %s | grep 'inet' | awk '{print $2}'", cmd.interfaceName)
+                for ip_addr in ip_addresses:
+                    shell.call("ip addr del %s dev %s", ip_addr, cmd.interfaceName)
+
+                # If it is not connected, it will fall back to the old ip address
+                if cmd.oldGateway is None:
+                    shell.call("/usr/local/bin/zs-network-setting -i %s %s %s %s", cmd.interfaceName, cmd.ipAddress,
+                               cmd.netmask)
+                else:
+                    shell.call("/usr/local/bin/zs-network-setting -i %s %s %s %s", cmd.interfaceName,
+                               cmd.ipAddress, cmd.netmask, cmd.gateway)
+        # If the front-end parameter is empty, the ip will be deleted by default
+        else:
+            # mv ipv4 on interface
+            ip_addresses = shell.call("ip addr show -4 dev %s | grep 'inet' | awk '{print $2}'", cmd.interfaceName)
+            for ip_addr in ip_addresses:
+                shell.call("ip addr del %s dev %s", ip_addr, cmd.interfaceName)
+            
         return jsonobject.dumps(rsp)
 
     @classmethod
@@ -2898,6 +2957,7 @@ done
         http_server.register_async_uri(self.UPDATE_HOST_OVS_CPU_PINNING, self.update_ovs_cpu_pinning)
         http_server.register_async_uri(self.CHANGE_PASSWORD, self.change_password, cmd=ChangeHostPasswordCmd())
         http_server.register_async_uri(self.GET_HOST_NETWORK_FACTS, self.get_host_network_facts)
+        http_server.register_async_uri(self.SET_IP_ON_HOST_NETWORK_INTERFACE, self.set_ip_on_host_network_interface)
         http_server.register_async_uri(self.HOST_XFS_SCRAPE_PATH, self.get_xfs_frag_data)
         http_server.register_async_uri(self.HOST_SHUTDOWN, self.shutdown_host)
         http_server.register_async_uri(self.GET_PCI_DEVICES, self.get_pci_info)
