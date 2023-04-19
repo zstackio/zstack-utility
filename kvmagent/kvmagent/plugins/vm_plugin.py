@@ -3965,22 +3965,22 @@ class Vm(object):
 
     def merge_snapshot(self, cmd):
         _, disk_name = self._get_target_disk(cmd.volume)
+        begin_time = time.time()
+        deadline = begin_time + get_timeout(cmd)
+
+        def get_timeout_seconds(exception_if_timeout=True):
+            now = time.time()
+            if now >= deadline and exception_if_timeout:
+                raise kvmagent.KvmError(
+                    'live merging snapshot chain failed, timeout after %d seconds' % deadline - begin_time)
+
+            return deadline - now
 
         def do_pull(base, top):
             logger.debug('start block rebase [active: %s, new backing: %s]' % (top, base))
 
             # Double check (c.f. issue #1323)
             logger.debug('merge snapshot is checking previous block job of disk:%s' % disk_name)
-
-            begin_time = time.time()
-            deadline = begin_time + get_timeout(cmd)
-
-            def get_timeout_seconds(exception_if_timeout=True):
-                now = time.time()
-                if now >= deadline and exception_if_timeout:
-                    raise kvmagent.KvmError('live merging snapshot chain failed, timeout after %d seconds' % deadline - begin_time)
-
-                return deadline - now
 
             def wait_previous_job(_):
                 return not self._wait_for_block_job(disk_name, abort_on_error=True)
@@ -4007,11 +4007,14 @@ class Vm(object):
 
             class BlockPullDaemon(plugin.TaskDaemon):
                 def __init__(self, vm):
-                    super(BlockPullDaemon, self).__init__(cmd, "BlockPull")
+                    super(BlockPullDaemon, self).__init__(cmd, "BlockPull", report_progress=False)
                     self.vm = vm  # type: Vm
 
                 def _cancel(self):
                     self.vm.domain.blockJobAbort(disk_name)
+
+                def _get_percent(self):  # type: () -> int
+                    pass
 
                 def __exit__(self, exc_type, ex, exc_tb):
                     super(BlockPullDaemon, self).__exit__(exc_type, ex, exc_tb)
