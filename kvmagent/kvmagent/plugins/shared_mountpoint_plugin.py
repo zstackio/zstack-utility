@@ -437,7 +437,8 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
             linux.qcow2_rebase(cmd.srcPath, cmd.destPath)
         else:
             tmp = os.path.join(os.path.dirname(cmd.destPath), '%s.qcow2' % uuidhelper.uuid())
-            linux.create_template(cmd.destPath, tmp)
+            t_shell = traceable_shell.get_shell(cmd)
+            linux.create_template(cmd.destPath, tmp, shell=t_shell)
             shell.call("mv %s %s" % (tmp, cmd.destPath))
 
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
