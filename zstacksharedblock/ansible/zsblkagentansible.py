@@ -69,22 +69,22 @@ host_post_info.remote_port = remote_port
 if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
 
-IS_AARCH64 = get_remote_host_arch(host_post_info) == 'aarch64'
+# include zstacklib.py
+host_info = get_remote_host_info_obj(host_post_info)
+releasever = get_host_releasever(host_info)
+host_post_info.releasever = releasever
+
+IS_AARCH64 = host_info.host_arch == 'aarch64'
 if IS_AARCH64:
     src_pkg_zsblk = "zsblk-agent.aarch64.bin"
 else:
     src_pkg_zsblk = "zsblk-agent.bin"
 pkg_zsblk = "zsblk-agent.bin"
 
-# include zstacklib.py
-(distro, major_version, distro_release, distro_version) = get_remote_host_info(host_post_info)
-releasever = get_host_releasever([distro, distro_release, distro_version])
-host_post_info.releasever = releasever
-
 zstacklib_args = ZstackLibArgs()
-zstacklib_args.distro = distro
-zstacklib_args.distro_release = distro_release
-zstacklib_args.distro_version = distro_version
+zstacklib_args.distro = host_info.distro
+zstacklib_args.distro_release = host_info.distro_release
+zstacklib_args.distro_version = host_info.major_version
 zstacklib_args.zstack_repo = zstack_repo
 zstacklib_args.zstack_root = zstack_root
 zstacklib_args.host_post_info = host_post_info
@@ -92,7 +92,7 @@ zstacklib_args.pip_url = pip_url
 zstacklib_args.trusted_host = trusted_host
 zstacklib_args.require_python_env = require_python_env
 zstacklib_args.zstack_releasever = releasever
-if distro in DEB_BASED_OS:
+if host_info.distro in DEB_BASED_OS:
     zstacklib_args.apt_server = yum_server
     zstacklib_args.zstack_apt_source = zstack_repo
 else :
