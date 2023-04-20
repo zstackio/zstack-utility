@@ -2639,6 +2639,9 @@ class Vm(object):
                 e(disk, 'driver', None, driver_elements)
                 e(disk, 'source', None, {'dev': volume.installPath})
 
+                if volume.shareable:
+                    e(disk, 'shareable')
+
                 if volume.useVirtioSCSI:
                     e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
                     e(disk, 'wwn', volume.wwn)
@@ -4940,6 +4943,9 @@ class Vm(object):
                     driver_elements["iothread"] = str(_v.ioThreadId)
                 e(disk, 'driver', None, driver_elements)
                 e(disk, 'source', None, {'dev': _v.installPath})
+                
+                if _v.shareable:
+                    e(disk, 'shareable')
 
                 if _v.useVirtioSCSI:
                     e(disk, 'target', None, {'dev': 'sd%s' % _dev_letter, 'bus': 'scsi'})
