@@ -2122,7 +2122,7 @@ class Vm(object):
             default_unit = Vm.get_device_unit(vol.deviceId)
             unit = default_unit if default_unit not in occupied_units else max(occupied_units) + 1
             controller = '0'
-            if vol.hasattr("controllerIndex") and vol.controllerIndex:
+            if vol.useVirtioSCSI and vol.hasattr("controllerIndex") and vol.controllerIndex:
                controller = str(vol.controllerIndex)
             e(disk_element, 'address', None, {'type': 'drive', 'controller': controller, 'unit': str(unit)})
 
@@ -2541,9 +2541,8 @@ class Vm(object):
             driver_elements = {'name': 'qemu', 'type': linux.get_img_fmt(volume.installPath), 'cache': volume.cacheMode}
             if volume.useVirtio and volume.hasattr("multiQueues") and volume.multiQueues:
                 driver_elements["queues"] = volume.multiQueues
-            if volume.useVirtio and volume.hasattr("ioThreadId") and volume.ioThreadId:
+            if (not volume.useVirtioSCSI) and volume.useVirtio and volume.hasattr("ioThreadId") and volume.ioThreadId:
                 driver_elements["iothread"] = str(volume.ioThreadId)
-            e(disk, 'driver', None, driver_elements)
             e(disk, 'driver', None, driver_elements)
             e(disk, 'source', None, {'file': volume.installPath})
 
@@ -2634,7 +2633,7 @@ class Vm(object):
                 driver_elements = {'name': 'qemu', 'type': linux.get_img_fmt(volume.installPath), 'cache': 'none', 'io': 'native'}
                 if volume.useVirtio and volume.hasattr("multiQueues") and volume.multiQueues:
                     driver_elements["queues"] = volume.multiQueues
-                if volume.useVirtio and volume.hasattr("ioThreadId") and volume.ioThreadId:
+                if (not volume.useVirtioSCSI) and volume.useVirtio and volume.hasattr("ioThreadId") and volume.ioThreadId:
                     driver_elements["iothread"] = str(volume.ioThreadId)
                 e(disk, 'driver', None, driver_elements)
                 e(disk, 'source', None, {'dev': volume.installPath})
@@ -4791,7 +4790,7 @@ class Vm(object):
                     driver_elements['queues'] = 1
                 if _v.useVirtio and _v.hasattr("multiQueues") and _v.multiQueues:
                     driver_elements["queues"] = _v.multiQueues
-                if _v.useVirtio and _v.hasattr("ioThreadId") and _v.ioThreadId:
+                if (not _v.useVirtioSCSI) and _v.useVirtio and _v.hasattr("ioThreadId") and _v.ioThreadId:
                     driver_elements["iothread"] = str(_v.ioThreadId)
 
                 e(disk, 'driver', None, driver_elements)
@@ -4936,7 +4935,7 @@ class Vm(object):
                 driver_elements = {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': 'none', 'io': 'native'}
                 if _v.useVirtio and _v.hasattr("multiQueues") and _v.multiQueues:
                     driver_elements["queues"] = _v.multiQueues
-                if _v.useVirtio and _v.hasattr("ioThreadId") and _v.ioThreadId:
+                if (not _v.useVirtioSCSI) and _v.useVirtio and _v.hasattr("ioThreadId") and _v.ioThreadId:
                     driver_elements["iothread"] = str(_v.ioThreadId)
                 e(disk, 'driver', None, driver_elements)
                 e(disk, 'source', None, {'dev': _v.installPath})

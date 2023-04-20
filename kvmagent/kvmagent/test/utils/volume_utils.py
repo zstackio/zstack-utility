@@ -21,7 +21,9 @@ attach_volume_body = {
         "physicalBlockSize": 0,
         "type": "Data",
         "format": "qcow2",
-        "primaryStorageType": "LocalStorage"
+        "primaryStorageType": "LocalStorage",
+        "controllerIndex": 0,
+        "ioThreadId": 0
     },
     "vmInstanceUuid": None,  # must fill
     "addons": {
@@ -48,7 +50,9 @@ attach_shareblock_volume_body = {
         "physicalBlockSize": 0,
         "type": "Data",
         "format": "qcow2",
-        "primaryStorageType": "SharedBlock"
+        "primaryStorageType": "SharedBlock",
+        "controllerIndex": 0,
+        "ioThreadId": 0
     },
     "vmInstanceUuid": None,  # must fill
     "addons": {
@@ -70,7 +74,9 @@ start_vm_sharedblock_data_vol = {
         "physicalBlockSize": 0,
         "type": "Data",
         "format": "qcow2",
-        "primaryStorageType": "SharedBlock"
+        "primaryStorageType": "SharedBlock",
+        "controllerIndex": 0,
+        "ioThreadId": 0
     }
 
 
