@@ -180,6 +180,7 @@ class UpdateBondingCmd(kvmagent.AgentCommand):
     def __init__(self):
         super(UpdateBondingCmd, self).__init__()
         self.bondName = None
+        self.oldSlaves = None # type: list[HostNetworkInterfaceStruct]
         self.slaves = None # type: list[HostNetworkInterfaceStruct]
         self.mode = None
         self.xmitHashPolicy = None
@@ -373,8 +374,8 @@ class NetworkPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = UpdateBondingResponse()
 
-        bondSlaves = self.slaves
-        newBondSlaves = cmd.bondSlaves
+        bondSlaves = cmd.oldSlaves
+        newBondSlaves = cmd.slaves
         add_items = list(set(newBondSlaves) - set(bondSlaves))
         reduce_items = list(set(bondSlaves) - set(newBondSlaves))
 
