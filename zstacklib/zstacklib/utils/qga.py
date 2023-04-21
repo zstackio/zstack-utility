@@ -65,6 +65,8 @@ class VmQga(object):
     VM_OS_LINUX_REDHAT = "rhel"
     VM_OS_WINDOWS = "mswindows"
 
+    ZS_TOOLS_PATN_WIN = "C:\Program Files\GuestTools\zs-tools\zs-tools.exe"
+
     def __init__(self, domain):
         self.domain = domain
         self.vm_uuid = domain.name()
@@ -123,9 +125,9 @@ class VmQga(object):
         parsedRet = parsed['return']
         if isinstance(parsedRet, dict):
             if 'out-data' in parsedRet:
-                parsedRet['out-data'] = base64.b64decode(parsedRet['out-data'])  # .decode("GB2312")
+                parsedRet['out-data'] = base64.b64decode(parsedRet['out-data']).decode('utf-8').encode('utf-8')
             if 'err-data' in parsedRet:
-                parsedRet['err-data'] = base64.b64decode(parsedRet['err-data'])  # .decode("GB2312")
+                parsedRet['err-data'] = base64.b64decode(parsedRet['err-data']).decode('utf-8').encode('utf-8')
             if 'buf-b64' in parsedRet:
                 parsedRet['buf-b64'] = base64.b64decode(parsedRet['buf-b64'])
 
@@ -227,6 +229,36 @@ class VmQga(object):
             exit_code = 0 if res.get('result') == "success" else 1
         elif 'err-data' in ret:
             exit_code = 1
+            ret_data = ret['err-data']
+
+        return exit_code, ret_data
+
+    def guest_exec_zs_tools(self, operate, config, output=True, wait=qga_exec_wait_interval, retry=qga_exec_wait_retry):
+        if operate == 'net':
+            ret = self.guest_exec(
+                {"path": self.ZS_TOOLS_PATN_WIN, "arg": [operate, "--config", config], "capture-output": output})
+            if ret and "pid" in ret:
+                pid = ret["pid"]
+            else:
+                raise Exception('qga exec zs-tools operate {} config {} failed for vm {}'.format(operate, config, self.vm_uuid))
+        else:
+            raise Exception('qga exec zs-tools unknow operate {} for vm {}'.format(operate, self.vm_uuid))
+
+        ret = None
+        for i in range(retry):
+            time.sleep(wait)
+            ret = self.guest_exec_status(pid)
+            if ret['exited']:
+                break
+
+        if not ret or not ret.get('exited'):
+            raise Exception('qga exec zs-tools operate {} config {} timeout for vm {}'.format(operate, config, self.vm_uuid))
+
+        exit_code = ret.get('exitcode')
+        ret_data = None
+        if 'out-data' in ret:
+            ret_data = ret['out-data']
+        elif 'err-data' in ret:
             ret_data = ret['err-data']
 
         return exit_code, ret_data
@@ -418,7 +450,10 @@ class VmQga(object):
             if 'guest-get-osinfo' in self.supported_commands and \
                     self.supported_commands['guest-get-osinfo']:
                 self.os, self.os_version = self.guest_exec_get_os_info()
-                self.os_id_like = self.guest_get_os_id_like()
+                if self.os == VmQga.VM_OS_WINDOWS:
+                    self.os_id_like = "windows"
+                else:
+                    self.os_id_like = self.guest_get_os_id_like()
             else:
                 self.os, self.os_version, self.os_id_like = self.guest_get_os_info()
         except Exception as e:
