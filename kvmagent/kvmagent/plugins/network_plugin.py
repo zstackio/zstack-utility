@@ -349,9 +349,15 @@ class NetworkPlugin(kvmagent.KvmAgent):
         rsp = CreateBondingResponse()
 
         try:
-            for slave in cmd.slaves:
-                if self._has_vlan_or_bridge(slave.interfaceName) != 0:
-                    raise Exception('failed to update bonding %s, the slave has a sub-interface or a bridge port', cmd.mode)
+            try:
+                for slave in cmd.slaves:
+                    if self._has_vlan_or_bridge(slave.interfaceName) != 0:
+                        raise Exception(slave.interfaceName + ' has a sub-interface or a bridge port')
+            except Exception as e:
+                rsp.error = 'unable to create bonding[%s], because %s' % (cmd.bondName, str(e))
+                rsp.success = False
+                return jsonobject.dumps(rsp)
+
             # zs-bond -c bond1 mode 802.ad xmitHashPolicy layer2+3
             if cmd.xmitHashPolicy is not None:
                 shell.call('/usr/local/bin/zs-bond -c %s mode %s xmit_hash_policy %s' % (cmd.bondName, cmd.mode, cmd.xmitHashPolicy))
@@ -365,7 +371,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
                 if ret == 0:
                     shell.call('/usr/local/bin/zs-bond -d %s' % cmd.bondName)
         except Exception as e:
-            shell.call('/usr/local/bin/zs-bond -d %s' % cmd.bondName)
+            shell.run('/usr/local/bin/zs-bond -d %s' % cmd.bondName)
             logger.warning(traceback.format_exc())
             rsp.error = 'unable to create bonding[%s], because %s' % (cmd.bondName, str(e))
             rsp.success = False
@@ -387,7 +393,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         try:
             for interface in add_items:
                 if self._has_vlan_or_bridge(interface.interfaceName) != 0:
-                    raise Exception('failed to update bonding %s, the slave has a sub-interface or a bridge port' % cmd.bondName)
+                    raise Exception(interface.interfaceName + ' has a sub-interface or a bridge port')
 
             if cmd.mode is not None or cmd.xmitHashPolicy is not None:
                 # zs-bond -u bond1 mode 802.3ad
@@ -423,7 +429,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
                 # zs-bond -d bond2
                 shell.call('/usr/local/bin/zs-bond -d %s' % cmd.bondName)
             else:
-                raise Exception('failed to delete bonding %s, the bond has a sub-interface or a bridge port.' % cmd.bondName)
+                raise Exception(cmd.bondName + ' has a sub-interface or a bridge port')
 
         except Exception as e:
             logger.warning(traceback.format_exc())
