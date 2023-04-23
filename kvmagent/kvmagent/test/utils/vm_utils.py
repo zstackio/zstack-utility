@@ -148,7 +148,9 @@ start_vm_data_vol = {
     "physicalBlockSize": 0,
     "shareable": False,
     "wwn": "0x000f6c46e4c236bf",
-    "type": "Data"
+    "type": "Data",
+    "controllerIndex": 0,
+    "ioThreadId": 0
 }
 
 volume_iothread_pin_body = {
@@ -211,7 +213,6 @@ def build_virtio_scsi_vol_body_with_iothreadpin(vol_uuid, vol_path, iothread_id,
     data_vol["ioThreadId"] = iothread_id
     data_vol["controllerIndex"] = controller_index
     data_vol["ioThreadPin"] = pin
-    data_vol["useVirtio"] = False
     data_vol["useVirtioSCSI"] = True
     return data_vol, {"ioThreadId": iothread_id, "pin": pin, "volumeUuid": vol_uuid}
 
@@ -234,7 +235,6 @@ def build_virtio_scsi_shared_block_vol_body_with_iothread(vol_uuid, vol_path, io
     body["resourceUuid"] = vol_uuid
     body["installPath"] = vol_path
     body["volumeUuid"] = vol_uuid
-    body["useVirtio"] = False
     body["useVirtioSCSI"] = True
     body["controllerIndex"] = controller_index
     return body, {"ioThreadId": iothread_id, "pin": pin, "volumeUuid": vol_uuid}
@@ -266,7 +266,6 @@ def create_startvm_body_jsonobject_with_virtio_scsi_volume_iothread(vol_uuid, vo
     data_vol["installPath"] = vol_install_path
     data_vol["ioThreadId"] = iothread_id
     data_vol["controllerIndex"] = controller_index
-    data_vol["useVirtio"] = False
     data_vol["useVirtioSCSI"] = True
     body["addons"]["ioThreadNum"] = 1
     body["addons"]["ioThreadPins"] = [{"ioThreadId": iothread_id, "pin": pin, "volumeUuid": vol_uuid}]
@@ -410,9 +409,7 @@ def attach_virtio_scsi_iothread_volume_to_vm(vm_uuid, vol_uuid, vol_path, iothre
     body = copy.deepcopy(volume_utils.attach_volume_body)
     body["volume"]["ioThreadId"] = iothread
     body["volume"]["ioThreadPin"] = pin
-    body["volume"]["useVirtio"] = False
     body["volume"]["useVirtioSCSI"] = True
-    body["volume"]["controllerIndex"] = None
     body = jsonobject.loads(jsonobject.dumps(body))
     body.volume.installPath = vol_path
     body.vmInstanceUuid = vm_uuid
@@ -428,9 +425,7 @@ def attach_virtio_scsi_iothread_shareblock_volume_to_vm(vm_uuid, vol_uuid, vol_p
     body = copy.deepcopy(volume_utils.attach_shareblock_volume_body)
     body["volume"]["ioThreadId"] = iothread
     body["volume"]["ioThreadPin"] = pin
-    body["volume"]["useVirtio"] = False
     body["volume"]["useVirtioSCSI"] = True
-    body["volume"]["controllerIndex"] = None
     body["vmInstanceUuid"] = vm_uuid
     body["volume"]["resourceUuid"] = vol_uuid
     body["volume"]["installPath"] = vol_path
