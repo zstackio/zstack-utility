@@ -65,7 +65,7 @@ def get_guest_tools_states(vmUuids):
 
         qga_status.qgaRunning = True
         qga_status.osType = '{} {}'.format(qga.os, qga.os_version)
-        if 'mswindows' in qga.os:
+        if qga.os and 'mswindows' in qga.os:
             qga_status.platForm = 'Windows'
             try:
                 ret = qga.guest_file_is_exist(VmQga.ZS_TOOLS_PATN_WIN)

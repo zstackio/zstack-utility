@@ -290,14 +290,14 @@ class VmQga(object):
         exit_code = ret.get('exitcode')
         ret_data = None
         if 'out-data' in ret:
-            ret_data = ret['out-data']
+            ret_data = ret['out-data'].decode("GB2312")
         elif 'err-data' in ret:
-            ret_data = ret['err-data']
+            ret_data = ret['err-data'].decode("GB2312")
 
         return exit_code, ret_data
 
     def guest_exec_powershell_no_exitcode(self, cmd, exception=True, output=True):
-        exitcode, ret_data = self.guest_exec_powershell(cmd, output)
+        exitcode, ret_data = self.guest_exec_powershell('& "{}"'.format(cmd), output)
         if exitcode != 0:
             if exception:
                 raise Exception('cmd {}, exitcode {}, ret {}'

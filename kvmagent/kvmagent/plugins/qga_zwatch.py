@@ -30,11 +30,13 @@ class ZWatchMetricMonitor(kvmagent.KvmAgent):
     ZWATCH_RESTART_CMD = "/bin/systemctl restart zwatch-vm-agent.service"
     ZWATCH_VM_INFO_PATH = "/var/log/zstack/vm.info"
     ZWATCH_VM_METRIC_PATH = "/var/log/zstack/vm_metrics.prom"
+    ZWATCH_GET_NIC_INFO_PATH = "/usr/local/zstack/zs-tools/nic_info_linux.sh"
 
     WIN_ZWATCH_BASE_PATH = "C:\\Program Files\\GuestTools"
     WIN_ZWATCH_RESTART_CMD = "Restart-Service -Name zstack_zwatch_agent"
     WIN_ZWATCH_VM_INFO_PATH = WIN_ZWATCH_BASE_PATH + "\\" + "vm.info"
     WIN_ZWATCH_VM_METRIC_PATH = WIN_ZWATCH_BASE_PATH + "\\" + "vm_metrics.prom"
+    WIN_ZWATCH_GET_NIC_INFO_PATH = WIN_ZWATCH_BASE_PATH + "\\" + "zs-tools\\nic_info_win.ps1"
 
     PROMETHEUS_PUSHGATEWAY_URL = "http://127.0.0.1:9092/metrics/job/zwatch_vm_agent/vmUuid/"
 
@@ -45,6 +47,7 @@ class ZWatchMetricMonitor(kvmagent.KvmAgent):
     def __init__(self):
         self.state = False
         self.vm_list = {}
+        self.vm_nic_info = {}
         self.running_vm_list = []
 
     def configure(self, config):
@@ -76,8 +79,38 @@ class ZWatchMetricMonitor(kvmagent.KvmAgent):
                 for vmUuid in new_vm_list:
                     # new vm found
                     qga = vm_dict.get(vmUuid)
-                    qga and self.zwatch_qga_monitor_vm(vmUuid, qga)
+                    if qga:
+                        self.zwatch_qga_monitor_vm(vmUuid, qga)
+                for vmUuid in self.running_vm_list:
+                    qga = vm_dict.get(vmUuid)
+                    if qga:
+                        self.qga_get_vm_nic(vmUuid, qga)
                 time.sleep(self.scan_interval_time)
+
+    @thread.AsyncThread
+    def qga_get_vm_nic(self, uuid, qga):
+        try:
+            if qga.os and 'mswindows' in qga.os:
+                zwatch_nic_info_path = self.WIN_ZWATCH_GET_NIC_INFO_PATH
+            else:
+                zwatch_nic_info_path = self.ZWATCH_GET_NIC_INFO_PATH
+            nicInfoStatus = qga.guest_file_is_exist(zwatch_nic_info_path)
+            if not nicInfoStatus:
+                return
+            nicInfo = qga.guest_exec_cmd_no_exitcode(zwatch_nic_info_path)
+            nicInfo = nicInfo.strip()
+            if not self.vm_nic_info.get(uuid):
+                need_update = True
+            elif isinstance(nicInfo, str) and isinstance(self.vm_nic_info[uuid], str):
+                need_update = nicInfo != self.vm_nic_info[uuid]
+            else:
+                need_update = nicInfo != self.vm_nic_info[uuid]
+            if need_update:
+                self.vm_nic_info[uuid] = nicInfo
+                self.send_nic_info_to_mn(uuid, self.vm_nic_info[uuid])
+        except Exception as e:
+            logger.debug('vm[%s] read nic info by qga failed due to [%s]' % (uuid, str(e)))
+            return
 
     @thread.AsyncThread
     def zwatch_qga_monitor_vm(self, uuid, qga):
@@ -86,7 +119,7 @@ class ZWatchMetricMonitor(kvmagent.KvmAgent):
                 if uuid not in self.running_vm_list:
                     logger.debug('vm[%s] has been stop running' % uuid)
                     break
-                if "mswindows" in qga.os:
+                if qga.os and 'mswindows' in qga.os:
                     zwatch_vm_info_path = self.WIN_ZWATCH_VM_INFO_PATH
                     zwatch_vm_metric_path = self.WIN_ZWATCH_VM_METRIC_PATH
                     zwatch_restart_cmd = self.WIN_ZWATCH_RESTART_CMD
@@ -132,6 +165,16 @@ class ZWatchMetricMonitor(kvmagent.KvmAgent):
         self.zwatch_qga_monitor()
         return jsonobject.dumps(AgentRsp())
 
+    @lock.lock('qga_nic_info_send_to_mn')
+    def send_nic_info_to_mn(self, uuid, nic_info):
+        logger.debug('transmitting vm nic info [ vm:[%s], nicInfo:[%s] ] to management node' % (
+            uuid, nic_info))
+        url = self.config.get(kvmagent.SEND_COMMAND_URL)
+        if not url:
+            raise kvmagent.KvmError("cannot find SEND_COMMAND_URL, unable to transmit vm operation to management node")
+        http.json_dump_post(url, VmNicInfo(uuid, nic_info), {'commandpath': '/vm/nicinfo/sync'})
+
+
 
 class VmQgaStatus:
     def __init__(self):
@@ -140,6 +183,12 @@ class VmQgaStatus:
         self.version = ""
         self.platForm = ""
         self.osType = ""
+
+
+class VmNicInfo:
+    def __init__(self, uuid, nic_info):
+        self.vmUuid = uuid
+        self.nicInfo = nic_info
 
 
 @vm_plugin.LibvirtAutoReconnect
@@ -173,7 +222,7 @@ def get_guest_tools_states(domains):
             return qga_status
         qga_status.qgaRunning = True
         qga_status.osType = '{} {}'.format(qga.os, qga.os_version)
-        if 'mswindows' in qga.os:
+        if qga.os and 'mswindows' in qga.os:
             qga_status.platForm = 'Windows'
         else:
             qga_status.platForm = 'Linux'
