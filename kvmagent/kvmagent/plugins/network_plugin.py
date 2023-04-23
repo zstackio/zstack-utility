@@ -351,16 +351,21 @@ class NetworkPlugin(kvmagent.KvmAgent):
         try:
             for slave in cmd.slaves:
                 if self._has_vlan_or_bridge(slave.interfaceName) != 0:
-                    raise Exception('failed to update bonding %s, the slave has a sub-interface or a bridge port.', cmd.bondName)
-            # zs-bond -c bond1 mode 4
-            shell.call('/usr/local/bin/zs-bond -c %s mode %s xmit_hash_policy %s' % (cmd.bondName, cmd.bondMode, cmd.xmitHashPolicy))
+                    raise Exception('failed to update bonding %s, the slave has a sub-interface or a bridge port', cmd.mode)
+            # zs-bond -c bond1 mode 802.ad xmitHashPolicy layer2+3
+            if cmd.xmitHashPolicy is not None:
+                shell.call('/usr/local/bin/zs-bond -c %s mode %s xmit_hash_policy %s' % (cmd.bondName, cmd.mode, cmd.xmitHashPolicy))
+            else:
+                # zs-bond -c bond1 mode active-backup
+                shell.call('/usr/local/bin/zs-bond -c %s mode %s' % (cmd.bondName, cmd.mode))
 
             # zs-nic-to-bond -a bond2 nic3
             for slave in cmd.slaves:
-                ret = shell.call('/usr/local/bin/zs-change-nic -a %s %s' % (cmd.bondName, slave.interfaceName))
-                if ret != 0:
+                ret = shell.call('/usr/local/bin/zs-nic-to-bond -a %s %s' % (cmd.bondName, slave.interfaceName))
+                if ret == 0:
                     shell.call('/usr/local/bin/zs-bond -d %s' % cmd.bondName)
         except Exception as e:
+            shell.call('/usr/local/bin/zs-bond -d %s' % cmd.bondName)
             logger.warning(traceback.format_exc())
             rsp.error = 'unable to create bonding[%s], because %s' % (cmd.bondName, str(e))
             rsp.success = False
@@ -381,23 +386,24 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
         try:
             for interface in add_items:
-                if self._has_vlan_or_bridge(interface.interfaceName) == 0:
-                    raise Exception('failed to update bonding %s, the slave has a sub-interface or a bridge port.', cmd.bondName)
+                if self._has_vlan_or_bridge(interface.interfaceName) != 0:
+                    raise Exception('failed to update bonding %s, the slave has a sub-interface or a bridge port' % cmd.bondName)
 
             if cmd.mode is not None or cmd.xmitHashPolicy is not None:
-                # zs-bond -u bond1 mode 4
+                # zs-bond -u bond1 mode 802.3ad
                 if cmd.xmitHashPolicy is None:
                     shell.call('/usr/local/bin/zs-bond -u %s mode %s' % (cmd.bondName, cmd.mode))
                 else:
-                    shell.call('/usr/local/bin/zs-bond -u %s mode %s xmitHashPolicy %s' % (cmd.bondName, cmd.bondMode, cmd.xmitHashPolicy))
+                    shell.call('/usr/local/bin/zs-bond -u %s mode %s xmitHashPolicy %s' % (cmd.bondName, cmd.mode, cmd.xmitHashPolicy))
 
-            if bondSlaves != newBondSlaves:
+            if cmd.oldSlaves != cmd.slaves:
                 # zs-nic-to-bond -a bond2 nic3
                 for interface in add_items:
                     shell.call('/usr/local/bin/zs-nic-to-bond -a %s %s' % (cmd.bondName, interface.interfaceName))
-                # zs-nic-to-bond -d bond2 nic 4
-                for interface in reduce_items:
-                    shell.call('/usr/local/bin/zs-nic-to-bond -d %s %s' % (cmd.bondName, interface.interfaceName))
+                # zs-nic-to-bond -d bond2 nic nic4
+                if add_items != reduce_items:
+                    for interface in reduce_items:
+                        shell.call('/usr/local/bin/zs-nic-to-bond -d %s %s' % (cmd.bondName, interface.interfaceName))
         except Exception as e:
             logger.warning(traceback.format_exc())
             rsp.error = 'unable to create bonding[%s], because %s' % (cmd.bondName, str(e))
@@ -415,7 +421,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         try:
             if self._has_vlan_or_bridge(cmd.bondName) == 0:
                 # zs-bond -d bond2
-                shell.call('/usr/local/bin/zs-bond -d %s', cmd.bondName)
+                shell.call('/usr/local/bin/zs-bond -d %s' % cmd.bondName)
             else:
                 raise Exception('failed to delete bonding %s, the bond has a sub-interface or a bridge port.' % cmd.bondName)
 

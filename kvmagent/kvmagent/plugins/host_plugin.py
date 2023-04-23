@@ -1812,6 +1812,8 @@ done
                 if cmd.gateway is not None:
                     shell.call('/usr/local/bin/zs-network-setting -i %s %s %s %s' % (cmd.interfaceName, cmd.ipAddress, cmd.netmask, cmd.gateway))
                 else:
+                    # zs-network-setting -d eth0
+                    shell.call('/usr/local/bin/zs-network-setting -d %s' % cmd.interfaceName)
                     shell.call('/usr/local/bin/zs-network-setting -i %s %s %s' % (cmd.interfaceName, cmd.ipAddress, cmd.netmask))
             except Exception as e:
                 rsp.error = 'unable to add ip on %s, because %s' % (cmd.interfaceName, str(e))
@@ -1819,10 +1821,7 @@ done
 
             # After configuring the ip, check the connectivity
             if cmd.gateway is not None and shell.run('ping -c 5 -W 1 %s > /dev/null 2>&1' % cmd.gateway) != 0:
-                # mv ipv4 on interface
-                ip_addresses = shell.call("ip addr show -4 dev %s | grep 'inet' | awk '{print $2}'" % cmd.interfaceName)
-                for ip_addr in ip_addresses:
-                    shell.call('ip addr del %s dev %s' % (ip_addr, cmd.interfaceName))
+                shell.call('/usr/local/bin/zs-network-setting -d %s' % cmd.interfaceName)
 
                 # If it is not connected, it will fall back to the old ip address
                 if cmd.oldGateway is None:
@@ -1833,10 +1832,8 @@ done
                                cmd.ipAddress, cmd.netmask, cmd.gateway))
         # If the front-end parameter is empty, the ip will be deleted by default
         else:
-            # mv ipv4 on interface
-            ip_addresses = shell.call("ip addr show -4 dev %s | grep 'inet' | awk '{print $2}'" % cmd.interfaceName)
-            for ip_addr in ip_addresses:
-                shell.call('ip addr del %s dev %s' % ip_addr, cmd.interfaceName)
+            # mv ip on interface
+            shell.call('/usr/local/bin/zs-network-setting -d %s' % cmd.interfaceName)
             
         return jsonobject.dumps(rsp)
 
