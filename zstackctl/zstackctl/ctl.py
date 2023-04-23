@@ -809,6 +809,7 @@ class Ctl(object):
         self.tomcat_xml_file_path = None
         self.verbose = False
         self.extra_arguments = None
+        self.http_call_cmd = 'curl -X POST -H "Content-Type:application/json" -H "commandpath:%s" -d \'%s\' --retry 5 http://%s:%s/zstack/asyncrest/sendcommand'
 
     def register_command(self, cmd):
         assert cmd.name, "command name cannot be None"
@@ -1164,7 +1165,17 @@ class Ctl(object):
         else:
             check()
 
+
 ctl = Ctl()
+
+
+def file_hex_digest(algorithm, file_path):
+    with open(file_path, 'rb') as data:
+        try:
+            return hashlib.new(algorithm, data.read()).hexdigest()
+        except IOError as err:
+            raise CtlError('can not open file %s because IOError: %s' % (file_path, str(err)))
+
 
 def script(cmd, args=None, no_pipe=False):
     if args:
@@ -1247,6 +1258,15 @@ class UpdateSNSGlobalPropertyCmd(object):
     def __init__(self):
         self.ticketTopicHttpURL = None
         self.systemTopicHttpEndpointURL = None
+
+    def _asdict(self):
+        return self.__dict__
+
+
+class UpdatePropertyCmd(object):
+    def __init__(self):
+        self.propertiesDigestValue = None
+        self.mnIp = None
 
     def _asdict(self):
         return self.__dict__
@@ -1944,6 +1964,8 @@ class ConfigureCmd(Command):
         super(ConfigureCmd, self).__init__()
         self.name = 'configure'
         self.description = "configure zstack.properties"
+        self.reportPath = "/progress/configure/properties"
+        self.properties_algorithm = "sha256"
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
@@ -1985,6 +2007,18 @@ EOF
 
         shell('cp -f %s %s' % (path, ctl.properties_file_path))
 
+    def _report_property_updated(self):
+        config_cmd = UpdatePropertyCmd()
+        config_cmd.propertiesDigestValue = file_hex_digest(self.properties_algorithm, ctl.properties_file_path)
+        config_cmd.mnIp = ctl.read_property('management.server.ip')
+        if not config_cmd.mnIp:
+            config_cmd.mnIp = "127.0.0.1"
+        mn_port = ctl.read_property('RESTFacade.port')
+        if not mn_port:
+            mn_port = 8080
+        ShellCmd(ctl.http_call_cmd % (self.reportPath, simplejson.dumps(config_cmd), config_cmd.mnIp, mn_port))
+        logger.debug('report properties updated, propertiesDigestValue: %s, mnIp: %s' % (config_cmd.propertiesDigestValue, config_cmd.mnIp))
+
     def run(self, args):
         if args.use_file:
             self._use_file(args)
@@ -2003,6 +2037,8 @@ EOF
 
         properties = [l.split('=', 1) for l in ctl.extra_arguments]
         ctl.write_properties(properties)
+
+        self._report_property_updated()
 
 def get_management_node_pid():
     DEFAULT_PID_FILE_PATH = os.path.join(os.path.expanduser('~zstack'), "management-server.pid")
