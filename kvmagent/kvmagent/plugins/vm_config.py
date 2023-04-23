@@ -68,7 +68,7 @@ def get_guest_tools_states(vmUuids):
         if 'mswindows' in qga.os:
             qga_status.platForm = 'Windows'
             try:
-                ret = qga.guest_file_open(VmQga.ZS_TOOLS_PATN_WIN)
+                ret = qga.guest_file_is_exist(VmQga.ZS_TOOLS_PATN_WIN)
                 if not ret:
                     logger.debug("open {} failed".format(VmQga.ZS_TOOLS_PATN_WIN))
                     return qga_status
@@ -162,8 +162,8 @@ class VmConfigPlugin(kvmagent.KvmAgent):
         if qga.os == VmQga.VM_OS_WINDOWS:
             ret, msg = qga.guest_exec_zs_tools(operate='net', config=jsonobject.dumps(nicParams))
             if ret != 0:
-                logger.debug("config vm {} by qga failed, detail info {}".format(cmd.vmUuid, msg))
-            return ret, msg.replace("\r\n", "")
+                logger.debug("config vm {} by qga failed, detail info {}".format(vm_uuid, msg))
+            return ret, msg
 
         # write command to a file
         ret = qga.guest_file_write(self.VM_QGA_PARAM_FILE, jsonobject.dumps(nicParams))

@@ -125,9 +125,9 @@ class VmQga(object):
         parsedRet = parsed['return']
         if isinstance(parsedRet, dict):
             if 'out-data' in parsedRet:
-                parsedRet['out-data'] = base64.b64decode(parsedRet['out-data']).decode('utf-8').encode('utf-8')
+                parsedRet['out-data'] = base64.b64decode(parsedRet['out-data'])
             if 'err-data' in parsedRet:
-                parsedRet['err-data'] = base64.b64decode(parsedRet['err-data']).decode('utf-8').encode('utf-8')
+                parsedRet['err-data'] = base64.b64decode(parsedRet['err-data'])
             if 'buf-b64' in parsedRet:
                 parsedRet['buf-b64'] = base64.b64decode(parsedRet['buf-b64'])
 
@@ -257,11 +257,11 @@ class VmQga(object):
         exit_code = ret.get('exitcode')
         ret_data = None
         if 'out-data' in ret:
-            ret_data = ret['out-data']
+            ret_data = ret['out-data'].decode('utf-8').encode('utf-8')
         elif 'err-data' in ret:
-            ret_data = ret['err-data']
+            ret_data = ret['err-data'].decode('utf-8').encode('utf-8')
 
-        return exit_code, ret_data
+        return exit_code, ret_data.replace('\r\n', '')
 
     def guest_exec_powershell(self, cmd, output=True, wait=qga_exec_wait_interval, retry=qga_exec_wait_retry):
 
