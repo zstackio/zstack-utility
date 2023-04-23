@@ -114,7 +114,7 @@ class VmQga(object):
             raise Exception(message)
 
         try:
-            logger.debug("vm {} run qga command {} result {}".format(self.vm_uuid, cmd, ret))
+            logger.debug("vm {} run qga command {}".format(self.vm_uuid, cmd))
             
             parsed = json.loads(ret)
         except ValueError:
@@ -238,12 +238,16 @@ class VmQga(object):
         if operate == 'net':
             ret = self.guest_exec(
                 {"path": self.ZS_TOOLS_PATN_WIN, "arg": [operate, "--config", config], "capture-output": output})
-            if ret and "pid" in ret:
-                pid = ret["pid"]
-            else:
-                raise Exception('qga exec zs-tools operate {} config {} failed for vm {}'.format(operate, config, self.vm_uuid))
+        elif operate == 'host':
+            ret = self.guest_exec(
+                {"path": self.ZS_TOOLS_PATN_WIN, "arg": [operate, "--name", config], "capture-output": output})
         else:
             raise Exception('qga exec zs-tools unknow operate {} for vm {}'.format(operate, self.vm_uuid))
+
+        if ret and "pid" in ret:
+                pid = ret["pid"]
+        else:
+            raise Exception('qga exec zs-tools operate {} config {} failed for vm {}'.format(operate, config, self.vm_uuid))
 
         ret = None
         for i in range(retry):
