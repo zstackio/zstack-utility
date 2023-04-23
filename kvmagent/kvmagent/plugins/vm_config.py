@@ -67,7 +67,16 @@ def get_guest_tools_states(vmUuids):
         qga_status.osType = '{} {}'.format(qga.os, qga.os_version)
         if 'mswindows' in qga.os:
             qga_status.platForm = 'Windows'
-            return qga_status
+            try:
+                ret = qga.guest_file_open(VmQga.ZS_TOOLS_PATN_WIN)
+                if not ret:
+                    logger.debug("open {} failed".format(VmQga.ZS_TOOLS_PATN_WIN))
+                    return qga_status
+                qga_status.zsToolsFound = True
+                return qga_status
+            except Exception as e:
+                logger.debug("get vm {} guest-info failed {}".format(domain, e))
+                return qga_status
         else:
             qga_status.platForm = 'Linux'
             try:
@@ -132,7 +141,8 @@ class VmConfigPlugin(kvmagent.KvmAgent):
         VmQga.VM_OS_LINUX_SUSE_D: ("12", "15",),
         VmQga.VM_OS_LINUX_ORACLE: ("7",),
         VmQga.VM_OS_LINUX_REDHAT: ("7",),
-        VmQga.VM_OS_LINUX_UBUNTU: ("18",)
+        VmQga.VM_OS_LINUX_UBUNTU: ("18",),
+        VmQga.VM_OS_WINDOWS: ("10", "2012", "2016",)
     }
 
     @lock.lock('config_vm_by_qga')
@@ -148,6 +158,13 @@ class VmConfigPlugin(kvmagent.KvmAgent):
             cmd_file = self.VM_QGA_CONFIG_LINUX_CMD
         else:
             return 1, "not support for os {}".format(qga.os)
+
+        # configure windows by zs-tools
+        if qga.os == VmQga.VM_OS_WINDOWS:
+            ret, msg = qga.guest_exec_zs_tools(operate='net', config=jsonobject.dumps(nicParams))
+            if ret != 0:
+                logger.debug("config vm {} by qga failed, detail info {}".format(cmd.vmUuid, msg))
+            return ret, msg.replace("\r\n", "")
 
         # write command to a file
         ret = qga.guest_file_write(self.VM_QGA_PARAM_FILE, jsonobject.dumps(nicParams))
@@ -201,7 +218,7 @@ class VmConfigPlugin(kvmagent.KvmAgent):
             rsp.success = False
             rsp.error = msg
         else:
-            logger.debug("config vm {} by qga successfully, detail info {}", cmd.vmUuid, msg)
+            logger.debug("config vm {} by qga successfully, detail info {}".format(cmd.vmUuid, msg))
 
         return jsonobject.dumps(rsp)
 
