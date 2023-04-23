@@ -195,6 +195,9 @@ class VmConfigPlugin(kvmagent.KvmAgent):
             return 1, "not support for os {}".format(qga.os)
 
         # exec qga command
+        if default_ip is None:
+            default_ip = ""
+            
         ret, msg = qga.guest_exec_python(cmd_file, [hostname, default_ip])
         if ret != 0:
             logger.debug("set vm hostname {} by qga failed: {}".format(vm_uuid, msg))
@@ -240,7 +243,7 @@ class VmConfigPlugin(kvmagent.KvmAgent):
             rsp.error = 'vm {} not running'.format(cmd.vmUuid)
             return jsonobject.dumps(rsp)
 
-        ret, msg = self.set_vm_hostname_by_qga(domain, cmd.portsConfig)
+        ret, msg = self.set_vm_hostname_by_qga(domain, cmd.hostName, cmd.defaultIP)
         if ret != 0:
             rsp.success = False
             rsp.error = msg
@@ -253,7 +256,7 @@ class VmConfigPlugin(kvmagent.KvmAgent):
         http_server = kvmagent.get_http_server()
         http_server.register_async_uri(self.VM_CONFIG_PORTS, self.vm_config_ports)
         http_server.register_async_uri(self.VM_GUEST_TOOLS_STATE, self.vm_guest_tools_state)
-        http_server.register_async_uri(self.VM_SET_HOSTNAME, self.vm_config_ports)
+        http_server.register_async_uri(self.VM_SET_HOSTNAME, self.vm_set_hostname)
 
     def stop(self):
         pass
