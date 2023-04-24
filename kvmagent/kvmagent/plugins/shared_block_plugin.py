@@ -1125,18 +1125,19 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         lvm.update_pv_allocate_strategy(cmd)
         with lvm.RecursiveOperateLv(snapshot_abs_path, shared=True):
             virtual_size = linux.qcow2_virtualsize(snapshot_abs_path)
+            lv_size = max(self.get_total_required_size(snapshot_abs_path), int(lvm.get_lv_size(snapshot_abs_path)))
             if not lvm.lv_exists(workspace_abs_path):
                 pe_ranges = lvm.get_lv_affinity_sorted_pvs(snapshot_abs_path, cmd)
-                lvm.create_lv_from_absolute_path(workspace_abs_path, virtual_size,
+                lvm.create_lv_from_absolute_path(workspace_abs_path, lv_size,
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()),
                                                  pe_ranges=pe_ranges)
             with lvm.OperateLv(workspace_abs_path, shared=False, delete_when_exception=True):
                 t_shell = traceable_shell.get_shell(cmd)
                 linux.create_template(snapshot_abs_path, workspace_abs_path, shell=t_shell)
-                rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(workspace_abs_path)
+                rsp.size = virtual_size
+                rsp.actualSize = int(lvm.get_lv_size(workspace_abs_path))
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
-        rsp.actualSize = rsp.size
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -1162,23 +1163,18 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         dst_abs_path = translate_absolute_path_from_install_path(cmd.destPath)
 
         with lvm.RecursiveOperateLv(dst_abs_path, shared=False):
-            try:
-                measure_size = linux.qcow2_measure_required_size(dst_abs_path)
-            except Exception as e:
-                logger.warn("can not get qcow2 measure size: %s" % e)
-                measure_size = linux.qcow2_virtualsize(dst_abs_path)
-
+            total_required_size = self.get_total_required_size(dst_abs_path)
             current_size = int(lvm.get_lv_size(dst_abs_path))
             if not cmd.fullRebase:
-                if current_size < measure_size:
-                    lvm.extend_lv_from_cmd(dst_abs_path, measure_size, cmd, extend_thin_by_specified_size=True)
+                if current_size < total_required_size:
+                    lvm.extend_lv_from_cmd(dst_abs_path, total_required_size, cmd, extend_thin_by_specified_size=True)
 
                 with lvm.RecursiveOperateLv(src_abs_path, shared=True):
                     linux.qcow2_rebase(src_abs_path, dst_abs_path)
             else:
                 tmp_abs_path = os.path.join(os.path.dirname(dst_abs_path), 'tmp_%s' % uuidhelper.uuid())
                 logger.debug("creating temp lv %s" % tmp_abs_path)
-                lv_size = max(measure_size, current_size)
+                lv_size = max(total_required_size, current_size)
                 pe_ranges = lvm.get_lv_affinity_sorted_pvs(dst_abs_path, cmd)
                 lvm.create_lv_from_absolute_path(tmp_abs_path, lv_size,
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()),
