@@ -6553,7 +6553,7 @@ class ConfiguredCollectLogCmd(Command):
         parser.add_argument('--dump-thread-info', help='dump threads info', default=False)
         parser.add_argument('--dumptime', help='wait for dumping threads time, default is 10 seconds', type=int, default=10)
         parser.add_argument('--destination', help='collect logs to the specified directory', default=None)
-        parser.add_argument('--combination', help='collect logs in a combined way, including mn/mn_db/host/bs/ps/vroute/pxeserver/baremetalv2gateway, such as \'mn,host,ps\'',
+        parser.add_argument('--combination', help='collect logs in a combined way, including mn/mn_db/host/bs/ps/vrouter/pxeserver/baremetalv2gateway, such as \'mn,host,ps\'',
                             default=None)
         parser.add_argument('--clear-log', help='clear log collected through UI', default=None)
         parser.add_argument('--scsi-diagnose', help='only collect host syslog', action="store_true", default=False)
