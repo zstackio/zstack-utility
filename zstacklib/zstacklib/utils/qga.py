@@ -254,7 +254,7 @@ class VmQga(object):
         return exit_code, ret_data
 
     def guest_exec_powershell_no_exitcode(self, cmd, exception=True, output=True):
-        exitcode, ret_data = self.guest_exec_powershell('& "{}"'.format(cmd), output)
+        exitcode, ret_data = self.guest_exec_powershell(cmd, output)
         if exitcode != 0:
             if exception:
                 raise Exception('cmd {}, exitcode {}, ret {}'
