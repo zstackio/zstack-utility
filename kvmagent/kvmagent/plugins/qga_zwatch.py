@@ -63,29 +63,34 @@ class ZWatchMetricMonitor(kvmagent.KvmAgent):
 
     @lock.lock('zwatch_qga_monitor')
     def zwatch_qga_monitor(self):
-        if self.state:
-            while True:
-                if not self.state:
-                    break
-                logger.debug('update vm list')
-                domains = get_domains()
-                tools_states, vm_dict = get_guest_tools_states(domains)
-                # remove stopped vm which in running_vm_list
-                logger.debug('debug: vm list: %s' % self.running_vm_list)
-                last_monitor_vm_list = self.running_vm_list
-                self.running_vm_list = [vmUuid for vmUuid, qgaStatus in tools_states.items() if qgaStatus.qgaRunning]
-                new_vm_list = set(self.running_vm_list) - set(last_monitor_vm_list)
-                logger.debug('debug: new vm list: %s' % new_vm_list)
-                for vmUuid in new_vm_list:
-                    # new vm found
-                    qga = vm_dict.get(vmUuid)
-                    if qga:
-                        self.zwatch_qga_monitor_vm(vmUuid, qga)
-                for vmUuid in self.running_vm_list:
-                    qga = vm_dict.get(vmUuid)
-                    if qga:
-                        self.qga_get_vm_nic(vmUuid, qga)
-                time.sleep(self.scan_interval_time)
+        try:
+            if self.state:
+                while True:
+                    if not self.state:
+                        break
+                    logger.debug('update vm list')
+                    domains = get_domains()
+                    tools_states, vm_dict = get_guest_tools_states(domains)
+                    # remove stopped vm which in running_vm_list
+                    logger.debug('debug: vm list: %s' % self.running_vm_list)
+                    last_monitor_vm_list = self.running_vm_list
+                    self.running_vm_list = [vmUuid for vmUuid, qgaStatus in tools_states.items() if qgaStatus.qgaRunning]
+                    new_vm_list = set(self.running_vm_list) - set(last_monitor_vm_list)
+                    logger.debug('debug: new vm list: %s' % new_vm_list)
+                    for vmUuid in new_vm_list:
+                        # new vm found
+                        qga = vm_dict.get(vmUuid)
+                        if qga:
+                            self.zwatch_qga_monitor_vm(vmUuid, qga)
+                    for vmUuid in self.running_vm_list:
+                        qga = vm_dict.get(vmUuid)
+                        if qga:
+                            self.qga_get_vm_nic(vmUuid, qga)
+                    time.sleep(self.scan_interval_time)
+        except Exception as e:
+            logger.debug('qga zwatch monitor reboot, crash due to [%s]' % str(e))
+            time.sleep(self.scan_interval_time)
+            self.zwatch_qga_monitor()
 
     @thread.AsyncThread
     def qga_get_vm_nic(self, uuid, qga):
@@ -97,13 +102,12 @@ class ZWatchMetricMonitor(kvmagent.KvmAgent):
             nicInfoStatus = qga.guest_file_is_exist(zwatch_nic_info_path)
             if not nicInfoStatus:
                 return
-            nicInfo = qga.guest_exec_cmd_no_exitcode(zwatch_nic_info_path)
+            nicInfo = qga.guest_exec_cmd_no_exitcode('& "{}"'.format(zwatch_nic_info_path))
             nicInfo = nicInfo.strip()
+            need_update = False
             if not self.vm_nic_info.get(uuid):
                 need_update = True
             elif isinstance(nicInfo, str) and isinstance(self.vm_nic_info[uuid], str):
-                need_update = nicInfo != self.vm_nic_info[uuid]
-            else:
                 need_update = nicInfo != self.vm_nic_info[uuid]
             if need_update:
                 self.vm_nic_info[uuid] = nicInfo
