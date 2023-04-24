@@ -520,7 +520,7 @@ class CollectFromYml(object):
                 cmd = cmd + ' -name \'%s\'' % file_value
 
         if mode_value == "Normal":
-            cmd = cmd + ' -exec ls --full-time {} \; | sort -k6 | awk \'{print $6\":\"$7\"|\"$9\"|\"$5}\''
+            cmd = cmd + ' -print | xargs ls --full-time | sort -k6 | awk \'{print $6\":\"$7\"|\"$9\"|\"$5}\''
             cmd = cmd + ' | awk -F \'|\' \'BEGIN{preview=0;} {if(NR==1 && ( $1 > \"%s\" || (\"%s\" < $1 && $1  <= \"%s\"))) print $2\"|\"$3; \
                                    else if ((\"%s\" < $1 && $1 <= \"%s\") || ( $1> \"%s\" && preview < \"%s\")) print $2\"|\"$3; preview = $1}\'' \
                   % (self.t_date, self.f_date, self.t_date, self.f_date, self.t_date, self.t_date, self.t_date)
