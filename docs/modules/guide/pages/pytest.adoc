@@ -1,0 +1,84 @@
+= 写在最开始
+
+这是一篇关于如何在 `zstack-utility` 中使用 `pytest` 的教程。本文假设你已经熟悉 `zstack-utility` 的代码结构，如果不熟悉，可以先阅读其他和代码相关的文档
+
+== 执行步骤
+
+跟随这个步骤，开始你的 `pytest` 之旅
+
+=== 创建测试用例
+
+<1>. 在 `zstack-utility` 中找到你想要测试的模块，比如 `zstack-utility/kvmagent`
+
+<2>. 创建测试用例，zstack-utility/kvmagent/kvmagent/test/test_hello_world.py
+
+[source,python]
+
+----
+
+import pytest
+
+def test_hello_world():
+
+    print("hello world")
+
+----
+
+<3>. 在 `zstack-utility/kvmagent` 目录下执行 `pytest` 命令
+
+[source,bash]
+
+----
+
+$ pytest
+
+==== test session starts ====
+
+platform linux2 -- Python 2.7.5, pytest-3.0.7, py-1.4.33, pluggy-0.4.0
+
+rootdir: /home/andy/zstack-utility/kvmagent/kvmagent/test/test_hello_world.py, inifile:
+
+collected 1 items
+
+test_hello_world.py .
+
+==== 1 passed in 0.01 seconds ====
+
+----
+
+<4>. 输出代码覆盖率
+
+[source,bash]
+
+----
+
+$ pytest --cov=kvmagent --cov-config=/home/andy/zstack-utility/.coveragerc /home/andy/zstack-utility/kvmagent/kvmagent/test/test_hello_world.py
+
+==== test session starts ====
+
+platform linux2 -- Python 2.7.5, pytest-3.0.7, py-1.4.33, pluggy-0.4.0
+
+rootdir: /home/andy/zstack-utility/kvmagent/kvmagent/test/test_hello_world.py, inifile:
+
+plugins: cov-2.5.1
+
+collected 1 items
+
+test_hello_world.py .
+
+---------- coverage: platform linux2, python 2.7.5-final-0 ----------
+Name                  Stmts   Miss  Cover   Missing
+
+---------------------------------------------------
+
+kvmagent/__init__.py       0      0   100%
+
+kvmagent/kvmagent.py      10      0   100%
+
+---------------------------------------------------
+
+TOTAL                    10      0   100%
+
+==== 1 passed in 0.01 seconds ====
+
+----
