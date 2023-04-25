@@ -28,7 +28,7 @@ class EnvVariable(object):
             f.write(yaml.dump(self.env))
 
     def value(self):
-        v = self.env[self.name]
+        v = self.env.get(self.name, None)
         try:
             if v is not None:
                 return self.type(v)
@@ -57,6 +57,7 @@ ZSTACK_UTILITY_SOURCE_DIR = env_var('projectSourceDir', str).value()
 DRY_RUN = env_var('dryRun', bool, default=False, required=False).value()
 TEST_FOR_OUTPUT_DIR = env_var('outPutDir', str, default='/root/ztest-test-for', required=False).value()
 SSH_PRIVATE_KEY = env_var('privateKey', str).value()
+COVERAGE = env_var('coverage', bool, default=False, required=False).value()
 
 
 def log_env_variables():
