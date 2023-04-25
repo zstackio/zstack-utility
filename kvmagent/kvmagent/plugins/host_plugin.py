@@ -1160,7 +1160,7 @@ class HostPlugin(kvmagent.KvmAgent):
         # use 'lsusb.py -U' to get device ID, like '0751:9842'
         rsp = GetUsbDevicesRsp()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        r, o, e = bash_roe("timeout 5 lsusb.py -U")
+        r, o, e = bash_roe("timeout 5 /usr/local/bin/lsusb.py -U")
         if r != 0:
             rsp.success = False
             rsp.error = "%s %s" % (e, o)
@@ -1198,7 +1198,7 @@ class HostPlugin(kvmagent.KvmAgent):
                 elif line[0] == 'bcdUSB':
                     info.usbVersion = line[1]
                     # special case: USB2.0 with speed 1.5MBit/s or 12MBit/s should be attached to USB1.1 Controller
-                    rst = bash_r("lsusb.py | grep -v 'grep' | grep '%s' | grep -E '1.5MBit/s|12MBit/s'" % dev_id)
+                    rst = bash_r("/usr/local/bin/lsusb.py | grep -v 'grep' | grep '%s' | grep -E '1.5MBit/s|12MBit/s'" % dev_id)
                     info.usbVersion = info.usbVersion if rst != 0 else '1.1'
                 elif line[0] == 'iManufacturer' and len(line) > 2:
                     info.iManufacturer = ' '.join(line[2:])
