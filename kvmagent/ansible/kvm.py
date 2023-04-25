@@ -277,7 +277,7 @@ def install_kvm_pkg():
                       usbredir-server iputils iscsi-initiator-utils libvirt-daemon libvirt-daemon-kvm libvirt-client libvirt-python lighttpd lsof \
                       net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
                       smartmontools sshpass usbutils wget audit dnsmasq \
-                      qemu-kvm collectd-virt edk2-ovmf mcelog MegaCli storcli Arcconf nvme-cli python-pyudev seabios-bin kernel-devel elfutils-libelf-devel"
+                      qemu-kvm collectd-virt edk2-ovmf edk2.git-ovmf-x64 mcelog MegaCli storcli Arcconf nvme-cli python-pyudev seabios-bin kernel-devel elfutils-libelf-devel"
 
         # handle zstack_repo
         if zstack_repo != 'false':
