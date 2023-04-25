@@ -2176,6 +2176,10 @@ def create_vxlan_bridge(interf, bridgeName, ips):
         cmd = shell.ShellCmd("brctl addif %s %s" % (bridgeName, interf))
         cmd(is_exception=False)
 
+    # Fix ZSTAC-54704. It is expected that the bridge to be reset when the host reconnects. However, the above code
+    # does not necessarily execute create_bridge(), and additional testing is required if it must be executed.
+    shell.call("brctl stp %s off" % bridgeName)
+    shell.call("brctl setfd %s 0" % bridgeName)
     if ips is not None:
         populate_vxlan_fdbs([interf], ips)
 
