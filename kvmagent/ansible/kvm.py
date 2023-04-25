@@ -535,7 +535,6 @@ def copy_ovmf_tools():
     _dst = "/usr/share/OVMF/"
     copy_to_remote(_src, _dst, None, host_post_info)
 
-@on_debian_based(distro)
 def copy_lsusb_scripts():
     _src = os.path.join(file_root, "lsusb.py")
     _dst = "/usr/local/bin/"
