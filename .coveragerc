@@ -1,2 +1,0 @@
-[run]
-omit = /usr/lib/python2.7/site-packages/_pytest/*, /usr/lib/python2.7/site-packages/pluggy/*, /usr/lib/python2.7/site-packages/py/*, /usr/lib/python2.7/site-packages/pytest_cov/*, .zguest/*
