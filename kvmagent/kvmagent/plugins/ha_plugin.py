@@ -1010,7 +1010,7 @@ class HaPlugin(kvmagent.KvmAgent):
                         continue
 
                     try:
-                        logger.warn("aliyun nas storage %s fencer fired!" % cmd.uui
+                        logger.warn("aliyun nas storage %s fencer fired!" % cmd.uuid)
 
                         vm_uuids = kill_vm(cmd.maxAttempts, cmd.strategy).keys()
 

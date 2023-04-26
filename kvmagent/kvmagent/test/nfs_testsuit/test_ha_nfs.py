@@ -161,18 +161,23 @@ class TestHaNfsPlugin(TestCase, NfsPluginTestStub):
         uuids = [primaryStorageUuid]
         urls = [url]
         mountedByZStack = [False]
-        rsp = ha_utils.setup_self_fencer(hostUuid, 1, 2, mountPaths, uuids, urls, mountedByZStack, [""], 5, "Force")
+        rsp = ha_utils.setup_self_fencer(hostUuid, 1, 2, mountPaths, uuids, urls, mountedByZStack, [""], 5, "Force", ["hostStorageState"])
         self.assertEqual(True, rsp.success)
 
-        time.sleep(20)
+        time.sleep(10)
         self.check_record_vm_uuids_exists(1, 1, primaryStorageUuid, hostUuid, 1, mountPath, vm.vmInstanceUuid)
 
         r, o = bash.bash_ro("virsh destroy %s" % vm.vmInstanceUuid)
         self.assertEqual(0, r)
-        time.sleep(20)
+        time.sleep(10)
         self.check_record_vm_uuids_not_exists(1, 1, primaryStorageUuid, hostUuid, 1, mountPath, vm.vmInstanceUuid)
 
+        rsp = ha_utils.setup_self_fencer(hostUuid, 1, 2, mountPaths, uuids, urls, mountedByZStack, [""], 5, "Force", [])
+        self.assertEqual(True, rsp.success)
 
+        time.sleep(10)
+        rsp = ha_utils.file_system_check_vmstate(1, 1, primaryStorageUuid, hostUuid, 1, mountPath)
+        assert rsp.result[primaryStorageUuid] == False
 
 
     @pytest.mark.flaky(reruns=3)
