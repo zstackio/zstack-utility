@@ -532,7 +532,8 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             linux.qcow2_rebase(cmd.srcPath, cmd.destPath)
         else:
             tmp = os.path.join(os.path.dirname(cmd.destPath), '%s.qcow2' % uuidhelper.uuid())
-            linux.create_template(cmd.destPath, tmp)
+            t_shell = traceable_shell.get_shell(cmd)
+            linux.create_template(cmd.destPath, tmp, shell=t_shell)
             shell.call("mv %s %s" % (tmp, cmd.destPath))
 
         self._set_capacity_to_response(cmd.uuid, rsp)
@@ -594,8 +595,11 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             os.makedirs(workspace_dir)
 
         try:
-            t_shell = traceable_shell.get_shell(cmd)
-            linux.create_template(cmd.snapshotInstallPath, cmd.workspaceInstallPath, shell=t_shell)
+            if cmd.incremental:
+                return linux.qcow2_create_with_backing_file_and_option(cmd.snapshotInstallPath, cmd.workspaceInstallPath)
+            else:
+                t_shell = traceable_shell.get_shell(cmd)
+                linux.create_template(cmd.snapshotInstallPath, cmd.workspaceInstallPath, shell=t_shell)
             rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.workspaceInstallPath)
             self._set_capacity_to_response(cmd.uuid, rsp)
         except linux.LinuxError as e:

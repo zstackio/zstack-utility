@@ -832,7 +832,8 @@ class CephAgent(plugin.TaskManager):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         path = self._normalize_install_path(cmd.path)
 
-        shell.call('rbd flatten %s' % path)
+        t_shell = traceable_shell.get_shell(cmd)
+        t_shell.call('rbd flatten %s' % path)
 
         rsp = AgentResponse()
         self._set_capacity_to_response(rsp)

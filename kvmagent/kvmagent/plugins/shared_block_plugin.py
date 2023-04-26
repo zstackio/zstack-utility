@@ -970,15 +970,21 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         with lvm.RecursiveOperateLv(volume_abs_path, shared=True, skip_deactivate_tags=[IMAGE_TAG]):
             if not lvm.lv_exists(install_abs_path):
-                total_size = self.get_total_required_size(volume_abs_path)
+                if cmd.incremental:
+                    total_size = lvm.round_to(lvm.calcLvReservedSize(0), 512)
+                else:
+                    total_size = self.get_total_required_size(volume_abs_path)
                 lvm.update_pv_allocate_strategy(cmd)
                 lvm.create_lv_from_absolute_path(install_abs_path, total_size, IMAGE_TAG)
             with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
-                t_shell = traceable_shell.get_shell(cmd)
-                linux.create_template(volume_abs_path, install_abs_path, shell=t_shell)
+                if cmd.incremental:
+                    linux.qcow2_create_with_backing_file_and_option(volume_abs_path, install_abs_path)
+                else:
+                    t_shell = traceable_shell.get_shell(cmd)
+                    linux.create_template(volume_abs_path, install_abs_path, shell=t_shell)
                 logger.debug('successfully created template cache [%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
 
-                if cmd.compareQcow2:
+                if cmd.compareQcow2 and not cmd.incremental:
                     self.compare_qcow2(volume_abs_path, install_abs_path)
 
                 rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(install_abs_path)
@@ -1184,7 +1190,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()),
                                                  pe_ranges=pe_ranges)
                 with lvm.OperateLv(tmp_abs_path, shared=False, delete_when_exception=True):
-                    linux.create_template(dst_abs_path, tmp_abs_path)
+                    t_shell = traceable_shell.get_shell(cmd)
+                    linux.create_template(dst_abs_path, tmp_abs_path, shell=t_shell)
                     lvm.lv_rename(tmp_abs_path, dst_abs_path, overwrite=True)
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
