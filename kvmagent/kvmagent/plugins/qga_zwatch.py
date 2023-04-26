@@ -1,6 +1,7 @@
 import os.path
 import time
 import libvirt
+import json
 
 from kvmagent import kvmagent
 from zstacklib.utils import http
@@ -33,7 +34,7 @@ class ZWatchMetricMonitor(kvmagent.KvmAgent):
     ZWATCH_GET_NIC_INFO_PATH = "/usr/local/zstack/zs-tools/nic_info_linux.sh"
 
     WIN_ZWATCH_BASE_PATH = "C:\\Program Files\\GuestTools"
-    WIN_ZWATCH_RESTART_CMD = "Restart-Service -Name zstack_zwatch_agent"
+    WIN_ZWATCH_RESTART_CMD = "Restart-Service|zstack_zwatch_agent"
     WIN_ZWATCH_VM_INFO_PATH = WIN_ZWATCH_BASE_PATH + "\\" + "vm.info"
     WIN_ZWATCH_VM_METRIC_PATH = WIN_ZWATCH_BASE_PATH + "\\" + "vm_metrics.prom"
     WIN_ZWATCH_GET_NIC_INFO_PATH = WIN_ZWATCH_BASE_PATH + "\\" + "zs-tools\\nic_info_win.ps1"
@@ -49,6 +50,8 @@ class ZWatchMetricMonitor(kvmagent.KvmAgent):
         self.vm_list = {}
         self.vm_nic_info = {}
         self.running_vm_list = []
+        self.qga_state = {}
+        self.tools_state = {}
 
     def configure(self, config):
         self.config = config
@@ -70,11 +73,18 @@ class ZWatchMetricMonitor(kvmagent.KvmAgent):
                         break
                     logger.debug('update vm list')
                     domains = get_domains()
-                    tools_states, vm_dict = get_guest_tools_states(domains)
+                    vm_states, vm_dict = get_guest_tools_states(domains)
+                    self.report_vm_qga_state({
+                        vmUuid: qgaStatus.qgaRunning for vmUuid, qgaStatus in vm_states.items()
+                    }, {
+                        vmUuid: qgaStatus.zsToolsFound for vmUuid, qgaStatus in vm_states.items()
+                    })
                     # remove stopped vm which in running_vm_list
                     logger.debug('debug: vm list: %s' % self.running_vm_list)
                     last_monitor_vm_list = self.running_vm_list
-                    self.running_vm_list = [vmUuid for vmUuid, qgaStatus in tools_states.items() if qgaStatus.qgaRunning]
+                    self.running_vm_list = [
+                        vmUuid for vmUuid, qgaStatus in vm_states.items() if qgaStatus.qgaRunning
+                    ]
                     new_vm_list = set(self.running_vm_list) - set(last_monitor_vm_list)
                     logger.debug('debug: new vm list: %s' % new_vm_list)
                     for vmUuid in new_vm_list:
@@ -102,7 +112,7 @@ class ZWatchMetricMonitor(kvmagent.KvmAgent):
             nicInfoStatus = qga.guest_file_is_exist(zwatch_nic_info_path)
             if not nicInfoStatus:
                 return
-            nicInfo = qga.guest_exec_cmd_no_exitcode('& "{}"'.format(zwatch_nic_info_path))
+            nicInfo = qga.guest_exec_cmd_no_exitcode(zwatch_nic_info_path)
             nicInfo = nicInfo.strip()
             need_update = False
             if not self.vm_nic_info.get(uuid):
@@ -178,6 +188,23 @@ class ZWatchMetricMonitor(kvmagent.KvmAgent):
             raise kvmagent.KvmError("cannot find SEND_COMMAND_URL, unable to transmit vm operation to management node")
         http.json_dump_post(url, VmNicInfo(uuid, nic_info), {'commandpath': '/vm/nicinfo/sync'})
 
+    @lock.lock('qga_state_report_to_mn')
+    def report_vm_qga_state(self, qga_state, tools_state):
+        if not qga_state or not tools_state:
+            return
+        if self.qga_state == qga_state and self.tools_state == tools_state:
+            return
+        else:
+            self.qga_state = qga_state
+            self.tools_state = tools_state
+        qga_state_json = json.dumps(self.qga_state)
+        tools_state_json = json.dumps(self.tools_state)
+        logger.debug('transmitting vm qga state [%s] and tools state [%s] to management node' % (
+            qga_state_json, tools_state_json))
+        url = self.config.get(kvmagent.SEND_COMMAND_URL)
+        if not url:
+            raise kvmagent.KvmError("cannot find SEND_COMMAND_URL, unable to transmit vm operation to management node")
+        http.json_dump_post(url, VmQgaState(qga_state_json, tools_state_json), {'commandpath': '/vm/qgastate/report'})
 
 
 class VmQgaStatus:
@@ -193,6 +220,12 @@ class VmNicInfo:
     def __init__(self, uuid, nic_info):
         self.vmUuid = uuid
         self.nicInfo = nic_info
+
+
+class VmQgaState:
+    def __init__(self, qga_state, tools_state):
+        self.qgaState = qga_state
+        self.toolsState = tools_state
 
 
 @vm_plugin.LibvirtAutoReconnect
@@ -228,13 +261,38 @@ def get_guest_tools_states(domains):
         qga_status.osType = '{} {}'.format(qga.os, qga.os_version)
         if qga.os and 'mswindows' in qga.os:
             qga_status.platForm = 'Windows'
+            try:
+                ret = qga.guest_file_is_exist(VmQga.ZS_TOOLS_PATN_WIN)
+                if not ret:
+                    logger.debug("open {} failed".format(VmQga.ZS_TOOLS_PATN_WIN))
+                    return qga_status
+                qga_status.zsToolsFound = True
+                return qga_status
+            except Exception as e:
+                logger.debug("get vm {} guest-info failed {}".format(domain, e))
+                return qga_status
         else:
             qga_status.platForm = 'Linux'
+            try:
+                _, config = qga.guest_file_read('/usr/local/zstack/guesttools')
+                if not config:
+                    logger.debug("read /usr/local/zstack/guesttools failed")
+                    return qga_status
+            except Exception as e:
+                logger.debug("read /usr/local/zstack/guesttools failed {}".format(e))
+                return qga_status
+
+        qga_status.zsToolsFound = True
+
+        version_config = [line for line in config.split('\n') if 'version' in line]
+        if version_config:
+            qga_status.version = version_config[0].split('=')[1].strip()
+
         return qga_status
 
-    tools_states = {dom.name(): get_state(dom) for dom in domains}
+    vm_states = {dom.name(): get_state(dom) for dom in domains}
     vm_dict = {dom.name(): VmQga(dom) if dom else None for dom in domains}
-    return tools_states, vm_dict
+    return vm_states, vm_dict
 
 
 def push_metrics_to_gateway(url, uuid, metrics):
