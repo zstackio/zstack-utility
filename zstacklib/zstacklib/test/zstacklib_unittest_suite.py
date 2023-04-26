@@ -9,7 +9,6 @@ PKG_NAME = __name__
 
 __ENV_SETUP__ = {
     'self': {
-        'init': ['bash ./ztest_unittest_setup.sh']
     }
 }
 
