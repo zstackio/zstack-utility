@@ -14,7 +14,7 @@ class PytestExtension(object):
         if not env.COVERAGE:
             return
 
-        PytestExtension.cov = coverage.Coverage()
+        PytestExtension.cov = coverage.Coverage(config_file=os.path.join(env.ZSTACK_UTILITY_SOURCE_DIR, '.coveragerc'))
         PytestExtension.cov.start()
 
     @staticmethod
