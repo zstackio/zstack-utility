@@ -869,6 +869,8 @@ class CollectFromYml(object):
 
     def add_fail_count(self, fail_log_number, log_type, ip, fail_log_name, fail_cause):
         self.fail_lock.acquire()
+        fail_log_name = fail_log_name.decode('utf-8')
+        fail_cause = fail_cause.decode('utf-8')
         try:
             self.summary.fail_count += fail_log_number
             self.summary.add_fail(log_type, ip, FailDetail(fail_log_name, fail_cause))
