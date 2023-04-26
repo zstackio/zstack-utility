@@ -272,7 +272,8 @@ def install_kvm_pkg():
                         usbredir-server iputils open-iscsi libvirt libvirt-client libvirt-python lighttpd lsof \
                         net-tools nfs-utils nmap openssh-clients OpenIPMI pciutils pv rsync sed nettle libselinux-devel \
                         smartmontools sshpass usbutils vconfig wget audit dnsmasq tar python2-psutil\
-                        qemu-kvm collectd-virt storcli edk2-ovmf edk2.git-ovmf-x64 python2-pyudev collectd-disk nvme-cli"
+                        qemu-kvm collectd-virt storcli Arcconf nvme-cli edk2-ovmf edk2.git-ovmf-x64 python2-pyudev \
+                        collectd-disk lm_sensors edac-utils"
 
         x86_64_nfs4 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                         usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
