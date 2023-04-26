@@ -390,12 +390,13 @@ def convert_raid_state_to_int(state):
 
     :type state: str
     """
-    state = state.lower()
-    if "optimal" in state:
+    state = state.lower().strip()
+    if "optimal" in state or "optl" == state:
         return 0
-    elif "degraded" in state or "interim recovery" in state:
+    # dgrd and pdgd
+    elif "degraded" in state or "dgrd" == state or "pdgd" == state or "interim recovery" in state:
         return 5
-    elif "ready for recovery" in state or "rebuilding" in state:
+    elif "ready for recovery" in state or "rebuilding" in state or "rec" == state:
         return 10
     else:
         return 100
@@ -406,12 +407,14 @@ def convert_disk_state_to_int(state):
 
     :type state: str
     """
-    state = state.lower()
-    if "online" in state or "jbod" in state or "ready" in state or "optimal" in state or "hot-spare" in state or "hot spare" in state or "raw" in state:
+    state = state.lower().strip()
+    if "online" in state or "jbod" in state or "ready" in state or "optimal" in state or "hot-spare" in state \
+            or "hot spare" in state or "raw" in state or "onln" == state or "ghs" == state or "dhs" == state \
+            or "ugood" == state:
         return 0
-    elif "rebuild" in state:
+    elif "rebuild" in state or "rbld" == state:
         return 5
-    elif "failed" in state or "offline" in state:
+    elif "failed" in state or "offline" in state or "offln" == state:
         return 10
     else:
         return 100
@@ -430,8 +433,8 @@ def collect_raid_state():
     if r == 0 and o.strip() != "":
         return collect_sas_raid_state(metrics, o)
 
-    r, o = bash_ro("/opt/MegaRAID/MegaCli/MegaCli64 -LDInfo -LALL -aAll | grep -E 'Target Id|State'")
-    if r == 0 and o.strip() != "":
+    r, o = bash_ro("/opt/MegaRAID/storcli/storcli64 /call/vall show all J")
+    if r == 0 and jsonobject.loads(o)['Controllers'][0]['Command Status']['Status'] == "Success":
         return collect_mega_raid_state(metrics, o)
 
     r, o = bash_ro("arcconf list | grep -A 8 'Controller ID' | awk '{print $2}'")
@@ -486,8 +489,8 @@ def collect_arcconf_raid_state(metrics, infos):
                     disk_status = convert_disk_state_to_int(drive_state)
                     metrics['physical_disk_state'].add_metric([slot_number, enclosure_device_id], disk_status)
                     disk_list[serial_number] = "%s-%s" % (enclosure_device_id, slot_number)
-                    if disk_status == 0 and (slot_number in disk_status_abnormal_list_record.keys()):
-                        disk_status_abnormal_list_record.pop(slot_number)
+                    if disk_status == 0 and (serial_number in disk_status_abnormal_list_record.keys()):
+                        disk_status_abnormal_list_record.pop(serial_number)
                     elif disk_status != 0:
                         send_physical_disk_status_alarm_to_mn(serial_number, slot_number, enclosure_device_id, drive_state)
      
@@ -528,8 +531,8 @@ def collect_sas_raid_state(metrics, infos):
                 drive_status = convert_disk_state_to_int(state)
                 metrics['physical_disk_state'].add_metric([slot_number, enclosure_device_id], drive_status)
                 disk_list[serial_number] = "%s-%s" % (enclosure_device_id, slot_number)
-                if drive_status == 0 and (slot_number in disk_status_abnormal_list_record.keys()):
-                    disk_status_abnormal_list_record.pop(slot_number)
+                if drive_status == 0 and (serial_number in disk_status_abnormal_list_record.keys()):
+                    disk_status_abnormal_list_record.pop(serial_number)
                 elif drive_status != 0:
                     send_physical_disk_status_alarm_to_mn(serial_number, slot_number, enclosure_device_id, state)
 
@@ -540,37 +543,44 @@ def collect_sas_raid_state(metrics, infos):
 def collect_mega_raid_state(metrics, infos):
     global disk_status_abnormal_list_record
     disk_list = {}
-    raid_info = infos.strip().splitlines()
-    target_id = state = "unknown"
-    for info in raid_info:
-        if "Target Id" in info:
-            target_id = info.strip().strip(")").split(" ")[-1]
-        else:
-            state = info.strip().split(" ")[-1]
-            metrics['raid_state'].add_metric([target_id], convert_raid_state_to_int(state))
-    
-    disk_info = bash_o(
-        "/opt/MegaRAID/MegaCli/MegaCli64 -PDList -aAll | grep -E 'Enclosure Device ID|Slot Number|Firmware state|Inquiry Data|Drive has flagged'").strip().splitlines()
-    enclosure_device_id = slot_number = serial_number = state = "unknown"
-    for info in disk_info:
-        k = info.split(":")[0].strip()
-        v = info.split(":")[1].strip()
-        if "Enclosure Device ID" in k:
-            enclosure_device_id = v
-        elif "Slot Number" in k:
-            slot_number = v
-        elif "Firmware state" in k:
-            state = v
-        elif "Inquiry Data" in k:
-            serial_number = v.split()[0].strip()
-        elif "Drive has flagged" in k:
-            drive_status = convert_disk_state_to_int(state)
-            metrics['physical_disk_state'].add_metric([slot_number, enclosure_device_id], drive_status)
-            disk_list[serial_number] = "%s-%s" % (enclosure_device_id, slot_number)
-            if drive_status == 0 and (slot_number in disk_status_abnormal_list_record.keys()):
-                disk_status_abnormal_list_record.pop(slot_number)
-            elif drive_status != 0:
-                send_physical_disk_status_alarm_to_mn(serial_number, slot_number, enclosure_device_id, state)
+    vd_infos = jsonobject.loads(infos.strip())
+
+    # collect raid vd state
+    for controller in vd_infos["Controllers"]:
+        controller_id = controller["Command Status"]["Controller"]
+        data = controller["Response Data"]
+        for attr in dir(data):
+            match = re.match(r"/c%s/v(\d+)" % controller_id, attr)
+            if not match:
+                continue
+            vid = match.group(1)
+            vd_state = data[attr][0]["State"]
+            converted_vd_state = convert_raid_state_to_int(vd_state)
+            metrics['raid_state'].add_metric([vid], converted_vd_state)
+
+    # collect disk state
+    o = bash_o("/opt/MegaRAID/storcli/storcli64 /call/eall/sall show all J").strip()
+    pd_infos = jsonobject.loads(o.strip())
+    for controller in pd_infos["Controllers"]:
+        controller_id = controller["Command Status"]["Controller"]
+        data = controller["Response Data"]
+        for attr in dir(data):
+            match = re.match(r"^Drive /c%s/e(\d+)/s(\d+)$" % controller_id, attr)
+            if not match:
+                continue
+            enclosure_id = match.group(1)
+            slot_id = match.group(2)
+            pd_state = data[attr][0]["State"]
+            converted_pd_status = convert_disk_state_to_int(pd_state)
+            metrics['physical_disk_state'].add_metric([slot_id, enclosure_id], converted_pd_status)
+            pd_path = "/c%s/e%s/s%s" % (controller_id, enclosure_id, slot_id)
+            pd_attributes = data["Drive %s - Detailed Information" % pd_path]["Drive %s Device attributes" % pd_path]
+            serial_number = pd_attributes["SN"].replace(" ", "")
+            disk_list[serial_number] = "%s-%s" % (enclosure_id, slot_id)
+            if converted_pd_status == 0 and (serial_number in disk_status_abnormal_list_record.keys()):
+                disk_status_abnormal_list_record.pop(serial_number)
+            elif converted_pd_status != 0:
+                send_physical_disk_status_alarm_to_mn(serial_number, slot_id, enclosure_id, converted_pd_status)
 
     check_disk_insert_and_remove(disk_list)
     return metrics.values()
