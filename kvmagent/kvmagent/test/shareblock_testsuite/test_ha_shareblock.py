@@ -169,16 +169,23 @@ class TestHaShareBlockPlugin(TestCase, SharedBlockPluginTestStub):
         self.assertFalse(not pid, 'cannot find pid of vm[%s]' % vm.vmInstanceUuid)
 
         addons = {"qcow2Options":" -o cluster_size=2097152 "}
-        rsp = ha_utils.setup_sharedblock_self_fencer(vgUuid, hostUuid, "None", addons, "None", 1, 1, 5, "Force")
+        rsp = ha_utils.setup_sharedblock_self_fencer(vgUuid, hostUuid, "None", addons, "None", 1, 1, 5, "Force", ["hostStorageState"])
         self.assertEqual(True, rsp.success)
 
-        time.sleep(20)
+        time.sleep(10)
         self.check_record_vm_uuids_exists(hostUuid, vgUuid, vm.vmInstanceUuid)
 
         r, o = bash.bash_ro("virsh destroy %s" % vm.vmInstanceUuid)
         self.assertEqual(0, r)
-        time.sleep(20)
+        time.sleep(10)
         self.check_record_vm_uuids_not_exists(hostUuid, vgUuid)
+
+        rsp = ha_utils.setup_sharedblock_self_fencer(vgUuid, hostUuid, "None", addons, "None", 1, 1, 5, "Force", [])
+        self.assertEqual(True, rsp.success)
+        time.sleep(10)
+        rsp = ha_utils.sharedblock_check_vmstate(hostUuid, 5, 5, 5, vgUuid)
+        self.assertEqual(True, rsp.success)
+        rsp.result[vgUuid] == False
 
         SharedBlockPluginTestStub().logout(vgUuid, hostUuid)
 
