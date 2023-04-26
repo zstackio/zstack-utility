@@ -53,7 +53,7 @@ def sanlock_scan_host(interval, times, hostIds):
 
 @misc.return_jsonobject()
 def setup_sharedblock_self_fencer(vgUuid, hostUuid, provisioning, addons, primaryStorageUuid,
-                                  interval, maxAttempts, storageCheckerTimeout, strategy,
+                                  interval, maxAttempts, storageCheckerTimeout, strategy, fencers,
                                   fail_if_no_path='true', checkIo='true'):
     return HA_PLUGIN.setup_sharedblock_self_fencer(misc.make_a_request({
         "vgUuid": vgUuid,
@@ -66,12 +66,13 @@ def setup_sharedblock_self_fencer(vgUuid, hostUuid, provisioning, addons, primar
         "storageCheckerTimeout": storageCheckerTimeout,
         "strategy": strategy,
         "fail_if_no_path": fail_if_no_path,
-        "checkIo": checkIo
+        "checkIo": checkIo,
+        "fencers": fencers
     }))
 
 @misc.return_jsonobject()
 def setup_self_fencer(hostUuid, interval, maxAttempts, mountPaths, uuids, urls, mountedByZStack,
-                      mountOptions, storageCheckerTimeout, strategy):
+                      mountOptions, storageCheckerTimeout, strategy, fencers):
     return HA_PLUGIN.setup_self_fencer(misc.make_a_request({
         "hostUuid": hostUuid,
         "interval": interval,
@@ -82,7 +83,8 @@ def setup_self_fencer(hostUuid, interval, maxAttempts, mountPaths, uuids, urls, 
         "mountedByZStack": mountedByZStack,
         "mountOptions": mountOptions,
         "storageCheckerTimeout": storageCheckerTimeout,
-        "strategy": strategy
+        "strategy": strategy,
+        "fencers": fencers
     }))
 
 @misc.return_jsonobject()
