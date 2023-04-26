@@ -654,11 +654,11 @@ class CollectFromYml(object):
         else:
             warn("unknown target type: %s" % type)
 
-    def generate_tar_ball(self, collect_dir, run_command_dir, detail_version, time_stamp):
+    def generate_tar_ball(self, collect_file_name, run_command_dir):
         info_verbose("Compressing log files ...")
 
-        command = "tar --ignore-failed-read zcf %s.tar.gz %s" % (collect_dir, collect_dir)
-
+        command = "cd %s && tar --ignore-failed-read -zcf %s.tar.gz %s" % (
+            run_command_dir, collect_file_name, collect_file_name)
         if self.delete_source_file is True:
             command = command + " --remove-files"
             
@@ -1165,9 +1165,9 @@ class CollectFromYml(object):
         dest_dir = args.collect_dir_name
 
         if not dest_dir:
-            collect_dir = run_command_dir + '/collect-log-%s-%s/' % (detail_version, time_stamp)
-        else:
-            collect_dir = run_command_dir + '/' + dest_dir + '/'
+            dest_dir = 'collect-log-%s-%s' % (detail_version, time_stamp)
+
+        collect_dir = '/'.join([run_command_dir,dest_dir]) + '/'
 
         if not os.path.exists(collect_dir) and args.check is not True:
             os.makedirs(collect_dir)
@@ -1201,7 +1201,7 @@ class CollectFromYml(object):
                 return
 
             collect_dir = collect_dir.rstrip('/')
-            self.generate_tar_ball(collect_dir, run_command_dir, detail_version, time_stamp)
+            self.generate_tar_ball(dest_dir, run_command_dir)
             if self.failed_flag is True:
                 info_verbose("The collect log generate at: %s.tar.gz,success %s,fail %s" % (
                     collect_dir, self.summary.success_count, self.summary.fail_count))
