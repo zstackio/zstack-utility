@@ -226,10 +226,7 @@ class VmQga(object):
         ret_data = None
         if 'out-data' in ret:
             ret_data = ret['out-data']
-            res = json.loads(ret_data)
-            exit_code = 0 if res.get('result') == "success" else 1
         elif 'err-data' in ret:
-            exit_code = 1
             ret_data = ret['err-data']
 
         return exit_code, ret_data
