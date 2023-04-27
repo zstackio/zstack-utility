@@ -1,0 +1,152 @@
+<domain type='kvm' id='1' xmlns:qemu='http://libvirt.org/schemas/domain/qemu/1.0'>
+  <name>0b42630f37d8417480eced62ad89719f</name>
+  <uuid>0b42630f-37d8-4174-80ec-ed62ad89719f</uuid>
+  <description>vm-for-ut</description>
+  <metadata xmlns:zs="http://zstack.org">
+    <zs:zstack>
+      <internalId>1</internalId>
+      <hostManagementIp>10.0.245.48</hostManagementIp>
+    </zs:zstack>
+  </metadata>
+  <maxMemory slots='16' unit='KiB'>34359738368</maxMemory>
+  <memory unit='KiB'>65536</memory>
+  <currentMemory unit='KiB'>65536</currentMemory>
+  <vcpu placement='static' current='1'>128</vcpu>
+  <cputune>
+    <shares>512</shares>
+  </cputune>
+  <resource>
+    <partition>/machine</partition>
+  </resource>
+  <sysinfo type='smbios'>
+    <system>
+      <entry name='serial'>4f3e9046-776d-4095-8edd-909523ede46d</entry>
+    </system>
+    <chassis>
+      <entry name='asset'>www.zstack.io</entry>
+    </chassis>
+  </sysinfo>
+  <os>
+    <type arch='x86_64' machine='pc-i440fx-rhel7.6.0'>hvm</type>
+    <bootmenu enable='yes'/>
+    <smbios mode='sysinfo'/>
+  </os>
+  <features>
+    <acpi/>
+    <apic/>
+    <pae/>
+    <ioapic driver='kvm'/>
+  </features>
+  <cpu>
+    <topology sockets='32' cores='4' threads='1'/>
+    <numa>
+      <cell id='0' cpus='0-127' memory='65536' unit='KiB'/>
+    </numa>
+  </cpu>
+  <clock offset='utc'/>
+  <on_poweroff>destroy</on_poweroff>
+  <on_reboot>restart</on_reboot>
+  <on_crash>preserve</on_crash>
+  <devices>
+    <emulator>/usr/libexec/qemu-kvm</emulator>
+    <disk type='file' device='disk' snapshot='external'>
+      <driver name='qemu' type='qcow2' cache='none'/>
+      <source file='/root/.zguest/min-vm.qcow2'/>
+      <backingStore/>
+      <target dev='vda' bus='virtio'/>
+      <serial>d387b4534faf4553a50a8a632cf12e35</serial>
+      <boot order='1'/>
+      <alias name='virtio-disk0'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x0a' function='0x0'/>
+    </disk>
+    <controller type='scsi' index='0' model='virtio-scsi'>
+      <alias name='scsi0'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x04' function='0x0'/>
+    </controller>
+    <controller type='usb' index='0' model='piix3-uhci'>
+      <alias name='usb'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x01' function='0x2'/>
+    </controller>
+    <controller type='usb' index='1' model='ehci'>
+      <alias name='usb1'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x05' function='0x0'/>
+    </controller>
+    <controller type='usb' index='2' model='nec-xhci'>
+      <alias name='usb2'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x06' function='0x0'/>
+    </controller>
+    <controller type='usb' index='3' model='ehci'>
+      <alias name='usb3'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x07' function='0x0'/>
+    </controller>
+    <controller type='usb' index='4' model='nec-xhci'>
+      <alias name='usb4'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x08' function='0x0'/>
+    </controller>
+    <controller type='pci' index='0' model='pci-root'>
+      <alias name='pci.0'/>
+    </controller>
+    <controller type='virtio-serial' index='0'>
+      <alias name='virtio-serial0'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x09' function='0x0'/>
+    </controller>
+    <interface type='bridge'>
+      <mac address='fa:62:4a:61:6c:00'/>
+      <source bridge='br_ens3'/>
+      <target dev='vnic1.0'/>
+      <model type='virtio'/>
+      <mtu size='1500'/>
+      <alias name='net0'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x03' function='0x0'/>
+    </interface>
+    <serial type='pty'>
+      <source path='/dev/pts/0'/>
+      <target type='isa-serial' port='0'>
+        <model name='isa-serial'/>
+      </target>
+      <alias name='serial0'/>
+    </serial>
+    <console type='pty' tty='/dev/pts/0'>
+      <source path='/dev/pts/0'/>
+      <target type='serial' port='0'/>
+      <alias name='serial0'/>
+    </console>
+    <channel type='unix'>
+      <source mode='bind' path='/var/lib/libvirt/qemu/0b42630f37d8417480eced62ad89719f'/>
+      <target type='virtio' name='org.qemu.guest_agent.0' state='disconnected'/>
+      <alias name='channel0'/>
+      <address type='virtio-serial' controller='0' bus='0' port='1'/>
+    </channel>
+    <input type='tablet' bus='usb'>
+      <alias name='input0'/>
+      <address type='usb' bus='0' port='1'/>
+    </input>
+    <input type='mouse' bus='ps2'>
+      <alias name='input1'/>
+    </input>
+    <input type='keyboard' bus='ps2'>
+      <alias name='input2'/>
+    </input>
+    <graphics type='vnc' port='5900' autoport='yes' listen='0.0.0.0'>
+      <listen type='address' address='0.0.0.0'/>
+    </graphics>
+    <video>
+      <model type='cirrus' vram='16384' heads='1' primary='yes'/>
+      <alias name='video0'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x02' function='0x0'/>
+    </video>
+    <memballoon model='virtio'>
+      <alias name='balloon0'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x0b' function='0x0'/>
+    </memballoon>
+  </devices>
+  <seclabel type='none' model='none'/>
+  <seclabel type='dynamic' model='dac' relabel='yes'>
+    <label>+0:+0</label>
+    <imagelabel>+0:+0</imagelabel>
+  </seclabel>
+  <qemu:commandline>
+    <qemu:arg value='-qmp'/>
+    <qemu:arg value='unix:/var/lib/libvirt/qemu/zstack/0b42630f37d8417480eced62ad89719f.sock,server,nowait'/>
+  </qemu:commandline>
+</domain>
