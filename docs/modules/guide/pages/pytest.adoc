@@ -52,7 +52,7 @@ test_hello_world.py .
 
 ----
 
-$ pytest --cov=kvmagent --cov-config=/home/andy/zstack-utility/.coveragerc /home/andy/zstack-utility/kvmagent/kvmagent/test/test_hello_world.py
+$ pytest --cov=kvmagent /home/andy/zstack-utility/kvmagent/kvmagent/test/test_hello_world.py
 
 ==== test session starts ====
 
@@ -82,3 +82,43 @@ TOTAL                    10      0   100%
 ==== 1 passed in 0.01 seconds ====
 
 ----
+
+<5>. 指定代码覆盖率输出的文件名并合并展示输出
+
+[source,bash]
+
+----
+
+$ COVERAGE_FILE=your_coverage_file_name pytest --cov=kvmagent /home/andy/zstack-utility/kvmagent/kvmagent/test/test_hello_world.py
+
+==== test session starts ====
+
+platform linux2 -- Python 2.7.5, pytest-3.0.7, py-1.4.33, pluggy-0.4.0
+
+rootdir: /home/andy/zstack-utility/kvmagent/kvmagent/test/test_hello_world.py, inifile:
+
+plugins: cov-2.5.1
+
+collected 1 items
+
+test_hello_world.py .
+
+----
+
+然后可以看到 `your_coverage_file_name` 生成了pytest-cov需要的raw file
+
+通过命令合并多个数据文件，因为你可能需要查看多个case测试之后的整体覆盖率
+
+[source,bash]
+----
+coverage combine your_coverage_file_name1 your_coverage_file_name2
+----
+
+最后通过命令生成html格式的覆盖率报告
+
+[source,bash]
+----
+coverage html
+----
+
+更多coverage的用法可以参考[Coverage.py](https://coverage.readthedocs.io/en/7.2.3/)
