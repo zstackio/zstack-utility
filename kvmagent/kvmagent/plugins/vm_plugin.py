@@ -459,6 +459,7 @@ class GetCpuXmlResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(GetCpuXmlResponse, self).__init__()
         self.cpuXml = None
+        self.cpuModelName = None
 
 class CompareCpuFunctionResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -5763,7 +5764,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_ATTACH_VOLUME = "/vm/attachdatavolume"
     KVM_DETACH_VOLUME = "/vm/detachdatavolume"
     KVM_MIGRATE_VM_PATH = "/vm/migrate"
-    KVM_Get_CPU_XML_PATH = "/vm/get/cpu/xml"
+    KVM_GET_CPU_XML_PATH = "/vm/get/cpu/xml"
     KVM_COMPARE_CPU_FUNCTION_PATH = "/vm/compare/cpu/function"
     KVM_BLOCK_LIVE_MIGRATION_PATH = "/vm/blklivemigration"
     KVM_VM_CHECK_VOLUME_PATH = "/vm/volume/check"
@@ -6762,6 +6763,8 @@ class VmPlugin(kvmagent.KvmAgent):
         else:
             if sh_cmd.stdout.strip():
                 rsp.cpuXml = sh_cmd.stdout.strip()
+
+        rsp.cpuModelName = shell.call("grep -m1 -P -o '(model name|cpu MHz)\s*:\s*\K.*' /proc/cpuinfo").splitlines()
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -9243,7 +9246,7 @@ host side snapshot files chian:
         http_server.register_async_uri(self.KVM_ATTACH_ISO_PATH, self.attach_iso)
         http_server.register_async_uri(self.KVM_DETACH_ISO_PATH, self.detach_iso)
         http_server.register_async_uri(self.KVM_MIGRATE_VM_PATH, self.migrate_vm)
-        http_server.register_async_uri(self.KVM_Get_CPU_XML_PATH, self.get_cpu_xml)
+        http_server.register_async_uri(self.KVM_GET_CPU_XML_PATH, self.get_cpu_xml)
         http_server.register_async_uri(self.KVM_COMPARE_CPU_FUNCTION_PATH, self.compare_cpu_function)
         http_server.register_async_uri(self.KVM_BLOCK_LIVE_MIGRATION_PATH, self.block_migrate)
         http_server.register_async_uri(self.KVM_VM_CHECK_VOLUME_PATH, self.check_volume)
