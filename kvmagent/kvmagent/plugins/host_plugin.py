@@ -966,18 +966,36 @@ class HostPlugin(kvmagent.KvmAgent):
             lambda x: x.address != '127.0.0.1' and not x.ifname.endswith('zs'), iproute.query_addresses(ip_version=4))]
         rsp.systemProductName = 'unknown'
         rsp.systemSerialNumber = 'unknown'
+        rsp.systemManufacturer = 'unknown'
+        rsp.systemUUID = 'unknown'
+        rsp.biosVendor = 'unknown'
+        rsp.biosVersion = 'unknown'
+        rsp.biosReleaseDate = 'unknown'
         is_dmidecode = shell.run("dmidecode")
-        if str(is_dmidecode) == '0' and kvmagent.host_arch == "x86_64":
+        if str(is_dmidecode) == '0':
             system_product_name = shell.call('dmidecode -s system-product-name').strip()
             baseboard_product_name = shell.call('dmidecode -s baseboard-product-name').strip()
             system_serial_number = shell.call('dmidecode -s system-serial-number').strip()
+            system_manufacturer = shell.call('dmidecode -s system-manufacturer').strip()
+            system_uuid = shell.call('dmidecode -s system-uuid').strip()
+            bios_vendor = shell.call('dmidecode -s bios-vendor').strip()
+            bios_version = shell.call('dmidecode -s bios-version').strip()
+            bios_release_date = shell.call('dmidecode -s bios-release-date').strip()
             rsp.systemSerialNumber = system_serial_number if system_serial_number else 'unknown'
             rsp.systemProductName = system_product_name if system_product_name else baseboard_product_name
-            power_supply_manufacturer = shell.call("dmidecode -t 39 | grep -m1 'Manufacturer' | awk -F ':' '{print $2}'")
-            rsp.powerSupplyManufacturer = power_supply_manufacturer.strip()
-            power_supply_model_name = shell.call("dmidecode -t 39 | grep -m1 'Name' | awk -F ':' '{print $2}'")
-            rsp.powerSupplyModelName = power_supply_model_name.strip()
-            power_supply_max_power_capacity = shell.call("dmidecode -t 39 | grep -m1 'Max Power Capacity' | awk -F ':' '{print $2}'")
+            rsp.systemManufacturer = system_manufacturer if system_manufacturer else 'unknown'
+            rsp.systemUUID = system_uuid if system_uuid else 'unknown'
+            rsp.biosVendor = bios_vendor if bios_vendor else 'unknown'
+            rsp.biosVersion = bios_version if bios_version else 'unknown'
+            rsp.biosReleaseDate = bios_release_date if bios_release_date else 'unknown'
+            memory_slots_maximum = shell.call('dmidecode -q -t memory | grep "Memory Device" | wc -l')
+            rsp.memorySlotsMaximum = memory_slots_maximum.strip()
+            # power not in presence cannot collect power info
+            power_supply_manufacturer = shell.call("dmidecode -t 39 | grep -vi 'not specified' | grep -m1 'Manufacturer' | awk -F ':' '{print $2}'").strip()
+            rsp.powerSupplyManufacturer = power_supply_manufacturer if power_supply_manufacturer != "" else "unknown"
+            power_supply_model_name = shell.call("dmidecode -t 39 | grep -vi 'not specified' | grep -m1 'Name' | awk -F ':' '{print $2}'").strip()
+            rsp.powerSupplyModelName = power_supply_model_name if power_supply_model_name != "" else "unknown"
+            power_supply_max_power_capacity = shell.call("dmidecode -t 39 | grep -vi 'unknown' | grep -m1 'Max Power Capacity' | awk -F ':' '{print $2}'")
             if bool(re.search(r'\d', power_supply_max_power_capacity)):
                 rsp.powerSupplyMaxPowerCapacity = filter(str.isdigit, power_supply_max_power_capacity.strip())
 
@@ -985,6 +1003,7 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.libvirtVersion = self.libvirt_version
         rsp.ipAddresses = ipV4Addrs
         rsp.cpuArchitecture = platform.machine()
+        rsp.uptime = shell.call('uptime -s').strip()
 
         if not IS_LOONGARCH64:
             libvirtCapabilitiesList = []
@@ -995,6 +1014,8 @@ class HostPlugin(kvmagent.KvmAgent):
                 libvirtCapabilitiesList.append("blockcopynetworktarget")
             rsp.libvirtCapabilities = libvirtCapabilitiesList
 
+        bmc_version = shell.call("ipmitool mc info | grep 'Firmware Revision' | awk -F ':' '{print $2}'").strip()
+        rsp.bmcVersion = bmc_version if bmc_version else 'unknown'
 
         # To see which lan the BMC is listening on, try the following (1-11), https://wiki.docking.org/index.php/Configuring_IPMI
         for channel in range(1, 12):
@@ -1030,8 +1051,9 @@ class HostPlugin(kvmagent.KvmAgent):
             # in case lscpu doesn't show cpu max mhz
             cpuMHz = "2500.0000" if cpuMHz.strip() == '' else cpuMHz
             rsp.cpuGHz = '%.2f' % (float(cpuMHz) / 1000)
-            cpu_processor_num = shell.call("lscpu | grep -m1 'CPU(s)' | awk -F ':' '{print $2}'")                    
-            rsp.cpuProcessorNum = int(cpu_processor_num.strip())                                                         
+            cpu_cores_per_socket = shell.call("lscpu | awk -F':' '/per socket/{print $NF}'")
+            cpu_threads_per_core = shell.call("lscpu | awk -F':' '/per core/{print $NF}'")
+            rsp.cpuProcessorNum = int(cpu_cores_per_socket.strip()) * int(cpu_threads_per_core)
 
             '''
             examples:         
@@ -1076,8 +1098,9 @@ class HostPlugin(kvmagent.KvmAgent):
             static_cpuGHz_re = re.search('[0-9.]*GHz', host_cpu_model_name)
             rsp.cpuGHz = static_cpuGHz_re.group(0)[:-3] if static_cpuGHz_re else transient_cpuGHz
 
-            cpu_processor_num = shell.call("grep -c processor /proc/cpuinfo")
-            rsp.cpuProcessorNum = cpu_processor_num.strip()         
+            cpu_cores_per_socket = shell.call("lscpu | awk -F':' '/per socket/{print $NF}'")
+            cpu_threads_per_core = shell.call("lscpu | awk -F':' '/per core/{print $NF}'")
+            rsp.cpuProcessorNum = int(cpu_cores_per_socket.strip()) * int(cpu_threads_per_core)
 
             cpu_cache_list = self._get_cpu_cache()
             rsp.cpuCache = ",".join(str(cache) for cache in cpu_cache_list)
@@ -1148,7 +1171,12 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.usedMemory = used_memory
 
         if HostPlugin.cpu_sockets < 1:
-            sockets = len(bash_o('grep "physical id" /proc/cpuinfo | sort -u').splitlines())
+            if IS_AARCH64:
+                # Not sure if other arm cpus have this problem.
+                o = bash_o("lscpu | grep 'Socket(s)' | awk '{print $2}'").strip()
+                sockets =  int(o) if o != '' else 0
+            else:
+                sockets = len(bash_o('grep "physical id" /proc/cpuinfo | sort -u').splitlines())
             HostPlugin.cpu_sockets = sockets if sockets > 0 else 1
 
         rsp.cpuSockets = HostPlugin.cpu_sockets
@@ -1688,14 +1716,9 @@ done
     def locate_host_network_interface(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
-        # Fibre port not support command: ethtool --identify ethxx
-        r = bash_r("ethtool %s | grep 'Supported ports' | grep 'FIBRE'" % cmd.networkInterface)
-        if r == 0:
-            sc = shell.ShellCmd("ethtool --test %s" % cmd.networkInterface)
-            sc(False)
-        else:
-            sc = shell.ShellCmd("ethtool --identify %s %s" % (cmd.networkInterface, cmd.interval))
-            sc(False)
+        # Intel 82599ES not support identify.
+        sc = shell.ShellCmd("ethtool --identify %s %s" % (cmd.networkInterface, cmd.interval))
+        sc(False)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
