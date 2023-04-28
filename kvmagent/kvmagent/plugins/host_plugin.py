@@ -16,6 +16,7 @@ import string
 import socket
 import sys
 import yaml
+import subprocess
 
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
@@ -206,6 +207,12 @@ class GetHostPhysicalMemoryFactsResponse(kvmagent.AgentResponse):
         self.physicalMemoryFacts = []
 
 
+class GetHostNetworkBongdingCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(GetHostNetworkBongdingCmd, self).__init__()
+        self.managementServerIp = None
+
+
 class GetHostNetworkBongdingResponse(kvmagent.AgentResponse):
     bondings = None  # type: list[HostNetworkBondingInventory]
     nics = None  # type: list[HostNetworkInterfaceInventory]
@@ -219,7 +226,7 @@ class GetHostNetworkBongdingResponse(kvmagent.AgentResponse):
 class HostNetworkBondingInventory(object):
     slaves = None  # type: list(HostNetworkInterfaceInventory)
 
-    def __init__(self, bondingName=None, type=None):
+    def __init__(self, bondingName=None, type=None, managementServerIp=None):
         super(HostNetworkBondingInventory, self).__init__()
         self.bondingName = bondingName
         self.speed = None
@@ -232,15 +239,16 @@ class HostNetworkBondingInventory(object):
         self.miimon = None
         self.allSlavesActive = None
         self.slaves = None
+        self.callBackIp = None
 
         if self.type in ovs.OvsDpdkSupportBondType:
             self._init_from_ovs()
         else:
-            self._init_from_name()
+            self._init_from_name(managementServerIp)
 
-    def _init_from_name(self):
+    def _init_from_name(self, managementServerIp):
         def get_nic(n, i):
-            o = HostNetworkInterfaceInventory(n)
+            o = HostNetworkInterfaceInventory(n, None, managementServerIp)
             self.slaves[i] = o
 
         if self.bondingName is None:
@@ -252,6 +260,9 @@ class HostNetworkBondingInventory(object):
         self.xmitHashPolicy = linux.read_file("/sys/class/net/%s/bonding/xmit_hash_policy" % self.bondingName).strip()
         self.miiStatus = linux.read_file("/sys/class/net/%s/bonding/mii_status" % self.bondingName).strip()
         self.mac = linux.read_file("/sys/class/net/%s/address" % self.bondingName).strip()
+        self.callBackIp = managementServerIp
+        if managementServerIp is not None:
+            self.callBackIp = self._get_src_addr(managementServerIp)
         self.ipAddresses = ['%s/%d' % (x.address, x.prefixlen) for x in iproute.query_addresses(ifname=self.bondingName, ip_version=4)]
         if len(self.ipAddresses) == 0:
             master = linux.read_file("/sys/class/net/%s/master/ifindex" % self.bondingName)
@@ -337,11 +348,21 @@ class HostNetworkBondingInventory(object):
                 to_dict[k] = [i.__dict__ for i in v]
         return to_dict
 
+    def _get_src_addr(self, ip_addr):
+        output = subprocess.check_output(['ip', 'r', 'get', ip_addr]).decode('utf-8')
+
+        pattern = r'src ([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)'
+        match = re.search(pattern, output)
+        if match:
+            src_addr = match.group(1)
+            return src_addr
+        else:
+            return None
 
 class HostNetworkInterfaceInventory(object):
     __cache__ = dict()  # type: dict[str, list[int, HostNetworkInterfaceInventory]]
 
-    def init(self, name, master=None):
+    def init(self, name, master=None, managementServerIp=None):
         super(HostNetworkInterfaceInventory, self).__init__()
         self.interfaceName = name
         self.speed = None
@@ -353,6 +374,7 @@ class HostNetworkInterfaceInventory(object):
         self.master = master
         self.pciDeviceAddress = None
         self.offloadStatus = None
+        self.callBackIp = None
 
         bonds = ovs.getAllBondFromFile()
 
@@ -364,7 +386,7 @@ class HostNetworkInterfaceInventory(object):
         if self.master is not None:
             self._init_from_ovs()
         else:
-            self._init_from_name()
+            self._init_from_name(managementServerIp)
         self.driverType = None
 
     @classmethod
@@ -378,12 +400,12 @@ class HostNetworkInterfaceInventory(object):
             return c[1]
         return None
 
-    def __new__(cls, name, master=None, *args, **kwargs):
+    def __new__(cls, name, master=None, managementServerIp=None, *args, **kwargs):
         o = cls.__get_cache__(name)
         if o:
             return o
         o = super(HostNetworkInterfaceInventory, cls).__new__(cls)
-        o.init(name, master)
+        o.init(name, master, managementServerIp)
         cls.__cache__[name] = [int(time.time()), o]
         return o
 
@@ -393,7 +415,7 @@ class HostNetworkInterfaceInventory(object):
             self.slaveActive = self.interfaceName in activeSlave if activeSlave is not None else None
 
     @in_bash
-    def _init_from_name(self):
+    def _init_from_name(self, managementServerIp):
         if self.interfaceName is None:
             return
         self.speed = get_nic_supported_max_speed(self.interfaceName)
@@ -405,6 +427,9 @@ class HostNetworkInterfaceInventory(object):
 
         self.mac = linux.read_file_strip("/sys/class/net/%s/address" % self.interfaceName)
         self.ipAddresses = linux.get_interface_ip_addresses(self.interfaceName)
+        self.callBackIp = managementServerIp
+        if managementServerIp is not None:
+            self.callBackIp = self._get_src_addr(managementServerIp)
 
         self.master = linux.get_interface_master_device(self.interfaceName)
         if self.master is not None:
@@ -453,6 +478,17 @@ class HostNetworkInterfaceInventory(object):
     def _to_dict(self):
         to_dict = self.__dict__
         return to_dict
+
+    def _get_src_addr(self, ip_addr):
+        output = subprocess.check_output(['ip', 'r', 'get', ip_addr]).decode('utf-8')
+
+        pattern = r'src ([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)'
+        match = re.search(pattern, output)
+        if match:
+            src_addr = match.group(1)
+            return src_addr
+        else:
+            return None
 
 class GetNumaTopologyResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -1787,6 +1823,7 @@ done
 
     @kvmagent.replyerror
     def get_host_network_facts(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetHostNetworkBongdingResponse()
         cache = HostPlugin.__get_cache__()
         if cache is not None:
@@ -1794,8 +1831,8 @@ done
             rsp.nics = cache[1]
             return jsonobject.dumps(rsp)
 
-        rsp.bondings = self.get_host_networking_bonds()
-        rsp.nics = self.get_host_networking_interfaces()
+        rsp.bondings = self.get_host_networking_bonds(cmd.managementServerIp)
+        rsp.nics = self.get_host_networking_interfaces(cmd.managementServerIp)
 
         HostPlugin.__store_cache__(rsp.bondings, rsp.nics)
         return jsonobject.dumps(rsp)
@@ -1854,12 +1891,12 @@ done
         cls.host_network_facts_cache.update({time.time(): [bonds, nics]})
 
     @staticmethod
-    def get_host_networking_interfaces():
+    def get_host_networking_interfaces(managementServerIp):
         nics = []
         pcis = set()
 
         def get_nic_info(interfaceName, index):
-            nics[index] = HostNetworkInterfaceInventory(interfaceName)
+            nics[index] = HostNetworkInterfaceInventory(interfaceName, None, managementServerIp)
 
         threads = []
         nic_names = ip.get_host_physicl_nics()
@@ -1879,7 +1916,7 @@ done
         return nics
 
     @staticmethod
-    def get_host_networking_bonds():
+    def get_host_networking_bonds(managementServerIp):
         bonds = []
         bond_names = linux.read_file("/sys/class/net/bonding_masters")
         if bond_names:
@@ -1887,7 +1924,7 @@ done
             if len(bond_names) == 0:
                 return bonds
             for bond in bond_names:
-                bonds.append(HostNetworkBondingInventory(bond, "kernalBond"))
+                bonds.append(HostNetworkBondingInventory(bond, "kernalBond", managementServerIp))
 
         # get dpdk bond info
         dpdkBondFile = "/usr/local/etc/zstack-ovs/dpdk-bond.yaml"
