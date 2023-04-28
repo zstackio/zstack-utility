@@ -8423,7 +8423,8 @@ host side snapshot files chian:
 
         # detach temp_disk from vm
         temp_disk = self._guesttools_temp_disk_file_path(vm_uuid)
-        if not os.path.exists(temp_disk):
+        guesttool_path = "/var/lib/zstack/guesttools/"
+        if os.path.exists(guesttool_path) and not os.path.exists(temp_disk):
             linux.qcow2_create(temp_disk, 1)
 
         @linux.retry(times=3, sleep_time=2)
@@ -8437,7 +8438,8 @@ host side snapshot files chian:
 
         # clean temp disk file
         # delete temp disk after device detached refer: http://jira.zstack.io/browse/ZSTAC-45490
-        linux.rm_file_force(temp_disk)
+        if os.path.exists(temp_disk):
+            linux.rm_file_force(temp_disk)
 
         if cmd.platform == "Linux":
             iso_path = GUEST_TOOLS_ISO_LINUX_PATH
