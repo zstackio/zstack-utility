@@ -2621,7 +2621,6 @@ class Vm(object):
             volume.installPath = shared_block_to_file(volume.installPath)
         elif volume.installPath.startswith('block'):
             volume.installPath = block_to_path(volume.installPath)
-        volume = file_volume_check(volume)
 
         for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
             if not xmlobject.has_element(disk, 'source') and not volume.deviceType == 'quorum':
