@@ -118,6 +118,7 @@ class CloneRsp(AgentResponse):
         super(CloneRsp, self).__init__()
         self.size = None
         self.actualSize = None
+        self.installPath = None
 
 
 class CpRsp(AgentResponse):
@@ -462,6 +463,12 @@ class CephAgent(plugin.TaskManager):
         o = shell.call('rbd --format json info %s' % path)
         o = jsonobject.loads(o)
         return long(o.size_)
+
+    @staticmethod
+    def _get_parent(path):
+        o = shell.call('rbd --format json info %s' % path)
+        o = jsonobject.loads(o)
+        return o.parent
 
     def _read_file_content(self, path):
         with open(path) as f:
@@ -832,8 +839,9 @@ class CephAgent(plugin.TaskManager):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         path = self._normalize_install_path(cmd.path)
 
-        t_shell = traceable_shell.get_shell(cmd)
-        t_shell.call('rbd flatten %s' % path)
+        if self._get_parent(path):
+            t_shell = traceable_shell.get_shell(cmd)
+            t_shell.call('rbd flatten %s' % path)
 
         rsp = AgentResponse()
         self._set_capacity_to_response(rsp)

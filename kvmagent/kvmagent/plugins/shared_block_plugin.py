@@ -1164,10 +1164,14 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     def offline_merge_snapshots(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = OfflineMergeSnapshotRsp()
-        src_abs_path = translate_absolute_path_from_install_path(cmd.srcPath)
+        src_abs_path = translate_absolute_path_from_install_path(cmd.srcPath) if not cmd.fullRebase else ""
         dst_abs_path = translate_absolute_path_from_install_path(cmd.destPath)
 
         with lvm.RecursiveOperateLv(dst_abs_path, shared=False):
+            if linux.qcow2_get_backing_file(dst_abs_path) == src_abs_path:
+                rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+                return jsonobject.dumps(rsp)
+
             try:
                 measure_size = linux.qcow2_measure_required_size(dst_abs_path)
             except Exception as e:
