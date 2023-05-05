@@ -195,7 +195,7 @@ def zero_dd(path, bs, count=None, iflag=None, oflag=None, times=1, exception=Tru
     count = "count={}".format(count) if count else ""
     iflag = "iflag={}".format(iflag) if iflag else ""
     oflag = "oflag={}".format(oflag) if oflag else ""
-    ddcmd = "dd if=/dev/zero of={} {} {} {} {};".format(path, bs, count, iflag, oflag)
+    ddcmd = "dd if=/dev/zero of={} {} {} {} {}".format(path, bs, count, iflag, oflag)
     ecmds = ";sync;".join([ddcmd for i in range(times)])
     shell.run("sync")
     shell.call(ecmds, exception=exception)

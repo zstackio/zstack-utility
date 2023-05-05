@@ -4068,8 +4068,10 @@ class Vm(object):
 
             if set_default():
                 return
-            set_usb2_3()
-            set_redirdev()
+            # set_usb2_3()
+            not_colo_vm = not cmd.coloPrimary and not cmd.coloSecondary and not cmd.useColoBinary
+            if cmd.usbRedirect and not_colo_vm:
+                set_redirdev()
 
         def make_video():
             devices = elements['devices']
@@ -4443,9 +4445,8 @@ class Vm(object):
             # appliance vm doesn't need any cdrom or usb controller
             if not cmd.isApplianceVm:
                 make_cdrom()
-                not_colo_vm = not cmd.coloPrimary and not cmd.coloSecondary and not cmd.useColoBinary
-                if cmd.usbRedirect and not_colo_vm:
-                    make_usb_redirect()
+                
+                make_usb_redirect()
 
             if cmd.additionalQmp:
                 make_qemu_commandline()
