@@ -433,6 +433,12 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
     def offline_merge_snapshots(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
+
+        src_path = cmd.srcPath if not cmd.fullRebase else ""
+        if linux.qcow2_get_backing_file(cmd.destPath) == src_path:
+            rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
+            return jsonobject.dumps(rsp)
+
         if not cmd.fullRebase:
             linux.qcow2_rebase(cmd.srcPath, cmd.destPath)
         else:

@@ -528,6 +528,12 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     def merge_snapshot_to_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = OfflineMergeSnapshotRsp()
+
+        src_path = cmd.srcPath if not cmd.fullRebase else ""
+        if linux.qcow2_get_backing_file(cmd.destPath) == src_path:
+            self._set_capacity_to_response(cmd.uuid, rsp)
+            return jsonobject.dumps(rsp)
+
         if not cmd.fullRebase:
             linux.qcow2_rebase(cmd.srcPath, cmd.destPath)
         else:

@@ -30,6 +30,7 @@ class CephDriver(object):
         dst_path = self._normalize_install_path(cmd.dstPath)
 
         shell.call('rbd clone %s %s' % (src_path, dst_path))
+        rsp.installPath = dst_path
         return rsp
 
     def create_volume(self, cmd, rsp, agent=None):
