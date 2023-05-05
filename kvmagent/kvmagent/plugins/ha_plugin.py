@@ -177,17 +177,18 @@ class PhysicalNicFencer(AbstractHaFencer):
         zstack_uuid_pattern = "'[0-9a-f]{8}[0-9a-f]{4}[1-5][0-9a-f]{3}[89ab][0-9a-f]{3}[0-9a-f]{12}'"
         vm_in_process_uuid_list = shell.call("virsh list | egrep -o " + zstack_uuid_pattern + " | sort | uniq")
         for vm_uuid in vm_in_process_uuid_list.splitlines():
-            bridge_nic = shell.call("virsh domiflist %s | grep bridge | awk '{print $3}'" % vm_uuid)
-            if len(bridge_nic) == 0:
-                continue
-
-            nic = bridge_nic.split('_')[1]
-            if nic.strip() in falut_nic:
-                vm_pid = linux.find_vm_pid_by_uuid(vm_uuid)
-                if not vm_pid:
-                    logger.warn('vm %s pid not found' % vm_uuid)
+            bridge_nics = shell.call("virsh domiflist %s | grep bridge | awk '{print $3}'" % vm_uuid)
+            for bridge_nic in bridge_nics.splitlines():
+                if len(bridge_nic) == 0:
                     continue
-                vm_use_falut_nic_pids_dict[vm_uuid] = vm_pid
+
+                nic = bridge_nic.split('_')[1]
+                if nic.strip() in falut_nic:
+                    vm_pid = linux.find_vm_pid_by_uuid(vm_uuid)
+                    if not vm_pid:
+                        logger.warn('vm %s pid not found' % vm_uuid)
+                        continue
+                    vm_use_falut_nic_pids_dict[vm_uuid] = vm_pid
         logger.debug("vm_use_falut_nic_pids_dict: %s" % vm_use_falut_nic_pids_dict)
         return vm_use_falut_nic_pids_dict, falut_nic
 
