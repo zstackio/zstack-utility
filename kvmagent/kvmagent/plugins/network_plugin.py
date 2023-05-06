@@ -385,15 +385,15 @@ class NetworkPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = UpdateBondingResponse()
 
-        bondSlaves = cmd.oldSlaves
-        newBondSlaves = cmd.slaves
-        add_items = list(set(newBondSlaves) - set(bondSlaves))
-        reduce_items = list(set(bondSlaves) - set(newBondSlaves))
+        oldInterfaces = set(item.interfaceName for item in cmd.oldSlaves)
+        newInterfaces = set(item.interfaceName for item in cmd.slaves)
+        add_items = list(set(newInterfaces) - set(oldInterfaces))
+        reduce_items = list(set(oldInterfaces) - set(newInterfaces))
 
         try:
             for interface in add_items:
-                if self._has_vlan_or_bridge(interface.interfaceName) != 0:
-                    raise Exception(interface.interfaceName + ' has a sub-interface or a bridge port')
+                if self._has_vlan_or_bridge(interface) != 0:
+                    raise Exception(interface + ' has a sub-interface or a bridge port')
 
             if cmd.mode is not None or cmd.xmitHashPolicy is not None:
                 # zs-bond -u bond1 mode 802.3ad
@@ -402,14 +402,13 @@ class NetworkPlugin(kvmagent.KvmAgent):
                 else:
                     shell.call('/usr/local/bin/zs-bond -u %s mode %s xmitHashPolicy %s' % (cmd.bondName, cmd.mode, cmd.xmitHashPolicy))
 
-            if cmd.oldSlaves != cmd.slaves:
+            if add_items != reduce_items:
                 # zs-nic-to-bond -a bond2 nic3
                 for interface in add_items:
-                    shell.call('/usr/local/bin/zs-nic-to-bond -a %s %s' % (cmd.bondName, interface.interfaceName))
+                    shell.call('/usr/local/bin/zs-nic-to-bond -a %s %s' % (cmd.bondName, interface))
                 # zs-nic-to-bond -d bond2 nic nic4
-                if add_items != reduce_items:
-                    for interface in reduce_items:
-                        shell.call('/usr/local/bin/zs-nic-to-bond -d %s %s' % (cmd.bondName, interface.interfaceName))
+                for interface in reduce_items:
+                    shell.call('/usr/local/bin/zs-nic-to-bond -d %s %s' % (cmd.bondName, interface))
         except Exception as e:
             logger.warning(traceback.format_exc())
             rsp.error = 'unable to create bonding[%s], because %s' % (cmd.bondName, str(e))
