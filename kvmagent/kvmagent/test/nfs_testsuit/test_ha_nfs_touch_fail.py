@@ -7,7 +7,6 @@ from zstacklib.test.utils import misc,env
 from zstacklib.utils import jsonobject, bash, linux, log, shell
 import pytest
 
-
 PKG_NAME = __name__
 
 logger = log.get_logger(__name__)
@@ -25,7 +24,7 @@ global hostUuid
 global vgUuid
 global primaryStorageUuid
 
-class TestHaNfsPlugin(TestCase, NfsPluginTestStub):
+class TestHaNfsIptablesDropPlugin(TestCase, NfsPluginTestStub):
     @classmethod
     def setUpClass(cls):
         network_utils.create_default_bridge_if_not_exist()
@@ -44,18 +43,20 @@ class TestHaNfsPlugin(TestCase, NfsPluginTestStub):
 
         url = NfsPluginTestStub().mount(primaryStorageUuid)
 
-        image_path = "/opt/zstack/nfsprimarystorage/prim-{}/imagecache/template/{}/".format(primaryStorageUuid, imageUuid)
+        image_path = "/opt/zstack/nfsprimarystorage/prim-{}/imagecache/template/{}/".format(primaryStorageUuid,
+                                                                                            imageUuid)
         shell.call('mkdir -p %s' % image_path)
 
-        installUrl = "/opt/zstack/nfsprimarystorage/prim-{}/rootVolumes/acct-36c27e8ff05c4780bf6d2fa65700f22e/vol-{}/{}.qcow2"\
+        installUrl = "/opt/zstack/nfsprimarystorage/prim-{}/rootVolumes/acct-36c27e8ff05c4780bf6d2fa65700f22e/vol-{}/{}.qcow2" \
             .format(primaryStorageUuid, volumeUuid, volumeUuid)
 
         r, o = bash.bash_ro("cp /root/.zguest/min-vm.qcow2 {}".format(image_path))
         self.assertEqual(0, r, "cp image failed, because {}".format(o))
 
-        kvmHostAddons = {"qcow2Options":" -o cluster_size=2097152 "}
+        kvmHostAddons = {"qcow2Options": " -o cluster_size=2097152 "}
         rsp = nfs_plugin_utils.create_root_volume_from_template(image_path + "min-vm.qcow2", 0, 0, installUrl, "test",
-                                                          volumeUuid, primaryStorageUuid, primaryStorageUuid, kvmHostAddons)
+                                                                volumeUuid, primaryStorageUuid, primaryStorageUuid,
+                                                                kvmHostAddons)
 
         self.assertEqual(True, rsp.success, rsp.error)
 
@@ -159,36 +160,26 @@ class TestHaNfsPlugin(TestCase, NfsPluginTestStub):
         uuids = [primaryStorageUuid]
         urls = [url]
         mountedByZStack = [False]
-        rsp = ha_utils.setup_self_fencer(hostUuid, 1, 2, mountPaths, uuids, urls, mountedByZStack, [""], 5, "Force", ["hostStorageState"])
+        rsp = ha_utils.setup_self_fencer(hostUuid, 1, 2, mountPaths, uuids, urls, mountedByZStack, [""], 5, "Force",
+                                         ["hostStorageState"])
         self.assertEqual(True, rsp.success)
-
-        time.sleep(10)
+        time.sleep(20)
         self.check_record_vm_uuids_exists(1, 1, primaryStorageUuid, hostUuid, 1, mountPath, vm.vmInstanceUuid)
 
-        r, o = bash.bash_ro("virsh destroy %s" % vm.vmInstanceUuid)
+        # r, o = bash.bash_ro("iptables -A INPUT -p tcp --dport 2049 -j DROP")
+        # self.assertEqual(0, r)r
+
+        r, o = bash.bash_ro("rm -rf /nfs_root/zs-heartbeat")
         self.assertEqual(0, r)
-        time.sleep(10)
-        self.check_record_vm_uuids_not_exists(1, 1, primaryStorageUuid, hostUuid, 1, mountPath, vm.vmInstanceUuid)
+        time.sleep(20)
 
-        rsp = ha_utils.setup_self_fencer(hostUuid, 1, 2, mountPaths, uuids, urls, mountedByZStack, [""], 5, "Force", [])
-        self.assertEqual(True, rsp.success)
-
-        time.sleep(10)
-        rsp = ha_utils.file_system_check_vmstate(1, 1, primaryStorageUuid, hostUuid, 1, mountPath)
-        assert rsp.result[primaryStorageUuid] == False
-
+        r, o = bash.bash_ro("virsh list")
+        self.assertEqual(0, r)
+        assert vm.vmInstanceUuid not in o
 
     @pytest.mark.flaky(reruns=3)
     def check_record_vm_uuids_exists(self, interval, times, primaryStorageUuid, targetHostUuid,
                                      storageCheckerTimeout, mountPath, vm_uuid):
         rsp = ha_utils.file_system_check_vmstate(interval, times, primaryStorageUuid, targetHostUuid,
-                                     storageCheckerTimeout, mountPath)
-        assert vm_uuid in rsp.vmUuids
-
-    @pytest.mark.flaky(reruns=3)
-    def check_record_vm_uuids_not_exists(self, interval, times, primaryStorageUuid, targetHostUuid,
-                                     storageCheckerTimeout, mountPath, vm_uuid):
-        rsp = ha_utils.file_system_check_vmstate(interval, times, primaryStorageUuid, targetHostUuid,
                                                  storageCheckerTimeout, mountPath)
-        assert vm_uuid not in rsp.vmUuids
-
+        assert vm_uuid in rsp.vmUuids
