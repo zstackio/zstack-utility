@@ -94,6 +94,10 @@ repo_dir = "/opt/zstack-dvd/{}".format(host_arch)
 if not os.path.isdir(repo_dir):
     error("Missing directory '{}', please try 'zstack-upgrade -a {}_iso'".format(repo_dir, host_arch))
 
+# check is cube env
+isCube = True if os.path.exists("/usr/local/hyperconverged") else False
+
+
 def update_libvirtd_config(host_post_info):
     # name: copy libvirtd conf to keep environment consistent,only update host_uuid
     copy_arg = CopyArg()
@@ -253,6 +257,12 @@ def install_kvm_pkg():
             if isMini == 'true':
                 mini_dep_list = " drbd84-utils kmod-drbd84" if C76_KERNEL_OR_HIGHER and not IS_AARCH64 else ""
                 common_dep_list += mini_dep_list
+
+            if isCube:
+                cube_dep_list = " lm_sensors edac-utils"
+                if releasever not in kylin:
+                    cube_dep_list += " lm_sensors-libs"
+                common_dep_list += cube_dep_list
 
             dep_list = common_dep_list
             update_list = common_update_list
@@ -573,6 +583,8 @@ def copy_bond_conf():
 
 def copy_cube_tools():
     """copy cube required tools from mn_node to host_node"""
+    if not isCube:
+        return
     cube_root_dst = "/usr/local/hyperconverged/"
     _src = os.path.join(cube_root_dst, "tools/hd_ctl")
     if os.path.exists(_src):
