@@ -239,6 +239,7 @@ class HostNetworkBondingInventory(object):
         self.miimon = None
         self.allSlavesActive = None
         self.slaves = None
+        self.bondingType = None
         self.callBackIp = None
 
         if self.type in ovs.OvsDpdkSupportBondType:
@@ -260,6 +261,10 @@ class HostNetworkBondingInventory(object):
         self.xmitHashPolicy = linux.read_file("/sys/class/net/%s/bonding/xmit_hash_policy" % self.bondingName).strip()
         self.miiStatus = linux.read_file("/sys/class/net/%s/bonding/mii_status" % self.bondingName).strip()
         self.mac = linux.read_file("/sys/class/net/%s/address" % self.bondingName).strip()
+        if len(bash_o("ip link show type bridge_slave %s" % self.bondingName).strip()) > 0:
+            self.bondingType = "bridgeSlave"
+        else:
+            self.bondingType = "noBridge"
         self.callBackIp = managementServerIp
         if managementServerIp is not None:
             self.callBackIp = self._get_src_addr(managementServerIp)
