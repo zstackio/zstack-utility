@@ -58,11 +58,16 @@ def get_running_version(vm_uuid):
     logger.debug("cannot get vm[uuid:%s] version from qmp: %s" % (vm_uuid, e))
     return get_version_from_exe_file(get_path())
 
-def get_version_from_exe_file(path):
+def get_version_from_exe_file(path, error_out=False):
     r, o, e = bash.bash_roe("%s --version" % path)
     if r == 0:
         return _parse_version(o.strip())
-    logger.debug("cannot get version from %s: %s" % (path, e))
+
+    if error_out:
+        raise Exception("cannot get version from %s: %s" % (path, e))
+    else:
+        logger.debug("cannot get version from %s: %s" % (path, e))
+
     return ""
 
 def _parse_version(version_output):
