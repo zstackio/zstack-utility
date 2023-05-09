@@ -151,22 +151,6 @@ def check_nested_kvm(host_post_info):
     modprobe_arg.state = 'present'
     modprobe(modprobe_arg, host_post_info)
 
-def install_release_on_host(is_rpm):
-    # copy and install zstack-release
-    if is_rpm:
-        src_pkg = '/opt/zstack-dvd/{0}/{1}/Packages/zstack-release-{1}-1.el7.zstack.noarch.rpm'.format(host_arch, releasever)
-        install_cmd = "rpm -q zstack-release || rpm -i /opt/zstack-release-{}-1.el7.zstack.noarch.rpm".format(releasever)
-        if releasever in kylin:
-            install_cmd = "yum --disablerepo=* install -y /opt/zstack-release-{}-1.el7.zstack.noarch.rpm".format(releasever)
-    else:
-        src_pkg = '/opt/zstack-dvd/{0}/{1}/Packages/zstack-release_{1}_all.deb'.format(host_arch, releasever)
-        install_cmd = "dpkg -l zstack-release || dpkg -i /opt/zstack-release_{}_all.deb".format(releasever)
-    copy_arg = CopyArg()
-    copy_arg.src = src_pkg
-    copy_arg.dest = '/opt'
-    copy(copy_arg, host_post_info)
-    run_remote_command(install_cmd, host_post_info)
-
 
 def load_zstacklib():
     """include zstacklib.py"""
@@ -187,12 +171,6 @@ def load_zstacklib():
         zstacklib_args.yum_server = yum_server
     zstacklib = ZstackLib(zstacklib_args)
 
-if distro in RPM_BASED_OS:
-    install_release_on_host(True)
-elif distro in DEB_BASED_OS:
-    install_release_on_host(False)
-else:
-    error("Unsupported OS: {}".format(distro))
 
 load_zstacklib()
 
