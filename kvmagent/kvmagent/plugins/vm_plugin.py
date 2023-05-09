@@ -6763,7 +6763,7 @@ class VmPlugin(kvmagent.KvmAgent):
             if sh_cmd.stdout.strip():
                 rsp.cpuXml = sh_cmd.stdout.strip()
 
-        rsp.cpuModelName = shell.call("grep -m1 -P -o '(model name|cpu MHz)\s*:\s*\K.*' /proc/cpuinfo").splitlines()
+        rsp.cpuModelName = shell.call("grep -m1 -P -o '(model name|cpu MHz)\s*:\s*\K.*' /proc/cpuinfo").strip()
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
