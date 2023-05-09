@@ -1,8 +1,5 @@
-from kvmagent.test.utils import pytest_utils
-from zstacklib.test.utils import env, misc
-from zstacklib.utils import jsonobject, xmlobject, bash, linux
+from zstacklib.test.utils import misc
 from kvmagent.plugins.nfs_primarystorage_plugin import NfsPrimaryStoragePlugin
-from kvmagent.test.utils import vm_utils, network_utils, volume_utils, pytest_utils
 
 NFS_PLUGIN = None # type:NfsPrimaryStoragePlugin
 
