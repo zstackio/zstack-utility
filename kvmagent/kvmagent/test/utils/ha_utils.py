@@ -107,3 +107,22 @@ def sharedblock_check_vmstate(host_uuid, storage_check_timeout, interval, max_at
         "times": max_attempts,
         "psUuid": ps_uuid
     }))
+
+
+@misc.return_jsonobject()
+def add_vm_fencer_rule_to_host(allowFencerName, allVmUuids, blockFencerName, blockVmUuids):
+    return HA_PLUGIN.add_vm_fencer_rule_to_host(misc.make_a_request({
+        "allowRules": [{"fencerName": allowFencerName, "vmUuids": allVmUuids}],
+        "blockRules": [{"fencerName": blockFencerName, "vmUuids": blockVmUuids}]
+    }))
+
+@misc.return_jsonobject()
+def remove_vm_fencer_rule_from_host(allowFencerName, allVmUuids, blockFencerName, blockVmUuids):
+    return HA_PLUGIN.remove_vm_fencer_rule_from_host(misc.make_a_request({
+        "allowRules": [{"fencerName": allowFencerName, "vmUuids": allVmUuids}],
+        "blockRules": [{"fencerName": blockFencerName, "vmUuids": blockVmUuids}]
+    }))
+
+@misc.return_jsonobject()
+def get_vm_fencer_rule():
+    return HA_PLUGIN.get_vm_fencer_rule(misc.make_a_request({}))

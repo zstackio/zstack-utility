@@ -58,9 +58,11 @@ class CheckShareBlockVmStateRsp(AgentRsp):
         self.result = None
         self.vmUuids = []
 
-class AddVpcHaToHostRsp(AgentRsp):
+class GetVmFencerRuleRsp(AgentRsp):
     def __init__(self):
-        super(AddVpcHaToHostRsp, self).__init__()
+        super(GetVmFencerRuleRsp, self).__init__()
+        self.allowRules = None
+        self.blockRules = None
 
 class DelVpcHaFromHostRsp(AgentRsp):
     def __init__(self):
@@ -177,6 +179,9 @@ class PhysicalNicFencer(AbstractHaFencer):
         zstack_uuid_pattern = "'[0-9a-f]{8}[0-9a-f]{4}[1-5][0-9a-f]{3}[89ab][0-9a-f]{3}[0-9a-f]{12}'"
         vm_in_process_uuid_list = shell.call("virsh list | egrep -o " + zstack_uuid_pattern + " | sort | uniq")
         for vm_uuid in vm_in_process_uuid_list.splitlines():
+            if is_block_fencer(self.get_ha_fencer_name(), vm_uuid):
+                continue
+
             bridge_nics = shell.call("virsh domiflist %s | grep bridge | awk '{print $3}'" % vm_uuid)
             for bridge_nic in bridge_nics.splitlines():
                 if len(bridge_nic) == 0:
@@ -764,23 +769,56 @@ global_vpc_uuids = []
 global_always_ha_vm_uuids = []
 vpc_lock = threading.Lock()
 host_storage_name = "hostStorageState"
-
-def add_always_ha_vm_uuids(add_vpc_vm_uuids):
-    with vpc_lock:
-        if add_vpc_vm_uuids is not None and len(add_vpc_vm_uuids) > 0:
-            global_always_ha_vm_uuids.extend(set(add_vpc_vm_uuids) - set(global_always_ha_vm_uuids))
-            logger.debug("add vpc uuids[%s], current vpc_uuids[%s]" % (add_vpc_vm_uuids, global_always_ha_vm_uuids))
+global_allow_fencer_rule = {} # type: dict[str, list]
+global_block_fencer_rule = {} # type: dict[str, list]
+global_fencer_rule_lock = threading.Lock()
 
 
-def del_always_ha_uuid(del_vpc_vm_uuid):
-    with vpc_lock:
-        if del_vpc_vm_uuid is not None and len(del_vpc_vm_uuid) > 0:
-            global_always_ha_vm_uuids.remove(del_vpc_vm_uuid)
-            logger.debug("del vpc uuid[%s], current vpc_uuids[%s]" % (del_vpc_vm_uuid, global_always_ha_vm_uuids))
+def add_fencer_rule(cmd):
+    with global_fencer_rule_lock:
+        global_allow_fencer_rule.update(
+            {rule['fencerName']: global_allow_fencer_rule.get(rule['fencerName'], []) + rule['vmUuids'] for rule in cmd['allowRules']})
+        global_block_fencer_rule.update(
+            {rule['fencerName']: global_block_fencer_rule.get(rule['fencerName'], []) + rule['vmUuids'] for rule in cmd['blockRules']})
+        logger.debug("add fencer rules %s, global allow fencer: %s, global block fencer: %s" %
+                     (str(cmd), global_allow_fencer_rule, global_block_fencer_rule))
 
-def is_always_ha_vm(vm_uuid):
-    with vpc_lock:
-        return vm_uuid not in global_always_ha_vm_uuids
+
+
+def remove_fencer_rule(cmd):
+    with global_fencer_rule_lock:
+        if cmd["allowRules"]:
+            for rule in cmd["allowRules"]:
+                if rule["fencerName"] not in global_allow_fencer_rule:
+                    continue
+                global_allow_fencer_rule[rule["fencerName"]] = \
+                    [vm_uuid for vm_uuid in global_allow_fencer_rule[rule["fencerName"]] if vm_uuid not in rule["vmUuids"]]
+                logger.debug("remove allow fencer rule %s, global allow fencer[%s]: %s" %
+                             (str(cmd), rule["fencerName"], global_allow_fencer_rule[rule["fencerName"]]))
+
+        if cmd["blockRules"]:
+            for rule in cmd["blockRules"]:
+                if rule["fencerName"] not in global_block_fencer_rule:
+                    continue
+                global_block_fencer_rule[rule["fencerName"]] = \
+                    [vm_uuid for vm_uuid in global_block_fencer_rule[rule["fencerName"]] if vm_uuid not in rule["vmUuids"]]
+                logger.debug("remove block fencer rule %s, global block fencer[%s]: %s" %
+                             (str(cmd), rule["fencerName"], global_block_fencer_rule[rule["fencerName"]]))
+
+
+def is_allow_fencer(fencer_name, vm_uuid):
+    with global_fencer_rule_lock:
+        if fencer_name in global_allow_fencer_rule:
+            return vm_uuid in global_allow_fencer_rule[fencer_name]
+        return False
+
+
+def is_block_fencer(fencer_name, vm_uuid):
+    with global_fencer_rule_lock:
+        if fencer_name in global_block_fencer_rule:
+            return vm_uuid in global_block_fencer_rule[fencer_name]
+        return False
+
 
 def clean_network_config(vm_uuids):
     for c in kvmagent.ha_cleanup_handlers:
@@ -800,8 +838,8 @@ def find_ps_running_vm(store_uuid):
     logger.debug('vm_in_ps_%s_uuid_list:' % store_uuid + str(vm_in_ps_uuid_list))
     return vm_in_ps_uuid_list
 
-def is_strategy_permissive_and_not_vpc(strategy, vm_uuid):
-    return strategy == 'Permissive' and is_always_ha_vm(vm_uuid)
+def not_exec_kill_vm(strategy, vm_uuid, fencer_name):
+    return strategy == 'Permissive' and not is_allow_fencer(fencer_name, vm_uuid)
 
 
 def kill_vm(maxAttempts, strategy, mountPaths=None, isFileSystem=None):
@@ -821,7 +859,10 @@ def kill_vm(maxAttempts, strategy, mountPaths=None, isFileSystem=None):
             continue
 
         if mountPaths and isFileSystem is not None \
-                and not need_kill(vm_uuid, mountPaths, isFileSystem) and is_strategy_permissive_and_not_vpc(vm_uuid):
+                and not need_kill(vm_uuid, mountPaths, isFileSystem):
+            continue
+
+        if not_exec_kill_vm(strategy, vm_uuid, host_storage_name):
             logger.debug("fencer detect ha strategy is %s skip fence vm[uuid:%s]" % (strategy, vm_uuid))
             continue
 
@@ -946,8 +987,10 @@ class HaPlugin(kvmagent.KvmAgent):
     CANCEL_BLOCK_SELF_FENCER = "/ha/block/cancelselffencer"
     FILESYSTEM_CHECK_VMSTATE_PATH = "/filesystem/check/vmstate"
     SHAREDBLOCK_CHECK_VMSTATE_PATH = "/sharedblock/check/vmstate"
-    ADD_ALWAYS_HA_VMS_TO_HOST = "/add/always/ha/vms/to/host"
-    REMOVE_ALWAYS_HA_VM_FROM_HOST = "/remove/always/ha/vm/from/host"
+    ADD_VM_FENCER_RULE_TO_HOST = "/add/vm/fencer/rule/to/host"
+    REMOVE_VM_FENCER_RULE_FROM_HOST = "/remove/vm/fencer/rule/from/host"
+    GET_VM_FENCER_RULE = "/get/vm/fencer/rule/"
+
 
     RET_SUCCESS = "success"
     RET_FAILURE = "failure"
@@ -1164,11 +1207,14 @@ class HaPlugin(kvmagent.KvmAgent):
             killed_vm_uuids = []
             for vm in vms:
                 try:
-                    if is_strategy_permissive_and_not_vpc(cmd.strategy, vm.uuid):
-                        linux.kill_process(vm.pid)
-                        logger.warn(
-                            'kill the vm[uuid:%s, pid:%s] because we lost connection to the storage.' % (vm.uuid, vm.pid))
-                        killed_vm_uuids.append(vm.uuid)
+                    if not_exec_kill_vm(cmd.strategy, vm.uuid, host_storage_name):
+                        continue
+
+                    linux.kill_process(vm.pid)
+                    logger.warn(
+                        'kill the vm[uuid:%s, pid:%s] because we lost connection to the storage.' % (vm.uuid, vm.pid))
+                    killed_vm_uuids.append(vm.uuid)
+
                 except Exception as e:
                     logger.warn(
                         'failed to kill the vm[uuid:%s, pid:%s] %s\n%s' % (vm.uuid, vm.pid, e, traceback.format_exc()))
@@ -1645,19 +1691,26 @@ class HaPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
-    def add_always_ha_vms_to_host(self, req):
-        rsp = AddVpcHaToHostRsp()
+    def add_vm_fencer_rule_to_host(self, req):
+        rsp = AgentRsp()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        add_always_ha_vm_uuids(cmd.vmUuids)
+        add_fencer_rule(cmd)
 
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
-    def del_always_ha_vm_from_host(self, req):
-        rsp = DelVpcHaFromHostRsp()
+    def remove_vm_fencer_rule_from_host(self, req):
+        rsp = AgentRsp()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        del_always_ha_uuid(cmd.vmUuid)
+        remove_fencer_rule(cmd)
 
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def get_vm_fencer_rule(self, req):
+        rsp = GetVmFencerRuleRsp()
+        rsp.allowRules = global_allow_fencer_rule
+        rsp.blockRules = global_block_fencer_rule
         return jsonobject.dumps(rsp)
 
 
@@ -1678,8 +1731,9 @@ class HaPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CANCEL_BLOCK_SELF_FENCER, self.cancel_block_self_fencer)
         http_server.register_async_uri(self.FILESYSTEM_CHECK_VMSTATE_PATH, self.file_system_check_vmstate)
         http_server.register_async_uri(self.SHAREDBLOCK_CHECK_VMSTATE_PATH, self.sharedblock_check_vmstate)
-        http_server.register_async_uri(self.ADD_ALWAYS_HA_VMS_TO_HOST, self.add_always_ha_vms_to_host)
-        http_server.register_async_uri(self.REMOVE_ALWAYS_HA_VM_FROM_HOST, self.del_always_ha_vm_from_host)
+        http_server.register_async_uri(self.ADD_VM_FENCER_RULE_TO_HOST, self.add_vm_fencer_rule_to_host)
+        http_server.register_async_uri(self.REMOVE_VM_FENCER_RULE_FROM_HOST, self.remove_vm_fencer_rule_from_host)
+        http_server.register_async_uri(self.GET_VM_FENCER_RULE, self.get_vm_fencer_rule)
 
     def stop(self):
         pass
