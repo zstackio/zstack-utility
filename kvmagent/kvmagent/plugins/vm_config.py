@@ -142,7 +142,7 @@ class VmConfigPlugin(kvmagent.KvmAgent):
         VmQga.VM_OS_LINUX_ORACLE: ("7",),
         VmQga.VM_OS_LINUX_REDHAT: ("7",),
         VmQga.VM_OS_LINUX_UBUNTU: ("18",),
-        VmQga.VM_OS_WINDOWS: ("10", "2012", "2012r2", "2016",)
+        VmQga.VM_OS_WINDOWS: ("10", "2012", "2012r2", "2016", "2019",)
     }
 
     @lock.lock('config_vm_by_qga')
