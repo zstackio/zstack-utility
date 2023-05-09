@@ -263,6 +263,8 @@ class StartVmCmd(kvmagent.AgentCommand):
         self.bootMode = None
         self.consolePassword = None
         self.memBalloon = None # type:VirtualDeviceInfo
+        self.suspendToRam = None
+        self.suspendToDisk = None
 
 class StartVmResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -4464,6 +4466,14 @@ class Vm(object):
                     cdrom = make_empty_cdrom(iso, cdrom_config, iso.bootOrder, iso.resourceUuid)
                     e(cdrom, 'source', None, {Vm.disk_source_attrname.get(iso.type): iso.path})
 
+
+        def make_pm():
+            root = elements['root']
+            pm = e(root, 'pm')
+            e(pm, 'suspend-to-disk', None, {'enabled': 'yes' if cmd.suspendToDisk else 'no'})
+            e(pm, 'suspend-to-mem', None, {'enabled': 'yes' if cmd.suspendToRam else 'no'})
+
+
         def make_volumes():
             devices = elements['devices']
             #guarantee rootVolume is the first of the set
@@ -5223,6 +5233,7 @@ class Vm(object):
         make_sound()
         make_nics()
         make_volumes()
+        make_pm()
 
         if not cmd.addons or cmd.addons['noConsole'] is not True:
             make_graphic_console()
