@@ -244,6 +244,9 @@ class StartVmCmd(kvmagent.AgentCommand):
         self.memory = None
         self.cpuNum = None
         self.cpuSpeed = None
+        self.socketNum = None
+        self.cpuOnSocket = None
+        self.threadsPerCore = None
         self.bootDev = None
         self.rootVolume = None
         self.dataVolumes = []
@@ -3991,9 +3994,13 @@ class Vm(object):
                             e(cpu, 'model', cmd.vmCpuModel, attrib={'fallback': 'allow'})
                     else:
                         cpu = e(root, 'cpu')
-                        # e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
+
                     mem = cmd.memory / 1024
-                    e(cpu, 'topology', attrib={'sockets': '32', 'cores': '4', 'threads': '1'})
+
+                    if cmd.socketNum:
+                        e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': str(cmd.threadsPerCore)})
+                    else:
+                        e(cpu, 'topology', attrib={'sockets': '32', 'cores': '4', 'threads': '1'})
                     numa = e(cpu, 'numa')
                     e(numa, 'cell', attrib={'id': '0', 'cpus': '0-127', 'memory': str(mem), 'unit': 'KiB'})
 
@@ -4012,7 +4019,11 @@ class Vm(object):
                         cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
                         e(cpu, 'model', attrib={'fallback': 'allow'})
                     mem = cmd.memory / 1024
-                    e(cpu, 'topology', attrib={'sockets': '32', 'cores': '4', 'threads': '1'})
+
+                    if cmd.socketNum:
+                        e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
+                    else:
+                        e(cpu, 'topology', attrib={'sockets': '32', 'cores': '4', 'threads': '1'})
                     numa = e(cpu, 'numa')
                     e(numa, 'cell', attrib={'id': '0', 'cpus': '0-127', 'memory': str(mem), 'unit': 'KiB'})
 
@@ -4035,7 +4046,10 @@ class Vm(object):
                     sockets = 8
                     mem = cmd.memory / 1024 / sockets
                     cores = vcpu / sockets
-                    e(cpu, 'topology', attrib={'sockets': str(sockets), 'cores': str(cores), 'threads': '1'})
+                    if cmd.socketNum:
+                        e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': str(cmd.threadsPerCore)})
+                    else:
+                        e(cpu, 'topology', attrib={'sockets': str(sockets), 'cores': str(cores), 'threads': '1'})
                     numa = e(cpu, 'numa')
                     for i in range(sockets):
                         cpus = "{0}-{1}".format(i * cores, i * cores + (cores - 1))
@@ -4091,7 +4105,10 @@ class Vm(object):
                     return cpu
 
                 cpu = eval("on_{}".format(HOST_ARCH))()
-                e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
+
+                if cmd.socketNum:
+                    e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': str(cmd.threadsPerCore)})
+
                 if numa_nodes:
                     numa = e(cpu, 'numa')
                     numatune = e(root, 'numatune')
