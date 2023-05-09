@@ -8299,9 +8299,11 @@ host side snapshot files chian:
         qga = VmQga(call_libvirt())
         if qga.state != VmQga.QGA_STATE_RUNNING:
             return VmPlugin.GUESTTOOLS_STATE_NOT_CONNECT, None
-
-        version_data = qga.guest_exec_bash_no_exitcode(
-            "/usr/local/zstack/zwatch-vm-agent/zwatch-vm-agent -version").strip()
+        try:
+            version_data = qga.guest_exec_bash_no_exitcode(
+                "/usr/local/zstack/zwatch-vm-agent/zwatch-vm-agent -version 2>/dev/null").strip()
+        except:
+            version_data = None
         running_data = qga.guest_exec_bash_no_exitcode(
             "ps -ef | grep zwatch-vm-agent | grep -v grep > /dev/null && echo 'True' || echo 'False'").strip()
         if running_data and version_data and "True" == running_data:
