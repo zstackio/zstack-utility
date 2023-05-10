@@ -1149,6 +1149,22 @@ ia_install_pip(){
     pass
 }
 
+ia_install_ansible_package(){
+    if [ ! -z $DEBUG ]; then
+        pip install -i $pypi_source_pip --trusted-host localhost --ignore-installed ansible 
+    else
+        pip install -i $pypi_source_pip --trusted-host localhost --ignore-installed ansible >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+}
+
+ia_upgrade_setuptools_package(){
+    if [ ! -z $DEBUG ]; then
+        pip install -i $pypi_source_pip --trusted-host localhost -U setuptools 
+    else
+        pip install -i $pypi_source_pip --trusted-host localhost -U setuptools >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+}
+
 ia_install_ansible(){
     echo_subtitle "Install Ansible"
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
@@ -1158,11 +1174,12 @@ ia_install_ansible(){
         apt-get --assume-yes remove ansible >>$ZSTACK_INSTALL_LOG 2>&1
     fi
 
-    if [ ! -z $DEBUG ]; then
-        pip install -i $pypi_source_pip --trusted-host localhost --ignore-installed ansible 
-    else
-        pip install -i $pypi_source_pip --trusted-host localhost --ignore-installed ansible >>$ZSTACK_INSTALL_LOG 2>&1
+    ia_install_ansible_package
+    if [ $? -ne 0 ]; then
+        ia_upgrade_setuptools_package
+        ia_install_ansible_package
     fi
+
     [ $? -ne 0 ] && fail "install Ansible failed"
     do_config_ansible
     pass
