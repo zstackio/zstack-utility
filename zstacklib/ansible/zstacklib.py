@@ -992,12 +992,13 @@ def check_host_reachable(host_post_info, warning=False):
             warn("Unknown error when check host %s is reachable" % host)
         return False
 
+
 @retry(times=3, sleep_time=3)
 def run_remote_command(command, host_post_info, return_status=False, return_output=False):
     '''return status all the time except return_status is False, return output is set to True'''
     if 'yum' in command:
-        set_yum0 = '''rpm -q zstack-release >/dev/null && releasever=`awk '{print $3}' /etc/zstack-release` || releasever=%s;\
-                    export YUM0=$releasever; grep $releasever /etc/yum/vars/YUM0 || echo $releasever > /etc/yum/vars/YUM0;''' % (get_mn_release())
+        set_yum0 = '''rpm -q zstack-release >/dev/null && releasever=`awk '{print $3}' /etc/zstack-release`;\
+                    export YUM0=$releasever; grep $releasever /etc/yum/vars/YUM0 || echo $releasever > /etc/yum/vars/YUM0;'''
         command = set_yum0 + command
     start_time = datetime.now()
     host_post_info.start_time = start_time
@@ -1815,6 +1816,24 @@ def check_umask(host_post_info):
     host_post_info.post_label_param = None
     run_remote_command(check_umask_cmd, host_post_info)
 
+
+def install_release_on_host(is_rpm, distro, distro_release, distro_version, host_post_info):
+    releasever = get_host_releasever([distro, distro_release, str(distro_version)])
+    host_arch = get_remote_host_arch(host_post_info)
+    if is_rpm:
+        src_pkg = '/opt/zstack-dvd/{0}/{1}/Packages/zstack-release-{1}-1.el7.zstack.noarch.rpm'.format(host_arch, releasever)
+        install_cmd = "[[ x`rpm -qi zstack-release |awk -F ':' '/Version/{print $2}' |sed 's/ //g'` == x%s ]] || " \
+                      "rpm -e zstack-release; rpm -i /opt/zstack-release-%s-1.el7.zstack.noarch.rpm;" % (releasever, releasever)
+    else:
+        src_pkg = '/opt/zstack-dvd/{0}/{1}/Packages/zstack-release_{1}_all.deb'.format(host_arch, releasever)
+        install_cmd = "dpkg -l zstack-release || dpkg -i /opt/zstack-release_{}_all.deb".format(releasever)
+    copy_arg = CopyArg()
+    copy_arg.src = src_pkg
+    copy_arg.dest = '/opt'
+    copy(copy_arg, host_post_info)
+    run_remote_command(install_cmd, host_post_info)
+
+
 class ZstackLib(object):
     def __init__(self, args):
         distro = args.distro
@@ -1843,6 +1862,7 @@ class ZstackLib(object):
         configure_hosts(host_post_info)
 
         if distro in RPM_BASED_OS:
+            install_release_on_host(True, distro, distro_release, distro_version, host_post_info)
             epel_repo_exist = file_dir_exist("path=/etc/yum.repos.d/epel.repo", host_post_info)
             # To avoid systemd bug :https://github.com/systemd/systemd/issues/1961
             host_post_info.post_label = "ansible.shell.remove.file"
@@ -2058,8 +2078,8 @@ enabled=0" >  /etc/yum.repos.d/zstack-experimental-mn.repo
                     run_remote_command(command, host_post_info)
                     # enable chrony service for RedHat
                     enable_chrony(trusted_host, host_post_info, distro)
-
         elif distro in DEB_BASED_OS:
+            install_release_on_host(False, distro, distro_release, distro_version, host_post_info)
             #copy apt-conf
             copy_arg = CopyArg()
             copy_arg.src = "files/kvm/apt.conf"
