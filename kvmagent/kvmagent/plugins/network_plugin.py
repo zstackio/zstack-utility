@@ -396,9 +396,9 @@ class NetworkPlugin(kvmagent.KvmAgent):
                     raise Exception(interface + ' has a sub-interface or a bridge port')
 
             if cmd.mode is not None or cmd.xmitHashPolicy is not None:
-                mode = linux.read_file("/sys/class/net/%s/bonding/mode" % cmd.bondName)
-                policy = linux.read_file("/sys/class/net/%s/bonding/xmit_hash_policy" % cmd.bondName)
-                if cmd.mode != mode or cmd.xmitHashPolicy != policy:
+                mode = linux.read_file("/sys/class/net/%s/bonding/mode" % cmd.bondName).strip()
+                policy = linux.read_file("/sys/class/net/%s/bonding/xmit_hash_policy" % cmd.bondName).strip()
+                if cmd.mode not in mode or cmd.xmitHashPolicy is not None and cmd.xmitHashPolicy not in policy:
                     # zs-bond -u bond1 mode 802.3ad
                     if cmd.xmitHashPolicy is None:
                         shell.call('/usr/local/bin/zs-bond -u %s mode %s' % (cmd.bondName, cmd.mode))
