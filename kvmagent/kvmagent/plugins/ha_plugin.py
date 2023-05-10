@@ -207,7 +207,10 @@ class PhysicalNicFencer(AbstractHaFencer):
         return [nic for nic, count in self.falut_nic_count.items() if count > self.max_attempts]
 
     def get_nomal_bond_nic(self):
-        return os.listdir('/proc/net/bonding/')
+        bond_path = "/proc/net/bonding/"
+        if os.path.exists(bond_path):
+            return os.listdir(bond_path)
+        return []
 
 
 
@@ -1103,7 +1106,7 @@ class HaPlugin(kvmagent.KvmAgent):
                         # reset the failure count
                         failure = 0
                     except Exception as e:
-                        logger.warn("kill vm failed, %s" % e.message)
+                        logger.warn("kill vm failed, %s" % e)
                         content = traceback.format_exc()
                         logger.warn("traceback: %s" % content)
                     finally:
@@ -1161,7 +1164,7 @@ class HaPlugin(kvmagent.KvmAgent):
                         killed_vm_uuids.append(vm.uuid)
                 except Exception as e:
                     logger.warn(
-                        'failed to kill the vm[uuid:%s, pid:%s] %s\n%s' % (vm.uuid, vm.pid, e.message, traceback.format_exc()))
+                        'failed to kill the vm[uuid:%s, pid:%s] %s\n%s' % (vm.uuid, vm.pid, e, traceback.format_exc()))
 
                 for volume in vm.volumes:
                     used_process = linux.linux_lsof(volume)
@@ -1169,7 +1172,7 @@ class HaPlugin(kvmagent.KvmAgent):
                         try:
                             lvm.deactive_lv(volume, False)
                         except Exception as e:
-                            logger.debug("deactivate volume %s for vm %s failed, %s" % (volume, vm.uuid, e.message))
+                            logger.debug("deactivate volume %s for vm %s failed, %s" % (volume, vm.uuid, e))
                             content = traceback.format_exc()
                             logger.warn("traceback: %s" % content)
                     else:
@@ -1194,7 +1197,7 @@ class HaPlugin(kvmagent.KvmAgent):
                     if _do_fencer_vg(vg, failure):
                         self.sblk_health_checker.firevg(vg)
                 except Exception as e:
-                    logger.warn("sharedblock fencer for vg %s failed, %s\n%s" % (vg, e.message, traceback.format_exc()))
+                    logger.warn("sharedblock fencer for vg %s failed, %s\n%s" % (vg, e, traceback.format_exc()))
 
         try:
             global last_multipath_run
@@ -1232,7 +1235,7 @@ class HaPlugin(kvmagent.KvmAgent):
 
         except Exception as e:
             logger.debug(
-                'self-fencer on sharedblock primary storage stopped abnormally[%s], try again soon...' % e.message)
+                'self-fencer on sharedblock primary storage stopped abnormally[%s], try again soon...' % e)
             content = traceback.format_exc()
             logger.warn(content)
 
@@ -1362,8 +1365,8 @@ class HaPlugin(kvmagent.KvmAgent):
 
 
                 logger.debug('stop self-fencer on pool %s of ceph primary storage' % pool_name)
-            except:
-                logger.debug('self-fencer on pool %s ceph primary storage stopped abnormally' % pool_name)
+            except Exception as e:
+                logger.debug('self-fencer on pool %s ceph primary storage stopped abnormally, %s' % (pool_name, e))
                 content = traceback.format_exc()
                 logger.warn(content)
                 self.report_storage_status([cmd.uuid], 'Disconnected')
