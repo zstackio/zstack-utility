@@ -42,6 +42,8 @@ VM_CONFIG_SYNC_OS_VERSION_SUPPORT = {
 qga_exec_wait_interval = 1
 qga_exec_wait_retry = 30
 
+# windows zs-tools command wait 120s
+zs_tools_wait_retry = 120
 
 class QgaException(Exception):
     """ The base exception class for all exceptions this agent raises."""
@@ -231,7 +233,7 @@ class VmQga(object):
 
         return exit_code, ret_data
 
-    def guest_exec_zs_tools(self, operate, config, output=True, wait=qga_exec_wait_interval, retry=qga_exec_wait_retry):
+    def guest_exec_zs_tools(self, operate, config, output=True, wait=qga_exec_wait_interval, retry=zs_tools_wait_retry):
         if operate == 'net':
             ret = self.guest_exec(
                 {"path": self.ZS_TOOLS_PATN_WIN, "arg": [operate, "--config", config], "capture-output": output})
