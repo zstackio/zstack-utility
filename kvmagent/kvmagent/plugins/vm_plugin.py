@@ -3445,8 +3445,12 @@ class Vm(object):
             def __exit__(self, exc_type, exc_val, exc_tb):
                 super(MigrateDaemon, self).__exit__(exc_type, exc_val, exc_tb)
                 if exc_type == libvirt.libvirtError:
-                    raise kvmagent.KvmError(
-                        'unable to migrate vm[uuid:%s] to %s, %s' % (cmd.vmUuid, destUrl, str(exc_val)))
+                    err = str(exc_val)
+                    logger.warn('unable to migrate vm[uuid:%s] to %s, %s' % (cmd.vmUuid, destUrl, err))
+                    if "cannot set up guest memory" in err:
+                        raise kvmagent.KvmError("No enough physical memory for guest")
+                    else:
+                        raise kvmagent.KvmError(err)
 
         check_mirror_jobs(cmd.vmUuid, False)
 
