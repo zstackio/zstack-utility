@@ -118,14 +118,15 @@ def shareblock_offline_merge_snapshots():
     }))
 
 @misc.return_jsonobject()
-def shareblock_create_empty_volume(installPath=None, backingFile=None,size=None, volumeUuid=None, hostUuid=None, vgUuid=None):
+def shareblock_create_empty_volume(installPath=None, backingFile=None,size=None, volumeUuid=None, hostUuid=None, vgUuid=None, kvmHostAddons={}):
     return SHAREBLOCK_PLUGIN.create_empty_volume(misc.make_a_request({
         "installPath": installPath ,# vguuid/volumeuuid
         "backingFile": backingFile,
         "size": size,
         "volumeUuid": volumeUuid,
         "hostUuid":hostUuid,
-        "vgUuid":vgUuid
+        "vgUuid":vgUuid,
+        "kvmHostAddons":kvmHostAddons
     }))
 
 @misc.return_jsonobject()

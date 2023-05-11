@@ -1133,6 +1133,21 @@ def qcow2_get_cluster_size(path):
                      (qemu_img.subcmd('info'), path))
     return int(out.strip())
 
+def qcow2_discard(path):
+    virtual_size = int(qcow2_get_virtual_size(path))
+    cmd = shell.ShellCmd('''
+#!/bin/bash
+i=0
+while(($i < {0}))
+do
+qemu-io -c "discard $[i*2147483136] 2147483136" -f qcow2 -d unmap {1}
+let i+=1
+done
+qemu-io -c "discard $[i*2147483136] {2}" -f qcow2 -d unmap {1}
+    '''.format(virtual_size / 2147483136, path, virtual_size % 2147483136))
+
+    cmd(False)
+    logger.debug("qcow2 discard return code: %s, stderr: %s" % (cmd.return_code, cmd.stderr))
 
 class AbstractFileConverter(object):
     __metaclass__ = abc.ABCMeta
