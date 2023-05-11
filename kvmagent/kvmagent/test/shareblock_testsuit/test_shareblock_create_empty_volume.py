@@ -1,3 +1,5 @@
+import json
+
 from kvmagent.test.shareblock_testsuit.shared_block_plugin_teststub import SharedBlockPluginTestStub
 from kvmagent.test.utils import shareblock_utils,pytest_utils,storage_device_utils
 from zstacklib.utils import bash
@@ -85,5 +87,64 @@ class TestShareBlockPlugin(TestCase, SharedBlockPluginTestStub):
 
         r, o = bash.bash_ro("lvs --nolocking -t |grep %s" % volumeUuid)
         self.assertEqual(0, r, "create empty volume fail in host")
+
+        # size=10M
+        volumeUuid = misc.uuid()
+        rsp = shareblock_utils.shareblock_create_empty_volume(
+            installPath="sharedblock://{}/{}".format(vgUuid,volumeUuid),
+            volumeUuid=volumeUuid,
+            size=10485760,
+            hostUuid=hostUuid,
+            vgUuid=vgUuid,
+            kvmHostAddons={"qcow2Options":" -o cluster_size=2097152  -o preallocation=metadata"}
+        )
+        self.assertEqual(True, rsp.success, rsp.error)
+
+        bash.bash_errorout("lvchange -aey %s" % "/dev/{}/{}".format(vgUuid,volumeUuid))
+        o = bash.bash_o("qemu-img map %s --output=json" % "/dev/{}/{}".format(vgUuid,volumeUuid))
+        o = json.loads(o.strip())
+        self.assertEqual(1, len(o))
+        self.assertEqual(10485760, o[0].get("length"))
+        self.assertEqual(True, o[0].get("data"))
+
+        # size=1G
+        volumeUuid = misc.uuid()
+        rsp = shareblock_utils.shareblock_create_empty_volume(
+            installPath="sharedblock://{}/{}".format(vgUuid,volumeUuid),
+            volumeUuid=volumeUuid,
+            size=1024**3,
+            hostUuid=hostUuid,
+            vgUuid=vgUuid,
+            kvmHostAddons={"qcow2Options":" -o cluster_size=2097152  -o preallocation=metadata"}
+        )
+        self.assertEqual(False, rsp.success, rsp.error)
+
+        bash.bash_errorout("lvchange -aey %s" % "/dev/{}/{}".format(vgUuid,volumeUuid))
+        o = bash.bash_o("qemu-img map %s --output=json" % "/dev/{}/{}".format(vgUuid,volumeUuid))
+        o = json.loads(o.strip())
+        self.assertEqual(1, len(o))
+        self.assertEqual(1024**3, o[0].get("length"))
+        self.assertEqual(False, o[0].get("data"))
+
+        # size=3.1G
+        volumeUuid = misc.uuid()
+        rsp = shareblock_utils.shareblock_create_empty_volume(
+            installPath="sharedblock://{}/{}".format(vgUuid,volumeUuid),
+            volumeUuid=volumeUuid,
+            size=3326083072,
+            hostUuid=hostUuid,
+            vgUuid=vgUuid,
+            kvmHostAddons={"qcow2Options":" -o cluster_size=2097152  -o preallocation=metadata"}
+        )
+        self.assertEqual(True, rsp.success, rsp.error)
+
+        bash.bash_errorout("lvchange -aey %s" % "/dev/{}/{}".format(vgUuid,volumeUuid))
+        o = bash.bash_o("qemu-img map %s --output=json" % "/dev/{}/{}".format(vgUuid,volumeUuid))
+        o = json.loads(o.strip())
+        self.assertEqual(1, len(o))
+        self.assertEqual(3326083072, o[0].get("length"))
+        self.assertEqual(False, o[0].get("data"))
+
+        bash.bash_errorout('''qemu-io -c "write 0 3326083072" -f qcow2 %s''' % "/dev/{}/{}".format(vgUuid,volumeUuid))
 
         self.logout(vgUuid, hostUuid)
