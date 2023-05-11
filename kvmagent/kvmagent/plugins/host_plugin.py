@@ -16,6 +16,7 @@ import string
 import socket
 import sys
 import yaml
+import pyudev
 
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
@@ -1362,8 +1363,14 @@ class HostPlugin(kvmagent.KvmAgent):
                 elif line[0] == 'bcdUSB':
                     info.usbVersion = line[1]
                     # special case: USB2.0 with speed 1.5MBit/s or 12MBit/s should be attached to USB1.1 Controller
-                    rst = bash_r("lsusb.py | grep -v 'grep' | grep '%s' | grep -E '1.5MBit/s|12MBit/s'" % dev_id)
-                    info.usbVersion = info.usbVersion if rst != 0 else '1.1'
+                    # The lsub.py output format has been changed for the higher version of usbutils
+                    # The speed of usb is obtained through the sysfs path
+                    context = pyudev.Context()
+                    for device in context.list_devices(subsystem='usb'):
+                        if device.get('BUSNUM') == str(info.busNum) and device.get('DEVNUM') == str(info.devNum):
+                            usbSpeed = open('%s/speed' % device.sys_path).readline().strip()
+                            if usbSpeed == '1.5' or usbSpeed == '12':
+                                info.usbVersion = '1.1'
                 elif line[0] == 'iManufacturer' and len(line) > 2:
                     info.iManufacturer = ' '.join(line[2:])
                 elif line[0] == 'iProduct' and len(line) > 2:
