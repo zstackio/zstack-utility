@@ -1823,7 +1823,7 @@ def install_release_on_host(is_rpm, distro, distro_release, distro_version, host
     if is_rpm:
         src_pkg = '/opt/zstack-dvd/{0}/{1}/Packages/zstack-release-{1}-1.el7.zstack.noarch.rpm'.format(host_arch, releasever)
         install_cmd = "[[ x`rpm -qi zstack-release |awk -F ':' '/Version/{print $2}' |sed 's/ //g'` == x%s ]] || " \
-                      "rpm -e zstack-release; rpm -i /opt/zstack-release-%s-1.el7.zstack.noarch.rpm;" % (releasever, releasever)
+                      "(rpm -e zstack-release; rpm -i /opt/zstack-release-%s-1.el7.zstack.noarch.rpm);" % (releasever, releasever)
     else:
         src_pkg = '/opt/zstack-dvd/{0}/{1}/Packages/zstack-release_{1}_all.deb'.format(host_arch, releasever)
         install_cmd = "dpkg -l zstack-release || dpkg -i /opt/zstack-release_{}_all.deb".format(releasever)
