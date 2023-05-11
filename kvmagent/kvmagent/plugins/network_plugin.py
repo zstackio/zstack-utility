@@ -15,8 +15,8 @@ from zstacklib.utils.bash import *
 from zstacklib.utils import ovs
 import os
 import traceback
-import pyroute2
 import netaddr
+import subprocess
 
 CHECK_PHYSICAL_NETWORK_INTERFACE_PATH = '/network/checkphysicalnetworkinterface'
 ADD_INTERFACE_TO_BRIDGE_PATH = '/network/bridge/addif'
@@ -323,23 +323,16 @@ class NetworkPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     def _has_vlan_or_bridge(self, ifname):
-        with pyroute2.IPRoute() as ipr:
-            links = ipr.get_links()
-            for link in links:
-                # Check for vlan interface
-                if link.get_attr('IFLA_LINKINFO') and \
-                        link.get_attr('IFLA_LINKINFO').get_attr('IFLA_INFO_KIND') == 'vlan' and \
-                        link.get_attr('IFLA_IFNAME').startswith(ifname + '.'):
-                    return True
+        if linux.is_bridge_slave(ifname):
+            return True
 
-                # Check for bridge port
-                if link.get_attr('IFLA_LINKINFO') and \
-                        link.get_attr('IFLA_LINKINFO').get_attr('IFLA_INFO_KIND') == 'bridge' and \
-                        link.get_attr('IFLA_MASTER') and \
-                        link.get_attr('IFLA_MASTER') == ipr.link_lookup(ifname)[0]:
-                    return True
+        vlan_dev_name = '%s.' % ifname
+        output = subprocess.check_output(['ip', 'link', 'show', 'type', 'vlan'], universal_newlines=True)
+        for line in output.split('\n'):
+            if vlan_dev_name in line:
+                return True
 
-            return False
+        return False
 
     @lock.lock('bonding')
     @kvmagent.replyerror
@@ -351,7 +344,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         try:
             try:
                 for slave in cmd.slaves:
-                    if self._has_vlan_or_bridge(slave.interfaceName) != 0:
+                    if self._has_vlan_or_bridge(cmd.interfaceName):
                         raise Exception(slave.interfaceName + ' has a sub-interface or a bridge port')
             except Exception as e:
                 rsp.error = 'unable to create bonding[%s], because %s' % (cmd.bondName, str(e))
@@ -392,7 +385,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
         try:
             for interface in add_items:
-                if self._has_vlan_or_bridge(interface) != 0:
+                if self._has_vlan_or_bridge(cmd.interfaceName):
                     raise Exception(interface + ' has a sub-interface or a bridge port')
 
             if cmd.mode is not None or cmd.xmitHashPolicy is not None:
@@ -427,7 +420,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         rsp = DeleteBondingResponse()
 
         try:
-            if self._has_vlan_or_bridge(cmd.bondName) == 0:
+            if self._has_vlan_or_bridge(cmd.bondName):
                 # zs-bond -d bond2
                 shell.call('/usr/local/bin/zs-bond -d %s' % cmd.bondName)
             else:
