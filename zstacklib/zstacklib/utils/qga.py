@@ -61,6 +61,8 @@ def is_qga_connected(vm_dom):
     except:
         return False
 
+# windows zs-tools command wait 120s
+zs_tools_wait_retry = 120
 
 class QgaException(Exception):
     """ The base exception class for all exceptions this agent raises."""
@@ -78,7 +80,14 @@ class VmQga(object):
     VM_OS_LINUX_UOS = "uos"
     VM_OS_LINUX_UBUNTU = "ubuntu"
     VM_OS_LINUX_CENTOS = "centos"
+    VM_OS_LINUX_OPEN_SUSE = "opensuse-leap"
+    VM_OS_LINUX_SUSE_S = "sles"
+    VM_OS_LINUX_SUSE_D = "sled"
+    VM_OS_LINUX_ORACLE = "ol"
+    VM_OS_LINUX_REDHAT = "rhel"
     VM_OS_WINDOWS = "mswindows"
+
+    ZS_TOOLS_PATN_WIN = "C:\Program Files\GuestTools\zs-tools\zs-tools.exe"
 
     def __init__(self, domain):
         self.domain = domain
@@ -126,7 +135,7 @@ class VmQga(object):
             raise Exception(message)
 
         try:
-            logger.debug("vm {} run qga command {} result {}".format(self.vm_uuid, cmd, ret))
+            logger.debug("vm {} run qga command {}".format(self.vm_uuid, cmd))
             
             parsed = json.loads(ret)
         except ValueError:
@@ -138,9 +147,9 @@ class VmQga(object):
         parsedRet = parsed['return']
         if isinstance(parsedRet, dict):
             if 'out-data' in parsedRet:
-                parsedRet['out-data'] = base64.b64decode(parsedRet['out-data'])  # .decode("GB2312")
+                parsedRet['out-data'] = base64.b64decode(parsedRet['out-data'])
             if 'err-data' in parsedRet:
-                parsedRet['err-data'] = base64.b64decode(parsedRet['err-data'])  # .decode("GB2312")
+                parsedRet['err-data'] = base64.b64decode(parsedRet['err-data'])
             if 'buf-b64' in parsedRet:
                 parsedRet['buf-b64'] = base64.b64decode(parsedRet['buf-b64'])
 
@@ -158,6 +167,7 @@ class VmQga(object):
     def guest_exec_bash_no_exitcode(self, cmd, exception=True, output=True):
         exitcode, ret_data = self.guest_exec_bash(cmd, output)
         if exitcode != 0:
+            logger.debug("qga exec command: {}, exitcode {}, ret {}".format(cmd, exitcode, ret_data))
             if exception:
                 raise Exception('cmd {}, exitcode {}, ret {}'
                                 .format(cmd, exitcode, ret_data))
@@ -198,7 +208,7 @@ class VmQga(object):
         return exit_code, ret_data
 
     # not a good function, just for hurry push
-    def guest_exec_python(self, file, output=True, wait=qga_exec_wait_interval, retry=qga_exec_wait_retry):
+    def guest_exec_python(self, file, params=None, output=True, wait=qga_exec_wait_interval, retry=qga_exec_wait_retry):
         path = self.guest_exec_bash_no_exitcode("which python2", exception=False)
         if not path:
             path = self.guest_exec_bash_no_exitcode("which python3", exception=False)
@@ -206,8 +216,13 @@ class VmQga(object):
         if not path:
             raise Exception('python not installed in vm {}'.format(file, self.vm_uuid))
 
+        args = [file]
+        if params is not None:
+            for d in params:
+                args.append(d)
+
         ret = self.guest_exec(
-            {"path": path.strip(), "arg": [file], "capture-output": output})
+            {"path": path.strip(), "arg": args, "capture-output": output})
         if ret and "pid" in ret:
             pid = ret["pid"]
         else:
@@ -232,13 +247,93 @@ class VmQga(object):
         ret_data = None
         if 'out-data' in ret:
             ret_data = ret['out-data']
-            res = json.loads(ret_data)
-            exit_code = 0 if res.get('result') == "success" else 1
         elif 'err-data' in ret:
-            exit_code = 1
             ret_data = ret['err-data']
 
         return exit_code, ret_data
+
+    def guest_exec_zs_tools(self, operate, config, output=True, wait=qga_exec_wait_interval, retry=zs_tools_wait_retry):
+        if operate == 'net':
+            ret = self.guest_exec(
+                {"path": self.ZS_TOOLS_PATN_WIN, "arg": [operate, "--config", config], "capture-output": output})
+        elif operate == 'host':
+            ret = self.guest_exec(
+                {"path": self.ZS_TOOLS_PATN_WIN, "arg": [operate, "--name", config], "capture-output": output})
+        else:
+            raise Exception('qga exec zs-tools unknow operate {} for vm {}'.format(operate, self.vm_uuid))
+
+        if ret and "pid" in ret:
+                pid = ret["pid"]
+        else:
+            raise Exception('qga exec zs-tools operate {} config {} failed for vm {}'.format(operate, config, self.vm_uuid))
+
+        ret = None
+        for i in range(retry):
+            time.sleep(wait)
+            ret = self.guest_exec_status(pid)
+            if ret['exited']:
+                break
+
+        if not ret or not ret.get('exited'):
+            raise Exception('qga exec zs-tools operate {} config {} timeout for vm {}'.format(operate, config, self.vm_uuid))
+
+        exit_code = ret.get('exitcode')
+        ret_data = None
+        if 'out-data' in ret:
+            ret_data = ret['out-data'].decode('utf-8').encode('utf-8')
+        elif 'err-data' in ret:
+            ret_data = ret['err-data'].decode('utf-8').encode('utf-8')
+
+        return exit_code, ret_data.replace('\r\n', '')
+
+    def guest_exec_powershell(self, cmd, output=True, wait=qga_exec_wait_interval, retry=qga_exec_wait_retry):
+        cmd_parts = cmd.split('|')
+        cmd = "& '{}'".format("' '".join([part for part in cmd_parts]))
+
+        ret = self.guest_exec(
+            {"path": "powershell.exe", "arg": ["-Command", cmd], "capture-output": output})
+        if ret and "pid" in ret:
+            pid = ret["pid"]
+        else:
+            raise Exception('qga exec cmd {} failed for vm {}'.format(cmd, self.vm_uuid))
+
+        if not output:
+            logger.debug("run qga powershell: {} failed, no output".format(cmd))
+            return 0, None
+
+        ret = None
+        for i in range(retry):
+            time.sleep(wait)
+            ret = self.guest_exec_status(pid)
+            if ret['exited']:
+                break
+
+        if not ret or not ret.get('exited'):
+            raise Exception('qga exec cmd {} timeout for vm {}'.format(cmd, self.vm_uuid))
+
+        exit_code = ret.get('exitcode')
+        ret_data = None
+        if 'out-data' in ret:
+            ret_data = ret['out-data'].decode("GB2312")
+        elif 'err-data' in ret:
+            ret_data = ret['err-data'].decode("GB2312")
+
+        return exit_code, ret_data
+
+    def guest_exec_powershell_no_exitcode(self, cmd, exception=True, output=True):
+        exitcode, ret_data = self.guest_exec_powershell(cmd, output)
+        if exitcode != 0:
+            if exception:
+                raise Exception('cmd {}, exitcode {}, ret {}'
+                                .format(cmd, exitcode, ret_data))
+            return None
+        return ret_data
+
+    def guest_exec_cmd_no_exitcode(self, cmd, exception=True, output=True):
+        if "mswindows" in self.os:
+            return self.guest_exec_powershell_no_exitcode(cmd, exception, output)
+        else:
+            return self.guest_exec_bash_no_exitcode(cmd, exception, output)
 
     def guest_info(self):
         """
@@ -310,9 +405,7 @@ class VmQga(object):
         ret = self.call_qga_command("guest-get-osinfo")
         if ret and "id" in ret and "version-id" in ret:
             vm_os = ret["id"].lower()
-            version = ret["version-id"].lower()
-            if vm_os == self.VM_OS_LINUX_UBUNTU:
-                version = version.split(".")[0]
+            version = ret["version-id"].lower().split(".")[0]
             return vm_os, version
         raise Exception('get vm %s os info failed' % self.vm_uuid)
 
@@ -384,7 +477,10 @@ class VmQga(object):
             if 'guest-get-osinfo' in self.supported_commands and \
                     self.supported_commands['guest-get-osinfo']:
                 self.os, self.os_version = self.guest_exec_get_os_info()
-                self.os_id_like = self.guest_get_os_id_like()
+                if self.os == VmQga.VM_OS_WINDOWS:
+                    self.os_id_like = "windows"
+                else:
+                    self.os_id_like = self.guest_get_os_id_like()
             else:
                 self.os, self.os_version, self.os_id_like = self.guest_get_os_info()
         except Exception as e:
@@ -420,11 +516,19 @@ class VmQga(object):
                 return 0, None
             raise e
 
+        data_b64 = ''
+        total_count = 0
+
         try:
-            ret = self.call_qga_command("guest-file-read", args={"handle": handle})
+            while True:
+                ret = self.call_qga_command("guest-file-read", args={"handle": handle})
+                data_b64 += ret.get('buf-b64')
+                total_count += ret.get('count')
+                if ret.get('count') == 0:
+                    break
         finally:
             self.guest_file_close(handle)
-        return ret.get('count'), ret.get('buf-b64')
+        return total_count, data_b64
 
     def guest_file_is_exist(self, path):
         try:
