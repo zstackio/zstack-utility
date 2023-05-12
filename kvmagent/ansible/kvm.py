@@ -533,7 +533,7 @@ def copy_zs_scripts():
     """copy zs-xxx from mn_node to host_node"""
     _src = '/opt/zstack-dvd/{}/{}/scripts/'.format(host_arch, releasever)
     _dst = '/usr/local/bin/'
-    copy_to_remote(_src, _dst, None, host_post_info)
+    copy_to_remote(_src, _dst, "mode=755", host_post_info)
 
 @on_redhat_based(distro)
 def copy_grubaa64_efi():
