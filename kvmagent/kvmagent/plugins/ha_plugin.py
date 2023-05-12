@@ -576,7 +576,7 @@ class FileSystemHeartbeatController(AbstractStorageFencer):
         if self.write_fencer_heartbeat() is False:
             self.fencer_triggered_callback([self.ps_uuid], 'Disconnected')
 
-            killed_vms = kill_vm(self.max_attempts, self.strategy, [self.mount_path], True)
+            killed_vms = kill_vm_by_xml(self.max_attempts, self.strategy, self.mount_path, True)
 
             if len(killed_vms) != 0:
                 self.fencer_triggered_callback([self.ps_uuid], ','.join(killed_vms.keys()))
@@ -769,6 +769,7 @@ global_vpc_uuids = []
 global_always_ha_vm_uuids = []
 vpc_lock = threading.Lock()
 host_storage_name = "hostStorageState"
+LIVE_LIBVIRT_XML_DIR = "/var/run/libvirt/qemu"
 global_allow_fencer_rule = {} # type: dict[str, list]
 global_block_fencer_rule = {} # type: dict[str, list]
 global_fencer_rule_lock = threading.Lock()
@@ -782,7 +783,6 @@ def add_fencer_rule(cmd):
             {rule['fencerName']: global_block_fencer_rule.get(rule['fencerName'], []) + rule['vmUuids'] for rule in cmd['blockRules']})
         logger.debug("add fencer rules %s, global allow fencer: %s, global block fencer: %s" %
                      (str(cmd), global_allow_fencer_rule, global_block_fencer_rule))
-
 
 
 def remove_fencer_rule(cmd):
@@ -840,6 +840,57 @@ def find_ps_running_vm(store_uuid):
 
 def not_exec_kill_vm(strategy, vm_uuid, fencer_name):
     return strategy == 'Permissive' and not is_allow_fencer(fencer_name, vm_uuid)
+
+
+def kill_vm_by_xml(maxAttempts, strategy, mountPath, isFlushbufs = True):
+    vm_pids_dict = get_runnning_vm_root_volume_on_pv(maxAttempts, strategy, mountPath, isFlushbufs)
+    reason = "because we lost connection to the storage, failed to read the heartbeat file %s times" % maxAttempts
+    kill_vm_use_pid(vm_pids_dict, reason)
+
+
+def get_runnning_vm_root_volume_on_pv(maxAttempts, strategy, mountPath, isFlushbufs = True):
+    # 1. get root volume from live vm xml
+    # 2. make sure io has error
+    # 3. filter for mountPaths
+    vm_pids_dict = {}
+    for file_name in linux.listdir(LIVE_LIBVIRT_XML_DIR):
+        xs = file_name.split(".")
+        if len(xs) != 2 or xs[1] != "xml":
+            continue
+
+        xml = linux.read_file(os.path.join(LIVE_LIBVIRT_XML_DIR, file_name))
+        if not mountPath in xml:
+            continue
+
+        vm = linux.VmStruct()
+        vm.uuid = xs[0]
+        vm.pid = linux.get_vm_pid(vm.uuid)
+        vm.load_from_xml(xml)
+        if not vm.root_volume:
+            logger.warn("found strange vm[pid: %s, uuid: %s], can not find boot volume" % (vm.pid, vm.uuid))
+            continue
+
+        if not mountPath in vm.root_volume:
+            continue
+
+        if is_allow_fencer(host_storage_name, vm.uuid):
+            logger.debug("fencer detect ha strategy is %s skip fence vm[uuid:%s]" % (strategy, vm.uuid))
+            continue
+
+        if isFlushbufs:
+            r = bash.bash_r("blockdev --flushbufs %s" % vm.root_volume)
+            if r == 0:
+                logger.debug("volume %s for vm %s io success, skiped" % (vm.root_volume, vm.uuid))
+                continue
+
+        bad_vm_root_volume_condition = False
+        if lvm.is_bad_vm_root_volume(vm.root_volume) is True:
+            bad_vm_root_volume_condition = True
+
+        if bad_vm_root_volume_condition is True:
+            vm_pids_dict[vm.uuid] = vm.pid
+
+    return vm_pids_dict
 
 
 def kill_vm(maxAttempts, strategy, mountPaths=None, isFileSystem=None):
