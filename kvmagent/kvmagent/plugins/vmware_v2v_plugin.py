@@ -108,6 +108,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
         x86_64_c74 = "libguestfs-tools libguestfs-tools-c perl-Sys-Guestfs libguestfs-winsupport virt-v2v"
         x86_64_c76 = "libguestfs-tools libguestfs-tools-c perl-Sys-Guestfs libguestfs-winsupport virt-v2v"
         x86_64_c79 = "libguestfs-tools libguestfs-tools-c perl-Sys-Guestfs libguestfs-winsupport virt-v2v"
+        x86_64_rl84 = "libguestfs-tools libguestfs-tools-c perl-Sys-Guestfs libguestfs-winsupport virt-v2v"
         x86_64_ns10 = "libguestfs"
 
         releasever = kvmagent.get_host_yum_release()
