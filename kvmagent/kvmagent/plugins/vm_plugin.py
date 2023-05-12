@@ -4370,12 +4370,13 @@ class Vm(object):
                 e(tune, 'emulatorpin', attrib={'cpuset': str(cmd.addons.emulatorPinning)})
 
             def make_cpu_features():
+                if cmd.nestedVirtualization == 'none':
+                    return
+
                 cpu = root.find('cpu')
                 if not cmd.x2apic:
                     # http://jira.zstack.io/browse/ZSTAC-50418
                     # for cpu mode is none, there are too many uncertain factors, so the feature will not be set.
-                    if cmd.nestedVirtualization == 'none':
-                        return
 
                     e(cpu, 'feature', attrib={'name': 'x2apic', 'policy': 'disable'})
 
