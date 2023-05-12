@@ -27,6 +27,7 @@ ceph_file_path = "/bin/ceph"
 # common cephprimarystorage deps of ky10 that need to update
 ky10_update_list = "nettle"
 ky10sp3_update_list = "qemu-block-rbd"
+qemu_installed = False
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy ceph primary strorage to host')
@@ -99,7 +100,14 @@ else:
 if distro in RPM_BASED_OS:
     install_rpm_list = "wget nmap"
 
-    qemu_installed = yum_check_package("qemu-kvm", host_post_info) or yum_check_package("qemu-kvm-ev", host_post_info)
+    if remote_bin_installed(host_post_info, "qemu-img", return_status=True):
+        (status, qemu_img_version) = get_qemu_img_version(host_post_info)
+        # When the qemu-img version is smaller than 4.0.0, rbd is already included
+        if LooseVersion(qemu_img_version) < LooseVersion('4.0.0'):
+            qemu_installed = True
+    if not qemu_installed:
+        qemu_installed = yum_check_package("qemu-kvm", host_post_info) or yum_check_package("qemu-kvm-ev", host_post_info) or yum_check_package("qemu", host_post_info)
+
     if not qemu_installed:
         install_rpm_list += " %s" % qemu_alias.get(releasever, 'qemu-kvm')
         # Since 4.5.11, qemu-kvm-ev renamed to qemu-kvm in c76 and 79, however,
@@ -137,8 +145,7 @@ if distro in RPM_BASED_OS:
     set_selinux("state=disabled", host_post_info)
 
     # replace qemu-img binary if qemu-img-ev before 2.12.0 is installed, to fix zstack-11004 / zstack-13594 / zstack-20983
-    command = "qemu-img --version | grep 'qemu-img version' | cut -d ' ' -f 3 | cut -d '(' -f 1"
-    (status, qemu_img_version) = run_remote_command(command, host_post_info, False, True)
+    (status, qemu_img_version) = get_qemu_img_version(host_post_info)
     if IS_AARCH64 and LooseVersion(qemu_img_version) < LooseVersion('2.12.0'):
         copy_arg = CopyArg()
         copy_arg.src = "%s" % qemu_img_pkg
