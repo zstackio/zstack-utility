@@ -4,6 +4,7 @@ import os
 import os.path
 import pprint
 import traceback
+import urllib
 import urllib2
 import urlparse
 import tempfile
@@ -1005,8 +1006,7 @@ class CephAgent(object):
         report.resourceUuid = cmd.imageUuid
         report.progress_report("0", "start")
 
-        if isinstance(cmd.url, unicode):
-            cmd.url = str(cmd.url)
+        cmd.url = urllib.quote(cmd.url.encode('utf-8'), safe=':/')
 
         url = urlparse.urlparse(cmd.url)
         if url.scheme in ('http', 'https', 'ftp'):
