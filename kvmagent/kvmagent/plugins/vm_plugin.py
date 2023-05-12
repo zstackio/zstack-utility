@@ -1205,11 +1205,11 @@ def get_console_without_libvirt(vmUuid):
 def check_vdi_port(vncPort, spicePort, spiceTlsPort):
     if vncPort is None and spicePort is None and spiceTlsPort is None:
         return False
-    if vncPort is not None and vncPort <= 0:
+    if vncPort is not None and int(vncPort) <= 0:
         return False
-    if spicePort is not None and spicePort <= 0:
+    if spicePort is not None and int(spicePort) <= 0:
         return False
-    if spiceTlsPort is not None and spiceTlsPort <= 0:
+    if spiceTlsPort is not None and int(spiceTlsPort) <= 0:
         return False
     return True
 
