@@ -248,7 +248,7 @@ def install_kvm_pkg():
             common_dep_list = "%s %s %s %s" % (os_base_dep, distro_mapping.get(distro_head, ''), releasever_mapping.get(releasever, ''), edk2_mapping.get(host_arch, ''))
             # common kvmagent deps of x86 and arm that need to update
             common_update_list = "sanlock sysfsutils hwdata sg3_utils lvm2 lvm2-libs lvm2-lockd systemd openssh glusterfs"
-            common_no_update_list = "librbd1"
+            common_no_update_list = "librbd1 libicu"
             # common kvmagent deps of x86 and arm that no need to update
             common_dep_list = "%s %s" % (common_dep_list, common_update_list)
 
