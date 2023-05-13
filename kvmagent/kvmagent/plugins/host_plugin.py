@@ -1871,7 +1871,7 @@ done
                 else:
                     # zs-network-setting -d eth0
                     shell.call('/usr/local/bin/zs-network-setting -d %s' % cmd.interfaceName)
-                    shell.call('/usr/local/bin/zs-network-setting -i %s %s %s' % (cmd.interfaceName, cmd.ipAddress, cmd.netmask))
+                    bash_o('/usr/local/bin/zs-network-setting -i %s %s %s' % (cmd.interfaceName, cmd.ipAddress, cmd.netmask))
             except Exception as e:
                 rsp.error = 'unable to add ip on %s, because %s' % (cmd.interfaceName, str(e))
                 rsp.success = False
