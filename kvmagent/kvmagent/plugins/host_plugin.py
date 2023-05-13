@@ -1842,11 +1842,31 @@ done
         HostPlugin.__store_cache__(rsp.bondings, rsp.nics)
         return jsonobject.dumps(rsp)
 
+    def _has_vlan_or_bridge(self, ifname):
+        if linux.is_bridge_slave(ifname):
+            return True
+
+        vlan_dev_name = '%s.' % ifname
+        output = subprocess.check_output(['ip', 'link', 'show', 'type', 'vlan'], universal_newlines=True)
+        for line in output.split('\n'):
+            if vlan_dev_name in line:
+                return True
+
+        return False
+
     @kvmagent.replyerror
     @in_bash
     def set_ip_on_host_network_interface(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = SetIpOnHostNetworkInterfaceRsp()
+
+        try:
+            if self._has_vlan_or_bridge(cmd.interfaceName):
+                    raise Exception(cmd.interfaceName + ' has a sub-interface or a bridge port')
+        except Exception as e:
+            rsp.error = 'unable to update ip[%s], because %s' % (cmd.interfaceName, str(e))
+            rsp.success = False
+            return jsonobject.dumps(rsp)
 
         if cmd.ipAddress is not None:
             try:
@@ -1856,7 +1876,7 @@ done
                 else:
                     # zs-network-setting -d eth0
                     shell.call('/usr/local/bin/zs-network-setting -d %s' % cmd.interfaceName)
-                    shell.call('/usr/local/bin/zs-network-setting -i %s %s %s' % (cmd.interfaceName, cmd.ipAddress, cmd.netmask))
+                    bash_o('/usr/local/bin/zs-network-setting -i %s %s %s' % (cmd.interfaceName, cmd.ipAddress, cmd.netmask))
             except Exception as e:
                 rsp.error = 'unable to add ip on %s, because %s' % (cmd.interfaceName, str(e))
                 rsp.success = False
@@ -1872,10 +1892,15 @@ done
                 else:
                     shell.call('/usr/local/bin/zs-network-setting -i %s %s %s %s' % (cmd.interfaceName,
                                cmd.ipAddress, cmd.netmask, cmd.gateway))
-        # If the front-end parameter is empty, the ip will be deleted by default
+
+        # If the parameter is empty, the ip will be deleted by default
         else:
-            # mv ip on interface
-            shell.call('/usr/local/bin/zs-network-setting -d %s' % cmd.interfaceName)
+            try:
+                # mv ip on interface
+                shell.call('/usr/local/bin/zs-network-setting -d %s' % cmd.interfaceName)
+            except Exception as e:
+                rsp.error = 'unable to delete ip on %s, because %s' % (cmd.interfaceName, str(e))
+                rsp.success = False
             
         return jsonobject.dumps(rsp)
 
