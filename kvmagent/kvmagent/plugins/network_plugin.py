@@ -421,10 +421,10 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
         try:
             if self._has_vlan_or_bridge(cmd.bondName):
+                raise Exception(cmd.bondName + ' has a sub-interface or a bridge port')
+            else:
                 # zs-bond -d bond2
                 shell.call('/usr/local/bin/zs-bond -d %s' % cmd.bondName)
-            else:
-                raise Exception(cmd.bondName + ' has a sub-interface or a bridge port')
 
         except Exception as e:
             logger.warning(traceback.format_exc())
