@@ -139,7 +139,6 @@ class AbstractHaFencer(object):
         if self.run_fencer_list is None:
             return
         self.run_fencer_list = set(list(self.run_fencer_list))
-        logger.debug("run_fencer_list :%s" % ",".join(self.run_fencer_list))
 
         threads = []
         for fencer in self.run_fencer_list:
@@ -1354,6 +1353,8 @@ class HaPlugin(kvmagent.KvmAgent):
                 self.sblk_health_checker.do_heartbeat_on_sharedblock_call = self.do_heartbeat_on_sharedblock
 
             fencer_init[self.sblk_health_checker.get_ha_fencer_name()] = self.sblk_health_checker
+            logger.debug("shareblock start run fencer list :%s" % ",".join(fencer_list))
+
             while True:
                 time.sleep(self.sblk_health_checker.health_check_interval)
                 ha_fencer.exec_fencer_list(fencer_init, update_fencer)
@@ -1449,6 +1450,7 @@ class HaPlugin(kvmagent.KvmAgent):
                         write_heartbeat_used_time = None
                         ceph_controller.ioctx = ioctx
                         fencer_init[ceph_controller.get_ha_fencer_name()] = ceph_controller
+                        logger.debug("ceph start run fencer list :%s" % ",".join(fencer_list))
                         while self.run_fencer(get_fencer_key(ps_uuid, pool_name), created_time):
                             if write_heartbeat_used_time:
                                 # wait an interval before next heartbeat
@@ -1532,6 +1534,7 @@ class HaPlugin(kvmagent.KvmAgent):
             update_fencer = True
             fencer_init = {}
             fencer_init[file_system_controller.get_ha_fencer_name()] = file_system_controller
+            logger.debug("file system start run fencer list :%s" % ",".join(fencer_list))
             try:
                 while self.run_fencer(ps_uuid, created_time):
                     time.sleep(file_system_controller.interval)
