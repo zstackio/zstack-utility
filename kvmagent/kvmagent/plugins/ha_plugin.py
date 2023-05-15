@@ -572,11 +572,17 @@ class FileSystemHeartbeatController(AbstractStorageFencer):
                          (current_read_heartbeat_time[0], current_vm_uuids[0]))
             return current_read_heartbeat_time[0], current_vm_uuids[0]
 
+    def kill_vm(self):
+        r = bash.bash_r("timeout 5 virsh list")
+        if r == 0:
+            kill_vm(self.max_attempts, self.strategy, [self.mount_path], True)
+        else:
+            kill_vm_by_xml(self.max_attempts, self.strategy, self.mount_path, True)
+
     def check_storage_heartbeat(self):
         if self.write_fencer_heartbeat() is False:
             self.fencer_triggered_callback([self.ps_uuid], 'Disconnected')
-
-            killed_vms = kill_vm_by_xml(self.max_attempts, self.strategy, self.mount_path, True)
+            killed_vms = self.kill_vm()
 
             if len(killed_vms) != 0:
                 self.fencer_triggered_callback([self.ps_uuid], ','.join(killed_vms.keys()))
@@ -839,12 +845,13 @@ def not_exec_kill_vm(strategy, vm_uuid, fencer_name):
 
 
 def kill_vm_by_xml(maxAttempts, strategy, mountPath, isFlushbufs = True):
-    vm_pids_dict = get_runnning_vm_root_volume_on_pv(maxAttempts, strategy, mountPath, isFlushbufs)
+    vm_pids_dict = get_runnning_vm_root_volume_on_ps(maxAttempts, strategy, mountPath, isFlushbufs)
     reason = "because we lost connection to the storage, failed to read the heartbeat file %s times" % maxAttempts
     kill_vm_use_pid(vm_pids_dict, reason)
 
 
-def get_runnning_vm_root_volume_on_pv(maxAttempts, strategy, mountPath, isFlushbufs = True):
+@bash.in_bash
+def get_runnning_vm_root_volume_on_ps(maxAttempts, strategy, mountPath, isFlushbufs = True):
     # 1. get root volume from live vm xml
     # 2. make sure io has error
     # 3. filter for mountPaths
@@ -862,6 +869,7 @@ def get_runnning_vm_root_volume_on_pv(maxAttempts, strategy, mountPath, isFlushb
         vm.uuid = xs[0]
         vm.pid = linux.get_vm_pid(vm.uuid)
         vm.load_from_xml(xml)
+
         if not vm.root_volume:
             logger.warn("found strange vm[pid: %s, uuid: %s], can not find boot volume" % (vm.pid, vm.uuid))
             continue
@@ -874,18 +882,12 @@ def get_runnning_vm_root_volume_on_pv(maxAttempts, strategy, mountPath, isFlushb
             continue
 
         if isFlushbufs:
-            r = bash.bash_r("blockdev --flushbufs %s" % vm.root_volume)
+            r = bash.bash_r("timeout 5 blockdev --flushbufs %s" % vm.root_volume)
             if r == 0:
                 logger.debug("volume %s for vm %s io success, skiped" % (vm.root_volume, vm.uuid))
                 continue
 
-        bad_vm_root_volume_condition = False
-        if lvm.is_bad_vm_root_volume(vm.root_volume) is True:
-            bad_vm_root_volume_condition = True
-
-        if bad_vm_root_volume_condition is True:
-            vm_pids_dict[vm.uuid] = vm.pid
-
+        vm_pids_dict[vm.uuid] = vm.pid
     return vm_pids_dict
 
 
