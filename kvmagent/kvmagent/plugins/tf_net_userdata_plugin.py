@@ -243,9 +243,9 @@ class TfNetProviderUserdata(kvmagent.KvmAgent):
         linux.mkdir('/var/log/lighttpd', 0o750)
         # restart lighttpd to load new configuration
         shell.call('lighttpd -f %s' % conf_path)
-        if not linux.wait_callback_success(check, None, 5):
+        if not linux.wait_callback_success(check, None, 10):
             raise Exception('lighttpd[conf-file:%s] is not running '
-                            'after being started %s seconds' % (conf_path, 5))
+                            'after being started %s seconds' % (conf_path, 10))
 
     @kvmagent.replyerror
     def release_userdata_for_tf(self, req):
