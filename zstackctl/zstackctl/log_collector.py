@@ -808,6 +808,7 @@ class CollectFromYml(object):
                         file_path = dest_log_dir + '%s' % (log['name'])
                         exec_type = log['exec_type']
                         exec_cmd = None
+                        command = self.append_time_param_for_journal(log, command)
                         if exec_type == 'RunAndRedirect':
                             exec_cmd = '(%s) > %s' % (command, file_path)
                         if exec_type == 'CdAndRun':
@@ -962,6 +963,7 @@ class CollectFromYml(object):
                             file_path = dest_log_dir + '%s' % (log['name'])
                             exec_type = log['exec_type']
                             exec_cmd = None
+                            command = self.append_time_param_for_journal(log, command)
                             if exec_type == 'RunAndRedirect':
                                 exec_cmd = '(%s) > %s' % (command, file_path)
                             if exec_type == 'CdAndRun':
@@ -1052,6 +1054,13 @@ class CollectFromYml(object):
         print '%-50s%-50s' % ('AvailableDiskCapacity', colored(free_size, 'green'))
         for key in sorted(self.check_result.keys()):
             print '%-50s%-50s' % (key, colored(self.check_result[key], 'green'))
+
+    def append_time_param_for_journal(self, log, cmd):
+        if log['name'] == 'journalctl-info':
+            cmd += " --since '%s' --until '%s'" % (
+                datetime.strptime(self.f_date, '%Y-%m-%d:%H:%M:%S').strftime('%Y-%m-%d %H:%M:%S'),
+                datetime.strptime(self.t_date, '%Y-%m-%d:%H:%M:%S').strftime('%Y-%m-%d %H:%M:%S'))
+        return cmd
 
     def format_date(self, str_date):
         try:
