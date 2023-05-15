@@ -505,7 +505,6 @@ class CollectFromYml(object):
             elif "baremetalv2gateway" == log.strip():
                 yml_conf_dirs.add(base_conf_path + yml_baremetalv2gateway)
 
-        self.delete_source_file = True
         return yml_conf_dirs
     
     def build_collect_cmd(self, log, collect_dir):
@@ -1179,6 +1178,7 @@ class CollectFromYml(object):
             self.max_thread_num = args.thread
 
         decode_result = self.decode_conf_yml(args)
+        self.delete_source_file = True
 
         if decode_result['decode_error'] is not None:
             error_verbose(decode_result['decode_error'])
