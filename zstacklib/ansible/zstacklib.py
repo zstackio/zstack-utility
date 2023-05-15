@@ -2160,6 +2160,12 @@ def remote_bin_installed(host_post_info, bin_name, return_status=False):
     return status
 
 
+def get_qemu_img_version(host_post_info):
+    command = "qemu-img --version | grep 'qemu-img version' | cut -d ' ' -f 3 | cut -d '(' -f 1"
+    (status, qemu_img_version) = run_remote_command(command, host_post_info, False, True)
+    return status, qemu_img_version
+
+
 def main():
     # Reserve for test api
     pass

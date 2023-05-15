@@ -370,8 +370,7 @@ def install_kvm_pkg():
         libvirtd_status = copy(copy_arg, host_post_info)
 
         # replace qemu-img binary if qemu-img-ev before 2.12.0 is installed, to fix zstack-11004 / zstack-13594 / zstack-20983
-        command = "qemu-img --version | grep 'qemu-img version' | cut -d ' ' -f 3 | cut -d '(' -f 1"
-        (status, qemu_img_version) = run_remote_command(command, host_post_info, False, True)
+        (status, qemu_img_version) = get_qemu_img_version(host_post_info)
         if qemu_img_version is None or qemu_img_version == '':
             error('cannot get qemu-img version!')
         if LooseVersion(qemu_img_version) < LooseVersion('2.12.0'):
