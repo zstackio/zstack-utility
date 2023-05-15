@@ -124,11 +124,18 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                  'ncurses-devel', 'tftp-server', 'libguestfs',
                  'nginx-all-modules']
 
-        extra_x86_64  = ['syslinux', 'python-docutils']
-        extra_aarch64 = ['python2-docutils']
-
-        pkgs.extend(eval("extra_{}".format(kvmagent.host_arch)))
         yum_release = kvmagent.get_host_yum_release()
+
+        _extra_x86_64 = ['syslinux', 'python-docutils']
+        if yum_release in ['rl84']:
+            _extra_x86_64 = ['syslinux', 'python2-docutils']
+
+        extra_rpm_mapping = {
+            'x86_64': _extra_x86_64,
+            'aarch64': ['python2-docutils']
+        }
+
+        pkgs.extend(extra_rpm_mapping.get(kvmagent.host_arch))
         cmd = ('export YUM0={yum_release}; yum --disablerepo=* '
                '--enablerepo=zstack-mn,qemu-kvm-ev-mn clean all; '
                'pkg_list=`rpm -q {pkg_list} | grep "not installed" | awk '
