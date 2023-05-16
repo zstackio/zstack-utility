@@ -524,6 +524,9 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         self._delete_dhcp4(namespace)
         self._delete_dhcp6(namespace)
         bash_r("ps aux | grep -v grep | grep -w dnsmasq | grep -w %s | awk '{printf $2}' | xargs -r kill -9" % namespace)
+        # delete inner dev
+        bash_r("ip netns exec %s ip link del inner%s" % (namespace, ip.get_namespace_id(namespace)))
+        bash_r("ip netns exec %s ip link del ud_inner%s" % (namespace, ip.get_namespace_id(namespace)))
         bash_r(
             "ip netns | grep -w %s | grep -v grep | awk '{print $1}' | xargs -r ip netns del %s" % (namespace, namespace))
 
