@@ -4734,7 +4734,7 @@ class Vm(object):
                     cdrom = make_empty_cdrom(iso, cdrom_config, iso.bootOrder, iso.resourceUuid)
                     e(cdrom, 'source', None, {Vm.disk_source_attrname.get(iso.type): iso.path})
 
-
+        @linux.with_arch(todo_list=['x86_64'])
         def make_pm():
             root = elements['root']
             pm = e(root, 'pm')
