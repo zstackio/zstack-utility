@@ -1,4 +1,4 @@
-zwatch-vm-agent=4.3.35
+zwatch-vm-agent=4.3.36
 
 # The comments below are due to compatibility (version <= 4.2).
 # Please DO NOT DELETE or MODIFY them!
@@ -9,7 +9,7 @@ zwatch-vm-agent=4.3.35
 # compatible-version-of-zwatch-vm-agent.linux-loongarch64=4.2.0
 # compatible-version-of-zwatch-vm-agent.freebsd-amd64=4.2.0
 
-md5-zwatch-vm-agent.linux-amd64=cad876f1b5bb2519ba4fe1012457689a
+md5-zwatch-vm-agent.linux-amd64=37183b68ca75ce03796b8369703ad4f9
 md5-zwatch-vm-agent.freebsd-amd64=33a3d52e210ca40610cdfa8ed4456aac
 md5-zwatch-vm-agent.linux-aarch64=22d321b5fa873a0892472e4cb49c58fe
 md5-zwatch-vm-agent.linux-mips64el=e580f8982e140ceb76a915771178f522
