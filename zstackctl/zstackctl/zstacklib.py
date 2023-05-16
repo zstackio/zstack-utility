@@ -10,6 +10,7 @@ import os
 import pprint
 import re
 import sys
+import threading
 import time
 import traceback
 
@@ -56,7 +57,8 @@ def ignoreerror(func):
 
 ansible_constants.set_constant('HOST_KEY_CHECKING', False)
 ansible_constants.set_constant('CACHE_PLUGIN', 'memory')
-ansible_constants.set_constant('DEFAULT_GATHERING', 'smart')
+ansible_constants.set_constant('DEFAULT_GATHERING', 'implicit')
+ansible_constants.set_constant('INVENTORY_ENABLED', ['ini'])
 
 _ansible_cache = {}
 
@@ -94,7 +96,7 @@ class MemCache(cache.BaseCacheModule):
         self._cache = data
 
 
-memory.CacheModule = MemCache
+# memory.CacheModule = MemCache
 
 
 class AgentInstallArg(object):
@@ -248,6 +250,102 @@ class ResultsCollectorJSONCallback(ansible_callback.CallbackBase):
         }
 
 
+vm_cache = {}
+
+class VM(ansible_vm.VariableManager):
+    def __init__(self, loader, inventory, key):
+        super(VM, self).__init__(loader, inventory)
+        self._key = key
+
+    def get_vars(self, *args, **kwargs):
+        global vm_cache
+        flag = str(args) + str(kwargs) + self._key
+        if flag not in vm_cache:
+            vars = super(VM, self).get_vars(*args, **kwargs)
+            vm_cache[flag] = vars
+        return vm_cache[flag]
+
+
+ansible_module_cache = {}
+
+
+class AnsibleModules(object):
+    def __init__(self, runner_args):
+        self.host_inventory = runner_args.host_post_info.host_inventory
+        self.private_key = runner_args.host_post_info.private_key
+        self.host = runner_args.host_post_info.host
+        self.module_name = runner_args.module_name
+        self.module_args = runner_args.module_args
+        self.remote_port = runner_args.host_post_info.remote_port
+        self.remote_user = runner_args.host_post_info.remote_user
+        self.remote_pass = runner_args.host_post_info.remote_pass
+        self.become = runner_args.host_post_info.become
+        self.become_user = runner_args.host_post_info.become_user
+        self.become_pass = runner_args.host_post_info.remote_pass
+        self.transport = 'smart'
+
+        global ansible_module_cache
+        self.key = '%s-%s' % (self.host, threading.currentThread().ident)
+        if self.key not in ansible_module_cache:
+            ansible_module_cache[self.key] = {}
+
+    @property
+    def _passwords(self):
+        return {
+            'conn_pass': self.remote_pass,
+            'become_pass': self.become_pass
+        }
+
+    @property
+    def loader(self):
+        if not hasattr(self, 'data_loader'):
+            self.data_loader = ansible_dataloader.DataLoader()
+        return self.data_loader
+
+    @property
+    def result_callback(self):
+        if not hasattr(self, 'rc'):
+            self.rc = ResultsCollectorJSONCallback()
+        return self.rc
+
+    @property
+    def inventory(self):
+        global ansible_module_cache
+        if'inventory' not in ansible_module_cache[self.key]:
+            inv = ansible_im.InventoryManager(
+                loader=self.loader,
+                sources=self.host_inventory)
+            ansible_module_cache[self.key]['inventory'] = inv
+        if not hasattr(self, 'inv'):
+            self.inv = ansible_module_cache[self.key]['inventory']
+        return self.inv
+
+    @property
+    def variable_manager(self):
+        global ansible_module_cache
+        if'variable_manager' not in ansible_module_cache[self.key]:
+            vm = VM(loader=self.inventory._loader,
+                    inventory=self.inventory,
+                    key=self.key)
+            ansible_module_cache[self.key]['variable_manager'] = vm
+        if not hasattr(self, 'vm'):
+            self.vm = ansible_module_cache[self.key]['variable_manager']
+        return self.vm
+
+    @property
+    def task_queue_manager(self):
+        if not hasattr(self, 'tqm'):
+            self.tqm = ansible_tqm.TaskQueueManager(
+                inventory=self.inventory,
+                variable_manager=self.variable_manager,
+                loader=self.inventory._loader,
+                passwords=self._passwords,
+                stdout_callback=self.result_callback,
+                run_additional_callbacks=False)
+            self.tqm._callbacks_loaded = True
+        return self.tqm
+
+
 class ZstackRunner(object):
     def __init__(self, runner_args):
         self.host_inventory = runner_args.host_post_info.host_inventory
@@ -261,8 +359,7 @@ class ZstackRunner(object):
         self.become = runner_args.host_post_info.become
         self.become_user = runner_args.host_post_info.become_user
         self.become_pass = runner_args.host_post_info.remote_pass
-        self.transport = runner_args.host_post_info.transport
-        self.environment = runner_args.host_post_info.environment
+        self.transport = 'smart'
 
         ansible_context.CLIARGS = ansible_collections.ImmutableDict(
             connection=self.transport,
@@ -274,25 +371,7 @@ class ZstackRunner(object):
             ansible_ssh_extra_args=('-C -o ControlMaster=auto '
                                     '-o ControlPersist=1800s'),
         )
-        self.loader = ansible_dataloader.DataLoader()
-        self.result_callback = ResultsCollectorJSONCallback()
-
-        passwords = {
-            'conn_pass': self.remote_pass,
-            'become_pass': self.become_pass
-        }
-        self.inventory = ansible_im.InventoryManager(
-            loader=self.loader,
-            sources=self.host_inventory)
-        self.variable_manager = ansible_vm.VariableManager(
-            loader=self.loader,
-            inventory=self.inventory)
-        self.tqm = ansible_tqm.TaskQueueManager(
-            inventory=self.inventory,
-            variable_manager=self.variable_manager,
-            loader=self.loader,
-            passwords=passwords,
-            stdout_callback=self.result_callback)
+        self.ansible_module = AnsibleModules(runner_args)
 
     def run(self):
         action = {'module': self.module_name}
@@ -304,22 +383,23 @@ class ZstackRunner(object):
             hosts=self.host,
             tasks=[{'action': action,
                     'register': 'shell_out',
-                    'environment': self.environment,
                     }],
             vars={'ansible_user': self.remote_user,
-                  'ansible_port': self.remote_port}
+                  'ansible_port': self.remote_port},
+            gather_facts=False
         )
         play = ansible_play.Play().load(
             play_source,
-            variable_manager=self.variable_manager,
-            loader=self.loader)
+            variable_manager=self.ansible_module.variable_manager,
+            loader=self.ansible_module.loader)
         try:
-            ret = self.tqm.run(play)
+            t = time.time()
+            ret = self.ansible_module.task_queue_manager.run(play)
         finally:
-            self.tqm.cleanup()
-            if self.loader:
-                self.loader.cleanup_all_tmp_files()
-        return self.result_callback.fetch_result()
+            self.ansible_module.task_queue_manager.cleanup()
+            if self.ansible_module.tqm._loader:
+                self.ansible_module.tqm._loader.cleanup_all_tmp_files()
+        return self.ansible_module.result_callback.fetch_result()
 
 
 def error(msg):
@@ -501,7 +581,8 @@ def yum_enable_repo(name, enablerepo, host_post_info):
         ansible_start.result = result
         handle_ansible_start(ansible_start)
     else:
-        if 'failed' in result['contacted'][host]:
+        ret = result['contacted'][host]
+        if ret.get('failed', True):
             description = "ERROR: Enable yum repo failed"
             handle_ansible_failed(description, result, host_post_info)
         else:
@@ -743,7 +824,9 @@ def apt_install_packages(name_list, host_post_info):
             ansible_start.result = result
             handle_ansible_start(ansible_start)
         else:
-            if 'failed' in result['contacted'][host]:
+            ret = result['contacted'][host]
+            if ret.get('failed', True):
+            # if 'failed' in result['contacted'][host]:
                 description = "ERROR: Apt install %s failed!" % name
                 handle_ansible_failed(description, result, host_post_info)
             elif 'changed' in result['contacted'][host]:
@@ -813,7 +896,8 @@ def pip_install_package(pip_install_arg, host_post_info):
         ansible_start.result = result
         handle_ansible_start(ansible_start)
     else:
-        if 'failed' in result['contacted'][host]:
+        ret = result['contacted'][host]
+        if ret.get('failed', True):
             command = "pip2 uninstall -y %s" % name
             run_remote_command(command, host_post_info)
             description = "ERROR: pip install package %s failed!" % name
@@ -845,7 +929,8 @@ def cron(name, arg, host_post_info):
         ansible_start.result = result
         handle_ansible_start(ansible_start)
     else:
-        if 'failed' in result['contacted'][host]:
+        ret = result['contacted'][host]
+        if ret.get('failed', True):
             description = "ERROR: set cron task %s failed!" % arg
             handle_ansible_failed(description, result, host_post_info)
         else:
@@ -881,7 +966,8 @@ def copy(copy_arg, host_post_info):
         ansible_start.result = result
         handle_ansible_start(ansible_start)
     else:
-        if 'failed' in result['contacted'][host]:
+        ret = result['contacted'][host]
+        if ret.get('failed', True):
             description = "ERROR: copy %s to %s failed!" % (src, dest)
             handle_ansible_failed(description, result, host_post_info)
         else:
@@ -920,7 +1006,8 @@ def sync(sync_arg, host_post_info):
         ansible_start.result = result
         handle_ansible_start(ansible_start)
     else:
-        if 'failed' in result['contacted'][host]:
+        ret = result['contacted'][host]
+        if ret.get('failed', True):
             description = "ERROR: sync %s to %s failed!" % (src, dest)
             handle_ansible_failed(description, result, host_post_info)
         else:
@@ -958,7 +1045,8 @@ def fetch(fetch_arg, host_post_info):
         handle_ansible_start(ansible_start)
         sys.exit(1)
     else:
-        if 'failed' in result['contacted'][host]:
+        ret = result['contacted'][host]
+        if ret.get('failed', True):
             description = "ERROR: fetch file from %s to %s failed!" % (src, dest)
             handle_ansible_failed(description, result, host_post_info)
             sys.exit(1)
@@ -983,7 +1071,7 @@ def check_host_reachable(host_post_info, warning=False):
     logger.debug(result)
     if result['contacted'] == {}:
         return False
-    elif 'failed' in result['contacted'][host]:
+    elif result['contacted'][host].get('failed', True):
         if result['contacted'][host]['failed'] is True:
             return False
     elif result['contacted'][host]['ping'] == 'pong':
@@ -1150,7 +1238,8 @@ def file_operation(file, args, host_post_info):
         ansible_start.result = result
         handle_ansible_start(ansible_start)
     else:
-        if 'failed' in result['contacted'][host]:
+        ret = result['contacted'][host]
+        if ret.get('failed', True):
             details = "INFO: %s not be changed" % file
             handle_ansible_info(details, host_post_info, "INFO")
             return False
@@ -1286,7 +1375,8 @@ def service_status(name, args, host_post_info, ignore_error=False):
                 ansible_start.result = result
                 handle_ansible_start(ansible_start)
             else:
-                if 'failed' in result['contacted'][host]:
+                ret = result['contacted'][host]
+                if ret.get('failed', True):
                     details = "ERROR: change service %s status failed!" % name
                     handle_ansible_info(details, host_post_info, "WARNING")
                 else:
@@ -1334,7 +1424,8 @@ def update_file(dest, args, host_post_info):
         ansible_start.result = result
         handle_ansible_start(ansible_start)
     else:
-        if 'failed' in result['contacted'][host]:
+        ret = result['contacted'][host]
+        if ret.get('failed', True):
             description = "ERROR: Update file %s failed" % dest
             handle_ansible_failed(description, result, host_post_info)
         else:
@@ -1363,7 +1454,8 @@ def set_selinux(args, host_post_info):
         ansible_start.result = result
         handle_ansible_start(ansible_start)
     else:
-        if 'failed' in result['contacted'][host]:
+        ret = result['contacted'][host]
+        if ret.get('failed', True):
             description = "ERROR: set selinux to %s failed" % args
             handle_ansible_failed(description, result, host_post_info)
         else:
@@ -1404,7 +1496,8 @@ def authorized_key(user, key_path, host_post_info):
         zstack_runner = ZstackRunner(runner_args)
         result = zstack_runner.run()
         logger.debug(result)
-        if 'failed' in result['contacted'][host]:
+        ret = result['contacted'][host]
+        if ret.get('failed', True):
             description = "ERROR: Authorized on remote host %s failed!" % host
             handle_ansible_failed(description, result, host_post_info)
         else:
@@ -1451,7 +1544,8 @@ def unarchive(unarchive_arg, host_post_info):
         ansible_start.result = result
         handle_ansible_start(ansible_start)
     else:
-        if 'failed' in result['contacted'][host]:
+        ret = result['contacted'][host]
+        if ret.get('failed', True):
             description = "ERROR: unarchive %s to %s failed!" % (src, dest)
             handle_ansible_failed(description, result, host_post_info)
         else:
