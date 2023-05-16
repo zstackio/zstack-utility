@@ -146,11 +146,10 @@ class PhysicalNicMonitor(kvmagent.KvmAgent):
     @linux.retry(times=2, sleep_time=3)
     def physical_nic_monitor_get(self, ip):
         get_msg = ip.get()
-        if len(get_msg) > 0:
-            msg = get_msg[0]
-        else:
+        if get_msg is None or len(get_msg) == 0:
             return
-        if msg['event'] == 'RTM_NEWLINK':
+        msg = get_msg[0]
+        if 'event' in msg and msg['event'] == 'RTM_NEWLINK':
             nic = msg.get_attr('IFLA_IFNAME')
             status = msg.get_attr('IFLA_OPERSTATE').lower()
             if not nic or not status:
