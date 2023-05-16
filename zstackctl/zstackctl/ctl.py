@@ -9346,6 +9346,7 @@ class StartUiCmd(Command):
         parser.add_argument('--ssl-keystore', help="HTTPS SSL KeyStore Path.")
         parser.add_argument('--ssl-keystore-type', choices=['PKCS12', 'JKS'], type=str.upper, help="HTTPS SSL KeyStore Type.")
         parser.add_argument('--ssl-keystore-password', help="HTTPS SSL KeyStore Password.")
+        parser.add_argument('--enable-http2', help="Enable HTTP2 for ZStack UI,must enable https first.")
 
         # arguments for ui_db
         parser.add_argument('--db-url', help="zstack_ui database jdbc url")
@@ -9451,6 +9452,7 @@ class StartUiCmd(Command):
         cfg_server_port = ctl.read_ui_property("server_port")
         cfg_log = ctl.read_ui_property("log")
         cfg_enable_ssl = ctl.read_ui_property("enable_ssl").lower()
+        cfg_enable_http2 = ctl.read_ui_property("enable_http2").lower()
         cfg_ssl_keyalias = ctl.read_ui_property("ssl_keyalias")
         cfg_ssl_keystore = ctl.read_ui_property("ssl_keystore")
         cfg_ssl_keystore_type = ctl.read_ui_property("ssl_keystore_type")
@@ -9478,6 +9480,8 @@ class StartUiCmd(Command):
             args.log = cfg_log
         if not args.enable_ssl:
             args.enable_ssl = True if cfg_enable_ssl == 'true' else False
+        if not args.enable_http2:
+            args.enable_http2 = cfg_enable_http2
         if not args.ssl_keyalias:
             args.ssl_keyalias = cfg_ssl_keyalias
         if not args.ssl_keystore:
@@ -9588,9 +9592,9 @@ class StartUiCmd(Command):
         if ctl.read_property('consoleProxyCertFile'):
             logger.debug('user consoleProxyCertFile as ui pem')
             realpem = ctl.read_property('consoleProxyCertFile')
-        scmd = Template("runuser -l root -s /bin/bash -c 'bash ${STOP} && sleep 2 && LOGGING_PATH=${LOGGING_PATH} bash ${START} --mn.host=${MN_HOST} --mn.port=${MN_PORT} --webhook.host=${WEBHOOK_HOST} --webhook.port=${WEBHOOK_PORT} --server.port=${SERVER_PORT} --ssl.enabled=${SSL_ENABLE} --ssl.keyalias=${SSL_KEYALIAS} --ssl.keystore=${SSL_KEYSTORE} --ssl.keystore-type=${SSL_KEYSTORE_TYPE} --ssl.keystore-password=${SSL_KETSTORE_PASSWORD} --db.url=${DB_URL} --db.username=${DB_USERNAME} --db.password=${DB_PASSWORD} --redis.password=${REDIS_PASSWORD} ${CUSTOM_PROPS} --ssl.pem=${ZSTACK_UI_KEYSTORE_PEM}'")
+        scmd = Template("runuser -l root -s /bin/bash -c 'bash ${STOP} && sleep 2 && LOGGING_PATH=${LOGGING_PATH} bash ${START} --mn.host=${MN_HOST} --mn.port=${MN_PORT} --webhook.host=${WEBHOOK_HOST} --webhook.port=${WEBHOOK_PORT} --server.port=${SERVER_PORT} --ssl.enabled=${SSL_ENABLE} --http2.enabled=${HTTP2_ENABLE} --ssl.keyalias=${SSL_KEYALIAS} --ssl.keystore=${SSL_KEYSTORE} --ssl.keystore-type=${SSL_KEYSTORE_TYPE} --ssl.keystore-password=${SSL_KETSTORE_PASSWORD} --db.url=${DB_URL} --db.username=${DB_USERNAME} --db.password=${DB_PASSWORD} --redis.password=${REDIS_PASSWORD} ${CUSTOM_PROPS} --ssl.pem=${ZSTACK_UI_KEYSTORE_PEM}'")
 
-        scmd = scmd.substitute(LOGGING_PATH=args.log,STOP=StartUiCmd.ZSTACK_UI_STOP,START=StartUiCmd.ZSTACK_UI_START,MN_HOST=args.mn_host,MN_PORT=args.mn_port,WEBHOOK_HOST=args.webhook_host,WEBHOOK_PORT=args.webhook_port,SERVER_PORT=args.server_port,SSL_ENABLE=enableSSL,SSL_KEYALIAS=args.ssl_keyalias,SSL_KEYSTORE=args.ssl_keystore,SSL_KEYSTORE_TYPE=args.ssl_keystore_type,SSL_KETSTORE_PASSWORD=args.ssl_keystore_password,DB_URL=args.db_url,DB_USERNAME=args.db_username,DB_PASSWORD=args.db_password,REDIS_PASSWORD=args.redis_password,ZSTACK_UI_KEYSTORE_PEM=realpem,CUSTOM_PROPS=custom_props)
+        scmd = scmd.substitute(LOGGING_PATH=args.log,STOP=StartUiCmd.ZSTACK_UI_STOP,START=StartUiCmd.ZSTACK_UI_START,MN_HOST=args.mn_host,MN_PORT=args.mn_port,WEBHOOK_HOST=args.webhook_host,WEBHOOK_PORT=args.webhook_port,SERVER_PORT=args.server_port,SSL_ENABLE=enableSSL,HTTP2_ENABLE=args.enable_http2,SSL_KEYALIAS=args.ssl_keyalias,SSL_KEYSTORE=args.ssl_keystore,SSL_KEYSTORE_TYPE=args.ssl_keystore_type,SSL_KETSTORE_PASSWORD=args.ssl_keystore_password,DB_URL=args.db_url,DB_USERNAME=args.db_username,DB_PASSWORD=args.db_password,REDIS_PASSWORD=args.redis_password,ZSTACK_UI_KEYSTORE_PEM=realpem,CUSTOM_PROPS=custom_props)
 
         shell("ps aux| grep zstack-ui/scripts/start.sh | awk '{print $2}'|xargs kill -9",is_exception=False)
         script(scmd, no_pipe=True)
@@ -9699,6 +9703,7 @@ class ConfigUiCmd(Command):
         parser.add_argument('--ssl-keystore', help="HTTPS SSL KeyStore Path. [DEFAULT] %s" % ctl.ZSTACK_UI_KEYSTORE)
         parser.add_argument('--ssl-keystore-type', choices=['PKCS12', 'JKS'], type=str.upper, help="HTTPS SSL KeyStore Type. [DEFAULT] PKCS12")
         parser.add_argument('--ssl-keystore-password', help="HTTPS SSL KeyStore Password. [DEFAULT] password")
+        parser.add_argument('--enable-http2',choices=['True', 'False'], type=str.title, help="Enable HTTP2 for ZStack UI. [DEFAULT] False")
 
         # arguments for ui_db
         parser.add_argument('--db-url', help="zstack_ui database jdbc url.")
@@ -9751,6 +9756,8 @@ class ConfigUiCmd(Command):
                 ctl.write_ui_property("log", ui_logging_path)
             if not ctl.read_ui_property("enable_ssl"):
                 ctl.write_ui_property("enable_ssl", 'false')
+            if not ctl.read_ui_property("enable_http2"):
+                ctl.write_ui_property("enable_http2", 'false')
             if not ctl.read_ui_property("ssl_keyalias"):
                 ctl.write_ui_property("ssl_keyalias", 'zstackui')
             if not ctl.read_ui_property("ssl_keystore"):
@@ -9783,6 +9790,7 @@ class ConfigUiCmd(Command):
             ctl.write_ui_property("server_port", '5000')
             ctl.write_ui_property("log", ui_logging_path)
             ctl.write_ui_property("enable_ssl", 'false')
+            ctl.write_ui_property("enable_http2", 'false')
             ctl.write_ui_property("ssl_keyalias", 'zstackui')
             ctl.write_ui_property("ssl_keystore", ctl.ZSTACK_UI_KEYSTORE)
             ctl.write_ui_property("ssl_keystore_type", 'PKCS12')
@@ -9834,6 +9842,8 @@ class ConfigUiCmd(Command):
         # https
         if args.enable_ssl:
             ctl.write_ui_property("enable_ssl", args.enable_ssl.lower())
+        if args.enable_http2:
+            ctl.write_ui_property("enable_http2", args.enable_http2.lower())
         if args.ssl_keyalias or args.ssl_keyalias == '':
             ctl.write_ui_property("ssl_keyalias", args.ssl_keyalias.strip())
         if args.ssl_keystore or args.ssl_keystore == '':
