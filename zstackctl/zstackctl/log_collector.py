@@ -2,6 +2,7 @@
 # encoding: utf-8
 
 import io
+import os
 import threading
 import xml.etree.ElementTree as etree
 from datetime import timedelta
@@ -504,7 +505,6 @@ class CollectFromYml(object):
             elif "baremetalv2gateway" == log.strip():
                 yml_conf_dirs.add(base_conf_path + yml_baremetalv2gateway)
 
-        self.delete_source_file = True
         return yml_conf_dirs
     
     def build_collect_cmd(self, log, collect_dir):
@@ -519,7 +519,7 @@ class CollectFromYml(object):
                 cmd = cmd + ' -name \'%s\'' % file_value
 
         if mode_value == "Normal":
-            cmd = cmd + ' -exec ls --full-time {} \; | sort -k6 | awk \'{print $6\":\"$7\"|\"$9\"|\"$5}\''
+            cmd = cmd + ' -exec ls --full-time {} + | sort -k6 | awk \'{print $6\":\"$7\"|\"$9\"|\"$5}\''
             cmd = cmd + ' | awk -F \'|\' \'BEGIN{preview=0;} {if(NR==1 && ( $1 > \"%s\" || (\"%s\" < $1 && $1  <= \"%s\"))) print $2\"|\"$3; \
                                    else if ((\"%s\" < $1 && $1 <= \"%s\") || ( $1> \"%s\" && preview < \"%s\")) print $2\"|\"$3; preview = $1}\'' \
                   % (self.t_date, self.f_date, self.t_date, self.f_date, self.t_date, self.t_date, self.t_date)
@@ -653,11 +653,11 @@ class CollectFromYml(object):
         else:
             warn("unknown target type: %s" % type)
 
-    def generate_tar_ball(self, collect_dir, run_command_dir, detail_version, time_stamp):
+    def generate_tar_ball(self, collect_file_name, run_command_dir):
         info_verbose("Compressing log files ...")
 
-        command = "tar --ignore-failed-read zcf %s.tar.gz %s" % (collect_dir, collect_dir)
-
+        command = "cd %s && tar --ignore-failed-read -zcf %s.tar.gz %s" % (
+            run_command_dir, collect_file_name, collect_file_name)
         if self.delete_source_file is True:
             command = command + " --remove-files"
             
@@ -807,6 +807,7 @@ class CollectFromYml(object):
                         file_path = dest_log_dir + '%s' % (log['name'])
                         exec_type = log['exec_type']
                         exec_cmd = None
+                        command = self.append_time_param_for_journal(log, command)
                         if exec_type == 'RunAndRedirect':
                             exec_cmd = '(%s) > %s' % (command, file_path)
                         if exec_type == 'CdAndRun':
@@ -868,6 +869,8 @@ class CollectFromYml(object):
 
     def add_fail_count(self, fail_log_number, log_type, ip, fail_log_name, fail_cause):
         self.fail_lock.acquire()
+        fail_log_name = fail_log_name.decode('utf-8')
+        fail_cause = fail_cause.decode('utf-8')
         try:
             self.summary.fail_count += fail_log_number
             self.summary.add_fail(log_type, ip, FailDetail(fail_log_name, fail_cause))
@@ -959,6 +962,7 @@ class CollectFromYml(object):
                             file_path = dest_log_dir + '%s' % (log['name'])
                             exec_type = log['exec_type']
                             exec_cmd = None
+                            command = self.append_time_param_for_journal(log, command)
                             if exec_type == 'RunAndRedirect':
                                 exec_cmd = '(%s) > %s' % (command, file_path)
                             if exec_type == 'CdAndRun':
@@ -1030,8 +1034,9 @@ class CollectFromYml(object):
             self.add_fail_count(len(log_list), type, host_post_info.host, 'unreachable',
                                 ("%s %s is unreachable!" % (type, host_post_info.host)))
 
-    def get_total_size(self):
+    def get_total_size(self, run_command_dir):
         values = self.check_result.values()
+        stat = os.statvfs(run_command_dir)
         total_size = 0
         for num in values:
             if num is None:
@@ -1043,9 +1048,18 @@ class CollectFromYml(object):
             elif num.endswith('G'):
                 total_size += float(num[:-1]) * 1024 * 1024
         total_size = str(round((total_size / 1024 / 1024), 2)) + 'G'
+        free_size = str(round((stat.f_frsize * stat.f_bavail) // (2**30), 2)) + 'G'
         print '%-50s%-50s' % ('TotalSize(exclude exec statements)', colored(total_size, 'green'))
+        print '%-50s%-50s' % ('AvailableDiskCapacity', colored(free_size, 'green'))
         for key in sorted(self.check_result.keys()):
             print '%-50s%-50s' % (key, colored(self.check_result[key], 'green'))
+
+    def append_time_param_for_journal(self, log, cmd):
+        if log['name'] == 'journalctl-info':
+            cmd += " --since '%s' --until '%s'" % (
+                datetime.strptime(self.f_date, '%Y-%m-%d:%H:%M:%S').strftime('%Y-%m-%d %H:%M:%S'),
+                datetime.strptime(self.t_date, '%Y-%m-%d:%H:%M:%S').strftime('%Y-%m-%d %H:%M:%S'))
+        return cmd
 
     def format_date(self, str_date):
         try:
@@ -1159,9 +1173,9 @@ class CollectFromYml(object):
         dest_dir = args.collect_dir_name
 
         if not dest_dir:
-            collect_dir = run_command_dir + '/collect-log-%s-%s/' % (detail_version, time_stamp)
-        else:
-            collect_dir = run_command_dir + '/' + dest_dir + '/'
+            dest_dir = 'collect-log-%s-%s' % (detail_version, time_stamp)
+
+        collect_dir = '/'.join([run_command_dir,dest_dir]) + '/'
 
         if not os.path.exists(collect_dir) and args.check is not True:
             os.makedirs(collect_dir)
@@ -1173,6 +1187,7 @@ class CollectFromYml(object):
             self.max_thread_num = args.thread
 
         decode_result = self.decode_conf_yml(args)
+        self.delete_source_file = True
 
         if decode_result['decode_error'] is not None:
             error_verbose(decode_result['decode_error'])
@@ -1184,7 +1199,7 @@ class CollectFromYml(object):
                 self.collect_configure_log(value['list'], value['logs'], collect_dir, key)
         self.thread_run(int(args.timeout))
         if self.check:
-            self.get_total_size()
+            self.get_total_size(run_command_dir)
         else:
             self.summary.persist(collect_dir)
             if len(threading.enumerate()) > 1:
@@ -1195,7 +1210,7 @@ class CollectFromYml(object):
                 return
 
             collect_dir = collect_dir.rstrip('/')
-            self.generate_tar_ball(collect_dir, run_command_dir, detail_version, time_stamp)
+            self.generate_tar_ball(dest_dir, run_command_dir)
             if self.failed_flag is True:
                 info_verbose("The collect log generate at: %s.tar.gz,success %s,fail %s" % (
                     collect_dir, self.summary.success_count, self.summary.fail_count))
