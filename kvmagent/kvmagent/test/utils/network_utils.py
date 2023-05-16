@@ -71,6 +71,14 @@ batch_prepare_dhcp_cmd_body = {
 }
 
 
+delete_dhcp_cmd_body = {
+    "bridgeName": None,
+    "namespaceName": None,
+    "kvmHostAddons": {
+        "qcow2Options": " -o cluster_size=2097152 "
+    }
+}
+
 @misc.return_jsonobject()
 def apply_dhcp_by_batch_cmd(vm_mac, bridge_name, namespace_name):
     # type: (str, str, str) -> jsonobject.JsonObject
@@ -94,3 +102,14 @@ def prepare_dhcp_by_batch_cmd(bridge_name, namespace_name):
     info.namespaceName = namespace_name
 
     return MEVOCO_PLUGIN.batch_prepare_dhcp(misc.make_a_request(cmd.to_dict()))
+
+@misc.return_jsonobject()
+def delete_dhcp(bridge_name, namespace_name):
+    # type: (str, str) -> jsonobject.JsonObject
+
+    cmd = jsonobject.from_dict(delete_dhcp_cmd_body)
+    cmd.bridgeName = bridge_name
+    cmd.namespaceName = namespace_name
+
+    return MEVOCO_PLUGIN.delete_dhcp_namespace(misc.make_a_request(cmd.to_dict()))
+
