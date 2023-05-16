@@ -1,4 +1,4 @@
-from kvmagent.test.shareblock_testsuit.shared_block_plugin_teststub import SharedBlockPluginTestStub
+from kvmagent.test.shareblock_testsuite.shared_block_plugin_teststub import SharedBlockPluginTestStub
 from kvmagent.test.utils import shareblock_utils,pytest_utils,storage_device_utils
 from zstacklib.utils import bash
 from unittest import TestCase
@@ -10,6 +10,7 @@ storage_device_utils.init_storagedevice_plugin()
 
 PKG_NAME = __name__
 
+# must create iSCSI stroage before run test
 __ENV_SETUP__ = {
     'self': {
         'xml':'http://smb.zstack.io/mirror/ztest/xml/twoDiskVm.xml',
@@ -21,13 +22,13 @@ global hostUuid
 global vgUuid
 
 ## describe: case will manage by ztest
-class TestShareBlockPlugin(TestCase,SharedBlockPluginTestStub):
+class TestShareBlockPlugin(TestCase, SharedBlockPluginTestStub):
 
     @classmethod
     def setUpClass(cls):
         pass
     @pytest_utils.ztest_decorater
-    def test_sahreblock_create_data_volume_with_backing(self):
+    def test_shareblocl_create_root_volume(self):
         r, o = bash.bash_ro("ip a| grep BROADCAST|grep -v virbr | awk -F ':' 'NR==1{print $2}' | sed 's/ //g'")
         interF = o.strip().replace(' ', '').replace('\n', '').replace('\r', '')
 
@@ -74,17 +75,48 @@ class TestShareBlockPlugin(TestCase,SharedBlockPluginTestStub):
         # create volume
         # test disconnect shareblock
         volumeUuid = misc.uuid()
-        rsp = shareblock_utils.shareblock_create_data_volume_with_backing(
+        rsp = shareblock_utils.shareblock_create_root_volume(
             templatePathInCache="sharedblock://{}/{}".format(vgUuid,imageUuid),
             installPath="sharedblock://{}/{}".format(vgUuid,volumeUuid),
             volumeUuid=volumeUuid,
             vgUuid=vgUuid,
             hostUuid=hostUuid,
-            primaryStorageUuid=vgUuid
+            primaryStorageUuid=blockUuid
         )
         self.assertEqual(True, rsp.success, rsp.error)
 
         r, o = bash.bash_ro("lvs --nolocking -t |grep %s" % volumeUuid)
         self.assertEqual(0, r, "create volume fail in host")
 
-        self.logout(vgUuid, hostUuid)
+        # test revert volume
+        newUuid=misc.uuid()
+        rsp = shareblock_utils.shareblock_revert_volume_from_snapshot(
+            snapshotInstallPath="sharedblock://{}/{}".format(vgUuid, imageUuid),
+            installPath="sharedblock://{}/{}".format(vgUuid, newUuid),
+            hostUuid=hostUuid,
+            vgUuid=vgUuid
+        )
+        self.assertEqual(True, rsp.success, rsp.error)
+
+        r, o = bash.bash_ro("lvs --nolocking -t |grep %s" % volumeUuid)
+        self.assertEqual(0, r, "[check] revert volume fail in host")
+
+
+
+        # test disconnect shareblock
+        self.assertEqual(True, rsp.success, rsp.error)
+        rsp = shareblock_utils.shareblock_disconnect(
+            vgUuid=vgUuid,
+            hostUuid=hostUuid
+        )
+
+        self.assertEqual(True, rsp.success, rsp.error)
+
+
+
+
+
+
+
+
+

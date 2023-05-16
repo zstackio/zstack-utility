@@ -1,4 +1,4 @@
-from kvmagent.test.shareblock_testsuit.shared_block_plugin_teststub import SharedBlockPluginTestStub
+from kvmagent.test.shareblock_testsuite.shared_block_plugin_teststub import SharedBlockPluginTestStub
 from kvmagent.test.utils import shareblock_utils,pytest_utils,storage_device_utils
 from zstacklib.utils import bash
 from unittest import TestCase
@@ -28,7 +28,7 @@ class TestShareBlockPlugin(TestCase, SharedBlockPluginTestStub):
     def setUpClass(cls):
         pass
     @pytest_utils.ztest_decorater
-    def test_shareblock_get_volume_size(self):
+    def test_shareblock_create_image_cache_from_volume(self):
         r, o = bash.bash_ro("ip a| grep BROADCAST|grep -v virbr | awk -F ':' 'NR==1{print $2}' | sed 's/ //g'")
         interF = o.strip().replace(' ', '').replace('\n', '').replace('\r', '')
 
@@ -62,28 +62,43 @@ class TestShareBlockPlugin(TestCase, SharedBlockPluginTestStub):
             hostId=50,
             hostUuid=hostUuid
         )
+        imageUuid=misc.uuid()
+        # download image to shareblock
+        print("debug")
+        print ('lvcreate -ay --wipesignatures y --addtag zs::sharedblock::image --size 7995392b --name {} {}'.format(imageUuid, vgUuid))
+        r,o = bash.bash_ro('lvcreate -ay --wipesignatures y --addtag zs::sharedblock::image --size 7995392b --name {} {}'.format(imageUuid, vgUuid))
+        self.assertEqual(0, r, "create lv failed, because {}".format(o))
+
+        r, o = bash.bash_ro("cp /root/.zguest/min-vm.qcow2 /dev/%s" % imageUuid)
+        self.assertEqual(0, r, "cp image failed, because {}".format(o))
 
         # create volume
         volumeUuid = misc.uuid()
-        rsp = shareblock_utils.shareblock_create_empty_volume(
+        rsp = shareblock_utils.shareblock_create_data_volume_with_backing(
+            templatePathInCache="sharedblock://{}/{}".format(vgUuid,imageUuid),
             installPath="sharedblock://{}/{}".format(vgUuid,volumeUuid),
             volumeUuid=volumeUuid,
-            size=1048576,
+            vgUuid=vgUuid,
             hostUuid=hostUuid,
-            vgUuid=vgUuid
+            primaryStorageUuid=vgUuid
         )
         self.assertEqual(True, rsp.success, rsp.error)
 
         r, o = bash.bash_ro("lvs --nolocking -t |grep %s" % volumeUuid)
-        self.assertEqual(0, r, "create empty volume fail in host")
+        self.assertEqual(0, r, "create volume fail in host")
 
-        # test get volume size
 
-        rsp = shareblock_utils.shareblock_get_volume_size(
-            installPath="sharedblock://{}/{}".format(vgUuid, volumeUuid),
-            vgUuid=vgUuid
+        # test shareblocl create template from volume
+        installUuid=misc.uuid()
+        rsp = shareblock_utils.shareblock_create_image_cache_from_volume(
+            volumePath="sharedblock://{}/{}".format(vgUuid, volumeUuid),
+            installPath="sharedblock://{}/{}".format(vgUuid, installUuid),
+            vgUuid=vgUuid,
+            hostUuid=hostUuid
         )
+        self.assertEqual(True, rsp.success, rsp.error)
 
-        self.assertGreater(rsp.actualSize, 0, rsp.error)
-
+        r, o = bash.bash_ro("lvs --nolocking -t |grep %s" % installUuid)
+        self.assertEqual(0, r, "create volume fail in host")
+        
         self.logout(vgUuid, hostUuid)

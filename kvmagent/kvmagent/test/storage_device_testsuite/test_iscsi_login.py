@@ -3,7 +3,7 @@ from zstacklib.test.utils import remote
 from zstacklib.utils import linux, jsonobject, bash
 from zstacklib.test.utils import misc,env
 from unittest import TestCase
-from kvmagent.test.storage_device_testsuit.storage_device_teststub import StorageDevicePluginTestStub
+from kvmagent.test.storage_device_testsuite.storage_device_teststub import StorageDevicePluginTestStub
 
 storage_device_utils.init_storagedevice_plugin()
 
@@ -13,7 +13,7 @@ PKG_NAME = __name__
 __ENV_SETUP__ = {
     'self': {
         'xml':'http://smb.zstack.io/mirror/ztest/xml/twoDiskVm.xml',
-        'init':['bash ../shareblock_testsuit/createiSCSIStroage.sh']
+        'init':['bash ../shareblock_testsuite/createiSCSIStroage.sh']
     }
 }
 global hostUuid

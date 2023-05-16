@@ -1,7 +1,7 @@
 import pytest
 from unittest import TestCase
 from kvmagent.test.utils.stub import init_kvmagent
-from kvmagent.test.shareblock_testsuit.shared_block_plugin_teststub import SharedBlockPluginTestStub
+from kvmagent.test.shareblock_testsuite.shared_block_plugin_teststub import SharedBlockPluginTestStub
 from kvmagent.test.utils import shareblock_utils, pytest_utils, storage_device_utils, vm_utils, volume_utils, \
     network_utils
 from zstacklib.test.utils import misc
@@ -30,14 +30,14 @@ global vgUuid
 
 
 ## describe: case will manage by ztest
-class TestShareBlockVolumeWithMultiQueues(TestCase, SharedBlockPluginTestStub):
+class TestShareBlockVirtioSCSIVolumeWithIoThreadPin(TestCase, SharedBlockPluginTestStub):
 
     @classmethod
     def setUpClass(cls):
         network_utils.create_default_bridge_if_not_exist()
 
     @pytest_utils.ztest_decorater
-    def test_sahreblock_create_data_volume_with_backing(self):
+    def test_sahreblock_create_data_volume_with_iothread(self):
         r, o = bash.bash_ro("ip -4 a| grep BROADCAST|grep -v virbr | awk -F ':' 'NR==1{print $2}' | sed 's/ //g'")
         interF = o.strip().replace(' ', '').replace('\n', '').replace('\r', '')
 
@@ -118,15 +118,28 @@ class TestShareBlockVolumeWithMultiQueues(TestCase, SharedBlockPluginTestStub):
 
         install_path = "/dev/%s/%s" % (vgUuid, imageUuid)
 
-        _, vol = vm_utils.attach_multi_queues_shareblock_volume_to_vm(vm_uuid, volumeUuid, install_path)
+        iothread_id = 1
+        iothread_pin = "0"
+        _, vol = vm_utils.attach_virtio_scsi_iothread_shareblock_volume_to_vm(vm_uuid, volumeUuid, install_path, iothread_id, iothread_pin)
 
-        xml = vm_utils.get_vm_xmlobject_from_virsh_dump(vm_uuid)
-        vol_xml = volume_utils.find_volume_in_vm_xml_by_path(xml, install_path)
-        self.assertIsNotNone(vol_xml, "Attached Vol xml is null")
-        self.assertIsNotNone(vol_xml.driver, "Attached Vol's xml has no driver")
-        self.assertIsNotNone(vol_xml.driver.queues_, "Attached Vol's driver has no multi queues")
-        self.assertEqual(vol_xml.driver.queues_, "1",
-                         "unexpected vol multi queues[1], actual is %s" % vol_xml.driver.queues_)
+        rsp = vm_utils.check_volume(vm_uuid, [vol])
+        self.assertTrue(rsp.success)
+        self.check_virtio_scsi_volume_config(vm_uuid, install_path, iothread_id)
+
+        vm_utils.stop_vm(vm_uuid)
+        pid = linux.find_vm_pid_by_uuid(vm_uuid)
+        self.assertTrue(not pid, 'vm[%s] vm still running' % vm_uuid)
+        controller_index = "2"
+        vol_body, pin_struct = vm_utils.build_virtio_scsi_shared_block_vol_body_with_iothread(volumeUuid, install_path, iothread_id, iothread_pin, controller_index)
+        vm = vm_utils.create_vm_with_vols([vol_body], [pin_struct])
+        vm_utils.create_vm(vm)
+        self.vm_uuid = vm.vmInstanceUuid
+        pid = linux.find_vm_pid_by_uuid(vm_uuid)
+        self.assertFalse(not pid, 'cannot find pid of vm[%s]' % vm_uuid)
+
+        rsp = vm_utils.check_volume(vm_uuid, [vol])
+        self.assertTrue(rsp.success)
+        self.check_virtio_scsi_volume_config(vm_uuid, install_path, iothread_id)
 
         logger.info("clean test env: destroy vm")
         vm_utils.destroy_vm(vm_uuid)
@@ -134,4 +147,18 @@ class TestShareBlockVolumeWithMultiQueues(TestCase, SharedBlockPluginTestStub):
         self.assertTrue(not pid, 'vm[%s] vm still running' % vm_uuid)
 
         self.logout(vgUuid, hostUuid)
+
+    def check_virtio_scsi_volume_config(self, vm_uuid, vol_path, iothread_id):
+        xml = vm_utils.get_vm_xmlobject_from_virsh_dump(vm_uuid)
+        vol_xml = volume_utils.find_volume_in_vm_xml_by_path(xml, vol_path)
+        self.assertIsNotNone(vol_xml, "Attached Vol xml is null")
+        controller = volume_utils.find_volume_controller_by_vol(xml, vol_xml.address.controller_)
+        self.assertIsNotNone(controller, "Attached Virtio-SCSI Vol controller xml is null")
+        self.assertIsNotNone(controller.driver, "Attached Virtio-SCSI Vol's controller xml has no driver")
+        self.assertIsNotNone(controller.driver.iothread_,
+                             "Attached Virtio-SCSI Vol's controller driver has no iothread config")
+        self.assertEqual(controller.driver.iothread_, str(iothread_id),
+                         "unexpected vol's controller iothreadid[%s], actual is %s" % (
+                             str(iothread_id), controller.driver.iothread_))
+
 
