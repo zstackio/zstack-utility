@@ -7350,20 +7350,25 @@ class MNServerPortChange(Command):
         if not os.path.exists(ctl.properties_file_path):
             raise CtlError('cannot find properties file(%s)' % ctl.properties_file_path)
         if not os.path.exists(ctl.ui_properties_file_path):
-            raise CtlError('cannot find properties file(%s)' % ctl.properties_file_path)
+            raise CtlError('cannot find properties file(%s)' % ctl.ui_properties_file_path)
         if not os.path.exists(ctl.tomcat_xml_file_path):
-            raise CtlError('cannot find properties file(%s)' % ctl.properties_file_path)
+            raise CtlError('cannot find properties file(%s)' % ctl.tomcat_xml_file_path)
         ctl.write_property('RESTFacade.port', args.update_value)
         ctl.write_ui_property("mn_port", args.update_value)
         original_port = shell(
-            '''awk -F \\" '/Connector port=.*protocol=\"HTTP\/1.1\"/{ print $2 }' %s''' % ctl.tomcat_xml_file_path).strip(
+            ''' awk '/<Connector executor=\"tomcatThreadPool\"  port=\"[0-9]+\"/ { match($0, /port=\"([0-9]+)\"/, arr); print arr[1] }' %s''' % ctl.tomcat_xml_file_path).strip(
             '\t\n\r')
+        if len(original_port) == 0:
+            error = "tomcat original_port no found"
+            logger.debug(error)
+            raise CtlError(error)
         shell(
-            "sed -i 's/<Connector port=\"%s\" protocol=\"HTTP\/1.1\"/<Connector port=\"%s\" protocol=\"HTTP\/1.1\"/g' %s" % (
-                original_port, args.update_value, ctl.tomcat_xml_file_path))
+            "sed -i 's/<Connector executor=\"tomcatThreadPool\"  port=\"[0-9]\+\"/<Connector executor=\"tomcatThreadPool\"  port=\"%s\"/' %s" % (
+                args.update_value, ctl.tomcat_xml_file_path))
         linux.sync_file(ctl.tomcat_xml_file_path)
-        info('Successfully modify the port from %s to %s, please restart mn to take effect' % (
-            original_port, args.update_value))
+        success_info = 'Successfully modify the port from %s to %s, please restart mn to take effect' % (original_port, args.update_value)
+        info(success_info)
+        logger.debug(success_info)
 
 class SetEnvironmentVariableCmd(Command):
     PATH = os.path.join(ctl.USER_ZSTACK_HOME_DIR, "zstack-ctl/ctl-env")
