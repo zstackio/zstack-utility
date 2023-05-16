@@ -11,6 +11,7 @@ import os
 import pprint
 import re
 import sys
+import threading
 import time
 import traceback
 
@@ -355,7 +356,8 @@ def yum_enable_repo(name, enablerepo, host_post_info):
         ansible_start.result = result
         handle_ansible_start(ansible_start)
     else:
-        if 'failed' in result['contacted'][host]:
+        ret = result['contacted'][host]
+        if ret.get('failed', True):
             description = "ERROR: Enable yum repo failed"
             handle_ansible_failed(description, result, host_post_info)
         else:
@@ -597,7 +599,9 @@ def apt_install_packages(name_list, host_post_info):
             ansible_start.result = result
             handle_ansible_start(ansible_start)
         else:
-            if 'failed' in result['contacted'][host]:
+            ret = result['contacted'][host]
+            if ret.get('failed', True):
+            # if 'failed' in result['contacted'][host]:
                 description = "ERROR: Apt install %s failed!" % name
                 handle_ansible_failed(description, result, host_post_info)
             elif 'changed' in result['contacted'][host]:
@@ -667,7 +671,8 @@ def pip_install_package(pip_install_arg, host_post_info):
         ansible_start.result = result
         handle_ansible_start(ansible_start)
     else:
-        if 'failed' in result['contacted'][host]:
+        ret = result['contacted'][host]
+        if ret.get('failed', True):
             command = "pip2 uninstall -y %s" % name
             run_remote_command(command, host_post_info)
             description = "ERROR: pip install package %s failed!" % name
@@ -699,7 +704,8 @@ def cron(name, arg, host_post_info):
         ansible_start.result = result
         handle_ansible_start(ansible_start)
     else:
-        if 'failed' in result['contacted'][host]:
+        ret = result['contacted'][host]
+        if ret.get('failed', True):
             description = "ERROR: set cron task %s failed!" % arg
             handle_ansible_failed(description, result, host_post_info)
         else:
@@ -735,7 +741,8 @@ def copy(copy_arg, host_post_info):
         ansible_start.result = result
         handle_ansible_start(ansible_start)
     else:
-        if 'failed' in result['contacted'][host]:
+        ret = result['contacted'][host]
+        if ret.get('failed', True):
             description = "ERROR: copy %s to %s failed!" % (src, dest)
             handle_ansible_failed(description, result, host_post_info)
         else:
@@ -774,7 +781,8 @@ def sync(sync_arg, host_post_info):
         ansible_start.result = result
         handle_ansible_start(ansible_start)
     else:
-        if 'failed' in result['contacted'][host]:
+        ret = result['contacted'][host]
+        if ret.get('failed', True):
             description = "ERROR: sync %s to %s failed!" % (src, dest)
             handle_ansible_failed(description, result, host_post_info)
         else:
@@ -812,7 +820,8 @@ def fetch(fetch_arg, host_post_info):
         handle_ansible_start(ansible_start)
         sys.exit(1)
     else:
-        if 'failed' in result['contacted'][host]:
+        ret = result['contacted'][host]
+        if ret.get('failed', True):
             description = "ERROR: fetch file from %s to %s failed!" % (src, dest)
             handle_ansible_failed(description, result, host_post_info)
             sys.exit(1)
@@ -837,7 +846,7 @@ def check_host_reachable(host_post_info, warning=False):
     logger.debug(result)
     if result['contacted'] == {}:
         return False
-    elif 'failed' in result['contacted'][host]:
+    elif result['contacted'][host].get('failed', True):
         if result['contacted'][host]['failed'] is True:
             return False
     elif result['contacted'][host]['ping'] == 'pong':
@@ -1004,7 +1013,8 @@ def file_operation(file, args, host_post_info):
         ansible_start.result = result
         handle_ansible_start(ansible_start)
     else:
-        if 'failed' in result['contacted'][host]:
+        ret = result['contacted'][host]
+        if ret.get('failed', True):
             details = "INFO: %s not be changed" % file
             handle_ansible_info(details, host_post_info, "INFO")
             return False
@@ -1140,7 +1150,8 @@ def service_status(name, args, host_post_info, ignore_error=False):
                 ansible_start.result = result
                 handle_ansible_start(ansible_start)
             else:
-                if 'failed' in result['contacted'][host]:
+                ret = result['contacted'][host]
+                if ret.get('failed', True):
                     details = "ERROR: change service %s status failed!" % name
                     handle_ansible_info(details, host_post_info, "WARNING")
                 else:
@@ -1188,7 +1199,8 @@ def update_file(dest, args, host_post_info):
         ansible_start.result = result
         handle_ansible_start(ansible_start)
     else:
-        if 'failed' in result['contacted'][host]:
+        ret = result['contacted'][host]
+        if ret.get('failed', True):
             description = "ERROR: Update file %s failed" % dest
             handle_ansible_failed(description, result, host_post_info)
         else:
@@ -1217,7 +1229,8 @@ def set_selinux(args, host_post_info):
         ansible_start.result = result
         handle_ansible_start(ansible_start)
     else:
-        if 'failed' in result['contacted'][host]:
+        ret = result['contacted'][host]
+        if ret.get('failed', True):
             description = "ERROR: set selinux to %s failed" % args
             handle_ansible_failed(description, result, host_post_info)
         else:
@@ -1258,7 +1271,8 @@ def authorized_key(user, key_path, host_post_info):
         zstack_runner = ZstackRunner(runner_args)
         result = zstack_runner.run()
         logger.debug(result)
-        if 'failed' in result['contacted'][host]:
+        ret = result['contacted'][host]
+        if ret.get('failed', True):
             description = "ERROR: Authorized on remote host %s failed!" % host
             handle_ansible_failed(description, result, host_post_info)
         else:
@@ -1305,7 +1319,8 @@ def unarchive(unarchive_arg, host_post_info):
         ansible_start.result = result
         handle_ansible_start(ansible_start)
     else:
-        if 'failed' in result['contacted'][host]:
+        ret = result['contacted'][host]
+        if ret.get('failed', True):
             description = "ERROR: unarchive %s to %s failed!" % (src, dest)
             handle_ansible_failed(description, result, host_post_info)
         else:
