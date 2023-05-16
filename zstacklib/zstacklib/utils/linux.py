@@ -2022,6 +2022,7 @@ class TimeoutObject(object):
     def __init__(self):
         self.objects = {}
         self._start()
+        self.p_timer = None # type: thread.PeriodicTimer
 
     def put(self, name, val=None, timeout=30):
         self.objects[name] = (val, time.time() + timeout)
@@ -2042,9 +2043,24 @@ class TimeoutObject(object):
         def wait(_):
             return not self.has(name)
 
+        self._restart_if_needed()
         if not wait_callback_success(wait, timeout=timeout):
             self.print_objects()
             raise Exception('after %s seconds, the object[%s] is still there, not timeout' % (timeout, name))
+
+    def _restart_if_needed(self):
+        if self.p_timer is None:
+            self._start()
+            return
+
+        try:
+            if not self.p_timer.is_alive():
+                self._start()
+                return
+        except:
+            logger.warn(traceback.format_exc())
+            logger.warn('get period timer thread status failed, try to restart it')
+            self._start()
 
     def _start(self):
         def clean_timeout_object():
@@ -2055,7 +2071,9 @@ class TimeoutObject(object):
                     del self.objects[name]
             return True
 
-        thread.timer(1, clean_timeout_object, stop_on_exception=False).start()
+        self.objects = {}
+        self.p_timer = thread.timer(1, clean_timeout_object, stop_on_exception=False)
+        self.p_timer.start()
 
 
 def kill_process(pid, timeout=5, is_exception=True, is_graceful=True):
