@@ -84,7 +84,13 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
         if device_index:
             iproute.delete_link(device_index)
 
-        shell_cmd = shell.ShellCmd("ip link show|egrep -i 'send|recv'")
+        splitStrings = tunnel.uuid.split("l3Uuid:")
+        aliasTag = ""
+        if len(splitStrings) == 2:
+            aliasTag = splitStrings[1]
+        else:
+            aliasTag = "'send|recv'"
+        shell_cmd = shell.ShellCmd("ip link show|egrep -i %s" % aliasTag)
         shell_cmd(False)
         if shell_cmd.return_code != 0:
             iproute.delete_address_no_error(tunnel.localIp, tunnel.prefix, 4, tunnel.dev)
