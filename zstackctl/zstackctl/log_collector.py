@@ -278,7 +278,6 @@ class CollectFromYml(object):
     check = False
     check_result = {}
     max_thread_num = 20
-    vrouter_task_list = []
     DEFAULT_ZSTACK_HOME = '/usr/local/zstack/apache-tomcat/webapps/zstack/'
     HA_KEEPALIVED_CONF = "/etc/keepalived/keepalived.conf"
     summary = Summary()
@@ -685,8 +684,7 @@ class CollectFromYml(object):
 
     def add_collect_thread(self, type, params):
         if "vrouter" in params:
-            self.vrouter_task_list.append(params)
-            return
+            params.append(self.vrouter_tmp_log_path)
 
         if type == self.host_type:
             thread = threading.Thread(target=self.get_host_log, args=(params))
@@ -705,11 +703,6 @@ class CollectFromYml(object):
                     break
         for t in self.threads:
             t.join(timeout)
-
-        if len(self.vrouter_task_list) > 0:
-            info_verbose("Start collecting vrouter log...")
-            for param in self.vrouter_task_list:
-                self.get_host_log(param[0], param[1], param[2], param[3], self.vrouter_tmp_log_path)
 
     def get_mn_list(self):
         def find_value_from_conf(content, key, begin, end):
