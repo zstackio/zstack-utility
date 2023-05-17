@@ -2,17 +2,37 @@ import copy
 
 import snapshot_utils
 import volume_utils
-from kvmagent.plugins.vm_plugin import VmPlugin
+import platform
+from kvmagent.plugins.vm_plugin import VmPlugin, get_machineType
 from kvmagent.test.utils import pytest_utils
 from zstacklib.test.utils import env, misc
 from zstacklib.utils import jsonobject, xmlobject, bash, linux
 
+def get_videoType():
+    if platform.machine() == 'aarch64':
+        return "virtio"
+    else:
+        return "cirrus"
+    
+def get_useNuma():
+    if platform.machine() == 'aarch64':
+        return False
+    else:
+        return True
+    
+def get_bootMode():
+    if platform.machine() == 'aarch64':
+        return "UEFI"
+    else:
+        return "Legacy"
+    
+    
 startVmCmdBody = {
     "vmInstanceUuid": "0b42630f37d8417480eced62ad89719f",
     "vmInternalId": 1,
     "vmName": "vm-for-ut",
     "imagePlatform": "Linux",
-    "imageArchitecture": "x86_64",
+    "imageArchitecture": platform.machine(),
     "memory": 67108864,  # 64M
     # "memory": 16384,  # 64M
     "maxMemory": 134217728,  # 128M
@@ -65,7 +85,7 @@ startVmCmdBody = {
     "nestedVirtualization": "none",
     "hostManagementIp": "10.0.245.48",
     "clock": "utc",
-    "useNuma": True,
+    "useNuma": get_useNuma(),
     "useBootMenu": True,
     "createPaused": False,
     "kvmHiddenState": False,
@@ -74,9 +94,9 @@ startVmCmdBody = {
     "additionalQmp": True,
     "isApplianceVm": False,
     "systemSerialNumber": "4f3e9046-776d-4095-8edd-909523ede46d",
-    "bootMode": "Legacy",
+    "bootMode": get_bootMode(),
     "fromForeignHypervisor": False,
-    "machineType": "pc",
+    "machineType": get_machineType("pc"),
     "useHugePage": False,
     "chassisAssetTag": "www.zstack.io",
     "priorityConfigStruct": {
@@ -90,9 +110,11 @@ startVmCmdBody = {
     "useColoBinary": False,
     "consoleMode": "vnc",
     "MemAccess": "private",
-    "videoType": "cirrus",
+    "videoType": get_videoType(),
     "spiceStreamingMode": "off",
     "VDIMonitorNumber": 1,
+    "pciePortNums": 0,
+    "predefinedPciBridgeNum": 0,
     "kvmHostAddons": {
         "qcow2Options": " -o cluster_size=2097152 "
     }
