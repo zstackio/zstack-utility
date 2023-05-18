@@ -29,6 +29,10 @@ chardev=charmonitor,id=monitor,mode=control
 -rtc
 base=utc
 -no-shutdown
+-global
+PIIX4_PM.disable_s3=1
+-global
+PIIX4_PM.disable_s4=1
 -boot
 menu=on,strict=on
 -device
