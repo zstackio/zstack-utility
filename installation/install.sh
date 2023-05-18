@@ -33,7 +33,7 @@ export TERM=xterm
 
 OS=''
 IS_UBUNTU='n'
-REDHAT_OS="CENTOS6 CENTOS7 RHEL7 ALIOS7 ISOFT4 KYLIN10 EULER20 UOS1020A NFS4 ROCKY8"
+REDHAT_OS="CENTOS6 CENTOS7 RHEL7 HELIX7 ALIOS7 ISOFT4 KYLIN10 EULER20 UOS1020A NFS4 ROCKY8"
 DEBIAN_OS="UBUNTU14.04 UBUNTU16.04 UBUNTU KYLIN4.0.2 DEBIAN9 UOS20"
 KYLIN_V10_OS="ky10sp1 ky10sp2 ky10sp3"
 XINCHUANG_OS="$KYLIN10_OS uos20"
@@ -663,7 +663,7 @@ cs_check_hostname_zstack(){
         hostname $CHANGE_HOSTNAME
         echo $MANAGEMENT_IP $CHANGE_HOSTNAME >> /etc/hosts
 
-or following commands in CentOS7:
+or following commands in CentOS7 or Helix7:
         hostnamectl set-hostname $CHANGE_HOSTNAME
         hostname $CHANGE_HOSTNAME
         echo $MANAGEMENT_IP $CHANGE_HOSTNAME >> /etc/hosts
@@ -690,7 +690,7 @@ or following commands in CentOS7:
 
     # current hostname is same with IP
     echo "Your OS hostname is set as $current_hostname, which is same with your IP address. It will cause some problem.
-Please fix it by running following commands in CentOS7:
+Please fix it by running following commands in CentOS7 or Helix7:
 
     hostnamectl set-hostname MY_REAL_HOSTNAME
     hostname MY_REAL_HOSTNAME
@@ -808,8 +808,7 @@ check_system(){
     echo_title "Check System"
     echo ""
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
-    cat /etc/*-release |egrep -i -h "centos |Red Hat Enterprise|Alibaba|NeoKylin|Kylin Linux Advanced Server release V10|openEuler|UnionTech OS Server release 20 \(kongzi\)|NFSChina Server release 4.0.220727 \(RTM3\)|Rocky Linux" >>$ZSTACK_INSTALL_LOG 2>&1
-    if [ $? -eq 0 ]; then
+    cat /etc/*-release |egrep -i -h "centos |Helix|Red Hat Enterprise|Alibaba|NeoKylin|Kylin Linux Advanced Server release V10|openEuler|UnionTech OS Server release 20 \(kongzi\)|NFSChina Server release 4.0.220727 \(RTM3\)|Rocky Linux" >>$ZSTACK_INSTALL_LOG 2>&1
         grep -qi 'CentOS release 6' /etc/system-release && OS="CENTOS6"
         grep -qi 'CentOS Linux release 7' /etc/system-release && OS="CENTOS7"
         grep -qi 'Red Hat Enterprise Linux Server release 7' /etc/system-release && OS="RHEL7"
@@ -821,6 +820,7 @@ check_system(){
         grep -qi 'UnionTech OS Server release 20 (kongzi)' /etc/system-release && OS="UOS1020A"
         grep -qi 'NFSChina Server release 4.0.220727 (RTM3)' /etc/system-release && OS="NFS4"
         grep -qi 'Rocky Linux release 8.4 (Green Obsidian)' /etc/system-release && OS="ROCKY8"
+        grep -qi 'Helix release 7' /etc/system-release && OS="HELIX7"
         if [[ -z "$OS" ]];then
             fail2 "Host OS checking failure: your system is: `cat /etc/redhat-release`, $PRODUCT_NAME management node only supports $SUPPORTED_OS currently"
         elif [[ $OS == "CENTOS7" ]];then
@@ -905,7 +905,7 @@ cs_check_epel(){
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     [ -z $YUM_ONLINE_REPO ] && return
     [ ! -z $ZSTACK_PKG_MIRROR ] && return
-    if [ "$OS" = "CENTOS7" -o "$OS" = "CENTOS6" ]; then 
+    if [ x"$OS" = x"CENTOS7" -o x"$OS" = x"CENTOS6" -o x"$OS" = x"HELIX7" ]; then 
         if [ ! -f /etc/yum.repos.d/epel.repo ]; then
             if [ x"$UPGRADE" != x'n' ]; then
                 [ ! -z $ZSTACK_YUM_REPOS ] && return
