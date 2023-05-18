@@ -22,7 +22,7 @@ global vgUuid
 
 
 ## describe: case will manage by ztest
-class TestShareBlockPlugin(TestCase, StorageDevicePluginTestStub):
+class TestSharedBlockPlugin(TestCase, StorageDevicePluginTestStub):
 
     @classmethod
     def setUpClass(cls):

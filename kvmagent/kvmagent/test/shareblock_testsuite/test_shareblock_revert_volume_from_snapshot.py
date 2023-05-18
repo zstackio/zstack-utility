@@ -1,11 +1,11 @@
 from kvmagent.test.shareblock_testsuite.shared_block_plugin_teststub import SharedBlockPluginTestStub
-from kvmagent.test.utils import shareblock_utils,pytest_utils,storage_device_utils
+from kvmagent.test.utils import sharedblock_utils,pytest_utils,storage_device_utils
 from zstacklib.utils import bash
 from unittest import TestCase
 from zstacklib.test.utils import misc,env
 import pytest
 
-shareblock_utils.init_shareblock_plugin()
+
 storage_device_utils.init_storagedevice_plugin()
 
 PKG_NAME = __name__
@@ -22,7 +22,7 @@ global hostUuid
 global vgUuid
 
 ## describe: case will manage by ztest
-class TestShareBlockPlugin(TestCase, SharedBlockPluginTestStub):
+class TestSharedBlockPlugin(TestCase, SharedBlockPluginTestStub):
 
     @classmethod
     def setUpClass(cls):
@@ -55,7 +55,7 @@ class TestShareBlockPlugin(TestCase, SharedBlockPluginTestStub):
         r, o = bash.bash_ro("ls /dev/disk/by-id | grep scsi|awk -F '-' '{print $2}'")
         blockUuid = o.strip().replace(' ', '').replace('\n', '').replace('\r', '')
         print(blockUuid)
-        rsp = shareblock_utils.shareblock_connect(
+        rsp = sharedblock_utils.shareblock_connect(
             sharedBlockUuids=[blockUuid],
             allSharedBlockUuids=[blockUuid],
             vgUuid=vgUuid,
@@ -75,7 +75,7 @@ class TestShareBlockPlugin(TestCase, SharedBlockPluginTestStub):
         # create volume
         # test disconnect shareblock
         volumeUuid = misc.uuid()
-        rsp = shareblock_utils.shareblock_create_root_volume(
+        rsp = sharedblock_utils.shareblock_create_root_volume(
             templatePathInCache="sharedblock://{}/{}".format(vgUuid,imageUuid),
             installPath="sharedblock://{}/{}".format(vgUuid,volumeUuid),
             volumeUuid=volumeUuid,
@@ -90,7 +90,7 @@ class TestShareBlockPlugin(TestCase, SharedBlockPluginTestStub):
 
         # test revert volume
         newUuid=misc.uuid()
-        rsp = shareblock_utils.shareblock_revert_volume_from_snapshot(
+        rsp = sharedblock_utils.shareblock_revert_volume_from_snapshot(
             snapshotInstallPath="sharedblock://{}/{}".format(vgUuid, imageUuid),
             installPath="sharedblock://{}/{}".format(vgUuid, newUuid),
             hostUuid=hostUuid,
@@ -98,14 +98,14 @@ class TestShareBlockPlugin(TestCase, SharedBlockPluginTestStub):
         )
         self.assertEqual(True, rsp.success, rsp.error)
 
-        r, o = bash.bash_ro("lvs --nolocking -t |grep %s" % volumeUuid)
+        r, o = bash.bash_ro("lvs --nolocking -t |grep %s" % newUuid)
         self.assertEqual(0, r, "[check] revert volume fail in host")
 
 
 
         # test disconnect shareblock
         self.assertEqual(True, rsp.success, rsp.error)
-        rsp = shareblock_utils.shareblock_disconnect(
+        rsp = sharedblock_utils.shareblock_disconnect(
             vgUuid=vgUuid,
             hostUuid=hostUuid
         )

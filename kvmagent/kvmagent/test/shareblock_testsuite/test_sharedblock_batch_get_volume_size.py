@@ -1,6 +1,6 @@
 from kvmagent.test.shareblock_testsuite.shared_block_plugin_teststub import SharedBlockPluginTestStub
 from kvmagent.test.utils import sharedblock_utils,pytest_utils,storage_device_utils
-from zstacklib.utils import bash,lvm
+from zstacklib.utils import bash
 from unittest import TestCase
 from zstacklib.test.utils import misc,env
 import pytest
@@ -29,7 +29,7 @@ class TestSharedBlockPlugin(TestCase, SharedBlockPluginTestStub):
     def setUpClass(cls):
         pass
     @pytest_utils.ztest_decorater
-    def test_sharedblock_resize_volume(self):
+    def test_sharedblock_batch_get_volume_size(self):
         self_vm = env.get_vm_metadata('self')
         rsp = storage_device_utils.iscsi_login(
             self_vm.ip,"3260"
@@ -53,45 +53,37 @@ class TestSharedBlockPlugin(TestCase, SharedBlockPluginTestStub):
             vgUuid=vgUuid
         )
         self.assertEqual(True, rsp.success, rsp.error)
-        self.assertEqual(int(lvm.get_lv_size("/dev/{}/{}".format(vgUuid, volumeUuid))), 1048576*4 + 12*1024**2)
 
-        r, o = bash.bash_ro("lvs --nolocking -t |grep %s" % volumeUuid)
-        self.assertEqual(0, r, "create empty volume fail in host")
-
-        # extend lv
-        rsp = sharedblock_utils.sharedblock_resize_volume(
-            installPath="sharedblock://{}/{}".format(vgUuid, volumeUuid),
-            size=1048576*8
+        volumeUuid2 = misc.uuid()
+        rsp = sharedblock_utils.shareblock_create_empty_volume(
+            installPath="sharedblock://{}/{}".format(vgUuid,volumeUuid2),
+            volumeUuid=volumeUuid2,
+            size=1048576*5,
+            hostUuid=hostUuid,
+            vgUuid=vgUuid
         )
         self.assertEqual(True, rsp.success, rsp.error)
-        self.assertEqual(int(lvm.get_lv_size("/dev/{}/{}".format(vgUuid, volumeUuid))), 1048576*8 + 12*1024**2)
-        self.assertEqual(1048576*8, rsp.size, rsp.error)
 
-        # no change
-        rsp = sharedblock_utils.sharedblock_resize_volume(
-            installPath="sharedblock://{}/{}".format(vgUuid, volumeUuid),
-            size=1048576*8,
-            force=False
+        volumeUuid3 = misc.uuid()
+        rsp = sharedblock_utils.shareblock_create_empty_volume(
+            installPath="sharedblock://{}/{}".format(vgUuid,volumeUuid3),
+            volumeUuid=volumeUuid3,
+            size=1048576*10,
+            hostUuid=hostUuid,
+            vgUuid=vgUuid
         )
         self.assertEqual(True, rsp.success, rsp.error)
-        self.assertEqual(int(lvm.get_lv_size("/dev/{}/{}".format(vgUuid, volumeUuid))), 1048576*8 + 12*1024**2)
-        self.assertEqual(1048576*8, rsp.size, rsp.error)
 
-        # shrink lv failed
-        rsp = sharedblock_utils.sharedblock_resize_volume(
-            installPath="sharedblock://{}/{}".format(vgUuid, volumeUuid),
-            size=1048576*4,
-            force=False
+        # test get volume size
+        rsp = sharedblock_utils.sharedblock_batch_get_volume_size(
+            volumeUuidInstallPaths={volumeUuid:"sharedblock://{}/{}".format(vgUuid, volumeUuid),
+                                    volumeUuid2:"sharedblock://{}/{}".format(vgUuid, volumeUuid2),
+                                    volumeUuid3:"sharedblock://{}/{}".format(vgUuid, volumeUuid3)
+                                    },
+            vgUuid=vgUuid
         )
-        self.assertEqual(False, rsp.success, rsp.error)
-        self.assertEqual(int(lvm.get_lv_size("/dev/{}/{}".format(vgUuid, volumeUuid))), 1048576*8 + 12*1024**2)
 
-        # shrink lv successfully
-        rsp = sharedblock_utils.sharedblock_resize_volume(
-            installPath="sharedblock://{}/{}".format(vgUuid, volumeUuid),
-            size=1048576*4,
-            force=True
-        )
         self.assertEqual(True, rsp.success, rsp.error)
-        self.assertEqual(int(lvm.get_lv_size("/dev/{}/{}".format(vgUuid, volumeUuid))), 1048576*4 + 12*1024**2)
-        self.assertEqual(1048576*4, rsp.size, rsp.error)
+        self.assertEqual(rsp.actualSizes[volumeUuid], str(16 * 1024**2), rsp.error)
+        self.assertEqual(rsp.actualSizes[volumeUuid2], str(20 * 1024**2), rsp.error)
+        self.assertEqual(rsp.actualSizes[volumeUuid3], str(24 * 1024**2), rsp.error)

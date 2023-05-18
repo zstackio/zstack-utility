@@ -2,14 +2,14 @@ import pytest
 from unittest import TestCase
 from kvmagent.test.utils.stub import init_kvmagent
 from kvmagent.test.shareblock_testsuite.shared_block_plugin_teststub import SharedBlockPluginTestStub
-from kvmagent.test.utils import shareblock_utils, pytest_utils, storage_device_utils, vm_utils, volume_utils, \
+from kvmagent.test.utils import sharedblock_utils, pytest_utils, storage_device_utils, vm_utils, volume_utils, \
     network_utils
 from zstacklib.test.utils import misc
 from zstacklib.utils import bash, linux
 from zstacklib.utils import log
 
 
-shareblock_utils.init_shareblock_plugin()
+
 storage_device_utils.init_storagedevice_plugin()
 init_kvmagent()
 vm_utils.init_vm_plugin()
@@ -65,7 +65,7 @@ class TestShareBlockVirtioSCSIVolumeWithIoThreadPin(TestCase, SharedBlockPluginT
         r, o = bash.bash_ro("ls /dev/disk/by-id | grep scsi|awk -F '-' '{print $2}'")
         blockUuid = o.strip().replace(' ', '').replace('\n', '').replace('\r', '')
         logger.info("block uuid: %s" % blockUuid)
-        rsp = shareblock_utils.shareblock_connect(
+        rsp = sharedblock_utils.shareblock_connect(
             sharedBlockUuids=[blockUuid],
             allSharedBlockUuids=[blockUuid],
             vgUuid=vgUuid,
@@ -93,7 +93,7 @@ class TestShareBlockVirtioSCSIVolumeWithIoThreadPin(TestCase, SharedBlockPluginT
         logger.info("volume uuid: %s" % volumeUuid)
         vol_path = "sharedblock://{}/{}".format(vgUuid, volumeUuid)
         logger.info("vol path: %s" % vol_path)
-        rsp = shareblock_utils.shareblock_create_data_volume_with_backing(
+        rsp = sharedblock_utils.shareblock_create_data_volume_with_backing(
             templatePathInCache="sharedblock://{}/{}".format(vgUuid, imageUuid),
             installPath=vol_path,
             volumeUuid=volumeUuid,
@@ -146,7 +146,7 @@ class TestShareBlockVirtioSCSIVolumeWithIoThreadPin(TestCase, SharedBlockPluginT
         pid = linux.find_vm_pid_by_uuid(vm_uuid)
         self.assertTrue(not pid, 'vm[%s] vm still running' % vm_uuid)
 
-        self.logout(vgUuid, hostUuid)
+        self.disconnect(vgUuid, hostUuid)
 
     def check_virtio_scsi_volume_config(self, vm_uuid, vol_path, iothread_id):
         xml = vm_utils.get_vm_xmlobject_from_virsh_dump(vm_uuid)

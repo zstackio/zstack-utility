@@ -1,13 +1,12 @@
 import json
 
 from kvmagent.test.shareblock_testsuite.shared_block_plugin_teststub import SharedBlockPluginTestStub
-from kvmagent.test.utils import shareblock_utils,pytest_utils,storage_device_utils
+from kvmagent.test.utils import sharedblock_utils,pytest_utils,storage_device_utils
 from zstacklib.utils import bash
 from unittest import TestCase
 from zstacklib.test.utils import misc,env
 import pytest
 
-shareblock_utils.init_shareblock_plugin()
 storage_device_utils.init_storagedevice_plugin()
 
 PKG_NAME = __name__
@@ -57,7 +56,7 @@ class TestShareBlockPlugin(TestCase, SharedBlockPluginTestStub):
         r, o = bash.bash_ro("ls /dev/disk/by-id | grep scsi|awk -F '-' '{print $2}'")
         blockUuid = o.strip().replace(' ', '').replace('\n', '').replace('\r', '')
         print(blockUuid)
-        rsp = shareblock_utils.shareblock_connect(
+        rsp = sharedblock_utils.shareblock_connect(
             sharedBlockUuids=[blockUuid],
             allSharedBlockUuids=[blockUuid],
             vgUuid=vgUuid,
@@ -76,7 +75,7 @@ class TestShareBlockPlugin(TestCase, SharedBlockPluginTestStub):
 
         # create volume
         volumeUuid = misc.uuid()
-        rsp = shareblock_utils.shareblock_create_empty_volume(
+        rsp = sharedblock_utils.shareblock_create_empty_volume(
             installPath="sharedblock://{}/{}".format(vgUuid,volumeUuid),
             volumeUuid=volumeUuid,
             size=1048576,
@@ -90,7 +89,7 @@ class TestShareBlockPlugin(TestCase, SharedBlockPluginTestStub):
 
         # size=10M
         volumeUuid = misc.uuid()
-        rsp = shareblock_utils.shareblock_create_empty_volume(
+        rsp = sharedblock_utils.shareblock_create_empty_volume(
             installPath="sharedblock://{}/{}".format(vgUuid,volumeUuid),
             volumeUuid=volumeUuid,
             size=10485760,
@@ -109,7 +108,7 @@ class TestShareBlockPlugin(TestCase, SharedBlockPluginTestStub):
 
         # size=1G
         volumeUuid = misc.uuid()
-        rsp = shareblock_utils.shareblock_create_empty_volume(
+        rsp = sharedblock_utils.shareblock_create_empty_volume(
             installPath="sharedblock://{}/{}".format(vgUuid,volumeUuid),
             volumeUuid=volumeUuid,
             size=1024**3,
@@ -128,7 +127,7 @@ class TestShareBlockPlugin(TestCase, SharedBlockPluginTestStub):
 
         # size=3.1G
         volumeUuid = misc.uuid()
-        rsp = shareblock_utils.shareblock_create_empty_volume(
+        rsp = sharedblock_utils.shareblock_create_empty_volume(
             installPath="sharedblock://{}/{}".format(vgUuid,volumeUuid),
             volumeUuid=volumeUuid,
             size=3326083072,
