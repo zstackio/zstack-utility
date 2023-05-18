@@ -782,6 +782,19 @@ def modprobe_usb_module():
     host_post_info.post_label_param = None
     run_remote_command(command, host_post_info)
 
+@with_arch(todo_list=['aarch64'], host_arch=host_arch)
+def set_gpu_blacklist():
+    if releasever not in kylin:
+        return
+
+    gpu_name_list = "snd_hda_intel nouveau amdgpu"
+
+    command = "for gpu_name in %s; \
+        do cat /etc/modprobe.d/${gpu_name}-blacklist.conf | grep \"blacklist ${gpu_name}\" \
+        || echo \"blacklist ${gpu_name}\" >> /etc/modprobe.d/${gpu_name}-blacklist.conf; done" % gpu_name_list
+    run_remote_command(command, host_post_info)
+
+
 check_nested_kvm(host_post_info)
 install_kvm_pkg()
 copy_tools()
@@ -804,6 +817,7 @@ set_legacy_iptables_ebtables()
 install_agent_pkg()
 do_auditd_config()
 modprobe_usb_module()
+set_gpu_blacklist()
 start_kvmagent()
 
 host_post_info.start_time = start_time
