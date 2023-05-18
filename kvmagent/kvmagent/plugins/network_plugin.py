@@ -334,6 +334,42 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
         return False
 
+    def _add_interface_to_collectd_conf(self, config_file, interface_name):
+        with open(config_file, 'r') as f:
+            config_lines = f.readlines()
+
+        new_line = 'Interface "{}"\n'.format(interface_name)
+        start_index = config_lines.index('<Plugin "interface">\n')
+        end_index = config_lines.index('</Plugin>\n', start_index)
+        config_lines.insert(end_index, new_line)
+
+        with open(config_file, 'w') as f:
+            f.writelines(config_lines)
+
+    def _remove_interface_from_collectd_conf(self, config_file, interface_name):
+        with open(config_file, 'r') as f:
+            config_lines = f.readlines()
+
+        start_index = config_lines.index('Interface "{}"\n'.format(interface_name))
+        end_index = config_lines.index('</Plugin>\n', start_index) + 1
+        del config_lines[start_index:end_index]
+
+        with open(config_file, 'w') as f:
+            f.writelines(config_lines)
+
+    def _restart_collectd(self, config_file):
+        cpid = linux.find_process_by_command('collectd', [config_file])
+        mpid = linux.find_process_by_command('collectdmon', [config_file])
+
+        if not cpid:
+            bash_errorout('collectdmon -- -C %s' % config_file)
+        else:
+            bash_errorout('kill -TERM %s' % cpid)
+            if not mpid:
+                bash_errorout('collectdmon -- -C %s' % config_file)
+            else:
+                bash_errorout('kill -HUP %s' % mpid)
+
     @lock.lock('bonding')
     @kvmagent.replyerror
     @in_bash
@@ -363,6 +399,11 @@ class NetworkPlugin(kvmagent.KvmAgent):
                 ret = shell.call('/usr/local/bin/zs-nic-to-bond -a %s %s' % (cmd.bondName, slave.interfaceName))
                 if ret == 0:
                     shell.call('/usr/local/bin/zs-bond -d %s' % cmd.bondName)
+
+            # sync to collectd
+            config_file = '/var/lib/zstack/kvm/collectd.conf'
+            self._add_interface_to_collectd_conf(config_file, cmd.bondName)
+            self._restart_collectd(config_file)
         except Exception as e:
             shell.run('/usr/local/bin/zs-bond -d %s' % cmd.bondName)
             logger.warning(traceback.format_exc())
@@ -405,6 +446,11 @@ class NetworkPlugin(kvmagent.KvmAgent):
                 # zs-nic-to-bond -d bond2 nic nic4
                 for interface in reduce_items:
                     shell.call('/usr/local/bin/zs-nic-to-bond -d %s %s' % (cmd.bondName, interface))
+
+            # sync to collectd
+            config_file = '/var/lib/zstack/kvm/collectd.conf'
+            self._remove_interface_from_collectd_conf(config_file, cmd.bondName)
+            self._restart_collectd(config_file)
         except Exception as e:
             logger.warning(traceback.format_exc())
             rsp.error = 'unable to create bonding[%s], because %s' % (cmd.bondName, str(e))
