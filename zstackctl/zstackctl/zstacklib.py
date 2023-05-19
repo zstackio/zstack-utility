@@ -238,6 +238,8 @@ def get_host_releasever(ansible_distribution):
         "centos core 7.4.1708": "c74",
         "centos core 7.2.1511": "c74",  # c74 for old releases
         "centos core 7.1.1503": "c74",
+        'helix core 7.6c': 'h76c',
+        'helix core 7.9c': 'h79c',
         "uniontech kongzi 20": "uos1021a",
         "rocky green obsidian 8.4": "rl84",
     }
