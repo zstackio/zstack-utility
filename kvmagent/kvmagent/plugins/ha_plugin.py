@@ -405,15 +405,9 @@ class SanlockHealthChecker(AbstractStorageFencer):
                 return None, None
 
             with lvm.OperateLv(volume_abs_path, shared=True, delete_when_exception=True):
-                linux.rm_file_checked('/tmp/read_host_%s_vg_%s' % (host_uuid, vg_uuid))
-                dd_cmd = shell.ShellCmd(
-                    "dd if=%s of=/tmp/read_host_%s_vg_%s bs=1M oflag=direct" % (
-                        volume_abs_path, host_uuid, vg_uuid))
-                dd_cmd(False)
-                sync_cmd = shell.ShellCmd("sync")
-                sync_cmd(False)
-                with open('/tmp/read_host_%s_vg_%s' % (host_uuid, vg_uuid), 'rb') as f:
+                with open(volume_abs_path, "r") as f:
                     content = f.read().strip().replace(b'\u0000', b'').replace(b'\x00', b'')
+                    content = content.split("end")[0]
                     if len(content) == 0:
                         return None, None
 
@@ -426,8 +420,13 @@ class SanlockHealthChecker(AbstractStorageFencer):
 
                     logger.debug("read shareblock current_read_heartbeat_time:%s, current_vm_uuids: %s" %
                                  (current_read_heartbeat_time[0], current_vm_uuids[0]))
+
+                    if time.time() - 4*60 > current_read_heartbeat_time[0]:
+                        current_read_heartbeat_time[0] += 1
+
                     return current_read_heartbeat_time[0], current_vm_uuids[0]
 
+    @thread.AsyncThread
     def save_record_vm_uuids(self, vg_uuid):
         vm_in_ps_uuid_list = find_ps_running_vm(vg_uuid)
 
@@ -440,14 +439,10 @@ class SanlockHealthChecker(AbstractStorageFencer):
                    "vm_uuids": None if len(vm_in_ps_uuid_list) == 0 else ','.join(str(x) for x in vm_in_ps_uuid_list)}
 
         with lvm.OperateLv(volume_abs_path, shared=True, delete_when_exception=True):
-            echo_cmd = shell.ShellCmd("echo '%s' > /tmp/host_%s_vg_%s" % (json.dumps(content), self.host_uuid, vg_uuid))
-            echo_cmd(False)
-            lvm.dd_zero(volume_abs_path)
-            dd_cmd = shell.ShellCmd(
-                "dd if=/tmp/host_%s_vg_%s of=%s bs=1M oflag=direct" % (self.host_uuid, vg_uuid, volume_abs_path))
-            dd_cmd(False)
-            sync_cmd = shell.ShellCmd("sync")
-            sync_cmd(False)
+            with open(volume_abs_path, "a+") as f:
+                f.write(json.dumps(content) + "end")
+                f.flush()
+                os.fsync(f.fileno())
 
     def runonce(self, storage_timeout, max_failure):
         if len(self.all_vgs) == 0:
