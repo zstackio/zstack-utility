@@ -1818,7 +1818,12 @@ def check_umask(host_post_info):
 
 
 def install_release_on_host(is_rpm, distro, distro_release, distro_version, host_post_info):
-    releasever = get_host_releasever([distro, distro_release, str(distro_version)])
+    releasever = None
+    if host_post_info.releasever:
+        releasever = host_post_info.releasever
+    else:
+        releasever = get_host_releasever([distro, distro_release, str(distro_version)])
+
     host_arch = get_remote_host_arch(host_post_info)
     if is_rpm:
         src_pkg = '/opt/zstack-dvd/{0}/{1}/Packages/zstack-release-{1}-1.el7.zstack.noarch.rpm'.format(host_arch, releasever)
