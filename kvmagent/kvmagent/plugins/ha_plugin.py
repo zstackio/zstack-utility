@@ -405,9 +405,9 @@ class SanlockHealthChecker(AbstractStorageFencer):
                 return None, None
 
             with lvm.OperateLv(volume_abs_path, shared=True, delete_when_exception=True):
-                with open(volume_abs_path, "r") as f:
+                with open(volume_abs_path, "r+") as f:
                     content = f.read().strip().replace(b'\u0000', b'').replace(b'\x00', b'')
-                    content = content.split("end")[0]
+                    content = content.split("this_is_end")[0]
                     if len(content) == 0:
                         return None, None
 
@@ -439,8 +439,8 @@ class SanlockHealthChecker(AbstractStorageFencer):
                    "vm_uuids": None if len(vm_in_ps_uuid_list) == 0 else ','.join(str(x) for x in vm_in_ps_uuid_list)}
 
         with lvm.OperateLv(volume_abs_path, shared=True, delete_when_exception=True):
-            with open(volume_abs_path, "a+") as f:
-                f.write(json.dumps(content) + "end")
+            with open(volume_abs_path, "w+") as f:
+                f.write(json.dumps(content) + "this_is_end")
                 f.flush()
                 os.fsync(f.fileno())
 
