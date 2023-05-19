@@ -1390,10 +1390,30 @@ def create_bridge(bridge_name, interface, move_route=True):
     shell.call("brctl setfd %s 0" % bridge_name)
     shell.call("ip link set %s up" % bridge_name)
 
+    def modify_device_state_in_networkmanager(device_name, state):
+        shell.call("nmcli device set %s managed %s" % (device_name, state), exception=False)
+
     if br_name == bridge_name:
         logger.debug('%s is a bridge device. Interface %s is attached to bridge. No need to create bridge or attach device interface' % (bridge_name, interface))
     else:
-        shell.call("brctl addif %s %s" % (bridge_name, interface))
+        #Problem phenomenon
+        #The NM-managed bond fails to be added to the bridge regularly during 
+        # cluster attaching and detaching on the L2 network.  
+        # 
+        #Temporary situation
+        #Before adding the bond to the bridge, set the bond managed by nm to
+        # unmanaged, after adding the bond to the bridge, restore the bond.
+        nm_connection_type = shell.call("nmcli -g connection.type connection show %s" % interface, exception=False)
+        if nm_connection_type.strip() == 'bond':
+            nm_device = shell.call("nmcli -g GENERAL.DEVICES connection show %s" % interface, exception=False).strip()
+            if nm_device:
+                modify_device_state_in_networkmanager(nm_device, 'no')
+                shell.call("brctl addif %s %s" % (bridge_name, interface))
+                modify_device_state_in_networkmanager(nm_device, 'yes')
+            else:
+                shell.call("brctl addif %s %s" % (bridge_name, interface))  
+        else:
+            shell.call("brctl addif %s %s" % (bridge_name, interface))
     #Set bridge MAC address as network device MAC address. It will avoid of 
     # bridge MAC address is reset to other new added dummy network device's 
     # MAC address.
