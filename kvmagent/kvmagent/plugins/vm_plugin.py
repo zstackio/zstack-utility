@@ -1640,6 +1640,7 @@ class VmVolumesRecoveryTask(plugin.TaskDaemon):
         self.volumes = cmd.volumes
         self.rvols = rvols
         self.idx = 0
+        self.stage = cmd.threadContext['task-stage']
         self.total = len(cmd.volumes)
         self.cancelled = False
         self.percent = 0
@@ -1787,7 +1788,7 @@ class VmVolumesRecoveryTask(plugin.TaskDaemon):
             self.do_recover_with_volumes(params, flags)
 
     def _get_percent(self):
-        return self.percent
+        return get_exact_percent(self.percent, self.stage)
 
 
 @linux.retry(times=3, sleep_time=1)
