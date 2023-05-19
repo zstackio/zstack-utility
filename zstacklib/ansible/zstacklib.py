@@ -40,13 +40,13 @@ apt_server = ""
 trusted_host = ""
 uos = ['uos20', 'uos1021a']
 kylin = ["ky10sp1", "ky10sp2", "ky10sp3"]
-centos = ['c74', 'c76', 'c79', 'rl84']
+centos = ['c74', 'c76', 'c79', 'h76c', 'h79c', 'rl84']
 enable_networkmanager_list = kylin + ["euler20", "uos1021a", "nfs4", "rl84"]
 supported_arch_list = ["x86_64", "aarch64", "mips64el", "loongarch64"]
 
 RPM_BASED_OS = ["kylin_zstack", "kylin_tercel", "kylin_sword", "kylin_lance",
                 "alibaba", "centos", "openeuler", "uniontech_kongzi", "nfs",
-                "redhat", "rocky"]
+                "redhat", "rocky", "helix"]
 DEB_BASED_OS = ["ubuntu", "uos", "kylin4.0.2", "debian", "uniontech_fou"]
 DISTRO_WITH_RPM_DEB = ["kylin", "uniontech"]
 
@@ -60,7 +60,9 @@ qemu_alias = {
     "c79": "qemu-kvm",
     "euler20": "qemu",
     "uos1021a": "qemu-kvm",
-    "nfs4": "qemu-kvm"
+    "nfs4": "qemu-kvm",
+    'h76c': 'qemu-kvm',
+    'h79c': 'qemu-kvm'
 }
 
 ansible_constants.set_constant('HOST_KEY_CHECKING', False)
@@ -524,6 +526,8 @@ def get_host_releasever(host_info):
         "centos core 7.4.1708": "c74",
         "centos core 7.2.1511": "c74",  # c74 for old releases
         "centos core 7.1.1503": "c74",
+        'helix core 7.6c': 'h76c',
+        'helix core 7.9c': 'h79c',
         "openeuler lts-sp1 20.03": "euler20",
         "uos fou 20": "uos20",
         "uniontech_kongzi kongzi 20": "uos1021a",
@@ -2128,7 +2132,11 @@ def check_umask(host_post_info):
 def install_release_on_host(is_rpm, host_info, host_post_info):
     releasever = get_host_releasever(host_info)
     if is_rpm:
-        release_name = 'el8' if releasever in ['rl84'] else 'el7'
+        release_name_mapping = {
+            'rl84': 'el8',
+            'h76c': 'h7',
+            'h79c': 'h7'}
+        release_name = release_name_mapping.get(releasever, 'el7')
         pkg_name = 'zstack-release-{0}-1.{1}.zstack.noarch.rpm'.format(releasever, release_name)
         src_pkg = '/opt/zstack-dvd/{0}/{1}/Packages/{2}'.format(host_info.host_arch, releasever, pkg_name)
         install_cmd = ("[[ x`rpm -qi zstack-release |awk -F ':' '/Version/{print $2}' |sed 's/ //g'` == x%s ]] || "

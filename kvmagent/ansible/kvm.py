@@ -208,6 +208,8 @@ def install_kvm_pkg():
             'c74': 'qemu-kvm-ev ',
             'c76': 'qemu-kvm libvirt-admin seabios-bin nping elfutils-libelf-devel',
             'c79': 'qemu-kvm libvirt-admin seabios-bin nping elfutils-libelf-devel',
+            'h76c': 'qemu-kvm libvirt-admin seabios-bin nping elfutils-libelf-devel',
+            'h79c': 'qemu-kvm libvirt-admin seabios-bin nping elfutils-libelf-devel',
             'rl84': 'qemu-kvm libvirt-daemon libvirt-daemon-kvm seabios-bin elfutils-libelf-devel',
             'euler20': 'vconfig open-iscsi OpenIPMI-modalias qemu python2-pyudev collectd-disk',
             'nfs4': 'vconfig iscsi-initiator-utils OpenIPMI nettle libselinux-devel iptables iptables-services qemu-kvm python2-pyudev collectd-disk'
@@ -428,7 +430,7 @@ def install_kvm_pkg():
 
         rpm_deprecated_list = rpm_deprecated.get(host_info.host_arch + releasever, "")
         # new-add host
-        if releasever in ['c76', 'c79'] and "qemu-kvm" not in skip_packages:
+        if releasever in ['c76', 'c79', 'h76c', 'h79c'] and "qemu-kvm" not in skip_packages:
             rpm_deprecated_list += " qemu-img-ev qemu-kvm-ev qemu-kvm-common-ev"
 
         for rpm in rpm_deprecated_list.split():
