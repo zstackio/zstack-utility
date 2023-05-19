@@ -1140,11 +1140,11 @@ def qcow2_discard(path):
 i=0
 while(($i < {0}))
 do
-qemu-io -c "discard $[i*2147483136] 2147483136" -f qcow2 -d unmap {1}
+qemu-io -c "discard $[i*2145386496] 2145386496" -f qcow2 -d unmap {1}
 let i+=1
 done
-qemu-io -c "discard $[i*2147483136] {2}" -f qcow2 -d unmap {1}
-    '''.format(virtual_size / 2147483136, path, virtual_size % 2147483136))
+qemu-io -c "discard $[i*2145386496] {2}" -f qcow2 -d unmap {1}
+    '''.format(virtual_size / 2145386496, path, virtual_size % 2145386496))
 
     cmd(False)
     logger.debug("qcow2 discard return code: %s, stderr: %s" % (cmd.return_code, cmd.stderr))
