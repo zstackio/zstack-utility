@@ -1466,6 +1466,10 @@ class BlkIscsi(object):
             return
 
         device = os.path.basename(dev_path)
+        dir_name = os.path.dirname(dev_path)
+        if dir_name != "/dev/disk/by-path" or not device.startswith("ip-"):
+            return
+
         portal = device[3:device.find('-iscsi')]
         target = device[device.find('iqn'):device.find('-lun')]
         try:
