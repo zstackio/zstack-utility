@@ -822,6 +822,7 @@ class HostPlugin(kvmagent.KvmAgent):
     SET_IP_ON_HOST_NETWORK_INTERFACE = "/host/setip/networkinterface"
     HOST_XFS_SCRAPE_PATH = "/host/xfs/scrape"
     HOST_SHUTDOWN = "/host/shutdown"
+    HOST_REBOOT = "/host/reboot"
     GET_PCI_DEVICES = "/pcidevice/get"
     CREATE_PCI_DEVICE_ROM_FILE = "/pcidevice/createrom"
     GENERATE_SRIOV_PCI_DEVICES = "/pcidevice/generate"
@@ -1634,11 +1635,21 @@ if __name__ == "__main__":
         self.do_shutdown_host()
         return jsonobject.dumps(kvmagent.AgentResponse())
 
+    def reboot_host(self, req):
+        self.do_reboot_host()
+        return jsonobject.dumps(kvmagent.AgentResponse())
+
     @thread.AsyncThread
     def do_shutdown_host(self):
         logger.debug("It is going to shutdown host after 1 sec")
         time.sleep(1)
         shell.call("sudo init 0")
+
+    @thread.AsyncThread
+    def do_reboot_host(self):
+        logger.debug("It is going to reboot host after 1 sec")
+        time.sleep(1)
+        shell.call("sudo shutdown -r now")
 
     @kvmagent.replyerror
     @in_bash
@@ -3048,6 +3059,7 @@ done
         http_server.register_async_uri(self.SET_IP_ON_HOST_NETWORK_INTERFACE, self.set_ip_on_host_network_interface)
         http_server.register_async_uri(self.HOST_XFS_SCRAPE_PATH, self.get_xfs_frag_data)
         http_server.register_async_uri(self.HOST_SHUTDOWN, self.shutdown_host)
+        http_server.register_async_uri(self.HOST_REBOOT, self.reboot_host)
         http_server.register_async_uri(self.GET_PCI_DEVICES, self.get_pci_info)
         http_server.register_async_uri(self.CREATE_PCI_DEVICE_ROM_FILE, self.create_pci_device_rom_file)
         http_server.register_async_uri(self.GENERATE_SRIOV_PCI_DEVICES, self.generate_sriov_pci_devices)
