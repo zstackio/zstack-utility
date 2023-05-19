@@ -809,6 +809,7 @@ check_system(){
     echo ""
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     cat /etc/*-release |egrep -i -h "centos |Helix|Red Hat Enterprise|Alibaba|NeoKylin|Kylin Linux Advanced Server release V10|openEuler|UnionTech OS Server release 20 \(kongzi\)|NFSChina Server release 4.0.220727 \(RTM3\)|Rocky Linux" >>$ZSTACK_INSTALL_LOG 2>&1
+    if [ $? -eq 0 ]; then
         grep -qi 'CentOS release 6' /etc/system-release && OS="CENTOS6"
         grep -qi 'CentOS Linux release 7' /etc/system-release && OS="CENTOS7"
         grep -qi 'Red Hat Enterprise Linux Server release 7' /etc/system-release && OS="RHEL7"
