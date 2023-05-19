@@ -365,8 +365,6 @@ class HostNetworkBondingInventory(object):
             return None
 
 class HostNetworkInterfaceInventory(object):
-    __cache__ = dict()  # type: dict[str, list[int, HostNetworkInterfaceInventory]]
-
     def init(self, name, master=None, managementServerIp=None):
         super(HostNetworkInterfaceInventory, self).__init__()
         self.interfaceName = name
@@ -394,24 +392,9 @@ class HostNetworkInterfaceInventory(object):
             self._init_from_name(managementServerIp)
         self.driverType = None
 
-    @classmethod
-    def __get_cache__(cls, name):
-        # type: (str) -> HostNetworkInterfaceInventory
-        c = cls.__cache__.get(name)
-        if c is None:
-            return None
-        if (time.time() - c[0]) < 60:
-            c[1]._updateActiveState()
-            return c[1]
-        return None
-
     def __new__(cls, name, master=None, managementServerIp=None, *args, **kwargs):
-        o = cls.__get_cache__(name)
-        if o:
-            return o
         o = super(HostNetworkInterfaceInventory, cls).__new__(cls)
         o.init(name, master, managementServerIp)
-        cls.__cache__[name] = [int(time.time()), o]
         return o
 
     def _updateActiveState(self):
@@ -848,7 +831,6 @@ class HostPlugin(kvmagent.KvmAgent):
     ATTACH_VOLUME_PATH = "/host/volume/attach"
     DETACH_VOLUME_PATH = "/host/volume/detach"
 
-    host_network_facts_cache = {}  # type: dict[float, list[list, list]]
     cpu_sockets = 0
 
     def __init__(self):
@@ -1865,16 +1847,10 @@ done
     def get_host_network_facts(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetHostNetworkBongdingResponse()
-        cache = HostPlugin.__get_cache__()
-        if cache is not None:
-            rsp.bondings = cache[0]
-            rsp.nics = cache[1]
-            return jsonobject.dumps(rsp)
 
         rsp.bondings = self.get_host_networking_bonds(cmd.managementServerIp)
         rsp.nics = self.get_host_networking_interfaces(cmd.managementServerIp)
 
-        HostPlugin.__store_cache__(rsp.bondings, rsp.nics)
         return jsonobject.dumps(rsp)
 
     def _has_vlan_or_bridge(self, ifname):
@@ -1938,22 +1914,6 @@ done
                 rsp.success = False
             
         return jsonobject.dumps(rsp)
-
-    @classmethod
-    def __get_cache__(cls):
-        # type: () -> (list, list)
-        keys = cls.host_network_facts_cache.keys()
-        if keys is None or len(keys) == 0:
-            return None
-        if (time.time() - keys[0]) < 10:
-            return cls.host_network_facts_cache.get(keys[0])
-        return None
-
-    @classmethod
-    def __store_cache__(cls, bonds, nics):
-        # type: (list, list) -> None
-        cls.host_network_facts_cache.clear()
-        cls.host_network_facts_cache.update({time.time(): [bonds, nics]})
 
     @staticmethod
     def get_host_networking_interfaces(managementServerIp):
