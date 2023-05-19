@@ -447,10 +447,6 @@ class NetworkPlugin(kvmagent.KvmAgent):
                 for interface in reduce_items:
                     shell.call('/usr/local/bin/zs-nic-to-bond -d %s %s' % (cmd.bondName, interface))
 
-            # sync to collectd
-            config_file = '/var/lib/zstack/kvm/collectd.conf'
-            self._remove_interface_from_collectd_conf(config_file, cmd.bondName)
-            self._restart_collectd(config_file)
         except Exception as e:
             logger.warning(traceback.format_exc())
             rsp.error = 'unable to create bonding[%s], because %s' % (cmd.bondName, str(e))
@@ -472,6 +468,10 @@ class NetworkPlugin(kvmagent.KvmAgent):
                 # zs-bond -d bond2
                 shell.call('/usr/local/bin/zs-bond -d %s' % cmd.bondName)
 
+            # sync to collectd
+            config_file = '/var/lib/zstack/kvm/collectd.conf'
+            self._remove_interface_from_collectd_conf(config_file, cmd.bondName)
+            self._restart_collectd(config_file)
         except Exception as e:
             logger.warning(traceback.format_exc())
             rsp.error = 'unable to delete bonding[%s], because %s' % (cmd.bondName, str(e))
