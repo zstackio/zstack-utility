@@ -45,7 +45,9 @@ class TestSharedBlockPlugin(TestCase, SharedBlockPluginTestStub):
         # download image to shareblock
         print("debug")
         print ('lvcreate -ay --wipesignatures y --addtag zs::sharedblock::image --size 7995392b --name {} {}'.format(imageUuid, vgUuid))
-        r,o = bash.bash_ro('lvcreate -ay --wipesignatures y --addtag zs::sharedblock::image --size 7995392b --name {} {}'.format(imageUuid, vgUuid))
+        r,o = bash.bash_ro('lvcreate -asy --wipesignatures y --addtag zs::sharedblock::image --size 7995392b --name {} {}'.format(imageUuid, vgUuid))
+        self.assertEqual(0, r, "create lv failed, because {}".format(o))
+        r,o = bash.bash_ro('lvcreate -asy --wipesignatures y --size 4M --name {}_meta {}'.format(imageUuid, vgUuid))
         self.assertEqual(0, r, "create lv failed, because {}".format(o))
 
         # create volume

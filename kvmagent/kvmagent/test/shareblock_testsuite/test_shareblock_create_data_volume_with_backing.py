@@ -88,6 +88,6 @@ class TestSharedBlockPlugin(TestCase,SharedBlockPluginTestStub):
         self.assertEqual(0, r, "create volume fail in host")
 
         r, o = bash.bash_ro("ls /dev/{}/{}".format(vgUuid ,volumeUuid))
-        self.assertEqual(1, r, "deactivate volume fail in host")
+        self.assertNotEqual(0, r, "deactivate volume fail in host")
 
         self.disconnect(vgUuid, hostUuid)

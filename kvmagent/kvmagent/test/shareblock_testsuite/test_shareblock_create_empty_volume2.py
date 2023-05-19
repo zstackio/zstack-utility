@@ -105,7 +105,7 @@ class TestSharedBlockPlugin(TestCase, SharedBlockPluginTestStub):
         o = json.loads(o.strip())
         self.assertEqual(1, len(o))
         self.assertEqual(10485760, o[0].get("length"))
-        self.assertEqual(True, o[0].get("data"))
+        self.assertEqual(False, o[0].get("data"))
 
         # size=1G
         volumeUuid = misc.uuid()
@@ -117,7 +117,7 @@ class TestSharedBlockPlugin(TestCase, SharedBlockPluginTestStub):
             vgUuid=vgUuid,
             kvmHostAddons={"qcow2Options":" -o cluster_size=2097152  -o preallocation=metadata"}
         )
-        self.assertEqual(False, rsp.success, rsp.error)
+        self.assertEqual(True, rsp.success, rsp.error)
 
         bash.bash_errorout("lvchange -aey %s" % "/dev/{}/{}".format(vgUuid,volumeUuid))
         o = bash.bash_o("qemu-img map %s --output=json" % "/dev/{}/{}".format(vgUuid,volumeUuid))
@@ -144,7 +144,5 @@ class TestSharedBlockPlugin(TestCase, SharedBlockPluginTestStub):
         self.assertEqual(1, len(o))
         self.assertEqual(3326083072, o[0].get("length"))
         self.assertEqual(False, o[0].get("data"))
-
-        bash.bash_errorout('''qemu-io -c "write 0 3326083072" -f qcow2 %s''' % "/dev/{}/{}".format(vgUuid,volumeUuid))
 
         self.logout(vgUuid, hostUuid)

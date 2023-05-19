@@ -84,7 +84,7 @@ class TestSharedBlockPlugin(TestCase, SharedBlockPluginTestStub):
 
         rsp = sharedblock_utils.sharedblock_offline_merge_snapshots(
             fullRebase=True,
-            srcPath=None,
+            srcPath="sharedblock://{}/{}".format(vgUuid,"xxxxxxxxxx"),
             destPath="sharedblock://{}/{}".format(vgUuid,volumeUuid2),
             volumeUuid=volumeUuid2,
             vgUuid=vgUuid
