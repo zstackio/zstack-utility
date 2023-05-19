@@ -68,6 +68,9 @@ class PeriodicTimer(object):
 
     def cancel(self):
         self.thread.cancel()
+
+    def is_alive(self):
+        return self.thread.is_alive()
         
 def timer(interval, function, args=[], kwargs={}, stop_on_exception=True):
     return PeriodicTimer(interval, function, args, kwargs, stop_on_exception)
