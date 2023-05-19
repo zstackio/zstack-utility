@@ -1622,16 +1622,23 @@ class VmVolumesRecoveryTask(plugin.TaskDaemon):
         return disk_ele
 
     def do_copy_and_wait(self, target_dev, disk_ele, params, flags):
+        install_path = self.get_source_file(disk_ele)
         disk_ele = self.add_backing_chain_to_disk(disk_ele)
         diskxml = etree.tostring(disk_ele)
 
         logger.info("[%d/%d] will recover %s with: %s" % (self.idx+1, self.total, target_dev, diskxml))
         self.domain.blockCopy(target_dev, diskxml, params, flags)
         msg = self.wait_and_pivot(target_dev)
+
+        vm = get_vm_by_uuid(self.vmUuid)
+        disk, disk_name =vm._get_target_disk_by_path(install_path, is_exception=False)
         if msg is not None:
             raise kvmagent.KvmError(msg)
         if self.cancelled:
             raise kvmagent.KvmError('Recovery cancelled for VM: %s' % self.vmUuid)
+        if disk_name is None and disk is None:
+            raise kvmagent.KvmError("libvirt return recovery vm successfully, but it is failure actually! "
+                     "because unable to find volume[installPath:%s] on vm[uuid:%s]" % (install_path, self.vmUuid))
 
     def do_recover_with_rvols(self, params, flags):
         for target_dev, disk_ele in self.rvols.items():
