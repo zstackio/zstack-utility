@@ -118,7 +118,6 @@ class Cli(object):
     LOGIN_BY_CAS_MESSAGE_NAME = 'APILogInByCasMsg'
     GET_LOGIN_CAPTCHA = 'APIGetLoginCaptchaMsg'
     GET_LOGIN_PROCEDURES_MESSAGE_NAME = 'APIGetLoginProceduresMsg'
-    CREATE_DATA_VOLUME_TEMPLATE_NAME = 'APICreateDataVolumeTemplateFromVolumeMsg'
     no_session_message = [LOGIN_MESSAGE_NAME, LOGIN_BY_USER_NAME, LOGIN_BY_LDAP_MESSAGE_NAME,
                           GET_TWO_FACTOR_AUTHENTICATION_SECRET, GET_TWO_FACTOR_AUTHENTICATION_STATE, LOGIN_BY_USER_IAM2,
                           GET_LICENSE_INFO, LOGIN_BY_LDAP_IAM2_NAME, LOGIN_BY_CAS_MESSAGE_NAME, GET_LOGIN_CAPTCHA,
@@ -592,10 +591,6 @@ Parse command parameters error:
             if apiname == self.LOGOUT_MESSAGE_NAME:
                 if not msg.sessionUuid:
                     setattr(msg, 'sessionUuid', self.session_uuid)
-
-            if apiname == self.CREATE_DATA_VOLUME_TEMPLATE_NAME:
-                if not msg.timeout:
-                    setattr(msg, 'timeout', 86400000)
 
             start_time = time.time()
             (name, event) = self.api.async_call_wait_for_complete(msg, apievent=event, fail_soon=True)
