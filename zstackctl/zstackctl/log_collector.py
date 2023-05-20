@@ -1,19 +1,19 @@
 #!/usr/bin/env python
 # encoding: utf-8
 
+import datetime
 import io
 import os
 import threading
-import xml.etree.ElementTree as etree
-from datetime import timedelta
 
-import yaml
 from termcolor import colored
+import xml.etree.ElementTree as etree
+import yaml
 
-import zstackctl.ctl
 from utils import linux
 from utils import shell
 from utils.sql_query import MySqlCommandLineQuery
+import zstackctl.ctl
 from zstacklib import *
 
 
@@ -22,7 +22,7 @@ def info_verbose(*msg):
         out = '%s\n' % ''.join(msg)
     else:
         out = ''.join(msg)
-    now = datetime.now()
+    now = datetime.datetime.now()
     out = "%s " % now.strftime('%Y-%m-%d %H:%M:%S') + out
     sys.stdout.write(out)
     logger.info(out)
@@ -33,7 +33,7 @@ def collect_fail_verbose(*msg):
         out = '%s\n' % ''.join(msg)
     else:
         out = ''.join(msg)
-    now = datetime.now()
+    now = datetime.datetime.now()
     out = "%s " % now.strftime('%Y-%m-%d %H:%M:%S') + out
     return out
 
@@ -279,7 +279,6 @@ class CollectFromYml(object):
     check = False
     check_result = {}
     max_thread_num = 20
-    vrouter_task_list = []
     DEFAULT_ZSTACK_HOME = '/usr/local/zstack/apache-tomcat/webapps/zstack/'
     HA_KEEPALIVED_CONF = "/etc/keepalived/keepalived.conf"
     summary = Summary()
@@ -685,8 +684,7 @@ class CollectFromYml(object):
 
     def add_collect_thread(self, type, params):
         if "vrouter" in params:
-            self.vrouter_task_list.append(params)
-            return
+            params.append(self.vrouter_tmp_log_path)
 
         if type == self.host_type:
             thread = threading.Thread(target=self.get_host_log, args=(params))
@@ -705,11 +703,6 @@ class CollectFromYml(object):
                     break
         for t in self.threads:
             t.join(timeout)
-
-        if len(self.vrouter_task_list) > 0:
-            info_verbose("Start collecting vrouter log...")
-            for param in self.vrouter_task_list:
-                self.get_host_log(param[0], param[1], param[2], param[3], self.vrouter_tmp_log_path)
 
     def get_mn_list(self):
         def find_value_from_conf(content, key, begin, end):
@@ -790,7 +783,7 @@ class CollectFromYml(object):
                             self.check_result[key] = output
         else:
             info_verbose("Collecting log from %s localhost ..." % type)
-            start = datetime.now()
+            start = datetime.datetime.now()
             local_collect_dir = collect_dir + '%s-%s/' % (type, get_default_ip())
             try:
                 # file system broken shouldn't block collect log process
@@ -851,7 +844,7 @@ class CollectFromYml(object):
                 linux.rm_dir_force(local_collect_dir)
                 self.failed_flag = True
                 return 1
-            end = datetime.now()
+            end = datetime.datetime.now()
             total_collect_time = str(round((end - start).total_seconds(), 1)) + 's'
             self.summary.add_collect_time(type, get_default_ip(), CollectTime(start, end, total_collect_time))
             command = 'test "$(ls -A "%s" 2>/dev/null)" || echo The directory is empty' % local_collect_dir
@@ -941,7 +934,7 @@ class CollectFromYml(object):
                                 self.check_result[key] = output
             else:
                 info_verbose("Collecting log from %s %s ..." % (type, host_post_info.host))
-                start = datetime.now()
+                start = datetime.datetime.now()
                 local_collect_dir = collect_dir + '%s-%s/' % (type, host_post_info.host)
                 tmp_log_dir = "%s/%s-tmp-log/" % (tmp_path, type)
                 try:
@@ -1016,7 +1009,7 @@ class CollectFromYml(object):
                     run_remote_command(command, host_post_info)
                     return 1
 
-                end = datetime.now()
+                end = datetime.datetime.now()
                 total_collect_time = str(round((end - start).total_seconds(), 1)) + 's'
                 self.summary.add_collect_time(
                     type, host_post_info.host, CollectTime(start, end, total_collect_time))
@@ -1092,7 +1085,7 @@ class CollectFromYml(object):
     def param_validate(self, args):
         if args.since is None:
             if args.from_date is None:
-                self.f_date = (datetime.now() + timedelta(days=-1)).strftime('%Y-%m-%d:%H:%M:%S')
+                self.f_date = (datetime.datetime.now() + datetime.timedelta(days=-1)).strftime('%Y-%m-%d:%H:%M:%S')
             elif args.from_date == '-1':
                 self.f_date = '0000-00-00:00:00'
             else:
@@ -1100,18 +1093,18 @@ class CollectFromYml(object):
             if args.to_date is not None and args.to_date != '-1':
                 self.t_date = self.format_date(args.to_date)
             else:
-                self.t_date = datetime.now().strftime('%Y-%m-%d:%H:%M:%S')
+                self.t_date = datetime.datetime.now().strftime('%Y-%m-%d:%H:%M:%S')
         else:
             try:
                 if args.since.endswith('d') or args.since.endswith('D'):
-                    self.f_date = (datetime.now() + timedelta(days=float('-%s' % (args.since[:-1])))).strftime(
+                    self.f_date = (datetime.datetime.now() + datetime.timedelta(days=float('-%s' % (args.since[:-1])))).strftime(
                         '%Y-%m-%d:%H:%M:%S')
                 elif args.since.endswith('h') or args.since.endswith('H'):
-                    self.f_date = (datetime.now() + timedelta(
+                    self.f_date = (datetime.datetime.now() + datetime.timedelta(
                         days=float('-%s' % round(float(args.since[:-1]) / 24, 2)))).strftime('%Y-%m-%d:%H:%M:%S')
                 else:
                     error_verbose("error since format:[%s], correct format example '--since 2d'" % args.since)
-                self.t_date = datetime.now().strftime('%Y-%m-%d:%H:%M:%S')
+                self.t_date = datetime.datetime.now().strftime('%Y-%m-%d:%H:%M:%S')
             except ValueError:
                 error_verbose("error since format:[%s], correct format example '--since 2d'" % args.since)
 

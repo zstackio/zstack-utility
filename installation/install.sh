@@ -33,7 +33,7 @@ export TERM=xterm
 
 OS=''
 IS_UBUNTU='n'
-REDHAT_OS="CENTOS6 CENTOS7 RHEL7 ALIOS7 ISOFT4 KYLIN10 EULER20 UOS1020A NFS4"
+REDHAT_OS="CENTOS6 CENTOS7 RHEL7 ALIOS7 ISOFT4 KYLIN10 EULER20 UOS1020A NFS4 ROCKY8"
 DEBIAN_OS="UBUNTU14.04 UBUNTU16.04 UBUNTU KYLIN4.0.2 DEBIAN9 UOS20"
 KYLIN_V10_OS="ky10sp1 ky10sp2 ky10sp3"
 XINCHUANG_OS="$KYLIN10_OS uos20"
@@ -808,7 +808,7 @@ check_system(){
     echo_title "Check System"
     echo ""
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
-    cat /etc/*-release |egrep -i -h "centos |Red Hat Enterprise|Alibaba|NeoKylin|Kylin Linux Advanced Server release V10|openEuler|UnionTech OS Server release 20 \(kongzi\)|NFSChina Server release 4.0.220727 \(RTM3\)" >>$ZSTACK_INSTALL_LOG 2>&1
+    cat /etc/*-release |egrep -i -h "centos |Red Hat Enterprise|Alibaba|NeoKylin|Kylin Linux Advanced Server release V10|openEuler|UnionTech OS Server release 20 \(kongzi\)|NFSChina Server release 4.0.220727 \(RTM3\)|Rocky Linux" >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -eq 0 ]; then
         grep -qi 'CentOS release 6' /etc/system-release && OS="CENTOS6"
         grep -qi 'CentOS Linux release 7' /etc/system-release && OS="CENTOS7"
@@ -820,6 +820,7 @@ check_system(){
         grep -qi 'openEuler release 20.03 (LTS-SP1)' /etc/system-release && OS="EULER20"
         grep -qi 'UnionTech OS Server release 20 (kongzi)' /etc/system-release && OS="UOS1020A"
         grep -qi 'NFSChina Server release 4.0.220727 (RTM3)' /etc/system-release && OS="NFS4"
+        grep -qi 'Rocky Linux release 8.4 (Green Obsidian)' /etc/system-release && OS="ROCKY8"
         if [[ -z "$OS" ]];then
             fail2 "Host OS checking failure: your system is: `cat /etc/redhat-release`, $PRODUCT_NAME management node only supports $SUPPORTED_OS currently"
         elif [[ $OS == "CENTOS7" ]];then
@@ -897,6 +898,7 @@ cs_check_python_installed(){
     which python2 >/dev/null 2>&1
     [ $? -ne 0 ] && yum --disablerepo=* --enablerepo=zstack-local install -y python2 >/dev/null 2>&1
     [ ! -f /usr/bin/python -a -f /usr/bin/python2 ] && ln -s /usr/bin/python2 /usr/bin/python
+    [ ! -f /usr/bin/easy_install -a -f /usr/bin/easy_install-2 ] && ln -s /usr/bin/easy_install-2 /usr/bin/easy_install
 }
 
 cs_check_epel(){
@@ -1149,6 +1151,22 @@ ia_install_pip(){
     pass
 }
 
+ia_install_ansible_package(){
+    if [ ! -z $DEBUG ]; then
+        pip install -i $pypi_source_pip --trusted-host localhost --ignore-installed ansible 
+    else
+        pip install -i $pypi_source_pip --trusted-host localhost --ignore-installed ansible >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+}
+
+ia_upgrade_setuptools_package(){
+    if [ ! -z $DEBUG ]; then
+        pip install -i $pypi_source_pip --trusted-host localhost -U setuptools 
+    else
+        pip install -i $pypi_source_pip --trusted-host localhost -U setuptools >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+}
+
 ia_install_ansible(){
     echo_subtitle "Install Ansible"
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
@@ -1158,11 +1176,12 @@ ia_install_ansible(){
         apt-get --assume-yes remove ansible >>$ZSTACK_INSTALL_LOG 2>&1
     fi
 
-    if [ ! -z $DEBUG ]; then
-        pip install -i $pypi_source_pip --trusted-host localhost --ignore-installed ansible 
-    else
-        pip install -i $pypi_source_pip --trusted-host localhost --ignore-installed ansible >>$ZSTACK_INSTALL_LOG 2>&1
+    ia_install_ansible_package
+    if [ $? -ne 0 ]; then
+        ia_upgrade_setuptools_package
+        ia_install_ansible_package
     fi
+
     [ $? -ne 0 ] && fail "install Ansible failed"
     do_config_ansible
     pass
@@ -1590,7 +1609,6 @@ is_install_general_libs_rh(){
             wget \
             nfs-utils \
             rpcbind \
-            vconfig \
             vim-minimal \
             python2-devel \
             gcc \
@@ -1615,7 +1633,6 @@ is_install_general_libs_rh(){
             net-tools \
             bash-completion \
             dmidecode \
-            MySQL-python \
             ipmitool \
             nginx \
             nginx-all-modules \
@@ -2675,6 +2692,7 @@ cs_enable_zstack_service(){
     echo_subtitle "Enable ${PRODUCT_NAME} bootstrap service"
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     if [ -f /bin/systemctl ]; then
+        systemctl enable --now mariadb 2>/dev/null
         cat > /etc/systemd/system/zstack.service <<EOF
 [Unit]
 Description=zstack Service
@@ -3267,6 +3285,7 @@ name=zstack-local
 baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0
 gpgcheck=0
 enabled=1
+module_hotfixes=true
 EOF
 
 repo_file=/etc/yum.repos.d/qemu-kvm-ev.repo
@@ -3277,6 +3296,7 @@ name=Qemu KVM EV
 baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0/Extra/qemu-kvm-ev
 gpgcheck=0
 enabled=0
+module_hotfixes=true
 EOF
 
 repo_file=/etc/yum.repos.d/mlnx-ofed.repo
@@ -3297,6 +3317,7 @@ name=Ceph
 baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0/Extra/ceph
 gpgcheck=0
 enabled=0
+module_hotfixes=true
 EOF
 
 repo_file=/etc/yum.repos.d/galera.repo
@@ -3307,6 +3328,7 @@ name = MariaDB
 baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0/Extra/galera
 gpgcheck=0
 enabled=0
+module_hotfixes=true
 EOF
 
 repo_file=/etc/yum.repos.d/virtio-win.repo
@@ -3317,6 +3339,7 @@ name=virtio-win
 baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0/Extra/virtio-win
 gpgcheck=0
 enabled=0
+module_hotfixes=true
 EOF
 
 # Fixes ZSTAC-18536: delete invalid repo file virt-win.repo
@@ -4057,22 +4080,22 @@ fi
 
 ## set ln
 cloudCtlPath="/usr/bin/cloud-ctl"
-if [[ ! -f "$cloudCtlPath" ]]; then
+if [[ ! -f "$cloudCtlPath" && ! -L "$cloudCtlPath" ]]; then
   ln -s /usr/bin/zstack-ctl $cloudCtlPath
 fi
 
 cloudCliPath="/usr/bin/cloud-cli"
-if [[ ! -f "$cloudCliPath" ]]; then
+if [[ ! -f "$cloudCliPath" && ! -L "$cloudCliPath" ]]; then
   ln -s /usr/bin/zstack-cli $cloudCliPath
 fi
 
 productCtlPath="/usr/bin/${PRODUCT_NAME,,}-ctl"
-if [[ ! -f "$productCtlPath" ]]; then
+if [[ ${PRODUCT_NAME,,} != "zstack" && ! -f "$productCtlPath" ]]; then
   ln -s /usr/bin/zstack-ctl $productCtlPath
 fi
 
 productCliPath="/usr/bin/${PRODUCT_NAME,,}-cli"
-if [[ ! -f "$productCliPath" ]]; then
+if [[ ${PRODUCT_NAME,,} != 'zstack' && ! -f "$productCliPath" ]]; then
   ln -s /usr/bin/zstack-cli $productCliPath
 fi
 
