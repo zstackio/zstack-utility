@@ -371,6 +371,10 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
                     rsp.success = False
                     break
 
+            if cmd.independentPath:
+                dst_path = os.path.join(dst_folder_path, os.path.relpath(cmd.independentPath, cmd.srcFolderPath))
+                linux.qcow2_rebase("", dst_path)
+
             if not cmd.isMounted:
                 linux.umount(mount_path)
         finally:
