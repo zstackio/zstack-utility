@@ -1005,9 +1005,13 @@ def qcow2_convert_to_raw(src, dst):
     shell.call('%s -f qcow2 -O raw %s %s' % (qemu_img.subcmd('convert'), src, dst))
 
 def qcow2_rebase(backing_file, target):
-    fmt = get_img_fmt(backing_file)
+    if backing_file:
+        fmt = get_img_fmt(backing_file)
+        backing_option = '-F %s -b "%s"' % (fmt, backing_file)
+    else:
+        backing_option = '-b "%s"' % backing_file
     with TempAccessible(target):
-        shell.call('%s -F %s -f qcow2 -b %s %s' % (qemu_img.subcmd('rebase'), fmt, backing_file, target))
+        shell.call('%s -f qcow2 %s %s' % (qemu_img.subcmd('rebase'), backing_option, target))
 
 def qcow2_rebase_no_check(backing_file, target, backing_fmt=None):
     fmt = backing_fmt if backing_fmt else get_img_fmt(backing_file)
