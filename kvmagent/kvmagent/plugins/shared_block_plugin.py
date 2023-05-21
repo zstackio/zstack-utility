@@ -1451,7 +1451,6 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                     target_ps_uuid = get_primary_storage_uuid_from_install_path(struct.targetInstallPath)
 
                     current_backing_file = linux.qcow2_get_backing_file(current_abs_path)  # type: str
-                    target_backing_file = current_backing_file.replace(previous_ps_uuid, target_ps_uuid)
 
                     if struct.compareQcow2 and not struct.independent:
                         if linux.get_img_fmt(current_abs_path) == "qcow2":
@@ -1461,7 +1460,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
                         logger.info("start to compare hash value between %s add %s" % (current_abs_path, target_abs_path))
                         linux.compare_segmented_xxhash(current_abs_path, target_abs_path, int(lvm.get_lv_size(target_abs_path)), raise_exception=True, blocksize=10485760)
-                    if current_backing_file is not None and current_backing_file != "":
+                    if current_backing_file and not struct.independent:
+                        target_backing_file = current_backing_file.replace(previous_ps_uuid, target_ps_uuid)
                         lvm.active_lv(target_backing_file, lvm.LvmlockdLockType.SHARE)
                         logger.debug("rebase %s to %s" % (target_abs_path, target_backing_file))
                         linux.qcow2_rebase_no_check(target_backing_file, target_abs_path)
