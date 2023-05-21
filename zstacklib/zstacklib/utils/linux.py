@@ -770,7 +770,7 @@ def scp_download(hostname, sshkey, src_filepath, dst_filepath, host_account='roo
         if not os.path.exists(dst_dir):
             os.makedirs(dst_dir)
         scp_cmd = 'scp {7} {6} -P {0} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {1} {2}@{3}:{4} {5}'\
-            .format(sshPort, sshkey_file, host_account, hostname, shellquote(src_filepath), dst_filepath, bandWidth, filename_check_option)
+            .format(sshPort, sshkey_file, host_account, hostname, shellquote(src_filepath).replace(" ", "\\ "), dst_filepath, bandWidth, filename_check_option)
         shell.call(scp_cmd)
         os.chmod(dst_filepath, 0o664)
     finally:
