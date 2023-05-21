@@ -1622,23 +1622,17 @@ class VmVolumesRecoveryTask(plugin.TaskDaemon):
         return disk_ele
 
     def do_copy_and_wait(self, target_dev, disk_ele, params, flags):
-        install_path = self.get_source_file(disk_ele)
         disk_ele = self.add_backing_chain_to_disk(disk_ele)
         diskxml = etree.tostring(disk_ele)
 
         logger.info("[%d/%d] will recover %s with: %s" % (self.idx+1, self.total, target_dev, diskxml))
+        # see ZSTAC-54725: after BlockCopy completed, need double check xml results
         self.domain.blockCopy(target_dev, diskxml, params, flags)
         msg = self.wait_and_pivot(target_dev)
-
-        vm = get_vm_by_uuid(self.vmUuid)
-        disk, disk_name =vm._get_target_disk_by_path(install_path, is_exception=False)
         if msg is not None:
             raise kvmagent.KvmError(msg)
         if self.cancelled:
             raise kvmagent.KvmError('Recovery cancelled for VM: %s' % self.vmUuid)
-        if disk_name is None and disk is None:
-            raise kvmagent.KvmError("libvirt return recovery vm successfully, but it is failure actually! "
-                     "because unable to find volume[installPath:%s] on vm[uuid:%s]" % (install_path, self.vmUuid))
 
     def do_recover_with_rvols(self, params, flags):
         for target_dev, disk_ele in self.rvols.items():
@@ -6559,6 +6553,24 @@ class VmPlugin(kvmagent.KvmAgent):
             logger.info("reconstructing recovery task for VM: " + cmd.vmUuid)
             return True, VmVolumesRecoveryTask(cmd, rvols)
 
+        def check_device_in_xml(install_path):
+            if install_path is None:
+                return False
+            vm = get_vm_by_uuid(cmd.vmUuid)
+            disk, disk_name = vm._get_target_disk_by_path(install_path, is_exception=False)
+            return disk_name is not None or disk is not None
+
+        # fix ZSTAC-54725: after recovery completed, need double check xml results
+        def check_volume_recover_results():
+            for volume in cmd.volumes:
+                xml_path = volume.installPath.split('?', 1)[0]
+                u = urlparse.urlparse(xml_path)
+                if u.scheme is not None:
+                    xml_path = xml_path.lstrip(u.scheme).lstrip('://')
+                if not linux.wait_callback_success(check_device_in_xml, xml_path, interval=2, timeout=10):
+                    raise kvmagent.KvmError("libvirt return recovery vm successfully, but it is failure actually! "
+                                            "because unable to find volume[installPath:%s] on vm[uuid:%s]" % (
+                                                xml_path, cmd.vmUuid))
 
         logger.info("recovering VM: " + cmd.vmUuid)
         rvols = VM_RECOVER_DICT.pop(cmd.vmUuid, None)
@@ -6569,6 +6581,7 @@ class VmPlugin(kvmagent.KvmAgent):
                 with t:
                     VM_RECOVER_TASKS[cmd.vmUuid] = t
                     t.recover_vm_volumes()
+                    check_volume_recover_results()
 
                 logger.info("recovery completed. VM: " + cmd.vmUuid)
             finally:
