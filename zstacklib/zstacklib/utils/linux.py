@@ -1120,6 +1120,22 @@ def qcow2_fill(seek, length, path, raise_excpetion=False):
     cmd(raise_excpetion)
     logger.debug("qcow2_fill return code: %s, stdout: %s, stderr: %s" % (cmd.return_code, cmd.stdout, cmd.stderr))
 
+def qcow2_discard(path):
+    virtual_size = int(qcow2_get_virtual_size(path))
+    cmd = shell.ShellCmd('''
+#!/bin/bash
+i=0
+while(($i < {0}))
+do
+qemu-io -c "discard $[i*2145386496] 2145386496" -f qcow2 -d unmap {1}
+let i+=1
+done
+qemu-io -c "discard $[i*2145386496] {2}" -f qcow2 -d unmap {1}
+    '''.format(virtual_size / 2145386496, path, virtual_size % 2145386496))
+
+    cmd(False)
+    logger.debug("qcow2 discard return code: %s, stderr: %s" % (cmd.return_code, cmd.stderr))
+
 def qcow2_measure_required_size(path):
     out = shell.call("/usr/bin/qemu-img measure -f qcow2 -O qcow2 %s | grep 'required size' | cut -d ':' -f 2" % path)
     return long(out.strip(' \t\r\n'))
