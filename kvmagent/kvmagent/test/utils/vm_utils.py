@@ -118,7 +118,8 @@ startVmCmdBody = {
     "predefinedPciBridgeNum": 0,
     "kvmHostAddons": {
         "qcow2Options": " -o cluster_size=2097152 "
-    }
+    },
+    "x2apic": True
 }
 
 migrate_vm_cmd_body = {
