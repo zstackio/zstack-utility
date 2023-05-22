@@ -4261,7 +4261,7 @@ class Vm(object):
                         if cmd.vmCpuModel == 'Hygon_Customized':
                             cpu = e(root, 'cpu')
                         else:
-                            cpu = e(root, 'cpu', attrib={'mode': 'custom', 'match': 'minimum'})
+                            cpu = e(root, 'cpu', attrib={'mode': 'custom'})
                             e(cpu, 'model', cmd.vmCpuModel, attrib={'fallback': 'allow'})
                     else:
                         cpu = e(root, 'cpu')
@@ -4284,7 +4284,7 @@ class Vm(object):
                         cpu = e(root, 'cpu', attrib={'mode': 'host-model'})
                         e(cpu, 'model', attrib={'fallback': 'allow'})
                     elif cmd.nestedVirtualization == 'custom':
-                        cpu = e(root, 'cpu', attrib={'mode': 'custom', 'match': 'minimum'})
+                        cpu = e(root, 'cpu', attrib={'mode': 'custom'})
                         e(cpu, 'model', cmd.vmCpuModel, attrib={'fallback': 'allow'})
                     else:
                         cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
@@ -4407,13 +4407,13 @@ class Vm(object):
                     return
 
                 cpu = root.find('cpu')
-                if not cmd.x2apic:
+                if cmd.x2apic is False:
                     # http://jira.zstack.io/browse/ZSTAC-50418
                     # for cpu mode is none, there are too many uncertain factors, so the feature will not be set.
 
                     e(cpu, 'feature', attrib={'name': 'x2apic', 'policy': 'disable'})
 
-                if not cmd.cpuHypervisorFeature:
+                if cmd.cpuHypervisorFeature is False:
                     e(cpu, 'feature', attrib={'name': 'hypervisor', 'policy': 'disable'})
 
             make_cpu_features()
