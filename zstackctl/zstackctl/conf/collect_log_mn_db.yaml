@@ -18,7 +18,7 @@ mn:
       - {name: cli-logs, dir: /var/log/zstack/, file: 'zstack-cli*'}
       - {name: dashboard-logs, dir: /var/log/zstack/, file: 'zstack-dashboard.log*'}
       - {name: zstack-console-logs, dir: /var/log/zstack/, file: 'zstack-console-proxy*'}
-      - {name: dmesg-logs, dir: /var/log/, file: 'dmesg*'}
+      - {name: dmesg-logs, exec: 'dmesg'}
       - {name: message-logs, dir: /var/log/, file: messages*}
       - {name: route-logs, exec: 'route -n'}
       - {name: iptables-logs, exec: 'iptables-save'}
