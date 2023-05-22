@@ -6468,11 +6468,18 @@ class CollectLogCmd(Command):
 
 
 def is_hyper_converged_host():
-    r, o = commands.getstatusoutput("bootstrap is_deployed")
-    if r != 0 or o.strip() != "true":
+    if not os.path.exists("/usr/local/hyperconverged"):
         return False
-    return True
-
+    
+    # Compatible with lower versions
+    if os.path.exists("/usr/local/hyperconverged/conf/host_info.json"):
+        return True
+    
+    if os.path.exists("/usr/local/hyperconverged/conf/deployed_info"):
+        return True
+    
+    return False
+    
 
 def get_hci_detail_version():
     detailed_version_file = "/usr/local/hyperconverged/conf/VERSION"
