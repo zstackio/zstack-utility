@@ -2477,7 +2477,8 @@ class Vm(object):
                 rsp.vncPort = g.port_
                 rsp.protocol = "vnc"
             elif g.type_ == 'spice':
-                rsp.spicePort = g.port_
+                if g.hasattr('port_'):
+                    rsp.spicePort = g.port_
                 if g.hasattr('tlsPort_'):
                     rsp.spiceTlsPort = g.tlsPort_
                 rsp.protocol = "spice"
@@ -6022,7 +6023,8 @@ class VmPlugin(kvmagent.KvmAgent):
                     cmd.vmInstanceUuid, cmd.vmName, str(e)))
 
             # c.f. http://jira.zstack.io/browse/ZSTAC-54965
-            if "could not find capabilities for domaintype=kvm" in str(e.message):
+            if "could not find capabilities for domaintype=kvm" in str(e.message) \
+                    or "does not support virt type 'kvm'" in str(e.message):
                 # check kvm is available
                 if not os.path.exists("/dev/kvm"):
                     raise kvmagent.KvmError(
