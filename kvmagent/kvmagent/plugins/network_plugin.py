@@ -350,9 +350,10 @@ class NetworkPlugin(kvmagent.KvmAgent):
         with open(config_file, 'r') as f:
             config_lines = f.readlines()
 
-        start_index = config_lines.index('Interface "{}"\n'.format(interface_name))
-        end_index = config_lines.index('</Plugin>\n', start_index) + 1
-        del config_lines[start_index:end_index]
+        for i, line in enumerate(config_lines):
+            if line.strip() == 'Interface "{}"'.format(interface_name):
+                del config_lines[i]
+                break
 
         with open(config_file, 'w') as f:
             f.writelines(config_lines)
