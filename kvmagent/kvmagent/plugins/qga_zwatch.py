@@ -71,7 +71,7 @@ class ZWatchMetricMonitor(kvmagent.KvmAgent):
         try:
             if self.state:
                 while True:
-                    if not self.state:
+                    if not self.state or http.AsyncUirHandler.STOP_WORLD:
                         break
                     logger.debug('update vm list')
                     domains = get_domains()
