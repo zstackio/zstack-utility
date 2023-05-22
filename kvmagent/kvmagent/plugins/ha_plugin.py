@@ -1360,8 +1360,7 @@ class HaPlugin(kvmagent.KvmAgent):
         def _is_fencer_args_changed(cmd):
             if cmd.interval == self.sblk_health_checker.health_check_interval and \
                 cmd.storageCheckerTimeout == self.sblk_health_checker.storage_timeout and \
-                    cmd.maxAttempts == self.sblk_health_checker.max_failure and \
-                    fencer_list == self.sblk_health_checker.fencer_list:
+                    cmd.maxAttempts == self.sblk_health_checker.max_failure:
                 return False
             return True
 
@@ -1382,11 +1381,11 @@ class HaPlugin(kvmagent.KvmAgent):
                 self.sblk_health_checker.storage_timeout = cmd.storageCheckerTimeout
                 self.sblk_health_checker.max_failure = cmd.maxAttempts
                 self.sblk_health_checker.host_uuid = cmd.hostUuid
-                self.sblk_health_checker.fencer_list = fencer_list
                 self.sblk_health_checker.ps_uuid = cmd.vgUuid
-            if not self.sblk_fencer_running:
+            if not self.sblk_fencer_running or set(fencer_list) != set(self.sblk_health_checker.fencer_list):
                 logger.debug("sharedblock fencer start with vg [%s %s]" % (
                     (cmd.vgUuid, jsonobject.dumps(self.sblk_health_checker.get_vg_fencer_cmd(cmd.vgUuid)))))
+                self.sblk_health_checker.fencer_list = fencer_list
                 heartbeat_on_sharedblock()
                 self.sblk_fencer_running = True
             else:
