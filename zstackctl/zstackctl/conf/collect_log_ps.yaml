@@ -4,7 +4,7 @@ ceph-ps:
     list: {exec: "select hostname from CephPrimaryStorageMonVO"}
     logs:
       - {name: cephps-log, dir: /var/log/zstack/, file: ceph-primarystorage*}
-      - {name: dmesg-logs, dir: /var/log/, file: 'dmesg*'}
+      - {name: dmesg-logs, exec: 'dmesg'}
       - {name: message-logs, dir: /var/log/, file: messages*}
       - {name: route-logs, exec: 'route -n'}
       - {name: iptables-logs, exec: 'iptables-save'}
