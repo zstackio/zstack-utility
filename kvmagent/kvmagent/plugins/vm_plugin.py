@@ -2331,7 +2331,8 @@ class Vm(object):
                 rsp.vncPort = g.port_
                 rsp.protocol = "vnc"
             elif g.type_ == 'spice':
-                rsp.spicePort = g.port_
+                if g.hasattr('port_'):
+                    rsp.spicePort = g.port_
                 if g.hasattr('tlsPort_'):
                     rsp.spiceTlsPort = g.tlsPort_
                 rsp.protocol = "spice"
