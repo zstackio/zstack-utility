@@ -6022,7 +6022,8 @@ class VmPlugin(kvmagent.KvmAgent):
                     cmd.vmInstanceUuid, cmd.vmName, str(e)))
 
             # c.f. http://jira.zstack.io/browse/ZSTAC-54965
-            if "could not find capabilities for domaintype=kvm" in str(e.message):
+            if "could not find capabilities for domaintype=kvm" in str(e.message) \
+                    or "does not support virt type 'kvm'" in str(e.message):
                 # check kvm is available
                 if not os.path.exists("/dev/kvm"):
                     raise kvmagent.KvmError(
