@@ -188,7 +188,7 @@ class SanlockHealthChecker(object):
 last_multipath_run = time.time()
 QEMU_VERSION = qemu.get_version()
 LIBVIRT_VERSION = linux.get_libvirt_version()
-
+CEPH_HA_CONF = "ceph_ha.conf"
 
 def clean_network_config(vm_uuids):
     for c in kvmagent.ha_cleanup_handlers:
@@ -745,9 +745,13 @@ class HaPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def setup_ceph_self_fencer(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        mon_url = '\;'.join(cmd.monUrls)
-        mon_url = mon_url.replace(':', '\\\:')
 
+        def remove_mon_ip_from_urls():
+            host_ips = linux.get_dst_ip_from_ip_routers()
+            mon_url = [monurl for monurl in cmd.monUrls if not any(monurl.split(":")[0] in host_ip for host_ip in host_ips)]
+            return mon_url if mon_url else cmd.monUrls
+
+        mon_urls = remove_mon_ip_from_urls()
         created_time = time.time()
 
         def get_fencer_key(ps_uuid, pool_name):
@@ -787,7 +791,9 @@ class HaPlugin(kvmagent.KvmAgent):
             ceph_controller.fencer_triggered_callback = self.report_self_fencer_triggered
 
             try:
-                conf_path, keyring_path, username = ceph.update_ceph_client_access_conf(ps_uuid, cmd.monUrls, cmd.userKey, cmd.manufacturer, cmd.fsId)
+                conf_path, keyring_path, username = ceph.update_ceph_client_access_conf(ps_uuid, mon_urls,
+                                                                                        cmd.userKey, cmd.manufacturer,
+                                                                                        cmd.fsId, CEPH_HA_CONF)
                 logger.debug("config file: %s, pool name: %s" % (conf_path, pool_name))
                 heartbeat_counter = 0
                 additional_conf_dict = {}
