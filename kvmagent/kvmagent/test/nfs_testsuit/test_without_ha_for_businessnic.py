@@ -58,4 +58,32 @@ class WithoutHaForBusinessNic(TestCase, NfsPluginTestStub):
         assert vm_uuid4 not in rsp.blockRules['hostBusinessNic']
         assert len(rsp.blockRules["hostBusinessNic"]) == 1
 
+        bridge_nic = self.find_nic_from_bridage("br_zsn0")
+        assert bridge_nic == 'zsn0'
+
+        bridge_nic = self.find_nic_from_bridage("br_zsn0.1000")
+        assert bridge_nic == 'zsn0'
+
+        bridge_nic = self.find_nic_from_bridage("zsn0")
+        assert bridge_nic == 'zsn0'
+
+        bridge_nic = self.find_nic_from_bridage("")
+        assert bridge_nic is None
+
+
+    def find_nic_from_bridage(self, bridge_nic):
+        if len(bridge_nic) == 0:
+            return None
+
+        if '_' in bridge_nic:
+            bridge_nic = bridge_nic.split('_')[1]
+
+        if '.' in bridge_nic:
+            bridge_nic = bridge_nic.split('.')[0]
+
+        if len(bridge_nic) == 0:
+            return None
+
+        return bridge_nic.strip()
+
 
