@@ -183,6 +183,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     ISCSI_LOGOUT_PATH = "/storagedevice/iscsi/logout"
     FC_SCAN_PATH = "/storagedevice/fc/scan"
     MULTIPATH_ENABLE_PATH = "/storagedevice/multipath/enable"
+    MULTIPATH_DISABLE_PATH = "/storagedevice/multipath/disable"
     ATTACH_SCSI_LUN_PATH = "/storagedevice/scsilun/attach"
     DETACH_SCSI_LUN_PATH = "/storagedevice/scsilun/detach"
     DETACH_SCSI_DEV_PATH = "/storagedevice/scsilun/detachdev"
@@ -197,6 +198,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.ISCSI_LOGOUT_PATH, self.iscsi_logout, cmd=IscsiLogoutCmd())
         http_server.register_async_uri(self.FC_SCAN_PATH, self.scan_sg_devices)
         http_server.register_async_uri(self.MULTIPATH_ENABLE_PATH, self.enable_multipath)
+        http_server.register_async_uri(self.MULTIPATH_DISABLE_PATH, self.disable_multipath)
         http_server.register_async_uri(self.ATTACH_SCSI_LUN_PATH, self.attach_scsi_lun)
         http_server.register_async_uri(self.DETACH_SCSI_LUN_PATH, self.detach_scsi_lun)
         http_server.register_async_uri(self.DETACH_SCSI_DEV_PATH, self.detach_scsi_dev)
@@ -951,6 +953,12 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             bash.bash_roe("systemctl reload multipathd")
 
         linux.set_fail_if_no_path()
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def disable_multipath(self, req):
+        rsp = AgentRsp()
+        lvm.disable_multipath()
         return jsonobject.dumps(rsp)
 
     def get_device_info(self, scsi_info, rescan):
