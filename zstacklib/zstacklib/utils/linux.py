@@ -1089,6 +1089,16 @@ def qcow2_get_file_chain(path):
             (qemu_img.subcmd('info'), path))
     return out.splitlines()
 
+# Get derived file all backing files
+def qcow2_get_backing_chain(path):
+    ret = []
+    backing = qcow2_get_backing_file(path)
+    while backing:
+        ret.append(backing)
+        backing = qcow2_get_backing_file(path)
+
+    return []
+
 def get_qcow2_file_chain_size(path):
     chain = qcow2_get_file_chain(path)
     size = 0L

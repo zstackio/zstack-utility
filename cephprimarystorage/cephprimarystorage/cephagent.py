@@ -162,6 +162,12 @@ class GetVolumeSnapshotSizeRsp(AgentResponse):
         self.size = None
         self.actualSize = None
 
+class GetBackingChainRsp(AgentResponse):
+    def __init__(self):
+        super(GetBackingChainRsp, self).__init__()
+        self.totalSize = 0
+        self.backingChain = []
+
 class PingRsp(AgentResponse):
     def __init__(self):
         super(PingRsp, self).__init__()
@@ -278,6 +284,8 @@ class CephAgent(plugin.TaskManager):
     BATCH_GET_VOLUME_SIZE_PATH = "/ceph/primarystorage/batchgetvolumesize"
     GET_VOLUME_WATCHES_PATH = "/ceph/primarystorage/getvolumewatchers"
     GET_VOLUME_SNAPSHOT_SIZE_PATH = "/ceph/primarystorage/getvolumesnapshotsize"
+    GET_BACKING_CHAIN_PATH = "/ceph/primarystorage/volume/getbackingchain"
+    DELETE_VOLUME_CHAIN_PATH = "/ceph/primarystorage/volume/deletechain"
 
     PING_PATH = "/ceph/primarystorage/ping"
     GET_FACTS = "/ceph/primarystorage/facts"
@@ -351,6 +359,8 @@ class CephAgent(plugin.TaskManager):
         self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
         self.http_server.register_async_uri(self.MIGRATE_VOLUME_SEGMENT_PATH, self.migrate_volume_segment, cmd=CephToCephMigrateVolumeSegmentCmd())
         self.http_server.register_async_uri(self.GET_VOLUME_SNAPINFOS_PATH, self.get_volume_snapinfos)
+        self.http_server.register_async_uri(self.GET_BACKING_CHAIN_PATH, self.get_volume_backing_chain)
+        self.http_server.register_async_uri(self.DELETE_VOLUME_CHAIN_PATH, self.delete_volume_backing_chain)
         self.http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.download_from_kvmhost)
         self.http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
         self.http_server.register_async_uri(self.JOB_CANCEL, self.cancel)
@@ -1065,33 +1075,43 @@ class CephAgent(plugin.TaskManager):
         path = self._normalize_install_path(cmd.installPath)
 
         rsp = AgentResponse()
+        if not self._ensure_existing_volume_has_no_snapshot(path):
+            return jsonobject.dumps(rsp)
+
+        if self._get_watcher(path):
+            rsp.inUse = True
+            rsp.success = False
+            rsp.error = "unable to delete %s, the volume is in use" % cmd.installPath
+            logger.debug("the rbd image[%s] still has watchers, unable to delete" % cmd.installPath)
+            return jsonobject.dumps(rsp)
+
+        driver = self.get_driver(cmd)
+        driver.do_deletion(cmd, path)
+
+        self._set_capacity_to_response(rsp)
+        return jsonobject.dumps(rsp)
+
+    def _ensure_existing_volume_has_no_snapshot(self, path):
         try:
-            o = shell.call('rbd snap ls --format json %s' % path)
+            snaps = self._get_snapshots(path)
         except Exception as e:
             if 'No such file or directory' not in str(e):
                 raise
-            logger.warn('delete %s;encounter %s' % (cmd.installPath, str(e)))
-            return jsonobject.dumps(rsp)
+            logger.warn('delete %s;encounter %s' % (path, str(e)))
+            return False
 
-        o = jsonobject.loads(o)
-        if len(o) > 0:
-            raise Exception('unable to delete %s; the volume still has snapshots' % cmd.installPath)
+        if len(snaps) > 0:
+            raise Exception('unable to delete %s; the volume still has snapshots' % path)
 
+        return True
+
+    def _get_watcher(self, path):
         watchers_result = shell.call('timeout 10 rbd status %s' % path)
         if watchers_result:
             for watcher in watchers_result.splitlines():
                 if "watcher=" in watcher:
-                    rsp.inUse = True
-                    rsp.success = False
-                    rsp.error = "unable to delete %s, the volume is in use" % cmd.installPath
-                    logger.debug("the rbd image[%s] still has watchers, unable to delete" % cmd.installPath)
-                    return jsonobject.dumps(rsp)
-
-        driver = self.get_driver(cmd)
-        driver.do_deletion(cmd)
-
-        self._set_capacity_to_response(rsp)
-        return jsonobject.dumps(rsp)
+                    return watcher
+        return None
 
     def _get_dst_volume_size(self, dst_install_path, dst_mon_addr, dst_mon_user, dst_mon_passwd, dst_mon_port):
         o = linux.sshpass_call(dst_mon_addr, dst_mon_passwd, "rbd --format json info %s" % dst_install_path, dst_mon_user, dst_mon_port)
@@ -1176,10 +1196,51 @@ class CephAgent(plugin.TaskManager):
     def get_volume_snapinfos(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         vpath = self._normalize_install_path(cmd.volumePath)
-        ret = shell.call('rbd --format=json snap ls %s' % vpath)
         rsp = GetVolumeSnapInfosRsp()
-        rsp.snapInfos = jsonobject.loads(ret)
+        rsp.snapInfos = self._get_snapshots(vpath)
         self._set_capacity_to_response(rsp)
+        return jsonobject.dumps(rsp)
+
+    @staticmethod
+    def _get_snapshots(volume_path):
+        ret = shell.call('rbd --format=json snap ls %s' % volume_path)
+        return jsonobject.loads(ret)
+
+    @replyerror
+    def get_volume_backing_chain(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        path = self._normalize_install_path(cmd.volumePath)
+        rsp = GetBackingChainRsp()
+
+        parent = self._get_parent(path)
+        while parent:
+            path = "ceph://%s/%s@%s" % (parent["pool"], parent["image"], parent["snapshot"])
+            rsp.backingChain.append(path)
+            parent = self._get_parent(path.replace("ceph://", ""))
+
+        self._set_capacity_to_response(rsp)
+        return jsonobject.dumps(rsp)
+
+    @replyerror
+    def delete_volume_backing_chain(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentResponse()
+
+        driver = self.get_driver(cmd)
+        for path in cmd.installPaths:
+            path = self._normalize_install_path(path)
+            if "@" in path:
+                vol_path = path.split("@")[0]
+                shell.call('rbd snap unprotect %s' % path)
+                shell.call('rbd snap rm %s' % path)
+            else:
+                vol_path = path
+            self._ensure_existing_volume_has_no_snapshot(vol_path)
+            watchers = self._get_watcher(vol_path)
+            if watchers:
+                raise Exception('volume %s has watchers %s, can not delete it' % (vol_path, watchers))
+            driver.do_deletion(cmd, vol_path)
+
         return jsonobject.dumps(rsp)
 
     @replyerror
