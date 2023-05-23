@@ -1595,6 +1595,9 @@ def get_ipv4_addr_by_nic(nic):
           iproute.query_addresses(ifname=nic, ip_version=4)]
     return ip
 
+def get_dst_ip_from_ip_routers():
+    return [set(ip_route.dst_ip for ip_route in iproute.show_routes() if ip_route.dst_ip)]
+
 def get_bond_info_by_nic(nic):
     bonds = read_file("/sys/class/net/bonding_masters")
     if bonds:
