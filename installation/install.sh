@@ -2377,6 +2377,7 @@ install_sds(){
 }
 
 install_zops(){
+    [[ x"$BASEARCH" != x"x86_64" ]] && return
     [[ x"$SKIP_ZOPS_INSTALL" = x"y" ]] && return
     echo_title "Install or upgrade ZOps"
     echo ""
