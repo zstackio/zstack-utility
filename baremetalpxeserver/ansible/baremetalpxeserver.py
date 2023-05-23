@@ -135,6 +135,12 @@ for AR in $archRelease;do
     [ ! -d /opt/zstack-dvd/$AR ] && continue
     is_repo_exist='true'
     arch=`echo $AR | awk -F '/' '{print $1}'`
+    if grep "ftp/zstack-dvd/$arch" /etc/fstab; then
+      if [ ! -d "$(grep "ftp/zstack-dvd/$arch" /etc/fstab | awk -F ' ' '{print $1}')" ]; then
+        sed -i "/ftp\/zstack-dvd\/$arch/d" /etc/fstab
+        umount /var/lib/zstack/baremetal/ftp/zstack-dvd/$arch
+      fi
+    fi
     cp -f /opt/zstack-dvd/$AR/isolinux/pxelinux.0 /var/lib/zstack/baremetal/tftpboot/;
     cp -f /opt/zstack-dvd/$AR/EFI/BOOT/grubx64.efi /var/lib/zstack/baremetal/tftpboot/EFI/BOOT/;
     cp -f /opt/zstack-dvd/$AR/EFI/BOOT/grubaa64.efi /var/lib/zstack/baremetal/tftpboot/EFI/BOOT/;
