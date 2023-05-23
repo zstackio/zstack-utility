@@ -1152,18 +1152,20 @@ ia_install_pip(){
 }
 
 ia_install_ansible_package(){
+    ansible_pypi_source=$1
     if [ ! -z $DEBUG ]; then
-        pip install -i $pypi_source_pip --trusted-host localhost --ignore-installed ansible 
+        pip install -i $ansible_pypi_source --trusted-host localhost --ignore-installed ansible
     else
-        pip install -i $pypi_source_pip --trusted-host localhost --ignore-installed ansible >>$ZSTACK_INSTALL_LOG 2>&1
+        pip install -i $ansible_pypi_source --trusted-host localhost --ignore-installed ansible >>$ZSTACK_INSTALL_LOG 2>&1
     fi
 }
 
 ia_upgrade_setuptools_package(){
+    ansible_pypi_source=$1
     if [ ! -z $DEBUG ]; then
-        pip install -i $pypi_source_pip --trusted-host localhost -U setuptools 
+        pip install -i $ansible_pypi_source --trusted-host localhost -U setuptools
     else
-        pip install -i $pypi_source_pip --trusted-host localhost -U setuptools >>$ZSTACK_INSTALL_LOG 2>&1
+        pip install -i $ansible_pypi_source --trusted-host localhost -U setuptools >>$ZSTACK_INSTALL_LOG 2>&1
     fi
 }
 
@@ -1182,10 +1184,10 @@ ia_install_ansible_handle(){
         fi
     fi
 
-    ia_install_ansible_package
+    ia_install_ansible_package $1
     if [ $? -ne 0 ]; then
-        ia_upgrade_setuptools_package
-        ia_install_ansible_package
+        ia_upgrade_setuptools_package $1
+        ia_install_ansible_package $1
     fi
 }
 
@@ -1193,7 +1195,7 @@ ia_install_ansible(){
     echo_subtitle "Install Ansible"
     trap 'traplogger $LINENO "$BASH_COMMAND" $?' DEBUG
 
-    ia_install_ansible_handle
+    ia_install_ansible_handle $pypi_source_pip
 
     [ $? -ne 0 ] && fail "install Ansible failed"
     do_config_ansible
@@ -1204,9 +1206,13 @@ ia_upgrade_ansible(){
     echo_subtitle "Upgrade Ansible"
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
 
-    ia_install_ansible_handle
+    cd $upgrade_folder
+    ansible_pypi_source=file://$(pwd)/zstack/static/pypi/simple
+
+    ia_install_ansible_handle $ansible_pypi_source
 
     [ $? -ne 0 ] && fail "upgrade Ansible failed"
+    pass
 }
 
 ia_install_python_gcc_db(){
