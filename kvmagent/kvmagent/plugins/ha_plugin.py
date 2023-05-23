@@ -186,8 +186,16 @@ class PhysicalNicFencer(AbstractHaFencer):
                 if len(bridge_nic) == 0:
                     continue
 
-                nic = bridge_nic.split('_')[1]
-                if nic.strip() in falut_nic:
+                if '_' in bridge_nic:
+                    bridge_nic = bridge_nic.split('_')[1]
+
+                if '.' in bridge_nic:
+                    bridge_nic = bridge_nic.split('.')[0]
+
+                if len(bridge_nic) == 0:
+                    continue
+
+                if bridge_nic.strip() in falut_nic:
                     vm_pid = linux.find_vm_pid_by_uuid(vm_uuid)
                     if not vm_pid:
                         logger.warn('vm %s pid not found' % vm_uuid)
