@@ -1163,9 +1163,9 @@ ia_install_ansible_package(){
 ia_upgrade_setuptools_package(){
     ansible_pypi_source=$1
     if [ ! -z $DEBUG ]; then
-        pip install -i $ansible_pypi_source --trusted-host localhost -U setuptools
+        pip install -i $ansible_pypi_source --trusted-host localhost setuptools==39.2.0
     else
-        pip install -i $ansible_pypi_source --trusted-host localhost -U setuptools >>$ZSTACK_INSTALL_LOG 2>&1
+        pip install -i $ansible_pypi_source --trusted-host localhost setuptools==39.2.0 >>$ZSTACK_INSTALL_LOG 2>&1
     fi
 }
 
