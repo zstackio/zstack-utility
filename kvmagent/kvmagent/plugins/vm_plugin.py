@@ -5660,6 +5660,28 @@ class VmPlugin(kvmagent.KvmAgent):
                     'unable to start vm[uuid:%s, name:%s], libvirt error: %s' % (
                     cmd.vmInstanceUuid, cmd.vmName, str(e)))
 
+            # c.f. http://jira.zstack.io/browse/ZSTAC-54965
+            if "could not find capabilities for domaintype=kvm" in str(e.message) \
+                    or "does not support virt type 'kvm'" in str(e.message):
+                # check kvm is available
+                if not os.path.exists("/dev/kvm"):
+                    raise kvmagent.KvmError(
+                        'unable to start vm[uuid:%s, name:%s], missing directory %s, libvirt error: %s' % (
+                        cmd.vmInstanceUuid, cmd.vmName, "/dev/kvm", str(e)))
+
+                # check kvm_intel or kvm_amd mod is loaded
+                if not os.path.exists("/sys/module/kvm_intel") and not os.path.exists("/sys/module/kvm_amd"):
+                    raise kvmagent.KvmError(
+                        'unable to start vm[uuid:%s, name:%s], missing kvm_intel or kvm_amd module, libvirt error: %s' % (
+                        cmd.vmInstanceUuid, cmd.vmName, str(e)))
+
+                # check qemu --version
+                try:
+                    qemu.get_version_from_exe_file(qemu.get_path(), error_out=True)
+                except Exception as e:
+                    raise kvmagent.KvmError(
+                        'unable to start vm[uuid:%s, name:%s], check qemu --version failed, libvirt error: %s' % (
+                        cmd.vmInstanceUuid, cmd.vmName, str(e)))
             try:
                 vm = get_vm_by_uuid(cmd.vmInstanceUuid)
                 if vm and vm.state != Vm.VM_STATE_RUNNING:
