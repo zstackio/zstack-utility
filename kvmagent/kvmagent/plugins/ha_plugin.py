@@ -133,8 +133,7 @@ class AbstractHaFencer(object):
 
     def exec_fencer_list(self, fencer_init, update_fencer):
         if self.ha_fencer is None or update_fencer:
-            self.inspect_fencer()
-            self.ha_fencer.update(fencer_init)
+            self.is_fencer_regenerated(fencer_init)
 
         if self.run_fencer_list is None:
             return
@@ -149,6 +148,46 @@ class AbstractHaFencer(object):
 
         for t in threads:
             t.join()
+
+    def is_fencer_regenerated(self, fencer_init):
+        self.inspect_fencer()
+        self.ha_fencer.update(fencer_init)
+
+    def is_fencer_public_args_change(self, interval, maxAttempts, fencer_list):
+        if interval == self.interval and \
+            maxAttempts == self.max_attempts and \
+            set(fencer_list) == set(self.run_fencer_list):
+            return False
+        return True
+
+    def update_fencer_public_args_change(self, interval, maxAttempts, fencer_list):
+        logger.debug("AbstractHaFencer fencer args changed:\n"
+                     "health check interval: %s -> %s\n"
+                     "max_attempts: %s -> %s\n"
+                     "fencer_list: %s -> %s\n " % (
+                         self.interval, interval,
+                         self.max_attempts, maxAttempts,
+                         self.run_fencer_list, fencer_list))
+        self.interval = interval
+        self.max_attempts = maxAttempts
+        self.run_fencer_list = fencer_list
+
+    def is_fencer_private_args_change(self, cmd):
+        raise NotImplementedError
+
+    def update_ha_fencer(self, cmd, ha_fencer):
+        raise NotImplementedError
+
+    def fencer_args_check(self, cmd, fencer_name, fencer_list):
+        if self.is_fencer_public_args_change(cmd.interval, cmd.maxAttempts, fencer_list):
+            self.update_fencer_public_args_change(cmd.interval, cmd.maxAttempts, fencer_list)
+
+        if self.ha_fencer[fencer_name].is_fencer_private_args_change(cmd):
+            fencer_name, fencer_class = self.ha_fencer[fencer_name].update_ha_fencer(cmd, self.ha_fencer)
+            self.update_child_fencer(fencer_name, fencer_class)
+
+    def update_child_fencer(self, fencer_name, fencer_class):
+        self.ha_fencer[fencer_name] = fencer_class
 
 
 class PhysicalNicFencer(AbstractHaFencer):
@@ -224,6 +263,12 @@ class PhysicalNicFencer(AbstractHaFencer):
             return os.listdir(bond_path)
         return []
 
+    def is_fencer_private_args_change(self, cmd):
+        pass
+
+    def update_ha_fencer(self, cmd, ha_fencer):
+        pass
+
 
 
 class AbstractStorageFencer(AbstractHaFencer):
@@ -282,6 +327,12 @@ class AbstractStorageFencer(AbstractHaFencer):
 
         return heartbeat_success, vm_uuids
 
+    def is_fencer_private_args_change(self, cmd):
+        pass
+
+    def update_ha_fencer(self, cmd, ha_fencer):
+        pass
+
 
 class SanlockHealthChecker(AbstractStorageFencer):
     def __init__(self, interval = 5, max_attempts = 5, ps_uuid = None, run_fencer_list = None):
@@ -297,6 +348,7 @@ class SanlockHealthChecker(AbstractStorageFencer):
         self.host_uuid = None
         self.fencer_list = []
         self.do_heartbeat_on_sharedblock_call = None
+        self.fail_if_no_path = False
 
     def inc_vg_failure_cnt(self, vg_uuid):
         count = self.vg_failures.get(vg_uuid)
@@ -467,6 +519,34 @@ class SanlockHealthChecker(AbstractStorageFencer):
 
     def exec_fencer(self):
         self.do_heartbeat_on_sharedblock_call(self.get_vg_fencer_cmd(self.ps_uuid))
+
+    def is_fencer_private_args_change(self, cmd):
+        if cmd.interval == self.health_check_interval and \
+                cmd.storageCheckerTimeout == self.storage_timeout and \
+                cmd.maxAttempts == self.max_failure and \
+                cmd.fail_if_no_path == self.fail_if_no_path:
+            return False
+        return True
+
+    def update_ha_fencer(self, cmd, ha_fencer):
+        logger.debug("sharedblock fencer args changed:\n"
+                     "health check interval: %s -> %s\n"
+                     "storage_timeout: %s -> %s\n"
+                     "max_failure: %s -> %s\n "
+                     "fail_if_no_path: %s -> %s\n" % (
+                         self.health_check_interval, cmd.interval,
+                         self.storage_timeout, cmd.storageCheckerTimeout,
+                         self.max_failure, cmd.maxAttempts,
+                         self.fail_if_no_path, cmd.fail_if_no_path))
+
+        fencer_class = ha_fencer[self.get_ha_fencer_name()]
+        fencer_class.health_check_interval = cmd.interval
+        fencer_class.storage_timeout = cmd.storageCheckerTimeout
+        fencer_class.max_failure = cmd.maxAttempts
+        fencer_class.host_uuid = cmd.hostUuid
+        fencer_class.ps_uuid = cmd.vgUuid
+        fencer_class.fail_if_no_path = cmd.fail_if_no_path
+        return self.get_ha_fencer_name(), fencer_class
 
 
 class FileSystemHeartbeatController(AbstractStorageFencer):
@@ -1059,6 +1139,7 @@ class HaPlugin(kvmagent.KvmAgent):
         self.fencer_lock = threading.RLock()
         self.sblk_health_checker = SanlockHealthChecker()
         self.sblk_fencer_running = False
+        self.abstract_ha_fencer_checker = {}
         self.vpc_uuids = []
         self.vpc_lock = threading.RLock()
 
@@ -1309,7 +1390,7 @@ class HaPlugin(kvmagent.KvmAgent):
 
         try:
             global last_multipath_run
-            if cmd.fail_if_no_path and time.time() - last_multipath_run > 3600:
+            if self.sblk_health_checker.fail_if_no_path and time.time() - last_multipath_run > 3600:
                 last_multipath_run = time.time()
                 thread.ThreadFacade.run_in_thread(linux.set_fail_if_no_path)
 
@@ -1357,6 +1438,8 @@ class HaPlugin(kvmagent.KvmAgent):
         if host_storage_name in fencer_list:
             fencer_list.append(self.sblk_health_checker.get_ha_fencer_name())
 
+        fencer_name = self.sblk_health_checker.get_ha_fencer_name()
+
         @thread.AsyncThread
         def heartbeat_on_sharedblock():
             fencer_init = {}
@@ -1373,36 +1456,19 @@ class HaPlugin(kvmagent.KvmAgent):
                 time.sleep(self.sblk_health_checker.health_check_interval)
                 ha_fencer.exec_fencer_list(fencer_init, update_fencer)
                 update_fencer = False
-
-        def _is_fencer_args_changed(cmd):
-            if cmd.interval == self.sblk_health_checker.health_check_interval and \
-                cmd.storageCheckerTimeout == self.sblk_health_checker.storage_timeout and \
-                    cmd.maxAttempts == self.sblk_health_checker.max_failure:
-                return False
-            return True
+                self.abstract_ha_fencer_checker[fencer_name] = ha_fencer
 
         created_time = time.time()
         self.setup_fencer(cmd.vgUuid, created_time)
         self.sblk_health_checker.addvg(created_time, cmd)
 
         with self.fencer_lock:
-            if _is_fencer_args_changed(cmd):
-                logger.debug("sharedblock fencer args changed:\n"
-                             "health check interval: %s -> %s\n"
-                             "storage_timeout: %s -> %s\n"
-                             "max_failure: %s -> %s\n" % (
-                    self.sblk_health_checker.health_check_interval, cmd.interval,
-                    self.sblk_health_checker.storage_timeout, cmd.storageCheckerTimeout,
-                    self.sblk_health_checker.max_failure, cmd.maxAttempts))
-                self.sblk_health_checker.health_check_interval = cmd.interval
-                self.sblk_health_checker.storage_timeout = cmd.storageCheckerTimeout
-                self.sblk_health_checker.max_failure = cmd.maxAttempts
-                self.sblk_health_checker.host_uuid = cmd.hostUuid
-                self.sblk_health_checker.ps_uuid = cmd.vgUuid
-            if not self.sblk_fencer_running or set(fencer_list) != set(self.sblk_health_checker.fencer_list):
+            if self.sblk_health_checker.get_ha_fencer_name() in self.abstract_ha_fencer_checker:
+                self.abstract_ha_fencer_checker[fencer_name].fencer_args_check(cmd, fencer_name, fencer_list)
+
+            if not self.sblk_fencer_running:
                 logger.debug("sharedblock fencer start with vg [%s %s]" % (
                     (cmd.vgUuid, jsonobject.dumps(self.sblk_health_checker.get_vg_fencer_cmd(cmd.vgUuid)))))
-                self.sblk_health_checker.fencer_list = fencer_list
                 heartbeat_on_sharedblock()
                 self.sblk_fencer_running = True
             else:
