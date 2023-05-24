@@ -1231,7 +1231,7 @@ class CephAgent(plugin.TaskManager):
             path = self._normalize_install_path(path)
             if "@" in path:
                 vol_path = path.split("@")[0]
-                shell.call('rbd snap unprotect %s' % path)
+                shell.run('rbd snap unprotect %s' % path)
                 shell.call('rbd snap rm %s' % path)
             else:
                 vol_path = path
