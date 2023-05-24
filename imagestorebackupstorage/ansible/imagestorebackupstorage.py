@@ -107,7 +107,7 @@ if host_info.distro in RPM_BASED_OS:
 
     if not remote_bin_installed(host_post_info, "qemu-img", return_status=True):
         pkg = 'qemu-img-ev' if releasever in ['c74'] else 'qemu-img'
-        if releasever == 'c74' and get_mn_release() in ['c76', 'c79']:
+        if releasever == 'c74' and get_mn_release() in ['c76', 'c79', 'h76c', 'h79c']:
             pkg = 'qemu-img'
         qemu_pkg += ' %s' % pkg
 

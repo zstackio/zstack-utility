@@ -113,7 +113,7 @@ if host_info.distro in RPM_BASED_OS:
         # c74 do not apply the change. Therefore, if ceph bs host is c74 and
         # mn is c76 or c79 and qemu-kvm not installed, using qemu-kvm instead
         # qemu-kvm-ev
-        if releasever == 'c74' and get_mn_release() in ['c76', 'c79']:
+        if releasever == 'c74' and get_mn_release() in ['c76', 'c79', 'h76c', 'h79c']:
             install_rpm_list += " qemu-kvm"
 
     if zstack_repo != 'false':
