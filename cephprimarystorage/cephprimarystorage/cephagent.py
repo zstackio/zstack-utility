@@ -1052,6 +1052,16 @@ class CephAgent(plugin.TaskManager):
         if len(o) > 0:
             raise Exception('unable to delete %s; the volume still has snapshots' % cmd.installPath)
 
+        watchers_result = shell.call('timeout 10 rbd status %s' % path)
+        if watchers_result:
+            for watcher in watchers_result.splitlines():
+                if "watcher=" in watcher:
+                    rsp.inUse = True
+                    rsp.success = False
+                    rsp.error = "unable to delete %s, the volume is in use" % cmd.installPath
+                    logger.debug("the rbd image[%s] still has watchers, unable to delete" % cmd.installPath)
+                    return jsonobject.dumps(rsp)
+
         driver = self.get_driver(cmd)
         driver.do_deletion(cmd)
 
