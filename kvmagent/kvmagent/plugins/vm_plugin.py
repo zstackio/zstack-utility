@@ -1067,7 +1067,7 @@ def get_console_without_libvirt(vmUuid):
 
     pid, idx = output[0].split()
     output = bash.bash_o(
-        """lsof -p %s -aPi4 | awk '$8 == "TCP" { n=split($9,a,":"); print a[n] }'""" % pid).splitlines()
+        """lsof -p %s -aPi4 | grep LISTEN | awk '$8 == "TCP" { n=split($9,a,":"); print a[n] }'""" % pid).splitlines()
     if len(output) < 1:
         logger.warn("get_port_without_libvirt: no port found")
         return None, None, None, None
@@ -2333,7 +2333,8 @@ class Vm(object):
                 rsp.vncPort = g.port_
                 rsp.protocol = "vnc"
             elif g.type_ == 'spice':
-                rsp.spicePort = g.port_
+                if g.hasattr('port_'):
+                    rsp.spicePort = g.port_
                 if g.hasattr('tlsPort_'):
                     rsp.spiceTlsPort = g.tlsPort_
                 rsp.protocol = "spice"
