@@ -4507,12 +4507,6 @@ class Vm(object):
                 if is_hv_freq_supported(): e(hyperv, 'frequencies', attrib={'state': 'on'})
                 e(hyperv, 'spinlocks', attrib={'state': 'on', 'retries': '4096'})
                 e(hyperv, 'vendor_id', attrib={'state': 'on', 'value': cmd.vendorId})
-                if LooseVersion(qemu.get_version()) >= LooseVersion("4.2.0"):
-                    # since qemu 2.6
-                    e(hyperv, 'synic', attrib={'state': 'on'})
-                    if cmd.hypervClock:
-                        e(hyperv, 'stimer', attrib={'state': 'on'})
-                    e(hyperv, 'vpindex', attrib={'state': 'on'})
             # always set ioapic driver to kvm after libvirt 3.4.0
             if is_ioapic_supported():
                 e(features, "ioapic", attrib={'driver': 'kvm'})
