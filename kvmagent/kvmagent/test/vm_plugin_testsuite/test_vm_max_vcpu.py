@@ -18,6 +18,19 @@ class TestVmMaxVcpu(TestCase, vm_utils.VmPluginTestStub):
         network_utils.create_default_bridge_if_not_exist()
 
     @pytest_utils.ztest_decorater
+    def test_missing_max_vcpu(self):
+        vm = vm_utils.create_startvm_body_jsonobject()
+        vm.maxVcpuNum = None
+        vm_utils.create_vm(vm)
+
+        _, o = bash.bash_ro(
+            "virsh dumpxml %s | grep vcpu" % vm.vmInstanceUuid)
+        self.assertEqual(o.strip(), "<vcpu placement='static' current='1'>128</vcpu>",
+                         "vcpu not configured as expected %s" % o)
+
+        self._destroy_vm(vm.vmInstanceUuid)
+
+    @pytest_utils.ztest_decorater
     def test_max_vcpu(self):
         vm = vm_utils.create_startvm_body_jsonobject()
         vm.maxVcpuNum = 128
@@ -40,3 +53,5 @@ class TestVmMaxVcpu(TestCase, vm_utils.VmPluginTestStub):
             "virsh dumpxml %s | grep vcpu" % vm.vmInstanceUuid)
         self.assertEqual(o.strip(), "<vcpu placement='static' current='2'>64</vcpu>",
                          "vcpu not configured as expected %s" % o)
+
+        self._destroy_vm(vm.vmInstanceUuid)

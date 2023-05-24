@@ -3979,7 +3979,8 @@ class Vm(object):
                 root = elements['root']
                 tune = e(root, 'cputune')
                 def on_x86_64():
-                    e(root, 'vcpu', str(cmd.maxVcpuNum), {'placement': 'static', 'current': str(cmd.cpuNum)})
+                    max_vcpu = cmd.maxVcpuNum if cmd.maxVcpuNum else 128
+                    e(root, 'vcpu', str(max_vcpu), {'placement': 'static', 'current': str(cmd.cpuNum)})
                     # e(root,'vcpu',str(cmd.cpuNum),{'placement':'static'})
                     if cmd.nestedVirtualization == 'host-model':
                         cpu = e(root, 'cpu', attrib={'mode': 'host-model'})
@@ -4003,10 +4004,11 @@ class Vm(object):
                     else:
                         e(cpu, 'topology', attrib={'sockets': '32', 'cores': '4', 'threads': '1'})
                     numa = e(cpu, 'numa')
-                    e(numa, 'cell', attrib={'id': '0', 'cpus': '0-%d' % (cmd.maxVcpuNum - 1), 'memory': str(mem), 'unit': 'KiB'})
+                    e(numa, 'cell', attrib={'id': '0', 'cpus': '0-%d' % (max_vcpu - 1), 'memory': str(mem), 'unit': 'KiB'})
 
                 def on_aarch64():
-                    e(root, 'vcpu', str(cmd.maxVcpuNum), {'placement': 'static', 'current': str(cmd.cpuNum)})
+                    max_vcpu = cmd.maxVcpuNum if cmd.maxVcpuNum else 128
+                    e(root, 'vcpu', str(max_vcpu), {'placement': 'static', 'current': str(cmd.cpuNum)})
                     if is_virtual_machine():
                         cpu = e(root, 'cpu')
                         e(cpu, 'model', 'cortex-a57')
@@ -4026,16 +4028,17 @@ class Vm(object):
                     else:
                         e(cpu, 'topology', attrib={'sockets': '32', 'cores': '4', 'threads': '1'})
                     numa = e(cpu, 'numa')
-                    e(numa, 'cell', attrib={'id': '0', 'cpus': '0-%d' % (cmd.maxVcpuNum - 1), 'memory': str(mem), 'unit': 'KiB'})
+                    e(numa, 'cell', attrib={'id': '0', 'cpus': '0-%d' % (max_vcpu - 1), 'memory': str(mem), 'unit': 'KiB'})
 
                 def on_mips64el():
-                    e(root, 'vcpu', str(cmd.maxVcpuNum), {'placement': 'static', 'current': str(cmd.cpuNum)})
+                    max_vcpu = cmd.maxVcpuNum if cmd.maxVcpuNum else 8
+                    e(root, 'vcpu', str(max_vcpu), {'placement': 'static', 'current': str(cmd.cpuNum)})
                     # e(root,'vcpu',str(cmd.cpuNum),{'placement':'static'})
                     cpu = e(root, 'cpu', attrib={'mode': 'custom', 'match': 'exact', 'check': 'partial'})
                     e(cpu, 'model', str(MIPS64EL_CPU_MODEL), attrib={'fallback': 'allow'})
                     sockets = cmd.socketNum if cmd.socketNum else 2
                     mem = cmd.memory / 1024 / sockets
-                    cores = cmd.maxVcpuNum / sockets
+                    cores = max_vcpu / sockets
                     e(cpu, 'topology', attrib={'sockets': str(sockets), 'cores': str(cores), 'threads': '1'})
                     numa = e(cpu, 'numa')
                     for i in range(sockets):
@@ -4043,12 +4046,13 @@ class Vm(object):
                         e(numa, 'cell', attrib={'id': str(i), 'cpus': str(cpus), 'memory': str(mem), 'unit': 'KiB'})
 
                 def on_loongarch64():
-                    e(root, 'vcpu', str(cmd.maxVcpuNum), {'placement': 'static', 'current': str(cmd.cpuNum)})
+                    max_vcpu = cmd.maxVcpuNum if cmd.maxVcpuNum else 32
+                    e(root, 'vcpu', str(max_vcpu), {'placement': 'static', 'current': str(cmd.cpuNum)})
                     cpu = e(root, 'cpu', attrib={'mode': 'custom', 'match': 'exact', 'check': 'partial'})
                     e(cpu, 'model', str(LOONGARCH64_CPU_MODEL), attrib={'fallback': 'allow'})
                     sockets = cmd.socketNum if cmd.socketNum else 8
                     mem = cmd.memory / 1024 / sockets
-                    cores = cmd.maxVcpuNum / sockets
+                    cores = max_vcpu / sockets
                     e(cpu, 'topology', attrib={'sockets': str(sockets), 'cores': str(cores), 'threads': '1'})
                     numa = e(cpu, 'numa')
                     for i in range(sockets):
