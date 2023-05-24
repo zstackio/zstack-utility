@@ -6213,9 +6213,10 @@ class VmPlugin(kvmagent.KvmAgent):
         rsp = CheckVmStateRsp()
         for uuid in cmd.vmUuids:
             s = states.get(uuid)
-            if not s:
+            if not s or s == Vm.VM_STATE_RUNNING:
                 s = self.get_vm_stat_with_ps(uuid)
             rsp.states[uuid] = s
+        
         return jsonobject.dumps(rsp)
 
     def _escape(self, size):

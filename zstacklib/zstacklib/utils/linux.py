@@ -26,7 +26,7 @@ import fcntl
 import xxhash
 
 from inspect import stack
-
+import xml.etree.ElementTree as etree
 from zstacklib.utils import thread
 from zstacklib.utils import qemu_img
 from zstacklib.utils import lock
@@ -104,6 +104,45 @@ class EthernetInfo(object):
 
     def __repr__(self):
         return self.__str__()
+
+class VmStruct(object):
+    def __init__(self):
+        super(VmStruct, self).__init__()
+        self.pid = ""
+        self.xml = ""
+        self.root_volume = ""
+        self.uuid = ""
+        self.volumes = []
+
+    def load_from_xml(self, xml):
+        def load_source(element):
+            is_root_vol = False
+            path = None
+            for e in element:
+                if e.tag == "boot":
+                    is_root_vol = True
+                elif e.tag == "source":
+                    if "file" in e.attrib:
+                        path = e.attrib["file"]
+                    elif "dev" in e.attrib:
+                        path = e.attrib["dev"]
+                    if path and path.startswith("/dev/"):
+                        self.volumes.append(path)
+
+            if is_root_vol:
+                self.root_volume = path
+
+        self.xml = xml
+        root = etree.fromstring(xml)
+        for e1 in root:
+            if e1.tag == "domain":
+                for e2 in e1:
+                    if e2.tag == "devices":
+                        for e3 in e2:
+                            if e3.tag == "disk":
+                                load_source(e3)
+                        return
+
 
 def retry(times=3, sleep_time=3):
     def wrap(f):
