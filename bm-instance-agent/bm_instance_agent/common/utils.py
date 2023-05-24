@@ -7,14 +7,15 @@ import distro
 from netaddr import IPAddress
 import netifaces
 from oslo_concurrency import processutils
-from oslo_log import log as logging
 import psutil
 import pyroute2
 import time
+from oslo_log import log as logging
 
 from bm_instance_agent import exception
 
 LOG = logging.getLogger(__name__)
+DEFAULT_SSH_PORT = 22
 
 class transcantion(object):
     """ A tool class for retry
@@ -338,3 +339,15 @@ def config_to_dict(config, item_split, key_value_split):
     except ValueError:
         raise exception.NewtorkInterfaceConfigParasInvalid(exception_msg="config format error")
     return config_dict
+
+
+def get_ssh_port():
+    try:
+        get_port_cmd = "grep '^Port' /etc/ssh/sshd_config | awk '{print $2}'"
+        stdout, _ = processutils.execute(get_port_cmd, shell=True)
+        if stdout == "":
+            return DEFAULT_SSH_PORT
+        return stdout.strip()
+    except Exception:
+        LOG.warning("get ssh port failed ,return default ssh port 22")
+        return DEFAULT_SSH_PORT
