@@ -99,6 +99,13 @@ class GetBackingFileRsp(AgentResponse):
         self.size = None
         self.backingFilePath = None
 
+class GetBackingChainRsp(AgentResponse):
+    def __init__(self):
+        super(GetBackingChainRsp, self).__init__()
+        self.totalSize = 0
+        self.backingChain = []
+
+
 class GetVolumeSizeRsp(AgentResponse):
     def __init__(self):
         super(GetVolumeSizeRsp, self).__init__()
@@ -200,6 +207,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     GET_MD5_PATH = "/localstorage/getmd5"
     CHECK_MD5_PATH = "/localstorage/checkmd5"
     GET_BACKING_FILE_PATH = "/localstorage/volume/getbackingfile"
+    GET_BACKING_CHAIN_PATH = "/localstorage/volume/getbackingchain"
     GET_VOLUME_SIZE = "/localstorage/volume/getsize"
     BATCH_GET_VOLUME_SIZE = "/localstorage/volume/batchgetsize"
     GET_BASE_IMAGE_PATH = "/localstorage/volume/getbaseimagepath"
@@ -247,6 +255,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.GET_MD5_PATH, self.get_md5)
         http_server.register_async_uri(self.CHECK_MD5_PATH, self.check_md5)
         http_server.register_async_uri(self.GET_BACKING_FILE_PATH, self.get_backing_file_path)
+        http_server.register_async_uri(self.GET_BACKING_CHAIN_PATH, self.get_backing_chain)
         http_server.register_async_uri(self.GET_VOLUME_SIZE, self.get_volume_size)
         http_server.register_async_uri(self.BATCH_GET_VOLUME_SIZE, self.batch_get_volume_size)
         http_server.register_async_uri(self.GET_BASE_IMAGE_PATH, self.get_volume_base_image_path)
@@ -408,6 +417,16 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         if out:
             rsp.backingFilePath = out
             rsp.size = os.path.getsize(out)
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def get_backing_chain(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetBackingChainRsp()
+
+        rsp.backingChain = linux.qcow2_get_backing_chain(cmd.installPath)
+        rsp.totalSize = linux.get_total_file_size(rsp.backingChain)
 
         return jsonobject.dumps(rsp)
 

@@ -168,6 +168,12 @@ class GetVolumeBaseImagePathRsp(NfsResponse):
         self.path = None
         self.size = None
 
+class GetBackingChainRsp(NfsResponse):
+    def __init__(self):
+        super(GetBackingChainRsp, self).__init__()
+        self.totalSize = 0
+        self.backingChain = []
+
 class ResizeVolumeRsp(NfsResponse):
     def __init__(self):
         super(ResizeVolumeRsp, self).__init__()
@@ -230,6 +236,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     BATCH_GET_VOLUME_SIZE_PATH = "/nfsprimarystorage/batchgetvolumesize"
     PING_PATH = "/nfsprimarystorage/ping"
     GET_VOLUME_BASE_IMAGE_PATH = "/nfsprimarystorage/getvolumebaseimage"
+    GET_BACKING_CHAIN_PATH = "/nfsprimarystorage/volume/getbackingchain"
     UPDATE_MOUNT_POINT_PATH = "/nfsprimarystorage/updatemountpoint"
     RESIZE_VOLUME_PATH = "/nfsprimarystorage/volume/resize"
     HARD_LINK_VOLUME = "/nfsprimarystorage/volume/hardlink"
@@ -271,6 +278,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.BATCH_GET_VOLUME_SIZE_PATH, self.batch_get_volume_size)
         http_server.register_async_uri(self.PING_PATH, self.ping)
         http_server.register_async_uri(self.GET_VOLUME_BASE_IMAGE_PATH, self.get_volume_base_image_path)
+        http_server.register_async_uri(self.GET_BACKING_CHAIN_PATH, self.get_backing_chain)
         http_server.register_async_uri(self.UPDATE_MOUNT_POINT_PATH, self.update_mount_point)
         http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
         http_server.register_async_uri(self.HARD_LINK_VOLUME, self.hardlink_volume)
@@ -483,6 +491,16 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
 
         rsp.path = path
         rsp.size = linux.get_qcow2_file_chain_size(path)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def get_backing_chain(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetBackingChainRsp()
+
+        rsp.backingChain = linux.qcow2_get_backing_chain(cmd.installPath)
+        rsp.totalSize = linux.get_total_file_size(rsp.backingChain)
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
