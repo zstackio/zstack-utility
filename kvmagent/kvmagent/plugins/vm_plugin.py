@@ -6565,8 +6565,8 @@ class VmPlugin(kvmagent.KvmAgent):
             for volume in cmd.volumes:
                 xml_path = volume.installPath.split('?', 1)[0]
                 u = urlparse.urlparse(xml_path)
-                if u.scheme is not None:
-                    xml_path = xml_path.lstrip(u.scheme).lstrip('://')
+                if u.scheme:
+                    xml_path = xml_path.replace(u.scheme + '://', '')
                 if not linux.wait_callback_success(check_device_in_xml, xml_path, interval=2, timeout=10):
                     raise kvmagent.KvmError("libvirt return recovery vm successfully, but it is failure actually! "
                                             "because unable to find volume[installPath:%s] on vm[uuid:%s]" % (
