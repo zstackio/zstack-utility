@@ -1185,6 +1185,11 @@ ia_upgrade_ansible(){
     echo_subtitle "Upgrade Ansible"
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
 
+    if pip list 2>/dev/null | grep -q -E 'ansible.*4.10.0' && ansible --version 2>/dev/null | grep -q 'core 2.11.12.2'; then
+        pass
+        return
+    fi
+
     cd $upgrade_folder
     ansible_pypi_source=file://$(pwd)/zstack/static/pypi/simple
 

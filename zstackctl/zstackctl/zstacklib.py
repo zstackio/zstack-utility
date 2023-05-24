@@ -3,6 +3,7 @@
 import commands
 import datetime
 import functools
+import importlib
 import json
 import logging
 from logging import handlers as logging_handlers
@@ -168,111 +169,21 @@ class ZstackRunnerArg(object):
         self.module_args = None
 
 
-class ResultsCollectorJSONCallback(ansible_callback.CallbackBase):
-    def __init__(self, *args, **kwargs):
-        super(ResultsCollectorJSONCallback, self).__init__(*args, **kwargs)
-        self.ret = {}
+module_cache ={}
 
-    def v2_runner_on_unreachable(self, result):
-        host = result._host
-        r = result._result
-        r.update({'failed': True, 'failed_reason': 'unreachable'})
-        self.ret[host.get_name()] = r
-
-    def v2_runner_on_ok(self, result):
-        host = result._host
-        r = result._result
-        r.update({'failed': False, 'failed_reason': ''})
-        self.ret[host.get_name()] = r
-
-    def v2_runner_on_failed(self, result, *args, **kwargs):
-        host = result._host
-        r = result._result
-        r.update({'failed': True, 'failed_reason': 'failed'})
-        self.ret[host.get_name()] = r
-
-    def v2_runner_on_skipped(self, result):
-        host = result._host
-        r = result._result
-        r.update({'failed': False, 'failed_reason': ''})
-        self.ret[host.get_name()] = r
-
-    def fetch_result(self):
-        return {
-            'dark': {},
-            'contacted': self.ret
-        }
+def load_module(name):
+    if name not in module_cache:
+        m = importlib.import_module(name)
+        module_cache[name] = m
+    return module_cache[name]
 
 
 class ZstackRunner(object):
     def __init__(self, runner_args):
-        self.host_inventory = runner_args.host_post_info.host_inventory
-        self.private_key = runner_args.host_post_info.private_key
-        self.host = runner_args.host_post_info.host
-        self.module_name = runner_args.module_name
-        self.module_args = runner_args.module_args
-        self.remote_port = runner_args.host_post_info.remote_port
-        self.remote_user = runner_args.host_post_info.remote_user
-        self.remote_pass = runner_args.host_post_info.remote_pass
-        self.become = runner_args.host_post_info.become
-        self.become_user = runner_args.host_post_info.become_user
-        self.become_pass = runner_args.host_post_info.remote_pass
-        self.transport = runner_args.host_post_info.transport
-        self.environment = runner_args.host_post_info.environment
-
-        ansible_context.CLIARGS = ansible_collections.ImmutableDict(
-            connection=self.transport,
-            become=self.become,
-            become_user=self.become_user,
-            private_key_file=self.private_key,
-            become_method='sudo'
-        )
-        self.loader = ansible_dataloader.DataLoader()
-        self.result_callback = ResultsCollectorJSONCallback()
-
-        passwords = {
-            'conn_pass': self.remote_pass,
-            'become_pass': self.become_pass
-        }
-        self.inventory = ansible_im.InventoryManager(
-            loader=self.loader,
-            sources=self.host_inventory)
-        self.variable_manager = ansible_vm.VariableManager(
-            loader=self.loader,
-            inventory=self.inventory)
-        self.tqm = ansible_tqm.TaskQueueManager(
-            inventory=self.inventory,
-            variable_manager=self.variable_manager,
-            loader=self.loader,
-            passwords=passwords,
-            stdout_callback=self.result_callback)
+        self.executor = load_module('zstackctl.ansible_executor').AnsibleExecutor(runner_args)
 
     def run(self):
-        action = {'module': self.module_name}
-        if self.module_name == 'shell':
-            action['_raw_params'] = self.module_args
-        else:
-            action['args'] = self.module_args
-        play_source = dict(
-            hosts=self.host,
-            tasks=[{'action': action,
-                    'register': 'shell_out',
-                    'environment': self.environment,
-                    }],
-            vars={'ansible_user': self.remote_user,
-                  'ansible_port': self.remote_port}
-        )
-        play = ansible_play.Play().load(
-            play_source,
-            variable_manager=self.variable_manager,
-            loader=self.loader)
-        try:
-            ret = self.tqm.run(play)
-        finally:
-            self.tqm.cleanup()
-            if self.loader:
-                self.loader.cleanup_all_tmp_files()
-        return self.result_callback.fetch_result()
+        return self.executor.run()
 
 
 def error(msg):
