@@ -213,7 +213,7 @@ def install_kvm_pkg():
                       usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
                       net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
                       smartmontools sshpass usbutils vconfig wget audit dnsmasq \
-                      qemu-kvm-ev collectd-virt OVMF edk2-ovmf edk2.git-ovmf-x64 mcelog MegaCli storcli Arcconf nvme-cli python-pyudev kernel-devel"
+                      qemu-kvm collectd-virt OVMF edk2-ovmf edk2.git-ovmf-x64 mcelog MegaCli storcli Arcconf nvme-cli python-pyudev kernel-devel"
 
         x86_64_c76 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                       usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python libvirt-admin lighttpd lsof \
@@ -450,11 +450,12 @@ def install_kvm_pkg():
     def rpm_based_deprecated():
         rpm_deprecated = {
             "x86_64_c76": "",
+            "x86_64_c74": "",
         }
 
         rpm_deprecated_list = rpm_deprecated.get(host_arch + releasever, "")
         # new-add host
-        if releasever in ['c76'] and "qemu-kvm" not in skip_packages:
+        if releasever in ['c76','c74'] and "qemu-kvm" not in skip_packages:
             rpm_deprecated_list += " qemu-img-ev qemu-kvm-ev qemu-kvm-common-ev"
 
         for rpm in rpm_deprecated_list.split():
