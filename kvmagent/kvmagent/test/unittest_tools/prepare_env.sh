@@ -111,7 +111,7 @@ prepare_mn_mock() {
     mkdir -p /tmp
     pip2 install --upgrade setuptools
     pip2 install pytest==4.6.11
-    pip2 install ansible==4.10.0
+    pip2 install ansible==4.10.0 -i file:///root/.zguest/zstack-utility/zstackbuild/pypi_source/pypi/simple
     pip2 install coverage
     echo "==>> pass prepare_mn_mock"
 }
