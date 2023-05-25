@@ -40,7 +40,7 @@ class TestHaShareBlockPlugin(TestCase, SharedBlockPluginTestStub):
         global vgUuid
         vgUuid = misc.uuid()
 
-        rsp, blockUuid = SharedBlockPluginTestStub().connect(hostUuid, vgUuid)
+        rsp, blockUuid = SharedBlockPluginTestStub().connect2(hostUuid, vgUuid)
         self.assertEqual(rsp.success, True, "share block connect failed")
 
         imageUuid = misc.uuid()
