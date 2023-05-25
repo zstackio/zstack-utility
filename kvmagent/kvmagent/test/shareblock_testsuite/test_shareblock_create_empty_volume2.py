@@ -144,5 +144,3 @@ class TestSharedBlockPlugin(TestCase, SharedBlockPluginTestStub):
         self.assertEqual(1, len(o))
         self.assertEqual(3326083072, o[0].get("length"))
         self.assertEqual(False, o[0].get("data"))
-
-        self.logout(vgUuid, hostUuid)

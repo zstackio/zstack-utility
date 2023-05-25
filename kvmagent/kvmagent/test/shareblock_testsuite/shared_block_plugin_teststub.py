@@ -6,7 +6,6 @@ from zstacklib.test.utils import misc,env
 from unittest import TestCase
 
 init_kvmagent()
-sharedblock_utils.init_shareblock_plugin()
 storage_device_utils.init_storagedevice_plugin()
 vm_utils.init_vm_plugin()
 ha_utils.init_ha_plugin()
@@ -51,7 +50,7 @@ class SharedBlockPluginTestStub(pytest_utils.PytestExtension):
         )
         return rsp
 
-    def connect(self, hostUuid, vgUuid):
+    def connect2(self, hostUuid, vgUuid):
         # get block uuid
         r, o = bash.bash_ro("ls /dev/disk/by-id | grep scsi|awk -F '-' '{print $2}'")
         blockUuid = o.strip().replace(' ', '').replace('\n', '').replace('\r', '')

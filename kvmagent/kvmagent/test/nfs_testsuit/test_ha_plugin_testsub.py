@@ -1,9 +1,8 @@
-from kvmagent.test.utils import shareblock_utils,pytest_utils,storage_device_utils, vm_utils, nfs_plugin_utils, ha_utils
+from kvmagent.test.utils import pytest_utils,storage_device_utils, vm_utils, nfs_plugin_utils, ha_utils
 from kvmagent.test.utils.stub import *
 from zstacklib.utils import bash
 
 init_kvmagent()
-shareblock_utils.init_shareblock_plugin()
 storage_device_utils.init_storagedevice_plugin()
 vm_utils.init_vm_plugin()
 nfs_plugin_utils.init_nfs_plugin()
