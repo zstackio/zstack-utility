@@ -56,7 +56,7 @@ qemu_alias = {
     "ky10sp2": "qemu-kvm qemu-img",
     "ky10sp3": "qemu-kvm qemu-img",
     "uos20": "qemu-system",
-    "c74": "qemu-kvm-ev",
+    "c74": "qemu-kvm",
     "c76": "qemu-kvm",
     "c79": "qemu-kvm",
     "euler20": "qemu",
