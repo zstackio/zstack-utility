@@ -37,7 +37,7 @@ DISTRO_WITH_RPM_DEB = ["kylin", "uniontech"]
 qemu_alias = {
     "ns10": "qemu-kvm qemu-img",
     "uos20": "qemu-system",
-    "c74": "qemu-kvm-ev",
+    "c74": "qemu-kvm",
     "c76": "qemu-kvm",
     "euler20": "qemu",
     "uos1021a": "qemu-kvm"
