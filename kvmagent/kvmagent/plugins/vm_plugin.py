@@ -243,7 +243,11 @@ class StartVmCmd(kvmagent.AgentCommand):
         self.vmName = None
         self.memory = None
         self.cpuNum = None
+        self.maxVcpuNum = None
         self.cpuSpeed = None
+        self.socketNum = None
+        self.cpuOnSocket = None
+        self.threadsPerCore = None
         self.bootDev = None
         self.rootVolume = None
         self.dataVolumes = []
@@ -3975,7 +3979,8 @@ class Vm(object):
                 root = elements['root']
                 tune = e(root, 'cputune')
                 def on_x86_64():
-                    e(root, 'vcpu', '128', {'placement': 'static', 'current': str(cmd.cpuNum)})
+                    max_vcpu = cmd.maxVcpuNum if cmd.maxVcpuNum else 128
+                    e(root, 'vcpu', str(max_vcpu), {'placement': 'static', 'current': str(cmd.cpuNum)})
                     # e(root,'vcpu',str(cmd.cpuNum),{'placement':'static'})
                     if cmd.nestedVirtualization == 'host-model':
                         cpu = e(root, 'cpu', attrib={'mode': 'host-model'})
@@ -3991,14 +3996,19 @@ class Vm(object):
                             e(cpu, 'model', cmd.vmCpuModel, attrib={'fallback': 'allow'})
                     else:
                         cpu = e(root, 'cpu')
-                        # e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
+
                     mem = cmd.memory / 1024
-                    e(cpu, 'topology', attrib={'sockets': '32', 'cores': '4', 'threads': '1'})
+
+                    if cmd.socketNum:
+                        e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': str(cmd.threadsPerCore)})
+                    else:
+                        e(cpu, 'topology', attrib={'sockets': '32', 'cores': '4', 'threads': '1'})
                     numa = e(cpu, 'numa')
-                    e(numa, 'cell', attrib={'id': '0', 'cpus': '0-127', 'memory': str(mem), 'unit': 'KiB'})
+                    e(numa, 'cell', attrib={'id': '0', 'cpus': '0-%d' % (max_vcpu - 1), 'memory': str(mem), 'unit': 'KiB'})
 
                 def on_aarch64():
-                    e(root, 'vcpu', '128', {'placement': 'static', 'current': str(cmd.cpuNum)})
+                    max_vcpu = cmd.maxVcpuNum if cmd.maxVcpuNum else 128
+                    e(root, 'vcpu', str(max_vcpu), {'placement': 'static', 'current': str(cmd.cpuNum)})
                     if is_virtual_machine():
                         cpu = e(root, 'cpu')
                         e(cpu, 'model', 'cortex-a57')
@@ -4012,42 +4022,46 @@ class Vm(object):
                         cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
                         e(cpu, 'model', attrib={'fallback': 'allow'})
                     mem = cmd.memory / 1024
-                    e(cpu, 'topology', attrib={'sockets': '32', 'cores': '4', 'threads': '1'})
+
+                    if cmd.socketNum:
+                        e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
+                    else:
+                        e(cpu, 'topology', attrib={'sockets': '32', 'cores': '4', 'threads': '1'})
                     numa = e(cpu, 'numa')
-                    e(numa, 'cell', attrib={'id': '0', 'cpus': '0-127', 'memory': str(mem), 'unit': 'KiB'})
+                    e(numa, 'cell', attrib={'id': '0', 'cpus': '0-%d' % (max_vcpu - 1), 'memory': str(mem), 'unit': 'KiB'})
 
                 def on_mips64el():
-                    e(root, 'vcpu', '8', {'placement': 'static', 'current': str(cmd.cpuNum)})
+                    max_vcpu = cmd.maxVcpuNum if cmd.maxVcpuNum else 8
+                    e(root, 'vcpu', str(max_vcpu), {'placement': 'static', 'current': str(cmd.cpuNum)})
                     # e(root,'vcpu',str(cmd.cpuNum),{'placement':'static'})
                     cpu = e(root, 'cpu', attrib={'mode': 'custom', 'match': 'exact', 'check': 'partial'})
                     e(cpu, 'model', str(MIPS64EL_CPU_MODEL), attrib={'fallback': 'allow'})
-                    mem = cmd.memory / 1024 / 2
-                    e(cpu, 'topology', attrib={'sockets': '2', 'cores': '4', 'threads': '1'})
+                    sockets = cmd.socketNum if cmd.socketNum else 2
+                    mem = cmd.memory / 1024 / sockets
+                    cores = max_vcpu / sockets
+                    e(cpu, 'topology', attrib={'sockets': str(sockets), 'cores': str(cores), 'threads': '1'})
                     numa = e(cpu, 'numa')
-                    e(numa, 'cell', attrib={'id': '0', 'cpus': '0-3', 'memory': str(mem), 'unit': 'KiB'})
-                    e(numa, 'cell', attrib={'id': '1', 'cpus': '4-7', 'memory': str(mem), 'unit': 'KiB'})
+                    for i in range(sockets):
+                        cpus = "{0}-{1}".format(i * cores, i * cores + (cores - 1))
+                        e(numa, 'cell', attrib={'id': str(i), 'cpus': str(cpus), 'memory': str(mem), 'unit': 'KiB'})
 
                 def on_loongarch64():
-                    e(root, 'vcpu', '32', {'placement': 'static', 'current': str(cmd.cpuNum)})
-                    # e(root,'vcpu',str(cmd.cpuNum),{'placement':'static'})
+                    max_vcpu = cmd.maxVcpuNum if cmd.maxVcpuNum else 32
+                    e(root, 'vcpu', str(max_vcpu), {'placement': 'static', 'current': str(cmd.cpuNum)})
                     cpu = e(root, 'cpu', attrib={'mode': 'custom', 'match': 'exact', 'check': 'partial'})
                     e(cpu, 'model', str(LOONGARCH64_CPU_MODEL), attrib={'fallback': 'allow'})
-                    mem = cmd.memory / 1024 / 2
-                    e(cpu, 'topology', attrib={'sockets': '8', 'cores': '4', 'threads': '1'})
+                    sockets = cmd.socketNum if cmd.socketNum else 8
+                    mem = cmd.memory / 1024 / sockets
+                    cores = max_vcpu / sockets
+                    e(cpu, 'topology', attrib={'sockets': str(sockets), 'cores': str(cores), 'threads': '1'})
                     numa = e(cpu, 'numa')
-                    e(numa, 'cell', attrib={'id': '0', 'cpus': '0-3', 'memory': str(mem), 'unit': 'KiB'})
-                    e(numa, 'cell', attrib={'id': '1', 'cpus': '4-7', 'memory': str(mem), 'unit': 'KiB'})
-                    e(numa, 'cell', attrib={'id': '2', 'cpus': '8-11', 'memory': str(mem), 'unit': 'KiB'})
-                    e(numa, 'cell', attrib={'id': '3', 'cpus': '12-15', 'memory': str(mem), 'unit': 'KiB'})
-                    e(numa, 'cell', attrib={'id': '4', 'cpus': '16-19', 'memory': str(mem), 'unit': 'KiB'})
-                    e(numa, 'cell', attrib={'id': '5', 'cpus': '20-23', 'memory': str(mem), 'unit': 'KiB'})
-                    e(numa, 'cell', attrib={'id': '6', 'cpus': '24-27', 'memory': str(mem), 'unit': 'KiB'})
-                    e(numa, 'cell', attrib={'id': '7', 'cpus': '28-31', 'memory': str(mem), 'unit': 'KiB'})
+                    for i in range(sockets):
+                        cpus = "{0}-{1}".format(i * cores, i * cores + (cores - 1))
+                        e(numa, 'cell', attrib={'id': str(i), 'cpus': str(cpus), 'memory': str(mem), 'unit': 'KiB'})
 
                 eval("on_{}".format(HOST_ARCH))()
             else:
                 root = elements['root']
-                # e(root, 'vcpu', '128', {'placement': 'static', 'current': str(cmd.cpuNum)})
                 e(root, 'vcpu', str(cmd.cpuNum), {'placement': 'static'})
                 tune = e(root, 'cputune')
                 # enable nested virtualization
@@ -4094,7 +4108,10 @@ class Vm(object):
                     return cpu
 
                 cpu = eval("on_{}".format(HOST_ARCH))()
-                e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
+
+                if cmd.socketNum:
+                    e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': str(cmd.threadsPerCore)})
+
                 if numa_nodes:
                     numa = e(cpu, 'numa')
                     numatune = e(root, 'numatune')
