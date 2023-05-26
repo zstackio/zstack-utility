@@ -70,6 +70,13 @@ class CreateTemplateFromVolumeRsp(AgentRsp):
         self.actualSize = None
 
 
+class EstimateTemplateSizeRsp(AgentRsp):
+    def __init__(self):
+        super(EstimateTemplateSizeRsp, self).__init__()
+        self.size = None
+        self.actualSize = None
+
+
 class MergeSnapshotRsp(AgentRsp):
     def __init__(self):
         super(MergeSnapshotRsp, self).__init__()
@@ -314,6 +321,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     CREATE_VOLUME_FROM_CACHE_PATH = "/sharedblock/createrootvolume"
     DELETE_BITS_PATH = "/sharedblock/bits/delete"
     CREATE_TEMPLATE_FROM_VOLUME_PATH = "/sharedblock/createtemplatefromvolume"
+    ESTIMATE_TEMPLATE_SIZE_PATH = "/sharedblock/estimatetemplatesize"
     CREATE_IMAGE_CACHE_FROM_VOLUME_PATH = "/sharedblock/createimagecachefromvolume"
     UPLOAD_BITS_TO_SFTP_BACKUPSTORAGE_PATH = "/sharedblock/sftp/upload"
     DOWNLOAD_BITS_FROM_SFTP_BACKUPSTORAGE_PATH = "/sharedblock/sftp/download"
@@ -322,7 +330,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     DOWNLOAD_BITS_FROM_IMAGESTORE_PATH = "/sharedblock/imagestore/download"
     REVERT_VOLUME_FROM_SNAPSHOT_PATH = "/sharedblock/volume/revertfromsnapshot"
     MERGE_SNAPSHOT_PATH = "/sharedblock/snapshot/merge"
-    EXTEND_MERGE_TARGET_PATH = "/sharedblock/snapshot/extendmergetarget";
+    EXTEND_MERGE_TARGET_PATH = "/sharedblock/snapshot/extendmergetarget"
     OFFLINE_MERGE_SNAPSHOT_PATH = "/sharedblock/snapshot/offlinemerge"
     CREATE_EMPTY_VOLUME_PATH = "/sharedblock/volume/createempty"
     CREATE_DATA_VOLUME_WITH_BACKING_PATH = "/sharedblock/volume/createwithbacking"
@@ -362,6 +370,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CREATE_DATA_VOLUME_WITH_BACKING_PATH, self.create_data_volume_with_backing)
         http_server.register_async_uri(self.DELETE_BITS_PATH, self.delete_bits)
         http_server.register_async_uri(self.CREATE_TEMPLATE_FROM_VOLUME_PATH, self.create_template_from_volume)
+        http_server.register_async_uri(self.ESTIMATE_TEMPLATE_SIZE_PATH, self.estimate_template)
         http_server.register_async_uri(self.CREATE_IMAGE_CACHE_FROM_VOLUME_PATH, self.create_image_cache_from_volume)
         http_server.register_async_uri(self.UPLOAD_BITS_TO_SFTP_BACKUPSTORAGE_PATH, self.upload_to_sftp)
         http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_SFTP_BACKUPSTORAGE_PATH, self.download_from_sftp)
@@ -959,6 +968,18 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(install_abs_path)
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def estimate_template(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = EstimateTemplateSizeRsp()
+        volume_abs_path = translate_absolute_path_from_install_path(cmd.volumePath)
+
+        with lvm.RecursiveOperateLv(volume_abs_path, shared=True, skip_deactivate_tags=[IMAGE_TAG]):
+            rsp.actualSize = linux.qcow2_measure_required_size(volume_abs_path)
+            rsp.size, _ = linux.qcow2_size_and_actual_size(volume_abs_path)
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror

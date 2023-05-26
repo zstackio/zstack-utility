@@ -48,6 +48,12 @@ class CreateTemplateFromVolumeRsp(AgentRsp):
         self.size = None
         self.actualSize = None
 
+class EstimateTemplateSizeRsp(AgentRsp):
+    def __init__(self):
+        super(EstimateTemplateSizeRsp, self).__init__()
+        self.size = None
+        self.actualSize = None
+
 class MergeSnapshotRsp(AgentRsp):
     def __init__(self):
         super(MergeSnapshotRsp, self).__init__()
@@ -123,6 +129,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
     DELETE_BITS_PATH = "/sharedmountpointprimarystorage/bits/delete"
     UNLINK_BITS_PATH = "/sharedmountpointprimarystorage/bits/unlink"
     CREATE_TEMPLATE_FROM_VOLUME_PATH = "/sharedmountpointprimarystorage/createtemplatefromvolume"
+    ESTIMATE_TEMPLATE_SIZE_PATH = "/sharedmountpointprimarystorage/estimatetemplatesize"
     UPLOAD_BITS_TO_SFTP_BACKUPSTORAGE_PATH = "/sharedmountpointprimarystorage/sftp/upload"
     DOWNLOAD_BITS_FROM_SFTP_BACKUPSTORAGE_PATH = "/sharedmountpointprimarystorage/sftp/download"
     UPLOAD_BITS_TO_IMAGESTORE_PATH = "/sharedmountpointprimarystorage/imagestore/upload"
@@ -152,6 +159,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.DELETE_BITS_PATH, self.delete_bits)
         http_server.register_async_uri(self.UNLINK_BITS_PATH, self.unlink)
         http_server.register_async_uri(self.CREATE_TEMPLATE_FROM_VOLUME_PATH, self.create_template_from_volume)
+        http_server.register_async_uri(self.ESTIMATE_TEMPLATE_SIZE_PATH, self.estimate_template)
         http_server.register_async_uri(self.UPLOAD_BITS_TO_SFTP_BACKUPSTORAGE_PATH, self.upload_to_sftp)
         http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_SFTP_BACKUPSTORAGE_PATH, self.download_from_sftp)
         http_server.register_async_uri(self.UPLOAD_BITS_TO_IMAGESTORE_PATH, self.upload_to_imagestore)
@@ -344,6 +352,14 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
 
         rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installPath)
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def estimate_template(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = EstimateTemplateSizeRsp()
+        rsp.actualSize = linux.qcow2_measure_required_size(cmd.volumePath)
+        rsp.size, _ = linux.qcow2_size_and_actual_size(cmd.volumePath)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
