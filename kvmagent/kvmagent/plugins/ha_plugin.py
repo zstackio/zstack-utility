@@ -1715,7 +1715,8 @@ class HaPlugin(kvmagent.KvmAgent):
         result = {}
         runningVms = []
 
-        ceph_conf, keyring_path, username = ceph.get_ceph_client_conf(cmd.primaryStorageUuid, cmd.manufacturer)
+        ceph_conf, keyring_path, username = ceph.get_ceph_client_conf(cmd.primaryStorageUuid, cmd.manufacturer,
+                                                                      CEPH_HA_CONF)
 
         if not os.path.exists(ceph_conf):
             rsp.success = False

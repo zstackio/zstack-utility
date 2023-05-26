@@ -46,7 +46,7 @@ def get_ceph_manufacturer():
         return "open-source"
 
 
-def get_ceph_client_conf(ps_uuid, manufacturer=None):
+def get_ceph_client_conf(ps_uuid, manufacturer=None, ceph_conf=CEPH_CONF):
     ceph_client_config_dir = os.path.join(CEPH_CONF_ROOT, ps_uuid)
 
     # xsky use admin to access mon node
@@ -60,7 +60,7 @@ def get_ceph_client_conf(ps_uuid, manufacturer=None):
     if not os.path.exists(key_path):
         key_path = None
 
-    return os.path.join(ceph_client_config_dir, "ceph.conf"), key_path, username
+    return os.path.join(ceph_client_config_dir, ceph_conf), key_path, username
 
 
 def update_ceph_client_access_conf(ps_uuid, mon_urls, user_key, manufacturer, fsid, ceph_conf=CEPH_CONF):
