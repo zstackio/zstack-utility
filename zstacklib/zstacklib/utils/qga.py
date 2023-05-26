@@ -88,6 +88,7 @@ class VmQga(object):
     VM_OS_WINDOWS = "mswindows"
 
     ZS_TOOLS_PATN_WIN = "C:\Program Files\GuestTools\zs-tools\zs-tools.exe"
+    ZS_TOOLS_VERSION_PATN_WIN = "C:\Program Files\Common Files\GuestTools\VERSION"
 
     def __init__(self, domain):
         self.domain = domain
