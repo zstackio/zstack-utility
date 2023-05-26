@@ -9289,9 +9289,12 @@ host side snapshot files chian:
 
         # string list
         cron_scripts = []
-        r, o, _ = bash.bash_roe('/usr/bin/crontab -l | grep -v "bash %s"' % script_path)
-        if r == 0:
-            cron_scripts.append(o.strip())
+        r, o, _ = bash.bash_roe('/usr/bin/crontab -l')
+        if r == 0 and not o.startswith('\x00'): # crontab script is not empty
+            for line in o.split('\n'):
+                if line.find("bash %s" % script_path) >= 0:
+                    continue
+                cron_scripts.append(line.strip())
 
         for interval in interval_uuid_map:
             vm_uuids = interval_uuid_map[interval]
