@@ -4837,7 +4837,7 @@ class Vm(object):
             root = elements['root']
             qcmd = e(root, 'qemu:commandline')
             vendor_id, model_name = linux.get_cpu_model()
-            if "hygon" in model_name.lower() and cmd.vmCpuModel == 'Hygon_Customized':
+            if "hygon" in model_name.lower() and cmd.vmCpuModel == 'Hygon_Customized' and cmd.imagePlatform.lower() != "other":
                 e(qcmd, "qemu:arg", attrib={"value": "-cpu"})
                 e(qcmd, "qemu:arg", attrib={"value": "EPYC,vendor=AuthenticAMD,model_id={} Processor,+svm".format(" ".join(model_name.split(" ")[0:3]))})
 
