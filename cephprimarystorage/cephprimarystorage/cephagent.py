@@ -853,13 +853,28 @@ class CephAgent(plugin.TaskManager):
     @replyerror
     def flatten(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentResponse()
         path = self._normalize_install_path(cmd.path)
 
-        if self._get_parent(path):
-            t_shell = traceable_shell.get_shell(cmd)
-            t_shell.call('rbd flatten %s' % path)
+        if not self._get_parent(path):
+            self._set_capacity_to_response(rsp)
+            return jsonobject.dumps(AgentResponse())
 
-        rsp = AgentResponse()
+        p_file = tempfile.mktemp()
+        report = Report.from_spec(cmd, "FlattenVolume")
+
+        def _get_percent(synced):
+            t = linux.tail_1(p_file, split=b"\r")
+            if t:
+                for word in t.split():
+                    if word.endswith('%'):
+                        report.progress_report(get_exact_percent(int(word[:-1]), report.taskStage))
+            return synced
+
+        t_shell = traceable_shell.get_shell(cmd)
+        t_shell.bash_progress_1('rbd flatten %s 2> %s' % (path, p_file), _get_percent)
+        linux.rm_file_force(p_file)
+
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 

@@ -1023,22 +1023,32 @@ def raw_create(dst, size):
     shell.check_run('/usr/bin/qemu-img create -f raw %s %s' % (dst, size))
     os.chmod(dst, 0o660)
 
-def create_template(src, dst, compress=False, shell=shell):
+def create_template(src, dst, compress=False, shell=shell, progress_output=None):
     fmt = get_img_fmt(src)
     if fmt == 'raw':
-        return raw_create_template(src, dst, shell=shell)
+        return raw_create_template(src, dst, shell=shell, progress_output=progress_output)
     if fmt == 'qcow2':
-        return qcow2_create_template(src, dst, compress, shell=shell)
+        return qcow2_create_template(src, dst, compress, shell=shell, progress_output=progress_output)
     raise Exception('unknown format[%s] of the image file[%s]' % (fmt, src))
 
-def qcow2_create_template(src, dst, compress, shell=shell):
-    if compress:
-        shell.call('%s -c -f qcow2 -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
-    else:
-        shell.call('%s -f qcow2 -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
+def qcow2_create_template(src, dst, compress, shell=shell, progress_output=None):
+    redirect, ext_opts = "", []
+    if progress_output:
+        redirect = " > " + progress_output
+        ext_opts.append("-p")
 
-def raw_create_template(src, dst, shell=shell):
-    shell.call('%s -f raw -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
+    if compress:
+        ext_opts.append("-c")
+
+    shell.call('%s %s -f qcow2 -O qcow2 %s %s %s' % (qemu_img.subcmd('convert'), " ".join(ext_opts), src, dst, redirect))
+
+def raw_create_template(src, dst, shell=shell, progress_output=None):
+    redirect, ext_opts = "", []
+    if progress_output:
+        redirect = " > " + progress_output
+        ext_opts.append("-p")
+
+    shell.call('%s %s -f raw -O qcow2 %s %s %s' % (qemu_img.subcmd('convert'), " ".join(ext_opts), src, dst, redirect))
 
 def qcow2_convert_to_raw(src, dst):
     shell.call('%s -f qcow2 -O raw %s %s' % (qemu_img.subcmd('convert'), src, dst))
@@ -2539,7 +2549,7 @@ def link(source, link_name):
     os.link(source, link_name)
     logger.debug("link %s to %s" % (source, link_name))
 
-def tail_1(path):
+def tail_1(path, split=b"\n"):
     if not os.path.exists(path):
         return None
     if os.path.getsize(path) <= 2:
@@ -2547,7 +2557,7 @@ def tail_1(path):
 
     with open(path, 'rb') as f:
         f.seek(-2, os.SEEK_END)
-        while f.tell() > 0 and f.read(1) != b"\n":
+        while f.tell() > 0 and f.read(1) != split:
             f.seek(-2, os.SEEK_CUR)
         return f.readline()
 

@@ -12,6 +12,7 @@ from zstacklib.utils import shell
 from zstacklib.utils import traceable_shell
 from zstacklib.utils import rollback
 from zstacklib.utils import linux
+from zstacklib.utils import qcow2
 import zstacklib.utils.uuidhelper as uuidhelper
 from zstacklib.utils.plugin import completetask
 from zstacklib.utils import secret
@@ -451,8 +452,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
             linux.qcow2_rebase(cmd.srcPath, cmd.destPath)
         else:
             tmp = os.path.join(os.path.dirname(cmd.destPath), '%s.qcow2' % uuidhelper.uuid())
-            t_shell = traceable_shell.get_shell(cmd)
-            linux.create_template(cmd.destPath, tmp, shell=t_shell)
+            qcow2.create_template_with_task_daemon(cmd.destPath, tmp, task_spec=cmd)
             shell.call("mv %s %s" % (tmp, cmd.destPath))
 
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)

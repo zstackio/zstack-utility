@@ -116,6 +116,14 @@ class VolumeTO(object):
                 v.deviceType = "file"
                 return v
 
+    @staticmethod
+    def get_volume_actual_installpath(install_path):
+        if install_path.startswith('sharedblock'):
+            return shared_block_to_file(install_path)
+        elif install_path.startswith('block'):
+            return block_to_path(install_path)
+        return install_path
+
 
 class RemoteStorageFactory(object):
     @staticmethod
@@ -1616,21 +1624,69 @@ class VirtioIscsi(object):
         secret.setValue(self.chap_password)
         return secret.UUIDString()
 
+
 class MergeSnapshotDaemon(plugin.TaskDaemon):
-    def __init__(self, task_spec, domain, disk_name, timeout=None):
-        super(MergeSnapshotDaemon, self).__init__(task_spec, 'mergeSnapshot', timeout, report_progress=False)
-        self.domain = domain
+    def __init__(self, task_spec, vm, disk_name, top, base=None, timeout=0):
+        # type: (object, Vm, str, str, str, int) -> None
+        super(MergeSnapshotDaemon, self).__init__(task_spec, 'mergeSnapshot', timeout)
+        self.vm = vm  # type: Vm
+        self.top = top
+        self.base = base
         self.disk_name = disk_name
 
     def _cancel(self):
-        logger.debug('cancelling vm[uuid:%s] merge snapshost' % self.domain.name())
         # cancel block job async
-        self.domain.blockJobAbort(self.disk_name, 0)
+        self.vm.domain.blockJobAbort(self.disk_name, 0)
 
-    def _get_percent(self):
-        # type: () -> int
-        pass
+    def _get_percent(self):  # type: () -> int
+        cur, end = self.vm.get_block_job_info(self.disk_name)
+        if end != 0:
+            percent = min(99, cur * 100.0 / end)
+            return get_exact_percent(percent, self.stage)
 
+    def check_vm_xml_backing_file_consistency(self, base_disk_install_path, dest_disk_install_path):
+        expected = False
+        for disk_backing_file_chain in self.vm.get_backing_store_source_recursively():
+            chain_depth = len(disk_backing_file_chain)
+            if dest_disk_install_path in disk_backing_file_chain.keys():
+                dest_disk_install_path_depth = disk_backing_file_chain[dest_disk_install_path]
+                # for fullRebase, new top layer do not depend on image cache
+                # the depth of disk chain depth will reset
+                if base_disk_install_path is None:
+                    expected = dest_disk_install_path_depth == chain_depth - 1
+                # for not fullRebase, check the current_install_path depth increased 1
+                if base_disk_install_path is not None:
+                    expected = disk_backing_file_chain[base_disk_install_path] == dest_disk_install_path_depth + 1
+                break
+        return expected
+
+    def __exit__(self, exc_type, ex, exc_tb):
+        super(MergeSnapshotDaemon, self).__exit__(exc_type, ex, exc_tb)
+        if exc_type is None:
+            return
+
+        current_backing = self.vm._get_back_file(self.top)
+        if current_backing != self.base:
+            logger.debug("live merge snapshot failed. expected backing %s, "
+                         "actually backing %s" % (self.base, current_backing))
+            raise ex
+
+        consistent_backing_store_by_libvirt = False
+        for i in xrange(5):
+            self.vm.refresh()
+            consistent_backing_store_by_libvirt = self.check_vm_xml_backing_file_consistency(self.base, self.top)
+            if consistent_backing_store_by_libvirt:
+                break
+            time.sleep(1)
+
+        if consistent_backing_store_by_libvirt:
+            logger.debug("libvirt return live merge snapshot failure, but it succeed actually! "
+                         "expected volume[install path: %s] backing file is %s. "
+                         "check the vm xml meets expectations" % (self.base, current_backing))
+        else:
+            logger.debug("live merge snapshot failed. expected backing %s, actually backing %s. "
+                         "check the vm xml does not meet expectations" % (self.base, current_backing))
+            raise ex
 
 
 class VmVolumesRecoveryTask(plugin.TaskDaemon):
@@ -2901,6 +2957,14 @@ class Vm(object):
                                                         % (qemu_img.subcmd('info'), volume)) == 0:
             raise kvmagent.KvmError('found internal snapshot in the backing chain of volume[path:%s].' % volume)
 
+    def get_block_job_info(self, disk_path):
+        status = self.domain.blockJobInfo(disk_path, 0)
+        if status == -1:
+            return 0, 0
+
+        return status.get('cur', 0), status.get('end', 0)
+
+
     # NOTE: code from Openstack nova
     def _wait_for_block_job(self, disk_path, abort_on_error=False,
                             wait_for_job_clean=False):
@@ -2941,10 +3005,7 @@ class Vm(object):
         return d and n
 
     def _get_target_disk_by_path(self, installPath, is_exception=True):
-        if installPath.startswith('sharedblock'):
-            installPath = shared_block_to_file(installPath)
-        elif installPath.startswith('block'):
-            installPath = block_to_path(installPath)
+        installPath = VolumeTO.get_volume_actual_installpath(installPath)
 
         for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
             if not xmlobject.has_element(disk, 'source'):
@@ -2981,10 +3042,7 @@ class Vm(object):
         return target_disk_alias_names
 
     def _get_target_disk(self, volume, is_exception=True):
-        if volume.installPath.startswith('sharedblock'):
-            volume.installPath = shared_block_to_file(volume.installPath)
-        elif volume.installPath.startswith('block'):
-            volume.installPath = block_to_path(volume.installPath)
+        volume.installPath = VolumeTO.get_volume_actual_installpath(volume.installPath)
         volume = file_volume_check(volume)
 
         for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
@@ -3255,7 +3313,8 @@ class Vm(object):
 
     def block_stream_disk(self, task_spec, volume):
         target_disk, disk_name = self._get_target_disk(volume)
-        with MergeSnapshotDaemon(task_spec, self.domain, disk_name, task_spec.timeout - 10):
+        top = VolumeTO.get_volume_actual_installpath(volume.installPath)
+        with MergeSnapshotDaemon(task_spec, self, disk_name, top=top, timeout=task_spec.timeout - 10):
             self._do_block_stream_disk(task_spec, target_disk, disk_name)
 
     def list_blk_sources(self):
@@ -3433,7 +3492,7 @@ class Vm(object):
                             logger.debug('the total amount of data migrated is 0')
                             return
 
-                        result.put("remain",remain)
+                        result.put("remain", remain)
                         result.put("total", total)
 
                         if remain == 0:
@@ -3535,10 +3594,7 @@ class Vm(object):
             ic.iso = iso
             cdrom = ic.to_xmlobject(dev, bus)
         else:
-            if iso.path.startswith('sharedblock'):
-                iso.path = shared_block_to_file(iso.path)
-            elif iso.path.startswith('block'):
-                iso.path = block_to_path(iso.path)
+            iso.path = VolumeTO.get_volume_actual_installpath(iso.path)
 
             iso = iso_check(iso)
             cdrom = etree.Element('disk', {'type': iso.type, 'device': 'cdrom'})
@@ -4006,75 +4062,18 @@ class Vm(object):
             def wait_previous_job(_):
                 return not self._wait_for_block_job(disk_name, abort_on_error=True)
 
-            def check_vm_xml_backing_file_consistency(base_disk_install_path, dest_disk_install_path):
-                # type: (str,str) -> bool
-                expected = False
-                for disk_backing_file_chain in self.get_backing_store_source_recursively():
-                    chain_depth = len(disk_backing_file_chain)
-                    if dest_disk_install_path in disk_backing_file_chain.keys():
-                        dest_disk_install_path_depth = disk_backing_file_chain[dest_disk_install_path]
-                        # for fullRebase, new top layer do not depend on image cache
-                        # the depth of disk chain depth will reset
-                        if base_disk_install_path is None:
-                            expected = dest_disk_install_path_depth == chain_depth - 1
-                        # for not fullRebase, check the current_install_path depth increased 1
-                        if base_disk_install_path is not None:
-                            expected = disk_backing_file_chain[base_disk_install_path] == dest_disk_install_path_depth + 1
-                        break
-                return expected
-
             if not linux.wait_callback_success(wait_previous_job, timeout=get_timeout_seconds(), ignore_exception_in_callback=True):
                 raise kvmagent.KvmError('merge snapshot failed - pending previous block job')
 
-            class BlockPullDaemon(plugin.TaskDaemon):
-                def __init__(self, vm):
-                    super(BlockPullDaemon, self).__init__(cmd, "BlockPull", report_progress=False)
-                    self.vm = vm  # type: Vm
+            self.domain.blockRebase(disk_name, base, 0)
 
-                def _cancel(self):
-                    self.vm.domain.blockJobAbort(disk_name)
+            logger.debug('merging snapshot chain is waiting for blockRebase job of %s completion' % disk_name)
 
-                def _get_percent(self):  # type: () -> int
-                    pass
+            def wait_job(_):
+                return not self._wait_for_block_job(disk_name, abort_on_error=True)
 
-                def __exit__(self, exc_type, ex, exc_tb):
-                    super(BlockPullDaemon, self).__exit__(exc_type, ex, exc_tb)
-                    if exc_type is None:
-                        return
-
-                    current_backing = self.vm._get_back_file(top)
-                    if current_backing != base:
-                        logger.debug("live merge snapshot failed. expected backing %s, "
-                                "actually backing %s" % (base, current_backing))
-                        raise ex
-
-                    consistent_backing_store_by_libvirt = False
-                    for i in xrange(5):
-                        self.vm.refresh()
-                        consistent_backing_store_by_libvirt = check_vm_xml_backing_file_consistency(base, top)
-                        if consistent_backing_store_by_libvirt:
-                            break
-                        time.sleep(1)
-
-                    if consistent_backing_store_by_libvirt:
-                        logger.debug("libvirt return live merge snapshot failure, but it succeed actually! "
-                                    "expected volume[install path: %s] backing file is %s. "
-                                    "check the vm xml meets expectations" % (base, current_backing))
-                    else:
-                        logger.debug("live merge snapshot failed. expected backing %s, actually backing %s. "
-                                    "check the vm xml does not meet expectations" % (base, current_backing))
-                        raise ex
-
-            with BlockPullDaemon(self):
-                self.domain.blockRebase(disk_name, base, 0)
-
-                logger.debug('merging snapshot chain is waiting for blockRebase job of %s completion' % disk_name)
-
-                def wait_job(_):
-                    return not self._wait_for_block_job(disk_name, abort_on_error=True)
-
-                if not linux.wait_callback_success(wait_job, timeout=get_timeout_seconds()):
-                    raise kvmagent.KvmError('live merging snapshot chain failed, block job not finished')
+            if not linux.wait_callback_success(wait_job, timeout=get_timeout_seconds()):
+                raise kvmagent.KvmError('live merging snapshot chain failed, block job not finished')
 
             # Double check (c.f. issue #757)
             current_backing = self._get_back_file(top)
@@ -4087,11 +4086,9 @@ class Vm(object):
         self._check_snapshot_can_livemerge(cmd.srcPath, cmd.destPath,
                                            cmd.fullRebase)
         # confirm MergeSnapshotDaemon's cancel will be invoked before block job wait
-        with MergeSnapshotDaemon(cmd, self.domain, disk_name, timeout=get_timeout_seconds()):
-            if cmd.fullRebase:
-                do_pull(None, cmd.destPath)
-            else:
-                do_pull(cmd.srcPath, cmd.destPath)
+        base = None if cmd.fullRebase else cmd.srcPath
+        with MergeSnapshotDaemon(cmd, self, disk_name, top=cmd.destPath, base=base, timeout=get_timeout_seconds()):
+            do_pull(base, cmd.destPath)
 
     def take_volumes_shallow_backup(self, task_spec, volumes, dst_backup_paths):
         if self._is_ft_vm():
@@ -4102,7 +4099,7 @@ class Vm(object):
     def _take_volumes_top_drive_backup(self, task_spec, volumes, dst_backup_paths):
         class DriveBackupDaemon(plugin.TaskDaemon):
             def __init__(self, domain_uuid):
-                super(DriveBackupDaemon, self).__init__(task_spec, 'TakeVolumeBackup', report_progress=False)
+                super(DriveBackupDaemon, self).__init__(task_spec, 'TakeVolumeBackup')
                 self.domain_uuid = domain_uuid
 
             def __exit__(self, exc_type, exc_val, exc_tb):
@@ -4112,9 +4109,6 @@ class Vm(object):
             def _cancel(self):
                 logger.debug("cancel vm[uuid:%s] backup" % self.domain_uuid)
                 ImageStoreClient().stop_backup_jobs(self.domain_uuid)
-
-            def _get_percent(self):
-                pass
 
         tmp_workspace = os.path.join(tempfile.gettempdir(), uuidhelper.uuid())
         with DriveBackupDaemon(self.uuid):
@@ -4149,7 +4143,7 @@ class Vm(object):
 
         class ShallowBackupDaemon(plugin.TaskDaemon):
             def __init__(self, domain):
-                super(ShallowBackupDaemon, self).__init__(task_spec, 'TakeVolumeBackup', report_progress=False)
+                super(ShallowBackupDaemon, self).__init__(task_spec, 'TakeVolumeBackup')
                 self.domain = domain
 
             def _cancel(self):
@@ -4157,9 +4151,6 @@ class Vm(object):
                 for v in volume_backup_info.values():
                     if self.domain.blockJobInfo(v.dev_name, 0):
                         self.domain.blockJobAbort(v.dev_name)
-
-            def _get_percent(self):
-                pass
 
         volume_backup_info = {}
         for volume in volumes:
@@ -7046,7 +7037,7 @@ class VmPlugin(kvmagent.KvmAgent):
     def _do_block_copy(self, vmUuid, disk_name, disk_xml, task_spec):
         class BlockCopyDaemon(plugin.TaskDaemon):
             def __init__(self, task_spec, domain, disk_name):
-                super(BlockCopyDaemon, self).__init__(task_spec, 'blockCopy', report_progress=True)
+                super(BlockCopyDaemon, self).__init__(task_spec, 'blockCopy')
                 self.domain = domain
                 self.disk_name = disk_name
 
@@ -7067,10 +7058,11 @@ class VmPlugin(kvmagent.KvmAgent):
             def _get_detail(self):
                 try:
                     result = jsonobject.JsonObject()
-                    r, o, err = bash.bash_roe("virsh qemu-monitor-command %s '%s' --pretty" % (vmUuid, qmp_subcmd('{"execute":"query-block-jobs"}')))
+                    r, o, err = execute_qmp_command(vmUuid, '{"execute":"query-block-jobs"}')
                     if err:
                         return
                     block_jobs = json.loads(o)['return']
+
                     job = next((job for job in block_jobs if job['status'] == 'running'), None)
                     if not job:
                         logger.debug("do_block_copy job finished. detail no found!")

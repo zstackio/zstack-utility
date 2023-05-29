@@ -18,7 +18,7 @@ import ConfigParser
 import time
 
 from zstacklib.utils import jsonobject, http
-from zstacklib.utils.report import get_api_id, AutoReporter, get_timeout
+from zstacklib.utils.report import get_api_id, AutoReporter, get_timeout, get_task_stage
 from zstacklib.utils import traceable_shell
 
 PLUGIN_CONFIG_SECTION_NAME = 'plugins'
@@ -66,10 +66,12 @@ class TaskDaemon(object):
     A daemon to track a long task, task will be canceled automatically when timeout or canceled by api.
     '''
 
-    def __init__(self, task_spec, task_name, timeout=0, report_progress=True):
+    def __init__(self, task_spec, task_name, timeout=0):
         self.api_id = get_api_id(task_spec)
         self.task_name = task_name
+        self.stage = get_task_stage(task_spec)
         self.timeout = get_timeout(task_spec) if timeout == 0 else timeout
+        report_progress = type(self)._get_percent != TaskDaemon._get_percent
         self.progress_reporter = AutoReporter.from_spec(task_spec, task_name, self._get_percent, self._get_detail) if report_progress else None
         self.cancel_thread = threading.Timer(self.timeout, self._timeout_cancel) if self.timeout > 0 else None
         self.closed = False
@@ -123,7 +125,6 @@ class TaskDaemon(object):
     def _cancel(self):
         pass
 
-    @abc.abstractmethod
     def _get_percent(self):
         # type: () -> int
         pass

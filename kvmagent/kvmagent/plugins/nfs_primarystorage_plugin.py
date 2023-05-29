@@ -18,7 +18,7 @@ from zstacklib.utils import linux
 from zstacklib.utils import log
 from zstacklib.utils import shell
 from zstacklib.utils import lock
-from zstacklib.utils import qemu_img
+from zstacklib.utils import qemu_img, qcow2
 from zstacklib.utils import traceable_shell
 from zstacklib.utils.bash import *
 from zstacklib.utils.report import *
@@ -560,8 +560,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             linux.qcow2_rebase(cmd.srcPath, cmd.destPath)
         else:
             tmp = os.path.join(os.path.dirname(cmd.destPath), '%s.qcow2' % uuidhelper.uuid())
-            t_shell = traceable_shell.get_shell(cmd)
-            linux.create_template(cmd.destPath, tmp, shell=t_shell)
+            qcow2.create_template_with_task_daemon(cmd.destPath, tmp, task_spec=cmd)
             shell.call("mv %s %s" % (tmp, cmd.destPath))
 
         self._set_capacity_to_response(cmd.uuid, rsp)
