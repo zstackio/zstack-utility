@@ -18,7 +18,6 @@ import sys
 
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
-from kvmagent.plugins.imagestore import ImageStoreClient
 from zstacklib.utils import http
 from zstacklib.utils import qemu
 from zstacklib.utils import linux
@@ -598,7 +597,6 @@ class HostPlugin(kvmagent.KvmAgent):
     UPDATE_DEPENDENCY = "/host/updatedependency"
     ENABLE_HUGEPAGE = "/host/enable/hugepage"
     DISABLE_HUGEPAGE = "/host/disable/hugepage"
-    CLEAN_LOCAL_CACHE = "/host/imagestore/cleancache"
     HOST_START_USB_REDIRECT_PATH = "/host/usbredirect/start"
     HOST_STOP_USB_REDIRECT_PATH = "/host/usbredirect/stop"
     CHECK_USB_REDIRECT_PORT = "/host/usbredirect/check"
@@ -1491,13 +1489,6 @@ done
             rsp.error = cmd.stdout
         os.remove(enable_hugepage_script_path)
         return jsonobject.dumps(rsp)
-
-    @kvmagent.replyerror
-    def clean_local_cache(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        isc = ImageStoreClient()
-        isc.clean_imagestore_cache(cmd.mountPath)
-        return jsonobject.dumps(kvmagent.AgentResponse())
 
     @kvmagent.replyerror
     def change_password(self, req):
@@ -2538,7 +2529,6 @@ done
         http_server.register_async_uri(self.UPDATE_DEPENDENCY, self.update_dependency)
         http_server.register_async_uri(self.ENABLE_HUGEPAGE, self.enable_hugepage)
         http_server.register_async_uri(self.DISABLE_HUGEPAGE, self.disable_hugepage)
-        http_server.register_async_uri(self.CLEAN_LOCAL_CACHE, self.clean_local_cache)
         http_server.register_async_uri(self.HOST_START_USB_REDIRECT_PATH, self.start_usb_redirect_server)
         http_server.register_async_uri(self.HOST_STOP_USB_REDIRECT_PATH, self.stop_usb_redirect_server)
         http_server.register_async_uri(self.CHECK_USB_REDIRECT_PORT, self.check_usb_server_port)
