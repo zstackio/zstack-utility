@@ -324,6 +324,19 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
         @linux.retry(times=20, sleep_time=1)
         def wait_iscsi_mknode(iscsiServerIp, iscsiServerPort, iscsiIqn, e=None):
+            @linux.retry(times=3, sleep_time=1)
+            def get_disks_by_no_mapping_lun():
+                # Use HCTL, IQN, "-" to match the number of unmounted Luns according to lsscsi --transport
+                disks_by_no_mapping_lun = bash.bash_o(
+                    "lsscsi --transport | grep -w %s | awk '{print $1,$NF}' | grep -E '\<%s\>:[[:digit:]]*:[[:digit:]]*:"
+                    "[[:digit:]]*' | awk '{print $NF}' | grep -x '-'" % (
+                        iscsiIqn, host_Number)).strip().splitlines()
+                if len(disks_by_no_mapping_lun) > 0 and lsscsi_retry_counter[0] != 2:
+                    lsscsi_retry_counter[0] += 1
+                    raise RetryException("found invalid device name, retrieve again")
+                return disks_by_no_mapping_lun
+
+            lsscsi_retry_counter = [0]
             disks_by_dev = list_iscsi_disks(iscsiServerIp, iscsiServerPort, iscsiIqn)
             sid = bash.bash_o("iscsiadm -m session | grep %s:%s | grep %s | awk '{print $2}'" % (iscsiServerIp, iscsiServerPort, iscsiIqn)).strip("[]\n ")
             if sid == "" or sid is None:
@@ -335,7 +348,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             #Get the host_Number of iqn, Will match the HTCL attribute of iscsi according to Host_number
             host_Number = bash.bash_o("iscsiadm -m session -P 3 --sid=%s | grep 'Host Number:' | awk '{print $3}'" % sid).strip()
             #Use HCTL, IQN, "-" to match the number of unmounted Luns according to lsscsi --transport
-            disks_by_no_mapping_lun = bash.bash_o("lsscsi --transport | grep -w %s | awk '{print $1,$NF}' | grep -E '\<%s\>:[[:digit:]]*:[[:digit:]]*:[[:digit:]]*' | awk '{print $NF}' | grep -x '-'" % (iscsiIqn, host_Number)).strip().splitlines()
+            disks_by_no_mapping_lun = get_disks_by_no_mapping_lun()
             disks_by_iscsi = bash.bash_o("iscsiadm -m session -P 3 --sid=%s | grep Lun" % sid).strip().splitlines()
             if len(disks_by_dev) < (len(disks_by_iscsi) - len(disks_by_no_mapping_lun)):
                 raise RetryException("iscsiadm says there are [%s] disks but only found [%s] disks on /dev/disk[%s], so not all disks loged in, and you can check the iscsi mounted disk by lsscsi --transport"
