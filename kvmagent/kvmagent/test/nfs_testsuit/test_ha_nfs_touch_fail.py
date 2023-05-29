@@ -71,8 +71,9 @@ class TestHaNfsIptablesDropPlugin(TestCase, NfsPluginTestStub):
             "maxMemory": 134217728,  # 128M
             "cpuNum": 1,
             "cpuSpeed": 0,
-            "socketNum": 1,
-            "cpuOnSocket": 1,
+            "socketNum": None,
+            "cpuOnSocket": None,
+            "threadsPerCore": None,
             "bootDev": ["hd"],
             "rootVolume": {
                 "installPath": "{}".format(installUrl),
