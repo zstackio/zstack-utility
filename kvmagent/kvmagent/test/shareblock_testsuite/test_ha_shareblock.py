@@ -84,8 +84,9 @@ class TestHaShareBlockPlugin(TestCase, SharedBlockPluginTestStub):
             "maxMemory": 134217728,  # 128M
             "cpuNum": 1,
             "cpuSpeed": 0,
-            "socketNum": 1,
-            "cpuOnSocket": 1,
+            "socketNum": None,
+            "cpuOnSocket": None,
+            "threadsPerCore": None,
             "bootDev": ["hd"],
             "rootVolume": {
                 "installPath": "/dev/{}/{}".format(vgUuid, volumeUuid),
@@ -187,6 +188,14 @@ class TestHaShareBlockPlugin(TestCase, SharedBlockPluginTestStub):
         self.assertEqual(True, rsp.success)
         rsp.result[vgUuid] == False
 
+        #update params
+        rsp = ha_utils.setup_sharedblock_self_fencer(vgUuid, "hostUuid", "None", addons, "None", 1, 1, 4, "Force", [])
+        self.assertEqual(True, rsp.success)
+        time.sleep(10)
+        r, o = bash.bash_ro('grep -c "sharedblock fencer args changed:" /var/log/zstack/zstack.log')
+        self.assertEqual(0, r)
+        self.assertEqual(o.strip(), '2')
+        
         SharedBlockPluginTestStub().logout(vgUuid, hostUuid)
 
 

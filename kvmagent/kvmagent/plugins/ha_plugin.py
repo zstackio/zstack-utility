@@ -1446,9 +1446,9 @@ class HaPlugin(kvmagent.KvmAgent):
 
             ha_fencer = AbstractHaFencer(cmd.interval, cmd.maxAttempts, cmd.vgUuid, fencer_list)
             update_fencer = True
+            init_fencer_params(cmd)
             if self.sblk_health_checker.do_heartbeat_on_sharedblock_call is None:
                 self.sblk_health_checker.do_heartbeat_on_sharedblock_call = self.do_heartbeat_on_sharedblock
-
             fencer_init[self.sblk_health_checker.get_ha_fencer_name()] = self.sblk_health_checker
             logger.debug("shareblock start run fencer list :%s" % ",".join(fencer_list))
 
@@ -1461,6 +1461,13 @@ class HaPlugin(kvmagent.KvmAgent):
         created_time = time.time()
         self.setup_fencer(cmd.vgUuid, created_time)
         self.sblk_health_checker.addvg(created_time, cmd)
+
+        def init_fencer_params(cmd):
+            self.sblk_health_checker.health_check_interval = cmd.interval
+            self.sblk_health_checker.storage_timeout = cmd.storageCheckerTimeout
+            self.sblk_health_checker.max_failure = cmd.maxAttempts
+            self.sblk_health_checker.host_uuid = cmd.hostUuid
+            self.sblk_health_checker.ps_uuid = cmd.vgUuid
 
         with self.fencer_lock:
             if self.sblk_health_checker.get_ha_fencer_name() in self.abstract_ha_fencer_checker:
