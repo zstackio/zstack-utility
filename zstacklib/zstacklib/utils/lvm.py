@@ -35,6 +35,7 @@ LVMLOCKD_LOG_RSYSLOG_PATH = "/etc/rsyslog.d/lvmlockd.conf"
 LVMLOCKD_SERVICE_PATH = "/lib/systemd/system/lvm2-lvmlockd.service"
 LVMLOCKD_LOG_LOGROTATE_PATH = "/etc/logrotate.d/lvmlockd"
 LVMLOCKD_ADOPT_FILE = "/run/lvm/lvmlockd.adopt"
+LVMLOCKD_VERSION = None
 LVM_CONFIG_BACKUP_PATH = "/etc/lvm/zstack-backup"
 LVM_CONFIG_ARCHIVE_PATH = "/etc/lvm/archive"
 SUPER_BLOCK_BACKUP = "superblock.bak"
