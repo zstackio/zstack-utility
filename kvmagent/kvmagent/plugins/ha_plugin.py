@@ -852,7 +852,6 @@ class CephHeartbeatController(AbstractStorageFencer):
 last_multipath_run = time.time()
 QEMU_VERSION = qemu.get_version()
 LIBVIRT_VERSION = linux.get_libvirt_version()
-CEPH_HA_CONF = "ceph_ha.conf"
 global_vpc_uuids = []
 global_always_ha_vm_uuids = []
 vpc_lock = threading.Lock()
@@ -1487,13 +1486,9 @@ class HaPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def setup_ceph_self_fencer(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        mon_url = '\;'.join(cmd.monUrls)
+        mon_url = mon_url.replace(':', '\\\:')
 
-        def remove_mon_ip_from_urls():
-            host_ips = linux.get_dst_ip_from_ip_routers()
-            mon_url = [monurl for monurl in cmd.monUrls if not any(monurl.split(":")[0] in host_ip for host_ip in host_ips)]
-            return mon_url if mon_url else cmd.monUrls
-
-        mon_urls = remove_mon_ip_from_urls()
         created_time = time.time()
 
         def get_fencer_key(ps_uuid, pool_name):
@@ -1525,9 +1520,7 @@ class HaPlugin(kvmagent.KvmAgent):
             ha_fencer = AbstractHaFencer(cmd.interval, cmd.maxAttempts, cmd.vgUuid, fencer_list)
             update_fencer = True
             try:
-                conf_path, keyring_path, username = ceph.update_ceph_client_access_conf(ps_uuid, mon_urls,
-                                                                                        cmd.userKey, cmd.manufacturer,
-                                                                                        cmd.fsId, CEPH_HA_CONF)
+                conf_path, keyring_path, username = ceph.update_ceph_client_access_conf(ps_uuid, cmd.monUrls, cmd.userKey, cmd.manufacturer, cmd.fsId)
                 logger.debug("config file: %s, pool name: %s" % (conf_path, pool_name))
                 heartbeat_counter = 0
                 additional_conf_dict = {}
@@ -1722,8 +1715,7 @@ class HaPlugin(kvmagent.KvmAgent):
         result = {}
         runningVms = []
 
-        ceph_conf, keyring_path, username = ceph.get_ceph_client_conf(cmd.primaryStorageUuid, cmd.manufacturer,
-                                                                      CEPH_HA_CONF)
+        ceph_conf, keyring_path, username = ceph.get_ceph_client_conf(cmd.primaryStorageUuid, cmd.manufacturer)
 
         if not os.path.exists(ceph_conf):
             rsp.success = False
