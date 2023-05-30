@@ -95,6 +95,12 @@ class CreateTemplateFromRootVolumeRsp(NfsResponse):
         self.size = None
         self.actualSize = None
 
+class EstimateTemplateSizeRsp(NfsResponse):
+    def __init__(self):
+        super(EstimateTemplateSizeRsp, self).__init__()
+        self.size = None
+        self.actualSize = None
+
 class GetCapacityResponse(NfsResponse):
     def __init__(self):
         super(GetCapacityResponse, self).__init__()
@@ -217,6 +223,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     CREATE_FOLDER_PATH = "/nfsprimarystorage/createfolder"
     GET_CAPACITY_PATH = "/nfsprimarystorage/getcapacity"
     CREATE_TEMPLATE_FROM_VOLUME_PATH = "/nfsprimarystorage/sftp/createtemplatefromvolume"
+    ESTIMATE_TEMPLATE_SIZE_PATH = "/nfsprimarystorage/estimatetemplatesize"
     REVERT_VOLUME_FROM_SNAPSHOT_PATH = "/nfsprimarystorage/revertvolumefromsnapshot"
     REINIT_IMAGE_PATH = "/nfsprimarystorage/reinitimage"
     DELETE_PATH = "/nfsprimarystorage/delete"
@@ -262,6 +269,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.DELETE_PATH, self.delete)
         http_server.register_async_uri(self.UNLINK_PATH, self.unlink)
         http_server.register_async_uri(self.CREATE_TEMPLATE_FROM_VOLUME_PATH, self.create_template_from_root_volume)
+        http_server.register_async_uri(self.ESTIMATE_TEMPLATE_SIZE_PATH, self.estimate_template)
         http_server.register_async_uri(self.CHECK_BITS_PATH, self.check_bits)
         http_server.register_async_uri(self.REVERT_VOLUME_FROM_SNAPSHOT_PATH, self.revert_volume_from_snapshot)
         http_server.register_async_uri(self.REINIT_IMAGE_PATH, self.reinit_image)
@@ -869,6 +877,14 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
 
         self._set_capacity_to_response(cmd.uuid, rsp)
         logger.debug('successfully created template[%s] from root volume[%s]' % (cmd.installPath, cmd.rootVolumePath))
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def estimate_template(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = EstimateTemplateSizeRsp()
+        rsp.actualSize = linux.qcow2_measure_required_size(cmd.volumePath)
+        rsp.size, _ = linux.qcow2_size_and_actual_size(cmd.volumePath)
         return jsonobject.dumps(rsp)
 
     def check_nfs_mounted(self, mount_path):

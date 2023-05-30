@@ -71,6 +71,12 @@ class CreateTemplateFromVolumeRsp(AgentResponse):
         self.size = None
         self.actualSize = None
 
+class EstimateTemplateSizeRsp(AgentResponse):
+    def __init__(self):
+        super(EstimateTemplateSizeRsp, self).__init__()
+        self.size = None
+        self.actualSize = None
+
 class MergeSnapshotRsp(AgentResponse):
     def __init__(self):
         super(MergeSnapshotRsp, self).__init__()
@@ -199,6 +205,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     MERGE_AND_REBASE_SNAPSHOT_PATH = "/localstorage/snapshot/mergeandrebase"
     OFFLINE_MERGE_PATH = "/localstorage/snapshot/offlinemerge"
     CREATE_TEMPLATE_FROM_VOLUME = "/localstorage/volume/createtemplate"
+    ESTIMATE_TEMPLATE_SIZE_PATH = "/localstorage/volume/estimatetemplatesize"
     CHECK_BITS_PATH = "/localstorage/checkbits"
     REBASE_ROOT_VOLUME_TO_BACKING_FILE_PATH = "/localstorage/volume/rebaserootvolumetobackingfile"
     VERIFY_SNAPSHOT_CHAIN_PATH = "/localstorage/snapshot/verifychain"
@@ -247,6 +254,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.MERGE_AND_REBASE_SNAPSHOT_PATH, self.merge_and_rebase_snapshot)
         http_server.register_async_uri(self.OFFLINE_MERGE_PATH, self.offline_merge_snapshot)
         http_server.register_async_uri(self.CREATE_TEMPLATE_FROM_VOLUME, self.create_template_from_volume)
+        http_server.register_async_uri(self.ESTIMATE_TEMPLATE_SIZE_PATH, self.estimate_template)
         http_server.register_async_uri(self.CHECK_BITS_PATH, self.check_bits)
         http_server.register_async_uri(self.REBASE_ROOT_VOLUME_TO_BACKING_FILE_PATH, self.rebase_root_volume_to_backing_file)
         http_server.register_async_uri(self.VERIFY_SNAPSHOT_CHAIN_PATH, self.verify_backing_file_chain)
@@ -678,6 +686,14 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
 
         rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installPath)
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def estimate_template(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = EstimateTemplateSizeRsp()
+        rsp.actualSize = linux.qcow2_measure_required_size(cmd.volumePath)
+        rsp.size, _ = linux.qcow2_size_and_actual_size(cmd.volumePath)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror

@@ -23,6 +23,7 @@ import pprint
 import errno
 import json
 import fcntl
+import simplejson
 import xxhash
 
 from inspect import stack
@@ -1177,8 +1178,8 @@ def qcow2_fill(seek, length, path, raise_excpetion=False):
     logger.debug("qcow2_fill return code: %s, stdout: %s, stderr: %s" % (cmd.return_code, cmd.stdout, cmd.stderr))
 
 def qcow2_measure_required_size(path):
-    out = shell.call("/usr/bin/qemu-img measure -f qcow2 -O qcow2 %s | grep 'required size' | cut -d ':' -f 2" % path)
-    return long(out.strip(' \t\r\n'))
+    out = shell.call("%s --output=json -f qcow2 -O qcow2 %s" % (qemu_img.subcmd('measure'), path))
+    return long(simplejson.loads(out)["required"])
 
 
 def qcow2_get_cluster_size(path):
