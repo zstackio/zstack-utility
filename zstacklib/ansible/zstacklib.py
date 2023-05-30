@@ -41,7 +41,7 @@ trusted_host = ""
 uos = ['uos20', 'uos1021a']
 kylin = ["ky10sp1", "ky10sp2", "ky10sp3"]
 centos = ['c74', 'c76', 'c79', 'h76c', 'h79c', 'rl84']
-enable_networkmanager_list = kylin + ["euler20", "uos1021a", "nfs4", "rl84"]
+enable_networkmanager_list = kylin + ["euler20", "uos1021a", "nfs4", "rl84", "oe2203sp1"]
 supported_arch_list = ["x86_64", "aarch64", "mips64el", "loongarch64"]
 
 RPM_BASED_OS = ["kylin_zstack", "kylin_tercel", "kylin_sword", "kylin_lance",
@@ -59,6 +59,7 @@ qemu_alias = {
     "c76": "qemu-kvm",
     "c79": "qemu-kvm",
     "euler20": "qemu",
+    "oe2203sp1": "qemu",
     "uos1021a": "qemu-kvm",
     "nfs4": "qemu-kvm",
     'h76c': 'qemu-kvm',
@@ -530,6 +531,7 @@ def get_host_releasever(host_info):
         'helix core 7.6c': 'h76c',
         'helix core 7.9c': 'h79c',
         "openeuler lts-sp1 20.03": "euler20",
+        "openeuler lts-sp1 22.03": "oe2203sp1",
         "uos fou 20": "uos20",
         "uniontech_kongzi kongzi 20": "uos1021a",
         "rocky green obsidian 8.4": "rl84",
