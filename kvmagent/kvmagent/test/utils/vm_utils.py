@@ -36,6 +36,7 @@ startVmCmdBody = {
     "memory": 67108864,  # 64M
     # "memory": 16384,  # 64M
     "maxMemory": 134217728,  # 128M
+    "maxVcpuNum": 128,
     "cpuNum": 1,
     "cpuSpeed": 0,
     "socketNum": None,
