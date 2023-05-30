@@ -18,7 +18,7 @@ from zstacklib.utils import linux
 from zstacklib.utils import lock
 from zstacklib.utils import lvm
 from zstacklib.utils import bash
-from zstacklib.utils import qemu_img
+from zstacklib.utils import qemu_img, qcow2
 from zstacklib.utils import traceable_shell
 from zstacklib.utils.report import *
 from zstacklib.utils.plugin import completetask
@@ -1211,8 +1211,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()),
                                                  pe_ranges=pe_ranges)
                 with lvm.OperateLv(tmp_abs_path, shared=False, delete_when_exception=True):
-                    t_shell = traceable_shell.get_shell(cmd)
-                    linux.create_template(dst_abs_path, tmp_abs_path, shell=t_shell)
+                    qcow2.create_template_with_task_daemon(dst_abs_path, tmp_abs_path, task_spec=cmd)
                     lvm.lv_rename(tmp_abs_path, dst_abs_path, overwrite=True)
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
