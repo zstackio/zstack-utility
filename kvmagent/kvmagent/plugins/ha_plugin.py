@@ -712,6 +712,7 @@ class CephHeartbeatController(AbstractStorageFencer):
         self.heartbeat_counter = 0
         self.ioctx = None
         self.interval = 0
+        self.report_storage_status_callback = None
 
     def ceph_in_error_stat(self):
         # HEALTH_OK,HEALTH_WARN,HEALTH_ERR and others(may be empty)...
@@ -831,9 +832,9 @@ class CephHeartbeatController(AbstractStorageFencer):
 
         if self.report_storage_status:
             if self.storage_failure:
-                self.fencer_triggered_callback([self.primary_storage_uuid], 'Disconnected')
+                self.report_storage_status_callback([self.primary_storage_uuid], 'Disconnected')
             else:
-                self.fencer_triggered_callback([self.primary_storage_uuid], 'Connected')
+                self.report_storage_status_callback([self.primary_storage_uuid], 'Connected')
             # after fencer state reported, set fencer_state_reported to False
             self.report_storage_status = False
 
@@ -852,9 +853,6 @@ class CephHeartbeatController(AbstractStorageFencer):
 last_multipath_run = time.time()
 QEMU_VERSION = qemu.get_version()
 LIBVIRT_VERSION = linux.get_libvirt_version()
-global_vpc_uuids = []
-global_always_ha_vm_uuids = []
-vpc_lock = threading.Lock()
 host_storage_name = "hostStorageState"
 LIVE_LIBVIRT_XML_DIR = "/var/run/libvirt/qemu"
 global_allow_fencer_rule = {} # type: dict[str, list]
@@ -864,37 +862,43 @@ global_fencer_rule_lock = threading.Lock()
 
 def add_fencer_rule(cmd):
     with global_fencer_rule_lock:
+        global global_allow_fencer_rule
         global_allow_fencer_rule.update(
             {rule['fencerName']: global_allow_fencer_rule.get(rule['fencerName'], []) + rule['vmUuids'] for rule in cmd['allowRules']})
+        global global_block_fencer_rule
         global_block_fencer_rule.update(
             {rule['fencerName']: global_block_fencer_rule.get(rule['fencerName'], []) + rule['vmUuids'] for rule in cmd['blockRules']})
         logger.debug("add fencer rules %s, global allow fencer: %s, global block fencer: %s" %
-                     (str(cmd), global_allow_fencer_rule, global_block_fencer_rule))
+                     (jsonobject.dumps(cmd), global_allow_fencer_rule, global_block_fencer_rule))
 
 
 def remove_fencer_rule(cmd):
     with global_fencer_rule_lock:
         if cmd["allowRules"]:
+            global global_allow_fencer_rule
             for rule in cmd["allowRules"]:
                 if rule["fencerName"] not in global_allow_fencer_rule:
                     continue
                 global_allow_fencer_rule[rule["fencerName"]] = \
                     [vm_uuid for vm_uuid in global_allow_fencer_rule[rule["fencerName"]] if vm_uuid not in rule["vmUuids"]]
                 logger.debug("remove allow fencer rule %s, global allow fencer[%s]: %s" %
-                             (str(cmd), rule["fencerName"], global_allow_fencer_rule[rule["fencerName"]]))
+                             (jsonobject.dumps(cmd), rule["fencerName"], global_allow_fencer_rule[rule["fencerName"]]))
 
         if cmd["blockRules"]:
+            global global_block_fencer_rule
             for rule in cmd["blockRules"]:
                 if rule["fencerName"] not in global_block_fencer_rule:
                     continue
                 global_block_fencer_rule[rule["fencerName"]] = \
                     [vm_uuid for vm_uuid in global_block_fencer_rule[rule["fencerName"]] if vm_uuid not in rule["vmUuids"]]
                 logger.debug("remove block fencer rule %s, global block fencer[%s]: %s" %
-                             (str(cmd), rule["fencerName"], global_block_fencer_rule[rule["fencerName"]]))
+                             (jsonobject.dumps(cmd), rule["fencerName"], global_block_fencer_rule[rule["fencerName"]]))
 
 
 def is_allow_fencer(fencer_name, vm_uuid):
     with global_fencer_rule_lock:
+        global global_allow_fencer_rule
+        logger.debug("global allow fencer: %s" % global_allow_fencer_rule)
         if fencer_name in global_allow_fencer_rule:
             return vm_uuid in global_allow_fencer_rule[fencer_name]
         return False
@@ -902,6 +906,8 @@ def is_allow_fencer(fencer_name, vm_uuid):
 
 def is_block_fencer(fencer_name, vm_uuid):
     with global_fencer_rule_lock:
+        global global_block_fencer_rule
+        logger.debug("global block fencer: %s" % global_block_fencer_rule)
         if fencer_name in global_block_fencer_rule:
             return vm_uuid in global_block_fencer_rule[fencer_name]
         return False
@@ -1508,6 +1514,7 @@ class HaPlugin(kvmagent.KvmAgent):
             ceph_controller.host_uuid = cmd.hostUuid
             ceph_controller.heartbeat_object_name = ceph.get_heartbeat_object_name(cmd.uuid, cmd.hostUuid)
             ceph_controller.fencer_triggered_callback = self.report_self_fencer_triggered
+            ceph_controller.report_storage_status_callback = self.report_storage_status
             fencer_list = []
             if cmd.fencers is not None:
                 fencer_list = cmd.fencers
