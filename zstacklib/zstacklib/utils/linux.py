@@ -23,10 +23,11 @@ import pprint
 import errno
 import json
 import fcntl
+import simplejson
 import xxhash
 
 from inspect import stack
-
+import xml.etree.ElementTree as etree
 from zstacklib.utils import thread
 from zstacklib.utils import qemu_img
 from zstacklib.utils import lock
@@ -104,6 +105,45 @@ class EthernetInfo(object):
 
     def __repr__(self):
         return self.__str__()
+
+class VmStruct(object):
+    def __init__(self):
+        super(VmStruct, self).__init__()
+        self.pid = ""
+        self.xml = ""
+        self.root_volume = ""
+        self.uuid = ""
+        self.volumes = []
+
+    def load_from_xml(self, xml):
+        def load_source(element):
+            is_root_vol = False
+            path = None
+            for e in element:
+                if e.tag == "boot":
+                    is_root_vol = True
+                elif e.tag == "source":
+                    if "file" in e.attrib:
+                        path = e.attrib["file"]
+                    elif "dev" in e.attrib:
+                        path = e.attrib["dev"]
+                    if path and path.startswith("/dev/"):
+                        self.volumes.append(path)
+
+            if is_root_vol:
+                self.root_volume = path
+
+        self.xml = xml
+        root = etree.fromstring(xml)
+        for e1 in root:
+            if e1.tag == "domain":
+                for e2 in e1:
+                    if e2.tag == "devices":
+                        for e3 in e2:
+                            if e3.tag == "disk":
+                                load_source(e3)
+                        return
+
 
 def retry(times=3, sleep_time=3):
     def wrap(f):
@@ -984,30 +1024,44 @@ def raw_create(dst, size):
     shell.check_run('/usr/bin/qemu-img create -f raw %s %s' % (dst, size))
     os.chmod(dst, 0o660)
 
-def create_template(src, dst, compress=False, shell=shell):
+def create_template(src, dst, compress=False, shell=shell, progress_output=None):
     fmt = get_img_fmt(src)
     if fmt == 'raw':
-        return raw_create_template(src, dst, shell=shell)
+        return raw_create_template(src, dst, shell=shell, progress_output=progress_output)
     if fmt == 'qcow2':
-        return qcow2_create_template(src, dst, compress, shell=shell)
+        return qcow2_create_template(src, dst, compress, shell=shell, progress_output=progress_output)
     raise Exception('unknown format[%s] of the image file[%s]' % (fmt, src))
 
-def qcow2_create_template(src, dst, compress, shell=shell):
-    if compress:
-        shell.call('%s -c -f qcow2 -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
-    else:
-        shell.call('%s -f qcow2 -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
+def qcow2_create_template(src, dst, compress, shell=shell, progress_output=None):
+    redirect, ext_opts = "", []
+    if progress_output:
+        redirect = " > " + progress_output
+        ext_opts.append("-p")
 
-def raw_create_template(src, dst, shell=shell):
-    shell.call('%s -f raw -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
+    if compress:
+        ext_opts.append("-c")
+
+    shell.call('%s %s -f qcow2 -O qcow2 %s %s %s' % (qemu_img.subcmd('convert'), " ".join(ext_opts), src, dst, redirect))
+
+def raw_create_template(src, dst, shell=shell, progress_output=None):
+    redirect, ext_opts = "", []
+    if progress_output:
+        redirect = " > " + progress_output
+        ext_opts.append("-p")
+
+    shell.call('%s %s -f raw -O qcow2 %s %s %s' % (qemu_img.subcmd('convert'), " ".join(ext_opts), src, dst, redirect))
 
 def qcow2_convert_to_raw(src, dst):
     shell.call('%s -f qcow2 -O raw %s %s' % (qemu_img.subcmd('convert'), src, dst))
 
 def qcow2_rebase(backing_file, target):
-    fmt = get_img_fmt(backing_file)
+    if backing_file:
+        fmt = get_img_fmt(backing_file)
+        backing_option = '-F %s -b "%s"' % (fmt, backing_file)
+    else:
+        backing_option = '-b "%s"' % backing_file
     with TempAccessible(target):
-        shell.call('%s -F %s -f qcow2 -b %s %s' % (qemu_img.subcmd('rebase'), fmt, backing_file, target))
+        shell.call('%s -f qcow2 %s %s' % (qemu_img.subcmd('rebase'), backing_option, target))
 
 def qcow2_rebase_no_check(backing_file, target, backing_fmt=None):
     fmt = backing_fmt if backing_fmt else get_img_fmt(backing_file)
@@ -1085,6 +1139,16 @@ def qcow2_get_file_chain(path):
             (qemu_img.subcmd('info'), path))
     return out.splitlines()
 
+# Get derived file all backing files
+def qcow2_get_backing_chain(path):
+    ret = []
+    backing = qcow2_get_backing_file(path)
+    while backing:
+        ret.append(backing)
+        backing = qcow2_get_backing_file(path)
+
+    return []
+
 def get_qcow2_file_chain_size(path):
     chain = qcow2_get_file_chain(path)
     size = 0L
@@ -1124,8 +1188,8 @@ def qcow2_fill(seek, length, path, raise_excpetion=False):
     logger.debug("qcow2_fill return code: %s, stdout: %s, stderr: %s" % (cmd.return_code, cmd.stdout, cmd.stderr))
 
 def qcow2_measure_required_size(path):
-    out = shell.call("/usr/bin/qemu-img measure -f qcow2 -O qcow2 %s | grep 'required size' | cut -d ':' -f 2" % path)
-    return long(out.strip(' \t\r\n'))
+    out = shell.call("%s --output=json -f qcow2 -O qcow2 %s" % (qemu_img.subcmd('measure'), path))
+    return long(simplejson.loads(out)["required"])
 
 
 def qcow2_get_cluster_size(path):
@@ -1594,9 +1658,6 @@ def get_ipv4_addr_by_nic(nic):
     ip = ['%s/%d' % (x.address, x.prefixlen) for x in
           iproute.query_addresses(ifname=nic, ip_version=4)]
     return ip
-
-def get_dst_ip_from_ip_routers():
-    return [set(ip_route.dst_ip for ip_route in iproute.show_routes() if ip_route.dst_ip)]
 
 def get_bond_info_by_nic(nic):
     bonds = read_file("/sys/class/net/bonding_masters")
@@ -2486,7 +2547,7 @@ def link(source, link_name):
     os.link(source, link_name)
     logger.debug("link %s to %s" % (source, link_name))
 
-def tail_1(path):
+def tail_1(path, split=b"\n"):
     if not os.path.exists(path):
         return None
     if os.path.getsize(path) <= 2:
@@ -2494,7 +2555,7 @@ def tail_1(path):
 
     with open(path, 'rb') as f:
         f.seek(-2, os.SEEK_END)
-        while f.tell() > 0 and f.read(1) != b"\n":
+        while f.tell() > 0 and f.read(1) != split:
             f.seek(-2, os.SEEK_CUR)
         return f.readline()
 

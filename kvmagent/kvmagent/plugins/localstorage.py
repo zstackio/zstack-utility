@@ -8,6 +8,7 @@ import zstacklib.utils.uuidhelper as uuidhelper
 from kvmagent import kvmagent
 from kvmagent.plugins.imagestore import ImageStoreClient
 from zstacklib.utils import jsonobject
+from zstacklib.utils import qcow2
 from zstacklib.utils import linux
 from zstacklib.utils import shell
 from zstacklib.utils import traceable_shell
@@ -71,6 +72,12 @@ class CreateTemplateFromVolumeRsp(AgentResponse):
         self.size = None
         self.actualSize = None
 
+class EstimateTemplateSizeRsp(AgentResponse):
+    def __init__(self):
+        super(EstimateTemplateSizeRsp, self).__init__()
+        self.size = None
+        self.actualSize = None
+
 class MergeSnapshotRsp(AgentResponse):
     def __init__(self):
         super(MergeSnapshotRsp, self).__init__()
@@ -98,6 +105,13 @@ class GetBackingFileRsp(AgentResponse):
         super(GetBackingFileRsp, self).__init__()
         self.size = None
         self.backingFilePath = None
+
+class GetBackingChainRsp(AgentResponse):
+    def __init__(self):
+        super(GetBackingChainRsp, self).__init__()
+        self.totalSize = 0
+        self.backingChain = []
+
 
 class GetVolumeSizeRsp(AgentResponse):
     def __init__(self):
@@ -192,6 +206,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     MERGE_AND_REBASE_SNAPSHOT_PATH = "/localstorage/snapshot/mergeandrebase"
     OFFLINE_MERGE_PATH = "/localstorage/snapshot/offlinemerge"
     CREATE_TEMPLATE_FROM_VOLUME = "/localstorage/volume/createtemplate"
+    ESTIMATE_TEMPLATE_SIZE_PATH = "/localstorage/volume/estimatetemplatesize"
     CHECK_BITS_PATH = "/localstorage/checkbits"
     REBASE_ROOT_VOLUME_TO_BACKING_FILE_PATH = "/localstorage/volume/rebaserootvolumetobackingfile"
     VERIFY_SNAPSHOT_CHAIN_PATH = "/localstorage/snapshot/verifychain"
@@ -200,6 +215,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     GET_MD5_PATH = "/localstorage/getmd5"
     CHECK_MD5_PATH = "/localstorage/checkmd5"
     GET_BACKING_FILE_PATH = "/localstorage/volume/getbackingfile"
+    GET_BACKING_CHAIN_PATH = "/localstorage/volume/getbackingchain"
     GET_VOLUME_SIZE = "/localstorage/volume/getsize"
     BATCH_GET_VOLUME_SIZE = "/localstorage/volume/batchgetsize"
     GET_BASE_IMAGE_PATH = "/localstorage/volume/getbaseimagepath"
@@ -239,6 +255,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.MERGE_AND_REBASE_SNAPSHOT_PATH, self.merge_and_rebase_snapshot)
         http_server.register_async_uri(self.OFFLINE_MERGE_PATH, self.offline_merge_snapshot)
         http_server.register_async_uri(self.CREATE_TEMPLATE_FROM_VOLUME, self.create_template_from_volume)
+        http_server.register_async_uri(self.ESTIMATE_TEMPLATE_SIZE_PATH, self.estimate_template)
         http_server.register_async_uri(self.CHECK_BITS_PATH, self.check_bits)
         http_server.register_async_uri(self.REBASE_ROOT_VOLUME_TO_BACKING_FILE_PATH, self.rebase_root_volume_to_backing_file)
         http_server.register_async_uri(self.VERIFY_SNAPSHOT_CHAIN_PATH, self.verify_backing_file_chain)
@@ -247,6 +264,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.GET_MD5_PATH, self.get_md5)
         http_server.register_async_uri(self.CHECK_MD5_PATH, self.check_md5)
         http_server.register_async_uri(self.GET_BACKING_FILE_PATH, self.get_backing_file_path)
+        http_server.register_async_uri(self.GET_BACKING_CHAIN_PATH, self.get_backing_chain)
         http_server.register_async_uri(self.GET_VOLUME_SIZE, self.get_volume_size)
         http_server.register_async_uri(self.BATCH_GET_VOLUME_SIZE, self.batch_get_volume_size)
         http_server.register_async_uri(self.GET_BASE_IMAGE_PATH, self.get_volume_base_image_path)
@@ -408,6 +426,16 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         if out:
             rsp.backingFilePath = out
             rsp.size = os.path.getsize(out)
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def get_backing_chain(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetBackingChainRsp()
+
+        rsp.backingChain = linux.qcow2_get_backing_chain(cmd.installPath)
+        rsp.totalSize = linux.get_total_file_size(rsp.backingChain)
 
         return jsonobject.dumps(rsp)
 
@@ -662,6 +690,14 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def estimate_template(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = EstimateTemplateSizeRsp()
+        rsp.actualSize = linux.qcow2_measure_required_size(cmd.volumePath)
+        rsp.size, _ = linux.qcow2_size_and_actual_size(cmd.volumePath)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     def revert_snapshot(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = RevertVolumeFromSnapshotRsp()
@@ -732,11 +768,17 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     def offline_merge_snapshot(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentResponse()
+
+        src_path = cmd.srcPath if not cmd.fullRebase else ""
+        if linux.qcow2_get_backing_file(cmd.destPath) == src_path:
+            rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
+            return jsonobject.dumps(rsp)
+
         if not cmd.fullRebase:
             linux.qcow2_rebase(cmd.srcPath, cmd.destPath)
         else:
             tmp = os.path.join(os.path.dirname(cmd.destPath), '%s.qcow2' % uuidhelper.uuid())
-            linux.create_template(cmd.destPath, tmp)
+            qcow2.create_template_with_task_daemon(cmd.destPath, tmp, task_spec=cmd)
             shell.call("mv %s %s" % (tmp, cmd.destPath))
 
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)

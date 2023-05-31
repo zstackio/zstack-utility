@@ -1164,9 +1164,9 @@ ia_install_ansible_package(){
 ia_upgrade_setuptools_package(){
     ansible_pypi_source=$1
     if [ ! -z $DEBUG ]; then
-        pip install -i $ansible_pypi_source --trusted-host localhost -U setuptools
+        pip install -i $ansible_pypi_source --trusted-host localhost setuptools==39.2.0
     else
-        pip install -i $ansible_pypi_source --trusted-host localhost -U setuptools >>$ZSTACK_INSTALL_LOG 2>&1
+        pip install -i $ansible_pypi_source --trusted-host localhost setuptools==39.2.0 >>$ZSTACK_INSTALL_LOG 2>&1
     fi
 }
 
@@ -1206,6 +1206,11 @@ ia_install_ansible(){
 ia_upgrade_ansible(){
     echo_subtitle "Upgrade Ansible"
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+
+    if pip list 2>/dev/null | grep -q -E 'ansible.*4.10.0' && ansible --version 2>/dev/null | grep -q 'core 2.11.12.2'; then
+        pass
+        return
+    fi
 
     cd $upgrade_folder
     ansible_pypi_source=file://$(pwd)/zstack/static/pypi/simple
@@ -2385,6 +2390,7 @@ install_sds(){
 
 install_zops(){
     [[ x"$BASEARCH" != x"x86_64" ]] && return
+    [[ x"$OS" != x"CENTOS7" ]] && return
     [[ x"$SKIP_ZOPS_INSTALL" = x"y" ]] && return
     echo_title "Install or upgrade ZOps"
     echo ""

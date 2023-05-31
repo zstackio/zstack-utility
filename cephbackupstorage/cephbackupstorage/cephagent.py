@@ -872,7 +872,7 @@ class CephAgent(object):
     def _prepare_upload(self, cmd):
         class ImageUploadDaemon(plugin.TaskDaemon):
             def __init__(self, task):
-                super(ImageUploadDaemon, self).__init__(cmd, 'imageUpload', report_progress=False)
+                super(ImageUploadDaemon, self).__init__(cmd, 'imageUpload')
                 self.task = task
                 self.task.close = self.close
 
@@ -881,9 +881,6 @@ class CephAgent(object):
                     return
                 self.task.lastError = "image [uuid: %s] upload canceled" % cmd.imageUuid
                 shell.run('rbd rm %s' % task.tmpPath)
-
-            def _get_percent(self):
-                pass
 
         start = len(self.UPLOAD_PROTO)
         imageUuid = cmd.url[start:start+self.LENGTH_OF_UUID]

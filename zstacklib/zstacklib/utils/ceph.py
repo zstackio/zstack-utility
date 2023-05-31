@@ -17,7 +17,6 @@ logger = log.get_logger(__name__)
 
 CEPH_CONF_ROOT = "/var/lib/zstack/ceph"
 CEPH_KEYRING_CONFIG_NAME = 'client.zstack.keyring'
-CEPH_CONF = "ceph.conf"
 
 QEMU_NBD_SOCKET_DIR = "/var/lock/"
 QEMU_NBD_SOCKET_PREFIX = "qemu-nbd-nbd"
@@ -62,8 +61,7 @@ def get_ceph_client_conf(ps_uuid, manufacturer=None):
 
     return os.path.join(ceph_client_config_dir, "ceph.conf"), key_path, username
 
-
-def update_ceph_client_access_conf(ps_uuid, mon_urls, user_key, manufacturer, fsid, ceph_conf=CEPH_CONF):
+def update_ceph_client_access_conf(ps_uuid, mon_urls, user_key, manufacturer, fsid):
     conf_folder = os.path.join(CEPH_CONF_ROOT, ps_uuid)
     if not os.path.exists(conf_folder):
         linux.mkdir(conf_folder)
@@ -94,7 +92,7 @@ def update_ceph_client_access_conf(ps_uuid, mon_urls, user_key, manufacturer, fs
         #add \n because of ZSTAC-43092
         conf_content = conf_content + "keyring=%s\n" % keyring_path
 
-    conf_path = os.path.join(conf_folder, ceph_conf)
+    conf_path = os.path.join(conf_folder, "ceph.conf")
     with open(conf_path, 'w') as fd:
         fd.write(conf_content)
 

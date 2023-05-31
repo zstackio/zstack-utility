@@ -55,19 +55,25 @@ def _build_id_cmd(id):
     return "echo %s > /dev/null" % id
 
 
-def get_shell(cmd):
-    return TraceableShell(get_api_id(cmd), get_timeout(cmd))
+def get_shell(task_spec):
+    return TraceableShell(get_api_id(task_spec), get_timeout(task_spec))
 
 
-def cancel_job(cmd):
-    keywords = _build_id_cmd(cmd.cancellationApiId)
+def cancel_job(task_spec):
+    return cancel_job_by_api(task_spec.cancellationApiId)
+
+
+def cancel_job_by_api(api_id):
+    if not api_id:
+        raise Exception("missing api_id")
+
+    keywords = _build_id_cmd(api_id)
     pids = linux.get_pids_by_process_fullname(keywords)
     if not pids:
         return False
 
-    logger.debug("it is going to kill process %s to cancel job[api:%s].", pids, cmd.cancellationApiId)
+    logger.debug("it is going to kill process %s to cancel job[api:%s].", pids, api_id)
     for pid in pids:
         linux.kill_all_child_process(pid)
     return True
-
 

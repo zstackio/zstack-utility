@@ -12,6 +12,7 @@ from zstacklib.utils import shell
 from zstacklib.utils import traceable_shell
 from zstacklib.utils import rollback
 from zstacklib.utils import linux
+from zstacklib.utils import qcow2
 import zstacklib.utils.uuidhelper as uuidhelper
 from zstacklib.utils.plugin import completetask
 from zstacklib.utils import secret
@@ -45,6 +46,12 @@ class ReinitImageRsp(AgentRsp):
 class CreateTemplateFromVolumeRsp(AgentRsp):
     def __init__(self):
         super(CreateTemplateFromVolumeRsp, self).__init__()
+        self.size = None
+        self.actualSize = None
+
+class EstimateTemplateSizeRsp(AgentRsp):
+    def __init__(self):
+        super(EstimateTemplateSizeRsp, self).__init__()
         self.size = None
         self.actualSize = None
 
@@ -109,6 +116,12 @@ class CreateVolumeFromCacheRsp(AgentRsp):
         super(CreateVolumeFromCacheRsp, self).__init__()
         self.actualSize = None
 
+class GetBackingChainRsp(AgentRsp):
+    def __init__(self):
+        super(GetBackingChainRsp, self).__init__()
+        self.totalSize = 0
+        self.backingChain = []
+
 class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
 
     CONNECT_PATH = "/sharedmountpointprimarystorage/connect"
@@ -117,6 +130,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
     DELETE_BITS_PATH = "/sharedmountpointprimarystorage/bits/delete"
     UNLINK_BITS_PATH = "/sharedmountpointprimarystorage/bits/unlink"
     CREATE_TEMPLATE_FROM_VOLUME_PATH = "/sharedmountpointprimarystorage/createtemplatefromvolume"
+    ESTIMATE_TEMPLATE_SIZE_PATH = "/sharedmountpointprimarystorage/estimatetemplatesize"
     UPLOAD_BITS_TO_SFTP_BACKUPSTORAGE_PATH = "/sharedmountpointprimarystorage/sftp/upload"
     DOWNLOAD_BITS_FROM_SFTP_BACKUPSTORAGE_PATH = "/sharedmountpointprimarystorage/sftp/download"
     UPLOAD_BITS_TO_IMAGESTORE_PATH = "/sharedmountpointprimarystorage/imagestore/upload"
@@ -136,6 +150,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
     CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/sharedmountpointprimarystorage/kvmhost/download/cancel"
     GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH = "/sharedmountpointprimarystorage/kvmhost/download/progress"
     GET_QCOW2_HASH_VALUE_PATH = "/sharedmountpointprimarystorage/getqcow2hash"
+    GET_BACKING_CHAIN_PATH = "/sharedmountpointprimarystorage/volume/getbackingchain"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -145,6 +160,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.DELETE_BITS_PATH, self.delete_bits)
         http_server.register_async_uri(self.UNLINK_BITS_PATH, self.unlink)
         http_server.register_async_uri(self.CREATE_TEMPLATE_FROM_VOLUME_PATH, self.create_template_from_volume)
+        http_server.register_async_uri(self.ESTIMATE_TEMPLATE_SIZE_PATH, self.estimate_template)
         http_server.register_async_uri(self.UPLOAD_BITS_TO_SFTP_BACKUPSTORAGE_PATH, self.upload_to_sftp)
         http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_SFTP_BACKUPSTORAGE_PATH, self.download_from_sftp)
         http_server.register_async_uri(self.UPLOAD_BITS_TO_IMAGESTORE_PATH, self.upload_to_imagestore)
@@ -164,6 +180,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
         http_server.register_async_uri(self.GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH, self.get_download_bits_from_kvmhost_progress)
         http_server.register_async_uri(self.GET_QCOW2_HASH_VALUE_PATH, self.get_qcow2_hashvalue)
+        http_server.register_async_uri(self.GET_BACKING_CHAIN_PATH, self.get_backing_chain)
 
         self.imagestore_client = ImageStoreClient()
         self.id_files = {}
@@ -339,6 +356,14 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def estimate_template(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = EstimateTemplateSizeRsp()
+        rsp.actualSize = linux.qcow2_measure_required_size(cmd.volumePath)
+        rsp.size, _ = linux.qcow2_size_and_actual_size(cmd.volumePath)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     def upload_to_sftp(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
@@ -433,11 +458,17 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
     def offline_merge_snapshots(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
+
+        src_path = cmd.srcPath if not cmd.fullRebase else ""
+        if linux.qcow2_get_backing_file(cmd.destPath) == src_path:
+            rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
+            return jsonobject.dumps(rsp)
+
         if not cmd.fullRebase:
             linux.qcow2_rebase(cmd.srcPath, cmd.destPath)
         else:
             tmp = os.path.join(os.path.dirname(cmd.destPath), '%s.qcow2' % uuidhelper.uuid())
-            linux.create_template(cmd.destPath, tmp)
+            qcow2.create_template_with_task_daemon(cmd.destPath, tmp, task_spec=cmd)
             shell.call("mv %s %s" % (tmp, cmd.destPath))
 
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
@@ -547,4 +578,14 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         rsp = GetQcow2HashValueRsp()
 
         rsp.hashValue = secret.get_image_hash(cmd.installPath)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def get_backing_chain(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetBackingChainRsp()
+
+        rsp.backingChain = linux.qcow2_get_backing_chain(cmd.installPath)
+        rsp.totalSize = linux.get_total_file_size(rsp.backingChain)
+
         return jsonobject.dumps(rsp)

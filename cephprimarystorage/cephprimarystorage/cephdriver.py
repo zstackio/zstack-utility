@@ -30,6 +30,7 @@ class CephDriver(object):
         dst_path = self._normalize_install_path(cmd.dstPath)
 
         shell.call('rbd clone %s %s' % (src_path, dst_path))
+        rsp.installPath = dst_path
         return rsp
 
     def create_volume(self, cmd, rsp, agent=None):
@@ -61,9 +62,7 @@ class CephDriver(object):
         return rsp
 
     @linux.retry(times=30, sleep_time=5)
-    def do_deletion(self, cmd):
-        path = self._normalize_install_path(cmd.installPath)
-
+    def do_deletion(self, cmd, path):
         shell.call('rbd rm %s' % path)
 
     def create_snapshot(self, cmd, rsp):

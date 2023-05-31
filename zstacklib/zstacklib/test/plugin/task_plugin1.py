@@ -10,12 +10,12 @@ class TaskPlugin1(plugin.Plugin):
         self.progress_count = 0
 
     @AsyncThread
-    def run_fake_task(self, task_name, secs, timeout, report_progress=False):
+    def run_fake_task(self, task_name, secs, timeout):
         cmd = jsonobject.loads('{"threadContext":{"api":"fakeApiId"}}')
 
         class FakeTaskDaemon(plugin.TaskDaemon):
             def __init__(self):
-                super(FakeTaskDaemon, self).__init__(cmd, task_name, timeout=timeout, report_progress=report_progress)
+                super(FakeTaskDaemon, self).__init__(cmd, task_name, timeout=timeout)
                 self.percent = 0
 
             def _get_percent(self):

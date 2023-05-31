@@ -68,6 +68,16 @@ def get_guest_tools_states(vmUuids):
         if qga.os and 'mswindows' in qga.os:
             qga_status.platForm = 'Windows'
             try:
+                _, qga_status.version = qga.guest_file_read(VmQga.ZS_TOOLS_VERSION_PATN_WIN)
+                if not qga_status.version:
+                    logger.debug("open tool version failed")
+                    qga_status.zsToolsFound = False
+                    return qga_status
+                qga_status.version = qga_status.version.strip()
+            except Exception as e:
+                logger.debug("get vm {} guest-info version failed {}".format(domain, e))
+                return qga_status
+            try:
                 ret = qga.guest_file_is_exist(VmQga.ZS_TOOLS_PATN_WIN)
                 if not ret:
                     logger.debug("open {} failed".format(VmQga.ZS_TOOLS_PATN_WIN))

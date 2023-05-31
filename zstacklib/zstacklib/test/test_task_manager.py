@@ -19,7 +19,7 @@ class TestTaskManager(unittest.TestCase):
     def test_plugin_task_timeout(self):
         plugin1 = task_plugin1.TaskPlugin1()
         plugin2 = task_plugin2.TaskPlugin2()
-        plugin1.run_fake_task('other fake task', secs=2, timeout=1, report_progress=True)
+        plugin1.run_fake_task('other fake task', secs=2, timeout=1)
         time.sleep(2)
         self.assertEqual(0, plugin2.cancel_fake_task())
         time.sleep(1)
