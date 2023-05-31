@@ -1164,36 +1164,34 @@ def file_operation(file, args, host_post_info):
             handle_ansible_info(details, host_post_info, "INFO")
             return True
 
-def _write_remote_host_result(path, content):
-    parent_dir = os.path.dirname(path)
-    if not os.path.exists(parent_dir):
-        os.makedirs(parent_dir)
 
-    fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_TRUNC)
-    os.write(fd, str(content))
-    os.close(fd)
+ANSIBLE_CACHE = {}
 
-def _read_remote_host_result(path):
-    if not os.path.exists(path):
-        return ""
-    fd = open(path, 'r')
-    result = fd.read()
-    fd.close()
-    return result
 
-def _get_ansible_cache_file(host_post_info, ansible_filter):
-    return os.path.join("/var/lib/zstack", ".ansible.cache", "%s-%s" % (host_post_info.host, host_post_info.host_uuid), ansible_filter)
+def _write_remote_host_cache(host_post_info, content):
+    global ANSIBLE_CACHE
+    key = '%s-%s' % (host_post_info.host, host_post_info.host_uuid)
+    ANSIBLE_CACHE[key] = content
 
-def _get_remote_host_info(host_post_info, cache_file, ansible_filter, func):
+
+def _read_remote_host_cache(host_post_info):
+    global ANSIBLE_CACHE
+    key = '%s-%s' % (host_post_info.host, host_post_info.host_uuid)
+    if key not in ANSIBLE_CACHE.keys():
+        return ''
+    return ANSIBLE_CACHE[key]
+
+
+def _get_remote_host_info(host_post_info, func):
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'setup'
-    runner_args.module_args = 'filter=%s' % ansible_filter
+    runner_args.module_args = ''
     zstack_runner = ZstackRunner(runner_args)
     result = zstack_runner.run()
     logger.debug(result)
     if not not host_post_info.host_uuid:
-        _write_remote_host_result(cache_file, result)
+        _write_remote_host_cache(host_post_info, result)
     return func(result, host_post_info)
 
 
@@ -1232,12 +1230,11 @@ def get_remote_host_info(host_post_info):
     handle_ansible_info("INFO: starting get remote host %s info ... " % host, host_post_info, "INFO")
     # we use host_uuid rather than host(ip) to identify resources,
     # because different resources might use same ip in some situations
-    cache_file = _get_ansible_cache_file(host_post_info, "ansible_distribution")
-    result = _read_remote_host_result(cache_file)
+    result = _read_remote_host_cache(host_post_info)
     if not not host_post_info.host_uuid and result != "":
-        return _get_remote_host_info_from_result(eval(result), host_post_info)
+        return _get_remote_host_info_from_result(result, host_post_info)
     else:
-        return _get_remote_host_info(host_post_info, cache_file, "ansible_distribution*", func=_get_remote_host_info_from_result)
+        return _get_remote_host_info(host_post_info, func=_get_remote_host_info_from_result)
 
 def _get_remote_host_cpu_from_result(result, host_post_info):
     host = host_post_info.host
@@ -1264,12 +1261,11 @@ def get_remote_host_cpu(host_post_info):
     host_post_info.post_label_param = host_post_info.host
     handle_ansible_info("INFO: starting get remote host %s cpu info ... " % host_post_info.host, host_post_info, "INFO")
 
-    cache_file = _get_ansible_cache_file(host_post_info, "ansible_processor")
-    result = _read_remote_host_result(cache_file)
+    result = _read_remote_host_cache(host_post_info)
     if not not host_post_info.host_uuid and result != "":
-        return _get_remote_host_cpu_from_result(eval(result), host_post_info)
+        return _get_remote_host_cpu_from_result(result, host_post_info)
     else:
-        return _get_remote_host_info(host_post_info, cache_file, "ansible_processor", _get_remote_host_cpu_from_result)
+        return _get_remote_host_info(host_post_info, _get_remote_host_cpu_from_result)
 
 def _get_remote_host_arch_from_result(result, host_post_info):
     host = host_post_info.host
@@ -1296,13 +1292,12 @@ def get_remote_host_arch(host_post_info):
     host_post_info.post_label_param = host_post_info.host
     handle_ansible_info("INFO: starting get remote host %s arch ... " % host_post_info.host, host_post_info, "INFO")
 
-    cache_file = _get_ansible_cache_file(host_post_info, "ansible_machine")
-    result = _read_remote_host_result(cache_file)
+    result = _read_remote_host_cache(host_post_info)
     logger.debug(host_post_info.host)
     if not not host_post_info.host_uuid and result != "":
-        return _get_remote_host_arch_from_result(eval(result), host_post_info)
+        return _get_remote_host_arch_from_result(result, host_post_info)
     else:
-        return _get_remote_host_info(host_post_info, cache_file, "ansible_machine", _get_remote_host_arch_from_result)
+        return _get_remote_host_info(host_post_info, _get_remote_host_arch_from_result)
 
 
 def _get_remote_host_kernel_version_from_result(result, host_post_info):
@@ -1330,12 +1325,11 @@ def get_remote_host_kernel_version(host_post_info):
     host_post_info.post_label_param = host_post_info.host
     handle_ansible_info("INFO: starting get remote host %s kernel version ... " % host_post_info.host, host_post_info, "INFO")
 
-    cache_file = _get_ansible_cache_file(host_post_info, "ansible_kernel")
-    result = _read_remote_host_result(cache_file)
+    result = _read_remote_host_cache(host_post_info)
     if not not host_post_info.host_uuid and result != "":
-        return _get_remote_host_kernel_version_from_result(eval(result), host_post_info)
+        return _get_remote_host_kernel_version_from_result(result, host_post_info)
     else:
-        return _get_remote_host_info(host_post_info, cache_file, "ansible_kernel", _get_remote_host_kernel_version_from_result)
+        return _get_remote_host_info(host_post_info, _get_remote_host_kernel_version_from_result)
 
 
 def set_ini_file(file, section, option, value, host_post_info):
