@@ -822,9 +822,9 @@ class IpNetnsShell:
             0)
             """
             o = shell.call("ip netns | grep %s  | awk '{print $3}'" % netns)
-            return o.strip(")")
+            return o.strip(" \n\t\r)")
         except Exception as e:
-            logger.debug("get ns failed%failed, ret:%s" % (e))
+            logger.debug("get ns failed%failed, ret:%s" % e)
             return netns_id
 
     def add_netns(self, ns_id):
