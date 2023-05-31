@@ -332,11 +332,14 @@ class HaPlugin(kvmagent.KvmAgent):
     RET_SUCCESS = "success"
     RET_FAILURE = "failure"
     RET_NOT_STABLE = "unstable"
+    STORAGE_DISCONNECTED = "Disconnected"
+    STORAGE_CONNECTED  = "Connected"
 
     def __init__(self):
         # {ps_uuid: created_time} e.g. {'07ee15b2f68648abb489f43182bd59d7': 1544513500.163033}
         self.run_fencer_timestamp = {}  # type: dict[str, float]
         self.fencer_fire_timestamp = {}  # type: dict[str, float]
+        self.storage_status = {}  # type: dict[str, float]
         self.fencer_lock = threading.RLock()
         self.sblk_health_checker = SanlockHealthChecker()
         self.sblk_fencer_running = False
@@ -481,7 +484,7 @@ class HaPlugin(kvmagent.KvmAgent):
                         content = traceback.format_exc()
                         logger.warn("traceback: %s" % content)
                     finally:
-                        self.report_storage_status([cmd.uuid], 'Disconnected')
+                        self.report_storage_status([cmd.uuid], self.STORAGE_DISCONNECTED)
 
                 except Exception as e:
                     logger.debug('self-fencer on aliyun nas primary storage %s stopped abnormally' % cmd.uuid)
@@ -517,7 +520,7 @@ class HaPlugin(kvmagent.KvmAgent):
             self.fencer_fire_timestamp[vg] = time.time()
 
             logger.warn("sharedblock storage %s fencer fired!" % vg)
-            self.report_storage_status([vg], 'Disconnected', failure)
+            self.report_storage_status([vg], self.STORAGE_DISCONNECTED, failure, retry_times=6)
             self.sblk_health_checker.inc_fencer_fire_cnt(vg)
 
             cmd = self.sblk_health_checker.get_vg_fencer_cmd(vg)
@@ -588,6 +591,7 @@ class HaPlugin(kvmagent.KvmAgent):
                     if len(failed_vgs) != 0:
                         logger.warn("sharedblock heartbeat failed on vgs %s" % failed_vgs)
                         for vg in failed_vgs:
+                            self.storage_status.update({vg : self.STORAGE_DISCONNECTED})
                             if vg not in self.sblk_health_checker.fired_vgs:
                                 no_fenced_vgs[vg] = failed_vgs[vg]
 
@@ -604,6 +608,7 @@ class HaPlugin(kvmagent.KvmAgent):
                     if len(recovered_vg) != 0:
                         logger.warn("sharedblock vgs %s recovered" % recovered_vg)
                         for vg in recovered_vg:
+                            self.storage_status.update({vg : self.STORAGE_CONNECTED})
                             self.sblk_health_checker.fired_vgs.pop(vg)
 
                     if len(self.sblk_health_checker.fired_vgs) != 0:
@@ -734,9 +739,9 @@ class HaPlugin(kvmagent.KvmAgent):
 
                             if ceph_controller.report_storage_status:
                                 if ceph_controller.storage_failure:
-                                    self.report_storage_status([cmd.uuid], 'Disconnected')
+                                    self.report_storage_status([cmd.uuid], self.STORAGE_DISCONNECTED)
                                 else:
-                                    self.report_storage_status([cmd.uuid], 'Connected')
+                                    self.report_storage_status([cmd.uuid], self.STORAGE_CONNECTED)
                                 # after fencer state reported, set fencer_state_reported to False
                                 ceph_controller.report_storage_status = False
 
@@ -753,7 +758,7 @@ class HaPlugin(kvmagent.KvmAgent):
                 logger.debug('self-fencer on pool %s ceph primary storage stopped abnormally' % pool_name)
                 content = traceback.format_exc()
                 logger.warn(content)
-                self.report_storage_status([cmd.uuid], 'Disconnected')
+                self.report_storage_status([cmd.uuid], self.STORAGE_DISCONNECTED)
 
         for pool_name in cmd.poolNames:
             heartbeat_on_ceph(cmd.uuid, pool_name)
@@ -772,7 +777,7 @@ class HaPlugin(kvmagent.KvmAgent):
 
                 while self.run_fencer(ps_uuid, created_time):
                     if linux.is_mounted(path=mount_path) and touch_heartbeat_file():
-                        self.report_storage_status([ps_uuid], 'Connected')
+                        self.report_storage_status([ps_uuid], self.STORAGE_CONNECTED)
                         logger.debug("fs[uuid:%s] is reachable again, report to management" % ps_uuid)
                         break
                     try:
@@ -781,7 +786,7 @@ class HaPlugin(kvmagent.KvmAgent):
                         if not self.run_fencer(ps_uuid, created_time):
                             break
                         linux.remount(url, mount_path, options)
-                        self.report_storage_status([ps_uuid], 'Connected')
+                        self.report_storage_status([ps_uuid], self.STORAGE_CONNECTED)
                         logger.debug("remount fs[uuid:%s] success, report to management" % ps_uuid)
                         break
                     except:
@@ -837,7 +842,7 @@ class HaPlugin(kvmagent.KvmAgent):
                     if failure == cmd.maxAttempts:
                         logger.warn('failed to touch the heartbeat file[%s] %s times, we lost the connection to the storage,'
                                     'shutdown ourselves' % (heartbeat_file_path, cmd.maxAttempts))
-                        self.report_storage_status([ps_uuid], 'Disconnected')
+                        self.report_storage_status([ps_uuid], self.STORAGE_DISCONNECTED)
 
                         if cmd.strategy == 'Permissive':
                             continue
@@ -1086,7 +1091,7 @@ class HaPlugin(kvmagent.KvmAgent):
 
 
     @thread.AsyncThread
-    def report_storage_status(self, ps_uuids, ps_status, reason=""):
+    def report_storage_status(self, ps_uuids, ps_status, reason="", retry_times=1, sleep_time=10):
         url = self.config.get(kvmagent.SEND_COMMAND_URL)
         if not url:
             logger.warn('cannot find SEND_COMMAND_URL, unable to report storages status[psList:%s, status:%s]' % (
@@ -1099,7 +1104,12 @@ class HaPlugin(kvmagent.KvmAgent):
                 'cannot find HOST_UUID, unable to report storages status[psList:%s, status:%s]' % (ps_uuids, ps_status))
             return
 
+        @linux.retry(times=retry_times, sleep_time=sleep_time)
         def report_to_management_node():
+            if any(ps in self.storage_status and self.storage_status[ps] != ps_status for ps in ps_uuids):
+                logger.debug("storage%s status changed, skip report %s" % (ps_uuids, ps_status))
+                return
+
             cmd = ReportPsStatusCmd()
             cmd.psUuids = ps_uuids
             cmd.hostUuid = host_uuid
