@@ -805,7 +805,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         for diskUuid in cmd.allSharedBlockUuids:
             _disk = CheckDisk(diskUuid)
-            p = _disk.get_path()
+            p = _disk.get_path(raise_exception=False)
             if p is not None:
                 allDiskPaths.add(p)
                 allDisks.add(_disk)
@@ -824,7 +824,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         lvm.config_lvm_filter(["lvm.conf", "lvmlocal.conf"], preserve_disks=allDiskPaths)
 
         if cmd.onlyGenerateFilter:
-            rsp = AgentRsp
+            rsp = AgentRsp()
             rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
             return jsonobject.dumps(rsp)
 
@@ -838,7 +838,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             lvm.check_gl_lock()
             lvm.add_pv(cmd.vgUuid, disk.get_path(), DEFAULT_VG_METADATA_SIZE)
 
-        rsp = AgentRsp
+        rsp = AgentRsp()
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         rsp.lunCapacities = lvm.get_lun_capacities_from_vg(cmd.vgUuid, self.vgs_path_and_wwid)
         return jsonobject.dumps(rsp)
@@ -1577,7 +1577,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         for diskUuid in cmd.allSharedBlockUuids:
             disk = CheckDisk(diskUuid)
-            p = disk.get_path()
+            p = disk.get_path(raise_exception=False)
             if p is not None:
                 allDiskPaths.add(p)
 

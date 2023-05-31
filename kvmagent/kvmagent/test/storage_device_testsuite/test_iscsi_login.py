@@ -43,7 +43,14 @@ class TestSharedBlockPlugin(TestCase, StorageDevicePluginTestStub):
         rsp = storage_device_utils.iscsi_login(
             interf_ip,"3260"
         )
-        self.assertEqual(rsp.success, True, "iscsiadm login failed")
+        self.assertEqual(rsp.success, True, rsp.error)
+        self.assertEqual(rsp.iscsiTargetStructList[0].iscsiLunStructList[0].type, 'disk')
+
+        r, o = bash.bash_ro("ls /dev/disk/by-id | grep scsi|awk -F '-' '{print $2}'")
+        blockUuid = o.strip().replace(' ', '').replace('\n', '').replace('\r', '')
+
+        rsp = storage_device_utils.enable_multipath(blacklist=[{"wwid":blockUuid}])
+        self.assertEqual(rsp.success, True, rsp.error)
 
         r, o = bash.bash_ro("ls /dev/disk/by-id | grep scsi")
         self.assertEqual(r, 0, "[check] login to iscsi failed")
