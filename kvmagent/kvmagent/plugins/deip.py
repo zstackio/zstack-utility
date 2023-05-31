@@ -77,9 +77,9 @@ class Eip(object):
         else:
             ns_name_suffix = ipaddr
 
-        arr = iproute.query_all_namespaces()
-        for ns in arr:
-            if (ns.endswith(ns_name_suffix)): # ns is like 'br_eth0_172_20_51_136'
+        netns = iproute.IpNetnsShell.list_netns()
+        for ns in netns:
+            if ns.endswith(ns_name_suffix):  # ns is like 'br_eth0_172_20_51_136'
                 return ns
 
         return None
@@ -99,7 +99,7 @@ class Eip(object):
 
         @bash.in_bash
         def delete_namespace():
-            iproute.delete_namespace_if_exists(NS_NAME)
+            iproute.IpNetnsShell(NS_NAME).del_netns()
 
         @bash.in_bash
         def delete_outer_dev():
@@ -203,7 +203,8 @@ class Eip(object):
         # in case the namespace deleted and the orphan outer link leaves in the system,
         # deleting the orphan link and recreate it
         def delete_orphan_outer_dev(inner_dev, outer_dev):
-            if not iproute.is_device_ifname_exists(inner_dev, NS_NAME):
+            mac = iproute.IpNetnsShell(NS_NAME).get_mac(inner_dev)
+            if mac is not None:
                 iproute.delete_link_no_error(outer_dev)
 
         def create_dev_if_needed(outer_dev, outer_dev_desc, inner_dev, inner_dev_desc):
@@ -222,8 +223,10 @@ class Eip(object):
                 bash_errorout('brctl addif {{bridge}} {{device}}')
 
         def add_dev_namespace_if_needed(device, namespace):
-            if not iproute.is_device_ifname_exists(device, NS_NAME):
-                iproute.set_link_attribute(device, None, netns=namespace)
+            mac = iproute.IpNetnsShell(namespace).get_mac(device)
+            if mac is None:
+                iproute.IpNetnsShell(namespace).add_link(device)
+
 
         @bash.in_bash
         def set_ip_to_idev_if_needed(device, ipCmd, ip, prefix):
@@ -232,7 +235,7 @@ class Eip(object):
                 bash_errorout('eval {{NS}} {{ipCmd}} addr flush dev {{device}}')
                 bash_errorout('eval {{NS}} {{ipCmd}} addr add {{ip}}/{{prefix}} dev {{device}}')
 
-            iproute.set_link_up(device, NS_NAME)
+            iproute.IpNetnsShell(NS_NAME).set_link_up(device)
 
         @bash.in_bash
         def create_iptable_rule_if_needed(iptableCmd, table, rule, at_head=False):
@@ -428,7 +431,9 @@ class Eip(object):
             create_ebtable_rule_if_needed('nat', PRI_ODEV_CHAIN, "-p ARP --arp-op Request -j DROP")
 
         newCreated = False
-        if not iproute.is_namespace_exists(NS_NAME):
+
+        netns = iproute.IpNetnsShell.list_netns()
+        if NS_NAME not in netns:
             newCreated = True
             iproute.add_namespace(NS_NAME)
 
@@ -450,7 +455,7 @@ class Eip(object):
         add_dev_namespace_if_needed(PRI_IDEV, NS_NAME)
 
         if int(eip.ipVersion) == 4:
-            iproute.set_link_up_no_error(PUB_IDEV, NS_NAME)
+            iproute.IpNetnsShell(NS_NAME).set_link_up(PUB_IDEV)
             if newCreated and not eip.skipArpCheck:
                 r, o = bash.bash_ro('eval {{NS}} arping -D -w 1 -c 3 -I {{PUB_IDEV}} {{VIP}}')
                 if r != 0 and "Unicast reply from" in o:

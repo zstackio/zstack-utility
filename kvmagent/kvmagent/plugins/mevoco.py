@@ -127,13 +127,14 @@ class UserDataEnv(object):
         INNER_DEV = "inner%s" % NAMESPACE_ID
         MAX_MTU = linux.MAX_MTU_OF_VNIC
 
-        if not iproute.is_namespace_exists(NAMESPACE_NAME):
-            iproute.add_namespace(NAMESPACE_NAME)
-            bash_errorout('ip netns set {{NAMESPACE_NAME}} {{NAMESPACE_ID}}')
+        netns = iproute.IpNetnsShell.list_netns()
+        if NAMESPACE_NAME not in netns:
+            iproute.IpNetnsShell(NAMESPACE_NAME).add_netns(NAMESPACE_ID)
 
         # in case the namespace deleted and the orphan outer link leaves in the system,
         # deleting the orphan link and recreate it
-        if not iproute.is_device_ifname_exists(INNER_DEV, NAMESPACE_NAME):
+        mac = iproute.IpNetnsShell(NAMESPACE_NAME).get_mac(INNER_DEV)
+        if mac is None:
             iproute.delete_link_no_error(OUTER_DEV)
 
         if not linux.is_network_device_existing(OUTER_DEV):
@@ -147,10 +148,11 @@ class UserDataEnv(object):
         if ret != 0:
             bash_errorout('brctl addif {{BR_NAME}} {{OUTER_DEV}}')
 
-        if not iproute.is_device_ifname_exists(INNER_DEV, NAMESPACE_NAME):
-            iproute.set_link_attribute(INNER_DEV, netns=NAMESPACE_NAME)
+        mac = iproute.IpNetnsShell(NAMESPACE_NAME).get_mac(INNER_DEV)
+        if mac is None:
+            iproute.IpNetnsShell(NAMESPACE_NAME).add_link(INNER_DEV)
 
-        iproute.set_link_up(INNER_DEV, NAMESPACE_NAME)
+        iproute.IpNetnsShell(NAMESPACE_NAME).set_link_up(INNER_DEV)
         self.inner_dev = INNER_DEV
         self.outer_dev = OUTER_DEV
 
@@ -306,13 +308,14 @@ class DhcpEnv(object):
 
         MAX_MTU = linux.MAX_MTU_OF_VNIC
 
-        if not iproute.is_namespace_exists(NAMESPACE_NAME):
-            iproute.add_namespace(NAMESPACE_NAME)
-            bash_errorout('ip netns set {{NAMESPACE_NAME}} {{NAMESPACE_ID}}')
+        netns = iproute.IpNetnsShell.list_netns()
+        if NAMESPACE_NAME not in netns:
+            iproute.IpNetnsShell(NAMESPACE_NAME).add_netns(NAMESPACE_ID)
 
         # in case the namespace deleted and the orphan outer link leaves in the system,
         # deleting the orphan link and recreate it
-        if not iproute.is_device_ifname_exists(INNER_DEV, NAMESPACE_NAME):
+        mac = iproute.IpNetnsShell(NAMESPACE_NAME).get_mac(INNER_DEV)
+        if mac is None:
             iproute.delete_link_no_error(OUTER_DEV)
 
         if not linux.is_network_device_existing(OUTER_DEV):
@@ -326,29 +329,33 @@ class DhcpEnv(object):
         if ret != 0:
             bash_errorout('brctl addif {{BR_NAME}} {{OUTER_DEV}}')
 
-        if not iproute.is_device_ifname_exists(INNER_DEV, NAMESPACE_NAME):
-            iproute.set_link_attribute(INNER_DEV, netns=NAMESPACE_NAME)
+        bash_errorout("bridge link set dev {{OUTER_DEV}} learning on")
+
+        mac = iproute.IpNetnsShell(NAMESPACE_NAME).get_mac(INNER_DEV)
+        if mac is None:
+            iproute.IpNetnsShell(NAMESPACE_NAME).add_link(INNER_DEV)
 
         #dhcp namespace should not add ipv6 address based on router advertisement
         bash_roe("ip netns exec {{NAMESPACE_NAME}} sysctl -w net.ipv6.conf.all.accept_ra=0")
         bash_roe("ip netns exec {{NAMESPACE_NAME}} sysctl -w net.ipv6.conf.{{INNER_DEV}}.accept_ra=0")
 
-        ipv4_exists = iproute.is_addresses_exists(namespace=NAMESPACE_NAME, address=DHCP_IP, ip_version=4, ifname=INNER_DEV)
-        ipv6_exists = iproute.is_addresses_exists(namespace=NAMESPACE_NAME, address=DHCP6_IP, ip_version=6, ifname=INNER_DEV)
-        if (not ipv4_exists and PREFIX_LEN is not None) or (not ipv6_exists and PREFIX6_LEN is not None):
-            iproute.flush_address(INNER_DEV, namespace=NAMESPACE_NAME)
+        ip4 = iproute.IpNetnsShell(NAMESPACE_NAME).get_ip_address(4, INNER_DEV)
+        ip6 = iproute.IpNetnsShell(NAMESPACE_NAME).get_ip_address(6, INNER_DEV)
+        if (ip4 is None and PREFIX_LEN is not None) or (ip6 is None and PREFIX6_LEN is not None):
+            iproute.IpNetnsShell(NAMESPACE_NAME).flush_ip_address(INNER_DEV)
             if DHCP_IP is not None:
-                iproute.add_address(DHCP_IP, PREFIX_LEN, 4, INNER_DEV, namespace=NAMESPACE_NAME)
+                iproute.IpNetnsShell(NAMESPACE_NAME).add_ip_address(DHCP_IP, PREFIX_LEN, INNER_DEV)
             if DHCP6_IP is not None:
-                iproute.add_address(DHCP6_IP, PREFIX6_LEN, 6, INNER_DEV, namespace=NAMESPACE_NAME)
+                iproute.IpNetnsShell(NAMESPACE_NAME).add_ip_address(DHCP6_IP, PREFIX6_LEN, INNER_DEV)
 
         if DHCP6_IP is not None:
-            mac = iproute.query_link(INNER_DEV, NAMESPACE_NAME).mac
+            mac = iproute.IpNetnsShell(NAMESPACE_NAME).get_mac(INNER_DEV)
             link_local = ip.get_link_local_address(mac)
-            if not iproute.is_addresses_exists(namespace=NAMESPACE_NAME, address=link_local, ip_version=6):
-                iproute.add_address(link_local, 64, 6, INNER_DEV, namespace=NAMESPACE_NAME)
+            old_link_local = iproute.IpNetnsShell(NAMESPACE_NAME).get_link_local6_address(INNER_DEV)
+            if old_link_local is None:
+                iproute.IpNetnsShell(NAMESPACE_NAME).add_ip_address(link_local, 64, INNER_DEV)
 
-        iproute.set_link_up(INNER_DEV, NAMESPACE_NAME)
+        iproute.IpNetnsShell(NAMESPACE_NAME).set_link_up(INNER_DEV)
 
         if (DHCP_IP is None and DHCP6_IP is None) or (PREFIX_LEN is None and PREFIX6_LEN is None):
             logger.debug("no dhcp ip[{{DHCP_IP}}] or netmask[{{DHCP_NETMASK}}] for {{INNER_DEV}} in {{NAMESPACE_NAME}}, skip ebtables/iptables config")
@@ -364,11 +371,7 @@ class DhcpEnv(object):
             PHY_DEV = PHY_DEV.strip(' \t\n\r')
 
             # get mac address of inner dev
-            try:
-                INNER_MAC = iproute.query_link(INNER_DEV, NAMESPACE_NAME).mac
-            except:
-                logger.error("cannot get mac address of " + INNER_DEV)
-                return
+            INNER_MAC = iproute.IpNetnsShell(NAMESPACE_NAME).get_mac(INNER_DEV)
 
             # add bridge fdb entry for inner dev
             if not linux.bridge_fdb_has_self_rule(INNER_MAC, PHY_DEV):
@@ -531,10 +534,11 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
     @in_bash
     def _delete_dhcp4(self, namspace):
-        addrs = iproute.query_addresses(namespace=namspace, ip_version=4)
-        dhcp_ip = addrs[0].address if addrs else ""
+        ns_id = iproute.IpNetnsShell.get_netns_id(namspace)
+        INNER_DEV = "inner" + ns_id
+        dhcp_ip = iproute.IpNetnsShell(namspace).get_ip_address(4, INNER_DEV)
 
-        if dhcp_ip:
+        if dhcp_ip is not None:
             CHAIN_NAME = getDhcpEbtableChainName(dhcp_ip)
 
             o = bash_o("ebtables-save | grep {{CHAIN_NAME}} | grep -- -A")
@@ -826,8 +830,9 @@ tag:{{TAG}},option:dns-server,{{DNS}}
             if ret != 0:
                 bash_errorout('brctl addif %s %s' % (bridge_name, userdata_br_outer_dev))
 
-            if not iproute.is_device_ifname_exists(userdata_br_inner_dev, ns):
-                iproute.set_link_attribute(userdata_br_inner_dev, netns=ns)
+            mac = iproute.IpNetnsShell(ns).get_mac(userdata_br_inner_dev)
+            if mac is None:
+                iproute.IpNetnsShell(ns).add_link(userdata_br_inner_dev)
 
             ns_id = ns_inner_dev[5:]
             if int(ns_id) > 16381:
@@ -836,10 +841,11 @@ tag:{{TAG}},option:dns-server,{{DNS}}
                 raise Exception('add ip addr fail, namespace id exceeds limit')
             ip2int = struct.unpack('!L', socket.inet_aton(self.CONNECT_ALL_NETNS_BR_INNER_IP))[0]
             userdata_br_inner_dev_ip = socket.inet_ntoa(struct.pack('!L', ip2int + int(ns_id)))
-            addrs = iproute.query_addresses(ifname=userdata_br_inner_dev, namespace=ns, address=userdata_br_inner_dev_ip)
-            if not addrs:
-                iproute.add_address(userdata_br_inner_dev_ip, self.IP_MASK_BIT, 4, userdata_br_inner_dev, namespace=ns)
-            iproute.set_link_up(userdata_br_inner_dev, ns)
+            addr = iproute.IpNetnsShell(ns).get_ip_address(4, userdata_br_inner_dev)
+            if addr is None:
+                iproute.IpNetnsShell(ns).add_ip_address(userdata_br_inner_dev_ip, self.IP_MASK_BIT, userdata_br_inner_dev)
+
+            iproute.IpNetnsShell(ns).set_link_up(userdata_br_inner_dev)
 
         p = UserDataEnv(to.bridgeName, to.namespaceName)
         INNER_DEV = None
@@ -851,9 +857,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
             INNER_DEV = p.inner_dev
         else:
             DHCP_IP = to.dhcpServerIp
-            addrs = iproute.query_addresses_by_ip(DHCP_IP, None, NS_NAME)
-            if addrs:
-                INNER_DEV = addrs[0].ifname
+            INNER_DEV = iproute.IpNetnsShell(NS_NAME).get_link_name_by_ip(DHCP_IP, 4)
         if not INNER_DEV:
             p.prepare()
             INNER_DEV = p.inner_dev
@@ -863,9 +867,9 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         outer_dev = p.outer_dev if(p.outer_dev != None) else ("outer" + INNER_DEV[5:])
         prepare_br_connect_ns(NS_NAME, INNER_DEV, outer_dev)
 
-        addrs = iproute.query_addresses(address='169.254.169.254', namespace=NS_NAME)
-        if not addrs and INNER_DEV != None:
-            iproute.add_address('169.254.169.254', 32, 4, INNER_DEV, namespace=NS_NAME)
+        addr = iproute.IpNetnsShell(NS_NAME).get_userdata_ip_address(INNER_DEV)
+        if addr is None:
+            iproute.IpNetnsShell(NS_NAME).add_ip_address('169.254.169.254', 32, INNER_DEV)
 
         r, o = bash_ro('ip netns exec {{NS_NAME}} ip r | wc -l')
         if not to.hasattr("dhcpServerIp") and int(o) == 0:
@@ -875,7 +879,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         BR_NAME = to.bridgeName
         ETH_NAME = get_phy_dev_from_bridge_name(BR_NAME)
 
-        MAC = iproute.query_link(INNER_DEV, NS_NAME).mac
+        MAC = iproute.IpNetnsShell(NS_NAME).get_mac(INNER_DEV)
         CHAIN_NAME="USERDATA-%s" % BR_NAME
         # max length of ebtables chain name is 31
         if (len(BR_NAME) <= 12):
@@ -1251,33 +1255,6 @@ mimetype.assign = (
                 os.fsync(f.fileno())
             os.chmod(self.DNSMASQ_LOG_LOGROTATE_PATH, 0o644)
 
-    def _get_dhcp_server_ip_from_namespace(self, namespace_name):
-        '''
-        :param namespace_name:
-        :return: dhcp server ip address in namespace, or empty string when failed
-        # ip netns exec br_eth0_100_a9c8b01132444866a61d4c2ae03230ba ip add
-        1: lo: <LOOPBACK> mtu 65536 qdisc noop state DOWN qlen 1
-        link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
-        13: inner0@if14: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP qlen 1000
-        link/ether 16:25:4f:33:6c:32 brd ff:ff:ff:ff:ff:ff link-netnsid 0
-        inet 192.168.100.119/24 scope global inner0
-        valid_lft forever preferred_lft forever
-        inet 169.254.169.254/32 scope global inner1
-        valid_lft forever preferred_lft forever
-        inet6 fe80::fc34:72ff:fe29:3564/64 scope link
-        valid_lft forever preferred_lft forever
-        '''
-        if not iproute.is_namespace_exists(namespace_name):
-            return ""
-        addrs = filter(lambda x: not x.address.startswith('169.254'), iproute.query_addresses(namespace=namespace_name, ip_version=4))
-        return addrs[0].address if addrs else ""
-
-    def _get_dhcp6_server_ip_from_namespace(self, namespace_name):
-        if not iproute.is_namespace_exists(namespace_name):
-            return ""
-        addrs = filter(lambda x: not x.address.startswith('fe80::'), iproute.query_addresses(namespace=namespace_name, ip_version=6))
-        return addrs[0].address if addrs else ""
-
     @lock.lock('prepare_dhcp')
     @kvmagent.replyerror
     def prepare_dhcp(self, req):
@@ -1294,12 +1271,13 @@ mimetype.assign = (
 
         dhcpServerIpChanged = False
         dhcp6ServerIpChanged = False
-        old_dhcp_ip = self._get_dhcp_server_ip_from_namespace(cmd.namespaceName)
-        if old_dhcp_ip != "" and old_dhcp_ip != cmd.dhcpServerIp:
+        INNER_DEV = "inner" + iproute.IpNetnsShell.get_netns_id(cmd.namespaceName)
+        old_dhcp_ip = iproute.IpNetnsShell(cmd.namespaceName).get_ip_address(4, INNER_DEV)
+        if old_dhcp_ip is not None and old_dhcp_ip != cmd.dhcpServerIp:
             dhcpServerIpChanged = True
 
-        old_dhcp6_ip = self._get_dhcp6_server_ip_from_namespace(cmd.namespaceName)
-        if old_dhcp6_ip != "" and old_dhcp6_ip != cmd.dhcp6ServerIp:
+        old_dhcp6_ip = iproute.IpNetnsShell(cmd.namespaceName).get_ip_address(6, INNER_DEV)
+        if old_dhcp6_ip is not None and old_dhcp6_ip != cmd.dhcp6ServerIp:
             dhcp6ServerIpChanged = True
 
         if dhcpServerIpChanged or dhcp6ServerIpChanged:
@@ -1325,12 +1303,15 @@ mimetype.assign = (
             p.prefixLen = info.prefixLen
             p.addressMode = info.addressMode
 
-            old_dhcp_ip = self._get_dhcp_server_ip_from_namespace(info.namespaceName)
-            if old_dhcp_ip != "" and old_dhcp_ip != info.dhcpServerIp:
+            NAMESPACE_ID = ip.get_namespace_id(p.namespace_name)
+            INNER_DEV = "inner%s" % NAMESPACE_ID
+
+            old_dhcp_ip = iproute.IpNetnsShell(info.namespaceName).get_ip_address(4, INNER_DEV)
+            if old_dhcp_ip is not None and old_dhcp_ip != info.dhcpServerIp:
                 self._delete_dhcp4(info.namespaceName)
 
-            old_dhcp6_ip = self._get_dhcp6_server_ip_from_namespace(info.namespaceName)
-            if old_dhcp6_ip != "" and old_dhcp6_ip != info.dhcp6ServerIp:
+            old_dhcp6_ip = iproute.IpNetnsShell(info.namespaceName).get_ip_address(6, INNER_DEV)
+            if old_dhcp6_ip is not None and old_dhcp6_ip != info.dhcp6ServerIp:
                 self._delete_dhcp6(info.namespaceName)
 
             p.prepare()
