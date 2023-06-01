@@ -1145,9 +1145,9 @@ def qcow2_get_backing_chain(path):
     backing = qcow2_get_backing_file(path)
     while backing:
         ret.append(backing)
-        backing = qcow2_get_backing_file(path)
+        backing = qcow2_get_backing_file(backing)
 
-    return []
+    return ret
 
 def get_qcow2_file_chain_size(path):
     chain = qcow2_get_file_chain(path)
