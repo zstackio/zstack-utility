@@ -45,7 +45,13 @@ host_post_info.host_inventory = args.i
 
 host_post_info.post_url = post_url
 host_post_info.chrony_servers = chrony_servers
-host_post_info.transport = 'local'
+host_post_info.private_key = args.private_key
+host_post_info.remote_user = remote_user
+host_post_info.remote_pass = remote_pass
+host_post_info.remote_port = remote_port
+if remote_pass is not None and remote_user != 'root':
+    host_post_info.become = True
+
 
 # include zstacklib.py
 (distro, major_version, distro_release, distro_version) = get_remote_host_info(host_post_info)

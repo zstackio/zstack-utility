@@ -33,7 +33,7 @@ export TERM=xterm
 
 OS=''
 IS_UBUNTU='n'
-REDHAT_OS="CENTOS6 CENTOS7 RHEL7 ALIOS7 ISOFT4 KYLIN10 EULER20 UOS1020A"
+REDHAT_OS="CENTOS6 CENTOS7 RHEL7 ALIOS7 ISOFT4 KYLIN10 EULER20 UOS1020A OE2203"
 DEBIAN_OS="UBUNTU14.04 UBUNTU16.04 UBUNTU KYLIN4.0.2 DEBIAN9 UOS20"
 XINCHUANG_OS="ns10 uos20"
 SUPPORTED_OS="$REDHAT_OS $DEBIAN_OS"
@@ -800,6 +800,7 @@ check_system(){
         grep -qi 'NeoKylin Linux' /etc/system-release && OS="RHEL7"
         grep -qi 'Kylin Linux Advanced Server release V10' /etc/system-release && OS="KYLIN10"
         grep -qi 'openEuler release 20.03 (LTS-SP1)' /etc/system-release && OS="EULER20"
+        grep -qi 'openEuler release 22.03 (LTS-SP1)' /etc/system-release && OS="OE2203"
         grep -qi 'UnionTech OS Server release 20 (kongzi)' /etc/system-release && OS="UOS1020A"
         if [[ -z "$OS" ]];then
             fail2 "Host OS checking failure: your system is: `cat /etc/redhat-release`, $PRODUCT_NAME management node only supports $SUPPORTED_OS currently"
@@ -3152,7 +3153,7 @@ get_zstack_repo(){
 install_sync_repo_dependences() {
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     pkg_list="createrepo curl rsync"
-    if [ x"$OS" != x"KYLIN10" -a x"$OS" != x"EULER20" ]; then
+    if [ x"$OS" != x"KYLIN10" -a x"$OS" != x"EULER20" -a x"$OS" != x"OE2203" ]; then
         pkg_list="$pkg_list yum-utils"
     fi
     missing_list=`LANG=en_US.UTF-8 && rpm -q $pkg_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
