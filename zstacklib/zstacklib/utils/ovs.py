@@ -16,6 +16,7 @@ from zstacklib.utils import shell
 from zstacklib.utils import iproute
 from zstacklib.utils import lock
 from zstacklib.utils import linux
+from zstacklib.utils import thread
 
 logger = log.get_logger(__name__)
 
@@ -305,6 +306,7 @@ class OvsVenv(object):
         return memFree
 
     def _makeDirForOvs(self):
+        logger.debug("make work dir for dpdkovs")
         if not os.path.isdir(OvsPath):
             os.mkdir(OvsPath, 0o755)
 
@@ -323,6 +325,47 @@ class OvsVenv(object):
             raise OvsError("Get numa nodes failed.")
 
         return len(numaNodePaths)
+
+
+    def allocateHugepageMemForOvs(self, hugepage_nr, hugepage_unit):
+        rollback_hugepagesPath = []
+        rollback_osCurrentnrHugepages = []
+        try:
+            numaNodePaths = glob.glob("/sys/devices/system/node/node*/")
+            if self.numaNodes < 1:
+                logger.error("can not find numa node.")
+                return -1
+    
+            for numaNodePath in numaNodePaths:
+                hugepagesPath = os.path.join(
+                    numaNodePath, self.hugepagesPaths[int(hugepage_unit)])
+                rollback_hugepagesPath.append(hugepagesPath)               
+ 
+                osCurrentfreeHugepages = int(
+                    readSysfs(os.path.join(hugepagesPath, "free_hugepages")))
+                osCurrentnrHugepages = int(
+                    readSysfs(os.path.join(hugepagesPath, "nr_hugepages")))
+                rollback_osCurrentnrHugepages.append(osCurrentnrHugepages)    
+
+                #OS free memory unit KB
+                memFree = self._getFreeMemByNode(numaNodePath)
+                            
+                needAllocateHugepageNr = hugepage_nr + osCurrentnrHugepages
+    
+                if memFree < needAllocateHugepageNr * hugepage_unit:
+                    logger.error("not enough hugepage for ovs dpdk, os free memory {} but dpdk need {}.".format(
+                        memFree, needAllocateHugepageNr * hugepage_unit))
+                    return -1
+                #logger.debug("{}".format(needAllocateHugepageNr))
+                writeSysfs(os.path.join(hugepagesPath, "nr_hugepages"), str(needAllocateHugepageNr), True)
+
+            return 0
+        except:
+            for i in range(len(rollback_hugepagesPath)):
+                writeSysfs(os.path.join(rollback_hugepagesPath[i], "nr_hugepages"), str(rollback_osCurrentnrHugepages[i]), True)
+
+            logger.error("Unpredictable error occur")
+            return -1
 
     def allocateHugepageMem(self):
         """
@@ -516,11 +559,11 @@ class Ovs(object):
         if self.isOvsProcRunning("ovsdb-server"):
             return
 
-        self.stopDB()
+        #self.stopDB()
         self.upgradeDB()
 
         cmd = "ovsdb-server {}".format(CONF_DB) \
-            + " -vconsole:emer -vsyslog:err -vfile:info" \
+            + " -vconsole:emer -vsyslog:err -vfile:err" \
             + " --remote=punix:{}".format(DB_SOCK) \
             + " --private-key=db:Open_vSwitch,SSL,private_key" \
             + " --certificate=db:Open_vSwitch,SSL,certificate" \
@@ -568,13 +611,13 @@ class Ovs(object):
         if self.isOvsProcRunning("ovs-vswitchd"):
             return
 
-        self.stopSwitch()
+        #self.stopSwitch()
 
-        if self._getDpdkInitStates():
-            self.venv.allocateHugepageMem()
+        #if self._getDpdkInitStates():
+        #    self.venv.allocateHugepageMem()
 
-        cmd = "ovs-vswitchd unix:{}".format(DB_SOCK) \
-            + " -vconsole:emer -vsyslog:err -vfile:info" \
+        cmd = "ulimit -n 1000000 && ovs-vswitchd unix:{}".format(DB_SOCK) \
+            + " -vconsole:emer -vsyslog:err -vfile:err" \
             + " --mlockall --no-chdir" \
             + " --log-file={} --pidfile={} --unixctl={}".format(
                 SwitchLogPath, SwitchPidPath, SwitchCtlFilePath) \
@@ -746,10 +789,10 @@ class OvsBaseCtl(object):
             return ret.strip().splitlines()
 
     def createBr(self, brName, *args):
-        brs = self.listBrs()
-        if brName in brs:
-            logger.debug("Bridge {} already created".format(brName))
-            return
+        #brs = self.listBrs()
+        #if brName in brs:
+        #    logger.debug("Bridge {} already created".format(brName))
+        #    return
 
         try:
             shell.check_run(CtlBin + 'add-br {} -- set Bridge {} datapath_type=netdev'.format(
@@ -765,9 +808,16 @@ class OvsBaseCtl(object):
             for arg in args:
                 if arg in brs:
                     shell.call(CtlBin + "--timeout=5 del-br {}".format(arg))
+
+            bond_info = shell.call("ovs-appctl -t /var/run/openvswitch/ovs-vswitchd.zs.ctl bond/show")
+            if bond_info == '':
+                if os.path.exists(ConfPath + "bondused"):
+                    os.rmdir(ConfPath + "bondused")
+
+            return 0
         except Exception as err:
             logger.error("delete bridge {} failed. {}".format(arg, err))
-            raise OvsError(str(err))
+            return -1
 
     def deleteBrs(self):
         try:
@@ -1044,6 +1094,10 @@ class OvsBaseCtl(object):
             self.addDpdkBondToBr(interface, bridgeName)
         elif ifType == BondType.OvsBond.value:
             self.addOvsBondToBr(interface, bridgeName)
+            if not os.path.exists(ConfPath):
+                os.mkdir(ConfPath, 0o755)
+            if not os.path.exists(ConfPath + "bondused"):
+                os.mkdir(ConfPath + "bondused", 0o755)
         elif ifType == BondType.VfLag.value:
             self.addVfLagToBr(interface, bridgeName)
         else:
@@ -1051,26 +1105,27 @@ class OvsBaseCtl(object):
 
     def isInterfaceExist(self, interface, bridgeName):
         if bridgeName not in self.listBrs():
-            return False
+            return 2
         if interface not in self.listPorts(bridgeName):
-            return False
-        return True        
+            return 1
+        return 0 
 
-    @lock.lock('ovs_addBridge')
     def prepareBridge(self, interface, bridgeName):
-        if self.isInterfaceExist(interface, bridgeName):
-            return
-        self.addBridge(interface, bridgeName)
+        ret = self.isInterfaceExist(interface, bridgeName)
+        if not ret:
+            logger.debug("br:{} and interface:{} already exist".format(bridgeName, interface))
+            return 0
+        return self.addBridge(interface, bridgeName, ret)
 
-    @checkOvs
-    def addBridge(self, interface, bridgeName):
+    def addBridge(self, interface, bridgeName, flag):
         try:
-            self.createBr(bridgeName)
+            if flag == 2:
+                self.createBr(bridgeName)
             self._addIntfaceToBridge(interface, bridgeName)
-            self.ovs.restartSwitch()
+            return 0
         except OvsError:
             self.deleteBr(bridgeName)
-            raise
+            return -1
 
     def configDpdkForOvs(self):
         pass
@@ -1131,7 +1186,7 @@ class OvsDpdkCtl(OvsBaseCtl):
     def _configOpenvSwitchIfReady(self):
         if self.isDpdkReady:
             self.configDpdkForOvs()
-            self.convertOvsConfigByVersion(self.venv.dpdkVer)
+            #self.convertOvsConfigByVersion(self.venv.dpdkVer)
 
     def _clearSriovVfs(self, bdf):
         numvfs = '/sys/bus/pci/devices/{}/sriov_numvfs'.format(bdf)
@@ -1229,6 +1284,359 @@ class OvsDpdkCtl(OvsBaseCtl):
                 "Change devlink mode for device bdf:{} failed. {}".format(bdf, err))
             raise
 
+    @lock.lock("ovs-restart and init")
+    def smartNicRestore(self, nicName):
+        try:
+            if "br_" + nicName in self.listBrs():
+                logger.debug("pf:{} is in use, cannot recover".format(nicName)) 
+                return -1          
+ 
+            bdf = getBDFOfInterface(nicName)
+
+            dpdkExtra = self._getOvsDpdkExtra()
+            if bdf not in dpdkExtra:
+                logger.debug("device bdf:{} not in dpdk white list".format(bdf))
+                return 0
+
+            dpdkWhiteList = dpdkExtra.split("-a")
+            for item in dpdkWhiteList:
+                if bdf in item:
+                    dpdkWhiteList.remove(item)
+                    break
+
+            dpdkExtraNew = ''
+            for item in dpdkWhiteList:
+                if item == '':
+                    continue
+                dpdkExtraNew = "-a" + item
+
+            if dpdkExtraNew == '':
+                shell.run(CtlBin + "--no-wait remove Open_vSwitch . other_config dpdk-extra")
+            else:
+                shell.run(CtlBin + '--no-wait set Open_vSwitch . other_config:dpdk-extra="{}"'.format(dpdkExtraNew))
+
+            self.ovs.restart()
+
+            numvfs = '/sys/bus/pci/devices/{}/sriov_numvfs'.format(bdf)
+            
+            confirmWriteSysfs(numvfs, "0")
+            shell.call("devlink dev eswitch set pci/{} mode {}".format(bdf, "legacy"))
+            ret = shell.call("devlink dev eswitch show pci/{}".format(bdf))
+            if "legacy" not in ret:
+                logger.error("devlink dev set eswitch mode {} for {} failed for restore nic.".format(mode, bdf))
+                return -1
+             
+            return 0
+
+        except OvsError as err:
+            logger.error(
+                "smartnic restore for device :{} failed. {}".format(nicName, err))
+            return -1
+
+    
+    @lock.lock("ovs-restart and init")
+    def smartNicInit(self, nicName, hugepage_nr, hugepage_unit, socketmem, re_init):
+        try:
+            bdf = getBDFOfInterface(nicName)
+            vfnum = 0
+            numvfs = '/sys/bus/pci/devices/{}/sriov_numvfs'.format(bdf)
+            vfnum = readSysfs(numvfs)
+            if int(vfnum) == 0:
+                logger.debug("vfnum:{}, you must set sriov_numvfs value first".format(vfnum))
+                return -1
+
+            ret = shell.call("devlink dev eswitch show pci/{}".format(bdf))
+            if "switchdev" in ret:
+                logger.debug("pci:{} already init, if you want init again, must recover first".format(bdf))
+                return 0
+
+            #check hugepages
+            if not self.ovs.isOvsProcRunning("ovs-vswitchd"):
+                hugepagesPaths = {2048: "hugepages/hugepages-2048kB/",
+                                  1048576: "hugepages/hugepages-1048576kB/"}
+                numaNodePaths = glob.glob("/sys/devices/system/node/node*/")
+                for numaNodePath in numaNodePaths:
+                    hugepagesPath = os.path.join(
+                        numaNodePath, hugepagesPaths[int(hugepage_unit)])
+ 
+                    osCurrentfreeHugepages = int(
+                        readSysfs(os.path.join(hugepagesPath, "free_hugepages")))
+                    if hugepage_nr > osCurrentfreeHugepages:
+                        logger.error("free hugepage num:{} not enough for dpdkovs use num:{}".format(osCurrentfreeHugepages, hugepage_nr))
+                        return -1
+                
+            cmd = "--no-wait set Open_vSwitch . other_config:dpdk-socket-mem="
+            numaNodePaths = glob.glob("/sys/devices/system/node/node*/")
+            for i in numaNodePaths:
+                cmd = cmd + str(socketmem)
+                cmd = cmd + ","
+            shell.run(CtlBin + cmd[0:-1])
+            if not self.ovs.checkOvsConfiguration("dpdk-socket-mem", str(socketmem)):
+                logger.error("Config dpdk socket mem for ovs failed.")
+                return -1
+
+            #reboot eswitch mode will be set to legacy
+            #sriov_numvfs will be set by zstack mn node, before this fun call
+            #clear random data 
+            #confirmWriteSysfs(numvfs, "0")
+            #shell.call("devlink dev eswitch set pci/{} mode {}".format(bdf, "legacy"))
+            #confirmWriteSysfs(numvfs, str(vfnum))
+
+            self._unbindVfs(bdf)
+
+            mode="switchdev"
+            shell.call("devlink dev eswitch set pci/{} mode {}".format(bdf, mode))
+            ret = shell.call("devlink dev eswitch show pci/{}".format(bdf))
+            if mode not in ret:
+                logger.error("devlink dev set eswitch mode {} for {} failed.".format(mode, bdf))
+                return -1
+
+            self._bindVfs(bdf)
+
+            self._configDpdkExtraForOvs(bdf)
+            self.ovs.restart()
+
+            return 0
+        except OvsError as err:
+            logger.error(
+                "smartnic init for device :{} failed. {}".format(nicName, err))
+            return -1
+
+    def resourceConfigure(self, hugepage_nr, hugepage_unit):
+        #ovs-vswitchd already running, hugepages already allocated
+        if self.ovs.isOvsProcRunning("ovs-vswitchd"):
+            logger.warn("ovs-vswitchd already running, hugepages already allocated, no need allacate again")
+            return 0
+
+        return self.ovs.venv.allocateHugepageMemForOvs(int(hugepage_nr), int(hugepage_unit))      
+    
+    def dpdkOvsSync(self, bridge_info):
+        if not self.ovs.isOvsProcRunning("ovs-vswitchd"):
+            logger.warn("ovs-vswitchd not running, can't sync bridge info")
+            return -1
+        try:
+            curr_brs = self.listBrs()
+            controldata_brs = []
+            for item in bridge_info:
+                controldata_brs.append(item.name)
+            #delete port not in controldata but in current br
+            for item in list(set(curr_brs) - set(controldata_brs)):
+                self.deleteBr(item)            
+                logger.debug("sync delete bridge:{}".format(item))
+                         
+            for item in bridge_info:
+                bridgeName = item.name
+                
+                curr_ports = []
+                controldata_ports = []
+                #add br in controldata not in current br
+                if bridgeName not in curr_brs:
+                    logger.debug("sync add bridge:{}".format(bridgeName))
+                    self.createBr(bridgeName)
+
+                    if item.phy_type == "bond":
+                        self.addOvsBondToBr(item.physicalInterface, bridgeName) 
+                    else:                    
+                        self.addNormalIfToBr(item.physicalInterface, bridgeName)
+                    logger.debug("sync add pf:{}, pf type:{}".format(item.physicalInterface, item.phy_type))
+
+                    for port in item.ports:
+                        sockDirPath = os.path.join(SockPath, port.type.lower(), port.vmUuid)
+                        sockPath = os.path.join(sockDirPath, port.nicInternalName)
+                        self._doCreateBackend(port.vmUuid, port, sockPath)
+                        logger.debug("sync add vport:{}".format(port.nicInternalName))
+                    
+                else:
+                    curr_ports = self.listPorts(bridgeName)
+                    for port in item.ports:
+                        controldata_ports.append(port.nicInternalName)
+                    controldata_ports.append(item.physicalInterface)
+                    #in per br,delete vport in current br, but not in controldata ports
+                    for item_port in list(set(curr_ports) - set(controldata_ports)):
+                        self.delPort(bridgeName, item_port)
+                        logger.debug("sync delete vport:{}".format(item_port))
+
+                    if item.physicalInterface not in curr_ports:
+                        if item.phy_type == "bond":
+                            self.addOvsBondToBr(item.physicalInterface, bridgeName) 
+                        else:                    
+                            self.addNormalIfToBr(item.physicalInterface, bridgeName)
+                        logger.debug("sync add pf:{}, pf type:{}".format(item.physicalInterface, item.phy_type))
+                         
+                    #in per br, add vport in contraldata ports ,but not in current ports
+                    for port in item.ports:
+                        if port.nicInternalName not in curr_ports:
+                            sockDirPath = os.path.join(SockPath, port.type.lower(), port.vmUuid)
+                            sockPath = os.path.join(sockDirPath, port.nicInternalName)
+                            self._doCreateBackend(port.vmUuid, port, sockPath)
+                            logger.debug("sync add vport:{}".format(port.nicInternalName))
+                 
+            return 0      
+        except Exception as err:
+            logger.error("Unpredictable error:{}".format(err))
+            return -1 
+
+    @thread.AsyncThread       
+    def checkBondStatusWapper(self):
+        while True:
+             self.checkBondStatus()
+             time.sleep(10)     
+
+ 
+    def checkBondStatus(self):
+        if not os.path.exists(ConfPath + "bondused"): 
+            return 0
+
+        if not self.ovs.isOvsProcRunning("ovs-vswitchd"):
+            logger.warn("ovs-vswitchd not running, no need to check bond status")
+            return -1
+        
+        try:
+            all_brs = self.listBrs()
+            if len(all_brs) <= 0:
+                return 0
+
+            bond_info = shell.call("ovs-appctl -t /var/run/openvswitch/ovs-vswitchd.zs.ctl bond/show")
+            if bond_info == '':
+                return 0
+
+            bond_list_org = bond_info.split("\n")
+            bond_list_org = filter(None, bond_list_org)
+
+            bond_list = self._getBondInfoList(bond_list_org, all_brs)
+            if len(bond_list) <= 0:
+                return 0
+
+            self._syncVdpaForBond(bond_list)
+
+            logger.debug("current brs:{} bondlist:{}, program pid:{}".format(all_brs, bond_list, os.getpid()))
+
+
+        except Exception as err:
+            logger.error("Unpredictable error:{} in checkBondStatus".format(err))
+            return -1       
+
+    def _syncVdpaForBond(self, bond_list):
+        try:
+            for bond in bond_list:
+                ports = self.listPorts(bond["br_name"])
+                for port in ports:
+                    if port == bond["name"]:
+                        continue
+
+                    res = eval(shell.call("ovs-vsctl get Interface {} options:dpdk-devargs".format(port)))
+                    if res == '':
+                        continue
+
+                    reslist = res.split(",")
+                    if len(reslist) < 0:
+                        continue
+                    if bond["active_pf_pci_addr"] == reslist[0]:
+                        continue
+                    logger.debug(
+                       "port:{},portconfig pf_pci_addr:{},bondconfig pf_pci_addr:{}".format(port, reslist[0], bond["active_pf_pci_addr"]))        
+                    # sync vdpa for bond
+                    self._syncVpdaForBond(port, bond, reslist)
+  
+            return 0
+        except Exception as err:
+            logger.error("Unpredictable error:{} in syncVdpaForBond".format(err))
+            return -1       
+
+    def _syncVpdaForBond(self, port, bond, reslist):
+        bridgeName = bond["br_name"]
+        nicInternalName = port
+        representor = reslist[1].split("=")[1][1:-1]
+        pfpci = bond["active_pf_pci_addr"]
+
+        vfpcipath = "/sys/bus/pci/devices/{}/virtfn{}".format(pfpci, representor)
+        vfpci = os.path.realpath(vfpcipath).split("/")[-1]
+
+        sockPath = eval(shell.call("ovs-vsctl get Interface {} options:vdpa-socket-path".format(port))).strip()
+        vmUuid = sockPath.split("/")[-2]
+        vdpaqueues = eval(shell.call("ovs-vsctl get Interface {} options:vdpa-max-queues".format(port))).strip()
+        vdpasw = eval(shell.call("ovs-vsctl get Interface {} options:vdpa-sw".format(port))).strip()
+        queueNum = eval(shell.call("ovs-vsctl get Interface {} options:n_rxq".format(port))).strip()
+        tag = shell.call("ovs-vsctl get Port {} tag".format(port)).strip()
+ 
+        self.delPort(bridgeName, nicInternalName)
+        self.addPort(bridgeName, nicInternalName, "dpdkvdpa",
+                         "vdpa-socket-path={}".format(sockPath),
+                         "vdpa-accelerator-devargs={}".format(vfpci),
+                         "dpdk-devargs={},representor=[{}]".format(
+                             pfpci, representor),
+                         "vdpa-max-queues={}".format(vdpaqueues),
+                         "n_rxq={}".format(queueNum),
+                         "vdpa-sw={}".format(vdpasw))       
+        if tag != '[]':
+            self.setPort(nicInternalName, tag)
+
+        self.setIfaces(nicInternalName, "external_ids:vm-id={}".format(vmUuid))
+ 
+        vnic_info = {}
+        vnic_info["bridgeName"] = bridgeName
+        vnic_info["vnic"] = nicInternalName
+        vnic_info["representor"] = representor
+        vnic_info["pfpci"] = pfpci
+        vnic_info["vfpci"] = vfpci
+        vnic_info["sockPath"] = sockPath
+        vnic_info["vmUuid"] = vmUuid
+        vnic_info["vdpaqueues"] = vdpaqueues
+        vnic_info["vdpasw"] = vdpasw
+        vnic_info["queueNum"] = queueNum
+        vnic_info["tag"] = tag
+        logger.debug("sync vdpa port new info:{}".format(vnic_info))
+
+    def _getBridgeFromPort(self, all_brs, port):
+        for br in all_brs:
+            cur_ports = self.listPorts(br)
+            for nic in cur_ports:
+                if nic == port:
+                    return br
+
+
+    def _getBondInfoList(self, bond_list_org, all_brs):
+        try:
+            bond_list = []
+            for item in bond_list_org:
+                if "----" in item:
+                    itemDict = {}
+                    bond_list.append(itemDict)
+                    itemDict["name"] = item.split(" ")[1]
+
+                    itemDict["br_name"] = self._getBridgeFromPort(all_brs, itemDict["name"])
+                    continue
+    
+                if "bond_mode" in item:
+                    itemDict[item.split(":")[0]] = item.split(":")[1][1:]
+                    continue
+    
+                if "slave" == item[0:5]:
+                    if not itemDict.has_key("slaves"):
+                        slaveList = []
+                    slaveDict = {}
+                    slaveDict["status"] = item.split(":")[1][1:]
+                    slaveDict["name"] = item.split(":")[0].split(" ")[1]
+                    
+                    pci_addr = eval(shell.call(" ovs-vsctl get Interface {} options:dpdk-devargs".format(slaveDict["name"]))).strip("\n")
+                    slaveDict["pci_addr"] = pci_addr
+
+                    slaveList.append(slaveDict)
+                    itemDict["slaves"] = slaveList
+                    continue
+    
+                if "  active" == item[0:8]:
+                    itemDict["slaves"][-1]["active"] = 1
+                    itemDict["active_pf"] = itemDict["slaves"][-1]["name"]
+                    itemDict["active_pf_pci_addr"] = itemDict["slaves"][-1]["pci_addr"]
+                    continue
+            return bond_list
+
+        except Exception as err:
+            logger.error("Unpredictable error:{} in getBondList".format(err))
+            return []
+
+
     def _getOvsDpdkExtra(self):
         try:
             dpdkExtra = shell.call(CtlBin +
@@ -1260,14 +1668,8 @@ class OvsDpdkCtl(OvsBaseCtl):
 
     def addNormalIfToBr(self, interface, bridgeName):
         bdf = getBDFOfInterface(interface)
-        self._changeDevlinkMode(bdf)
-        self._configDpdkExtraForOvs(bdf)
-        if bridgeName not in self.listBrs():
-            raise OvsError("Can not find bridge:{} in ovs.".format(bridgeName))
-
-        if interface not in self.listPorts(bridgeName):
-            self.addPort(bridgeName, interface, "dpdk",
-                         "dpdk-devargs={}".format(bdf))
+        self.addPort(bridgeName, interface, "dpdk",
+                     "dpdk-devargs={}".format(bdf))
 
     def addVfLagToBr(self, bondName, bridgeName):
         slavesPath = "/sys/class/net/{}/bonding/slaves".format(bondName)
@@ -1417,13 +1819,13 @@ class OvsDpdkCtl(OvsBaseCtl):
             raise OvsError(
                 "Number of slaves in dpdk bond:{} should >=2".format(bond.name))
 
-        self._prepareSlaves(slaves)
+        #self._prepareSlaves(slaves)
 
-        if bridgeName not in self.listBrs():
-            raise OvsError("Can not find bridge:{} in ovs.".format(bridgeName))
+        #if bridgeName not in self.listBrs():
+        #    raise OvsError("Can not find bridge:{} in ovs.".format(bridgeName))
 
-        if bond.name in self.listPorts(bridgeName):
-            return
+        #if bond.name in self.listPorts(bridgeName):
+        #    return
 
         # ovs-vsctl add-bond [brname] [bondname] [pf0] [pf1] bond_mode=[bondmode] [lacp=]\
         # -- set Interface [pf0] type=dpdk options:dpdk-devargs=0000:17:00.0 \
@@ -1462,19 +1864,16 @@ class OvsDpdkCtl(OvsBaseCtl):
         shell.run(CtlBin +
                   "--no-wait set Open_vSwitch . other_config:dpdk-init=true")
 
-        # TODO: allocate hugepages to the numa nodes whitch attached dpdk device.
-        # TODO: allocate hugepages depends on MTU size.
-        memSize = self.venv.nr_hugepages * self.venv.hugepage_size / 1024  # MB
-        dpdkSocketMem = ','.join([str(memSize)
-                                 for _ in range(0, self.venv.numaNodes)])
-        cmd = "--no-wait set Open_vSwitch . other_config:dpdk-socket-mem={}".format(
-            dpdkSocketMem)
-        shell.run(CtlBin + cmd)
 
         if not self.ovs.checkOvsConfiguration("hw-offload", "true") or \
-           not self.ovs.checkOvsConfiguration("dpdk-init", "true") or \
-           not self.ovs.checkOvsConfiguration("dpdk-socket-mem", dpdkSocketMem):
+           not self.ovs.checkOvsConfiguration("dpdk-init", "true"): 
             raise OvsError("Config dpdk for ovs failed.")
+
+
+        shell.run(CtlBin +
+                  "--no-wait set Open_vSwitch . other-config:lacp-fallback-ab=true")
+        if not self.ovs.checkOvsConfiguration("lacp-fallback-ab", "true"):
+            raise OvsError("Config lacp fallback ab for ovs failed.")
 
     @linux.retry(times=3, sleep_time=1)
     def convertOvsConfigByVersion(self, version):
@@ -1583,8 +1982,12 @@ class OvsDpdkCtl(OvsBaseCtl):
 
         self.setIfaces(vNicName, "external_ids:vm-id={}".format(vmUuid))
 
-    @lock.lock("ovs-createNicBackend")
     def createNicBackend(self, vmUuid, nic):
+
+        if not self.ovs.isOvsProcRunning("ovs-vswitchd"):
+            logger.error("create vdpa failed, becauseof ovs-vswitchd not running.")
+            return None
+
         bridgeName = nic.bridgeName
         pNicName = nic.physicalInterface
         type = nic.type
@@ -1594,13 +1997,16 @@ class OvsDpdkCtl(OvsBaseCtl):
 
         try:
             if bridgeName not in self.listBrs():
-                raise OvsError(
+                logger.debug(
                     "Can not find bridge:{} in ovs.".format(bridgeName))
+                return None
 
             curPorts = self.listPorts(bridgeName)
             if pNicName not in curPorts:
-                raise OvsError(
+                logger.error(
                     "Port:{} does not exists. Please create it firstly".format(pNicName))
+                return None
+
             if not os.path.exists(sockDirPath):
                 os.makedirs(sockDirPath, 0o755)
 
@@ -1609,23 +2015,27 @@ class OvsDpdkCtl(OvsBaseCtl):
             elif "dpdkvhostuserclient" in type:
                 options = "vhost-server-path"
             else:
-                raise OvsError("Unsupport vnic type:{}".format(type))
+                logger.error("Unsupport vnic type:{}".format(type))
+                return None
 
             if vNicName in curPorts:
                 s = shell.call(
                     CtlBin + "get Interface {} options:{}".format(vNicName, options)).strip()[1:-1]
 
                 if s != '' and sockPath != s:
-                    raise OvsError("same vnic in different vm.")
+                    logger.error("same vnic in different vm.")
+                    return None
             else:
                 self._doCreateBackend(vmUuid, nic, sockPath)
 
             return sockPath
         except shell.ShellError as err:
-            raise OvsError(
+            logger.error(
                 "nic interface {} maybe not a {} type. {}".format(vNicName, type, err))
+            return None
         except OSError as err:
-            raise OvsError(str(err))
+            logger.error(str(err))
+            return None
 
     def _listIfacesByVmUuid(self, vmUuid):
         try:
@@ -1633,6 +2043,7 @@ class OvsDpdkCtl(OvsBaseCtl):
                                     "--columns=name find interface external_ids:vm-id={} | grep name |cut -d ':' -f2 | tr -d ' '".format(vmUuid))
             return interfaces.strip().splitlines()
         except shell.ShellError as err:
+            logger.warn("Find interface by vm uuid:{} failed. {}".format(vmUuid, err))
             raise OvsError(
                 "Find interface by vm uuid:{} failed. {}".format(vmUuid, err))
 
@@ -1654,30 +2065,37 @@ class OvsDpdkCtl(OvsBaseCtl):
                                   "get interface {} options:{}".format(nicName, options)).strip().strip('"')
             return sockPath
         except shell.ShellError as err:
+            logger.warn("Get interface sock path by name:{} failed. {}".format(nicName, err))
             raise OvsError(
                 "Get interface sock path by name:{} failed. {}".format(nicName, err))
 
-    @lock.lock("ovs-destoryNicBackend")
     def destoryNicBackend(self, vmUuid, specificNic=None):
-        sockPath = ''
-        interfaceList = []
+        if not self.ovs.isOvsProcRunning("ovs-vswitchd"):
+            logger.error("delete vdpa failed, becauseof ovs-vswitchd not running.")
+            return None
+        try:
+            sockPath = ''
+            interfaceList = []
+    
+            if specificNic != None:
+                sockPath = self._getInterfacesSockByName(specificNic)
+                interfaceList.append(specificNic)
+            else:
+                # free all vNics belongs to vm
+                interfaceList = self._listIfacesByVmUuid(vmUuid)
+    
+            for br in self.listBrs():
+                tmpList = []
+                for intface in interfaceList:
+                    if intface in self.listIfaces(br):
+                        self.delPort(br, intface)
+                        tmpList.append(intface)
+                interfaceList = list(set(interfaceList).difference(set(tmpList)))
+    
+            return sockPath
+        except:
+            return None
 
-        if specificNic != None:
-            sockPath = self._getInterfacesSockByName(specificNic)
-            interfaceList.append(specificNic)
-        else:
-            # free all vNics belongs to vm
-            interfaceList = self._listIfacesByVmUuid(vmUuid)
-
-        for br in self.listBrs():
-            tmpList = []
-            for intface in interfaceList:
-                if intface in self.listIfaces(br):
-                    self.delPort(br, intface)
-                    tmpList.append(intface)
-            interfaceList = list(set(interfaceList).difference(set(tmpList)))
-
-        return sockPath
 
     @lock.lock("ovs-destoryNicBackend")
     def destoryNicBackendNoWait(self, vmUuid, specificNic=None):
@@ -1820,3 +2238,10 @@ def getAllBondFromFile():
         return dpdkbonds
     except Exception as e:
         return []
+
+
+
+
+
+
+
