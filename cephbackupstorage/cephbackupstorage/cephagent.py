@@ -35,7 +35,7 @@ BUFFER_SIZE = 16 * 1024 ** 2
 
 
 class CephPoolCapacity(object):
-    def __init__(self, name, available, used, total, replicated_size, security_policy, disk_utilization):
+    def __init__(self, name, available, used, total, replicated_size, security_policy, disk_utilization, related_osds):
         self.name = name
         self.availableCapacity = available
         self.usedCapacity = used
@@ -43,6 +43,7 @@ class CephPoolCapacity(object):
         self.replicatedSize = replicated_size
         self.securityPolicy = security_policy
         self.diskUtilization = round(disk_utilization, 3)
+        self.relatedOsds = related_osds
 
 
 class AgentCommand(object):
@@ -493,7 +494,8 @@ class CephAgent(object):
         for pool in pools:
             pool_capacity = CephPoolCapacity(pool.pool_name,
                                              pool.available_capacity, pool.used_capacity, pool.pool_total_size,
-                                             pool.replicated_size, pool.security_policy, pool.disk_utilization)
+                                             pool.replicated_size, pool.security_policy, pool.disk_utilization,
+                                             pool.get_related_osds())
             pool_capacities.append(pool_capacity)
 
         return total, avail, pool_capacities

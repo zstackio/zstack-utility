@@ -231,7 +231,7 @@ class CephPoolCapacity:
         self.available_capacity = 0
         self.used_capacity = 0
         self.crush_rule_item_names = []
-        self.crush_item_osds = []
+        self.crush_item_osds = set()
         self.crush_item_osds_total_size = 0
         self.pool_total_size = 0
         self.related_osd_capacity = {}
@@ -272,4 +272,7 @@ class DefaultCephPoolCapacityGetter:
 pool_capacity_getter_mapping = {
     "zstone":ZStoneCephPoolCapacityGetter()
 }
+
+    def get_related_osds(self):
+        return ",".join(self.crush_item_osds)
 
