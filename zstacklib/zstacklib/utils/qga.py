@@ -45,6 +45,17 @@ qga_exec_wait_retry = 30
 qga_channel_state_connected = 'connected'
 qga_channel_state_disconnected = 'disconnected'
 
+encodings = ['utf-8', 'GB2312', 'ISO-8859-1']
+
+
+def decode_with_fallback(encoded_bytes):
+    for encoding in encodings:
+        try:
+            return encoded_bytes.decode(encoding).encode('utf-8')
+        except UnicodeDecodeError:
+            continue
+    raise UnicodeDecodeError("Unable to decode bytes using provided encodings")
+
 
 def get_qga_channel_state(vm_dom):
     xml_tree = ET.fromstring(vm_dom.XMLDesc())
@@ -61,8 +72,10 @@ def is_qga_connected(vm_dom):
     except:
         return False
 
+
 # windows zs-tools command wait 120s
 zs_tools_wait_retry = 120
+
 
 class QgaException(Exception):
     """ The base exception class for all exceptions this agent raises."""
@@ -85,6 +98,8 @@ class VmQga(object):
     VM_OS_LINUX_SUSE_D = "sled"
     VM_OS_LINUX_ORACLE = "ol"
     VM_OS_LINUX_REDHAT = "rhel"
+    VM_OS_LINUX_DEBIAN = "debian"
+    VM_OS_LINUX_FEDORA = "fedora"
     VM_OS_WINDOWS = "mswindows"
 
     ZS_TOOLS_PATN_WIN = "C:\Program Files\GuestTools\zs-tools\zs-tools.exe"
@@ -202,9 +217,9 @@ class VmQga(object):
         exit_code = ret.get('exitcode')
         ret_data = None
         if 'out-data' in ret:
-            ret_data = ret['out-data']
+            ret_data = decode_with_fallback(ret['out-data'])
         elif 'err-data' in ret:
-            ret_data = ret['err-data']
+            ret_data = decode_with_fallback(ret['err-data'])
 
         return exit_code, ret_data
 
@@ -247,9 +262,9 @@ class VmQga(object):
         exit_code = ret.get('exitcode')
         ret_data = None
         if 'out-data' in ret:
-            ret_data = ret['out-data']
+            ret_data = decode_with_fallback(ret['out-data'])
         elif 'err-data' in ret:
-            ret_data = ret['err-data']
+            ret_data = decode_with_fallback(ret['err-data'])
 
         return exit_code, ret_data
 
@@ -264,9 +279,10 @@ class VmQga(object):
             raise Exception('qga exec zs-tools unknow operate {} for vm {}'.format(operate, self.vm_uuid))
 
         if ret and "pid" in ret:
-                pid = ret["pid"]
+            pid = ret["pid"]
         else:
-            raise Exception('qga exec zs-tools operate {} config {} failed for vm {}'.format(operate, config, self.vm_uuid))
+            raise Exception(
+                'qga exec zs-tools operate {} config {} failed for vm {}'.format(operate, config, self.vm_uuid))
 
         ret = None
         for i in range(retry):
@@ -276,16 +292,51 @@ class VmQga(object):
                 break
 
         if not ret or not ret.get('exited'):
-            raise Exception('qga exec zs-tools operate {} config {} timeout for vm {}'.format(operate, config, self.vm_uuid))
+            raise Exception(
+                'qga exec zs-tools operate {} config {} timeout for vm {}'.format(operate, config, self.vm_uuid))
 
         exit_code = ret.get('exitcode')
         ret_data = None
         if 'out-data' in ret:
-            ret_data = ret['out-data'].decode('utf-8').encode('utf-8')
+            ret_data = decode_with_fallback(ret['out-data'])
         elif 'err-data' in ret:
-            ret_data = ret['err-data'].decode('utf-8').encode('utf-8')
+            ret_data = decode_with_fallback(ret['err-data'])
 
         return exit_code, ret_data.replace('\r\n', '')
+
+    def guest_exec_wmic(self, cmd, output=True, wait=qga_exec_wait_interval, retry=qga_exec_wait_retry):
+        cmd_parts = cmd.split('|')
+        cmd = "{}".format(" ".join([part for part in cmd_parts]))
+
+        ret = self.guest_exec(
+            {"path": "wmic", "arg": cmd.split(" "), "capture-output": output})
+        if ret and "pid" in ret:
+            pid = ret["pid"]
+        else:
+            raise Exception('qga exec cmd {} failed for vm {}'.format(cmd, self.vm_uuid))
+
+        if not output:
+            logger.debug("run qga wmic: {} failed, no output".format(cmd))
+            return 0, None
+
+        ret = None
+        for i in range(retry):
+            time.sleep(wait)
+            ret = self.guest_exec_status(pid)
+            if ret['exited']:
+                break
+
+        if not ret or not ret.get('exited'):
+            raise Exception('qga exec cmd {} timeout for vm {}'.format(cmd, self.vm_uuid))
+
+        exit_code = ret.get('exitcode')
+        ret_data = None
+        if 'out-data' in ret:
+            ret_data = decode_with_fallback(ret['out-data'])
+        elif 'err-data' in ret:
+            ret_data = decode_with_fallback(ret['err-data'])
+
+        return exit_code, ret_data
 
     def guest_exec_powershell(self, cmd, output=True, wait=qga_exec_wait_interval, retry=qga_exec_wait_retry):
         cmd_parts = cmd.split('|')
@@ -315,9 +366,9 @@ class VmQga(object):
         exit_code = ret.get('exitcode')
         ret_data = None
         if 'out-data' in ret:
-            ret_data = ret['out-data'].decode("GB2312")
+            ret_data = decode_with_fallback(ret['out-data'])
         elif 'err-data' in ret:
-            ret_data = ret['err-data'].decode("GB2312")
+            ret_data = decode_with_fallback(ret['err-data'])
 
         return exit_code, ret_data
 
@@ -438,18 +489,25 @@ class VmQga(object):
     def guest_get_os_info(self):
         ret = self.guest_exec_bash_no_exitcode('cat /etc/os-release')
         if not ret:
-            raise Exception('get os info failed')
+            # Parse /etc/redhat-release for CentOS/RHEL 6
+            ret = self.guest_exec_bash_no_exitcode('cat /etc/redhat-release')
+            if not ret:
+                raise Exception('get os info failed')
+            parts = ret.split()
+            if len(parts) >= 3 and parts[1] == 'release':
+                config = {'ID': parts[0].lower(), 'VERSION_ID': parts[2]}
+        else:
+            # Parse /etc/os-release
+            lines = [line for line in ret.split('\n') if line != ""]
+            config = {}
+            for line in lines:
+                if line.startswith('#'):
+                    continue
 
-        lines = [line for line in ret.split('\n') if line != ""]
-        config = {}
-        for line in lines:
-            if line.startswith('#'):
-                continue
-
-            info = line.split('=')
-            if len(info) != 2:
-                continue
-            config[info[0].strip()] = info[1].strip().strip('"')
+                info = line.split('=')
+                if len(info) != 2:
+                    continue
+                config[info[0].strip()] = info[1].strip().strip('"')
 
         vm_os = config.get('ID')
         version = config.get('VERSION_ID')
