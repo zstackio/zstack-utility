@@ -195,7 +195,6 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/localstorage/kvmhost/download/cancel"
     GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH = "/localstorage/kvmhost/download/progress"
     GET_QCOW2_HASH_VALUE_PATH = "/localstorage/getqcow2hash"
-    CLEAN_LOCAL_CACHE = "/host/imagestore/cleancache"
 
     LOCAL_NOT_ROOT_USER_MIGRATE_TMP_PATH = "primary_storage_tmp_dir"
 
@@ -241,7 +240,6 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
         http_server.register_async_uri(self.GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH, self.get_download_bits_from_kvmhost_progress)
         http_server.register_async_uri(self.GET_QCOW2_HASH_VALUE_PATH, self.get_qcow2_hashvalue)
-        http_server.register_async_uri(self.CLEAN_LOCAL_CACHE, self.clean_local_cache)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -965,15 +963,6 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         rsp = GetQcow2HashValueRsp()
 
         rsp.hashValue = secret.get_image_hash(cmd.installPath)
-        return jsonobject.dumps(rsp)
-
-    @kvmagent.replyerror
-    def clean_local_cache(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = kvmagent.AgentResponse()
-        isc = ImageStoreClient()
-        isc.clean_imagestore_cache(cmd.storagePath)
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
         return jsonobject.dumps(rsp)
 
 
