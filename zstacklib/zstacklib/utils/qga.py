@@ -438,18 +438,25 @@ class VmQga(object):
     def guest_get_os_info(self):
         ret = self.guest_exec_bash_no_exitcode('cat /etc/os-release')
         if not ret:
-            raise Exception('get os info failed')
+            # Parse /etc/redhat-release for CentOS/RHEL 6
+            ret = self.guest_exec_bash_no_exitcode('cat /etc/redhat-release')
+            if not ret:
+                raise Exception('get os info failed')
+            parts = ret.split()
+            if len(parts) >= 3 and parts[1] == 'release':
+                config = {'ID': parts[0].lower(), 'VERSION_ID': parts[2]}
+        else:
+            # Parse /etc/os-release
+            lines = [line for line in ret.split('\n') if line != ""]
+            config = {}
+            for line in lines:
+                if line.startswith('#'):
+                    continue
 
-        lines = [line for line in ret.split('\n') if line != ""]
-        config = {}
-        for line in lines:
-            if line.startswith('#'):
-                continue
-
-            info = line.split('=')
-            if len(info) != 2:
-                continue
-            config[info[0].strip()] = info[1].strip().strip('"')
+                info = line.split('=')
+                if len(info) != 2:
+                    continue
+                config[info[0].strip()] = info[1].strip().strip('"')
 
         vm_os = config.get('ID')
         version = config.get('VERSION_ID')

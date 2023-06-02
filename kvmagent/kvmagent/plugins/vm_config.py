@@ -143,7 +143,7 @@ class VmConfigPlugin(kvmagent.KvmAgent):
     VM_QGA_CONFIG_LINUX_CMD = "/usr/local/zstack/zs-tools/config_linux.py"
     VM_QGA_SET_HOSTNAME = "/usr/local/zstack/zs-tools/set_hostname_linux.py"
     VM_CONFIG_SYNC_OS_VERSION_SUPPORT = {
-        VmQga.VM_OS_LINUX_CENTOS: ("7", "8"),
+        VmQga.VM_OS_LINUX_CENTOS: ("6", "7", "8"),
         VmQga.VM_OS_LINUX_KYLIN: ("v10",),
         VmQga.VM_OS_LINUX_UOS: ("20",),
         VmQga.VM_OS_LINUX_OPEN_SUSE: ("12", "15",),
