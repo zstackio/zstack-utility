@@ -112,6 +112,10 @@ class Soc(kvmagent.KvmAgent):
             rsp.success = False
             rsp.error = msg
 
+        # return code is 1, which means snapshot doesn't exit on soc
+        if ret == 1:
+            rsp.success = True
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -124,6 +128,10 @@ class Soc(kvmagent.KvmAgent):
             rsp.success = False
             rsp.error = msg
 
+        # return code is 1, which means vm doesn't exit on soc
+        if ret == 1:
+            rsp.success = True
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -135,6 +143,10 @@ class Soc(kvmagent.KvmAgent):
         if ret != 0:
             rsp.success = False
             rsp.error = msg
+
+        # return code is 1, which means backup doesn't exit on soc
+        if ret == 1:
+            rsp.success = True
 
         return jsonobject.dumps(rsp)
 
