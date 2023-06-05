@@ -2395,6 +2395,8 @@ install_zops(){
     echo_title "Install or upgrade ZOps"
     echo ""
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+    mkdir -p /root/.zops
+    echo "true" > /root/.zops/cloud_integration
     if [ -f "/sbin/zops" ]; then
       show_spinner is_upgrade_zops
     else
