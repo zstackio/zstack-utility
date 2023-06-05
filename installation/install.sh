@@ -2391,12 +2391,13 @@ install_sds(){
 install_zops(){
     [[ x"$BASEARCH" != x"x86_64" ]] && return
     [[ x"$OS" != x"CENTOS7" && x"$OS" != x"HELIX7" ]] && return
+    mkdir -p /usr/local/zops
+    chmod o+r /usr/local/zops
+    echo "true" > /usr/local/zops/cloud_integration
     [[ x"$SKIP_ZOPS_INSTALL" = x"y" ]] && return
     echo_title "Install or upgrade ZOps"
     echo ""
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
-    mkdir -p /root/.zops
-    echo "true" > /root/.zops/cloud_integration
     if [ -f "/sbin/zops" ]; then
       show_spinner is_upgrade_zops
     else
