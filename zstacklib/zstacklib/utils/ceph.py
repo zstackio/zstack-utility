@@ -269,10 +269,10 @@ class DefaultCephPoolCapacityGetter:
             if pool_capacity.used_capacity:
                 pool_capacity.used_capacity = int(pool_capacity.used_capacity * pool_capacity.disk_utilization)
 
-pool_capacity_getter_mapping = {
-    "zstone":ZStoneCephPoolCapacityGetter()
-}
-
     def get_related_osds(self):
         return ",".join(self.crush_item_osds)
 
+
+pool_capacity_getter_mapping = {
+    "zstone":ZStoneCephPoolCapacityGetter()
+}
