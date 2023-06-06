@@ -220,6 +220,7 @@ class ZstackLibArgs(object):
         self.host_post_info = None
         self.pip_url = None
         self.require_python_env = "true"
+        self.host_info = None
 
 
 class Msg(object):
@@ -955,7 +956,11 @@ def apt_update_packages(name_list, host_post_info):
 
 
 
+IS_REMOTE_PIP_READY = {}
+
+
 def pip_install_package(pip_install_arg, host_post_info):
+    global IS_REMOTE_PIP_READY
     start_time = datetime.datetime.now()
     host_post_info.start_time = start_time
     name = pip_install_arg.name
@@ -974,8 +979,10 @@ def pip_install_package(pip_install_arg, host_post_info):
     host_post_info.post_label = "ansible.pip.install.pkg"
     host_post_info.post_label_param = name
     handle_ansible_info("INFO: pip installing package %s ..." % name, host_post_info, "INFO")
-    command = "which pip || ln -s /usr/bin/pip2 /usr/bin/pip"
-    run_remote_command(command, host_post_info)
+    if host not in IS_REMOTE_PIP_READY.keys() or not IS_REMOTE_PIP_READY[host]:
+        command = "which pip || ln -s /usr/bin/pip2 /usr/bin/pip"
+        run_remote_command(command, host_post_info)
+        IS_REMOTE_PIP_READY[host] = True
     param_dict = {}
     param_dict_raw = dict(version=version, extra_args=extra_args, virtualenv=virtualenv,
                           virtualenv_site_packages=virtualenv_site_packages)
@@ -1430,7 +1437,9 @@ def get_remote_host_info_obj(host_post_info):
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'setup'
-    runner_args.module_args = 'filter=ansible*'
+    runner_args.module_args = ('gather_subset=machine,processor '
+                               'filter=ansible_dist*,ansible_machine,'
+                               'ansible_processor,ansible_kernel')
     zstack_runner = ZstackRunner(runner_args)
     result = zstack_runner.run()
     logger.debug(result)
@@ -1994,7 +2003,9 @@ class ZstackLib(object):
         check_umask(self.host_post_info)
         configure_hosts(self.host_post_info)
 
-        host_info = get_remote_host_info_obj(self.host_post_info)
+        host_info = args.host_info
+        if not host_info:
+            host_info = get_remote_host_info_obj(self.host_post_info)
 
         if self.distro in RPM_BASED_OS:
             install_release_on_host(True, host_info, self.host_post_info)

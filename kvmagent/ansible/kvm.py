@@ -170,6 +170,7 @@ def load_zstacklib():
     zstacklib_args.pip_url = pip_url
     zstacklib_args.zstack_releasever = releasever
     zstacklib_args.trusted_host = trusted_host
+    zstacklib_args.host_info = host_info
     if host_info.distro in DEB_BASED_OS:
         zstacklib_args.apt_server = yum_server
         zstacklib_args.zstack_apt_source = zstack_repo
