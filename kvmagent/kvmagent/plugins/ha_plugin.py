@@ -7,6 +7,7 @@ from zstacklib.utils import shell
 from zstacklib.utils import linux
 from zstacklib.utils import lvm
 from zstacklib.utils import thread
+from zstacklib.utils import qemu
 from zstacklib.utils import qemu_img
 from zstacklib.utils import ceph
 from zstacklib.utils import sanlock
@@ -184,7 +185,7 @@ class SanlockHealthChecker(object):
 
 
 last_multipath_run = time.time()
-QEMU_VERSION = linux.get_qemu_version()
+QEMU_VERSION = qemu.get_version()
 LIBVIRT_VERSION = linux.get_libvirt_version()
 
 
@@ -274,11 +275,16 @@ def get_running_vm_root_volume_path(vm_uuid, is_file_system):
         logger.warn("can not find process of vm[uuid: %s]" % vm_uuid)
         return None
 
+    # try to get vm running qemu version
+    qemu_version = qemu.get_running_version(vm_uuid)
+    if qemu_version == "":
+        qemu_version = QEMU_VERSION
+
     pid = out.split(" ")[0]
     cmdline = out.split(" ", 3)[-1]
     if "bootindex=1" in cmdline:
         root_volume_path = cmdline.split("bootindex=1")[0].split(" -drive file=")[-1].split(",")[0]
-        if LooseVersion(LIBVIRT_VERSION) >= LooseVersion("6.0.0") and LooseVersion(QEMU_VERSION) >= LooseVersion("4.2.0"):
+        if LooseVersion(LIBVIRT_VERSION) >= LooseVersion("6.0.0") and LooseVersion(qemu_version) >= LooseVersion("4.2.0"):
             if is_file_system:
                 root_volume_path = cmdline.split("bootindex=1")[0].split('filename')[-1].split('"')[2]
             else:
