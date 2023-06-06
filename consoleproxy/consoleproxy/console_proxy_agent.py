@@ -384,7 +384,7 @@ class ConsoleProxyAgent(object):
         exist_token = self.token_ctrl.search_by_prefix(token_file.prefix)
 
         # this logic only execute when request from ZStack API
-        if not exist_token or exist_token.is_stale():
+        if not exist_token or exist_token.is_stale() or exist_token.is_content_valid(cmd.targetHostname, cmd.targetPort):
             self.token_ctrl.delete_by_prefix(token_file.prefix)
             token_file = self.token_ctrl.create_token_file(token_file.prefix, cmd.vncTokenTimeout)
             self.token_ctrl.submit_delete_token_task(token_file)
@@ -487,6 +487,15 @@ class ConsoleTokenFile(object):
 
     def is_stale(self):
         return time.time() > self.timeout_stamp
+
+    def is_content_valid(self, target_host_name, target_port):
+        with open(self.get_absolute_path(), 'r') as fd:
+            line = fd.readline()
+            if '%s: %s:%s' % (self.get_full_name(), target_host_name, target_port) in line:
+                return True
+            else:
+                logger.debug("token file content is not valid %s" % line)
+                return False
 
     def get_absolute_path(self):
         return os.path.join(self.directory, self.get_full_name())
