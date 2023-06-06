@@ -204,7 +204,7 @@ class Eip(object):
         # deleting the orphan link and recreate it
         def delete_orphan_outer_dev(inner_dev, outer_dev):
             mac = iproute.IpNetnsShell(NS_NAME).get_mac(inner_dev)
-            if mac is not None:
+            if mac is None:
                 iproute.delete_link_no_error(outer_dev)
 
         def create_dev_if_needed(outer_dev, outer_dev_desc, inner_dev, inner_dev_desc):
@@ -468,7 +468,7 @@ class Eip(object):
             add_filter_to_prevent_namespace_arp_request()
 
             # ping VIP gateway
-            bash_r('eval {{NS}} arping -q -A -w 2.5 -c 3 -I {{PUB_IDEV}} {{VIP}} > /dev/null')
+            bash_r('eval {{NS}} arping -q -A -w 2 -c 3 -I {{PUB_IDEV}} {{VIP}} > /dev/null')
             set_gateway_arp_if_needed()
             set_eip_rules()
             set_default_route_if_needed("ip")
