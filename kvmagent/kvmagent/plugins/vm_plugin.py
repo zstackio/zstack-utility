@@ -515,14 +515,15 @@ class QueryBlockJobStatusResponse(kvmagent.AgentResponse):
         super(QueryBlockJobStatusResponse, self).__init__()
 
 class QueryVmLatenciesThread(threading.Thread):
-    def __init__(self, func, uuids):
+    def __init__(self, func, uuids, times):
         threading.Thread.__init__(self)
         self.func = func
         self.uuids = uuids
+        self.times = times
         self.res = []
 
     def run(self):
-        self.res = self.func(self.uuids)
+        self.res = self.func(self.uuids, self.times)
 
     def getResult(self):
         return self.res
@@ -7323,7 +7324,7 @@ host side snapshot files chian:
 
         try:
             for uuid in cmd.vmUuids:
-                threads.append(QueryVmLatenciesThread(isc.query_vm_mirror_latencies_boundary, uuid))
+                threads.append(QueryVmLatenciesThread(isc.query_vm_mirror_latencies_boundary, uuid, cmd.times))
             for t in threads:
                 t.start()
             for t in threads:
