@@ -57,9 +57,9 @@ host_post_info.remote_pass = remote_pass
 host_post_info.remote_port = remote_port
 if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
-
 # include zstacklib.py
 host_info = get_remote_host_info_obj(host_post_info)
+host_info = upgrade_to_helix(host_info, host_post_info)
 releasever = get_host_releasever(host_info)
 host_post_info.releasever = releasever
 
@@ -127,7 +127,7 @@ else:
 
 # name: check and mount /opt/zstack-dvd
 command = """
-archRelease='x86_64/c72 x86_64/c74 x86_64/c76 x86_64/c79 x86_64/ky10sp1 x86_64/ky10sp2 x86_64/ky10sp3 aarch64/ky10sp1 aarch64/ky10sp2 aarch64/ky10sp3 mips64el/ky10sp1 loongarch64/ky10sp1 loongarch64/ky10sp3' 
+archRelease='x86_64/c72 x86_64/c74 x86_64/c76 x86_64/c79 x86_64/h76c x86_64/h79c x86_64/ky10sp1 x86_64/ky10sp2 x86_64/ky10sp3 aarch64/ky10sp1 aarch64/ky10sp2 aarch64/ky10sp3 mips64el/ky10sp1 loongarch64/ky10sp1 loongarch64/ky10sp3' 
 mkdir -p /var/lib/zstack/baremetal/{dnsmasq,ftp/{ks,zstack-dvd/{x86_64,aarch64,mips64el,loongarch64},scripts},tftpboot/{zstack/{x86_64,aarch64,mips64el,loongarch64},pxelinux.cfg,EFI/BOOT},vsftpd} /var/log/zstack/baremetal/;
 rm -rf /var/lib/zstack/baremetal/tftpboot/{grubaa64.efi,grub.cfg-01-*};
 is_repo_exist='false'

@@ -58,9 +58,9 @@ host_post_info.remote_pass = remote_pass
 host_post_info.remote_port = remote_port
 if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
-
 # include zstacklib.py
 host_info = get_remote_host_info_obj(host_post_info)
+host_info = upgrade_to_helix(host_info, host_post_info)
 releasever = get_host_releasever(host_info)
 host_post_info.releasever = releasever
 
@@ -131,7 +131,7 @@ if host_info.distro in RPM_BASED_OS:
         # c74 do not apply the change. Therefore, if ceph bs host is c74 and
         # mn is c76 or c79 and qemu-kvm not installed, using qemu-kvm instead
         # qemu-kvm-ev
-        if releasever == 'c74' and get_mn_release() in ['c76', 'c79']:
+        if releasever == 'c74' and get_mn_release() in ['c76', 'c79', 'h76c', 'h79c']:
             install_rpm_list += " qemu-kvm"
 
     if zstack_repo != 'false':

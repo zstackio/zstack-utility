@@ -71,6 +71,7 @@ if remote_pass is not None and remote_user != 'root':
 
 # include zstacklib.py
 host_info = get_remote_host_info_obj(host_post_info)
+host_info = upgrade_to_helix(host_info, host_post_info)
 releasever = get_host_releasever(host_info)
 host_post_info.releasever = releasever
 

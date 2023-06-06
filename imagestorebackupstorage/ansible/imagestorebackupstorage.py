@@ -64,6 +64,7 @@ if remote_pass is not None and remote_user != 'root':
 
 # include zstacklib.py
 host_info = get_remote_host_info_obj(host_post_info)
+host_info = upgrade_to_helix(host_info, host_post_info)
 releasever = get_host_releasever(host_info)
 host_post_info.releasever = releasever
 
@@ -107,7 +108,7 @@ if host_info.distro in RPM_BASED_OS:
 
     if not remote_bin_installed(host_post_info, "qemu-img", return_status=True):
         pkg = 'qemu-img-ev' if releasever in ['c74'] else 'qemu-img'
-        if releasever == 'c74' and get_mn_release() in ['c76', 'c79']:
+        if releasever == 'c74' and get_mn_release() in ['c76', 'c79', 'h76c', 'h79c']:
             pkg = 'qemu-img'
         qemu_pkg += ' %s' % pkg
 
