@@ -186,6 +186,7 @@ class Eip(object):
         NIC_PREFIXLEN = eip.nicPrefixLen
         NIC_IP= eip.nicIp
         NIC_MAC= eip.nicMac
+        NIC_MAC_IN_EBTALES = ip.removeZeroFromMacAddress(NIC_MAC)
         NS_NAME = "%s_%s" % (eip.publicBridgeName, eip.vip.replace(".", "_"))
 
         EBTABLE_CHAIN_NAME= eip.vmBridgeName
@@ -320,6 +321,7 @@ class Eip(object):
             if not GATEWAY:
                 raise Exception('cannot find the device[%s] in the namespace[%s]' % (PRI_IDEV, NS_NAME))
 
+            GATEWAY = ip.removeZeroFromMacAddress(GATEWAY)
             create_ebtable_rule_if_needed('nat', CHAIN_NAME, "-p ARP --arp-op Request --arp-ip-dst {{NIC_GATEWAY}} -j arpreply --arpreply-mac {{GATEWAY}}")
 
             for BLOCK_DEV in [PRI_ODEV, PUB_ODEV]:
@@ -328,7 +330,7 @@ class Eip(object):
                     bash_errorout(EBTABLES_CMD + ' -t nat -N {{BLOCK_CHAIN_NAME}}')
 
                 create_ebtable_rule_if_needed('nat', 'POSTROUTING', "-p ARP -o {{BLOCK_DEV}} -j {{BLOCK_CHAIN_NAME}}")
-                create_ebtable_rule_if_needed('nat', BLOCK_CHAIN_NAME, "-p ARP -o {{BLOCK_DEV}} --arp-op Request --arp-ip-dst {{NIC_GATEWAY}} --arp-mac-src ! {{NIC_MAC}} -j DROP")
+                create_ebtable_rule_if_needed('nat', BLOCK_CHAIN_NAME, "-p ARP -o {{BLOCK_DEV}} --arp-op Request --arp-ip-dst {{NIC_GATEWAY}} --arp-mac-src ! {{NIC_MAC_IN_EBTALES}} -j DROP")
 
             BLOCK_CHAIN_NAME = '{{NIC_NAME}}-arp'
             if bash_r(EBTABLES_CMD + ' -t nat -L {{BLOCK_CHAIN_NAME}} > /dev/null 2>&1') != 0:
@@ -427,7 +429,7 @@ class Eip(object):
 
             create_ebtable_rule_if_needed('nat', 'PREROUTING', '-i {{PRI_ODEV}} -j {{PRI_ODEV_CHAIN}}')
             create_ebtable_rule_if_needed('nat', PRI_ODEV_CHAIN,
-                                          "-p ARP --arp-op Request --arp-ip-dst {{NIC_IP}} -j arpreply --arpreply-mac {{NIC_MAC}}", True)
+                                          "-p ARP --arp-op Request --arp-ip-dst {{NIC_IP}} -j arpreply --arpreply-mac {{NIC_MAC_IN_EBTALES}}", True)
             create_ebtable_rule_if_needed('nat', PRI_ODEV_CHAIN, "-p ARP --arp-op Request -j DROP")
 
         newCreated = False
