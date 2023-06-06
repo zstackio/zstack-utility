@@ -1238,6 +1238,50 @@ unpack_zstack_into_tomcat(){
     fi
 }
 
+uz_configure_grayscale_upgrade(){
+    if [ -z $GRAYSCALE_UPGRADE ]; then
+      return
+    fi
+
+    if [[ x"$GRAYSCALE_UPGRADE" != x"true" ]] && [[ x"$GRAYSCALE_UPGRADE" != x"false" ]];then
+        fail2 "Please input [true/false] when configure grayscale upgrade"
+    fi
+
+    echo "Configure the grayscale upgrade" >>$ZSTACK_INSTALL_LOG
+    mysql -u root --password=$MYSQL_NEW_ROOT_PASSWORD -e 'exit' >/dev/null 2>&1
+    # check mysql root password not changed, if not changed, do nothing
+    [ $? -eq 0 ] || fail2 "Failed to login mysql, please specify mysql root password using -P MYSQL_ROOT_PASSWORD and try again."
+
+    get_grayscale_upgrade_config="select value from GlobalConfigVO where name=\"grayscaleUpgrade\";"
+    grayscale_upgrade_config=$(execute_sql "$get_grayscale_upgrade_config")
+    # insert configuration if not exists
+    if [ -z "$grayscale_upgrade_config" ]; then
+        insert_grayscale_upgrade_config_sql="INSERT INTO \`zstack\`.\`GlobalConfigVO\` (\`name\`, \`description\`, \`category\`, \`defaultValue\`, \`value\`) VALUES ('grayscaleUpgrade', 'A switch to control grayscale upgrade', 'upgradeControl', 'false', '$GRAYSCALE_UPGRADE')"
+        execute_sql "$insert_grayscale_upgrade_config_sql" >/dev/null 2>&1
+        [ $? -eq 0 ] && check_update_grayscale_upgrade_success "$GRAYSCALE_UPGRADE" "$get_grayscale_upgrade_config"
+    else
+        update_grayscale_upgrade_config_sql="update GlobalConfigVO SET value='$GRAYSCALE_UPGRADE' where name=\"grayscaleUpgrade\";"
+        execute_sql "$update_grayscale_upgrade_config_sql" >/dev/null 2>&1
+        [ $? -eq 0 ] && check_update_grayscale_upgrade_success "$GRAYSCALE_UPGRADE" "$get_grayscale_upgrade_config"
+    fi
+}
+
+execute_sql(){
+    result=`mysql -u root --password=$MYSQL_NEW_ROOT_PASSWORD zstack -e "$1"`
+    echo $result
+}
+
+check_update_grayscale_upgrade_success(){
+    get_grayscale_upgrade_config=$(execute_sql "$2")
+    grayscale_upgrade_config=`echo "$get_grayscale_upgrade_config" | grep value | awk -F ' ' '{print $2}'`
+    if [ x"$1" != x"$grayscale_upgrade_config" ]; then
+       [ x"$1" == x"true" ] && fail_msg="enabled" || fail_msg="disabled"
+       echo "Failed to configure the grayscale upgrade" >>$ZSTACK_INSTALL_LOG
+       fail2 "Failed to $fail_msg grayscale upgrade configuration"
+    fi
+    echo "Successfully configure grayscale upgrade" >>$ZSTACK_INSTALL_LOG
+}
+
 upgrade_zstack(){
     echo_title "Upgrade ${PRODUCT_NAME}"
     echo ""
@@ -1249,6 +1293,9 @@ upgrade_zstack(){
 
     show_spinner uz_upgrade_tomcat
     show_spinner uz_upgrade_zstack_ctl
+
+    # configure grayscale upgrade config
+    uz_configure_grayscale_upgrade
 
     # configure management.server.ip if not exists
     zstack-ctl show_configuration | grep '^[[:space:]]*management.server.ip' >/dev/null 2>&1
@@ -3507,6 +3554,9 @@ Options:
 
   -u    Upgrade ${PRODUCT_NAME,,} management node and database. Make sure to backup your database, before executing upgrade command: mysqldump -u root -proot_password --host mysql_ip --port mysql_port zstack > path_to_db_dump.sql
 
+  --grayscale
+        Upgrade ${PRODUCT_NAME,,} management node and database using grayscale. The '-u' must be added before '--grayscale'. for example: bash zstack-installer.bin -u --grayscale true.
+
   -z    Only install ${PRODUCT_NAME}, without start ${PRODUCT_NAME} management node.
 ------------
 Example:
@@ -3571,7 +3621,7 @@ check_myarg() {
 }
 
 OPTIND=1
-TEMP=`getopt -o f:H:I:n:p:P:r:R:t:y:acC:L:T:dDEFhiklmMNoOqsuz --long chrony-server-ip:,mini,SY,sds -- "$@"`
+TEMP=`getopt -o f:H:I:n:p:P:r:R:t:y:acC:L:T:dDEFhiklmMNoOqsuz --long chrony-server-ip:,grayscale:,mini,SY,sds -- "$@"`
 if [ $? != 0 ]; then
     usage
 fi
@@ -3627,6 +3677,7 @@ do
         -y ) check_myarg $1 $2;HTTP_PROXY=$2;shift 2;;
         -z ) NOT_START_ZSTACK='y';shift;;
         --chrony-server-ip ) check_myarg $1 $2;CHRONY_SERVER_IP=$2;shift 2;;
+        --grayscale ) check_myarg $1 $2;GRAYSCALE_UPGRADE=$2;shift 2;;
         --mini) MINI_INSTALL='y';shift;;
         --SY) SANYUAN_INSTALL='y';shift;;
         --sds) SDS_INSTALL='y';shift;;
