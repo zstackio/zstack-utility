@@ -201,8 +201,8 @@ def install_kvm_pkg():
                         smartmontools sshpass usbutils wget audit dnsmasq collectd-virt storcli nvme-cli pv rsync sed pciutils tar"
 
         distro_mapping = {
-            'centos': 'vconfig iscsi-initiator-utils OpenIPMI-modalias OVMF mcelog MegaCli Arcconf python-pyudev kernel-devel',
-            'kylin': 'vconfig open-iscsi python2-pyudev collectd-disk OpenIPMI libselinux-devel nettle tuned qemu-kvm',
+            'centos': 'vconfig iscsi-initiator-utils OpenIPMI-modalias OVMF mcelog MegaCli Arcconf python-pyudev kernel-devel libicu',
+            'kylin': 'vconfig open-iscsi python2-pyudev collectd-disk OpenIPMI libselinux-devel nettle tuned qemu-kvm libicu',
             'uniontech': 'vconfig iscsi-initiator-utils OpenIPMI nettle qemu-kvm python-pyudev collectd-disk',
             'rocky': 'iscsi-initiator-utils OpenIPMI-modalias mcelog MegaCli Arcconf python-pyudev kernel-devel collectd-disk'
         }
@@ -235,7 +235,7 @@ def install_kvm_pkg():
             common_update_list = ("sanlock sysfsutils hwdata sg3_utils lvm2"
                                   " lvm2-libs lvm2-lockd systemd openssh"
                                   " glusterfs")
-            common_no_update_list = "librbd1 libicu"
+            common_no_update_list = "librbd1"
             # common kvmagent deps of x86 and arm that no need to update
             common_dep_list = "%s %s" % (common_dep_list, common_update_list)
 
