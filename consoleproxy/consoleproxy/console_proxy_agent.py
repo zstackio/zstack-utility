@@ -500,6 +500,14 @@ class ConsoleTokenFileController(object):
     def __init__(self, token_dir=ConsoleProxyAgent.TOKEN_FILE_DIR):
         self.token_dir = token_dir
 
+        # recreate token dir to avoid abuse of existing tokens
+        # because currently the console proxy is started as a subprocess of the agent
+        # if the agent is restarted, the console proxy will be restarted as well so 
+        # all the console connections will be broken
+        if os.path.exists(token_dir):
+            linux.rm_dir_force(token_dir)
+            linux.mkdir(token_dir)
+
     def search_by_prefix(self, prefix):
         token_prefix_path = os.path.join(self.token_dir, prefix)
         token_full_name = shell.call("find %s* -type f -exec basename {} \; | head -1" % token_prefix_path).strip()
