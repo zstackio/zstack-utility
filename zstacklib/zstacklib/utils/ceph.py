@@ -236,6 +236,9 @@ class CephPoolCapacity:
         self.pool_total_size = 0
         self.related_osd_capacity = {}
 
+    def get_related_osds(self):
+        return ",".join(self.crush_item_osds)
+
 
 class DefaultCephPoolCapacityGetter:
     def fill_pool_capacity(self, result):
@@ -268,9 +271,6 @@ class DefaultCephPoolCapacityGetter:
                 pool_capacity.available_capacity = int(pool_capacity.available_capacity * pool_capacity.disk_utilization)
             if pool_capacity.used_capacity:
                 pool_capacity.used_capacity = int(pool_capacity.used_capacity * pool_capacity.disk_utilization)
-
-    def get_related_osds(self):
-        return ",".join(self.crush_item_osds)
 
 
 pool_capacity_getter_mapping = {
