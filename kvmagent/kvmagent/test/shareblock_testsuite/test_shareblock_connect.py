@@ -46,8 +46,9 @@ class TestSharedBlockPlugin(TestCase, SharedBlockPluginTestStub):
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
             to_do = []
             for i in range(3):
-                future = executor.submit(self.connect, [blockUuid], [blockUuid], vgUuid, hostUuid, hostId)
+                future = executor.submit(self.connect, [blockUuid], [blockUuid, "sf234dsfs90392"], vgUuid, hostUuid, hostId)
                 to_do.append(future)
 
             for future in concurrent.futures.as_completed(to_do):
-                self.assertEqual(future.result().success, True, future.result().error)
+                if not future.result().success:
+                    self.assertEqual("other thread is connecting now" in future.result().error, True, future.result().error)

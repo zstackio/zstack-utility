@@ -2,7 +2,7 @@ from zstacklib.test.utils import env, misc
 from zstacklib.utils import linux, jsonobject, bash
 from kvmagent.plugins import storage_device
 
-STORAGEDEVICE_PLUGIN = None
+STORAGEDEVICE_PLUGIN = None  # type: storage_device.StorageDevicePlugin
 
 
 def init_storagedevice_plugin():
@@ -26,5 +26,11 @@ def iscsi_logout(iscsiServerIp=None, iscsiServerPort=None):
         return STORAGEDEVICE_PLUGIN.iscsi_logout(misc.make_a_request({
         "iscsiServerIp":iscsiServerIp,
         "iscsiServerPort":iscsiServerPort
+    }))
+
+@misc.return_jsonobject()
+def enable_multipath(blacklist=[]):
+    return STORAGEDEVICE_PLUGIN.enable_multipath(misc.make_a_request({
+        "blacklist":blacklist
     }))
 

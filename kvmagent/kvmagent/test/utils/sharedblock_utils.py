@@ -122,9 +122,8 @@ def shareblock_revert_volume_from_snapshot(snapshotInstallPath=None, installPath
         "hostUuid": hostUuid
     }))
 
-# todo
 @misc.return_jsonobject()
-def shareblock_merge_snapshot(snapshotInstallPath=None, workspaceInstallPath=None, vgUuid=None, hostUuid=None):
+def sharedblock_merge_snapshot(snapshotInstallPath=None, workspaceInstallPath=None, vgUuid=None, hostUuid=None):
     return get_sharedblock_plugin().merge_snapshot(misc.make_a_request({
         "snapshotInstallPath": snapshotInstallPath ,# random uuid
         "workspaceInstallPath": workspaceInstallPath,
@@ -210,23 +209,24 @@ def sharedblock_batch_get_volume_size(vgUuid=None, volumeUuidInstallPaths={}):
         "volumeUuidInstallPaths": volumeUuidInstallPaths
     }))
 
-#todo add case
 @misc.return_jsonobject()
-def shareblock_add_disk(vgUuid=None, hostUuid=None):
+def sharedblock_add_disk(vgUuid=None, hostUuid=None, diskUuid=None, allSharedBlockUuids=[], forceWipe=None):
     return get_sharedblock_plugin().add_disk(misc.make_a_request({
         "vgUuid": vgUuid ,# random uuid
-        "hostUuid": hostUuid
+        "hostUuid": hostUuid,
+        "diskUuid":diskUuid,
+        "allSharedBlockUuids":allSharedBlockUuids,
+        "forceWipe":forceWipe
     }))
 
-#todo add case
 @misc.return_jsonobject()
-def shareblock_migrate_volumes(vgUuid=None, hostUuid=None):
+def sharedblock_migrate_volumes(vgUuid=None, hostUuid=None, migrateVolumeStructs=None):
     return get_sharedblock_plugin().migrate_volumes(misc.make_a_request({
         "vgUuid": vgUuid ,# random uuid
-        "hostUuid": hostUuid
+        "hostUuid": hostUuid,
+        "migrateVolumeStructs":migrateVolumeStructs,
     }))
 
-#todo add case
 @misc.return_jsonobject()
 def shareblock_get_block_devices(vgUuid=None, hostUuid=None):
     return get_sharedblock_plugin().get_block_devices(misc.make_a_request({
@@ -235,21 +235,29 @@ def shareblock_get_block_devices(vgUuid=None, hostUuid=None):
     }))
 
 @misc.return_jsonobject()
-def sharedblock_check_disks(failIfNoPath=True, rescan_scsi=True, rescan=True, sharedBlockUuids=[], vgUuid=None):
-    return get_sharedblock_plugin().get_block_devices(misc.make_a_request({
-        "vgUuid": vgUuid,
-        "failIfNoPath": failIfNoPath,
-        "rescan_scsi": rescan_scsi,
-        "rescan": rescan,
-        "sharedBlockUuids": sharedBlockUuids
+def sharedblock_check_disks(rescan_scsi=True, rescan=True, sharedBlockUuids=[], vgUuid=None, failIfNoPath=True, hostUuid=None):
+    return get_sharedblock_plugin().check_disks(misc.make_a_request({
+        "vgUuid": vgUuid ,# random uuid
+        "hostUuid": hostUuid,
+        "rescan_scsi":rescan_scsi,
+        "rescan":rescan,
+        "sharedBlockUuids":sharedBlockUuids,
+        "failIfNoPath":failIfNoPath
     }))
 
-#todo add case
 @misc.return_jsonobject()
-def shareblock_download_from_kvmhost(vgUuid=None, hostUuid=None):
+def sharedblock_download_from_kvmhost(primaryStorageInstallPath=None, backupStorageInstallPath=None, hostname=None, username=None,
+                                      sshKey=None, sshPort=None, vgUuid=None, lockType=None):
     return get_sharedblock_plugin().download_from_kvmhost(misc.make_a_request({
-        "vgUuid": vgUuid ,# random uuid
-        "hostUuid": hostUuid
+        "primaryStorageInstallPath": primaryStorageInstallPath,
+        "backupStorageInstallPath": backupStorageInstallPath,
+        "hostname":hostname,
+        "username":username,
+        "sshKey": sshKey,
+        "sshPort":sshPort,
+        "vgUuid":vgUuid,
+        "primaryStorageUuid":vgUuid,
+        "lockType":lockType
     }))
 
 #todo add case
@@ -260,52 +268,59 @@ def shareblock_cancel_download_from_kvmhost(vgUuid=None, hostUuid=None):
         "hostUuid": hostUuid
     }))
 
-#todo add case
 @misc.return_jsonobject()
-def shareblock_get_backing_chain(vgUuid=None, hostUuid=None):
+def shareblock_get_backing_chain(vgUuid=None, hostUuid=None, volumeUuid=None, installPath=None, containSelf=None):
     return get_sharedblock_plugin().get_backing_chain(misc.make_a_request({
         "vgUuid": vgUuid ,# random uuid
-        "hostUuid": hostUuid
+        "hostUuid": hostUuid,
+        "containSelf":containSelf,
+        "volumeUuid":volumeUuid,
+        "installPath":installPath
     }))
 
-# todo add case
 @misc.return_jsonobject()
-def shareblock_convert_volume_provisioning(vgUuid=None, hostUuid=None):
+def sharedblock_convert_volume_provisioning(vgUuid=None, hostUuid=None, volumeUuid=None, installPath=None, provisioningStrategy=None, addons={}):
     return get_sharedblock_plugin().convert_volume_provisioning(misc.make_a_request({
         "vgUuid": vgUuid ,# random uuid
-        "hostUuid": hostUuid
+        "hostUuid": hostUuid,
+        "volumeUuid":volumeUuid,
+        "installPath":installPath,
+        "provisioningStrategy":provisioningStrategy,
+        "addons":addons
     }))
 
-#todo add case
 @misc.return_jsonobject()
-def shareblock_config_filter(vgUuid=None, hostUuid=None):
+def sharedblock_config_filter(vgUuid=None, hostUuid=None, allSharedBlockUuids=[]):
     return get_sharedblock_plugin().config_filter(misc.make_a_request({
         "vgUuid": vgUuid ,# random uuid
-        "hostUuid": hostUuid
+        "hostUuid": hostUuid,
+        "allSharedBlockUuids":allSharedBlockUuids
     }))
 
-#todo add case
 @misc.return_jsonobject()
-def shareblock_convert_volume_format(vgUuid=None, hostUuid=None):
+def sharedblock_convert_volume_format(vgUuid=None, hostUuid=None, dstFormat=None, installPath=None):
     return get_sharedblock_plugin().convert_volume_format(misc.make_a_request({
         "vgUuid": vgUuid ,# random uuid
-        "hostUuid": hostUuid
+        "hostUuid": hostUuid,
+        "dstFormat":dstFormat,
+        "installPath":installPath
     }))
 
-#todo add case
 @misc.return_jsonobject()
-def shareblock_get_download_bits_from_kvmhost_progress(vgUuid=None, hostUuid=None):
+def shareblock_get_download_bits_from_kvmhost_progress(vgUuid=None, hostUuid=None, volumePaths=[]):
     return get_sharedblock_plugin().get_download_bits_from_kvmhost_progress(misc.make_a_request({
         "vgUuid": vgUuid ,# random uuid
-        "hostUuid": hostUuid
+        "hostUuid": hostUuid,
+        "volumePaths":volumePaths
     }))
 
-#todo add case
 @misc.return_jsonobject()
-def shareblock_shrink_snapshot(vgUuid=None, hostUuid=None):
+def sharedblock_shrink_snapshot(vgUuid=None, hostUuid=None, installPath=None,kvmHostAddons={}):
     return get_sharedblock_plugin().shrink_snapshot(misc.make_a_request({
         "vgUuid": vgUuid ,# random uuid
-        "hostUuid": hostUuid
+        "hostUuid": hostUuid,
+        "installPath":installPath,
+        "kvmHostAddons":kvmHostAddons
     }))
 
 @misc.return_jsonobject()
