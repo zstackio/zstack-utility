@@ -967,16 +967,12 @@ do_config_networkmanager(){
 
 do_config_limits(){
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
-    if [ "$OS" == "KYLIN10" ]; then
-      nr_open=1048576
-    else
-      nr_open=`sysctl -n fs.nr_open`
-    fi
+    rm -rf /etc/security/limits.d/10-zstack.conf
     cat > /etc/security/limits.d/10-zstack.conf << EOF
-zstack  soft  nofile  $nr_open
-zstack  hard  nofile  $nr_open
-zstack  soft  nproc  $nr_open
-zstack  hard  nproc  $nr_open
+zstack  soft  nofile  65536
+zstack  hard  nofile  65536
+zstack  soft  nproc  65536
+zstack  hard  nproc  65536
 EOF
 }
 
