@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 import sys, os
 
-version = '4.6.0'
+version = '4.7.0'
 
 setup(name='sftpbackupstorage',
       version=version,
