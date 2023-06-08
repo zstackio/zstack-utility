@@ -181,6 +181,14 @@ class ZstackRunner(object):
         return self.executor.run()
 
 
+class ZstackPBRunner(object):
+    def __init__(self, runner_args):
+        self.executor = load_module('zstackctl.ansible_executor').AnsiblePBExecutor(runner_args)
+
+    def run(self):
+        return self.executor.run()
+
+
 def error(msg):
     logger.error(msg)
     sys.stderr.write('ERROR: %s\n' % msg)
