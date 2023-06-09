@@ -30,6 +30,7 @@ class ZWatchMetricMonitor(kvmagent.KvmAgent):
     CONFIG_ZWATCH_METRIC_MONITOR = "/host/zwatchMetricMonitor/config"
 
     ZWATCH_RESTART_CMD = "/bin/systemctl restart zwatch-vm-agent.service"
+    ZWATCH_RESTART_CMD_EL6 = "service zwatch-vm-agent restart"
     ZWATCH_VM_INFO_PATH = "/var/log/zstack/vm.info"
     ZWATCH_VM_METRIC_PATH = "/var/log/zstack/vm_metrics.prom"
     ZWATCH_GET_NIC_INFO_PATH = "/usr/local/zstack/zs-tools/nic_info_linux.sh"
@@ -144,6 +145,9 @@ class ZWatchMetricMonitor(kvmagent.KvmAgent):
                     zwatch_vm_info_path = self.ZWATCH_VM_INFO_PATH
                     zwatch_vm_metric_path = self.ZWATCH_VM_METRIC_PATH
                     zwatch_restart_cmd = self.ZWATCH_RESTART_CMD
+                    # centos version 6.x need special cmd
+                    if qga.os_version == '6':
+                        zwatch_restart_cmd = self.ZWATCH_RESTART_CMD_EL6
                 dhcpStatus = not qga.guest_file_is_exist(zwatch_vm_info_path)
                 _, qgaZWatch = qga.guest_file_read(zwatch_vm_info_path)
                 # skip when dhcp enable
