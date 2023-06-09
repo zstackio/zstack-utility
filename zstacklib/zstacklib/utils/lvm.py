@@ -1686,6 +1686,7 @@ class RecursiveOperateLv(object):
         if has_one_lv_tag_sub_string(self.abs_path, self.skip_deactivate_tags):
             logger.debug("the volume %s has skip tag: %s" %
                          (self.abs_path, has_one_lv_tag_sub_string(self.abs_path, self.skip_deactivate_tags)))
+            return
 
         self.lock_ref_cnt.unlock(self.target_lock)
 
