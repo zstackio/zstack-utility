@@ -1,4 +1,8 @@
+import _ctypes
+import marshal
+import sys
 import threading
+import types
 
 from ansible import constants as ansible_constants
 from ansible import context as ansible_context
@@ -94,6 +98,7 @@ class ResultsCollectorJSONCallback(ansible_callback.CallbackBase):
 
 
 vm_cache = {}
+
 
 class VM(ansible_vm.VariableManager):
     def __init__(self, loader, inventory, key):
@@ -214,9 +219,20 @@ class AnsibleExecutor(object):
             ansible_ssh_extra_args=('-C -o ControlMaster=auto '
                                     '-o ControlPersist=1800s'),
         )
-        self.ansible_module = AnsibleModules(runner_args)
 
     def run(self):
+        self.password = {
+            'conn_pass': self.remote_pass,
+            'become_pass': self.become_pass
+        }
+        self.loader = ansible_dataloader.DataLoader()
+        self.rc = ResultsCollectorJSONCallback()
+        self.inventory = ansible_im.InventoryManager(
+                loader=self.loader,
+                sources=self.host_inventory)
+        self.variable_manager = ansible_vm.VariableManager(loader=self.loader,
+                    inventory=self.inventory)
+
         action = {'module': self.module_name}
         if self.module_name == 'shell':
             action['_raw_params'] = self.module_args
@@ -225,20 +241,234 @@ class AnsibleExecutor(object):
         play_source = dict(
             hosts=self.host,
             tasks=[{'action': action,
-                    'register': 'shell_out',
+                    # 'register': 'shell_out',
                     }],
             vars={'ansible_user': self.remote_user,
-                  'ansible_port': self.remote_port},
-            gather_facts=False
+                  'ansible_port': self.remote_port,
+                  'ansible_pipelining': True},
+            gather_facts=False,
+            ignore_errors= True
+        )
+
+        play = ansible_play.Play().load(
+            play_source,
+            variable_manager=self.variable_manager,
+            loader=self.loader)
+        self.task_queue_manager = ansible_tqm.TaskQueueManager(
+                inventory=self.inventory,
+                variable_manager=self.variable_manager,
+                loader=self.loader,
+                passwords=self.password,
+                stdout_callback=self.rc,
+                run_additional_callbacks=False)
+        try:
+            ret = self.task_queue_manager.run(play)
+        finally:
+            self.task_queue_manager.cleanup()
+            if self.loader:
+                self.loader.cleanup_all_tmp_files()
+        return self.rc.fetch_result()
+
+
+class ResultsCollectorJSONCallbacks(ansible_callback.CallbackBase):
+    def __init__(self, *args, **kwargs):
+        self.host_post_info = kwargs.pop('host_post_info')
+        super(ResultsCollectorJSONCallbacks, self).__init__(*args, **kwargs)
+        self.ret = {}
+
+    def _handle_exit(self, result):
+        task = result._task
+        vars = task.vars
+        if 'exit_on_fail' in vars and vars['exit_on_fail']:
+            sys.exit(1)
+
+        if 'callback_on_fail' in task.vars and task.vars['callback_on_fail']:
+            params = task.vars['callback_on_fail']
+            cb = marshal.loads(params[0])
+            func = types.FunctionType(cb, globals())
+            func(result, *params[1:])
+
+    def v2_runner_on_unreachable(self, result):
+        host = result._host
+        r = result._result
+        r.update({'failed': True, 'failed_reason': 'unreachable'})
+        self.ret[host.get_name()] = r
+
+    def v2_runner_on_ok(self, result):
+        host = result._host
+        r = result._result
+        r.update({'failed': False, 'failed_reason': ''})
+        self.ret[host.get_name()] = r
+
+        task = result._task
+        if 'callback_on_succ' in task.vars and task.vars['callback_on_succ']:
+            params = task.vars['callback_on_succ']
+            cb = marshal.loads(params[0])
+            func = types.FunctionType(cb, globals())
+            func(result, *params[1:])
+
+    def v2_runner_on_failed(self, result, *args, **kwargs):
+        host = result._host
+        r = result._result
+        r.update({'failed': True, 'failed_reason': 'failed'})
+        self.ret[host.get_name()] = r
+
+        self._handle_exit(result)
+
+    def v2_runner_on_skipped(self, result):
+        host = result._host
+        r = result._result
+        r.update({'failed': False, 'failed_reason': ''})
+        self.ret[host.get_name()] = r
+
+    def v2_playbook_on_task_start(self, task, is_conditional):
+        pass
+
+    def fetch_result(self):
+        return {
+            'dark': {},
+            'contacted': self.ret
+        }
+
+
+class AnsiblePBExecutor(object):
+    def __init__(self, host_post_info):
+        self.host_post_info = host_post_info
+        self.host_inventory = host_post_info.host_inventory
+        self.private_key = host_post_info.private_key
+        self.host = host_post_info.host
+        self.remote_port = host_post_info.remote_port
+        self.remote_user = host_post_info.remote_user
+        self.remote_pass = host_post_info.remote_pass
+        self.become = host_post_info.become
+        self.become_user = host_post_info.become_user
+        self.become_pass = host_post_info.remote_pass
+        self.transport = 'smart'
+
+        ansible_context.CLIARGS = ansible_collections.ImmutableDict(
+            connection=self.transport,
+            become=self.become,
+            become_user=self.become_user,
+            private_key_file=self.private_key,
+            become_method='sudo',
+            ssh_extra_args='-C -o ControlMaster=auto -o ControlPersist=1800s',
+        )
+
+        self.actions = []
+
+    def _add_action(self, action):
+        self.actions.append(action)
+
+    def add_modprobe_action(self, name, state, params=None):
+        start_msg = 'INFO: starting change kernel module %s to %s ... ' % (
+            name, state)
+        succ_msg = ('SUCC: change kernel module %s status to %s '
+                    'successfully') % (name, state)
+        fail_msg = ('ERROR: change kernel module %s status to %s '
+                    'failed') % (name, state)
+        args = 'name=%s state=%s' % (name, state)
+        if params:
+            args = '%s params=%s' % (args, params)
+        action = {
+            'action': {
+                'module': 'modprobe',
+                'args': args
+            },
+            'vars': {
+                'start_msg': start_msg,
+                'succ_msg': succ_msg,
+                'fail_msg': fail_msg,
+                'post_label': 'ansible.modprobe',
+                'post_label_param': [name, state],
+                'exit_on_unreachable': False,
+                'exit_on_fail': False
+            }
+        }
+        self._add_action(action)
+
+    def add_command_action(self, command, exit_on_fail=True,
+                           exit_on_unreachable=True,
+                           callback_on_succ=None, callback_on_fail=None):
+        if 'yum' in command:
+            set_yum0 = '''rpm -q zstack-release >/dev/null && releasever=`awk '{print $3}' /etc/zstack-release`;\
+                        export YUM0=$releasever; grep $releasever /etc/yum/vars/YUM0 || echo $releasever > /etc/yum/vars/YUM0;'''
+            command = set_yum0 + command
+        action = {
+            'action': {
+                'module': 'shell',
+                'cmd': command
+            },
+            'vars': {
+                'exit_on_unreachable': exit_on_unreachable,
+                'exit_on_fail': exit_on_fail,
+                'callback_on_succ': callback_on_succ,
+                'callback_on_fail': callback_on_fail
+            }
+        }
+        self._add_action(action)
+
+    def add_copy_action(self, src, dest, args=None):
+        start_msg = 'INFO: starting copy %s to %s ... ' % (src, dest)
+        succ_msg = ('SUCC: copy %s to %s successfully, the change '
+                    'status is PLACEHOLER') % (src, dest)
+        fail_msg = 'ERROR: copy %s to %s failed' % (src, dest)
+        copy_args = 'src=%s dest=%s' % (src, dest)
+        if args:
+            copy_args = '%s %s' % (copy_args, args)
+        action = {
+            'action': {
+                'module': 'copy',
+                'args': copy_args
+            },
+            'vars': {
+                'start_msg': start_msg,
+                'succ_msg': succ_msg,
+                'fail_msg': fail_msg,
+                'post_label': 'ansible.copy',
+                'post_label_param': [src, dest],
+                'exit_on_unreachable': False,
+                'exit_on_fail': False
+            }
+        }
+        self._add_action(action)
+
+    def run(self):
+        self.password = {
+            'conn_pass': self.remote_pass,
+            'become_pass': self.become_pass
+        }
+        self.loader = ansible_dataloader.DataLoader()
+        self.rc = ResultsCollectorJSONCallbacks(host_post_info=self.host_post_info)
+        self.inventory = ansible_im.InventoryManager(
+                loader=self.loader,
+                sources=self.host_inventory)
+        self.variable_manager = ansible_vm.VariableManager(
+            loader=self.loader, inventory=self.inventory)
+
+        play_source = dict(
+            hosts=self.host,
+            tasks=self.actions,
+            vars={'ansible_user': self.remote_user,
+                  'ansible_port': self.remote_port,
+                  'ansible_pipelining': True},
+            gather_facts=False,
+            ignore_errors= True
         )
         play = ansible_play.Play().load(
             play_source,
-            variable_manager=self.ansible_module.variable_manager,
-            loader=self.ansible_module.loader)
+            variable_manager=self.variable_manager,
+            loader=self.loader)
+        self.task_queue_manager = ansible_tqm.TaskQueueManager(
+                inventory=self.inventory,
+                variable_manager=self.variable_manager,
+                loader=self.loader,
+                passwords=self.password,
+                stdout_callback=self.rc,
+                run_additional_callbacks=False)
         try:
-            ret = self.ansible_module.task_queue_manager.run(play)
+            ret = self.task_queue_manager.run(play)
         finally:
-            self.ansible_module.task_queue_manager.cleanup()
-            if self.ansible_module.tqm._loader:
-                self.ansible_module.tqm._loader.cleanup_all_tmp_files()
-        return self.ansible_module.result_callback.fetch_result()
+            self.task_queue_manager.cleanup()
+            if self.loader:
+                self.loader.cleanup_all_tmp_files()
+        return self.rc.fetch_result()
