@@ -1,14 +1,16 @@
 #!/usr/bin/env python
 # encoding: utf-8
 import argparse
-from zstacklib import *
+import datetime
 import os
+
+from zstacklib import *
 
 # create log
 logger_dir = "/var/log/zstack/"
 create_log(logger_dir)
 banner("Starting to deploy baremetal pxeserver agent")
-start_time = datetime.now()
+start_time = datetime.datetime.now()
 # set default value
 file_root = "files/baremetalpxeserver"
 kvm_file_root = "files/kvm"
@@ -56,23 +58,22 @@ host_post_info.remote_port = remote_port
 if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
 
-host_arch = get_remote_host_arch(host_post_info)
 # include zstacklib.py
-(distro, major_version, distro_release, distro_version) = get_remote_host_info(host_post_info)
-releasever = get_host_releasever([distro, distro_release, distro_version])
+host_info = get_remote_host_info_obj(host_post_info)
+releasever = get_host_releasever(host_info)
 host_post_info.releasever = releasever
 
 zstacklib_args = ZstackLibArgs()
-zstacklib_args.distro = distro
-zstacklib_args.distro_release = distro_release
-zstacklib_args.distro_version = distro_version
+zstacklib_args.distro = host_info.distro
+zstacklib_args.distro_release = host_info.distro_release
+zstacklib_args.distro_version = host_info.major_version
 zstacklib_args.zstack_repo = zstack_repo
 zstacklib_args.zstack_root = zstack_root
 zstacklib_args.host_post_info = host_post_info
 zstacklib_args.pip_url = pip_url
 zstacklib_args.trusted_host = trusted_host
 zstacklib_args.zstack_releasever = releasever
-if distro in DEB_BASED_OS:
+if host_info.distro in DEB_BASED_OS:
     zstacklib_args.apt_server = yum_server
     zstacklib_args.zstack_apt_source = zstack_repo
 else :
@@ -100,7 +101,7 @@ command = "[ -f %s/bin/python ] || virtualenv --system-site-packages %s " % (vir
 run_remote_command(command, host_post_info)
 
 # name: install dependencies
-if distro in RPM_BASED_OS:
+if host_info.distro in RPM_BASED_OS:
     dep_pkg = "dnsmasq nginx nginx-all-modules vsftpd nmap"
     if releasever in ['c74', 'c76']:
         dep_pkg = "{} syslinux".format(dep_pkg)
@@ -117,7 +118,7 @@ if distro in RPM_BASED_OS:
     run_remote_command(command, host_post_info)
     set_selinux("state=disabled", host_post_info)
 
-elif distro in DEB_BASED_OS:
+elif host_info.distro in DEB_BASED_OS:
     install_pkg_list = ["dnsmasq", "vsftpd", "syslinux", "nginx", "nmap"]
     apt_install_packages(install_pkg_list, host_post_info)
     command = "(chmod 0644 /boot/vmlinuz*) || true"
@@ -196,7 +197,7 @@ copy_arg.args = "mode=755"
 copy(copy_arg, host_post_info)
 
 # name: copy shellinaboxd
-shellinaboxd_name = "shellinaboxd_{}".format(host_arch)
+shellinaboxd_name = "shellinaboxd_{}".format(host_info.host_arch)
 VSFTPD_ROOT_PATH = "/var/lib/zstack/baremetal/ftp"
 copy_arg = CopyArg()
 copy_arg.args = "force=yes"
@@ -212,7 +213,7 @@ copy_arg.args = "force=yes"
 copy(copy_arg, host_post_info)
 
 # name: copy zwatch-vm-agent
-zwatch_vm_agent_name = "zwatch-vm-agent{}".format('' if host_arch == 'x86_64' else '_' + host_arch)
+zwatch_vm_agent_name = "zwatch-vm-agent{}".format('' if host_info.host_arch == 'x86_64' else '_' + host_info.host_arch)
 copy_arg = CopyArg()
 copy_arg.src = os.path.join(kvm_file_root, zwatch_vm_agent_name)
 copy_arg.dest = os.path.join(VSFTPD_ROOT_PATH, 'zwatch-vm-agent')
@@ -243,7 +244,7 @@ copy_arg.args = "force=yes"
 copy(copy_arg, host_post_info)
 
 # name: copy pushgateway
-pushgateway_name = "pushgateway_%s" % host_arch
+pushgateway_name = "pushgateway_%s" % host_info.host_arch
 copy_arg = CopyArg()
 copy_arg.args = "mode=a+x"
 copy_arg.src = "%s/%s" % (file_root, pushgateway_name)
@@ -253,9 +254,9 @@ copy(copy_arg, host_post_info)
 run_remote_command(("systemctl restart pxeServerPushGateway"), host_post_info)
 
 # name: restart baremetalpxeserveragent
-if distro in RPM_BASED_OS:
+if host_info.distro in RPM_BASED_OS:
     command = "service zstack-baremetalpxeserver stop && service zstack-baremetalpxeserver start && chkconfig zstack-baremetalpxeserver on"
-elif distro in DEB_BASED_OS:
+elif host_info.distro in DEB_BASED_OS:
     command = "update-rc.d zstack-baremetalpxeserver start 97 3 4 5 . stop 3 0 1 2 6 . && service zstack-baremetalpxeserver stop && service zstack-baremetalpxeserver start"
 run_remote_command(command, host_post_info)
 

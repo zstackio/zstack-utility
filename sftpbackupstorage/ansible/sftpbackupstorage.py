@@ -1,15 +1,16 @@
 #!/usr/bin/env python
 # encoding: utf-8
 import argparse
+import datetime
+
 from zstacklib import *
-from datetime import datetime
 
 
 # create log
 logger_dir = "/var/log/zstack/"
 create_log(logger_dir)
 banner("Starting to deploy sftpbackup storage agent")
-start_time = datetime.now()
+start_time = datetime.datetime.now()
 # set default value
 file_root = "files/sftpbackupstorage"
 pip_url = "https=//pypi.python.org/simple/"
@@ -55,21 +56,21 @@ if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
 
 # include zstacklib.py
-(distro, major_version, distro_release, distro_version) = get_remote_host_info(host_post_info)
-releasever = get_host_releasever([distro, distro_release, distro_version])
+host_info = get_remote_host_info_obj(host_post_info)
+releasever = get_host_releasever(host_info)
 host_post_info.releasever = releasever
 
 zstacklib_args = ZstackLibArgs()
-zstacklib_args.distro = distro
-zstacklib_args.distro_release = distro_release
-zstacklib_args.distro_version = distro_version
+zstacklib_args.distro = host_info.distro
+zstacklib_args.distro_release = host_info.distro_release
+zstacklib_args.distro_version = host_info.major_version
 zstacklib_args.zstack_repo = zstack_repo
 zstacklib_args.zstack_root = zstack_root
 zstacklib_args.host_post_info = host_post_info
 zstacklib_args.pip_url = pip_url
 zstacklib_args.trusted_host = trusted_host
 zstacklib_args.zstack_releasever = releasever
-if distro in DEB_BASED_OS:
+if host_info.distro in DEB_BASED_OS:
     zstacklib_args.apt_server = yum_server
     zstacklib_args.zstack_apt_source = zstack_repo
 else :
@@ -85,7 +86,7 @@ else:
     command = 'mkdir -p %s %s' % (sftp_root, virtenv_path)
     run_remote_command(command, host_post_info)
 
-if distro in RPM_BASED_OS:
+if host_info.distro in RPM_BASED_OS:
     install_pkgs = 'openssh-clients'
     if releasever in ['ns10']:
         install_pkgs = "nmap {}".format(install_pkgs)
@@ -103,7 +104,7 @@ if distro in RPM_BASED_OS:
         for pkg in install_pkgs.split():
             yum_install_package(pkg, host_post_info)
 
-elif distro in DEB_BASED_OS:
+elif host_info.distro in DEB_BASED_OS:
     install_pkg_list = ["openssh-client", "qemu-utils", "libvirt-daemon-system", "libvirt-dev", "libvirt-clients", "libguestfs-tools"]
     apt_install_packages(install_pkg_list, host_post_info)
     command = "(chmod 0644 /boot/vmlinuz*) || true"
@@ -168,10 +169,10 @@ if sftp_copy_result != "changed:False":
 
 # name: restart sftp
 if chroot_env == 'false':
-    if distro in RPM_BASED_OS:
+    if host_info.distro in RPM_BASED_OS:
         # some users meet restart can't work on their system
         command = "service zstack-sftpbackupstorage stop && service zstack-sftpbackupstorage start && chkconfig zstack-sftpbackupstorage on"
-    elif distro in DEB_BASED_OS:
+    elif host_info.distro in DEB_BASED_OS:
         command = "update-rc.d zstack-sftpbackupstorage start 97 3 4 5 . stop 3 0 1 2 6 . && service zstack-sftpbackupstorage stop && service zstack-sftpbackupstorage start"
     run_remote_command(command, host_post_info)
 
