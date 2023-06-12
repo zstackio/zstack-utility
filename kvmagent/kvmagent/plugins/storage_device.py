@@ -409,6 +409,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             rsp.iscsiTargetStructList = []
             return jsonobject.dumps(rsp)
 
+        login_failed = 0
         for iqn in iqns:
             t = IscsiTargetStruct()
             t.iqn = iqn
@@ -426,6 +427,10 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 r, o, e = bash.bash_roe('iscsiadm --mode node --targetname "%s" -p %s:%s --login' %
                             (iqn, cmd.iscsiServerIp, cmd.iscsiServerPort))
                 wait_iscsi_mknode(cmd.iscsiServerIp, cmd.iscsiServerPort, iqn, e)
+            except Exception:
+                login_failed = login_failed + 1
+                if login_failed == len(iqns):
+                    raise
             finally:
                 disks = list_iscsi_disks(cmd.iscsiServerIp, cmd.iscsiServerPort, iqn)
 
