@@ -107,7 +107,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
 
         dist_dep_mapping = {
             'centos': 'libguestfs-tools libguestfs-tools-c perl-Sys-Guestfs libguestfs-winsupport virt-v2v',
-            'kylin': 'libguestfs'
+            'kylin': 'libguestfs perl-devel'
         }
         dep_list = dist_dep_mapping.get(os_dist)
         if not dep_list:
