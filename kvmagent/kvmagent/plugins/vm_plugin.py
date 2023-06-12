@@ -7182,6 +7182,8 @@ class VmPlugin(kvmagent.KvmAgent):
         self._record_operation(cmd.vmUuid, self.VM_OP_MIGRATE)
         disk_name, disk_xml = self._build_dest_disk_xml(vm, cmd.oldVolumePath, cmd.newVolume)
 
+        check_mirror_jobs(vm.uuid, False)
+
         rsp.success, rsp.error = self._do_block_copy(vm.uuid, disk_name, disk_xml, cmd)
         os.remove(disk_xml)
 
