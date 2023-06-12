@@ -2,11 +2,9 @@
 # encoding: utf-8
 
 import argparse
-import datetime
-
 from zstacklib import *
 
-start_time = datetime.datetime.now()
+start_time = datetime.now()
 # set default value
 file_root = "files/appliancevm"
 pip_url = "https=//pypi.python.org/simple/"
@@ -54,21 +52,21 @@ if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
 
 # include zstacklib.py
-host_info = get_remote_host_info_obj(host_post_info)
-releasever = get_host_releasever(host_info)
+(distro, major_version, distro_release, distro_version) = get_remote_host_info(host_post_info)
+releasever = get_host_releasever([distro, distro_release, distro_version])
 host_post_info.releasever = releasever
 
 zstacklib_args = ZstackLibArgs()
-zstacklib_args.distro = host_info.distro
-zstacklib_args.distro_release = host_info.distro_release
-zstacklib_args.distro_version = host_info.distro_version
+zstacklib_args.distro = distro
+zstacklib_args.distro_release = distro_release
+zstacklib_args.distro_version = distro_version
 zstacklib_args.zstack_repo = zstack_repo
 zstacklib_args.zstack_root = zstack_root
 zstacklib_args.host_post_info = host_post_info
 zstacklib_args.pip_url = pip_url
 zstacklib_args.trusted_host = trusted_host
 zstacklib_args.zstack_releasever = releasever
-if host_info.distro in DEB_BASED_OS:
+if distro in DEB_BASED_OS:
     zstacklib_args.apt_server = yum_server
     zstacklib_args.zstack_apt_source = zstack_repo
 else :
@@ -124,7 +122,7 @@ command = "[ -f %s/bin/python ] || virtualenv %s " % (virtenv_path, virtenv_path
 run_remote_command(command, host_post_info)
 
 
-if host_info.distro in RPM_BASED_OS:
+if distro in RPM_BASED_OS:
     if zstack_repo != 'false':
         # name: install appliance vm related packages on RedHat based OS from user defined repo
         command = ("pkg_list=`rpm -q iputils tcpdump ethtool | grep \"not installed\" | awk '{ print $2 }'` && for pkg"
@@ -134,7 +132,7 @@ if host_info.distro in RPM_BASED_OS:
         # name: install appliance vm related packages on RedHat based OS
         for pkg in ['iputils', 'tcpdump', 'ethtool']:
             yum_install_package("openssh-clients", host_post_info)
-    if host_info.major_version >= 7:
+    if distro_version >= 7:
         # name: workaround RHEL7 iptables service issue
         command = 'mkdir -p /var/lock/subsys/'
         run_remote_command(command, host_post_info)
@@ -152,7 +150,7 @@ if host_info.distro in RPM_BASED_OS:
         # name: enable appliancevm service for RedHat on chroot
         service_status("zstack-appliancevm", "enabled=yes state=stopped", host_post_info)
 
-elif host_info.distro in DEB_BASED_OS:
+elif distro in DEB_BASED_OS:
     install_pkg_list = ['iputils-arping', 'tcpdump', 'ethtool']
     apt_install_packages(install_pkg_list, host_post_info)
     # name: copy iptables initial rules in Debian
@@ -201,13 +199,13 @@ if copy_appliancevm != "changed:False":
 
 if chroot_env == 'false':
     # name: restart appliancevm
-    if host_info.distro in RPM_BASED_OS:
+    if distro in RPM_BASED_OS:
         command = "service zstack-appliancevm stop && service zstack-appliancevm start && chkconfig zstack-appliancevm on"
-    elif host_info.distro in DEB_BASED_OS:
+    elif distro in DEB_BASED_OS:
         command = "update-rc.d zstack-appliancevm start 97 3 4 5 . stop 3 0 1 2 6 . && service zstack-appliancevm stop && service zstack-appliancevm start"
     run_remote_command(command, host_post_info)
 else:
-    if host_info.distro in RPM_BASED_OS:
+    if distro in RPM_BASED_OS:
         # name: restart iptables
         service_status("iptables", "state=restarted enabled=yes", host_post_info)
 

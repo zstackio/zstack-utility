@@ -1,16 +1,14 @@
 #!/usr/bin/env python
 # encoding: utf-8
 import argparse
-import datetime
-import os
-
+import commands
+import os.path
 from zstacklib import *
-
-
 try:
     from zstacklib.ansible.zstacklib import *
 except Exception as e:
     print e.message
+from datetime import datetime
 
 def add_true_in_command(cmd):
     return "%s || true" % cmd
@@ -19,7 +17,7 @@ def add_true_in_command(cmd):
 logger_dir = "/var/log/zstack/"
 create_log(logger_dir)
 banner("Starting to deploy zstack network agent")
-start_time = datetime.datetime.now()
+start_time = datetime.now()
 # set default value
 pip_url = "https=//pypi.python.org/simple/"
 proxy = ""
@@ -68,14 +66,14 @@ if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
 
 # include zstacklib.py
-host_info = get_remote_host_info_obj(host_post_info)
-releasever = get_host_releasever(host_info)
+(distro, major_version, distro_release, distro_version) = get_remote_host_info(host_post_info)
+releasever = get_host_releasever([distro, distro_release, distro_version])
 host_post_info.releasever = releasever
 
 zstacklib_args = ZstackLibArgs()
-zstacklib_args.distro = host_info.distro
-zstacklib_args.distro_release = host_info.distro_release
-zstacklib_args.distro_version = host_info.distro_version
+zstacklib_args.distro = distro
+zstacklib_args.distro_release = distro_release
+zstacklib_args.distro_version = distro_version
 zstacklib_args.zstack_repo = zstack_repo
 zstacklib_args.zstack_root = zstack_root
 zstacklib_args.host_post_info = host_post_info
@@ -83,7 +81,7 @@ zstacklib_args.pip_url = pip_url
 zstacklib_args.trusted_host = trusted_host
 zstacklib_args.require_python_env = require_python_env
 zstacklib_args.zstack_releasever = releasever
-if host_info.distro in DEB_BASED_OS:
+if distro in DEB_BASED_OS:
     zstacklib_args.apt_server = yum_server
     zstacklib_args.zstack_apt_source = zstack_repo
 else :
@@ -91,14 +89,14 @@ else :
 zstacklib = ZstackLib(zstacklib_args)
 
 # get remote host arch
-# HOST_ARCH = get_remote_host_arch(host_post_info)
-if host_info.host_arch == 'x86_64':
+HOST_ARCH = get_remote_host_arch(host_post_info)
+if HOST_ARCH == 'x86_64':
     src_pkg_zsnagent = "zsn-agent.bin"
 else:
-    src_pkg_zsnagent = "zsn-agent.{}.bin".format(host_info.host_arch)
+    src_pkg_zsnagent = "zsn-agent.{}.bin".format(HOST_ARCH)
 dst_pkg_zsnagent = "zsn-agent.bin"
 
-if host_info.distro in RPM_BASED_OS:
+if distro in RPM_BASED_OS:
     if zstack_repo == 'false':
         yum_install_package("libpcap", host_post_info)
     else:
@@ -106,7 +104,7 @@ if host_info.distro in RPM_BASED_OS:
                    "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % ("libpcap", zstack_repo)
         run_remote_command(command, host_post_info)
 
-elif host_info.distro in DEB_BASED_OS:
+elif distro in DEB_BASED_OS:
     apt_install_packages(["libpcap-dev"], host_post_info)
 
 else:
@@ -117,11 +115,11 @@ command = 'mkdir -p %s ' % (zsn_root)
 run_remote_command(add_true_in_command(command), host_post_info)
 
 # name: copy zsn binary
-# HOST_ARCH = get_remote_host_arch(host_post_info)
-if host_info.host_arch == 'x86_64':
+HOST_ARCH = get_remote_host_arch(host_post_info)
+if HOST_ARCH == 'x86_64':
     src_pkg_zsn = "zsn-agent.bin"
 else:
-    src_pkg_zsn = "zsn-agent.{}.bin".format(host_info.host_arch)
+    src_pkg_zsn = "zsn-agent.{}.bin".format(HOST_ARCH)
 
 copy_arg = CopyArg()
 dest_pkg = "%s/%s" % (zsn_root, dst_pkg_zsnagent)
