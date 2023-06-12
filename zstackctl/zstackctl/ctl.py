@@ -638,14 +638,14 @@ def check_zstack_user():
         raise CtlError('cannot find user account "zstack", your installation seems incomplete')
 
 def check_special_root(s):
-    if re.match(r"[^a-z0-9A-Z\\\-]", s):
+    if re.match(r"[^a-z0-9A-Z\\\_]", s):
         s = "\\" + s
     elif re.match(r"[\\]", s):
         s = r"\\"
     return s
 
 def check_special_new(s):
-    if re.match(r"[^a-z0-9A-Z\\\%\-]", s):
+    if re.match(r"[^a-z0-9A-Z\\\%\_]", s):
         s = "\\" + s
     elif re.match(r"[\\]", s):
         s = r"\\\\"
