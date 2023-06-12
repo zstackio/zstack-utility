@@ -1,16 +1,15 @@
 #!/usr/bin/env python
 # encoding: utf-8
 import argparse
-import datetime
-from distutils.version import LooseVersion
-
 from zstacklib import *
+from distutils.version import LooseVersion
+import os
 
 # create log
 logger_dir = "/var/log/zstack/"
 create_log(logger_dir)
 banner("Starting to deploy ceph backup agent")
-start_time = datetime.datetime.now()
+start_time = datetime.now()
 # set default value
 file_root = "files/cephb"
 pip_url = "https=//pypi.python.org/simple/"
@@ -58,27 +57,27 @@ host_post_info.remote_port = remote_port
 if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
 
-# include zstacklib.py
-host_info = get_remote_host_info_obj(host_post_info)
-releasever = get_host_releasever(host_info)
-host_post_info.releasever = releasever
-
-IS_AARCH64 = host_info.host_arch == 'aarch64'
+IS_AARCH64 = get_remote_host_arch(host_post_info) == 'aarch64'
 if IS_AARCH64:
     qemu_img_pkg = "files/kvm/qemu-img-aarch64"
     qemu_img_local_pkg = "%s/qemu-img-aarch64" % cephb_root
 
+# include zstacklib.py
+(distro, major_version, distro_release, distro_version) = get_remote_host_info(host_post_info)
+releasever = get_host_releasever([distro, distro_release, distro_version])
+host_post_info.releasever = releasever
+
 zstacklib_args = ZstackLibArgs()
-zstacklib_args.distro = host_info.distro
-zstacklib_args.distro_release = host_info.distro_release
-zstacklib_args.distro_version = host_info.major_version
+zstacklib_args.distro = distro
+zstacklib_args.distro_release = distro_release
+zstacklib_args.distro_version = distro_version
 zstacklib_args.zstack_repo = zstack_repo
 zstacklib_args.zstack_root = zstack_root
 zstacklib_args.host_post_info = host_post_info
 zstacklib_args.pip_url = pip_url
 zstacklib_args.trusted_host = trusted_host
 zstacklib_args.zstack_releasever = releasever
-if host_info.distro in DEB_BASED_OS:
+if distro in DEB_BASED_OS:
     zstacklib_args.apt_server = yum_server
     zstacklib_args.zstack_apt_source = zstack_repo
 else :
@@ -113,7 +112,7 @@ pip_install_arg.extra_args = extra_args
 pip_install_arg.name = "python-cephlibs"
 pip_install_package(pip_install_arg, host_post_info)
 
-if host_info.distro in RPM_BASED_OS:
+if distro in RPM_BASED_OS:
     install_rpm_list = "wget nmap"
     if remote_bin_installed(host_post_info, "qemu-img", return_status=True):
         (status, qemu_img_version) = get_qemu_img_version(host_post_info)
@@ -143,13 +142,13 @@ if host_info.distro in RPM_BASED_OS:
             ns10_update_list, zstack_repo)
             run_remote_command(command, host_post_info)
 
-        if host_info.major_version >= 7:
+        if distro_version >= 7:
             command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
             run_remote_command(command, host_post_info)
     else:
         for pkg in install_rpm_list.split():
             yum_install_package(pkg, host_post_info)
-        if host_info.major_version >= 7:
+        if distro_version >= 7:
             command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
             run_remote_command(command, host_post_info)
     set_selinux("state=disabled", host_post_info)
@@ -167,7 +166,7 @@ if host_info.distro in RPM_BASED_OS:
         host_post_info.post_label_param = "qemu-img"
         run_remote_command(command, host_post_info)
 
-elif host_info.distro in DEB_BASED_OS:
+elif distro in DEB_BASED_OS:
     install_pkg_list = ["wget", "qemu-utils", "libvirt-bin", "libguestfs-tools", "nmap"]
     apt_install_packages(install_pkg_list, host_post_info)
     command = "(chmod 0644 /boot/vmlinuz*) || true"
@@ -218,9 +217,9 @@ copy_arg.args = "force=yes"
 copy(copy_arg, host_post_info)
 
 # name: restart cephbagent
-if host_info.distro in RPM_BASED_OS:
+if distro in RPM_BASED_OS:
     command = "service zstack-ceph-backupstorage stop && service zstack-ceph-backupstorage start && chkconfig zstack-ceph-backupstorage on"
-elif host_info.distro in DEB_BASED_OS:
+elif distro in DEB_BASED_OS:
     command = "update-rc.d zstack-ceph-backupstorage start 97 3 4 5 . stop 3 0 1 2 6 . && service zstack-ceph-backupstorage stop && service zstack-ceph-backupstorage start"
 run_remote_command(command, host_post_info)
 
