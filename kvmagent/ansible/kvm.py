@@ -784,7 +784,7 @@ def modprobe_usb_module():
 
 @with_arch(todo_list=['aarch64'], host_arch=host_arch)
 def set_gpu_blacklist():
-    if releasever not in kylin:
+    if releasever not in ['ns10']:
         return
 
     gpu_name_list = "snd_hda_intel nouveau amdgpu"
