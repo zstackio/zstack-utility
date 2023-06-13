@@ -15,7 +15,6 @@ kvmagent/test/vm_plugin_testsuite/test_online_increase_mem.py
 kvmagent/test/vm_plugin_testsuite/test_pause_vm_resume_vm.py
 kvmagent/test/vm_plugin_testsuite/test_vm_attach_nic.py
 kvmagent/test/vm_plugin_testsuite/test_vm_sync.py
-kvmagent/test/vm_plugin_testsuite/test_volume.py
 kvmagent/test/vm_plugin_testsuite/test_start_vm_stop_vm_destroy_vm
 kvmagent/test/shareblock_testsuit/test_shareblock_create_empty_volume.py
 kvmagent/test/shareblock_testsuite/test_shareblock_check_bits.py
