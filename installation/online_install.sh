@@ -356,18 +356,6 @@ ia_install_pip(){
     pass
 }
 
-ia_install_ansible(){
-    echo_subtitle "Install Ansible"
-    pypi_source="file://${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/pypi/simple"
-    if [ ! -z $DEBUG ]; then
-        pip install -i $pypi_source --trusted-host localhost --ignore-installed ansible 
-    else
-        pip install -i $pypi_source --trusted-host localhost --ignore-installed ansible >>$ZSTACK_INSTALL_LOG 2>&1
-    fi
-    [ $? -ne 0 ] && fail "install Ansible failed"
-    pass
-}
-
 ia_install_python_gcc_db(){
     echo_subtitle "Install Python GCC."
     if [ ! -z $DEBUG ]; then
@@ -426,18 +414,21 @@ upgrade_zstack(){
 install_ansible(){
     echo_title "Install Ansible"
     echo ""
+
+    show_spinner is_install_virtualenv
+
     if [ $OS = $CENTOS7 -o $OS = $CENTOS6 ]; then
         show_spinner ia_disable_selinux
         show_spinner ia_install_python_gcc_rh
         show_spinner ia_install_pip
-        show_spinner ia_install_ansible
     elif [ $OS = $UBUNTU1404 ]; then
         export DEBIAN_FRONTEND=noninteractive
         show_spinner ia_update_apt
         show_spinner ia_install_python_gcc_db
         show_spinner ia_install_pip
-        show_spinner ia_install_ansible
     fi
+
+    show_spinner iz_install_zstacksys
 }
 
 is_install_general_libs(){
@@ -603,9 +594,9 @@ is_install_virtualenv(){
 install_system_libs(){
     echo_title "Install System Libs"
     echo ""
+
     show_spinner is_install_general_libs
     #mysql and rabbitmq will be installed by zstack-ctl later
-    show_spinner is_install_virtualenv
 }
 
 iz_download_zstack(){
@@ -669,9 +660,14 @@ uz_upgrade_zstack(){
         fail "failed to unzip zstack.war to $upgrade_folder/zstack"
     fi
     if [ ! -z $DEBUG ]; then
-        bash zstack/WEB-INF/classes/tools/install.sh zstack-ctl 
+        bash zstack/WEB-INF/classes/tools/install.sh zstack-ctl
     else
         bash zstack/WEB-INF/classes/tools/install.sh zstack-ctl >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+    if [ ! -z $DEBUG ]; then
+        bash zstack/WEB-INF/classes/tools/install.sh zstack-sys
+    else
+        bash zstack/WEB-INF/classes/tools/install.sh zstack-sys >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     if [ $? -ne 0 ];then
         rm -rf $upgrade_folder
@@ -741,6 +737,17 @@ iz_install_zstack(){
     unzip -d $CATALINA_ZSTACK_PATH zstack.war >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -ne 0 ];then
        fail "failed to install zstack.war to $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_PATH."
+    fi
+    pass
+}
+
+iz_install_zstacksys(){
+    echo_subtitle "Install ${PRODUCT_NAME} Sys Tool"
+    cd $ZSTACK_INSTALL_ROOT
+    bash $ZSTACK_TOOLS_INSTALLER zstack-sys >>$ZSTACK_INSTALL_LOG 2>&1
+
+    if [ $? -ne 0 ];then
+       fail "failed to install zstacksys in $ZSTACK_INSTALL_ROOT/$ZSTACK_TOOLS_INSTALLER"
     fi
     pass
 }
