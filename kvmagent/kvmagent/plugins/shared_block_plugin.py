@@ -17,6 +17,7 @@ from zstacklib.utils import shell
 from zstacklib.utils import linux
 from zstacklib.utils import lock
 from zstacklib.utils import lvm
+from zstacklib.utils import list_ops
 from zstacklib.utils import bash
 from zstacklib.utils import qemu_img, qcow2
 from zstacklib.utils import traceable_shell
@@ -353,6 +354,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     CONVERT_VOLUME_FORMAT_PATH = "/sharedblock/volume/convertformat"
     SHRINK_SNAPSHOT_PATH = "/sharedblock/snapshot/shrink"
     GET_QCOW2_HASH_VALUE_PATH = "/sharedblock/getqcow2hash"
+    CHECK_LOCK_PATH = "/sharedblock/lock/check"
 
     vgs_in_progress = set()
     vg_size = {}
@@ -401,6 +403,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH, self.get_download_bits_from_kvmhost_progress)
         http_server.register_async_uri(self.SHRINK_SNAPSHOT_PATH, self.shrink_snapshot)
         http_server.register_async_uri(self.GET_QCOW2_HASH_VALUE_PATH, self.get_qcow2_hashvalue)
+        http_server.register_async_uri(self.CHECK_LOCK_PATH, self.check_lock)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -499,7 +502,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
         size_cache = self.vg_size.get(cmd.vgUuid)
-        if size_cache != None and linux.get_current_timestamp() - size_cache['currentTimestamp'] < 60:
+        if size_cache is not None and linux.get_current_timestamp() - size_cache['currentTimestamp'] < 60:
             rsp.totalCapacity = size_cache['totalCapacity']
             rsp.availableCapacity = size_cache['availableCapacity']
         elif cmd.vgUuid not in self.vgs_in_progress:
@@ -1641,4 +1644,45 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         with lvm.RecursiveOperateLv(abs_path, shared=True):
             rsp.hashValue = secret.get_image_hash(abs_path)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def check_lock(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentRsp()
+        if cmd.vgUuids is None or len(cmd.vgUuids) == 0:
+            return jsonobject.dumps(rsp)
+
+        rsp.failedVgs = {}
+
+        def vgck(vg_group):
+            if len(vg_group) == 0:
+                return
+
+            vgUuid = vg_group.pop(0)
+            r, o, e = lvm.vgck(vgUuid, 10)
+
+            if o is not None and o != "":
+                for es in o.strip().splitlines():
+                    if "lock start in progress" in es:
+                        break
+                    elif "held by other host" in es:
+                        break
+                    elif "Reading VG %s without a lock" % vgUuid in es:
+                        rsp.failedVgs.update({vgUuid : o})
+                        break
+            vgck(vg_group)
+
+        # up to three worker threads executing vgck
+        threads_maxnum = 3
+        vg_groups = list_ops.list_split(cmd.vgUuids, threads_maxnum)
+
+        threads = []
+        for vg_group in vg_groups:
+            if len(vg_group) != 0:
+                threads.append(thread.ThreadFacade.run_in_thread(vgck, (vg_group,)))
+
+        for t in threads:
+            t.join()
+
         return jsonobject.dumps(rsp)
