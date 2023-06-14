@@ -1,14 +1,16 @@
 #!/usr/bin/env python
 # encoding: utf-8
 import argparse
+import datetime
+
 from zstacklib import *
-import os
+
 
 # create log
 logger_dir = "/var/log/zstack/"
 create_log(logger_dir)
 banner("Starting to deploy app build system agent")
-start_time = datetime.now()
+start_time = datetime.datetime.now()
 # set default value
 file_root = "files/appbuild"
 pip_url = "https=//pypi.python.org/simple/"
@@ -51,14 +53,14 @@ if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
 
 # include zstacklib.py
-(distro, major_version, distro_release, distro_version) = get_remote_host_info(host_post_info)
-releasever = get_host_releasever([distro, distro_release, distro_version])
+host_info = get_remote_host_info_obj(host_post_info)
+releasever = get_host_releasever(host_info)
 host_post_info.releasever = releasever
 
 zstacklib_args = ZstackLibArgs()
-zstacklib_args.distro = distro
-zstacklib_args.distro_release = distro_release
-zstacklib_args.distro_version = distro_version
+zstacklib_args.distro = host_info.distro
+zstacklib_args.distro_release = host_info.distro_release
+zstacklib_args.distro_version = host_info.major_version
 zstacklib_args.zstack_repo = zstack_repo
 zstacklib_args.yum_server = yum_server
 zstacklib_args.zstack_root = zstack_root
@@ -88,23 +90,23 @@ if virtual_env_status is False:
 command = "[ -f %s/bin/python ] || virtualenv --system-site-packages %s " % (virtenv_path, virtenv_path)
 run_remote_command(command, host_post_info)
 
-if distro in RPM_BASED_OS:
+if host_info.distro in RPM_BASED_OS:
     if zstack_repo != 'false':
         command = ("pkg_list=`rpm -q wget qemu-img | grep \"not installed\" | awk '{ print $2 }'` && for pkg"
                    " in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % zstack_repo
         run_remote_command(command, host_post_info)
-        if distro_version >= 7:
+        if host_info.major_version >= 7:
             command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
             run_remote_command(command, host_post_info)
     else:
         for pkg in [ "wget", "qemu-img"]:
             yum_install_package(pkg, host_post_info)
-        if distro_version >= 7:
+        if host_info.major_version >= 7:
             command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
             run_remote_command(command, host_post_info)
     set_selinux("state=disabled", host_post_info)
 
-elif distro in DEB_BASED_OS:
+elif host_info.distro in DEB_BASED_OS:
     install_pkg_list = ["wget", "qemu-utils", "libvirt-bin", "libguestfs-tools"]
     apt_install_packages(install_pkg_list, host_post_info)
     command = "(chmod 0644 /boot/vmlinuz*) || true"
@@ -150,9 +152,9 @@ copy(copy_arg, host_post_info)
 
 
 # name: restart appbuildsystemagent
-if distro in RPM_BASED_OS:
+if host_info.distro in RPM_BASED_OS:
     command = "service zstack-app-buildsystem stop && service zstack-app-buildsystem start && chkconfig zstack-app-buildsystem on"
-elif distro in DEB_BASED_OS:
+elif host_info.distro in DEB_BASED_OS:
     command = "update-rc.d zstack-app-buildsystem start 97 3 4 5 . stop 3 0 1 2 6 . && service zstack-app-buildsystem stop && service zstack-app-buildsystem start"
 run_remote_command(command, host_post_info)
 

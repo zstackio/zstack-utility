@@ -1130,22 +1130,72 @@ ia_install_pip(){
     pass
 }
 
-ia_install_ansible(){
-    echo_subtitle "Install Ansible"
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+ia_install_ansible_package(){
+    ansible_pypi_source=$1
+    if [ ! -z $DEBUG ]; then
+        pip install -i $ansible_pypi_source --trusted-host localhost --ignore-installed ansible
+    else
+        pip install -i $ansible_pypi_source --trusted-host localhost --ignore-installed ansible >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+}
+
+ia_upgrade_setuptools_package(){
+    ansible_pypi_source=$1
+    if [ ! -z $DEBUG ]; then
+        pip install -i $ansible_pypi_source --trusted-host localhost setuptools==39.2.0
+    else
+        pip install -i $ansible_pypi_source --trusted-host localhost setuptools==39.2.0 >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+}
+
+ia_install_ansible_handle(){
     if [[ $REDHAT_OS =~ $OS ]]; then
         yum remove -y ansible >>$ZSTACK_INSTALL_LOG 2>&1
     else
         apt-get --assume-yes remove ansible >>$ZSTACK_INSTALL_LOG 2>&1
     fi
 
-    if [ ! -z $DEBUG ]; then
-        pip install -i $pypi_source_pip --trusted-host localhost --ignore-installed ansible 
-    else
-        pip install -i $pypi_source_pip --trusted-host localhost --ignore-installed ansible >>$ZSTACK_INSTALL_LOG 2>&1
+    if pip list 2>/dev/null | grep -q -E 'ansible.*1.9.6.*' ; then
+        if [ ! -z $DEBUG ]; then
+            pip uninstall -y ansible
+        else
+            pip uninstall -y ansible >>$ZSTACK_INSTALL_LOG 2>&1
+        fi
     fi
+
+    ia_install_ansible_package $1
+    if [ $? -ne 0 ]; then
+        ia_upgrade_setuptools_package $1
+        ia_install_ansible_package $1
+    fi
+}
+
+ia_install_ansible(){
+    echo_subtitle "Install Ansible"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?' DEBUG
+
+    ia_install_ansible_handle $pypi_source_pip
+
     [ $? -ne 0 ] && fail "install Ansible failed"
     do_config_ansible
+    pass
+}
+
+ia_upgrade_ansible(){
+    echo_subtitle "Upgrade Ansible"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+
+    if pip list 2>/dev/null | grep -q -E 'ansible.*4.10.0' && ansible --version 2>/dev/null | grep -q 'core 2.11.12.2'; then
+        pass
+        return
+    fi
+
+    cd $upgrade_folder
+    ansible_pypi_source=file://$(pwd)/zstack/static/pypi/simple
+
+    ia_install_ansible_handle $ansible_pypi_source
+
+    [ $? -ne 0 ] && fail "upgrade Ansible failed"
     pass
 }
 
@@ -1249,6 +1299,8 @@ upgrade_zstack(){
 
     show_spinner uz_upgrade_tomcat
     show_spinner uz_upgrade_zstack_ctl
+
+    show_spinner ia_upgrade_ansible
 
     # configure management.server.ip if not exists
     zstack-ctl show_configuration | grep '^[[:space:]]*management.server.ip' >/dev/null 2>&1
