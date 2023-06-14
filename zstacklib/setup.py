@@ -36,6 +36,7 @@ Python support library for zstack""",
           "certifi",
           "xms-client",
           "python-dateutil",
+          "numpy==1.9.2",
           "cachetools",
           "xxhash"
       ],
