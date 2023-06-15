@@ -955,11 +955,21 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
         return sum(filter(None, luns), [])
 
+    def multipath_conf_cannot_change(self):
+        r, o, e = bash.bash_roe('''grep -rF "<disk type='block' device='lun'" /var/run/libvirt/qemu/* ''')
+        return r == 0
+
     @kvmagent.replyerror
     @bash.in_bash
     def enable_multipath(self, req):
         rsp = AgentRsp()
         cmd_dict = simplejson.loads(req[http.REQUEST_BODY])
+
+        if self.multipath_conf_cannot_change():
+            rsp.error = "there are VM using lun as disk, cannot change multipath config"
+            rsp.success = False
+            return jsonobject.dumps(rsp)
+
         lvm.enable_multipath()
 
         r = bash.bash_r("grep '^[[:space:]]*alias' /etc/multipath.conf")
