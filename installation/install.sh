@@ -1960,17 +1960,17 @@ iz_check_space(){
     echo_subtitle "Checking space"
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
 
-    upgrade_folder_size_KiB=`du -s $upgrade_folder | awk '{ print $1 }'`
+    # Check the /tmp directory have enough space to store unpackaged zstack.war and pip tmp files
     zstack_war_size_B=`unzip -l $upgrade_folder/zstack.war | tail -n1 | awk '{ print $1 }'`
     (( zstack_war_size_KiB = $zstack_war_size_B / 1024 ))
     (( pip_tmp_size_KiB = 768 * 1024 ))
-    (( required_total_KiB = $pip_tmp_size_KiB + $zstack_war_size_KiB + $upgrade_folder_size_KiB ))
+    (( required_total_KiB = $pip_tmp_size_KiB + $zstack_war_size_KiB ))
     available_space_KiB=`df $upgrade_folder | tail -n1 | awk '{ print $4 }'`
-    (( space_left = $required_total_KiB - $available_space_KiB ))
+    (( space_left = $available_space_KiB - $required_total_KiB ))
 
-    if [ $space_left -gt 0 ]; then
+    if [ $space_left -lt 0 ]; then
         cd /; rm -rf $upgrade_folder
-        fail "The directory $upgrade_folder space left $space_left KiB only, which the upgrading reuqires $required_total_KiB KiB."
+        fail "The directory $upgrade_folder have $available_space_KiB KiB space left, where the upgrading reuqires $required_total_KiB KiB."
     fi
 
     pass
