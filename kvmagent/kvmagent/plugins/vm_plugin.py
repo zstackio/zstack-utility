@@ -1155,6 +1155,12 @@ def is_ioapic_supported():
 def user_specify_driver():
     return LooseVersion(LIBVIRT_VERSION) >= LooseVersion("6.0.0")
 
+def file_type_support_block_device():
+    return LooseVersion(QEMU_VERSION) < LooseVersion("6.0.0")
+
+def block_device_use_block_type():
+    return user_specify_driver() or not file_type_support_block_device()
+
 def is_kylin402():
     zstack_release = linux.read_file('/etc/zstack-release')
     if zstack_release is None:
@@ -3056,16 +3062,13 @@ class Vm(object):
                 else:
                     if disk.source.dev__ and volume.volumeUuid in disk.source.dev_:
                         return disk, disk.target.dev_
-            elif volume.deviceType == 'file':
-                if disk.source.file__ and disk.source.file_ == volume.installPath:
-                    return disk, disk.target.dev_
             elif volume.deviceType == 'ceph':
                 if disk.source.name__ and disk.source.name_ in volume.installPath:
                     return disk, disk.target.dev_
             elif volume.deviceType == 'scsilun':
                 if disk.source.dev__ and volume.installPath in disk.source.dev_:
                     return disk, disk.target.dev_
-            elif volume.deviceType == 'block':
+            elif volume.deviceType == 'block' or volume.deviceType == 'file':
                 if disk.source.dev__ and disk.source.dev_ in volume.installPath:
                     return disk, disk.target.dev_
                 if disk.source.file__ and disk.source.file_ == volume.installPath:
@@ -5724,7 +5727,7 @@ def file_volume_check(volume):
     # https://github.com/qemu/qemu/commit/8d17adf34f501ded65a106572740760f0a75577c
 
     # libvirt 6.0 use -blockdev to define disk, driver is specified rather than inferred
-    if block_volume_over_incorrect_driver(volume) and user_specify_driver():
+    if block_volume_over_incorrect_driver(volume) and block_device_use_block_type():
         volume.deviceType = 'block'
     return volume
 
@@ -5734,7 +5737,7 @@ def iso_check(iso):
 
     if iso.isEmpty:
         return iso
-    if iso.path.startswith("/dev/") and user_specify_driver():
+    if iso.path.startswith("/dev/") and block_device_use_block_type():
         iso.type = "block"
 
     return iso
@@ -6977,7 +6980,7 @@ class VmPlugin(kvmagent.KvmAgent):
 
         if volume is None:
             volume = VolumeTO.from_xmlobject(old_disk)
-            if not (volume and block_volume_over_incorrect_driver(volume) and user_specify_driver()):
+            if not (volume and block_volume_over_incorrect_driver(volume) and block_device_use_block_type()):
                 return old_disk  # no change
 
         volume = file_volume_check(volume)
@@ -9757,14 +9760,14 @@ host side snapshot files chian:
 
             extend_size = lv_size + self.auto_extend_size
             try:
-                lvm.resize_lv(path, extend_size)
+                lvm.extend_lv(path, extend_size)
             except Exception as e:
                 logger.warn("extend lv[%s] to size[%s] failed" % (path, extend_size))
                 if "incompatible mode" not in e.message.lower():
                     return
                 try:
                     with lvm.OperateLv(path, shared=False, delete_when_exception=False):
-                        lvm.resize_lv(path, extend_size)
+                        lvm.extend_lv(path, extend_size)
                 except Exception as e:
                     logger.warn("extend lv[%s] to size[%s] with operate failed" % (path, extend_size))
             else:
@@ -9787,9 +9790,9 @@ host side snapshot files chian:
             fixed = False
 
             def get_path_by_device(device_name, vm):
-                for dev in vm.domain_xmlobject.devices.disk:
-                    if dev.get_child_node("target").dev_ == device_name:
-                        return dev.get_child_node("source").file_
+                for disk in vm.domain_xmlobject.devices.get_child_node_as_list('disk'):
+                    if disk.target.dev_ == device_name:
+                        return VmPlugin.get_source_file_by_disk(disk)
 
             try:
                 for device, error in disk_errors.viewitems():
