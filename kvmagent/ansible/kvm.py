@@ -193,14 +193,14 @@ def install_kvm_pkg():
                       usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
                       net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
                       smartmontools sshpass usbutils vconfig wget audit dnsmasq \
-                      qemu-kvm collectd-virt OVMF edk2-ovmf edk2.git-ovmf-x64 mcelog MegaCli storcli Arcconf nvme-cli python-pyudev kernel-devel libicu"
+                      qemu-kvm collectd-virt OVMF edk2-ovmf edk2.git-ovmf-x64 mcelog MegaCli storcli Arcconf nvme-cli python-pyudev kernel-devel libicu cryptsetup"
 
         x86_64_c76 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                       usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python libvirt-admin lighttpd lsof \
                       net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
                       smartmontools sshpass usbutils vconfig wget audit dnsmasq \
                       qemu-kvm collectd-virt OVMF edk2-ovmf edk2.git-ovmf-x64 mcelog MegaCli storcli Arcconf \
-                    nvme-cli python-pyudev seabios-bin nping kernel-devel elfutils-libelf-devel libicu"
+                    nvme-cli python-pyudev seabios-bin nping kernel-devel elfutils-libelf-devel libicu cryptsetup"
 
         aarch64_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                         usbredir-server iputils open-iscsi libvirt libvirt-client libvirt-python lighttpd lsof \
@@ -240,7 +240,7 @@ def install_kvm_pkg():
                         usbredir-server iputils open-iscsi libvirt libvirt-client libvirt-python lighttpd lsof \
                         net-tools nfs-utils nmap openssh-clients OpenIPMI pciutils pv rsync sed nettle libselinux-devel \
                         smartmontools sshpass usbutils vconfig wget audit dnsmasq tar python2-psutil\
-                        qemu-kvm collectd-virt storcli edk2-ovmf edk2.git-ovmf-x64 python2-pyudev collectd-disk libicu"
+                        qemu-kvm collectd-virt storcli edk2-ovmf edk2.git-ovmf-x64 python2-pyudev collectd-disk libicu cryptsetup"
 
         # handle zstack_repo
         if zstack_repo != 'false':
