@@ -241,11 +241,36 @@ def check_disk_insert_and_remove(disk_list):
             
     disk_list_record = disk_list
 
+# use lazy loading to avoid re-registering global configuration when other modules are initialized
+host_network_interface_service_type_map = None
+serviceTypeMapLock = threading.Lock()
+
+def get_service_type_map():
+    global host_network_interface_service_type_map
+    if host_network_interface_service_type_map is None:
+        with serviceTypeMapLock:
+            if host_network_interface_service_type_map is None:
+                host_network_interface_service_type_map = {}
+    return host_network_interface_service_type_map
+
+def register_service_type(dev_name, service_type):
+    logger.debug("register service type: id[%s]" % id(get_service_type_map()))
+    host_network_interface_service_type_map = get_service_type_map()
+    logger.debug("register service type: id[%s] after get" % id(get_service_type_map()))
+    host_network_interface_service_type_map[dev_name] = service_type
 
 def collect_host_network_statistics():
 
     all_eths = os.listdir("/sys/class/net/")
     virtual_eths = os.listdir("/sys/devices/virtual/net/")
+
+    service_types = ['ManagementNetwork', 'BusinessNetwork', 'StorageNetwork', 'BackupNetwork', 'MigrationNetwork']
+    all_in_bytes_by_service_type = {service_type: 0 for service_type in service_types}
+    all_in_packets_by_service_type = {service_type: 0 for service_type in service_types}
+    all_in_errors_by_service_type = {service_type: 0 for service_type in service_types}
+    all_out_bytes_by_service_type = {service_type: 0 for service_type in service_types}
+    all_out_packets_by_service_type = {service_type: 0 for service_type in service_types}
+    all_out_errors_by_service_type = {service_type: 0 for service_type in service_types}
 
     interfaces = []
     for eth in all_eths:
@@ -257,6 +282,18 @@ def collect_host_network_statistics():
             continue
         else:
             interfaces.append(eth)
+            global host_network_interface_service_type_map
+            logger.debug("collect use: id[%s]" % id(get_service_type_map()))
+            if host_network_interface_service_type_map is not None:
+                if eth in host_network_interface_service_type_map:
+                    service_type_values = host_network_interface_service_type_map[eth]
+                    for service_type in service_type_values:
+                        all_in_bytes_by_service_type[service_type] += read_number("/sys/class/net/{}/statistics/rx_bytes".format(eth))
+                        all_in_packets_by_service_type[service_type] += read_number("/sys/class/net/{}/statistics/rx_packets".format(eth))
+                        all_in_errors_by_service_type[service_type] += read_number("/sys/class/net/{}/statistics/rx_errors".format(eth))
+                        all_out_bytes_by_service_type[service_type] += read_number("/sys/class/net/{}/statistics/tx_bytes".format(eth))
+                        all_out_packets_by_service_type[service_type] += read_number("/sys/class/net/{}/statistics/tx_packets".format(eth))
+                        all_out_errors_by_service_type[service_type] += read_number("/sys/class/net/{}/statistics/tx_errors".format(eth))
 
     all_in_bytes = 0
     all_in_packets = 0
@@ -285,6 +322,24 @@ def collect_host_network_statistics():
                                                            'Host all outbound traffic in packages'),
         'host_network_all_out_errors': GaugeMetricFamily('host_network_all_out_errors',
                                                          'Host all outbound traffic errors'),
+        'host_network_all_in_bytes_by_serviceType': GaugeMetricFamily('host_network_all_in_bytes_by_serviceType',
+                                                                      'Host all inbound traffic in bytes by service type',
+                                                                      None, ['service_type']),
+        'host_network_all_in_packages_by_serviceType': GaugeMetricFamily('host_network_all_in_packages_by_serviceType',
+                                                                         'Host all inbound traffic in packages by service type',
+                                                                         None, ['service_type']),
+        'host_network_all_in_errors_by_serviceType': GaugeMetricFamily('host_network_all_in_errors_by_serviceType',
+                                                                       'Host all inbound traffic errors by service type',
+                                                                       None, ['service_type']),
+        'host_network_all_out_bytes_by_serviceType': GaugeMetricFamily('host_network_all_out_bytes_by_serviceType',
+                                                                       'Host all outbound traffic in bytes by service type',
+                                                                       None, ['service_type']),
+        'host_network_all_out_packages_by_serviceType': GaugeMetricFamily('host_network_all_out_packages_by_serviceType',
+                                                                          'Host all outbound traffic in packages by service type',
+                                                                          None, ['service_type']),
+        'host_network_all_out_errors_by_serviceType': GaugeMetricFamily('host_network_all_out_errors_by_serviceType',
+                                                                        'Host all outbound traffic errors by service type',
+                                                                        None, ['service_type']),
     }
 
     metrics['host_network_all_in_bytes'].add_metric([], float(all_in_bytes))
@@ -293,6 +348,13 @@ def collect_host_network_statistics():
     metrics['host_network_all_out_bytes'].add_metric([], float(all_out_bytes))
     metrics['host_network_all_out_packages'].add_metric([], float(all_out_packets))
     metrics['host_network_all_out_errors'].add_metric([], float(all_out_errors))
+    for service_type in service_types:
+        metrics['host_network_all_in_bytes_by_serviceType'].add_metric([service_type], float(all_in_bytes_by_service_type[service_type]))
+        metrics['host_network_all_in_packages_by_serviceType'].add_metric([service_type], float(all_in_packets_by_service_type[service_type]))
+        metrics['host_network_all_in_errors_by_serviceType'].add_metric([service_type], float(all_in_errors_by_service_type[service_type]))
+        metrics['host_network_all_out_bytes_by_serviceType'].add_metric([service_type], float(all_out_bytes_by_service_type[service_type]))
+        metrics['host_network_all_out_packages_by_serviceType'].add_metric([service_type], float(all_out_packets_by_service_type[service_type]))
+        metrics['host_network_all_out_errors_by_serviceType'].add_metric([service_type], float(all_out_errors_by_service_type[service_type]))
 
     return metrics.values()
 
