@@ -736,9 +736,24 @@ class CephAgent(plugin.TaskManager):
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
+    def _unprotect_snapshot(self, snapshot_path):
+        path = self._normalize_install_path(snapshot_path)
+        o = shell.call('rbd --format json info %s' % path)
+        o = jsonobject.loads(o)
+        if not o or o.protected is None or o.protected.lower() != 'true':
+            return
+
+        o = bash_o('rbd children %s' % path)
+        o = o.strip(' \t\r\n')
+        if o:
+            raise Exception("the snapshot[%s] is still in used, children: %s" % (snapshot_path, o))
+
+        shell.call('rbd snap unprotect %s' % path)
+
     @replyerror
     def delete_snapshot(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        self._unprotect_snapshot(cmd.snapshotPath)
         driver = self.get_driver(cmd)
         driver.delete_snapshot(cmd)
 
@@ -759,10 +774,7 @@ class CephAgent(plugin.TaskManager):
     @replyerror
     def unprotect_snapshot(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        spath = self._normalize_install_path(cmd.snapshotPath)
-
-        shell.call('rbd snap unprotect %s' % spath)
-
+        self._unprotect_snapshot(cmd.snapshotPath)
         return jsonobject.dumps(AgentResponse())
 
     @replyerror
