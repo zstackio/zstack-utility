@@ -173,6 +173,8 @@ mysqldump_skip_tables = "--ignore-table=zstack.VmUsageHistoryVO --ignore-table=z
                         "--ignore-table=zstack.ResourceUsageVO --ignore-table=zstack.PciDeviceUsageHistoryVO " \
                         "--ignore-table=zstack.PubIpVipBandwidthUsageHistoryVO"
 
+zstone_db_dump_skip_tables = ""
+
 def signal_handler(signal, frame):
     sys.exit(0)
 
@@ -5118,6 +5120,7 @@ class DumpMysqlCmd(Command):
     mysql_backup_dir = "/var/lib/zstack/mysql-backup/"
     remote_backup_dir = "/var/lib/zstack/from-zstack-remote-backup/"
     ui_backup_dir = "/var/lib/zstack/ui/"
+    zstone_backup_dir = "/var/lib/zstack/zstone/"
 
     def __init__(self):
         super(DumpMysqlCmd, self).__init__()
@@ -5163,9 +5166,10 @@ class DumpMysqlCmd(Command):
         (status, output, stderr) = shell_return_stdout_stderr(command)
         if status != 0:
             error(stderr)
-        sync_command = "rsync -lr -e 'ssh -i %s -p %s'  %s %s %s@%s:%s" % (private_key, remote_host_port,
-                                                                           self.mysql_backup_dir, self.ui_backup_dir,
-                                                                           user, remote_host_ip, self.remote_backup_dir)
+        sync_command = "rsync -lr -e 'ssh -i %s -p %s'  %s %s %s %s@%s:%s" % (private_key, remote_host_port,
+                                                                              self.mysql_backup_dir, self.ui_backup_dir,
+                                                                              self.zstone_backup_dir, user,
+                                                                              remote_host_ip, self.remote_backup_dir)
         (status, output, stderr) = shell_return_stdout_stderr(sync_command)
         if status != 0:
             error(stderr)
@@ -5197,6 +5201,19 @@ class DumpMysqlCmd(Command):
                 else:
                     return zsha2_config_info['peerip']
 
+    def is_exist_zstone_db(self, db_ip, db_port, db_user, db_pwd):
+        command = '''mysql -h %s -P %s -u %s --password='%s' -e "show databases;" | grep zstone ''' \
+                  % (db_ip, db_port, db_user, db_pwd)
+        (status, output, stderr) = shell_return_stdout_stderr(command)
+        if status != 0:
+            return False
+        if 'zstone' == output.strip("\n"):
+            return True
+        return False
+
+    def get_zstone_db_user_info(self):
+        return "zstndump", "zstndump.db.password"
+
     def run(self, args):
         (db_hostname, db_port, db_user, db_password) = ctl.get_live_mysql_portal()
         (ui_db_hostname, ui_db_port, ui_db_user, ui_db_password) = ctl.get_live_mysql_portal(ui=True)
@@ -5206,6 +5223,9 @@ class DumpMysqlCmd(Command):
         if os.path.exists(self.mysql_backup_dir) is False:
             os.mkdir(self.mysql_backup_dir)
 
+        if os.path.exists(self.zstone_backup_dir) is False:
+            os.mkdir(self.zstone_backup_dir)
+
         db_local_hostname = self.get_db_local_hostname_from_zsha2()
         if not db_local_hostname:
             db_local_hostname = db_hostname
@@ -5214,6 +5234,9 @@ class DumpMysqlCmd(Command):
             db_backupf_file_path = args.file_path
         else:
             db_backupf_file_path = self.mysql_backup_dir + db_local_hostname + "-" + file_name + "-" + backup_timestamp + ".gz"
+
+        zstone_backup_file_path = self.zstone_backup_dir + db_local_hostname + "-" + "zstone-backup-db" + "-" + backup_timestamp + ".gz"
+
         if args.delete_expired_file is not False and args.host_info is None:
             error("Please specify remote host info with '--host' before you want to delete remote host expired files")
 
@@ -5244,6 +5267,27 @@ class DumpMysqlCmd(Command):
         cmd = ShellCmd("(%s; %s; %s %s) | gzip > %s" % (command_1, command_2, append_sql_command, command_3, db_backupf_file_path))
         cmd(True)
         info("Successfully backed up database. You can check the file at %s" % db_backupf_file_path)
+
+        zstone_db_user, zstone_db_pwd = self.get_zstone_db_user_info()
+        if self.is_exist_zstone_db(db_hostname, db_port, zstone_db_user, zstone_db_pwd):
+            if db_hostname == "localhost" or db_hostname == "127.0.0.1":
+                zstone_backup_cmd = "mysqldump --databases -u %s --password='%s' -P %s %s -f zstone %s" \
+                        % (zstone_db_user, zstone_db_pwd, db_port, mysqldump_options, zstone_db_dump_skip_tables)
+            else:
+                zstone_backup_cmd = "mysqldump --databases -u %s --password='%s' --host %s -P %s %s -f zstone %s" \
+                        % (zstone_db_user, zstone_db_pwd, db_hostname, db_port, mysqldump_options, zstone_db_dump_skip_tables)
+
+            cmd = ShellCmd("(%s) | gzip > %s" % (zstone_backup_cmd, zstone_backup_file_path))
+            cmd(True)
+            info("Successfully backed up zstone database. You can check the file at %s" % zstone_backup_file_path)
+
+            # remove old zstone backup file
+            if len(os.listdir(self.zstone_backup_dir)) > keep_amount:
+                backup_files_list = [s for s in os.listdir(self.zstone_backup_dir) if os.path.isfile(os.path.join(self.zstone_backup_dir, s))]
+                backup_files_list.sort(key=lambda s: os.path.getmtime(os.path.join(self.zstone_backup_dir, s)))
+                for expired_file in backup_files_list:
+                    if expired_file not in backup_files_list[-keep_amount:]:
+                        os.remove(self.zstone_backup_dir + expired_file)
 
         # remove old file
         if len(os.listdir(self.mysql_backup_dir)) > keep_amount:
