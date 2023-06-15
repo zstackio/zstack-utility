@@ -51,6 +51,7 @@
             <arg value="${product.version}" />
             <arg value="${check.repo.version}" />
             <arg value="${offline.bin.setup.script}" />
+            <arg value="${project.num}"/>
         </exec>
 
         <exec executable="bash" dir="${allinone.bin.dir}" failonerror="true">

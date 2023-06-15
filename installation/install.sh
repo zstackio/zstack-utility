@@ -25,6 +25,8 @@ VERSION=${PRODUCT_VERSION:-""}
 VERSION_RELEASE_NR=`echo $PRODUCT_VERSION | awk -F '.' '{print $1"."$2"."$3}'`
 ZSTACK_INSTALL_ROOT=${ZSTACK_INSTALL_ROOT:-"/usr/local/zstack"}
 MINI_INSTALL_ROOT=${ZSTACK_INSTALL_ROOT}/zstack-mini/
+CURRENT_PROJECT_NUM=${ZSTACK_INSTALL_ROOT}/PJNUM
+UPGRADE_PROJECT_NUM=${PROJECT_NUM:-"001"}
 
 # zstack mini server before 1.1.0 is installed in /usr/local/zstack-mini
 LEGACY_MINI_INSTALL_ROOT="/usr/local/zstack-mini/"
@@ -308,6 +310,48 @@ check_zstack_release(){
             ZSTACK_RELEASE=`awk '{print $3}' /etc/zstack-release`
         else
             fail2 "deb package zstack-release is not installed, use zstack_install_kylin.sh -r xxx.iso to install zstack-dvd."
+        fi
+    fi
+}
+
+check_project_num() {
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+
+    if [[ -f $${CURRENT_PROJECT_NUM} ]]; then
+        current_project_num=`cat ${CURRENT_PROJECT_NUM}|awk -F "=" '{print $2}'`
+    else
+        current_project_num=""
+    fi
+
+    upgrade_project_num=${UPGRADE_PROJECT_NUM}
+
+    if [[ $current_project_num == $upgrade_project_num ]]; then
+        return 0
+    fi
+
+    if [[ -z $current_project_num ]]; then
+        if [[ $upgrade_project_num =~ ^[0-9]{3}$ ]]; then
+            return 0
+        else
+            echo "Will upgrade to the custom version ($upgrade_project_num), this operation is a risk operation, please confirm"
+            read -p "Continue to upgrade, if continue to upgrade, please enter <confirmed the risk> to continue:  " confirm
+            if [[ $confirm == "confirmed the risk" ]]; then
+                return 0
+            else
+                fail2 "This key is wrong, will exit the installation"
+            fi
+        fi
+    fi
+
+    if [[ -n $current_project_num ]]; then
+        if [[ $current_project_num != $upgrade_project_num ]]; then
+            echo "Will upgrade to a different custom version ($current_project_num -> $upgrade_project_num), this operation is a risk operation, please confirm"
+            read -p "Continue to upgrade, if continue to upgrade, please enter <confirmed the risk> to continue:  " confirm
+            if [[ $confirm == "confirmed the risk" ]]; then
+                return 0
+            else
+                fail2 "This key is wrong, will exit the installation"
+            fi
         fi
     fi
 }
@@ -4058,6 +4102,7 @@ if [ x"$UPGRADE" = x'y' ]; then
     MINI_INSTALL_ROOT=${ZSTACK_INSTALL_ROOT}/zstack-mini/
     MINI_VERSION=${MINI_INSTALL_ROOT}/VERSION
 
+    check_project_num
     check_version
     touch $UPGRADE_LOCK
     upgrade_folder=`mktemp`

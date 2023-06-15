@@ -7,6 +7,7 @@
 
     <property file="build.properties" />
     <property file="${zstack.source}/VERSION" />
+    <property file="${zstack.source}/PJNUM"/>
     <property name="build.dir" location="${basedir}/target" />
     <property name="war.file" location="${build.dir}/zstack.war" />
     <property name="war.dir" location="${build.dir}/zstack-assemble" />
@@ -31,8 +32,15 @@
         </and>
     </condition>
 
+    <condition property="project.num" value="${project.num}" else="${PJNUM}">
+        <and>
+            <isset property="project.num"/>
+        </and>
+    </condition>
+
     <property name="allinone.dir" location="${build.dir}/zstack-all-in-one" />
     <property name="allinone.versionfile" location="${allinone.dir}/VERSION" />
+    <property name="allinone.projectnumfile" location="${allinone.dir}/PJNUM"/>
     <property name="allinone.bin.dir" location="${build.dir}/zstack" />
     <property name="allinone.offline.file" location="${build.dir}/zstack-offline.tgz" />
     <property name="allinone.bin.product.title" location="${allinone.bin.dir}/product_title_file" />
@@ -141,6 +149,10 @@
 
         <property name="allinone.versionfile.in.war" location="${war.dir}/VERSION" />
         <echo file="${allinone.versionfile.in.war}" append="true">${product.name} ${allinone.version}</echo>
+
+        <property name="allinone.projectnumfile.in.war" location="${war.dir}/PJNUM" />
+        <echo file="${allinone.projectnumfile.in.war}" append="false">PJNUM=${project.num}</echo>
+
 
         <exec executable="git" dir="${zstack.source}" failonerror="true" output="${war.dir}/git-commit">
             <arg value="log" />
