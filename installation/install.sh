@@ -1262,7 +1262,9 @@ download_zstack(){
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     show_download iz_download_zstack
     show_spinner iz_unpack_zstack
-    show_spinner iz_check_space
+    if [ x"$UPGRADE" = x'y' ]; then
+        show_spinner iz_check_space
+    fi
     show_spinner uz_stop_zstack_ui
 }
 
@@ -1951,7 +1953,7 @@ iz_unpack_zstack(){
 }
 
 iz_check_space(){
-    echo_title "Checking space"
+    echo_subtitle "Checking space"
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
 
     upgrade_folder_size_KiB=`du -s $upgrade_folder | awk '{ print $1 }'`
