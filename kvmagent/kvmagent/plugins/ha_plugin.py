@@ -24,6 +24,7 @@ import abc
 import functools
 import pprint
 import inspect
+import random
 from zstacklib.utils import iproute
 import zstacklib.utils.ip as ipUtils
 
@@ -481,8 +482,8 @@ class SanlockHealthChecker(AbstractStorageFencer):
                     logger.debug("read shareblock current_read_heartbeat_time:%s, current_vm_uuids: %s" %
                                  (current_read_heartbeat_time[0], current_vm_uuids[0]))
 
-                    if time.time() - 4*60 > current_read_heartbeat_time[0]:
-                        current_read_heartbeat_time[0] += 1
+                    if int(time.time()) - 4*60 < current_read_heartbeat_time[0]:
+                        current_read_heartbeat_time[0] += random.randint(1, 100)
 
                     return current_read_heartbeat_time[0], current_vm_uuids[0]
 
