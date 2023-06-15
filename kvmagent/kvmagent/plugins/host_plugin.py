@@ -40,6 +40,7 @@ from zstacklib.utils.ip import get_nic_driver_type
 from zstacklib.utils.report import Report
 import zstacklib.utils.ip as ip
 import zstacklib.utils.plugin as plugin
+from kvmagent.plugins.prometheus import get_service_type_map, register_service_type
 
 host_arch = platform.machine()
 IS_AARCH64 = host_arch == 'aarch64'
@@ -185,6 +186,48 @@ class SetIpOnHostNetworkInterfaceCmd(kvmagent.AgentCommand):
 class SetIpOnHostNetworkInterfaceRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(SetIpOnHostNetworkInterfaceRsp, self).__init__()
+
+class CheckInterfaceVlanCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(CheckInterfaceVlanCmd, self).__init__()
+        self.interfaceName = None
+        self.vlanId = None
+
+class CheckInterfaceVlanRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(CheckInterfaceVlanRsp, self).__init__()
+        self.valid = None
+
+class GetInterfaceVlanCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(GetInterfaceVlanCmd, self).__init__()
+        self.interfaceNames = []
+
+class GetInterfaceVlanRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(GetInterfaceVlanRsp, self).__init__()
+        self.vlanIds = []
+
+class GetInterfaceNameCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(GetInterfaceNameCmd, self).__init__()
+        self.ipAddresses = []
+
+class GetInterfaceNameRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(GetInterfaceNameRsp, self).__init__()
+        self.interfaceNames = []
+
+class SetServiceTypeOnHostNetworkInterfaceCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(SetServiceTypeOnHostNetworkInterfaceCmd, self).__init__()
+        self.interfaceName = None
+        self.vlanId = None
+        self.serviceType = []
+
+class SetServiceTypeOnHostNetworkInterfaceRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(SetServiceTypeOnHostNetworkInterfaceRsp, self).__init__()
 
 class HostPhysicalMemoryStruct(object):
     def __init__(self):
@@ -845,6 +888,10 @@ class HostPlugin(kvmagent.KvmAgent):
     CHANGE_PASSWORD = "/host/changepassword"
     GET_HOST_NETWORK_FACTS = "/host/networkfacts"
     SET_IP_ON_HOST_NETWORK_INTERFACE = "/host/setip/networkinterface"
+    CHECK_INTERFACE_VLAN = "/host/checkvlan/networkinterface"
+    GET_INTERFACE_VLAN = "/host/getvlan/networkinterface"
+    GET_INTERFACE_NAME = "/host/getname/networkinterface"
+    SET_SERVICE_TYPE_ON_HOST_NETWORK_INTERFACE = "/host/setservicetype/networkinterface"
     HOST_XFS_SCRAPE_PATH = "/host/xfs/scrape"
     HOST_SHUTDOWN = "/host/shutdown"
     HOST_REBOOT = "/host/reboot"
@@ -1969,6 +2016,87 @@ done
 
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    @in_bash
+    def check_interface_vlan(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CheckInterfaceVlanRsp()
+        rsp.success = False
+
+        vlan_dev_name = '%s.%s' % (cmd.interfaceName, cmd.vlanId)
+        output = shell.call('ip link show type vlan %s' % vlan_dev_name)
+        if vlan_dev_name in output:
+            rsp.success = True
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
+    def get_interface_vlan(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetInterfaceVlanRsp()
+        rsp.success = False
+
+        vlan_ids = []
+        for interface_name in cmd.interfaceNames:
+            output = shell.call("ip link show type vlan | grep %s | awk -F'[.@]' '{print $2}'" % interface_name)
+            interface_vlan_ids = output.strip().split('\n')
+
+            if not interface_vlan_ids:
+                interface_vlan_ids = ['0']
+            else:
+                interface_vlan_ids.append('0')
+
+            if not vlan_ids:
+                vlan_ids = interface_vlan_ids
+            vlan_ids = [vlan for vlan in vlan_ids if vlan and vlan in interface_vlan_ids]
+
+        rsp.success = True
+        rsp.vlanIds = vlan_ids if vlan_ids != [] else ['0']
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def get_interface_name(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetInterfaceNameRsp()
+        rsp.success = False
+        rsp.interfaceNames = []
+
+        interface_names = []
+        interfaces = iproute.query_links()
+        for interface in interfaces:
+            interface_name = interface.ifname
+            addresses = iproute.query_addresses_by_ifname(ifname=interface_name)
+            ip_addresses = [addr.address for addr in addresses]
+            for addr in ip_addresses:
+                if addr in cmd.ipAddresses:
+                    if interface_name.startswith('br_'):
+                        output = shell.call("brctl show %s | awk '{print $NF}' | grep -vw interfaces" % interface_name).strip().split('\n')
+                        non_virtual_eths = [name for name in output if
+                                  not (name.startswith('outer') or name.startswith('ud') or name.startswith('vnic'))]
+                        interface_name = non_virtual_eths[0]
+                    interface_names.append(interface_name)
+
+        rsp.success = True
+        rsp.interfaceNames = interface_names
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def set_service_type_on_host_network_interface(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = SetServiceTypeOnHostNetworkInterfaceRsp()
+        rsp.success = False
+
+        dev_name = cmd.interfaceName
+        if cmd.vlanId is not None and cmd.vlanId is not 0:
+            dev_name = '%s.%s' % (cmd.interfaceName, cmd.vlanId)
+
+        register_service_type(dev_name, cmd.serviceType)
+        rsp.success = True
+
+        return jsonobject.dumps(rsp)
+
     @staticmethod
     def get_host_networking_interfaces(managementServerIp):
         nics = []
@@ -3071,6 +3199,10 @@ done
         http_server.register_async_uri(self.CHANGE_PASSWORD, self.change_password, cmd=ChangeHostPasswordCmd())
         http_server.register_async_uri(self.GET_HOST_NETWORK_FACTS, self.get_host_network_facts)
         http_server.register_async_uri(self.SET_IP_ON_HOST_NETWORK_INTERFACE, self.set_ip_on_host_network_interface)
+        http_server.register_async_uri(self.SET_SERVICE_TYPE_ON_HOST_NETWORK_INTERFACE, self.set_service_type_on_host_network_interface)
+        http_server.register_async_uri(self.CHECK_INTERFACE_VLAN, self.check_interface_vlan)
+        http_server.register_async_uri(self.GET_INTERFACE_VLAN, self.get_interface_vlan)
+        http_server.register_async_uri(self.GET_INTERFACE_NAME, self.get_interface_name)
         http_server.register_async_uri(self.HOST_XFS_SCRAPE_PATH, self.get_xfs_frag_data)
         http_server.register_async_uri(self.HOST_SHUTDOWN, self.shutdown_host)
         http_server.register_async_uri(self.HOST_REBOOT, self.reboot_host)
