@@ -2571,7 +2571,7 @@ done
 
         self.heartbeat_timer = {}
         self.libvirt_version = linux.get_libvirt_version()
-        self.qemu_version = qemu.get_version()
+        self.qemu_version = qemu.get_version_from_exe_file(qemu.get_path(), error_out=True)
         filepath = r'/etc/libvirt/qemu/networks/autostart/default.xml'
         if os.path.exists(filepath):
             os.unlink(filepath)
