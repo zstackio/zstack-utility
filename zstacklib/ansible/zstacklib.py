@@ -1960,7 +1960,7 @@ def check_umask(host_post_info):
 def install_release_on_host(is_rpm, host_info, host_post_info):
     releasever = get_host_releasever(host_info)
     if is_rpm:
-        release_name = 'el8' if releasever in ['rl84'] else 'el7'
+        release_name = 'el7'
         pkg_name = 'zstack-release-{0}-1.{1}.zstack.noarch.rpm'.format(releasever, release_name)
         src_pkg = '/opt/zstack-dvd/{0}/{1}/Packages/{2}'.format(host_info.host_arch, releasever, pkg_name)
         install_cmd = ("[[ x`rpm -qi zstack-release |awk -F ':' '/Version/{print $2}' |sed 's/ //g'` == x%s ]] || "
