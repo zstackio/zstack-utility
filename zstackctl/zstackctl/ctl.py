@@ -5166,6 +5166,9 @@ class DumpMysqlCmd(Command):
         parser.add_argument('--remote-keep-amount', type=int,
                             help="The amount of files you want to keep on remote host, older files will be deleted, default number is 60",
                             required=False)
+        parser.add_argument('--bwlimit',
+                            help="This option allows you to specify the maximum transfer rate for the data sent over the socket, specified in units per second. The RATE value can be suffixed with a string to indicate a size multiplier, and may be a fractional value (e.g. `--bwlimit=1.5m`)",
+                            required=False)
 
     def sync_local_backup_db_to_remote_host(self, args, user, private_key, remote_host_ip, remote_host_port):
         (status, output, stderr) = shell_return_stdout_stderr("mkdir -p %s" % self.ui_backup_dir)
@@ -5176,10 +5179,22 @@ class DumpMysqlCmd(Command):
         (status, output, stderr) = shell_return_stdout_stderr(command)
         if status != 0:
             error(stderr)
-        sync_command = "rsync -lr -e 'ssh -i %s -p %s'  %s %s %s %s@%s:%s" % (private_key, remote_host_port,
-                                                                              self.mysql_backup_dir, self.ui_backup_dir,
-                                                                              self.zstone_backup_dir, user,
-                                                                              remote_host_ip, self.remote_backup_dir)
+
+        if args.bwlimit is not None:
+            sync_command = "rsync -lr --bwlimit=%s -e 'ssh -i %s -p %s'  %s %s %s %s@%s:%s" % (args.bwlimit, private_key, remote_host_port,
+                                                                                  self.mysql_backup_dir,
+                                                                                  self.ui_backup_dir,
+                                                                                  self.zstone_backup_dir, user,
+                                                                                  remote_host_ip,
+                                                                                  self.remote_backup_dir)
+
+        else:
+            sync_command = "rsync -lr -e 'ssh -i %s -p %s'  %s %s %s %s@%s:%s" % (private_key, remote_host_port,
+                                                                                  self.mysql_backup_dir,
+                                                                                  self.ui_backup_dir,
+                                                                                  self.zstone_backup_dir, user,
+                                                                                  remote_host_ip,
+                                                                                  self.remote_backup_dir)
         (status, output, stderr) = shell_return_stdout_stderr(sync_command)
         if status != 0:
             error(stderr)
