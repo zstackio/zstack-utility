@@ -1975,6 +1975,12 @@ def install_release_on_host(is_rpm, host_info, host_post_info):
     run_remote_command(install_cmd, host_post_info)
 
 
+def repair_rpmdb_if_damaged(host_post_info):
+    cmd = "yum --disablerepo=* --enablerepo=zstack-local list >/dev/null 2>&1 || " \
+          "(rm -f /var/lib/rpm/_db.*; rpm --rebuilddb)"
+    run_remote_command(cmd, host_post_info)
+
+
 class ZstackLib(object):
     def __init__(self, args):
         self.distro = args.distro
@@ -2008,6 +2014,7 @@ class ZstackLib(object):
             host_info = get_remote_host_info_obj(self.host_post_info)
 
         if self.distro in RPM_BASED_OS:
+            repair_rpmdb_if_damaged(self.host_post_info)
             install_release_on_host(True, host_info, self.host_post_info)
             # always add aliyun yum repo
             self.generate_aliyun_yum_repo()
