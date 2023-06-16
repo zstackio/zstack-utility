@@ -147,10 +147,9 @@ if host_info.distro in RPM_BASED_OS:
                 ns10_update_list, zstack_repo)
                 run_remote_command(command, host_post_info)
 
-            if releasever not in ['c72', 'c74']:
-                command = ("pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
-                           "--disablerepo=* --enablerepo=%s install -y $pkg || true; done;") % (svr_pkgs, zstack_repo)
-                run_remote_command(command, host_post_info)
+            command = ("pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
+                        "--disablerepo=* --enablerepo=%s install -y $pkg || true; done;") % (svr_pkgs, zstack_repo)
+            run_remote_command(command, host_post_info)
 
 elif host_info.distro in DEB_BASED_OS:
     if client == "true" and host_info.major_version < 16:
