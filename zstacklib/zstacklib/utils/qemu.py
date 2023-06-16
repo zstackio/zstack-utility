@@ -25,7 +25,13 @@ def get_path():
 
 
 def get_version():
-    return shell.call("virsh version | awk '/hypervisor.*QEMU/{print $4}'").strip()
+    version = shell.call("virsh version | awk '/hypervisor.*QEMU/{print $4}'", False).strip()
+
+    # failed to get qemu version, fallback to get its version from path
+    if version == "":
+        return get_version_from_exe_file2(get_path())
+
+    return version
 
 
 def get_running_version(vm_uuid):
@@ -49,6 +55,8 @@ def get_running_version(vm_uuid):
     logger.debug("cannot get vm[uuid:%s] version from qmp: %s" % (vm_uuid, e))
     return _parse_version(shell.call("%s --version" % get_path()))
 
+# QEMU emulator version 2.12.0 (qemu-kvm-ev-2.12.0-44.1.el7_9.1)
+# return qemu-kvm-ev-2.12.0-44.1.el7_9.1
 def get_version_from_exe_file(path, error_out=False):
     r, o, e = bash.bash_roe("%s --version" % path)
     if r == 0:
@@ -61,6 +69,22 @@ def get_version_from_exe_file(path, error_out=False):
 
     return ""
 
+# QEMU emulator version 2.12.0 (qemu-kvm-ev-2.12.0-44.1.el7_9.1)
+# return 2.12.0
+def get_version_from_exe_file2(path, error_out=False):
+    r, o, e = bash.bash_roe("%s --version" % path)
+    if r == 0:
+        return _parse_version2(o.strip())
+
+    if error_out:
+        raise Exception("cannot get version from %s: %s" % (path, e))
+    else:
+        logger.debug("cannot get version from %s: %s" % (path, e))
+
+    return ""
+
+# QEMU emulator version 2.12.0 (qemu-kvm-ev-2.12.0-44.1.el7_9.1)
+# return qemu-kvm-ev-2.12.0-44.1.el7_9.1
 def _parse_version(version_output):
     lines = version_output.splitlines()
     ver_line = lines[0].strip()
@@ -76,4 +100,9 @@ def _parse_version(version_output):
         full_ver = ver_line
 
     return "-".join(filter(lambda s: s[0].isdigit(), full_ver.split("-")))
+
+# QEMU emulator version 2.12.0 (qemu-kvm-ev-2.12.0-44.1.el7_9.1)
+# return 2.12.0
+def _parse_version2(version_output):
+    return version_output.splitlines()[0].strip().split(" ")[3]
 
