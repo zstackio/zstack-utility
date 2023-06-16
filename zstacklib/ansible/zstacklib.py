@@ -27,7 +27,7 @@ yum_server = ""
 apt_server = ""
 trusted_host = ""
 ansible.constants.HOST_KEY_CHECKING = False
-enable_networkmanager_list = ["ns10", "euler20", "uos1021a"]
+enable_networkmanager_list = ["ns10", "euler20", "uos1021a", "oe2203sp1"]
 supported_arch_list = ["x86_64", "aarch64", "mips64el", "loongarch64"]
 
 RPM_BASED_OS = ["kylin_zstack", "kylin_tercel", "kylin_sword", "alibaba", "centos", "openeuler", "uniontech_kongzi", "redhat"]
@@ -40,6 +40,7 @@ qemu_alias = {
     "c74": "qemu-kvm",
     "c76": "qemu-kvm",
     "euler20": "qemu",
+    "oe2203sp1": "qemu",
     "uos1021a": "qemu-kvm"
 }
 
