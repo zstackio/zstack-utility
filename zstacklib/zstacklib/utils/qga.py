@@ -302,6 +302,40 @@ class VmQga(object):
 
         return exit_code, ret_data.replace('\r\n', '')
 
+    def guest_exec_wmic(self, cmd, output=True, wait=qga_exec_wait_interval, retry=qga_exec_wait_retry):
+        cmd_parts = cmd.split('|')
+        cmd = "{}".format(" ".join([part for part in cmd_parts]))
+
+        ret = self.guest_exec(
+            {"path": "wmic", "arg": cmd.split(" "), "capture-output": output})
+        if ret and "pid" in ret:
+            pid = ret["pid"]
+        else:
+            raise Exception('qga exec cmd {} failed for vm {}'.format(cmd, self.vm_uuid))
+
+        if not output:
+            logger.debug("run qga wmic: {} failed, no output".format(cmd))
+            return 0, None
+
+        ret = None
+        for i in range(retry):
+            time.sleep(wait)
+            ret = self.guest_exec_status(pid)
+            if ret['exited']:
+                break
+
+        if not ret or not ret.get('exited'):
+            raise Exception('qga exec cmd {} timeout for vm {}'.format(cmd, self.vm_uuid))
+
+        exit_code = ret.get('exitcode')
+        ret_data = None
+        if 'out-data' in ret:
+            ret_data = decode_with_fallback(ret['out-data'])
+        elif 'err-data' in ret:
+            ret_data = decode_with_fallback(ret['err-data'])
+
+        return exit_code, ret_data
+
     def guest_exec_powershell(self, cmd, output=True, wait=qga_exec_wait_interval, retry=qga_exec_wait_retry):
         cmd_parts = cmd.split('|')
         cmd = "& '{}'".format("' '".join([part for part in cmd_parts]))
