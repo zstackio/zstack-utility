@@ -983,12 +983,10 @@ def get_runnning_vm_root_volume_on_ps(maxAttempts, strategy, mountPath, isFlushb
 
 
 def kill_vm(maxAttempts, strategy, mountPaths=None, isFileSystem=None):
-    zstack_uuid_pattern = "'[0-9a-f]{8}[0-9a-f]{4}[1-5][0-9a-f]{3}[89ab][0-9a-f]{3}[0-9a-f]{12}'"
-
     virsh_list = shell.call("virsh list --all")
     logger.debug("virsh_list:\n" + virsh_list)
-
-    vm_in_process_uuid_list = shell.call("virsh list | egrep -o " + zstack_uuid_pattern + " | sort | uniq")
+    
+    vm_in_process_uuid_list = shell.call("ps -ef | grep -P -o '(qemu-kvm|qemu-system).*?-name\s+(guest=)?\K.*?,' | sed 's/.$//'")
     logger.debug('vm_in_process_uuid_list:\n' + vm_in_process_uuid_list)
 
     # kill vm's qemu process
