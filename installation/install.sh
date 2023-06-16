@@ -988,11 +988,11 @@ do_config_ansible(){
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     mkdir -p /etc/ansible
     mkdir -p /var/log/ansible
-    [ -f /etc/ansible/ansible.cfg ] && return 0
 cat > /etc/ansible/ansible.cfg << EOF
 [defaults]
 executable = /bin/bash
 log_path = /var/log/ansible/ansible.log
+host_key_checking = False
 EOF
 }
 
