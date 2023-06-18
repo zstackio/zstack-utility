@@ -28,6 +28,7 @@ import libvirt
 import xml.dom.minidom as minidom
 #from typing import List, Any, Union
 from distutils.version import LooseVersion
+from collections import Counter
 
 import zstacklib.utils.ip as ip
 import zstacklib.utils.ebtables as ebtables
@@ -3531,7 +3532,8 @@ class Vm(object):
 
         # is_migrate_without_bitmaps = self._is_vm_migrate_without_dirty_bitmap()
         # migrate bitmap is not safe for now
-        check_mirror_jobs(cmd.vmUuid, migrate_without_bitmaps=True)
+        is_migrate_without_bitmaps = self._is_vm_migrate_without_dirty_bitmap()
+        check_mirror_jobs(cmd.vmUuid, is_migrate_without_bitmaps)
 
         with MigrateDaemon(self.domain):
             logger.debug('migrating vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
@@ -3553,6 +3555,36 @@ class Vm(object):
             logger.debug(linux.get_exception_stacktrace())
 
         logger.debug('successfully migrated vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
+
+    def _is_vm_migrate_without_dirty_bitmap(self):
+        libvirt_version = linux.get_libvirt_version()
+        if LooseVersion(libvirt_version) < LooseVersion('6.0.0') or LooseVersion(libvirt_version) >= LooseVersion('8.0.0'):
+            return False
+
+        # node-name : libvirt-10-format
+        pattern = r'libvirt\-[0-9]+\-format'
+        r, o, e = execute_qmp_command(self.uuid, '{ "execute": "query-named-block-nodes" }')
+        if r != 0:
+            logger.warn("query-named-block-nodes failed of vm[uuid: %s]" % self.uuid)
+            return True
+
+        vm_pid = linux.find_process_by_cmdline([kvmagent.get_qemu_path(), self.uuid])
+        if not vm_pid:
+            logger.warn("can not find pid of vm[uuid: %s]" % self.uuid)
+            return True
+
+        qemu_command = linux.get_command_by_pid(vm_pid)
+        if not qemu_command:
+            logger.warn("can not find process of vm pid[pid: %s]" % vm_pid)
+            return True
+
+        #Deduplicate and verify that both contain the same elements
+        qmp_node_names = list(set(re.findall(pattern, o)))
+        qemu_command_node_names = list(set(re.findall(pattern, qemu_command)))
+        if dict(Counter(qmp_node_names)) == dict(Counter(qemu_command_node_names)):
+            return False
+
+        return True
 
     def _interface_cmd_to_xml(self, cmd, action=None):
         vhostSrcPath = cmd.addons['vhostSrcPath'] if cmd.addons else None
