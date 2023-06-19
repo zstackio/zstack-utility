@@ -5,7 +5,6 @@ import random
 import tempfile
 import time
 import traceback
-import numpy
 
 from kvmagent import kvmagent
 from kvmagent.plugins.imagestore import ImageStoreClient
@@ -16,6 +15,7 @@ from zstacklib.utils import shell
 from zstacklib.utils import linux
 from zstacklib.utils import lock
 from zstacklib.utils import lvm
+from zstacklib.utils import list_ops
 from zstacklib.utils import bash
 from zstacklib.utils import qemu_img
 from zstacklib.utils import traceable_shell
@@ -1601,12 +1601,12 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         # up to three worker threads executing vgck
         threads_maxnum = 3
-        vg_groups = numpy.array_split(cmd.vgUuids, threads_maxnum)
+        vg_groups = list_ops.list_split(cmd.vgUuids, threads_maxnum)
 
         threads = []
         for vg_group in vg_groups:
             if len(vg_group) != 0:
-                threads.append(thread.ThreadFacade.run_in_thread(vgck, (vg_group.tolist(),)))
+                threads.append(thread.ThreadFacade.run_in_thread(vgck, (vg_group,)))
 
         for t in threads:
             t.join()
