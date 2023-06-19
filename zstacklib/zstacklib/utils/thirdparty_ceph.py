@@ -194,6 +194,152 @@ class RbdDeviceOperator(object):
                      % (self.monIp, created_iqn))
         return created_iqn
 
+    def get_all_access_path(self):
+        return self.access_paths_api.list_access_paths().access_paths
+
+    def get_targets_by_access_path_id(self, access_path_id):
+        return self.targets_api.list_targets(access_path_id=access_path_id).targets
+
+    def get_volume_by_id(self, block_volume_id):
+        return self.block_volumes_api.get_block_volume(block_volume_id).block_volume
+
+    def get_volume_by_name(self, block_volume_name):
+        block_volume = self.block_volumes_api.list_block_volumes(q=block_volume_name).block_volumes[0]
+        if not block_volume:
+            raise Exception("Block volume %s cannot be find by list api" % block_volume_name)
+        return block_volume
+
+    def update_volume_info(self, block_volume_id, new_volume_name, new_volume_description):
+        block_volume = self.get_volume_by_id(block_volume_id)
+        if not block_volume:
+            raise "block volume %s cannot be find" % block_volume_id
+        block_volume_old_name = block_volume.name
+
+        api_body = {"block_volume": {"name": new_volume_name if new_volume_name else block_volume_old_name,
+                                     "description": new_volume_description if new_volume_description else ""}}
+        block_volume_id = self.block_volumes_api.update_block_volume(block_volume_id, api_body).block_volume.id
+        self._retry_until(self.is_block_volume_status_active, block_volume_id)
+        logger.debug("Successfully update volume info %s " % block_volume_id)
+        return block_volume_id
+
+    def set_volume_qos(self, block_volume_id, max_total_bw, max_total_iops, burst_total_bw, burst_total_iops):
+        block_volume = self.get_volume_by_id(block_volume_id)
+        if not block_volume:
+            raise "block volume %s cannot be find" % block_volume_id
+        api_body = {"block_volume": {"qos": [{"max_total_bw": max_total_bw,
+                                              "burst_total_iops": burst_total_iops,
+                                              "burst_total_bw": burst_total_bw,
+                                              "max_total_iops": max_total_iops}]}}
+        block_volume_id = self.block_volumes_api.update_block_volume(block_volume_id, api_body).block_volume.id
+        self._retry_until(self.is_block_volume_status_active, block_volume_id)
+        logger.debug("Successfully update volume qos %s " % block_volume_id)
+        return block_volume_id
+
+    def resize_block_volume(self, block_volume_id, size):
+        block_volume = self.get_volume_by_id(block_volume_id)
+        if not block_volume:
+            raise "block volume %s cannot be find" % block_volume_id
+        api_body = {"block_volume": {"size": size}}
+        block_volume = self.block_volumes_api.update_block_volume(block_volume_id, api_body).block_volume
+        self._retry_until(self.is_block_volume_status_active, block_volume_id)
+        logger.debug("Successfully resize volume ids %s " % block_volume_id)
+        return block_volume.size
+
+    def is_block_volume_status_active(self, block_volume_id):
+        return self.block_volumes_api.get_block_volume(block_volume_id).block_volume.status == "active"
+
+    def attach_volume_to_mapping_group(self, mapping_group_id, block_volume_id):
+        api_body = {"block_volume_ids": [block_volume_id]}
+        exist_mapping_group_id = self.mapping_groups_api.add_volumes(api_body, mapping_group_id).mapping_group.id
+        self._retry_until(self.is_created_mapping_group_status_active, exist_mapping_group_id)
+        logger.debug("Successfully attach volume ids %s to mapping_group[id:%s]" % (block_volume_id, mapping_group_id))
+        return exist_mapping_group_id
+
+    def remove_volumes_from_mapping_group(self, mapping_group_id, block_volume_id):
+        api_body = {"block_volume_ids": [block_volume_id]}
+        exist_mapping_group_id = self.mapping_groups_api.remove_volumes(api_body, mapping_group_id).mapping_group.id
+        self._retry_until(self.is_created_mapping_group_status_active, exist_mapping_group_id)
+        logger.debug("Successfully remove volume ids %s from mapping_group[id:%s]" % (block_volume_id, mapping_group_id))
+        return exist_mapping_group_id
+
+    def is_created_mapping_group_status_active(self, mapping_group_id):
+        return self.mapping_groups_api.get_mapping_group(mapping_group_id).mapping_group.status == "active"
+
+    def create_mapping_group(self, client_group_id, access_path_id, volume_name):
+        block_volume = self.block_volumes_api.list_block_volumes(q=volume_name).block_volumes[0]
+        if not block_volume:
+            raise Exception("Block volume %s cannot be find by list api" % volume_name)
+        block_volume_id = block_volume.id
+
+        api_body = {"mapping_group": {"access_path_id": access_path_id,
+                                      "block_volume_ids": [block_volume_id],
+                                      "client_group_id": client_group_id}}
+        created_mapping_group_id = self.mapping_groups_api.create_mapping_group(api_body).mapping_group.id
+        self._retry_until(self.is_created_mapping_group_status_active, created_mapping_group_id)
+        logger.debug("Successfully create mapping group from access path[id : %s] and block volume[name : %s]" % (
+            access_path_id, block_volume.name))
+        return created_mapping_group_id
+
+    def check_client_ip_exist_client_group(self, client_ip):
+        client_groups = self.client_group_api.list_client_groups().client_groups
+        for client_group in client_groups:
+            if any(client_ip == client.code for client in client_group.clients):
+                return client_group.id
+        return None
+
+    def is_client_group_status_active(self, client_group_id):
+        return self.client_group_api.get_client_group(client_group_id).client_group.status == "active"
+
+    def create_client_group(self, client_ip):
+        """
+        prepare client group, access path, target for volumes
+        """
+        client_name = "client_group-" + client_ip
+        client_groups = self.client_group_api.list_client_groups().client_groups
+
+        for client_group in client_groups:
+            if client_group.name == client_name and any(client_ip == client.code for client in client_group.clients):
+                return client_group.id
+
+        api_body = {"client_group": {"name": "client_group-" + client_ip,
+                                     "clients": [{"code": client_ip}],
+                                     "type": "iSCSI"}}
+        created_client_group_id = self.client_group_api.create_client_group(api_body).client_group.id
+        self._retry_until(self.is_client_group_status_active, created_client_group_id)
+        logger.debug("Successfully create client group[name : client_group-%s ]" % client_ip)
+        return created_client_group_id
+
+    def is_created_target_active(self, host_id, access_path_id):
+        return self.targets_api.list_targets(host_id=host_id, access_path_id=access_path_id).targets[
+                   0].status == "active"
+
+    def create_target(self, host_id, created_access_path_id):
+        api_body = {"target": {"access_path_id": created_access_path_id,
+                               "host_id": host_id}}
+        created_target = self.targets_api.create_target(api_body).target
+        self._retry_until(self.is_created_target_active, host_id, created_access_path_id)
+        logger.debug("Successfully create target from host[id : %s] and access path[id : %s]" % (
+            host_id, created_access_path_id))
+        return created_target
+
+    def is_access_path_status_active(self, created_access_path_id):
+        return self.access_paths_api.get_access_path(
+            created_access_path_id).access_path.status == "active"
+
+    def create_access_path(self, access_name):
+        check_name = "name.raw:access_path-" + access_name
+        access_paths = self.access_paths_api.list_access_paths(q=check_name).access_paths
+        if len(access_paths) != 0 and access_paths[0].status == 'active':
+            return access_paths[0].id
+
+        api_body = {"access_path": {"name": "access_path-" + access_name,
+                                    "type": "iSCSI"}}
+        created_access_path_id = self.access_paths_api.create_access_path(api_body).access_path.id
+        self._retry_until(self.is_access_path_status_active, created_access_path_id)
+        logger.debug("Successfully create access path [access_path-%s]" % access_name)
+
+        return created_access_path_id
+
     def connect(self, instance_obj, volume_obj):
         """
         NOTE:
@@ -532,7 +678,9 @@ class RbdDeviceOperator(object):
         block_volume_name = block_volume[0].volume_name
         return block_volume_name
 
-    def create_empty_volume(self, pool_uuid, image_uuid, size):
+    def create_empty_volume(self, pool_uuid, image_uuid, size, description, max_total_bw, burst_total_iops,
+                            burst_total_bw,
+                            max_total_iops):
         global TIME_OUT
         TIME_OUT = self.timeout
 
@@ -540,13 +688,26 @@ class RbdDeviceOperator(object):
         if not pool:
             raise Exception("Pool[name : %s] cannot be find " % pool_uuid)
         pool_id = pool.id
-
-        api_body = {
-            "block_volume": {"crc_check": False,
-                             "pool_id": pool_id,
-                             "name": image_uuid,
-                             "flattened": False,
-                             "size": size}}
+        if max_total_bw and burst_total_iops and burst_total_bw and max_total_iops:
+            api_body = {
+                "block_volume": {"crc_check": False,
+                                 "pool_id": pool_id,
+                                 "name": image_uuid,
+                                 "flattened": False,
+                                 "qos": [{"max_total_bw": max_total_bw,
+                                          "burst_total_iops": burst_total_iops,
+                                          "burst_total_bw": burst_total_bw,
+                                          "max_total_iops": max_total_iops}],
+                                 "description": description if description else "",
+                                 "size": size}}
+        else:
+            api_body = {
+                "block_volume": {"crc_check": False,
+                                 "pool_id": pool_id,
+                                 "name": image_uuid,
+                                 "flattened": False,
+                                 "description": description if description else "",
+                                 "size": size}}
         created_block_volume = self.block_volumes_api.create_block_volume(api_body).block_volume
         created_block_volume_id = created_block_volume.id
         created_block_volume_name = created_block_volume.volume_name
