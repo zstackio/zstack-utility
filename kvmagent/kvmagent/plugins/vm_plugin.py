@@ -6202,12 +6202,6 @@ class VmPlugin(kvmagent.KvmAgent):
 
             self._start_vm(cmd)
             logger.debug('successfully started vm[uuid:%s, name:%s]' % (cmd.vmInstanceUuid, cmd.vmName))
-            try:
-                vm_pid = linux.find_vm_pid_by_uuid(cmd.vmInstanceUuid)
-                linux.enable_process_coredump(vm_pid)
-                linux.set_vm_priority(vm_pid, cmd.priorityConfigStruct)
-            except Exception as e:
-                logger.warn("enable coredump for VM: %s: %s" % (cmd.vmInstanceUuid, str(e)))
         except kvmagent.KvmError as e:
             e_str = linux.get_exception_stacktrace()
             logger.warn(e_str)
@@ -6222,6 +6216,22 @@ class VmPlugin(kvmagent.KvmAgent):
             if err != "":
                 rsp.error = "%s, details: %s" % (err, rsp.error)
             rsp.success = False
+
+        if rsp.success:
+            vm_pid = None
+            try:
+                vm_pid = linux.find_vm_pid_by_uuid(cmd.vmInstanceUuid)
+                if vm_pid:
+                    linux.enable_process_coredump(vm_pid)
+                    linux.set_vm_priority(vm_pid, cmd.priorityConfigStruct)
+                else:
+                    # libvirt report start vm succeed but vm's process not exists
+                    # we treat create vm failure
+                    rsp.success = False
+                    rsp.error = 'failed to start vm[uuid:%s, name:%s],'\
+                        ' libvirt report success but qemu process can not be found' % (cmd.vmInstanceUuid, cmd.vmName)
+            except Exception as e:
+                logger.warn("enable coredump for VM: %s: %s" % (cmd.vmInstanceUuid, str(e)))
 
         if rsp.success == True:
             rsp.nicInfos, rsp.virtualDeviceInfoList, rsp.memBalloonInfo = self.get_vm_device_info(cmd.vmInstanceUuid)
