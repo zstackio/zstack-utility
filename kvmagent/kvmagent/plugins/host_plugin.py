@@ -1952,13 +1952,14 @@ done
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    @in_bash
     def check_interface_vlan(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CheckInterfaceVlanRsp()
         rsp.success = False
 
         vlan_dev_name = '%s.%s' % (cmd.interfaceName, cmd.vlanId)
-        output = subprocess.check_output(['ip', 'link', 'show', 'type', 'vlan'], universal_newlines=True)
+        output = shell.call('ip link show type vlan')
         for line in output.split('\n'):
             if vlan_dev_name in line:
                 rsp.success = True
@@ -1966,6 +1967,7 @@ done
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    @in_bash
     def get_interface_vlan(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetInterfaceVlanRsp()
@@ -1974,14 +1976,8 @@ done
 
         vlan_ids = None
         for interface_name in cmd.interfaceNames:
-            output = subprocess.check_output(['ip', 'link', 'show', 'type', 'vlan', 'dev', interface_name],
-                                             universal_newlines=True)
-            interface_vlan_ids = set()
-
-            for line in output.split('\n'):
-                if line.startswith('vlan'):
-                    vlan_id = line.split('vlan')[1].strip()
-                    interface_vlan_ids.add(vlan_id)
+            output = shell.call("ip link show type vlan | grep eth0 | awk -F'[.@]' '{print $2}'" % interface_name)
+            interface_vlan_ids = set(output.strip().split('\n'))
 
             if vlan_ids is None:
                 vlan_ids = interface_vlan_ids
@@ -1993,17 +1989,18 @@ done
 
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
     def get_interface_name(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetInterfaceNameRsp()
         rsp.success = False
 
-        interfaces = socket.if_nameindex()
+        interfaces = iproute.get_interfaces()
         for interface in interfaces:
-            interface_name = interface[1]
-            addresses = socket.getaddrinfo(interface_name, None)
+            interface_name = interface.name
+            addresses = iproute.get_interface_addresses(interface_name)
             for addr in addresses:
-                if addr[4][0] == cmd.ipAddress:
+                if addr.ip == cmd.ipAddress:
                     rsp.success = True
                     rsp.interfaceName = interface_name
                     return jsonobject.dumps(rsp)
