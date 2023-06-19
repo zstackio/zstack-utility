@@ -1626,6 +1626,7 @@ class VmVolumesRecoveryTask(plugin.TaskDaemon):
         diskxml = etree.tostring(disk_ele)
 
         logger.info("[%d/%d] will recover %s with: %s" % (self.idx+1, self.total, target_dev, diskxml))
+        # see ZSTAC-54725: after BlockCopy completed, need double check xml results
         self.domain.blockCopy(target_dev, diskxml, params, flags)
         msg = self.wait_and_pivot(target_dev)
         if msg is not None:
@@ -6552,6 +6553,24 @@ class VmPlugin(kvmagent.KvmAgent):
             logger.info("reconstructing recovery task for VM: " + cmd.vmUuid)
             return True, VmVolumesRecoveryTask(cmd, rvols)
 
+        def check_device_in_xml(install_path):
+            if install_path is None:
+                return False
+            vm = get_vm_by_uuid(cmd.vmUuid)
+            disk, disk_name = vm._get_target_disk_by_path(install_path, is_exception=False)
+            return disk_name is not None or disk is not None
+
+        # fix ZSTAC-54725: after recovery completed, need double check xml results
+        def check_volume_recover_results():
+            for volume in cmd.volumes:
+                xml_path = volume.installPath.split('?', 1)[0]
+                u = urlparse.urlparse(xml_path)
+                if u.scheme:
+                    xml_path = xml_path.replace(u.scheme + '://', '')
+                if not linux.wait_callback_success(check_device_in_xml, xml_path, interval=2, timeout=10):
+                    raise kvmagent.KvmError("libvirt return recovery vm successfully, but it is failure actually! "
+                                            "because unable to find volume[installPath:%s] on vm[uuid:%s]" % (
+                                                xml_path, cmd.vmUuid))
 
         logger.info("recovering VM: " + cmd.vmUuid)
         rvols = VM_RECOVER_DICT.pop(cmd.vmUuid, None)
@@ -6562,6 +6581,7 @@ class VmPlugin(kvmagent.KvmAgent):
                 with t:
                     VM_RECOVER_TASKS[cmd.vmUuid] = t
                     t.recover_vm_volumes()
+                    check_volume_recover_results()
 
                 logger.info("recovery completed. VM: " + cmd.vmUuid)
             finally:
