@@ -120,14 +120,14 @@ class ImageStoreClient(object):
             if err:
                 raise Exception('fail to mirror volume %s, because %s' % (vm, str(err)))
 
-    def query_vm_mirror_latencies_boundary(self, vm):
+    def query_vm_mirror_latencies_boundary(self, vm, times):
         with linux.ShowLibvirtErrorOnException(vm):
             infosMaps = []
             maxLatencies = []
             maxInfoMap = {}
             minInfoMap = {}
             PFILE = linux.create_temp_file()
-            cmdstr = '%s querylat -domain %s -count 8 > %s' % (self.ZSTORE_CLI_PATH, vm, PFILE)
+            cmdstr = '%s querylat -domain %s -count %d > %s' % (self.ZSTORE_CLI_PATH, vm, times, PFILE)
             if shell.run(cmdstr) != 0 or os.path.getsize(PFILE) == 0:
                 logger.debug("Failed to query latency for vm: [%s]", vm)
                 return maxInfoMap, minInfoMap
