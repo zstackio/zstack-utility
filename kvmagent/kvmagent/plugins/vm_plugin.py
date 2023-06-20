@@ -4196,6 +4196,7 @@ class Vm(object):
                 e(os, 'type', 'hvm', attrib={'arch': 'loongarch64', 'machine': 'loongson7a'})
                 e(os, 'loader', '/usr/share/qemu-kvm/loongarch_bios.bin', attrib={'readonly': 'yes', 'type': 'rom'})
 
+            VmPlugin.clean_vm_firmware_flash(cmd.vmInstanceUuid)
             eval("on_{}".format(host_arch))()
 
             if cmd.useBootMenu:
@@ -5567,6 +5568,7 @@ class VmPlugin(kvmagent.KvmAgent):
     SYNC_VM_CLOCK_PATH = "/vm/clock/sync"
     SET_SYNC_VM_CLOCK_TASK_PATH = "/vm/clock/sync/task"
     KVM_SYNC_VM_DEVICEINFO_PATH = "/sync/vm/deviceinfo"
+    CLEAN_FIRMWARE_FLASH = "/clean/firmware/flash"
 
     VM_CONSOLE_LOGROTATE_PATH = "/etc/logrotate.d/vm-console-log"
 
@@ -8101,6 +8103,22 @@ host side snapshot files chian:
 
         return jsonobject.dumps(rsp)
 
+    @staticmethod
+    def clean_vm_firmware_flash(vm_uuid):
+        fpath = "/var/lib/libvirt/qemu/nvram/{}.fd".format(vm_uuid)
+        linux.rm_file_checked(fpath)
+
+    @kvmagent.replyerror
+    def clean_firmware_flash(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+
+        vm_uuid = cmd.vmUuid
+        if not get_vm_by_uuid_no_retry(vm_uuid, False):
+            self.clean_vm_firmware_flash(vm_uuid)
+
+        return jsonobject.dumps(rsp)
+
     @kvmagent.replyerror
     @in_bash
     def rollback_quorum_config(self, req):
@@ -8813,6 +8831,7 @@ host side snapshot files chian:
         http_server.register_async_uri(self.SYNC_VM_CLOCK_PATH, self.sync_vm_clock_now)
         http_server.register_async_uri(self.SET_SYNC_VM_CLOCK_TASK_PATH, self.set_sync_vm_clock_task)
         http_server.register_async_uri(self.KVM_SYNC_VM_DEVICEINFO_PATH, self.sync_vm_deviceinfo)
+        http_server.register_async_uri(self.CLEAN_FIRMWARE_FLASH, self.clean_firmware_flash)
 
         self.clean_old_sshfs_mount_points()
         self.register_libvirt_event()
