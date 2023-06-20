@@ -123,7 +123,7 @@ def collect_host_capacity_statistics():
     metrics['zstack_used_capacity_in_bytes'].add_metric([], float(zstack_used_capacity))
 
     r1, dfInfo = bash_ro("df | awk '{print $3,$6}' | tail -n +2")
-    r2, lbkInfo = bash_ro("lsblk -db -oname,size | tail -n +2")
+    r2, lbkInfo = bash_ro("lsblk -e 43 -db -oname,size | tail -n +2")
     if r1 != 0 or r2 != 0:
         collect_node_disk_capacity_last_result = metrics.values()
         return collect_node_disk_capacity_last_result
