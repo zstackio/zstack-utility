@@ -25,9 +25,9 @@ pyroute2==0.5.14
 repoze.lru==0.6
 Routes==2.1
 simplejson==3.7.3
-six==1.9.0
+six==1.10.0
 termcolor==1.1.0
-urllib3==1.10.4
+urllib3==1.15.1
 virtualenv==12.1.1
 websockify==0.9.0
 Werkzeug==0.10.4
@@ -47,4 +47,4 @@ psutil==5.0.1
 xxhash==2.0.2
 mock==3.0.5
 futures==3.4.0
-
+setuptools==21.0.0
