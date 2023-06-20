@@ -679,9 +679,9 @@ class RbdDeviceOperator(object):
         block_volume_name = block_volume[0].volume_name
         return block_volume_name
 
-    def create_empty_volume(self, pool_uuid, image_uuid, size, description, max_total_bw, burst_total_iops,
-                            burst_total_bw,
-                            max_total_iops):
+    def create_empty_volume(self, pool_uuid, image_uuid, size, description=None, max_total_bw=None, burst_total_iops=None,
+                            burst_total_bw=None,
+                            max_total_iops=None):
         global TIME_OUT
         TIME_OUT = self.timeout
 
@@ -710,11 +710,9 @@ class RbdDeviceOperator(object):
                                  "description": description if description else "",
                                  "size": size}}
         created_block_volume = self.block_volumes_api.create_block_volume(api_body).block_volume
-        created_block_volume_id = created_block_volume.id
-        created_block_volume_name = created_block_volume.volume_name
-        self._retry_until(self.is_block_volume_status_active, created_block_volume_id)
+        self._retry_until(self.is_block_volume_status_active, created_block_volume.id)
         logger.debug("Successfully create block volume[name : %s] from snapshot, volume: %s" % (image_uuid, jsonobject.dumps(created_block_volume)))
-        return created_block_volume_name
+        return created_block_volume
 
     def copy_volume(self, srcPath, dstPath):
         """

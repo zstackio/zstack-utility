@@ -25,14 +25,17 @@ class ThirdpartyCephDriver(cephdriver.CephDriver):
             rsp.installPath = RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).search_volume_name(image_uuid)
             return rsp
 
-        volume_name = RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).create_empty_volume(pool_uuid, image_uuid,
-                                                                                                 cmd.size,
-                                                                                                 cmd.description,
-                                                                                                 cmd.burstTotalBw,
-                                                                                                 cmd.burstTotalIops,
-                                                                                                 cmd.maxTotalBw,
-                                                                                                 cmd.maxTotalIops)
-        rsp.installPath = volume_name
+        created_block_volume = RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).create_empty_volume(pool_uuid,
+                                                                                                          image_uuid,
+                                                                                                          cmd.size,
+                                                                                                          cmd.description,
+                                                                                                          cmd.burstTotalBw,
+                                                                                                          cmd.burstTotalIops,
+                                                                                                          cmd.maxTotalBw,
+                                                                                                          cmd.maxTotalIops)
+        rsp.installPath = created_block_volume.volume_name
+        rsp.xskyStatus = created_block_volume.status
+        rsp.xskyBlockVolumeId = created_block_volume.id
         return rsp
 
     @linux.retry(times=30, sleep_time=5)
@@ -59,24 +62,43 @@ class ThirdpartyCephDriver(cephdriver.CephDriver):
     def validate_token(self, cmd):
         RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).validate_token()
 
-    def set_block_volume_qos(cmd, block_volume_id, burstTotalBw, burstTotalIops, maxTotalBw, maxTotalIops):
+    def set_block_volume_qos(self, cmd, block_volume_id, burstTotalBw, burstTotalIops, maxTotalBw, maxTotalIops):
         RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).set_volume_qos(block_volume_id, burstTotalBw,
                                                                               burstTotalIops, maxTotalBw, maxTotalIops)
 
-    def resize_block_volume(cmd, block_volume_id, size):
+    def resize_block_volume(self, cmd, block_volume_id, size):
         RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).resize_block_volume(block_volume_id, size)
 
-    def update_block_volume_info(cmd, block_volume_id, name, description):
+    def update_block_volume_info(self, cmd, block_volume_id, name, description):
         RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).update_volume_info(block_volume_id, name, description)
 
-    def get_block_volume_by_id(cmd, block_volume_id):
+    def get_block_volume_by_id(self, cmd, block_volume_id):
         return RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).get_volume_by_id(block_volume_id)
 
-    def get_block_volume_by_name(cmd, block_volume_name):
+    def get_block_volume_by_name(self, cmd, block_volume_name):
         return RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).get_volume_by_name(block_volume_name)
 
-    def get_targets_by_access_path_id(cmd, access_path_id):
+    def get_targets_by_access_path_id(self, cmd, access_path_id):
         return RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).get_targets_by_access_path_id(access_path_id)
 
-    def get_all_access_path(cmd):
+    def get_all_access_path(self, cmd):
         return RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).get_all_access_path()
+
+    def check_client_ip_exist_client_group(self, cmd, client_ip):
+        return RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).check_client_ip_exist_client_group(client_ip)
+
+    def create_client_group(self, cmd, client_ip):
+        return RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).create_client_group(client_ip)
+
+    def get_mapping_groups(self, cmd, access_path_id, client_group_id):
+        return RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).get_mapping_groups(access_path_id,
+                                                                                         client_group_id)
+
+    def create_mapping_group(self, cmd, access_path_id, client_group_id, volume_name):
+        return RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).create_mapping_group(access_path_id,
+                                                                                           client_group_id,
+                                                                                           volume_name)
+
+    def attach_volume_to_mapping_group(self, cmd, mapping_group_id, block_volume_id):
+        return RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).attach_volume_to_mapping_group(mapping_group_id,
+                                                                                                     block_volume_id)
