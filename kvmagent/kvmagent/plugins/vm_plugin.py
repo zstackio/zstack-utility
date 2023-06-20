@@ -7059,17 +7059,6 @@ host side snapshot files chian:
             touchQmpSocketWhenExists(cmd.vmUuid)
         return jsonobject.dumps(rsp)
 
-    def push_backing_files(self, isc, hostname, drivertype, source_file, concurrency=None):
-        if drivertype != 'qcow2':
-            return None
-
-        bf = linux.qcow2_get_backing_file(source_file)
-        if bf:
-            imf = isc.upload_image(hostname, bf, concurrency)
-            return imf
-
-        return None
-
     def do_cancel_backup_jobs(self, cmd):
         isc = ImageStoreClient()
         isc.stop_backup_jobs(cmd.vmUuid)
@@ -7079,11 +7068,8 @@ host side snapshot files chian:
         isc = ImageStoreClient()
         backupArgs = {}
         final_backup_args = []
-        parents = {}
-        speed = 0
-
-        if cmd.volumeWriteBandwidth:
-            speed = cmd.volumeWriteBandwidth
+        speed = cmd.volumeWriteBandwidth if cmd.volumeWriteBandwidth else 0
+        backing_files = {}
 
         device_ids = [volume.deviceId for volume in cmd.volumes]
         for deviceId in device_ids:
@@ -7093,20 +7079,18 @@ host side snapshot files chian:
             source_file = self.get_source_file_by_disk(target_disk)
             bitmap = bitmaps[deviceId]
 
+            bf = linux.qcow2_get_backing_file(source_file) if drivertype == 'qcow2' else None
+            if bf:
+                backing_files[deviceId] = bf
+
             def get_backup_args():
                 if bitmap:
                     return bitmap, 'full' if cmd.mode == 'full' else 'auto', nodename, speed
 
                 bm = 'zsbitmap%d' % deviceId
-                if cmd.mode == 'full':
+                if cmd.mode == 'full' or not bf:
                     return bm, 'full', nodename, speed
 
-                imf = self.push_backing_files(isc, cmd.hostname, drivertype, source_file, cmd.uploadConcurrency)
-                if not imf:
-                    return bm, 'full', nodename, speed
-
-                parent = isc._build_install_path(imf.name, imf.id)
-                parents[deviceId] = parent
                 return bm, 'top', nodename, speed
 
             args = get_backup_args()
@@ -7124,25 +7108,17 @@ host side snapshot files chian:
             nodename = backupArgs[deviceId][2]
             nodebak = backres[nodename]
 
-            installPath = None
+            parent = None
             if nodebak.mode == 'incremental':
-                installPath = self.getLastBackup(deviceId, cmd.backupInfos)
-            else:
-                installPath = parents.get(deviceId)
+                parent = self.getLastBackup(deviceId, cmd.backupInfos)
+            elif (nodebak.mode == 'top' or backupArgs[deviceId][1] == 'top') and deviceId in backing_files:
+                imf = isc.upload_image(cmd.hostname, backing_files[deviceId], cmd.uploadConcurrency)
+                parent = isc._build_install_path(imf.name, imf.id)
 
             info = VolumeBackupInfo(deviceId,
                     backupArgs[deviceId][0],
                     nodebak.backupFile,
-                    installPath)
-
-            if nodebak.mode == 'top' and info.parentInstallPath is None:
-                target_disk = target_disks[deviceId]
-                drivertype = target_disk.driver.type_
-                source_file = self.get_source_file_by_disk(target_disk)
-                imf = self.push_backing_files(isc, cmd.hostname, drivertype, source_file, cmd.uploadConcurrency)
-                if imf:
-                    parent = isc._build_install_path(imf.name, imf.id)
-                    info.parentInstallPath = parent
+                    parent)
 
             bkinfos.append(info)
 
@@ -7151,47 +7127,35 @@ host side snapshot files chian:
     # returns tuple: (bitmap, parent)
     def do_take_volume_backup(self, cmd, drivertype, nodename, source_file, dest):
         isc = ImageStoreClient()
-        bitmap = None
         parent = None
-        mode = None
-        topoverlay = None
+        bf = None
         speed = 0
 
         if drivertype == 'qcow2':
-            topoverlay = source_file
+            bf = linux.qcow2_get_backing_file(source_file)
 
         def get_parent_bitmap_mode():
             if cmd.bitmap:
-                return None, cmd.bitmap, 'full' if cmd.mode == 'full' else 'auto'
+                return cmd.bitmap, 'full' if cmd.mode == 'full' else 'auto'
 
             bitmap = 'zsbitmap%d' % (cmd.volume.deviceId)
-            if drivertype != 'qcow2':
-                return None, bitmap, 'full'
+            if cmd.mode == 'full' or not bf:
+                return bitmap, 'full'
 
-            if cmd.mode == 'full':
-                return None, bitmap, 'full'
+            return bitmap, 'top'
 
-            bf = linux.qcow2_get_backing_file(topoverlay)
-            if not bf:
-                return None, bitmap, 'full'
-
-            imf = isc.upload_image(cmd.hostname, bf, cmd.uploadConcurrency)
-            parent = isc._build_install_path(imf.name, imf.id)
-            return parent, bitmap, 'top'
-
-        parent, bitmap, mode = get_parent_bitmap_mode()
+        bitmap, mode = get_parent_bitmap_mode()
 
         if cmd.volumeWriteBandwidth:
             speed = cmd.volumeWriteBandwidth
 
-        mode = isc.backup_volume(cmd.vmUuid, nodename, bitmap, mode, dest, cmd.pointInTime, speed, Report.from_spec(cmd, "VolumeBackup"), get_task_stage(cmd))
+        actual_mode = isc.backup_volume(cmd.vmUuid, nodename, bitmap, mode, dest, cmd.pointInTime, speed, Report.from_spec(cmd, "VolumeBackup"), get_task_stage(cmd))
         logger.info('{api: %s} finished backup volume with mode: %s' % (cmd.threadContext["api"], mode))
 
-        if mode == 'incremental':
+        if actual_mode == 'incremental':
             return bitmap, cmd.lastBackup
 
-        if mode == 'top' and parent is None and topoverlay != None:
-            bf = linux.qcow2_get_backing_file(topoverlay)
+        if (actual_mode == 'top' or mode == 'top') and bf:
             imf = isc.upload_image(cmd.hostname, bf, cmd.uploadConcurrency)
             parent = isc._build_install_path(imf.name, imf.id)
 
