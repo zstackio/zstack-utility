@@ -211,12 +211,12 @@ class GetInterfaceVlanRsp(kvmagent.AgentResponse):
 class GetInterfaceNameCmd(kvmagent.AgentCommand):
     def __init__(self):
         super(GetInterfaceNameCmd, self).__init__()
-        self.ipAddress = None
+        self.ipAddresses = []
 
 class GetInterfaceNameRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(GetInterfaceNameRsp, self).__init__()
-        self.interfaceName = None
+        self.interfaceNames = []
 
 class SetServiceTypeOnHostNetworkInterfaceCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -2007,19 +2007,20 @@ done
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetInterfaceNameRsp()
         rsp.success = False
+        rsp.interfaceNames = []
 
+        interface_names = []
         interfaces = iproute.get_interfaces()
         for interface in interfaces:
             interface_name = interface.name
             addresses = iproute.get_interface_addresses(interface_name)
             for addr in addresses:
-                if addr.ip == cmd.ipAddress:
-                    rsp.success = True
-                    rsp.interfaceName = interface_name
-                    return jsonobject.dumps(rsp)
+                if addr.ip in cmd.ipAddresses:
+                    interface_names.append(interface_name)
 
+        rsp.success = True
+        rsp.interfaceNames = interface_names
         return jsonobject.dumps(rsp)
-
 
     @kvmagent.replyerror
     def set_service_type_on_host_network_interface(self, req):
