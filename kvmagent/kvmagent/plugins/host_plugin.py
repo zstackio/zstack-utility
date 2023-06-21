@@ -201,7 +201,7 @@ class HostPhysicalMemoryStruct(object):
 
 class GetHostPhysicalMemoryFactsResponse(kvmagent.AgentResponse):
     physicalMemoryFacts = None  # type: list[HostPhysicalMemoryStruct]
-    
+
     def __init__(self):
         super(GetHostPhysicalMemoryFactsResponse, self).__init__()
         self.physicalMemoryFacts = []
@@ -378,6 +378,11 @@ class HostNetworkInterfaceInventory(object):
         self.pciDeviceAddress = None
         self.offloadStatus = None
         self.callBackIp = None
+        self.interfaceModel = None
+        self.vendorId = None
+        self.deviceId = None
+        self.subvendorId = None
+        self.subdeviceId = None
 
         bonds = ovs.getAllBondFromFile()
 
@@ -439,6 +444,7 @@ class HostNetworkInterfaceInventory(object):
 
         self.driverType = get_nic_driver_type(self.interfaceName)
         self.offloadStatus = ovs.getOffloadStatus(self.interfaceName)
+        self._init_interfacemodel()
 
     @in_bash
     def _init_from_ovs(self):
@@ -462,6 +468,42 @@ class HostNetworkInterfaceInventory(object):
         # self.slaveActive = ovs.getOvsCtl(with_dpdk=True).checkDpdkSlaveStatus(self.interfaceName)
         self.pciDeviceAddress = os.readlink("/sys/class/net/%s/device" % self.interfaceName).strip().split('/')[-1]
         self.offloadStatus = ovs.getOffloadStatus(self.interfaceName)
+        self._init_interfacemodel()
+
+    @in_bash
+    def _init_interfacemodel(self):
+        # todo: read file
+        r, o, e = bash_roe("lspci -Dmmnnv -s %s" % self.pciDeviceAddress)
+        if r == 0:
+            vendor_name = ""
+            device_name = ""
+            subvendor_name = ""
+            for line in o.split('\n'):
+                if len(line.split(':')) < 2: continue
+                title = line.split(':')[0].strip()
+                content = line.split(':')[1].strip()
+                if title == 'Vendor':
+                    vendor_name = self._simplify_device_name('['.join(content.split('[')[:-1]).strip())
+                    self.vendorId = content.split('[')[-1].strip(']')
+                elif title == "Device":
+                    device_name = self._simplify_device_name('['.join(content.split('[')[:-1]).strip())
+                    self.deviceId = content.split('[')[-1].strip(']')
+                elif title == "SVendor":
+                    subvendor_name = self._simplify_device_name('['.join(content.split('[')[:-1]).strip())
+                    self.subvendorId = content.split('[')[-1].strip(']')
+                elif title == "SDevice":
+                    self.subdeviceId = content.split('[')[-1].strip(']')
+            self.interfaceModel = "%s_%s" % (subvendor_name if subvendor_name else vendor_name, device_name)
+
+    def _simplify_device_name(self, name):
+        if 'Intel Corporation' in name:
+            return 'Intel'
+        elif 'Advanced Micro Devices' in name:
+            return 'AMD'
+        elif 'NVIDIA Corporation' in name:
+            return 'NVIDIA'
+        else:
+            return name.replace('Co., Ltd ', '')
 
     def _to_dict(self):
         to_dict = self.__dict__
@@ -582,11 +624,11 @@ class UngenerateSeVfioMdevDevicesRsp(kvmagent.AgentResponse):
 class DeleteVfioMdevDeviceCommand(kvmagent.AgentCommand):
     def __init__(self):
         super(DeleteVfioMdevDeviceCommand, self).__init__()
-        self.MdevDeviceUuid = None      
+        self.MdevDeviceUuid = None
 
 class DeleteVfioMdevDeviceRsp(kvmagent.AgentCommand):
     def __init__(self):
-        super(DeleteVfioMdevDeviceRsp, self).__init__()          
+        super(DeleteVfioMdevDeviceRsp, self).__init__()
 
 class UpdateSpiceChannelConfigResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -913,12 +955,12 @@ class HostPlugin(kvmagent.KvmAgent):
 
         if self.host_socket is not None:
             self.host_socket.close()
-        
+
         try:
             self.host_socket = socket.socket()
         except socket.error as e:
             self.host_socket = None
-            
+
         ip_address = cmd.sendCommandUrl.split('/')[2].split(':')[0]
         try:
             self.host_socket.connect((ip_address, cmd.tcpServerPort))
@@ -961,7 +1003,7 @@ class HostPlugin(kvmagent.KvmAgent):
         if os.path.exists(HOST_TAKEOVER_FLAG_PATH):
             linux.touch_file(HOST_TAKEOVER_FLAG_PATH)
         return jsonobject.dumps(rsp)
-    
+
     @kvmagent.replyerror
     def check_file_on_host(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -989,7 +1031,7 @@ class HostPlugin(kvmagent.KvmAgent):
             time.sleep(3)
             loop += 1
         return ''
-    
+
     def _cache_units_convert(self, str):
         if str is None or str == '':
             return 0
@@ -1924,7 +1966,7 @@ done
             except Exception as e:
                 rsp.error = 'unable to delete ip on %s, because %s' % (cmd.interfaceName, str(e))
                 rsp.success = False
-            
+
         return jsonobject.dumps(rsp)
 
     @staticmethod
@@ -2553,11 +2595,11 @@ done
         r, o, e = bash_roe("ls /dev/wst-se")
         if r != 0:
             return
-        
+
         check_virtfn_folder = '/sys/devices/virtual/mtty/mtty/mdev_supported_types'
         virt_function_dir_exits = os.path.isdir(check_virtfn_folder)
         if not virt_function_dir_exits:
-            return 
+            return
 
         # parse mtty output
         to = MttyDeviceTO()
@@ -2579,7 +2621,7 @@ done
             to.virtStatus = "VFIO_MDEV_VIRTUALIZABLE"
         rsp.mttyDeviceInfo = to
         return
-                
+
     @kvmagent.replyerror
     def get_mtty_info(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -2588,7 +2630,7 @@ done
         # get mtty device info
         self._collect_format_mtty_device_info(rsp)
         return jsonobject.dumps(rsp)
-        
+
     @kvmagent.replyerror
     def generate_se_vfio_mdev_devices(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -2600,7 +2642,7 @@ done
         if cmd.reSplite and os.path.exists(ramdisk):
             logger.debug("no need to re-splite mtty device[uuid:%s] into mdev devices" % mtty_uuid)
             return jsonobject.dumps(rsp)
-        
+
         virt_path = "/sys/devices/virtual/mtty/mtty/mdev_supported_types/mtty-2/"
         virt_path_exits = os.path.exists(virt_path)
         if not virt_path_exits:
@@ -2614,7 +2656,7 @@ done
                 if not cmd.reSplite:
                     rsp.mdevUuids.append(str(uuid.UUID(_uuid)))
                 logger.debug('generate mdev device[uuid:%s] from mtty device[uuid:%s]'% (str(_uuid), mtty_uuid))
-      
+
         # create ramdisk file after mtty device virtualization
         open(ramdisk, 'a').close()
         return jsonobject.dumps(rsp)
@@ -2636,9 +2678,9 @@ done
         for _uuid in os.listdir(virt_function):
             with open(os.path.join("/sys/bus/mdev/devices/", _uuid, "remove"), "w") as f:
                 f.write("1")
-        
+
         return jsonobject.dumps(rsp)
-    
+
     @kvmagent.replyerror
     @in_bash
     def delete_vfio_mdev_device(self, req):
@@ -2652,10 +2694,10 @@ done
             rsp.success = False
             rsp.error = "no vfio mdev devices to ungenerate from mtty device[uuid:%s]" % _uuid
             return jsonobject.dumps(rsp)
-        
+
         with open(os.path.join("/sys/bus/mdev/devices/", _uuid, "remove"), "w") as f:
                 f.write("1")
-        
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
