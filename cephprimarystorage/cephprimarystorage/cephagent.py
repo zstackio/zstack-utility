@@ -189,8 +189,9 @@ class ResizeVolumeRsp(AgentResponse):
 
 class AccessPathInfo():
     def __init__(self):
-        self.id = None
+        self.accessPathId = None
         self.name = None
+        self.accessPathIqn = None
         self.targetCount = 0
 
 class GetAccessPathRsp(AgentResponse):
@@ -1450,12 +1451,15 @@ class CephAgent(plugin.TaskManager):
         access_paths = driver.get_all_access_path(cmd)
         for access_path in access_paths:
             access_path_info = AccessPathInfo()
-            access_path_info.id = access_path.id
+            access_path_info.accessPathId = access_path.id
             access_path_info.name = access_path.name
+            access_path_info.accessPathIqn = access_path.iqn
             rsp.infos.append(access_path_info)
 
         for accessInfo in rsp.infos:
             accessInfo.targetCount = len(driver.get_targets_by_access_path_id(cmd,accessInfo.id))
+
+        rsp.infos = sorted(rsp.infos, key=lambda info: info.targetCount)
 
         return jsonobject.dumps(rsp)
 
@@ -1516,9 +1520,9 @@ class CephAgent(plugin.TaskManager):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         pool_name, volume_name = self._parse_install_path(cmd.installPath)
         driver = self.get_third_party_driver(cmd)
-        client_group_id = driver.check_client_ip_exist_client_group(cmd.baremetalInstanceIP)
+        client_group_id = driver.check_client_ip_exist_client_group(cmd, cmd.baremetalInstanceIP)
         if client_group_id:
-            client_group_id = driver.create_client_group(cmd.baremetalInstanceIP)
+            client_group_id = driver.create_client_group(cmd, cmd.baremetalInstanceIP)
 
         block_volume = driver.get_block_volume_by_name(volume_name)
         block_volume_access_path = block_volume.access_path
@@ -1528,11 +1532,11 @@ class CephAgent(plugin.TaskManager):
                 volume_name, block_volume_access_path.name)
             return jsonobject.dumps(rsp)
 
-        mapping_groups = driver.get_mapping_groups(cmd.accessPathId, client_group_id)
+        mapping_groups = driver.get_mapping_groups(cmd, cmd.accessPathId, client_group_id)
         if len(mapping_groups) == 0:
-            driver.create_mapping_group(cmd.accessPathId, client_group_id, volume_name)
+            driver.create_mapping_group(cmd, cmd.accessPathId, client_group_id, volume_name)
         else:
-            driver.attach_volume_to_mapping_group(mapping_groups[0].id, block_volume.id)
+            driver.attach_volume_to_mapping_group(cmd, mapping_groups[0].id, block_volume.id)
 
         return jsonobject.dumps(rsp)
 

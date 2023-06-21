@@ -2,13 +2,13 @@
 from zstacklib.utils.thirdparty_ceph import RbdDeviceOperator
 
 # 创建 RbdDeviceOperator 类实例
-operator = RbdDeviceOperator('172.25.12.194', 'bf6b3616f1cb422ca4fabb8d6485f956', timeout=30)
+operator = RbdDeviceOperator('172.25.13.208', 'bf6b3616f1cb422ca4fabb8d6485f956', timeout=10)
 
 # 调用 create_volume 方法创建卷
 pool_uuid = 'pool-301a905df3a445e99a85d6fce2a1ee2f'
-image_uuid = 'imageName11'
+image_uuid = 'imageName'
 size = 1024  # 单位为 MiB
-bm_ip = "172.19.40.137"
+bm_ip = "172.25.12.97"
 
 gateway_host = operator.hosts_api.list_hosts(q=operator.monIp).hosts[0]
 if not gateway_host:
@@ -29,7 +29,7 @@ block_volume_id = block_volume.id
 print("block_volume_id is", block_volume_id)
 
 # 客户创建访问路径
-created_access_path_id = operator.create_access_path("access")
+created_access_path_id = operator.create_access_path(bm_ip)
 print("created_access_path_id is :", created_access_path_id)
 
 # 客户挂载网关节点
@@ -41,15 +41,17 @@ print("created_target_iqn is :", created_target.iqn)
 
 # 创建客户端组，并绑定客户端IP（裸金属实例Ip）
 client_group_id = operator.check_client_ip_exist_client_group(bm_ip)
+print("client_group_id is :", client_group_id)
 if not client_group_id:
     client_group_id = operator.create_client_group(bm_ip)
     print("created_client_group_id is :", client_group_id)
 
 # 判断对应的访问路径和客户端组的映射是否存在，不存在映射则创建映射，反之则把盘加到对应映射里面。
-mapping_groups = operator.mapping_groups_api.list_mapping_groups(access_path_id=4,
-                                                                 client_group_id=4).mapping_groups
+mapping_groups = operator.mapping_groups_api.list_mapping_groups(access_path_id=created_access_path_id,
+                                                                 client_group_id=client_group_id).mapping_groups
 if len(mapping_groups) == 0:
     operator.create_mapping_group(client_group_id, created_access_path_id, create_volume_name)
+    print("create_mapping_group successful")
     exit(0)
 
 print("successful create volume !!!!!!!!")
