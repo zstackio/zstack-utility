@@ -56,6 +56,20 @@ class CreateHeartbeatCmd(AgentCmd):
         self.target = None
 
 
+class MountImageCacheLunCmd(AgentCmd):
+    def __init__(self):
+        super(MountImageCacheLunCmd, self).__init__()
+        self.lunInstallPath = None
+        self.mountPath = None
+
+
+class ConvertImageToLunCmd(AgentCmd):
+    def __init__(self):
+        super(ConvertImageToLunCmd, self).__init__()
+        self.imagePath = None
+        self.lunInstallPath = None
+
+
 class DeleteHeartbeatCmd(AgentCmd):
     def __init__(self):
         super(DeleteHeartbeatCmd, self).__init__()
@@ -127,6 +141,9 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
     RESIZE_VOLUME_PATH = "/block/primarystorage/volume/resize"
     RESCAN_LUN_PATH = "/block/primarystorage/lun/rescan"
     NO_FAILURE_PING_PATH = "/block/primarystorage/ping"
+    MOUNT_TEMP_IMAGE_CACHE_LUN = "/block/primarystorage/imagecache/lun/mount"
+    CONVERT_IMAGE_CACHE_TO_LUN = "/block/primarystorage/imagecache/convert"
+    UMOUNT_PATH = "/block/primarystorage/unmount"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -141,6 +158,9 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
         http_server.register_async_uri(self.RESCAN_LUN_PATH, self.rescan_disk)
         http_server.register_async_uri(self.NO_FAILURE_PING_PATH, self.no_failure_ping)
+        http_server.register_async_uri(self.MOUNT_TEMP_IMAGE_CACHE_LUN, self.mount_temp_image_cache_lun, cmd=MountImageCacheLunCmd())
+        http_server.register_async_uri(self.CONVERT_IMAGE_CACHE_TO_LUN, self.convert_image_cache_to_lun, cmd=ConvertImageToLunCmd)
+        http_server.register_async_uri(self.UMOUNT_PATH, self.umount_path)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -149,6 +169,58 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         disk_path = translate_absolute_path_from_install_paht(install_path)
         device_letter = bash.bash_o("ls -al %s | awk -F '/' '{print $NF}'" % disk_path).strip();
         linux.write_file("/sys/block/%s/device/rescan" % device_letter, "1")
+
+    @kvmagent.replyerror
+    def convert_image_cache_to_lun(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        image_path = cmd.imagePath
+        lun_install_path = translate_absolute_path_from_install_paht(cmd.lunInstallPath)
+        r, o, e = bash.bash_roe("qemu-img convert -f qcow2 -O qcow2 %s %s" % (image_path, lun_install_path))
+
+        tmp_dir_path = os.path.dirname(image_path)
+        if tmp_dir_path.find("/tmp/.imagecache/tmp") != -1:
+            linux.rm_dir_force(tmp_dir_path)
+
+        rsp = AgentRsp()
+        rsp.success = True
+        if r != 0:
+            rsp.success = False
+            rsp.error = "fail to convert image %s to %s" % (image_path, lun_install_path)
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def umount_path(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        umounted = linux.umount(cmd.path)
+        rsp = AgentRsp()
+        rsp.success
+        if umounted is not True:
+            rsp.success = False
+            rsp.error = "fail to umount path: " + cmd.path
+        return jsonobject.dumps(rsp)
+
+
+    @kvmagent.replyerror
+    @bash.in_bash
+    def mount_temp_image_cache_lun(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        lun_install_path = translate_absolute_path_from_install_paht(cmd.lunInstallPath)
+        mount_path = cmd.mountPath
+        rsp = AgentRsp()
+        r, o, e = bash.bash_roe("file -Ls %s | grep -i ext4" % lun_install_path)
+        if r != 0:
+            shell.call("sleep 1; mkfs.ext4 -F %s" % lun_install_path)
+
+        linux.mount(lun_install_path, mount_path)
+        is_mount = linux.is_mounted(mount_path)
+        rsp.success = True
+        if is_mount is not True:
+            rsp.success = False
+            rsp.error = "fail to mount %s to %s" % (lun_install_path, mount_path)
+
+        return jsonobject.dumps(rsp)
+
 
     @kvmagent.replyerror
     def rescan_disk(self, req):
