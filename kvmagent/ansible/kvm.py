@@ -695,6 +695,15 @@ def modprobe_modules():
     modprobe_arg.name = 'dm_multipath'
     modprobe_arg.state = 'present'
     modprobe(modprobe_arg, host_post_info)
+    
+def do_systemd_config():
+    systemd_config_file = '/etc/systemd/system.conf'
+    command = "sed -i 's/\#\?DefaultTimeoutStartSec.*/DefaultTimeoutStartSec=10s/g' {0}; " \
+              "sed -i 's/\#\?DefaultTimeoutStopSec.*/DefaultTimeoutStopSec=10s/g' {0}; " \
+              "systemctl daemon-reload".format(systemd_config_file)
+    host_post_info.post_label = "ansible.shell.configure.systemd"
+    host_post_info.post_label_param = None
+    run_remote_command(command, host_post_info)
 
 def start_kvmagent():
     if chroot_env != 'false':
@@ -737,7 +746,7 @@ install_virtualenv()
 set_legacy_iptables_ebtables()
 install_agent_pkg()
 do_auditd_config()
-modprobe_modules()
+do_systemd_config()
 start_kvmagent()
 
 host_post_info.start_time = start_time

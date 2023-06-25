@@ -371,9 +371,9 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
     def create_vg_if_not_found(self, vgUuid, disks, hostUuid, allDisks, forceWipe=False):
         # type: (str, set([CheckDisk]), str, set([CheckDisk]), bool) -> bool
-        @linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
+        @linux.retry(times=3, sleep_time=random.uniform(0.1, 2))
         def find_vg(vgUuid, raise_exception = True):
-            cmd = shell.ShellCmd("timeout 5 vgscan --ignorelockingfailure; vgs --nolocking %s -otags | grep %s" % (vgUuid, INIT_TAG))
+            cmd = shell.ShellCmd("timeout 3 vgscan --ignorelockingfailure; vgs --nolocking %s -otags | grep %s" % (vgUuid, INIT_TAG))
             cmd(is_exception=False)
             if cmd.return_code != 0 and raise_exception:
                 raise RetryException("can not find vg %s with tag %s" % (vgUuid, INIT_TAG))
