@@ -18,6 +18,12 @@ OVS_DPDK_NET_GENERATE_DPDKVHOSTUSERCLIENT = '/network/ovsdpdk/addvhostuserclient
 OVS_DPDK_NET_DELETE_DPDKVHOSTUSERCLIENT = '/network/ovsdpdk/deletevhostuserclient'
 # TODO: Vxlan support
 
+OVS_DPDK_NET_RESOURCE_CONFIGURE = '/network/ovsdpdk/resource/configure'
+OVS_DPDK_NET_SMARTNICS_INIT = '/hostvirtualnetworkinterface/generate'
+OVS_DPDK_NET_SMARTNICS_RESTORE='/hostvirtualnetworkinterface/ungenerate'
+OVS_DPDK_NET_SYNC='/network/ovsdpdk/sync'
+
+
 logger = log.get_logger(__name__)
 
 
@@ -106,6 +112,49 @@ class DeleteDpdkVhostUserClientResponse(kvmagent.AgentResponse):
         super(DeleteDpdkVhostUserClientResponse, self).__init__()
 
 
+class SmartnicsInitCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(SmartnicsInitCmd, self).__init__()
+        self.physicalInterfaceName = None
+        self.socketMem = None
+        self.virtPartNum = None
+        self.reserveSize = None
+        self.pageSize = None
+
+class SmartnicsInitResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(SmartnicsInitResponse, self).__init__()
+        self.vfsInfo = None
+
+class SmartnicsRestoreCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(SmartnicsRestoreCmd, self).__init__()
+        self.physicalInterfaceName = None
+
+class SmartnicsRestoreResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(SmartnicsRestoreResponse, self).__init__()
+
+class ResourceConfigureCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(ResourceConfigureCmd, self).__init__()
+        self.reserveSize = None
+        self.pageSize = None
+        self.socketMem = None
+
+class ResourceConfigureResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(ResourceConfigureResponse, self).__init__()
+
+class DpdkovsSyncCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(DpdkovsSyncCmd, self).__init__()
+        self.ovsBridgeInfo = None
+
+class DpdkovsSyncResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(DpdkovsSyncResponse, self).__init__()
+
 class OvsDpdkNetworkPlugin(kvmagent.KvmAgent):
     '''
     High performance Network Plugin.
@@ -117,7 +166,30 @@ class OvsDpdkNetworkPlugin(kvmagent.KvmAgent):
         rsp = CreateBridgeResponse()
 
         ovsctl = ovs.getOvsCtl(with_dpdk=True)
-        ovsctl.prepareBridge(cmd.physicalInterfaceName, cmd.bridgeName)
+
+        if not ovsctl.ovs.isOvsProcRunning("ovs-vswitchd"):
+            logger.debug(http.path_msg(OVS_DPDK_NET_CREATE_BRIDGE,
+                                   'create bridge:{} failed, becauseof ovs-vswitchd not running.'.format(cmd.bridgeName)))
+            rsp.error = "create bridge failed"
+            rsp.success = False
+            return jsonobject.dumps(rsp)
+
+
+        if not ovsctl.ovs.isOvsProcRunning("ovsdb-server"):
+            logger.debug(http.path_msg(OVS_DPDK_NET_CREATE_BRIDGE,
+                                   'create bridge:{} failed, becauseof ovsdb-server not running.'.format(cmd.bridgeName)))
+            rsp.error = "create bridge failed"
+            rsp.success = False
+            return jsonobject.dumps(rsp)
+
+        res = ovsctl.prepareBridge(cmd.physicalInterfaceName, cmd.bridgeName)
+        if res == -1:
+            logger.debug(http.path_msg(OVS_DPDK_NET_CREATE_BRIDGE,
+                                   'create bridge:{} failed'.format(cmd.bridgeName)))
+            
+            rsp.error = "create bridge failed"
+            rsp.success = False
+            return jsonobject.dumps(rsp)
 
         logger.debug(http.path_msg(OVS_DPDK_NET_CREATE_BRIDGE,
                                    'create bridge:{} success.'.format(cmd.bridgeName)))
@@ -129,11 +201,34 @@ class OvsDpdkNetworkPlugin(kvmagent.KvmAgent):
         rsp = CheckBridgeResponse()
 
         ovsctl = ovs.getOvsCtl(with_dpdk=True)
-        ovsctl.reconfigOvs()
+        if not ovsctl.ovs.isOvsProcRunning("ovs-vswitchd"):
+            logger.debug(http.path_msg(OVS_DPDK_NET_CHECK_BRIDGE,
+                                   'check bridge:{} failed, becauseof ovs-vswitchd not running.'.format(cmd.bridgeName)))
+            rsp.error = "check bridge failed"
+            rsp.success = False
+            return jsonobject.dumps(rsp)
+
+        if not ovsctl.ovs.isOvsProcRunning("ovsdb-server"):
+            logger.debug(http.path_msg(OVS_DPDK_NET_CHECK_BRIDGE,
+                                   'check bridge:{} failed, becauseof ovsdb-server not running.'.format(cmd.bridgeName)))
+            rsp.error = "check bridge failed"
+            rsp.success = False
+            return jsonobject.dumps(rsp)
+
         if cmd.bridgeName not in ovsctl.listBrs():
-            raise OvsError("can not find bridge:{}".format(cmd.bridgeName))
+            logger.debug(http.path_msg(OVS_DPDK_NET_CHECK_BRIDGE,
+                                   'check bridge:{} failed, becauseof bridge not exist'.format(cmd.bridgeName)))
+
+            rsp.error = "check bridge failed"
+            rsp.success = False
+            return jsonobject.dumps(rsp)
         if cmd.physicalInterfaceName not in ovsctl.listPorts(cmd.bridgeName):
-            raise OvsError('cannot find interface:{}'.format(cmd.physicalInterfaceName))
+            logger.debug(http.path_msg(OVS_DPDK_NET_CHECK_BRIDGE,
+                                   'check bridge failed, becauseof pf nic:{} not exist'.format(cmd.physicalInterfaceName)))
+
+            rsp.error = "check bridge failed"
+            rsp.success = False
+            return jsonobject.dumps(rsp)
 
         logger.debug(http.path_msg(OVS_DPDK_NET_CHECK_BRIDGE,
                                    'check bridges:{} success.'.format(cmd.bridgeName)))
@@ -145,9 +240,39 @@ class OvsDpdkNetworkPlugin(kvmagent.KvmAgent):
         rsp = CreateBridgeResponse()
 
         ovsctl = ovs.getOvsCtl(with_dpdk=True)
+        if not ovsctl.ovs.isOvsProcRunning("ovs-vswitchd"):
+            logger.debug(http.path_msg(OVS_DPDK_NET_DELETE_BRIDGE,
+                                   'delete bridge:{} failed, becauseof ovs-vswitchd not running.'.format(cmd.bridgeName)))
+            rsp.error = "delete bridge failed"
+            rsp.success = False
+            return jsonobject.dumps(rsp)
+
+
+        if not ovsctl.ovs.isOvsProcRunning("ovsdb-server"):
+            logger.debug(http.path_msg(OVS_DPDK_NET_DELETE_BRIDGE,
+                                   'delete bridge:{} failed, becauseof ovsdb-server not running.'.format(cmd.bridgeName)))
+            rsp.error = "delete bridge failed"
+            rsp.success = False
+            return jsonobject.dumps(rsp)
+
         if cmd.bridgeName not in ovsctl.listBrs():
-            raise OvsError("no such bridge named:{}.".format(cmd.bridgeName))
-        ovsctl.deleteBr(cmd.bridgeName)
+            logger.debug(http.path_msg(OVS_DPDK_NET_DELETE_BRIDGE,
+                                   'bridge:{} already delete, no need to do again'.format(cmd.bridgeName)))
+            return jsonobject.dumps(rsp)
+
+        try:
+            if ovsctl.prepareDeleteBr(cmd.bridgeName) != 0:
+                rsp.error = "delete bridge failed"
+                rsp.success = False
+                return jsonobject.dumps(rsp)
+
+        except:
+            logger.debug(http.path_msg(OVS_DPDK_NET_DELETE_BRIDGE,
+                                   'delete bridge:{} failed'.format(cmd.bridgeName)))
+            rsp.error = "delete bridge failed"
+            rsp.success = False
+            return jsonobject.dumps(rsp)
+                   
 
         logger.debug(http.path_msg(OVS_DPDK_NET_DELETE_BRIDGE,
                                    'delete bridge:{} success'.format(cmd.bridgeName)))
@@ -162,7 +287,9 @@ class OvsDpdkNetworkPlugin(kvmagent.KvmAgent):
         rsp.vdpaPaths = []
         for nic in cmd.nics:
             if nic.type == 'vDPA':
-                rsp.vdpaPaths.extend(ovsctl.createNicBackend(cmd.vmUuid, nic))
+                res = ovsctl.createNicBackend(cmd.vmUuid, nic)
+                if res is not None:
+                    rsp.vdpaPaths.extend(res)
 
         logger.debug(http.path_msg(OVS_DPDK_NET_GENERATE_VDPA,
                                    'generate vdpa for vm:{} success'.format(cmd.vmUuid)))
@@ -212,14 +339,99 @@ class OvsDpdkNetworkPlugin(kvmagent.KvmAgent):
                                    'delete dpdkvhostuserclient of vm:{} success'.format(cmd.vmUuid)))
         return jsonobject.dumps(rsp)
 
+
+    @kvmagent.replyerror
+    def smartnics_restore(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = SmartnicsRestoreResponse()
+
+        ovsctl = ovs.getOvsCtl(with_dpdk=True)
+        res = ovsctl.smartNicRestore(cmd.physicalInterfaceName)
+        if res == -1:
+            rsp.error = "smartnics recover failed"
+            rsp.success = False
+
+            logger.debug(http.path_msg(OVS_DPDK_NET_SMARTNICS_RESTORE,
+                                       'smartnics recover:{} failed.'.format(cmd.physicalInterfaceName)))
+            return jsonobject.dumps(rsp)
+   
+        logger.debug(http.path_msg(OVS_DPDK_NET_SMARTNICS_RESTORE,
+                                   'smartnics recover:{} success.'.format(cmd.physicalInterfaceName)))
+        return jsonobject.dumps(rsp)
+
+
+    @kvmagent.replyerror
+    def smartnics_init(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = SmartnicsInitResponse()
+        rsp.vfsInfo = []
+ 
+        ovsctl = ovs.getOvsCtl(with_dpdk=True)
+        res = ovsctl.smartNicInit(cmd.physicalInterfaceName, cmd.reserveSize, cmd.pageSize, cmd.socketMem, cmd.virtPartNum)
+        if res == -1:
+            rsp.error = "smartnics init failed"
+            rsp.success = False
+
+            logger.debug(http.path_msg(OVS_DPDK_NET_SMARTNICS_INIT,
+                                       'smartnics init:{} failed.'.format(cmd.physicalInterfaceName)))
+            return jsonobject.dumps(rsp)
+   
+        rsp.vfsInfo.extend(res)
+        logger.debug(http.path_msg(OVS_DPDK_NET_SMARTNICS_INIT,
+                                   'smartnics init:{} success.'.format(cmd.physicalInterfaceName)))
+        return jsonobject.dumps(rsp)
+    
+    @kvmagent.replyerror
+    def resource_configure(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = ResourceConfigureResponse()
+
+        ovsctl = ovs.getOvsCtl(with_dpdk=True)
+        res = ovsctl.resourceConfigure(cmd.reserveSize, cmd.pageSize, cmd.socketMem)
+        if res == -1:
+            rsp.error = "hugepage config failed"
+            rsp.success = False
+
+            logger.debug(http.path_msg(OVS_DPDK_NET_RESOURCE_CONFIGURE,
+                                       'resource configure hugepage number:{} failed.'.format(cmd.reserveSize)))
+            return jsonobject.dumps(rsp)
+
+        logger.debug(http.path_msg(OVS_DPDK_NET_RESOURCE_CONFIGURE,
+                                   'resource configure hugepage number:{} success.'.format(cmd.reserveSize)))
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def dpdkovs_sync(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = DpdkovsSyncResponse()
+
+        ovsctl = ovs.getOvsCtl(with_dpdk=True)
+        res = ovsctl.dpdkOvsSync(cmd.ovsBridgeInfo)
+        if res == -1:
+            rsp.error = "sync bridge and port info failed"
+            rsp.success = False
+
+            logger.debug(http.path_msg(OVS_DPDK_NET_SYNC,
+                                       'sync bridge info:{} failed.'.format(jsonobject.dumps(cmd))))
+            return jsonobject.dumps(rsp)
+
+        logger.debug(http.path_msg(OVS_DPDK_NET_SYNC,
+                                   'sync bridge info:{} success.'.format(jsonobject.dumps(cmd))))
+        return jsonobject.dumps(rsp)
+
+
     def start(self):
 
-        try:
-            ovs.getOvsCtl(with_dpdk=True).reconfigOvs()
-        except Exception as err:
-            logger.warn("Reconfig ovs failed. {}".format(err))
-
         http_server = kvmagent.get_http_server()
+
+        http_server.register_async_uri(
+            OVS_DPDK_NET_RESOURCE_CONFIGURE, self.resource_configure)
+        http_server.register_async_uri(
+            OVS_DPDK_NET_SMARTNICS_INIT, self.smartnics_init)
+        http_server.register_async_uri(
+            OVS_DPDK_NET_SMARTNICS_RESTORE, self.smartnics_restore)
+        http_server.register_async_uri(
+            OVS_DPDK_NET_SYNC, self.dpdkovs_sync)
 
         http_server.register_async_uri(
             OVS_DPDK_NET_CHECK_BRIDGE, self.check_ovs_bridge)
@@ -236,5 +448,21 @@ class OvsDpdkNetworkPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(
             OVS_DPDK_NET_DELETE_DPDKVHOSTUSERCLIENT, self.delete_dpdkvhostuserclient)
 
+        #Bond can't config through UI, check bond status not run in current version
+        #check_bond_status()
+        check_ovs_status()
+
     def stop(self):
-        pass
+        http.AsyncUirHandler.STOP_WORLD = True
+
+
+def check_bond_status():
+    ovsctl = ovs.getOvsCtl(with_dpdk=True)
+    ovsctl.checkBondStatusWapper()
+
+def check_ovs_status():
+    ovsctl = ovs.getOvsCtl(with_dpdk=True)
+    ovsctl.checkOvsStatusWapper()
+
+
+
