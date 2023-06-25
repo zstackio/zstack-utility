@@ -1976,7 +1976,7 @@ done
 
         vlan_ids = None
         for interface_name in cmd.interfaceNames:
-            output = shell.call("ip link show type vlan | grep eth0 | awk -F'[.@]' '{print $2}'" % interface_name)
+            output = shell.call("ip link show type vlan | grep %s | awk -F'[.@]' '{print $2}'" % interface_name)
             interface_vlan_ids = set(output.strip().split('\n'))
 
             if vlan_ids is None:
@@ -1997,16 +1997,19 @@ done
         rsp.interfaceNames = []
 
         interface_names = []
-        interfaces = iproute.get_interfaces()
+        interfaces = iproute.query_links()
         for interface in interfaces:
-            interface_name = interface.name
-            addresses = iproute.get_interface_addresses(interface_name)
-            for addr in addresses:
-                if addr.ip in cmd.ipAddresses:
+            interface_name = interface.ifname
+            addresses = iproute.query_addresses_by_ifname(ifname=interface_name)
+            ip_addresses = [addr.address for addr in addresses]
+            for addr in ip_addresses:
+                logger.debug("addr %s" % addr)
+                if addr in cmd.ipAddresses:
                     interface_names.append(interface_name)
 
         rsp.success = True
         rsp.interfaceNames = interface_names
+        logger.debug("interface names %s" % interface_names)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -2016,7 +2019,7 @@ done
         rsp.success = False
 
         dev_name = cmd.interfaceName
-        if cmd.vlanId is not None:
+        if cmd.vlanId is not None and cmd.vlanId is not 0:
             dev_name = '%s.%s' % (cmd.interfaceName, cmd.vlanId)
 
         register_service_type(dev_name, cmd.serviceType)

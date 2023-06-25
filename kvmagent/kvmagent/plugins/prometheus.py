@@ -1,6 +1,7 @@
 import os.path
 import pyudev       # installed by ansible
 import threading
+from collections import defaultdict
 
 import typing
 from prometheus_client import start_http_server
@@ -253,23 +254,14 @@ def get_service_type_map():
 
 @lock.lock('serviceTypeMapLock')
 def register_service_type(dev_name, service_type):
-    logger.debug("register service type: id[%s]" % id(get_service_type_map()))
+    logger.debug("register service type %s on dev %s : id[%s]" % (service_type, dev_name, id(get_service_type_map())))
     host_network_interface_service_type_map = get_service_type_map()
-    logger.debug("register service type: id[%s] after get map" % id(get_service_type_map()))
+    logger.debug("register service type %s on dev %s : id[%s] after get map" % (service_type, dev_name, id(get_service_type_map())))
     host_network_interface_service_type_map[dev_name] = service_type
 
 def collect_host_network_statistics():
-
     all_eths = os.listdir("/sys/class/net/")
     virtual_eths = os.listdir("/sys/devices/virtual/net/")
-
-    service_types = ['ManagementNetwork', 'TenantNetwork', 'StorageNetwork', 'BackupNetwork', 'MigrationNetwork']
-    all_in_bytes_by_service_type = {service_type: 0 for service_type in service_types}
-    all_in_packets_by_service_type = {service_type: 0 for service_type in service_types}
-    all_in_errors_by_service_type = {service_type: 0 for service_type in service_types}
-    all_out_bytes_by_service_type = {service_type: 0 for service_type in service_types}
-    all_out_packets_by_service_type = {service_type: 0 for service_type in service_types}
-    all_out_errors_by_service_type = {service_type: 0 for service_type in service_types}
 
     interfaces = []
     for eth in all_eths:
@@ -281,18 +273,6 @@ def collect_host_network_statistics():
             continue
         else:
             interfaces.append(eth)
-            global host_network_interface_service_type_map
-            logger.debug("collect use: id[%s]" % id(get_service_type_map()))
-            if host_network_interface_service_type_map is not None:
-                if eth in host_network_interface_service_type_map:
-                    service_type_values = host_network_interface_service_type_map[eth]
-                    for service_type in service_type_values:
-                        all_in_bytes_by_service_type[service_type] += read_number("/sys/class/net/{}/statistics/rx_bytes".format(eth))
-                        all_in_packets_by_service_type[service_type] += read_number("/sys/class/net/{}/statistics/rx_packets".format(eth))
-                        all_in_errors_by_service_type[service_type] += read_number("/sys/class/net/{}/statistics/rx_errors".format(eth))
-                        all_out_bytes_by_service_type[service_type] += read_number("/sys/class/net/{}/statistics/tx_bytes".format(eth))
-                        all_out_packets_by_service_type[service_type] += read_number("/sys/class/net/{}/statistics/tx_packets".format(eth))
-                        all_out_errors_by_service_type[service_type] += read_number("/sys/class/net/{}/statistics/tx_errors".format(eth))
 
     all_in_bytes = 0
     all_in_packets = 0
@@ -307,6 +287,73 @@ def collect_host_network_statistics():
         all_out_bytes += read_number("/sys/class/net/{}/statistics/tx_bytes".format(intf))
         all_out_packets += read_number("/sys/class/net/{}/statistics/tx_packets".format(intf))
         all_out_errors += read_number("/sys/class/net/{}/statistics/tx_errors".format(intf))
+
+    service_types = ['ManagementNetwork', 'TenantNetwork', 'StorageNetwork', 'BackupNetwork', 'MigrationNetwork']
+    all_in_bytes_by_service_type = {service_type: 0 for service_type in service_types}
+    all_in_packets_by_service_type = {service_type: 0 for service_type in service_types}
+    all_in_errors_by_service_type = {service_type: 0 for service_type in service_types}
+    all_out_bytes_by_service_type = {service_type: 0 for service_type in service_types}
+    all_out_packets_by_service_type = {service_type: 0 for service_type in service_types}
+    all_out_errors_by_service_type = {service_type: 0 for service_type in service_types}
+
+    host_network_interface_service_type_map = get_service_type_map()
+    logger.debug("Original host_network_interface_service_type_map: %s", host_network_interface_service_type_map)
+
+    reversed_map = defaultdict(list)
+    for key, values in host_network_interface_service_type_map.items():
+        for value in values:
+            reversed_map[value].append(key)
+
+    for service_type in service_types:
+        eths = sorted(reversed_map.get(service_type, []))
+        logger.debug("prometheus eths %s for service type %s" % (eths, service_type))
+        # eths_without_subinterfaces_and_bridge = []
+        #
+        # for eth in eths:
+        #     if '.' in eth:
+        #         interface_name  = eth.split('.')[0]
+        #         subinterface_vlan = eth.split('.')[1]
+        #         # Filter out the corresponding subinterface zsn0.10 of interface like zsn0
+        #         if interface_name in eths_without_subinterfaces_and_bridge:
+        #             continue
+        #         # Filter out the corresponding subinterface zsn0.1987 of a bridge interface like br_zsn0_1987
+        #         br_interface_name = 'br_%s_%s' % (interface_name, subinterface_vlan)
+        #         if br_interface_name in eths_without_subinterfaces_and_bridge:
+        #             continue
+        #     # Filter out the corresponding subinterface zsn0 of a bridged interface like br_zsn0
+        #     br_dev_name = 'br_%s' % eth
+        #     if br_dev_name in eths_without_subinterfaces_and_bridge:
+        #         continue
+        #     eths_without_subinterfaces_and_bridge.append(eth)
+
+        eths_filter_subinterfaces = []
+        eths_filter_bridges = []
+
+        # Filter out the corresponding subinterface zsn0.10 of interface like zsn0
+        for eth in eths:
+            if '.' in eth:
+                interface_name  = eth.split('.')[0]
+                if interface_name in eths_filter_subinterfaces:
+                    continue
+            eths_filter_subinterfaces.append(eth)
+
+        # Filter out the corresponding subinterface br_zsn0_1987 of a bridge interface like zsn0.1987
+        for eth in eths_filter_subinterfaces:
+            if eth.startswith('br_'):
+                eth_interface = eth[3:].replace('_', '.')
+                if eth_interface in eths_filter_subinterfaces:
+                    continue
+            eths_filter_bridges.append(eth)
+
+        logger.debug("prometheus sub interfaces %s for service type %s" % (eths_filter_bridges, service_type))
+
+        for eth in eths_filter_bridges:
+            all_in_bytes_by_service_type[service_type] += read_number("/sys/class/net/{}/statistics/rx_bytes".format(eth))
+            all_in_packets_by_service_type[service_type] += read_number("/sys/class/net/{}/statistics/rx_packets".format(eth))
+            all_in_errors_by_service_type[service_type] += read_number("/sys/class/net/{}/statistics/rx_errors".format(eth))
+            all_out_bytes_by_service_type[service_type] += read_number("/sys/class/net/{}/statistics/tx_bytes".format(eth))
+            all_out_packets_by_service_type[service_type] += read_number("/sys/class/net/{}/statistics/tx_packets".format(eth))
+            all_out_errors_by_service_type[service_type] += read_number("/sys/class/net/{}/statistics/tx_errors".format(eth))
 
     metrics = {
         'host_network_all_in_bytes': GaugeMetricFamily('host_network_all_in_bytes',
