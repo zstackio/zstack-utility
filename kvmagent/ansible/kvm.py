@@ -240,7 +240,7 @@ def install_kvm_pkg():
                         usbredir-server iputils open-iscsi libvirt libvirt-client libvirt-python lighttpd lsof \
                         net-tools nfs-utils nmap openssh-clients OpenIPMI pciutils pv rsync sed nettle libselinux-devel \
                         smartmontools sshpass usbutils vconfig wget audit dnsmasq tar python2-psutil\
-                        qemu-kvm collectd-virt storcli edk2-ovmf edk2.git-ovmf-x64 python2-pyudev collectd-disk libicu cryptsetup"
+                        qemu-kvm collectd-virt storcli edk2.git-ovmf-x64 python2-pyudev collectd-disk libicu cryptsetup"
 
         # handle zstack_repo
         if zstack_repo != 'false':
@@ -256,6 +256,9 @@ def install_kvm_pkg():
             if isMini == 'true':
                 mini_dep_list = " drbd84-utils kmod-drbd84" if C76_KERNEL_OR_HIGHER and not IS_AARCH64 else ""
                 common_dep_list += mini_dep_list
+
+            if host_info.host_arch == "x86_64" and releasever == "ns10":
+                common_no_update_list = common_no_update_list + " edk2-ovmf"
 
             dep_list = common_dep_list
             update_list = common_update_list
