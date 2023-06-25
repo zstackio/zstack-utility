@@ -422,11 +422,6 @@ class OvsDpdkNetworkPlugin(kvmagent.KvmAgent):
 
     def start(self):
 
-        #try:
-        #    ovs.getOvsCtl(with_dpdk=True).reconfigOvs()
-        #except Exception as err:
-        #    logger.warn("Reconfig ovs failed. {}".format(err))
-
         http_server = kvmagent.get_http_server()
 
         http_server.register_async_uri(
@@ -453,11 +448,13 @@ class OvsDpdkNetworkPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(
             OVS_DPDK_NET_DELETE_DPDKVHOSTUSERCLIENT, self.delete_dpdkvhostuserclient)
 
-        check_bond_status()
+        #Bond can't config through UI, check bond status not run in current version
+        #check_bond_status()
         check_ovs_status()
 
     def stop(self):
-        pass
+        http.AsyncUirHandler.STOP_WORLD = True
+
 
 def check_bond_status():
     ovsctl = ovs.getOvsCtl(with_dpdk=True)

@@ -17,6 +17,7 @@ from zstacklib.utils import iproute
 from zstacklib.utils import lock
 from zstacklib.utils import linux
 from zstacklib.utils import thread
+from zstacklib.utils import http
 
 logger = log.get_logger(__name__)
 
@@ -37,6 +38,9 @@ CtlBin = "ovs-vsctl --db=unix:{} ".format(DB_SOCK)
 OvsDpdkSupportVnic = ['vDPA', 'dpdkvhostuserclient']
 OvsDpdkSupportBondType = ['dpdkBond', 'ovsBond']
 
+BridgeAndPfExist = 0
+BridgeExistPfNotExist = 1
+BridgeNotExist = 2 
 
 class OvsError(Exception):
     '''ovs error'''
@@ -795,11 +799,6 @@ class OvsBaseCtl(object):
             return ret.strip().splitlines()
 
     def createBr(self, brName, *args):
-        #brs = self.listBrs()
-        #if brName in brs:
-        #    logger.debug("Bridge {} already created".format(brName))
-        #    return
-
         try:
             shell.check_run(CtlBin + 'add-br {} -- set Bridge {} datapath_type=netdev'.format(
                 brName, brName, "netdev"))
@@ -808,7 +807,7 @@ class OvsBaseCtl(object):
                 "Create ovs bridges {} failed. {}".format(brName, err))
             raise OvsError(str(err))
 
-    @lock.lock("global config")
+    @lock.lock("ovs_global_config")
     def prepareDeleteBr(self, br):
         if self.deleteBr(br) != 0:
             return -1 
@@ -817,9 +816,9 @@ class OvsBaseCtl(object):
         return 0
 
 
-    def initNicBeforeCreateBr(self, nicName, ispci = 0):
+    def initNicBeforeCreateBr(self, nicName, ispciAddress = 0):
         try:
-            if ispci == 0:
+            if ispciAddress == 0:
                 bdf = getBDFOfInterface(nicName)
             else:
                 bdf = nicName
@@ -850,7 +849,7 @@ class OvsBaseCtl(object):
 
             self._configDpdkExtraForOvs(bdf)
 
-            if ispci == 0:
+            if ispciAddress == 0:
                 self.ovs.restart()
 
             return 0
@@ -1207,12 +1206,12 @@ class OvsBaseCtl(object):
 
     def isInterfaceExist(self, interface, bridgeName):
         if bridgeName not in self.listBrs():
-            return 2
+            return BridgeNotExist
         if interface not in self.listPorts(bridgeName):
-            return 1
-        return 0 
+            return BridgeExistPfNotExist 
+        return BridgeAndPfExist 
 
-    @lock.lock("global config")
+    @lock.lock("ovs_global_config")
     def prepareBridge(self, interface, bridgeName):
         ret = self.isInterfaceExist(interface, bridgeName)
         if not ret:
@@ -1507,7 +1506,7 @@ class OvsDpdkCtl(OvsBaseCtl):
                 "smartnic init for device :{} failed. {}".format(nicName, err))
             return -1
 
-    @lock.lock("global config")
+    @lock.lock("ovs_global_config")
     def resourceConfigure(self, hugepage_nr, hugepage_unit, socket_mem):
         #ovs-vswitchd already running, hugepages already allocated
         if self.ovs.isOvsProcRunning("ovs-vswitchd"):
@@ -1535,7 +1534,7 @@ class OvsDpdkCtl(OvsBaseCtl):
             return -1
         
     
-    @lock.lock("global config")
+    @lock.lock("ovs_global_config")
     def dpdkOvsSync(self, bridge_info):
         if not self.ovs.isOvsProcRunning("ovs-vswitchd"):
             logger.warn("ovs-vswitchd not running, can't sync bridge info")
@@ -1622,7 +1621,7 @@ class OvsDpdkCtl(OvsBaseCtl):
             logger.error("Unpredictable error:{}".format(err))
             return -1 
      
-    def testVswitchdHealthStatus(self):
+    def checkVswitchdHealthStatus(self):
         try:
             shell.call("ovs-appctl -t /var/run/openvswitch/ovs-vswitchd.zs.ctl dpif/dump-dps")
             shell.call("ovs-appctl -t /var/run/openvswitch/ovs-vswitchd.zs.ctl dpif/show")
@@ -1631,7 +1630,7 @@ class OvsDpdkCtl(OvsBaseCtl):
             logger.error("ovs-vswitchd start failed, err:{}".format(err))
             return -1
 
-    def testOvsConfig(self):
+    def checkOvsConfig(self):
         try:
             shell.call("ovs-vsctl --no-wait get Open_vSwitch . other_config:dpdk-socket-mem")  
 
@@ -1668,6 +1667,9 @@ class OvsDpdkCtl(OvsBaseCtl):
         interval = 15 
         ovs_vswitchd_status_extra = 0         
         while True: 
+            if http.AsyncUirHandler.STOP_WORLD == True:
+                logger.debug("STOP_WORLD is True, check ovs status thread exit")
+                break
             try:
                 ovs_vswitchd_status_extra = self.checkOvsStatus(ovs_vswitchd_status_extra)
                 time.sleep(interval)
@@ -1675,7 +1677,7 @@ class OvsDpdkCtl(OvsBaseCtl):
                 logger.error("pull ovs failed, do it again. err info{}".format(err))
                 time.sleep(interval)
 
-    @lock.lock("global config")
+    @lock.lock("ovs_global_config")
     def checkOvsStatus(self, ovs_vswitchd_status_extra):
         ovsdb_server_status = 0
         ovs_vswitchd_status = 0
@@ -1694,13 +1696,13 @@ class OvsDpdkCtl(OvsBaseCtl):
             logger.debug("ovsdb-server not running, start sucess")
             ovsdb_server_status = 0
                 
-        if self.testOvsConfig() != 0:
+        if self.checkOvsConfig() != 0:
             logger.error("ovs config error, can't start it")
             return ovs_vswitchd_status_extra 
 
         if ovs_vswitchd_status:
             self.ovs.startSwitch()
-            if self.testVswitchdHealthStatus() == 0:
+            if self.checkVswitchdHealthStatus() == 0:
                 logger.debug("ovs-vswitchd not running, start sucess")
                 ovs_vswitchd_status = 0
                 ovs_vswitchd_status_extra = 0
@@ -1713,9 +1715,13 @@ class OvsDpdkCtl(OvsBaseCtl):
     @thread.AsyncThread       
     def checkBondStatusWapper(self):
         while True:
-             logger.debug("check ovs bond port status ...")
-             self.checkBondStatus()
-             time.sleep(15)   
+            if http.AsyncUirHandler.STOP_WORLD == True:
+                logger.debug("STOP_WORLD is True, check bond status thread exit")
+                break
+    
+            logger.debug("check ovs bond port status ...")
+            self.checkBondStatus()
+            time.sleep(15)   
  
     def checkBondStatus(self):
         if not os.path.exists(ConfPath + "bondused"): 
@@ -1774,14 +1780,14 @@ class OvsDpdkCtl(OvsBaseCtl):
                     logger.debug(
                        "port:{},portconfig pf_pci_addr:{},bondconfig pf_pci_addr:{}".format(port, reslist[0], bond["active_pf_pci_addr"]))        
                     # sync vdpa for bond
-                    self._syncVpdaForBond(port, bond, reslist)
+                    self._syncVdpaItem(port, bond, reslist)
   
             return 0
         except Exception as err:
             logger.error("Unpredictable error:{} in syncVdpaForBond".format(err))
             return -1       
 
-    def _syncVpdaForBond(self, port, bond, reslist):
+    def _syncVdpaItem(self, port, bond, reslist):
         bridgeName = bond["br_name"]
         nicInternalName = port
         representor = reslist[1].split("=")[1][1:-1]
@@ -1834,6 +1840,28 @@ class OvsDpdkCtl(OvsBaseCtl):
 
 
     def _getBondInfoList(self, bond_list_org, all_brs):
+        """
+        bond_list format:
+        [{
+	'name': 'dpdkbond',
+	'active_pf': 'p1',
+	'br_name': 'br-bond',
+	'bond_mode': 'active-backup',
+	'slaves': [
+        {
+		'status': 'enabled',
+		'name': 'p0',
+		'pci_addr': '0000:65:00.0'
+	}, 
+        {
+		'status': 'enabled',
+		'active': 1,
+		'name': 'p1',
+		'pci_addr': '0000:65:00.1'
+	}],
+	'active_pf_pci_addr': '0000:65:00.1'
+        }]
+        """
         try:
             bond_list = []
             for item in bond_list_org:
@@ -2239,9 +2267,39 @@ class OvsDpdkCtl(OvsBaseCtl):
     def _canCreateVdpaOrNotInCurrentConfig(self):
         vdpa = self._checkVdpaNum()
         socket_mem = self._getDpdkSocketMem()
+         
         if socket_mem == 0 or socket_mem < 6500:
             return 1
 
+        """
+        The memory of dpdk-ovs is based on pre allocation
+        During initialization, dpdk-ovs will build two memory pools: memory pool and malloc heap
+        The memory pool is mainly used to store data packets read from the network card
+        Malloc heap is mainly used to control surface usage, 
+        and all final uses malloc_xxx of rte in dpdk-ovs comes from the malloc heap;
+        For example, state control information, statistical information,
+        virtual network card of vdpa, network bridge, and other interfaces
+
+        Dpdk-ovs uses a two-layer memory mode, first configuring large page memory in the system:
+        Echo N>/sys/devices/system/node/node0/hugepages/hugepages 2048kB/nr_ Hugepages
+        At this point, the maximum amount of large page memory available for dpdk ovs in the system is N * 2=2N(unit M)
+        However, the specific amount of large page memory used in dpdk ovs 
+        depends on the value of dpdk socket mem (theoretically less than or equal to 2N);
+        We set dpdk socket mem=2N * 0.85 to be rounded
+        Why not set dpdk socket mem to 2N here, mainly because
+        the large page system of the kernel set in this way may experience instability under special circumstances
+        The coefficient of 0.85 is an empirical value
+
+        One vdpa requires approximately 90M of memory:
+        Memory pool=70M
+        Malloc heap=15M (network card simulation)+5M (status information, statistical information, etc.)
+
+        vdpa number             hugepage number                    socket_mem
+        64                      echo 4096 > nr_hugepages           7000 
+        128                     echo 8192 > nr_hugepages           14000
+        256                     echo 16384 > nr_hugepages          28000
+        512                     echo 32768 > nr_hugepages          56000
+        """
         if vdpa > 63 and socket_mem < 7000:
             return 1
         if vdpa > 127 and socket_mem < 14000:
