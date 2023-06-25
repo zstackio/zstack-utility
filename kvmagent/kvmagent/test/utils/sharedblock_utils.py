@@ -20,7 +20,7 @@ def sharedblock_ping(vgUuid):
     }))
 
 @misc.return_jsonobject()
-def shareblock_connect(sharedBlockUuids=None, allSharedBlockUuids=None, vgUuid=None,hostId=None,hostUuid=None, forceWipe=True):
+def shareblock_connect(sharedBlockUuids=None, allSharedBlockUuids=None, vgUuid=None,hostId=None,hostUuid=None, forceWipe=True, isFirst=True):
     return get_sharedblock_plugin().connect(misc.make_a_request({
         "sharedBlockUuids":sharedBlockUuids, # [], ls /dev/disk/by-id -l|grep scsi
         "allSharedBlockUuids":allSharedBlockUuids,
@@ -28,7 +28,8 @@ def shareblock_connect(sharedBlockUuids=None, allSharedBlockUuids=None, vgUuid=N
         "hostId":hostId,
         "hostUuid": hostUuid,
         "forceWipe": forceWipe,
-        "primaryStorageUuid":vgUuid
+        "primaryStorageUuid":vgUuid,
+        "isFirst":isFirst
     }))
 
 @misc.return_jsonobject()
