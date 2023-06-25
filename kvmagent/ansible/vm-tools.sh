@@ -58,6 +58,11 @@ log_info() {
 
 send_install_result() {
   curl -H "Content-Type: application/json" -H "commandpath: /host/zwatchInstallResult" -X POST -d "{\"vmInstanceUuid\": \"${vmInstanceUuid}\", \"version\": \"$1\"}" http://169.254.169.254/host/zwatchInstallResult
+  if [ $? != 0 ]; then
+    log_info "send_install_result to vm[${vmInstanceUuid}] fail"
+  else
+    log_info "send_install_result to vm[${vmInstanceUuid}]: $1"
+  fi
 }
 
 check_version_file() {
@@ -105,7 +110,7 @@ check_md5() {
 
 query_agent_info() {
   vmInstanceUuid=`curl --silent http://169.254.169.254/2009-04-04/meta-data/instance-id`
-  version=`echo $AGENT_VERSION | grep "zwatch-vm-agent=" | awk -F '=' '{print $2}'`
+  version=`echo "$AGENT_VERSION" | grep "zwatch-vm-agent=" | awk -F '=' '{print $2}'`
 }
 
 install_agent_tools() {
@@ -125,14 +130,17 @@ start_agent_tools() {
   service zwatch-vm-agent restart
 
   if [ $? != 0 ]; then
-    send_install_result "InstallFailed"
     log_info "service zwatch-vm-agent start fail"
     exit 1
   fi
-
-  send_install_result $version
 }
 
+send_install_success() {
+  os_type=`cat /etc/os-release | grep -i "^ID=" | cut -d '=' -f 2 | cut -d '"' -f 2`
+  os_version=`cat /etc/os-release | grep -i "^VERSION_ID=" | cut -d '=' -f 2 | cut -d '"' -f 2`
+  result="version=${version},os_type=${os_type} ${os_version},platform=$(uname -s)"
+  send_install_result "$result"
+}
 # process
 
 log_info "installing zwatch-vm-agent"
@@ -145,6 +153,8 @@ query_agent_info
 
 log_info "install zwatch-vm-agent"
 install_agent_tools
+
+send_install_success
 
 log_info "starting zwatch-vm-agent"
 start_agent_tools

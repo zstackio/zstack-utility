@@ -1,18 +1,19 @@
 #!/usr/bin/env python
 # encoding=utf-8
 import argparse
-import os.path
+import datetime
+from distutils.version import LooseVersion
 import os
 import re
-from zstacklib import *
-from distutils.version import LooseVersion
 from uuid import uuid4
+
+from zstacklib import *
 
 # create log
 logger_dir = "/var/log/zstack/"
 create_log(logger_dir)
 banner("Starting to deploy kvm agent")
-start_time = datetime.now()
+start_time = datetime.datetime.now()
 # set default value
 file_root = "files/kvm"
 package_root = "/opt/zstack-dvd/Packages"
@@ -45,6 +46,7 @@ isMini = 'false'
 isBareMetal2Gateway='false'
 releasever = ''
 unsupported_iproute_list = ["nfs4"]
+unittest_flag = 'false'
 
 
 # get parameter from shell
@@ -77,19 +79,23 @@ host_post_info.remote_port = remote_port
 if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
 
-(distro, major_version, distro_release, distro_version) = get_remote_host_info(host_post_info)
-releasever = get_host_releasever([distro, distro_release, distro_version])
+host_info = get_remote_host_info_obj(host_post_info)
+host_info = upgrade_to_helix(host_info, host_post_info)
+releasever = get_host_releasever(host_info)
 host_post_info.releasever = releasever
 
 # get remote host arch
-host_arch = get_remote_host_arch(host_post_info)
-IS_AARCH64 = host_arch == 'aarch64'
-IS_MIPS64EL = host_arch == 'mips64el'
-IS_LOONGARCH64 = host_arch == 'loongarch64'
+IS_AARCH64 = host_info.host_arch == 'aarch64'
+IS_MIPS64EL = host_info.host_arch == 'mips64el'
+IS_LOONGARCH64 = host_info.host_arch == 'loongarch64'
 
-repo_dir = "/opt/zstack-dvd/{}".format(host_arch)
+repo_dir = "/opt/zstack-dvd/{}".format(host_info.host_arch)
 if not os.path.isdir(repo_dir):
-    error("Missing directory '{}', please try 'zstack-upgrade -a {}_iso'".format(repo_dir, host_arch))
+    error("Missing directory '{}', please try 'zstack-upgrade -a {}_iso'".format(repo_dir, host_info.host_arch))
+
+# check is cube env
+isCube = True if os.path.exists("/usr/local/hyperconverged") else False
+
 
 def update_libvirtd_config(host_post_info):
     # name: copy libvirtd conf to keep environment consistent,only update host_uuid
@@ -101,7 +107,7 @@ def update_libvirtd_config(host_post_info):
 
     return file_changed_flag
 
-@with_arch(todo_list=['x86_64'], host_arch=host_arch)
+@with_arch(todo_list=['x86_64'], host_arch=host_info.host_arch)
 def check_nested_kvm(host_post_info):
     """aarch64 does not need to modprobe kvm"""
     enabled_nested_flag = False
@@ -118,8 +124,7 @@ def check_nested_kvm(host_post_info):
     modprobe(modprobe_arg, host_post_info)
 
     modprobe_arg = ModProbeArg()
-    cpu_info = get_remote_host_cpu(host_post_info).lower()
-    if 'intel' in cpu_info or 'zhaoxin' in cpu_info:
+    if 'intel' in host_info.cpu_info or 'zhaoxin' in host_info.cpu_info:
         # reload kvm_intel for enable nested kvm
         if enabled_nested_flag is False:
             command = "mkdir -p /etc/modprobe.d/ && echo 'options kvm_intel nested=1' >  /etc/modprobe.d/kvm-nested.conf"
@@ -127,7 +132,7 @@ def check_nested_kvm(host_post_info):
             command = "modprobe -r kvm_intel"
             run_remote_command(command, host_post_info, return_status=True)
         modprobe_arg.name = 'kvm_intel'
-    elif 'amd' in cpu_info or 'hygon' in cpu_info:
+    elif 'amd' in host_info.cpu_info or 'hygon' in host_info.cpu_info:
         if enabled_nested_flag is False:
             command = "mkdir -p /etc/modprobe.d/ && echo 'options kvm_amd nested=1' >  /etc/modprobe.d/kvm-nested.conf"
             run_remote_command(command, host_post_info)
@@ -144,46 +149,27 @@ def check_nested_kvm(host_post_info):
     modprobe_arg.state = 'present'
     modprobe(modprobe_arg, host_post_info)
 
-def install_release_on_host(is_rpm):
-    # copy and install zstack-release
-    if is_rpm:
-        src_pkg = '/opt/zstack-dvd/{0}/{1}/Packages/zstack-release-{1}-1.el7.zstack.noarch.rpm'.format(host_arch, releasever)
-        install_cmd = "rpm -q zstack-release || rpm -i /opt/zstack-release-{}-1.el7.zstack.noarch.rpm".format(releasever)
-    else:
-        src_pkg = '/opt/zstack-dvd/{0}/{1}/Packages/zstack-release_{1}_all.deb'.format(host_arch, releasever)
-        install_cmd = "dpkg -l zstack-release || dpkg -i /opt/zstack-release_{}_all.deb".format(releasever)
-    copy_arg = CopyArg()
-    copy_arg.src = src_pkg
-    copy_arg.dest = '/opt'
-    copy(copy_arg, host_post_info)
-    run_remote_command(install_cmd, host_post_info)
-
 
 def load_zstacklib():
     """include zstacklib.py"""
     zstacklib_args = ZstackLibArgs()
-    zstacklib_args.distro = distro
-    zstacklib_args.distro_release = distro_release
-    zstacklib_args.distro_version = major_version
+    zstacklib_args.distro = host_info.distro
+    zstacklib_args.distro_release = host_info.distro_release
+    zstacklib_args.distro_version = host_info.major_version
     zstacklib_args.zstack_root = zstack_root
     zstacklib_args.zstack_repo = zstack_repo
     zstacklib_args.host_post_info = host_post_info
     zstacklib_args.pip_url = pip_url
     zstacklib_args.zstack_releasever = releasever
     zstacklib_args.trusted_host = trusted_host
-    if distro in DEB_BASED_OS:
+    zstacklib_args.host_info = host_info
+    if host_info.distro in DEB_BASED_OS:
         zstacklib_args.apt_server = yum_server
         zstacklib_args.zstack_apt_source = zstack_repo
     else :
         zstacklib_args.yum_server = yum_server
     zstacklib = ZstackLib(zstacklib_args)
 
-if distro in RPM_BASED_OS:
-    install_release_on_host(True)
-elif distro in DEB_BASED_OS:
-    install_release_on_host(False)
-else:
-    error("Unsupported OS: {}".format(distro))
 
 load_zstacklib()
 
@@ -210,84 +196,60 @@ def install_kvm_pkg():
                         rdma-core-devel mstflint kmod-isert mlnx-iproute2 mlnx-dpdk-doc libibverbs-utils librdmacm-utils \
                         mlnx-dpdk-devel openvswitch kmod-srp mlnx-ofed-dpdk-upstream-libs"
 
-        x86_64_c74 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
-                      usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
-                      net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
-                      smartmontools sshpass usbutils vconfig wget audit dnsmasq \
-                      qemu-kvm-ev collectd-virt OVMF edk2-ovmf edk2.git-ovmf-x64 mcelog MegaCli storcli Arcconf nvme-cli python-pyudev kernel-devel"
+        os_base_dep = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
+                        usbredir-server iputils libvirt libvirt-client libvirt-python lighttpd lsof net-tools nfs-utils nmap openssh-clients \
+                        smartmontools sshpass usbutils wget audit dnsmasq collectd-virt storcli nvme-cli pv rsync sed pciutils tar"
 
-        x86_64_c76 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
-                      usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python libvirt-admin lighttpd lsof \
-                      net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
-                      smartmontools sshpass usbutils vconfig wget audit dnsmasq \
-                      qemu-kvm collectd-virt OVMF edk2-ovmf edk2.git-ovmf-x64 mcelog MegaCli storcli Arcconf nvme-cli python-pyudev seabios-bin nping kernel-devel elfutils-libelf-devel"
+        distro_mapping = {
+            'centos': 'vconfig iscsi-initiator-utils OpenIPMI-modalias OVMF mcelog MegaCli Arcconf python-pyudev kernel-devel libicu',
+            'kylin': 'vconfig open-iscsi python2-pyudev collectd-disk OpenIPMI libselinux-devel nettle tuned qemu-kvm libicu',
+            'uniontech': 'vconfig iscsi-initiator-utils OpenIPMI nettle qemu-kvm python-pyudev collectd-disk',
+            'rocky': 'iscsi-initiator-utils OpenIPMI-modalias mcelog MegaCli Arcconf python-pyudev kernel-devel collectd-disk'
+        }
 
-        x86_64_c79 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
-                      usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python libvirt-admin lighttpd lsof \
-                      net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
-                      smartmontools sshpass usbutils vconfig wget audit dnsmasq \
-                      qemu-kvm collectd-virt OVMF edk2-ovmf edk2.git-ovmf-x64 mcelog MegaCli storcli Arcconf nvme-cli python-pyudev seabios-bin nping kernel-devel elfutils-libelf-devel"
+        releasever_mapping = {
+            'c74': 'qemu-kvm-ev ',
+            'c76': 'qemu-kvm libvirt-admin seabios-bin nping elfutils-libelf-devel',
+            'c79': 'qemu-kvm libvirt-admin seabios-bin nping elfutils-libelf-devel',
+            'h76c': 'qemu-kvm libvirt-admin seabios-bin nping elfutils-libelf-devel',
+            'h79c': 'qemu-kvm libvirt-admin seabios-bin nping elfutils-libelf-devel',
+            'rl84': 'qemu-kvm libvirt-daemon libvirt-daemon-kvm seabios-bin elfutils-libelf-devel',
+            'euler20': 'vconfig open-iscsi OpenIPMI-modalias qemu python2-pyudev collectd-disk',
+            'nfs4': 'vconfig iscsi-initiator-utils OpenIPMI nettle libselinux-devel iptables iptables-services qemu-kvm python2-pyudev collectd-disk'
+        }
 
-        aarch64_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
-                        usbredir-server iputils open-iscsi libvirt libvirt-client libvirt-python lighttpd lsof \
-                        net-tools nfs-utils nmap openssh-clients OpenIPMI pciutils pv rsync sed nettle libselinux-devel \
-                        smartmontools sshpass usbutils vconfig wget audit dnsmasq tar \
-                        qemu collectd-virt storcli edk2-aarch64 python2-pyudev collectd-disk"
-
-        aarch64_uos1021a = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
-                        usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
-                        net-tools nfs-utils nmap openssh-clients OpenIPMI pciutils pv rsync sed nettle \
-                        smartmontools sshpass usbutils vconfig wget audit dnsmasq tar \
-                        qemu-kvm collectd-virt storcli edk2-aarch64 python-pyudev collectd-disk"
-
-        x86_64_uos1021a = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
-                        usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
-                        net-tools nfs-utils nmap openssh-clients OpenIPMI pciutils pv rsync sed nettle \
-                        smartmontools sshpass usbutils vconfig wget audit dnsmasq tar \
-                        qemu-kvm collectd-virt edk2-ovmf python-pyudev collectd-disk"
-
-        aarch64_euler20 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
-                        usbredir-server iputils open-iscsi libvirt libvirt-client libvirt-python lighttpd lsof \
-                        net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
-                        smartmontools sshpass usbutils vconfig wget audit dnsmasq \
-                        qemu collectd-virt storcli edk2-aarch64 python2-pyudev collectd-disk"
-
-        mips64el_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
-                         usbredir-server iputils open-iscsi libvirt libvirt-client libvirt-python lighttpd lsof mcelog \
-                         net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils python2-pyudev pv rsync sed \
-                         qemu smartmontools sshpass usbutils vconfig wget audit dnsmasq tuned collectd-virt collectd-disk"
-
-        loongarch64_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
-                         usbredir-server iputils open-iscsi libvirt libvirt-client libvirt-python lighttpd lsof mcelog \
-                         net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils python2-pyudev \
-                         pv rsync sed qemu-kvm smartmontools sshpass usbutils vconfig wget audit dnsmasq tuned collectd-virt collectd-disk"
-
-        x86_64_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
-                        usbredir-server iputils open-iscsi libvirt libvirt-client libvirt-python lighttpd lsof \
-                        net-tools nfs-utils nmap openssh-clients OpenIPMI pciutils pv rsync sed nettle libselinux-devel \
-                        smartmontools sshpass usbutils vconfig wget audit dnsmasq tar python2-psutil\
-                        qemu-kvm collectd-virt storcli edk2-ovmf edk2.git-ovmf-x64 python2-pyudev collectd-disk"
-
-        x86_64_nfs4 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
-                        usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
-                        net-tools nfs-utils nmap openssh-clients OpenIPMI pciutils pv rsync sed nettle libselinux-devel \
-                        smartmontools sshpass usbutils vconfig wget audit dnsmasq tar iptables iptables-services \
-                        qemu-kvm collectd-virt storcli edk2-ovmf python2-pyudev collectd-disk"
+        edk2_mapping = {
+            'x86_64': 'edk2-ovmf edk2.git-ovmf-x64',
+            'aarch64': 'edk2-aarch64'
+        }
 
         # handle zstack_repo
         if zstack_repo != 'false':
-            common_dep_list = eval("%s_%s" % (host_arch, releasever))
+            distro_head = host_info.distro.split("_")[0] if releasever in kylin or releasever in uos else host_info.distro
+            common_dep_list = "%s %s %s %s" % (
+                os_base_dep,
+                distro_mapping.get(distro_head, ''),
+                releasever_mapping.get(releasever, ''),
+                edk2_mapping.get(host_info.host_arch, ''))
             # common kvmagent deps of x86 and arm that need to update
-            common_update_list = "sanlock sysfsutils hwdata sg3_utils lvm2 lvm2-libs lvm2-lockd systemd openssh glusterfs"
+            common_update_list = ("sanlock sysfsutils hwdata sg3_utils lvm2"
+                                  " lvm2-libs lvm2-lockd systemd openssh"
+                                  " glusterfs")
             common_no_update_list = "librbd1"
             # common kvmagent deps of x86 and arm that no need to update
             common_dep_list = "%s %s" % (common_dep_list, common_update_list)
 
             # zstack mini needs higher version kernel etc.
-            C76_KERNEL_OR_HIGHER = '3.10.0-957' in get_remote_host_kernel_version(host_post_info)
+            C76_KERNEL_OR_HIGHER = '3.10.0-957' in host_info.kernel_version
             if isMini == 'true':
                 mini_dep_list = " drbd84-utils kmod-drbd84" if C76_KERNEL_OR_HIGHER and not IS_AARCH64 else ""
                 common_dep_list += mini_dep_list
+
+            if isCube:
+                cube_dep_list = " lm_sensors edac-utils"
+                if releasever not in kylin:
+                    cube_dep_list += " lm_sensors-libs"
+                common_dep_list += cube_dep_list
 
             dep_list = common_dep_list
             update_list = common_update_list
@@ -298,7 +260,7 @@ def install_kvm_pkg():
             host_post_info.post_label_param = "libvirt"
             (status, output) = run_remote_command(command, host_post_info, True, True)
 
-            versions = distro_version.split('.')
+            versions = host_info.distro_version.split('.')
             if output and len(versions) > 2 and versions[0] == '7' and versions[1] == '2':
                 dep_list = dep_list.replace('libvirt libvirt-client libvirt-python ', '')
 
@@ -319,7 +281,7 @@ def install_kvm_pkg():
             host_post_info.post_label_param = dep_list
             run_remote_command(command, host_post_info)
 
-            if '%s_%s' % (host_arch, releasever) == 'x86_64_ns10':
+            if host_info.host_arch == 'x86_64' and releasever in kylin:
                 # downgrade libvirt if host's libvirt version != repo's libvirt
                 # version
                 command = ("current_version=$(rpm -q --queryformat '%{{VERSION}}'  libvirt);"
@@ -327,6 +289,11 @@ def install_kvm_pkg():
                            "if [[ ${{current_version}} != ${{repo_version}} ]]; then yum --disablerepo=* --enablerepo={0} downgrade -y libvirt; fi;").format(zstack_repo)
                 host_post_info.post_label_param = "libvirt"
                 run_remote_command(command, host_post_info)
+
+                if host_info.host_arch == 'loongarch64' and yum_check_package("qemu", host_post_info):
+                    command = "yum --disablerepo=* --enablerepo={0} install -y qemu-block-rbd;".format(zstack_repo)
+                    host_post_info.post_label_param = "qemu-block-rbd"
+                    run_remote_command(command, host_post_info)
         else:
             # name: install kvm related packages on RedHat based OS from online
             for pkg in ['zstack-release', 'openssh-clients', 'bridge-utils', 'wget', 'chrony', 'sed', 'libvirt-python', 'libvirt', 'nfs-utils', 'vconfig',
@@ -334,7 +301,7 @@ def install_kvm_pkg():
                         'libguestfs-winsupport', 'libguestfs-tools', 'pv', 'rsync', 'nmap', 'ipset', 'usbutils', 'pciutils', 'expect',
                         'lvm2', 'lvm2-lockd', 'sanlock', 'sysfsutils', 'smartmontools', 'device-mapper-multipath', 'hwdata', 'sg3_utils']:
                 yum_install_package(pkg, host_post_info)
-            if major_version >= 7:
+            if host_info.major_version >= 7:
                 # name: RHEL7 specific packages from online
                 for pkg in ['qemu-kvm', 'qemu-img', 'collectd-virt']:
                     yum_install_package(pkg, host_post_info)
@@ -343,7 +310,7 @@ def install_kvm_pkg():
                     yum_install_package(pkg, host_post_info)
 
         # handle distro version specific task
-        if releasever not in unsupported_iproute_list and major_version < 7:
+        if releasever not in unsupported_iproute_list and host_info.major_version < 7:
             # name: copy name space supported iproute for RHEL6
             copy_arg = CopyArg()
             copy_arg.src = iproute_pkg
@@ -358,7 +325,6 @@ def install_kvm_pkg():
             network_manager_installed = yum_check_package("NetworkManager", host_post_info)
             if network_manager_installed is True:
                 service_status("NetworkManager", "state=stopped enabled=no", host_post_info)
-
         else:
             # name: disable firewalld in RHEL7 and Centos7
             command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
@@ -366,7 +332,7 @@ def install_kvm_pkg():
             host_post_info.post_label_param = "firewalld"
             run_remote_command(command, host_post_info)
             if releasever in enable_networkmanager_list:
-                # name: enable NetworkManager in euler20, arm and x86 ns10
+                # name: enable NetworkManager in euler20, arm and x86 ky10
                 service_status("NetworkManager", "state=started enabled=yes", host_post_info, ignore_error=True)
             else:
                 # name: disable NetworkManager in RHEL7 and Centos7
@@ -396,7 +362,7 @@ def install_kvm_pkg():
         if chroot_env == 'false':
             # name: enable libvirt daemon on RedHat based OS
             service_status("libvirtd", "state=started enabled=yes", host_post_info)
-            if major_version >= 7:
+            if host_info.major_version >= 7:
                 # name: enable virtlockd daemon on RedHat based OS
                 service_status("virtlockd", "state=stopped enabled=no", host_post_info)
                 service_status("virtlogd", "state=started enabled=yes", host_post_info, True)
@@ -412,12 +378,11 @@ def install_kvm_pkg():
         libvirtd_status = copy(copy_arg, host_post_info)
 
         # replace qemu-img binary if qemu-img-ev before 2.12.0 is installed, to fix zstack-11004 / zstack-13594 / zstack-20983
-        command = "qemu-img --version | grep 'qemu-img version' | cut -d ' ' -f 3 | cut -d '(' -f 1"
-        (status, qemu_img_version) = run_remote_command(command, host_post_info, False, True)
+        (status, qemu_img_version) = get_qemu_img_version(host_post_info)
         if qemu_img_version is None or qemu_img_version == '':
             error('cannot get qemu-img version!')
         if LooseVersion(qemu_img_version) < LooseVersion('2.12.0'):
-            qemu_img_src = '{}/{}'.format(file_root, "qemu-img" if host_arch == 'x86_64' else "qemu-img_"+host_arch )
+            qemu_img_src = '{}/{}'.format(file_root, "qemu-img" if host_info.host_arch == 'x86_64' else "qemu-img_"+host_info.host_arch )
             qemu_img_dst = '{}/{}'.format(kvm_root, 'qemu-img')
             copy_to_remote(qemu_img_src, qemu_img_dst, None, host_post_info)
 
@@ -466,18 +431,18 @@ def install_kvm_pkg():
             "x86_64_c79": "",
         }
 
-        rpm_deprecated_list = rpm_deprecated.get(host_arch + releasever, "")
+        rpm_deprecated_list = rpm_deprecated.get(host_info.host_arch + releasever, "")
         # new-add host
-        if releasever in ['c76', 'c79'] and "qemu-kvm" not in skip_packages:
+        if releasever in ['c76', 'c79', 'h76c', 'h79c'] and "qemu-kvm" not in skip_packages:
             rpm_deprecated_list += " qemu-img-ev qemu-kvm-ev qemu-kvm-common-ev"
 
         for rpm in rpm_deprecated_list.split():
             yum_remove_package(rpm, host_post_info)
 
-    if distro in RPM_BASED_OS:
+    if host_info.distro in RPM_BASED_OS:
         rpm_based_deprecated()
         rpm_based_install()
-    elif distro in DEB_BASED_OS:
+    elif host_info.distro in DEB_BASED_OS:
         deb_based_install()
     else:
         error("unsupported OS!")
@@ -486,7 +451,7 @@ def copy_tools():
     """copy binary tools"""
     tool_list = ['collectd_exporter', 'node_exporter', 'dnsmasq', 'zwatch-vm-agent', 'zwatch-vm-agent-freebsd', 'pushgateway', 'sas3ircu', 'zs-raid-heartbeat']
     for tool in tool_list:
-        arch_lable = '' if host_arch == 'x86_64' else '_' + host_arch
+        arch_lable = '' if host_info.host_arch == 'x86_64' else '_' + host_info.host_arch
         real_name = tool + arch_lable
         pkg_path = os.path.join(file_root, real_name)
         if tool == "dnsmasq":
@@ -542,13 +507,11 @@ def copy_kvm_files():
     copy_to_remote(kvmagt_svc_src, kvmagt_svc_dst, args, host_post_info)
 
     # copy sysctl file
-    command = 'mkdir -p /var/lib/zstack/kvm/sysctl'
-    run_remote_command(command, host_post_info)
-    sysctl_src = os.path.join(file_root, "sysctl/sysctl.default")
-    sysctl__dst = "/var/lib/zstack/kvm/sysctl/"
-    args = "mode=755"
-    copy_to_remote(sysctl_src, sysctl__dst, args, host_post_info)
-    command = 'sysctl -p /var/lib/zstack/kvm/sysctl/sysctl.default'
+    sysctl_src = os.path.join(file_root, "sysctl")
+    sysctl_dst = "/var/lib/zstack/kvm"
+    args = "directory_mode=755"
+    copy_to_remote(sysctl_src, sysctl_dst, args, host_post_info)
+    command = 'sysctl -p /var/lib/zstack/kvm/sysctl/default.conf'
     run_remote_command(command, host_post_info)
 
 def copy_gpudriver():
@@ -561,26 +524,25 @@ def create_virtio_driver_directory():
     _dst_path = "/var/lib/zstack/virtio-drivers/"
     run_remote_command("mkdir -p %s" % _dst_path, host_post_info)
 
-@on_debian_based(distro)
+@on_debian_based(host_info.distro)
 def copy_ovmf_tools():
-    _src = "/opt/zstack-dvd/{}/{}/ovmf_tools/".format(host_arch, releasever)
+    _src = "/opt/zstack-dvd/{}/{}/ovmf_tools/".format(host_info.host_arch, releasever)
     _dst = "/usr/share/OVMF/"
     copy_to_remote(_src, _dst, None, host_post_info)
 
-@on_debian_based(distro)
 def copy_lsusb_scripts():
     _src = os.path.join(file_root, "lsusb.py")
     _dst = "/usr/local/bin/"
     copy_to_remote(_src, _dst, "mode=755", host_post_info)
 
-@on_redhat_based(distro)
+@on_redhat_based(host_info.distro)
 def copy_zs_scripts():
     """copy zs-xxx from mn_node to host_node"""
-    _src = '/opt/zstack-dvd/{}/{}/scripts/'.format(host_arch, releasever)
+    _src = '/opt/zstack-dvd/{}/{}/scripts/'.format(host_info.host_arch, releasever)
     _dst = '/usr/local/bin/'
-    copy_to_remote(_src, _dst, None, host_post_info)
+    copy_to_remote(_src, _dst, "mode=755", host_post_info)
 
-@on_redhat_based(distro)
+@on_redhat_based(host_info.distro)
 def copy_grubaa64_efi():
     """copy grubaa64.efi from mn_node to bm2 gateway"""
     _src = os.path.join(file_root, "grubaa64.efi")
@@ -588,7 +550,7 @@ def copy_grubaa64_efi():
     copy_to_remote(_src, _dst, "mode=755", host_post_info)
 
 
-@on_redhat_based(distro, exclude=['alibaba'])
+@on_redhat_based(host_info.distro, exclude=['alibaba'])
 def set_max_performance():
     # AliOS 7u2 does not support tuned-adm
     command = "tuned-adm profile virtual-host; echo virtual-host > /etc/tuned/active_profile"
@@ -596,12 +558,26 @@ def set_max_performance():
     host_post_info.post_label_param = "set profile as virtual-host"
     run_remote_command(command, host_post_info)
 
-@on_redhat_based(distro)
+@on_redhat_based(host_info.distro)
 def copy_bond_conf():
     """copy bond.conf from mn_node to host_node"""
     _src = os.path.join(file_root, "bond.conf")
     _dst = "/etc/modprobe.d/"
     copy_to_remote(_src, _dst, "mode=644", host_post_info)
+
+
+def copy_cube_tools():
+    """copy cube required tools from mn_node to host_node"""
+    if not isCube:
+        return
+    cube_root_dst = "/usr/local/hyperconverged/"
+    _src = os.path.join(cube_root_dst, "tools/hd_ctl")
+    if os.path.exists(_src):
+        _dst = os.path.join(cube_root_dst, "tools")
+        copy_to_remote(_src, _dst, "mode=755", host_post_info)
+        command = "ln -sf /usr/local/hyperconverged/tools/hd_ctl/hd_ctl /bin/"
+        run_remote_command(command, host_post_info)
+
 
 def do_libvirt_qemu_config():
     """special configration"""
@@ -638,7 +614,7 @@ def do_network_config():
         run_remote_command(command, host_post_info)
 
     if skipIpv6 != 'true':
-        if distro in RPM_BASED_OS:
+        if host_info.distro in RPM_BASED_OS:
             # name: copy ip6tables initial rules in RedHat
             IP6TABLE_SERVICE_FILE = '/usr/lib/systemd/system/ip6tables.service'
             copy_arg = CopyArg()
@@ -647,7 +623,7 @@ def do_network_config():
             copy(copy_arg, host_post_info)
             replace_content(IP6TABLE_SERVICE_FILE, "regexp='syslog.target,iptables.service' replace='syslog.target iptables.service'", host_post_info)
             service_status("ip6tables", "state=restarted enabled=yes", host_post_info)
-        elif distro in DEB_BASED_OS:
+        elif host_info.distro in DEB_BASED_OS:
             copy_arg = CopyArg()
             copy_arg.src = "%s/ip6tables" % file_root
             copy_arg.dest = "/etc/iptables/rules.v6"
@@ -715,7 +691,8 @@ def install_virtualenv():
         run_remote_command(command, host_post_info)
         sys.exit(1)
     # name: make sure virtualenv has been setup
-    command = "[ -f %s/bin/python ] || virtualenv --system-site-packages %s " % (virtenv_path, virtenv_path)
+    virtenv_flag = "" if unittest_flag == 'true' else "--system-site-packages"
+    command = "[ -f %s/bin/python ] || virtualenv %s %s " % (virtenv_path, virtenv_flag, virtenv_path)
     host_post_info.post_label = "ansible.shell.check.virtualenv"
     host_post_info.post_label_param = None
     run_remote_command(command, host_post_info)
@@ -750,13 +727,13 @@ def install_agent_pkg():
 def copy_i40e_driver():
     """copy intel i40e ethernet dirver"""
 
-    IS_X86_64 = get_remote_host_arch(host_post_info) == 'x86_64'
+    IS_X86_64 = host_info.host_arch == 'x86_64'
     if IS_X86_64:
         _src = os.path.join(file_root, "i40e_driver.tar.gz")
         _dst = "/var/lib/zstack/i40e_driver.tar.gz"
         copy_to_remote(_src, _dst, None, host_post_info)
 
-@on_debian_based(distro, exclude=['Kylin'])
+@on_debian_based(host_info.distro, exclude=['Kylin'])
 def set_legacy_iptables_ebtables():
     """set legacy mode if needed"""
     command = "update-alternatives --set iptables /usr/sbin/iptables-legacy;" \
@@ -788,16 +765,16 @@ def start_kvmagent():
         service_status("libvirtd", "state=restarted enabled=yes", host_post_info)
     # name: restart kvmagent, do not use ansible systemctl due to kvmagent can start by itself, so systemctl will not know
     # the kvm agent status when we want to restart it to use the latest kvm agent code
-    if distro in RPM_BASED_OS and major_version >= 7:
+    if host_info.distro in RPM_BASED_OS and host_info.major_version >= 7:
         # NOTE(weiw): dump threads and wait 1 second for dumping
         command = "pkill -USR2 -P 1 -ef 'kvmagent import kdaemon' || true && sleep 1"
         host_post_info.post_label = "ansible.shell.dump.service"
         host_post_info.post_label_param = "zstack-kvmagent"
         run_remote_command(command, host_post_info)
         command = "service zstack-kvmagent stop && service zstack-kvmagent start && chkconfig zstack-kvmagent on"
-    elif distro in RPM_BASED_OS:
+    elif host_info.distro in RPM_BASED_OS:
         command = "service zstack-kvmagent stop && service zstack-kvmagent start && chkconfig zstack-kvmagent on"
-    elif distro in DEB_BASED_OS:
+    elif host_info.distro in DEB_BASED_OS:
         command = "update-rc.d zstack-kvmagent start 97 3 4 5 . stop 3 0 1 2 6 . && service zstack-kvmagent stop && service zstack-kvmagent start"
     host_post_info.post_label = "ansible.shell.restart.service"
     host_post_info.post_label_param = "zstack-kvmagent"
@@ -809,7 +786,7 @@ def modprobe_usb_module():
     host_post_info.post_label_param = None
     run_remote_command(command, host_post_info)
 
-@with_arch(todo_list=['loongarch64'], host_arch=host_arch)
+@with_arch(todo_list=['loongarch64'], host_arch=host_info.host_arch)
 def modprobe_mpci_module():
     command = "ls /dev/wst-se"
     (status, stdout) = run_remote_command(command, host_post_info, return_status=True, return_output=True)
@@ -822,21 +799,33 @@ def modprobe_mpci_module():
         return
         
     """copy mpci.ko"""
-    kvers_list = ['23.34', '23.37', '52.14']
-    (status, stdout) = run_remote_command("uname -r", host_post_info, return_status=True, return_output=True)
-    kvers = stdout.split("-")[1][:5]
-    if kvers not in kvers_list:
+    kvers_list = ['4.19.90-23.34.', '4.19.90-23.37.', '4.19.90-52.14.', '4.19.90-52.19.']
+    if not host_info.kernel_version.startswith(tuple(kvers_list)):
         handle_ansible_info("There are no suitable SE drivers for this kernel", host_post_info, "WARNING")
         return
         
-    _src = "{}/mpci_{}_loongarch64".format(file_root, kvers)
-    _dst = "/lib/modules/{}/mpci.ko".format(stdout)
+    _src = "{}/mpci_{}loongarch64".format(file_root, "".join(filter(host_info.kernel_version.startswith, kvers_list)))
+    _dst = "/lib/modules/{}/mpci.ko".format(host_info.kernel_version)
     copy_to_remote(_src, _dst, "mode=644", host_post_info)
 
     command = "depmod -a; modprobe vfio-mdev; modprobe mpci || true"
     host_post_info.post_label = "ansible.shell.modprobe.mpci"
     host_post_info.post_label_param = None
-    run_remote_command(command, host_post_info)   
+    run_remote_command(command, host_post_info)
+
+
+@with_arch(todo_list=['aarch64'], host_arch=host_info.host_arch)
+def set_gpu_blacklist():
+    if releasever not in kylin:
+        return
+
+    gpu_name_list = "snd_hda_intel nouveau amdgpu"
+
+    command = "for gpu_name in %s; \
+        do cat /etc/modprobe.d/${gpu_name}-blacklist.conf | grep \"blacklist ${gpu_name}\" \
+        || echo \"blacklist ${gpu_name}\" >> /etc/modprobe.d/${gpu_name}-blacklist.conf; done" % gpu_name_list
+    run_remote_command(command, host_post_info)
+
 
 check_nested_kvm(host_post_info)
 install_kvm_pkg()
@@ -849,6 +838,7 @@ copy_zs_scripts()
 copy_grubaa64_efi()
 copy_bond_conf()
 copy_i40e_driver()
+copy_cube_tools()
 create_virtio_driver_directory()
 set_max_performance()
 do_libvirt_qemu_config()
@@ -861,6 +851,7 @@ install_agent_pkg()
 do_auditd_config()
 modprobe_usb_module()
 modprobe_mpci_module()
+set_gpu_blacklist()
 start_kvmagent()
 
 host_post_info.start_time = start_time

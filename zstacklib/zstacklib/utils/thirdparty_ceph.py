@@ -16,6 +16,7 @@ from xms_client.api import ClientGroupsApi
 from xms_client.rest import ApiException
 from xms_client.api import AccessTokensApi
 
+from zstacklib.utils import jsonobject
 from zstacklib.utils import log
 from zstacklib.utils import linux
 
@@ -551,7 +552,7 @@ class RbdDeviceOperator(object):
         created_block_volume_id = created_block_volume.id
         created_block_volume_name = created_block_volume.volume_name
         self._retry_until(self.is_block_volume_status_active, created_block_volume_id)
-        logger.debug("Successfully create block volume[name : %s] from snapshot" % image_uuid)
+        logger.debug("Successfully create block volume[name : %s] from snapshot, volume: %s" % (image_uuid, jsonobject.dumps(created_block_volume)))
         return created_block_volume_name
 
     def copy_volume(self, srcPath, dstPath):
@@ -627,7 +628,7 @@ class RbdDeviceOperator(object):
             created_block_volume = self.block_volumes_api.create_block_volume(api_body).block_volume
             created_block_volume_id = created_block_volume.id
             self._retry_until(_is_block_volume_status_active, created_block_volume_id)
-            logger.debug("Successfully create block volume[name : %s] from snapshot" % volume_name)
+            logger.debug("Successfully create block volume[name: %s] from snapshot, volume: %s" % (volume_name, jsonobject.dumps(created_block_volume)))
 
             return created_block_volume
 

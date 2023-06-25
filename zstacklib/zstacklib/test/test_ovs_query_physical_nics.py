@@ -2,15 +2,18 @@
 import os
 import time
 import unittest
+import mock
 
 import zstacklib.utils.ip as ip
-from zstacklib.utils import jsonobject
-from kvmagent.plugins import host_plugin
+from zstacklib.utils import qemu
+
+qemu.get_path = mock.Mock(return_value="/usr/bin/qemu-system-x86_64")
+
 from kvmagent.plugins import prometheus
 
 class Test(unittest.TestCase):
 
-
+    @unittest.skipIf(len(ip.get_smart_nic_pcis()) == 0, "no smart-nic found")
     def test_1_query_smart_nic_pcis(self):
         # because 1 smart-nic has 2 ports
         has_at_least_two_pcis = True
@@ -22,7 +25,7 @@ class Test(unittest.TestCase):
         self.assertEqual(has_at_least_two_pcis, True)
         print("=======test1-done=========")
 
-
+    @unittest.skipIf(len(ip.get_smart_nic_pcis()) == 0, "no smart-nic found")
     def test_2_query_smart_nic_interfaces(self):
         # need split at least 1 vf to meet this requirement
         has_at_least_three_interfaces = True
@@ -34,7 +37,7 @@ class Test(unittest.TestCase):
         self.assertEqual(has_at_least_three_interfaces, True)
         print("=======test2-done=========")
 
-
+    @unittest.skipIf(len(ip.get_smart_nic_pcis()) == 0, "no smart-nic found")
     def test_3_query_smart_nic_representors(self):
         '''
         Notice:

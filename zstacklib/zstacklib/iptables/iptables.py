@@ -25,6 +25,9 @@ class Rule(object):
         self.match_classes = {}
     
     def _parse(self):
+        if not hasattr(self.rule_xml_object, 'conditions'):
+            return False
+
         condition_obj = self.rule_xml_object.conditions
         if hasattr(condition_obj, 'match'):
             match_obj = condition_obj.match
@@ -38,8 +41,9 @@ class Rule(object):
                 self.match_classes[match_class.__name__] = m
         
         for name, other in condition_obj.get_children_nodes().items():
-            if other.get_tag() == 'match':
+            if other.get_tag() == 'match' or other.get_tag() == 'conntrack':
                 continue
+
             other_match_class = get_match(other.get_tag())
             if not other_match_class:
                 raise IPTablesError('unable to find match for <%s/>' % other.get_tag())
@@ -50,6 +54,9 @@ class Rule(object):
         
         action_objs = self.rule_xml_object.actions
         for name, to in action_objs.get_children_nodes().items():
+            if to.get_tag() == 'goto':
+                continue
+
             target_class = get_target(to.get_tag())
             if not target_class:
                 raise IPTablesError('unable to find target for <%s/>' % to.get_tag())
@@ -57,6 +64,8 @@ class Rule(object):
             assert t, 'why does %s return None target???' % target_class.__name__
             self.target = t
             break
+
+        return True
     
     def add_match(self, m):
         if not isinstance(m, IPTableMatch):
@@ -113,7 +122,9 @@ class Chain(object):
         for ro in rule_objs:
             r = Rule()
             r.rule_xml_object = ro
-            r._parse()
+            if not r._parse():
+                break
+
             self.rules.append(r)
     
     def add_rule(self, r):

@@ -4,7 +4,7 @@
 '''
 import unittest
 import os.path
-from ..utils import plugin
+from zstacklib.utils import plugin
 
 class TestPlugin(unittest.TestCase):
 

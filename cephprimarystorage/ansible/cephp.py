@@ -1,14 +1,16 @@
 #!/usr/bin/env python
 # encoding: utf-8
 import argparse
-from zstacklib import *
+import datetime
 from distutils.version import LooseVersion
+
+from zstacklib import *
 
 # create log
 logger_dir = "/var/log/zstack/"
 create_log(logger_dir)
 banner("Starting to deploy ceph primary agent")
-start_time = datetime.now()
+start_time = datetime.datetime.now()
 # set default value
 file_root = "files/cephp"
 pip_url = "https=//pypi.python.org/simple/"
@@ -24,9 +26,10 @@ remote_pass = None
 remote_port = None
 host_uuid = None
 ceph_file_path = "/bin/ceph"
-
-# common cephprimarystorage deps of ns10 that need to update
-ns10_update_list = "nettle"
+# common cephprimarystorage deps of ky10 that need to update
+ky10_update_list = "nettle"
+ky10sp3_update_list = "qemu-block-rbd"
+qemu_installed = False
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy ceph primary strorage to host')
@@ -55,27 +58,29 @@ host_post_info.remote_port = remote_port
 if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
 
-IS_AARCH64 = get_remote_host_arch(host_post_info) == 'aarch64'
+# include zstacklib.py
+host_info = get_remote_host_info_obj(host_post_info)
+host_info = upgrade_to_helix(host_info, host_post_info)
+releasever = get_host_releasever(host_info)
+host_post_info.releasever = releasever
+
+IS_AARCH64 = host_info.host_arch == 'aarch64'
+IS_LOONGARCH64 = host_info.host_arch == 'loongarch64'
 if IS_AARCH64:
     qemu_img_pkg = "files/kvm/qemu-img-aarch64"
     qemu_img_local_pkg = "%s/qemu-img-aarch64" % cephp_root
 
-# include zstacklib.py
-(distro, major_version, distro_release, distro_version) = get_remote_host_info(host_post_info)
-releasever = get_host_releasever([distro, distro_release, distro_version])
-host_post_info.releasever = releasever
-
 zstacklib_args = ZstackLibArgs()
-zstacklib_args.distro = distro
-zstacklib_args.distro_release = distro_release
-zstacklib_args.distro_version = distro_version
+zstacklib_args.distro = host_info.distro
+zstacklib_args.distro_release = host_info.distro_release
+zstacklib_args.distro_version = host_info.major_version
 zstacklib_args.zstack_repo = zstack_repo
 zstacklib_args.zstack_root = zstack_root
 zstacklib_args.host_post_info = host_post_info
 zstacklib_args.pip_url = pip_url
 zstacklib_args.trusted_host = trusted_host
 zstacklib_args.zstack_releasever = releasever
-if distro in DEB_BASED_OS:
+if host_info.distro in DEB_BASED_OS:
     zstacklib_args.apt_server = yum_server
     zstacklib_args.zstack_apt_source = zstack_repo
 else :
@@ -92,17 +97,24 @@ else:
     command = 'mkdir -p %s %s' % (cephp_root, virtenv_path)
     run_remote_command(command, host_post_info)
 
-if distro in RPM_BASED_OS:
+if host_info.distro in RPM_BASED_OS:
     install_rpm_list = "wget nmap"
 
-    qemu_installed = yum_check_package("qemu-kvm", host_post_info) or yum_check_package("qemu-kvm-ev", host_post_info)
+    if remote_bin_installed(host_post_info, "qemu-img", return_status=True):
+        (status, qemu_img_version) = get_qemu_img_version(host_post_info)
+        # When the qemu-img version is smaller than 4.0.0, rbd is already included
+        if LooseVersion(qemu_img_version) < LooseVersion('4.0.0'):
+            qemu_installed = True
+    if not qemu_installed:
+        qemu_installed = yum_check_package("qemu-kvm", host_post_info) or yum_check_package("qemu-kvm-ev", host_post_info) or yum_check_package("qemu", host_post_info)
+
     if not qemu_installed:
         install_rpm_list += " %s" % qemu_alias.get(releasever, 'qemu-kvm')
         # Since 4.5.11, qemu-kvm-ev renamed to qemu-kvm in c76 and 79, however,
         # c74 do not apply the change. Therefore, if ceph bs host is c74 and
         # mn is c76 or c79 and qemu-kvm not installed, using qemu-kvm instead
         # qemu-kvm-ev
-        if releasever == 'c74' and get_mn_release() in ['c76', 'c79']:
+        if releasever == 'c74' and get_mn_release() in ['c76', 'c79', 'h76c', 'h79c']:
             install_rpm_list += " qemu-kvm"
 
     if zstack_repo != 'false':
@@ -111,25 +123,29 @@ if distro in RPM_BASED_OS:
                 .format(install_rpm_list, zstack_repo)
         run_remote_command(command, host_post_info)
 
-        if releasever in ['ns10']:
+        if releasever in kylin:
             command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (
-            ns10_update_list, zstack_repo)
+            ky10_update_list, zstack_repo)
             run_remote_command(command, host_post_info)
 
-        if distro_version >= 7:
+            if IS_LOONGARCH64 and yum_check_package("qemu", host_post_info):
+                command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (
+                    ky10sp3_update_list, zstack_repo)
+                run_remote_command(command, host_post_info)
+
+        if host_info.major_version >= 7:
             command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
             run_remote_command(command, host_post_info)
     else:
         for pkg in install_rpm_list.split():
             yum_install_package(pkg, host_post_info)
-        if distro_version >= 7:
+        if host_info.major_version >= 7:
             command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
             run_remote_command(command, host_post_info)
     set_selinux("state=disabled", host_post_info)
 
     # replace qemu-img binary if qemu-img-ev before 2.12.0 is installed, to fix zstack-11004 / zstack-13594 / zstack-20983
-    command = "qemu-img --version | grep 'qemu-img version' | cut -d ' ' -f 3 | cut -d '(' -f 1"
-    (status, qemu_img_version) = run_remote_command(command, host_post_info, False, True)
+    (status, qemu_img_version) = get_qemu_img_version(host_post_info)
     if IS_AARCH64 and LooseVersion(qemu_img_version) < LooseVersion('2.12.0'):
         copy_arg = CopyArg()
         copy_arg.src = "%s" % qemu_img_pkg
@@ -141,7 +157,7 @@ if distro in RPM_BASED_OS:
         host_post_info.post_label_param = "qemu-img"
         run_remote_command(command, host_post_info)
 
-elif distro in DEB_BASED_OS:
+elif host_info.major_version in DEB_BASED_OS:
     install_pkg_list = ["wget", "qemu-utils","libvirt-bin", "libguestfs-tools"]
     apt_install_packages(install_pkg_list, host_post_info)
     command = "(chmod 0644 /boot/vmlinuz*) || true"
@@ -210,10 +226,10 @@ copy_arg.args = "force=yes"
 copy(copy_arg, host_post_info)
 
 # name: restart cephpagent
-if distro in RPM_BASED_OS:
+if host_info.distro in RPM_BASED_OS:
     command = "service zstack-ceph-primarystorage stop && service zstack-ceph-primarystorage start" \
               " && chkconfig zstack-ceph-primarystorage on"
-elif distro in DEB_BASED_OS:
+elif host_info.distro in DEB_BASED_OS:
     command = "update-rc.d zstack-ceph-primarystorage start 97 3 4 5 . stop 3 0 1 2 6 . && service zstack-ceph-primarystorage stop && service zstack-ceph-primarystorage start"
 run_remote_command(command, host_post_info)
 

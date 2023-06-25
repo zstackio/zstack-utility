@@ -2,12 +2,13 @@ import unittest
 import mock
 from zstacklib.utils import bash
 from zstacklib.utils import lvm
+from zstacklib.utils import linux
 
 
 class TestPlugin(unittest.TestCase):
 
     def test_load_xml(self):
-        with open("da3515fb4b374aa9b818c094b61f814a.xml", 'r') as f:
+        with open("./zstacklib/test/lvm/da3515fb4b374aa9b818c094b61f814a.xml", 'r') as f:
             test_xml = f.read()
         vm = lvm.VmStruct()
         vm.load_from_xml(test_xml)
@@ -17,7 +18,8 @@ class TestPlugin(unittest.TestCase):
         self.assertTrue("/dev/e2402ed34190477cb9b4ae3a2cc58db6/eb4a2df6f6ab4fee9bc62eef07e7ce38" in vm.volumes)
 
     def test_get_running_vm(self):
-        lvm.LIVE_LIBVIRT_XML_DIR = "./"
+        linux.LIVE_LIBVIRT_XML_DIR = "./zstacklib/test/lvm/"
+        lvm.LIVE_LIBVIRT_XML_DIR = "./zstacklib/test/lvm/"
         lvm.is_bad_vm_root_volume = mock.Mock(return_value=True)
         bash.bash_r = mock.Mock(return_value=0)
         vms = lvm.get_running_vm_root_volume_on_pv("e2402ed34190477cb9b4ae3a2cc58db6", [])

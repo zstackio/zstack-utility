@@ -457,9 +457,11 @@ class UriBuilder(object):
                 return
             else:
                 self.host = rest[0:slash]
+                rest = rest.lstrip(self.host)
 
         self.paths = [p.strip('/') for p in rest.split('/')]
-        if '' in self.paths: self.paths.remove('')
+        self.paths = filter(lambda x: x != '', self.paths)
+        print(self.paths)
         self.paths = [] if not self.paths else self.paths
 
 

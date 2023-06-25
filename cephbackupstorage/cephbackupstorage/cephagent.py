@@ -4,6 +4,7 @@ import os
 import os.path
 import pprint
 import traceback
+import urllib
 import urllib2
 import urlparse
 import tempfile
@@ -13,6 +14,8 @@ import rbd
 import cherrypy
 import hashlib
 from cherrypy.lib.static import _serve_fileobj
+from cherrypy._cpreqbody import Entity, Part, SizedReader
+from cherrypy._cprequest import Request
 
 import zstacklib.utils.daemon as daemon
 import zstacklib.utils.plugin as plugin
@@ -158,8 +161,17 @@ def replyerror(func):
             return jsonobject.dumps(rsp)
     return wrap
 
-class UploadTask(object):
+class UploadParam(object):
+    def __init__(self):
+        self.image_uuid = None
+        self.image_size = 0
+        self.slice_index = 0
+        self.slice_offset = 0
+        self.slice_size = 0
+        self.slice_md5 = None
 
+
+class UploadTask(object):
     def __init__(self, imageUuid, installPath, dstPath, tmpPath):
         self.completed = False
         self.imageUuid = imageUuid
@@ -173,6 +185,13 @@ class UploadTask(object):
         self.lastOpTime = linux.get_current_timestamp()
         self.image_format = "raw"
         self.close = None
+
+        self.slice_uploaded = set()
+        self.slice_count = 0
+        self.slice_size = 0
+
+        self.image_created = False
+        self.image_completing = False
 
     def fail(self, reason):
         self.completed = True
@@ -198,6 +217,40 @@ class UploadTask(object):
     def renew(self):
         self.lastOpTime = linux.get_current_timestamp()
 
+    def all_slice_uploaded(self):
+        return 0 < self.slice_count == len(self.slice_uploaded)
+
+    def checked_download_size(self):
+        for i in range(self.slice_count):
+            if i not in self.slice_uploaded:
+                return i * self.slice_size
+
+        return self.expectedSize
+
+    def create_image_if_not_exists(self, ioctx, image_name):
+        # type: (rados.Ioctx, str) -> None
+
+        if self.image_created:
+            return
+
+        with lock.NamedLock("upload-image-%s" % self.imageUuid):
+            if not self.image_created:
+                rbd.RBD().create(ioctx, image_name, self.expectedSize)
+                self.image_created = True
+
+    def allow_image_completing(self):
+        if self.all_slice_uploaded():
+            with lock.NamedLock("upload-image-%s" % self.imageUuid):
+                if not self.image_completing:
+                    self.image_completing = True
+                    return True
+        return False
+
+    def add_download_size(self, delta):
+        with lock.NamedLock("upload-image-%s" % self.imageUuid):
+            self.downloadSize += delta
+
+
 class UploadTasks(object):
     MAX_RECORDS = 80
 
@@ -220,17 +273,21 @@ class UploadTasks(object):
 
     @lock.lock('ceph-upload-task')
     def add_task(self, t):
+        # type: (UploadTask) -> None
         if len(self.tasks) > self.MAX_RECORDS:
             self._expunge_oldest_task()
         self.tasks[t.imageUuid] = t
 
     @lock.lock('ceph-upload-task')
-    def get_task(self, imageUuid):
-        return self.tasks.get(imageUuid)
+    def get_task(self, image_uuid):
+        # type: (str) -> UploadTask
+        return self.tasks.get(image_uuid)
 
 # ------------------------------------------------------------------ #
 
 def get_boundary(entity):
+    # type: (Entity) -> str
+
     ib = ""
     if 'boundary' in entity.content_type.params:
         # http://tools.ietf.org/html/rfc2046#section-5.1.1
@@ -278,24 +335,27 @@ def get_image_format_from_buf(qhdr):
     return "raw"
 
 
-def stream_body(self, task, entity, boundary, up):
-    pool, image_name = task.tmpPath.split('/')
-    ioctx = self.get_ioctx(pool)
-    if up['offset'] == 0:
-        rbd_inst = rbd.RBD()
-        rbd_inst.create(ioctx, image_name, task.expectedSize)
+def stream_body(entity, boundary, param, task, ioctx):
+    # type: (Entity, str, UploadParam, UploadTask, rados.Ioctx) -> None
+
+    _, image_name = task.tmpPath.split('/')
+    task.create_image_if_not_exists(ioctx, image_name)
     image_obj = ImageFileObject(rbd.Image(ioctx, image_name))
-    image_obj.seek(up['offset'])
+    image_obj.seek(param.slice_offset)
 
     while True:
-        headers = cherrypy._cpreqbody.Part.read_headers(entity.fp)
-        p = cherrypy._cpreqbody.Part(entity.fp, headers, boundary)
+        headers = Part.read_headers(entity.fp)
+        p = Part(entity.fp, headers, boundary)
         if not p.filename:
             continue
 
+        logger.debug("uploading image %s: %s slice, index: %d, offset: %d, content length: %d" %
+                     (param.image_uuid, p.filename, param.slice_index, param.slice_offset, param.slice_size))
+
+        slice_downloaded_size = 0
         try:
-            reader = cherrypy._cpreqbody.SizedReader(p.fp, None, up['size'])
-            remaining = up['size']
+            reader = SizedReader(p.fp, None, param.slice_offset)
+            remaining = param.slice_size
             bytes_read = 0
             md5 = hashlib.md5()
             chunks = []
@@ -313,28 +373,38 @@ def stream_body(self, task, entity, boundary, up):
                 bytes_read += datalen
                 if bytes_read >= BUFFER_SIZE or remaining <= 0:
                     image_obj.write(b''.join(chunks))
-                    task.downloadSize += bytes_read
+                    task.add_download_size(bytes_read)
+                    slice_downloaded_size += bytes_read
                     chunks = []
                     bytes_read = 0
         finally:
             image_obj.close()
         break
 
-    if up['md5'] and up['md5'] != md5.hexdigest():
-        task.downloadSize -= up['size']
-        raise cherrypy.HTTPError(406, "content md5 not match, expected: %s, actual: %s" % (up['md5'], md5.hexdigest()))
+    if param.slice_size != slice_downloaded_size:
+        task.add_download_size(-slice_downloaded_size)
+        raise Exception("incomplete image %s slice index %d, offset %d, completed %d, expected %d" %
+                        (param.image_uuid, param.slice_index, param.slice_offset, slice_downloaded_size, param.slice_size))
 
-    if task.downloadSize != task.expectedSize:
-        return
+    if param.slice_md5 and param.slice_md5 != md5.hexdigest():
+        task.add_download_size(-slice_downloaded_size)
+        raise cherrypy.HTTPError(406, "content md5 not match, expected: %s, actual: %s" % (param.slice_md5, md5.hexdigest()))
 
+    task.slice_uploaded.add(param.slice_index)
+    logger.debug("uploaded image %s slice, index: %d offset: %d, content length: %d" %
+                 (param.image_uuid, param.slice_index, param.slice_offset, param.slice_size))
+
+
+def complete_upload(task):
+    # type: (UploadTask) -> None
     try:
-        file_format = linux.get_img_fmt('rbd:'+task.tmpPath)
+        file_format = linux.get_img_fmt('rbd:' + task.tmpPath)
     except Exception as e:
         task.fail('upload image %s failed: %s' % (task.imageUuid, str(e)))
         shell.run('rbd rm %s' % task.tmpPath)
         return
 
-    if file_format == 'qcow2' and linux.qcow2_get_backing_file('rbd:'+task.tmpPath):
+    if file_format == 'qcow2' and linux.qcow2_get_backing_file('rbd:' + task.tmpPath):
         task.fail('Qcow2 image %s has backing file' % task.imageUuid)
         shell.run('rbd rm %s' % task.tmpPath)
         return
@@ -702,70 +772,107 @@ class CephAgent(object):
     # handler for multipart upload, requires:
     # - header X-IMAGE-UUID
     # - header X-IMAGE-SIZE
+    # options:
+    # - header X-SLICE-OFFSET
+    # - header X-SLICE-SIZE
+    # - header X-SLICE-INDEX
+    # - header X-SLICE-MD5
     def upload(self, req):
-        image_uuid = req.headers['X-IMAGE-UUID']
-        image_size = req.headers['X-IMAGE-SIZE']
-        slice_offset = req.headers.get('X-SLICE-OFFSET')
-        slice_size = req.headers.get('X-SLICE-SIZE')
-        expected_md5 = req.headers.get('X-SLICE-MD5')
+        # type: (Request) -> None
 
-        if not slice_offset:
-            slice_offset = '0'
+        upload_param = self.get_upload_param(req.headers)
+        task = self.get_upload_task(upload_param)
+        self.upload_slice(req.body, upload_param, task)
 
-        if not slice_size:
-            slice_size = image_size
-        task = self.upload_tasks.get_task(image_uuid)
+        if task.allow_image_completing():
+            complete_upload(task)
+
+    @staticmethod
+    def get_upload_param(req_header):
+        # type: (dict[str, str]) -> UploadParam
+
+        def get_long_field(key, default=None):
+            v = req_header.get(key, default)
+            try:
+                lv = long(v)
+                if lv < 0:
+                    raise ValueError
+                return lv
+            except ValueError:
+                raise Exception('invalid header "%s": %s' % (key, v))
+
+        up = UploadParam()
+        up.image_uuid = req_header['X-IMAGE-UUID']
+        up.image_size = get_long_field('X-IMAGE-SIZE')
+        up.slice_offset = get_long_field('X-SLICE-OFFSET', default=0)
+        up.slice_size = get_long_field('X-SLICE-SIZE', default=up.image_size)
+        up.slice_index = get_long_field('X-SLICE-INDEX', default=0)
+        up.expected_md5 = req_header.get('X-SLICE-MD5', None)
+
+        if up.slice_offset >= up.image_size:
+            raise Exception('invalid slice offset header: %s, image_size: %d' % (up.slice_offset, up.image_size))
+
+        return up
+
+    def get_upload_task(self, param):
+        # type: (UploadParam) -> UploadTask
+        task = self.upload_tasks.get_task(param.image_uuid)
         if task is None:
-            raise Exception('image not found %s' % image_uuid)
+            raise Exception('image not found %s' % param.image_uuid)
 
         if task.lastError:
             self._fail_task(task, task.lastError)
 
         if task.completed:
-            raise Exception('image[uuid: %s] upload has completed' % image_uuid)
+            raise Exception('image[uuid: %s] upload has completed' % param.image_uuid)
 
-        try:
-            image_size = long(image_size)
-            slice_offset = long(slice_offset)
-            slice_size = long(slice_size)
-        except ValueError:
-            raise Exception('invalid header "X-IMAGE-SIZE", "X-SLICE-OFFSET" or "X-SLICE-SIZE"')
+        task.expectedSize = param.image_size
 
-        if image_size <= 0:
-            raise Exception('invalid image size header: %s' % image_size)
+        if param.slice_index == 0:
+            task.slice_size = param.slice_size
 
-        if slice_offset > task.downloadSize or slice_offset >= image_size or slice_offset < 0:
-            raise Exception('invalid slice offset header: %s, download size: %d' % slice_offset, task.downloadSize)
+            _, avail, _ = self._get_capacity()
+            if avail <= task.expectedSize:
+                self._fail_task(task, 'capacity not enough for size: %d' % param.image_size)
 
-        task.expectedSize = image_size
-        total, avail, poolCapacities = self._get_capacity()
-        if avail <= task.expectedSize:
-            self._fail_task(task, 'capacity not enough for size: ' + image_size)
+        if param.slice_offset + param.slice_size == param.image_size:
+            slice_count = param.slice_index + 1
+        else:
+            slice_count = (param.image_size - 1) / param.slice_size + 1
 
-        entity = req.body
+        if not task.slice_count:
+            task.slice_count = slice_count
+        elif task.slice_count != slice_count:
+            raise Exception("every upload request for image[uuid:%s] should has the same slice size and image size" % param.image_uuid)
+
+        return task
+
+    def upload_slice(self, entity, param, task):
+        # type: (Entity, UploadParam, UploadTask) -> None
+
         boundary = get_boundary(entity)
         if not boundary:
             self._fail_task(task, 'unexpected post form')
 
+        pool, _ = task.tmpPath.split('/')
+        ioctx = self.get_ioctx(pool)
+
         try:
-            upload_param = {'offset': slice_offset, 'size': slice_size, 'md5': expected_md5}
-            stream_body(self, task, entity, boundary, upload_param)
-            if slice_offset + slice_size != task.downloadSize:
-                raise Exception("incomplete image %s, offset %d, completed %d, expected %d" % (image_uuid, slice_offset, \
-                                task.downloadSize, image_size))
+            stream_body(entity, boundary, param, task, ioctx)
         except cherrypy.HTTPError as e:
             raise cherrypy.HTTPError(e.status, e._message)
         except Exception as e:
             if str(e).lstrip() != 'timed out':
                 shell.run('rbd rm %s' % task.tmpPath)
                 self._fail_task(task, str(e))
-            if slice_offset == 0:
+            if param.slice_offset == 0:
                 shell.run('rbd rm %s' % task.tmpPath)
+
 
     def _prepare_upload(self, cmd):
         class ImageUploadDaemon(plugin.TaskDaemon):
             def __init__(self, task):
-                super(ImageUploadDaemon, self).__init__(cmd, 'imageUpload', report_progress=False)
+                super(ImageUploadDaemon, self).__init__(cmd, 'imageUpload')
                 self.task = task
                 self.task.close = self.close
 
@@ -774,9 +881,6 @@ class CephAgent(object):
                     return
                 self.task.lastError = "image [uuid: %s] upload canceled" % cmd.imageUuid
                 shell.run('rbd rm %s' % task.tmpPath)
-
-            def _get_percent(self):
-                pass
 
         start = len(self.UPLOAD_PROTO)
         imageUuid = cmd.url[start:start+self.LENGTH_OF_UUID]
@@ -806,11 +910,11 @@ class CephAgent(object):
         rsp.installPath = task.installPath
         rsp.size = task.expectedSize
         rsp.actualSize = task.expectedSize
-        rsp.downloadSize = task.downloadSize
+        rsp.downloadSize = task.checked_download_size()
         rsp.lastOpTime = long(task.lastOpTime) * 1000
         if task.expectedSize == 0:
             rsp.progress = 0
-        elif task.completed:
+        elif task.completed and not task.lastError:
             rsp.size = self._get_file_size(task.dstPath)
             rsp.progress = 100
         else:
@@ -899,8 +1003,7 @@ class CephAgent(object):
         report.resourceUuid = cmd.imageUuid
         report.progress_report("0", "start")
 
-        if isinstance(cmd.url, unicode):
-            cmd.url = str(cmd.url)
+        cmd.url = urllib.quote(cmd.url.encode('utf-8'), safe=':/')
 
         url = urlparse.urlparse(cmd.url)
         if url.scheme in ('http', 'https', 'ftp'):

@@ -1,0 +1,56 @@
+= 写在最开始
+
+这是一篇关于如何在 `zstack-utility` 中使用 `unittest` 的教程。本文假设你已经熟悉 `zstack-utility` 的代码结构，如果不熟悉，可以先阅读其他和代码相关的文档
+
+== 执行步骤
+
+跟随这个步骤，开始你的 `unittest` 之旅
+
+=== 创建测试用例
+
+<1>. 在 `zstack-utility` 中找到你想要测试的模块，比如 `zstack-utility/zstacklib`
+
+<2>. 在 `zstack-utility/zstacklib/zstacklib` 目录下创建一个 `test` 目录，如果已经存在，不需要重新创建
+
+<3>. 在 `zstack-utility/zstacklib/zstacklib/test` 目录下创建一个 `test_` 开头的文件，比如 `test_zstacklib.py`
+
+<4>. 在 `test_zstacklib.py` 中写入你的测试代码，比如
+
+[source,python]
+----
+
+import unittest
+
+class TestZstacklib(unittest.TestCase):
+
+    def test_zstacklib(self):
+        self.assertEqual(1, 1)
+
+----
+
+<5>. 在 `zstack-utility/zstacklib/zstacklib/test` 目录下创建一个 `__init__.py` 文件，如果已经存在，不需要重新创建
+
+=== 准备测试环境
+
+<1>. 在 `zstack-utility/zstacklib` 目录下执行 `bash install.sh`，如果已经执行过，不需要重新执行
+
+<2>. 修改pip配置，因为需要下载依赖，需要找一个可以稳定使用的pypi source
+
+<3>. 安装测试需要的额外依赖 `pip install mock==3`
+
+=== 执行测试
+
+<1>. 在 `zstack-utility/zstacklib` 目录下执行 `python -m unittest discover -s zstacklib/test/`
+
+<2>. 如果测试运行，会看到如下输出
+
+[source,python]
+----
+
+Ran 52 tests in 24.691s
+
+FAILED (errors=3, skipped=8, expected failures=3)
+
+----
+
+

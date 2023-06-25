@@ -9,7 +9,7 @@ host:
       - {name: iscsi-logs, dir: /var/log/zstack/, file: zstack-iscsi-filesystem-agent*}
       - {name: agentcollectd-logs, dir: /var/log/zstack/zstack-agent/, file: collectd.log*}
       - {name: agentserver-logs, dir: /var/log/zstack/zstack-agent/, file: server.log*}
-      - {name: dmesg-logs, dir: /var/log/, file: 'dmesg*'}
+      - {name: dmesg-logs, exec: 'dmesg'}
       - {name: message-logs, dir: /var/log/, file: messages*}
       - {name: route-logs, exec: 'route -n'}
       - {name: iptables-logs, exec: 'iptables-save'}
@@ -24,6 +24,7 @@ host:
       - {name: qemu-log, dir: /var/log/libvirt/, file: }
       - {name: sar-log, dir: /var/log/sa/, file: 'sa[0-9]*'}
       - {name: vrouter-console-log, dir: /tmp/, file: '*-vm-kernel.log'}
+      - {name: zstcli-logs, dir: /var/log/zstack/zstcli/, file: zstcli*}
 mn:
     description: management node
     type: target
@@ -44,7 +45,7 @@ mn:
       - {name: cli-logs, dir: /var/log/zstack/, file: 'zstack-cli*'}
       - {name: dashboard-logs, dir: /var/log/zstack/, file: 'zstack-dashboard.log*'}
       - {name: zstack-console-logs, dir: /var/log/zstack/, file: 'zstack-console-proxy*'}
-      - {name: dmesg-logs, dir: /var/log/, file: 'dmesg*'}
+      - {name: dmesg-logs, exec: 'dmesg'}
       - {name: message-logs, dir: /var/log/, file: messages*}
       - {name: route-logs, exec: 'route -n'}
       - {name: iptables-logs, exec: 'iptables-save'}
@@ -80,3 +81,4 @@ sharedblock:
       - {name: lvm-etc, dir: /etc/lvm/, file: }
       - {name: sanlock-etc, dir: /etc/sanlock/, file: }
       - {name: zsblk-agent, dir: /var/log/zstack/zsblk-agent/, file: }
+      - {name: lvmlockd-logs, dir: /var/log/lvmlockd/, file: lvmlockd.log*}

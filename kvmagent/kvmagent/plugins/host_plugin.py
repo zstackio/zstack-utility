@@ -16,6 +16,7 @@ import string
 import socket
 import sys
 import yaml
+import subprocess
 
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
@@ -32,6 +33,7 @@ from zstacklib.utils import sizeunit
 from zstacklib.utils import thread
 from zstacklib.utils import xmlobject
 from zstacklib.utils import ovs
+from zstacklib.utils import shell
 from zstacklib.utils.bash import *
 from zstacklib.utils.ip import get_nic_supported_max_speed
 from zstacklib.utils.ip import get_nic_driver_type
@@ -89,6 +91,7 @@ class HostFactResponse(kvmagent.AgentResponse):
         self.systemSerialNumber = None
         self.eptFlag = None
         self.libvirtCapabilities = []
+        self.virtualizerInfo = vm_plugin.VirtualizerInfoTO()
 
 class SetupMountablePrimaryStorageHeartbeatCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -168,6 +171,20 @@ class DisableHugePageRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(DisableHugePageRsp, self).__init__()
 
+class SetIpOnHostNetworkInterfaceCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(SetIpOnHostNetworkInterfaceCmd, self).__init__()
+        self.interfaceName = None
+        self.oldIpAddress = None
+        self.oldNetmask = None
+        self.oldGateway = None
+        self.ipAddress = None
+        self.netmask = None
+        self.gateway = None
+
+class SetIpOnHostNetworkInterfaceRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(SetIpOnHostNetworkInterfaceRsp, self).__init__()
 
 class HostPhysicalMemoryStruct(object):
     def __init__(self):
@@ -190,6 +207,12 @@ class GetHostPhysicalMemoryFactsResponse(kvmagent.AgentResponse):
         self.physicalMemoryFacts = []
 
 
+class GetHostNetworkBongdingCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(GetHostNetworkBongdingCmd, self).__init__()
+        self.managementServerIp = None
+
+
 class GetHostNetworkBongdingResponse(kvmagent.AgentResponse):
     bondings = None  # type: list[HostNetworkBondingInventory]
     nics = None  # type: list[HostNetworkInterfaceInventory]
@@ -203,9 +226,10 @@ class GetHostNetworkBongdingResponse(kvmagent.AgentResponse):
 class HostNetworkBondingInventory(object):
     slaves = None  # type: list(HostNetworkInterfaceInventory)
 
-    def __init__(self, bondingName=None, type=None):
+    def __init__(self, bondingName=None, type=None, managementServerIp=None):
         super(HostNetworkBondingInventory, self).__init__()
         self.bondingName = bondingName
+        self.speed = None
         self.type = type
         self.mode = None
         self.xmitHashPolicy = None
@@ -215,25 +239,35 @@ class HostNetworkBondingInventory(object):
         self.miimon = None
         self.allSlavesActive = None
         self.slaves = None
+        self.bondingType = None
+        self.callBackIp = None
 
         if self.type in ovs.OvsDpdkSupportBondType:
             self._init_from_ovs()
         else:
-            self._init_from_name()
+            self._init_from_name(managementServerIp)
 
-    def _init_from_name(self):
+    def _init_from_name(self, managementServerIp):
         def get_nic(n, i):
-            o = HostNetworkInterfaceInventory(n)
+            o = HostNetworkInterfaceInventory(n, None, managementServerIp)
             self.slaves[i] = o
 
         if self.bondingName is None:
             return
 
         self.type = "LinuxBonding"
+        self.speed = get_nic_supported_max_speed(self.bondingName)
         self.mode = linux.read_file("/sys/class/net/%s/bonding/mode" % self.bondingName).strip()
         self.xmitHashPolicy = linux.read_file("/sys/class/net/%s/bonding/xmit_hash_policy" % self.bondingName).strip()
         self.miiStatus = linux.read_file("/sys/class/net/%s/bonding/mii_status" % self.bondingName).strip()
         self.mac = linux.read_file("/sys/class/net/%s/address" % self.bondingName).strip()
+        if len(bash_o("ip link show type bridge_slave %s" % self.bondingName).strip()) > 0:
+            self.bondingType = "bridgeSlave"
+        else:
+            self.bondingType = "noBridge"
+        self.callBackIp = managementServerIp
+        if managementServerIp is not None:
+            self.callBackIp = self._get_src_addr(managementServerIp)
         self.ipAddresses = ['%s/%d' % (x.address, x.prefixlen) for x in iproute.query_addresses(ifname=self.bondingName, ip_version=4)]
         if len(self.ipAddresses) == 0:
             master = linux.read_file("/sys/class/net/%s/master/ifindex" % self.bondingName)
@@ -277,6 +311,7 @@ class HostNetworkBondingInventory(object):
             self.slaves[i] = o
 
         bondData = self.bondingName
+        self.speed = get_nic_supported_max_speed(self.interfaceName)
 
         if not bondData.has_key('bond'):
             return
@@ -318,11 +353,19 @@ class HostNetworkBondingInventory(object):
                 to_dict[k] = [i.__dict__ for i in v]
         return to_dict
 
+    def _get_src_addr(self, ip_addr):
+        output = subprocess.check_output(['ip', 'r', 'get', ip_addr]).decode('utf-8')
+
+        pattern = r'src ([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)'
+        match = re.search(pattern, output)
+        if match:
+            src_addr = match.group(1)
+            return src_addr
+        else:
+            return None
 
 class HostNetworkInterfaceInventory(object):
-    __cache__ = dict()  # type: dict[str, list[int, HostNetworkInterfaceInventory]]
-
-    def init(self, name, master=None):
+    def init(self, name, master=None, managementServerIp=None):
         super(HostNetworkInterfaceInventory, self).__init__()
         self.interfaceName = name
         self.speed = None
@@ -334,6 +377,7 @@ class HostNetworkInterfaceInventory(object):
         self.master = master
         self.pciDeviceAddress = None
         self.offloadStatus = None
+        self.callBackIp = None
 
         bonds = ovs.getAllBondFromFile()
 
@@ -345,27 +389,12 @@ class HostNetworkInterfaceInventory(object):
         if self.master is not None:
             self._init_from_ovs()
         else:
-            self._init_from_name()
+            self._init_from_name(managementServerIp)
         self.driverType = None
 
-    @classmethod
-    def __get_cache__(cls, name):
-        # type: (str) -> HostNetworkInterfaceInventory
-        c = cls.__cache__.get(name)
-        if c is None:
-            return None
-        if (time.time() - c[0]) < 60:
-            c[1]._updateActiveState()
-            return c[1]
-        return None
-
-    def __new__(cls, name, master=None, *args, **kwargs):
-        o = cls.__get_cache__(name)
-        if o:
-            return o
+    def __new__(cls, name, master=None, managementServerIp=None, *args, **kwargs):
         o = super(HostNetworkInterfaceInventory, cls).__new__(cls)
-        o.init(name, master)
-        cls.__cache__[name] = [int(time.time()), o]
+        o.init(name, master, managementServerIp)
         return o
 
     def _updateActiveState(self):
@@ -374,7 +403,7 @@ class HostNetworkInterfaceInventory(object):
             self.slaveActive = self.interfaceName in activeSlave if activeSlave is not None else None
 
     @in_bash
-    def _init_from_name(self):
+    def _init_from_name(self, managementServerIp):
         if self.interfaceName is None:
             return
         self.speed = get_nic_supported_max_speed(self.interfaceName)
@@ -386,6 +415,9 @@ class HostNetworkInterfaceInventory(object):
 
         self.mac = linux.read_file_strip("/sys/class/net/%s/address" % self.interfaceName)
         self.ipAddresses = linux.get_interface_ip_addresses(self.interfaceName)
+        self.callBackIp = managementServerIp
+        if managementServerIp is not None:
+            self.callBackIp = self._get_src_addr(managementServerIp)
 
         self.master = linux.get_interface_master_device(self.interfaceName)
         if self.master is not None:
@@ -434,6 +466,17 @@ class HostNetworkInterfaceInventory(object):
     def _to_dict(self):
         to_dict = self.__dict__
         return to_dict
+
+    def _get_src_addr(self, ip_addr):
+        output = subprocess.check_output(['ip', 'r', 'get', ip_addr]).decode('utf-8')
+
+        pattern = r'src ([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)'
+        match = re.search(pattern, output)
+        if match:
+            src_addr = match.group(1)
+            return src_addr
+        else:
+            return None
 
 class GetNumaTopologyResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -759,8 +802,10 @@ class HostPlugin(kvmagent.KvmAgent):
     UPDATE_HOST_OVS_CPU_PINNING = "/host/ovs/cpu-pin/update"
     CHANGE_PASSWORD = "/host/changepassword"
     GET_HOST_NETWORK_FACTS = "/host/networkfacts"
+    SET_IP_ON_HOST_NETWORK_INTERFACE = "/host/setip/networkinterface"
     HOST_XFS_SCRAPE_PATH = "/host/xfs/scrape"
     HOST_SHUTDOWN = "/host/shutdown"
+    HOST_REBOOT = "/host/reboot"
     GET_PCI_DEVICES = "/pcidevice/get"
     CREATE_PCI_DEVICE_ROM_FILE = "/pcidevice/createrom"
     GENERATE_SRIOV_PCI_DEVICES = "/pcidevice/generate"
@@ -786,7 +831,6 @@ class HostPlugin(kvmagent.KvmAgent):
     ATTACH_VOLUME_PATH = "/host/volume/attach"
     DETACH_VOLUME_PATH = "/host/volume/detach"
 
-    host_network_facts_cache = {}  # type: dict[float, list[list, list]]
     cpu_sockets = 0
 
     def __init__(self):
@@ -955,9 +999,11 @@ class HostPlugin(kvmagent.KvmAgent):
     def fact(self, req):
         rsp = HostFactResponse()
         rsp.osDistribution, rsp.osVersion, rsp.osRelease = platform.dist()
+        if rsp.osDistribution == 'centos':
+            rsp.osDistribution = platform.linux_distribution()[0].lower()
         rsp.osRelease = rsp.osRelease if rsp.osRelease else "Core"
         # compatible with Kylin SP2 HostOS ISO and standardized ISO
-        rsp.osRelease = "Sword" if rsp.osDistribution == "kylin" and host_arch in ["x86_64", "aarch64"] else rsp.osRelease
+        rsp.osRelease = rsp.osRelease.replace('ZStack', 'Sword') if rsp.osDistribution == "kylin" else rsp.osRelease
         # to be compatible with both `2.6.0` and `2.9.0(qemu-kvm-ev-2.9.0-16.el7_4.8.1)`
         qemu_img_version = shell.call("qemu-img --version | grep 'qemu-img version' | cut -d ' ' -f 3 | cut -d '(' -f 1")
         qemu_img_version = qemu_img_version.strip('\t\r\n ,')
@@ -965,18 +1011,36 @@ class HostPlugin(kvmagent.KvmAgent):
             lambda x: x.address != '127.0.0.1' and not x.ifname.endswith('zs'), iproute.query_addresses(ip_version=4))]
         rsp.systemProductName = 'unknown'
         rsp.systemSerialNumber = 'unknown'
+        rsp.systemManufacturer = 'unknown'
+        rsp.systemUUID = 'unknown'
+        rsp.biosVendor = 'unknown'
+        rsp.biosVersion = 'unknown'
+        rsp.biosReleaseDate = 'unknown'
         is_dmidecode = shell.run("dmidecode")
-        if str(is_dmidecode) == '0' and kvmagent.host_arch == "x86_64":
+        if str(is_dmidecode) == '0':
             system_product_name = shell.call('dmidecode -s system-product-name').strip()
             baseboard_product_name = shell.call('dmidecode -s baseboard-product-name').strip()
             system_serial_number = shell.call('dmidecode -s system-serial-number').strip()
+            system_manufacturer = shell.call('dmidecode -s system-manufacturer').strip()
+            system_uuid = shell.call('dmidecode -s system-uuid').strip()
+            bios_vendor = shell.call('dmidecode -s bios-vendor').strip()
+            bios_version = shell.call('dmidecode -s bios-version').strip()
+            bios_release_date = shell.call('dmidecode -s bios-release-date').strip()
             rsp.systemSerialNumber = system_serial_number if system_serial_number else 'unknown'
             rsp.systemProductName = system_product_name if system_product_name else baseboard_product_name
-            power_supply_manufacturer = shell.call("dmidecode -t 39 | grep -m1 'Manufacturer' | awk -F ':' '{print $2}'")
-            rsp.powerSupplyManufacturer = power_supply_manufacturer.strip()
-            power_supply_model_name = shell.call("dmidecode -t 39 | grep -m1 'Name' | awk -F ':' '{print $2}'")
-            rsp.powerSupplyModelName = power_supply_model_name.strip()
-            power_supply_max_power_capacity = shell.call("dmidecode -t 39 | grep -m1 'Max Power Capacity' | awk -F ':' '{print $2}'")
+            rsp.systemManufacturer = system_manufacturer if system_manufacturer else 'unknown'
+            rsp.systemUUID = system_uuid if system_uuid else 'unknown'
+            rsp.biosVendor = bios_vendor if bios_vendor else 'unknown'
+            rsp.biosVersion = bios_version if bios_version else 'unknown'
+            rsp.biosReleaseDate = bios_release_date if bios_release_date else 'unknown'
+            memory_slots_maximum = shell.call('dmidecode -q -t memory | grep "Memory Device" | wc -l')
+            rsp.memorySlotsMaximum = memory_slots_maximum.strip()
+            # power not in presence cannot collect power info
+            power_supply_manufacturer = shell.call("dmidecode -t 39 | grep -vi 'not specified' | grep -m1 'Manufacturer' | awk -F ':' '{print $2}'").strip()
+            rsp.powerSupplyManufacturer = power_supply_manufacturer if power_supply_manufacturer != "" else "unknown"
+            power_supply_model_name = shell.call("dmidecode -t 39 | grep -vi 'not specified' | grep -m1 'Name' | awk -F ':' '{print $2}'").strip()
+            rsp.powerSupplyModelName = power_supply_model_name if power_supply_model_name != "" else "unknown"
+            power_supply_max_power_capacity = shell.call("dmidecode -t 39 | grep -vi 'unknown' | grep -m1 'Max Power Capacity' | awk -F ':' '{print $2}'")
             if bool(re.search(r'\d', power_supply_max_power_capacity)):
                 rsp.powerSupplyMaxPowerCapacity = filter(str.isdigit, power_supply_max_power_capacity.strip())
 
@@ -984,6 +1048,7 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.libvirtVersion = self.libvirt_version
         rsp.ipAddresses = ipV4Addrs
         rsp.cpuArchitecture = platform.machine()
+        rsp.uptime = shell.call('uptime -s').strip()
 
         if not IS_LOONGARCH64:
             libvirtCapabilitiesList = []
@@ -994,6 +1059,8 @@ class HostPlugin(kvmagent.KvmAgent):
                 libvirtCapabilitiesList.append("blockcopynetworktarget")
             rsp.libvirtCapabilities = libvirtCapabilitiesList
 
+        bmc_version = shell.call("ipmitool mc info | grep 'Firmware Revision' | awk -F ':' '{print $2}'").strip()
+        rsp.bmcVersion = bmc_version if bmc_version else 'unknown'
 
         # To see which lan the BMC is listening on, try the following (1-11), https://wiki.docking.org/index.php/Configuring_IPMI
         for channel in range(1, 12):
@@ -1029,8 +1096,9 @@ class HostPlugin(kvmagent.KvmAgent):
             # in case lscpu doesn't show cpu max mhz
             cpuMHz = "2500.0000" if cpuMHz.strip() == '' else cpuMHz
             rsp.cpuGHz = '%.2f' % (float(cpuMHz) / 1000)
-            cpu_processor_num = shell.call("lscpu | grep -m1 'CPU(s)' | awk -F ':' '{print $2}'")                    
-            rsp.cpuProcessorNum = int(cpu_processor_num.strip())                                                         
+            cpu_cores_per_socket = shell.call("lscpu | awk -F':' '/per socket/{print $NF}'")
+            cpu_threads_per_core = shell.call("lscpu | awk -F':' '/per core/{print $NF}'")
+            rsp.cpuProcessorNum = int(cpu_cores_per_socket.strip()) * int(cpu_threads_per_core)
 
             '''
             examples:         
@@ -1075,12 +1143,18 @@ class HostPlugin(kvmagent.KvmAgent):
             static_cpuGHz_re = re.search('[0-9.]*GHz', host_cpu_model_name)
             rsp.cpuGHz = static_cpuGHz_re.group(0)[:-3] if static_cpuGHz_re else transient_cpuGHz
 
-            cpu_processor_num = shell.call("grep -c processor /proc/cpuinfo")
-            rsp.cpuProcessorNum = cpu_processor_num.strip()         
+            cpu_cores_per_socket = shell.call("lscpu | awk -F':' '/per socket/{print $NF}'")
+            cpu_threads_per_core = shell.call("lscpu | awk -F':' '/per core/{print $NF}'")
+            rsp.cpuProcessorNum = int(cpu_cores_per_socket.strip()) * int(cpu_threads_per_core)
 
             cpu_cache_list = self._get_cpu_cache()
             rsp.cpuCache = ",".join(str(cache) for cache in cpu_cache_list)
-            
+
+        # get virtualizer info
+        rsp.virtualizerInfo.uuid = self.config.get(kvmagent.HOST_UUID)
+        rsp.virtualizerInfo.virtualizer = "qemu-kvm"
+        rsp.virtualizerInfo.version = qemu.get_version_from_exe_file(qemu.get_path())
+
         return jsonobject.dumps(rsp)
 
     @vm_plugin.LibvirtAutoReconnect
@@ -1142,7 +1216,12 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.usedMemory = used_memory
 
         if HostPlugin.cpu_sockets < 1:
-            sockets = len(bash_o('grep "physical id" /proc/cpuinfo | sort -u').splitlines())
+            if IS_AARCH64:
+                # Not sure if other arm cpus have this problem.
+                o = bash_o("lscpu | grep 'Socket(s)' | awk '{print $2}'").strip()
+                sockets =  int(o) if o != '' else 0
+            else:
+                sockets = len(bash_o('grep "physical id" /proc/cpuinfo | sort -u').splitlines())
             HostPlugin.cpu_sockets = sockets if sockets > 0 else 1
 
         rsp.cpuSockets = HostPlugin.cpu_sockets
@@ -1297,6 +1376,8 @@ class HostPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     @in_bash
     def get_usb_devices(self, req):
+        usb_device_infos = []
+
         class UsbDeviceInfo(object):
             def __init__(self):
                 self.busNum = ""
@@ -1310,28 +1391,25 @@ class HostPlugin(kvmagent.KvmAgent):
             def toString(self):
                 return self.busNum + ':' + self.devNum + ':' + self.idVendor + ':' + self.idProduct + ':' + self.iManufacturer + ':' + self.iProduct + ':' + self.iSerial + ':' + self.usbVersion + ";"
 
-        def _add_usb_device_info(info, usb_device_infos, dev_id):
+        def append_usb_device(info, dev_id):
             if info.busNum == '' or info.devNum == '' or info.idVendor == '' or info.idProduct == '':
-                logger.debug("cannot get busNum/devNum/idVendor/idProduct info in usbDevice %s" % dev_id)
+                logger.debug("cannot get busNum/devNum/idVendor/idProduct info in usbDevice %s, skip append" % dev_id)
             elif '(error)' in info.iManufacturer or '(error)' in info.iProduct:
                 logger.debug("cannot get iManufacturer or iProduct info in usbDevice %s" % dev_id)
-                usb_device_infos += info.toString()
+                usb_device_infos.append(info)
             else:
-                usb_device_infos += info.toString()
-
-            return usb_device_infos
+                usb_device_infos.append(info)
 
         # use 'lsusb.py -U' to get device ID, like '0751:9842'
         rsp = GetUsbDevicesRsp()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        r, o, e = bash_roe("timeout 5 lsusb.py -U")
+        r, o, e = bash_roe("timeout 5 /usr/local/bin/lsusb.py -U")
         if r != 0:
             rsp.success = False
             rsp.error = "%s %s" % (e, o)
             return jsonobject.dumps(rsp)
 
         id_set = set()
-        usb_device_infos = ''
         for line in o.split('\n'):
             line = line.split()
             if len(line) < 2:
@@ -1363,7 +1441,7 @@ class HostPlugin(kvmagent.KvmAgent):
                 elif line[0] == 'bcdUSB':
                     info.usbVersion = line[1]
                     # special case: USB2.0 with speed 1.5MBit/s or 12MBit/s should be attached to USB1.1 Controller
-                    rst = bash_r("lsusb.py | grep -v 'grep' | grep '%s' | grep -E '1.5MBit/s|12MBit/s'" % dev_id)
+                    rst = bash_r("/usr/local/bin/lsusb.py | grep -v 'grep' | grep '%s' | grep -E '1.5MBit/s|12MBit/s'" % dev_id)
                     info.usbVersion = info.usbVersion if rst != 0 else '1.1'
                 elif line[0] == 'iManufacturer' and len(line) > 2:
                     info.iManufacturer = ' '.join(line[2:])
@@ -1371,7 +1449,7 @@ class HostPlugin(kvmagent.KvmAgent):
                     info.iProduct = ' '.join(line[2:])
                 elif line[0] == 'iSerial':
                     info.iSerial = ' '.join(line[2:]) if len(line) > 2 else ""
-                    usb_device_infos = _add_usb_device_info(info, usb_device_infos, dev_id)
+                    append_usb_device(info, dev_id)
 
         rsp.usbDevicesInfo = usb_device_infos
         return jsonobject.dumps(rsp)
@@ -1410,13 +1488,14 @@ if __name__ == "__main__":
         exclude = "--exclude=" + cmd.excludePackages if cmd.excludePackages else ""
         updates = cmd.updatePackages if cmd.updatePackages else ""
         releasever = cmd.releaseVersion if cmd.releaseVersion else kvmagent.get_host_yum_release()
-        yum_cmd = "export YUM0={};yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{} {} update {} -y"
-        yum_cmd = yum_cmd.format(releasever, ',zstack-experimental-mn' if cmd.enableExpRepo else '', exclude, updates)
+        yum_cmd = "export YUM0={};echo {}>/etc/yum/vars/YUM0;yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{} {} update {} -y"
+        yum_cmd = yum_cmd.format(releasever, releasever, ',zstack-experimental-mn' if cmd.enableExpRepo else '', exclude, updates)
         #support update qemu-kvm and update OS
-        if releasever in ['c74', 'c76', 'c79'] and "qemu-kvm" in updates or cmd.releaseVersion is not None:
-            update_qemu_cmd = "export YUM0={};yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn  swap -y -- remove qemu-img-ev -- install qemu-img " \
+        if releasever in ['c74', 'c76', 'c79', 'h76c', 'h79c']:
+            if "qemu-kvm" in updates or cmd.releaseVersion is not None:
+                update_qemu_cmd = "export YUM0={};yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn  swap -y -- remove qemu-img-ev -- install qemu-img " \
                               "&& yum remove qemu-kvm-ev qemu-kvm-common-ev -y && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install qemu-kvm qemu-kvm-common -y && "
-            yum_cmd = update_qemu_cmd.format(releasever) + yum_cmd
+                yum_cmd = update_qemu_cmd.format(releasever) + yum_cmd
 
         rsp = UpdateHostOSRsp()
         if shell.run("which yum") != 0:
@@ -1540,11 +1619,21 @@ if __name__ == "__main__":
         self.do_shutdown_host()
         return jsonobject.dumps(kvmagent.AgentResponse())
 
+    def reboot_host(self, req):
+        self.do_reboot_host()
+        return jsonobject.dumps(kvmagent.AgentResponse())
+
     @thread.AsyncThread
     def do_shutdown_host(self):
         logger.debug("It is going to shutdown host after 1 sec")
         time.sleep(1)
         shell.call("sudo init 0")
+
+    @thread.AsyncThread
+    def do_reboot_host(self):
+        logger.debug("It is going to reboot host after 1 sec")
+        time.sleep(1)
+        shell.call("sudo shutdown -r now")
 
     @kvmagent.replyerror
     @in_bash
@@ -1683,14 +1772,9 @@ done
     def locate_host_network_interface(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
-        # Fibre port not support command: ethtool --identify ethxx
-        r = bash_r("ethtool %s | grep 'Supported ports' | grep 'FIBRE'" % cmd.networkInterface)
-        if r == 0:
-            sc = shell.ShellCmd("ethtool --test %s" % cmd.networkInterface)
-            sc(False)
-        else:
-            sc = shell.ShellCmd("ethtool --identify %s %s" % (cmd.networkInterface, cmd.interval))
-            sc(False)
+        # Intel 82599ES not support identify.
+        sc = shell.ShellCmd("ethtool --identify %s %s" % (cmd.networkInterface, cmd.interval))
+        sc(False)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -1763,42 +1847,83 @@ done
 
     @kvmagent.replyerror
     def get_host_network_facts(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetHostNetworkBongdingResponse()
-        cache = HostPlugin.__get_cache__()
-        if cache is not None:
-            rsp.bondings = cache[0]
-            rsp.nics = cache[1]
-            return jsonobject.dumps(rsp)
 
-        rsp.bondings = self.get_host_networking_bonds()
-        rsp.nics = self.get_host_networking_interfaces()
+        rsp.bondings = self.get_host_networking_bonds(cmd.managementServerIp)
+        rsp.nics = self.get_host_networking_interfaces(cmd.managementServerIp)
 
-        HostPlugin.__store_cache__(rsp.bondings, rsp.nics)
         return jsonobject.dumps(rsp)
 
-    @classmethod
-    def __get_cache__(cls):
-        # type: () -> (list, list)
-        keys = cls.host_network_facts_cache.keys()
-        if keys is None or len(keys) == 0:
-            return None
-        if (time.time() - keys[0]) < 10:
-            return cls.host_network_facts_cache.get(keys[0])
-        return None
+    def _has_vlan_or_bridge(self, ifname):
+        if linux.is_bridge_slave(ifname):
+            return True
 
-    @classmethod
-    def __store_cache__(cls, bonds, nics):
-        # type: (list, list) -> None
-        cls.host_network_facts_cache.clear()
-        cls.host_network_facts_cache.update({time.time(): [bonds, nics]})
+        vlan_dev_name = '%s.' % ifname
+        output = subprocess.check_output(['ip', 'link', 'show', 'type', 'vlan'], universal_newlines=True)
+        for line in output.split('\n'):
+            if vlan_dev_name in line:
+                return True
+
+        return False
+
+    @kvmagent.replyerror
+    @in_bash
+    def set_ip_on_host_network_interface(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = SetIpOnHostNetworkInterfaceRsp()
+
+        try:
+            if self._has_vlan_or_bridge(cmd.interfaceName):
+                    raise Exception(cmd.interfaceName + ' has a sub-interface or a bridge port')
+        except Exception as e:
+            rsp.error = 'unable to update ip[%s], because %s' % (cmd.interfaceName, str(e))
+            rsp.success = False
+            return jsonobject.dumps(rsp)
+
+        if cmd.ipAddress is not None:
+            try:
+                # zs-network-setting -i eth0 192.168.1.10 255.255.255.0 192.168.1.1
+                if cmd.gateway is not None:
+                    shell.call('/usr/local/bin/zs-network-setting -i %s %s %s %s' % (cmd.interfaceName, cmd.ipAddress, cmd.netmask, cmd.gateway))
+                else:
+                    # zs-network-setting -d eth0
+                    shell.call('/usr/local/bin/zs-network-setting -d %s' % cmd.interfaceName)
+                    bash_o('/usr/local/bin/zs-network-setting -i %s %s %s' % (cmd.interfaceName, cmd.ipAddress, cmd.netmask))
+            except Exception as e:
+                rsp.error = 'unable to add ip on %s, because %s' % (cmd.interfaceName, str(e))
+                rsp.success = False
+
+            # After configuring the ip, check the connectivity
+            if cmd.gateway is not None and shell.run('ping -c 5 -W 1 %s > /dev/null 2>&1' % cmd.gateway) != 0:
+                shell.call('/usr/local/bin/zs-network-setting -d %s' % cmd.interfaceName)
+
+                # If it is not connected, it will fall back to the old ip address
+                if cmd.oldGateway is None:
+                    shell.call('/usr/local/bin/zs-network-setting -i %s %s %s' % (cmd.interfaceName, cmd.ipAddress,
+                               cmd.netmask))
+                else:
+                    shell.call('/usr/local/bin/zs-network-setting -i %s %s %s %s' % (cmd.interfaceName,
+                               cmd.ipAddress, cmd.netmask, cmd.gateway))
+
+        # If the parameter is empty, the ip will be deleted by default
+        else:
+            try:
+                # mv ip on interface
+                shell.call('/usr/local/bin/zs-network-setting -d %s' % cmd.interfaceName)
+            except Exception as e:
+                rsp.error = 'unable to delete ip on %s, because %s' % (cmd.interfaceName, str(e))
+                rsp.success = False
+            
+        return jsonobject.dumps(rsp)
 
     @staticmethod
-    def get_host_networking_interfaces():
+    def get_host_networking_interfaces(managementServerIp):
         nics = []
         pcis = set()
 
         def get_nic_info(interfaceName, index):
-            nics[index] = HostNetworkInterfaceInventory(interfaceName)
+            nics[index] = HostNetworkInterfaceInventory(interfaceName, None, managementServerIp)
 
         threads = []
         nic_names = ip.get_host_physicl_nics()
@@ -1818,7 +1943,7 @@ done
         return nics
 
     @staticmethod
-    def get_host_networking_bonds():
+    def get_host_networking_bonds(managementServerIp):
         bonds = []
         bond_names = linux.read_file("/sys/class/net/bonding_masters")
         if bond_names:
@@ -1826,7 +1951,7 @@ done
             if len(bond_names) == 0:
                 return bonds
             for bond in bond_names:
-                bonds.append(HostNetworkBondingInventory(bond, "kernalBond"))
+                bonds.append(HostNetworkBondingInventory(bond, "kernalBond", managementServerIp))
 
         # get dpdk bond info
         dpdkBondFile = "/usr/local/etc/zstack-ovs/dpdk-bond.yaml"
@@ -2893,8 +3018,10 @@ done
         http_server.register_async_uri(self.UPDATE_HOST_OVS_CPU_PINNING, self.update_ovs_cpu_pinning)
         http_server.register_async_uri(self.CHANGE_PASSWORD, self.change_password, cmd=ChangeHostPasswordCmd())
         http_server.register_async_uri(self.GET_HOST_NETWORK_FACTS, self.get_host_network_facts)
+        http_server.register_async_uri(self.SET_IP_ON_HOST_NETWORK_INTERFACE, self.set_ip_on_host_network_interface)
         http_server.register_async_uri(self.HOST_XFS_SCRAPE_PATH, self.get_xfs_frag_data)
         http_server.register_async_uri(self.HOST_SHUTDOWN, self.shutdown_host)
+        http_server.register_async_uri(self.HOST_REBOOT, self.reboot_host)
         http_server.register_async_uri(self.GET_PCI_DEVICES, self.get_pci_info)
         http_server.register_async_uri(self.CREATE_PCI_DEVICE_ROM_FILE, self.create_pci_device_rom_file)
         http_server.register_async_uri(self.GENERATE_SRIOV_PCI_DEVICES, self.generate_sriov_pci_devices)

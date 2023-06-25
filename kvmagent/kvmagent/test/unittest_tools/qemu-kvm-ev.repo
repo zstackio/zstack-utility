@@ -1,0 +1,7 @@
+[qemu-kvm-ev]
+name=qemu-kvm-ev - mirrors.rpms.zstack.io
+failovermethod=priority
+baseurl=http://mirrors.rpms.zstack.io/__ARCH__/__OS__/__VERSION__/
+gpgcheck=0
+enabled=1
+skip_if_unavailable=1

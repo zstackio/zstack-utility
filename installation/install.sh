@@ -33,9 +33,10 @@ export TERM=xterm
 
 OS=''
 IS_UBUNTU='n'
-REDHAT_OS="CENTOS6 CENTOS7 RHEL7 ALIOS7 ISOFT4 KYLIN10 EULER20 UOS1020A NFS4"
+REDHAT_OS="CENTOS6 CENTOS7 RHEL7 HELIX7 ALIOS7 ISOFT4 KYLIN10 EULER20 UOS1020A NFS4 ROCKY8"
 DEBIAN_OS="UBUNTU14.04 UBUNTU16.04 UBUNTU KYLIN4.0.2 DEBIAN9 UOS20"
-XINCHUANG_OS="ns10 uos20"
+KYLIN_V10_OS="ky10sp1 ky10sp2 ky10sp3"
+XINCHUANG_OS="$KYLIN10_OS uos20"
 SUPPORTED_OS="$REDHAT_OS $DEBIAN_OS"
 REDHAT_WITHOUT_CENTOS6=`echo $REDHAT_OS |sed s/CENTOS6//`
 
@@ -46,9 +47,9 @@ CUBE_INSTALL='n'
 SANYUAN_INSTALL='n'
 SDS_INSTALL='n'
 MANAGEMENT_INTERFACE=`ip route | grep default | head -n 1 | cut -d ' ' -f 5`
-ZSTACK_INSTALL_LOG='/tmp/zstack_installation.log'
-ZSTACKCTL_INSTALL_LOG='/tmp/zstack_ctl_installation.log'
-ZSTACK_TIMESTAMP_LOG='/tmp/zstack_installation_timestamp.log'
+ZSTACK_INSTALL_LOG="/tmp/zstack_installation-$(date +%Y-%m-%d-%H:%M:%S).log"
+ZSTACKCTL_INSTALL_LOG="/tmp/zstack_ctl_installation-$(date +%Y-%m-%d-%H:%M:%S).log"
+ZSTACK_TIMESTAMP_LOG="/tmp/zstack_installation_timestamp-$(date +%Y-%m-%d-%H:%M:%S).log"
 echo -e "Start the installation at "$(date +%Y-%m-%d' '%H:%M:%S,$((`date +10#%N`/1000000))) | tee -a $ZSTACK_INSTALL_LOG 1>/dev/null
 INSTALLATION_FAILURE=/tmp/zstack_installation_failure_exit_code
 [ -f $INSTALLATION_FAILURE ] && /bin/rm -f $INSTALLATION_FAILURE
@@ -146,6 +147,7 @@ RESOLV_CONF='/etc/resolv.conf'
 
 BASEARCH=`uname -m`
 ZSTACK_RELEASE=''
+ZSTACK_INSTALL_CONF='/etc/zstack-install.conf'
 # start/stop zstack_tui
 ZSTACK_TUI_SERVICE='/usr/lib/systemd/system/getty@tty1.service'
 start_zstack_tui() {
@@ -168,9 +170,8 @@ disable_zstack_tui() {
   systemctl daemon-reload
 }
 
-kill_zstack_tui_and_restart_tty1(){
+kill_zstack_tui(){
   pkill -9 zstack_tui
-  systemctl restart getty@tty1.service
 }
 
 # stop zstack_tui to prevent zstack auto installation
@@ -211,6 +212,7 @@ declare -a upgrade_params_array=(
     '4.5.0,-DupgradeVpcIpsecVersionCheck=true'
     '4.5.0,-DAddTagToSchedulerSnapshot=true'
     '4.6.0,-DupgradeVipSnatNetworkServiceRefRecord=true'
+    '4.6.0,-DupgradeLinuxGuestTools=true'
 )
 #other than the upon params_array, this one could be persisted in zstack.properties
 declare -a upgrade_persist_params_array=(
@@ -661,7 +663,7 @@ cs_check_hostname_zstack(){
         hostname $CHANGE_HOSTNAME
         echo $MANAGEMENT_IP $CHANGE_HOSTNAME >> /etc/hosts
 
-or following commands in CentOS7:
+or following commands in CentOS7 or Helix7:
         hostnamectl set-hostname $CHANGE_HOSTNAME
         hostname $CHANGE_HOSTNAME
         echo $MANAGEMENT_IP $CHANGE_HOSTNAME >> /etc/hosts
@@ -688,7 +690,7 @@ or following commands in CentOS7:
 
     # current hostname is same with IP
     echo "Your OS hostname is set as $current_hostname, which is same with your IP address. It will cause some problem.
-Please fix it by running following commands in CentOS7:
+Please fix it by running following commands in CentOS7 or Helix7:
 
     hostnamectl set-hostname MY_REAL_HOSTNAME
     hostname MY_REAL_HOSTNAME
@@ -806,7 +808,7 @@ check_system(){
     echo_title "Check System"
     echo ""
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
-    cat /etc/*-release |egrep -i -h "centos |Red Hat Enterprise|Alibaba|NeoKylin|Kylin Linux Advanced Server release V10|openEuler|UnionTech OS Server release 20 \(kongzi\)|NFSChina Server release 4.0.220727 \(RTM3\)" >>$ZSTACK_INSTALL_LOG 2>&1
+    cat /etc/*-release |egrep -i -h "centos |Helix|Red Hat Enterprise|Alibaba|NeoKylin|Kylin Linux Advanced Server release V10|openEuler|UnionTech OS Server release 20 \(kongzi\)|NFSChina Server release 4.0.220727 \(RTM3\)|Rocky Linux" >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -eq 0 ]; then
         grep -qi 'CentOS release 6' /etc/system-release && OS="CENTOS6"
         grep -qi 'CentOS Linux release 7' /etc/system-release && OS="CENTOS7"
@@ -818,6 +820,8 @@ check_system(){
         grep -qi 'openEuler release 20.03 (LTS-SP1)' /etc/system-release && OS="EULER20"
         grep -qi 'UnionTech OS Server release 20 (kongzi)' /etc/system-release && OS="UOS1020A"
         grep -qi 'NFSChina Server release 4.0.220727 (RTM3)' /etc/system-release && OS="NFS4"
+        grep -qi 'Rocky Linux release 8.4 (Green Obsidian)' /etc/system-release && OS="ROCKY8"
+        grep -qi 'Helix release 7' /etc/system-release && OS="HELIX7"
         if [[ -z "$OS" ]];then
             fail2 "Host OS checking failure: your system is: `cat /etc/redhat-release`, $PRODUCT_NAME management node only supports $SUPPORTED_OS currently"
         elif [[ $OS == "CENTOS7" ]];then
@@ -895,13 +899,14 @@ cs_check_python_installed(){
     which python2 >/dev/null 2>&1
     [ $? -ne 0 ] && yum --disablerepo=* --enablerepo=zstack-local install -y python2 >/dev/null 2>&1
     [ ! -f /usr/bin/python -a -f /usr/bin/python2 ] && ln -s /usr/bin/python2 /usr/bin/python
+    [ ! -f /usr/bin/easy_install -a -f /usr/bin/easy_install-2 ] && ln -s /usr/bin/easy_install-2 /usr/bin/easy_install
 }
 
 cs_check_epel(){
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     [ -z $YUM_ONLINE_REPO ] && return
     [ ! -z $ZSTACK_PKG_MIRROR ] && return
-    if [ "$OS" = "CENTOS7" -o "$OS" = "CENTOS6" ]; then 
+    if [ x"$OS" = x"CENTOS7" -o x"$OS" = x"CENTOS6" -o x"$OS" = x"HELIX7" ]; then 
         if [ ! -f /etc/yum.repos.d/epel.repo ]; then
             if [ x"$UPGRADE" != x'n' ]; then
                 [ ! -z $ZSTACK_YUM_REPOS ] && return
@@ -1147,22 +1152,72 @@ ia_install_pip(){
     pass
 }
 
-ia_install_ansible(){
-    echo_subtitle "Install Ansible"
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+ia_install_ansible_package(){
+    ansible_pypi_source=$1
+    if [ ! -z $DEBUG ]; then
+        pip install -i $ansible_pypi_source --trusted-host localhost --ignore-installed ansible
+    else
+        pip install -i $ansible_pypi_source --trusted-host localhost --ignore-installed ansible >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+}
+
+ia_upgrade_setuptools_package(){
+    ansible_pypi_source=$1
+    if [ ! -z $DEBUG ]; then
+        pip install -i $ansible_pypi_source --trusted-host localhost setuptools==39.2.0
+    else
+        pip install -i $ansible_pypi_source --trusted-host localhost setuptools==39.2.0 >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+}
+
+ia_install_ansible_handle(){
     if [[ $REDHAT_OS =~ $OS ]]; then
         yum remove -y ansible >>$ZSTACK_INSTALL_LOG 2>&1
     else
         apt-get --assume-yes remove ansible >>$ZSTACK_INSTALL_LOG 2>&1
     fi
 
-    if [ ! -z $DEBUG ]; then
-        pip install -i $pypi_source_pip --trusted-host localhost --ignore-installed ansible 
-    else
-        pip install -i $pypi_source_pip --trusted-host localhost --ignore-installed ansible >>$ZSTACK_INSTALL_LOG 2>&1
+    if pip list 2>/dev/null | grep -q -E 'ansible.*1.9.6.*' ; then
+        if [ ! -z $DEBUG ]; then
+            pip uninstall -y ansible
+        else
+            pip uninstall -y ansible >>$ZSTACK_INSTALL_LOG 2>&1
+        fi
     fi
+
+    ia_install_ansible_package $1
+    if [ $? -ne 0 ]; then
+        ia_upgrade_setuptools_package $1
+        ia_install_ansible_package $1
+    fi
+}
+
+ia_install_ansible(){
+    echo_subtitle "Install Ansible"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?' DEBUG
+
+    ia_install_ansible_handle $pypi_source_pip
+
     [ $? -ne 0 ] && fail "install Ansible failed"
     do_config_ansible
+    pass
+}
+
+ia_upgrade_ansible(){
+    echo_subtitle "Upgrade Ansible"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+
+    if pip list 2>/dev/null | grep -q -E 'ansible.*4.10.0' && ansible --version 2>/dev/null | grep -q 'core 2.11.12.2'; then
+        pass
+        return
+    fi
+
+    cd $upgrade_folder
+    ansible_pypi_source=file://$(pwd)/zstack/static/pypi/simple
+
+    ia_install_ansible_handle $ansible_pypi_source
+
+    [ $? -ne 0 ] && fail "upgrade Ansible failed"
     pass
 }
 
@@ -1255,6 +1310,50 @@ unpack_zstack_into_tomcat(){
     fi
 }
 
+uz_configure_grayscale_upgrade(){
+    if [ -z $GRAYSCALE_UPGRADE ]; then
+      return
+    fi
+
+    if [[ x"$GRAYSCALE_UPGRADE" != x"true" ]] && [[ x"$GRAYSCALE_UPGRADE" != x"false" ]];then
+        fail2 "Please input [true/false] when configure grayscale upgrade"
+    fi
+
+    echo "Configure the grayscale upgrade" >>$ZSTACK_INSTALL_LOG
+    mysql -u root --password=$MYSQL_NEW_ROOT_PASSWORD -e 'exit' >/dev/null 2>&1
+    # check mysql root password not changed, if not changed, do nothing
+    [ $? -eq 0 ] || fail2 "Failed to login mysql, please specify mysql root password using -P MYSQL_ROOT_PASSWORD and try again."
+
+    get_grayscale_upgrade_config="select value from GlobalConfigVO where name=\"grayscaleUpgrade\";"
+    grayscale_upgrade_config=$(execute_sql "$get_grayscale_upgrade_config")
+    # insert configuration if not exists
+    if [ -z "$grayscale_upgrade_config" ]; then
+        insert_grayscale_upgrade_config_sql="INSERT INTO \`zstack\`.\`GlobalConfigVO\` (\`name\`, \`description\`, \`category\`, \`defaultValue\`, \`value\`) VALUES ('grayscaleUpgrade', 'A switch to control grayscale upgrade', 'upgradeControl', 'false', '$GRAYSCALE_UPGRADE')"
+        execute_sql "$insert_grayscale_upgrade_config_sql" >/dev/null 2>&1
+        [ $? -eq 0 ] && check_update_grayscale_upgrade_success "$GRAYSCALE_UPGRADE" "$get_grayscale_upgrade_config"
+    else
+        update_grayscale_upgrade_config_sql="update GlobalConfigVO SET value='$GRAYSCALE_UPGRADE' where name=\"grayscaleUpgrade\";"
+        execute_sql "$update_grayscale_upgrade_config_sql" >/dev/null 2>&1
+        [ $? -eq 0 ] && check_update_grayscale_upgrade_success "$GRAYSCALE_UPGRADE" "$get_grayscale_upgrade_config"
+    fi
+}
+
+execute_sql(){
+    result=`mysql -u root --password=$MYSQL_NEW_ROOT_PASSWORD zstack -e "$1"`
+    echo $result
+}
+
+check_update_grayscale_upgrade_success(){
+    get_grayscale_upgrade_config=$(execute_sql "$2")
+    grayscale_upgrade_config=`echo "$get_grayscale_upgrade_config" | grep value | awk -F ' ' '{print $2}'`
+    if [ x"$1" != x"$grayscale_upgrade_config" ]; then
+       [ x"$1" == x"true" ] && fail_msg="enabled" || fail_msg="disabled"
+       echo "Failed to configure the grayscale upgrade" >>$ZSTACK_INSTALL_LOG
+       fail2 "Failed to $fail_msg grayscale upgrade configuration"
+    fi
+    echo "Successfully configure grayscale upgrade" >>$ZSTACK_INSTALL_LOG
+}
+
 upgrade_zstack(){
     echo_title "Upgrade ${PRODUCT_NAME}"
     echo ""
@@ -1266,6 +1365,11 @@ upgrade_zstack(){
 
     show_spinner uz_upgrade_tomcat
     show_spinner uz_upgrade_zstack_ctl
+
+    show_spinner ia_upgrade_ansible
+
+    # configure grayscale upgrade config
+    uz_configure_grayscale_upgrade
 
     # configure management.server.ip if not exists
     zstack-ctl show_configuration | grep '^[[:space:]]*management.server.ip' >/dev/null 2>&1
@@ -1527,7 +1631,7 @@ is_install_general_libs_rh(){
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
 
     # Fix upgrade dependency conflicts
-    if [ "$ZSTACK_RELEASE" == "ns10" ]; then
+    if [[ "$KYLIN_V10_OS" =~ "$ZSTACK_RELEASE" ]]; then
       vercomp "14.16.0" `rpm -q nodejs | awk -F '-' '{print $2}'`
       [ $? -eq 1 ] && removeable="nodejs" || removeable=""
       yum remove -y redis5 $removeable >>$ZSTACK_INSTALL_LOG 2>&1
@@ -1541,7 +1645,6 @@ is_install_general_libs_rh(){
             wget \
             nfs-utils \
             rpcbind \
-            vconfig \
             vim-minimal \
             python2-devel \
             gcc \
@@ -1566,7 +1669,6 @@ is_install_general_libs_rh(){
             net-tools \
             bash-completion \
             dmidecode \
-            MySQL-python \
             ipmitool \
             nginx \
             nginx-all-modules \
@@ -2286,6 +2388,23 @@ install_sds(){
     show_spinner is_append_iptables
 }
 
+install_zops(){
+    [[ x"$BASEARCH" != x"x86_64" ]] && return
+    [[ x"$OS" != x"CENTOS7" && x"$OS" != x"HELIX7" ]] && return
+    mkdir -p /usr/local/zops
+    chmod o+r /usr/local/zops
+    echo "true" > /usr/local/zops/cloud_integration
+    [[ x"$SKIP_ZOPS_INSTALL" = x"y" ]] && return
+    echo_title "Install or upgrade ZOps"
+    echo ""
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+    if [ -f "/sbin/zops" ]; then
+      show_spinner is_upgrade_zops
+    else
+      show_spinner is_install_zops
+    fi
+}
+
 setup_install_param(){
     echo_title "Setup Install Parameters"
     echo ""
@@ -2358,7 +2477,6 @@ config_system(){
     show_spinner cs_install_zstack_service
     show_spinner cs_enable_zstack_service
     show_spinner cs_add_cronjob
-    show_spinner add_zops_init_cronjob
     show_spinner cs_append_iptables
     show_spinner cs_setup_nginx
     show_spinner cs_enable_usb_storage
@@ -2615,6 +2733,7 @@ cs_enable_zstack_service(){
     echo_subtitle "Enable ${PRODUCT_NAME} bootstrap service"
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     if [ -f /bin/systemctl ]; then
+        systemctl enable --now mariadb 2>/dev/null
         cat > /etc/systemd/system/zstack.service <<EOF
 [Unit]
 Description=zstack Service
@@ -2989,6 +3108,22 @@ is_append_iptables(){
     pass
 }
 
+is_install_zops(){
+    echo_subtitle "Install ZOps"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+    zops_installer_bin=`find /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/zops -name "zops-installer*" | head -n 1`
+    bash $zops_installer_bin install --for_ops >>$ZSTACK_INSTALL_LOG 2>&1
+    [ $? -eq 0 ] && pass
+}
+
+is_upgrade_zops(){
+    echo_subtitle "Upgrade ZOps"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+    zops_installer_bin=`find /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/zops -name "zops-installer*" | head -n 1`
+    bash $zops_installer_bin upgrade >>$ZSTACK_INSTALL_LOG 2>&1
+    [ $? -eq 0 ] && pass
+}
+
 get_higher_version() {
     echo "$@" | tr " " "\n" | sort -V | tail -1
 }
@@ -3191,6 +3326,7 @@ name=zstack-local
 baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0
 gpgcheck=0
 enabled=1
+module_hotfixes=true
 EOF
 
 repo_file=/etc/yum.repos.d/qemu-kvm-ev.repo
@@ -3201,6 +3337,7 @@ name=Qemu KVM EV
 baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0/Extra/qemu-kvm-ev
 gpgcheck=0
 enabled=0
+module_hotfixes=true
 EOF
 
 repo_file=/etc/yum.repos.d/mlnx-ofed.repo
@@ -3221,6 +3358,7 @@ name=Ceph
 baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0/Extra/ceph
 gpgcheck=0
 enabled=0
+module_hotfixes=true
 EOF
 
 repo_file=/etc/yum.repos.d/galera.repo
@@ -3231,6 +3369,7 @@ name = MariaDB
 baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0/Extra/galera
 gpgcheck=0
 enabled=0
+module_hotfixes=true
 EOF
 
 repo_file=/etc/yum.repos.d/virtio-win.repo
@@ -3241,6 +3380,7 @@ name=virtio-win
 baseurl=file:///opt/zstack-dvd/\$basearch/\$YUM0/Extra/virtio-win
 gpgcheck=0
 enabled=0
+module_hotfixes=true
 EOF
 
 # Fixes ZSTAC-18536: delete invalid repo file virt-win.repo
@@ -3484,6 +3624,9 @@ Options:
 
   -u    Upgrade ${PRODUCT_NAME,,} management node and database. Make sure to backup your database, before executing upgrade command: mysqldump -u root -proot_password --host mysql_ip --port mysql_port zstack > path_to_db_dump.sql
 
+  --grayscale
+        Upgrade ${PRODUCT_NAME,,} management node and database using grayscale. The '-u' must be added before '--grayscale'. for example: bash zstack-installer.bin -u --grayscale true.
+
   -z    Only install ${PRODUCT_NAME}, without start ${PRODUCT_NAME} management node.
 ------------
 Example:
@@ -3547,8 +3690,16 @@ check_myarg() {
     fi
 }
 
+load_install_conf() {
+  # use SSH_CLIENT is not a good choice
+  if [ -f $ZSTACK_INSTALL_CONF ] && [[ x"$ENABLE_ZSTACK_INSTALLER_CONF" = x"true"  ||  -n "$SSH_CLIENT" ]]; then
+    source $ZSTACK_INSTALL_CONF
+  fi
+}
+
+load_install_conf
 OPTIND=1
-TEMP=`getopt -o f:H:I:n:p:P:r:R:t:y:acC:L:T:dDEFhiklmMNoOqsuz --long chrony-server-ip:,mini,cube,SY,sds -- "$@"`
+TEMP=`getopt -o f:H:I:n:p:P:r:R:t:y:acC:L:T:dDEFhiklmMNoOqsuz --long chrony-server-ip:,grayscale:,mini,cube,SY,sds,no-zops -- "$@"`
 if [ $? != 0 ]; then
     usage
 fi
@@ -3604,10 +3755,12 @@ do
         -y ) check_myarg $1 $2;HTTP_PROXY=$2;shift 2;;
         -z ) NOT_START_ZSTACK='y';shift;;
         --chrony-server-ip ) check_myarg $1 $2;CHRONY_SERVER_IP=$2;shift 2;;
+        --grayscale ) check_myarg $1 $2;GRAYSCALE_UPGRADE=$2;shift 2;;
         --mini) MINI_INSTALL='y';shift;;
         --cube) CUBE_INSTALL='y';shift;;
         --SY) SANYUAN_INSTALL='y';shift;;
         --sds) SDS_INSTALL='y';shift;;
+        --no-zops) SKIP_ZOPS_INSTALL='y';shift;;
         --) shift;;
         * ) usage;;
     esac
@@ -3821,29 +3974,6 @@ check_ha_need_upgrade()
     fi
 }
 
-add_zops_init_cronjob() {
-    echo_subtitle "Add zops cron job"
-    if [ ! -f /tmp/zops_init.sock ];then
-      touch /tmp/zops_init.sock
-    fi
-    # remove not in current os version cron job
-    ALL_ZOPS_CRON=`crontab -l |grep zops_init.py |grep -v ${ISO_ARCH}/${ISO_VER} | cut -d " " -f10`
-    CRON_ARR=(`echo $ALL_ZOPS_CRON | tr '\n' ' '`)
-    for job in $CRON_ARR;do
-        parseJob=${job//'/'/'\/'}
-        sed -i "/${parseJob}/d" /var/spool/cron/root
-    done
-    ZOPS_SERVER_INIT="python /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/zops/zops_init.py"
-    COUNT=`crontab -l |grep "$ZOPS_SERVER_INIT" | grep -v "grep" |wc -l`
-    if [ "$COUNT" -eq 1 ];then
-      echo "zops init script cron job has configured!"
-    fi
-    if [ "$COUNT" -lt 1 ];then
-      echo "*/2 * * * * flock -xn /tmp/zops_init.sock $ZOPS_SERVER_INIT >> /tmp/zops_cron.log 2>&1" >> /var/spool/cron/root
-      crond >> /tmp/zops_cron.log 2>&1
-    fi
-}
-
 enforce_history() {
 trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
 mkdir -p /var/log/history.d/
@@ -3991,22 +4121,22 @@ fi
 
 ## set ln
 cloudCtlPath="/usr/bin/cloud-ctl"
-if [[ ! -f "$cloudCtlPath" ]]; then
+if [[ ! -f "$cloudCtlPath" && ! -L "$cloudCtlPath" ]]; then
   ln -s /usr/bin/zstack-ctl $cloudCtlPath
 fi
 
 cloudCliPath="/usr/bin/cloud-cli"
-if [[ ! -f "$cloudCliPath" ]]; then
+if [[ ! -f "$cloudCliPath" && ! -L "$cloudCliPath" ]]; then
   ln -s /usr/bin/zstack-cli $cloudCliPath
 fi
 
 productCtlPath="/usr/bin/${PRODUCT_NAME,,}-ctl"
-if [[ ! -f "$productCtlPath" ]]; then
+if [[ ${PRODUCT_NAME,,} != "zstack" && ! -f "$productCtlPath" ]]; then
   ln -s /usr/bin/zstack-ctl $productCtlPath
 fi
 
 productCliPath="/usr/bin/${PRODUCT_NAME,,}-cli"
-if [[ ! -f "$productCliPath" ]]; then
+if [[ ${PRODUCT_NAME,,} != 'zstack' && ! -f "$productCliPath" ]]; then
   ln -s /usr/bin/zstack-cli $productCliPath
 fi
 
@@ -4017,6 +4147,9 @@ if [ x"$UPGRADE" = x'y' ]; then
 
     #only upgrade zstack
     upgrade_zstack
+
+    #Upgrade or install zops
+    install_zops
 
     #Setup audit.rules
     setup_audit_file
@@ -4029,7 +4162,7 @@ if [ x"$UPGRADE" = x'y' ]; then
     # top banner is shown by product_title_file created when iso building ,also given by zstack VERSION file
     CUBE_ENV_COUNT=`grep "hyper_converged" /etc/rc.local |wc -l`
     [[ "$CUBE_ENV_COUNT" -gt 0 ]] && CUBE_ENV='y' || CUBE_ENV='n'
-    [ x"$CUBE_ENV" = x'y' -a -f /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/release_version ] && VERSION=`cat /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/release_version | cut -d '-' -f 2`
+    [ x"$CUBE_ENV" = x'y' -a -f /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/release_version ] && VERSION=`cat /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/release_version | rev | cut -d '-' -f3 | rev`
 
 
     if [ ! -z $ONLY_UPGRADE_CTL ]; then
@@ -4038,7 +4171,7 @@ if [ x"$UPGRADE" = x'y' ]; then
         echo ""
         echo_star_line
         disable_zstack_tui
-        kill_zstack_tui_and_restart_tty1
+        kill_zstack_tui
         exit 0
     fi
 
@@ -4084,7 +4217,7 @@ if [ x"$UPGRADE" = x'y' ]; then
     echo_custom_pcidevice_xml_warning_if_need
     echo_star_line
     disable_zstack_tui
-    kill_zstack_tui_and_restart_tty1
+    kill_zstack_tui
     post_scripts_to_restore_iptables_rules
     if [[ $DEBIAN_OS =~ $OS ]];then
         post_restore_source_on_debian
@@ -4112,7 +4245,7 @@ if [ ! -z $ONLY_INSTALL_LIBS ];then
     echo "P.S.: selinux is disabled!"
     echo_star_line
     disable_zstack_tui
-    kill_zstack_tui_and_restart_tty1
+    kill_zstack_tui
     exit 0
 fi
 
@@ -4140,7 +4273,7 @@ if [ ! -z $ONLY_INSTALL_ZSTACK ]; then
     check_ha_need_upgrade
     echo_star_line
     disable_zstack_tui
-    kill_zstack_tui_and_restart_tty1
+    kill_zstack_tui
     exit 0
 fi
 
@@ -4256,6 +4389,9 @@ if [ -z $NOT_START_ZSTACK ]; then
     [ -z $VERSION ] && VERSION=`zstack-ctl status 2>/dev/null|grep version|awk '{print $2}'`
 fi
 
+#Install/Upgrade zops
+install_zops
+
 echo ""
 echo_star_line
 touch $README
@@ -4303,6 +4439,5 @@ echo_chrony_server_warning_if_need
 check_ha_need_upgrade
 echo_star_line
 disable_zstack_tui
-kill_zstack_tui_and_restart_tty1
+kill_zstack_tui
 post_scripts_to_restore_iptables_rules
-

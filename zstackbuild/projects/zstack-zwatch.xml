@@ -3,6 +3,10 @@
 <project name="zstack-zwatch builder" basedir="../">
     <property name="zsw.bdir" location="${build.dir}/zwatch-vm-agent/" />
     <property name="zsw.ansible.dir" location="${kvmagent.bdir}/ansible" />
+    <property name="guesttools.bdir" location="${build.dir}/guesttools/" />
+    <property name="tools.guesttools.dir" location="${tools.dir}/guesttools" />
+    <property name="guesttools.general.dir" location="${tools.guesttools.dir}/general" />
+
     <target name="build-zstack-zwatch">
         <makeDir dir="${zsw.bdir}" />
 
@@ -14,13 +18,17 @@
         </exec>
 
         <exec executable="make" dir="${zstackzwatch.source}" failonerror="true">
-            <arg value="package" />
+            <arg value="all" />
             <arg value="ARCH=amd64 arm64" />
         </exec>
-
         <copy todir="${zsw.bdir}">
-            <fileset dir="${zstackzwatch.source}/target/package/zwatch-vm-agent">
+            <fileset dir="${zstackzwatch.source}/target/zwatch_bin">
                 <include name="**" />
+            </fileset>
+        </copy>
+        <copy todir="${guesttools.bdir}">
+            <fileset dir="${zstackzwatch.source}/target/iso">
+                <include name="*.iso" />
             </fileset>
         </copy>
     </target>
@@ -31,8 +39,19 @@
                 <include name="**" />
             </fileset>
         </copy>
-        <exec executable="/bin/bash" dir="${zsw.ansible.dir}" failonerror="true">
-            <arg value="${checkmd5.bin.script}" />
+        <exec executable="/bin/python" dir="${zsw.ansible.dir}" failonerror="true">
+            <arg value="${agent.version.generator}" />
+            <arg value="-s ${zstackzwatch.source}" />
+            <arg value="-o agent_version" />
         </exec>
+    </target>
+
+    <target name="assemble-guest-tools-iso">
+        <makeDir dir="${guesttools.general.dir}/KVM" />
+        <copy todir="${guesttools.general.dir}/KVM">
+            <fileset dir="${guesttools.bdir}">
+                <include name="*.iso" />
+            </fileset>
+        </copy>
     </target>
 </project>

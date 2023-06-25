@@ -23,10 +23,11 @@ import pprint
 import errno
 import json
 import fcntl
+import simplejson
 import xxhash
 
 from inspect import stack
-
+import xml.etree.ElementTree as etree
 from zstacklib.utils import thread
 from zstacklib.utils import qemu_img
 from zstacklib.utils import lock
@@ -38,7 +39,7 @@ from zstacklib.utils import iproute
 
 logger = log.get_logger(__name__)
 
-RPM_BASED_OS = ['redhat', 'centos', 'alibaba', 'kylin10']
+RPM_BASED_OS = ['redhat', 'centos', 'alibaba', 'kylin10', 'rocky']
 DEB_BASED_OS = ['uos', 'kylin4.0.2', 'debian', 'ubuntu', 'uniontech']
 ARM_ACPI_SUPPORT_OS = ['kylin10', 'openEuler20.03']
 SUPPORTED_ARCH = ['x86_64', 'aarch64', 'mips64el', 'loongarch64']
@@ -104,6 +105,45 @@ class EthernetInfo(object):
 
     def __repr__(self):
         return self.__str__()
+
+class VmStruct(object):
+    def __init__(self):
+        super(VmStruct, self).__init__()
+        self.pid = ""
+        self.xml = ""
+        self.root_volume = ""
+        self.uuid = ""
+        self.volumes = []
+
+    def load_from_xml(self, xml):
+        def load_source(element):
+            is_root_vol = False
+            path = None
+            for e in element:
+                if e.tag == "boot":
+                    is_root_vol = True
+                elif e.tag == "source":
+                    if "file" in e.attrib:
+                        path = e.attrib["file"]
+                    elif "dev" in e.attrib:
+                        path = e.attrib["dev"]
+                    if path and path.startswith("/dev/"):
+                        self.volumes.append(path)
+
+            if is_root_vol:
+                self.root_volume = path
+
+        self.xml = xml
+        root = etree.fromstring(xml)
+        for e1 in root:
+            if e1.tag == "domain":
+                for e2 in e1:
+                    if e2.tag == "devices":
+                        for e3 in e2:
+                            if e3.tag == "disk":
+                                load_source(e3)
+                        return
+
 
 def retry(times=3, sleep_time=3):
     def wrap(f):
@@ -770,7 +810,7 @@ def scp_download(hostname, sshkey, src_filepath, dst_filepath, host_account='roo
         if not os.path.exists(dst_dir):
             os.makedirs(dst_dir)
         scp_cmd = 'scp {7} {6} -P {0} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {1} {2}@{3}:{4} {5}'\
-            .format(sshPort, sshkey_file, host_account, hostname, remote_shell_quote(src_filepath), dst_filepath, bandWidth, filename_check_option)
+            .format(sshPort, sshkey_file, host_account, hostname, shellquote(src_filepath).replace(" ", "\\ "), dst_filepath, bandWidth, filename_check_option)
         shell.call(scp_cmd)
         os.chmod(dst_filepath, 0o664)
     finally:
@@ -984,30 +1024,44 @@ def raw_create(dst, size):
     shell.check_run('/usr/bin/qemu-img create -f raw %s %s' % (dst, size))
     os.chmod(dst, 0o660)
 
-def create_template(src, dst, compress=False, shell=shell):
+def create_template(src, dst, compress=False, shell=shell, progress_output=None):
     fmt = get_img_fmt(src)
     if fmt == 'raw':
-        return raw_create_template(src, dst, shell=shell)
+        return raw_create_template(src, dst, shell=shell, progress_output=progress_output)
     if fmt == 'qcow2':
-        return qcow2_create_template(src, dst, compress, shell=shell)
+        return qcow2_create_template(src, dst, compress, shell=shell, progress_output=progress_output)
     raise Exception('unknown format[%s] of the image file[%s]' % (fmt, src))
 
-def qcow2_create_template(src, dst, compress, shell=shell):
-    if compress:
-        shell.call('%s -c -f qcow2 -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
-    else:
-        shell.call('%s -f qcow2 -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
+def qcow2_create_template(src, dst, compress, shell=shell, progress_output=None):
+    redirect, ext_opts = "", []
+    if progress_output:
+        redirect = " > " + progress_output
+        ext_opts.append("-p")
 
-def raw_create_template(src, dst, shell=shell):
-    shell.call('%s -f raw -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
+    if compress:
+        ext_opts.append("-c")
+
+    shell.call('%s %s -f qcow2 -O qcow2 %s %s %s' % (qemu_img.subcmd('convert'), " ".join(ext_opts), src, dst, redirect))
+
+def raw_create_template(src, dst, shell=shell, progress_output=None):
+    redirect, ext_opts = "", []
+    if progress_output:
+        redirect = " > " + progress_output
+        ext_opts.append("-p")
+
+    shell.call('%s %s -f raw -O qcow2 %s %s %s' % (qemu_img.subcmd('convert'), " ".join(ext_opts), src, dst, redirect))
 
 def qcow2_convert_to_raw(src, dst):
     shell.call('%s -f qcow2 -O raw %s %s' % (qemu_img.subcmd('convert'), src, dst))
 
 def qcow2_rebase(backing_file, target):
-    fmt = get_img_fmt(backing_file)
+    if backing_file:
+        fmt = get_img_fmt(backing_file)
+        backing_option = '-F %s -b "%s"' % (fmt, backing_file)
+    else:
+        backing_option = '-b "%s"' % backing_file
     with TempAccessible(target):
-        shell.call('%s -F %s -f qcow2 -b %s %s' % (qemu_img.subcmd('rebase'), fmt, backing_file, target))
+        shell.call('%s -f qcow2 %s %s' % (qemu_img.subcmd('rebase'), backing_option, target))
 
 def qcow2_rebase_no_check(backing_file, target, backing_fmt=None):
     fmt = backing_fmt if backing_fmt else get_img_fmt(backing_file)
@@ -1085,6 +1139,16 @@ def qcow2_get_file_chain(path):
             (qemu_img.subcmd('info'), path))
     return out.splitlines()
 
+# Get derived file all backing files
+def qcow2_get_backing_chain(path):
+    ret = []
+    backing = qcow2_get_backing_file(path)
+    while backing:
+        ret.append(backing)
+        backing = qcow2_get_backing_file(backing)
+
+    return ret
+
 def get_qcow2_file_chain_size(path):
     chain = qcow2_get_file_chain(path)
     size = 0L
@@ -1124,8 +1188,8 @@ def qcow2_fill(seek, length, path, raise_excpetion=False):
     logger.debug("qcow2_fill return code: %s, stdout: %s, stderr: %s" % (cmd.return_code, cmd.stdout, cmd.stderr))
 
 def qcow2_measure_required_size(path):
-    out = shell.call("/usr/bin/qemu-img measure -f qcow2 -O qcow2 %s | grep 'required size' | cut -d ':' -f 2" % path)
-    return long(out.strip(' \t\r\n'))
+    out = shell.call("%s --output=json -f qcow2 -O qcow2 %s" % (qemu_img.subcmd('measure'), path))
+    return long(simplejson.loads(out)["required"])
 
 
 def qcow2_get_cluster_size(path):
@@ -1133,6 +1197,21 @@ def qcow2_get_cluster_size(path):
                      (qemu_img.subcmd('info'), path))
     return int(out.strip())
 
+def qcow2_discard(path):
+    virtual_size = int(qcow2_get_virtual_size(path))
+    cmd = shell.ShellCmd('''
+#!/bin/bash
+i=0
+while(($i < {0}))
+do
+qemu-io -c "discard $[i*2145386496] 2145386496" -f qcow2 -d unmap {1}
+let i+=1
+done
+qemu-io -c "discard $[i*2145386496] {2}" -f qcow2 -d unmap {1}
+    '''.format(virtual_size / 2145386496, path, virtual_size % 2145386496))
+
+    cmd(False)
+    logger.debug("qcow2 discard return code: %s, stderr: %s" % (cmd.return_code, cmd.stderr))
 
 class AbstractFileConverter(object):
     __metaclass__ = abc.ABCMeta
@@ -1371,14 +1450,34 @@ def create_bridge(bridge_name, interface, move_route=True):
     else:
         logger.debug('%s is a bridge device, no need to create bridge' % bridge_name)
 
-    shell.call("brctl setfd %s 0" % bridge_name)
     shell.call("brctl stp %s off" % bridge_name)
+    shell.call("brctl setfd %s 0" % bridge_name)
     shell.call("ip link set %s up" % bridge_name)
+
+    def modify_device_state_in_networkmanager(device_name, state):
+        shell.call("nmcli device set %s managed %s" % (device_name, state), exception=False)
 
     if br_name == bridge_name:
         logger.debug('%s is a bridge device. Interface %s is attached to bridge. No need to create bridge or attach device interface' % (bridge_name, interface))
     else:
-        shell.call("brctl addif %s %s" % (bridge_name, interface))
+        #Problem phenomenon
+        #The NM-managed bond fails to be added to the bridge regularly during 
+        # cluster attaching and detaching on the L2 network.  
+        # 
+        #Temporary situation
+        #Before adding the bond to the bridge, set the bond managed by nm to
+        # unmanaged, after adding the bond to the bridge, restore the bond.
+        nm_connection_type = shell.call("nmcli -g connection.type connection show %s" % interface, exception=False)
+        if nm_connection_type.strip() == 'bond':
+            nm_device = shell.call("nmcli -g GENERAL.DEVICES connection show %s" % interface, exception=False).strip()
+            if nm_device:
+                modify_device_state_in_networkmanager(nm_device, 'no')
+                shell.call("brctl addif %s %s" % (bridge_name, interface))
+                modify_device_state_in_networkmanager(nm_device, 'yes')
+            else:
+                shell.call("brctl addif %s %s" % (bridge_name, interface))  
+        else:
+            shell.call("brctl addif %s %s" % (bridge_name, interface))
     #Set bridge MAC address as network device MAC address. It will avoid of 
     # bridge MAC address is reset to other new added dummy network device's 
     # MAC address.
@@ -1651,7 +1750,7 @@ def delete_vlan_eth(vlan_dev_name):
     if not is_network_device_existing(vlan_dev_name):
         return
     shell.call('ip link set dev %s down' % vlan_dev_name)
-    shell.call('vconfig rem %s' % vlan_dev_name)
+    iproute.delete_link_no_error(vlan_dev_name)
 
 def create_vlan_eth(ethname, vlan, ip=None, netmask=None):
     vlan = int(vlan)
@@ -1660,14 +1759,14 @@ def create_vlan_eth(ethname, vlan, ip=None, netmask=None):
 
     vlan_dev_name = '%s.%s' % (ethname, vlan)
     if not is_network_device_existing(vlan_dev_name):
-        shell.call('vconfig add %s %s' % (ethname, vlan))
+        shell.call('ip link add link %s name %s type vlan id %s' % (ethname, vlan_dev_name, vlan))
         if ip:
             iproute.add_address(ip, netmask_to_cidr(netmask), 4, vlan_dev_name, broadcast=netmask_to_broadcast(ip, netmask))
     else:
         if ip is not None and ip.strip() != "" and get_device_ip(vlan_dev_name) != ip:
             # recreate device and configure ip
             delete_vlan_eth(vlan_dev_name)
-            shell.call('vconfig add %s %s' % (ethname, vlan))
+            shell.call('ip link add link %s name %s.%s type vlan id %s' % (ethname, ethname, vlan, vlan))
             iproute.add_address(ip, netmask_to_cidr(netmask), 4, vlan_dev_name, broadcast=netmask_to_broadcast(ip, netmask))
 
     iproute.set_link_up(vlan_dev_name)
@@ -1750,13 +1849,16 @@ def find_process_by_cmdline(cmdlines):
 
     return None
 
-def find_process_by_command(comm, cmdlines):
+def find_process_by_command(comm, cmdlines=None):
     pids = [pid for pid in os.listdir('/proc') if pid.isdigit()]
     for pid in pids:
         try:
             comm_path = os.readlink(os.path.join('/proc', pid, 'exe')).split(";")[0]
             if comm_path != comm and os.path.basename(comm_path) != comm:
                 continue
+
+            if not cmdlines:
+                return pid
 
             with open(os.path.join('/proc', pid, 'cmdline'), 'r') as fd:
                 cmdline = fd.read().replace('\x00', ' ').strip()
@@ -1887,6 +1989,20 @@ def list_all_file(path):
         else:
             yield fi_d
 
+
+def walk(path, depth=-1):
+    if depth == 0:
+        return
+    for fi in os.listdir(path):
+        fi_d = os.path.join(path, fi)
+        if os.path.isdir(fi_d):
+            yield fi_d
+            for f in walk(fi_d, depth-1):
+                yield f
+        else:
+            yield fi_d
+
+
 def find_file(file_name, current_path, parent_path_depth=2, sub_folder_first=False):
     ''' find_file will return a file path, when finding a file in given path.
         The default search parent path depth is 2. It means loader will only
@@ -1990,6 +2106,7 @@ class TimeoutObject(object):
     def __init__(self):
         self.objects = {}
         self._start()
+        self.p_timer = None # type: thread.PeriodicTimer
 
     def put(self, name, val=None, timeout=30):
         self.objects[name] = (val, time.time() + timeout)
@@ -2010,9 +2127,24 @@ class TimeoutObject(object):
         def wait(_):
             return not self.has(name)
 
+        self._restart_if_needed()
         if not wait_callback_success(wait, timeout=timeout):
             self.print_objects()
             raise Exception('after %s seconds, the object[%s] is still there, not timeout' % (timeout, name))
+
+    def _restart_if_needed(self):
+        if self.p_timer is None:
+            self._start()
+            return
+
+        try:
+            if not self.p_timer.is_alive():
+                self._start()
+                return
+        except:
+            logger.warn(traceback.format_exc())
+            logger.warn('get period timer thread status failed, try to restart it')
+            self._start()
 
     def _start(self):
         def clean_timeout_object():
@@ -2023,7 +2155,9 @@ class TimeoutObject(object):
                     del self.objects[name]
             return True
 
-        thread.timer(1, clean_timeout_object, stop_on_exception=False).start()
+        self.objects = {}
+        self.p_timer = thread.timer(1, clean_timeout_object, stop_on_exception=False)
+        self.p_timer.start()
 
 
 def kill_process(pid, timeout=5, is_exception=True, is_graceful=True):
@@ -2159,6 +2293,10 @@ def create_vxlan_bridge(interf, bridgeName, ips):
         cmd = shell.ShellCmd("brctl addif %s %s" % (bridgeName, interf))
         cmd(is_exception=False)
 
+    # Fix ZSTAC-54704. It is expected that the bridge to be reset when the host reconnects. However, the above code
+    # does not necessarily execute create_bridge(), and additional testing is required if it must be executed.
+    shell.call("brctl stp %s off" % bridgeName)
+    shell.call("brctl setfd %s 0" % bridgeName)
     if ips is not None:
         populate_vxlan_fdbs([interf], ips)
 
@@ -2260,10 +2398,6 @@ class TempAccessible(object):
 
 def get_libvirt_version():
     return shell.call("libvirtd --version").split()[-1]
-
-
-def get_qemu_version():
-    return shell.call("virsh version | awk '/hypervisor.*QEMU/{print $4}'").strip()
 
 
 def get_unmanaged_vms(include_not_zstack_but_in_virsh = False):
@@ -2413,7 +2547,7 @@ def link(source, link_name):
     os.link(source, link_name)
     logger.debug("link %s to %s" % (source, link_name))
 
-def tail_1(path):
+def tail_1(path, split=b"\n"):
     if not os.path.exists(path):
         return None
     if os.path.getsize(path) <= 2:
@@ -2421,7 +2555,7 @@ def tail_1(path):
 
     with open(path, 'rb') as f:
         f.seek(-2, os.SEEK_END)
-        while f.tell() > 0 and f.read(1) != b"\n":
+        while f.tell() > 0 and f.read(1) != split:
             f.seek(-2, os.SEEK_CUR)
         return f.readline()
 
@@ -2629,13 +2763,13 @@ def get_file_xxhash(path, blocksize=1048576):
             buf = fd.read(blocksize)
     return hasher.hexdigest()
 
-def compare_segmented_xxhash(src_path, dst_path, total_size, raise_expection=False, blocksize=1048576):
+def compare_segmented_xxhash(src_path, dst_path, total_size, raise_exception=False, blocksize=1048576):
     ## size <= 10G, compute xxhash directly
     if total_size <= 10*1024**3:
         src_hash = get_file_xxhash(src_path, blocksize=blocksize)
         dst_hash = get_file_xxhash(dst_path, blocksize=blocksize)
         if src_hash != dst_hash:
-            if raise_expection:
+            if raise_exception:
                 raise Exception("check hash value not match between %s with hash[%s] and %s with hash[%s]" % (src_path, src_hash, dst_path, dst_hash))
             else:
                 return False
@@ -2658,7 +2792,7 @@ def compare_segmented_xxhash(src_path, dst_path, total_size, raise_expection=Fal
                 src_hash = _get_seg_xxhash(srcFile, offset)
                 dst_hash = _get_seg_xxhash(dstFile, offset)
                 if src_hash != dst_hash:
-                    if raise_expection:
+                    if raise_exception:
                         raise Exception("check hash value not match between %s with hash[%s] and %s with hash[%s] at offset %s" % (src_path, src_hash, dst_path, dst_hash, offset))
                     else:
                         return False

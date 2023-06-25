@@ -12,3 +12,4 @@ nav:
 - modules/zstackcli/nav.adoc
 - modules/kvmagent/nav.adoc
 - modules/ZSPySDK/nav.adoc
+- modules/guide/nav.adoc

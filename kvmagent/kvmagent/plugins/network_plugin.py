@@ -16,9 +16,13 @@ from zstacklib.utils import ovs
 import os
 import traceback
 import netaddr
+import subprocess
 
 CHECK_PHYSICAL_NETWORK_INTERFACE_PATH = '/network/checkphysicalnetworkinterface'
 ADD_INTERFACE_TO_BRIDGE_PATH = '/network/bridge/addif'
+CREATE_BONDING_PATH = '/network/bonding/create'
+UPDATE_BONDING_PATH = '/network/bonding/update'
+DELETE_BONDING_PATH = '/network/bonding/delete'
 KVM_REALIZE_L2NOVLAN_NETWORK_PATH = "/network/l2novlan/createbridge"
 KVM_REALIZE_L2VLAN_NETWORK_PATH = "/network/l2vlan/createbridge"
 KVM_CHECK_L2NOVLAN_NETWORK_PATH = "/network/l2novlan/checkbridge"
@@ -159,6 +163,54 @@ class DeleteVxlanBridgeResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(DeleteVxlanBridgeResponse, self).__init__()
 
+class CreateBondingCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(CreateBondingCmd, self).__init__()
+        self.bondName = None
+        self.slaves = None  # type: list[HostNetworkInterfaceStruct]
+        self.type = None
+        self.mode = None
+        self.xmitHashPolicy = None
+
+class CreateBondingResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(CreateBondingResponse, self).__init__()
+
+class UpdateBondingCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(UpdateBondingCmd, self).__init__()
+        self.bondName = None
+        self.oldSlaves = None # type: list[HostNetworkInterfaceStruct]
+        self.slaves = None # type: list[HostNetworkInterfaceStruct]
+        self.mode = None
+        self.xmitHashPolicy = None
+
+class UpdateBondingResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(UpdateBondingResponse, self).__init__()
+
+class DeleteBondingCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(DeleteBondingCmd, self).__init__()
+        self.bondName = None
+
+class DeleteBondingResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(DeleteBondingResponse, self).__init__()
+
+class HostNetworkInterfaceStruct(object):
+    def __init__(self):
+        self.interfaceName = None
+        self.speed = None
+        self.slaveActive = None
+        self.carrierActive = None
+        self.mac = None
+        self.ipAddresses = None
+        self.interfaceType = None
+        self.master = None
+        self.pciDeviceAddress = None
+        self.offloadStatus = None
+
 class NetworkPlugin(kvmagent.KvmAgent):
     '''
     classdocs
@@ -268,6 +320,164 @@ class NetworkPlugin(kvmagent.KvmAgent):
         if oldbr:
             shell.run("brctl delif %s %s" % (oldbr, cmd.physicalInterfaceName))
         shell.check_run("brctl addif %s %s" % (cmd.bridgeName, cmd.physicalInterfaceName))
+        return jsonobject.dumps(rsp)
+
+    def _has_vlan_or_bridge(self, ifname):
+        if linux.is_bridge_slave(ifname):
+            return True
+
+        vlan_dev_name = '%s.' % ifname
+        output = subprocess.check_output(['ip', 'link', 'show', 'type', 'vlan'], universal_newlines=True)
+        for line in output.split('\n'):
+            if vlan_dev_name in line:
+                return True
+
+        return False
+
+    def _add_interface_to_collectd_conf(self, config_file, interface_name):
+        with open(config_file, 'r') as f:
+            config_lines = f.readlines()
+
+        new_line = 'Interface "{}"\n'.format(interface_name)
+        start_index = config_lines.index('<Plugin "interface">\n')
+        end_index = config_lines.index('</Plugin>\n', start_index)
+        config_lines.insert(end_index, new_line)
+
+        with open(config_file, 'w') as f:
+            f.writelines(config_lines)
+
+    def _remove_interface_from_collectd_conf(self, config_file, interface_name):
+        with open(config_file, 'r') as f:
+            config_lines = f.readlines()
+
+        for i, line in enumerate(config_lines):
+            if line.strip() == 'Interface "{}"'.format(interface_name):
+                del config_lines[i]
+                break
+
+        with open(config_file, 'w') as f:
+            f.writelines(config_lines)
+
+    def _restart_collectd(self, config_file):
+        cpid = linux.find_process_by_command('collectd', [config_file])
+        mpid = linux.find_process_by_command('collectdmon', [config_file])
+
+        if not cpid:
+            bash_errorout('collectdmon -- -C %s' % config_file)
+        else:
+            bash_errorout('kill -TERM %s' % cpid)
+            if not mpid:
+                bash_errorout('collectdmon -- -C %s' % config_file)
+            else:
+                bash_errorout('kill -HUP %s' % mpid)
+
+    @lock.lock('bonding')
+    @kvmagent.replyerror
+    @in_bash
+    def create_bonding(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CreateBondingResponse()
+
+        try:
+            try:
+                for slave in cmd.slaves:
+                    if self._has_vlan_or_bridge(cmd.interfaceName):
+                        raise Exception(slave.interfaceName + ' has a sub-interface or a bridge port')
+            except Exception as e:
+                rsp.error = 'unable to create bonding[%s], because %s' % (cmd.bondName, str(e))
+                rsp.success = False
+                return jsonobject.dumps(rsp)
+
+            # zs-bond -c bond1 mode 802.ad xmitHashPolicy layer2+3
+            if cmd.xmitHashPolicy is not None:
+                shell.call('/usr/local/bin/zs-bond -c %s mode %s xmit_hash_policy %s' % (cmd.bondName, cmd.mode, cmd.xmitHashPolicy))
+            else:
+                # zs-bond -c bond1 mode active-backup
+                shell.call('/usr/local/bin/zs-bond -c %s mode %s' % (cmd.bondName, cmd.mode))
+
+            # zs-nic-to-bond -a bond2 nic3
+            for slave in cmd.slaves:
+                ret = shell.call('/usr/local/bin/zs-nic-to-bond -a %s %s' % (cmd.bondName, slave.interfaceName))
+                if ret == 0:
+                    shell.call('/usr/local/bin/zs-bond -d %s' % cmd.bondName)
+
+            # sync to collectd
+            config_file = '/var/lib/zstack/kvm/collectd.conf'
+            self._add_interface_to_collectd_conf(config_file, cmd.bondName)
+            self._restart_collectd(config_file)
+        except Exception as e:
+            shell.run('/usr/local/bin/zs-bond -d %s' % cmd.bondName)
+            logger.warning(traceback.format_exc())
+            rsp.error = 'unable to create bonding[%s], because %s' % (cmd.bondName, str(e))
+            rsp.success = False
+
+        return jsonobject.dumps(rsp)
+
+    @lock.lock('bonding')
+    @kvmagent.replyerror
+    @in_bash
+    def update_bonding(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = UpdateBondingResponse()
+
+        oldInterfaces = set(item.interfaceName for item in cmd.oldSlaves)
+        newInterfaces = set(item.interfaceName for item in cmd.slaves)
+        add_items = list(set(newInterfaces) - set(oldInterfaces))
+        reduce_items = list(set(oldInterfaces) - set(newInterfaces))
+
+        try:
+            for interface in add_items:
+                if self._has_vlan_or_bridge(cmd.interfaceName):
+                    raise Exception(interface + ' has a sub-interface or a bridge port')
+
+            if cmd.mode is not None or cmd.xmitHashPolicy is not None:
+                mode = linux.read_file("/sys/class/net/%s/bonding/mode" % cmd.bondName).strip()
+                policy = linux.read_file("/sys/class/net/%s/bonding/xmit_hash_policy" % cmd.bondName).strip()
+                if cmd.mode not in mode or cmd.xmitHashPolicy is not None and cmd.xmitHashPolicy not in policy:
+                    # zs-bond -u bond1 mode 802.3ad
+                    if cmd.xmitHashPolicy is None:
+                        shell.call('/usr/local/bin/zs-bond -u %s mode %s' % (cmd.bondName, cmd.mode))
+                    else:
+                        shell.call('/usr/local/bin/zs-bond -u %s mode %s xmitHashPolicy %s' % (cmd.bondName, cmd.mode, cmd.xmitHashPolicy))
+
+            if add_items != reduce_items:
+                # zs-nic-to-bond -a bond2 nic3
+                for interface in add_items:
+                    shell.call('/usr/local/bin/zs-nic-to-bond -a %s %s' % (cmd.bondName, interface))
+                # zs-nic-to-bond -d bond2 nic nic4
+                for interface in reduce_items:
+                    shell.call('/usr/local/bin/zs-nic-to-bond -d %s %s' % (cmd.bondName, interface))
+
+        except Exception as e:
+            logger.warning(traceback.format_exc())
+            rsp.error = 'unable to create bonding[%s], because %s' % (cmd.bondName, str(e))
+            rsp.success = False
+
+        return jsonobject.dumps(rsp)
+
+    @lock.lock('bonding')
+    @kvmagent.replyerror
+    @in_bash
+    def delete_bonding(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = DeleteBondingResponse()
+
+        try:
+            if self._has_vlan_or_bridge(cmd.bondName):
+                raise Exception(cmd.bondName + ' has a sub-interface or a bridge port')
+            else:
+                # zs-bond -d bond2
+                shell.call('/usr/local/bin/zs-bond -d %s' % cmd.bondName)
+
+            # sync to collectd
+            config_file = '/var/lib/zstack/kvm/collectd.conf'
+            self._remove_interface_from_collectd_conf(config_file, cmd.bondName)
+            self._restart_collectd(config_file)
+        except Exception as e:
+            logger.warning(traceback.format_exc())
+            rsp.error = 'unable to delete bonding[%s], because %s' % (cmd.bondName, str(e))
+            rsp.success = False
+
         return jsonobject.dumps(rsp)
 
     @lock.lock('bridge')
@@ -600,6 +810,9 @@ class NetworkPlugin(kvmagent.KvmAgent):
         http_server = kvmagent.get_http_server()
         http_server.register_sync_uri(CHECK_PHYSICAL_NETWORK_INTERFACE_PATH, self.check_physical_network_interface)
         http_server.register_async_uri(ADD_INTERFACE_TO_BRIDGE_PATH, self.add_interface_to_bridge)
+        http_server.register_async_uri(CREATE_BONDING_PATH, self.create_bonding)
+        http_server.register_async_uri(UPDATE_BONDING_PATH, self.update_bonding)
+        http_server.register_async_uri(DELETE_BONDING_PATH, self.delete_bonding)
         http_server.register_async_uri(KVM_REALIZE_L2NOVLAN_NETWORK_PATH, self.create_bridge)
         http_server.register_async_uri(KVM_REALIZE_L2VLAN_NETWORK_PATH, self.create_vlan_bridge)
         http_server.register_async_uri(KVM_CHECK_L2NOVLAN_NETWORK_PATH, self.check_bridge)

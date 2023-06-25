@@ -37,6 +37,7 @@ LVMLOCKD_LOG_FILE_PATH = "/var/log/lvmlockd/lvmlockd.log"
 LVMLOCKD_LOG_RSYSLOG_PATH = "/etc/rsyslog.d/lvmlockd.conf"
 LVMLOCKD_SERVICE_PATH = "/lib/systemd/system/lvm2-lvmlockd.service"
 LVMLOCKD_LOG_LOGROTATE_PATH = "/etc/logrotate.d/lvmlockd"
+LVMLOCKD_ADOPT_FILE = "/run/lvm/lvmlockd.adopt"
 LVM_CONFIG_BACKUP_PATH = "/etc/lvm/zstack-backup"
 LVM_CONFIG_ARCHIVE_PATH = "/etc/lvm/archive"
 SUPER_BLOCK_BACKUP = "superblock.bak"
@@ -366,6 +367,15 @@ def get_lvmlockd_version():
         LVMLOCKD_VERSION = shell.call("""lvmlockd --version | awk '{print $3}' | awk -F'.' '{print $1"."$2}'""").strip()
     return LVMLOCKD_VERSION
 
+def get_running_lvmlockd_version():
+    pid = get_lvmlockd_pid()
+    if pid:
+        exe = "/proc/%s/exe" % pid
+        return shell.call("""%s --version | awk '{print $3}' | awk -F'.' '{print $1"."$2}'""" % exe).strip()
+
+def get_lvmlockd_pid():
+    return linux.find_process_by_command('lvmlockd')
+
 def get_dm_wwid(dm):
     try:
         stdout = shell.call("set -o pipefail; udevadm info -n %s | grep -o 'dm-uuid-mpath-\S*' | awk -F '-' '{print $NF; exit}'" % dm)
@@ -379,14 +389,6 @@ def get_device_info(dev_name, scsi_info):
     s = SharedBlockCandidateStruct()
     dev_name = dev_name.strip()
 
-    r, o, e = bash.bash_roe("lsblk --pair -b -p -o NAME,VENDOR,MODEL,WWN,SERIAL,HCTL,TYPE,SIZE /dev/%s" % dev_name, False)
-    if r != 0 or o.strip() == "":
-        logger.warn("can not get device information from %s" % dev_name)
-        return None
-
-    def get_data(e):
-        return e.split("=")[1].strip().strip('"')
-
     def get_wwid(dev):
         try:
             if dev in scsi_info.keys():
@@ -399,8 +401,30 @@ def get_device_info(dev_name, scsi_info):
             logger.warn(linux.get_exception_stacktrace())
             return None
 
-    def get_path(dev):
-        return shell.call("udevadm info -n %s | awk -F 'by-path/' '/^S:.*by-path/{print $2; exit}'" % dev).strip()
+    s = lsblk_info(dev_name)
+    if not s:
+        return s
+
+    wwid = get_wwid(dev_name)
+    if not wwid or wwid == "-":
+        return None
+
+    s.wwid = wwid
+    s.path = get_device_path(dev_name)
+    return s
+
+def lsblk_info(dev_name):
+    # type: (str) -> SharedBlockCandidateStruct
+    s = SharedBlockCandidateStruct()
+
+    r, o, e = bash.bash_roe("lsblk --pair -b -p -o NAME,VENDOR,MODEL,WWN,SERIAL,HCTL,TYPE,SIZE /dev/%s" % dev_name,
+                            False)
+    if r != 0 or o.strip() == "":
+        logger.warn("can not get device information from %s" % dev_name)
+        return None
+
+    def get_data(e):
+        return e.split("=")[1].strip().strip('"')
 
     for entry in o.strip().split("\n")[0].split('" '):  # type: str
         if entry.startswith("VENDOR"):
@@ -418,13 +442,12 @@ def get_device_info(dev_name, scsi_info):
         elif entry.startswith('TYPE'):
             s.type = get_data(entry)
 
-    wwid = get_wwid(dev_name)
-    if not wwid or wwid == "-":
-        return None
-    s.wwid = wwid
-    s.path = get_path(dev_name)
     return s
 
+def get_device_path(dev):
+    for symlink in shell.call("udevadm info -q symlink -n %s" % dev).strip().split():
+        if 'by-path' in symlink:
+            return os.path.basename(symlink)
 
 def calcLvReservedSize(size):
     # NOTE(weiw): Add additional 12M for every lv
@@ -575,7 +598,7 @@ After=lvm2-lvmetad.service
 [Service]
 Type=simple
 NonBlocking=true
-ExecStart=/sbin/lvmlockd --daemon-debug --sanlock-timeout %s
+ExecStart=/sbin/lvmlockd --daemon-debug --sanlock-timeout %s --adopt 1
 StandardError=syslog
 StandardOutput=syslog
 SyslogIdentifier=lvmlockd
@@ -624,6 +647,10 @@ def start_lvmlockd(io_timeout=40):
         os.mkdir(os.path.dirname(LVMLOCKD_LOG_FILE_PATH))
 
     config_lvmlockd(io_timeout)
+    running_lockd_version = get_running_lvmlockd_version()
+    if running_lockd_version and LooseVersion(running_lockd_version) < LooseVersion(get_lvmlockd_version()):
+        write_lvmlockd_adopt_file()
+        stop_lvmlockd()
     for service in ["sanlock", get_lvmlockd_service_name()]:
         cmd = shell.ShellCmd("timeout 30 systemctl start %s" % service)
         cmd(is_exception=True)
@@ -645,6 +672,62 @@ def start_lvmlockd(io_timeout=40):
         os.fsync(f.fileno())
     os.chmod(LVMLOCKD_LOG_LOGROTATE_PATH, 0o644)
 
+def write_lvmlockd_adopt_file():
+    def _get_lockspace_name(line):
+        return line.split()[1].split(":")[0]
+
+    class Lock:
+        def __init__(self, line):
+            ## line format: r lvm_8c8b0ad64b0e42f4a9792db1f2bbacd8:OGDB3v-DKJ9-kdYX-XO7p-7cEp-jK22-jm1sgp:/dev/mapper/8c8b0ad64b0e42f4a9792db1f2bbacd8-lvmlock:70254592:1 p 60836
+            self.line = line
+
+        def get_lockspace(self):
+            return self.line.split()[1].split(":")[0]
+
+        def get_uuid(self):
+            return self.line.split()[1].split(":")[1]
+
+        def get_path(self):
+            return self.line.split()[1].split(":")[2]
+
+        def get_offset(self):
+            return self.line.split()[1].split(":")[3]
+
+        def get_mode(self):
+            return self.line.split()[1].split(":")[4]
+
+
+    def _build_lvmlockd_adopt_file(all_locks):
+        content = ""
+        for lockspace in all_locks:
+            VG_NAME = lockspace.replace("lvm_", "")
+            VG_UUID = get_vg_lvm_uuid(VG_NAME)
+            vg = "VG: %s %s sanlock 1.0.0:lvmlock\n" % (VG_UUID, VG_NAME)
+            content += vg
+            for resource in all_locks.get(lockspace):
+                lv = "LV: %s %s 1.0.0:%s %s 0\n" % (VG_UUID, resource.get_uuid(), resource.get_offset(), "sh "if resource.get_mode() == "SH" else "ex")
+                content += lv
+
+        if len(content) != 0:
+            logger.debug("write sanlock records to %s, content : \n%s" % (LVMLOCKD_ADOPT_FILE, content))
+            linux.write_file(LVMLOCKD_ADOPT_FILE, content, create_if_not_exist=True)
+
+    lines = bash.bash_o("sanlock client status").splitlines()
+    all_locks = {}
+    for line in lines:
+        if line.startswith("s "):
+            all_locks.update({_get_lockspace_name(line) : []})
+        elif line.startswith("r "):
+            all_locks.get(_get_lockspace_name(line)).append(Lock(line))
+
+    _build_lvmlockd_adopt_file(all_locks)
+
+
+@bash.in_bash
+def stop_lvmlockd():
+    pid = get_lvmlockd_pid()
+    if pid:
+        linux.kill_process(pid)
 
 @bash.in_bash
 def start_vg_lock(vgUuid, retry_times_for_checking_vg_lockspace):
@@ -1603,6 +1686,7 @@ class RecursiveOperateLv(object):
         if has_one_lv_tag_sub_string(self.abs_path, self.skip_deactivate_tags):
             logger.debug("the volume %s has skip tag: %s" %
                          (self.abs_path, has_one_lv_tag_sub_string(self.abs_path, self.skip_deactivate_tags)))
+            return
 
         self.lock_ref_cnt.unlock(self.target_lock)
 
@@ -2198,16 +2282,6 @@ def get_lun_capacities_from_vg(vg_uuid, vgs_path_and_wwid):
             lun_capacities.append(LunWwidAndCapacity(wwid, size, free_size))
 
     return lun_capacities
-
-def subcmd(subcmd):
-    options = ''
-    if LooseVersion(get_lvmlockd_version()) > LooseVersion('2.02'):
-        if subcmd in ['pvresize', 'vgscan']:
-            options += '--nolocking -t'
-    elif subcmd in ['vgscan']:
-        options += '--ignorelockingfailure'
-
-    return '%s %s ' % (subcmd, options)
 
 
 class LvmRemoteStorage(remoteStorage.RemoteStorage):

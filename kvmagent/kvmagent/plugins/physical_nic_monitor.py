@@ -46,6 +46,7 @@ class PhysicalNicMonitor(kvmagent.KvmAgent):
     bond_info = {}
     ip_info = {}
     nic_info ={}
+    last_sent_alarms = {}
     history_nics = []
     state = None
     time_lock = 0
@@ -77,7 +78,21 @@ class PhysicalNicMonitor(kvmagent.KvmAgent):
         url = self.config.get(kvmagent.SEND_COMMAND_URL)
         if not url:
             raise kvmagent.KvmError("cannot find SEND_COMMAND_URL, unable to transmit vm operation to management node")
+
+        alarm_key = (physical_nic_alarm.nic, physical_nic_alarm.status)
+        time_limit = 5
+
+        if alarm_key in self.last_sent_alarms:
+            last_sent_time = self.last_sent_alarms[alarm_key]
+            current_time = time.time()
+            time_diff = current_time - last_sent_time
+            if time_diff < time_limit:
+                logger.debug("the same alarm occurs on the nic[%s], with the interval time: %s" % (physical_nic_alarm.nic, time_diff))
+                return
+
         http.json_dump_post(url, physical_nic_alarm, {'commandpath': '/host/physicalNic/alarm'})
+
+        self.last_sent_alarms[alarm_key] = time.time()
 
     def get_nic_info(self, nic, status):
         physical_nic_alarm = PhysicalNicAlarm()
@@ -146,11 +161,10 @@ class PhysicalNicMonitor(kvmagent.KvmAgent):
     @linux.retry(times=2, sleep_time=3)
     def physical_nic_monitor_get(self, ip):
         get_msg = ip.get()
-        if len(get_msg) > 0:
-            msg = get_msg[0]
-        else:
+        if get_msg is None or len(get_msg) == 0:
             return
-        if msg['event'] == 'RTM_NEWLINK':
+        msg = get_msg[0]
+        if 'event' in msg and msg['event'] == 'RTM_NEWLINK':
             nic = msg.get_attr('IFLA_IFNAME')
             status = msg.get_attr('IFLA_OPERSTATE').lower()
             if not nic or not status:

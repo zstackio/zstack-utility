@@ -4,7 +4,7 @@ ceph-bs:
     list: {exec: "select hostname from CephBackupStorageMonVO"}
     logs:
       - {name: cephbs-log, dir: /var/log/zstack/, file: ceph-backupstorage*}
-      - {name: dmesg-logs, dir: /var/log/, file: 'dmesg*'}
+      - {name: dmesg-logs, exec: 'dmesg'}
       - {name: message-logs, dir: /var/log/, file: messages*}
       - {name: route-logs, exec: 'route -n'}
       - {name: iptables-logs, exec: 'iptables-save'}
@@ -22,7 +22,7 @@ sftp-bs:
     list: {exec: "select hostname from SftpBackupStorageVO"}
     logs:
       - {name: sftpbs-log, dir: /var/log/zstack/, file: zstack-sftpbackupstorage*}
-      - {name: dmesg-logs, dir: /var/log/, file: 'dmesg*'}
+      - {name: dmesg-logs, exec: 'dmesg'}
       - {name: message-logs, dir: /var/log/, file: messages*}
       - {name: route-logs, exec: 'route -n'}
       - {name: iptables-logs, exec: 'iptables-save'}
@@ -37,7 +37,7 @@ imageStore-bs:
     list: {exec: "select hostname from ImageStoreBackupStorageVO"}
     logs:
       - {name: zstore-log, dir: /var/log/zstack/zstack-store/, file: zstore*}
-      - {name: dmesg-logs, dir: /var/log/, file: 'dmesg*'}
+      - {name: dmesg-logs, exec: 'dmesg'}
       - {name: message-logs, dir: /var/log/, file: messages*}
       - {name: route-logs, exec: 'route -n'}
       - {name: iptables-logs, exec: 'iptables-save'}

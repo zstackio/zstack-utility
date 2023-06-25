@@ -2,6 +2,7 @@
 
 <project name="guest-tools builder" basedir="../">
     <property name="guest.tools.ansible.dir" location="${ansible.dir}/guesttools/" />
+
     <target name="assemble-guest-tools" if="build_war_flag">
         <makeDir dir="${guest.tools.ansible.dir}" />
 

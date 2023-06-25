@@ -4,6 +4,7 @@
 '''
 import re
 import os.path
+import socket
 
 import linux
 import bash
@@ -291,7 +292,7 @@ def get_smart_nic_representors():
     return nic_representors
 
 def get_host_physicl_nics():
-    nic_all_physical = bash.bash_o("find /sys/class/net -type l -not -lname '*virtual*' -printf '%f\\n'").splitlines()
+    nic_all_physical = bash.bash_o("find /sys/class/net -type l -not \( -lname '*virtual*' -or -lname '*usb*' \) -printf '%f\\n'").splitlines()
     if nic_all_physical is None or len(nic_all_physical) == 0:
         return []
 
@@ -321,3 +322,20 @@ def get_host_physicl_nics():
             nic_without_smart_nic_representors.append(nic)
 
     return nic_without_smart_nic_representors
+
+def get_prefix_len_by_netmask(netmask):
+    ip_int = int(socket.inet_aton(netmask).encode('hex'), 16)
+    i = 1
+    prefix = 0
+    while not ip_int & i:
+        i = i << 1
+        prefix += 1
+    return 32 - prefix
+
+
+def is_ipv4(ip_address):
+    compile_ip = re.compile('^((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)')
+    if compile_ip.match(ip_address):
+        return True
+    else:
+        return False

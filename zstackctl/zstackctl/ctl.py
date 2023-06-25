@@ -1,4 +1,5 @@
 #!/usr/bin/python
+# -*- coding: utf-8 -*-
 
 import argparse
 import hashlib
@@ -65,6 +66,11 @@ elif [ -f /etc/my.cnf.d/mariadb-server.cnf ]; then
 elif [ -f /etc/my.cnf ]; then
     # centos
     mysql_conf=/etc/my.cnf
+fi
+
+if [ -z $mysql_conf ]; then
+    echo "failed to find my.cnf" >&2
+    exit 1
 fi
 
 sed -i 's/^bind-address/#bind-address/' $mysql_conf
@@ -174,6 +180,31 @@ mysqldump_skip_tables = "--ignore-table=zstack.VmUsageHistoryVO --ignore-table=z
                         "--ignore-table=zstack.DataVolumeUsageHistoryVO " \
                         "--ignore-table=zstack.ResourceUsageVO --ignore-table=zstack.PciDeviceUsageHistoryVO " \
                         "--ignore-table=zstack.PubIpVipBandwidthUsageHistoryVO"
+
+# pre install scripts
+# prepare yum configurations
+configure_yum_repo_script = '''\n
+if [ -f /etc/redhat-release ] ; then
+os_release=`cat /etc/redhat-release`
+if [[ $os_release =~ ' 7' ]]; then
+[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
+elif [[ $os_release =~ ' 8' ]]; then
+[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=\$basearch\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
+else
+[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-6&arch=\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
+fi
+
+if [[ $os_release =~ ' 8' ]]; then
+[ -d /etc/yum.repos.d/ ] && echo -e "#aliyun base\n[alibase]\nname=Rocky-\$releasever - Base - mirrors.aliyun.com\nbaseurl=https://mirrors.aliyun.com/rockylinux/\$releasever/BaseOS/\$basearch/os/\ngpgcheck=0\nenabled=0\n \n#released updates \n[aliupdates]\nname=Rocky-\$releasever - Updates - mirrors.aliyun.com\nbaseurl=http://mirrors.aliyun.com/rockylinux/\$releasever/AppStream/\$basearch/os/\nenabled=0\ngpgcheck=0\n \n[aliextras]\nname=Rocky-\$releasever - Extras - mirrors.aliyun.com\nbaseurl=https://mirrors.aliyun.com/rockylinux/\$releasever/extras/\$basearch/os/\nenabled=0\ngpgcheck=0\n \n[aliepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nbaseurl=http://mirrors.aliyun.com/epel/\$releasever/\$basearch\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-aliyun-yum.repo
+
+[ -d /etc/yum.repos.d/ ] && echo -e "#163 base\n[163base]\nname=Rocky-\$releasever - Base - mirrors.163.com\nbaseurl=http://mirrors.163.com/rocky/\$releasever/BaseOS/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[163updates]\nname=Rocky-\$releasever - Updates - mirrors.163.com\nbaseurl=http://mirrors.163.com/rocky/\$releasever/AppStream/\$basearch/\nenabled=0\ngpgcheck=0\n \n#additional packages that may be useful\n[163extras]\nname=Rocky-\$releasever - Extras - mirrors.163.com\nbaseurl=http://mirrors.163.com/rocky/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[ustcepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearch - ustc \nbaseurl=http://centos.ustc.edu.cn/epel/\$releasever/\$basearch\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-163-yum.repo
+else
+[ -d /etc/yum.repos.d/ ] && echo -e "#aliyun base\n[alibase]\nname=CentOS-\$releasever - Base - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[aliupdates]\nname=CentOS-\$releasever - Updates - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliextras]\nname=CentOS-\$releasever - Extras - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nbaseurl=http://mirrors.aliyun.com/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-aliyun-yum.repo
+
+[ -d /etc/yum.repos.d/ ] && echo -e "#163 base\n[163base]\nname=CentOS-\$releasever - Base - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[163updates]\nname=CentOS-\$releasever - Updates - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n#additional packages that may be useful\n[163extras]\nname=CentOS-\$releasever - Extras - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[ustcepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearch - ustc \nbaseurl=http://centos.ustc.edu.cn/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-163-yum.repo
+fi
+fi
+'''
 
 def signal_handler(signal, frame):
     sys.exit(0)
@@ -638,14 +669,14 @@ def check_zstack_user():
         raise CtlError('cannot find user account "zstack", your installation seems incomplete')
 
 def check_special_root(s):
-    if re.match(r"[^a-z0-9A-Z\\]", s):
+    if re.match(r"[^a-z0-9A-Z\\\_]", s):
         s = "\\" + s
     elif re.match(r"[\\]", s):
         s = r"\\"
     return s
 
 def check_special_new(s):
-    if re.match(r"[^a-z0-9A-Z\\\%]", s):
+    if re.match(r"[^a-z0-9A-Z\\\%\_]", s):
         s = "\\" + s
     elif re.match(r"[\\]", s):
         s = r"\\\\"
@@ -753,6 +784,14 @@ class CtlParser(argparse.ArgumentParser):
         self.print_help()
         sys.exit(1)
 
+
+def check_ha():
+    _, output, _ = shell_return_stdout_stderr("systemctl is-enabled zstack-ha")
+    if output and output.strip() == "enabled":
+        return True
+    return False
+
+
 class Ctl(object):
     IS_AARCH64 = platform.machine() == 'aarch64'
     DEFAULT_ZSTACK_HOME = '/usr/local/zstack/apache-tomcat/webapps/zstack/'
@@ -782,9 +821,6 @@ class Ctl(object):
     # get basharch and zstack-release
     BASEARCH = platform.machine()
     ZS_RELEASE = os.popen("awk '{print $3}' /etc/zstack-release").read().strip()
-    ENCRYPT = 'ENCRYPT'
-    ENCRYPTPROPERTIES = 'ENCRYPTPROPERTIES'
-    ENCRYPT_KEY = "zstack.pwd"
 
     def __init__(self):
         versionFile = os.path.join(self.ZSTACK_UI_HOME,'VERSION')
@@ -803,6 +839,7 @@ class Ctl(object):
         self.tomcat_xml_file_path = None
         self.verbose = False
         self.extra_arguments = None
+        self.http_call_cmd = 'curl -X POST -H "Content-Type:application/json" -H "commandpath:%s" -d \'%s\' --retry 5 http://%s:%s/zstack/asyncrest/sendcommand'
 
     def register_command(self, cmd):
         assert cmd.name, "command name cannot be None"
@@ -836,9 +873,6 @@ class Ctl(object):
             warn('cannot find %s, your ZStack installation may have crashed' % self.properties_file_path)
         if os.path.getsize(self.properties_file_path) == 0:
             warn('%s: file empty' % self.properties_file_path)
-
-    def is_ctl_env_exists(self):
-        return os.path.exists(SetEnvironmentVariableCmd.PATH)
 
     def get_env(self, name):
         env = PropertyFile(SetEnvironmentVariableCmd.PATH)
@@ -954,24 +988,6 @@ class Ctl(object):
         prop = PropertyFile(self.properties_file_path)
         with on_error('property must be in format of "key=value", no space before and after "="'):
             prop.write_property(key, value)
-
-    def set_encrypt_env(self):
-        self.put_envs([(self.ENCRYPT, 'True')])
-
-    def set_encrypt_properties(self):
-        encrypt = self.encrypt_properties()
-        self.put_envs([(self.ENCRYPTPROPERTIES, encrypt)])
-
-    def get_encrypt_properties(self):
-        return self.get_env(self.ENCRYPTPROPERTIES)
-
-    def is_encrypt_on(self):
-        return self.get_env(self.ENCRYPT) == 'True'
-
-    def encrypt_properties(self):
-        _, encrypt = commands.getstatusoutput(
-            "md5sum %s | cut -d ' ' -f 1" % self.properties_file_path)
-        return encrypt
 
     # for zstack ui properties
     def read_all_ui_properties(self):
@@ -1179,7 +1195,17 @@ class Ctl(object):
         else:
             check()
 
+
 ctl = Ctl()
+
+
+def file_hex_digest(algorithm, file_path):
+    with open(file_path, 'rb') as data:
+        try:
+            return hashlib.new(algorithm, data.read()).hexdigest()
+        except IOError as err:
+            raise CtlError('can not open file %s because IOError: %s' % (file_path, str(err)))
+
 
 def script(cmd, args=None, no_pipe=False):
     if args:
@@ -1262,6 +1288,15 @@ class UpdateSNSGlobalPropertyCmd(object):
     def __init__(self):
         self.ticketTopicHttpURL = None
         self.systemTopicHttpEndpointURL = None
+
+    def _asdict(self):
+        return self.__dict__
+
+
+class UpdatePropertyCmd(object):
+    def __init__(self):
+        self.propertiesDigestValue = None
+        self.mnIp = None
 
     def _asdict(self):
         return self.__dict__
@@ -1593,8 +1628,10 @@ class ShowStatusCmd(Command):
                     if version[0].isdigit(): 
                         info('Cube version: %s (Cube %s)' % (version.split('-')[0], version))
                     else:
-                        list = version.split('-')   
-                        info(list[0] + ' version: %s (%s)' % (list[1], version))
+                        list = version.split('-')
+                        hci_version = list[-3]
+                        hci_name = version.split("-%s-" % hci_version)
+                        info(hci_name[0] + ' version: %s (%s)' % (hci_version, version))
 
         info('\n'.join(info_list))
         show_version()
@@ -1622,6 +1659,100 @@ class ShowStatusCmd(Command):
                         info(colored(json.dumps(error_msg, indent=4), 'red'))
 
         ctl.internal_run('ui_status', args='-q')
+
+
+class ManagementNodeStatusCollector(Command):
+
+    # safety-reinforcing
+    def get_safe(self):
+        code, stdout, stderr = shell_return_stdout_stderr("ipset list")
+        if code == 0 and stdout.strip("\n") != "":
+            status = "enabled"
+        else:
+            status = "disabled"
+        return status
+
+    def get_systemd_service_status(self, service_name):
+        #systemctl status ${targetService}, example: systemctl status mariadb
+        code, status, stderr = shell_return_stdout_stderr(
+            "systemctl status %s | grep 'Active' | awk -F \"(\" 'NR==1{print $2}' | awk -F \")\" 'NR==1{print $1}' " % service_name)
+        if code == 0 and status.strip('\n') == "running":
+            return "running"
+        elif status == "dead":
+            return "stopped"
+        else:
+            return "unknown"
+
+    def get_mn_ui_status(self):
+        code, stdout, stderr = shell_return_stdout_stderr("zstack-ctl status | grep \"status\" | sed -r \"s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[m|K]//g\" | awk -F \":\" '{print $2}'| awk -F \"[\" '{print $1}'")
+        if code == 0:
+            try:
+                mn_status = stdout.split('\n')[0].strip().lower()
+                ui_status = stdout.split('\n')[1].strip().lower()
+                return mn_status, ui_status
+            except:
+                return "unknown", "unknown"
+        else:
+            return "unknown", "unknown"
+
+class ShowStatus2Cmd(Command):
+    colors = ["green", "yellow", "red"]
+    service_names = ["mysql", "prometheus2", "zops-ui", "port restriction", "MN", "MN-UI"]
+
+    def __init__(self):
+        super(ShowStatus2Cmd, self).__init__()
+        self.name = 'status2'
+        self.description = 'show ZStack main components status information.'
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--host', help='SSH URL, for example, root@192.168.0.10, to show the management node status on a remote machine')
+        parser.add_argument('--quiet', '-q', help='Do not log this action.', action='store_true', default=False)
+
+    def _stop_remote(self, args):
+        shell_no_pipe('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s "/usr/bin/zstack-ctl status"' % args.host)
+
+    def _format_str_color(self, service_name, status):
+        if status in ["running", "enabled", "disabled"]:
+            status_color = self.colors[0]
+        elif status == "stopped" or status == "False":
+            status_color = self.colors[2]
+        else:
+            status_color = self.colors[1]
+
+        index = self.service_names.index(service_name)
+        format_str = "[{}]{}[{}]".format(("%d" % (index + 1)),
+                                         service_name.ljust(50, ".").replace(".","·"), colored(status, status_color))
+        info_and_debug(format_str)
+
+    def run(self, args):
+        self.quiet = args.quiet
+        if args.host:
+            self._stop_remote(args)
+            return
+
+        collector = ManagementNodeStatusCollector()
+
+        # mariadb
+        mysql_status = collector.get_systemd_service_status("mariadb")
+        self._format_str_color("mysql", mysql_status)
+
+        # prometheus2
+        prometheus_status = collector.get_systemd_service_status("prometheus2")
+        self._format_str_color("prometheus2", prometheus_status)
+
+        # zops ui status
+        zops_ui_status = collector.get_systemd_service_status("zops-ui")
+        self._format_str_color("zops-ui", zops_ui_status)
+
+        # safety-reinforcing
+        safe_reinforcing_status = collector.get_safe()
+        self._format_str_color("port restriction", safe_reinforcing_status)
+
+        # mn, ui status
+        mn_status, ui_status = collector.get_mn_ui_status()
+        self._format_str_color("MN", mn_status)
+        self._format_str_color("MN-UI", ui_status)
 
 class DeployDBCmd(Command):
     DEPLOY_DB_SCRIPT_PATH = "WEB-INF/classes/deploydb.sh"
@@ -1863,6 +1994,8 @@ class ConfigureCmd(Command):
         super(ConfigureCmd, self).__init__()
         self.name = 'configure'
         self.description = "configure zstack.properties"
+        self.reportPath = "/progress/configure/properties"
+        self.properties_algorithm = "sha256"
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
@@ -1904,6 +2037,18 @@ EOF
 
         shell('cp -f %s %s' % (path, ctl.properties_file_path))
 
+    def _report_property_updated(self):
+        config_cmd = UpdatePropertyCmd()
+        config_cmd.propertiesDigestValue = file_hex_digest(self.properties_algorithm, ctl.properties_file_path)
+        config_cmd.mnIp = ctl.read_property('management.server.ip')
+        if not config_cmd.mnIp:
+            config_cmd.mnIp = "127.0.0.1"
+        mn_port = ctl.read_property('RESTFacade.port')
+        if not mn_port:
+            mn_port = 8080
+        ShellCmd(ctl.http_call_cmd % (self.reportPath, simplejson.dumps(config_cmd), config_cmd.mnIp, mn_port))
+        logger.debug('report properties updated, propertiesDigestValue: %s, mnIp: %s' % (config_cmd.propertiesDigestValue, config_cmd.mnIp))
+
     def run(self, args):
         if args.use_file:
             self._use_file(args)
@@ -1922,8 +2067,8 @@ EOF
 
         properties = [l.split('=', 1) for l in ctl.extra_arguments]
         ctl.write_properties(properties)
-        if ctl.is_ctl_env_exists() and ctl.is_encrypt_on():
-            ctl.set_encrypt_properties()
+
+        self._report_property_updated()
 
 def get_management_node_pid():
     DEFAULT_PID_FILE_PATH = os.path.join(os.path.expanduser('~zstack'), "management-server.pid")
@@ -2080,18 +2225,6 @@ class AESCipher:
             return raw != enc
         except:
             return False
-
-
-class SetEncryptPropertiesCmd(Command):
-    def __init__(self):
-        super(SetEncryptPropertiesCmd, self).__init__()
-        self.name = 'set_properties_encrypt'
-        self.description = 'set encrypt zstack.propertites '
-        ctl.register_command(self)
-    def run(self, args):
-        ctl.set_encrypt_env()
-        ctl.set_encrypt_properties()
-
 
 class StartCmd(Command):
     START_SCRIPT = '../../bin/startup.sh'
@@ -2347,14 +2480,6 @@ class StartCmd(Command):
         def get_start_mode():
             return ctl.get_env(self.START_MODE)
 
-        def check_encrypt_properties():
-            if not ctl.is_ctl_env_exists() or not ctl.is_encrypt_on():
-                return
-
-            if ctl.get_encrypt_properties() != ctl.encrypt_properties():
-                raise CtlError('zstack.properties is Integrity error')
-
-
         def encrypt_properties_if_need():
             cipher = AESCipher()
             for key in Ctl.NEED_ENCRYPT_PROPERTIES:
@@ -2410,9 +2535,6 @@ class StartCmd(Command):
         encrypt_properties_if_need()
         check_start_mode(get_start_mode())
         check_simulator()
-        # prepareBeanRefContextXml call zstack-ctl configure xxx modify encrypt properties,
-        # execute check_encrypt_properties before prepareBeanRefContextXml
-        check_encrypt_properties()
         prepare_bean_ref_context_xml()
 
         linux.sync_file(ctl.properties_file_path)
@@ -2944,19 +3066,7 @@ class InstallDbCmd(Command):
 
         pre_install_script = '''
 #!/bin/bash
-if [ -f /etc/redhat-release ] ; then
-
-grep ' 7' /etc/redhat-release
-if [ $? -eq 0 ]; then
-[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
-else
-[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-6&arch=\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
-fi
-
-[ -d /etc/yum.repos.d/ ] && echo -e "#aliyun base\n[alibase]\nname=CentOS-\$releasever - Base - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[aliupdates]\nname=CentOS-\$releasever - Updates - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliextras]\nname=CentOS-\$releasever - Extras - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nbaseurl=http://mirrors.aliyun.com/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-aliyun-yum.repo
-
-[ -d /etc/yum.repos.d/ ] && echo -e "#163 base\n[163base]\nname=CentOS-\$releasever - Base - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[163updates]\nname=CentOS-\$releasever - Updates - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n#additional packages that may be useful\n[163extras]\nname=CentOS-\$releasever - Extras - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[ustcepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearch - ustc \nbaseurl=http://centos.ustc.edu.cn/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-163-yum.repo
-fi
+{0}
 
 ###################
 #Check DNS hijacking
@@ -2980,7 +3090,7 @@ echo "The hostname($hostname) of your machine is resolved to IP($ip) which is no
 It's likely your DNS server has been hijacking, please try fixing it or add \"ip_of_your_host $hostname\" to /etc/hosts.
 DNS hijacking will cause MySQL not working."
 exit 1
-'''
+'''.format(configure_yum_repo_script)
         fd, pre_install_script_path = tempfile.mkstemp()
         os.fdopen(fd, 'w').write(pre_install_script)
 
@@ -4954,12 +5064,6 @@ class MysqlRestrictConnection(Command):
 
         return mn_ip
 
-    def check_ha(self):
-        _, output, _ = shell_return_stdout_stderr("systemctl is-enabled zstack-ha")
-        if output and output.strip() == "enabled":
-            return True
-        return False
-
     def grant_restrict_privilege(self, db_password, ui_db_password, root_password_, host, include_root):
         grant_access_cmd = " GRANT USAGE ON *.* TO 'zstack'@'%s' IDENTIFIED BY '%s' WITH GRANT OPTION;" % (host, db_password)
         grant_access_cmd = grant_access_cmd + (" GRANT USAGE ON *.* TO 'zstack_ui'@'%s' IDENTIFIED BY '%s' WITH GRANT OPTION;" % (host, ui_db_password))
@@ -5012,7 +5116,7 @@ class MysqlRestrictConnection(Command):
         ui_db_host, ui_db_port, ui_db_user, ui_db_password = self.get_ui_db_portal()
 
         restrict_ips = []
-        is_ha = self.check_ha()
+        is_ha = check_ha()
         if is_ha:
             zsha2_utils = Zsha2Utils()
             self.check_root_password(root_password_, zsha2_utils.config['peerip'])
@@ -5919,7 +6023,9 @@ class CollectLogCmd(Command):
         command = "uptime > %s && last reboot >> %s && free -h >> %s && cat /proc/cpuinfo >> %s  && ip addr >> %s && df -h >> %s" % \
                   (host_info_log, host_info_log, host_info_log, host_info_log, host_info_log, host_info_log)
         run_remote_command(command, host_post_info, True, True)
-        command = "cp /var/log/dmesg* /var/log/messages* %s" % tmp_log_dir
+        command = "if [ ! -f '/var/log/dmesg' ]; then dmesg > /var/log/dmesg; fi; cp /var/log/dmesg* %s" % tmp_log_dir
+        run_remote_command(command, host_post_info)
+        command = "cp /var/log/messages* %s" % tmp_log_dir
         run_remote_command(command, host_post_info)
         command = "route -n > %s/route_table" % tmp_log_dir
         run_remote_command(command, host_post_info)
@@ -6454,7 +6560,7 @@ class ConfiguredCollectLogCmd(Command):
         parser.add_argument('--dump-thread-info', help='dump threads info', default=False)
         parser.add_argument('--dumptime', help='wait for dumping threads time, default is 10 seconds', type=int, default=10)
         parser.add_argument('--destination', help='collect logs to the specified directory', default=None)
-        parser.add_argument('--combination', help='collect logs in a combined way, including mn/mn_db/host/bs/ps/vroute/pxeserver/baremetalv2gateway, such as \'mn,host,ps\'',
+        parser.add_argument('--combination', help='collect logs in a combined way, including mn/mn_db/host/bs/ps/vrouter/pxeserver/baremetalv2gateway, such as \'mn,host,ps\'',
                             default=None)
         parser.add_argument('--clear-log', help='clear log collected through UI', default=None)
         parser.add_argument('--scsi-diagnose', help='only collect host syslog', action="store_true", default=False)
@@ -6466,7 +6572,7 @@ class ConfiguredCollectLogCmd(Command):
         if "/" in log_name:
             error("clear log failed, value[%s] is invalid" % log_name)
         
-        log_path = self.ui_log_download_dir + ("collect-log-%s" % log_name)
+        log_path = self.ui_log_download_dir + log_name
         if os.path.isfile(log_path):
             shell('rm -f %s' % log_path)
             info("clear log file[%s] successfully!" % log_path)
@@ -6524,12 +6630,6 @@ class ChangeIpCmd(Command):
         parser.add_argument('--root-password',
                             help='When mysql_restrict_connection is enabled, --root-password needs to be set ',
                             required=False)
-
-    def check_ha(self):
-        _, output, _ = shell_return_stdout_stderr("systemctl is-enabled zstack-ha")
-        if output and output.strip() == "enabled":
-            return True
-        return False
 
     def isVirtualIp(self, ip):
         return shell("ip a | grep -w %s" % ip, False).strip().endswith("zs")
@@ -6594,7 +6694,7 @@ class ChangeIpCmd(Command):
             root_password_ = ''.join(map(check_special_root, args.root_password))
             self.check_mysql_password("root", root_password_)
 
-        if self.check_ha():
+        if check_ha():
             error("please change to single management before change ip")
 
         zstack_conf_file = ctl.properties_file_path
@@ -6938,40 +7038,26 @@ class InstallManagementNodeCmd(Command):
 '''
 
         pre_script = '''
-if [ -f /etc/redhat-release ] ; then
-
-grep ' 7' /etc/redhat-release
-if [ $$? -eq 0 ]; then
-[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$$releasever - \$$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=\$$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
-else
-[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$$releasever - \$$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-6&arch=\$$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
-fi
-
-[ -d /etc/yum.repos.d/ ] && echo -e "#aliyun base\n[alibase]\nname=CentOS-\$$releasever - Base - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$$releasever/os/\$$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[aliupdates]\nname=CentOS-\$$releasever - Updates - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$$releasever/updates/\$$basearch/\nenabled=0\ngpgcheck=0\n \n[aliextras]\nname=CentOS-\$$releasever - Extras - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$$releasever/extras/\$$basearch/\nenabled=0\ngpgcheck=0\n \n[aliepel]\nname=Extra Packages for Enterprise Linux \$$releasever - \$$basearce - mirrors.aliyun.com\nbaseurl=http://mirrors.aliyun.com/epel/\$$releasever/\$$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-aliyun-yum.repo
-
-[ -d /etc/yum.repos.d/ ] && echo -e "#163 base\n[163base]\nname=CentOS-\$$releasever - Base - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$$releasever/os/\$$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[163updates]\nname=CentOS-\$$releasever - Updates - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$$releasever/updates/\$$basearch/\nenabled=0\ngpgcheck=0\n \n#additional packages that may be useful\n[163extras]\nname=CentOS-\$$releasever - Extras - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$$releasever/extras/\$$basearch/\nenabled=0\ngpgcheck=0\n \n[ustcepel]\nname=Extra Packages for Enterprise Linux \$$releasever - \$$basearch - ustc \nbaseurl=http://centos.ustc.edu.cn/epel/\$$releasever/\$$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-163-yum.repo
-fi
+{0}
 
 whereis zstack-ctl
 if [ $$? -eq 0 ]; then
    zstack-ctl stop_node
 fi
 
-apache_path=$install_path/apache-tomcat
-if [[ -d $$apache_path ]] && [[ $force_resinstall -eq 0 ]]; then
+apache_path={1}/apache-tomcat
+if [[ -d $$apache_path ]] && [[ {2} -eq 0 ]]; then
    echo "found existing Apache Tomcat directory $$apache_path; please use --force-reinstall to delete it and re-install"
    exit 1
 fi
 
-rm -rf $install_path
-mkdir -p $install_path
-'''
-        t = string.Template(pre_script)
-        pre_script = t.substitute({
-            'force_resinstall': int(args.force_reinstall),
-            'install_path': args.install_path
-        })
-
+rm -rf {3}
+mkdir -p {4}
+'''.format(configure_yum_repo_script,
+           args.install_path,
+           int(args.force_reinstall),
+           args.install_path,
+           args.install_path)
         fd, pre_script_path = tempfile.mkstemp(suffix='.sh')
         os.fdopen(fd, 'w').write(pre_script)
 
@@ -7281,20 +7367,25 @@ class MNServerPortChange(Command):
         if not os.path.exists(ctl.properties_file_path):
             raise CtlError('cannot find properties file(%s)' % ctl.properties_file_path)
         if not os.path.exists(ctl.ui_properties_file_path):
-            raise CtlError('cannot find properties file(%s)' % ctl.properties_file_path)
+            raise CtlError('cannot find properties file(%s)' % ctl.ui_properties_file_path)
         if not os.path.exists(ctl.tomcat_xml_file_path):
-            raise CtlError('cannot find properties file(%s)' % ctl.properties_file_path)
+            raise CtlError('cannot find properties file(%s)' % ctl.tomcat_xml_file_path)
         ctl.write_property('RESTFacade.port', args.update_value)
         ctl.write_ui_property("mn_port", args.update_value)
         original_port = shell(
-            '''awk -F \\" '/Connector port=.*protocol=\"HTTP\/1.1\"/{ print $2 }' %s''' % ctl.tomcat_xml_file_path).strip(
+            ''' awk '/<Connector executor=\"tomcatThreadPool\"  port=\"[0-9]+\"/ { match($0, /port=\"([0-9]+)\"/, arr); print arr[1] }' %s''' % ctl.tomcat_xml_file_path).strip(
             '\t\n\r')
+        if len(original_port) == 0:
+            error = "tomcat original_port no found"
+            logger.debug(error)
+            raise CtlError(error)
         shell(
-            "sed -i 's/<Connector port=\"%s\" protocol=\"HTTP\/1.1\"/<Connector port=\"%s\" protocol=\"HTTP\/1.1\"/g' %s" % (
-                original_port, args.update_value, ctl.tomcat_xml_file_path))
+            "sed -i 's/<Connector executor=\"tomcatThreadPool\"  port=\"[0-9]\+\"/<Connector executor=\"tomcatThreadPool\"  port=\"%s\"/' %s" % (
+                args.update_value, ctl.tomcat_xml_file_path))
         linux.sync_file(ctl.tomcat_xml_file_path)
-        info('Successfully modify the port from %s to %s, please restart mn to take effect' % (
-            original_port, args.update_value))
+        success_info = 'Successfully modify the port from %s to %s, please restart mn to take effect' % (original_port, args.update_value)
+        info(success_info)
+        logger.debug(success_info)
 
 class SetEnvironmentVariableCmd(Command):
     PATH = os.path.join(ctl.USER_ZSTACK_HOME_DIR, "zstack-ctl/ctl-env")
@@ -7493,21 +7584,7 @@ class InstallDashboardCmd(Command):
 
 '''
 
-        pre_script = '''
-if [ -f /etc/redhat-release ] ; then
-
-grep ' 7' /etc/redhat-release
-if [ $? -eq 0 ]; then
-[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
-else
-[ -d /etc/yum.repos.d/ ] && [ ! -f /etc/yum.repos.d/epel.repo ] && echo -e "[epel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nmirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-6&arch=\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/epel.repo
-fi
-
-[ -d /etc/yum.repos.d/ ] && echo -e "#aliyun base\n[alibase]\nname=CentOS-\$releasever - Base - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[aliupdates]\nname=CentOS-\$releasever - Updates - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliextras]\nname=CentOS-\$releasever - Extras - mirrors.aliyun.com\nfailovermethod=priority\nbaseurl=http://mirrors.aliyun.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[aliepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com\nbaseurl=http://mirrors.aliyun.com/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-aliyun-yum.repo
-
-[ -d /etc/yum.repos.d/ ] && echo -e "#163 base\n[163base]\nname=CentOS-\$releasever - Base - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/os/\$basearch/\ngpgcheck=0\nenabled=0\n \n#released updates \n[163updates]\nname=CentOS-\$releasever - Updates - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/updates/\$basearch/\nenabled=0\ngpgcheck=0\n \n#additional packages that may be useful\n[163extras]\nname=CentOS-\$releasever - Extras - mirrors.163.com\nfailovermethod=priority\nbaseurl=http://mirrors.163.com/centos/\$releasever/extras/\$basearch/\nenabled=0\ngpgcheck=0\n \n[ustcepel]\nname=Extra Packages for Enterprise Linux \$releasever - \$basearch - ustc \nbaseurl=http://centos.ustc.edu.cn/epel/\$releasever/\$basearch\nfailovermethod=priority\nenabled=0\ngpgcheck=0\n" > /etc/yum.repos.d/zstack-163-yum.repo
-fi
-'''
+        pre_script = configure_yum_repo_script
         fd, pre_script_path = tempfile.mkstemp()
         os.fdopen(fd, 'w').write(pre_script)
 
@@ -9264,6 +9341,7 @@ class StartUiCmd(Command):
         parser.add_argument('--ssl-keystore', help="HTTPS SSL KeyStore Path.")
         parser.add_argument('--ssl-keystore-type', choices=['PKCS12', 'JKS'], type=str.upper, help="HTTPS SSL KeyStore Type.")
         parser.add_argument('--ssl-keystore-password', help="HTTPS SSL KeyStore Password.")
+        parser.add_argument('--enable-http2', help="Enable HTTP2 for ZStack UI,must enable https first.")
 
         # arguments for ui_db
         parser.add_argument('--db-url', help="zstack_ui database jdbc url")
@@ -9369,6 +9447,7 @@ class StartUiCmd(Command):
         cfg_server_port = ctl.read_ui_property("server_port")
         cfg_log = ctl.read_ui_property("log")
         cfg_enable_ssl = ctl.read_ui_property("enable_ssl").lower()
+        cfg_enable_http2 = ctl.read_ui_property("enable_http2").lower()
         cfg_ssl_keyalias = ctl.read_ui_property("ssl_keyalias")
         cfg_ssl_keystore = ctl.read_ui_property("ssl_keystore")
         cfg_ssl_keystore_type = ctl.read_ui_property("ssl_keystore_type")
@@ -9396,6 +9475,8 @@ class StartUiCmd(Command):
             args.log = cfg_log
         if not args.enable_ssl:
             args.enable_ssl = True if cfg_enable_ssl == 'true' else False
+        if not args.enable_http2:
+            args.enable_http2 = cfg_enable_http2
         if not args.ssl_keyalias:
             args.ssl_keyalias = cfg_ssl_keyalias
         if not args.ssl_keystore:
@@ -9506,9 +9587,9 @@ class StartUiCmd(Command):
         if ctl.read_property('consoleProxyCertFile'):
             logger.debug('user consoleProxyCertFile as ui pem')
             realpem = ctl.read_property('consoleProxyCertFile')
-        scmd = Template("runuser -l root -s /bin/bash -c 'bash ${STOP} && sleep 2 && LOGGING_PATH=${LOGGING_PATH} bash ${START} --mn.host=${MN_HOST} --mn.port=${MN_PORT} --webhook.host=${WEBHOOK_HOST} --webhook.port=${WEBHOOK_PORT} --server.port=${SERVER_PORT} --ssl.enabled=${SSL_ENABLE} --ssl.keyalias=${SSL_KEYALIAS} --ssl.keystore=${SSL_KEYSTORE} --ssl.keystore-type=${SSL_KEYSTORE_TYPE} --ssl.keystore-password=${SSL_KETSTORE_PASSWORD} --db.url=${DB_URL} --db.username=${DB_USERNAME} --db.password=${DB_PASSWORD} --redis.password=${REDIS_PASSWORD} ${CUSTOM_PROPS} --ssl.pem=${ZSTACK_UI_KEYSTORE_PEM}'")
+        scmd = Template("runuser -l root -s /bin/bash -c 'bash ${STOP} && sleep 2 && LOGGING_PATH=${LOGGING_PATH} bash ${START} --mn.host=${MN_HOST} --mn.port=${MN_PORT} --webhook.host=${WEBHOOK_HOST} --webhook.port=${WEBHOOK_PORT} --server.port=${SERVER_PORT} --ssl.enabled=${SSL_ENABLE} --http2.enabled=${HTTP2_ENABLE} --ssl.keyalias=${SSL_KEYALIAS} --ssl.keystore=${SSL_KEYSTORE} --ssl.keystore-type=${SSL_KEYSTORE_TYPE} --ssl.keystore-password=${SSL_KETSTORE_PASSWORD} --db.url=${DB_URL} --db.username=${DB_USERNAME} --db.password=${DB_PASSWORD} --redis.password=${REDIS_PASSWORD} ${CUSTOM_PROPS} --ssl.pem=${ZSTACK_UI_KEYSTORE_PEM}'")
 
-        scmd = scmd.substitute(LOGGING_PATH=args.log,STOP=StartUiCmd.ZSTACK_UI_STOP,START=StartUiCmd.ZSTACK_UI_START,MN_HOST=args.mn_host,MN_PORT=args.mn_port,WEBHOOK_HOST=args.webhook_host,WEBHOOK_PORT=args.webhook_port,SERVER_PORT=args.server_port,SSL_ENABLE=enableSSL,SSL_KEYALIAS=args.ssl_keyalias,SSL_KEYSTORE=args.ssl_keystore,SSL_KEYSTORE_TYPE=args.ssl_keystore_type,SSL_KETSTORE_PASSWORD=args.ssl_keystore_password,DB_URL=args.db_url,DB_USERNAME=args.db_username,DB_PASSWORD=args.db_password,REDIS_PASSWORD=args.redis_password,ZSTACK_UI_KEYSTORE_PEM=realpem,CUSTOM_PROPS=custom_props)
+        scmd = scmd.substitute(LOGGING_PATH=args.log,STOP=StartUiCmd.ZSTACK_UI_STOP,START=StartUiCmd.ZSTACK_UI_START,MN_HOST=args.mn_host,MN_PORT=args.mn_port,WEBHOOK_HOST=args.webhook_host,WEBHOOK_PORT=args.webhook_port,SERVER_PORT=args.server_port,SSL_ENABLE=enableSSL,HTTP2_ENABLE=args.enable_http2,SSL_KEYALIAS=args.ssl_keyalias,SSL_KEYSTORE=args.ssl_keystore,SSL_KEYSTORE_TYPE=args.ssl_keystore_type,SSL_KETSTORE_PASSWORD=args.ssl_keystore_password,DB_URL=args.db_url,DB_USERNAME=args.db_username,DB_PASSWORD=args.db_password,REDIS_PASSWORD=args.redis_password,ZSTACK_UI_KEYSTORE_PEM=realpem,CUSTOM_PROPS=custom_props)
 
         shell("ps aux| grep zstack-ui/scripts/start.sh | awk '{print $2}'|xargs kill -9",is_exception=False)
         script(scmd, no_pipe=True)
@@ -9617,6 +9698,7 @@ class ConfigUiCmd(Command):
         parser.add_argument('--ssl-keystore', help="HTTPS SSL KeyStore Path. [DEFAULT] %s" % ctl.ZSTACK_UI_KEYSTORE)
         parser.add_argument('--ssl-keystore-type', choices=['PKCS12', 'JKS'], type=str.upper, help="HTTPS SSL KeyStore Type. [DEFAULT] PKCS12")
         parser.add_argument('--ssl-keystore-password', help="HTTPS SSL KeyStore Password. [DEFAULT] password")
+        parser.add_argument('--enable-http2',choices=['True', 'False'], type=str.title, help="Enable HTTP2 for ZStack UI. [DEFAULT] False")
 
         # arguments for ui_db
         parser.add_argument('--db-url', help="zstack_ui database jdbc url.")
@@ -9669,6 +9751,8 @@ class ConfigUiCmd(Command):
                 ctl.write_ui_property("log", ui_logging_path)
             if not ctl.read_ui_property("enable_ssl"):
                 ctl.write_ui_property("enable_ssl", 'false')
+            if not ctl.read_ui_property("enable_http2"):
+                ctl.write_ui_property("enable_http2", 'false')
             if not ctl.read_ui_property("ssl_keyalias"):
                 ctl.write_ui_property("ssl_keyalias", 'zstackui')
             if not ctl.read_ui_property("ssl_keystore"):
@@ -9701,6 +9785,7 @@ class ConfigUiCmd(Command):
             ctl.write_ui_property("server_port", '5000')
             ctl.write_ui_property("log", ui_logging_path)
             ctl.write_ui_property("enable_ssl", 'false')
+            ctl.write_ui_property("enable_http2", 'false')
             ctl.write_ui_property("ssl_keyalias", 'zstackui')
             ctl.write_ui_property("ssl_keystore", ctl.ZSTACK_UI_KEYSTORE)
             ctl.write_ui_property("ssl_keystore_type", 'PKCS12')
@@ -9752,6 +9837,8 @@ class ConfigUiCmd(Command):
         # https
         if args.enable_ssl:
             ctl.write_ui_property("enable_ssl", args.enable_ssl.lower())
+        if args.enable_http2:
+            ctl.write_ui_property("enable_http2", args.enable_http2.lower())
         if args.ssl_keyalias or args.ssl_keyalias == '':
             ctl.write_ui_property("ssl_keyalias", args.ssl_keyalias.strip())
         if args.ssl_keystore or args.ssl_keystore == '':
@@ -10313,7 +10400,8 @@ class DumpMNTaskQueueCmd(Command):
         shell("kill -USR2 %s" % mn_pid)
         mn_log_path = os.path.join(ctl.zstack_home, "../../logs/management-server.log")
         time.sleep(1)
-        shell_no_pipe("sed -n '/BEGIN TASK QUEUE DUMP/,/END TASK QUEUE DUMP/p' %s" % mn_log_path)
+        # only print last matched TASK QUEUE BLOCK
+        shell_no_pipe("sed -n '/BEGIN TASK QUEUE DUMP/,/END TASK QUEUE DUMP/p' %s | tac | awk '/BEGIN TASK QUEUE DUMP/{ print; exit} 1' | tac" % mn_log_path)
 
 
 class TimelineCmd(Command):
@@ -10468,6 +10556,7 @@ def main():
     ZBoxBackupRestoreCmd()
     RecoverHACmd()
     ScanDatabaseBackupCmd()
+    ShowStatus2Cmd()
     ShowStatusCmd()
     StartCmd()
     StopCmd()
@@ -10505,7 +10594,6 @@ def main():
     UiStatusCmd()
     ConfigUiCmd()
     ShowUiCfgCmd()
-    SetEncryptPropertiesCmd()
     DumpMNThreadCmd()
     DumpMNTaskQueueCmd()
     TimelineCmd()

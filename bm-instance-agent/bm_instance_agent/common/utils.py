@@ -107,8 +107,12 @@ def get_interfaces():
     """
     interfaces = {}
     iface_name_list = netifaces.interfaces()
+    LOG.info("get iface list: %s" % iface_name_list)
     for iface in iface_name_list:
         af_link = netifaces.ifaddresses(iface).get(netifaces.AF_LINK)
+        if af_link is None:
+            LOG.info("%s aflink is None, continue" % iface)
+            continue
         mac = af_link[0].get('addr')
         perm_mac = _get_bond_slave_mac(iface)
         if perm_mac:
@@ -130,12 +134,16 @@ def get_phy_interfaces():
     """
     interfaces = {}
     iface_name_list = netifaces.interfaces()
+    LOG.info("get iface list: %s" % iface_name_list)
     for iface in iface_name_list:
         link = query_link(iface)
         if not link or link.device_type:
             continue
 
         af_link = netifaces.ifaddresses(iface).get(netifaces.AF_LINK)
+        if af_link is None:
+            LOG.info("%s aflink is None, continue" % iface)
+            continue
         mac = af_link[0].get('addr')
         perm_mac = _get_bond_slave_mac(iface)
         if perm_mac:
@@ -260,8 +268,9 @@ def get_distro():
 
     distro_id = distro.id()
     major_version = distro.major_version()
+    LOG.info("current distro id: %s, major_version: %s" % (distro.id(), distro.major_version()))
 
-    if distro_id == 'centos':
+    if distro_id == 'centos' or distro_id == 'rhel':
         if major_version == '7' or major_version == '8':
             return 'centos_v%s_%s' % (major_version, arch)
         return 'centos'
@@ -275,7 +284,7 @@ def get_distro():
             return 'kylin_v10_arm'
         return 'kylin'
 
-    return 'linux'
+    return 'centos'
 
 
 def ip_link_del(if_name):

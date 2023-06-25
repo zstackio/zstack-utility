@@ -3,7 +3,7 @@
 @author: frank
 '''
 import unittest
-from ..utils import shell
+from zstacklib.utils import shell
 import subprocess
 
 class TestShell(unittest.TestCase):

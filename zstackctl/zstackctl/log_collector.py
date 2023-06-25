@@ -1,18 +1,24 @@
 #!/usr/bin/env python
 # encoding: utf-8
 
+import _ctypes
+import datetime
 import io
+import marshal
+import os
+# Pre import strptime to avoid import lockis
+# See: https://forums.raspberrypi.com/viewtopic.php?t=166912
+import _strptime
 import threading
-import xml.etree.ElementTree as etree
-from datetime import timedelta
 
-import yaml
 from termcolor import colored
+import xml.etree.ElementTree as etree
+import yaml
 
-import zstackctl.ctl
 from utils import linux
 from utils import shell
 from utils.sql_query import MySqlCommandLineQuery
+import zstackctl.ctl
 from zstacklib import *
 
 
@@ -21,7 +27,7 @@ def info_verbose(*msg):
         out = '%s\n' % ''.join(msg)
     else:
         out = ''.join(msg)
-    now = datetime.now()
+    now = datetime.datetime.now()
     out = "%s " % now.strftime('%Y-%m-%d %H:%M:%S') + out
     sys.stdout.write(out)
     logger.info(out)
@@ -32,7 +38,7 @@ def collect_fail_verbose(*msg):
         out = '%s\n' % ''.join(msg)
     else:
         out = ''.join(msg)
-    now = datetime.now()
+    now = datetime.datetime.now()
     out = "%s " % now.strftime('%Y-%m-%d %H:%M:%S') + out
     return out
 
@@ -49,6 +55,11 @@ class CtlError(Exception):
 def warn(msg):
     logger.warn(msg)
     sys.stdout.write(colored('WARNING: %s\n' % msg, 'yellow'))
+
+
+def info(msg):
+    logger.info(msg)
+    # sys.stdout.write(colored('INFO: %s\n' % msg, 'green'))
 
 
 def get_default_ip():
@@ -278,7 +289,6 @@ class CollectFromYml(object):
     check = False
     check_result = {}
     max_thread_num = 20
-    vrouter_task_list = []
     DEFAULT_ZSTACK_HOME = '/usr/local/zstack/apache-tomcat/webapps/zstack/'
     HA_KEEPALIVED_CONF = "/etc/keepalived/keepalived.conf"
     summary = Summary()
@@ -504,7 +514,6 @@ class CollectFromYml(object):
             elif "baremetalv2gateway" == log.strip():
                 yml_conf_dirs.add(base_conf_path + yml_baremetalv2gateway)
 
-        self.delete_source_file = True
         return yml_conf_dirs
     
     def build_collect_cmd(self, log, collect_dir):
@@ -519,7 +528,7 @@ class CollectFromYml(object):
                 cmd = cmd + ' -name \'%s\'' % file_value
 
         if mode_value == "Normal":
-            cmd = cmd + ' -exec ls --full-time {} \; | sort -k6 | awk \'{print $6\":\"$7\"|\"$9\"|\"$5}\''
+            cmd = cmd + ' -exec ls --full-time {} + | sort -k6 | awk \'{print $6\":\"$7\"|\"$9\"|\"$5}\''
             cmd = cmd + ' | awk -F \'|\' \'BEGIN{preview=0;} {if(NR==1 && ( $1 > \"%s\" || (\"%s\" < $1 && $1  <= \"%s\"))) print $2\"|\"$3; \
                                    else if ((\"%s\" < $1 && $1 <= \"%s\") || ( $1> \"%s\" && preview < \"%s\")) print $2\"|\"$3; preview = $1}\'' \
                   % (self.t_date, self.f_date, self.t_date, self.f_date, self.t_date, self.t_date, self.t_date)
@@ -653,11 +662,11 @@ class CollectFromYml(object):
         else:
             warn("unknown target type: %s" % type)
 
-    def generate_tar_ball(self, collect_dir, run_command_dir, detail_version, time_stamp):
+    def generate_tar_ball(self, collect_file_name, run_command_dir):
         info_verbose("Compressing log files ...")
 
-        command = "tar zcf %s.tar.gz %s" % (collect_dir, collect_dir)
-
+        command = "cd %s && tar --ignore-failed-read -zcf %s.tar.gz %s" % (
+            run_command_dir, collect_file_name, collect_file_name)
         if self.delete_source_file is True:
             command = command + " --remove-files"
             
@@ -685,8 +694,7 @@ class CollectFromYml(object):
 
     def add_collect_thread(self, type, params):
         if "vrouter" in params:
-            self.vrouter_task_list.append(params)
-            return
+            params.append(self.vrouter_tmp_log_path)
 
         if type == self.host_type:
             thread = threading.Thread(target=self.get_host_log, args=(params))
@@ -705,11 +713,6 @@ class CollectFromYml(object):
                     break
         for t in self.threads:
             t.join(timeout)
-
-        if len(self.vrouter_task_list) > 0:
-            info_verbose("Start collecting vrouter log...")
-            for param in self.vrouter_task_list:
-                self.get_host_log(param[0], param[1], param[2], param[3], self.vrouter_tmp_log_path)
 
     def get_mn_list(self):
         def find_value_from_conf(content, key, begin, end):
@@ -790,7 +793,7 @@ class CollectFromYml(object):
                             self.check_result[key] = output
         else:
             info_verbose("Collecting log from %s localhost ..." % type)
-            start = datetime.now()
+            start = datetime.datetime.now()
             local_collect_dir = collect_dir + '%s-%s/' % (type, get_default_ip())
             try:
                 # file system broken shouldn't block collect log process
@@ -807,6 +810,7 @@ class CollectFromYml(object):
                         file_path = dest_log_dir + '%s' % (log['name'])
                         exec_type = log['exec_type']
                         exec_cmd = None
+                        command = self.append_time_param_for_journal(log, command)
                         if exec_type == 'RunAndRedirect':
                             exec_cmd = '(%s) > %s' % (command, file_path)
                         if exec_type == 'CdAndRun':
@@ -850,7 +854,7 @@ class CollectFromYml(object):
                 linux.rm_dir_force(local_collect_dir)
                 self.failed_flag = True
                 return 1
-            end = datetime.now()
+            end = datetime.datetime.now()
             total_collect_time = str(round((end - start).total_seconds(), 1)) + 's'
             self.summary.add_collect_time(type, get_default_ip(), CollectTime(start, end, total_collect_time))
             command = 'test "$(ls -A "%s" 2>/dev/null)" || echo The directory is empty' % local_collect_dir
@@ -868,6 +872,8 @@ class CollectFromYml(object):
 
     def add_fail_count(self, fail_log_number, log_type, ip, fail_log_name, fail_cause):
         self.fail_lock.acquire()
+        fail_log_name = fail_log_name.decode('utf-8')
+        fail_cause = fail_cause.decode('utf-8')
         try:
             self.summary.fail_count += fail_log_number
             self.summary.add_fail(log_type, ip, FailDetail(fail_log_name, fail_cause))
@@ -921,8 +927,38 @@ class CollectFromYml(object):
         self.check_lock.release()
         return result
 
-    @ignoreerror
+    # @ignoreerror
     def get_host_log(self, host_post_info, log_list, collect_dir, type, tmp_path = "/tmp"):
+        def succ_callback(result, object_ids, command, file_path):
+            counts = _ctypes.PyObj_FromPtr(object_ids['counts'])
+            counts['succ'].append([])
+            info = _ctypes.PyObj_FromPtr(object_ids['info'])
+            info("exec shell %s successfully!You can check the file at %s" % (command, file_path))
+
+        def fail_callback(result, object_ids, type, host_post_info, name):
+            counts = _ctypes.PyObj_FromPtr(object_ids['counts'])
+            if type != 'sharedblock':
+                counts['fail'].append([1, type, host_post_info.host, name,  result._result['stdout']])
+
+        def succ_callback2(result, object_ids, log_name, type, host_post_info):
+            counts = _ctypes.PyObj_FromPtr(object_ids['counts'])
+            counts['succ'].append([])
+            warn = _ctypes.PyObj_FromPtr(object_ids['warn'])
+            if "The directory is empty" in result._result['stdout']:
+                msg = "Didn't find log [%s] on %s %s" % (log_name, type, host_post_info.host)
+                warn(msg)
+
+        def fail_callback2(result, object_ids, log_name, log_dir, type, host_post_info):
+            counts = _ctypes.PyObj_FromPtr(object_ids['counts'])
+            warn = _ctypes.PyObj_FromPtr(object_ids['warn'])
+            rc = result._result['rc']
+            if rc == 2:
+                msg = 'the dir path %s did\'t find on %s %s' % (log_dir, type, host_post_info.host)
+                counts['fail'].append([1, type, host_post_info.host, log_name, msg])
+                warn(msg)
+            else:
+                counts['fail'].append([1, type, host_post_info.host, log_name, result._result['stdout']])
+
         if self.check_host_reachable_in_queen(host_post_info) is True:
             if self.check:
                 for log in log_list:
@@ -938,42 +974,49 @@ class CollectFromYml(object):
                                 self.check_result[key] = output
             else:
                 info_verbose("Collecting log from %s %s ..." % (type, host_post_info.host))
-                start = datetime.now()
+                start = datetime.datetime.now()
                 local_collect_dir = collect_dir + '%s-%s/' % (type, host_post_info.host)
                 tmp_log_dir = "%s/%s-tmp-log/" % (tmp_path, type)
                 try:
+                    pb = ZstackPBRunner(host_post_info)
+                    counts = {
+                        'succ': [],
+                        'fail': []
+                    }
                     # file system broken shouldn't block collect log process
                     if not os.path.exists(local_collect_dir):
                         os.makedirs(local_collect_dir)
-                    run_remote_command(linux.get_checked_rm_dir_cmd(tmp_log_dir), host_post_info)
+                    pb.executor.add_command_action(linux.get_checked_rm_dir_cmd(tmp_log_dir))
                     command = "mkdir -p %s " % tmp_log_dir
-                    run_remote_command(command, host_post_info)
+                    pb.executor.add_command_action(command)
+                    object_ids = {
+                        'counts': id(counts),
+                        'info': id(info),
+                        'warn': id(warn)
+                    }
                     for log in log_list:
                         dest_log_dir = tmp_log_dir
                         if 'name' in log:
                             command = "mkdir -p %s" % tmp_log_dir + '%s/' % log['name']
-                            run_remote_command(command, host_post_info)
+                            pb.executor.add_command_action(command)
                             dest_log_dir = tmp_log_dir + '%s/' % log['name']
                         if 'exec' in log:
                             command = log['exec']
                             file_path = dest_log_dir + '%s' % (log['name'])
                             exec_type = log['exec_type']
                             exec_cmd = None
+                            command = self.append_time_param_for_journal(log, command)
                             if exec_type == 'RunAndRedirect':
                                 exec_cmd = '(%s) > %s' % (command, file_path)
                             if exec_type == 'CdAndRun':
                                 exec_cmd = 'cd %s && %s' % (dest_log_dir, command)
-                            (status, output) = run_remote_command(exec_cmd,
-                                                                  host_post_info, return_status=True,
-                                                                  return_output=True)
-                            if status is True:
-                                self.add_success_count()
-                                logger.info(
-                                    "exec shell %s successfully!You can check the file at %s" % (command, file_path))
-                            elif type != 'sharedblock':
-                                self.add_fail_count(1, type, host_post_info.host, log['name'], output)
+
+                            pb.executor.add_command_action(
+                                exec_cmd, exit_on_fail=False,
+                                callback_on_succ=[marshal.dumps(succ_callback.__code__), object_ids, command, file_path],
+                                callback_on_fail=[marshal.dumps(fail_callback.__code__), object_ids, type, host_post_info, log['name']])
                         else:
-                            if log['name'] == "ui-logs": 
+                            if log['name'] == "ui-logs":
                                 (ui_log_status, ui_log_output) = run_remote_command(
                                     ''' zstack-ctl show_ui_config | awk -F= '/^log/{print $2}' | awk '$1=$1' ''',
                                     host_post_info, return_status=True,
@@ -983,27 +1026,22 @@ class CollectFromYml(object):
                                         log['dir'], ui_log_output, type, host_post_info.host))
                                     log['dir'] = ui_log_output
 
-                            if file_dir_exist("path=%s" % log['dir'], host_post_info):
-                                command = self.build_collect_cmd(log, dest_log_dir)
-                                (status, output) = run_remote_command(command, host_post_info, return_status=True,
-                                                                      return_output=True)
-                                if status is True:
-                                    self.add_success_count()
-                                    command = 'test "$(ls -A "%s" 2>/dev/null)" || echo The directory is empty' % dest_log_dir
-                                    (status, output) = run_remote_command(command, host_post_info, return_status=True,
-                                                                          return_output=True)
-                                    if "The directory is empty" in output:
-                                        warn("Didn't find log [%s] on %s %s" % (log['name'], type, host_post_info.host))
-                                        logger.warn(
-                                            "Didn't find log [%s] on %s %s" % (log['name'], type, host_post_info.host))
-                                else:
-                                    self.add_fail_count(1, type, host_post_info.host, log['name'], output)
-                            else:
-                                self.add_fail_count(1, type, host_post_info.host, log['name'], "the dir path %s did't find on %s %s" % (
-                                    log['dir'], type, host_post_info.host))
-                                logger.warn(
-                                    "the dir path %s did't find on %s %s" % (log['dir'], type, host_post_info.host))
-                                warn("the dir path %s did't find on %s %s" % (log['dir'], type, host_post_info.host))
+                            collect_command = self.build_collect_cmd(log, dest_log_dir)
+                            command = '''
+if [ ! -e %s ]; then exit 2; fi
+%s
+test "$(ls -A "%s" 2>/dev/null)" || echo The directory is empty
+''' % (log['dir'], collect_command, dest_log_dir)
+
+                            pb.executor.add_command_action(
+                                command, exit_on_fail=False,
+                                callback_on_succ=[marshal.dumps(succ_callback2.__code__), object_ids, log['name'], type, host_post_info],
+                                callback_on_fail=[marshal.dumps(fail_callback2.__code__), object_ids, log['name'], log['dir'], type, host_post_info])
+                    pb.run()
+                    for succ in counts['succ']:
+                        self.add_success_count(*succ)
+                    for fail in counts['fail']:
+                        self.add_fail_count(*fail)
                 except SystemExit:
                     warn("collect log on host %s failed" % host_post_info.host)
                     logger.warn("collect log on host %s failed" % host_post_info.host)
@@ -1012,7 +1050,7 @@ class CollectFromYml(object):
                     run_remote_command(command, host_post_info)
                     return 1
 
-                end = datetime.now()
+                end = datetime.datetime.now()
                 total_collect_time = str(round((end - start).total_seconds(), 1)) + 's'
                 self.summary.add_collect_time(
                     type, host_post_info.host, CollectTime(start, end, total_collect_time))
@@ -1030,8 +1068,9 @@ class CollectFromYml(object):
             self.add_fail_count(len(log_list), type, host_post_info.host, 'unreachable',
                                 ("%s %s is unreachable!" % (type, host_post_info.host)))
 
-    def get_total_size(self):
+    def get_total_size(self, run_command_dir):
         values = self.check_result.values()
+        stat = os.statvfs(run_command_dir)
         total_size = 0
         for num in values:
             if num is None:
@@ -1043,9 +1082,18 @@ class CollectFromYml(object):
             elif num.endswith('G'):
                 total_size += float(num[:-1]) * 1024 * 1024
         total_size = str(round((total_size / 1024 / 1024), 2)) + 'G'
+        free_size = str(round((stat.f_frsize * stat.f_bavail) // (2**30), 2)) + 'G'
         print '%-50s%-50s' % ('TotalSize(exclude exec statements)', colored(total_size, 'green'))
+        print '%-50s%-50s' % ('AvailableDiskCapacity', colored(free_size, 'green'))
         for key in sorted(self.check_result.keys()):
             print '%-50s%-50s' % (key, colored(self.check_result[key], 'green'))
+
+    def append_time_param_for_journal(self, log, cmd):
+        if log['name'] == 'journalctl-info':
+            cmd += " --since '%s' --until '%s'" % (
+                datetime.datetime.strptime(self.f_date, '%Y-%m-%d:%H:%M:%S').strftime('%Y-%m-%d %H:%M:%S'),
+                datetime.datetime.strptime(self.t_date, '%Y-%m-%d:%H:%M:%S').strftime('%Y-%m-%d %H:%M:%S'))
+        return cmd
 
     def format_date(self, str_date):
         try:
@@ -1057,13 +1105,13 @@ class CollectFromYml(object):
                     month = ymd_array[1]
                     day = ymd_array[2]
                     if len(d_arr) == 1:
-                        return datetime(int(year), int(month), int(day)).strftime('%Y-%m-%d:%H:%M:%S')
+                        return datetime.datetime(int(year), int(month), int(day)).strftime('%Y-%m-%d:%H:%M:%S')
                     else:
                         hms_array = d_arr[1].split(':')
                         hour = hms_array[0] if len(hms_array) > 0 is not None else '00'
                         minute = hms_array[1] if len(hms_array) > 1 is not None else '00'
                         sec = hms_array[2] if len(hms_array) > 2 is not None else '00'
-                        return datetime(int(year), int(month), int(day), int(hour), int(minute), int(sec)) \
+                        return datetime.datetime(int(year), int(month), int(day), int(hour), int(minute), int(sec)) \
                             .strftime('%Y-%m-%d:%H:%M:%S')
                 else:
                     error_verbose(
@@ -1078,7 +1126,7 @@ class CollectFromYml(object):
     def param_validate(self, args):
         if args.since is None:
             if args.from_date is None:
-                self.f_date = (datetime.now() + timedelta(days=-1)).strftime('%Y-%m-%d:%H:%M:%S')
+                self.f_date = (datetime.datetime.now() + datetime.timedelta(days=-1)).strftime('%Y-%m-%d:%H:%M:%S')
             elif args.from_date == '-1':
                 self.f_date = '0000-00-00:00:00'
             else:
@@ -1086,18 +1134,18 @@ class CollectFromYml(object):
             if args.to_date is not None and args.to_date != '-1':
                 self.t_date = self.format_date(args.to_date)
             else:
-                self.t_date = datetime.now().strftime('%Y-%m-%d:%H:%M:%S')
+                self.t_date = datetime.datetime.now().strftime('%Y-%m-%d:%H:%M:%S')
         else:
             try:
                 if args.since.endswith('d') or args.since.endswith('D'):
-                    self.f_date = (datetime.now() + timedelta(days=float('-%s' % (args.since[:-1])))).strftime(
+                    self.f_date = (datetime.datetime.now() + datetime.timedelta(days=float('-%s' % (args.since[:-1])))).strftime(
                         '%Y-%m-%d:%H:%M:%S')
                 elif args.since.endswith('h') or args.since.endswith('H'):
-                    self.f_date = (datetime.now() + timedelta(
+                    self.f_date = (datetime.datetime.now() + datetime.timedelta(
                         days=float('-%s' % round(float(args.since[:-1]) / 24, 2)))).strftime('%Y-%m-%d:%H:%M:%S')
                 else:
                     error_verbose("error since format:[%s], correct format example '--since 2d'" % args.since)
-                self.t_date = datetime.now().strftime('%Y-%m-%d:%H:%M:%S')
+                self.t_date = datetime.datetime.now().strftime('%Y-%m-%d:%H:%M:%S')
             except ValueError:
                 error_verbose("error since format:[%s], correct format example '--since 2d'" % args.since)
 
@@ -1159,9 +1207,9 @@ class CollectFromYml(object):
         dest_dir = args.collect_dir_name
 
         if not dest_dir:
-            collect_dir = run_command_dir + '/collect-log-%s-%s/' % (detail_version, time_stamp)
-        else:
-            collect_dir = run_command_dir + '/' + dest_dir + '/'
+            dest_dir = 'collect-log-%s-%s' % (detail_version, time_stamp)
+
+        collect_dir = '/'.join([run_command_dir,dest_dir]) + '/'
 
         if not os.path.exists(collect_dir) and args.check is not True:
             os.makedirs(collect_dir)
@@ -1173,6 +1221,7 @@ class CollectFromYml(object):
             self.max_thread_num = args.thread
 
         decode_result = self.decode_conf_yml(args)
+        self.delete_source_file = True
 
         if decode_result['decode_error'] is not None:
             error_verbose(decode_result['decode_error'])
@@ -1184,7 +1233,7 @@ class CollectFromYml(object):
                 self.collect_configure_log(value['list'], value['logs'], collect_dir, key)
         self.thread_run(int(args.timeout))
         if self.check:
-            self.get_total_size()
+            self.get_total_size(run_command_dir)
         else:
             self.summary.persist(collect_dir)
             if len(threading.enumerate()) > 1:
@@ -1195,7 +1244,7 @@ class CollectFromYml(object):
                 return
 
             collect_dir = collect_dir.rstrip('/')
-            self.generate_tar_ball(collect_dir, run_command_dir, detail_version, time_stamp)
+            self.generate_tar_ball(dest_dir, run_command_dir)
             if self.failed_flag is True:
                 info_verbose("The collect log generate at: %s.tar.gz,success %s,fail %s" % (
                     collect_dir, self.summary.success_count, self.summary.fail_count))

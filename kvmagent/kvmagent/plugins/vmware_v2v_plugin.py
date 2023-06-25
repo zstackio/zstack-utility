@@ -97,7 +97,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
 
-        _, os_version, _ = platform.dist()
+        os_dist, os_version, _ = platform.dist()
         versions = os_version.split('.')
         # check if os is centos 7.2
         if len(versions) > 2 and versions[0] == '7' and versions[1] == '2':
@@ -105,13 +105,17 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             rsp.error = "v2v feature is not supported on centos 7.2"
             return jsonobject.dumps(rsp)
 
-        x86_64_c74 = "libguestfs-tools libguestfs-tools-c perl-Sys-Guestfs libguestfs-winsupport virt-v2v"
-        x86_64_c76 = "libguestfs-tools libguestfs-tools-c perl-Sys-Guestfs libguestfs-winsupport virt-v2v"
-        x86_64_c79 = "libguestfs-tools libguestfs-tools-c perl-Sys-Guestfs libguestfs-winsupport virt-v2v"
-        x86_64_ns10 = "libguestfs"
+        dist_dep_mapping = {
+            'centos': 'libguestfs-tools libguestfs-tools-c perl-Sys-Guestfs libguestfs-winsupport virt-v2v',
+            'kylin': 'libguestfs perl-devel'
+        }
+        dep_list = dist_dep_mapping.get(os_dist)
+        if not dep_list:
+            rsp.success = False
+            rsp.error = "v2v feature is not supported on %s_%s" % (os_dist, os_version)
+            return jsonobject.dumps(rsp)
 
         releasever = kvmagent.get_host_yum_release()
-        dep_list = eval("%s_%s" % (HOST_ARCH, releasever))
         yum_cmd = "export YUM0={}; yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn " \
                   "install {} -y".format(releasever, dep_list)
         if shell.run(yum_cmd) != 0:
@@ -511,9 +515,28 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             if ret:
                 rsp.error = ret.strip("\n") + ". This may be a bug in vCenter 5.5, please detach ISO in vSphere client and try again"
             else:
-                err_fmt = linux.filter_file_lines_by_regex(v2v_log_file, '^virt-v2v: error:')[0][16:].strip()
-                rsp.error = "failed to run virt-v2v command, because %s... for more details, please see log in conversion host: %s" % (
-                err_fmt, v2v_log_file)
+                error_search_functions = []
+                def get_dual_or_multi_boot_details(): return shell.call("grep -i 'Dual- or multi-boot operating system detected' -A 5 %s" % v2v_log_file)
+                error_search_functions.append(get_dual_or_multi_boot_details)
+
+                def get_normal_expected_virt_v2v_error():
+                    err_fmt = linux.filter_file_lines_by_regex(v2v_log_file, '^virt-v2v: error:')
+                    if err_fmt:
+                        return err_fmt[0][16:].strip()
+
+                    return None
+
+                error_search_functions.append(get_normal_expected_virt_v2v_error)
+                error_message = None
+                for error_search_function in error_search_functions:
+                    error_message = error_search_function()
+                    if error_message:
+                        break
+
+                rsp.error = "failed to run virt-v2v command, because %s... for more details, " \
+                   "please see log in conversion host: %s" % (
+                    error_message,
+                    v2v_log_file)
 
             return jsonobject.dumps(rsp)
 

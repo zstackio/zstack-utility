@@ -1,13 +1,15 @@
 #!/usr/bin/env python
 # encoding =  utf-8
 import argparse
+import datetime
+
 from zstacklib import *
 
 # create log
 logger_dir = "/var/log/zstack/"
 create_log(logger_dir)
 banner("Starting to deploy virtual router agent")
-start_time = datetime.now()
+start_time = datetime.datetime.now()
 # set default value
 file_root = "files/virtualrouter"
 pip_url = "https=//pypi.python.org/simple/"
@@ -52,21 +54,22 @@ if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
 
 # include zstacklib.py
-(distro, major_version, distro_release, distro_version) = get_remote_host_info(host_post_info)
-releasever = get_host_releasever([distro, distro_release, distro_version])
+host_info = get_remote_host_info_obj(host_post_info)
+host_info = upgrade_to_helix(host_info, host_post_info)
+releasever = get_host_releasever(host_info)
 host_post_info.releasever = releasever
 
 zstacklib_args = ZstackLibArgs()
-zstacklib_args.distro = distro
-zstacklib_args.distro_release = distro_release
-zstacklib_args.distro_version = distro_version
+zstacklib_args.distro = host_info.distro
+zstacklib_args.distro_release = host_info.distro_release
+zstacklib_args.distro_version = host_info.major_version
 zstacklib_args.zstack_repo = zstack_repo
 zstacklib_args.zstack_root = zstack_root
 zstacklib_args.host_post_info = host_post_info
 zstacklib_args.pip_url = pip_url
 zstacklib_args.trusted_host = trusted_host
 zstacklib_args.zstack_releasever = releasever
-if distro in DEB_BASED_OS:
+if host_info.distro in DEB_BASED_OS:
     zstacklib_args.apt_server = yum_server
     zstacklib_args.zstack_apt_source = zstack_repo
 else :
@@ -84,7 +87,7 @@ else:
 
 run_remote_command("rm -rf %s/*" % vr_root, host_post_info)
 
-if distro in RPM_BASED_OS:
+if host_info.distro in RPM_BASED_OS:
     if zstack_repo != 'false':
         # name: install vr related packages on RedHat based OS from user defined repo
         command = ("pkg_list=`rpm -q haproxy dnsmasq | grep \"not installed\" | awk '{ print $2 }'` && for pkg"
@@ -94,7 +97,7 @@ if distro in RPM_BASED_OS:
         # name: install virtual router related packages for RedHat
         for pkg in ["haproxy", "dnsmasq"]:
             yum_install_package(pkg, host_post_info)
-elif distro in DEB_BASED_OS:
+elif host_info.distro in DEB_BASED_OS:
     # name: install virtual router related packages for Debian
     apt_install_packages(["dnsmasq"], host_post_info)
 else:
@@ -178,7 +181,7 @@ if chroot_env == 'false':
     # name: restart dnsmasq
     service_status("dnsmasq", "state=restarted enabled=yes", host_post_info)
 else:
-    if distro in RPM_BASED_OS:
+    if host_info.distro in RPM_BASED_OS:
         service_status("zstack-virtualrouter", "enabled=yes state=stopped", host_post_info)
     else:
         replace_content("/etc/rc.local",

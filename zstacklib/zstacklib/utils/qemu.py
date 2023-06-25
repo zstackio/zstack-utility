@@ -4,7 +4,10 @@ import os
 import log
 import jsonobject
 import shell
+import json
+import re
 from linux import get_vm_pid, HOST_ARCH
+from distutils.version import LooseVersion
 
 logger = log.get_logger(__name__)
 
@@ -21,7 +24,17 @@ def get_path():
     else:
         raise Exception(
             'Could not find qemu-kvm in /bin/qemu-kvm or /usr/libexec/qemu-kvm or /usr/bin/qemu-system-{}'
-            % HOST_ARCH)
+            .format(HOST_ARCH))
+
+
+def get_bin_dir():
+    if os.path.exists('/usr/share/qemu-kvm/'):
+        return '/usr/share/qemu-kvm/'
+    elif os.path.exists('/usr/share/qemu/'):
+        return '/usr/share/qemu/'
+    else:
+        raise Exception(
+            'Could not find qemu/qemu-kvm bin directory in /usr/share/qemu-kvm/ or /usr/share/qemu/')
 
 
 def get_version():
@@ -32,10 +45,9 @@ def get_running_version(vm_uuid):
     pid = get_vm_pid(vm_uuid)
     if pid:
         exe = "/proc/%s/exe" % pid
-        r, o, e = bash.bash_roe("%s --version" % exe)
-        if r == 0:
-            return _parse_version(o.strip())
-        logger.debug("cannot get version from %s: %s" % (exe, e))
+        r = get_version_from_exe_file(exe)
+        if r:
+            return r
 
     r, o, e = bash.bash_roe("""virsh qemu-monitor-command %s '{"execute":"query-version"}'""" % vm_uuid)
     if r == 0:
@@ -47,8 +59,19 @@ def get_running_version(vm_uuid):
             return "%d.%d.%d" % (qv.major, qv.minor, qv.micro)
 
     logger.debug("cannot get vm[uuid:%s] version from qmp: %s" % (vm_uuid, e))
-    return _parse_version(shell.call("%s --version" % get_path()))
+    return get_version_from_exe_file(get_path())
 
+def get_version_from_exe_file(path, error_out=False):
+    r, o, e = bash.bash_roe("%s --version" % path)
+    if r == 0:
+        return _parse_version(o.strip())
+
+    if error_out:
+        raise Exception("cannot get version from %s: %s" % (path, e))
+    else:
+        logger.debug("cannot get version from %s: %s" % (path, e))
+
+    return ""
 
 def _parse_version(version_output):
     lines = version_output.splitlines()
