@@ -16,14 +16,15 @@ class SharedBlockPluginTestStub(pytest_utils.PytestExtension):
     def disconnect(self, vgUuid, hostUuid):
         return sharedblock_utils.shareblock_disconnect(vgUuid=vgUuid,hostUuid=hostUuid)
 
-    def connect(self, sharedBlockUuids, allSharedBlockUuids, vgUuid, hostUuid, hostId, forceWipe=False):
+    def connect(self, sharedBlockUuids, allSharedBlockUuids, vgUuid, hostUuid, hostId, forceWipe=False, isFirst=True):
         return sharedblock_utils.shareblock_connect(
             sharedBlockUuids=sharedBlockUuids,
             allSharedBlockUuids=allSharedBlockUuids,
             vgUuid=vgUuid,
             hostId=hostId,
             hostUuid=hostUuid,
-            forceWipe=forceWipe
+            forceWipe=forceWipe,
+            isFirst=isFirst
         )
 
     def logout(self, vgUuid, hostUuid):
