@@ -40,6 +40,19 @@ class ThirdPartyCephVolume(base.BaseVolume):
         RbdDeviceOperator(self.volume_obj.monIp, self.volume_obj.token, self.volume_obj.tpTimeout).connect(
             self.instance_obj, self.volume_obj)
 
+    def establish_link_for_volume(self, iqn):
+        return RbdDeviceOperator(self.volume_obj.monIp, self.volume_obj.token, self.volume_obj.tpTimeout).establish_link_for_volume(
+            self.instance_obj, self.volume_obj, iqn)
+
+    def rollback_establish_link(self, iqn):
+        return RbdDeviceOperator(self.volume_obj.monIp, self.volume_obj.token,
+                                 self.volume_obj.tpTimeout).rollback_establish_link(
+            self.instance_obj, self.volume_obj, iqn)
+
+    def break_link(self, iqn):
+        return RbdDeviceOperator(self.volume_obj.monIp, self.volume_obj.token, self.volume_obj.tpTimeout).break_link(
+            self.instance_obj, self.volume_obj, iqn)
+
     def detach(self):
         RbdDeviceOperator(self.volume_obj.monIp, self.volume_obj.token, self.volume_obj.tpTimeout).disconnect(
             self.instance_obj, self.volume_obj)

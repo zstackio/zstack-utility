@@ -195,6 +195,76 @@ class RbdDeviceOperator(object):
                      % (self.monIp, created_iqn))
         return created_iqn
 
+    def establish_link_for_volume(self, instance_obj, volume_obj, iqn):
+        if volume_obj.type == 'Root':
+            return "End establish link because the volume is root."
+
+        path = self._normalize_install_path(volume_obj.installPath)
+        array = path.split("/")
+        volume_name = array[1]
+
+        client_group_id = self.check_client_ip_exist_client_group(instance_obj.provision_ip)
+        if not client_group_id:
+            client_group_id = self.create_client_group(instance_obj.provision_ip)
+            logger.debug("Successfully create_client_group %s for establish link " % client_group_id)
+
+        block_volume = self.get_volume_by_name(volume_name)
+        block_volume_access_path = block_volume.access_path
+        if block_volume_access_path:
+            return "unable to attach %s, the volume has been mounted by access_path %s" % (
+                volume_name, block_volume_access_path.name)
+
+        access_paths = self.get_all_access_path()
+        for access_path in access_paths:
+            if access_path.iqn == iqn:
+                access_path_id = access_path.id
+                break
+
+        if not access_path_id:
+            return "the access path corresponding to iqn %s does not exist" % iqn
+
+        mapping_groups = self.mapping_groups_api.list_mapping_groups(access_path_id=access_path_id,
+                                                                     client_group_id=client_group_id).mapping_groups
+        if len(mapping_groups) == 0:
+            mapping_group_id = self.create_mapping_group(access_path_id, client_group_id, volume_name)
+            logger.debug("Successfully create_mapping_group %s for establish link " % mapping_group_id)
+        else:
+            self.attach_volume_to_mapping_group(mapping_groups[0].id, block_volume.id)
+            logger.debug("Successfully attach_volume_to_mapping_group %s for establish link " % client_group_id)
+
+        return None
+
+    def rollback_establish_link(self, instance_obj, volume_obj, iqn):
+        return None
+
+    def break_link(self, instance_obj, volume_obj, iqn):
+        if volume_obj.type == 'Root':
+            return "End establish link because the volume is root."
+
+        path = self._normalize_install_path(volume_obj.installPath)
+        array = path.split("/")
+        volume_name = array[1]
+        block_volume = self.get_volume_by_name(volume_name)
+
+        client_group_id = self.check_client_ip_exist_client_group(instance_obj.provision_ip)
+
+        access_paths = self.get_all_access_path()
+        for access_path in access_paths:
+            if access_path.iqn == iqn:
+                access_path_id = access_path.id
+                break
+
+        if not access_path_id:
+            return "the access path corresponding to iqn %s does not exist" % iqn
+
+        mapping_groups = self.mapping_groups_api.list_mapping_groups(access_path_id=access_path_id,
+                                                                     client_group_id=client_group_id).mapping_groups
+        if len(mapping_groups) != 0:
+            self.delete_mapping_group(mapping_groups[0])
+            logger.debug("Successfully delete_mapping_group %s for break link " % client_group_id)
+
+        return None
+
     def get_all_access_path(self):
         return self.access_paths_api.list_access_paths().access_paths
 
@@ -441,8 +511,8 @@ class RbdDeviceOperator(object):
 
             created_mapping_group_data_id = mapping_groups[0].id
             api_body = {"block_volume_ids": [block_volume_id]}
-            created_mapping_group_data_id = self.mapping_groups_api.add_volumes(created_mapping_group_data_id,
-                                                                                api_body).mapping_group.id
+            created_mapping_group_data_id = self.mapping_groups_api.add_volumes(api_body,
+                                                                                created_mapping_group_data_id).mapping_group.id
             self._retry_until(_is_created_mapping_group_status_active, created_mapping_group_data_id)
             logger.debug("Successfully update mapping group[id :%s] to add volume[name : %s]" % (
                 created_mapping_group_data_id, block_volume.name))

@@ -101,6 +101,43 @@ class LinuxDriver(base.SystemDriverBase):
             LOG.info("no iscsi target found, skip login")
             return
 
+    def discovery_volume_target(self, instance_obj, volume_obj):
+        if not instance_obj.custom_iqn:
+            return
+
+        target_name = volume_obj.iscsiPath.replace('iscsi://', '').split("/")[1]
+
+        cmd = 'iscsiadm -m session | grep %s' % target_name
+        LOG.info(cmd)
+        stdout, stderr = processutils.trycmd(cmd, shell=True)
+        if not stderr:
+            LOG.info("iscsi target:%s has logged" % target_name)
+            return
+        self.login_target(target_name, instance_obj.gateway_ip)
+
+    def login_target(self, target_name, address_ip, port=3260):
+        discovery_cmd = 'iscsiadm -m discovery -t sendtargets -p {address}:{port}'.format(
+            address=address_ip,
+            port=port,
+            target_name=target_name)
+        LOG.info(discovery_cmd)
+        try:
+            stdout, stderr = processutils.execute(discovery_cmd, shell=True)
+            if target_name in stdout:
+                LOG.info("login iscsi target: %s" % target_name)
+                target_login_cmd = ('iscsiadm --mode node --targetname {target_name} '
+                                    '-p {address}:{port} --login').format(
+                    target_name=target_name,
+                    address=address_ip,
+                    port=port)
+                LOG.info(target_login_cmd)
+                processutils.execute(target_login_cmd, shell=True)
+            else:
+                LOG.info("discovered targets not contains %s, skip login" % target_name)
+        except processutils.ProcessExecutionError:
+            LOG.info("no iscsi target found, skip login")
+            return
+
     def attach_volume(self, instance_obj, volume_obj):
         """ Attach a given iSCSI lun
 
@@ -108,6 +145,7 @@ class LinuxDriver(base.SystemDriverBase):
         not, corrent the configuration, then rescan the iscsi session.
         """
         self.discovery_target(instance_obj)
+        self.discovery_volume_target(instance_obj, volume_obj)
         _check_initiator_config(instance_obj.uuid)
         
         target_names = []
