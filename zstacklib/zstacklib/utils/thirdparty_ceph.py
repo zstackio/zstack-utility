@@ -217,7 +217,7 @@ class RbdDeviceOperator(object):
 
         api_body = {"block_volume": {"name": new_volume_name if new_volume_name else block_volume_old_name,
                                      "description": new_volume_description if new_volume_description else ""}}
-        block_volume_id = self.block_volumes_api.update_block_volume(block_volume_id, api_body).block_volume.id
+        block_volume_id = self.block_volumes_api.update_block_volume(api_body, block_volume_id).block_volume.id
         self._retry_until(self.is_block_volume_status_active, block_volume_id)
         logger.debug("Successfully update volume info %s " % block_volume_id)
         return block_volume_id
@@ -226,11 +226,11 @@ class RbdDeviceOperator(object):
         block_volume = self.get_volume_by_id(block_volume_id)
         if not block_volume:
             raise "block volume %s cannot be find" % block_volume_id
-        api_body = {"block_volume": {"qos": [{"max_total_bw": max_total_bw,
+        api_body = {"block_volume": {"qos": {"max_total_bw": max_total_bw,
                                               "burst_total_iops": burst_total_iops,
                                               "burst_total_bw": burst_total_bw,
-                                              "max_total_iops": max_total_iops}]}}
-        block_volume_id = self.block_volumes_api.update_block_volume(block_volume_id, api_body).block_volume.id
+                                              "max_total_iops": max_total_iops}}}
+        block_volume_id = self.block_volumes_api.update_block_volume(api_body, block_volume_id).block_volume.id
         self._retry_until(self.is_block_volume_status_active, block_volume_id)
         logger.debug("Successfully update volume qos %s " % block_volume_id)
         return block_volume_id
@@ -240,7 +240,7 @@ class RbdDeviceOperator(object):
         if not block_volume:
             raise "block volume %s cannot be find" % block_volume_id
         api_body = {"block_volume": {"size": size}}
-        block_volume = self.block_volumes_api.update_block_volume(block_volume_id, api_body).block_volume
+        block_volume = self.block_volumes_api.update_block_volume(api_body, block_volume_id).block_volume
         self._retry_until(self.is_block_volume_status_active, block_volume_id)
         logger.debug("Successfully resize volume ids %s " % block_volume_id)
         return block_volume.size

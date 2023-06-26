@@ -18,7 +18,7 @@ gateway_host_id = gateway_host.id
 print("gateway_host_id is :", gateway_host_id)
 
 # 创建空盘
-create_volume_name = operator.create_empty_volume(pool_uuid, image_uuid, size)
+create_volume_name = operator.create_empty_volume(pool_uuid, image_uuid, size).name
 print('volume mane is:', create_volume_name)
 #
 block_volume = operator.block_volumes_api.list_block_volumes(q=create_volume_name).block_volumes[0]
@@ -27,6 +27,15 @@ if not block_volume:
     exit(1)
 block_volume_id = block_volume.id
 print("block_volume_id is", block_volume_id)
+
+block_volume_id = operator.update_volume_info(block_volume_id, image_uuid + bm_ip, image_uuid)
+print("update_volume_info id is:", block_volume_id)
+
+block_volume_id = operator.resize_block_volume(block_volume_id, 1073741824)
+print("resize_block_volume id is:", block_volume_id)
+
+block_volume_id = operator.set_volume_qos(block_volume_id, 0, 0, 0, 0)
+print("set_volume_qos id is:", block_volume_id)
 
 # 客户创建访问路径
 created_access_path_id = operator.create_access_path(bm_ip)
