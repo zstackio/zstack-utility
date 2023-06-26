@@ -101,6 +101,7 @@ class VolumeTO(object):
     def __init__(self):
         self.installPath = None
         self.deviceType = None
+        self.is_cdrom = False
 
     @staticmethod
     def from_xmlobject(xml_obj):
@@ -112,6 +113,7 @@ class VolumeTO(object):
                 v = VolumeTO()
                 v.installPath = xml_obj.find('source').attrib['file']
                 v.deviceType = "file"
+                v.is_cdrom = xml_obj.attrib['device'] == 'cdrom'
                 return v
 
 
@@ -6641,6 +6643,13 @@ class VmPlugin(kvmagent.KvmAgent):
             e(disk, 'source', None, {'dev': _v.installPath})
             return disk
 
+        def block_iso(_v):
+            cdrom = etree.Element('disk', {'type': 'block', 'device': 'cdrom'})
+            e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
+            e(cdrom, 'source', None, {'dev': _v.installPath})
+            e(cdrom, 'readonly', None)
+            return cdrom
+
         if volume is None:
             volume = VolumeTO.from_xmlobject(old_disk)
             if not (volume and block_volume_over_incorrect_driver(volume) and block_device_use_block_type()):
@@ -6652,10 +6661,9 @@ class VmPlugin(kvmagent.KvmAgent):
         elif volume.deviceType == 'ceph':
             ele = ceph_volume(volume)
         elif volume.deviceType == 'block':
-            ele = block_volume(volume)
+            ele = block_iso(volume) if volume.is_cdrom else block_volume(volume)
         else:
             raise Exception('unsupported volume deviceType[%s]' % volume.deviceType)
-
 
         tags_to_keep = [ 'target', 'boot', 'alias', 'address', 'wwn', 'serial']
         for c in old_disk.getchildren():
