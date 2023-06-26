@@ -33,7 +33,7 @@ class ThirdpartyCephDriver(cephdriver.CephDriver):
                                                                                                           cmd.burstTotalIops,
                                                                                                           cmd.maxTotalBw,
                                                                                                           cmd.maxTotalIops)
-        rsp.installPath = created_block_volume.volume_name
+        rsp.installPath = created_block_volume.name
         rsp.xskyStatus = created_block_volume.status
         rsp.xskyBlockVolumeId = created_block_volume.id
         return rsp
