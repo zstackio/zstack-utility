@@ -18,7 +18,7 @@ class ThirdpartyCephDriver(cephdriver.CephDriver):
         path = self._normalize_install_path(cmd.installPath)
         array = path.split("/")
         pool_uuid = array[0]
-        image_uuid = array[1]
+        image_uuid = cmd.name
 
         rsp.size = cmd.size
         if cmd.skipIfExisting and shell.run("rbd info %s" % path) == 0:
@@ -33,7 +33,7 @@ class ThirdpartyCephDriver(cephdriver.CephDriver):
                                                                                                           cmd.burstTotalIops,
                                                                                                           cmd.maxTotalBw,
                                                                                                           cmd.maxTotalIops)
-        rsp.installPath = created_block_volume.name
+        rsp.installPath = created_block_volume.volume_name
         rsp.xskyStatus = created_block_volume.status
         rsp.xskyBlockVolumeId = created_block_volume.id
         return rsp

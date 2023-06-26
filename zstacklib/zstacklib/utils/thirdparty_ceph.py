@@ -710,7 +710,7 @@ class RbdDeviceOperator(object):
                                  "size": size}}
         created_block_volume = self.block_volumes_api.create_block_volume(api_body).block_volume
         self._retry_until(self.is_block_volume_status_active, created_block_volume.id)
-        logger.debug("Successfully create block volume[name : %s] from snapshot" % image_uuid)
+        logger.debug("Successfully create block volume[name : %s]" % image_uuid)
         return created_block_volume
 
     def copy_volume(self, srcPath, dstPath):

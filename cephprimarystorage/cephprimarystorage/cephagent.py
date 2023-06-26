@@ -343,7 +343,12 @@ class CephAgent(plugin.TaskManager):
     }
 
     def get_driver(self, cmd):
-        return self.mapping.get('ceph')(cmd)
+        if self.is_third_party_ceph(cmd):
+            ps_type = 'thirdpartyCeph'
+        else:
+            ps_type = 'ceph'
+
+        return self.mapping.get(ps_type)(cmd)
 
     def get_third_party_driver(self, cmd):
         return self.mapping.get('thirdpartyCeph')(cmd)
