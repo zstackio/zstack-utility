@@ -1452,6 +1452,51 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
 
     @bm_utils.lock(name='baremetal_v2_volume_operator')
     @kvmagent.replyerror
+    def prepare_volume(self, req):
+        """ Prepare volume
+        Establish a mapping between volume and BmInstanceObj
+        Map volume to nbd device, then map nbd to md device, export md device
+        as iSCSI target and configure ipxe.cfg
+        """
+        rsp = kvmagent.AgentResponse()
+        instance_obj = BmInstanceObj.from_json(req)
+        volume_obj = VolumeObj.from_json(req)
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        volume_driver = volume.get_driver(instance_obj, volume_obj)
+        path = cmd.iscsiPath.replace('iscsi://', '')
+        array = path.split("/")
+        iqn = array[1]
+        with bm_utils.rollback(volume_driver.rollback_establish_link(), req):
+            error = volume_driver.establish_link_for_volume(iqn)
+            if error:
+                rsp.success = False
+                rsp.error = error
+                return jsonobject.dumps(rsp)
+
+        rsp.bmInstance = instance_obj
+        return jsonobject.dumps(rsp)
+
+    @bm_utils.lock(name='baremetal_v2_volume_operator')
+    @kvmagent.replyerror
+    def destroy_volume(self, req):
+        rsp = kvmagent.AgentResponse()
+        instance_obj = BmInstanceObj.from_json(req)
+        volume_obj = VolumeObj.from_json(req)
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        path = cmd.iscsiPath.replace('iscsi://', '')
+        array = path.split("/")
+        iqn = array[1]
+        volume_driver = volume.get_driver(instance_obj, volume_obj)
+        error = volume_driver.break_link(iqn)
+        if error:
+            rsp.success = False
+            rsp.error = error
+            return jsonobject.dumps(rsp)
+        rsp.bmInstance = instance_obj
+        return jsonobject.dumps(rsp)
+
+    @bm_utils.lock(name='baremetal_v2_volume_operator')
+    @kvmagent.replyerror
     def attach_volume(self, req):
         """ Attach volume
 
@@ -1601,9 +1646,9 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.BM_DESTROY_CONVERT_VOLUME_PATH,
                                        self.destroy_convert_volume)
         http_server.register_async_uri(self.BM_ATTACH_VOLUME_PATH,
-                                       self.attach_volume)
+                                       self.prepare_volume)
         http_server.register_async_uri(self.BM_DETACH_VOLUME_PATH,
-                                       self.detach_volume)
+                                       self.destroy_volume)
         http_server.register_async_uri(self.BM_CONSOLE_PATH,
                                        self.console)
         http_server.register_async_uri(self.BM_GET_VOLUME_LUN_ID_PATH,
