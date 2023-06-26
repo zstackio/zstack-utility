@@ -324,13 +324,13 @@ class CephAgent(plugin.TaskManager):
     CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/ceph/primarystorage/kvmhost/download/cancel"
     GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH = "/ceph/primarystorage/kvmhost/download/progress"
     JOB_CANCEL = "/job/cancel"
-    XSKY_GET_BLOCK_VOLUME_ACCESS_PATH = "/xsky/ceph/primary/volume/access/path"
-    XSKY_RESIZE_BLOCK_VOLUME = "/xsky/ceph/primary/volume/resize"
+    XSKY_GET_BLOCK_VOLUME_ACCESS_PATH = "/xsky/ceph/primarystorage/volume/access/path"
+    XSKY_RESIZE_BLOCK_VOLUME = "/xsky/ceph/primarystorage/volume/resize"
     XSKY_CREATE_VOLUME_PATH = "/xsky/ceph/primarystorage/volume/createempty"
     XSKY_DELETE_PATH = "/xsky/ceph/primarystorage/delete"
-    XSKY_UPDATE_BLOCK_VOLUME = "/xsky/ceph/primary/volume/update"
-    XSKY_ATTACH_BLOCK_VOLUME = "/xsky/ceph/primary/volume/attach"
-    XSKY_DETACH_BLOCK_VOLUME = "/xsky/ceph/primary/volume/detach"
+    XSKY_UPDATE_BLOCK_VOLUME = "/xsky/ceph/primarystorage/volume/update"
+    XSKY_ATTACH_BLOCK_VOLUME = "/xsky/ceph/primarystorage/volume/attach"
+    XSKY_DETACH_BLOCK_VOLUME = "/xsky/ceph/primarystorage/volume/detach"
 
     CEPH_CONF_PATH = "/etc/ceph/ceph.conf"
 
@@ -1469,9 +1469,9 @@ class CephAgent(plugin.TaskManager):
             rsp.infos.append(access_path_info)
 
         for accessInfo in rsp.infos:
-            accessInfo.targetCount = len(driver.get_targets_by_access_path_id(cmd,accessInfo.id))
+            accessInfo.targetCount = len(driver.get_targets_by_access_path_id(cmd, accessInfo.accessPathId))
 
-        rsp.infos = sorted(rsp.infos, key=lambda info: info.targetCount)
+        rsp.infos = sorted(rsp.infos, key=lambda info: info.targetCount, reverse=True)
 
         return jsonobject.dumps(rsp)
 
