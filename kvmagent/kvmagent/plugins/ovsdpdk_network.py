@@ -387,17 +387,18 @@ class OvsDpdkNetworkPlugin(kvmagent.KvmAgent):
         rsp = ResourceConfigureResponse()
 
         ovsctl = ovs.getOvsCtl(with_dpdk=True)
-        res = ovsctl.resourceConfigure(cmd.reserveSize, cmd.pageSize, cmd.socketMem)
+        #calculate hugepage num and turn float str to int
+        res = ovsctl.resourceConfigure(int(float(int(cmd.reserveSize)/int(cmd.pageSize))), int(float(cmd.pageSize)), int(float(cmd.socketMem)))
         if res == -1:
             rsp.error = "hugepage config failed"
             rsp.success = False
 
             logger.debug(http.path_msg(OVS_DPDK_NET_RESOURCE_CONFIGURE,
-                                       'resource configure hugepage number:{} failed.'.format(cmd.reserveSize)))
+                                  'resource configure hugepage number:{} failed.'.format(int(float(int(cmd.reserveSize)/int(cmd.pageSize))))))
             return jsonobject.dumps(rsp)
 
         logger.debug(http.path_msg(OVS_DPDK_NET_RESOURCE_CONFIGURE,
-                                   'resource configure hugepage number:{} success.'.format(cmd.reserveSize)))
+                                  'resource configure hugepage number:{} success.'.format(int(float(int(cmd.reserveSize)/int(cmd.pageSize))))))
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
