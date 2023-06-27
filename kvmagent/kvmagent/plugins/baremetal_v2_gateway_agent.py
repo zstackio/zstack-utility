@@ -1463,10 +1463,10 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         volume_obj = VolumeObj.from_json(req)
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         volume_driver = volume.get_driver(instance_obj, volume_obj)
-        path = cmd.iscsiPath.replace('iscsi://', '')
+        path = volume_obj.iscsiPath.replace('iscsi://', '')
         array = path.split("/")
         iqn = array[1]
-        with bm_utils.rollback(volume_driver.rollback_establish_link(), req):
+        with bm_utils.rollback(volume_driver.rollback_establish_link(iqn), req):
             error = volume_driver.establish_link_for_volume(iqn)
             if error:
                 rsp.success = False
@@ -1483,7 +1483,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         instance_obj = BmInstanceObj.from_json(req)
         volume_obj = VolumeObj.from_json(req)
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        path = cmd.iscsiPath.replace('iscsi://', '')
+        path = volume_obj.iscsiPath.replace('iscsi://', '')
         array = path.split("/")
         iqn = array[1]
         volume_driver = volume.get_driver(instance_obj, volume_obj)

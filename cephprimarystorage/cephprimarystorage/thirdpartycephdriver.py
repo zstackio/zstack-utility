@@ -67,7 +67,7 @@ class ThirdpartyCephDriver(cephdriver.CephDriver):
                                                                               burstTotalIops, maxTotalBw, maxTotalIops)
 
     def resize_block_volume(self, cmd, block_volume_id, size):
-        RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).resize_block_volume(block_volume_id, size)
+        return RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).resize_block_volume(block_volume_id, size)
 
     def update_block_volume_info(self, cmd, block_volume_id, name, description):
         RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).update_volume_info(block_volume_id, name, description)
