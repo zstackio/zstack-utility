@@ -317,12 +317,12 @@ class Eip(object):
                 bash_errorout(EBTABLES_CMD + ' -t nat -N {{CHAIN_NAME}}')
 
             create_ebtable_rule_if_needed('nat', 'PREROUTING', '-i {{NIC_NAME}} -j {{CHAIN_NAME}}')
-            GATEWAY = bash_o("eval {{NS}} ip link show {{PRI_IDEV}} | awk '/link\/ether/{print $2}'").strip()
-            if not GATEWAY:
+            GATEWAY_MAC = bash_o("eval {{NS}} ip link show {{PRI_IDEV}} | awk '/link\/ether/{print $2}'").strip()
+            if not GATEWAY_MAC:
                 raise Exception('cannot find the device[%s] in the namespace[%s]' % (PRI_IDEV, NS_NAME))
 
-            GATEWAY = ip.removeZeroFromMacAddress(GATEWAY)
-            create_ebtable_rule_if_needed('nat', CHAIN_NAME, "-p ARP --arp-op Request --arp-ip-dst {{NIC_GATEWAY}} -j arpreply --arpreply-mac {{GATEWAY}}")
+            GATEWAY_MAC = ip.removeZeroFromMacAddress(GATEWAY_MAC)
+            create_ebtable_rule_if_needed('nat', CHAIN_NAME, "-p ARP --arp-op Request --arp-ip-dst {{NIC_GATEWAY}} -j arpreply --arpreply-mac {{GATEWAY_MAC}}")
 
             for BLOCK_DEV in [PRI_ODEV, PUB_ODEV]:
                 BLOCK_CHAIN_NAME = '{{BLOCK_DEV}}-arp'
@@ -338,7 +338,7 @@ class Eip(object):
 
             create_ebtable_rule_if_needed('nat', 'POSTROUTING', "-p ARP -o {{NIC_NAME}} -j {{BLOCK_CHAIN_NAME}}")
             create_ebtable_rule_if_needed('nat', BLOCK_CHAIN_NAME,
-                                          "-p ARP -o {{NIC_NAME}} --arp-op Request --arp-ip-src {{NIC_GATEWAY}} --arp-mac-src ! {{GATEWAY}} -j DROP")
+                                          "-p ARP -o {{NIC_NAME}} --arp-op Request --arp-ip-src {{NIC_GATEWAY}} --arp-mac-src ! {{GATEWAY_MAC}} -j DROP")
 
         @bash.in_bash
         def set_gateway_arp_if_needed_v6():
@@ -348,10 +348,11 @@ class Eip(object):
                 bash_errorout(EBTABLES_CMD + ' -t nat -N {{CHAIN_NAME}}')
 
             create_ebtable_rule_if_needed('nat', 'PREROUTING', '-i {{NIC_NAME}} -j {{CHAIN_NAME}}', at_head=True)
-            GATEWAY = bash_o("eval {{NS}} ip link show {{PRI_IDEV}} | awk '/link\/ether/{print $2}'").strip()
-            if not GATEWAY:
+            GATEWAY_MAC = bash_o("eval {{NS}} ip link show {{PRI_IDEV}} | awk '/link\/ether/{print $2}'").strip()
+            if not GATEWAY_MAC:
                 raise Exception('cannot find the device[%s] in the namespace[%s]' % (PRI_IDEV, NS_NAME))
 
+            GATEWAY_MAC = ip.removeZeroFromMacAddress(GATEWAY_MAC)
             # this is hack method to direct ipv6 external traffic to this eip namespace
             create_ebtable_rule_if_needed('nat', CHAIN_NAME,
                                           "-p IPv6 --ip6-destination {{NIC_GATEWAY}}/{{NIC_PREFIXLEN}} -j ACCEPT")
@@ -360,7 +361,7 @@ class Eip(object):
             create_ebtable_rule_if_needed('nat', CHAIN_NAME,
                                           "-p IPv6 --ip6-destination ff00::/8 -j ACCEPT")
             create_ebtable_rule_if_needed('nat', CHAIN_NAME,
-                                          "-p IPv6 -j dnat --to-destination {{GATEWAY}}")
+                                          "-p IPv6 -j dnat --to-destination {{GATEWAY_MAC}}")
 
         @bash.in_bash
         def enable_ipv6_forwarding():
