@@ -25,6 +25,7 @@ if [ -f /etc/kylin-release ]; then
   yes | cp ${temp}/shellinaboxd-`uname -m`-kylin /usr/bin/shellinaboxd
 fi
 yes | cp ${temp}/zwatch-vm-agent-`uname -m` /var/lib/zstack/baremetalv2/bm-instance-agent/
+yes | cp ${temp}/service.conf /var/lib/zstack/baremetalv2/bm-instance-agent/service.conf
 
 popd
 
@@ -47,7 +48,7 @@ ExecStartPre=/bin/sh -c "/sbin/iptables -t filter -C INPUT -p tcp --dport=7090 -
 ExecStartPre=/bin/sh -c "/sbin/iptables -t filter -C INPUT -p tcp --dport=4200 -j ACCEPT 2>/dev/null || /sbin/iptables -t filter -I INPUT -p tcp --dport=4200 -j ACCEPT || true"
 ExecStartPre=/bin/sh -c "firewall-cmd --permanent --add-port=7090/tcp && firewall-cmd --reload || true"
 ExecStartPre=/bin/sh -c "firewall-cmd --permanent --add-port=4200/tcp && firewall-cmd --reload || true"
-ExecStart=/var/lib/zstack/baremetalv2/bm-instance-agent/bm-instance-agent.pex --log-file=/var/log/zstack/baremetalv2/bm-instance-agent.log
+ExecStart=/var/lib/zstack/baremetalv2/bm-instance-agent/bm-instance-agent.pex
 
 [Install]
 WantedBy=multi-user.target

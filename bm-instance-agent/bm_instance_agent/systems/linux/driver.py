@@ -229,7 +229,7 @@ class LinuxDriver(base.SystemDriverBase):
         unknown reasons.
         """
         if not bm_utils.process_is_running('shellinaboxd'):
-            cmd = 'shellinaboxd -b -t -s :SSH:127.0.0.1'
+            cmd = 'shellinaboxd -b -t -s \':SSH:127.0.0.1:%s\'' % bm_utils.get_ssh_port()
             f = os.popen(cmd)
             f.close()
             if not bm_utils.process_is_running('shellinaboxd'):
