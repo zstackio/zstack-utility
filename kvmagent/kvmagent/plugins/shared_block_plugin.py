@@ -369,11 +369,11 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         return diskPaths
 
-    def create_vg_if_not_found(self, vgUuid, disks, hostUuid, allDisks, forceWipe=False):
+    def create_vg_if_not_found(self, vgUuid, disks, hostUuid, allDisks, forceWipe=False, is_first_create_vg=False):
         # type: (str, set([CheckDisk]), str, set([CheckDisk]), bool) -> bool
         @linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
-        def find_vg(vgUuid, raise_exception = True):
-            cmd = shell.ShellCmd("timeout 5 vgscan --ignorelockingfailure; vgs --nolocking %s -otags | grep %s" % (vgUuid, INIT_TAG))
+        def find_vg(vgUuid, raise_exception=True):
+            cmd = shell.ShellCmd("timeout 5 vgscan --ignorelockingfailure; vgs --nolocking -t %s -otags | grep %s" % (vgUuid, INIT_TAG))
             cmd(is_exception=False)
             if cmd.return_code != 0 and raise_exception:
                 raise RetryException("can not find vg %s with tag %s" % (vgUuid, INIT_TAG))
@@ -382,14 +382,17 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             return True
 
         @linux.retry(times=3, sleep_time=random.uniform(0.1, 3))
-        def create_vg(hostUuid, vgUuid, diskPaths, raise_excption = True):
+        def create_vg(hostUuid, vgUuid, diskPaths, raise_exception=True):
+            if not is_first_create_vg:
+                raise Exception("vg %s has already been created before, and there may be a risk of data loss during "
+                        "secondary creation. Please check your storage" % vgUuid)
             cmd = shell.ShellCmd("vgcreate -qq --shared --addtag '%s::%s::%s::%s' --metadatasize %s %s %s" %
                                  (INIT_TAG, hostUuid, time.time(), bash.bash_o("hostname").strip(),
                                   DEFAULT_VG_METADATA_SIZE, vgUuid, " ".join(diskPaths)))
             cmd(is_exception=False)
             logger.debug("created vg %s, ret: %s, stdout: %s, stderr: %s" %
                          (vgUuid, cmd.return_code, cmd.stdout, cmd.stderr))
-            if cmd.return_code != 0 and raise_excption:
+            if cmd.return_code != 0 and raise_exception:
                 raise RetryException("ret: %s, stdout: %s, stderr: %s" %
                                 (cmd.return_code, cmd.stdout, cmd.stderr))
             elif cmd.return_code != 0:
@@ -529,7 +532,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         lvm.start_lvmlockd(cmd.ioTimeout)
         logger.debug("find/create vg %s lock..." % cmd.vgUuid)
-        rsp.isFirst = self.create_vg_if_not_found(cmd.vgUuid, disks, cmd.hostUuid, allDisks, cmd.forceWipe)
+        rsp.isFirst = self.create_vg_if_not_found(cmd.vgUuid, disks, cmd.hostUuid, allDisks, cmd.forceWipe, cmd.isFirst)
 
 #       sanlock table:
 #       
