@@ -16,6 +16,7 @@ ceph-ps:
        ps ax -eTo ppid,pid,pcpu,pmem,maj_flt,min_flt,tid,vsz,rss,pgid,sid,tty,tgid,stat,uid,lstart,etime,time,command --sort ppid'}
       - {name: pkg-list, exec: 'rpm -qa | sort'}
       - {name: zstack-logs, dir: /var/log/zstack/, file: zstack.log*}
+      - {name: zstcli-logs, dir: /var/log/zstack/zstcli/, file: zstcli*}
 sharedblock:
     description: sharedblock log
     type: target
