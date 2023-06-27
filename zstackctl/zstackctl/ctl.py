@@ -138,6 +138,12 @@ if [ $? -ne 0 ]; then
     sed -i '/\[mysqld\]/a wait_timeout=100\' $mysql_conf
 fi
 
+grep 'log-error' $mysql_conf >/dev/null 2>&1
+if [ $? -ne 0 ]; then
+    echo "log-error=/var/log/mariadb/mariadb.log"
+    sed -i '/\[mysqld\]/a log-error=/var/log/mariadb/mariadb.log\' $mysql_conf
+fi
+
 grep 'slave_net_timeout=' $mysql_conf >/dev/null 2>&1
 if [ $? -ne 0 ]; then
     echo "slave_net_timeout=60"
