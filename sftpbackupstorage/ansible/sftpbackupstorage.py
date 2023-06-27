@@ -93,7 +93,7 @@ if host_info.distro in RPM_BASED_OS:
         install_pkgs = "nmap {}".format(install_pkgs)
 
     if not remote_bin_installed(host_post_info, "qemu-img", return_status=True):
-        install_pkgs += " " + ("qemu-img-ev" if releasever in ['c74'] else "qemu-img")
+        install_pkgs += " qemu-img"
 
     if zstack_repo != 'false':
         # name: install sftp backup storage related packages on RedHat based OS from local
