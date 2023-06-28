@@ -1086,13 +1086,13 @@ test "$(ls -A "%s" 2>/dev/null)" || echo The directory is empty
                     month = ymd_array[1]
                     day = ymd_array[2]
                     if len(d_arr) == 1:
-                        return datetime(int(year), int(month), int(day)).strftime('%Y-%m-%d:%H:%M:%S')
+                        return datetime.datetime(int(year), int(month), int(day)).strftime('%Y-%m-%d:%H:%M:%S')
                     else:
                         hms_array = d_arr[1].split(':')
                         hour = hms_array[0] if len(hms_array) > 0 is not None else '00'
                         minute = hms_array[1] if len(hms_array) > 1 is not None else '00'
                         sec = hms_array[2] if len(hms_array) > 2 is not None else '00'
-                        return datetime(int(year), int(month), int(day), int(hour), int(minute), int(sec)) \
+                        return datetime.datetime(int(year), int(month), int(day), int(hour), int(minute), int(sec)) \
                             .strftime('%Y-%m-%d:%H:%M:%S')
                 else:
                     error_verbose(
