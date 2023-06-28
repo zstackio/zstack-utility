@@ -770,7 +770,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         if len(cmds) > 0:
             bash_r("\n".join(cmds))
 
-        bash_errorout("pkill -9 -f 'lighttpd.*/userdata/{{BR_NAME}}' || true")
+        bash_errorout("pkill -9 -f 'lighttpd.*/userdata/{{BR_NAME}}.*_%s' || true" % cmd.l3NetworkUuid)
 
         html_folder = os.path.join(self.USERDATA_ROOT, cmd.namespaceName)
         linux.rm_dir_force(html_folder)
