@@ -198,7 +198,7 @@ class RbdDeviceOperator(object):
         if volume_obj.type == 'Root':
             return "End establish link because the volume is root."
 
-        path = self._normalize_install_path(volume_obj.installPath)
+        path = self._normalize_install_path(volume_obj.path)
         array = path.split("/")
         volume_name = array[1]
 
@@ -240,7 +240,7 @@ class RbdDeviceOperator(object):
         if volume_obj.type == 'Root':
             return "End establish link because the volume is root."
 
-        path = self._normalize_install_path(volume_obj.installPath)
+        path = self._normalize_install_path(volume_obj.path)
         array = path.split("/")
         volume_name = array[1]
         block_volume = self.get_volume_by_name(volume_name)
