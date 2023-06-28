@@ -116,5 +116,6 @@ class ThirdPartyCephVolume(base.BaseVolume):
         pass
 
     def get_lun_id(self):
-        lun_id = RbdDeviceOperator(self.volume_obj.monIp, self.volume_obj.token, self.volume_obj.tpTimeout).get_lun_id(self.volume_obj)
+        lun_id = RbdDeviceOperator(self.volume_obj.monIp, self.volume_obj.token, self.volume_obj.tpTimeout).get_lun_id(
+            self.volume_obj, self.instance_obj)
         return lun_id
