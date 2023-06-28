@@ -329,8 +329,7 @@ class CephAgent(plugin.TaskManager):
     XSKY_CREATE_VOLUME_PATH = "/xsky/ceph/primarystorage/volume/createempty"
     XSKY_DELETE_PATH = "/xsky/ceph/primarystorage/delete"
     XSKY_UPDATE_BLOCK_VOLUME = "/xsky/ceph/primarystorage/volume/update"
-    XSKY_ATTACH_BLOCK_VOLUME = "/xsky/ceph/primarystorage/volume/attach"
-    XSKY_DETACH_BLOCK_VOLUME = "/xsky/ceph/primarystorage/volume/detach"
+    XSKY_UPDATE_BLOCK_VOLUME_SNAPSHOT = "/xsky/ceph/primarystorage/volume/snapshot/update"
 
     CEPH_CONF_PATH = "/etc/ceph/ceph.conf"
 
@@ -404,8 +403,7 @@ class CephAgent(plugin.TaskManager):
         self.http_server.register_async_uri(self.XSKY_CREATE_VOLUME_PATH, self.create_block_volume)
         self.http_server.register_async_uri(self.XSKY_DELETE_PATH, self.delete_block_volume)
         self.http_server.register_async_uri(self.XSKY_UPDATE_BLOCK_VOLUME, self.update_block_volume_info)
-        self.http_server.register_async_uri(self.XSKY_ATTACH_BLOCK_VOLUME, self.attach_block_volume)
-        self.http_server.register_async_uri(self.XSKY_DETACH_BLOCK_VOLUME, self.detach_block_volume)
+        self.http_server.register_async_uri(self.XSKY_UPDATE_BLOCK_VOLUME_SNAPSHOT, self.update_block_volume_snapshot)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -704,8 +702,8 @@ class CephAgent(plugin.TaskManager):
     def rollback_snapshot(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         spath = self._normalize_install_path(cmd.snapshotPath)
-
-        shell.call('rbd snap rollback %s' % spath)
+        driver = self.get_driver(cmd)
+        driver.rollback_snapshot(cmd)
         rsp = RollbackSnapshotRsp()
         rsp.size = self._get_file_size(spath)
         self._set_capacity_to_response(rsp)
@@ -1520,35 +1518,11 @@ class CephAgent(plugin.TaskManager):
         return jsonobject.dumps(rsp)
 
     @replyerror
-    def attach_block_volume(self, req):
+    def update_block_volume_snapshot(self, req):
         rsp = AgentResponse()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        pool_name, volume_name = self._parse_install_path(cmd.installPath)
         driver = self.get_third_party_driver(cmd)
-        client_group_id = driver.check_client_ip_exist_client_group(cmd, cmd.baremetalInstanceIP)
-        if client_group_id:
-            client_group_id = driver.create_client_group(cmd, cmd.baremetalInstanceIP)
-
-        block_volume = driver.get_block_volume_by_name(volume_name)
-        block_volume_access_path = block_volume.access_path
-        if block_volume_access_path:
-            rsp.success = False
-            rsp.error = "unable to attach %s, the volume has been mounted by access_path %s" % (
-                volume_name, block_volume_access_path.name)
-            return jsonobject.dumps(rsp)
-
-        mapping_groups = driver.get_mapping_groups(cmd, cmd.accessPathId, client_group_id)
-        if len(mapping_groups) == 0:
-            driver.create_mapping_group(cmd, cmd.accessPathId, client_group_id, volume_name)
-        else:
-            driver.attach_volume_to_mapping_group(cmd, mapping_groups[0].id, block_volume.id)
-
-        return jsonobject.dumps(rsp)
-
-    @replyerror
-    def detach_block_volume(self, req):
-        rsp = AgentResponse()
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        driver.update_block_volume_snapshot(cmd, cmd.baremetalInstanceIP)
         return jsonobject.dumps(rsp)
 
 class CephDaemon(daemon.Daemon):

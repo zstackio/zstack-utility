@@ -102,10 +102,7 @@ class LinuxDriver(base.SystemDriverBase):
             return
 
     def discovery_volume_target(self, instance_obj, volume_obj):
-        if not instance_obj.custom_iqn:
-            return
-
-        target_name = volume_obj.iscsiPath.replace('iscsi://', '').split("/")[1]
+        target_name = volume_obj.iscsi_path.replace('iscsi://', '').split("/")[1]
 
         cmd = 'iscsiadm -m session | grep %s' % target_name
         LOG.info(cmd)
@@ -113,6 +110,7 @@ class LinuxDriver(base.SystemDriverBase):
         if not stderr:
             LOG.info("iscsi target:%s has logged" % target_name)
             return
+        LOG.info("start login_target:%s by ip %s" % (target_name, instance_obj.gateway_ip))
         self.login_target(target_name, instance_obj.gateway_ip)
 
     def login_target(self, target_name, address_ip, port=3260):
@@ -179,8 +177,11 @@ class LinuxDriver(base.SystemDriverBase):
         cmd = ['iscsiadm', '-m', 'session']
         stdout, _ = processutils.execute(*cmd)
         iqn = None
+        volume_iqn = volume_obj.iscsi_path.replace('iscsi://', '').split("/")[1]
         if instance_obj.custom_iqn:
             iqn = instance_obj.custom_iqn
+        elif volume_iqn:
+            iqn = volume_iqn
         else:
             iqn = instance_obj.uuid
 

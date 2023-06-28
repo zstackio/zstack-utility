@@ -1466,7 +1466,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         path = volume_obj.iscsiPath.replace('iscsi://', '')
         array = path.split("/")
         iqn = array[1]
-        with bm_utils.rollback(volume_driver.rollback_establish_link(iqn), req):
+        with bm_utils.rollback(volume_driver.rollback_establish_link, iqn):
             error = volume_driver.establish_link_for_volume(iqn)
             if error:
                 rsp.success = False
