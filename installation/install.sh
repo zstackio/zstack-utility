@@ -3297,6 +3297,9 @@ enabled=0
 
 EOF
 
+    if [ x"$OS" = x"ROCKY8" ]; then
+        sed -i '/failovermethod=priority/d'  $zstack_163_repo_file $zstack_ali_repo_file
+    fi
 }
 
 set_zstack_repo(){
