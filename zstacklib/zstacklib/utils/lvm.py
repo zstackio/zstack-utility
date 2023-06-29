@@ -2110,11 +2110,12 @@ def get_running_vm_root_volume_on_pv(vgUuid, pvUuids, checkIo=True):
 
         bad_vm_root_volume_condition = False
         r = bash.bash_r("blockdev --flushbufs %s" % vm.root_volume)
-        if is_bad_vm_root_volume(vm.root_volume) is True:
-            bad_vm_root_volume_condition = True
-        elif checkIo is True and r == 0:
+        if checkIo is True and r == 0:
             logger.debug("volume %s for vm %s io success, skiped" % (vm.root_volume, vm.uuid))
             continue
+        
+        if is_bad_vm_root_volume(vm.root_volume) is True:
+            bad_vm_root_volume_condition = True
 
         if bad_vm_root_volume_condition is True or is_volume_on_pvs(vm.root_volume, pvUuids, True):
             vms.append(vm)
