@@ -62,6 +62,12 @@ class ThirdpartyCephDriver(cephdriver.CephDriver):
     def validate_token(self, cmd):
         RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).validate_token()
 
+    def rollback_snapshot(self, cmd):
+        spath = self._normalize_install_path(cmd.snapshotPath)
+        volume_name = spath.split("@")[0]
+        snapshot_name = spath.split("@")[1]
+        RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).rollback_snapshot(volume_name, snapshot_name)
+
     def set_block_volume_qos(self, cmd, block_volume_id, burstTotalBw, burstTotalIops, maxTotalBw, maxTotalIops):
         RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).set_volume_qos(block_volume_id, burstTotalBw,
                                                                               burstTotalIops, maxTotalBw, maxTotalIops)
@@ -83,6 +89,12 @@ class ThirdpartyCephDriver(cephdriver.CephDriver):
 
     def get_all_access_path(self, cmd):
         return RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).get_all_access_path()
+
+    def update_block_volume_snapshot(self, cmd):
+        spath = self._normalize_install_path(cmd.snapshotPath)
+        snapshot_name = spath.split("@")[1]
+        RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).update_block_volume_snapshot(snapshot_name, cmd.name,
+                                                                                            cmd.description)
 
     def check_client_ip_exist_client_group(self, cmd, client_ip):
         return RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).check_client_ip_exist_client_group(client_ip)

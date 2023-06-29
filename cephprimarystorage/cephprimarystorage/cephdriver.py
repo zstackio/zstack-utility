@@ -83,3 +83,7 @@ class CephDriver(object):
 
     def validate_token(self, cmd):
         pass
+
+    def rollback_snapshot(self, cmd):
+        spath = self._normalize_install_path(cmd.snapshotPath)
+        shell.call('rbd snap rollback %s' % spath)

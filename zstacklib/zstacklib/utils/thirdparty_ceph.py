@@ -225,16 +225,40 @@ class RbdDeviceOperator(object):
         mapping_groups = self.mapping_groups_api.list_mapping_groups(access_path_id=access_path_id,
                                                                      client_group_id=client_group_id).mapping_groups
         if len(mapping_groups) == 0:
-            mapping_group_id = self.create_mapping_group(access_path_id, client_group_id, volume_name)
+            logger.debug("start create_mapping_group [access_path_id: %s, client_group_id: %s]for volume_name %s" % (
+                access_path_id, client_group_id, volume_name))
+            mapping_group_id = self.create_mapping_group(client_group_id, access_path_id, volume_name)
             logger.debug("Successfully create_mapping_group %s for establish link " % mapping_group_id)
         else:
+            logger.debug("start attach volume %s to mapping_group %s" % (
+                mapping_groups[0].id, block_volume.name))
             self.attach_volume_to_mapping_group(mapping_groups[0].id, block_volume.id)
             logger.debug("Successfully attach_volume_to_mapping_group %s for establish link " % client_group_id)
 
         return None
 
     def rollback_establish_link(self, instance_obj, volume_obj, iqn):
-        return None
+        path = self._normalize_install_path(volume_obj.path)
+        array = path.split("/")
+        volume_name = array[1]
+        access_paths = self.get_all_access_path()
+        for access_path in access_paths:
+            if access_path.iqn == iqn:
+                access_path_id = access_path.id
+                break
+
+        if not access_path_id:
+            return
+
+        client_group_id = self.check_client_ip_exist_client_group(instance_obj.provision_ip)
+        if not client_group_id:
+            return
+
+        mapping_groups = self.mapping_groups_api.list_mapping_groups(access_path_id=access_path_id,
+                                                                     client_group_id=client_group_id).mapping_groups
+        if len(mapping_groups) != 0:
+            self.remove_volumes_from_mapping_group(mapping_groups[0].id, self.get_volume_by_name(volume_name).id)
+            logger.debug("Successfully attach_volume_to_mapping_group %s for establish link " % client_group_id)
 
     def break_link(self, instance_obj, volume_obj, iqn):
         if volume_obj.type == 'Root':
@@ -243,10 +267,6 @@ class RbdDeviceOperator(object):
         path = self._normalize_install_path(volume_obj.path)
         array = path.split("/")
         volume_name = array[1]
-        block_volume = self.get_volume_by_name(volume_name)
-
-        client_group_id = self.check_client_ip_exist_client_group(instance_obj.provision_ip)
-
         access_paths = self.get_all_access_path()
         for access_path in access_paths:
             if access_path.iqn == iqn:
@@ -256,13 +276,42 @@ class RbdDeviceOperator(object):
         if not access_path_id:
             return "the access path corresponding to iqn %s does not exist" % iqn
 
+        client_group_id = self.check_client_ip_exist_client_group(instance_obj.provision_ip)
+        if not client_group_id:
+            return None
+
         mapping_groups = self.mapping_groups_api.list_mapping_groups(access_path_id=access_path_id,
                                                                      client_group_id=client_group_id).mapping_groups
         if len(mapping_groups) != 0:
-            self.delete_mapping_group(mapping_groups[0])
-            logger.debug("Successfully delete_mapping_group %s for break link " % client_group_id)
+            self.remove_volumes_from_mapping_group(mapping_groups[0].id, self.get_volume_by_name(volume_name).id)
+            logger.debug("Successfully attach_volume_to_mapping_group %s for establish link " % client_group_id)
 
         return None
+
+    def update_block_volume_snapshot(self, snapshot_name, update_name, update_description):
+        block_snapshots = self.block_snapshots_api.list_block_snapshots(q=snapshot_name).block_snapshots
+        if len(block_snapshots) != 0:
+            api_body = {"block_snapshot": {"name": update_name if update_name else block_snapshots[0].name,
+                                           "description": update_description if update_description else block_snapshots[
+                                               0].description}}
+            block_snapshot_name = self.block_snapshots_api.update_snapshot(api_body,
+                                                                           block_snapshots[0].id).block_snapshot.name
+            logger.debug("Successfully update snapshot %s info(name: %s, description: %s)" % (
+                block_snapshot_name, update_name, update_description))
+
+    def rollback_snapshot(self, volume_name, snapshot_name):
+        block_snapshots = self.block_snapshots_api.list_block_snapshots(q=snapshot_name).block_snapshots
+
+        if len(block_snapshots) == 0:
+            return "no snapshot uuid %s exists" % snapshot_name
+
+        block_volume_id = self.get_volume_by_name(volume_name).id
+
+        api_body = {"block_volume": {"block_snapshot_id": block_snapshots[0].id,
+                                     "action": "roll_back"}}
+        self.block_volumes_api.update_block_volume(api_body, block_volume_id)
+        self._retry_until(self.is_block_volume_status_active, block_volume_id)
+        logger.debug("Successfully roll back volume %s snapshot %s " % (volume_name, snapshot_name))
 
     def get_all_access_path(self):
         return self.access_paths_api.list_access_paths().access_paths
@@ -704,7 +753,7 @@ class RbdDeviceOperator(object):
         logger.debug("Successfully destory resource for instance.")
         _destory()
 
-    def get_lun_id(self, volume_obj):
+    def get_lun_id(self, volume_obj, instance_obj):
         dst_path = self._normalize_install_path(volume_obj.path)
         volume_name = dst_path.split("/")[1]
         snat_ip = linux.find_route_interface_ip_by_destination_ip(self.monIp)
@@ -721,8 +770,9 @@ class RbdDeviceOperator(object):
 
         client_groups = self.client_group_api.list_client_groups().client_groups
         for client_group in client_groups:
-            if any(snat_ip == client.code for client in client_group.clients):
+            if any(instance_obj.provision_ip == client.code for client in client_group.clients):
                 client_group_id = client_group.id
+                break
 
         if not client_group_id:
             raise Exception("Gateway ip[ip : %s] cannot be find in client groups" % snat_ip)
@@ -781,7 +831,7 @@ class RbdDeviceOperator(object):
         created_block_volume = self.block_volumes_api.create_block_volume(api_body).block_volume
         self._retry_until(self.is_block_volume_status_active, created_block_volume.id)
         logger.debug("Successfully create block volume[name : %s]" % image_uuid)
-        return created_block_volume
+        return self.get_volume_by_id(created_block_volume.id)
 
     def copy_volume(self, srcPath, dstPath):
         """
