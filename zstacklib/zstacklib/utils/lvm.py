@@ -1162,23 +1162,16 @@ def resize_lv(path, size, force=False):
 @bash.in_bash
 @linux.retry(times=15, sleep_time=random.uniform(0.1, 3))
 def extend_lv(path, extend_size):
-    lv_size = int(get_lv_size(path))
-    if extend_size - lv_size <= 0:
-        raise Exception("the expanded lv size must be larger than the original lv size")
-
-    extend_size = calcLvReservedSize(extend_size)
-    ALIGNMENT_SIZE = 4.0*1024*1024
-    if extend_size % ALIGNMENT_SIZE != 0:
-        extend_size = int(math.ceil(extend_size / ALIGNMENT_SIZE) * ALIGNMENT_SIZE)
-
-    r, o, e = bash.bash_roe("lvextend --size +%sb %s" % (extend_size-lv_size, path))
-    if r == 0 or int(get_lv_size(path)) == extend_size:
+    r, o, e = bash.bash_roe("lvextend --size %sb %s" % (calcLvReservedSize(extend_size), path))
+    if r == 0:
         logger.debug("successfully extend lv %s size to %s" % (path, extend_size))
         return
-
-    raise RetryException("extend lv %s to size %s failed, return code: %s, stdout: %s, stderr: %s" %
-                    (path, lv_size+extend_size, r, o, e))
-
+    elif "matches existing size" in e or "matches existing size" in o:
+        logger.debug("lv %s size already matches existing size: %s, return as successful" % (path, extend_size))
+        return
+    else:
+        raise RetryException("extend lv %s to size %s failed, return code: %s, stdout: %s, stderr: %s" %
+                             (path, extend_size, r, o, e))
 
 @bash.in_bash
 def extend_lv_from_cmd(path, size, cmd, extend_thin_by_specified_size=False):
