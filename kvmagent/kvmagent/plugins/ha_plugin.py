@@ -24,6 +24,7 @@ import abc
 import functools
 import pprint
 import inspect
+import random
 from zstacklib.utils import iproute
 import zstacklib.utils.ip as ipUtils
 
@@ -440,16 +441,19 @@ class SanlockHealthChecker(AbstractStorageFencer):
         for vg in self.all_vgs:
             r = p.get_lockspace_record(vg)
             try:
+                # The storage is normal, the sanlock process is down,
+                # and we can write the heartbeat normally
+                heartbeat_success = self.save_record_vm_uuids(vg)
                 cnt, failure = self._do_health_check_vg(vg, lockspaces, r)
-                if cnt == 0:
+                if cnt == 0 or heartbeat_success:
                     self.reset_vg_failure_cnt(vg)
-                    self.save_record_vm_uuids(vg)
                 else:
                     logger.info("vg %s failure count: %d" % (vg, cnt))
                     if cnt >= max_failure:
                         victims[vg] = failure
             except Exception as e:
                 logger.warn("_do_health_check_vg(%s) failed, %s" % (vg, e))
+                victims[vg] = "_do_health_check_vg(%s) failed"
 
         return victims
 
@@ -460,34 +464,46 @@ class SanlockHealthChecker(AbstractStorageFencer):
         current_read_heartbeat_time = [None]
         current_vm_uuids = [None]
         volume_abs_path = self.get_record_vm_lun(vg_uuid, host_uuid)
-        with lvm.RecursiveOperateLv(volume_abs_path, shared=True):
-            if not lvm.lv_exists(volume_abs_path):
-                return None, None
 
-            with lvm.OperateLv(volume_abs_path, shared=True, delete_when_exception=True):
-                with open(volume_abs_path, "r+") as f:
-                    content = f.read().strip().replace(b'\u0000', b'').replace(b'\x00', b'')
-                    content = content.split("this_is_end")[0]
-                    if len(content) == 0:
-                        return None, None
+        def read_content_from_lv():
+            with open(volume_abs_path, "r+") as f:
+                content = f.read().strip().replace(b'\u0000', b'').replace(b'\x00', b'')
+                content = content.split("this_is_end")[0]
+                if len(content) == 0:
+                    return None, None
 
-                    sbl_data = json.loads(content)
-                    current_read_heartbeat_time[0] = int(sbl_data.get('heartbeat_time'))
-                    if sbl_data.get('vm_uuids') is None:
-                        current_vm_uuids[0] = []
-                    else:
-                        current_vm_uuids[0] = sbl_data.get('vm_uuids').split(',')
+                sbl_data = json.loads(content)
+                current_read_heartbeat_time[0] = int(sbl_data.get('heartbeat_time'))
+                if sbl_data.get('vm_uuids') is None:
+                    current_vm_uuids[0] = []
+                else:
+                    current_vm_uuids[0] = sbl_data.get('vm_uuids').split(',')
 
-                    logger.debug("read shareblock current_read_heartbeat_time:%s, current_vm_uuids: %s" %
-                                 (current_read_heartbeat_time[0], current_vm_uuids[0]))
+                logger.debug("read shareblock current_read_heartbeat_time:%s, current_vm_uuids: %s" %
+                             (current_read_heartbeat_time[0], current_vm_uuids[0]))
 
-                    if time.time() - 4*60 > current_read_heartbeat_time[0]:
-                        current_read_heartbeat_time[0] += 1
+                if int(time.time()) - 4 * 60 < current_read_heartbeat_time[0]:
+                    current_read_heartbeat_time[0] += random.randint(1, 100)
 
-                    return current_read_heartbeat_time[0], current_vm_uuids[0]
+                return current_read_heartbeat_time[0], current_vm_uuids[0]
 
-    @thread.AsyncThread
+        if os.path.exists(volume_abs_path):
+            return read_content_from_lv()
+
+        r, o, e = bash.bash_roe("timeout -s SIGKILL %s lvchange -asy %s" % (self.storage_timeout, volume_abs_path))
+        if r == 0:
+            return read_content_from_lv()
+
+        return None, None
+
     def save_record_vm_uuids(self, vg_uuid):
+        def write_content_to_lv(content):
+            with open(volume_abs_path, "w+") as f:
+                f.write(json.dumps(content) + "this_is_end")
+                f.flush()
+                os.fsync(f.fileno())
+            return True
+
         vm_in_ps_uuid_list = find_ps_running_vm(vg_uuid)
 
         volume_abs_path = self.get_record_vm_lun(vg_uuid, self.host_uuid)
@@ -498,11 +514,14 @@ class SanlockHealthChecker(AbstractStorageFencer):
         content = {"heartbeat_time": time.time(),
                    "vm_uuids": None if len(vm_in_ps_uuid_list) == 0 else ','.join(str(x) for x in vm_in_ps_uuid_list)}
 
-        with lvm.OperateLv(volume_abs_path, shared=True, delete_when_exception=True):
-            with open(volume_abs_path, "w+") as f:
-                f.write(json.dumps(content) + "this_is_end")
-                f.flush()
-                os.fsync(f.fileno())
+        if os.path.exists(volume_abs_path):
+            return write_content_to_lv(content)
+
+        r, o, e = bash.bash_roe("timeout -s SIGKILL %s lvchange -asy %s" % (self.storage_timeout, volume_abs_path))
+        if r == 0:
+            return write_content_to_lv(content)
+
+        return False
 
     def runonce(self, storage_timeout, max_failure):
         if len(self.all_vgs) == 0:
