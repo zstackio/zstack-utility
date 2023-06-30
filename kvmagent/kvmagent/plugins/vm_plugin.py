@@ -1518,8 +1518,8 @@ class VirtioIscsi(object):
         return secret.UUIDString()
 
 class MergeSnapshotDaemon(plugin.TaskDaemon):
-    def __init__(self, task_spec, domain, disk_name, timeout=None):
-        super(MergeSnapshotDaemon, self).__init__(task_spec, 'mergeSnapshot', timeout, report_progress=False)
+    def __init__(self, task_spec, domain, disk_name):
+        super(MergeSnapshotDaemon, self).__init__(task_spec, 'mergeSnapshot', report_progress=False)
         self.domain = domain
         self.disk_name = disk_name
 
@@ -3096,7 +3096,7 @@ class Vm(object):
 
     def block_stream_disk(self, task_spec, volume):
         target_disk, disk_name = self._get_target_disk(volume)
-        with MergeSnapshotDaemon(task_spec, self.domain, disk_name, task_spec.timeout - 10):
+        with MergeSnapshotDaemon(task_spec, self.domain, disk_name):
             self._do_block_stream_disk(task_spec, target_disk, disk_name)
 
     def list_blk_sources(self):
@@ -3237,11 +3237,10 @@ class Vm(object):
             flag |= libvirt.VIR_MIGRATE_PERSIST_DEST
 
         stage = get_task_stage(cmd)
-        timeout = 1800 if cmd.timeout is None else cmd.timeout
 
         class MigrateDaemon(plugin.TaskDaemon):
             def __init__(self, domain):
-                super(MigrateDaemon, self).__init__(cmd, 'MigrateVm', timeout)
+                super(MigrateDaemon, self).__init__(cmd, 'MigrateVm')
                 self.domain = domain
 
             def _get_percent(self):
@@ -3864,7 +3863,7 @@ class Vm(object):
         self._check_snapshot_can_livemerge(cmd.srcPath, cmd.destPath,
                                            cmd.fullRebase)
         # confirm MergeSnapshotDaemon's cancel will be invoked before block job wait
-        with MergeSnapshotDaemon(cmd, self.domain, disk_name, cmd.timeout - 10):
+        with MergeSnapshotDaemon(cmd, self.domain, disk_name):
             if cmd.fullRebase:
                 do_pull(None, cmd.destPath)
             else:
