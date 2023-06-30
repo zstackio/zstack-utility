@@ -46,10 +46,11 @@ class ThirdpartyCephDriver(cephdriver.CephDriver):
         spath = self._normalize_install_path(cmd.snapshotPath)
         path_name = spath.split("/")[1]
         volume_name = path_name.split("@")[0]
-        snap_name = path_name.split("@")[1]
-
-        snapshop_name = RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).create_snapshot(volume_name, snap_name)
-        dpath = spath.split("@")[0] + '@' + snapshop_name
+        snapshot_name = RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).create_snapshot(volume_name, cmd.name)
+        # update snapshot description
+        RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).update_block_volume_snapshot(snapshot_name, cmd.name,
+                                                                                            cmd.description)
+        dpath = spath.split("@")[0] + '@' + snapshot_name
         rsp.size = self._get_file_size(dpath)
         rsp.installPath = "ceph://" + dpath
         return rsp
@@ -64,8 +65,9 @@ class ThirdpartyCephDriver(cephdriver.CephDriver):
 
     def rollback_snapshot(self, cmd):
         spath = self._normalize_install_path(cmd.snapshotPath)
-        volume_name = spath.split("@")[0]
-        snapshot_name = spath.split("@")[1]
+        path_name = spath.split("/")[1]
+        volume_name = path_name.split("@")[0]
+        snapshot_name = path_name.split("@")[1]
         RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).rollback_snapshot(volume_name, snapshot_name)
 
     def set_block_volume_qos(self, cmd, block_volume_id, burstTotalBw, burstTotalIops, maxTotalBw, maxTotalIops):

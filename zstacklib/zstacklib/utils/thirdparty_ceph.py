@@ -209,10 +209,6 @@ class RbdDeviceOperator(object):
             logger.debug("Successfully create_client_group %s for establish link " % client_group_id)
 
         block_volume = self.get_volume_by_name(volume_name)
-        block_volume_access_path = block_volume.access_path
-        if block_volume_access_path:
-            return "unable to attach %s, the volume has been mounted by access_path %s" % (
-                volume_name, block_volume_access_path.name)
 
         access_paths = self.get_all_access_path()
         for access_path in access_paths:
@@ -301,6 +297,7 @@ class RbdDeviceOperator(object):
                 block_snapshot_name, update_name, update_description))
 
     def rollback_snapshot(self, volume_name, snapshot_name):
+        logger.debug("start roll back volume %s snapshot %s " % (volume_name, snapshot_name))
         block_snapshots = self.block_snapshots_api.list_block_snapshots(q=snapshot_name).block_snapshots
 
         if len(block_snapshots) == 0:
@@ -333,10 +330,9 @@ class RbdDeviceOperator(object):
         block_volume = self.get_volume_by_id(block_volume_id)
         if not block_volume:
             raise "block volume %s cannot be find" % block_volume_id
-        block_volume_old_name = block_volume.name
 
-        api_body = {"block_volume": {"name": new_volume_name if new_volume_name else block_volume_old_name,
-                                     "description": new_volume_description if new_volume_description else ""}}
+        api_body = {"block_volume": {"name": new_volume_name if new_volume_name else block_volume.name,
+                                     "description": new_volume_description if new_volume_description else block_volume.description}}
         block_volume_id = self.block_volumes_api.update_block_volume(api_body, block_volume_id).block_volume.id
         self._retry_until(self.is_block_volume_status_active, block_volume_id)
         logger.debug("Successfully update volume info %s " % block_volume_id)
@@ -360,10 +356,10 @@ class RbdDeviceOperator(object):
         if not block_volume:
             raise "block volume %s cannot be find" % block_volume_id
         api_body = {"block_volume": {"size": size}}
-        block_volume = self.block_volumes_api.update_block_volume(api_body, block_volume_id).block_volume
+        self.block_volumes_api.update_block_volume(api_body, block_volume_id).block_volume
         self._retry_until(self.is_block_volume_status_active, block_volume_id)
         logger.debug("Successfully resize volume ids %s " % block_volume_id)
-        return block_volume.size
+        return self.get_volume_by_id(block_volume_id).size
 
     def is_block_volume_status_active(self, block_volume_id):
         return self.block_volumes_api.get_block_volume(block_volume_id).block_volume.status == "active"
