@@ -4,6 +4,7 @@ from cStringIO import StringIO
 from email import message_from_file
 from email.mime.multipart import MIMEMultipart
 import os
+import platform
 
 from zstacklib.utils import http
 from zstacklib.utils import jsonobject
@@ -12,6 +13,8 @@ from zstacklib.utils import uuidhelper
 from zstacklib.utils.bash import *
 
 from kvmagent import kvmagent
+
+HOST_ARCH = platform.machine()
 
 LIGHTTPD_CONF = '''\
 server.document-root = "{{http_root}}"
@@ -26,13 +29,19 @@ accesslog.filename = "/var/log/lighttpd/lighttpd_access.log"
 server.errorlog = "/var/log/lighttpd/lighttpd_error.log"
 
 $REQUEST_HEADER["X-Instance-ID"] =~ "^(.*)$" {
+    $HTTP["url"] =~ "^/metrics/job" {
+        proxy.server = ( "" =>
+           ( ( "host" => "{{pushgateway_ip}}", "port" => {{pushgateway_port}} ) )
+        )
 {% for inst_uuid in userdata_vm_uuid -%}
-    {% if loop.first -%}
-    $REQUEST_HEADER["X-Instance-ID"] == "{{inst_uuid}}" {
-    {% else -%}
     } else $REQUEST_HEADER["X-Instance-ID"] == "{{inst_uuid}}" {
-    {% endif -%}
         url.rewrite-once = (
+            "^/zwatch-vm-agent.linux-amd64.bin$" => "/zwatch-vm-agent",
+            "^/zwatch-vm-agent.freebsd-amd64.bin$" => "/zwatch-vm-agent-freebsd",
+            "^/zwatch-vm-agent.linux-aarch64.bin$" => "/zwatch-vm-agent_aarch64",
+            "^/zwatch-vm-agent.linux-mips64el.bin$" => "/collectd_exporter_mips64el",
+            "^/zwatch-vm-agent.linux-loongarch64.bin$" => "/collectd_exporter_loongarch64",
+            "^/agent-tools-update.sh$" => "/vm-tools.sh",
             "^/.*/meta-data/(.+)$" => "/{{inst_uuid}}/meta-data/$1",
             "^/.*/meta-data$" => "/{{inst_uuid}}/meta-data",
             "^/.*/meta-data/$" => "/{{inst_uuid}}/meta-data/",
@@ -46,6 +55,12 @@ $REQUEST_HEADER["X-Instance-ID"] =~ "^(.*)$" {
 {% endfor -%}
     } else $REQUEST_HEADER["X-Instance-ID"] =~ "^(.*)$" {
         url.rewrite-once = (
+            "^/zwatch-vm-agent.linux-amd64.bin$" => "/zwatch-vm-agent",
+            "^/zwatch-vm-agent.freebsd-amd64.bin$" => "/zwatch-vm-agent-freebsd",
+            "^/zwatch-vm-agent.linux-aarch64.bin$" => "/zwatch-vm-agent_aarch64",
+            "^/zwatch-vm-agent.linux-mips64el.bin$" => "/collectd_exporter_mips64el",
+            "^/zwatch-vm-agent.linux-loongarch64.bin$" => "/collectd_exporter_loongarch64",
+            "^/agent-tools-update.sh$" => "/vm-tools.sh",
             "^/.*/meta-data/(.+)$" => "/zstack-default/meta-data/$1",
             "^/.*/meta-data$" => "/zstack-default/meta-data",
             "^/.*/meta-data/$" => "/zstack-default/meta-data/",
@@ -74,6 +89,9 @@ class TfNetProviderUserdata(kvmagent.KvmAgent):
     TF_NET_BATCH_USER_DATA = "/tfnetworkprovider/userdata/batchapply"
 
     TF_USERDATA_ROOT = "/var/lib/zstack/tf_userdata"
+
+    KVM_HOST_PUSHGATEWAY_IP = "0.0.0.0"
+    KVM_HOST_PUSHGATEWAY_PORT = "9092"
 
     def __init__(self):
         self.userdata_vms_tf = set()
@@ -124,6 +142,53 @@ class TfNetProviderUserdata(kvmagent.KvmAgent):
             index_file_path = os.path.join(meta_root, 'index.html')
             linux.write_file(index_file_path, '', True)
 
+        def apply_zwatch_vm_agent(http_root):
+            agent_file_source_path = "/var/lib/zstack/kvm/zwatch-vm-agent"
+            freebsd_agent_file_source_path = "/var/lib/zstack/kvm/zwatch-vm-agent-freebsd"
+            if not os.path.exists(agent_file_source_path):
+                logger.error("Can't find file %s" % agent_file_source_path)
+                return
+
+            if HOST_ARCH == 'x86_64' and not os.path.exists(freebsd_agent_file_source_path):
+                logger.error("Can't find file %s" % freebsd_agent_file_source_path)
+                return
+
+            agent_file_target_path = os.path.join(http_root, "zwatch-vm-agent")
+            if not os.path.exists(agent_file_target_path):
+                bash_r("ln -s %s %s" % (agent_file_source_path, agent_file_target_path))
+            elif not os.path.islink(agent_file_target_path):
+                linux.rm_file_force(agent_file_target_path)
+                bash_r("ln -s %s %s" % (agent_file_source_path, agent_file_target_path))
+
+            freebsd_agent_file_target_path = os.path.join(http_root, "zwatch-vm-agent-freebsd")
+            if not os.path.exists(freebsd_agent_file_target_path):
+                bash_r("ln -s %s %s" % (freebsd_agent_file_source_path, freebsd_agent_file_target_path))
+            elif not os.path.islink(freebsd_agent_file_target_path):
+                linux.rm_file_force(freebsd_agent_file_target_path)
+                bash_r("ln -s %s %s" % (freebsd_agent_file_source_path, freebsd_agent_file_target_path))
+
+            tool_sh_file_path = "/var/lib/zstack/kvm/vm-tools.sh"
+            if not os.path.exists(tool_sh_file_path):
+                logger.error("Can't find file %s" % tool_sh_file_path)
+                return
+            target_tool_sh_file_path = os.path.join(http_root, "vm-tools.sh")
+            if not os.path.exists(target_tool_sh_file_path):
+                bash_r("ln -s %s %s" % (tool_sh_file_path, target_tool_sh_file_path))
+            elif not os.path.islink(target_tool_sh_file_path):
+                linux.rm_file_force(target_tool_sh_file_path)
+                bash_r("ln -s %s %s" % (tool_sh_file_path, target_tool_sh_file_path))
+
+            version_file_path = "/var/lib/zstack/kvm/agent_version"
+            if not os.path.exists(version_file_path):
+                logger.error("Can't find file %s" % version_file_path)
+                return
+            target_version_file_path = os.path.join(http_root, "agent_version")
+            if not os.path.exists(target_version_file_path):
+                bash_r("ln -s %s %s" % (version_file_path, target_version_file_path))
+            elif not os.path.islink(target_version_file_path):
+                linux.rm_file_force(target_version_file_path)
+                bash_r("ln -s %s %s" % (version_file_path, target_version_file_path))
+
         root_dir = self.TF_USERDATA_ROOT
         if not os.path.exists(root_dir):
             linux.mkdir(root_dir)
@@ -142,7 +207,12 @@ class TfNetProviderUserdata(kvmagent.KvmAgent):
         conf = template.render({
             'http_root': http_root,
             'port': userdata.port,
-            'userdata_vm_uuid': self.userdata_vms_tf
+            'userdata_vm_uuid': self.userdata_vms_tf,
+            'pushgateway_ip': self.KVM_HOST_PUSHGATEWAY_IP,
+
+
+
+            'pushgateway_port': self.KVM_HOST_PUSHGATEWAY_PORT,
         })
 
         linux.mkdir(http_root, 0777)
@@ -157,6 +227,7 @@ class TfNetProviderUserdata(kvmagent.KvmAgent):
                 linux.write_file(conf_path, conf, True)
 
         create_default_userdata(http_root)
+        apply_zwatch_vm_agent(http_root)
 
     @in_bash
     def _apply_userdata_tf_file(self, userdata):
