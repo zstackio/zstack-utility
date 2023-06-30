@@ -1510,8 +1510,7 @@ class CephAgent(plugin.TaskManager):
         rsp = AgentResponse()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         driver = self.get_third_party_driver(cmd)
-        if cmd.description:
-            driver.update_block_volume_info(cmd, cmd.xskyBlockVolumeId, cmd.name, cmd.description)
+        driver.update_block_volume_info(cmd, cmd.xskyBlockVolumeId, cmd.name, cmd.description)
         if cmd.burstTotalBw and cmd.burstTotalIops and cmd.maxTotalBw and cmd.maxTotalIops:
             driver.set_block_volume_qos(cmd, cmd.xskyBlockVolumeId, cmd.burstTotalBw, cmd.burstTotalIops, cmd.maxTotalBw,
                                         cmd.maxTotalIops)
@@ -1522,7 +1521,7 @@ class CephAgent(plugin.TaskManager):
         rsp = AgentResponse()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         driver = self.get_third_party_driver(cmd)
-        driver.update_block_volume_snapshot(cmd, cmd.baremetalInstanceIP)
+        driver.update_block_volume_snapshot(cmd)
         return jsonobject.dumps(rsp)
 
 class CephDaemon(daemon.Daemon):
