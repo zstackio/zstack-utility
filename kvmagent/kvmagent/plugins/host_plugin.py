@@ -1985,20 +1985,23 @@ done
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetInterfaceVlanRsp()
         rsp.success = False
-        rsp.vlanIds = []
 
-        vlan_ids = None
+        vlan_ids = []
         for interface_name in cmd.interfaceNames:
             output = shell.call("ip link show type vlan | grep %s | awk -F'[.@]' '{print $2}'" % interface_name)
-            interface_vlan_ids = set(output.strip().split('\n'))
+            interface_vlan_ids = output.strip().split('\n')
 
-            if vlan_ids is None:
-                vlan_ids = interface_vlan_ids
+            if not interface_vlan_ids:
+                interface_vlan_ids = ['0']
             else:
-                vlan_ids.intersection_update(interface_vlan_ids)
+                interface_vlan_ids.append('0')
+
+            if not vlan_ids:
+                vlan_ids = interface_vlan_ids
+            vlan_ids = [vlan for vlan in vlan_ids if vlan and vlan in interface_vlan_ids]
 
         rsp.success = True
-        rsp.vlanIds = list(vlan_ids) if vlan_ids else []
+        rsp.vlanIds = vlan_ids if vlan_ids != [] else ['0']
 
         return jsonobject.dumps(rsp)
 
