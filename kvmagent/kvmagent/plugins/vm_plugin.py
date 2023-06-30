@@ -1636,9 +1636,9 @@ class VirtioIscsi(object):
 
 
 class MergeSnapshotDaemon(plugin.TaskDaemon):
-    def __init__(self, task_spec, vm, disk_name, top, base=None, timeout=0):
+    def __init__(self, task_spec, vm, disk_name, top, base=None):
         # type: (object, Vm, str, str, str, int) -> None
-        super(MergeSnapshotDaemon, self).__init__(task_spec, 'mergeSnapshot', timeout)
+        super(MergeSnapshotDaemon, self).__init__(task_spec, 'mergeSnapshot')
         self.vm = vm  # type: Vm
         self.top = top
         self.base = base
@@ -3316,7 +3316,7 @@ class Vm(object):
             logger.debug('block stream is waiting for %s blockRebase job completion' % disk_name)
             return not self._wait_for_block_job(disk_name, abort_on_error=True)
 
-        if not linux.wait_callback_success(wait_job, timeout=task_spec.timeout, ignore_exception_in_callback=True):
+        if not linux.wait_callback_success(wait_job, timeout=get_timeout(task_spec), ignore_exception_in_callback=True):
             raise kvmagent.KvmError('block stream failed')
 
         def wait_backing_file_cleared(_):
@@ -3328,7 +3328,7 @@ class Vm(object):
     def block_stream_disk(self, task_spec, volume):
         target_disk, disk_name = self._get_target_disk(volume)
         top = VolumeTO.get_volume_actual_installpath(volume.installPath)
-        with MergeSnapshotDaemon(task_spec, self, disk_name, top=top, timeout=task_spec.timeout - 10):
+        with MergeSnapshotDaemon(task_spec, self, disk_name, top=top):
             self._do_block_stream_disk(task_spec, target_disk, disk_name)
 
     def list_blk_sources(self):
@@ -3472,11 +3472,10 @@ class Vm(object):
             flag |= libvirt.VIR_MIGRATE_PERSIST_DEST
 
         stage = get_task_stage(cmd)
-        timeout = 1800 if cmd.timeout is None else cmd.timeout
-
+        timeout = get_timeout(cmd)
         class MigrateDaemon(plugin.TaskDaemon):
             def __init__(self, domain):
-                super(MigrateDaemon, self).__init__(cmd, 'MigrateVm', timeout)
+                super(MigrateDaemon, self).__init__(cmd, 'MigrateVm')
                 self.domain = domain
 
             def _get_percent(self):
@@ -4143,7 +4142,7 @@ class Vm(object):
                                            cmd.fullRebase)
         # confirm MergeSnapshotDaemon's cancel will be invoked before block job wait
         base = None if cmd.fullRebase else cmd.srcPath
-        with MergeSnapshotDaemon(cmd, self, disk_name, top=cmd.destPath, base=base, timeout=get_timeout_seconds()):
+        with MergeSnapshotDaemon(cmd, self, disk_name, top=cmd.destPath, base=base):
             do_pull(base, cmd.destPath)
 
     def take_volumes_shallow_backup(self, task_spec, volumes, dst_backup_paths):
