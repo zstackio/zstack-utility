@@ -959,19 +959,32 @@ class CollectFromYml(object):
             else:
                 counts['fail'].append([1, type, host_post_info.host, log_name, result._result['stdout']])
 
+        def check_callback(result, object_id, log_name, type, host_post_info):
+            ck_result = _ctypes.PyObj_FromPtr(object_id)
+            rc = result._result['rc']
+            if rc == 0:
+                key = "%s:%s:%s" % (type, host_post_info.host, log_name)
+                ck_result[key] = result._result['stdout']
+
         if self.check_host_reachable_in_queen(host_post_info) is True:
             if self.check:
+                pb = ZstackPBRunner(host_post_info)
+                ck_result = {}
                 for log in log_list:
                     if 'exec' in log:
                         continue
                     else:
-                        if file_dir_exist("path=%s" % log['dir'], host_post_info):
-                            command = self.build_collect_cmd(log, None)
-                            (status, output) = run_remote_command(command, host_post_info, return_status=True,
-                                                                  return_output=True)
-                            if status is True:
-                                key = "%s:%s:%s" % (type, host_post_info.host, log['name'])
-                                self.check_result[key] = output
+                        collect_command = self.build_collect_cmd(log, None)
+                        command = '''
+if [ ! -e %s ]; then exit 2; fi
+%s
+''' % (log['dir'], collect_command)
+                        pb.executor.add_command_action(
+                            command, exit_on_fail=False,
+                            callback_on_succ=[marshal.dumps(check_callback.__code__), id(ck_result), log['name'], type, host_post_info])
+                pb.run()
+                for k, v in ck_result.items():
+                    self.check_result[k] = v
             else:
                 info_verbose("Collecting log from %s %s ..." % (type, host_post_info.host))
                 start = datetime.datetime.now()
