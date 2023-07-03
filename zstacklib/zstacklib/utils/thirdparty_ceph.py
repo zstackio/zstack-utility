@@ -341,7 +341,8 @@ class RbdDeviceOperator(object):
         block_volume = self.get_volume_by_id(block_volume_id)
         if not block_volume:
             raise "block volume %s cannot be find" % block_volume_id
-        api_body = {"block_volume": {"qos": {"max_total_bw": max_total_bw,
+        api_body = {"block_volume": {"qos_enabled": "true",
+                                     "qos": {"max_total_bw": max_total_bw,
                                               "burst_total_iops": burst_total_iops,
                                               "burst_total_bw": burst_total_bw,
                                               "max_total_iops": max_total_iops}}}
@@ -357,8 +358,8 @@ class RbdDeviceOperator(object):
         api_body = {"block_volume": {"size": size}}
         self.block_volumes_api.update_block_volume(api_body, block_volume_id).block_volume
         self._retry_until(self.is_block_volume_status_active, block_volume_id)
-        logger.debug("Successfully resize volume ids %s " % block_volume_id)
-        return self.get_volume_by_id(block_volume_id).size
+        logger.debug("Successfully resize volume ids %s from %s to %s" % (block_volume_id, block_volume.size, size))
+        return size
 
     def is_block_volume_status_active(self, block_volume_id):
         return self.block_volumes_api.get_block_volume(block_volume_id).block_volume.status == "active"
@@ -530,7 +531,7 @@ class RbdDeviceOperator(object):
 
         def _update_client_group_add_code(client_group_id, clients, client_code):
             api_body = {"client_group": {"clients": clients + [{"code": client_code}]}}
-            self.client_group_api.update_client_group(client_group_id, api_body)
+            self.client_group_api.update_client_group(api_body,client_group_id)
             self._retry_until(_is_client_group_status_active, client_group_id)
             logger.debug(
                 "Successfully update client group[id :%s] to add code[code : %s]" % (client_group_id, client_code))
@@ -541,7 +542,7 @@ class RbdDeviceOperator(object):
             new_clients = [client for client in clients if client.code != provision_ip]
 
             api_body = {"client_group": {"clients": new_clients}}
-            self.client_group_api.update_client_group(client_group_id, api_body)
+            self.client_group_api.update_client_group(api_body,client_group_id)
             self._retry_until(_is_client_group_status_active, client_group_id)
             logger.debug(
                 "Successfully update client group[id :%s] to delete code[code : %s]" % (client_group_id, provision_ip))
@@ -627,7 +628,7 @@ class RbdDeviceOperator(object):
             new_clients = [client for client in clients if client.code != provision_ip]
 
             api_body = {"client_group": {"clients": new_clients}}
-            self.client_group_api.update_client_group(client_group_id, api_body)
+            self.client_group_api.update_client_group(api_body,client_group_id)
             self._retry_until(_is_client_group_status_active, client_group_id)
             logger.debug(
                 "Successfully update client group[id :%s] to delete code[code : %s]" % (client_group_id, provision_ip))
@@ -771,7 +772,7 @@ class RbdDeviceOperator(object):
                 break
 
         if not client_group_id:
-            raise Exception("Gateway ip[ip : %s] cannot be find in client groups" % snat_ip)
+            raise Exception("BmInstanceObj [ip : %s] cannot be find in client groups" % instance_obj.provision_ip)
 
         mapping_groups = self.mapping_groups_api.list_mapping_groups(access_path_id=access_path_id,
                                                                      client_group_id=client_group_id).mapping_groups

@@ -103,6 +103,7 @@ class LinuxDriver(base.SystemDriverBase):
 
     def discovery_volume_target(self, instance_obj, volume_obj):
         target_name = volume_obj.iscsi_path.replace('iscsi://', '').split("/")[1]
+        LOG.info("start discovery volume target %s" % (target_name))
 
         cmd = 'iscsiadm -m session | grep %s' % target_name
         LOG.info(cmd)
@@ -185,9 +186,12 @@ class LinuxDriver(base.SystemDriverBase):
         else:
             iqn = instance_obj.uuid
 
+        LOG.info("detach_volume iqn is %s" % iqn)
+
         for line in stdout.split('\n'):
             if iqn in line:
                 sid = line.split()[1][1]
+                LOG.info("detach_volume sid is %s" % sid)
         if not sid:
             raise exception.IscsiSessionIdNotFound(
                 volume_uuid=volume_obj.uuid, output=stdout)
