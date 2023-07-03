@@ -4991,7 +4991,8 @@ class MysqlRestrictConnection(Command):
             error("failed to get mysql views definer: %s" % output)
 
         if output is not None and output.strip() != "":
-           return  "USE mysql;  GRANT USAGE ON *.* TO %s IDENTIFIED BY '%s' WITH GRANT OPTION;" % (output, root_password)
+            user, host = output.split("@")
+            return  "USE mysql;  GRANT USAGE ON *.* TO '%s'@%s IDENTIFIED BY '%s' WITH GRANT OPTION;" % (user, host, root_password)
 
         return ""
 
