@@ -836,6 +836,10 @@ class IpNetnsShell:
                      % (self.netns, ns_id, self.netns))
 
     def del_netns(self):
+        links = self.get_links()
+        for link in links:
+            self.del_link(link.name)
+
         o = shell.call('ip netns delete  %s' % self.netns)
         logger.debug("exec cmd: ip netns delete %s, result: %s"
                      % (self.netns, o))
