@@ -1502,7 +1502,9 @@ def create_bridge(bridge_name, interface, move_route=True):
     #mv ip on interface to bridge
     ip = out.strip().split()[1]
     shell.call('ip addr del %s dev %s' % (ip, interface))
-    shell.call('ip addr add %s dev %s' % (ip, bridge_name))
+    r_out = shell.call('ip addr show dev %s | grep "inet %s"' % (bridge_name, ip), exception=False)
+    if not r_out:
+        shell.call('ip addr add %s dev %s' % (ip, bridge_name))
 
     #restore routes on bridge
     for r in routes:
