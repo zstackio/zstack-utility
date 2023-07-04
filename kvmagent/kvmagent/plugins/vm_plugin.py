@@ -3237,6 +3237,7 @@ class Vm(object):
             flag |= libvirt.VIR_MIGRATE_PERSIST_DEST
 
         stage = get_task_stage(cmd)
+        timeout = get_timeout(cmd)
 
         class MigrateDaemon(plugin.TaskDaemon):
             def __init__(self, domain):
