@@ -5208,10 +5208,12 @@ class ChangeMysqlPasswordCmd(Command):
         if check_pswd_rules(args.new_password) == False:
             error("Failed! The password you entered doesn't meet the password policy requirements.\nA strong password must contain at least 8 characters in length, and include a combination of letters, numbers and special characters.")
         if (args.user_name in self.normal_users) or (args.user_name == 'root'):
-            if args.remote_ip is not None:
-                sql = '''mysql -u root -p%s -h '%s' -e "UPDATE mysql.user SET Password=PASSWORD('%s') , Host = '%s' WHERE USER='%s';FLUSH PRIVILEGES;" ''' % (root_password_, args.remote_ip, new_password_, args.remote_ip, args.user_name)
-            else:
-                sql = '''mysql -u root -p%s -e "UPDATE mysql.user SET Password=PASSWORD('%s') WHERE USER='%s';FLUSH PRIVILEGES;" ''' % (root_password_, new_password_, args.user_name)
+            mn_ip = ctl.read_property('management.server.ip') if not args.remote_ip else args.remote_ip
+            set_password_sql = "SET PASSWORD FOR {user}@localhost = PASSWORD('{new_pass}');" \
+                               "SET PASSWORD FOR {user}@127.0.0.1 = PASSWORD('{new_pass}');" \
+                               "SET PASSWORD FOR {user}@{mn_ip} = PASSWORD('{new_pass}');" \
+                               "FLUSH PRIVILEGES;".format(user=args.user_name, new_pass=new_password_, mn_ip=mn_ip)
+            sql = '''mysql -u root -p{root_pass} -h '{ip}' -e "{sql}" '''.format(root_pass=root_password_, ip=mn_ip, sql=set_password_sql)
             status, output = commands.getstatusoutput(sql)
             if status != 0:
                 error(output)
