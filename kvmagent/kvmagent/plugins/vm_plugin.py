@@ -3787,7 +3787,7 @@ class Vm(object):
             logger.debug('merge snapshot is checking previous block job of disk:%s' % disk_name)
 
             start_timeout = time.time()
-            end_time = start_timeout + cmd.timeout
+            end_time = start_timeout + get_timeout(cmd)
 
             def get_timeout_seconds(exception_if_timeout=True):
                 current_timeout = time.time()
