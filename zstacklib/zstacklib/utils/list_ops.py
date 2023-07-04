@@ -29,3 +29,15 @@ def list_and(list1, list2):
             new_list.append(item)
 
     return new_list
+
+def list_split(list, n):
+    if len(list) == 0:
+        return list
+
+    if n <= 0:
+        raise Exception("num must be positive")
+
+    result = [[] for _ in range(min(n, len(list)))]
+    for i, v in enumerate(list):
+        result[i%n].append(v)
+    return result
