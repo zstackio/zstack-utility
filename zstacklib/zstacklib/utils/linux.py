@@ -2520,6 +2520,19 @@ def filter_file_lines_by_regex(path, regex):
         return None
 
 
+def filter_lines_by_str_list(lines, filter_str_list):
+    if len(lines) == 0:
+        return None
+    try:
+        filter_lines = []
+        for line in lines:
+            if any(filter_str in line for filter_str in filter_str_list):
+                filter_lines.append(line)
+        return filter_lines
+    except IOError as e:
+        logger.error(e)
+        return None
+
 def write_file(path, content, create_if_not_exist=False):
     if not os.path.exists(path) and not create_if_not_exist:
         logger.warn("write file failed because the path %s was not found", path)
