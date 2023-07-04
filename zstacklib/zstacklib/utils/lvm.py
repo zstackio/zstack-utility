@@ -235,7 +235,7 @@ def get_mpath_block_devices(scsi_info):
     return filter(None, block_devices_list), slave_devices
 
 def get_disk_block_devices(slave_devices, scsi_info):
-    disks = shell.call("lsblk -p -o NAME,TYPE | awk '/disk/{print $1}'").strip().split()
+    disks = shell.call("lsblk -e 43 -p -o NAME,TYPE | awk '/disk/{print $1}'").strip().split()
     block_devices_list = [None] * len(disks)
 
     slave_multipaths = shell.call("multipath -l | grep -A 1 policy | grep -v policy |awk -F - '{print $2}'| awk '{print $2}'").strip().splitlines()
