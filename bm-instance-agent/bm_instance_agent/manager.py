@@ -93,7 +93,7 @@ class AgentManager(object):
         LOG.info(msg)
         self.driver.stop(instance_obj)
 
-    def attach_volume(self, bm_instance, volume):
+    def attach_volume(self, bm_instance, volume, volume_access_path_gateway_ips):
         instance_obj = BmInstanceObj.from_json(bm_instance)
         volume_obj = VolumeObj.from_json(volume)
 
@@ -102,7 +102,7 @@ class AgentManager(object):
                'to the system: {bm_uuid}').format(
                    volume_uuid=volume_obj.uuid, bm_uuid=instance_obj.uuid)
         LOG.info(msg)
-        self.driver.attach_volume(instance_obj, volume_obj)
+        self.driver.attach_volume(instance_obj, volume_obj, volume_access_path_gateway_ips)
 
     def detach_volume(self, bm_instance, volume):
         instance_obj = BmInstanceObj.from_json(bm_instance)
