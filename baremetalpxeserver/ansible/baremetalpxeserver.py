@@ -126,7 +126,7 @@ else:
 
 # name: check and mount /opt/zstack-dvd
 command = """
-archRelease='x86_64/c72 x86_64/c74 x86_64/c76 x86_64/ns10 aarch64/ns10 mips64el/ns10 loongarch64/ns10' 
+archRelease='x86_64/c72 x86_64/c74 x86_64/c76 x86_64/ns10 aarch64/ns10 aarch64/oe2203sp1 mips64el/ns10 loongarch64/ns10'
 mkdir -p /var/lib/zstack/baremetal/{dnsmasq,ftp/{ks,zstack-dvd/{x86_64,aarch64,mips64el,loongarch64},scripts},tftpboot/{zstack/{x86_64,aarch64,mips64el,loongarch64},pxelinux.cfg,EFI/BOOT},vsftpd} /var/log/zstack/baremetal/;
 rm -rf /var/lib/zstack/baremetal/tftpboot/{grubaa64.efi,grub.cfg-01-*};
 is_repo_exist='false'
