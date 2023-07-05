@@ -1,4 +1,5 @@
 import os
+import re
 
 from oslo_concurrency import processutils
 from oslo_log import log as logging
@@ -163,7 +164,7 @@ class LinuxDriver(base.SystemDriverBase):
             with bm_utils.transcantion(retries=5, sleep_time=10) as cursor:
                 cursor.execute(processutils.execute, *cmd)
 
-    def detach_volume(self, instance_obj, volume_obj):
+    def detach_volume(self, instance_obj, volume_obj, volume_access_path_gateway_ips):
         """ Detach a given iSCSI lun
 
         First check the volume whether attached, if attached, check the map
@@ -184,9 +185,13 @@ class LinuxDriver(base.SystemDriverBase):
                 scsi11 Channel 00 Id 0 Lun: 1
                         Attached scsi disk sdb          State: running
         """
+        for volume_access_path_gateway_ip in volume_access_path_gateway_ips:
+            self.detach_volume_for_target_ip(instance_obj, volume_obj, volume_access_path_gateway_ip)
+
+    def detach_volume_for_target_ip(self, instance_obj, volume_obj, target_ip):
         # Get the session id
         sid = None
-        cmd = ['iscsiadm', '-m', 'session']
+        cmd = ['iscsiadm', '-m', 'session', '|', 'grep', target_ip]
         stdout, _ = processutils.execute(*cmd)
         iqn = None
         volume_iqn = volume_obj.iscsi_path.replace('iscsi://', '').split("/")[1]
@@ -198,11 +203,12 @@ class LinuxDriver(base.SystemDriverBase):
             iqn = instance_obj.uuid
 
         LOG.info("detach_volume iqn is %s" % iqn)
-
         for line in stdout.split('\n'):
             if iqn in line:
-                sid = line.split()[1][1]
-                LOG.info("detach_volume sid is %s" % sid)
+                match = re.search(r'\[(\d+)\]', line)
+                if match:
+                    sid = match.group(1)
+                    LOG.info("detach_volume sid is %s for %s" % (sid, target_ip))
         if not sid:
             raise exception.IscsiSessionIdNotFound(
                 volume_uuid=volume_obj.uuid, output=stdout)
@@ -227,11 +233,13 @@ class LinuxDriver(base.SystemDriverBase):
                     c=int(s[2]),
                     t=int(s[4]),
                     l=int(s[6]))
+                LOG.warning("device_scsi is %s" % s)
                 flag = True
                 continue
             # Get device name, example: 'sdc'
             if flag:
                 s = line.split()
+                LOG.warning("flag s is %s" % s)
                 device_name = s[3]
                 break
 
