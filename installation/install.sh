@@ -299,7 +299,7 @@ check_zstack_release(){
 check_project_num() {
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
 
-    if [[ -f $${CURRENT_PROJECT_NUM} ]]; then
+    if [[ -f ${CURRENT_PROJECT_NUM} ]]; then
         current_project_num=`cat ${CURRENT_PROJECT_NUM}|awk -F "=" '{print $2}'`
     else
         current_project_num=""
@@ -1941,10 +1941,11 @@ uz_upgrade_tomcat(){
            fail "failed to unzip Tomcat package: $upgrade_folder/libs/tomcat_root_app.zip."
         fi
 
-        rm -rf $TOMCAT_NAME_OLD.zip $TOMCAT_NAME_OLD apache-tomcat VERSION
+        rm -rf $TOMCAT_NAME_OLD.zip $TOMCAT_NAME_OLD apache-tomcat VERSION PJNUM
         ln -sf $TOMCAT_NAME_NEW apache-tomcat
         ln -sf apache-tomcat/webapps/zstack/VERSION VERSION
-        chown -R zstack:zstack $TOMCAT_NAME_NEW.zip $TOMCAT_NAME_NEW apache-tomcat VERSION
+        ln -sf apache-tomcat/webapps/zstack/PJNUM PJNUM
+        chown -R zstack:zstack $TOMCAT_NAME_NEW.zip $TOMCAT_NAME_NEW apache-tomcat VERSION PJNUM
         cd $upgrade_folder
 
         chmod a+x $TOMCAT_PATH/apache-tomcat/bin/*
@@ -3689,6 +3690,8 @@ get_mn_port
 # Fix ZSTAC-22364
 pre_scripts_to_adjust_iptables_rules
 
+# Fix ZSTAC-55831
+check_project_num
 
 which yum >>$ZSTACK_INSTALL_LOG 2>&1 && IS_YUM='y'
 which apt >>$ZSTACK_INSTALL_LOG 2>&1 && IS_APT='y'
@@ -3987,7 +3990,6 @@ if [ x"$UPGRADE" = x'y' ]; then
     MINI_INSTALL_ROOT=${ZSTACK_INSTALL_ROOT}/zstack-mini/
     MINI_VERSION=${MINI_INSTALL_ROOT}/VERSION
 
-    check_project_num
     check_version
     touch $UPGRADE_LOCK
     upgrade_folder=`mktemp`
