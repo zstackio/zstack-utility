@@ -300,8 +300,8 @@ def collect_host_network_statistics():
     logger.debug("Original host_network_interface_service_type_map: %s", host_network_interface_service_type_map)
 
     host_network_service_type_interface_map = defaultdict(list)
-    for interface, service_types in host_network_interface_service_type_map.items():
-        for service_type in service_types:
+    for interface, types in host_network_interface_service_type_map.items():
+        for service_type in types:
             host_network_service_type_interface_map[service_type].append(interface)
 
     for service_type in service_types:
