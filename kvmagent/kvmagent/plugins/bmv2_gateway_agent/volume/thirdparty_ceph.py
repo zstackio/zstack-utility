@@ -119,3 +119,11 @@ class ThirdPartyCephVolume(base.BaseVolume):
         lun_id = RbdDeviceOperator(self.volume_obj.monIp, self.volume_obj.token, self.volume_obj.tpTimeout).get_lun_id(
             self.volume_obj, self.instance_obj)
         return lun_id
+
+    def get_all_access_path(self):
+        return RbdDeviceOperator(self.volume_obj.monIp, self.volume_obj.token,
+                                 self.volume_obj.tpTimeout).get_all_access_path()
+
+    def get_targets_by_access_path_id(self, access_path_id):
+        return RbdDeviceOperator(self.volume_obj.monIp, self.volume_obj.token,
+                                 self.volume_obj.tpTimeout).get_targets_by_access_path_id(access_path_id)
