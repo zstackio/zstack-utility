@@ -101,7 +101,7 @@ class LinuxDriver(base.SystemDriverBase):
             LOG.info("no iscsi target found, skip login")
             return
 
-    def discovery_volume_target(self, instance_obj, volume_obj):
+    def discovery_volume_target(self, instance_obj, volume_obj, volume_access_path_gateway_ips):
         target_name = volume_obj.iscsi_path.replace('iscsi://', '').split("/")[1]
         LOG.info("start discovery volume target %s" % (target_name))
 
@@ -111,8 +111,10 @@ class LinuxDriver(base.SystemDriverBase):
         if not stderr:
             LOG.info("iscsi target:%s has logged" % target_name)
             return
-        LOG.info("start login_target:%s by ip %s" % (target_name, instance_obj.gateway_ip))
-        self.login_target(target_name, instance_obj.gateway_ip)
+
+        for gateway_ip in volume_access_path_gateway_ips:
+            LOG.info("start login_target:%s by ip %s" % (target_name, gateway_ip))
+            self.login_target(target_name, gateway_ip)
 
     def login_target(self, target_name, address_ip, port=3260):
         discovery_cmd = 'iscsiadm -m discovery -t sendtargets -p {address}:{port}'.format(
@@ -137,14 +139,14 @@ class LinuxDriver(base.SystemDriverBase):
             LOG.info("no iscsi target found, skip login")
             return
 
-    def attach_volume(self, instance_obj, volume_obj):
+    def attach_volume(self, instance_obj, volume_obj, volume_access_path_gateway_ips):
         """ Attach a given iSCSI lun
 
         First check the /etc/iscsi/initiatorname.iscsi whether corrent, if
         not, corrent the configuration, then rescan the iscsi session.
         """
         self.discovery_target(instance_obj)
-        self.discovery_volume_target(instance_obj, volume_obj)
+        self.discovery_volume_target(instance_obj, volume_obj, volume_access_path_gateway_ips)
         _check_initiator_config(instance_obj.uuid)
 
         cmd = ['iscsiadm', '-m', 'session', '--rescan']

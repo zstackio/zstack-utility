@@ -28,6 +28,21 @@ from kvmagent.plugins.bmv2_gateway_agent import volume
 logger = log.get_logger(__name__)
 
 
+class AccessPathInfo():
+    def __init__(self):
+        self.accessPathId = None
+        self.name = None
+        self.accessPathIqn = None
+        self.targetCount = 0
+        self.gatewayIps = []
+
+
+class GetAccessPathRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(GetAccessPathRsp, self).__init__()
+        self.infos = []
+
+
 class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
 
     BM_PREPARE_PROVISION_NETWORK_PATH = \
@@ -50,6 +65,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         '/baremetal_gateway_agent/v2/instance/console'
     BM_GET_VOLUME_LUN_ID_PATH = \
         '/baremetal_gateway_agent/v2/instance/volume/lunId'
+    BM_GET_ACCESS_PATH_INFO_PATH = '/baremetal_gateway_agent/v2/instance/volume/access/path/info/get'
 
     BAREMETAL_LIB_DIR = '/var/lib/zstack/baremetalv2/'
     BAREMETAL_LOG_DIR = '/var/log/zstack/baremetalv2/'
@@ -1628,6 +1644,30 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         rsp.lunId = lun_id
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    def get_access_path_info(self, req):
+        rsp = GetAccessPathRsp()
+        volume_obj = VolumeObj.from_json(req)
+        volume_driver = volume.get_driver(None, volume_obj)
+        path = volume_obj.iscsiPath.replace('iscsi://', '')
+        array = path.split("/")
+        iqn = array[1]
+        access_paths = volume_driver.get_all_access_path()
+        for access_path in access_paths:
+            if iqn in access_path.iqn:
+                access_path_info = AccessPathInfo()
+                access_path_info.accessPathId = access_path.id
+                access_path_info.name = access_path.name
+                access_path_info.accessPathIqn = access_path.iqn
+                rsp.infos.append(access_path_info)
+
+        for accessInfo in rsp.infos:
+            targets = volume_driver.get_targets_by_access_path_id(accessInfo.accessPathId)
+            accessInfo.targetCount = len(targets)
+            accessInfo.gatewayIps = [target.gateway_ips for target in targets]
+
+        return jsonobject.dumps(rsp)
+
 
     def start(self):
         self.host_uuid = None
@@ -1653,6 +1693,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                                        self.console)
         http_server.register_async_uri(self.BM_GET_VOLUME_LUN_ID_PATH,
                                        self.get_lun_id)
+        http_server.register_async_uri(self.BM_GET_ACCESS_PATH_INFO_PATH, self.get_access_path_info)
 
     def stop(self):
         pass
