@@ -3085,7 +3085,7 @@ class Vm(object):
             logger.debug('block stream is waiting for %s blockRebase job completion' % disk_name)
             return not self._wait_for_block_job(disk_name, abort_on_error=True)
 
-        if not linux.wait_callback_success(wait_job, timeout=task_spec.timeout, ignore_exception_in_callback=True):
+        if not linux.wait_callback_success(wait_job, timeout=get_timeout(task_spec), ignore_exception_in_callback=True):
             raise kvmagent.KvmError('block stream failed')
 
         def wait_backing_file_cleared(_):
