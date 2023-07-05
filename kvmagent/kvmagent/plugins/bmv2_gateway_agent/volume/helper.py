@@ -256,7 +256,7 @@ class NbdDeviceOperator(object):
             cursor.execute(_connect)
 
         # Check the nbd dev connected
-        with bm_utils.transcantion(retries=5) as cursor:
+        with bm_utils.transcantion(retries=5, sleep_time=1) as cursor:
             cursor.execute(_check_connected)
 
     def disconnect(self, src_type='qemu'):
