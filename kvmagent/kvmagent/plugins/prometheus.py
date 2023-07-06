@@ -1225,7 +1225,10 @@ LoadPlugin virt
             mpid = linux.find_process_by_command('collectdmon', [conf_path])
 
             if not cpid:
-                bash_errorout('collectdmon -- -C %s' % conf_path)
+                if not mpid:
+                    bash_errorout('collectdmon -- -C %s' % conf_path)
+                else:
+                    bash_errorout('kill -TERM %s;collectdmon -- -C %s' % (mpid, conf_path))
             else:
                 bash_errorout('kill -TERM %s' % cpid)
                 if need_restart_collectd:
