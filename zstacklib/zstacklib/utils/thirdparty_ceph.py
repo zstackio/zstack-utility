@@ -342,7 +342,7 @@ class RbdDeviceOperator(object):
         block_volume = self.get_volume_by_id(block_volume_id)
         if not block_volume:
             raise "block volume %s cannot be find" % block_volume_id
-        api_body = {"block_volume": {"qos_enabled": "true",
+        api_body = {"block_volume": {"qos_enabled": True,
                                      "qos": {"max_total_bw": max_total_bw,
                                               "burst_total_iops": burst_total_iops,
                                               "burst_total_bw": burst_total_bw,
