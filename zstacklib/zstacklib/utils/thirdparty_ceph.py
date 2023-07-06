@@ -812,10 +812,11 @@ class RbdDeviceOperator(object):
                                  "pool_id": pool_id,
                                  "name": image_uuid,
                                  "flattened": False,
-                                 "qos": [{"max_total_bw": max_total_bw,
-                                          "burst_total_iops": burst_total_iops,
-                                          "burst_total_bw": burst_total_bw,
-                                          "max_total_iops": max_total_iops}],
+                                 "qos_enabled": True,
+                                 "qos": {"max_total_bw": max_total_bw,
+                                              "burst_total_iops": burst_total_iops,
+                                              "burst_total_bw": burst_total_bw,
+                                              "max_total_iops": max_total_iops},
                                  "description": description if description else "",
                                  "size": size}}
         else:
