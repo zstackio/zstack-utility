@@ -29,9 +29,9 @@ class ThirdpartyCephDriver(cephdriver.CephDriver):
                                                                                                           image_uuid,
                                                                                                           cmd.size,
                                                                                                           cmd.description,
-                                                                                                          cmd.burstTotalBw,
-                                                                                                          cmd.burstTotalIops,
                                                                                                           cmd.maxTotalBw,
+                                                                                                          cmd.burstTotalIops,
+                                                                                                          cmd.burstTotalBw,
                                                                                                           cmd.maxTotalIops)
         rsp.installPath = created_block_volume.volume_name
         rsp.xskyStatus = created_block_volume.status
@@ -71,8 +71,8 @@ class ThirdpartyCephDriver(cephdriver.CephDriver):
         RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).rollback_snapshot(volume_name, snapshot_name)
 
     def set_block_volume_qos(self, cmd, block_volume_id, burstTotalBw, burstTotalIops, maxTotalBw, maxTotalIops):
-        RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).set_volume_qos(block_volume_id, burstTotalBw,
-                                                                              burstTotalIops, maxTotalBw, maxTotalIops)
+        RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).set_volume_qos(block_volume_id, maxTotalBw, maxTotalIops,
+                                                                              burstTotalBw, burstTotalIops)
 
     def resize_block_volume(self, cmd, block_volume_id, size):
         return RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).resize_block_volume(block_volume_id, size)
