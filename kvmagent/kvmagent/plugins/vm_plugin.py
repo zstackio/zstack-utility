@@ -3565,7 +3565,7 @@ class Vm(object):
         source_files = []
         for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
             source_file = VmPlugin.get_source_file_by_disk(disk)
-            if source_file and not source_file.startswith("/dev/"):
+            if not source_file or not source_file.startswith("/dev/"):
                 continue
             source_files.append(source_file)
 
@@ -3591,6 +3591,16 @@ class Vm(object):
         libvirt_version = linux.get_libvirt_version()
         if LooseVersion(libvirt_version) < LooseVersion('6.0.0') or LooseVersion(libvirt_version) >= LooseVersion('8.0.0'):
             return False
+
+        disks_index = []
+        for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
+            index = VmPlugin.get_source_index_by_disk(disk)
+            if not index:
+                continue
+            disks_index.append(index)
+
+        if len(disks_index) > 1 and len(disks_index) != int(max(disks_index)) - int(min(disks_index)) + 1:
+            return True
 
         # node-name : libvirt-10-format
         pattern = r'libvirt\-[0-9]+\-format'
@@ -6793,6 +6803,12 @@ class VmPlugin(kvmagent.KvmAgent):
             return None
         attr_name = Vm.disk_source_attrname.get(disk.type_)
         return getattr(disk.source, attr_name + "_") if attr_name else None
+
+    @staticmethod
+    def get_source_index_by_disk(disk):
+        if not xmlobject.has_element(disk, 'source'):
+            return None
+        return disk.source.index_ if disk.source.index__ else None
 
     @kvmagent.replyerror
     def attach_data_volume(self, req):
