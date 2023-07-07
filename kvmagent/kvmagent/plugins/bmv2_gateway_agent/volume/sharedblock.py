@@ -89,6 +89,9 @@ class SharedBlockVolume(base.BaseVolume):
     def detach_volume(self):
         self.detach()
 
+    def roll_back_attach_volume(self):
+        self.detach_volume()
+
     def prepare_instance_resource(self):
         pass
 
