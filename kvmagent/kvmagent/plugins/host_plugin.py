@@ -2022,7 +2022,6 @@ done
                 logger.debug("addr %s" % addr)
                 if addr in cmd.ipAddresses:
                     if interface_name.startswith('br_'):
-                        interface_name = interface_name[3:].replace('_', '.')
                         output = shell.call("brctl show %s | awk '{print $NF}' | grep -vw interfaces" % interface_name).strip().split('\n')
                         non_virtual_eths = [name for name in output if
                                   not (name.startswith('outer') or name.startswith('ud') or name.startswith('vnic'))]
