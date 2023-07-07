@@ -4086,7 +4086,7 @@ class Vm(object):
             now = time.time()
             if now >= deadline and exception_if_timeout:
                 raise kvmagent.KvmError(
-                    'live merging snapshot chain failed, timeout after %d seconds' % deadline - begin_time)
+                    'live merging snapshot chain failed, timeout after %d seconds' % (deadline - begin_time))
 
             return deadline - now
 
@@ -4110,7 +4110,7 @@ class Vm(object):
                 return not self._wait_for_block_job(disk_name, abort_on_error=True)
 
             if not linux.wait_callback_success(wait_job, timeout=get_timeout_seconds()):
-                raise kvmagent.KvmError('live merging snapshot chain failed, block job not finished')
+                raise kvmagent.KvmError('live merging snapshot chain failed, block job timeout after {} s'.format(get_timeout(cmd)))
 
             # Double check (c.f. issue #757)
             current_backing = self._get_back_file(top)
