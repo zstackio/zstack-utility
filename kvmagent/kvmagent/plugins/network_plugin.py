@@ -381,7 +381,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         try:
             try:
                 for slave in cmd.slaves:
-                    if self._has_vlan_or_bridge(cmd.interfaceName):
+                    if self._has_vlan_or_bridge(slave.interfaceName):
                         raise Exception(slave.interfaceName + ' has a sub-interface or a bridge port')
             except Exception as e:
                 rsp.error = 'unable to create bonding[%s], because %s' % (cmd.bondName, str(e))
@@ -427,7 +427,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
         try:
             for interface in add_items:
-                if self._has_vlan_or_bridge(cmd.interfaceName):
+                if self._has_vlan_or_bridge(interface):
                     raise Exception(interface + ' has a sub-interface or a bridge port')
 
             if cmd.mode is not None or cmd.xmitHashPolicy is not None:
