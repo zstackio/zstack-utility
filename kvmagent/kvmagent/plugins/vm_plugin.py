@@ -2659,14 +2659,7 @@ class Vm(object):
     def _detach_data_volume(self, volume):
         assert volume.deviceId != 0, 'how can root volume gets detached???'
 
-        target_disk, disk_name = self._get_target_disk(volume, is_exception=False)
-        if not target_disk:
-            if self._volume_detach_timed_out(volume):
-                logger.debug('volume [installPath: %s] has been detached before' % volume.installPath)
-                self._clean_timeout_record(volume)
-                return
-            raise kvmagent.KvmError('unable to find data volume[%s] on vm[uuid:%s]' % (disk_name, self.uuid))
-
+        target_disk, disk_name = self._get_target_disk(volume)
         xmlstr = target_disk.dump()
         logger.debug('detaching volume from vm[uuid:%s]:\n%s' % (self.uuid, xmlstr))
         try:
@@ -6510,7 +6503,14 @@ class VmPlugin(kvmagent.KvmAgent):
                 raise kvmagent.KvmError(
                     'unable to detach volume[%s] to vm[uuid:%s], vm must be running or paused' % (volume.installPath, vm.uuid))
 
-            target_disk, _ = vm._get_target_disk(volume)
+            target_disk, _ = vm._get_target_disk(volume, is_exception=False)
+            if not target_disk:
+                if vm._volume_detach_timed_out(volume):
+                    logger.debug('volume [installPath: %s] has been detached before' % volume.installPath)
+                    vm._clean_timeout_record(volume)
+                    return jsonobject.dumps(rsp)
+                raise kvmagent.KvmError('unable to find data volume[%s] on vm[uuid:%s]' % (volume.installPath, vm.uuid))
+
             node_name = self.get_disk_device_name(target_disk)
             isc = ImageStoreClient()
             isc.stop_mirror(cmd.vmInstanceUuid, True, node_name)
