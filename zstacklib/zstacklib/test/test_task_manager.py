@@ -25,6 +25,16 @@ class TestTaskManager(unittest.TestCase):
         time.sleep(1)
         self.assertEqual(1, plugin1.progress_count)
 
+    def test_plugin_task_cancel_after_exception(self):
+        task_tame = "task-test-cancel-after-exception"
+        plugin1 = task_plugin1.TaskPlugin1()
+        plugin2 = task_plugin2.TaskPlugin2()
+        plugin1.run_fake_task(task_tame, secs=2, timeout=1, run_exception=True)
+        time.sleep(2)
+        self.assertEqual(task_tame in task_plugin1.canceld, True)
+        self.assertEqual(task_tame in task_plugin1.exception_catched, True)
+        self.assertEqual(0, plugin2.cancel_fake_task())
+
 
 if __name__ == "__main__":
     # import sys;sys.argv = ['', 'Test.testName']
