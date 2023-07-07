@@ -37,29 +37,30 @@ class ThirdPartyCephVolume(base.BaseVolume):
         return self.volume_obj.path.replace('ceph://', '')
 
     def attach(self):
-        RbdDeviceOperator(self.volume_obj.monIp, self.volume_obj.token, self.volume_obj.tpTimeout).connect(
-            self.instance_obj, self.volume_obj)
-
-    def establish_link_for_volume(self, iqn):
-        return RbdDeviceOperator(self.volume_obj.monIp, self.volume_obj.token, self.volume_obj.tpTimeout).establish_link_for_volume(
-            self.instance_obj, self.volume_obj, iqn)
-
-    def rollback_establish_link(self, iqn):
+        path = self.volume_obj.iscsiPath.replace('iscsi://', '')
+        array = path.split("/")
+        iqn = array[1]
         return RbdDeviceOperator(self.volume_obj.monIp, self.volume_obj.token,
-                                 self.volume_obj.tpTimeout).rollback_establish_link(
-            self.instance_obj, self.volume_obj, iqn)
+                                 self.volume_obj.tpTimeout).establish_link_for_volume(self.instance_obj,
+                                                                                      self.volume_obj, iqn)
 
-    def break_link(self, iqn):
-        return RbdDeviceOperator(self.volume_obj.monIp, self.volume_obj.token, self.volume_obj.tpTimeout).break_link(
-            self.instance_obj, self.volume_obj, iqn)
+    def roll_back_attach_volume(self):
+        path = self.volume_obj.iscsiPath.replace('iscsi://', '')
+        array = path.split("/")
+        iqn = array[1]
+        return RbdDeviceOperator(self.volume_obj.monIp, self.volume_obj.token,
+                                 self.volume_obj.tpTimeout).rollback_establish_link(self.instance_obj, self.volume_obj, iqn)
 
     def detach(self):
         RbdDeviceOperator(self.volume_obj.monIp, self.volume_obj.token, self.volume_obj.tpTimeout).disconnect(
             self.instance_obj, self.volume_obj)
 
     def detach_volume(self):
-        RbdDeviceOperator(self.volume_obj.monIp, self.volume_obj.token, self.volume_obj.tpTimeout).detach_volume(
-            self.instance_obj, self.volume_obj)
+        path = self.volume_obj.iscsiPath.replace('iscsi://', '')
+        array = path.split("/")
+        iqn = array[1]
+        return RbdDeviceOperator(self.volume_obj.monIp, self.volume_obj.token, self.volume_obj.tpTimeout).break_link(
+            self.instance_obj, self.volume_obj, iqn)
 
     def prepare_instance_resource(self):
         instance_gateway_ip = self.instance_obj.gateway_ip

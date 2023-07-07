@@ -66,6 +66,9 @@ class CephVolume(base.BaseVolume):
     def get_lun_id(self):
         pass
 
+    def roll_back_attach_volume(self):
+        self.detach_volume()
+
     def config_xdc(self):
         # if gateway do not have xdc.conf, pass this step
         cfg_path = '/etc/xdc/xdc.conf'
