@@ -320,7 +320,12 @@ check_project_num() {
     if [[ -f ${CURRENT_PROJECT_NUM} ]]; then
         current_project_num=`cat ${CURRENT_PROJECT_NUM}|awk -F "=" '{print $2}'`
     else
+      CURRENT_PROJECT_NUM=${ZSTACK_HOME}/PJNUM
+      if [[ -f ${CURRENT_PROJECT_NUM} ]]; then
+        current_project_num=`cat ${CURRENT_PROJECT_NUM}|awk -F "=" '{print $2}'`
+      else
         current_project_num=""
+      fi
     fi
 
     upgrade_project_num=${UPGRADE_PROJECT_NUM}
