@@ -999,6 +999,7 @@ server.document-root = "{{http_root}}"
 
 server.port = {{port}}
 server.bind = "169.254.169.254"
+server.max-worker=1
 dir-listing.activate = "enable"
 index-file.names = ( "index.html" )
 
