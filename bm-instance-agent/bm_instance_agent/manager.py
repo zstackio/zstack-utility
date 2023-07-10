@@ -63,7 +63,7 @@ class AgentManager(object):
         cmd = 'service zwatch-vm-agent restart'
         processutils.execute(cmd, shell=True)
 
-    def ping(self, bm_instance):
+    def ping(self, bm_instance, iqn_target_ip_map):
         instance_obj = BmInstanceObj.from_json(bm_instance)
 
         global BM_INSTANCE_UUID
@@ -72,6 +72,9 @@ class AgentManager(object):
         self._check_uuid_corrent(instance_obj.uuid)
         self.driver.ping(instance_obj)
         self.driver.discovery_target(instance_obj)
+        if iqn_target_ip_map:
+            for key, values in iqn_target_ip_map.items():
+                self.driver.discovery_target_through_access_path_gateway_ips(key, values)
         self._check_gateway_ip(instance_obj)
         return {'version': __version__, 'ping': {'bmInstanceUuid': BM_INSTANCE_UUID}}
 

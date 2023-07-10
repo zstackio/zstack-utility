@@ -10,6 +10,6 @@ class PingController(RestController):
         super(PingController, self).__init__()
 
     @api_utils.async_expose
-    def post(self, bm_instance):
+    def post(self, bm_instance, iqn_target_ip_map):
         agent_manager = manager.AgentManager()
-        return agent_manager.ping(bm_instance=bm_instance)
+        return agent_manager.ping(bm_instance=bm_instance, iqn_target_ip_map=iqn_target_ip_map)
