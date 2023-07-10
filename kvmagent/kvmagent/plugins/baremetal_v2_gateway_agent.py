@@ -1494,7 +1494,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         instance_obj = BmInstanceObj.from_json(req)
         volume_obj = VolumeObj.from_json(req)
         volume_driver = volume.get_driver(instance_obj, volume_obj)
-        with bm_utils.rollback(volume_driver.roll_back_attach_volume, req):
+        with bm_utils.rollback(volume_driver.roll_back_attach_volume):
             volume_driver.attach()
             # Due to the limit of iBFT, there is no need to add new lun
             # info into ipxe conf file

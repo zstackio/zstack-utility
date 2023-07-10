@@ -104,20 +104,21 @@ class LinuxDriver(base.SystemDriverBase):
 
     def discovery_volume_target(self, instance_obj, volume_obj, volume_access_path_gateway_ips):
         target_name = volume_obj.iscsi_path.replace('iscsi://', '').split("/")[1]
-        LOG.info("start discovery volume target %s" % (target_name))
+        self.discovery_target_through_access_path_gateway_ips(target_name, volume_access_path_gateway_ips)
 
-        cmd = 'iscsiadm -m session | grep %s' % target_name
-        LOG.info(cmd)
-        stdout, stderr = processutils.trycmd(cmd, shell=True)
-        if not stderr:
-            LOG.info("iscsi target:%s has logged" % target_name)
-            return
-
+    def discovery_target_through_access_path_gateway_ips(self, target_name, volume_access_path_gateway_ips):
         for gateway_ip in volume_access_path_gateway_ips:
-            LOG.info("start login_target:%s by ip %s" % (target_name, gateway_ip))
             self.login_target(target_name, gateway_ip)
 
     def login_target(self, target_name, address_ip, port=3260):
+        LOG.info("start login_target:%s by ip %s" % (target_name, address_ip))
+        cmd = 'iscsiadm -m session | grep %s | grep %s' % (target_name, address_ip)
+        LOG.info(cmd)
+        stdout, stderr = processutils.trycmd(cmd, shell=True)
+        if not stderr:
+            LOG.info("iscsi target:%s has logged by %s" % (target_name, address_ip))
+            return
+
         discovery_cmd = 'iscsiadm -m discovery -t sendtargets -p {address}:{port}'.format(
             address=address_ip,
             port=port,
@@ -126,7 +127,6 @@ class LinuxDriver(base.SystemDriverBase):
         try:
             stdout, stderr = processutils.execute(discovery_cmd, shell=True)
             if target_name in stdout:
-                LOG.info("login iscsi target: %s" % target_name)
                 target_login_cmd = ('iscsiadm --mode node --targetname {target_name} '
                                     '-p {address}:{port} --login').format(
                     target_name=target_name,

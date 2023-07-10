@@ -1464,15 +1464,29 @@ class CephAgent(plugin.TaskManager):
         rsp = GetAccessPathRsp()
         driver = self.get_third_party_driver(cmd)
         access_paths = driver.get_all_access_path(cmd)
-        for access_path in access_paths:
-            access_path_info = AccessPathInfo()
-            access_path_info.accessPathId = access_path.id
-            access_path_info.name = access_path.name
-            access_path_info.accessPathIqn = access_path.iqn
-            rsp.infos.append(access_path_info)
+
+        if cmd.iscsiPath:
+            iqn = cmd.iscsiPath.replace('iscsi://', '').split("/")[1]
+            for access_path in access_paths:
+                if access_path.iqn in iqn:
+                    access_path_info = AccessPathInfo()
+                    access_path_info.accessPathId = access_path.id
+                    access_path_info.name = access_path.name
+                    access_path_info.accessPathIqn = access_path.iqn
+                    rsp.infos.append(access_path_info)
+                    break
+        else:
+            for access_path in access_paths:
+                access_path_info = AccessPathInfo()
+                access_path_info.accessPathId = access_path.id
+                access_path_info.name = access_path.name
+                access_path_info.accessPathIqn = access_path.iqn
+                rsp.infos.append(access_path_info)
 
         for accessInfo in rsp.infos:
-            accessInfo.targetCount = len(driver.get_targets_by_access_path_id(cmd, accessInfo.accessPathId))
+            targets = driver.get_targets_by_access_path_id(cmd, accessInfo.accessPathId)
+            accessInfo.targetCount = len(targets)
+            accessInfo.gatewayIps = [target.gateway_ips for target in targets]
 
         rsp.infos = sorted(rsp.infos, key=lambda info: info.targetCount, reverse=True)
 
