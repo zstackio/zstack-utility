@@ -13,7 +13,7 @@ class Base(object):
 
     k_v_mapping = {}
 
-    allowed_keys = ['volume_access_path_gateway_ips']
+    allowed_keys = ['volume_access_path_gateway_ips','iqn_target_ip_map']
 
     def __init__(self):
         for v in self.k_v_mapping.values():
