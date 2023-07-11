@@ -81,7 +81,7 @@ download_agent_tools() {
   fi
   cd $TEMP_PATH
   if [ x"$AGENT_OS" == x"freebsd" ]; then
-    curl http://169.254.169.254/zwatch-vm-agent-freebsd --silent -o zwatch-vm-agent.download
+    curl http://169.254.169.254/zwatch-vm-agent_freebsd_amd64 --silent -o zwatch-vm-agent.download
   else
     curl http://169.254.169.254/zwatch-vm-agent --silent -o zwatch-vm-agent.download
   fi
