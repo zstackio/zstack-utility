@@ -1,0 +1,57 @@
+#!/bin/bash
+# the following is chkconfig init header
+#
+# shutdown vm:   shutdown vm daemon
+#
+# chkconfig: 2345 99 01
+# description:  This is a daemon instructed by zstack management server \
+#               to perform kvm related operations\
+#               See http://zstack.org
+#
+# processname: shutdownvm
+#
+#
+
+shutdown_vm() {
+    lock_file="/var/lock/shutdown_vms.lock"
+    if [ -e "$lock_file" ]; then
+        echo "Another instance is already running. Exiting..."
+        exit 1
+    fi
+    touch "$lock_file"
+
+    iptables -I 1 INPUT -s mn_ip -j DROP
+
+    vms=$(virsh list --name)
+
+    for vm in ${vms[@]}; do
+      echo "Closing VM: $vm"
+      virsh destroy $vm
+    done
+
+    echo "All VMs are destroyed"
+
+    if command -v sanlock >/dev/null 2>&1; then
+      vgs=$(vgs -a --noheadings | awk '!/zstack/ { print $1 }')
+      for vg in ${vgs[@]}; do
+        echo "lvmlockctl -r vg: $vg"
+        timeout 10 lvmlockctl -r $vg
+      done
+    fi
+
+    curl http://mn_ip:8080/zstack/asyncrest/sendcommand -X POST -H 'Content-Type:application/json' -H 'commandpath:/kvm/reporthoststop'  -d '{"hostIp": "host_ip"}' || true
+    echo "notify mn host to shut down"
+    rm "$lock_file"
+
+    echo "Virtual machines shutdown complete"
+}
+
+if [[ $1 == "start" ]]; then
+    echo "Starting the script..."
+elif [[ $1 == "stop" ]]; then
+    echo "Stopping the script..."
+    shutdown_vm
+else
+    echo "Invalid command. Usage: script.sh [start|stop]"
+    exit 1
+fi

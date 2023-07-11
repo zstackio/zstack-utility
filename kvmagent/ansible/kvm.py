@@ -46,6 +46,8 @@ isMini = 'false'
 isBareMetal2Gateway='false'
 releasever = ''
 unsupported_iproute_list = ["nfs4"]
+mn_ip = None
+isInstallHostShutdownHook = 'false'
 
 
 # get parameter from shell
@@ -498,6 +500,21 @@ def copy_kvm_files():
     args = "mode=755"
     copy_to_remote(kvmagt_svc_src, kvmagt_svc_dst, args, host_post_info)
 
+def copy_kvmagshutdown():
+    if isInstallHostShutdownHook == 'true':
+        kvmagshutdown_src = "files/kvm/shutdown_vm"
+        kvmagshutdown_dst = "/etc/init.d/"
+        copy_to_remote(kvmagshutdown_src, kvmagshutdown_dst, "mode=755", host_post_info)
+        run_remote_command("sed -i 's/mn_ip/%s/g; s/host_ip/%s/g' /etc/init.d/shutdown_vm" % (mn_ip, host) +
+                           " && ln -s -f /etc/init.d/shutdown_vm /etc/rc1.d/k01shutdown_vm "
+                           "&& ln -s -f /etc/init.d/shutdown_vm /etc/rc6.d/k01shutdown_vm "
+                           "&& ln -s -f /etc/init.d/shutdown_vm /etc/rc0.d/k01shutdown_vm "
+                           "&& chkconfig shutdown_vm on",
+                           host_post_info)
+    else:
+        run_remote_command("rm -rf /etc/init.d/shutdown_vm && rm -rf /etc/rc1.d/k01shutdown_vm && "
+                           "rm -rf /etc/rc6.d/k01shutdown_vm && rm -rf /etc/rc0.d/k01shutdown_vm", host_post_info)
+
 def copy_gpudriver():
     """copy mxgpu driver"""
     _src = "{}/mxgpu_driver.tar.gz".format(file_root)
@@ -789,6 +806,7 @@ copy_zs_scripts()
 copy_grubaa64_efi()
 copy_bond_conf()
 copy_i40e_driver()
+copy_kvmagshutdown()
 create_virtio_driver_directory()
 set_max_performance()
 do_libvirt_qemu_config()
