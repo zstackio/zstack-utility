@@ -191,9 +191,6 @@ class LinuxDriver(base.SystemDriverBase):
     def detach_volume_for_target_ip(self, instance_obj, volume_obj, target_ip):
         # Get the session id
         sid = None
-        cmd = ['iscsiadm', '-m', 'session', '|', 'grep', target_ip]
-        stdout, _ = processutils.execute(*cmd)
-        iqn = None
         volume_iqn = volume_obj.iscsi_path.replace('iscsi://', '').split("/")[1]
         if instance_obj.custom_iqn:
             iqn = instance_obj.custom_iqn
@@ -202,13 +199,17 @@ class LinuxDriver(base.SystemDriverBase):
         else:
             iqn = instance_obj.uuid
 
-        LOG.info("detach_volume iqn is %s" % iqn)
+        cmd = 'iscsiadm -m session | grep %s | grep %s' % (iqn, target_ip)
+        stdout, stderr = processutils.trycmd(cmd, shell=True)
+
+        LOG.info("detach_volume iqn is %s, target ip is %s" % (iqn, target_ip))
         for line in stdout.split('\n'):
             if iqn in line:
                 match = re.search(r'\[(\d+)\]', line)
                 if match:
                     sid = match.group(1)
                     LOG.info("detach_volume sid is %s for %s" % (sid, target_ip))
+                    break
         if not sid:
             raise exception.IscsiSessionIdNotFound(
                 volume_uuid=volume_obj.uuid, output=stdout)
@@ -233,14 +234,13 @@ class LinuxDriver(base.SystemDriverBase):
                     c=int(s[2]),
                     t=int(s[4]),
                     l=int(s[6]))
-                LOG.warning("device_scsi is %s" % s)
                 flag = True
                 continue
             # Get device name, example: 'sdc'
             if flag:
                 s = line.split()
-                LOG.warning("flag s is %s" % s)
                 device_name = s[3]
+                LOG.warning("detach device name is %s" % device_name)
                 break
 
         if not device_name or not device_scsi:
