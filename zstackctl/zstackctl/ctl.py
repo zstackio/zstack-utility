@@ -2798,37 +2798,41 @@ class InstallDbCmd(Command):
       ansible_python_interpreter: /usr/bin/python2
 
   tasks:
+    - name: set ansible_distribution_major_version
+      set_fact:
+        ansible_distribution_major_version: "{{ansible_distribution_major_version | int }}"
+
     - name: pre-install script
       script: $pre_install_script
 
     - name: install MySQL for RedHat 6 through user defined repos
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7' and yum_repo != 'false'
+      when: ansible_os_family == 'RedHat' and ansible_distribution_major_version < 7 and yum_repo != 'false'
       shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y mysql mysql-server
       register: install_result
 
     - name: install MySQL for RedHat 6 through system defined repos
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7' and yum_repo == 'false'
+      when: ansible_os_family == 'RedHat' and ansible_distribution_major_version < 7 and yum_repo == 'false'
       shell: "yum clean metadata; yum --nogpgcheck install -y mysql mysql-server "
       register: install_result
 
     - name: install MySQL for RedHat 7/Kylin10/openEuler/UnionTech kongzi from local
-      when: (ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repo != 'false') or ansible_os_family == 'Kylin' \
+      when: (ansible_os_family == 'RedHat' and ansible_distribution_major_version >= 7 and yum_repo != 'false') or ansible_os_family == 'Kylin' \
             or ansible_os_family == 'Openeuler' or (ansible_os_family == 'UnionTech' and ansible_distribution_release == 'kongzi')
       shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y  mariadb mariadb-server iptables-services
       register: install_result
 
     - name: install MySQL for RedHat 7/Kylin10 or from local
-      when: (ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and yum_repo == 'false') or (ansible_os_family == 'Kylin' and ansible_distribution_version == '10' and yum_repo == 'false')
+      when: (ansible_os_family == 'RedHat' and ansible_distribution_major_version >= 7 and yum_repo == 'false') or (ansible_os_family == 'Kylin' and ansible_distribution_major_version == '10' and yum_repo == 'false')
       shell: yum clean metadata; yum --nogpgcheck install -y  mariadb mariadb-server iptables-services
       register: install_result
 
     - name: install MySQL for AliOS 7 from local
-      when: ansible_os_family == 'Alibaba' and ansible_distribution_version >= '7' and yum_repo != 'false'
+      when: ansible_os_family == 'Alibaba' and ansible_distribution_major_version >= 7 and yum_repo != 'false'
       shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y  mariadb mariadb-server iptables-services
       register: install_result
 
     - name: install MySQL for AliOS 7 from local
-      when: ansible_os_family == 'Alibaba' and ansible_distribution_version >= '7' and yum_repo == 'false'
+      when: ansible_os_family == 'Alibaba' and ansible_distribution_major_version >= 7 and yum_repo == 'false'
       shell: yum clean metadata; yum --nogpgcheck install -y  mariadb mariadb-server iptables-services
       register: install_result
 
@@ -2855,16 +2859,16 @@ class InstallDbCmd(Command):
       script: $post_install_script
 
     - name: enable MySQL daemon on RedHat 6
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7'
+      when: ansible_os_family == 'RedHat' and ansible_distribution_major_version < 7
       service: name=mysqld state=restarted enabled=yes
 
     - name: enable MySQL daemon on RedHat 7/Kyliin10/openEuler/UnionTech kongzi
-      when: (ansible_os_family == 'RedHat' and ansible_distribution_version >= '7') or ansible_os_family == 'Kylin' or ansible_os_family == 'Openeuler'
+      when: (ansible_os_family == 'RedHat' and ansible_distribution_major_version >= 7) or ansible_os_family == 'Kylin' or ansible_os_family == 'Openeuler'
             or (ansible_os_family == 'UnionTech' and ansible_distribution_release == 'kongzi')
       service: name=mariadb state=restarted enabled=yes
 
     - name: enable MySQL daemon on AliOS 7
-      when: ansible_os_family == 'Alibaba' and ansible_distribution_version >= '7'
+      when: ansible_os_family == 'Alibaba' and ansible_distribution_major_version >= 7
       service: name=mariadb state=restarted enabled=yes
 
     - name: enable MySQL on Ubuntu
@@ -2885,19 +2889,19 @@ class InstallDbCmd(Command):
       shell: $grant_access_cmd
 
     - name: rollback MySQL installation on RedHat 6
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7' and change_root_result.rc != 0 and install_result.changed == True
+      when: ansible_os_family == 'RedHat' and ansible_distribution_major_version < 7 and change_root_result.rc != 0 and install_result.changed == True
       shell: rpm -ev mysql mysql-server
 
     - name: rollback MySQL installation on RedHat 7
-      when: ansible_os_family == 'RedHat' and ansible_distribution_version >= '7' and change_root_result.rc != 0 and install_result.changed == True
+      when: ansible_os_family == 'RedHat' and ansible_distribution_major_version >= 7 and change_root_result.rc != 0 and install_result.changed == True
       shell: rpm -ev mariadb mariadb-server
       
     - name: rollback MySQL installation on Kylin10
-      when: ansible_os_family == 'Kylin' and ansible_distribution_version == '10' and change_root_result.rc != 0 and install_result.changed == True
+      when: ansible_os_family == 'Kylin' and ansible_distribution_major_version == 10 and change_root_result.rc != 0 and install_result.changed == True
       shell: rpm -ev mariadb mariadb-server
 
     - name: rollback MySQL installation on AliOS 7
-      when: ansible_os_family == 'Alibaba' and ansible_distribution_version >= '7' and change_root_result.rc != 0 and install_result.changed == True
+      when: ansible_os_family == 'Alibaba' and ansible_distribution_major_version >= 7 and change_root_result.rc != 0 and install_result.changed == True
       shell: rpm -ev mariadb mariadb-server
 
     - name: rollback MySql installation on Ubuntu
