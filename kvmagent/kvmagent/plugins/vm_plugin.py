@@ -3427,6 +3427,7 @@ class Vm(object):
 
         destUrl = "qemu+tcp://{0}/system".format(cmd.destHostManagementIp)
         tcpUri = "tcp://{0}".format(cmd.destHostIp)
+        bandwidth = cmd.bandwidth if cmd.bandwidth > 0 else 0
 
         storage_migration_required = cmd.disks and len(cmd.disks.__dict__) != 0
         parameter_map = {}
@@ -3435,6 +3436,8 @@ class Vm(object):
             parameter_map[libvirt.VIR_MIGRATE_PARAM_MIGRATE_DISKS] = disks
             parameter_map[libvirt.VIR_MIGRATE_PARAM_URI] = tcpUri
             parameter_map[libvirt.VIR_MIGRATE_PARAM_DEST_XML] = destXml
+            if bandwidth != 0:
+                parameter_map[libvirt.VIR_MIGRATE_PARAM_BANDWIDTH] = bandwidth
         else:
             disks, destXml = self._build_domain_new_xml({})
         logger.debug("migrate dest xml:%s" % destXml)
@@ -3541,7 +3544,7 @@ class Vm(object):
             if storage_migration_required:
                 self.domain.migrateToURI3(destUrl, parameter_map, flag)
             else:
-                self.domain.migrateToURI2(destUrl, tcpUri, destXml, flag, None, 0)
+                self.domain.migrateToURI2(destUrl, tcpUri, destXml, flag, None, bandwidth)
 
         try:
             logger.debug('migrating vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
@@ -7214,7 +7217,10 @@ class VmPlugin(kvmagent.KvmAgent):
 
         logger.info("start copying %s:%s to %s ..." % (vmUuid, disk_name, task_spec.newVolume.installPath))
         with BlockCopyDaemon(task_spec, get_vm_by_uuid(vmUuid).domain, disk_name):
-            cmd = 'virsh blockcopy --domain {} {} --xml {} --pivot --wait --transient-job --reuse-external'.format(vmUuid, disk_name, disk_xml)
+            bandwidth = ' --bandwidth {}'.format(task_spec.bandwidth) if task_spec.bandwidth > 0 else ''
+            cmd = 'virsh blockcopy --domain {} {} --xml {} --pivot --wait --transient-job --reuse-external{}'.format(
+                vmUuid, disk_name, disk_xml, bandwidth)
+
             shell_cmd = shell.ShellCmd(cmd)
             shell_cmd(False)
             if shell_cmd.return_code != 0 or not check_volume():
