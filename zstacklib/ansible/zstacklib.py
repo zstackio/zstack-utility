@@ -2089,12 +2089,18 @@ class ZstackLib(object):
 
     def _basic_rpm_set(self):
         basic = {
-            "libselinux-python",
             "gcc",
             "autoconf",
             "vim-minimal",
         }
 
+        if self.distro in ["kylin_zstack", "kylin_tercel", "kylin_sword"]:
+            basic.add("chrony")
+            basic.add("iptables")
+            basic.add("python2-libselinux")
+            return basic
+
+        basic.add("libselinux-python")
         if self.distro_version >= 7:
             # to avoid install some pkgs on virtual router which release is
             # Centos 6.x
