@@ -108,7 +108,8 @@ command = 'if [ -d /opt/zstack/chroot/usr/lib64 ]; then grep -c  "^/opt/zstack/c
 run_remote_command(command, host_post_info)
 
 if host_info.distro in RPM_BASED_OS:
-    qemu_pkg = "fuse-sshfs nmap collectd tar pyparted net-tools"
+    qemu_pkg = "fuse-sshfs nmap collectd tar net-tools"
+    qemu_pkg = qemu_pkg + ' python2-pyparted nettle' if releasever in kylin else qemu_pkg + ' pyparted'
 
     if not remote_bin_installed(host_post_info, "qemu-img", return_status=True):
         pkg = 'qemu-img-ev' if releasever in ['c74'] else 'qemu-img'
@@ -137,7 +138,7 @@ if host_info.distro in RPM_BASED_OS:
             run_remote_command(command, host_post_info)
 
             if releasever in kylin:
-                command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (
+                command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg || true; done;") % (
                 ky10_update_list, zstack_repo)
                 run_remote_command(command, host_post_info)
     else:
@@ -149,12 +150,12 @@ if host_info.distro in RPM_BASED_OS:
             run_remote_command(command, host_post_info)
 
             if releasever in kylin:
-                command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (
+                command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg || true; done;") % (
                 ky10_update_list, zstack_repo)
                 run_remote_command(command, host_post_info)
 
                 if IS_LOONGARCH64 and yum_check_package("qemu", host_post_info):
-                    command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (
+                    command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg|| true; done;") % (
                         ky10sp3_update_list, zstack_repo)
                     run_remote_command(command, host_post_info)
 
