@@ -49,6 +49,7 @@ host_post_info.post_url = post_url
 host_post_info.chrony_servers = chrony_servers
 host_post_info.transport = 'local'
 
+
 # include zstacklib.py
 host_info = get_remote_host_info_obj(host_post_info)
 releasever = get_host_releasever(host_info)

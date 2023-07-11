@@ -38,7 +38,7 @@ pkg_zstacklib = ""
 yum_server = ""
 apt_server = ""
 trusted_host = ""
-enable_networkmanager_list = ["ns10", "euler20", "uos1021a"]
+enable_networkmanager_list = ["ns10", "euler20", "uos1021a", "oe2203sp1"]
 supported_arch_list = ["x86_64", "aarch64", "mips64el", "loongarch64"]
 
 RPM_BASED_OS = ["kylin_zstack", "kylin_tercel", "kylin_sword", "alibaba", "centos", "openeuler", "uniontech_kongzi", "redhat"]
@@ -51,6 +51,7 @@ qemu_alias = {
     "c74": "qemu-kvm",
     "c76": "qemu-kvm",
     "euler20": "qemu",
+    "oe2203sp1": "qemu",
     "uos1021a": "qemu-kvm"
 }
 
@@ -503,6 +504,7 @@ def get_host_releasever(host_info):
         "centos core 7.2.1511": "c74", # c74 for old releases
         "centos core 7.1.1503": "c74",
         "openeuler lts-sp1 20.03": "euler20",
+        "openeuler lts-sp1 22.03": "oe2203sp1",
         "uos fou 20": "uos20",
         "uniontech_kongzi kongzi 20": "uos1021a",
     }
