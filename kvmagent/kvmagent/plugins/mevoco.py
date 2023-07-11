@@ -1021,7 +1021,7 @@ $HTTP["remoteip"] =~ "^(.*)$" {
     } else $HTTP["remoteip"] == "{{ip}}" {
         url.rewrite-once = (
             "^/zwatch-vm-agent.linux-amd64.bin$" => "/zwatch-vm-agent",
-            "^/zwatch-vm-agent.freebsd-amd64.bin$" => "/zwatch-vm-agent-freebsd",
+            "^/zwatch-vm-agent.freebsd-amd64.bin$" => "/zwatch-vm-agent_freebsd_amd64",
             "^/zwatch-vm-agent.linux-aarch64.bin$" => "/zwatch-vm-agent_aarch64",
             "^/zwatch-vm-agent.linux-mips64el.bin$" => "/collectd_exporter_mips64el",
             "^/zwatch-vm-agent.linux-loongarch64.bin$" => "/collectd_exporter_loongarch64",
@@ -1041,7 +1041,7 @@ $HTTP["remoteip"] =~ "^(.*)$" {
     } else $HTTP["remoteip"] =~ "^(.*)$" {
         url.rewrite-once = (
             "^/zwatch-vm-agent.linux-amd64.bin$" => "/zwatch-vm-agent",
-            "^/zwatch-vm-agent.freebsd-amd64.bin$" => "/zwatch-vm-agent-freebsd",
+            "^/zwatch-vm-agent.freebsd-amd64.bin$" => "/zwatch-vm-agent_freebsd_amd64",
             "^/zwatch-vm-agent.linux-aarch64.bin$" => "/zwatch-vm-agent_aarch64",
             "^/zwatch-vm-agent.linux-mips64el.bin$" => "/collectd_exporter_mips64el",
             "^/zwatch-vm-agent.linux-loongarch64.bin$" => "/collectd_exporter_loongarch64",
@@ -1095,7 +1095,7 @@ mimetype.assign = (
 
     def apply_zwatch_vm_agent(self, http_root):
         agent_file_source_path = "/var/lib/zstack/kvm/zwatch-vm-agent"
-        freebsd_agent_file_source_path = "/var/lib/zstack/kvm/zwatch-vm-agent-freebsd"
+        freebsd_agent_file_source_path = "/var/lib/zstack/kvm/zwatch-vm-agent_freebsd_amd64"
         if not os.path.exists(agent_file_source_path):
             logger.error("Can't find file %s" % agent_file_source_path)
             return
@@ -1111,7 +1111,7 @@ mimetype.assign = (
             linux.rm_file_force(agent_file_target_path)
             bash_r("ln -s %s %s" % (agent_file_source_path, agent_file_target_path))
 
-        freebsd_agent_file_target_path = os.path.join(http_root, "zwatch-vm-agent-freebsd")
+        freebsd_agent_file_target_path = os.path.join(http_root, "zwatch-vm-agent_freebsd_amd64")
         if not os.path.exists(freebsd_agent_file_target_path):
             bash_r("ln -s %s %s" % (freebsd_agent_file_source_path, freebsd_agent_file_target_path))
         elif not os.path.islink(freebsd_agent_file_target_path):

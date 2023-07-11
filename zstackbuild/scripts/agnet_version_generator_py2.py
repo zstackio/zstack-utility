@@ -45,7 +45,7 @@ class AgentVersionBuilder(object):
             AgentVersionItem('linux-aarch64').with_filepath('zwatch-vm-agent_aarch64'),
             AgentVersionItem('linux-mips64el').with_filepath('zwatch-vm-agent_mips64el'),
             AgentVersionItem('linux-loongarch64').with_filepath('zwatch-vm-agent_loongarch64'),
-            AgentVersionItem('freebsd-amd64').with_filepath('zwatch-vm-agent-freebsd')
+            AgentVersionItem('freebsd-amd64').with_filepath('zwatch-vm-agent_freebsd_amd64')
         ]
 
     def _read_version_from_source(self):
