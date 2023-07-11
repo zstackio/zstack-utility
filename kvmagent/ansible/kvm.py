@@ -568,6 +568,18 @@ def copy_bond_conf():
     _dst = "/etc/modprobe.d/"
     copy_to_remote(_src, _dst, "mode=644", host_post_info)
 
+
+def copy_cube_tools():
+    """copy cube required tools from mn_node to host_node"""
+    cube_root_dst = "/usr/local/hyperconverged/"
+    _src = os.path.join(cube_root_dst, "tools/hd_ctl")
+    if os.path.exists(_src):
+        _dst = os.path.join(cube_root_dst, "tools")
+        copy_to_remote(_src, _dst, "mode=755", host_post_info)
+        command = "ln -sf /usr/local/hyperconverged/tools/hd_ctl/hd_ctl /bin/"
+        run_remote_command(command, host_post_info)
+
+
 def do_libvirt_qemu_config():
     """special configration"""
 
@@ -808,6 +820,7 @@ copy_grubaa64_efi()
 copy_bond_conf()
 copy_i40e_driver()
 copy_kvmagshutdown()
+copy_cube_tools()
 create_virtio_driver_directory()
 set_max_performance()
 do_libvirt_qemu_config()
