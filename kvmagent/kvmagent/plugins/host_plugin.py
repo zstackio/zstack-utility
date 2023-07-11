@@ -1549,11 +1549,15 @@ if __name__ == "__main__":
         elif shell.run("export YUM0={};yum --disablerepo=* --enablerepo=qemu-kvm-ev-mn repoinfo".format(releasever)) != 0:
             rsp.success = False
             rsp.error = "no qemu-kvm-ev-mn repo found, cannot update host os"
-        elif shell.run(yum_cmd) != 0:
-            rsp.success = False
-            rsp.error = "failed to update host os using zstack-mn,qemu-kvm-ev-mn repo"
         else:
-            logger.debug("successfully run: %s" % yum_cmd)
+            shell_cmd = shell.ShellCmd(yum_cmd, None, False)
+            shell_cmd(False)
+            if shell_cmd.return_code == 0:
+                logger.debug("successfully run: %s" % yum_cmd)
+            else:
+                rsp.success = False
+                rsp.error = "failed to update host os using zstack-mn,qemu-kvm-ev-mn repo, stdout: %s, stderr: %s" % (shell_cmd.stdout, shell_cmd.stderr)
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
