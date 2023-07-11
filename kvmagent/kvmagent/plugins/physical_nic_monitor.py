@@ -175,16 +175,19 @@ class PhysicalNicMonitor(kvmagent.KvmAgent):
                     self.history_nics.append(new_nic)
             # old nic alarm
             if nic in self.nic_info:
-                if self.nic_info[nic] != status:
+                if self.nic_info[nic] != status and ((status == 'down') ^ ipUtils.get_nic_state_by_name(nic)):
                     logger.info("old physical_nic active detect, IfName[%s]---State[%s]" % (nic, status))
                     self.nic_info[nic] = status
                     self.send_alarm(nic, status)
             # new nic alarm
             else:
                 if status != 'down' and nic in self.history_nics:
-                    logger.info("new physical_nic active detect, IfName[%s]---State[%s]" % (nic, status))
-                    self.nic_info[nic] = status
-                    self.send_alarm(nic, status)
+                    if ipUtils.get_nic_state_by_name(nic):
+                        logger.info("new physical_nic active detect, IfName[%s]---State[%s]" % (nic, status))
+                        self.nic_info[nic] = status
+                        self.send_alarm(nic, status)
+                    else:
+                        logger.warn("new physical_nic detect, but IfName[%s] has been down" % nic)
 
     @lock.lock('physical_nic_monitor')
     def physical_nic_monitor(self):
