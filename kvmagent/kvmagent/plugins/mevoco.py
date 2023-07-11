@@ -361,7 +361,8 @@ class DhcpEnv(object):
 
         ip4 = iproute.IpNetnsShell(NAMESPACE_NAME).get_ip_address(4, INNER_DEV)
         ip6 = iproute.IpNetnsShell(NAMESPACE_NAME).get_ip_address(6, INNER_DEV)
-        if (ip4 is None and PREFIX_LEN is not None) or (ip6 is None and PREFIX6_LEN is not None):
+        if ((ip4 is None or ip4 != DHCP_IP) and PREFIX_LEN is not None) \
+                or ((ip6 is None or ip6 != DHCP6_IP) and PREFIX6_LEN is not None):
             iproute.IpNetnsShell(NAMESPACE_NAME).flush_ip_address(INNER_DEV)
             if DHCP_IP is not None:
                 iproute.IpNetnsShell(NAMESPACE_NAME).add_ip_address(DHCP_IP, PREFIX_LEN, INNER_DEV)
