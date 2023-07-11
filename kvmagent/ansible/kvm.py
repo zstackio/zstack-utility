@@ -439,7 +439,7 @@ def install_kvm_pkg():
 
 def copy_tools():
     """copy binary tools"""
-    tool_list = ['collectd_exporter', 'node_exporter', 'dnsmasq', 'zwatch-vm-agent', 'zwatch-vm-agent-freebsd', 'pushgateway', 'sas3ircu', 'zs-raid-heartbeat']
+    tool_list = ['collectd_exporter', 'node_exporter', 'dnsmasq', 'zwatch-vm-agent', 'zwatch-vm-agent_freebsd_amd64', 'pushgateway', 'sas3ircu', 'zs-raid-heartbeat']
     for tool in tool_list:
         arch_lable = '' if host_info.host_arch == 'x86_64' else '_' + host_info.host_arch
         real_name = tool + arch_lable
