@@ -1659,6 +1659,15 @@ def get_ipv4_addr_by_nic(nic):
           iproute.query_addresses(ifname=nic, ip_version=4)]
     return ip
 
+def get_nic_state_by_name(nic):
+    try:
+        if nic :
+            return read_nic_carrier("/sys/class/net/%s/carrier" % nic).strip() == "1"
+        else:
+            return False
+    except IOError:
+        return False
+
 def get_bond_info_by_nic(nic):
     bonds = read_file("/sys/class/net/bonding_masters")
     if bonds:

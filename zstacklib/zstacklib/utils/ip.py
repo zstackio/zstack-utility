@@ -8,6 +8,9 @@ import socket
 
 import linux
 import bash
+from zstacklib.utils import lock
+
+is_physical_interface_cache = {}
 
 
 class IpAddress(object):
@@ -291,7 +294,34 @@ def get_smart_nic_representors():
             return []
     return nic_representors
 
+
+def is_physical_interface(interface_name):
+    virtual_drivers = [
+        "virtio_net",  # vNIC
+        "bridge",      # Bridge
+        "tun",         # TUN/TAP (vTap)
+        "veth",        # vEth (Docker, LXC, etc.)
+        "vmxnet3",     # VMWare vmxnet3
+        "e1000e",      # Intel e1000e (common in virtualized environments)
+    ]
+
+    if is_physical_interface_cache[interface_name] is not None:
+        return is_physical_interface_cache[interface_name]
+
+    output = bash.bash_o("ethtool -i %s" % interface_name)
+    if "driver" in output and "bus-info" in output:
+        driver = output.split("driver: ")[1].split("\n")[0].strip()
+        if driver not in virtual_drivers:
+            is_physical_interface_cache[interface_name] = True
+            return True
+
+    is_physical_interface_cache[interface_name] = False
+    return False
+
+
+@lock.lock('get_host_physicl_nics')
 def get_host_physicl_nics():
+    nic_result = []
     nic_all_physical = bash.bash_o("find /sys/class/net -type l -not \( -lname '*virtual*' -or -lname '*usb*' \) -printf '%f\\n'").splitlines()
     if nic_all_physical is None or len(nic_all_physical) == 0:
         return []
@@ -321,7 +351,11 @@ def get_host_physicl_nics():
         if nic not in smart_nic_representors:
             nic_without_smart_nic_representors.append(nic)
 
-    return nic_without_smart_nic_representors
+    for nic in nic_without_smart_nic_representors:
+        if is_physical_interface(nic):
+            nic_result.append(nic)
+
+    return nic_result
 
 def get_prefix_len_by_netmask(netmask):
     ip_int = int(socket.inet_aton(netmask).encode('hex'), 16)
