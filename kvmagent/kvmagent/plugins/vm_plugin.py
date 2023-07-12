@@ -2142,7 +2142,8 @@ class Vm(object):
     ISO_DEVICE_LETTERS = 'cde'
     disk_source_attrname = {
         "file": "file",
-        "block": "dev"
+        "block": "dev",
+        "network": "name"
     }
 
     timeout_detached_vol = set()
@@ -3521,6 +3522,7 @@ class Vm(object):
                     else:
                         raise kvmagent.KvmError(err)
 
+        self._is_vm_paused_with_readonly_flag_on_disk()
         is_migrate_without_bitmaps = self._is_vm_migrate_without_dirty_bitmap()
         check_mirror_jobs(cmd.vmUuid, is_migrate_without_bitmaps)
 
@@ -3545,10 +3547,51 @@ class Vm(object):
 
         logger.debug('successfully migrated vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
 
+    def _is_vm_paused_with_readonly_flag_on_disk(self):
+        states = get_all_vm_states()
+        state = states.get(self.uuid)
+        if state != Vm.VM_STATE_PAUSED:
+            return
+
+        source_files = []
+        for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
+            source_file = VmPlugin.get_source_file_by_disk(disk)
+            if not source_file or not source_file.startswith("/dev/"):
+                continue
+            source_files.append(source_file)
+
+        fds = self._get_qemu_fd_for_lvs_in_use(source_files)
+        if not fds:
+            return
+
+        if any('r' in fd for fd in fds):
+            raise kvmagent.KvmError('cannot migrate vm [uuid: %s], it has read-only flags on disks' % self.uuid)
+
+    @bash.in_bash
+    def _get_qemu_fd_for_lvs_in_use(self, lv_paths):
+        dm_paths = [os.path.realpath(lv_path) for lv_path in lv_paths]
+        vm_pid = linux.get_vm_pid(self.uuid)
+        if not vm_pid:
+            return None
+
+        lsof_lines = bash.bash_o("lsof -p %s" % vm_pid).splitlines()
+        lines = linux.filter_lines_by_str_list(lsof_lines, dm_paths)
+        return [line.split()[3] for line in lines]
+
     def _is_vm_migrate_without_dirty_bitmap(self):
         libvirt_version = linux.get_libvirt_version()
         if LooseVersion(libvirt_version) < LooseVersion('6.0.0') or LooseVersion(libvirt_version) >= LooseVersion('8.0.0'):
             return False
+
+        disks_index = []
+        for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
+            index = VmPlugin.get_source_index_by_disk(disk)
+            if not index:
+                continue
+            disks_index.append(index)
+
+        if len(disks_index) > 1 and len(disks_index) != int(max(disks_index)) - int(min(disks_index)) + 1:
+            return True
 
         # node-name : libvirt-10-format
         pattern = r'libvirt\-[0-9]+\-format'
@@ -6738,8 +6781,16 @@ class VmPlugin(kvmagent.KvmAgent):
     @staticmethod
     def get_source_file_by_disk(disk):
         # disk->type: zstacklib.utils.xmlobject.XmlObject, attr name is endwith '_'
+        if not xmlobject.has_element(disk, 'source'):
+            return None
         attr_name = Vm.disk_source_attrname.get(disk.type_)
         return getattr(disk.source, attr_name + "_") if attr_name else None
+
+    @staticmethod
+    def get_source_index_by_disk(disk):
+        if not xmlobject.has_element(disk, 'source'):
+            return None
+        return disk.source.index_ if disk.source.index__ else None
 
     @kvmagent.replyerror
     def attach_data_volume(self, req):
