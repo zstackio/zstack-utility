@@ -151,7 +151,7 @@ if host_info.distro in RPM_BASED_OS:
                 run_remote_command(command, host_post_info)
 
                 if IS_LOONGARCH64 and yum_check_package("qemu", host_post_info):
-                    command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg|| true; done;") % (
+                    command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg || true; done;") % (
                         ky10sp3_update_list, zstack_repo)
                     run_remote_command(command, host_post_info)
 
