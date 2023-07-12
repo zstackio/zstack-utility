@@ -115,6 +115,7 @@ class CheckVxlanCidrResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(CheckVxlanCidrResponse, self).__init__()
         self.vtepIp = None
+        self.physicalInterfaceName = None
 
 class CreateVxlanBridgeResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -590,46 +591,61 @@ class NetworkPlugin(kvmagent.KvmAgent):
         if len(temp_nics) != 0:
             nics = temp_nics
 
-        ips = set(map(lambda d: d.values()[0], nics))
-        nicnames = list(set(map(lambda d: d.keys()[0], nics)))
+        temp_ips = [d.values()[0] for d in nics]
+        ips = sorted(set(temp_ips), key=temp_ips.index)
+        temp_nicnames = [d.keys()[0] for d in nics]
+        nicnames = sorted(set(temp_nicnames), key=temp_nicnames.index)
 
-        ''' there are 4 cases:
+        ''' there are 7 cases:
             1. there is no interface has ip address matched the vxlan or vxpool cidr
-            2. there is only 1 interface with 1 ip address matched
-            3. there is only 1 interface with more than 1 ip address matched
-               in this case, we always return the first 1 ip address
-            4. there has multiple interfaces with ip address matched
-            #1, #4 will response error
+            2. the interface name is provided:
+                2.1 there is only 1 interface with 1 ip address matched
+                2.2 there is only 1 interface with more than 1 ip address matched
+                    in this case, we always return the first 1 ip address
+                2.3 there are multiple interfaces with ip address matched
+            3. the interface name is not provided
+                3.1 there is only 1 interface with 1 ip address matched
+                3.2 there is only 1 interface with more than 1 ip address matched
+                    in this case, we always return the first 1 ip address
+                3.3 there are multiple interfaces with ip address matched
+            #1, #3.3 will response error
         '''
 
-        if len(nicnames) == 0:
+        if not nicnames:
             # case #1
             rsp.error = "can not find qualify interface for cidr [%s]" % cmd.cidr
-        elif len(nicnames) == 1 and interf:
-            # case #2 #3
-            if nics[0].keys()[0] == interf:
-                rsp.vtepIp = nics[0].values()[0]
-                rsp.success = True
-            else:
-                rsp.error = "the interface with cidr [%s] is not the interface [%s] which provided" % (cmd.cidr, interf)
-        elif len(nicnames) == 1:
-            # case #2 #3
-            rsp.vtepIp = nics[0].values()[0]
-            rsp.success = True
-        elif len(nicnames) > 1 and interf:
-            # case #4
-            for nic in nics:
-                if nic.keys()[0] == interf:
-                    rsp.vtepIp = nics[0].values()[0]
+            return jsonobject.dumps(rsp)
+
+        if interf:
+            # case #2.1 #2.2(if only 1 interface) and case #2.3
+            for nic in nicnames:
+                if nic == interf:
+                    rsp.vtepIp = ips[0]
+                    rsp.physicalInterfaceName = nic
                     rsp.success = True
-            if rsp.vtepIp == None:
-                rsp.error = "no interface both qualify with cidr [%s] and interface name [%s] provided" % (cmd.cidr, interf)
-        elif len(nicnames) == 2 and (linux.is_vif_on_bridge(nicnames[0], nicnames[1]) or linux.is_vif_on_bridge(nicnames[1], nicnames[0])):
-            # Note(WeiW): This is a work around for case of a interface bound to a bridge and have same ip address,
-            # see at zstackio/issues#4056, but note this wont make assurance that routing is true
-            rsp.vtepIp = nics[0].values()[0]
+            if rsp.vtepIp is None:
+                rsp.error = "no interface both qualify with cidr [%s] and interface name [%s] provided" % (cmd.cidr,
+                                                                                                           interf)
+            return jsonobject.dumps(rsp)
+
+        if len(nicnames) == 1:
+            # case #3.1 #3.2
+            rsp.vtepIp = ips[0]
+            rsp.physicalInterfaceName = nicnames[0]
+            rsp.success = True
+        elif len(nicnames) == 2 and linux.is_vif_on_bridge(nicnames[0], nicnames[1]):
+            # Note(WeiW): This is a workaround for case of an interface bound to a bridge and have same ip address,
+            # see at zstackio/issues#4056, but note this won't make assurance that routing is true
+            rsp.vtepIp = ips[0]
+            rsp.physicalInterfaceName = nicnames[0]
+            rsp.success = True
+        elif len(nicnames) == 2 and linux.is_vif_on_bridge(nicnames[1], nicnames[0]):
+            # same as above, but with the interface names reversed
+            rsp.vtepIp = ips[0]
+            rsp.physicalInterfaceName = nicnames[1]
             rsp.success = True
         elif len(nicnames) > 1 and len(ips) == 1:
+            # case #3.3
             rsp.error = "the qualified vtep ip bound to multiple interfaces"
         else:
             rsp.error = "multiple interface qualify with cidr [%s] and no interface name provided" % cmd.cidr
@@ -789,7 +805,6 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
-
     @lock.lock('bridge')
     @kvmagent.replyerror
     def create_vxlan_bridge(self, req):
@@ -804,7 +819,6 @@ class NetworkPlugin(kvmagent.KvmAgent):
         self.create_single_vxlan_bridge(cmd)
 
         return jsonobject.dumps(rsp)
-
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -823,9 +837,9 @@ class NetworkPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(KVM_POPULATE_FDB_L2VXLAN_NETWORK_PATH, self.populate_vxlan_fdb)
         http_server.register_async_uri(KVM_POPULATE_FDB_L2VXLAN_NETWORKS_PATH, self.populate_vxlan_fdbs)
         http_server.register_async_uri(KVM_SET_BRIDGE_ROUTER_PORT_PATH, self.set_bridge_router_port)
-	
-	http_server.register_async_uri(KVM_DELETE_L2NOVLAN_NETWORK_PATH, self.delete_novlan_bridge)
+        http_server.register_async_uri(KVM_DELETE_L2NOVLAN_NETWORK_PATH, self.delete_novlan_bridge)
         http_server.register_async_uri(KVM_DELETE_L2VLAN_NETWORK_PATH, self.delete_vlan_bridge)
         http_server.register_async_uri(KVM_DELETE_L2VXLAN_NETWORK_PATH, self.delete_vxlan_bridge)
+
     def stop(self):
         pass
