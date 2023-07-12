@@ -90,7 +90,7 @@ class VolumeObj(Base):
     }
     """
 
-    allowed_keys = ['uuid', 'device_id', 'iscsi_path']
+    allowed_keys = ['uuid', 'device_id', 'iscsi_path', 'name']
 
     @classmethod
     def from_json(cls, volume):
