@@ -23,6 +23,8 @@ ADD_INTERFACE_TO_BRIDGE_PATH = '/network/bridge/addif'
 CREATE_BONDING_PATH = '/network/bonding/create'
 UPDATE_BONDING_PATH = '/network/bonding/update'
 DELETE_BONDING_PATH = '/network/bonding/delete'
+ATTACH_NIC_TO_BONDING_PATH = '/network/bonding/attachnic'
+DETACH_NIC_FROM_BONDING_PATH = '/network/bonding/detachnic'
 KVM_REALIZE_L2NOVLAN_NETWORK_PATH = "/network/l2novlan/createbridge"
 KVM_REALIZE_L2VLAN_NETWORK_PATH = "/network/l2vlan/createbridge"
 KVM_CHECK_L2NOVLAN_NETWORK_PATH = "/network/l2novlan/checkbridge"
@@ -197,6 +199,26 @@ class DeleteBondingCmd(kvmagent.AgentCommand):
 class DeleteBondingResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(DeleteBondingResponse, self).__init__()
+
+class AttachNicToBondCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(AttachNicToBondCmd, self).__init__()
+        self.bondName = None
+        self.slaves = None # type: list[HostNetworkInterfaceStruct]
+
+class AttachNicToBondResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(AttachNicToBondResponse, self).__init__()
+
+class DetachNicFromBondCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(DetachNicFromBondCmd, self).__init__()
+        self.bondName = None
+        self.slaves = None # type: list[HostNetworkInterfaceStruct]
+
+class DetachNicFromBondResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(DetachNicFromBondResponse, self).__init__()
 
 class HostNetworkInterfaceStruct(object):
     def __init__(self):
@@ -458,6 +480,41 @@ class NetworkPlugin(kvmagent.KvmAgent):
     @lock.lock('bonding')
     @kvmagent.replyerror
     @in_bash
+    def attach_nic_to_bonding(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AttachNicToBondResponse()
+
+        try:
+            for interface in cmd.slaves:
+                if self._has_vlan_or_bridge(interface.interfaceName):
+                    raise Exception(interface.interfaceName + ' has a sub-interface or a bridge port')
+            for interface in cmd.slaves:
+                shell.call('/usr/local/bin/zs-nic-to-bond -a %s %s' % (cmd.bondName, interface))
+        except Exception as e:
+            logger.warning(traceback.format_exc())
+            rsp.error = 'unable to attach nic to bonding[%s], because %s' % (cmd.bondName, str(e))
+            rsp.success = False
+
+        return jsonobject.dumps(rsp)
+
+    @in_bash
+    def detach_nic_from_bonding(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = DetachNicFromBondResponse()
+
+        try:
+            for interface in cmd.slaves:
+                shell.call('/usr/local/bin/zs-nic-to-bond -d %s %s' % (cmd.bondName, interface))
+        except Exception as e:
+            logger.warning(traceback.format_exc())
+            rsp.error = 'unable to detach nic from bonding[%s], because %s' % (cmd.bondName, str(e))
+            rsp.success = False
+
+        return jsonobject.dumps(rsp)
+
+    @lock.lock('bonding')
+    @kvmagent.replyerror
+    @in_bash
     def delete_bonding(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = DeleteBondingResponse()
@@ -505,7 +562,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
             logger.warning(traceback.format_exc())
             rsp.error = 'unable to create bridge[%s] from device[%s], because %s' % (cmd.bridgeName, cmd.physicalInterfaceName, str(e))
             rsp.success = False
-            
+
         return jsonobject.dumps(rsp)
 
     @lock.lock('bridge')
@@ -531,7 +588,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
             logger.warning(traceback.format_exc())
             rsp.error = 'unable to create vlan bridge[name:%s, vlan:%s] from device[%s], because %s' % (cmd.bridgeName, cmd.vlan, cmd.physicalInterfaceName, str(e))
             rsp.success = False
-            
+
         return jsonobject.dumps(rsp)
 
     @lock.lock('bridge')
@@ -813,6 +870,8 @@ class NetworkPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(CREATE_BONDING_PATH, self.create_bonding)
         http_server.register_async_uri(UPDATE_BONDING_PATH, self.update_bonding)
         http_server.register_async_uri(DELETE_BONDING_PATH, self.delete_bonding)
+        http_server.register_async_uri(ATTACH_NIC_TO_BONDING_PATH, self.attach_nic_to_bonding)
+        http_server.register_async_uri(DETACH_NIC_FROM_BONDING_PATH, self.detach_nic_from_bonding)
         http_server.register_async_uri(KVM_REALIZE_L2NOVLAN_NETWORK_PATH, self.create_bridge)
         http_server.register_async_uri(KVM_REALIZE_L2VLAN_NETWORK_PATH, self.create_vlan_bridge)
         http_server.register_async_uri(KVM_CHECK_L2NOVLAN_NETWORK_PATH, self.check_bridge)
