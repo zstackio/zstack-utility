@@ -264,8 +264,9 @@ def collect_host_network_statistics():
     interfaces = []
     for eth in all_eths:
         eth = eth.strip(' \t\n\r')
-        if eth in virtual_eths: continue
-        if eth == 'bonding_masters':
+        if eth in virtual_eths:
+            continue
+        elif eth == 'bonding_masters':
             continue
         elif not eth:
             continue
@@ -1387,11 +1388,8 @@ WantedBy=multi-user.target
         eths = os.listdir("/sys/class/net")
         interfaces = []
         for eth in eths:
-            if eth == 'lo': continue
-            if eth == 'bonding_masters': continue
-            elif eth.startswith('vnic'): continue
-            elif eth.startswith('outer'): continue
-            elif eth.startswith('br_'): continue
+            if eth in ['lo', 'bonding_masters']: continue
+            elif eth.startswith(('br_', 'vnic', 'docker', 'gre', 'erspan', 'outer', 'ud_')):continue
             elif not eth: continue
             else:
                 interfaces.append(eth)
