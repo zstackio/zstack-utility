@@ -659,8 +659,8 @@ class CollectFromYml(object):
 
     def generate_tar_ball(self, run_command_dir, detail_version, time_stamp):
         info_verbose("Compressing log files ...")
-        
-        command = "cd %s && tar zcf collect-log-%s-%s.tar.gz collect-log-%s-%s" % (
+
+        command = "cd %s && tar -zcf collect-log-%s-%s.tar.gz collect-log-%s-%s" % (
             run_command_dir, detail_version, time_stamp, detail_version, time_stamp)
         if self.delete_source_file is True:
             command = command + " --remove-files"

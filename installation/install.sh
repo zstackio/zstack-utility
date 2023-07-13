@@ -42,6 +42,7 @@ REDHAT_WITHOUT_CENTOS6=`echo $REDHAT_OS |sed s/CENTOS6//`
 UPGRADE='n'
 FORCE='n'
 MINI_INSTALL='n'
+CUBE_INSTALL='n'
 SANYUAN_INSTALL='n'
 SDS_INSTALL='n'
 MANAGEMENT_INTERFACE=`ip route | grep default | head -n 1 | cut -d ' ' -f 5`
@@ -235,6 +236,18 @@ upgrade_mini_zwatch_webhook(){
 
   webhook=$(echo "$webhook" | sed 's/zwatch\/webhook/webhook\/zwatch/g')
   zstack-ctl configure sns.systemTopic.endpoints.http.url="$webhook" > /dev/null 2>&1
+}
+
+# configure deploy_mode if it is cube
+do_config_deploy_node(){
+    if [ -f "/usr/local/hyperconverged/conf/deployed_info" ]; then
+        zstack-ctl configure deploy_mode="cube" > /dev/null 2>&1
+        return
+    fi
+
+    if [ -f "/usr/local/hyperconverged/license/sds.info" ]; then
+        zstack-ctl configure deploy_mode="cube" > /dev/null 2>&1
+    fi
 }
 
 # version compare
@@ -1361,11 +1374,12 @@ upgrade_zstack(){
     [ $? -ne 0 ] && zstack-ctl configure management.server.ip="${MANAGEMENT_IP}"
 
     # configure chrony.serverIp if not exists
-    zstack-ctl show_configuration | grep '^[[:space:]]*chrony.serverIp.' >/dev/null 2>&1
-    if [ $? -ne 0 ] && [ -n "$CHRONY_SERVER_IP" ]; then
+    if [ -n "$CHRONY_SERVER_IP" ]; then
+        sed -i '/^[[:space:]]*chrony\.serverIp\.[0-9]/d' $properties_file
         zstack-ctl configure chrony.serverIp.0="${CHRONY_SERVER_IP}"
     else
-        zstack-ctl configure chrony.serverIp.0="${MANAGEMENT_IP}"
+        zstack-ctl show_configuration | grep '^[[:space:]]*chrony.serverIp.' >/dev/null 2>&1
+        [ $? -ne 0 ] && zstack-ctl configure chrony.serverIp.0="${MANAGEMENT_IP}"
     fi
 
     # configure RepoVersion.Strategy if not exists
@@ -1496,6 +1510,9 @@ upgrade_zstack(){
 
     # upgrade legacy mini zwatch webhook
     upgrade_mini_zwatch_webhook
+
+    # configure deploy_mode if it is cube
+    do_config_deploy_node
 
     # update consoleProxyCertFile if necessary
     certfile=`zstack-ctl show_configuration | grep consoleProxyCertFile | grep /usr/local/zstack/zstack-ui/ | awk -F '=' '{ print $NF }'`
@@ -3682,7 +3699,7 @@ check_myarg() {
 }
 
 OPTIND=1
-TEMP=`getopt -o f:H:I:n:p:P:r:R:t:y:acC:L:T:dDEFhiklmMNoOqsuz --long chrony-server-ip:,grayscale:,mini,SY,sds -- "$@"`
+TEMP=`getopt -o f:H:I:n:p:P:r:R:t:y:acC:L:T:dDEFhiklmMNoOqsuz --long chrony-server-ip:,grayscale:,mini,cube,SY,sds -- "$@"`
 if [ $? != 0 ]; then
     usage
 fi
@@ -3740,6 +3757,7 @@ do
         --chrony-server-ip ) check_myarg $1 $2;CHRONY_SERVER_IP=$2;shift 2;;
         --grayscale ) check_myarg $1 $2;GRAYSCALE_UPGRADE=$2;shift 2;;
         --mini) MINI_INSTALL='y';shift;;
+        --cube) CUBE_INSTALL='y';shift;;
         --SY) SANYUAN_INSTALL='y';shift;;
         --sds) SDS_INSTALL='y';shift;;
         --) shift;;
@@ -4157,7 +4175,7 @@ if [ x"$UPGRADE" = x'y' ]; then
     # top banner is shown by product_title_file created when iso building ,also given by zstack VERSION file
     CUBE_ENV_COUNT=`grep "hyper_converged" /etc/rc.local |wc -l`
     [[ "$CUBE_ENV_COUNT" -gt 0 ]] && CUBE_ENV='y' || CUBE_ENV='n'
-    [ x"$CUBE_ENV" = x'y' -a -f /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/release_version ] && VERSION=`cat /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/release_version | cut -d '-' -f 2`
+    [ x"$CUBE_ENV" = x'y' -a -f /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/release_version ] && VERSION=`cat /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/release_version | rev | cut -d '-' -f3 | rev`
 
 
     if [ ! -z $ONLY_UPGRADE_CTL ]; then
@@ -4300,11 +4318,17 @@ fi
 zstack-ctl configure RepoVersion.Strategy="permissive"
 
 # configure chrony.serverIp if not exists
-zstack-ctl show_configuration | grep '^[[:space:]]*chrony.serverIp.' >/dev/null 2>&1
-if [ $? -ne 0 ] && [ -n "$CHRONY_SERVER_IP" ]; then
+if [ -n "$CHRONY_SERVER_IP" ]; then
+    sed -i "/^[[:space:]]*chrony\.serverIp\.[0-9]/d" $properties_file
     zstack-ctl configure chrony.serverIp.0="${CHRONY_SERVER_IP}"
 else
-    zstack-ctl configure chrony.serverIp.0="${MANAGEMENT_IP}"
+    zstack-ctl show_configuration | grep '^[[:space:]]*chrony.serverIp.' >/dev/null 2>&1
+    [ $? -ne 0 ] && zstack-ctl configure chrony.serverIp.0="${MANAGEMENT_IP}"
+fi
+
+# deploy by cube mode
+if [ x"$CUBE_INSTALL" = x"y" ];then
+    zstack-ctl configure deploy_mode="cube"
 fi
 
 #Install license
