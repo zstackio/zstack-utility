@@ -373,7 +373,7 @@ class RbdDeviceOperator(object):
 
     def remove_volumes_from_mapping_group(self, mapping_group_id, block_volume_id):
         api_body = {"block_volume_ids": [block_volume_id]}
-        exist_mapping_group_id = self.mapping_groups_api.remove_volumes(api_body, mapping_group_id).mapping_group.id
+        exist_mapping_group_id = self.mapping_groups_api.remove_volumes(api_body, mapping_group_id, force=True).mapping_group.id
         self._retry_until(self.is_created_mapping_group_status_active, exist_mapping_group_id)
         logger.debug("Successfully remove volume ids %s from mapping_group[id:%s]" % (block_volume_id, mapping_group_id))
         return exist_mapping_group_id
