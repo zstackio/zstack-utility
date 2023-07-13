@@ -2086,9 +2086,6 @@ get_mysql_conf_file(){
     elif [ -f /etc/mysql/my.cnf ]; then
         # Ubuntu 14.04
         MYSQL_CONF_FILE=/etc/mysql/my.cnf
-    elif [ -f /etc/my.cnf.d/mariadb-server.cnf ]; then
-        # MariaDB 10.3.9 CentOS.8/Kylin.V10
-        mysql_conf=/etc/my.cnf.d/mariadb-server.cnf
     elif [ -f /etc/my.cnf ]; then
         # centos
         MYSQL_CONF_FILE=/etc/my.cnf
@@ -2424,8 +2421,8 @@ install_sds(){
 }
 
 install_zops(){
-    [[ x"$OS" != x"CENTOS7" && x"$OS" != x"HELIX7" && x"$OS" != x"KYLIN10" && x"$OS" != x"ROCKY8" ]] && return
-    [[ x"$ZSTACK_RELEASE" = x"c74" ]] && return
+    [[ x"$BASEARCH" != x"x86_64" ]] && return
+    [[ x"$OS" != x"CENTOS7" && x"$OS" != x"HELIX7" ]] && return
     mkdir -p /usr/local/zops
     chmod o+r /usr/local/zops
     echo "true" > /usr/local/zops/cloud_integration
@@ -3480,6 +3477,16 @@ prepare_zops_user_and_db() {
     fi
     # check zops db is already, if have been created, do nothing
     [ -f $MYSQL_DATA_DIR/$db/db.opt ] && return 0
+
+    # zops does not support aarch64 architecture, skip it
+    if [ $BASEARCH = "aarch64" ]; then
+        return 0
+    fi
+
+    # zops does not support kylin os, skip it
+    if [ -f /etc/kylin-release ]; then
+        return 0
+    fi
 
     mysql -u root --password=$MYSQL_NEW_ROOT_PASSWORD -e 'exit' >/dev/null 2>&1
     # check mysql root password not changed, if not changed, do nothing
