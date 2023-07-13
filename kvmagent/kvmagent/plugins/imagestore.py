@@ -75,6 +75,16 @@ class ImageStoreClient(object):
             cmdstr = '%s stopbak -domain %s' % (self.ZSTORE_CLI_PATH, vm)
             return shell.call(cmdstr).strip()
 
+    def stop_vm_backup_jobs(self, vm):
+        with linux.ShowLibvirtErrorOnException(vm):
+            cmdstr = '%s stopbak -domain %s -batbak' % (self.ZSTORE_CLI_PATH, vm)
+            return shell.call(cmdstr).strip()
+
+    def stop_volume_backup_job(self, vm, drive):
+        with linux.ShowLibvirtErrorOnException(vm):
+            cmdstr = '%s stopbak -domain %s -drive %s' % (self.ZSTORE_CLI_PATH, vm, drive)
+            return shell.call(cmdstr).strip()
+
     @staticmethod
     def check_capacity(dstdir):
         if not os.path.isdir(dstdir):
