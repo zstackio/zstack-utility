@@ -512,14 +512,14 @@ def copy_kvmagshutdown():
         kvmagshutdown_dst = "/etc/init.d/"
         copy_to_remote(kvmagshutdown_src, kvmagshutdown_dst, "mode=755", host_post_info)
         run_remote_command("sed -i 's/mn_ip/%s/g; s/host_ip/%s/g' /etc/init.d/shutdown_vm" % (mn_ip, host) +
-                           " && ln -s -f /etc/init.d/shutdown_vm /etc/rc1.d/k01shutdown_vm "
-                           "&& ln -s -f /etc/init.d/shutdown_vm /etc/rc6.d/k01shutdown_vm "
-                           "&& ln -s -f /etc/init.d/shutdown_vm /etc/rc0.d/k01shutdown_vm "
+                           " && ln -s -f /etc/init.d/shutdown_vm /etc/rc1.d/K01shutdown_vm "
+                           "&& ln -s -f /etc/init.d/shutdown_vm /etc/rc6.d/K01shutdown_vm "
+                           "&& ln -s -f /etc/init.d/shutdown_vm /etc/rc0.d/K01shutdown_vm "
                            "&& chkconfig shutdown_vm on",
                            host_post_info)
     else:
-        run_remote_command("rm -rf /etc/init.d/shutdown_vm && rm -rf /etc/rc1.d/k01shutdown_vm && "
-                           "rm -rf /etc/rc6.d/k01shutdown_vm && rm -rf /etc/rc0.d/k01shutdown_vm", host_post_info)
+        run_remote_command("rm -rf /etc/init.d/shutdown_vm && rm -rf /etc/rc1.d/K01shutdown_vm && "
+                           "rm -rf /etc/rc6.d/k01shutdown_vm && rm -rf /etc/rc0.d/K01shutdown_vm", host_post_info)
 
 
 def copy_gpudriver():
