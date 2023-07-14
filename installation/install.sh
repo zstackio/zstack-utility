@@ -4148,6 +4148,7 @@ if [ $? -eq 0 ]; then
 else
     echo "export ZSTACK_HOME=${ZSTACK_HOME}" >> ~/.bashrc
 fi
+source ~/.bashrc >/dev/null 2>&1
 
 #Do preinstallation checking for CentOS and Ubuntu
 check_system
