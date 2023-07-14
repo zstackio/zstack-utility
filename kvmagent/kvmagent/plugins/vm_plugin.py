@@ -4334,6 +4334,11 @@ class Vm(object):
                 chassis = e(sysinfo, 'chassis')
                 e(chassis, 'entry', cmd.chassisAssetTag, attrib={'name': 'asset'})
 
+            if cmd.oemStrings is not None:
+                oem_strings = e(sysinfo, 'oemStrings')
+                for oem in cmd.oemStrings:
+                    e(oem_strings, 'entry', oem)
+
         def make_features():
             root = elements['root']
             features = e(root, 'features')
