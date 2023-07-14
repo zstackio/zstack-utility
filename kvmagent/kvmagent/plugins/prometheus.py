@@ -1337,10 +1337,10 @@ WantedBy=multi-user.target
                 return None
 
             @classmethod
-            def __store_cache__(cls, ret):
+            def __store_cache__(cls, collectStartTime, ret):
                 # type: (list) -> None
                 cls.__collector_cache.clear()
-                cls.__collector_cache.update({time.time(): ret})
+                cls.__collector_cache.update({collectStartTime: ret})
 
             @classmethod
             def check(cls, v):
@@ -1380,6 +1380,7 @@ WantedBy=multi-user.target
                     with collectResultLock:
                         latest_collect_result[fname] = r
 
+                collectStartTime = time.time()
                 cache = Collector.__get_cache__()
                 if cache is not None:
                     return cache
@@ -1403,7 +1404,7 @@ WantedBy=multi-user.target
 
                 for v in latest_collect_result.itervalues():
                     ret.extend(v)
-                Collector.__store_cache__(ret)
+                Collector.__store_cache__(collectStartTime, ret)
                 return ret
 
         REGISTRY.register(Collector())
