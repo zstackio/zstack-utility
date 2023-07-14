@@ -19,7 +19,7 @@
 
         <exec executable="make" dir="${zstackzwatch.source}" failonerror="true">
             <arg value="all" />
-            <arg value="ARCH=amd64 arm64 freebsd_amd64" />
+            <arg value="ARCH=amd64 arm64 freebsd_amd64 loong64" />
         </exec>
         <copy todir="${zsw.bdir}">
             <fileset dir="${zstackzwatch.source}/target/zwatch_bin">
