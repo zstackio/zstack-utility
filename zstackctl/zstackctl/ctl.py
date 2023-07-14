@@ -2111,7 +2111,23 @@ def get_management_node_pid():
 
     return None
 
-def clear_leftover_mn_heartbeat():
+def clear_management_node_leftovers():
+    def release_mysql_lock(lock_name, mn_ip):
+        result = mysql("select IS_USED_LOCK('%s')" % lock_name)
+        result = result.strip().splitlines()
+
+        connection_id = result[1].strip()
+        if connection_id == 'NULL' or connection_id == '-1' or connection_id == '0':
+            return
+
+        result = mysql("SELECT count(*) FROM INFORMATION_SCHEMA.PROCESSLIST WHERE ID = %s and HOST like '%s%%'" % (connection_id, mn_ip))
+        result = result.strip().splitlines()[1]
+        if len(result) == 0:
+            return
+
+        info("kill connection %s to release lock %s held by management node %s" % (connection_id, lock_name, mn_ip))
+        mysql("KILL %s" % connection_id)
+
     pid = get_management_node_pid()
     if pid:
         info("management node (pid=%s) is still running, skip cleaning heartbeat" % pid)
@@ -2125,6 +2141,8 @@ def clear_leftover_mn_heartbeat():
     try:
         mysql("DELETE FROM ManagementNodeVO WHERE hostName = '%s'" % mn_ip)
         info("cleared management node heartbeat for %s" % mn_ip)
+        release_mysql_lock('GlobalFacade.lock', mn_ip)
+        release_mysql_lock('ManagementNodeManager.inventory_lock', mn_ip)
     except:
         pass
 
@@ -2599,7 +2617,7 @@ class StopCmd(Command):
         pid = get_management_node_pid()
         if not pid:
             info('the management node has been stopped')
-            clear_leftover_mn_heartbeat()
+            clear_management_node_leftovers()
             return
 
         timeout = 30
@@ -2622,7 +2640,7 @@ class StopCmd(Command):
                 kill_process(pid, signal.SIGTERM)
                 time.sleep(1)
                 kill_process(pid, signal.SIGKILL)
-                clear_leftover_mn_heartbeat()
+                clear_management_node_leftovers()
 
                 if get_management_node_pid():
                     raise CtlError('failed to kill management node, pid = %s' % pid)
