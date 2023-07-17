@@ -168,7 +168,7 @@ def get_nvme_block_devices():
 
     s = shell.ShellCmd("nvme list -o json")
     s(False)
-    if s.return_code != 0:
+    if s.return_code != 0 or not s.stdout or not s.stdout.strip():
         return []
 
     try:
