@@ -109,11 +109,20 @@ class LinuxDriver(base.SystemDriverBase):
         """
         self.discovery_target(instance_obj)
         _check_initiator_config(instance_obj.uuid)
-
-        cmd = ['iscsiadm', '-m', 'session', '--rescan']
-        # parameter[delay_on_retry] of func[processutils.execute] will not verify exit_code
-        with bm_utils.transcantion(retries=5, sleep_time=10) as cursor:
-            cursor.execute(processutils.execute, *cmd)
+        
+        target_names = []
+        target_name = ('iqn.2015-01.io.zstack:target'
+                       '.instance.{uuid}').format(uuid=instance_obj.uuid)
+        if instance_obj.custom_iqn:
+            target_name = instance_obj.custom_iqn
+        target_names.append(target_name)
+        
+        for target in target_names:
+            sessionId = 'iscsiadm -m session | grep %s\\| awk \'{print $2}\' ' % target
+            cmd = ['iscsiadm', '-m', 'session', '--rescan', f'--sid={sessionId}']
+            # parameter[delay_on_retry] of func[processutils.execute] will not verify exit_code
+            with bm_utils.transcantion(retries=5, sleep_time=10) as cursor:
+                cursor.execute(processutils.execute, *cmd)
 
     def detach_volume(self, instance_obj, volume_obj):
         """ Detach a given iSCSI lun
