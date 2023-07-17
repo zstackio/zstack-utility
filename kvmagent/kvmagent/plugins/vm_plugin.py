@@ -9397,7 +9397,7 @@ host side snapshot files chian:
         r, o, _ = bash.bash_roe('/usr/bin/crontab -l')
         if r == 0 and not o.startswith('\x00'): # crontab script is not empty
             for line in o.split('\n'):
-                if line.find("bash %s" % script_path) >= 0:
+                if line.strip() == "" or line.find("bash %s" % script_path) >= 0:
                     continue
                 cron_scripts.append(line.strip())
 
