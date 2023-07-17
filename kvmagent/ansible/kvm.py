@@ -519,7 +519,7 @@ def copy_kvmagshutdown():
                            host_post_info)
     else:
         run_remote_command("rm -rf /etc/init.d/shutdown_vm && rm -rf /etc/rc1.d/K01shutdown_vm && "
-                           "rm -rf /etc/rc6.d/k01shutdown_vm && rm -rf /etc/rc0.d/K01shutdown_vm", host_post_info)
+                           "rm -rf /etc/rc6.d/K01shutdown_vm && rm -rf /etc/rc0.d/K01shutdown_vm", host_post_info)
 
 def copy_gpudriver():
     """copy mxgpu driver"""
