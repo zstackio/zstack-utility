@@ -4137,7 +4137,8 @@ class Vm(object):
     def merge_snapshot(self, cmd):
         _, disk_name = self._get_target_disk(cmd.volume)
         begin_time = time.time()
-        deadline = begin_time + get_timeout(cmd)
+        timeout = get_timeout(cmd)
+        deadline = begin_time + timeout
 
         def get_timeout_seconds(exception_if_timeout=True):
             now = time.time()
@@ -4167,7 +4168,7 @@ class Vm(object):
                 return not self._wait_for_block_job(disk_name, abort_on_error=True)
 
             if not linux.wait_callback_success(wait_job, timeout=get_timeout_seconds()):
-                raise kvmagent.KvmError('live merging snapshot chain failed, block job timeout after {} s'.format(get_timeout(cmd)))
+                raise kvmagent.KvmError('live merging snapshot chain failed, block job timeout after {} s'.format(timeout))
 
             # Double check (c.f. issue #757)
             current_backing = self._get_back_file(top)
