@@ -1620,10 +1620,12 @@ class ShowStatusCmd(Command):
                     version = '.'.join(version.split('.')[:3])
 
             detailed_version = get_detail_version()
+            pjnum = get_pjnum()
             if detailed_version is not None:
-                info('version: %s (%s)' % (version, detailed_version))
+                info('version: %s (%s for %s)' % (version, detailed_version, pjnum))
             else:
-                info('version: %s' % version)
+                info('version: %s for %s' % (version, pjnum))
+
         def show_hci_version():
             hci_path = '/usr/local/hyperconverged/conf/VERSION'
             if not os.path.exists(hci_path):
@@ -1638,6 +1640,21 @@ class ShowStatusCmd(Command):
                         hci_version = list[-3]
                         hci_name = version.split("-%s-" % hci_version)
                         info(hci_name[0] + ' version: %s (%s)' % (hci_version, version))
+
+        def get_pjnum():
+            pjnum_path = ctl.zstack_home + "/PJNUM"
+            if not os.path.exists(pjnum_path):
+                return 'unknown'
+            with open(pjnum_path, 'r') as fd:
+                line = fd.readline()
+                if line.startswith('PJNUM='):
+                    num = line.strip('\t\n\r').split('=')[1]
+                    if num == '001':
+                        return 'universal'
+                    else:
+                        return 'particular'
+                else:
+                    return 'unknown'
 
         info('\n'.join(info_list))
         show_version()
