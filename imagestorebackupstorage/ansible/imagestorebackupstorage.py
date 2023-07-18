@@ -105,6 +105,7 @@ zstacklib = ZstackLib(zstacklib_args)
 if host_info.distro in RPM_BASED_OS:
     qemu_pkg = "fuse-sshfs nmap collectd tar net-tools"
     qemu_pkg = qemu_pkg + ' python2-pyparted nettle' if releasever in ['ns10'] else qemu_pkg + ' pyparted'
+    qemu_pkg = qemu_pkg + ' collectd-disk collectd-virt' if releasever in ['oe2203sp1'] else qemu_pkg + ''
 
     if not remote_bin_installed(host_post_info, "qemu-img", return_status=True):
         qemu_pkg += ' qemu-img'
