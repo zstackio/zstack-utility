@@ -624,6 +624,11 @@ class CancelBackupJobsResponse(kvmagent.AgentResponse):
         super(CancelBackupJobsResponse, self).__init__()
 
 
+class CancelBackupJobResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(CancelBackupJobResponse, self).__init__()
+
+
 class MergeSnapshotRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(MergeSnapshotRsp, self).__init__()
@@ -5902,6 +5907,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_TAKE_VOLUMES_SNAPSHOT_PATH = "/vm/volumes/takesnapshot"
     KVM_TAKE_VOLUMES_BACKUP_PATH = "/vm/volumes/takebackup"
     KVM_CANCEL_VOLUME_BACKUP_JOBS_PATH = "/vm/volume/cancel/backupjobs"
+    KVM_CANCEL_VOLUME_BACKUP_JOB_PATH = "/vm/volume/cancel/backupjob"
     KVM_MERGE_SNAPSHOT_PATH = "/vm/volume/mergesnapshot"
     KVM_LOGOUT_ISCSI_TARGET_PATH = "/iscsi/target/logout"
     KVM_LOGIN_ISCSI_TARGET_PATH = "/iscsi/target/login"
@@ -7565,9 +7571,13 @@ host side snapshot files chian:
             touchQmpSocketWhenExists(cmd.vmUuid)
         return jsonobject.dumps(rsp)
 
-    def do_cancel_backup_jobs(self, cmd):
+    def do_cancel_vm_backup_jobs(self, cmd):
         isc = ImageStoreClient()
-        isc.stop_backup_jobs(cmd.vmUuid)
+        isc.stop_vm_backup_jobs(cmd.vmUuid)
+
+    def do_cancel_volume_backup_job(self, cmd, drive):
+        isc = ImageStoreClient()
+        isc.stop_volume_backup_job(cmd.vmUuid, drive)
 
     # returns list[VolumeBackupInfo]
     def do_take_volumes_backup(self, cmd, target_disks, bitmaps, dstdir):
@@ -7689,16 +7699,37 @@ host side snapshot files chian:
     @kvmagent.replyerror
     def cancel_backup_jobs(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = TakeVolumesBackupsResponse()
+        rsp = CancelBackupJobsResponse()
 
         try:
             vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
             if not vm:
                 raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % cmd.vmUuid)
 
-            self.do_cancel_backup_jobs(cmd)
+            self.do_cancel_vm_backup_jobs(cmd)
         except kvmagent.KvmError as e:
             logger.warn("cancel vm[uuid:%s] backup failed: %s" % (cmd.vmUuid, str(e)))
+            rsp.error = str(e)
+            rsp.success = False
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def cancel_backup_job(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CancelBackupJobResponse()
+
+        try:
+            vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
+            if not vm:
+                raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % cmd.vmUuid)
+
+            target_disk, _ = vm._get_target_disk(cmd.volume)
+            drive = self.get_disk_device_name(target_disk)
+
+            self.do_cancel_volume_backup_job(cmd, drive)
+        except kvmagent.KvmError as e:
+            logger.warn("cancel volume[uuid:%s] backup failed: %s" % (cmd.volume.volumeUuid, str(e)))
             rsp.error = str(e)
             rsp.success = False
 
@@ -9475,6 +9506,7 @@ host side snapshot files chian:
         http_server.register_async_uri(self.KVM_TAKE_VOLUMES_SNAPSHOT_PATH, self.take_volumes_snapshots)
         http_server.register_async_uri(self.KVM_TAKE_VOLUMES_BACKUP_PATH, self.take_volumes_backups, cmd=TakeVolumesBackupsCommand())
         http_server.register_async_uri(self.KVM_CANCEL_VOLUME_BACKUP_JOBS_PATH, self.cancel_backup_jobs)
+        http_server.register_async_uri(self.KVM_CANCEL_VOLUME_BACKUP_JOB_PATH, self.cancel_backup_job)
         http_server.register_async_uri(self.KVM_BLOCK_STREAM_VOLUME_PATH, self.block_stream)
         http_server.register_async_uri(self.KVM_MERGE_SNAPSHOT_PATH, self.merge_snapshot_to_volume)
         http_server.register_async_uri(self.KVM_LOGOUT_ISCSI_TARGET_PATH, self.logout_iscsi_target, cmd=LoginIscsiTargetCmd())
