@@ -1503,6 +1503,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
 
         rsp = kvmagent.AgentResponse()
         rsp.bmInstance = instance_obj
+        rsp.lunId = volume_driver.get_lun_id()
         return jsonobject.dumps(rsp)
 
     def _detach_volume(self, req):
