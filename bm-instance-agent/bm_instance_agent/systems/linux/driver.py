@@ -190,11 +190,11 @@ class LinuxDriver(base.SystemDriverBase):
         target_name = volume_obj.iscsi_path.replace('iscsi://', '').split("/")[1]
         self.discovery_target_through_access_path_gateway_ips(target_name, volume_access_path_gateway_ips)
 
-        device_scsi_id = self.get_volume_scsi_id(target_name, volume_access_path_gateway_ips[0])
+        device_scsi_id = self.get_volume_scsi_id(target_name, volume_access_path_gateway_ips[0], volume_obj.device_id)
         if device_scsi_id:
             _start_multi_path_config(device_scsi_id, volume_obj.name)
 
-    def get_volume_scsi_id(self, iqn, target_ip):
+    def get_volume_scsi_id(self, iqn, target_ip, lun_id):
         cmd = 'iscsiadm -m session | grep %s | grep %s' % (iqn, target_ip)
         stdout, stderr = processutils.trycmd(cmd, shell=True)
 
@@ -213,7 +213,7 @@ class LinuxDriver(base.SystemDriverBase):
         flag = False
         device_name = None
         for line in stdout.split('\n'):
-            if 'Lun: ' in line:
+            if 'Lun: {}'.format(lun_id) in line:
                 flag = True
                 continue
 
