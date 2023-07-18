@@ -361,6 +361,20 @@ def get_zstack_version(db_hostname, db_port, db_user, db_password):
     version = versions[0]
     return version
 
+def get_zstack_installed_on(db_hostname, db_port, db_user, db_password):
+    query = MySqlCommandLineQuery()
+    query.host = db_hostname
+    query.port = db_port
+    query.user = db_user
+    query.password = db_password
+    query.table = 'zstack'
+    query.sql = "select installed_on from schema_version order by installed_on desc"
+    ret = query.query()
+    installed_ons = [r['installed_on'] for r in ret]
+
+    installed_on = installed_ons[0]
+    return installed_on
+
 def get_default_gateway_ip():
     '''This function will return default route gateway ip address'''
     with open("/proc/net/route") as gateway:
@@ -1760,6 +1774,54 @@ class ShowStatus2Cmd(Command):
         self._format_str_color("MN", mn_status)
         self._format_str_color("MN-UI", ui_status)
 
+class ShowStatus3Cmd(Command):
+    def __init__(self):
+        super(ShowStatus3Cmd, self).__init__()
+        self.name = 'status3'
+        self.description = 'show project num(PJNUM) and version installed_on info'
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--host',
+                            help='SSH URL, for example, root@192.168.0.10, to show the management node status on a remote machine')
+        parser.add_argument('--quiet', '-q', help='Do not log this action.', action='store_true', default=False)
+
+    def _stop_remote(self, args):
+        shell_no_pipe(
+            'ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s "/usr/bin/zstack-ctl status"' % args.host)
+
+    def run(self, args):
+        self.quiet = args.quiet
+        if args.host:
+            self._stop_remote(args)
+            return
+
+        try:
+            db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
+        except CtlError as e:
+            info('version: %s' % colored('unknown, %s' % e.message.strip(), 'yellow'))
+            return
+
+        def get_pjnum():
+            pjnum_path = ctl.zstack_home + "/PJNUM"
+            if not os.path.exists(pjnum_path):
+                return 'unknown'
+            with open(pjnum_path, 'r') as fd:
+                line = fd.readline()
+                if line.startswith('PJNUM='):
+                    num = line.strip('\t\n\r').split('=')[1]
+                    if num == '001':
+                        return 'universal'
+                    else:
+                        return 'particular'
+                else:
+                    return 'unknown'
+
+        pjnum = get_pjnum()
+        info('project num(PJNUM): %s' % pjnum)
+        installed_on = get_zstack_installed_on(db_hostname, db_port, db_user, db_password)
+        info('installed on: %s' % installed_on)
+        
 class DeployDBCmd(Command):
     DEPLOY_DB_SCRIPT_PATH = "WEB-INF/classes/deploydb.sh"
     ZSTACK_PROPERTY_FILE = "WEB-INF/classes/zstack.properties"
@@ -10581,6 +10643,7 @@ def main():
     RecoverHACmd()
     ScanDatabaseBackupCmd()
     ShowStatus2Cmd()
+    ShowStatus3Cmd()
     ShowStatusCmd()
     StartCmd()
     StopCmd()
