@@ -76,27 +76,31 @@ prepare_mn_mock() {
     mkdir -p ~/.pip/
     wget -c http://minio.zstack.io:9001/download/prsystem/UtilityUT/pip.conf -O pip.conf || true
     mv pip.conf ~/.pip/ || true
-    wget -c http://minio.zstack.io:9001/download/prsystem/UtilityUT/get-pip.py -O get-pip.py
 
-    cd /root/
+    # wget -c http://minio.zstack.io:9001/download/prsystem/UtilityUT/get-pip.py -O get-pip.py
+    cd /root/.zguest/zstack-utility/kvmagent/kvmagent/test/unittest_tools/unittest_pypi_source/
+    pip install -r requirements/requirements1.txt -i file://`pwd`/pypi/simple
+    pip install -r requirements/requirements2.txt -i file://`pwd`/pypi/simple
     virtualenv --version || pip install virtualenv==12.1.1
+    cd /root
     python2_path=$(which python)
     rm -rf venv
     virtualenv -p "$python2_path" venv
     # in virtualenv
     source /root/venv/bin/activate
-    python get-pip.py  # default pip : 20.3.4
-    pip install --upgrade setuptools  # default setuptools: 44.1.1
+    cd /root/.zguest/zstack-utility/kvmagent/kvmagent/test/unittest_tools/unittest_pypi_source/
+    pip install pip==20.3.4 -i file://`pwd`/pypi/simple
+    pip install setuptools==44.1.1 -i file://`pwd`/pypi/simple
     # prepare_zstacklib 
     cd /root/.zguest/zstack-utility/zstacklib/
-    bash install.sh
+    bash install.sh -i file:///root/.zguest/zstack-utility/zstackbuild/pypi_source/pypi/simple
     ZSTACKLIB_TAR=$(basename dist/zstacklib-?*.tar.gz)
     \cp dist/zstacklib-?*.tar.gz ansible/
     mkdir -p /usr/local/zstack/ansible/files/zstacklib/
     \cp -r ansible/* /usr/local/zstack/ansible/files/zstacklib/
     # prepare_kvmagent
     cd /root/.zguest/zstack-utility/kvmagent/
-    bash install.sh
+    bash install.sh -i file:///root/.zguest/zstack-utility/zstackbuild/pypi_source/pypi/simple
     KVMAGENT_TAR=$(basename dist/kvmagent-?*.tar.gz)
     \cp dist/kvmagent-?*.tar.gz ansible/
     \cp zstack-kvmagent ansible/
@@ -105,14 +109,13 @@ prepare_mn_mock() {
     deactivate
     # in system env
     cd /root
-    python get-pip.py
+    # python get-pip.py
     yum install -y openssl-devel openssl libffi libffi-devel
     umount /tmp
     mkdir -p /tmp
-    pip2 install --upgrade setuptools
-    pip2 install pytest==4.6.11
+    cd /root/.zguest/zstack-utility/kvmagent/kvmagent/test/unittest_tools/unittest_pypi_source/
+    pip install -r requirements/requirements3.txt -i file://`pwd`/pypi/simple
     pip2 install ansible==4.10.0 -i file:///root/.zguest/zstack-utility/zstackbuild/pypi_source/pypi/simple
-    pip2 install coverage
     echo "==>> pass prepare_mn_mock"
 }
 prepare_mn_mock
