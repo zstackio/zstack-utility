@@ -1508,6 +1508,8 @@ upgrade_zstack(){
             show_spinner sd_start_zstack_ui
         fi
     fi
+
+    show_spinner add_zops_init_cronjob
 }
 
 cs_pre_check(){
@@ -3430,6 +3432,10 @@ pass
 
 
 prepare_zops_user_and_db() {
+    if [ "$ZSTACK_RELEASE" != "c76" ] && [ "$ZSTACK_RELEASE" != "c79" ]; then
+      return
+    fi
+
     echo_subtitle "prepare zops db and user"
     #perpare zops user and database if needed
     get_mysql_conf_file
@@ -3955,6 +3961,10 @@ check_ha_need_upgrade()
 }
 
 add_zops_init_cronjob() {
+    if [ "$ZSTACK_RELEASE" != "c76" ] && [ "$ZSTACK_RELEASE" != "c79" ]; then
+      return
+    fi
+
     if [ ! -f /tmp/zops_init.sock ];then
       touch /tmp/zops_init.sock
     fi
