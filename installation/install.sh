@@ -1134,75 +1134,6 @@ ia_install_pip(){
     pass
 }
 
-ia_install_ansible_package(){
-    ansible_pypi_source=$1
-    if [ ! -z $DEBUG ]; then
-        pip install -i $ansible_pypi_source --trusted-host localhost --ignore-installed ansible
-    else
-        pip install -i $ansible_pypi_source --trusted-host localhost --ignore-installed ansible >>$ZSTACK_INSTALL_LOG 2>&1
-    fi
-}
-
-ia_upgrade_setuptools_package(){
-    ansible_pypi_source=$1
-    if [ ! -z $DEBUG ]; then
-        pip install -i $ansible_pypi_source --trusted-host localhost setuptools==39.2.0
-    else
-        pip install -i $ansible_pypi_source --trusted-host localhost setuptools==39.2.0 >>$ZSTACK_INSTALL_LOG 2>&1
-    fi
-}
-
-ia_install_ansible_handle(){
-    if [[ $REDHAT_OS =~ $OS ]]; then
-        yum remove -y ansible >>$ZSTACK_INSTALL_LOG 2>&1
-    else
-        apt-get --assume-yes remove ansible >>$ZSTACK_INSTALL_LOG 2>&1
-    fi
-
-    if pip list 2>/dev/null | grep -q -E 'ansible.*1.9.6.*' ; then
-        if [ ! -z $DEBUG ]; then
-            pip uninstall -y ansible
-        else
-            pip uninstall -y ansible >>$ZSTACK_INSTALL_LOG 2>&1
-        fi
-    fi
-
-    ia_install_ansible_package $1
-    if [ $? -ne 0 ]; then
-        ia_upgrade_setuptools_package $1
-        ia_install_ansible_package $1
-    fi
-}
-
-ia_install_ansible(){
-    echo_subtitle "Install Ansible"
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?' DEBUG
-
-    ia_install_ansible_handle $pypi_source_pip
-
-    [ $? -ne 0 ] && fail "install Ansible failed"
-    do_config_ansible
-    pass
-}
-
-ia_upgrade_ansible(){
-    echo_subtitle "Upgrade Ansible"
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
-
-    if pip list 2>/dev/null | grep -q -E 'ansible.*4.10.0' && ansible --version 2>/dev/null | grep -q 'core 2.11.12.2'; then
-        pass
-        return
-    fi
-
-    cd $upgrade_folder
-    ansible_pypi_source=file://$(pwd)/zstack/static/pypi/simple
-
-    ia_install_ansible_handle $ansible_pypi_source
-
-    [ $? -ne 0 ] && fail "upgrade Ansible failed"
-    pass
-}
-
 ia_install_python_gcc_db(){
     echo_subtitle "Install Python GCC."
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
@@ -1348,7 +1279,7 @@ upgrade_zstack(){
     show_spinner uz_upgrade_tomcat
     show_spinner uz_upgrade_zstack_ctl
 
-    show_spinner ia_upgrade_ansible
+    show_spinner uz_upgrade_zstack_sys
     
     # configure grayscale upgrade config
     uz_configure_grayscale_upgrade
@@ -1566,22 +1497,6 @@ sharedblock_check_qcow2_volume(){
     if [ x"$result" != x'0' ]; then
         fail "There are $result qcow2 format shared volume on sharedblock group primary storage, please contact technical support to convert volumes and then upgrade zstack"
     fi
-}
-
-install_ansible(){
-    echo_title "Install Ansible"
-    echo ""
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
-    if [[ $REDHAT_OS =~ $OS ]]; then
-        show_spinner ia_disable_selinux
-        show_spinner ia_install_python_gcc_rh
-    elif [[ $DEBIAN_OS =~ $OS ]]; then
-        #if [ -z $ZSTACK_PKG_MIRROR ]; then
-        #    show_spinner ia_update_apt
-        #fi
-        show_spinner ia_install_python_gcc_db
-    fi
-    show_spinner ia_install_ansible
 }
 
 iz_install_unzip(){
@@ -1814,6 +1729,17 @@ install_system_libs(){
     show_spinner is_install_virtualenv
     #enable chronyd
     show_spinner is_enable_chronyd
+
+    if [[ $REDHAT_OS =~ $OS ]]; then
+        show_spinner ia_disable_selinux
+        show_spinner ia_install_python_gcc_rh
+    elif [[ $DEBIAN_OS =~ $OS ]]; then
+        #if [ -z $ZSTACK_PKG_MIRROR ]; then
+        #    show_spinner ia_update_apt
+        #fi
+        show_spinner ia_install_python_gcc_db
+    fi
+
 }
 
 is_enable_chronyd(){
@@ -2032,13 +1958,31 @@ uz_upgrade_zstack_ctl(){
     fi
 
     if [ ! -z $DEBUG ]; then
-        bash zstack/WEB-INF/classes/tools/install.sh zstack-ctl 
+        bash zstack/WEB-INF/classes/tools/install.sh zstack-ctl
     else
         bash zstack/WEB-INF/classes/tools/install.sh zstack-ctl >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     if [ $? -ne 0 ];then
         cd /; rm -rf $upgrade_folder
         fail "failed to upgrade ${PRODUCT_NAME,,}-ctl"
+    fi
+
+    pass
+}
+
+uz_upgrade_zstack_sys(){
+    echo_subtitle "Upgrade ${PRODUCT_NAME,,}-sys"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+    cd $upgrade_folder
+
+    if [ ! -z $DEBUG ]; then
+        bash zstack/WEB-INF/classes/tools/install.sh zstack-sys
+    else
+        bash zstack/WEB-INF/classes/tools/install.sh zstack-sys >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+    if [ $? -ne 0 ];then
+        cd /; rm -rf $upgrade_folder
+        fail "failed to upgrade ${PRODUCT_NAME,,}-sys"
     fi
 
     pass
@@ -2260,6 +2204,20 @@ iz_install_zstack(){
     pass
 }
 
+iz_install_zstacksys(){
+    echo_subtitle "Install ${PRODUCT_NAME} Sys Tool"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+    cd $ZSTACK_INSTALL_ROOT
+    bash $ZSTACK_TOOLS_INSTALLER zstack-sys >>$ZSTACK_INSTALL_LOG 2>&1
+
+    if [ $? -ne 0 ];then
+       fail "failed to install ${PRODUCT_NAME,,}-sys in $ZSTACK_INSTALL_ROOT/$ZSTACK_TOOLS_INSTALLER"
+    fi
+    do_config_ansible
+    pass
+}
+
+
 iz_install_zstackcli(){
     echo_subtitle "Install ${PRODUCT_NAME} Command Line Tool"
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
@@ -2335,6 +2293,7 @@ install_zstack(){
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo ""
     show_spinner iz_chown_install_root
+    show_spinner iz_install_zstacksys
     show_spinner iz_install_zstackcli
     show_spinner iz_install_zstackctl
     show_spinner cp_third_party_tools
@@ -4235,9 +4194,6 @@ unpack_zstack_into_tomcat
 
 #Install ${PRODUCT_NAME} required system libs through ansible
 install_system_libs
-
-#Install Ansible
-install_ansible
 
 if [ ! -z $ONLY_INSTALL_LIBS ];then
     echo ""
