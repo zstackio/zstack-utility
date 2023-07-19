@@ -1970,7 +1970,27 @@ def get_management_node_pid():
 
     return None
 
-def clear_leftover_mn_heartbeat():
+def release_mysql_lock(lock_name, mn_ip):
+    access_db_hostname = None
+    if is_ha_installed():
+        access_db_hostname = ctl.read_property('management.server.vip')
+
+    result = mysql("select IS_USED_LOCK('%s')" % lock_name, db_hostname=access_db_hostname)
+    result = result.strip().splitlines()
+
+    connection_id = result[1].strip()
+    if connection_id == 'NULL' or connection_id == '-1' or connection_id == '0':
+        return
+
+    result = mysql("SELECT count(*) FROM INFORMATION_SCHEMA.PROCESSLIST WHERE ID = %s and HOST like '%s%%'" % (connection_id, mn_ip), db_hostname=access_db_hostname)
+    result = result.strip().splitlines()[1]
+    if result == '0':
+        return
+
+    info("kill connection %s to release lock %s held by management node %s" % (connection_id, lock_name, mn_ip))
+    mysql("KILL %s" % connection_id, db_hostname=access_db_hostname)
+
+def clear_management_node_leftovers():
     pid = get_management_node_pid()
     if pid:
         info("management node (pid=%s) is still running, skip cleaning heartbeat" % pid)
@@ -1986,6 +2006,14 @@ def clear_leftover_mn_heartbeat():
         info("cleared management node heartbeat for %s" % mn_ip)
     except:
         pass
+
+def is_ha_installed():
+    _, output, _ = shell_return_stdout_stderr("systemctl is-enabled zstack-ha")
+    status, _, _ = shell_return_stdout_stderr("pgrep -x zstack-hamon")
+    if output and output.strip() == "enabled" and status != 0:
+        return True
+    else:
+        return False
 
 class StopAllCmd(Command):
     def __init__(self):
@@ -2222,9 +2250,7 @@ class StartCmd(Command):
                 error("management.server.ip[%s] is not found on any device" % mn_ip)
 
         def check_ha():
-            _, output, _ = shell_return_stdout_stderr("systemctl is-enabled zstack-ha")
-            status, _, _ = shell_return_stdout_stderr("pgrep -x zstack-hamon")
-            if output and output.strip() == "enabled" and status != 0:
+            if is_ha_installed():
                 error("please use 'zsha2 start-node'")
 
         def check_chrony():
@@ -2481,7 +2507,7 @@ class StopCmd(Command):
         pid = get_management_node_pid()
         if not pid:
             info('the management node has been stopped')
-            clear_leftover_mn_heartbeat()
+            clear_management_node_leftovers()
             return
 
         timeout = 30
@@ -2504,7 +2530,7 @@ class StopCmd(Command):
                 kill_process(pid, signal.SIGTERM)
                 time.sleep(1)
                 kill_process(pid, signal.SIGKILL)
-                clear_leftover_mn_heartbeat()
+                clear_management_node_leftovers()
 
                 if get_management_node_pid():
                     raise CtlError('failed to kill management node, pid = %s' % pid)
@@ -8882,9 +8908,9 @@ class VDIUiStatusCmd(Command):
         else:
             info('VDI UI status: %s [PID: %s]' % (colored('Stopped', 'red'), pid))
 
-def mysql(cmd):
+def mysql(cmd, db_hostname = None):
     (db_hostname_origin, db_port, db_user, db_password) = ctl.get_live_mysql_portal()
-    db_hostname = db_hostname_origin
+    db_hostname = db_hostname_origin if db_hostname else db_hostname_origin
     if db_hostname == "localhost" or db_hostname == "127.0.0.1" or (db_hostname in RestoreMysqlCmd.all_local_ip):
         db_hostname = ""
     else:
