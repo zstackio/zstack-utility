@@ -2625,7 +2625,7 @@ class StopCmd(Command):
         pid = get_management_node_pid()
         if not pid:
             info('the management node has been stopped')
-            clear_leftover_mn_heartbeat()
+            clear_management_node_leftovers()
             return
 
         timeout = 30
@@ -2648,7 +2648,7 @@ class StopCmd(Command):
                 kill_process(pid, signal.SIGTERM)
                 time.sleep(1)
                 kill_process(pid, signal.SIGKILL)
-                clear_leftover_mn_heartbeat()
+                clear_management_node_leftovers()
 
                 if get_management_node_pid():
                     raise CtlError('failed to kill management node, pid = %s' % pid)
