@@ -361,6 +361,16 @@ def get_zstack_version(db_hostname, db_port, db_user, db_password):
     version = versions[0]
     return version
 
+def get_zstack_installed_on(db_hostname, db_port, db_user, db_password):
+    query = MySqlCommandLineQuery()
+    query.host = db_hostname
+    query.port = db_port
+    query.user = db_user
+    query.password = db_password
+    query.table = 'zstack'
+    query.sql = "select installed_on from schema_version order by installed_on desc"
+    ret = query.query()
+
 def get_default_gateway_ip():
     '''This function will return default route gateway ip address'''
     with open("/proc/net/route") as gateway:
@@ -1614,10 +1624,12 @@ class ShowStatusCmd(Command):
             out = cmd.stdout
             if 'schema_version' not in out:
                 version = '0.6'
+                installed_on = ''
             else:
                 version = get_zstack_version(db_hostname, db_port, db_user, db_password)
                 if len(version.split('.')) >= 4:
                     version = '.'.join(version.split('.')[:3])
+                installed_on = get_zstack_installed_on(db_hostname, db_port, db_user, db_password)
 
             detailed_version = get_detail_version()
             pjnum = get_pjnum()
@@ -1625,6 +1637,7 @@ class ShowStatusCmd(Command):
                 info('version: %s (%s for %s)' % (version, detailed_version, pjnum))
             else:
                 info('version: %s for %s' % (version, pjnum))
+            info('INSTALLED ON: %s' % installed_on)
 
         def show_hci_version():
             hci_path = '/usr/local/hyperconverged/conf/VERSION'
@@ -1652,7 +1665,7 @@ class ShowStatusCmd(Command):
                     if num == '001':
                         return 'universal'
                     else:
-                        return 'particular'
+                        return 'tailored'
                 else:
                     return 'unknown'
 
