@@ -3085,8 +3085,11 @@ class InstallDbCmd(Command):
             for ip in current_host_ips:
                 if not ip:
                     continue
-                more_cmd += "GRANT ALL PRIVILEGES ON *.* TO 'root'@'%s' IDENTIFIED BY '' WITH GRANT OPTION;"  % ip
-            grant_access_cmd = '''/usr/bin/mysql -u root -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'localhost' IDENTIFIED BY '' WITH GRANT OPTION; GRANT ALL PRIVILEGES ON *.* TO 'root'@'%s' IDENTIFIED BY '' WITH GRANT OPTION; GRANT ALL PRIVILEGES ON *.* TO 'root'@'%s' IDENTIFIED BY '' WITH GRANT OPTION; %s FLUSH PRIVILEGES;"''' % (args.host, args.host.replace(".", "-"), more_cmd)
+                more_cmd += "GRANT ALL PRIVILEGES ON *.* TO 'root'@'{}' IDENTIFIED BY '' WITH GRANT OPTION;".format(ip)
+            grant_access_cmd = '''/usr/bin/mysql -u root -e ''' \
+                               '''"GRANT ALL PRIVILEGES ON *.* TO 'root'@'localhost' IDENTIFIED BY '' WITH GRANT OPTION; '''\
+                               '''GRANT ALL PRIVILEGES ON *.* TO 'root'@'{}' IDENTIFIED BY '' WITH GRANT OPTION; '''\
+                               '''{} FLUSH PRIVILEGES;"'''.format(args.host, more_cmd)
         else:
             if not args.root_password:
                 args.root_password = args.login_password
@@ -3094,8 +3097,11 @@ class InstallDbCmd(Command):
             for ip in current_host_ips:
                 if not ip:
                     continue
-                more_cmd += "GRANT ALL PRIVILEGES ON *.* TO 'root'@'%s' IDENTIFIED BY '%s' WITH GRANT OPTION;"  % (ip, args.root_password)
-            grant_access_cmd = '''/usr/bin/mysql -u root -p%s -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'localhost' IDENTIFIED BY '%s' WITH GRANT OPTION; GRANT ALL PRIVILEGES ON *.* TO 'root'@'%s' IDENTIFIED BY '%s' WITH GRANT OPTION; GRANT ALL PRIVILEGES ON *.* TO 'root'@'%s' IDENTIFIED BY '%s' WITH GRANT OPTION; %s FLUSH PRIVILEGES;"''' % (args.root_password, args.root_password, args.host, args.root_password, args.host.replace(".", "-"), args.root_password, more_cmd)
+                more_cmd += "GRANT ALL PRIVILEGES ON *.* TO 'root'@'{}' IDENTIFIED BY '{}' WITH GRANT OPTION;".format(ip, args.root_password)
+            grant_access_cmd = '''/usr/bin/mysql -u root -p{root_pass} -e '''\
+                               '''"GRANT ALL PRIVILEGES ON *.* TO 'root'@'localhost' IDENTIFIED BY '{root_pass}' WITH GRANT OPTION; '''\
+                               '''GRANT ALL PRIVILEGES ON *.* TO 'root'@'{host}' IDENTIFIED BY '{root_pass}' WITH GRANT OPTION; '''\
+                               '''{more_cmd} FLUSH PRIVILEGES;"'''.format(root_pass=args.root_password, host=args.host, more_cmd=more_cmd)
 
         if args.login_password is not None:
             change_root_password_cmd = '/usr/bin/mysqladmin -u root -p{{login_password}} password {{root_password}}'
