@@ -109,13 +109,12 @@ def _start_multi_path_config(volume_wwid, alias):
     if not is_update:
         return
 
-    LOG.info("multipath config changed, try to restart multipathd service")
-    cmd = 'systemctl restart multipathd'
-    processutils.execute(cmd, shell=True)
-
-    # Force refresh of multipath devices
-    cmd = 'multipath -F'
-    processutils.execute(cmd, shell=True)
+    cmd = ["systemctl", "status", "multipathd"]
+    _, stderr = processutils.trycmd(*cmd)
+    if stderr:
+        LOG.info("get multipathd status failed, try to restart multipathd service")
+        cmd = 'systemctl restart multipathd'
+        processutils.execute(cmd, shell=True)
 
     # Display detailed debug information for multipath devices
     cmd = 'multipath -v3'
@@ -214,6 +213,7 @@ class LinuxDriver(base.SystemDriverBase):
         device_name = None
         for line in stdout.split('\n'):
             if 'Lun: {}'.format(lun_id) in line:
+                LOG.warning("lun_id %s, line %s" % (lun_id, line))
                 flag = True
                 continue
 

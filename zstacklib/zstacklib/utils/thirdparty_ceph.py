@@ -2,7 +2,7 @@
 import time
 import uuid
 
-from func_timeout import func_set_timeout
+from func_timeout import func_set_timeout, FunctionTimedOut
 from xms_client import ApiClient, Configuration
 from xms_client.api import BlockVolumesApi
 from xms_client.api import AccessPathsApi
@@ -751,17 +751,26 @@ class RbdDeviceOperator(object):
         logger.debug("Successfully destory resource for instance.")
         _destory()
 
+    def is_block_volume_access_path_exist(self, block_volume_name):
+        block_volume = self.block_volumes_api.list_block_volumes(q=block_volume_name).block_volumes[0]
+        if not block_volume:
+            raise Exception("Block volume %s cannot be find by list api" % block_volume_name)
+        return block_volume.access_path is not None
+
     def get_lun_id(self, volume_obj, instance_obj):
         dst_path = self._normalize_install_path(volume_obj.path)
         volume_name = dst_path.split("/")[1]
         snat_ip = linux.find_route_interface_ip_by_destination_ip(self.monIp)
         client_group_id = None
 
-        block_volume = self.block_volumes_api.list_block_volumes(q=volume_name).block_volumes[0]
-        if not block_volume:
-            raise Exception("Block volume[name : %s] cannot be find " % volume_name)
+        try:
+            self._retry_until(self.is_block_volume_access_path_exist, volume_name, forceTimeout=60)
+        except FunctionTimedOut as e:
+            logger.warn("check block volume access path exist, detail: %s" % e)
+            return
+        block_volume = self.get_volume_by_name(volume_name)
         block_volume_id = block_volume.id
-        if block_volume.access_path is None:
+        if not block_volume.access_path:
             logger.warn("Cannot find the access path for the volume %s." % volume_name)
             return
         access_path_id = block_volume.access_path.id
@@ -1094,7 +1103,7 @@ class RbdDeviceOperator(object):
         api_conf = ApiClient(conf, cookie="XMS_AUTH_TOKEN=%s" % token)
         return api_conf
 
-    @func_set_timeout(timeout=TIME_OUT)
+    @func_set_timeout(timeout=TIME_OUT, allowOverride=True)
     def _retry_until(self, func, *args, **kwargs):
         """
         NOTE:
