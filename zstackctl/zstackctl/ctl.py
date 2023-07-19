@@ -370,6 +370,10 @@ def get_zstack_installed_on(db_hostname, db_port, db_user, db_password):
     query.table = 'zstack'
     query.sql = "select installed_on from schema_version order by installed_on desc"
     ret = query.query()
+    installed_ons = [r['installed_on'] for r in ret]
+
+    installed_on = installed_ons[0]
+    return installed_on
 
 def get_default_gateway_ip():
     '''This function will return default route gateway ip address'''
