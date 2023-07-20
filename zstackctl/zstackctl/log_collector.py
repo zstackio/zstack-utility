@@ -981,7 +981,8 @@ if [ ! -e %s ]; then exit 2; fi
 ''' % (log['dir'], collect_command)
                         pb.executor.add_command_action(
                             command, exit_on_fail=False,
-                            callback_on_succ=[marshal.dumps(check_callback.__code__), id(ck_result), log['name'], type, host_post_info])
+                            with_match=False,
+                            callback_on_succ=[marshal.dumps(check_callback.__code__), id(ck_result), log['name'], type, host_post_info],)
                 pb.run()
                 for k, v in ck_result.items():
                     self.check_result[k] = v
