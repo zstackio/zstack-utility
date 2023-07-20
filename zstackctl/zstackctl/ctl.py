@@ -2145,6 +2145,8 @@ def clear_management_node_leftovers():
     try:
         mysql("DELETE FROM ManagementNodeVO WHERE hostName = '%s'" % mn_ip)
         info("cleared management node heartbeat for %s" % mn_ip)
+        release_mysql_lock('GlobalFacade.lock', mn_ip)
+        release_mysql_lock('ManagementNodeManager.inventory_lock', mn_ip)
     except:
         pass
 
