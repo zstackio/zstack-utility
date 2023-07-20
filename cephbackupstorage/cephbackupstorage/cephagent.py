@@ -1003,7 +1003,7 @@ class CephAgent(object):
         report.resourceUuid = cmd.imageUuid
         report.progress_report("0", "start")
 
-        cmd.url = urllib.quote(cmd.url.encode('utf-8'), safe=':/')
+        cmd.url = urllib.quote(cmd.url.encode('utf-8'), safe=':/?=')
 
         url = urlparse.urlparse(cmd.url)
         if url.scheme in ('http', 'https', 'ftp'):
