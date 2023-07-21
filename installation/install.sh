@@ -2291,7 +2291,8 @@ iz_install_zstack(){
     if [ $? -ne 0 ];then
        fail "failed to install zstack.war to $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_PATH."
     fi
-    ln -s $CATALINA_ZSTACK_PATH/VERSION $ZSTACK_INSTALL_ROOT/VERSION  
+    ln -s $CATALINA_ZSTACK_PATH/VERSION $ZSTACK_INSTALL_ROOT/VERSION
+    ln -s $CATALINA_ZSTACK_PATH/PJNUM $ZSTACK_INSTALL_ROOT/PJNUM
     pass
 }
 
