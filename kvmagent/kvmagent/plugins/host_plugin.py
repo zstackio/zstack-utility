@@ -1133,6 +1133,8 @@ class HostPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     @in_bash
     def get_usb_devices(self, req):
+        usb_device_infos = []
+
         class UsbDeviceInfo(object):
             def __init__(self):
                 self.busNum = ""
@@ -1146,28 +1148,25 @@ class HostPlugin(kvmagent.KvmAgent):
             def toString(self):
                 return self.busNum + ':' + self.devNum + ':' + self.idVendor + ':' + self.idProduct + ':' + self.iManufacturer + ':' + self.iProduct + ':' + self.iSerial + ':' + self.usbVersion + ";"
 
-        def _add_usb_device_info(info, usb_device_infos, dev_id):
+        def append_usb_device(info, dev_id):
             if info.busNum == '' or info.devNum == '' or info.idVendor == '' or info.idProduct == '':
-                logger.debug("cannot get busNum/devNum/idVendor/idProduct info in usbDevice %s" % dev_id)
+                logger.debug("cannot get busNum/devNum/idVendor/idProduct info in usbDevice %s, skip append" % dev_id)
             elif '(error)' in info.iManufacturer or '(error)' in info.iProduct:
                 logger.debug("cannot get iManufacturer or iProduct info in usbDevice %s" % dev_id)
-                usb_device_infos += info.toString()
+                usb_device_infos.append(info)
             else:
-                usb_device_infos += info.toString()
-
-            return usb_device_infos
+                usb_device_infos.append(info)
 
         # use 'lsusb.py -U' to get device ID, like '0751:9842'
         rsp = GetUsbDevicesRsp()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        r, o, e = bash_roe("timeout 5 lsusb.py -U")
+        r, o, e = bash_roe("timeout 5 /usr/local/bin/lsusb.py -U")
         if r != 0:
             rsp.success = False
             rsp.error = "%s %s" % (e, o)
             return jsonobject.dumps(rsp)
 
         id_set = set()
-        usb_device_infos = ''
         for line in o.split('\n'):
             line = line.split()
             if len(line) < 2:
@@ -1199,7 +1198,7 @@ class HostPlugin(kvmagent.KvmAgent):
                 elif line[0] == 'bcdUSB':
                     info.usbVersion = line[1]
                     # special case: USB2.0 with speed 1.5MBit/s or 12MBit/s should be attached to USB1.1 Controller
-                    rst = bash_r("lsusb.py | grep -v 'grep' | grep '%s' | grep -E '1.5MBit/s|12MBit/s'" % dev_id)
+                    rst = bash_r("/usr/local/bin/lsusb.py | grep -v 'grep' | grep '%s' | grep -E '1.5MBit/s|12MBit/s'" % dev_id)
                     info.usbVersion = info.usbVersion if rst != 0 else '1.1'
                 elif line[0] == 'iManufacturer' and len(line) > 2:
                     info.iManufacturer = ' '.join(line[2:])
@@ -1207,7 +1206,7 @@ class HostPlugin(kvmagent.KvmAgent):
                     info.iProduct = ' '.join(line[2:])
                 elif line[0] == 'iSerial':
                     info.iSerial = ' '.join(line[2:]) if len(line) > 2 else ""
-                    usb_device_infos = _add_usb_device_info(info, usb_device_infos, dev_id)
+                    append_usb_device(info, dev_id)
 
         rsp.usbDevicesInfo = usb_device_infos
         return jsonobject.dumps(rsp)
