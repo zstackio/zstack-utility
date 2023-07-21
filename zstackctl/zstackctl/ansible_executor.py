@@ -387,9 +387,9 @@ class AnsiblePBExecutor(object):
         self._add_action(action)
 
     def add_command_action(self, command, exit_on_fail=True,
-                           exit_on_unreachable=True, without_match=False,
+                           exit_on_unreachable=True, with_match=True,
                            callback_on_succ=None, callback_on_fail=None):
-        if 'yum' in command and not without_match:
+        if 'yum' in command and with_match:
             set_yum0 = '''rpm -q zstack-release >/dev/null && releasever=`awk '{print $3}' /etc/zstack-release`;\
                         export YUM0=$releasever; grep $releasever /etc/yum/vars/YUM0 || echo $releasever > /etc/yum/vars/YUM0;'''
             command = set_yum0 + command
