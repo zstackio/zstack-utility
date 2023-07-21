@@ -3531,8 +3531,9 @@ class Vm(object):
                         raise kvmagent.KvmError(err)
 
         self._is_vm_paused_with_readonly_flag_on_disk()
-        is_migrate_without_bitmaps = self._is_vm_migrate_without_dirty_bitmap()
-        check_mirror_jobs(cmd.vmUuid, is_migrate_without_bitmaps)
+        # is_migrate_without_bitmaps = self._is_vm_migrate_without_dirty_bitmap()
+        # migrate bitmap is not safe for now
+        check_mirror_jobs(cmd.vmUuid, migrate_without_bitmaps=True)
 
         with MigrateDaemon(self.domain):
             logger.debug('migrating vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
