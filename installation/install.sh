@@ -317,6 +317,8 @@ check_zstack_release(){
 check_project_num() {
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
 
+    attempts=0
+
     if [[ -f ${CURRENT_PROJECT_NUM} ]]; then
         current_project_num=`cat ${CURRENT_PROJECT_NUM}|awk -F "=" '{print $2}'`
     else
@@ -339,24 +341,32 @@ check_project_num() {
             return 0
         else
             echo "Will upgrade to the custom version ($upgrade_project_num), this operation is a risk operation, please confirm"
-            read -p "Continue to upgrade, if continue to upgrade, please enter <confirmed the risk> to continue:  " confirm
-            if [[ $confirm == "confirmed the risk" ]]; then
-                return 0
-            else
-                fail2 "This key is wrong, will exit the installation"
-            fi
+            while [ ${attempts} -lt 3 ]; do
+              read -p "Continue to upgrade, if continue to upgrade, please enter <confirmed the risk> to continue:  " confirm
+              if [[ $confirm == "confirmed the risk" ]]; then
+                  return 0
+              else
+                  ((attempts++))
+                  echo "This key is wrong"
+              fi
+            done
+            fail2 "This key is wrong three times, will exit the installation"
         fi
     fi
 
     if [[ -n $current_project_num ]]; then
         if [[ $current_project_num != $upgrade_project_num ]]; then
             echo "Will upgrade to a different custom version ($current_project_num -> $upgrade_project_num), this operation is a risk operation, please confirm"
-            read -p "Continue to upgrade, if continue to upgrade, please enter <confirmed the risk> to continue:  " confirm
-            if [[ $confirm == "confirmed the risk" ]]; then
-                return 0
-            else
-                fail2 "This key is wrong, will exit the installation"
-            fi
+            while [ ${attempts} -lt 3 ]; do
+              read -p "Continue to upgrade, if continue to upgrade, please enter <confirmed the risk> to continue:  " confirm
+              if [[ $confirm == "confirmed the risk" ]]; then
+                  return 0
+              else
+                  ((attempts++))
+                  echo "This key is wrong"
+              fi
+            done
+            fail2 "This key is wrong three times, will exit the installation"
         fi
     fi
 }
