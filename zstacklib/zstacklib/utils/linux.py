@@ -1862,6 +1862,29 @@ def find_process_by_cmdline(cmdlines):
 
     return None
 
+def find_all_process_by_cmdline(cmdlines):
+    ret = []
+    pids = [pid for pid in os.listdir('/proc') if pid.isdigit()]
+    for pid in pids:
+        try:
+            with open(os.path.join('/proc', pid, 'cmdline'), 'r') as fd:
+                cmdline = fd.read()
+
+            is_find = True
+            for c in cmdlines:
+                if c not in cmdline:
+                    is_find = False
+                    break
+
+            if not is_find:
+                continue
+
+            ret.append(pid)
+        except IOError:
+            continue
+
+    return ret
+
 def find_process_by_command(comm, cmdlines=None):
     pids = [pid for pid in os.listdir('/proc') if pid.isdigit()]
     for pid in pids:

@@ -1219,8 +1219,8 @@ mimetype.assign = (
 
         conf_folder = os.path.join(self.USERDATA_ROOT, to.namespaceName)
         conf_path = os.path.join(conf_folder, 'lighttpd.conf')
-        pid = linux.find_process_by_cmdline([conf_path])
-        if pid:
+        pids = linux.find_all_process_by_cmdline([conf_path])
+        for pid in pids:
             linux.kill_process(pid)
 
         linux.mkdir('/var/log/lighttpd', 0o750)
