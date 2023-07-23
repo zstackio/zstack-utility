@@ -1190,8 +1190,11 @@ download_zstack(){
     echo ""
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     show_download iz_download_zstack
-    show_spinner uz_stop_zstack_ui
     show_spinner iz_unpack_zstack
+    if [ x"$UPGRADE" = x'y' ]; then
+        show_spinner iz_check_space
+    fi
+    show_spinner uz_stop_zstack_ui
 }
 
 # create symbol links for zstack-repo
@@ -1867,6 +1870,8 @@ iz_unpack_zstack(){
             cd /; rm -rf $upgrade_folder 
             fail "failed to unpack ${PRODUCT_NAME} package: $all_in_one."
         fi
+        # Remove zstack_all_in_one.tgz to reduce tmp space usage
+        rm -rf $all_in_one
         current_date=`date +%s`
         zstack_build_time=`stat zstack.war|grep Modify|awk '{ print substr($0, index($0,$2)) }'`
         zstack_build_date=`date --date="$zstack_build_time" +%s`
@@ -1874,6 +1879,26 @@ iz_unpack_zstack(){
             fail "Your system time is earlier than ${PRODUCT_NAME} build time: $zstack_build_time . Please fix it."
         fi
     fi
+    pass
+}
+
+iz_check_space(){
+    echo_subtitle "Checking space"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+
+    # Check the /tmp directory have enough space to store unpackaged zstack.war and pip tmp files
+    zstack_war_size_B=`unzip -l $upgrade_folder/zstack.war | tail -n1 | awk '{ print $1 }'`
+    (( zstack_war_size_KiB = $zstack_war_size_B / 1024 ))
+    (( pip_tmp_size_KiB = 768 * 1024 ))
+    (( required_total_KiB = $pip_tmp_size_KiB + $zstack_war_size_KiB ))
+    available_space_KiB=`df $upgrade_folder | tail -n1 | awk '{ print $4 }'`
+    (( space_left = $available_space_KiB - $required_total_KiB ))
+
+    if [ $space_left -lt 0 ]; then
+        cd /; rm -rf $upgrade_folder
+        fail "The directory $upgrade_folder have $available_space_KiB KiB space left, where the upgrading reuqires $required_total_KiB KiB."
+    fi
+
     pass
 }
 
