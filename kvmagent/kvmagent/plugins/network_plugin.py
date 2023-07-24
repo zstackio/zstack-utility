@@ -34,10 +34,13 @@ KVM_REALIZE_L2VXLAN_NETWORK_PATH = "/network/l2vxlan/createbridge"
 KVM_REALIZE_L2VXLAN_NETWORKS_PATH = "/network/l2vxlan/createbridges"
 KVM_POPULATE_FDB_L2VXLAN_NETWORK_PATH = "/network/l2vxlan/populatefdb"
 KVM_POPULATE_FDB_L2VXLAN_NETWORKS_PATH = "/network/l2vxlan/populatefdbs"
+KVM_CHECK_MACVLAN_L2VLAN_NETWORK_PATH = "/network/l2vlan/macvlan/checkbridge"
+KVM_REALIZE_MACVLAN_L2VLAN_NETWORK_PATH = "/network/l2vlan/macvlan/createbridge"
 KVM_SET_BRIDGE_ROUTER_PORT_PATH = "/host/bridge/routerport"
 KVM_DELETE_L2NOVLAN_NETWORK_PATH = "/network/l2novlan/deletebridge"
 KVM_DELETE_L2VLAN_NETWORK_PATH = "/network/l2vlan/deletebridge"
 KVM_DELETE_L2VXLAN_NETWORK_PATH = "/network/l2vxlan/deletebridge"
+KVM_DELETE_MACVLAN_L2VLAN_NETWORK_PATH = "/network/l2vlan/macvlan/deletebridge"
 VXLAN_DEFAULT_PORT = 8472
 
 
@@ -594,6 +597,30 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
     @lock.lock('bridge')
     @kvmagent.replyerror
+    def create_mac_vlan_eth(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CreateVlanBridgeResponse()
+        vlanInterfName = '%s.%s' % (cmd.physicalInterfaceName, cmd.vlan)
+
+        oldMtu = self._get_interface_mtu(vlanInterfName)
+        mtu = cmd.mtu
+        if oldMtu > cmd.mtu:
+            mtu = oldMtu
+        try:
+            linux.create_vlan_eth(cmd.physicalInterfaceName, cmd.vlan)
+            linux.set_device_uuid_alias('%s.%s' % (cmd.physicalInterfaceName, cmd.vlan), cmd.l2NetworkUuid)
+            logger.debug('successfully realize vlan eth[name:%s, vlan:%s] from device[%s]' % (
+            vlanInterfName, cmd.vlan, cmd.physicalInterfaceName))
+        except Exception as e:
+            logger.warning(traceback.format_exc())
+            rsp.error = 'unable to create vlan eth[name:%s, vlan:%s] from device[%s], because %s' % (
+            vlanInterfName, cmd.vlan, cmd.physicalInterfaceName, str(e))
+            rsp.success = False
+
+        return jsonobject.dumps(rsp)
+
+    @lock.lock('bridge')
+    @kvmagent.replyerror
     def check_bridge(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CheckBridgeResponse()
@@ -612,6 +639,19 @@ class NetworkPlugin(kvmagent.KvmAgent):
         rsp = CheckVlanBridgeResponse()
         if not linux.is_bridge(cmd.bridgeName):
             rsp.error = "can not find vlan bridge[%s]" % cmd.bridgeName
+            rsp.success = False
+        else:
+            self._ifup_device_if_down(cmd.physicalInterfaceName)
+
+        return jsonobject.dumps(rsp)
+
+    @lock.lock('bridge')
+    @kvmagent.replyerror
+    def check_macvlan_vlan_eth(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CheckVlanBridgeResponse()
+        if not linux.vlan_eth_exists(cmd.physicalInterfaceName, cmd.vlan):
+            rsp.error = "can not find vlan network interface[%s] for macvlan" % linux.make_vlan_eth_name(cmd.physicalInterfaceName, cmd.vlan)
             rsp.success = False
         else:
             self._ifup_device_if_down(cmd.physicalInterfaceName)
@@ -864,6 +904,25 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
     @lock.lock('bridge')
     @kvmagent.replyerror
+    def delete_macvlan_vlan_eth(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = DeleteVlanBridgeResponse()
+        vlanInterfName = '%s.%s' % (cmd.physicalInterfaceName, cmd.vlan)
+
+        try:
+            linux.delete_vlan_eth(vlanInterfName)
+            logger.debug('successfully delete vlan eth[name:%s, vlan:%s] from device[%s]' % (
+            vlanInterfName, cmd.vlan, cmd.physicalInterfaceName))
+        except Exception as e:
+            logger.warning(traceback.format_exc())
+            rsp.error = 'failed to delete vlan eth[name:%s, vlan:%s] from device[%s], because %s' % (
+                vlanInterfName, cmd.vlan, cmd.physicalInterfaceName, str(e))
+            rsp.success = False
+
+        return jsonobject.dumps(rsp)
+
+    @lock.lock('bridge')
+    @kvmagent.replyerror
     def create_vxlan_bridge(self, req):
         # Create VXLAN interface using vtep ip then create bridge
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -888,7 +947,9 @@ class NetworkPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(DETACH_NIC_FROM_BONDING_PATH, self.detach_nic_from_bonding)
         http_server.register_async_uri(KVM_REALIZE_L2NOVLAN_NETWORK_PATH, self.create_bridge)
         http_server.register_async_uri(KVM_REALIZE_L2VLAN_NETWORK_PATH, self.create_vlan_bridge)
+        http_server.register_async_uri(KVM_REALIZE_MACVLAN_L2VLAN_NETWORK_PATH, self.create_mac_vlan_eth)
         http_server.register_async_uri(KVM_CHECK_L2NOVLAN_NETWORK_PATH, self.check_bridge)
+        http_server.register_async_uri(KVM_CHECK_MACVLAN_L2VLAN_NETWORK_PATH, self.check_macvlan_vlan_eth)
         http_server.register_async_uri(KVM_CHECK_L2VLAN_NETWORK_PATH, self.check_vlan_bridge)
         http_server.register_async_uri(KVM_CHECK_L2VXLAN_NETWORK_PATH, self.check_vxlan_cidr)
         http_server.register_async_uri(KVM_REALIZE_L2VXLAN_NETWORK_PATH, self.create_vxlan_bridge)
@@ -898,6 +959,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(KVM_SET_BRIDGE_ROUTER_PORT_PATH, self.set_bridge_router_port)
         http_server.register_async_uri(KVM_DELETE_L2NOVLAN_NETWORK_PATH, self.delete_novlan_bridge)
         http_server.register_async_uri(KVM_DELETE_L2VLAN_NETWORK_PATH, self.delete_vlan_bridge)
+        http_server.register_async_uri(KVM_DELETE_MACVLAN_L2VLAN_NETWORK_PATH, self.delete_macvlan_vlan_eth)
         http_server.register_async_uri(KVM_DELETE_L2VXLAN_NETWORK_PATH, self.delete_vxlan_bridge)
 
     def stop(self):

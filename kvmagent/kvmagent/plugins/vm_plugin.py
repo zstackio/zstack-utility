@@ -5693,6 +5693,9 @@ class Vm(object):
         elif vhostSrcPath is not None:
             iftype = 'vhostuser'
             device_attr = {'type': iftype}
+        elif nic.type == "MACVLAN":
+            iftype = 'direct'
+            device_attr = {'type': iftype}
         else:
             iftype = 'bridge'
             device_attr = {'type': iftype}
@@ -5706,7 +5709,7 @@ class Vm(object):
         if action != 'Update':
             e(interface, 'alias', None, {'name': 'net%s' % nic.nicInternalName.split('.')[1]})
 
-        if iftype != 'hostdev' and nic.type not in ovs.OvsDpdkSupportVnic:
+        if iftype != 'hostdev' and iftype != "direct" and nic.type not in ovs.OvsDpdkSupportVnic:
             e(interface, 'mtu', None, attrib={'size': '%d' % nic.mtu})
 
         # logger.warn("nic.state : [%s]" % nic.state)
@@ -5730,11 +5733,17 @@ class Vm(object):
             else:
                 e(interface, 'source', None, attrib={'type': 'unix', 'path': '/var/run/phynic{}'.format(index+1), 'mode':'server'})
                 e(interface, 'driver', None, attrib={'queues': '8'})
+        elif iftype == 'direct':
+            nicDev = nic.physicalInterface
+            if nic.vlanId is not None:
+                nicDev = linux.make_vlan_eth_name(nic.physicalInterface, nic.vlanId)
+            e(interface, 'source', None, attrib={'dev': nicDev, 'mode': 'vepa'})
+            e(interface, 'target', None, attrib={'dev': nic.nicInternalName})
         else:
             e(interface, 'source', None, attrib={'bridge': nic.bridgeName})
             e(interface, 'target', None, attrib={'dev': nic.nicInternalName})
 
-        if nic.pci is not None and (iftype == 'bridge' or iftype == 'vhostuser'):
+        if nic.pci is not None and (iftype == 'bridge' or iftype == 'direct' or iftype == 'vhostuser'):
             e(interface, 'address', None, attrib={'type': nic.pci.type, 'domain': nic.pci.domain, 'bus': nic.pci.bus, 'slot': nic.pci.slot, "function": nic.pci.function})
         else:
             e(interface, 'address', None, attrib={'type': "pci"})
