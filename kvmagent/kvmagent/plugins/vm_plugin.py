@@ -2268,6 +2268,13 @@ class Vm(object):
     def get_name(self):
         return self.domain_xmlobject.description.text_
 
+    def get_migratable_xml(self):
+        try:
+            return self.domain.XMLDesc(libvirt.VIR_DOMAIN_XML_MIGRATABLE)
+        except Exception as e:
+            logger.warn("unable to get migratable xml for vm[uuid:%s], %s" % (self.uuid, str(e)))
+            return self.domain_xml
+
     def refresh(self):
         (state, _, _, _, _) = self.domain.info()
         self.state = self.power_state[state]
@@ -3387,7 +3394,7 @@ class Vm(object):
             migrate_disks[disk_name] = volume
 
         xml_changed = False
-        tree = etree.ElementTree(etree.fromstring(self.domain_xml))
+        tree = etree.ElementTree(etree.fromstring(self.get_migratable_xml()))
         devices = tree.getroot().find('devices')
         for disk in tree.iterfind('devices/disk'):
             dev = disk.find('target').attrib['dev']
