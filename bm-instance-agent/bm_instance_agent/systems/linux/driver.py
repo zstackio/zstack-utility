@@ -36,8 +36,8 @@ devices {
 
 
 def _check_initiator_config(instance_uuid):
-    cmd = ["systemctl", "status", "iscsid"]
-    _, stderr = processutils.trycmd(*cmd)
+    cmd = 'which systemctl > /dev/null 2>&1 && systemctl status iscsid || service iscsid status'
+    stdout, stderr = processutils.trycmd(cmd, shell=True)
     if stderr:
         LOG.info("get iscsid status failed, try to restart iscsid service")
         cmd = 'systemctl restart iscsid'
@@ -59,61 +59,22 @@ def _check_initiator_config(instance_uuid):
         with open(conf_path, 'w') as f:
             f.write(initiator)
         LOG.info("initiator config changed, reload and restart iscsid")
-        cmd = 'systemctl daemon-reload && systemctl restart iscsid'
+        cmd = 'which systemctl > /dev/null 2>&1 && systemctl restart iscsid || service iscsid restart'
         processutils.execute(cmd, shell=True)
 
 
-def add_multipath_config(wwid, alias):
-    config = """
-multipath {{
-    wwid {}
-    alias {}
-}}
-""".format(wwid, alias)
-
-    with open(multipath_conf_path, 'r+') as f:
-        lines = f.readlines()
-
-        update_buffer = []
-        found_multi_paths = False
-
-        for line in lines:
-            if "wwid {}".format(wwid) in line:
-                return False
-
-        for line in lines:
-            update_buffer.append(line)
-            if not found_multi_paths and line.strip() == "multipaths {":
-                update_buffer.append(config)
-                found_multi_paths = True
-
-        if not found_multi_paths:
-            update_buffer.append("multipaths {\n")
-            update_buffer.append(config)
-            update_buffer.append("}\n")
-
-        f.seek(0)
-        f.writelines(update_buffer)
-        f.flush()
-        return True
-
-def _start_multi_path_config(volume_wwid, alias):
+def _check_multi_path_config():
     if not os.path.exists(multipath_conf_path):
         with open(multipath_conf_path, 'w') as f:
             f.write(multi_path_daemon_cofig)
             f.flush()
         LOG.info("multipath config not exists, create multipath conf to %s" % multipath_conf_path)
 
-    is_update = add_multipath_config(volume_wwid, alias)
-
-    if not is_update:
-        return
-
-    cmd = ["systemctl", "status", "multipathd"]
-    _, stderr = processutils.trycmd(*cmd)
+    cmd = 'which systemctl > /dev/null 2>&1 && systemctl status multipathd || service multipathd status'
+    stdout, stderr = processutils.trycmd(cmd, shell=True)
     if stderr:
         LOG.info("get multipathd status failed, try to restart multipathd service")
-        cmd = 'systemctl restart multipathd'
+        cmd = 'which systemctl > /dev/null 2>&1 && systemctl restart multipathd || service multipathd restart'
         processutils.execute(cmd, shell=True)
 
     # Display detailed debug information for multipath devices
@@ -189,50 +150,6 @@ class LinuxDriver(base.SystemDriverBase):
         target_name = volume_obj.iscsi_path.replace('iscsi://', '').split("/")[1]
         self.discovery_target_through_access_path_gateway_ips(target_name, volume_access_path_gateway_ips)
 
-        device_scsi_id = self.get_volume_scsi_id(target_name, volume_access_path_gateway_ips[0], volume_obj.device_id)
-        if device_scsi_id:
-            _start_multi_path_config(device_scsi_id, volume_obj.name)
-
-    def get_volume_scsi_id(self, iqn, target_ip, lun_id):
-        cmd = 'iscsiadm -m session | grep %s | grep %s' % (iqn, target_ip)
-        stdout, stderr = processutils.trycmd(cmd, shell=True)
-
-        for line in stdout.split('\n'):
-            if iqn in line:
-                match = re.search(r'\[(\d+)\]', line)
-                if match:
-                    sid = match.group(1)
-                    LOG.info("The sid logged in with iqn %s and ip %s is %s" % (iqn, target_ip, sid))
-                    break
-        if not sid:
-            raise exception.IscsiSessionIdNotFound(volume_uuid=iqn, output=stdout)
-
-        cmd = ['iscsiadm', '-m', 'session', '--sid', sid, '-P', '3']
-        stdout, _ = processutils.execute(*cmd)
-        flag = False
-        device_name = None
-        for line in stdout.split('\n'):
-            if 'Lun: {}'.format(lun_id) in line:
-                LOG.warning("lun_id %s, line %s" % (lun_id, line))
-                flag = True
-                continue
-
-            if flag:
-                device_name = line.split()[3]
-                LOG.warning("find iscsi device name is %s" % device_name)
-                break
-
-        if not device_name:
-            LOG.warning('failed to find iscsi device name, skip multipath config')
-            return None
-
-        cmd = '/usr/lib/udev/scsi_id -g -u /dev/%s' % device_name
-        stdout, stderr = processutils.trycmd(cmd, shell=True)
-        if stderr:
-            LOG.info("failed to find iscsi id, because %s, skip multipath config" % stderr)
-            return None
-        return stdout
-
     def discovery_target_through_access_path_gateway_ips(self, target_name, volume_access_path_gateway_ips):
         for gateway_ip in volume_access_path_gateway_ips:
             self.login_target(target_name, gateway_ip)
@@ -281,6 +198,7 @@ class LinuxDriver(base.SystemDriverBase):
         self.discovery_target(instance_obj)
         self.discovery_volume_target(instance_obj, volume_obj, volume_access_path_gateway_ips)
         _check_initiator_config(instance_obj.uuid)
+        _check_multi_path_config()
 
         cmd = ['iscsiadm', '-m', 'session', '--rescan']
         # parameter[delay_on_retry] of func[processutils.execute] will not verify exit_code
