@@ -3962,6 +3962,10 @@ class Vm(object):
 
             return not iproute.is_device_ifname_exists(cmd.nic.nicInternalName)
 
+        def wait_for_detach():
+            if not linux.wait_callback_success(check_device, interval=0.5, timeout=10):
+                raise Exception('NIC device is still attached after 10 seconds. Please check virtio driver or stop VM and detach again.')
+
         if check_device(None):
             return
 
@@ -3977,9 +3981,14 @@ class Vm(object):
             else:
                 self.domain.detachDevice(xml)
 
-            if not linux.wait_callback_success(check_device, interval=0.5, timeout=10):
-                raise Exception('NIC device is still attached after 10 seconds. Please check virtio driver or stop VM and detach again.')
-        except:
+            wait_for_detach()
+        except libvirt.libvirtError as e:
+            logger.warn(linux.get_exception_stacktrace())
+
+            # c.f. https://bugzilla.redhat.com/show_bug.cgi?id=1878659
+            # support new qemu version which will raise exception when detach a nic which is already in the process of unplug
+            if "is already in the process of unplug" in str(e.message):
+                wait_for_detach()
             # check one more time
             if not check_device(None):
                 logger.warn('failed to detach a nic[mac:%s], dump vm xml:\n%s' % (cmd.nic.mac, self.domain_xml))
