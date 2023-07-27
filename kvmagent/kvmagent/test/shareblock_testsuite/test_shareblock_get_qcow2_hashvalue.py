@@ -19,7 +19,7 @@ __ENV_SETUP__ = {
 }
 
 global hostUuid
-global vgUuid
+vgUuid = "36b02490bb944233b0b01990a450ba83"
 
 ## describe: case will manage by ztest
 class TestSharedBlockPlugin(TestCase, SharedBlockPluginTestStub):
@@ -49,8 +49,6 @@ class TestSharedBlockPlugin(TestCase, SharedBlockPluginTestStub):
         global hostUuid
         hostUuid = misc.uuid()
 
-        global vgUuid
-        vgUuid = misc.uuid()
         # get block uuid
         r, o = bash.bash_ro("ls /dev/disk/by-id | grep scsi|awk -F '-' '{print $2}'")
         blockUuid = o.strip().replace(' ', '').replace('\n', '').replace('\r', '')

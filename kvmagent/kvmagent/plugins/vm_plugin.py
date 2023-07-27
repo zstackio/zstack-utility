@@ -7144,11 +7144,28 @@ class VmPlugin(kvmagent.KvmAgent):
             vm = get_vm_by_uuid(vmUuid)
             return vm._get_target_disk_by_path(task_spec.newVolume.installPath, is_exception=False) is not None
 
+        job_over = False
+        @thread.AsyncThread
+        @linux.retry(times=10, sleep_time=1)
+        def _touch_qmp_socket_when_migration_starts():
+            if job_over:
+                return
+            r, o, e = execute_qmp_command(vmUuid, '{ "execute": "query-named-block-nodes" }')
+            if r == 0 and task_spec.newVolume.installPath in o:
+                logger.debug("touch qmp socket for block[diskName: %s, vmUuid: %s] migration" % (disk_name, vmUuid))
+                touchQmpSocketWhenExists(vmUuid)
+                return
+            raise RetryException("cannot find dst volume block node for disk %s, vmUuid %s" % (disk_name, vmUuid))
+
+        if task_spec.newVolume.installPath.startswith("/dev"):
+            _touch_qmp_socket_when_migration_starts()
+
         logger.info("start copying %s:%s to %s ..." % (vmUuid, disk_name, task_spec.newVolume.installPath))
         with BlockCopyDaemon(task_spec, get_vm_by_uuid(vmUuid).domain, disk_name):
             cmd = 'virsh blockcopy --domain {} {} --xml {} --pivot --wait --transient-job --reuse-external'.format(vmUuid, disk_name, disk_xml)
             shell_cmd = shell.ShellCmd(cmd)
             shell_cmd(False)
+            job_over = True
             if shell_cmd.return_code != 0 or not check_volume():
                 logger.debug("block copy failed from %s:%s to %s: %s" % (vmUuid, disk_name, task_spec.newVolume.installPath, shell_cmd.stderr))
                 return False, shell_cmd.stderr
