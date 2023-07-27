@@ -120,14 +120,14 @@ fi
 
 grep 'interactive_timeout' $mysql_conf >/dev/null 2>&1
 if [ $? -ne 0 ]; then
-    echo "interactive_timeout=100"
-    sed -i '/\[mysqld\]/a interactive_timeout=100\' $mysql_conf
+    echo "interactive_timeout=600"
+    sed -i '/\[mysqld\]/a interactive_timeout=600\' $mysql_conf
 fi
 
 grep 'wait_timeout' $mysql_conf >/dev/null 2>&1
 if [ $? -ne 0 ]; then
-    echo "wait_timeout=100"
-    sed -i '/\[mysqld\]/a wait_timeout=100\' $mysql_conf
+    echo "wait_timeout=600"
+    sed -i '/\[mysqld\]/a wait_timeout=600\' $mysql_conf
 fi
 
 grep 'log-error' $mysql_conf >/dev/null 2>&1
@@ -141,6 +141,8 @@ if [ $? -ne 0 ]; then
     echo "slave_net_timeout=60"
     sed -i '/\[mysqld\]/a slave_net_timeout=60\' $mysql_conf
 fi
+
+sed -i '/\[Service\]/a TimeoutStartSec=300' /usr/lib/systemd/system/mariadb.service
 
 mkdir -p /etc/systemd/system/mariadb.service.d/
 echo -e "[Service]\nLimitNOFILE=2048" > /etc/systemd/system/mariadb.service.d/limits.conf
