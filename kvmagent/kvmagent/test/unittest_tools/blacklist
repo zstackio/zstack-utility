@@ -37,12 +37,15 @@ kvmagent/test/shareblock_testsuite/test_sharedblock_get_block_devices.py
 kvmagent/test/shareblock_testsuite/test_sharedblock_merge_snapshot.py
 kvmagent/test/shareblock_testsuite/test_sharedblock_shrink_snapshot.py
 kvmagent/test/shareblock_testsuite/test_sharedblock_volume_migrate.py
+kvmagent/test/shareblock_testsuite/test_shareblock_create_data_volume_with_backing.py
 kvmagent/test/shareblock_testsuite/test_sharedblock_check_lock.py
+kvmagent/test/shareblock_testsuite/test_shareblock_get_qcow2_hashvalue.py
 kvmagent/test/vm_plugin_testsuite/test_vm_cpu_model.py
 kvmagent/test/vm_plugin_testsuite/test_vm_max_vcpu.py
 kvmagent/test/nfs_testsuit/test_ha_nfs.py
 kvmagent/test/network_plugin_testsuite/test_vxlan_api.py
 kvmagent/test/nfs_testsuit/test_ha_nfs_touch_fail.py
+kvmagent/test/nfs_testsuit/test_nfs_migrate_bits.py
 kvmagent/test/shareblock_testsuite/test_ha_shareblock.py
 kvmagent/test/shareblock_testsuite/test_physical_nic.py
 zstacklib/test/zstacklib_unittest_suite.py

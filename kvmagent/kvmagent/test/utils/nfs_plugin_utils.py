@@ -37,3 +37,20 @@ def create_root_volume_from_template(templatePathInCache, timeout, virtualSize, 
         "primaryStorageUuid": primaryStorageUuid,
         "kvmHostAddons": kvmHostAddons
     }))
+
+@misc.return_jsonobject()
+def migrate_bits(srcFolderPath, dstFolderPath, independentPath=False, filtPaths=[], isMounted=True, volumeInstallPath=None, options=None,
+                 url=None, mountPath=None, kvmHostAddons={}):
+
+    return NFS_PLUGIN.migrate_bits(misc.make_a_request({
+        "srcFolderPath": srcFolderPath,
+        "dstFolderPath": dstFolderPath,
+        "independentPath": independentPath,
+        "filtPaths": filtPaths,
+        "isMounted": isMounted,
+        "volumeInstallPath": volumeInstallPath,
+        "options": options,
+        "url": url,
+        "mountPath": mountPath,
+        "kvmHostAddons":kvmHostAddons
+    }))

@@ -71,13 +71,16 @@ def shareblock_delete_bits(path=None, vgUuid=None, hostUuid=None, primaryStorage
     }))
 
 @misc.return_jsonobject()
-def shareblock_create_template_from_volume(volumePath=None, installPath=None, sharedVolume=False, hostUuid=None, vgUuid=None):
+def shareblock_create_template_from_volume(volumePath=None, installPath=None, sharedVolume=False, hostUuid=None, vgUuid=None, addons={},
+                                           provisioning=None):
     return get_sharedblock_plugin().create_template_from_volume(misc.make_a_request({
         "volumePath": volumePath,
         "installPath": installPath,
         "sharedVolume":sharedVolume,
         "hostUuid":hostUuid,
-        "vgUuid": vgUuid
+        "vgUuid": vgUuid,
+        "addons":addons,
+        "provisioning":provisioning
     }))
 
 @misc.return_jsonobject()
@@ -221,11 +224,13 @@ def sharedblock_add_disk(vgUuid=None, hostUuid=None, diskUuid=None, allSharedBlo
     }))
 
 @misc.return_jsonobject()
-def sharedblock_migrate_volumes(vgUuid=None, hostUuid=None, migrateVolumeStructs=None):
+def sharedblock_migrate_volumes(vgUuid=None, hostUuid=None, migrateVolumeStructs=None, provisioning=None, addons={}):
     return get_sharedblock_plugin().migrate_volumes(misc.make_a_request({
         "vgUuid": vgUuid ,# random uuid
         "hostUuid": hostUuid,
         "migrateVolumeStructs":migrateVolumeStructs,
+        "provisioning":provisioning,
+        "addons":addons
     }))
 
 @misc.return_jsonobject()
@@ -334,4 +339,12 @@ def shareblock_get_qcow2_hashvalue(installPath=None):
 def sharedblock_check_lock(vgUuids=[]):
     return get_sharedblock_plugin().check_lock(misc.make_a_request({
         "vgUuids": vgUuids
+    }))
+
+@misc.return_jsonobject()
+def sharedblock_estimate_template(volumePath, vgUuid=None, hostUuid=None):
+    return get_sharedblock_plugin().estimate_template(misc.make_a_request({
+        "vgUuid": vgUuid,
+        "hostUuid":hostUuid,
+        "volumePath":volumePath
     }))
