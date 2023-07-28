@@ -858,6 +858,24 @@ def _get_free_memory():
 def _get_used_memory():
     return _get_total_memory() - _get_free_memory()
 
+
+def apply_memory_reserve(reserved_memory_capacity):
+    machine_limit_memory = _get_total_memory() - reserved_memory_capacity
+    machine_memory_limit_path = '/sys/fs/cgroup/memory/machine.slice/memory.limit_in_bytes'
+    if not os.path.exists(machine_memory_limit_path):
+        try:
+            os.makedirs(os.path.dirname(machine_memory_limit_path))
+        except Exception as e:
+            raise Exception('cannot create memory reserve file: %s' % e)
+    if not os.path.exists(machine_memory_limit_path):
+        raise Exception('cannot create memory reserve file: %s' % machine_memory_limit_path)
+    ret = bash_r('echo %d > %s' % (machine_limit_memory, machine_memory_limit_path))
+    if ret == 0:
+        return
+    else:
+        raise Exception('cannot set memory reserve: %s' % reserved_memory_capacity)
+
+
 class HostPlugin(kvmagent.KvmAgent):
     '''
     classdocs
@@ -994,7 +1012,9 @@ class HostPlugin(kvmagent.KvmAgent):
         linux.write_uuids("host", "host=%s" % self.host_uuid)
 
         vm_plugin.cleanup_stale_vnc_iptable_chains()
-        self.apply_iptables_rules(cmd.iptablesRules)
+        apply_iptables_result = self.apply_iptables_rules(cmd.iptablesRules)
+        rsp.iptablesSucc = apply_iptables_result
+        apply_memory_reserve(cmd.reservedMemory)
 
         if self.host_socket is not None:
             self.host_socket.close()
