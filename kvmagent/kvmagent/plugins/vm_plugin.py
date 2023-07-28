@@ -4462,6 +4462,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_DETACH_VOLUME = "/vm/detachdatavolume"
     KVM_MIGRATE_VM_PATH = "/vm/migrate"
     KVM_BLOCK_LIVE_MIGRATION_PATH = "/vm/blklivemigration"
+    KVM_VM_CHECK_VOLUME_PATH = "/vm/volume/check"
     KVM_TAKE_VOLUME_SNAPSHOT_PATH = "/vm/volume/takesnapshot"
     KVM_TAKE_VOLUME_BACKUP_PATH = "/vm/volume/takebackup"
     KVM_BLOCK_STREAM_VOLUME_PATH = "/vm/volume/blockstream"
@@ -5077,7 +5078,6 @@ class VmPlugin(kvmagent.KvmAgent):
         rsp = StopVmResponse()
         try:
             self._record_operation(cmd.uuid, self.VM_OP_STOP)
-
             self._stop_vm(cmd)
             logger.debug("successfully stopped vm[uuid:%s]" % cmd.uuid)
         except kvmagent.KvmError as e:
@@ -5211,6 +5211,17 @@ class VmPlugin(kvmagent.KvmAgent):
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
             rsp.success = False
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def check_volume(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+
+        vm = get_vm_by_uuid(cmd.uuid)
+        for volume in cmd.volumes:
+            vm._get_target_disk(volume)
 
         return jsonobject.dumps(rsp)
 
@@ -6878,6 +6889,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_DETACH_ISO_PATH, self.detach_iso)
         http_server.register_async_uri(self.KVM_MIGRATE_VM_PATH, self.migrate_vm)
         http_server.register_async_uri(self.KVM_BLOCK_LIVE_MIGRATION_PATH, self.block_migrate_vm)
+        http_server.register_async_uri(self.KVM_VM_CHECK_VOLUME_PATH, self.check_volume)
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_SNAPSHOT_PATH, self.take_volume_snapshot)
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_BACKUP_PATH, self.take_volume_backup, cmd=TakeVolumeBackupCommand())
         http_server.register_async_uri(self.KVM_TAKE_VOLUMES_SNAPSHOT_PATH, self.take_volumes_snapshots)
