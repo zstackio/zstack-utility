@@ -1,6 +1,7 @@
 import os.path
 import pyudev       # installed by ansible
 import threading
+import time
 from collections import defaultdict
 
 import typing
@@ -11,6 +12,7 @@ import psutil
 from kvmagent import kvmagent
 from zstacklib.utils import http
 from zstacklib.utils import jsonobject
+from zstacklib.utils import linux
 from zstacklib.utils import lock
 from zstacklib.utils import lvm
 from zstacklib.utils import misc
@@ -21,16 +23,21 @@ from zstacklib.utils.ip import get_nic_supported_max_speed
 
 logger = log.get_logger(__name__)
 collector_dict = {}  # type: Dict[str, threading.Thread]
+collectd_dir = "/var/lib/zstack/collectd/"
 latest_collect_result = {}
 collectResultLock = threading.RLock()
+asyncDataCollectorLock = threading.RLock()
 QEMU_CMD = os.path.basename(kvmagent.get_qemu_path())
 ALARM_CONFIG = None
+PAGE_SIZE = None
 disk_list_record = None
 cpu_status_abnormal_list_record = set()
 memory_status_abnormal_list_record = set()
 fan_status_abnormal_list_record = set()
 disk_status_abnormal_list_record = {}
 
+# collect domain max memory
+domain_max_memory = {}
 
 def read_number(fname):
     res = linux.read_file(fname)
@@ -1133,6 +1140,55 @@ def collect_node_disk_wwid():
     return collect_node_disk_wwid_last_result
 
 
+def collect_memory_overcommit_statistics():
+    global PAGE_SIZE
+
+    metrics = {
+        'host_ksm_pages_shared_in_bytes': GaugeMetricFamily('host_ksm_pages_shared_in_bytes',
+                                               'host ksm shared pages', None, []),
+        'host_ksm_pages_shareing_in_bytes': GaugeMetricFamily('host_ksm_pages_shareing_in_bytes',
+                                                  'host ksm sharing pages', None, []),
+        'host_ksm_pages_unshared_in_bytes': GaugeMetricFamily('host_ksm_pages_unshared_in_bytes',
+                                                    'host ksm unshared pages', None, []),
+        'host_ksm_pages_volatile': GaugeMetricFamily('host_ksm_pages_volatile',
+                                                        'host ksm volatile pages', None, []),
+        'host_ksm_full_scans': GaugeMetricFamily('host_ksm_full_scans',
+                                                    'host ksm full scans', None, []),
+        'collectd_virt_memory': GaugeMetricFamily('collectd_virt_memory',
+                                                    'collectd_virt_memory gauge', None, ['instance', 'type', 'virt']),
+    }
+
+    if PAGE_SIZE is None:
+        return metrics.values()
+
+    # read metric from /sys/kernel/mm/ksm
+    value = linux.read_file("/sys/kernel/mm/ksm/pages_shared")
+    if value:
+        metrics['host_ksm_pages_shared_in_bytes'].add_metric([], float(value.strip()) * PAGE_SIZE)
+
+    value = linux.read_file("/sys/kernel/mm/ksm/pages_sharing")
+    if value:
+        metrics['host_ksm_pages_shareing_in_bytes'].add_metric([], float(value.strip()) * PAGE_SIZE)
+
+    value = linux.read_file("/sys/kernel/mm/ksm/pages_unshared")
+    if value:
+        metrics['host_ksm_pages_unshared_in_bytes'].add_metric([], float(value.strip()) * PAGE_SIZE)
+
+    value = linux.read_file("/sys/kernel/mm/ksm/pages_volatile")
+    if value:
+        metrics['host_ksm_pages_volatile'].add_metric([], float(value.strip()))
+
+    value = linux.read_file("/sys/kernel/mm/ksm/full_scans")
+    if value:
+        metrics['host_ksm_full_scans'].add_metric([], float(value.strip()))
+
+    with asyncDataCollectorLock:
+        for domain_name, maximum_memory in domain_max_memory.items():
+            metrics['collectd_virt_memory'].add_metric([domain_name, "max_balloon", domain_name], 1024 * float(maximum_memory.strip()))
+
+    return metrics.values()
+
+
 def collect_physical_network_interface_state():
     metrics = {
         'physical_network_interface': GaugeMetricFamily('physical_network_interface',
@@ -1180,6 +1236,7 @@ kvmagent.register_prometheus_collector(collect_vm_pvpanic_enable_in_domain_xml)
 kvmagent.register_prometheus_collector(collect_node_disk_wwid)
 kvmagent.register_prometheus_collector(collect_host_conntrack_statistics)
 kvmagent.register_prometheus_collector(collect_physical_network_interface_state)
+kvmagent.register_prometheus_collector(collect_memory_overcommit_statistics)
 
 if misc.isMiniHost():
     kvmagent.register_prometheus_collector(collect_lvm_capacity_statistics)
@@ -1489,11 +1546,72 @@ WantedBy=multi-user.target
 
         REGISTRY.register(Collector())
 
+
+    @thread.AsyncThread
+    def start_async_data_collectors(self):
+        while True:
+            self.collect_domain_maximum_memory()
+            time.sleep(300)
+
+
+    def collect_domain_maximum_memory(self):
+        o = bash_o('virsh domstats --list-running --balloon')
+        if not o:
+            return
+
+        # Domain: '8e5c8fb20a8a4276b6c17267105e7710'
+        #   balloon.current=1048576
+        #   balloon.maximum=1048576
+        #   balloon.swap_in=0
+        #   balloon.swap_out=0
+        #   balloon.major_fault=336
+        #   balloon.minor_fault=3514274
+        #   balloon.unused=793852
+        #   balloon.available=1017068
+        #   balloon.last-update=1690513108
+        #   balloon.rss=411420
+        #
+        # Domain: '3f512fc8c3e5430bbfddb45db5485f11'
+        #   balloon.current=1048576
+        #   balloon.maximum=1048576
+        #   balloon.swap_in=0
+        #   balloon.swap_out=0
+        #   balloon.major_fault=336
+        #   balloon.minor_fault=3511963
+        #   balloon.unused=793576
+        #   balloon.available=1017068
+        #   balloon.last-update=1690513112
+        #   balloon.rss=412900
+
+        # collect balloon.maximum and domain name
+        with asyncDataCollectorLock:
+            domain_max_memory.clear()
+            for line in o.splitlines():
+                if line.startswith("Domain:"):
+                    domain = line.split("'")[1]
+                elif line.startswith("  balloon.maximum="):
+                    if domain is None:
+                        logger.warn("can not get domain name, skip this domain")
+                        continue
+
+                    domain_max_memory[domain] = line.split("=")[1]
+                    domain = None
+
+    def init_global_config(self):
+        global PAGE_SIZE
+        output = bash_o("getconf PAGESIZE")
+        if output == "" or output is None:
+            PAGE_SIZE = 4096
+        else:
+            PAGE_SIZE = int(output)
+
     def start(self):
         http_server = kvmagent.get_http_server()
         http_server.register_async_uri(self.COLLECTD_PATH, self.start_prometheus_exporter)
 
+        self.init_global_config()
         self.install_colletor()
+        self.start_async_data_collectors()
         start_http_server(7069)
 
     def stop(self):
