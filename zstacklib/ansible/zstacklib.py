@@ -2304,12 +2304,18 @@ class ZstackLib(object):
 
     def _basic_rpm_set(self):
         basic = {
-            "libselinux-python",
             "gcc",
             "autoconf",
             "vim-minimal",
         }
 
+        if self.distro in ["kylin_zstack", "kylin_tercel", "kylin_sword"]:
+            basic.add("chrony")
+            basic.add("iptables")
+            basic.add("python2-libselinux")
+            return basic
+
+        basic.add("libselinux-python")
         if self.distro_version >= 7:
             # to avoid install some pkgs on virtual router which release is
             # Centos 6.x
@@ -2335,6 +2341,11 @@ class ZstackLib(object):
 
         # install libselinux-python and other command system libs from user
         # defined repos
+        selinux_pkgs = [p for p in required_rpm_set if "selinux" in p]
+        command = "yum --disablerepo=* --enablerepo={0} install -y {1} || true" \
+                  .format(zstack_repo, " ".join(selinux_pkgs))
+        run_remote_command(command, self.host_post_info)
+
         command = ("%s pkg_list=`rpm -q %s | grep \"not installed\" | awk"
                    " '{ print $2 }'` && for pkg in $pkg_list; do yum"
                    " --disablerepo=* --enablerepo=%s install -y $pkg;"
