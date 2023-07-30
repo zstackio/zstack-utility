@@ -1560,6 +1560,8 @@ class VirtioCeph(object):
             driver_elements["queues"] = self.volume.multiQueues
         if self.volume.hasattr("ioThreadId") and self.volume.ioThreadId:
             driver_elements["iothread"] = str(self.volume.ioThreadId)
+        if self.volume.useVirtioSCSI:
+            driver_elements["discard"] = "unmap"
 
         e(disk, 'driver', None, driver_elements)
         source = e(disk, 'source', None,
@@ -1582,7 +1584,7 @@ class VirtioSCSICeph(object):
 
     def to_xmlobject(self):
         disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
-        e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none'})
+        e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'discard': 'unmap'})
         source = e(disk, 'source', None,
                    {'name': self.volume.installPath.lstrip('ceph:').lstrip('//'), 'protocol': 'rbd'})
         if self.volume.secretUuid:
@@ -2628,6 +2630,8 @@ class Vm(object):
                 driver_elements["queues"] = volume.multiQueues
             if (not volume.useVirtioSCSI) and volume.useVirtio and volume.hasattr("ioThreadId") and volume.ioThreadId:
                 driver_elements["iothread"] = str(volume.ioThreadId)
+            if volume.useVirtioSCSI:
+                driver_elements["discard"] = "unmap"
             e(disk, 'driver', None, driver_elements)
             e(disk, 'source', None, {'file': volume.installPath})
 
@@ -4923,6 +4927,8 @@ class Vm(object):
                     driver_elements["queues"] = _v.multiQueues
                 if (not _v.useVirtioSCSI) and _v.useVirtio and _v.hasattr("ioThreadId") and _v.ioThreadId:
                     driver_elements["iothread"] = str(_v.ioThreadId)
+                if _v.useVirtioSCSI:
+                    driver_elements["discard"] = "unmap"
 
                 e(disk, 'driver', None, driver_elements)
                 # if cmd.addons and cmd.addons['useDataPlane'] is True:
