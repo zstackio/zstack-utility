@@ -50,6 +50,7 @@ unsupported_iproute_list = ["nfs4"]
 unittest_flag = 'false'
 mn_ip = None
 isInstallHostShutdownHook = 'false'
+isEnableKsm = 'none'
 
 
 # get parameter from shell
@@ -755,6 +756,18 @@ def set_legacy_iptables_ebtables():
     run_remote_command(command, host_post_info)
 
 
+def do_ksm_config():
+    if isEnableKsm == 'none':
+        return
+
+    if isEnableKsm == 'true':
+        service_status("ksm", "state=restarted enabled=yes", host_post_info)
+        service_status("ksmtuned", "state=restarted enabled=yes", host_post_info)
+    else:
+        service_status("ksmtuned", "state=stopped enabled=no", host_post_info)
+        service_status("ksm", "state=stopped enabled=no", host_post_info)
+
+
 def do_auditd_config():
     """add audit rules for signals"""
     AUDIT_CONF_FILE = '/etc/audit/auditd.conf'
@@ -872,6 +885,7 @@ set_legacy_iptables_ebtables()
 install_agent_pkg()
 do_auditd_config()
 do_systemd_config()
+do_ksm_config()
 modprobe_usb_module()
 modprobe_mpci_module()
 set_gpu_blacklist()
