@@ -676,9 +676,9 @@ class FileSystemHeartbeatController(AbstractStorageFencer):
     def kill_vm(self):
         r = bash.bash_r("timeout 5 virsh list")
         if r == 0:
-            kill_vm(self.max_attempts, self.strategy, [self.mount_path], True)
+            return kill_vm(self.max_attempts, self.strategy, [self.mount_path], True)
         else:
-            kill_vm_by_xml(self.max_attempts, self.strategy, self.mount_path, True)
+            return kill_vm_by_xml(self.max_attempts, self.strategy, self.mount_path, True)
 
     def check_storage_heartbeat(self):
         if self.write_fencer_heartbeat() is False:
@@ -958,6 +958,7 @@ def kill_vm_by_xml(maxAttempts, strategy, mountPath, isFlushbufs = True):
     vm_pids_dict = get_runnning_vm_root_volume_on_ps(maxAttempts, strategy, mountPath, isFlushbufs)
     reason = "because we lost connection to the storage, failed to read the heartbeat file %s times" % maxAttempts
     kill_vm_use_pid(vm_pids_dict, reason)
+    return vm_pids_dict
 
 
 @bash.in_bash
