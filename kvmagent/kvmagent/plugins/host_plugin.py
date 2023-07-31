@@ -2059,7 +2059,7 @@ done
             rsp.error = _error
             return
 
-        r, o, e = bash_roe("lspci >/dev/null && echo 0 > %s" % numvfs)
+        r, o, e = bash_roe("echo 0 > %s" % numvfs)
         if r != 0:
             rsp.success = False
             rsp.error = 'failed to ungenerate virtual functions on pci device[addr:%s, type:%s]' % (cmd.pciDeviceAddress, cmd.pciDeviceType)
