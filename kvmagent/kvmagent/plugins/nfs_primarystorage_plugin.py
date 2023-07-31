@@ -188,6 +188,7 @@ class ResizeVolumeRsp(NfsResponse):
 class NfsToNfsMigrateBitsRsp(NfsResponse):
     def __init__(self):
         super(NfsToNfsMigrateBitsRsp, self).__init__()
+        self.dstFilesActualSize = {}
 
 class NfsRebaseVolumeBackingFileRsp(NfsResponse):
     def __init__(self):
@@ -343,50 +344,39 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
                         rsync_exclude_files.add(filtPath)
                         rsync_excludes = rsync_excludes + " --exclude=%s" % filtPath
 
-            total_size = int(shell.call("rsync -anv %s/ %s %s | grep -o -P 'total size is \K\d*'" %
-                                        (cmd.srcFolderPath, dst_folder_path, rsync_excludes)))
+            total_size = long(shell.call("rsync -anv %s/ %s %s | grep  -o -P 'total size is \K[\d|,]+'" %
+                                        (cmd.srcFolderPath, dst_folder_path, rsync_excludes)).replace(",", ""))
 
-            stage = get_task_stage(cmd)
-            reporter = Report.from_spec(cmd, "MigrateVolume")
+            src_qcow2s = t_shell.call("find %s -name '*.qcow2'" % cmd.srcFolderPath).strip().splitlines()
+            src_qcow2s = filter(lambda src_file: os.path.relpath(src_file, cmd.srcFolderPath) not in rsync_exclude_files, src_qcow2s)
+            parent_stage = get_task_stage(cmd)
+            migrated_size = 0
+            for src_qcow2 in src_qcow2s:
+                dst_qcow2 = os.path.join(dst_folder_path, os.path.relpath(src_qcow2, cmd.srcFolderPath))
+                dir_name = os.path.dirname(dst_qcow2)
+                if not os.path.exists(dir_name):
+                    linux.mkdir(dir_name)
 
-            def _get_progress(synced):
-                def get_written(regex):
-                    matcher = re.match(regex, line)
-                    return int(matcher.group(1)) if matcher else 0
+                _, src_qcow2_size = linux.qcow2_size_and_actual_size(src_qcow2)
+                src_qcow2_size = long(src_qcow2_size)
+                start = get_exact_percent(float(migrated_size) / total_size * 100, parent_stage)
+                end = get_exact_percent(float(migrated_size + src_qcow2_size) / total_size * 100, parent_stage)
 
-                lines = f.readlines()
-                writing = 0
-                for line in lines:
-                    if line[1] == ' ' and line[-1] == '\n':
-                        synced += get_written(r'\s.*?(\d+)\s+100%')
-                    elif line[-1] == '\r' and line[1] == ' ':
-                        writing = get_written(r'.*?(\d+)\s+\d+%[^\r]*\r$')
-                reporter.progress_report(get_exact_percent(float(synced + writing) / total_size * 100, stage))
-                return synced
+                opts = cmd.kvmHostAddons.qcow2Options if cmd.volumeInstallPath == src_qcow2 else re.sub("-o preallocation=\w* ", " ",
+                                                                                                        cmd.kvmHostAddons.qcow2Options)
+                backing_file = linux.qcow2_get_backing_file(src_qcow2)
+                if backing_file != "":
+                    opts = re.sub("-o preallocation=\w* ", "", opts) + " -B %s " % backing_file
 
-            t_shell.bash_progress_1("rsync -aK --progress %s/ %s %s > %s" % (cmd.srcFolderPath, dst_folder_path, rsync_excludes, PFILE), _get_progress)
+                qcow2.create_template_with_task_daemon(src_qcow2, dst_qcow2, cmd,
+                                                       opts=opts,
+                                                       stage="%s-%s" % (start, end),
+                                                       task_name="MigrateVolumes")
 
-            srcQcow2s = t_shell.call("find %s -name '*.qcow2'" % cmd.srcFolderPath).strip().splitlines()
-            srcQcow2s = filter(lambda src_file: os.path.relpath(src_file, cmd.srcFolderPath) not in rsync_exclude_files, srcQcow2s)
-            dstQcow2s = t_shell.call("find %s -name '*.qcow2'" % dst_folder_path).strip().splitlines()
-            if len(srcQcow2s) != len(dstQcow2s):
-                logger.warn("the num of target qcow2 is inconsistent with that of source qcow2, dirty data may exist, src qcow2s:%s, dst qcow2s:%s" % (srcQcow2s, dstQcow2s))
+                _, dst_qcow2_size = linux.qcow2_size_and_actual_size(dst_qcow2)
+                rsp.dstFilesActualSize.update({dst_qcow2 : long(dst_qcow2_size)})
 
-            for srcFile in srcQcow2s:
-                dstFile = os.path.join(dst_folder_path, os.path.relpath(srcFile, cmd.srcFolderPath))
-                srcSize = os.path.getsize(srcFile)
-                dstSize = os.path.getsize(dstFile)
-                if srcSize != dstSize:
-                    rsp.error = "failed to copy file %s to %s, the size of file not match" % (srcFile, dstFile)
-                    rsp.success = False
-                    break
-                try:
-                    linux.compare_segmented_xxhash(srcFile, dstFile, dstSize, raise_exception=True)
-                except Exception as e:
-                    rsp.error = "failed to copy file %s to %s, because: %s" % (srcFile, dstFile, str(e))
-                    rsp.success = False
-                    break
-
+                migrated_size += src_qcow2_size
             if cmd.independentPath:
                 dst_path = os.path.join(dst_folder_path, os.path.relpath(cmd.independentPath, cmd.srcFolderPath))
                 linux.qcow2_rebase("", dst_path)

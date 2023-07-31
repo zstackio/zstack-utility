@@ -7,18 +7,17 @@ import tempfile
 
 logger = log.get_logger(__name__)
 
-
-def create_template_with_task_daemon(src, dst, task_spec):
+def create_template_with_task_daemon(src, dst, task_spec, opts=None, **daemonargs):
     t_shell = traceable_shell.get_shell(task_spec)
     p_file = tempfile.mktemp()
 
     class ConvertTaskDaemon(plugin.TaskDaemon):
 
         def __init__(self, dst_path, task_spec):
-            super(ConvertTaskDaemon, self).__init__(task_spec, "convert qcow2")
+            super(ConvertTaskDaemon, self).__init__(task_spec, 'ConvertImage')
             self.task_spec = task_spec
             self.dst_path = dst_path
-            self.stage = report.get_task_stage(task_spec)
+            self.__dict__.update(daemonargs)
 
         def __exit__(self, exc_type, exc_val, exc_tb):
             super(ConvertTaskDaemon, self).__exit__(exc_type, exc_val, exc_tb)
@@ -38,4 +37,4 @@ def create_template_with_task_daemon(src, dst, task_spec):
             return report.get_exact_percent(percent, self.stage)
 
     with ConvertTaskDaemon(dst, task_spec):
-        linux.create_template(src, dst, shell=t_shell, progress_output=p_file)
+        linux.create_template(src, dst, shell=t_shell, progress_output=p_file, opts=opts)
