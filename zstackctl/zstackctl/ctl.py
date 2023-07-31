@@ -10435,7 +10435,9 @@ class DumpMNTaskQueueCmd(Command):
         mn_log_path = os.path.join(ctl.zstack_home, "../../logs/management-server.log")
         time.sleep(1)
         # only print last matched TASK QUEUE BLOCK
-        shell_no_pipe("sed -n '/BEGIN TASK QUEUE DUMP/,/END TASK QUEUE DUMP/p' %s | tac | awk '/BEGIN TASK QUEUE DUMP/{ print; exit} 1' | tac" % mn_log_path)
+        output = shell("sed -n '/BEGIN TASK QUEUE DUMP/,/END TASK QUEUE DUMP/p' %s | tac | awk '/BEGIN TASK QUEUE DUMP/{ print; exit} 1' | tac " % mn_log_path)
+        output = output.strip(' \t\n\r')
+        info(output)
 
 
 class TimelineCmd(Command):
