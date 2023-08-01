@@ -606,3 +606,19 @@ class VmQga(object):
         finally:
             self.guest_file_close(handle)
         return ret.get('count')
+
+    def guest_ssh_add_authorized_keys(self, public_key):
+        args = {
+            'username': 'root',
+            'keys': [public_key]
+        }
+        ret = self.call_qga_command('guest-ssh-add-authorized_keys', args)
+        return ret
+
+    def guest_ssh_remove_authorized_keys(self, public_key):
+        args = {
+            'username': 'root',
+            'keys': [public_key]
+        }
+        ret = self.call_qga_command('guest-ssh-remove-authorized_keys', args)
+        return ret
