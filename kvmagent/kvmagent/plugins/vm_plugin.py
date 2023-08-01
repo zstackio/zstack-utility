@@ -5970,6 +5970,9 @@ class VmPlugin(kvmagent.KvmAgent):
     SET_VM_SCSI_CONTROLLER = '/vm/setscsicontroller'
     DEL_VM_SCSI_CONTROLLER = '/vm/delscsicontroller'
 
+    SSH_KEY_PAIR_ATTACH_TO_VM = "/sshkeypair/attach"
+    SSH_KEY_PAIR_DETACH_FROM_VM = "/sshkeypair/detach"
+
     VM_OP_START = "start"
     VM_OP_STOP = "stop"
     VM_OP_REBOOT = "reboot"
@@ -9562,6 +9565,8 @@ host side snapshot files chian:
         http_server.register_async_uri(self.SET_VM_SCSI_CONTROLLER, self.set_scsi_controller)
         http_server.register_async_uri(self.DEL_VM_SCSI_CONTROLLER, self.del_scsi_controller)
         http_server.register_async_uri(self.CLEAN_FIRMWARE_FLASH, self.clean_firmware_flash)
+        http_server.register_async_uri(self.SSH_KEY_PAIR_ATTACH_TO_VM, self.attach_ssh_key_pair)
+        http_server.register_async_uri(self.SSH_KEY_PAIR_DETACH_FROM_VM, self.detach_ssh_key_pair)
 
         self.clean_old_sshfs_mount_points()
         self.register_libvirt_event()
@@ -10483,6 +10488,95 @@ host side snapshot files chian:
         if cmd_res and cmd_res.startswith("error:"):
             res = cmd_res
         return res
+
+    @kvmagent.replyerror
+    def attach_ssh_key_pair(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+
+        self.do_attach_ssh_key_pair(cmd.vmInstanceUuid, cmd.publicKey)
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def detach_ssh_key_pair(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+
+        self.do_detach_ssh_key_pair(cmd.vmInstanceUuid, cmd.publicKey)
+
+        return jsonobject.dumps(rsp)
+
+    def do_attach_ssh_key_pair(self, vm_uuid, public_key):
+        @LibvirtAutoReconnect
+        def call_libvirt(conn):
+            return conn.lookupByName(vm_uuid)
+
+        def leagacy_add_authorized_keys():
+            command = ("mkdir -p /root/.ssh; if ! cat "
+                       "/root/.ssh/authorized_keys | grep -q '%s'; "
+                       "then echo '%s' >> /root/.ssh/authorized_keys; fi" % (
+                           public_key, public_key))
+            args = {
+                'path': '/bin/sh',
+                'arg': ['-c', command],
+                'capture-output': True
+            }
+            qga.guest_exec_bash_no_exitcode(command)
+
+        def ga_add_authorized_keys():
+            ret = qga.guest_ssh_add_authorized_keys(public_key)
+            if ret:
+                raise Exception(('Guest add ssh authrozed keys return '
+                                 'unexpected result: %s') % ret)
+
+        qga = VmQga(call_libvirt())
+        if qga.state != VmQga.QGA_STATE_RUNNING:
+            raise Exception(('The qemu guest agent not in running state'))
+
+        ga_version = qga.guest_info()['version']
+        if LooseVersion(ga_version) < LooseVersion('2.5'):
+            raise Exception(('The guest agent version %s less '
+                             'than minimum requirement 2.5.0') % ga_version)
+        elif LooseVersion(ga_version) >= LooseVersion('5.2'):
+            ga_add_authorized_keys()
+        else:
+            leagacy_add_authorized_keys()
+
+    def do_detach_ssh_key_pair(self, vm_uuid, public_key):
+        @LibvirtAutoReconnect
+        def call_libvirt(conn):
+            return conn.lookupByName(vm_uuid)
+
+        def leagacy_remove_authorized_keys():
+            command = ("if [ -f /root/.ssh/authorized_keys ]; "
+                       "then sed -i '/%s/d' /root/.ssh/authorized_keys; "
+                       "fi") % public_key.replace('/', '\/')
+            args = {
+                'path': '/bin/sh',
+                'arg': ['-c', command],
+                'capture-output': True
+            }
+            qga.guest_exec_bash_no_exitcode(command)
+
+        def ga_remove_authorized_keys():
+            ret = qga.guest_ssh_remove_authorized_keys(public_key)
+            if ret:
+                raise Exception(('Guest remove ssh authrozed keys return '
+                                 'unexpected result: %s') % ret)
+
+        qga = VmQga(call_libvirt())
+        if qga.state != VmQga.QGA_STATE_RUNNING:
+            raise Exception(('The qemu guest agent not in running state'))
+
+        ga_version = qga.guest_info()['version']
+        if LooseVersion(ga_version) < LooseVersion('2.5'):
+            raise Exception(('The guest agent version %s less than '
+                             'minimum requirement version 2.5') % ga_version)
+        elif LooseVersion(ga_version) >= LooseVersion('5.2'):
+            ga_remove_authorized_keys()
+        else:
+            leagacy_remove_authorized_keys()
 
 
 class EmptyCdromConfig():
