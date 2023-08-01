@@ -1096,9 +1096,11 @@ class HostPlugin(kvmagent.KvmAgent):
             # in case lscpu doesn't show cpu max mhz
             cpuMHz = "2500.0000" if cpuMHz.strip() == '' else cpuMHz
             rsp.cpuGHz = '%.2f' % (float(cpuMHz) / 1000)
-            cpu_cores_per_socket = shell.call("lscpu | awk -F':' '/per socket/{print $NF}'")
-            cpu_threads_per_core = shell.call("lscpu | awk -F':' '/per core/{print $NF}'")
-            rsp.cpuProcessorNum = int(cpu_cores_per_socket.strip()) * int(cpu_threads_per_core)
+            # cpu_cores_per_socket = shell.call("lscpu | awk -F':' '/per socket/{print $NF}'")
+            # cpu_threads_per_core = shell.call("lscpu | awk -F':' '/per core/{print $NF}'")
+            # rsp.cpuProcessorNum = int(cpu_cores_per_socket.strip()) * int(cpu_threads_per_core)
+            cpu_processor_num = shell.call("lscpu | grep -m1 'CPU(s)' | awk -F ':' '{print $2}'")                    
+            rsp.cpuProcessorNum = int(cpu_processor_num.strip())
 
             '''
             examples:         

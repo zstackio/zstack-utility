@@ -441,7 +441,7 @@ class SanlockHealthChecker(AbstractStorageFencer):
         for vg in self.all_vgs:
             r = p.get_lockspace_record(vg)
             try:
-                # The storage is normal, the sanlock process is down，
+                # The storage is normal, the sanlock process is down,
                 # and we can write the heartbeat normally
                 heartbeat_success = self.save_record_vm_uuids(vg)
                 cnt, failure = self._do_health_check_vg(vg, lockspaces, r)
