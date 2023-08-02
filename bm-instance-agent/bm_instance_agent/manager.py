@@ -6,7 +6,7 @@ from stevedore import driver
 from __init__ import __version__
 from bm_instance_agent.common import utils as bm_utils
 from bm_instance_agent import exception
-from bm_instance_agent.objects import BmInstanceObj
+from bm_instance_agent.objects import BmInstanceObj, PortObj
 from bm_instance_agent.objects import NetworkObj
 from bm_instance_agent.objects import VolumeObj
 
@@ -141,6 +141,12 @@ class AgentManager(object):
                    port_mac=[x.mac for x in network_obj.ports])
         LOG.info(msg)
         self.driver.detach_port(instance_obj, network_obj)
+        # provision nic detached from bond, config static ip for provision nic
+        if instance_obj.provision_mac == network_obj.ports[0].mac:
+            port = network_obj.ports[0]
+            port.type = PortObj.PORT_TYPE_PHY
+            port.iface_name = bm_utils.get_interface_by_mac(instance_obj.provision_mac)
+            self.driver.attach_port(instance_obj, network_obj)
 
     def update_default_route(
             self, bm_instance, old_default_port, new_default_port):
