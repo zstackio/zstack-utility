@@ -1352,13 +1352,14 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 if lvm.lv_exists(target_abs_path):
                     if struct.skipIfExisting:
                         struct.put('skip_copy', True)
+                        lvm.active_lv(target_abs_path, shared=True)
                         continue
                     target_ps_uuid = get_primary_storage_uuid_from_install_path(struct.targetInstallPath)
                     raise Exception("found %s already exists on ps %s" %
                                     (target_abs_path, target_ps_uuid))
                 lvm.create_lv_from_absolute_path(target_abs_path, lv_size,
                                                      "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()), exact_size=True)
-                lvm.active_lv(target_abs_path, lvm.LvmlockdLockType.SHARE)
+                lvm.active_lv(target_abs_path, shared=True)
                 total_size += lv_size
 
         PFILE = linux.create_temp_file()
@@ -1410,7 +1411,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                         logger.info("start to compare hash value between %s add %s" % (current_abs_path, target_abs_path))
                         linux.compare_segmented_xxhash(current_abs_path, target_abs_path, int(lvm.get_lv_size(target_abs_path)), raise_exception=True, blocksize=10485760)
                     if current_backing_file is not None and current_backing_file != "":
-                        lvm.active_lv(target_backing_file, lvm.LvmlockdLockType.SHARE)
+                        lvm.active_lv(target_backing_file, shared=True)
                         logger.debug("rebase %s to %s" % (target_abs_path, target_backing_file))
                         linux.qcow2_rebase_no_check(target_backing_file, target_abs_path)
         except Exception as e:
@@ -1428,7 +1429,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             raise e
         finally:
             for struct in cmd.migrateVolumeStructs:
-                if struct.skip_copy:
+                if struct.skipIfExisting:
                     continue
 
                 target_abs_path = translate_absolute_path_from_install_path(struct.targetInstallPath)
