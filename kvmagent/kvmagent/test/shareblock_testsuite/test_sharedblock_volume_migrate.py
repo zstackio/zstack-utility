@@ -158,3 +158,35 @@ class TestSharedBlockPlugin(TestCase, SharedBlockPluginTestStub):
         )
 
         self.assertEqual(True, rsp.success, rsp.error)
+        self.assertEqual(lvm.lv_is_active("/dev/{}/{}".format(vg2Uuid,volumeUuid)), False)
+        self.assertEqual(lvm.lv_is_active("/dev/{}/{}".format(vg2Uuid,snaphostUuid)), False)
+
+        # test skipIfExisting not deactive
+        rsp = sharedblock_utils.sharedblock_migrate_volumes(
+            vgUuid,
+            hostUuid,
+            migrateVolumeStructs=[
+                {
+                    "volumeUuid" : volumeUuid,
+                    "snapshotUuid" : None,
+                    "currentInstallPath" : "sharedblock://{}/{}".format(vgUuid,snaphostUuid),
+                    "targetInstallPath" : "sharedblock://{}/{}".format(vg2Uuid,snaphostUuid),
+                    "safeMode" : False,
+                    "compareQcow2" : False, # backing file different
+                    "skipIfExisting" : True
+                },
+                {
+                    "volumeUuid" : volumeUuid,
+                    "snapshotUuid" : snaphostUuid,
+                    "currentInstallPath" : "sharedblock://{}/{}".format(vgUuid,volumeUuid),
+                    "targetInstallPath" : "sharedblock://{}/{}".format(vg2Uuid,volumeUuid),
+                    "safeMode" : False,
+                    "compareQcow2" : False, # backing file different
+                    "skipIfExisting" : True
+                }
+            ]
+        )
+
+        self.assertEqual(True, rsp.success, rsp.error)
+        self.assertEqual(lvm.lv_is_active("/dev/{}/{}".format(vg2Uuid,volumeUuid)), True)
+        self.assertEqual(lvm.lv_is_active("/dev/{}/{}".format(vg2Uuid,snaphostUuid)), True)
