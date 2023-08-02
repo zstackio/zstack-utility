@@ -35,7 +35,7 @@ export TERM=xterm
 
 OS=''
 IS_UBUNTU='n'
-REDHAT_OS="CENTOS6 CENTOS7 RHEL7 HELIX7 ALIOS7 ISOFT4 KYLIN10 EULER20 UOS1020A NFS4 ROCKY8 OE2203"
+REDHAT_OS="CENTOS6 CENTOS7 RHEL7 HELIX7 HELIX8 ALIOS7 ISOFT4 KYLIN10 EULER20 UOS1020A NFS4 ROCKY8 OE2203"
 DEBIAN_OS="UBUNTU14.04 UBUNTU16.04 UBUNTU KYLIN4.0.2 DEBIAN9 UOS20"
 KYLIN_V10_OS="ky10sp1 ky10sp2 ky10sp3"
 XINCHUANG_OS="$KYLIN10_OS uos20"
@@ -882,6 +882,7 @@ check_system(){
         grep -qi 'NFSChina Server release 4.0.220727 (RTM3)' /etc/system-release && OS="NFS4"
         grep -qi 'Rocky Linux release 8.4 (Green Obsidian)' /etc/system-release && OS="ROCKY8"
         grep -qi 'Helix release 7' /etc/system-release && OS="HELIX7"
+        grep -qi 'Helix release 8.4r (Green Obsidian)' /etc/system-release && OS="HELIX8"
         if [[ -z "$OS" ]];then
             fail2 "Host OS checking failure: your system is: `cat /etc/redhat-release`, $PRODUCT_NAME management node only supports $SUPPORTED_OS currently"
         elif [[ $OS == "CENTOS7" ]];then
