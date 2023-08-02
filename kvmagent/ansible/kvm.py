@@ -261,10 +261,8 @@ def install_kvm_pkg():
             host_post_info.post_label = "ansible.shell.install.pkg"
             host_post_info.post_label_param = "libvirt"
             (status, output) = run_remote_command(command, host_post_info, True, True)
-
-            versions = host_info.distro_version.split('.')
-            if output and len(versions) > 2 and versions[0] == '7' and versions[1] == '2':
-                dep_list = dep_list.replace('libvirt libvirt-client libvirt-python ', '')
+            if output:
+                dep_list =' '.join([pkg for pkg in dep_list.split() if not pkg.startswith('libvirt')]) 
 
             # skip these packages when connect host
             _skip_list = re.split(r'[|;,\s]\s*', skip_packages)
