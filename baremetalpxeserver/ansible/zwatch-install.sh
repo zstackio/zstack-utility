@@ -7,7 +7,7 @@ export LANGUAGE=en_US:
 
 usage()
 {
-    echo "usage: zwatch-install.sh depolyServerIp"
+    echo "usage: zwatch-install.sh [depolyServerIp]"
 }
 
 if [ $# -ne 1 ]; then
@@ -18,6 +18,7 @@ fi
 DEPLOY_SERVER=$1
 
 LABLE=''
+AGENT_OS="linux"
 ARCH=`uname -m`
 
 case `uname -s` in
@@ -30,8 +31,10 @@ case `uname -s` in
     ;;
 esac
 
-if [ x"$ARCH" != x"x86_64" ]; then
-    LABLE="_$ARCH"
+if [ x"$ARCH" == x"x86_64" ]; then
+  LABLE=".${AGENT_OS}-amd64"
+else
+  LABLE=".${AGENT_OS}-${ARCH}"
 fi
 
 BIN_NAME="zwatch-vm-agent${LABLE}"
