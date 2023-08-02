@@ -280,6 +280,7 @@ def install_kvm_pkg():
             host_post_info.post_label = "ansible.shell.install.pkg"
             host_post_info.post_label_param = dep_list
             run_remote_command(command, host_post_info)
+
             if host_info.host_arch == 'loongarch64' and releasever in kylin and yum_check_package("qemu", host_post_info):
                 command = "yum --disablerepo=* --enablerepo={0} install -y qemu-block-rbd;".format(zstack_repo)
                 host_post_info.post_label_param = "qemu-block-rbd"
