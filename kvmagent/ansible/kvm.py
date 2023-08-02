@@ -269,10 +269,8 @@ def install_kvm_pkg():
             host_post_info.post_label = "ansible.shell.install.pkg"
             host_post_info.post_label_param = "libvirt"
             (status, output) = run_remote_command(command, host_post_info, True, True)
-
-            versions = host_info.distro_version.split('.')
-            if output and len(versions) > 2 and versions[0] == '7' and versions[1] == '2':
-                dep_list = dep_list.replace('libvirt libvirt-client libvirt-python ', '')
+            if output:
+                dep_list =' '.join([pkg for pkg in dep_list.split() if not pkg.startswith('libvirt')]) 
 
             # skip these packages when connect host
             _skip_list = re.split(r'[|;,\s]\s*', skip_packages)
@@ -291,19 +289,10 @@ def install_kvm_pkg():
             host_post_info.post_label_param = dep_list
             run_remote_command(command, host_post_info)
 
-            if host_info.host_arch == 'x86_64' and releasever in kylin:
-                # downgrade libvirt if host's libvirt version != repo's libvirt
-                # version
-                command = ("current_version=$(rpm -q --queryformat '%{{VERSION}}'  libvirt);"
-                           "repo_version=$(yum --disablerepo=* --enablerepo={0} --showduplicates info --available libvirt | grep Version | awk -F ' ' '{{print $3}}');"
-                           "if [[ ${{current_version}} != ${{repo_version}} ]]; then yum --disablerepo=* --enablerepo={0} downgrade -y libvirt; fi;").format(zstack_repo)
-                host_post_info.post_label_param = "libvirt"
+            if host_info.host_arch == 'loongarch64' and releasever in kylin and yum_check_package("qemu", host_post_info):
+                command = "yum --disablerepo=* --enablerepo={0} install -y qemu-block-rbd;".format(zstack_repo)
+                host_post_info.post_label_param = "qemu-block-rbd"
                 run_remote_command(command, host_post_info)
-
-                if host_info.host_arch == 'loongarch64' and yum_check_package("qemu", host_post_info):
-                    command = "yum --disablerepo=* --enablerepo={0} install -y qemu-block-rbd;".format(zstack_repo)
-                    host_post_info.post_label_param = "qemu-block-rbd"
-                    run_remote_command(command, host_post_info)
         else:
             # name: install kvm related packages on RedHat based OS from online
             for pkg in ['zstack-release', 'openssh-clients', 'bridge-utils', 'wget', 'chrony', 'sed', 'libvirt-python', 'libvirt', 'nfs-utils', 'vconfig',
