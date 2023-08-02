@@ -223,6 +223,7 @@ def install_kvm_pkg():
             'c79': 'qemu-kvm libvirt-admin seabios-bin nping elfutils-libelf-devel',
             'h76c': 'qemu-kvm libvirt-admin seabios-bin nping elfutils-libelf-devel',
             'h79c': 'qemu-kvm libvirt-admin seabios-bin nping elfutils-libelf-devel',
+            'h84r': 'qemu-kvm libvirt-daemon libvirt-daemon-kvm seabios-bin elfutils-libelf-devel',
             'rl84': 'qemu-kvm libvirt-daemon libvirt-daemon-kvm seabios-bin elfutils-libelf-devel',
             'euler20': 'vconfig open-iscsi OpenIPMI-modalias qemu python2-pyudev collectd-disk',
             'nfs4': 'vconfig iscsi-initiator-utils OpenIPMI nettle libselinux-devel iptables iptables-services qemu-kvm python2-pyudev collectd-disk'
