@@ -63,7 +63,7 @@ class AgentManager(object):
         cmd = 'service zwatch-vm-agent restart'
         processutils.execute(cmd, shell=True)
 
-    def ping(self, bm_instance):
+    def ping(self, bm_instance, iqn_target_ip_map):
         instance_obj = BmInstanceObj.from_json(bm_instance)
 
         global BM_INSTANCE_UUID
@@ -72,6 +72,9 @@ class AgentManager(object):
         self._check_uuid_corrent(instance_obj.uuid)
         self.driver.ping(instance_obj)
         self.driver.discovery_target(instance_obj)
+        if iqn_target_ip_map:
+            for key, values in iqn_target_ip_map.items():
+                self.driver.discovery_target_through_access_path_gateway_ips(key, values)
         self._check_gateway_ip(instance_obj)
         return {'version': __version__, 'ping': {'bmInstanceUuid': BM_INSTANCE_UUID}}
 
@@ -93,7 +96,7 @@ class AgentManager(object):
         LOG.info(msg)
         self.driver.stop(instance_obj)
 
-    def attach_volume(self, bm_instance, volume):
+    def attach_volume(self, bm_instance, volume, volume_access_path_gateway_ips):
         instance_obj = BmInstanceObj.from_json(bm_instance)
         volume_obj = VolumeObj.from_json(volume)
 
@@ -102,9 +105,9 @@ class AgentManager(object):
                'to the system: {bm_uuid}').format(
                    volume_uuid=volume_obj.uuid, bm_uuid=instance_obj.uuid)
         LOG.info(msg)
-        self.driver.attach_volume(instance_obj, volume_obj)
+        self.driver.attach_volume(instance_obj, volume_obj, volume_access_path_gateway_ips)
 
-    def detach_volume(self, bm_instance, volume):
+    def detach_volume(self, bm_instance, volume, volume_access_path_gateway_ips):
         instance_obj = BmInstanceObj.from_json(bm_instance)
         volume_obj = VolumeObj.from_json(volume)
 
@@ -113,7 +116,7 @@ class AgentManager(object):
                'from the system: {bm_uuid}').format(
                    volume_uuid=volume_obj.uuid, bm_uuid=instance_obj.uuid)
         LOG.info(msg)
-        self.driver.detach_volume(instance_obj, volume_obj)
+        self.driver.detach_volume(instance_obj, volume_obj, volume_access_path_gateway_ips)
 
     def attach_port(self, bm_instance, port):
         instance_obj = BmInstanceObj.from_json(bm_instance)

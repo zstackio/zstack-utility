@@ -154,7 +154,8 @@ class VolumeObj(Base):
         'deviceId': 'device_id',
         'token': 'token',
         'tpTimeout': 'tpTimeout',
-        'monIp': 'monIp'
+        'monIp': 'monIp',
+        'iscsiPath': 'iscsiPath'
     }
 
     @classmethod

@@ -190,7 +190,9 @@ class CentOSNetworkConfig:
             we need '192.168.1.1, but the content is '192.168.1.11', 
             '192.168.1.1 in 192.168.1.11' is True, but we expect False
         '''
-        keywords = [overlay_if_name + '\n', port.ip_address + '\n', port.netmask + '\n', port.gateway + '\n']
+        keywords = [overlay_if_name + '\n', port.ip_address + '\n', port.netmask + '\n']
+        if port.gateway:
+            keywords.append(port.gateway + '\n')
         if any(key not in content for key in keywords):
             need_rectify = True
 

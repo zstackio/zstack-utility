@@ -1,4 +1,5 @@
 import os
+import re
 
 from oslo_concurrency import processutils
 from oslo_log import log as logging
@@ -8,11 +9,35 @@ from bm_instance_agent.systems import base
 from bm_instance_agent.common import utils as bm_utils
 
 LOG = logging.getLogger(__name__)
+multipath_conf_path = '/etc/multipath.conf'
+multi_path_daemon_cofig = """
+defaults {
+        find_multipaths "yes"
+        user_friendly_names "yes"
+}
+multipaths {
+
+}
+devices {
+        device {
+                vendor "ZStack"
+                product "R_ZEBS"
+                path_grouping_policy multibus
+                path_checker tur
+                path_selector "round-robin 0"
+                hardware_handler "0"
+                fast_io_fail_tmo 0
+                failback immediate
+                rr_weight priorities
+                no_path_retry fail
+        }
+}
+"""
 
 
 def _check_initiator_config(instance_uuid):
-    cmd = ["systemctl", "status", "iscsid"]
-    _, stderr = processutils.trycmd(*cmd)
+    cmd = 'which systemctl > /dev/null 2>&1 && systemctl status iscsid || service iscsid status'
+    stdout, stderr = processutils.trycmd(cmd, shell=True)
     if stderr:
         LOG.info("get iscsid status failed, try to restart iscsid service")
         cmd = 'systemctl restart iscsid'
@@ -34,9 +59,27 @@ def _check_initiator_config(instance_uuid):
         with open(conf_path, 'w') as f:
             f.write(initiator)
         LOG.info("initiator config changed, reload and restart iscsid")
-        cmd = 'systemctl daemon-reload && systemctl restart iscsid'
+        cmd = 'which systemctl > /dev/null 2>&1 && systemctl restart iscsid || service iscsid restart'
         processutils.execute(cmd, shell=True)
 
+
+def _check_multi_path_config():
+    if not os.path.exists(multipath_conf_path):
+        with open(multipath_conf_path, 'w') as f:
+            f.write(multi_path_daemon_cofig)
+            f.flush()
+        LOG.info("multipath config not exists, create multipath conf to %s" % multipath_conf_path)
+
+    cmd = 'which systemctl > /dev/null 2>&1 && systemctl status multipathd || service multipathd status'
+    stdout, stderr = processutils.trycmd(cmd, shell=True)
+    if stderr:
+        LOG.info("get multipathd status failed, try to restart multipathd service")
+        cmd = 'which systemctl > /dev/null 2>&1 && systemctl restart multipathd || service multipathd restart'
+        processutils.execute(cmd, shell=True)
+
+    # Display detailed debug information for multipath devices
+    cmd = 'multipath -v3'
+    processutils.execute(cmd, shell=True)
 
 class LinuxDriver(base.SystemDriverBase):
 
@@ -101,14 +144,61 @@ class LinuxDriver(base.SystemDriverBase):
             LOG.info("no iscsi target found, skip login")
             return
 
-    def attach_volume(self, instance_obj, volume_obj):
+    def discovery_volume_target(self, instance_obj, volume_obj, volume_access_path_gateway_ips):
+        if not volume_obj.iscsi_path:
+            return
+        target_name = volume_obj.iscsi_path.replace('iscsi://', '').split("/")[1]
+        self.discovery_target_through_access_path_gateway_ips(target_name, volume_access_path_gateway_ips)
+
+    def discovery_target_through_access_path_gateway_ips(self, target_name, volume_access_path_gateway_ips):
+        for gateway_ip in volume_access_path_gateway_ips:
+            self.login_target(target_name, gateway_ip)
+
+        cmd = 'iscsiadm -m session --rescan'
+        stdout, stderr = processutils.trycmd(cmd, shell=True)
+        if stderr:
+            LOG.info("iscsiadm -m session --rescan fail, because %s" % (stderr))
+
+    def login_target(self, target_name, address_ip, port=3260):
+        LOG.info("start login_target:%s by ip %s" % (target_name, address_ip))
+        cmd = 'iscsiadm -m session | grep %s | grep %s' % (target_name, address_ip)
+        LOG.info(cmd)
+        stdout, stderr = processutils.trycmd(cmd, shell=True)
+        if not stderr:
+            LOG.info("iscsi target:%s has logged by %s" % (target_name, address_ip))
+            return
+
+        discovery_cmd = 'iscsiadm -m discovery -t sendtargets -p {address}:{port}'.format(
+            address=address_ip,
+            port=port,
+            target_name=target_name)
+        LOG.info(discovery_cmd)
+        try:
+            stdout, stderr = processutils.execute(discovery_cmd, shell=True)
+            if target_name in stdout:
+                target_login_cmd = ('iscsiadm --mode node --targetname {target_name} '
+                                    '-p {address}:{port} --login').format(
+                    target_name=target_name,
+                    address=address_ip,
+                    port=port)
+                LOG.info(target_login_cmd)
+                processutils.execute(target_login_cmd, shell=True)
+            else:
+                LOG.info("discovered targets not contains %s, skip login" % target_name)
+        except processutils.ProcessExecutionError:
+            LOG.info("no iscsi target found, skip login")
+            return
+
+    def attach_volume(self, instance_obj, volume_obj, volume_access_path_gateway_ips):
         """ Attach a given iSCSI lun
 
         First check the /etc/iscsi/initiatorname.iscsi whether corrent, if
         not, corrent the configuration, then rescan the iscsi session.
         """
         self.discovery_target(instance_obj)
+        self.discovery_volume_target(instance_obj, volume_obj, volume_access_path_gateway_ips)
         _check_initiator_config(instance_obj.uuid)
+        _check_multi_path_config()
         
         target_names = []
         target_name = ('iqn.2015-01.io.zstack:target'
@@ -124,7 +214,7 @@ class LinuxDriver(base.SystemDriverBase):
             with bm_utils.transcantion(retries=5, sleep_time=10) as cursor:
                 cursor.execute(processutils.execute, *cmd)
 
-    def detach_volume(self, instance_obj, volume_obj):
+    def detach_volume(self, instance_obj, volume_obj, volume_access_path_gateway_ips):
         """ Detach a given iSCSI lun
 
         First check the volume whether attached, if attached, check the map
@@ -145,19 +235,31 @@ class LinuxDriver(base.SystemDriverBase):
                 scsi11 Channel 00 Id 0 Lun: 1
                         Attached scsi disk sdb          State: running
         """
+        for volume_access_path_gateway_ip in volume_access_path_gateway_ips:
+            self.detach_volume_for_target_ip(instance_obj, volume_obj, volume_access_path_gateway_ip)
+
+    def detach_volume_for_target_ip(self, instance_obj, volume_obj, target_ip):
         # Get the session id
         sid = None
-        cmd = ['iscsiadm', '-m', 'session']
-        stdout, _ = processutils.execute(*cmd)
-        iqn = None
+        volume_iqn = volume_obj.iscsi_path.replace('iscsi://', '').split("/")[1]
         if instance_obj.custom_iqn:
             iqn = instance_obj.custom_iqn
+        elif volume_iqn:
+            iqn = volume_iqn
         else:
             iqn = instance_obj.uuid
 
+        cmd = 'iscsiadm -m session | grep %s | grep %s' % (iqn, target_ip)
+        stdout, stderr = processutils.trycmd(cmd, shell=True)
+
+        LOG.info("detach_volume iqn is %s, target ip is %s" % (iqn, target_ip))
         for line in stdout.split('\n'):
             if iqn in line:
-                sid = line.split()[1][1]
+                match = re.search(r'\[(\d+)\]', line)
+                if match:
+                    sid = match.group(1)
+                    LOG.info("detach_volume sid is %s for %s" % (sid, target_ip))
+                    break
         if not sid:
             raise exception.IscsiSessionIdNotFound(
                 volume_uuid=volume_obj.uuid, output=stdout)
@@ -188,6 +290,7 @@ class LinuxDriver(base.SystemDriverBase):
             if flag:
                 s = line.split()
                 device_name = s[3]
+                LOG.warning("detach device name is %s" % device_name)
                 break
 
         if not device_name or not device_scsi:

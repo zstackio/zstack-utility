@@ -10,11 +10,11 @@ class AttachController(RestController):
         super(AttachController, self).__init__()
 
     @api_utils.async_expose
-    def post(self, volume, bm_instance):
+    def post(self, volume, bm_instance, volume_access_path_gateway_ips):
         agent_manager = manager.AgentManager()
         return agent_manager.attach_volume(
             bm_instance=bm_instance,
-            volume=volume)
+            volume=volume, volume_access_path_gateway_ips=volume_access_path_gateway_ips)
 
 
 class DetachController(RestController):
@@ -23,11 +23,11 @@ class DetachController(RestController):
         super(DetachController, self).__init__()
 
     @api_utils.async_expose
-    def post(self, volume, bm_instance):
+    def post(self, volume, bm_instance, volume_access_path_gateway_ips):
         agent_manager = manager.AgentManager()
         return agent_manager.detach_volume(
             bm_instance=bm_instance,
-            volume=volume)
+            volume=volume, volume_access_path_gateway_ips=volume_access_path_gateway_ips)
 
 
 class VolumeController(RestController):

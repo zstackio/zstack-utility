@@ -186,6 +186,20 @@ class ResizeVolumeRsp(AgentResponse):
         super(ResizeVolumeRsp, self).__init__()
         self.size = None
 
+
+class AccessPathInfo():
+    def __init__(self):
+        self.accessPathId = None
+        self.name = None
+        self.accessPathIqn = None
+        self.targetCount = 0
+
+class GetAccessPathRsp(AgentResponse):
+    def __init__(self):
+        super(GetAccessPathRsp, self).__init__()
+        self.infos = []
+
+
 class GetVolumeSnapInfosRsp(AgentResponse):
     def __init__(self):
         super(GetVolumeSnapInfosRsp, self).__init__()
@@ -195,6 +209,13 @@ class CreateEmptyVolumeRsp(AgentResponse):
     def __init__(self):
         super(CreateEmptyVolumeRsp, self).__init__()
         self.size = 0
+
+
+class CreateEmptyBlockVolumeRsp(AgentResponse):
+    def __init__(self):
+        super(CreateEmptyBlockVolumeRsp, self).__init__()
+        self.size = 0
+
 
 class GetDownloadBitsFromKvmHostProgressRsp(AgentResponse):
     def __init__(self):
@@ -303,6 +324,12 @@ class CephAgent(plugin.TaskManager):
     CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/ceph/primarystorage/kvmhost/download/cancel"
     GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH = "/ceph/primarystorage/kvmhost/download/progress"
     JOB_CANCEL = "/job/cancel"
+    XSKY_GET_BLOCK_VOLUME_ACCESS_PATH = "/xsky/ceph/primarystorage/volume/access/path"
+    XSKY_RESIZE_BLOCK_VOLUME = "/xsky/ceph/primarystorage/volume/resize"
+    XSKY_CREATE_VOLUME_PATH = "/xsky/ceph/primarystorage/volume/createempty"
+    XSKY_DELETE_PATH = "/xsky/ceph/primarystorage/delete"
+    XSKY_UPDATE_BLOCK_VOLUME = "/xsky/ceph/primarystorage/volume/update"
+    XSKY_UPDATE_BLOCK_VOLUME_SNAPSHOT = "/xsky/ceph/primarystorage/volume/snapshot/update"
 
     CEPH_CONF_PATH = "/etc/ceph/ceph.conf"
 
@@ -321,6 +348,9 @@ class CephAgent(plugin.TaskManager):
             ps_type = 'ceph'
 
         return self.mapping.get(ps_type)(cmd)
+
+    def get_third_party_driver(self, cmd):
+        return self.mapping.get('thirdpartyCeph')(cmd)
 
     def is_third_party_ceph(self, token_object):
         return hasattr(token_object, "token") and token_object.token
@@ -367,6 +397,13 @@ class CephAgent(plugin.TaskManager):
         self.http_server.register_async_uri(self.JOB_CANCEL, self.cancel)
         self.http_server.register_async_uri(self.GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH, self.get_download_bits_from_kvmhost_progress)
         self.http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_NBD_EXPT_PATH, self.download_from_nbd)
+
+        self.http_server.register_async_uri(self.XSKY_GET_BLOCK_VOLUME_ACCESS_PATH, self.get_block_volume_access)
+        self.http_server.register_async_uri(self.XSKY_RESIZE_BLOCK_VOLUME, self.resize_block_volume)
+        self.http_server.register_async_uri(self.XSKY_CREATE_VOLUME_PATH, self.create_block_volume)
+        self.http_server.register_async_uri(self.XSKY_DELETE_PATH, self.delete_block_volume)
+        self.http_server.register_async_uri(self.XSKY_UPDATE_BLOCK_VOLUME, self.update_block_volume_info)
+        self.http_server.register_async_uri(self.XSKY_UPDATE_BLOCK_VOLUME_SNAPSHOT, self.update_block_volume_snapshot)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -665,8 +702,8 @@ class CephAgent(plugin.TaskManager):
     def rollback_snapshot(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         spath = self._normalize_install_path(cmd.snapshotPath)
-
-        shell.call('rbd snap rollback %s' % spath)
+        driver = self.get_driver(cmd)
+        driver.rollback_snapshot(cmd)
         rsp = RollbackSnapshotRsp()
         rsp.size = self._get_file_size(spath)
         self._set_capacity_to_response(rsp)
@@ -1419,6 +1456,98 @@ class CephAgent(plugin.TaskManager):
 
         rsp.diskSize = self._nbd2rbd(u.hostname, u.port, os.path.basename(u.path), self._normalize_install_path(rbdtarget), bandwidth,
                       Report.from_spec(cmd, "DownFromNbd"), rsp)
+        return jsonobject.dumps(rsp)
+
+    @replyerror
+    def get_block_volume_access(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetAccessPathRsp()
+        driver = self.get_third_party_driver(cmd)
+        access_paths = driver.get_all_access_path(cmd)
+
+        if cmd.iscsiPath:
+            iqn = cmd.iscsiPath.replace('iscsi://', '').split("/")[1]
+            for access_path in access_paths:
+                if access_path.iqn in iqn:
+                    access_path_info = AccessPathInfo()
+                    access_path_info.accessPathId = access_path.id
+                    access_path_info.name = access_path.name
+                    access_path_info.accessPathIqn = access_path.iqn
+                    rsp.infos.append(access_path_info)
+                    break
+        else:
+            for access_path in access_paths:
+                access_path_info = AccessPathInfo()
+                access_path_info.accessPathId = access_path.id
+                access_path_info.name = access_path.name
+                access_path_info.accessPathIqn = access_path.iqn
+                rsp.infos.append(access_path_info)
+
+        for accessInfo in rsp.infos:
+            targets = driver.get_targets_by_access_path_id(cmd, accessInfo.accessPathId)
+            accessInfo.targetCount = len(targets)
+            accessInfo.gatewayIps = [target.gateway_ips for target in targets]
+
+        rsp.infos = sorted(rsp.infos, key=lambda info: info.targetCount, reverse=True)
+
+        return jsonobject.dumps(rsp)
+
+    @replyerror
+    def resize_block_volume(self, req):
+        rsp = ResizeVolumeRsp()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        driver = self.get_third_party_driver(cmd)
+        rsp.size = driver.resize_block_volume(cmd, cmd.xskyBlockVolumeId, cmd.size)
+        return jsonobject.dumps(rsp)
+
+    @replyerror
+    def create_block_volume(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CreateEmptyBlockVolumeRsp()
+        driver = self.get_third_party_driver(cmd)
+        rsp = driver.create_volume(cmd, rsp, agent=self)
+        self._set_capacity_to_response(rsp)
+        rsp.actualSize = self._get_file_actual_size(self._normalize_install_path(cmd.installPath))
+        return jsonobject.dumps(rsp)
+
+    @replyerror
+    def delete_block_volume(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        path = self._normalize_install_path(cmd.installPath)
+
+        rsp = AgentResponse()
+        if not self._ensure_existing_volume_has_no_snapshot(path):
+            return jsonobject.dumps(rsp)
+
+        if self._get_watcher(path):
+            rsp.inUse = True
+            rsp.success = False
+            rsp.error = "unable to delete %s, the volume is in use" % cmd.installPath
+            logger.debug("the block volume[%s] still has watchers, unable to delete" % cmd.installPath)
+            return jsonobject.dumps(rsp)
+
+        driver = self.get_third_party_driver(cmd)
+        driver.do_deletion(cmd, path)
+        return jsonobject.dumps(rsp)
+
+    @replyerror
+    def update_block_volume_info(self, req):
+        rsp = AgentResponse()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        driver = self.get_third_party_driver(cmd)
+        driver.update_block_volume_info(cmd, cmd.xskyBlockVolumeId, cmd.name, cmd.description)
+        if cmd.burstTotalBw and cmd.burstTotalIops and cmd.maxTotalBw and cmd.maxTotalIops:
+            driver.set_block_volume_qos(cmd, cmd.xskyBlockVolumeId, cmd.burstTotalBw, cmd.burstTotalIops, cmd.maxTotalBw,
+                                        cmd.maxTotalIops)
+        return jsonobject.dumps(rsp)
+
+    @replyerror
+    def update_block_volume_snapshot(self, req):
+        rsp = AgentResponse()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        driver = self.get_third_party_driver(cmd)
+        driver.update_block_volume_snapshot(cmd)
         return jsonobject.dumps(rsp)
 
 class CephDaemon(daemon.Daemon):

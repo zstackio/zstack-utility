@@ -13,7 +13,7 @@ class Base(object):
 
     k_v_mapping = {}
 
-    allowed_keys = []
+    allowed_keys = ['volume_access_path_gateway_ips','iqn_target_ip_map']
 
     def __init__(self):
         for v in self.k_v_mapping.values():
@@ -90,7 +90,7 @@ class VolumeObj(Base):
     }
     """
 
-    allowed_keys = ['uuid', 'device_id']
+    allowed_keys = ['uuid', 'device_id', 'iscsi_path', 'name']
 
     @classmethod
     def from_json(cls, volume):

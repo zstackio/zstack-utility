@@ -30,7 +30,9 @@ class UbuntuDriver(linux_driver.LinuxDriver):
                 with open(path, 'r') as f:
                     content = f.read()
 
-            keywords = [nic.iface_name, ip_address, nic.gateway]
+            keywords = [nic.iface_name, ip_address]
+            if nic.gateway:
+                keywords.append(nic.gateway)
             if nic.vlan_if_name:
                 keywords.append(nic.vlan_if_name)
             if any(key not in content for key in keywords):

@@ -139,3 +139,6 @@ class BaseVolume(object):
 
     def detach_volume(self):
         pass
+
+    def roll_back_attach_volume(self):
+        pass

@@ -2,7 +2,7 @@
 import time
 import uuid
 
-from func_timeout import func_set_timeout
+from func_timeout import func_set_timeout, FunctionTimedOut
 from xms_client import ApiClient, Configuration
 from xms_client.api import BlockVolumesApi
 from xms_client.api import AccessPathsApi
@@ -195,6 +195,268 @@ class RbdDeviceOperator(object):
                      % (self.monIp, created_iqn))
         return created_iqn
 
+    def establish_link_for_volume(self, instance_obj, volume_obj, iqn):
+        if volume_obj.type == 'Root':
+            return "End establish link because the volume is root."
+
+        path = self._normalize_install_path(volume_obj.path)
+        array = path.split("/")
+        volume_name = array[1]
+
+        client_group_id = self.check_client_ip_exist_client_group(instance_obj.provision_ip)
+        if not client_group_id:
+            client_group_id = self.create_client_group(instance_obj.provision_ip)
+            logger.debug("Successfully create_client_group %s for establish link " % client_group_id)
+
+        block_volume = self.get_volume_by_name(volume_name)
+
+        access_paths = self.get_all_access_path()
+        for access_path in access_paths:
+            if access_path.iqn == iqn:
+                access_path_id = access_path.id
+                break
+
+        if not access_path_id:
+            return "the access path corresponding to iqn %s does not exist" % iqn
+
+        mapping_groups = self.mapping_groups_api.list_mapping_groups(access_path_id=access_path_id,
+                                                                     client_group_id=client_group_id).mapping_groups
+        if len(mapping_groups) == 0:
+            logger.debug("start create_mapping_group [access_path_id: %s, client_group_id: %s]for volume_name %s" % (
+                access_path_id, client_group_id, volume_name))
+            mapping_group_id = self.create_mapping_group(client_group_id, access_path_id, volume_name)
+            logger.debug("Successfully create_mapping_group %s for establish link " % mapping_group_id)
+        else:
+            logger.debug("start attach volume %s to mapping_group %s" % (
+                mapping_groups[0].id, block_volume.name))
+            self.attach_volume_to_mapping_group(mapping_groups[0].id, block_volume.id)
+            logger.debug("Successfully attach_volume_to_mapping_group %s for establish link " % client_group_id)
+
+        return None
+
+    def rollback_establish_link(self, instance_obj, volume_obj, iqn):
+        path = self._normalize_install_path(volume_obj.path)
+        array = path.split("/")
+        volume_name = array[1]
+        access_paths = self.get_all_access_path()
+        for access_path in access_paths:
+            if access_path.iqn == iqn:
+                access_path_id = access_path.id
+                break
+
+        if not access_path_id:
+            return
+
+        client_group_id = self.check_client_ip_exist_client_group(instance_obj.provision_ip)
+        if not client_group_id:
+            return
+
+        mapping_groups = self.mapping_groups_api.list_mapping_groups(access_path_id=access_path_id,
+                                                                     client_group_id=client_group_id).mapping_groups
+        if len(mapping_groups) != 0:
+            self.remove_volumes_from_mapping_group(mapping_groups[0].id, self.get_volume_by_name(volume_name).id)
+            logger.debug("Successfully attach_volume_to_mapping_group %s for establish link " % client_group_id)
+
+    def break_link(self, instance_obj, volume_obj, iqn):
+        if volume_obj.type == 'Root':
+            return "End establish link because the volume is root."
+
+        path = self._normalize_install_path(volume_obj.path)
+        array = path.split("/")
+        volume_name = array[1]
+        access_paths = self.get_all_access_path()
+        for access_path in access_paths:
+            if access_path.iqn == iqn:
+                access_path_id = access_path.id
+                break
+
+        if not access_path_id:
+            return "the access path corresponding to iqn %s does not exist" % iqn
+
+        client_group_id = self.check_client_ip_exist_client_group(instance_obj.provision_ip)
+        if not client_group_id:
+            return None
+
+        mapping_groups = self.mapping_groups_api.list_mapping_groups(access_path_id=access_path_id,
+                                                                     client_group_id=client_group_id).mapping_groups
+        if len(mapping_groups) != 0:
+            self.remove_volumes_from_mapping_group(mapping_groups[0].id, self.get_volume_by_name(volume_name).id)
+            logger.debug("Successfully attach_volume_to_mapping_group %s for establish link " % client_group_id)
+
+        return None
+
+    def update_block_volume_snapshot(self, snapshot_name, update_name, update_description):
+        block_snapshots = self.block_snapshots_api.list_block_snapshots(q=snapshot_name).block_snapshots
+        if len(block_snapshots) != 0:
+            api_body = {"block_snapshot": {"name": update_name if update_name else block_snapshots[0].name,
+                                           "description": update_description if update_description else block_snapshots[
+                                               0].description}}
+            block_snapshot_name = self.block_snapshots_api.update_snapshot(api_body,
+                                                                           block_snapshots[0].id).block_snapshot.name
+            logger.debug("Successfully update snapshot %s info(name: %s, description: %s)" % (
+                block_snapshot_name, update_name, update_description))
+
+    def rollback_snapshot(self, volume_name, snapshot_name):
+        logger.debug("start roll back volume %s snapshot %s " % (volume_name, snapshot_name))
+        block_snapshots = self.block_snapshots_api.list_block_snapshots(q=snapshot_name).block_snapshots
+
+        if len(block_snapshots) == 0:
+            return "no snapshot uuid %s exists" % snapshot_name
+
+        block_volume_id = self.get_volume_by_name(volume_name).id
+
+        api_body = {"block_volume": {"block_snapshot_id": block_snapshots[0].id,
+                                     "action": "roll_back"}}
+        self.block_volumes_api.update_block_volume(api_body, block_volume_id)
+        self._retry_until(self.is_block_volume_status_active, block_volume_id)
+        logger.debug("Successfully roll back volume %s snapshot %s " % (volume_name, snapshot_name))
+
+    def get_all_access_path(self):
+        return self.access_paths_api.list_access_paths().access_paths
+
+    def get_targets_by_access_path_id(self, access_path_id):
+        return self.targets_api.list_targets(access_path_id=access_path_id).targets
+
+    def get_volume_by_id(self, block_volume_id):
+        return self.block_volumes_api.get_block_volume(block_volume_id).block_volume
+
+    def get_volume_by_name(self, block_volume_name):
+        block_volume = self.block_volumes_api.list_block_volumes(q=block_volume_name).block_volumes[0]
+        if not block_volume:
+            raise Exception("Block volume %s cannot be find by list api" % block_volume_name)
+        return block_volume
+
+    def update_volume_info(self, block_volume_id, new_volume_name, new_volume_description):
+        block_volume = self.get_volume_by_id(block_volume_id)
+        if not block_volume:
+            raise "block volume %s cannot be find" % block_volume_id
+
+        api_body = {"block_volume": {"name": new_volume_name if new_volume_name else block_volume.name,
+                                     "description": new_volume_description if new_volume_description else block_volume.description}}
+        block_volume_id = self.block_volumes_api.update_block_volume(api_body, block_volume_id).block_volume.id
+        self._retry_until(self.is_block_volume_status_active, block_volume_id)
+        logger.debug("Successfully update volume info %s " % block_volume_id)
+        return block_volume_id
+
+    def set_volume_qos(self, block_volume_id, max_total_bw, max_total_iops, burst_total_bw, burst_total_iops):
+        block_volume = self.get_volume_by_id(block_volume_id)
+        if not block_volume:
+            raise "block volume %s cannot be find" % block_volume_id
+        api_body = {"block_volume": {"qos_enabled": True,
+                                     "qos": {"max_total_bw": max_total_bw,
+                                              "burst_total_iops": burst_total_iops,
+                                              "burst_total_bw": burst_total_bw,
+                                              "max_total_iops": max_total_iops}}}
+        block_volume_id = self.block_volumes_api.update_block_volume(api_body, block_volume_id).block_volume.id
+        self._retry_until(self.is_block_volume_status_active, block_volume_id)
+        logger.debug("Successfully update volume qos %s " % block_volume_id)
+        return block_volume_id
+
+    def resize_block_volume(self, block_volume_id, size):
+        block_volume = self.get_volume_by_id(block_volume_id)
+        if not block_volume:
+            raise "block volume %s cannot be find" % block_volume_id
+        api_body = {"block_volume": {"size": size}}
+        self.block_volumes_api.update_block_volume(api_body, block_volume_id).block_volume
+        self._retry_until(self.is_block_volume_status_active, block_volume_id)
+        logger.debug("Successfully resize volume ids %s from %s to %s" % (block_volume_id, block_volume.size, size))
+        return size
+
+    def is_block_volume_status_active(self, block_volume_id):
+        return self.block_volumes_api.get_block_volume(block_volume_id).block_volume.status == "active"
+
+    def attach_volume_to_mapping_group(self, mapping_group_id, block_volume_id):
+        api_body = {"block_volume_ids": [block_volume_id]}
+        exist_mapping_group_id = self.mapping_groups_api.add_volumes(api_body, mapping_group_id).mapping_group.id
+        self._retry_until(self.is_created_mapping_group_status_active, exist_mapping_group_id)
+        logger.debug("Successfully attach volume ids %s to mapping_group[id:%s]" % (block_volume_id, mapping_group_id))
+        return exist_mapping_group_id
+
+    def remove_volumes_from_mapping_group(self, mapping_group_id, block_volume_id):
+        api_body = {"block_volume_ids": [block_volume_id]}
+        exist_mapping_group_id = self.mapping_groups_api.remove_volumes(api_body, mapping_group_id, force=True).mapping_group.id
+        self._retry_until(self.is_created_mapping_group_status_active, exist_mapping_group_id)
+        logger.debug("Successfully remove volume ids %s from mapping_group[id:%s]" % (block_volume_id, mapping_group_id))
+        return exist_mapping_group_id
+
+    def is_created_mapping_group_status_active(self, mapping_group_id):
+        return self.mapping_groups_api.get_mapping_group(mapping_group_id).mapping_group.status == "active"
+
+    def create_mapping_group(self, client_group_id, access_path_id, volume_name):
+        block_volume = self.block_volumes_api.list_block_volumes(q=volume_name).block_volumes[0]
+        if not block_volume:
+            raise Exception("Block volume %s cannot be find by list api" % volume_name)
+        block_volume_id = block_volume.id
+
+        api_body = {"mapping_group": {"access_path_id": access_path_id,
+                                      "block_volume_ids": [block_volume_id],
+                                      "client_group_id": client_group_id}}
+        created_mapping_group_id = self.mapping_groups_api.create_mapping_group(api_body).mapping_group.id
+        self._retry_until(self.is_created_mapping_group_status_active, created_mapping_group_id)
+        logger.debug("Successfully create mapping group from access path[id : %s] and block volume[name : %s]" % (
+            access_path_id, block_volume.name))
+        return created_mapping_group_id
+
+    def check_client_ip_exist_client_group(self, client_ip):
+        client_groups = self.client_group_api.list_client_groups().client_groups
+        for client_group in client_groups:
+            if any(client_ip == client.code for client in client_group.clients):
+                return client_group.id
+        return None
+
+    def is_client_group_status_active(self, client_group_id):
+        return self.client_group_api.get_client_group(client_group_id).client_group.status == "active"
+
+    def create_client_group(self, client_ip):
+        """
+        prepare client group, access path, target for volumes
+        """
+        client_name = "client_group-" + client_ip
+        client_groups = self.client_group_api.list_client_groups().client_groups
+
+        for client_group in client_groups:
+            if client_group.name == client_name and any(client_ip == client.code for client in client_group.clients):
+                return client_group.id
+
+        api_body = {"client_group": {"name": "client_group-" + client_ip,
+                                     "clients": [{"code": client_ip}],
+                                     "type": "iSCSI"}}
+        created_client_group_id = self.client_group_api.create_client_group(api_body).client_group.id
+        self._retry_until(self.is_client_group_status_active, created_client_group_id)
+        logger.debug("Successfully create client group[name : client_group-%s ]" % client_ip)
+        return created_client_group_id
+
+    def is_created_target_active(self, host_id, access_path_id):
+        return self.targets_api.list_targets(host_id=host_id, access_path_id=access_path_id).targets[
+                   0].status == "active"
+
+    def create_target(self, host_id, created_access_path_id):
+        api_body = {"target": {"access_path_id": created_access_path_id,
+                               "host_id": host_id}}
+        created_target = self.targets_api.create_target(api_body).target
+        self._retry_until(self.is_created_target_active, host_id, created_access_path_id)
+        logger.debug("Successfully create target from host[id : %s] and access path[id : %s]" % (
+            host_id, created_access_path_id))
+        return created_target
+
+    def is_access_path_status_active(self, created_access_path_id):
+        return self.access_paths_api.get_access_path(
+            created_access_path_id).access_path.status == "active"
+
+    def create_access_path(self, access_name):
+        check_name = "name.raw:access_path-" + access_name
+        access_paths = self.access_paths_api.list_access_paths(q=check_name).access_paths
+        if len(access_paths) != 0 and access_paths[0].status == 'active':
+            return access_paths[0].id
+
+        api_body = {"access_path": {"name": "access_path-" + access_name,
+                                    "type": "iSCSI"}}
+        created_access_path_id = self.access_paths_api.create_access_path(api_body).access_path.id
+        self._retry_until(self.is_access_path_status_active, created_access_path_id)
+        logger.debug("Successfully create access path [access_path-%s]" % access_name)
+
+        return created_access_path_id
+
     def connect(self, instance_obj, volume_obj):
         """
         NOTE:
@@ -270,7 +532,7 @@ class RbdDeviceOperator(object):
 
         def _update_client_group_add_code(client_group_id, clients, client_code):
             api_body = {"client_group": {"clients": clients + [{"code": client_code}]}}
-            self.client_group_api.update_client_group(client_group_id, api_body)
+            self.client_group_api.update_client_group(api_body,client_group_id)
             self._retry_until(_is_client_group_status_active, client_group_id)
             logger.debug(
                 "Successfully update client group[id :%s] to add code[code : %s]" % (client_group_id, client_code))
@@ -281,7 +543,7 @@ class RbdDeviceOperator(object):
             new_clients = [client for client in clients if client.code != provision_ip]
 
             api_body = {"client_group": {"clients": new_clients}}
-            self.client_group_api.update_client_group(client_group_id, api_body)
+            self.client_group_api.update_client_group(api_body,client_group_id)
             self._retry_until(_is_client_group_status_active, client_group_id)
             logger.debug(
                 "Successfully update client group[id :%s] to delete code[code : %s]" % (client_group_id, provision_ip))
@@ -295,8 +557,8 @@ class RbdDeviceOperator(object):
 
             created_mapping_group_data_id = mapping_groups[0].id
             api_body = {"block_volume_ids": [block_volume_id]}
-            created_mapping_group_data_id = self.mapping_groups_api.add_volumes(created_mapping_group_data_id,
-                                                                                api_body).mapping_group.id
+            created_mapping_group_data_id = self.mapping_groups_api.add_volumes(api_body,
+                                                                                created_mapping_group_data_id).mapping_group.id
             self._retry_until(_is_created_mapping_group_status_active, created_mapping_group_data_id)
             logger.debug("Successfully update mapping group[id :%s] to add volume[name : %s]" % (
                 created_mapping_group_data_id, block_volume.name))
@@ -367,7 +629,7 @@ class RbdDeviceOperator(object):
             new_clients = [client for client in clients if client.code != provision_ip]
 
             api_body = {"client_group": {"clients": new_clients}}
-            self.client_group_api.update_client_group(client_group_id, api_body)
+            self.client_group_api.update_client_group(api_body,client_group_id)
             self._retry_until(_is_client_group_status_active, client_group_id)
             logger.debug(
                 "Successfully update client group[id :%s] to delete code[code : %s]" % (client_group_id, provision_ip))
@@ -489,28 +751,38 @@ class RbdDeviceOperator(object):
         logger.debug("Successfully destory resource for instance.")
         _destory()
 
-    def get_lun_id(self, volume_obj):
+    def is_block_volume_access_path_exist(self, block_volume_name):
+        block_volume = self.block_volumes_api.list_block_volumes(q=block_volume_name).block_volumes[0]
+        if not block_volume:
+            raise Exception("Block volume %s cannot be find by list api" % block_volume_name)
+        return block_volume.access_path is not None
+
+    def get_lun_id(self, volume_obj, instance_obj):
         dst_path = self._normalize_install_path(volume_obj.path)
         volume_name = dst_path.split("/")[1]
         snat_ip = linux.find_route_interface_ip_by_destination_ip(self.monIp)
         client_group_id = None
 
-        block_volume = self.block_volumes_api.list_block_volumes(q=volume_name).block_volumes[0]
-        if not block_volume:
-            raise Exception("Block volume[name : %s] cannot be find " % volume_name)
+        try:
+            self._retry_until(self.is_block_volume_access_path_exist, volume_name, forceTimeout=60)
+        except FunctionTimedOut as e:
+            logger.warn("check block volume access path exist, detail: %s" % e)
+            return
+        block_volume = self.get_volume_by_name(volume_name)
         block_volume_id = block_volume.id
-        if block_volume.access_path is None:
+        if not block_volume.access_path:
             logger.warn("Cannot find the access path for the volume %s." % volume_name)
             return
         access_path_id = block_volume.access_path.id
 
         client_groups = self.client_group_api.list_client_groups().client_groups
         for client_group in client_groups:
-            if any(snat_ip == client.code for client in client_group.clients):
+            if any(instance_obj.provision_ip == client.code for client in client_group.clients):
                 client_group_id = client_group.id
+                break
 
         if not client_group_id:
-            raise Exception("Gateway ip[ip : %s] cannot be find in client groups" % snat_ip)
+            raise Exception("BmInstanceObj [ip : %s] cannot be find in client groups" % instance_obj.provision_ip)
 
         mapping_groups = self.mapping_groups_api.list_mapping_groups(access_path_id=access_path_id,
                                                                      client_group_id=client_group_id).mapping_groups
@@ -533,7 +805,9 @@ class RbdDeviceOperator(object):
         block_volume_name = block_volume[0].volume_name
         return block_volume_name
 
-    def create_empty_volume(self, pool_uuid, image_uuid, size):
+    def create_empty_volume(self, pool_uuid, image_uuid, size, description=None, max_total_bw=None, burst_total_iops=None,
+                            burst_total_bw=None,
+                            max_total_iops=None):
         global TIME_OUT
         TIME_OUT = self.timeout
 
@@ -541,19 +815,31 @@ class RbdDeviceOperator(object):
         if not pool:
             raise Exception("Pool[name : %s] cannot be find " % pool_uuid)
         pool_id = pool.id
-
-        api_body = {
-            "block_volume": {"crc_check": False,
-                             "pool_id": pool_id,
-                             "name": image_uuid,
-                             "flattened": False,
-                             "size": size}}
+        if max_total_bw and burst_total_iops and burst_total_bw and max_total_iops:
+            api_body = {
+                "block_volume": {"crc_check": False,
+                                 "pool_id": pool_id,
+                                 "name": image_uuid,
+                                 "flattened": False,
+                                 "qos_enabled": True,
+                                 "qos": {"max_total_bw": max_total_bw,
+                                              "burst_total_iops": burst_total_iops,
+                                              "burst_total_bw": burst_total_bw,
+                                              "max_total_iops": max_total_iops},
+                                 "description": description if description else "",
+                                 "size": size}}
+        else:
+            api_body = {
+                "block_volume": {"crc_check": False,
+                                 "pool_id": pool_id,
+                                 "name": image_uuid,
+                                 "flattened": False,
+                                 "description": description if description else "",
+                                 "size": size}}
         created_block_volume = self.block_volumes_api.create_block_volume(api_body).block_volume
-        created_block_volume_id = created_block_volume.id
-        created_block_volume_name = created_block_volume.volume_name
-        self._retry_until(self.is_block_volume_status_active, created_block_volume_id)
+        self._retry_until(self.is_block_volume_status_active, created_block_volume.id)
         logger.debug("Successfully create block volume[name : %s] from snapshot, volume: %s" % (image_uuid, jsonobject.dumps(created_block_volume)))
-        return created_block_volume_name
+        return self.get_volume_by_id(created_block_volume.id)
 
     def copy_volume(self, srcPath, dstPath):
         """
@@ -817,7 +1103,7 @@ class RbdDeviceOperator(object):
         api_conf = ApiClient(conf, cookie="XMS_AUTH_TOKEN=%s" % token)
         return api_conf
 
-    @func_set_timeout(timeout=TIME_OUT)
+    @func_set_timeout(timeout=TIME_OUT, allowOverride=True)
     def _retry_until(self, func, *args, **kwargs):
         """
         NOTE:
