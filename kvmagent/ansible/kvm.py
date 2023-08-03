@@ -203,8 +203,8 @@ def install_kvm_pkg():
                         smartmontools sshpass usbutils wget audit dnsmasq collectd-virt storcli nvme-cli pv rsync sed pciutils tar"
 
         distro_mapping = {
-            'centos': 'vconfig iscsi-initiator-utils OpenIPMI-modalias OVMF mcelog MegaCli Arcconf python-pyudev kernel-devel libicu',
-            'kylin': 'vconfig open-iscsi python2-pyudev collectd-disk OpenIPMI libselinux-devel nettle tuned qemu-kvm libicu',
+            'centos': 'vconfig iscsi-initiator-utils OpenIPMI-modalias OVMF mcelog MegaCli Arcconf python-pyudev kernel-devel libicu edac-utils',
+            'kylin': 'vconfig open-iscsi python2-pyudev collectd-disk OpenIPMI libselinux-devel nettle tuned qemu-kvm libicu edac-utils',
             'uniontech': 'vconfig iscsi-initiator-utils OpenIPMI nettle qemu-kvm python-pyudev collectd-disk',
             'rocky': 'iscsi-initiator-utils OpenIPMI-modalias mcelog MegaCli Arcconf python-pyudev kernel-devel collectd-disk'
         }
@@ -248,7 +248,7 @@ def install_kvm_pkg():
                 common_dep_list += mini_dep_list
 
             if isCube:
-                cube_dep_list = " lm_sensors edac-utils"
+                cube_dep_list = " lm_sensors"
                 if releasever not in kylin:
                     cube_dep_list += " lm_sensors-libs"
                 common_dep_list += cube_dep_list
