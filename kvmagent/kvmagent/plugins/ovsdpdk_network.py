@@ -2,6 +2,9 @@
 
 @author: haibiao.xiao
 '''
+
+import os
+
 from kvmagent import kvmagent
 from zstacklib.utils import jsonobject
 from zstacklib.utils import log
@@ -458,12 +461,14 @@ class OvsDpdkNetworkPlugin(kvmagent.KvmAgent):
 
 
 def check_bond_status():
-    ovsctl = ovs.getOvsCtl(with_dpdk=True)
-    ovsctl.checkBondStatusWapper()
+    if os.path.exists("/usr/sbin/ovs-vswitchd"):
+        ovsctl = ovs.getOvsCtl(with_dpdk=True)
+        ovsctl.checkBondStatusWapper()
 
 def check_ovs_status():
-    ovsctl = ovs.getOvsCtl(with_dpdk=True)
-    ovsctl.checkOvsStatusWapper()
+    if os.path.exists("/usr/sbin/ovs-vswitchd"):
+        ovsctl = ovs.getOvsCtl(with_dpdk=True)
+        ovsctl.checkOvsStatusWapper()
 
 
 
