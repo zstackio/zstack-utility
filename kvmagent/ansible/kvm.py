@@ -202,7 +202,7 @@ def install_kvm_pkg():
                       net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
                       smartmontools sshpass usbutils vconfig wget audit dnsmasq \
                       qemu-kvm collectd-virt OVMF edk2-ovmf edk2.git-ovmf-x64 mcelog MegaCli storcli Arcconf \
-                    nvme-cli python-pyudev seabios-bin nping kernel-devel elfutils-libelf-devel libicu cryptsetup"
+                    nvme-cli python-pyudev seabios-bin nping kernel-devel elfutils-libelf-devel libicu cryptsetup edac-utils"
 
         aarch64_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                         usbredir-server iputils open-iscsi libvirt libvirt-client libvirt-python lighttpd lsof \
